@@ -196,6 +196,7 @@ func (g *GitHub) RunWatch() error {
 
 // RunWatchWorkflow watches the latest run for a specific workflow name.
 // If workflow is empty, watches the overall latest run.
+// Retries up to 12 times (60s total) waiting for the run to appear.
 func (g *GitHub) RunWatchWorkflow(workflow string) error {
 	var cmd string
 	if workflow != "" {
@@ -203,11 +204,24 @@ func (g *GitHub) RunWatchWorkflow(workflow string) error {
 	} else {
 		cmd = fmt.Sprintf("gh run list --repo %s --limit 1 --json databaseId --jq .[0].databaseId", g.Repo)
 	}
-	out, err := RunCapture(cmd, "")
-	if err != nil || out == "" {
-		return fmt.Errorf("no workflow runs found for %s (workflow: %s)", g.Repo, workflow)
+
+	var out string
+	var err error
+	for attempt := 1; attempt <= 12; attempt++ {
+		out, err = RunCapture(cmd, "")
+		if err == nil && strings.TrimSpace(out) != "" {
+			break
+		}
+		if attempt < 12 {
+			log.Logf("Waiting for workflow run to appear (attempt %d/12)...", attempt)
+			time.Sleep(5 * time.Second)
+		}
 	}
-	_, err = Run(fmt.Sprintf("gh run watch %s --repo %s --exit-status", out, g.Repo), false, true, "")
+	if err != nil || strings.TrimSpace(out) == "" {
+		return fmt.Errorf("no workflow runs found for %s (workflow: %s) after 12 attempts", g.Repo, workflow)
+	}
+
+	_, err = Run(fmt.Sprintf("gh run watch %s --repo %s --exit-status", strings.TrimSpace(out), g.Repo), false, true, "")
 	return err
 }
 
