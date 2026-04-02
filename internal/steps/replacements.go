@@ -201,6 +201,14 @@ func nsJava(cfg *config.Config, component, repoDir string) {
 	n += files.ReplaceInTree(repoDir, oldFull, newFull, []string{".yml"})
 	log.OKf("Java: replaced %s -> %s (%d files)", oldFull, newFull, n)
 
+	// Also replace escaped-dot variant (used in regex patterns in Java source)
+	oldEscaped := strings.ReplaceAll(oldFull, ".", "\\\\.")
+	newEscaped := strings.ReplaceAll(newFull, ".", "\\\\.")
+	n = files.ReplaceInTree(repoDir, oldEscaped, newEscaped, []string{".java"})
+	if n > 0 {
+		log.OKf("Java: replaced escaped namespace pattern (%d files)", n)
+	}
+
 	oldDirParts := []string{"com", "optivem", "starter"}
 	newDirParts := []string{"com", cfg.OwnerLower, cfg.RepoNoHyphens}
 
