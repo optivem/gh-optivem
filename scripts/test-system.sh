@@ -13,10 +13,18 @@ if [ -z "${TEST_OWNER:-}" ]; then
 fi
 
 TESTS=(
-  # "TestValidMonolithConfigurations/monolith_monorepo_java_java"
+  # One per arch/strategy, covering java, dotnet, typescript backends
+  "TestValidMonolithConfigurations/monolith_monorepo_java_java"
+  "TestValidMonolithConfigurations/monolith_monorepo_dotnet_dotnet"
+  "TestValidMonolithConfigurations/monolith_multirepo_typescript_typescript"
   "TestValidMultitierConfigurations/multitier_monorepo_java_react_java"
+  "TestValidMultitierConfigurations/multitier_monorepo_dotnet_react_dotnet"
+  "TestValidMultitierConfigurations/multitier_multirepo_typescript_react_typescript"
+  # Cross-language (system lang != test lang)
+  "TestValidMonolithConfigurations/monolith_monorepo_java_dotnet"
+  "TestValidMultitierConfigurations/multitier_monorepo_java_react_typescript"
 )
 
 RUN_PATTERN=$(IFS="|"; echo "${TESTS[*]}")
 
-go test -tags=system ./internal/config/ -v -timeout 30m -run "$RUN_PATTERN"
+go test -tags=system ./internal/config/ -v -timeout 6h -run "$RUN_PATTERN"
