@@ -48,6 +48,12 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Configure git credentials
+        run: |
+          gh auth setup-git
+        env:
+          GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+
       - name: System tests (representative subset)
         run: bash scripts/test-system.sh
         env:
