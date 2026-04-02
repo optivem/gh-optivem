@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 )
 
@@ -62,7 +61,7 @@ func TestMain(m *testing.M) {
 }
 
 // runCLI runs the binary and returns output + exit code.
-// It does NOT add --dry-run — tests run the full scaffolding flow.
+// Valid config tests run with --test --cleanup for full scaffolding + automatic cleanup.
 func runCLI(t *testing.T, args ...string) (string, int) {
 	t.Helper()
 
@@ -79,37 +78,6 @@ func runCLI(t *testing.T, args ...string) (string, int) {
 		}
 	}
 	return string(out), exitCode
-}
-
-// cleanupRepos deletes repos created during a test run.
-func cleanupRepos(t *testing.T, owner, repo, arch, repoStrategy string) {
-	t.Helper()
-
-	fullRepo := owner + "/" + repo
-	t.Logf("Cleaning up: deleting %s", fullRepo)
-	exec.Command("gh", "repo", "delete", fullRepo, "--yes").Run()
-
-	if repoStrategy == "multirepo" {
-		frontendRepo := owner + "/" + repo + "-frontend"
-		backendRepo := owner + "/" + repo + "-backend"
-		t.Logf("Cleaning up: deleting %s", backendRepo)
-		exec.Command("gh", "repo", "delete", backendRepo, "--yes").Run()
-		t.Logf("Cleaning up: deleting %s", frontendRepo)
-		exec.Command("gh", "repo", "delete", frontendRepo, "--yes").Run()
-	}
-}
-
-// extractRepoName parses the actual repo name (with random suffix) from CLI output.
-func extractRepoName(output string) string {
-	for _, line := range strings.Split(output, "\n") {
-		if strings.Contains(line, "Repo:") {
-			parts := strings.Fields(line)
-			if len(parts) >= 2 {
-				return parts[len(parts)-1]
-			}
-		}
-	}
-	return ""
 }
 
 func TestValidMonolithConfigurations(t *testing.T) {
@@ -144,15 +112,10 @@ func TestValidMonolithConfigurations(t *testing.T) {
 				"--repo-strategy", tt.repoStrategy,
 				"--lang", tt.monolithLang,
 				"--test-lang", tt.testLang,
+				"--test", "--cleanup",
 			)
 			out, exitCode := runCLI(t, args...)
 			t.Log(out)
-
-			repoName := extractRepoName(out)
-			if repoName != "" {
-				defer cleanupRepos(t, testOwner(), repoName, tt.arch, tt.repoStrategy)
-			}
-
 			if exitCode != 0 {
 				t.Errorf("expected exit code 0, got %d", exitCode)
 			}
@@ -193,15 +156,10 @@ func TestValidMultitierConfigurations(t *testing.T) {
 				"--backend-lang", tt.backendLang,
 				"--frontend-lang", tt.frontendLang,
 				"--test-lang", tt.testLang,
+				"--test", "--cleanup",
 			)
 			out, exitCode := runCLI(t, args...)
 			t.Log(out)
-
-			repoName := extractRepoName(out)
-			if repoName != "" {
-				defer cleanupRepos(t, testOwner(), repoName, tt.arch, tt.repoStrategy)
-			}
-
 			if exitCode != 0 {
 				t.Errorf("expected exit code 0, got %d", exitCode)
 			}

@@ -87,6 +87,9 @@ func main() {
 	}
 	fmt.Println()
 
+	// Cleanup (test mode only)
+	steps.Cleanup(cfg, gh, sc)
+
 	if errors > 0 {
 		os.Exit(1)
 	}
@@ -112,6 +115,7 @@ func printBanner(cfg *config.Config) {
 	}
 	log.Logf("Test lang:   %s", cfg.TestLang)
 	log.Logf("Dry run:     %v", cfg.DryRun)
+	log.Logf("Test mode:   %v", cfg.TestMode)
 	log.Logf("Workdir:     %s", cfg.WorkDir)
 	fmt.Println()
 }

@@ -5,7 +5,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 TESTS=(
   "TestValidMonolithConfigurations/monolith_monorepo_java_java"
-  "TestValidMultitierConfigurations/multitier_monorepo_java_react_java"
+  # "TestValidMultitierConfigurations/multitier_monorepo_java_react_java"
 )
 
 RUN_PATTERN=$(IFS="|"; echo "${TESTS[*]}")

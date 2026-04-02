@@ -75,6 +75,7 @@ func SetupSecretsAndVariables(cfg *config.Config, gh *shell.GitHub) {
 			ghComp.SecretSet("DOCKERHUB_TOKEN", cfg.DockerHubToken)
 			ghComp.SecretSet("SONAR_TOKEN", cfg.SonarToken)
 			ghComp.VariableSet("DOCKERHUB_USERNAME", cfg.DockerHubUsername)
+			// TODO: check if component repos need GHCR_TOKEN and SYSTEM_URL (Python version set these)
 		}
 		log.OK("Set secrets and variables on component repositories")
 	}
