@@ -209,21 +209,21 @@ func nsJava(cfg *config.Config, component, repoDir string) {
 		log.OKf("Java: replaced escaped namespace pattern (%d files)", n)
 	}
 
-	oldDirParts := []string{"com", "optivem", "eshop"}
+	oldDirParts := []string{"com", "optivem", "shop"}
 	newDirParts := []string{"com", cfg.OwnerLower, cfg.RepoNoHyphens}
 
 	filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || !info.IsDir() || files.IsGitDir(path) {
 			return nil
 		}
-		check := filepath.Join(path, "com", "optivem", "eshop")
+		check := filepath.Join(path, "com", "optivem", "shop")
 		if _, err := os.Stat(check); err == nil {
 			files.RenameJavaDirs(path, oldDirParts, newDirParts)
 			return filepath.SkipDir
 		}
 		return nil
 	})
-	log.OKf("Java: renamed directories com/optivem/eshop -> com/%s/%s", cfg.OwnerLower, cfg.RepoNoHyphens)
+	log.OKf("Java: renamed directories com/optivem/shop -> com/%s/%s", cfg.OwnerLower, cfg.RepoNoHyphens)
 }
 
 func nsDotnet(cfg *config.Config, component, repoDir string) {
@@ -256,7 +256,7 @@ func nsTypeScript(cfg *config.Config, component, repoDir string) {
 		}
 		if strings.Contains(path, "system-test") && info.Name() == "package.json" {
 			files.ReplaceInFile(path, `"author": "Optivem"`, `"author": "`+cfg.Owner+`"`)
-			files.ReplaceInFile(path, `"EShop - System Tests"`, `"`+cfg.SystemName+` - System Tests"`)
+			files.ReplaceInFile(path, `"Shop - System Tests"`, `"`+cfg.SystemName+` - System Tests"`)
 			files.ReplaceInFile(path, `"optivem"`, `"`+cfg.OwnerLower+`"`)
 			log.OK("TypeScript: updated package.json metadata")
 			return filepath.SkipAll
@@ -274,8 +274,8 @@ func nsTypeScript(cfg *config.Config, component, repoDir string) {
 		}
 		if info.Name() == "package.json" {
 			// Monolith system code or multitier backend code
-			files.ReplaceInFile(path, `"name": "eshop-monolith"`, `"name": "`+cfg.Repo+`-system"`)
-			files.ReplaceInFile(path, `"name": "eshop-backend"`, `"name": "`+cfg.Repo+`-backend"`)
+			files.ReplaceInFile(path, `"name": "shop-monolith"`, `"name": "`+cfg.Repo+`-system"`)
+			files.ReplaceInFile(path, `"name": "shop-backend"`, `"name": "`+cfg.Repo+`-backend"`)
 		}
 		return nil
 	})
@@ -284,7 +284,7 @@ func nsTypeScript(cfg *config.Config, component, repoDir string) {
 func fixupFrontendPackageJSON(cfg *config.Config) {
 	pkgPath := filepath.Join(cfg.FrontendRepoDir, "package.json")
 	if _, err := os.Stat(pkgPath); err == nil {
-		files.ReplaceInFile(pkgPath, `"name": "optivem-eshop-frontend"`, `"name": "`+cfg.Repo+`-frontend"`)
+		files.ReplaceInFile(pkgPath, `"name": "optivem-shop-frontend"`, `"name": "`+cfg.Repo+`-frontend"`)
 		files.ReplaceInFile(pkgPath, `"name": "frontend-react"`, `"name": "`+cfg.Repo+`-frontend"`)
 	}
 }

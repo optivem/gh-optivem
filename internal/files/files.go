@@ -82,7 +82,7 @@ func ReplaceInDockerfiles(root, old, new string) int {
 	return count
 }
 
-// RenameJavaDirs renames Java package directories: com/optivem/eshop -> com/owner/repo.
+// RenameJavaDirs renames Java package directories: com/optivem/shop -> com/owner/repo.
 func RenameJavaDirs(root string, oldParts, newParts []string) {
 	oldPath := filepath.Join(oldParts...)
 	newPath := filepath.Join(newParts...)

@@ -293,11 +293,11 @@ func ParseAndValidate() *Config {
 		RepoPascal:    repoPascal,
 		RepoNoHyphens: repoNoHyphens,
 
-		JavaNsOld:   "com.optivem.eshop",
+		JavaNsOld:   "com.optivem.shop",
 		JavaNsNew:   "com." + ownerLower + "." + repoNoHyphens,
-		DotnetNsOld: "Optivem.EShop",
+		DotnetNsOld: "Optivem.Shop",
 		DotnetNsNew: ownerPascal + "." + repoPascal,
-		TsPkgOld:    "@optivem/eshop-system-test",
+		TsPkgOld:    "@optivem/shop-system-test",
 		TsPkgNew:    "@" + ownerLower + "/" + repoName + "-system-test",
 
 		FrontendRepo:     frontendRepo,

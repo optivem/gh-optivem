@@ -1,17 +1,60 @@
 # Naming: System Name Replacements
 
-During scaffolding, `gh optivem init` replaces the template system name ("Shop") with the user's `--system-name` across all source files, file names, and directories.
+During scaffolding, `gh optivem init` replaces the template system name (`Shop`) with the user's `--system-name` (provided in camelCase) across all source files, file names, and directories.
 
-## Naming Derivation
+## Input Format
 
-Given `--system-name "Sky Travel"`:
+The `--system-name` accepts a **camelCase** name. Word boundaries are detected from uppercase transitions. No spaces needed.
 
-| Casing | Template | Scaffolded | Used In |
+```bash
+gh optivem init --system-name skyTravel ...
+```
+
+### Word Splitting Algorithm
+
+Split on transitions between case boundaries. Consecutive uppercase letters are treated as an **acronym** (one word):
+
+| Rule | Description |
+|---|---|
+| lowercase → uppercase | New word starts at the uppercase letter: `sky‖Travel` |
+| Acronym → non-acronym | Consecutive uppercase followed by lowercase splits before the last uppercase: `ABC‖Store` |
+| All lowercase | Single word: `todo` |
+| All uppercase | Single word (acronym): `ABC` |
+
+| Input | Words | Split Rule |
+|---|---|---|
+| `skyTravel` | `[sky, Travel]` | lowercase → uppercase |
+| `eShop` | `[e, Shop]` | lowercase → uppercase |
+| `eSuperStore` | `[e, Super, Store]` | lowercase → uppercase |
+| `todo` | `[todo]` | no transition |
+| `ABC` | `[ABC]` | all uppercase = acronym |
+| `ABCStore` | `[ABC, Store]` | acronym → non-acronym |
+| `myAPIClient` | `[my, API, Client]` | lowercase → acronym → non-acronym |
+
+### Casing Derivation
+
+Given `--system-name "skyTravel"`:
+
+| Casing | Rule | Result | Used In |
 |---|---|---|---|
-| PascalCase | `Shop` | `SkyTravel` | Class names, .NET methods, file names |
-| camelCase | `shop` | `skyTravel` | Java/TS methods, variables |
-| kebab-case | `shop` | `sky-travel` | TS file names, URL routes |
-| lowercase | `shop` | `skytravel` | Java package segments |
+| PascalCase | Capitalize first letter of each word, join | `SkyTravel` | Class names, .NET methods, file names |
+| camelCase | Lowercase first word, capitalize rest, join | `skyTravel` | Java/TS methods, variables |
+| kebab-case | Lowercase all words, join with `-` | `sky-travel` | TS file names, URL routes |
+| lowercase | Lowercase all words, join | `skytravel` | Java package segments |
+
+### More Examples
+
+| Input | PascalCase | camelCase | kebab-case | lowercase |
+|---|---|---|---|---|
+| `skyTravel` | `SkyTravel` | `skyTravel` | `sky-travel` | `skytravel` |
+| `eShop` | `EShop` | `eShop` | `e-shop` | `eshop` |
+| `eSuperStore` | `ESuperStore` | `eSuperStore` | `e-super-store` | `esuperstore` |
+| `todo` | `Todo` | `todo` | `todo` | `todo` |
+| `petClinic` | `PetClinic` | `petClinic` | `pet-clinic` | `petclinic` |
+| `bookStore` | `BookStore` | `bookStore` | `book-store` | `bookstore` |
+| `ABC` | `ABC` | `aBC` | `abc` | `abc` |
+| `ABCStore` | `ABCStore` | `aBCStore` | `abc-store` | `abcstore` |
+| `myAPIClient` | `MyAPIClient` | `myAPIClient` | `my-api-client` | `myapiclient` |
 
 ---
 
@@ -385,11 +428,11 @@ The template name "Shop" is **not a substring** of any other identifier in the s
 
 ## System Name Validation
 
-The `--system-name` value flows into multiple targets across all three languages. Each derived form must be valid in **every** context it appears:
+The `--system-name` value is provided in **camelCase** and flows into multiple targets across all three languages. Each derived form must be valid in **every** context it appears:
 
 | Derived Form | Targets | Constraints |
 |---|---|---|
-| PascalCase (`SkyTravel`) | Java class name, C# class name, C# namespace segment, TS class/type name, file name (all OS) | Must be valid identifier; no digits, hyphens, or special chars; not a reserved word; valid file name on Windows/Mac/Linux |
+| PascalCase (`SkyTravel`) | Java class name, C# class name, C# namespace segment, TS class/type name, file name (all OS) | Must be valid identifier; not a reserved word; valid file name on Windows/Mac/Linux |
 | camelCase (`skyTravel`) | Java method/field name, TS method/variable name, JSON key | Must be valid identifier; not a reserved word in any language |
 | kebab-case (`sky-travel`) | TS file name, URL route path, Next.js directory name, import path | Must be valid URL segment; valid file/directory name on all OS |
 | lowercase (`skytravel`) | Java package segment | Must be valid Java identifier; no hyphens; not a Java reserved word |
@@ -397,32 +440,29 @@ The `--system-name` value flows into multiple targets across all three languages
 ### Allowed
 
 - Letters only: `a-z`, `A-Z`
-- Spaces between words (used to derive casing variants)
+- camelCase format (word boundaries detected from case transitions)
 - Minimum 1 character, maximum 50 characters
-- Each word must start with a letter
 
 ### Rejected
 
 | Rule | Reason (which target breaks) | Example |
 |---|---|---|
-| Empty or whitespace-only | All targets need a name | `""`, `"  "` |
-| Starts with a digit | Java/C#/TS identifiers can't start with a digit | `"3D Print"` |
-| Contains digits | Java package `skytravel3d` is valid but `3dskytravel` isn't; digits in class names reduce readability | `"Web3 App"` |
-| Hyphens | Invalid in Java identifiers, Java packages, C# identifiers, C# namespaces | `"Sky-Travel"` |
-| Underscores | Unconventional in PascalCase/camelCase class names; problematic in kebab-case file names | `"Sky_Travel"` |
-| Dots | Conflicts with Java package separators and .NET namespace separators | `"Dr. Travel"` |
-| Accented/unicode chars | Invalid or problematic in Java packages, file names, URL paths | `"Café"` |
-| Special characters | Invalid in identifiers across all languages and in file names | `"Foo & Bar"`, `"My App!"` |
-| Windows-illegal chars | `\ / : * ? " < > \|` are invalid in file/folder names | `"Q&A: Help"` |
-| Leading/trailing spaces | Produces empty segments in kebab/package forms | `" Travel "` |
-| Consecutive spaces | Produces double hyphens in kebab-case (`sky--travel`) | `"Sky  Travel"` |
-| Single-char words | Produces unclear identifiers (`ATravel`, `aTravel`) | `"A Travel"` |
-| Reserved words (any word) | Derived forms collide with language keywords | `"New"` → `new` (Java/C#/TS keyword) |
-| Exceeds path limits | Windows MAX_PATH is 260; long names compound in deep paths | `"Extremely Long System Name That Goes On And On"` |
+| Empty | All targets need a name | `""` |
+| Leading/trailing spaces | Not valid camelCase | `" skyTravel"`, `"skyTravel "` |
+| Contains digits | Java identifiers starting with digit are invalid; digits in class names reduce readability | `"web3App"` |
+| Contains spaces | Input is camelCase, not space-separated | `"sky travel"` |
+| Contains hyphens | Invalid in Java identifiers, Java packages, C# identifiers | `"sky-travel"` |
+| Contains underscores | Unconventional in PascalCase/camelCase; problematic in kebab-case | `"sky_travel"` |
+| Contains dots | Conflicts with Java package and .NET namespace separators | `"dr.travel"` |
+| Accented/unicode chars | Invalid or problematic in Java packages, file names, URL paths | `"café"` |
+| Special characters | Invalid in identifiers across all languages and in file names | `"foo&bar"` |
+| Reserved words (full lowercase form) | Derived lowercase form collides with language keywords | `"new"` → `new` (keyword) |
+| Reserved words (any split word) | Individual words collide with keywords | `"newOrder"` → `new` is a keyword |
+| Exceeds path limits | Windows MAX_PATH is 260; long names compound in deep paths | `"extremelyLongSystemNameThatGoesOnAndOn"` |
 
 ### Reserved Words to Check
 
-Each **individual word** in the system name must not be a reserved keyword, because it may appear as a standalone identifier in derived forms (e.g. single-word system name). The **full derived forms** (PascalCase, camelCase, lowercase) must also not collide.
+Both the **full derived forms** (lowercase, camelCase) and each **individual split word** (lowercased) must not collide with language keywords.
 
 **Java** reserved words:
 `abstract`, `assert`, `boolean`, `break`, `byte`, `case`, `catch`, `char`, `class`, `const`, `continue`, `default`, `do`, `double`, `else`, `enum`, `extends`, `final`, `finally`, `float`, `for`, `goto`, `if`, `implements`, `import`, `instanceof`, `int`, `interface`, `long`, `native`, `new`, `null`, `package`, `private`, `protected`, `public`, `return`, `short`, `static`, `strictfp`, `super`, `switch`, `synchronized`, `this`, `throw`, `throws`, `transient`, `try`, `void`, `volatile`, `while`
@@ -437,20 +477,23 @@ Each **individual word** in the system name must not be a reserved keyword, beca
 
 | Input | Valid? | Reason |
 |---|---|---|
-| `Sky Travel` | Yes | Letters and space |
-| `Pet Clinic` | Yes | Letters and space |
-| `Todo` | Yes | Single word, letters only |
-| `Book Store` | Yes | Letters and space |
-| `A` | Yes | Minimum 1 letter |
-| `Sky-Travel` | No | Hyphens invalid in Java identifiers/packages |
-| `Sky_Travel` | No | Underscores unconventional in class names |
-| `3D Print` | No | Starts with digit |
-| `Web3 App` | No | Contains digit |
-| `Café` | No | Accented character |
-| `Dr. Travel` | No | Dot conflicts with package/namespace separators |
-| `New` | No | `new` is reserved in Java/C#/TS |
-| `Class Act` | No | `class` is reserved in Java/C#/TS |
-| `For Real` | No | `for` is reserved in Java/C#/TS |
-| `My App!` | No | Special character `!` |
-| `A Travel` | No | Single-char word `A` |
-| `Sky  Travel` | No | Consecutive spaces |
+| `skyTravel` | Yes | camelCase, letters only |
+| `petClinic` | Yes | camelCase, letters only |
+| `todo` | Yes | Single word, letters only |
+| `bookStore` | Yes | camelCase, letters only |
+| `eShop` | Yes | camelCase with single-char first word |
+| `eSuperStore` | Yes | camelCase with single-char first word |
+| `ABC` | Yes | All-uppercase acronym |
+| `ABCStore` | Yes | Acronym + word |
+| `myAPIClient` | Yes | Mixed acronym and words |
+| `sky travel` | No | Spaces not allowed — use `skyTravel` |
+| `sky-travel` | No | Hyphens not allowed — use `skyTravel` |
+| `sky_travel` | No | Underscores not allowed — use `skyTravel` |
+| `3dPrint` | No | Starts with digit |
+| `web3App` | No | Contains digit |
+| `café` | No | Accented character |
+| `foo&bar` | No | Special character |
+| `new` | No | `new` is reserved in Java/C#/TS |
+| `newOrder` | No | `new` is a reserved keyword |
+| `classAct` | No | `class` is a reserved keyword |
+| `forReal` | No | `for` is a reserved keyword |
