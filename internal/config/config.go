@@ -29,7 +29,8 @@ type Config struct {
 
 	DryRun     bool
 	TestMode   bool
-	Cleanup    string // "yes", "no", or "ask"
+	Cleanup      string // "yes", "no", or "ask"
+	ForceCleanup bool   // cleanup even on failure
 	WorkDir    string
 	StarterPath string
 
@@ -97,6 +98,7 @@ func ParseAndValidate() *Config {
 	testMode := flag.Bool("test", false, "Test mode with optional cleanup")
 	cleanupFlag := flag.Bool("cleanup", false, "Auto-cleanup in test mode")
 	noCleanup := flag.Bool("no-cleanup", false, "Keep repo in test mode")
+	forceCleanup := flag.Bool("force-cleanup", false, "Cleanup even on failure")
 	workDir := flag.String("workdir", "", "Working directory for cloning (default: temp dir)")
 
 	flag.Parse()
@@ -261,7 +263,8 @@ func ParseAndValidate() *Config {
 
 		DryRun:     *dryRun,
 		TestMode:   *testMode,
-		Cleanup:    resolveCleanup(*cleanupFlag, *noCleanup),
+		Cleanup:      resolveCleanup(*cleanupFlag, *noCleanup),
+		ForceCleanup: *forceCleanup,
 		WorkDir:    wd,
 		StarterPath: starterPath,
 

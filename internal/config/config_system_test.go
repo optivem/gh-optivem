@@ -27,17 +27,23 @@ var baseArgs = []string{
 	"--random-suffix",
 }
 
-func cleanupFlag() string {
+func cleanupFlags() []string {
 	if os.Getenv("TEST_NO_CLEANUP") == "1" {
-		return "--no-cleanup"
+		return []string{"--no-cleanup"}
 	}
-	return "--cleanup"
+	flags := []string{"--cleanup"}
+	if os.Getenv("TEST_FORCE_CLEANUP") == "1" {
+		flags = append(flags, "--force-cleanup")
+	}
+	return flags
 }
 
 func withBase(extra ...string) []string {
 	args := []string{"--owner", testOwner()}
 	args = append(args, baseArgs...)
-	return append(args, extra...)
+	args = append(args, extra...)
+	args = append(args, cleanupFlags()...)
+	return args
 }
 
 func TestMain(m *testing.M) {
@@ -122,7 +128,7 @@ func TestValidMonolithConfigurations(t *testing.T) {
 				"--repo-strategy", tt.repoStrategy,
 				"--lang", tt.monolithLang,
 				"--test-lang", tt.testLang,
-				"--test", cleanupFlag(),
+				"--test",
 			)
 			out, exitCode := runCLI(t, args...)
 			t.Log(out)
@@ -166,7 +172,7 @@ func TestValidMultitierConfigurations(t *testing.T) {
 				"--backend-lang", tt.backendLang,
 				"--frontend-lang", tt.frontendLang,
 				"--test-lang", tt.testLang,
-				"--test", cleanupFlag(),
+				"--test",
 			)
 			out, exitCode := runCLI(t, args...)
 			t.Log(out)
