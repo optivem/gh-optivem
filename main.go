@@ -50,6 +50,7 @@ func main() {
 		{"Commit and push", func() { steps.CommitAndPush(cfg) }},
 		{"Verify commit stage", func() { steps.VerifyCommitStage(cfg, gh) }},
 		{"Verify acceptance stage", func() { steps.VerifyAcceptanceStage(cfg, gh) }},
+		{"Verify acceptance stage legacy", func() { steps.VerifyAcceptanceStageLegacy(cfg, gh) }},
 		{"Verify QA stage", func() { steps.VerifyQAStage(cfg, gh) }},
 		{"Verify QA signoff", func() { steps.VerifyQASignoff(cfg, gh) }},
 		{"Verify production stage", func() { steps.VerifyProdStage(cfg, gh) }},

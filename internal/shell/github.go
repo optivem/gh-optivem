@@ -133,16 +133,17 @@ func CheckRateLimit() {
 
 // GitHub wraps gh CLI calls for a specific repo.
 type GitHub struct {
-	Repo   string
-	DryRun bool
+	Repo    string
+	License string
+	DryRun  bool
 }
 
 func NewGitHub(cfg *config.Config) *GitHub {
-	return &GitHub{Repo: cfg.FullRepo, DryRun: cfg.DryRun}
+	return &GitHub{Repo: cfg.FullRepo, License: cfg.License, DryRun: cfg.DryRun}
 }
 
 func (g *GitHub) ForRepo(fullRepo string) *GitHub {
-	return &GitHub{Repo: fullRepo, DryRun: g.DryRun}
+	return &GitHub{Repo: fullRepo, License: g.License, DryRun: g.DryRun}
 }
 
 func (g *GitHub) run(cmd string) (string, error) {
@@ -155,7 +156,7 @@ func (g *GitHub) CreateRepo() {
 		log.Warnf("Repository %s already exists -- skipping creation", g.Repo)
 		return
 	}
-	Run(fmt.Sprintf("gh repo create %s --public --add-readme --license mit", g.Repo), false, true, "")
+	Run(fmt.Sprintf("gh repo create %s --public --add-readme --license %s", g.Repo, g.License), false, true, "")
 }
 
 func (g *GitHub) CreateEnvironment(name string) {

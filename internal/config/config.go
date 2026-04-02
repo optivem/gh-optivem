@@ -27,6 +27,7 @@ type Config struct {
 	FrontendLang string // multitier only
 	TestLang     string
 
+	License    string
 	DryRun     bool
 	TestMode   bool
 	Cleanup      string // "yes", "no", or "ask"
@@ -98,6 +99,7 @@ func ParseAndValidate() *Config {
 	testLang := flag.String("test-lang", "", "Test language (defaults to --lang or --backend-lang)")
 	backendLang := flag.String("backend-lang", "", "Backend language: java, dotnet, typescript (multitier)")
 	frontendLang := flag.String("frontend-lang", "", "Frontend language: react (multitier)")
+	license := flag.String("license", "mit", "License: mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense")
 	randomSuffix := flag.Bool("random-suffix", false, "Append 4-char hex suffix to repo name")
 	dryRun := flag.Bool("dry-run", false, "Print actions without executing")
 	testMode := flag.Bool("test", false, "Test mode with optional cleanup")
@@ -273,6 +275,7 @@ func ParseAndValidate() *Config {
 		FrontendLang: cfgFrontendLang,
 		TestLang:     cfgTestLang,
 
+		License:    *license,
 		DryRun:     *dryRun,
 		TestMode:   *testMode,
 		Cleanup:      resolveCleanup(*cleanupFlag, *noCleanup),
@@ -315,6 +318,22 @@ func resolveCleanup(cleanup, noCleanup bool) string {
 		return "no"
 	}
 	return "ask"
+}
+
+// LicenseName returns the human-readable license name.
+func (c *Config) LicenseName() string {
+	names := map[string]string{
+		"mit":          "MIT License",
+		"apache-2.0":   "Apache License 2.0",
+		"gpl-3.0":      "GNU General Public License v3.0",
+		"bsd-2-clause": "BSD 2-Clause License",
+		"bsd-3-clause": "BSD 3-Clause License",
+		"unlicense":    "The Unlicense",
+	}
+	if name, ok := names[c.License]; ok {
+		return name
+	}
+	return c.License
 }
 
 // EffectiveLang returns the primary system language (lang for monolith, backend-lang for multitier).

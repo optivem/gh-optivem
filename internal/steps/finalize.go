@@ -78,8 +78,8 @@ func writeReadme(repoDir, title, badges string, cfg *config.Config) {
 	}
 	fmt.Fprintf(&info, "\n")
 
-	content := fmt.Sprintf("# %s\n\n%s\n%s## License\n\nMIT License\n\n## Contributors\n\n- [%s](https://github.com/%s)\n",
-		title, badges, info.String(), cfg.Owner, cfg.Owner)
+	content := fmt.Sprintf("# %s\n\n%s\n%s## License\n\n%s\n\n## Contributors\n\n- [%s](https://github.com/%s)\n",
+		title, badges, info.String(), cfg.LicenseName(), cfg.Owner, cfg.Owner)
 	os.WriteFile(filepath.Join(repoDir, "README.md"), []byte(content), 0644)
 }
 
@@ -115,14 +115,14 @@ func writeMonolithMultirepoReadme(cfg *config.Config) {
 	}
 	fmt.Fprintf(&info, "\n")
 
-	content := fmt.Sprintf("# %s\n\n%s\n%s%s\n## License\n\nMIT License\n\n## Contributors\n\n- [%s](https://github.com/%s)\n",
-		cfg.SystemName, badges.String(), reposSection, info.String(), cfg.Owner, cfg.Owner)
+	content := fmt.Sprintf("# %s\n\n%s\n%s%s\n## License\n\n%s\n\n## Contributors\n\n- [%s](https://github.com/%s)\n",
+		cfg.SystemName, badges.String(), reposSection, info.String(), cfg.LicenseName(), cfg.Owner, cfg.Owner)
 	os.WriteFile(filepath.Join(cfg.RepoDir, "README.md"), []byte(content), 0644)
 
 	// System repo README
 	writeComponentReadme(
 		cfg.SystemRepoDir, cfg.SystemName, "System",
-		cfg.SystemFullRepo, cfg.Lang, cfg.Owner,
+		cfg.SystemFullRepo, cfg.Lang, cfg.LicenseName(), cfg.Owner,
 	)
 }
 
@@ -163,21 +163,21 @@ func writeMultitierMultirepoReadme(cfg *config.Config) {
 	}
 	fmt.Fprintf(&info, "\n")
 
-	content := fmt.Sprintf("# %s\n\n%s\n%s%s\n## License\n\nMIT License\n\n## Contributors\n\n- [%s](https://github.com/%s)\n",
-		cfg.SystemName, badges.String(), reposSection, info.String(), cfg.Owner, cfg.Owner)
+	content := fmt.Sprintf("# %s\n\n%s\n%s%s\n## License\n\n%s\n\n## Contributors\n\n- [%s](https://github.com/%s)\n",
+		cfg.SystemName, badges.String(), reposSection, info.String(), cfg.LicenseName(), cfg.Owner, cfg.Owner)
 	os.WriteFile(filepath.Join(cfg.RepoDir, "README.md"), []byte(content), 0644)
 
 	writeComponentReadme(
 		cfg.BackendRepoDir, cfg.SystemName, "Backend",
-		cfg.BackendFullRepo, bl, cfg.Owner,
+		cfg.BackendFullRepo, bl, cfg.LicenseName(), cfg.Owner,
 	)
 	writeComponentReadme(
 		cfg.FrontendRepoDir, cfg.SystemName, "Frontend",
-		cfg.FrontendFullRepo, fl, cfg.Owner,
+		cfg.FrontendFullRepo, fl, cfg.LicenseName(), cfg.Owner,
 	)
 }
 
-func writeComponentReadme(repoDir, systemName, componentLabel, fullRepo, lang, owner string) {
+func writeComponentReadme(repoDir, systemName, componentLabel, fullRepo, lang, licenseName, owner string) {
 	wfName := strings.ToLower(componentLabel) + "-commit-stage.yml"
 	if componentLabel == "System" {
 		wfName = "commit-stage.yml"
@@ -185,8 +185,8 @@ func writeComponentReadme(repoDir, systemName, componentLabel, fullRepo, lang, o
 	base := "https://github.com/" + fullRepo + "/actions/workflows"
 	badges := fmt.Sprintf("[![commit-stage](%s/%s/badge.svg)](%s/%s)\n", base, wfName, base, wfName)
 
-	content := fmt.Sprintf("# %s — %s\n\n%s\n## License\n\nMIT License\n\n## Contributors\n\n- [%s](https://github.com/%s)\n",
-		systemName, componentLabel, badges, owner, owner)
+	content := fmt.Sprintf("# %s — %s\n\n%s\n## License\n\n%s\n\n## Contributors\n\n- [%s](https://github.com/%s)\n",
+		systemName, componentLabel, badges, licenseName, owner, owner)
 	os.WriteFile(filepath.Join(repoDir, "README.md"), []byte(content), 0644)
 }
 
@@ -318,9 +318,21 @@ func VerifyAcceptanceStage(cfg *config.Config, gh *shell.GitHub) {
 	}
 }
 
+// VerifyAcceptanceStageLegacy triggers and verifies acceptance stage legacy.
+func VerifyAcceptanceStageLegacy(cfg *config.Config, gh *shell.GitHub) {
+	log.Log("Step 13: Triggering and verifying acceptance stage legacy...")
+
+	if cfg.DryRun {
+		log.Log("[DRY RUN] Would trigger and wait for acceptance stage legacy workflow")
+		return
+	}
+
+	verifyWorkflow(gh, "Acceptance stage legacy", "acceptance-stage-legacy.yml", nil)
+}
+
 // VerifyQAStage triggers and verifies QA stage.
 func VerifyQAStage(cfg *config.Config, gh *shell.GitHub) {
-	log.Log("Step 13: Triggering and verifying QA stage...")
+	log.Log("Step 14: Triggering and verifying QA stage...")
 
 	if cfg.DryRun {
 		log.Log("[DRY RUN] Would trigger and wait for QA stage workflow")
@@ -337,7 +349,7 @@ func VerifyQAStage(cfg *config.Config, gh *shell.GitHub) {
 
 // VerifyQASignoff triggers and verifies QA signoff.
 func VerifyQASignoff(cfg *config.Config, gh *shell.GitHub) {
-	log.Log("Step 14: Triggering and verifying QA signoff...")
+	log.Log("Step 15: Triggering and verifying QA signoff...")
 
 	if cfg.DryRun {
 		log.Log("[DRY RUN] Would trigger and wait for QA signoff workflow")
@@ -354,7 +366,7 @@ func VerifyQASignoff(cfg *config.Config, gh *shell.GitHub) {
 
 // VerifyProdStage triggers and verifies production stage.
 func VerifyProdStage(cfg *config.Config, gh *shell.GitHub) {
-	log.Log("Step 15: Triggering and verifying production stage...")
+	log.Log("Step 16: Triggering and verifying production stage...")
 
 	if cfg.DryRun {
 		log.Log("[DRY RUN] Would trigger and wait for production stage workflow")
