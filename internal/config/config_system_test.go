@@ -16,7 +16,7 @@ var binaryPath string
 func testOwner() string {
 	owner := os.Getenv("TEST_OWNER")
 	if owner == "" {
-		owner = "optivem"
+		panic("TEST_OWNER environment variable is required")
 	}
 	return owner
 }
