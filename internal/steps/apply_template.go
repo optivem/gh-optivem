@@ -121,6 +121,10 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	templates.SelectDockerCompose(testDst, "multi")
 	templates.CopyVersion(starter, repoDir)
 
+	// Fix workflow paths: system/multitier/X -> system/X (monorepo layout)
+	fixupMonorepoWorkflowPaths(repoDir, backendComponent)
+	fixupMonorepoWorkflowPaths(repoDir, frontendComponent)
+
 	// Cross-language fixup
 	if backendLang != testLang {
 		fixupMultitierCrossLangSystem(repoDir, backendLang, testLang)

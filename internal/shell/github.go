@@ -207,7 +207,7 @@ func (g *GitHub) RunWatchWorkflow(workflow string) error {
 	if err != nil || out == "" {
 		return fmt.Errorf("no workflow runs found for %s (workflow: %s)", g.Repo, workflow)
 	}
-	_, err = Run(fmt.Sprintf("gh run watch %s --repo %s --exit-status", out, g.Repo), false, false, "")
+	_, err = Run(fmt.Sprintf("gh run watch %s --repo %s --exit-status", out, g.Repo), false, true, "")
 	return err
 }
 
