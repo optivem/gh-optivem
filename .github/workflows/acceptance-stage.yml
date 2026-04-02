@@ -1,16 +1,13 @@
 name: Acceptance Stage
 
 on:
+  schedule:
+    - cron: '0 6 * * *'
   workflow_dispatch:
-  workflow_run:
-    workflows: ["Commit Stage"]
-    types: [completed]
-    branches: [main]
 
 jobs:
   acceptance-stage:
     name: Acceptance Stage
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

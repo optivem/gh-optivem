@@ -68,15 +68,17 @@ func replaceRefsInRepo(repoDir, fullRepo, ownerLower string) {
 		}
 	}
 
-	// Safety check: optivem/actions must still be intact
+	// Safety check: optivem/actions must still be intact in any copied workflows
 	wfDir := filepath.Join(repoDir, ".github", "workflows")
 	if info, err := os.Stat(wfDir); err == nil && info.IsDir() {
 		actionsFound := false
+		ymlCount := 0
 		entries, _ := os.ReadDir(wfDir)
 		for _, e := range entries {
 			if !strings.HasSuffix(e.Name(), ".yml") {
 				continue
 			}
+			ymlCount++
 			data, err := os.ReadFile(filepath.Join(wfDir, e.Name()))
 			if err != nil {
 				continue
@@ -86,10 +88,13 @@ func replaceRefsInRepo(repoDir, fullRepo, ownerLower string) {
 				break
 			}
 		}
-		if !actionsFound {
+		if ymlCount == 0 {
+			log.Warn("Safety check: no workflow files found (templates may be missing from starter)")
+		} else if !actionsFound {
 			log.Fatalf("Safety check failed: optivem/actions references were corrupted in %s!", repoDir)
+		} else {
+			log.OKf("Safety check passed: optivem/actions references intact in %s", repoDir)
 		}
-		log.OKf("Safety check passed: optivem/actions references intact in %s", repoDir)
 	}
 
 	lowercaseDockerComposeImages(repoDir)

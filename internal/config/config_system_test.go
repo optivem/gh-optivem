@@ -66,7 +66,10 @@ func runCLI(t *testing.T, args ...string) (string, int) {
 	t.Helper()
 
 	cmd := exec.Command(binaryPath, args...)
-	cmd.Env = append(os.Environ(), "OPTIVEM_STARTER_PATH="+filepath.Join("..", ".."))
+	// Resolve starter path: gh-optivem lives alongside starter in the academy workspace
+	modRoot, _ := filepath.Abs(filepath.Join("..", ".."))
+	starterPath := filepath.Join(filepath.Dir(modRoot), "starter")
+	cmd.Env = append(os.Environ(), "OPTIVEM_STARTER_PATH="+starterPath)
 	out, err := cmd.CombinedOutput()
 
 	exitCode := 0
