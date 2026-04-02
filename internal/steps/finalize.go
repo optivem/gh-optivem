@@ -257,9 +257,15 @@ func CommitAndPush(cfg *config.Config) {
 }
 
 func commitAndPushRepo(repoDir, fullRepo string) {
-	shell.Run("git add -A", false, true, repoDir)
-	shell.Run(`git commit -m "Apply pipeline template"`, false, true, repoDir)
-	shell.Run("git push", false, true, repoDir)
+	if _, err := shell.Run("git add -A", false, true, repoDir); err != nil {
+		log.Fatalf("git add failed in %s: %v", fullRepo, err)
+	}
+	if _, err := shell.Run(`git commit -m "Apply pipeline template"`, false, true, repoDir); err != nil {
+		log.Fatalf("git commit failed in %s: %v", fullRepo, err)
+	}
+	if out, err := shell.Run("git push", false, true, repoDir); err != nil {
+		log.Fatalf("git push failed in %s: %v\n%s", fullRepo, err, out)
+	}
 	log.OKf("Pushed template to %s", fullRepo)
 }
 
