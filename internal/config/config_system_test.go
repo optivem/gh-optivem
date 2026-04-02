@@ -27,6 +27,13 @@ var baseArgs = []string{
 	"--random-suffix",
 }
 
+func cleanupFlag() string {
+	if os.Getenv("TEST_NO_CLEANUP") == "1" {
+		return "--no-cleanup"
+	}
+	return "--cleanup"
+}
+
 func withBase(extra ...string) []string {
 	args := []string{"--owner", testOwner()}
 	args = append(args, baseArgs...)
@@ -115,7 +122,7 @@ func TestValidMonolithConfigurations(t *testing.T) {
 				"--repo-strategy", tt.repoStrategy,
 				"--lang", tt.monolithLang,
 				"--test-lang", tt.testLang,
-				"--test", "--cleanup",
+				"--test", cleanupFlag(),
 			)
 			out, exitCode := runCLI(t, args...)
 			t.Log(out)
@@ -159,7 +166,7 @@ func TestValidMultitierConfigurations(t *testing.T) {
 				"--backend-lang", tt.backendLang,
 				"--frontend-lang", tt.frontendLang,
 				"--test-lang", tt.testLang,
-				"--test", "--cleanup",
+				"--test", cleanupFlag(),
 			)
 			out, exitCode := runCLI(t, args...)
 			t.Log(out)
