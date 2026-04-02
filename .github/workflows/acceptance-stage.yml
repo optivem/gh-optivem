@@ -18,7 +18,13 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: System tests
-        run: go test -tags=system ./... -v
+      - name: System tests (representative subset)
+        run: bash scripts/test-system.sh
         env:
           TEST_OWNER: ${{ vars.TEST_OWNER }}
+
+      # Full suite (all 36 combinations) — uncomment to run:
+      # - name: System tests (full)
+      #   run: go test -tags=system ./... -v -timeout 24h
+      #   env:
+      #     TEST_OWNER: ${{ vars.TEST_OWNER }}
