@@ -28,57 +28,135 @@ func ApplyTemplate(cfg *config.Config) {
 	EnsureWorkflowDir(cfg.RepoDir)
 
 	if cfg.Arch == "monolith" {
-		applyMonolith(cfg)
+		if cfg.RepoStrategy == "monorepo" {
+			applyMonolithMonorepo(cfg)
+		} else {
+			applyMonolithMultirepo(cfg)
+		}
 	} else {
-		applyMultitier(cfg)
+		if cfg.RepoStrategy == "monorepo" {
+			applyMultitierMonorepo(cfg)
+		} else {
+			applyMultitierMultirepo(cfg)
+		}
 	}
 
 	log.OK("Applied template files")
 }
 
-func applyMonolith(cfg *config.Config) {
+// ── Monolith Monorepo ──────────────────────────────────────────────────────
+
+func applyMonolithMonorepo(cfg *config.Config) {
 	lang := cfg.Lang
 	testLang := cfg.TestLang
 	starter := cfg.StarterPath
 	repoDir := cfg.RepoDir
 
-	workflows := []string{
-		"monolith-" + lang + "-commit-stage.yml",
-		"monolith-" + testLang + "-acceptance-stage.yml",
-		"monolith-" + testLang + "-qa-stage.yml",
-		"monolith-" + testLang + "-qa-signoff.yml",
-		"monolith-" + testLang + "-prod-stage.yml",
+	// Workflows: rename to language-agnostic names
+	wfMap := map[string]string{
+		"monolith-" + lang + "-commit-stage.yml":         "commit-stage.yml",
+		"monolith-" + testLang + "-acceptance-stage.yml":  "acceptance-stage.yml",
+		"monolith-" + testLang + "-qa-stage.yml":          "qa-stage.yml",
+		"monolith-" + testLang + "-qa-signoff.yml":        "qa-signoff.yml",
+		"monolith-" + testLang + "-prod-stage.yml":        "prod-stage.yml",
 	}
-	if lang == testLang {
-		workflows = append(workflows, "monolith-"+lang+"-verify.yml")
-	}
-	templates.CopyWorkflows(workflows, starter, repoDir)
+	templates.CopyWorkflows(wfMap, starter, repoDir)
 
-	// Copy system code
+	// System code: system/monolith/{lang}/ -> system/
 	files.CopyDir(
 		filepath.Join(starter, "system", "monolith", lang),
-		filepath.Join(repoDir, "system", "monolith", lang),
+		filepath.Join(repoDir, "system"),
 	)
 
-	// Copy system tests
-	testDst := filepath.Join(repoDir, "system-test", testLang)
+	// System tests: system-test/{testLang}/ -> system-test/
+	testDst := filepath.Join(repoDir, "system-test")
 	files.CopyDir(filepath.Join(starter, "system-test", testLang), testDst)
 	templates.SelectDockerCompose(testDst, "single")
 	templates.CopyVersion(starter, repoDir)
 
-	// Cross-language fixup
+	// Fix workflow content: paths and image names
+	contentReplacements := monolithContentReplacements(lang, testLang)
+	templates.FixupWorkflowContent(repoDir, contentReplacements)
+	templates.FixupDockerComposeContent(repoDir, monolithDockerComposeReplacements(lang, testLang))
+
+	// Cross-language port fixup
 	if lang != testLang {
-		fixupMonolithCrossLang(repoDir, lang, testLang)
+		fixupPortMapping(repoDir, lang, testLang)
 	}
+
+	log.OK("Applied template files (monolith monorepo)")
 }
 
-func applyMultitier(cfg *config.Config) {
-	if cfg.RepoStrategy == "monorepo" {
-		applyMultitierMonorepo(cfg)
-	} else {
-		applyMultitierMultirepo(cfg)
+// ── Monolith Multirepo ─────────────────────────────────────────────────────
+
+func applyMonolithMultirepo(cfg *config.Config) {
+	lang := cfg.Lang
+	testLang := cfg.TestLang
+	starter := cfg.StarterPath
+	repoDir := cfg.RepoDir
+	systemDir := cfg.SystemRepoDir
+
+	// Root repo: pipeline stage workflows + system-test
+	rootWfMap := map[string]string{
+		"monolith-" + testLang + "-acceptance-stage.yml": "acceptance-stage.yml",
+		"monolith-" + testLang + "-qa-stage.yml":         "qa-stage.yml",
+		"monolith-" + testLang + "-qa-signoff.yml":       "qa-signoff.yml",
+		"monolith-" + testLang + "-prod-stage.yml":       "prod-stage.yml",
 	}
+	templates.CopyWorkflows(rootWfMap, starter, repoDir)
+
+	testDst := filepath.Join(repoDir, "system-test")
+	files.CopyDir(filepath.Join(starter, "system-test", testLang), testDst)
+	templates.SelectDockerCompose(testDst, "single")
+	templates.CopyVersion(starter, repoDir)
+
+	// Fix root repo workflow content
+	contentReplacements := monolithContentReplacements(lang, testLang)
+	templates.FixupWorkflowContent(repoDir, contentReplacements)
+	templates.FixupDockerComposeContent(repoDir, monolithDockerComposeReplacements(lang, testLang))
+
+	// Cross-language port fixup
+	if lang != testLang {
+		fixupPortMapping(repoDir, lang, testLang)
+	}
+
+	// Fix multirepo image URLs and tokens
+	templates.FixupMonolithMultirepoImageURLs(repoDir, cfg.SystemRepo)
+	templates.FixupMultirepoToken(repoDir)
+	log.OK("Applied root repo template (monolith multirepo)")
+
+	// System repo: system code + commit stage
+	EnsureWorkflowDir(systemDir)
+
+	// Copy system code into system repo root (contents of monolith/{lang}/ -> repo root files)
+	systemSrc := filepath.Join(starter, "system", "monolith", lang)
+	entries, _ := os.ReadDir(systemSrc)
+	for _, e := range entries {
+		src := filepath.Join(systemSrc, e.Name())
+		dst := filepath.Join(systemDir, e.Name())
+		if e.IsDir() {
+			files.CopyDir(src, dst)
+		} else {
+			files.CopyFile(src, dst)
+		}
+	}
+
+	systemWfMap := map[string]string{
+		"monolith-" + lang + "-commit-stage.yml": "commit-stage.yml",
+	}
+	templates.CopyWorkflows(systemWfMap, starter, systemDir)
+
+	// Fix system repo workflow content: system/ -> . (standalone)
+	sysContentReplacements := [][2]string{
+		{"system/monolith/" + lang, "."},
+		{"monolith-system-" + lang, "system"},
+	}
+	templates.FixupWorkflowContent(systemDir, sysContentReplacements)
+	templates.FixupCommitStageForStandalone(systemDir, ".")
+	log.OK("Applied system repo template (monolith multirepo)")
 }
+
+// ── Multitier Monorepo ─────────────────────────────────────────────────────
 
 func applyMultitierMonorepo(cfg *config.Config) {
 	backendLang := cfg.BackendLang
@@ -87,59 +165,55 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	starter := cfg.StarterPath
 	repoDir := cfg.RepoDir
 
-	// All workflows go into the single repo
-	workflows := []string{
-		"multitier-backend-" + backendLang + "-commit-stage.yml",
-		"multitier-frontend-" + frontendLang + "-commit-stage.yml",
-		"multitier-system-" + testLang + "-acceptance-stage.yml",
-		"multitier-system-" + testLang + "-qa-stage.yml",
-		"multitier-system-" + testLang + "-qa-signoff.yml",
-		"multitier-system-" + testLang + "-prod-stage.yml",
+	// Workflows: rename to language-agnostic names
+	wfMap := map[string]string{
+		"multitier-backend-" + backendLang + "-commit-stage.yml":   "backend-commit-stage.yml",
+		"multitier-frontend-" + frontendLang + "-commit-stage.yml": "frontend-commit-stage.yml",
+		"multitier-system-" + testLang + "-acceptance-stage.yml":   "acceptance-stage.yml",
+		"multitier-system-" + testLang + "-qa-stage.yml":           "qa-stage.yml",
+		"multitier-system-" + testLang + "-qa-signoff.yml":         "qa-signoff.yml",
+		"multitier-system-" + testLang + "-prod-stage.yml":         "prod-stage.yml",
 	}
-	if backendLang == testLang {
-		workflows = append(workflows, "multitier-system-"+backendLang+"-verify.yml")
-	}
-	templates.CopyWorkflows(workflows, starter, repoDir)
+	templates.CopyWorkflows(wfMap, starter, repoDir)
 
-	// Backend code -> system/backend-{lang}/
-	backendComponent := "backend-" + backendLang
-	backendSrc := filepath.Join(starter, "system", "multitier", backendComponent)
-	backendDst := filepath.Join(repoDir, "system", backendComponent)
-	files.CopyDir(backendSrc, backendDst)
+	// Backend code: system/multitier/backend-{lang}/ -> backend/
+	backendSrc := filepath.Join(starter, "system", "multitier", "backend-"+backendLang)
+	files.CopyDir(backendSrc, filepath.Join(repoDir, "backend"))
 	log.OK("Applied backend template")
 
-	// Frontend code -> system/frontend-{lang}/
-	frontendComponent := "frontend-" + frontendLang
-	frontendSrc := filepath.Join(starter, "system", "multitier", frontendComponent)
-	frontendDst := filepath.Join(repoDir, "system", frontendComponent)
-	files.CopyDir(frontendSrc, frontendDst)
+	// Frontend code: system/multitier/frontend-{lang}/ -> frontend/
+	frontendSrc := filepath.Join(starter, "system", "multitier", "frontend-"+frontendLang)
+	files.CopyDir(frontendSrc, filepath.Join(repoDir, "frontend"))
 	log.OK("Applied frontend template")
 
-	// Shared external system simulators
+	// Shared external system simulators -> top level
 	for _, dir := range []string{"external-real-sim", "external-stub"} {
 		src := filepath.Join(starter, "system", dir)
 		if _, err := os.Stat(src); err == nil {
-			files.CopyDir(src, filepath.Join(repoDir, "system", dir))
+			files.CopyDir(src, filepath.Join(repoDir, dir))
 		}
 	}
 
-	// System tests
-	testDst := filepath.Join(repoDir, "system-test", testLang)
+	// System tests: system-test/{testLang}/ -> system-test/
+	testDst := filepath.Join(repoDir, "system-test")
 	files.CopyDir(filepath.Join(starter, "system-test", testLang), testDst)
 	templates.SelectDockerCompose(testDst, "multi")
 	templates.CopyVersion(starter, repoDir)
 
-	// Fix workflow paths: system/multitier/X -> system/X (monorepo layout)
-	fixupMonorepoWorkflowPaths(repoDir, backendComponent)
-	fixupMonorepoWorkflowPaths(repoDir, frontendComponent)
+	// Fix workflow content: paths and image names
+	contentReplacements := multitierContentReplacements(backendLang, frontendLang, testLang)
+	templates.FixupWorkflowContent(repoDir, contentReplacements)
+	templates.FixupDockerComposeContent(repoDir, multitierDockerComposeReplacements(backendLang, frontendLang, testLang))
 
-	// Cross-language fixup
+	// Cross-language port fixup
 	if backendLang != testLang {
-		fixupMultitierCrossLangSystem(repoDir, backendLang, testLang)
+		fixupMultitierPortMapping(repoDir, backendLang, testLang)
 	}
 
-	log.OK("Applied template files (monorepo)")
+	log.OK("Applied template files (multitier monorepo)")
 }
+
+// ── Multitier Multirepo ────────────────────────────────────────────────────
 
 func applyMultitierMultirepo(cfg *config.Config) {
 	backendLang := cfg.BackendLang
@@ -150,38 +224,46 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	frontendDir := cfg.FrontendRepoDir
 	backendDir := cfg.BackendRepoDir
 
-	// System repo: workflows, system-test, VERSION
-	systemWorkflows := []string{
-		"multitier-system-" + testLang + "-acceptance-stage.yml",
-		"multitier-system-" + testLang + "-qa-stage.yml",
-		"multitier-system-" + testLang + "-qa-signoff.yml",
-		"multitier-system-" + testLang + "-prod-stage.yml",
+	// Root repo: pipeline stage workflows + system-test + externals
+	rootWfMap := map[string]string{
+		"multitier-system-" + testLang + "-acceptance-stage.yml": "acceptance-stage.yml",
+		"multitier-system-" + testLang + "-qa-stage.yml":         "qa-stage.yml",
+		"multitier-system-" + testLang + "-qa-signoff.yml":       "qa-signoff.yml",
+		"multitier-system-" + testLang + "-prod-stage.yml":       "prod-stage.yml",
 	}
-	if backendLang == testLang {
-		systemWorkflows = append(systemWorkflows, "multitier-system-"+backendLang+"-verify.yml")
-	}
-	templates.CopyWorkflows(systemWorkflows, starter, repoDir)
+	templates.CopyWorkflows(rootWfMap, starter, repoDir)
 
-	testDst := filepath.Join(repoDir, "system-test", testLang)
+	// Shared external system simulators
+	for _, dir := range []string{"external-real-sim", "external-stub"} {
+		src := filepath.Join(starter, "system", dir)
+		if _, err := os.Stat(src); err == nil {
+			files.CopyDir(src, filepath.Join(repoDir, dir))
+		}
+	}
+
+	testDst := filepath.Join(repoDir, "system-test")
 	files.CopyDir(filepath.Join(starter, "system-test", testLang), testDst)
 	templates.SelectDockerCompose(testDst, "multi")
 	templates.CopyVersion(starter, repoDir)
 
-	// Cross-language fixup (before image URL fixup)
+	// Fix root repo workflow content
+	contentReplacements := multitierContentReplacements(backendLang, frontendLang, testLang)
+	templates.FixupWorkflowContent(repoDir, contentReplacements)
+	templates.FixupDockerComposeContent(repoDir, multitierDockerComposeReplacements(backendLang, frontendLang, testLang))
+
+	// Cross-language port fixup
 	if backendLang != testLang {
-		fixupMultitierCrossLangSystem(repoDir, backendLang, testLang)
+		fixupMultitierPortMapping(repoDir, backendLang, testLang)
 	}
 
-	// Fix system workflows for multi-repo
-	templates.FixupMultirepoImageURLs(repoDir, cfg.Repo, cfg.FrontendRepo, cfg.BackendRepo, backendLang)
+	// Fix multirepo image URLs and tokens
+	templates.FixupMultirepoImageURLs(repoDir, cfg.FrontendRepo, cfg.BackendRepo)
 	templates.FixupMultirepoToken(repoDir)
-	log.OK("Applied system repo template")
+	log.OK("Applied root repo template (multitier multirepo)")
 
-	// Backend repo
-	backendComponent := "backend-" + backendLang
-	backendSrc := filepath.Join(starter, "system", "multitier", backendComponent)
+	// Backend repo: code + commit stage
 	EnsureWorkflowDir(backendDir)
-
+	backendSrc := filepath.Join(starter, "system", "multitier", "backend-"+backendLang)
 	entries, _ := os.ReadDir(backendSrc)
 	for _, e := range entries {
 		src := filepath.Join(backendSrc, e.Name())
@@ -192,18 +274,23 @@ func applyMultitierMultirepo(cfg *config.Config) {
 			files.CopyFile(src, dst)
 		}
 	}
-	templates.CopyWorkflows(
-		[]string{"multitier-" + backendComponent + "-commit-stage.yml"},
-		starter, backendDir,
-	)
-	templates.FixupCommitStageForStandalone(backendDir, backendComponent, backendLang)
+	backendWfMap := map[string]string{
+		"multitier-backend-" + backendLang + "-commit-stage.yml": "backend-commit-stage.yml",
+	}
+	templates.CopyWorkflows(backendWfMap, starter, backendDir)
+
+	// Fix backend workflow content
+	backendReplacements := [][2]string{
+		{"system/multitier/backend-" + backendLang, "."},
+		{"multitier-backend-" + backendLang, "backend"},
+	}
+	templates.FixupWorkflowContent(backendDir, backendReplacements)
+	templates.FixupCommitStageForStandalone(backendDir, ".")
 	log.OK("Applied backend repo template")
 
-	// Frontend repo
-	frontendComponent := "frontend-" + frontendLang
-	frontendSrc := filepath.Join(starter, "system", "multitier", frontendComponent)
+	// Frontend repo: code + commit stage
 	EnsureWorkflowDir(frontendDir)
-
+	frontendSrc := filepath.Join(starter, "system", "multitier", "frontend-"+frontendLang)
 	entries, _ = os.ReadDir(frontendSrc)
 	for _, e := range entries {
 		src := filepath.Join(frontendSrc, e.Name())
@@ -214,95 +301,131 @@ func applyMultitierMultirepo(cfg *config.Config) {
 			files.CopyFile(src, dst)
 		}
 	}
-	templates.CopyWorkflows(
-		[]string{"multitier-" + frontendComponent + "-commit-stage.yml"},
-		starter, frontendDir,
-	)
-	templates.FixupCommitStageForStandalone(frontendDir, frontendComponent, frontendLang)
+	frontendWfMap := map[string]string{
+		"multitier-frontend-" + frontendLang + "-commit-stage.yml": "frontend-commit-stage.yml",
+	}
+	templates.CopyWorkflows(frontendWfMap, starter, frontendDir)
+
+	// Fix frontend workflow content
+	frontendReplacements := [][2]string{
+		{"system/multitier/frontend-" + frontendLang, "."},
+		{"multitier-frontend-" + frontendLang, "frontend"},
+	}
+	templates.FixupWorkflowContent(frontendDir, frontendReplacements)
+	templates.FixupCommitStageForStandalone(frontendDir, ".")
 	log.OK("Applied frontend repo template")
 }
 
-// fixupMonolithCrossLang fixes Docker image name and port when system language != test language.
-func fixupMonolithCrossLang(repoDir, lang, testLang string) {
-	oldImage := "monolith-" + testLang + "-monolith"
-	newImage := "monolith-" + lang + "-monolith"
+// ── Content replacement helpers ────────────────────────────────────────────
 
-	targets := []string{
-		filepath.Join(repoDir, ".github", "workflows", "monolith-"+testLang+"-acceptance-stage.yml"),
-		filepath.Join(repoDir, ".github", "workflows", "monolith-"+testLang+"-qa-stage.yml"),
-		filepath.Join(repoDir, ".github", "workflows", "monolith-"+testLang+"-prod-stage.yml"),
+// monolithContentReplacements returns workflow content replacements for monolith.
+func monolithContentReplacements(lang, testLang string) [][2]string {
+	r := [][2]string{
+		// Working directory
+		{"system/monolith/" + lang, "system"},
+		// System-test path
+		{"system-test/" + testLang + "/", "system-test/"},
+		{"system-test/" + testLang, "system-test"},
+		// Docker image names
+		{"monolith-system-" + lang, "system"},
+		// SonarCloud project key suffix
+		{"-monolith-" + lang, "-system"},
 	}
-	for _, prefix := range []string{"local", "pipeline"} {
-		for _, suffix := range []string{"real", "stub"} {
-			targets = append(targets, filepath.Join(repoDir, "system-test", testLang,
-				"docker-compose."+prefix+".monolith."+suffix+".yml"))
-		}
+	if lang != testLang {
+		// In cross-language setup, test workflows reference the test language's image name
+		r = append(r, [2]string{"monolith-system-" + testLang, "system"})
 	}
-	for _, path := range targets {
-		if _, err := os.Stat(path); err == nil {
-			files.ReplaceInFile(path, oldImage, newImage)
-		}
-	}
+	return r
+}
 
-	// Fix port mapping
+// monolithDockerComposeReplacements returns docker-compose content replacements for monolith.
+func monolithDockerComposeReplacements(lang, testLang string) [][2]string {
+	r := [][2]string{
+		{"system-test/" + testLang + "/", "system-test/"},
+		{"system-test/" + testLang, "system-test"},
+		{"monolith-system-" + lang, "system"},
+	}
+	if lang != testLang {
+		r = append(r, [2]string{"monolith-system-" + testLang, "system"})
+	}
+	return r
+}
+
+// multitierContentReplacements returns workflow content replacements for multitier.
+func multitierContentReplacements(backendLang, frontendLang, testLang string) [][2]string {
+	r := [][2]string{
+		// Working directories
+		{"system/multitier/backend-" + backendLang, "backend"},
+		{"system/multitier/frontend-" + frontendLang, "frontend"},
+		// System-test path
+		{"system-test/" + testLang + "/", "system-test/"},
+		{"system-test/" + testLang, "system-test"},
+		// Docker image names
+		{"multitier-backend-" + backendLang, "backend"},
+		{"multitier-frontend-" + frontendLang, "frontend"},
+	}
+	if backendLang != testLang {
+		r = append(r, [2]string{"multitier-backend-" + testLang, "backend"})
+	}
+	return r
+}
+
+// multitierDockerComposeReplacements returns docker-compose content replacements for multitier.
+func multitierDockerComposeReplacements(backendLang, frontendLang, testLang string) [][2]string {
+	r := [][2]string{
+		{"system-test/" + testLang + "/", "system-test/"},
+		{"system-test/" + testLang, "system-test"},
+		{"multitier-backend-" + backendLang, "backend"},
+		{"multitier-frontend-" + frontendLang, "frontend"},
+	}
+	if backendLang != testLang {
+		r = append(r, [2]string{"multitier-backend-" + testLang, "backend"})
+	}
+	return r
+}
+
+// fixupPortMapping fixes Docker port mapping when system language != test language (monolith).
+func fixupPortMapping(repoDir, lang, testLang string) {
 	systemPort := internalPorts[lang]
 	templatePort := internalPorts[testLang]
-	if systemPort != templatePort {
-		for _, prefix := range []string{"local", "pipeline"} {
-			for _, suffix := range []string{"real", "stub"} {
-				compose := filepath.Join(repoDir, "system-test", testLang,
-					"docker-compose."+prefix+".monolith."+suffix+".yml")
-				if _, err := os.Stat(compose); err == nil {
-					files.ReplaceInFile(compose,
-						"8080:"+itoa(templatePort),
-						"8080:"+itoa(systemPort))
-				}
+	if systemPort == templatePort {
+		return
+	}
+
+	for _, prefix := range []string{"local", "pipeline"} {
+		for _, suffix := range []string{"real", "stub"} {
+			compose := filepath.Join(repoDir, "system-test",
+				"docker-compose."+prefix+".monolith."+suffix+".yml")
+			if _, err := os.Stat(compose); err == nil {
+				files.ReplaceInFile(compose,
+					"8080:"+itoa(templatePort),
+					"8080:"+itoa(systemPort))
 			}
 		}
 	}
-
-	log.OKf("Cross-language fixup: %s -> %s", oldImage, newImage)
+	log.OKf("Port fixup: %d -> %d", templatePort, systemPort)
 }
 
-// fixupMultitierCrossLangSystem fixes Docker backend image name in system repo.
-func fixupMultitierCrossLangSystem(repoDir, backendLang, testLang string) {
-	oldImage := "multitier-backend-" + testLang
-	newImage := "multitier-backend-" + backendLang
-
-	targets := []string{
-		filepath.Join(repoDir, ".github", "workflows", "multitier-system-"+testLang+"-acceptance-stage.yml"),
-		filepath.Join(repoDir, ".github", "workflows", "multitier-system-"+testLang+"-qa-stage.yml"),
-		filepath.Join(repoDir, ".github", "workflows", "multitier-system-"+testLang+"-prod-stage.yml"),
-	}
-	for _, prefix := range []string{"local", "pipeline"} {
-		for _, suffix := range []string{"real", "stub"} {
-			targets = append(targets, filepath.Join(repoDir, "system-test", testLang,
-				"docker-compose."+prefix+".multitier."+suffix+".yml"))
-		}
-	}
-	for _, path := range targets {
-		if _, err := os.Stat(path); err == nil {
-			files.ReplaceInFile(path, oldImage, newImage)
-		}
-	}
-
-	log.OKf("Cross-language fixup: %s -> %s", oldImage, newImage)
-}
-
-// fixupMonorepoWorkflowPaths replaces system/multitier/X paths with system/X in all workflows.
-func fixupMonorepoWorkflowPaths(repoDir, component string) {
-	wfDir := filepath.Join(repoDir, ".github", "workflows")
-	entries, err := os.ReadDir(wfDir)
-	if err != nil {
+// fixupMultitierPortMapping fixes Docker port mapping when backend language != test language (multitier).
+func fixupMultitierPortMapping(repoDir, backendLang, testLang string) {
+	systemPort := internalPorts[backendLang]
+	templatePort := internalPorts[testLang]
+	if systemPort == templatePort {
 		return
 	}
-	oldPath := "system/multitier/" + component
-	newPath := "system/" + component
-	for _, e := range entries {
-		if filepath.Ext(e.Name()) == ".yml" {
-			files.ReplaceInFile(filepath.Join(wfDir, e.Name()), oldPath, newPath)
+
+	for _, prefix := range []string{"local", "pipeline"} {
+		for _, suffix := range []string{"real", "stub"} {
+			compose := filepath.Join(repoDir, "system-test",
+				"docker-compose."+prefix+".multitier."+suffix+".yml")
+			if _, err := os.Stat(compose); err == nil {
+				files.ReplaceInFile(compose,
+					"8080:"+itoa(templatePort),
+					"8080:"+itoa(systemPort))
+			}
 		}
 	}
+	log.OKf("Port fixup: %d -> %d", templatePort, systemPort)
 }
 
 func itoa(n int) string {

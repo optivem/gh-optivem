@@ -15,19 +15,22 @@ import (
 
 // GetSonarProjectKeys returns the SonarCloud project keys for the given config.
 func GetSonarProjectKeys(cfg *config.Config) []string {
-	prefix := cfg.Owner + "_" + cfg.Repo
 	if cfg.Arch == "monolith" {
-		return []string{prefix + "-monolith-" + cfg.Lang}
+		if cfg.RepoStrategy == "monorepo" {
+			return []string{cfg.Owner + "_" + cfg.Repo + "-system"}
+		}
+		return []string{cfg.Owner + "_" + cfg.SystemRepo + "-system"}
 	}
 	if cfg.RepoStrategy == "monorepo" {
+		prefix := cfg.Owner + "_" + cfg.Repo
 		return []string{
-			prefix + "-multitier-backend-" + cfg.BackendLang,
-			prefix + "-multitier-frontend-" + cfg.FrontendLang,
+			prefix + "-backend",
+			prefix + "-frontend",
 		}
 	}
 	return []string{
-		cfg.Owner + "_" + cfg.BackendRepo + "-multitier-backend-" + cfg.BackendLang,
-		cfg.Owner + "_" + cfg.FrontendRepo + "-multitier-frontend-" + cfg.FrontendLang,
+		cfg.Owner + "_" + cfg.BackendRepo + "-backend",
+		cfg.Owner + "_" + cfg.FrontendRepo + "-frontend",
 	}
 }
 
@@ -41,45 +44,101 @@ func UpdateReadme(cfg *config.Config) {
 	}
 
 	if cfg.Arch == "monolith" {
-		badges := generateBadges(cfg)
-		writeReadme(cfg.RepoDir, cfg.SystemName, badges, cfg.Owner)
+		if cfg.RepoStrategy == "monorepo" {
+			badges := generateBadges(cfg)
+			writeReadme(cfg.RepoDir, cfg.SystemName, badges, cfg)
+		} else {
+			writeMonolithMultirepoReadme(cfg)
+		}
 	} else if cfg.RepoStrategy == "monorepo" {
 		badges := generateBadges(cfg)
-		writeReadme(cfg.RepoDir, cfg.SystemName, badges, cfg.Owner)
+		writeReadme(cfg.RepoDir, cfg.SystemName, badges, cfg)
 	} else {
-		writeSystemReadme(cfg)
-		writeComponentReadme(
-			cfg.BackendRepoDir, cfg.SystemName, "Backend",
-			cfg.BackendFullRepo, cfg.BackendLang, "backend", cfg.Owner,
-		)
-		writeComponentReadme(
-			cfg.FrontendRepoDir, cfg.SystemName, "Frontend",
-			cfg.FrontendFullRepo, cfg.FrontendLang, "frontend", cfg.Owner,
-		)
+		writeMultitierMultirepoReadme(cfg)
 	}
 
 	log.OK("Generated README.md")
 }
 
-func writeReadme(repoDir, title, badges, owner string) {
-	content := fmt.Sprintf("# %s\n\n%s\n## License\n\nMIT License\n\n## Contributors\n\n- [%s](https://github.com/%s)\n",
-		title, badges, owner, owner)
+func writeReadme(repoDir, title, badges string, cfg *config.Config) {
+	var info strings.Builder
+	fmt.Fprintf(&info, "## Project Info\n\n")
+	fmt.Fprintf(&info, "- **Owner:** %s\n", cfg.Owner)
+	fmt.Fprintf(&info, "- **System:** %s\n", cfg.SystemName)
+	fmt.Fprintf(&info, "- **Architecture:** %s\n", cfg.Arch)
+	fmt.Fprintf(&info, "- **Repo strategy:** %s\n", cfg.RepoStrategy)
+	if cfg.Arch == "monolith" {
+		fmt.Fprintf(&info, "- **Language:** %s\n", cfg.Lang)
+	} else {
+		fmt.Fprintf(&info, "- **Backend language:** %s\n", cfg.BackendLang)
+		fmt.Fprintf(&info, "- **Frontend language:** %s\n", cfg.FrontendLang)
+	}
+	if cfg.TestLang != cfg.EffectiveLang() {
+		fmt.Fprintf(&info, "- **Test language:** %s\n", cfg.TestLang)
+	}
+	fmt.Fprintf(&info, "\n")
+
+	content := fmt.Sprintf("# %s\n\n%s\n%s## License\n\nMIT License\n\n## Contributors\n\n- [%s](https://github.com/%s)\n",
+		title, badges, info.String(), cfg.Owner, cfg.Owner)
 	os.WriteFile(filepath.Join(repoDir, "README.md"), []byte(content), 0644)
 }
 
-func writeSystemReadme(cfg *config.Config) {
-	bl, fl, tl := cfg.BackendLang, cfg.FrontendLang, cfg.TestLang
+func writeMonolithMultirepoReadme(cfg *config.Config) {
+	base := "https://github.com/" + cfg.FullRepo + "/actions/workflows"
+	systemBase := "https://github.com/" + cfg.SystemFullRepo + "/actions/workflows"
+
+	badgeItems := [][2]string{
+		{systemBase + "/commit-stage.yml", "commit-stage"},
+		{base + "/acceptance-stage.yml", "acceptance-stage"},
+		{base + "/qa-stage.yml", "qa-stage"},
+		{base + "/qa-signoff.yml", "qa-signoff"},
+		{base + "/prod-stage.yml", "prod-stage"},
+	}
+
+	var badges strings.Builder
+	for _, item := range badgeItems {
+		fmt.Fprintf(&badges, "[![%s](%s/badge.svg)](%s)\n", item[1], item[0], item[0])
+	}
+
+	reposSection := fmt.Sprintf("## Repositories\n\n- [%s](https://github.com/%s) — System (%s)\n",
+		cfg.SystemRepo, cfg.SystemFullRepo, cfg.Lang)
+
+	var info strings.Builder
+	fmt.Fprintf(&info, "## Project Info\n\n")
+	fmt.Fprintf(&info, "- **Owner:** %s\n", cfg.Owner)
+	fmt.Fprintf(&info, "- **System:** %s\n", cfg.SystemName)
+	fmt.Fprintf(&info, "- **Architecture:** monolith\n")
+	fmt.Fprintf(&info, "- **Repo strategy:** multirepo\n")
+	fmt.Fprintf(&info, "- **Language:** %s\n", cfg.Lang)
+	if cfg.TestLang != cfg.Lang {
+		fmt.Fprintf(&info, "- **Test language:** %s\n", cfg.TestLang)
+	}
+	fmt.Fprintf(&info, "\n")
+
+	content := fmt.Sprintf("# %s\n\n%s\n%s%s\n## License\n\nMIT License\n\n## Contributors\n\n- [%s](https://github.com/%s)\n",
+		cfg.SystemName, badges.String(), reposSection, info.String(), cfg.Owner, cfg.Owner)
+	os.WriteFile(filepath.Join(cfg.RepoDir, "README.md"), []byte(content), 0644)
+
+	// System repo README
+	writeComponentReadme(
+		cfg.SystemRepoDir, cfg.SystemName, "System",
+		cfg.SystemFullRepo, cfg.Lang, cfg.Owner,
+	)
+}
+
+func writeMultitierMultirepoReadme(cfg *config.Config) {
+	bl, fl := cfg.BackendLang, cfg.FrontendLang
 	base := "https://github.com/" + cfg.FullRepo + "/actions/workflows"
 	backendBase := "https://github.com/" + cfg.BackendFullRepo + "/actions/workflows"
 	frontendBase := "https://github.com/" + cfg.FrontendFullRepo + "/actions/workflows"
 
 	badgeItems := [][2]string{
-		{backendBase + "/multitier-backend-" + bl + "-commit-stage.yml", "backend-commit-stage"},
-		{frontendBase + "/multitier-frontend-" + fl + "-commit-stage.yml", "frontend-commit-stage"},
-		{base + "/multitier-system-" + tl + "-acceptance-stage.yml", "acceptance-stage"},
-		{base + "/multitier-system-" + tl + "-qa-stage.yml", "qa-stage"},
-		{base + "/multitier-system-" + tl + "-qa-signoff.yml", "qa-signoff"},
-		{base + "/multitier-system-" + tl + "-prod-stage.yml", "prod-stage"},
+		{backendBase + "/backend-commit-stage.yml", "backend-commit-stage"},
+		{frontendBase + "/frontend-commit-stage.yml", "frontend-commit-stage"},
+		{base + "/acceptance-stage.yml", "acceptance-stage"},
+		{base + "/qa-stage.yml", "qa-stage"},
+		{base + "/qa-signoff.yml", "qa-signoff"},
+		{base + "/prod-stage.yml", "prod-stage"},
 	}
 
 	var badges strings.Builder
@@ -91,13 +150,38 @@ func writeSystemReadme(cfg *config.Config) {
 		cfg.BackendRepo, cfg.BackendFullRepo, bl,
 		cfg.FrontendRepo, cfg.FrontendFullRepo, fl)
 
-	content := fmt.Sprintf("# %s\n\n%s\n%s\n## License\n\nMIT License\n\n## Contributors\n\n- [%s](https://github.com/%s)\n",
-		cfg.SystemName, badges.String(), reposSection, cfg.Owner, cfg.Owner)
+	var info strings.Builder
+	fmt.Fprintf(&info, "## Project Info\n\n")
+	fmt.Fprintf(&info, "- **Owner:** %s\n", cfg.Owner)
+	fmt.Fprintf(&info, "- **System:** %s\n", cfg.SystemName)
+	fmt.Fprintf(&info, "- **Architecture:** multitier\n")
+	fmt.Fprintf(&info, "- **Repo strategy:** multirepo\n")
+	fmt.Fprintf(&info, "- **Backend language:** %s\n", cfg.BackendLang)
+	fmt.Fprintf(&info, "- **Frontend language:** %s\n", cfg.FrontendLang)
+	if cfg.TestLang != cfg.BackendLang {
+		fmt.Fprintf(&info, "- **Test language:** %s\n", cfg.TestLang)
+	}
+	fmt.Fprintf(&info, "\n")
+
+	content := fmt.Sprintf("# %s\n\n%s\n%s%s\n## License\n\nMIT License\n\n## Contributors\n\n- [%s](https://github.com/%s)\n",
+		cfg.SystemName, badges.String(), reposSection, info.String(), cfg.Owner, cfg.Owner)
 	os.WriteFile(filepath.Join(cfg.RepoDir, "README.md"), []byte(content), 0644)
+
+	writeComponentReadme(
+		cfg.BackendRepoDir, cfg.SystemName, "Backend",
+		cfg.BackendFullRepo, bl, cfg.Owner,
+	)
+	writeComponentReadme(
+		cfg.FrontendRepoDir, cfg.SystemName, "Frontend",
+		cfg.FrontendFullRepo, fl, cfg.Owner,
+	)
 }
 
-func writeComponentReadme(repoDir, systemName, componentLabel, fullRepo, lang, componentType, owner string) {
-	wfName := "multitier-" + componentType + "-" + lang + "-commit-stage.yml"
+func writeComponentReadme(repoDir, systemName, componentLabel, fullRepo, lang, owner string) {
+	wfName := strings.ToLower(componentLabel) + "-commit-stage.yml"
+	if componentLabel == "System" {
+		wfName = "commit-stage.yml"
+	}
 	base := "https://github.com/" + fullRepo + "/actions/workflows"
 	badges := fmt.Sprintf("[![commit-stage](%s/%s/badge.svg)](%s/%s)\n", base, wfName, base, wfName)
 
@@ -112,21 +196,20 @@ func generateBadges(cfg *config.Config) string {
 	var items [][2]string
 	if cfg.Arch == "monolith" {
 		items = [][2]string{
-			{"monolith-" + cfg.Lang + "-commit-stage.yml", "commit-stage"},
-			{"monolith-" + cfg.TestLang + "-acceptance-stage.yml", "acceptance-stage"},
-			{"monolith-" + cfg.TestLang + "-qa-stage.yml", "qa-stage"},
-			{"monolith-" + cfg.TestLang + "-qa-signoff.yml", "qa-signoff"},
-			{"monolith-" + cfg.TestLang + "-prod-stage.yml", "prod-stage"},
+			{"commit-stage.yml", "commit-stage"},
+			{"acceptance-stage.yml", "acceptance-stage"},
+			{"qa-stage.yml", "qa-stage"},
+			{"qa-signoff.yml", "qa-signoff"},
+			{"prod-stage.yml", "prod-stage"},
 		}
 	} else {
-		bl, fl, tl := cfg.BackendLang, cfg.FrontendLang, cfg.TestLang
 		items = [][2]string{
-			{"multitier-backend-" + bl + "-commit-stage.yml", "backend-commit-stage"},
-			{"multitier-frontend-" + fl + "-commit-stage.yml", "frontend-commit-stage"},
-			{"multitier-system-" + tl + "-acceptance-stage.yml", "acceptance-stage"},
-			{"multitier-system-" + tl + "-qa-stage.yml", "qa-stage"},
-			{"multitier-system-" + tl + "-qa-signoff.yml", "qa-signoff"},
-			{"multitier-system-" + tl + "-prod-stage.yml", "prod-stage"},
+			{"backend-commit-stage.yml", "backend-commit-stage"},
+			{"frontend-commit-stage.yml", "frontend-commit-stage"},
+			{"acceptance-stage.yml", "acceptance-stage"},
+			{"qa-stage.yml", "qa-stage"},
+			{"qa-signoff.yml", "qa-signoff"},
+			{"prod-stage.yml", "prod-stage"},
 		}
 	}
 
@@ -164,8 +247,12 @@ func CommitAndPush(cfg *config.Config) {
 	commitAndPushRepo(cfg.RepoDir, cfg.FullRepo)
 
 	if cfg.RepoStrategy == "multirepo" {
-		commitAndPushRepo(cfg.BackendRepoDir, cfg.BackendFullRepo)
-		commitAndPushRepo(cfg.FrontendRepoDir, cfg.FrontendFullRepo)
+		if cfg.Arch == "multitier" {
+			commitAndPushRepo(cfg.BackendRepoDir, cfg.BackendFullRepo)
+			commitAndPushRepo(cfg.FrontendRepoDir, cfg.FrontendFullRepo)
+		} else {
+			commitAndPushRepo(cfg.SystemRepoDir, cfg.SystemFullRepo)
+		}
 	}
 }
 
@@ -187,18 +274,21 @@ func VerifyCommitStage(cfg *config.Config, gh *shell.GitHub) {
 
 	time.Sleep(5 * time.Second)
 
-	if cfg.RepoStrategy == "monorepo" {
-		if cfg.Arch == "monolith" {
-			verifyNamedWorkflow(gh, "Commit stage", "monolith-"+cfg.Lang+"-commit-stage.yml")
+	if cfg.Arch == "monolith" {
+		if cfg.RepoStrategy == "monorepo" {
+			verifyNamedWorkflow(gh, "Commit stage", "commit-stage.yml")
 		} else {
-			verifyNamedWorkflow(gh, "Backend commit stage", "multitier-backend-"+cfg.BackendLang+"-commit-stage.yml")
-			verifyNamedWorkflow(gh, "Frontend commit stage", "multitier-frontend-"+cfg.FrontendLang+"-commit-stage.yml")
+			ghSystem := gh.ForRepo(cfg.SystemFullRepo)
+			verifyNamedWorkflow(ghSystem, "Commit stage", "commit-stage.yml")
 		}
+	} else if cfg.RepoStrategy == "monorepo" {
+		verifyNamedWorkflow(gh, "Backend commit stage", "backend-commit-stage.yml")
+		verifyNamedWorkflow(gh, "Frontend commit stage", "frontend-commit-stage.yml")
 	} else {
 		ghBackend := gh.ForRepo(cfg.BackendFullRepo)
 		ghFrontend := gh.ForRepo(cfg.FrontendFullRepo)
-		verifyNamedWorkflow(ghBackend, "Backend commit stage", "multitier-backend-"+cfg.BackendLang+"-commit-stage.yml")
-		verifyNamedWorkflow(ghFrontend, "Frontend commit stage", "multitier-frontend-"+cfg.FrontendLang+"-commit-stage.yml")
+		verifyNamedWorkflow(ghBackend, "Backend commit stage", "backend-commit-stage.yml")
+		verifyNamedWorkflow(ghFrontend, "Frontend commit stage", "frontend-commit-stage.yml")
 	}
 }
 
@@ -211,14 +301,7 @@ func VerifyAcceptanceStage(cfg *config.Config, gh *shell.GitHub) {
 		return
 	}
 
-	var wf string
-	if cfg.Arch == "monolith" {
-		wf = "monolith-" + cfg.TestLang + "-acceptance-stage.yml"
-	} else {
-		wf = "multitier-system-" + cfg.TestLang + "-acceptance-stage.yml"
-	}
-
-	verifyWorkflow(gh, "Acceptance stage", wf, nil)
+	verifyWorkflow(gh, "Acceptance stage", "acceptance-stage.yml", nil)
 
 	rcVersion := getRCVersion(gh)
 	if rcVersion != "" {
@@ -243,14 +326,7 @@ func VerifyQAStage(cfg *config.Config, gh *shell.GitHub) {
 		return
 	}
 
-	var wf string
-	if cfg.Arch == "monolith" {
-		wf = "monolith-" + cfg.TestLang + "-qa-stage.yml"
-	} else {
-		wf = "multitier-system-" + cfg.TestLang + "-qa-stage.yml"
-	}
-
-	verifyWorkflow(gh, "QA stage", wf, map[string]string{"version": cfg.RCVersion})
+	verifyWorkflow(gh, "QA stage", "qa-stage.yml", map[string]string{"version": cfg.RCVersion})
 }
 
 // VerifyQASignoff triggers and verifies QA signoff.
@@ -267,14 +343,7 @@ func VerifyQASignoff(cfg *config.Config, gh *shell.GitHub) {
 		return
 	}
 
-	var wf string
-	if cfg.Arch == "monolith" {
-		wf = "monolith-" + cfg.TestLang + "-qa-signoff.yml"
-	} else {
-		wf = "multitier-system-" + cfg.TestLang + "-qa-signoff.yml"
-	}
-
-	verifyWorkflow(gh, "QA signoff", wf, map[string]string{"version": cfg.RCVersion, "result": "approved"})
+	verifyWorkflow(gh, "QA signoff", "qa-signoff.yml", map[string]string{"version": cfg.RCVersion, "result": "approved"})
 }
 
 // VerifyProdStage triggers and verifies production stage.
@@ -291,14 +360,7 @@ func VerifyProdStage(cfg *config.Config, gh *shell.GitHub) {
 		return
 	}
 
-	var wf string
-	if cfg.Arch == "monolith" {
-		wf = "monolith-" + cfg.TestLang + "-prod-stage.yml"
-	} else {
-		wf = "multitier-system-" + cfg.TestLang + "-prod-stage.yml"
-	}
-
-	verifyWorkflow(gh, "Production stage", wf, map[string]string{"version": cfg.RCVersion})
+	verifyWorkflow(gh, "Production stage", "prod-stage.yml", map[string]string{"version": cfg.RCVersion})
 }
 
 func verifyNamedWorkflow(gh *shell.GitHub, label, workflowFile string) {
@@ -352,12 +414,18 @@ func Cleanup(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud) {
 		log.OKf("Deleted repository %s", cfg.FullRepo)
 
 		if cfg.RepoStrategy == "multirepo" {
-			ghFrontend := gh.ForRepo(cfg.FrontendFullRepo)
-			ghBackend := gh.ForRepo(cfg.BackendFullRepo)
-			ghBackend.Delete()
-			log.OKf("Deleted repository %s", cfg.BackendFullRepo)
-			ghFrontend.Delete()
-			log.OKf("Deleted repository %s", cfg.FrontendFullRepo)
+			if cfg.Arch == "multitier" {
+				ghFrontend := gh.ForRepo(cfg.FrontendFullRepo)
+				ghBackend := gh.ForRepo(cfg.BackendFullRepo)
+				ghBackend.Delete()
+				log.OKf("Deleted repository %s", cfg.BackendFullRepo)
+				ghFrontend.Delete()
+				log.OKf("Deleted repository %s", cfg.FrontendFullRepo)
+			} else {
+				ghSystem := gh.ForRepo(cfg.SystemFullRepo)
+				ghSystem.Delete()
+				log.OKf("Deleted repository %s", cfg.SystemFullRepo)
+			}
 		}
 
 		for _, key := range GetSonarProjectKeys(cfg) {
@@ -373,13 +441,20 @@ func Cleanup(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud) {
 		if cfg.BackendRepoDir != "" {
 			os.RemoveAll(cfg.BackendRepoDir)
 		}
+		if cfg.SystemRepoDir != "" {
+			os.RemoveAll(cfg.SystemRepoDir)
+		}
 
 		log.OK("Cleanup complete")
 	} else {
 		log.Logf("Keeping repository: https://github.com/%s", cfg.FullRepo)
 		if cfg.RepoStrategy == "multirepo" {
-			log.Logf("Keeping repository: https://github.com/%s", cfg.FrontendFullRepo)
-			log.Logf("Keeping repository: https://github.com/%s", cfg.BackendFullRepo)
+			if cfg.Arch == "multitier" {
+				log.Logf("Keeping repository: https://github.com/%s", cfg.FrontendFullRepo)
+				log.Logf("Keeping repository: https://github.com/%s", cfg.BackendFullRepo)
+			} else {
+				log.Logf("Keeping repository: https://github.com/%s", cfg.SystemFullRepo)
+			}
 		}
 	}
 }

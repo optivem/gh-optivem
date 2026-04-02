@@ -82,8 +82,12 @@ func main() {
 	fmt.Printf("  Repository: https://github.com/%s\n", cfg.FullRepo)
 	fmt.Printf("  Actions:    https://github.com/%s/actions\n", cfg.FullRepo)
 	if cfg.RepoStrategy == "multirepo" {
-		fmt.Printf("  Backend:    https://github.com/%s\n", cfg.BackendFullRepo)
-		fmt.Printf("  Frontend:   https://github.com/%s\n", cfg.FrontendFullRepo)
+		if cfg.Arch == "multitier" {
+			fmt.Printf("  Backend:    https://github.com/%s\n", cfg.BackendFullRepo)
+			fmt.Printf("  Frontend:   https://github.com/%s\n", cfg.FrontendFullRepo)
+		} else {
+			fmt.Printf("  System:     https://github.com/%s\n", cfg.SystemFullRepo)
+		}
 	}
 	fmt.Println()
 
@@ -110,11 +114,16 @@ func printBanner(cfg *config.Config) {
 	log.Logf("Arch:        %s", cfg.Arch)
 	if cfg.Arch == "monolith" {
 		log.Logf("Language:    %s", cfg.Lang)
+		if cfg.RepoStrategy == "multirepo" {
+			log.Logf("System repo: %s", cfg.SystemFullRepo)
+		}
 	} else {
 		log.Logf("Backend:     %s", cfg.BackendLang)
 		log.Logf("Frontend:    %s", cfg.FrontendLang)
-		log.Logf("Backend repo: %s", cfg.BackendFullRepo)
-		log.Logf("Frontend repo: %s", cfg.FrontendFullRepo)
+		if cfg.RepoStrategy == "multirepo" {
+			log.Logf("Backend repo: %s", cfg.BackendFullRepo)
+			log.Logf("Frontend repo: %s", cfg.FrontendFullRepo)
+		}
 	}
 	log.Logf("Test lang:   %s", cfg.TestLang)
 	log.Logf("Dry run:     %v", cfg.DryRun)

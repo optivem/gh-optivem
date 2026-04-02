@@ -59,10 +59,15 @@ type Config struct {
 	FrontendFullRepo string
 	BackendFullRepo  string
 
+	// Multi-repo (monolith)
+	SystemRepo     string
+	SystemFullRepo string
+
 	// Set after clone
 	RepoDir         string
 	FrontendRepoDir string
 	BackendRepoDir  string
+	SystemRepoDir   string
 
 	// Set during verification
 	RCVersion string
@@ -179,7 +184,7 @@ func ParseAndValidate() *Config {
 		for _, r := range required {
 			if r.val == "" {
 				if r.name == "GHCR_TOKEN" {
-					log.FatalExit(r.name + " environment variable is required for multitier setup.\n" +
+					log.FatalExit(r.name + " environment variable is required for multirepo setup.\n" +
 						"  Create a Personal Access Token (classic) with write:packages + read:packages scopes:\n" +
 						"  https://github.com/settings/tokens\n" +
 						"  Then: export GHCR_TOKEN=<your-token>")
@@ -232,11 +237,18 @@ func ParseAndValidate() *Config {
 	backendRepo := ""
 	frontendFullRepo := ""
 	backendFullRepo := ""
+	systemRepo := ""
+	systemFullRepo := ""
 	if *repoStrategy == "multirepo" {
-		frontendRepo = repoName + "-frontend"
-		backendRepo = repoName + "-backend"
-		frontendFullRepo = *owner + "/" + frontendRepo
-		backendFullRepo = *owner + "/" + backendRepo
+		if *arch == "multitier" {
+			frontendRepo = repoName + "-frontend"
+			backendRepo = repoName + "-backend"
+			frontendFullRepo = *owner + "/" + frontendRepo
+			backendFullRepo = *owner + "/" + backendRepo
+		} else {
+			systemRepo = repoName + "-system"
+			systemFullRepo = *owner + "/" + systemRepo
+		}
 	}
 
 	// Work directory
@@ -289,6 +301,9 @@ func ParseAndValidate() *Config {
 		BackendRepo:      backendRepo,
 		FrontendFullRepo: frontendFullRepo,
 		BackendFullRepo:  backendFullRepo,
+
+		SystemRepo:     systemRepo,
+		SystemFullRepo: systemFullRepo,
 	}
 }
 

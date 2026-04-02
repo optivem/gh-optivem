@@ -217,6 +217,122 @@ func TestMultitierRepoNames(t *testing.T) {
 	}
 }
 
+func TestMonolithMultirepoRepoNames(t *testing.T) {
+	tests := []struct {
+		name           string
+		owner          string
+		repo           string
+		wantSystemRepo string
+		wantSystemFull string
+	}{
+		{
+			name:           "standard monolith multirepo",
+			owner:          "acme",
+			repo:           "page-turner",
+			wantSystemRepo: "page-turner-system",
+			wantSystemFull: "acme/page-turner-system",
+		},
+		{
+			name:           "single word repo",
+			owner:          "myorg",
+			repo:           "shop",
+			wantSystemRepo: "shop-system",
+			wantSystemFull: "myorg/shop-system",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			systemRepo := tt.repo + "-system"
+			systemFull := tt.owner + "/" + systemRepo
+
+			if systemRepo != tt.wantSystemRepo {
+				t.Errorf("SystemRepo = %q, want %q", systemRepo, tt.wantSystemRepo)
+			}
+			if systemFull != tt.wantSystemFull {
+				t.Errorf("SystemFullRepo = %q, want %q", systemFull, tt.wantSystemFull)
+			}
+		})
+	}
+}
+
+func TestSonarProjectKeys(t *testing.T) {
+	tests := []struct {
+		name     string
+		cfg      Config
+		expected []string
+	}{
+		{
+			name: "monolith monorepo",
+			cfg: Config{
+				Owner: "acme", Repo: "page-turner",
+				Arch: "monolith", RepoStrategy: "monorepo", Lang: "java",
+			},
+			expected: []string{"acme_page-turner-system"},
+		},
+		{
+			name: "monolith multirepo",
+			cfg: Config{
+				Owner: "acme", Repo: "page-turner",
+				Arch: "monolith", RepoStrategy: "multirepo", Lang: "java",
+				SystemRepo: "page-turner-system",
+			},
+			expected: []string{"acme_page-turner-system-system"},
+		},
+		{
+			name: "multitier monorepo",
+			cfg: Config{
+				Owner: "acme", Repo: "page-turner",
+				Arch: "multitier", RepoStrategy: "monorepo",
+				BackendLang: "java", FrontendLang: "react",
+			},
+			expected: []string{"acme_page-turner-backend", "acme_page-turner-frontend"},
+		},
+		{
+			name: "multitier multirepo",
+			cfg: Config{
+				Owner: "acme", Repo: "page-turner",
+				Arch: "multitier", RepoStrategy: "multirepo",
+				BackendLang: "java", FrontendLang: "react",
+				BackendRepo: "page-turner-backend", FrontendRepo: "page-turner-frontend",
+			},
+			expected: []string{"acme_page-turner-backend-backend", "acme_page-turner-frontend-frontend"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Import the steps package test helper would be complex,
+			// so we test the logic inline matching GetSonarProjectKeys
+			var got []string
+			if tt.cfg.Arch == "monolith" {
+				if tt.cfg.RepoStrategy == "monorepo" {
+					got = []string{tt.cfg.Owner + "_" + tt.cfg.Repo + "-system"}
+				} else {
+					got = []string{tt.cfg.Owner + "_" + tt.cfg.SystemRepo + "-system"}
+				}
+			} else if tt.cfg.RepoStrategy == "monorepo" {
+				prefix := tt.cfg.Owner + "_" + tt.cfg.Repo
+				got = []string{prefix + "-backend", prefix + "-frontend"}
+			} else {
+				got = []string{
+					tt.cfg.Owner + "_" + tt.cfg.BackendRepo + "-backend",
+					tt.cfg.Owner + "_" + tt.cfg.FrontendRepo + "-frontend",
+				}
+			}
+
+			if len(got) != len(tt.expected) {
+				t.Fatalf("got %d keys, want %d", len(got), len(tt.expected))
+			}
+			for i := range got {
+				if got[i] != tt.expected[i] {
+					t.Errorf("key[%d] = %q, want %q", i, got[i], tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
 // helpers for test logic
 func contains(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {

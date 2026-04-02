@@ -6,49 +6,59 @@ See [MAPPING.md](MAPPING.md) for the complete source-to-destination mapping for 
 
 ## Files to Change
 
-1. **`internal/steps/apply_template.go`** — Destination paths, workflow copy with rename
+1. **`internal/config/config.go`** ✅
+   - Added monolith multirepo repo naming (`{repo}-system`) — `SystemRepo`, `SystemFullRepo`, `SystemRepoDir` fields
+   - GHCR_TOKEN now required for all multirepo setups (not just multitier)
+
+2. **`internal/templates/templates.go`** ✅
+   - `CopyWorkflows` now accepts `map[string]string` (source -> destination name mapping)
+   - Added `FixupWorkflowContent` and `FixupDockerComposeContent` for batch replacements
+   - `FixupMultirepoImageURLs` updated for language-agnostic image names (`backend`, `frontend`)
+   - Added `FixupMonolithMultirepoImageURLs` and `FixupMonolithMultirepoDockerCompose`
+   - `FixupMultirepoDockerCompose` updated for language-agnostic image names
+   - `FixupCommitStageForStandalone` simplified — takes `componentDir` instead of `component` + `lang`
+
+3. **`internal/steps/apply_template.go`** ✅
+   - Complete rewrite with 4 clear functions: `applyMonolithMonorepo`, `applyMonolithMultirepo`, `applyMultitierMonorepo`, `applyMultitierMultirepo`
    - Monolith: `system/monolith/{lang}/` -> `system/`
    - Multitier: `system/multitier/backend-{lang}/` -> `backend/`, `frontend-{lang}/` -> `frontend/`
    - System test: `system-test/{testLang}/` -> `system-test/`
-   - Implement monolith multirepo (currently missing)
-   - Remove cross-language fixup functions (image names no longer contain language)
+   - External dirs: `system/external-*` -> top-level `external-*`
+   - Monolith multirepo fully implemented (root repo + system repo)
+   - Cross-language fixup simplified to port mapping only (image names handled by content replacements)
+   - Workflow content replacements handle paths, image names, and SonarCloud key suffixes
 
-2. **`internal/templates/templates.go`** — Workflow copy with rename
-   - `CopyWorkflows` needs to support source -> destination name mapping (not just copy)
-   - Monolith: `monolith-{lang}-commit-stage.yml` -> `commit-stage.yml`
-   - Multitier: `multitier-backend-{lang}-commit-stage.yml` -> `backend-commit-stage.yml`
-   - Pipeline stages: `{arch}-{testLang}-acceptance-stage.yml` -> `acceptance-stage.yml`, etc.
-   - Update `FixupMultirepoImageURLs` for new image names
-   - Update `FixupCommitStageForStandalone` for new paths
+4. **`internal/steps/finalize.go`** ✅
+   - SonarCloud keys: `{owner}_{repo}-system`, `{owner}_{repo}-backend`, `{owner}_{repo}-frontend`
+   - Badge URLs use new workflow filenames (no language/arch)
+   - Verification uses new workflow filenames
+   - README includes all user-supplied parameters (owner, system name, arch, languages)
+   - Monolith multirepo README and cleanup fully implemented
+   - CommitAndPush handles monolith multirepo system repo
 
-3. **`internal/steps/finalize.go`** — README, badges, SonarCloud, verification
-   - README: include all user-supplied parameters (owner, system name, arch, languages)
-   - Badge URLs: use new workflow filenames (no language/arch)
-   - SonarCloud project keys: `{owner}_{repo}-system`, `{owner}_{repo}-backend`, `{owner}_{repo}-frontend`
-   - Workflow verification: use new workflow filenames
+5. **`internal/steps/replacements.go`** ✅
+   - Monolith multirepo: replaces references in system repo, fixes docker-compose URLs
+   - Namespace replacement routes monolith code to correct repo (root vs system)
+   - TypeScript package.json names updated for new folder structure
 
-4. **`internal/config/config.go`** — Config and naming
-   - Add monolith multirepo repo naming (`{repo}-system`)
-   - Remove language from any derived names used in image URLs
+6. **`internal/steps/github_setup.go`** ✅
+   - Monolith multirepo: creates, clones, and sets secrets on system repo (`{repo}-system`)
 
-5. **`main.go`** — No structural changes expected
+7. **`main.go`** ✅
+   - Banner and summary output show system repo for monolith multirepo
 
-6. **`internal/steps/replace_references.go`** — Reference replacement
-   - Update paths for new folder structure
-   - Update image name patterns
+8. **Tests** ✅
+   - Added `TestMonolithMultirepoRepoNames` and `TestSonarProjectKeys`
+   - All existing tests pass
+   - System tests already cover monolith multirepo configurations
 
-## Workflow Content Changes
+## Migration Order (all completed)
 
-Inside copied workflows, the following replacements are needed:
-- Working directory: `system/multitier/backend-{lang}` -> `backend`, `system/monolith/{lang}` -> `system`
-- Docker image names: `monolith-system-{lang}` -> `system`, `multitier-backend-{lang}` -> `backend`, `multitier-frontend-{lang}` -> `frontend`
-- Docker compose paths: `system-test/{testLang}/` -> `system-test/`
-
-## Migration Order
-
-1. Update `config.go` (naming, monolith multirepo support)
-2. Update `templates.go` (workflow rename support)
-3. Update `apply_template.go` (new destination paths)
-4. Update `finalize.go` (README, badges, SonarCloud, verification)
-5. Update `replace_references.go` (new paths)
-6. Update system tests to match new expectations
+1. ✅ Update `config.go` (naming, monolith multirepo support)
+2. ✅ Update `templates.go` (workflow rename support)
+3. ✅ Update `apply_template.go` (new destination paths)
+4. ✅ Update `finalize.go` (README, badges, SonarCloud, verification)
+5. ✅ Update `replacements.go` (new paths)
+6. ✅ Update `github_setup.go` (monolith multirepo)
+7. ✅ Update `main.go` (banner)
+8. ✅ Update tests to match new expectations

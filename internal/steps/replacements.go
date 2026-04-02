@@ -31,13 +31,22 @@ func ReplaceRepoReferences(cfg *config.Config) {
 	replaceRefsInRepo(cfg.RepoDir, cfg.FullRepo, cfg.OwnerLower)
 
 	if cfg.RepoStrategy == "multirepo" {
-		replaceRefsInRepo(cfg.BackendRepoDir, cfg.BackendFullRepo, cfg.OwnerLower)
-		replaceRefsInRepo(cfg.FrontendRepoDir, cfg.FrontendFullRepo, cfg.OwnerLower)
+		if cfg.Arch == "multitier" {
+			replaceRefsInRepo(cfg.BackendRepoDir, cfg.BackendFullRepo, cfg.OwnerLower)
+			replaceRefsInRepo(cfg.FrontendRepoDir, cfg.FrontendFullRepo, cfg.OwnerLower)
 
-		// Fix docker-compose image URLs
-		templates.FixupMultirepoDockerCompose(
-			cfg.RepoDir, cfg.Repo, cfg.FrontendRepo, cfg.BackendRepo, cfg.BackendLang,
-		)
+			// Fix docker-compose image URLs
+			templates.FixupMultirepoDockerCompose(
+				cfg.RepoDir, cfg.Repo, cfg.FrontendRepo, cfg.BackendRepo,
+			)
+		} else {
+			replaceRefsInRepo(cfg.SystemRepoDir, cfg.SystemFullRepo, cfg.OwnerLower)
+
+			// Fix docker-compose image URLs
+			templates.FixupMonolithMultirepoDockerCompose(
+				cfg.RepoDir, cfg.Repo, cfg.SystemRepo,
+			)
+		}
 	}
 
 	log.OK("Repository reference replacement complete")
@@ -148,7 +157,11 @@ func ReplaceNamespaces(cfg *config.Config) {
 	}
 
 	if cfg.Arch == "monolith" {
-		nsForLang(cfg, cfg.Lang, "monolith", cfg.RepoDir)
+		if cfg.RepoStrategy == "monorepo" {
+			nsForLang(cfg, cfg.Lang, "monolith", cfg.RepoDir)
+		} else {
+			nsForLang(cfg, cfg.Lang, "monolith", cfg.SystemRepoDir)
+		}
 		nsForLang(cfg, cfg.TestLang, "systemtest", cfg.RepoDir)
 	} else if cfg.RepoStrategy == "monorepo" {
 		// Monorepo: all namespaces in the single repo
@@ -243,7 +256,7 @@ func nsTypeScript(cfg *config.Config, component, repoDir string) {
 		return nil
 	})
 
-	// Update package.json in system dirs (monolith/backend)
+	// Update package.json in system dirs (system/backend)
 	filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || files.IsGitDir(path) {
 			return nil
@@ -252,11 +265,9 @@ func nsTypeScript(cfg *config.Config, component, repoDir string) {
 			return nil
 		}
 		if info.Name() == "package.json" {
-			if strings.Contains(path, "monolith") {
-				files.ReplaceInFile(path, `"name": "starter-monolith"`, `"name": "`+cfg.Repo+`-monolith"`)
-			} else if strings.Contains(path, "backend") {
-				files.ReplaceInFile(path, `"name": "starter-backend"`, `"name": "`+cfg.Repo+`-backend"`)
-			}
+			// Monolith system code or multitier backend code
+			files.ReplaceInFile(path, `"name": "starter-monolith"`, `"name": "`+cfg.Repo+`-system"`)
+			files.ReplaceInFile(path, `"name": "starter-backend"`, `"name": "`+cfg.Repo+`-backend"`)
 		}
 		return nil
 	})

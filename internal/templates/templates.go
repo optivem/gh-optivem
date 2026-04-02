@@ -10,19 +10,20 @@ import (
 	"github.com/optivem/gh-optivem/internal/log"
 )
 
-// CopyWorkflows copies workflow files from starter to repo.
-func CopyWorkflows(workflowNames []string, starter, repoDir string) {
+// CopyWorkflows copies workflow files from starter to repo, renaming them.
+// mappings is a map of source filename -> destination filename.
+func CopyWorkflows(mappings map[string]string, starter, repoDir string) {
 	wfSrc := filepath.Join(starter, ".github", "workflows")
 	wfDst := filepath.Join(repoDir, ".github", "workflows")
 	os.MkdirAll(wfDst, 0755)
 
-	for _, wf := range workflowNames {
-		src := filepath.Join(wfSrc, wf)
+	for srcName, dstName := range mappings {
+		src := filepath.Join(wfSrc, srcName)
 		if _, err := os.Stat(src); err != nil {
-			log.Warnf("Workflow not found: %s", wf)
+			log.Warnf("Workflow not found: %s", srcName)
 			continue
 		}
-		files.CopyFile(src, filepath.Join(wfDst, wf))
+		files.CopyFile(src, filepath.Join(wfDst, dstName))
 	}
 }
 
@@ -50,25 +51,46 @@ func CopyVersion(starter, repoDir string) {
 }
 
 // FixupMultirepoImageURLs replaces image URLs in system workflows for multi-repo setup.
-func FixupMultirepoImageURLs(repoDir, repoName, frontendRepo, backendRepo, backendLang string) {
+// In multirepo, images are pulled from component repos, not the root repo.
+func FixupMultirepoImageURLs(repoDir, frontendRepo, backendRepo string) {
 	wfDir := filepath.Join(repoDir, ".github", "workflows")
 	if _, err := os.Stat(wfDir); err != nil {
 		return
 	}
 
-	oldFrontend := "${{ github.event.repository.name }}/multitier-frontend-react"
-	newFrontend := frontendRepo + "/multitier-frontend-react"
-	oldBackend := "${{ github.event.repository.name }}/multitier-backend-" + backendLang
-	newBackend := backendRepo + "/multitier-backend-" + backendLang
+	oldFrontend := "${{ github.event.repository.name }}/frontend"
+	newFrontend := frontendRepo + "/frontend"
+	oldBackend := "${{ github.event.repository.name }}/backend"
+	newBackend := backendRepo + "/backend"
 
 	entries, _ := os.ReadDir(wfDir)
 	for _, e := range entries {
-		if !strings.HasSuffix(e.Name(), ".yml") || !strings.Contains(e.Name(), "system") {
+		if !strings.HasSuffix(e.Name(), ".yml") {
 			continue
 		}
 		path := filepath.Join(wfDir, e.Name())
 		files.ReplaceInFile(path, oldFrontend, newFrontend)
 		files.ReplaceInFile(path, oldBackend, newBackend)
+	}
+}
+
+// FixupMonolithMultirepoImageURLs replaces image URLs in root repo workflows for monolith multi-repo.
+func FixupMonolithMultirepoImageURLs(repoDir, systemRepo string) {
+	wfDir := filepath.Join(repoDir, ".github", "workflows")
+	if _, err := os.Stat(wfDir); err != nil {
+		return
+	}
+
+	oldSystem := "${{ github.event.repository.name }}/system"
+	newSystem := systemRepo + "/system"
+
+	entries, _ := os.ReadDir(wfDir)
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".yml") {
+			continue
+		}
+		path := filepath.Join(wfDir, e.Name())
+		files.ReplaceInFile(path, oldSystem, newSystem)
 	}
 }
 
@@ -95,8 +117,8 @@ func FixupMultirepoToken(repoDir string) {
 	}
 }
 
-// FixupMultirepoDockerCompose replaces system repo name with component repo names in docker-compose.
-func FixupMultirepoDockerCompose(repoDir, repoName, frontendRepo, backendRepo, backendLang string) {
+// FixupMultirepoDockerCompose replaces root repo name with component repo names in docker-compose.
+func FixupMultirepoDockerCompose(repoDir, repoName, frontendRepo, backendRepo string) {
 	filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
@@ -108,23 +130,76 @@ func FixupMultirepoDockerCompose(repoDir, repoName, frontendRepo, backendRepo, b
 			return nil
 		}
 		files.ReplaceInFile(path,
-			repoName+"/multitier-frontend-react",
-			frontendRepo+"/multitier-frontend-react")
+			repoName+"/frontend",
+			frontendRepo+"/frontend")
 		files.ReplaceInFile(path,
-			repoName+"/multitier-backend-"+backendLang,
-			backendRepo+"/multitier-backend-"+backendLang)
+			repoName+"/backend",
+			backendRepo+"/backend")
+		return nil
+	})
+}
+
+// FixupMonolithMultirepoDockerCompose replaces root repo name with system repo name in docker-compose.
+func FixupMonolithMultirepoDockerCompose(repoDir, repoName, systemRepo string) {
+	filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		if files.IsGitDir(path) {
+			return nil
+		}
+		if !strings.Contains(info.Name(), "docker-compose") || !strings.HasSuffix(info.Name(), ".yml") {
+			return nil
+		}
+		files.ReplaceInFile(path,
+			repoName+"/system",
+			systemRepo+"/system")
+		return nil
+	})
+}
+
+// FixupWorkflowContent replaces starter-specific paths and image names inside all workflow files.
+// replacements is a list of old -> new pairs to apply.
+func FixupWorkflowContent(repoDir string, replacements [][2]string) {
+	wfDir := filepath.Join(repoDir, ".github", "workflows")
+	entries, err := os.ReadDir(wfDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) != ".yml" {
+			continue
+		}
+		path := filepath.Join(wfDir, e.Name())
+		for _, r := range replacements {
+			files.ReplaceInFile(path, r[0], r[1])
+		}
+	}
+}
+
+// FixupDockerComposeContent replaces starter-specific paths and image names inside docker-compose files.
+func FixupDockerComposeContent(repoDir string, replacements [][2]string) {
+	filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || files.IsGitDir(path) {
+			return nil
+		}
+		if !strings.Contains(info.Name(), "docker-compose") || !strings.HasSuffix(info.Name(), ".yml") {
+			return nil
+		}
+		for _, r := range replacements {
+			files.ReplaceInFile(path, r[0], r[1])
+		}
 		return nil
 	})
 }
 
 // FixupCommitStageForStandalone adapts a commit stage workflow for a standalone component repo.
-func FixupCommitStageForStandalone(repoDir, component, lang string) {
+// componentDir is the destination folder in the repo (e.g. "backend", "frontend", "system").
+func FixupCommitStageForStandalone(repoDir, componentDir string) {
 	wfDir := filepath.Join(repoDir, ".github", "workflows")
 	if _, err := os.Stat(wfDir); err != nil {
 		return
 	}
-
-	oldPathPrefix := "system/multitier/" + component
 
 	entries, _ := os.ReadDir(wfDir)
 	for _, e := range entries {
@@ -152,17 +227,17 @@ func FixupCommitStageForStandalone(repoDir, component, lang string) {
 				continue
 			}
 
-			// Replace working-directory references
-			if strings.Contains(line, "working-directory: "+oldPathPrefix) {
-				line = strings.Replace(line, "working-directory: "+oldPathPrefix, "working-directory: .", 1)
+			// Replace working-directory: componentDir -> .
+			if strings.Contains(line, "working-directory: "+componentDir) {
+				line = strings.Replace(line, "working-directory: "+componentDir, "working-directory: .", 1)
 			}
 			// Replace VERSION file references
-			if strings.Contains(line, "file: "+oldPathPrefix+"/VERSION") {
-				line = strings.Replace(line, "file: "+oldPathPrefix+"/VERSION", "file: VERSION", 1)
+			if strings.Contains(line, "file: "+componentDir+"/VERSION") {
+				line = strings.Replace(line, "file: "+componentDir+"/VERSION", "file: VERSION", 1)
 			}
 			// Replace SonarCloud projectBaseDir
-			if strings.Contains(line, "projectBaseDir: "+oldPathPrefix) {
-				line = strings.Replace(line, "projectBaseDir: "+oldPathPrefix, "projectBaseDir: .", 1)
+			if strings.Contains(line, "projectBaseDir: "+componentDir) {
+				line = strings.Replace(line, "projectBaseDir: "+componentDir, "projectBaseDir: .", 1)
 			}
 
 			newLines = append(newLines, line)

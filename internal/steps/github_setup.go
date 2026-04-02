@@ -29,16 +29,23 @@ func CreateRepos(cfg *config.Config, gh *shell.GitHub) {
 	log.OKf("Created repository: %s", cfg.FullRepo)
 
 	if cfg.RepoStrategy == "multirepo" {
-		ghFrontend := gh.ForRepo(cfg.FrontendFullRepo)
-		ghBackend := gh.ForRepo(cfg.BackendFullRepo)
+		if cfg.Arch == "multitier" {
+			ghFrontend := gh.ForRepo(cfg.FrontendFullRepo)
+			ghBackend := gh.ForRepo(cfg.BackendFullRepo)
 
-		ghFrontend.CreateRepo()
-		time.Sleep(3 * time.Second)
-		log.OKf("Created repository: %s", cfg.FrontendFullRepo)
+			ghFrontend.CreateRepo()
+			time.Sleep(3 * time.Second)
+			log.OKf("Created repository: %s", cfg.FrontendFullRepo)
 
-		ghBackend.CreateRepo()
-		time.Sleep(3 * time.Second)
-		log.OKf("Created repository: %s", cfg.BackendFullRepo)
+			ghBackend.CreateRepo()
+			time.Sleep(3 * time.Second)
+			log.OKf("Created repository: %s", cfg.BackendFullRepo)
+		} else {
+			ghSystem := gh.ForRepo(cfg.SystemFullRepo)
+			ghSystem.CreateRepo()
+			time.Sleep(3 * time.Second)
+			log.OKf("Created repository: %s", cfg.SystemFullRepo)
+		}
 	}
 }
 
@@ -70,12 +77,17 @@ func SetupSecretsAndVariables(cfg *config.Config, gh *shell.GitHub) {
 	if cfg.RepoStrategy == "multirepo" {
 		gh.SecretSet("GHCR_TOKEN", cfg.GHCRToken)
 
-		for _, fullRepo := range []string{cfg.FrontendFullRepo, cfg.BackendFullRepo} {
+		var componentRepos []string
+		if cfg.Arch == "multitier" {
+			componentRepos = []string{cfg.FrontendFullRepo, cfg.BackendFullRepo}
+		} else {
+			componentRepos = []string{cfg.SystemFullRepo}
+		}
+		for _, fullRepo := range componentRepos {
 			ghComp := gh.ForRepo(fullRepo)
 			ghComp.SecretSet("DOCKERHUB_TOKEN", cfg.DockerHubToken)
 			ghComp.SecretSet("SONAR_TOKEN", cfg.SonarToken)
 			ghComp.VariableSet("DOCKERHUB_USERNAME", cfg.DockerHubUsername)
-			// TODO: check if component repos need GHCR_TOKEN and SYSTEM_URL (Python version set these)
 		}
 		log.OK("Set secrets and variables on component repositories")
 	}
@@ -98,16 +110,24 @@ func CloneRepos(cfg *config.Config, gh *shell.GitHub) {
 	log.OKf("Cloned %s", cfg.FullRepo)
 
 	if cfg.RepoStrategy == "multirepo" {
-		frontendDir := filepath.Join(cfg.WorkDir, "repo-frontend")
-		backendDir := filepath.Join(cfg.WorkDir, "repo-backend")
+		if cfg.Arch == "multitier" {
+			frontendDir := filepath.Join(cfg.WorkDir, "repo-frontend")
+			backendDir := filepath.Join(cfg.WorkDir, "repo-backend")
 
-		gh.ForRepo(cfg.FrontendFullRepo).Clone(frontendDir)
-		cfg.FrontendRepoDir = frontendDir
-		log.OKf("Cloned %s", cfg.FrontendFullRepo)
+			gh.ForRepo(cfg.FrontendFullRepo).Clone(frontendDir)
+			cfg.FrontendRepoDir = frontendDir
+			log.OKf("Cloned %s", cfg.FrontendFullRepo)
 
-		gh.ForRepo(cfg.BackendFullRepo).Clone(backendDir)
-		cfg.BackendRepoDir = backendDir
-		log.OKf("Cloned %s", cfg.BackendFullRepo)
+			gh.ForRepo(cfg.BackendFullRepo).Clone(backendDir)
+			cfg.BackendRepoDir = backendDir
+			log.OKf("Cloned %s", cfg.BackendFullRepo)
+		} else {
+			systemDir := filepath.Join(cfg.WorkDir, "repo-system")
+
+			gh.ForRepo(cfg.SystemFullRepo).Clone(systemDir)
+			cfg.SystemRepoDir = systemDir
+			log.OKf("Cloned %s", cfg.SystemFullRepo)
+		}
 	}
 }
 
