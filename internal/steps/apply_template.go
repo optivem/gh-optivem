@@ -281,6 +281,22 @@ func fixupMultitierCrossLangSystem(repoDir, backendLang, testLang string) {
 	log.OKf("Cross-language fixup: %s -> %s", oldImage, newImage)
 }
 
+// fixupMonorepoWorkflowPaths replaces system/multitier/X paths with system/X in all workflows.
+func fixupMonorepoWorkflowPaths(repoDir, component string) {
+	wfDir := filepath.Join(repoDir, ".github", "workflows")
+	entries, err := os.ReadDir(wfDir)
+	if err != nil {
+		return
+	}
+	oldPath := "system/multitier/" + component
+	newPath := "system/" + component
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) == ".yml" {
+			files.ReplaceInFile(filepath.Join(wfDir, e.Name()), oldPath, newPath)
+		}
+	}
+}
+
 func itoa(n int) string {
 	return fmt.Sprintf("%d", n)
 }
