@@ -1,6 +1,7 @@
 name: Acceptance Stage
 
 on:
+  workflow_dispatch:
   workflow_run:
     workflows: ["Commit Stage"]
     types: [completed]

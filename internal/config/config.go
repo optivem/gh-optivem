@@ -28,6 +28,8 @@ type Config struct {
 	TestLang     string
 
 	DryRun     bool
+	TestMode   bool
+	Cleanup    string // "yes", "no", or "ask"
 	WorkDir    string
 	StarterPath string
 
@@ -92,6 +94,9 @@ func ParseAndValidate() *Config {
 	frontendLang := flag.String("frontend-lang", "", "Frontend language: react (multitier)")
 	randomSuffix := flag.Bool("random-suffix", false, "Append 4-char hex suffix to repo name")
 	dryRun := flag.Bool("dry-run", false, "Print actions without executing")
+	testMode := flag.Bool("test", false, "Test mode with optional cleanup")
+	cleanupFlag := flag.Bool("cleanup", false, "Auto-cleanup in test mode")
+	noCleanup := flag.Bool("no-cleanup", false, "Keep repo in test mode")
 	workDir := flag.String("workdir", "", "Working directory for cloning (default: temp dir)")
 
 	flag.Parse()
@@ -255,6 +260,8 @@ func ParseAndValidate() *Config {
 		TestLang:     cfgTestLang,
 
 		DryRun:     *dryRun,
+		TestMode:   *testMode,
+		Cleanup:    resolveCleanup(*cleanupFlag, *noCleanup),
 		WorkDir:    wd,
 		StarterPath: starterPath,
 
@@ -280,6 +287,16 @@ func ParseAndValidate() *Config {
 		FrontendFullRepo: frontendFullRepo,
 		BackendFullRepo:  backendFullRepo,
 	}
+}
+
+func resolveCleanup(cleanup, noCleanup bool) string {
+	if cleanup {
+		return "yes"
+	}
+	if noCleanup {
+		return "no"
+	}
+	return "ask"
 }
 
 // EffectiveLang returns the primary system language (lang for monolith, backend-lang for multitier).
