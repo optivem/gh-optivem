@@ -68,6 +68,14 @@ func applyMonolithMonorepo(cfg *config.Config) {
 		filepath.Join(repoDir, "system"),
 	)
 
+	// External system simulators (needed for system test docker-compose)
+	for _, dir := range []string{"external-real-sim", "external-stub"} {
+		src := filepath.Join(starter, "system", dir)
+		if _, err := os.Stat(src); err == nil {
+			files.CopyDir(src, filepath.Join(repoDir, dir))
+		}
+	}
+
 	// System tests: system-test/{testLang}/ -> system-test/
 	testDst := filepath.Join(repoDir, "system-test")
 	files.CopyDir(filepath.Join(starter, "system-test", testLang), testDst)
@@ -107,6 +115,14 @@ func applyMonolithMultirepo(cfg *config.Config) {
 		"monolith-" + testLang + "-prod-stage.yml":       "prod-stage.yml",
 	}
 	templates.CopyWorkflows(rootWfMap, starter, repoDir)
+
+	// External system simulators
+	for _, dir := range []string{"external-real-sim", "external-stub"} {
+		src := filepath.Join(starter, "system", dir)
+		if _, err := os.Stat(src); err == nil {
+			files.CopyDir(src, filepath.Join(repoDir, dir))
+		}
+	}
 
 	testDst := filepath.Join(repoDir, "system-test")
 	files.CopyDir(filepath.Join(starter, "system-test", testLang), testDst)
@@ -366,6 +382,9 @@ func monolithDockerComposeReplacements(lang, testLang string) [][2]string {
 		{"system-test/" + testLang + "/", "system-test/"},
 		{"system-test/" + testLang, "system-test"},
 		{"monolith-system-" + lang, "system"},
+		// Volume mount paths: old layout had system-test/{lang}/, new has system-test/
+		{"../../system/external-real-sim", "../external-real-sim"},
+		{"../../system/external-stub", "../external-stub"},
 	}
 	if lang != testLang {
 		r = append(r, [2]string{"monolith-system-" + testLang, "system"})
@@ -406,6 +425,9 @@ func multitierDockerComposeReplacements(backendLang, frontendLang, testLang stri
 		{"system-test/" + testLang, "system-test"},
 		{"multitier-backend-" + backendLang, "backend"},
 		{"multitier-frontend-" + frontendLang, "frontend"},
+		// Volume mount paths: old layout had system-test/{lang}/, new has system-test/
+		{"../../system/external-real-sim", "../external-real-sim"},
+		{"../../system/external-stub", "../external-stub"},
 	}
 	if backendLang != testLang {
 		r = append(r, [2]string{"multitier-backend-" + testLang, "backend"})

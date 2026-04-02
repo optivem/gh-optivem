@@ -63,6 +63,8 @@ Single repo with system code and tests together.
 ```
 {repo}/
   system/                    # from: system/monolith/{lang}/
+  external-real-sim/         # from: system/external-real-sim/
+  external-stub/             # from: system/external-stub/
   system-test/               # from: system-test/{testLang}/
   .github/workflows/
     commit-stage.yml         # from: monolith-{lang}-commit-stage.yml
@@ -81,6 +83,8 @@ Two repos: root repo (tests + pipeline stages) and monolith repo (system code + 
 **Root repo** (`{repo}/`):
 ```
 {repo}/
+  external-real-sim/         # from: system/external-real-sim/
+  external-stub/             # from: system/external-stub/
   system-test/               # from: system-test/{testLang}/
   .github/workflows/
     acceptance-stage.yml     # from: monolith-{testLang}-acceptance-stage.yml
@@ -91,9 +95,9 @@ Two repos: root repo (tests + pipeline stages) and monolith repo (system code + 
   README.md
 ```
 
-**Monolith repo** (`{monolith-repo}/`):
+**System repo** (`{system-repo}/`):
 ```
-{monolith-repo}/
+{system-repo}/
   system/                    # from: system/monolith/{lang}/
   .github/workflows/
     commit-stage.yml         # from: monolith-{lang}-commit-stage.yml
