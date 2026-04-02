@@ -49,7 +49,106 @@ func ReplaceRepoReferences(cfg *config.Config) {
 		}
 	}
 
+	// Replace "shop" in infrastructure files (docker-compose, DB config, PowerShell scripts)
+	// with the repo name. This is separate from system name replacement.
+	replaceInfraNames(cfg)
+
 	log.OK("Repository reference replacement complete")
+}
+
+// replaceInfraNames replaces the template infrastructure name "shop" with the repo name
+// in docker-compose files, DB config, application config, and test scripts.
+func replaceInfraNames(cfg *config.Config) {
+	repoKebab := cfg.Repo                                          // e.g. "sky-travel"
+	repoLower := strings.ReplaceAll(strings.ToLower(cfg.Repo), "-", "") // e.g. "skytravel"
+
+	// Collect all repo dirs
+	repoDirs := []string{cfg.RepoDir}
+	if cfg.RepoStrategy == "multirepo" {
+		if cfg.Arch == "multitier" {
+			repoDirs = append(repoDirs, cfg.BackendRepoDir, cfg.FrontendRepoDir)
+		} else {
+			repoDirs = append(repoDirs, cfg.SystemRepoDir)
+		}
+	}
+
+	for _, repoDir := range repoDirs {
+		if repoDir == "" {
+			continue
+		}
+
+		// Docker-compose project names: "shop-" -> "sky-travel-" (kebab)
+		n := 0
+		filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() || files.IsGitDir(path) {
+				return nil
+			}
+			if strings.Contains(info.Name(), "docker-compose") && strings.HasSuffix(info.Name(), ".yml") {
+				// Project name: "shop-monolith-real" -> "sky-travel-monolith-real"
+				if files.ReplaceInFile(path, "name: shop-", "name: "+repoKebab+"-") {
+					n++
+				}
+				// DB env vars in docker-compose
+				files.ReplaceInFile(path, "POSTGRES_DB=shop", "POSTGRES_DB="+repoLower)
+				files.ReplaceInFile(path, "POSTGRES_USER=shop_user", "POSTGRES_USER="+repoLower+"_user")
+				files.ReplaceInFile(path, "POSTGRES_PASSWORD=shop_password", "POSTGRES_PASSWORD="+repoLower+"_password")
+				files.ReplaceInFile(path, "POSTGRES_USER=shop\n", "POSTGRES_USER="+repoLower+"\n")
+				files.ReplaceInFile(path, "POSTGRES_PASSWORD=shop\n", "POSTGRES_PASSWORD="+repoLower+"\n")
+				files.ReplaceInFile(path, "pg_isready -U shop_user -d shop", "pg_isready -U "+repoLower+"_user -d "+repoLower)
+				files.ReplaceInFile(path, "pg_isready -U shop -d shop", "pg_isready -U "+repoLower+" -d "+repoLower)
+				// App DB env vars
+				files.ReplaceInFile(path, "POSTGRES_DB_NAME=shop", "POSTGRES_DB_NAME="+repoLower)
+				files.ReplaceInFile(path, "POSTGRES_DB_USER=shop_user", "POSTGRES_DB_USER="+repoLower+"_user")
+				files.ReplaceInFile(path, "POSTGRES_DB_PASSWORD=shop_password", "POSTGRES_DB_PASSWORD="+repoLower+"_password")
+			}
+			return nil
+		})
+		if n > 0 {
+			log.OKf("Infra: replaced docker-compose project names shop- -> %s- (%d files)", repoKebab, n)
+		}
+
+		// Application config DB defaults (application.yml, appsettings.json, .ts config)
+		filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() || files.IsGitDir(path) {
+				return nil
+			}
+			name := info.Name()
+			isAppConfig := strings.HasPrefix(name, "application") ||
+				strings.HasPrefix(name, "appsettings") ||
+				name == "db.ts" || name == "app.module.ts" || name == "app.config.ts"
+			if !isAppConfig {
+				return nil
+			}
+
+			// Java application.yml: POSTGRES_DB_NAME:shop
+			files.ReplaceInFile(path, "POSTGRES_DB_NAME:shop", "POSTGRES_DB_NAME:"+repoLower)
+			files.ReplaceInFile(path, "POSTGRES_DB_USER:shop_user", "POSTGRES_DB_USER:"+repoLower+"_user")
+			files.ReplaceInFile(path, "POSTGRES_DB_PASSWORD:shop_password", "POSTGRES_DB_PASSWORD:"+repoLower+"_password")
+			// .NET appsettings.json: Database=shop;Username=shop;Password=shop
+			files.ReplaceInFile(path, "Database=shop;Username=shop;Password=shop",
+				"Database="+repoLower+";Username="+repoLower+";Password="+repoLower)
+			// .NET Program.cs defaults: ?? "shop"
+			files.ReplaceInFile(path, `?? "shop"`, `?? "`+repoLower+`"`)
+			// TS defaults: 'shop', 'shop_user', 'shop_password'
+			files.ReplaceInFile(path, "'shop_user'", "'"+repoLower+"_user'")
+			files.ReplaceInFile(path, "'shop_password'", "'"+repoLower+"_password'")
+			files.ReplaceInFile(path, "'shop'", "'"+repoLower+"'")
+			return nil
+		})
+
+		// PowerShell test scripts: container names "shop-" -> repo kebab
+		filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() || files.IsGitDir(path) {
+				return nil
+			}
+			if strings.HasSuffix(info.Name(), ".ps1") {
+				files.ReplaceInFile(path, `"shop-`, `"`+repoKebab+`-`)
+			}
+			return nil
+		})
+	}
+
+	log.OK("Infra: replaced infrastructure names (docker-compose, DB config, scripts)")
 }
 
 func replaceRefsInRepo(repoDir, fullRepo, ownerLower string) {
@@ -317,58 +416,119 @@ func ReplaceSystemName(cfg *config.Config) {
 	log.OK("System name replacement complete")
 }
 
-func replaceSystemNameInRepo(cfg *config.Config, repoDir string) {
-	// For the template name "Shop", camelCase/kebab/lowercase are all "shop".
-	// We must replace in the right order and use context-aware filtering.
-	//
-	// Key insight: "shop" in Java files means camelCase (identifiers like shopUiBaseUrl),
-	// NOT lowercase (that's only for directory/package paths, handled by dir rename).
+// Source code extensions for system name replacement.
+// Excludes infrastructure files (docker-compose, application config, Dockerfiles, workflows).
+var sourceExts = []string{
+	".java", ".cs", ".cshtml", ".ts", ".tsx", ".js", ".jsx",
+	".gradle", ".gradle.kts", ".xml", ".properties",
+	".csproj", ".sln", ".slnx",
+}
 
-	// Pass 1: PascalCase content replacement (all text files)
-	n := files.ReplaceInTree(repoDir, cfg.SysNamePascalOld, cfg.SysNamePascalNew, textExts)
+// Test config extensions (JSON/YAML that contain system name as config keys).
+// These are test configuration files, NOT docker-compose or application config.
+var testConfigExts = []string{".json", ".yml", ".yaml"}
+
+func replaceSystemNameInRepo(cfg *config.Config, repoDir string) {
+	// IMPORTANT: System name replacement must NOT touch infrastructure files:
+	// - docker-compose*.yml (DB names, service names, image names)
+	// - application.yml / appsettings.json (DB credentials)
+	// - Dockerfiles
+	// - .github/workflows/*.yml
+	//
+	// It only touches source code files and test config files that reference
+	// the system name as config keys (e.g. "shop.frontendUrl").
+
+	// Pass 1: PascalCase in source files (ShopDsl -> SkyTravelDsl)
+	n := files.ReplaceInTree(repoDir, cfg.SysNamePascalOld, cfg.SysNamePascalNew, sourceExts)
 	log.OKf("System name: PascalCase %s -> %s (%d files)", cfg.SysNamePascalOld, cfg.SysNamePascalNew, n)
 
-	// Pass 2: "shop" in Java source files -> camelCase (e.g. shopUiBaseUrl -> skyTravelUiBaseUrl)
-	javaExts := []string{".java"}
-	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameCamelNew, javaExts)
-	log.OKf("System name: Java camel %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
-
-	// Pass 3: "shop" in Java build files -> lowercase (e.g. package paths in gradle/xml)
-	javaBuildExts := []string{".gradle", ".gradle.kts", ".xml", ".properties"}
-	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameLowerNew, javaBuildExts)
-	log.OKf("System name: Java build %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameLowerNew, n)
-
-	// Pass 4: "shop" in .NET config and C# files -> camelCase (e.g. config keys, identifiers)
-	dotnetExts := []string{".cs", ".json", ".csproj", ".sln", ".slnx"}
-	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameCamelNew, dotnetExts)
-	log.OKf("System name: .NET %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
-
-	// Pass 5: "shop" in TS/HTML/YAML files -> kebab-case (e.g. imports, routes, config)
-	tsExts := []string{".ts", ".tsx", ".js", ".jsx", ".html", ".cshtml", ".yml", ".yaml"}
-	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameKebabNew, tsExts)
-	log.OKf("System name: TS/HTML kebab %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameKebabNew, n)
-
-	// Pass 6: "shop" in Dockerfiles -> kebab-case
-	n = files.ReplaceInDockerfiles(repoDir, cfg.SysNameCamelOld, cfg.SysNameKebabNew)
+	// Pass 2: PascalCase in test config files (avoid docker-compose/application config)
+	n = replaceInTestConfigs(repoDir, cfg.SysNamePascalOld, cfg.SysNamePascalNew)
 	if n > 0 {
-		log.OKf("System name: Dockerfiles %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameKebabNew, n)
+		log.OKf("System name: PascalCase in test configs (%d files)", n)
 	}
 
-	// Pass 7: Rename files (PascalCase: ShopDsl.java -> SkyTravelDsl.java)
+	// Pass 3: "shop" in Java source files -> camelCase (shopUiBaseUrl -> skyTravelUiBaseUrl)
+	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameCamelNew, []string{".java"})
+	log.OKf("System name: Java camel %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
+
+	// Pass 4: "shop" in Java build files -> lowercase (package paths)
+	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameLowerNew, []string{".gradle", ".gradle.kts", ".xml", ".properties"})
+	log.OKf("System name: Java build %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameLowerNew, n)
+
+	// Pass 5: "shop" in .NET files -> camelCase (config keys, identifiers)
+	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameCamelNew, []string{".cs", ".csproj", ".sln", ".slnx"})
+	log.OKf("System name: .NET %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
+
+	// Pass 6: "shop" in .NET test config (appsettings) -> camelCase
+	n = replaceInTestConfigs(repoDir, cfg.SysNameCamelOld, cfg.SysNameCamelNew)
+	if n > 0 {
+		log.OKf("System name: test config keys %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
+	}
+
+	// Pass 7: "shop" in TS/HTML/cshtml source files -> kebab-case (imports, routes)
+	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameKebabNew, []string{".ts", ".tsx", ".js", ".jsx", ".html", ".cshtml"})
+	log.OKf("System name: TS/HTML kebab %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameKebabNew, n)
+
+	// Pass 8: Rename files (PascalCase: ShopDsl.java -> SkyTravelDsl.java)
 	n = files.RenameFilesInTree(repoDir, cfg.SysNamePascalOld, cfg.SysNamePascalNew)
 	log.OKf("System name: renamed %d PascalCase files", n)
 
-	// Pass 8: Rename files (kebab-case: shop-api-driver.ts -> sky-travel-api-driver.ts)
+	// Pass 9: Rename files (kebab-case: shop-api-driver.ts -> sky-travel-api-driver.ts)
 	n = files.RenameFilesInTree(repoDir, cfg.SysNameKebabOld, cfg.SysNameKebabNew)
 	log.OKf("System name: renamed %d kebab files", n)
 
-	// Pass 9: Rename directories (PascalCase: Shop/ -> SkyTravel/)
+	// Pass 10: Rename directories (PascalCase: Shop/ -> SkyTravel/)
 	n = files.RenameDirsInTree(repoDir, cfg.SysNamePascalOld, cfg.SysNamePascalNew)
 	log.OKf("System name: renamed %d PascalCase directories", n)
 
-	// Pass 10: Rename directories (lowercase: shop/ -> skytravel/ for Java package paths)
+	// Pass 11: Rename directories (lowercase: shop/ -> skytravel/ for Java package paths)
 	n = files.RenameDirsInTree(repoDir, cfg.SysNameLowerOld, cfg.SysNameLowerNew)
 	log.OKf("System name: renamed %d lowercase directories", n)
+}
+
+// replaceInTestConfigs replaces in JSON/YAML files that are test configs,
+// skipping docker-compose, application config, appsettings, and workflow files.
+func replaceInTestConfigs(repoDir, old, new string) int {
+	count := 0
+	filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || files.IsGitDir(path) {
+			return nil
+		}
+		name := info.Name()
+		// Skip infrastructure files
+		if strings.Contains(name, "docker-compose") {
+			return nil
+		}
+		if strings.HasPrefix(name, "application") {
+			return nil
+		}
+		if strings.HasPrefix(name, "appsettings") {
+			return nil
+		}
+		if strings.Contains(path, ".github") {
+			return nil
+		}
+		if name == "package.json" || name == "package-lock.json" {
+			return nil
+		}
+		// Only process JSON/YAML test config files
+		isConfig := false
+		for _, ext := range testConfigExts {
+			if strings.HasSuffix(name, ext) {
+				isConfig = true
+				break
+			}
+		}
+		if !isConfig {
+			return nil
+		}
+		if files.ReplaceInFile(path, old, new) {
+			count++
+		}
+		return nil
+	})
+	return count
 }
 
 func fixupFrontendPackageJSON(cfg *config.Config) {

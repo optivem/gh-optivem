@@ -56,6 +56,7 @@ func main() {
 		{"Verify QA stage", func() { steps.VerifyQAStage(cfg, gh) }},
 		{"Verify QA signoff", func() { steps.VerifyQASignoff(cfg, gh) }},
 		{"Verify production stage", func() { steps.VerifyProdStage(cfg, gh) }},
+		{"Print project registration", func() { steps.PrintRegistration(cfg) }},
 	}
 
 	errors := 0
