@@ -45,12 +45,10 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Authenticate gh CLI
-        run: gh auth login --with-token <<< "${{ secrets.VERIFY_TOKEN }}"
-
       - name: System tests (representative subset)
         run: bash scripts/test-system.sh
         env:
+          GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
           TEST_OWNER: ${{ vars.TEST_OWNER }}
           DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
