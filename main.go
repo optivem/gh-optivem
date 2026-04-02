@@ -87,7 +87,10 @@ func main() {
 	}
 	fmt.Println()
 
-	// Cleanup (test mode only)
+	// Cleanup (test mode only) — skip on failure so repo can be inspected
+	if errors > 0 {
+		cfg.Cleanup = "no"
+	}
 	steps.Cleanup(cfg, gh, sc)
 
 	if errors > 0 {
