@@ -95,6 +95,9 @@ func applyMonolithMonorepo(cfg *config.Config) {
 		fixupPortMapping(repoDir, lang, testLang)
 	}
 
+	// Docs templates
+	copyDocs(starter, repoDir, "monolith")
+
 	log.OK("Applied template files (monolith monorepo)")
 }
 
@@ -141,6 +144,9 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	if lang != testLang {
 		fixupPortMapping(repoDir, lang, testLang)
 	}
+
+	// Docs templates
+	copyDocs(starter, repoDir, "monolith")
 
 	// Fix multirepo image URLs and tokens
 	templates.FixupMonolithMultirepoImageURLs(repoDir, cfg.SystemRepo)
@@ -237,6 +243,9 @@ func applyMultitierMonorepo(cfg *config.Config) {
 		fixupMultitierPortMapping(repoDir, backendLang, testLang)
 	}
 
+	// Docs templates
+	copyDocs(starter, repoDir, "multitier")
+
 	log.OK("Applied template files (multitier monorepo)")
 }
 
@@ -285,6 +294,9 @@ func applyMultitierMultirepo(cfg *config.Config) {
 
 	// Fix SonarCloud key suffixes in build files
 	templates.FixupAllTextFiles(repoDir, multitierSonarKeyReplacements(backendLang, frontendLang))
+
+	// Docs templates
+	copyDocs(starter, repoDir, "multitier")
 
 	// Fix multirepo image URLs and tokens
 	templates.FixupMultirepoImageURLs(repoDir, cfg.FrontendRepo, cfg.BackendRepo)
@@ -493,6 +505,13 @@ func fixupMultitierPortMapping(repoDir, backendLang, testLang string) {
 		}
 	}
 	log.OKf("Port fixup: %d -> %d", templatePort, systemPort)
+}
+
+// copyDocs copies arch-specific and shared docs templates into {repoDir}/docs/.
+func copyDocs(starter, repoDir, arch string) {
+	dst := filepath.Join(repoDir, "docs")
+	files.CopyDir(filepath.Join(starter, "docs", arch), dst)
+	files.CopyDir(filepath.Join(starter, "docs", "shared"), dst)
 }
 
 func itoa(n int) string {

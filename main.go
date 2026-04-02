@@ -81,8 +81,10 @@ func main() {
 		log.OK("All steps passed!")
 	}
 	fmt.Println()
+	fmt.Printf("  System:     %s\n", cfg.SystemName)
 	fmt.Printf("  Repository: https://github.com/%s\n", cfg.FullRepo)
 	fmt.Printf("  Actions:    https://github.com/%s/actions\n", cfg.FullRepo)
+	fmt.Printf("  Docs:       %s/docs/\n", cfg.RepoDir)
 	if cfg.RepoStrategy == "multirepo" {
 		if cfg.Arch == "multitier" {
 			fmt.Printf("  Backend:    https://github.com/%s\n", cfg.BackendFullRepo)
