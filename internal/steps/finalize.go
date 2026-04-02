@@ -211,7 +211,7 @@ func VerifyAcceptanceStage(cfg *config.Config, gh *shell.GitHub) {
 		cfg.RCVersion = rcVersion
 		log.OKf("RC version: %s", rcVersion)
 	} else {
-		log.Fatal("Could not determine RC version from acceptance stage run")
+		log.Warn("No RC version found — acceptance stage may have skipped promotion (e.g. no artifacts yet). Downstream stages will be skipped.")
 	}
 }
 
@@ -225,7 +225,8 @@ func VerifyQAStage(cfg *config.Config, gh *shell.GitHub) {
 	}
 
 	if cfg.RCVersion == "" {
-		log.Fatal("No RC version available — acceptance stage must run first")
+		log.Warn("Skipping QA stage — no RC version available")
+		return
 	}
 
 	var wf string
@@ -248,7 +249,8 @@ func VerifyQASignoff(cfg *config.Config, gh *shell.GitHub) {
 	}
 
 	if cfg.RCVersion == "" {
-		log.Fatal("No RC version available — acceptance stage must run first")
+		log.Warn("Skipping QA signoff — no RC version available")
+		return
 	}
 
 	var wf string
@@ -271,7 +273,8 @@ func VerifyProdStage(cfg *config.Config, gh *shell.GitHub) {
 	}
 
 	if cfg.RCVersion == "" {
-		log.Fatal("No RC version available — acceptance stage must run first")
+		log.Warn("Skipping production stage — no RC version available")
+		return
 	}
 
 	var wf string

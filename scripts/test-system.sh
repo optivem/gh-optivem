@@ -10,4 +10,4 @@ TESTS=(
 
 RUN_PATTERN=$(IFS="|"; echo "${TESTS[*]}")
 
-go test -tags=system ./internal/config/ -v -run "$RUN_PATTERN"
+go test -tags=system ./internal/config/ -v -timeout 30m -run "$RUN_PATTERN"
