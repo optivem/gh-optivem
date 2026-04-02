@@ -193,6 +193,19 @@ func FixupDockerComposeContent(repoDir string, replacements [][2]string) {
 	})
 }
 
+// FixupAllTextFiles applies replacements across all text files in a repo (not just workflows).
+// Used for SonarCloud key suffix changes that appear in build files (build.gradle, .csproj, etc.).
+func FixupAllTextFiles(repoDir string, replacements [][2]string) {
+	textExts := []string{
+		".yml", ".yaml", ".gradle", ".gradle.kts",
+		".csproj", ".sln", ".slnx", ".json",
+		".xml", ".properties", ".cfg", ".txt",
+	}
+	for _, r := range replacements {
+		files.ReplaceInTree(repoDir, r[0], r[1], textExts)
+	}
+}
+
 // FixupCommitStageForStandalone adapts a commit stage workflow for a standalone component repo.
 // componentDir is the destination folder in the repo (e.g. "backend", "frontend", "system").
 func FixupCommitStageForStandalone(repoDir, componentDir string) {

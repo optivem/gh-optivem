@@ -29,8 +29,8 @@ starter/
     monolith-{testLang}-qa-signoff.yml
     monolith-{testLang}-prod-stage.yml
     monolith-{lang}-verify.yml
-    multitier-backend-{lang}-commit-stage.yml
-    multitier-frontend-{lang}-commit-stage.yml
+    multitier-backend-{backendLang}-commit-stage.yml
+    multitier-frontend-{frontendLang}-commit-stage.yml
     multitier-{testLang}-acceptance-stage.yml
     multitier-{testLang}-qa-stage.yml
     multitier-{testLang}-qa-signoff.yml
@@ -106,11 +106,11 @@ Single repo with backend, frontend, and tests together.
 
 ```
 {repo}/
-  backend/                   # from: system/multitier/backend-{backendLang}/
-  frontend/                  # from: system/multitier/frontend-{frontendLang}/
-  external-real-sim/         # from: system/external-real-sim/
-  external-stub/             # from: system/external-stub/
-  system-test/               # from: system-test/{testLang}/
+  backend/                     # from: system/multitier/backend-{backendLang}/
+  frontend/                    # from: system/multitier/frontend-{frontendLang}/
+  external-real-sim/           # from: system/external-real-sim/
+  external-stub/               # from: system/external-stub/
+  system-test/                 # from: system-test/{testLang}/
   .github/workflows/
     backend-commit-stage.yml   # from: multitier-backend-{backendLang}-commit-stage.yml
     frontend-commit-stage.yml  # from: multitier-frontend-{frontendLang}-commit-stage.yml
@@ -174,9 +174,13 @@ GHCR URLs become: `ghcr.io/{owner}/{repo}/system`, `ghcr.io/{owner}/{repo}/backe
 ## Workflow Content Changes
 
 Inside copied workflows, replace:
+- Workflow names: `monolith-{lang}-commit-stage` -> `commit-stage`, `multitier-{testLang}-acceptance-stage` -> `acceptance-stage`, etc.
 - Working directory paths: `system/multitier/backend-{lang}` -> `backend`, `system/monolith/{lang}` -> `system`, etc.
-- Docker image references: use new image names (see above)
-- `system-test/{testLang}/` -> `system-test/`
+- Docker image names: `monolith-system-{lang}` -> `system`, `multitier-backend-{lang}` -> `backend`, `multitier-frontend-{lang}` -> `frontend`
+- System test paths: `system-test/{testLang}/` -> `system-test/`
+- SonarCloud key suffixes: `-monolith-{lang}` -> `-system`, `-multitier-backend-{lang}` -> `-backend`, `-multitier-frontend-{lang}` -> `-frontend`
+- Path filters and self-references: `.github/workflows/{old-name}.yml` -> `.github/workflows/{new-name}.yml`
+- Concurrency groups: `{old-name}-${{ github.ref }}` -> `{new-name}-${{ github.ref }}`
 
 ## README
 

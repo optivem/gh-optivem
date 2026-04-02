@@ -74,10 +74,13 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	templates.SelectDockerCompose(testDst, "single")
 	templates.CopyVersion(starter, repoDir)
 
-	// Fix workflow content: paths and image names
+	// Fix workflow content: paths, image names, workflow names
 	contentReplacements := monolithContentReplacements(lang, testLang)
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, monolithDockerComposeReplacements(lang, testLang))
+
+	// Fix SonarCloud key suffixes in build files (build.gradle, .csproj, etc.)
+	templates.FixupAllTextFiles(repoDir, monolithSonarKeyReplacements(lang))
 
 	// Cross-language port fixup
 	if lang != testLang {
@@ -115,6 +118,9 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, monolithDockerComposeReplacements(lang, testLang))
 
+	// Fix SonarCloud key suffixes in build files
+	templates.FixupAllTextFiles(repoDir, monolithSonarKeyReplacements(lang))
+
 	// Cross-language port fixup
 	if lang != testLang {
 		fixupPortMapping(repoDir, lang, testLang)
@@ -146,12 +152,14 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	}
 	templates.CopyWorkflows(systemWfMap, starter, systemDir)
 
-	// Fix system repo workflow content: system/ -> . (standalone)
+	// Fix system repo workflow content
 	sysContentReplacements := [][2]string{
+		{"monolith-" + lang + "-commit-stage", "commit-stage"},
 		{"system/monolith/" + lang, "."},
 		{"monolith-system-" + lang, "system"},
 	}
 	templates.FixupWorkflowContent(systemDir, sysContentReplacements)
+	templates.FixupAllTextFiles(systemDir, monolithSonarKeyReplacements(lang))
 	templates.FixupCommitStageForStandalone(systemDir, ".")
 	log.OK("Applied system repo template (monolith multirepo)")
 }
@@ -167,12 +175,12 @@ func applyMultitierMonorepo(cfg *config.Config) {
 
 	// Workflows: rename to language-agnostic names
 	wfMap := map[string]string{
-		"multitier-backend-" + backendLang + "-commit-stage.yml":   "backend-commit-stage.yml",
+		"multitier-backend-" + backendLang + "-commit-stage.yml":  "backend-commit-stage.yml",
 		"multitier-frontend-" + frontendLang + "-commit-stage.yml": "frontend-commit-stage.yml",
-		"multitier-system-" + testLang + "-acceptance-stage.yml":   "acceptance-stage.yml",
-		"multitier-system-" + testLang + "-qa-stage.yml":           "qa-stage.yml",
-		"multitier-system-" + testLang + "-qa-signoff.yml":         "qa-signoff.yml",
-		"multitier-system-" + testLang + "-prod-stage.yml":         "prod-stage.yml",
+		"multitier-" + testLang + "-acceptance-stage.yml":          "acceptance-stage.yml",
+		"multitier-" + testLang + "-qa-stage.yml":                  "qa-stage.yml",
+		"multitier-" + testLang + "-qa-signoff.yml":                "qa-signoff.yml",
+		"multitier-" + testLang + "-prod-stage.yml":                "prod-stage.yml",
 	}
 	templates.CopyWorkflows(wfMap, starter, repoDir)
 
@@ -205,6 +213,9 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, multitierDockerComposeReplacements(backendLang, frontendLang, testLang))
 
+	// Fix SonarCloud key suffixes in build files
+	templates.FixupAllTextFiles(repoDir, multitierSonarKeyReplacements(backendLang, frontendLang))
+
 	// Cross-language port fixup
 	if backendLang != testLang {
 		fixupMultitierPortMapping(repoDir, backendLang, testLang)
@@ -226,10 +237,10 @@ func applyMultitierMultirepo(cfg *config.Config) {
 
 	// Root repo: pipeline stage workflows + system-test + externals
 	rootWfMap := map[string]string{
-		"multitier-system-" + testLang + "-acceptance-stage.yml": "acceptance-stage.yml",
-		"multitier-system-" + testLang + "-qa-stage.yml":         "qa-stage.yml",
-		"multitier-system-" + testLang + "-qa-signoff.yml":       "qa-signoff.yml",
-		"multitier-system-" + testLang + "-prod-stage.yml":       "prod-stage.yml",
+		"multitier-" + testLang + "-acceptance-stage.yml": "acceptance-stage.yml",
+		"multitier-" + testLang + "-qa-stage.yml":         "qa-stage.yml",
+		"multitier-" + testLang + "-qa-signoff.yml":       "qa-signoff.yml",
+		"multitier-" + testLang + "-prod-stage.yml":       "prod-stage.yml",
 	}
 	templates.CopyWorkflows(rootWfMap, starter, repoDir)
 
@@ -256,6 +267,9 @@ func applyMultitierMultirepo(cfg *config.Config) {
 		fixupMultitierPortMapping(repoDir, backendLang, testLang)
 	}
 
+	// Fix SonarCloud key suffixes in build files
+	templates.FixupAllTextFiles(repoDir, multitierSonarKeyReplacements(backendLang, frontendLang))
+
 	// Fix multirepo image URLs and tokens
 	templates.FixupMultirepoImageURLs(repoDir, cfg.FrontendRepo, cfg.BackendRepo)
 	templates.FixupMultirepoToken(repoDir)
@@ -281,10 +295,12 @@ func applyMultitierMultirepo(cfg *config.Config) {
 
 	// Fix backend workflow content
 	backendReplacements := [][2]string{
+		{"multitier-backend-" + backendLang + "-commit-stage", "backend-commit-stage"},
 		{"system/multitier/backend-" + backendLang, "."},
 		{"multitier-backend-" + backendLang, "backend"},
 	}
 	templates.FixupWorkflowContent(backendDir, backendReplacements)
+	templates.FixupAllTextFiles(backendDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 	templates.FixupCommitStageForStandalone(backendDir, ".")
 	log.OK("Applied backend repo template")
 
@@ -308,10 +324,12 @@ func applyMultitierMultirepo(cfg *config.Config) {
 
 	// Fix frontend workflow content
 	frontendReplacements := [][2]string{
+		{"multitier-frontend-" + frontendLang + "-commit-stage", "frontend-commit-stage"},
 		{"system/multitier/frontend-" + frontendLang, "."},
 		{"multitier-frontend-" + frontendLang, "frontend"},
 	}
 	templates.FixupWorkflowContent(frontendDir, frontendReplacements)
+	templates.FixupAllTextFiles(frontendDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 	templates.FixupCommitStageForStandalone(frontendDir, ".")
 	log.OK("Applied frontend repo template")
 }
@@ -321,6 +339,13 @@ func applyMultitierMultirepo(cfg *config.Config) {
 // monolithContentReplacements returns workflow content replacements for monolith.
 func monolithContentReplacements(lang, testLang string) [][2]string {
 	r := [][2]string{
+		// Workflow names (longer patterns first to avoid partial matches)
+		{"monolith-" + lang + "-commit-stage", "commit-stage"},
+		{"monolith-" + testLang + "-acceptance-stage", "acceptance-stage"},
+		{"monolith-" + testLang + "-qa-stage", "qa-stage"},
+		{"monolith-" + testLang + "-qa-signoff", "qa-signoff"},
+		{"monolith-" + testLang + "-prod-stage", "prod-stage"},
+		{"monolith-" + testLang + "-verify", "verify"},
 		// Working directory
 		{"system/monolith/" + lang, "system"},
 		// System-test path
@@ -328,11 +353,8 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 		{"system-test/" + testLang, "system-test"},
 		// Docker image names
 		{"monolith-system-" + lang, "system"},
-		// SonarCloud project key suffix
-		{"-monolith-" + lang, "-system"},
 	}
 	if lang != testLang {
-		// In cross-language setup, test workflows reference the test language's image name
 		r = append(r, [2]string{"monolith-system-" + testLang, "system"})
 	}
 	return r
@@ -354,13 +376,20 @@ func monolithDockerComposeReplacements(lang, testLang string) [][2]string {
 // multitierContentReplacements returns workflow content replacements for multitier.
 func multitierContentReplacements(backendLang, frontendLang, testLang string) [][2]string {
 	r := [][2]string{
-		// Working directories
+		// Workflow names for pipeline stages (longer patterns first)
+		{"multitier-" + testLang + "-acceptance-stage", "acceptance-stage"},
+		{"multitier-" + testLang + "-qa-stage", "qa-stage"},
+		{"multitier-" + testLang + "-qa-signoff", "qa-signoff"},
+		{"multitier-" + testLang + "-prod-stage", "prod-stage"},
+		{"multitier-" + testLang + "-verify", "verify"},
+		// Working directories (these also transform commit stage workflow names:
+		// multitier-backend-{lang}-commit-stage -> backend-commit-stage, etc.)
 		{"system/multitier/backend-" + backendLang, "backend"},
 		{"system/multitier/frontend-" + frontendLang, "frontend"},
 		// System-test path
 		{"system-test/" + testLang + "/", "system-test/"},
 		{"system-test/" + testLang, "system-test"},
-		// Docker image names
+		// Docker image names (also transforms remaining workflow name references)
 		{"multitier-backend-" + backendLang, "backend"},
 		{"multitier-frontend-" + frontendLang, "frontend"},
 	}
@@ -382,6 +411,22 @@ func multitierDockerComposeReplacements(backendLang, frontendLang, testLang stri
 		r = append(r, [2]string{"multitier-backend-" + testLang, "backend"})
 	}
 	return r
+}
+
+// monolithSonarKeyReplacements returns SonarCloud key suffix replacements for monolith.
+// Applied to all text files (build.gradle, .csproj, etc.), not just workflows.
+func monolithSonarKeyReplacements(lang string) [][2]string {
+	return [][2]string{
+		{"-monolith-" + lang, "-system"},
+	}
+}
+
+// multitierSonarKeyReplacements returns SonarCloud key suffix replacements for multitier.
+func multitierSonarKeyReplacements(backendLang, frontendLang string) [][2]string {
+	return [][2]string{
+		{"-multitier-backend-" + backendLang, "-backend"},
+		{"-multitier-frontend-" + frontendLang, "-frontend"},
+	}
 }
 
 // fixupPortMapping fixes Docker port mapping when system language != test language (monolith).
