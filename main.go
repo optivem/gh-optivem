@@ -45,6 +45,7 @@ func main() {
 		{"Apply template", func() { steps.ApplyTemplate(cfg) }},
 		{"Replace repository references", func() { steps.ReplaceRepoReferences(cfg) }},
 		{"Replace namespaces", func() { steps.ReplaceNamespaces(cfg) }},
+		{"Replace system name", func() { steps.ReplaceSystemName(cfg) }},
 		{"Update README", func() { steps.UpdateReadme(cfg) }},
 		{"Create SonarCloud projects", func() { steps.CreateSonarCloudProjects(cfg, sc) }},
 		{"Commit and push", func() { steps.CommitAndPush(cfg) }},

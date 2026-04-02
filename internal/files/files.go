@@ -137,6 +137,51 @@ func RenameDotnetFiles(root, oldPrefix, newPrefix string) {
 	})
 }
 
+// RenameFilesInTree renames files containing old in their name to new.
+func RenameFilesInTree(root, old, new string) int {
+	count := 0
+	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || IsGitDir(path) {
+			return nil
+		}
+		if strings.Contains(info.Name(), old) {
+			newName := strings.ReplaceAll(info.Name(), old, new)
+			newPath := filepath.Join(filepath.Dir(path), newName)
+			os.Rename(path, newPath)
+			count++
+		}
+		return nil
+	})
+	return count
+}
+
+// RenameDirsInTree renames directories containing old in their name to new.
+// Walks bottom-up to avoid renaming parent before child.
+func RenameDirsInTree(root, old, new string) int {
+	// Collect dirs to rename (deepest first)
+	var dirs []string
+	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || !info.IsDir() || IsGitDir(path) {
+			return nil
+		}
+		if strings.Contains(info.Name(), old) {
+			dirs = append(dirs, path)
+		}
+		return nil
+	})
+	// Rename deepest first
+	count := 0
+	for i := len(dirs) - 1; i >= 0; i-- {
+		dir := dirs[i]
+		newName := strings.ReplaceAll(filepath.Base(dir), old, new)
+		newPath := filepath.Join(filepath.Dir(dir), newName)
+		if err := os.Rename(dir, newPath); err == nil {
+			count++
+		}
+	}
+	return count
+}
+
 // CopyDir recursively copies a directory tree.
 func CopyDir(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {

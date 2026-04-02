@@ -333,6 +333,105 @@ func TestSonarProjectKeys(t *testing.T) {
 	}
 }
 
+func TestSplitCamelCase(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []string
+	}{
+		{"single lowercase word", "todo", []string{"todo"}},
+		{"camelCase two words", "skyTravel", []string{"sky", "Travel"}},
+		{"camelCase single-char first", "eShop", []string{"e", "Shop"}},
+		{"camelCase three words", "eSuperStore", []string{"e", "Super", "Store"}},
+		{"PascalCase", "SkyTravel", []string{"Sky", "Travel"}},
+		{"all uppercase acronym", "ABC", []string{"ABC"}},
+		{"acronym then word", "ABCStore", []string{"ABC", "Store"}},
+		{"word then acronym then word", "myAPIClient", []string{"my", "API", "Client"}},
+		{"single char", "a", []string{"a"}},
+		{"empty", "", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := SplitCamelCase(tt.input)
+			if len(got) != len(tt.expected) {
+				t.Fatalf("SplitCamelCase(%q) = %v, want %v", tt.input, got, tt.expected)
+			}
+			for i := range got {
+				if got[i] != tt.expected[i] {
+					t.Errorf("SplitCamelCase(%q)[%d] = %q, want %q", tt.input, i, got[i], tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
+func TestCamelCaseToPascal(t *testing.T) {
+	tests := []struct {
+		input, expected string
+	}{
+		{"skyTravel", "SkyTravel"},
+		{"eShop", "EShop"},
+		{"todo", "Todo"},
+		{"ABC", "ABC"},
+		{"ABCStore", "ABCStore"},
+		{"myAPIClient", "MyAPIClient"},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := CamelCaseToPascal(tt.input)
+			if got != tt.expected {
+				t.Errorf("CamelCaseToPascal(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestCamelCaseToKebab(t *testing.T) {
+	tests := []struct {
+		input, expected string
+	}{
+		{"skyTravel", "sky-travel"},
+		{"eShop", "e-shop"},
+		{"todo", "todo"},
+		{"ABC", "abc"},
+		{"ABCStore", "abc-store"},
+		{"myAPIClient", "my-api-client"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := CamelCaseToKebab(tt.input)
+			if got != tt.expected {
+				t.Errorf("CamelCaseToKebab(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestCamelCaseToLower(t *testing.T) {
+	tests := []struct {
+		input, expected string
+	}{
+		{"skyTravel", "skytravel"},
+		{"eShop", "eshop"},
+		{"todo", "todo"},
+		{"ABC", "abc"},
+		{"ABCStore", "abcstore"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := CamelCaseToLower(tt.input)
+			if got != tt.expected {
+				t.Errorf("CamelCaseToLower(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
 // helpers for test logic
 func contains(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {

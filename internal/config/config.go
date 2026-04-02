@@ -54,6 +54,16 @@ type Config struct {
 	TsPkgOld    string
 	TsPkgNew    string
 
+	// System name casing variants (template -> user)
+	SysNamePascalOld string // "Shop"
+	SysNamePascalNew string // "SkyTravel"
+	SysNameCamelOld  string // "shop"
+	SysNameCamelNew  string // "skyTravel"
+	SysNameKebabOld  string // "shop"
+	SysNameKebabNew  string // "sky-travel"
+	SysNameLowerOld  string // "shop"
+	SysNameLowerNew  string // "skytravel"
+
 	// Multi-repo (multitier)
 	FrontendRepo     string
 	BackendRepo      string
@@ -87,6 +97,65 @@ func ToPascalCase(s string) string {
 
 func ToJavaLower(s string) string {
 	return strings.ToLower(strings.ReplaceAll(s, "-", ""))
+}
+
+// SplitCamelCase splits a camelCase or PascalCase string into words.
+// Consecutive uppercase letters are treated as an acronym.
+// Examples: "skyTravel" -> ["sky", "Travel"], "ABCStore" -> ["ABC", "Store"],
+// "myAPIClient" -> ["my", "API", "Client"], "eShop" -> ["e", "Shop"]
+func SplitCamelCase(s string) []string {
+	if len(s) == 0 {
+		return nil
+	}
+	var words []string
+	start := 0
+	for i := 1; i < len(s); i++ {
+		if isUpper(s[i]) {
+			if !isUpper(s[i-1]) {
+				// lowercase -> uppercase: split before i
+				words = append(words, s[start:i])
+				start = i
+			} else if i+1 < len(s) && !isUpper(s[i+1]) {
+				// uppercase -> lowercase after acronym: split before i
+				words = append(words, s[start:i])
+				start = i
+			}
+		}
+	}
+	words = append(words, s[start:])
+	return words
+}
+
+func isUpper(b byte) bool {
+	return b >= 'A' && b <= 'Z'
+}
+
+// CamelCaseToPascal converts camelCase to PascalCase: "skyTravel" -> "SkyTravel"
+func CamelCaseToPascal(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+	words := SplitCamelCase(s)
+	var b strings.Builder
+	for _, w := range words {
+		b.WriteString(strings.ToUpper(w[:1]) + w[1:])
+	}
+	return b.String()
+}
+
+// CamelCaseToKebab converts camelCase to kebab-case: "skyTravel" -> "sky-travel"
+func CamelCaseToKebab(s string) string {
+	words := SplitCamelCase(s)
+	lower := make([]string, len(words))
+	for i, w := range words {
+		lower[i] = strings.ToLower(w)
+	}
+	return strings.Join(lower, "-")
+}
+
+// CamelCaseToLower converts camelCase to lowercase: "skyTravel" -> "skytravel"
+func CamelCaseToLower(s string) string {
+	return strings.ToLower(s)
 }
 
 func ParseAndValidate() *Config {
@@ -299,6 +368,15 @@ func ParseAndValidate() *Config {
 		DotnetNsNew: ownerPascal + "." + repoPascal,
 		TsPkgOld:    "@optivem/shop-system-test",
 		TsPkgNew:    "@" + ownerLower + "/" + repoName + "-system-test",
+
+		SysNamePascalOld: "Shop",
+		SysNamePascalNew: CamelCaseToPascal(*systemName),
+		SysNameCamelOld:  "shop",
+		SysNameCamelNew:  *systemName,
+		SysNameKebabOld:  "shop",
+		SysNameKebabNew:  CamelCaseToKebab(*systemName),
+		SysNameLowerOld:  "shop",
+		SysNameLowerNew:  CamelCaseToLower(*systemName),
 
 		FrontendRepo:     frontendRepo,
 		BackendRepo:      backendRepo,
