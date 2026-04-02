@@ -19,7 +19,8 @@ type Config struct {
 	Repo       string
 	FullRepo   string
 	SystemName string
-	Arch       string // "monolith" or "multitier"
+	Arch         string // "monolith" or "multitier"
+	RepoStrategy string // "monorepo" or "multirepo"
 
 	Lang         string // monolith only
 	BackendLang  string // multitier only
@@ -84,6 +85,7 @@ func ParseAndValidate() *Config {
 	systemName := flag.String("system-name", "", `System name, e.g. "Page Turner" (required)`)
 	repo := flag.String("repo", "", "Repository name, e.g. page-turner (required)")
 	arch := flag.String("arch", "", "Architecture: monolith or multitier (required)")
+	repoStrategy := flag.String("repo-strategy", "", "Repo strategy: monorepo or multirepo (required)")
 	lang := flag.String("lang", "", "System language: java, dotnet, typescript (monolith)")
 	testLang := flag.String("test-lang", "", "Test language (defaults to --lang or --backend-lang)")
 	backendLang := flag.String("backend-lang", "", "Backend language: java, dotnet, typescript (multitier)")
@@ -94,14 +96,18 @@ func ParseAndValidate() *Config {
 
 	flag.Parse()
 
-	if *owner == "" || *systemName == "" || *repo == "" || *arch == "" {
-		fmt.Fprintln(os.Stderr, "Required flags: --owner, --system-name, --repo, --arch")
+	if *owner == "" || *systemName == "" || *repo == "" || *arch == "" || *repoStrategy == "" {
+		fmt.Fprintln(os.Stderr, "Required flags: --owner, --system-name, --repo, --arch, --repo-strategy")
 		flag.Usage()
 		os.Exit(1)
 	}
 
 	if *arch != "monolith" && *arch != "multitier" {
 		log.FatalExit("--arch must be 'monolith' or 'multitier'")
+	}
+
+	if *repoStrategy != "monorepo" && *repoStrategy != "multirepo" {
+		log.FatalExit("--repo-strategy must be 'monorepo' or 'multirepo'")
 	}
 
 	validLangs := map[string]bool{"java": true, "dotnet": true, "typescript": true}
@@ -160,7 +166,7 @@ func ParseAndValidate() *Config {
 			{"DOCKERHUB_TOKEN", dockerHubToken},
 			{"SONAR_TOKEN", sonarToken},
 		}
-		if *arch == "multitier" {
+		if *repoStrategy == "multirepo" {
 			required = append(required, struct{ name, val string }{"GHCR_TOKEN", ghcrToken})
 		}
 		for _, r := range required {
@@ -219,7 +225,7 @@ func ParseAndValidate() *Config {
 	backendRepo := ""
 	frontendFullRepo := ""
 	backendFullRepo := ""
-	if *arch == "multitier" {
+	if *repoStrategy == "multirepo" {
 		frontendRepo = repoName + "-frontend"
 		backendRepo = repoName + "-backend"
 		frontendFullRepo = *owner + "/" + frontendRepo
@@ -240,7 +246,8 @@ func ParseAndValidate() *Config {
 		Repo:       repoName,
 		FullRepo:   *owner + "/" + repoName,
 		SystemName: *systemName,
-		Arch:       *arch,
+		Arch:         *arch,
+		RepoStrategy: *repoStrategy,
 
 		Lang:         cfgLang,
 		BackendLang:  cfgBackendLang,

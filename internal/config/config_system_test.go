@@ -3,25 +3,34 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
 var binaryPath string
 
+func testOwner() string {
+	owner := os.Getenv("TEST_OWNER")
+	if owner == "" {
+		owner = "optivem"
+	}
+	return owner
+}
+
 var baseArgs = []string{
-	"--owner", "testuser",
 	"--system-name", "Test System",
 	"--repo", "test-app",
 	"--random-suffix",
 }
 
 func withBase(extra ...string) []string {
-	args := make([]string, len(baseArgs))
-	copy(args, baseArgs)
+	args := []string{"--owner", testOwner()}
+	args = append(args, baseArgs...)
 	return append(args, extra...)
 }
 
@@ -52,13 +61,12 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// runCLI runs the binary and returns output + exit code.
+// It does NOT add --dry-run — tests run the full scaffolding flow.
 func runCLI(t *testing.T, args ...string) (string, int) {
 	t.Helper()
-	// Always add --dry-run so no real repos are created
-	args = append(args, "--dry-run")
 
 	cmd := exec.Command(binaryPath, args...)
-	// Set OPTIVEM_STARTER_PATH to avoid "Cannot find VERSION file" error
 	cmd.Env = append(os.Environ(), "OPTIVEM_STARTER_PATH="+filepath.Join("..", ".."))
 	out, err := cmd.CombinedOutput()
 
@@ -73,34 +81,80 @@ func runCLI(t *testing.T, args ...string) (string, int) {
 	return string(out), exitCode
 }
 
+// cleanupRepos deletes repos created during a test run.
+func cleanupRepos(t *testing.T, owner, repo, arch, repoStrategy string) {
+	t.Helper()
+
+	fullRepo := owner + "/" + repo
+	t.Logf("Cleaning up: deleting %s", fullRepo)
+	exec.Command("gh", "repo", "delete", fullRepo, "--yes").Run()
+
+	if repoStrategy == "multirepo" {
+		frontendRepo := owner + "/" + repo + "-frontend"
+		backendRepo := owner + "/" + repo + "-backend"
+		t.Logf("Cleaning up: deleting %s", backendRepo)
+		exec.Command("gh", "repo", "delete", backendRepo, "--yes").Run()
+		t.Logf("Cleaning up: deleting %s", frontendRepo)
+		exec.Command("gh", "repo", "delete", frontendRepo, "--yes").Run()
+	}
+}
+
+// extractRepoName parses the actual repo name (with random suffix) from CLI output.
+func extractRepoName(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, "Repo:") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				return parts[len(parts)-1]
+			}
+		}
+	}
+	return ""
+}
+
 func TestValidMonolithConfigurations(t *testing.T) {
 	tests := []struct {
-		name string
-		args []string
+		name, arch, repoStrategy, monolithLang, testLang string
 	}{
-		{
-			name: "monolith java",
-			args: withBase("--arch", "monolith", "--lang", "java"),
-		},
-		{
-			name: "monolith dotnet",
-			args: withBase("--arch", "monolith", "--lang", "dotnet"),
-		},
-		{
-			name: "monolith typescript",
-			args: withBase("--arch", "monolith", "--lang", "typescript"),
-		},
-		{
-			name: "monolith java with explicit test-lang",
-			args: withBase("--arch", "monolith", "--lang", "java", "--test-lang", "typescript"),
-		},
+		//             arch        repoStrategy  monolithLang  testLang
+		{"monolith monorepo java java",         "monolith", "monorepo",  "java",       "java"},
+		{"monolith monorepo java dotnet",       "monolith", "monorepo",  "java",       "dotnet"},
+		{"monolith monorepo java typescript",   "monolith", "monorepo",  "java",       "typescript"},
+		{"monolith monorepo dotnet java",       "monolith", "monorepo",  "dotnet",     "java"},
+		{"monolith monorepo dotnet dotnet",     "monolith", "monorepo",  "dotnet",     "dotnet"},
+		{"monolith monorepo dotnet typescript", "monolith", "monorepo",  "dotnet",     "typescript"},
+		{"monolith monorepo ts java",           "monolith", "monorepo",  "typescript", "java"},
+		{"monolith monorepo ts dotnet",         "monolith", "monorepo",  "typescript", "dotnet"},
+		{"monolith monorepo ts typescript",     "monolith", "monorepo",  "typescript", "typescript"},
+		{"monolith multirepo java java",         "monolith", "multirepo", "java",       "java"},
+		{"monolith multirepo java dotnet",       "monolith", "multirepo", "java",       "dotnet"},
+		{"monolith multirepo java typescript",   "monolith", "multirepo", "java",       "typescript"},
+		{"monolith multirepo dotnet java",       "monolith", "multirepo", "dotnet",     "java"},
+		{"monolith multirepo dotnet dotnet",     "monolith", "multirepo", "dotnet",     "dotnet"},
+		{"monolith multirepo dotnet typescript", "monolith", "multirepo", "dotnet",     "typescript"},
+		{"monolith multirepo ts java",           "monolith", "multirepo", "typescript", "java"},
+		{"monolith multirepo ts dotnet",         "monolith", "multirepo", "typescript", "dotnet"},
+		{"monolith multirepo ts typescript",     "monolith", "multirepo", "typescript", "typescript"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			out, exitCode := runCLI(t, tt.args...)
+			args := withBase(
+				"--arch", tt.arch,
+				"--repo-strategy", tt.repoStrategy,
+				"--lang", tt.monolithLang,
+				"--test-lang", tt.testLang,
+			)
+			out, exitCode := runCLI(t, args...)
+			t.Log(out)
+
+			repoName := extractRepoName(out)
+			if repoName != "" {
+				defer cleanupRepos(t, testOwner(), repoName, tt.arch, tt.repoStrategy)
+			}
+
 			if exitCode != 0 {
-				t.Errorf("expected exit code 0, got %d\noutput: %s", exitCode, out)
+				t.Errorf("expected exit code 0, got %d", exitCode)
 			}
 		})
 	}
@@ -108,32 +162,48 @@ func TestValidMonolithConfigurations(t *testing.T) {
 
 func TestValidMultitierConfigurations(t *testing.T) {
 	tests := []struct {
-		name string
-		args []string
+		name, arch, repoStrategy, backendLang, frontendLang, testLang string
 	}{
-		{
-			name: "multitier java backend react frontend",
-			args: withBase("--arch", "multitier", "--backend-lang", "java", "--frontend-lang", "react"),
-		},
-		{
-			name: "multitier dotnet backend react frontend",
-			args: withBase("--arch", "multitier", "--backend-lang", "dotnet", "--frontend-lang", "react"),
-		},
-		{
-			name: "multitier typescript backend react frontend",
-			args: withBase("--arch", "multitier", "--backend-lang", "typescript", "--frontend-lang", "react"),
-		},
-		{
-			name: "multitier java backend react frontend with test-lang",
-			args: withBase("--arch", "multitier", "--backend-lang", "java", "--frontend-lang", "react", "--test-lang", "java"),
-		},
+		//              arch         repoStrategy  backendLang   frontendLang  testLang
+		{"multitier monorepo java react java",         "multitier", "monorepo",  "java",       "react", "java"},
+		{"multitier monorepo java react dotnet",       "multitier", "monorepo",  "java",       "react", "dotnet"},
+		{"multitier monorepo java react typescript",   "multitier", "monorepo",  "java",       "react", "typescript"},
+		{"multitier monorepo dotnet react java",       "multitier", "monorepo",  "dotnet",     "react", "java"},
+		{"multitier monorepo dotnet react dotnet",     "multitier", "monorepo",  "dotnet",     "react", "dotnet"},
+		{"multitier monorepo dotnet react typescript", "multitier", "monorepo",  "dotnet",     "react", "typescript"},
+		{"multitier monorepo ts react java",           "multitier", "monorepo",  "typescript", "react", "java"},
+		{"multitier monorepo ts react dotnet",         "multitier", "monorepo",  "typescript", "react", "dotnet"},
+		{"multitier monorepo ts react typescript",     "multitier", "monorepo",  "typescript", "react", "typescript"},
+		{"multitier multirepo java react java",         "multitier", "multirepo", "java",       "react", "java"},
+		{"multitier multirepo java react dotnet",       "multitier", "multirepo", "java",       "react", "dotnet"},
+		{"multitier multirepo java react typescript",   "multitier", "multirepo", "java",       "react", "typescript"},
+		{"multitier multirepo dotnet react java",       "multitier", "multirepo", "dotnet",     "react", "java"},
+		{"multitier multirepo dotnet react dotnet",     "multitier", "multirepo", "dotnet",     "react", "dotnet"},
+		{"multitier multirepo dotnet react typescript", "multitier", "multirepo", "dotnet",     "react", "typescript"},
+		{"multitier multirepo ts react java",           "multitier", "multirepo", "typescript", "react", "java"},
+		{"multitier multirepo ts react dotnet",         "multitier", "multirepo", "typescript", "react", "dotnet"},
+		{"multitier multirepo ts react typescript",     "multitier", "multirepo", "typescript", "react", "typescript"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			out, exitCode := runCLI(t, tt.args...)
+			args := withBase(
+				"--arch", tt.arch,
+				"--repo-strategy", tt.repoStrategy,
+				"--backend-lang", tt.backendLang,
+				"--frontend-lang", tt.frontendLang,
+				"--test-lang", tt.testLang,
+			)
+			out, exitCode := runCLI(t, args...)
+			t.Log(out)
+
+			repoName := extractRepoName(out)
+			if repoName != "" {
+				defer cleanupRepos(t, testOwner(), repoName, tt.arch, tt.repoStrategy)
+			}
+
 			if exitCode != 0 {
-				t.Errorf("expected exit code 0, got %d\noutput: %s", exitCode, out)
+				t.Errorf("expected exit code 0, got %d", exitCode)
 			}
 		})
 	}
@@ -150,7 +220,9 @@ func TestInvalidConfigurations(t *testing.T) {
 				"--system-name", "Test System",
 				"--repo", "test-app",
 				"--arch", "monolith",
+				"--repo-strategy", "monorepo",
 				"--lang", "java",
+				"--dry-run",
 			},
 		},
 		{
@@ -159,7 +231,9 @@ func TestInvalidConfigurations(t *testing.T) {
 				"--owner", "testuser",
 				"--repo", "test-app",
 				"--arch", "monolith",
+				"--repo-strategy", "monorepo",
 				"--lang", "java",
+				"--dry-run",
 			},
 		},
 		{
@@ -168,40 +242,50 @@ func TestInvalidConfigurations(t *testing.T) {
 				"--owner", "testuser",
 				"--system-name", "Test System",
 				"--arch", "monolith",
+				"--repo-strategy", "monorepo",
 				"--lang", "java",
+				"--dry-run",
 			},
 		},
 		{
 			name: "missing arch",
-			args: withBase("--lang", "java"),
+			args: append(withBase("--repo-strategy", "monorepo", "--lang", "java"), "--dry-run"),
 		},
 		{
 			name: "invalid arch",
-			args: withBase("--arch", "invalid", "--lang", "java"),
+			args: append(withBase("--arch", "invalid", "--repo-strategy", "monorepo", "--lang", "java"), "--dry-run"),
+		},
+		{
+			name: "missing repo-strategy",
+			args: append(withBase("--arch", "monolith", "--lang", "java"), "--dry-run"),
+		},
+		{
+			name: "invalid repo-strategy",
+			args: append(withBase("--arch", "monolith", "--repo-strategy", "invalid", "--lang", "java"), "--dry-run"),
 		},
 		{
 			name: "monolith missing lang",
-			args: withBase("--arch", "monolith"),
+			args: append(withBase("--arch", "monolith", "--repo-strategy", "monorepo"), "--dry-run"),
 		},
 		{
 			name: "monolith invalid lang",
-			args: withBase("--arch", "monolith", "--lang", "python"),
+			args: append(withBase("--arch", "monolith", "--repo-strategy", "monorepo", "--lang", "python"), "--dry-run"),
 		},
 		{
 			name: "multitier missing backend-lang",
-			args: withBase("--arch", "multitier", "--frontend-lang", "react"),
+			args: append(withBase("--arch", "multitier", "--repo-strategy", "multirepo", "--frontend-lang", "react"), "--dry-run"),
 		},
 		{
 			name: "multitier missing frontend-lang",
-			args: withBase("--arch", "multitier", "--backend-lang", "java"),
+			args: append(withBase("--arch", "multitier", "--repo-strategy", "multirepo", "--backend-lang", "java"), "--dry-run"),
 		},
 		{
 			name: "multitier invalid frontend-lang",
-			args: withBase("--arch", "multitier", "--backend-lang", "java", "--frontend-lang", "angular"),
+			args: append(withBase("--arch", "multitier", "--repo-strategy", "multirepo", "--backend-lang", "java", "--frontend-lang", "angular"), "--dry-run"),
 		},
 		{
 			name: "multitier invalid backend-lang",
-			args: withBase("--arch", "multitier", "--backend-lang", "python", "--frontend-lang", "react"),
+			args: append(withBase("--arch", "multitier", "--repo-strategy", "multirepo", "--backend-lang", "python", "--frontend-lang", "react"), "--dry-run"),
 		},
 	}
 
@@ -209,7 +293,7 @@ func TestInvalidConfigurations(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, exitCode := runCLI(t, tt.args...)
 			if exitCode == 0 {
-				t.Errorf("expected non-zero exit code for invalid config")
+				t.Errorf("expected non-zero exit code for invalid config: %s", fmt.Sprintf("%v", tt.args))
 			}
 		})
 	}
