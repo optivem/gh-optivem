@@ -19,6 +19,12 @@ func GetSonarProjectKeys(cfg *config.Config) []string {
 	if cfg.Arch == "monolith" {
 		return []string{prefix + "-monolith-" + cfg.Lang}
 	}
+	if cfg.RepoStrategy == "monorepo" {
+		return []string{
+			prefix + "-multitier-backend-" + cfg.BackendLang,
+			prefix + "-multitier-frontend-" + cfg.FrontendLang,
+		}
+	}
 	return []string{
 		cfg.Owner + "_" + cfg.BackendRepo + "-multitier-backend-" + cfg.BackendLang,
 		cfg.Owner + "_" + cfg.FrontendRepo + "-multitier-frontend-" + cfg.FrontendLang,
@@ -35,6 +41,9 @@ func UpdateReadme(cfg *config.Config) {
 	}
 
 	if cfg.Arch == "monolith" {
+		badges := generateBadges(cfg)
+		writeReadme(cfg.RepoDir, cfg.SystemName, badges, cfg.Owner)
+	} else if cfg.RepoStrategy == "monorepo" {
 		badges := generateBadges(cfg)
 		writeReadme(cfg.RepoDir, cfg.SystemName, badges, cfg.Owner)
 	} else {
@@ -154,7 +163,7 @@ func CommitAndPush(cfg *config.Config) {
 
 	commitAndPushRepo(cfg.RepoDir, cfg.FullRepo)
 
-	if cfg.Arch == "multitier" {
+	if cfg.RepoStrategy == "multirepo" {
 		commitAndPushRepo(cfg.BackendRepoDir, cfg.BackendFullRepo)
 		commitAndPushRepo(cfg.FrontendRepoDir, cfg.FrontendFullRepo)
 	}
@@ -178,13 +187,18 @@ func VerifyCommitStage(cfg *config.Config, gh *shell.GitHub) {
 
 	time.Sleep(5 * time.Second)
 
-	if cfg.Arch == "monolith" {
-		verifyWorkflow(gh, "Commit stage", "", nil)
+	if cfg.RepoStrategy == "monorepo" {
+		if cfg.Arch == "monolith" {
+			verifyNamedWorkflow(gh, "Commit stage", "monolith-"+cfg.Lang+"-commit-stage.yml")
+		} else {
+			verifyNamedWorkflow(gh, "Backend commit stage", "multitier-backend-"+cfg.BackendLang+"-commit-stage.yml")
+			verifyNamedWorkflow(gh, "Frontend commit stage", "multitier-frontend-"+cfg.FrontendLang+"-commit-stage.yml")
+		}
 	} else {
 		ghBackend := gh.ForRepo(cfg.BackendFullRepo)
 		ghFrontend := gh.ForRepo(cfg.FrontendFullRepo)
-		verifyWorkflow(ghBackend, "Backend commit stage", "", nil)
-		verifyWorkflow(ghFrontend, "Frontend commit stage", "", nil)
+		verifyNamedWorkflow(ghBackend, "Backend commit stage", "multitier-backend-"+cfg.BackendLang+"-commit-stage.yml")
+		verifyNamedWorkflow(ghFrontend, "Frontend commit stage", "multitier-frontend-"+cfg.FrontendLang+"-commit-stage.yml")
 	}
 }
 
@@ -285,6 +299,16 @@ func VerifyProdStage(cfg *config.Config, gh *shell.GitHub) {
 	}
 
 	verifyWorkflow(gh, "Production stage", wf, map[string]string{"version": cfg.RCVersion})
+}
+
+func verifyNamedWorkflow(gh *shell.GitHub, label, workflowFile string) {
+	shell.CheckRateLimit()
+	err := gh.RunWatchWorkflow(workflowFile)
+	if err != nil {
+		log.Failf("%s failed!", label)
+		log.Fatalf("%s workflow failed. Check: https://github.com/%s/actions", label, gh.Repo)
+	}
+	log.OKf("%s passed!", label)
 }
 
 func verifyWorkflow(gh *shell.GitHub, label, triggerWorkflow string, fields map[string]string) {

@@ -73,6 +73,63 @@ func applyMonolith(cfg *config.Config) {
 }
 
 func applyMultitier(cfg *config.Config) {
+	if cfg.RepoStrategy == "monorepo" {
+		applyMultitierMonorepo(cfg)
+	} else {
+		applyMultitierMultirepo(cfg)
+	}
+}
+
+func applyMultitierMonorepo(cfg *config.Config) {
+	backendLang := cfg.BackendLang
+	frontendLang := cfg.FrontendLang
+	testLang := cfg.TestLang
+	starter := cfg.StarterPath
+	repoDir := cfg.RepoDir
+
+	// All workflows go into the single repo
+	workflows := []string{
+		"multitier-backend-" + backendLang + "-commit-stage.yml",
+		"multitier-frontend-" + frontendLang + "-commit-stage.yml",
+		"multitier-system-" + testLang + "-acceptance-stage.yml",
+		"multitier-system-" + testLang + "-qa-stage.yml",
+		"multitier-system-" + testLang + "-qa-signoff.yml",
+		"multitier-system-" + testLang + "-prod-stage.yml",
+	}
+	if backendLang == testLang {
+		workflows = append(workflows, "multitier-system-"+backendLang+"-verify.yml")
+	}
+	templates.CopyWorkflows(workflows, starter, repoDir)
+
+	// Backend code -> system/backend-{lang}/
+	backendComponent := "backend-" + backendLang
+	backendSrc := filepath.Join(starter, "system", "multitier", backendComponent)
+	backendDst := filepath.Join(repoDir, "system", backendComponent)
+	files.CopyDir(backendSrc, backendDst)
+	log.OK("Applied backend template")
+
+	// Frontend code -> system/frontend-{lang}/
+	frontendComponent := "frontend-" + frontendLang
+	frontendSrc := filepath.Join(starter, "system", "multitier", frontendComponent)
+	frontendDst := filepath.Join(repoDir, "system", frontendComponent)
+	files.CopyDir(frontendSrc, frontendDst)
+	log.OK("Applied frontend template")
+
+	// System tests
+	testDst := filepath.Join(repoDir, "system-test", testLang)
+	files.CopyDir(filepath.Join(starter, "system-test", testLang), testDst)
+	templates.SelectDockerCompose(testDst, "multi")
+	templates.CopyVersion(starter, repoDir)
+
+	// Cross-language fixup
+	if backendLang != testLang {
+		fixupMultitierCrossLangSystem(repoDir, backendLang, testLang)
+	}
+
+	log.OK("Applied template files (monorepo)")
+}
+
+func applyMultitierMultirepo(cfg *config.Config) {
 	backendLang := cfg.BackendLang
 	frontendLang := cfg.FrontendLang
 	testLang := cfg.TestLang

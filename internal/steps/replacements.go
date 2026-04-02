@@ -28,10 +28,9 @@ func ReplaceRepoReferences(cfg *config.Config) {
 		return
 	}
 
-	if cfg.Arch == "monolith" {
-		replaceRefsInRepo(cfg.RepoDir, cfg.FullRepo, cfg.OwnerLower)
-	} else {
-		replaceRefsInRepo(cfg.RepoDir, cfg.FullRepo, cfg.OwnerLower)
+	replaceRefsInRepo(cfg.RepoDir, cfg.FullRepo, cfg.OwnerLower)
+
+	if cfg.RepoStrategy == "multirepo" {
 		replaceRefsInRepo(cfg.BackendRepoDir, cfg.BackendFullRepo, cfg.OwnerLower)
 		replaceRefsInRepo(cfg.FrontendRepoDir, cfg.FrontendFullRepo, cfg.OwnerLower)
 
@@ -151,12 +150,17 @@ func ReplaceNamespaces(cfg *config.Config) {
 	if cfg.Arch == "monolith" {
 		nsForLang(cfg, cfg.Lang, "monolith", cfg.RepoDir)
 		nsForLang(cfg, cfg.TestLang, "systemtest", cfg.RepoDir)
-	} else {
-		// System repo: only system-test namespaces
+	} else if cfg.RepoStrategy == "monorepo" {
+		// Monorepo: all namespaces in the single repo
 		nsForLang(cfg, cfg.TestLang, "systemtest", cfg.RepoDir)
-		// Backend repo
+		nsForLang(cfg, cfg.BackendLang, "backend", cfg.RepoDir)
+		if cfg.FrontendLang == "react" {
+			fixupFrontendPackageJSON(cfg)
+		}
+	} else {
+		// Multirepo: namespaces in separate repos
+		nsForLang(cfg, cfg.TestLang, "systemtest", cfg.RepoDir)
 		nsForLang(cfg, cfg.BackendLang, "backend", cfg.BackendRepoDir)
-		// Frontend repo
 		if cfg.FrontendLang == "react" {
 			fixupFrontendPackageJSON(cfg)
 		}

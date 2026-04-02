@@ -191,11 +191,21 @@ func (g *GitHub) WorkflowRun(workflow string, fields map[string]string) {
 }
 
 func (g *GitHub) RunWatch() error {
-	// Get latest run ID
-	out, err := RunCapture(
-		fmt.Sprintf("gh run list --repo %s --limit 1 --json databaseId --jq .[0].databaseId", g.Repo), "")
+	return g.RunWatchWorkflow("")
+}
+
+// RunWatchWorkflow watches the latest run for a specific workflow name.
+// If workflow is empty, watches the overall latest run.
+func (g *GitHub) RunWatchWorkflow(workflow string) error {
+	var cmd string
+	if workflow != "" {
+		cmd = fmt.Sprintf("gh run list --repo %s --workflow %s --limit 1 --json databaseId --jq .[0].databaseId", g.Repo, workflow)
+	} else {
+		cmd = fmt.Sprintf("gh run list --repo %s --limit 1 --json databaseId --jq .[0].databaseId", g.Repo)
+	}
+	out, err := RunCapture(cmd, "")
 	if err != nil || out == "" {
-		return fmt.Errorf("no workflow runs found for %s", g.Repo)
+		return fmt.Errorf("no workflow runs found for %s (workflow: %s)", g.Repo, workflow)
 	}
 	_, err = Run(fmt.Sprintf("gh run watch %s --repo %s --exit-status", out, g.Repo), false, false, "")
 	return err

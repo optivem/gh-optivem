@@ -81,7 +81,7 @@ func main() {
 	fmt.Println()
 	fmt.Printf("  Repository: https://github.com/%s\n", cfg.FullRepo)
 	fmt.Printf("  Actions:    https://github.com/%s/actions\n", cfg.FullRepo)
-	if cfg.Arch == "multitier" {
+	if cfg.RepoStrategy == "multirepo" {
 		fmt.Printf("  Backend:    https://github.com/%s\n", cfg.BackendFullRepo)
 		fmt.Printf("  Frontend:   https://github.com/%s\n", cfg.FrontendFullRepo)
 	}

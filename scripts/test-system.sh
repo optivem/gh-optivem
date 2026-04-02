@@ -7,8 +7,8 @@ cd "$(git rev-parse --show-toplevel)"
 # Usage: TEST_NO_CLEANUP=1 bash scripts/test-system.sh
 
 TESTS=(
-  "TestValidMonolithConfigurations/monolith_monorepo_java_java"
-  # "TestValidMultitierConfigurations/multitier_monorepo_java_react_java"
+  # "TestValidMonolithConfigurations/monolith_monorepo_java_java"
+  "TestValidMultitierConfigurations/multitier_monorepo_java_react_java"
 )
 
 RUN_PATTERN=$(IFS="|"; echo "${TESTS[*]}")

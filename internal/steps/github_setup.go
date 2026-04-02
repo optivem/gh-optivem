@@ -17,7 +17,7 @@ func CreateRepos(cfg *config.Config, gh *shell.GitHub) {
 
 	if cfg.DryRun {
 		log.Logf("[DRY RUN] gh repo create %s --public --add-readme --license mit", cfg.FullRepo)
-		if cfg.Arch == "multitier" {
+		if cfg.RepoStrategy == "multirepo" {
 			log.Logf("[DRY RUN] gh repo create %s --public --add-readme --license mit", cfg.FrontendFullRepo)
 			log.Logf("[DRY RUN] gh repo create %s --public --add-readme --license mit", cfg.BackendFullRepo)
 		}
@@ -28,7 +28,7 @@ func CreateRepos(cfg *config.Config, gh *shell.GitHub) {
 	time.Sleep(3 * time.Second)
 	log.OKf("Created repository: %s", cfg.FullRepo)
 
-	if cfg.Arch == "multitier" {
+	if cfg.RepoStrategy == "multirepo" {
 		ghFrontend := gh.ForRepo(cfg.FrontendFullRepo)
 		ghBackend := gh.ForRepo(cfg.BackendFullRepo)
 
@@ -67,7 +67,7 @@ func SetupSecretsAndVariables(cfg *config.Config, gh *shell.GitHub) {
 	gh.SecretSet("SONAR_TOKEN", cfg.SonarToken)
 	gh.VariableSet("DOCKERHUB_USERNAME", cfg.DockerHubUsername)
 
-	if cfg.Arch == "multitier" {
+	if cfg.RepoStrategy == "multirepo" {
 		gh.SecretSet("GHCR_TOKEN", cfg.GHCRToken)
 
 		for _, fullRepo := range []string{cfg.FrontendFullRepo, cfg.BackendFullRepo} {
@@ -97,7 +97,7 @@ func CloneRepos(cfg *config.Config, gh *shell.GitHub) {
 	cfg.RepoDir = repoDir
 	log.OKf("Cloned %s", cfg.FullRepo)
 
-	if cfg.Arch == "multitier" {
+	if cfg.RepoStrategy == "multirepo" {
 		frontendDir := filepath.Join(cfg.WorkDir, "repo-frontend")
 		backendDir := filepath.Join(cfg.WorkDir, "repo-backend")
 
