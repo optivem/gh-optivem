@@ -33,12 +33,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Checkout starter repo
         uses: actions/checkout@v4
         with:
           repository: optivem/starter
           path: starter
+          persist-credentials: false
 
       - name: Setup Go
         uses: actions/setup-go@v5
