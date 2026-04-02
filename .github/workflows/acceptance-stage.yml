@@ -50,9 +50,7 @@ jobs:
 
       - name: Configure git credentials
         run: |
-          gh auth setup-git
-        env:
-          GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+          git config --global url."https://x-access-token:${{ secrets.VERIFY_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: System tests (representative subset)
         run: bash scripts/test-system.sh
