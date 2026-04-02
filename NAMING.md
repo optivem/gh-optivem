@@ -456,13 +456,15 @@ The `--system-name` value is provided in **camelCase** and flows into multiple t
 | Contains dots | Conflicts with Java package and .NET namespace separators | `"dr.travel"` |
 | Accented/unicode chars | Invalid or problematic in Java packages, file names, URL paths | `"café"` |
 | Special characters | Invalid in identifiers across all languages and in file names | `"foo&bar"` |
-| Reserved words (full lowercase form) | Derived lowercase form collides with language keywords | `"new"` → `new` (keyword) |
-| Reserved words (any split word) | Individual words collide with keywords | `"newOrder"` → `new` is a keyword |
+| Reserved words (language) | Derived forms collide with language keywords | `"new"` → `new` (keyword) |
+| Reserved words (scaffold) | Collides with scaffolding infrastructure names (docker-compose, workflows, directory names) | `"Test System"` → `system` collides |
 | Exceeds path limits | Windows MAX_PATH is 260; long names compound in deep paths | `"extremelyLongSystemNameThatGoesOnAndOn"` |
 
 ### Reserved Words to Check
 
-Both the **full derived forms** (lowercase, camelCase) and each **individual split word** (lowercased) must not collide with language keywords.
+Both the **full derived forms** (lowercase, camelCase) and each **individual word** (lowercased) must not collide with language keywords or scaffold infrastructure names.
+
+#### Language Reserved Words
 
 **Java** reserved words:
 `abstract`, `assert`, `boolean`, `break`, `byte`, `case`, `catch`, `char`, `class`, `const`, `continue`, `default`, `do`, `double`, `else`, `enum`, `extends`, `final`, `finally`, `float`, `for`, `goto`, `if`, `implements`, `import`, `instanceof`, `int`, `interface`, `long`, `native`, `new`, `null`, `package`, `private`, `protected`, `public`, `return`, `short`, `static`, `strictfp`, `super`, `switch`, `synchronized`, `this`, `throw`, `throws`, `transient`, `try`, `void`, `volatile`, `while`
@@ -472,6 +474,12 @@ Both the **full derived forms** (lowercase, camelCase) and each **individual spl
 
 **TypeScript** reserved words (additional to Java):
 `any`, `async`, `await`, `constructor`, `declare`, `from`, `get`, `let`, `module`, `of`, `require`, `set`, `symbol`, `type`, `var`
+
+#### Scaffold Reserved Words
+
+These words appear in scaffolding infrastructure (docker-compose services, workflow files, directory names, Docker image names). If any **individual word** (lowercased) in the system name matches one of these, the replacement would corrupt infrastructure config.
+
+`system`, `backend`, `frontend`, `test`, `api`, `external`, `stub`, `real`, `monolith`, `multitier`, `health`, `postgres`, `docker`, `compose`, `pipeline`, `local`, `stage`, `commit`, `acceptance`, `production`, `workflow`, `action`, `build`, `deploy`, `version`, `config`, `app`, `network`, `service`, `port`, `image`, `container`, `volume`, `env`, `run`, `src`, `main`, `lib`, `bin`, `dist`, `node`, `gradle`, `dotnet`, `java`, `typescript`, `react`, `spring`, `next`
 
 ### Validation Examples
 
@@ -493,7 +501,10 @@ Both the **full derived forms** (lowercase, camelCase) and each **individual spl
 | `web3App` | No | Contains digit |
 | `café` | No | Accented character |
 | `foo&bar` | No | Special character |
-| `new` | No | `new` is reserved in Java/C#/TS |
-| `newOrder` | No | `new` is a reserved keyword |
-| `classAct` | No | `class` is a reserved keyword |
-| `forReal` | No | `for` is a reserved keyword |
+| `new` | No | `new` is a language reserved word |
+| `newOrder` | No | `new` is a language reserved word |
+| `classAct` | No | `class` is a language reserved word |
+| `forReal` | No | `for` is a language reserved word |
+| `testSystem` | No | `test` and `system` are scaffold reserved words |
+| `backendApi` | No | `backend` and `api` are scaffold reserved words |
+| `frontendApp` | No | `frontend` and `app` are scaffold reserved words |

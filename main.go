@@ -49,6 +49,7 @@ func main() {
 		{"Update README", func() { steps.UpdateReadme(cfg) }},
 		{"Create SonarCloud projects", func() { steps.CreateSonarCloudProjects(cfg, sc) }},
 		{"Commit and push", func() { steps.CommitAndPush(cfg) }},
+		{"Enable GitHub Pages", func() { steps.EnablePages(cfg, gh) }},
 		{"Verify commit stage", func() { steps.VerifyCommitStage(cfg, gh) }},
 		{"Verify acceptance stage", func() { steps.VerifyAcceptanceStage(cfg, gh) }},
 		{"Verify acceptance stage legacy", func() { steps.VerifyAcceptanceStageLegacy(cfg, gh) }},
@@ -84,7 +85,7 @@ func main() {
 	fmt.Printf("  System:     %s\n", cfg.SystemName)
 	fmt.Printf("  Repository: https://github.com/%s\n", cfg.FullRepo)
 	fmt.Printf("  Actions:    https://github.com/%s/actions\n", cfg.FullRepo)
-	fmt.Printf("  Docs:       %s/docs/\n", cfg.RepoDir)
+	fmt.Printf("  Docs:       https://%s.github.io/%s/\n", cfg.OwnerLower, cfg.Repo)
 	if cfg.RepoStrategy == "multirepo" {
 		if cfg.Arch == "multitier" {
 			fmt.Printf("  Backend:    https://github.com/%s\n", cfg.BackendFullRepo)

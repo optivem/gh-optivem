@@ -159,6 +159,10 @@ func (g *GitHub) CreateRepo() {
 	Run(fmt.Sprintf("gh repo create %s --public --add-readme --license %s", g.Repo, g.License), false, true, "")
 }
 
+func (g *GitHub) EnablePages() {
+	Run(fmt.Sprintf("gh api repos/%s/pages -X POST -f source[branch]=main -f source[path]=/docs", g.Repo), g.DryRun, true, "")
+}
+
 func (g *GitHub) CreateEnvironment(name string) {
 	Run(fmt.Sprintf("gh api repos/%s/environments/%s -X PUT", g.Repo, name), g.DryRun, true, "")
 }

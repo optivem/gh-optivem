@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestToPascalCase(t *testing.T) {
 	tests := []struct {
@@ -496,6 +499,49 @@ func TestSpacesToLower(t *testing.T) {
 		t.Run(tt.input, func(t *testing.T) {
 			if got := SpacesToLower(tt.input); got != tt.expected {
 				t.Errorf("SpacesToLower(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestValidateSystemName(t *testing.T) {
+	valid := []string{
+		"Sky Travel", "Pet Clinic", "Todo", "Book Store", "Quick Fox",
+	}
+	for _, name := range valid {
+		t.Run("valid: "+name, func(t *testing.T) {
+			if err := ValidateSystemName(name); err != "" {
+				t.Errorf("ValidateSystemName(%q) = %q, want empty", name, err)
+			}
+		})
+	}
+
+	invalid := []struct {
+		name, contains string
+	}{
+		{"", "empty"},
+		{" Sky Travel", "leading"},
+		{"Sky Travel ", "trailing"},
+		{"3D Print", "invalid character"},
+		{"sky-travel", "invalid character"},
+		{"sky_travel", "invalid character"},
+		{"café", "invalid character"},
+		{"foo&bar", "invalid character"},
+		{"New", "language reserved"},
+		{"Class Act", "language reserved"},
+		{"For Real", "language reserved"},
+		{"Test System", "scaffold reserved"},
+		{"Backend Api", "scaffold reserved"},
+		{"Frontend App", "scaffold reserved"},
+		{"Aaaaaa Bbbbbb Cccccc Dddddd Eeeeee Ffffff Gggggg Hh", "50 character"},
+	}
+	for _, tt := range invalid {
+		t.Run("invalid: "+tt.name, func(t *testing.T) {
+			err := ValidateSystemName(tt.name)
+			if err == "" {
+				t.Errorf("ValidateSystemName(%q) = empty, want error containing %q", tt.name, tt.contains)
+			} else if !strings.Contains(strings.ToLower(err), strings.ToLower(tt.contains)) {
+				t.Errorf("ValidateSystemName(%q) = %q, want error containing %q", tt.name, err, tt.contains)
 			}
 		})
 	}

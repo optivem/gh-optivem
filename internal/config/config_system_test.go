@@ -22,7 +22,7 @@ func testOwner() string {
 }
 
 var baseArgs = []string{
-	"--system-name", "Test System",
+	"--system-name", "Sky Travel",
 	"--repo", "test-app",
 	"--random-suffix",
 }
@@ -194,7 +194,7 @@ func TestInvalidConfigurations(t *testing.T) {
 		{
 			name: "missing owner",
 			args: []string{
-				"--system-name", "Test System",
+				"--system-name", "Sky Travel",
 				"--repo", "test-app",
 				"--arch", "monolith",
 				"--repo-strategy", "monorepo",
@@ -217,7 +217,7 @@ func TestInvalidConfigurations(t *testing.T) {
 			name: "missing repo",
 			args: []string{
 				"--owner", "testuser",
-				"--system-name", "Test System",
+				"--system-name", "Sky Travel",
 				"--arch", "monolith",
 				"--repo-strategy", "monorepo",
 				"--lang", "java",
