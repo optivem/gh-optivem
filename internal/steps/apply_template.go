@@ -115,6 +115,14 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	files.CopyDir(frontendSrc, frontendDst)
 	log.OK("Applied frontend template")
 
+	// Shared external system simulators
+	for _, dir := range []string{"external-real-sim", "external-stub"} {
+		src := filepath.Join(starter, "system", dir)
+		if _, err := os.Stat(src); err == nil {
+			files.CopyDir(src, filepath.Join(repoDir, "system", dir))
+		}
+	}
+
 	// System tests
 	testDst := filepath.Join(repoDir, "system-test", testLang)
 	files.CopyDir(filepath.Join(starter, "system-test", testLang), testDst)
