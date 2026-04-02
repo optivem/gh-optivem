@@ -432,6 +432,75 @@ func TestCamelCaseToLower(t *testing.T) {
 	}
 }
 
+func TestSpacesToCamel(t *testing.T) {
+	tests := []struct{ input, expected string }{
+		{"Sky Travel", "skyTravel"},
+		{"Pet Clinic", "petClinic"},
+		{"Todo", "todo"},
+		{"E Shop", "eShop"},
+		{"E Super Store", "eSuperStore"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := SpacesToCamel(tt.input); got != tt.expected {
+				t.Errorf("SpacesToCamel(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestSpacesToPascal(t *testing.T) {
+	tests := []struct{ input, expected string }{
+		{"Sky Travel", "SkyTravel"},
+		{"Pet Clinic", "PetClinic"},
+		{"Todo", "Todo"},
+		{"E Shop", "EShop"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := SpacesToPascal(tt.input); got != tt.expected {
+				t.Errorf("SpacesToPascal(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestSpacesToKebab(t *testing.T) {
+	tests := []struct{ input, expected string }{
+		{"Sky Travel", "sky-travel"},
+		{"Pet Clinic", "pet-clinic"},
+		{"Todo", "todo"},
+		{"E Shop", "e-shop"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := SpacesToKebab(tt.input); got != tt.expected {
+				t.Errorf("SpacesToKebab(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestSpacesToLower(t *testing.T) {
+	tests := []struct{ input, expected string }{
+		{"Sky Travel", "skytravel"},
+		{"Pet Clinic", "petclinic"},
+		{"Todo", "todo"},
+		{"E Shop", "eshop"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := SpacesToLower(tt.input); got != tt.expected {
+				t.Errorf("SpacesToLower(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
 // helpers for test logic
 func contains(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {

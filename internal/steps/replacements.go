@@ -319,48 +319,54 @@ func ReplaceSystemName(cfg *config.Config) {
 
 func replaceSystemNameInRepo(cfg *config.Config, repoDir string) {
 	// For the template name "Shop", camelCase/kebab/lowercase are all "shop".
-	// We must replace in the right order and use context-aware filtering:
-	// 1. PascalCase first (Shop -> SkyTravel) — unambiguous, only in identifiers
-	// 2. Then lowercase "shop" with different replacements per file type
+	// We must replace in the right order and use context-aware filtering.
+	//
+	// Key insight: "shop" in Java files means camelCase (identifiers like shopUiBaseUrl),
+	// NOT lowercase (that's only for directory/package paths, handled by dir rename).
 
-	// Pass 1: PascalCase content replacement
+	// Pass 1: PascalCase content replacement (all text files)
 	n := files.ReplaceInTree(repoDir, cfg.SysNamePascalOld, cfg.SysNamePascalNew, textExts)
 	log.OKf("System name: PascalCase %s -> %s (%d files)", cfg.SysNamePascalOld, cfg.SysNamePascalNew, n)
 
-	// Pass 2: lowercase "shop" in Java files -> lowercase (e.g. "skytravel" for packages)
-	javaExts := []string{".java", ".gradle", ".gradle.kts", ".xml", ".properties"}
-	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameLowerNew, javaExts)
-	log.OKf("System name: Java lowercase %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameLowerNew, n)
+	// Pass 2: "shop" in Java source files -> camelCase (e.g. shopUiBaseUrl -> skyTravelUiBaseUrl)
+	javaExts := []string{".java"}
+	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameCamelNew, javaExts)
+	log.OKf("System name: Java camel %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
 
-	// Pass 3: lowercase "shop" in .NET config files -> camelCase (e.g. "skyTravel" for config keys)
-	dotnetCfgExts := []string{".json"}
-	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameCamelNew, dotnetCfgExts)
-	log.OKf("System name: config keys %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
+	// Pass 3: "shop" in Java build files -> lowercase (e.g. package paths in gradle/xml)
+	javaBuildExts := []string{".gradle", ".gradle.kts", ".xml", ".properties"}
+	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameLowerNew, javaBuildExts)
+	log.OKf("System name: Java build %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameLowerNew, n)
 
-	// Pass 4: lowercase "shop" in TS/HTML/CSS files -> kebab-case (e.g. "sky-travel" for imports/routes)
+	// Pass 4: "shop" in .NET config and C# files -> camelCase (e.g. config keys, identifiers)
+	dotnetExts := []string{".cs", ".json", ".csproj", ".sln", ".slnx"}
+	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameCamelNew, dotnetExts)
+	log.OKf("System name: .NET %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
+
+	// Pass 5: "shop" in TS/HTML/YAML files -> kebab-case (e.g. imports, routes, config)
 	tsExts := []string{".ts", ".tsx", ".js", ".jsx", ".html", ".cshtml", ".yml", ".yaml"}
 	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameKebabNew, tsExts)
-	log.OKf("System name: kebab %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameKebabNew, n)
+	log.OKf("System name: TS/HTML kebab %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameKebabNew, n)
 
-	// Pass 5: lowercase "shop" in .cs files -> camelCase (e.g. "skyTravel" for C# identifiers)
-	csExts := []string{".cs"}
-	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameCamelNew, csExts)
-	log.OKf("System name: C# camel %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
+	// Pass 6: "shop" in Dockerfiles -> kebab-case
+	n = files.ReplaceInDockerfiles(repoDir, cfg.SysNameCamelOld, cfg.SysNameKebabNew)
+	if n > 0 {
+		log.OKf("System name: Dockerfiles %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameKebabNew, n)
+	}
 
-	// Pass 6: Rename files (PascalCase: ShopDsl.java -> SkyTravelDsl.java)
+	// Pass 7: Rename files (PascalCase: ShopDsl.java -> SkyTravelDsl.java)
 	n = files.RenameFilesInTree(repoDir, cfg.SysNamePascalOld, cfg.SysNamePascalNew)
 	log.OKf("System name: renamed %d PascalCase files", n)
 
-	// Pass 7: Rename files (kebab-case: shop-api-driver.ts -> sky-travel-api-driver.ts)
+	// Pass 8: Rename files (kebab-case: shop-api-driver.ts -> sky-travel-api-driver.ts)
 	n = files.RenameFilesInTree(repoDir, cfg.SysNameKebabOld, cfg.SysNameKebabNew)
 	log.OKf("System name: renamed %d kebab files", n)
 
-	// Pass 8: Rename directories (PascalCase: Shop/ -> SkyTravel/)
+	// Pass 9: Rename directories (PascalCase: Shop/ -> SkyTravel/)
 	n = files.RenameDirsInTree(repoDir, cfg.SysNamePascalOld, cfg.SysNamePascalNew)
 	log.OKf("System name: renamed %d PascalCase directories", n)
 
-	// Pass 9: Rename directories (lowercase: shop/ -> skytravel/ for Java packages)
-	// Only needed if the directory is named "shop" (lowercase) — the Java package dir
+	// Pass 10: Rename directories (lowercase: shop/ -> skytravel/ for Java package paths)
 	n = files.RenameDirsInTree(repoDir, cfg.SysNameLowerOld, cfg.SysNameLowerNew)
 	log.OKf("System name: renamed %d lowercase directories", n)
 }

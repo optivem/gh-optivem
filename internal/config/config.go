@@ -158,6 +158,49 @@ func CamelCaseToLower(s string) string {
 	return strings.ToLower(s)
 }
 
+// SpacesToCamel converts space-separated words to camelCase: "Sky Travel" -> "skyTravel"
+func SpacesToCamel(s string) string {
+	words := strings.Fields(s)
+	if len(words) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(strings.ToLower(words[0]))
+	for _, w := range words[1:] {
+		if len(w) > 0 {
+			b.WriteString(strings.ToUpper(w[:1]) + w[1:])
+		}
+	}
+	return b.String()
+}
+
+// SpacesToPascal converts space-separated words to PascalCase: "Sky Travel" -> "SkyTravel"
+func SpacesToPascal(s string) string {
+	words := strings.Fields(s)
+	var b strings.Builder
+	for _, w := range words {
+		if len(w) > 0 {
+			b.WriteString(strings.ToUpper(w[:1]) + w[1:])
+		}
+	}
+	return b.String()
+}
+
+// SpacesToKebab converts space-separated words to kebab-case: "Sky Travel" -> "sky-travel"
+func SpacesToKebab(s string) string {
+	words := strings.Fields(s)
+	lower := make([]string, len(words))
+	for i, w := range words {
+		lower[i] = strings.ToLower(w)
+	}
+	return strings.Join(lower, "-")
+}
+
+// SpacesToLower converts space-separated words to lowercase: "Sky Travel" -> "skytravel"
+func SpacesToLower(s string) string {
+	return strings.ToLower(strings.ReplaceAll(s, " ", ""))
+}
+
 func ParseAndValidate() *Config {
 	owner := flag.String("owner", "", "GitHub username or org (required)")
 	systemName := flag.String("system-name", "", `System name, e.g. "Page Turner" (required)`)
@@ -370,13 +413,13 @@ func ParseAndValidate() *Config {
 		TsPkgNew:    "@" + ownerLower + "/" + repoName + "-system-test",
 
 		SysNamePascalOld: "Shop",
-		SysNamePascalNew: CamelCaseToPascal(*systemName),
+		SysNamePascalNew: SpacesToPascal(*systemName),
 		SysNameCamelOld:  "shop",
-		SysNameCamelNew:  *systemName,
+		SysNameCamelNew:  SpacesToCamel(*systemName),
 		SysNameKebabOld:  "shop",
-		SysNameKebabNew:  CamelCaseToKebab(*systemName),
+		SysNameKebabNew:  SpacesToKebab(*systemName),
 		SysNameLowerOld:  "shop",
-		SysNameLowerNew:  CamelCaseToLower(*systemName),
+		SysNameLowerNew:  SpacesToLower(*systemName),
 
 		FrontendRepo:     frontendRepo,
 		BackendRepo:      backendRepo,
