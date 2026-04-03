@@ -49,5 +49,6 @@ Stop the loop and report to the user if:
 - Always sleep at least 5 minutes between CI status checks to avoid GitHub API rate limiting.
 - Only run the single failing test, never the full test suite.
 - When investigating failures, check both the gh-optivem scaffolding code and the starter repo template files.
+- Only make changes to the gh-optivem repo. Do NOT modify the starter repo. If you believe a starter repo change is needed, stop and ask the user for approval first.
 - Never use `git pull --rebase`. Always plain `git pull`.
 - Never delete scaffolded test repos unless explicitly asked.
