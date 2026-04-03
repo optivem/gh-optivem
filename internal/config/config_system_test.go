@@ -78,7 +78,9 @@ func TestMain(m *testing.M) {
 func runCLI(t *testing.T, args ...string) (string, int) {
 	t.Helper()
 
-	cmd := exec.Command(binaryPath, args...)
+	// Prepend "init" subcommand
+	fullArgs := append([]string{"init"}, args...)
+	cmd := exec.Command(binaryPath, fullArgs...)
 	// Use OPTIVEM_STARTER_PATH if set (e.g. in CI), otherwise resolve from workspace layout
 	starterPath := os.Getenv("OPTIVEM_STARTER_PATH")
 	if starterPath == "" {

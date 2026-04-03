@@ -39,6 +39,35 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Require a subcommand
+	if len(os.Args) < 2 {
+		printUsage()
+		os.Exit(1)
+	}
+
+	subcommand := os.Args[1]
+
+	switch subcommand {
+	case "init":
+		// Strip the subcommand so flag.Parse() sees only the flags
+		os.Args = append(os.Args[:1], os.Args[2:]...)
+		runInit()
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", subcommand)
+		printUsage()
+		os.Exit(1)
+	}
+}
+
+func printUsage() {
+	fmt.Fprintf(os.Stderr, "Usage: gh optivem <command> [flags]\n\n")
+	fmt.Fprintf(os.Stderr, "Commands:\n")
+	fmt.Fprintf(os.Stderr, "  init        Scaffold a new pipeline project\n\n")
+	fmt.Fprintf(os.Stderr, "Flags:\n")
+	fmt.Fprintf(os.Stderr, "  --version   Print version and exit\n")
+}
+
+func runInit() {
 	// Check for updates (non-blocking warning)
 	checkForUpdate()
 
