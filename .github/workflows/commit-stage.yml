@@ -10,9 +10,13 @@ jobs:
   commit-stage:
     name: Commit Stage
     runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -28,3 +32,18 @@ jobs:
 
       - name: Unit tests
         run: go test ./... -v
+
+      - name: Run Code Analysis
+        if: github.ref == 'refs/heads/main' && env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarcloud-github-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=optivem_gh-optivem
+            -Dsonar.projectName=gh-optivem
+            -Dsonar.organization=optivem
+            -Dsonar.sources=.
+            -Dsonar.exclusions=**/*_test.go
+            -Dsonar.tests=.
+            -Dsonar.test.inclusions=**/*_test.go
