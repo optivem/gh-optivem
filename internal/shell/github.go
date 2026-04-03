@@ -3,6 +3,7 @@ package shell
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -202,18 +203,20 @@ func (g *GitHub) RunWatch() error {
 // RunWatchWorkflow watches the latest run for a specific workflow name.
 // If workflow is empty, watches the overall latest run.
 // Retries up to 12 times (60s total) waiting for the run to appear.
+// If gh run watch hits a rate limit mid-stream, waits for reset and polls
+// the run status directly until it completes.
 func (g *GitHub) RunWatchWorkflow(workflow string) error {
-	var cmd string
+	var listCmd string
 	if workflow != "" {
-		cmd = fmt.Sprintf("gh run list --repo %s --workflow %s --limit 1 --json databaseId --jq .[0].databaseId", g.Repo, workflow)
+		listCmd = fmt.Sprintf("gh run list --repo %s --workflow %s --limit 1 --json databaseId --jq .[0].databaseId", g.Repo, workflow)
 	} else {
-		cmd = fmt.Sprintf("gh run list --repo %s --limit 1 --json databaseId --jq .[0].databaseId", g.Repo)
+		listCmd = fmt.Sprintf("gh run list --repo %s --limit 1 --json databaseId --jq .[0].databaseId", g.Repo)
 	}
 
 	var out string
 	var err error
 	for attempt := 1; attempt <= 12; attempt++ {
-		out, err = RunCapture(cmd, "")
+		out, err = RunCapture(listCmd, "")
 		if err == nil && strings.TrimSpace(out) != "" {
 			break
 		}
@@ -226,8 +229,59 @@ func (g *GitHub) RunWatchWorkflow(workflow string) error {
 		return fmt.Errorf("no workflow runs found for %s (workflow: %s) after 12 attempts", g.Repo, workflow)
 	}
 
-	_, err = Run(fmt.Sprintf("gh run watch %s --repo %s --exit-status", strings.TrimSpace(out), g.Repo), false, true, "")
-	return err
+	runID := strings.TrimSpace(out)
+	_, err = Run(fmt.Sprintf("gh run watch %s --repo %s --exit-status", runID, g.Repo), false, true, "")
+	if err == nil {
+		return nil
+	}
+
+	// If gh run watch failed due to rate limiting, fall back to polling run status.
+	var rle *RateLimitExceeded
+	if !errors.As(err, &rle) {
+		return err
+	}
+
+	log.Logf("Rate limit hit while watching run %s — switching to polling mode...", runID)
+	return g.pollRunUntilComplete(runID)
+}
+
+// pollRunUntilComplete polls gh run view until the run is no longer in_progress/queued.
+// Waits for rate limit reset between polls. Returns nil if the run succeeded, error otherwise.
+func (g *GitHub) pollRunUntilComplete(runID string) error {
+	for {
+		CheckRateLimit()
+
+		statusOut, err := RunCapture(
+			fmt.Sprintf("gh run view %s --repo %s --json status,conclusion --jq '[.status,.conclusion] | join(\",\")", runID, g.Repo),
+			"",
+		)
+		if err != nil {
+			var rle *RateLimitExceeded
+			if errors.As(err, &rle) {
+				log.Logf("Rate limit hit polling run %s — waiting 60s before retry...", runID)
+				time.Sleep(60 * time.Second)
+				continue
+			}
+			return fmt.Errorf("failed to poll run %s: %w", runID, err)
+		}
+
+		parts := strings.SplitN(strings.TrimSpace(statusOut), ",", 2)
+		if len(parts) < 2 {
+			time.Sleep(30 * time.Second)
+			continue
+		}
+		status, conclusion := parts[0], parts[1]
+
+		if status == "completed" {
+			if conclusion == "success" {
+				return nil
+			}
+			return fmt.Errorf("run %s completed with conclusion: %s", runID, conclusion)
+		}
+
+		log.Logf("Run %s status: %s — polling again in 60s...", runID, status)
+		time.Sleep(60 * time.Second)
+	}
 }
 
 func (g *GitHub) Delete() {
