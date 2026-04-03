@@ -20,7 +20,12 @@
      ```bash
      gh run view <run-id> --repo optivem/gh-optivem --log-failed
      ```
-   - Investigate the root cause of the failure.
+   - If the failure involves a scaffolded test repo, clone it locally for investigation (one git operation, no API calls):
+     ```bash
+     git clone https://github.com/<owner>/<repo>.git /tmp/<repo>
+     ```
+     Then read all files from the local clone. Delete the clone when done.
+   - Investigate the root cause using local files only (the clone, gh-optivem, and starter repos).
    - Fix the issue in the codebase.
    - Run **only the one failing test** locally (not the full suite). Resolve the starter path dynamically:
      ```bash
@@ -52,3 +57,13 @@ Stop the loop and report to the user if:
 - Only make changes to the gh-optivem repo. Do NOT modify the starter repo. If you believe a starter repo change is needed, stop and ask the user for approval first.
 - Never use `git pull --rebase`. Always plain `git pull`.
 - Never delete scaffolded test repos unless explicitly asked.
+
+## Rate Limiting Rules
+
+The GitHub API quota is 5000 requests/hour and is shared across all agents and the user. Exceeding it blocks everyone.
+
+- **Investigation must use local files only.** Read the gh-optivem and starter repos from the local filesystem. For scaffolded test repos, clone them locally (`git clone`) instead of using `gh api repos/.../contents/...`. Never fetch file contents via the GitHub API.
+- **Only use `gh` for CI operations**: triggering workflows, checking run status, and fetching failed logs (`--log-failed`). These are the only `gh` calls allowed.
+- **Never browse historical runs.** Only look at the current/latest run. Do not use `--limit 50` or inspect old runs to find patterns.
+- **Maximum 20 `gh` calls per monitoring cycle** (trigger + poll + fetch logs). If you exceed this, stop and report to the user.
+- **If you hit a rate limit error**, stop immediately and report to the user with the reset time. Do not retry.
