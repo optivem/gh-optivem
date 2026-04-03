@@ -167,7 +167,7 @@ jobs:
 
       - name: Upgrade to latest
         if: steps.prev.outputs.skip != 'true'
-        run: gh extension upgrade optivem
+        run: gh extension upgrade optivem --force
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
