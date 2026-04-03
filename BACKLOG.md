@@ -30,7 +30,7 @@ Analysis of the [sandbox project setup page](https://github.com/optivem/academy/
 | ~~#13~~ ✅ | Test Manually + Task 3 (API CRUD) | Scaffold Postman/HTTP collection for manual testing | Medium |
 | ~~#14~~ ✅ | Task 2, Step 5 (Use Case Narrative) | Scaffold use case narrative template in docs | Medium |
 | ~~#15~~ ✅ | Milestone 1 (Project Registration) | Auto-generate project registration info after scaffold | Low |
-| #16 | Adapt Existing Project | AI agent to help adapt an existing project to our architecture (folder structure, naming, patterns) | Medium |
+| #16 | Teaching Agent | Tutor agent that guides students through the course interactively | Medium |
 
 ### Not Needed
 
