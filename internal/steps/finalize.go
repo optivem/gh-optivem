@@ -2,6 +2,7 @@ package steps
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -398,6 +399,11 @@ func verifyNamedWorkflow(gh *shell.GitHub, label, workflowFile string) {
 	shell.CheckRateLimit()
 	err := gh.RunWatchWorkflow(workflowFile)
 	if err != nil {
+		var rle *shell.RateLimitExceeded
+		if errors.As(err, &rle) {
+			log.Failf("%s failed due to GitHub API rate limiting (the workflow itself may have succeeded)!", label)
+			log.Fatalf("Rate limit exceeded while watching %s workflow. The workflow run may still be passing — check manually: https://github.com/%s/actions", label, gh.Repo)
+		}
 		log.Failf("%s failed!", label)
 		log.Fatalf("%s workflow failed. Check: https://github.com/%s/actions", label, gh.Repo)
 	}
@@ -414,6 +420,11 @@ func verifyWorkflow(gh *shell.GitHub, label, triggerWorkflow string, fields map[
 	shell.CheckRateLimit()
 	err := gh.RunWatch()
 	if err != nil {
+		var rle *shell.RateLimitExceeded
+		if errors.As(err, &rle) {
+			log.Failf("%s failed due to GitHub API rate limiting (the workflow itself may have succeeded)!", label)
+			log.Fatalf("Rate limit exceeded while watching %s workflow. The workflow run may still be passing — check manually: https://github.com/%s/actions", label, gh.Repo)
+		}
 		log.Failf("%s failed!", label)
 		log.Fatalf("%s workflow failed. Check: https://github.com/%s/actions", label, gh.Repo)
 	}
