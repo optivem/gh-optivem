@@ -3,11 +3,13 @@
 package config
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -46,7 +48,37 @@ func withBase(extra ...string) []string {
 	return args
 }
 
+// loadEnvFile loads key=value pairs from a .env file into the environment.
+// Existing environment variables take precedence (are not overwritten).
+func loadEnvFile(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		if os.Getenv(k) == "" {
+			os.Setenv(k, v)
+		}
+	}
+}
+
 func TestMain(m *testing.M) {
+	// Find the module root (2 levels up from internal/config/)
+	modRoot, _ := filepath.Abs(filepath.Join("..", ".."))
+
+	// Load .env defaults (env vars take precedence)
+	loadEnvFile(filepath.Join(modRoot, ".env"))
+
 	// Build the binary once before all system tests
 	dir, err := os.MkdirTemp("", "gh-optivem-test-*")
 	if err != nil {
@@ -58,9 +90,6 @@ func TestMain(m *testing.M) {
 	if runtime.GOOS == "windows" {
 		bin += ".exe"
 	}
-
-	// Find the module root (3 levels up from internal/config/)
-	modRoot := filepath.Join("..", "..")
 
 	cmd := exec.Command("go", "build", "-o", bin, ".")
 	cmd.Dir = modRoot
