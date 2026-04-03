@@ -27,9 +27,17 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
 
   run:
-    name: Run
+    name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})
     needs: check
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      max-parallel: 3
+      matrix:
+        arch: [monolith, multitier]
+        repo-strategy: [monorepo, multirepo]
+        lang: [java, dotnet, typescript]
+        test-lang: [java, dotnet, typescript]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -54,8 +62,31 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global url."https://x-access-token:${{ secrets.VERIFY_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
-      - name: System tests (representative subset)
-        run: bash scripts/test-system.sh
+      - name: Compute test name
+        id: test
+        run: |
+          LANG="${{ matrix.lang }}"
+          if [ "$LANG" = "typescript" ]; then LANG="ts"; fi
+
+          if [ "${{ matrix.arch }}" = "monolith" ]; then
+            NAME="TestValidMonolithConfigurations/${{ matrix.arch }}_${{ matrix.repo-strategy }}_${LANG}_${{ matrix.test-lang }}"
+          else
+            NAME="TestValidMultitierConfigurations/${{ matrix.arch }}_${{ matrix.repo-strategy }}_${LANG}_react_${{ matrix.test-lang }}"
+          fi
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: System test
+        run: |
+          set +e
+          OUTPUT=$(go test -tags=system ./internal/config/ -v -timeout 2h -run "${{ steps.test.outputs.name }}" 2>&1)
+          EXIT_CODE=$?
+          echo "$OUTPUT"
+          if echo "$OUTPUT" | grep -qi "rate limit"; then
+            echo "::error::GitHub API rate limit exceeded — cancelling workflow"
+            gh run cancel ${{ github.run_id }} || true
+            exit 1
+          fi
+          exit $EXIT_CODE
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
           TEST_OWNER: ${{ vars.TEST_OWNER }}
@@ -64,13 +95,3 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           OPTIVEM_STARTER_PATH: ${{ github.workspace }}/starter
-
-      # Full suite (all 36 combinations) — uncomment to run:
-      # - name: System tests (full)
-      #   run: go test -tags=system ./... -v -timeout 24h
-      #   env:
-      #     TEST_OWNER: ${{ vars.TEST_OWNER }}
-      #     DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
-      #     DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      #     GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
