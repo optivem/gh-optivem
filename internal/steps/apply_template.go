@@ -11,11 +11,6 @@ import (
 	"github.com/optivem/gh-optivem/internal/templates"
 )
 
-// Internal port exposed by each language's Docker image.
-var internalPorts = map[string]int{
-	"java": 8080, "dotnet": 8080, "typescript": 3000,
-}
-
 // ApplyTemplate copies template files into the cloned repo(s).
 func ApplyTemplate(cfg *config.Config) {
 	log.Log("Step 5: Applying template files...")
@@ -90,11 +85,6 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	// Fix SonarCloud key suffixes in build files (build.gradle, .csproj, etc.)
 	templates.FixupAllTextFiles(repoDir, monolithSonarKeyReplacements(lang))
 
-	// Cross-language port fixup
-	if lang != testLang {
-		fixupPortMapping(repoDir, lang, testLang)
-	}
-
 	// Docs templates
 	copyDocs(starter, repoDir, "monolith")
 
@@ -139,11 +129,6 @@ func applyMonolithMultirepo(cfg *config.Config) {
 
 	// Fix SonarCloud key suffixes in build files
 	templates.FixupAllTextFiles(repoDir, monolithSonarKeyReplacements(lang))
-
-	// Cross-language port fixup
-	if lang != testLang {
-		fixupPortMapping(repoDir, lang, testLang)
-	}
 
 	// Docs templates
 	copyDocs(starter, repoDir, "monolith")
@@ -238,11 +223,6 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	// Fix SonarCloud key suffixes in build files
 	templates.FixupAllTextFiles(repoDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 
-	// Cross-language port fixup
-	if backendLang != testLang {
-		fixupMultitierPortMapping(repoDir, backendLang, testLang)
-	}
-
 	// Docs templates
 	copyDocs(starter, repoDir, "multitier")
 
@@ -286,11 +266,6 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	contentReplacements := multitierContentReplacements(backendLang, frontendLang, testLang)
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, multitierDockerComposeReplacements(backendLang, frontendLang, testLang))
-
-	// Cross-language port fixup
-	if backendLang != testLang {
-		fixupMultitierPortMapping(repoDir, backendLang, testLang)
-	}
 
 	// Fix SonarCloud key suffixes in build files
 	templates.FixupAllTextFiles(repoDir, multitierSonarKeyReplacements(backendLang, frontendLang))
@@ -463,57 +438,9 @@ func multitierSonarKeyReplacements(backendLang, frontendLang string) [][2]string
 	}
 }
 
-// fixupPortMapping fixes Docker port mapping when system language != test language (monolith).
-func fixupPortMapping(repoDir, lang, testLang string) {
-	systemPort := internalPorts[lang]
-	templatePort := internalPorts[testLang]
-	if systemPort == templatePort {
-		return
-	}
-
-	for _, prefix := range []string{"local", "pipeline"} {
-		for _, suffix := range []string{"real", "stub"} {
-			compose := filepath.Join(repoDir, "system-test",
-				"docker-compose."+prefix+".monolith."+suffix+".yml")
-			if _, err := os.Stat(compose); err == nil {
-				files.ReplaceInFile(compose,
-					"8080:"+itoa(templatePort),
-					"8080:"+itoa(systemPort))
-			}
-		}
-	}
-	log.OKf("Port fixup: %d -> %d", templatePort, systemPort)
-}
-
-// fixupMultitierPortMapping fixes Docker port mapping when backend language != test language (multitier).
-func fixupMultitierPortMapping(repoDir, backendLang, testLang string) {
-	systemPort := internalPorts[backendLang]
-	templatePort := internalPorts[testLang]
-	if systemPort == templatePort {
-		return
-	}
-
-	for _, prefix := range []string{"local", "pipeline"} {
-		for _, suffix := range []string{"real", "stub"} {
-			compose := filepath.Join(repoDir, "system-test",
-				"docker-compose."+prefix+".multitier."+suffix+".yml")
-			if _, err := os.Stat(compose); err == nil {
-				files.ReplaceInFile(compose,
-					"8080:"+itoa(templatePort),
-					"8080:"+itoa(systemPort))
-			}
-		}
-	}
-	log.OKf("Port fixup: %d -> %d", templatePort, systemPort)
-}
-
 // copyDocs copies arch-specific and shared docs templates into {repoDir}/docs/.
 func copyDocs(starter, repoDir, arch string) {
 	dst := filepath.Join(repoDir, "docs")
 	files.CopyDir(filepath.Join(starter, "docs", arch), dst)
 	files.CopyDir(filepath.Join(starter, "docs", "shared"), dst)
-}
-
-func itoa(n int) string {
-	return fmt.Sprintf("%d", n)
 }
