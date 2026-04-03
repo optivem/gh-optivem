@@ -226,3 +226,20 @@ The README should display all user-supplied parameters:
 
 Note: The root repo does not get a SonarCloud project — only code components (system, backend, frontend) are analyzed.
 
+## Documentation
+
+The scaffolder copies docs from the starter into the root repo:
+
+Source: `starter/docs/{arch}/` + `starter/docs/shared/` → `{repo}/docs/`
+
+Scaffolded docs structure (all combinations):
+
+```
+{repo}/
+  docs/
+    use-cases.md              # from: docs/shared/use-cases.md
+    use-case-narrative.md     # from: docs/shared/use-case-narrative.md
+    project-registration.md   # from: docs/shared/project-registration.md
+    architecture.md           # from: docs/{arch}/architecture.md
+```
+
