@@ -140,33 +140,23 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	// System repo: system code + commit stage
 	EnsureWorkflowDir(systemDir)
 
-	// Copy system code into system repo root (contents of monolith/{lang}/ -> repo root files)
+	// Copy system code into system/ subfolder (matching monorepo layout)
 	systemSrc := filepath.Join(starter, "system", "monolith", lang)
-	entries, _ := os.ReadDir(systemSrc)
-	for _, e := range entries {
-		src := filepath.Join(systemSrc, e.Name())
-		dst := filepath.Join(systemDir, e.Name())
-		if e.IsDir() {
-			files.CopyDir(src, dst)
-		} else {
-			files.CopyFile(src, dst)
-		}
-	}
+	files.CopyDir(systemSrc, filepath.Join(systemDir, "system"))
 
 	systemWfMap := map[string]string{
 		"monolith-" + lang + "-commit-stage.yml": "commit-stage.yml",
 	}
 	templates.CopyWorkflows(systemWfMap, starter, systemDir)
 
-	// Fix system repo workflow content
+	// Fix system repo workflow content (same replacements as monorepo)
 	sysContentReplacements := [][2]string{
 		{"monolith-" + lang + "-commit-stage", "commit-stage"},
-		{"system/monolith/" + lang, "."},
+		{"system/monolith/" + lang, "system"},
 		{"monolith-system-" + lang, "system"},
 	}
 	templates.FixupWorkflowContent(systemDir, sysContentReplacements)
 	templates.FixupAllTextFiles(systemDir, monolithSonarKeyReplacements(lang))
-	templates.FixupCommitStageForStandalone(systemDir, ".")
 	log.OK("Applied system repo template (monolith multirepo)")
 }
 
@@ -280,59 +270,41 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	// Backend repo: code + commit stage
 	EnsureWorkflowDir(backendDir)
 	backendSrc := filepath.Join(starter, "system", "multitier", "backend-"+backendLang)
-	entries, _ := os.ReadDir(backendSrc)
-	for _, e := range entries {
-		src := filepath.Join(backendSrc, e.Name())
-		dst := filepath.Join(backendDir, e.Name())
-		if e.IsDir() {
-			files.CopyDir(src, dst)
-		} else {
-			files.CopyFile(src, dst)
-		}
-	}
+	files.CopyDir(backendSrc, filepath.Join(backendDir, "backend"))
+
 	backendWfMap := map[string]string{
 		"multitier-backend-" + backendLang + "-commit-stage.yml": "backend-commit-stage.yml",
 	}
 	templates.CopyWorkflows(backendWfMap, starter, backendDir)
 
-	// Fix backend workflow content
+	// Fix backend workflow content (same replacements as monorepo)
 	backendReplacements := [][2]string{
 		{"multitier-backend-" + backendLang + "-commit-stage", "backend-commit-stage"},
-		{"system/multitier/backend-" + backendLang, "."},
+		{"system/multitier/backend-" + backendLang, "backend"},
 		{"multitier-backend-" + backendLang, "backend"},
 	}
 	templates.FixupWorkflowContent(backendDir, backendReplacements)
 	templates.FixupAllTextFiles(backendDir, multitierSonarKeyReplacements(backendLang, frontendLang))
-	templates.FixupCommitStageForStandalone(backendDir, ".")
 	log.OK("Applied backend repo template")
 
 	// Frontend repo: code + commit stage
 	EnsureWorkflowDir(frontendDir)
 	frontendSrc := filepath.Join(starter, "system", "multitier", "frontend-"+frontendLang)
-	entries, _ = os.ReadDir(frontendSrc)
-	for _, e := range entries {
-		src := filepath.Join(frontendSrc, e.Name())
-		dst := filepath.Join(frontendDir, e.Name())
-		if e.IsDir() {
-			files.CopyDir(src, dst)
-		} else {
-			files.CopyFile(src, dst)
-		}
-	}
+	files.CopyDir(frontendSrc, filepath.Join(frontendDir, "frontend"))
+
 	frontendWfMap := map[string]string{
 		"multitier-frontend-" + frontendLang + "-commit-stage.yml": "frontend-commit-stage.yml",
 	}
 	templates.CopyWorkflows(frontendWfMap, starter, frontendDir)
 
-	// Fix frontend workflow content
+	// Fix frontend workflow content (same replacements as monorepo)
 	frontendReplacements := [][2]string{
 		{"multitier-frontend-" + frontendLang + "-commit-stage", "frontend-commit-stage"},
-		{"system/multitier/frontend-" + frontendLang, "."},
+		{"system/multitier/frontend-" + frontendLang, "frontend"},
 		{"multitier-frontend-" + frontendLang, "frontend"},
 	}
 	templates.FixupWorkflowContent(frontendDir, frontendReplacements)
 	templates.FixupAllTextFiles(frontendDir, multitierSonarKeyReplacements(backendLang, frontendLang))
-	templates.FixupCommitStageForStandalone(frontendDir, ".")
 	log.OK("Applied frontend repo template")
 }
 
