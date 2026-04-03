@@ -1,7 +1,6 @@
 package steps
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
