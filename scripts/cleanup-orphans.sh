@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Deletes orphaned test repos (test-app-*) left behind by system tests.
+# Deletes orphaned test repos (test-app-*) and their SonarCloud projects
+# left behind by system tests.
 #
 # Required: TEST_OWNER=<github-user-or-org>
-# Optional: DRY_RUN=1 (default) — list repos without deleting
-#           DRY_RUN=0 — actually delete repos
+#           SONAR_TOKEN=<sonarcloud-token> (for SonarCloud cleanup)
+# Optional: DRY_RUN=1 (default) — list without deleting
+#           DRY_RUN=0 — actually delete
 #
 # Usage:
 #   TEST_OWNER=valentinajemuovic bash scripts/cleanup-orphans.sh          # dry run
@@ -17,6 +19,7 @@ if [ -z "${TEST_OWNER:-}" ]; then
 fi
 
 DRY_RUN="${DRY_RUN:-1}"
+SONAR_API_URL="${SONAR_API_URL:-https://sonarcloud.io/api}"
 
 echo "Owner: $TEST_OWNER"
 if [ "$DRY_RUN" = "1" ]; then
@@ -26,31 +29,77 @@ else
 fi
 echo ""
 
-# List all repos matching the test-app-* pattern
+# --- GitHub repos ---
+
 repos=$(gh repo list "$TEST_OWNER" --limit 1000 --json name --jq '.[].name | select(startswith("test-app-"))') || true
 
 if [ -z "$repos" ]; then
   echo "No orphaned test repos found."
+else
+  count=$(echo "$repos" | wc -l | tr -d ' ')
+  echo "Found $count orphaned test repo(s):"
+  echo ""
+
+  for repo in $repos; do
+    full="$TEST_OWNER/$repo"
+    if [ "$DRY_RUN" = "1" ]; then
+      echo "  [dry run] would delete $full"
+    else
+      echo "  Deleting $full ..."
+      gh repo delete "$full" --yes
+    fi
+  done
+
+  echo ""
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "Dry run complete (repos). Run with DRY_RUN=0 to delete."
+  else
+    echo "Deleted $count repo(s)."
+  fi
+fi
+
+# --- SonarCloud projects ---
+
+echo ""
+
+if [ -z "${SONAR_TOKEN:-}" ]; then
+  echo "SONAR_TOKEN not set — skipping SonarCloud cleanup."
   exit 0
 fi
 
-count=$(echo "$repos" | wc -l | tr -d ' ')
-echo "Found $count orphaned test repo(s):"
+sonar_prefix="${TEST_OWNER}_test-app-"
+echo "Searching SonarCloud for projects matching prefix: $sonar_prefix"
+
+sonar_projects=$(curl -s \
+  -H "Authorization: Bearer ${SONAR_TOKEN}" \
+  "${SONAR_API_URL}/projects/search?organization=${TEST_OWNER}&ps=100" \
+  | jq -r ".components[] | select(.key | startswith(\"${sonar_prefix}\")) | .key") || true
+
+if [ -z "$sonar_projects" ]; then
+  echo "No orphaned SonarCloud projects found."
+  exit 0
+fi
+
+sonar_count=$(echo "$sonar_projects" | wc -l | tr -d ' ')
+echo "Found $sonar_count orphaned SonarCloud project(s):"
 echo ""
 
-for repo in $repos; do
-  full="$TEST_OWNER/$repo"
+for project_key in $sonar_projects; do
   if [ "$DRY_RUN" = "1" ]; then
-    echo "  [dry run] would delete $full"
+    echo "  [dry run] would delete SonarCloud project: $project_key"
   else
-    echo "  Deleting $full ..."
-    gh repo delete "$full" --yes
+    echo "  Deleting SonarCloud project: $project_key ..."
+    curl -s -X POST \
+      -H "Authorization: Bearer ${SONAR_TOKEN}" \
+      "${SONAR_API_URL}/projects/delete" \
+      -d "project=${project_key}" > /dev/null
+    sleep 1
   fi
 done
 
 echo ""
 if [ "$DRY_RUN" = "1" ]; then
-  echo "Dry run complete. Run with DRY_RUN=0 to delete these repos."
+  echo "Dry run complete (SonarCloud). Run with DRY_RUN=0 to delete."
 else
-  echo "Deleted $count repo(s)."
+  echo "Deleted $sonar_count SonarCloud project(s)."
 fi
