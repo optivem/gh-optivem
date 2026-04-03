@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/version"
 )
 
 type Config struct {
@@ -316,8 +317,14 @@ func ParseAndValidate() *Config {
 	noCleanup := flag.Bool("no-cleanup", false, "Keep repo in test mode")
 	forceCleanup := flag.Bool("force-cleanup", false, "Cleanup even on failure")
 	workDir := flag.String("workdir", "", "Working directory for cloning (default: temp dir)")
+	showVersion := flag.Bool("version", false, "Print version and exit")
 
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("gh-optivem %s\n", version.Version)
+		os.Exit(0)
+	}
 
 	if *owner == "" || *systemName == "" || *repo == "" || *arch == "" || *repoStrategy == "" {
 		fmt.Fprintln(os.Stderr, "Required flags: --owner, --system-name, --repo, --arch, --repo-strategy")

@@ -32,8 +32,16 @@ jobs:
           echo "Installed version: $VERSION_OUTPUT"
           echo "Latest release tag: $LATEST_TAG"
 
-          if [[ "$VERSION_OUTPUT" != *"$LATEST_TAG"* ]]; then
-            echo "FAIL: Expected '$LATEST_TAG' in output, got '$VERSION_OUTPUT'"
+          # Version output should be exactly "gh-optivem <tag>"
+          EXPECTED="gh-optivem $LATEST_TAG"
+          if [[ "$VERSION_OUTPUT" != "$EXPECTED" ]]; then
+            echo "FAIL: Expected exactly '$EXPECTED', got '$VERSION_OUTPUT'"
+            exit 1
+          fi
+
+          # Tag must start with "v"
+          if [[ "$LATEST_TAG" != v* ]]; then
+            echo "FAIL: Tag '$LATEST_TAG' does not start with 'v'"
             exit 1
           fi
           echo "OK: Version matches latest release"
@@ -99,15 +107,16 @@ jobs:
         shell: bash
         run: |
           VERSION_OUTPUT=$(gh optivem --version)
-          EXPECTED="${{ steps.prev.outputs.tag }}"
+          EXPECTED_TAG="${{ steps.prev.outputs.tag }}"
+          EXPECTED="gh-optivem $EXPECTED_TAG"
           echo "Installed version: $VERSION_OUTPUT"
           echo "Expected: $EXPECTED"
 
-          if [[ "$VERSION_OUTPUT" != *"$EXPECTED"* ]]; then
-            echo "FAIL: Expected '$EXPECTED' in output, got '$VERSION_OUTPUT'"
+          if [[ "$VERSION_OUTPUT" != "$EXPECTED" ]]; then
+            echo "FAIL: Expected exactly '$EXPECTED', got '$VERSION_OUTPUT'"
             exit 1
           fi
-          echo "OK: Pinned version matches"
+          echo "OK: Pinned version matches exactly"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -154,11 +163,12 @@ jobs:
         shell: bash
         run: |
           VERSION_OUTPUT=$(gh optivem --version)
-          EXPECTED="${{ steps.prev.outputs.tag }}"
+          EXPECTED_TAG="${{ steps.prev.outputs.tag }}"
+          EXPECTED="gh-optivem $EXPECTED_TAG"
           echo "Installed version: $VERSION_OUTPUT"
 
-          if [[ "$VERSION_OUTPUT" != *"$EXPECTED"* ]]; then
-            echo "FAIL: Expected old version '$EXPECTED', got '$VERSION_OUTPUT'"
+          if [[ "$VERSION_OUTPUT" != "$EXPECTED" ]]; then
+            echo "FAIL: Expected exactly '$EXPECTED', got '$VERSION_OUTPUT'"
             exit 1
           fi
           echo "OK: Old version confirmed"
@@ -177,11 +187,12 @@ jobs:
         run: |
           VERSION_OUTPUT=$(gh optivem --version)
           LATEST_TAG=$(gh api repos/optivem/gh-optivem/releases/latest --jq '.tag_name')
+          EXPECTED="gh-optivem $LATEST_TAG"
           echo "Upgraded version: $VERSION_OUTPUT"
-          echo "Latest release: $LATEST_TAG"
+          echo "Expected: $EXPECTED"
 
-          if [[ "$VERSION_OUTPUT" != *"$LATEST_TAG"* ]]; then
-            echo "FAIL: Expected '$LATEST_TAG' after upgrade, got '$VERSION_OUTPUT'"
+          if [[ "$VERSION_OUTPUT" != "$EXPECTED" ]]; then
+            echo "FAIL: Expected exactly '$EXPECTED' after upgrade, got '$VERSION_OUTPUT'"
             exit 1
           fi
           echo "OK: Upgrade successful"
