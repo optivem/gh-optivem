@@ -466,9 +466,19 @@ func replaceSystemNameInRepo(cfg *config.Config, repoDir string) {
 		log.OKf("System name: test config keys %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
 	}
 
-	// Pass 7: "shop" in TS/HTML/cshtml source files -> kebab-case (imports, routes)
-	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameKebabNew, []string{".ts", ".tsx", ".js", ".jsx", ".html", ".cshtml"})
-	log.OKf("System name: TS/HTML kebab %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameKebabNew, n)
+	// Pass 7a: "shop-" in TS/JS files -> kebab-case prefix (import paths, filenames: shop-api-driver -> sky-travel-api-driver)
+	// Must run BEFORE 7b so that "shop-" in kebab contexts is consumed first.
+	tsExts := []string{".ts", ".tsx", ".js", ".jsx"}
+	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld+"-", cfg.SysNameKebabNew+"-", tsExts)
+	log.OKf("System name: TS kebab prefix %s- -> %s- (%d files)", cfg.SysNameCamelOld, cfg.SysNameKebabNew, n)
+
+	// Pass 7b: remaining "shop" in TS/JS files -> camelCase (identifiers: shopDriver -> skyTravelDriver, .shop() -> .skyTravel())
+	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameCamelNew, tsExts)
+	log.OKf("System name: TS camel %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
+
+	// Pass 7c: "shop" in HTML/cshtml files -> kebab-case (routes, URLs)
+	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameKebabNew, []string{".html", ".cshtml"})
+	log.OKf("System name: HTML kebab %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameKebabNew, n)
 
 	// Pass 8: Rename files (PascalCase: ShopDsl.java -> SkyTravelDsl.java)
 	n = files.RenameFilesInTree(repoDir, cfg.SysNamePascalOld, cfg.SysNamePascalNew)
