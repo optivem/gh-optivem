@@ -20,6 +20,39 @@ cd gh-optivem
 gh extension install .
 ```
 
+## Version
+
+Check the installed version:
+
+```bash
+gh optivem --version
+```
+
+## Upgrading
+
+Upgrade to the latest release:
+
+```bash
+gh extension upgrade optivem
+```
+
+Upgrade all extensions at once:
+
+```bash
+gh extension upgrade --all
+```
+
+## Releasing
+
+This project uses [semantic versioning](https://semver.org/). To create a new release:
+
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+This triggers the Release workflow, which uses GoReleaser to build binaries for all platforms and publish a GitHub Release. Users who installed via `gh extension install` will get the new version on their next `gh extension upgrade`.
+
 ## Usage
 
 Monolith:
