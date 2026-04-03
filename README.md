@@ -20,6 +20,12 @@ cd gh-optivem
 gh extension install .
 ```
 
+## Uninstalling
+
+```bash
+gh extension remove optivem
+```
+
 ## Version
 
 Check the installed version:

@@ -1,0 +1,195 @@
+name: Installation Test
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  install-latest:
+    name: Install latest version (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.22"
+          cache: false
+
+      - name: Install extension
+        run: gh extension install optivem/gh-optivem
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify version matches latest release
+        shell: bash
+        run: |
+          VERSION_OUTPUT=$(gh optivem --version)
+          LATEST_TAG=$(gh api repos/optivem/gh-optivem/releases/latest --jq '.tag_name')
+          echo "Installed version: $VERSION_OUTPUT"
+          echo "Latest release tag: $LATEST_TAG"
+
+          if [[ "$VERSION_OUTPUT" != *"$LATEST_TAG"* ]]; then
+            echo "FAIL: Expected '$LATEST_TAG' in output, got '$VERSION_OUTPUT'"
+            exit 1
+          fi
+          echo "OK: Version matches latest release"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify extension is listed
+        shell: bash
+        run: gh extension list | grep optivem
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Uninstall extension
+        run: gh extension remove optivem
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify extension is removed
+        shell: bash
+        run: |
+          if gh extension list | grep -q optivem; then
+            echo "FAIL: Extension still listed after uninstall"
+            exit 1
+          fi
+          echo "OK: Extension removed successfully"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  install-specific-version:
+    name: Install specific version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.22"
+          cache: false
+
+      - name: Get previous release tag
+        id: prev
+        shell: bash
+        run: |
+          PREV_TAG=$(gh api repos/optivem/gh-optivem/releases --jq '.[1].tag_name // empty')
+          if [ -z "$PREV_TAG" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No previous release found — skipping"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
+            echo "Previous release: $PREV_TAG"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install specific (previous) version
+        if: steps.prev.outputs.skip != 'true'
+        run: gh extension install optivem/gh-optivem --pin ${{ steps.prev.outputs.tag }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify pinned version
+        if: steps.prev.outputs.skip != 'true'
+        shell: bash
+        run: |
+          VERSION_OUTPUT=$(gh optivem --version)
+          EXPECTED="${{ steps.prev.outputs.tag }}"
+          echo "Installed version: $VERSION_OUTPUT"
+          echo "Expected: $EXPECTED"
+
+          if [[ "$VERSION_OUTPUT" != *"$EXPECTED"* ]]; then
+            echo "FAIL: Expected '$EXPECTED' in output, got '$VERSION_OUTPUT'"
+            exit 1
+          fi
+          echo "OK: Pinned version matches"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Uninstall extension
+        if: steps.prev.outputs.skip != 'true'
+        run: gh extension remove optivem
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  upgrade-from-previous:
+    name: Upgrade from previous to latest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.22"
+          cache: false
+
+      - name: Get previous release tag
+        id: prev
+        shell: bash
+        run: |
+          PREV_TAG=$(gh api repos/optivem/gh-optivem/releases --jq '.[1].tag_name // empty')
+          if [ -z "$PREV_TAG" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No previous release found — skipping upgrade test"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
+            echo "Previous release: $PREV_TAG"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install previous version
+        if: steps.prev.outputs.skip != 'true'
+        run: gh extension install optivem/gh-optivem --pin ${{ steps.prev.outputs.tag }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify old version
+        if: steps.prev.outputs.skip != 'true'
+        shell: bash
+        run: |
+          VERSION_OUTPUT=$(gh optivem --version)
+          EXPECTED="${{ steps.prev.outputs.tag }}"
+          echo "Installed version: $VERSION_OUTPUT"
+
+          if [[ "$VERSION_OUTPUT" != *"$EXPECTED"* ]]; then
+            echo "FAIL: Expected old version '$EXPECTED', got '$VERSION_OUTPUT'"
+            exit 1
+          fi
+          echo "OK: Old version confirmed"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upgrade to latest
+        if: steps.prev.outputs.skip != 'true'
+        run: gh extension upgrade optivem
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify upgraded version
+        if: steps.prev.outputs.skip != 'true'
+        shell: bash
+        run: |
+          VERSION_OUTPUT=$(gh optivem --version)
+          LATEST_TAG=$(gh api repos/optivem/gh-optivem/releases/latest --jq '.tag_name')
+          echo "Upgraded version: $VERSION_OUTPUT"
+          echo "Latest release: $LATEST_TAG"
+
+          if [[ "$VERSION_OUTPUT" != *"$LATEST_TAG"* ]]; then
+            echo "FAIL: Expected '$LATEST_TAG' after upgrade, got '$VERSION_OUTPUT'"
+            exit 1
+          fi
+          echo "OK: Upgrade successful"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Uninstall extension
+        if: steps.prev.outputs.skip != 'true'
+        run: gh extension remove optivem
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
