@@ -31,7 +31,7 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: true
+      fail-fast: false
       max-parallel: 3
       matrix:
         arch: [monolith, multitier]
@@ -77,17 +77,21 @@ jobs:
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
 
       - name: System test
+        id: test-run
         run: |
           set +e
           OUTPUT=$(go test -tags=system ./internal/config/ -v -timeout 2h -run "${{ steps.test.outputs.name }}" 2>&1)
           EXIT_CODE=$?
           echo "$OUTPUT"
           if echo "$OUTPUT" | grep -qi "rate limit"; then
-            echo "::error::GitHub API rate limit exceeded — cancelling workflow"
-            gh run cancel ${{ github.run_id }} || true
+            echo "result=rate-limited" >> "$GITHUB_OUTPUT"
             exit 1
+          elif [ $EXIT_CODE -ne 0 ]; then
+            echo "result=failed" >> "$GITHUB_OUTPUT"
+            exit 1
+          else
+            echo "result=passed" >> "$GITHUB_OUTPUT"
           fi
-          exit $EXIT_CODE
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
           TEST_OWNER: ${{ vars.TEST_OWNER }}
@@ -96,3 +100,83 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           OPTIVEM_STARTER_PATH: ${{ github.workspace }}/starter
+
+  summary:
+    name: Summary
+    needs: run
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+              per_page: 100,
+            });
+
+            const results = { passed: [], failed: [], rateLimited: [], cancelled: [] };
+
+            for (const job of jobs.data.jobs) {
+              if (job.name === 'Check' || job.name === 'Summary') continue;
+              const name = job.name;
+              if (job.conclusion === 'success') results.passed.push(name);
+              else if (job.conclusion === 'cancelled') results.cancelled.push(name);
+              else {
+                // Check step outputs to distinguish rate-limit from real failure
+                const step = job.steps?.find(s => s.name === 'System test');
+                if (step?.conclusion === 'failure') {
+                  // Parse job name for log output
+                  const logLines = [];
+                  try {
+                    const logs = await github.rest.actions.downloadJobLogsForWorkflowRun({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      job_id: job.id,
+                    });
+                    const text = typeof logs.data === 'string' ? logs.data : '';
+                    if (text.includes('rate limit') || text.includes('Rate limit')) {
+                      results.rateLimited.push(name);
+                      continue;
+                    }
+                  } catch {}
+                }
+                results.failed.push(name);
+              }
+            }
+
+            let summary = '## Acceptance Stage Results\n\n';
+            const total = results.passed.length + results.failed.length + results.rateLimited.length + results.cancelled.length;
+            summary += `**${results.passed.length}/${total} passed**\n\n`;
+
+            if (results.failed.length > 0) {
+              summary += '### Failed\n';
+              results.failed.forEach(n => summary += `- ${n}\n`);
+              summary += '\n';
+            }
+            if (results.rateLimited.length > 0) {
+              summary += '### Rate Limited (not a real failure)\n';
+              results.rateLimited.forEach(n => summary += `- ${n}\n`);
+              summary += '\n';
+            }
+            if (results.cancelled.length > 0) {
+              summary += '### Cancelled\n';
+              results.cancelled.forEach(n => summary += `- ${n}\n`);
+              summary += '\n';
+            }
+            if (results.passed.length > 0) {
+              summary += '### Passed\n';
+              results.passed.forEach(n => summary += `- ${n}\n`);
+            }
+
+            core.summary.addRaw(summary);
+            await core.summary.write();
+
+            if (results.failed.length > 0) {
+              core.setFailed(`${results.failed.length} job(s) failed`);
+            } else if (results.rateLimited.length > 0) {
+              core.setFailed(`${results.rateLimited.length} job(s) hit rate limit — retry needed`);
+            }
