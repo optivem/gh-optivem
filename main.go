@@ -17,11 +17,14 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/shell"
 	"github.com/optivem/gh-optivem/internal/steps"
+	"github.com/optivem/gh-optivem/internal/version"
 )
 
 type stepDef struct {
@@ -30,6 +33,15 @@ type stepDef struct {
 }
 
 func main() {
+	// Handle --version before anything else
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+		fmt.Printf("gh-optivem %s\n", version.Version)
+		os.Exit(0)
+	}
+
+	// Check for updates (non-blocking warning)
+	checkForUpdate()
+
 	cfg := config.ParseAndValidate()
 
 	gh := shell.NewGitHub(cfg)
@@ -106,6 +118,26 @@ func main() {
 	if errors > 0 {
 		os.Exit(1)
 	}
+}
+
+func checkForUpdate() {
+	if version.Version == "dev" {
+		return // skip check for development builds
+	}
+
+	cmd := exec.Command("gh", "api", "repos/optivem/gh-optivem/releases/latest", "--jq", ".tag_name")
+	out, err := cmd.Output()
+	if err != nil {
+		return // fail silently — don't block usage if offline or rate-limited
+	}
+
+	latest := strings.TrimSpace(string(out))
+	if latest == "" || latest == version.Version {
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "\n%sUPDATE AVAILABLE:%s You are running %s, but %s is available.\n", "\033[0;33m", "\033[0m", version.Version, latest)
+	fmt.Fprintf(os.Stderr, "  Run: gh extension upgrade optivem\n\n")
 }
 
 func printBanner(cfg *config.Config) {
