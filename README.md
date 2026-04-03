@@ -70,3 +70,34 @@ Run a quick subset locally:
 ```bash
 bash scripts/test-system.sh
 ```
+
+Run a single test locally (e.g. monolith monorepo java dotnet):
+
+```bash
+export TEST_OWNER=valentinajemuovic
+export DOCKERHUB_USERNAME=valentinajemuovic
+export DOCKERHUB_TOKEN=...
+export SONAR_TOKEN=...
+export GHCR_TOKEN=...
+export OPTIVEM_STARTER_PATH=/path/to/starter
+
+go test -tags=system ./internal/config/ -v -timeout 2h \
+    -run "TestValidMonolithConfigurations/monolith_monorepo_java_dotnet"
+```
+
+### Acceptance Stage Monitoring Process
+
+When working on gh-optivem, follow this loop to verify changes:
+
+1. **Trigger** the acceptance stage workflow via GitHub Actions (`workflow_dispatch`).
+2. **Monitor** the run (check every 5 minutes).
+3. **If a job fails:**
+   - Investigate the failure logs (`gh run view <id> --log-failed`).
+   - Fix the issue locally.
+   - Run **only the one failing test** locally (see above for single-test syntax). Do not run the full suite.
+   - Repeat fix-and-test until that test passes locally.
+4. **Commit** the fix (use the `/commit` skill).
+5. **Re-trigger** the acceptance stage and go back to step 2.
+6. **Repeat** until the acceptance stage passes.
+
+**Stop condition:** If a test fails due to an external issue not under your control (e.g. subscription limits, third-party service outage, rate limiting), stop the loop and wait for the user to investigate.

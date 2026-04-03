@@ -442,11 +442,13 @@ func replaceSystemNameInRepo(cfg *config.Config, repoDir string) {
 	n := files.ReplaceInTree(repoDir, cfg.SysNamePascalOld, cfg.SysNamePascalNew, sourceExts)
 	log.OKf("System name: PascalCase %s -> %s (%d files)", cfg.SysNamePascalOld, cfg.SysNamePascalNew, n)
 
-	// Pass 2: PascalCase in test config files (avoid docker-compose/application config)
+	// Pass 2a: PascalCase in test config files (avoid docker-compose/application config)
 	n = replaceInTestConfigs(repoDir, cfg.SysNamePascalOld, cfg.SysNamePascalNew)
-	if n > 0 {
-		log.OKf("System name: PascalCase in test configs (%d files)", n)
-	}
+	log.OKf("System name: PascalCase in test configs (%d files)", n)
+
+	// Pass 2b: PascalCase in system-test appsettings files ("Shop" -> "SkyTravel" config keys)
+	n = replaceInTestAppsettings(repoDir, cfg.SysNamePascalOld, cfg.SysNamePascalNew)
+	log.OKf("System name: PascalCase in test appsettings (%d files)", n)
 
 	// Pass 3: "shop" in Java source files -> camelCase (shopUiBaseUrl -> skyTravelUiBaseUrl)
 	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameCamelNew, []string{".java"})
@@ -462,9 +464,7 @@ func replaceSystemNameInRepo(cfg *config.Config, repoDir string) {
 
 	// Pass 6: "shop" in .NET test config (appsettings) -> camelCase
 	n = replaceInTestConfigs(repoDir, cfg.SysNameCamelOld, cfg.SysNameCamelNew)
-	if n > 0 {
-		log.OKf("System name: test config keys %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
-	}
+	log.OKf("System name: test config keys %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
 
 	// Pass 7a: "shop-" in TS/JS files -> kebab-case prefix (import paths, filenames: shop-api-driver -> sky-travel-api-driver)
 	// Must run BEFORE 7b so that "shop-" in kebab contexts is consumed first.
@@ -531,6 +531,31 @@ func replaceInTestConfigs(repoDir, old, new string) int {
 			}
 		}
 		if !isConfig {
+			return nil
+		}
+		if files.ReplaceInFile(path, old, new) {
+			count++
+		}
+		return nil
+	})
+	return count
+}
+
+// replaceInTestAppsettings replaces in appsettings files under system-test/ directories.
+// These contain test config keys (e.g. "Shop": {...}) that need renaming.
+// System-level appsettings (DB credentials) are not under system-test/ and are unaffected.
+func replaceInTestAppsettings(repoDir, old, new string) int {
+	count := 0
+	systemTestDir := filepath.Join(repoDir, "system-test")
+
+	filepath.Walk(systemTestDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || files.IsGitDir(path) {
+			return nil
+		}
+		if !strings.HasPrefix(info.Name(), "appsettings") {
+			return nil
+		}
+		if !strings.HasSuffix(info.Name(), ".json") {
 			return nil
 		}
 		if files.ReplaceInFile(path, old, new) {
