@@ -431,6 +431,43 @@ func verifyWorkflow(gh *shell.GitHub, label, triggerWorkflow string, fields map[
 	log.OKf("%s passed!", label)
 }
 
+// RunLocalSystemTests runs Run-SystemTests.ps1 locally against the scaffolded project
+// to verify that Docker builds and test suites work (test mode only).
+func RunLocalSystemTests(cfg *config.Config) {
+	log.Log("Step 17: Running local system tests...")
+
+	if cfg.DryRun {
+		log.Log("[DRY RUN] Would run local system tests")
+		return
+	}
+
+	if !cfg.TestMode {
+		return
+	}
+
+	testDir := filepath.Join(cfg.RepoDir, "system-test")
+	if _, err := os.Stat(filepath.Join(testDir, "Run-SystemTests.ps1")); err != nil {
+		log.Warn("Run-SystemTests.ps1 not found in scaffolded project, skipping local system tests")
+		return
+	}
+
+	arch := cfg.Arch
+	suites := []string{"acceptance-api"}
+
+	for _, suite := range suites {
+		label := fmt.Sprintf("Local system test (%s)", suite)
+		cmdStr := fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Suite %s", arch, suite)
+		log.Logf("Running: %s (in %s)", cmdStr, testDir)
+
+		output, err := shell.Run(cmdStr, false, true, testDir)
+		if err != nil {
+			log.Failf("%s output:\n%s", label, output)
+			log.Fatalf("%s failed!", label)
+		}
+		log.OKf("%s passed!", label)
+	}
+}
+
 // Cleanup deletes repos, SonarCloud projects, and local directories (test mode only).
 func Cleanup(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud) {
 	if !cfg.TestMode {

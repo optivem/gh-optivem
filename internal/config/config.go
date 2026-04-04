@@ -424,11 +424,11 @@ func ParseAndValidate() *Config {
 	}
 	starterPath := filepath.Dir(filepath.Dir(exe))
 	// Fallback: check if we're running from source (go run)
-	if _, err := os.Stat(filepath.Join(starterPath, "VERSION")); err != nil {
+	if !isRegularFile(filepath.Join(starterPath, "VERSION")) {
 		// Try current working directory's parent
 		cwd, _ := os.Getwd()
 		starterPath = filepath.Dir(cwd)
-		if _, err := os.Stat(filepath.Join(starterPath, "VERSION")); err != nil {
+		if !isRegularFile(filepath.Join(starterPath, "VERSION")) {
 			// Try environment variable
 			if envPath := os.Getenv("OPTIVEM_STARTER_PATH"); envPath != "" {
 				starterPath = envPath
@@ -537,6 +537,14 @@ func ParseAndValidate() *Config {
 		SystemRepo:     systemRepo,
 		SystemFullRepo: systemFullRepo,
 	}
+}
+
+// isRegularFile returns true if path exists and is a regular file (not a directory).
+// On case-insensitive filesystems (Windows), os.Stat("VERSION") matches a "version/" directory,
+// so we must check that it's actually a file.
+func isRegularFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 func resolveCleanup(cleanup, noCleanup bool) string {

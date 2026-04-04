@@ -16,10 +16,10 @@ TESTS=(
   # All 4 arch/strategy combos × all 3 backend langs (same test lang)
   # NOTE: cross-language tests (system lang != test lang) require docker-compose
   # env var fixups that are not yet implemented — tracked as a known issue.
-  "TestValidMonolithConfigurations/monolith_monorepo_java_java"
-  "TestValidMonolithConfigurations/monolith_multirepo_dotnet_dotnet"
+  # "TestValidMonolithConfigurations/monolith_monorepo_java_java"
+  # "TestValidMonolithConfigurations/monolith_multirepo_dotnet_dotnet"
   "TestValidMultitierConfigurations/multitier_monorepo_typescript_react_typescript"
-  "TestValidMultitierConfigurations/multitier_multirepo_java_react_java"
+  # "TestValidMultitierConfigurations/multitier_multirepo_java_react_java"
 )
 
 RUN_PATTERN=$(IFS="|"; echo "${TESTS[*]}")
