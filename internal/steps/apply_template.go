@@ -340,8 +340,9 @@ func monolithDockerComposeReplacements(lang, testLang string) [][2]string {
 		{"system-test/" + testLang + "/", "system-test/"},
 		{"system-test/" + testLang, "system-test"},
 		{"monolith-system-" + lang, "system"},
-		// Docker build context: starter has system/monolith/{lang}, scaffold flattens to system/
-		{"../../system/monolith/" + lang, "../../system"},
+		// Docker build context: starter has system-test/{lang}/ so ../../system/monolith/{lang} is correct there,
+		// but scaffold flattens to system-test/ (one level up), so the context becomes ../system
+		{"../../system/monolith/" + lang, "../system"},
 		// Volume mount paths: old layout had system-test/{lang}/, new has system-test/
 		{"../../system/external-real-sim", "../external-real-sim"},
 		{"../../system/external-stub", "../external-stub"},
