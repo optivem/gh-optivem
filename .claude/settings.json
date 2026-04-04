@@ -1,0 +1,53 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Edit(*)",
+      "Write(*)",
+      "Agent(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "Grep(*)",
+      "Glob(*)",
+      "NotebookEdit(*)",
+      "TodoWrite(*)",
+      "Skill(*)",
+      "mcp__github__search_code",
+      "mcp__github__get_file_contents",
+      "mcp__github__search_issues",
+      "mcp__github__add_issue_comment",
+      "mcp__github__issue_write",
+      "mcp__github__issue_read"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{const j=JSON.parse(d);const f=j.tool_input?.file_path||j.tool_response?.filePath||'';if(!f.endsWith('.java'))return;const fs=require('fs');const content=fs.readFileSync(f,'utf8');const eol=content.includes('\\r\\n')?'\\r\\n':'\\n';const fixed=content.replace(/(\\r\\n|\\n){3,}/g,eol+eol).replace(/(\\r\\n|\\n)+$/,eol);if(fixed!==content)fs.writeFileSync(f,fixed)})\" 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -Command \"[System.Media.SystemSounds]::Beep.Play()\""
+          },
+          {
+            "type": "command",
+            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"Stop\",\"additionalContext\":\"IMPORTANT: Before ending, ask the user if they would like you to: (1) git commit & push all repos (run /github-commit-push-all), and/or (2) git sync all repos (run /github-sync-all). Wait for their response before proceeding.\"},\"continue\":true}'"
+          }
+        ]
+      }
+    ]
+  },
+  "skipDangerousModePermissionPrompt": true
+}
