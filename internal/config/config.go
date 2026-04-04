@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/log"
@@ -416,26 +415,10 @@ func ParseAndValidate() *Config {
 		}
 	}
 
-	// Find starter path: the gh-optivem binary lives inside starter/gh-optivem/
-	// so starter is the parent of the directory containing the executable.
-	exe, err := os.Executable()
-	if err != nil {
-		log.FatalExit("Cannot determine executable path")
-	}
-	starterPath := filepath.Dir(filepath.Dir(exe))
-	// Fallback: check if we're running from source (go run)
-	if !isRegularFile(filepath.Join(starterPath, "VERSION")) {
-		// Try current working directory's parent
-		cwd, _ := os.Getwd()
-		starterPath = filepath.Dir(cwd)
-		if !isRegularFile(filepath.Join(starterPath, "VERSION")) {
-			// Try environment variable
-			if envPath := os.Getenv("OPTIVEM_STARTER_PATH"); envPath != "" {
-				starterPath = envPath
-			} else {
-				log.FatalExit("Cannot find VERSION file. Set OPTIVEM_STARTER_PATH to the starter repo root.")
-			}
-		}
+	// Clone starter repo from GitHub into a temp directory.
+	starterPath, cloneErr := cloneStarter()
+	if cloneErr != nil {
+		log.FatalExit("Cannot clone starter repo: " + cloneErr.Error())
 	}
 
 	// Check gh auth
@@ -476,9 +459,10 @@ func ParseAndValidate() *Config {
 	// Work directory
 	wd := *workDir
 	if wd == "" {
-		wd, err = os.MkdirTemp("", "scaffold-")
-		if err != nil {
-			log.FatalExit("Cannot create temp directory: " + err.Error())
+		var mkErr error
+		wd, mkErr = os.MkdirTemp("", "scaffold-")
+		if mkErr != nil {
+			log.FatalExit("Cannot create temp directory: " + mkErr.Error())
 		}
 	}
 
@@ -539,12 +523,22 @@ func ParseAndValidate() *Config {
 	}
 }
 
-// isRegularFile returns true if path exists and is a regular file (not a directory).
-// On case-insensitive filesystems (Windows), os.Stat("VERSION") matches a "version/" directory,
-// so we must check that it's actually a file.
-func isRegularFile(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && !info.IsDir()
+// cloneStarter clones optivem/starter from GitHub into a temp directory.
+func cloneStarter() (string, error) {
+	dir, err := os.MkdirTemp("", "starter-")
+	if err != nil {
+		return "", fmt.Errorf("cannot create temp dir: %w", err)
+	}
+
+	cmd := exec.Command("gh", "repo", "clone", "optivem/starter", dir, "--", "--depth=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		os.RemoveAll(dir)
+		return "", fmt.Errorf("gh repo clone failed: %s\n%s", err, string(out))
+	}
+
+	log.OKf("Cloned starter to %s", dir)
+	return dir, nil
 }
 
 func resolveCleanup(cleanup, noCleanup bool) string {

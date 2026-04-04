@@ -27,10 +27,9 @@
      Then read all files from the local clone. Delete the clone when done.
    - Investigate the root cause using local files only (the clone, gh-optivem, and starter repos).
    - Fix the issue in the codebase.
-   - Run **only the one failing test** locally (not the full suite). Resolve the starter path dynamically:
+   - Run **only the one failing test** locally (not the full suite):
      ```bash
-     OPTIVEM_STARTER_PATH="$(git rev-parse --show-toplevel)/../starter" \
-       go test -tags=system ./internal/config/ -v -timeout 2h \
+     go test -tags=system ./internal/config/ -v -timeout 2h \
        -run "<FailingTestName>"
      ```
    - Repeat fix-and-test until the test passes locally.

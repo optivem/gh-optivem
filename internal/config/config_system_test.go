@@ -110,13 +110,6 @@ func runCLI(t *testing.T, args ...string) (string, int) {
 	// Prepend "init" subcommand
 	fullArgs := append([]string{"init"}, args...)
 	cmd := exec.Command(binaryPath, fullArgs...)
-	// Use OPTIVEM_STARTER_PATH if set (e.g. in CI), otherwise resolve from workspace layout
-	starterPath := os.Getenv("OPTIVEM_STARTER_PATH")
-	if starterPath == "" {
-		modRoot, _ := filepath.Abs(filepath.Join("..", ".."))
-		starterPath = filepath.Join(filepath.Dir(modRoot), "starter")
-	}
-	cmd.Env = append(os.Environ(), "OPTIVEM_STARTER_PATH="+starterPath)
 	out, err := cmd.CombinedOutput()
 
 	exitCode := 0

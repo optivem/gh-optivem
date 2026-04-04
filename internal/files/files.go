@@ -183,11 +183,27 @@ func RenameDirsInTree(root, old, new string) int {
 }
 
 // CopyDir recursively copies a directory tree.
+// skipDirs are directories that should never be copied (build artifacts, caches).
+var skipDirs = map[string]bool{
+	"node_modules": true,
+	".git":         true,
+	"dist":         true,
+	"build":        true,
+	"target":       true,
+	"bin":          true,
+	"obj":          true,
+}
+
 func CopyDir(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
+
+		if info.IsDir() && skipDirs[info.Name()] {
+			return filepath.SkipDir
+		}
+
 		rel, _ := filepath.Rel(src, path)
 		target := filepath.Join(dst, rel)
 

@@ -44,13 +44,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Checkout starter repo
-        uses: actions/checkout@v5
-        with:
-          repository: optivem/starter
-          path: starter
-          persist-credentials: false
-
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
@@ -99,7 +92,6 @@ jobs:
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-          OPTIVEM_STARTER_PATH: ${{ github.workspace }}/starter
 
   summary:
     name: Summary
