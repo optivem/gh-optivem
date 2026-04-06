@@ -28,8 +28,9 @@ type Config struct {
 	TestLang     string
 
 	License    string
-	DryRun     bool
-	TestMode   bool
+	DryRun       bool
+	TestMode     bool
+	SkipVerify   bool   // skip workflow trigger + status checks
 	Cleanup      string // "yes", "no", or "ask"
 	ForceCleanup bool   // cleanup even on failure
 	WorkDir    string
@@ -315,6 +316,7 @@ func ParseAndValidate() *Config {
 	cleanupFlag := flag.Bool("cleanup", false, "Auto-cleanup in test mode")
 	noCleanup := flag.Bool("no-cleanup", false, "Keep repo in test mode")
 	forceCleanup := flag.Bool("force-cleanup", false, "Cleanup even on failure")
+	skipVerify := flag.Bool("skip-verify", false, "Skip workflow triggering and status checks")
 	workDir := flag.String("workdir", "", "Working directory for cloning (default: temp dir)")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 
@@ -480,8 +482,9 @@ func ParseAndValidate() *Config {
 		TestLang:     cfgTestLang,
 
 		License:    *license,
-		DryRun:     *dryRun,
-		TestMode:   *testMode,
+		DryRun:       *dryRun,
+		TestMode:     *testMode,
+		SkipVerify:   *skipVerify,
 		Cleanup:      resolveCleanup(*cleanupFlag, *noCleanup),
 		ForceCleanup: *forceCleanup,
 		WorkDir:    wd,

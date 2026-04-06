@@ -91,15 +91,25 @@ func runInit() {
 		{"Create SonarCloud projects", func() { steps.CreateSonarCloudProjects(cfg, sc) }},
 		{"Commit and push", func() { steps.CommitAndPush(cfg) }},
 		{"Enable GitHub Pages", func() { steps.EnablePages(cfg, gh) }},
-		{"Verify commit stage", func() { steps.VerifyCommitStage(cfg, gh) }},
-		{"Verify acceptance stage", func() { steps.VerifyAcceptanceStage(cfg, gh) }},
-		{"Verify acceptance stage legacy", func() { steps.VerifyAcceptanceStageLegacy(cfg, gh) }},
-		{"Verify QA stage", func() { steps.VerifyQAStage(cfg, gh) }},
-		{"Verify QA signoff", func() { steps.VerifyQASignoff(cfg, gh) }},
-		{"Verify production stage", func() { steps.VerifyProdStage(cfg, gh) }},
-		{"Run local system tests", func() { steps.RunLocalSystemTests(cfg) }},
-		{"Print project registration", func() { steps.PrintRegistration(cfg) }},
 	}
+
+	if !cfg.SkipVerify {
+		allSteps = append(allSteps,
+			stepDef{"Verify commit stage", func() { steps.VerifyCommitStage(cfg, gh) }},
+			stepDef{"Verify acceptance stage", func() { steps.VerifyAcceptanceStage(cfg, gh) }},
+			stepDef{"Verify acceptance stage legacy", func() { steps.VerifyAcceptanceStageLegacy(cfg, gh) }},
+			stepDef{"Verify QA stage", func() { steps.VerifyQAStage(cfg, gh) }},
+			stepDef{"Verify QA signoff", func() { steps.VerifyQASignoff(cfg, gh) }},
+			stepDef{"Verify production stage", func() { steps.VerifyProdStage(cfg, gh) }},
+			stepDef{"Run local system tests", func() { steps.RunLocalSystemTests(cfg) }},
+		)
+	} else {
+		log.Logf("Skipping workflow verification (--skip-verify)")
+	}
+
+	allSteps = append(allSteps,
+		stepDef{"Print project registration", func() { steps.PrintRegistration(cfg) }},
+	)
 
 	errors := 0
 	for _, s := range allSteps {
