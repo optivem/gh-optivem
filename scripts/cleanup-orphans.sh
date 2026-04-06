@@ -23,7 +23,7 @@ fi
 DRY_RUN="${DRY_RUN:-1}"
 SONAR_API_URL="${SONAR_API_URL:-https://sonarcloud.io/api}"
 
-DEFAULT_PREFIXES="test-app- page-turner- course-tester-"
+DEFAULT_PREFIXES="test-app- page-turner- course-tester- ct-"
 PREFIXES="${PREFIXES:-$DEFAULT_PREFIXES}"
 
 echo "Owner: $TEST_OWNER"
