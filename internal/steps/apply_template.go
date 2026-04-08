@@ -348,6 +348,7 @@ func monolithDockerComposeReplacements(lang, testLang string) [][2]string {
 		{"../../system/external-stub", "../external-stub"},
 	}
 	if lang != testLang {
+		r = append(r, [2]string{"../../system/monolith/" + testLang, "../system"})
 		r = append(r, [2]string{"monolith-system-" + testLang, "system"})
 	}
 	return r
@@ -391,7 +392,12 @@ func multitierDockerComposeReplacements(backendLang, frontendLang, testLang stri
 		{"../../system/external-stub", "../external-stub"},
 	}
 	if backendLang != testLang {
+		r = append(r, [2]string{"../../system/multitier/backend-" + testLang, "../backend"})
 		r = append(r, [2]string{"multitier-backend-" + testLang, "backend"})
+	}
+	if frontendLang != testLang {
+		r = append(r, [2]string{"../../system/multitier/frontend-" + testLang, "../frontend"})
+		r = append(r, [2]string{"multitier-frontend-" + testLang, "frontend"})
 	}
 	return r
 }
