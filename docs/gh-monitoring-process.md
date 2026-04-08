@@ -13,7 +13,7 @@
      gh workflow run acceptance-stage.yml --repo optivem/gh-optivem
      ```
 
-2. **Wait for the run to appear** (if you just triggered one). Sleep 30 seconds, then fetch the latest run to get its ID.
+2. **Wait for the run to appear** (if you just triggered one). Sleep 5 minutes, then fetch the latest run to get its ID.
 
 3. **Monitor** the run. Sleep 5 minutes between status checks (to avoid rate limiting):
    ```bash
