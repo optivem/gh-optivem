@@ -41,11 +41,14 @@ func cleanupFlags() []string {
 }
 
 func verifyFlags() []string {
-	level := os.Getenv("TEST_VERIFY_LEVEL")
-	if level != "" {
-		return []string{"--verify-level", level}
+	var flags []string
+	if level := os.Getenv("TEST_VERIFY_LEVEL"); level != "" {
+		flags = append(flags, "--verify-level", level)
 	}
-	return nil
+	if os.Getenv("TEST_EXCLUDE_LEGACY") == "true" {
+		flags = append(flags, "--exclude-legacy")
+	}
+	return flags
 }
 
 func withBase(extra ...string) []string {
