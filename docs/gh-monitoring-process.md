@@ -2,20 +2,28 @@
 
 ## Process
 
-1. **Trigger** the acceptance stage:
+1. **Check for an existing run** before triggering a new one:
    ```bash
-   gh workflow run acceptance-stage.yml --repo optivem/gh-optivem
+   gh run list --workflow acceptance-stage.yml --repo optivem/gh-optivem --limit 1
    ```
+   - If a run is **in_progress** or **queued**, skip to step 3 (monitor it).
+   - If a run **completed with failure**, skip to step 5 (investigate it).
+   - If no recent run exists, or the latest run **completed successfully**, trigger a new one:
+     ```bash
+     gh workflow run acceptance-stage.yml --repo optivem/gh-optivem
+     ```
 
-2. **Monitor** the run. Sleep 5 minutes between status checks (to avoid rate limiting):
+2. **Wait for the run to appear** (if you just triggered one). Sleep 30 seconds, then fetch the latest run to get its ID.
+
+3. **Monitor** the run. Sleep 5 minutes between status checks (to avoid rate limiting):
    ```bash
    sleep 300 && gh run list --workflow acceptance-stage.yml --repo optivem/gh-optivem --limit 1
    ```
    Repeat until the run status is "completed".
 
-3. **If the run succeeded**, report success and stop.
+4. **If the run succeeded**, report success and stop.
 
-4. **If the run failed:**
+5. **If the run failed:**
    - Get the failed job logs:
      ```bash
      gh run view <run-id> --repo optivem/gh-optivem --log-failed
@@ -39,7 +47,7 @@
      ```
    - Go back to step 1 (re-trigger the acceptance stage).
 
-5. **Repeat** until the acceptance stage passes.
+6. **Repeat** until the acceptance stage passes.
 
 ## Stop Conditions
 
