@@ -93,18 +93,37 @@ func runInit() {
 		{"Enable GitHub Pages", func() { steps.EnablePages(cfg, gh) }},
 	}
 
-	if !cfg.SkipVerify {
+	if cfg.VerifyLevel != "none" {
+		// commit tier
 		allSteps = append(allSteps,
 			stepDef{"Verify commit stage", func() { steps.VerifyCommitStage(cfg, gh) }},
-			stepDef{"Verify acceptance stage", func() { steps.VerifyAcceptanceStage(cfg, gh) }},
-			stepDef{"Verify acceptance stage legacy", func() { steps.VerifyAcceptanceStageLegacy(cfg, gh) }},
-			stepDef{"Verify QA stage", func() { steps.VerifyQAStage(cfg, gh) }},
-			stepDef{"Verify QA signoff", func() { steps.VerifyQASignoff(cfg, gh) }},
-			stepDef{"Verify production stage", func() { steps.VerifyProdStage(cfg, gh) }},
-			stepDef{"Run local system tests", func() { steps.RunLocalSystemTests(cfg) }},
 		)
+
+		if cfg.VerifyLevel == "acceptance" || cfg.VerifyLevel == "release" {
+			// acceptance tier
+			allSteps = append(allSteps,
+				stepDef{"Verify acceptance stage", func() { steps.VerifyAcceptanceStage(cfg, gh) }},
+			)
+			if !cfg.ExcludeLegacy {
+				allSteps = append(allSteps,
+					stepDef{"Verify acceptance stage legacy", func() { steps.VerifyAcceptanceStageLegacy(cfg, gh) }},
+				)
+			}
+			allSteps = append(allSteps,
+				stepDef{"Run local system tests", func() { steps.RunLocalSystemTests(cfg) }},
+			)
+		}
+
+		if cfg.VerifyLevel == "release" {
+			// release tier
+			allSteps = append(allSteps,
+				stepDef{"Verify QA stage", func() { steps.VerifyQAStage(cfg, gh) }},
+				stepDef{"Verify QA signoff", func() { steps.VerifyQASignoff(cfg, gh) }},
+				stepDef{"Verify production stage", func() { steps.VerifyProdStage(cfg, gh) }},
+			)
+		}
 	} else {
-		log.Logf("Skipping workflow verification (--skip-verify)")
+		log.Logf("Skipping workflow verification (--skip-verify / --verify-level none)")
 	}
 
 	allSteps = append(allSteps,

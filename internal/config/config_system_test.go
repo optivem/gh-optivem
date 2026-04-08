@@ -40,11 +40,20 @@ func cleanupFlags() []string {
 	return flags
 }
 
+func verifyFlags() []string {
+	level := os.Getenv("TEST_VERIFY_LEVEL")
+	if level != "" {
+		return []string{"--verify-level", level}
+	}
+	return nil
+}
+
 func withBase(extra ...string) []string {
 	args := []string{"--owner", testOwner()}
 	args = append(args, baseArgs...)
 	args = append(args, extra...)
 	args = append(args, cleanupFlags()...)
+	args = append(args, verifyFlags()...)
 	return args
 }
 

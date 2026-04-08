@@ -1,64 +1,151 @@
-# Migration: Language/Architecture-Agnostic Scaffolding
+# Plan: Configurable Verify Level for Pipeline Stages
 
-Migrate gh-optivem so that scaffolded repos contain no language or architecture in folder names, workflow filenames, or Docker image names.
+## Context
 
-See [MAPPING.md](MAPPING.md) for the complete source-to-destination mapping for all 4 combinations (monolith monorepo, monolith multirepo, multitier monorepo, multitier multirepo).
+Currently the CLI has a binary `--skip-verify` flag — it either verifies all pipeline stages (commit, acceptance, acceptance-legacy, QA, QA signoff, production, local tests) or none. The user wants granular control over how deep verification goes, organized into tiers:
 
-## Files to Change
+- **commit** — only verify commit stage
+- **acceptance** — commit + acceptance stage + local system tests
+- **release** — commit + acceptance + QA + QA signoff + production + local system tests
 
-1. **`internal/config/config.go`** ✅
-   - Added monolith multirepo repo naming (`{repo}-system`) — `SystemRepo`, `SystemFullRepo`, `SystemRepoDir` fields
-   - GHCR_TOKEN now required for all multirepo setups (not just multitier)
+Plus a separate opt-out `--exclude-legacy` flag for acceptance-stage-legacy (runs by default).
 
-2. **`internal/templates/templates.go`** ✅
-   - `CopyWorkflows` now accepts `map[string]string` (source -> destination name mapping)
-   - Added `FixupWorkflowContent` and `FixupDockerComposeContent` for batch replacements
-   - `FixupMultirepoImageURLs` updated for language-agnostic image names (`backend`, `frontend`)
-   - Added `FixupMonolithMultirepoImageURLs` and `FixupMonolithMultirepoDockerCompose`
-   - `FixupMultirepoDockerCompose` updated for language-agnostic image names
-   - `FixupCommitStageForStandalone` simplified — takes `componentDir` instead of `component` + `lang`
+## Changes
 
-3. **`internal/steps/apply_template.go`** ✅
-   - Complete rewrite with 4 clear functions: `applyMonolithMonorepo`, `applyMonolithMultirepo`, `applyMultitierMonorepo`, `applyMultitierMultirepo`
-   - Monolith: `system/monolith/{lang}/` -> `system/`
-   - Multitier: `system/multitier/backend-{lang}/` -> `backend/`, `frontend-{lang}/` -> `frontend/`
-   - System test: `system-test/{testLang}/` -> `system-test/`
-   - External dirs: `system/external-*` -> top-level `external-*`
-   - Monolith multirepo fully implemented (root repo + system repo)
-   - Cross-language fixup simplified to port mapping only (image names handled by content replacements)
-   - Workflow content replacements handle paths, image names, and SonarCloud key suffixes
+### 1. Config struct — `internal/config/config.go`
 
-4. **`internal/steps/finalize.go`** ✅
-   - SonarCloud keys: `{owner}_{repo}-system`, `{owner}_{repo}-backend`, `{owner}_{repo}-frontend`
-   - Badge URLs use new workflow filenames (no language/arch)
-   - Verification uses new workflow filenames
-   - README includes all user-supplied parameters (owner, system name, arch, languages)
-   - Monolith multirepo README and cleanup fully implemented
-   - CommitAndPush handles monolith multirepo system repo
+Add two fields to `Config` (after `SkipVerify` on line 33):
 
-5. **`internal/steps/replacements.go`** ✅
-   - Monolith multirepo: replaces references in system repo, fixes docker-compose URLs
-   - Namespace replacement routes monolith code to correct repo (root vs system)
-   - TypeScript package.json names updated for new folder structure
+```go
+VerifyLevel   string // "none", "commit", "acceptance", "release"
+ExcludeLegacy bool   // exclude acceptance-stage-legacy verification
+```
 
-6. **`internal/steps/github_setup.go`** ✅
-   - Monolith multirepo: creates, clones, and sets secrets on system repo (`{repo}-system`)
+### 2. Flag parsing — `internal/config/config.go`
 
-7. **`main.go`** ✅
-   - Banner and summary output show system repo for monolith multirepo
+Add two new flags (around line 319, near `skipVerify`):
 
-8. **Tests** ✅
-   - Added `TestMonolithMultirepoRepoNames` and `TestSonarProjectKeys`
-   - All existing tests pass
-   - System tests already cover monolith multirepo configurations
+```go
+verifyLevel := flag.String("verify-level", "", "Verification level: none, commit, acceptance, release (default: release)")
+excludeLegacy := flag.Bool("include-legacy", false, "Include acceptance-stage-legacy verification")
+```
 
-## Migration Order (all completed)
+After `flag.Parse()`, resolve the verify level:
 
-1. ✅ Update `config.go` (naming, monolith multirepo support)
-2. ✅ Update `templates.go` (workflow rename support)
-3. ✅ Update `apply_template.go` (new destination paths)
-4. ✅ Update `finalize.go` (README, badges, SonarCloud, verification)
-5. ✅ Update `replacements.go` (new paths)
-6. ✅ Update `github_setup.go` (monolith multirepo)
-7. ✅ Update `main.go` (banner)
-8. ✅ Update tests to match new expectations
+- If both `--skip-verify` and `--verify-level` are set → error
+- If `--skip-verify` → level = `"none"`
+- If `--verify-level` set → validate it's one of none/commit/acceptance/release
+- Otherwise → default `"release"`
+
+Set `SkipVerify = (level == "none")` so existing code that reads `cfg.SkipVerify` still works.
+
+Wire into the returned Config struct (around line 487):
+```go
+SkipVerify:    resolvedLevel == "none",
+VerifyLevel:   resolvedLevel,
+ExcludeLegacy: *excludeLegacy,
+```
+
+### 3. Step sequence — `main.go` (lines 96-108)
+
+Replace the `if !cfg.SkipVerify` block with tier-based logic:
+
+```go
+if cfg.VerifyLevel != "none" {
+    // commit tier
+    allSteps = append(allSteps,
+        stepDef{"Verify commit stage", func() { steps.VerifyCommitStage(cfg, gh) }},
+    )
+
+    if cfg.VerifyLevel == "acceptance" || cfg.VerifyLevel == "release" {
+        // acceptance tier
+        allSteps = append(allSteps,
+            stepDef{"Verify acceptance stage", func() { steps.VerifyAcceptanceStage(cfg, gh) }},
+        )
+        if !cfg.ExcludeLegacy {
+            allSteps = append(allSteps,
+                stepDef{"Verify acceptance stage legacy", func() { steps.VerifyAcceptanceStageLegacy(cfg, gh) }},
+            )
+        }
+        allSteps = append(allSteps,
+            stepDef{"Run local system tests", func() { steps.RunLocalSystemTests(cfg) }},
+        )
+    }
+
+    if cfg.VerifyLevel == "release" {
+        // release tier
+        allSteps = append(allSteps,
+            stepDef{"Verify QA stage", func() { steps.VerifyQAStage(cfg, gh) }},
+            stepDef{"Verify QA signoff", func() { steps.VerifyQASignoff(cfg, gh) }},
+            stepDef{"Verify production stage", func() { steps.VerifyProdStage(cfg, gh) }},
+        )
+    }
+} else {
+    log.Logf("Skipping workflow verification (--skip-verify / --verify-level none)")
+}
+```
+
+### 4. Test helper — `internal/config/config_system_test.go`
+
+Add a `verifyFlags()` helper (mirrors `cleanupFlags()` pattern) that reads `TEST_VERIFY_LEVEL` env var:
+
+```go
+func verifyFlags() []string {
+    level := os.Getenv("TEST_VERIFY_LEVEL")
+    if level != "" {
+        return []string{"--verify-level", level}
+    }
+    return nil
+}
+```
+
+Wire into `withBase()`:
+```go
+func withBase(extra ...string) []string {
+    args := []string{"--owner", testOwner()}
+    args = append(args, baseArgs...)
+    args = append(args, extra...)
+    args = append(args, cleanupFlags()...)
+    args = append(args, verifyFlags()...)
+    return args
+}
+```
+
+### 5. GitHub Actions workflow — `.github/workflows/acceptance-stage.yml`
+
+Add `TEST_VERIFY_LEVEL` to the env block of the "System test" step (line 88+):
+
+```yaml
+env:
+  TEST_VERIFY_LEVEL: acceptance
+  GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+  # ... rest unchanged
+```
+
+This makes the acceptance-stage workflow verify up to the acceptance tier (not full release).
+
+## Files to modify
+
+| File | What changes |
+|---|---|
+| `internal/config/config.go` | Add `VerifyLevel`, `ExcludeLegacy` fields + flag parsing + validation. Legacy runs by default. |
+| `main.go` | Replace lines 96-108 with tier-based step assembly |
+| `internal/config/config_system_test.go` | Add `verifyFlags()` helper, wire into `withBase()` |
+| `.github/workflows/acceptance-stage.yml` | Add `TEST_VERIFY_LEVEL: acceptance` env var |
+
+## Backward compatibility
+
+- `--skip-verify` continues to work (maps to `--verify-level none`)
+- No flags = `--verify-level release` + legacy = current full behavior exactly
+- Using both `--skip-verify` and `--verify-level` → clear error message
+
+## Verification
+
+1. `go build .` — compiles
+2. `go test ./internal/config/` — unit tests pass (TestInvalidConfigurations)
+3. Manual dry-run checks:
+   - `gh-optivem init --dry-run --verify-level commit ...` → shows only commit stage step
+   - `gh-optivem init --dry-run --verify-level acceptance ...` → shows commit + acceptance + local tests
+   - `gh-optivem init --dry-run --verify-level release ...` → shows all stages
+   - `gh-optivem init --dry-run --verify-level acceptance --exclude-legacy ...` → shows acceptance without legacy
+   - `gh-optivem init --dry-run --skip-verify --verify-level commit ...` → error

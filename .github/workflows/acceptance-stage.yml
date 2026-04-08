@@ -86,6 +86,7 @@ jobs:
             echo "result=passed" >> "$GITHUB_OUTPUT"
           fi
         env:
+          TEST_VERIFY_LEVEL: acceptance
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
           TEST_OWNER: ${{ vars.TEST_OWNER }}
           DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}

@@ -58,6 +58,18 @@ gh optivem init --owner acme --system-name "Page Turner" --repo page-turner \
 gh optivem init ... --dry-run
 ```
 
+### Verification level
+
+Control how deep pipeline verification goes after scaffolding:
+
+```bash
+gh optivem init ... --verify-level commit       # only verify commit stage
+gh optivem init ... --verify-level acceptance    # commit + acceptance + local system tests
+gh optivem init ... --verify-level release       # full pipeline (default)
+gh optivem init ... --skip-verify                # skip all verification
+gh optivem init ... --exclude-legacy             # skip acceptance-stage-legacy
+```
+
 ### Test mode
 
 Scaffolds the project then cleans up automatically:

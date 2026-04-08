@@ -30,8 +30,10 @@ type Config struct {
 	License    string
 	DryRun       bool
 	TestMode     bool
-	SkipVerify   bool   // skip workflow trigger + status checks
-	Cleanup      string // "yes", "no", or "ask"
+	SkipVerify    bool   // skip workflow trigger + status checks (derived from VerifyLevel)
+	VerifyLevel   string // "none", "commit", "acceptance", "release"
+	ExcludeLegacy bool   // exclude acceptance-stage-legacy verification
+	Cleanup       string // "yes", "no", or "ask"
 	ForceCleanup bool   // cleanup even on failure
 	WorkDir    string
 	StarterPath string
@@ -317,6 +319,8 @@ func ParseAndValidate() *Config {
 	noCleanup := flag.Bool("no-cleanup", false, "Keep repo in test mode")
 	forceCleanup := flag.Bool("force-cleanup", false, "Cleanup even on failure")
 	skipVerify := flag.Bool("skip-verify", false, "Skip workflow triggering and status checks")
+	verifyLevel := flag.String("verify-level", "", "Verification level: none, commit, acceptance, release (default: release)")
+	excludeLegacy := flag.Bool("exclude-legacy", false, "Exclude acceptance-stage-legacy verification")
 	workDir := flag.String("workdir", "", "Working directory for cloning (default: temp dir)")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 
@@ -335,6 +339,21 @@ func ParseAndValidate() *Config {
 
 	if err := ValidateSystemName(*systemName); err != "" {
 		log.FatalExit("--system-name: " + err)
+	}
+
+	// Resolve verify level
+	if *skipVerify && *verifyLevel != "" {
+		log.FatalExit("cannot use both --skip-verify and --verify-level")
+	}
+	resolvedLevel := "release"
+	if *skipVerify {
+		resolvedLevel = "none"
+	} else if *verifyLevel != "" {
+		validLevels := map[string]bool{"none": true, "commit": true, "acceptance": true, "release": true}
+		if !validLevels[*verifyLevel] {
+			log.FatalExit("--verify-level must be none, commit, acceptance, or release")
+		}
+		resolvedLevel = *verifyLevel
 	}
 
 	if *arch != "monolith" && *arch != "multitier" {
@@ -484,7 +503,9 @@ func ParseAndValidate() *Config {
 		License:    *license,
 		DryRun:       *dryRun,
 		TestMode:     *testMode,
-		SkipVerify:   *skipVerify,
+		SkipVerify:    resolvedLevel == "none",
+		VerifyLevel:   resolvedLevel,
+		ExcludeLegacy: *excludeLegacy,
 		Cleanup:      resolveCleanup(*cleanupFlag, *noCleanup),
 		ForceCleanup: *forceCleanup,
 		WorkDir:    wd,
