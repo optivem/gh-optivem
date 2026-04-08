@@ -34,10 +34,10 @@ jobs:
       fail-fast: true
       max-parallel: 6
       matrix:
-        arch: [monolith, multitier]
+        arch: [multitier, monolith]
         repo-strategy: [monorepo, multirepo]
-        lang: [java, dotnet, typescript]
-        test-lang: [java, dotnet, typescript]
+        lang: [typescript, dotnet, java]
+        test-lang: [typescript, dotnet, java]
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
