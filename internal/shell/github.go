@@ -196,16 +196,16 @@ func (g *GitHub) WorkflowRun(workflow string, fields map[string]string) {
 	g.run(fmt.Sprintf("workflow run %s%s", workflow, fieldArgs))
 }
 
-func (g *GitHub) RunWatch() error {
-	return g.RunWatchWorkflow("")
+func (g *GitHub) RunWatch(intervalSecs int) error {
+	return g.RunWatchWorkflow("", intervalSecs)
 }
 
 // RunWatchWorkflow watches the latest run for a specific workflow name.
 // If workflow is empty, watches the overall latest run.
 // Retries up to 12 times (60s total) waiting for the run to appear.
-// If gh run watch hits a rate limit mid-stream, waits for reset and polls
-// the run status directly until it completes.
-func (g *GitHub) RunWatchWorkflow(workflow string) error {
+// intervalSecs controls the polling frequency for gh run watch.
+// If gh run watch hits a rate limit mid-stream, falls back to manual polling.
+func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
 	var listCmd string
 	if workflow != "" {
 		listCmd = fmt.Sprintf("gh run list --repo %s --workflow %s --limit 1 --json databaseId --jq .[0].databaseId", g.Repo, workflow)
@@ -230,7 +230,7 @@ func (g *GitHub) RunWatchWorkflow(workflow string) error {
 	}
 
 	runID := strings.TrimSpace(out)
-	_, err = Run(fmt.Sprintf("gh run watch %s --repo %s --exit-status", runID, g.Repo), false, true, "")
+	_, err = Run(fmt.Sprintf("gh run watch %s --repo %s --exit-status --interval %d", runID, g.Repo, intervalSecs), false, true, "")
 	if err == nil {
 		return nil
 	}

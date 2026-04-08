@@ -296,19 +296,19 @@ func VerifyCommitStage(cfg *config.Config, gh *shell.GitHub) {
 
 	if cfg.Arch == "monolith" {
 		if cfg.RepoStrategy == "monorepo" {
-			verifyNamedWorkflow(gh, "Commit stage", "commit-stage.yml")
+			verifyNamedWorkflow(gh, "Commit stage", "commit-stage.yml", 60)
 		} else {
 			ghSystem := gh.ForRepo(cfg.SystemFullRepo)
-			verifyNamedWorkflow(ghSystem, "Commit stage", "commit-stage.yml")
+			verifyNamedWorkflow(ghSystem, "Commit stage", "commit-stage.yml", 60)
 		}
 	} else if cfg.RepoStrategy == "monorepo" {
-		verifyNamedWorkflow(gh, "Backend commit stage", "backend-commit-stage.yml")
-		verifyNamedWorkflow(gh, "Frontend commit stage", "frontend-commit-stage.yml")
+		verifyNamedWorkflow(gh, "Backend commit stage", "backend-commit-stage.yml", 60)
+		verifyNamedWorkflow(gh, "Frontend commit stage", "frontend-commit-stage.yml", 60)
 	} else {
 		ghBackend := gh.ForRepo(cfg.BackendFullRepo)
 		ghFrontend := gh.ForRepo(cfg.FrontendFullRepo)
-		verifyNamedWorkflow(ghBackend, "Backend commit stage", "backend-commit-stage.yml")
-		verifyNamedWorkflow(ghFrontend, "Frontend commit stage", "frontend-commit-stage.yml")
+		verifyNamedWorkflow(ghBackend, "Backend commit stage", "backend-commit-stage.yml", 60)
+		verifyNamedWorkflow(ghFrontend, "Frontend commit stage", "frontend-commit-stage.yml", 60)
 	}
 }
 
@@ -321,7 +321,7 @@ func VerifyAcceptanceStage(cfg *config.Config, gh *shell.GitHub) {
 		return
 	}
 
-	verifyWorkflow(gh, "Acceptance stage", "acceptance-stage.yml", nil)
+	verifyWorkflow(gh, "Acceptance stage", "acceptance-stage.yml", nil, 300)
 
 	rcVersion := getRCVersion(gh)
 	if rcVersion != "" {
@@ -341,7 +341,7 @@ func VerifyAcceptanceStageLegacy(cfg *config.Config, gh *shell.GitHub) {
 		return
 	}
 
-	verifyWorkflow(gh, "Acceptance stage legacy", "acceptance-stage-legacy.yml", nil)
+	verifyWorkflow(gh, "Acceptance stage legacy", "acceptance-stage-legacy.yml", nil, 300)
 }
 
 // VerifyQAStage triggers and verifies QA stage.
@@ -358,7 +358,7 @@ func VerifyQAStage(cfg *config.Config, gh *shell.GitHub) {
 		return
 	}
 
-	verifyWorkflow(gh, "QA stage", "qa-stage.yml", map[string]string{"version": cfg.RCVersion})
+	verifyWorkflow(gh, "QA stage", "qa-stage.yml", map[string]string{"version": cfg.RCVersion}, 300)
 }
 
 // VerifyQASignoff triggers and verifies QA signoff.
@@ -375,7 +375,7 @@ func VerifyQASignoff(cfg *config.Config, gh *shell.GitHub) {
 		return
 	}
 
-	verifyWorkflow(gh, "QA signoff", "qa-signoff.yml", map[string]string{"version": cfg.RCVersion, "result": "approved"})
+	verifyWorkflow(gh, "QA signoff", "qa-signoff.yml", map[string]string{"version": cfg.RCVersion, "result": "approved"}, 300)
 }
 
 // VerifyProdStage triggers and verifies production stage.
@@ -392,12 +392,12 @@ func VerifyProdStage(cfg *config.Config, gh *shell.GitHub) {
 		return
 	}
 
-	verifyWorkflow(gh, "Production stage", "prod-stage.yml", map[string]string{"version": cfg.RCVersion})
+	verifyWorkflow(gh, "Production stage", "prod-stage.yml", map[string]string{"version": cfg.RCVersion}, 300)
 }
 
-func verifyNamedWorkflow(gh *shell.GitHub, label, workflowFile string) {
+func verifyNamedWorkflow(gh *shell.GitHub, label, workflowFile string, intervalSecs int) {
 	shell.CheckRateLimit()
-	err := gh.RunWatchWorkflow(workflowFile)
+	err := gh.RunWatchWorkflow(workflowFile, intervalSecs)
 	if err != nil {
 		var rle *shell.RateLimitExceeded
 		if errors.As(err, &rle) {
@@ -410,7 +410,7 @@ func verifyNamedWorkflow(gh *shell.GitHub, label, workflowFile string) {
 	log.OKf("%s passed!", label)
 }
 
-func verifyWorkflow(gh *shell.GitHub, label, triggerWorkflow string, fields map[string]string) {
+func verifyWorkflow(gh *shell.GitHub, label, triggerWorkflow string, fields map[string]string, intervalSecs int) {
 	shell.CheckRateLimit()
 	if triggerWorkflow != "" {
 		gh.WorkflowRun(triggerWorkflow, fields)
@@ -418,7 +418,7 @@ func verifyWorkflow(gh *shell.GitHub, label, triggerWorkflow string, fields map[
 	}
 
 	shell.CheckRateLimit()
-	err := gh.RunWatch()
+	err := gh.RunWatch(intervalSecs)
 	if err != nil {
 		var rle *shell.RateLimitExceeded
 		if errors.As(err, &rle) {
