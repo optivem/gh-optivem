@@ -8,7 +8,7 @@
    ```
    - If a run is **in_progress** or **queued**, skip to step 3 (monitor it).
    - If a run **completed with failure**, skip to step 5 (investigate it).
-   - If no recent run exists, or the latest run **completed successfully**, trigger a new one:
+   - If no recent run exists, or the latest run completed with **success** or **cancelled**, trigger a new one:
      ```bash
      gh workflow run acceptance-stage.yml --repo optivem/gh-optivem
      ```
@@ -20,6 +20,12 @@
    sleep 300 && gh run list --workflow acceptance-stage.yml --repo optivem/gh-optivem --limit 1
    ```
    Repeat until the run status is "completed".
+   - **Stuck queue timeout**: If the run stays in **queued** status for more than 15 minutes, cancel it:
+     ```bash
+     gh run cancel <run-id> --repo optivem/gh-optivem
+     ```
+     Wait 30 seconds for the cancellation to take effect, then go back to step 1. Step 1 will see the cancelled run and trigger a fresh one.
+   - **Important**: Never trigger a new run without first checking step 1. Always go through step 1 to avoid duplicate runs.
 
 4. **If the run succeeded**, report success and stop.
 
