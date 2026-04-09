@@ -488,12 +488,19 @@ func RunLocalSystemTests(cfg *config.Config) {
 
 	arch := cfg.Arch
 
-	// Local system tests are only supported for TypeScript test lang.
+	// Local system tests are only supported for TypeScript test lang + monorepo.
 	// Dotnet and Java use "acceptance-api" which runs UI channel tests via
 	// AlsoForFirstRow despite CHANNEL=API, requiring Playwright browsers that
 	// are not installed in CI. Skip local tests for those languages.
+	// Multirepo is also skipped because the Docker Compose build contexts reference
+	// ../backend which does not exist in the root repo (backend code lives in a
+	// separate repository).
 	if cfg.TestLang != "typescript" {
 		log.Warn("Skipping local system tests: only supported for TypeScript test lang")
+		return
+	}
+	if cfg.RepoStrategy == "multirepo" {
+		log.Warn("Skipping local system tests: multirepo Docker Compose build contexts reference separate repos not available locally")
 		return
 	}
 
