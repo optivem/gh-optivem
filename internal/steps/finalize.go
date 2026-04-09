@@ -221,6 +221,41 @@ func generateBadges(cfg *config.Config) string {
 	return b.String()
 }
 
+// WriteProjectConfig writes .optivem/config.json to the scaffolded project root(s).
+func WriteProjectConfig(cfg *config.Config) {
+	log.Log("Writing project config...")
+
+	if cfg.DryRun {
+		log.Log("[DRY RUN] Would write .optivem/config.json")
+		return
+	}
+
+	configData := map[string]string{
+		"architecture": cfg.Arch,
+	}
+	jsonBytes, _ := json.MarshalIndent(configData, "", "  ")
+	jsonBytes = append(jsonBytes, '\n')
+
+	writeConfigToDir(cfg.RepoDir, jsonBytes)
+
+	if cfg.RepoStrategy == "multirepo" {
+		if cfg.Arch == "multitier" {
+			writeConfigToDir(cfg.BackendRepoDir, jsonBytes)
+			writeConfigToDir(cfg.FrontendRepoDir, jsonBytes)
+		} else {
+			writeConfigToDir(cfg.SystemRepoDir, jsonBytes)
+		}
+	}
+
+	log.OK("Wrote .optivem/config.json")
+}
+
+func writeConfigToDir(dir string, jsonBytes []byte) {
+	configDir := filepath.Join(dir, ".optivem")
+	os.MkdirAll(configDir, 0755)
+	os.WriteFile(filepath.Join(configDir, "config.json"), jsonBytes, 0644)
+}
+
 // CreateSonarCloudProjects creates SonarCloud org and projects.
 func CreateSonarCloudProjects(cfg *config.Config, sc *shell.SonarCloud) {
 	log.Log("Step 9: Creating SonarCloud projects...")
