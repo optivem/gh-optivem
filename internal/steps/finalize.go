@@ -452,7 +452,14 @@ func RunLocalSystemTests(cfg *config.Config) {
 	}
 
 	arch := cfg.Arch
-	suites := []string{"acceptance-api"}
+
+	// Suite IDs differ by test language: typescript uses "acceptance",
+	// while dotnet and java use "acceptance-api".
+	acceptanceSuite := "acceptance-api"
+	if cfg.TestLang == "typescript" {
+		acceptanceSuite = "acceptance"
+	}
+	suites := []string{acceptanceSuite}
 
 	for _, suite := range suites {
 		label := fmt.Sprintf("Local system test (%s)", suite)
