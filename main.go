@@ -88,6 +88,7 @@ func runInit() {
 		{"Replace namespaces", func() { steps.ReplaceNamespaces(cfg) }},
 		{"Replace system name", func() { steps.ReplaceSystemName(cfg) }},
 		{"Update README", func() { steps.UpdateReadme(cfg) }},
+		{"Write project config", func() { steps.WriteProjectConfig(cfg) }},
 		{"Create SonarCloud projects", func() { steps.CreateSonarCloudProjects(cfg, sc) }},
 		{"Commit and push", func() { steps.CommitAndPush(cfg) }},
 		{"Enable GitHub Pages", func() { steps.EnablePages(cfg, gh) }},
