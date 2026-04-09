@@ -391,14 +391,13 @@ func multitierDockerComposeReplacements(backendLang, frontendLang, testLang stri
 		{"../../system/external-real-sim", "../external-real-sim"},
 		{"../../system/external-stub", "../external-stub"},
 	}
-	if backendLang != testLang {
-		r = append(r, [2]string{"../../system/multitier/backend-" + testLang, "../backend"})
-		r = append(r, [2]string{"multitier-backend-" + testLang, "backend"})
-	}
-	if frontendLang != testLang {
-		r = append(r, [2]string{"../../system/multitier/frontend-" + testLang, "../frontend"})
-		r = append(r, [2]string{"multitier-frontend-" + testLang, "frontend"})
-	}
+	// Docker build contexts always reference the test-lang backend and the frontend lang in the
+	// starter layout (e.g. backend-typescript, frontend-react). After scaffolding these become
+	// ../backend and ../frontend respectively, so we always need both replacements.
+	r = append(r, [2]string{"../../system/multitier/backend-" + testLang, "../backend"})
+	r = append(r, [2]string{"multitier-backend-" + testLang, "backend"})
+	r = append(r, [2]string{"../../system/multitier/frontend-" + frontendLang, "../frontend"})
+	r = append(r, [2]string{"multitier-frontend-" + frontendLang, "frontend"})
 	return r
 }
 

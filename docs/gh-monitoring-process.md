@@ -6,14 +6,15 @@
    ```bash
    gh run list --workflow acceptance-stage.yml --repo optivem/gh-optivem --limit 1
    ```
-   - If a run is **in_progress** or **queued**, skip to step 3 (monitor it).
-   - If a run **completed with failure**, skip to step 5 (investigate it).
+   - If a run is **in_progress** or **queued**, go to step 3 (monitor it). Do NOT sleep first.
+   - If a run **completed with failure**, go to step 5 (investigate it). Do NOT sleep or trigger a new run first.
    - If no recent run exists, or the latest run completed with **success** or **cancelled**, trigger a new one:
      ```bash
      gh workflow run acceptance-stage.yml --repo optivem/gh-optivem
      ```
+     Then go to step 2.
 
-2. **Wait for the run to appear** (if you just triggered one). Sleep 5 minutes, then fetch the latest run to get its ID.
+2. **Wait for the triggered run to appear.** This step only applies after triggering a new run in step 1. Sleep 5 minutes, then fetch the latest run to get its ID.
 
 3. **Monitor** the run. Sleep 5 minutes between status checks (to avoid rate limiting):
    ```bash
