@@ -488,12 +488,16 @@ func RunLocalSystemTests(cfg *config.Config) {
 
 	arch := cfg.Arch
 
-	// Suite IDs differ by test language: typescript uses "acceptance",
-	// while dotnet and java use "acceptance-api".
-	acceptanceSuite := "acceptance-api"
-	if cfg.TestLang == "typescript" {
-		acceptanceSuite = "acceptance"
+	// Local system tests are only supported for TypeScript test lang.
+	// Dotnet and Java use "acceptance-api" which runs UI channel tests via
+	// AlsoForFirstRow despite CHANNEL=API, requiring Playwright browsers that
+	// are not installed in CI. Skip local tests for those languages.
+	if cfg.TestLang != "typescript" {
+		log.Warn("Skipping local system tests: only supported for TypeScript test lang")
+		return
 	}
+
+	acceptanceSuite := "acceptance"
 	suites := []string{acceptanceSuite}
 
 	for _, suite := range suites {
