@@ -40,15 +40,12 @@
      ```bash
      git clone https://github.com/<owner>/<repo>.git /tmp/<repo>
      ```
-     Then read all files from the local clone. Delete the clone when done.
    - Investigate the root cause using local files only (the clone, gh-optivem, and starter repos).
-   - Fix the issue in the codebase.
-   - Run **only the one failing test** locally (not the full suite):
-     ```bash
-     go test -tags=system ./internal/config/ -v -timeout 2h \
-       -run "<FailingTestName>"
-     ```
-   - Repeat fix-and-test until the test passes locally.
+   - **Verify the fix in the clone first.** Apply the fix directly in the cloned scaffolded repo and run the failing test there (e.g. `Run-SystemTests.ps1`). This is faster than a full CI round-trip and confirms the fix works in the scaffolded context.
+   - Once verified in the clone, apply the same fix to the source:
+     - If the fix belongs in **gh-optivem** (scaffolding logic), apply it there.
+     - If the fix belongs in the **starter repo**, stop and ask the user for approval before modifying it.
+   - Delete the clone when done.
    - Commit the fix:
      ```bash
      bash "$(git rev-parse --show-toplevel)/../github-utils/scripts/commit.sh"
