@@ -489,12 +489,9 @@ func RunLocalSystemTests(cfg *config.Config) {
 	arch := cfg.Arch
 
 	// Local system tests are only supported for TypeScript test lang + monorepo.
-	// Dotnet and Java use "acceptance-api" which runs UI channel tests via
-	// AlsoForFirstRow despite CHANNEL=API, requiring Playwright browsers that
-	// are not installed in CI. Skip local tests for those languages.
-	// Multirepo is also skipped because the Docker Compose build contexts reference
-	// ../backend which does not exist in the root repo (backend code lives in a
-	// separate repository).
+	// TODO: Support multirepo by cloning the backend/frontend repos into sibling
+	// directories so that Docker Compose build contexts (e.g. ../backend) resolve
+	// correctly. Currently skipped because the root repo alone doesn't have them.
 	if cfg.TestLang != "typescript" {
 		log.Warn("Skipping local system tests: only supported for TypeScript test lang")
 		return
@@ -504,20 +501,30 @@ func RunLocalSystemTests(cfg *config.Config) {
 		return
 	}
 
-	acceptanceSuite := "acceptance"
-	suites := []string{acceptanceSuite}
+	// Run latest tests
+	latestLabel := "Local system tests (latest)"
+	latestCmd := fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s", arch)
+	log.Logf("Running: %s (in %s)", latestCmd, testDir)
 
-	for _, suite := range suites {
-		label := fmt.Sprintf("Local system test (%s)", suite)
-		cmdStr := fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Suite %s", arch, suite)
-		log.Logf("Running: %s (in %s)", cmdStr, testDir)
+	output, err := shell.Run(latestCmd, false, true, testDir)
+	if err != nil {
+		log.Failf("%s output:\n%s", latestLabel, output)
+		log.Fatalf("%s failed!", latestLabel)
+	}
+	log.OKf("%s passed!", latestLabel)
 
-		output, err := shell.Run(cmdStr, false, true, testDir)
+	// Run legacy tests if not excluded
+	if !cfg.ExcludeLegacy {
+		legacyLabel := "Local system tests (legacy)"
+		legacyCmd := fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Legacy", arch)
+		log.Logf("Running: %s (in %s)", legacyCmd, testDir)
+
+		output, err = shell.Run(legacyCmd, false, true, testDir)
 		if err != nil {
-			log.Failf("%s output:\n%s", label, output)
-			log.Fatalf("%s failed!", label)
+			log.Failf("%s output:\n%s", legacyLabel, output)
+			log.Fatalf("%s failed!", legacyLabel)
 		}
-		log.OKf("%s passed!", label)
+		log.OKf("%s passed!", legacyLabel)
 	}
 }
 
