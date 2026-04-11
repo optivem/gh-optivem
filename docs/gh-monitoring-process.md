@@ -41,18 +41,25 @@
      git clone https://github.com/<owner>/<repo>.git /tmp/<repo>
      ```
    - Investigate the root cause using local files only (the clone, gh-optivem, and starter repos).
-   - **Verify the fix in the clone first.** Apply the fix directly in the cloned scaffolded repo:
+   - **All fixes must be applied and verified in the clone first — never commit to starter or gh-optivem until the clone fully passes.** Apply fixes directly in the cloned scaffolded repo:
      1. Run the specific failing suite first (e.g. `Run-SystemTests.ps1 -Architecture <arch> -Suite acceptance-ui`) to quickly confirm the fix.
      2. Then run the full system test suite (`Run-SystemTests.ps1 -Architecture <arch>` with no `-Suite` filter) to catch any additional failures.
-   - Repeat fix-and-test in the clone until the full suite passes.
-   - Once the clone fully passes, apply the same fixes to the source:
+     3. If more failures appear, fix them in the clone and re-run the full suite again.
+   - Repeat until the full suite passes in the clone with no failures.
+   - **Only after the clone fully passes locally**, push the fix to the cloned repo and verify in CI:
+     1. Commit and push the fix to the cloned scaffolded repo on GitHub.
+     2. Wait for the clone's **commit stage** to pass (check every 1 minute).
+     3. Trigger and wait for the clone's **acceptance stage** to pass (check every 5 minutes).
+   - **Only after the clone's CI fully passes**, apply the same fixes to the source:
      - If the fix belongs in **gh-optivem** (scaffolding logic), apply it there.
      - If the fix belongs in the **starter repo**, stop and ask the user for approval before modifying it.
-   - Delete the clone when done.
-   - Commit the fix:
+   - Commit the source fix:
      ```bash
      bash "$(git rev-parse --show-toplevel)/../github-utils/scripts/commit.sh"
      ```
+   - Wait for the **starter repo's commit stage** to pass (check every 1 minute).
+   - Trigger the **starter repo's affected acceptance stage** (the one matching the architecture/lang that failed) and wait for it to pass (check every 5 minutes).
+   - Delete the clone when done.
    - Re-run the failed jobs on the existing run (do NOT trigger a new workflow run):
      ```bash
      gh run rerun <run-id> --failed --repo optivem/gh-optivem
