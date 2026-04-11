@@ -48,11 +48,12 @@ func applyMonolithMonorepo(cfg *config.Config) {
 
 	// Workflows: rename to language-agnostic names
 	wfMap := map[string]string{
-		"monolith-" + lang + "-commit-stage.yml":         "commit-stage.yml",
-		"monolith-" + testLang + "-acceptance-stage.yml":  "acceptance-stage.yml",
-		"monolith-" + testLang + "-qa-stage.yml":          "qa-stage.yml",
-		"monolith-" + testLang + "-qa-signoff.yml":        "qa-signoff.yml",
-		"monolith-" + testLang + "-prod-stage.yml":        "prod-stage.yml",
+		"monolith-" + lang + "-commit-stage.yml":                  "commit-stage.yml",
+		"monolith-" + testLang + "-acceptance-stage.yml":           "acceptance-stage.yml",
+		"monolith-" + testLang + "-acceptance-stage-legacy.yml":    "acceptance-stage-legacy.yml",
+		"monolith-" + testLang + "-qa-stage.yml":                   "qa-stage.yml",
+		"monolith-" + testLang + "-qa-signoff.yml":                 "qa-signoff.yml",
+		"monolith-" + testLang + "-prod-stage.yml":                 "prod-stage.yml",
 	}
 	templates.CopyWorkflows(wfMap, starter, repoDir)
 
@@ -101,10 +102,11 @@ func applyMonolithMultirepo(cfg *config.Config) {
 
 	// Root repo: pipeline stage workflows + system-test
 	rootWfMap := map[string]string{
-		"monolith-" + testLang + "-acceptance-stage.yml": "acceptance-stage.yml",
-		"monolith-" + testLang + "-qa-stage.yml":         "qa-stage.yml",
-		"monolith-" + testLang + "-qa-signoff.yml":       "qa-signoff.yml",
-		"monolith-" + testLang + "-prod-stage.yml":       "prod-stage.yml",
+		"monolith-" + testLang + "-acceptance-stage.yml":        "acceptance-stage.yml",
+		"monolith-" + testLang + "-acceptance-stage-legacy.yml": "acceptance-stage-legacy.yml",
+		"monolith-" + testLang + "-qa-stage.yml":                "qa-stage.yml",
+		"monolith-" + testLang + "-qa-signoff.yml":              "qa-signoff.yml",
+		"monolith-" + testLang + "-prod-stage.yml":              "prod-stage.yml",
 	}
 	templates.CopyWorkflows(rootWfMap, starter, repoDir)
 
@@ -174,6 +176,7 @@ func applyMultitierMonorepo(cfg *config.Config) {
 		"multitier-backend-" + backendLang + "-commit-stage.yml":  "backend-commit-stage.yml",
 		"multitier-frontend-" + frontendLang + "-commit-stage.yml": "frontend-commit-stage.yml",
 		"multitier-" + testLang + "-acceptance-stage.yml":          "acceptance-stage.yml",
+		"multitier-" + testLang + "-acceptance-stage-legacy.yml":   "acceptance-stage-legacy.yml",
 		"multitier-" + testLang + "-qa-stage.yml":                  "qa-stage.yml",
 		"multitier-" + testLang + "-qa-signoff.yml":                "qa-signoff.yml",
 		"multitier-" + testLang + "-prod-stage.yml":                "prod-stage.yml",
@@ -231,10 +234,11 @@ func applyMultitierMultirepo(cfg *config.Config) {
 
 	// Root repo: pipeline stage workflows + system-test + externals
 	rootWfMap := map[string]string{
-		"multitier-" + testLang + "-acceptance-stage.yml": "acceptance-stage.yml",
-		"multitier-" + testLang + "-qa-stage.yml":         "qa-stage.yml",
-		"multitier-" + testLang + "-qa-signoff.yml":       "qa-signoff.yml",
-		"multitier-" + testLang + "-prod-stage.yml":       "prod-stage.yml",
+		"multitier-" + testLang + "-acceptance-stage.yml":        "acceptance-stage.yml",
+		"multitier-" + testLang + "-acceptance-stage-legacy.yml": "acceptance-stage-legacy.yml",
+		"multitier-" + testLang + "-qa-stage.yml":                "qa-stage.yml",
+		"multitier-" + testLang + "-qa-signoff.yml":              "qa-signoff.yml",
+		"multitier-" + testLang + "-prod-stage.yml":              "prod-stage.yml",
 	}
 	templates.CopyWorkflows(rootWfMap, starter, repoDir)
 
