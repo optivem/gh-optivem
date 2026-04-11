@@ -26,11 +26,12 @@
    ```
    - If already **completed**, go to step 4 or 5 immediately.
    - If still **in_progress** or **queued**, sleep 5 minutes and check again. Repeat until "completed".
-   - **Stuck queue timeout**: If the run stays in **queued** status for more than 15 minutes, cancel it:
+   - **Stuck queue timeout**: If the **run-level** status (from `gh run list`) stays in **queued** for more than 1 hour, cancel it:
      ```bash
      gh run cancel <run-id> --repo optivem/gh-optivem
      ```
      Wait 30 seconds for the cancellation to take effect, then go back to step 1. Step 1 will see the cancelled run and trigger a fresh one.
+   - **Do NOT cancel runs that are `in_progress`**. The workflow uses `max-parallel: 6` with 36 jobs, so individual jobs will sit in `queued` while waiting for a slot — this is normal. Only the run-level status matters for the stuck-queue check. Never cancel based on individual job queue times.
    - **Important**: Never trigger a new run without first checking step 1. Always go through step 1 to avoid duplicate runs.
 
 4. **If the run succeeded**, report success and stop.

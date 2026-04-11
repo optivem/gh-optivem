@@ -74,7 +74,7 @@ jobs:
           OUTPUT=$(go test -tags=system ./internal/config/ -v -timeout 2h -run "${{ steps.test.outputs.name }}" 2>&1)
           EXIT_CODE=$?
           echo "$OUTPUT"
-          if echo "$OUTPUT" | grep -qi "rate limit"; then
+          if echo "$OUTPUT" | tail -30 | grep -qi "rate limit"; then
             echo "result=rate-limited" >> "$GITHUB_OUTPUT"
             exit 1
           elif [ $EXIT_CODE -ne 0 ]; then
@@ -130,7 +130,7 @@ jobs:
                       job_id: job.id,
                     });
                     const text = typeof logs.data === 'string' ? logs.data : '';
-                    if (text.includes('rate limit') || text.includes('Rate limit')) {
+                    if (text.includes('result=rate-limited')) {
                       results.rateLimited.push(name);
                       continue;
                     }
