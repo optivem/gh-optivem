@@ -52,7 +52,11 @@
      ```bash
      bash "$(git rev-parse --show-toplevel)/../github-utils/scripts/commit.sh"
      ```
-   - Go back to step 1 (re-trigger the acceptance stage).
+   - Re-run the failed jobs on the existing run (do NOT trigger a new workflow run):
+     ```bash
+     gh run rerun <run-id> --failed --repo optivem/gh-optivem
+     ```
+   - Go back to step 3 (monitor the re-run).
 
 6. **Repeat** until the acceptance stage passes.
 
