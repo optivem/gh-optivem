@@ -2,17 +2,21 @@
 
 ## Process
 
-1. **Check for an existing run** before triggering a new one:
-   ```bash
-   gh run list --workflow acceptance-stage.yml --repo optivem/gh-optivem --limit 1
-   ```
-   - If a run is **in_progress** or **queued**, go to step 3 (monitor it). Do NOT sleep first.
-   - If a run **completed with failure**, go to step 5 (investigate it). Do NOT sleep or trigger a new run first.
-   - If no recent run exists, or the latest run completed with **success** or **cancelled**, trigger a new one:
+1. **Check for an existing run** before triggering a new one.
+   - If the `--fresh` flag was passed, skip directly to step 1b (trigger a new run).
+   - Otherwise (default), check for an existing run:
      ```bash
-     gh workflow run acceptance-stage.yml --repo optivem/gh-optivem
+     gh run list --workflow acceptance-stage.yml --repo optivem/gh-optivem --limit 1
      ```
-     Then go to step 2.
+     - If a run is **in_progress** or **queued**, go to step 3 (monitor it). Do NOT sleep first.
+     - If a run **completed with failure**, go to step 5 (investigate it). Do NOT sleep or trigger a new run first.
+     - If no recent run exists, or the latest run completed with **success** or **cancelled**, go to step 1b.
+
+   **1b. Trigger a new run:**
+   ```bash
+   gh workflow run acceptance-stage.yml --repo optivem/gh-optivem
+   ```
+   Then go to step 2. After triggering, clear the `--fresh` flag so that subsequent cycles (after fixes) use the default existing-run behavior.
 
 2. **Wait for the triggered run to appear.** This step only applies after triggering a new run in step 1. Sleep 5 minutes, then fetch the latest run to get its ID.
 
