@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: true
-      max-parallel: 6
+      max-parallel: 3
       matrix:
         arch: [multitier, monolith]
         repo-strategy: [monorepo, multirepo]

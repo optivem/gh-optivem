@@ -41,8 +41,11 @@
      git clone https://github.com/<owner>/<repo>.git /tmp/<repo>
      ```
    - Investigate the root cause using local files only (the clone, gh-optivem, and starter repos).
-   - **Verify the fix in the clone first.** Apply the fix directly in the cloned scaffolded repo and run the failing test there (e.g. `Run-SystemTests.ps1`). This is faster than a full CI round-trip and confirms the fix works in the scaffolded context.
-   - Once verified in the clone, apply the same fix to the source:
+   - **Verify the fix in the clone first.** Apply the fix directly in the cloned scaffolded repo:
+     1. Run the specific failing suite first (e.g. `Run-SystemTests.ps1 -Architecture <arch> -Suite acceptance-ui`) to quickly confirm the fix.
+     2. Then run the full system test suite (`Run-SystemTests.ps1 -Architecture <arch>` with no `-Suite` filter) to catch any additional failures.
+   - Repeat fix-and-test in the clone until the full suite passes.
+   - Once the clone fully passes, apply the same fixes to the source:
      - If the fix belongs in **gh-optivem** (scaffolding logic), apply it there.
      - If the fix belongs in the **starter repo**, stop and ask the user for approval before modifying it.
    - Delete the clone when done.
