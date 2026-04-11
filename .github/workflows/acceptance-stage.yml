@@ -39,10 +39,8 @@ jobs:
         lang: [typescript, dotnet, java]
         test-lang: [typescript, dotnet, java]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-        with:
-          persist-credentials: false
+      - name: Checkout latest code
+        run: git clone --depth=1 https://x-access-token:${{ secrets.VERIFY_TOKEN }}@github.com/optivem/gh-optivem.git .
 
       - name: Setup Go
         uses: actions/setup-go@v6
