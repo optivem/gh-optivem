@@ -60,9 +60,13 @@
    - Wait for the **starter repo's commit stage** to pass (check every 1 minute).
    - Trigger the **starter repo's affected acceptance stage** (the one matching the architecture/lang that failed) and wait for it to pass (check every 5 minutes).
    - Delete the clone when done.
-   - Re-run the failed jobs on the existing run (do NOT trigger a new workflow run):
+   - If the fix was only in the **starter repo** (no gh-optivem code changes), re-run the failed jobs:
      ```bash
      gh run rerun <run-id> --failed --repo optivem/gh-optivem
+     ```
+   - If the fix included **gh-optivem code changes**, a re-run will use the old code snapshot. Trigger a fresh run instead:
+     ```bash
+     gh workflow run acceptance-stage.yml --repo optivem/gh-optivem
      ```
    - Go back to step 3 (monitor the re-run).
 
