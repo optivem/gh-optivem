@@ -16,11 +16,12 @@
 
 2. **Wait for the triggered run to appear.** This step only applies after triggering a new run in step 1. Sleep 5 minutes, then fetch the latest run to get its ID.
 
-3. **Monitor** the run. Sleep 5 minutes between status checks (to avoid rate limiting):
+3. **Monitor** the run. First check the status immediately (no sleep), then sleep 5 minutes between subsequent checks:
    ```bash
-   sleep 300 && gh run list --workflow acceptance-stage.yml --repo optivem/gh-optivem --limit 1
+   gh run list --workflow acceptance-stage.yml --repo optivem/gh-optivem --limit 1
    ```
-   Repeat until the run status is "completed".
+   - If already **completed**, go to step 4 or 5 immediately.
+   - If still **in_progress** or **queued**, sleep 5 minutes and check again. Repeat until "completed".
    - **Stuck queue timeout**: If the run stays in **queued** status for more than 15 minutes, cancel it:
      ```bash
      gh run cancel <run-id> --repo optivem/gh-optivem
