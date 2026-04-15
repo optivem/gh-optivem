@@ -27,6 +27,7 @@ type Config struct {
 	FrontendLang string // multitier only
 	TestLang     string
 
+	Deploy     string // "docker" (default) or "cloud-run"
 	License    string
 	DryRun       bool
 	TestMode     bool
@@ -321,6 +322,7 @@ func ParseAndValidate() *Config {
 	skipVerify := flag.Bool("skip-verify", false, "Skip workflow triggering and status checks")
 	verifyLevel := flag.String("verify-level", "", "Verification level: none, commit, acceptance, release (default: release)")
 	excludeLegacy := flag.Bool("exclude-legacy", false, "Exclude acceptance-stage-legacy verification")
+	deploy := flag.String("deploy", "docker", "Deployment target: docker or cloud-run")
 	workDir := flag.String("workdir", "", "Working directory for cloning (default: temp dir)")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 
@@ -354,6 +356,10 @@ func ParseAndValidate() *Config {
 			log.FatalExit("--verify-level must be none, commit, acceptance, or release")
 		}
 		resolvedLevel = *verifyLevel
+	}
+
+	if *deploy != "docker" && *deploy != "cloud-run" {
+		log.FatalExit("--deploy must be 'docker' or 'cloud-run'")
 	}
 
 	if *arch != "monolith" && *arch != "multitier" {
@@ -500,6 +506,7 @@ func ParseAndValidate() *Config {
 		FrontendLang: cfgFrontendLang,
 		TestLang:     cfgTestLang,
 
+		Deploy:     *deploy,
 		License:    *license,
 		DryRun:       *dryRun,
 		TestMode:     *testMode,
