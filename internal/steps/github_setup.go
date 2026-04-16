@@ -2,14 +2,30 @@
 package steps
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/shell"
 )
+
+// waitForRepo polls until the GitHub repo has a default branch (i.e. is fully initialized).
+func waitForRepo(ghRepo *shell.GitHub, maxWait time.Duration) {
+	deadline := time.Now().Add(maxWait)
+	for time.Now().Before(deadline) {
+		out, err := shell.RunCapture(
+			fmt.Sprintf("gh repo view %s --json defaultBranchRef --jq .defaultBranchRef.name", ghRepo.Repo), "")
+		if err == nil && strings.TrimSpace(out) != "" {
+			return
+		}
+		time.Sleep(3 * time.Second)
+	}
+	log.Fatalf("repo %s not initialized after %s: default branch not found", ghRepo.Repo, maxWait)
+}
 
 // CreateRepos creates the GitHub repository (and component repos for multitier).
 func CreateRepos(cfg *config.Config, gh *shell.GitHub) {
@@ -25,7 +41,7 @@ func CreateRepos(cfg *config.Config, gh *shell.GitHub) {
 	}
 
 	gh.CreateRepo()
-	time.Sleep(3 * time.Second)
+	waitForRepo(gh, 30*time.Second)
 	log.OKf("Created repository: %s", cfg.FullRepo)
 
 	if cfg.RepoStrategy == "multirepo" {
@@ -34,16 +50,16 @@ func CreateRepos(cfg *config.Config, gh *shell.GitHub) {
 			ghBackend := gh.ForRepo(cfg.BackendFullRepo)
 
 			ghFrontend.CreateRepo()
-			time.Sleep(3 * time.Second)
+			waitForRepo(ghFrontend, 30*time.Second)
 			log.OKf("Created repository: %s", cfg.FrontendFullRepo)
 
 			ghBackend.CreateRepo()
-			time.Sleep(3 * time.Second)
+			waitForRepo(ghBackend, 30*time.Second)
 			log.OKf("Created repository: %s", cfg.BackendFullRepo)
 		} else {
 			ghSystem := gh.ForRepo(cfg.SystemFullRepo)
 			ghSystem.CreateRepo()
-			time.Sleep(3 * time.Second)
+			waitForRepo(ghSystem, 30*time.Second)
 			log.OKf("Created repository: %s", cfg.SystemFullRepo)
 		}
 	}
