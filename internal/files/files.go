@@ -7,6 +7,31 @@ import (
 	"strings"
 )
 
+// binaryExts lists file extensions that should never be treated as text.
+var binaryExts = map[string]bool{
+	// Images
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".ico": true,
+	".svg": true, ".webp": true, ".bmp": true, ".tiff": true,
+	// Fonts
+	".woff": true, ".woff2": true, ".ttf": true, ".eot": true, ".otf": true,
+	// Archives / compiled
+	".zip": true, ".tar": true, ".gz": true, ".jar": true, ".war": true,
+	".dll": true, ".exe": true, ".so": true, ".dylib": true, ".class": true,
+	".wasm": true, ".pyc": true, ".pdb": true,
+	// Media
+	".mp3": true, ".mp4": true, ".wav": true, ".avi": true, ".mov": true,
+	// Lock files / generated
+	".lock": true,
+	// Documents
+	".pdf": true, ".doc": true, ".docx": true, ".xls": true, ".xlsx": true,
+}
+
+// IsBinaryFile returns true if the file has a known binary extension.
+func IsBinaryFile(name string) bool {
+	ext := strings.ToLower(filepath.Ext(name))
+	return binaryExts[ext]
+}
+
 // IsGitDir returns true if the path contains a .git component.
 func IsGitDir(path string) bool {
 	for _, part := range strings.Split(filepath.ToSlash(path), "/") {
@@ -32,7 +57,8 @@ func ReplaceInFile(path, old, new string) bool {
 	return true
 }
 
-// ReplaceInTree replaces in all text files under root, optionally filtered by extension.
+// ReplaceInTree replaces in files under root filtered by extension.
+// If extensions is nil, it replaces in all non-binary text files.
 func ReplaceInTree(root, old, new string, extensions []string) int {
 	count := 0
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
@@ -42,7 +68,7 @@ func ReplaceInTree(root, old, new string, extensions []string) int {
 		if IsGitDir(path) {
 			return nil
 		}
-		if len(extensions) > 0 {
+		if extensions != nil {
 			matched := false
 			for _, ext := range extensions {
 				if strings.HasSuffix(info.Name(), ext) {
@@ -53,6 +79,8 @@ func ReplaceInTree(root, old, new string, extensions []string) int {
 			if !matched {
 				return nil
 			}
+		} else if IsBinaryFile(info.Name()) {
+			return nil
 		}
 		if ReplaceInFile(path, old, new) {
 			count++
@@ -60,6 +88,26 @@ func ReplaceInTree(root, old, new string, extensions []string) int {
 		return nil
 	})
 	return count
+}
+
+// FindInTree returns paths of non-binary text files under root that contain the given string.
+func FindInTree(root, needle string) []string {
+	var matches []string
+	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || IsGitDir(path) || IsBinaryFile(info.Name()) {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		if strings.Contains(string(data), needle) {
+			rel, _ := filepath.Rel(root, path)
+			matches = append(matches, rel)
+		}
+		return nil
+	})
+	return matches
 }
 
 // ReplaceInDockerfiles replaces in all Dockerfile files under root.

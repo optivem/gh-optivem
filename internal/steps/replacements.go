@@ -414,6 +414,34 @@ func ReplaceSystemName(cfg *config.Config) {
 	}
 
 	log.OK("System name replacement complete")
+
+	// Validate no leftover template names remain in any text file.
+	validateNoLeftovers(cfg, repoDirs)
+}
+
+// validateNoLeftovers checks that the old system name doesn't appear in any text file
+// after all replacement passes. This catches missed file extensions or replacement gaps.
+func validateNoLeftovers(cfg *config.Config, repoDirs []string) {
+	// Patterns to check: camelCase "shop" in identifiers, PascalCase "Shop" in type names.
+	// We check camelCase bounded by a capital letter (e.g. "shopDriver", "shouldBeAbleToGoToShop")
+	// to avoid false positives from words like "workshop".
+	patterns := []string{cfg.SysNameCamelOld, cfg.SysNamePascalOld}
+
+	for _, repoDir := range repoDirs {
+		if repoDir == "" {
+			continue
+		}
+		for _, pattern := range patterns {
+			leftover := files.FindInTree(repoDir, pattern)
+			if len(leftover) > 0 {
+				log.Warnf("Leftover template name %q found in %d file(s) after replacement:", pattern, len(leftover))
+				for _, f := range leftover {
+					log.Warnf("  %s", f)
+				}
+				log.Fatalf("System name replacement incomplete: %q still present in scaffolded repo. This likely means a file extension is missing from the replacement passes.", pattern)
+			}
+		}
+	}
 }
 
 // Source code extensions for system name replacement.
@@ -468,11 +496,11 @@ func replaceSystemNameInRepo(cfg *config.Config, repoDir string) {
 
 	// Pass 7a: "shop-" in TS/JS files -> kebab-case prefix (import paths, filenames: shop-api-driver -> sky-travel-api-driver)
 	// Must run BEFORE 7b so that "shop-" in kebab contexts is consumed first.
-	tsExts := []string{".ts", ".tsx", ".js", ".jsx"}
+	tsExts := []string{".ts", ".tsx", ".js", ".jsx", ".ps1"}
 	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld+"-", cfg.SysNameKebabNew+"-", tsExts)
 	log.OKf("System name: TS kebab prefix %s- -> %s- (%d files)", cfg.SysNameCamelOld, cfg.SysNameKebabNew, n)
 
-	// Pass 7b: remaining "shop" in TS/JS files -> camelCase (identifiers: shopDriver -> skyTravelDriver, .shop() -> .skyTravel())
+	// Pass 7b: remaining "shop" in TS/JS/PS1 files -> camelCase (identifiers: shopDriver -> skyTravelDriver, .shop() -> .skyTravel())
 	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameCamelNew, tsExts)
 	log.OKf("System name: TS camel %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
 

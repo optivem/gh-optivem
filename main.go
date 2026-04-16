@@ -28,6 +28,8 @@ import (
 	"github.com/optivem/gh-optivem/internal/version"
 )
 
+const separator = "=========================================="
+
 type stepDef struct {
 	name string
 	fn   func()
@@ -79,6 +81,22 @@ func runInit() {
 
 	printBanner(cfg)
 
+	allSteps := buildSteps(cfg, gh, sc)
+	errors, totalDuration := executeSteps(allSteps)
+	printSummary(cfg, errors, totalDuration)
+
+	// Cleanup (test mode only) — skip on failure so repo can be inspected
+	if errors > 0 && !cfg.ForceCleanup {
+		cfg.Cleanup = "no"
+	}
+	steps.Cleanup(cfg, gh, sc)
+
+	if errors > 0 {
+		os.Exit(1)
+	}
+}
+
+func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud) []stepDef {
 	allSteps := []stepDef{
 		{"Create repositories", func() { steps.CreateRepos(cfg, gh) }},
 		{"Setup environments", func() { steps.SetupEnvironments(cfg, gh) }},
@@ -96,52 +114,63 @@ func runInit() {
 		{"Verify compilation", func() { steps.VerifyCompilation(cfg) }},
 	}
 
-	if cfg.VerifyLevel != "none" {
-		// smoke tier — local smoke tests only, no CI
-		if cfg.VerifyLevel == "precommit" {
-			allSteps = append(allSteps,
-				stepDef{"Run local smoke tests", func() { steps.RunLocalSmokeTests(cfg) }},
-			)
-		}
-
-		// commit tier and above — CI workflow verification
-		if cfg.VerifyLevel == "commit" || cfg.VerifyLevel == "acceptance" || cfg.VerifyLevel == "release" {
-			allSteps = append(allSteps,
-				stepDef{"Verify commit stage", func() { steps.VerifyCommitStage(cfg, gh) }},
-			)
-		}
-
-		if cfg.VerifyLevel == "acceptance" || cfg.VerifyLevel == "release" {
-			// acceptance tier
-			allSteps = append(allSteps,
-				stepDef{"Verify acceptance stage", func() { steps.VerifyAcceptanceStage(cfg, gh) }},
-			)
-			if !cfg.ExcludeLegacy {
-				allSteps = append(allSteps,
-					stepDef{"Verify acceptance stage legacy", func() { steps.VerifyAcceptanceStageLegacy(cfg, gh) }},
-				)
-			}
-			allSteps = append(allSteps,
-				stepDef{"Run local system tests", func() { steps.RunLocalSystemTests(cfg) }},
-			)
-		}
-
-		if cfg.VerifyLevel == "release" {
-			// release tier
-			allSteps = append(allSteps,
-				stepDef{"Verify QA stage", func() { steps.VerifyQAStage(cfg, gh) }},
-				stepDef{"Verify QA signoff", func() { steps.VerifyQASignoff(cfg, gh) }},
-				stepDef{"Verify production stage", func() { steps.VerifyProdStage(cfg, gh) }},
-			)
-		}
-	} else {
-		log.Logf("Skipping workflow verification (--verify-level none)")
-	}
+	allSteps = append(allSteps, buildVerifySteps(cfg, gh)...)
 
 	allSteps = append(allSteps,
 		stepDef{"Print project registration", func() { steps.PrintRegistration(cfg) }},
 	)
 
+	return allSteps
+}
+
+func buildVerifySteps(cfg *config.Config, gh *shell.GitHub) []stepDef {
+	if cfg.VerifyLevel == "none" {
+		log.Logf("Skipping workflow verification (--verify-level none)")
+		return nil
+	}
+
+	var s []stepDef
+
+	// smoke tier — local smoke tests only, no CI
+	if cfg.VerifyLevel == "precommit" {
+		s = append(s,
+			stepDef{"Run local smoke tests", func() { steps.RunLocalSmokeTests(cfg) }},
+		)
+	}
+
+	// commit tier and above — CI workflow verification
+	if cfg.VerifyLevel == "commit" || cfg.VerifyLevel == "acceptance" || cfg.VerifyLevel == "release" {
+		s = append(s,
+			stepDef{"Verify commit stage", func() { steps.VerifyCommitStage(cfg, gh) }},
+		)
+	}
+
+	if cfg.VerifyLevel == "acceptance" || cfg.VerifyLevel == "release" {
+		s = append(s,
+			stepDef{"Verify acceptance stage", func() { steps.VerifyAcceptanceStage(cfg, gh) }},
+		)
+		if !cfg.ExcludeLegacy {
+			s = append(s,
+				stepDef{"Verify acceptance stage legacy", func() { steps.VerifyAcceptanceStageLegacy(cfg, gh) }},
+			)
+		}
+		s = append(s,
+			stepDef{"Run local system tests", func() { steps.RunLocalSystemTests(cfg) }},
+		)
+	}
+
+	if cfg.VerifyLevel == "release" {
+		s = append(s,
+			stepDef{"Verify QA stage", func() { steps.VerifyQAStage(cfg, gh) }},
+			stepDef{"Verify QA signoff", func() { steps.VerifyQASignoff(cfg, gh) }},
+			stepDef{"Verify production stage", func() { steps.VerifyProdStage(cfg, gh) }},
+		)
+	}
+
+	return s
+}
+
+func executeSteps(allSteps []stepDef) (int, time.Duration) {
 	errors := 0
 	totalStart := time.Now()
 	for i, s := range allSteps {
@@ -160,10 +189,12 @@ func runInit() {
 			break
 		}
 	}
-	totalDuration := time.Since(totalStart)
+	return errors, time.Since(totalStart)
+}
 
+func printSummary(cfg *config.Config, errors int, totalDuration time.Duration) {
 	fmt.Println()
-	fmt.Println("==========================================")
+	fmt.Println(separator)
 	if errors > 0 {
 		log.Failf("Setup completed with %d error(s) in %s", errors, formatDuration(totalDuration))
 		if !cfg.NoBugReport {
@@ -186,16 +217,6 @@ func runInit() {
 		}
 	}
 	fmt.Println()
-
-	// Cleanup (test mode only) — skip on failure so repo can be inspected
-	if errors > 0 && !cfg.ForceCleanup {
-		cfg.Cleanup = "no"
-	}
-	steps.Cleanup(cfg, gh, sc)
-
-	if errors > 0 {
-		os.Exit(1)
-	}
 }
 
 func createBugReport(cfg *config.Config, errorCount int) {
@@ -257,9 +278,9 @@ func checkForUpdate() {
 
 func printBanner(cfg *config.Config) {
 	fmt.Println()
-	fmt.Println("==========================================")
+	fmt.Println(separator)
 	fmt.Println("  Pipeline Project Setup")
-	fmt.Println("==========================================")
+	fmt.Println(separator)
 	fmt.Println()
 	log.Logf("Owner:       %s", cfg.Owner)
 	log.Logf("Repo:        %s", cfg.Repo)
