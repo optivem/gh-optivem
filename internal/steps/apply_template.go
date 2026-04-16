@@ -132,7 +132,6 @@ func applyMonolithMultirepo(cfg *config.Config) {
 		"monolith-" + testLang + "-qa-stage" + stageSuffix + ".yml":        "qa-stage.yml",
 		"monolith-" + testLang + "-qa-signoff.yml":                          "qa-signoff.yml",
 		"monolith-" + testLang + "-prod-stage" + stageSuffix + ".yml":      "prod-stage.yml",
-		"cleanup-prereleases.yml":                                           "cleanup-prereleases.yml",
 	}
 	if cfg.Deploy == "docker" {
 		rootWfMap["monolith-"+testLang+"-acceptance-stage-legacy.yml"] = "acceptance-stage-legacy.yml"
@@ -293,7 +292,6 @@ func applyMultitierMultirepo(cfg *config.Config) {
 		"multitier-" + testLang + "-qa-stage" + stageSuffix + ".yml":        "qa-stage.yml",
 		"multitier-" + testLang + "-qa-signoff.yml":                          "qa-signoff.yml",
 		"multitier-" + testLang + "-prod-stage" + stageSuffix + ".yml":      "prod-stage.yml",
-		cleanupPrereleaseWorkflow:                                            cleanupPrereleaseWorkflow,
 	}
 	if cfg.Deploy == "docker" {
 		rootWfMap["multitier-"+testLang+"-acceptance-stage-legacy.yml"] = "acceptance-stage-legacy.yml"

@@ -171,7 +171,7 @@ echo ""
 # --- GitHub repos ---
 
 if [ "$CLEAN_REPOS" = "1" ]; then
-  repos=$(gh repo list "$TEST_OWNER" --limit 1000 --json name --jq ".[].name | select(${jq_filter})") || true
+  repos=$(gh repo list "$TEST_OWNER" --limit 1000 --json name,createdAt --jq "[.[] | select(.name | ${jq_filter})] | sort_by(.createdAt) | .[].name") || true
 
   if [ -z "$repos" ]; then
     echo "No orphaned test repos found."
