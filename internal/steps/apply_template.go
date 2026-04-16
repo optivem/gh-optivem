@@ -13,7 +13,94 @@ import (
 const (
 	cleanupPrereleaseWorkflow = "cleanup-prereleases.yml"
 	deployCloudRun            = "cloud-run"
+	cloudSuffix               = "-cloud"
+	commitStageYml            = "-commit-stage.yml"
+	acceptStageYml            = "acceptance-stage.yml"
+	qaStageYml                = "qa-stage.yml"
+	qaSignoffYml              = "qa-signoff.yml"
+	prodStageYml              = "prod-stage.yml"
+	acceptStageLegacyYml      = "acceptance-stage-legacy.yml"
+	suffixAcceptanceStage     = "-acceptance-stage"
+	suffixQAStage             = "-qa-stage"
+	suffixQASignoff           = "-qa-signoff"
+	suffixProdStage           = "-prod-stage"
+	suffixCommitStage         = "-commit-stage"
+	prefixMonolith            = "monolith-"
+	prefixMultitier           = "multitier-"
+	prefixMultitierBackend    = "multitier-backend-"
+	prefixMultitierFrontend   = "multitier-frontend-"
+	prefixMonolithSystem      = "monolith-system-"
+	dirSystemTest             = "system-test"
+	dirExternalRealSim        = "external-real-sim"
+	dirExternalStub           = "external-stub"
+	starterSystemPrefix       = "../../system/"
 )
+
+var externalSimDirs = []string{dirExternalRealSim, dirExternalStub}
+
+// cloudRunSuffix returns "-cloud" for cloud-run deploy, empty string otherwise.
+func cloudRunSuffix(deploy string) string {
+	if deploy == deployCloudRun {
+		return cloudSuffix
+	}
+	return ""
+}
+
+// appendCloudReplacement appends the -cloud -> "" replacement for cloud-run deploy.
+func appendCloudReplacement(r [][2]string, deploy string) [][2]string {
+	if deploy == deployCloudRun {
+		return append(r, [2]string{cloudSuffix, ""})
+	}
+	return r
+}
+
+// copyExternals copies external system simulator directories from starter to repo.
+func copyExternals(starter, repoDir string) {
+	for _, dir := range externalSimDirs {
+		src := filepath.Join(starter, "system", dir)
+		if _, err := os.Stat(src); err == nil {
+			files.CopyDir(src, filepath.Join(repoDir, dir))
+		}
+	}
+}
+
+// copySystemTests copies system-test/{testLang}/ -> system-test/ and selects docker-compose variant.
+func copySystemTests(starter, repoDir, testLang, composeVariant string) string {
+	testDst := filepath.Join(repoDir, dirSystemTest)
+	files.CopyDir(filepath.Join(starter, dirSystemTest, testLang), testDst)
+	templates.SelectDockerCompose(testDst, composeVariant)
+	templates.CopyVersion(starter, repoDir)
+	return testDst
+}
+
+// monolithPipelineWorkflows builds workflow source->dest map for monolith pipeline stages.
+func monolithPipelineWorkflows(testLang, stageSuffix string) map[string]string {
+	p := prefixMonolith + testLang
+	return map[string]string{
+		p + suffixAcceptanceStage + stageSuffix + ".yml": acceptStageYml,
+		p + suffixQAStage + stageSuffix + ".yml":         qaStageYml,
+		p + suffixQASignoff + ".yml":                     qaSignoffYml,
+		p + suffixProdStage + stageSuffix + ".yml":       prodStageYml,
+	}
+}
+
+// multitierPipelineWorkflows builds workflow source->dest map for multitier pipeline stages.
+func multitierPipelineWorkflows(testLang, stageSuffix string) map[string]string {
+	p := prefixMultitier + testLang
+	return map[string]string{
+		p + suffixAcceptanceStage + stageSuffix + ".yml": acceptStageYml,
+		p + suffixQAStage + stageSuffix + ".yml":         qaStageYml,
+		p + suffixQASignoff + ".yml":                     qaSignoffYml,
+		p + suffixProdStage + stageSuffix + ".yml":       prodStageYml,
+	}
+}
+
+// addLegacyWorkflow adds the acceptance-stage-legacy workflow for docker deploy.
+func addLegacyWorkflow(wfMap map[string]string, prefix, testLang, deploy string) {
+	if deploy == "docker" {
+		wfMap[prefix+testLang+"-acceptance-stage-legacy.yml"] = acceptStageLegacyYml
+	}
+}
 
 // ApplyTemplate copies template files into the cloned repo(s).
 func ApplyTemplate(cfg *config.Config) {
@@ -55,23 +142,12 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	testLang := cfg.TestLang
 	starter := cfg.StarterPath
 	repoDir := cfg.RepoDir
+	stageSuffix := cloudRunSuffix(cfg.Deploy)
 
 	// Workflows: rename to language-agnostic names
-	// Commit stage is always Docker-based; pipeline stages depend on deploy target
-	stageSuffix := ""
-	if cfg.Deploy == "cloud-run" {
-		stageSuffix = "-cloud"
-	}
-	wfMap := map[string]string{
-		"monolith-" + lang + "-commit-stage.yml":                                          "commit-stage.yml",
-		"monolith-" + testLang + "-acceptance-stage" + stageSuffix + ".yml":                "acceptance-stage.yml",
-		"monolith-" + testLang + "-qa-stage" + stageSuffix + ".yml":                        "qa-stage.yml",
-		"monolith-" + testLang + "-qa-signoff.yml":                                         "qa-signoff.yml",
-		"monolith-" + testLang + "-prod-stage" + stageSuffix + ".yml":                      "prod-stage.yml",
-	}
-	if cfg.Deploy == "docker" {
-		wfMap["monolith-"+testLang+"-acceptance-stage-legacy.yml"] = "acceptance-stage-legacy.yml"
-	}
+	wfMap := monolithPipelineWorkflows(testLang, stageSuffix)
+	wfMap[prefixMonolith+lang+commitStageYml] = "commit-stage.yml"
+	addLegacyWorkflow(wfMap, prefixMonolith, testLang, cfg.Deploy)
 	templates.CopyWorkflows(wfMap, starter, repoDir)
 
 	// System code: system/monolith/{lang}/ -> system/
@@ -80,39 +156,22 @@ func applyMonolithMonorepo(cfg *config.Config) {
 		filepath.Join(repoDir, "system"),
 	)
 
-	// External system simulators (needed for system test docker-compose)
-	for _, dir := range []string{"external-real-sim", "external-stub"} {
-		src := filepath.Join(starter, "system", dir)
-		if _, err := os.Stat(src); err == nil {
-			files.CopyDir(src, filepath.Join(repoDir, dir))
-		}
-	}
-
-	// System tests: system-test/{testLang}/ -> system-test/
-	testDst := filepath.Join(repoDir, "system-test")
-	files.CopyDir(filepath.Join(starter, "system-test", testLang), testDst)
-	templates.SelectDockerCompose(testDst, "single")
-	templates.CopyVersion(starter, repoDir)
+	copyExternals(starter, repoDir)
+	copySystemTests(starter, repoDir, testLang, "single")
 
 	// Fix workflow content: paths, image names, workflow names
-	contentReplacements := monolithContentReplacements(lang, testLang)
-	if cfg.Deploy == "cloud-run" {
-		contentReplacements = append(contentReplacements, [2]string{"-cloud", ""})
-	}
+	contentReplacements := appendCloudReplacement(monolithContentReplacements(lang, testLang), cfg.Deploy)
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, monolithDockerComposeReplacements(lang, testLang))
 
 	// Fix SonarCloud key suffixes in build files (build.gradle, .csproj, etc.)
 	templates.FixupAllTextFiles(repoDir, monolithSonarKeyReplacements(lang))
 
-	// Copy setup/teardown scripts for cloud-run deploy target
-	if cfg.Deploy == "cloud-run" {
+	if cfg.Deploy == deployCloudRun {
 		copyCloudRunScripts(starter, repoDir)
 	}
 
-	// Docs templates
 	copyDocs(starter, repoDir, "monolith")
-
 	log.OK("Applied template files (monolith monorepo)")
 }
 
@@ -123,54 +182,28 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	testLang := cfg.TestLang
 	starter := cfg.StarterPath
 	repoDir := cfg.RepoDir
-	systemDir := cfg.SystemRepoDir
+	sysDir := cfg.SystemRepoDir
+	stageSuffix := cloudRunSuffix(cfg.Deploy)
 
 	// Root repo: pipeline stage workflows + system-test
-	stageSuffix := ""
-	if cfg.Deploy == "cloud-run" {
-		stageSuffix = "-cloud"
-	}
-	rootWfMap := map[string]string{
-		"monolith-" + testLang + "-acceptance-stage" + stageSuffix + ".yml": "acceptance-stage.yml",
-		"monolith-" + testLang + "-qa-stage" + stageSuffix + ".yml":        "qa-stage.yml",
-		"monolith-" + testLang + "-qa-signoff.yml":                          "qa-signoff.yml",
-		"monolith-" + testLang + "-prod-stage" + stageSuffix + ".yml":      "prod-stage.yml",
-	}
-	if cfg.Deploy == "docker" {
-		rootWfMap["monolith-"+testLang+"-acceptance-stage-legacy.yml"] = "acceptance-stage-legacy.yml"
-	}
+	rootWfMap := monolithPipelineWorkflows(testLang, stageSuffix)
+	addLegacyWorkflow(rootWfMap, prefixMonolith, testLang, cfg.Deploy)
 	templates.CopyWorkflows(rootWfMap, starter, repoDir)
 
-	// External system simulators
-	for _, dir := range []string{"external-real-sim", "external-stub"} {
-		src := filepath.Join(starter, "system", dir)
-		if _, err := os.Stat(src); err == nil {
-			files.CopyDir(src, filepath.Join(repoDir, dir))
-		}
-	}
-
-	testDst := filepath.Join(repoDir, "system-test")
-	files.CopyDir(filepath.Join(starter, "system-test", testLang), testDst)
-	templates.SelectDockerCompose(testDst, "single")
-	templates.CopyVersion(starter, repoDir)
+	copyExternals(starter, repoDir)
+	copySystemTests(starter, repoDir, testLang, "single")
 
 	// Fix root repo workflow content
-	contentReplacements := monolithContentReplacements(lang, testLang)
-	if cfg.Deploy == "cloud-run" {
-		contentReplacements = append(contentReplacements, [2]string{"-cloud", ""})
-	}
+	contentReplacements := appendCloudReplacement(monolithContentReplacements(lang, testLang), cfg.Deploy)
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, monolithDockerComposeReplacements(lang, testLang))
 
-	// Fix SonarCloud key suffixes in build files
 	templates.FixupAllTextFiles(repoDir, monolithSonarKeyReplacements(lang))
 
-	// Copy setup/teardown scripts for cloud-run deploy target
-	if cfg.Deploy == "cloud-run" {
+	if cfg.Deploy == deployCloudRun {
 		copyCloudRunScripts(starter, repoDir)
 	}
 
-	// Docs templates
 	copyDocs(starter, repoDir, "monolith")
 
 	// Fix multirepo image URLs and tokens
@@ -179,25 +212,23 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	log.OK("Applied root repo template (monolith multirepo)")
 
 	// System repo: system code + commit stage
-	EnsureWorkflowDir(systemDir)
+	EnsureWorkflowDir(sysDir)
 
-	// Copy system code into system/ subfolder (matching monorepo layout)
 	systemSrc := filepath.Join(starter, "system", "monolith", lang)
-	files.CopyDir(systemSrc, filepath.Join(systemDir, "system"))
+	files.CopyDir(systemSrc, filepath.Join(sysDir, "system"))
 
 	systemWfMap := map[string]string{
-		"monolith-" + lang + "-commit-stage.yml": "commit-stage.yml",
+		prefixMonolith + lang + commitStageYml: "commit-stage.yml",
 	}
-	templates.CopyWorkflows(systemWfMap, starter, systemDir)
+	templates.CopyWorkflows(systemWfMap, starter, sysDir)
 
-	// Fix system repo workflow content (same replacements as monorepo)
 	sysContentReplacements := [][2]string{
-		{"monolith-" + lang + "-commit-stage", "commit-stage"},
+		{prefixMonolith + lang + suffixCommitStage, "commit-stage"},
 		{"system/monolith/" + lang, "system"},
-		{"monolith-system-" + lang, "system"},
+		{prefixMonolithSystem + lang, "system"},
 	}
-	templates.FixupWorkflowContent(systemDir, sysContentReplacements)
-	templates.FixupAllTextFiles(systemDir, monolithSonarKeyReplacements(lang))
+	templates.FixupWorkflowContent(sysDir, sysContentReplacements)
+	templates.FixupAllTextFiles(sysDir, monolithSonarKeyReplacements(lang))
 	log.OK("Applied system repo template (monolith multirepo)")
 }
 
@@ -209,23 +240,13 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	testLang := cfg.TestLang
 	starter := cfg.StarterPath
 	repoDir := cfg.RepoDir
+	stageSuffix := cloudRunSuffix(cfg.Deploy)
 
 	// Workflows: rename to language-agnostic names
-	stageSuffix := ""
-	if cfg.Deploy == "cloud-run" {
-		stageSuffix = "-cloud"
-	}
-	wfMap := map[string]string{
-		"multitier-backend-" + backendLang + "-commit-stage.yml":                           "backend-commit-stage.yml",
-		"multitier-frontend-" + frontendLang + "-commit-stage.yml":                          "frontend-commit-stage.yml",
-		"multitier-" + testLang + "-acceptance-stage" + stageSuffix + ".yml":                "acceptance-stage.yml",
-		"multitier-" + testLang + "-qa-stage" + stageSuffix + ".yml":                        "qa-stage.yml",
-		"multitier-" + testLang + "-qa-signoff.yml":                                         "qa-signoff.yml",
-		"multitier-" + testLang + "-prod-stage" + stageSuffix + ".yml":                      "prod-stage.yml",
-	}
-	if cfg.Deploy == "docker" {
-		wfMap["multitier-"+testLang+"-acceptance-stage-legacy.yml"] = "acceptance-stage-legacy.yml"
-	}
+	wfMap := multitierPipelineWorkflows(testLang, stageSuffix)
+	wfMap[prefixMultitierBackend+backendLang+commitStageYml] = "backend-commit-stage.yml"
+	wfMap[prefixMultitierFrontend+frontendLang+commitStageYml] = "frontend-commit-stage.yml"
+	addLegacyWorkflow(wfMap, prefixMultitier, testLang, cfg.Deploy)
 	templates.CopyWorkflows(wfMap, starter, repoDir)
 
 	// Backend code: system/multitier/backend-{lang}/ -> backend/
@@ -238,39 +259,21 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	files.CopyDir(frontendSrc, filepath.Join(repoDir, "frontend"))
 	log.OK("Applied frontend template")
 
-	// Shared external system simulators -> top level
-	for _, dir := range []string{"external-real-sim", "external-stub"} {
-		src := filepath.Join(starter, "system", dir)
-		if _, err := os.Stat(src); err == nil {
-			files.CopyDir(src, filepath.Join(repoDir, dir))
-		}
-	}
-
-	// System tests: system-test/{testLang}/ -> system-test/
-	testDst := filepath.Join(repoDir, "system-test")
-	files.CopyDir(filepath.Join(starter, "system-test", testLang), testDst)
-	templates.SelectDockerCompose(testDst, "multi")
-	templates.CopyVersion(starter, repoDir)
+	copyExternals(starter, repoDir)
+	copySystemTests(starter, repoDir, testLang, "multi")
 
 	// Fix workflow content: paths and image names
-	contentReplacements := multitierContentReplacements(backendLang, frontendLang, testLang)
-	if cfg.Deploy == "cloud-run" {
-		contentReplacements = append(contentReplacements, [2]string{"-cloud", ""})
-	}
+	contentReplacements := appendCloudReplacement(multitierContentReplacements(backendLang, frontendLang, testLang), cfg.Deploy)
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, multitierDockerComposeReplacements(backendLang, frontendLang, testLang))
 
-	// Fix SonarCloud key suffixes in build files
 	templates.FixupAllTextFiles(repoDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 
-	// Copy setup/teardown scripts for cloud-run deploy target
-	if cfg.Deploy == "cloud-run" {
+	if cfg.Deploy == deployCloudRun {
 		copyCloudRunScripts(starter, repoDir)
 	}
 
-	// Docs templates
 	copyDocs(starter, repoDir, "multitier")
-
 	log.OK("Applied template files (multitier monorepo)")
 }
 
@@ -282,55 +285,29 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	testLang := cfg.TestLang
 	starter := cfg.StarterPath
 	repoDir := cfg.RepoDir
-	frontendDir := cfg.FrontendRepoDir
-	backendDir := cfg.BackendRepoDir
+	bDir := cfg.BackendRepoDir
+	fDir := cfg.FrontendRepoDir
+	stageSuffix := cloudRunSuffix(cfg.Deploy)
 
 	// Root repo: pipeline stage workflows + system-test + externals
-	stageSuffix := ""
-	if cfg.Deploy == "cloud-run" {
-		stageSuffix = "-cloud"
-	}
-	rootWfMap := map[string]string{
-		"multitier-" + testLang + "-acceptance-stage" + stageSuffix + ".yml": "acceptance-stage.yml",
-		"multitier-" + testLang + "-qa-stage" + stageSuffix + ".yml":        "qa-stage.yml",
-		"multitier-" + testLang + "-qa-signoff.yml":                          "qa-signoff.yml",
-		"multitier-" + testLang + "-prod-stage" + stageSuffix + ".yml":      "prod-stage.yml",
-	}
-	if cfg.Deploy == "docker" {
-		rootWfMap["multitier-"+testLang+"-acceptance-stage-legacy.yml"] = "acceptance-stage-legacy.yml"
-	}
+	rootWfMap := multitierPipelineWorkflows(testLang, stageSuffix)
+	addLegacyWorkflow(rootWfMap, prefixMultitier, testLang, cfg.Deploy)
 	templates.CopyWorkflows(rootWfMap, starter, repoDir)
 
-	// Shared external system simulators
-	for _, dir := range []string{"external-real-sim", "external-stub"} {
-		src := filepath.Join(starter, "system", dir)
-		if _, err := os.Stat(src); err == nil {
-			files.CopyDir(src, filepath.Join(repoDir, dir))
-		}
-	}
-
-	testDst := filepath.Join(repoDir, "system-test")
-	files.CopyDir(filepath.Join(starter, "system-test", testLang), testDst)
-	templates.SelectDockerCompose(testDst, "multi")
-	templates.CopyVersion(starter, repoDir)
+	copyExternals(starter, repoDir)
+	copySystemTests(starter, repoDir, testLang, "multi")
 
 	// Fix root repo workflow content
-	contentReplacements := multitierContentReplacements(backendLang, frontendLang, testLang)
-	if cfg.Deploy == "cloud-run" {
-		contentReplacements = append(contentReplacements, [2]string{"-cloud", ""})
-	}
+	contentReplacements := appendCloudReplacement(multitierContentReplacements(backendLang, frontendLang, testLang), cfg.Deploy)
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, multitierDockerComposeReplacements(backendLang, frontendLang, testLang))
 
-	// Fix SonarCloud key suffixes in build files
 	templates.FixupAllTextFiles(repoDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 
-	// Copy setup/teardown scripts for cloud-run deploy target
-	if cfg.Deploy == "cloud-run" {
+	if cfg.Deploy == deployCloudRun {
 		copyCloudRunScripts(starter, repoDir)
 	}
 
-	// Docs templates
 	copyDocs(starter, repoDir, "multitier")
 
 	// Fix multirepo image URLs and tokens
@@ -339,43 +316,41 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	log.OK("Applied root repo template (multitier multirepo)")
 
 	// Backend repo: code + commit stage
-	EnsureWorkflowDir(backendDir)
+	EnsureWorkflowDir(bDir)
 	backendSrc := filepath.Join(starter, "system", "multitier", "backend-"+backendLang)
-	files.CopyDir(backendSrc, filepath.Join(backendDir, "backend"))
+	files.CopyDir(backendSrc, filepath.Join(bDir, "backend"))
 
 	backendWfMap := map[string]string{
-		"multitier-backend-" + backendLang + "-commit-stage.yml": "backend-commit-stage.yml",
+		prefixMultitierBackend + backendLang + commitStageYml: "backend-commit-stage.yml",
 	}
-	templates.CopyWorkflows(backendWfMap, starter, backendDir)
+	templates.CopyWorkflows(backendWfMap, starter, bDir)
 
-	// Fix backend workflow content (same replacements as monorepo)
 	backendReplacements := [][2]string{
-		{"multitier-backend-" + backendLang + "-commit-stage", "backend-commit-stage"},
+		{prefixMultitierBackend + backendLang + suffixCommitStage, "backend-commit-stage"},
 		{"system/multitier/backend-" + backendLang, "backend"},
-		{"multitier-backend-" + backendLang, "backend"},
+		{prefixMultitierBackend + backendLang, "backend"},
 	}
-	templates.FixupWorkflowContent(backendDir, backendReplacements)
-	templates.FixupAllTextFiles(backendDir, multitierSonarKeyReplacements(backendLang, frontendLang))
+	templates.FixupWorkflowContent(bDir, backendReplacements)
+	templates.FixupAllTextFiles(bDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 	log.OK("Applied backend repo template")
 
 	// Frontend repo: code + commit stage
-	EnsureWorkflowDir(frontendDir)
+	EnsureWorkflowDir(fDir)
 	frontendSrc := filepath.Join(starter, "system", "multitier", "frontend-"+frontendLang)
-	files.CopyDir(frontendSrc, filepath.Join(frontendDir, "frontend"))
+	files.CopyDir(frontendSrc, filepath.Join(fDir, "frontend"))
 
 	frontendWfMap := map[string]string{
-		"multitier-frontend-" + frontendLang + "-commit-stage.yml": "frontend-commit-stage.yml",
+		prefixMultitierFrontend + frontendLang + commitStageYml: "frontend-commit-stage.yml",
 	}
-	templates.CopyWorkflows(frontendWfMap, starter, frontendDir)
+	templates.CopyWorkflows(frontendWfMap, starter, fDir)
 
-	// Fix frontend workflow content (same replacements as monorepo)
 	frontendReplacements := [][2]string{
-		{"multitier-frontend-" + frontendLang + "-commit-stage", "frontend-commit-stage"},
+		{prefixMultitierFrontend + frontendLang + suffixCommitStage, "frontend-commit-stage"},
 		{"system/multitier/frontend-" + frontendLang, "frontend"},
-		{"multitier-frontend-" + frontendLang, "frontend"},
+		{prefixMultitierFrontend + frontendLang, "frontend"},
 	}
-	templates.FixupWorkflowContent(frontendDir, frontendReplacements)
-	templates.FixupAllTextFiles(frontendDir, multitierSonarKeyReplacements(backendLang, frontendLang))
+	templates.FixupWorkflowContent(fDir, frontendReplacements)
+	templates.FixupAllTextFiles(fDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 	log.OK("Applied frontend repo template")
 }
 
@@ -383,24 +358,26 @@ func applyMultitierMultirepo(cfg *config.Config) {
 
 // monolithContentReplacements returns workflow content replacements for monolith.
 func monolithContentReplacements(lang, testLang string) [][2]string {
+	mono := prefixMonolith
+	monoTest := mono + testLang
 	r := [][2]string{
 		// Workflow names (longer patterns first to avoid partial matches)
-		{"monolith-" + lang + "-commit-stage", "commit-stage"},
-		{"monolith-" + testLang + "-acceptance-stage", "acceptance-stage"},
-		{"monolith-" + testLang + "-qa-stage", "qa-stage"},
-		{"monolith-" + testLang + "-qa-signoff", "qa-signoff"},
-		{"monolith-" + testLang + "-prod-stage", "prod-stage"},
-		{"monolith-" + testLang + "-verify", "verify"},
+		{mono + lang + suffixCommitStage, "commit-stage"},
+		{monoTest + suffixAcceptanceStage, "acceptance-stage"},
+		{monoTest + suffixQAStage, "qa-stage"},
+		{monoTest + suffixQASignoff, "qa-signoff"},
+		{monoTest + suffixProdStage, "prod-stage"},
+		{monoTest + "-verify", "verify"},
 		// Working directory
 		{"system/monolith/" + lang, "system"},
 		// System-test path
-		{"system-test/" + testLang + "/", "system-test/"},
-		{"system-test/" + testLang, "system-test"},
+		{dirSystemTest + "/" + testLang + "/", dirSystemTest + "/"},
+		{dirSystemTest + "/" + testLang, dirSystemTest},
 		// Docker image names
-		{"monolith-system-" + lang, "system"},
+		{prefixMonolithSystem + lang, "system"},
 	}
 	if lang != testLang {
-		r = append(r, [2]string{"monolith-system-" + testLang, "system"})
+		r = append(r, [2]string{prefixMonolithSystem + testLang, "system"})
 	}
 	return r
 }
@@ -408,45 +385,46 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 // monolithDockerComposeReplacements returns docker-compose content replacements for monolith.
 func monolithDockerComposeReplacements(lang, testLang string) [][2]string {
 	r := [][2]string{
-		{"system-test/" + testLang + "/", "system-test/"},
-		{"system-test/" + testLang, "system-test"},
-		{"monolith-system-" + lang, "system"},
+		{dirSystemTest + "/" + testLang + "/", dirSystemTest + "/"},
+		{dirSystemTest + "/" + testLang, dirSystemTest},
+		{prefixMonolithSystem + lang, "system"},
 		// Docker build context: starter has system-test/{lang}/ so ../../system/monolith/{lang} is correct there,
 		// but scaffold flattens to system-test/ (one level up), so the context becomes ../system
 		{"../../system/monolith/" + lang, "../system"},
 		// Volume mount paths: old layout had system-test/{lang}/, new has system-test/
-		{"../../system/external-real-sim", "../external-real-sim"},
-		{"../../system/external-stub", "../external-stub"},
+		{starterSystemPrefix + dirExternalRealSim, "../" + dirExternalRealSim},
+		{starterSystemPrefix + dirExternalStub, "../" + dirExternalStub},
 	}
 	if lang != testLang {
 		r = append(r, [2]string{"../../system/monolith/" + testLang, "../system"})
-		r = append(r, [2]string{"monolith-system-" + testLang, "system"})
+		r = append(r, [2]string{prefixMonolithSystem + testLang, "system"})
 	}
 	return r
 }
 
 // multitierContentReplacements returns workflow content replacements for multitier.
 func multitierContentReplacements(backendLang, frontendLang, testLang string) [][2]string {
+	multiTest := prefixMultitier + testLang
 	r := [][2]string{
 		// Workflow names for pipeline stages (longer patterns first)
-		{"multitier-" + testLang + "-acceptance-stage", "acceptance-stage"},
-		{"multitier-" + testLang + "-qa-stage", "qa-stage"},
-		{"multitier-" + testLang + "-qa-signoff", "qa-signoff"},
-		{"multitier-" + testLang + "-prod-stage", "prod-stage"},
-		{"multitier-" + testLang + "-verify", "verify"},
+		{multiTest + suffixAcceptanceStage, "acceptance-stage"},
+		{multiTest + suffixQAStage, "qa-stage"},
+		{multiTest + suffixQASignoff, "qa-signoff"},
+		{multiTest + suffixProdStage, "prod-stage"},
+		{multiTest + "-verify", "verify"},
 		// Working directories (these also transform commit stage workflow names:
 		// multitier-backend-{lang}-commit-stage -> backend-commit-stage, etc.)
 		{"system/multitier/backend-" + backendLang, "backend"},
 		{"system/multitier/frontend-" + frontendLang, "frontend"},
 		// System-test path
-		{"system-test/" + testLang + "/", "system-test/"},
-		{"system-test/" + testLang, "system-test"},
+		{dirSystemTest + "/" + testLang + "/", dirSystemTest + "/"},
+		{dirSystemTest + "/" + testLang, dirSystemTest},
 		// Docker image names (also transforms remaining workflow name references)
-		{"multitier-backend-" + backendLang, "backend"},
-		{"multitier-frontend-" + frontendLang, "frontend"},
+		{prefixMultitierBackend + backendLang, "backend"},
+		{prefixMultitierFrontend + frontendLang, "frontend"},
 	}
 	if backendLang != testLang {
-		r = append(r, [2]string{"multitier-backend-" + testLang, "backend"})
+		r = append(r, [2]string{prefixMultitierBackend + testLang, "backend"})
 	}
 	return r
 }
@@ -454,21 +432,21 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 // multitierDockerComposeReplacements returns docker-compose content replacements for multitier.
 func multitierDockerComposeReplacements(backendLang, frontendLang, testLang string) [][2]string {
 	r := [][2]string{
-		{"system-test/" + testLang + "/", "system-test/"},
-		{"system-test/" + testLang, "system-test"},
-		{"multitier-backend-" + backendLang, "backend"},
-		{"multitier-frontend-" + frontendLang, "frontend"},
+		{dirSystemTest + "/" + testLang + "/", dirSystemTest + "/"},
+		{dirSystemTest + "/" + testLang, dirSystemTest},
+		{prefixMultitierBackend + backendLang, "backend"},
+		{prefixMultitierFrontend + frontendLang, "frontend"},
 		// Volume mount paths: old layout had system-test/{lang}/, new has system-test/
-		{"../../system/external-real-sim", "../external-real-sim"},
-		{"../../system/external-stub", "../external-stub"},
+		{starterSystemPrefix + dirExternalRealSim, "../" + dirExternalRealSim},
+		{starterSystemPrefix + dirExternalStub, "../" + dirExternalStub},
 	}
 	// Docker build contexts always reference the test-lang backend and the frontend lang in the
 	// starter layout (e.g. backend-typescript, frontend-react). After scaffolding these become
 	// ../backend and ../frontend respectively, so we always need both replacements.
 	r = append(r, [2]string{"../../system/multitier/backend-" + testLang, "../backend"})
-	r = append(r, [2]string{"multitier-backend-" + testLang, "backend"})
+	r = append(r, [2]string{prefixMultitierBackend + testLang, "backend"})
 	r = append(r, [2]string{"../../system/multitier/frontend-" + frontendLang, "../frontend"})
-	r = append(r, [2]string{"multitier-frontend-" + frontendLang, "frontend"})
+	r = append(r, [2]string{prefixMultitierFrontend + frontendLang, "frontend"})
 	return r
 }
 
@@ -483,8 +461,8 @@ func monolithSonarKeyReplacements(lang string) [][2]string {
 // multitierSonarKeyReplacements returns SonarCloud key suffix replacements for multitier.
 func multitierSonarKeyReplacements(backendLang, frontendLang string) [][2]string {
 	return [][2]string{
-		{"-multitier-backend-" + backendLang, "-backend"},
-		{"-multitier-frontend-" + frontendLang, "-frontend"},
+		{"-" + prefixMultitierBackend + backendLang, "-backend"},
+		{"-" + prefixMultitierFrontend + frontendLang, "-frontend"},
 	}
 }
 
