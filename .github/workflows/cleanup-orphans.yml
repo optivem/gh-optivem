@@ -1,0 +1,19 @@
+name: Cleanup Orphans
+
+on:
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    name: Cleanup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run cleanup
+        run: bash scripts/cleanup-orphans.sh --owner "$TEST_OWNER" --all --delete
+        env:
+          GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+          TEST_OWNER: ${{ vars.TEST_OWNER }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

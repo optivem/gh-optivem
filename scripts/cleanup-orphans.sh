@@ -187,7 +187,7 @@ if [ "$CLEAN_REPOS" = "1" ]; then
       else
         echo "  Deleting $full ..."
         gh repo delete "$full" --yes
-        sleep 2
+        sleep 10
       fi
     done
 
