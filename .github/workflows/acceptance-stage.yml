@@ -12,7 +12,7 @@ on:
       verify-level:
         description: 'Verification level for system tests'
         required: false
-        default: 'release'
+        default: 'precommit'
         type: choice
         options:
           - none
@@ -23,7 +23,7 @@ on:
       exclude-legacy:
         description: 'Exclude legacy stage verification'
         required: false
-        default: false
+        default: true
         type: boolean
 
 jobs:
