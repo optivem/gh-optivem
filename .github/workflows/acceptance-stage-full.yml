@@ -5,15 +5,69 @@ on:
     - cron: '0 3 * * *'  # Run daily at 03:00 UTC
 
 jobs:
-  acceptance:
-    name: Acceptance Stage Full
-    uses: ./.github/workflows/acceptance-stage-base.yml
-    with:
-      arch: '["multitier", "monolith"]'
-      repo-strategy: '["monorepo", "multirepo"]'
-      lang: '["typescript", "dotnet", "java"]'
-      test-lang: '["typescript", "dotnet", "java"]'
-      verify-level: release
-      exclude-legacy: false
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Config
+        uses: optivem/actions/validate-config@v1
+        with:
+          names: |
+            TEST_OWNER
+            DOCKERHUB_USERNAME
+            DOCKERHUB_TOKEN
+            SONAR_TOKEN
+            GHCR_TOKEN
+        env:
+          TEST_OWNER: ${{ vars.TEST_OWNER }}
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+
+  run:
+    name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})
+    needs: check
+    runs-on: ubuntu-latest
+    env:
+      VERIFY_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+      GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+      TEST_OWNER: ${{ vars.TEST_OWNER }}
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+    strategy:
       fail-fast: true
-    secrets: inherit
+      max-parallel: 6
+      matrix:
+        arch: [multitier, monolith]
+        repo-strategy: [monorepo, multirepo]
+        lang: [typescript, dotnet, java]
+        test-lang: [typescript, dotnet, java]
+    steps:
+      - name: Acceptance Test
+        uses: ./.github/actions/acceptance-test
+        with:
+          arch: ${{ matrix.arch }}
+          repo-strategy: ${{ matrix.repo-strategy }}
+          lang: ${{ matrix.lang }}
+          test-lang: ${{ matrix.test-lang }}
+          verify-level: release
+          exclude-legacy: 'false'
+
+  summary:
+    name: Summary
+    needs: run
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const script = require('./scripts/summarize-acceptance.js');
+            await script({ github, context, core });

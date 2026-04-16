@@ -86,21 +86,74 @@ jobs:
             fi
           }
 
-          echo "arch=$(resolve '${{ inputs.arch }}' '[\"multitier\", \"monolith\"]')" >> "$GITHUB_OUTPUT"
-          echo "repo-strategy=$(resolve '${{ inputs.repo-strategy }}' '[\"monorepo\", \"multirepo\"]')" >> "$GITHUB_OUTPUT"
-          echo "lang=$(resolve '${{ inputs.lang }}' '[\"typescript\", \"dotnet\", \"java\"]')" >> "$GITHUB_OUTPUT"
-          echo "test-lang=$(resolve '${{ inputs.test-lang }}' '[\"typescript\", \"dotnet\", \"java\"]')" >> "$GITHUB_OUTPUT"
+          echo "arch=$(resolve '${{ inputs.arch }}' '["multitier", "monolith"]')" >> "$GITHUB_OUTPUT"
+          echo "repo-strategy=$(resolve '${{ inputs.repo-strategy }}' '["monorepo", "multirepo"]')" >> "$GITHUB_OUTPUT"
+          echo "lang=$(resolve '${{ inputs.lang }}' '["typescript", "dotnet", "java"]')" >> "$GITHUB_OUTPUT"
+          echo "test-lang=$(resolve '${{ inputs.test-lang }}' '["typescript", "dotnet", "java"]')" >> "$GITHUB_OUTPUT"
 
-  acceptance:
-    name: Acceptance Stage Adhoc
-    needs: resolve
-    uses: ./.github/workflows/acceptance-stage-base.yml
-    with:
-      arch: ${{ needs.resolve.outputs.arch }}
-      repo-strategy: ${{ needs.resolve.outputs.repo-strategy }}
-      lang: ${{ needs.resolve.outputs.lang }}
-      test-lang: ${{ needs.resolve.outputs.test-lang }}
-      verify-level: ${{ inputs.verify-level }}
-      exclude-legacy: ${{ inputs.exclude-legacy }}
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Config
+        uses: optivem/actions/validate-config@v1
+        with:
+          names: |
+            TEST_OWNER
+            DOCKERHUB_USERNAME
+            DOCKERHUB_TOKEN
+            SONAR_TOKEN
+            GHCR_TOKEN
+        env:
+          TEST_OWNER: ${{ vars.TEST_OWNER }}
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+
+  run:
+    name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})
+    needs: [resolve, check]
+    runs-on: ubuntu-latest
+    env:
+      VERIFY_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+      GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+      TEST_OWNER: ${{ vars.TEST_OWNER }}
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+    strategy:
       fail-fast: ${{ inputs.fail-fast }}
-    secrets: inherit
+      max-parallel: 6
+      matrix:
+        arch: ${{ fromJSON(needs.resolve.outputs.arch) }}
+        repo-strategy: ${{ fromJSON(needs.resolve.outputs.repo-strategy) }}
+        lang: ${{ fromJSON(needs.resolve.outputs.lang) }}
+        test-lang: ${{ fromJSON(needs.resolve.outputs.test-lang) }}
+    steps:
+      - name: Acceptance Test
+        uses: ./.github/actions/acceptance-test
+        with:
+          arch: ${{ matrix.arch }}
+          repo-strategy: ${{ matrix.repo-strategy }}
+          lang: ${{ matrix.lang }}
+          test-lang: ${{ matrix.test-lang }}
+          verify-level: ${{ inputs.verify-level }}
+          exclude-legacy: ${{ inputs.exclude-legacy }}
+
+  summary:
+    name: Summary
+    needs: run
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const script = require('./scripts/summarize-acceptance.js');
+            await script({ github, context, core });

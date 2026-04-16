@@ -1,0 +1,88 @@
+name: Acceptance Test
+description: Run a single acceptance test for a given configuration
+
+inputs:
+  arch:
+    description: 'Architecture (multitier or monolith)'
+    required: true
+  repo-strategy:
+    description: 'Repo strategy (monorepo or multirepo)'
+    required: true
+  lang:
+    description: 'Language (typescript, dotnet, java)'
+    required: true
+  test-lang:
+    description: 'Test language (typescript, dotnet, java)'
+    required: true
+  verify-level:
+    description: 'Verification level for system tests'
+    required: true
+  exclude-legacy:
+    description: 'Exclude legacy stage verification'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+
+    - name: Setup Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+        cache: false
+
+    - name: Configure git
+      shell: bash
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git config --global url."https://x-access-token:${{ env.VERIFY_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+    - name: Compute test name
+      id: test
+      shell: bash
+      run: |
+        LANG="${{ inputs.lang }}"
+        if [ "$LANG" = "typescript" ]; then LANG="ts"; fi
+
+        if [ "${{ inputs.arch }}" = "monolith" ]; then
+          NAME="TestValidMonolithConfigurations/${{ inputs.arch }}_${{ inputs.repo-strategy }}_${LANG}_${{ inputs.test-lang }}"
+        else
+          NAME="TestValidMultitierConfigurations/${{ inputs.arch }}_${{ inputs.repo-strategy }}_${LANG}_react_${{ inputs.test-lang }}"
+        fi
+        echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+    - name: Print configuration
+      shell: bash
+      run: |
+        echo "Verify level: ${{ inputs.verify-level }}"
+        echo "Exclude legacy: ${{ inputs.exclude-legacy }}"
+
+    - name: System test
+      id: test-run
+      shell: bash
+      run: |
+        set +e
+        OUTPUT=$(go test -tags=system ./internal/config/ -v -timeout 2h -run "${{ steps.test.outputs.name }}" 2>&1)
+        EXIT_CODE=$?
+        echo "$OUTPUT"
+        if echo "$OUTPUT" | tail -30 | grep -qi "rate limit"; then
+          echo "result=rate-limited" >> "$GITHUB_OUTPUT"
+          exit 1
+        elif [ $EXIT_CODE -ne 0 ]; then
+          echo "result=failed" >> "$GITHUB_OUTPUT"
+          exit 1
+        else
+          echo "result=passed" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+      env:
+        TEST_VERIFY_LEVEL: ${{ inputs.verify-level }}
+        TEST_EXCLUDE_LEGACY: ${{ inputs.exclude-legacy }}
+
+    - name: Rate limit marker
+      if: failure() && steps.test-run.outputs.result == 'rate-limited'
+      shell: bash
+      run: echo "This job was rate-limited"
