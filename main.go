@@ -88,6 +88,7 @@ func runInit() {
 		{"Replace repository references", func() { steps.ReplaceRepoReferences(cfg) }},
 		{"Replace namespaces", func() { steps.ReplaceNamespaces(cfg) }},
 		{"Replace system name", func() { steps.ReplaceSystemName(cfg) }},
+		{"Verify compilation", func() { steps.VerifyCompilation(cfg) }},
 		{"Update README", func() { steps.UpdateReadme(cfg) }},
 		{"Write project config", func() { steps.WriteProjectConfig(cfg) }},
 		{"Create SonarCloud projects", func() { steps.CreateSonarCloudProjects(cfg, sc) }},
@@ -156,6 +157,7 @@ func runInit() {
 	fmt.Println("==========================================")
 	if errors > 0 {
 		log.Failf("Setup completed with %d error(s) in %s", errors, formatDuration(totalDuration))
+		createBugReport(cfg, errors)
 	} else {
 		log.OKf("All steps passed! Completed in %s", formatDuration(totalDuration))
 	}
@@ -182,6 +184,34 @@ func runInit() {
 
 	if errors > 0 {
 		os.Exit(1)
+	}
+}
+
+func createBugReport(cfg *config.Config, errorCount int) {
+	lang := cfg.Lang
+	if cfg.Arch == "multitier" {
+		lang = fmt.Sprintf("backend=%s, frontend=%s", cfg.BackendLang, cfg.FrontendLang)
+	}
+
+	title := fmt.Sprintf("Scaffolding failure: %s (%s, %s)", cfg.SystemName, cfg.Arch, cfg.RepoStrategy)
+	body := fmt.Sprintf(
+		"Scaffolding failed with %d error(s).\n\n"+
+			"- **System:** %s\n"+
+			"- **Architecture:** %s\n"+
+			"- **Repo strategy:** %s\n"+
+			"- **Language:** %s\n"+
+			"- **Test language:** %s\n"+
+			"- **Repository:** https://github.com/%s\n",
+		errorCount, cfg.SystemName, cfg.Arch, cfg.RepoStrategy,
+		lang, cfg.TestLang, cfg.FullRepo)
+
+	out, err := shell.Run(
+		fmt.Sprintf(`gh issue create --repo optivem/gh-optivem --title %q --body %q --assignee valentinajemuovic`, title, body),
+		false, false, "")
+	if err != nil {
+		log.Logf("WARN: Failed to create bug report: %v\n%s", err, out)
+	} else {
+		log.OKf("Bug report created: %s", strings.TrimSpace(out))
 	}
 }
 

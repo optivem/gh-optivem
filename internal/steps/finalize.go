@@ -272,6 +272,76 @@ func CreateSonarCloudProjects(cfg *config.Config, sc *shell.SonarCloud) {
 	}
 }
 
+// VerifyCompilation compiles all source and test components locally to catch
+// broken imports, type errors, and case-sensitive path mismatches before pushing.
+func VerifyCompilation(cfg *config.Config) {
+	log.Log("Verifying local compilation...")
+
+	if cfg.DryRun {
+		log.Log("[DRY RUN] Would verify compilation of all components")
+		return
+	}
+
+	if cfg.Arch == "monolith" {
+		compileComponent("system source", cfg.Lang, systemDir(cfg))
+	} else {
+		compileComponent("backend", cfg.BackendLang, backendDir(cfg))
+		compileComponent("frontend", cfg.FrontendLang, frontendDir(cfg))
+	}
+	compileComponent("system tests", cfg.TestLang, systemTestDir(cfg))
+}
+
+func compileComponent(label, lang, dir string) {
+	cmds := buildCommands(lang)
+	for _, cmd := range cmds {
+		if out, err := shell.Run(cmd, false, true, dir); err != nil {
+			log.Fatalf("Compilation failed for %s (%s) in %s: %v\n%s", label, lang, dir, err, out)
+		}
+	}
+	log.OKf("Compiled %s (%s)", label, lang)
+}
+
+func buildCommands(lang string) []string {
+	switch lang {
+	case "typescript":
+		return []string{"npm ci", "npx tsc --noEmit"}
+	case "dotnet":
+		return []string{"dotnet build"}
+	case "java":
+		return []string{"./gradlew compileJava compileTestJava"}
+	case "react":
+		return []string{"npm ci", "npm run build"}
+	default:
+		log.Fatalf("Unknown language for compilation: %s", lang)
+		return nil
+	}
+}
+
+func systemDir(cfg *config.Config) string {
+	if cfg.RepoStrategy == "multirepo" {
+		return cfg.SystemRepoDir
+	}
+	return filepath.Join(cfg.RepoDir, "system")
+}
+
+func backendDir(cfg *config.Config) string {
+	if cfg.RepoStrategy == "multirepo" {
+		return cfg.BackendRepoDir
+	}
+	return filepath.Join(cfg.RepoDir, "backend")
+}
+
+func frontendDir(cfg *config.Config) string {
+	if cfg.RepoStrategy == "multirepo" {
+		return cfg.FrontendRepoDir
+	}
+	return filepath.Join(cfg.RepoDir, "frontend")
+}
+
+func systemTestDir(cfg *config.Config) string {
+	return filepath.Join(cfg.RepoDir, "system-test")
+}
+
 // CommitAndPush commits and pushes changes to GitHub.
 func CommitAndPush(cfg *config.Config) {
 	log.Log("Step 10: Committing and pushing...")
