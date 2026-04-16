@@ -495,7 +495,7 @@ func replaceSystemNameInRepo(cfg *config.Config, repoDir string) {
 	// Pass 10b: Rename TS domain directories (camelCase: shop/ -> skyTravel/).
 	// TS uses camelCase folder names to match identifier casing in imports.
 	// Must run BEFORE Pass 11 so these dirs aren't lowercased.
-	n = files.RenameDirsInSubtree(repoDir, filepath.Join("system-test", "typescript"), cfg.SysNameLowerOld, cfg.SysNameCamelNew)
+	n = files.RenameDirsInSubtree(repoDir, "system-test", cfg.SysNameLowerOld, cfg.SysNameCamelNew)
 	log.OKf("System name: renamed %d TS camelCase directories", n)
 
 	// Pass 11: Rename directories (lowercase: shop/ -> skytravel/ for Java package paths)
