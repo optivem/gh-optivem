@@ -321,7 +321,7 @@ func ParseAndValidate() *Config {
 	noCleanup := flag.Bool("no-cleanup", false, "Keep repo in test mode")
 	forceCleanup := flag.Bool("force-cleanup", false, "Cleanup even on failure")
 	skipVerify := flag.Bool("skip-verify", false, "Skip workflow triggering and status checks")
-	verifyLevel := flag.String("verify-level", "", "Verification level: none, smoke, commit, acceptance, release (default: release)")
+	verifyLevel := flag.String("verify-level", "", "Verification level: none, precommit, commit, acceptance, release (default: release)")
 	excludeLegacy := flag.Bool("exclude-legacy", false, "Exclude acceptance-stage-legacy verification")
 	noBugReport := flag.Bool("no-bug-report", false, "Skip auto-creating GitHub issues on failure")
 	deploy := flag.String("deploy", "docker", "Deployment target: docker or cloud-run")
@@ -353,9 +353,9 @@ func ParseAndValidate() *Config {
 	if *skipVerify {
 		resolvedLevel = "none"
 	} else if *verifyLevel != "" {
-		validLevels := map[string]bool{"none": true, "smoke": true, "commit": true, "acceptance": true, "release": true}
+		validLevels := map[string]bool{"none": true, "precommit": true, "commit": true, "acceptance": true, "release": true}
 		if !validLevels[*verifyLevel] {
-			log.FatalExit("--verify-level must be none, smoke, commit, acceptance, or release")
+			log.FatalExit("--verify-level must be none, precommit, commit, acceptance, or release")
 		}
 		resolvedLevel = *verifyLevel
 	}

@@ -98,7 +98,7 @@ func runInit() {
 
 	if cfg.VerifyLevel != "none" {
 		// smoke tier — local smoke tests only, no CI
-		if cfg.VerifyLevel == "smoke" {
+		if cfg.VerifyLevel == "precommit" {
 			allSteps = append(allSteps,
 				stepDef{"Run local smoke tests", func() { steps.RunLocalSmokeTests(cfg) }},
 			)
