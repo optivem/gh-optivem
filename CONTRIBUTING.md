@@ -12,6 +12,12 @@ cd gh-optivem
 gh extension install .
 ```
 
+## Build
+
+```bash
+go build ./...
+```
+
 ## Running Tests
 
 ### Unit tests

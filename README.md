@@ -63,8 +63,9 @@ gh optivem init ... --dry-run
 Control how deep pipeline verification goes after scaffolding:
 
 ```bash
-gh optivem init ... --verify-level commit       # only verify commit stage
-gh optivem init ... --verify-level acceptance    # commit + acceptance + local system tests
+gh optivem init ... --verify-level smoke         # local smoke + E2E tests only (no CI)
+gh optivem init ... --verify-level commit        # only verify commit stage CI workflow
+gh optivem init ... --verify-level acceptance    # commit + acceptance CI + full local system tests
 gh optivem init ... --verify-level release       # full pipeline (default)
 gh optivem init ... --skip-verify                # skip all verification
 gh optivem init ... --exclude-legacy             # skip acceptance-stage-legacy
