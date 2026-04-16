@@ -110,6 +110,44 @@ func FindInTree(root, needle string) []string {
 	return matches
 }
 
+// FindInTreeWordBoundary returns paths of non-binary text files under root that contain
+// the given needle where it is NOT preceded by a lowercase letter. This avoids false
+// positives like "eshop" or "workshop" when searching for "shop".
+func FindInTreeWordBoundary(root, needle string) []string {
+	var matches []string
+	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || IsGitDir(path) || IsBinaryFile(info.Name()) {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		content := string(data)
+		idx := 0
+		for {
+			pos := strings.Index(content[idx:], needle)
+			if pos < 0 {
+				break
+			}
+			absPos := idx + pos
+			// Check that the character before the match is not a lowercase letter.
+			if absPos == 0 || !isLowerLetter(content[absPos-1]) {
+				rel, _ := filepath.Rel(root, path)
+				matches = append(matches, rel)
+				break
+			}
+			idx = absPos + len(needle)
+		}
+		return nil
+	})
+	return matches
+}
+
+func isLowerLetter(b byte) bool {
+	return b >= 'a' && b <= 'z'
+}
+
 // ReplaceInDockerfiles replaces in all Dockerfile files under root.
 func ReplaceInDockerfiles(root, old, new string) int {
 	count := 0
@@ -247,11 +285,16 @@ func renameDirs(root, old, new string, subtreeMarker *string) int {
 var skipDirs = map[string]bool{
 	"node_modules": true,
 	".git":         true,
+	".claude":      true,
 	"dist":         true,
 	"build":        true,
 	"target":       true,
 	"bin":          true,
 	"obj":          true,
+}
+
+var skipFiles = map[string]bool{
+	"CLAUDE.md": true,
 }
 
 func CopyDir(src, dst string) error {
@@ -262,6 +305,10 @@ func CopyDir(src, dst string) error {
 
 		if info.IsDir() && skipDirs[info.Name()] {
 			return filepath.SkipDir
+		}
+
+		if !info.IsDir() && skipFiles[info.Name()] {
+			return nil
 		}
 
 		rel, _ := filepath.Rel(src, path)

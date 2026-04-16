@@ -422,24 +422,31 @@ func ReplaceSystemName(cfg *config.Config) {
 // validateNoLeftovers checks that the old system name doesn't appear in any text file
 // after all replacement passes. This catches missed file extensions or replacement gaps.
 func validateNoLeftovers(cfg *config.Config, repoDirs []string) {
-	// Patterns to check: camelCase "shop" in identifiers, PascalCase "Shop" in type names.
-	// We check camelCase bounded by a capital letter (e.g. "shopDriver", "shouldBeAbleToGoToShop")
-	// to avoid false positives from words like "workshop".
-	patterns := []string{cfg.SysNameCamelOld, cfg.SysNamePascalOld}
-
 	for _, repoDir := range repoDirs {
 		if repoDir == "" {
 			continue
 		}
-		for _, pattern := range patterns {
-			leftover := files.FindInTree(repoDir, pattern)
-			if len(leftover) > 0 {
-				log.Warnf("Leftover template name %q found in %d file(s) after replacement:", pattern, len(leftover))
-				for _, f := range leftover {
-					log.Warnf("  %s", f)
-				}
-				log.Fatalf("System name replacement incomplete: %q still present in scaffolded repo. This likely means a file extension is missing from the replacement passes.", pattern)
+		// PascalCase "Shop": safe to check with simple substring match since
+		// a capital letter mid-word is unambiguous.
+		leftover := files.FindInTree(repoDir, cfg.SysNamePascalOld)
+		if len(leftover) > 0 {
+			log.Warnf("Leftover template name %q found in %d file(s) after replacement:", cfg.SysNamePascalOld, len(leftover))
+			for _, f := range leftover {
+				log.Warnf("  %s", f)
 			}
+			log.Fatalf("System name replacement incomplete: %q still present in scaffolded repo.", cfg.SysNamePascalOld)
+		}
+
+		// camelCase "shop": use word-boundary-aware search to avoid false positives
+		// from words like "eshop", "workshop", etc. We check that "shop" is not
+		// preceded by a lowercase letter.
+		leftover = files.FindInTreeWordBoundary(repoDir, cfg.SysNameCamelOld)
+		if len(leftover) > 0 {
+			log.Warnf("Leftover template name %q found in %d file(s) after replacement:", cfg.SysNameCamelOld, len(leftover))
+			for _, f := range leftover {
+				log.Warnf("  %s", f)
+			}
+			log.Fatalf("System name replacement incomplete: %q still present in scaffolded repo.", cfg.SysNameCamelOld)
 		}
 	}
 }
