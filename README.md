@@ -78,6 +78,10 @@ Scaffolds the project then cleans up automatically:
 gh optivem init ... --test --cleanup --random-suffix
 ```
 
+## How it works
+
+See [docs/how-it-works.md](docs/how-it-works.md) for a detailed walkthrough of the `main.go` logic, setup steps, and verification levels.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and release instructions.
