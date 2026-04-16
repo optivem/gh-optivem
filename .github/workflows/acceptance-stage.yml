@@ -65,9 +65,8 @@ jobs:
         lang: [typescript, dotnet, java]
         test-lang: [typescript, dotnet, java]
     steps:
-      # NOTE: Uses git clone (not actions/checkout) so that re-runs always pick up the latest code from main
-      - name: Checkout latest code
-        run: git clone --depth=1 https://x-access-token:${{ secrets.VERIFY_TOKEN }}@github.com/optivem/gh-optivem.git .
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Go
         uses: actions/setup-go@v6

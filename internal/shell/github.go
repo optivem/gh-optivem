@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -157,7 +159,43 @@ func (g *GitHub) CreateRepo() {
 		log.Warnf("Repository %s already exists -- skipping creation", g.Repo)
 		return
 	}
-	Run(fmt.Sprintf("gh repo create %s --public --add-readme --license %s", g.Repo, g.License), false, true, "")
+	Run("gh repo create "+g.Repo+" --public", false, true, "")
+	g.initRepo()
+}
+
+// initRepo pushes the initial commit (README + LICENSE) so the default branch
+// exists immediately without waiting for GitHub's async initialization.
+func (g *GitHub) initRepo() {
+	dir, err := os.MkdirTemp("", "repo-init-*")
+	if err != nil {
+		log.Fatalf("failed to create temp dir for repo init: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	// Clone the empty repo.
+	Run(fmt.Sprintf("gh repo clone %s %s", g.Repo, dir), false, true, "")
+
+	// Write README.md.
+	repoName := g.Repo
+	if idx := strings.Index(repoName, "/"); idx >= 0 {
+		repoName = repoName[idx+1:]
+	}
+	os.WriteFile(filepath.Join(dir, "README.md"), []byte("# "+repoName+"\n"), 0644)
+
+	// Write LICENSE if a license is configured.
+	if g.License != "" {
+		licenseBody, err := RunCapture(fmt.Sprintf("gh api licenses/%s --jq .body", g.License), "")
+		if err == nil && licenseBody != "" {
+			os.WriteFile(filepath.Join(dir, "LICENSE"), []byte(licenseBody+"\n"), 0644)
+		} else {
+			log.Warnf("Could not fetch license template %q -- skipping LICENSE file", g.License)
+		}
+	}
+
+	// Commit and push.
+	Run("git add -A", false, true, dir)
+	Run("git commit -m \"Initial commit\"", false, true, dir)
+	Run("git push", false, true, dir)
 }
 
 func (g *GitHub) EnablePages() {

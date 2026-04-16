@@ -2,46 +2,28 @@
 package steps
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
-	"time"
 
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/shell"
 )
 
-// waitForRepo polls until the GitHub repo has a default branch (i.e. is fully initialized).
-func waitForRepo(ghRepo *shell.GitHub, maxWait time.Duration) {
-	deadline := time.Now().Add(maxWait)
-	for time.Now().Before(deadline) {
-		out, err := shell.RunCapture(
-			fmt.Sprintf("gh repo view %s --json defaultBranchRef --jq .defaultBranchRef.name", ghRepo.Repo), "")
-		if err == nil && strings.TrimSpace(out) != "" {
-			return
-		}
-		time.Sleep(3 * time.Second)
-	}
-	log.Fatalf("repo %s not initialized after %s: default branch not found", ghRepo.Repo, maxWait)
-}
-
 // CreateRepos creates the GitHub repository (and component repos for multitier).
 func CreateRepos(cfg *config.Config, gh *shell.GitHub) {
 	log.Logf("Step 1: Creating repository %s...", cfg.FullRepo)
 
 	if cfg.DryRun {
-		log.Logf("[DRY RUN] gh repo create %s --public --add-readme --license mit", cfg.FullRepo)
+		log.Logf("[DRY RUN] gh repo create %s --public", cfg.FullRepo)
 		if cfg.RepoStrategy == "multirepo" {
-			log.Logf("[DRY RUN] gh repo create %s --public --add-readme --license mit", cfg.FrontendFullRepo)
-			log.Logf("[DRY RUN] gh repo create %s --public --add-readme --license mit", cfg.BackendFullRepo)
+			log.Logf("[DRY RUN] gh repo create %s --public", cfg.FrontendFullRepo)
+			log.Logf("[DRY RUN] gh repo create %s --public", cfg.BackendFullRepo)
 		}
 		return
 	}
 
 	gh.CreateRepo()
-	waitForRepo(gh, 3*time.Minute)
 	log.OKf("Created repository: %s", cfg.FullRepo)
 
 	if cfg.RepoStrategy == "multirepo" {
@@ -50,16 +32,13 @@ func CreateRepos(cfg *config.Config, gh *shell.GitHub) {
 			ghBackend := gh.ForRepo(cfg.BackendFullRepo)
 
 			ghFrontend.CreateRepo()
-			waitForRepo(ghFrontend, 3*time.Minute)
 			log.OKf("Created repository: %s", cfg.FrontendFullRepo)
 
 			ghBackend.CreateRepo()
-			waitForRepo(ghBackend, 3*time.Minute)
 			log.OKf("Created repository: %s", cfg.BackendFullRepo)
 		} else {
 			ghSystem := gh.ForRepo(cfg.SystemFullRepo)
 			ghSystem.CreateRepo()
-			waitForRepo(ghSystem, 3*time.Minute)
 			log.OKf("Created repository: %s", cfg.SystemFullRepo)
 		}
 	}
