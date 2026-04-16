@@ -256,12 +256,41 @@ func canRunLocalTests(cfg *config.Config, testKind string) string {
 		log.Warnf("Skipping local %s: only supported for TypeScript test lang", testKind)
 		return ""
 	}
-	if cfg.RepoStrategy == "multirepo" {
-		log.Warnf("Skipping local %s: multirepo Docker Compose build contexts reference separate repos not available locally", testKind)
-		return ""
-	}
 
 	return testDir
+}
+
+// setupMultirepoSymlinks creates symlinks inside the root repo so that Docker Compose
+// build contexts (e.g. ../backend, ../frontend, ../system) resolve to the component
+// repos cloned in separate directories.
+func setupMultirepoSymlinks(cfg *config.Config) {
+	if cfg.RepoStrategy != "multirepo" {
+		return
+	}
+
+	var links [][2]string // {linkPath, target}
+	if cfg.Arch == "multitier" {
+		links = [][2]string{
+			{filepath.Join(cfg.RepoDir, "backend"), filepath.Join(cfg.BackendRepoDir, "backend")},
+			{filepath.Join(cfg.RepoDir, "frontend"), filepath.Join(cfg.FrontendRepoDir, "frontend")},
+		}
+	} else {
+		links = [][2]string{
+			{filepath.Join(cfg.RepoDir, "system"), filepath.Join(cfg.SystemRepoDir, "system")},
+		}
+	}
+
+	for _, link := range links {
+		linkPath, target := link[0], link[1]
+		if _, err := os.Stat(linkPath); err == nil {
+			continue // already exists (e.g. monorepo layout)
+		}
+		if err := os.Symlink(target, linkPath); err != nil {
+			log.Warnf("Failed to create symlink %s -> %s: %v", linkPath, target, err)
+		} else {
+			log.OKf("Symlinked %s -> %s", linkPath, target)
+		}
+	}
 }
 
 // RunLocalSystemTests runs Run-SystemTests.ps1 locally against the scaffolded project
@@ -279,9 +308,7 @@ func RunLocalSystemTests(cfg *config.Config) {
 		return
 	}
 
-	// NOTE: Multirepo support requires cloning backend/frontend repos into sibling
-	// directories so that Docker Compose build contexts (e.g. ../backend) resolve
-	// correctly. Currently skipped via canRunLocalTests.
+	setupMultirepoSymlinks(cfg)
 
 	arch := cfg.Arch
 	runLocalTests(

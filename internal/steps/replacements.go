@@ -590,10 +590,13 @@ func replaceInTestAppsettings(repoDir, old, new string) int {
 
 func fixupFrontendPackageJSON(cfg *config.Config) {
 	// For multirepo the frontend is a separate repo; for monorepo it's a subdirectory.
-	frontendDir := cfg.FrontendRepoDir
-	if frontendDir == "" {
-		frontendDir = filepath.Join(cfg.RepoDir, "frontend")
+	// Both monorepo and multirepo place frontend code under a "frontend/" subdirectory.
+	// For monorepo it's RepoDir/frontend/, for multirepo it's FrontendRepoDir/frontend/.
+	base := cfg.RepoDir
+	if cfg.FrontendRepoDir != "" {
+		base = cfg.FrontendRepoDir
 	}
+	frontendDir := filepath.Join(base, "frontend")
 
 	// The package name starts as "optivem-shop-frontend" in the starter template.
 	// By the time this runs (Step 7), the repo reference pass (Step 6) has already
