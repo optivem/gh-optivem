@@ -17,8 +17,9 @@ const (
 	githubBaseURL   = "https://github.com/"
 	testLangFmt     = "- **Test language:** %s\n"
 	badgeFmt        = "[![%s](%s/badge.svg)](%s)\n"
-	acceptanceStage = "acceptance-stage"
-	qaStage         = "qa-stage"
+	acceptanceStage       = "acceptance-stage"
+	acceptanceStageLegacy = "acceptance-stage-legacy"
+	qaStage               = "qa-stage"
 	qaSignoff       = "qa-signoff"
 	prodStage       = "prod-stage"
 	commitStage     = "commit-stage"
@@ -44,13 +45,19 @@ func readmeFooter(licenseName, owner string) string {
 }
 
 // pipelineBadges returns badge [url, label] pairs for the shared pipeline stages.
-func pipelineBadges(base string) [][2]string {
-	return [][2]string{
+func pipelineBadges(base, deploy string) [][2]string {
+	badges := [][2]string{
 		{base + "/" + acceptanceStage + ".yml", acceptanceStage},
-		{base + "/" + qaStage + ".yml", qaStage},
-		{base + "/" + qaSignoff + ".yml", qaSignoff},
-		{base + "/" + prodStage + ".yml", prodStage},
 	}
+	if deploy == "docker" {
+		badges = append(badges, [2]string{base + "/" + acceptanceStageLegacy + ".yml", acceptanceStageLegacy})
+	}
+	badges = append(badges,
+		[2]string{base + "/" + qaStage + ".yml", qaStage},
+		[2]string{base + "/" + qaSignoff + ".yml", qaSignoff},
+		[2]string{base + "/" + prodStage + ".yml", prodStage},
+	)
+	return badges
 }
 
 func writeBadges(b *strings.Builder, items [][2]string) {
@@ -114,7 +121,7 @@ func writeMonolithMultirepoReadme(cfg *config.Config) {
 	writeBadges(&badges, [][2]string{
 		{systemBase + "/commit-stage.yml", commitStage},
 	})
-	writeBadges(&badges, pipelineBadges(base))
+	writeBadges(&badges, pipelineBadges(base, cfg.Deploy))
 
 	reposSection := fmt.Sprintf("## Repositories\n\n- [%s](%s%s) — System (%s)\n",
 		cfg.SystemRepo, githubBaseURL, cfg.SystemFullRepo, cfg.Lang)
@@ -150,7 +157,7 @@ func writeMultitierMultirepoReadme(cfg *config.Config) {
 		{backendBase + "/backend-commit-stage.yml", "backend-commit-stage"},
 		{frontendBase + "/frontend-commit-stage.yml", "frontend-commit-stage"},
 	})
-	writeBadges(&badges, pipelineBadges(base))
+	writeBadges(&badges, pipelineBadges(base, cfg.Deploy))
 
 	reposSection := fmt.Sprintf("## Repositories\n\n- [%s](%s%s) — Backend (%s)\n- [%s](%s%s) — Frontend (%s)\n",
 		cfg.BackendRepo, githubBaseURL, cfg.BackendFullRepo, bl,
@@ -215,6 +222,6 @@ func generateBadges(cfg *config.Config) string {
 
 	var b strings.Builder
 	writeBadges(&b, commitStages)
-	writeBadges(&b, pipelineBadges(base))
+	writeBadges(&b, pipelineBadges(base, cfg.Deploy))
 	return b.String()
 }
