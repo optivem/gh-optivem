@@ -599,6 +599,56 @@ func RunLocalSystemTests(cfg *config.Config) {
 	}
 }
 
+// RunLocalSmokeTests runs only smoke test suites locally against the scaffolded project
+// to verify that Docker builds and basic requests work (test mode only, no CI).
+func RunLocalSmokeTests(cfg *config.Config) {
+	log.Log("Running local smoke tests...")
+
+	if cfg.DryRun {
+		log.Log("[DRY RUN] Would run local smoke tests")
+		return
+	}
+
+	if !cfg.TestMode {
+		return
+	}
+
+	testDir := filepath.Join(cfg.RepoDir, "system-test")
+	if _, err := os.Stat(filepath.Join(testDir, "Run-SystemTests.ps1")); err != nil {
+		log.Warn("Run-SystemTests.ps1 not found in scaffolded project, skipping local smoke tests")
+		return
+	}
+
+	arch := cfg.Arch
+
+	if cfg.TestLang != "typescript" {
+		log.Warn("Skipping local smoke tests: only supported for TypeScript test lang")
+		return
+	}
+	if cfg.RepoStrategy == "multirepo" {
+		log.Warn("Skipping local smoke tests: multirepo Docker Compose build contexts reference separate repos not available locally")
+		return
+	}
+
+	smokeSuites := []struct{ id, label string }{
+		{"smoke-stub", "Local smoke tests (stub)"},
+		{"smoke-real", "Local smoke tests (real)"},
+		{"e2e-ui", "Local E2E tests (UI)"},
+	}
+
+	for _, suite := range smokeSuites {
+		cmd := fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Suite %s", arch, suite.id)
+		log.Logf("Running: %s (in %s)", cmd, testDir)
+
+		output, err := shell.Run(cmd, false, true, testDir)
+		if err != nil {
+			log.Failf("%s output:\n%s", suite.label, output)
+			log.Fatalf("%s failed!", suite.label)
+		}
+		log.OKf("%s passed!", suite.label)
+	}
+}
+
 // Cleanup deletes repos, SonarCloud projects, and local directories (test mode only).
 func Cleanup(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud) {
 	if !cfg.TestMode {
