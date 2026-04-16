@@ -1,34 +1,35 @@
-name: Acceptance Stage
-
-env:
-  DEFAULT_VERIFY_LEVEL: release
-  DEFAULT_EXCLUDE_LEGACY: 'false'
+name: Acceptance Stage Base
 
 on:
-  schedule:
-    - cron: '0 3 * * *'  # Run daily at 03:00 UTC
-  workflow_dispatch:
+  workflow_call:
     inputs:
+      arch:
+        description: 'JSON array of architectures'
+        required: true
+        type: string
+      repo-strategy:
+        description: 'JSON array of repo strategies'
+        required: true
+        type: string
+      lang:
+        description: 'JSON array of languages'
+        required: true
+        type: string
+      test-lang:
+        description: 'JSON array of test languages'
+        required: true
+        type: string
       verify-level:
         description: 'Verification level for system tests'
-        required: false
-        default: 'precommit'
-        type: choice
-        options:
-          - none
-          - precommit
-          - commit
-          - acceptance
-          - release
+        required: true
+        type: string
       exclude-legacy:
         description: 'Exclude legacy stage verification'
-        required: false
-        default: true
+        required: true
         type: boolean
       fail-fast:
         description: 'Cancel all jobs on first failure'
-        required: false
-        default: true
+        required: true
         type: boolean
 
 jobs:
@@ -57,13 +58,13 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: ${{ github.event_name != 'workflow_dispatch' || inputs.fail-fast }}
+      fail-fast: ${{ inputs.fail-fast }}
       max-parallel: 6
       matrix:
-        arch: [multitier, monolith]
-        repo-strategy: [monorepo, multirepo]
-        lang: [typescript, dotnet, java]
-        test-lang: [typescript, dotnet, java]
+        arch: ${{ fromJSON(inputs.arch) }}
+        repo-strategy: ${{ fromJSON(inputs.repo-strategy) }}
+        lang: ${{ fromJSON(inputs.lang) }}
+        test-lang: ${{ fromJSON(inputs.test-lang) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -95,8 +96,8 @@ jobs:
 
       - name: Print configuration
         run: |
-          echo "Verify level: ${{ inputs.verify-level || env.DEFAULT_VERIFY_LEVEL }}"
-          echo "Exclude legacy: ${{ inputs.exclude-legacy || env.DEFAULT_EXCLUDE_LEGACY }}"
+          echo "Verify level: ${{ inputs.verify-level }}"
+          echo "Exclude legacy: ${{ inputs.exclude-legacy }}"
 
       - name: System test
         id: test-run
@@ -115,8 +116,8 @@ jobs:
             echo "result=passed" >> "$GITHUB_OUTPUT"
           fi
         env:
-          TEST_VERIFY_LEVEL: ${{ inputs.verify-level || env.DEFAULT_VERIFY_LEVEL }}
-          TEST_EXCLUDE_LEGACY: ${{ inputs.exclude-legacy || env.DEFAULT_EXCLUDE_LEGACY }}
+          TEST_VERIFY_LEVEL: ${{ inputs.verify-level }}
+          TEST_EXCLUDE_LEGACY: ${{ inputs.exclude-legacy }}
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
           TEST_OWNER: ${{ vars.TEST_OWNER }}
           DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}

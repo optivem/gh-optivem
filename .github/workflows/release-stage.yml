@@ -1,4 +1,4 @@
-name: Release
+name: Release Stage
 
 on:
   push:
@@ -9,8 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Release
+  release-stage:
+    name: Release Stage
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

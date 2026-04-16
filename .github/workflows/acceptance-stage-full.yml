@@ -1,0 +1,19 @@
+name: Acceptance Stage Full
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # Run daily at 03:00 UTC
+
+jobs:
+  acceptance:
+    name: Acceptance Stage Full
+    uses: ./.github/workflows/acceptance-stage-base.yml
+    with:
+      arch: '["multitier", "monolith"]'
+      repo-strategy: '["monorepo", "multirepo"]'
+      lang: '["typescript", "dotnet", "java"]'
+      test-lang: '["typescript", "dotnet", "java"]'
+      verify-level: release
+      exclude-legacy: false
+      fail-fast: true
+    secrets: inherit

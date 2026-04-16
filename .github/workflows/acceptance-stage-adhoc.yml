@@ -1,0 +1,106 @@
+name: Acceptance Stage Adhoc
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: 'Architecture'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - multitier
+          - monolith
+      repo-strategy:
+        description: 'Repo strategy'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - monorepo
+          - multirepo
+      lang:
+        description: 'Language'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - typescript
+          - dotnet
+          - java
+      test-lang:
+        description: 'Test language'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - typescript
+          - dotnet
+          - java
+      verify-level:
+        description: 'Verification level for system tests'
+        required: false
+        default: 'precommit'
+        type: choice
+        options:
+          - none
+          - precommit
+          - commit
+          - acceptance
+          - release
+      exclude-legacy:
+        description: 'Exclude legacy stage verification'
+        required: false
+        default: true
+        type: boolean
+      fail-fast:
+        description: 'Cancel all jobs on first failure'
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  resolve:
+    name: Resolve Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      arch: ${{ steps.matrix.outputs.arch }}
+      repo-strategy: ${{ steps.matrix.outputs.repo-strategy }}
+      lang: ${{ steps.matrix.outputs.lang }}
+      test-lang: ${{ steps.matrix.outputs.test-lang }}
+    steps:
+      - name: Resolve matrix inputs
+        id: matrix
+        run: |
+          resolve() {
+            local input="$1"
+            local all_values="$2"
+            if [ "$input" = "all" ]; then
+              echo "$all_values"
+            else
+              echo "[\"$input\"]"
+            fi
+          }
+
+          echo "arch=$(resolve '${{ inputs.arch }}' '[\"multitier\", \"monolith\"]')" >> "$GITHUB_OUTPUT"
+          echo "repo-strategy=$(resolve '${{ inputs.repo-strategy }}' '[\"monorepo\", \"multirepo\"]')" >> "$GITHUB_OUTPUT"
+          echo "lang=$(resolve '${{ inputs.lang }}' '[\"typescript\", \"dotnet\", \"java\"]')" >> "$GITHUB_OUTPUT"
+          echo "test-lang=$(resolve '${{ inputs.test-lang }}' '[\"typescript\", \"dotnet\", \"java\"]')" >> "$GITHUB_OUTPUT"
+
+  acceptance:
+    name: Acceptance Stage Adhoc
+    needs: resolve
+    uses: ./.github/workflows/acceptance-stage-base.yml
+    with:
+      arch: ${{ needs.resolve.outputs.arch }}
+      repo-strategy: ${{ needs.resolve.outputs.repo-strategy }}
+      lang: ${{ needs.resolve.outputs.lang }}
+      test-lang: ${{ needs.resolve.outputs.test-lang }}
+      verify-level: ${{ inputs.verify-level }}
+      exclude-legacy: ${{ inputs.exclude-legacy }}
+      fail-fast: ${{ inputs.fail-fast }}
+    secrets: inherit
