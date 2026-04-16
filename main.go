@@ -88,12 +88,12 @@ func runInit() {
 		{"Replace repository references", func() { steps.ReplaceRepoReferences(cfg) }},
 		{"Replace namespaces", func() { steps.ReplaceNamespaces(cfg) }},
 		{"Replace system name", func() { steps.ReplaceSystemName(cfg) }},
-		{"Verify compilation", func() { steps.VerifyCompilation(cfg) }},
 		{"Update README", func() { steps.UpdateReadme(cfg) }},
 		{"Write project config", func() { steps.WriteProjectConfig(cfg) }},
 		{"Create SonarCloud projects", func() { steps.CreateSonarCloudProjects(cfg, sc) }},
 		{"Commit and push", func() { steps.CommitAndPush(cfg) }},
 		{"Enable GitHub Pages", func() { steps.EnablePages(cfg, gh) }},
+		{"Verify compilation", func() { steps.VerifyCompilation(cfg) }},
 	}
 
 	if cfg.VerifyLevel != "none" {
