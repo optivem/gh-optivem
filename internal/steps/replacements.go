@@ -601,9 +601,20 @@ func replaceInTestAppsettings(repoDir, old, new string) int {
 }
 
 func fixupFrontendPackageJSON(cfg *config.Config) {
-	pkgPath := filepath.Join(cfg.FrontendRepoDir, "package.json")
+	// For multirepo the frontend is a separate repo; for monorepo it's a subdirectory.
+	frontendDir := cfg.FrontendRepoDir
+	if frontendDir == "" {
+		frontendDir = filepath.Join(cfg.RepoDir, "frontend")
+	}
+	pkgPath := filepath.Join(frontendDir, "package.json")
 	if _, err := os.Stat(pkgPath); err == nil {
 		files.ReplaceInFile(pkgPath, `"name": "optivem-shop-frontend"`, `"name": "`+cfg.Repo+`-frontend"`)
 		files.ReplaceInFile(pkgPath, `"name": "frontend-react"`, `"name": "`+cfg.Repo+`-frontend"`)
+	}
+	// Also fix package-lock.json if present.
+	lockPath := filepath.Join(frontendDir, "package-lock.json")
+	if _, err := os.Stat(lockPath); err == nil {
+		files.ReplaceInFile(lockPath, `"name": "optivem-shop-frontend"`, `"name": "`+cfg.Repo+`-frontend"`)
+		files.ReplaceInFile(lockPath, `"name": "frontend-react"`, `"name": "`+cfg.Repo+`-frontend"`)
 	}
 }

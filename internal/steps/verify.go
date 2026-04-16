@@ -12,6 +12,8 @@ import (
 	"github.com/optivem/gh-optivem/internal/shell"
 )
 
+const systemTestDir_name = "system-test"
+
 // VerifyCompilation compiles all source and test components locally to catch
 // broken imports, type errors, and case-sensitive path mismatches before pushing.
 func VerifyCompilation(cfg *config.Config) {
@@ -79,7 +81,7 @@ func frontendDir(cfg *config.Config) string {
 }
 
 func systemTestDir(cfg *config.Config) string {
-	return filepath.Join(cfg.RepoDir, "system-test")
+	return filepath.Join(cfg.RepoDir, systemTestDir_name)
 }
 
 // VerifyCommitStage waits for commit stage workflow to pass.
@@ -197,16 +199,7 @@ func VerifyProdStage(cfg *config.Config, gh *shell.GitHub) {
 func verifyNamedWorkflow(gh *shell.GitHub, label, workflowFile string, intervalSecs int) {
 	shell.CheckRateLimit()
 	err := gh.RunWatchWorkflow(workflowFile, intervalSecs)
-	if err != nil {
-		var rle *shell.RateLimitExceeded
-		if errors.As(err, &rle) {
-			log.Failf("%s failed due to GitHub API rate limiting (the workflow itself may have succeeded)!", label)
-			log.Fatalf("Rate limit exceeded while watching %s workflow. The workflow run may still be passing — check manually: https://github.com/%s/actions", label, gh.Repo)
-		}
-		log.Failf("%s failed!", label)
-		log.Fatalf("%s workflow failed. Check: https://github.com/%s/actions", label, gh.Repo)
-	}
-	log.OKf("%s passed!", label)
+	handleWorkflowResult(err, label, gh.Repo)
 }
 
 func verifyWorkflow(gh *shell.GitHub, label, triggerWorkflow string, fields map[string]string, intervalSecs int) {
@@ -218,16 +211,57 @@ func verifyWorkflow(gh *shell.GitHub, label, triggerWorkflow string, fields map[
 
 	shell.CheckRateLimit()
 	err := gh.RunWatch(intervalSecs)
+	handleWorkflowResult(err, label, gh.Repo)
+}
+
+func handleWorkflowResult(err error, label, repo string) {
+	if err == nil {
+		log.OKf("%s passed!", label)
+		return
+	}
+	var rle *shell.RateLimitExceeded
+	if errors.As(err, &rle) {
+		log.Failf("%s failed due to GitHub API rate limiting (the workflow itself may have succeeded)!", label)
+		log.Fatalf("Rate limit exceeded while watching %s workflow. The workflow run may still be passing — check manually: https://github.com/%s/actions", label, repo)
+	}
+	log.Failf("%s failed!", label)
+	log.Fatalf("%s workflow failed. Check: https://github.com/%s/actions", label, repo)
+}
+
+// runLocalTests runs a pwsh test command and reports the result.
+func runLocalTests(label, cmd, dir string) {
+	log.Logf("Running: %s (in %s)", cmd, dir)
+	output, err := shell.Run(cmd, false, true, dir)
 	if err != nil {
-		var rle *shell.RateLimitExceeded
-		if errors.As(err, &rle) {
-			log.Failf("%s failed due to GitHub API rate limiting (the workflow itself may have succeeded)!", label)
-			log.Fatalf("Rate limit exceeded while watching %s workflow. The workflow run may still be passing — check manually: https://github.com/%s/actions", label, gh.Repo)
-		}
-		log.Failf("%s failed!", label)
-		log.Fatalf("%s workflow failed. Check: https://github.com/%s/actions", label, gh.Repo)
+		log.Failf("%s output:\n%s", label, output)
+		log.Fatalf("%s failed!", label)
 	}
 	log.OKf("%s passed!", label)
+}
+
+// canRunLocalTests checks common preconditions for local test execution.
+// Returns the test directory path, or empty string if tests should be skipped.
+func canRunLocalTests(cfg *config.Config, testKind string) string {
+	if !cfg.TestMode {
+		return ""
+	}
+
+	testDir := filepath.Join(cfg.RepoDir, systemTestDir_name)
+	if _, err := os.Stat(filepath.Join(testDir, "Run-SystemTests.ps1")); err != nil {
+		log.Warnf("Run-SystemTests.ps1 not found in scaffolded project, skipping local %s", testKind)
+		return ""
+	}
+
+	if cfg.TestLang != "typescript" {
+		log.Warnf("Skipping local %s: only supported for TypeScript test lang", testKind)
+		return ""
+	}
+	if cfg.RepoStrategy == "multirepo" {
+		log.Warnf("Skipping local %s: multirepo Docker Compose build contexts reference separate repos not available locally", testKind)
+		return ""
+	}
+
+	return testDir
 }
 
 // RunLocalSystemTests runs Run-SystemTests.ps1 locally against the scaffolded project
@@ -240,110 +274,28 @@ func RunLocalSystemTests(cfg *config.Config) {
 		return
 	}
 
-	if !cfg.TestMode {
+	testDir := canRunLocalTests(cfg, "system tests")
+	if testDir == "" {
 		return
 	}
 
-	testDir := filepath.Join(cfg.RepoDir, "system-test")
-	if _, err := os.Stat(filepath.Join(testDir, "Run-SystemTests.ps1")); err != nil {
-		log.Warn("Run-SystemTests.ps1 not found in scaffolded project, skipping local system tests")
-		return
-	}
-
-	arch := cfg.Arch
-
-	// Local system tests are only supported for TypeScript test lang + monorepo.
-	// TODO: Support multirepo by cloning the backend/frontend repos into sibling
+	// NOTE: Multirepo support requires cloning backend/frontend repos into sibling
 	// directories so that Docker Compose build contexts (e.g. ../backend) resolve
-	// correctly. Currently skipped because the root repo alone doesn't have them.
-	if cfg.TestLang != "typescript" {
-		log.Warn("Skipping local system tests: only supported for TypeScript test lang")
-		return
-	}
-	if cfg.RepoStrategy == "multirepo" {
-		log.Warn("Skipping local system tests: multirepo Docker Compose build contexts reference separate repos not available locally")
-		return
-	}
-
-	// Run latest tests
-	latestLabel := "Local system tests (latest)"
-	latestCmd := fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Sample", arch)
-	log.Logf("Running: %s (in %s)", latestCmd, testDir)
-
-	output, err := shell.Run(latestCmd, false, true, testDir)
-	if err != nil {
-		log.Failf("%s output:\n%s", latestLabel, output)
-		log.Fatalf("%s failed!", latestLabel)
-	}
-	log.OKf("%s passed!", latestLabel)
-
-	// Run legacy tests if not excluded
-	if !cfg.ExcludeLegacy {
-		legacyLabel := "Local system tests (legacy)"
-		legacyCmd := fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Legacy -Sample", arch)
-		log.Logf("Running: %s (in %s)", legacyCmd, testDir)
-
-		output, err = shell.Run(legacyCmd, false, true, testDir)
-		if err != nil {
-			log.Failf("%s output:\n%s", legacyLabel, output)
-			log.Fatalf("%s failed!", legacyLabel)
-		}
-		log.OKf("%s passed!", legacyLabel)
-	}
-}
-
-// RunLocalSmokeTests runs all test suites locally with -Sample (one test per suite)
-// to verify that Docker builds and basic requests work (test mode only, no CI).
-func RunLocalSmokeTests(cfg *config.Config) {
-	log.Log("Running local sample tests...")
-
-	if cfg.DryRun {
-		log.Log("[DRY RUN] Would run local sample tests")
-		return
-	}
-
-	if !cfg.TestMode {
-		return
-	}
-
-	testDir := filepath.Join(cfg.RepoDir, "system-test")
-	if _, err := os.Stat(filepath.Join(testDir, "Run-SystemTests.ps1")); err != nil {
-		log.Warn("Run-SystemTests.ps1 not found in scaffolded project, skipping local sample tests")
-		return
-	}
+	// correctly. Currently skipped via canRunLocalTests.
 
 	arch := cfg.Arch
-
-	if cfg.TestLang != "typescript" {
-		log.Warn("Skipping local sample tests: only supported for TypeScript test lang")
-		return
-	}
-	if cfg.RepoStrategy == "multirepo" {
-		log.Warn("Skipping local sample tests: multirepo Docker Compose build contexts reference separate repos not available locally")
-		return
-	}
-
-	latestLabel := "Local sample tests (latest)"
-	latestCmd := fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Sample", arch)
-	log.Logf("Running: %s (in %s)", latestCmd, testDir)
-
-	output, err := shell.Run(latestCmd, false, true, testDir)
-	if err != nil {
-		log.Failf("%s output:\n%s", latestLabel, output)
-		log.Fatalf("%s failed!", latestLabel)
-	}
-	log.OKf("%s passed!", latestLabel)
+	runLocalTests(
+		"Local system tests (latest)",
+		fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Sample", arch),
+		testDir,
+	)
 
 	if !cfg.ExcludeLegacy {
-		legacyLabel := "Local sample tests (legacy)"
-		legacyCmd := fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Legacy -Sample", arch)
-		log.Logf("Running: %s (in %s)", legacyCmd, testDir)
-
-		output, err = shell.Run(legacyCmd, false, true, testDir)
-		if err != nil {
-			log.Failf("%s output:\n%s", legacyLabel, output)
-			log.Fatalf("%s failed!", legacyLabel)
-		}
-		log.OKf("%s passed!", legacyLabel)
+		runLocalTests(
+			"Local system tests (legacy)",
+			fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Legacy -Sample", arch),
+			testDir,
+		)
 	}
 }
+
