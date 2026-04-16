@@ -1,5 +1,9 @@
 name: Acceptance Stage
 
+env:
+  DEFAULT_VERIFY_LEVEL: release
+  DEFAULT_EXCLUDE_LEGACY: 'false'
+
 on:
   schedule:
     - cron: '0 3 * * *'  # Run daily at 03:00 UTC
@@ -8,7 +12,7 @@ on:
       verify-level:
         description: 'Verification level for system tests'
         required: false
-        default: 'acceptance'
+        default: 'release'
         type: choice
         options:
           - none
@@ -16,6 +20,11 @@ on:
           - commit
           - acceptance
           - release
+      exclude-legacy:
+        description: 'Exclude legacy stage verification'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   check:
@@ -79,6 +88,11 @@ jobs:
           fi
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
 
+      - name: Print configuration
+        run: |
+          echo "Verify level: ${{ inputs.verify-level || env.DEFAULT_VERIFY_LEVEL }}"
+          echo "Exclude legacy: ${{ inputs.exclude-legacy || env.DEFAULT_EXCLUDE_LEGACY }}"
+
       - name: System test
         id: test-run
         run: |
@@ -96,8 +110,8 @@ jobs:
             echo "result=passed" >> "$GITHUB_OUTPUT"
           fi
         env:
-          TEST_VERIFY_LEVEL: ${{ inputs.verify-level || 'acceptance' }}
-          TEST_EXCLUDE_LEGACY: "true"
+          TEST_VERIFY_LEVEL: ${{ inputs.verify-level || env.DEFAULT_VERIFY_LEVEL }}
+          TEST_EXCLUDE_LEGACY: ${{ inputs.exclude-legacy || env.DEFAULT_EXCLUDE_LEGACY }}
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
           TEST_OWNER: ${{ vars.TEST_OWNER }}
           DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
