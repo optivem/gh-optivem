@@ -41,7 +41,7 @@ func CreateRepos(cfg *config.Config, gh *shell.GitHub) {
 	}
 
 	gh.CreateRepo()
-	waitForRepo(gh, 30*time.Second)
+	waitForRepo(gh, 3*time.Minute)
 	log.OKf("Created repository: %s", cfg.FullRepo)
 
 	if cfg.RepoStrategy == "multirepo" {
@@ -50,16 +50,16 @@ func CreateRepos(cfg *config.Config, gh *shell.GitHub) {
 			ghBackend := gh.ForRepo(cfg.BackendFullRepo)
 
 			ghFrontend.CreateRepo()
-			waitForRepo(ghFrontend, 30*time.Second)
+			waitForRepo(ghFrontend, 3*time.Minute)
 			log.OKf("Created repository: %s", cfg.FrontendFullRepo)
 
 			ghBackend.CreateRepo()
-			waitForRepo(ghBackend, 30*time.Second)
+			waitForRepo(ghBackend, 3*time.Minute)
 			log.OKf("Created repository: %s", cfg.BackendFullRepo)
 		} else {
 			ghSystem := gh.ForRepo(cfg.SystemFullRepo)
 			ghSystem.CreateRepo()
-			waitForRepo(ghSystem, 30*time.Second)
+			waitForRepo(ghSystem, 3*time.Minute)
 			log.OKf("Created repository: %s", cfg.SystemFullRepo)
 		}
 	}
