@@ -36,6 +36,7 @@ type Config struct {
 	ExcludeLegacy bool   // exclude acceptance-stage-legacy verification
 	Cleanup       string // "yes", "no", or "ask"
 	ForceCleanup bool   // cleanup even on failure
+	NoBugReport  bool   // skip auto-creating GitHub issues on failure
 	WorkDir    string
 	StarterPath string
 
@@ -320,8 +321,9 @@ func ParseAndValidate() *Config {
 	noCleanup := flag.Bool("no-cleanup", false, "Keep repo in test mode")
 	forceCleanup := flag.Bool("force-cleanup", false, "Cleanup even on failure")
 	skipVerify := flag.Bool("skip-verify", false, "Skip workflow triggering and status checks")
-	verifyLevel := flag.String("verify-level", "", "Verification level: none, commit, acceptance, release (default: release)")
+	verifyLevel := flag.String("verify-level", "", "Verification level: none, smoke, commit, acceptance, release (default: release)")
 	excludeLegacy := flag.Bool("exclude-legacy", false, "Exclude acceptance-stage-legacy verification")
+	noBugReport := flag.Bool("no-bug-report", false, "Skip auto-creating GitHub issues on failure")
 	deploy := flag.String("deploy", "docker", "Deployment target: docker or cloud-run")
 	workDir := flag.String("workdir", "", "Working directory for cloning (default: temp dir)")
 	showVersion := flag.Bool("version", false, "Print version and exit")
@@ -351,9 +353,9 @@ func ParseAndValidate() *Config {
 	if *skipVerify {
 		resolvedLevel = "none"
 	} else if *verifyLevel != "" {
-		validLevels := map[string]bool{"none": true, "commit": true, "acceptance": true, "release": true}
+		validLevels := map[string]bool{"none": true, "smoke": true, "commit": true, "acceptance": true, "release": true}
 		if !validLevels[*verifyLevel] {
-			log.FatalExit("--verify-level must be none, commit, acceptance, or release")
+			log.FatalExit("--verify-level must be none, smoke, commit, acceptance, or release")
 		}
 		resolvedLevel = *verifyLevel
 	}
@@ -515,6 +517,7 @@ func ParseAndValidate() *Config {
 		ExcludeLegacy: *excludeLegacy,
 		Cleanup:      resolveCleanup(*cleanupFlag, *noCleanup),
 		ForceCleanup: *forceCleanup,
+		NoBugReport:  *noBugReport,
 		WorkDir:    wd,
 		StarterPath: starterPath,
 

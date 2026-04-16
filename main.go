@@ -97,10 +97,19 @@ func runInit() {
 	}
 
 	if cfg.VerifyLevel != "none" {
-		// commit tier
-		allSteps = append(allSteps,
-			stepDef{"Verify commit stage", func() { steps.VerifyCommitStage(cfg, gh) }},
-		)
+		// smoke tier — local smoke tests only, no CI
+		if cfg.VerifyLevel == "smoke" {
+			allSteps = append(allSteps,
+				stepDef{"Run local smoke tests", func() { steps.RunLocalSmokeTests(cfg) }},
+			)
+		}
+
+		// commit tier and above — CI workflow verification
+		if cfg.VerifyLevel == "commit" || cfg.VerifyLevel == "acceptance" || cfg.VerifyLevel == "release" {
+			allSteps = append(allSteps,
+				stepDef{"Verify commit stage", func() { steps.VerifyCommitStage(cfg, gh) }},
+			)
+		}
 
 		if cfg.VerifyLevel == "acceptance" || cfg.VerifyLevel == "release" {
 			// acceptance tier
@@ -157,7 +166,9 @@ func runInit() {
 	fmt.Println("==========================================")
 	if errors > 0 {
 		log.Failf("Setup completed with %d error(s) in %s", errors, formatDuration(totalDuration))
-		createBugReport(cfg, errors)
+		if !cfg.NoBugReport {
+			createBugReport(cfg, errors)
+		}
 	} else {
 		log.OKf("All steps passed! Completed in %s", formatDuration(totalDuration))
 	}
@@ -205,8 +216,17 @@ func createBugReport(cfg *config.Config, errorCount int) {
 		errorCount, cfg.SystemName, cfg.Arch, cfg.RepoStrategy,
 		lang, cfg.TestLang, cfg.FullRepo)
 
+	bodyFile, err := os.CreateTemp("", "gh-issue-body-*.md")
+	if err != nil {
+		log.Logf("WARN: Failed to create temp file for bug report: %v", err)
+		return
+	}
+	defer os.Remove(bodyFile.Name())
+	bodyFile.WriteString(body)
+	bodyFile.Close()
+
 	out, err := shell.Run(
-		fmt.Sprintf(`gh issue create --repo optivem/gh-optivem --title %q --body %q --assignee valentinajemuovic`, title, body),
+		fmt.Sprintf(`gh issue create --repo optivem/gh-optivem --title %q --body-file %s --assignee valentinajemuovic`, title, bodyFile.Name()),
 		false, false, "")
 	if err != nil {
 		log.Logf("WARN: Failed to create bug report: %v\n%s", err, out)

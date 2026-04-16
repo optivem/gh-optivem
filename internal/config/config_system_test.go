@@ -52,7 +52,7 @@ func verifyFlags() []string {
 }
 
 func withBase(extra ...string) []string {
-	args := []string{"--owner", testOwner()}
+	args := []string{"--owner", testOwner(), "--no-bug-report"}
 	args = append(args, baseArgs...)
 	args = append(args, extra...)
 	args = append(args, cleanupFlags()...)
