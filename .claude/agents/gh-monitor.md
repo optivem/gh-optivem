@@ -12,4 +12,5 @@ Read `docs/gh-monitoring-process.md` for the full process, stop conditions, and 
 
 ## Arguments
 
+- `--workflow <adhoc|full>` — Which acceptance stage workflow to monitor. Default: `adhoc`. Use `full` for the scheduled daily run.
 - `--fresh` — Skip the existing-run check and trigger a new workflow run immediately (starts at step 1b in the process doc). Without this flag, the default behavior is to find and use an existing run if one is available.

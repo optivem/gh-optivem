@@ -48,7 +48,7 @@ jobs:
         test-lang: [typescript, dotnet, java]
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Acceptance Test
         uses: ./.github/actions/acceptance-test
@@ -67,10 +67,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Summary
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const script = require('./scripts/summarize-acceptance.js');

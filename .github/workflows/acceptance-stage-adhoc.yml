@@ -73,6 +73,19 @@ jobs:
       lang: ${{ steps.matrix.outputs.lang }}
       test-lang: ${{ steps.matrix.outputs.test-lang }}
     steps:
+      - name: Print inputs
+        run: |
+          echo "### Workflow Inputs" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Input | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| arch | ${{ inputs.arch }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| repo-strategy | ${{ inputs.repo-strategy }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| lang | ${{ inputs.lang }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-lang | ${{ inputs.test-lang }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| verify-level | ${{ inputs.verify-level }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| exclude-legacy | ${{ inputs.exclude-legacy }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| fail-fast | ${{ inputs.fail-fast }} |" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Resolve matrix inputs
         id: matrix
         run: |
@@ -133,7 +146,7 @@ jobs:
         test-lang: ${{ fromJSON(needs.resolve.outputs.test-lang) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Acceptance Test
         uses: ./.github/actions/acceptance-test
@@ -152,10 +165,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Summary
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const script = require('./scripts/summarize-acceptance.js');
