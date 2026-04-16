@@ -93,6 +93,10 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
 
+      - name: Rate limit marker
+        if: failure() && steps.test-run.outputs.result == 'rate-limited'
+        run: echo "This job was rate-limited"
+
   summary:
     name: Summary
     needs: run
@@ -118,25 +122,13 @@ jobs:
               if (job.conclusion === 'success') results.passed.push(name);
               else if (job.conclusion === 'cancelled') results.cancelled.push(name);
               else {
-                // Check step outputs to distinguish rate-limit from real failure
-                const step = job.steps?.find(s => s.name === 'System test');
-                if (step?.conclusion === 'failure') {
-                  // Parse job name for log output
-                  const logLines = [];
-                  try {
-                    const logs = await github.rest.actions.downloadJobLogsForWorkflowRun({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      job_id: job.id,
-                    });
-                    const text = typeof logs.data === 'string' ? logs.data : '';
-                    if (text.includes('result=rate-limited')) {
-                      results.rateLimited.push(name);
-                      continue;
-                    }
-                  } catch {}
+                // Check the marker step to distinguish rate-limit from real failure
+                const rateLimitStep = job.steps?.find(s => s.name === 'Rate limit marker');
+                if (rateLimitStep?.conclusion === 'success') {
+                  results.rateLimited.push(name);
+                } else {
+                  results.failed.push(name);
                 }
-                results.failed.push(name);
               }
             }
 
