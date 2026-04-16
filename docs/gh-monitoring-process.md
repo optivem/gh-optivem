@@ -4,9 +4,10 @@
 
 1. **Check for an existing run** before triggering a new one.
    - If the `--fresh` flag was passed, skip directly to step 1b (trigger a new run).
-   - Otherwise (default), check for an existing run:
+   - Otherwise (default), check for an existing run. Check both workflows and use whichever has the most recent run:
      ```bash
-     gh run list --workflow acceptance-stage.yml --repo optivem/gh-optivem --limit 1
+     gh run list --workflow acceptance-stage-full.yml --repo optivem/gh-optivem --limit 1
+     gh run list --workflow acceptance-stage-adhoc.yml --repo optivem/gh-optivem --limit 1
      ```
      - If a run is **in_progress** or **queued**, go to step 3 (monitor it). Do NOT sleep first.
      - If a run **completed with failure**, go to step 5 (investigate it). Do NOT sleep or trigger a new run first.
@@ -14,15 +15,17 @@
 
    **1b. Trigger a new run:**
    ```bash
-   gh workflow run acceptance-stage.yml --repo optivem/gh-optivem
+   gh workflow run acceptance-stage-adhoc.yml --repo optivem/gh-optivem
    ```
    Then go to step 2. After triggering, clear the `--fresh` flag so that subsequent cycles (after fixes) use the default existing-run behavior.
 
 2. **Wait for the triggered run to appear.** This step only applies after triggering a new run in step 1. Sleep 5 minutes, then fetch the latest run to get its ID.
 
-3. **Monitor** the run. First check the status immediately (no sleep), then sleep 5 minutes between subsequent checks:
+3. **Monitor** the run. First check the status immediately (no sleep), then sleep 5 minutes between subsequent checks. Use the workflow file that matches the run being monitored:
    ```bash
-   gh run list --workflow acceptance-stage.yml --repo optivem/gh-optivem --limit 1
+   gh run list --workflow acceptance-stage-full.yml --repo optivem/gh-optivem --limit 1
+   # or
+   gh run list --workflow acceptance-stage-adhoc.yml --repo optivem/gh-optivem --limit 1
    ```
    - If already **completed**, go to step 4 or 5 immediately.
    - If still **in_progress** or **queued**, sleep 5 minutes and check again. Repeat until "completed".
@@ -71,7 +74,7 @@
      ```
    - If the fix included **gh-optivem code changes**, a re-run will use the old code snapshot. Trigger a fresh run instead:
      ```bash
-     gh workflow run acceptance-stage.yml --repo optivem/gh-optivem
+     gh workflow run acceptance-stage-adhoc.yml --repo optivem/gh-optivem
      ```
    - Go back to step 3 (monitor the re-run).
 

@@ -1,6 +1,7 @@
 name: Acceptance Stage Full
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: '0 3 * * *'  # Run daily at 03:00 UTC
 
