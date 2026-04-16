@@ -594,15 +594,26 @@ func fixupFrontendPackageJSON(cfg *config.Config) {
 	if frontendDir == "" {
 		frontendDir = filepath.Join(cfg.RepoDir, "frontend")
 	}
-	pkgPath := filepath.Join(frontendDir, "package.json")
-	if _, err := os.Stat(pkgPath); err == nil {
-		files.ReplaceInFile(pkgPath, `"name": "optivem-shop-frontend"`, `"name": "`+cfg.Repo+`-frontend"`)
-		files.ReplaceInFile(pkgPath, `"name": "frontend-react"`, `"name": "`+cfg.Repo+`-frontend"`)
+
+	// The package name starts as "optivem-shop-frontend" in the starter template.
+	// By the time this runs (Step 7), the repo reference pass (Step 6) has already
+	// replaced "optivem" with the owner name, so the current value is
+	// "<owner>-shop-frontend" (e.g. "valentinajemuovic-shop-frontend").
+	// We match both the original and post-replacement forms to be safe.
+	oldNames := []string{
+		`"name": "` + cfg.OwnerLower + `-shop-frontend"`,
+		`"name": "optivem-shop-frontend"`,
+		`"name": "frontend-react"`,
 	}
-	// Also fix package-lock.json if present.
-	lockPath := filepath.Join(frontendDir, "package-lock.json")
-	if _, err := os.Stat(lockPath); err == nil {
-		files.ReplaceInFile(lockPath, `"name": "optivem-shop-frontend"`, `"name": "`+cfg.Repo+`-frontend"`)
-		files.ReplaceInFile(lockPath, `"name": "frontend-react"`, `"name": "`+cfg.Repo+`-frontend"`)
+	newName := `"name": "` + cfg.Repo + `-frontend"`
+
+	for _, target := range []string{"package.json", "package-lock.json"} {
+		p := filepath.Join(frontendDir, target)
+		if _, err := os.Stat(p); err != nil {
+			continue
+		}
+		for _, old := range oldNames {
+			files.ReplaceInFile(p, old, newName)
+		}
 	}
 }
