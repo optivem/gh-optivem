@@ -44,7 +44,7 @@ func Run(cmdStr string, dryRun bool, check bool, cwd string) (string, error) {
 			return output, &RateLimitExceeded{Msg: fmt.Sprintf("GitHub API rate limit exceeded. Command: %s\n%s", cmdStr, output)}
 		}
 		if check {
-			return output, fmt.Errorf("command failed: %s\n%s", cmdStr, output)
+			return output, fmt.Errorf("command failed: %s: %w\n%s", cmdStr, err, output)
 		}
 	}
 	return output, nil
