@@ -66,14 +66,14 @@ func systemDir(cfg *config.Config) string {
 
 func backendDir(cfg *config.Config) string {
 	if cfg.RepoStrategy == "multirepo" {
-		return cfg.BackendRepoDir
+		return filepath.Join(cfg.BackendRepoDir, "backend")
 	}
 	return filepath.Join(cfg.RepoDir, "backend")
 }
 
 func frontendDir(cfg *config.Config) string {
 	if cfg.RepoStrategy == "multirepo" {
-		return cfg.FrontendRepoDir
+		return filepath.Join(cfg.FrontendRepoDir, "frontend")
 	}
 	return filepath.Join(cfg.RepoDir, "frontend")
 }

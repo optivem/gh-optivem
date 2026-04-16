@@ -3,6 +3,7 @@ name: Acceptance Stage
 env:
   DEFAULT_VERIFY_LEVEL: release
   DEFAULT_EXCLUDE_LEGACY: 'false'
+  DEFAULT_FAIL_FAST: 'true'
 
 on:
   schedule:
