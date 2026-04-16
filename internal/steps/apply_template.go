@@ -23,6 +23,11 @@ func ApplyTemplate(cfg *config.Config) {
 
 	EnsureWorkflowDir(cfg.RepoDir)
 
+	// Copy architecture-independent workflows
+	templates.CopyWorkflows(map[string]string{
+		cleanupPrereleaseWorkflow: cleanupPrereleaseWorkflow,
+	}, cfg.StarterPath, cfg.RepoDir)
+
 	if cfg.Arch == "monolith" {
 		if cfg.RepoStrategy == "monorepo" {
 			applyMonolithMonorepo(cfg)
@@ -60,7 +65,6 @@ func applyMonolithMonorepo(cfg *config.Config) {
 		"monolith-" + testLang + "-qa-stage" + stageSuffix + ".yml":                        "qa-stage.yml",
 		"monolith-" + testLang + "-qa-signoff.yml":                                         "qa-signoff.yml",
 		"monolith-" + testLang + "-prod-stage" + stageSuffix + ".yml":                      "prod-stage.yml",
-		cleanupPrereleaseWorkflow:                                                          cleanupPrereleaseWorkflow,
 	}
 	if cfg.Deploy == "docker" {
 		wfMap["monolith-"+testLang+"-acceptance-stage-legacy.yml"] = "acceptance-stage-legacy.yml"
@@ -216,7 +220,6 @@ func applyMultitierMonorepo(cfg *config.Config) {
 		"multitier-" + testLang + "-qa-stage" + stageSuffix + ".yml":                        "qa-stage.yml",
 		"multitier-" + testLang + "-qa-signoff.yml":                                         "qa-signoff.yml",
 		"multitier-" + testLang + "-prod-stage" + stageSuffix + ".yml":                      "prod-stage.yml",
-		cleanupPrereleaseWorkflow:                                                           cleanupPrereleaseWorkflow,
 	}
 	if cfg.Deploy == "docker" {
 		wfMap["multitier-"+testLang+"-acceptance-stage-legacy.yml"] = "acceptance-stage-legacy.yml"
