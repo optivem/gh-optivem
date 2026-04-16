@@ -444,39 +444,20 @@ func validateNoLeftovers(cfg *config.Config, repoDirs []string) {
 	}
 }
 
-// Source code extensions for system name replacement.
-// Excludes infrastructure files (docker-compose, application config, Dockerfiles, workflows).
-var sourceExts = []string{
-	".java", ".cs", ".cshtml", ".ts", ".tsx", ".js", ".jsx",
-	".gradle", ".gradle.kts", ".xml", ".properties",
-	".csproj", ".sln", ".slnx",
-}
-
 // Test config extensions (JSON/YAML that contain system name as config keys).
 // These are test configuration files, NOT docker-compose or application config.
 var testConfigExts = []string{".json", ".yml", ".yaml"}
 
 func replaceSystemNameInRepo(cfg *config.Config, repoDir string) {
-	// IMPORTANT: System name replacement must NOT touch infrastructure files:
-	// - docker-compose*.yml (DB names, service names, image names)
-	// - application.yml / appsettings.json (DB credentials)
-	// - Dockerfiles
-	// - .github/workflows/*.yml
-	//
-	// It only touches source code files and test config files that reference
-	// the system name as config keys (e.g. "shop.frontendUrl").
+	// IMPORTANT: camelCase system name replacement must NOT touch infrastructure files
+	// (docker-compose, application config) because "shop" appears as DB names, service
+	// names, etc. that use the repo name, not the system name.
+	// PascalCase "Shop" is safe in all text files — it only appears as display names.
 
-	// Pass 1: PascalCase in source files (ShopDsl -> SkyTravelDsl)
-	n := files.ReplaceInTree(repoDir, cfg.SysNamePascalOld, cfg.SysNamePascalNew, sourceExts)
+	// Pass 1: PascalCase in ALL text files (Shop -> SkyTravel).
+	// Safe everywhere: display names, type names, config keys, docs, workflows, HTML.
+	n := files.ReplaceInTree(repoDir, cfg.SysNamePascalOld, cfg.SysNamePascalNew, nil)
 	log.OKf("System name: PascalCase %s -> %s (%d files)", cfg.SysNamePascalOld, cfg.SysNamePascalNew, n)
-
-	// Pass 2a: PascalCase in test config files (avoid docker-compose/application config)
-	n = replaceInTestConfigs(repoDir, cfg.SysNamePascalOld, cfg.SysNamePascalNew)
-	log.OKf("System name: PascalCase in test configs (%d files)", n)
-
-	// Pass 2b: PascalCase in system-test appsettings files ("Shop" -> "SkyTravel" config keys)
-	n = replaceInTestAppsettings(repoDir, cfg.SysNamePascalOld, cfg.SysNamePascalNew)
-	log.OKf("System name: PascalCase in test appsettings (%d files)", n)
 
 	// Pass 3: "shop" in Java source files -> camelCase (shopUiBaseUrl -> skyTravelUiBaseUrl)
 	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameCamelNew, []string{".java"})

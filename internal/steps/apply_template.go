@@ -10,7 +10,10 @@ import (
 	"github.com/optivem/gh-optivem/internal/templates"
 )
 
-const cleanupPrereleaseWorkflow = "cleanup-prereleases.yml"
+const (
+	cleanupPrereleaseWorkflow = "cleanup-prereleases.yml"
+	deployCloudRun            = "cloud-run"
+)
 
 // ApplyTemplate copies template files into the cloned repo(s).
 func ApplyTemplate(cfg *config.Config) {
