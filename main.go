@@ -132,7 +132,7 @@ func buildVerifySteps(cfg *config.Config, gh *shell.GitHub) []stepDef {
 	var s []stepDef
 
 	// smoke tier — local smoke tests only, no CI
-	if cfg.VerifyLevel == "precommit" {
+	if cfg.VerifyLevel == "local" {
 		s = append(s,
 			stepDef{"Run local smoke tests", func() { steps.RunLocalSystemTests(cfg) }},
 		)

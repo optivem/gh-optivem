@@ -31,7 +31,7 @@ type Config struct {
 	License    string
 	DryRun       bool
 	TestMode     bool
-	VerifyLevel   string // "none", "precommit", "commit", "acceptance", "release"
+	VerifyLevel   string // "none", "local", "commit", "acceptance", "release"
 	ExcludeLegacy bool   // exclude acceptance-stage-legacy verification
 	Cleanup       string // "yes", "no", or "ask"
 	ForceCleanup bool   // cleanup even on failure
@@ -319,7 +319,7 @@ func ParseAndValidate() *Config {
 	cleanupFlag := flag.Bool("cleanup", false, "Auto-cleanup in test mode")
 	noCleanup := flag.Bool("no-cleanup", false, "Keep repo in test mode")
 	forceCleanup := flag.Bool("force-cleanup", false, "Cleanup even on failure")
-	verifyLevel := flag.String("verify-level", "", "Verification level: none, precommit, commit, acceptance, release (default: release)")
+	verifyLevel := flag.String("verify-level", "", "Verification level: none, local, commit, acceptance, release (default: release)")
 	excludeLegacy := flag.Bool("exclude-legacy", false, "Exclude acceptance-stage-legacy verification")
 	noBugReport := flag.Bool("no-bug-report", false, "Skip auto-creating GitHub issues on failure")
 	deploy := flag.String("deploy", "docker", "Deployment target: docker or cloud-run")
@@ -346,9 +346,9 @@ func ParseAndValidate() *Config {
 	// Resolve verify level
 	resolvedLevel := "release"
 	if *verifyLevel != "" {
-		validLevels := map[string]bool{"none": true, "precommit": true, "commit": true, "acceptance": true, "release": true}
+		validLevels := map[string]bool{"none": true, "local": true, "commit": true, "acceptance": true, "release": true}
 		if !validLevels[*verifyLevel] {
-			log.FatalExit("--verify-level must be none, precommit, commit, acceptance, or release")
+			log.FatalExit("--verify-level must be none, local, commit, acceptance, or release")
 		}
 		resolvedLevel = *verifyLevel
 	}

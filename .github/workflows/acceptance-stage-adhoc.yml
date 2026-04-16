@@ -44,11 +44,11 @@ on:
       verify-level:
         description: 'Verification level for system tests'
         required: false
-        default: 'precommit'
+        default: 'local'
         type: choice
         options:
           - none
-          - precommit
+          - local
           - commit
           - acceptance
           - release

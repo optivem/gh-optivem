@@ -47,7 +47,7 @@ After setup, optional verification steps run based on `--verify-level`:
 | Level | What runs |
 |-------|-----------|
 | `none` | Nothing — skip all verification |
-| `precommit` | Local smoke tests only (no CI) |
+| `local` | Local smoke tests only (no CI) |
 | `commit` | Verify commit stage CI workflow passes |
 | `acceptance` | Commit stage + acceptance stage CI + acceptance stage legacy (unless `--exclude-legacy`) + local system tests |
 | `release` | All of the above + QA stage + QA signoff + production stage |
