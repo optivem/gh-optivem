@@ -1,7 +1,7 @@
 // Summarize acceptance stage results for the GitHub Actions workflow.
 // Called by actions/github-script — receives { github, context, core }.
 
-module.exports = async ({ github, context, core }) => {
+module.exports = async function summarizeAcceptance({ github, context, core }) {
   const jobs = await listJobs(github, context);
   const results = classifyJobs(jobs);
   const summary = formatSummary(results);

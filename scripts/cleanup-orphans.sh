@@ -50,7 +50,7 @@ PREFIXES=""
 SONAR_TOKEN="${SONAR_TOKEN:-}"
 SONAR_API_URL="${SONAR_API_URL:-https://sonarcloud.io/api}"
 
-while [ $# -gt 0 ]; do
+while [[ $# -gt 0 ]]; do
   case "$1" in
     --owner)      TEST_OWNER="$2"; shift 2 ;;
     --all)        CLEAN_SONAR=1; CLEAN_REPOS=1; CLEAN_DOCKER=1; CLEAN_TMP=1; shift ;;
@@ -69,13 +69,13 @@ done
 
 PREFIXES="${PREFIXES:-$DEFAULT_PREFIXES}"
 
-if [ -z "$TEST_OWNER" ]; then
+if [[ -z "$TEST_OWNER" ]]; then
   echo "ERROR: --owner is required" >&2
   echo ""
   usage
 fi
 
-if [ "$CLEAN_SONAR" = "0" ] && [ "$CLEAN_REPOS" = "0" ] && [ "$CLEAN_DOCKER" = "0" ] && [ "$CLEAN_TMP" = "0" ]; then
+if [[ "$CLEAN_SONAR" == "0" ]] && [[ "$CLEAN_REPOS" == "0" ]] && [[ "$CLEAN_DOCKER" == "0" ]] && [[ "$CLEAN_TMP" == "0" ]]; then
   echo "ERROR: No cleanup targets selected. Use --all or pick targets (--repos, --sonar, --docker, --tmp)." >&2
   echo ""
   usage
@@ -86,12 +86,12 @@ fi
 echo "Owner: $TEST_OWNER"
 echo "Prefixes: $PREFIXES"
 targets=""
-[ "$CLEAN_SONAR" = "1" ] && targets="${targets} sonar"
-[ "$CLEAN_REPOS" = "1" ] && targets="${targets} repos"
-[ "$CLEAN_DOCKER" = "1" ] && targets="${targets} docker"
-[ "$CLEAN_TMP" = "1" ] && targets="${targets} tmp"
+[[ "$CLEAN_SONAR" == "1" ]] && targets="${targets} sonar"
+[[ "$CLEAN_REPOS" == "1" ]] && targets="${targets} repos"
+[[ "$CLEAN_DOCKER" == "1" ]] && targets="${targets} docker"
+[[ "$CLEAN_TMP" == "1" ]] && targets="${targets} tmp"
 echo "Targets:$targets"
-if [ "$DRY_RUN" = "1" ]; then
+if [[ "$DRY_RUN" == "1" ]]; then
   echo "Mode: DRY RUN (pass --delete to actually delete)"
 else
   echo "Mode: REAL DELETE"
@@ -101,7 +101,7 @@ echo ""
 # Build a jq filter that matches any of the prefixes
 jq_filter=""
 for prefix in $PREFIXES; do
-  if [ -n "$jq_filter" ]; then
+  if [[ -n "$jq_filter" ]]; then
     jq_filter="$jq_filter or "
   fi
   jq_filter="${jq_filter}startswith(\"${prefix}\")"
@@ -111,9 +111,9 @@ done
 # Cleaned up first so the GitHub repo (their cross-reference) still exists
 # if this step fails partway.
 
-if [ "$CLEAN_SONAR" != "1" ]; then
+if [[ "$CLEAN_SONAR" != "1" ]]; then
   :
-elif [ -z "$SONAR_TOKEN" ]; then
+elif [[ -z "$SONAR_TOKEN" ]]; then
   echo "SONAR_TOKEN not set — skipping SonarCloud cleanup."
 elif ! command -v jq >/dev/null 2>&1; then
   echo "jq not installed — skipping SonarCloud cleanup."
@@ -128,8 +128,8 @@ else
       "${SONAR_API_URL}/projects/search?organization=${TEST_OWNER}&ps=100" \
       | jq -r ".components[] | select(.key | startswith(\"${sonar_prefix}\")) | .key") || true
 
-    if [ -n "$found" ]; then
-      if [ -n "$sonar_projects" ]; then
+    if [[ -n "$found" ]]; then
+      if [[ -n "$sonar_projects" ]]; then
         sonar_projects="$sonar_projects"$'\n'"$found"
       else
         sonar_projects="$found"
@@ -137,7 +137,7 @@ else
     fi
   done
 
-  if [ -z "$sonar_projects" ]; then
+  if [[ -z "$sonar_projects" ]]; then
     echo "No orphaned SonarCloud projects found."
   else
     sonar_count=$(echo "$sonar_projects" | wc -l | tr -d ' ')
@@ -145,7 +145,7 @@ else
     echo ""
 
     for project_key in $sonar_projects; do
-      if [ "$DRY_RUN" = "1" ]; then
+      if [[ "$DRY_RUN" == "1" ]]; then
         echo "  [dry run] would delete SonarCloud project: $project_key"
       else
         echo "  Deleting SonarCloud project: $project_key ..."
@@ -158,7 +158,7 @@ else
     done
 
     echo ""
-    if [ "$DRY_RUN" = "1" ]; then
+    if [[ "$DRY_RUN" == "1" ]]; then
       echo "Dry run complete (SonarCloud). Run with --delete to delete."
     else
       echo "Deleted $sonar_count SonarCloud project(s)."
@@ -170,10 +170,10 @@ echo ""
 
 # --- GitHub repos ---
 
-if [ "$CLEAN_REPOS" = "1" ]; then
+if [[ "$CLEAN_REPOS" == "1" ]]; then
   repos=$(gh repo list "$TEST_OWNER" --limit 1000 --json name,createdAt --jq "[.[] | select(.name | ${jq_filter})] | sort_by(.createdAt) | .[].name") || true
 
-  if [ -z "$repos" ]; then
+  if [[ -z "$repos" ]]; then
     echo "No orphaned test repos found."
   else
     count=$(echo "$repos" | wc -l | tr -d ' ')
@@ -182,7 +182,7 @@ if [ "$CLEAN_REPOS" = "1" ]; then
 
     for repo in $repos; do
       full="$TEST_OWNER/$repo"
-      if [ "$DRY_RUN" = "1" ]; then
+      if [[ "$DRY_RUN" == "1" ]]; then
         echo "  [dry run] would delete $full"
       else
         echo "  Deleting $full ..."
@@ -192,7 +192,7 @@ if [ "$CLEAN_REPOS" = "1" ]; then
     done
 
     echo ""
-    if [ "$DRY_RUN" = "1" ]; then
+    if [[ "$DRY_RUN" == "1" ]]; then
       echo "Dry run complete (repos). Run with --delete to delete."
     else
       echo "Deleted $count repo(s)."
@@ -204,7 +204,7 @@ echo ""
 
 # --- Docker containers and images ---
 
-if [ "$CLEAN_DOCKER" != "1" ]; then
+if [[ "$CLEAN_DOCKER" != "1" ]]; then
   :
 elif ! command -v docker >/dev/null 2>&1; then
   echo "docker not installed — skipping Docker cleanup."
@@ -212,7 +212,7 @@ else
   # Build a grep pattern that matches any of the prefixes
   grep_pattern=""
   for prefix in $PREFIXES; do
-    if [ -n "$grep_pattern" ]; then
+    if [[ -n "$grep_pattern" ]]; then
       grep_pattern="$grep_pattern|"
     fi
     grep_pattern="${grep_pattern}${prefix}"
@@ -221,7 +221,7 @@ else
   # --- Containers (stopped and running) ---
   orphan_containers=$(docker ps -a --format '{{.Names}}' | grep -E "^(${grep_pattern})" || true)
 
-  if [ -z "$orphan_containers" ]; then
+  if [[ -z "$orphan_containers" ]]; then
     echo "No orphaned Docker containers found."
   else
     container_count=$(echo "$orphan_containers" | wc -l | tr -d ' ')
@@ -229,7 +229,7 @@ else
     echo ""
 
     for container in $orphan_containers; do
-      if [ "$DRY_RUN" = "1" ]; then
+      if [[ "$DRY_RUN" == "1" ]]; then
         echo "  [dry run] would remove container: $container"
       else
         echo "  Removing container: $container ..."
@@ -238,7 +238,7 @@ else
     done
 
     echo ""
-    if [ "$DRY_RUN" = "1" ]; then
+    if [[ "$DRY_RUN" == "1" ]]; then
       echo "Dry run complete (containers). Run with --delete to delete."
     else
       echo "Removed $container_count container(s)."
@@ -250,7 +250,7 @@ else
   # --- Images ---
   orphan_images=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -E "(${grep_pattern})" || true)
 
-  if [ -z "$orphan_images" ]; then
+  if [[ -z "$orphan_images" ]]; then
     echo "No orphaned Docker images found."
   else
     image_count=$(echo "$orphan_images" | wc -l | tr -d ' ')
@@ -258,7 +258,7 @@ else
     echo ""
 
     for image in $orphan_images; do
-      if [ "$DRY_RUN" = "1" ]; then
+      if [[ "$DRY_RUN" == "1" ]]; then
         echo "  [dry run] would remove image: $image"
       else
         echo "  Removing image: $image ..."
@@ -267,7 +267,7 @@ else
     done
 
     echo ""
-    if [ "$DRY_RUN" = "1" ]; then
+    if [[ "$DRY_RUN" == "1" ]]; then
       echo "Dry run complete (images). Run with --delete to delete."
     else
       echo "Removed $image_count image(s)."
@@ -279,46 +279,46 @@ echo ""
 
 # --- Local orphan directories ---
 
-if [ "$CLEAN_TMP" = "1" ]; then
-  if [ -z "$TMP_DIR" ]; then
+if [[ "$CLEAN_TMP" == "1" ]]; then
+  if [[ -z "$TMP_DIR" ]]; then
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     TMP_DIR="$(cd "$script_dir/../.." && pwd)/.tmp"
   fi
 
   echo "Scanning local orphan dir: $TMP_DIR"
 
-  if [ ! -d "$TMP_DIR" ]; then
+  if [[ ! -d "$TMP_DIR" ]]; then
     echo "No local orphan directory found — skipping."
   else
     safe_dirs=()
     unsafe_dirs=()
 
     for dir in "$TMP_DIR"/*/; do
-      [ -d "$dir" ] || continue
+      [[ -d "$dir" ]] || continue
       dir="${dir%/}"
       name="$(basename "$dir")"
 
-      if [ ! -d "$dir/.git" ]; then
+      if [[ ! -d "$dir/.git" ]]; then
         safe_dirs+=("$dir")
         continue
       fi
 
       dirty="$(git -C "$dir" status --porcelain 2>/dev/null || echo "ERR")"
-      if [ "$dirty" = "ERR" ]; then
+      if [[ "$dirty" == "ERR" ]]; then
         unsafe_dirs+=("$name (git status failed)")
         continue
       fi
-      if [ -n "$dirty" ]; then
+      if [[ -n "$dirty" ]]; then
         unsafe_dirs+=("$name (uncommitted changes)")
         continue
       fi
 
       unpushed="$(git -C "$dir" log --branches --not --remotes --oneline 2>/dev/null || echo "ERR")"
-      if [ "$unpushed" = "ERR" ]; then
+      if [[ "$unpushed" == "ERR" ]]; then
         unsafe_dirs+=("$name (unpushed check failed)")
         continue
       fi
-      if [ -n "$unpushed" ]; then
+      if [[ -n "$unpushed" ]]; then
         unsafe_dirs+=("$name (unpushed commits)")
         continue
       fi
@@ -326,7 +326,7 @@ if [ "$CLEAN_TMP" = "1" ]; then
       safe_dirs+=("$dir")
     done
 
-    if [ ${#unsafe_dirs[@]} -gt 0 ]; then
+    if [[ ${#unsafe_dirs[@]} -gt 0 ]]; then
       echo ""
       echo "Skipping ${#unsafe_dirs[@]} dir(s) with local work:"
       for entry in "${unsafe_dirs[@]}"; do
@@ -334,7 +334,7 @@ if [ "$CLEAN_TMP" = "1" ]; then
       done
     fi
 
-    if [ ${#safe_dirs[@]} -eq 0 ]; then
+    if [[ ${#safe_dirs[@]} -eq 0 ]]; then
       echo ""
       echo "No safe-to-delete local orphan directories found."
     else
@@ -343,7 +343,7 @@ if [ "$CLEAN_TMP" = "1" ]; then
       echo ""
 
       for dir in "${safe_dirs[@]}"; do
-        if [ "$DRY_RUN" = "1" ]; then
+        if [[ "$DRY_RUN" == "1" ]]; then
           echo "  [dry run] would delete $dir"
         else
           echo "  Deleting $dir ..."
@@ -352,7 +352,7 @@ if [ "$CLEAN_TMP" = "1" ]; then
       done
 
       echo ""
-      if [ "$DRY_RUN" = "1" ]; then
+      if [[ "$DRY_RUN" == "1" ]]; then
         echo "Dry run complete (local dirs). Run with --delete to delete."
       else
         echo "Deleted ${#safe_dirs[@]} local orphan dir(s)."
