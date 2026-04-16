@@ -46,6 +46,9 @@ jobs:
         lang: [typescript, dotnet, java]
         test-lang: [typescript, dotnet, java]
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
       - name: Acceptance Test
         uses: ./.github/actions/acceptance-test
         with:

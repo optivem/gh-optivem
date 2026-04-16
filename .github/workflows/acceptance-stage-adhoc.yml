@@ -132,6 +132,9 @@ jobs:
         lang: ${{ fromJSON(needs.resolve.outputs.lang) }}
         test-lang: ${{ fromJSON(needs.resolve.outputs.test-lang) }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
       - name: Acceptance Test
         uses: ./.github/actions/acceptance-test
         with:
