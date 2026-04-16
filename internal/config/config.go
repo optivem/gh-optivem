@@ -31,8 +31,7 @@ type Config struct {
 	License    string
 	DryRun       bool
 	TestMode     bool
-	SkipVerify    bool   // skip workflow trigger + status checks (derived from VerifyLevel)
-	VerifyLevel   string // "none", "commit", "acceptance", "release"
+	VerifyLevel   string // "none", "precommit", "commit", "acceptance", "release"
 	ExcludeLegacy bool   // exclude acceptance-stage-legacy verification
 	Cleanup       string // "yes", "no", or "ask"
 	ForceCleanup bool   // cleanup even on failure
@@ -320,7 +319,6 @@ func ParseAndValidate() *Config {
 	cleanupFlag := flag.Bool("cleanup", false, "Auto-cleanup in test mode")
 	noCleanup := flag.Bool("no-cleanup", false, "Keep repo in test mode")
 	forceCleanup := flag.Bool("force-cleanup", false, "Cleanup even on failure")
-	skipVerify := flag.Bool("skip-verify", false, "Skip workflow triggering and status checks")
 	verifyLevel := flag.String("verify-level", "", "Verification level: none, precommit, commit, acceptance, release (default: release)")
 	excludeLegacy := flag.Bool("exclude-legacy", false, "Exclude acceptance-stage-legacy verification")
 	noBugReport := flag.Bool("no-bug-report", false, "Skip auto-creating GitHub issues on failure")
@@ -346,13 +344,8 @@ func ParseAndValidate() *Config {
 	}
 
 	// Resolve verify level
-	if *skipVerify && *verifyLevel != "" {
-		log.FatalExit("cannot use both --skip-verify and --verify-level")
-	}
 	resolvedLevel := "release"
-	if *skipVerify {
-		resolvedLevel = "none"
-	} else if *verifyLevel != "" {
+	if *verifyLevel != "" {
 		validLevels := map[string]bool{"none": true, "precommit": true, "commit": true, "acceptance": true, "release": true}
 		if !validLevels[*verifyLevel] {
 			log.FatalExit("--verify-level must be none, precommit, commit, acceptance, or release")
@@ -512,7 +505,6 @@ func ParseAndValidate() *Config {
 		License:    *license,
 		DryRun:       *dryRun,
 		TestMode:     *testMode,
-		SkipVerify:    resolvedLevel == "none",
 		VerifyLevel:   resolvedLevel,
 		ExcludeLegacy: *excludeLegacy,
 		Cleanup:      resolveCleanup(*cleanupFlag, *noCleanup),

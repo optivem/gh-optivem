@@ -67,7 +67,6 @@ gh optivem init ... --verify-level precommit     # local smoke + E2E tests only 
 gh optivem init ... --verify-level commit        # only verify commit stage CI workflow
 gh optivem init ... --verify-level acceptance    # commit + acceptance CI + full local system tests
 gh optivem init ... --verify-level release       # full pipeline (default)
-gh optivem init ... --skip-verify                # skip all verification
 gh optivem init ... --exclude-legacy             # skip acceptance-stage-legacy
 ```
 

@@ -135,7 +135,7 @@ func runInit() {
 			)
 		}
 	} else {
-		log.Logf("Skipping workflow verification (--skip-verify / --verify-level none)")
+		log.Logf("Skipping workflow verification (--verify-level none)")
 	}
 
 	allSteps = append(allSteps,

@@ -4,6 +4,18 @@ on:
   schedule:
     - cron: '0 3 * * *'  # Run daily at 03:00 UTC
   workflow_dispatch:
+    inputs:
+      verify-level:
+        description: 'Verification level for system tests'
+        required: false
+        default: 'acceptance'
+        type: choice
+        options:
+          - none
+          - precommit
+          - commit
+          - acceptance
+          - release
 
 jobs:
   check:
@@ -84,7 +96,7 @@ jobs:
             echo "result=passed" >> "$GITHUB_OUTPUT"
           fi
         env:
-          TEST_VERIFY_LEVEL: acceptance
+          TEST_VERIFY_LEVEL: ${{ inputs.verify-level || 'acceptance' }}
           TEST_EXCLUDE_LEGACY: "true"
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
           TEST_OWNER: ${{ vars.TEST_OWNER }}
