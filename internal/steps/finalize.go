@@ -232,6 +232,7 @@ func WriteProjectConfig(cfg *config.Config) {
 
 	configData := map[string]string{
 		"architecture": cfg.Arch,
+		"deploy":       cfg.Deploy,
 	}
 	jsonBytes, _ := json.MarshalIndent(configData, "", "  ")
 	jsonBytes = append(jsonBytes, '\n')

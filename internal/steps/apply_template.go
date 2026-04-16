@@ -47,13 +47,20 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	repoDir := cfg.RepoDir
 
 	// Workflows: rename to language-agnostic names
+	// Commit stage is always Docker-based; pipeline stages depend on deploy target
+	stageSuffix := ""
+	if cfg.Deploy == "cloud-run" {
+		stageSuffix = "-cloud"
+	}
 	wfMap := map[string]string{
-		"monolith-" + lang + "-commit-stage.yml":                  "commit-stage.yml",
-		"monolith-" + testLang + "-acceptance-stage.yml":           "acceptance-stage.yml",
-		"monolith-" + testLang + "-acceptance-stage-legacy.yml":    "acceptance-stage-legacy.yml",
-		"monolith-" + testLang + "-qa-stage.yml":                   "qa-stage.yml",
-		"monolith-" + testLang + "-qa-signoff.yml":                 "qa-signoff.yml",
-		"monolith-" + testLang + "-prod-stage.yml":                 "prod-stage.yml",
+		"monolith-" + lang + "-commit-stage.yml":                                          "commit-stage.yml",
+		"monolith-" + testLang + "-acceptance-stage" + stageSuffix + ".yml":                "acceptance-stage.yml",
+		"monolith-" + testLang + "-qa-stage" + stageSuffix + ".yml":                        "qa-stage.yml",
+		"monolith-" + testLang + "-qa-signoff.yml":                                         "qa-signoff.yml",
+		"monolith-" + testLang + "-prod-stage" + stageSuffix + ".yml":                      "prod-stage.yml",
+	}
+	if cfg.Deploy == "docker" {
+		wfMap["monolith-"+testLang+"-acceptance-stage-legacy.yml"] = "acceptance-stage-legacy.yml"
 	}
 	templates.CopyWorkflows(wfMap, starter, repoDir)
 
@@ -79,11 +86,19 @@ func applyMonolithMonorepo(cfg *config.Config) {
 
 	// Fix workflow content: paths, image names, workflow names
 	contentReplacements := monolithContentReplacements(lang, testLang)
+	if cfg.Deploy == "cloud-run" {
+		contentReplacements = append(contentReplacements, [2]string{"-cloud", ""})
+	}
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, monolithDockerComposeReplacements(lang, testLang))
 
 	// Fix SonarCloud key suffixes in build files (build.gradle, .csproj, etc.)
 	templates.FixupAllTextFiles(repoDir, monolithSonarKeyReplacements(lang))
+
+	// Copy setup/teardown scripts for cloud-run deploy target
+	if cfg.Deploy == "cloud-run" {
+		copyCloudRunScripts(starter, repoDir)
+	}
 
 	// Docs templates
 	copyDocs(starter, repoDir, "monolith")
@@ -101,12 +116,18 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	systemDir := cfg.SystemRepoDir
 
 	// Root repo: pipeline stage workflows + system-test
+	stageSuffix := ""
+	if cfg.Deploy == "cloud-run" {
+		stageSuffix = "-cloud"
+	}
 	rootWfMap := map[string]string{
-		"monolith-" + testLang + "-acceptance-stage.yml":        "acceptance-stage.yml",
-		"monolith-" + testLang + "-acceptance-stage-legacy.yml": "acceptance-stage-legacy.yml",
-		"monolith-" + testLang + "-qa-stage.yml":                "qa-stage.yml",
-		"monolith-" + testLang + "-qa-signoff.yml":              "qa-signoff.yml",
-		"monolith-" + testLang + "-prod-stage.yml":              "prod-stage.yml",
+		"monolith-" + testLang + "-acceptance-stage" + stageSuffix + ".yml": "acceptance-stage.yml",
+		"monolith-" + testLang + "-qa-stage" + stageSuffix + ".yml":        "qa-stage.yml",
+		"monolith-" + testLang + "-qa-signoff.yml":                          "qa-signoff.yml",
+		"monolith-" + testLang + "-prod-stage" + stageSuffix + ".yml":      "prod-stage.yml",
+	}
+	if cfg.Deploy == "docker" {
+		rootWfMap["monolith-"+testLang+"-acceptance-stage-legacy.yml"] = "acceptance-stage-legacy.yml"
 	}
 	templates.CopyWorkflows(rootWfMap, starter, repoDir)
 
@@ -125,11 +146,19 @@ func applyMonolithMultirepo(cfg *config.Config) {
 
 	// Fix root repo workflow content
 	contentReplacements := monolithContentReplacements(lang, testLang)
+	if cfg.Deploy == "cloud-run" {
+		contentReplacements = append(contentReplacements, [2]string{"-cloud", ""})
+	}
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, monolithDockerComposeReplacements(lang, testLang))
 
 	// Fix SonarCloud key suffixes in build files
 	templates.FixupAllTextFiles(repoDir, monolithSonarKeyReplacements(lang))
+
+	// Copy setup/teardown scripts for cloud-run deploy target
+	if cfg.Deploy == "cloud-run" {
+		copyCloudRunScripts(starter, repoDir)
+	}
 
 	// Docs templates
 	copyDocs(starter, repoDir, "monolith")
@@ -172,14 +201,20 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	repoDir := cfg.RepoDir
 
 	// Workflows: rename to language-agnostic names
+	stageSuffix := ""
+	if cfg.Deploy == "cloud-run" {
+		stageSuffix = "-cloud"
+	}
 	wfMap := map[string]string{
-		"multitier-backend-" + backendLang + "-commit-stage.yml":  "backend-commit-stage.yml",
-		"multitier-frontend-" + frontendLang + "-commit-stage.yml": "frontend-commit-stage.yml",
-		"multitier-" + testLang + "-acceptance-stage.yml":          "acceptance-stage.yml",
-		"multitier-" + testLang + "-acceptance-stage-legacy.yml":   "acceptance-stage-legacy.yml",
-		"multitier-" + testLang + "-qa-stage.yml":                  "qa-stage.yml",
-		"multitier-" + testLang + "-qa-signoff.yml":                "qa-signoff.yml",
-		"multitier-" + testLang + "-prod-stage.yml":                "prod-stage.yml",
+		"multitier-backend-" + backendLang + "-commit-stage.yml":                           "backend-commit-stage.yml",
+		"multitier-frontend-" + frontendLang + "-commit-stage.yml":                          "frontend-commit-stage.yml",
+		"multitier-" + testLang + "-acceptance-stage" + stageSuffix + ".yml":                "acceptance-stage.yml",
+		"multitier-" + testLang + "-qa-stage" + stageSuffix + ".yml":                        "qa-stage.yml",
+		"multitier-" + testLang + "-qa-signoff.yml":                                         "qa-signoff.yml",
+		"multitier-" + testLang + "-prod-stage" + stageSuffix + ".yml":                      "prod-stage.yml",
+	}
+	if cfg.Deploy == "docker" {
+		wfMap["multitier-"+testLang+"-acceptance-stage-legacy.yml"] = "acceptance-stage-legacy.yml"
 	}
 	templates.CopyWorkflows(wfMap, starter, repoDir)
 
@@ -209,11 +244,19 @@ func applyMultitierMonorepo(cfg *config.Config) {
 
 	// Fix workflow content: paths and image names
 	contentReplacements := multitierContentReplacements(backendLang, frontendLang, testLang)
+	if cfg.Deploy == "cloud-run" {
+		contentReplacements = append(contentReplacements, [2]string{"-cloud", ""})
+	}
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, multitierDockerComposeReplacements(backendLang, frontendLang, testLang))
 
 	// Fix SonarCloud key suffixes in build files
 	templates.FixupAllTextFiles(repoDir, multitierSonarKeyReplacements(backendLang, frontendLang))
+
+	// Copy setup/teardown scripts for cloud-run deploy target
+	if cfg.Deploy == "cloud-run" {
+		copyCloudRunScripts(starter, repoDir)
+	}
 
 	// Docs templates
 	copyDocs(starter, repoDir, "multitier")
@@ -233,12 +276,18 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	backendDir := cfg.BackendRepoDir
 
 	// Root repo: pipeline stage workflows + system-test + externals
+	stageSuffix := ""
+	if cfg.Deploy == "cloud-run" {
+		stageSuffix = "-cloud"
+	}
 	rootWfMap := map[string]string{
-		"multitier-" + testLang + "-acceptance-stage.yml":        "acceptance-stage.yml",
-		"multitier-" + testLang + "-acceptance-stage-legacy.yml": "acceptance-stage-legacy.yml",
-		"multitier-" + testLang + "-qa-stage.yml":                "qa-stage.yml",
-		"multitier-" + testLang + "-qa-signoff.yml":              "qa-signoff.yml",
-		"multitier-" + testLang + "-prod-stage.yml":              "prod-stage.yml",
+		"multitier-" + testLang + "-acceptance-stage" + stageSuffix + ".yml": "acceptance-stage.yml",
+		"multitier-" + testLang + "-qa-stage" + stageSuffix + ".yml":        "qa-stage.yml",
+		"multitier-" + testLang + "-qa-signoff.yml":                          "qa-signoff.yml",
+		"multitier-" + testLang + "-prod-stage" + stageSuffix + ".yml":      "prod-stage.yml",
+	}
+	if cfg.Deploy == "docker" {
+		rootWfMap["multitier-"+testLang+"-acceptance-stage-legacy.yml"] = "acceptance-stage-legacy.yml"
 	}
 	templates.CopyWorkflows(rootWfMap, starter, repoDir)
 
@@ -257,11 +306,19 @@ func applyMultitierMultirepo(cfg *config.Config) {
 
 	// Fix root repo workflow content
 	contentReplacements := multitierContentReplacements(backendLang, frontendLang, testLang)
+	if cfg.Deploy == "cloud-run" {
+		contentReplacements = append(contentReplacements, [2]string{"-cloud", ""})
+	}
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, multitierDockerComposeReplacements(backendLang, frontendLang, testLang))
 
 	// Fix SonarCloud key suffixes in build files
 	templates.FixupAllTextFiles(repoDir, multitierSonarKeyReplacements(backendLang, frontendLang))
+
+	// Copy setup/teardown scripts for cloud-run deploy target
+	if cfg.Deploy == "cloud-run" {
+		copyCloudRunScripts(starter, repoDir)
+	}
 
 	// Docs templates
 	copyDocs(starter, repoDir, "multitier")
@@ -426,4 +483,14 @@ func copyDocs(starter, repoDir, arch string) {
 	dst := filepath.Join(repoDir, "docs")
 	files.CopyDir(filepath.Join(starter, "docs", arch), dst)
 	files.CopyDir(filepath.Join(starter, "docs", "shared"), dst)
+}
+
+// copyCloudRunScripts copies setup-gcp.sh and teardown-gcp.sh from starter to repo.
+func copyCloudRunScripts(starter, repoDir string) {
+	for _, name := range []string{"setup-gcp.sh", "teardown-gcp.sh"} {
+		src := filepath.Join(starter, name)
+		if _, err := os.Stat(src); err == nil {
+			files.CopyFile(src, filepath.Join(repoDir, name))
+		}
+	}
 }

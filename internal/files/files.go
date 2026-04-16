@@ -158,10 +158,23 @@ func RenameFilesInTree(root, old, new string) int {
 // RenameDirsInTree renames directories containing old in their name to new.
 // Walks bottom-up to avoid renaming parent before child.
 func RenameDirsInTree(root, old, new string) int {
-	// Collect dirs to rename (deepest first)
+	return renameDirs(root, old, new, nil)
+}
+
+// RenameDirsInSubtree is like RenameDirsInTree but only renames directories
+// whose path contains subtreeMarker (e.g. filepath.Join("system-test", "typescript")).
+// Used to apply language-specific casing rules to domain folders.
+func RenameDirsInSubtree(root, subtreeMarker, old, new string) int {
+	return renameDirs(root, old, new, &subtreeMarker)
+}
+
+func renameDirs(root, old, new string, subtreeMarker *string) int {
 	var dirs []string
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil || !info.IsDir() || IsGitDir(path) {
+			return nil
+		}
+		if subtreeMarker != nil && !strings.Contains(path, *subtreeMarker) {
 			return nil
 		}
 		if strings.Contains(info.Name(), old) {
@@ -169,7 +182,6 @@ func RenameDirsInTree(root, old, new string) int {
 		}
 		return nil
 	})
-	// Rename deepest first
 	count := 0
 	for i := len(dirs) - 1; i >= 0; i-- {
 		dir := dirs[i]

@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
@@ -132,7 +133,8 @@ func runInit() {
 	)
 
 	errors := 0
-	for _, s := range allSteps {
+	totalStart := time.Now()
+	for i, s := range allSteps {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -140,19 +142,22 @@ func runInit() {
 					errors++
 				}
 			}()
+			stepStart := time.Now()
 			s.fn()
+			log.OKf("Step %d done (%s)", i+1, formatDuration(time.Since(stepStart)))
 		}()
 		if errors > 0 {
 			break
 		}
 	}
+	totalDuration := time.Since(totalStart)
 
 	fmt.Println()
 	fmt.Println("==========================================")
 	if errors > 0 {
-		log.Failf("Setup completed with %d error(s)", errors)
+		log.Failf("Setup completed with %d error(s) in %s", errors, formatDuration(totalDuration))
 	} else {
-		log.OK("All steps passed!")
+		log.OKf("All steps passed! Completed in %s", formatDuration(totalDuration))
 	}
 	fmt.Println()
 	fmt.Printf("  System:     %s\n", cfg.SystemName)
@@ -228,4 +233,14 @@ func printBanner(cfg *config.Config) {
 	log.Logf("Test mode:   %v", cfg.TestMode)
 	log.Logf("Workdir:     %s", cfg.WorkDir)
 	fmt.Println()
+}
+
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	m := int(d.Minutes())
+	s := int(d.Seconds()) % 60
+	if m > 0 {
+		return fmt.Sprintf("%dm %ds", m, s)
+	}
+	return fmt.Sprintf("%ds", s)
 }
