@@ -3,7 +3,6 @@ name: Acceptance Stage
 env:
   DEFAULT_VERIFY_LEVEL: release
   DEFAULT_EXCLUDE_LEGACY: 'false'
-  DEFAULT_FAIL_FAST: 'true'
 
 on:
   schedule:
@@ -23,6 +22,11 @@ on:
           - release
       exclude-legacy:
         description: 'Exclude legacy stage verification'
+        required: false
+        default: true
+        type: boolean
+      fail-fast:
+        description: 'Cancel all jobs on first failure'
         required: false
         default: true
         type: boolean
@@ -53,7 +57,7 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: true
+      fail-fast: ${{ github.event_name != 'workflow_dispatch' || inputs.fail-fast }}
       max-parallel: 6
       matrix:
         arch: [multitier, monolith]

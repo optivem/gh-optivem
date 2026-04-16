@@ -59,7 +59,7 @@ func buildCommands(lang string) []string {
 
 func systemDir(cfg *config.Config) string {
 	if cfg.RepoStrategy == "multirepo" {
-		return cfg.SystemRepoDir
+		return filepath.Join(cfg.SystemRepoDir, "system")
 	}
 	return filepath.Join(cfg.RepoDir, "system")
 }
