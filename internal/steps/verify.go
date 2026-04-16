@@ -267,7 +267,7 @@ func RunLocalSystemTests(cfg *config.Config) {
 
 	// Run latest tests
 	latestLabel := "Local system tests (latest)"
-	latestCmd := fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s", arch)
+	latestCmd := fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Sample", arch)
 	log.Logf("Running: %s (in %s)", latestCmd, testDir)
 
 	output, err := shell.Run(latestCmd, false, true, testDir)
@@ -280,7 +280,7 @@ func RunLocalSystemTests(cfg *config.Config) {
 	// Run legacy tests if not excluded
 	if !cfg.ExcludeLegacy {
 		legacyLabel := "Local system tests (legacy)"
-		legacyCmd := fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Legacy", arch)
+		legacyCmd := fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Legacy -Sample", arch)
 		log.Logf("Running: %s (in %s)", legacyCmd, testDir)
 
 		output, err = shell.Run(legacyCmd, false, true, testDir)
@@ -292,13 +292,13 @@ func RunLocalSystemTests(cfg *config.Config) {
 	}
 }
 
-// RunLocalSmokeTests runs only smoke test suites locally against the scaffolded project
+// RunLocalSmokeTests runs all test suites locally with -Sample (one test per suite)
 // to verify that Docker builds and basic requests work (test mode only, no CI).
 func RunLocalSmokeTests(cfg *config.Config) {
-	log.Log("Running local smoke tests...")
+	log.Log("Running local sample tests...")
 
 	if cfg.DryRun {
-		log.Log("[DRY RUN] Would run local smoke tests")
+		log.Log("[DRY RUN] Would run local sample tests")
 		return
 	}
 
@@ -308,36 +308,42 @@ func RunLocalSmokeTests(cfg *config.Config) {
 
 	testDir := filepath.Join(cfg.RepoDir, "system-test")
 	if _, err := os.Stat(filepath.Join(testDir, "Run-SystemTests.ps1")); err != nil {
-		log.Warn("Run-SystemTests.ps1 not found in scaffolded project, skipping local smoke tests")
+		log.Warn("Run-SystemTests.ps1 not found in scaffolded project, skipping local sample tests")
 		return
 	}
 
 	arch := cfg.Arch
 
 	if cfg.TestLang != "typescript" {
-		log.Warn("Skipping local smoke tests: only supported for TypeScript test lang")
+		log.Warn("Skipping local sample tests: only supported for TypeScript test lang")
 		return
 	}
 	if cfg.RepoStrategy == "multirepo" {
-		log.Warn("Skipping local smoke tests: multirepo Docker Compose build contexts reference separate repos not available locally")
+		log.Warn("Skipping local sample tests: multirepo Docker Compose build contexts reference separate repos not available locally")
 		return
 	}
 
-	smokeSuites := []struct{ id, label string }{
-		{"smoke-stub", "Local smoke tests (stub)"},
-		{"smoke-real", "Local smoke tests (real)"},
-		{"e2e-ui", "Local E2E tests (UI)"},
+	latestLabel := "Local sample tests (latest)"
+	latestCmd := fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Sample", arch)
+	log.Logf("Running: %s (in %s)", latestCmd, testDir)
+
+	output, err := shell.Run(latestCmd, false, true, testDir)
+	if err != nil {
+		log.Failf("%s output:\n%s", latestLabel, output)
+		log.Fatalf("%s failed!", latestLabel)
 	}
+	log.OKf("%s passed!", latestLabel)
 
-	for _, suite := range smokeSuites {
-		cmd := fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Suite %s", arch, suite.id)
-		log.Logf("Running: %s (in %s)", cmd, testDir)
+	if !cfg.ExcludeLegacy {
+		legacyLabel := "Local sample tests (legacy)"
+		legacyCmd := fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Legacy -Sample", arch)
+		log.Logf("Running: %s (in %s)", legacyCmd, testDir)
 
-		output, err := shell.Run(cmd, false, true, testDir)
+		output, err = shell.Run(legacyCmd, false, true, testDir)
 		if err != nil {
-			log.Failf("%s output:\n%s", suite.label, output)
-			log.Fatalf("%s failed!", suite.label)
+			log.Failf("%s output:\n%s", legacyLabel, output)
+			log.Fatalf("%s failed!", legacyLabel)
 		}
-		log.OKf("%s passed!", suite.label)
+		log.OKf("%s passed!", legacyLabel)
 	}
 }
