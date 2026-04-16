@@ -293,6 +293,8 @@ var skipDirs = map[string]bool{
 	"obj":          true,
 }
 
+// TODO: When ATDD support is added, generate project-specific CLAUDE.md files
+// for scaffolded repos instead of skipping them.
 var skipFiles = map[string]bool{
 	"CLAUDE.md": true,
 }
