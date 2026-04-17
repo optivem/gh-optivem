@@ -3,6 +3,17 @@ name: Acceptance Stage Adhoc
 on:
   workflow_dispatch:
     inputs:
+      verify-level:
+        description: 'Verification level for system tests'
+        required: false
+        default: 'local'
+        type: choice
+        options:
+          - none
+          - local
+          - commit
+          - acceptance
+          - release
       arch:
         description: 'Architecture'
         required: false
@@ -41,17 +52,6 @@ on:
           - typescript
           - dotnet
           - java
-      verify-level:
-        description: 'Verification level for system tests'
-        required: false
-        default: 'local'
-        type: choice
-        options:
-          - none
-          - local
-          - commit
-          - acceptance
-          - release
       exclude-legacy:
         description: 'Exclude legacy stage verification'
         required: false
