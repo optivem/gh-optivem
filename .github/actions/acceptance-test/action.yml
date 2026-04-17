@@ -34,6 +34,25 @@ runs:
         go-version-file: go.mod
         cache: false
 
+    # Cache package-registry downloads so repeated scaffolding runs survive
+    # transient upstream outages (Maven Central 502, npm/NuGet timeouts).
+    # The scaffolded project lives in a fresh /tmp dir per job — but the
+    # runner's user-level caches (~/.gradle, ~/.npm, ~/.nuget) persist
+    # between jobs via actions/cache, so already-resolved artifacts bypass
+    # the registry entirely on cache hit.
+    - name: Cache package-registry downloads
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+          ~/.npm
+          ~/.nuget/packages
+        key: pkg-registry-${{ runner.os }}-${{ inputs.lang }}-${{ inputs.test-lang }}-${{ github.sha }}
+        restore-keys: |
+          pkg-registry-${{ runner.os }}-${{ inputs.lang }}-${{ inputs.test-lang }}-
+          pkg-registry-${{ runner.os }}-
+
     - name: Configure git
       shell: bash
       run: |

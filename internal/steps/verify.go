@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/optivem/gh-optivem/internal/config"
@@ -14,6 +16,36 @@ import (
 )
 
 const systemTestDir_name = "system-test"
+
+// transientNetworkPattern matches errors that indicate an upstream package
+// registry (Maven Central, npm, NuGet) is temporarily unavailable — not a
+// problem with the user's code. When detected after retries are exhausted,
+// local verification is skipped with a warning and CI becomes the gate.
+var transientNetworkPattern = regexp.MustCompile(
+	`(?i)` +
+		`502 bad gateway|` +
+		`503 service unavailable|` +
+		`504 gateway time-?out|` +
+		`received status code 5\d\d|` +
+		`could not get '[^']*\.pom'|` +
+		`could not resolve [^ ]+:[^ ]+:[^ ]+|` +
+		`connection reset by peer|` +
+		`connection timed out|` +
+		`read: connection reset|` +
+		`econnreset|` +
+		`etimedout|` +
+		`network.?error|` +
+		`getaddrinfo (?:enotfound|eai_again)|` +
+		`tls handshake timeout|` +
+		`err_socket_timeout|` +
+		`request to https?://[^ ]+ failed`,
+)
+
+const (
+	compileRetryAttempts = 3
+	compileRetryInitial  = 15 * time.Second
+	compileRetryMax      = 60 * time.Second
+)
 
 // VerifyCompilation compiles all source and test components locally to catch
 // broken imports, type errors, and case-sensitive path mismatches before pushing.
@@ -37,11 +69,59 @@ func VerifyCompilation(cfg *config.Config) {
 func compileComponent(label, lang, dir string) {
 	cmds := buildCommands(lang)
 	for _, cmd := range cmds {
-		if out, err := shell.Run(cmd, false, true, dir); err != nil {
-			log.Fatalf("Compilation failed for %s (%s) in %s: %v\n%s", label, lang, dir, err, out)
+		if err := runWithRetry(label, lang, dir, cmd); err != nil {
+			log.Fatalf("Compilation failed for %s (%s) in %s: %v", label, lang, dir, err)
 		}
 	}
 	log.OKf("Compiled %s (%s)", label, lang)
+}
+
+// runWithRetry executes cmd with retries on transient network failures.
+// After retries are exhausted:
+//   - If the last error looks transient (e.g. Maven Central 502), log a warning
+//     and return nil — CI will re-verify with a fresh network. This prevents
+//     external registry outages from blocking students or CI with a false
+//     "your code is broken" signal.
+//   - Otherwise return the error so the caller can fail hard.
+func runWithRetry(label, lang, dir, cmd string) error {
+	var lastOut string
+	var lastErr error
+
+	backoff := compileRetryInitial
+	for attempt := 1; attempt <= compileRetryAttempts; attempt++ {
+		out, err := shell.Run(cmd, false, true, dir)
+		if err == nil {
+			return nil
+		}
+		lastOut, lastErr = out, err
+
+		if !isTransient(out) {
+			return fmt.Errorf("%w\n%s", err, out)
+		}
+
+		if attempt < compileRetryAttempts {
+			log.Warnf("Transient network error compiling %s (%s), attempt %d/%d — retrying in %s", label, lang, attempt, compileRetryAttempts, backoff)
+			time.Sleep(backoff)
+			if backoff *= 4; backoff > compileRetryMax {
+				backoff = compileRetryMax
+			}
+		}
+	}
+
+	if isTransient(lastOut) {
+		log.Warn(strings.Repeat("─", 72))
+		log.Warnf("Skipping local verification of %s (%s) — upstream package registry appears unavailable.", label, lang)
+		log.Warn("This is a temporary outage on the registry side (e.g. Maven Central, npm, NuGet),")
+		log.Warn("not a problem with your code. CI will re-verify compilation once network is healthy.")
+		log.Warn(strings.Repeat("─", 72))
+		return nil
+	}
+
+	return fmt.Errorf("%w\n%s", lastErr, lastOut)
+}
+
+func isTransient(output string) bool {
+	return transientNetworkPattern.MatchString(output)
 }
 
 func buildCommands(lang string) []string {
