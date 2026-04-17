@@ -60,7 +60,7 @@ on:
       fail-fast:
         description: 'Cancel all jobs on first failure'
         required: false
-        default: true
+        default: false
         type: boolean
 
 jobs:
