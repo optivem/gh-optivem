@@ -15,6 +15,7 @@ jobs:
           workflow: verify-all.yml
           repo: optivem/starter
           inputs: '{"level": "local"}'
+          poll-interval: '600'
 
   gh-local:
     name: Stage 2 — acceptance-stage-adhoc (verify-level=local)
@@ -27,6 +28,7 @@ jobs:
         with:
           workflow: acceptance-stage-adhoc.yml
           inputs: '{"verify-level": "local"}'
+          poll-interval: '600'
 
   gh-release:
     name: Stage 3 — acceptance-stage-full
@@ -38,3 +40,4 @@ jobs:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
           workflow: acceptance-stage-full.yml
+          poll-interval: '1200'
