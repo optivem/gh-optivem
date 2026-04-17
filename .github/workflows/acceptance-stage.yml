@@ -1,4 +1,5 @@
 name: Acceptance Stage
+run-name: Acceptance Stage — ${{ github.event_name == 'workflow_dispatch' && inputs.verify-level || github.event.schedule == '0 3 * * *' && 'release' || 'local' }}
 
 on:
   workflow_dispatch:
@@ -14,8 +15,14 @@ on:
           - commit
           - acceptance
           - release
+      shop-ref:
+        description: 'optivem/shop ref (branch, tag, or SHA) to test against. Empty = main HEAD.'
+        required: false
+        default: ''
+        type: string
   schedule:
-    - cron: '0 3 * * *'  # Run daily at 03:00 UTC
+    - cron: '0 3 * * *'    # Daily at 03:00 UTC — verify-level=release
+    - cron: '0 */2 * * *'  # Every 2 hours — verify-level=local
 
 permissions:
   contents: read
@@ -47,12 +54,17 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       verify-level: ${{ steps.level.outputs.verify-level }}
-      shop-sha: ${{ steps.sha.outputs.sha }}
+      shop-sha: ${{ (steps.level.outputs.verify-level == 'release' || inputs.shop-ref != '') && steps.shop-commit.outputs.sha || '' }}
+      should-run: ${{ steps.should-run.outputs.should-run }}
     steps:
       - id: level
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            LEVEL="release"
+            if [ "${{ github.event.schedule }}" = "0 3 * * *" ]; then
+              LEVEL="release"
+            else
+              LEVEL="local"
+            fi
           else
             LEVEL="${{ inputs.verify-level }}"
           fi
@@ -62,22 +74,26 @@ jobs:
           echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| verify-level | $LEVEL |" >> "$GITHUB_STEP_SUMMARY"
 
-      - id: sha
-        if: steps.level.outputs.verify-level == 'release'
+      - id: shop-commit
+        uses: optivem/actions/resolve-commit@v1
+        with:
+          repo: optivem/shop
+          ref: ${{ inputs.shop-ref }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          SHA=$(gh api repos/optivem/shop/commits/main --jq '.sha')
-          if [ -z "$SHA" ] || [ ${#SHA} -ne 40 ]; then
-            echo "::error::Failed to resolve optivem/shop HEAD SHA"
-            exit 1
-          fi
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "Resolved shop SHA: $SHA" >> "$GITHUB_STEP_SUMMARY"
+
+      - id: should-run
+        uses: optivem/actions/should-run-acceptance-stage@v1
+        with:
+          last-updated-at: ${{ steps.shop-commit.outputs.timestamp }}
+          workflow-name: ${{ github.workflow }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   run:
     name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})
     needs: [check, resolve]
+    if: needs.resolve.outputs.should-run == 'true'
     runs-on: ubuntu-latest
     env:
       VERIFY_TOKEN: ${{ secrets.VERIFY_TOKEN }}
