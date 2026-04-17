@@ -35,6 +35,7 @@ changelog:
       - "^chore:"
 
 release:
+  prerelease: auto
   footer: |
     ---
     Bundled with optivem/shop @ {{ if .Env.SHOP_TAG }}{{ .Env.SHOP_TAG }} ({{ .Env.SHOP_SHA }}){{ else }}{{ .Env.SHOP_SHA }}{{ end }}

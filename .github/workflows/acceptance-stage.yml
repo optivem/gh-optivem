@@ -25,7 +25,7 @@ on:
     - cron: '0 * * * *'    # Every hour — verify-level=local
 
 permissions:
-  contents: read
+  contents: write
   statuses: write
 
 jobs:
@@ -153,13 +153,15 @@ jobs:
           exclude-legacy: 'false'
           shop-ref: ${{ needs.check.outputs.shop-sha }}
 
-  record-verified-sha:
-    name: Record Verified Shop SHA
+  promote-to-rc:
+    name: Promote to RC
     needs: [check, run]
     if: success() && needs.check.outputs.verify-level == 'release'
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.gen.outputs.version }}
     steps:
-      - name: Write commit status
+      - name: Record Verified Shop SHA
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SHA: ${{ needs.check.outputs.shop-sha }}
@@ -170,6 +172,58 @@ jobs:
             -f description="$SHA" \
             -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           echo "Recorded verified-shop-sha=$SHA on commit ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Read target version
+        id: target
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Generate RC Version
+        id: gen
+        uses: optivem/actions/generate-prerelease-version@v1
+        with:
+          target-version: ${{ steps.target.outputs.version }}
+
+      - name: Resolve Shop Tag
+        id: shop-tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ needs.check.outputs.shop-sha }}
+        run: |
+          TAG=$(gh api repos/optivem/shop/tags --paginate \
+            --jq ".[] | select(.commit.sha==\"$SHA\") | .name" | head -1)
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push RC tag
+        env:
+          RC: ${{ steps.gen.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$RC" "${{ github.sha }}"
+          git push origin "$RC"
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Run GoReleaser (RC)
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHOP_SHA: ${{ needs.check.outputs.shop-sha }}
+          SHOP_TAG: ${{ steps.shop-tag.outputs.tag }}
 
   summary:
     name: Summary

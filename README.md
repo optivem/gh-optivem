@@ -2,7 +2,7 @@
 [![Acceptance Stage](https://github.com/optivem/gh-optivem/actions/workflows/acceptance-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/acceptance-stage.yml)
 [![Release](https://github.com/optivem/gh-optivem/actions/workflows/release-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/release-stage.yml)
 [![Post-Release Stage](https://github.com/optivem/gh-optivem/actions/workflows/post-release-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/post-release-stage.yml)
-[![Verify Release Chain](https://github.com/optivem/gh-optivem/actions/workflows/verify-release-chain.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/verify-release-chain.yml)
+[![Local Stage](https://github.com/optivem/gh-optivem/actions/workflows/local-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/local-stage.yml)
 
 # gh-optivem
 
