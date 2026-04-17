@@ -256,11 +256,6 @@ func canRunLocalTests(cfg *config.Config, testKind string) string {
 		return ""
 	}
 
-	if cfg.TestLang != "typescript" {
-		log.Warnf("Skipping local %s: only supported for TypeScript test lang", testKind)
-		return ""
-	}
-
 	return testDir
 }
 
