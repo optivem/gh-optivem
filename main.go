@@ -38,7 +38,7 @@ type stepDef struct {
 func main() {
 	// Handle --version before anything else
 	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
-		fmt.Printf("gh-optivem %s\n", version.Version)
+		fmt.Println(version.Full())
 		os.Exit(0)
 	}
 

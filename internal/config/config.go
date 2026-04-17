@@ -39,6 +39,7 @@ type Config struct {
 	NoBugReport  bool   // skip auto-creating GitHub issues on failure
 	WorkDir    string
 	StarterPath string
+	StarterRef  string // Pinned optivem/starter ref (SHA or tag). Empty = HEAD.
 
 	DockerHubUsername string
 	DockerHubToken   string
@@ -326,12 +327,13 @@ func ParseAndValidate() *Config {
 	noBugReport := flag.Bool("no-bug-report", false, "Skip auto-creating GitHub issues on failure")
 	deploy := flag.String("deploy", "docker", "Deployment target: docker or cloud-run")
 	workDir := flag.String("workdir", "", "Working directory for cloning (default: temp dir)")
+	starterRef := flag.String("starter-ref", "", "Pin optivem/starter to this ref (SHA or tag). Overrides build-time pin. Default: HEAD of default branch.")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("gh-optivem %s\n", version.Version)
+		fmt.Println(version.Full())
 		os.Exit(0)
 	}
 
@@ -439,8 +441,14 @@ func ParseAndValidate() *Config {
 		}
 	}
 
+	// Resolve starter ref: explicit --starter-ref > build-time version.StarterRef > "" (HEAD).
+	resolvedStarterRef := *starterRef
+	if resolvedStarterRef == "" {
+		resolvedStarterRef = version.StarterRef
+	}
+
 	// Clone starter repo from GitHub into a temp directory.
-	starterPath, cloneErr := cloneStarter()
+	starterPath, cloneErr := cloneStarter(resolvedStarterRef)
 	if cloneErr != nil {
 		log.FatalExit("Cannot clone starter repo: " + cloneErr.Error())
 	}
@@ -515,6 +523,7 @@ func ParseAndValidate() *Config {
 		NoBugReport:  *noBugReport,
 		WorkDir:    wd,
 		StarterPath: starterPath,
+		StarterRef:  resolvedStarterRef,
 
 		DockerHubUsername: dockerHubUsername,
 		DockerHubToken:   dockerHubToken,
@@ -553,20 +562,35 @@ func ParseAndValidate() *Config {
 }
 
 // cloneStarter clones optivem/starter from GitHub into a temp directory.
-func cloneStarter() (string, error) {
+// When ref is empty, clones HEAD of the default branch with --depth=1.
+// When ref is a SHA or tag, clones full history then checks out the ref.
+func cloneStarter(ref string) (string, error) {
 	dir, err := os.MkdirTemp("", "starter-")
 	if err != nil {
 		return "", fmt.Errorf("cannot create temp dir: %w", err)
 	}
 
-	cmd := exec.Command("gh", "repo", "clone", "optivem/starter", dir, "--", "--depth=1")
+	cloneArgs := []string{"repo", "clone", "optivem/starter", dir}
+	if ref == "" {
+		cloneArgs = append(cloneArgs, "--", "--depth=1")
+	}
+	cmd := exec.Command("gh", cloneArgs...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		os.RemoveAll(dir)
 		return "", fmt.Errorf("gh repo clone failed: %s\n%s", err, string(out))
 	}
 
-	log.OKf("Cloned starter to %s", dir)
+	if ref != "" {
+		checkout := exec.Command("git", "-C", dir, "checkout", ref)
+		if cout, cerr := checkout.CombinedOutput(); cerr != nil {
+			os.RemoveAll(dir)
+			return "", fmt.Errorf("git checkout %s failed: %s\n%s", ref, cerr, string(cout))
+		}
+		log.OKf("Cloned starter to %s (pinned to %s)", dir, ref)
+	} else {
+		log.OKf("Cloned starter to %s (HEAD)", dir)
+	}
 	return dir, nil
 }
 

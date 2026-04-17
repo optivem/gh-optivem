@@ -5,6 +5,10 @@ on:
   schedule:
     - cron: '0 3 * * *'  # Run daily at 03:00 UTC
 
+permissions:
+  contents: read
+  statuses: write
+
 jobs:
   check:
     name: Check
@@ -26,9 +30,27 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
 
+  resolve-starter:
+    name: Resolve Starter SHA
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.r.outputs.sha }}
+    steps:
+      - id: r
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA=$(gh api repos/optivem/starter/commits/main --jq '.sha')
+          if [ -z "$SHA" ] || [ ${#SHA} -ne 40 ]; then
+            echo "::error::Failed to resolve optivem/starter HEAD SHA"
+            exit 1
+          fi
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Resolved starter SHA: $SHA" >> "$GITHUB_STEP_SUMMARY"
+
   run:
     name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})
-    needs: check
+    needs: [check, resolve-starter]
     runs-on: ubuntu-latest
     env:
       VERIFY_TOKEN: ${{ secrets.VERIFY_TOKEN }}
@@ -59,6 +81,25 @@ jobs:
           test-lang: ${{ matrix.test-lang }}
           verify-level: release
           exclude-legacy: 'false'
+          starter-ref: ${{ needs.resolve-starter.outputs.sha }}
+
+  record-verified-sha:
+    name: Record Verified Starter SHA
+    needs: [resolve-starter, run]
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write commit status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ needs.resolve-starter.outputs.sha }}
+        run: |
+          gh api "repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            -f state=success \
+            -f context=verified-starter-sha \
+            -f description="$SHA" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "Recorded verified-starter-sha=$SHA on commit ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
 
   summary:
     name: Summary

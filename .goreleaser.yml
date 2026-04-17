@@ -4,7 +4,10 @@ builds:
   - binary: gh-optivem
     main: .
     ldflags:
-      - -s -w -X github.com/optivem/gh-optivem/internal/version.Version={{.Tag}}
+      - -s -w
+      - -X github.com/optivem/gh-optivem/internal/version.Version={{.Tag}}
+      - -X github.com/optivem/gh-optivem/internal/version.StarterRef={{.Env.STARTER_SHA}}
+      - -X github.com/optivem/gh-optivem/internal/version.StarterTag={{.Env.STARTER_TAG}}
     env:
       - CGO_ENABLED=0
     goos:
@@ -30,3 +33,8 @@ changelog:
       - "^test:"
       - "^ci:"
       - "^chore:"
+
+release:
+  footer: |
+    ---
+    Bundled with optivem/starter @ {{ if .Env.STARTER_TAG }}{{ .Env.STARTER_TAG }} ({{ .Env.STARTER_SHA }}){{ else }}{{ .Env.STARTER_SHA }}{{ end }}
