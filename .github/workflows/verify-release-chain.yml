@@ -15,7 +15,7 @@ jobs:
           workflow: verify-all.yml
           repo: optivem/starter
           inputs: '{"level": "local"}'
-          poll-interval: '600'
+          poll-interval: '240'
 
   gh-local:
     name: Stage 2 — acceptance-stage-adhoc (verify-level=local)
