@@ -70,11 +70,42 @@ jobs:
           echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| verify-level | $LEVEL |" >> "$GITHUB_STEP_SUMMARY"
 
+      - id: shop-ref
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LEVEL="${{ steps.level.outputs.verify-level }}"
+          INPUT_REF="${{ inputs.shop-ref }}"
+
+          if [ "$LEVEL" = "release" ]; then
+            if [ -z "$INPUT_REF" ]; then
+              TAG=$(gh api repos/optivem/shop/releases/latest --jq '.tag_name' 2>/dev/null || echo "")
+              if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+                echo "::error::No GitHub release found in optivem/shop — release-level acceptance requires a published release"
+                exit 1
+              fi
+              REF="$TAG"
+              echo "Release level — using latest release tag: $REF" >> "$GITHUB_STEP_SUMMARY"
+            else
+              if ! gh api "repos/optivem/shop/releases/tags/$INPUT_REF" >/dev/null 2>&1; then
+                echo "::error::shop-ref '$INPUT_REF' is not a published release tag — release-level acceptance requires a released ref"
+                exit 1
+              fi
+              REF="$INPUT_REF"
+              echo "Release level — using input release tag: $REF" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            REF="${INPUT_REF:-main}"
+            echo "Non-release level — using ref: $REF" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
       - id: shop-commit
         uses: optivem/actions/resolve-commit@v1
         with:
           repo: optivem/shop
-          ref: ${{ inputs.shop-ref }}
+          ref: ${{ steps.shop-ref.outputs.ref }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
