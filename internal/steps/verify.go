@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/optivem/gh-optivem/internal/config"
@@ -50,6 +51,9 @@ func buildCommands(lang string) []string {
 	case "dotnet":
 		return []string{"dotnet build"}
 	case "java":
+		if runtime.GOOS == "windows" {
+			return []string{"gradlew.bat compileJava compileTestJava"}
+		}
 		return []string{"./gradlew compileJava compileTestJava"}
 	case "react":
 		return []string{"npm ci", "npm run build"}
