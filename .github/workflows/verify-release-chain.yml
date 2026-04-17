@@ -18,7 +18,7 @@ jobs:
           poll-interval: '240'
 
   gh-local:
-    name: Stage 2 — acceptance-stage-adhoc (verify-level=local)
+    name: Stage 2 — acceptance-stage (verify-level=local)
     needs: shop-local
     runs-on: ubuntu-latest
     steps:
@@ -26,12 +26,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
-          workflow: acceptance-stage-adhoc.yml
+          workflow: acceptance-stage.yml
           inputs: '{"verify-level": "local"}'
           poll-interval: '600'
 
   gh-release:
-    name: Stage 3 — acceptance-stage-full
+    name: Stage 3 — acceptance-stage (verify-level=release)
     needs: gh-local
     runs-on: ubuntu-latest
     steps:
@@ -39,5 +39,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
-          workflow: acceptance-stage-full.yml
+          workflow: acceptance-stage.yml
+          inputs: '{"verify-level": "release"}'
           poll-interval: '1200'

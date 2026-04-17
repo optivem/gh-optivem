@@ -23,7 +23,7 @@ jobs:
           SHA=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/statuses" \
             --jq '[.[] | select(.context=="verified-shop-sha" and .state=="success")][0].description')
           if [ -z "$SHA" ] || [ "$SHA" = "null" ]; then
-            echo "::error::No verified-shop-sha status on this commit. Run acceptance-stage-full first."
+            echo "::error::No verified-shop-sha status on this commit. Run acceptance-stage (verify-level=release) first."
             exit 1
           fi
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"

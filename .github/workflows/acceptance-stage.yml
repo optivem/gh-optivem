@@ -1,7 +1,19 @@
-name: Acceptance Stage Full
+name: Acceptance Stage
 
 on:
   workflow_dispatch:
+    inputs:
+      verify-level:
+        description: 'Verification level for system tests'
+        required: false
+        default: 'local'
+        type: choice
+        options:
+          - none
+          - local
+          - commit
+          - acceptance
+          - release
   schedule:
     - cron: '0 3 * * *'  # Run daily at 03:00 UTC
 
@@ -30,13 +42,28 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
 
-  resolve-shop:
-    name: Resolve Shop SHA
+  resolve:
+    name: Resolve
     runs-on: ubuntu-latest
     outputs:
-      sha: ${{ steps.r.outputs.sha }}
+      verify-level: ${{ steps.level.outputs.verify-level }}
+      shop-sha: ${{ steps.sha.outputs.sha }}
     steps:
-      - id: r
+      - id: level
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            LEVEL="release"
+          else
+            LEVEL="${{ inputs.verify-level }}"
+          fi
+          echo "verify-level=$LEVEL" >> "$GITHUB_OUTPUT"
+          echo "### Workflow Inputs" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Input | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| verify-level | $LEVEL |" >> "$GITHUB_STEP_SUMMARY"
+
+      - id: sha
+        if: steps.level.outputs.verify-level == 'release'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -50,7 +77,7 @@ jobs:
 
   run:
     name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})
-    needs: [check, resolve-shop]
+    needs: [check, resolve]
     runs-on: ubuntu-latest
     env:
       VERIFY_TOKEN: ${{ secrets.VERIFY_TOKEN }}
@@ -79,20 +106,20 @@ jobs:
           repo-strategy: ${{ matrix.repo-strategy }}
           lang: ${{ matrix.lang }}
           test-lang: ${{ matrix.test-lang }}
-          verify-level: release
+          verify-level: ${{ needs.resolve.outputs.verify-level }}
           exclude-legacy: 'false'
-          shop-ref: ${{ needs.resolve-shop.outputs.sha }}
+          shop-ref: ${{ needs.resolve.outputs.shop-sha }}
 
   record-verified-sha:
     name: Record Verified Shop SHA
-    needs: [resolve-shop, run]
-    if: success()
+    needs: [resolve, run]
+    if: success() && needs.resolve.outputs.verify-level == 'release'
     runs-on: ubuntu-latest
     steps:
       - name: Write commit status
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SHA: ${{ needs.resolve-shop.outputs.sha }}
+          SHA: ${{ needs.resolve.outputs.shop-sha }}
         run: |
           gh api "repos/${{ github.repository }}/statuses/${{ github.sha }}" \
             -f state=success \
