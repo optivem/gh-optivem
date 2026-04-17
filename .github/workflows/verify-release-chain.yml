@@ -1,0 +1,40 @@
+name: Verify Release Chain
+
+on:
+  workflow_dispatch:
+
+jobs:
+  starter-local:
+    name: Stage 1 — starter/verify-all (level=local)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: optivem/actions/trigger-and-wait@v1
+        env:
+          GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+        with:
+          workflow: verify-all.yml
+          repo: optivem/starter
+          inputs: '{"level": "local"}'
+
+  gh-local:
+    name: Stage 2 — acceptance-stage-adhoc (verify-level=local)
+    needs: starter-local
+    runs-on: ubuntu-latest
+    steps:
+      - uses: optivem/actions/trigger-and-wait@v1
+        env:
+          GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+        with:
+          workflow: acceptance-stage-adhoc.yml
+          inputs: '{"verify-level": "local"}'
+
+  gh-release:
+    name: Stage 3 — acceptance-stage-full
+    needs: gh-local
+    runs-on: ubuntu-latest
+    steps:
+      - uses: optivem/actions/trigger-and-wait@v1
+        env:
+          GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+        with:
+          workflow: acceptance-stage-full.yml
