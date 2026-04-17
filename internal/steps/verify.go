@@ -311,16 +311,20 @@ func RunLocalSystemTests(cfg *config.Config) {
 	setupMultirepoSymlinks(cfg)
 
 	arch := cfg.Arch
+	sampleFlag := ""
+	if cfg.SampleTests {
+		sampleFlag = " -Sample"
+	}
 	runLocalTests(
 		"Local system tests (latest)",
-		fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Sample", arch),
+		fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s%s", arch, sampleFlag),
 		testDir,
 	)
 
 	if !cfg.ExcludeLegacy {
 		runLocalTests(
 			"Local system tests (legacy)",
-			fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Legacy -Sample", arch),
+			fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Legacy%s", arch, sampleFlag),
 			testDir,
 		)
 	}
