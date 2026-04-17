@@ -2,6 +2,11 @@ name: Cleanup Orphans
 
 on:
   workflow_dispatch:
+    inputs:
+      before_date:
+        description: "Only clean up items created before this date (exclusive, ISO 8601 e.g. 2026-04-01). Leave empty for all."
+        required: false
+        default: ""
 
 jobs:
   cleanup:
@@ -12,8 +17,14 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run cleanup
-        run: bash scripts/cleanup-orphans.sh --owner "$TEST_OWNER" --all --delete
+        run: |
+          args="--owner $TEST_OWNER --all --delete"
+          if [[ -n "$BEFORE_DATE" ]]; then
+            args="$args --before $BEFORE_DATE"
+          fi
+          bash scripts/cleanup-orphans.sh $args
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
           TEST_OWNER: ${{ vars.TEST_OWNER }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          BEFORE_DATE: ${{ github.event.inputs.before_date }}

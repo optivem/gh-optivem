@@ -1,8 +1,7 @@
 name: Installation Test
 
 on:
-  release:
-    types: [published]
+  workflow_call:
   workflow_dispatch:
 
 jobs:
