@@ -44,9 +44,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def find_github_utils_dir() -> str:
-    """Locate the github-utils/scripts directory relative to the starter repo."""
-    starter_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    academy_root = os.path.dirname(starter_root)
+    """Locate the github-utils/scripts directory relative to the shop repo."""
+    shop_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    academy_root = os.path.dirname(shop_root)
     scripts_dir = os.path.join(academy_root, "github-utils", "scripts")
     if os.path.isdir(scripts_dir):
         return scripts_dir

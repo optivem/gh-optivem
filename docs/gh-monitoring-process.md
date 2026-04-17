@@ -51,8 +51,8 @@ The `--workflow` argument determines which acceptance stage workflow to monitor:
      ```bash
      git clone https://github.com/<owner>/<repo>.git /tmp/<repo>
      ```
-   - Investigate the root cause using local files only (the clone, gh-optivem, and starter repos).
-   - **All fixes must be applied and verified in the clone first — never commit to starter or gh-optivem until the clone fully passes. No exceptions, even if the fix seems obvious or trivially correct. "Obvious" fixes can still break in unexpected ways — the clone verification step exists to catch that.** Apply fixes directly in the cloned scaffolded repo:
+   - Investigate the root cause using local files only (the clone, gh-optivem, and shop repos).
+   - **All fixes must be applied and verified in the clone first — never commit to shop or gh-optivem until the clone fully passes. No exceptions, even if the fix seems obvious or trivially correct. "Obvious" fixes can still break in unexpected ways — the clone verification step exists to catch that.** Apply fixes directly in the cloned scaffolded repo:
      1. Run the specific failing suite first (e.g. `Run-SystemTests.ps1 -Architecture <arch> -Suite acceptance-ui`) to quickly confirm the fix.
      2. Then run the full system test suite (`Run-SystemTests.ps1 -Architecture <arch>` with no `-Suite` filter) to catch any additional failures.
      3. If more failures appear, fix them in the clone and re-run the full suite again.
@@ -63,15 +63,15 @@ The `--workflow` argument determines which acceptance stage workflow to monitor:
      3. Trigger and wait for the clone's **acceptance stage** to pass (check every 5 minutes).
    - **Only after the clone's CI fully passes**, apply the same fixes to the source:
      - If the fix belongs in **gh-optivem** (scaffolding logic), apply it there.
-     - If the fix belongs in the **starter repo**, stop and ask the user for approval before modifying it.
+     - If the fix belongs in the **shop repo**, stop and ask the user for approval before modifying it.
    - Commit the source fix:
      ```bash
      bash "$(git rev-parse --show-toplevel)/../github-utils/scripts/commit.sh"
      ```
-   - Wait for the **starter repo's commit stage** to pass (check every 1 minute).
-   - Trigger the **starter repo's affected acceptance stage** (the one matching the architecture/lang that failed) and wait for it to pass (check every 5 minutes).
+   - Wait for the **shop repo's commit stage** to pass (check every 1 minute).
+   - Trigger the **shop repo's affected acceptance stage** (the one matching the architecture/lang that failed) and wait for it to pass (check every 5 minutes).
    - Delete the clone when done.
-   - If the fix was only in the **starter repo** (no gh-optivem code changes), re-run the failed jobs:
+   - If the fix was only in the **shop repo** (no gh-optivem code changes), re-run the failed jobs:
      ```bash
      gh run rerun <run-id> --failed --repo optivem/gh-optivem
      ```
@@ -94,8 +94,8 @@ Stop the loop and report to the user if:
 
 - Always sleep at least 5 minutes between CI status checks to avoid GitHub API rate limiting.
 - Only run the single failing test, never the full test suite.
-- When investigating failures, check both the gh-optivem scaffolding code and the starter repo template files.
-- Only make changes to the gh-optivem repo. Do NOT modify the starter repo. If you believe a starter repo change is needed, stop and ask the user for approval first.
+- When investigating failures, check both the gh-optivem scaffolding code and the shop repo template files.
+- Only make changes to the gh-optivem repo. Do NOT modify the shop repo. If you believe a shop repo change is needed, stop and ask the user for approval first.
 - Never use `git pull --rebase`. Always plain `git pull`.
 - Never delete scaffolded test repos unless explicitly asked.
 
@@ -103,7 +103,7 @@ Stop the loop and report to the user if:
 
 The GitHub API quota is 5000 requests/hour and is shared across all agents and the user. Exceeding it blocks everyone.
 
-- **Investigation must use local files only.** Read the gh-optivem and starter repos from the local filesystem. For scaffolded test repos, clone them locally (`git clone`) instead of using `gh api repos/.../contents/...`. Never fetch file contents via the GitHub API.
+- **Investigation must use local files only.** Read the gh-optivem and shop repos from the local filesystem. For scaffolded test repos, clone them locally (`git clone`) instead of using `gh api repos/.../contents/...`. Never fetch file contents via the GitHub API.
 - **Only use `gh` for CI operations**: triggering workflows, checking run status, and fetching failed logs (`--log-failed`). These are the only `gh` calls allowed.
 - **Never browse historical runs.** Only look at the current/latest run. Do not use `--limit 50` or inspect old runs to find patterns.
 - **Maximum 20 `gh` calls per monitoring cycle** (trigger + poll + fetch logs). If you exceed this, stop and report to the user.

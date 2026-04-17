@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  starter-local:
-    name: Stage 1 — starter/verify-all (level=local)
+  shop-local:
+    name: Stage 1 — shop/verify-all (level=local)
     runs-on: ubuntu-latest
     steps:
       - uses: optivem/actions/trigger-and-wait@v1
@@ -13,13 +13,13 @@ jobs:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
           workflow: verify-all.yml
-          repo: optivem/starter
+          repo: optivem/shop
           inputs: '{"level": "local"}'
           poll-interval: '240'
 
   gh-local:
     name: Stage 2 — acceptance-stage-adhoc (verify-level=local)
-    needs: starter-local
+    needs: shop-local
     runs-on: ubuntu-latest
     steps:
       - uses: optivem/actions/trigger-and-wait@v1

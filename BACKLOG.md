@@ -36,7 +36,7 @@ Analysis of the [sandbox project setup page](https://github.com/optivem/academy/
 
 | Idea | Page Section | Reason |
 |------|-------------|--------|
-| Clock abstraction | Task 6 (Clock Dependency) | Already handled by starter template ("Clock is already wired in") |
+| Clock abstraction | Task 6 (Clock Dependency) | Already handled by shop template ("Clock is already wired in") |
 
 ## Priority Summary
 

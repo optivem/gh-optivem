@@ -6,31 +6,31 @@ import "fmt"
 // Version is set at build time via -ldflags "-X github.com/optivem/gh-optivem/internal/version.Version=v1.0.0"
 var Version = "dev"
 
-// StarterRef is the optivem/starter commit SHA baked into this build.
-// Set at release time via -ldflags "-X github.com/optivem/gh-optivem/internal/version.StarterRef=<40-char SHA>"
-// Empty in dev builds — cloneStarter() falls back to HEAD of default branch.
-var StarterRef = ""
+// ShopRef is the optivem/shop commit SHA baked into this build.
+// Set at release time via -ldflags "-X github.com/optivem/gh-optivem/internal/version.ShopRef=<40-char SHA>"
+// Empty in dev builds — cloneShop() falls back to HEAD of default branch.
+var ShopRef = ""
 
-// StarterTag is an optional human-readable tag (e.g. "v1.0.7-rc.26") pointing at StarterRef.
-// Set at release time via -ldflags "-X github.com/optivem/gh-optivem/internal/version.StarterTag=<tag>"
+// ShopTag is an optional human-readable tag (e.g. "v1.0.7-rc.26") pointing at ShopRef.
+// Set at release time via -ldflags "-X github.com/optivem/gh-optivem/internal/version.ShopTag=<tag>"
 // May be empty if no tag points at the verified SHA.
-var StarterTag = ""
+var ShopTag = ""
 
 // Full returns a multi-line human-readable version string:
 //
 //	gh-optivem v1.4.2
-//	starter:   v1.2.3 (abc1234...)     ← when StarterTag is set
-//	starter:   abc1234...              ← when StarterTag is empty but StarterRef is set
-//	starter:   HEAD (dev build)        ← when both are empty
+//	shop:      v1.2.3 (abc1234...)     ← when ShopTag is set
+//	shop:      abc1234...              ← when ShopTag is empty but ShopRef is set
+//	shop:      HEAD (dev build)        ← when both are empty
 func Full() string {
-	var starter string
+	var shop string
 	switch {
-	case StarterTag != "" && StarterRef != "":
-		starter = fmt.Sprintf("%s (%s)", StarterTag, StarterRef)
-	case StarterRef != "":
-		starter = StarterRef
+	case ShopTag != "" && ShopRef != "":
+		shop = fmt.Sprintf("%s (%s)", ShopTag, ShopRef)
+	case ShopRef != "":
+		shop = ShopRef
 	default:
-		starter = "HEAD (dev build)"
+		shop = "HEAD (dev build)"
 	}
-	return fmt.Sprintf("gh-optivem %s\nstarter:   %s", Version, starter)
+	return fmt.Sprintf("gh-optivem %s\nshop:      %s", Version, shop)
 }

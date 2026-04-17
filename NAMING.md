@@ -422,7 +422,7 @@ After all content replacements, rename files and directories using the same patt
 
 ## Collision Safety
 
-The template name "Shop" is **not a substring** of any other identifier in the starter (no "Workshop", "ShopKeeper", etc.), so simple text replacement is safe. However, replacements must still be ordered longest-first to avoid double-replacing (e.g. replacing `Shop` inside an already-replaced `SkyTravelApiDriver`).
+The template name "Shop" is **not a substring** of any other identifier in the shop (no "Workshop", "ShopKeeper", etc.), so simple text replacement is safe. However, replacements must still be ordered longest-first to avoid double-replacing (e.g. replacing `Shop` inside an already-replaced `SkyTravelApiDriver`).
 
 ---
 

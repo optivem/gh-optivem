@@ -32,7 +32,7 @@ def replace_repo_references(cfg: Config, **_: object) -> None:
     log("Step 5: Replacing repository references...")
 
     if cfg.dry_run:
-        log(f"[DRY RUN] Would replace optivem/starter -> {cfg.full_repo}")
+        log(f"[DRY RUN] Would replace optivem/shop -> {cfg.full_repo}")
         return
 
     if cfg.arch == "monolith":
@@ -44,7 +44,7 @@ def replace_repo_references(cfg: Config, **_: object) -> None:
 
         # Fix docker-compose image URLs: repo -> repo-frontend / repo-backend
         # Must run after replace_refs because docker-compose originally has
-        # optivem/starter which gets replaced to owner/repo above.
+        # optivem/shop which gets replaced to owner/repo above.
         fixup_multirepo_docker_compose(
             cfg.repo_dir, cfg.repo, cfg.frontend_repo, cfg.backend_repo, cfg.backend_lang,
         )
@@ -53,16 +53,16 @@ def replace_repo_references(cfg: Config, **_: object) -> None:
 
 
 def _replace_refs_in_repo(repo_dir: str, full_repo: str, owner_lower: str) -> None:
-    """Replace optivem/starter references in a single repo."""
-    # Pass 1: optivem/starter -> owner/repo
-    n = replace_in_tree(repo_dir, "optivem/starter", full_repo, TEXT_EXTS)
-    n += replace_in_dockerfiles(repo_dir, "optivem/starter", full_repo)
-    ok(f"Pass 1: replaced optivem/starter -> {full_repo} ({n} files)")
+    """Replace optivem/shop references in a single repo."""
+    # Pass 1: optivem/shop -> owner/repo
+    n = replace_in_tree(repo_dir, "optivem/shop", full_repo, TEXT_EXTS)
+    n += replace_in_dockerfiles(repo_dir, "optivem/shop", full_repo)
+    ok(f"Pass 1: replaced optivem/shop -> {full_repo} ({n} files)")
 
-    # Pass 2: optivem_starter -> owner_repo (SonarCloud underscore variant)
+    # Pass 2: optivem_shop -> owner_repo (SonarCloud underscore variant)
     underscore_new = full_repo.replace("/", "_")
-    n = replace_in_tree(repo_dir, "optivem_starter", underscore_new, TEXT_EXTS)
-    ok(f"Pass 2: replaced optivem_starter -> {underscore_new} ({n} files)")
+    n = replace_in_tree(repo_dir, "optivem_shop", underscore_new, TEXT_EXTS)
+    ok(f"Pass 2: replaced optivem_shop -> {underscore_new} ({n} files)")
 
     # Pass 3: SonarCloud org (scoped patterns to avoid touching optivem/actions)
     sonar_replacements = [
@@ -148,7 +148,7 @@ def _fixup_frontend_package_json(cfg: Config) -> None:
     """Update package.json in the frontend repo root."""
     pkg_path = os.path.join(cfg.frontend_repo_dir, "package.json")
     if os.path.isfile(pkg_path):
-        replace_in_file(pkg_path, '"name": "starter-frontend"', f'"name": "{cfg.repo}-frontend"')
+        replace_in_file(pkg_path, '"name": "shop-frontend"', f'"name": "{cfg.repo}-frontend"')
         replace_in_file(pkg_path, '"name": "frontend-react"', f'"name": "{cfg.repo}-frontend"')
 
 
@@ -169,14 +169,14 @@ def _ns_java(cfg: Config, component: str, repo_dir: str) -> None:
     n += replace_in_tree(repo_dir, old_full, new_full, [".yml"])
     ok(f"Java: replaced {old_full} -> {new_full} ({n} files)")
 
-    old_dir_parts = ["com", "optivem", "starter"]
+    old_dir_parts = ["com", "optivem", "shop"]
     new_dir_parts = ["com", cfg.owner_lower, cfg.repo_nohyphens]
     for dirpath, _dirnames, _filenames in os.walk(repo_dir):
         if is_git_dir(dirpath):
             continue
         if os.path.isdir(os.path.join(dirpath, *old_dir_parts)):
             rename_java_dirs(dirpath, old_dir_parts, new_dir_parts)
-    ok(f"Java: renamed directories com/optivem/starter -> com/{cfg.owner_lower}/{cfg.repo_nohyphens}")
+    ok(f"Java: renamed directories com/optivem/shop -> com/{cfg.owner_lower}/{cfg.repo_nohyphens}")
 
 
 def _ns_dotnet(cfg: Config, component: str, repo_dir: str) -> None:
@@ -203,7 +203,7 @@ def _ns_typescript(cfg: Config, component: str, repo_dir: str) -> None:
         if "system-test" in dirpath and "package.json" in filenames:
             pkg_path = os.path.join(dirpath, "package.json")
             replace_in_file(pkg_path, '"author": "Optivem"', f'"author": "{cfg.owner}"')
-            replace_in_file(pkg_path, '"Starter - System Tests"', f'"{cfg.system_name} - System Tests"')
+            replace_in_file(pkg_path, '"Shop - System Tests"', f'"{cfg.system_name} - System Tests"')
             replace_in_file(pkg_path, '"optivem"', f'"{cfg.owner_lower}"')
             ok("TypeScript: updated package.json metadata")
             break
@@ -214,6 +214,6 @@ def _ns_typescript(cfg: Config, component: str, repo_dir: str) -> None:
         if "package.json" in filenames:
             pkg_path = os.path.join(dirpath, "package.json")
             if "monolith" in dirpath:
-                replace_in_file(pkg_path, '"name": "starter-monolith"', f'"name": "{cfg.repo}-monolith"')
+                replace_in_file(pkg_path, '"name": "shop-monolith"', f'"name": "{cfg.repo}-monolith"')
             elif "backend" in dirpath:
-                replace_in_file(pkg_path, '"name": "starter-backend"', f'"name": "{cfg.repo}-backend"')
+                replace_in_file(pkg_path, '"name": "shop-backend"', f'"name": "{cfg.repo}-backend"')

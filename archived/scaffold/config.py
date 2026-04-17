@@ -36,7 +36,7 @@ class Config:
     test_lang: str
     dry_run: bool
     workdir: str
-    starter_path: str
+    shop_path: str
     dockerhub_username: str
     dockerhub_token: str
     sonar_token: str
@@ -45,11 +45,11 @@ class Config:
     owner_lower: str
     repo_pascal: str
     repo_nohyphens: str
-    java_ns_old: str = field(default="com.optivem.starter")
+    java_ns_old: str = field(default="com.optivem.shop")
     java_ns_new: str = ""
-    dotnet_ns_old: str = field(default="Optivem.Starter")
+    dotnet_ns_old: str = field(default="Optivem.Shop")
     dotnet_ns_new: str = ""
-    ts_pkg_old: str = field(default="@optivem/starter-system-test")
+    ts_pkg_old: str = field(default="@optivem/shop-system-test")
     ts_pkg_new: str = ""
     # Multi-repo (multitier only)
     ghcr_token: str = ""
@@ -65,7 +65,7 @@ class Config:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Scaffold a pipeline project from starter templates.",
+        description="Scaffold a pipeline project from shop templates.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--owner", required=True, help="GitHub username or org")
@@ -131,12 +131,12 @@ def validate(args: argparse.Namespace) -> Config:
                 fatal(f"{name} environment variable is required")
 
     script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    starter_path = os.path.dirname(script_dir) if os.path.basename(script_dir) == "scripts" else script_dir
+    shop_path = os.path.dirname(script_dir) if os.path.basename(script_dir) == "scripts" else script_dir
     # Re-derive: scaffold package is scripts/scaffold/, so __file__ is scripts/scaffold/config.py
-    # starter_path should be the parent of scripts/
-    starter_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if not os.path.isfile(os.path.join(starter_path, "VERSION")):
-        fatal(f"Cannot find VERSION file in {starter_path} — script must be inside starter/scripts/")
+    # shop_path should be the parent of scripts/
+    shop_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if not os.path.isfile(os.path.join(shop_path, "VERSION")):
+        fatal(f"Cannot find VERSION file in {shop_path} — script must be inside shop/scripts/")
 
     result = subprocess.run("gh auth status", shell=True, capture_output=True, text=True)
     if result.returncode != 0 and not args.dry_run:
@@ -163,7 +163,7 @@ def validate(args: argparse.Namespace) -> Config:
         test_lang=test_lang,
         dry_run=args.dry_run,
         workdir=args.workdir or tempfile.mkdtemp(prefix="scaffold-"),
-        starter_path=starter_path,
+        shop_path=shop_path,
         dockerhub_username=dockerhub_username,
         dockerhub_token=dockerhub_token,
         sonar_token=sonar_token,

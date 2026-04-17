@@ -53,7 +53,7 @@ def replace_in_dockerfiles(root: str, old: str, new: str) -> int:
 
 
 def rename_java_dirs(root: str, old_parts: list[str], new_parts: list[str]) -> None:
-    """Rename Java package directories: com/optivem/starter -> com/owner/repo."""
+    """Rename Java package directories: com/optivem/shop -> com/owner/repo."""
     old_path = os.path.join(*old_parts)
     new_path = os.path.join(*new_parts)
     for dirpath, _dirnames, _filenames in os.walk(root):
@@ -73,7 +73,7 @@ def rename_java_dirs(root: str, old_parts: list[str], new_parts: list[str]) -> N
 
 
 def rename_dotnet_files(root: str, old_prefix: str, new_prefix: str) -> None:
-    """Rename .NET files: Optivem.Starter.X.csproj -> NewNs.X.csproj etc."""
+    """Rename .NET files: Optivem.Shop.X.csproj -> NewNs.X.csproj etc."""
     for dirpath, _dirnames, filenames in os.walk(root):
         for fname in filenames:
             if old_prefix in fname:

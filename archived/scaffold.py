@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Deterministic scaffold script for creating pipeline projects from starter templates.
+Deterministic scaffold script for creating pipeline projects from shop templates.
 
 Usage:
   Monolith:

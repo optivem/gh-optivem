@@ -55,19 +55,19 @@ def apply_template(cfg: Config, **_: object) -> None:
         return
 
     repo_dir = cfg.repo_dir
-    starter = cfg.starter_path
+    shop = cfg.shop_path
 
     os.makedirs(os.path.join(repo_dir, ".github", "workflows"), exist_ok=True)
 
     if cfg.arch == "monolith":
-        _apply_monolith(cfg, repo_dir, starter)
+        _apply_monolith(cfg, repo_dir, shop)
     else:
-        _apply_multitier(cfg, repo_dir, starter)
+        _apply_multitier(cfg, repo_dir, shop)
 
     ok("Applied template files")
 
 
-def _apply_monolith(cfg: Config, repo_dir: str, starter: str) -> None:
+def _apply_monolith(cfg: Config, repo_dir: str, shop: str) -> None:
     lang = cfg.lang
     test_lang = cfg.test_lang
     assert lang is not None
@@ -81,23 +81,23 @@ def _apply_monolith(cfg: Config, repo_dir: str, starter: str) -> None:
     ]
     if lang == test_lang:
         workflows.append(f"monolith-{lang}-verify.yml")
-    copy_workflows(workflows, starter, repo_dir)
+    copy_workflows(workflows, shop, repo_dir)
 
     shutil.copytree(
-        os.path.join(starter, "system", "monolith", lang),
+        os.path.join(shop, "system", "monolith", lang),
         os.path.join(repo_dir, "system", "monolith", lang),
     )
 
     test_dst = os.path.join(repo_dir, "system-test", test_lang)
-    shutil.copytree(os.path.join(starter, "system-test", test_lang), test_dst)
+    shutil.copytree(os.path.join(shop, "system-test", test_lang), test_dst)
     select_docker_compose(test_dst, "single")
-    copy_version(starter, repo_dir)
+    copy_version(shop, repo_dir)
 
     if lang != test_lang:
         _fixup_monolith_cross_lang(repo_dir, lang, test_lang)
 
 
-def _apply_multitier(cfg: Config, repo_dir: str, starter: str) -> None:
+def _apply_multitier(cfg: Config, repo_dir: str, shop: str) -> None:
     backend_lang = cfg.backend_lang
     frontend_lang = cfg.frontend_lang
     test_lang = cfg.test_lang
@@ -115,12 +115,12 @@ def _apply_multitier(cfg: Config, repo_dir: str, starter: str) -> None:
     ]
     if backend_lang == test_lang:
         system_workflows.append(f"multitier-system-{backend_lang}-verify.yml")
-    copy_workflows(system_workflows, starter, repo_dir)
+    copy_workflows(system_workflows, shop, repo_dir)
 
     test_dst = os.path.join(repo_dir, "system-test", test_lang)
-    shutil.copytree(os.path.join(starter, "system-test", test_lang), test_dst)
+    shutil.copytree(os.path.join(shop, "system-test", test_lang), test_dst)
     select_docker_compose(test_dst, "multi")
-    copy_version(starter, repo_dir)
+    copy_version(shop, repo_dir)
 
     # Cross-language fixup must run BEFORE image URL fixup, because the
     # template uses the test_lang in image names (e.g. multitier-backend-dotnet)
@@ -138,7 +138,7 @@ def _apply_multitier(cfg: Config, repo_dir: str, starter: str) -> None:
 
     # ── Backend repo: code at root, commit stage workflow ──────────────────
     backend_component = f"backend-{backend_lang}"
-    backend_src = os.path.join(starter, "system", "multitier", backend_component)
+    backend_src = os.path.join(shop, "system", "multitier", backend_component)
 
     os.makedirs(os.path.join(backend_dir, ".github", "workflows"), exist_ok=True)
 
@@ -154,14 +154,14 @@ def _apply_multitier(cfg: Config, repo_dir: str, starter: str) -> None:
     # Copy commit stage workflow
     copy_workflows(
         [f"multitier-{backend_component}-commit-stage.yml"],
-        starter, backend_dir,
+        shop, backend_dir,
     )
     fixup_commit_stage_for_standalone(backend_dir, backend_component, backend_lang)
     ok("Applied backend repo template")
 
     # ── Frontend repo: code at root, commit stage workflow ─────────────────
     frontend_component = f"frontend-{frontend_lang}"
-    frontend_src = os.path.join(starter, "system", "multitier", frontend_component)
+    frontend_src = os.path.join(shop, "system", "multitier", frontend_component)
 
     os.makedirs(os.path.join(frontend_dir, ".github", "workflows"), exist_ok=True)
 
@@ -175,7 +175,7 @@ def _apply_multitier(cfg: Config, repo_dir: str, starter: str) -> None:
 
     copy_workflows(
         [f"multitier-{frontend_component}-commit-stage.yml"],
-        starter, frontend_dir,
+        shop, frontend_dir,
     )
     fixup_commit_stage_for_standalone(frontend_dir, frontend_component, frontend_lang)
     ok("Applied frontend repo template")

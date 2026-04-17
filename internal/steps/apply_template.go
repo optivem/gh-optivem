@@ -33,7 +33,7 @@ const (
 	dirSystemTest             = "system-test"
 	dirExternalRealSim        = "external-real-sim"
 	dirExternalStub           = "external-stub"
-	starterSystemPrefix       = "../../system/"
+	shopSystemPrefix       = "../../system/"
 )
 
 var externalSimDirs = []string{dirExternalRealSim, dirExternalStub}
@@ -54,10 +54,10 @@ func appendCloudReplacement(r [][2]string, deploy string) [][2]string {
 	return r
 }
 
-// copyExternals copies external system simulator directories from starter to repo.
-func copyExternals(starter, repoDir string) {
+// copyExternals copies external system simulator directories from shop to repo.
+func copyExternals(shop, repoDir string) {
 	for _, dir := range externalSimDirs {
-		src := filepath.Join(starter, "system", dir)
+		src := filepath.Join(shop, "system", dir)
 		if _, err := os.Stat(src); err == nil {
 			files.CopyDir(src, filepath.Join(repoDir, dir))
 		}
@@ -65,11 +65,11 @@ func copyExternals(starter, repoDir string) {
 }
 
 // copySystemTests copies system-test/{testLang}/ -> system-test/ and selects docker-compose variant.
-func copySystemTests(starter, repoDir, testLang, composeVariant string) string {
+func copySystemTests(shop, repoDir, testLang, composeVariant string) string {
 	testDst := filepath.Join(repoDir, dirSystemTest)
-	files.CopyDir(filepath.Join(starter, dirSystemTest, testLang), testDst)
+	files.CopyDir(filepath.Join(shop, dirSystemTest, testLang), testDst)
 	templates.SelectDockerCompose(testDst, composeVariant)
-	templates.CopyVersion(starter, repoDir)
+	templates.CopyVersion(shop, repoDir)
 	return testDst
 }
 
@@ -116,7 +116,7 @@ func ApplyTemplate(cfg *config.Config) {
 	// Copy architecture-independent workflows
 	templates.CopyWorkflows(map[string]string{
 		cleanupPrereleaseWorkflow: cleanupPrereleaseWorkflow,
-	}, cfg.StarterPath, cfg.RepoDir)
+	}, cfg.ShopPath, cfg.RepoDir)
 
 	if cfg.Arch == "monolith" {
 		if cfg.RepoStrategy == "monorepo" {
@@ -140,7 +140,7 @@ func ApplyTemplate(cfg *config.Config) {
 func applyMonolithMonorepo(cfg *config.Config) {
 	lang := cfg.Lang
 	testLang := cfg.TestLang
-	starter := cfg.StarterPath
+	shop := cfg.ShopPath
 	repoDir := cfg.RepoDir
 	stageSuffix := cloudRunSuffix(cfg.Deploy)
 
@@ -148,16 +148,16 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	wfMap := monolithPipelineWorkflows(testLang, stageSuffix)
 	wfMap[prefixMonolith+lang+commitStageYml] = "commit-stage.yml"
 	addLegacyWorkflow(wfMap, prefixMonolith, testLang, cfg.Deploy)
-	templates.CopyWorkflows(wfMap, starter, repoDir)
+	templates.CopyWorkflows(wfMap, shop, repoDir)
 
 	// System code: system/monolith/{lang}/ -> system/
 	files.CopyDir(
-		filepath.Join(starter, "system", "monolith", lang),
+		filepath.Join(shop, "system", "monolith", lang),
 		filepath.Join(repoDir, "system"),
 	)
 
-	copyExternals(starter, repoDir)
-	copySystemTests(starter, repoDir, testLang, "single")
+	copyExternals(shop, repoDir)
+	copySystemTests(shop, repoDir, testLang, "single")
 
 	// Fix workflow content: paths, image names, workflow names
 	contentReplacements := appendCloudReplacement(monolithContentReplacements(lang, testLang), cfg.Deploy)
@@ -168,10 +168,10 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	templates.FixupAllTextFiles(repoDir, monolithSonarKeyReplacements(lang))
 
 	if cfg.Deploy == deployCloudRun {
-		copyCloudRunScripts(starter, repoDir)
+		copyCloudRunScripts(shop, repoDir)
 	}
 
-	copyDocs(starter, repoDir, "monolith")
+	copyDocs(shop, repoDir, "monolith")
 	log.OK("Applied template files (monolith monorepo)")
 }
 
@@ -180,7 +180,7 @@ func applyMonolithMonorepo(cfg *config.Config) {
 func applyMonolithMultirepo(cfg *config.Config) {
 	lang := cfg.Lang
 	testLang := cfg.TestLang
-	starter := cfg.StarterPath
+	shop := cfg.ShopPath
 	repoDir := cfg.RepoDir
 	sysDir := cfg.SystemRepoDir
 	stageSuffix := cloudRunSuffix(cfg.Deploy)
@@ -188,10 +188,10 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	// Root repo: pipeline stage workflows + system-test
 	rootWfMap := monolithPipelineWorkflows(testLang, stageSuffix)
 	addLegacyWorkflow(rootWfMap, prefixMonolith, testLang, cfg.Deploy)
-	templates.CopyWorkflows(rootWfMap, starter, repoDir)
+	templates.CopyWorkflows(rootWfMap, shop, repoDir)
 
-	copyExternals(starter, repoDir)
-	copySystemTests(starter, repoDir, testLang, "single")
+	copyExternals(shop, repoDir)
+	copySystemTests(shop, repoDir, testLang, "single")
 
 	// Fix root repo workflow content
 	contentReplacements := appendCloudReplacement(monolithContentReplacements(lang, testLang), cfg.Deploy)
@@ -201,10 +201,10 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	templates.FixupAllTextFiles(repoDir, monolithSonarKeyReplacements(lang))
 
 	if cfg.Deploy == deployCloudRun {
-		copyCloudRunScripts(starter, repoDir)
+		copyCloudRunScripts(shop, repoDir)
 	}
 
-	copyDocs(starter, repoDir, "monolith")
+	copyDocs(shop, repoDir, "monolith")
 
 	// Fix multirepo image URLs and tokens
 	templates.FixupMonolithMultirepoImageURLs(repoDir, cfg.SystemRepo)
@@ -214,13 +214,13 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	// System repo: system code + commit stage
 	EnsureWorkflowDir(sysDir)
 
-	systemSrc := filepath.Join(starter, "system", "monolith", lang)
+	systemSrc := filepath.Join(shop, "system", "monolith", lang)
 	files.CopyDir(systemSrc, filepath.Join(sysDir, "system"))
 
 	systemWfMap := map[string]string{
 		prefixMonolith + lang + commitStageYml: "commit-stage.yml",
 	}
-	templates.CopyWorkflows(systemWfMap, starter, sysDir)
+	templates.CopyWorkflows(systemWfMap, shop, sysDir)
 
 	sysContentReplacements := [][2]string{
 		{prefixMonolith + lang + suffixCommitStage, "commit-stage"},
@@ -238,7 +238,7 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	backendLang := cfg.BackendLang
 	frontendLang := cfg.FrontendLang
 	testLang := cfg.TestLang
-	starter := cfg.StarterPath
+	shop := cfg.ShopPath
 	repoDir := cfg.RepoDir
 	stageSuffix := cloudRunSuffix(cfg.Deploy)
 
@@ -247,20 +247,20 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	wfMap[prefixMultitierBackend+backendLang+commitStageYml] = "backend-commit-stage.yml"
 	wfMap[prefixMultitierFrontend+frontendLang+commitStageYml] = "frontend-commit-stage.yml"
 	addLegacyWorkflow(wfMap, prefixMultitier, testLang, cfg.Deploy)
-	templates.CopyWorkflows(wfMap, starter, repoDir)
+	templates.CopyWorkflows(wfMap, shop, repoDir)
 
 	// Backend code: system/multitier/backend-{lang}/ -> backend/
-	backendSrc := filepath.Join(starter, "system", "multitier", "backend-"+backendLang)
+	backendSrc := filepath.Join(shop, "system", "multitier", "backend-"+backendLang)
 	files.CopyDir(backendSrc, filepath.Join(repoDir, "backend"))
 	log.OK("Applied backend template")
 
 	// Frontend code: system/multitier/frontend-{lang}/ -> frontend/
-	frontendSrc := filepath.Join(starter, "system", "multitier", "frontend-"+frontendLang)
+	frontendSrc := filepath.Join(shop, "system", "multitier", "frontend-"+frontendLang)
 	files.CopyDir(frontendSrc, filepath.Join(repoDir, "frontend"))
 	log.OK("Applied frontend template")
 
-	copyExternals(starter, repoDir)
-	copySystemTests(starter, repoDir, testLang, "multi")
+	copyExternals(shop, repoDir)
+	copySystemTests(shop, repoDir, testLang, "multi")
 
 	// Fix workflow content: paths and image names
 	contentReplacements := appendCloudReplacement(multitierContentReplacements(backendLang, frontendLang, testLang), cfg.Deploy)
@@ -270,10 +270,10 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	templates.FixupAllTextFiles(repoDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 
 	if cfg.Deploy == deployCloudRun {
-		copyCloudRunScripts(starter, repoDir)
+		copyCloudRunScripts(shop, repoDir)
 	}
 
-	copyDocs(starter, repoDir, "multitier")
+	copyDocs(shop, repoDir, "multitier")
 	log.OK("Applied template files (multitier monorepo)")
 }
 
@@ -283,7 +283,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	backendLang := cfg.BackendLang
 	frontendLang := cfg.FrontendLang
 	testLang := cfg.TestLang
-	starter := cfg.StarterPath
+	shop := cfg.ShopPath
 	repoDir := cfg.RepoDir
 	bDir := cfg.BackendRepoDir
 	fDir := cfg.FrontendRepoDir
@@ -292,10 +292,10 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	// Root repo: pipeline stage workflows + system-test + externals
 	rootWfMap := multitierPipelineWorkflows(testLang, stageSuffix)
 	addLegacyWorkflow(rootWfMap, prefixMultitier, testLang, cfg.Deploy)
-	templates.CopyWorkflows(rootWfMap, starter, repoDir)
+	templates.CopyWorkflows(rootWfMap, shop, repoDir)
 
-	copyExternals(starter, repoDir)
-	copySystemTests(starter, repoDir, testLang, "multi")
+	copyExternals(shop, repoDir)
+	copySystemTests(shop, repoDir, testLang, "multi")
 
 	// Fix root repo workflow content
 	contentReplacements := appendCloudReplacement(multitierContentReplacements(backendLang, frontendLang, testLang), cfg.Deploy)
@@ -305,10 +305,10 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	templates.FixupAllTextFiles(repoDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 
 	if cfg.Deploy == deployCloudRun {
-		copyCloudRunScripts(starter, repoDir)
+		copyCloudRunScripts(shop, repoDir)
 	}
 
-	copyDocs(starter, repoDir, "multitier")
+	copyDocs(shop, repoDir, "multitier")
 
 	// Fix multirepo image URLs and tokens
 	templates.FixupMultirepoImageURLs(repoDir, cfg.FrontendRepo, cfg.BackendRepo)
@@ -317,13 +317,13 @@ func applyMultitierMultirepo(cfg *config.Config) {
 
 	// Backend repo: code + commit stage
 	EnsureWorkflowDir(bDir)
-	backendSrc := filepath.Join(starter, "system", "multitier", "backend-"+backendLang)
+	backendSrc := filepath.Join(shop, "system", "multitier", "backend-"+backendLang)
 	files.CopyDir(backendSrc, filepath.Join(bDir, "backend"))
 
 	backendWfMap := map[string]string{
 		prefixMultitierBackend + backendLang + commitStageYml: "backend-commit-stage.yml",
 	}
-	templates.CopyWorkflows(backendWfMap, starter, bDir)
+	templates.CopyWorkflows(backendWfMap, shop, bDir)
 
 	backendReplacements := [][2]string{
 		{prefixMultitierBackend + backendLang + suffixCommitStage, "backend-commit-stage"},
@@ -336,13 +336,13 @@ func applyMultitierMultirepo(cfg *config.Config) {
 
 	// Frontend repo: code + commit stage
 	EnsureWorkflowDir(fDir)
-	frontendSrc := filepath.Join(starter, "system", "multitier", "frontend-"+frontendLang)
+	frontendSrc := filepath.Join(shop, "system", "multitier", "frontend-"+frontendLang)
 	files.CopyDir(frontendSrc, filepath.Join(fDir, "frontend"))
 
 	frontendWfMap := map[string]string{
 		prefixMultitierFrontend + frontendLang + commitStageYml: "frontend-commit-stage.yml",
 	}
-	templates.CopyWorkflows(frontendWfMap, starter, fDir)
+	templates.CopyWorkflows(frontendWfMap, shop, fDir)
 
 	frontendReplacements := [][2]string{
 		{prefixMultitierFrontend + frontendLang + suffixCommitStage, "frontend-commit-stage"},
@@ -388,12 +388,12 @@ func monolithDockerComposeReplacements(lang, testLang string) [][2]string {
 		{dirSystemTest + "/" + testLang + "/", dirSystemTest + "/"},
 		{dirSystemTest + "/" + testLang, dirSystemTest},
 		{prefixMonolithSystem + lang, "system"},
-		// Docker build context: starter has system-test/{lang}/ so ../../system/monolith/{lang} is correct there,
+		// Docker build context: shop has system-test/{lang}/ so ../../system/monolith/{lang} is correct there,
 		// but scaffold flattens to system-test/ (one level up), so the context becomes ../system
 		{"../../system/monolith/" + lang, "../system"},
 		// Volume mount paths: old layout had system-test/{lang}/, new has system-test/
-		{starterSystemPrefix + dirExternalRealSim, "../" + dirExternalRealSim},
-		{starterSystemPrefix + dirExternalStub, "../" + dirExternalStub},
+		{shopSystemPrefix + dirExternalRealSim, "../" + dirExternalRealSim},
+		{shopSystemPrefix + dirExternalStub, "../" + dirExternalStub},
 	}
 	if lang != testLang {
 		r = append(r, [2]string{"../../system/monolith/" + testLang, "../system"})
@@ -437,11 +437,11 @@ func multitierDockerComposeReplacements(backendLang, frontendLang, testLang stri
 		{prefixMultitierBackend + backendLang, "backend"},
 		{prefixMultitierFrontend + frontendLang, "frontend"},
 		// Volume mount paths: old layout had system-test/{lang}/, new has system-test/
-		{starterSystemPrefix + dirExternalRealSim, "../" + dirExternalRealSim},
-		{starterSystemPrefix + dirExternalStub, "../" + dirExternalStub},
+		{shopSystemPrefix + dirExternalRealSim, "../" + dirExternalRealSim},
+		{shopSystemPrefix + dirExternalStub, "../" + dirExternalStub},
 	}
 	// Docker build contexts always reference the test-lang backend and the frontend lang in the
-	// starter layout (e.g. backend-typescript, frontend-react). After scaffolding these become
+	// shop layout (e.g. backend-typescript, frontend-react). After scaffolding these become
 	// ../backend and ../frontend respectively, so we always need both replacements.
 	r = append(r, [2]string{"../../system/multitier/backend-" + testLang, "../backend"})
 	r = append(r, [2]string{prefixMultitierBackend + testLang, "backend"})
@@ -467,16 +467,16 @@ func multitierSonarKeyReplacements(backendLang, frontendLang string) [][2]string
 }
 
 // copyDocs copies arch-specific and shared docs templates into {repoDir}/docs/.
-func copyDocs(starter, repoDir, arch string) {
+func copyDocs(shop, repoDir, arch string) {
 	dst := filepath.Join(repoDir, "docs")
-	files.CopyDir(filepath.Join(starter, "docs", arch), dst)
-	files.CopyDir(filepath.Join(starter, "docs", "shared"), dst)
+	files.CopyDir(filepath.Join(shop, "docs", arch), dst)
+	files.CopyDir(filepath.Join(shop, "docs", "shared"), dst)
 }
 
-// copyCloudRunScripts copies setup-gcp.sh and teardown-gcp.sh from starter to repo.
-func copyCloudRunScripts(starter, repoDir string) {
+// copyCloudRunScripts copies setup-gcp.sh and teardown-gcp.sh from shop to repo.
+func copyCloudRunScripts(shop, repoDir string) {
 	for _, name := range []string{"setup-gcp.sh", "teardown-gcp.sh"} {
-		src := filepath.Join(starter, name)
+		src := filepath.Join(shop, name)
 		if _, err := os.Stat(src); err == nil {
 			files.CopyFile(src, filepath.Join(repoDir, name))
 		}

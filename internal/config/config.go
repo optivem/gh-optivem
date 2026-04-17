@@ -38,8 +38,8 @@ type Config struct {
 	ForceCleanup bool   // cleanup even on failure
 	NoBugReport  bool   // skip auto-creating GitHub issues on failure
 	WorkDir    string
-	StarterPath string
-	StarterRef  string // Pinned optivem/starter ref (SHA or tag). Empty = HEAD.
+	ShopPath string
+	ShopRef  string // Pinned optivem/shop ref (SHA or tag). Empty = HEAD.
 
 	DockerHubUsername string
 	DockerHubToken   string
@@ -327,7 +327,7 @@ func ParseAndValidate() *Config {
 	noBugReport := flag.Bool("no-bug-report", false, "Skip auto-creating GitHub issues on failure")
 	deploy := flag.String("deploy", "docker", "Deployment target: docker or cloud-run")
 	workDir := flag.String("workdir", "", "Working directory for cloning (default: temp dir)")
-	starterRef := flag.String("starter-ref", "", "Pin optivem/starter to this ref (SHA or tag). Overrides build-time pin. Default: HEAD of default branch.")
+	shopRef := flag.String("shop-ref", "", "Pin optivem/shop to this ref (SHA or tag). Overrides build-time pin. Default: HEAD of default branch.")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 
 	flag.Parse()
@@ -441,16 +441,16 @@ func ParseAndValidate() *Config {
 		}
 	}
 
-	// Resolve starter ref: explicit --starter-ref > build-time version.StarterRef > "" (HEAD).
-	resolvedStarterRef := *starterRef
-	if resolvedStarterRef == "" {
-		resolvedStarterRef = version.StarterRef
+	// Resolve shop ref: explicit --shop-ref > build-time version.ShopRef > "" (HEAD).
+	resolvedShopRef := *shopRef
+	if resolvedShopRef == "" {
+		resolvedShopRef = version.ShopRef
 	}
 
-	// Clone starter repo from GitHub into a temp directory.
-	starterPath, cloneErr := cloneStarter(resolvedStarterRef)
+	// Clone shop repo from GitHub into a temp directory.
+	shopPath, cloneErr := cloneShop(resolvedShopRef)
 	if cloneErr != nil {
-		log.FatalExit("Cannot clone starter repo: " + cloneErr.Error())
+		log.FatalExit("Cannot clone shop repo: " + cloneErr.Error())
 	}
 
 	// Check gh auth
@@ -522,8 +522,8 @@ func ParseAndValidate() *Config {
 		ForceCleanup: *forceCleanup,
 		NoBugReport:  *noBugReport,
 		WorkDir:    wd,
-		StarterPath: starterPath,
-		StarterRef:  resolvedStarterRef,
+		ShopPath: shopPath,
+		ShopRef:  resolvedShopRef,
 
 		DockerHubUsername: dockerHubUsername,
 		DockerHubToken:   dockerHubToken,
@@ -561,16 +561,16 @@ func ParseAndValidate() *Config {
 	}
 }
 
-// cloneStarter clones optivem/starter from GitHub into a temp directory.
+// cloneShop clones optivem/shop from GitHub into a temp directory.
 // When ref is empty, clones HEAD of the default branch with --depth=1.
 // When ref is a SHA or tag, clones full history then checks out the ref.
-func cloneStarter(ref string) (string, error) {
-	dir, err := os.MkdirTemp("", "starter-")
+func cloneShop(ref string) (string, error) {
+	dir, err := os.MkdirTemp("", "shop-")
 	if err != nil {
 		return "", fmt.Errorf("cannot create temp dir: %w", err)
 	}
 
-	cloneArgs := []string{"repo", "clone", "optivem/starter", dir}
+	cloneArgs := []string{"repo", "clone", "optivem/shop", dir}
 	if ref == "" {
 		cloneArgs = append(cloneArgs, "--", "--depth=1")
 	}
@@ -587,9 +587,9 @@ func cloneStarter(ref string) (string, error) {
 			os.RemoveAll(dir)
 			return "", fmt.Errorf("git checkout %s failed: %s\n%s", ref, cerr, string(cout))
 		}
-		log.OKf("Cloned starter to %s (pinned to %s)", dir, ref)
+		log.OKf("Cloned shop to %s (pinned to %s)", dir, ref)
 	} else {
-		log.OKf("Cloned starter to %s (HEAD)", dir)
+		log.OKf("Cloned shop to %s (HEAD)", dir)
 	}
 	return dir, nil
 }

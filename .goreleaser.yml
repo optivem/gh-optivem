@@ -6,8 +6,8 @@ builds:
     ldflags:
       - -s -w
       - -X github.com/optivem/gh-optivem/internal/version.Version={{.Tag}}
-      - -X github.com/optivem/gh-optivem/internal/version.StarterRef={{.Env.STARTER_SHA}}
-      - -X github.com/optivem/gh-optivem/internal/version.StarterTag={{.Env.STARTER_TAG}}
+      - -X github.com/optivem/gh-optivem/internal/version.ShopRef={{.Env.SHOP_SHA}}
+      - -X github.com/optivem/gh-optivem/internal/version.ShopTag={{.Env.SHOP_TAG}}
     env:
       - CGO_ENABLED=0
     goos:
@@ -37,4 +37,4 @@ changelog:
 release:
   footer: |
     ---
-    Bundled with optivem/starter @ {{ if .Env.STARTER_TAG }}{{ .Env.STARTER_TAG }} ({{ .Env.STARTER_SHA }}){{ else }}{{ .Env.STARTER_SHA }}{{ end }}
+    Bundled with optivem/shop @ {{ if .Env.SHOP_TAG }}{{ .Env.SHOP_TAG }} ({{ .Env.SHOP_SHA }}){{ else }}{{ .Env.SHOP_SHA }}{{ end }}

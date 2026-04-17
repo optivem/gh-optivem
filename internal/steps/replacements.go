@@ -19,12 +19,12 @@ var textExts = []string{
 	".xml", ".properties", ".cfg", ".txt",
 }
 
-// ReplaceRepoReferences replaces optivem/starter references with the target repo.
+// ReplaceRepoReferences replaces optivem/shop references with the target repo.
 func ReplaceRepoReferences(cfg *config.Config) {
 	log.Log("Step 6: Replacing repository references...")
 
 	if cfg.DryRun {
-		log.Logf("[DRY RUN] Would replace optivem/starter -> %s", cfg.FullRepo)
+		log.Logf("[DRY RUN] Would replace optivem/shop -> %s", cfg.FullRepo)
 		return
 	}
 
@@ -152,15 +152,15 @@ func replaceInfraNames(cfg *config.Config) {
 }
 
 func replaceRefsInRepo(repoDir, fullRepo, ownerLower string) {
-	// Pass 1: optivem/starter -> owner/repo
-	n := files.ReplaceInTree(repoDir, "optivem/starter", fullRepo, textExts)
-	n += files.ReplaceInDockerfiles(repoDir, "optivem/starter", fullRepo)
-	log.OKf("Pass 1: replaced optivem/starter -> %s (%d files)", fullRepo, n)
+	// Pass 1: optivem/shop -> owner/repo
+	n := files.ReplaceInTree(repoDir, "optivem/shop", fullRepo, textExts)
+	n += files.ReplaceInDockerfiles(repoDir, "optivem/shop", fullRepo)
+	log.OKf("Pass 1: replaced optivem/shop -> %s (%d files)", fullRepo, n)
 
-	// Pass 2: optivem_starter -> owner_repo (SonarCloud underscore variant)
+	// Pass 2: optivem_shop -> owner_repo (SonarCloud underscore variant)
 	underscoreNew := strings.ReplaceAll(fullRepo, "/", "_")
-	n = files.ReplaceInTree(repoDir, "optivem_starter", underscoreNew, textExts)
-	log.OKf("Pass 2: replaced optivem_starter -> %s (%d files)", underscoreNew, n)
+	n = files.ReplaceInTree(repoDir, "optivem_shop", underscoreNew, textExts)
+	log.OKf("Pass 2: replaced optivem_shop -> %s (%d files)", underscoreNew, n)
 
 	// Pass 3: SonarCloud org patterns
 	sonarReplacements := [][2]string{
@@ -196,7 +196,7 @@ func replaceRefsInRepo(repoDir, fullRepo, ownerLower string) {
 			}
 		}
 		if ymlCount == 0 {
-			log.Warn("Safety check: no workflow files found (templates may be missing from starter)")
+			log.Warn("Safety check: no workflow files found (templates may be missing from shop)")
 		} else if !actionsFound {
 			log.Fatalf("Safety check failed: optivem/actions references were corrupted in %s!", repoDir)
 		} else {
@@ -598,7 +598,7 @@ func fixupFrontendPackageJSON(cfg *config.Config) {
 	}
 	frontendDir := filepath.Join(base, "frontend")
 
-	// The package name starts as "optivem-shop-frontend" in the starter template.
+	// The package name starts as "optivem-shop-frontend" in the shop template.
 	// By the time this runs (Step 7), the repo reference pass (Step 6) has already
 	// replaced "optivem" with the owner name, so the current value is
 	// "<owner>-shop-frontend" (e.g. "valentinajemuovic-shop-frontend").

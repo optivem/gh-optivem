@@ -9,9 +9,9 @@ from .files import replace_in_file
 from .log import warn
 
 
-def copy_workflows(workflow_names: list[str], starter: str, repo_dir: str) -> None:
-    """Copy workflow files from starter to repo."""
-    wf_src = os.path.join(starter, ".github", "workflows")
+def copy_workflows(workflow_names: list[str], shop: str, repo_dir: str) -> None:
+    """Copy workflow files from shop to repo."""
+    wf_src = os.path.join(shop, ".github", "workflows")
     wf_dst = os.path.join(repo_dir, ".github", "workflows")
     for wf in workflow_names:
         src = os.path.join(wf_src, wf)
@@ -34,9 +34,9 @@ def select_docker_compose(test_dst: str, variant: str) -> None:
                 os.remove(path)
 
 
-def copy_version(starter: str, repo_dir: str) -> None:
-    """Copy VERSION file from starter to repo."""
-    src = os.path.join(starter, "VERSION")
+def copy_version(shop: str, repo_dir: str) -> None:
+    """Copy VERSION file from shop to repo."""
+    src = os.path.join(shop, "VERSION")
     if os.path.exists(src):
         shutil.copy2(src, os.path.join(repo_dir, "VERSION"))
 
@@ -127,7 +127,7 @@ def fixup_multirepo_docker_compose(repo_dir: str, repo_name: str,
     """Replace system repo name with component repo names in docker-compose files.
 
     Must run AFTER replace_repo_references, because at template-apply time
-    the docker-compose still has 'optivem/starter' which gets replaced to
+    the docker-compose still has 'optivem/shop' which gets replaced to
     'owner/repo' by replace_repo_references. This function then fixes
     'owner/repo' -> 'owner/repo-frontend' / 'owner/repo-backend'.
     """

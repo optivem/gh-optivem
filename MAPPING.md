@@ -2,12 +2,12 @@
 
 The scaffolded repo output should contain **no language or architecture** in folder names, workflow filenames, or Docker image names. The user's choices (language, architecture, system name, etc.) appear **only in the README**.
 
-## Starter Source Structure (unchanged)
+## Shop Source Structure (unchanged)
 
-The starter repo keeps all variants — language appears in folder/workflow names because it holds every combination:
+The shop repo keeps all variants — language appears in folder/workflow names because it holds every combination:
 
 ```
-starter/
+shop/
   system/
     monolith/java/            # monolith backends
     monolith/dotnet/
@@ -167,7 +167,7 @@ Three repos: root repo, backend repo, frontend repo.
 
 No language or architecture in image names:
 
-| Current (in starter) | Target (in scaffolded repo) |
+| Current (in shop) | Target (in scaffolded repo) |
 |---|---|
 | `monolith-system-{lang}` | `system` |
 | `multitier-backend-{lang}` | `backend` |
@@ -228,9 +228,9 @@ Note: The root repo does not get a SonarCloud project — only code components (
 
 ## Documentation
 
-The scaffolder copies docs from the starter into the root repo:
+The scaffolder copies docs from the shop into the root repo:
 
-Source: `starter/docs/{arch}/` + `starter/docs/shared/` → `{repo}/docs/`
+Source: `shop/docs/{arch}/` + `shop/docs/shared/` → `{repo}/docs/`
 
 Scaffolded docs structure (all combinations):
 

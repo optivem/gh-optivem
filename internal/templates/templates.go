@@ -10,10 +10,10 @@ import (
 	"github.com/optivem/gh-optivem/internal/log"
 )
 
-// CopyWorkflows copies workflow files from starter to repo, renaming them.
+// CopyWorkflows copies workflow files from shop to repo, renaming them.
 // mappings is a map of source filename -> destination filename.
-func CopyWorkflows(mappings map[string]string, starter, repoDir string) {
-	wfSrc := filepath.Join(starter, ".github", "workflows")
+func CopyWorkflows(mappings map[string]string, shop, repoDir string) {
+	wfSrc := filepath.Join(shop, ".github", "workflows")
 	wfDst := filepath.Join(repoDir, ".github", "workflows")
 	os.MkdirAll(wfDst, 0755)
 
@@ -42,9 +42,9 @@ func SelectDockerCompose(testDst, variant string) {
 	}
 }
 
-// CopyVersion copies the VERSION file from starter to repo.
-func CopyVersion(starter, repoDir string) {
-	src := filepath.Join(starter, "VERSION")
+// CopyVersion copies the VERSION file from shop to repo.
+func CopyVersion(shop, repoDir string) {
+	src := filepath.Join(shop, "VERSION")
 	if _, err := os.Stat(src); err == nil {
 		files.CopyFile(src, filepath.Join(repoDir, "VERSION"))
 	}
@@ -158,7 +158,7 @@ func FixupMonolithMultirepoDockerCompose(repoDir, repoName, systemRepo string) {
 	})
 }
 
-// FixupWorkflowContent replaces starter-specific paths and image names inside all workflow files.
+// FixupWorkflowContent replaces shop-specific paths and image names inside all workflow files.
 // replacements is a list of old -> new pairs to apply.
 func FixupWorkflowContent(repoDir string, replacements [][2]string) {
 	wfDir := filepath.Join(repoDir, ".github", "workflows")
@@ -177,7 +177,7 @@ func FixupWorkflowContent(repoDir string, replacements [][2]string) {
 	}
 }
 
-// FixupDockerComposeContent replaces starter-specific paths and image names inside docker-compose files.
+// FixupDockerComposeContent replaces shop-specific paths and image names inside docker-compose files.
 func FixupDockerComposeContent(repoDir string, replacements [][2]string) {
 	filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || files.IsGitDir(path) {

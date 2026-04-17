@@ -48,8 +48,8 @@ func verifyFlags() []string {
 	if os.Getenv("TEST_EXCLUDE_LEGACY") == "true" {
 		flags = append(flags, "--exclude-legacy")
 	}
-	if ref := os.Getenv("TEST_STARTER_REF"); ref != "" {
-		flags = append(flags, "--starter-ref", ref)
+	if ref := os.Getenv("TEST_SHOP_REF"); ref != "" {
+		flags = append(flags, "--shop-ref", ref)
 	}
 	return flags
 }

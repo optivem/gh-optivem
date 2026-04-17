@@ -208,7 +208,7 @@ func RenameJavaDirs(root string, oldParts, newParts []string) {
 	})
 }
 
-// RenameDotnetFiles renames .NET files: Optivem.Starter.X.csproj -> NewNs.X.csproj etc.
+// RenameDotnetFiles renames .NET files: Optivem.Shop.X.csproj -> NewNs.X.csproj etc.
 func RenameDotnetFiles(root, oldPrefix, newPrefix string) {
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
