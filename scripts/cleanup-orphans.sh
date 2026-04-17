@@ -29,6 +29,7 @@ usage() {
   echo ""
   echo "Options:"
   echo "  --delete              Actually delete (default: dry run)"
+  echo "  --before <date>       Only include repos created before this date (exclusive, ISO 8601 e.g. 2026-04-01)"
   echo "  --prefixes <list>     Space-separated prefixes (default: test-app- page-turner- course-tester- ct-)"
   echo "  --tmp-dir <path>      Local orphan dir (default: <academy>/.tmp)"
   echo "  --sonar-token <tok>   SonarCloud token (or set SONAR_TOKEN env var)"
@@ -47,6 +48,7 @@ CLEAN_TMP=0
 TMP_DIR=""
 DEFAULT_PREFIXES="test-app- page-turner- course-tester- ct-"
 PREFIXES=""
+BEFORE_DATE=""
 SONAR_TOKEN="${SONAR_TOKEN:-}"
 SONAR_API_URL="${SONAR_API_URL:-https://sonarcloud.io/api}"
 
@@ -59,6 +61,7 @@ while [[ $# -gt 0 ]]; do
     --docker)     CLEAN_DOCKER=1; shift ;;
     --tmp)        CLEAN_TMP=1; shift ;;
     --delete)     DRY_RUN=0; shift ;;
+    --before)     BEFORE_DATE="$2"; shift 2 ;;
     --prefixes)   PREFIXES="$2"; shift 2 ;;
     --tmp-dir)    TMP_DIR="$2"; shift 2 ;;
     --sonar-token) SONAR_TOKEN="$2"; shift 2 ;;
@@ -85,6 +88,9 @@ fi
 
 echo "Owner: $TEST_OWNER"
 echo "Prefixes: $PREFIXES"
+if [[ -n "$BEFORE_DATE" ]]; then
+  echo "Before: $BEFORE_DATE (exclusive)"
+fi
 targets=""
 [[ "$CLEAN_SONAR" == "1" ]] && targets="${targets} sonar"
 [[ "$CLEAN_REPOS" == "1" ]] && targets="${targets} repos"
@@ -171,7 +177,11 @@ echo ""
 # --- GitHub repos ---
 
 if [[ "$CLEAN_REPOS" == "1" ]]; then
-  repos=$(gh repo list "$TEST_OWNER" --limit 1000 --json name,createdAt --jq "[.[] | select(.name | ${jq_filter})] | sort_by(.createdAt) | .[].name") || true
+  before_jq=""
+  if [[ -n "$BEFORE_DATE" ]]; then
+    before_jq=" and .createdAt < \"${BEFORE_DATE}\""
+  fi
+  repos=$(gh repo list "$TEST_OWNER" --limit 1000 --json name,createdAt --jq "[.[] | select((.name | ${jq_filter})${before_jq})] | sort_by(.createdAt) | .[].name") || true
 
   if [[ -z "$repos" ]]; then
     echo "No orphaned test repos found."

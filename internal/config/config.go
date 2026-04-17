@@ -33,6 +33,7 @@ type Config struct {
 	TestMode     bool
 	VerifyLevel   string // "none", "local", "commit", "acceptance", "release"
 	ExcludeLegacy bool   // exclude acceptance-stage-legacy verification
+	SampleTests   bool   // run only sample local tests instead of all
 	Cleanup       string // "yes", "no", or "ask"
 	ForceCleanup bool   // cleanup even on failure
 	NoBugReport  bool   // skip auto-creating GitHub issues on failure
@@ -321,6 +322,7 @@ func ParseAndValidate() *Config {
 	forceCleanup := flag.Bool("force-cleanup", false, "Cleanup even on failure")
 	verifyLevel := flag.String("verify-level", "", "Verification level: none, local, commit, acceptance, release (default: release)")
 	excludeLegacy := flag.Bool("exclude-legacy", false, "Exclude acceptance-stage-legacy verification")
+	sampleTests := flag.Bool("sample-tests", false, "Run only sample local tests instead of all")
 	noBugReport := flag.Bool("no-bug-report", false, "Skip auto-creating GitHub issues on failure")
 	deploy := flag.String("deploy", "docker", "Deployment target: docker or cloud-run")
 	workDir := flag.String("workdir", "", "Working directory for cloning (default: temp dir)")
@@ -507,6 +509,7 @@ func ParseAndValidate() *Config {
 		TestMode:     *testMode,
 		VerifyLevel:   resolvedLevel,
 		ExcludeLegacy: *excludeLegacy,
+		SampleTests:   *sampleTests,
 		Cleanup:      resolveCleanup(*cleanupFlag, *noCleanup),
 		ForceCleanup: *forceCleanup,
 		NoBugReport:  *noBugReport,

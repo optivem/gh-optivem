@@ -31,3 +31,9 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  installation-test:
+    name: Installation Test
+    needs: release-stage
+    uses: ./.github/workflows/installation-test.yml
+    secrets: inherit

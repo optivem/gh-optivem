@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/optivem/gh-optivem/internal/config"
@@ -50,6 +51,9 @@ func buildCommands(lang string) []string {
 	case "dotnet":
 		return []string{"dotnet build"}
 	case "java":
+		if runtime.GOOS == "windows" {
+			return []string{"gradlew.bat compileJava compileTestJava"}
+		}
 		return []string{"./gradlew compileJava compileTestJava"}
 	case "react":
 		return []string{"npm ci", "npm run build"}
@@ -311,16 +315,20 @@ func RunLocalSystemTests(cfg *config.Config) {
 	setupMultirepoSymlinks(cfg)
 
 	arch := cfg.Arch
+	sampleFlag := ""
+	if cfg.SampleTests {
+		sampleFlag = " -Sample"
+	}
 	runLocalTests(
 		"Local system tests (latest)",
-		fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Sample", arch),
+		fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s%s", arch, sampleFlag),
 		testDir,
 	)
 
 	if !cfg.ExcludeLegacy {
 		runLocalTests(
 			"Local system tests (legacy)",
-			fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Legacy -Sample", arch),
+			fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Legacy%s", arch, sampleFlag),
 			testDir,
 		)
 	}

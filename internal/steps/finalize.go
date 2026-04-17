@@ -88,6 +88,12 @@ func commitAndPushRepo(repoDir, fullRepo string) {
 	if _, err := shell.Run("git add -A", false, true, repoDir); err != nil {
 		log.Fatalf("git add failed in %s: %v", fullRepo, err)
 	}
+	// Fix executable permissions for shell scripts (Windows doesn't track the +x bit)
+	for _, script := range []string{"gradlew", "setup-gcp.sh", "teardown-gcp.sh"} {
+		if _, err := os.Stat(filepath.Join(repoDir, script)); err == nil {
+			shell.Run(fmt.Sprintf("git update-index --chmod=+x %s", script), false, true, repoDir)
+		}
+	}
 	if _, err := shell.Run(`git commit -m "Apply pipeline template"`, false, true, repoDir); err != nil {
 		log.Fatalf("git commit failed in %s: %v", fullRepo, err)
 	}
