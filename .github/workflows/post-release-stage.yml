@@ -1,4 +1,4 @@
-name: Installation Test
+name: Post-Release Stage
 
 on:
   workflow_call:

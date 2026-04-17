@@ -58,8 +58,8 @@ jobs:
           SHOP_SHA: ${{ needs.resolve-shop.outputs.sha }}
           SHOP_TAG: ${{ needs.resolve-shop.outputs.tag }}
 
-  installation-test:
-    name: Installation Test
+  post-release-stage:
+    name: Post-Release Stage
     needs: release-stage
-    uses: ./.github/workflows/installation-test.yml
+    uses: ./.github/workflows/post-release-stage.yml
     secrets: inherit

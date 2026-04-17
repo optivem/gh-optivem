@@ -1,7 +1,7 @@
 [![Commit Stage](https://github.com/optivem/gh-optivem/actions/workflows/commit-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/commit-stage.yml)
 [![Acceptance Stage](https://github.com/optivem/gh-optivem/actions/workflows/acceptance-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/acceptance-stage.yml)
-[![Installation Test](https://github.com/optivem/gh-optivem/actions/workflows/installation-test.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/installation-test.yml)
 [![Release](https://github.com/optivem/gh-optivem/actions/workflows/release-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/release-stage.yml)
+[![Post-Release Stage](https://github.com/optivem/gh-optivem/actions/workflows/post-release-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/post-release-stage.yml)
 [![Verify Release Chain](https://github.com/optivem/gh-optivem/actions/workflows/verify-release-chain.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/verify-release-chain.yml)
 
 # gh-optivem
