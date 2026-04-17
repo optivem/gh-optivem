@@ -1,5 +1,5 @@
 name: Acceptance Stage
-run-name: Acceptance Stage — ${{ github.event_name == 'workflow_dispatch' && inputs.verify-level || github.event.schedule == '0 3 * * *' && 'release' || 'local' }}
+run-name: Acceptance Stage — ${{ github.event_name == 'workflow_dispatch' && inputs.verify-level || github.event.schedule == '0 */6 * * *' && 'release' || 'local' }}
 
 on:
   workflow_dispatch:
@@ -21,8 +21,8 @@ on:
         default: ''
         type: string
   schedule:
-    - cron: '0 3 * * *'    # Daily at 03:00 UTC — verify-level=release
-    - cron: '0 */2 * * *'  # Every 2 hours — verify-level=local
+    - cron: '0 */6 * * *'  # Every 6 hours — verify-level=release
+    - cron: '0 * * * *'    # Every hour — verify-level=local
 
 permissions:
   contents: read
@@ -32,6 +32,10 @@ jobs:
   check:
     name: Check
     runs-on: ubuntu-latest
+    outputs:
+      verify-level: ${{ steps.level.outputs.verify-level }}
+      shop-sha: ${{ (steps.level.outputs.verify-level == 'release' || inputs.shop-ref != '') && steps.shop-commit.outputs.sha || '' }}
+      should-run: ${{ steps.should-run.outputs.should-run }}
     steps:
       - name: Validate Config
         uses: optivem/actions/validate-config@v1
@@ -49,18 +53,10 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
 
-  resolve:
-    name: Resolve
-    runs-on: ubuntu-latest
-    outputs:
-      verify-level: ${{ steps.level.outputs.verify-level }}
-      shop-sha: ${{ (steps.level.outputs.verify-level == 'release' || inputs.shop-ref != '') && steps.shop-commit.outputs.sha || '' }}
-      should-run: ${{ steps.should-run.outputs.should-run }}
-    steps:
       - id: level
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            if [ "${{ github.event.schedule }}" = "0 3 * * *" ]; then
+            if [ "${{ github.event.schedule }}" = "0 */6 * * *" ]; then
               LEVEL="release"
             else
               LEVEL="local"
@@ -92,8 +88,8 @@ jobs:
 
   run:
     name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})
-    needs: [check, resolve]
-    if: needs.resolve.outputs.should-run == 'true'
+    needs: check
+    if: needs.check.outputs.should-run == 'true'
     runs-on: ubuntu-latest
     env:
       VERIFY_TOKEN: ${{ secrets.VERIFY_TOKEN }}
@@ -122,20 +118,20 @@ jobs:
           repo-strategy: ${{ matrix.repo-strategy }}
           lang: ${{ matrix.lang }}
           test-lang: ${{ matrix.test-lang }}
-          verify-level: ${{ needs.resolve.outputs.verify-level }}
+          verify-level: ${{ needs.check.outputs.verify-level }}
           exclude-legacy: 'false'
-          shop-ref: ${{ needs.resolve.outputs.shop-sha }}
+          shop-ref: ${{ needs.check.outputs.shop-sha }}
 
   record-verified-sha:
     name: Record Verified Shop SHA
-    needs: [resolve, run]
-    if: success() && needs.resolve.outputs.verify-level == 'release'
+    needs: [check, run]
+    if: success() && needs.check.outputs.verify-level == 'release'
     runs-on: ubuntu-latest
     steps:
       - name: Write commit status
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SHA: ${{ needs.resolve.outputs.shop-sha }}
+          SHA: ${{ needs.check.outputs.shop-sha }}
         run: |
           gh api "repos/${{ github.repository }}/statuses/${{ github.sha }}" \
             -f state=success \
