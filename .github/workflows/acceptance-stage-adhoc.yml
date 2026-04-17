@@ -55,7 +55,7 @@ on:
       exclude-legacy:
         description: 'Exclude legacy stage verification'
         required: false
-        default: true
+        default: false
         type: boolean
       fail-fast:
         description: 'Cancel all jobs on first failure'
