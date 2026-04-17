@@ -39,7 +39,7 @@ jobs:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
     strategy:
-      fail-fast: true
+      fail-fast: false
       max-parallel: 6
       matrix:
         arch: [multitier, monolith]
