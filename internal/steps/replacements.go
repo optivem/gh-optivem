@@ -414,8 +414,33 @@ func ReplaceSystemName(cfg *config.Config) {
 	}
 
 	log.OK("System name replacement complete")
+}
 
-	// Validate no leftover template names remain in any text file.
+// ValidateNoLeftoverSystemNames checks that the old system name doesn't appear in any text
+// file after all replacement passes. Runs after commit and push so the scaffolded repo is
+// available for inspection if validation fails.
+func ValidateNoLeftoverSystemNames(cfg *config.Config) {
+	log.Log("Validating no leftover system names...")
+
+	if cfg.DryRun {
+		log.Log("[DRY RUN] Would validate no leftover system names")
+		return
+	}
+
+	if cfg.SysNameCamelNew == "shop" {
+		log.OK("System name is 'shop', no validation needed")
+		return
+	}
+
+	repoDirs := []string{cfg.RepoDir}
+	if cfg.RepoStrategy == "multirepo" {
+		if cfg.Arch == "multitier" {
+			repoDirs = append(repoDirs, cfg.BackendRepoDir, cfg.FrontendRepoDir)
+		} else {
+			repoDirs = append(repoDirs, cfg.SystemRepoDir)
+		}
+	}
+
 	validateNoLeftovers(cfg, repoDirs)
 }
 

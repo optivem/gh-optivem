@@ -110,6 +110,7 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud) []st
 		{"Write project config", func() { steps.WriteProjectConfig(cfg) }},
 		{"Create SonarCloud projects", func() { steps.CreateSonarCloudProjects(cfg, sc) }},
 		{"Commit and push", func() { steps.CommitAndPush(cfg) }},
+		{"Validate no leftover system names", func() { steps.ValidateNoLeftoverSystemNames(cfg) }},
 		{"Enable GitHub Pages", func() { steps.EnablePages(cfg, gh) }},
 		{"Verify compilation", func() { steps.VerifyCompilation(cfg) }},
 	}
