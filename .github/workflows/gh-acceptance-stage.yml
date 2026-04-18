@@ -81,7 +81,7 @@ jobs:
             TAG=$(gh api "repos/optivem/shop/releases?per_page=100" \
               --jq '[.[] | select(.tag_name | startswith("meta-v"))] | sort_by(.created_at) | last | .tag_name' 2>/dev/null)
             if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
-              echo "::error::No meta-v* release found in optivem/shop — blank shop-ref requires a published meta-v* release. Run shop's meta-acceptance-stage (and publish its tag as a release) first, or pass an explicit shop-ref."
+              echo "::error::No meta-v* release found in optivem/shop — blank shop-ref requires a published meta-v* release. Run shop's meta-prerelease-stage (and publish its tag as a release) first, or pass an explicit shop-ref."
               exit 1
             fi
             REF="$TAG"
