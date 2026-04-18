@@ -97,6 +97,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
-          workflow: acceptance-stage.yml
+          workflow: gh-acceptance-stage.yml
           inputs: '{"verify-level": "local"}'
           poll-interval: '600'

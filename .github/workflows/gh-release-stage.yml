@@ -149,5 +149,5 @@ jobs:
   post-release-stage:
     name: Post-Release Stage
     needs: run
-    uses: ./.github/workflows/post-release-stage.yml
+    uses: ./.github/workflows/gh-post-release-stage.yml
     secrets: inherit

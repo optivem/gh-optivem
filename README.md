@@ -1,8 +1,8 @@
-[![Commit Stage](https://github.com/optivem/gh-optivem/actions/workflows/commit-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/commit-stage.yml)
-[![Acceptance Stage](https://github.com/optivem/gh-optivem/actions/workflows/acceptance-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/acceptance-stage.yml)
-[![Release](https://github.com/optivem/gh-optivem/actions/workflows/release-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/release-stage.yml)
-[![Post-Release Stage](https://github.com/optivem/gh-optivem/actions/workflows/post-release-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/post-release-stage.yml)
-[![Local Stage](https://github.com/optivem/gh-optivem/actions/workflows/local-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/local-stage.yml)
+[![gh Commit Stage](https://github.com/optivem/gh-optivem/actions/workflows/gh-commit-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/gh-commit-stage.yml)
+[![gh Acceptance Stage](https://github.com/optivem/gh-optivem/actions/workflows/gh-acceptance-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/gh-acceptance-stage.yml)
+[![gh Release Stage](https://github.com/optivem/gh-optivem/actions/workflows/gh-release-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/gh-release-stage.yml)
+[![gh Post-Release Stage](https://github.com/optivem/gh-optivem/actions/workflows/gh-post-release-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/gh-post-release-stage.yml)
+[![gh Local Stage](https://github.com/optivem/gh-optivem/actions/workflows/gh-local-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/gh-local-stage.yml)
 
 # gh-optivem
 
