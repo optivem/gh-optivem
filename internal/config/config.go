@@ -39,7 +39,7 @@ type Config struct {
 	NoBugReport  bool   // skip auto-creating GitHub issues on failure
 	WorkDir    string
 	ShopPath string
-	ShopRef  string // Pinned optivem/shop ref (SHA or tag). Empty = HEAD.
+	ShopRef  string // Pinned optivem/shop ref (SHA or meta-v* tag). Never empty, never main.
 
 	DockerHubUsername string
 	DockerHubToken   string
@@ -441,10 +441,28 @@ func ParseAndValidate() *Config {
 		}
 	}
 
-	// Resolve shop ref: explicit --shop-ref > build-time version.ShopRef > "" (HEAD).
+	// Resolve shop ref: explicit --shop-ref > build-time version.ShopRef > latest meta-v* release.
+	// main / refs/heads/main are always rejected — acceptance requires a published meta-v* release.
+	// Explicit --shop-ref is validated strictly: must be a published meta-v* release tag.
+	if *shopRef != "" {
+		if err := validateUserShopRef(*shopRef); err != nil {
+			log.FatalExit("Invalid --shop-ref: " + err.Error())
+		}
+	}
 	resolvedShopRef := *shopRef
 	if resolvedShopRef == "" {
 		resolvedShopRef = version.ShopRef
+	}
+	if resolvedShopRef == "" {
+		latest, err := latestMetaRelease()
+		if err != nil {
+			log.FatalExit("Cannot resolve shop ref: " + err.Error())
+		}
+		resolvedShopRef = latest
+		log.OKf("Resolved empty shop-ref to latest meta-v* release: %s", resolvedShopRef)
+	}
+	if isMainRef(resolvedShopRef) {
+		log.FatalExit("Invalid shop ref: 'main'/'master' is not allowed — acceptance requires a published meta-v* release tag.")
 	}
 
 	// Clone shop repo from GitHub into a temp directory.
@@ -561,37 +579,71 @@ func ParseAndValidate() *Config {
 	}
 }
 
-// cloneShop clones optivem/shop from GitHub into a temp directory.
-// When ref is empty, clones HEAD of the default branch with --depth=1.
-// When ref is a SHA or tag, clones full history then checks out the ref.
+// cloneShop clones optivem/shop from GitHub into a temp directory, then checks out ref.
+// ref must be non-empty (SHA or tag) — HEAD of main is never cloned as a final state.
 func cloneShop(ref string) (string, error) {
+	if ref == "" {
+		return "", fmt.Errorf("ref must be non-empty — refusing to clone HEAD of main")
+	}
 	dir, err := os.MkdirTemp("", "shop-")
 	if err != nil {
 		return "", fmt.Errorf("cannot create temp dir: %w", err)
 	}
 
-	cloneArgs := []string{"repo", "clone", "optivem/shop", dir}
-	if ref == "" {
-		cloneArgs = append(cloneArgs, "--", "--depth=1")
-	}
-	cmd := exec.Command("gh", cloneArgs...)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
+	cmd := exec.Command("gh", "repo", "clone", "optivem/shop", dir)
+	if out, cerr := cmd.CombinedOutput(); cerr != nil {
 		os.RemoveAll(dir)
-		return "", fmt.Errorf("gh repo clone failed: %s\n%s", err, string(out))
+		return "", fmt.Errorf("gh repo clone failed: %s\n%s", cerr, string(out))
 	}
 
-	if ref != "" {
-		checkout := exec.Command("git", "-C", dir, "checkout", ref)
-		if cout, cerr := checkout.CombinedOutput(); cerr != nil {
-			os.RemoveAll(dir)
-			return "", fmt.Errorf("git checkout %s failed: %s\n%s", ref, cerr, string(cout))
-		}
-		log.OKf("Cloned shop to %s (pinned to %s)", dir, ref)
-	} else {
-		log.OKf("Cloned shop to %s (HEAD)", dir)
+	checkout := exec.Command("git", "-C", dir, "checkout", ref)
+	if cout, cerr := checkout.CombinedOutput(); cerr != nil {
+		os.RemoveAll(dir)
+		return "", fmt.Errorf("git checkout %s failed: %s\n%s", ref, cerr, string(cout))
 	}
+	log.OKf("Cloned shop to %s (pinned to %s)", dir, ref)
 	return dir, nil
+}
+
+// isMainRef reports whether ref names the main/master branch in any form.
+func isMainRef(ref string) bool {
+	switch ref {
+	case "main", "master", "refs/heads/main", "refs/heads/master", "HEAD":
+		return true
+	}
+	return false
+}
+
+// validateUserShopRef applies strict rules to an explicit --shop-ref value:
+// must not be main/master, must start with "meta-v", and must be a published release.
+func validateUserShopRef(ref string) error {
+	if isMainRef(ref) {
+		return fmt.Errorf("'%s' is not allowed — pass a published meta-v* release tag", ref)
+	}
+	if !strings.HasPrefix(ref, "meta-v") {
+		return fmt.Errorf("'%s' must start with 'meta-v' — only meta-v* release tags are accepted", ref)
+	}
+	cmd := exec.Command("gh", "api", "repos/optivem/shop/releases/tags/"+ref)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("'%s' is not a published release tag in optivem/shop: %s\n%s", ref, err, string(out))
+	}
+	return nil
+}
+
+// latestMetaRelease returns the tag of the most recently created meta-v* release in optivem/shop.
+// Mirrors the resolution logic in .github/workflows/gh-acceptance-stage.yml.
+func latestMetaRelease() (string, error) {
+	cmd := exec.Command("gh", "api", "repos/optivem/shop/releases?per_page=100",
+		"--jq", `[.[] | select(.tag_name | startswith("meta-v"))] | sort_by(.created_at) | last | .tag_name`)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("gh api failed: %s\n%s", err, string(out))
+	}
+	tag := strings.TrimSpace(string(out))
+	if tag == "" || tag == "null" {
+		return "", fmt.Errorf("no meta-v* release found in optivem/shop — run shop's meta-prerelease-stage (and publish its tag as a release) first, or pass an explicit --shop-ref")
+	}
+	return tag, nil
 }
 
 func resolveCleanup(cleanup, noCleanup bool) string {
