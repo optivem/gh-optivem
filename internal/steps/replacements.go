@@ -175,6 +175,37 @@ func replaceRefsInRepo(repoDir, fullRepo, ownerLower string) {
 		}
 	}
 
+	// Pass 4: SonarCloud projectName "shop-" prefix. The projectName has no owner_
+	// prefix (unlike projectKey which Pass 2 handles), so it needs its own pass.
+	repoOnly := fullRepo
+	if i := strings.Index(fullRepo, "/"); i != -1 {
+		repoOnly = fullRepo[i+1:]
+	}
+	sonarProjectNamePatterns := [][2]string{
+		{"-Dsonar.projectName=shop-", "-Dsonar.projectName=" + repoOnly + "-"},
+		{`/n:"shop-`, `/n:"` + repoOnly + `-`},
+		{"'sonar.projectName', 'shop-", "'sonar.projectName', '" + repoOnly + "-"},
+	}
+	for _, pair := range sonarProjectNamePatterns {
+		n = files.ReplaceInTree(repoDir, pair[0], pair[1], nil)
+		if n > 0 {
+			log.OKf("Pass 4: replaced sonar projectName pattern (%d files)", n)
+		}
+	}
+
+	// Pass 5: Dedupe sonar component suffix when the repo name already encodes
+	// the component. In multirepo, the backend repo is named "<base>-backend",
+	// so Pass 2 + suffix shortening produces "<owner>_<base>-backend-backend".
+	// Strip the redundant duplicate.
+	for _, suffix := range []string{"-backend", "-frontend", "-system"} {
+		if strings.HasSuffix(repoOnly, suffix) {
+			n = files.ReplaceInTree(repoDir, repoOnly+suffix, repoOnly, nil)
+			if n > 0 {
+				log.OKf("Pass 5: deduped sonar component suffix %s (%d files)", suffix, n)
+			}
+		}
+	}
+
 	// Safety check: optivem/actions must still be intact in any copied workflows
 	wfDir := filepath.Join(repoDir, ".github", "workflows")
 	if info, err := os.Stat(wfDir); err == nil && info.IsDir() {
