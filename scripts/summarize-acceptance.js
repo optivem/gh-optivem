@@ -10,7 +10,7 @@ module.exports = async function summarizeAcceptance({ github, context, core }) {
   await core.summary.write();
 
   if (results.failed.length > 0) {
-    core.setFailed(`${results.failed.length} job(s) failed`);
+    core.setFailed(`${results.failed.length} job(s) failed: ${results.failed.join(", ")}`);
   } else if (results.rateLimited.length > 0) {
     core.setFailed(`${results.rateLimited.length} job(s) hit rate limit — retry needed`);
   }
@@ -29,13 +29,15 @@ async function listJobs(github, context) {
 }
 
 function classifyJobs(jobs) {
-  const results = { passed: [], failed: [], rateLimited: [], cancelled: [] };
+  const results = { passed: [], failed: [], rateLimited: [], cancelled: [], skipped: [] };
 
   for (const job of jobs) {
     const name = job.name;
 
     if (job.conclusion === "success") {
       results.passed.push(name);
+    } else if (job.conclusion === "skipped") {
+      results.skipped.push(name);
     } else if (job.conclusion === "cancelled") {
       results.cancelled.push(name);
     } else if (isRateLimited(job)) {
@@ -53,13 +55,14 @@ function isRateLimited(job) {
   return marker?.conclusion === "success";
 }
 
-function formatSummary({ passed, failed, rateLimited, cancelled }) {
-  const total = passed.length + failed.length + rateLimited.length + cancelled.length;
+function formatSummary({ passed, failed, rateLimited, cancelled, skipped }) {
+  const total = passed.length + failed.length + rateLimited.length + cancelled.length + skipped.length;
   let md = `## Acceptance Stage Results\n\n**${passed.length}/${total} passed**\n\n`;
 
   md += formatSection("Failed", failed);
   md += formatSection("Rate Limited (not a real failure)", rateLimited);
   md += formatSection("Cancelled", cancelled);
+  md += formatSection("Skipped", skipped);
   md += formatSection("Passed", passed);
 
   return md;
