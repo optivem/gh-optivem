@@ -3,8 +3,17 @@ name: Cleanup Orphans
 on:
   workflow_dispatch:
     inputs:
-      before_date:
-        description: "Only clean up items created before this date (exclusive, ISO 8601 e.g. 2026-04-01). Leave empty for all."
+      mode:
+        description: "What to clean up"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - until-yesterday
+          - custom-date
+      custom_date:
+        description: "Custom cutoff date (ISO 8601, e.g. 2026-04-01). Only used when mode=custom-date. Items created before this date are cleaned up."
         required: false
         default: ""
 
@@ -15,6 +24,32 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Resolve cutoff date
+        id: cutoff
+        run: |
+          case "$MODE" in
+            all)
+              echo "before=" >> "$GITHUB_OUTPUT"
+              ;;
+            until-yesterday)
+              echo "before=$(date -u -d 'today' +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+              ;;
+            custom-date)
+              if [[ -z "$CUSTOM_DATE" ]]; then
+                echo "ERROR: mode=custom-date requires custom_date input" >&2
+                exit 1
+              fi
+              echo "before=$CUSTOM_DATE" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "ERROR: unknown mode '$MODE'" >&2
+              exit 1
+              ;;
+          esac
+        env:
+          MODE: ${{ github.event.inputs.mode }}
+          CUSTOM_DATE: ${{ github.event.inputs.custom_date }}
 
       - name: Run cleanup
         run: |
@@ -27,4 +62,4 @@ jobs:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
           TEST_OWNER: ${{ vars.TEST_OWNER }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          BEFORE_DATE: ${{ github.event.inputs.before_date }}
+          BEFORE_DATE: ${{ steps.cutoff.outputs.before }}
