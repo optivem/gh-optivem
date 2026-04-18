@@ -116,8 +116,8 @@ jobs:
       - id: should-run
         uses: optivem/actions/should-run-acceptance-stage@v1
         with:
-          last-updated-at: ${{ steps.shop-commit.outputs.timestamp }}
-          workflow-name: ${{ github.workflow }}
+          subject-sha: ${{ steps.shop-commit.outputs.sha }}
+          status-context: verified-shop-sha
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
