@@ -1,4 +1,4 @@
-name: Cleanup Orphans
+name: gh Cleanup Orphans
 
 on:
   workflow_dispatch:

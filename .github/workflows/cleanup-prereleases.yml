@@ -1,4 +1,4 @@
-name: cleanup-prereleases
+name: gh cleanup-prereleases
 
 on:
   schedule:

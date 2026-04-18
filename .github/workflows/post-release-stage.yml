@@ -1,4 +1,4 @@
-name: Post-Release Stage
+name: gh Post-Release Stage
 
 on:
   workflow_call:

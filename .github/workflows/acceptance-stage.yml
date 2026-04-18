@@ -1,5 +1,5 @@
-name: Acceptance Stage
-run-name: Acceptance Stage — ${{ github.event_name == 'workflow_dispatch' && inputs.verify-level || github.event.schedule == '0 */6 * * *' && 'release' || 'local' }}
+name: gh Acceptance Stage
+run-name: gh Acceptance Stage — ${{ github.event_name == 'workflow_dispatch' && inputs.verify-level || github.event.schedule == '0 */6 * * *' && 'release' || 'local' }}
 
 on:
   workflow_dispatch:
