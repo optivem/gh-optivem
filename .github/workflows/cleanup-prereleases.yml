@@ -1,0 +1,26 @@
+name: cleanup-prereleases
+
+on:
+  schedule:
+    - cron: '0 23 * * *'  # Daily at midnight CET (23:00 UTC)
+  workflow_dispatch:
+
+jobs:
+  cleanup-prereleases:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Authenticate GitHub CLI
+        run: |
+          echo "${{ secrets.VERIFY_TOKEN }}" | gh auth login --with-token
+
+      - name: Cleanup Prereleases
+        uses: optivem/actions/cleanup-prereleases@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.VERIFY_TOKEN }}

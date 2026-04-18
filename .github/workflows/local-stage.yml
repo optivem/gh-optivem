@@ -1,4 +1,4 @@
-name: Verify Release Chain
+name: Local Stage
 
 on:
   workflow_dispatch:
@@ -29,16 +29,3 @@ jobs:
           workflow: acceptance-stage.yml
           inputs: '{"verify-level": "local"}'
           poll-interval: '600'
-
-  gh-release:
-    name: Stage 3 — acceptance-stage (verify-level=release)
-    needs: gh-local
-    runs-on: ubuntu-latest
-    steps:
-      - uses: optivem/actions/trigger-and-wait@v1
-        env:
-          GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
-        with:
-          workflow: acceptance-stage.yml
-          inputs: '{"verify-level": "release"}'
-          poll-interval: '1200'

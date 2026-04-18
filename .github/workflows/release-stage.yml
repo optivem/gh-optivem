@@ -1,46 +1,102 @@
 name: Release Stage
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'RC version to promote (e.g., v1.3.2-rc.1). Empty = latest RC.'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
 
 jobs:
-  resolve-shop:
-    name: Resolve Verified Shop
+  check:
+    name: Check
     runs-on: ubuntu-latest
     outputs:
-      sha: ${{ steps.r.outputs.sha }}
-      tag: ${{ steps.r.outputs.tag }}
+      rc-version: ${{ steps.rc.outputs.version }}
+      rc-sha: ${{ steps.rc.outputs.sha }}
+      release-version: ${{ steps.gen.outputs.version }}
+      shop-sha: ${{ steps.shop.outputs.sha }}
+      shop-tag: ${{ steps.shop.outputs.tag }}
     steps:
-      - id: r
+      - id: rc
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          SHA=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/statuses" \
-            --jq '[.[] | select(.context=="verified-shop-sha" and .state=="success")][0].description')
+          if [ -n "$INPUT_VERSION" ]; then
+            RC="$INPUT_VERSION"
+          else
+            RC=$(gh api "repos/${{ github.repository }}/releases" --paginate \
+              --jq '[.[] | select(.prerelease==true) | .tag_name] | map(select(test("-rc\\.[0-9]+$"))) | .[0]')
+            if [ -z "$RC" ] || [ "$RC" = "null" ]; then
+              echo "::error::No RC prerelease found. Run acceptance-stage with verify-level=release first."
+              exit 1
+            fi
+          fi
+          SHA=$(gh api "repos/${{ github.repository }}/git/ref/tags/$RC" --jq '.object.sha')
           if [ -z "$SHA" ] || [ "$SHA" = "null" ]; then
-            echo "::error::No verified-shop-sha status on this commit. Run acceptance-stage (verify-level=release) first."
+            echo "::error::Could not resolve commit SHA for tag $RC"
             exit 1
           fi
+          echo "version=$RC" >> "$GITHUB_OUTPUT"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          TAG=$(gh api repos/optivem/shop/tags --paginate \
-            --jq ".[] | select(.commit.sha==\"$SHA\") | .name" | head -1)
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "Verified shop: ${TAG:-<no tag>} ($SHA)" >> "$GITHUB_STEP_SUMMARY"
+          echo "RC: $RC ($SHA)" >> "$GITHUB_STEP_SUMMARY"
 
-  release-stage:
-    name: Release Stage
-    needs: resolve-shop
+      - name: Check RC Exists
+        uses: optivem/actions/check-release-exists@v1
+        with:
+          version: ${{ steps.rc.outputs.version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: gen
+        uses: optivem/actions/generate-release-version@v1
+        with:
+          prerelease-version: ${{ steps.rc.outputs.version }}
+
+      - id: shop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RC_SHA: ${{ steps.rc.outputs.sha }}
+        run: |
+          SHOP_SHA=$(gh api "repos/${{ github.repository }}/commits/$RC_SHA/statuses" \
+            --jq '[.[] | select(.context=="verified-shop-sha" and .state=="success")][0].description')
+          if [ -z "$SHOP_SHA" ] || [ "$SHOP_SHA" = "null" ]; then
+            echo "::error::No verified-shop-sha status on RC commit $RC_SHA"
+            exit 1
+          fi
+          SHOP_TAG=$(gh api repos/optivem/shop/tags --paginate \
+            --jq ".[] | select(.commit.sha==\"$SHOP_SHA\") | .name" | head -1)
+          echo "sha=$SHOP_SHA" >> "$GITHUB_OUTPUT"
+          echo "tag=$SHOP_TAG" >> "$GITHUB_OUTPUT"
+          echo "Shop: ${SHOP_TAG:-<no tag>} ($SHOP_SHA)" >> "$GITHUB_STEP_SUMMARY"
+
+  run:
+    name: Run
+    needs: check
+    if: needs.check.result == 'success'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout RC commit
         uses: actions/checkout@v6
         with:
+          ref: ${{ needs.check.outputs.rc-sha }}
           fetch-depth: 0
+
+      - name: Create and push release tag
+        env:
+          RELEASE_TAG: ${{ needs.check.outputs.release-version }}
+          RC_SHA: ${{ needs.check.outputs.rc-sha }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$RELEASE_TAG" "$RC_SHA"
+          git push origin "$RELEASE_TAG"
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -55,11 +111,43 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SHOP_SHA: ${{ needs.resolve-shop.outputs.sha }}
-          SHOP_TAG: ${{ needs.resolve-shop.outputs.tag }}
+          SHOP_SHA: ${{ needs.check.outputs.shop-sha }}
+          SHOP_TAG: ${{ needs.check.outputs.shop-tag }}
+
+  bump-version:
+    name: Bump Patch Version
+    needs: [check, run]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Bump VERSION
+        env:
+          RELEASED: ${{ needs.check.outputs.release-version }}
+        run: |
+          target="${RELEASED#v}"
+          current=$(cat VERSION | tr -d '[:space:]')
+          if [ "$current" != "$target" ]; then
+            echo "VERSION is $current, not $target — skipping bump"
+            exit 0
+          fi
+          major=$(echo "$current" | cut -d. -f1)
+          minor=$(echo "$current" | cut -d. -f2)
+          patch=$(echo "$current" | cut -d. -f3)
+          new="${major}.${minor}.$((patch + 1))"
+          echo "$new" > VERSION
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add VERSION
+          git commit -m "Bump VERSION to $new after $RELEASED release"
+          git push origin main
 
   post-release-stage:
     name: Post-Release Stage
-    needs: release-stage
+    needs: run
     uses: ./.github/workflows/post-release-stage.yml
     secrets: inherit
