@@ -5,79 +5,79 @@ on:
 
 jobs:
   shop-local-monolith-java:
-    name: Stage 1 — shop/pipeline-monolith-java (level=local)
+    name: Stage 1 — shop/prerelease-pipeline-monolith-java (level=local)
     runs-on: ubuntu-latest
     steps:
       - uses: optivem/actions/trigger-and-wait@v1
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
-          workflow: pipeline-monolith-java.yml
+          workflow: prerelease-pipeline-monolith-java.yml
           repo: optivem/shop
           inputs: '{"level": "local"}'
           poll-interval: '240'
 
   shop-local-monolith-dotnet:
-    name: Stage 1 — shop/pipeline-monolith-dotnet (level=local)
+    name: Stage 1 — shop/prerelease-pipeline-monolith-dotnet (level=local)
     runs-on: ubuntu-latest
     steps:
       - uses: optivem/actions/trigger-and-wait@v1
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
-          workflow: pipeline-monolith-dotnet.yml
+          workflow: prerelease-pipeline-monolith-dotnet.yml
           repo: optivem/shop
           inputs: '{"level": "local"}'
           poll-interval: '240'
 
   shop-local-monolith-typescript:
-    name: Stage 1 — shop/pipeline-monolith-typescript (level=local)
+    name: Stage 1 — shop/prerelease-pipeline-monolith-typescript (level=local)
     runs-on: ubuntu-latest
     steps:
       - uses: optivem/actions/trigger-and-wait@v1
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
-          workflow: pipeline-monolith-typescript.yml
+          workflow: prerelease-pipeline-monolith-typescript.yml
           repo: optivem/shop
           inputs: '{"level": "local"}'
           poll-interval: '240'
 
   shop-local-multitier-java:
-    name: Stage 1 — shop/pipeline-multitier-java (level=local)
+    name: Stage 1 — shop/prerelease-pipeline-multitier-java (level=local)
     runs-on: ubuntu-latest
     steps:
       - uses: optivem/actions/trigger-and-wait@v1
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
-          workflow: pipeline-multitier-java.yml
+          workflow: prerelease-pipeline-multitier-java.yml
           repo: optivem/shop
           inputs: '{"level": "local"}'
           poll-interval: '240'
 
   shop-local-multitier-dotnet:
-    name: Stage 1 — shop/pipeline-multitier-dotnet (level=local)
+    name: Stage 1 — shop/prerelease-pipeline-multitier-dotnet (level=local)
     runs-on: ubuntu-latest
     steps:
       - uses: optivem/actions/trigger-and-wait@v1
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
-          workflow: pipeline-multitier-dotnet.yml
+          workflow: prerelease-pipeline-multitier-dotnet.yml
           repo: optivem/shop
           inputs: '{"level": "local"}'
           poll-interval: '240'
 
   shop-local-multitier-typescript:
-    name: Stage 1 — shop/pipeline-multitier-typescript (level=local)
+    name: Stage 1 — shop/prerelease-pipeline-multitier-typescript (level=local)
     runs-on: ubuntu-latest
     steps:
       - uses: optivem/actions/trigger-and-wait@v1
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
-          workflow: pipeline-multitier-typescript.yml
+          workflow: prerelease-pipeline-multitier-typescript.yml
           repo: optivem/shop
           inputs: '{"level": "local"}'
           poll-interval: '240'
