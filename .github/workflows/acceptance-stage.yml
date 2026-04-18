@@ -227,7 +227,7 @@ jobs:
 
   summary:
     name: Summary
-    needs: run
+    needs: [run, promote-to-rc]
     if: always()
     runs-on: ubuntu-latest
     steps:
