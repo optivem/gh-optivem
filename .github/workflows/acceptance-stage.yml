@@ -16,7 +16,7 @@ on:
           - acceptance
           - release
       shop-ref:
-        description: 'optivem/shop tag or SHA to test against. Empty = latest meta-v* tag. "main" is not allowed.'
+        description: 'optivem/shop release tag to test against. Empty = latest meta-v* release tag. Must be a published release (not main, not an unreleased tag).'
         required: false
         default: ''
         type: string
@@ -78,29 +78,25 @@ jobs:
           INPUT_REF="${{ inputs.shop-ref }}"
 
           if [ -z "$INPUT_REF" ]; then
-            TAG=$(gh api "repos/optivem/shop/git/matching-refs/tags/meta-v" \
-              --jq '.[].ref | sub("^refs/tags/"; "")' 2>/dev/null \
-              | sort -V \
-              | tail -1)
-            if [ -z "$TAG" ]; then
-              echo "::error::No meta-v* tag found in optivem/shop — blank shop-ref requires a published meta tag. Run shop's meta-acceptance-stage first, or pass an explicit shop-ref."
+            TAG=$(gh api "repos/optivem/shop/releases?per_page=100" \
+              --jq '[.[] | select(.tag_name | startswith("meta-v"))] | sort_by(.created_at) | last | .tag_name' 2>/dev/null)
+            if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+              echo "::error::No meta-v* release found in optivem/shop — blank shop-ref requires a published meta-v* release. Run shop's meta-acceptance-stage (and publish its tag as a release) first, or pass an explicit shop-ref."
               exit 1
             fi
             REF="$TAG"
-            echo "Using latest meta tag from optivem/shop: $REF" >> "$GITHUB_STEP_SUMMARY"
+            echo "Using latest meta-v* release from optivem/shop: $REF" >> "$GITHUB_STEP_SUMMARY"
           else
             if [ "$INPUT_REF" = "main" ] || [ "$INPUT_REF" = "refs/heads/main" ]; then
-              echo "::error::shop-ref 'main' is not allowed — pass a meta-v* tag or a release tag."
+              echo "::error::shop-ref 'main' is not allowed — pass a published release tag."
               exit 1
             fi
-            if [ "$LEVEL" = "release" ]; then
-              if ! gh api "repos/optivem/shop/releases/tags/$INPUT_REF" >/dev/null 2>&1; then
-                echo "::error::shop-ref '$INPUT_REF' is not a published release tag — release-level acceptance requires a released ref"
-                exit 1
-              fi
+            if ! gh api "repos/optivem/shop/releases/tags/$INPUT_REF" >/dev/null 2>&1; then
+              echo "::error::shop-ref '$INPUT_REF' is not a published release tag — acceptance requires a released ref."
+              exit 1
             fi
             REF="$INPUT_REF"
-            echo "Using input shop-ref: $REF" >> "$GITHUB_STEP_SUMMARY"
+            echo "Using input shop-ref (release tag): $REF" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
