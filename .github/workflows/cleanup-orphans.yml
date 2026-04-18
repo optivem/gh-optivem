@@ -10,10 +10,15 @@ on:
         type: choice
         options:
           - all
+          - before-1h
+          - before-2h
+          - before-3h
+          - before-6h
+          - before-12h
           - until-yesterday
           - custom-date
       custom_date:
-        description: "Custom cutoff date (ISO 8601, e.g. 2026-04-01). Only used when mode=custom-date. Items created before this date are cleaned up."
+        description: "Custom cutoff (ISO 8601 date or datetime, e.g. 2026-04-01 or 2026-04-01T12:00:00Z). Only used when mode=custom-date."
         required: false
         default: ""
 
@@ -31,6 +36,11 @@ jobs:
           case "$MODE" in
             all)
               echo "before=" >> "$GITHUB_OUTPUT"
+              ;;
+            before-1h|before-2h|before-3h|before-6h|before-12h)
+              hours="${MODE#before-}"
+              hours="${hours%h}"
+              echo "before=$(date -u -d "$hours hours ago" +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
               ;;
             until-yesterday)
               echo "before=$(date -u -d 'today' +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
