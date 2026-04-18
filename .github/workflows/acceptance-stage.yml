@@ -22,7 +22,7 @@ on:
         type: string
   schedule:
     - cron: '0 */6 * * *'  # Every 6 hours — verify-level=release
-    - cron: '0 * * * *'    # Every hour — verify-level=local
+    # - cron: '0 * * * *'    # Every hour — verify-level=local
 
 permissions:
   contents: read
