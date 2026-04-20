@@ -36,7 +36,7 @@ jobs:
       verify-level: ${{ steps.level.outputs.verify-level }}
       shop-tag: ${{ steps.shop-tag.outputs.tag }}
       shop-sha: ${{ (steps.level.outputs.verify-level == 'release' || inputs.shop-tag != '') && steps.shop-sha.outputs.sha || '' }}
-      should-run: ${{ steps.should-run.outputs.should-run }}
+      should-run: ${{ steps.should-run.outputs.changed }}
     steps:
       - name: Validate Config
         uses: optivem/actions/validate-config@v1
@@ -114,12 +114,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - id: should-run
-        uses: optivem/actions/should-run-acceptance-stage@v1
+        uses: optivem/actions/has-unverified-sha@v1
         with:
           subject-sha: ${{ steps.shop-sha.outputs.sha }}
           status-context: verified-shop-sha
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   run:
     name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})
