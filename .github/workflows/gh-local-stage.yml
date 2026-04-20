@@ -1,4 +1,4 @@
-name: gh Local Stage
+name: gh-local-stage
 
 on:
   workflow_dispatch:

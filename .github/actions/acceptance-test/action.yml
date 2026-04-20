@@ -24,6 +24,10 @@ inputs:
     description: 'optivem/shop meta-v* release tag to pin during the test. Empty = HEAD.'
     required: false
     default: ''
+  retain-repos:
+    description: 'Retain scaffolded test repos (skip cleanup) even on success. Sets TEST_NO_CLEANUP=1.'
+    required: false
+    default: 'false'
 
 runs:
   using: composite
@@ -80,6 +84,7 @@ runs:
         echo "Verify level: ${{ inputs.verify-level }}"
         echo "Exclude legacy: ${{ inputs.exclude-legacy }}"
         echo "Shop tag: ${{ inputs.shop-tag }}"
+        echo "Retain repos: ${{ inputs.retain-repos }}"
 
     - name: System test
       id: test-run
@@ -103,6 +108,7 @@ runs:
         TEST_VERIFY_LEVEL: ${{ inputs.verify-level }}
         TEST_EXCLUDE_LEGACY: ${{ inputs.exclude-legacy }}
         TEST_SHOP_TAG: ${{ inputs.shop-tag }}
+        TEST_NO_CLEANUP: ${{ inputs.retain-repos == 'true' && '1' || '' }}
 
     - name: Rate limit marker
       if: failure() && steps.test-run.outputs.result == 'rate-limited'
