@@ -8,7 +8,7 @@ jobs:
     name: Stage 1 — shop/prerelease-pipeline-monolith-java (level=local)
     runs-on: ubuntu-latest
     steps:
-      - uses: optivem/actions/trigger-and-wait@v1
+      - uses: optivem/actions/trigger-and-wait-for-github-workflow@v1
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
@@ -21,7 +21,7 @@ jobs:
     name: Stage 1 — shop/prerelease-pipeline-monolith-dotnet (level=local)
     runs-on: ubuntu-latest
     steps:
-      - uses: optivem/actions/trigger-and-wait@v1
+      - uses: optivem/actions/trigger-and-wait-for-github-workflow@v1
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
@@ -34,7 +34,7 @@ jobs:
     name: Stage 1 — shop/prerelease-pipeline-monolith-typescript (level=local)
     runs-on: ubuntu-latest
     steps:
-      - uses: optivem/actions/trigger-and-wait@v1
+      - uses: optivem/actions/trigger-and-wait-for-github-workflow@v1
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
@@ -47,7 +47,7 @@ jobs:
     name: Stage 1 — shop/prerelease-pipeline-multitier-java (level=local)
     runs-on: ubuntu-latest
     steps:
-      - uses: optivem/actions/trigger-and-wait@v1
+      - uses: optivem/actions/trigger-and-wait-for-github-workflow@v1
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
@@ -60,7 +60,7 @@ jobs:
     name: Stage 1 — shop/prerelease-pipeline-multitier-dotnet (level=local)
     runs-on: ubuntu-latest
     steps:
-      - uses: optivem/actions/trigger-and-wait@v1
+      - uses: optivem/actions/trigger-and-wait-for-github-workflow@v1
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
@@ -73,7 +73,7 @@ jobs:
     name: Stage 1 — shop/prerelease-pipeline-multitier-typescript (level=local)
     runs-on: ubuntu-latest
     steps:
-      - uses: optivem/actions/trigger-and-wait@v1
+      - uses: optivem/actions/trigger-and-wait-for-github-workflow@v1
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
@@ -93,7 +93,7 @@ jobs:
       - shop-local-multitier-typescript
     runs-on: ubuntu-latest
     steps:
-      - uses: optivem/actions/trigger-and-wait@v1
+      - uses: optivem/actions/trigger-and-wait-for-github-workflow@v1
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:

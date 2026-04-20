@@ -48,11 +48,9 @@ jobs:
           echo "RC: $RC ($SHA)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Check RC Exists
-        uses: optivem/actions/ensure-release-exists@v1
+        uses: optivem/actions/ensure-tag-exists@v1
         with:
-          version: ${{ steps.rc.outputs.version }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ steps.rc.outputs.version }}
 
       - id: gen
         uses: optivem/actions/generate-release-version@v1
@@ -60,7 +58,7 @@ jobs:
           prerelease-version: ${{ steps.rc.outputs.version }}
 
       - id: shop-sha
-        uses: optivem/actions/get-commit-status@v1
+        uses: optivem/actions/get-github-commit-status@v1
         with:
           sha: ${{ steps.rc.outputs.sha }}
           context: verified-shop-sha

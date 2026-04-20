@@ -39,7 +39,7 @@ jobs:
       should-run: ${{ steps.should-run.outputs.changed }}
     steps:
       - name: Validate Config
-        uses: optivem/actions/validate-config@v1
+        uses: optivem/actions/ensure-env-vars-defined@v1
         with:
           names: |
             TEST_OWNER
@@ -72,13 +72,13 @@ jobs:
           echo "| verify-level | $LEVEL |" >> "$GITHUB_STEP_SUMMARY"
 
       - id: shop-tag
-        uses: optivem/actions/resolve-prerelease-tag@v1
+        uses: optivem/actions/resolve-github-prerelease-tag@v1
         with:
           repo: optivem/shop
           input-tag: ${{ inputs.shop-tag }}
 
       - id: shop-sha
-        uses: optivem/actions/resolve-commit@v1
+        uses: optivem/actions/resolve-github-commit@v1
         with:
           repo: optivem/shop
           ref: ${{ steps.shop-tag.outputs.tag }}
@@ -86,7 +86,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - id: should-run
-        uses: optivem/actions/has-unverified-sha@v1
+        uses: optivem/actions/has-unverified-github-commit-status@v1
         with:
           subject-sha: ${{ steps.shop-sha.outputs.sha }}
           status-context: verified-shop-sha
@@ -136,7 +136,7 @@ jobs:
       version: ${{ steps.gen.outputs.version }}
     steps:
       - name: Record Verified Shop SHA
-        uses: optivem/actions/create-commit-status@v1
+        uses: optivem/actions/create-github-commit-status@v1
         with:
           context: verified-shop-sha
           description: ${{ needs.check.outputs.shop-sha }}
