@@ -44,7 +44,7 @@ jobs:
       should-run: ${{ steps.should-run.outputs.changed }}
       retain-repos: ${{ github.event_name == 'workflow_dispatch' && inputs.retain-repos && 'true' || 'false' }}
     steps:
-      - name: Validate Config
+      - name: Ensure Environment Variables Defined
         uses: optivem/actions/ensure-env-vars-defined@v1
         with:
           names: |
