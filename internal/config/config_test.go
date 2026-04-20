@@ -280,7 +280,7 @@ func TestSonarProjectKeys(t *testing.T) {
 				Arch: "monolith", RepoStrategy: "multirepo", Lang: "java",
 				SystemRepo: "page-turner-system",
 			},
-			expected: []string{"acme_page-turner-system-system"},
+			expected: []string{"acme_page-turner-system"},
 		},
 		{
 			name: "multitier monorepo",
@@ -299,7 +299,7 @@ func TestSonarProjectKeys(t *testing.T) {
 				BackendLang: "java", FrontendLang: "react",
 				BackendRepo: "page-turner-backend", FrontendRepo: "page-turner-frontend",
 			},
-			expected: []string{"acme_page-turner-backend-backend", "acme_page-turner-frontend-frontend"},
+			expected: []string{"acme_page-turner-backend", "acme_page-turner-frontend"},
 		},
 	}
 
@@ -312,15 +312,15 @@ func TestSonarProjectKeys(t *testing.T) {
 				if tt.cfg.RepoStrategy == "monorepo" {
 					got = []string{tt.cfg.Owner + "_" + tt.cfg.Repo + "-system"}
 				} else {
-					got = []string{tt.cfg.Owner + "_" + tt.cfg.SystemRepo + "-system"}
+					got = []string{tt.cfg.Owner + "_" + tt.cfg.SystemRepo}
 				}
 			} else if tt.cfg.RepoStrategy == "monorepo" {
 				prefix := tt.cfg.Owner + "_" + tt.cfg.Repo
 				got = []string{prefix + "-backend", prefix + "-frontend"}
 			} else {
 				got = []string{
-					tt.cfg.Owner + "_" + tt.cfg.BackendRepo + "-backend",
-					tt.cfg.Owner + "_" + tt.cfg.FrontendRepo + "-frontend",
+					tt.cfg.Owner + "_" + tt.cfg.BackendRepo,
+					tt.cfg.Owner + "_" + tt.cfg.FrontendRepo,
 				}
 			}
 
