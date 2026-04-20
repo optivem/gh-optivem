@@ -87,12 +87,10 @@ jobs:
           input-tag: ${{ inputs.shop-tag }}
 
       - id: shop-sha
-        uses: optivem/actions/resolve-github-commit@v1
+        uses: optivem/actions/resolve-commit@v1
         with:
           repo: optivem/shop
           ref: ${{ steps.shop-tag.outputs.tag }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - id: should-run
         uses: optivem/actions/has-unverified-github-commit-status@v1
