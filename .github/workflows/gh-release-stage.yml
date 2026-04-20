@@ -20,8 +20,8 @@ jobs:
       rc-version: ${{ steps.rc.outputs.version }}
       rc-sha: ${{ steps.rc.outputs.sha }}
       release-version: ${{ steps.gen.outputs.version }}
-      shop-sha: ${{ steps.shop.outputs.sha }}
-      shop-tag: ${{ steps.shop.outputs.tag }}
+      shop-sha: ${{ steps.shop-sha.outputs.description }}
+      shop-tag: ${{ steps.shop-tag.outputs.tag }}
     steps:
       - id: rc
         env:
@@ -59,22 +59,17 @@ jobs:
         with:
           prerelease-version: ${{ steps.rc.outputs.version }}
 
-      - id: shop
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RC_SHA: ${{ steps.rc.outputs.sha }}
-        run: |
-          SHOP_SHA=$(gh api "repos/${{ github.repository }}/commits/$RC_SHA/statuses" \
-            --jq '[.[] | select(.context=="verified-shop-sha" and .state=="success")][0].description')
-          if [ -z "$SHOP_SHA" ] || [ "$SHOP_SHA" = "null" ]; then
-            echo "::error::No verified-shop-sha status on RC commit $RC_SHA"
-            exit 1
-          fi
-          SHOP_TAG=$(gh api repos/optivem/shop/tags --paginate \
-            --jq ".[] | select(.commit.sha==\"$SHOP_SHA\") | .name" | head -1)
-          echo "sha=$SHOP_SHA" >> "$GITHUB_OUTPUT"
-          echo "tag=$SHOP_TAG" >> "$GITHUB_OUTPUT"
-          echo "Shop: ${SHOP_TAG:-<no tag>} ($SHOP_SHA)" >> "$GITHUB_STEP_SUMMARY"
+      - id: shop-sha
+        uses: optivem/actions/get-commit-status@v1
+        with:
+          sha: ${{ steps.rc.outputs.sha }}
+          context: verified-shop-sha
+
+      - id: shop-tag
+        uses: optivem/actions/resolve-tag-from-sha@v1
+        with:
+          repo: optivem/shop
+          sha: ${{ steps.shop-sha.outputs.description }}
 
   run:
     name: Run
@@ -89,30 +84,17 @@ jobs:
           fetch-depth: 0
 
       - name: Create and push release tag
-        env:
-          RELEASE_TAG: ${{ needs.check.outputs.release-version }}
-          RC_SHA: ${{ needs.check.outputs.rc-sha }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "$RELEASE_TAG" "$RC_SHA"
-          git push origin "$RELEASE_TAG"
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: optivem/actions/create-and-push-tag@v1
         with:
-          go-version-file: go.mod
-          cache: false
+          tag: ${{ needs.check.outputs.release-version }}
+          sha: ${{ needs.check.outputs.rc-sha }}
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: ./.github/actions/run-goreleaser
         with:
-          version: latest
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SHOP_SHA: ${{ needs.check.outputs.shop-sha }}
-          SHOP_TAG: ${{ needs.check.outputs.shop-tag }}
+          shop-sha: ${{ needs.check.outputs.shop-sha }}
+          shop-tag: ${{ needs.check.outputs.shop-tag }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   bump-version:
     name: Bump Patch Version

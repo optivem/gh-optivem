@@ -1,0 +1,31 @@
+name: 'Run GoReleaser'
+description: 'Sets up Go and runs GoReleaser with the optivem/shop SHA and tag baked into the build.'
+inputs:
+  shop-sha:
+    description: 'optivem/shop commit SHA to bake into the build'
+    required: true
+  shop-tag:
+    description: 'optivem/shop tag pointing at shop-sha (optional, for human-readable display)'
+    required: false
+    default: ''
+  github-token:
+    description: 'GitHub token for GoReleaser'
+    required: true
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+        cache: false
+
+    - name: Run GoReleaser
+      uses: goreleaser/goreleaser-action@v6
+      with:
+        version: latest
+        args: release --clean
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        SHOP_SHA: ${{ inputs.shop-sha }}
+        SHOP_TAG: ${{ inputs.shop-tag }}

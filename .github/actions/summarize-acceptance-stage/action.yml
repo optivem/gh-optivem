@@ -1,0 +1,10 @@
+name: 'Summarize Acceptance Stage'
+description: 'Classifies matrix jobs (passed/failed/rate-limited/cancelled/skipped) and writes a summary table. Fails if any job failed or hit a rate limit.'
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/github-script@v9
+      with:
+        script: |
+          const script = require('${{ github.action_path }}/summarize-acceptance.js');
+          await script({ github, context, core });
