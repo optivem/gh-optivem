@@ -34,8 +34,23 @@ permissions:
   statuses: write
 
 jobs:
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    outputs:
+      shop-release-exists: ${{ steps.check-shop.outputs.exists }}
+    steps:
+      - name: Check optivem/shop has meta-v* release
+        id: check-shop
+        uses: optivem/actions/check-tag-pattern-exists@v1
+        with:
+          repo: optivem/shop
+          tag-pattern: meta-v*
+
   check:
     name: Check
+    needs: preflight
+    if: needs.preflight.outputs.shop-release-exists == 'true'
     runs-on: ubuntu-latest
     outputs:
       verify-level: ${{ steps.level.outputs.verify-level }}
