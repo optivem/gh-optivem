@@ -219,6 +219,7 @@ func applyMonolithMultirepo(cfg *config.Config) {
 
 	systemWfMap := map[string]string{
 		prefixMonolith + lang + commitStageYml: "commit-stage.yml",
+		cleanupWorkflow:                        cleanupWorkflow,
 	}
 	templates.CopyWorkflows(systemWfMap, shop, sysDir)
 
@@ -322,6 +323,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 
 	backendWfMap := map[string]string{
 		prefixMultitierBackend + backendLang + commitStageYml: "backend-commit-stage.yml",
+		cleanupWorkflow: cleanupWorkflow,
 	}
 	templates.CopyWorkflows(backendWfMap, shop, bDir)
 
@@ -341,6 +343,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 
 	frontendWfMap := map[string]string{
 		prefixMultitierFrontend + frontendLang + commitStageYml: "frontend-commit-stage.yml",
+		cleanupWorkflow: cleanupWorkflow,
 	}
 	templates.CopyWorkflows(frontendWfMap, shop, fDir)
 
