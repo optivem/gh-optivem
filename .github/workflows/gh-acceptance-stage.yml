@@ -127,8 +127,8 @@ jobs:
           exclude-legacy: 'false'
           shop-tag: ${{ needs.check.outputs.shop-tag }}
 
-  promote-to-rc:
-    name: Promote to RC
+  create-prerelease:
+    name: Create Prerelease
     needs: [check, run]
     if: success() && needs.check.outputs.verify-level == 'release'
     runs-on: ubuntu-latest
@@ -136,7 +136,7 @@ jobs:
       version: ${{ steps.gen.outputs.version }}
     steps:
       - name: Record Verified Shop SHA
-        uses: optivem/actions/set-commit-status@v1
+        uses: optivem/actions/create-commit-status@v1
         with:
           context: verified-shop-sha
           description: ${{ needs.check.outputs.shop-sha }}
@@ -178,7 +178,7 @@ jobs:
 
   summary:
     name: Summary
-    needs: [run, promote-to-rc]
+    needs: [run, create-prerelease]
     if: always()
     runs-on: ubuntu-latest
     steps:
