@@ -16,11 +16,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Authenticate GitHub CLI
-        run: |
-          echo "${{ secrets.VERIFY_TOKEN }}" | gh auth login --with-token
-
       - name: Cleanup Prereleases
         uses: optivem/actions/cleanup-prereleases@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	cleanupPrereleaseWorkflow = "cleanup-prereleases.yml"
+	cleanupWorkflow           = "cleanup.yml"
 	deployCloudRun            = "cloud-run"
 	cloudSuffix               = "-cloud"
 	commitStageYml            = "-commit-stage.yml"
@@ -115,7 +115,7 @@ func ApplyTemplate(cfg *config.Config) {
 
 	// Copy architecture-independent workflows
 	templates.CopyWorkflows(map[string]string{
-		cleanupPrereleaseWorkflow: cleanupPrereleaseWorkflow,
+		cleanupWorkflow: cleanupWorkflow,
 	}, cfg.ShopPath, cfg.RepoDir)
 
 	if cfg.Arch == "monolith" {
