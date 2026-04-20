@@ -1,4 +1,4 @@
-name: gh Commit Stage
+name: gh-commit-stage
 
 on:
   push:

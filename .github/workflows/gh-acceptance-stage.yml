@@ -1,4 +1,4 @@
-name: gh Acceptance Stage
+name: gh-acceptance-stage
 run-name: gh Acceptance Stage — ${{ github.event_name == 'workflow_dispatch' && inputs.verify-level || github.event.schedule == '0 */6 * * *' && 'release' || 'local' }}
 
 on:

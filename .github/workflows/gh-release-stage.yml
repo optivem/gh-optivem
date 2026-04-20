@@ -1,4 +1,4 @@
-name: gh Release Stage
+name: gh-release-stage
 
 on:
   workflow_dispatch:
