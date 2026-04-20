@@ -224,6 +224,9 @@ func (g *GitHub) VariableSet(name, value string) {
 
 func (g *GitHub) Clone(dest string) {
 	Run(fmt.Sprintf("gh repo clone %s %s", g.Repo, dest), false, true, "")
+	if _, err := os.Stat(filepath.Join(dest, ".git")); err != nil {
+		log.Fatalf("clone of %s to %s produced no .git directory: %v", g.Repo, dest, err)
+	}
 }
 
 func (g *GitHub) WorkflowRun(workflow string, fields map[string]string) {

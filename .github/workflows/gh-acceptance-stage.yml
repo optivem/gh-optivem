@@ -15,7 +15,7 @@ on:
           - commit
           - acceptance
           - release
-      shop-ref:
+      shop-tag:
         description: 'optivem/shop meta-v* release tag to test against. Empty = latest meta-v* release. Must be a published meta-v* release (not main, not a non-meta tag).'
         required: false
         default: ''
@@ -34,7 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       verify-level: ${{ steps.level.outputs.verify-level }}
-      shop-sha: ${{ (steps.level.outputs.verify-level == 'release' || inputs.shop-ref != '') && steps.shop-commit.outputs.sha || '' }}
+      shop-tag: ${{ steps.shop-tag.outputs.tag }}
+      shop-sha: ${{ (steps.level.outputs.verify-level == 'release' || inputs.shop-tag != '') && steps.shop-sha.outputs.sha || '' }}
       should-run: ${{ steps.should-run.outputs.should-run }}
     steps:
       - name: Validate Config
@@ -70,53 +71,52 @@ jobs:
           echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| verify-level | $LEVEL |" >> "$GITHUB_STEP_SUMMARY"
 
-      - id: shop-ref
+      - id: shop-tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           LEVEL="${{ steps.level.outputs.verify-level }}"
-          INPUT_REF="${{ inputs.shop-ref }}"
+          INPUT_TAG="${{ inputs.shop-tag }}"
 
-          if [ -z "$INPUT_REF" ]; then
+          if [ -z "$INPUT_TAG" ]; then
             TAG=$(gh api "repos/optivem/shop/releases?per_page=100" \
               --jq '[.[] | select(.tag_name | startswith("meta-v"))] | sort_by(.created_at) | last | .tag_name' 2>/dev/null)
             if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
-              echo "::error::No meta-v* release found in optivem/shop — blank shop-ref requires a published meta-v* release. Run shop's meta-prerelease-stage (and publish its tag as a release) first, or pass an explicit shop-ref."
+              echo "::error::No meta-v* release found in optivem/shop — blank shop-tag requires a published meta-v* release. Run shop's meta-prerelease-stage (and publish its tag as a release) first, or pass an explicit shop-tag."
               exit 1
             fi
-            REF="$TAG"
-            echo "Using latest meta-v* release from optivem/shop: $REF" >> "$GITHUB_STEP_SUMMARY"
+            echo "Using latest meta-v* release from optivem/shop: $TAG" >> "$GITHUB_STEP_SUMMARY"
           else
-            if [ "$INPUT_REF" = "main" ] || [ "$INPUT_REF" = "refs/heads/main" ]; then
-              echo "::error::shop-ref 'main' is not allowed — pass a published meta-v* release tag."
+            if [ "$INPUT_TAG" = "main" ] || [ "$INPUT_TAG" = "refs/heads/main" ]; then
+              echo "::error::shop-tag 'main' is not allowed — pass a published meta-v* release tag."
               exit 1
             fi
-            case "$INPUT_REF" in
+            case "$INPUT_TAG" in
               meta-v*) ;;
-              *) echo "::error::shop-ref '$INPUT_REF' must start with 'meta-v' — only meta-v* release tags are accepted."; exit 1 ;;
+              *) echo "::error::shop-tag '$INPUT_TAG' must start with 'meta-v' — only meta-v* release tags are accepted."; exit 1 ;;
             esac
-            if ! gh api "repos/optivem/shop/releases/tags/$INPUT_REF" >/dev/null 2>&1; then
-              echo "::error::shop-ref '$INPUT_REF' is not a published release tag — acceptance requires a published meta-v* release."
+            if ! gh api "repos/optivem/shop/releases/tags/$INPUT_TAG" >/dev/null 2>&1; then
+              echo "::error::shop-tag '$INPUT_TAG' is not a published release tag — acceptance requires a published meta-v* release."
               exit 1
             fi
-            REF="$INPUT_REF"
-            echo "Using input shop-ref (meta-v* release): $REF" >> "$GITHUB_STEP_SUMMARY"
+            TAG="$INPUT_TAG"
+            echo "Using input shop-tag (meta-v* release): $TAG" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - id: shop-commit
+      - id: shop-sha
         uses: optivem/actions/resolve-commit@v1
         with:
           repo: optivem/shop
-          ref: ${{ steps.shop-ref.outputs.ref }}
+          ref: ${{ steps.shop-tag.outputs.tag }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - id: should-run
         uses: optivem/actions/should-run-acceptance-stage@v1
         with:
-          subject-sha: ${{ steps.shop-commit.outputs.sha }}
+          subject-sha: ${{ steps.shop-sha.outputs.sha }}
           status-context: verified-shop-sha
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -155,7 +155,7 @@ jobs:
           test-lang: ${{ matrix.test-lang }}
           verify-level: ${{ needs.check.outputs.verify-level }}
           exclude-legacy: 'false'
-          shop-ref: ${{ needs.check.outputs.shop-sha }}
+          shop-tag: ${{ needs.check.outputs.shop-tag }}
 
   promote-to-rc:
     name: Promote to RC

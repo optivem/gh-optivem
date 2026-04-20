@@ -327,7 +327,7 @@ func ParseAndValidate() *Config {
 	noBugReport := flag.Bool("no-bug-report", false, "Skip auto-creating GitHub issues on failure")
 	deploy := flag.String("deploy", "docker", "Deployment target: docker or cloud-run")
 	workDir := flag.String("workdir", "", "Working directory for cloning (default: temp dir)")
-	shopRef := flag.String("shop-ref", "", "Pin optivem/shop to this ref (SHA or tag). Overrides build-time pin. Default: HEAD of default branch.")
+	shopTag := flag.String("shop-tag", "", "Pin optivem/shop to this meta-v* release tag. Overrides build-time pin. Default: latest meta-v* release.")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 
 	flag.Parse()
@@ -441,25 +441,22 @@ func ParseAndValidate() *Config {
 		}
 	}
 
-	// Resolve shop ref: explicit --shop-ref > build-time version.ShopRef > latest meta-v* release.
+	// Resolve shop ref: explicit --shop-tag > build-time version.ShopRef > latest meta-v* release.
 	// main / refs/heads/main are always rejected — acceptance requires a published meta-v* release.
-	// Explicit --shop-ref is validated strictly: must be a published meta-v* release tag.
-	if *shopRef != "" {
-		if err := validateUserShopRef(*shopRef); err != nil {
-			log.FatalExit("Invalid --shop-ref: " + err.Error())
-		}
+	if *shopTag != "" && isMainRef(*shopTag) {
+		log.FatalExit("Invalid --shop-tag: 'main'/'master' is not allowed — pass a published meta-v* release tag.")
 	}
-	resolvedShopRef := *shopRef
+	resolvedShopRef := *shopTag
 	if resolvedShopRef == "" {
 		resolvedShopRef = version.ShopRef
 	}
 	if resolvedShopRef == "" {
 		latest, err := latestMetaRelease()
 		if err != nil {
-			log.FatalExit("Cannot resolve shop ref: " + err.Error())
+			log.FatalExit("Cannot resolve shop tag: " + err.Error())
 		}
 		resolvedShopRef = latest
-		log.OKf("Resolved empty shop-ref to latest meta-v* release: %s", resolvedShopRef)
+		log.OKf("Resolved empty shop-tag to latest meta-v* release: %s", resolvedShopRef)
 	}
 	if isMainRef(resolvedShopRef) {
 		log.FatalExit("Invalid shop ref: 'main'/'master' is not allowed — acceptance requires a published meta-v* release tag.")
@@ -612,22 +609,6 @@ func isMainRef(ref string) bool {
 		return true
 	}
 	return false
-}
-
-// validateUserShopRef applies strict rules to an explicit --shop-ref value:
-// must not be main/master, must start with "meta-v", and must be a published release.
-func validateUserShopRef(ref string) error {
-	if isMainRef(ref) {
-		return fmt.Errorf("'%s' is not allowed — pass a published meta-v* release tag", ref)
-	}
-	if !strings.HasPrefix(ref, "meta-v") {
-		return fmt.Errorf("'%s' must start with 'meta-v' — only meta-v* release tags are accepted", ref)
-	}
-	cmd := exec.Command("gh", "api", "repos/optivem/shop/releases/tags/"+ref)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("'%s' is not a published release tag in optivem/shop: %s\n%s", ref, err, string(out))
-	}
-	return nil
 }
 
 // latestMetaRelease returns the tag of the most recently created meta-v* release in optivem/shop.

@@ -91,7 +91,8 @@ func (s *SonarCloud) isAlreadyExists(result map[string]interface{}) bool {
 		return false
 	}
 	msg, _ := result["message"].(string)
-	return strings.Contains(strings.ToLower(msg), "already exist")
+	lower := strings.ToLower(msg)
+	return strings.Contains(lower, "already exist") || strings.Contains(lower, "already used")
 }
 
 func (s *SonarCloud) CreateOrg() {

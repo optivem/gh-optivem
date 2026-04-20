@@ -20,8 +20,8 @@ inputs:
   exclude-legacy:
     description: 'Exclude legacy stage verification'
     required: true
-  shop-ref:
-    description: 'optivem/shop ref (SHA or tag) to pin during the test. Empty = HEAD.'
+  shop-tag:
+    description: 'optivem/shop meta-v* release tag to pin during the test. Empty = HEAD.'
     required: false
     default: ''
 
@@ -79,7 +79,7 @@ runs:
       run: |
         echo "Verify level: ${{ inputs.verify-level }}"
         echo "Exclude legacy: ${{ inputs.exclude-legacy }}"
-        echo "Shop ref: ${{ inputs.shop-ref }}"
+        echo "Shop tag: ${{ inputs.shop-tag }}"
 
     - name: System test
       id: test-run
@@ -102,7 +102,7 @@ runs:
       env:
         TEST_VERIFY_LEVEL: ${{ inputs.verify-level }}
         TEST_EXCLUDE_LEGACY: ${{ inputs.exclude-legacy }}
-        TEST_SHOP_REF: ${{ inputs.shop-ref }}
+        TEST_SHOP_TAG: ${{ inputs.shop-tag }}
 
     - name: Rate limit marker
       if: failure() && steps.test-run.outputs.result == 'rate-limited'
