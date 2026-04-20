@@ -20,6 +20,11 @@ on:
         required: false
         default: ''
         type: string
+      retain-repos:
+        description: 'Retain scaffolded test repos (skip cleanup) even on success. Useful for post-run debugging.'
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: '0 */6 * * *'  # Every 6 hours — verify-level=release
     # - cron: '0 * * * *'    # Every hour — verify-level=local
@@ -37,6 +42,7 @@ jobs:
       shop-tag: ${{ steps.shop-tag.outputs.tag }}
       shop-sha: ${{ (steps.level.outputs.verify-level == 'release' || inputs.shop-tag != '') && steps.shop-sha.outputs.sha || '' }}
       should-run: ${{ steps.should-run.outputs.changed }}
+      retain-repos: ${{ github.event_name == 'workflow_dispatch' && inputs.retain-repos && 'true' || 'false' }}
     steps:
       - name: Validate Config
         uses: optivem/actions/validate-config@v1
@@ -70,6 +76,9 @@ jobs:
           echo "| Input | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| verify-level | $LEVEL |" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "| retain-repos | ${{ inputs.retain-repos }} |" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - id: shop-tag
         uses: optivem/actions/resolve-prerelease-tag@v1
@@ -126,6 +135,7 @@ jobs:
           verify-level: ${{ needs.check.outputs.verify-level }}
           exclude-legacy: 'false'
           shop-tag: ${{ needs.check.outputs.shop-tag }}
+          retain-repos: ${{ needs.check.outputs.retain-repos }}
 
   create-prerelease:
     name: Create Prerelease
