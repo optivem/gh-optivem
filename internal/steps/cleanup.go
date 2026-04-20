@@ -16,12 +16,15 @@ const (
 )
 
 // GetSonarProjectKeys returns the SonarCloud project keys for the given config.
+// Keys must match the final value in scaffolded workflows after Pass 5 suffix
+// dedupe in replacements.go: for multirepo, the repo name already encodes the
+// component (e.g. "<base>-backend"), so no extra suffix is appended.
 func GetSonarProjectKeys(cfg *config.Config) []string {
 	if cfg.Arch == "monolith" {
 		if cfg.RepoStrategy == "monorepo" {
 			return []string{cfg.Owner + "_" + cfg.Repo + "-system"}
 		}
-		return []string{cfg.Owner + "_" + cfg.SystemRepo + "-system"}
+		return []string{cfg.Owner + "_" + cfg.SystemRepo}
 	}
 	if cfg.RepoStrategy == "monorepo" {
 		prefix := cfg.Owner + "_" + cfg.Repo
@@ -31,8 +34,8 @@ func GetSonarProjectKeys(cfg *config.Config) []string {
 		}
 	}
 	return []string{
-		cfg.Owner + "_" + cfg.BackendRepo + "-backend",
-		cfg.Owner + "_" + cfg.FrontendRepo + "-frontend",
+		cfg.Owner + "_" + cfg.BackendRepo,
+		cfg.Owner + "_" + cfg.FrontendRepo,
 	}
 }
 
