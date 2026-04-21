@@ -18,5 +18,3 @@ jobs:
 
       - name: Cleanup Prereleases
         uses: optivem/actions/cleanup-prereleases@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
