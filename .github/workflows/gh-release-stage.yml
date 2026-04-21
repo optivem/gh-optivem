@@ -73,7 +73,7 @@ jobs:
       - id: shop-tag
         uses: optivem/actions/resolve-tag-from-sha@v1
         with:
-          repo: optivem/shop
+          repository: optivem/shop
           sha: ${{ steps.shop-sha.outputs.description }}
 
   run:

@@ -17,4 +17,4 @@ jobs:
           fetch-depth: 0
 
       - name: Cleanup Prereleases
-        uses: optivem/actions/cleanup-prereleases@v1
+        uses: optivem/actions/cleanup-github-prereleases@v1
