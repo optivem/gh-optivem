@@ -12,6 +12,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
+          token: ${{ secrets.VERIFY_TOKEN }}
           workflow: prerelease-pipeline-monolith-java.yml
           repository: optivem/shop
           inputs: '{"level": "local"}'
@@ -25,6 +26,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
+          token: ${{ secrets.VERIFY_TOKEN }}
           workflow: prerelease-pipeline-monolith-dotnet.yml
           repository: optivem/shop
           inputs: '{"level": "local"}'
@@ -38,6 +40,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
+          token: ${{ secrets.VERIFY_TOKEN }}
           workflow: prerelease-pipeline-monolith-typescript.yml
           repository: optivem/shop
           inputs: '{"level": "local"}'
@@ -51,6 +54,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
+          token: ${{ secrets.VERIFY_TOKEN }}
           workflow: prerelease-pipeline-multitier-java.yml
           repository: optivem/shop
           inputs: '{"level": "local"}'
@@ -64,6 +68,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
+          token: ${{ secrets.VERIFY_TOKEN }}
           workflow: prerelease-pipeline-multitier-dotnet.yml
           repository: optivem/shop
           inputs: '{"level": "local"}'
@@ -77,6 +82,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
+          token: ${{ secrets.VERIFY_TOKEN }}
           workflow: prerelease-pipeline-multitier-typescript.yml
           repository: optivem/shop
           inputs: '{"level": "local"}'
@@ -97,6 +103,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
         with:
+          token: ${{ secrets.VERIFY_TOKEN }}
           workflow: gh-acceptance-stage.yml
           inputs: '{"verify-level": "local"}'
           poll-interval: '600'
