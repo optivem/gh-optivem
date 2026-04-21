@@ -197,7 +197,6 @@ jobs:
         uses: optivem/actions/publish-tag@v1
         with:
           tag: ${{ steps.gen.outputs.version }}
-          sha: ${{ github.sha }}
           token: ${{ secrets.WORKFLOW_TOKEN }}
 
       - name: Run GoReleaser (RC)

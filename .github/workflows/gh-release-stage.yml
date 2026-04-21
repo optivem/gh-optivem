@@ -92,7 +92,6 @@ jobs:
         uses: optivem/actions/publish-tag@v1
         with:
           tag: ${{ needs.check.outputs.release-version }}
-          sha: ${{ needs.check.outputs.rc-sha }}
           token: ${{ secrets.WORKFLOW_TOKEN }}
 
       - name: Run GoReleaser
