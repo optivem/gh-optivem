@@ -53,7 +53,7 @@ jobs:
           tag: ${{ steps.rc.outputs.version }}
 
       - id: gen
-        uses: optivem/actions/generate-release-version@v1
+        uses: optivem/actions/compose-release-version@v1
         with:
           prerelease-version: ${{ steps.rc.outputs.version }}
 
