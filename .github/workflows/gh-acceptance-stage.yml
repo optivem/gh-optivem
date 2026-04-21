@@ -96,7 +96,7 @@ jobs:
           fi
 
       - id: shop-tag
-        uses: optivem/actions/resolve-github-prerelease-tag@v1
+        uses: optivem/actions/resolve-prerelease-tag@v1
         with:
           repository: optivem/shop
           input-tag: ${{ inputs.shop-tag }}
@@ -108,7 +108,7 @@ jobs:
           ref: ${{ steps.shop-tag.outputs.tag }}
 
       - id: should-run
-        uses: optivem/actions/check-unverified-github-commit-status@v1
+        uses: optivem/actions/check-unverified-commit-status@v1
         with:
           subject-sha: ${{ steps.shop-sha.outputs.sha }}
           status-context: verified-shop-sha
@@ -159,7 +159,7 @@ jobs:
       version: ${{ steps.gen.outputs.version }}
     steps:
       - name: Record Verified Shop SHA
-        uses: optivem/actions/create-github-commit-status@v1
+        uses: optivem/actions/create-commit-status@v1
         with:
           context: verified-shop-sha
           description: ${{ needs.check.outputs.shop-sha }}
