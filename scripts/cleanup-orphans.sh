@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+_CLEANUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$_CLEANUP_DIR/../.github/scripts/gh-retry.sh"
+source "$_CLEANUP_DIR/../.github/scripts/gh-rate-limit.sh"
+
 # Deletes orphaned test repos, their SonarCloud projects, Docker
 # containers/images, and local clone directories left behind by system tests.
 #
@@ -181,7 +185,8 @@ if [[ "$CLEAN_REPOS" == "1" ]]; then
   if [[ -n "$BEFORE_DATE" ]]; then
     before_jq=" and .createdAt < \"${BEFORE_DATE}\""
   fi
-  repos=$(gh repo list "$TEST_OWNER" --limit 1000 --json name,createdAt --jq "[.[] | select((.name | ${jq_filter})${before_jq})] | sort_by(.createdAt) | .[].name") || true
+  wait_for_rate_limit
+  repos=$(gh_retry repo list "$TEST_OWNER" --limit 1000 --json name,createdAt --jq "[.[] | select((.name | ${jq_filter})${before_jq})] | sort_by(.createdAt) | .[].name") || true
 
   if [[ -z "$repos" ]]; then
     echo "No orphaned test repos found."
@@ -196,7 +201,8 @@ if [[ "$CLEAN_REPOS" == "1" ]]; then
         echo "  [dry run] would delete $full"
       else
         echo "  Deleting $full ..."
-        gh repo delete "$full" --yes
+        wait_for_rate_limit
+        gh_retry repo delete "$full" --yes
         sleep 10
       fi
     done
