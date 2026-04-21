@@ -88,11 +88,12 @@ jobs:
           ref: ${{ needs.check.outputs.rc-sha }}
           fetch-depth: 0
 
-      - name: Create and push release tag
-        uses: optivem/actions/create-and-push-tag@v1
+      - name: Publish Release Tag
+        uses: optivem/actions/publish-tag@v1
         with:
           tag: ${{ needs.check.outputs.release-version }}
           sha: ${{ needs.check.outputs.rc-sha }}
+          token: ${{ secrets.WORKFLOW_TOKEN }}
 
       - name: Run GoReleaser
         uses: ./.github/actions/run-goreleaser

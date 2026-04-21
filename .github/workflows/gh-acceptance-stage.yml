@@ -193,11 +193,12 @@ jobs:
           repository: optivem/shop
           sha: ${{ needs.check.outputs.shop-sha }}
 
-      - name: Create and push RC tag
-        uses: optivem/actions/create-and-push-tag@v1
+      - name: Publish RC Tag
+        uses: optivem/actions/publish-tag@v1
         with:
           tag: ${{ steps.gen.outputs.version }}
           sha: ${{ github.sha }}
+          token: ${{ secrets.WORKFLOW_TOKEN }}
 
       - name: Run GoReleaser (RC)
         uses: ./.github/actions/run-goreleaser
