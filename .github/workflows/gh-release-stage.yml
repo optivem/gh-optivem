@@ -67,14 +67,14 @@ jobs:
       - id: shop-sha
         uses: optivem/actions/get-commit-status@v1
         with:
-          sha: ${{ steps.rc.outputs.sha }}
+          commit-sha: ${{ steps.rc.outputs.sha }}
           context: verified-shop-sha
 
       - id: shop-tag
         uses: optivem/actions/resolve-tag-from-sha@v1
         with:
           repository: optivem/shop
-          sha: ${{ steps.shop-sha.outputs.description }}
+          commit-sha: ${{ steps.shop-sha.outputs.description }}
 
   run:
     name: Run

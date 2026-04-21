@@ -191,7 +191,7 @@ jobs:
         uses: optivem/actions/resolve-tag-from-sha@v1
         with:
           repository: optivem/shop
-          sha: ${{ needs.check.outputs.shop-sha }}
+          commit-sha: ${{ needs.check.outputs.shop-sha }}
 
       - name: Publish RC Tag
         uses: optivem/actions/publish-tag@v1
