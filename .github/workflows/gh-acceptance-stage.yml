@@ -97,11 +97,40 @@ jobs:
             echo "| retain-repos | ${{ inputs.retain-repos }} |" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - id: shop-tag
-        uses: optivem/actions/resolve-prerelease-tag@v1
+      - name: Validate shop-tag prefix
+        if: inputs.shop-tag != ''
+        shell: bash
+        env:
+          TAG: ${{ inputs.shop-tag }}
+        run: |
+          if [[ "$TAG" != meta-v* ]]; then
+            echo "::error::shop-tag '$TAG' must start with 'meta-v' — only meta-v* release tags are accepted."
+            exit 1
+          fi
+
+      - name: Ensure explicit shop-tag exists
+        if: inputs.shop-tag != ''
+        uses: optivem/actions/ensure-tag-exists@v1
         with:
           repository: optivem/shop
-          input-tag: ${{ inputs.shop-tag }}
+          tag: ${{ inputs.shop-tag }}
+
+      - name: Resolve latest meta-v* shop tag
+        id: shop-tag-latest
+        if: inputs.shop-tag == ''
+        uses: optivem/actions/resolve-latest-prerelease-tag@v1
+        with:
+          repository: optivem/shop
+          tag-prefix: meta-v
+
+      - id: shop-tag
+        shell: bash
+        env:
+          EXPLICIT: ${{ inputs.shop-tag }}
+          LATEST: ${{ steps.shop-tag-latest.outputs.tag }}
+        run: |
+          TAG="${EXPLICIT:-$LATEST}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - id: shop-sha
         uses: optivem/actions/resolve-commit@v1
