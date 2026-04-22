@@ -67,6 +67,7 @@ func SetupSecretsAndVariables(cfg *config.Config, gh *shell.GitHub) {
 
 	gh.SecretSet("DOCKERHUB_TOKEN", cfg.DockerHubToken)
 	gh.SecretSet("SONAR_TOKEN", cfg.SonarToken)
+	gh.SecretSet("WORKFLOW_TOKEN", cfg.WorkflowToken)
 	gh.VariableSet("DOCKERHUB_USERNAME", cfg.DockerHubUsername)
 
 	if cfg.RepoStrategy == "multirepo" {

@@ -45,6 +45,7 @@ type Config struct {
 	DockerHubToken   string
 	SonarToken       string
 	GHCRToken        string
+	WorkflowToken    string
 
 	// Derived naming
 	OwnerPascal   string
@@ -418,12 +419,14 @@ func ParseAndValidate() *Config {
 	dockerHubToken := os.Getenv("DOCKERHUB_TOKEN")
 	sonarToken := os.Getenv("SONAR_TOKEN")
 	ghcrToken := os.Getenv("GHCR_TOKEN")
+	workflowToken := os.Getenv("WORKFLOW_TOKEN")
 
 	if !*dryRun {
 		required := []struct{ name, val string }{
 			{"DOCKERHUB_USERNAME", dockerHubUsername},
 			{"DOCKERHUB_TOKEN", dockerHubToken},
 			{"SONAR_TOKEN", sonarToken},
+			{"WORKFLOW_TOKEN", workflowToken},
 		}
 		if *repoStrategy == "multirepo" {
 			required = append(required, struct{ name, val string }{"GHCR_TOKEN", ghcrToken})
@@ -435,6 +438,14 @@ func ParseAndValidate() *Config {
 						"  Create a Personal Access Token (classic) with write:packages + read:packages scopes:\n" +
 						"  https://github.com/settings/tokens\n" +
 						"  Then: export GHCR_TOKEN=<your-token>")
+				}
+				if r.name == "WORKFLOW_TOKEN" {
+					log.FatalExit(r.name + " environment variable is required.\n" +
+						"  The scaffolded repo's acceptance/QA/prod stages use it to push release tags\n" +
+						"  (default GITHUB_TOKEN cannot push tags whose commit diffs workflow files).\n" +
+						"  Create a Personal Access Token (classic) with repo + workflow scopes:\n" +
+						"  https://github.com/settings/tokens\n" +
+						"  Then: export WORKFLOW_TOKEN=<your-token>")
 				}
 				log.Fatalf("%s environment variable is required", r.name)
 			}
@@ -544,6 +555,7 @@ func ParseAndValidate() *Config {
 		DockerHubToken:   dockerHubToken,
 		SonarToken:       sonarToken,
 		GHCRToken:        ghcrToken,
+		WorkflowToken:    workflowToken,
 
 		OwnerPascal:   ownerPascal,
 		OwnerLower:    ownerLower,
