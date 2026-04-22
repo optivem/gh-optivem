@@ -174,20 +174,20 @@ jobs:
 
       - name: Read target version
         id: target
-        uses: optivem/actions/read-target-version@v1
+        uses: optivem/actions/read-base-version@v1
 
       - name: Ensure Version Unreleased
         uses: optivem/actions/ensure-version-unreleased@v1
         with:
-          version: v${{ steps.target.outputs.target-version }}
+          version: v${{ steps.target.outputs.base-version }}
 
       - name: Generate RC Version
         id: gen
         uses: optivem/actions/compose-prerelease-version@v1
         with:
-          target-version: ${{ steps.target.outputs.target-version }}
+          base-version: ${{ steps.target.outputs.base-version }}
           suffix: rc
-          number: ${{ github.run_number }}
+          build-number: ${{ github.run_number }}
 
       - name: Resolve Shop Tag
         id: shop-tag
