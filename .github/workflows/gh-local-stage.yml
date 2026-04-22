@@ -15,7 +15,7 @@ jobs:
           token: ${{ secrets.VERIFY_TOKEN }}
           workflow: prerelease-pipeline-monolith-java.yml
           repository: optivem/shop
-          inputs: '{"level": "local"}'
+          workflow-inputs: '{"level": "local"}'
           poll-interval: '240'
 
   shop-local-monolith-dotnet:
@@ -29,7 +29,7 @@ jobs:
           token: ${{ secrets.VERIFY_TOKEN }}
           workflow: prerelease-pipeline-monolith-dotnet.yml
           repository: optivem/shop
-          inputs: '{"level": "local"}'
+          workflow-inputs: '{"level": "local"}'
           poll-interval: '240'
 
   shop-local-monolith-typescript:
@@ -43,7 +43,7 @@ jobs:
           token: ${{ secrets.VERIFY_TOKEN }}
           workflow: prerelease-pipeline-monolith-typescript.yml
           repository: optivem/shop
-          inputs: '{"level": "local"}'
+          workflow-inputs: '{"level": "local"}'
           poll-interval: '240'
 
   shop-local-multitier-java:
@@ -57,7 +57,7 @@ jobs:
           token: ${{ secrets.VERIFY_TOKEN }}
           workflow: prerelease-pipeline-multitier-java.yml
           repository: optivem/shop
-          inputs: '{"level": "local"}'
+          workflow-inputs: '{"level": "local"}'
           poll-interval: '240'
 
   shop-local-multitier-dotnet:
@@ -71,7 +71,7 @@ jobs:
           token: ${{ secrets.VERIFY_TOKEN }}
           workflow: prerelease-pipeline-multitier-dotnet.yml
           repository: optivem/shop
-          inputs: '{"level": "local"}'
+          workflow-inputs: '{"level": "local"}'
           poll-interval: '240'
 
   shop-local-multitier-typescript:
@@ -85,7 +85,7 @@ jobs:
           token: ${{ secrets.VERIFY_TOKEN }}
           workflow: prerelease-pipeline-multitier-typescript.yml
           repository: optivem/shop
-          inputs: '{"level": "local"}'
+          workflow-inputs: '{"level": "local"}'
           poll-interval: '240'
 
   gh-local:
@@ -105,5 +105,6 @@ jobs:
         with:
           token: ${{ secrets.VERIFY_TOKEN }}
           workflow: gh-acceptance-stage.yml
-          inputs: '{"verify-level": "local"}'
+          workflow-inputs: '{"verify-level": "local"}'
           poll-interval: '600'
+          timeout-seconds: '7200'
