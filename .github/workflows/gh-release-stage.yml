@@ -23,6 +23,14 @@ jobs:
       shop-sha: ${{ steps.shop-sha.outputs.description }}
       shop-tag: ${{ steps.shop-tag.outputs.tag }}
     steps:
+      - name: Ensure Environment Variables Defined
+        uses: optivem/actions/ensure-env-vars-defined@v1
+        with:
+          names: |
+            WORKFLOW_TOKEN
+        env:
+          WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+
       - name: Checkout
         uses: actions/checkout@v6
 
