@@ -141,7 +141,7 @@ jobs:
       - id: prior-status
         uses: optivem/actions/check-commit-status-exists@v1
         with:
-          sha: ${{ steps.shop-sha.outputs.sha }}
+          commit-sha: ${{ steps.shop-sha.outputs.sha }}
           status-context: acceptance-stage
 
   run:
