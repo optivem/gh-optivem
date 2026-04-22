@@ -67,14 +67,14 @@ jobs:
       - id: shop-sha
         uses: optivem/actions/get-commit-status@v1
         with:
-          sha: ${{ steps.rc.outputs.sha }}
+          commit-sha: ${{ steps.rc.outputs.sha }}
           context: verified-shop-sha
 
       - id: shop-tag
         uses: optivem/actions/resolve-tag-from-sha@v1
         with:
           repository: optivem/shop
-          sha: ${{ steps.shop-sha.outputs.description }}
+          commit-sha: ${{ steps.shop-sha.outputs.description }}
 
   run:
     name: Run
@@ -88,11 +88,11 @@ jobs:
           ref: ${{ needs.check.outputs.rc-sha }}
           fetch-depth: 0
 
-      - name: Create and push release tag
-        uses: optivem/actions/create-and-push-tag@v1
+      - name: Publish Release Tag
+        uses: optivem/actions/publish-tag@v1
         with:
           tag: ${{ needs.check.outputs.release-version }}
-          sha: ${{ needs.check.outputs.rc-sha }}
+          token: ${{ secrets.WORKFLOW_TOKEN }}
 
       - name: Run GoReleaser
         uses: ./.github/actions/run-goreleaser
