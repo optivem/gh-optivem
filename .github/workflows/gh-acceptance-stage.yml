@@ -209,6 +209,31 @@ jobs:
           shop-tag: ${{ steps.shop-tag.outputs.tag }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+  # Fire-and-forget: after the RC prerelease is fully published (tag + GoReleaser),
+  # promote it by dispatching gh-release-stage. We wait for create-prerelease to
+  # finish rather than using an on:push:tags trigger because create-prerelease's
+  # GoReleaser step would otherwise race with gh-release-stage's own GoReleaser
+  # and bump-version push-to-main.
+  # Needs a PAT (WORKFLOW_TOKEN) — GITHUB_TOKEN cannot start downstream workflow runs.
+  trigger-gh-release-stage:
+    name: Trigger gh-release-stage
+    needs: create-prerelease
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch gh-release-stage
+        env:
+          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+          RC_VERSION: ${{ needs.create-prerelease.outputs.version }}
+        run: |
+          set -euo pipefail
+          echo "Dispatching gh-release-stage.yml with version=${RC_VERSION}"
+          gh workflow run gh-release-stage.yml -f version="${RC_VERSION}"
+          {
+            echo "## Dispatched gh-release-stage"
+            echo ""
+            echo "- version: \`${RC_VERSION}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   summary:
     name: Summary
     needs: [run, create-prerelease]
