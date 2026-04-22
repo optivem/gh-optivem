@@ -60,7 +60,7 @@ jobs:
       retain-repos: ${{ github.event_name == 'workflow_dispatch' && inputs.retain-repos && 'true' || 'false' }}
     steps:
       - name: Ensure Environment Variables Defined
-        uses: optivem/actions/ensure-env-vars-defined@v1
+        uses: optivem/actions/validate-env-vars-defined@v1
         with:
           names: |
             TEST_OWNER
@@ -110,7 +110,7 @@ jobs:
 
       - name: Ensure explicit shop-tag exists
         if: inputs.shop-tag != ''
-        uses: optivem/actions/ensure-tag-exists@v1
+        uses: optivem/actions/validate-tag-exists@v1
         with:
           repository: optivem/shop
           tag: ${{ inputs.shop-tag }}
@@ -206,7 +206,7 @@ jobs:
         uses: optivem/actions/read-base-version@v1
 
       - name: Ensure Version Unreleased
-        uses: optivem/actions/ensure-version-unreleased@v1
+        uses: optivem/actions/validate-version-unreleased@v1
         with:
           version: v${{ steps.target.outputs.base-version }}
 
