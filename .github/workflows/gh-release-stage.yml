@@ -79,9 +79,10 @@ jobs:
           context: verified-shop-sha
 
       - id: shop-tag
-        uses: optivem/actions/resolve-tag-from-sha@v1
+        uses: optivem/actions/resolve-latest-tag-from-sha@v1
         with:
           repository: optivem/shop
+          pattern: '*'
           commit-sha: ${{ steps.shop-sha.outputs.description }}
 
   run:

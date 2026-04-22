@@ -191,10 +191,11 @@ jobs:
 
       - name: Resolve Shop Tag
         id: shop-tag
-        uses: optivem/actions/resolve-tag-from-sha@v1
+        uses: optivem/actions/resolve-latest-tag-from-sha@v1
         with:
           repository: optivem/shop
           commit-sha: ${{ needs.check.outputs.shop-sha }}
+          pattern: '*'
 
       - name: Publish RC Tag
         uses: optivem/actions/publish-tag@v1
