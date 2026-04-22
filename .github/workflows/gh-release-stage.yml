@@ -76,7 +76,7 @@ jobs:
         uses: optivem/actions/get-commit-status@v1
         with:
           commit-sha: ${{ steps.rc.outputs.sha }}
-          context: verified-shop-sha
+          context: acceptance-stage
 
       - id: shop-tag
         uses: optivem/actions/resolve-latest-tag-from-sha@v1

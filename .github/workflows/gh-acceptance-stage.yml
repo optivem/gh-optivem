@@ -56,7 +56,7 @@ jobs:
       verify-level: ${{ steps.level.outputs.verify-level }}
       shop-tag: ${{ steps.shop-tag.outputs.tag }}
       shop-sha: ${{ (steps.level.outputs.verify-level == 'release' || inputs.shop-tag != '') && steps.shop-sha.outputs.sha || '' }}
-      should-run: ${{ steps.should-run.outputs.changed }}
+      should-run: ${{ steps.prior-status.outputs.exists != 'true' }}
       retain-repos: ${{ github.event_name == 'workflow_dispatch' && inputs.retain-repos && 'true' || 'false' }}
     steps:
       - name: Ensure Environment Variables Defined
@@ -138,11 +138,11 @@ jobs:
           repository: optivem/shop
           ref: ${{ steps.shop-tag.outputs.tag }}
 
-      - id: should-run
-        uses: optivem/actions/check-unverified-commit-status@v1
+      - id: prior-status
+        uses: optivem/actions/check-commit-status-exists@v1
         with:
-          subject-sha: ${{ steps.shop-sha.outputs.sha }}
-          status-context: verified-shop-sha
+          sha: ${{ steps.shop-sha.outputs.sha }}
+          status-context: acceptance-stage
 
   run:
     name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})
@@ -190,10 +190,10 @@ jobs:
     outputs:
       version: ${{ steps.gen.outputs.version }}
     steps:
-      - name: Record Verified Shop SHA
+      - name: Record Acceptance-Stage Passed
         uses: optivem/actions/create-commit-status@v1
         with:
-          context: verified-shop-sha
+          context: acceptance-stage
           description: ${{ needs.check.outputs.shop-sha }}
 
       - name: Checkout
