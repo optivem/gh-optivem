@@ -76,6 +76,7 @@ jobs:
         uses: optivem/actions/validate-version-unreleased@v1
         with:
           version: ${{ steps.gen.outputs.version }}
+          bump-workflow-file: gh-auto-bump-patch.yml
 
       - id: shop-sha
         uses: optivem/actions/get-commit-status@v1
