@@ -216,7 +216,7 @@ jobs:
       WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
     strategy:
       fail-fast: true
-      max-parallel: 6
+      max-parallel: 12
       matrix: ${{ fromJSON(needs.check.outputs.matrix) }}
     steps:
       - name: Checkout

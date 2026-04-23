@@ -37,7 +37,7 @@ runs:
     # in the same window.
     - name: Jitter start
       shell: bash
-      run: sleep $((RANDOM % 30))
+      run: sleep $((RANDOM % 120))
 
     - name: Setup Go
       uses: actions/setup-go@v6
