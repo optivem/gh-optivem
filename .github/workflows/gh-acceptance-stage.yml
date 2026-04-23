@@ -253,6 +253,7 @@ jobs:
       - name: Dispatch gh-release-stage
         env:
           GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           RC_VERSION: ${{ needs.create-prerelease.outputs.version }}
         run: |
           set -euo pipefail
