@@ -16,11 +16,12 @@ on:
           - acceptance
           - release
       matrix-mode:
-        description: 'Matrix size: condensed (12 off-diagonal polyglot combos — single-language combos are already covered by optivem/shop) or full (all 36 combos).'
+        description: 'Matrix size: minimal (8 combos — TS tests dotnet/java), condensed (12 off-diagonal polyglot combos — single-language combos are already covered by optivem/shop), or full (all 36 combos).'
         required: false
         default: 'condensed'
         type: choice
         options:
+          - minimal
           - condensed
           - full
       shop-tag:
@@ -158,6 +159,9 @@ jobs:
           status-context: acceptance-stage
 
       # Build the run-job matrix based on matrix-mode.
+      # minimal = 8 combos: TS is always the test-lang, exercised against dotnet
+      #   and java as system-lang (× 2 arch × 2 repo-strategy). Cheapest smoke
+      #   check — does not cover dotnet or java as test-lang.
       # condensed = 12 off-diagonal polyglot combos (covers every lang as both
       #   system-lang and test-lang per arch × repo-strategy via a Latin square:
       #   ts→dotnet, dotnet→java, java→ts). Diagonal (lang == test-lang) is already
@@ -173,6 +177,11 @@ jobs:
           REPOS='["monorepo","multirepo"]'
           LANGS='["typescript","dotnet","java"]'
 
+          MINIMAL_PAIRS='[
+            {"lang":"dotnet","test-lang":"typescript"},
+            {"lang":"java","test-lang":"typescript"}
+          ]'
+
           CONDENSED_PAIRS='[
             {"lang":"typescript","test-lang":"dotnet"},
             {"lang":"dotnet","test-lang":"java"},
@@ -182,11 +191,11 @@ jobs:
           FULL_PAIRS=$(jq -c -n --argjson l "$LANGS" \
             '[$l[] as $a | $l[] as $b | {lang: $a, "test-lang": $b}]')
 
-          if [ "$MODE" = "full" ]; then
-            PAIRS="$FULL_PAIRS"
-          else
-            PAIRS="$CONDENSED_PAIRS"
-          fi
+          case "$MODE" in
+            minimal)  PAIRS="$MINIMAL_PAIRS" ;;
+            full)     PAIRS="$FULL_PAIRS" ;;
+            *)        PAIRS="$CONDENSED_PAIRS" ;;
+          esac
 
           MATRIX=$(jq -c -n \
             --argjson archs "$ARCHS" \
