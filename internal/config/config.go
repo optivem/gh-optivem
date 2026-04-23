@@ -341,7 +341,7 @@ func registerFlags() rawFlags {
 		backendLang:   flag.String("backend-lang", "", "Backend language: java, dotnet, typescript (multitier)"),
 		frontendLang:  flag.String("frontend-lang", "", "Frontend language: react (multitier)"),
 		license:       flag.String("license", "mit", "License: mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense"),
-		randomSuffix:  flag.Bool("random-suffix", false, "Append 4-char hex suffix to repo name"),
+		randomSuffix:  flag.Bool("random-suffix", false, "Append 16-char hex suffix to repo name"),
 		dryRun:        flag.Bool("dry-run", false, "Print actions without executing"),
 		testMode:      flag.Bool("test", false, "Test mode with optional cleanup"),
 		cleanupFlag:   flag.Bool("cleanup", false, "Auto-cleanup in test mode"),
@@ -532,7 +532,7 @@ func resolveRepoName(repo string, randomSuffix bool) string {
 	if !randomSuffix {
 		return repo
 	}
-	b := make([]byte, 2)
+	b := make([]byte, 8)
 	rand.Read(b)
 	return repo + "-" + hex.EncodeToString(b)
 }
