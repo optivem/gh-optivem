@@ -91,7 +91,7 @@ func commitAndPushRepo(repoDir, fullRepo string) {
 	// Fix executable permissions for shell scripts (Windows doesn't track the +x bit)
 	for _, script := range []string{"gradlew", "setup-gcp.sh", "teardown-gcp.sh"} {
 		if _, err := os.Stat(filepath.Join(repoDir, script)); err == nil {
-			shell.Run(fmt.Sprintf("git update-index --chmod=+x %s", script), false, true, repoDir)
+			shell.MustRun(fmt.Sprintf("git update-index --chmod=+x %s", script), false, repoDir)
 		}
 	}
 	if _, err := shell.Run(`git commit -m "Apply pipeline template"`, false, true, repoDir); err != nil {

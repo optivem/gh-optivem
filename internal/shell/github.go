@@ -52,6 +52,17 @@ func Run(cmdStr string, dryRun bool, check bool, cwd string) (string, error) {
 	return output, nil
 }
 
+// MustRun executes an external command and aborts the program on failure.
+// Use for external system calls (gh, git, etc.) where partial failure must
+// not be silently swallowed. Honors dry-run semantics.
+func MustRun(cmdStr string, dryRun bool, cwd string) string {
+	out, err := Run(cmdStr, dryRun, true, cwd)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	return out
+}
+
 // RunCapture runs a command and captures stdout separately.
 func RunCapture(cmdStr string, cwd string) (string, error) {
 	parts := splitCommand(cmdStr)
@@ -150,7 +161,17 @@ func (g *GitHub) ForRepo(fullRepo string) *GitHub {
 }
 
 func (g *GitHub) run(cmd string) (string, error) {
-	return Run(fmt.Sprintf("gh %s --repo %s", cmd, g.Repo), g.DryRun, true, "")
+	return RunWithRetry(fmt.Sprintf("gh %s --repo %s", cmd, g.Repo), g.DryRun, true, "")
+}
+
+// mustRun is the GitHub-struct companion to MustRun. Auto-prepends `gh` and
+// `--repo g.Repo`. Aborts the program on failure.
+func (g *GitHub) mustRun(cmd string) string {
+	out, err := g.run(cmd)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	return out
 }
 
 func (g *GitHub) CreateRepo() {
@@ -159,7 +180,7 @@ func (g *GitHub) CreateRepo() {
 		log.Warnf("Repository %s already exists -- skipping creation", g.Repo)
 		return
 	}
-	Run("gh repo create "+g.Repo+" --public", false, true, "")
+	MustRunWithRetry("gh repo create "+g.Repo+" --public", false, "")
 	g.initRepo()
 }
 
@@ -173,7 +194,7 @@ func (g *GitHub) initRepo() {
 	defer os.RemoveAll(dir)
 
 	// Clone the empty repo.
-	Run(fmt.Sprintf("gh repo clone %s %s", g.Repo, dir), false, true, "")
+	MustRunWithRetry(fmt.Sprintf("gh repo clone %s %s", g.Repo, dir), false, "")
 
 	// Write README.md.
 	repoName := g.Repo
@@ -193,17 +214,17 @@ func (g *GitHub) initRepo() {
 	}
 
 	// Commit and push.
-	Run("git add -A", false, true, dir)
-	Run("git commit -m \"Initial commit\"", false, true, dir)
-	Run("git push", false, true, dir)
+	MustRun("git add -A", false, dir)
+	MustRun("git commit -m \"Initial commit\"", false, dir)
+	MustRun("git push", false, dir)
 }
 
 func (g *GitHub) EnablePages() {
-	Run(fmt.Sprintf("gh api repos/%s/pages -X POST -f source[branch]=main -f source[path]=/docs", g.Repo), g.DryRun, true, "")
+	MustRunWithRetry(fmt.Sprintf("gh api repos/%s/pages -X POST -f source[branch]=main -f source[path]=/docs", g.Repo), g.DryRun, "")
 }
 
 func (g *GitHub) CreateEnvironment(name string) {
-	Run(fmt.Sprintf("gh api repos/%s/environments/%s -X PUT", g.Repo, name), g.DryRun, true, "")
+	MustRunWithRetry(fmt.Sprintf("gh api repos/%s/environments/%s -X PUT", g.Repo, name), g.DryRun, "")
 }
 
 func (g *GitHub) SecretSet(name, value string) {
@@ -211,7 +232,7 @@ func (g *GitHub) SecretSet(name, value string) {
 		log.Logf("[DRY RUN] gh secret set %s --body *** --repo %s", name, g.Repo)
 		return
 	}
-	Run(fmt.Sprintf("gh secret set %s --body %s --repo %s", name, value, g.Repo), false, true, "")
+	MustRunWithRetry(fmt.Sprintf("gh secret set %s --body %s --repo %s", name, value, g.Repo), false, "")
 }
 
 func (g *GitHub) VariableSet(name, value string) {
@@ -219,11 +240,11 @@ func (g *GitHub) VariableSet(name, value string) {
 		log.Logf("[DRY RUN] gh variable set %s --body \"%s\" --repo %s", name, value, g.Repo)
 		return
 	}
-	Run(fmt.Sprintf("gh variable set %s --body %s --repo %s", name, value, g.Repo), false, true, "")
+	MustRunWithRetry(fmt.Sprintf("gh variable set %s --body %s --repo %s", name, value, g.Repo), false, "")
 }
 
 func (g *GitHub) Clone(dest string) {
-	Run(fmt.Sprintf("gh repo clone %s %s", g.Repo, dest), false, true, "")
+	MustRunWithRetry(fmt.Sprintf("gh repo clone %s %s", g.Repo, dest), false, "")
 	if _, err := os.Stat(filepath.Join(dest, ".git")); err != nil {
 		log.Fatalf("clone of %s to %s produced no .git directory: %v", g.Repo, dest, err)
 	}
@@ -234,7 +255,7 @@ func (g *GitHub) WorkflowRun(workflow string, fields map[string]string) {
 	for k, v := range fields {
 		fieldArgs += fmt.Sprintf(" -f %s=%s", k, v)
 	}
-	g.run(fmt.Sprintf("workflow run %s%s", workflow, fieldArgs))
+	g.mustRun(fmt.Sprintf("workflow run %s%s", workflow, fieldArgs))
 }
 
 func (g *GitHub) RunWatch(intervalSecs int) error {
@@ -325,6 +346,8 @@ func (g *GitHub) pollRunUntilComplete(runID string) error {
 	}
 }
 
+// Delete is best-effort cleanup (check=false); failures are intentionally ignored
+// because teardown happens after the main work has either succeeded or already failed.
 func (g *GitHub) Delete() {
 	Run(fmt.Sprintf("gh repo delete %s --yes", g.Repo), false, false, "")
 }
