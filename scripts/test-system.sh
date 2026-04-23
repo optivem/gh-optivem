@@ -7,7 +7,7 @@ cd "$(git rev-parse --show-toplevel)"
 # Optional: TEST_NO_CLEANUP=1 to keep repos after test (for inspection)
 # Usage: TEST_OWNER=valentinajemuovic bash scripts/test-system.sh
 
-if [ -z "${TEST_OWNER:-}" ]; then
+if [[ -z "${TEST_OWNER:-}" ]]; then
   echo "ERROR: TEST_OWNER environment variable is required" >&2
   exit 1
 fi

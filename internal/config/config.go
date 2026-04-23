@@ -209,25 +209,47 @@ func SpacesToLower(s string) string {
 // ValidateSystemName checks the system name against all naming constraints.
 // Returns an error message or empty string if valid.
 func ValidateSystemName(name string) string {
+	if msg := checkNameTrim(name); msg != "" {
+		return msg
+	}
+	words := strings.Fields(name)
+	if msg := checkWordChars(words); msg != "" {
+		return msg
+	}
+	if msg := checkReservedWords(words); msg != "" {
+		return msg
+	}
+	if msg := checkReservedDerived(name); msg != "" {
+		return msg
+	}
+	if len(name) > 50 {
+		return "system name exceeds 50 character limit"
+	}
+	return ""
+}
+
+func checkNameTrim(name string) string {
 	if len(strings.TrimSpace(name)) == 0 {
 		return "system name cannot be empty"
 	}
 	if name != strings.TrimSpace(name) {
 		return "system name cannot have leading or trailing spaces"
 	}
+	return ""
+}
 
-	// Check each word
-	words := strings.Fields(name)
+func checkWordChars(words []string) string {
 	for _, w := range words {
-		// Only letters allowed
 		for _, c := range w {
 			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
 				return fmt.Sprintf("system name contains invalid character '%c' — only letters and spaces allowed", c)
 			}
 		}
 	}
+	return ""
+}
 
-	// Check each word against reserved words
+func checkReservedWords(words []string) string {
 	for _, w := range words {
 		lower := strings.ToLower(w)
 		if isLanguageReserved(lower) {
@@ -237,8 +259,10 @@ func ValidateSystemName(name string) string {
 			return fmt.Sprintf("word %q is a scaffold reserved word (collides with infrastructure names)", w)
 		}
 	}
+	return ""
+}
 
-	// Check full derived forms against reserved words
+func checkReservedDerived(name string) string {
 	camel := SpacesToCamel(name)
 	lower := SpacesToLower(name)
 	if isLanguageReserved(lower) {
@@ -247,12 +271,6 @@ func ValidateSystemName(name string) string {
 	if isLanguageReserved(camel) {
 		return fmt.Sprintf("derived form %q is a language reserved keyword", camel)
 	}
-
-	// Length check
-	if len(name) > 50 {
-		return "system name exceeds 50 character limit"
-	}
-
 	return ""
 }
 

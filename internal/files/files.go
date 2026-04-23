@@ -62,24 +62,10 @@ func ReplaceInFile(path, old, new string) bool {
 func ReplaceInTree(root, old, new string, extensions []string) int {
 	count := 0
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
+		if err != nil || info.IsDir() || IsGitDir(path) {
 			return nil
 		}
-		if IsGitDir(path) {
-			return nil
-		}
-		if extensions != nil {
-			matched := false
-			for _, ext := range extensions {
-				if strings.HasSuffix(info.Name(), ext) {
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				return nil
-			}
-		} else if IsBinaryFile(info.Name()) {
+		if !shouldProcessForExts(info.Name(), extensions) {
 			return nil
 		}
 		if ReplaceInFile(path, old, new) {
@@ -88,6 +74,20 @@ func ReplaceInTree(root, old, new string, extensions []string) int {
 		return nil
 	})
 	return count
+}
+
+// shouldProcessForExts reports whether a file should be processed by ReplaceInTree
+// given its extension filter. A nil filter accepts any non-binary text file.
+func shouldProcessForExts(name string, extensions []string) bool {
+	if extensions == nil {
+		return !IsBinaryFile(name)
+	}
+	for _, ext := range extensions {
+		if strings.HasSuffix(name, ext) {
+			return true
+		}
+	}
+	return false
 }
 
 // FindInTree returns paths of non-binary text files under root that contain the given string.

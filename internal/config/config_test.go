@@ -136,34 +136,28 @@ func TestDerivedNaming(t *testing.T) {
 			repoPascal := ToPascalCase(tt.repo)
 			repoNoHyphens := ToJavaLower(tt.repo)
 
-			// Owner pascal: special case for non-hyphenated
 			ownerPascal := ToPascalCase(tt.owner)
 			if len(tt.owner) > 0 && !contains(tt.owner, "-") {
 				ownerPascal = upperFirst(tt.owner)
 			}
 
-			if repoPascal != tt.wantRepoPascal {
-				t.Errorf("RepoPascal = %q, want %q", repoPascal, tt.wantRepoPascal)
-			}
-			if repoNoHyphens != tt.wantRepoNoHyp {
-				t.Errorf("RepoNoHyphens = %q, want %q", repoNoHyphens, tt.wantRepoNoHyp)
-			}
-
 			javaNsNew := "com." + ownerLower + "." + repoNoHyphens
-			if javaNsNew != tt.wantJavaNsNew {
-				t.Errorf("JavaNsNew = %q, want %q", javaNsNew, tt.wantJavaNsNew)
-			}
-
 			dotnetNsNew := ownerPascal + "." + repoPascal
-			if dotnetNsNew != tt.wantDotnetNew {
-				t.Errorf("DotnetNsNew = %q, want %q", dotnetNsNew, tt.wantDotnetNew)
-			}
-
 			tsPkgNew := "@" + ownerLower + "/" + tt.repo + "-system-test"
-			if tsPkgNew != tt.wantTsPkgNew {
-				t.Errorf("TsPkgNew = %q, want %q", tsPkgNew, tt.wantTsPkgNew)
-			}
+
+			assertStrEq(t, "RepoPascal", repoPascal, tt.wantRepoPascal)
+			assertStrEq(t, "RepoNoHyphens", repoNoHyphens, tt.wantRepoNoHyp)
+			assertStrEq(t, "JavaNsNew", javaNsNew, tt.wantJavaNsNew)
+			assertStrEq(t, "DotnetNsNew", dotnetNsNew, tt.wantDotnetNew)
+			assertStrEq(t, "TsPkgNew", tsPkgNew, tt.wantTsPkgNew)
 		})
+	}
+}
+
+func assertStrEq(t *testing.T, field, got, want string) {
+	t.Helper()
+	if got != want {
+		t.Errorf("%s = %q, want %q", field, got, want)
 	}
 }
 
@@ -305,34 +299,40 @@ func TestSonarProjectKeys(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Import the steps package test helper would be complex,
-			// so we test the logic inline matching GetSonarProjectKeys
-			var got []string
-			if tt.cfg.Arch == "monolith" {
-				if tt.cfg.RepoStrategy == "monorepo" {
-					got = []string{tt.cfg.Owner + "_" + tt.cfg.Repo + "-system"}
-				} else {
-					got = []string{tt.cfg.Owner + "_" + tt.cfg.SystemRepo}
-				}
-			} else if tt.cfg.RepoStrategy == "monorepo" {
-				prefix := tt.cfg.Owner + "_" + tt.cfg.Repo
-				got = []string{prefix + "-backend", prefix + "-frontend"}
-			} else {
-				got = []string{
-					tt.cfg.Owner + "_" + tt.cfg.BackendRepo,
-					tt.cfg.Owner + "_" + tt.cfg.FrontendRepo,
-				}
-			}
-
-			if len(got) != len(tt.expected) {
-				t.Fatalf("got %d keys, want %d", len(got), len(tt.expected))
-			}
-			for i := range got {
-				if got[i] != tt.expected[i] {
-					t.Errorf("key[%d] = %q, want %q", i, got[i], tt.expected[i])
-				}
-			}
+			got := computeSonarKeysLocal(tt.cfg)
+			assertStrSliceEq(t, got, tt.expected)
 		})
+	}
+}
+
+// Duplicates the production logic in steps.GetSonarProjectKeys; kept local to
+// avoid a test-time import cycle between config and steps.
+func computeSonarKeysLocal(cfg Config) []string {
+	if cfg.Arch == "monolith" {
+		if cfg.RepoStrategy == "monorepo" {
+			return []string{cfg.Owner + "_" + cfg.Repo + "-system"}
+		}
+		return []string{cfg.Owner + "_" + cfg.SystemRepo}
+	}
+	if cfg.RepoStrategy == "monorepo" {
+		prefix := cfg.Owner + "_" + cfg.Repo
+		return []string{prefix + "-backend", prefix + "-frontend"}
+	}
+	return []string{
+		cfg.Owner + "_" + cfg.BackendRepo,
+		cfg.Owner + "_" + cfg.FrontendRepo,
+	}
+}
+
+func assertStrSliceEq(t *testing.T, got, want []string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("got %d keys, want %d", len(got), len(want))
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("key[%d] = %q, want %q", i, got[i], want[i])
+		}
 	}
 }
 
