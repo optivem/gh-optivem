@@ -77,6 +77,7 @@ jobs:
         with:
           version: ${{ steps.gen.outputs.version }}
           bump-workflow-file: gh-auto-bump-patch.yml
+          rc-workflow-file: gh-acceptance-stage.yml
 
       - id: shop-sha
         uses: optivem/actions/get-commit-status@v1
