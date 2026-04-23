@@ -262,10 +262,10 @@ jobs:
     name: Create Prerelease
     needs: [check, run]
     # !failure() && !cancelled() (not success()) so run can be skipped via force-prerelease.
-    if: |
-      !failure() && !cancelled() &&
+    if: >-
+      ${{ !failure() && !cancelled() &&
       needs.check.result == 'success' &&
-      needs.check.outputs.verify-level == 'release'
+      needs.check.outputs.verify-level == 'release' }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.gen.outputs.version }}
