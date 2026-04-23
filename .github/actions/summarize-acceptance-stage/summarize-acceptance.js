@@ -25,7 +25,12 @@ async function listJobs(github, context) {
     run_id: context.runId,
     per_page: 100,
   });
-  return response.data.jobs.filter((job) => !SKIP_JOBS.has(job.name));
+  // Exclude still-running jobs — Summary runs in parallel with sibling jobs
+  // (e.g. Trigger gh-release-stage) and shouldn't classify them as failed just
+  // because they haven't finished yet.
+  return response.data.jobs.filter(
+    (job) => !SKIP_JOBS.has(job.name) && job.status === "completed",
+  );
 }
 
 function classifyJobs(jobs) {
