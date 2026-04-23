@@ -72,6 +72,11 @@ jobs:
         with:
           prerelease-version: ${{ steps.rc.outputs.version }}
 
+      - name: Ensure Release Version Unreleased
+        uses: optivem/actions/validate-version-unreleased@v1
+        with:
+          version: ${{ steps.gen.outputs.version }}
+
       - id: shop-sha
         uses: optivem/actions/get-commit-status@v1
         with:
