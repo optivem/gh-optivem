@@ -38,8 +38,7 @@ The entry point (`main.go`) handles CLI argument parsing and orchestrates the `i
 | 11 | Create SonarCloud projects | Registers projects in SonarCloud |
 | 12 | Commit and push | Commits all changes and pushes to remote |
 | 13 | Validate no leftover system names | Fails if old template name still appears in the pushed repo |
-| 14 | Enable GitHub Pages | Enables Pages on the repo |
-| 15 | Verify compilation | Ensures the scaffolded project compiles |
+| 14 | Verify compilation | Ensures the scaffolded project compiles |
 
 ## Verification steps
 

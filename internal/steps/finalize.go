@@ -103,19 +103,6 @@ func commitAndPushRepo(repoDir, fullRepo string) {
 	log.OKf("Pushed template to %s", fullRepo)
 }
 
-// EnablePages enables GitHub Pages on the main repo (source: main branch, /docs path).
-func EnablePages(cfg *config.Config, gh *shell.GitHub) {
-	log.Log("Step 11: Enabling GitHub Pages...")
-
-	if cfg.DryRun {
-		log.Logf("[DRY RUN] Would enable GitHub Pages on %s", cfg.FullRepo)
-		return
-	}
-
-	gh.EnablePages()
-	log.OKf("Enabled GitHub Pages on %s", cfg.FullRepo)
-}
-
 func getRCVersion(gh *shell.GitHub) string {
 	shell.CheckRateLimit()
 

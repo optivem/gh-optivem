@@ -307,10 +307,6 @@ func licenseSuffix(license string) string {
 	return " and LICENSE"
 }
 
-func (g *GitHub) EnablePages() {
-	MustRunWithRetry(fmt.Sprintf("gh api repos/%s/pages -X POST -f source[branch]=main -f source[path]=/docs", g.Repo), g.DryRun, "")
-}
-
 func (g *GitHub) CreateEnvironment(name string) {
 	MustRunWithRetry(fmt.Sprintf("gh api repos/%s/environments/%s -X PUT", g.Repo, name), g.DryRun, "")
 }

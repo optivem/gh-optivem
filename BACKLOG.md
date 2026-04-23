@@ -14,7 +14,7 @@ Analysis of the [sandbox project setup page](https://github.com/optivem/academy/
 | #2 | Task 1: Architecture Diagram | Mermaid architecture diagram based on `--arch` |
 | ~~#3~~ ✅ | Task 2: Use Case Diagram | Pre-populated use case diagram with system name |
 | #4 | Task 2: External Systems | `--external-systems` flag to populate diagrams with real names |
-| ~~#5~~ ✅ | Task 2: GitHub Docs | Enable GitHub Pages + scaffold `/docs` structure |
+| ~~#5~~ ✅ | Task 2: GitHub Docs | Scaffold `/docs` structure (GitHub Pages removed — README links to `docs/*.md` instead) |
 | ~~#6~~ ✅ | Scaffold | Replace system name in class/method/string across all langs |
 | ~~#7~~ ✅ | E2E Tests | Remove `-Architecture` flag requirement from test runner |
 | ~~#8~~ ✅ | Scaffold | Rename template test files to student's system name |

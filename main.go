@@ -111,7 +111,6 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud) []st
 		{"Create SonarCloud projects", func() { steps.CreateSonarCloudProjects(cfg, sc) }},
 		{"Commit and push", func() { steps.CommitAndPush(cfg) }},
 		{"Validate no leftover system names", func() { steps.ValidateNoLeftoverSystemNames(cfg) }},
-		{"Enable GitHub Pages", func() { steps.EnablePages(cfg, gh) }},
 		{"Verify compilation", func() { steps.VerifyCompilation(cfg) }},
 	}
 
@@ -208,7 +207,6 @@ func printSummary(cfg *config.Config, errors int, totalDuration time.Duration) {
 	fmt.Printf("  System:     %s\n", cfg.SystemName)
 	fmt.Printf("  Repository: https://github.com/%s\n", cfg.FullRepo)
 	fmt.Printf("  Actions:    https://github.com/%s/actions\n", cfg.FullRepo)
-	fmt.Printf("  Docs:       https://%s.github.io/%s/\n", cfg.OwnerLower, cfg.Repo)
 	if cfg.RepoStrategy == "multirepo" {
 		if cfg.Arch == "multitier" {
 			fmt.Printf("  Backend:    https://github.com/%s\n", cfg.BackendFullRepo)

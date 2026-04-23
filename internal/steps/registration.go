@@ -18,7 +18,6 @@ func PrintRegistration(cfg *config.Config) {
 	}
 
 	repoURL := fmt.Sprintf("https://github.com/%s", cfg.FullRepo)
-	docsURL := fmt.Sprintf("https://%s.github.io/%s/", cfg.OwnerLower, cfg.Repo)
 	actionsURL := fmt.Sprintf("https://github.com/%s/actions", cfg.FullRepo)
 	sonarURL := fmt.Sprintf("https://sonarcloud.io/project/overview?id=%s_%s-system", cfg.Owner, cfg.Repo)
 	if cfg.Arch == "multitier" {
@@ -38,7 +37,6 @@ func PrintRegistration(cfg *config.Config) {
 	fmt.Println()
 	fmt.Printf("  Repository:    %s\n", repoURL)
 	fmt.Printf("  Actions:       %s\n", actionsURL)
-	fmt.Printf("  Docs:          %s\n", docsURL)
 	fmt.Printf("  SonarCloud:    %s\n", sonarURL)
 
 	if cfg.RepoStrategy == "multirepo" {
