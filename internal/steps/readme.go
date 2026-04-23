@@ -44,6 +44,16 @@ func readmeFooter(licenseName, owner string) string {
 		licenseName, owner, githubBaseURL, owner)
 }
 
+// docsSection returns the Documentation section for scaffolded repos that
+// receive the /docs folder (monolith/multitier monorepos and multirepo roots).
+func docsSection() string {
+	return "## Documentation\n\n" +
+		"- [Architecture](docs/architecture.md)\n" +
+		"- [Use Cases](docs/use-cases.md)\n" +
+		"- [Use Case Narrative](docs/use-case-narrative.md)\n" +
+		"- [Project Registration](docs/project-registration.md)\n\n"
+}
+
 // pipelineBadges returns badge [url, label] pairs for the shared pipeline stages.
 func pipelineBadges(base, deploy string) [][2]string {
 	badges := [][2]string{
@@ -108,8 +118,8 @@ func writeReadme(repoDir, title, badges string, cfg *config.Config) {
 	}
 	fmt.Fprintf(&info, "\n")
 
-	content := fmt.Sprintf("# %s\n\n%s\n%s%s",
-		title, badges, info.String(), readmeFooter(cfg.LicenseName(), cfg.Owner))
+	content := fmt.Sprintf("# %s\n\n%s\n%s%s%s",
+		title, badges, info.String(), docsSection(), readmeFooter(cfg.LicenseName(), cfg.Owner))
 	writeReadmeFile(repoDir, content)
 }
 
@@ -136,8 +146,8 @@ func writeMonolithMultirepoReadme(cfg *config.Config) {
 	}
 	fmt.Fprintf(&info, "\n")
 
-	content := fmt.Sprintf("# %s\n\n%s\n%s%s\n%s",
-		cfg.SystemName, badges.String(), reposSection, info.String(), readmeFooter(cfg.LicenseName(), cfg.Owner))
+	content := fmt.Sprintf("# %s\n\n%s\n%s%s%s\n%s",
+		cfg.SystemName, badges.String(), reposSection, info.String(), docsSection(), readmeFooter(cfg.LicenseName(), cfg.Owner))
 	writeReadmeFile(cfg.RepoDir, content)
 
 	writeComponentReadme(
@@ -174,8 +184,8 @@ func writeMultitierMultirepoReadme(cfg *config.Config) {
 	}
 	fmt.Fprintf(&info, "\n")
 
-	content := fmt.Sprintf("# %s\n\n%s\n%s%s\n%s",
-		cfg.SystemName, badges.String(), reposSection, info.String(), readmeFooter(cfg.LicenseName(), cfg.Owner))
+	content := fmt.Sprintf("# %s\n\n%s\n%s%s%s\n%s",
+		cfg.SystemName, badges.String(), reposSection, info.String(), docsSection(), readmeFooter(cfg.LicenseName(), cfg.Owner))
 	writeReadmeFile(cfg.RepoDir, content)
 
 	writeComponentReadme(
