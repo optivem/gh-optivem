@@ -106,6 +106,7 @@ jobs:
       - name: Run GoReleaser
         uses: ./.github/actions/run-goreleaser
         with:
+          release-tag: ${{ needs.check.outputs.release-version }}
           shop-sha: ${{ needs.check.outputs.shop-sha }}
           shop-tag: ${{ needs.check.outputs.shop-tag }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
