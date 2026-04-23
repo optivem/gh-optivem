@@ -1,0 +1,57 @@
+name: gh-auto-bump-patch
+
+# Post-release VERSION bumper. Triggered automatically at the end of gh-release-stage
+# when a release has just been cut, or manually by a developer (workflow_dispatch) to
+# recover from a missed auto-run.
+#
+# Uses the GitHub Contents API with SHA preconditions — no `git push`, no main-branch
+# race. Idempotent: only bumps VERSION if its matching release tag exists on the remote.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: gh-optivem-auto-bump-patch
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Compute Patch Bumps
+        id: bump
+        uses: optivem/actions/bump-patch-versions@v1
+        with:
+          version-files: |
+            VERSION:v
+
+      - name: Build Commit Payload
+        id: payload
+        if: steps.bump.outputs.bumped == 'true'
+        shell: bash
+        env:
+          BUMPS: ${{ steps.bump.outputs.bumps }}
+        run: |
+          set -euo pipefail
+          files=$(jq -c '[.[] | {
+            path: .path,
+            content: ("\(.["new-version"])\n"),
+            message: "Bump \(.path) \(.["old-version"]) -> \(.["new-version"]) (post \(.["release-tag"]))"
+          }]' <<< "$BUMPS")
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+
+      - name: Commit Bumped VERSION Files
+        if: steps.bump.outputs.bumped == 'true'
+        uses: optivem/actions/commit-files@v1
+        with:
+          files: ${{ steps.payload.outputs.files }}
+          branch: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

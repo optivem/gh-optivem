@@ -126,6 +126,35 @@ jobs:
           echo "::error::force-prerelease=true requires verify-level=release (got: $LEVEL). Without verify-level=release, there is nothing to do after skipping the matrix."
           exit 1
 
+      - name: Checkout
+        if: steps.level.outputs.verify-level == 'release'
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check version not already released
+        if: steps.level.outputs.verify-level == 'release'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(tr -d '[:space:]' < VERSION)
+          tag="v${version}"
+          if git tag -l "$tag" | grep -qx "$tag"; then
+            BUMP_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/gh-auto-bump-patch.yml"
+            {
+              echo "## Version already released"
+              echo ""
+              echo "The following tag already exists as a final release:"
+              echo ""
+              echo "- \`${tag}\` (from VERSION)"
+              echo ""
+              echo "Run the [gh-auto-bump-patch workflow](${BUMP_URL}) to bump the VERSION file, then re-run this workflow."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Version already released: ${tag}. Run the gh-auto-bump-patch workflow to bump the VERSION file, then re-run this workflow: ${BUMP_URL}"
+            exit 1
+          fi
+          echo "Version tag ${tag} has not been released yet — OK to proceed."
+
       - name: Validate shop-tag prefix
         if: inputs.shop-tag != ''
         shell: bash
@@ -284,11 +313,6 @@ jobs:
       - name: Read target version
         id: target
         uses: optivem/actions/read-base-version@v1
-
-      - name: Ensure Version Unreleased
-        uses: optivem/actions/validate-version-unreleased@v1
-        with:
-          version: v${{ steps.target.outputs.base-version }}
 
       - name: Generate RC Version
         id: gen

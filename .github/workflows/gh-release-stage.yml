@@ -110,37 +110,11 @@ jobs:
           shop-tag: ${{ needs.check.outputs.shop-tag }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-  bump-version:
-    name: Bump Patch Version
+  auto-bump-patch:
+    name: Auto-Bump Patch
     needs: [check, run]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout main
-        uses: actions/checkout@v6
-        with:
-          ref: main
-          fetch-depth: 0
-
-      - name: Bump VERSION
-        env:
-          RELEASED: ${{ needs.check.outputs.release-version }}
-        run: |
-          target="${RELEASED#v}"
-          current=$(cat VERSION | tr -d '[:space:]')
-          if [ "$current" != "$target" ]; then
-            echo "VERSION is $current, not $target — skipping bump"
-            exit 0
-          fi
-          major=$(echo "$current" | cut -d. -f1)
-          minor=$(echo "$current" | cut -d. -f2)
-          patch=$(echo "$current" | cut -d. -f3)
-          new="${major}.${minor}.$((patch + 1))"
-          echo "$new" > VERSION
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add VERSION
-          git commit -m "Bump VERSION to $new after $RELEASED release"
-          git push origin main
+    uses: ./.github/workflows/gh-auto-bump-patch.yml
+    secrets: inherit
 
   post-release-stage:
     name: Post-Release Stage
