@@ -34,6 +34,11 @@ on:
         required: false
         default: false
         type: boolean
+      force-prerelease:
+        description: 'Skip the acceptance-test matrix and go straight to Create Prerelease. Requires verify-level=release. Use when the shop-tag has already been verified manually or when recovering from a stuck release.'
+        required: false
+        default: false
+        type: boolean
   # schedule:
   #   - cron: '0 */6 * * *'  # Every 6 hours — verify-level=release
   #   - cron: '0 * * * *'    # Every hour — verify-level=local
@@ -109,7 +114,17 @@ jobs:
           echo "| verify-level | $LEVEL |" >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "| retain-repos | ${{ inputs.retain-repos }} |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| force-prerelease | ${{ inputs.force-prerelease }} |" >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      - name: Validate force-prerelease
+        if: github.event_name == 'workflow_dispatch' && inputs.force-prerelease && steps.level.outputs.verify-level != 'release'
+        shell: bash
+        env:
+          LEVEL: ${{ steps.level.outputs.verify-level }}
+        run: |
+          echo "::error::force-prerelease=true requires verify-level=release (got: $LEVEL). Without verify-level=release, there is nothing to do after skipping the matrix."
+          exit 1
 
       - name: Validate shop-tag prefix
         if: inputs.shop-tag != ''
@@ -212,7 +227,7 @@ jobs:
   run:
     name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})
     needs: check
-    if: needs.check.outputs.should-run == 'true'
+    if: needs.check.outputs.should-run == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.force-prerelease)
     runs-on: ubuntu-latest
     env:
       VERIFY_TOKEN: ${{ secrets.VERIFY_TOKEN }}
@@ -246,7 +261,11 @@ jobs:
   create-prerelease:
     name: Create Prerelease
     needs: [check, run]
-    if: success() && needs.check.outputs.verify-level == 'release'
+    # !failure() && !cancelled() (not success()) so run can be skipped via force-prerelease.
+    if: |
+      !failure() && !cancelled() &&
+      needs.check.result == 'success' &&
+      needs.check.outputs.verify-level == 'release'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.gen.outputs.version }}
