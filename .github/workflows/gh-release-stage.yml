@@ -104,9 +104,16 @@ jobs:
           token: ${{ secrets.WORKFLOW_TOKEN }}
 
       - name: Run GoReleaser
+        # GORELEASER_CURRENT_TAG forces goreleaser to target the release tag. Without this,
+        # goreleaser runs `git describe`, which is ambiguous when both v1.3.3 and
+        # v1.3.3-rc.43 point at the promoted commit and may pick the RC tag.
+        # Set here (not in the composite action) because the composite is loaded from the
+        # RC commit, while this workflow file is loaded from main — env on the step
+        # propagates into the composite's child steps.
+        env:
+          GORELEASER_CURRENT_TAG: ${{ needs.check.outputs.release-version }}
         uses: ./.github/actions/run-goreleaser
         with:
-          release-tag: ${{ needs.check.outputs.release-version }}
           shop-sha: ${{ needs.check.outputs.shop-sha }}
           shop-tag: ${{ needs.check.outputs.shop-tag }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

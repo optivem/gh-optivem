@@ -1,9 +1,6 @@
 name: 'Run GoReleaser'
 description: 'Sets up Go and runs GoReleaser with the optivem/shop SHA and tag baked into the build.'
 inputs:
-  release-tag:
-    description: 'Release tag goreleaser should target (e.g. v1.3.3). Forces `.Tag` so goreleaser does not fall back to git describe, which is ambiguous when multiple tags point at HEAD (e.g. both v1.3.3 and v1.3.3-rc.43 on the promoted commit).'
-    required: true
   shop-sha:
     description: 'optivem/shop commit SHA to bake into the build'
     required: true
@@ -30,6 +27,5 @@ runs:
         args: release --clean
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
-        GORELEASER_CURRENT_TAG: ${{ inputs.release-tag }}
         SHOP_SHA: ${{ inputs.shop-sha }}
         SHOP_TAG: ${{ inputs.shop-tag }}
