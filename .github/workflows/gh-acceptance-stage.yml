@@ -15,6 +15,14 @@ on:
           - commit
           - acceptance
           - release
+      matrix-mode:
+        description: 'Matrix size: condensed (12 off-diagonal polyglot combos — single-language combos are already covered by optivem/shop) or full (all 36 combos).'
+        required: false
+        default: 'condensed'
+        type: choice
+        options:
+          - condensed
+          - full
       shop-tag:
         description: 'optivem/shop meta-v* release tag to test against. Empty = latest meta-v* release. Must be a published meta-v* release (not main, not a non-meta tag).'
         required: false
@@ -32,6 +40,10 @@ on:
 permissions:
   contents: write
   statuses: write
+
+concurrency:
+  group: gh-acceptance-stage
+  cancel-in-progress: false
 
 jobs:
   preflight:
@@ -58,6 +70,7 @@ jobs:
       shop-sha: ${{ (steps.level.outputs.verify-level == 'release' || inputs.shop-tag != '') && steps.shop-sha.outputs.sha || '' }}
       should-run: ${{ steps.prior-status.outputs.exists != 'true' }}
       retain-repos: ${{ github.event_name == 'workflow_dispatch' && inputs.retain-repos && 'true' || 'false' }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
       - name: Ensure Environment Variables Defined
         uses: optivem/actions/validate-env-vars-defined@v1
@@ -144,6 +157,49 @@ jobs:
           commit-sha: ${{ steps.shop-sha.outputs.sha }}
           status-context: acceptance-stage
 
+      # Build the run-job matrix based on matrix-mode.
+      # condensed = 12 off-diagonal polyglot combos (covers every lang as both
+      #   system-lang and test-lang per arch × repo-strategy via a Latin square:
+      #   ts→dotnet, dotnet→java, java→ts). Diagonal (lang == test-lang) is already
+      #   exercised continuously against real shop code in optivem/shop's own
+      #   {monolith,multitier}-{ts,dotnet,java}-acceptance-stage workflows.
+      # full = all 36 combos (2 arch × 2 repo-strategy × 3 lang × 3 test-lang).
+      - id: matrix
+        shell: bash
+        env:
+          MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.matrix-mode || 'condensed' }}
+        run: |
+          ARCHS='["monolith","multitier"]'
+          REPOS='["monorepo","multirepo"]'
+          LANGS='["typescript","dotnet","java"]'
+
+          CONDENSED_PAIRS='[
+            {"lang":"typescript","test-lang":"dotnet"},
+            {"lang":"dotnet","test-lang":"java"},
+            {"lang":"java","test-lang":"typescript"}
+          ]'
+
+          FULL_PAIRS=$(jq -c -n --argjson l "$LANGS" \
+            '[$l[] as $a | $l[] as $b | {lang: $a, "test-lang": $b}]')
+
+          if [ "$MODE" = "full" ]; then
+            PAIRS="$FULL_PAIRS"
+          else
+            PAIRS="$CONDENSED_PAIRS"
+          fi
+
+          MATRIX=$(jq -c -n \
+            --argjson archs "$ARCHS" \
+            --argjson repos "$REPOS" \
+            --argjson pairs "$PAIRS" \
+            '{include: [$archs[] as $a | $repos[] as $r | $pairs[] as $p |
+              {arch: $a, "repo-strategy": $r} + $p
+            ]}')
+
+          COUNT=$(jq '.include | length' <<< "$MATRIX")
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "| matrix-mode | $MODE ($COUNT combos) |" >> "$GITHUB_STEP_SUMMARY"
+
   run:
     name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})
     needs: check
@@ -161,11 +217,7 @@ jobs:
     strategy:
       fail-fast: true
       max-parallel: 6
-      matrix:
-        arch: [multitier, monolith]
-        repo-strategy: [monorepo, multirepo]
-        lang: [typescript, dotnet, java]
-        test-lang: [typescript, dotnet, java]
+      matrix: ${{ fromJSON(needs.check.outputs.matrix) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6

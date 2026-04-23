@@ -32,6 +32,13 @@ inputs:
 runs:
   using: composite
   steps:
+    # Stagger parallel matrix jobs so the repo-create / secret-set bursts don't
+    # all hit GitHub's content-creation secondary rate limit (~80 writes/min)
+    # in the same window.
+    - name: Jitter start
+      shell: bash
+      run: sleep $((RANDOM % 30))
+
     - name: Setup Go
       uses: actions/setup-go@v6
       with:
