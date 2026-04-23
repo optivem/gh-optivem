@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -18,6 +19,9 @@ import (
 const (
 	rateLimitThreshold = 50
 	pollMaxDuration    = 60 * time.Minute
+
+	errMsgInvalidCommand = "invalid command %q: %w"
+	errMsgEmptyCommand   = "empty command"
 )
 
 // RateLimitExceeded is returned when a gh command fails due to rate limiting.
@@ -28,13 +32,22 @@ type RateLimitExceeded struct {
 func (e *RateLimitExceeded) Error() string { return e.Msg }
 
 // Run executes a shell command. In dry-run mode, just prints it.
-func Run(cmdStr string, dryRun bool, check bool, cwd string) (string, error) {
+// When check=false, non-rate-limit failures are logged (not swallowed silently)
+// but still return a nil error so callers can continue. Rate-limit errors are
+// always returned regardless of check so callers can back off.
+func Run(cmdStr string, dryRun, check bool, cwd string) (string, error) {
 	if dryRun {
 		log.Logf("[DRY RUN] %s", cmdStr)
 		return "", nil
 	}
 
-	parts := splitCommand(cmdStr)
+	parts, err := splitCommand(cmdStr)
+	if err != nil {
+		return "", fmt.Errorf(errMsgInvalidCommand, cmdStr, err)
+	}
+	if len(parts) == 0 {
+		return "", errors.New(errMsgEmptyCommand)
+	}
 	cmd := exec.Command(parts[0], parts[1:]...)
 	if cwd != "" {
 		cmd.Dir = cwd
@@ -51,6 +64,7 @@ func Run(cmdStr string, dryRun bool, check bool, cwd string) (string, error) {
 		if check {
 			return output, fmt.Errorf("command failed: %s: %w\n%s", cmdStr, err, output)
 		}
+		log.Warnf("command failed (check=false, continuing): %s: %v\n%s", cmdStr, err, output)
 	}
 	return output, nil
 }
@@ -66,60 +80,88 @@ func MustRun(cmdStr string, dryRun bool, cwd string) string {
 	return out
 }
 
-// RunCapture runs a command and captures stdout separately.
-func RunCapture(cmdStr string, cwd string) (string, error) {
-	parts := splitCommand(cmdStr)
+// RunCapture runs a command and captures stdout separately. On failure, stderr
+// is captured and included in the returned error so the caller has context.
+func RunCapture(cmdStr, cwd string) (string, error) {
+	parts, err := splitCommand(cmdStr)
+	if err != nil {
+		return "", fmt.Errorf(errMsgInvalidCommand, cmdStr, err)
+	}
+	if len(parts) == 0 {
+		return "", errors.New(errMsgEmptyCommand)
+	}
 	cmd := exec.Command(parts[0], parts[1:]...)
 	if cwd != "" {
 		cmd.Dir = cwd
 	}
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
-	return strings.TrimSpace(string(out)), err
+	stdoutStr := strings.TrimSpace(string(out))
+	if err != nil {
+		stderrStr := strings.TrimSpace(stderr.String())
+		if stderrStr != "" {
+			return stdoutStr, fmt.Errorf("%w: %s", err, stderrStr)
+		}
+		return stdoutStr, err
+	}
+	return stdoutStr, nil
 }
 
 // RunPassthrough runs a command with stdout/stderr passed through to the terminal.
-func RunPassthrough(cmdStr string, cwd string) error {
-	parts := splitCommand(cmdStr)
+func RunPassthrough(cmdStr, cwd string) error {
+	parts, err := splitCommand(cmdStr)
+	if err != nil {
+		return fmt.Errorf(errMsgInvalidCommand, cmdStr, err)
+	}
+	if len(parts) == 0 {
+		return errors.New(errMsgEmptyCommand)
+	}
 	cmd := exec.Command(parts[0], parts[1:]...)
 	if cwd != "" {
 		cmd.Dir = cwd
 	}
-	cmd.Stdout = nil // inherit
-	cmd.Stderr = nil // inherit
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
 
 // splitCommand splits a command string into parts, respecting quotes.
-func splitCommand(s string) []string {
+// Returns an error if the input has an unterminated quote.
+func splitCommand(s string) ([]string, error) {
 	var parts []string
 	var current strings.Builder
 	inQuote := false
 	quoteChar := byte(0)
 
+	flush := func() {
+		if current.Len() > 0 {
+			parts = append(parts, current.String())
+			current.Reset()
+		}
+	}
+
 	for i := 0; i < len(s); i++ {
 		c := s[i]
-		if inQuote {
-			if c == quoteChar {
-				inQuote = false
-			} else {
-				current.WriteByte(c)
-			}
-		} else if c == '"' || c == '\'' {
+		switch {
+		case inQuote && c == quoteChar:
+			inQuote = false
+		case inQuote:
+			current.WriteByte(c)
+		case c == '"' || c == '\'':
 			inQuote = true
 			quoteChar = c
-		} else if c == ' ' || c == '\t' {
-			if current.Len() > 0 {
-				parts = append(parts, current.String())
-				current.Reset()
-			}
-		} else {
+		case c == ' ' || c == '\t':
+			flush()
+		default:
 			current.WriteByte(c)
 		}
 	}
-	if current.Len() > 0 {
-		parts = append(parts, current.String())
+	if inQuote {
+		return nil, fmt.Errorf("unterminated %c quote", quoteChar)
 	}
-	return parts
+	flush()
+	return parts, nil
 }
 
 // CheckRateLimit checks the GitHub API rate limit and waits if low.
@@ -189,7 +231,11 @@ func isRepoNotFound(output string) bool {
 }
 
 func (g *GitHub) CreateRepo() {
-	out, err := Run(fmt.Sprintf("gh repo view %s --json name", g.Repo), g.DryRun, true, "")
+	if g.DryRun {
+		log.Logf("[DRY RUN] Would check and create repo %s if missing", g.Repo)
+		return
+	}
+	out, err := Run(fmt.Sprintf("gh repo view %s --json name", g.Repo), false, true, "")
 	if err == nil {
 		log.Warnf("Repository %s already exists -- skipping creation", g.Repo)
 		return
@@ -208,6 +254,11 @@ func (g *GitHub) CreateRepo() {
 // initRepo pushes the initial commit (README + LICENSE) so the default branch
 // exists immediately without waiting for GitHub's async initialization.
 func (g *GitHub) initRepo() {
+	if g.DryRun {
+		log.Logf("[DRY RUN] Would initialize repo %s with README%s", g.Repo, licenseSuffix(g.License))
+		return
+	}
+
 	dir, err := os.MkdirTemp("", "repo-init-*")
 	if err != nil {
 		log.Fatalf("failed to create temp dir for repo init: %v", err)
@@ -215,7 +266,7 @@ func (g *GitHub) initRepo() {
 	defer os.RemoveAll(dir)
 
 	// Clone the empty repo.
-	MustRunWithRetry(fmt.Sprintf("gh repo clone %s %s", g.Repo, dir), false, "")
+	MustRunWithRetry(fmt.Sprintf("gh repo clone %s %s", g.Repo, dir), g.DryRun, "")
 
 	// Write README.md.
 	repoName := g.Repo
@@ -229,21 +280,31 @@ func (g *GitHub) initRepo() {
 
 	// Write LICENSE if a license is configured.
 	if g.License != "" {
-		licenseBody, err := RunCapture(fmt.Sprintf("gh api licenses/%s --jq .body", g.License), "")
-		if err == nil && licenseBody != "" {
+		licenseBody, lerr := RunCapture(fmt.Sprintf("gh api licenses/%s --jq .body", g.License), "")
+		switch {
+		case lerr != nil:
+			log.Warnf("Could not fetch license template %q: %v -- skipping LICENSE file", g.License, lerr)
+		case licenseBody == "":
+			log.Warnf("License template %q returned empty body -- skipping LICENSE file", g.License)
+		default:
 			licensePath := filepath.Join(dir, "LICENSE")
 			if werr := os.WriteFile(licensePath, []byte(licenseBody+"\n"), 0644); werr != nil {
 				log.Warnf("Could not write LICENSE file at %s: %v -- continuing without LICENSE", licensePath, werr)
 			}
-		} else {
-			log.Warnf("Could not fetch license template %q -- skipping LICENSE file", g.License)
 		}
 	}
 
 	// Commit and push.
-	MustRun("git add -A", false, dir)
-	MustRun("git commit -m \"Initial commit\"", false, dir)
-	MustRun("git push", false, dir)
+	MustRun("git add -A", g.DryRun, dir)
+	MustRun("git commit -m \"Initial commit\"", g.DryRun, dir)
+	MustRun("git push", g.DryRun, dir)
+}
+
+func licenseSuffix(license string) string {
+	if license == "" {
+		return ""
+	}
+	return " and LICENSE"
 }
 
 func (g *GitHub) EnablePages() {
@@ -278,9 +339,17 @@ func (g *GitHub) Clone(dest string) {
 }
 
 func (g *GitHub) WorkflowRun(workflow string, fields map[string]string) {
+	// Sort keys so the constructed command is deterministic — helps logs,
+	// tests, and retry-idempotency reasoning.
+	keys := make([]string, 0, len(fields))
+	for k := range fields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
 	var fieldArgs string
-	for k, v := range fields {
-		fieldArgs += fmt.Sprintf(" -f %s=%s", k, v)
+	for _, k := range keys {
+		fieldArgs += fmt.Sprintf(" -f %s=%s", k, fields[k])
 	}
 	g.mustRun(fmt.Sprintf("workflow run %s%s", workflow, fieldArgs))
 }
@@ -369,10 +438,14 @@ func (g *GitHub) pollRunUntilComplete(runID string) error {
 		status, conclusion := parts[0], parts[1]
 
 		if status == "completed" {
-			if conclusion == "success" {
+			switch conclusion {
+			case "success":
 				return nil
+			case "":
+				return fmt.Errorf("run %s completed with empty conclusion field", runID)
+			default:
+				return fmt.Errorf("run %s completed with conclusion: %s", runID, conclusion)
 			}
-			return fmt.Errorf("run %s completed with conclusion: %s", runID, conclusion)
 		}
 
 		log.Logf("Run %s status: %s — polling again in 60s...", runID, status)
@@ -380,8 +453,11 @@ func (g *GitHub) pollRunUntilComplete(runID string) error {
 	}
 }
 
-// Delete is best-effort cleanup (check=false); failures are intentionally ignored
-// because teardown happens after the main work has either succeeded or already failed.
+// Delete is best-effort cleanup; teardown happens after the main work has
+// either succeeded or already failed, so we log failures but don't abort.
 func (g *GitHub) Delete() {
-	Run(fmt.Sprintf("gh repo delete %s --yes", g.Repo), false, false, "")
+	out, err := Run(fmt.Sprintf("gh repo delete %s --yes", g.Repo), g.DryRun, true, "")
+	if err != nil {
+		log.Warnf("Delete of %s failed (best-effort, continuing): %v\n%s", g.Repo, err, out)
+	}
 }

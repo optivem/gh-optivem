@@ -10,6 +10,14 @@ import (
 	"github.com/optivem/gh-optivem/internal/shell"
 )
 
+func logCreated(fullRepo string) {
+	log.OKf("Created repository: %s", fullRepo)
+}
+
+func logCloned(fullRepo string) {
+	log.OKf("Cloned %s", fullRepo)
+}
+
 // CreateRepos creates the GitHub repository (and component repos for multitier).
 func CreateRepos(cfg *config.Config, gh *shell.GitHub) {
 	log.Logf("Step 1: Creating repository %s...", cfg.FullRepo)
@@ -24,7 +32,7 @@ func CreateRepos(cfg *config.Config, gh *shell.GitHub) {
 	}
 
 	gh.CreateRepo()
-	log.OKf("Created repository: %s", cfg.FullRepo)
+	logCreated(cfg.FullRepo)
 
 	if cfg.RepoStrategy == "multirepo" {
 		if cfg.Arch == "multitier" {
@@ -32,14 +40,14 @@ func CreateRepos(cfg *config.Config, gh *shell.GitHub) {
 			ghBackend := gh.ForRepo(cfg.BackendFullRepo)
 
 			ghFrontend.CreateRepo()
-			log.OKf("Created repository: %s", cfg.FrontendFullRepo)
+			logCreated(cfg.FrontendFullRepo)
 
 			ghBackend.CreateRepo()
-			log.OKf("Created repository: %s", cfg.BackendFullRepo)
+			logCreated(cfg.BackendFullRepo)
 		} else {
 			ghSystem := gh.ForRepo(cfg.SystemFullRepo)
 			ghSystem.CreateRepo()
-			log.OKf("Created repository: %s", cfg.SystemFullRepo)
+			logCreated(cfg.SystemFullRepo)
 		}
 	}
 }
@@ -103,7 +111,7 @@ func CloneRepos(cfg *config.Config, gh *shell.GitHub) {
 	repoDir := filepath.Join(cfg.WorkDir, "repo")
 	gh.Clone(repoDir)
 	cfg.RepoDir = repoDir
-	log.OKf("Cloned %s", cfg.FullRepo)
+	logCloned(cfg.FullRepo)
 
 	if cfg.RepoStrategy == "multirepo" {
 		if cfg.Arch == "multitier" {
@@ -112,17 +120,17 @@ func CloneRepos(cfg *config.Config, gh *shell.GitHub) {
 
 			gh.ForRepo(cfg.FrontendFullRepo).Clone(frontendDir)
 			cfg.FrontendRepoDir = frontendDir
-			log.OKf("Cloned %s", cfg.FrontendFullRepo)
+			logCloned(cfg.FrontendFullRepo)
 
 			gh.ForRepo(cfg.BackendFullRepo).Clone(backendDir)
 			cfg.BackendRepoDir = backendDir
-			log.OKf("Cloned %s", cfg.BackendFullRepo)
+			logCloned(cfg.BackendFullRepo)
 		} else {
 			systemDir := filepath.Join(cfg.WorkDir, "repo-system")
 
 			gh.ForRepo(cfg.SystemFullRepo).Clone(systemDir)
 			cfg.SystemRepoDir = systemDir
-			log.OKf("Cloned %s", cfg.SystemFullRepo)
+			logCloned(cfg.SystemFullRepo)
 		}
 	}
 }

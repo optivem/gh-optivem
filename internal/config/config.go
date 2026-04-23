@@ -118,12 +118,10 @@ func SplitCamelCase(s string) []string {
 	start := 0
 	for i := 1; i < len(s); i++ {
 		if isUpper(s[i]) {
-			if !isUpper(s[i-1]) {
-				// lowercase -> uppercase: split before i
-				words = append(words, s[start:i])
-				start = i
-			} else if i+1 < len(s) && !isUpper(s[i+1]) {
-				// uppercase -> lowercase after acronym: split before i
+			// Split before s[i] when either:
+			//   - previous char was lowercase (lowercase -> uppercase boundary), or
+			//   - next char is lowercase (end of an acronym run).
+			if !isUpper(s[i-1]) || (i+1 < len(s) && !isUpper(s[i+1])) {
 				words = append(words, s[start:i])
 				start = i
 			}
@@ -305,257 +303,318 @@ func isScaffoldReserved(word string) bool {
 	return reserved[word]
 }
 
-func ParseAndValidate() *Config {
-	owner := flag.String("owner", "", "GitHub username or org (required)")
-	systemName := flag.String("system-name", "", `System name, e.g. "Page Turner" (required)`)
-	repo := flag.String("repo", "", "Repository name, e.g. page-turner (required)")
-	arch := flag.String("arch", "", "Architecture: monolith or multitier (required)")
-	repoStrategy := flag.String("repo-strategy", "", "Repo strategy: monorepo or multirepo (required)")
-	lang := flag.String("lang", "", "System language: java, dotnet, typescript (monolith)")
-	testLang := flag.String("test-lang", "", "Test language (defaults to --lang or --backend-lang)")
-	backendLang := flag.String("backend-lang", "", "Backend language: java, dotnet, typescript (multitier)")
-	frontendLang := flag.String("frontend-lang", "", "Frontend language: react (multitier)")
-	license := flag.String("license", "mit", "License: mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense")
-	randomSuffix := flag.Bool("random-suffix", false, "Append 4-char hex suffix to repo name")
-	dryRun := flag.Bool("dry-run", false, "Print actions without executing")
-	testMode := flag.Bool("test", false, "Test mode with optional cleanup")
-	cleanupFlag := flag.Bool("cleanup", false, "Auto-cleanup in test mode")
-	noCleanup := flag.Bool("no-cleanup", false, "Keep repo in test mode")
-	forceCleanup := flag.Bool("force-cleanup", false, "Cleanup even on failure")
-	verifyLevel := flag.String("verify-level", "", "Verification level: none, local, commit, acceptance, release (default: release)")
-	excludeLegacy := flag.Bool("exclude-legacy", false, "Exclude acceptance-stage-legacy verification")
-	sampleTests := flag.Bool("sample-tests", false, "Run only sample local tests instead of all")
-	noBugReport := flag.Bool("no-bug-report", false, "Skip auto-creating GitHub issues on failure")
-	deploy := flag.String("deploy", "docker", "Deployment target: docker or cloud-run")
-	workDir := flag.String("workdir", "", "Working directory for cloning (default: temp dir)")
-	shopTag := flag.String("shop-tag", "", "Pin optivem/shop to this meta-v* release tag. Overrides build-time pin. Default: latest meta-v* release.")
-	showVersion := flag.Bool("version", false, "Print version and exit")
+type rawFlags struct {
+	owner, systemName, repo, arch, repoStrategy                  *string
+	lang, testLang, backendLang, frontendLang                    *string
+	license, verifyLevel, deploy, workDir, shopTag               *string
+	randomSuffix, dryRun, testMode, cleanupFlag, noCleanup       *bool
+	forceCleanup, excludeLegacy, sampleTests, noBugReport, showVersion *bool
+}
 
+func registerFlags() rawFlags {
+	return rawFlags{
+		owner:         flag.String("owner", "", "GitHub username or org (required)"),
+		systemName:    flag.String("system-name", "", `System name, e.g. "Page Turner" (required)`),
+		repo:          flag.String("repo", "", "Repository name, e.g. page-turner (required)"),
+		arch:          flag.String("arch", "", "Architecture: monolith or multitier (required)"),
+		repoStrategy:  flag.String("repo-strategy", "", "Repo strategy: monorepo or multirepo (required)"),
+		lang:          flag.String("lang", "", "System language: java, dotnet, typescript (monolith)"),
+		testLang:      flag.String("test-lang", "", "Test language (defaults to --lang or --backend-lang)"),
+		backendLang:   flag.String("backend-lang", "", "Backend language: java, dotnet, typescript (multitier)"),
+		frontendLang:  flag.String("frontend-lang", "", "Frontend language: react (multitier)"),
+		license:       flag.String("license", "mit", "License: mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense"),
+		randomSuffix:  flag.Bool("random-suffix", false, "Append 4-char hex suffix to repo name"),
+		dryRun:        flag.Bool("dry-run", false, "Print actions without executing"),
+		testMode:      flag.Bool("test", false, "Test mode with optional cleanup"),
+		cleanupFlag:   flag.Bool("cleanup", false, "Auto-cleanup in test mode"),
+		noCleanup:     flag.Bool("no-cleanup", false, "Keep repo in test mode"),
+		forceCleanup:  flag.Bool("force-cleanup", false, "Cleanup even on failure"),
+		verifyLevel:   flag.String("verify-level", "", "Verification level: none, local, commit, acceptance, release (default: release)"),
+		excludeLegacy: flag.Bool("exclude-legacy", false, "Exclude acceptance-stage-legacy verification"),
+		sampleTests:   flag.Bool("sample-tests", false, "Run only sample local tests instead of all"),
+		noBugReport:   flag.Bool("no-bug-report", false, "Skip auto-creating GitHub issues on failure"),
+		deploy:        flag.String("deploy", "docker", "Deployment target: docker or cloud-run"),
+		workDir:       flag.String("workdir", "", "Working directory for cloning (default: temp dir)"),
+		shopTag:       flag.String("shop-tag", "", "Pin optivem/shop to this meta-v* release tag. Overrides build-time pin. Default: latest meta-v* release."),
+		showVersion:   flag.Bool("version", false, "Print version and exit"),
+	}
+}
+
+func resolveVerifyLevel(level string) string {
+	if level == "" {
+		return "release"
+	}
+	validLevels := map[string]bool{"none": true, "local": true, "commit": true, "acceptance": true, "release": true}
+	if !validLevels[level] {
+		log.FatalExit("--verify-level must be none, local, commit, acceptance, or release")
+	}
+	return level
+}
+
+func validateCommonFlags(deploy, arch, repoStrategy string) {
+	if deploy != "docker" && deploy != "cloud-run" {
+		log.FatalExit("--deploy must be 'docker' or 'cloud-run'")
+	}
+	if arch != "monolith" && arch != "multitier" {
+		log.FatalExit("--arch must be 'monolith' or 'multitier'")
+	}
+	if repoStrategy != "monorepo" && repoStrategy != "multirepo" {
+		log.FatalExit("--repo-strategy must be 'monorepo' or 'multirepo'")
+	}
+}
+
+type langChoice struct {
+	lang, backendLang, frontendLang, testLang string
+}
+
+func resolveLangs(f rawFlags) langChoice {
+	validLangs := map[string]bool{"java": true, "dotnet": true, "typescript": true}
+	var c langChoice
+	if *f.arch == "monolith" {
+		if *f.lang == "" {
+			log.FatalExit("--lang is required for monolith architecture")
+		}
+		if !validLangs[*f.lang] {
+			log.FatalExit("--lang must be java, dotnet, or typescript")
+		}
+		c.lang = *f.lang
+		c.testLang = *f.testLang
+		if c.testLang == "" {
+			c.testLang = c.lang
+		}
+		return c
+	}
+	if *f.backendLang == "" {
+		log.FatalExit("--backend-lang is required for multitier architecture")
+	}
+	if *f.frontendLang == "" {
+		log.FatalExit("--frontend-lang is required for multitier architecture")
+	}
+	if !validLangs[*f.backendLang] {
+		log.FatalExit("--backend-lang must be java, dotnet, or typescript")
+	}
+	if *f.frontendLang != "react" {
+		log.FatalExit("--frontend-lang must be react")
+	}
+	c.backendLang = *f.backendLang
+	c.frontendLang = *f.frontendLang
+	c.testLang = *f.testLang
+	if c.testLang == "" {
+		c.testLang = c.backendLang
+	}
+	return c
+}
+
+type envTokens struct {
+	dockerHubUsername, dockerHubToken, sonarToken, ghcrToken, workflowToken string
+}
+
+func readEnvTokens() envTokens {
+	return envTokens{
+		dockerHubUsername: os.Getenv("DOCKERHUB_USERNAME"),
+		dockerHubToken:    os.Getenv("DOCKERHUB_TOKEN"),
+		sonarToken:        os.Getenv("SONAR_TOKEN"),
+		ghcrToken:         os.Getenv("GHCR_TOKEN"),
+		workflowToken:     os.Getenv("WORKFLOW_TOKEN"),
+	}
+}
+
+func validateEnvTokens(e envTokens, repoStrategy string) {
+	required := []struct{ name, val string }{
+		{"DOCKERHUB_USERNAME", e.dockerHubUsername},
+		{"DOCKERHUB_TOKEN", e.dockerHubToken},
+		{"SONAR_TOKEN", e.sonarToken},
+		{"WORKFLOW_TOKEN", e.workflowToken},
+	}
+	if repoStrategy == "multirepo" {
+		required = append(required, struct{ name, val string }{"GHCR_TOKEN", e.ghcrToken})
+	}
+	for _, r := range required {
+		if r.val == "" {
+			failMissingEnv(r.name)
+		}
+	}
+}
+
+func failMissingEnv(name string) {
+	switch name {
+	case "GHCR_TOKEN":
+		log.FatalExit(name + " environment variable is required for multirepo setup.\n" +
+			"  Create a Personal Access Token (classic) with write:packages + read:packages scopes:\n" +
+			"  https://github.com/settings/tokens\n" +
+			"  Then: export GHCR_TOKEN=<your-token>")
+	case "WORKFLOW_TOKEN":
+		log.FatalExit(name + " environment variable is required.\n" +
+			"  The scaffolded repo's acceptance/QA/prod stages use it to push release tags\n" +
+			"  (default GITHUB_TOKEN cannot push tags whose commit diffs workflow files).\n" +
+			"  Create a Personal Access Token (classic) with repo + workflow scopes:\n" +
+			"  https://github.com/settings/tokens\n" +
+			"  Then: export WORKFLOW_TOKEN=<your-token>")
+	default:
+		log.Fatalf("%s environment variable is required", name)
+	}
+}
+
+func resolveShopRef(shopTag string) string {
+	if shopTag != "" && isMainRef(shopTag) {
+		log.FatalExit("Invalid --shop-tag: 'main'/'master' is not allowed — pass a published meta-v* release tag.")
+	}
+	ref := shopTag
+	if ref == "" {
+		ref = version.ShopRef
+	}
+	if ref == "" {
+		latest, err := latestMetaRelease()
+		if err != nil {
+			log.FatalExit("Cannot resolve shop tag: " + err.Error())
+		}
+		ref = latest
+		log.OKf("Resolved empty shop-tag to latest meta-v* release: %s", ref)
+	}
+	if isMainRef(ref) {
+		log.FatalExit("Invalid shop ref: 'main'/'master' is not allowed — acceptance requires a published meta-v* release tag.")
+	}
+	return ref
+}
+
+type multirepoNames struct {
+	frontendRepo, backendRepo, frontendFullRepo, backendFullRepo string
+	systemRepo, systemFullRepo                                   string
+}
+
+func deriveMultirepoNames(strategy, arch, owner, repoName string) multirepoNames {
+	var m multirepoNames
+	if strategy != "multirepo" {
+		return m
+	}
+	if arch == "multitier" {
+		m.frontendRepo = repoName + "-frontend"
+		m.backendRepo = repoName + "-backend"
+		m.frontendFullRepo = owner + "/" + m.frontendRepo
+		m.backendFullRepo = owner + "/" + m.backendRepo
+	} else {
+		m.systemRepo = repoName + "-system"
+		m.systemFullRepo = owner + "/" + m.systemRepo
+	}
+	return m
+}
+
+func resolveWorkDir(wd string) string {
+	if wd != "" {
+		return wd
+	}
+	dir, err := os.MkdirTemp("", "scaffold-")
+	if err != nil {
+		log.FatalExit("Cannot create temp directory: " + err.Error())
+	}
+	return dir
+}
+
+func resolveRepoName(repo string, randomSuffix bool) string {
+	if !randomSuffix {
+		return repo
+	}
+	b := make([]byte, 2)
+	rand.Read(b)
+	return repo + "-" + hex.EncodeToString(b)
+}
+
+func computeOwnerPascal(owner string) string {
+	p := ToPascalCase(owner)
+	if !strings.Contains(owner, "-") {
+		return strings.ToUpper(owner[:1]) + owner[1:]
+	}
+	return p
+}
+
+func checkGhAuth(dryRun bool) {
+	if dryRun {
+		return
+	}
+	cmd := exec.Command("gh", "auth", "status")
+	if err := cmd.Run(); err != nil {
+		log.FatalExit("gh CLI is not authenticated. Run 'gh auth login' first.")
+	}
+}
+
+func ParseAndValidate() *Config {
+	f := registerFlags()
 	flag.Parse()
 
-	if *showVersion {
+	if *f.showVersion {
 		fmt.Println(version.Full())
 		os.Exit(0)
 	}
 
-	if *owner == "" || *systemName == "" || *repo == "" || *arch == "" || *repoStrategy == "" {
+	if *f.owner == "" || *f.systemName == "" || *f.repo == "" || *f.arch == "" || *f.repoStrategy == "" {
 		fmt.Fprintln(os.Stderr, "Required flags: --owner, --system-name, --repo, --arch, --repo-strategy")
 		flag.Usage()
 		os.Exit(1)
 	}
 
-	if err := ValidateSystemName(*systemName); err != "" {
+	if err := ValidateSystemName(*f.systemName); err != "" {
 		log.FatalExit("--system-name: " + err)
 	}
 
-	// Resolve verify level
-	resolvedLevel := "release"
-	if *verifyLevel != "" {
-		validLevels := map[string]bool{"none": true, "local": true, "commit": true, "acceptance": true, "release": true}
-		if !validLevels[*verifyLevel] {
-			log.FatalExit("--verify-level must be none, local, commit, acceptance, or release")
-		}
-		resolvedLevel = *verifyLevel
+	resolvedLevel := resolveVerifyLevel(*f.verifyLevel)
+	validateCommonFlags(*f.deploy, *f.arch, *f.repoStrategy)
+	lc := resolveLangs(f)
+
+	repoName := resolveRepoName(*f.repo, *f.randomSuffix)
+
+	env := readEnvTokens()
+	if !*f.dryRun {
+		validateEnvTokens(env, *f.repoStrategy)
 	}
 
-	if *deploy != "docker" && *deploy != "cloud-run" {
-		log.FatalExit("--deploy must be 'docker' or 'cloud-run'")
-	}
-
-	if *arch != "monolith" && *arch != "multitier" {
-		log.FatalExit("--arch must be 'monolith' or 'multitier'")
-	}
-
-	if *repoStrategy != "monorepo" && *repoStrategy != "multirepo" {
-		log.FatalExit("--repo-strategy must be 'monorepo' or 'multirepo'")
-	}
-
-	validLangs := map[string]bool{"java": true, "dotnet": true, "typescript": true}
-
-	var cfgLang, cfgBackendLang, cfgFrontendLang, cfgTestLang string
-
-	if *arch == "monolith" {
-		if *lang == "" {
-			log.FatalExit("--lang is required for monolith architecture")
-		}
-		if !validLangs[*lang] {
-			log.FatalExit("--lang must be java, dotnet, or typescript")
-		}
-		cfgLang = *lang
-		cfgTestLang = *testLang
-		if cfgTestLang == "" {
-			cfgTestLang = cfgLang
-		}
-	} else {
-		if *backendLang == "" {
-			log.FatalExit("--backend-lang is required for multitier architecture")
-		}
-		if *frontendLang == "" {
-			log.FatalExit("--frontend-lang is required for multitier architecture")
-		}
-		if !validLangs[*backendLang] {
-			log.FatalExit("--backend-lang must be java, dotnet, or typescript")
-		}
-		if *frontendLang != "react" {
-			log.FatalExit("--frontend-lang must be react")
-		}
-		cfgBackendLang = *backendLang
-		cfgFrontendLang = *frontendLang
-		cfgTestLang = *testLang
-		if cfgTestLang == "" {
-			cfgTestLang = cfgBackendLang
-		}
-	}
-
-	repoName := *repo
-	if *randomSuffix {
-		b := make([]byte, 2)
-		rand.Read(b)
-		repoName = repoName + "-" + hex.EncodeToString(b)
-	}
-
-	// Environment variables
-	dockerHubUsername := os.Getenv("DOCKERHUB_USERNAME")
-	dockerHubToken := os.Getenv("DOCKERHUB_TOKEN")
-	sonarToken := os.Getenv("SONAR_TOKEN")
-	ghcrToken := os.Getenv("GHCR_TOKEN")
-	workflowToken := os.Getenv("WORKFLOW_TOKEN")
-
-	if !*dryRun {
-		required := []struct{ name, val string }{
-			{"DOCKERHUB_USERNAME", dockerHubUsername},
-			{"DOCKERHUB_TOKEN", dockerHubToken},
-			{"SONAR_TOKEN", sonarToken},
-			{"WORKFLOW_TOKEN", workflowToken},
-		}
-		if *repoStrategy == "multirepo" {
-			required = append(required, struct{ name, val string }{"GHCR_TOKEN", ghcrToken})
-		}
-		for _, r := range required {
-			if r.val == "" {
-				if r.name == "GHCR_TOKEN" {
-					log.FatalExit(r.name + " environment variable is required for multirepo setup.\n" +
-						"  Create a Personal Access Token (classic) with write:packages + read:packages scopes:\n" +
-						"  https://github.com/settings/tokens\n" +
-						"  Then: export GHCR_TOKEN=<your-token>")
-				}
-				if r.name == "WORKFLOW_TOKEN" {
-					log.FatalExit(r.name + " environment variable is required.\n" +
-						"  The scaffolded repo's acceptance/QA/prod stages use it to push release tags\n" +
-						"  (default GITHUB_TOKEN cannot push tags whose commit diffs workflow files).\n" +
-						"  Create a Personal Access Token (classic) with repo + workflow scopes:\n" +
-						"  https://github.com/settings/tokens\n" +
-						"  Then: export WORKFLOW_TOKEN=<your-token>")
-				}
-				log.Fatalf("%s environment variable is required", r.name)
-			}
-		}
-	}
-
-	// Resolve shop ref: explicit --shop-tag > build-time version.ShopRef > latest meta-v* release.
-	// main / refs/heads/main are always rejected — acceptance requires a published meta-v* release.
-	if *shopTag != "" && isMainRef(*shopTag) {
-		log.FatalExit("Invalid --shop-tag: 'main'/'master' is not allowed — pass a published meta-v* release tag.")
-	}
-	resolvedShopRef := *shopTag
-	if resolvedShopRef == "" {
-		resolvedShopRef = version.ShopRef
-	}
-	if resolvedShopRef == "" {
-		latest, err := latestMetaRelease()
-		if err != nil {
-			log.FatalExit("Cannot resolve shop tag: " + err.Error())
-		}
-		resolvedShopRef = latest
-		log.OKf("Resolved empty shop-tag to latest meta-v* release: %s", resolvedShopRef)
-	}
-	if isMainRef(resolvedShopRef) {
-		log.FatalExit("Invalid shop ref: 'main'/'master' is not allowed — acceptance requires a published meta-v* release tag.")
-	}
-
-	// Clone shop repo from GitHub into a temp directory.
+	resolvedShopRef := resolveShopRef(*f.shopTag)
 	shopPath, cloneErr := cloneShop(resolvedShopRef)
 	if cloneErr != nil {
 		log.FatalExit("Cannot clone shop repo: " + cloneErr.Error())
 	}
 
-	// Check gh auth
-	if !*dryRun {
-		cmd := exec.Command("gh", "auth", "status")
-		if err := cmd.Run(); err != nil {
-			log.FatalExit("gh CLI is not authenticated. Run 'gh auth login' first.")
-		}
-	}
+	checkGhAuth(*f.dryRun)
 
-	// Derived naming
-	ownerPascal := ToPascalCase(*owner)
-	if !strings.Contains(*owner, "-") {
-		ownerPascal = strings.ToUpper((*owner)[:1]) + (*owner)[1:]
-	}
-	ownerLower := strings.ToLower(*owner)
+	ownerPascal := computeOwnerPascal(*f.owner)
+	ownerLower := strings.ToLower(*f.owner)
 	repoPascal := ToPascalCase(repoName)
 	repoNoHyphens := ToJavaLower(repoName)
 
-	frontendRepo := ""
-	backendRepo := ""
-	frontendFullRepo := ""
-	backendFullRepo := ""
-	systemRepo := ""
-	systemFullRepo := ""
-	if *repoStrategy == "multirepo" {
-		if *arch == "multitier" {
-			frontendRepo = repoName + "-frontend"
-			backendRepo = repoName + "-backend"
-			frontendFullRepo = *owner + "/" + frontendRepo
-			backendFullRepo = *owner + "/" + backendRepo
-		} else {
-			systemRepo = repoName + "-system"
-			systemFullRepo = *owner + "/" + systemRepo
-		}
-	}
-
-	// Work directory
-	wd := *workDir
-	if wd == "" {
-		var mkErr error
-		wd, mkErr = os.MkdirTemp("", "scaffold-")
-		if mkErr != nil {
-			log.FatalExit("Cannot create temp directory: " + mkErr.Error())
-		}
-	}
+	mr := deriveMultirepoNames(*f.repoStrategy, *f.arch, *f.owner, repoName)
+	wd := resolveWorkDir(*f.workDir)
 
 	return &Config{
-		Owner:      *owner,
+		Owner:      *f.owner,
 		Repo:       repoName,
-		FullRepo:   *owner + "/" + repoName,
-		SystemName: *systemName,
-		Arch:         *arch,
-		RepoStrategy: *repoStrategy,
+		FullRepo:   *f.owner + "/" + repoName,
+		SystemName: *f.systemName,
+		Arch:         *f.arch,
+		RepoStrategy: *f.repoStrategy,
 
-		Lang:         cfgLang,
-		BackendLang:  cfgBackendLang,
-		FrontendLang: cfgFrontendLang,
-		TestLang:     cfgTestLang,
+		Lang:         lc.lang,
+		BackendLang:  lc.backendLang,
+		FrontendLang: lc.frontendLang,
+		TestLang:     lc.testLang,
 
-		Deploy:     *deploy,
-		License:    *license,
-		DryRun:       *dryRun,
-		TestMode:     *testMode,
+		Deploy:     *f.deploy,
+		License:    *f.license,
+		DryRun:       *f.dryRun,
+		TestMode:     *f.testMode,
 		VerifyLevel:   resolvedLevel,
-		ExcludeLegacy: *excludeLegacy,
-		SampleTests:   *sampleTests,
-		Cleanup:      resolveCleanup(*cleanupFlag, *noCleanup),
-		ForceCleanup: *forceCleanup,
-		NoBugReport:  *noBugReport,
+		ExcludeLegacy: *f.excludeLegacy,
+		SampleTests:   *f.sampleTests,
+		Cleanup:      resolveCleanup(*f.cleanupFlag, *f.noCleanup),
+		ForceCleanup: *f.forceCleanup,
+		NoBugReport:  *f.noBugReport,
 		WorkDir:    wd,
 		ShopPath: shopPath,
 		ShopRef:  resolvedShopRef,
 
-		DockerHubUsername: dockerHubUsername,
-		DockerHubToken:   dockerHubToken,
-		SonarToken:       sonarToken,
-		GHCRToken:        ghcrToken,
-		WorkflowToken:    workflowToken,
+		DockerHubUsername: env.dockerHubUsername,
+		DockerHubToken:   env.dockerHubToken,
+		SonarToken:       env.sonarToken,
+		GHCRToken:        env.ghcrToken,
+		WorkflowToken:    env.workflowToken,
 
 		OwnerPascal:   ownerPascal,
 		OwnerLower:    ownerLower,
@@ -570,21 +629,21 @@ func ParseAndValidate() *Config {
 		TsPkgNew:    "@" + ownerLower + "/" + repoName + "-system-test",
 
 		SysNamePascalOld: "Shop",
-		SysNamePascalNew: SpacesToPascal(*systemName),
+		SysNamePascalNew: SpacesToPascal(*f.systemName),
 		SysNameCamelOld:  "shop",
-		SysNameCamelNew:  SpacesToCamel(*systemName),
+		SysNameCamelNew:  SpacesToCamel(*f.systemName),
 		SysNameKebabOld:  "shop",
-		SysNameKebabNew:  SpacesToKebab(*systemName),
+		SysNameKebabNew:  SpacesToKebab(*f.systemName),
 		SysNameLowerOld:  "shop",
-		SysNameLowerNew:  SpacesToLower(*systemName),
+		SysNameLowerNew:  SpacesToLower(*f.systemName),
 
-		FrontendRepo:     frontendRepo,
-		BackendRepo:      backendRepo,
-		FrontendFullRepo: frontendFullRepo,
-		BackendFullRepo:  backendFullRepo,
+		FrontendRepo:     mr.frontendRepo,
+		BackendRepo:      mr.backendRepo,
+		FrontendFullRepo: mr.frontendFullRepo,
+		BackendFullRepo:  mr.backendFullRepo,
 
-		SystemRepo:     systemRepo,
-		SystemFullRepo: systemFullRepo,
+		SystemRepo:     mr.systemRepo,
+		SystemFullRepo: mr.systemFullRepo,
 	}
 }
 
