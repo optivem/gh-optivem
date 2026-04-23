@@ -352,6 +352,9 @@ jobs:
   trigger-gh-release-stage:
     name: Trigger gh-release-stage
     needs: create-prerelease
+    # Explicit if: needed so the default success() doesn't propagate a skipped
+    # `run` (via force-prerelease) through the transitive chain and skip this job.
+    if: ${{ !failure() && !cancelled() && needs.create-prerelease.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch gh-release-stage
