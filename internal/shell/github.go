@@ -15,7 +15,10 @@ import (
 	"github.com/optivem/gh-optivem/internal/log"
 )
 
-const rateLimitThreshold = 50
+const (
+	rateLimitThreshold = 50
+	pollMaxDuration    = 60 * time.Minute
+)
 
 // RateLimitExceeded is returned when a gh command fails due to rate limiting.
 type RateLimitExceeded struct {
@@ -123,6 +126,7 @@ func splitCommand(s string) []string {
 func CheckRateLimit() {
 	out, err := RunCapture("gh api rate_limit --jq .resources.core", "")
 	if err != nil {
+		log.Warnf("rate limit check failed (continuing without wait): %v", err)
 		return
 	}
 
@@ -130,7 +134,8 @@ func CheckRateLimit() {
 		Remaining int   `json:"remaining"`
 		Reset     int64 `json:"reset"`
 	}
-	if json.Unmarshal([]byte(out), &data) != nil {
+	if err := json.Unmarshal([]byte(out), &data); err != nil {
+		log.Warnf("rate limit response unparseable (continuing without wait): %v; raw=%q", err, out)
 		return
 	}
 
@@ -174,11 +179,27 @@ func (g *GitHub) mustRun(cmd string) string {
 	return out
 }
 
+// isRepoNotFound reports whether a gh repo view failure means the repo doesn't
+// exist (vs a transient failure like network / auth / rate limit).
+func isRepoNotFound(output string) bool {
+	lower := strings.ToLower(output)
+	return strings.Contains(lower, "could not resolve to a repository") ||
+		strings.Contains(lower, "not found") ||
+		strings.Contains(lower, "404")
+}
+
 func (g *GitHub) CreateRepo() {
-	out, err := RunCapture(fmt.Sprintf("gh repo view %s --json name", g.Repo), "")
-	if err == nil && out != "" {
+	out, err := Run(fmt.Sprintf("gh repo view %s --json name", g.Repo), g.DryRun, true, "")
+	if err == nil {
 		log.Warnf("Repository %s already exists -- skipping creation", g.Repo)
 		return
+	}
+	var rle *RateLimitExceeded
+	if errors.As(err, &rle) {
+		log.Fatalf("rate limit hit while checking if %s exists: %v", g.Repo, err)
+	}
+	if !isRepoNotFound(out) {
+		log.Fatalf("failed to check if repository %s exists: %v\n%s", g.Repo, err, out)
 	}
 	MustRunWithRetry("gh repo create "+g.Repo+" --public", false, "")
 	g.initRepo()
@@ -201,13 +222,19 @@ func (g *GitHub) initRepo() {
 	if idx := strings.Index(repoName, "/"); idx >= 0 {
 		repoName = repoName[idx+1:]
 	}
-	os.WriteFile(filepath.Join(dir, "README.md"), []byte("# "+repoName+"\n"), 0644)
+	readmePath := filepath.Join(dir, "README.md")
+	if err := os.WriteFile(readmePath, []byte("# "+repoName+"\n"), 0644); err != nil {
+		log.Fatalf("failed to write README.md at %s: %v", readmePath, err)
+	}
 
 	// Write LICENSE if a license is configured.
 	if g.License != "" {
 		licenseBody, err := RunCapture(fmt.Sprintf("gh api licenses/%s --jq .body", g.License), "")
 		if err == nil && licenseBody != "" {
-			os.WriteFile(filepath.Join(dir, "LICENSE"), []byte(licenseBody+"\n"), 0644)
+			licensePath := filepath.Join(dir, "LICENSE")
+			if werr := os.WriteFile(licensePath, []byte(licenseBody+"\n"), 0644); werr != nil {
+				log.Warnf("Could not write LICENSE file at %s: %v -- continuing without LICENSE", licensePath, werr)
+			}
 		} else {
 			log.Warnf("Could not fetch license template %q -- skipping LICENSE file", g.License)
 		}
@@ -309,14 +336,20 @@ func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
 
 // pollRunUntilComplete polls gh run view until the run is no longer in_progress/queued.
 // Waits for rate limit reset between polls. Returns nil if the run succeeded, error otherwise.
+// Bounded by pollMaxDuration so a stuck run / permanently malformed output cannot loop forever.
+// Uses Run (combined output) so rate-limit classification in Run triggers the wait-and-retry path.
 func (g *GitHub) pollRunUntilComplete(runID string) error {
+	deadline := time.Now().Add(pollMaxDuration)
+	viewCmd := fmt.Sprintf("gh run view %s --repo %s --json status,conclusion --jq '[.status,.conclusion] | join(\",\")'", runID, g.Repo)
+
 	for {
+		if time.Now().After(deadline) {
+			return fmt.Errorf("polling run %s timed out after %s", runID, pollMaxDuration)
+		}
+
 		CheckRateLimit()
 
-		statusOut, err := RunCapture(
-			fmt.Sprintf("gh run view %s --repo %s --json status,conclusion --jq '[.status,.conclusion] | join(\",\")", runID, g.Repo),
-			"",
-		)
+		statusOut, err := Run(viewCmd, false, true, "")
 		if err != nil {
 			var rle *RateLimitExceeded
 			if errors.As(err, &rle) {
@@ -329,6 +362,7 @@ func (g *GitHub) pollRunUntilComplete(runID string) error {
 
 		parts := strings.SplitN(strings.TrimSpace(statusOut), ",", 2)
 		if len(parts) < 2 {
+			log.Warnf("Unexpected run view output for %s: %q — retrying in 30s", runID, statusOut)
 			time.Sleep(30 * time.Second)
 			continue
 		}

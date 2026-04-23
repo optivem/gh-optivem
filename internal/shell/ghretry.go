@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"errors"
 	"regexp"
 	"time"
 
@@ -87,7 +88,9 @@ func runWithRetryLoop(
 func classifyGHError(out string, err error) bool {
 	// Rate-limit is its own typed error from Run. Never retry here; let the
 	// caller decide (CheckRateLimit-driven backoff lives elsewhere).
-	if _, ok := err.(*RateLimitExceeded); ok {
+	// Use errors.As so a wrapped RateLimitExceeded is also caught.
+	var rle *RateLimitExceeded
+	if errors.As(err, &rle) {
 		return false
 	}
 	if ghRetryHardFail.MatchString(out) {
