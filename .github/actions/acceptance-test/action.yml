@@ -98,10 +98,9 @@ runs:
       shell: bash
       run: |
         set +e
-        OUTPUT=$(go test -tags=system ./internal/config/ -v -timeout 2h -run "${{ steps.test.outputs.name }}" 2>&1)
-        EXIT_CODE=$?
-        echo "$OUTPUT"
-        if echo "$OUTPUT" | tail -30 | grep -qi "rate limit"; then
+        go test -tags=system ./internal/config/ -v -timeout 2h -run "${{ steps.test.outputs.name }}" 2>&1 | tee test.log
+        EXIT_CODE=${PIPESTATUS[0]}
+        if tail -30 test.log | grep -qi "rate limit"; then
           echo "result=rate-limited" >> "$GITHUB_OUTPUT"
           exit 1
         elif [ $EXIT_CODE -ne 0 ]; then

@@ -4,7 +4,9 @@ package config
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -119,13 +121,21 @@ func TestMain(m *testing.M) {
 
 // runCLI runs the binary and returns output + exit code.
 // Valid config tests run with --test --cleanup for full scaffolding + automatic cleanup.
+// Streams the subprocess's stdout/stderr to os.Stderr as it runs so the created
+// repo name (and other progress) appears live in the log instead of only after
+// the subtest finishes. Still returns the captured output for assertions.
 func runCLI(t *testing.T, args ...string) (string, int) {
 	t.Helper()
 
 	// Prepend "init" subcommand
 	fullArgs := append([]string{"init"}, args...)
 	cmd := exec.Command(binaryPath, fullArgs...)
-	out, err := cmd.CombinedOutput()
+
+	var buf bytes.Buffer
+	tee := io.MultiWriter(&buf, os.Stderr)
+	cmd.Stdout = tee
+	cmd.Stderr = tee
+	err := cmd.Run()
 
 	exitCode := 0
 	if err != nil {
@@ -135,7 +145,7 @@ func runCLI(t *testing.T, args ...string) (string, int) {
 			t.Fatalf("unexpected error running CLI: %v", err)
 		}
 	}
-	return string(out), exitCode
+	return buf.String(), exitCode
 }
 
 func TestValidMonolithConfigurations(t *testing.T) {
