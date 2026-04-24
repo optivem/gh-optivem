@@ -208,7 +208,7 @@ func replaceRefsInRepo(repoDir, fullRepo, ownerLower string) {
 	for _, pair := range sonarReplacements {
 		n = files.ReplaceInTree(repoDir, pair[0], pair[1], nil)
 		if n > 0 {
-			log.Successf("Pass 3: replaced sonar org pattern (%d files)", n)
+			log.Successf("Pass 3: replaced %s -> %s (%d files)", pair[0], pair[1], n)
 		}
 	}
 
@@ -226,7 +226,7 @@ func replaceRefsInRepo(repoDir, fullRepo, ownerLower string) {
 	for _, pair := range sonarProjectNamePatterns {
 		n = files.ReplaceInTree(repoDir, pair[0], pair[1], nil)
 		if n > 0 {
-			log.Successf("Pass 4: replaced sonar projectName pattern (%d files)", n)
+			log.Successf("Pass 4: replaced %s -> %s (%d files)", pair[0], pair[1], n)
 		}
 	}
 

@@ -26,18 +26,14 @@ go run . --version
 # Dry-run a monolith scaffold (no side effects):
 go run . init --owner valentinajemuovic --system-name "Page Turner" --repo page-turner \
     --arch monolith --repo-strategy monorepo --lang java --dry-run
-
-# Dry-run a test-mode scaffold (preview — no side effects):
-go run . init --owner valentinajemuovic --system-name "Page Turner" --repo page-turner \
-    --arch monolith --repo-strategy monorepo --lang java \
-    --test --delete-test-repos --random-suffix --dry-run
 ```
 
-For a real manual test run (random repo name, full cleanup on success, keep on failure):
+For a real manual test run (random repo name; on success the local dir is deleted by init and the GitHub repos + Sonar projects are deleted by scripts/cleanup-orphans.sh; on failure everything is kept for debugging):
 
 ```bash
 bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner" \
-    --arch monolith --repo-strategy monorepo --lang java
+    --arch multitier --repo-strategy monorepo \
+    --backend-lang dotnet --frontend-lang react --test-lang typescript
 
 # Keep the repo after a successful run (for inspection):
 bash scripts/manual-test.sh --no-cleanup --owner valentinajemuovic ...

@@ -3,8 +3,6 @@ package config
 
 import (
 	"bufio"
-	"crypto/rand"
-	"encoding/hex"
 	"flag"
 	"fmt"
 	"os"
@@ -20,13 +18,12 @@ import (
 // Surfaced in the startup banner so the user can audit exactly what they typed
 // (vs. the resolved/derived values the scaffold will actually act on).
 type RawInputs struct {
-	Repo            string // --repo before --random-suffix appends a hex tail
+	Repo            string // --repo as-passed
 	ShopTag         string // --shop-tag before resolving empty → latest meta-v*
 	TestLang        string // --test-lang before defaulting to --lang / --backend-lang
-	VerifyLevel     string // --verify-level before defaulting to "release"
+	VerifyLevel     string // --verify-level as-passed (flag default: "release")
 	WorkDir         string // --workdir before defaulting to temp dir
 	KeepLocal       bool   // --keep-local flag as-passed
-	DeleteTestRepos bool   // --delete-test-repos flag as-passed
 	RandomSuffix    bool   // --random-suffix flag as-passed
 }
 
@@ -40,6 +37,12 @@ type Config struct {
 
 	Raw RawInputs
 
+	// UserSetFlags is the set of flag names the user passed explicitly on the
+	// command line (populated via flag.Visit after flag.Parse). Lets the banner
+	// distinguish user-provided values from defaults by appending "(default)"
+	// to unset flags.
+	UserSetFlags map[string]bool
+
 	Lang         string // monolith only
 	BackendLang  string // multitier only
 	FrontendLang string // multitier only
@@ -48,13 +51,10 @@ type Config struct {
 	Deploy     string // "docker" (default) or "cloud-run"
 	License    string
 	DryRun       bool
-	TestMode     bool
 	VerifyLevel   string // "none", "local", "commit", "acceptance", "release"
 	ExcludeLegacy bool   // exclude acceptance-stage-legacy verification
 	SampleTests   bool   // run only sample local tests instead of all
-	KeepLocal       bool // keep the local scaffolded clone dir after a successful test run (default: delete it)
-	DeleteTestRepos bool // delete GitHub test repos + SonarCloud projects after a successful test run (default: keep them)
-	ForceCleanup    bool // run whichever cleanup is enabled even on failure
+	KeepLocal    bool   // keep the local scaffolded clone dir after a successful run (default: delete it)
 	NoBugReport  bool   // skip auto-creating GitHub issues on failure
 	Verbose      bool   // enable debug output
 	Quiet        bool   // suppress info-level output
@@ -400,8 +400,8 @@ type rawFlags struct {
 	owner, systemName, repo, arch, repoStrategy                  *string
 	lang, testLang, backendLang, frontendLang                    *string
 	license, verifyLevel, deploy, workDir, shopTag               *string
-	randomSuffix, dryRun, testMode, keepLocal, deleteTestRepos   *bool
-	forceCleanup, excludeLegacy, sampleTests, noBugReport, showVersion *bool
+	dryRun, keepLocal                                            *bool
+	excludeLegacy, sampleTests, noBugReport, showVersion         *bool
 	verbose, verboseShort, quiet, quietShort, noAutoUpgrade      *bool
 	logFile                                                      *string
 }
@@ -418,12 +418,8 @@ func registerFlags() rawFlags {
 		backendLang:   flag.String("backend-lang", "", "Backend language: java, dotnet, typescript (multitier)"),
 		frontendLang:  flag.String("frontend-lang", "", "Frontend language: react (multitier)"),
 		license:       flag.String("license", "mit", "License: mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense"),
-		randomSuffix:  flag.Bool("random-suffix", false, "Append 16-char hex suffix to repo name"),
 		dryRun:        flag.Bool("dry-run", false, "Print actions without executing"),
-		testMode:      flag.Bool("test", false, "Test mode with optional cleanup"),
-		keepLocal:       flag.Bool("keep-local", false, "Test mode: keep the local scaffolded clone dir instead of deleting it on success"),
-		deleteTestRepos: flag.Bool("delete-test-repos", false, "Test mode: delete the GitHub test repos + SonarCloud projects on success (default: keep them)"),
-		forceCleanup:    flag.Bool("force-cleanup", false, "Test mode: run whichever cleanup is enabled even on failure"),
+		keepLocal:     flag.Bool("keep-local", false, "Keep the local scaffolded clone dir instead of deleting it on success"),
 		verifyLevel:   flag.String("verify-level", "release", "Verification level: none, local, commit, acceptance, release"),
 		excludeLegacy: flag.Bool("exclude-legacy", false, "Exclude acceptance-stage-legacy verification"),
 		sampleTests:   flag.Bool("sample-tests", false, "Run only sample local tests instead of all"),
@@ -646,15 +642,6 @@ func resolveCloneDirs(workDir, strategy, arch string) cloneDirs {
 	return d
 }
 
-func resolveRepoName(repo string, randomSuffix bool) string {
-	if !randomSuffix {
-		return repo
-	}
-	b := make([]byte, 8)
-	rand.Read(b)
-	return repo + "-" + hex.EncodeToString(b)
-}
-
 func computeOwnerPascal(owner string) string {
 	p := ToPascalCase(owner)
 	if !strings.Contains(owner, "-") {
@@ -728,6 +715,9 @@ func ParseAndValidate() *Config {
 	f := registerFlags()
 	flag.Parse()
 
+	userSet := make(map[string]bool)
+	flag.Visit(func(fl *flag.Flag) { userSet[fl.Name] = true })
+
 	if *f.showVersion {
 		fmt.Println(version.Full())
 		os.Exit(0)
@@ -760,7 +750,7 @@ func ParseAndValidate() *Config {
 	validateCommonFlags(*f.deploy, *f.arch, *f.repoStrategy)
 	lc := resolveLangs(f)
 
-	repoName := resolveRepoName(*f.repo, *f.randomSuffix)
+	repoName := *f.repo
 
 	env := readEnvTokens()
 	if !*f.dryRun {
@@ -802,15 +792,14 @@ func ParseAndValidate() *Config {
 		RepoStrategy: *f.repoStrategy,
 
 		Raw: RawInputs{
-			Repo:            *f.repo,
-			ShopTag:         *f.shopTag,
-			TestLang:        *f.testLang,
-			VerifyLevel:     *f.verifyLevel,
-			WorkDir:         *f.workDir,
-			KeepLocal:       *f.keepLocal,
-			DeleteTestRepos: *f.deleteTestRepos,
-			RandomSuffix:    *f.randomSuffix,
+			Repo:        *f.repo,
+			ShopTag:     *f.shopTag,
+			TestLang:    *f.testLang,
+			VerifyLevel: *f.verifyLevel,
+			WorkDir:     *f.workDir,
+			KeepLocal:   *f.keepLocal,
 		},
+		UserSetFlags: userSet,
 
 		Lang:         lc.lang,
 		BackendLang:  lc.backendLang,
@@ -820,13 +809,10 @@ func ParseAndValidate() *Config {
 		Deploy:     *f.deploy,
 		License:    *f.license,
 		DryRun:       *f.dryRun,
-		TestMode:     *f.testMode,
 		VerifyLevel:   resolvedLevel,
 		ExcludeLegacy: *f.excludeLegacy,
 		SampleTests:   *f.sampleTests,
-		KeepLocal:       *f.keepLocal,
-		DeleteTestRepos: *f.deleteTestRepos,
-		ForceCleanup:    *f.forceCleanup,
+		KeepLocal:    *f.keepLocal,
 		NoBugReport:  *f.noBugReport,
 		Verbose:      verbose,
 		Quiet:        quiet,
