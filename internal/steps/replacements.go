@@ -27,6 +27,24 @@ const (
 	shopSonarRef = "optivem_shop"
 )
 
+// optivemAllowedPatterns enumerates the substrings in which a bare "optivem"
+// may legitimately appear in a scaffolded repo — so the leftover-refs validator
+// doesn't false-positive on them. Anything not listed here is treated as a
+// missed rewrite and fails the scaffold.
+var optivemAllowedPatterns = []string{
+	// GitHub Actions consumed by every scaffolded workflow.
+	"optivem/actions",
+	// Published npm scope (covers @optivem/optivem-testing and any future @optivem/* package).
+	"@optivem/",
+	// Published npm package name (covers the registry URL form .../optivem-testing-X.Y.Z.tgz
+	// and the second "optivem" in "@optivem/optivem-testing").
+	"optivem-testing",
+	// Scaffolding metadata directory (.optivem/config.json).
+	".optivem",
+	// Branded problem-details URLs (https://api.optivem.com/errors/...).
+	"api.optivem.com",
+}
+
 // All text file extensions to process.
 var textExts = []string{
 	".yml", ".yaml", ".md", extGradle, extGradleKts,
@@ -521,8 +539,15 @@ func ValidateNoLeftoverShopRefs(cfg *config.Config) {
 		// optivem — otherwise every owner reference would false-positive.
 		// Mirrors the skip-when-SysName-is-shop logic in
 		// ValidateNoLeftoverSystemNames.
+		//
+		// Uses an allowlist of legitimate optivem-containing substrings
+		// (optivem/actions refs, @optivem/* npm packages, .optivem metadata
+		// dir, api.optivem.com URLs) so those don't false-positive. See
+		// optivemAllowedPatterns for the full list.
 		if cfg.OwnerLower != "optivem" {
-			checkLeftover(repoDir, "optivem", files.FindInTreeWordBoundary)
+			checkLeftover(repoDir, "optivem", func(root, needle string) []string {
+				return files.FindInTreeWordBoundaryExcept(root, needle, optivemAllowedPatterns)
+			})
 		}
 		if cfg.Owner != "Optivem" {
 			checkLeftover(repoDir, "Optivem", files.FindInTree)
