@@ -18,7 +18,7 @@ on:
       matrix-mode:
         description: 'Matrix size: minimal (8 combos — TS tests dotnet/java), condensed (12 off-diagonal polyglot combos — single-language combos are already covered by optivem/shop), or full (all 36 combos).'
         required: false
-        default: 'condensed'
+        default: 'minimal'
         type: choice
         options:
           - minimal
