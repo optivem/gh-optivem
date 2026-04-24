@@ -202,6 +202,8 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, fail
 		// i.e. after Commit and push — so broken output is already visible in
 		// the remote repo for troubleshooting.
 		{name: "Validate no leftover system names", phase: phaseApplyTemplate, fn: func() { steps.ValidateNoLeftoverSystemNames(cfg) }},
+		{name: "Validate no leftover shop template refs", phase: phaseApplyTemplate, fn: func() { steps.ValidateNoLeftoverShopRefs(cfg) }},
+		{name: "Validate no leftover template references", phase: phaseApplyTemplate, fn: func() { steps.ValidateNoLeftoverTemplateRefs(cfg) }},
 	}
 
 	allSteps = append(allSteps, buildVerifySteps(cfg, gh)...)

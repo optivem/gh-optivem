@@ -20,7 +20,11 @@ const (
 
 	dockerComposePrefix = "docker-compose"
 	packageJSONName     = "package.json"
+	packageLockName     = "package-lock.json"
 	systemTestDirName   = "system-test"
+
+	shopRepoRef  = "optivem/shop"
+	shopSonarRef = "optivem_shop"
 )
 
 // All text file extensions to process.
@@ -190,14 +194,14 @@ func replacePowerShellNames(repoDir, repoKebab string) {
 
 func replaceRefsInRepo(repoDir, fullRepo, ownerLower string) {
 	// Pass 1: optivem/shop -> owner/repo
-	n := files.ReplaceInTree(repoDir, "optivem/shop", fullRepo, textExts)
-	n += files.ReplaceInDockerfiles(repoDir, "optivem/shop", fullRepo)
-	log.Successf("Pass 1: replaced optivem/shop -> %s (%d files)", fullRepo, n)
+	n := files.ReplaceInTree(repoDir, shopRepoRef, fullRepo, textExts)
+	n += files.ReplaceInDockerfiles(repoDir, shopRepoRef, fullRepo)
+	log.Successf("Pass 1: replaced %s -> %s (%d files)", shopRepoRef, fullRepo, n)
 
 	// Pass 2: optivem_shop -> owner_repo (SonarCloud underscore variant)
 	underscoreNew := strings.ReplaceAll(fullRepo, "/", "_")
-	n = files.ReplaceInTree(repoDir, "optivem_shop", underscoreNew, textExts)
-	log.Successf("Pass 2: replaced optivem_shop -> %s (%d files)", underscoreNew, n)
+	n = files.ReplaceInTree(repoDir, shopSonarRef, underscoreNew, textExts)
+	log.Successf("Pass 2: replaced %s -> %s (%d files)", shopSonarRef, underscoreNew, n)
 
 	// Pass 3: SonarCloud org patterns
 	sonarReplacements := [][2]string{
@@ -452,10 +456,10 @@ func nsTypeScript(cfg *config.Config, component, repoDir string) {
 		if strings.Contains(path, systemTestDirName) || strings.Contains(path, "node_modules") {
 			return nil
 		}
-		if info.Name() == packageJSONName {
+		if info.Name() == packageJSONName || info.Name() == packageLockName {
 			// Monolith system code or multitier backend code
-			files.ReplaceInFile(path, `"name": "shop-monolith"`, `"name": "`+cfg.Repo+`-system"`)
-			files.ReplaceInFile(path, `"name": "shop-backend"`, `"name": "`+cfg.Repo+`-backend"`)
+			files.ReplaceInFile(path, `"name": "monolith"`, `"name": "`+cfg.Repo+`-system"`)
+			files.ReplaceInFile(path, `"name": "backend"`, `"name": "`+cfg.Repo+`-backend"`)
 		}
 		return nil
 	})
@@ -485,6 +489,47 @@ func ReplaceSystemName(cfg *config.Config) {
 	}
 
 	log.Success("System name replacement complete")
+}
+
+// ValidateNoLeftoverShopRefs checks that references to the shop template
+// (the repo "optivem/shop" and its owner "optivem"/"Optivem") don't appear
+// anywhere in the scaffolded repo after ReplaceRepoReferences, ReplaceNamespaces,
+// and ReplaceSystemName have run. Scans the whole repo (not just textExts)
+// because these substrings have no legitimate place in a scaffolded project —
+// a leftover in a .sh or .py script is just as wrong as one in a .yml.
+//
+// When a legitimate occurrence is discovered (e.g. an unavoidable company
+// attribution in a doc), codify it as an explicit path-level exception
+// rather than narrowing the scan.
+func ValidateNoLeftoverShopRefs(cfg *config.Config) {
+	log.Info("Validating no leftover shop template refs...")
+
+	if cfg.DryRun {
+		log.Info("[DRY RUN] Would validate no leftover shop template refs")
+		return
+	}
+
+	for _, repoDir := range collectRepoDirs(cfg) {
+		if repoDir == "" {
+			continue
+		}
+		// Compound refs: always rewritten, never legitimately kept.
+		checkLeftover(repoDir, shopRepoRef, files.FindInTree)
+		checkLeftover(repoDir, shopSonarRef, files.FindInTree)
+
+		// Bare owner name (both cases). Skipped when the scaffolded owner IS
+		// optivem — otherwise every owner reference would false-positive.
+		// Mirrors the skip-when-SysName-is-shop logic in
+		// ValidateNoLeftoverSystemNames.
+		if cfg.OwnerLower != "optivem" {
+			checkLeftover(repoDir, "optivem", files.FindInTreeWordBoundary)
+		}
+		if cfg.Owner != "Optivem" {
+			checkLeftover(repoDir, "Optivem", files.FindInTree)
+		}
+	}
+
+	log.Success("No leftover shop template refs")
 }
 
 // ValidateNoLeftoverSystemNames checks that the old system name doesn't appear in any text
@@ -642,7 +687,7 @@ func isInfraOrWorkflowFile(name, path string) bool {
 	if strings.Contains(path, ".github") {
 		return true
 	}
-	return name == packageJSONName || name == "package-lock.json"
+	return name == packageJSONName || name == packageLockName
 }
 
 // replaceInTestAppsettings replaces in appsettings files under system-test/ directories.
@@ -692,7 +737,7 @@ func fixupFrontendPackageJSON(cfg *config.Config) {
 	}
 	newName := `"name": "` + cfg.Repo + `-frontend"`
 
-	for _, target := range []string{packageJSONName, "package-lock.json"} {
+	for _, target := range []string{packageJSONName, packageLockName} {
 		p := filepath.Join(frontendDir, target)
 		if _, err := os.Stat(p); err != nil {
 			continue
