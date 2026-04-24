@@ -110,9 +110,6 @@ type Config struct {
 	FrontendRepoDir string
 	BackendRepoDir  string
 	SystemRepoDir   string
-
-	// Set during verification
-	RCVersion string
 }
 
 func ToPascalCase(s string) string {

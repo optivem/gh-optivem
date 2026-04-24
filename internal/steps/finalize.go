@@ -132,28 +132,3 @@ func fixExecBits(repoDir, fullRepo string) {
 	}
 }
 
-func getRCVersion(gh *shell.GitHub) string {
-	shell.CheckRateLimit()
-
-	out, err := shell.RunCapture(
-		fmt.Sprintf("gh api repos/%s/releases --jq .[0].tag_name", gh.Repo), "")
-	if err == nil && strings.Contains(out, "-rc.") {
-		return out
-	}
-
-	// Fallback: parse JSON
-	out, err = shell.RunCapture(
-		fmt.Sprintf("gh api repos/%s/releases", gh.Repo), "")
-	if err == nil {
-		var releases []struct {
-			TagName string `json:"tag_name"`
-		}
-		if json.Unmarshal([]byte(out), &releases) == nil && len(releases) > 0 {
-			if strings.Contains(releases[0].TagName, "-rc.") {
-				return releases[0].TagName
-			}
-		}
-	}
-
-	return ""
-}

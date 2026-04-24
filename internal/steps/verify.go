@@ -200,8 +200,9 @@ func VerifyCommitStage(cfg *config.Config, gh *shell.GitHub) {
 
 // VerifyAcceptanceStages triggers the latest and legacy acceptance-stage
 // workflows and watches both runs in parallel. Legacy is skipped when
-// --exclude-legacy is set. RC version is captured from the latest run after
-// both have completed.
+// --exclude-legacy is set. Downstream stages (QA, prod) resolve the latest RC
+// internally when dispatched with an empty version, so no RC lookup is needed
+// here.
 func VerifyAcceptanceStages(cfg *config.Config, gh *shell.GitHub) {
 	includeLegacy := !cfg.ExcludeLegacy
 
@@ -261,14 +262,6 @@ func VerifyAcceptanceStages(cfg *config.Config, gh *shell.GitHub) {
 	if legacyErr != nil {
 		handleWorkflowResult(legacyErr, "Acceptance stage legacy", gh.Repo)
 	}
-
-	rcVersion := getRCVersion(gh)
-	if rcVersion != "" {
-		cfg.RCVersion = rcVersion
-		log.Successf("RC version: %s", rcVersion)
-	} else {
-		log.Warn("No RC version found — acceptance stage may have skipped promotion (e.g. no artifacts yet). Downstream stages will be skipped.")
-	}
 }
 
 // reportParallelResult prints the status of one half of a parallel pair
@@ -282,9 +275,9 @@ func reportParallelResult(err error, label, repo string) {
 	log.Errorf("%s failed! See: https://github.com/%s/actions", label, repo)
 }
 
-// VerifyQA runs the QA stage followed by the QA signoff. Both require an RC
-// version from an earlier acceptance run; when RCVersion is empty both are
-// skipped with a warning (handled inside each sub-step).
+// VerifyQA runs the QA stage followed by the QA signoff. Each workflow
+// resolves the latest relevant RC internally when dispatched with an empty
+// version.
 func VerifyQA(cfg *config.Config, gh *shell.GitHub) {
 	VerifyQAStage(cfg, gh)
 	VerifyQASignoff(cfg, gh)
@@ -299,12 +292,7 @@ func VerifyQAStage(cfg *config.Config, gh *shell.GitHub) {
 		return
 	}
 
-	if cfg.RCVersion == "" {
-		log.Warn("Skipping QA stage — no RC version available")
-		return
-	}
-
-	verifyWorkflow(gh, "QA stage", "qa-stage.yml", map[string]string{"version": cfg.RCVersion}, 300)
+	verifyWorkflow(gh, "QA stage", "qa-stage.yml", nil, 300)
 }
 
 // VerifyQASignoff triggers and verifies QA signoff.
@@ -316,12 +304,7 @@ func VerifyQASignoff(cfg *config.Config, gh *shell.GitHub) {
 		return
 	}
 
-	if cfg.RCVersion == "" {
-		log.Warn("Skipping QA signoff — no RC version available")
-		return
-	}
-
-	verifyWorkflow(gh, "QA signoff", "qa-signoff.yml", map[string]string{"version": cfg.RCVersion, "result": "approved"}, 300)
+	verifyWorkflow(gh, "QA signoff", "qa-signoff.yml", map[string]string{"result": "approved"}, 300)
 }
 
 // VerifyProdStage triggers and verifies production stage.
@@ -333,12 +316,7 @@ func VerifyProdStage(cfg *config.Config, gh *shell.GitHub) {
 		return
 	}
 
-	if cfg.RCVersion == "" {
-		log.Warn("Skipping production stage — no RC version available")
-		return
-	}
-
-	verifyWorkflow(gh, "Production stage", "prod-stage.yml", map[string]string{"version": cfg.RCVersion}, 300)
+	verifyWorkflow(gh, "Production stage", "prod-stage.yml", nil, 300)
 }
 
 func verifyNamedWorkflow(gh *shell.GitHub, label, workflowFile string, intervalSecs int) {
@@ -448,21 +426,20 @@ func VerifyLocalTesting(cfg *config.Config) {
 
 	setupMultirepoSymlinks(cfg)
 
-	arch := cfg.Arch
 	sampleFlag := ""
 	if cfg.SampleTests {
 		sampleFlag = " -Sample"
 	}
 	runLocalTests(
 		"Local system tests (latest)",
-		fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s%s", arch, sampleFlag),
+		fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1%s", sampleFlag),
 		testDir,
 	)
 
 	if !cfg.ExcludeLegacy {
 		runLocalTests(
 			"Local system tests (legacy)",
-			fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Architecture %s -Legacy%s", arch, sampleFlag),
+			fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Legacy%s", sampleFlag),
 			testDir,
 		)
 	}

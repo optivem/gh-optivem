@@ -52,49 +52,6 @@ User flagged that **environment names aren't updated** in the scaffolded repo ei
   - If the finding matches the design discussed in Group 3 of [20260423-200000-scaffold-output-and-step-order.md](20260423-200000-scaffold-output-and-step-order.md) (drop the arch+lang prefix entirely), merge this item into that plan instead of duplicating.
   - If it's a separate replacement bug (e.g. wrong lang prefix for the chosen scenario), treat like Issue 1 — fix the replacement pass and add a fixture to the Issue 6 test.
 
-### Issue 3 — "Acceptance stage passed" contradicts "No RC version found"
-
-Observed during a `--verify-level release` run (full output in the appendix of [20260423-200000-scaffold-output-and-step-order.md](20260423-200000-scaffold-output-and-step-order.md)):
-
-```
-OK Acceptance stage passed!
-WARN No RC version found — acceptance stage may have skipped promotion (e.g. no artifacts yet). Downstream stages will be skipped.
-OK Step 16 done (5m 15s)
-```
-
-These three lines are self-contradictory. Either the acceptance stage actually ran and passed end-to-end (including promotion to an RC) and the warning is a false alarm — OR it bailed early without producing an RC, in which case `OK Acceptance stage passed!` is wrong.
-
-- [ ] **Trace the `VerifyAcceptanceStage` implementation** (referenced from [main.go:150](../main.go#L150)) to find where the pass/fail decision is made and where the RC-version lookup happens. Determine whether "passed" means "workflow conclusion was success" (which can be true while the promotion-gate job was skipped inside the workflow) or something stronger.
-- [ ] **Decide the correct semantics:**
-  - If the acceptance workflow is allowed to skip promhttps://github.com/optivem/hub/discussionsotion (e.g. because there are no new artifacts), "passed" should be renamed to `OK Acceptance stage completed (promotion skipped)` and Step 16 should not end on an OK/WARN pair that implies both.
-  - If promotion is *required* at `--verify-level release`, a missing RC should fail the step, not warn.
-- [ ] **Update the log line in verify.go** so "passed" is only printed when both the workflow succeeded *and* an RC was produced (at release level).
-- [ ] **Log `gh run view <run-id>` output after each stage passes.** [RunWatchWorkflow](../internal/shell/github.go#L397) already resolves the run's `databaseId`; return it alongside the error so callers can capture it. After `reportParallelResult` prints "passed", call `gh run view <run-id> --repo <repo>` and log its output (job/step status table + web URL). This turns the one-line "passed" into a visible breakdown of which jobs actually ran vs were skipped — which would have immediately explained the "RC exists but not detected" case on run 24884129262. Apply to every `Verify*` step that watches a workflow (commit, acceptance latest, acceptance legacy, QA, QA signoff, release, production).
-
-### Issue 4 — QA + production stages silently skipped on `--verify-level release`
-
-Direct downstream consequence of Issue 3:
-
-```
-> Step 14: Triggering and verifying QA stage...
-WARN Skipping QA stage — no RC version available
-OK Step 19 done (0s)
-> Step 15: Triggering and verifying QA signoff...
-WARN Skipping QA signoff — no RC version available
-OK Step 20 done (0s)
-> Step 16: Triggering and verifying production stage...
-WARN Skipping production stage — no RC version available
-OK Step 21 done (0s)
-```
-
-The user asked for `--verify-level release` — meaning "verify all the way to production deploy." They got **zero of three release-gate stages actually executed**, but the overall run terminated with `OK All steps passed! Completed in 15m 30s`. The `--verify-level release` contract is broken: operators have no way to tell from the exit status whether release-gate verification actually ran.
-
-- [ ] **Decide policy for `release` verify-level when no RC exists:**
-  - **Option A (recommended):** fail fast. If `--verify-level release` and no RC is produced by the acceptance stage, exit non-zero with a clear message: "verify-level=release requires an RC; acceptance did not produce one." Operators can downgrade to `--verify-level acceptance` if they know no RC will be produced.
-  - **Option B:** print a prominent non-warning summary at the end — e.g. change the final summary from `OK All steps passed!` to `OK Steps passed (N/M release-gate stages skipped)` with a count.
-- [ ] **Ensure the exit code reflects reality.** Today, skipping a release-gate step and succeeding the step both yield exit 0. At minimum, introduce a `SKIP` step state distinct from `OK` so the orchestrator's final summary can count skipped release-gate stages and refuse to print "All steps passed" if any release-gate step was skipped at `--verify-level release`.
-- [ ] **Investigate whether the RC-not-produced situation is itself a bug.** In a brand-new scaffolded repo with verify-level=release, the expected happy path is: acceptance stage produces an RC → QA uses it → prod uses it. If the RC isn't produced for a freshly scaffolded repo, something in the default shop template / workflow gating is wrong for first-run scenarios. Escalate to a separate ticket if root cause is outside gh-optivem (e.g. in `optivem/shop` or `optivem/actions`).
-
 ### Issue 5 — Add `--commit-on-failure` flag for debug ergonomics
 
 Today when Step 4-11 panics, the remote repo has only the initial README + LICENSE. Only the operator's local `%TEMP%\scaffold-*` dir holds the partial state — not shareable, not linkable from a bug report.
