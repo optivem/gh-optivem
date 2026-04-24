@@ -385,6 +385,11 @@ jobs:
           shop-tag: ${{ needs.check.outputs.shop-tag }}
           retain-repos: ${{ needs.check.outputs.retain-repos }}
           jitter-max-seconds: '30'
+          # Windows hosted runners no longer ship Docker Desktop, so the
+          # scaffolded project's docker-compose-based local tests cannot run
+          # there. Windows smoke covers CLI scaffolding only; Linux smoke
+          # covers the full local-test path.
+          skip-local-tests: ${{ matrix.os == 'windows-latest' && 'true' || 'false' }}
 
   run:
     name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})
