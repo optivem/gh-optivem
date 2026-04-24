@@ -26,6 +26,11 @@ go run . --version
 # Dry-run a monolith scaffold (no side effects):
 go run . init --owner <your-gh-user> --system-name "Test" --repo test-local \
     --arch monolith --repo-strategy monorepo --lang java --dry-run
+
+# Dry-run with test mode + random suffix (preview repeated-run workflow):
+go run . init --owner <your-gh-user> --system-name "Test" --repo test-local \
+    --arch monolith --repo-strategy monorepo --lang java \
+    --test --cleanup --random-suffix --dry-run
 ```
 
 See [README.md](README.md#usage) for the full flag set and multitier examples.
