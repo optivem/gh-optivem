@@ -121,7 +121,7 @@ const (
 	phasePrepare       = "Prepare"
 	phaseSetupRepo     = "Setup repository"
 	phaseApplyTemplate = "Apply template"
-	phaseValidate      = "Validate template"
+	phaseValidate      = "Validate scaffold"
 	phaseVerify        = "Verify pipeline"
 	phaseFinalize      = "Finalize"
 )
@@ -147,7 +147,7 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, fail
 		{name: "Create SonarCloud projects", phase: phaseApplyTemplate, fn: func() { steps.CreateSonarCloudProjects(cfg, sc) }},
 		{name: "Commit and push", phase: phaseApplyTemplate, alwaysRun: true, fn: func() { steps.CommitAndPush(cfg, *failureNote) }},
 
-		// PHASE: VALIDATE TEMPLATE — runs after push so broken output is already
+		// PHASE: VALIDATE SCAFFOLD — runs after push so broken output is already
 		// visible in the remote repo for troubleshooting.
 		{name: "Validate no leftover system names", phase: phaseValidate, fn: func() { steps.ValidateNoLeftoverSystemNames(cfg) }},
 		{name: "Verify compilation", phase: phaseValidate, fn: func() { steps.VerifyCompilation(cfg) }},

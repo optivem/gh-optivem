@@ -259,7 +259,7 @@ jobs:
   # and a multitier with different system-langs so a language-specific Windows
   # regression surfaces early.
   smoke:
-    name: Smoke (${{ matrix.os }}, ${{ matrix.scenario.arch }}, ${{ matrix.scenario.lang }})
+    name: Smoke (${{ matrix.os }}, ${{ matrix.scenario.arch }}, ${{ matrix.scenario.repo-strategy }}, ${{ matrix.scenario.lang }})
     needs: check
     if: >-
       ${{ needs.check.outputs.should-run == 'true' &&
@@ -280,8 +280,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         scenario:
-          - { arch: monolith, lang: java }
-          - { arch: multitier, lang: dotnet }
+          - { arch: monolith,  repo-strategy: monorepo,  lang: java }
+          - { arch: multitier, repo-strategy: multirepo, lang: dotnet }
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -290,7 +290,7 @@ jobs:
         uses: ./.github/actions/acceptance-test
         with:
           arch: ${{ matrix.scenario.arch }}
-          repo-strategy: monorepo
+          repo-strategy: ${{ matrix.scenario.repo-strategy }}
           lang: ${{ matrix.scenario.lang }}
           test-lang: typescript
           verify-level: local

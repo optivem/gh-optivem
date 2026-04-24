@@ -26,6 +26,22 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
+# Visual markers so manual-test output is distinguishable from a real `gh optivem init` run.
+# Colors auto-disable when stdout is not a TTY (CI logs, pipes, redirects).
+if [[ -t 1 ]]; then
+  C_BOLD=$'\033[1m'; C_YELLOW=$'\033[33m'; C_CYAN=$'\033[36m'; C_RED=$'\033[31m'; C_RESET=$'\033[0m'
+else
+  C_BOLD=''; C_YELLOW=''; C_CYAN=''; C_RED=''; C_RESET=''
+fi
+PREFIX="${C_CYAN}[manual-test]${C_RESET}"
+log()    { echo "${PREFIX} $*"; }
+banner() {
+  local color="$1" msg="$2"
+  echo "${C_BOLD}${color}========================================================================${C_RESET}"
+  echo "${C_BOLD}${color}  ${msg}${C_RESET}"
+  echo "${C_BOLD}${color}========================================================================${C_RESET}"
+}
+
 NO_CLEANUP=0
 OWNER=""
 PASSTHROUGH=()
@@ -59,28 +75,37 @@ else
   CLEANUP_DESC="full (local dir deleted by init; GitHub repos + Sonar projects deleted after)"
 fi
 
-echo "Manual test repo:   $REPO"
-echo "Cleanup on success: $CLEANUP_DESC"
+banner "${C_YELLOW}" "MANUAL TEST RUN — ${REPO}"
+log "Manual test repo:   $REPO"
+log "Cleanup on success: $CLEANUP_DESC"
 echo ""
 
 if ! go run . init --repo "$REPO" "${INIT_FLAGS[@]}" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}; then
   echo ""
-  echo "Scaffold failed — leaving local dir + GitHub repos + Sonar projects intact for debugging."
-  echo "Clean up later with:"
-  echo "  bash scripts/cleanup-orphans.sh --owner $OWNER --repos --sonar --prefixes \"manual-test-\" --delete"
+  log "Scaffold failed — leaving local dir + GitHub repos + Sonar projects intact for debugging."
+  log "Clean up later with:"
+  log "  bash scripts/cleanup-orphans.sh --owner $OWNER --repos --sonar --prefixes \"manual-test-\" --delete"
+  banner "${C_RED}" "MANUAL TEST FAILED — ${REPO}"
   exit 1
 fi
 
 if [[ "$NO_CLEANUP" == "1" ]]; then
   echo ""
-  echo "Done. --no-cleanup: local dir, GitHub repos, and Sonar projects kept."
+  log "Done. --no-cleanup: local dir, GitHub repos, and Sonar projects kept."
+  banner "${C_YELLOW}" "MANUAL TEST DONE — ${REPO}"
   exit 0
 fi
 
 echo ""
-echo "Scaffold succeeded. Deleting GitHub repos + Sonar projects for $REPO..."
-exec bash scripts/cleanup-orphans.sh \
-  --owner "$OWNER" \
-  --repos --sonar \
-  --prefixes "$REPO" \
-  --delete
+log "Scaffold succeeded. Deleting GitHub repos + Sonar projects for $REPO..."
+if bash scripts/cleanup-orphans.sh \
+    --owner "$OWNER" \
+    --repos --sonar \
+    --prefixes "$REPO" \
+    --delete; then
+  banner "${C_YELLOW}" "MANUAL TEST DONE — ${REPO}"
+else
+  status=$?
+  banner "${C_RED}" "MANUAL TEST CLEANUP FAILED — ${REPO}"
+  exit $status
+fi
