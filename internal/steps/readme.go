@@ -78,7 +78,7 @@ func writeBadges(b *strings.Builder, items [][2]string) {
 
 // UpdateReadme generates README.md for the repo(s).
 func UpdateReadme(cfg *config.Config) {
-	log.Log("Step 8: Generating README...")
+	log.Log("Generating README...")
 
 	if cfg.DryRun {
 		log.Log("[DRY RUN] Would generate README.md")

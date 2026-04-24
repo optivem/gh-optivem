@@ -170,7 +170,7 @@ func systemTestDir(cfg *config.Config) string {
 
 // VerifyCommitStage waits for commit stage workflow to pass.
 func VerifyCommitStage(cfg *config.Config, gh *shell.GitHub) {
-	log.Log("Step 11: Verifying commit stage workflow...")
+	log.Log("Verifying commit stage workflow...")
 
 	if cfg.DryRun {
 		log.Log("[DRY RUN] Would wait for commit stage workflow")
@@ -199,7 +199,7 @@ func VerifyCommitStage(cfg *config.Config, gh *shell.GitHub) {
 
 // VerifyAcceptanceStage triggers and verifies acceptance stage.
 func VerifyAcceptanceStage(cfg *config.Config, gh *shell.GitHub) {
-	log.Log("Step 12: Triggering and verifying acceptance stage...")
+	log.Log("Triggering and verifying acceptance stage...")
 
 	if cfg.DryRun {
 		log.Log("[DRY RUN] Would trigger and wait for acceptance stage workflow")
@@ -219,7 +219,7 @@ func VerifyAcceptanceStage(cfg *config.Config, gh *shell.GitHub) {
 
 // VerifyAcceptanceStageLegacy triggers and verifies acceptance stage legacy.
 func VerifyAcceptanceStageLegacy(cfg *config.Config, gh *shell.GitHub) {
-	log.Log("Step 13: Triggering and verifying acceptance stage legacy...")
+	log.Log("Triggering and verifying acceptance stage legacy...")
 
 	if cfg.DryRun {
 		log.Log("[DRY RUN] Would trigger and wait for acceptance stage legacy workflow")
@@ -231,7 +231,7 @@ func VerifyAcceptanceStageLegacy(cfg *config.Config, gh *shell.GitHub) {
 
 // VerifyQAStage triggers and verifies QA stage.
 func VerifyQAStage(cfg *config.Config, gh *shell.GitHub) {
-	log.Log("Step 14: Triggering and verifying QA stage...")
+	log.Log("Triggering and verifying QA stage...")
 
 	if cfg.DryRun {
 		log.Log("[DRY RUN] Would trigger and wait for QA stage workflow")
@@ -248,7 +248,7 @@ func VerifyQAStage(cfg *config.Config, gh *shell.GitHub) {
 
 // VerifyQASignoff triggers and verifies QA signoff.
 func VerifyQASignoff(cfg *config.Config, gh *shell.GitHub) {
-	log.Log("Step 15: Triggering and verifying QA signoff...")
+	log.Log("Triggering and verifying QA signoff...")
 
 	if cfg.DryRun {
 		log.Log("[DRY RUN] Would trigger and wait for QA signoff workflow")
@@ -265,7 +265,7 @@ func VerifyQASignoff(cfg *config.Config, gh *shell.GitHub) {
 
 // VerifyProdStage triggers and verifies production stage.
 func VerifyProdStage(cfg *config.Config, gh *shell.GitHub) {
-	log.Log("Step 16: Triggering and verifying production stage...")
+	log.Log("Triggering and verifying production stage...")
 
 	if cfg.DryRun {
 		log.Log("[DRY RUN] Would trigger and wait for production stage workflow")
@@ -375,7 +375,7 @@ func setupMultirepoSymlinks(cfg *config.Config) {
 // RunLocalSystemTests runs Run-SystemTests.ps1 locally against the scaffolded project
 // to verify that Docker builds and test suites work (test mode only).
 func RunLocalSystemTests(cfg *config.Config) {
-	log.Log("Step 17: Running local system tests...")
+	log.Log("Running local system tests...")
 
 	if cfg.DryRun {
 		log.Log("[DRY RUN] Would run local system tests")

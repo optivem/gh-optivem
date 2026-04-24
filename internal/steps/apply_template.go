@@ -104,7 +104,7 @@ func addLegacyWorkflow(wfMap map[string]string, prefix, testLang, deploy string)
 
 // ApplyTemplate copies template files into the cloned repo(s).
 func ApplyTemplate(cfg *config.Config) {
-	log.Log("Step 5: Applying template files...")
+	log.Log("Applying template files...")
 
 	if cfg.DryRun {
 		log.Log("[DRY RUN] Would apply template files")

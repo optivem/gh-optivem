@@ -50,7 +50,7 @@ func writeConfigToDir(dir string, jsonBytes []byte) {
 
 // CreateSonarCloudProjects creates SonarCloud org and projects.
 func CreateSonarCloudProjects(cfg *config.Config, sc *shell.SonarCloud) {
-	log.Log("Step 9: Creating SonarCloud projects...")
+	log.Log("Creating SonarCloud projects...")
 
 	if cfg.DryRun {
 		log.Log("[DRY RUN] Would create SonarCloud org and project(s)")
@@ -69,7 +69,7 @@ func CreateSonarCloudProjects(cfg *config.Config, sc *shell.SonarCloud) {
 // failed and this is an intentional partial push for troubleshooting — the
 // note is included in the commit message so git history flags it.
 func CommitAndPush(cfg *config.Config, failureNote string) {
-	log.Log("Step 10: Committing and pushing...")
+	log.Log("Committing and pushing...")
 
 	if cfg.DryRun {
 		log.Log("[DRY RUN] Would git add, commit, push")

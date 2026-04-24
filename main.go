@@ -193,8 +193,10 @@ func buildVerifySteps(cfg *config.Config, gh *shell.GitHub) []stepDef {
 func executeSteps(allSteps []stepDef, failureNote *string) (int, time.Duration) {
 	errors := 0
 	totalStart := time.Now()
+	totalByPhase := countStepsByPhase(allSteps)
+	posInPhase := 0
 	prevPhase := ""
-	for i, s := range allSteps {
+	for _, s := range allSteps {
 		// Skip non-alwaysRun steps once something has failed, so a broken
 		// scaffold still pushes the partial output (for troubleshooting) but
 		// stops running the downstream validate/verify steps.
@@ -202,36 +204,48 @@ func executeSteps(allSteps []stepDef, failureNote *string) (int, time.Duration) 
 			continue
 		}
 
-		if s.phase != "" && s.phase != prevPhase {
-			fmt.Println()
-			fmt.Printf("=== PHASE: %s ===\n\n", s.phase)
+		if s.phase != prevPhase {
+			if s.phase != "" {
+				fmt.Println()
+				fmt.Printf("=== PHASE: %s ===\n\n", s.phase)
+			}
 			prevPhase = s.phase
+			posInPhase = 0
 		}
+		posInPhase++
 
-		if !runStep(i, s, failureNote) {
+		if !runStep(s, posInPhase, totalByPhase[s.phase], failureNote) {
 			errors++
 		}
 	}
 	return errors, time.Since(totalStart)
 }
 
+func countStepsByPhase(allSteps []stepDef) map[string]int {
+	totals := make(map[string]int)
+	for _, s := range allSteps {
+		totals[s.phase]++
+	}
+	return totals
+}
+
 // runStep runs a single step, recovering from panics. Returns true on success.
 // On failure it sets *failureNote (unless already set by an earlier failure) so
 // the later always-run commit step can flag the push as partial.
-func runStep(i int, s stepDef, failureNote *string) (ok bool) {
+func runStep(s stepDef, pos, total int, failureNote *string) (ok bool) {
 	ok = true
 	defer func() {
 		if r := recover(); r != nil {
 			log.Failf("Step failed: %s -- %v", s.name, r)
 			if *failureNote == "" {
-				*failureNote = fmt.Sprintf("step %d: %s", i+1, s.name)
+				*failureNote = fmt.Sprintf("%s step %d/%d: %s", s.phase, pos, total, s.name)
 			}
 			ok = false
 		}
 	}()
 	stepStart := time.Now()
 	s.fn()
-	log.OKf("Step %d done (%s)", i+1, formatDuration(time.Since(stepStart)))
+	log.OKf("Step %d/%d done (%s)", pos, total, formatDuration(time.Since(stepStart)))
 	return
 }
 
