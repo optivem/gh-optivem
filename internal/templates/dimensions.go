@@ -41,6 +41,7 @@ func StripFixedDimensions(repoDir, testDst, keepArch, removeArch, testLang strin
 	stripComposeNames(testDst, keepArch, testLang)
 	stripWorkflowComposeRefs(repoDir, keepArch)
 	stripRunSystemTestsPS1(testDst, keepArch, removeArch, testLang)
+	stripSystemTestReadme(testDst, keepArch, removeArch)
 }
 
 // stripComposeNames rewrites `name: shop-<lang>-<arch>-<mode>` → `name: shop-<mode>`
@@ -87,6 +88,7 @@ func stripRunSystemTestsPS1(testDst, keepArch, removeArch, testLang string) {
 	content = pruneAllSystemConfig(content, keepArch, removeArch)
 	content = stripLangArchFromContainerNames(content, keepArch, testLang)
 	content = stripArchFromSystemConfigLookup(content)
+	content = stripArchFromDisplayHeading(content)
 
 	os.WriteFile(path, []byte(content), 0644)
 }
@@ -227,4 +229,75 @@ func stripArchFromSystemConfigLookup(content string) string {
 		"$SystemConfig = $AllSystemConfig[$Architecture]",
 		"$SystemConfig = $AllSystemConfig",
 		1)
+}
+
+// stripArchFromDisplayHeading rewrites the per-mode banner heading so it no
+// longer interpolates the removed $Architecture variable:
+//
+//	Write-Heading -Text "System: $Architecture / $($externalMode.ToUpper())"
+//	→ Write-Heading -Text "System: $($externalMode.ToUpper())"
+func stripArchFromDisplayHeading(content string) string {
+	return strings.Replace(content,
+		`"System: $Architecture / $($externalMode.ToUpper())"`,
+		`"System: $($externalMode.ToUpper())"`,
+		1)
+}
+
+// stripSystemTestReadme rewrites system-test/README.md to remove the
+// now-inapplicable removeArch command examples and drop the -Architecture
+// flag from the keepArch examples. Shop's README ships two parallel blocks
+// per command (one per arch); after stripping, only one command per usage
+// remains, without the arch flag.
+//
+// Shop's patterns (for keepArch="monolith", removeArch="multitier"):
+//
+//	Run all latest test suites (multitier):    // removed entirely
+//	Run all latest test suites (monolith):     // heading simplified
+//	./Run-SystemTests.ps1 -Architecture multitier  // removed entirely
+//	./Run-SystemTests.ps1 -Architecture monolith   // → ./Run-SystemTests.ps1
+//	./Run-SystemTests.ps1 -Architecture multitier -Legacy  // removed entirely
+//	./Run-SystemTests.ps1 -Architecture monolith -Legacy   // → ./Run-SystemTests.ps1 -Legacy
+//	./Run-SystemTests.ps1 -Architecture multitier -Suite X // → ./Run-SystemTests.ps1 -Suite X
+//	./Run-SystemTests.ps1 -Architecture multitier -Rebuild // → ./Run-SystemTests.ps1 -Rebuild
+func stripSystemTestReadme(testDst, keepArch, removeArch string) {
+	path := filepath.Join(testDst, "README.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	content := string(data)
+
+	const cmdArchPrefix = "./Run-SystemTests.ps1 -Architecture "
+
+	// 1. Delete the removeArch block (heading + blank + code fence + bare command + code fence + blank).
+	removeBlock := "Run all latest test suites (" + removeArch + "):\n\n" +
+		"```powershell\n" +
+		cmdArchPrefix + removeArch + "\n" +
+		"```\n\n"
+	content = strings.Replace(content, removeBlock, "", 1)
+
+	// 2. Simplify the keepArch heading: "(monolith)" → "".
+	content = strings.Replace(content,
+		"Run all latest test suites ("+keepArch+"):",
+		"Run all latest test suites:",
+		1)
+
+	// 3. Delete the removeArch -Legacy variant (whole line).
+	content = strings.Replace(content,
+		cmdArchPrefix+removeArch+" -Legacy\n",
+		"",
+		1)
+
+	// 4. Strip -Architecture <keepArch> from the remaining commands.
+	content = strings.ReplaceAll(content,
+		cmdArchPrefix+keepArch,
+		"./Run-SystemTests.ps1")
+
+	// 5. Strip -Architecture <removeArch> from -Suite and -Rebuild examples
+	//    (shop uses removeArch as the example arch for these commands).
+	content = strings.ReplaceAll(content,
+		cmdArchPrefix+removeArch,
+		"./Run-SystemTests.ps1")
+
+	os.WriteFile(path, []byte(content), 0644)
 }
