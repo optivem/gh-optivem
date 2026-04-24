@@ -253,10 +253,58 @@ jobs:
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           echo "| matrix-mode | $MODE ($COUNT combos) |" >> "$GITHUB_STEP_SUMMARY"
 
+  # Cross-OS smoke check — verifies the CLI works on both Linux and Windows
+  # before we burn the expensive matrix. TypeScript is the test-lang in both
+  # scenarios (cheapest/fastest test stack); the two scenarios cover a monolith
+  # and a multitier with different system-langs so a language-specific Windows
+  # regression surfaces early.
+  smoke:
+    name: Smoke (${{ matrix.os }}, ${{ matrix.scenario.arch }}, ${{ matrix.scenario.lang }})
+    needs: check
+    if: >-
+      ${{ needs.check.outputs.should-run == 'true' &&
+      needs.check.outputs.verify-level != 'none' &&
+      !(github.event_name == 'workflow_dispatch' && inputs.force-prerelease) }}
+    runs-on: ${{ matrix.os }}
+    env:
+      VERIFY_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+      GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+      TEST_OWNER: ${{ vars.TEST_OWNER }}
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+      WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        scenario:
+          - { arch: monolith, lang: java }
+          - { arch: multitier, lang: dotnet }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Acceptance Test
+        uses: ./.github/actions/acceptance-test
+        with:
+          arch: ${{ matrix.scenario.arch }}
+          repo-strategy: monorepo
+          lang: ${{ matrix.scenario.lang }}
+          test-lang: typescript
+          verify-level: local
+          exclude-legacy: 'true'
+          shop-tag: ${{ needs.check.outputs.shop-tag }}
+          retain-repos: ${{ needs.check.outputs.retain-repos }}
+
   run:
     name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})
-    needs: check
-    if: needs.check.outputs.should-run == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.force-prerelease)
+    needs: [check, smoke]
+    if: >-
+      ${{ needs.check.outputs.should-run == 'true' &&
+      !(github.event_name == 'workflow_dispatch' && inputs.force-prerelease) &&
+      (needs.smoke.result == 'success' || needs.smoke.result == 'skipped') }}
     runs-on: ubuntu-latest
     env:
       VERIFY_TOKEN: ${{ secrets.VERIFY_TOKEN }}
@@ -374,7 +422,7 @@ jobs:
 
   summary:
     name: Summary
-    needs: [run, create-prerelease]
+    needs: [smoke, run, create-prerelease]
     if: always()
     runs-on: ubuntu-latest
     steps:
