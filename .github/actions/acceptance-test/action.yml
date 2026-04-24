@@ -45,6 +45,31 @@ runs:
         go-version-file: go.mod
         cache: false
 
+    # Set up language toolchains for the scaffolded project. Needed on
+    # windows-latest (Windows Server 2025) where Gradle toolchain
+    # auto-detection doesn't find a pre-installed Java 21. Ubuntu runners
+    # also benefit from explicit versions so the CI matches optivem/shop's
+    # own pipelines. Each toolchain is set up only when that language is
+    # actually used (as system lang or test lang).
+    - name: Setup Java
+      if: inputs.lang == 'java' || inputs.test-lang == 'java'
+      uses: actions/setup-java@v5
+      with:
+        java-version: 21
+        distribution: temurin
+
+    - name: Setup .NET
+      if: inputs.lang == 'dotnet' || inputs.test-lang == 'dotnet'
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: 8.0.x
+
+    - name: Setup Node
+      if: inputs.lang == 'typescript' || inputs.test-lang == 'typescript'
+      uses: actions/setup-node@v6
+      with:
+        node-version: 22.x
+
     # Cache package-registry downloads so repeated scaffolding runs survive
     # transient upstream outages (Maven Central 502, npm/NuGet timeouts).
     # The scaffolded project lives in a fresh /tmp dir per job — but the

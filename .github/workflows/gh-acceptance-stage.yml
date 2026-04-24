@@ -51,6 +51,11 @@ on:
         required: false
         default: false
         type: boolean
+      skip-prerelease:
+        description: 'Run acceptance tests but do not create the RC prerelease. Useful for test-only runs at verify-level=release.'
+        required: false
+        default: false
+        type: boolean
   # schedule:
   #   - cron: '0 */6 * * *'  # Every 6 hours — verify-level=release
   #   - cron: '0 * * * *'    # Every hour — verify-level=local
@@ -132,6 +137,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "| retain-repos | ${{ inputs.retain-repos }} |" >> "$GITHUB_STEP_SUMMARY"
             echo "| shop-head | ${{ inputs.shop-head }} |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| skip-prerelease | ${{ inputs.skip-prerelease }} |" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Validate shop-head
@@ -139,10 +145,15 @@ jobs:
         shell: bash
         env:
           SHOP_TAG: ${{ inputs.shop-tag }}
+          LEVEL: ${{ steps.level.outputs.verify-level }}
         run: |
           set -euo pipefail
           if [ -n "$SHOP_TAG" ]; then
             echo "::error::shop-head=true is mutually exclusive with shop-tag (got: '$SHOP_TAG'). Leave shop-tag empty when running against HEAD."
+            exit 1
+          fi
+          if [ "$LEVEL" = "release" ]; then
+            echo "::error::shop-head=true is mutually exclusive with verify-level=release. HEAD mode never produces a release — pick a lower verify-level (none/local/commit/acceptance/qa)."
             exit 1
           fi
           echo "Running against optivem/shop HEAD — no prerelease or release will be created."
@@ -410,11 +421,13 @@ jobs:
     # !failure() && !cancelled() (not success()) so run can be skipped (matrix-mode=none)
     # when the shop-tag has already been verified manually or when recovering from a
     # stuck release. Skipped entirely in HEAD mode — HEAD runs never produce a release.
+    # Also skipped when skip-prerelease=true — for test-only runs at verify-level=release.
     if: >-
       ${{ !failure() && !cancelled() &&
       needs.check.result == 'success' &&
       needs.check.outputs.verify-level == 'release' &&
-      !(github.event_name == 'workflow_dispatch' && inputs.shop-head) }}
+      !(github.event_name == 'workflow_dispatch' && inputs.shop-head) &&
+      !(github.event_name == 'workflow_dispatch' && inputs.skip-prerelease) }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.gen.outputs.version }}
