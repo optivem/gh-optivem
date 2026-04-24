@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Wrap body in `{ ... } && exit` so bash parses the entire script up-front.
+# Without this, bash maintains a file offset and re-reads from disk between
+# commands; if the file is edited during a long-running command (e.g. the
+# 60+ min `go run . init`), bash's offset desyncs and emits phantom syntax
+# errors after the long command returns.
+{
+
 # Runs a manual scaffold against a randomly-named repo and, on success,
 # deletes the created GitHub repos + SonarCloud projects via
 # scripts/cleanup-orphans.sh. The local scaffold dir is deleted by
@@ -109,3 +116,5 @@ else
   banner "${C_RED}" "MANUAL TEST CLEANUP FAILED — ${REPO}"
   exit $status
 fi
+
+} && exit 0

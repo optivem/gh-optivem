@@ -120,3 +120,19 @@ func MustRunWithRetry(cmdStr string, dryRun bool, cwd string) string {
 	}
 	return out
 }
+
+// MustRunStdinWithRetry is the retry-wrapped sibling of RunStdin. Aborts on
+// hard-fail or after retries are exhausted. The stdin value never appears in
+// logs, retry chatter, or error messages — safe for secrets.
+func MustRunStdinWithRetry(cmdStr, stdin string, dryRun bool, cwd string) string {
+	out, err := runWithRetryLoop(
+		func() (string, error) { return RunStdin(cmdStr, stdin, dryRun, true, cwd) },
+		classifyGHError,
+		ghRetryAttempts,
+		ghRetryDelays,
+	)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	return out
+}

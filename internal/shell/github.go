@@ -69,6 +69,47 @@ func Run(cmdStr string, dryRun, check bool, cwd string) (string, error) {
 	return output, nil
 }
 
+// RunStdin is like Run but pipes stdin to the process. Use when an argument
+// would contain a secret (token, password) that must not appear in the
+// command line — passing it via stdin keeps it out of error messages, retry
+// logging, and process lists (argv is readable by other local users on most
+// systems, and any error surfaces the full cmdStr). cmdStr is the command
+// as it should appear in logs; it never includes the stdin value.
+func RunStdin(cmdStr, stdin string, dryRun, check bool, cwd string) (string, error) {
+	if dryRun {
+		log.Infof("[DRY RUN] %s (stdin: ***)", cmdStr)
+		return "", nil
+	}
+
+	parts, err := splitCommand(cmdStr)
+	if err != nil {
+		return "", fmt.Errorf(errMsgInvalidCommand, cmdStr, err)
+	}
+	if len(parts) == 0 {
+		return "", errors.New(errMsgEmptyCommand)
+	}
+	cmd := exec.Command(parts[0], parts[1:]...)
+	if cwd != "" {
+		cmd.Dir = cwd
+	}
+	cmd.Stdin = strings.NewReader(stdin)
+
+	out, err := cmd.CombinedOutput()
+	output := string(out)
+
+	if err != nil {
+		lower := strings.ToLower(output)
+		if strings.Contains(lower, "rate limit") || strings.Contains(lower, "api rate limit exceeded") {
+			return output, &RateLimitExceeded{Msg: fmt.Sprintf("GitHub API rate limit exceeded. Command: %s\n%s", cmdStr, output)}
+		}
+		if check {
+			return output, fmt.Errorf("command failed: %s: %w\n%s", cmdStr, err, output)
+		}
+		log.Warnf("command failed (check=false, continuing): %s: %v\n%s", cmdStr, err, output)
+	}
+	return output, nil
+}
+
 // MustRun executes an external command and aborts the program on failure.
 // Use for external system calls (gh, git, etc.) where partial failure must
 // not be silently swallowed. Honors dry-run semantics.
@@ -348,10 +389,16 @@ func (g *GitHub) CreateEnvironment(name string) {
 
 func (g *GitHub) SecretSet(name, value string) {
 	if g.DryRun {
-		log.Infof("[DRY RUN] gh secret set %s --body *** --repo %s", name, g.Repo)
+		log.Infof("[DRY RUN] gh secret set %s --body - --repo %s (stdin: ***)", name, g.Repo)
 		return
 	}
-	MustRunWithRetry(fmt.Sprintf("gh secret set %s --body %s --repo %s", name, value, g.Repo), false, "")
+	// Pass the secret via stdin (`--body -`) so it never appears in the
+	// command line — argv is readable by other local users on most systems,
+	// and any error from `gh secret set` would surface the full cmdStr into
+	// logs, retry chatter, and the auto-filed bug report body.
+	MustRunStdinWithRetry(
+		fmt.Sprintf("gh secret set %s --body - --repo %s", name, g.Repo),
+		value, false, "")
 }
 
 func (g *GitHub) VariableSet(name, value string) {

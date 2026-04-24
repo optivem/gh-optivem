@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/version"
@@ -56,7 +57,8 @@ type Config struct {
 	SkipLocalTests bool   // skip the "Verify local testing" step (Run-SystemTests.ps1)
 	SampleTests   bool   // run only sample local tests instead of all
 	KeepLocal    bool   // keep the local scaffolded clone dir after a successful run (default: delete it)
-	NoBugReport  bool   // skip auto-creating GitHub issues on failure
+	BugReport    bool   // opt in to auto-creating a GitHub issue on failure (default: off)
+	NoCommitOnFailure bool // skip pushing partial scaffold to a debug/<timestamp> branch on failure (by default we push it for triage)
 	Verbose      bool   // enable debug output
 	Quiet        bool   // suppress info-level output
 	LogFile      string // optional path to mirror plain-text log output
@@ -400,7 +402,8 @@ type rawFlags struct {
 	license, verifyLevel, deploy, workDir, shopTag               *string
 	dryRun, keepLocal                                            *bool
 	excludeLegacy, skipLocalTests, sampleTests                   *bool
-	noBugReport, showVersion                                     *bool
+	bugReport, showVersion                                       *bool
+	noCommitOnFailure                                            *bool
 	verbose, verboseShort, quiet, quietShort, noAutoUpgrade      *bool
 	logFile                                                      *string
 }
@@ -423,7 +426,8 @@ func registerFlags() rawFlags {
 		excludeLegacy:  flag.Bool("exclude-legacy", false, "Exclude legacy from local tests and acceptance stage"),
 		skipLocalTests: flag.Bool("skip-local-tests", false, "Skip the 'Verify local testing' step (Run-SystemTests.ps1)"),
 		sampleTests:    flag.Bool("sample-tests", false, "Run only sample local tests instead of all"),
-		noBugReport:   flag.Bool("no-bug-report", false, "Skip auto-creating GitHub issues on failure"),
+		bugReport:     flag.Bool("bug-report", false, "On failure, auto-create a GitHub issue in optivem/gh-optivem with scaffold config and debug-branch URL. Off by default — file one yourself if the failure is worth reporting."),
+		noCommitOnFailure: flag.Bool("no-commit-on-failure", false, "Skip pushing the partial scaffold to a debug/<timestamp> branch on failure. By default the partial scaffold is pushed so it can be inspected and linked from the auto-filed bug report."),
 		deploy:        flag.String("deploy", "docker", "Deployment target: docker or cloud-run"),
 		workDir:       flag.String("workdir", "", "Working directory for cloning (default: temp dir)"),
 		shopTag:       flag.String("shop-tag", "", "Pin optivem/shop to this meta-v* release tag. Overrides build-time pin. Default: latest meta-v* release."),
@@ -711,6 +715,21 @@ func confirmRepoExists(fullRepo string) {
 	}
 }
 
+// resolveLogFilePath returns the log-file destination for this run. When
+// --bug-report is set and --log-file isn't, the run needs a log file anyway
+// (the confirmation prompt shows the path, and the log tail is attached to
+// the filed issue), so route to a predictable temp path.
+func resolveLogFilePath(explicit string, bugReport bool) string {
+	if explicit != "" {
+		return explicit
+	}
+	if !bugReport {
+		return ""
+	}
+	return filepath.Join(os.TempDir(),
+		fmt.Sprintf("gh-optivem-%s.log", time.Now().UTC().Format("20060102-150405")))
+}
+
 func ParseAndValidate() *Config {
 	f := registerFlags()
 	flag.Parse()
@@ -783,6 +802,8 @@ func ParseAndValidate() *Config {
 	wd := resolveWorkDir(*f.workDir)
 	clones := resolveCloneDirs(wd, *f.repoStrategy, *f.arch)
 
+	logFilePath := resolveLogFilePath(*f.logFile, *f.bugReport)
+
 	return &Config{
 		Owner:      *f.owner,
 		Repo:       repoName,
@@ -814,10 +835,11 @@ func ParseAndValidate() *Config {
 		SkipLocalTests: *f.skipLocalTests,
 		SampleTests:    *f.sampleTests,
 		KeepLocal:    *f.keepLocal,
-		NoBugReport:  *f.noBugReport,
+		BugReport:    *f.bugReport,
+		NoCommitOnFailure: *f.noCommitOnFailure,
 		Verbose:      verbose,
 		Quiet:        quiet,
-		LogFile:      *f.logFile,
+		LogFile:      logFilePath,
 		NoAutoUpgrade: *f.noAutoUpgrade,
 		WorkDir:    wd,
 		// ShopPath, RepoDir, and the multirepo-component dirs are pre-computed
