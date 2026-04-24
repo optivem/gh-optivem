@@ -9,7 +9,7 @@ on:
       verify-level:
         description: 'Verification level for system tests'
         required: false
-        default: 'acceptance'
+        default: 'release'
         type: choice
         options:
           - none
@@ -21,7 +21,7 @@ on:
       smoke-mode:
         description: 'Smoke matrix size: none (skip smoke), single (1 combo — ubuntu/monolith/monorepo/TS/TS), or full (4 combos — 2 OS × 2 scenarios).'
         required: false
-        default: 'single'
+        default: 'full'
         type: choice
         options:
           - none
