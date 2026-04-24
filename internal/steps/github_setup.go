@@ -12,10 +12,12 @@ import (
 
 func logCreated(fullRepo string) {
 	log.OKf("Created repository: %s", fullRepo)
+	log.OKf("  https://github.com/%s", fullRepo)
 }
 
-func logCloned(fullRepo string) {
+func logCloned(fullRepo, localPath string) {
 	log.OKf("Cloned %s", fullRepo)
+	log.OKf("  -> %s", localPath)
 }
 
 // CreateRepos creates the GitHub repository (and component repos for multitier).
@@ -73,13 +75,13 @@ func SetupEnvironments(cfg *config.Config, gh *shell.GitHub) {
 func SetupSecretsAndVariables(cfg *config.Config, gh *shell.GitHub) {
 	log.Log("Step 3: Setting secrets and variables...")
 
-	gh.SecretSet("DOCKERHUB_TOKEN", cfg.DockerHubToken)
-	gh.SecretSet("SONAR_TOKEN", cfg.SonarToken)
-	gh.SecretSet("WORKFLOW_TOKEN", cfg.WorkflowToken)
-	gh.VariableSet("DOCKERHUB_USERNAME", cfg.DockerHubUsername)
+	setSecret(gh, "DOCKERHUB_TOKEN", cfg.DockerHubToken)
+	setSecret(gh, "SONAR_TOKEN", cfg.SonarToken)
+	setSecret(gh, "WORKFLOW_TOKEN", cfg.WorkflowToken)
+	setVariable(gh, "DOCKERHUB_USERNAME", cfg.DockerHubUsername)
 
 	if cfg.RepoStrategy == "multirepo" {
-		gh.SecretSet("GHCR_TOKEN", cfg.GHCRToken)
+		setSecret(gh, "GHCR_TOKEN", cfg.GHCRToken)
 
 		var componentRepos []string
 		if cfg.Arch == "multitier" {
@@ -89,14 +91,24 @@ func SetupSecretsAndVariables(cfg *config.Config, gh *shell.GitHub) {
 		}
 		for _, fullRepo := range componentRepos {
 			ghComp := gh.ForRepo(fullRepo)
-			ghComp.SecretSet("DOCKERHUB_TOKEN", cfg.DockerHubToken)
-			ghComp.SecretSet("SONAR_TOKEN", cfg.SonarToken)
-			ghComp.VariableSet("DOCKERHUB_USERNAME", cfg.DockerHubUsername)
+			setSecret(ghComp, "DOCKERHUB_TOKEN", cfg.DockerHubToken)
+			setSecret(ghComp, "SONAR_TOKEN", cfg.SonarToken)
+			setVariable(ghComp, "DOCKERHUB_USERNAME", cfg.DockerHubUsername)
 		}
 		log.OK("Set secrets and variables on component repositories")
 	}
 
 	log.OK("Set secrets and variables")
+}
+
+func setSecret(gh *shell.GitHub, name, value string) {
+	gh.SecretSet(name, value)
+	log.OKf("  secret: %s", name)
+}
+
+func setVariable(gh *shell.GitHub, name, value string) {
+	gh.VariableSet(name, value)
+	log.OKf("  variable: %s", name)
 }
 
 // CloneRepos clones the repository (and component repos for multitier).
@@ -111,7 +123,7 @@ func CloneRepos(cfg *config.Config, gh *shell.GitHub) {
 	repoDir := filepath.Join(cfg.WorkDir, "repo")
 	gh.Clone(repoDir)
 	cfg.RepoDir = repoDir
-	logCloned(cfg.FullRepo)
+	logCloned(cfg.FullRepo, repoDir)
 
 	if cfg.RepoStrategy == "multirepo" {
 		if cfg.Arch == "multitier" {
@@ -120,17 +132,17 @@ func CloneRepos(cfg *config.Config, gh *shell.GitHub) {
 
 			gh.ForRepo(cfg.FrontendFullRepo).Clone(frontendDir)
 			cfg.FrontendRepoDir = frontendDir
-			logCloned(cfg.FrontendFullRepo)
+			logCloned(cfg.FrontendFullRepo, frontendDir)
 
 			gh.ForRepo(cfg.BackendFullRepo).Clone(backendDir)
 			cfg.BackendRepoDir = backendDir
-			logCloned(cfg.BackendFullRepo)
+			logCloned(cfg.BackendFullRepo, backendDir)
 		} else {
 			systemDir := filepath.Join(cfg.WorkDir, "repo-system")
 
 			gh.ForRepo(cfg.SystemFullRepo).Clone(systemDir)
 			cfg.SystemRepoDir = systemDir
-			logCloned(cfg.SystemFullRepo)
+			logCloned(cfg.SystemFullRepo, systemDir)
 		}
 	}
 }

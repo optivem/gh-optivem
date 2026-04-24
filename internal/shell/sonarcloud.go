@@ -106,8 +106,12 @@ func (s *SonarCloud) CreateOrg() {
 	}
 	if e, ok := result["error"]; ok && e == true && !s.isAlreadyExists(result) {
 		log.Warnf("SonarCloud org creation: %v", result["message"])
+		return
+	}
+	if s.isAlreadyExists(result) {
+		log.OKf("SonarCloud org (already existed): %s", s.Org)
 	} else {
-		log.OKf("SonarCloud org: %s", s.Org)
+		log.OKf("SonarCloud org (created): %s", s.Org)
 	}
 }
 
@@ -123,7 +127,12 @@ func (s *SonarCloud) CreateProject(key string) {
 	if e, ok := result["error"]; ok && e == true && !s.isAlreadyExists(result) {
 		log.Warnf("SonarCloud project %s: %v", key, result["message"])
 	} else {
-		log.OKf("SonarCloud project: %s", key)
+		if s.isAlreadyExists(result) {
+			log.OKf("SonarCloud project (already existed): %s", key)
+		} else {
+			log.OKf("SonarCloud project (created): %s", key)
+		}
+		log.OKf("  https://sonarcloud.io/project/overview?id=%s", key)
 	}
 
 	// Rename default branch master -> main

@@ -384,6 +384,7 @@ func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
 	}
 
 	runID := strings.TrimSpace(out)
+	log.OKf("Watching workflow run: https://github.com/%s/actions/runs/%s", g.Repo, runID)
 	_, err = Run(fmt.Sprintf("gh run watch %s --repo %s --exit-status --interval %d", runID, g.Repo, intervalSecs), false, true, "")
 	if err == nil {
 		return nil
