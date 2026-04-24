@@ -350,10 +350,16 @@ jobs:
     # !failure() && !cancelled() (not success()) so a skipped preflight (shop-head=true
     # path) does not cause the implicit success() check to drop this job — check itself
     # succeeded, which is what we actually care about.
+    # Matrix-emptiness guard: smoke-mode=none produces {"include":[]}, which errors
+    # at strategy evaluation ("matrix must define at least one vector") and fails
+    # the job before any step runs. Skipping here keeps smoke-mode=none usable
+    # (e.g. go straight to acceptance + create-prerelease when the shop-tag is
+    # already smoke-verified).
     if: >-
       ${{ !failure() && !cancelled() &&
       needs.check.outputs.should-run == 'true' &&
-      needs.check.outputs.verify-level != 'none' }}
+      needs.check.outputs.verify-level != 'none' &&
+      needs.check.outputs.smoke-matrix != '{"include":[]}' }}
     runs-on: ${{ matrix.os }}
     env:
       VERIFY_TOKEN: ${{ secrets.VERIFY_TOKEN }}
@@ -396,9 +402,14 @@ jobs:
     needs: [check, smoke]
     # !failure() && !cancelled() (not success()) so a skipped preflight (shop-head=true
     # path) does not cause the implicit success() check to drop this job.
+    # Matrix-emptiness guard: acceptance-mode=none produces {"include":[]}, which
+    # errors at strategy evaluation ("matrix must define at least one vector") and
+    # fails the job before any step runs. Skipping here keeps the recovery flow
+    # (smoke + create-prerelease, no acceptance matrix) working.
     if: >-
       ${{ !failure() && !cancelled() &&
       needs.check.outputs.should-run == 'true' &&
+      needs.check.outputs.matrix != '{"include":[]}' &&
       (needs.smoke.result == 'success' || needs.smoke.result == 'skipped') }}
     runs-on: ubuntu-latest
     env:
