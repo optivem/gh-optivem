@@ -5,19 +5,6 @@
 - [Go 1.22+](https://go.dev/dl/)
 - [GitHub CLI](https://cli.github.com/) (`gh auth login`)
 
-## Install from source
-
-```bash
-cd gh-optivem
-gh extension install .
-```
-
-## Build
-
-```bash
-go build ./...
-```
-
 ## Shop version in local builds
 
 Local builds (`go run .`, `go build`, `gh extension install .`) have no shop ref baked in, so `gh optivem init` resolves `--shop-tag` as follows:
@@ -28,6 +15,32 @@ Local builds (`go run .`, `go build`, `gh extension install .`) have no shop ref
 Released binaries (`gh extension install optivem/gh-optivem`) are pinned to the shop SHA baked in at release time and do **not** auto-upgrade to the latest `meta-v*` release.
 
 For reproducible local testing, pass `--shop-tag meta-vX.Y.Z` explicitly.
+
+## Run locally
+
+Fastest iteration — compiles and runs in one step, no install needed:
+
+```bash
+go run . --version
+go run . init ... --dry-run
+```
+
+## Install from source
+
+Installs your local working copy as the `gh optivem` extension (replaces any previously-installed version). Use this when you want to invoke it as `gh optivem ...` — otherwise prefer `go run .`:
+
+```bash
+cd gh-optivem
+gh extension install .
+```
+
+## Build
+
+Produces a standalone `gh-optivem` binary. Not needed for local testing (`go run .` handles that) — use this only to ship an artifact or sanity-check that the code compiles:
+
+```bash
+go build ./...
+```
 
 ## Running Tests
 
