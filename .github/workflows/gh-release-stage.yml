@@ -72,12 +72,30 @@ jobs:
         with:
           prerelease-version: ${{ steps.rc.outputs.version }}
 
-      - name: Ensure Release Version Unreleased
-        uses: optivem/actions/validate-version-unreleased@v1
+      - name: Check Release Version Already Released
+        id: check-release-tag
+        uses: optivem/actions/check-tag-exists@v1
         with:
-          version: ${{ steps.gen.outputs.version }}
-          bump-workflow-file: gh-auto-bump-patch.yml
-          rc-workflow-file: gh-acceptance-stage.yml
+          tag: ${{ steps.gen.outputs.version }}
+
+      - name: Ensure Release Version Unreleased
+        if: steps.check-release-tag.outputs.exists == 'true'
+        shell: bash
+        env:
+          TAG: ${{ steps.gen.outputs.version }}
+        run: |
+          BUMP_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/gh-auto-bump-patch.yml"
+          RC_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/gh-acceptance-stage.yml"
+          {
+            echo "## Version already released"
+            echo ""
+            echo "\`$TAG\` already exists as a final release. To ship a new version:"
+            echo ""
+            echo "1. Bump VERSION — run [\`gh-auto-bump-patch.yml\`](${BUMP_URL})."
+            echo "2. Create a new RC — run [\`gh-acceptance-stage.yml\`](${RC_URL})."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::Version $TAG is already released. Bump VERSION: ${BUMP_URL}. Create a new RC: ${RC_URL}."
+          exit 1
 
       - id: shop-sha
         uses: optivem/actions/get-commit-status@v1

@@ -248,7 +248,42 @@ func (g *GitHub) CreateRepo() {
 		log.Fatalf("failed to check if repository %s exists: %v\n%s", g.Repo, err, out)
 	}
 	MustRunWithRetry("gh repo create "+g.Repo+" --public", false, "")
+	g.waitForRepoVisible()
 	g.initRepo()
+}
+
+// waitForRepoVisible polls gh repo view until the repo resolves via GraphQL.
+// Closes a race between gh repo create (REST, returns on primary write) and
+// gh repo clone's GraphQL resolve step — the GraphQL index can lag behind the
+// primary by a few seconds, causing clone to fail with "Could not resolve to
+// a Repository" for a repo that was just created successfully.
+func (g *GitHub) waitForRepoVisible() {
+	if g.DryRun {
+		return
+	}
+	const maxAttempts = 15
+	const pollDelay = 1 * time.Second
+	viewCmd := fmt.Sprintf("gh repo view %s --json name", g.Repo)
+	var out string
+	var err error
+	for i := 1; i <= maxAttempts; i++ {
+		out, err = Run(viewCmd, false, true, "")
+		if err == nil {
+			return
+		}
+		var rle *RateLimitExceeded
+		if errors.As(err, &rle) {
+			log.Fatalf("rate limit hit while waiting for %s to become visible: %v", g.Repo, err)
+		}
+		if i == 1 {
+			log.Logf("Waiting for %s to become visible via GraphQL...", g.Repo)
+		}
+		if i < maxAttempts {
+			sleepFn(pollDelay)
+		}
+	}
+	log.Fatalf("repository %s did not become visible within %ds after creation: %v\n%s",
+		g.Repo, maxAttempts, err, out)
 }
 
 // initRepo pushes the initial commit (README + LICENSE) so the default branch
