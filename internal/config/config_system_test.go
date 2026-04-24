@@ -17,7 +17,13 @@ import (
 	"testing"
 )
 
-var binaryPath string
+var (
+	binaryPath string
+	// runPrefix scopes this test run's repos + SonarCloud projects so the
+	// post-run sweep only deletes what this run created — not orphans from
+	// prior failed runs that share the bare "test-app-" prefix.
+	runPrefix string
+)
 
 func testOwner() string {
 	owner := os.Getenv("TEST_OWNER")
@@ -31,15 +37,15 @@ var baseArgs = []string{
 	"--system-name", "Sky Travel",
 }
 
-// randomRepoName returns "test-app-<16 hex>" for a fresh repo per test run, so
-// repeated/parallel runs don't collide on GitHub. Replaces the old CLI-side
-// --random-suffix flag.
+// randomRepoName returns "<runPrefix><16 hex>" for a fresh repo per subtest, so
+// repeated/parallel runs don't collide on GitHub. runPrefix is a per-run value
+// like "test-app-<runid>-" that scopes post-run cleanup to this run's repos.
 func randomRepoName() string {
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
 		panic(err)
 	}
-	return "test-app-" + hex.EncodeToString(b)
+	return runPrefix + hex.EncodeToString(b)
 }
 
 func cleanupFlags() []string {
@@ -107,6 +113,15 @@ func TestMain(m *testing.M) {
 	// Load .env defaults (env vars take precedence)
 	loadEnvFile(filepath.Join(modRoot, ".env"))
 
+	// Per-run prefix: every repo + SonarCloud project created during this run
+	// starts with "test-app-<runid>-". Post-run cleanup filters on exactly this
+	// prefix so it only deletes what this run created.
+	rid := make([]byte, 4)
+	if _, err := rand.Read(rid); err != nil {
+		panic("cannot generate run id: " + err.Error())
+	}
+	runPrefix = "test-app-" + hex.EncodeToString(rid) + "-"
+
 	// Build the binary once before all system tests
 	dir, err := os.MkdirTemp("", "gh-optivem-test-*")
 	if err != nil {
@@ -130,13 +145,17 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 
 	// Valid-config tests leave behind GitHub repos + SonarCloud projects; the CLI
-	// no longer deletes those itself. Sweep them via cleanup-orphans.sh so repeat
-	// runs don't accumulate orphans. Opt out with TEST_NO_CLEANUP=1.
-	if os.Getenv("TEST_NO_CLEANUP") != "1" {
+	// no longer deletes those itself. Sweep them via cleanup-orphans.sh, scoped
+	// to runPrefix so the sweep only touches what this run created. Skip the
+	// sweep when any test failed so the scaffolded repo is preserved for
+	// debugging — orphans from failed runs can be cleared manually by running
+	// cleanup-orphans.sh with its default (bare "test-app-") prefix. Opt out
+	// entirely with TEST_NO_CLEANUP=1.
+	if code == 0 && os.Getenv("TEST_NO_CLEANUP") != "1" {
 		cmd := exec.Command("bash", "scripts/cleanup-orphans.sh",
 			"--owner", testOwner(),
 			"--repos", "--sonar",
-			"--prefixes", "test-app-",
+			"--prefixes", runPrefix,
 			"--delete",
 		)
 		cmd.Dir = modRoot
@@ -151,9 +170,11 @@ func TestMain(m *testing.M) {
 }
 
 // runCLI runs the binary and returns output + exit code.
-// Valid config tests leave the remote repos + SonarCloud projects behind; TestMain
-// runs scripts/cleanup-orphans.sh once at the end to delete every test-app-* repo
-// and its Sonar project. The local scaffold dir is deleted by the CLI on success.
+// Valid config tests leave the remote repos + SonarCloud projects behind; on a
+// green suite, TestMain runs scripts/cleanup-orphans.sh scoped to this run's
+// prefix (test-app-<runid>-) to delete only what this run created. On failure
+// nothing is deleted so the scaffolded repo is available for debugging.
+// The local scaffold dir is deleted by the CLI on success.
 // Streams the subprocess's stdout/stderr to os.Stderr as it runs so the created
 // repo name (and other progress) appears live in the log instead of only after
 // the subtest finishes. Still returns the captured output for assertions.
