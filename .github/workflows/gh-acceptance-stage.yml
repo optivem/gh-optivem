@@ -8,6 +8,24 @@ on:
   #   - cron: '0 */6 * * *'  # Every 6 hours — verify-level=release
   #   - cron: '0 * * * *'    # Every hour — verify-level=local
   workflow_dispatch:
+    inputs:
+      smoke-mode:
+        description: 'Smoke matrix size'
+        required: false
+        type: choice
+        options: [none, single, full]
+        default: full
+      acceptance-mode:
+        description: 'Acceptance matrix size'
+        required: false
+        type: choice
+        options: [none, single, minimal, condensed, full]
+        default: condensed
+      shop-tag:
+        description: 'optivem/shop meta-v* release tag to test against (empty = latest)'
+        required: false
+        type: string
+        default: ''
 
 # Shared concurrency group with gh-acceptance-dry-run so dry-runs and real runs
 # serialize rather than stepping on each other.
@@ -24,9 +42,9 @@ jobs:
       #   verify-level: ${{ github.event.schedule == '0 * * * *' && 'local' || 'release' }}
       # (hourly cron → `local` verify, 6-hour cron + manual dispatch → full `release` path.)
       verify-level: release
-      smoke-mode: full
-      acceptance-mode: minimal
-      shop-tag: ''
+      smoke-mode: ${{ inputs.smoke-mode }}
+      acceptance-mode: ${{ inputs.acceptance-mode }}
+      shop-tag: ${{ inputs.shop-tag }}
       shop-head: false
       retain-repos: false
       skip-prerelease: false
