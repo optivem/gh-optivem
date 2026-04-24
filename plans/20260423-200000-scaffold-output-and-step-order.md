@@ -30,7 +30,16 @@ These five edits compiled clean during the conversation; they're listed so the n
 
 Recommended single coordinated change in [internal/log/log.go](../internal/log/log.go):
 
-- [ ] **Update [`checkForUpdate` at main.go:274](../main.go#L274)** to use the new color helpers instead of inline `\033[0;33m`.
+- [ ] **Replace passive update notice with auto-upgrade + restart.** Currently `checkForUpdate` in [main.go](../main.go) only prints a yellow "UPDATE AVAILABLE:" line and continues. Change to:
+  1. On outdated version: print `Update available: <current> → <latest>. Upgrading...` (stderr, yellow).
+  2. Run `gh extension upgrade optivem` via `exec.Command`.
+  3. On success: print `Upgraded to <latest>. Restarting...`, then spawn a child process with the same `os.Args` (inheriting stdin/stdout/stderr), wait for it, and `os.Exit(childExitCode)`.
+  4. On upgrade failure: print the error + fall back to manual instruction (`run: gh extension upgrade optivem`) and exit 1.
+  5. Add `--no-auto-upgrade` flag to opt out (CI / debugging).
+
+  **Why restart, not true exec:** `syscall.Exec` is Unix-only; the target env is Windows, so spawn-and-wait is the only cross-platform option. User-visible effect is the same.
+
+  **Rationale:** users should scaffold with the latest template logic. Friction of "upgrade, then re-run" drops to zero. The explicit "Upgrading..." / "Restarting..." messages keep the behavior transparent (no silent self-modification).
 
 ### Group 3 — Environment naming (BREAKING — needs cross-repo coordination)
 

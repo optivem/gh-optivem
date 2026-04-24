@@ -40,6 +40,7 @@ type Config struct {
 	Verbose      bool   // enable debug output
 	Quiet        bool   // suppress info-level output
 	LogFile      string // optional path to mirror plain-text log output
+	NoAutoUpgrade bool  // skip auto-upgrade when a newer release is available
 	WorkDir    string
 	ShopPath string
 	ShopRef  string // Pinned optivem/shop ref (SHA or meta-v* tag). Never empty, never main.
@@ -330,7 +331,7 @@ type rawFlags struct {
 	license, verifyLevel, deploy, workDir, shopTag               *string
 	randomSuffix, dryRun, testMode, cleanupFlag, noCleanup       *bool
 	forceCleanup, excludeLegacy, sampleTests, noBugReport, showVersion *bool
-	verbose, verboseShort, quiet, quietShort                     *bool
+	verbose, verboseShort, quiet, quietShort, noAutoUpgrade      *bool
 	logFile                                                      *string
 }
 
@@ -365,6 +366,7 @@ func registerFlags() rawFlags {
 		quiet:         flag.Bool("quiet", false, "Suppress info-level output (warnings and errors still shown)"),
 		quietShort:    flag.Bool("q", false, "Short for --quiet"),
 		logFile:       flag.String("log-file", "", "Also write plain-text log output to this file (no ANSI colors, all levels)"),
+		noAutoUpgrade: flag.Bool("no-auto-upgrade", false, "Skip auto-upgrade when a newer release is available (useful for CI/debugging)"),
 	}
 }
 
@@ -643,6 +645,7 @@ func ParseAndValidate() *Config {
 		Verbose:      verbose,
 		Quiet:        quiet,
 		LogFile:      *f.logFile,
+		NoAutoUpgrade: *f.noAutoUpgrade,
 		WorkDir:    wd,
 		ShopPath: shopPath,
 		ShopRef:  resolvedShopRef,

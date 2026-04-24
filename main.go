@@ -15,13 +15,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
-
-	"github.com/fatih/color"
 
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
@@ -32,6 +31,11 @@ import (
 
 const separator = "=========================================="
 
+// originalArgs is captured before the subcommand-strip in main(). Used by
+// checkForUpdate to re-exec the freshly upgraded binary with the user's full
+// original command line (`gh optivem init ...` with all their flags intact).
+var originalArgs []string
+
 type stepDef struct {
 	name      string
 	phase     string
@@ -40,6 +44,10 @@ type stepDef struct {
 }
 
 func main() {
+	// Snapshot os.Args before any mutation. checkForUpdate uses this to spawn
+	// the upgraded binary with the original command line preserved.
+	originalArgs = append([]string{}, os.Args...)
+
 	// Handle --version before anything else
 	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
 		fmt.Println(version.Full())
@@ -75,14 +83,15 @@ func printUsage() {
 }
 
 func runInit() {
-	// Check for updates (non-blocking warning)
-	checkForUpdate()
-
 	cfg := config.ParseAndValidate()
 	if err := log.Init(cfg.Verbose, cfg.Quiet, cfg.LogFile); err != nil {
 		log.FatalExit(err.Error())
 	}
 	defer log.Close()
+
+	// Auto-upgrade if outdated. On success, re-execs the new binary with the
+	// user's original command and exits with the child's exit code.
+	checkForUpdate(cfg)
 
 	gh := shell.NewGitHub(cfg)
 	sc := shell.NewSonarCloud(cfg.SonarToken, cfg.OwnerLower)
@@ -318,7 +327,12 @@ func createBugReport(cfg *config.Config, errorCount int) {
 	}
 }
 
-func checkForUpdate() {
+// checkForUpdate queries the latest release. When the running binary is
+// outdated, it auto-upgrades via `gh extension upgrade optivem` and re-execs
+// the new binary with the user's original command line (then exits with the
+// child's exit code). Users can opt out with --no-auto-upgrade — in that case
+// they get the old passive "please upgrade" notice and the scaffold continues.
+func checkForUpdate(cfg *config.Config) {
 	if version.Version == "dev" {
 		return // skip check for development builds
 	}
@@ -328,15 +342,43 @@ func checkForUpdate() {
 	if err != nil {
 		return // fail silently — don't block usage if offline or rate-limited
 	}
-
 	latest := strings.TrimSpace(string(out))
 	if latest == "" || latest == version.Version {
 		return
 	}
 
-	yellow := color.New(color.FgYellow).SprintFunc()
-	fmt.Fprintf(os.Stderr, "\n%s You are running %s, but %s is available.\n", yellow("UPDATE AVAILABLE:"), version.Version, latest)
-	fmt.Fprintf(os.Stderr, "  Run: gh extension upgrade optivem\n\n")
+	if cfg.NoAutoUpgrade {
+		log.Warnf("Update available: %s → %s. Auto-upgrade disabled (--no-auto-upgrade).", version.Version, latest)
+		log.Warnf("To upgrade manually: gh extension upgrade optivem")
+		return
+	}
+
+	log.Warnf("Update available: %s → %s. Upgrading...", version.Version, latest)
+	upgrade := exec.Command("gh", "extension", "upgrade", "optivem")
+	upgrade.Stdout = os.Stdout
+	upgrade.Stderr = os.Stderr
+	if err := upgrade.Run(); err != nil {
+		log.Errorf("Auto-upgrade failed: %v", err)
+		log.Errorf("Please run manually: gh extension upgrade optivem")
+		log.Close()
+		os.Exit(1)
+	}
+
+	log.Successf("Upgraded to %s. Restarting...", latest)
+	log.Close() // flush/close log file before handing off to child
+	child := exec.Command(originalArgs[0], originalArgs[1:]...)
+	child.Stdin = os.Stdin
+	child.Stdout = os.Stdout
+	child.Stderr = os.Stderr
+	if err := child.Run(); err != nil {
+		// Child wrote its own diagnostics via its own log helpers.
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			os.Exit(exitErr.ExitCode())
+		}
+		os.Exit(1)
+	}
+	os.Exit(0)
 }
 
 func printBanner(cfg *config.Config) {
