@@ -42,7 +42,7 @@ gh extension upgrade optivem
 
 ```bash
 gh optivem init --owner acme --system-name "Page Turner" --repo page-turner \
-    --arch monolith --repo-strategy monorepo --lang java
+    --arch monolith --repo-strategy monorepo --monolith-lang java
 ```
 
 ### Scaffold a multitier project
@@ -95,10 +95,10 @@ gh optivem init ... --no-commit-on-failure
 
 ### Auto-filed bug report (opt-in)
 
-If you want the failure auto-filed to `optivem/gh-optivem` as an issue — including scaffold config and the debug-branch URL — opt in with `--bug-report`:
+If you want the failure auto-filed to `optivem/gh-optivem` as an issue — including scaffold config and the debug-branch URL — opt in with `--report-bug`:
 
 ```bash
-gh optivem init ... --bug-report
+gh optivem init ... --report-bug
 ```
 
 Off by default. Filing a quick issue yourself is usually clearer and keeps the scaffold config private unless you decide to share it.

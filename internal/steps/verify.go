@@ -16,7 +16,12 @@ import (
 	"github.com/optivem/gh-optivem/internal/shell"
 )
 
-const systemTestDir_name = "system-test"
+const (
+	systemTestDir_name = "system-test"
+
+	msgStagePassed = "%s passed!"
+	msgStageFailed = "%s failed!"
+)
 
 // transientNetworkPattern matches errors that indicate an upstream package
 // registry (Maven Central, npm, NuGet) is temporarily unavailable — not a
@@ -269,7 +274,7 @@ func VerifyAcceptanceStages(cfg *config.Config, gh *shell.GitHub) {
 // the caller decides whether to fatal.
 func reportParallelResult(err error, label, repo string) {
 	if err == nil {
-		log.Successf("%s passed!", label)
+		log.Successf(msgStagePassed, label)
 		return
 	}
 	log.Errorf("%s failed! See: https://github.com/%s/actions", label, repo)
@@ -339,7 +344,7 @@ func verifyWorkflow(gh *shell.GitHub, label, triggerWorkflow string, fields map[
 
 func handleWorkflowResult(err error, label, repo string) {
 	if err == nil {
-		log.Successf("%s passed!", label)
+		log.Successf(msgStagePassed, label)
 		return
 	}
 	var rle *shell.RateLimitExceeded
@@ -347,7 +352,7 @@ func handleWorkflowResult(err error, label, repo string) {
 		log.Errorf("%s failed due to GitHub API rate limiting (the workflow itself may have succeeded)!", label)
 		log.Fatalf("Rate limit exceeded while watching %s workflow. The workflow run may still be passing — check manually: https://github.com/%s/actions", label, repo)
 	}
-	log.Errorf("%s failed!", label)
+	log.Errorf(msgStageFailed, label)
 	log.Fatalf("%s workflow failed. Check: https://github.com/%s/actions", label, repo)
 }
 
@@ -357,9 +362,9 @@ func runLocalTests(label, cmd, dir string) {
 	output, err := shell.Run(cmd, false, true, dir)
 	if err != nil {
 		log.Errorf("%s output:\n%s", label, output)
-		log.Fatalf("%s failed!", label)
+		log.Fatalf(msgStageFailed, label)
 	}
-	log.Successf("%s passed!", label)
+	log.Successf(msgStagePassed, label)
 }
 
 // canRunLocalTests checks common preconditions for local test execution.
@@ -426,20 +431,16 @@ func VerifyLocalTesting(cfg *config.Config) {
 
 	setupMultirepoSymlinks(cfg)
 
-	sampleFlag := ""
-	if cfg.SampleTests {
-		sampleFlag = " -Sample"
-	}
 	runLocalTests(
 		"Local system tests (latest)",
-		fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1%s", sampleFlag),
+		"pwsh -NonInteractive -Command ./Run-SystemTests.ps1",
 		testDir,
 	)
 
 	if !cfg.ExcludeLegacy {
 		runLocalTests(
 			"Local system tests (legacy)",
-			fmt.Sprintf("pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Legacy%s", sampleFlag),
+			"pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Legacy",
 			testDir,
 		)
 	}

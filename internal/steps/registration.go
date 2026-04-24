@@ -7,6 +7,8 @@ import (
 	"github.com/optivem/gh-optivem/internal/log"
 )
 
+const registrationDivider = "------------------------------------------"
+
 // PrintRegistration outputs structured project registration info that can be
 // copy-pasted into the course registration form or tracking sheet.
 func PrintRegistration(cfg *config.Config) {
@@ -25,9 +27,9 @@ func PrintRegistration(cfg *config.Config) {
 	}
 
 	fmt.Println()
-	fmt.Println("------------------------------------------")
+	fmt.Println(registrationDivider)
 	fmt.Println("  Project Registration Info")
-	fmt.Println("------------------------------------------")
+	fmt.Println(registrationDivider)
 	fmt.Println()
 	fmt.Printf("  Owner:         %s\n", cfg.Owner)
 	fmt.Printf("  System Name:   %s\n", cfg.SystemName)
@@ -49,7 +51,7 @@ func PrintRegistration(cfg *config.Config) {
 	}
 
 	fmt.Println()
-	fmt.Println("------------------------------------------")
+	fmt.Println(registrationDivider)
 	fmt.Println()
 
 	log.Success("Project registration info printed above — copy-paste into your registration form.")

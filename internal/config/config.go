@@ -21,7 +21,7 @@ import (
 type RawInputs struct {
 	Repo            string // --repo as-passed
 	ShopTag         string // --shop-tag before resolving empty → latest meta-v*
-	TestLang        string // --test-lang before defaulting to --lang / --backend-lang
+	TestLang        string // --test-lang before defaulting to --monolith-lang / --backend-lang
 	VerifyLevel     string // --verify-level as-passed (flag default: "release")
 	WorkDir         string // --workdir before defaulting to temp dir
 	KeepLocal       bool   // --keep-local flag as-passed
@@ -55,7 +55,6 @@ type Config struct {
 	VerifyLevel    string // "none", "local", "commit", "acceptance", "qa", "release"
 	ExcludeLegacy  bool   // exclude legacy from local tests and acceptance stage
 	SkipLocalTests bool   // skip the "Verify local testing" step (Run-SystemTests.ps1)
-	SampleTests   bool   // run only sample local tests instead of all
 	KeepLocal    bool   // keep the local scaffolded clone dir after a successful run (default: delete it)
 	BugReport    bool   // opt in to auto-creating a GitHub issue on failure (default: off)
 	NoCommitOnFailure bool // skip pushing partial scaffold to a debug/<timestamp> branch on failure (by default we push it for triage)
@@ -401,7 +400,7 @@ type rawFlags struct {
 	lang, testLang, backendLang, frontendLang                    *string
 	license, verifyLevel, deploy, workDir, shopTag               *string
 	dryRun, keepLocal                                            *bool
-	excludeLegacy, skipLocalTests, sampleTests                   *bool
+	excludeLegacy, skipLocalTests                                *bool
 	bugReport, showVersion                                       *bool
 	noCommitOnFailure                                            *bool
 	verbose, verboseShort, quiet, quietShort, noAutoUpgrade      *bool
@@ -415,8 +414,8 @@ func registerFlags() rawFlags {
 		repo:          flag.String("repo", "", "Repository name, e.g. page-turner (required)"),
 		arch:          flag.String("arch", "", "Architecture: monolith or multitier (required)"),
 		repoStrategy:  flag.String("repo-strategy", "", "Repo strategy: monorepo or multirepo (required)"),
-		lang:          flag.String("lang", "", "System language: java, dotnet, typescript (monolith)"),
-		testLang:      flag.String("test-lang", "", "Test language (defaults to --lang or --backend-lang)"),
+		lang:          flag.String("monolith-lang", "", "System language: java, dotnet, typescript (monolith)"),
+		testLang:      flag.String("test-lang", "", "Test language (defaults to --monolith-lang or --backend-lang)"),
 		backendLang:   flag.String("backend-lang", "", "Backend language: java, dotnet, typescript (multitier)"),
 		frontendLang:  flag.String("frontend-lang", "", "Frontend language: react (multitier)"),
 		license:       flag.String("license", "mit", "License: mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense"),
@@ -425,8 +424,7 @@ func registerFlags() rawFlags {
 		verifyLevel:    flag.String("verify-level", "release", "Verification level: none, local, commit, acceptance, qa, release"),
 		excludeLegacy:  flag.Bool("exclude-legacy", false, "Exclude legacy from local tests and acceptance stage"),
 		skipLocalTests: flag.Bool("skip-local-tests", false, "Skip the 'Verify local testing' step (Run-SystemTests.ps1)"),
-		sampleTests:    flag.Bool("sample-tests", false, "Run only sample local tests instead of all"),
-		bugReport:     flag.Bool("bug-report", false, "On failure, auto-create a GitHub issue in optivem/gh-optivem with scaffold config and debug-branch URL. Off by default — file one yourself if the failure is worth reporting."),
+		bugReport:     flag.Bool("report-bug", false, "On failure, auto-create a GitHub issue in optivem/gh-optivem with scaffold config and debug-branch URL. Off by default — file one yourself if the failure is worth reporting."),
 		noCommitOnFailure: flag.Bool("no-commit-on-failure", false, "Skip pushing the partial scaffold to a debug/<timestamp> branch on failure. By default the partial scaffold is pushed so it can be inspected and linked from the auto-filed bug report."),
 		deploy:        flag.String("deploy", "docker", "Deployment target: docker or cloud-run"),
 		workDir:       flag.String("workdir", "", "Working directory for cloning (default: temp dir)"),
@@ -479,10 +477,10 @@ func resolveLangs(f rawFlags) langChoice {
 	var c langChoice
 	if *f.arch == "monolith" {
 		if *f.lang == "" {
-			log.FatalExit("--lang is required for monolith architecture")
+			log.FatalExit("--monolith-lang is required for monolith architecture")
 		}
 		if !validLangs[*f.lang] {
-			log.FatalExit("--lang must be java, dotnet, or typescript")
+			log.FatalExit("--monolith-lang must be java, dotnet, or typescript")
 		}
 		c.lang = *f.lang
 		c.testLang = *f.testLang
@@ -716,7 +714,7 @@ func confirmRepoExists(fullRepo string) {
 }
 
 // resolveLogFilePath returns the log-file destination for this run. When
-// --bug-report is set and --log-file isn't, the run needs a log file anyway
+// --report-bug is set and --log-file isn't, the run needs a log file anyway
 // (the confirmation prompt shows the path, and the log tail is attached to
 // the filed issue), so route to a predictable temp path.
 func resolveLogFilePath(explicit string, bugReport bool) string {
@@ -833,7 +831,6 @@ func ParseAndValidate() *Config {
 		VerifyLevel:    resolvedLevel,
 		ExcludeLegacy:  *f.excludeLegacy,
 		SkipLocalTests: *f.skipLocalTests,
-		SampleTests:    *f.sampleTests,
 		KeepLocal:    *f.keepLocal,
 		BugReport:    *f.bugReport,
 		NoCommitOnFailure: *f.noCommitOnFailure,

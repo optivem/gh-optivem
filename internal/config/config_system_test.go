@@ -208,7 +208,7 @@ func TestValidMonolithConfigurations(t *testing.T) {
 			args := withBase(
 				"--arch", tt.arch,
 				"--repo-strategy", tt.repoStrategy,
-				"--lang", tt.monolithLang,
+				"--monolith-lang", tt.monolithLang,
 				"--test-lang", tt.testLang,
 			)
 			out, exitCode := runCLI(t, args...)
@@ -275,7 +275,7 @@ func TestInvalidConfigurations(t *testing.T) {
 				"--repo", "test-app",
 				"--arch", "monolith",
 				"--repo-strategy", "monorepo",
-				"--lang", "java",
+				"--monolith-lang", "java",
 				"--dry-run",
 			},
 		},
@@ -286,7 +286,7 @@ func TestInvalidConfigurations(t *testing.T) {
 				"--repo", "test-app",
 				"--arch", "monolith",
 				"--repo-strategy", "monorepo",
-				"--lang", "java",
+				"--monolith-lang", "java",
 				"--dry-run",
 			},
 		},
@@ -297,25 +297,25 @@ func TestInvalidConfigurations(t *testing.T) {
 				"--system-name", "Sky Travel",
 				"--arch", "monolith",
 				"--repo-strategy", "monorepo",
-				"--lang", "java",
+				"--monolith-lang", "java",
 				"--dry-run",
 			},
 		},
 		{
 			name: "missing arch",
-			args: append(withBase("--repo-strategy", "monorepo", "--lang", "java"), "--dry-run"),
+			args: append(withBase("--repo-strategy", "monorepo", "--monolith-lang", "java"), "--dry-run"),
 		},
 		{
 			name: "invalid arch",
-			args: append(withBase("--arch", "invalid", "--repo-strategy", "monorepo", "--lang", "java"), "--dry-run"),
+			args: append(withBase("--arch", "invalid", "--repo-strategy", "monorepo", "--monolith-lang", "java"), "--dry-run"),
 		},
 		{
 			name: "missing repo-strategy",
-			args: append(withBase("--arch", "monolith", "--lang", "java"), "--dry-run"),
+			args: append(withBase("--arch", "monolith", "--monolith-lang", "java"), "--dry-run"),
 		},
 		{
 			name: "invalid repo-strategy",
-			args: append(withBase("--arch", "monolith", "--repo-strategy", "invalid", "--lang", "java"), "--dry-run"),
+			args: append(withBase("--arch", "monolith", "--repo-strategy", "invalid", "--monolith-lang", "java"), "--dry-run"),
 		},
 		{
 			name: "monolith missing lang",
@@ -323,7 +323,7 @@ func TestInvalidConfigurations(t *testing.T) {
 		},
 		{
 			name: "monolith invalid lang",
-			args: append(withBase("--arch", "monolith", "--repo-strategy", "monorepo", "--lang", "python"), "--dry-run"),
+			args: append(withBase("--arch", "monolith", "--repo-strategy", "monorepo", "--monolith-lang", "python"), "--dry-run"),
 		},
 		{
 			name: "multitier missing backend-lang",

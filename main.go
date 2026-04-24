@@ -4,7 +4,7 @@
 //
 //	Monolith:
 //	  gh optivem init --owner acme --system-name "Page Turner" --repo page-turner \
-//	      --arch monolith --lang java
+//	      --arch monolith --monolith-lang java
 //
 //	Multitier:
 //	  gh optivem init --owner acme --system-name "Page Turner" --repo page-turner \
@@ -408,7 +408,7 @@ func confirmBugReport(cfg *config.Config, debugBranchURL string) bool {
 	fmt.Println()
 
 	if !isInteractive() {
-		log.Infof("Non-interactive session detected; proceeding with --bug-report opt-in.")
+		log.Infof("Non-interactive session detected; proceeding with --report-bug opt-in.")
 		return true
 	}
 
@@ -563,7 +563,7 @@ func printBanner(cfg *config.Config) {
 	log.Infof("--system-name:     %s%s", cfg.SystemName, tag("system-name"))
 	log.Infof("--arch:            %s%s", cfg.Arch, tag("arch"))
 	log.Infof("--repo-strategy:   %s%s", cfg.RepoStrategy, tag("repo-strategy"))
-	log.Infof("--lang:            %s%s", cfg.Lang, tag("lang"))
+	log.Infof("--monolith-lang:   %s%s", cfg.Lang, tag("monolith-lang"))
 	log.Infof("--backend-lang:    %s%s", cfg.BackendLang, tag("backend-lang"))
 	log.Infof("--frontend-lang:   %s%s", cfg.FrontendLang, tag("frontend-lang"))
 	log.Infof("--test-lang:       %s%s", cfg.Raw.TestLang, tag("test-lang"))
@@ -572,11 +572,10 @@ func printBanner(cfg *config.Config) {
 	log.Infof("--verify-level:      %s%s", cfg.Raw.VerifyLevel, tag("verify-level"))
 	log.Infof("--exclude-legacy:    %v%s", cfg.ExcludeLegacy, tag("exclude-legacy"))
 	log.Infof("--skip-local-tests:  %v%s", cfg.SkipLocalTests, tag("skip-local-tests"))
-	log.Infof("--sample-tests:      %v%s", cfg.SampleTests, tag("sample-tests"))
 	log.Infof("--shop-tag:        %s%s", cfg.Raw.ShopTag, tag("shop-tag"))
 	log.Infof("--dry-run:         %v%s", cfg.DryRun, tag("dry-run"))
 	log.Infof("--keep-local:      %v%s", cfg.Raw.KeepLocal, tag("keep-local"))
-	log.Infof("--bug-report:      %v%s", cfg.BugReport, tag("bug-report"))
+	log.Infof("--report-bug:      %v%s", cfg.BugReport, tag("report-bug"))
 	log.Infof("--no-commit-on-failure: %v%s", cfg.NoCommitOnFailure, tag("no-commit-on-failure"))
 	log.Infof("--no-auto-upgrade: %v%s", cfg.NoAutoUpgrade, tag("no-auto-upgrade"))
 	log.Infof("--workdir:         %s%s", cfg.Raw.WorkDir, tag("workdir"))
@@ -587,7 +586,6 @@ func printBanner(cfg *config.Config) {
 	fmt.Println()
 	fmt.Println("  Derived values")
 	fmt.Println()
-	log.Infof("Repo (final):    %s", cfg.Repo)
 	log.Infof("Full repo:       %s", cfg.FullRepo)
 	if cfg.RepoStrategy == "multirepo" {
 		if cfg.Arch == "monolith" {
