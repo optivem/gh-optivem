@@ -37,6 +37,7 @@ const (
 	shopSystemPrefix       = "../../system/"
 	systemMonolithDir         = "system/monolith/"
 	systemMultitierDir        = "system/multitier/"
+	systemMultitierBackend    = systemMultitierDir + "backend-"
 
 	infoCopyingExternals   = "Copying external simulators..."
 	infoCopyingSystemTests = "Copying system-tests..."
@@ -292,7 +293,7 @@ func applyMultitierMonorepo(cfg *config.Config) {
 
 	// Backend code: system/multitier/backend-{lang}/ -> backend/
 	log.Info("Copying backend code...")
-	backendSrc := filepath.Join(shop, "system", "multitier", "backend-"+backendLang)
+	backendSrc := filepath.Join(shop, systemMultitierBackend+backendLang)
 	files.CopyDir(backendSrc, filepath.Join(repoDir, "backend"))
 	log.Success("Applied backend template")
 
@@ -381,7 +382,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	// Backend repo: code + commit stage
 	EnsureWorkflowDir(bDir)
 	log.Info("Copying backend code to backend repo...")
-	backendSrc := filepath.Join(shop, "system", "multitier", "backend-"+backendLang)
+	backendSrc := filepath.Join(shop, systemMultitierBackend+backendLang)
 	files.CopyDir(backendSrc, filepath.Join(bDir, "backend"))
 
 	log.Info("Copying commit-stage workflow to backend repo...")
@@ -394,7 +395,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	log.Info("Fixing up backend repo workflow content and SonarCloud keys...")
 	backendReplacements := [][2]string{
 		{prefixMultitierBackend + backendLang + suffixCommitStage, "backend-commit-stage"},
-		{"system/multitier/backend-" + backendLang, "backend"},
+		{systemMultitierBackend + backendLang, "backend"},
 		{prefixMultitierBackend + backendLang, "backend"},
 	}
 	templates.FixupWorkflowContent(bDir, backendReplacements)
@@ -431,7 +432,9 @@ func applyMultitierMultirepo(cfg *config.Config) {
 func monolithContentReplacements(lang, testLang string) [][2]string {
 	mono := prefixMonolith
 	monoTest := mono + testLang
-	envPrefix := mono + lang + "-"
+	// Shop's pipeline-stage env names derive from the workflow filename, which
+	// is monolith-<testLang>-*-stage.yml. So the env prefix is testLang, not lang.
+	envPrefix := monoTest + "-"
 	r := [][2]string{
 		// Environment references — scaffolded repos have unprefixed env names
 		// (SetupEnvironments creates bare `acceptance`/`qa`/`production`).
@@ -504,7 +507,9 @@ func monolithDockerComposeReplacements(lang, testLang string) [][2]string {
 // multitierContentReplacements returns workflow content replacements for multitier.
 func multitierContentReplacements(backendLang, frontendLang, testLang string) [][2]string {
 	multiTest := prefixMultitier + testLang
-	envPrefix := prefixMultitier + backendLang + "-"
+	// Shop's pipeline-stage env names derive from the workflow filename, which
+	// is multitier-<testLang>-*-stage.yml. So the env prefix is testLang, not backendLang.
+	envPrefix := multiTest + "-"
 	r := [][2]string{
 		// Environment references — scaffolded repos have unprefixed env names.
 		{envPrefixYAML + envPrefix + "acceptance", envPrefixYAML + "acceptance"},
@@ -518,7 +523,7 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 		{multiTest + "-verify", "verify"},
 		// Working directories (these also transform commit stage workflow names:
 		// multitier-backend-{lang}-commit-stage -> backend-commit-stage, etc.)
-		{"system/multitier/backend-" + backendLang, "backend"},
+		{systemMultitierBackend + backendLang, "backend"},
 		{"system/multitier/frontend-" + frontendLang, "frontend"},
 		// System-test path
 		{dirSystemTest + "/" + testLang + "/", dirSystemTest + "/"},
@@ -527,8 +532,16 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 		{prefixMultitierBackend + backendLang, "backend"},
 		{prefixMultitierFrontend + frontendLang, "frontend"},
 	}
+	// Pipeline-stage workflows (cloned from multitier-<testLang>-*-stage.yml) reference
+	// backend-<testLang> in image URLs and VERSION paths — shop authors them assuming
+	// backendLang == testLang. When the scaffold runs with a different backendLang, we
+	// need the testLang variant too, in addition to the backendLang variant above (which
+	// handles the backend commit-stage workflow).
 	if backendLang != testLang {
-		r = append(r, [2]string{prefixMultitierBackend + testLang, "backend"})
+		r = append(r,
+			[2]string{systemMultitierBackend + testLang, "backend"},
+			[2]string{prefixMultitierBackend + testLang, "backend"},
+		)
 	}
 	return r
 }
@@ -547,7 +560,7 @@ func multitierDockerComposeReplacements(backendLang, frontendLang, testLang stri
 	// Docker build contexts always reference the test-lang backend and the frontend lang in the
 	// shop layout (e.g. backend-typescript, frontend-react). After scaffolding these become
 	// ../backend and ../frontend respectively, so we always need both replacements.
-	r = append(r, [2]string{"../../system/multitier/backend-" + testLang, "../backend"})
+	r = append(r, [2]string{"../../" + systemMultitierBackend + testLang, "../backend"})
 	r = append(r, [2]string{prefixMultitierBackend + testLang, "backend"})
 	r = append(r, [2]string{"../../system/multitier/frontend-" + frontendLang, "../frontend"})
 	r = append(r, [2]string{prefixMultitierFrontend + frontendLang, "frontend"})
