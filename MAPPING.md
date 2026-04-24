@@ -30,7 +30,7 @@ shop/
     monolith-{testLang}-prod-stage.yml
     monolith-{lang}-verify.yml
     backend-{backendLang}-commit-stage.yml
-    multitier-frontend-{frontendLang}-commit-stage.yml
+    frontend-{frontendLang}-commit-stage.yml
     multitier-{testLang}-acceptance-stage.yml
     multitier-{testLang}-qa-stage.yml
     multitier-{testLang}-qa-signoff.yml
@@ -117,7 +117,7 @@ Single repo with backend, frontend, and tests together.
   system-test/                 # from: system-test/{testLang}/
   .github/workflows/
     backend-commit-stage.yml   # from: backend-{backendLang}-commit-stage.yml
-    frontend-commit-stage.yml  # from: multitier-frontend-{frontendLang}-commit-stage.yml
+    frontend-commit-stage.yml  # from: frontend-{frontendLang}-commit-stage.yml
     acceptance-stage.yml       # from: multitier-{testLang}-acceptance-stage.yml
     qa-stage.yml               # from: multitier-{testLang}-qa-stage.yml
     qa-signoff.yml             # from: multitier-{testLang}-qa-signoff.yml
@@ -159,7 +159,7 @@ Three repos: root repo, backend repo, frontend repo.
 {frontend-repo}/
   frontend/                  # from: system/multitier/frontend-{frontendLang}/
   .github/workflows/
-    frontend-commit-stage.yml # from: multitier-frontend-{frontendLang}-commit-stage.yml
+    frontend-commit-stage.yml # from: frontend-{frontendLang}-commit-stage.yml
   README.md
 ```
 
@@ -171,7 +171,7 @@ No language or architecture in image names:
 |---|---|
 | `sysapp-{lang}` | `system` |
 | `backend-{lang}` | `backend` |
-| `multitier-frontend-{lang}` | `frontend` |
+| `frontend-{lang}` | `frontend` |
 
 GHCR URLs become: `ghcr.io/{owner}/{repo}/system`, `ghcr.io/{owner}/{repo}/backend`, `ghcr.io/{owner}/{repo}/frontend`.
 
@@ -180,9 +180,9 @@ GHCR URLs become: `ghcr.io/{owner}/{repo}/system`, `ghcr.io/{owner}/{repo}/backe
 Inside copied workflows, replace:
 - Workflow names: `monolith-{lang}-commit-stage` -> `commit-stage`, `multitier-{testLang}-acceptance-stage` -> `acceptance-stage`, etc.
 - Working directory paths: `system/multitier/backend-{lang}` -> `backend`, `system/monolith/{lang}` -> `system`, etc.
-- Docker image names: `sysapp-{lang}` -> `system`, `backend-{lang}` -> `backend`, `multitier-frontend-{lang}` -> `frontend`
+- Docker image names: `sysapp-{lang}` -> `system`, `backend-{lang}` -> `backend`, `frontend-{lang}` -> `frontend`
 - System test paths: `system-test/{testLang}/` -> `system-test/`
-- SonarCloud key suffixes: `-monolith-{lang}` -> `-system`, `-backend-{lang}` -> `-backend`, `-multitier-frontend-{lang}` -> `-frontend`
+- SonarCloud key suffixes: `-monolith-{lang}` -> `-system`, `-backend-{lang}` -> `-backend`, `-frontend-{lang}` -> `-frontend`
 - Path filters and self-references: `.github/workflows/{old-name}.yml` -> `.github/workflows/{new-name}.yml`
 - Concurrency groups: `{old-name}-${{ github.ref }}` -> `{new-name}-${{ github.ref }}`
 
@@ -215,14 +215,14 @@ The README should display all user-supplied parameters:
 | Current | Target |
 |---|---|
 | `{owner}_{repo}-backend-{lang}` | `{owner}_{repo}-backend` |
-| `{owner}_{repo}-multitier-frontend-{lang}` | `{owner}_{repo}-frontend` |
+| `{owner}_{repo}-frontend-{lang}` | `{owner}_{repo}-frontend` |
 
 **Multitier multirepo:**
 
 | Current | Target |
 |---|---|
 | `{owner}_{backend-repo}-backend-{lang}` | `{owner}_{backend-repo}-backend` |
-| `{owner}_{frontend-repo}-multitier-frontend-{lang}` | `{owner}_{frontend-repo}-frontend` |
+| `{owner}_{frontend-repo}-frontend-{lang}` | `{owner}_{frontend-repo}-frontend` |
 
 Note: The root repo does not get a SonarCloud project — only code components (system, backend, frontend) are analyzed.
 
