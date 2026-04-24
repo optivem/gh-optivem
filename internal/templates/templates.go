@@ -61,17 +61,28 @@ func CopyWorkflows(mappings map[string]string, shop, repoDir string) {
 	}
 }
 
-// SelectDockerCompose keeps the chosen variant and removes the other.
+// SelectDockerCompose keeps the chosen variant's compose files and removes the
+// other. The kept files are then renamed to drop the `.<arch>.` segment, since
+// the arch is now fixed in the scaffolded repo and its presence in every
+// filename would be redundant (e.g. docker-compose.pipeline.monolith.real.yml
+// → docker-compose.pipeline.real.yml).
+//
 // variant: "single" for monolith, "multi" for multitier.
 func SelectDockerCompose(testDst, variant string) {
-	remove := "multitier"
+	keep, remove := "monolith", "multitier"
 	if variant != "single" {
-		remove = "monolith"
+		keep, remove = "multitier", "monolith"
 	}
-	for _, prefix := range []string{"local", "pipeline"} {
-		for _, suffix := range []string{"real", "stub"} {
-			path := filepath.Join(testDst, dockerComposePrefix+"."+prefix+"."+remove+"."+suffix+ymlExt)
-			os.Remove(path)
+	for _, scope := range []string{"local", "pipeline"} {
+		for _, mode := range []string{"real", "stub"} {
+			removePath := filepath.Join(testDst, dockerComposePrefix+"."+scope+"."+remove+"."+mode+ymlExt)
+			os.Remove(removePath)
+
+			oldPath := filepath.Join(testDst, dockerComposePrefix+"."+scope+"."+keep+"."+mode+ymlExt)
+			newPath := filepath.Join(testDst, dockerComposePrefix+"."+scope+"."+mode+ymlExt)
+			if _, err := os.Stat(oldPath); err == nil {
+				os.Rename(oldPath, newPath)
+			}
 		}
 	}
 }

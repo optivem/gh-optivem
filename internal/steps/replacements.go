@@ -134,7 +134,7 @@ func replaceDockerComposeNames(repoDir, repoKebab, repoLower string) int {
 		if !strings.Contains(info.Name(), dockerComposePrefix) || !strings.HasSuffix(info.Name(), ".yml") {
 			return nil
 		}
-		// Project name: "shop-monolith-real" -> "sky-travel-monolith-real"
+		// Project name: "shop-<mode>" -> "<repo>-<mode>" (arch/lang already stripped by StripFixedDimensions).
 		if files.ReplaceInFile(path, "name: shop-", "name: "+repoKebab+"-") {
 			n++
 		}
