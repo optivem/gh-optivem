@@ -35,6 +35,11 @@ const (
 	dirExternalRealSim        = "external-real-sim"
 	dirExternalStub           = "external-stub"
 	shopSystemPrefix       = "../../system/"
+
+	infoCopyingExternals   = "Copying external simulators..."
+	infoCopyingSystemTests = "Copying system-tests..."
+	infoCopyingCloudRun    = "Copying Cloud Run scripts..."
+	infoCopyingDocs        = "Copying docs..."
 )
 
 var externalSimDirs = []string{dirExternalRealSim, dirExternalStub}
@@ -115,6 +120,7 @@ func ApplyTemplate(cfg *config.Config) {
 	EnsureWorkflowDir(cfg.RepoDir)
 
 	// Copy architecture-independent workflows
+	log.Info("Copying cleanup workflow...")
 	templates.CopyWorkflows(map[string]string{
 		cleanupWorkflow: cleanupWorkflow,
 	}, cfg.ShopPath, cfg.RepoDir)
@@ -146,32 +152,41 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	stageSuffix := cloudRunSuffix(cfg.Deploy)
 
 	// Workflows: rename to language-agnostic names
+	log.Info("Copying pipeline and commit-stage workflows...")
 	wfMap := monolithPipelineWorkflows(testLang, stageSuffix)
 	wfMap[prefixMonolith+lang+commitStageYml] = "commit-stage.yml"
 	addLegacyWorkflow(wfMap, prefixMonolith, testLang, cfg.Deploy)
 	templates.CopyWorkflows(wfMap, shop, repoDir)
 
 	// System code: system/monolith/{lang}/ -> system/
+	log.Info("Copying system code...")
 	files.CopyDir(
 		filepath.Join(shop, "system", "monolith", lang),
 		filepath.Join(repoDir, "system"),
 	)
 
+	log.Info(infoCopyingExternals)
 	copyExternals(shop, repoDir)
+
+	log.Info(infoCopyingSystemTests)
 	copySystemTests(shop, repoDir, testLang, "single")
 
 	// Fix workflow content: paths, image names, workflow names
+	log.Info("Fixing up workflow and docker-compose content...")
 	contentReplacements := appendCloudReplacement(monolithContentReplacements(lang, testLang), cfg.Deploy)
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, monolithDockerComposeReplacements(lang, testLang))
 
 	// Fix SonarCloud key suffixes in build files (build.gradle, .csproj, etc.)
+	log.Info("Fixing up SonarCloud keys...")
 	templates.FixupAllTextFiles(repoDir, monolithSonarKeyReplacements(lang))
 
 	if cfg.Deploy == deployCloudRun {
+		log.Info(infoCopyingCloudRun)
 		copyCloudRunScripts(shop, repoDir)
 	}
 
+	log.Info(infoCopyingDocs)
 	copyDocs(shop, repoDir, "monolith")
 	log.Success("Applied template files (monolith monorepo)")
 }
@@ -187,27 +202,36 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	stageSuffix := cloudRunSuffix(cfg.Deploy)
 
 	// Root repo: pipeline stage workflows + system-test
+	log.Info("Copying root repo pipeline workflows...")
 	rootWfMap := monolithPipelineWorkflows(testLang, stageSuffix)
 	addLegacyWorkflow(rootWfMap, prefixMonolith, testLang, cfg.Deploy)
 	templates.CopyWorkflows(rootWfMap, shop, repoDir)
 
+	log.Info(infoCopyingExternals)
 	copyExternals(shop, repoDir)
+
+	log.Info(infoCopyingSystemTests)
 	copySystemTests(shop, repoDir, testLang, "single")
 
 	// Fix root repo workflow content
+	log.Info("Fixing up root repo workflow and docker-compose content...")
 	contentReplacements := appendCloudReplacement(monolithContentReplacements(lang, testLang), cfg.Deploy)
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, monolithDockerComposeReplacements(lang, testLang))
 
+	log.Info("Fixing up SonarCloud keys in root repo...")
 	templates.FixupAllTextFiles(repoDir, monolithSonarKeyReplacements(lang))
 
 	if cfg.Deploy == deployCloudRun {
+		log.Info(infoCopyingCloudRun)
 		copyCloudRunScripts(shop, repoDir)
 	}
 
+	log.Info(infoCopyingDocs)
 	copyDocs(shop, repoDir, "monolith")
 
 	// Fix multirepo image URLs and tokens
+	log.Info("Fixing up multirepo image URLs and tokens...")
 	templates.FixupMonolithMultirepoImageURLs(repoDir, cfg.SystemRepo)
 	templates.FixupMultirepoToken(repoDir)
 	log.Success("Applied root repo template (monolith multirepo)")
@@ -215,15 +239,18 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	// System repo: system code + commit stage
 	EnsureWorkflowDir(sysDir)
 
+	log.Info("Copying system code to system repo...")
 	systemSrc := filepath.Join(shop, "system", "monolith", lang)
 	files.CopyDir(systemSrc, filepath.Join(sysDir, "system"))
 
+	log.Info("Copying commit-stage workflow to system repo...")
 	systemWfMap := map[string]string{
 		prefixMonolith + lang + commitStageYml: "commit-stage.yml",
 		cleanupWorkflow:                        cleanupWorkflow,
 	}
 	templates.CopyWorkflows(systemWfMap, shop, sysDir)
 
+	log.Info("Fixing up system repo workflow content and SonarCloud keys...")
 	sysContentReplacements := [][2]string{
 		{prefixMonolith + lang + suffixCommitStage, "commit-stage"},
 		{"system/monolith/" + lang, "system"},
@@ -245,6 +272,7 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	stageSuffix := cloudRunSuffix(cfg.Deploy)
 
 	// Workflows: rename to language-agnostic names
+	log.Info("Copying pipeline and commit-stage workflows...")
 	wfMap := multitierPipelineWorkflows(testLang, stageSuffix)
 	wfMap[prefixMultitierBackend+backendLang+commitStageYml] = "backend-commit-stage.yml"
 	wfMap[prefixMultitierFrontend+frontendLang+commitStageYml] = "frontend-commit-stage.yml"
@@ -252,29 +280,38 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	templates.CopyWorkflows(wfMap, shop, repoDir)
 
 	// Backend code: system/multitier/backend-{lang}/ -> backend/
+	log.Info("Copying backend code...")
 	backendSrc := filepath.Join(shop, "system", "multitier", "backend-"+backendLang)
 	files.CopyDir(backendSrc, filepath.Join(repoDir, "backend"))
 	log.Success("Applied backend template")
 
 	// Frontend code: system/multitier/frontend-{lang}/ -> frontend/
+	log.Info("Copying frontend code...")
 	frontendSrc := filepath.Join(shop, "system", "multitier", "frontend-"+frontendLang)
 	files.CopyDir(frontendSrc, filepath.Join(repoDir, "frontend"))
 	log.Success("Applied frontend template")
 
+	log.Info(infoCopyingExternals)
 	copyExternals(shop, repoDir)
+
+	log.Info(infoCopyingSystemTests)
 	copySystemTests(shop, repoDir, testLang, "multi")
 
 	// Fix workflow content: paths and image names
+	log.Info("Fixing up workflow and docker-compose content...")
 	contentReplacements := appendCloudReplacement(multitierContentReplacements(backendLang, frontendLang, testLang), cfg.Deploy)
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, multitierDockerComposeReplacements(backendLang, frontendLang, testLang))
 
+	log.Info("Fixing up SonarCloud keys...")
 	templates.FixupAllTextFiles(repoDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 
 	if cfg.Deploy == deployCloudRun {
+		log.Info(infoCopyingCloudRun)
 		copyCloudRunScripts(shop, repoDir)
 	}
 
+	log.Info(infoCopyingDocs)
 	copyDocs(shop, repoDir, "multitier")
 	log.Success("Applied template files (multitier monorepo)")
 }
@@ -292,42 +329,54 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	stageSuffix := cloudRunSuffix(cfg.Deploy)
 
 	// Root repo: pipeline stage workflows + system-test + externals
+	log.Info("Copying root repo pipeline workflows...")
 	rootWfMap := multitierPipelineWorkflows(testLang, stageSuffix)
 	addLegacyWorkflow(rootWfMap, prefixMultitier, testLang, cfg.Deploy)
 	templates.CopyWorkflows(rootWfMap, shop, repoDir)
 
+	log.Info(infoCopyingExternals)
 	copyExternals(shop, repoDir)
+
+	log.Info(infoCopyingSystemTests)
 	copySystemTests(shop, repoDir, testLang, "multi")
 
 	// Fix root repo workflow content
+	log.Info("Fixing up root repo workflow and docker-compose content...")
 	contentReplacements := appendCloudReplacement(multitierContentReplacements(backendLang, frontendLang, testLang), cfg.Deploy)
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, multitierDockerComposeReplacements(backendLang, frontendLang, testLang))
 
+	log.Info("Fixing up SonarCloud keys in root repo...")
 	templates.FixupAllTextFiles(repoDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 
 	if cfg.Deploy == deployCloudRun {
+		log.Info(infoCopyingCloudRun)
 		copyCloudRunScripts(shop, repoDir)
 	}
 
+	log.Info(infoCopyingDocs)
 	copyDocs(shop, repoDir, "multitier")
 
 	// Fix multirepo image URLs and tokens
+	log.Info("Fixing up multirepo image URLs and tokens...")
 	templates.FixupMultirepoImageURLs(repoDir, cfg.FrontendRepo, cfg.BackendRepo)
 	templates.FixupMultirepoToken(repoDir)
 	log.Success("Applied root repo template (multitier multirepo)")
 
 	// Backend repo: code + commit stage
 	EnsureWorkflowDir(bDir)
+	log.Info("Copying backend code to backend repo...")
 	backendSrc := filepath.Join(shop, "system", "multitier", "backend-"+backendLang)
 	files.CopyDir(backendSrc, filepath.Join(bDir, "backend"))
 
+	log.Info("Copying commit-stage workflow to backend repo...")
 	backendWfMap := map[string]string{
 		prefixMultitierBackend + backendLang + commitStageYml: "backend-commit-stage.yml",
 		cleanupWorkflow: cleanupWorkflow,
 	}
 	templates.CopyWorkflows(backendWfMap, shop, bDir)
 
+	log.Info("Fixing up backend repo workflow content and SonarCloud keys...")
 	backendReplacements := [][2]string{
 		{prefixMultitierBackend + backendLang + suffixCommitStage, "backend-commit-stage"},
 		{"system/multitier/backend-" + backendLang, "backend"},
@@ -339,15 +388,18 @@ func applyMultitierMultirepo(cfg *config.Config) {
 
 	// Frontend repo: code + commit stage
 	EnsureWorkflowDir(fDir)
+	log.Info("Copying frontend code to frontend repo...")
 	frontendSrc := filepath.Join(shop, "system", "multitier", "frontend-"+frontendLang)
 	files.CopyDir(frontendSrc, filepath.Join(fDir, "frontend"))
 
+	log.Info("Copying commit-stage workflow to frontend repo...")
 	frontendWfMap := map[string]string{
 		prefixMultitierFrontend + frontendLang + commitStageYml: "frontend-commit-stage.yml",
 		cleanupWorkflow: cleanupWorkflow,
 	}
 	templates.CopyWorkflows(frontendWfMap, shop, fDir)
 
+	log.Info("Fixing up frontend repo workflow content and SonarCloud keys...")
 	frontendReplacements := [][2]string{
 		{prefixMultitierFrontend + frontendLang + suffixCommitStage, "frontend-commit-stage"},
 		{"system/multitier/frontend-" + frontendLang, "frontend"},

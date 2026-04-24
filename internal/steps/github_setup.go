@@ -64,18 +64,18 @@ func SetupEnvironments(cfg *config.Config, gh *shell.GitHub) {
 	log.Info("Creating environments...")
 	for _, stage := range []string{"acceptance", "qa", "production"} {
 		gh.CreateEnvironment(stage)
+		log.Successf("  environment: %s", stage)
 	}
-	log.Success("Created environments: acceptance, qa, production")
 }
 
-// SetupSecretsAndVariables sets GitHub Actions secrets and variables.
-func SetupSecretsAndVariables(cfg *config.Config, gh *shell.GitHub) {
-	log.Info("Setting secrets and variables...")
+// SetupVariablesAndSecrets sets GitHub Actions variables and secrets.
+func SetupVariablesAndSecrets(cfg *config.Config, gh *shell.GitHub) {
+	log.Info("Setting variables and secrets...")
 
+	setVariable(gh, "DOCKERHUB_USERNAME", cfg.DockerHubUsername)
 	setSecret(gh, "DOCKERHUB_TOKEN", cfg.DockerHubToken)
 	setSecret(gh, "SONAR_TOKEN", cfg.SonarToken)
 	setSecret(gh, "WORKFLOW_TOKEN", cfg.WorkflowToken)
-	setVariable(gh, "DOCKERHUB_USERNAME", cfg.DockerHubUsername)
 
 	if cfg.RepoStrategy == "multirepo" {
 		setSecret(gh, "GHCR_TOKEN", cfg.GHCRToken)
@@ -88,14 +88,14 @@ func SetupSecretsAndVariables(cfg *config.Config, gh *shell.GitHub) {
 		}
 		for _, fullRepo := range componentRepos {
 			ghComp := gh.ForRepo(fullRepo)
+			setVariable(ghComp, "DOCKERHUB_USERNAME", cfg.DockerHubUsername)
 			setSecret(ghComp, "DOCKERHUB_TOKEN", cfg.DockerHubToken)
 			setSecret(ghComp, "SONAR_TOKEN", cfg.SonarToken)
-			setVariable(ghComp, "DOCKERHUB_USERNAME", cfg.DockerHubUsername)
 		}
-		log.Success("Set secrets and variables on component repositories")
+		log.Success("Set variables and secrets on component repositories")
 	}
 
-	log.Success("Set secrets and variables")
+	log.Success("Set variables and secrets")
 }
 
 func setSecret(gh *shell.GitHub, name, value string) {

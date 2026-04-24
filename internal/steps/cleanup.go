@@ -5,12 +5,6 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
-	"github.com/optivem/gh-optivem/internal/shell"
-)
-
-const (
-	deletedRepoFmt = "Deleted repository %s"
-	keepingRepoFmt = "Keeping repository: https://github.com/%s"
 )
 
 // GetSonarProjectKeys returns the SonarCloud project keys for the given config.
@@ -37,55 +31,16 @@ func GetSonarProjectKeys(cfg *config.Config) []string {
 	}
 }
 
-// Cleanup runs test-mode cleanup. Local dir cleanup (default on) and test-repo
-// cleanup (default off) are independent: see cfg.KeepLocal / cfg.DeleteTestRepos.
-// main.go forces both to "skip" on failure unless --force-cleanup is set.
-func Cleanup(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud) {
-	if !cfg.TestMode {
-		return
-	}
-
-	if cfg.DeleteTestRepos {
-		deleteRepos(cfg, gh)
-		deleteSonarProjects(cfg, sc)
-	} else {
-		logKeptRepos(cfg)
-	}
-
-	if !cfg.KeepLocal {
-		deleteLocalDirs(cfg)
-		log.Success("Deleted local scaffold dir(s)")
-	} else {
+// Cleanup deletes the local scaffold dir(s) on success so the user is left with
+// just the remote repo(s) + SonarCloud projects. main.go forces KeepLocal=true
+// on failure so the broken scaffold can be inspected.
+func Cleanup(cfg *config.Config) {
+	if cfg.KeepLocal {
 		logKeptLocalDirs(cfg)
-	}
-}
-
-func deleteRepos(cfg *config.Config, gh *shell.GitHub) {
-	log.Infof("Cleaning up: deleting %s...", cfg.FullRepo)
-	gh.Delete()
-	log.Successf(deletedRepoFmt, cfg.FullRepo)
-
-	if cfg.RepoStrategy != "multirepo" {
 		return
 	}
-	if cfg.Arch == "multitier" {
-		ghBackend := gh.ForRepo(cfg.BackendFullRepo)
-		ghFrontend := gh.ForRepo(cfg.FrontendFullRepo)
-		ghBackend.Delete()
-		log.Successf(deletedRepoFmt, cfg.BackendFullRepo)
-		ghFrontend.Delete()
-		log.Successf(deletedRepoFmt, cfg.FrontendFullRepo)
-	} else {
-		ghSystem := gh.ForRepo(cfg.SystemFullRepo)
-		ghSystem.Delete()
-		log.Successf(deletedRepoFmt, cfg.SystemFullRepo)
-	}
-}
-
-func deleteSonarProjects(cfg *config.Config, sc *shell.SonarCloud) {
-	for _, key := range GetSonarProjectKeys(cfg) {
-		sc.DeleteProject(key)
-	}
+	deleteLocalDirs(cfg)
+	log.Success("Deleted local scaffold dir(s)")
 }
 
 func deleteLocalDirs(cfg *config.Config) {
@@ -93,19 +48,6 @@ func deleteLocalDirs(cfg *config.Config) {
 		if dir != "" {
 			os.RemoveAll(dir)
 		}
-	}
-}
-
-func logKeptRepos(cfg *config.Config) {
-	log.Infof(keepingRepoFmt, cfg.FullRepo)
-	if cfg.RepoStrategy != "multirepo" {
-		return
-	}
-	if cfg.Arch == "multitier" {
-		log.Infof(keepingRepoFmt, cfg.FrontendFullRepo)
-		log.Infof(keepingRepoFmt, cfg.BackendFullRepo)
-	} else {
-		log.Infof(keepingRepoFmt, cfg.SystemFullRepo)
 	}
 }
 

@@ -71,19 +71,9 @@ gh optivem init ... --verify-level release       # full pipeline (default)
 gh optivem init ... --exclude-legacy             # skip acceptance-stage-legacy
 ```
 
-### Test mode
+### Local cleanup
 
-Test mode (`--test`) enables optional cleanup of scaffolded resources on success:
-
-- `--keep-local` — keep the local scaffold dir (default: delete it).
-- `--delete-test-repos` — delete the GitHub test repos + SonarCloud projects (default: keep them).
-- `--force-cleanup` — run the above cleanups even on failure (default: skip cleanup on failure for debuggability).
-
-Full cleanup on success, with a random repo suffix to avoid collisions across repeated runs:
-
-```bash
-gh optivem init ... --test --delete-test-repos --random-suffix
-```
+On a successful run the local scaffold dir is deleted — the end result is just the created GitHub repo(s) + SonarCloud project(s), which you can clone later. Pass `--keep-local` to keep the dir (e.g. for inspection). On failure the dir is always kept so the broken scaffold can be debugged.
 
 ### Deployment target
 

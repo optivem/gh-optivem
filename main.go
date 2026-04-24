@@ -105,12 +105,11 @@ func runInit() {
 	errors, totalDuration := executeSteps(allSteps, &failureNote)
 	printSummary(cfg, errors, totalDuration)
 
-	// Cleanup (test mode only) — skip on failure so repo can be inspected
-	if errors > 0 && !cfg.ForceCleanup {
+	// Keep the local scaffold dir on failure so it can be inspected.
+	if errors > 0 {
 		cfg.KeepLocal = true
-		cfg.DeleteTestRepos = false
 	}
-	steps.Cleanup(cfg, gh, sc)
+	steps.Cleanup(cfg)
 
 	if errors > 0 {
 		os.Exit(1)
@@ -122,7 +121,7 @@ const (
 	phasePrepare       = "Prepare"
 	phaseSetupRepo     = "Setup repository"
 	phaseApplyTemplate = "Apply template"
-	phaseValidate      = "Validate template"
+	phaseValidate      = "Validate scaffold"
 	phaseVerify        = "Verify pipeline"
 	phaseFinalize      = "Finalize"
 )
@@ -135,7 +134,7 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, fail
 		// PHASE: SETUP REPOSITORY — remote infra for this repo
 		{name: "Create repositories", phase: phaseSetupRepo, fn: func() { steps.CreateRepos(cfg, gh) }},
 		{name: "Setup environments", phase: phaseSetupRepo, fn: func() { steps.SetupEnvironments(cfg, gh) }},
-		{name: "Setup secrets and variables", phase: phaseSetupRepo, fn: func() { steps.SetupSecretsAndVariables(cfg, gh) }},
+		{name: "Setup variables and secrets", phase: phaseSetupRepo, fn: func() { steps.SetupVariablesAndSecrets(cfg, gh) }},
 
 		// PHASE: APPLY TEMPLATE — clone, templatize locally, push (even on failure)
 		{name: "Clone repos", phase: phaseApplyTemplate, fn: func() { steps.CloneRepos(cfg, gh) }},
@@ -148,7 +147,7 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, fail
 		{name: "Create SonarCloud projects", phase: phaseApplyTemplate, fn: func() { steps.CreateSonarCloudProjects(cfg, sc) }},
 		{name: "Commit and push", phase: phaseApplyTemplate, alwaysRun: true, fn: func() { steps.CommitAndPush(cfg, *failureNote) }},
 
-		// PHASE: VALIDATE TEMPLATE — runs after push so broken output is already
+		// PHASE: VALIDATE SCAFFOLD — runs after push so broken output is already
 		// visible in the remote repo for troubleshooting.
 		{name: "Validate no leftover system names", phase: phaseValidate, fn: func() { steps.ValidateNoLeftoverSystemNames(cfg) }},
 		{name: "Verify compilation", phase: phaseValidate, fn: func() { steps.VerifyCompilation(cfg) }},
@@ -413,35 +412,37 @@ func printBanner(cfg *config.Config) {
 	fmt.Println(separator)
 
 	fmt.Println()
-	fmt.Println("  Inputs (raw CLI flags)")
+	fmt.Println("  Inputs")
 	fmt.Println()
-	log.Infof("--owner:           %s", cfg.Owner)
-	log.Infof("--repo:            %s", cfg.Raw.Repo)
-	log.Infof("--system-name:     %s", cfg.SystemName)
-	log.Infof("--arch:            %s", cfg.Arch)
-	log.Infof("--repo-strategy:   %s", cfg.RepoStrategy)
-	log.Infof("--lang:            %s", cfg.Lang)
-	log.Infof("--backend-lang:    %s", cfg.BackendLang)
-	log.Infof("--frontend-lang:   %s", cfg.FrontendLang)
-	log.Infof("--test-lang:       %s", cfg.Raw.TestLang)
-	log.Infof("--license:         %s", cfg.License)
-	log.Infof("--deploy:          %s", cfg.Deploy)
-	log.Infof("--verify-level:    %s", cfg.Raw.VerifyLevel)
-	log.Infof("--exclude-legacy:  %v", cfg.ExcludeLegacy)
-	log.Infof("--sample-tests:    %v", cfg.SampleTests)
-	log.Infof("--shop-tag:        %s", cfg.Raw.ShopTag)
-	log.Infof("--random-suffix:   %v", cfg.Raw.RandomSuffix)
-	log.Infof("--dry-run:         %v", cfg.DryRun)
-	log.Infof("--test:            %v", cfg.TestMode)
-	log.Infof("--keep-local:         %v", cfg.Raw.KeepLocal)
-	log.Infof("--delete-test-repos:  %v", cfg.Raw.DeleteTestRepos)
-	log.Infof("--force-cleanup:      %v", cfg.ForceCleanup)
-	log.Infof("--no-bug-report:   %v", cfg.NoBugReport)
-	log.Infof("--no-auto-upgrade: %v", cfg.NoAutoUpgrade)
-	log.Infof("--workdir:         %s", cfg.Raw.WorkDir)
-	log.Infof("--log-file:        %s", cfg.LogFile)
-	log.Infof("--verbose:         %v", cfg.Verbose)
-	log.Infof("--quiet:           %v", cfg.Quiet)
+	tag := func(name string) string {
+		if cfg.UserSetFlags[name] {
+			return ""
+		}
+		return " (default)"
+	}
+	log.Infof("--owner:           %s%s", cfg.Owner, tag("owner"))
+	log.Infof("--repo:            %s%s", cfg.Raw.Repo, tag("repo"))
+	log.Infof("--system-name:     %s%s", cfg.SystemName, tag("system-name"))
+	log.Infof("--arch:            %s%s", cfg.Arch, tag("arch"))
+	log.Infof("--repo-strategy:   %s%s", cfg.RepoStrategy, tag("repo-strategy"))
+	log.Infof("--lang:            %s%s", cfg.Lang, tag("lang"))
+	log.Infof("--backend-lang:    %s%s", cfg.BackendLang, tag("backend-lang"))
+	log.Infof("--frontend-lang:   %s%s", cfg.FrontendLang, tag("frontend-lang"))
+	log.Infof("--test-lang:       %s%s", cfg.Raw.TestLang, tag("test-lang"))
+	log.Infof("--license:         %s%s", cfg.License, tag("license"))
+	log.Infof("--deploy:          %s%s", cfg.Deploy, tag("deploy"))
+	log.Infof("--verify-level:    %s%s", cfg.Raw.VerifyLevel, tag("verify-level"))
+	log.Infof("--exclude-legacy:  %v%s", cfg.ExcludeLegacy, tag("exclude-legacy"))
+	log.Infof("--sample-tests:    %v%s", cfg.SampleTests, tag("sample-tests"))
+	log.Infof("--shop-tag:        %s%s", cfg.Raw.ShopTag, tag("shop-tag"))
+	log.Infof("--dry-run:         %v%s", cfg.DryRun, tag("dry-run"))
+	log.Infof("--keep-local:      %v%s", cfg.Raw.KeepLocal, tag("keep-local"))
+	log.Infof("--no-bug-report:   %v%s", cfg.NoBugReport, tag("no-bug-report"))
+	log.Infof("--no-auto-upgrade: %v%s", cfg.NoAutoUpgrade, tag("no-auto-upgrade"))
+	log.Infof("--workdir:         %s%s", cfg.Raw.WorkDir, tag("workdir"))
+	log.Infof("--log-file:        %s%s", cfg.LogFile, tag("log-file"))
+	log.Infof("--verbose:         %v%s", cfg.Verbose, tag("verbose"))
+	log.Infof("--quiet:           %v%s", cfg.Quiet, tag("quiet"))
 
 	fmt.Println()
 	fmt.Println("  Derived values")
@@ -458,10 +459,11 @@ func printBanner(cfg *config.Config) {
 	}
 	log.Infof("Test lang:       %s", cfg.TestLang)
 	log.Infof("Verify level:    %s", cfg.VerifyLevel)
-	log.Infof("Cleanup local:     %v  (--keep-local to keep)", !cfg.KeepLocal)
-	log.Infof("Cleanup test repos: %v  (--delete-test-repos to delete)", cfg.DeleteTestRepos)
-	log.Infof("System name:     pascal=%s  camel=%s  kebab=%s  lower=%s",
-		cfg.SysNamePascalNew, cfg.SysNameCamelNew, cfg.SysNameKebabNew, cfg.SysNameLowerNew)
+	log.Infof("Cleanup local:   %v  (--keep-local to keep)", !cfg.KeepLocal)
+	log.Infof("System pascal:   %s", cfg.SysNamePascalNew)
+	log.Infof("System camel:    %s", cfg.SysNameCamelNew)
+	log.Infof("System kebab:    %s", cfg.SysNameKebabNew)
+	log.Infof("System lower:    %s", cfg.SysNameLowerNew)
 	log.Infof("Java ns:         %s", cfg.JavaNsNew)
 	log.Infof(".NET ns:         %s", cfg.DotnetNsNew)
 	log.Infof("TS package:      %s", cfg.TsPkgNew)
@@ -480,8 +482,8 @@ func printBanner(cfg *config.Config) {
 	fmt.Println("  Will create")
 	fmt.Println()
 	log.Infof("Environments:    acceptance, qa, production")
-	log.Infof("Secrets:         %s", strings.Join(willCreateSecrets(cfg), ", "))
 	log.Infof("Variables:       DOCKERHUB_USERNAME")
+	log.Infof("Secrets:         %s", strings.Join(willCreateSecrets(cfg), ", "))
 
 	fmt.Println()
 	fmt.Println("  Local clones")
@@ -501,7 +503,7 @@ func printBanner(cfg *config.Config) {
 }
 
 // willCreateSecrets lists the GitHub Actions secrets this scaffold will set,
-// in the order SetupSecretsAndVariables writes them. GHCR_TOKEN only applies
+// in the order SetupVariablesAndSecrets writes them. GHCR_TOKEN only applies
 // to multirepo scaffolds (component repos need to pull the main repo's image).
 func willCreateSecrets(cfg *config.Config) []string {
 	secrets := []string{"DOCKERHUB_TOKEN", "SONAR_TOKEN", "WORKFLOW_TOKEN"}

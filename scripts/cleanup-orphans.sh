@@ -34,7 +34,7 @@ usage() {
   echo "Options:"
   echo "  --delete              Actually delete (default: dry run)"
   echo "  --before <date>       Only include repos created before this date (exclusive, ISO 8601 e.g. 2026-04-01)"
-  echo "  --prefixes <list>     Space-separated prefixes (default: test-app- page-turner- course-tester- ct-)"
+  echo "  --prefixes <list>     Space-separated prefixes (default: test-app- page-turner- course-tester- ct- manual-test-)"
   echo "  --tmp-dir <path>      Local orphan dir (default: <academy>/.tmp)"
   echo "  --sonar-token <tok>   SonarCloud token (or set SONAR_TOKEN env var)"
   echo "  -h, --help            Show this help"
@@ -50,7 +50,7 @@ CLEAN_REPOS=0
 CLEAN_DOCKER=0
 CLEAN_TMP=0
 TMP_DIR=""
-DEFAULT_PREFIXES="test-app- page-turner- course-tester- ct-"
+DEFAULT_PREFIXES="test-app- page-turner- course-tester- ct- manual-test-"
 PREFIXES=""
 BEFORE_DATE=""
 SONAR_TOKEN="${SONAR_TOKEN:-}"

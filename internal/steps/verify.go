@@ -132,7 +132,7 @@ func buildCommands(lang string) []string {
 		return []string{"dotnet build"}
 	case "java":
 		if runtime.GOOS == "windows" {
-			return []string{"gradlew.bat compileJava compileTestJava"}
+			return []string{`.\gradlew.bat compileJava compileTestJava`}
 		}
 		return []string{"./gradlew compileJava compileTestJava"}
 	case "react":
@@ -325,11 +325,8 @@ func runLocalTests(label, cmd, dir string) {
 
 // canRunLocalTests checks common preconditions for local test execution.
 // Returns the test directory path, or empty string if tests should be skipped.
+// Whether to call this step at all is gated by --verify-level in main.go.
 func canRunLocalTests(cfg *config.Config, testKind string) string {
-	if !cfg.TestMode {
-		return ""
-	}
-
 	testDir := filepath.Join(cfg.RepoDir, systemTestDir_name)
 	if _, err := os.Stat(filepath.Join(testDir, "Run-SystemTests.ps1")); err != nil {
 		log.Warnf("Run-SystemTests.ps1 not found in scaffolded project, skipping local %s", testKind)
@@ -373,7 +370,7 @@ func setupMultirepoSymlinks(cfg *config.Config) {
 }
 
 // RunLocalSystemTests runs Run-SystemTests.ps1 locally against the scaffolded project
-// to verify that Docker builds and test suites work (test mode only).
+// to verify that Docker builds and test suites work. Gated by --verify-level in main.go.
 func RunLocalSystemTests(cfg *config.Config) {
 	log.Info("Running local system tests...")
 

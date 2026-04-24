@@ -5,6 +5,8 @@ package config
 import (
 	"bufio"
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -27,19 +29,24 @@ func testOwner() string {
 
 var baseArgs = []string{
 	"--system-name", "Sky Travel",
-	"--repo", "test-app",
-	"--random-suffix",
+}
+
+// randomRepoName returns "test-app-<16 hex>" for a fresh repo per test run, so
+// repeated/parallel runs don't collide on GitHub. Replaces the old CLI-side
+// --random-suffix flag.
+func randomRepoName() string {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
+	return "test-app-" + hex.EncodeToString(b)
 }
 
 func cleanupFlags() []string {
 	if os.Getenv("TEST_NO_CLEANUP") == "1" {
 		return []string{"--keep-local"}
 	}
-	flags := []string{"--delete-test-repos"}
-	if os.Getenv("TEST_FORCE_CLEANUP") == "1" {
-		flags = append(flags, "--force-cleanup")
-	}
-	return flags
+	return nil
 }
 
 func verifyFlags() []string {
@@ -59,6 +66,7 @@ func verifyFlags() []string {
 func withBase(extra ...string) []string {
 	args := []string{"--owner", testOwner(), "--no-bug-report"}
 	args = append(args, baseArgs...)
+	args = append(args, "--repo", randomRepoName())
 	args = append(args, extra...)
 	args = append(args, cleanupFlags()...)
 	args = append(args, verifyFlags()...)
@@ -116,12 +124,33 @@ func TestMain(m *testing.M) {
 	}
 
 	binaryPath = bin
-	os.Exit(m.Run())
+	code := m.Run()
+
+	// Valid-config tests leave behind GitHub repos + SonarCloud projects; the CLI
+	// no longer deletes those itself. Sweep them via cleanup-orphans.sh so repeat
+	// runs don't accumulate orphans. Opt out with TEST_NO_CLEANUP=1.
+	if os.Getenv("TEST_NO_CLEANUP") != "1" {
+		cmd := exec.Command("bash", "scripts/cleanup-orphans.sh",
+			"--owner", testOwner(),
+			"--repos", "--sonar",
+			"--prefixes", "test-app-",
+			"--delete",
+		)
+		cmd.Dir = modRoot
+		cmd.Stdout = os.Stderr
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: post-test cleanup failed: %v\n", err)
+		}
+	}
+
+	os.Exit(code)
 }
 
 // runCLI runs the binary and returns output + exit code.
-// Valid config tests run with --test --delete-test-repos for full scaffolding + automatic cleanup
-// (local dir is deleted by default; --delete-test-repos adds GitHub + SonarCloud deletion).
+// Valid config tests leave the remote repos + SonarCloud projects behind; TestMain
+// runs scripts/cleanup-orphans.sh once at the end to delete every test-app-* repo
+// and its Sonar project. The local scaffold dir is deleted by the CLI on success.
 // Streams the subprocess's stdout/stderr to os.Stderr as it runs so the created
 // repo name (and other progress) appears live in the log instead of only after
 // the subtest finishes. Still returns the captured output for assertions.
@@ -181,7 +210,6 @@ func TestValidMonolithConfigurations(t *testing.T) {
 				"--repo-strategy", tt.repoStrategy,
 				"--lang", tt.monolithLang,
 				"--test-lang", tt.testLang,
-				"--test",
 			)
 			out, exitCode := runCLI(t, args...)
 			t.Log(out)
@@ -225,7 +253,6 @@ func TestValidMultitierConfigurations(t *testing.T) {
 				"--backend-lang", tt.backendLang,
 				"--frontend-lang", tt.frontendLang,
 				"--test-lang", tt.testLang,
-				"--test",
 			)
 			out, exitCode := runCLI(t, args...)
 			t.Log(out)
