@@ -79,6 +79,14 @@ type Config struct {
 	RepoPascal    string
 	RepoNoHyphens string
 
+	// Casings for the generic placeholder passes. OwnerCasings maps the 6
+	// company forms (MyCompany / myCompany / my-company / mycompany /
+	// my_company / MY_COMPANY) to the user's owner; SysNameCasings maps the
+	// 6 system forms (MyShop / myShop / my-shop / myshop / my_shop / MY_SHOP)
+	// to the user's system name.
+	OwnerCasings   Casings
+	SysNameCasings Casings
+
 	// Namespace patterns
 	JavaNsOld   string
 	JavaNsNew   string
@@ -112,6 +120,65 @@ type Config struct {
 	FrontendRepoDir string
 	BackendRepoDir  string
 	SystemRepoDir   string
+}
+
+// Casings is the set of case variants for a single identifier token (owner or
+// system name). Produced by OwnerCasings / SystemCasings and consumed by the
+// generic placeholder replacement passes in internal/steps.
+type Casings struct {
+	Pascal    string // "MyCompany"
+	Camel     string // "myCompany"
+	Kebab     string // "my-company"
+	Lower     string // "mycompany" (no separator)
+	Snake     string // "my_company"
+	Screaming string // "MY_COMPANY"
+}
+
+// OwnerCasings derives the 6 case variants from a GitHub owner name. Owner
+// names follow GitHub rules (alphanumeric + single hyphens), so word
+// boundaries are the hyphens.
+func OwnerCasings(owner string) Casings {
+	return casingsFromWords(strings.Split(strings.ToLower(owner), "-"))
+}
+
+// SystemCasings derives the 6 case variants from a space-separated system
+// name, e.g. "Page Turner" → Pascal "PageTurner", Kebab "page-turner", etc.
+func SystemCasings(name string) Casings {
+	words := strings.Fields(name)
+	lower := make([]string, len(words))
+	for i, w := range words {
+		lower[i] = strings.ToLower(w)
+	}
+	return casingsFromWords(lower)
+}
+
+func casingsFromWords(words []string) Casings {
+	if len(words) == 0 {
+		return Casings{}
+	}
+	var pascal, camel strings.Builder
+	for i, w := range words {
+		if len(w) == 0 {
+			continue
+		}
+		titled := strings.ToUpper(w[:1]) + w[1:]
+		pascal.WriteString(titled)
+		if i == 0 {
+			camel.WriteString(w)
+		} else {
+			camel.WriteString(titled)
+		}
+	}
+	kebab := strings.Join(words, "-")
+	snake := strings.Join(words, "_")
+	return Casings{
+		Pascal:    pascal.String(),
+		Camel:     camel.String(),
+		Kebab:     kebab,
+		Lower:     strings.Join(words, ""),
+		Snake:     snake,
+		Screaming: strings.ToUpper(snake),
+	}
 }
 
 func ToPascalCase(s string) string {
@@ -859,6 +926,9 @@ func ParseAndValidate() *Config {
 		OwnerLower:    ownerLower,
 		RepoPascal:    repoPascal,
 		RepoNoHyphens: repoNoHyphens,
+
+		OwnerCasings:   OwnerCasings(*f.owner),
+		SysNameCasings: SystemCasings(*f.systemName),
 
 		JavaNsOld:   "com.optivem.shop",
 		JavaNsNew:   "com." + ownerLower + "." + repoNoHyphens,

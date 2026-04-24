@@ -9,27 +9,122 @@ import (
 	"github.com/optivem/gh-optivem/internal/config"
 )
 
-// TestReplaceRepoReferencesNoLeftoverShop asserts that after
-// ReplaceRepoReferences runs over a repo seeded with the three patterns that
-// survived replacement on run 2026-04-23 (optivem/gh-optivem#29), no "shop"
-// substring remains anywhere in the tree.
-//
-// The failure surface is the state AFTER ApplyTemplate — i.e. after the
-// sysapp-<lang> → system transform — fed into ReplaceRepoReferences.
-func TestReplaceRepoReferencesNoLeftoverShop(t *testing.T) {
+// TestReplaceNamespacesAndSystemNameGeneric asserts that the generic
+// placeholder passes rewrite content in all text files, filenames, and
+// directories for every casing variant, without needing any language-specific
+// rules.
+func TestReplaceNamespacesAndSystemNameGeneric(t *testing.T) {
+	const owner = "sky-traveler"
+	repoDir := t.TempDir()
+	seedGenericFixtures(t, repoDir)
+
+	cfg := &config.Config{
+		Owner:          owner,
+		OwnerLower:     owner,
+		Repo:           "sky-travel",
+		FullRepo:       owner + "/sky-travel",
+		Arch:           "monolith",
+		RepoStrategy:   "monorepo",
+		RepoDir:        repoDir,
+		OwnerCasings:   config.OwnerCasings(owner),
+		SysNameCasings: config.SystemCasings("Sky Travel"),
+	}
+
+	ReplaceNamespaces(cfg)
+	ReplaceSystemName(cfg)
+
+	assertNoLiteralSurvives(t, repoDir, []string{
+		"MyCompany", "myCompany", "my-company", "mycompany", "my_company", "MY_COMPANY",
+		"MyShop", "myShop", "my-shop", "myshop", "my_shop", "MY_SHOP",
+	})
+
+	// Spot-check a handful of the rewritten values.
+	expect := map[string]string{
+		filepath.Join("system", "Program.cs"):                       "SkyTraveler.SkyTravel.Monolith",
+		filepath.Join("src", "main", "java", "com", "skytraveler", "skytravel", "Main.java"): "package com.skytraveler.skytravel;",
+		filepath.Join("system-test", "src", "skyTravel", "dsl.ts"):  "class SkyTravelDsl",
+		filepath.Join("SkyTraveler.SkyTravel.Monolith.sln"):         "SkyTraveler.SkyTravel.Monolith",
+		filepath.Join("sky-travel-api-driver.ts"):                   "const skyTravelUiBaseUrl",
+	}
+	for rel, substr := range expect {
+		full := filepath.Join(repoDir, rel)
+		data, err := os.ReadFile(full)
+		if err != nil {
+			t.Errorf("expected file %s to exist: %v", rel, err)
+			continue
+		}
+		if !strings.Contains(string(data), substr) {
+			t.Errorf("file %s missing expected substring %q; got:\n%s", rel, substr, string(data))
+		}
+	}
+}
+
+func seedGenericFixtures(t *testing.T, repoDir string) {
+	t.Helper()
+	fixtures := map[string]string{
+		// Content: .NET namespace, Java package, TS identifier.
+		"system/Program.cs":                                        "namespace MyCompany.MyShop.Monolith;",
+		"src/main/java/com/mycompany/myshop/Main.java":             "package com.mycompany.myshop;",
+		"system-test/src/myShop/dsl.ts":                            "class MyShopDsl {}",
+		// Filenames to be renamed.
+		"MyCompany.MyShop.Monolith.sln":                            "MyCompany.MyShop.Monolith contents",
+		"my-shop-api-driver.ts":                                    "const myShopUiBaseUrl = '/';",
+		// Env-style and snake-style variants.
+		".env":                                                     "DB_PREFIX=my_shop\nAPP=MY_SHOP",
+	}
+	for rel, content := range fixtures {
+		p := filepath.Join(repoDir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+			t.Fatalf("mkdir %s: %v", filepath.Dir(p), err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0644); err != nil {
+			t.Fatalf("write %s: %v", p, err)
+		}
+	}
+}
+
+func assertNoLiteralSurvives(t *testing.T, repoDir string, literals []string) {
+	t.Helper()
+	filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		data, rerr := os.ReadFile(path)
+		if rerr != nil {
+			return nil
+		}
+		rel, _ := filepath.Rel(repoDir, path)
+		content := string(data)
+		for _, lit := range literals {
+			if strings.Contains(content, lit) {
+				t.Errorf("leftover placeholder %q in file %s", lit, rel)
+			}
+			if strings.Contains(rel, lit) {
+				t.Errorf("leftover placeholder %q in path %s", lit, rel)
+			}
+		}
+		return nil
+	})
+}
+
+// TestRewritePublisherRefsSonar asserts the hardcoded publisher-real passes
+// rewrite optivem/shop, optivem_shop, and sonar.organization for a fresh
+// scaffold (owner != optivem). Covers the three Apr-23 failure fixtures plus
+// the 2026-04-24 revert state where Sonar identifiers stay optivem_shop-*.
+func TestRewritePublisherRefsSonar(t *testing.T) {
 	cases := []struct {
 		name string
 		repo string
 	}{
 		{"single word", "horizon"},
 		{"hyphenated two words", "blue-horizon"},
-		{"long hyphenated with numeric suffix", "course-tester-atdd-typescript-20260423-192402"},
+		{"multirepo backend suffix", "blue-horizon-backend"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			repoDir := t.TempDir()
-			seedFailureFixtures(t, repoDir)
+			seedPublisherFixtures(t, repoDir)
 
 			cfg := &config.Config{
 				Owner:        "valentinajemuovic",
@@ -43,19 +138,17 @@ func TestReplaceRepoReferencesNoLeftoverShop(t *testing.T) {
 
 			ReplaceRepoReferences(cfg)
 
-			leftovers := findShopLeftovers(t, repoDir)
-			if len(leftovers) > 0 {
-				t.Errorf("Leftover shop references after ReplaceRepoReferences:\n  %s",
-					strings.Join(leftovers, "\n  "))
-			}
+			assertNoLiteralSurvives(t, repoDir, []string{
+				"optivem/shop",
+				"optivem_shop",
+				"api.optivem.com",
+				"@optivem/shop-system-test",
+			})
 		})
 	}
 }
 
-// seedFailureFixtures writes the three files from the Apr 23 failure into
-// repoDir. Each file also contains an optivem/actions reference so
-// verifyActionsReferencesIntact's safety check passes.
-func seedFailureFixtures(t *testing.T, repoDir string) {
+func seedPublisherFixtures(t *testing.T, repoDir string) {
 	t.Helper()
 	fixtures := map[string]string{
 		".github/workflows/commit-stage.yml": `name: commit-stage
@@ -66,16 +159,15 @@ jobs:
       - run: |
           sonar-scanner \
             -Dsonar.projectKey=optivem_shop-system \
-            -Dsonar.projectName=shop-system
+            -Dsonar.projectName=shop-system \
+            -Dsonar.organization=optivem
 `,
 		"system-test/docker-compose.pipeline.monolith.real.yml": `services:
   system:
     image: ghcr.io/optivem/shop/system:latest
 `,
-		"system-test/docker-compose.pipeline.monolith.stub.yml": `services:
-  system:
-    image: ghcr.io/optivem/shop/system:latest
-`,
+		"system-test/typescript/package-lock.json": `{"name": "@optivem/shop-system-test", "version": "1.0.0"}`,
+		"README.md": `See https://api.optivem.com/errors/validation`,
 	}
 	for rel, content := range fixtures {
 		p := filepath.Join(repoDir, filepath.FromSlash(rel))
@@ -86,52 +178,6 @@ jobs:
 			t.Fatalf("write %s: %v", p, err)
 		}
 	}
-}
-
-// findShopLeftovers returns paths (relative to repoDir) of files that still
-// contain "shop", "Shop", or "SHOP" as a word (not preceded by a lowercase
-// letter, to avoid "eshop" / "workshop" false positives).
-func findShopLeftovers(t *testing.T, repoDir string) []string {
-	t.Helper()
-	var leftovers []string
-	_ = filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return nil
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil
-		}
-		content := string(data)
-		for _, needle := range []string{"shop", "Shop", "SHOP"} {
-			if hasWordBoundaryMatch(content, needle) {
-				rel, _ := filepath.Rel(repoDir, path)
-				leftovers = append(leftovers, rel+": contains "+needle)
-				break
-			}
-		}
-		return nil
-	})
-	return leftovers
-}
-
-func hasWordBoundaryMatch(content, needle string) bool {
-	idx := 0
-	for {
-		pos := strings.Index(content[idx:], needle)
-		if pos < 0 {
-			return false
-		}
-		absPos := idx + pos
-		if absPos == 0 || !isLowerLetter(content[absPos-1]) {
-			return true
-		}
-		idx = absPos + len(needle)
-	}
-}
-
-func isLowerLetter(c byte) bool {
-	return c >= 'a' && c <= 'z'
 }
 
 // TestContentReplacementsStripsEnvPrefix asserts that monolith/multitier

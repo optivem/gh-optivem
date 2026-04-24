@@ -49,6 +49,15 @@ banner() {
   echo "${C_BOLD}${color}========================================================================${C_RESET}"
 }
 
+log "Building binary..."
+# Explicit check: the outer `{ ... } && exit 0` wrapper disables `set -e` inside
+# the braces (bash suppresses errexit on the left side of &&), so a bare
+# `go build` failure would not abort the script.
+if ! go build -o gh-optivem.exe .; then
+  log "Build failed — aborting before scaffold."
+  exit 1
+fi
+
 NO_CLEANUP=0
 OWNER=""
 PASSTHROUGH=()
