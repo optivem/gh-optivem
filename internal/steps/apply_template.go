@@ -176,8 +176,7 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	copyExternals(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	testDst := copySystemTests(shop, repoDir, testLang, "single")
-	PruneSystemTestArch(testDst, "monolith")
+	copySystemTests(shop, repoDir, testLang, "single")
 
 	// Fix workflow content: paths, image names, workflow names
 	log.Info("Fixing up workflow and docker-compose content...")
@@ -220,8 +219,7 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	copyExternals(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	testDst := copySystemTests(shop, repoDir, testLang, "single")
-	PruneSystemTestArch(testDst, "monolith")
+	copySystemTests(shop, repoDir, testLang, "single")
 
 	// Fix root repo workflow content
 	log.Info("Fixing up root repo workflow and docker-compose content...")
@@ -306,8 +304,7 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	copyExternals(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	testDst := copySystemTests(shop, repoDir, testLang, "multi")
-	PruneSystemTestArch(testDst, "multitier")
+	copySystemTests(shop, repoDir, testLang, "multi")
 
 	// Fix workflow content: paths and image names
 	log.Info("Fixing up workflow and docker-compose content...")
@@ -351,8 +348,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	copyExternals(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	testDst := copySystemTests(shop, repoDir, testLang, "multi")
-	PruneSystemTestArch(testDst, "multitier")
+	copySystemTests(shop, repoDir, testLang, "multi")
 
 	// Fix root repo workflow content
 	log.Info("Fixing up root repo workflow and docker-compose content...")
