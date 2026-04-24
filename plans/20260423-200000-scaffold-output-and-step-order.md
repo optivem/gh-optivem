@@ -26,11 +26,6 @@ These five edits compiled clean during the conversation; they're listed so the n
 
 ### Group 1 — Step sequence cleanup (depends on nothing else)
 
-- [ ] **Strip hardcoded `"Step N:"` prefixes from every step function.** The orchestrator at [main.go:186](../main.go#L186) already prints `OK Step N done` from the loop index. Each step's opening log should be the action only, not numbered.
-  - Files to touch (grep `"Step \d+:"` in `internal/steps/`):
-    - [finalize.go:53,68](../internal/steps/finalize.go#L53), [verify.go:173,202,222,234,251,268,378](../internal/steps/verify.go#L173), [github_setup.go:23,57,74,105](../internal/steps/github_setup.go#L23) — and any others the grep finds.
-  - Replace `log.Log("Step 9: Creating SonarCloud projects...")` → `log.Log("Creating SonarCloud projects...")`, etc.
-
 ### Group 2 — Logging refactor (verbosity + log-file + color convention)
 
 Recommended single coordinated change in [internal/log/log.go](../internal/log/log.go):
