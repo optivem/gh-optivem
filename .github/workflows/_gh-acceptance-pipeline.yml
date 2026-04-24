@@ -48,6 +48,11 @@ on:
         required: false
         type: boolean
         default: false
+      soft-validate:
+        description: 'Downgrade leftover-template-ref validation from fatal to warning (CLI --soft-validate). For triage of replacement-rule gaps; downstream steps may still fail.'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -156,6 +161,7 @@ jobs:
             echo "| skip-prerelease | $SKIP_PRE |"
             echo "| skip-local-tests | ${{ inputs.skip-local-tests }} |"
             echo "| exclude-legacy | ${{ inputs.exclude-legacy }} |"
+            echo "| soft-validate | ${{ inputs.soft-validate }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Checkout
@@ -396,6 +402,7 @@ jobs:
           # there. Windows smoke covers CLI scaffolding only; Linux smoke
           # covers the full local-test path.
           skip-local-tests: ${{ matrix.os == 'windows-latest' && 'true' || 'false' }}
+          soft-validate: ${{ inputs.soft-validate && 'true' || 'false' }}
 
   run:
     name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})
@@ -439,6 +446,7 @@ jobs:
           verify-level: ${{ needs.check.outputs.verify-level }}
           exclude-legacy: ${{ inputs.exclude-legacy && 'true' || 'false' }}
           skip-local-tests: ${{ inputs.skip-local-tests && 'true' || 'false' }}
+          soft-validate: ${{ inputs.soft-validate && 'true' || 'false' }}
           shop-tag: ${{ needs.check.outputs.shop-tag }}
           retain-repos: ${{ needs.check.outputs.retain-repos }}
 

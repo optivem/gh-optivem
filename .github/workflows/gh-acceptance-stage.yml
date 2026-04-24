@@ -32,6 +32,11 @@ on:
         required: false
         type: string
         default: ''
+      soft-validate:
+        description: 'Downgrade leftover-template-ref validation from fatal to warning (for triage; downstream steps may still fail)'
+        required: false
+        type: boolean
+        default: false
 
 # Shared concurrency group with gh-acceptance-dry-run so dry-runs and real runs
 # serialize rather than stepping on each other.
@@ -54,3 +59,4 @@ jobs:
       shop-head: false
       retain-repos: false
       skip-prerelease: false
+      soft-validate: ${{ inputs.soft-validate }}

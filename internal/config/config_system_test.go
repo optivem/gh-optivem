@@ -66,6 +66,9 @@ func verifyFlags() []string {
 	if os.Getenv("TEST_SKIP_LOCAL_TESTS") == "true" {
 		flags = append(flags, "--skip-local-tests")
 	}
+	if os.Getenv("TEST_SOFT_VALIDATE") == "true" {
+		flags = append(flags, "--soft-validate")
+	}
 	if tag := os.Getenv("TEST_SHOP_TAG"); tag != "" {
 		flags = append(flags, "--shop-ref", tag)
 	}

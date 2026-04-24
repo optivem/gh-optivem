@@ -24,6 +24,10 @@ inputs:
     description: 'Skip the "Verify local testing" step (Run-SystemTests.ps1). Maps to the CLI --skip-local-tests flag.'
     required: false
     default: 'false'
+  soft-validate:
+    description: 'Downgrade leftover-template-ref validation from fatal to warning. Maps to the CLI --soft-validate flag. Use for triage; downstream steps may still fail.'
+    required: false
+    default: 'false'
   shop-tag:
     description: 'optivem/shop meta-v* release tag to pin during the test. Empty = HEAD.'
     required: false
@@ -154,6 +158,7 @@ runs:
         TEST_VERIFY_LEVEL: ${{ inputs.verify-level }}
         TEST_EXCLUDE_LEGACY: ${{ inputs.exclude-legacy }}
         TEST_SKIP_LOCAL_TESTS: ${{ inputs.skip-local-tests }}
+        TEST_SOFT_VALIDATE: ${{ inputs.soft-validate }}
         TEST_SHOP_TAG: ${{ inputs.shop-tag }}
         TEST_NO_CLEANUP: ${{ inputs.retain-repos == 'true' && '1' || '' }}
 
