@@ -81,7 +81,7 @@ gh optivem init ... --test --cleanup --random-suffix
 
 ### Deployment target
 
-Only `--deploy docker` is currently supported (the default). `--deploy cloud-run` is temporarily disabled while the cloud workflow service/endpoint rewriting is finished — see the TODO in `internal/config/config.go` `validateCommonFlags`.
+Only `--deploy docker` is currently supported (the default). `--deploy cloud-run` is in development and may be available in a future release.
 
 ## How it works
 

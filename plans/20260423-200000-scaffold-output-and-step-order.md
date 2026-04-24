@@ -36,17 +36,7 @@ Recommended single coordinated change in [internal/log/log.go](../internal/log/l
 
 Two coordinated changes inside `gh-optivem`:
 
-- [ ] **`SetupEnvironments`** in [github_setup.go:58-72](../internal/steps/github_setup.go#L58-L72) — create bare env names. Simplify:
-  ```go
-  for _, stage := range []string{"acceptance", "qa", "production"} {
-      gh.CreateEnvironment(stage)
-  }
-  log.Success("Created environments: acceptance, qa, production")
-  ```
-
-- [ ] **Workflow content rewrite.** After template files are copied into the scaffolded repo, rewrite every `environment: <arch>-<lang>-(acceptance|qa|production)` reference to `environment: $1`. Integrate into the existing `FixupWorkflowContent` pipeline in [apply_template.go](../internal/steps/apply_template.go). Applies to all 4 variants (monolith/multitier × monorepo/multirepo). For multitier, rewrite against `<arch>-<backend-lang>-...` (since env names use backendLang).
-
-- [ ] **Verify with a fresh scaffold + commit-stage run** that a freshly scaffolded repo's workflows reference the unprefixed env names and CI succeeds end-to-end.
+- [ ] **Verify with a fresh scaffold + commit-stage run** that a freshly scaffolded repo's workflows reference the unprefixed env names and CI succeeds end-to-end. (Manual — user runs this; ~5-15 min including real GitHub + SonarCloud resources.)
 
 **Deferred (follow-up, out of scope for this plan):** 23 course docs under `courses/01-pipeline/` and `courses/02-atdd/` reference the old prefixed names. Easy regex sweep; will be done after the code lands and is verified.
 
