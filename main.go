@@ -31,8 +31,10 @@ import (
 const separator = "=========================================="
 
 type stepDef struct {
-	name string
-	fn   func()
+	name      string
+	phase     string
+	alwaysRun bool
+	fn        func()
 }
 
 func main() {
@@ -81,8 +83,11 @@ func runInit() {
 
 	printBanner(cfg)
 
-	allSteps := buildSteps(cfg, gh, sc)
-	errors, totalDuration := executeSteps(allSteps)
+	// failureNote is captured by the Commit-and-push closure so, if an earlier
+	// step failed, the commit message can flag the push as a partial scaffold.
+	var failureNote string
+	allSteps := buildSteps(cfg, gh, sc, &failureNote)
+	errors, totalDuration := executeSteps(allSteps, &failureNote)
 	printSummary(cfg, errors, totalDuration)
 
 	// Cleanup (test mode only) — skip on failure so repo can be inspected
@@ -96,28 +101,43 @@ func runInit() {
 	}
 }
 
-func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud) []stepDef {
+// Phase labels — printed as section headers by executeSteps when the phase changes.
+const (
+	phaseSetupRepo     = "SETUP REPOSITORY"
+	phaseApplyTemplate = "APPLY TEMPLATE"
+	phaseValidate      = "VALIDATE TEMPLATE"
+	phaseVerify        = "VERIFY PIPELINE"
+	phaseFinalize      = "FINALIZE"
+)
+
+func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, failureNote *string) []stepDef {
 	allSteps := []stepDef{
-		{"Create repositories", func() { steps.CreateRepos(cfg, gh) }},
-		{"Setup environments", func() { steps.SetupEnvironments(cfg, gh) }},
-		{"Setup secrets and variables", func() { steps.SetupSecretsAndVariables(cfg, gh) }},
-		{"Clone repos", func() { steps.CloneRepos(cfg, gh) }},
-		{"Apply template", func() { steps.ApplyTemplate(cfg) }},
-		{"Replace repository references", func() { steps.ReplaceRepoReferences(cfg) }},
-		{"Replace namespaces", func() { steps.ReplaceNamespaces(cfg) }},
-		{"Replace system name", func() { steps.ReplaceSystemName(cfg) }},
-		{"Update README", func() { steps.UpdateReadme(cfg) }},
-		{"Write project config", func() { steps.WriteProjectConfig(cfg) }},
-		{"Create SonarCloud projects", func() { steps.CreateSonarCloudProjects(cfg, sc) }},
-		{"Commit and push", func() { steps.CommitAndPush(cfg) }},
-		{"Validate no leftover system names", func() { steps.ValidateNoLeftoverSystemNames(cfg) }},
-		{"Verify compilation", func() { steps.VerifyCompilation(cfg) }},
+		// PHASE: SETUP REPOSITORY — remote infra for this repo
+		{name: "Create repositories", phase: phaseSetupRepo, fn: func() { steps.CreateRepos(cfg, gh) }},
+		{name: "Setup environments", phase: phaseSetupRepo, fn: func() { steps.SetupEnvironments(cfg, gh) }},
+		{name: "Setup secrets and variables", phase: phaseSetupRepo, fn: func() { steps.SetupSecretsAndVariables(cfg, gh) }},
+
+		// PHASE: APPLY TEMPLATE — clone, templatize locally, push (even on failure)
+		{name: "Clone repos", phase: phaseApplyTemplate, fn: func() { steps.CloneRepos(cfg, gh) }},
+		{name: "Apply template", phase: phaseApplyTemplate, fn: func() { steps.ApplyTemplate(cfg) }},
+		{name: "Replace repository references", phase: phaseApplyTemplate, fn: func() { steps.ReplaceRepoReferences(cfg) }},
+		{name: "Replace namespaces", phase: phaseApplyTemplate, fn: func() { steps.ReplaceNamespaces(cfg) }},
+		{name: "Replace system name", phase: phaseApplyTemplate, fn: func() { steps.ReplaceSystemName(cfg) }},
+		{name: "Update README", phase: phaseApplyTemplate, fn: func() { steps.UpdateReadme(cfg) }},
+		{name: "Write project config", phase: phaseApplyTemplate, fn: func() { steps.WriteProjectConfig(cfg) }},
+		{name: "Create SonarCloud projects", phase: phaseApplyTemplate, fn: func() { steps.CreateSonarCloudProjects(cfg, sc) }},
+		{name: "Commit and push", phase: phaseApplyTemplate, alwaysRun: true, fn: func() { steps.CommitAndPush(cfg, *failureNote) }},
+
+		// PHASE: VALIDATE TEMPLATE — runs after push so broken output is already
+		// visible in the remote repo for troubleshooting.
+		{name: "Validate no leftover system names", phase: phaseValidate, fn: func() { steps.ValidateNoLeftoverSystemNames(cfg) }},
+		{name: "Verify compilation", phase: phaseValidate, fn: func() { steps.VerifyCompilation(cfg) }},
 	}
 
 	allSteps = append(allSteps, buildVerifySteps(cfg, gh)...)
 
 	allSteps = append(allSteps,
-		stepDef{"Print project registration", func() { steps.PrintRegistration(cfg) }},
+		stepDef{name: "Print project registration", phase: phaseFinalize, fn: func() { steps.PrintRegistration(cfg) }},
 	)
 
 	return allSteps
@@ -134,62 +154,85 @@ func buildVerifySteps(cfg *config.Config, gh *shell.GitHub) []stepDef {
 	// smoke tier — local smoke tests only, no CI
 	if cfg.VerifyLevel == "local" {
 		s = append(s,
-			stepDef{"Run local smoke tests", func() { steps.RunLocalSystemTests(cfg) }},
+			stepDef{name: "Run local smoke tests", phase: phaseVerify, fn: func() { steps.RunLocalSystemTests(cfg) }},
 		)
 	}
 
 	// commit tier and above — CI workflow verification
 	if cfg.VerifyLevel == "commit" || cfg.VerifyLevel == "acceptance" || cfg.VerifyLevel == "release" {
 		s = append(s,
-			stepDef{"Verify commit stage", func() { steps.VerifyCommitStage(cfg, gh) }},
+			stepDef{name: "Verify commit stage", phase: phaseVerify, fn: func() { steps.VerifyCommitStage(cfg, gh) }},
 		)
 	}
 
 	if cfg.VerifyLevel == "acceptance" || cfg.VerifyLevel == "release" {
 		s = append(s,
-			stepDef{"Verify acceptance stage", func() { steps.VerifyAcceptanceStage(cfg, gh) }},
+			stepDef{name: "Verify acceptance stage", phase: phaseVerify, fn: func() { steps.VerifyAcceptanceStage(cfg, gh) }},
 		)
 		if !cfg.ExcludeLegacy {
 			s = append(s,
-				stepDef{"Verify acceptance stage legacy", func() { steps.VerifyAcceptanceStageLegacy(cfg, gh) }},
+				stepDef{name: "Verify acceptance stage legacy", phase: phaseVerify, fn: func() { steps.VerifyAcceptanceStageLegacy(cfg, gh) }},
 			)
 		}
 		s = append(s,
-			stepDef{"Run local system tests", func() { steps.RunLocalSystemTests(cfg) }},
+			stepDef{name: "Run local system tests", phase: phaseVerify, fn: func() { steps.RunLocalSystemTests(cfg) }},
 		)
 	}
 
 	if cfg.VerifyLevel == "release" {
 		s = append(s,
-			stepDef{"Verify QA stage", func() { steps.VerifyQAStage(cfg, gh) }},
-			stepDef{"Verify QA signoff", func() { steps.VerifyQASignoff(cfg, gh) }},
-			stepDef{"Verify production stage", func() { steps.VerifyProdStage(cfg, gh) }},
+			stepDef{name: "Verify QA stage", phase: phaseVerify, fn: func() { steps.VerifyQAStage(cfg, gh) }},
+			stepDef{name: "Verify QA signoff", phase: phaseVerify, fn: func() { steps.VerifyQASignoff(cfg, gh) }},
+			stepDef{name: "Verify production stage", phase: phaseVerify, fn: func() { steps.VerifyProdStage(cfg, gh) }},
 		)
 	}
 
 	return s
 }
 
-func executeSteps(allSteps []stepDef) (int, time.Duration) {
+func executeSteps(allSteps []stepDef, failureNote *string) (int, time.Duration) {
 	errors := 0
 	totalStart := time.Now()
+	prevPhase := ""
 	for i, s := range allSteps {
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					log.Failf("Step failed: %s -- %v", s.name, r)
-					errors++
-				}
-			}()
-			stepStart := time.Now()
-			s.fn()
-			log.OKf("Step %d done (%s)", i+1, formatDuration(time.Since(stepStart)))
-		}()
-		if errors > 0 {
-			break
+		// Skip non-alwaysRun steps once something has failed, so a broken
+		// scaffold still pushes the partial output (for troubleshooting) but
+		// stops running the downstream validate/verify steps.
+		if errors > 0 && !s.alwaysRun {
+			continue
+		}
+
+		if s.phase != "" && s.phase != prevPhase {
+			fmt.Println()
+			fmt.Printf("=== PHASE: %s ===\n\n", s.phase)
+			prevPhase = s.phase
+		}
+
+		if !runStep(i, s, failureNote) {
+			errors++
 		}
 	}
 	return errors, time.Since(totalStart)
+}
+
+// runStep runs a single step, recovering from panics. Returns true on success.
+// On failure it sets *failureNote (unless already set by an earlier failure) so
+// the later always-run commit step can flag the push as partial.
+func runStep(i int, s stepDef, failureNote *string) (ok bool) {
+	ok = true
+	defer func() {
+		if r := recover(); r != nil {
+			log.Failf("Step failed: %s -- %v", s.name, r)
+			if *failureNote == "" {
+				*failureNote = fmt.Sprintf("step %d: %s", i+1, s.name)
+			}
+			ok = false
+		}
+	}()
+	stepStart := time.Now()
+	s.fn()
+	log.OKf("Step %d done (%s)", i+1, formatDuration(time.Since(stepStart)))
+	return
 }
 
 func printSummary(cfg *config.Config, errors int, totalDuration time.Duration) {

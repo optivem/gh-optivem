@@ -64,7 +64,11 @@ func CreateSonarCloudProjects(cfg *config.Config, sc *shell.SonarCloud) {
 }
 
 // CommitAndPush commits and pushes changes to GitHub.
-func CommitAndPush(cfg *config.Config) {
+//
+// failureNote is empty on a clean run. When non-empty, earlier scaffold steps
+// failed and this is an intentional partial push for troubleshooting — the
+// note is included in the commit message so git history flags it.
+func CommitAndPush(cfg *config.Config, failureNote string) {
 	log.Log("Step 10: Committing and pushing...")
 
 	if cfg.DryRun {
@@ -72,19 +76,25 @@ func CommitAndPush(cfg *config.Config) {
 		return
 	}
 
-	commitAndPushRepo(cfg.RepoDir, cfg.FullRepo)
+	commitMsg := "Apply pipeline template"
+	if failureNote != "" {
+		commitMsg = fmt.Sprintf("Apply pipeline template [PARTIAL: scaffold failed at %s]", failureNote)
+		log.Warnf("Committing partial scaffold for troubleshooting (failed at %s)", failureNote)
+	}
+
+	commitAndPushRepo(cfg.RepoDir, cfg.FullRepo, commitMsg)
 
 	if cfg.RepoStrategy == "multirepo" {
 		if cfg.Arch == "multitier" {
-			commitAndPushRepo(cfg.BackendRepoDir, cfg.BackendFullRepo)
-			commitAndPushRepo(cfg.FrontendRepoDir, cfg.FrontendFullRepo)
+			commitAndPushRepo(cfg.BackendRepoDir, cfg.BackendFullRepo, commitMsg)
+			commitAndPushRepo(cfg.FrontendRepoDir, cfg.FrontendFullRepo, commitMsg)
 		} else {
-			commitAndPushRepo(cfg.SystemRepoDir, cfg.SystemFullRepo)
+			commitAndPushRepo(cfg.SystemRepoDir, cfg.SystemFullRepo, commitMsg)
 		}
 	}
 }
 
-func commitAndPushRepo(repoDir, fullRepo string) {
+func commitAndPushRepo(repoDir, fullRepo, commitMsg string) {
 	if _, err := shell.Run("git add -A", false, true, repoDir); err != nil {
 		log.Fatalf("git add failed in %s: %v", fullRepo, err)
 	}
@@ -94,7 +104,7 @@ func commitAndPushRepo(repoDir, fullRepo string) {
 			shell.MustRun(fmt.Sprintf("git update-index --chmod=+x %s", script), false, repoDir)
 		}
 	}
-	if _, err := shell.Run(`git commit -m "Apply pipeline template"`, false, true, repoDir); err != nil {
+	if _, err := shell.Run(fmt.Sprintf(`git commit -m %q`, commitMsg), false, true, repoDir); err != nil {
 		log.Fatalf("git commit failed in %s: %v", fullRepo, err)
 	}
 	if out, err := shell.Run("git push", false, true, repoDir); err != nil {

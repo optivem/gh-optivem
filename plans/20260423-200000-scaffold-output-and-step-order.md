@@ -1,5 +1,7 @@
 # Plan: Scaffold output improvements + step-sequence cleanup
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-04-24T06:36:15Z`
+
 ## Motivation
 
 During a 2026-04-23 scaffold run of `course-tester-atdd-typescript-20260423-192402`, the user surfaced a cluster of related issues with the `gh optivem init` console output and step ordering:
@@ -24,25 +26,39 @@ These five edits compiled clean during the conversation; they're listed so the n
 
 ### Group 1 — Step sequence cleanup (depends on nothing else)
 
-- [ ] **Reorder `buildSteps` in [main.go:100-115](../main.go#L100-L115).** New order:
-  1. Create repositories
-  2. Clone repos
-  3. Apply template
-  4. Replace repository references
-  5. Replace namespaces
-  6. Replace system name
-  7. Update README
-  8. Write project config
-  9. Validate no leftover system names ← moved up from 13
-  10. Verify compilation ← moved up from 14
-  11. Setup environments ← moved down from 2
-  12. Setup secrets and variables ← moved down from 3
-  13. Create SonarCloud projects
-  14. Commit and push
-  15. (existing verify steps unchanged)
-  16. Print project registration
+- [ ] **Reorder `buildSteps` in [main.go:100-115](../main.go#L100-L115) into 3 named phases, add `alwaysRun` for commit step, print phase headers.** New shape:
 
-  **Rationale:** local validation must gate the push, and shared remote resources (envs, secrets, SonarCloud project) should not be created until the local content is known-good. Trade-off: a failed run leaves the repo without envs/secrets — that's acceptable and arguably cleaner for teardown.
+  ```
+  # PHASE: SETUP REPOSITORY
+  1. Create repositories
+  2. Setup environments
+  3. Setup secrets and variables
+
+  # PHASE: APPLY TEMPLATE
+  4. Clone repos
+  5. Apply template
+  6. Replace repository references
+  7. Replace namespaces
+  8. Replace system name
+  9. Update README
+  10. Write project config
+  11. Create SonarCloud projects
+  12. Commit and push          ← alwaysRun=true
+
+  # PHASE: VALIDATE TEMPLATE
+  13. Validate no leftover system names
+  14. Verify compilation
+
+  # (existing verify steps unchanged)
+  # Print project registration
+  ```
+
+  **Implementation:**
+  - Add `phase string` + `alwaysRun bool` fields to `stepDef`; populate them in `buildSteps`.
+  - In `executeSteps` ([main.go:173-193](../main.go#L173-L193)): print a phase header line when `s.phase` differs from the previous step's phase (e.g. blank line + `=== PHASE: SETUP REPOSITORY ===`). After an error, skip all remaining steps except those with `alwaysRun=true` (which still run, then loop stops).
+  - `CommitAndPush` ([internal/steps/finalize.go](../internal/steps/finalize.go)) must accept a "scaffold-failed-before-me" signal so the commit message is labeled `(scaffold failed at step N: <name>)` when applicable — so a glance at git history flags partial scaffolds.
+
+  **Rationale:** phase-based grouping matches how the user mentally models the flow (setup remote infra → apply template locally → validate locally). Committing even on failure is an explicit troubleshooting aid: it pushes partial replacement output to remote so broken replacement logic can be inspected there. Post-commit validation runs after the push so broken code is already visible remotely — the validation steps then confirm whether what was pushed is usable.
 
 - [ ] **Strip hardcoded `"Step N:"` prefixes from every step function.** The orchestrator at [main.go:186](../main.go#L186) already prints `OK Step N done` from the loop index. Each step's opening log should be the action only, not numbered.
   - Files to touch (grep `"Step \d+:"` in `internal/steps/`):
