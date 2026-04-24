@@ -28,6 +28,10 @@ inputs:
     description: 'Retain scaffolded test repos (skip cleanup) even on success. Sets TEST_NO_CLEANUP=1.'
     required: false
     default: 'false'
+  jitter-max-seconds:
+    description: 'Upper bound (seconds) for the random start-jitter that staggers matrix jobs. Keep at 120 for the large acceptance matrix; lower for small matrices (e.g. smoke) where rate limits are not a concern.'
+    required: false
+    default: '120'
 
 runs:
   using: composite
@@ -37,7 +41,9 @@ runs:
     # in the same window.
     - name: Jitter start
       shell: bash
-      run: sleep $((RANDOM % 120))
+      env:
+        JITTER_MAX: ${{ inputs.jitter-max-seconds }}
+      run: sleep $((RANDOM % (JITTER_MAX + 1)))
 
     - name: Setup Go
       uses: actions/setup-go@v6
