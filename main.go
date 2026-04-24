@@ -645,14 +645,9 @@ func printBanner(cfg *config.Config) {
 }
 
 // willCreateSecrets lists the GitHub Actions secrets this scaffold will set,
-// in the order SetupVariablesAndSecrets writes them. GHCR_TOKEN only applies
-// to multirepo scaffolds (component repos need to pull the main repo's image).
+// in the order SetupVariablesAndSecrets writes them.
 func willCreateSecrets(cfg *config.Config) []string {
-	secrets := []string{"DOCKERHUB_TOKEN", "SONAR_TOKEN", "WORKFLOW_TOKEN"}
-	if cfg.RepoStrategy == "multirepo" {
-		secrets = append(secrets, "GHCR_TOKEN")
-	}
-	return secrets
+	return []string{"DOCKERHUB_TOKEN", "SONAR_TOKEN", "WORKFLOW_TOKEN", "GHCR_TOKEN"}
 }
 
 // ghCLIVersion returns the first line of `gh --version` (e.g. "gh version 2.50.0 ...").

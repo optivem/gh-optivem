@@ -46,7 +46,7 @@ type tokenAuthResult struct {
 // validateTokensAuth runs live auth checks against each provider in parallel.
 // Aborts via FatalExit if any token fails so the user sees every broken one
 // at once instead of fix-one-retry-discover-next.
-func validateTokensAuth(e envTokens, repoStrategy string, dryRun bool) {
+func validateTokensAuth(e envTokens, dryRun bool) {
 	if dryRun {
 		return
 	}
@@ -62,9 +62,7 @@ func validateTokensAuth(e envTokens, repoStrategy string, dryRun bool) {
 		{"DOCKERHUB_TOKEN", func() error { return verifyDockerHubAuth(client, e.dockerHubUsername, e.dockerHubToken) }},
 		{"SONAR_TOKEN", func() error { return verifySonarToken(client, e.sonarToken) }},
 		{"WORKFLOW_TOKEN", func() error { return verifyGitHubToken(client, e.workflowToken, "WORKFLOW_TOKEN") }},
-	}
-	if repoStrategy == "multirepo" {
-		checks = append(checks, check{"GHCR_TOKEN", func() error { return verifyGHCRToken(client, e.dockerHubUsername, e.ghcrToken) }})
+		{"GHCR_TOKEN", func() error { return verifyGHCRToken(client, e.dockerHubUsername, e.ghcrToken) }},
 	}
 
 	results := make([]tokenAuthResult, len(checks))

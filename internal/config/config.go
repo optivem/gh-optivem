@@ -524,15 +524,13 @@ func readEnvTokens() envTokens {
 	}
 }
 
-func validateEnvTokens(e envTokens, repoStrategy string) {
+func validateEnvTokens(e envTokens) {
 	required := []struct{ name, val string }{
 		{"DOCKERHUB_USERNAME", e.dockerHubUsername},
 		{"DOCKERHUB_TOKEN", e.dockerHubToken},
 		{"SONAR_TOKEN", e.sonarToken},
 		{"WORKFLOW_TOKEN", e.workflowToken},
-	}
-	if repoStrategy == "multirepo" {
-		required = append(required, struct{ name, val string }{"GHCR_TOKEN", e.ghcrToken})
+		{"GHCR_TOKEN", e.ghcrToken},
 	}
 	for _, r := range required {
 		if r.val == "" {
@@ -544,7 +542,8 @@ func validateEnvTokens(e envTokens, repoStrategy string) {
 func failMissingEnv(name string) {
 	switch name {
 	case "GHCR_TOKEN":
-		log.FatalExit(name + " environment variable is required for multirepo setup.\n" +
+		log.FatalExit(name + " environment variable is required.\n" +
+			"  The scaffolded repo's acceptance/prod stages use it to tag images in GHCR.\n" +
 			"  Create a Personal Access Token (classic) with write:packages + read:packages scopes:\n" +
 			"  https://github.com/settings/tokens\n" +
 			"  Then: export GHCR_TOKEN=<your-token>")
@@ -765,7 +764,7 @@ func ParseAndValidate() *Config {
 
 	env := readEnvTokens()
 	if !*f.dryRun {
-		validateEnvTokens(env, *f.repoStrategy)
+		validateEnvTokens(env)
 	}
 
 	mr := deriveMultirepoNames(*f.repoStrategy, *f.arch, *f.owner, repoName)
@@ -773,7 +772,7 @@ func ParseAndValidate() *Config {
 	// === Phase 2: network auth checks (fail fast before any mutation) ===
 	// Token auth runs first because it's the most common failure mode and
 	// aborts before we touch gh / GitHub / SonarCloud for existence checks.
-	validateTokensAuth(env, *f.repoStrategy, *f.dryRun)
+	validateTokensAuth(env, *f.dryRun)
 	checkGhAuth(*f.dryRun)
 	checkOwnerExists(*f.owner)
 	confirmRepoExists(*f.owner + "/" + repoName)

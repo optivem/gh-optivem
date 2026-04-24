@@ -76,10 +76,9 @@ func SetupVariablesAndSecrets(cfg *config.Config, gh *shell.GitHub) {
 	setSecret(gh, "DOCKERHUB_TOKEN", cfg.DockerHubToken)
 	setSecret(gh, "SONAR_TOKEN", cfg.SonarToken)
 	setSecret(gh, "WORKFLOW_TOKEN", cfg.WorkflowToken)
+	setSecret(gh, "GHCR_TOKEN", cfg.GHCRToken)
 
 	if cfg.RepoStrategy == "multirepo" {
-		setSecret(gh, "GHCR_TOKEN", cfg.GHCRToken)
-
 		var componentRepos []string
 		if cfg.Arch == "multitier" {
 			componentRepos = []string{cfg.FrontendFullRepo, cfg.BackendFullRepo}
