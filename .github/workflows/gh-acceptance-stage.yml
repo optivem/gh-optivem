@@ -9,6 +9,12 @@ on:
   #   - cron: '0 * * * *'    # Every hour — verify-level=local
   workflow_dispatch:
     inputs:
+      verify-level:
+        description: 'Verification level (none, local, commit, acceptance, qa, release)'
+        required: false
+        type: choice
+        options: [none, local, commit, acceptance, qa, release]
+        default: release
       smoke-mode:
         description: 'Smoke matrix size'
         required: false
@@ -39,9 +45,9 @@ jobs:
     secrets: inherit
     with:
       # When the hourly cron is re-enabled, switch this back to the schedule-aware form:
-      #   verify-level: ${{ github.event.schedule == '0 * * * *' && 'local' || 'release' }}
-      # (hourly cron → `local` verify, 6-hour cron + manual dispatch → full `release` path.)
-      verify-level: release
+      #   verify-level: ${{ github.event.schedule == '0 * * * *' && 'local' || inputs.verify-level }}
+      # (hourly cron → `local` verify, 6-hour cron + manual dispatch → input-driven, default `release`.)
+      verify-level: ${{ inputs.verify-level }}
       smoke-mode: ${{ inputs.smoke-mode }}
       acceptance-mode: ${{ inputs.acceptance-mode }}
       shop-tag: ${{ inputs.shop-tag }}
