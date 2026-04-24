@@ -38,18 +38,31 @@ The entry point (`main.go`) handles CLI argument parsing and orchestrates the `i
 | 11 | Create SonarCloud projects | Registers projects in SonarCloud |
 | 12 | Commit and push | Commits all changes and pushes to remote |
 | 13 | Validate no leftover system names | Fails if old template name still appears in the pushed repo |
-| 14 | Verify compilation | Ensures the scaffolded project compiles |
 
 ## Verification steps
 
-After setup, optional verification steps run based on `--verify-level`:
+After setup, verification steps run based on `--verify-level`, in this fixed order:
 
-| Level | What runs |
-|-------|-----------|
+| # | Step | Description |
+|---|------|-------------|
+| 1 | Verify local compilation | Compiles system/backend/frontend/tests locally to catch broken imports, type errors |
+| 2 | Verify local testing | Runs `Run-SystemTests.ps1` (latest + legacy). Skipped when `--skip-local-tests` is set |
+| 3 | Verify commit stage | Watches the commit stage CI workflow |
+| 4 | Verify acceptance stage | Triggers and watches acceptance stage **latest + legacy in parallel** (legacy dropped when `--exclude-legacy`). Captures the RC version. |
+| 5 | Verify QA stage | Triggers QA stage, then QA signoff |
+| 6 | Verify production stage | Triggers and watches the production stage |
+
+`--verify-level` picks the cutoff; every step at or below that rank runs (except local tests when `--skip-local-tests` is set):
+
+| Level | Steps that run |
+|-------|----------------|
 | `none` | Nothing — skip all verification |
-| `local` | Local smoke tests only (no CI) |
-| `commit` | Verify commit stage CI workflow passes |
-| `acceptance` | Commit stage + acceptance stage CI + acceptance stage legacy (unless `--exclude-legacy`) + local system tests |
-| `release` | All of the above + QA stage + QA signoff + production stage |
+| `local` | 1 + 2 |
+| `commit` | 1 + 2 + 3 |
+| `acceptance` | 1 + 2 + 3 + 4 |
+| `qa` | 1 + 2 + 3 + 4 + 5 |
+| `release` | 1 + 2 + 3 + 4 + 5 + 6 (default) |
+
+`--exclude-legacy` applies to step 2 (local tests) and step 4 (acceptance stage). `--skip-local-tests` drops step 2 regardless of level.
 
 After verification, a final step prints project registration info.

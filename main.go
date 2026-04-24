@@ -150,7 +150,6 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, fail
 		// PHASE: VALIDATE SCAFFOLD — runs after push so broken output is already
 		// visible in the remote repo for troubleshooting.
 		{name: "Validate no leftover system names", phase: phaseValidate, fn: func() { steps.ValidateNoLeftoverSystemNames(cfg) }},
-		{name: "Verify compilation", phase: phaseValidate, fn: func() { steps.VerifyCompilation(cfg) }},
 	}
 
 	allSteps = append(allSteps, buildVerifySteps(cfg, gh)...)
@@ -162,46 +161,67 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, fail
 	return allSteps
 }
 
+// verifyLevelOrder maps --verify-level values to a rank. A step runs when the
+// configured level's rank is >= the step's minimum rank.
+var verifyLevelOrder = map[string]int{
+	"none":       0,
+	"local":      1,
+	"commit":     2,
+	"acceptance": 3,
+	"qa":         4,
+	"release":    5,
+}
+
+// buildVerifySteps assembles the verify pipeline in a fixed order that mirrors
+// the CI pipeline stages: local compile → local tests → commit → acceptance
+// (latest + legacy in parallel) → QA (stage + signoff) → production. Each step
+// is gated by --verify-level; local tests can additionally be skipped with
+// --skip-local-tests, and legacy is dropped everywhere via --exclude-legacy.
 func buildVerifySteps(cfg *config.Config, gh *shell.GitHub) []stepDef {
-	if cfg.VerifyLevel == "none" {
+	level := verifyLevelOrder[cfg.VerifyLevel]
+	if level == 0 {
 		log.Infof("Skipping workflow verification (--verify-level none)")
 		return nil
 	}
 
 	var s []stepDef
 
-	// smoke tier — local smoke tests only, no CI
-	if cfg.VerifyLevel == "local" {
+	// Step 1: Local compilation — runs at every level above none.
+	s = append(s,
+		stepDef{name: "Verify local compilation", phase: phaseVerify, fn: func() { steps.VerifyCompilation(cfg) }},
+	)
+
+	// Step 2: Local testing — Run-SystemTests.ps1 (latest + legacy).
+	if !cfg.SkipLocalTests {
 		s = append(s,
-			stepDef{name: "Run local smoke tests", phase: phaseVerify, fn: func() { steps.RunLocalSystemTests(cfg) }},
+			stepDef{name: "Verify local testing", phase: phaseVerify, fn: func() { steps.VerifyLocalTesting(cfg) }},
 		)
 	}
 
-	// commit tier and above — CI workflow verification
-	if cfg.VerifyLevel == "commit" || cfg.VerifyLevel == "acceptance" || cfg.VerifyLevel == "release" {
+	// Step 3: Commit stage CI.
+	if level >= verifyLevelOrder["commit"] {
 		s = append(s,
 			stepDef{name: "Verify commit stage", phase: phaseVerify, fn: func() { steps.VerifyCommitStage(cfg, gh) }},
 		)
 	}
 
-	if cfg.VerifyLevel == "acceptance" || cfg.VerifyLevel == "release" {
+	// Step 4: Acceptance stage CI (latest + legacy parallel, legacy optional).
+	if level >= verifyLevelOrder["acceptance"] {
 		s = append(s,
-			stepDef{name: "Verify acceptance stage", phase: phaseVerify, fn: func() { steps.VerifyAcceptanceStage(cfg, gh) }},
-		)
-		if !cfg.ExcludeLegacy {
-			s = append(s,
-				stepDef{name: "Verify acceptance stage legacy", phase: phaseVerify, fn: func() { steps.VerifyAcceptanceStageLegacy(cfg, gh) }},
-			)
-		}
-		s = append(s,
-			stepDef{name: "Run local system tests", phase: phaseVerify, fn: func() { steps.RunLocalSystemTests(cfg) }},
+			stepDef{name: "Verify acceptance stage", phase: phaseVerify, fn: func() { steps.VerifyAcceptanceStages(cfg, gh) }},
 		)
 	}
 
-	if cfg.VerifyLevel == "release" {
+	// Step 5: QA stage CI (stage + signoff).
+	if level >= verifyLevelOrder["qa"] {
 		s = append(s,
-			stepDef{name: "Verify QA stage", phase: phaseVerify, fn: func() { steps.VerifyQAStage(cfg, gh) }},
-			stepDef{name: "Verify QA signoff", phase: phaseVerify, fn: func() { steps.VerifyQASignoff(cfg, gh) }},
+			stepDef{name: "Verify QA stage", phase: phaseVerify, fn: func() { steps.VerifyQA(cfg, gh) }},
+		)
+	}
+
+	// Step 6: Production stage CI.
+	if level >= verifyLevelOrder["release"] {
+		s = append(s,
 			stepDef{name: "Verify production stage", phase: phaseVerify, fn: func() { steps.VerifyProdStage(cfg, gh) }},
 		)
 	}
@@ -431,9 +451,10 @@ func printBanner(cfg *config.Config) {
 	log.Infof("--test-lang:       %s%s", cfg.Raw.TestLang, tag("test-lang"))
 	log.Infof("--license:         %s%s", cfg.License, tag("license"))
 	log.Infof("--deploy:          %s%s", cfg.Deploy, tag("deploy"))
-	log.Infof("--verify-level:    %s%s", cfg.Raw.VerifyLevel, tag("verify-level"))
-	log.Infof("--exclude-legacy:  %v%s", cfg.ExcludeLegacy, tag("exclude-legacy"))
-	log.Infof("--sample-tests:    %v%s", cfg.SampleTests, tag("sample-tests"))
+	log.Infof("--verify-level:      %s%s", cfg.Raw.VerifyLevel, tag("verify-level"))
+	log.Infof("--exclude-legacy:    %v%s", cfg.ExcludeLegacy, tag("exclude-legacy"))
+	log.Infof("--skip-local-tests:  %v%s", cfg.SkipLocalTests, tag("skip-local-tests"))
+	log.Infof("--sample-tests:      %v%s", cfg.SampleTests, tag("sample-tests"))
 	log.Infof("--shop-tag:        %s%s", cfg.Raw.ShopTag, tag("shop-tag"))
 	log.Infof("--dry-run:         %v%s", cfg.DryRun, tag("dry-run"))
 	log.Infof("--keep-local:      %v%s", cfg.Raw.KeepLocal, tag("keep-local"))

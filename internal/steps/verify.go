@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/optivem/gh-optivem/internal/config"
@@ -197,16 +198,69 @@ func VerifyCommitStage(cfg *config.Config, gh *shell.GitHub) {
 	}
 }
 
-// VerifyAcceptanceStage triggers and verifies acceptance stage.
-func VerifyAcceptanceStage(cfg *config.Config, gh *shell.GitHub) {
-	log.Info("Triggering and verifying acceptance stage...")
+// VerifyAcceptanceStages triggers the latest and legacy acceptance-stage
+// workflows and watches both runs in parallel. Legacy is skipped when
+// --exclude-legacy is set. RC version is captured from the latest run after
+// both have completed.
+func VerifyAcceptanceStages(cfg *config.Config, gh *shell.GitHub) {
+	includeLegacy := !cfg.ExcludeLegacy
+
+	if includeLegacy {
+		log.Info("Triggering acceptance stage (latest + legacy in parallel)...")
+	} else {
+		log.Info("Triggering acceptance stage (latest)...")
+	}
 
 	if cfg.DryRun {
-		log.Info("[DRY RUN] Would trigger and wait for acceptance stage workflow")
+		log.Info("[DRY RUN] Would trigger and wait for acceptance stage workflow(s)")
 		return
 	}
 
-	verifyWorkflow(gh, "Acceptance stage", "acceptance-stage.yml", nil, 300)
+	shell.CheckRateLimit()
+	gh.WorkflowRun("acceptance-stage.yml", nil)
+
+	if includeLegacy {
+		shell.CheckRateLimit()
+		gh.WorkflowRun("acceptance-stage-legacy.yml", nil)
+	}
+
+	// Give GitHub a moment to register both runs before we start watching,
+	// otherwise the `gh run list` lookup can return an older run.
+	time.Sleep(5 * time.Second)
+
+	var wg sync.WaitGroup
+	var latestErr, legacyErr error
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		shell.CheckRateLimit()
+		latestErr = gh.RunWatchWorkflow("acceptance-stage.yml", 300)
+	}()
+
+	if includeLegacy {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			shell.CheckRateLimit()
+			legacyErr = gh.RunWatchWorkflow("acceptance-stage-legacy.yml", 300)
+		}()
+	}
+
+	wg.Wait()
+
+	// Report both results before any fatal, so the user sees the legacy status
+	// even when latest failed first (or vice versa).
+	reportParallelResult(latestErr, "Acceptance stage", gh.Repo)
+	if includeLegacy {
+		reportParallelResult(legacyErr, "Acceptance stage legacy", gh.Repo)
+	}
+	if latestErr != nil {
+		handleWorkflowResult(latestErr, "Acceptance stage", gh.Repo)
+	}
+	if legacyErr != nil {
+		handleWorkflowResult(legacyErr, "Acceptance stage legacy", gh.Repo)
+	}
 
 	rcVersion := getRCVersion(gh)
 	if rcVersion != "" {
@@ -217,16 +271,23 @@ func VerifyAcceptanceStage(cfg *config.Config, gh *shell.GitHub) {
 	}
 }
 
-// VerifyAcceptanceStageLegacy triggers and verifies acceptance stage legacy.
-func VerifyAcceptanceStageLegacy(cfg *config.Config, gh *shell.GitHub) {
-	log.Info("Triggering and verifying acceptance stage legacy...")
-
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would trigger and wait for acceptance stage legacy workflow")
+// reportParallelResult prints the status of one half of a parallel pair
+// without fataling, so the other half's result can also be printed before
+// the caller decides whether to fatal.
+func reportParallelResult(err error, label, repo string) {
+	if err == nil {
+		log.Successf("%s passed!", label)
 		return
 	}
+	log.Errorf("%s failed! See: https://github.com/%s/actions", label, repo)
+}
 
-	verifyWorkflow(gh, "Acceptance stage legacy", "acceptance-stage-legacy.yml", nil, 300)
+// VerifyQA runs the QA stage followed by the QA signoff. Both require an RC
+// version from an earlier acceptance run; when RCVersion is empty both are
+// skipped with a warning (handled inside each sub-step).
+func VerifyQA(cfg *config.Config, gh *shell.GitHub) {
+	VerifyQAStage(cfg, gh)
+	VerifyQASignoff(cfg, gh)
 }
 
 // VerifyQAStage triggers and verifies QA stage.
@@ -369,9 +430,10 @@ func setupMultirepoSymlinks(cfg *config.Config) {
 	}
 }
 
-// RunLocalSystemTests runs Run-SystemTests.ps1 locally against the scaffolded project
-// to verify that Docker builds and test suites work. Gated by --verify-level in main.go.
-func RunLocalSystemTests(cfg *config.Config) {
+// VerifyLocalTesting runs Run-SystemTests.ps1 locally against the scaffolded
+// project — latest plus legacy (unless --exclude-legacy). Skipped entirely
+// when --skip-local-tests is set (the gate lives in main.go).
+func VerifyLocalTesting(cfg *config.Config) {
 	log.Info("Running local system tests...")
 
 	if cfg.DryRun {

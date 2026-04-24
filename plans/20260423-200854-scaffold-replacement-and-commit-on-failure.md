@@ -69,6 +69,7 @@ These three lines are self-contradictory. Either the acceptance stage actually r
   - If the acceptance workflow is allowed to skip promhttps://github.com/optivem/hub/discussionsotion (e.g. because there are no new artifacts), "passed" should be renamed to `OK Acceptance stage completed (promotion skipped)` and Step 16 should not end on an OK/WARN pair that implies both.
   - If promotion is *required* at `--verify-level release`, a missing RC should fail the step, not warn.
 - [ ] **Update the log line in verify.go** so "passed" is only printed when both the workflow succeeded *and* an RC was produced (at release level).
+- [ ] **Log `gh run view <run-id>` output after each stage passes.** [RunWatchWorkflow](../internal/shell/github.go#L397) already resolves the run's `databaseId`; return it alongside the error so callers can capture it. After `reportParallelResult` prints "passed", call `gh run view <run-id> --repo <repo>` and log its output (job/step status table + web URL). This turns the one-line "passed" into a visible breakdown of which jobs actually ran vs were skipped — which would have immediately explained the "RC exists but not detected" case on run 24884129262. Apply to every `Verify*` step that watches a workflow (commit, acceptance latest, acceptance legacy, QA, QA signoff, release, production).
 
 ### Issue 4 — QA + production stages silently skipped on `--verify-level release`
 

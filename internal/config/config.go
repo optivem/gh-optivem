@@ -51,8 +51,9 @@ type Config struct {
 	Deploy     string // "docker" (default) or "cloud-run"
 	License    string
 	DryRun       bool
-	VerifyLevel   string // "none", "local", "commit", "acceptance", "release"
-	ExcludeLegacy bool   // exclude acceptance-stage-legacy verification
+	VerifyLevel    string // "none", "local", "commit", "acceptance", "qa", "release"
+	ExcludeLegacy  bool   // exclude legacy from local tests and acceptance stage
+	SkipLocalTests bool   // skip the "Verify local testing" step (Run-SystemTests.ps1)
 	SampleTests   bool   // run only sample local tests instead of all
 	KeepLocal    bool   // keep the local scaffolded clone dir after a successful run (default: delete it)
 	NoBugReport  bool   // skip auto-creating GitHub issues on failure
@@ -401,7 +402,8 @@ type rawFlags struct {
 	lang, testLang, backendLang, frontendLang                    *string
 	license, verifyLevel, deploy, workDir, shopTag               *string
 	dryRun, keepLocal                                            *bool
-	excludeLegacy, sampleTests, noBugReport, showVersion         *bool
+	excludeLegacy, skipLocalTests, sampleTests                   *bool
+	noBugReport, showVersion                                     *bool
 	verbose, verboseShort, quiet, quietShort, noAutoUpgrade      *bool
 	logFile                                                      *string
 }
@@ -420,9 +422,10 @@ func registerFlags() rawFlags {
 		license:       flag.String("license", "mit", "License: mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense"),
 		dryRun:        flag.Bool("dry-run", false, "Print actions without executing"),
 		keepLocal:     flag.Bool("keep-local", false, "Keep the local scaffolded clone dir instead of deleting it on success"),
-		verifyLevel:   flag.String("verify-level", "release", "Verification level: none, local, commit, acceptance, release"),
-		excludeLegacy: flag.Bool("exclude-legacy", false, "Exclude acceptance-stage-legacy verification"),
-		sampleTests:   flag.Bool("sample-tests", false, "Run only sample local tests instead of all"),
+		verifyLevel:    flag.String("verify-level", "release", "Verification level: none, local, commit, acceptance, qa, release"),
+		excludeLegacy:  flag.Bool("exclude-legacy", false, "Exclude legacy from local tests and acceptance stage"),
+		skipLocalTests: flag.Bool("skip-local-tests", false, "Skip the 'Verify local testing' step (Run-SystemTests.ps1)"),
+		sampleTests:    flag.Bool("sample-tests", false, "Run only sample local tests instead of all"),
 		noBugReport:   flag.Bool("no-bug-report", false, "Skip auto-creating GitHub issues on failure"),
 		deploy:        flag.String("deploy", "docker", "Deployment target: docker or cloud-run"),
 		workDir:       flag.String("workdir", "", "Working directory for cloning (default: temp dir)"),
@@ -438,9 +441,9 @@ func registerFlags() rawFlags {
 }
 
 func resolveVerifyLevel(level string) string {
-	validLevels := map[string]bool{"none": true, "local": true, "commit": true, "acceptance": true, "release": true}
+	validLevels := map[string]bool{"none": true, "local": true, "commit": true, "acceptance": true, "qa": true, "release": true}
 	if !validLevels[level] {
-		log.FatalExit("--verify-level must be none, local, commit, acceptance, or release")
+		log.FatalExit("--verify-level must be none, local, commit, acceptance, qa, or release")
 	}
 	return level
 }
@@ -809,9 +812,10 @@ func ParseAndValidate() *Config {
 		Deploy:     *f.deploy,
 		License:    *f.license,
 		DryRun:       *f.dryRun,
-		VerifyLevel:   resolvedLevel,
-		ExcludeLegacy: *f.excludeLegacy,
-		SampleTests:   *f.sampleTests,
+		VerifyLevel:    resolvedLevel,
+		ExcludeLegacy:  *f.excludeLegacy,
+		SkipLocalTests: *f.skipLocalTests,
+		SampleTests:    *f.sampleTests,
 		KeepLocal:    *f.keepLocal,
 		NoBugReport:  *f.noBugReport,
 		Verbose:      verbose,
