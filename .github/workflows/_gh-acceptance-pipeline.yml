@@ -366,9 +366,7 @@ jobs:
       WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
     strategy:
       # All smoke combos run to completion even if one fails, so a Windows-only
-      # Docker flake doesn't mask a Linux regression (or vice versa). Local
-      # failures auto-file tickets via warn-on-local-failure below rather than
-      # failing the job.
+      # failure doesn't mask an unrelated Linux regression (or vice versa).
       fail-fast: false
       matrix: ${{ fromJSON(needs.check.outputs.smoke-matrix) }}
     steps:
@@ -387,7 +385,6 @@ jobs:
           shop-tag: ${{ needs.check.outputs.shop-tag }}
           retain-repos: ${{ needs.check.outputs.retain-repos }}
           jitter-max-seconds: '30'
-          warn-on-local-failure: 'true'
 
   run:
     name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})

@@ -36,10 +36,6 @@ inputs:
     description: 'Upper bound (seconds) for the random start-jitter that staggers matrix jobs. Keep at 120 for the large acceptance matrix; lower for small matrices (e.g. smoke) where rate limits are not a concern.'
     required: false
     default: '120'
-  warn-on-local-failure:
-    description: 'Treat "Verify local testing" (Run-SystemTests.ps1) failures as a warning instead of fatal, and auto-file a GitHub issue with the failure log. Used by the smoke matrix where a Windows-runner Docker flake should not block downstream stages.'
-    required: false
-    default: 'false'
 
 runs:
   using: composite
@@ -164,95 +160,8 @@ runs:
         TEST_SKIP_LOCAL_TESTS: ${{ inputs.skip-local-tests }}
         TEST_SHOP_TAG: ${{ inputs.shop-tag }}
         TEST_NO_CLEANUP: ${{ inputs.retain-repos == 'true' && '1' || '' }}
-        # The scaffolded CLI honors these when it runs Run-SystemTests.ps1 —
-        # failures become warnings + a log file instead of a fatal, so the
-        # pipeline stages can still run and CI can auto-file a ticket below.
-        GH_LOCAL_TEST_WARN_ONLY: ${{ inputs.warn-on-local-failure == 'true' && '1' || '' }}
-        GH_LOCAL_TEST_LOG_DIR: ${{ runner.temp }}/local-test-failures
 
     - name: Rate limit marker
       if: failure() && steps.test-run.outputs.result == 'rate-limited'
       shell: bash
       run: echo "This job was rate-limited"
-
-    # Auto-file a ticket for any local-test failure captured under
-    # $GH_LOCAL_TEST_LOG_DIR, or for a pipeline (non-local) failure of the
-    # System test step. The reason line discriminates the two cases so the
-    # triager can tell a Windows-runner Docker flake from a real regression.
-    - name: Auto-file ticket for local / pipeline failures
-      id: auto-ticket
-      if: ${{ !cancelled() && inputs.warn-on-local-failure == 'true' }}
-      continue-on-error: true
-      shell: bash
-      env:
-        GH_TOKEN: ${{ env.WORKFLOW_TOKEN }}
-        LOG_DIR: ${{ runner.temp }}/local-test-failures
-        STEP_OUTCOME: ${{ steps.test-run.outcome }}
-        MATRIX_KEY: "${{ runner.os }} ${{ inputs.arch }}/${{ inputs.repo-strategy }}/${{ inputs.lang }}->${{ inputs.test-lang }}"
-        RUN_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-        ISSUE_REPO: ${{ github.repository }}
-      run: |
-        set -euo pipefail
-
-        has_local_markers=false
-        if [ -d "$LOG_DIR" ] && [ -n "$(ls -A "$LOG_DIR" 2>/dev/null)" ]; then
-          has_local_markers=true
-        fi
-
-        if [ "$STEP_OUTCOME" != "failure" ] && [ "$has_local_markers" != "true" ]; then
-          echo "No failures to report."
-          exit 0
-        fi
-
-        if [ "$STEP_OUTCOME" = "failure" ]; then
-          reason="Pipeline failed (the workflow verification step returned non-zero)."
-          kind="pipeline-failure"
-        else
-          reason="Local tests failed even though the pipeline passed — likely a runner-local environment issue (e.g. Docker engine mode, missing toolchain)."
-          kind="local-only-failure"
-        fi
-
-        title="[auto] ${kind}: ${MATRIX_KEY}"
-        body_file="$(mktemp)"
-        {
-          echo "**Reason:** ${reason}"
-          echo ""
-          echo "**Matrix:** ${MATRIX_KEY}"
-          echo "**Workflow run:** ${RUN_URL}"
-          echo "**System-test step outcome:** ${STEP_OUTCOME}"
-          echo ""
-          if [ "$has_local_markers" = "true" ]; then
-            echo "### Local test failure logs"
-            echo ""
-            for log in "$LOG_DIR"/*.log; do
-              [ -f "$log" ] || continue
-              echo "<details><summary>$(basename "$log")</summary>"
-              echo ""
-              echo '```'
-              cat "$log"
-              echo '```'
-              echo ""
-              echo "</details>"
-              echo ""
-            done
-          else
-            echo "_No local-test marker files — pipeline failed outside the Verify-local-testing step._"
-          fi
-        } > "$body_file"
-
-        existing=$(gh issue list --repo "$ISSUE_REPO" --state open \
-          --search "\"$title\" in:title" --json number --jq '.[0].number // ""' || echo "")
-        if [ -n "$existing" ]; then
-          gh issue comment "$existing" --repo "$ISSUE_REPO" --body-file "$body_file"
-          echo "Commented on existing issue #$existing"
-        else
-          gh issue create --repo "$ISSUE_REPO" --title "$title" --body-file "$body_file"
-        fi
-
-    - name: Upload local-test failure logs
-      if: ${{ !cancelled() && inputs.warn-on-local-failure == 'true' }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: local-test-failures-${{ runner.os }}-${{ inputs.arch }}-${{ inputs.repo-strategy }}-${{ inputs.lang }}-${{ inputs.test-lang }}
-        path: ${{ runner.temp }}/local-test-failures/
-        if-no-files-found: ignore

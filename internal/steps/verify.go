@@ -357,51 +357,14 @@ func handleWorkflowResult(err error, label, repo string) {
 }
 
 // runLocalTests runs a pwsh test command and reports the result.
-//
-// When GH_LOCAL_TEST_WARN_ONLY=1 is set, a failure is logged as a warning and
-// a log file is written to $GH_LOCAL_TEST_LOG_DIR instead of fataling — this
-// lets a downstream CI step auto-file a ticket while still letting the rest
-// of the verification pipeline run.
 func runLocalTests(label, cmd, dir string) {
 	log.Infof("Running: %s (in %s)", cmd, dir)
 	output, err := shell.Run(cmd, false, true, dir)
 	if err != nil {
 		log.Errorf("%s output:\n%s", label, output)
-		if os.Getenv("GH_LOCAL_TEST_WARN_ONLY") == "1" {
-			writeLocalFailureLog(label, cmd, dir, output, err)
-			log.Warnf("%s failed — continuing because GH_LOCAL_TEST_WARN_ONLY=1. CI will auto-file a ticket.", label)
-			return
-		}
 		log.Fatalf(msgStageFailed, label)
 	}
 	log.Successf(msgStagePassed, label)
-}
-
-// writeLocalFailureLog persists a failing local-test invocation under
-// $GH_LOCAL_TEST_LOG_DIR so a downstream CI step can pick it up and auto-file
-// a ticket. Silent no-op when the env var is empty.
-func writeLocalFailureLog(label, cmd, dir, output string, runErr error) {
-	logDir := os.Getenv("GH_LOCAL_TEST_LOG_DIR")
-	if logDir == "" {
-		return
-	}
-	if err := os.MkdirAll(logDir, 0o755); err != nil {
-		log.Warnf("Failed to create local-test log dir %s: %v", logDir, err)
-		return
-	}
-	safe := strings.Map(func(r rune) rune {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-			return r
-		}
-		return '-'
-	}, label)
-	path := filepath.Join(logDir, safe+".log")
-	body := fmt.Sprintf("Label: %s\nCommand: %s\nWorking dir: %s\nError: %v\n\n--- output ---\n%s\n",
-		label, cmd, dir, runErr, output)
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		log.Warnf("Failed to write local-test log %s: %v", path, err)
-	}
 }
 
 // canRunLocalTests checks common preconditions for local test execution.
