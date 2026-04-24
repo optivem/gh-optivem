@@ -18,6 +18,17 @@ gh extension install .
 go build ./...
 ```
 
+## Shop version in local builds
+
+Local builds (`go run .`, `go build`, `gh extension install .`) have no shop ref baked in, so `gh optivem init` resolves `--shop-tag` as follows:
+
+1. `--shop-tag vX.Y.Z` — use that exact tag (refuses `main`/`master`).
+2. Otherwise — fetch the **latest `meta-v*` release** from `optivem/shop` via `gh api` and use that.
+
+Released binaries (`gh extension install optivem/gh-optivem`) are pinned to the shop SHA baked in at release time and do **not** auto-upgrade to the latest `meta-v*` release.
+
+For reproducible local testing, pass `--shop-tag meta-vX.Y.Z` explicitly.
+
 ## Running Tests
 
 ### Unit tests
