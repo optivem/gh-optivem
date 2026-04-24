@@ -1,6 +1,6 @@
 # Plan: Scaffold output improvements + step-sequence cleanup
 
-🤖 **Picked up by agent** — `Valentina_Desk` at `2026-04-24T06:36:15Z`
+> **Status:** all code items landed (see git log). Only the manual end-to-end verify step remains.
 
 ## Motivation
 
@@ -23,12 +23,6 @@ These five edits compiled clean during the conversation; they're listed so the n
 - [github.go:387](../internal/shell/github.go#L387) — `RunWatchWorkflow` prints `Watching workflow run: https://github.com/<repo>/actions/runs/<id>` before `gh run watch`.
 
 ## Items
-
-### Group 1 — Step sequence cleanup (depends on nothing else)
-
-### Group 2 — Logging refactor (verbosity + log-file + color convention)
-
-Recommended single coordinated change in [internal/log/log.go](../internal/log/log.go):
 
 ### Group 3 — Environment naming (local to gh-optivem)
 
