@@ -50,10 +50,10 @@ const (
 // VerifyCompilation compiles all source and test components locally to catch
 // broken imports, type errors, and case-sensitive path mismatches before pushing.
 func VerifyCompilation(cfg *config.Config) {
-	log.Log("Verifying local compilation...")
+	log.Info("Verifying local compilation...")
 
 	if cfg.DryRun {
-		log.Log("[DRY RUN] Would verify compilation of all components")
+		log.Info("[DRY RUN] Would verify compilation of all components")
 		return
 	}
 
@@ -73,7 +73,7 @@ func compileComponent(label, lang, dir string) {
 			log.Fatalf("Compilation failed for %s (%s) in %s: %v", label, lang, dir, err)
 		}
 	}
-	log.OKf("Compiled %s (%s)", label, lang)
+	log.Successf("Compiled %s (%s)", label, lang)
 }
 
 // runWithRetry executes cmd with retries on transient network failures.
@@ -170,10 +170,10 @@ func systemTestDir(cfg *config.Config) string {
 
 // VerifyCommitStage waits for commit stage workflow to pass.
 func VerifyCommitStage(cfg *config.Config, gh *shell.GitHub) {
-	log.Log("Verifying commit stage workflow...")
+	log.Info("Verifying commit stage workflow...")
 
 	if cfg.DryRun {
-		log.Log("[DRY RUN] Would wait for commit stage workflow")
+		log.Info("[DRY RUN] Would wait for commit stage workflow")
 		return
 	}
 
@@ -199,10 +199,10 @@ func VerifyCommitStage(cfg *config.Config, gh *shell.GitHub) {
 
 // VerifyAcceptanceStage triggers and verifies acceptance stage.
 func VerifyAcceptanceStage(cfg *config.Config, gh *shell.GitHub) {
-	log.Log("Triggering and verifying acceptance stage...")
+	log.Info("Triggering and verifying acceptance stage...")
 
 	if cfg.DryRun {
-		log.Log("[DRY RUN] Would trigger and wait for acceptance stage workflow")
+		log.Info("[DRY RUN] Would trigger and wait for acceptance stage workflow")
 		return
 	}
 
@@ -211,7 +211,7 @@ func VerifyAcceptanceStage(cfg *config.Config, gh *shell.GitHub) {
 	rcVersion := getRCVersion(gh)
 	if rcVersion != "" {
 		cfg.RCVersion = rcVersion
-		log.OKf("RC version: %s", rcVersion)
+		log.Successf("RC version: %s", rcVersion)
 	} else {
 		log.Warn("No RC version found — acceptance stage may have skipped promotion (e.g. no artifacts yet). Downstream stages will be skipped.")
 	}
@@ -219,10 +219,10 @@ func VerifyAcceptanceStage(cfg *config.Config, gh *shell.GitHub) {
 
 // VerifyAcceptanceStageLegacy triggers and verifies acceptance stage legacy.
 func VerifyAcceptanceStageLegacy(cfg *config.Config, gh *shell.GitHub) {
-	log.Log("Triggering and verifying acceptance stage legacy...")
+	log.Info("Triggering and verifying acceptance stage legacy...")
 
 	if cfg.DryRun {
-		log.Log("[DRY RUN] Would trigger and wait for acceptance stage legacy workflow")
+		log.Info("[DRY RUN] Would trigger and wait for acceptance stage legacy workflow")
 		return
 	}
 
@@ -231,10 +231,10 @@ func VerifyAcceptanceStageLegacy(cfg *config.Config, gh *shell.GitHub) {
 
 // VerifyQAStage triggers and verifies QA stage.
 func VerifyQAStage(cfg *config.Config, gh *shell.GitHub) {
-	log.Log("Triggering and verifying QA stage...")
+	log.Info("Triggering and verifying QA stage...")
 
 	if cfg.DryRun {
-		log.Log("[DRY RUN] Would trigger and wait for QA stage workflow")
+		log.Info("[DRY RUN] Would trigger and wait for QA stage workflow")
 		return
 	}
 
@@ -248,10 +248,10 @@ func VerifyQAStage(cfg *config.Config, gh *shell.GitHub) {
 
 // VerifyQASignoff triggers and verifies QA signoff.
 func VerifyQASignoff(cfg *config.Config, gh *shell.GitHub) {
-	log.Log("Triggering and verifying QA signoff...")
+	log.Info("Triggering and verifying QA signoff...")
 
 	if cfg.DryRun {
-		log.Log("[DRY RUN] Would trigger and wait for QA signoff workflow")
+		log.Info("[DRY RUN] Would trigger and wait for QA signoff workflow")
 		return
 	}
 
@@ -265,10 +265,10 @@ func VerifyQASignoff(cfg *config.Config, gh *shell.GitHub) {
 
 // VerifyProdStage triggers and verifies production stage.
 func VerifyProdStage(cfg *config.Config, gh *shell.GitHub) {
-	log.Log("Triggering and verifying production stage...")
+	log.Info("Triggering and verifying production stage...")
 
 	if cfg.DryRun {
-		log.Log("[DRY RUN] Would trigger and wait for production stage workflow")
+		log.Info("[DRY RUN] Would trigger and wait for production stage workflow")
 		return
 	}
 
@@ -300,27 +300,27 @@ func verifyWorkflow(gh *shell.GitHub, label, triggerWorkflow string, fields map[
 
 func handleWorkflowResult(err error, label, repo string) {
 	if err == nil {
-		log.OKf("%s passed!", label)
+		log.Successf("%s passed!", label)
 		return
 	}
 	var rle *shell.RateLimitExceeded
 	if errors.As(err, &rle) {
-		log.Failf("%s failed due to GitHub API rate limiting (the workflow itself may have succeeded)!", label)
+		log.Errorf("%s failed due to GitHub API rate limiting (the workflow itself may have succeeded)!", label)
 		log.Fatalf("Rate limit exceeded while watching %s workflow. The workflow run may still be passing — check manually: https://github.com/%s/actions", label, repo)
 	}
-	log.Failf("%s failed!", label)
+	log.Errorf("%s failed!", label)
 	log.Fatalf("%s workflow failed. Check: https://github.com/%s/actions", label, repo)
 }
 
 // runLocalTests runs a pwsh test command and reports the result.
 func runLocalTests(label, cmd, dir string) {
-	log.Logf("Running: %s (in %s)", cmd, dir)
+	log.Infof("Running: %s (in %s)", cmd, dir)
 	output, err := shell.Run(cmd, false, true, dir)
 	if err != nil {
-		log.Failf("%s output:\n%s", label, output)
+		log.Errorf("%s output:\n%s", label, output)
 		log.Fatalf("%s failed!", label)
 	}
-	log.OKf("%s passed!", label)
+	log.Successf("%s passed!", label)
 }
 
 // canRunLocalTests checks common preconditions for local test execution.
@@ -367,7 +367,7 @@ func setupMultirepoSymlinks(cfg *config.Config) {
 		if err := os.Symlink(target, linkPath); err != nil {
 			log.Warnf("Failed to create symlink %s -> %s: %v", linkPath, target, err)
 		} else {
-			log.OKf("Symlinked %s -> %s", linkPath, target)
+			log.Successf("Symlinked %s -> %s", linkPath, target)
 		}
 	}
 }
@@ -375,10 +375,10 @@ func setupMultirepoSymlinks(cfg *config.Config) {
 // RunLocalSystemTests runs Run-SystemTests.ps1 locally against the scaffolded project
 // to verify that Docker builds and test suites work (test mode only).
 func RunLocalSystemTests(cfg *config.Config) {
-	log.Log("Running local system tests...")
+	log.Info("Running local system tests...")
 
 	if cfg.DryRun {
-		log.Log("[DRY RUN] Would run local system tests")
+		log.Info("[DRY RUN] Would run local system tests")
 		return
 	}
 

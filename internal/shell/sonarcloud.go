@@ -109,9 +109,9 @@ func (s *SonarCloud) CreateOrg() {
 		return
 	}
 	if s.isAlreadyExists(result) {
-		log.OKf("SonarCloud org (already existed): %s", s.Org)
+		log.Successf("SonarCloud org (already existed): %s", s.Org)
 	} else {
-		log.OKf("SonarCloud org (created): %s", s.Org)
+		log.Successf("SonarCloud org (created): %s", s.Org)
 	}
 }
 
@@ -128,11 +128,11 @@ func (s *SonarCloud) CreateProject(key string) {
 		log.Warnf("SonarCloud project %s: %v", key, result["message"])
 	} else {
 		if s.isAlreadyExists(result) {
-			log.OKf("SonarCloud project (already existed): %s", key)
+			log.Successf("SonarCloud project (already existed): %s", key)
 		} else {
-			log.OKf("SonarCloud project (created): %s", key)
+			log.Successf("SonarCloud project (created): %s", key)
 		}
-		log.OKf("  https://sonarcloud.io/project/overview?id=%s", key)
+		log.Successf("  https://sonarcloud.io/project/overview?id=%s", key)
 	}
 
 	// Rename default branch master -> main
@@ -158,6 +158,6 @@ func (s *SonarCloud) DeleteProject(key string) {
 	if e, ok := result["error"]; ok && e == true {
 		log.Warnf("SonarCloud project %s deletion: %v", key, result["message"])
 	} else {
-		log.OKf("Deleted SonarCloud project: %s", key)
+		log.Successf("Deleted SonarCloud project: %s", key)
 	}
 }

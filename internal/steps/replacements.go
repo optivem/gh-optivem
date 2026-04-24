@@ -33,10 +33,10 @@ var textExts = []string{
 
 // ReplaceRepoReferences replaces optivem/shop references with the target repo.
 func ReplaceRepoReferences(cfg *config.Config) {
-	log.Log("Replacing repository references...")
+	log.Info("Replacing repository references...")
 
 	if cfg.DryRun {
-		log.Logf("[DRY RUN] Would replace optivem/shop -> %s", cfg.FullRepo)
+		log.Infof("[DRY RUN] Would replace optivem/shop -> %s", cfg.FullRepo)
 		return
 	}
 
@@ -65,7 +65,7 @@ func ReplaceRepoReferences(cfg *config.Config) {
 	// with the repo name. This is separate from system name replacement.
 	replaceInfraNames(cfg)
 
-	log.OK("Repository reference replacement complete")
+	log.Success("Repository reference replacement complete")
 }
 
 func collectRepoDirs(cfg *config.Config) []string {
@@ -91,13 +91,13 @@ func replaceInfraNames(cfg *config.Config) {
 			continue
 		}
 		if n := replaceDockerComposeNames(repoDir, repoKebab, repoLower); n > 0 {
-			log.OKf("Infra: replaced docker-compose project names shop- -> %s- (%d files)", repoKebab, n)
+			log.Successf("Infra: replaced docker-compose project names shop- -> %s- (%d files)", repoKebab, n)
 		}
 		replaceAppConfigNames(repoDir, repoLower)
 		replacePowerShellNames(repoDir, repoKebab)
 	}
 
-	log.OK("Infra: replaced infrastructure names (docker-compose, DB config, scripts)")
+	log.Success("Infra: replaced infrastructure names (docker-compose, DB config, scripts)")
 }
 
 // replaceDbCredential rewrites "key=old" -> "key=new" in the given file. Splitting the
@@ -192,12 +192,12 @@ func replaceRefsInRepo(repoDir, fullRepo, ownerLower string) {
 	// Pass 1: optivem/shop -> owner/repo
 	n := files.ReplaceInTree(repoDir, "optivem/shop", fullRepo, textExts)
 	n += files.ReplaceInDockerfiles(repoDir, "optivem/shop", fullRepo)
-	log.OKf("Pass 1: replaced optivem/shop -> %s (%d files)", fullRepo, n)
+	log.Successf("Pass 1: replaced optivem/shop -> %s (%d files)", fullRepo, n)
 
 	// Pass 2: optivem_shop -> owner_repo (SonarCloud underscore variant)
 	underscoreNew := strings.ReplaceAll(fullRepo, "/", "_")
 	n = files.ReplaceInTree(repoDir, "optivem_shop", underscoreNew, textExts)
-	log.OKf("Pass 2: replaced optivem_shop -> %s (%d files)", underscoreNew, n)
+	log.Successf("Pass 2: replaced optivem_shop -> %s (%d files)", underscoreNew, n)
 
 	// Pass 3: SonarCloud org patterns
 	sonarReplacements := [][2]string{
@@ -208,7 +208,7 @@ func replaceRefsInRepo(repoDir, fullRepo, ownerLower string) {
 	for _, pair := range sonarReplacements {
 		n = files.ReplaceInTree(repoDir, pair[0], pair[1], nil)
 		if n > 0 {
-			log.OKf("Pass 3: replaced sonar org pattern (%d files)", n)
+			log.Successf("Pass 3: replaced sonar org pattern (%d files)", n)
 		}
 	}
 
@@ -226,7 +226,7 @@ func replaceRefsInRepo(repoDir, fullRepo, ownerLower string) {
 	for _, pair := range sonarProjectNamePatterns {
 		n = files.ReplaceInTree(repoDir, pair[0], pair[1], nil)
 		if n > 0 {
-			log.OKf("Pass 4: replaced sonar projectName pattern (%d files)", n)
+			log.Successf("Pass 4: replaced sonar projectName pattern (%d files)", n)
 		}
 	}
 
@@ -238,7 +238,7 @@ func replaceRefsInRepo(repoDir, fullRepo, ownerLower string) {
 		if strings.HasSuffix(repoOnly, suffix) {
 			n = files.ReplaceInTree(repoDir, repoOnly+suffix, repoOnly, nil)
 			if n > 0 {
-				log.OKf("Pass 5: deduped sonar component suffix %s (%d files)", suffix, n)
+				log.Successf("Pass 5: deduped sonar component suffix %s (%d files)", suffix, n)
 			}
 		}
 	}
@@ -279,7 +279,7 @@ func verifyActionsReferencesIntact(repoDir string) {
 	if !actionsFound {
 		log.Fatalf("Safety check failed: optivem/actions references were corrupted in %s!", repoDir)
 	}
-	log.OKf("Safety check passed: optivem/actions references intact in %s", repoDir)
+	log.Successf("Safety check passed: optivem/actions references intact in %s", repoDir)
 }
 
 func lowercaseDockerComposeImages(repoDir string) {
@@ -293,7 +293,7 @@ func lowercaseDockerComposeImages(repoDir string) {
 		lowercaseImagesInFile(path)
 		return nil
 	})
-	log.OK("Docker-compose image URLs lowercased")
+	log.Success("Docker-compose image URLs lowercased")
 }
 
 func isDockerComposeYml(name string) bool {
@@ -329,10 +329,10 @@ func lowercaseGhcrImageLine(line string) (string, bool) {
 
 // ReplaceNamespaces replaces language-specific namespaces.
 func ReplaceNamespaces(cfg *config.Config) {
-	log.Log("Replacing namespaces...")
+	log.Info("Replacing namespaces...")
 
 	if cfg.DryRun {
-		log.Log("[DRY RUN] Would replace language-specific namespaces")
+		log.Info("[DRY RUN] Would replace language-specific namespaces")
 		return
 	}
 
@@ -359,7 +359,7 @@ func ReplaceNamespaces(cfg *config.Config) {
 		}
 	}
 
-	log.OK("Namespace replacement complete")
+	log.Success("Namespace replacement complete")
 }
 
 func nsForLang(cfg *config.Config, lang, component, repoDir string) {
@@ -379,14 +379,14 @@ func nsJava(cfg *config.Config, component, repoDir string) {
 
 	n := files.ReplaceInTree(repoDir, oldFull, newFull, []string{".java", extGradle, extGradleKts, ".xml", extProps})
 	n += files.ReplaceInTree(repoDir, oldFull, newFull, []string{".yml"})
-	log.OKf("Java: replaced %s -> %s (%d files)", oldFull, newFull, n)
+	log.Successf("Java: replaced %s -> %s (%d files)", oldFull, newFull, n)
 
 	// Also replace escaped-dot variant (used in regex patterns in Java source)
 	oldEscaped := strings.ReplaceAll(oldFull, ".", "\\\\.")
 	newEscaped := strings.ReplaceAll(newFull, ".", "\\\\.")
 	n = files.ReplaceInTree(repoDir, oldEscaped, newEscaped, []string{".java"})
 	if n > 0 {
-		log.OKf("Java: replaced escaped namespace pattern (%d files)", n)
+		log.Successf("Java: replaced escaped namespace pattern (%d files)", n)
 	}
 
 	oldDirParts := []string{"com", "optivem", "shop"}
@@ -403,7 +403,7 @@ func nsJava(cfg *config.Config, component, repoDir string) {
 		}
 		return nil
 	})
-	log.OKf("Java: renamed directories com/optivem/shop -> com/%s/%s", cfg.OwnerLower, cfg.RepoNoHyphens)
+	log.Successf("Java: renamed directories com/optivem/shop -> com/%s/%s", cfg.OwnerLower, cfg.RepoNoHyphens)
 }
 
 func nsDotnet(cfg *config.Config, component, repoDir string) {
@@ -415,10 +415,10 @@ func nsDotnet(cfg *config.Config, component, repoDir string) {
 
 	n := files.ReplaceInTree(repoDir, oldFull, newFull, []string{".cs", extCshtml, extCsproj, ".sln", ".slnx", ".json", ".yml"})
 	n += files.ReplaceInDockerfiles(repoDir, oldFull, newFull)
-	log.OKf(".NET: replaced %s -> %s (%d files)", oldFull, newFull, n)
+	log.Successf(".NET: replaced %s -> %s (%d files)", oldFull, newFull, n)
 
 	files.RenameDotnetFiles(repoDir, oldFull, newFull)
-	log.OKf(".NET: renamed files %s.* -> %s.*", oldFull, newFull)
+	log.Successf(".NET: renamed files %s.* -> %s.*", oldFull, newFull)
 }
 
 func nsTypeScript(cfg *config.Config, component, repoDir string) {
@@ -427,7 +427,7 @@ func nsTypeScript(cfg *config.Config, component, repoDir string) {
 	}
 
 	n := files.ReplaceInTree(repoDir, cfg.TsPkgOld, cfg.TsPkgNew, []string{".json"})
-	log.OKf("TypeScript: replaced %s -> %s (%d files)", cfg.TsPkgOld, cfg.TsPkgNew, n)
+	log.Successf("TypeScript: replaced %s -> %s (%d files)", cfg.TsPkgOld, cfg.TsPkgNew, n)
 
 	// Update package.json metadata in system-test
 	filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
@@ -438,7 +438,7 @@ func nsTypeScript(cfg *config.Config, component, repoDir string) {
 			files.ReplaceInFile(path, `"author": "Optivem"`, `"author": "`+cfg.Owner+`"`)
 			files.ReplaceInFile(path, `"Shop - System Tests"`, `"`+cfg.SystemName+` - System Tests"`)
 			files.ReplaceInFile(path, `"optivem"`, `"`+cfg.OwnerLower+`"`)
-			log.OK("TypeScript: updated package.json metadata")
+			log.Success("TypeScript: updated package.json metadata")
 			return filepath.SkipAll
 		}
 		return nil
@@ -464,16 +464,16 @@ func nsTypeScript(cfg *config.Config, component, repoDir string) {
 // ReplaceSystemName replaces the template system name ("Shop") with the user's system name
 // across all source files, file names, and directories.
 func ReplaceSystemName(cfg *config.Config) {
-	log.Log("Replacing system name...")
+	log.Info("Replacing system name...")
 
 	if cfg.DryRun {
-		log.Logf("[DRY RUN] Would replace Shop -> %s", cfg.SysNamePascalNew)
+		log.Infof("[DRY RUN] Would replace Shop -> %s", cfg.SysNamePascalNew)
 		return
 	}
 
 	// Skip if the system name is "shop" (no change needed)
 	if cfg.SysNameCamelNew == "shop" {
-		log.OK("System name is 'shop', no replacement needed")
+		log.Success("System name is 'shop', no replacement needed")
 		return
 	}
 
@@ -484,22 +484,22 @@ func ReplaceSystemName(cfg *config.Config) {
 		replaceSystemNameInRepo(cfg, repoDir)
 	}
 
-	log.OK("System name replacement complete")
+	log.Success("System name replacement complete")
 }
 
 // ValidateNoLeftoverSystemNames checks that the old system name doesn't appear in any text
 // file after all replacement passes. Runs after commit and push so the scaffolded repo is
 // available for inspection if validation fails.
 func ValidateNoLeftoverSystemNames(cfg *config.Config) {
-	log.Log("Validating no leftover system names...")
+	log.Info("Validating no leftover system names...")
 
 	if cfg.DryRun {
-		log.Log("[DRY RUN] Would validate no leftover system names")
+		log.Info("[DRY RUN] Would validate no leftover system names")
 		return
 	}
 
 	if cfg.SysNameCamelNew == "shop" {
-		log.OK("System name is 'shop', no validation needed")
+		log.Success("System name is 'shop', no validation needed")
 		return
 	}
 
@@ -546,59 +546,59 @@ func replaceSystemNameInRepo(cfg *config.Config, repoDir string) {
 	// Pass 1: PascalCase in ALL text files (Shop -> SkyTravel).
 	// Safe everywhere: display names, type names, config keys, docs, workflows, HTML.
 	n := files.ReplaceInTree(repoDir, cfg.SysNamePascalOld, cfg.SysNamePascalNew, nil)
-	log.OKf("System name: PascalCase %s -> %s (%d files)", cfg.SysNamePascalOld, cfg.SysNamePascalNew, n)
+	log.Successf("System name: PascalCase %s -> %s (%d files)", cfg.SysNamePascalOld, cfg.SysNamePascalNew, n)
 
 	// Pass 3: "shop" in Java source files -> camelCase (shopUiBaseUrl -> skyTravelUiBaseUrl)
 	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameCamelNew, []string{".java"})
-	log.OKf("System name: Java camel %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
+	log.Successf("System name: Java camel %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
 
 	// Pass 4: "shop" in Java build files -> lowercase (package paths)
 	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameLowerNew, []string{extGradle, extGradleKts, ".xml", extProps})
-	log.OKf("System name: Java build %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameLowerNew, n)
+	log.Successf("System name: Java build %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameLowerNew, n)
 
 	// Pass 5: "shop" in .NET files -> camelCase (config keys, identifiers)
 	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameCamelNew, []string{".cs", extCsproj, ".sln", ".slnx"})
-	log.OKf("System name: .NET %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
+	log.Successf("System name: .NET %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
 
 	// Pass 6: "shop" in .NET test config (appsettings) -> camelCase
 	n = replaceInTestConfigs(repoDir, cfg.SysNameCamelOld, cfg.SysNameCamelNew)
-	log.OKf("System name: test config keys %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
+	log.Successf("System name: test config keys %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
 
 	// Pass 7a: "shop-" in TS/JS files -> kebab-case prefix (import paths, filenames: shop-api-driver -> sky-travel-api-driver)
 	// Must run BEFORE 7b so that "shop-" in kebab contexts is consumed first.
 	tsExts := []string{".ts", ".tsx", ".js", ".jsx", ".ps1"}
 	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld+"-", cfg.SysNameKebabNew+"-", tsExts)
-	log.OKf("System name: TS kebab prefix %s- -> %s- (%d files)", cfg.SysNameCamelOld, cfg.SysNameKebabNew, n)
+	log.Successf("System name: TS kebab prefix %s- -> %s- (%d files)", cfg.SysNameCamelOld, cfg.SysNameKebabNew, n)
 
 	// Pass 7b: remaining "shop" in TS/JS/PS1 files -> camelCase (identifiers: shopDriver -> skyTravelDriver, .shop() -> .skyTravel())
 	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameCamelNew, tsExts)
-	log.OKf("System name: TS camel %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
+	log.Successf("System name: TS camel %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameCamelNew, n)
 
 	// Pass 7c: "shop" in HTML/cshtml files -> kebab-case (routes, URLs)
 	n = files.ReplaceInTree(repoDir, cfg.SysNameCamelOld, cfg.SysNameKebabNew, []string{".html", extCshtml})
-	log.OKf("System name: HTML kebab %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameKebabNew, n)
+	log.Successf("System name: HTML kebab %s -> %s (%d files)", cfg.SysNameCamelOld, cfg.SysNameKebabNew, n)
 
 	// Pass 8: Rename files (PascalCase: ShopDsl.java -> SkyTravelDsl.java)
 	n = files.RenameFilesInTree(repoDir, cfg.SysNamePascalOld, cfg.SysNamePascalNew)
-	log.OKf("System name: renamed %d PascalCase files", n)
+	log.Successf("System name: renamed %d PascalCase files", n)
 
 	// Pass 9: Rename files (kebab-case: shop-api-driver.ts -> sky-travel-api-driver.ts)
 	n = files.RenameFilesInTree(repoDir, cfg.SysNameKebabOld, cfg.SysNameKebabNew)
-	log.OKf("System name: renamed %d kebab files", n)
+	log.Successf("System name: renamed %d kebab files", n)
 
 	// Pass 10: Rename directories (PascalCase: Shop/ -> SkyTravel/)
 	n = files.RenameDirsInTree(repoDir, cfg.SysNamePascalOld, cfg.SysNamePascalNew)
-	log.OKf("System name: renamed %d PascalCase directories", n)
+	log.Successf("System name: renamed %d PascalCase directories", n)
 
 	// Pass 10b: Rename TS domain directories (camelCase: shop/ -> skyTravel/).
 	// TS uses camelCase folder names to match identifier casing in imports.
 	// Must run BEFORE Pass 11 so these dirs aren't lowercased.
 	n = files.RenameDirsInSubtree(repoDir, systemTestDirName, cfg.SysNameLowerOld, cfg.SysNameCamelNew)
-	log.OKf("System name: renamed %d TS camelCase directories", n)
+	log.Successf("System name: renamed %d TS camelCase directories", n)
 
 	// Pass 11: Rename directories (lowercase: shop/ -> skytravel/ for Java package paths)
 	n = files.RenameDirsInTree(repoDir, cfg.SysNameLowerOld, cfg.SysNameLowerNew)
-	log.OKf("System name: renamed %d lowercase directories", n)
+	log.Successf("System name: renamed %d lowercase directories", n)
 }
 
 // replaceInTestConfigs replaces in JSON/YAML files that are test configs,

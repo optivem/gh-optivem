@@ -37,7 +37,7 @@ func (e *RateLimitExceeded) Error() string { return e.Msg }
 // always returned regardless of check so callers can back off.
 func Run(cmdStr string, dryRun, check bool, cwd string) (string, error) {
 	if dryRun {
-		log.Logf("[DRY RUN] %s", cmdStr)
+		log.Infof("[DRY RUN] %s", cmdStr)
 		return "", nil
 	}
 
@@ -184,10 +184,10 @@ func CheckRateLimit() {
 	if data.Remaining < rateLimitThreshold {
 		waitSecs := data.Reset - time.Now().Unix() + 5
 		if waitSecs > 0 {
-			log.Logf("Rate limit low (%d remaining). Waiting %ds for reset...", data.Remaining, waitSecs)
+			log.Infof("Rate limit low (%d remaining). Waiting %ds for reset...", data.Remaining, waitSecs)
 			time.Sleep(time.Duration(waitSecs) * time.Second)
 		} else {
-			log.Logf("Rate limit low (%d remaining) but reset is imminent.", data.Remaining)
+			log.Infof("Rate limit low (%d remaining) but reset is imminent.", data.Remaining)
 		}
 	}
 }
@@ -232,7 +232,7 @@ func isRepoNotFound(output string) bool {
 
 func (g *GitHub) CreateRepo() {
 	if g.DryRun {
-		log.Logf("[DRY RUN] Would check and create repo %s if missing", g.Repo)
+		log.Infof("[DRY RUN] Would check and create repo %s if missing", g.Repo)
 		return
 	}
 	out, err := Run(fmt.Sprintf("gh repo view %s --json name", g.Repo), false, true, "")
@@ -255,7 +255,7 @@ func (g *GitHub) CreateRepo() {
 // exists immediately without waiting for GitHub's async initialization.
 func (g *GitHub) initRepo() {
 	if g.DryRun {
-		log.Logf("[DRY RUN] Would initialize repo %s with README%s", g.Repo, licenseSuffix(g.License))
+		log.Infof("[DRY RUN] Would initialize repo %s with README%s", g.Repo, licenseSuffix(g.License))
 		return
 	}
 
@@ -313,7 +313,7 @@ func (g *GitHub) CreateEnvironment(name string) {
 
 func (g *GitHub) SecretSet(name, value string) {
 	if g.DryRun {
-		log.Logf("[DRY RUN] gh secret set %s --body *** --repo %s", name, g.Repo)
+		log.Infof("[DRY RUN] gh secret set %s --body *** --repo %s", name, g.Repo)
 		return
 	}
 	MustRunWithRetry(fmt.Sprintf("gh secret set %s --body %s --repo %s", name, value, g.Repo), false, "")
@@ -321,7 +321,7 @@ func (g *GitHub) SecretSet(name, value string) {
 
 func (g *GitHub) VariableSet(name, value string) {
 	if g.DryRun {
-		log.Logf("[DRY RUN] gh variable set %s --body \"%s\" --repo %s", name, value, g.Repo)
+		log.Infof("[DRY RUN] gh variable set %s --body \"%s\" --repo %s", name, value, g.Repo)
 		return
 	}
 	MustRunWithRetry(fmt.Sprintf("gh variable set %s --body %s --repo %s", name, value, g.Repo), false, "")
@@ -375,7 +375,7 @@ func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
 			break
 		}
 		if attempt < 12 {
-			log.Logf("Waiting for workflow run to appear (attempt %d/12)...", attempt)
+			log.Debugf("Waiting for workflow run to appear (attempt %d/12)...", attempt)
 			time.Sleep(5 * time.Second)
 		}
 	}
@@ -384,7 +384,7 @@ func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
 	}
 
 	runID := strings.TrimSpace(out)
-	log.OKf("Watching workflow run: https://github.com/%s/actions/runs/%s", g.Repo, runID)
+	log.Successf("Watching workflow run: https://github.com/%s/actions/runs/%s", g.Repo, runID)
 	_, err = Run(fmt.Sprintf("gh run watch %s --repo %s --exit-status --interval %d", runID, g.Repo, intervalSecs), false, true, "")
 	if err == nil {
 		return nil
@@ -396,7 +396,7 @@ func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
 		return err
 	}
 
-	log.Logf("Rate limit hit while watching run %s — switching to polling mode...", runID)
+	log.Infof("Rate limit hit while watching run %s — switching to polling mode...", runID)
 	return g.pollRunUntilComplete(runID)
 }
 
@@ -419,7 +419,7 @@ func (g *GitHub) pollRunUntilComplete(runID string) error {
 		if err != nil {
 			var rle *RateLimitExceeded
 			if errors.As(err, &rle) {
-				log.Logf("Rate limit hit polling run %s — waiting 60s before retry...", runID)
+				log.Infof("Rate limit hit polling run %s — waiting 60s before retry...", runID)
 				time.Sleep(60 * time.Second)
 				continue
 			}
@@ -445,7 +445,7 @@ func (g *GitHub) pollRunUntilComplete(runID string) error {
 			}
 		}
 
-		log.Logf("Run %s status: %s — polling again in 60s...", runID, status)
+		log.Infof("Run %s status: %s — polling again in 60s...", runID, status)
 		time.Sleep(60 * time.Second)
 	}
 }

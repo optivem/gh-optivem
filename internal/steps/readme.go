@@ -78,10 +78,10 @@ func writeBadges(b *strings.Builder, items [][2]string) {
 
 // UpdateReadme generates README.md for the repo(s).
 func UpdateReadme(cfg *config.Config) {
-	log.Log("Generating README...")
+	log.Info("Generating README...")
 
 	if cfg.DryRun {
-		log.Log("[DRY RUN] Would generate README.md")
+		log.Info("[DRY RUN] Would generate README.md")
 		return
 	}
 
@@ -99,7 +99,7 @@ func UpdateReadme(cfg *config.Config) {
 		writeMultitierMultirepoReadme(cfg)
 	}
 
-	log.OK("Generated README.md")
+	log.Success("Generated README.md")
 }
 
 func writeReadme(repoDir, title, badges string, cfg *config.Config) {

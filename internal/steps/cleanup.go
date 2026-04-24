@@ -49,7 +49,7 @@ func Cleanup(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud) {
 		deleteRepos(cfg, gh)
 		deleteSonarProjects(cfg, sc)
 		deleteLocalDirs(cfg)
-		log.OK("Cleanup complete")
+		log.Success("Cleanup complete")
 	} else {
 		logKeptRepos(cfg)
 	}
@@ -67,9 +67,9 @@ func resolveCleanup(cfg *config.Config) bool {
 }
 
 func deleteRepos(cfg *config.Config, gh *shell.GitHub) {
-	log.Logf("Cleaning up: deleting %s...", cfg.FullRepo)
+	log.Infof("Cleaning up: deleting %s...", cfg.FullRepo)
 	gh.Delete()
-	log.OKf(deletedRepoFmt, cfg.FullRepo)
+	log.Successf(deletedRepoFmt, cfg.FullRepo)
 
 	if cfg.RepoStrategy != "multirepo" {
 		return
@@ -78,13 +78,13 @@ func deleteRepos(cfg *config.Config, gh *shell.GitHub) {
 		ghBackend := gh.ForRepo(cfg.BackendFullRepo)
 		ghFrontend := gh.ForRepo(cfg.FrontendFullRepo)
 		ghBackend.Delete()
-		log.OKf(deletedRepoFmt, cfg.BackendFullRepo)
+		log.Successf(deletedRepoFmt, cfg.BackendFullRepo)
 		ghFrontend.Delete()
-		log.OKf(deletedRepoFmt, cfg.FrontendFullRepo)
+		log.Successf(deletedRepoFmt, cfg.FrontendFullRepo)
 	} else {
 		ghSystem := gh.ForRepo(cfg.SystemFullRepo)
 		ghSystem.Delete()
-		log.OKf(deletedRepoFmt, cfg.SystemFullRepo)
+		log.Successf(deletedRepoFmt, cfg.SystemFullRepo)
 	}
 }
 
@@ -103,14 +103,14 @@ func deleteLocalDirs(cfg *config.Config) {
 }
 
 func logKeptRepos(cfg *config.Config) {
-	log.Logf(keepingRepoFmt, cfg.FullRepo)
+	log.Infof(keepingRepoFmt, cfg.FullRepo)
 	if cfg.RepoStrategy != "multirepo" {
 		return
 	}
 	if cfg.Arch == "multitier" {
-		log.Logf(keepingRepoFmt, cfg.FrontendFullRepo)
-		log.Logf(keepingRepoFmt, cfg.BackendFullRepo)
+		log.Infof(keepingRepoFmt, cfg.FrontendFullRepo)
+		log.Infof(keepingRepoFmt, cfg.BackendFullRepo)
 	} else {
-		log.Logf(keepingRepoFmt, cfg.SystemFullRepo)
+		log.Infof(keepingRepoFmt, cfg.SystemFullRepo)
 	}
 }

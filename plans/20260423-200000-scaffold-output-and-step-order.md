@@ -30,8 +30,6 @@ These five edits compiled clean during the conversation; they're listed so the n
 
 Recommended single coordinated change in [internal/log/log.go](../internal/log/log.go):
 
-- [ ] **Adopt [`fatih/color`](https://github.com/fatih/color)** for color output. Replaces hardcoded `\033[...]` strings at [log.go:9-15](../internal/log/log.go#L9-L15). Auto-honors `NO_COLOR`, detects TTY (so piped/redirected output is clean text), handles Windows ANSI properly.
-
 - [ ] **Add `--verbose` / `-v` and `--quiet` / `-q` flags** to the `init` subcommand. Wire to a new `log.Init(opts)` called from `runInit` in [main.go:73](../main.go#L73). Add `log.Debug()` / `log.Debugf()` gated on verbose; promote noisy "Waiting for workflow run to appear" / retry chatter to debug.
 
 - [ ] **Add `--log-file <path>` flag.** Internally use `io.MultiWriter(stdout, file)`. Strip ANSI when writing to the file (or use two writers — colored to stdout, plain to file). Default off; if specified, all log levels go to the file regardless of `--quiet`.

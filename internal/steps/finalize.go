@@ -14,10 +14,10 @@ import (
 
 // WriteProjectConfig writes .optivem/config.json to the scaffolded project root(s).
 func WriteProjectConfig(cfg *config.Config) {
-	log.Log("Writing project config...")
+	log.Info("Writing project config...")
 
 	if cfg.DryRun {
-		log.Log("[DRY RUN] Would write .optivem/config.json")
+		log.Info("[DRY RUN] Would write .optivem/config.json")
 		return
 	}
 
@@ -39,7 +39,7 @@ func WriteProjectConfig(cfg *config.Config) {
 		}
 	}
 
-	log.OK("Wrote .optivem/config.json")
+	log.Success("Wrote .optivem/config.json")
 }
 
 func writeConfigToDir(dir string, jsonBytes []byte) {
@@ -50,10 +50,10 @@ func writeConfigToDir(dir string, jsonBytes []byte) {
 
 // CreateSonarCloudProjects creates SonarCloud org and projects.
 func CreateSonarCloudProjects(cfg *config.Config, sc *shell.SonarCloud) {
-	log.Log("Creating SonarCloud projects...")
+	log.Info("Creating SonarCloud projects...")
 
 	if cfg.DryRun {
-		log.Log("[DRY RUN] Would create SonarCloud org and project(s)")
+		log.Info("[DRY RUN] Would create SonarCloud org and project(s)")
 		return
 	}
 
@@ -69,10 +69,10 @@ func CreateSonarCloudProjects(cfg *config.Config, sc *shell.SonarCloud) {
 // failed and this is an intentional partial push for troubleshooting — the
 // note is included in the commit message so git history flags it.
 func CommitAndPush(cfg *config.Config, failureNote string) {
-	log.Log("Committing and pushing...")
+	log.Info("Committing and pushing...")
 
 	if cfg.DryRun {
-		log.Log("[DRY RUN] Would git add, commit, push")
+		log.Info("[DRY RUN] Would git add, commit, push")
 		return
 	}
 
@@ -110,7 +110,7 @@ func commitAndPushRepo(repoDir, fullRepo, commitMsg string) {
 	if out, err := shell.Run("git push", false, true, repoDir); err != nil {
 		log.Fatalf("git push failed in %s: %v\n%s", fullRepo, err, out)
 	}
-	log.OKf("Pushed template to %s", fullRepo)
+	log.Successf("Pushed template to %s", fullRepo)
 }
 
 func getRCVersion(gh *shell.GitHub) string {

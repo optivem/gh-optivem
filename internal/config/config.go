@@ -37,6 +37,8 @@ type Config struct {
 	Cleanup       string // "yes", "no", or "ask"
 	ForceCleanup bool   // cleanup even on failure
 	NoBugReport  bool   // skip auto-creating GitHub issues on failure
+	Verbose      bool   // enable debug output
+	Quiet        bool   // suppress info-level output
 	WorkDir    string
 	ShopPath string
 	ShopRef  string // Pinned optivem/shop ref (SHA or meta-v* tag). Never empty, never main.
@@ -327,6 +329,7 @@ type rawFlags struct {
 	license, verifyLevel, deploy, workDir, shopTag               *string
 	randomSuffix, dryRun, testMode, cleanupFlag, noCleanup       *bool
 	forceCleanup, excludeLegacy, sampleTests, noBugReport, showVersion *bool
+	verbose, verboseShort, quiet, quietShort                     *bool
 }
 
 func registerFlags() rawFlags {
@@ -355,6 +358,10 @@ func registerFlags() rawFlags {
 		workDir:       flag.String("workdir", "", "Working directory for cloning (default: temp dir)"),
 		shopTag:       flag.String("shop-tag", "", "Pin optivem/shop to this meta-v* release tag. Overrides build-time pin. Default: latest meta-v* release."),
 		showVersion:   flag.Bool("version", false, "Print version and exit"),
+		verbose:       flag.Bool("verbose", false, "Enable debug output (retry/wait chatter, diagnostics)"),
+		verboseShort:  flag.Bool("v", false, "Short for --verbose"),
+		quiet:         flag.Bool("quiet", false, "Suppress info-level output (warnings and errors still shown)"),
+		quietShort:    flag.Bool("q", false, "Short for --quiet"),
 	}
 }
 
@@ -487,7 +494,7 @@ func resolveShopRef(shopTag string) string {
 			log.FatalExit("Cannot resolve shop tag: " + err.Error())
 		}
 		ref = latest
-		log.OKf("Resolved empty shop-tag to latest meta-v* release: %s", ref)
+		log.Successf("Resolved empty shop-tag to latest meta-v* release: %s", ref)
 	}
 	if isMainRef(ref) {
 		log.FatalExit("Invalid shop ref: 'main'/'master' is not allowed — acceptance requires a published meta-v* release tag.")
@@ -570,6 +577,12 @@ func ParseAndValidate() *Config {
 		os.Exit(1)
 	}
 
+	verbose := *f.verbose || *f.verboseShort
+	quiet := *f.quiet || *f.quietShort
+	if verbose && quiet {
+		log.FatalExit("--verbose and --quiet are mutually exclusive")
+	}
+
 	if err := ValidateSystemName(*f.systemName); err != "" {
 		log.FatalExit("--system-name: " + err)
 	}
@@ -624,6 +637,8 @@ func ParseAndValidate() *Config {
 		Cleanup:      resolveCleanup(*f.cleanupFlag, *f.noCleanup),
 		ForceCleanup: *f.forceCleanup,
 		NoBugReport:  *f.noBugReport,
+		Verbose:      verbose,
+		Quiet:        quiet,
 		WorkDir:    wd,
 		ShopPath: shopPath,
 		ShopRef:  resolvedShopRef,
@@ -687,7 +702,7 @@ func cloneShop(ref string) (string, error) {
 		os.RemoveAll(dir)
 		return "", fmt.Errorf("git checkout %s failed: %s\n%s", ref, cerr, string(cout))
 	}
-	log.OKf("Cloned shop to %s (pinned to %s)", dir, ref)
+	log.Successf("Cloned shop to %s (pinned to %s)", dir, ref)
 	return dir, nil
 }
 

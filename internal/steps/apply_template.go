@@ -104,10 +104,10 @@ func addLegacyWorkflow(wfMap map[string]string, prefix, testLang, deploy string)
 
 // ApplyTemplate copies template files into the cloned repo(s).
 func ApplyTemplate(cfg *config.Config) {
-	log.Log("Applying template files...")
+	log.Info("Applying template files...")
 
 	if cfg.DryRun {
-		log.Log("[DRY RUN] Would apply template files")
+		log.Info("[DRY RUN] Would apply template files")
 		return
 	}
 
@@ -132,7 +132,7 @@ func ApplyTemplate(cfg *config.Config) {
 		}
 	}
 
-	log.OK("Applied template files")
+	log.Success("Applied template files")
 }
 
 // ── Monolith Monorepo ──────────────────────────────────────────────────────
@@ -172,7 +172,7 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	}
 
 	copyDocs(shop, repoDir, "monolith")
-	log.OK("Applied template files (monolith monorepo)")
+	log.Success("Applied template files (monolith monorepo)")
 }
 
 // ── Monolith Multirepo ─────────────────────────────────────────────────────
@@ -209,7 +209,7 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	// Fix multirepo image URLs and tokens
 	templates.FixupMonolithMultirepoImageURLs(repoDir, cfg.SystemRepo)
 	templates.FixupMultirepoToken(repoDir)
-	log.OK("Applied root repo template (monolith multirepo)")
+	log.Success("Applied root repo template (monolith multirepo)")
 
 	// System repo: system code + commit stage
 	EnsureWorkflowDir(sysDir)
@@ -230,7 +230,7 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	}
 	templates.FixupWorkflowContent(sysDir, sysContentReplacements)
 	templates.FixupAllTextFiles(sysDir, monolithSonarKeyReplacements(lang))
-	log.OK("Applied system repo template (monolith multirepo)")
+	log.Success("Applied system repo template (monolith multirepo)")
 }
 
 // ── Multitier Monorepo ─────────────────────────────────────────────────────
@@ -253,12 +253,12 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	// Backend code: system/multitier/backend-{lang}/ -> backend/
 	backendSrc := filepath.Join(shop, "system", "multitier", "backend-"+backendLang)
 	files.CopyDir(backendSrc, filepath.Join(repoDir, "backend"))
-	log.OK("Applied backend template")
+	log.Success("Applied backend template")
 
 	// Frontend code: system/multitier/frontend-{lang}/ -> frontend/
 	frontendSrc := filepath.Join(shop, "system", "multitier", "frontend-"+frontendLang)
 	files.CopyDir(frontendSrc, filepath.Join(repoDir, "frontend"))
-	log.OK("Applied frontend template")
+	log.Success("Applied frontend template")
 
 	copyExternals(shop, repoDir)
 	copySystemTests(shop, repoDir, testLang, "multi")
@@ -275,7 +275,7 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	}
 
 	copyDocs(shop, repoDir, "multitier")
-	log.OK("Applied template files (multitier monorepo)")
+	log.Success("Applied template files (multitier monorepo)")
 }
 
 // ── Multitier Multirepo ────────────────────────────────────────────────────
@@ -314,7 +314,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	// Fix multirepo image URLs and tokens
 	templates.FixupMultirepoImageURLs(repoDir, cfg.FrontendRepo, cfg.BackendRepo)
 	templates.FixupMultirepoToken(repoDir)
-	log.OK("Applied root repo template (multitier multirepo)")
+	log.Success("Applied root repo template (multitier multirepo)")
 
 	// Backend repo: code + commit stage
 	EnsureWorkflowDir(bDir)
@@ -334,7 +334,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	}
 	templates.FixupWorkflowContent(bDir, backendReplacements)
 	templates.FixupAllTextFiles(bDir, multitierSonarKeyReplacements(backendLang, frontendLang))
-	log.OK("Applied backend repo template")
+	log.Success("Applied backend repo template")
 
 	// Frontend repo: code + commit stage
 	EnsureWorkflowDir(fDir)
@@ -354,7 +354,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	}
 	templates.FixupWorkflowContent(fDir, frontendReplacements)
 	templates.FixupAllTextFiles(fDir, multitierSonarKeyReplacements(backendLang, frontendLang))
-	log.OK("Applied frontend repo template")
+	log.Success("Applied frontend repo template")
 }
 
 // ── Content replacement helpers ────────────────────────────────────────────

@@ -77,6 +77,7 @@ func runInit() {
 	checkForUpdate()
 
 	cfg := config.ParseAndValidate()
+	log.Init(cfg.Verbose, cfg.Quiet)
 
 	gh := shell.NewGitHub(cfg)
 	sc := shell.NewSonarCloud(cfg.SonarToken, cfg.OwnerLower)
@@ -145,7 +146,7 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, fail
 
 func buildVerifySteps(cfg *config.Config, gh *shell.GitHub) []stepDef {
 	if cfg.VerifyLevel == "none" {
-		log.Logf("Skipping workflow verification (--verify-level none)")
+		log.Infof("Skipping workflow verification (--verify-level none)")
 		return nil
 	}
 
@@ -236,7 +237,7 @@ func runStep(s stepDef, pos, total int, failureNote *string) (ok bool) {
 	ok = true
 	defer func() {
 		if r := recover(); r != nil {
-			log.Failf("Step failed: %s -- %v", s.name, r)
+			log.Errorf("Step failed: %s -- %v", s.name, r)
 			if *failureNote == "" {
 				*failureNote = fmt.Sprintf("%s step %d/%d: %s", s.phase, pos, total, s.name)
 			}
@@ -245,7 +246,7 @@ func runStep(s stepDef, pos, total int, failureNote *string) (ok bool) {
 	}()
 	stepStart := time.Now()
 	s.fn()
-	log.OKf("Step %d/%d done (%s)", pos, total, formatDuration(time.Since(stepStart)))
+	log.Successf("Step %d/%d done (%s)", pos, total, formatDuration(time.Since(stepStart)))
 	return
 }
 
@@ -253,12 +254,12 @@ func printSummary(cfg *config.Config, errors int, totalDuration time.Duration) {
 	fmt.Println()
 	fmt.Println(separator)
 	if errors > 0 {
-		log.Failf("Setup completed with %d error(s) in %s", errors, formatDuration(totalDuration))
+		log.Errorf("Setup completed with %d error(s) in %s", errors, formatDuration(totalDuration))
 		if !cfg.NoBugReport {
 			createBugReport(cfg, errors)
 		}
 	} else {
-		log.OKf("All steps passed! Completed in %s", formatDuration(totalDuration))
+		log.Successf("All steps passed! Completed in %s", formatDuration(totalDuration))
 	}
 	fmt.Println()
 	fmt.Printf("  System:     %s\n", cfg.SystemName)
@@ -295,7 +296,7 @@ func createBugReport(cfg *config.Config, errorCount int) {
 
 	bodyFile, err := os.CreateTemp("", "gh-issue-body-*.md")
 	if err != nil {
-		log.Logf("WARN: Failed to create temp file for bug report: %v", err)
+		log.Infof("WARN: Failed to create temp file for bug report: %v", err)
 		return
 	}
 	defer os.Remove(bodyFile.Name())
@@ -306,9 +307,9 @@ func createBugReport(cfg *config.Config, errorCount int) {
 		fmt.Sprintf(`gh issue create --repo optivem/gh-optivem --title %q --body-file %s --assignee valentinajemuovic`, title, bodyFile.Name()),
 		false, false, "")
 	if err != nil {
-		log.Logf("WARN: Failed to create bug report: %v\n%s", err, out)
+		log.Infof("WARN: Failed to create bug report: %v\n%s", err, out)
 	} else {
-		log.OKf("Bug report created: %s", strings.TrimSpace(out))
+		log.Successf("Bug report created: %s", strings.TrimSpace(out))
 	}
 }
 
@@ -338,27 +339,27 @@ func printBanner(cfg *config.Config) {
 	fmt.Println("  Pipeline Project Setup")
 	fmt.Println(separator)
 	fmt.Println()
-	log.Logf("Owner:       %s", cfg.Owner)
-	log.Logf("Repo:        %s", cfg.Repo)
-	log.Logf("System:      %s", cfg.SystemName)
-	log.Logf("Arch:        %s", cfg.Arch)
+	log.Infof("Owner:       %s", cfg.Owner)
+	log.Infof("Repo:        %s", cfg.Repo)
+	log.Infof("System:      %s", cfg.SystemName)
+	log.Infof("Arch:        %s", cfg.Arch)
 	if cfg.Arch == "monolith" {
-		log.Logf("Language:    %s", cfg.Lang)
+		log.Infof("Language:    %s", cfg.Lang)
 		if cfg.RepoStrategy == "multirepo" {
-			log.Logf("System repo: %s", cfg.SystemFullRepo)
+			log.Infof("System repo: %s", cfg.SystemFullRepo)
 		}
 	} else {
-		log.Logf("Backend:     %s", cfg.BackendLang)
-		log.Logf("Frontend:    %s", cfg.FrontendLang)
+		log.Infof("Backend:     %s", cfg.BackendLang)
+		log.Infof("Frontend:    %s", cfg.FrontendLang)
 		if cfg.RepoStrategy == "multirepo" {
-			log.Logf("Backend repo: %s", cfg.BackendFullRepo)
-			log.Logf("Frontend repo: %s", cfg.FrontendFullRepo)
+			log.Infof("Backend repo: %s", cfg.BackendFullRepo)
+			log.Infof("Frontend repo: %s", cfg.FrontendFullRepo)
 		}
 	}
-	log.Logf("Test lang:   %s", cfg.TestLang)
-	log.Logf("Dry run:     %v", cfg.DryRun)
-	log.Logf("Test mode:   %v", cfg.TestMode)
-	log.Logf("Workdir:     %s", cfg.WorkDir)
+	log.Infof("Test lang:   %s", cfg.TestLang)
+	log.Infof("Dry run:     %v", cfg.DryRun)
+	log.Infof("Test mode:   %v", cfg.TestMode)
+	log.Infof("Workdir:     %s", cfg.WorkDir)
 	fmt.Println()
 }
 

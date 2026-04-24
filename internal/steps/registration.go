@@ -10,7 +10,7 @@ import (
 // PrintRegistration outputs structured project registration info that can be
 // copy-pasted into the course registration form or tracking sheet.
 func PrintRegistration(cfg *config.Config) {
-	log.Log("Generating project registration info...")
+	log.Info("Generating project registration info...")
 
 	lang := cfg.Lang
 	if cfg.Arch == "multitier" {
@@ -52,5 +52,5 @@ func PrintRegistration(cfg *config.Config) {
 	fmt.Println("------------------------------------------")
 	fmt.Println()
 
-	log.OK("Project registration info printed above — copy-paste into your registration form.")
+	log.Success("Project registration info printed above — copy-paste into your registration form.")
 }
