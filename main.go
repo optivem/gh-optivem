@@ -576,7 +576,7 @@ func printBanner(cfg *config.Config) {
 	log.Infof("--verify-level:      %s%s", cfg.Raw.VerifyLevel, tag("verify-level"))
 	log.Infof("--exclude-legacy:    %v%s", cfg.ExcludeLegacy, tag("exclude-legacy"))
 	log.Infof("--skip-local-tests:  %v%s", cfg.SkipLocalTests, tag("skip-local-tests"))
-	log.Infof("--shop-tag:        %s%s", cfg.Raw.ShopTag, tag("shop-tag"))
+	log.Infof("--shop-ref:        %s%s", cfg.Raw.ShopRef, tag("shop-ref"))
 	log.Infof("--dry-run:         %v%s", cfg.DryRun, tag("dry-run"))
 	log.Infof("--keep-local:      %v%s", cfg.Raw.KeepLocal, tag("keep-local"))
 	log.Infof("--report-bug:      %v%s", cfg.BugReport, tag("report-bug"))
