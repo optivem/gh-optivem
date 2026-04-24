@@ -103,6 +103,15 @@ jobs:
           commit-sha: ${{ steps.rc.outputs.sha }}
           context: acceptance-stage
 
+      - name: Ensure Shop SHA Resolved
+        if: steps.shop-sha.outputs.description == ''
+        shell: bash
+        env:
+          RC_SHA: ${{ steps.rc.outputs.sha }}
+        run: |
+          echo "::error::No acceptance-stage commit status found on $RC_SHA. Run acceptance-stage with verify-level=release first."
+          exit 1
+
       - id: shop-tag
         uses: optivem/actions/resolve-latest-tag-from-sha@v1
         with:
