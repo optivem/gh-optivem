@@ -99,14 +99,10 @@ runs:
           pkg-registry-${{ runner.os }}-${{ inputs.lang }}-${{ inputs.test-lang }}-
           pkg-registry-${{ runner.os }}-
 
-    # Switch Docker to the Linux engine on Windows runners. The scaffolded
-    # project's docker-compose pulls Linux-only images (postgres, wiremock);
-    # without this, Docker on windows-latest defaults to Windows containers
-    # and fails with "no matching manifest for windows/amd64".
-    - name: Switch Docker to Linux engine (Windows)
-      if: runner.os == 'Windows'
-      shell: pwsh
-      run: '& "$Env:ProgramFiles\Docker\Docker\DockerCli.exe" -SwitchLinuxEngine'
+    # Note: Windows hosted runners (windows-2025) no longer ship Docker
+    # Desktop, so the scaffolded project's docker-compose-based local tests
+    # cannot run on them. Callers must set skip-local-tests: true on Windows;
+    # the pipeline workflow enforces this for the smoke matrix.
 
     - name: Configure git
       shell: bash
