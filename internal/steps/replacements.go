@@ -25,6 +25,7 @@ const (
 
 	shopRepoRef  = "optivem/shop"
 	shopSonarRef = "optivem_shop"
+	shopAPIHost  = "api.optivem.com"
 )
 
 // optivemAllowedPatterns enumerates the substrings in which a bare "optivem"
@@ -39,10 +40,6 @@ var optivemAllowedPatterns = []string{
 	// Published npm package name (covers the registry URL form .../optivem-testing-X.Y.Z.tgz
 	// and the second "optivem" in "@optivem/optivem-testing").
 	"optivem-testing",
-	// Scaffolding metadata directory (.optivem/config.json).
-	".optivem",
-	// Branded problem-details URLs (https://api.optivem.com/errors/...).
-	"api.optivem.com",
 }
 
 // All text file extensions to process.
@@ -263,6 +260,17 @@ func replaceRefsInRepo(repoDir, fullRepo, ownerLower string) {
 				log.Successf("Pass 5: deduped sonar component suffix %s (%d files)", suffix, n)
 			}
 		}
+	}
+
+	// Pass 6: RFC 7807 problem-details "type" URIs. Shop ships these as
+	// https://api.optivem.com/errors/<type>; rewrite to an owner-scoped
+	// placeholder under the RFC 2606-reserved example.com so it stays a safe
+	// stub (never resolves to a real site) while matching the repo-wide
+	// owner-personalization pattern.
+	newAPIHost := "api." + ownerLower + ".example.com"
+	n = files.ReplaceInTree(repoDir, shopAPIHost, newAPIHost, nil)
+	if n > 0 {
+		log.Successf("Pass 6: replaced %s -> %s (%d files)", shopAPIHost, newAPIHost, n)
 	}
 
 	verifyActionsReferencesIntact(repoDir)
@@ -541,9 +549,8 @@ func ValidateNoLeftoverShopRefs(cfg *config.Config) {
 		// ValidateNoLeftoverSystemNames.
 		//
 		// Uses an allowlist of legitimate optivem-containing substrings
-		// (optivem/actions refs, @optivem/* npm packages, .optivem metadata
-		// dir, api.optivem.com URLs) so those don't false-positive. See
-		// optivemAllowedPatterns for the full list.
+		// (optivem/actions refs, @optivem/* npm packages) so those don't
+		// false-positive. See optivemAllowedPatterns for the full list.
 		if cfg.OwnerLower != "optivem" {
 			checkLeftover(repoDir, "optivem", func(root, needle string) []string {
 				return files.FindInTreeWordBoundaryExcept(root, needle, optivemAllowedPatterns)

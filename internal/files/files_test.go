@@ -17,8 +17,6 @@ func TestFindInTreeWordBoundaryExcept(t *testing.T) {
 		"optivem/actions",
 		"@optivem/",
 		"optivem-testing",
-		".optivem",
-		"api.optivem.com",
 	}
 
 	cases := []struct {
@@ -40,16 +38,6 @@ func TestFindInTreeWordBoundaryExcept(t *testing.T) {
 		{
 			name:    "registry URL form is allowed",
 			files:   []file{{"pkg-lock.json", `"resolved": "https://registry.npmjs.org/@optivem/optivem-testing/-/optivem-testing-1.1.8.tgz"`}},
-			wantHit: false,
-		},
-		{
-			name:    ".optivem metadata dir is allowed",
-			files:   []file{{"run.ps1", `$cfg = Join-Path $root ".optivem" "config.json"`}},
-			wantHit: false,
-		},
-		{
-			name:    "api.optivem.com branded URL is allowed",
-			files:   []file{{"errors.ts", "const BASE = 'https://api.optivem.com/errors';\n"}},
 			wantHit: false,
 		},
 		{

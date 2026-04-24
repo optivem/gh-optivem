@@ -12,12 +12,12 @@ import (
 	"github.com/optivem/gh-optivem/internal/shell"
 )
 
-// WriteProjectConfig writes .optivem/config.json to the scaffolded project root(s).
+// WriteProjectConfig writes .system/config.json to the scaffolded project root(s).
 func WriteProjectConfig(cfg *config.Config) {
 	log.Info("Writing project config...")
 
 	if cfg.DryRun {
-		log.Info("[DRY RUN] Would write .optivem/config.json")
+		log.Info("[DRY RUN] Would write .system/config.json")
 		return
 	}
 
@@ -39,11 +39,11 @@ func WriteProjectConfig(cfg *config.Config) {
 		}
 	}
 
-	log.Success("Wrote .optivem/config.json")
+	log.Success("Wrote .system/config.json")
 }
 
 func writeConfigToDir(dir string, jsonBytes []byte) {
-	configDir := filepath.Join(dir, ".optivem")
+	configDir := filepath.Join(dir, ".system")
 	os.MkdirAll(configDir, 0755)
 	os.WriteFile(filepath.Join(configDir, "config.json"), jsonBytes, 0644)
 }

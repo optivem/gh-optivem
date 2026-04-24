@@ -34,7 +34,7 @@ The entry point (`main.go`) handles CLI argument parsing and orchestrates the `i
 | 7 | Replace namespaces | Substitutes namespace placeholders |
 | 8 | Replace system name | Substitutes system-name placeholders |
 | 9 | Update README | Generates the scaffolded project's README |
-| 10 | Write project config | Writes `.optivem.yml` or similar config |
+| 10 | Write project config | Writes `.system/config.json` with architecture + deploy metadata |
 | 11 | Create SonarCloud projects | Registers projects in SonarCloud |
 | 12 | Commit and push | Commits all changes and pushes to remote |
 | 13 | Validate no leftover system names | Fails if old template name still appears in the pushed repo |
