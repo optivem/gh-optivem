@@ -22,7 +22,7 @@ func logCloned(fullRepo, localPath string) {
 
 // CreateRepos creates the GitHub repository (and component repos for multitier).
 func CreateRepos(cfg *config.Config, gh *shell.GitHub) {
-	log.Logf("Step 1: Creating repository %s...", cfg.FullRepo)
+	log.Logf("Creating repository %s...", cfg.FullRepo)
 
 	if cfg.DryRun {
 		log.Logf("[DRY RUN] gh repo create %s --public", cfg.FullRepo)
@@ -56,7 +56,7 @@ func CreateRepos(cfg *config.Config, gh *shell.GitHub) {
 
 // SetupEnvironments creates GitHub environments on the main repo.
 func SetupEnvironments(cfg *config.Config, gh *shell.GitHub) {
-	log.Log("Step 2: Creating environments...")
+	log.Log("Creating environments...")
 
 	lang := cfg.Lang
 	if cfg.Arch == "multitier" {
@@ -73,7 +73,7 @@ func SetupEnvironments(cfg *config.Config, gh *shell.GitHub) {
 
 // SetupSecretsAndVariables sets GitHub Actions secrets and variables.
 func SetupSecretsAndVariables(cfg *config.Config, gh *shell.GitHub) {
-	log.Log("Step 3: Setting secrets and variables...")
+	log.Log("Setting secrets and variables...")
 
 	setSecret(gh, "DOCKERHUB_TOKEN", cfg.DockerHubToken)
 	setSecret(gh, "SONAR_TOKEN", cfg.SonarToken)
@@ -113,7 +113,7 @@ func setVariable(gh *shell.GitHub, name, value string) {
 
 // CloneRepos clones the repository (and component repos for multitier).
 func CloneRepos(cfg *config.Config, gh *shell.GitHub) {
-	log.Log("Step 4: Cloning repo(s)...")
+	log.Log("Cloning repo(s)...")
 
 	if cfg.DryRun {
 		log.Log("[DRY RUN] Would clone repo(s)")

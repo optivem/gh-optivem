@@ -33,7 +33,7 @@ var textExts = []string{
 
 // ReplaceRepoReferences replaces optivem/shop references with the target repo.
 func ReplaceRepoReferences(cfg *config.Config) {
-	log.Log("Step 6: Replacing repository references...")
+	log.Log("Replacing repository references...")
 
 	if cfg.DryRun {
 		log.Logf("[DRY RUN] Would replace optivem/shop -> %s", cfg.FullRepo)
@@ -329,7 +329,7 @@ func lowercaseGhcrImageLine(line string) (string, bool) {
 
 // ReplaceNamespaces replaces language-specific namespaces.
 func ReplaceNamespaces(cfg *config.Config) {
-	log.Log("Step 7: Replacing namespaces...")
+	log.Log("Replacing namespaces...")
 
 	if cfg.DryRun {
 		log.Log("[DRY RUN] Would replace language-specific namespaces")
@@ -464,7 +464,7 @@ func nsTypeScript(cfg *config.Config, component, repoDir string) {
 // ReplaceSystemName replaces the template system name ("Shop") with the user's system name
 // across all source files, file names, and directories.
 func ReplaceSystemName(cfg *config.Config) {
-	log.Log("Step 8: Replacing system name...")
+	log.Log("Replacing system name...")
 
 	if cfg.DryRun {
 		log.Logf("[DRY RUN] Would replace Shop -> %s", cfg.SysNamePascalNew)

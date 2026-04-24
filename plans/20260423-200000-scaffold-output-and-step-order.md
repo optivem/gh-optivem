@@ -1,5 +1,7 @@
 # Plan: Scaffold output improvements + step-sequence cleanup
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-04-24T06:36:15Z`
+
 ## Motivation
 
 During a 2026-04-23 scaffold run of `course-tester-atdd-typescript-20260423-192402`, the user surfaced a cluster of related issues with the `gh optivem init` console output and step ordering:
@@ -23,31 +25,6 @@ These five edits compiled clean during the conversation; they're listed so the n
 ## Items
 
 ### Group 1 — Step sequence cleanup (depends on nothing else)
-
-- [ ] **Reorder `buildSteps` in [main.go:100-115](../main.go#L100-L115).** New order:
-  1. Create repositories
-  2. Clone repos
-  3. Apply template
-  4. Replace repository references
-  5. Replace namespaces
-  6. Replace system name
-  7. Update README
-  8. Write project config
-  9. Validate no leftover system names ← moved up from 13
-  10. Verify compilation ← moved up from 14
-  11. Setup environments ← moved down from 2
-  12. Setup secrets and variables ← moved down from 3
-  13. Create SonarCloud projects
-  14. Commit and push
-  15. (existing verify steps unchanged)
-  16. Print project registration
-
-  **Rationale:** local validation must gate the push, and shared remote resources (envs, secrets, SonarCloud project) should not be created until the local content is known-good. Trade-off: a failed run leaves the repo without envs/secrets — that's acceptable and arguably cleaner for teardown.
-
-- [ ] **Strip hardcoded `"Step N:"` prefixes from every step function.** The orchestrator at [main.go:186](../main.go#L186) already prints `OK Step N done` from the loop index. Each step's opening log should be the action only, not numbered.
-  - Files to touch (grep `"Step \d+:"` in `internal/steps/`):
-    - [finalize.go:53,68](../internal/steps/finalize.go#L53), [verify.go:173,202,222,234,251,268,378](../internal/steps/verify.go#L173), [github_setup.go:23,57,74,105](../internal/steps/github_setup.go#L23) — and any others the grep finds.
-  - Replace `log.Log("Step 9: Creating SonarCloud projects...")` → `log.Log("Creating SonarCloud projects...")`, etc.
 
 ### Group 2 — Logging refactor (verbosity + log-file + color convention)
 
