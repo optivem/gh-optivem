@@ -11,33 +11,33 @@ import (
 )
 
 const (
-	cleanupWorkflow           = "cleanup.yml"
-	deployCloudRun            = "cloud-run"
-	cloudSuffix               = "-cloud"
-	commitStageYml            = "-commit-stage.yml"
-	acceptStageYml            = "acceptance-stage.yml"
-	qaStageYml                = "qa-stage.yml"
-	qaSignoffYml              = "qa-signoff.yml"
-	prodStageYml              = "prod-stage.yml"
-	acceptStageLegacyYml      = "acceptance-stage-legacy.yml"
-	suffixAcceptanceStage     = "-acceptance-stage"
-	suffixQAStage             = "-qa-stage"
-	suffixQASignoff           = "-qa-signoff"
-	suffixProdStage           = "-prod-stage"
-	suffixCommitStage         = "-commit-stage"
-	prefixMonolith            = "monolith-"
-	prefixMultitier           = "multitier-"
-	prefixMultitierBackend    = "multitier-backend-"
-	prefixMultitierFrontend   = "multitier-frontend-"
-	prefixMonolithSystem      = "monolith-system-"
-	envPrefixYAML             = "environment: "
-	dirSystemTest             = "system-test"
-	dirExternalRealSim        = "external-real-sim"
-	dirExternalStub           = "external-stub"
-	shopSystemPrefix       = "../../../system/"
-	systemMonolithDir         = "system/monolith/"
-	systemMultitierDir        = "system/multitier/"
-	systemMultitierBackend    = systemMultitierDir + "backend-"
+	cleanupWorkflow         = "cleanup.yml"
+	deployCloudRun          = "cloud-run"
+	cloudSuffix             = "-cloud"
+	commitStageYml          = "-commit-stage.yml"
+	acceptStageYml          = "acceptance-stage.yml"
+	qaStageYml              = "qa-stage.yml"
+	qaSignoffYml            = "qa-signoff.yml"
+	prodStageYml            = "prod-stage.yml"
+	acceptStageLegacyYml    = "acceptance-stage-legacy.yml"
+	suffixAcceptanceStage   = "-acceptance-stage"
+	suffixQAStage           = "-qa-stage"
+	suffixQASignoff         = "-qa-signoff"
+	suffixProdStage         = "-prod-stage"
+	suffixCommitStage       = "-commit-stage"
+	prefixMonolith          = "monolith-"
+	prefixMultitier         = "multitier-"
+	prefixMultitierBackend  = "backend-"
+	prefixMultitierFrontend = "multitier-frontend-"
+	prefixMonolithSystem    = "sysapp-"
+	envPrefixYAML           = "environment: "
+	dirSystemTest           = "system-test"
+	dirExternalRealSim      = "external-real-sim"
+	dirExternalStub         = "external-stub"
+	shopSystemPrefix        = "../../../system/"
+	systemMonolithDir       = "system/monolith/"
+	systemMultitierDir      = "system/multitier/"
+	systemMultitierBackend  = systemMultitierDir + "backend-"
 
 	infoCopyingExternals   = "Copying external simulators..."
 	infoCopyingSystemTests = "Copying system-tests..."
@@ -464,7 +464,7 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 // Ordering matters: the "-v" form must run before the bare "prefix:" form
 // because "prefix: monolith-typescript" is a substring of "tag-prefix:
 // monolith-typescript-v", and we need the longer tag-prefix context to
-// consume first so the short rule does not leave a "''-v" fragment behind.
+// consume first so the short rule does not leave a "”-v" fragment behind.
 func systemPrefixDropReplacements(archTest string) [][2]string {
 	return [][2]string{
 		// tag: / tag-prefix: inputs and description examples — rewrites
@@ -514,7 +514,7 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 		{multiTest + suffixProdStage, "prod-stage"},
 		{multiTest + "-verify", "verify"},
 		// Working directories (these also transform commit stage workflow names:
-		// multitier-backend-{lang}-commit-stage -> backend-commit-stage, etc.)
+		// backend-{lang}-commit-stage -> backend-commit-stage, etc.)
 		{systemMultitierBackend + backendLang, "backend"},
 		{"system/multitier/frontend-" + frontendLang, "frontend"},
 		// System-test path
@@ -641,11 +641,11 @@ func forbiddenTemplateRefs(cfg *config.Config) []string {
 
 func monolithForbiddenRefs(lang, testLang string) []string {
 	refs := []string{
-		prefixMonolith + lang + "-",        // commit-stage workflow refs
-		prefixMonolith + testLang + "-",    // pipeline-stage refs + sweep residue
-		prefixMonolithSystem + lang,        // docker image name
-		systemMonolithDir,                  // template source path
-		"-" + prefixMonolith + lang,        // sonar key suffix
+		prefixMonolith + lang + "-",          // commit-stage workflow refs
+		prefixMonolith + testLang + "-",      // pipeline-stage refs + sweep residue
+		prefixMonolithSystem + lang,          // docker image name
+		systemMonolithDir,                    // template source path
+		"-" + prefixMonolith + lang,          // sonar key suffix
 		dirSystemTest + "/" + testLang + "/", // un-flattened system-test path
 	}
 	if lang != testLang {
@@ -660,7 +660,7 @@ func multitierForbiddenRefs(backendLang, frontendLang, testLang string) []string
 		prefixMultitierFrontend + frontendLang + "-",
 		prefixMultitier + testLang + "-",
 		systemMultitierDir,
-		"-" + prefixMultitierBackend + backendLang,  // sonar key suffix
+		"-" + prefixMultitierBackend + backendLang,   // sonar key suffix
 		"-" + prefixMultitierFrontend + frontendLang, // sonar key suffix
 		dirSystemTest + "/" + testLang + "/",
 	}

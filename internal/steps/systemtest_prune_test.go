@@ -71,7 +71,7 @@ func TestSystemPrefixDropMonolith(t *testing.T) {
 func TestSystemPrefixDropLeavesComponentPrefixes(t *testing.T) {
 	reps := systemPrefixDropReplacements("multitier-typescript")
 	// Pretend the earlier multitier replacements have already rewritten
-	// `multitier-backend-<lang>` → `backend` and `multitier-frontend-<lang>`
+	// `backend-<lang>` → `backend` and `multitier-frontend-<lang>`
 	// → `frontend`. The remaining text should be untouched.
 	in := []string{
 		"          tag: backend-v1.0.0",

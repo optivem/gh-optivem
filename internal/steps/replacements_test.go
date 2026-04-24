@@ -15,7 +15,7 @@ import (
 // substring remains anywhere in the tree.
 //
 // The failure surface is the state AFTER ApplyTemplate — i.e. after the
-// monolith-system-<lang> → system transform — fed into ReplaceRepoReferences.
+// sysapp-<lang> → system transform — fed into ReplaceRepoReferences.
 func TestReplaceRepoReferencesNoLeftoverShop(t *testing.T) {
 	cases := []struct {
 		name string
