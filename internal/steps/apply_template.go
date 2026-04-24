@@ -35,6 +35,8 @@ const (
 	dirExternalRealSim        = "external-real-sim"
 	dirExternalStub           = "external-stub"
 	shopSystemPrefix       = "../../system/"
+	systemMonolithDir         = "system/monolith/"
+	systemMultitierDir        = "system/multitier/"
 
 	infoCopyingExternals   = "Copying external simulators..."
 	infoCopyingSystemTests = "Copying system-tests..."
@@ -169,11 +171,13 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	copyExternals(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	copySystemTests(shop, repoDir, testLang, "single")
+	testDst := copySystemTests(shop, repoDir, testLang, "single")
+	PruneSystemTestArch(testDst, "monolith")
 
 	// Fix workflow content: paths, image names, workflow names
 	log.Info("Fixing up workflow and docker-compose content...")
 	contentReplacements := appendCloudReplacement(monolithContentReplacements(lang, testLang), cfg.Deploy)
+	contentReplacements = append(contentReplacements, systemPrefixDropReplacements(prefixMonolith+testLang)...)
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, monolithDockerComposeReplacements(lang, testLang))
 
@@ -211,11 +215,13 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	copyExternals(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	copySystemTests(shop, repoDir, testLang, "single")
+	testDst := copySystemTests(shop, repoDir, testLang, "single")
+	PruneSystemTestArch(testDst, "monolith")
 
 	// Fix root repo workflow content
 	log.Info("Fixing up root repo workflow and docker-compose content...")
 	contentReplacements := appendCloudReplacement(monolithContentReplacements(lang, testLang), cfg.Deploy)
+	contentReplacements = append(contentReplacements, systemPrefixDropReplacements(prefixMonolith+testLang)...)
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, monolithDockerComposeReplacements(lang, testLang))
 
@@ -253,7 +259,7 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	log.Info("Fixing up system repo workflow content and SonarCloud keys...")
 	sysContentReplacements := [][2]string{
 		{prefixMonolith + lang + suffixCommitStage, "commit-stage"},
-		{"system/monolith/" + lang, "system"},
+		{systemMonolithDir + lang, "system"},
 		{prefixMonolithSystem + lang, "system"},
 	}
 	templates.FixupWorkflowContent(sysDir, sysContentReplacements)
@@ -295,11 +301,13 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	copyExternals(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	copySystemTests(shop, repoDir, testLang, "multi")
+	testDst := copySystemTests(shop, repoDir, testLang, "multi")
+	PruneSystemTestArch(testDst, "multitier")
 
 	// Fix workflow content: paths and image names
 	log.Info("Fixing up workflow and docker-compose content...")
 	contentReplacements := appendCloudReplacement(multitierContentReplacements(backendLang, frontendLang, testLang), cfg.Deploy)
+	contentReplacements = append(contentReplacements, systemPrefixDropReplacements(prefixMultitier+testLang)...)
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, multitierDockerComposeReplacements(backendLang, frontendLang, testLang))
 
@@ -338,11 +346,13 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	copyExternals(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	copySystemTests(shop, repoDir, testLang, "multi")
+	testDst := copySystemTests(shop, repoDir, testLang, "multi")
+	PruneSystemTestArch(testDst, "multitier")
 
 	// Fix root repo workflow content
 	log.Info("Fixing up root repo workflow and docker-compose content...")
 	contentReplacements := appendCloudReplacement(multitierContentReplacements(backendLang, frontendLang, testLang), cfg.Deploy)
+	contentReplacements = append(contentReplacements, systemPrefixDropReplacements(prefixMultitier+testLang)...)
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, multitierDockerComposeReplacements(backendLang, frontendLang, testLang))
 
@@ -431,7 +441,7 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 		{monoTest + suffixProdStage, "prod-stage"},
 		{monoTest + "-verify", "verify"},
 		// Working directory
-		{"system/monolith/" + lang, "system"},
+		{systemMonolithDir + lang, "system"},
 		// System-test path
 		{dirSystemTest + "/" + testLang + "/", dirSystemTest + "/"},
 		{dirSystemTest + "/" + testLang, dirSystemTest},
@@ -442,6 +452,28 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 		r = append(r, [2]string{prefixMonolithSystem + testLang, "system"})
 	}
 	return r
+}
+
+// systemPrefixDropReplacements strips the 2-segment system tag prefix
+// (e.g. "monolith-typescript-", "multitier-java-") from workflow content.
+// The 3-segment component form ("<arch>-<component>-<lang>-") is untouched
+// because it does not contain the 2-segment form as a literal substring.
+// Must run after workflow-name and image-name replacements, and after the
+// cloud-suffix normalization, so the `-cloud` variant has already collapsed.
+//
+// Ordering matters: the "-v" form must run before the bare "prefix:" form
+// because "prefix: monolith-typescript" is a substring of "tag-prefix:
+// monolith-typescript-v", and we need the longer tag-prefix context to
+// consume first so the short rule does not leave a "''-v" fragment behind.
+func systemPrefixDropReplacements(archTest string) [][2]string {
+	return [][2]string{
+		// tag: / tag-prefix: inputs and description examples — rewrites
+		// "monolith-typescript-v" to "v".
+		{archTest + "-v", "v"},
+		// compose-prerelease-version step — explicit empty string preserves
+		// the key so the YAML shape matches what the action expects.
+		{"prefix: " + archTest, "prefix: ''"},
+	}
 }
 
 // monolithDockerComposeReplacements returns docker-compose content replacements for monolith.
@@ -547,5 +579,101 @@ func copyCloudRunScripts(shop, repoDir string) {
 		if _, err := os.Stat(src); err == nil {
 			files.CopyFile(src, filepath.Join(repoDir, name))
 		}
+	}
+}
+
+// ── Post-condition validation ──────────────────────────────────────────────
+
+// ValidateNoLeftoverTemplateRefs checks that ApplyTemplate's content
+// replacements covered every case. Each forbidden substring is a literal
+// that the replacement rules promise to rewrite — if any remain anywhere in
+// the scaffolded repo (workflows, source, tests, docs, build files), a
+// replacement rule is missing a case. Fail with the concrete paths so the
+// gap is obvious.
+//
+// Scanning the whole repo (not just workflows/compose) is intentional: these
+// substrings have no legitimate place in a scaffolded project. A leftover in
+// source or tests is just as much a bug as one in a workflow — it means a
+// user's clone will reference paths or names that don't exist.
+//
+// Runs after commit+push, following the convention of
+// ValidateNoLeftoverSystemNames (broken output visible in the remote for
+// troubleshooting).
+func ValidateNoLeftoverTemplateRefs(cfg *config.Config) {
+	log.Info("Validating no leftover template references...")
+
+	if cfg.DryRun {
+		log.Info("[DRY RUN] Would validate no leftover template references")
+		return
+	}
+
+	refs := forbiddenTemplateRefs(cfg)
+	for _, repoDir := range collectRepoDirs(cfg) {
+		if repoDir == "" {
+			continue
+		}
+		checkNoTemplateRefs(repoDir, refs)
+	}
+
+	log.Success("No leftover template references")
+}
+
+// forbiddenTemplateRefs returns substrings that must not appear anywhere in
+// the scaffolded repo after ApplyTemplate. Each is a literal the replacement
+// rules target; any survivor indicates a missed case or an unhandled file
+// extension.
+func forbiddenTemplateRefs(cfg *config.Config) []string {
+	if cfg.Arch == "monolith" {
+		return monolithForbiddenRefs(cfg.Lang, cfg.TestLang)
+	}
+	return multitierForbiddenRefs(cfg.BackendLang, cfg.FrontendLang, cfg.TestLang)
+}
+
+func monolithForbiddenRefs(lang, testLang string) []string {
+	refs := []string{
+		prefixMonolith + lang + "-",        // commit-stage workflow refs
+		prefixMonolith + testLang + "-",    // pipeline-stage refs + sweep residue
+		prefixMonolithSystem + lang,        // docker image name
+		systemMonolithDir,                  // template source path
+		"-" + prefixMonolith + lang,        // sonar key suffix
+		dirSystemTest + "/" + testLang + "/", // un-flattened system-test path
+	}
+	if lang != testLang {
+		refs = append(refs, prefixMonolithSystem+testLang)
+	}
+	return refs
+}
+
+func multitierForbiddenRefs(backendLang, frontendLang, testLang string) []string {
+	refs := []string{
+		prefixMultitierBackend + backendLang + "-",
+		prefixMultitierFrontend + frontendLang + "-",
+		prefixMultitier + testLang + "-",
+		systemMultitierDir,
+		"-" + prefixMultitierBackend + backendLang,  // sonar key suffix
+		"-" + prefixMultitierFrontend + frontendLang, // sonar key suffix
+		dirSystemTest + "/" + testLang + "/",
+	}
+	if backendLang != testLang {
+		refs = append(refs, prefixMultitierBackend+testLang)
+	}
+	return refs
+}
+
+func checkNoTemplateRefs(repoDir string, refs []string) {
+	var failed bool
+	for _, needle := range refs {
+		hits := files.FindInTree(repoDir, needle)
+		if len(hits) == 0 {
+			continue
+		}
+		log.Warnf("Leftover template ref %q in %d file(s):", needle, len(hits))
+		for _, f := range hits {
+			log.Warnf("  %s", f)
+		}
+		failed = true
+	}
+	if failed {
+		log.Fatalf("Template replacement incomplete in %s: leftover template references found.", repoDir)
 	}
 }

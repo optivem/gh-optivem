@@ -114,34 +114,98 @@ func FindInTree(root, needle string) []string {
 // the given needle where it is NOT preceded by a lowercase letter. This avoids false
 // positives like "eshop" or "workshop" when searching for "shop".
 func FindInTreeWordBoundary(root, needle string) []string {
+	return FindInTreeWordBoundaryExcept(root, needle, nil)
+}
+
+// FindInTreeWordBoundaryExcept is like FindInTreeWordBoundary but also skips
+// occurrences of needle that fall inside one of the given allowed patterns.
+// Each allowed pattern is a substring that contains needle one or more times;
+// when an occurrence of needle in file content lines up with the same offset
+// in an allowed pattern and the surrounding content matches that pattern
+// exactly, the occurrence is ignored.
+//
+// This lets callers exempt legitimate refs (e.g. "optivem/actions" in a
+// scaffolded repo, or "@optivem/optivem-testing" npm imports) without having
+// to enumerate every file path that happens to contain them.
+func FindInTreeWordBoundaryExcept(root, needle string, allowed []string) []string {
+	allowedOffsets := expandAllowedPatterns(allowed, needle)
 	var matches []string
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || IsGitDir(path) || IsBinaryFile(info.Name()) {
 			return nil
 		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil
-		}
-		content := string(data)
-		idx := 0
-		for {
-			pos := strings.Index(content[idx:], needle)
-			if pos < 0 {
-				break
-			}
-			absPos := idx + pos
-			// Check that the character before the match is not a lowercase letter.
-			if absPos == 0 || !isLowerLetter(content[absPos-1]) {
-				rel, _ := filepath.Rel(root, path)
-				matches = append(matches, rel)
-				break
-			}
-			idx = absPos + len(needle)
+		if fileHasRealOccurrence(path, needle, allowedOffsets) {
+			rel, _ := filepath.Rel(root, path)
+			matches = append(matches, rel)
 		}
 		return nil
 	})
 	return matches
+}
+
+type patOffset struct {
+	pat    string
+	offset int
+}
+
+// expandAllowedPatterns returns a (pattern, offset-of-needle-within-pattern)
+// entry for every occurrence of needle in every allowed pattern.
+func expandAllowedPatterns(allowed []string, needle string) []patOffset {
+	var out []patOffset
+	for _, p := range allowed {
+		start := 0
+		for {
+			off := strings.Index(p[start:], needle)
+			if off < 0 {
+				break
+			}
+			absOff := start + off
+			out = append(out, patOffset{pat: p, offset: absOff})
+			start = absOff + len(needle)
+		}
+	}
+	return out
+}
+
+// fileHasRealOccurrence reports whether the file at path contains at least one
+// occurrence of needle that is (a) not preceded by a lowercase letter and
+// (b) not part of any allowed surrounding pattern.
+func fileHasRealOccurrence(path, needle string, allowed []patOffset) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	content := string(data)
+	idx := 0
+	for {
+		pos := strings.Index(content[idx:], needle)
+		if pos < 0 {
+			return false
+		}
+		absPos := idx + pos
+		idx = absPos + len(needle)
+		if absPos > 0 && isLowerLetter(content[absPos-1]) {
+			continue
+		}
+		if inAllowedPattern(content, absPos, allowed) {
+			continue
+		}
+		return true
+	}
+}
+
+func inAllowedPattern(content string, pos int, allowed []patOffset) bool {
+	for _, a := range allowed {
+		start := pos - a.offset
+		end := start + len(a.pat)
+		if start < 0 || end > len(content) {
+			continue
+		}
+		if content[start:end] == a.pat {
+			return true
+		}
+	}
+	return false
 }
 
 func isLowerLetter(b byte) bool {
