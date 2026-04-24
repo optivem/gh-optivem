@@ -114,8 +114,8 @@ jobs:
               echo "::error::shop-head=true is mutually exclusive with shop-tag (got: '$SHOP_TAG'). Leave shop-tag empty when running against HEAD."
               exit 1
             fi
-            if [ "$LEVEL" = "release" ]; then
-              echo "::error::shop-head=true is mutually exclusive with verify-level=release. HEAD mode never produces a release — pick a lower verify-level (none/local/commit/acceptance/qa)."
+            if [ "$LEVEL" = "release" ] && [ "$SKIP_PRE" != "true" ]; then
+              echo "::error::shop-head=true + verify-level=release requires skip-prerelease=true. HEAD mode cannot produce a real release; the dry-run workflow sets skip-prerelease=true automatically for exactly this case."
               exit 1
             fi
             echo "Running against optivem/shop HEAD — no prerelease or release will be created."
