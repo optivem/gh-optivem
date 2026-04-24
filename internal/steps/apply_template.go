@@ -445,6 +445,10 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 		// System-test path
 		{dirSystemTest + "/" + testLang + "/", dirSystemTest + "/"},
 		{dirSystemTest + "/" + testLang, dirSystemTest},
+		// compose-file paths: shop keeps per-arch subdirs under system-test/<lang>/,
+		// but SelectDockerCompose flattens the chosen arch's compose files up into
+		// system-test/, so "compose-file: monolith/x.yml" must drop the prefix.
+		{"compose-file: monolith/", "compose-file: "},
 		// Docker image names
 		{prefixMonolithSystem + lang, "system"},
 	}
@@ -513,6 +517,10 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 		{multiTest + suffixQASignoff, "qa-signoff"},
 		{multiTest + suffixProdStage, "prod-stage"},
 		{multiTest + "-verify", "verify"},
+		// compose-file paths: shop keeps per-arch subdirs under system-test/<lang>/,
+		// but SelectDockerCompose flattens the chosen arch's compose files up into
+		// system-test/, so "compose-file: multitier/x.yml" must drop the prefix.
+		{"compose-file: multitier/", "compose-file: "},
 		// Working directories (these also transform commit stage workflow names:
 		// backend-{lang}-commit-stage -> backend-commit-stage, etc.)
 		{systemMultitierBackend + backendLang, "backend"},
