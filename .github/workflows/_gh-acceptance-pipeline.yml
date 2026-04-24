@@ -1,0 +1,503 @@
+name: _gh-acceptance-pipeline
+
+on:
+  workflow_call:
+    inputs:
+      verify-level:
+        description: 'Verification level for system tests (none, local, commit, acceptance, qa, release).'
+        required: false
+        type: string
+        default: 'release'
+      smoke-mode:
+        description: 'Smoke matrix size: none, single, or full.'
+        required: false
+        type: string
+        default: 'full'
+      acceptance-mode:
+        description: 'Acceptance matrix size: none, single, minimal, condensed, or full.'
+        required: false
+        type: string
+        default: 'minimal'
+      shop-tag:
+        description: 'optivem/shop meta-v* release tag to test against. Empty = latest meta-v* release.'
+        required: false
+        type: string
+        default: ''
+      shop-head:
+        description: 'Run against optivem/shop HEAD (latest main) instead of a meta-v* release tag.'
+        required: false
+        type: boolean
+        default: false
+      retain-repos:
+        description: 'Retain scaffolded test repos (skip cleanup) even on success.'
+        required: false
+        type: boolean
+        default: false
+      skip-prerelease:
+        description: 'Run acceptance tests but do not create the RC prerelease.'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  preflight:
+    name: Preflight
+    if: ${{ !inputs.shop-head }}
+    runs-on: ubuntu-latest
+    outputs:
+      shop-release-exists: ${{ steps.check-shop.outputs.exists }}
+    steps:
+      - name: Check optivem/shop has meta-v* release
+        id: check-shop
+        uses: optivem/actions/check-tag-exists@v1
+        with:
+          repository: optivem/shop
+          tag: meta-v*
+
+  check:
+    name: Check
+    needs: preflight
+    if: >-
+      ${{ !failure() && !cancelled() &&
+      (inputs.shop-head || needs.preflight.outputs.shop-release-exists == 'true') }}
+    runs-on: ubuntu-latest
+    outputs:
+      verify-level: ${{ steps.mode.outputs.verify-level }}
+      head-mode: ${{ steps.mode.outputs.head-mode }}
+      release-mode: ${{ steps.mode.outputs.release-mode }}
+      shop-tag: ${{ steps.mode.outputs.head-mode == 'true' && '' || steps.shop-tag.outputs.tag }}
+      shop-sha: ${{ steps.mode.outputs.head-mode == 'true' && '' || ((steps.mode.outputs.verify-level == 'release' || inputs.shop-tag != '') && steps.shop-sha.outputs.sha || '') }}
+      should-run: ${{ steps.prior-status.outputs.exists != 'true' }}
+      retain-repos: ${{ inputs.retain-repos && 'true' || 'false' }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      smoke-matrix: ${{ steps.smoke-matrix.outputs.matrix }}
+    steps:
+      - name: Ensure Environment Variables Defined
+        uses: optivem/actions/validate-env-vars-defined@v1
+        with:
+          names: |
+            TEST_OWNER
+            DOCKERHUB_USERNAME
+            DOCKERHUB_TOKEN
+            SONAR_TOKEN
+            GHCR_TOKEN
+            WORKFLOW_TOKEN
+        env:
+          TEST_OWNER: ${{ vars.TEST_OWNER }}
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+
+      # Single source of truth for the three mode signals downstream steps/jobs key off:
+      #   verify-level  — pass-through from caller input
+      #   head-mode     — running against shop HEAD (no release path)
+      #   release-mode  — this run should publish a real release (gates create-prerelease)
+      # Also fails fast on shop-head mutual-exclusion violations.
+      - id: mode
+        shell: bash
+        env:
+          LEVEL: ${{ inputs.verify-level }}
+          SHOP_HEAD: ${{ inputs.shop-head }}
+          SHOP_TAG: ${{ inputs.shop-tag }}
+          SKIP_PRE: ${{ inputs.skip-prerelease }}
+        run: |
+          set -euo pipefail
+
+          if [ "$SHOP_HEAD" = "true" ]; then
+            if [ -n "$SHOP_TAG" ]; then
+              echo "::error::shop-head=true is mutually exclusive with shop-tag (got: '$SHOP_TAG'). Leave shop-tag empty when running against HEAD."
+              exit 1
+            fi
+            if [ "$LEVEL" = "release" ]; then
+              echo "::error::shop-head=true is mutually exclusive with verify-level=release. HEAD mode never produces a release — pick a lower verify-level (none/local/commit/acceptance/qa)."
+              exit 1
+            fi
+            echo "Running against optivem/shop HEAD — no prerelease or release will be created."
+          fi
+
+          if [ "$LEVEL" = "release" ] && [ "$SHOP_HEAD" != "true" ] && [ "$SKIP_PRE" != "true" ]; then
+            RELEASE_MODE=true
+          else
+            RELEASE_MODE=false
+          fi
+
+          {
+            echo "verify-level=$LEVEL"
+            echo "head-mode=$SHOP_HEAD"
+            echo "release-mode=$RELEASE_MODE"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Workflow Inputs"
+            echo "| Input | Value |"
+            echo "|-------|-------|"
+            echo "| verify-level | $LEVEL |"
+            echo "| smoke-mode | ${{ inputs.smoke-mode }} |"
+            echo "| acceptance-mode | ${{ inputs.acceptance-mode }} |"
+            echo "| shop-tag | $SHOP_TAG |"
+            echo "| shop-head | $SHOP_HEAD |"
+            echo "| retain-repos | ${{ inputs.retain-repos }} |"
+            echo "| skip-prerelease | $SKIP_PRE |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Checkout
+        if: steps.mode.outputs.verify-level == 'release' && steps.mode.outputs.head-mode != 'true'
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check version not already released
+        if: steps.mode.outputs.verify-level == 'release' && steps.mode.outputs.head-mode != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(tr -d '[:space:]' < VERSION)
+          tag="v${version}"
+          if git tag -l "$tag" | grep -qx "$tag"; then
+            BUMP_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/gh-auto-bump-patch.yml"
+            {
+              echo "## Version already released"
+              echo ""
+              echo "The following tag already exists as a final release:"
+              echo ""
+              echo "- \`${tag}\` (from VERSION)"
+              echo ""
+              echo "Run the [gh-auto-bump-patch workflow](${BUMP_URL}) to bump the VERSION file, then re-run this workflow."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Version already released: ${tag}. Run the gh-auto-bump-patch workflow to bump the VERSION file, then re-run this workflow: ${BUMP_URL}"
+            exit 1
+          fi
+          echo "Version tag ${tag} has not been released yet — OK to proceed."
+
+      - name: Validate shop-tag prefix
+        if: inputs.shop-tag != ''
+        shell: bash
+        env:
+          TAG: ${{ inputs.shop-tag }}
+        run: |
+          if [[ "$TAG" != meta-v* ]]; then
+            echo "::error::shop-tag '$TAG' must start with 'meta-v' — only meta-v* release tags are accepted."
+            exit 1
+          fi
+
+      - name: Ensure explicit shop-tag exists
+        if: inputs.shop-tag != ''
+        uses: optivem/actions/validate-tag-exists@v1
+        with:
+          repository: optivem/shop
+          tag: ${{ inputs.shop-tag }}
+
+      - name: Resolve latest meta-v* shop tag
+        id: shop-tag-latest
+        if: inputs.shop-tag == '' && steps.mode.outputs.head-mode != 'true'
+        uses: optivem/actions/resolve-latest-prerelease-tag@v1
+        with:
+          repository: optivem/shop
+          tag-prefix: meta-v
+
+      - id: shop-tag
+        if: steps.mode.outputs.head-mode != 'true'
+        shell: bash
+        env:
+          EXPLICIT: ${{ inputs.shop-tag }}
+          LATEST: ${{ steps.shop-tag-latest.outputs.tag }}
+        run: |
+          TAG="${EXPLICIT:-$LATEST}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - id: shop-sha
+        if: steps.mode.outputs.head-mode != 'true'
+        uses: optivem/actions/resolve-commit@v1
+        with:
+          repository: optivem/shop
+          ref: ${{ steps.shop-tag.outputs.tag }}
+
+      - id: prior-status
+        if: steps.mode.outputs.head-mode != 'true'
+        uses: optivem/actions/check-commit-status-exists@v1
+        with:
+          commit-sha: ${{ steps.shop-sha.outputs.sha }}
+          status-context: acceptance-stage
+
+      # Build the run-job matrix based on acceptance-mode.
+      # none = 0 combos: skip the run matrix entirely (run job is skipped). Use
+      #   to exercise only preflight/check/smoke without burning matrix minutes.
+      # single = 1 combo: monolith/monorepo/TS/TS. Cheapest possible smoke — use
+      #   to validate the CLI scaffolder end-to-end without burning the matrix.
+      # minimal = 8 combos: TS is always the test-lang, exercised against dotnet
+      #   and java as system-lang (× 2 arch × 2 repo-strategy). Cheapest smoke
+      #   check — does not cover dotnet or java as test-lang.
+      # condensed = 12 off-diagonal polyglot combos (covers every lang as both
+      #   system-lang and test-lang per arch × repo-strategy via a Latin square:
+      #   ts→dotnet, dotnet→java, java→ts). Diagonal (lang == test-lang) is already
+      #   exercised continuously against real shop code in optivem/shop's own
+      #   {monolith,multitier}-{ts,dotnet,java}-acceptance-stage workflows.
+      # full = all 36 combos (2 arch × 2 repo-strategy × 3 lang × 3 test-lang).
+      - id: matrix
+        shell: bash
+        env:
+          MODE: ${{ inputs.acceptance-mode }}
+        run: |
+          if [ "$MODE" = "none" ]; then
+            MATRIX='{"include":[]}'
+            echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+            echo "| acceptance-mode | $MODE (0 combos) |" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "$MODE" = "single" ]; then
+            MATRIX='{"include":[{"arch":"monolith","repo-strategy":"monorepo","lang":"typescript","test-lang":"typescript"}]}'
+            echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+            echo "| acceptance-mode | $MODE (1 combos) |" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          ARCHS='["monolith","multitier"]'
+          REPOS='["monorepo","multirepo"]'
+          LANGS='["typescript","dotnet","java"]'
+
+          MINIMAL_PAIRS='[
+            {"lang":"dotnet","test-lang":"typescript"},
+            {"lang":"java","test-lang":"typescript"}
+          ]'
+
+          CONDENSED_PAIRS='[
+            {"lang":"typescript","test-lang":"dotnet"},
+            {"lang":"dotnet","test-lang":"java"},
+            {"lang":"java","test-lang":"typescript"}
+          ]'
+
+          FULL_PAIRS=$(jq -c -n --argjson l "$LANGS" \
+            '[$l[] as $a | $l[] as $b | {lang: $a, "test-lang": $b}]')
+
+          case "$MODE" in
+            minimal)  PAIRS="$MINIMAL_PAIRS" ;;
+            full)     PAIRS="$FULL_PAIRS" ;;
+            *)        PAIRS="$CONDENSED_PAIRS" ;;
+          esac
+
+          MATRIX=$(jq -c -n \
+            --argjson archs "$ARCHS" \
+            --argjson repos "$REPOS" \
+            --argjson pairs "$PAIRS" \
+            '{include: [$archs[] as $a | $repos[] as $r | $pairs[] as $p |
+              {arch: $a, "repo-strategy": $r} + $p
+            ]}')
+
+          COUNT=$(jq '.include | length' <<< "$MATRIX")
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "| acceptance-mode | $MODE ($COUNT combos) |" >> "$GITHUB_STEP_SUMMARY"
+
+      # Build the smoke-job matrix based on smoke-mode.
+      # none = 0 combos: skip smoke entirely. Use when shop-tag is already verified
+      #   (e.g. recovering from a stuck release) or when smoke-mode+acceptance-mode=none
+      #   is used to go straight to Create Prerelease.
+      # single = 1 combo: ubuntu-latest + monolith/monorepo/TS. Cheapest smoke.
+      # full = 4 combos: 2 OS × 2 scenarios (java/monolith/monorepo +
+      #   dotnet/multitier/multirepo). Current default.
+      - id: smoke-matrix
+        shell: bash
+        env:
+          MODE: ${{ inputs.smoke-mode }}
+        run: |
+          case "$MODE" in
+            none)
+              MATRIX='{"include":[]}'
+              ;;
+            single)
+              MATRIX='{"include":[{"os":"ubuntu-latest","scenario":{"arch":"monolith","repo-strategy":"monorepo","lang":"typescript"}}]}'
+              ;;
+            *)
+              MATRIX='{"include":[
+                {"os":"ubuntu-latest","scenario":{"arch":"monolith","repo-strategy":"monorepo","lang":"java"}},
+                {"os":"ubuntu-latest","scenario":{"arch":"multitier","repo-strategy":"multirepo","lang":"dotnet"}},
+                {"os":"windows-latest","scenario":{"arch":"monolith","repo-strategy":"monorepo","lang":"java"}},
+                {"os":"windows-latest","scenario":{"arch":"multitier","repo-strategy":"multirepo","lang":"dotnet"}}
+              ]}'
+              ;;
+          esac
+          MATRIX=$(jq -c . <<< "$MATRIX")
+          COUNT=$(jq '.include | length' <<< "$MATRIX")
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "| smoke-mode | $MODE ($COUNT combos) |" >> "$GITHUB_STEP_SUMMARY"
+
+  # Cross-OS smoke check — verifies the CLI works on both Linux and Windows
+  # before we burn the expensive matrix. TypeScript is the test-lang in both
+  # scenarios (cheapest/fastest test stack); the two scenarios cover a monolith
+  # and a multitier with different system-langs so a language-specific Windows
+  # regression surfaces early.
+  smoke:
+    name: Smoke (${{ matrix.os }}, ${{ matrix.scenario.arch }}, ${{ matrix.scenario.repo-strategy }}, ${{ matrix.scenario.lang }})
+    needs: check
+    if: >-
+      ${{ needs.check.outputs.should-run == 'true' &&
+      needs.check.outputs.verify-level != 'none' }}
+    runs-on: ${{ matrix.os }}
+    env:
+      VERIFY_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+      GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+      TEST_OWNER: ${{ vars.TEST_OWNER }}
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+      WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+    strategy:
+      fail-fast: true
+      matrix: ${{ fromJSON(needs.check.outputs.smoke-matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Acceptance Test
+        uses: ./.github/actions/acceptance-test
+        with:
+          arch: ${{ matrix.scenario.arch }}
+          repo-strategy: ${{ matrix.scenario.repo-strategy }}
+          lang: ${{ matrix.scenario.lang }}
+          test-lang: typescript
+          verify-level: local
+          exclude-legacy: 'true'
+          shop-tag: ${{ needs.check.outputs.shop-tag }}
+          retain-repos: ${{ needs.check.outputs.retain-repos }}
+
+  run:
+    name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})
+    needs: [check, smoke]
+    if: >-
+      ${{ needs.check.outputs.should-run == 'true' &&
+      (needs.smoke.result == 'success' || needs.smoke.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    env:
+      VERIFY_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+      GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+      TEST_OWNER: ${{ vars.TEST_OWNER }}
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+      WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+    strategy:
+      fail-fast: true
+      max-parallel: 12
+      matrix: ${{ fromJSON(needs.check.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Acceptance Test
+        uses: ./.github/actions/acceptance-test
+        with:
+          arch: ${{ matrix.arch }}
+          repo-strategy: ${{ matrix.repo-strategy }}
+          lang: ${{ matrix.lang }}
+          test-lang: ${{ matrix.test-lang }}
+          verify-level: ${{ needs.check.outputs.verify-level }}
+          exclude-legacy: 'false'
+          shop-tag: ${{ needs.check.outputs.shop-tag }}
+          retain-repos: ${{ needs.check.outputs.retain-repos }}
+
+  create-prerelease:
+    name: Create Prerelease
+    needs: [check, run]
+    # !failure() && !cancelled() (not success()) so run can be skipped (acceptance-mode=none)
+    # when the shop-tag has already been verified manually or when recovering from a
+    # stuck release. needs.check.outputs.release-mode is the single "should publish"
+    # signal: false in HEAD mode, at non-release verify-levels, or when skip-prerelease=true.
+    if: >-
+      ${{ !failure() && !cancelled() &&
+      needs.check.outputs.release-mode == 'true' }}
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.gen.outputs.version }}
+    steps:
+      - name: Record Acceptance-Stage Passed
+        uses: optivem/actions/create-commit-status@v1
+        with:
+          context: acceptance-stage
+          description: ${{ needs.check.outputs.shop-sha }}
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Read target version
+        id: target
+        uses: optivem/actions/read-base-version@v1
+
+      - name: Generate RC Version
+        id: gen
+        uses: optivem/actions/compose-prerelease-version@v1
+        with:
+          base-version: ${{ steps.target.outputs.base-version }}
+          suffix: rc
+          build-number: ${{ github.run_number }}
+
+      - name: Resolve Shop Tag
+        id: shop-tag
+        uses: optivem/actions/resolve-latest-tag-from-sha@v1
+        with:
+          repository: optivem/shop
+          commit-sha: ${{ needs.check.outputs.shop-sha }}
+          pattern: '*'
+
+      - name: Publish RC Tag
+        uses: optivem/actions/publish-tag@v1
+        with:
+          tag: ${{ steps.gen.outputs.version }}
+          token: ${{ secrets.WORKFLOW_TOKEN }}
+
+      - name: Run GoReleaser (RC)
+        uses: ./.github/actions/run-goreleaser
+        with:
+          shop-sha: ${{ needs.check.outputs.shop-sha }}
+          shop-tag: ${{ steps.shop-tag.outputs.tag }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # Fire-and-forget: after the RC prerelease is fully published (tag + GoReleaser),
+  # promote it by dispatching gh-release-stage. We wait for create-prerelease to
+  # finish rather than using an on:push:tags trigger because create-prerelease's
+  # GoReleaser step would otherwise race with gh-release-stage's own GoReleaser
+  # and bump-version push-to-main.
+  # Needs a PAT (WORKFLOW_TOKEN) — GITHUB_TOKEN cannot start downstream workflow runs.
+  trigger-gh-release-stage:
+    name: Trigger gh-release-stage
+    needs: create-prerelease
+    # Explicit if: needed so the default success() doesn't propagate a skipped
+    # `run` (via acceptance-mode=none) through the transitive chain and skip this job.
+    if: ${{ !failure() && !cancelled() && needs.create-prerelease.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch gh-release-stage
+        env:
+          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RC_VERSION: ${{ needs.create-prerelease.outputs.version }}
+        run: |
+          set -euo pipefail
+          echo "Dispatching gh-release-stage.yml with version=${RC_VERSION}"
+          gh workflow run gh-release-stage.yml -f version="${RC_VERSION}"
+          {
+            echo "## Dispatched gh-release-stage"
+            echo ""
+            echo "- version: \`${RC_VERSION}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  summary:
+    name: Summary
+    needs: [smoke, run, create-prerelease]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Summary
+        uses: ./.github/actions/summarize-acceptance-stage

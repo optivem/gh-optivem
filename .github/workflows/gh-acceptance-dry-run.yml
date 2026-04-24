@@ -1,0 +1,75 @@
+name: gh-acceptance-dry-run
+
+run-name: >-
+  gh Acceptance Dry-Run — ${{ inputs.shop-head && format('HEAD / {0}', inputs.verify-level) || inputs.verify-level }} [smoke:${{ inputs.smoke-mode }}, acceptance:${{ inputs.acceptance-mode }}]
+
+on:
+  workflow_dispatch:
+    inputs:
+      verify-level:
+        description: 'Verification level for system tests'
+        required: false
+        default: 'acceptance'
+        type: choice
+        options:
+          - none
+          - local
+          - commit
+          - acceptance
+          - qa
+          - release
+      smoke-mode:
+        description: 'Smoke matrix size: none (skip smoke), single (1 combo — ubuntu/monolith/monorepo/TS/TS), or full (4 combos — 2 OS × 2 scenarios).'
+        required: false
+        default: 'single'
+        type: choice
+        options:
+          - none
+          - single
+          - full
+      acceptance-mode:
+        description: 'Acceptance matrix size: none (0 combos), single (1 combo — monolith/monorepo/TS/TS), minimal (8 combos), condensed (12 polyglot combos), or full (36 combos).'
+        required: false
+        default: 'none'
+        type: choice
+        options:
+          - none
+          - single
+          - minimal
+          - condensed
+          - full
+      shop-tag:
+        description: 'optivem/shop meta-v* release tag to test against. Empty = latest meta-v* release. Mutually exclusive with shop-head.'
+        required: false
+        default: ''
+        type: string
+      shop-head:
+        description: 'Run against optivem/shop HEAD (latest main) instead of a meta-v* release tag. Mutually exclusive with shop-tag and verify-level=release.'
+        required: false
+        default: true
+        type: boolean
+      retain-repos:
+        description: 'Retain scaffolded test repos (skip cleanup) even on success. Useful for post-run debugging.'
+        required: false
+        default: false
+        type: boolean
+
+# Shared concurrency group with gh-acceptance-stage so dry-runs and real runs
+# serialize rather than stepping on each other.
+concurrency:
+  group: gh-acceptance-stage
+  cancel-in-progress: false
+
+jobs:
+  run:
+    uses: ./.github/workflows/_gh-acceptance-pipeline.yml
+    secrets: inherit
+    with:
+      verify-level: ${{ inputs.verify-level }}
+      smoke-mode: ${{ inputs.smoke-mode }}
+      acceptance-mode: ${{ inputs.acceptance-mode }}
+      shop-tag: ${{ inputs.shop-tag }}
+      shop-head: ${{ inputs.shop-head }}
+      retain-repos: ${{ inputs.retain-repos }}
+      # Dry-run never produces a prerelease/release, regardless of verify-level.
+      skip-prerelease: true
