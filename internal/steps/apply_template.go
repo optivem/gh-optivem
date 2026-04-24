@@ -34,7 +34,7 @@ const (
 	dirSystemTest             = "system-test"
 	dirExternalRealSim        = "external-real-sim"
 	dirExternalStub           = "external-stub"
-	shopSystemPrefix       = "../../system/"
+	shopSystemPrefix       = "../../../system/"
 	systemMonolithDir         = "system/monolith/"
 	systemMultitierDir        = "system/multitier/"
 	systemMultitierBackend    = systemMultitierDir + "backend-"
@@ -486,15 +486,15 @@ func monolithDockerComposeReplacements(lang, testLang string) [][2]string {
 		{dirSystemTest + "/" + testLang + "/", dirSystemTest + "/"},
 		{dirSystemTest + "/" + testLang, dirSystemTest},
 		{prefixMonolithSystem + lang, "system"},
-		// Docker build context: shop has system-test/{lang}/ so ../../system/monolith/{lang} is correct there,
-		// but scaffold flattens to system-test/ (one level up), so the context becomes ../system
-		{"../../system/monolith/" + lang, "../system"},
+		// Docker build context: shop has system-test/{lang}/<arch>/ so ../../../system/monolith/{lang} is correct
+		// there, but scaffold flattens arch subdir → system-test/, so the context becomes ../system.
+		{shopSystemPrefix + "monolith/" + lang, "../system"},
 		// Volume mount paths: old layout had system-test/{lang}/, new has system-test/
 		{shopSystemPrefix + dirExternalRealSim, "../" + dirExternalRealSim},
 		{shopSystemPrefix + dirExternalStub, "../" + dirExternalStub},
 	}
 	if lang != testLang {
-		r = append(r, [2]string{"../../system/monolith/" + testLang, "../system"})
+		r = append(r, [2]string{shopSystemPrefix + "monolith/" + testLang, "../system"})
 		r = append(r, [2]string{prefixMonolithSystem + testLang, "system"})
 	}
 	return r
@@ -556,9 +556,9 @@ func multitierDockerComposeReplacements(backendLang, frontendLang, testLang stri
 	// Docker build contexts always reference the test-lang backend and the frontend lang in the
 	// shop layout (e.g. backend-typescript, frontend-react). After scaffolding these become
 	// ../backend and ../frontend respectively, so we always need both replacements.
-	r = append(r, [2]string{"../../" + systemMultitierBackend + testLang, "../backend"})
+	r = append(r, [2]string{"../../../" + systemMultitierBackend + testLang, "../backend"})
 	r = append(r, [2]string{prefixMultitierBackend + testLang, "backend"})
-	r = append(r, [2]string{"../../system/multitier/frontend-" + frontendLang, "../frontend"})
+	r = append(r, [2]string{shopSystemPrefix + "multitier/frontend-" + frontendLang, "../frontend"})
 	r = append(r, [2]string{prefixMultitierFrontend + frontendLang, "frontend"})
 	return r
 }
