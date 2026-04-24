@@ -389,15 +389,16 @@ func (g *GitHub) CreateEnvironment(name string) {
 
 func (g *GitHub) SecretSet(name, value string) {
 	if g.DryRun {
-		log.Infof("[DRY RUN] gh secret set %s --body - --repo %s (stdin: ***)", name, g.Repo)
+		log.Infof("[DRY RUN] gh secret set %s --repo %s (stdin: ***)", name, g.Repo)
 		return
 	}
-	// Pass the secret via stdin (`--body -`) so it never appears in the
-	// command line — argv is readable by other local users on most systems,
-	// and any error from `gh secret set` would surface the full cmdStr into
-	// logs, retry chatter, and the auto-filed bug report body.
+	// Pass the secret via stdin (gh reads stdin when --body is omitted) so it
+	// never appears in the command line — argv is readable by other local users
+	// on most systems, and any error from `gh secret set` would surface the full
+	// cmdStr into logs, retry chatter, and the auto-filed bug report body.
+	// Note: `--body -` does NOT mean stdin — gh would store the literal "-".
 	MustRunStdinWithRetry(
-		fmt.Sprintf("gh secret set %s --body - --repo %s", name, g.Repo),
+		fmt.Sprintf("gh secret set %s --repo %s", name, g.Repo),
 		value, false, "")
 }
 

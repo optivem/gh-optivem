@@ -166,12 +166,15 @@ func commitPartialScaffoldForDebug(cfg *config.Config, failureNote string) strin
 
 // Phase labels — printed as section headers by executeSteps when the phase changes.
 const (
-	phasePrepare       = "Prepare"
-	phaseSetupRepo     = "Setup repository"
-	phaseApplyTemplate = "Apply template"
-	phaseValidate      = "Validate scaffold"
-	phaseVerify        = "Verify pipeline"
-	phaseFinalize      = "Finalize"
+	phasePrepare            = "Prepare"
+	phaseSetupRepo          = "Setup repository"
+	phaseApplyTemplate      = "Apply template"
+	phaseVerifyLocal        = "Verify local"
+	phaseVerifyCommit       = "Verify commit stage"
+	phaseVerifyAcceptance   = "Verify acceptance stage"
+	phaseVerifyQA           = "Verify QA stage"
+	phaseVerifyProduction   = "Verify production stage"
+	phaseFinalize           = "Finalize"
 )
 
 func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, failureNote *string) []stepDef {
@@ -195,9 +198,10 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, fail
 		{name: "Create SonarCloud projects", phase: phaseApplyTemplate, fn: func() { steps.CreateSonarCloudProjects(cfg, sc) }},
 		{name: "Commit and push", phase: phaseApplyTemplate, alwaysRun: true, fn: func() { steps.CommitAndPush(cfg, *failureNote) }},
 
-		// PHASE: VALIDATE SCAFFOLD — runs after push so broken output is already
-		// visible in the remote repo for troubleshooting.
-		{name: "Validate no leftover system names", phase: phaseValidate, fn: func() { steps.ValidateNoLeftoverSystemNames(cfg) }},
+		// Validation is grouped into the Apply template phase but runs last —
+		// i.e. after Commit and push — so broken output is already visible in
+		// the remote repo for troubleshooting.
+		{name: "Validate no leftover system names", phase: phaseApplyTemplate, fn: func() { steps.ValidateNoLeftoverSystemNames(cfg) }},
 	}
 
 	allSteps = append(allSteps, buildVerifySteps(cfg, gh)...)
@@ -236,41 +240,41 @@ func buildVerifySteps(cfg *config.Config, gh *shell.GitHub) []stepDef {
 
 	// Step 1: Local compilation — runs at every level above none.
 	s = append(s,
-		stepDef{name: "Verify local compilation", phase: phaseVerify, fn: func() { steps.VerifyCompilation(cfg) }},
+		stepDef{name: "Verify local compilation", phase: phaseVerifyLocal, fn: func() { steps.VerifyCompilation(cfg) }},
 	)
 
 	// Step 2: Local testing — Run-SystemTests.ps1 (latest + legacy).
 	if !cfg.SkipLocalTests {
 		s = append(s,
-			stepDef{name: "Verify local testing", phase: phaseVerify, fn: func() { steps.VerifyLocalTesting(cfg) }},
+			stepDef{name: "Verify local testing", phase: phaseVerifyLocal, fn: func() { steps.VerifyLocalTesting(cfg) }},
 		)
 	}
 
 	// Step 3: Commit stage CI.
 	if level >= verifyLevelOrder["commit"] {
 		s = append(s,
-			stepDef{name: "Verify commit stage", phase: phaseVerify, fn: func() { steps.VerifyCommitStage(cfg, gh) }},
+			stepDef{name: "Verify commit stage", phase: phaseVerifyCommit, fn: func() { steps.VerifyCommitStage(cfg, gh) }},
 		)
 	}
 
 	// Step 4: Acceptance stage CI (latest + legacy parallel, legacy optional).
 	if level >= verifyLevelOrder["acceptance"] {
 		s = append(s,
-			stepDef{name: "Verify acceptance stage", phase: phaseVerify, fn: func() { steps.VerifyAcceptanceStages(cfg, gh) }},
+			stepDef{name: "Verify acceptance stage", phase: phaseVerifyAcceptance, fn: func() { steps.VerifyAcceptanceStages(cfg, gh) }},
 		)
 	}
 
 	// Step 5: QA stage CI (stage + signoff).
 	if level >= verifyLevelOrder["qa"] {
 		s = append(s,
-			stepDef{name: "Verify QA stage", phase: phaseVerify, fn: func() { steps.VerifyQA(cfg, gh) }},
+			stepDef{name: "Verify QA stage", phase: phaseVerifyQA, fn: func() { steps.VerifyQA(cfg, gh) }},
 		)
 	}
 
 	// Step 6: Production stage CI.
 	if level >= verifyLevelOrder["release"] {
 		s = append(s,
-			stepDef{name: "Verify production stage", phase: phaseVerify, fn: func() { steps.VerifyProdStage(cfg, gh) }},
+			stepDef{name: "Verify production stage", phase: phaseVerifyProduction, fn: func() { steps.VerifyProdStage(cfg, gh) }},
 		)
 	}
 

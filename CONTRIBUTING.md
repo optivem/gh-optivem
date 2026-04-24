@@ -36,11 +36,25 @@ bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner
     --arch multitier --repo-strategy multirepo \
     --backend-lang dotnet --frontend-lang react --test-lang typescript
 
-# SKIP LOCAL & LEGACY
+bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner" \
+    --arch monolith --repo-strategy monorepo \
+    --monolith-lang typescript --test-lang typescript
+
+
+# SKIP LOCAL & LEGACY (MONOLITH)
+bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner" \
+    --arch monolith --repo-strategy monorepo \
+    --monolith-lang typescript --test-lang typescript \
+    --skip-local-tests --exclude-legacy
+
+
+# SKIP LOCAL & LEGACY (MULTIREPO)
 bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner" \
     --arch multitier --repo-strategy multirepo \
     --backend-lang dotnet --frontend-lang react --test-lang typescript \
     --skip-local-tests --exclude-legacy
+
+
 
 
 
