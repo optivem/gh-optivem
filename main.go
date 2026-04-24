@@ -77,7 +77,10 @@ func runInit() {
 	checkForUpdate()
 
 	cfg := config.ParseAndValidate()
-	log.Init(cfg.Verbose, cfg.Quiet)
+	if err := log.Init(cfg.Verbose, cfg.Quiet, cfg.LogFile); err != nil {
+		log.FatalExit(err.Error())
+	}
+	defer log.Close()
 
 	gh := shell.NewGitHub(cfg)
 	sc := shell.NewSonarCloud(cfg.SonarToken, cfg.OwnerLower)

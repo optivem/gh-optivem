@@ -39,6 +39,7 @@ type Config struct {
 	NoBugReport  bool   // skip auto-creating GitHub issues on failure
 	Verbose      bool   // enable debug output
 	Quiet        bool   // suppress info-level output
+	LogFile      string // optional path to mirror plain-text log output
 	WorkDir    string
 	ShopPath string
 	ShopRef  string // Pinned optivem/shop ref (SHA or meta-v* tag). Never empty, never main.
@@ -330,6 +331,7 @@ type rawFlags struct {
 	randomSuffix, dryRun, testMode, cleanupFlag, noCleanup       *bool
 	forceCleanup, excludeLegacy, sampleTests, noBugReport, showVersion *bool
 	verbose, verboseShort, quiet, quietShort                     *bool
+	logFile                                                      *string
 }
 
 func registerFlags() rawFlags {
@@ -362,6 +364,7 @@ func registerFlags() rawFlags {
 		verboseShort:  flag.Bool("v", false, "Short for --verbose"),
 		quiet:         flag.Bool("quiet", false, "Suppress info-level output (warnings and errors still shown)"),
 		quietShort:    flag.Bool("q", false, "Short for --quiet"),
+		logFile:       flag.String("log-file", "", "Also write plain-text log output to this file (no ANSI colors, all levels)"),
 	}
 }
 
@@ -639,6 +642,7 @@ func ParseAndValidate() *Config {
 		NoBugReport:  *f.noBugReport,
 		Verbose:      verbose,
 		Quiet:        quiet,
+		LogFile:      *f.logFile,
 		WorkDir:    wd,
 		ShopPath: shopPath,
 		ShopRef:  resolvedShopRef,

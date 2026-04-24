@@ -276,7 +276,7 @@ func (g *GitHub) waitForRepoVisible() {
 			log.Fatalf("rate limit hit while waiting for %s to become visible: %v", g.Repo, err)
 		}
 		if i == 1 {
-			log.Logf("Waiting for %s to become visible via GraphQL...", g.Repo)
+			log.Debugf("Waiting for %s to become visible via GraphQL...", g.Repo)
 		}
 		if i < maxAttempts {
 			sleepFn(pollDelay)
