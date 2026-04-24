@@ -33,9 +33,9 @@ var baseArgs = []string{
 
 func cleanupFlags() []string {
 	if os.Getenv("TEST_NO_CLEANUP") == "1" {
-		return []string{"--no-cleanup"}
+		return []string{"--keep-local"}
 	}
-	flags := []string{"--cleanup"}
+	flags := []string{"--delete-test-repos"}
 	if os.Getenv("TEST_FORCE_CLEANUP") == "1" {
 		flags = append(flags, "--force-cleanup")
 	}
@@ -120,7 +120,8 @@ func TestMain(m *testing.M) {
 }
 
 // runCLI runs the binary and returns output + exit code.
-// Valid config tests run with --test --cleanup for full scaffolding + automatic cleanup.
+// Valid config tests run with --test --delete-test-repos for full scaffolding + automatic cleanup
+// (local dir is deleted by default; --delete-test-repos adds GitHub + SonarCloud deletion).
 // Streams the subprocess's stdout/stderr to os.Stderr as it runs so the created
 // repo name (and other progress) appears live in the log instead of only after
 // the subtest finishes. Still returns the captured output for assertions.

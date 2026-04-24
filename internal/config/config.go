@@ -2,17 +2,33 @@
 package config
 
 import (
+	"bufio"
 	"crypto/rand"
 	"encoding/hex"
 	"flag"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/version"
 )
+
+// RawInputs captures the raw CLI flag values before any resolution/defaulting.
+// Surfaced in the startup banner so the user can audit exactly what they typed
+// (vs. the resolved/derived values the scaffold will actually act on).
+type RawInputs struct {
+	Repo            string // --repo before --random-suffix appends a hex tail
+	ShopTag         string // --shop-tag before resolving empty → latest meta-v*
+	TestLang        string // --test-lang before defaulting to --lang / --backend-lang
+	VerifyLevel     string // --verify-level before defaulting to "release"
+	WorkDir         string // --workdir before defaulting to temp dir
+	KeepLocal       bool   // --keep-local flag as-passed
+	DeleteTestRepos bool   // --delete-test-repos flag as-passed
+	RandomSuffix    bool   // --random-suffix flag as-passed
+}
 
 type Config struct {
 	Owner      string
@@ -21,6 +37,8 @@ type Config struct {
 	SystemName string
 	Arch         string // "monolith" or "multitier"
 	RepoStrategy string // "monorepo" or "multirepo"
+
+	Raw RawInputs
 
 	Lang         string // monolith only
 	BackendLang  string // multitier only
@@ -34,8 +52,9 @@ type Config struct {
 	VerifyLevel   string // "none", "local", "commit", "acceptance", "release"
 	ExcludeLegacy bool   // exclude acceptance-stage-legacy verification
 	SampleTests   bool   // run only sample local tests instead of all
-	Cleanup       string // "yes", "no", or "ask"
-	ForceCleanup bool   // cleanup even on failure
+	KeepLocal       bool // keep the local scaffolded clone dir after a successful test run (default: delete it)
+	DeleteTestRepos bool // delete GitHub test repos + SonarCloud projects after a successful test run (default: keep them)
+	ForceCleanup    bool // run whichever cleanup is enabled even on failure
 	NoBugReport  bool   // skip auto-creating GitHub issues on failure
 	Verbose      bool   // enable debug output
 	Quiet        bool   // suppress info-level output
@@ -210,6 +229,58 @@ func SpacesToLower(s string) string {
 	return strings.ToLower(strings.ReplaceAll(s, " ", ""))
 }
 
+// ValidateOwnerFormat checks the owner against GitHub's username/org naming rules.
+// Returns an error message or empty string if valid.
+//
+// GitHub rules: 1–39 chars; alphanumeric or single hyphens; cannot begin or end
+// with a hyphen; cannot contain consecutive hyphens.
+func ValidateOwnerFormat(owner string) string {
+	if len(owner) == 0 {
+		return "owner cannot be empty"
+	}
+	if len(owner) > 39 {
+		return "owner exceeds 39 character limit"
+	}
+	if strings.HasPrefix(owner, "-") || strings.HasSuffix(owner, "-") {
+		return "owner cannot start or end with a hyphen"
+	}
+	if strings.Contains(owner, "--") {
+		return "owner cannot contain consecutive hyphens"
+	}
+	for _, c := range owner {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-') {
+			return fmt.Sprintf("owner contains invalid character %q — only alphanumeric and hyphens allowed", c)
+		}
+	}
+	return ""
+}
+
+// ValidateRepoFormat checks the repo name against GitHub's repository naming rules.
+// Returns an error message or empty string if valid.
+//
+// GitHub rules: 1–100 chars; alphanumeric, hyphen, underscore, or period;
+// cannot start with hyphen or period; cannot be "." or "..".
+func ValidateRepoFormat(repo string) string {
+	if len(repo) == 0 {
+		return "repo cannot be empty"
+	}
+	if len(repo) > 100 {
+		return "repo exceeds 100 character limit"
+	}
+	if repo == "." || repo == ".." {
+		return fmt.Sprintf("repo cannot be %q", repo)
+	}
+	if strings.HasPrefix(repo, ".") || strings.HasPrefix(repo, "-") {
+		return "repo cannot start with '.' or '-'"
+	}
+	for _, c := range repo {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') {
+			return fmt.Sprintf("repo contains invalid character %q — only alphanumeric, hyphen, underscore, period allowed", c)
+		}
+	}
+	return ""
+}
+
 // ValidateSystemName checks the system name against all naming constraints.
 // Returns an error message or empty string if valid.
 func ValidateSystemName(name string) string {
@@ -329,7 +400,7 @@ type rawFlags struct {
 	owner, systemName, repo, arch, repoStrategy                  *string
 	lang, testLang, backendLang, frontendLang                    *string
 	license, verifyLevel, deploy, workDir, shopTag               *string
-	randomSuffix, dryRun, testMode, cleanupFlag, noCleanup       *bool
+	randomSuffix, dryRun, testMode, keepLocal, deleteTestRepos   *bool
 	forceCleanup, excludeLegacy, sampleTests, noBugReport, showVersion *bool
 	verbose, verboseShort, quiet, quietShort, noAutoUpgrade      *bool
 	logFile                                                      *string
@@ -350,10 +421,10 @@ func registerFlags() rawFlags {
 		randomSuffix:  flag.Bool("random-suffix", false, "Append 16-char hex suffix to repo name"),
 		dryRun:        flag.Bool("dry-run", false, "Print actions without executing"),
 		testMode:      flag.Bool("test", false, "Test mode with optional cleanup"),
-		cleanupFlag:   flag.Bool("cleanup", false, "Auto-cleanup in test mode"),
-		noCleanup:     flag.Bool("no-cleanup", false, "Keep repo in test mode"),
-		forceCleanup:  flag.Bool("force-cleanup", false, "Cleanup even on failure"),
-		verifyLevel:   flag.String("verify-level", "", "Verification level: none, local, commit, acceptance, release (default: release)"),
+		keepLocal:       flag.Bool("keep-local", false, "Test mode: keep the local scaffolded clone dir instead of deleting it on success"),
+		deleteTestRepos: flag.Bool("delete-test-repos", false, "Test mode: delete the GitHub test repos + SonarCloud projects on success (default: keep them)"),
+		forceCleanup:    flag.Bool("force-cleanup", false, "Test mode: run whichever cleanup is enabled even on failure"),
+		verifyLevel:   flag.String("verify-level", "release", "Verification level: none, local, commit, acceptance, release"),
 		excludeLegacy: flag.Bool("exclude-legacy", false, "Exclude acceptance-stage-legacy verification"),
 		sampleTests:   flag.Bool("sample-tests", false, "Run only sample local tests instead of all"),
 		noBugReport:   flag.Bool("no-bug-report", false, "Skip auto-creating GitHub issues on failure"),
@@ -371,9 +442,6 @@ func registerFlags() rawFlags {
 }
 
 func resolveVerifyLevel(level string) string {
-	if level == "" {
-		return "release"
-	}
 	validLevels := map[string]bool{"none": true, "local": true, "commit": true, "acceptance": true, "release": true}
 	if !validLevels[level] {
 		log.FatalExit("--verify-level must be none, local, commit, acceptance, or release")
@@ -508,7 +576,8 @@ func resolveShopRef(shopTag string) string {
 			log.FatalExit("Cannot resolve shop tag: " + err.Error())
 		}
 		ref = latest
-		log.Successf("Resolved empty shop-tag to latest meta-v* release: %s", ref)
+		// Surfaced in the banner's Derived block; log at debug for --verbose traces.
+		log.Debugf("Resolved empty shop-tag to latest meta-v* release: %s", ref)
 	}
 	if isMainRef(ref) {
 		log.FatalExit("Invalid shop ref: 'main'/'master' is not allowed — acceptance requires a published meta-v* release tag.")
@@ -549,6 +618,34 @@ func resolveWorkDir(wd string) string {
 	return dir
 }
 
+// cloneDirs holds the absolute local paths where the shop template and every
+// scaffolded repo will be cloned. Pre-computed up-front (before Phase 1) so the
+// startup banner can display them deterministically. Fields not applicable to
+// the current arch+strategy combination are left empty.
+type cloneDirs struct {
+	Shop     string
+	Repo     string
+	Frontend string
+	Backend  string
+	System   string
+}
+
+func resolveCloneDirs(workDir, strategy, arch string) cloneDirs {
+	d := cloneDirs{
+		Shop: filepath.Join(workDir, "shop"),
+		Repo: filepath.Join(workDir, "repo"),
+	}
+	if strategy == "multirepo" {
+		if arch == "multitier" {
+			d.Frontend = filepath.Join(workDir, "repo-frontend")
+			d.Backend = filepath.Join(workDir, "repo-backend")
+		} else {
+			d.System = filepath.Join(workDir, "repo-system")
+		}
+	}
+	return d
+}
+
 func resolveRepoName(repo string, randomSuffix bool) string {
 	if !randomSuffix {
 		return repo
@@ -576,6 +673,57 @@ func checkGhAuth(dryRun bool) {
 	}
 }
 
+// ghAPISilent is the flag used with `gh api` to suppress the response body on
+// success. 4xx/5xx still produce non-zero exit codes, which is what we key on.
+const ghAPISilent = "--silent"
+
+// checkOwnerExists verifies the owner resolves as a GitHub user or organization.
+// Aborts via FatalExit if neither endpoint returns 200.
+func checkOwnerExists(owner string) {
+	// gh api returns non-zero on HTTP 4xx/5xx. Try user first (more common),
+	// then org. Stderr is suppressed so the 404 from the user lookup doesn't
+	// leak when we fall back to the org endpoint.
+	userCmd := exec.Command("gh", "api", "users/"+owner, ghAPISilent)
+	userCmd.Stderr = nil
+	if err := userCmd.Run(); err == nil {
+		return
+	}
+	orgCmd := exec.Command("gh", "api", "orgs/"+owner, ghAPISilent)
+	orgCmd.Stderr = nil
+	if err := orgCmd.Run(); err == nil {
+		return
+	}
+	log.FatalExit(fmt.Sprintf("--owner %q: no GitHub user or organization with that name", owner))
+}
+
+// confirmRepoExists checks whether fullRepo ("<owner>/<name>") already exists.
+// If it does, prompts the user to confirm scaffolding into the existing repo.
+// Aborts via FatalExit if the user declines or stdin is not available.
+func confirmRepoExists(fullRepo string) {
+	cmd := exec.Command("gh", "api", "repos/"+fullRepo, ghAPISilent)
+	cmd.Stderr = nil // 404 is the expected case — suppress the noise
+	if err := cmd.Run(); err != nil {
+		// Repo doesn't exist (or API is unreachable). Continue — if it's really
+		// unreachable, later steps will fail with a clearer error.
+		return
+	}
+
+	log.Warnf("Repository %s already exists on GitHub.", fullRepo)
+	log.Warnf("Proceeding will scaffold into the existing repository and may overwrite its contents.")
+	fmt.Fprint(os.Stderr, "Proceed? [y/N]: ")
+
+	reader := bufio.NewReader(os.Stdin)
+	resp, err := reader.ReadString('\n')
+	if err != nil {
+		// EOF or non-interactive stdin — treat as "no" with an actionable message.
+		log.FatalExit(fmt.Sprintf("Aborted: repository %s already exists and no confirmation was provided", fullRepo))
+	}
+	resp = strings.TrimSpace(strings.ToLower(resp))
+	if resp != "y" && resp != "yes" {
+		log.FatalExit(fmt.Sprintf("Aborted: repository %s already exists", fullRepo))
+	}
+}
+
 func ParseAndValidate() *Config {
 	f := registerFlags()
 	flag.Parse()
@@ -597,6 +745,13 @@ func ParseAndValidate() *Config {
 		log.FatalExit("--verbose and --quiet are mutually exclusive")
 	}
 
+	// === Phase 1: in-memory format validation (fast, no network) ===
+	if err := ValidateOwnerFormat(*f.owner); err != "" {
+		log.FatalExit("--owner: " + err)
+	}
+	if err := ValidateRepoFormat(*f.repo); err != "" {
+		log.FatalExit("--repo: " + err)
+	}
 	if err := ValidateSystemName(*f.systemName); err != "" {
 		log.FatalExit("--system-name: " + err)
 	}
@@ -612,21 +767,31 @@ func ParseAndValidate() *Config {
 		validateEnvTokens(env, *f.repoStrategy)
 	}
 
-	resolvedShopRef := resolveShopRef(*f.shopTag)
-	shopPath, cloneErr := cloneShop(resolvedShopRef)
-	if cloneErr != nil {
-		log.FatalExit("Cannot clone shop repo: " + cloneErr.Error())
+	mr := deriveMultirepoNames(*f.repoStrategy, *f.arch, *f.owner, repoName)
+
+	// === Phase 2: GitHub existence checks (fail fast before slow operations) ===
+	checkGhAuth(*f.dryRun)
+	checkOwnerExists(*f.owner)
+	confirmRepoExists(*f.owner + "/" + repoName)
+	if mr.backendFullRepo != "" {
+		confirmRepoExists(mr.backendFullRepo)
+	}
+	if mr.frontendFullRepo != "" {
+		confirmRepoExists(mr.frontendFullRepo)
+	}
+	if mr.systemFullRepo != "" {
+		confirmRepoExists(mr.systemFullRepo)
 	}
 
-	checkGhAuth(*f.dryRun)
+	// === Phase 3: resolve shop ref (fast API call; actual clone happens in the Prepare step) ===
+	resolvedShopRef := resolveShopRef(*f.shopTag)
 
 	ownerPascal := computeOwnerPascal(*f.owner)
 	ownerLower := strings.ToLower(*f.owner)
 	repoPascal := ToPascalCase(repoName)
 	repoNoHyphens := ToJavaLower(repoName)
-
-	mr := deriveMultirepoNames(*f.repoStrategy, *f.arch, *f.owner, repoName)
 	wd := resolveWorkDir(*f.workDir)
+	clones := resolveCloneDirs(wd, *f.repoStrategy, *f.arch)
 
 	return &Config{
 		Owner:      *f.owner,
@@ -635,6 +800,17 @@ func ParseAndValidate() *Config {
 		SystemName: *f.systemName,
 		Arch:         *f.arch,
 		RepoStrategy: *f.repoStrategy,
+
+		Raw: RawInputs{
+			Repo:            *f.repo,
+			ShopTag:         *f.shopTag,
+			TestLang:        *f.testLang,
+			VerifyLevel:     *f.verifyLevel,
+			WorkDir:         *f.workDir,
+			KeepLocal:       *f.keepLocal,
+			DeleteTestRepos: *f.deleteTestRepos,
+			RandomSuffix:    *f.randomSuffix,
+		},
 
 		Lang:         lc.lang,
 		BackendLang:  lc.backendLang,
@@ -648,16 +824,24 @@ func ParseAndValidate() *Config {
 		VerifyLevel:   resolvedLevel,
 		ExcludeLegacy: *f.excludeLegacy,
 		SampleTests:   *f.sampleTests,
-		Cleanup:      resolveCleanup(*f.cleanupFlag, *f.noCleanup),
-		ForceCleanup: *f.forceCleanup,
+		KeepLocal:       *f.keepLocal,
+		DeleteTestRepos: *f.deleteTestRepos,
+		ForceCleanup:    *f.forceCleanup,
 		NoBugReport:  *f.noBugReport,
 		Verbose:      verbose,
 		Quiet:        quiet,
 		LogFile:      *f.logFile,
 		NoAutoUpgrade: *f.noAutoUpgrade,
 		WorkDir:    wd,
-		ShopPath: shopPath,
-		ShopRef:  resolvedShopRef,
+		// ShopPath, RepoDir, and the multirepo-component dirs are pre-computed
+		// from WorkDir so the startup banner can show them before Phase 1. The
+		// Prepare and Apply Template phases clone into these paths directly.
+		ShopPath:        clones.Shop,
+		RepoDir:         clones.Repo,
+		FrontendRepoDir: clones.Frontend,
+		BackendRepoDir:  clones.Backend,
+		SystemRepoDir:   clones.System,
+		ShopRef:         resolvedShopRef,
 
 		DockerHubUsername: env.dockerHubUsername,
 		DockerHubToken:   env.dockerHubToken,
@@ -696,30 +880,41 @@ func ParseAndValidate() *Config {
 	}
 }
 
-// cloneShop clones optivem/shop from GitHub into a temp directory, then checks out ref.
-// ref must be non-empty (SHA or tag) — HEAD of main is never cloned as a final state.
-func cloneShop(ref string) (string, error) {
+// CloneShop clones optivem/shop from GitHub into dir, then checks out ref.
+// dir is pre-computed during ParseAndValidate (so the startup banner can show
+// it); this function creates it on disk and populates it. ref must be non-empty
+// (SHA or tag) — HEAD of main is never cloned as a final state. Called by the
+// Prepare-phase step (not during ParseAndValidate) so the clone appears as a
+// normal phased step in the output.
+func CloneShop(ref, dir string) error {
 	if ref == "" {
-		return "", fmt.Errorf("ref must be non-empty — refusing to clone HEAD of main")
+		return fmt.Errorf("ref must be non-empty — refusing to clone HEAD of main")
 	}
-	dir, err := os.MkdirTemp("", "shop-")
-	if err != nil {
-		return "", fmt.Errorf("cannot create temp dir: %w", err)
+	if dir == "" {
+		return fmt.Errorf("dir must be non-empty")
+	}
+	if err := os.MkdirAll(filepath.Dir(dir), 0755); err != nil {
+		return fmt.Errorf("cannot create parent dir: %w", err)
+	}
+	// Clear any leftover shop clone from a previous run against the same
+	// --workdir. `gh repo clone` refuses to clone into an existing dir.
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("cannot clear existing shop dir %s: %w", dir, err)
 	}
 
 	cmd := exec.Command("gh", "repo", "clone", "optivem/shop", dir)
 	if out, cerr := cmd.CombinedOutput(); cerr != nil {
 		os.RemoveAll(dir)
-		return "", fmt.Errorf("gh repo clone failed: %s\n%s", cerr, string(out))
+		return fmt.Errorf("gh repo clone failed: %s\n%s", cerr, string(out))
 	}
 
 	checkout := exec.Command("git", "-C", dir, "checkout", ref)
 	if cout, cerr := checkout.CombinedOutput(); cerr != nil {
 		os.RemoveAll(dir)
-		return "", fmt.Errorf("git checkout %s failed: %s\n%s", ref, cerr, string(cout))
+		return fmt.Errorf("git checkout %s failed: %s\n%s", ref, cerr, string(cout))
 	}
 	log.Successf("Cloned shop to %s (pinned to %s)", dir, ref)
-	return dir, nil
+	return nil
 }
 
 // isMainRef reports whether ref names the main/master branch in any form.
@@ -745,16 +940,6 @@ func latestMetaRelease() (string, error) {
 		return "", fmt.Errorf("no meta-v* release found in optivem/shop — run shop's meta-prerelease-stage (and publish its tag as a release) first, or pass an explicit --shop-ref")
 	}
 	return tag, nil
-}
-
-func resolveCleanup(cleanup, noCleanup bool) string {
-	if cleanup {
-		return "yes"
-	}
-	if noCleanup {
-		return "no"
-	}
-	return "ask"
 }
 
 // LicenseName returns the human-readable license name.

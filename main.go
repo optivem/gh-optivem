@@ -107,7 +107,8 @@ func runInit() {
 
 	// Cleanup (test mode only) — skip on failure so repo can be inspected
 	if errors > 0 && !cfg.ForceCleanup {
-		cfg.Cleanup = "no"
+		cfg.KeepLocal = true
+		cfg.DeleteTestRepos = false
 	}
 	steps.Cleanup(cfg, gh, sc)
 
@@ -118,15 +119,19 @@ func runInit() {
 
 // Phase labels — printed as section headers by executeSteps when the phase changes.
 const (
-	phaseSetupRepo     = "SETUP REPOSITORY"
-	phaseApplyTemplate = "APPLY TEMPLATE"
-	phaseValidate      = "VALIDATE TEMPLATE"
-	phaseVerify        = "VERIFY PIPELINE"
-	phaseFinalize      = "FINALIZE"
+	phasePrepare       = "Prepare"
+	phaseSetupRepo     = "Setup repository"
+	phaseApplyTemplate = "Apply template"
+	phaseValidate      = "Validate template"
+	phaseVerify        = "Verify pipeline"
+	phaseFinalize      = "Finalize"
 )
 
 func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, failureNote *string) []stepDef {
 	allSteps := []stepDef{
+		// PHASE: PREPARE — pull prerequisites (shop template) needed by all later phases
+		{name: "Clone shop template", phase: phasePrepare, fn: func() { steps.CloneShopTemplate(cfg) }},
+
 		// PHASE: SETUP REPOSITORY — remote infra for this repo
 		{name: "Create repositories", phase: phaseSetupRepo, fn: func() { steps.CreateRepos(cfg, gh) }},
 		{name: "Setup environments", phase: phaseSetupRepo, fn: func() { steps.SetupEnvironments(cfg, gh) }},
@@ -209,6 +214,13 @@ func executeSteps(allSteps []stepDef, failureNote *string) (int, time.Duration) 
 	errors := 0
 	totalStart := time.Now()
 	totalByPhase := countStepsByPhase(allSteps)
+	order := phaseOrder(allSteps)
+	phaseIdx := make(map[string]int, len(order))
+	for i, p := range order {
+		phaseIdx[p] = i + 1
+	}
+	totalPhases := len(order)
+
 	posInPhase := 0
 	prevPhase := ""
 	for _, s := range allSteps {
@@ -221,8 +233,7 @@ func executeSteps(allSteps []stepDef, failureNote *string) (int, time.Duration) 
 
 		if s.phase != prevPhase {
 			if s.phase != "" {
-				fmt.Println()
-				fmt.Printf("=== PHASE: %s ===\n\n", s.phase)
+				log.PhaseHeader(phaseIdx[s.phase], totalPhases, s.phase)
 			}
 			prevPhase = s.phase
 			posInPhase = 0
@@ -244,6 +255,20 @@ func countStepsByPhase(allSteps []stepDef) map[string]int {
 	return totals
 }
 
+// phaseOrder returns the distinct phase labels in order of first appearance.
+func phaseOrder(allSteps []stepDef) []string {
+	var order []string
+	seen := make(map[string]bool)
+	for _, s := range allSteps {
+		if s.phase == "" || seen[s.phase] {
+			continue
+		}
+		seen[s.phase] = true
+		order = append(order, s.phase)
+	}
+	return order
+}
+
 // runStep runs a single step, recovering from panics. Returns true on success.
 // On failure it sets *failureNote (unless already set by an earlier failure) so
 // the later always-run commit step can flag the push as partial.
@@ -260,7 +285,7 @@ func runStep(s stepDef, pos, total int, failureNote *string) (ok bool) {
 	}()
 	stepStart := time.Now()
 	s.fn()
-	log.Successf("Step %d/%d done (%s)", pos, total, formatDuration(time.Since(stepStart)))
+	log.StepDone(pos, total, formatDuration(time.Since(stepStart)))
 	return
 }
 
@@ -386,29 +411,117 @@ func printBanner(cfg *config.Config) {
 	fmt.Println(separator)
 	fmt.Println("  Pipeline Project Setup")
 	fmt.Println(separator)
+
 	fmt.Println()
-	log.Infof("Owner:       %s", cfg.Owner)
-	log.Infof("Repo:        %s", cfg.Repo)
-	log.Infof("System:      %s", cfg.SystemName)
-	log.Infof("Arch:        %s", cfg.Arch)
-	if cfg.Arch == "monolith" {
-		log.Infof("Language:    %s", cfg.Lang)
-		if cfg.RepoStrategy == "multirepo" {
-			log.Infof("System repo: %s", cfg.SystemFullRepo)
-		}
-	} else {
-		log.Infof("Backend:     %s", cfg.BackendLang)
-		log.Infof("Frontend:    %s", cfg.FrontendLang)
-		if cfg.RepoStrategy == "multirepo" {
-			log.Infof("Backend repo: %s", cfg.BackendFullRepo)
-			log.Infof("Frontend repo: %s", cfg.FrontendFullRepo)
+	fmt.Println("  Inputs (raw CLI flags)")
+	fmt.Println()
+	log.Infof("--owner:           %s", cfg.Owner)
+	log.Infof("--repo:            %s", cfg.Raw.Repo)
+	log.Infof("--system-name:     %s", cfg.SystemName)
+	log.Infof("--arch:            %s", cfg.Arch)
+	log.Infof("--repo-strategy:   %s", cfg.RepoStrategy)
+	log.Infof("--lang:            %s", cfg.Lang)
+	log.Infof("--backend-lang:    %s", cfg.BackendLang)
+	log.Infof("--frontend-lang:   %s", cfg.FrontendLang)
+	log.Infof("--test-lang:       %s", cfg.Raw.TestLang)
+	log.Infof("--license:         %s", cfg.License)
+	log.Infof("--deploy:          %s", cfg.Deploy)
+	log.Infof("--verify-level:    %s", cfg.Raw.VerifyLevel)
+	log.Infof("--exclude-legacy:  %v", cfg.ExcludeLegacy)
+	log.Infof("--sample-tests:    %v", cfg.SampleTests)
+	log.Infof("--shop-tag:        %s", cfg.Raw.ShopTag)
+	log.Infof("--random-suffix:   %v", cfg.Raw.RandomSuffix)
+	log.Infof("--dry-run:         %v", cfg.DryRun)
+	log.Infof("--test:            %v", cfg.TestMode)
+	log.Infof("--keep-local:         %v", cfg.Raw.KeepLocal)
+	log.Infof("--delete-test-repos:  %v", cfg.Raw.DeleteTestRepos)
+	log.Infof("--force-cleanup:      %v", cfg.ForceCleanup)
+	log.Infof("--no-bug-report:   %v", cfg.NoBugReport)
+	log.Infof("--no-auto-upgrade: %v", cfg.NoAutoUpgrade)
+	log.Infof("--workdir:         %s", cfg.Raw.WorkDir)
+	log.Infof("--log-file:        %s", cfg.LogFile)
+	log.Infof("--verbose:         %v", cfg.Verbose)
+	log.Infof("--quiet:           %v", cfg.Quiet)
+
+	fmt.Println()
+	fmt.Println("  Derived values")
+	fmt.Println()
+	log.Infof("Repo (final):    %s", cfg.Repo)
+	log.Infof("Full repo:       %s", cfg.FullRepo)
+	if cfg.RepoStrategy == "multirepo" {
+		if cfg.Arch == "monolith" {
+			log.Infof("System repo:     %s", cfg.SystemFullRepo)
+		} else {
+			log.Infof("Backend repo:    %s", cfg.BackendFullRepo)
+			log.Infof("Frontend repo:   %s", cfg.FrontendFullRepo)
 		}
 	}
-	log.Infof("Test lang:   %s", cfg.TestLang)
-	log.Infof("Dry run:     %v", cfg.DryRun)
-	log.Infof("Test mode:   %v", cfg.TestMode)
-	log.Infof("Workdir:     %s", cfg.WorkDir)
+	log.Infof("Test lang:       %s", cfg.TestLang)
+	log.Infof("Verify level:    %s", cfg.VerifyLevel)
+	log.Infof("Cleanup local:     %v  (--keep-local to keep)", !cfg.KeepLocal)
+	log.Infof("Cleanup test repos: %v  (--delete-test-repos to delete)", cfg.DeleteTestRepos)
+	log.Infof("System name:     pascal=%s  camel=%s  kebab=%s  lower=%s",
+		cfg.SysNamePascalNew, cfg.SysNameCamelNew, cfg.SysNameKebabNew, cfg.SysNameLowerNew)
+	log.Infof("Java ns:         %s", cfg.JavaNsNew)
+	log.Infof(".NET ns:         %s", cfg.DotnetNsNew)
+	log.Infof("TS package:      %s", cfg.TsPkgNew)
+	for _, key := range steps.GetSonarProjectKeys(cfg) {
+		log.Infof("Sonar key:       %s", key)
+	}
+
 	fmt.Println()
+	fmt.Println("  Environment")
+	fmt.Println()
+	log.Infof("gh-optivem:      %s", version.Version)
+	log.Infof("gh CLI:          %s", ghCLIVersion())
+	log.Infof("Shop ref:        %s", cfg.ShopRef)
+
+	fmt.Println()
+	fmt.Println("  Will create")
+	fmt.Println()
+	log.Infof("Environments:    acceptance, qa, production")
+	log.Infof("Secrets:         %s", strings.Join(willCreateSecrets(cfg), ", "))
+	log.Infof("Variables:       DOCKERHUB_USERNAME")
+
+	fmt.Println()
+	fmt.Println("  Local clones")
+	fmt.Println()
+	log.Infof("Workdir:         %s", cfg.WorkDir)
+	log.Infof("Shop:            %s", cfg.ShopPath)
+	log.Infof("Repo:            %s", cfg.RepoDir)
+	if cfg.RepoStrategy == "multirepo" {
+		if cfg.Arch == "multitier" {
+			log.Infof("Frontend repo:   %s", cfg.FrontendRepoDir)
+			log.Infof("Backend repo:    %s", cfg.BackendRepoDir)
+		} else {
+			log.Infof("System repo:     %s", cfg.SystemRepoDir)
+		}
+	}
+	fmt.Println()
+}
+
+// willCreateSecrets lists the GitHub Actions secrets this scaffold will set,
+// in the order SetupSecretsAndVariables writes them. GHCR_TOKEN only applies
+// to multirepo scaffolds (component repos need to pull the main repo's image).
+func willCreateSecrets(cfg *config.Config) []string {
+	secrets := []string{"DOCKERHUB_TOKEN", "SONAR_TOKEN", "WORKFLOW_TOKEN"}
+	if cfg.RepoStrategy == "multirepo" {
+		secrets = append(secrets, "GHCR_TOKEN")
+	}
+	return secrets
+}
+
+// ghCLIVersion returns the first line of `gh --version` (e.g. "gh version 2.50.0 ...").
+// Returns "unknown" if gh is missing or the call fails — the scaffold still
+// proceeds, and later steps will surface a clearer error if gh is actually
+// unavailable.
+func ghCLIVersion() string {
+	out, err := exec.Command("gh", "--version").Output()
+	if err != nil {
+		return "unknown"
+	}
+	line, _, _ := strings.Cut(string(out), "\n")
+	return strings.TrimSpace(line)
 }
 
 func formatDuration(d time.Duration) string {

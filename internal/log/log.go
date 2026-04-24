@@ -21,6 +21,7 @@ package log
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/fatih/color"
 )
@@ -144,6 +145,40 @@ func Error(msg string) {
 
 func Errorf(format string, args ...any) {
 	Error(fmt.Sprintf(format, args...))
+}
+
+// StepDone prints a success line for a completed step. "Step N/M" renders in
+// cyan bold (matching the phase header for visual consistency) and the
+// duration is dimmed on the terminal; the log file mirror receives a
+// plain-text version so it stays ANSI-free.
+func StepDone(pos, total int, duration string) {
+	plain := fmt.Sprintf("Step %d/%d done (%s)", pos, total, duration)
+	colored := fmt.Sprintf("%s done %s",
+		color.New(color.FgCyan, color.Bold).Sprintf("Step %d/%d", pos, total),
+		color.New(color.Faint).Sprintf("(%s)", duration))
+	writeFile(plainSuccess, plain)
+	fmt.Printf(prefixedLineFmt, prefixSuccess("OK"), colored)
+}
+
+// PhaseHeader prints a phase banner like:
+//
+//	Phase 1/5 · Setup repository
+//	────────────────────────────
+//
+// The title line renders in cyan bold on the terminal (matching the step
+// counter color for visual consistency); the rule beneath is dimmed so the
+// title stands out as the primary visual. Plain text (no ANSI, no rule) goes
+// to the log file so the audit trail stays readable.
+func PhaseHeader(idx, total int, name string) {
+	title := fmt.Sprintf("Phase %d/%d · %s", idx, total, name)
+	writeFile(plainInfo, title)
+	fmt.Println()
+	color.New(color.FgCyan, color.Bold).Println(title)
+	// Rule length matches the title's visual width (rune count, not byte count
+	// — `·` is 2 bytes in UTF-8).
+	rule := strings.Repeat("─", len([]rune(title)))
+	color.New(color.Faint).Println(rule)
+	fmt.Println()
 }
 
 // StepError is a sentinel type used by Fatal to allow the step runner to catch failures.

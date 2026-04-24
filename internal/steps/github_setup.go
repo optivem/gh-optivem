@@ -108,7 +108,8 @@ func setVariable(gh *shell.GitHub, name, value string) {
 	log.Successf("  variable: %s", name)
 }
 
-// CloneRepos clones the repository (and component repos for multitier).
+// CloneRepos clones the repository (and component repos for multitier) into
+// the destination dirs pre-computed during ParseAndValidate (cfg.RepoDir etc).
 func CloneRepos(cfg *config.Config, gh *shell.GitHub) {
 	log.Info("Cloning repo(s)...")
 
@@ -117,29 +118,19 @@ func CloneRepos(cfg *config.Config, gh *shell.GitHub) {
 		return
 	}
 
-	repoDir := filepath.Join(cfg.WorkDir, "repo")
-	gh.Clone(repoDir)
-	cfg.RepoDir = repoDir
-	logCloned(cfg.FullRepo, repoDir)
+	gh.Clone(cfg.RepoDir)
+	logCloned(cfg.FullRepo, cfg.RepoDir)
 
 	if cfg.RepoStrategy == "multirepo" {
 		if cfg.Arch == "multitier" {
-			frontendDir := filepath.Join(cfg.WorkDir, "repo-frontend")
-			backendDir := filepath.Join(cfg.WorkDir, "repo-backend")
+			gh.ForRepo(cfg.FrontendFullRepo).Clone(cfg.FrontendRepoDir)
+			logCloned(cfg.FrontendFullRepo, cfg.FrontendRepoDir)
 
-			gh.ForRepo(cfg.FrontendFullRepo).Clone(frontendDir)
-			cfg.FrontendRepoDir = frontendDir
-			logCloned(cfg.FrontendFullRepo, frontendDir)
-
-			gh.ForRepo(cfg.BackendFullRepo).Clone(backendDir)
-			cfg.BackendRepoDir = backendDir
-			logCloned(cfg.BackendFullRepo, backendDir)
+			gh.ForRepo(cfg.BackendFullRepo).Clone(cfg.BackendRepoDir)
+			logCloned(cfg.BackendFullRepo, cfg.BackendRepoDir)
 		} else {
-			systemDir := filepath.Join(cfg.WorkDir, "repo-system")
-
-			gh.ForRepo(cfg.SystemFullRepo).Clone(systemDir)
-			cfg.SystemRepoDir = systemDir
-			logCloned(cfg.SystemFullRepo, systemDir)
+			gh.ForRepo(cfg.SystemFullRepo).Clone(cfg.SystemRepoDir)
+			logCloned(cfg.SystemFullRepo, cfg.SystemRepoDir)
 		}
 	}
 }

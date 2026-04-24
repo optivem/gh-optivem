@@ -19,7 +19,7 @@ The entry point (`main.go`) handles CLI argument parsing and orchestrates the `i
 5. **Execute steps** — runs each step sequentially, timing each one. If a step panics, the error is caught via `recover()`, logged, and execution stops immediately.
 6. **Print summary** — reports success/failure, total duration, and links (repo, actions, docs, backend/frontend repos if multirepo).
 7. **Bug report** — on failure, automatically creates a GitHub issue in `optivem/gh-optivem` with scaffolding details (unless `--no-bug-report` is set).
-8. **Cleanup** — in test mode, deletes created resources; skipped on failure so the repo can be inspected.
+8. **Cleanup** — in test mode, deletes the local scaffold dir by default (skip with `--keep-local`), and deletes the GitHub test repos + SonarCloud projects only if `--delete-test-repos` is passed. Skipped on failure so the repo can be inspected, unless `--force-cleanup` is set.
 
 ## Setup steps
 

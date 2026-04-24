@@ -1,9 +1,7 @@
 package steps
 
 import (
-	"fmt"
 	"os"
-	"strings"
 
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
@@ -11,8 +9,8 @@ import (
 )
 
 const (
-	deletedRepoFmt  = "Deleted repository %s"
-	keepingRepoFmt  = "Keeping repository: https://github.com/%s"
+	deletedRepoFmt = "Deleted repository %s"
+	keepingRepoFmt = "Keeping repository: https://github.com/%s"
 )
 
 // GetSonarProjectKeys returns the SonarCloud project keys for the given config.
@@ -39,31 +37,27 @@ func GetSonarProjectKeys(cfg *config.Config) []string {
 	}
 }
 
-// Cleanup deletes repos, SonarCloud projects, and local directories (test mode only).
+// Cleanup runs test-mode cleanup. Local dir cleanup (default on) and test-repo
+// cleanup (default off) are independent: see cfg.KeepLocal / cfg.DeleteTestRepos.
+// main.go forces both to "skip" on failure unless --force-cleanup is set.
 func Cleanup(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud) {
 	if !cfg.TestMode {
 		return
 	}
 
-	if resolveCleanup(cfg) {
+	if cfg.DeleteTestRepos {
 		deleteRepos(cfg, gh)
 		deleteSonarProjects(cfg, sc)
-		deleteLocalDirs(cfg)
-		log.Success("Cleanup complete")
 	} else {
 		logKeptRepos(cfg)
 	}
-}
 
-func resolveCleanup(cfg *config.Config) bool {
-	if cfg.Cleanup != "ask" {
-		return cfg.Cleanup == "yes"
+	if !cfg.KeepLocal {
+		deleteLocalDirs(cfg)
+		log.Success("Deleted local scaffold dir(s)")
+	} else {
+		logKeptLocalDirs(cfg)
 	}
-	fmt.Printf("\nDelete test repository %s? [y/N] ", cfg.FullRepo)
-	var answer string
-	fmt.Scanln(&answer)
-	answer = strings.ToLower(strings.TrimSpace(answer))
-	return answer == "y" || answer == "yes"
 }
 
 func deleteRepos(cfg *config.Config, gh *shell.GitHub) {
@@ -112,5 +106,13 @@ func logKeptRepos(cfg *config.Config) {
 		log.Infof(keepingRepoFmt, cfg.BackendFullRepo)
 	} else {
 		log.Infof(keepingRepoFmt, cfg.SystemFullRepo)
+	}
+}
+
+func logKeptLocalDirs(cfg *config.Config) {
+	for _, dir := range []string{cfg.RepoDir, cfg.FrontendRepoDir, cfg.BackendRepoDir, cfg.SystemRepoDir} {
+		if dir != "" {
+			log.Infof("Keeping local dir: %s", dir)
+		}
 	}
 }

@@ -547,6 +547,83 @@ func TestValidateSystemName(t *testing.T) {
 	}
 }
 
+func TestValidateOwnerFormat(t *testing.T) {
+	valid := []string{
+		"valentinajemuovic", "optivem", "a", "Foo-Bar", "user123",
+		"a-b-c", strings.Repeat("a", 39),
+	}
+	for _, owner := range valid {
+		t.Run("valid: "+owner, func(t *testing.T) {
+			if err := ValidateOwnerFormat(owner); err != "" {
+				t.Errorf("ValidateOwnerFormat(%q) = %q, want empty", owner, err)
+			}
+		})
+	}
+
+	invalid := []struct {
+		owner, contains string
+	}{
+		{"", "empty"},
+		{strings.Repeat("a", 40), "39 character"},
+		{"-foo", "start or end with a hyphen"},
+		{"foo-", "start or end with a hyphen"},
+		{"foo--bar", "consecutive hyphens"},
+		{"foo_bar", "invalid character"},
+		{"foo.bar", "invalid character"},
+		{"foo bar", "invalid character"},
+		{"foo@bar", "invalid character"},
+		{"YOUR_GH_USER", "invalid character"},
+	}
+	for _, tt := range invalid {
+		t.Run("invalid: "+tt.owner, func(t *testing.T) {
+			err := ValidateOwnerFormat(tt.owner)
+			if err == "" {
+				t.Errorf("ValidateOwnerFormat(%q) = empty, want error containing %q", tt.owner, tt.contains)
+			} else if !strings.Contains(strings.ToLower(err), strings.ToLower(tt.contains)) {
+				t.Errorf("ValidateOwnerFormat(%q) = %q, want error containing %q", tt.owner, err, tt.contains)
+			}
+		})
+	}
+}
+
+func TestValidateRepoFormat(t *testing.T) {
+	valid := []string{
+		"page-turner", "my_repo", "repo.with.dots", "a", "Foo-Bar_baz.qux",
+		"repo-123", strings.Repeat("a", 100),
+	}
+	for _, repo := range valid {
+		t.Run("valid: "+repo, func(t *testing.T) {
+			if err := ValidateRepoFormat(repo); err != "" {
+				t.Errorf("ValidateRepoFormat(%q) = %q, want empty", repo, err)
+			}
+		})
+	}
+
+	invalid := []struct {
+		repo, contains string
+	}{
+		{"", "empty"},
+		{strings.Repeat("a", 101), "100 character"},
+		{".", "cannot be"},
+		{"..", "cannot be"},
+		{".hidden", "start with '.'"},
+		{"-leading", "start with"},
+		{"foo bar", "invalid character"},
+		{"foo/bar", "invalid character"},
+		{"foo@bar", "invalid character"},
+	}
+	for _, tt := range invalid {
+		t.Run("invalid: "+tt.repo, func(t *testing.T) {
+			err := ValidateRepoFormat(tt.repo)
+			if err == "" {
+				t.Errorf("ValidateRepoFormat(%q) = empty, want error containing %q", tt.repo, tt.contains)
+			} else if !strings.Contains(strings.ToLower(err), strings.ToLower(tt.contains)) {
+				t.Errorf("ValidateRepoFormat(%q) = %q, want error containing %q", tt.repo, err, tt.contains)
+			}
+		})
+	}
+}
+
 // helpers for test logic
 func contains(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
