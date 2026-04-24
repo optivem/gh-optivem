@@ -53,6 +53,16 @@ on:
         required: false
         default: false
         type: boolean
+      skip-local-tests:
+        description: 'Skip the "Verify local testing" step (Run-SystemTests.ps1) for the acceptance matrix. Does not affect the smoke job.'
+        required: false
+        default: false
+        type: boolean
+      exclude-legacy:
+        description: 'Drop legacy runs from the acceptance matrix (CLI --exclude-legacy). Speeds up dry-runs by skipping the legacy stage verification.'
+        required: false
+        default: false
+        type: boolean
 
 # Shared concurrency group with gh-acceptance-stage so dry-runs and real runs
 # serialize rather than stepping on each other.
@@ -71,5 +81,7 @@ jobs:
       shop-tag: ${{ inputs.shop-tag }}
       shop-head: ${{ inputs.shop-head }}
       retain-repos: ${{ inputs.retain-repos }}
+      skip-local-tests: ${{ inputs.skip-local-tests }}
+      exclude-legacy: ${{ inputs.exclude-legacy }}
       # Dry-run never produces a prerelease/release, regardless of verify-level.
       skip-prerelease: true

@@ -57,6 +57,9 @@ func verifyFlags() []string {
 	if os.Getenv("TEST_EXCLUDE_LEGACY") == "true" {
 		flags = append(flags, "--exclude-legacy")
 	}
+	if os.Getenv("TEST_SKIP_LOCAL_TESTS") == "true" {
+		flags = append(flags, "--skip-local-tests")
+	}
 	if tag := os.Getenv("TEST_SHOP_TAG"); tag != "" {
 		flags = append(flags, "--shop-ref", tag)
 	}
