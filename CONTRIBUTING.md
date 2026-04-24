@@ -7,14 +7,14 @@
 
 ## Shop version in local builds
 
-Local builds (`go run .`, `go build`, `gh extension install .`) have no shop ref baked in, so `gh optivem init` resolves `--shop-tag` as follows:
+Local builds (`go run .`, `go build`, `gh extension install .`) have no shop ref baked in, so `gh optivem init` resolves `--shop-ref` as follows:
 
-1. `--shop-tag vX.Y.Z` — use that exact tag (refuses `main`/`master`).
+1. `--shop-ref <ref>` — use that exact ref (tag, SHA, or branch — e.g. `meta-v1.2.3`, `main`, `a1b2c3d`).
 2. Otherwise — fetch the **latest `meta-v*` release** from `optivem/shop` via `gh api` and use that.
 
-Released binaries (`gh extension install optivem/gh-optivem`) are pinned to the shop SHA baked in at release time and do **not** auto-upgrade to the latest `meta-v*` release.
+Released binaries (`gh extension install optivem/gh-optivem`) are pinned to the shop SHA baked in at release time and do **not** auto-upgrade to the latest `meta-v*` release. Users can still override with `--shop-ref`, but the default (baked-in SHA) is what you want in almost all cases.
 
-For reproducible local testing, pass `--shop-tag meta-vX.Y.Z` explicitly.
+For reproducible local testing, pass `--shop-ref meta-vX.Y.Z` explicitly. To test scaffolding against unreleased shop changes, pass `--shop-ref main` (or a specific SHA).
 
 ## Run locally
 

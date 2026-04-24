@@ -20,7 +20,7 @@ import (
 // (vs. the resolved/derived values the scaffold will actually act on).
 type RawInputs struct {
 	Repo            string // --repo as-passed
-	ShopTag         string // --shop-tag before resolving empty → latest meta-v*
+	ShopRef         string // --shop-ref before resolving empty → baked-in SHA → latest meta-v*
 	TestLang        string // --test-lang before defaulting to --monolith-lang / --backend-lang
 	VerifyLevel     string // --verify-level as-passed (flag default: "release")
 	WorkDir         string // --workdir before defaulting to temp dir
@@ -64,7 +64,7 @@ type Config struct {
 	NoAutoUpgrade bool  // skip auto-upgrade when a newer release is available
 	WorkDir    string
 	ShopPath string
-	ShopRef  string // Pinned optivem/shop ref (SHA or meta-v* tag). Never empty, never main.
+	ShopRef  string // Pinned optivem/shop ref (SHA, tag, or branch). Never empty.
 
 	DockerHubUsername string
 	DockerHubToken   string
@@ -398,7 +398,7 @@ func isScaffoldReserved(word string) bool {
 type rawFlags struct {
 	owner, systemName, repo, arch, repoStrategy                  *string
 	lang, testLang, backendLang, frontendLang                    *string
-	license, verifyLevel, deploy, workDir, shopTag               *string
+	license, verifyLevel, deploy, workDir, shopRef               *string
 	dryRun, keepLocal                                            *bool
 	excludeLegacy, skipLocalTests                                *bool
 	bugReport, showVersion                                       *bool
@@ -428,7 +428,7 @@ func registerFlags() rawFlags {
 		noCommitOnFailure: flag.Bool("no-commit-on-failure", false, "Skip pushing the partial scaffold to a debug/<timestamp> branch on failure. By default the partial scaffold is pushed so it can be inspected and linked from the auto-filed bug report."),
 		deploy:        flag.String("deploy", "docker", "Deployment target: docker or cloud-run"),
 		workDir:       flag.String("workdir", "", "Working directory for cloning (default: temp dir)"),
-		shopTag:       flag.String("shop-tag", "", "Pin optivem/shop to this meta-v* release tag. Overrides build-time pin. Default: latest meta-v* release."),
+		shopRef:       flag.String("shop-ref", "", "Pin optivem/shop to this ref (tag, SHA, or branch — e.g. meta-v1.2.3, main, a1b2c3d). Overrides build-time pin. Default: latest meta-v* release."),
 		showVersion:   flag.Bool("version", false, "Print version and exit"),
 		verbose:       flag.Bool("verbose", false, "Enable debug output (retry/wait chatter, diagnostics)"),
 		verboseShort:  flag.Bool("v", false, "Short for --verbose"),
@@ -560,25 +560,19 @@ func failMissingEnv(name string) {
 	}
 }
 
-func resolveShopRef(shopTag string) string {
-	if shopTag != "" && isMainRef(shopTag) {
-		log.FatalExit("Invalid --shop-tag: 'main'/'master' is not allowed — pass a published meta-v* release tag.")
-	}
-	ref := shopTag
+func resolveShopRef(shopRef string) string {
+	ref := shopRef
 	if ref == "" {
 		ref = version.ShopRef
 	}
 	if ref == "" {
 		latest, err := latestMetaRelease()
 		if err != nil {
-			log.FatalExit("Cannot resolve shop tag: " + err.Error())
+			log.FatalExit("Cannot resolve shop ref: " + err.Error())
 		}
 		ref = latest
 		// Surfaced in the banner's Derived block; log at debug for --verbose traces.
-		log.Debugf("Resolved empty shop-tag to latest meta-v* release: %s", ref)
-	}
-	if isMainRef(ref) {
-		log.FatalExit("Invalid shop ref: 'main'/'master' is not allowed — acceptance requires a published meta-v* release tag.")
+		log.Debugf("Resolved empty shop-ref to latest meta-v* release: %s", ref)
 	}
 	return ref
 }
@@ -794,7 +788,7 @@ func ParseAndValidate() *Config {
 	}
 
 	// === Phase 3: resolve shop ref (fast API call; actual clone happens in the Prepare step) ===
-	resolvedShopRef := resolveShopRef(*f.shopTag)
+	resolvedShopRef := resolveShopRef(*f.shopRef)
 
 	ownerPascal := computeOwnerPascal(*f.owner)
 	ownerLower := strings.ToLower(*f.owner)
@@ -815,7 +809,7 @@ func ParseAndValidate() *Config {
 
 		Raw: RawInputs{
 			Repo:        *f.repo,
-			ShopTag:     *f.shopTag,
+			ShopRef:     *f.shopRef,
 			TestLang:    *f.testLang,
 			VerifyLevel: *f.verifyLevel,
 			WorkDir:     *f.workDir,
@@ -924,15 +918,6 @@ func CloneShop(ref, dir string) error {
 	}
 	log.Successf("Cloned shop to %s (pinned to %s)", dir, ref)
 	return nil
-}
-
-// isMainRef reports whether ref names the main/master branch in any form.
-func isMainRef(ref string) bool {
-	switch ref {
-	case "main", "master", "refs/heads/main", "refs/heads/master", "HEAD":
-		return true
-	}
-	return false
 }
 
 // latestMetaRelease returns the tag of the most recently created meta-v* release in optivem/shop.

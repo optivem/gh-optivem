@@ -58,7 +58,7 @@ func verifyFlags() []string {
 		flags = append(flags, "--exclude-legacy")
 	}
 	if tag := os.Getenv("TEST_SHOP_TAG"); tag != "" {
-		flags = append(flags, "--shop-tag", tag)
+		flags = append(flags, "--shop-ref", tag)
 	}
 	return flags
 }
