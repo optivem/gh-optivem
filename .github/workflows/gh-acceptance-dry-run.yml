@@ -63,6 +63,11 @@ on:
         required: false
         default: false
         type: boolean
+      soft-validate:
+        description: 'Downgrade leftover-template-ref validation from fatal to warning (CLI --soft-validate). For triage of replacement-rule gaps; downstream steps may still fail.'
+        required: false
+        default: false
+        type: boolean
 
 # Shared concurrency group with gh-acceptance-stage so dry-runs and real runs
 # serialize rather than stepping on each other.
@@ -83,5 +88,6 @@ jobs:
       retain-repos: ${{ inputs.retain-repos }}
       skip-local-tests: ${{ inputs.skip-local-tests }}
       exclude-legacy: ${{ inputs.exclude-legacy }}
+      soft-validate: ${{ inputs.soft-validate }}
       # Dry-run never produces a prerelease/release, regardless of verify-level.
       skip-prerelease: true

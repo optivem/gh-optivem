@@ -584,6 +584,7 @@ func printBanner(cfg *config.Config) {
 	log.Infof("--report-bug:      %v%s", cfg.BugReport, tag("report-bug"))
 	log.Infof("--no-commit-on-failure: %v%s", cfg.NoCommitOnFailure, tag("no-commit-on-failure"))
 	log.Infof("--no-auto-upgrade: %v%s", cfg.NoAutoUpgrade, tag("no-auto-upgrade"))
+	log.Infof("--soft-validate:   %v%s", cfg.SoftValidate, tag("soft-validate"))
 	log.Infof("--workdir:         %s%s", cfg.Raw.WorkDir, tag("workdir"))
 	log.Infof("--log-file:        %s%s", cfg.LogFile, tag("log-file"))
 	log.Infof("--verbose:         %v%s", cfg.Verbose, tag("verbose"))
