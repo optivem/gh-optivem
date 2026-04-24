@@ -335,8 +335,12 @@ jobs:
   smoke:
     name: Smoke (${{ matrix.os }}, ${{ matrix.scenario.arch }}, ${{ matrix.scenario.repo-strategy }}, ${{ matrix.scenario.lang }})
     needs: check
+    # !failure() && !cancelled() (not success()) so a skipped preflight (shop-head=true
+    # path) does not cause the implicit success() check to drop this job — check itself
+    # succeeded, which is what we actually care about.
     if: >-
-      ${{ needs.check.outputs.should-run == 'true' &&
+      ${{ !failure() && !cancelled() &&
+      needs.check.outputs.should-run == 'true' &&
       needs.check.outputs.verify-level != 'none' }}
     runs-on: ${{ matrix.os }}
     env:
@@ -370,8 +374,11 @@ jobs:
   run:
     name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})
     needs: [check, smoke]
+    # !failure() && !cancelled() (not success()) so a skipped preflight (shop-head=true
+    # path) does not cause the implicit success() check to drop this job.
     if: >-
-      ${{ needs.check.outputs.should-run == 'true' &&
+      ${{ !failure() && !cancelled() &&
+      needs.check.outputs.should-run == 'true' &&
       (needs.smoke.result == 'success' || needs.smoke.result == 'skipped') }}
     runs-on: ubuntu-latest
     env:
