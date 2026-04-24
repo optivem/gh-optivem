@@ -21,6 +21,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fatih/color"
+
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/shell"
@@ -332,7 +334,8 @@ func checkForUpdate() {
 		return
 	}
 
-	fmt.Fprintf(os.Stderr, "\n%sUPDATE AVAILABLE:%s You are running %s, but %s is available.\n", "\033[0;33m", "\033[0m", version.Version, latest)
+	yellow := color.New(color.FgYellow).SprintFunc()
+	fmt.Fprintf(os.Stderr, "\n%s You are running %s, but %s is available.\n", yellow("UPDATE AVAILABLE:"), version.Version, latest)
 	fmt.Fprintf(os.Stderr, "  Run: gh extension upgrade optivem\n\n")
 }
 

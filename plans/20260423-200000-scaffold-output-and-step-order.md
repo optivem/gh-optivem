@@ -30,8 +30,6 @@ These five edits compiled clean during the conversation; they're listed so the n
 
 Recommended single coordinated change in [internal/log/log.go](../internal/log/log.go):
 
-- [ ] **Add `--log-file <path>` flag.** Internally use `io.MultiWriter(stdout, file)`. Strip ANSI when writing to the file (or use two writers — colored to stdout, plain to file). Default off; if specified, all log levels go to the file regardless of `--quiet`.
-
 - [ ] **Update [`checkForUpdate` at main.go:274](../main.go#L274)** to use the new color helpers instead of inline `\033[0;33m`.
 
 ### Group 3 — Environment naming (BREAKING — needs cross-repo coordination)
