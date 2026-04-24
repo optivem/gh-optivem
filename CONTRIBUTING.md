@@ -22,8 +22,13 @@ Fastest iteration — compiles and runs in one step, no install needed:
 
 ```bash
 go run . --version
-go run . init ... --dry-run
+
+# Dry-run a monolith scaffold (no side effects):
+go run . init --owner <your-gh-user> --system-name "Test" --repo test-local \
+    --arch monolith --repo-strategy monorepo --lang java --dry-run
 ```
+
+See [README.md](README.md#usage) for the full flag set and multitier examples.
 
 ## Install from source
 
