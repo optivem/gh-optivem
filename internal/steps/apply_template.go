@@ -34,7 +34,7 @@ const (
 	dirSystemTest             = "system-test"
 	dirExternalRealSim        = "external-real-sim"
 	dirExternalStub           = "external-stub"
-	shopSystemPrefix       = "../../system/"
+	shopSystemPrefix       = "../../../system/"
 	systemMonolithDir         = "system/monolith/"
 	systemMultitierDir        = "system/multitier/"
 	systemMultitierBackend    = systemMultitierDir + "backend-"
@@ -79,11 +79,7 @@ func copySystemTests(shop, repoDir, testLang, composeVariant string) string {
 	files.CopyDir(filepath.Join(shop, dirSystemTest, testLang), testDst)
 	templates.SelectDockerCompose(testDst, composeVariant)
 	templates.CopyVersion(shop, repoDir)
-	keepArch, removeArch := "monolith", "multitier"
-	if composeVariant != "single" {
-		keepArch, removeArch = "multitier", "monolith"
-	}
-	templates.StripFixedDimensions(repoDir, testDst, keepArch, removeArch, testLang)
+	templates.StripFixedDimensions(testDst)
 	return testDst
 }
 
@@ -177,8 +173,7 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	copyExternals(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	testDst := copySystemTests(shop, repoDir, testLang, "single")
-	PruneSystemTestArch(testDst, "monolith")
+	copySystemTests(shop, repoDir, testLang, "single")
 
 	// Fix workflow content: paths, image names, workflow names
 	log.Info("Fixing up workflow and docker-compose content...")
@@ -221,8 +216,7 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	copyExternals(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	testDst := copySystemTests(shop, repoDir, testLang, "single")
-	PruneSystemTestArch(testDst, "monolith")
+	copySystemTests(shop, repoDir, testLang, "single")
 
 	// Fix root repo workflow content
 	log.Info("Fixing up root repo workflow and docker-compose content...")
@@ -307,8 +301,7 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	copyExternals(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	testDst := copySystemTests(shop, repoDir, testLang, "multi")
-	PruneSystemTestArch(testDst, "multitier")
+	copySystemTests(shop, repoDir, testLang, "multi")
 
 	// Fix workflow content: paths and image names
 	log.Info("Fixing up workflow and docker-compose content...")
@@ -352,8 +345,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	copyExternals(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	testDst := copySystemTests(shop, repoDir, testLang, "multi")
-	PruneSystemTestArch(testDst, "multitier")
+	copySystemTests(shop, repoDir, testLang, "multi")
 
 	// Fix root repo workflow content
 	log.Info("Fixing up root repo workflow and docker-compose content...")
@@ -490,15 +482,15 @@ func monolithDockerComposeReplacements(lang, testLang string) [][2]string {
 		{dirSystemTest + "/" + testLang + "/", dirSystemTest + "/"},
 		{dirSystemTest + "/" + testLang, dirSystemTest},
 		{prefixMonolithSystem + lang, "system"},
-		// Docker build context: shop has system-test/{lang}/ so ../../system/monolith/{lang} is correct there,
-		// but scaffold flattens to system-test/ (one level up), so the context becomes ../system
-		{"../../system/monolith/" + lang, "../system"},
+		// Docker build context: shop has system-test/{lang}/<arch>/ so ../../../system/monolith/{lang} is correct
+		// there, but scaffold flattens arch subdir → system-test/, so the context becomes ../system.
+		{shopSystemPrefix + "monolith/" + lang, "../system"},
 		// Volume mount paths: old layout had system-test/{lang}/, new has system-test/
 		{shopSystemPrefix + dirExternalRealSim, "../" + dirExternalRealSim},
 		{shopSystemPrefix + dirExternalStub, "../" + dirExternalStub},
 	}
 	if lang != testLang {
-		r = append(r, [2]string{"../../system/monolith/" + testLang, "../system"})
+		r = append(r, [2]string{shopSystemPrefix + "monolith/" + testLang, "../system"})
 		r = append(r, [2]string{prefixMonolithSystem + testLang, "system"})
 	}
 	return r
@@ -560,9 +552,9 @@ func multitierDockerComposeReplacements(backendLang, frontendLang, testLang stri
 	// Docker build contexts always reference the test-lang backend and the frontend lang in the
 	// shop layout (e.g. backend-typescript, frontend-react). After scaffolding these become
 	// ../backend and ../frontend respectively, so we always need both replacements.
-	r = append(r, [2]string{"../../" + systemMultitierBackend + testLang, "../backend"})
+	r = append(r, [2]string{"../../../" + systemMultitierBackend + testLang, "../backend"})
 	r = append(r, [2]string{prefixMultitierBackend + testLang, "backend"})
-	r = append(r, [2]string{"../../system/multitier/frontend-" + frontendLang, "../frontend"})
+	r = append(r, [2]string{shopSystemPrefix + "multitier/frontend-" + frontendLang, "../frontend"})
 	r = append(r, [2]string{prefixMultitierFrontend + frontendLang, "frontend"})
 	return r
 }

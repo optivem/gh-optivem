@@ -61,11 +61,24 @@ func CopyWorkflows(mappings map[string]string, shop, repoDir string) {
 	}
 }
 
-// SelectDockerCompose keeps the chosen variant's compose files and removes the
-// other. The kept files are then renamed to drop the `.<arch>.` segment, since
-// the arch is now fixed in the scaffolded repo and its presence in every
-// filename would be redundant (e.g. docker-compose.pipeline.monolith.real.yml
-// → docker-compose.pipeline.real.yml).
+// SelectDockerCompose flattens shop's arch-subdir layout into a single-arch
+// scaffolded layout. Shop organizes system-test content as:
+//
+//	system-test/<lang>/
+//	├── Run-SystemTests.ps1             (arch-agnostic)
+//	├── Run-SystemTests.*.Config.ps1    (arch-agnostic)
+//	├── README.md                       (arch-agnostic, kept)
+//	├── monolith/                       ← compose files, arch config, per-arch README
+//	└── multitier/                      ← same
+//
+// A scaffolded repo locks in one arch, so this function:
+//  1. Removes the non-selected arch's entire subdirectory.
+//  2. Drops the selected arch's README.md (its "../Run-SystemTests.ps1 -Architecture X"
+//     examples don't fit a scaffolded repo — the top-level arch-agnostic README is kept
+//     instead and fixed up later).
+//  3. Moves the selected arch's remaining files (compose + arch config PS1) up into
+//     system-test/.
+//  4. Removes the now-empty selected-arch subdir.
 //
 // variant: "single" for monolith, "multi" for multitier.
 func SelectDockerCompose(testDst, variant string) {
@@ -73,18 +86,21 @@ func SelectDockerCompose(testDst, variant string) {
 	if variant != "single" {
 		keep, remove = "multitier", "monolith"
 	}
-	for _, scope := range []string{"local", "pipeline"} {
-		for _, mode := range []string{"real", "stub"} {
-			removePath := filepath.Join(testDst, dockerComposePrefix+"."+scope+"."+remove+"."+mode+ymlExt)
-			os.Remove(removePath)
+	os.RemoveAll(filepath.Join(testDst, remove))
 
-			oldPath := filepath.Join(testDst, dockerComposePrefix+"."+scope+"."+keep+"."+mode+ymlExt)
-			newPath := filepath.Join(testDst, dockerComposePrefix+"."+scope+"."+mode+ymlExt)
-			if _, err := os.Stat(oldPath); err == nil {
-				os.Rename(oldPath, newPath)
-			}
-		}
+	keepDir := filepath.Join(testDst, keep)
+	os.Remove(filepath.Join(keepDir, "README.md"))
+
+	entries, err := os.ReadDir(keepDir)
+	if err != nil {
+		return
 	}
+	for _, e := range entries {
+		src := filepath.Join(keepDir, e.Name())
+		dst := filepath.Join(testDst, e.Name())
+		os.Rename(src, dst)
+	}
+	os.Remove(keepDir)
 }
 
 // CopyVersion copies the VERSION file from shop to repo.
