@@ -16,8 +16,17 @@ on:
           - acceptance
           - qa
           - release
+      smoke-mode:
+        description: 'Smoke matrix size: none (skip smoke), single (1 combo — ubuntu/monolith/monorepo/TS/TS), or full (4 combos — 2 OS × 2 scenarios, current default).'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - none
+          - single
+          - full
       matrix-mode:
-        description: 'Matrix size: none (0 combos — skip the run matrix entirely), single (1 combo — monolith/monorepo/TS/TS, cheapest smoke), minimal (8 combos — TS tests dotnet/java), condensed (12 off-diagonal polyglot combos — single-language combos are already covered by optivem/shop), or full (all 36 combos).'
+        description: 'Acceptance matrix size: none (0 combos — skip the run matrix entirely, e.g. to go straight to Create Prerelease when shop-tag is already verified), single (1 combo — monolith/monorepo/TS/TS, cheapest smoke), minimal (8 combos — TS tests dotnet/java), condensed (12 off-diagonal polyglot combos — single-language combos are already covered by optivem/shop), or full (all 36 combos).'
         required: false
         default: 'minimal'
         type: choice
@@ -33,17 +42,12 @@ on:
         default: ''
         type: string
       shop-head:
-        description: 'Run against optivem/shop HEAD (latest main) instead of a meta-v* release tag. No prerelease or release will be created. Mutually exclusive with shop-tag and force-prerelease.'
+        description: 'Run against optivem/shop HEAD (latest main) instead of a meta-v* release tag. No prerelease or release will be created. Mutually exclusive with shop-tag.'
         required: false
         default: false
         type: boolean
       retain-repos:
         description: 'Retain scaffolded test repos (skip cleanup) even on success. Useful for post-run debugging.'
-        required: false
-        default: false
-        type: boolean
-      force-prerelease:
-        description: 'Skip the acceptance-test matrix and go straight to Create Prerelease. Requires verify-level=release. Use when the shop-tag has already been verified manually or when recovering from a stuck release.'
         required: false
         default: false
         type: boolean
@@ -89,6 +93,7 @@ jobs:
       should-run: ${{ steps.prior-status.outputs.exists != 'true' }}
       retain-repos: ${{ github.event_name == 'workflow_dispatch' && inputs.retain-repos && 'true' || 'false' }}
       matrix: ${{ steps.matrix.outputs.matrix }}
+      smoke-matrix: ${{ steps.smoke-matrix.outputs.matrix }}
     steps:
       - name: Ensure Environment Variables Defined
         uses: optivem/actions/validate-env-vars-defined@v1
@@ -126,7 +131,6 @@ jobs:
           echo "| verify-level | $LEVEL |" >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "| retain-repos | ${{ inputs.retain-repos }} |" >> "$GITHUB_STEP_SUMMARY"
-            echo "| force-prerelease | ${{ inputs.force-prerelease }} |" >> "$GITHUB_STEP_SUMMARY"
             echo "| shop-head | ${{ inputs.shop-head }} |" >> "$GITHUB_STEP_SUMMARY"
           fi
 
@@ -135,27 +139,13 @@ jobs:
         shell: bash
         env:
           SHOP_TAG: ${{ inputs.shop-tag }}
-          FORCE_PRERELEASE: ${{ inputs.force-prerelease }}
         run: |
           set -euo pipefail
           if [ -n "$SHOP_TAG" ]; then
             echo "::error::shop-head=true is mutually exclusive with shop-tag (got: '$SHOP_TAG'). Leave shop-tag empty when running against HEAD."
             exit 1
           fi
-          if [ "$FORCE_PRERELEASE" = "true" ]; then
-            echo "::error::shop-head=true is mutually exclusive with force-prerelease=true. HEAD mode never produces a release."
-            exit 1
-          fi
           echo "Running against optivem/shop HEAD — no prerelease or release will be created."
-
-      - name: Validate force-prerelease
-        if: github.event_name == 'workflow_dispatch' && inputs.force-prerelease && steps.level.outputs.verify-level != 'release'
-        shell: bash
-        env:
-          LEVEL: ${{ steps.level.outputs.verify-level }}
-        run: |
-          echo "::error::force-prerelease=true requires verify-level=release (got: $LEVEL). Without verify-level=release, there is nothing to do after skipping the matrix."
-          exit 1
 
       - name: Checkout
         if: steps.level.outputs.verify-level == 'release' && !(github.event_name == 'workflow_dispatch' && inputs.shop-head)
@@ -305,6 +295,39 @@ jobs:
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           echo "| matrix-mode | $MODE ($COUNT combos) |" >> "$GITHUB_STEP_SUMMARY"
 
+      # Build the smoke-job matrix based on smoke-mode.
+      # none = 0 combos: skip smoke entirely. Use when shop-tag is already verified
+      #   (e.g. recovering from a stuck release) or when smoke-mode+matrix-mode=none
+      #   is used to go straight to Create Prerelease.
+      # single = 1 combo: ubuntu-latest + monolith/monorepo/TS. Cheapest smoke.
+      # full = 4 combos: 2 OS × 2 scenarios (java/monolith/monorepo +
+      #   dotnet/multitier/multirepo). Current default.
+      - id: smoke-matrix
+        shell: bash
+        env:
+          MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke-mode || 'full' }}
+        run: |
+          case "$MODE" in
+            none)
+              MATRIX='{"include":[]}'
+              ;;
+            single)
+              MATRIX='{"include":[{"os":"ubuntu-latest","scenario":{"arch":"monolith","repo-strategy":"monorepo","lang":"typescript"}}]}'
+              ;;
+            *)
+              MATRIX='{"include":[
+                {"os":"ubuntu-latest","scenario":{"arch":"monolith","repo-strategy":"monorepo","lang":"java"}},
+                {"os":"ubuntu-latest","scenario":{"arch":"multitier","repo-strategy":"multirepo","lang":"dotnet"}},
+                {"os":"windows-latest","scenario":{"arch":"monolith","repo-strategy":"monorepo","lang":"java"}},
+                {"os":"windows-latest","scenario":{"arch":"multitier","repo-strategy":"multirepo","lang":"dotnet"}}
+              ]}'
+              ;;
+          esac
+          MATRIX=$(jq -c . <<< "$MATRIX")
+          COUNT=$(jq '.include | length' <<< "$MATRIX")
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "| smoke-mode | $MODE ($COUNT combos) |" >> "$GITHUB_STEP_SUMMARY"
+
   # Cross-OS smoke check — verifies the CLI works on both Linux and Windows
   # before we burn the expensive matrix. TypeScript is the test-lang in both
   # scenarios (cheapest/fastest test stack); the two scenarios cover a monolith
@@ -315,8 +338,7 @@ jobs:
     needs: check
     if: >-
       ${{ needs.check.outputs.should-run == 'true' &&
-      needs.check.outputs.verify-level != 'none' &&
-      !(github.event_name == 'workflow_dispatch' && inputs.force-prerelease) }}
+      needs.check.outputs.verify-level != 'none' }}
     runs-on: ${{ matrix.os }}
     env:
       VERIFY_TOKEN: ${{ secrets.VERIFY_TOKEN }}
@@ -329,11 +351,7 @@ jobs:
       WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
     strategy:
       fail-fast: true
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        scenario:
-          - { arch: monolith,  repo-strategy: monorepo,  lang: java }
-          - { arch: multitier, repo-strategy: multirepo, lang: dotnet }
+      matrix: ${{ fromJSON(needs.check.outputs.smoke-matrix) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -355,7 +373,6 @@ jobs:
     needs: [check, smoke]
     if: >-
       ${{ needs.check.outputs.should-run == 'true' &&
-      !(github.event_name == 'workflow_dispatch' && inputs.force-prerelease) &&
       (needs.smoke.result == 'success' || needs.smoke.result == 'skipped') }}
     runs-on: ubuntu-latest
     env:
@@ -390,8 +407,9 @@ jobs:
   create-prerelease:
     name: Create Prerelease
     needs: [check, run]
-    # !failure() && !cancelled() (not success()) so run can be skipped via force-prerelease.
-    # Skipped entirely in HEAD mode — HEAD runs never produce a release.
+    # !failure() && !cancelled() (not success()) so run can be skipped (matrix-mode=none)
+    # when the shop-tag has already been verified manually or when recovering from a
+    # stuck release. Skipped entirely in HEAD mode — HEAD runs never produce a release.
     if: >-
       ${{ !failure() && !cancelled() &&
       needs.check.result == 'success' &&
@@ -455,7 +473,7 @@ jobs:
     name: Trigger gh-release-stage
     needs: create-prerelease
     # Explicit if: needed so the default success() doesn't propagate a skipped
-    # `run` (via force-prerelease) through the transitive chain and skip this job.
+    # `run` (via matrix-mode=none) through the transitive chain and skip this job.
     if: ${{ !failure() && !cancelled() && needs.create-prerelease.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
