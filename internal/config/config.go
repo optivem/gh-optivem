@@ -776,7 +776,10 @@ func ParseAndValidate() *Config {
 
 	mr := deriveMultirepoNames(*f.repoStrategy, *f.arch, *f.owner, repoName)
 
-	// === Phase 2: GitHub existence checks (fail fast before slow operations) ===
+	// === Phase 2: network auth checks (fail fast before any mutation) ===
+	// Token auth runs first because it's the most common failure mode and
+	// aborts before we touch gh / GitHub / SonarCloud for existence checks.
+	validateTokensAuth(env, *f.repoStrategy, *f.dryRun)
 	checkGhAuth(*f.dryRun)
 	checkOwnerExists(*f.owner)
 	confirmRepoExists(*f.owner + "/" + repoName)
