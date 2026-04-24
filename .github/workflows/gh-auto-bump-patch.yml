@@ -29,7 +29,9 @@ jobs:
         uses: optivem/actions/bump-patch-versions@v1
         with:
           version-files: |
-            VERSION:v
+            [
+              {"path": "VERSION", "signal": "github-release", "value": "v"}
+            ]
 
       - name: Build Commit Payload
         id: payload
@@ -42,7 +44,7 @@ jobs:
           files=$(jq -c '[.[] | {
             path: .path,
             content: ("\(.["new-version"])\n"),
-            message: "Bump \(.path) \(.["old-version"]) -> \(.["new-version"]) (post \(.["release-tag"]))"
+            message: "Bump \(.path) \(.["old-version"]) -> \(.["new-version"]) (post \(.["release-signal"]))"
           }]' <<< "$BUMPS")
           echo "files=$files" >> "$GITHUB_OUTPUT"
 
