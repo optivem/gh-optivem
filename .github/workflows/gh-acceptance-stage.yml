@@ -60,10 +60,10 @@ jobs:
     steps:
       - name: Check optivem/shop has meta-v* release
         id: check-shop
-        uses: optivem/actions/check-tag-pattern-exists@v1
+        uses: optivem/actions/check-tag-exists@v1
         with:
           repository: optivem/shop
-          tag-pattern: meta-v*
+          tag: meta-v*
 
   check:
     name: Check
