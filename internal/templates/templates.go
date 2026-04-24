@@ -67,16 +67,18 @@ func CopyWorkflows(mappings map[string]string, shop, repoDir string) {
 //	system-test/<lang>/
 //	├── Run-SystemTests.ps1             (arch-agnostic)
 //	├── Run-SystemTests.*.Config.ps1    (arch-agnostic)
-//	├── README.md                       (arch-agnostic)
-//	├── monolith/                       ← contains compose files, arch config, per-arch README
+//	├── README.md                       (arch-agnostic, kept)
+//	├── monolith/                       ← compose files, arch config, per-arch README
 //	└── multitier/                      ← same
 //
 // A scaffolded repo locks in one arch, so this function:
 //  1. Removes the non-selected arch's entire subdirectory.
-//  2. Moves the selected arch's subdir contents up into system-test/, overwriting
-//     the arch-agnostic top-level README with the arch-specific one (which now
-//     becomes the scaffolded repo's system-test/README.md).
-//  3. Removes the now-empty selected-arch subdir.
+//  2. Drops the selected arch's README.md (its "../Run-SystemTests.ps1 -Architecture X"
+//     examples don't fit a scaffolded repo — the top-level arch-agnostic README is kept
+//     instead and fixed up later).
+//  3. Moves the selected arch's remaining files (compose + arch config PS1) up into
+//     system-test/.
+//  4. Removes the now-empty selected-arch subdir.
 //
 // variant: "single" for monolith, "multi" for multitier.
 func SelectDockerCompose(testDst, variant string) {
@@ -87,6 +89,8 @@ func SelectDockerCompose(testDst, variant string) {
 	os.RemoveAll(filepath.Join(testDst, remove))
 
 	keepDir := filepath.Join(testDst, keep)
+	os.Remove(filepath.Join(keepDir, "README.md"))
+
 	entries, err := os.ReadDir(keepDir)
 	if err != nil {
 		return
@@ -94,7 +98,6 @@ func SelectDockerCompose(testDst, variant string) {
 	for _, e := range entries {
 		src := filepath.Join(keepDir, e.Name())
 		dst := filepath.Join(testDst, e.Name())
-		os.Remove(dst) // overwrite top-level arch-agnostic file (e.g. README.md) if present
 		os.Rename(src, dst)
 	}
 	os.Remove(keepDir)

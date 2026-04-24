@@ -79,11 +79,7 @@ func copySystemTests(shop, repoDir, testLang, composeVariant string) string {
 	files.CopyDir(filepath.Join(shop, dirSystemTest, testLang), testDst)
 	templates.SelectDockerCompose(testDst, composeVariant)
 	templates.CopyVersion(shop, repoDir)
-	keepArch, removeArch := "monolith", "multitier"
-	if composeVariant != "single" {
-		keepArch, removeArch = "multitier", "monolith"
-	}
-	templates.StripFixedDimensions(repoDir, testDst, keepArch, removeArch, testLang)
+	templates.StripFixedDimensions(testDst)
 	return testDst
 }
 
