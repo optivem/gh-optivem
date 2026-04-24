@@ -24,14 +24,16 @@ Fastest iteration — compiles and runs in one step, no install needed:
 go run . --version
 
 # Dry-run a monolith scaffold (no side effects):
-go run . init --owner <your-gh-user> --system-name "Test" --repo test-local \
+go run . init --owner YOUR_GH_USER --system-name "Page Turner" --repo page-turner \
     --arch monolith --repo-strategy monorepo --lang java --dry-run
 
 # Dry-run with test mode + random suffix (preview repeated-run workflow):
-go run . init --owner <your-gh-user> --system-name "Test" --repo test-local \
+go run . init --owner YOUR_GH_USER --system-name "Page Turner" --repo page-turner \
     --arch monolith --repo-strategy monorepo --lang java \
     --test --cleanup --random-suffix --dry-run
 ```
+
+Replace `YOUR_GH_USER` with your GitHub username. Avoid `<angle-brackets>` in bash — the shell treats them as I/O redirection. Also avoid reserved words like `Test`, `Local`, `System` in `--system-name` (see [`isScaffoldReserved`](internal/config/config.go#L312) for the full list).
 
 See [README.md](README.md#usage) for the full flag set and multitier examples.
 
