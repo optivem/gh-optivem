@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/fatih/color"
 )
@@ -104,13 +105,16 @@ func Debugf(format string, args ...any) {
 }
 
 // Info prints an in-progress status line. Suppressed by --quiet. Goes to stdout.
-// Always mirrored to the log file.
+// Always mirrored to the log file. A wall-clock timestamp is prepended to the
+// message so long runs (~45min manual-test) can be correlated after the fact.
 func Info(msg string) {
-	writeFile(plainInfo, msg)
+	ts := time.Now().Format("15:04:05")
+	writeFile(plainInfo, fmt.Sprintf("[%s] %s", ts, msg))
 	if quiet {
 		return
 	}
-	fmt.Printf(prefixedLineFmt, prefixInfo(">"), msg)
+	colored := fmt.Sprintf("%s %s", color.New(color.Faint).Sprintf("[%s]", ts), msg)
+	fmt.Printf(prefixedLineFmt, prefixInfo(">"), colored)
 }
 
 func Infof(format string, args ...any) {
@@ -152,8 +156,10 @@ func Errorf(format string, args ...any) {
 // duration is dimmed on the terminal; the log file mirror receives a
 // plain-text version so it stays ANSI-free.
 func StepDone(pos, total int, duration string) {
-	plain := fmt.Sprintf("Step %d/%d done (%s)", pos, total, duration)
-	colored := fmt.Sprintf("%s done %s",
+	ts := time.Now().Format("15:04:05")
+	plain := fmt.Sprintf("[%s] Step %d/%d done (%s)", ts, pos, total, duration)
+	colored := fmt.Sprintf("%s %s done %s",
+		color.New(color.Faint).Sprintf("[%s]", ts),
 		color.New(color.FgCyan, color.Bold).Sprintf("Step %d/%d", pos, total),
 		color.New(color.Faint).Sprintf("(%s)", duration))
 	writeFile(plainSuccess, plain)

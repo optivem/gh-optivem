@@ -81,6 +81,28 @@ On a successful run the local scaffold dir is deleted — the end result is just
 
 Only `--deploy docker` is currently supported (the default). `--deploy cloud-run` is in development and may be available in a future release.
 
+## Troubleshooting
+
+### Partial scaffold on failure
+
+When scaffolding fails mid-run, the partial working tree is pushed to a `debug/<timestamp>` branch in the already-created remote repo so the state can be inspected and diffed. The default `main` branch is left untouched. The debug branch URL is printed in the summary.
+
+To skip this push (e.g. for private repos or when you don't want any partial state on the remote):
+
+```bash
+gh optivem init ... --no-commit-on-failure
+```
+
+### Auto-filed bug report (opt-in)
+
+If you want the failure auto-filed to `optivem/gh-optivem` as an issue — including scaffold config and the debug-branch URL — opt in with `--bug-report`:
+
+```bash
+gh optivem init ... --bug-report
+```
+
+Off by default. Filing a quick issue yourself is usually clearer and keeps the scaffold config private unless you decide to share it.
+
 ## How it works
 
 See [docs/how-it-works.md](docs/how-it-works.md) for a detailed walkthrough of the `main.go` logic, setup steps, and verification levels.

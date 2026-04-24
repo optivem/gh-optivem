@@ -64,7 +64,7 @@ func verifyFlags() []string {
 }
 
 func withBase(extra ...string) []string {
-	args := []string{"--owner", testOwner(), "--no-bug-report"}
+	args := []string{"--owner", testOwner()}
 	args = append(args, baseArgs...)
 	args = append(args, "--repo", randomRepoName())
 	args = append(args, extra...)

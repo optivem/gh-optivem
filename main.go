@@ -15,6 +15,7 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"os"
@@ -28,6 +29,11 @@ import (
 	"github.com/optivem/gh-optivem/internal/steps"
 	"github.com/optivem/gh-optivem/internal/version"
 )
+
+// bugReportLogTailLines is how many trailing lines of the log file are
+// embedded in the filed issue body. Large enough to capture the failure +
+// preceding context; small enough to stay under GitHub's issue-body limit.
+const bugReportLogTailLines = 100
 
 const separator = "=========================================="
 
@@ -103,7 +109,13 @@ func runInit() {
 	var failureNote string
 	allSteps := buildSteps(cfg, gh, sc, &failureNote)
 	errors, totalDuration := executeSteps(allSteps, &failureNote)
-	printSummary(cfg, errors, totalDuration)
+
+	var debugBranchURL string
+	if errors > 0 && !cfg.NoCommitOnFailure {
+		debugBranchURL = commitPartialScaffoldForDebug(cfg, failureNote)
+	}
+
+	printSummary(cfg, errors, totalDuration, debugBranchURL)
 
 	// Keep the local scaffold dir on failure so it can be inspected.
 	if errors > 0 {
@@ -114,6 +126,42 @@ func runInit() {
 	if errors > 0 {
 		os.Exit(1)
 	}
+}
+
+// commitPartialScaffoldForDebug creates `debug/<timestamp>` in the scaffolded
+// repo, commits any uncommitted changes, and pushes it. Triggered only when
+// --commit-on-failure is set and the tree has changes, so the default-main
+// branch stays untouched by partial scaffolds. Returns the branch URL (or an
+// empty string if there was nothing to commit, RepoDir wasn't set, or a git
+// step failed).
+func commitPartialScaffoldForDebug(cfg *config.Config, failureNote string) string {
+	if cfg.RepoDir == "" {
+		return ""
+	}
+	status, err := shell.RunCapture("git status --porcelain", cfg.RepoDir)
+	if err != nil || strings.TrimSpace(status) == "" {
+		return ""
+	}
+
+	branch := "debug/" + time.Now().UTC().Format("20060102-150405")
+	msg := fmt.Sprintf("debug: partial scaffold (failed at %q)", failureNote)
+
+	gitSteps := []string{
+		"git checkout -b " + branch,
+		"git add -A",
+		fmt.Sprintf("git commit -m %q", msg),
+		"git push -u origin " + branch,
+	}
+	for _, step := range gitSteps {
+		if _, err := shell.Run(step, false, true, cfg.RepoDir); err != nil {
+			log.Warnf("Debug branch push aborted at %q: %v", step, err)
+			return ""
+		}
+	}
+
+	url := fmt.Sprintf("https://github.com/%s/tree/%s", cfg.FullRepo, branch)
+	log.Successf("Debug branch pushed: %s", url)
+	return url
 }
 
 // Phase labels — printed as section headers by executeSteps when the phase changes.
@@ -308,13 +356,13 @@ func runStep(s stepDef, pos, total int, failureNote *string) (ok bool) {
 	return
 }
 
-func printSummary(cfg *config.Config, errors int, totalDuration time.Duration) {
+func printSummary(cfg *config.Config, errors int, totalDuration time.Duration, debugBranchURL string) {
 	fmt.Println()
 	fmt.Println(separator)
 	if errors > 0 {
 		log.Errorf("Setup completed with %d error(s) in %s", errors, formatDuration(totalDuration))
-		if !cfg.NoBugReport {
-			createBugReport(cfg, errors)
+		if cfg.BugReport && confirmBugReport(cfg, debugBranchURL) {
+			createBugReport(cfg, errors, debugBranchURL)
 		}
 	} else {
 		log.Successf("All steps passed! Completed in %s", formatDuration(totalDuration))
@@ -334,7 +382,70 @@ func printSummary(cfg *config.Config, errors int, totalDuration time.Duration) {
 	fmt.Println()
 }
 
-func createBugReport(cfg *config.Config, errorCount int) {
+// confirmBugReport shows what will be sent and asks the user to confirm.
+// Returns true only on an explicit "y"/"yes". On a non-tty (CI, piped input)
+// the opt-in flag alone is treated as consent and it returns true without
+// prompting.
+func confirmBugReport(cfg *config.Config, debugBranchURL string) bool {
+	fmt.Println()
+	fmt.Println(separator)
+	fmt.Println("  Bug report — review before filing")
+	fmt.Println(separator)
+	fmt.Println()
+	fmt.Println("  On confirm, the following will be filed upstream:")
+	fmt.Println()
+	fmt.Printf("  - Issue created at: https://github.com/optivem/gh-optivem/issues\n")
+	fmt.Printf("  - Linking to your repo: https://github.com/%s\n", cfg.FullRepo)
+	if debugBranchURL != "" {
+		fmt.Printf("  - Debug branch (partial scaffold): %s\n", debugBranchURL)
+	}
+	if cfg.LogFile != "" {
+		fmt.Printf("  - Last %d lines of your log: %s\n", bugReportLogTailLines, cfg.LogFile)
+	}
+	fmt.Println()
+	fmt.Printf("  IMPORTANT: do NOT delete https://github.com/%s until the issue\n", cfg.FullRepo)
+	fmt.Println("  is resolved — the debug branch is needed to triage the failure.")
+	fmt.Println()
+
+	if !isInteractive() {
+		log.Infof("Non-interactive session detected; proceeding with --bug-report opt-in.")
+		return true
+	}
+
+	fmt.Print("  Proceed? [y/N]: ")
+	reader := bufio.NewReader(os.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		log.Warnf("Could not read confirmation: %v. Skipping bug report.", err)
+		return false
+	}
+	resp := strings.ToLower(strings.TrimSpace(line))
+	return resp == "y" || resp == "yes"
+}
+
+func isInteractive() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+// tailFile returns the last maxLines lines of the file at path. Returns an
+// empty string if the file is unreadable or empty.
+func tailFile(path string, maxLines int) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) > maxLines {
+		lines = lines[len(lines)-maxLines:]
+	}
+	return strings.Join(lines, "\n")
+}
+
+func createBugReport(cfg *config.Config, errorCount int, debugBranchURL string) {
 	lang := cfg.Lang
 	if cfg.Arch == "multitier" {
 		lang = fmt.Sprintf("backend=%s, frontend=%s", cfg.BackendLang, cfg.FrontendLang)
@@ -351,6 +462,13 @@ func createBugReport(cfg *config.Config, errorCount int) {
 			"- **Repository:** https://github.com/%s\n",
 		errorCount, cfg.SystemName, cfg.Arch, cfg.RepoStrategy,
 		lang, cfg.TestLang, cfg.FullRepo)
+	if debugBranchURL != "" {
+		body += fmt.Sprintf("- **Debug branch (partial scaffold):** %s\n", debugBranchURL)
+	}
+	if tail := tailFile(cfg.LogFile, bugReportLogTailLines); tail != "" {
+		body += fmt.Sprintf("\n<details>\n<summary>Last %d log lines (%s)</summary>\n\n```\n%s\n```\n</details>\n",
+			bugReportLogTailLines, cfg.LogFile, tail)
+	}
 
 	bodyFile, err := os.CreateTemp("", "gh-issue-body-*.md")
 	if err != nil {
@@ -458,7 +576,8 @@ func printBanner(cfg *config.Config) {
 	log.Infof("--shop-tag:        %s%s", cfg.Raw.ShopTag, tag("shop-tag"))
 	log.Infof("--dry-run:         %v%s", cfg.DryRun, tag("dry-run"))
 	log.Infof("--keep-local:      %v%s", cfg.Raw.KeepLocal, tag("keep-local"))
-	log.Infof("--no-bug-report:   %v%s", cfg.NoBugReport, tag("no-bug-report"))
+	log.Infof("--bug-report:      %v%s", cfg.BugReport, tag("bug-report"))
+	log.Infof("--no-commit-on-failure: %v%s", cfg.NoCommitOnFailure, tag("no-commit-on-failure"))
 	log.Infof("--no-auto-upgrade: %v%s", cfg.NoAutoUpgrade, tag("no-auto-upgrade"))
 	log.Infof("--workdir:         %s%s", cfg.Raw.WorkDir, tag("workdir"))
 	log.Infof("--log-file:        %s%s", cfg.LogFile, tag("log-file"))

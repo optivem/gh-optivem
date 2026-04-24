@@ -18,7 +18,7 @@ The entry point (`main.go`) handles CLI argument parsing and orchestrates the `i
 4. **Build steps** — assembles an ordered list of setup steps (see below).
 5. **Execute steps** — runs each step sequentially, timing each one. If a step panics, the error is caught via `recover()`, logged, and execution stops immediately.
 6. **Print summary** — reports success/failure, total duration, and links (repo, actions, docs, backend/frontend repos if multirepo).
-7. **Bug report** — on failure, automatically creates a GitHub issue in `optivem/gh-optivem` with scaffolding details (unless `--no-bug-report` is set).
+7. **Bug report** — off by default. Pass `--bug-report` to auto-create a GitHub issue in `optivem/gh-optivem` with scaffolding details and the debug-branch URL on failure. Filing yourself is usually clearer and keeps scaffold config private unless you decide to share it.
 8. **Cleanup** — on success, deletes the local scaffold dir (skip with `--keep-local`) so the user is left with just the remote repo(s) + SonarCloud project(s). On failure the dir is always kept so the broken scaffold can be inspected. The GitHub repos + SonarCloud projects are never deleted by the CLI itself; use [scripts/cleanup-orphans.sh](../scripts/cleanup-orphans.sh) for that.
 
 ## Setup steps
