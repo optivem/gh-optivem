@@ -34,17 +34,20 @@ For a real manual test run (random repo name; on success the local dir is delete
 # FULL
 bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner" \
     --arch multitier --repo-strategy multirepo \
-    --backend-lang dotnet --frontend-lang react --test-lang typescript
+    --backend-lang dotnet --frontend-lang react --test-lang typescript \
+    --shop-ref main
 
 bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner" \
     --arch monolith --repo-strategy monorepo \
-    --monolith-lang typescript --test-lang typescript
+    --monolith-lang typescript --test-lang typescript \
+    --shop-ref main
 
 
 # SKIP LOCAL & LEGACY (MONOLITH)
 bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner" \
     --arch monolith --repo-strategy monorepo \
     --monolith-lang typescript --test-lang typescript \
+    --shop-ref main \
     --skip-local-tests --exclude-legacy
 
 
@@ -52,6 +55,7 @@ bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner
 bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner" \
     --arch multitier --repo-strategy multirepo \
     --backend-lang dotnet --frontend-lang react --test-lang typescript \
+    --shop-ref main \
     --skip-local-tests --exclude-legacy
 
 

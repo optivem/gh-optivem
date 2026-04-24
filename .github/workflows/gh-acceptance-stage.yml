@@ -1,5 +1,5 @@
 name: gh-acceptance-stage
-run-name: gh Acceptance Stage — ${{ github.event_name == 'workflow_dispatch' && inputs.verify-level || github.event.schedule == '0 */6 * * *' && 'release' || 'local' }}
+run-name: gh Acceptance Stage — ${{ github.event_name == 'workflow_dispatch' && inputs.shop-head && format('HEAD / {0}', inputs.verify-level) || github.event_name == 'workflow_dispatch' && inputs.verify-level || github.event.schedule == '0 */6 * * *' && 'release' || 'local' }}
 
 on:
   workflow_dispatch:
@@ -17,11 +17,13 @@ on:
           - qa
           - release
       matrix-mode:
-        description: 'Matrix size: minimal (8 combos — TS tests dotnet/java), condensed (12 off-diagonal polyglot combos — single-language combos are already covered by optivem/shop), or full (all 36 combos).'
+        description: 'Matrix size: none (0 combos — skip the run matrix entirely), single (1 combo — monolith/monorepo/TS/TS, cheapest smoke), minimal (8 combos — TS tests dotnet/java), condensed (12 off-diagonal polyglot combos — single-language combos are already covered by optivem/shop), or full (all 36 combos).'
         required: false
         default: 'minimal'
         type: choice
         options:
+          - none
+          - single
           - minimal
           - condensed
           - full
@@ -30,6 +32,11 @@ on:
         required: false
         default: ''
         type: string
+      shop-head:
+        description: 'Run against optivem/shop HEAD (latest main) instead of a meta-v* release tag. No prerelease or release will be created. Mutually exclusive with shop-tag and force-prerelease.'
+        required: false
+        default: false
+        type: boolean
       retain-repos:
         description: 'Retain scaffolded test repos (skip cleanup) even on success. Useful for post-run debugging.'
         required: false
@@ -55,6 +62,7 @@ concurrency:
 jobs:
   preflight:
     name: Preflight
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.shop-head) }}
     runs-on: ubuntu-latest
     outputs:
       shop-release-exists: ${{ steps.check-shop.outputs.exists }}
@@ -69,12 +77,15 @@ jobs:
   check:
     name: Check
     needs: preflight
-    if: needs.preflight.outputs.shop-release-exists == 'true'
+    if: >-
+      ${{ !failure() && !cancelled() &&
+      ((github.event_name == 'workflow_dispatch' && inputs.shop-head) ||
+       needs.preflight.outputs.shop-release-exists == 'true') }}
     runs-on: ubuntu-latest
     outputs:
       verify-level: ${{ steps.level.outputs.verify-level }}
-      shop-tag: ${{ steps.shop-tag.outputs.tag }}
-      shop-sha: ${{ (steps.level.outputs.verify-level == 'release' || inputs.shop-tag != '') && steps.shop-sha.outputs.sha || '' }}
+      shop-tag: ${{ (github.event_name == 'workflow_dispatch' && inputs.shop-head) && '' || steps.shop-tag.outputs.tag }}
+      shop-sha: ${{ (github.event_name == 'workflow_dispatch' && inputs.shop-head) && '' || ((steps.level.outputs.verify-level == 'release' || inputs.shop-tag != '') && steps.shop-sha.outputs.sha || '') }}
       should-run: ${{ steps.prior-status.outputs.exists != 'true' }}
       retain-repos: ${{ github.event_name == 'workflow_dispatch' && inputs.retain-repos && 'true' || 'false' }}
       matrix: ${{ steps.matrix.outputs.matrix }}
@@ -116,7 +127,26 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "| retain-repos | ${{ inputs.retain-repos }} |" >> "$GITHUB_STEP_SUMMARY"
             echo "| force-prerelease | ${{ inputs.force-prerelease }} |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| shop-head | ${{ inputs.shop-head }} |" >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      - name: Validate shop-head
+        if: github.event_name == 'workflow_dispatch' && inputs.shop-head
+        shell: bash
+        env:
+          SHOP_TAG: ${{ inputs.shop-tag }}
+          FORCE_PRERELEASE: ${{ inputs.force-prerelease }}
+        run: |
+          set -euo pipefail
+          if [ -n "$SHOP_TAG" ]; then
+            echo "::error::shop-head=true is mutually exclusive with shop-tag (got: '$SHOP_TAG'). Leave shop-tag empty when running against HEAD."
+            exit 1
+          fi
+          if [ "$FORCE_PRERELEASE" = "true" ]; then
+            echo "::error::shop-head=true is mutually exclusive with force-prerelease=true. HEAD mode never produces a release."
+            exit 1
+          fi
+          echo "Running against optivem/shop HEAD — no prerelease or release will be created."
 
       - name: Validate force-prerelease
         if: github.event_name == 'workflow_dispatch' && inputs.force-prerelease && steps.level.outputs.verify-level != 'release'
@@ -128,13 +158,13 @@ jobs:
           exit 1
 
       - name: Checkout
-        if: steps.level.outputs.verify-level == 'release'
+        if: steps.level.outputs.verify-level == 'release' && !(github.event_name == 'workflow_dispatch' && inputs.shop-head)
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Check version not already released
-        if: steps.level.outputs.verify-level == 'release'
+        if: steps.level.outputs.verify-level == 'release' && !(github.event_name == 'workflow_dispatch' && inputs.shop-head)
         shell: bash
         run: |
           set -euo pipefail
@@ -176,13 +206,14 @@ jobs:
 
       - name: Resolve latest meta-v* shop tag
         id: shop-tag-latest
-        if: inputs.shop-tag == ''
+        if: inputs.shop-tag == '' && !(github.event_name == 'workflow_dispatch' && inputs.shop-head)
         uses: optivem/actions/resolve-latest-prerelease-tag@v1
         with:
           repository: optivem/shop
           tag-prefix: meta-v
 
       - id: shop-tag
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.shop-head) }}
         shell: bash
         env:
           EXPLICIT: ${{ inputs.shop-tag }}
@@ -192,18 +223,24 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - id: shop-sha
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.shop-head) }}
         uses: optivem/actions/resolve-commit@v1
         with:
           repository: optivem/shop
           ref: ${{ steps.shop-tag.outputs.tag }}
 
       - id: prior-status
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.shop-head) }}
         uses: optivem/actions/check-commit-status-exists@v1
         with:
           commit-sha: ${{ steps.shop-sha.outputs.sha }}
           status-context: acceptance-stage
 
       # Build the run-job matrix based on matrix-mode.
+      # none = 0 combos: skip the run matrix entirely (run job is skipped). Use
+      #   to exercise only preflight/check/smoke without burning matrix minutes.
+      # single = 1 combo: monolith/monorepo/TS/TS. Cheapest possible smoke — use
+      #   to validate the CLI scaffolder end-to-end without burning the matrix.
       # minimal = 8 combos: TS is always the test-lang, exercised against dotnet
       #   and java as system-lang (× 2 arch × 2 repo-strategy). Cheapest smoke
       #   check — does not cover dotnet or java as test-lang.
@@ -218,6 +255,20 @@ jobs:
         env:
           MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.matrix-mode || 'condensed' }}
         run: |
+          if [ "$MODE" = "none" ]; then
+            MATRIX='{"include":[]}'
+            echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+            echo "| matrix-mode | $MODE (0 combos) |" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "$MODE" = "single" ]; then
+            MATRIX='{"include":[{"arch":"monolith","repo-strategy":"monorepo","lang":"typescript","test-lang":"typescript"}]}'
+            echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+            echo "| matrix-mode | $MODE (1 combos) |" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
           ARCHS='["monolith","multitier"]'
           REPOS='["monorepo","multirepo"]'
           LANGS='["typescript","dotnet","java"]'
@@ -340,10 +391,12 @@ jobs:
     name: Create Prerelease
     needs: [check, run]
     # !failure() && !cancelled() (not success()) so run can be skipped via force-prerelease.
+    # Skipped entirely in HEAD mode — HEAD runs never produce a release.
     if: >-
       ${{ !failure() && !cancelled() &&
       needs.check.result == 'success' &&
-      needs.check.outputs.verify-level == 'release' }}
+      needs.check.outputs.verify-level == 'release' &&
+      !(github.event_name == 'workflow_dispatch' && inputs.shop-head) }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.gen.outputs.version }}
