@@ -55,20 +55,17 @@ func CreateRepos(cfg *config.Config, gh *shell.GitHub) {
 }
 
 // SetupEnvironments creates GitHub environments on the main repo.
+//
+// Scaffolded repos only ever host one arch+lang combination, so the env names
+// drop the arch+lang prefix used inside optivem/shop and are just the bare
+// stage names. The workflow content rewrite in apply_template.go rewrites the
+// template's prefixed "environment:" references to match.
 func SetupEnvironments(cfg *config.Config, gh *shell.GitHub) {
 	log.Info("Creating environments...")
-
-	lang := cfg.Lang
-	if cfg.Arch == "multitier" {
-		lang = cfg.BackendLang
-	}
-	prefix := cfg.Arch + "-" + lang
-
 	for _, stage := range []string{"acceptance", "qa", "production"} {
-		envName := prefix + "-" + stage
-		gh.CreateEnvironment(envName)
+		gh.CreateEnvironment(stage)
 	}
-	log.Successf("Created environments: %s-acceptance, %s-qa, %s-production", prefix, prefix, prefix)
+	log.Success("Created environments: acceptance, qa, production")
 }
 
 // SetupSecretsAndVariables sets GitHub Actions secrets and variables.

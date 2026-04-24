@@ -30,6 +30,7 @@ const (
 	prefixMultitierBackend    = "multitier-backend-"
 	prefixMultitierFrontend   = "multitier-frontend-"
 	prefixMonolithSystem      = "monolith-system-"
+	envPrefixYAML             = "environment: "
 	dirSystemTest             = "system-test"
 	dirExternalRealSim        = "external-real-sim"
 	dirExternalStub           = "external-stub"
@@ -363,7 +364,13 @@ func applyMultitierMultirepo(cfg *config.Config) {
 func monolithContentReplacements(lang, testLang string) [][2]string {
 	mono := prefixMonolith
 	monoTest := mono + testLang
+	envPrefix := mono + lang + "-"
 	r := [][2]string{
+		// Environment references — scaffolded repos have unprefixed env names
+		// (SetupEnvironments creates bare `acceptance`/`qa`/`production`).
+		{envPrefixYAML + envPrefix + "acceptance", envPrefixYAML + "acceptance"},
+		{envPrefixYAML + envPrefix + "qa", envPrefixYAML + "qa"},
+		{envPrefixYAML + envPrefix + "production", envPrefixYAML + "production"},
 		// Workflow names (longer patterns first to avoid partial matches)
 		{mono + lang + suffixCommitStage, "commit-stage"},
 		{monoTest + suffixAcceptanceStage, "acceptance-stage"},
@@ -408,7 +415,12 @@ func monolithDockerComposeReplacements(lang, testLang string) [][2]string {
 // multitierContentReplacements returns workflow content replacements for multitier.
 func multitierContentReplacements(backendLang, frontendLang, testLang string) [][2]string {
 	multiTest := prefixMultitier + testLang
+	envPrefix := prefixMultitier + backendLang + "-"
 	r := [][2]string{
+		// Environment references — scaffolded repos have unprefixed env names.
+		{envPrefixYAML + envPrefix + "acceptance", envPrefixYAML + "acceptance"},
+		{envPrefixYAML + envPrefix + "qa", envPrefixYAML + "qa"},
+		{envPrefixYAML + envPrefix + "production", envPrefixYAML + "production"},
 		// Workflow names for pipeline stages (longer patterns first)
 		{multiTest + suffixAcceptanceStage, "acceptance-stage"},
 		{multiTest + suffixQAStage, "qa-stage"},

@@ -79,6 +79,10 @@ Scaffolds the project then cleans up automatically:
 gh optivem init ... --test --cleanup --random-suffix
 ```
 
+### Deployment target
+
+Only `--deploy docker` is currently supported (the default). `--deploy cloud-run` is temporarily disabled while the cloud workflow service/endpoint rewriting is finished — see the TODO in `internal/config/config.go` `validateCommonFlags`.
+
 ## How it works
 
 See [docs/how-it-works.md](docs/how-it-works.md) for a detailed walkthrough of the `main.go` logic, setup steps, and verification levels.

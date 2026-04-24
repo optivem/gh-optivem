@@ -385,6 +385,15 @@ func validateCommonFlags(deploy, arch, repoStrategy string) {
 	if deploy != "docker" && deploy != "cloud-run" {
 		log.FatalExit("--deploy must be 'docker' or 'cloud-run'")
 	}
+	// TODO: --deploy cloud-run is temporarily disabled. The scaffolded cloud
+	// workflows still carry shop-prefixed service/endpoint identifiers
+	// ("service: monolith-<lang>-acceptance", "endpoints: [{\"name\": ...}]")
+	// that aren't rewritten during template application. Re-enable once
+	// apply_template.go strips these prefixes the same way env names were
+	// stripped (see monolithContentReplacements / multitierContentReplacements).
+	if deploy == "cloud-run" {
+		log.FatalExit("--deploy cloud-run is temporarily disabled (service/endpoint rewriting not implemented). Use --deploy docker for now.")
+	}
 	if arch != "monolith" && arch != "multitier" {
 		log.FatalExit("--arch must be 'monolith' or 'multitier'")
 	}

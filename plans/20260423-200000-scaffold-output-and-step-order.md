@@ -30,41 +30,25 @@ These five edits compiled clean during the conversation; they're listed so the n
 
 Recommended single coordinated change in [internal/log/log.go](../internal/log/log.go):
 
-- [ ] **Replace passive update notice with auto-upgrade + restart.** Currently `checkForUpdate` in [main.go](../main.go) only prints a yellow "UPDATE AVAILABLE:" line and continues. Change to:
-  1. On outdated version: print `Update available: <current> → <latest>. Upgrading...` (stderr, yellow).
-  2. Run `gh extension upgrade optivem` via `exec.Command`.
-  3. On success: print `Upgraded to <latest>. Restarting...`, then spawn a child process with the same `os.Args` (inheriting stdin/stdout/stderr), wait for it, and `os.Exit(childExitCode)`.
-  4. On upgrade failure: print the error + fall back to manual instruction (`run: gh extension upgrade optivem`) and exit 1.
-  5. Add `--no-auto-upgrade` flag to opt out (CI / debugging).
+### Group 3 — Environment naming (local to gh-optivem)
 
-  **Why restart, not true exec:** `syscall.Exec` is Unix-only; the target env is Windows, so spawn-and-wait is the only cross-platform option. User-visible effect is the same.
+`shop` **keeps** prefixed env names (`monolith-typescript-acceptance` etc.) since it hosts templates for all arch+lang combos side-by-side. Scaffolded repos — which only ever have one arch+lang combo — should emit **unprefixed** env names (`acceptance`, `qa`, `production`).
 
-  **Rationale:** users should scaffold with the latest template logic. Friction of "upgrade, then re-run" drops to zero. The explicit "Upgrading..." / "Restarting..." messages keep the behavior transparent (no silent self-modification).
+Two coordinated changes inside `gh-optivem`:
 
-### Group 3 — Environment naming (BREAKING — needs cross-repo coordination)
-
-Renaming `<arch>-<lang>-acceptance` → `acceptance` (and `qa`, `production`) touches **50+ files outside `gh-optivem`**. Do not start until both repos can be changed together.
-
-- [ ] **In `gh-optivem`:** simplify [github_setup.go:60-69](../internal/steps/github_setup.go#L60-L69) to drop the prefix:
+- [ ] **`SetupEnvironments`** in [github_setup.go:58-72](../internal/steps/github_setup.go#L58-L72) — create bare env names. Simplify:
   ```go
   for _, stage := range []string{"acceptance", "qa", "production"} {
       gh.CreateEnvironment(stage)
   }
+  log.Success("Created environments: acceptance, qa, production")
   ```
 
-- [ ] **In `optivem/shop`:** update every workflow under [.github/workflows/](../../shop/.github/workflows/) that has `environment: monolith-…` / `environment: multitier-…` to the bare stage name. Grep target:
-  ```
-  monolith-typescript-|monolith-java-|monolith-dotnet-|multitier-…-(acceptance|qa|production)
-  ```
-  (~50 files identified during the conversation.)
+- [ ] **Workflow content rewrite.** After template files are copied into the scaffolded repo, rewrite every `environment: <arch>-<lang>-(acceptance|qa|production)` reference to `environment: $1`. Integrate into the existing `FixupWorkflowContent` pipeline in [apply_template.go](../internal/steps/apply_template.go). Applies to all 4 variants (monolith/multitier × monorepo/multirepo). For multitier, rewrite against `<arch>-<backend-lang>-...` (since env names use backendLang).
 
-- [ ] **Update course docs and migration plan:**
-  - `courses/01-pipeline/accelerator/course/02-commit-stage/02-compile-and-build.md`
-  - `courses/01-pipeline/accelerator/course/04-qa-stage/04-qa-signoff.md`
-  - `courses/01-pipeline/accelerator/course/05-production-stage/02-deploy-to-prod.md`
-  - `shop/plans/MIGRATION-CLOUD-DEPLOY.md`
+- [ ] **Verify with a fresh scaffold + commit-stage run** that a freshly scaffolded repo's workflows reference the unprefixed env names and CI succeeds end-to-end.
 
-- [ ] **Verify with a fresh scaffold + commit-stage run** that a freshly scaffolded repo's workflows still match the new (unprefixed) env names.
+**Deferred (follow-up, out of scope for this plan):** 23 course docs under `courses/01-pipeline/` and `courses/02-atdd/` reference the old prefixed names. Easy regex sweep; will be done after the code lands and is verified.
 
 ## Order of execution
 
