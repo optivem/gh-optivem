@@ -169,7 +169,7 @@ No language or architecture in image names:
 
 | Current (in shop) | Target (in scaffolded repo) |
 |---|---|
-| `sysapp-{lang}` | `system` |
+| `monolith-system-{lang}` | `system` |
 | `multitier-backend-{lang}` | `backend` |
 | `multitier-frontend-{lang}` | `frontend` |
 
@@ -180,7 +180,7 @@ GHCR URLs become: `ghcr.io/{owner}/{repo}/system`, `ghcr.io/{owner}/{repo}/backe
 Inside copied workflows, replace:
 - Workflow names: `monolith-{lang}-commit-stage` -> `commit-stage`, `multitier-{testLang}-acceptance-stage` -> `acceptance-stage`, etc.
 - Working directory paths: `system/multitier/backend-{lang}` -> `backend`, `system/monolith/{lang}` -> `system`, etc.
-- Docker image names: `sysapp-{lang}` -> `system`, `multitier-backend-{lang}` -> `backend`, `multitier-frontend-{lang}` -> `frontend`
+- Docker image names: `monolith-system-{lang}` -> `system`, `multitier-backend-{lang}` -> `backend`, `multitier-frontend-{lang}` -> `frontend`
 - System test paths: `system-test/{testLang}/` -> `system-test/`
 - SonarCloud key suffixes: `-monolith-{lang}` -> `-system`, `-multitier-backend-{lang}` -> `-backend`, `-multitier-frontend-{lang}` -> `-frontend`
 - Path filters and self-references: `.github/workflows/{old-name}.yml` -> `.github/workflows/{new-name}.yml`

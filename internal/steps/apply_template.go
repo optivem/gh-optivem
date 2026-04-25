@@ -29,7 +29,7 @@ const (
 	prefixMultitier         = "multitier-"
 	prefixMultitierBackend  = "multitier-backend-"
 	prefixMultitierFrontend = "multitier-frontend-"
-	prefixMonolithSystem    = "sysapp-"
+	prefixMonolithSystem    = "monolith-system-"
 	envPrefixYAML           = "environment: "
 	dirSystemTest           = "system-test"
 	dirExternalRealSim      = "external-real-sim"
