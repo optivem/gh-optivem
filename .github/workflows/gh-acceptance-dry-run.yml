@@ -54,7 +54,7 @@ on:
         default: false
         type: boolean
       skip-local-tests:
-        description: 'Skip the "Verify local testing" step (Run-SystemTests.ps1) for the acceptance matrix. Does not affect the smoke job.'
+        description: 'Skip the "Verify local testing" step (runner package over system-test/) for the acceptance matrix. Does not affect the smoke job.'
         required: false
         default: false
         type: boolean

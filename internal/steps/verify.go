@@ -366,7 +366,7 @@ func VerifyLocalTesting(cfg *config.Config) {
 
 	setupMultirepoSymlinks(cfg)
 
-	runLocalTestsViaRunner("Local system tests (latest)", testDir, "tests.json")
+	runLocalTestsViaRunner("Local system tests (latest)", testDir, "tests-latest.json")
 
 	if !cfg.ExcludeLegacy {
 		runLocalTestsViaRunner("Local system tests (legacy)", testDir, "tests-legacy.json")

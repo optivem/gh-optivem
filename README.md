@@ -70,7 +70,7 @@ gh optivem init ... --verify-level acceptance    # + acceptance stage CI (latest
 gh optivem init ... --verify-level qa            # + QA stage + QA signoff
 gh optivem init ... --verify-level release       # + production stage (default)
 gh optivem init ... --exclude-legacy             # skip legacy in local tests and acceptance
-gh optivem init ... --skip-local-tests           # skip Run-SystemTests.ps1 step
+gh optivem init ... --skip-local-tests           # skip the local system-tests step
 ```
 
 ### Local cleanup

@@ -65,19 +65,19 @@ func CopyWorkflows(mappings map[string]string, shop, repoDir string) {
 // scaffolded layout. Shop organizes system-test content as:
 //
 //	system-test/<lang>/
-//	├── Run-SystemTests.ps1             (arch-agnostic)
-//	├── Run-SystemTests.*.Config.ps1    (arch-agnostic)
+//	├── tests-latest.json               (arch-agnostic, kept)
+//	├── tests-legacy.json               (arch-agnostic, kept)
 //	├── README.md                       (arch-agnostic, kept)
-//	├── monolith/                       ← compose files, arch config, per-arch README
+//	├── monolith/                       ← compose files + system.json + per-arch README
 //	└── multitier/                      ← same
 //
 // A scaffolded repo locks in one arch, so this function:
 //  1. Removes the non-selected arch's entire subdirectory.
-//  2. Drops the selected arch's README.md (its "../Run-SystemTests.ps1 -Architecture X"
-//     examples don't fit a scaffolded repo — the top-level arch-agnostic README is kept
-//     instead and fixed up later).
-//  3. Moves the selected arch's remaining files (compose + arch config PS1) up into
-//     system-test/.
+//  2. Drops the selected arch's README.md (its arch-switching examples don't fit a
+//     scaffolded repo — the top-level arch-agnostic README is kept instead and
+//     fixed up later).
+//  3. Moves the selected arch's remaining files (compose files + system.json) up
+//     into system-test/.
 //  4. Removes the now-empty selected-arch subdir.
 //
 // variant: "single" for monolith, "multi" for multitier.

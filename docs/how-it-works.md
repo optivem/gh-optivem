@@ -46,7 +46,7 @@ After setup, verification steps run based on `--verify-level`, in this fixed ord
 | # | Step | Description |
 |---|------|-------------|
 | 1 | Verify local compilation | Compiles system/backend/frontend/tests locally to catch broken imports, type errors |
-| 2 | Verify local testing | Runs `Run-SystemTests.ps1` (latest + legacy). Skipped when `--skip-local-tests` is set |
+| 2 | Verify local testing | Runs the bundled runner against `system-test/` (latest + legacy). Skipped when `--skip-local-tests` is set |
 | 3 | Verify commit stage | Watches the commit stage CI workflow |
 | 4 | Verify acceptance stage | Triggers and watches acceptance stage **latest + legacy in parallel** (legacy dropped when `--exclude-legacy`). Captures the RC version. |
 | 5 | Verify QA stage | Triggers QA stage, then QA signoff |

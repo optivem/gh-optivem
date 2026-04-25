@@ -54,7 +54,7 @@ type Config struct {
 	DryRun       bool
 	VerifyLevel    string // "none", "local", "commit", "acceptance", "qa", "release"
 	ExcludeLegacy  bool   // exclude legacy from local tests and acceptance stage
-	SkipLocalTests bool   // skip the "Verify local testing" step (Run-SystemTests.ps1)
+	SkipLocalTests bool   // skip the "Verify local testing" step (runner package over system-test/)
 	KeepLocal    bool   // keep the local scaffolded clone dir after a successful run (default: delete it)
 	BugReport    bool   // opt in to auto-creating a GitHub issue on failure (default: off)
 	NoCommitOnFailure bool // skip pushing partial scaffold to a debug/<timestamp> branch on failure (by default we push it for triage)
@@ -490,7 +490,7 @@ func registerFlags() rawFlags {
 		keepLocal:     flag.Bool("keep-local", false, "Keep the local scaffolded clone dir instead of deleting it on success"),
 		verifyLevel:    flag.String("verify-level", "release", "Verification level: none, local, commit, acceptance, qa, release"),
 		excludeLegacy:  flag.Bool("exclude-legacy", false, "Exclude legacy from local tests and acceptance stage"),
-		skipLocalTests: flag.Bool("skip-local-tests", false, "Skip the 'Verify local testing' step (Run-SystemTests.ps1)"),
+		skipLocalTests: flag.Bool("skip-local-tests", false, "Skip the 'Verify local testing' step (runner package over system-test/)"),
 		bugReport:     flag.Bool("report-bug", false, "On failure, auto-create a GitHub issue in optivem/gh-optivem with scaffold config and debug-branch URL. Off by default — file one yourself if the failure is worth reporting."),
 		noCommitOnFailure: flag.Bool("no-commit-on-failure", false, "Skip pushing the partial scaffold to a debug/<timestamp> branch on failure. By default the partial scaffold is pushed so it can be inspected and linked from the auto-filed bug report."),
 		deploy:        flag.String("deploy", "docker", "Deployment target: docker or cloud-run"),
