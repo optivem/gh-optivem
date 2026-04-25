@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/optivem/gh-optivem/internal/pathx"
 )
 
 // TestOptions narrows or modifies a tests run.
@@ -180,7 +182,7 @@ func runShell(command, cwd string, env map[string]string) error {
 	if len(parts) == 0 {
 		return errors.New("empty command")
 	}
-	cmd := exec.Command(parts[0], parts[1:]...)
+	cmd := exec.Command(pathx.NormalizeExe(parts[0]), parts[1:]...)
 	cmd.Dir = cwd
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

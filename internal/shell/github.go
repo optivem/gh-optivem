@@ -14,6 +14,7 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/pathx"
 )
 
 const (
@@ -48,7 +49,7 @@ func Run(cmdStr string, dryRun, check bool, cwd string) (string, error) {
 	if len(parts) == 0 {
 		return "", errors.New(errMsgEmptyCommand)
 	}
-	cmd := exec.Command(parts[0], parts[1:]...)
+	cmd := exec.Command(pathx.NormalizeExe(parts[0]), parts[1:]...)
 	if cwd != "" {
 		cmd.Dir = cwd
 	}
@@ -88,7 +89,7 @@ func RunStdin(cmdStr, stdin string, dryRun, check bool, cwd string) (string, err
 	if len(parts) == 0 {
 		return "", errors.New(errMsgEmptyCommand)
 	}
-	cmd := exec.Command(parts[0], parts[1:]...)
+	cmd := exec.Command(pathx.NormalizeExe(parts[0]), parts[1:]...)
 	if cwd != "" {
 		cmd.Dir = cwd
 	}
@@ -131,7 +132,7 @@ func RunCapture(cmdStr, cwd string) (string, error) {
 	if len(parts) == 0 {
 		return "", errors.New(errMsgEmptyCommand)
 	}
-	cmd := exec.Command(parts[0], parts[1:]...)
+	cmd := exec.Command(pathx.NormalizeExe(parts[0]), parts[1:]...)
 	if cwd != "" {
 		cmd.Dir = cwd
 	}
@@ -158,7 +159,7 @@ func RunPassthrough(cmdStr, cwd string) error {
 	if len(parts) == 0 {
 		return errors.New(errMsgEmptyCommand)
 	}
-	cmd := exec.Command(parts[0], parts[1:]...)
+	cmd := exec.Command(pathx.NormalizeExe(parts[0]), parts[1:]...)
 	if cwd != "" {
 		cmd.Dir = cwd
 	}

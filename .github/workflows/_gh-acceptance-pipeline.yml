@@ -38,6 +38,11 @@ on:
         required: false
         type: boolean
         default: false
+      skip-tests:
+        description: 'Bypass ALL test phases (smoke + acceptance matrix) and create the RC prerelease directly. Forces release-mode regardless of verify-level. The version-not-already-released check still runs. Mutually exclusive with shop-head=true unless skip-prerelease=true.'
+        required: false
+        type: boolean
+        default: false
       skip-local-tests:
         description: 'Skip the "Verify local testing" step for the acceptance matrix. Does not affect the smoke job.'
         required: false
@@ -116,6 +121,7 @@ jobs:
           SHOP_HEAD: ${{ inputs.shop-head }}
           SHOP_TAG: ${{ inputs.shop-tag }}
           SKIP_PRE: ${{ inputs.skip-prerelease }}
+          SKIP_TESTS: ${{ inputs.skip-tests }}
         run: |
           set -euo pipefail
 
@@ -128,10 +134,14 @@ jobs:
               echo "::error::shop-head=true + verify-level=release requires skip-prerelease=true. HEAD mode cannot produce a real release; the dry-run workflow sets skip-prerelease=true automatically for exactly this case."
               exit 1
             fi
+            if [ "$SKIP_TESTS" = "true" ] && [ "$SKIP_PRE" != "true" ]; then
+              echo "::error::shop-head=true + skip-tests=true requires skip-prerelease=true. HEAD mode cannot produce a prerelease."
+              exit 1
+            fi
             echo "Running against optivem/shop HEAD — no prerelease or release will be created."
           fi
 
-          if [ "$LEVEL" = "release" ] && [ "$SHOP_HEAD" != "true" ] && [ "$SKIP_PRE" != "true" ]; then
+          if { [ "$LEVEL" = "release" ] || [ "$SKIP_TESTS" = "true" ]; } && [ "$SHOP_HEAD" != "true" ] && [ "$SKIP_PRE" != "true" ]; then
             RELEASE_MODE=true
           else
             RELEASE_MODE=false
@@ -154,18 +164,19 @@ jobs:
             echo "| shop-head | $SHOP_HEAD |"
             echo "| retain-repos | ${{ inputs.retain-repos }} |"
             echo "| skip-prerelease | $SKIP_PRE |"
+            echo "| skip-tests | $SKIP_TESTS |"
             echo "| skip-local-tests | ${{ inputs.skip-local-tests }} |"
             echo "| exclude-legacy | ${{ inputs.exclude-legacy }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Checkout
-        if: steps.mode.outputs.verify-level == 'release' && steps.mode.outputs.head-mode != 'true'
+        if: steps.mode.outputs.release-mode == 'true'
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Check version not already released
-        if: steps.mode.outputs.verify-level == 'release' && steps.mode.outputs.head-mode != 'true'
+        if: steps.mode.outputs.release-mode == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -357,6 +368,7 @@ jobs:
     # already smoke-verified).
     if: >-
       ${{ !failure() && !cancelled() &&
+      !inputs.skip-tests &&
       needs.check.outputs.should-run == 'true' &&
       needs.check.outputs.verify-level != 'none' &&
       needs.check.outputs.smoke-matrix != '{"include":[]}' }}
@@ -408,6 +420,7 @@ jobs:
     # (smoke + create-prerelease, no acceptance matrix) working.
     if: >-
       ${{ !failure() && !cancelled() &&
+      !inputs.skip-tests &&
       needs.check.outputs.should-run == 'true' &&
       needs.check.outputs.matrix != '{"include":[]}' &&
       (needs.smoke.result == 'success' || needs.smoke.result == 'skipped') }}

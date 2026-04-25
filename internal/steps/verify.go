@@ -4,7 +4,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"time"
 
@@ -58,10 +57,9 @@ func buildCommands(lang string) []string {
 	case "dotnet":
 		return []string{"dotnet build"}
 	case "java":
-		if runtime.GOOS == "windows" {
-			return []string{`.\gradlew.bat compileJava compileTestJava`}
-		}
-		return []string{"./gradlew compileJava compileTestJava"}
+		// shell.Run normalizes `.\gradlew.bat` to `./gradlew` on non-Windows
+		// hosts via pathx.NormalizeExe, so a single literal works on both.
+		return []string{`.\gradlew.bat compileJava compileTestJava`}
 	case "react":
 		return []string{"npm ci", "npm run build"}
 	default:

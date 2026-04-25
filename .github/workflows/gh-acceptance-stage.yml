@@ -32,6 +32,11 @@ on:
         required: false
         type: string
         default: ''
+      skip-tests:
+        description: 'Bypass ALL test phases (smoke + acceptance matrix) and create the RC prerelease directly. Forces release-mode regardless of verify-level. The version-not-already-released check still runs. smoke-mode and acceptance-mode are ignored when this is true.'
+        required: false
+        type: boolean
+        default: false
 
 # Shared concurrency group with gh-acceptance-dry-run so dry-runs and real runs
 # serialize rather than stepping on each other.
@@ -54,3 +59,4 @@ jobs:
       shop-head: false
       retain-repos: false
       skip-prerelease: false
+      skip-tests: ${{ inputs.skip-tests == null && false || inputs.skip-tests }}

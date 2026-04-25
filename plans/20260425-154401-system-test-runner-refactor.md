@@ -23,16 +23,11 @@ Shop's CI installs `gh-optivem` via `gh extension install optivem/gh-optivem`, w
 
 ## Known follow-ups (not addressed in PR 2)
 
-### Java cross-platform suite commands
+### Java cross-platform suite commands ✅ resolved 2026-04-25
 
-`tests-*.json` for Java uses `.\gradlew.bat ...` literally (translated from the source PS1 with the PowerShell `&` call operator dropped, since the runner exec's directly via `os/exec`). This is **Windows-only**. On Linux CI the suite commands will fail because `.bat` files don't execute. Java suites already had a similar limitation in the pwsh-on-Linux path (the call operator + `.bat` combo was lossy on Linux), so this is a pre-existing gap surfaced — not newly introduced — but it should be addressed.
+`tests-*.json` for Java used `.\gradlew.bat ...` literally — Windows-only. Linux CI surfaced this in `meta-prerelease-stage` run [24937323802](https://github.com/optivem/shop/actions/runs/24937323802) (multitier-java + monolith-java both failed in `Setup: Clean Build` with `exec: ".\\gradlew.bat": executable file not found in $PATH`).
 
-Possible fixes:
-- Add platform-aware command resolution in the runner (detect `gradlew.bat` vs `gradlew` based on GOOS at the time the suite runs).
-- Schema extension: `commandWindows` / `commandUnix` per suite.
-- Wrapper script (`./gradlew-cross.sh`) that picks the right wrapper.
-
-The `system-test/java/README.md` flags this with a note. The other two langs (typescript, dotnet) work cross-platform.
+Fix: `normalizeExe` in `internal/runner/tests.go` translates Windows wrapper paths to Unix on non-Windows hosts (`.\gradlew.bat` → `./gradlew`). The JSON literals stay Windows-style; the runner resolves at exec time. README note in `system-test/java/README.md` removed.
 
 ### Port-clash with other scaffolded projects
 
