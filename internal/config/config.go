@@ -62,7 +62,6 @@ type Config struct {
 	Quiet        bool   // suppress info-level output
 	LogFile      string // optional path to mirror plain-text log output
 	NoAutoUpgrade bool  // skip auto-upgrade when a newer release is available
-	SoftValidate  bool  // downgrade leftover-template-ref validation from fatal to warning (for triage)
 	WorkDir    string
 	ShopPath string
 	ShopRef  string // Pinned optivem/shop ref (SHA, tag, or branch). Never empty.
@@ -472,7 +471,6 @@ type rawFlags struct {
 	bugReport, showVersion                                       *bool
 	noCommitOnFailure                                            *bool
 	verbose, verboseShort, quiet, quietShort, noAutoUpgrade      *bool
-	softValidate                                                 *bool
 	logFile                                                      *string
 }
 
@@ -505,7 +503,6 @@ func registerFlags() rawFlags {
 		quietShort:    flag.Bool("q", false, "Short for --quiet"),
 		logFile:       flag.String("log-file", "", "Also write plain-text log output to this file (no ANSI colors, all levels)"),
 		noAutoUpgrade: flag.Bool("no-auto-upgrade", false, "Skip auto-upgrade when a newer release is available (useful for CI/debugging)"),
-		softValidate:  flag.Bool("soft-validate", false, "Downgrade leftover-template-ref validation from fatal to warning. Lets the scaffold finish and push the imperfect repo for triage; downstream steps may still fail."),
 	}
 }
 
@@ -904,7 +901,6 @@ func ParseAndValidate() *Config {
 		Quiet:        quiet,
 		LogFile:      logFilePath,
 		NoAutoUpgrade: *f.noAutoUpgrade,
-		SoftValidate:  *f.softValidate,
 		WorkDir:    wd,
 		// ShopPath, RepoDir, and the multirepo-component dirs are pre-computed
 		// from WorkDir so the startup banner can show them before Phase 1. The

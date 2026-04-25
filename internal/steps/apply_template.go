@@ -630,7 +630,7 @@ func ValidateNoLeftoverTemplateRefs(cfg *config.Config) {
 		if repoDir == "" {
 			continue
 		}
-		checkNoTemplateRefs(repoDir, refs, cfg.SoftValidate)
+		checkNoTemplateRefs(repoDir, refs)
 	}
 
 	log.Success("No leftover template references")
@@ -678,7 +678,7 @@ func multitierForbiddenRefs(backendLang, frontendLang, testLang string) []string
 	return refs
 }
 
-func checkNoTemplateRefs(repoDir string, refs []string, softValidate bool) {
+func checkNoTemplateRefs(repoDir string, refs []string) {
 	var failed bool
 	for _, needle := range refs {
 		hits := files.FindInTree(repoDir, needle)
@@ -692,10 +692,6 @@ func checkNoTemplateRefs(repoDir string, refs []string, softValidate bool) {
 		failed = true
 	}
 	if failed {
-		if softValidate {
-			log.Warnf("Template replacement incomplete in %s: leftover template references found (continuing because --soft-validate is set; downstream steps may fail).", repoDir)
-			return
-		}
 		log.Fatalf("Template replacement incomplete in %s: leftover template references found.", repoDir)
 	}
 }
