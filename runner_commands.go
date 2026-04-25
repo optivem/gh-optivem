@@ -12,9 +12,25 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/optivem/gh-optivem/internal/runner"
 )
+
+// cwdForPath returns the directory to run docker / setup / suite commands in
+// for a given config file. Compose paths in system.json are relative to
+// system.json's directory; setup commands and suite.path in tests.json are
+// relative to tests.json's directory. This lets shop's source layout
+// (system.json under <lang>/<arch>/, tests-*.json + package.json under
+// <lang>/) work without per-layout flags. In a scaffolded project both files
+// live in the same directory and this is just ".".
+func cwdForPath(configPath string) string {
+	dir := filepath.Dir(configPath)
+	if dir == "" {
+		return "."
+	}
+	return dir
+}
 
 const (
 	defaultSystemConfig = "./system.json"
@@ -33,7 +49,7 @@ func runBuildSystem(args []string) {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		os.Exit(1)
 	}
-	if err := runner.Build(sys, "."); err != nil {
+	if err := runner.Build(sys, cwdForPath(*systemPath)); err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		os.Exit(1)
 	}
@@ -57,7 +73,7 @@ func runRunSystem(args []string) {
 		LogLines: *logLines,
 		Restart:  *restart,
 	}
-	if err := runner.Up(sys, ".", opts); err != nil {
+	if err := runner.Up(sys, cwdForPath(*systemPath), opts); err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		os.Exit(1)
 	}
@@ -75,7 +91,7 @@ func runStopSystem(args []string) {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		os.Exit(1)
 	}
-	if err := runner.Down(sys, "."); err != nil {
+	if err := runner.Down(sys, cwdForPath(*systemPath)); err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		os.Exit(1)
 	}
@@ -113,7 +129,7 @@ func runRunSystemTests(args []string) {
 		Test:   *test,
 		Sample: *sample,
 	}
-	if err := runner.RunTests(sys, tests, ".", opts); err != nil {
+	if err := runner.RunTests(sys, tests, cwdForPath(*testsPath), opts); err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		os.Exit(1)
 	}

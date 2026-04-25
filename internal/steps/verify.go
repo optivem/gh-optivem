@@ -10,6 +10,7 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/runner"
 	"github.com/optivem/gh-optivem/internal/shell"
 )
 
@@ -276,13 +277,29 @@ func handleWorkflowResult(err error, label, repo string) {
 	log.Fatalf("%s workflow failed. Check: https://github.com/%s/actions", label, repo)
 }
 
-// runLocalTests runs a pwsh test command and reports the result.
-func runLocalTests(label, cmd, dir string) {
-	log.Infof("Running: %s (in %s)", cmd, dir)
-	output, err := shell.Run(cmd, false, true, dir)
-	if err != nil {
-		log.Errorf("%s output:\n%s", label, output)
+// runLocalTestsViaRunner brings up system.json's stacks (no-op if already up),
+// then runs the given tests config against them. Fatals on any error.
+func runLocalTestsViaRunner(label, testDir, testsFile string) {
+	log.Infof("Running: %s (system=system.json, tests=%s, in %s)", label, testsFile, testDir)
+
+	fail := func(err error) {
+		log.Errorf("%s: %v", label, err)
 		log.Fatalf(msgStageFailed, label)
+	}
+
+	sys, err := runner.LoadSystem(filepath.Join(testDir, "system.json"))
+	if err != nil {
+		fail(err)
+	}
+	tests, err := runner.LoadTests(filepath.Join(testDir, testsFile))
+	if err != nil {
+		fail(err)
+	}
+	if err := runner.Up(sys, testDir, runner.SystemOptions{}); err != nil {
+		fail(err)
+	}
+	if err := runner.RunTests(sys, tests, testDir, runner.TestOptions{}); err != nil {
+		fail(err)
 	}
 	log.Successf(msgStagePassed, label)
 }
@@ -292,8 +309,8 @@ func runLocalTests(label, cmd, dir string) {
 // Whether to call this step at all is gated by --verify-level in main.go.
 func canRunLocalTests(cfg *config.Config, testKind string) string {
 	testDir := filepath.Join(cfg.RepoDir, systemTestDir_name)
-	if _, err := os.Stat(filepath.Join(testDir, "Run-SystemTests.ps1")); err != nil {
-		log.Warnf("Run-SystemTests.ps1 not found in scaffolded project, skipping local %s", testKind)
+	if _, err := os.Stat(filepath.Join(testDir, "system.json")); err != nil {
+		log.Warnf("system.json not found in scaffolded project, skipping local %s", testKind)
 		return ""
 	}
 
@@ -333,9 +350,9 @@ func setupMultirepoSymlinks(cfg *config.Config) {
 	}
 }
 
-// VerifyLocalTesting runs Run-SystemTests.ps1 locally against the scaffolded
-// project — latest plus legacy (unless --exclude-legacy). Skipped entirely
-// when --skip-local-tests is set (the gate lives in main.go).
+// VerifyLocalTesting runs the runner package against the scaffolded project's
+// system-test/ directory — latest plus legacy (unless --exclude-legacy).
+// Skipped entirely when --skip-local-tests is set (the gate lives in main.go).
 func VerifyLocalTesting(cfg *config.Config) {
 	log.Info("Running local system tests...")
 
@@ -351,18 +368,10 @@ func VerifyLocalTesting(cfg *config.Config) {
 
 	setupMultirepoSymlinks(cfg)
 
-	runLocalTests(
-		"Local system tests (latest)",
-		"pwsh -NonInteractive -Command ./Run-SystemTests.ps1",
-		testDir,
-	)
+	runLocalTestsViaRunner("Local system tests (latest)", testDir, "tests.json")
 
 	if !cfg.ExcludeLegacy {
-		runLocalTests(
-			"Local system tests (legacy)",
-			"pwsh -NonInteractive -Command ./Run-SystemTests.ps1 -Legacy",
-			testDir,
-		)
+		runLocalTestsViaRunner("Local system tests (legacy)", testDir, "tests-legacy.json")
 	}
 }
 

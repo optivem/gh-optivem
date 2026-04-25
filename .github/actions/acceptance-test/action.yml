@@ -21,7 +21,7 @@ inputs:
     description: 'Exclude legacy stage verification'
     required: true
   skip-local-tests:
-    description: 'Skip the "Verify local testing" step (Run-SystemTests.ps1). Maps to the CLI --skip-local-tests flag.'
+    description: 'Skip the "Verify local testing" step (the runner-package-driven local system tests). Maps to the CLI --skip-local-tests flag.'
     required: false
     default: 'false'
   shop-tag:
