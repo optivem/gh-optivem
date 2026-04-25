@@ -21,6 +21,13 @@ var (
 	}
 
 	// Patterns that indicate a transient failure worth retrying.
+	//
+	// "Could not resolve to a Repository" covers the GraphQL index lag right
+	// after `gh repo create` — primary write returns before read replicas have
+	// the row, and a follow-up `gh repo clone` (or any GraphQL lookup) can fail
+	// with this message for a few seconds. See waitForRepoVisible in github.go
+	// for the related polling mitigation; this pattern is the safety net when
+	// view-poll and clone-resolve land on different replicas.
 	ghRetryTransient = regexp.MustCompile(
 		`(?i)` +
 			`HTTP 5\d\d|` +
@@ -29,7 +36,8 @@ var (
 			`\bEOF\b|was closed|broken pipe|` +
 			`TLS handshake|tls:.*handshake|` +
 			`temporary failure in name resolution|no such host|` +
-			`Bad Gateway|Service Unavailable|Gateway Timeout|server error`)
+			`Bad Gateway|Service Unavailable|Gateway Timeout|server error|` +
+			`Could not resolve to a Repository`)
 
 	// Patterns that must NOT be retried — would burn quota or mask a real bug.
 	ghRetryHardFail = regexp.MustCompile(

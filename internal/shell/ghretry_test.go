@@ -23,6 +23,7 @@ func TestClassifyGHError(t *testing.T) {
 		{"tls handshake lowercase", "tls: handshake failure", err, true},
 		{"no such host", "dial tcp: lookup api.github.com: no such host", err, true},
 		{"bad gateway text", "Bad Gateway", err, true},
+		{"GraphQL repo resolve lag", "GraphQL: Could not resolve to a Repository with the name 'foo/bar'. (repository)", err, true},
 
 		{"HTTP 404", "HTTP 404: Not Found", err, false},
 		{"HTTP 403 rate limit", "HTTP 403: API rate limit exceeded", err, false},
