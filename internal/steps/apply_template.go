@@ -79,7 +79,6 @@ func copySystemTests(shop, repoDir, testLang, composeVariant string) string {
 	files.CopyDir(filepath.Join(shop, dirSystemTest, testLang), testDst)
 	templates.SelectDockerCompose(testDst, composeVariant)
 	templates.CopyVersion(shop, repoDir)
-	templates.StripFixedDimensions(testDst)
 	return testDst
 }
 
