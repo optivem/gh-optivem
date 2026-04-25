@@ -23,7 +23,6 @@ func TestClassifyGHError(t *testing.T) {
 		{"tls handshake lowercase", "tls: handshake failure", err, true},
 		{"no such host", "dial tcp: lookup api.github.com: no such host", err, true},
 		{"bad gateway text", "Bad Gateway", err, true},
-		{"GraphQL repo resolve lag", "GraphQL: Could not resolve to a Repository with the name 'foo/bar'. (repository)", err, true},
 
 		{"HTTP 404", "HTTP 404: Not Found", err, false},
 		{"HTTP 403 rate limit", "HTTP 403: API rate limit exceeded", err, false},
@@ -153,6 +152,48 @@ func TestRunWithRetryLoop_HardFailPassthrough(t *testing.T) {
 	if len(sleeps) != 0 {
 		t.Fatalf("sleeps = %v, want zero — hard-fail returns before any sleep", sleeps)
 	}
+}
+
+// TestRunWithRetryLoop_PermissiveClassifier exercises the classifier shape
+// MustRunPostCreate uses: retry on any non-RateLimitExceeded error, regardless
+// of output wording. This is the property that makes it robust to GitHub
+// changing the "Could not resolve to a Repository" message in the future.
+func TestRunWithRetryLoop_PermissiveClassifier(t *testing.T) {
+	var sleeps []time.Duration
+	withFakeSleep(t, &sleeps)
+
+	permissive := func(_ string, err error) bool {
+		var rle *RateLimitExceeded
+		return !errors.As(err, &rle)
+	}
+
+	t.Run("retries arbitrary error wording", func(t *testing.T) {
+		attempts := 0
+		attempt := func() (string, error) {
+			attempts++
+			if attempts < 3 {
+				return "totally novel vendor error message", errors.New("exit 1")
+			}
+			return "ok", nil
+		}
+		out, err := runWithRetryLoop(attempt, permissive, 4, ghRetryDelays)
+		if err != nil || out != "ok" || attempts != 3 {
+			t.Fatalf("got attempts=%d out=%q err=%v, want attempts=3 out=ok err=nil", attempts, out, err)
+		}
+	})
+
+	t.Run("rate limit still passes through", func(t *testing.T) {
+		attempts := 0
+		rlErr := &RateLimitExceeded{Msg: "rl"}
+		attempt := func() (string, error) {
+			attempts++
+			return "", rlErr
+		}
+		_, err := runWithRetryLoop(attempt, permissive, 4, ghRetryDelays)
+		if attempts != 1 || err != rlErr {
+			t.Fatalf("got attempts=%d err=%v, want attempts=1 err=rlErr", attempts, err)
+		}
+	})
 }
 
 func TestRunWithRetryLoop_RateLimitPassthrough(t *testing.T) {

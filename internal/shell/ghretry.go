@@ -21,13 +21,6 @@ var (
 	}
 
 	// Patterns that indicate a transient failure worth retrying.
-	//
-	// "Could not resolve to a Repository" covers the GraphQL index lag right
-	// after `gh repo create` — primary write returns before read replicas have
-	// the row, and a follow-up `gh repo clone` (or any GraphQL lookup) can fail
-	// with this message for a few seconds. See waitForRepoVisible in github.go
-	// for the related polling mitigation; this pattern is the safety net when
-	// view-poll and clone-resolve land on different replicas.
 	ghRetryTransient = regexp.MustCompile(
 		`(?i)` +
 			`HTTP 5\d\d|` +
@@ -36,8 +29,7 @@ var (
 			`\bEOF\b|was closed|broken pipe|` +
 			`TLS handshake|tls:.*handshake|` +
 			`temporary failure in name resolution|no such host|` +
-			`Bad Gateway|Service Unavailable|Gateway Timeout|server error|` +
-			`Could not resolve to a Repository`)
+			`Bad Gateway|Service Unavailable|Gateway Timeout|server error`)
 
 	// Patterns that must NOT be retried — would burn quota or mask a real bug.
 	ghRetryHardFail = regexp.MustCompile(
@@ -123,6 +115,36 @@ func RunWithRetry(cmdStr string, dryRun bool, check bool, cwd string) (string, e
 // on hard-fail or after retries are exhausted.
 func MustRunWithRetry(cmdStr string, dryRun bool, cwd string) string {
 	out, err := RunWithRetry(cmdStr, dryRun, true, cwd)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	return out
+}
+
+// MustRunPostCreate runs cmdStr with retry on ANY non-rate-limit error using
+// the standard backoff schedule. Use ONLY for `gh` operations that happen
+// immediately after `gh repo create`, where any failure is overwhelmingly
+// likely to be GraphQL/replica index lag rather than a real problem (the
+// repo was just created successfully on the primary). After ~65s of retries
+// the call still aborts — at that point something is genuinely wrong.
+//
+// Unlike MustRunWithRetry, this does NOT inspect output for transient
+// patterns: vendor error wording can change ("Could not resolve to a
+// Repository" today, something else tomorrow), and in this narrow post-create
+// window a permissive classifier is safe because the only plausible cause is
+// lag we already know about. See waitForRepoVisible in github.go for the
+// related polling mitigation; this helper is the safety net when view-poll
+// and the subsequent operation land on different replicas.
+func MustRunPostCreate(cmdStr, cwd string) string {
+	out, err := runWithRetryLoop(
+		func() (string, error) { return Run(cmdStr, false, true, cwd) },
+		func(_ string, err error) bool {
+			var rle *RateLimitExceeded
+			return !errors.As(err, &rle)
+		},
+		ghRetryAttempts,
+		ghRetryDelays,
+	)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}

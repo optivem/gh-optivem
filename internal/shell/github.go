@@ -341,8 +341,11 @@ func (g *GitHub) initRepo() {
 	}
 	defer os.RemoveAll(dir)
 
-	// Clone the empty repo.
-	MustRunWithRetry(fmt.Sprintf("gh repo clone %s %s", g.Repo, dir), g.DryRun, "")
+	// Clone the empty repo. Use the post-create retry wrapper because clone's
+	// GraphQL resolve can lag behind the create's primary write even after
+	// waitForRepoVisible succeeded — view-poll and clone-resolve can land on
+	// different replicas. See MustRunPostCreate doc for rationale.
+	MustRunPostCreate(fmt.Sprintf("gh repo clone %s %s", g.Repo, dir), "")
 
 	// Write README.md.
 	repoName := g.Repo
