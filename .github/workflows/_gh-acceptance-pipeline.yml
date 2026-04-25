@@ -422,7 +422,7 @@ jobs:
       GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
       WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
     strategy:
-      fail-fast: true
+      fail-fast: false
       max-parallel: 12
       matrix: ${{ fromJSON(needs.check.outputs.matrix) }}
     steps:

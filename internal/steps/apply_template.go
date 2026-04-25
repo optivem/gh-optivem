@@ -248,6 +248,7 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	log.Info("Copying system code to system repo...")
 	systemSrc := filepath.Join(shop, "system", "monolith", lang)
 	files.CopyDir(systemSrc, filepath.Join(sysDir, "system"))
+	templates.CopyVersion(shop, sysDir)
 
 	log.Info("Copying commit-stage workflow to system repo...")
 	systemWfMap := map[string]string{
