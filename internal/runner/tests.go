@@ -61,13 +61,13 @@ type SuiteResult struct {
 //  5. Runs each remaining suite. After the last suite (or first failure),
 //     prints a summary table.
 //
-// Two cwds because the two configs can live in different directories:
+// Two cwds because the two configs live in different directories:
 // systemCwd is system.json's dir (compose-file paths resolve against it);
 // testsCwd is tests.json's dir (setupCommands and suite.path resolve against
-// it). When both configs sit in the same directory — e.g. a scaffolded
-// project — the two are equal and behavior is unchanged. When they differ —
-// e.g. shop's `system-test/<lang>/<arch>/system.json` plus
-// `system-test/<lang>/tests-*.json` layout — each base resolves correctly.
+// it). Shop's layout has `docker/<lang>/<arch>/system.json` + compose files
+// alongside the SUT-deployment infrastructure, and `system-test/<lang>/tests-*.json`
+// + the test-runner project alongside the test code. Scaffolded projects flatten
+// these to `docker/` and `system-test/` respectively.
 //
 // Inspired by `dotnet test` and `./gradlew test`, which build the test code
 // implicitly before running. Compose orchestration is the gh-optivem

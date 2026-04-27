@@ -31,7 +31,9 @@ const (
 	prefixMultitierFrontend = "multitier-frontend-"
 	prefixMonolithSystem    = "monolith-system-"
 	envPrefixYAML           = "environment: "
+	wdPrefixYAML            = "working-directory: "
 	dirSystemTest           = "system-test"
+	dirDocker               = "docker"
 	dirExternalRealSim      = "external-real-sim"
 	dirExternalStub         = "external-stub"
 	shopSystemPrefix        = "../../../system/"
@@ -73,11 +75,21 @@ func copyExternals(shop, repoDir string) {
 	}
 }
 
-// copySystemTests copies system-test/{testLang}/ -> system-test/ and selects docker-compose variant.
+// copySystemTests copies system-test/{testLang}/ -> system-test/ (tests +
+// README only) and docker/{testLang}/{arch}/ -> docker/ (system.json +
+// compose files for the selected arch). composeVariant is "single" (monolith)
+// or "multi" (multitier).
 func copySystemTests(shop, repoDir, testLang, composeVariant string) string {
 	testDst := filepath.Join(repoDir, dirSystemTest)
 	files.CopyDir(filepath.Join(shop, dirSystemTest, testLang), testDst)
-	templates.SelectDockerCompose(testDst, composeVariant)
+
+	arch := "monolith"
+	if composeVariant != "single" {
+		arch = "multitier"
+	}
+	dockerDst := filepath.Join(repoDir, dirDocker)
+	files.CopyDir(filepath.Join(shop, dirDocker, testLang, arch), dockerDst)
+
 	templates.CopyVersion(shop, repoDir)
 	return testDst
 }
@@ -450,10 +462,11 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 		// System-test path
 		{dirSystemTest + "/" + testLang + "/", dirSystemTest + "/"},
 		{dirSystemTest + "/" + testLang, dirSystemTest},
-		// compose-file paths: shop keeps per-arch subdirs under system-test/<lang>/,
-		// but SelectDockerCompose flattens the chosen arch's compose files up into
-		// system-test/, so "compose-file: monolith/x.yml" must drop the prefix.
-		{"compose-file: monolith/", "compose-file: "},
+		// Docker working-directory: shop keeps per-lang/arch subdirs under
+		// docker/, but the scaffolder copies only the selected lang/arch up
+		// into docker/, so "working-directory: docker/<testLang>/<arch>" must
+		// flatten to "working-directory: docker".
+		{wdPrefixYAML + dirDocker + "/" + testLang + "/monolith", wdPrefixYAML + dirDocker},
 		// Docker image names
 		{prefixMonolithSystem + lang, "system"},
 	}
@@ -522,10 +535,11 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 		{multiTest + suffixQASignoff, "qa-signoff"},
 		{multiTest + suffixProdStage, "prod-stage"},
 		{multiTest + "-verify", "verify"},
-		// compose-file paths: shop keeps per-arch subdirs under system-test/<lang>/,
-		// but SelectDockerCompose flattens the chosen arch's compose files up into
-		// system-test/, so "compose-file: multitier/x.yml" must drop the prefix.
-		{"compose-file: multitier/", "compose-file: "},
+		// Docker working-directory: shop keeps per-lang/arch subdirs under
+		// docker/, but the scaffolder copies only the selected lang/arch up
+		// into docker/, so "working-directory: docker/<testLang>/<arch>" must
+		// flatten to "working-directory: docker".
+		{wdPrefixYAML + dirDocker + "/" + testLang + "/multitier", wdPrefixYAML + dirDocker},
 		// Working directories (these also transform commit stage workflow names:
 		// backend-{lang}-commit-stage -> backend-commit-stage, etc.)
 		{systemMultitierBackend + backendLang, "backend"},
@@ -654,12 +668,13 @@ func forbiddenTemplateRefs(cfg *config.Config) []string {
 
 func monolithForbiddenRefs(lang, testLang string) []string {
 	refs := []string{
-		prefixMonolith + lang + "-",          // commit-stage workflow refs
-		prefixMonolith + testLang + "-",      // pipeline-stage refs + sweep residue
-		prefixMonolithSystem + lang,          // docker image name
-		systemMonolithDir,                    // template source path
-		"-" + prefixMonolith + lang,          // sonar key suffix
-		dirSystemTest + "/" + testLang + "/", // un-flattened system-test path
+		prefixMonolith + lang + "-",                     // commit-stage workflow refs
+		prefixMonolith + testLang + "-",                 // pipeline-stage refs + sweep residue
+		prefixMonolithSystem + lang,                     // docker image name
+		systemMonolithDir,                               // template source path
+		"-" + prefixMonolith + lang,                     // sonar key suffix
+		dirSystemTest + "/" + testLang + "/",            // un-flattened system-test path
+		dirDocker + "/" + testLang + "/",                // un-flattened docker path
 	}
 	if lang != testLang {
 		refs = append(refs, prefixMonolithSystem+testLang)
@@ -676,6 +691,7 @@ func multitierForbiddenRefs(backendLang, frontendLang, testLang string) []string
 		"-" + prefixMultitierBackend + backendLang,   // sonar key suffix
 		"-" + prefixMultitierFrontend + frontendLang, // sonar key suffix
 		dirSystemTest + "/" + testLang + "/",
+		dirDocker + "/" + testLang + "/", // un-flattened docker path
 	}
 	if backendLang != testLang {
 		refs = append(refs, prefixMultitierBackend+testLang)

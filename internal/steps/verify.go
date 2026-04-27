@@ -15,6 +15,7 @@ import (
 
 const (
 	systemTestDir_name = "system-test"
+	dockerDir_name     = "docker"
 
 	msgStagePassed = "%s passed!"
 	msgStageFailed = "%s failed!"
@@ -277,15 +278,19 @@ func handleWorkflowResult(err error, label, repo string) {
 
 // runLocalTestsViaRunner brings up system.json's stacks (no-op if already up),
 // then runs the given tests config against them. Fatals on any error.
-func runLocalTestsViaRunner(label, testDir, testsFile string) {
-	log.Infof("Running: %s (system=system.json, tests=%s, in %s)", label, testsFile, testDir)
+//
+// dockerDir holds system.json + compose files (compose paths resolve against
+// it). testDir holds tests-*.json + the test-runner project (setupCommands
+// and suite.path resolve against it).
+func runLocalTestsViaRunner(label, dockerDir, testDir, testsFile string) {
+	log.Infof("Running: %s (system=%s/system.json, tests=%s/%s)", label, dockerDir, testDir, testsFile)
 
 	fail := func(err error) {
 		log.Errorf("%s: %v", label, err)
 		log.Fatalf(msgStageFailed, label)
 	}
 
-	sys, err := runner.LoadSystem(filepath.Join(testDir, "system.json"))
+	sys, err := runner.LoadSystem(filepath.Join(dockerDir, "system.json"))
 	if err != nil {
 		fail(err)
 	}
@@ -293,26 +298,27 @@ func runLocalTestsViaRunner(label, testDir, testsFile string) {
 	if err != nil {
 		fail(err)
 	}
-	if err := runner.Up(sys, testDir, runner.SystemOptions{}); err != nil {
+	if err := runner.Up(sys, dockerDir, runner.SystemOptions{}); err != nil {
 		fail(err)
 	}
-	if err := runner.RunTests(sys, tests, testDir, testDir, runner.TestOptions{}); err != nil {
+	if err := runner.RunTests(sys, tests, dockerDir, testDir, runner.TestOptions{}); err != nil {
 		fail(err)
 	}
 	log.Successf(msgStagePassed, label)
 }
 
 // canRunLocalTests checks common preconditions for local test execution.
-// Returns the test directory path, or empty string if tests should be skipped.
-// Whether to call this step at all is gated by --verify-level in main.go.
-func canRunLocalTests(cfg *config.Config, testKind string) string {
+// Returns (dockerDir, testDir), or ("","") if tests should be skipped. Whether
+// to call this step at all is gated by --verify-level in main.go.
+func canRunLocalTests(cfg *config.Config, testKind string) (string, string) {
+	dockerDir := filepath.Join(cfg.RepoDir, dockerDir_name)
 	testDir := filepath.Join(cfg.RepoDir, systemTestDir_name)
-	if _, err := os.Stat(filepath.Join(testDir, "system.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(dockerDir, "system.json")); err != nil {
 		log.Warnf("system.json not found in scaffolded project, skipping local %s", testKind)
-		return ""
+		return "", ""
 	}
 
-	return testDir
+	return dockerDir, testDir
 }
 
 // setupMultirepoSymlinks creates symlinks inside the root repo so that Docker Compose
@@ -359,17 +365,17 @@ func VerifyLocalTesting(cfg *config.Config) {
 		return
 	}
 
-	testDir := canRunLocalTests(cfg, "system tests")
-	if testDir == "" {
+	dockerDir, testDir := canRunLocalTests(cfg, "system tests")
+	if dockerDir == "" {
 		return
 	}
 
 	setupMultirepoSymlinks(cfg)
 
-	runLocalTestsViaRunner("Local system tests (latest)", testDir, "tests-latest.json")
+	runLocalTestsViaRunner("Local system tests (latest)", dockerDir, testDir, "tests-latest.json")
 
 	if !cfg.NoLegacy {
-		runLocalTestsViaRunner("Local system tests (legacy)", testDir, "tests-legacy.json")
+		runLocalTestsViaRunner("Local system tests (legacy)", dockerDir, testDir, "tests-legacy.json")
 	}
 }
 
