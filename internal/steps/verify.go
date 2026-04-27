@@ -351,7 +351,7 @@ func VerifyLocalTesting(cfg *config.Config) {
 		return
 	}
 
-	dockerDir := filepath.Join(cfg.RepoDir, dockerDir_name, cfg.EffectiveLang(), cfg.Arch)
+	dockerDir := filepath.Join(cfg.RepoDir, dockerDir_name)
 	testDir := filepath.Join(cfg.RepoDir, systemTestDir_name)
 
 	setupMultirepoSymlinks(cfg)
