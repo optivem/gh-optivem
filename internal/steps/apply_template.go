@@ -605,8 +605,8 @@ func multitierSonarKeyReplacements(backendLang, frontendLang string) [][2]string
 // copyDocs copies arch-specific and shared docs templates into {repoDir}/docs/.
 func copyDocs(shop, repoDir, arch string) {
 	dst := filepath.Join(repoDir, "docs")
-	files.CopyDir(filepath.Join(shop, "docs", arch), dst)
-	files.CopyDir(filepath.Join(shop, "docs", "shared"), dst)
+	files.CopyDir(filepath.Join(shop, "docs", "design", arch), dst)
+	files.CopyDir(filepath.Join(shop, "docs", "design", "shared"), dst)
 }
 
 // copyCloudRunScripts copies setup-gcp.sh and teardown-gcp.sh from shop to repo.
