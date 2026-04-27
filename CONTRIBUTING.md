@@ -48,7 +48,7 @@ bash scripts/manual-test.sh --no-cleanup --owner valentinajemuovic --system-name
     --arch monolith --repo-strategy monorepo \
     --monolith-lang typescript --test-lang typescript \
     --shop-ref main \
-    --no-local-tests --no-legacy
+    --no-local-tests --no-local-sonar --no-legacy
 
 
 # SKIP LOCAL & LEGACY (MULTIREPO)
