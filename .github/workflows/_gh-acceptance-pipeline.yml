@@ -382,6 +382,7 @@ jobs:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
       WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+      REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
     strategy:
       # All smoke combos run to completion even if one fails, so a Windows-only
       # failure doesn't mask an unrelated Linux regression (or vice versa).
@@ -434,6 +435,7 @@ jobs:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
       WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+      REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
     strategy:
       fail-fast: false
       max-parallel: 12
