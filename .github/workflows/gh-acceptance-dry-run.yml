@@ -53,13 +53,13 @@ on:
         required: false
         default: false
         type: boolean
-      skip-local-tests:
+      no-local-tests:
         description: 'Skip the "Verify local testing" step (runner package over system-test/) for the acceptance matrix. Does not affect the smoke job.'
         required: false
         default: false
         type: boolean
-      exclude-legacy:
-        description: 'Drop legacy runs from the acceptance matrix (CLI --exclude-legacy). Speeds up dry-runs by skipping the legacy stage verification.'
+      no-legacy:
+        description: 'Drop legacy runs from the acceptance matrix (CLI --no-legacy). Speeds up dry-runs by skipping the legacy stage verification.'
         required: false
         default: false
         type: boolean
@@ -81,7 +81,7 @@ jobs:
       shop-tag: ${{ inputs.shop-tag }}
       shop-head: ${{ inputs.shop-head }}
       retain-repos: ${{ inputs.retain-repos }}
-      skip-local-tests: ${{ inputs.skip-local-tests }}
-      exclude-legacy: ${{ inputs.exclude-legacy }}
+      no-local-tests: ${{ inputs.no-local-tests }}
+      no-legacy: ${{ inputs.no-legacy }}
       # Dry-run never produces a prerelease/release, regardless of verify-level.
       skip-prerelease: true

@@ -17,11 +17,11 @@ inputs:
   verify-level:
     description: 'Verification level for system tests'
     required: true
-  exclude-legacy:
+  no-legacy:
     description: 'Exclude legacy stage verification'
     required: true
-  skip-local-tests:
-    description: 'Skip the "Verify local testing" step (the runner-package-driven local system tests). Maps to the CLI --skip-local-tests flag.'
+  no-local-tests:
+    description: 'Skip the "Verify local testing" step (the runner-package-driven local system tests). Maps to the CLI --no-local-tests flag.'
     required: false
     default: 'false'
   shop-tag:
@@ -101,7 +101,7 @@ runs:
 
     # Note: Windows hosted runners (windows-2025) no longer ship Docker
     # Desktop, so the scaffolded project's docker-compose-based local tests
-    # cannot run on them. Callers must set skip-local-tests: true on Windows;
+    # cannot run on them. Callers must set no-local-tests: true on Windows;
     # the pipeline workflow enforces this for the smoke matrix.
 
     - name: Configure git
@@ -129,7 +129,7 @@ runs:
       shell: bash
       run: |
         echo "Verify level: ${{ inputs.verify-level }}"
-        echo "Exclude legacy: ${{ inputs.exclude-legacy }}"
+        echo "No legacy: ${{ inputs.no-legacy }}"
         echo "Shop tag: ${{ inputs.shop-tag }}"
         echo "Retain repos: ${{ inputs.retain-repos }}"
 
@@ -152,8 +152,8 @@ runs:
         fi
       env:
         TEST_VERIFY_LEVEL: ${{ inputs.verify-level }}
-        TEST_EXCLUDE_LEGACY: ${{ inputs.exclude-legacy }}
-        TEST_SKIP_LOCAL_TESTS: ${{ inputs.skip-local-tests }}
+        TEST_NO_LEGACY: ${{ inputs.no-legacy }}
+        TEST_NO_LOCAL_TESTS: ${{ inputs.no-local-tests }}
         TEST_SHOP_TAG: ${{ inputs.shop-tag }}
         TEST_NO_CLEANUP: ${{ inputs.retain-repos == 'true' && '1' || '' }}
 

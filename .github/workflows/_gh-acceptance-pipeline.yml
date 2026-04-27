@@ -43,13 +43,13 @@ on:
         required: false
         type: boolean
         default: false
-      skip-local-tests:
+      no-local-tests:
         description: 'Skip the "Verify local testing" step for the acceptance matrix. Does not affect the smoke job.'
         required: false
         type: boolean
         default: false
-      exclude-legacy:
-        description: 'Drop legacy runs from the acceptance matrix (CLI --exclude-legacy). Does not affect the smoke job (which always excludes legacy).'
+      no-legacy:
+        description: 'Drop legacy runs from the acceptance matrix (CLI --no-legacy). Does not affect the smoke job (which always excludes legacy).'
         required: false
         type: boolean
         default: false
@@ -165,8 +165,8 @@ jobs:
             echo "| retain-repos | ${{ inputs.retain-repos }} |"
             echo "| skip-prerelease | $SKIP_PRE |"
             echo "| skip-tests | $SKIP_TESTS |"
-            echo "| skip-local-tests | ${{ inputs.skip-local-tests }} |"
-            echo "| exclude-legacy | ${{ inputs.exclude-legacy }} |"
+            echo "| no-local-tests | ${{ inputs.no-local-tests }} |"
+            echo "| no-legacy | ${{ inputs.no-legacy }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Checkout
@@ -399,7 +399,7 @@ jobs:
           lang: ${{ matrix.scenario.lang }}
           test-lang: typescript
           verify-level: local
-          exclude-legacy: 'true'
+          no-legacy: 'true'
           shop-tag: ${{ needs.check.outputs.shop-tag }}
           retain-repos: ${{ needs.check.outputs.retain-repos }}
           jitter-max-seconds: '30'
@@ -407,7 +407,7 @@ jobs:
           # scaffolded project's docker-compose-based local tests cannot run
           # there. Windows smoke covers CLI scaffolding only; Linux smoke
           # covers the full local-test path.
-          skip-local-tests: ${{ matrix.os == 'windows-latest' && 'true' || 'false' }}
+          no-local-tests: ${{ matrix.os == 'windows-latest' && 'true' || 'false' }}
 
   run:
     name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})
@@ -450,8 +450,8 @@ jobs:
           lang: ${{ matrix.lang }}
           test-lang: ${{ matrix.test-lang }}
           verify-level: ${{ needs.check.outputs.verify-level }}
-          exclude-legacy: ${{ inputs.exclude-legacy && 'true' || 'false' }}
-          skip-local-tests: ${{ inputs.skip-local-tests && 'true' || 'false' }}
+          no-legacy: ${{ inputs.no-legacy && 'true' || 'false' }}
+          no-local-tests: ${{ inputs.no-local-tests && 'true' || 'false' }}
           shop-tag: ${{ needs.check.outputs.shop-tag }}
           retain-repos: ${{ needs.check.outputs.retain-repos }}
 

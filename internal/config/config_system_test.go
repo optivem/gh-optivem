@@ -60,11 +60,11 @@ func verifyFlags() []string {
 	if level := os.Getenv("TEST_VERIFY_LEVEL"); level != "" {
 		flags = append(flags, "--verify-level", level)
 	}
-	if os.Getenv("TEST_EXCLUDE_LEGACY") == "true" {
-		flags = append(flags, "--exclude-legacy")
+	if os.Getenv("TEST_NO_LEGACY") == "true" {
+		flags = append(flags, "--no-legacy")
 	}
-	if os.Getenv("TEST_SKIP_LOCAL_TESTS") == "true" {
-		flags = append(flags, "--skip-local-tests")
+	if os.Getenv("TEST_NO_LOCAL_TESTS") == "true" {
+		flags = append(flags, "--no-local-tests")
 	}
 	if tag := os.Getenv("TEST_SHOP_TAG"); tag != "" {
 		flags = append(flags, "--shop-ref", tag)

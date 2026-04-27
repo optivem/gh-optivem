@@ -46,13 +46,13 @@ After setup, verification steps run based on `--verify-level`, in this fixed ord
 | # | Step | Description |
 |---|------|-------------|
 | 1 | Verify local compilation | Compiles system/backend/frontend/tests locally to catch broken imports, type errors |
-| 2 | Verify local testing | Runs the bundled runner against `system-test/` (latest + legacy). Skipped when `--skip-local-tests` is set |
+| 2 | Verify local testing | Runs the bundled runner against `system-test/` (latest + legacy). Skipped when `--no-local-tests` is set |
 | 3 | Verify commit stage | Watches the commit stage CI workflow |
-| 4 | Verify acceptance stage | Triggers and watches acceptance stage **latest + legacy in parallel** (legacy dropped when `--exclude-legacy`). Captures the RC version. |
+| 4 | Verify acceptance stage | Triggers and watches acceptance stage **latest + legacy in parallel** (legacy dropped when `--no-legacy`). Captures the RC version. |
 | 5 | Verify QA stage | Triggers QA stage, then QA signoff |
 | 6 | Verify production stage | Triggers and watches the production stage |
 
-`--verify-level` picks the cutoff; every step at or below that rank runs (except local tests when `--skip-local-tests` is set):
+`--verify-level` picks the cutoff; every step at or below that rank runs (except local tests when `--no-local-tests` is set):
 
 | Level | Steps that run |
 |-------|----------------|
@@ -63,6 +63,6 @@ After setup, verification steps run based on `--verify-level`, in this fixed ord
 | `qa` | 1 + 2 + 3 + 4 + 5 |
 | `release` | 1 + 2 + 3 + 4 + 5 + 6 (default) |
 
-`--exclude-legacy` applies to step 2 (local tests) and step 4 (acceptance stage). `--skip-local-tests` drops step 2 regardless of level.
+`--no-legacy` applies to step 2 (local tests) and step 4 (acceptance stage). `--no-local-tests` drops step 2 regardless of level.
 
 After verification, a final step prints project registration info.
