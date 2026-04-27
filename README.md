@@ -33,8 +33,10 @@ gh optivem --version
 ## Upgrading
 
 ```bash
-gh extension upgrade optivem
+gh optivem upgrade
 ```
+
+Equivalent to `gh extension upgrade optivem` — either form works.
 
 ## Usage
 

@@ -88,8 +88,34 @@ func newRootCmd() *cobra.Command {
 		newTestCmd(),
 		newStopCmd(),
 		newCleanCmd(),
+		newUpgradeCmd(),
 	)
 	return cmd
+}
+
+// newUpgradeCmd implements `gh optivem upgrade` — a thin wrapper around
+// `gh extension upgrade optivem` so users don't have to remember the longer
+// gh-extension form. Streams stdout/stderr through unchanged.
+func newUpgradeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "upgrade",
+		Short: "Upgrade this extension to the latest release",
+		Long:  `Upgrade gh-optivem to the latest release. Equivalent to running "gh extension upgrade optivem".`,
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			upgrade := exec.Command("gh", "extension", "upgrade", "optivem")
+			upgrade.Stdout = os.Stdout
+			upgrade.Stderr = os.Stderr
+			if err := upgrade.Run(); err != nil {
+				var exitErr *exec.ExitError
+				if errors.As(err, &exitErr) {
+					os.Exit(exitErr.ExitCode())
+				}
+				fmt.Fprintf(os.Stderr, "ERROR: gh extension upgrade optivem failed: %v\n", err)
+				os.Exit(1)
+			}
+		},
+	}
 }
 
 // newInitCmd builds the `init` subcommand. The repo name can be passed
