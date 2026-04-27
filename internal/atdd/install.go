@@ -25,7 +25,7 @@ import (
 type Options struct {
 	// ShopPath is the local checkout of optivem/shop pinned at the desired ref.
 	ShopPath string
-	// DestDir is the root of the consumer repo (where .claude/ and docs/prompts/ go).
+	// DestDir is the root of the consumer repo (where .claude/ and docs/atdd/ go).
 	DestDir string
 	// Repo is the root repo name (e.g. "page-turner"). Substituted everywhere
 	// `shop` appears in the source content (other than `shop/`, the doctrine
@@ -80,12 +80,12 @@ type FileSpec struct {
 // alone — that includes student-authored agents/commands at the root of
 // .claude/ that don't start with the `atdd-` prefix.
 const (
-	managedAgentDir   = ".claude/agents"
-	managedCommandDir = ".claude/commands"
+	managedAgentDir   = ".claude/agents/atdd"
+	managedCommandDir = ".claude/commands/atdd"
 	managedAgentGlob  = "atdd-*.md"
 )
 
-var managedPromptSubdirs = []string{"atdd", "architecture", "code"}
+var managedPromptSubdirs = []string{"process", "architecture", "code"}
 
 // Plan walks the shop checkout, builds the list of managed files, and applies
 // install-time transforms (block rewrites, TODO stripping, bulk substitution).
@@ -106,7 +106,7 @@ func Plan(opts Options) ([]FileSpec, error) {
 	}
 
 	for _, sub := range managedPromptSubdirs {
-		s, err := planTree(opts, filepath.Join("docs", "prompts", sub))
+		s, err := planTree(opts, filepath.Join("docs", "atdd", sub))
 		if err != nil {
 			return nil, err
 		}
@@ -376,9 +376,9 @@ func preflightDivergence(specs []FileSpec, destDir string) ([]string, error) {
 }
 
 // wipeManagedSets removes every managed file under destDir. After this:
-//   - .claude/agents/atdd-*.md and .claude/commands/atdd-*.md are gone
+//   - .claude/agents/atdd/atdd-*.md and .claude/commands/atdd/atdd-*.md are gone
 //     (other files in those dirs are preserved).
-//   - docs/prompts/{atdd,architecture,code}/ are entirely gone.
+//   - docs/atdd/{process,architecture,code}/ are entirely gone.
 func wipeManagedSets(destDir string) error {
 	for _, dir := range []string{managedAgentDir, managedCommandDir} {
 		matches, err := filepath.Glob(filepath.Join(destDir, dir, managedAgentGlob))
@@ -392,7 +392,7 @@ func wipeManagedSets(destDir string) error {
 		}
 	}
 	for _, sub := range managedPromptSubdirs {
-		target := filepath.Join(destDir, "docs", "prompts", sub)
+		target := filepath.Join(destDir, "docs", "atdd", sub)
 		if err := os.RemoveAll(target); err != nil {
 			return fmt.Errorf("remove %s: %w", target, err)
 		}
@@ -479,7 +479,7 @@ func managedDestPaths(destDir string) ([]string, error) {
 		paths = append(paths, matches...)
 	}
 	for _, sub := range managedPromptSubdirs {
-		root := filepath.Join(destDir, "docs", "prompts", sub)
+		root := filepath.Join(destDir, "docs", "atdd", sub)
 		err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				if os.IsNotExist(err) {
