@@ -63,7 +63,6 @@ type Config struct {
 	Verbose      bool   // enable debug output
 	Quiet        bool   // suppress info-level output
 	LogFile      string // optional path to mirror plain-text log output
-	AutoUpgrade  bool   // opt in to auto-upgrade-and-re-exec when a newer release is available (default: notify only)
 	AssumeYes    bool   // skip all interactive confirmations (existing-repo, --report-bug)
 	WorkDir    string
 	ShopPath string
@@ -493,7 +492,6 @@ type RawFlags struct {
 	BugReport         bool
 	Verbose           bool
 	Quiet             bool
-	AutoUpgrade       bool
 	AssumeYes         bool
 }
 
@@ -525,7 +523,6 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs.BoolVarP(&f.Verbose, "verbose", "v", false, "Enable debug output (retry/wait chatter, diagnostics)")
 	fs.BoolVarP(&f.Quiet, "quiet", "q", false, "Suppress info-level output (warnings and errors still shown)")
 	fs.StringVar(&f.LogFile, "log-file", "", "Also write plain-text log output to this file (no ANSI colors, all levels)")
-	fs.BoolVar(&f.AutoUpgrade, "auto-upgrade", false, "On outdated version, auto-upgrade in-place and re-exec with the original args. Default is notify-only — print 'Update available' and continue.")
 	fs.BoolVarP(&f.AssumeYes, "yes", "y", false, "Skip all interactive confirmations (existing-repo prompt, --report-bug confirmation). Expected pattern for CI/unattended runs.")
 }
 
@@ -938,7 +935,6 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 		Verbose:      f.Verbose,
 		Quiet:        f.Quiet,
 		LogFile:      logFilePath,
-		AutoUpgrade:  f.AutoUpgrade,
 		AssumeYes:    f.AssumeYes,
 		WorkDir:    wd,
 		// ShopPath, RepoDir, and the multirepo-component dirs are pre-computed

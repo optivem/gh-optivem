@@ -39,11 +39,6 @@ const bugReportLogTailLines = 100
 
 const separator = "=========================================="
 
-// originalArgs is captured before the subcommand-strip in main(). Used by
-// checkForUpdate to re-exec the freshly upgraded binary with the user's full
-// original command line (`gh optivem init ...` with all their flags intact).
-var originalArgs []string
-
 type stepDef struct {
 	name      string
 	phase     string
@@ -52,10 +47,6 @@ type stepDef struct {
 }
 
 func main() {
-	// Snapshot os.Args before any mutation. checkForUpdate uses this to spawn
-	// the upgraded binary with the original command line preserved.
-	originalArgs = append([]string{}, os.Args...)
-
 	if err := newRootCmd().Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -157,8 +148,9 @@ func runInit(cmd *cobra.Command, f *config.RawFlags) {
 	}
 	defer log.Close()
 
-	// Auto-upgrade if outdated. On success, re-execs the new binary with the
-	// user's original command and exits with the child's exit code.
+	// Print update notice if a newer release is available. Notify-only — the
+	// user upgrades explicitly via `gh optivem upgrade` (or `gh extension
+	// upgrade optivem`).
 	checkForUpdate(cfg)
 
 	gh := shell.NewGitHub(cfg)
@@ -526,11 +518,9 @@ func createBugReport(cfg *config.Config, errorCount int) {
 	}
 }
 
-// checkForUpdate queries the latest release. When the running binary is
-// outdated, the default is notify-only: print a notice and continue with the
-// current version. With --auto-upgrade, run `gh extension upgrade optivem`
-// in-place and re-exec the new binary with the user's original command line
-// (then exit with the child's exit code).
+// checkForUpdate queries the latest release and, when the running binary is
+// outdated, prints a notice telling the user to run `gh optivem upgrade`.
+// Notify-only — never auto-upgrades; users decide when to upgrade.
 func checkForUpdate(cfg *config.Config) {
 	if version.Version == "dev" {
 		return // skip check for development builds
@@ -546,37 +536,7 @@ func checkForUpdate(cfg *config.Config) {
 		return
 	}
 
-	if !cfg.AutoUpgrade {
-		log.Warnf("Update available: %s → %s. Run `gh extension upgrade optivem` (or pass --auto-upgrade to upgrade in-place and retry).", version.Version, latest)
-		return
-	}
-
-	log.Warnf("Update available: %s → %s. Upgrading...", version.Version, latest)
-	upgrade := exec.Command("gh", "extension", "upgrade", "optivem")
-	upgrade.Stdout = os.Stdout
-	upgrade.Stderr = os.Stderr
-	if err := upgrade.Run(); err != nil {
-		log.Errorf("Auto-upgrade failed: %v", err)
-		log.Errorf("Please run manually: gh extension upgrade optivem")
-		log.Close()
-		os.Exit(1)
-	}
-
-	log.Successf("Upgraded to %s. Restarting...", latest)
-	log.Close() // flush/close log file before handing off to child
-	child := exec.Command(originalArgs[0], originalArgs[1:]...)
-	child.Stdin = os.Stdin
-	child.Stdout = os.Stdout
-	child.Stderr = os.Stderr
-	if err := child.Run(); err != nil {
-		// Child wrote its own diagnostics via its own log helpers.
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			os.Exit(exitErr.ExitCode())
-		}
-		os.Exit(1)
-	}
-	os.Exit(0)
+	log.Warnf("Update available: %s → %s. Run `gh optivem upgrade` to upgrade.", version.Version, latest)
 }
 
 func printBanner(cfg *config.Config) {
@@ -613,7 +573,6 @@ func printBanner(cfg *config.Config) {
 	log.Infof("--dry-run:         %v%s", cfg.DryRun, tag("dry-run"))
 	log.Infof("--keep-local:      %v%s", cfg.Raw.KeepLocal, tag("keep-local"))
 	log.Infof("--report-bug:      %v%s", cfg.BugReport, tag("report-bug"))
-	log.Infof("--auto-upgrade:    %v%s", cfg.AutoUpgrade, tag("auto-upgrade"))
 	log.Infof("--yes:             %v%s", cfg.AssumeYes, tag("yes"))
 	log.Infof("--workdir:         %s%s", cfg.Raw.WorkDir, tag("workdir"))
 	log.Infof("--log-file:        %s%s", cfg.LogFile, tag("log-file"))
