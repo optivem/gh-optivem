@@ -189,10 +189,14 @@ func renameDirs(root, old, new string, subtreeMarker *string) int {
 
 // CopyDir recursively copies a directory tree.
 // skipDirs are directories that should never be copied (build artifacts, caches).
+//
+// Note: `.claude/` is NOT skipped — `gh optivem atdd install` writes managed
+// agents/commands directly into the consumer's `.claude/`, and any
+// student-authored `.claude/` content the source happens to include is
+// preserved by passing through verbatim.
 var skipDirs = map[string]bool{
 	"node_modules": true,
 	".git":         true,
-	".claude":      true,
 	"dist":         true,
 	"build":        true,
 	"target":       true,
@@ -202,9 +206,7 @@ var skipDirs = map[string]bool{
 
 // TODO: When ATDD support is added, generate project-specific CLAUDE.md files
 // for scaffolded repos instead of skipping them.
-var skipFiles = map[string]bool{
-	"CLAUDE.md": true,
-}
+var skipFiles = map[string]bool{}
 
 func CopyDir(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {

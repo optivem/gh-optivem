@@ -209,7 +209,6 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, fail
 		{name: "Update README", phase: phaseApplyTemplate, fn: func() { steps.UpdateReadme(cfg) }},
 		{name: "Write project config", phase: phaseApplyTemplate, fn: func() { steps.WriteProjectConfig(cfg) }},
 		{name: "Create SonarCloud projects", phase: phaseApplyTemplate, fn: func() { steps.CreateSonarCloudProjects(cfg, sc) }},
-		{name: "Commit and push", phase: phaseApplyTemplate, alwaysRun: true, fn: func() { steps.CommitAndPush(cfg, *failureNote) }},
 
 		// Validation is grouped into the Apply template phase but runs last —
 		// i.e. after Commit and push — so broken output is already visible in
@@ -223,6 +222,24 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, fail
 		// {name: "Validate no leftover shop template refs", phase: phaseApplyTemplate, fn: func() { steps.ValidateNoLeftoverShopRefs(cfg) }},
 		// {name: "Validate no leftover template references", phase: phaseApplyTemplate, fn: func() { steps.ValidateNoLeftoverTemplateRefs(cfg) }},
 	}
+
+	// ATDD assets (agents, commands, prompts) get installed before Commit and
+	// push so they end up in the initial scaffold commit, just like the
+	// system code, workflows, and externals. Skipped when --no-atdd is set.
+	if !cfg.NoAtdd {
+		allSteps = append(allSteps, stepDef{
+			name:  "Install ATDD assets",
+			phase: phaseApplyTemplate,
+			fn:    func() { installAtddDuringInit(cfg) },
+		})
+	}
+
+	allSteps = append(allSteps, stepDef{
+		name:      "Commit and push",
+		phase:     phaseApplyTemplate,
+		alwaysRun: true,
+		fn:        func() { steps.CommitAndPush(cfg, *failureNote) },
+	})
 
 	allSteps = append(allSteps, buildVerifySteps(cfg, gh)...)
 

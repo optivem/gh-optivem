@@ -198,15 +198,17 @@ func newTestCmd() *cobra.Command {
 //
 //	gh optivem test system [--system path] [--tests path]
 //	                       [--suite id] [--test name] [--sample]
-//	                       [--no-build] [--no-start] [--restart]
+//	                       [--no-build] [--rebuild] [--no-start] [--restart]
 //
 // By default, builds images (incremental), starts the system if not already
 // up, then runs setup commands and suites. Inspired by `dotnet test` and
 // `./gradlew test` which build the test code implicitly before running.
 //
 // --no-build skips our explicit Build step (compose `up` may still build
-// missing images). --no-start skips Up; the system must already be up or
-// the runner errors out. --restart forces tear-down + restart during Up.
+// missing images). --rebuild forces a full rebuild from scratch in the
+// implicit Build step (ignored with --no-build). --no-start skips Up; the
+// system must already be up or the runner errors out. --restart forces
+// tear-down + restart during Up.
 func newTestSystemCmd() *cobra.Command {
 	var (
 		systemPath string
@@ -215,6 +217,7 @@ func newTestSystemCmd() *cobra.Command {
 		test       string
 		sample     bool
 		noBuild    bool
+		rebuild    bool
 		noStart    bool
 		restart    bool
 	)
@@ -223,6 +226,7 @@ func newTestSystemCmd() *cobra.Command {
 		Short: "Build + start (if needed) + run setup commands and suites from tests.json",
 		Example: `  gh optivem test system
   gh optivem test system --suite smoke
+  gh optivem test system --rebuild --suite smoke
   gh optivem test system --no-build --no-start`,
 		Run: func(cmd *cobra.Command, args []string) {
 			sys, err := runner.LoadSystem(systemPath)
@@ -234,6 +238,7 @@ func newTestSystemCmd() *cobra.Command {
 				Test:    test,
 				Sample:  sample,
 				NoBuild: noBuild,
+				Rebuild: rebuild,
 				NoStart: noStart,
 				Restart: restart,
 			}
@@ -246,6 +251,7 @@ func newTestSystemCmd() *cobra.Command {
 	cmd.Flags().StringVar(&test, "test", "", "Narrow execution to one test name (substituted into the suite's testFilter)")
 	cmd.Flags().BoolVar(&sample, "sample", false, "Use each suite's sampleTest field as the test name")
 	cmd.Flags().BoolVar(&noBuild, "no-build", false, "Skip the implicit build step (analog of dotnet test --no-build)")
+	cmd.Flags().BoolVar(&rebuild, "rebuild", false, "Force a full rebuild from scratch in the implicit build step (ignored with --no-build)")
 	cmd.Flags().BoolVar(&noStart, "no-start", false, "Skip the implicit start step; system must already be up")
 	cmd.Flags().BoolVar(&restart, "restart", false, "Force tear-down + restart during the implicit start step")
 	return cmd

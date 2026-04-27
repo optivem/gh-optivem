@@ -27,6 +27,12 @@ type TestOptions struct {
 	// Compose's own `up` may still build missing images — this flag controls
 	// only our explicit pre-build pass. Analog of `dotnet test --no-build`.
 	NoBuild bool
+	// Rebuild, when true, forces the implicit Build step to rebuild every
+	// layer from scratch (no cache reuse). Forwarded to BuildOptions.Rebuild.
+	// Mutually informative with NoBuild — if NoBuild is set, Rebuild is
+	// ignored. Lets ATDD prompts collapse the two-line "build --rebuild;
+	// test --suite x" pattern to "test --rebuild --suite x".
+	Rebuild bool
 	// NoStart, when true, skips the implicit `Up` step. The system must
 	// already be responding to its health probe; otherwise RunTests errors
 	// out with "start it first" (today's pre-implicit-start behavior).
@@ -126,7 +132,7 @@ func prepareSystem(sys *SystemConfig, cwd string, opts TestOptions) error {
 		return nil
 	}
 	if !opts.NoBuild {
-		if err := Build(sys, cwd, BuildOptions{}); err != nil {
+		if err := Build(sys, cwd, BuildOptions{Rebuild: opts.Rebuild}); err != nil {
 			return err
 		}
 	}
