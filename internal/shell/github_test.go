@@ -1,7 +1,6 @@
 package shell
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
 )
@@ -67,20 +66,3 @@ func TestSplitCommand(t *testing.T) {
 	}
 }
 
-// Ensures the exact debug-branch commit message from
-// commitPartialScaffoldForDebug round-trips through splitCommand without
-// being torn apart on embedded escaped quotes.
-func TestSplitCommand_DebugCommitMessage(t *testing.T) {
-	failureNote := "Verify commit stage step 1/1: Verify commit stage"
-	msg := fmt.Sprintf("debug: partial scaffold (failed at %q)", failureNote)
-	cmd := fmt.Sprintf("git commit -m %q", msg)
-
-	got, err := splitCommand(cmd)
-	if err != nil {
-		t.Fatalf("splitCommand error: %v", err)
-	}
-	want := []string{"git", "commit", "-m", msg}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %q, want %q", got, want)
-	}
-}

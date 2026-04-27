@@ -114,19 +114,9 @@ gh optivem clean system                # docker compose down -v --rmi local (del
 
 ## Troubleshooting
 
-### Partial scaffold on failure
-
-When scaffolding fails mid-run, the partial working tree is pushed to a `debug/<timestamp>` branch in the already-created remote repo so the state can be inspected and diffed. The default `main` branch is left untouched. The debug branch URL is printed in the summary.
-
-To skip this push (e.g. for private repos or when you don't want any partial state on the remote):
-
-```bash
-gh optivem init ... --no-commit-on-failure
-```
-
 ### Auto-filed bug report (opt-in)
 
-If you want the failure auto-filed to `optivem/gh-optivem` as an issue — including scaffold config and the debug-branch URL — opt in with `--report-bug`:
+If you want the failure auto-filed to `optivem/gh-optivem` as an issue — including scaffold config — opt in with `--report-bug`:
 
 ```bash
 gh optivem init ... --report-bug
