@@ -60,6 +60,12 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Handle top-level help (explicit request — exit 0)
+	if len(os.Args) > 1 && (os.Args[1] == "--help" || os.Args[1] == "-h" || os.Args[1] == "help") {
+		printUsage()
+		os.Exit(0)
+	}
+
 	// Require a subcommand
 	if len(os.Args) < 2 {
 		printUsage()

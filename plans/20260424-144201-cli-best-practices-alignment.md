@@ -17,23 +17,6 @@ Verdict: mostly aligned. Output layer (colors, streams, levels) is solid. Flag l
 - TTY detection in `confirmBugReport` ([main.go:430-436](../main.go#L430-L436)).
 - Banner shows `(default)` vs user-supplied via `flag.Visit`.
 
-## Fix — high priority
-
-### 1. `-v` means two different things
-
-[main.go:58](../main.go#L58) treats `-v` as `--version` before the subcommand, but [config.go:501](../internal/config/config.go#L501) registers `-v` as short for `--verbose`. So `gh optivem -v` prints version while `gh optivem init -v` enables verbose. Confusing and accidental.
-
-- **How to apply:** pick one of these:
-  - (a) Drop the `-v` alias for `--version`; keep `-v` for `--verbose` only. `--version` stays as the only way to print version.
-  - (b) Use `-V` for version, `-v` for verbose (POSIX-ish convention).
-- **Recommended:** (a). Simpler, matches how most CLIs behave (`git --version` has no short form either).
-
-### 2. Top-level `--help` / `-h` is not handled
-
-`gh optivem --help` hits the switch in [main.go:71](../main.go#L71) and prints `Unknown command: --help`. Stdlib `flag` only wires `-h`/`--help` after `flag.Parse` on a real subcommand.
-
-- **How to apply:** in `main()`, before the subcommand switch, match `--help`/`-h` and call `printUsage()` with exit 0 (not 1). Also handle `help` as a bare word if desired.
-
 ## Fix — medium priority
 
 ### 3. Stdlib `flag` is a ceiling
