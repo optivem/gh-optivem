@@ -245,11 +245,11 @@ func TestInstallEndToEnd(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	mustWrite(".claude/agents/atdd-test.md", "agent content using `shop` as repo and `shop/` as package")
-	mustWrite(".claude/commands/atdd-thing.md", "command using `shop` repo")
-	mustWrite("docs/prompts/atdd/thing.md", "prompt for `shop`")
-	mustWrite("docs/prompts/architecture/thing.md", "arch prompt")
-	mustWrite("docs/prompts/code/thing.md", "code prompt")
+	mustWrite(".claude/agents/atdd/atdd-test.md", "agent content using `shop` as repo and `shop/` as package")
+	mustWrite(".claude/commands/atdd/atdd-thing.md", "command using `shop` repo")
+	mustWrite("docs/atdd/process/thing.md", "prompt for `shop`")
+	mustWrite("docs/atdd/architecture/thing.md", "arch prompt")
+	mustWrite("docs/atdd/code/thing.md", "code prompt")
 
 	// Pre-existing student-authored file that should NOT be wiped.
 	studentFile := filepath.Join(dest, ".claude", "agents", "my-custom.md")
@@ -272,7 +272,7 @@ func TestInstallEndToEnd(t *testing.T) {
 	}
 
 	// Managed file substituted.
-	got, _ := os.ReadFile(filepath.Join(dest, ".claude/agents/atdd-test.md"))
+	got, _ := os.ReadFile(filepath.Join(dest, ".claude/agents/atdd/atdd-test.md"))
 	want := "agent content using `page-turner` as repo and `shop/` as package"
 	if string(got) != want {
 		t.Errorf("agent content:\n got: %q\nwant: %q", got, want)
@@ -287,7 +287,7 @@ func TestInstallEndToEnd(t *testing.T) {
 	if err := Install(opts); err != nil {
 		t.Fatalf("second Install: %v", err)
 	}
-	got2, _ := os.ReadFile(filepath.Join(dest, ".claude/agents/atdd-test.md"))
+	got2, _ := os.ReadFile(filepath.Join(dest, ".claude/agents/atdd/atdd-test.md"))
 	if string(got2) != want {
 		t.Errorf("second-install non-idempotent:\n got: %q\nwant: %q", got2, want)
 	}
@@ -299,7 +299,7 @@ func TestInstallPreflightAbortsOnLocalEdits(t *testing.T) {
 	shop := t.TempDir()
 	dest := t.TempDir()
 
-	srcAgent := filepath.Join(shop, ".claude", "agents", "atdd-x.md")
+	srcAgent := filepath.Join(shop, ".claude", "agents", "atdd", "atdd-x.md")
 	if err := os.MkdirAll(filepath.Dir(srcAgent), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -307,13 +307,13 @@ func TestInstallPreflightAbortsOnLocalEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, sub := range managedPromptSubdirs {
-		if err := os.MkdirAll(filepath.Join(shop, "docs", "prompts", sub), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(shop, "docs", "atdd", sub), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Pre-populate dest with an edited copy.
-	destAgent := filepath.Join(dest, ".claude", "agents", "atdd-x.md")
+	destAgent := filepath.Join(dest, ".claude", "agents", "atdd", "atdd-x.md")
 	if err := os.MkdirAll(filepath.Dir(destAgent), 0o755); err != nil {
 		t.Fatal(err)
 	}
