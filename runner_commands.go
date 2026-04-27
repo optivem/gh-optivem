@@ -1,7 +1,7 @@
 // runner_commands.go wires the `build system`, `run system`, `test system`,
-// `stop system`, and `clean system` subcommands into the main package. The
-// runner package is fully agnostic — these handlers just translate CLI flags
-// into runner.* calls.
+// `stop system`, and `clean system` subcommands into the root Cobra command.
+// The runner package is fully agnostic — these handlers just translate Cobra
+// flags into runner.* calls.
 //
 // Working-dir contract: each command operates against the user's current
 // working directory. JSON config paths default to ./system.json and
@@ -9,10 +9,11 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/spf13/cobra"
 
 	"github.com/optivem/gh-optivem/internal/runner"
 )
@@ -53,65 +54,147 @@ func exitOnError(err error) {
 	os.Exit(1)
 }
 
-// runBuildSystem implements `gh optivem build system [--system path] [--rebuild]`.
+// newBuildCmd wires `gh optivem build` and its `system` child. The parent has
+// no Run, so Cobra prints help if the user invokes `gh optivem build` alone.
+func newBuildCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "build",
+		Short: "Build a scaffolded project",
+	}
+	cmd.AddCommand(newBuildSystemCmd())
+	return cmd
+}
+
+// newBuildSystemCmd implements `gh optivem build system [--system path] [--rebuild]`.
 // Builds every entry in systems[] via `docker compose build`. With --rebuild,
 // every layer is rebuilt from scratch (internally `docker compose build
 // --no-cache`). Analog of dotnet's --no-incremental and gradle's
 // --rerun-tasks — outcome-oriented naming.
-func runBuildSystem(args []string) {
-	fs := flag.NewFlagSet("build system", flag.ExitOnError)
-	systemPath := fs.String("system", defaultSystemConfig, flagSystemUsage)
-	rebuild := fs.Bool("rebuild", false, "Force a full rebuild from scratch (no layer cache reuse)")
-	_ = fs.Parse(args)
-
-	sys, err := runner.LoadSystem(*systemPath)
-	exitOnError(err)
-	exitOnError(runner.Build(sys, cwdForPath(*systemPath), runner.BuildOptions{Rebuild: *rebuild}))
+func newBuildSystemCmd() *cobra.Command {
+	var (
+		systemPath string
+		rebuild    bool
+	)
+	cmd := &cobra.Command{
+		Use:     "system",
+		Short:   "docker compose build for every entry in system.json",
+		Example: `  gh optivem build system --rebuild`,
+		Run: func(cmd *cobra.Command, args []string) {
+			sys, err := runner.LoadSystem(systemPath)
+			exitOnError(err)
+			exitOnError(runner.Build(sys, cwdForPath(systemPath), runner.BuildOptions{Rebuild: rebuild}))
+		},
+	}
+	cmd.Flags().StringVar(&systemPath, "system", defaultSystemConfig, flagSystemUsage)
+	cmd.Flags().BoolVar(&rebuild, "rebuild", false, "Force a full rebuild from scratch (no layer cache reuse)")
+	return cmd
 }
 
-// runRunSystem implements `gh optivem run system [--system path] [--restart] [--log-lines 50]`.
+// newRunCmd wires `gh optivem run` and its `system` child.
+func newRunCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "run",
+		Short: "Run a scaffolded project",
+	}
+	cmd.AddCommand(newRunSystemCmd())
+	return cmd
+}
+
+// newRunSystemCmd implements `gh optivem run system [--system path] [--restart] [--log-lines 50]`.
 // Brings up every entry in systems[] and waits for health.
-func runRunSystem(args []string) {
-	fs := flag.NewFlagSet("run system", flag.ExitOnError)
-	systemPath := fs.String("system", defaultSystemConfig, flagSystemUsage)
-	restart := fs.Bool("restart", false, "Force tear-down + restart even if the system is already up")
-	logLines := fs.Int("log-lines", 50, "Lines of compose logs to dump on health-probe failure")
-	_ = fs.Parse(args)
-
-	sys, err := runner.LoadSystem(*systemPath)
-	exitOnError(err)
-	opts := runner.SystemOptions{LogLines: *logLines, Restart: *restart}
-	exitOnError(runner.Up(sys, cwdForPath(*systemPath), opts))
+func newRunSystemCmd() *cobra.Command {
+	var (
+		systemPath string
+		restart    bool
+		logLines   int
+	)
+	cmd := &cobra.Command{
+		Use:     "system",
+		Short:   "docker compose up + wait for health",
+		Example: `  gh optivem run system --restart`,
+		Run: func(cmd *cobra.Command, args []string) {
+			sys, err := runner.LoadSystem(systemPath)
+			exitOnError(err)
+			opts := runner.SystemOptions{LogLines: logLines, Restart: restart}
+			exitOnError(runner.Up(sys, cwdForPath(systemPath), opts))
+		},
+	}
+	cmd.Flags().StringVar(&systemPath, "system", defaultSystemConfig, flagSystemUsage)
+	cmd.Flags().BoolVar(&restart, "restart", false, "Force tear-down + restart even if the system is already up")
+	cmd.Flags().IntVar(&logLines, "log-lines", 50, "Lines of compose logs to dump on health-probe failure")
+	return cmd
 }
 
-// runStopSystem implements `gh optivem stop system [--system path]`.
+// newStopCmd wires `gh optivem stop` and its `system` child.
+func newStopCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "stop",
+		Short: "Stop a scaffolded project",
+	}
+	cmd.AddCommand(newStopSystemCmd())
+	return cmd
+}
+
+// newStopSystemCmd implements `gh optivem stop system [--system path]`.
 // Tears down every entry in systems[] and force-removes stray containers.
-func runStopSystem(args []string) {
-	fs := flag.NewFlagSet("stop system", flag.ExitOnError)
-	systemPath := fs.String("system", defaultSystemConfig, flagSystemUsage)
-	_ = fs.Parse(args)
-
-	sys, err := runner.LoadSystem(*systemPath)
-	exitOnError(err)
-	exitOnError(runner.Down(sys, cwdForPath(*systemPath)))
+func newStopSystemCmd() *cobra.Command {
+	var systemPath string
+	cmd := &cobra.Command{
+		Use:     "system",
+		Short:   "docker compose down + container cleanup",
+		Example: `  gh optivem stop system`,
+		Run: func(cmd *cobra.Command, args []string) {
+			sys, err := runner.LoadSystem(systemPath)
+			exitOnError(err)
+			exitOnError(runner.Down(sys, cwdForPath(systemPath)))
+		},
+	}
+	cmd.Flags().StringVar(&systemPath, "system", defaultSystemConfig, flagSystemUsage)
+	return cmd
 }
 
-// runCleanSystem implements `gh optivem clean system [--system path]`.
+// newCleanCmd wires `gh optivem clean` and its `system` child.
+func newCleanCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "clean",
+		Short: "Delete build outputs of a scaffolded project",
+	}
+	cmd.AddCommand(newCleanSystemCmd())
+	return cmd
+}
+
+// newCleanSystemCmd implements `gh optivem clean system [--system path]`.
 // Tears down every entry in systems[] and removes its named volumes plus
 // locally-built images (`docker compose down -v --rmi local`). Analog of
 // `dotnet clean` and `./gradlew clean` — deletes build outputs without
 // touching dependency caches (registry-pulled images are kept).
-func runCleanSystem(args []string) {
-	fs := flag.NewFlagSet("clean system", flag.ExitOnError)
-	systemPath := fs.String("system", defaultSystemConfig, flagSystemUsage)
-	_ = fs.Parse(args)
-
-	sys, err := runner.LoadSystem(*systemPath)
-	exitOnError(err)
-	exitOnError(runner.Clean(sys, cwdForPath(*systemPath)))
+func newCleanSystemCmd() *cobra.Command {
+	var systemPath string
+	cmd := &cobra.Command{
+		Use:     "system",
+		Short:   "docker compose down -v --rmi local (delete volumes + locally-built images)",
+		Example: `  gh optivem clean system && gh optivem test system`,
+		Run: func(cmd *cobra.Command, args []string) {
+			sys, err := runner.LoadSystem(systemPath)
+			exitOnError(err)
+			exitOnError(runner.Clean(sys, cwdForPath(systemPath)))
+		},
+	}
+	cmd.Flags().StringVar(&systemPath, "system", defaultSystemConfig, flagSystemUsage)
+	return cmd
 }
 
-// runTestSystem implements:
+// newTestCmd wires `gh optivem test` and its `system` child.
+func newTestCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "test",
+		Short: "Test a scaffolded project",
+	}
+	cmd.AddCommand(newTestSystemCmd())
+	return cmd
+}
+
+// newTestSystemCmd implements:
 //
 //	gh optivem test system [--system path] [--tests path]
 //	                       [--suite id] [--test name] [--sample]
@@ -124,105 +207,46 @@ func runCleanSystem(args []string) {
 // --no-build skips our explicit Build step (compose `up` may still build
 // missing images). --no-start skips Up; the system must already be up or
 // the runner errors out. --restart forces tear-down + restart during Up.
-func runTestSystem(args []string) {
-	fs := flag.NewFlagSet("test system", flag.ExitOnError)
-	systemPath := fs.String("system", defaultSystemConfig, flagSystemUsage)
-	testsPath := fs.String("tests", defaultTestsConfig, flagTestsUsage)
-	suite := fs.String("suite", "", "Run only the suite with this id")
-	test := fs.String("test", "", "Narrow execution to one test name (substituted into the suite's testFilter)")
-	sample := fs.Bool("sample", false, "Use each suite's sampleTest field as the test name")
-	noBuild := fs.Bool("no-build", false, "Skip the implicit build step (analog of dotnet test --no-build)")
-	noStart := fs.Bool("no-start", false, "Skip the implicit start step; system must already be up")
-	restart := fs.Bool("restart", false, "Force tear-down + restart during the implicit start step")
-	_ = fs.Parse(args)
-
-	sys, err := runner.LoadSystem(*systemPath)
-	exitOnError(err)
-	tests, err := runner.LoadTests(*testsPath)
-	exitOnError(err)
-	opts := runner.TestOptions{
-		Suite:   *suite,
-		Test:    *test,
-		Sample:  *sample,
-		NoBuild: *noBuild,
-		NoStart: *noStart,
-		Restart: *restart,
+func newTestSystemCmd() *cobra.Command {
+	var (
+		systemPath string
+		testsPath  string
+		suite      string
+		test       string
+		sample     bool
+		noBuild    bool
+		noStart    bool
+		restart    bool
+	)
+	cmd := &cobra.Command{
+		Use:   "system",
+		Short: "Build + start (if needed) + run setup commands and suites from tests.json",
+		Example: `  gh optivem test system
+  gh optivem test system --suite smoke
+  gh optivem test system --no-build --no-start`,
+		Run: func(cmd *cobra.Command, args []string) {
+			sys, err := runner.LoadSystem(systemPath)
+			exitOnError(err)
+			tests, err := runner.LoadTests(testsPath)
+			exitOnError(err)
+			opts := runner.TestOptions{
+				Suite:   suite,
+				Test:    test,
+				Sample:  sample,
+				NoBuild: noBuild,
+				NoStart: noStart,
+				Restart: restart,
+			}
+			exitOnError(runner.RunTests(sys, tests, cwdForPath(testsPath), opts))
+		},
 	}
-	exitOnError(runner.RunTests(sys, tests, cwdForPath(*testsPath), opts))
-}
-
-// dispatchBuild routes `gh optivem build <noun>`. Currently only `system` is
-// supported; new nouns can be added here without touching main().
-func dispatchBuild(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: gh optivem build system [--system path] [--rebuild]")
-		os.Exit(1)
-	}
-	switch args[0] {
-	case "system":
-		runBuildSystem(args[1:])
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown build target: %s\n", args[0])
-		os.Exit(1)
-	}
-}
-
-// dispatchStop routes `gh optivem stop <noun>`.
-func dispatchStop(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: gh optivem stop system [--system path]")
-		os.Exit(1)
-	}
-	switch args[0] {
-	case "system":
-		runStopSystem(args[1:])
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown stop target: %s\n", args[0])
-		os.Exit(1)
-	}
-}
-
-// dispatchClean routes `gh optivem clean <noun>`.
-func dispatchClean(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: gh optivem clean system [--system path]")
-		os.Exit(1)
-	}
-	switch args[0] {
-	case "system":
-		runCleanSystem(args[1:])
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown clean target: %s\n", args[0])
-		os.Exit(1)
-	}
-}
-
-// dispatchRun routes `gh optivem run <noun>`.
-func dispatchRun(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: gh optivem run system [flags]")
-		os.Exit(1)
-	}
-	switch args[0] {
-	case "system":
-		runRunSystem(args[1:])
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown run target: %s\n", args[0])
-		os.Exit(1)
-	}
-}
-
-// dispatchTest routes `gh optivem test <noun>`.
-func dispatchTest(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: gh optivem test system [--system path] [--tests path]")
-		os.Exit(1)
-	}
-	switch args[0] {
-	case "system":
-		runTestSystem(args[1:])
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown test target: %s\n", args[0])
-		os.Exit(1)
-	}
+	cmd.Flags().StringVar(&systemPath, "system", defaultSystemConfig, flagSystemUsage)
+	cmd.Flags().StringVar(&testsPath, "tests", defaultTestsConfig, flagTestsUsage)
+	cmd.Flags().StringVar(&suite, "suite", "", "Run only the suite with this id")
+	cmd.Flags().StringVar(&test, "test", "", "Narrow execution to one test name (substituted into the suite's testFilter)")
+	cmd.Flags().BoolVar(&sample, "sample", false, "Use each suite's sampleTest field as the test name")
+	cmd.Flags().BoolVar(&noBuild, "no-build", false, "Skip the implicit build step (analog of dotnet test --no-build)")
+	cmd.Flags().BoolVar(&noStart, "no-start", false, "Skip the implicit start step; system must already be up")
+	cmd.Flags().BoolVar(&restart, "restart", false, "Force tear-down + restart during the implicit start step")
+	return cmd
 }

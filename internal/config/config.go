@@ -3,13 +3,15 @@ package config
 
 import (
 	"bufio"
-	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/version"
@@ -463,51 +465,67 @@ func isScaffoldReserved(word string) bool {
 	return reserved[word]
 }
 
-type rawFlags struct {
-	owner, systemName, repo, arch, repoStrategy                  *string
-	lang, testLang, backendLang, frontendLang                    *string
-	license, verifyLevel, deploy, workDir, shopRef               *string
-	dryRun, keepLocal                                            *bool
-	excludeLegacy, skipLocalTests                                *bool
-	bugReport, showVersion                                       *bool
-	noCommitOnFailure                                            *bool
-	verbose, verboseShort, quiet, quietShort, autoUpgrade        *bool
-	assumeYes, assumeYesShort                                    *bool
-	logFile                                                      *string
+// RawFlags holds the unparsed CLI flag values for `init`. Flags bind directly
+// to these fields on the Cobra command via BindInitFlags; ParseAndValidate then
+// consumes the populated struct after Cobra has parsed the command line.
+type RawFlags struct {
+	Owner             string
+	SystemName        string
+	Repo              string
+	Arch              string
+	RepoStrategy      string
+	Lang              string
+	TestLang          string
+	BackendLang       string
+	FrontendLang      string
+	License           string
+	VerifyLevel       string
+	Deploy            string
+	WorkDir           string
+	ShopRef           string
+	LogFile           string
+	DryRun            bool
+	KeepLocal         bool
+	ExcludeLegacy     bool
+	SkipLocalTests    bool
+	BugReport         bool
+	NoCommitOnFailure bool
+	Verbose           bool
+	Quiet             bool
+	AutoUpgrade       bool
+	AssumeYes         bool
 }
 
-func registerFlags() rawFlags {
-	return rawFlags{
-		owner:         flag.String("owner", "", "GitHub username or org (required)"),
-		systemName:    flag.String("system-name", "", `System name, e.g. "Page Turner" (required)`),
-		repo:          flag.String("repo", "", "Repository name, e.g. page-turner (required)"),
-		arch:          flag.String("arch", "", "Architecture: monolith or multitier (required)"),
-		repoStrategy:  flag.String("repo-strategy", "", "Repo strategy: monorepo or multirepo (required)"),
-		lang:          flag.String("monolith-lang", "", "System language: java, dotnet, typescript (monolith)"),
-		testLang:      flag.String("test-lang", "", "Test language (defaults to --monolith-lang or --backend-lang)"),
-		backendLang:   flag.String("backend-lang", "", "Backend language: java, dotnet, typescript (multitier)"),
-		frontendLang:  flag.String("frontend-lang", "", "Frontend language: react (multitier)"),
-		license:       flag.String("license", "mit", "License: mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense"),
-		dryRun:        flag.Bool("dry-run", false, "Print actions without executing"),
-		keepLocal:     flag.Bool("keep-local", false, "Keep the local scaffolded clone dir instead of deleting it on success"),
-		verifyLevel:    flag.String("verify-level", "release", "Verification level: none, local, commit, acceptance, qa, release"),
-		excludeLegacy:  flag.Bool("exclude-legacy", false, "Exclude legacy from local tests and acceptance stage"),
-		skipLocalTests: flag.Bool("skip-local-tests", false, "Skip the 'Verify local testing' step (runner package over system-test/)"),
-		bugReport:     flag.Bool("report-bug", false, "On failure, auto-create a GitHub issue in optivem/gh-optivem with scaffold config and debug-branch URL. Off by default — file one yourself if the failure is worth reporting."),
-		noCommitOnFailure: flag.Bool("no-commit-on-failure", false, "Skip pushing the partial scaffold to a debug/<timestamp> branch on failure. By default the partial scaffold is pushed so it can be inspected and linked from the auto-filed bug report."),
-		deploy:        flag.String("deploy", "docker", "Deployment target: docker or cloud-run"),
-		workDir:       flag.String("workdir", "", "Working directory for cloning (default: temp dir)"),
-		shopRef:       flag.String("shop-ref", "", "Pin optivem/shop to this ref (tag, SHA, or branch — e.g. meta-v1.2.3, main, a1b2c3d). Overrides build-time pin. Default: latest meta-v* release."),
-		showVersion:   flag.Bool("version", false, "Print version and exit"),
-		verbose:       flag.Bool("verbose", false, "Enable debug output (retry/wait chatter, diagnostics)"),
-		verboseShort:  flag.Bool("v", false, "Short for --verbose"),
-		quiet:         flag.Bool("quiet", false, "Suppress info-level output (warnings and errors still shown)"),
-		quietShort:    flag.Bool("q", false, "Short for --quiet"),
-		logFile:       flag.String("log-file", "", "Also write plain-text log output to this file (no ANSI colors, all levels)"),
-		autoUpgrade:   flag.Bool("auto-upgrade", false, "On outdated version, auto-upgrade in-place and re-exec with the original args. Default is notify-only — print 'Update available' and continue."),
-		assumeYes:      flag.Bool("yes", false, "Skip all interactive confirmations (existing-repo prompt, --report-bug confirmation). Expected pattern for CI/unattended runs."),
-		assumeYesShort: flag.Bool("y", false, "Short for --yes"),
-	}
+// BindInitFlags binds every `gh optivem init` CLI flag to the corresponding
+// field on f. Cobra parses on Execute(); ParseAndValidate then validates the
+// populated struct.
+func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
+	fs := cmd.Flags()
+	fs.StringVar(&f.Owner, "owner", "", "GitHub username or org (required)")
+	fs.StringVar(&f.SystemName, "system-name", "", `System name, e.g. "Page Turner" (required)`)
+	fs.StringVar(&f.Repo, "repo", "", "Repository name, e.g. page-turner (required, or pass positionally)")
+	fs.StringVar(&f.Arch, "arch", "", "Architecture: monolith or multitier (required)")
+	fs.StringVar(&f.RepoStrategy, "repo-strategy", "", "Repo strategy: monorepo or multirepo (required)")
+	fs.StringVar(&f.Lang, "monolith-lang", "", "System language: java, dotnet, typescript (monolith)")
+	fs.StringVar(&f.TestLang, "test-lang", "", "Test language (defaults to --monolith-lang or --backend-lang)")
+	fs.StringVar(&f.BackendLang, "backend-lang", "", "Backend language: java, dotnet, typescript (multitier)")
+	fs.StringVar(&f.FrontendLang, "frontend-lang", "", "Frontend language: react (multitier)")
+	fs.StringVar(&f.License, "license", "mit", "License: mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense")
+	fs.BoolVar(&f.DryRun, "dry-run", false, "Print actions without executing")
+	fs.BoolVar(&f.KeepLocal, "keep-local", false, "Keep the local scaffolded clone dir instead of deleting it on success")
+	fs.StringVar(&f.VerifyLevel, "verify-level", "release", "Verification level: none, local, commit, acceptance, qa, release")
+	fs.BoolVar(&f.ExcludeLegacy, "exclude-legacy", false, "Exclude legacy from local tests and acceptance stage")
+	fs.BoolVar(&f.SkipLocalTests, "skip-local-tests", false, "Skip the 'Verify local testing' step (runner package over system-test/)")
+	fs.BoolVar(&f.BugReport, "report-bug", false, "On failure, auto-create a GitHub issue in optivem/gh-optivem with scaffold config and debug-branch URL. Off by default — file one yourself if the failure is worth reporting.")
+	fs.BoolVar(&f.NoCommitOnFailure, "no-commit-on-failure", false, "Skip pushing the partial scaffold to a debug/<timestamp> branch on failure. By default the partial scaffold is pushed so it can be inspected and linked from the auto-filed bug report.")
+	fs.StringVar(&f.Deploy, "deploy", "docker", "Deployment target: docker or cloud-run")
+	fs.StringVar(&f.WorkDir, "workdir", "", "Working directory for cloning (default: temp dir)")
+	fs.StringVar(&f.ShopRef, "shop-ref", "", "Pin optivem/shop to this ref (tag, SHA, or branch — e.g. meta-v1.2.3, main, a1b2c3d). Overrides build-time pin. Default: latest meta-v* release.")
+	fs.BoolVarP(&f.Verbose, "verbose", "v", false, "Enable debug output (retry/wait chatter, diagnostics)")
+	fs.BoolVarP(&f.Quiet, "quiet", "q", false, "Suppress info-level output (warnings and errors still shown)")
+	fs.StringVar(&f.LogFile, "log-file", "", "Also write plain-text log output to this file (no ANSI colors, all levels)")
+	fs.BoolVar(&f.AutoUpgrade, "auto-upgrade", false, "On outdated version, auto-upgrade in-place and re-exec with the original args. Default is notify-only — print 'Update available' and continue.")
+	fs.BoolVarP(&f.AssumeYes, "yes", "y", false, "Skip all interactive confirmations (existing-repo prompt, --report-bug confirmation). Expected pattern for CI/unattended runs.")
 }
 
 func resolveVerifyLevel(level string) string {
@@ -543,38 +561,38 @@ type langChoice struct {
 	lang, backendLang, frontendLang, testLang string
 }
 
-func resolveLangs(f rawFlags) langChoice {
+func resolveLangs(f *RawFlags) langChoice {
 	validLangs := map[string]bool{"java": true, "dotnet": true, "typescript": true}
 	var c langChoice
-	if *f.arch == "monolith" {
-		if *f.lang == "" {
+	if f.Arch == "monolith" {
+		if f.Lang == "" {
 			log.FatalExit("--monolith-lang is required for monolith architecture")
 		}
-		if !validLangs[*f.lang] {
+		if !validLangs[f.Lang] {
 			log.FatalExit("--monolith-lang must be java, dotnet, or typescript")
 		}
-		c.lang = *f.lang
-		c.testLang = *f.testLang
+		c.lang = f.Lang
+		c.testLang = f.TestLang
 		if c.testLang == "" {
 			c.testLang = c.lang
 		}
 		return c
 	}
-	if *f.backendLang == "" {
+	if f.BackendLang == "" {
 		log.FatalExit("--backend-lang is required for multitier architecture")
 	}
-	if *f.frontendLang == "" {
+	if f.FrontendLang == "" {
 		log.FatalExit("--frontend-lang is required for multitier architecture")
 	}
-	if !validLangs[*f.backendLang] {
+	if !validLangs[f.BackendLang] {
 		log.FatalExit("--backend-lang must be java, dotnet, or typescript")
 	}
-	if *f.frontendLang != "react" {
+	if f.FrontendLang != "react" {
 		log.FatalExit("--frontend-lang must be react")
 	}
-	c.backendLang = *f.backendLang
-	c.frontendLang = *f.frontendLang
-	c.testLang = *f.testLang
+	c.backendLang = f.BackendLang
+	c.frontendLang = f.FrontendLang
+	c.testLang = f.TestLang
 	if c.testLang == "" {
 		c.testLang = c.backendLang
 	}
@@ -800,99 +818,90 @@ func resolveLogFilePath(explicit string, bugReport bool) string {
 		fmt.Sprintf("gh-optivem-%s.log", time.Now().UTC().Format("20060102-150405")))
 }
 
-func ParseAndValidate() *Config {
-	f := registerFlags()
-	flag.Parse()
-
+// ParseAndValidate validates the populated RawFlags (Cobra parses on
+// Execute()), runs the network/format validation phases, and returns the
+// resolved Config. The cmd is used to detect which flags the user passed
+// explicitly (via cmd.Flags().Visit) so the banner can tag defaults.
+func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 	userSet := make(map[string]bool)
-	flag.Visit(func(fl *flag.Flag) { userSet[fl.Name] = true })
+	cmd.Flags().Visit(func(fl *pflag.Flag) { userSet[fl.Name] = true })
 
-	if *f.showVersion {
-		fmt.Println(version.Full())
-		os.Exit(0)
+	if f.Owner == "" || f.SystemName == "" || f.Repo == "" || f.Arch == "" || f.RepoStrategy == "" {
+		log.FatalExit("Required flags: --owner, --system-name, --repo, --arch, --repo-strategy")
 	}
 
-	if *f.owner == "" || *f.systemName == "" || *f.repo == "" || *f.arch == "" || *f.repoStrategy == "" {
-		fmt.Fprintln(os.Stderr, "Required flags: --owner, --system-name, --repo, --arch, --repo-strategy")
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	verbose := *f.verbose || *f.verboseShort
-	quiet := *f.quiet || *f.quietShort
-	if verbose && quiet {
+	if f.Verbose && f.Quiet {
 		log.FatalExit("--verbose and --quiet are mutually exclusive")
 	}
-	assumeYes := *f.assumeYes || *f.assumeYesShort
 
 	// === Phase 1: in-memory format validation (fast, no network) ===
-	if err := ValidateOwnerFormat(*f.owner); err != "" {
+	if err := ValidateOwnerFormat(f.Owner); err != "" {
 		log.FatalExit("--owner: " + err)
 	}
-	if err := ValidateRepoFormat(*f.repo); err != "" {
+	if err := ValidateRepoFormat(f.Repo); err != "" {
 		log.FatalExit("--repo: " + err)
 	}
-	if err := ValidateSystemName(*f.systemName); err != "" {
+	if err := ValidateSystemName(f.SystemName); err != "" {
 		log.FatalExit("--system-name: " + err)
 	}
 
-	resolvedLevel := resolveVerifyLevel(*f.verifyLevel)
-	validateCommonFlags(*f.deploy, *f.arch, *f.repoStrategy)
+	resolvedLevel := resolveVerifyLevel(f.VerifyLevel)
+	validateCommonFlags(f.Deploy, f.Arch, f.RepoStrategy)
 	lc := resolveLangs(f)
 
-	repoName := *f.repo
+	repoName := f.Repo
 
 	env := readEnvTokens()
-	if !*f.dryRun {
+	if !f.DryRun {
 		validateEnvTokens(env)
 	}
 
-	mr := deriveMultirepoNames(*f.repoStrategy, *f.arch, *f.owner, repoName)
+	mr := deriveMultirepoNames(f.RepoStrategy, f.Arch, f.Owner, repoName)
 
 	// === Phase 2: network auth checks (fail fast before any mutation) ===
 	// Token auth runs first because it's the most common failure mode and
 	// aborts before we touch gh / GitHub / SonarCloud for existence checks.
-	validateTokensAuth(env, *f.dryRun)
-	checkGhAuth(*f.dryRun)
-	checkOwnerExists(*f.owner)
-	confirmRepoExists(*f.owner+"/"+repoName, assumeYes)
+	validateTokensAuth(env, f.DryRun)
+	checkGhAuth(f.DryRun)
+	checkOwnerExists(f.Owner)
+	confirmRepoExists(f.Owner+"/"+repoName, f.AssumeYes)
 	if mr.backendFullRepo != "" {
-		confirmRepoExists(mr.backendFullRepo, assumeYes)
+		confirmRepoExists(mr.backendFullRepo, f.AssumeYes)
 	}
 	if mr.frontendFullRepo != "" {
-		confirmRepoExists(mr.frontendFullRepo, assumeYes)
+		confirmRepoExists(mr.frontendFullRepo, f.AssumeYes)
 	}
 	if mr.systemFullRepo != "" {
-		confirmRepoExists(mr.systemFullRepo, assumeYes)
+		confirmRepoExists(mr.systemFullRepo, f.AssumeYes)
 	}
 
 	// === Phase 3: resolve shop ref (fast API call; actual clone happens in the Prepare step) ===
-	resolvedShopRef := resolveShopRef(*f.shopRef)
+	resolvedShopRef := resolveShopRef(f.ShopRef)
 
-	ownerPascal := computeOwnerPascal(*f.owner)
-	ownerLower := strings.ToLower(*f.owner)
+	ownerPascal := computeOwnerPascal(f.Owner)
+	ownerLower := strings.ToLower(f.Owner)
 	repoPascal := ToPascalCase(repoName)
 	repoNoHyphens := ToJavaLower(repoName)
-	wd := resolveWorkDir(*f.workDir)
-	clones := resolveCloneDirs(wd, *f.repoStrategy, *f.arch)
+	wd := resolveWorkDir(f.WorkDir)
+	clones := resolveCloneDirs(wd, f.RepoStrategy, f.Arch)
 
-	logFilePath := resolveLogFilePath(*f.logFile, *f.bugReport)
+	logFilePath := resolveLogFilePath(f.LogFile, f.BugReport)
 
 	return &Config{
-		Owner:      *f.owner,
+		Owner:      f.Owner,
 		Repo:       repoName,
-		FullRepo:   *f.owner + "/" + repoName,
-		SystemName: *f.systemName,
-		Arch:         *f.arch,
-		RepoStrategy: *f.repoStrategy,
+		FullRepo:   f.Owner + "/" + repoName,
+		SystemName: f.SystemName,
+		Arch:         f.Arch,
+		RepoStrategy: f.RepoStrategy,
 
 		Raw: RawInputs{
-			Repo:        *f.repo,
-			ShopRef:     *f.shopRef,
-			TestLang:    *f.testLang,
-			VerifyLevel: *f.verifyLevel,
-			WorkDir:     *f.workDir,
-			KeepLocal:   *f.keepLocal,
+			Repo:        f.Repo,
+			ShopRef:     f.ShopRef,
+			TestLang:    f.TestLang,
+			VerifyLevel: f.VerifyLevel,
+			WorkDir:     f.WorkDir,
+			KeepLocal:   f.KeepLocal,
 		},
 		UserSetFlags: userSet,
 
@@ -901,20 +910,20 @@ func ParseAndValidate() *Config {
 		FrontendLang: lc.frontendLang,
 		TestLang:     lc.testLang,
 
-		Deploy:     *f.deploy,
-		License:    *f.license,
-		DryRun:       *f.dryRun,
+		Deploy:     f.Deploy,
+		License:    f.License,
+		DryRun:       f.DryRun,
 		VerifyLevel:    resolvedLevel,
-		ExcludeLegacy:  *f.excludeLegacy,
-		SkipLocalTests: *f.skipLocalTests,
-		KeepLocal:    *f.keepLocal,
-		BugReport:    *f.bugReport,
-		NoCommitOnFailure: *f.noCommitOnFailure,
-		Verbose:      verbose,
-		Quiet:        quiet,
+		ExcludeLegacy:  f.ExcludeLegacy,
+		SkipLocalTests: f.SkipLocalTests,
+		KeepLocal:    f.KeepLocal,
+		BugReport:    f.BugReport,
+		NoCommitOnFailure: f.NoCommitOnFailure,
+		Verbose:      f.Verbose,
+		Quiet:        f.Quiet,
 		LogFile:      logFilePath,
-		AutoUpgrade:  *f.autoUpgrade,
-		AssumeYes:    assumeYes,
+		AutoUpgrade:  f.AutoUpgrade,
+		AssumeYes:    f.AssumeYes,
 		WorkDir:    wd,
 		// ShopPath, RepoDir, and the multirepo-component dirs are pre-computed
 		// from WorkDir so the startup banner can show them before Phase 1. The
@@ -937,8 +946,8 @@ func ParseAndValidate() *Config {
 		RepoPascal:    repoPascal,
 		RepoNoHyphens: repoNoHyphens,
 
-		OwnerCasings:   OwnerCasings(*f.owner),
-		SysNameCasings: SystemCasings(*f.systemName),
+		OwnerCasings:   OwnerCasings(f.Owner),
+		SysNameCasings: SystemCasings(f.SystemName),
 
 		JavaNsOld:   "com.optivem.shop",
 		JavaNsNew:   "com." + ownerLower + "." + repoNoHyphens,
@@ -948,13 +957,13 @@ func ParseAndValidate() *Config {
 		TsPkgNew:    "@" + ownerLower + "/" + repoName + "-system-test",
 
 		SysNamePascalOld: "Shop",
-		SysNamePascalNew: SpacesToPascal(*f.systemName),
+		SysNamePascalNew: SpacesToPascal(f.SystemName),
 		SysNameCamelOld:  "shop",
-		SysNameCamelNew:  SpacesToCamel(*f.systemName),
+		SysNameCamelNew:  SpacesToCamel(f.SystemName),
 		SysNameKebabOld:  "shop",
-		SysNameKebabNew:  SpacesToKebab(*f.systemName),
+		SysNameKebabNew:  SpacesToKebab(f.SystemName),
 		SysNameLowerOld:  "shop",
-		SysNameLowerNew:  SpacesToLower(*f.systemName),
+		SysNameLowerNew:  SpacesToLower(f.SystemName),
 
 		FrontendRepo:     mr.frontendRepo,
 		BackendRepo:      mr.backendRepo,

@@ -23,6 +23,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/shell"
@@ -54,63 +56,76 @@ func main() {
 	// the upgraded binary with the original command line preserved.
 	originalArgs = append([]string{}, os.Args...)
 
-	// Handle --version before anything else
-	if len(os.Args) > 1 && os.Args[1] == "--version" {
-		fmt.Println(version.Full())
-		os.Exit(0)
-	}
-
-	// Handle top-level help (explicit request — exit 0)
-	if len(os.Args) > 1 && (os.Args[1] == "--help" || os.Args[1] == "-h" || os.Args[1] == "help") {
-		printUsage()
-		os.Exit(0)
-	}
-
-	// Require a subcommand
-	if len(os.Args) < 2 {
-		printUsage()
-		os.Exit(1)
-	}
-
-	subcommand := os.Args[1]
-
-	switch subcommand {
-	case "init":
-		// Strip the subcommand so flag.Parse() sees only the flags
-		os.Args = append(os.Args[:1], os.Args[2:]...)
-		runInit()
-	case "build":
-		dispatchBuild(os.Args[2:])
-	case "run":
-		dispatchRun(os.Args[2:])
-	case "test":
-		dispatchTest(os.Args[2:])
-	case "stop":
-		dispatchStop(os.Args[2:])
-	case "clean":
-		dispatchClean(os.Args[2:])
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", subcommand)
-		printUsage()
+	if err := newRootCmd().Execute(); err != nil {
 		os.Exit(1)
 	}
 }
 
-func printUsage() {
-	fmt.Fprintf(os.Stderr, "Usage: gh optivem <command> [flags]\n\n")
-	fmt.Fprintf(os.Stderr, "Commands:\n")
-	fmt.Fprintf(os.Stderr, "  init                Scaffold a new pipeline project\n")
-	fmt.Fprintf(os.Stderr, "  build system        docker compose build for every entry in system.json\n")
-	fmt.Fprintf(os.Stderr, "  run system          docker compose up + wait for health\n")
-	fmt.Fprintf(os.Stderr, "  test system         Build + start (if needed) + run setup commands and suites from tests.json\n")
-	fmt.Fprintf(os.Stderr, "  stop system         docker compose down + container cleanup\n")
-	fmt.Fprintf(os.Stderr, "  clean system        docker compose down -v --rmi local (delete volumes + locally-built images)\n\n")
-	fmt.Fprintf(os.Stderr, "Flags:\n")
-	fmt.Fprintf(os.Stderr, "  --version   Print version and exit\n")
+// newRootCmd builds the top-level `optivem` Cobra command and attaches every
+// subcommand. Cobra handles --help/-h on every level, --version at the root,
+// shell completion (via the auto-added `completion` subcommand), and unknown-
+// subcommand suggestions. Subcommands still call os.Exit on validation
+// failures, so Execute returns an error only for Cobra-level problems
+// (unknown flag, malformed args).
+func newRootCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "optivem",
+		Short:   "Scaffold and operate Optivem academy pipeline projects",
+		Version: version.Full(),
+		// Subcommands print their own usage on validation errors via log.FatalExit;
+		// avoid double-printing usage when Cobra returns an error.
+		SilenceUsage: true,
+	}
+	cmd.SetVersionTemplate("{{.Version}}\n")
+	// Pre-register --version without the -v shorthand so `init -v` keeps
+	// resolving to --verbose. Cobra's InitDefaultVersionFlag detects the
+	// flag is already present and skips adding its default `-v` alias.
+	cmd.Flags().Bool("version", false, "Print version and exit")
+	cmd.AddCommand(
+		newInitCmd(),
+		newBuildCmd(),
+		newRunCmd(),
+		newTestCmd(),
+		newStopCmd(),
+		newCleanCmd(),
+	)
+	return cmd
 }
 
-func runInit() {
-	cfg := config.ParseAndValidate()
+// newInitCmd builds the `init` subcommand. The repo name can be passed
+// positionally (`gh optivem init page-turner ...`) or via --repo; if both are
+// given, the explicit flag wins.
+func newInitCmd() *cobra.Command {
+	f := &config.RawFlags{}
+	cmd := &cobra.Command{
+		Use:   "init [repo]",
+		Short: "Scaffold a new pipeline project",
+		Long: `Scaffold a new pipeline project: create the GitHub repo(s), apply the shop
+template with naming substitutions, wire up the SonarCloud project(s), and
+verify the pipeline up to the requested --verify-level.`,
+		Example: `  # Monolith, Java
+  gh optivem init page-turner --owner acme --system-name "Page Turner" \
+      --arch monolith --repo-strategy monorepo --monolith-lang java
+
+  # Multitier (Java backend, React frontend), one repo per tier
+  gh optivem init page-turner --owner acme --system-name "Page Turner" \
+      --arch multitier --repo-strategy multirepo \
+      --backend-lang java --frontend-lang react`,
+		Args: cobra.MaximumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			// Positional repo wins only if --repo wasn't passed explicitly.
+			if len(args) == 1 && f.Repo == "" {
+				f.Repo = args[0]
+			}
+			runInit(cmd, f)
+		},
+	}
+	config.BindInitFlags(cmd, f)
+	return cmd
+}
+
+func runInit(cmd *cobra.Command, f *config.RawFlags) {
+	cfg := config.ParseAndValidate(cmd, f)
 	if err := log.Init(cfg.Verbose, cfg.Quiet, cfg.LogFile); err != nil {
 		log.FatalExit(err.Error())
 	}

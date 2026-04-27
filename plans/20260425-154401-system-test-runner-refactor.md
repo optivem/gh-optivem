@@ -1,6 +1,6 @@
 # Plan: Absorb Run-SystemTests orchestration into gh-optivem (PR 2 — shop cutover)
 
-> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-04-25T14:23:04Z`
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-04-27T07:13:03Z`
 
 ## Status
 
@@ -10,9 +10,7 @@ Merged to `main` and released as gh-optivem `v1.3.10` on 2026-04-25; shop cutove
 
 ### Verification still owed
 
-1. ✅ **Local end-to-end (Windows dev)** — typescript monolith smoke-stub passed via `scripts/manual-test-runner-shop.sh`.
-2. ⏳ **gh-optivem self-test** — `bash scripts/manual-test.sh --no-cleanup ...` (per `CONTRIBUTING.md:40-43`) to verify the scaffolder copies JSON correctly and the verify step uses the runner package without pwsh.
-3. ⏳ **Diff the suite results table** before/after on all 3 langs, to confirm no behavior drift.
+1. ⏳ **Diff the suite results table** before/after on all 3 langs, to confirm no behavior drift.
 
 ## Known follow-ups (not addressed in PR 2)
 

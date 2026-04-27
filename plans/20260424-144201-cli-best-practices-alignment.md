@@ -19,13 +19,6 @@ Verdict: mostly aligned. Output layer (colors, streams, levels) is solid. Flag l
 
 ## Fix — medium priority
 
-### 3. Stdlib `flag` is a ceiling
-
-Hand-rolled subcommand dispatch, short/long pairs, and usage. Fine for one subcommand; painful once there's a second — and there are now six (`init`, `build`, `run`, `test`, `stop`, `clean` at [main.go:71-90](../main.go#L71-L90)), each routed through its own `dispatchX` function.
-
-- **How to apply:** migrate to [spf13/cobra](https://github.com/spf13/cobra) (what `gh` itself uses). Buys: nested subcommands, `-h`/`--help` on every level, auto-generated `completion bash|zsh|fish|pwsh`, consistent help output, env-var binding via viper, man-page generation.
-- **When:** the deferral trigger has fired — six subcommands now duplicate dispatch boilerplate. Migration is now the right next move.
-
 ### 4. Flag-name inconsistency
 
 Mixed negation and verb choices on booleans:
@@ -41,29 +34,11 @@ Mixed negation and verb choices on booleans:
 
 ## Fix — low priority
 
-### 7. `printUsage` is thin
-
-[main.go:93-104](../main.go#L93-L104) now lists six commands (`init`, `build system`, `run system`, `test system`, `stop system`, `clean system`) with no example for any of them and no hint that `<command> --help` shows flags.
-
-- **How to apply:** add one concrete example per command (or at least for `init`) and a "Run `gh optivem <command> --help` for command-specific flags." footer.
-
-### 8. No shell completion
-
-Not provided. `gh` users expect `gh optivem completion bash|zsh|fish|pwsh`.
-
-- **How to apply:** falls out of the Cobra migration (item 3). Don't hand-roll it separately.
-
 ### 9. No `--json` machine-readable output
 
 Less critical for a scaffold-once tool, but the final "System / Repository / Actions / …" summary is useful as structured output for CI chains that invoke this tool.
 
 - **How to apply:** add `--json` that emits the summary (and maybe the phase/step results) as JSON on stdout instead of the human table. Keep text output on stderr so logs still work.
-
-### 10. No positional arg for the obvious one (design call)
-
-Five required flags is a lot. `gh repo create <name>` takes name positionally — this command probably should too.
-
-- **How to apply:** make `<repo>` a positional: `gh optivem init page-turner --owner acme --system-name "Page Turner" --arch monolith --repo-strategy monorepo --monolith-lang java`. `--repo` stays as a deprecated alias for one release.
 
 ## Recommended order of execution
 
