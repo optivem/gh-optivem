@@ -55,6 +55,30 @@ func TestPickFilterValue(t *testing.T) {
 	}
 }
 
+func TestPrepareSystemNilIsNoOp(t *testing.T) {
+	if err := prepareSystem(nil, ".", TestOptions{}); err != nil {
+		t.Errorf("nil sys should be a no-op, got %v", err)
+	}
+}
+
+func TestPrepareSystemNoStartProbesWhenDown(t *testing.T) {
+	// SystemEntry with no components/external systems → IsAnyURLUp returns
+	// false trivially without making any network calls. With NoStart=true,
+	// prepareSystem should refuse to proceed and surface the "start it
+	// first" message.
+	sys := &SystemConfig{Systems: []SystemEntry{{Label: "test-stack"}}}
+	err := prepareSystem(sys, ".", TestOptions{NoStart: true, NoBuild: true})
+	if err == nil {
+		t.Fatal("want error when --no-start and system not running")
+	}
+	if !strings.Contains(err.Error(), "test-stack") {
+		t.Errorf("want error to name the system label, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "--no-start") {
+		t.Errorf("want error to mention --no-start, got: %v", err)
+	}
+}
+
 func TestSelectSuitesAllWhenSuiteIDEmpty(t *testing.T) {
 	cfg := &TestsConfig{Suites: []Suite{{ID: "a"}, {ID: "b"}, {ID: "c"}}}
 	got, err := selectSuites(cfg, "")
