@@ -81,6 +81,8 @@ func main() {
 		dispatchTest(os.Args[2:])
 	case "stop":
 		dispatchStop(os.Args[2:])
+	case "clean":
+		dispatchClean(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", subcommand)
 		printUsage()
@@ -94,8 +96,9 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "  init                Scaffold a new pipeline project\n")
 	fmt.Fprintf(os.Stderr, "  build system        docker compose build for every entry in system.json\n")
 	fmt.Fprintf(os.Stderr, "  run system          docker compose up + wait for health\n")
-	fmt.Fprintf(os.Stderr, "  test system         Run setup commands + suites from tests.json\n")
-	fmt.Fprintf(os.Stderr, "  stop system         docker compose down + container cleanup\n\n")
+	fmt.Fprintf(os.Stderr, "  test system         Build + start (if needed) + run setup commands and suites from tests.json\n")
+	fmt.Fprintf(os.Stderr, "  stop system         docker compose down + container cleanup\n")
+	fmt.Fprintf(os.Stderr, "  clean system        docker compose down -v --rmi local (delete volumes + locally-built images)\n\n")
 	fmt.Fprintf(os.Stderr, "Flags:\n")
 	fmt.Fprintf(os.Stderr, "  --version   Print version and exit\n")
 }

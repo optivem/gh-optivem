@@ -23,6 +23,18 @@ type TestOptions struct {
 	// Sample, when true, uses each suite's sampleTest field as the test
 	// name (if both Sample is set and Test is non-empty, Test wins).
 	Sample bool
+	// NoBuild, when true, skips the implicit `Build` step before tests.
+	// Compose's own `up` may still build missing images — this flag controls
+	// only our explicit pre-build pass. Analog of `dotnet test --no-build`.
+	NoBuild bool
+	// NoStart, when true, skips the implicit `Up` step. The system must
+	// already be responding to its health probe; otherwise RunTests errors
+	// out with "start it first" (today's pre-implicit-start behavior).
+	NoStart bool
+	// Restart, when true, forces tear-down + restart during the implicit
+	// Up step (forwarded to SystemOptions.Restart). Ignored when NoStart
+	// is set. Analog of gradle's `--rerun-tasks` for the start phase.
+	Restart bool
 	// Health overrides default HTTP-probe parameters.
 	Health HealthOptions
 }
@@ -37,24 +49,27 @@ type SuiteResult struct {
 
 // RunTests runs setupCommands once, then iterates suites in tests:
 //
-//  1. If sys is non-nil, ensures every system in sys is currently up via the
-//     IsAnyURLUp probe. If a system isn't up, returns an error — the runner
-//     does not start it implicitly. (Use `gh optivem run system` first.)
-//  2. Runs each setupCommand in cwd. A failure aborts before any suite runs.
-//  3. Filters suites per opts.Suite. Errors out with the available ids if
+//  1. If sys is non-nil and opts.NoBuild is false, runs the implicit Build
+//     step (incremental — `docker compose build` reuses layer cache).
+//  2. If sys is non-nil and opts.NoStart is false, runs the implicit Up step
+//     (Up itself short-circuits when IsAnyURLUp is true, so re-runs are
+//     fast). If opts.NoStart is true, falls back to today's behavior:
+//     probe each system; error out if any aren't up.
+//  3. Runs each setupCommand in cwd. A failure aborts before any suite runs.
+//  4. Filters suites per opts.Suite. Errors out with the available ids if
 //     opts.Suite doesn't match any suite.
-//  4. Runs each remaining suite. After the last suite (or first failure),
+//  5. Runs each remaining suite. After the last suite (or first failure),
 //     prints a summary table.
 //
-// Returns the first suite failure or nil. The summary table is printed
-// regardless, so the user always sees per-suite status.
+// Inspired by `dotnet test` and `./gradlew test`, which build the test code
+// implicitly before running. Compose orchestration is the gh-optivem
+// equivalent of "build the test artifacts" — same UX shape, broader scope.
+//
+// Returns the first failure or nil. The summary table is printed regardless,
+// so the user always sees per-suite status.
 func RunTests(sys *SystemConfig, tests *TestsConfig, cwd string, opts TestOptions) error {
-	if sys != nil {
-		for _, s := range sys.Systems {
-			if !IsAnyURLUp(s, opts.Health) {
-				return fmt.Errorf("system %s is not running — start it first with `gh optivem run system`", s.Label)
-			}
-		}
+	if err := prepareSystem(sys, cwd, opts); err != nil {
+		return err
 	}
 
 	for _, sc := range tests.SetupCommands {
@@ -89,6 +104,30 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, cwd string, opts TestOption
 		})
 		if err != nil {
 			return fmt.Errorf("suite %s: %w", suite.Name, err)
+		}
+	}
+	return nil
+}
+
+// prepareSystem runs the implicit Build + Up steps in front of a tests run,
+// gated by opts.NoBuild / opts.NoStart. When sys is nil, it is a no-op (the
+// runner is being driven without system orchestration). When NoStart is set,
+// it falls back to a strict probe — the system must already be up.
+func prepareSystem(sys *SystemConfig, cwd string, opts TestOptions) error {
+	if sys == nil {
+		return nil
+	}
+	if !opts.NoBuild {
+		if err := Build(sys, cwd, BuildOptions{}); err != nil {
+			return err
+		}
+	}
+	if !opts.NoStart {
+		return Up(sys, cwd, SystemOptions{Restart: opts.Restart, Health: opts.Health})
+	}
+	for _, s := range sys.Systems {
+		if !IsAnyURLUp(s, opts.Health) {
+			return fmt.Errorf("system %s is not running — start it first with `gh optivem run system` (or omit --no-start)", s.Label)
 		}
 	}
 	return nil

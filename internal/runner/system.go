@@ -22,6 +22,14 @@ type SystemOptions struct {
 	Health HealthOptions
 }
 
+// BuildOptions tunes behavior of Build. Zero-values are safe defaults.
+type BuildOptions struct {
+	// NoCache, when true, passes --no-cache to `docker compose build` so
+	// every layer is rebuilt from scratch. Analog of dotnet's
+	// `build --no-incremental` and gradle's `--rerun-tasks`.
+	NoCache bool
+}
+
 func (o SystemOptions) logLines() int {
 	if o.LogLines <= 0 {
 		return 50
@@ -37,11 +45,16 @@ var transientNetRE = regexp.MustCompile(
 
 // Build runs `docker compose -f <composeFile> build` for every entry in sys.
 // cwd is the working directory the compose-file paths are resolved against
-// (typically the system-test directory holding system.json).
-func Build(sys *SystemConfig, cwd string) error {
+// (typically the system-test directory holding system.json). When
+// opts.NoCache is true, `--no-cache` is appended so every layer is rebuilt.
+func Build(sys *SystemConfig, cwd string, opts BuildOptions) error {
 	for _, s := range sys.Systems {
 		fmt.Fprintf(os.Stdout, "\n=== Build %s (%s) ===\n", s.Label, s.ComposeFile)
-		if err := runCompose(cwd, "-f", s.ComposeFile, "build"); err != nil {
+		args := []string{"-f", s.ComposeFile, "build"}
+		if opts.NoCache {
+			args = append(args, "--no-cache")
+		}
+		if err := runCompose(cwd, args...); err != nil {
 			return fmt.Errorf("build %s: %w", s.Label, err)
 		}
 	}
@@ -124,6 +137,26 @@ func Down(sys *SystemConfig, cwd string) error {
 		fmt.Fprintf(os.Stdout, "\n=== Stop %s ===\n", s.Label)
 		if err := downOne(s, cwd); err != nil {
 			fmt.Fprintf(os.Stderr, "warn: down %s: %v\n", s.Label, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
+}
+
+// Clean tears down every system and removes its named volumes plus locally-
+// built images (`docker compose down -v --rmi local`). External images pulled
+// from registries are left alone — same scope as `./gradlew clean`, which
+// deletes build outputs but not the dependency cache.
+//
+// Like Down, errors are logged per-system but do not short-circuit the loop.
+func Clean(sys *SystemConfig, cwd string) error {
+	var firstErr error
+	for _, s := range sys.Systems {
+		fmt.Fprintf(os.Stdout, "\n=== Clean %s ===\n", s.Label)
+		if err := runCompose(cwd, "-f", s.ComposeFile, "down", "-v", "--rmi", "local"); err != nil {
+			fmt.Fprintf(os.Stderr, "warn: clean %s: %v\n", s.Label, err)
 			if firstErr == nil {
 				firstErr = err
 			}
