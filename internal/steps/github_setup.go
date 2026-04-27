@@ -77,6 +77,7 @@ func SetupVariablesAndSecrets(cfg *config.Config, gh *shell.GitHub) {
 	setSecret(gh, "SONAR_TOKEN", cfg.SonarToken)
 	setSecret(gh, "WORKFLOW_TOKEN", cfg.WorkflowToken)
 	setSecret(gh, "GHCR_TOKEN", cfg.GHCRToken)
+	setSecret(gh, "REPO_TOKEN", cfg.RepoToken)
 
 	if cfg.RepoStrategy == "multirepo" {
 		var componentRepos []string
