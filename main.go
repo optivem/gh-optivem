@@ -55,8 +55,14 @@ func main() {
 	originalArgs = append([]string{}, os.Args...)
 
 	// Handle --version before anything else
-	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+	if len(os.Args) > 1 && os.Args[1] == "--version" {
 		fmt.Println(version.Full())
+		os.Exit(0)
+	}
+
+	// Handle top-level help (explicit request — exit 0)
+	if len(os.Args) > 1 && (os.Args[1] == "--help" || os.Args[1] == "-h" || os.Args[1] == "help") {
+		printUsage()
 		os.Exit(0)
 	}
 
@@ -433,6 +439,11 @@ func confirmBugReport(cfg *config.Config, debugBranchURL string) bool {
 	fmt.Println("  is resolved — the debug branch is needed to triage the failure.")
 	fmt.Println()
 
+	if cfg.AssumeYes {
+		log.Infof("Proceeding without confirmation (--yes).")
+		return true
+	}
+
 	if !isInteractive() {
 		log.Infof("Non-interactive session detected; proceeding with --report-bug opt-in.")
 		return true
@@ -516,10 +527,10 @@ func createBugReport(cfg *config.Config, errorCount int, debugBranchURL string) 
 }
 
 // checkForUpdate queries the latest release. When the running binary is
-// outdated, it auto-upgrades via `gh extension upgrade optivem` and re-execs
-// the new binary with the user's original command line (then exits with the
-// child's exit code). Users can opt out with --no-auto-upgrade — in that case
-// they get the old passive "please upgrade" notice and the scaffold continues.
+// outdated, the default is notify-only: print a notice and continue with the
+// current version. With --auto-upgrade, run `gh extension upgrade optivem`
+// in-place and re-exec the new binary with the user's original command line
+// (then exit with the child's exit code).
 func checkForUpdate(cfg *config.Config) {
 	if version.Version == "dev" {
 		return // skip check for development builds
@@ -535,9 +546,8 @@ func checkForUpdate(cfg *config.Config) {
 		return
 	}
 
-	if cfg.NoAutoUpgrade {
-		log.Warnf("Update available: %s → %s. Auto-upgrade disabled (--no-auto-upgrade).", version.Version, latest)
-		log.Warnf("To upgrade manually: gh extension upgrade optivem")
+	if !cfg.AutoUpgrade {
+		log.Warnf("Update available: %s → %s. Run `gh extension upgrade optivem` (or pass --auto-upgrade to upgrade in-place and retry).", version.Version, latest)
 		return
 	}
 
@@ -603,7 +613,8 @@ func printBanner(cfg *config.Config) {
 	log.Infof("--keep-local:      %v%s", cfg.Raw.KeepLocal, tag("keep-local"))
 	log.Infof("--report-bug:      %v%s", cfg.BugReport, tag("report-bug"))
 	log.Infof("--no-commit-on-failure: %v%s", cfg.NoCommitOnFailure, tag("no-commit-on-failure"))
-	log.Infof("--no-auto-upgrade: %v%s", cfg.NoAutoUpgrade, tag("no-auto-upgrade"))
+	log.Infof("--auto-upgrade:    %v%s", cfg.AutoUpgrade, tag("auto-upgrade"))
+	log.Infof("--yes:             %v%s", cfg.AssumeYes, tag("yes"))
 	log.Infof("--workdir:         %s%s", cfg.Raw.WorkDir, tag("workdir"))
 	log.Infof("--log-file:        %s%s", cfg.LogFile, tag("log-file"))
 	log.Infof("--verbose:         %v%s", cfg.Verbose, tag("verbose"))

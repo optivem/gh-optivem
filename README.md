@@ -77,6 +77,14 @@ gh optivem init ... --skip-local-tests           # skip the local system-tests s
 
 On a successful run the local scaffold dir is deleted — the end result is just the created GitHub repo(s) + SonarCloud project(s), which you can clone later. Pass `--keep-local` to keep the dir (e.g. for inspection). On failure the dir is always kept so the broken scaffold can be debugged.
 
+### Unattended runs (CI)
+
+Pass `--yes` (or `-y`) to skip all interactive confirmations — the existing-repo prompt and the `--report-bug` confirmation. This is the expected pattern for CI/automation:
+
+```bash
+gh optivem init ... --yes
+```
+
 ### Deployment target
 
 Only `--deploy docker` is currently supported (the default). `--deploy cloud-run` is in development and may be available in a future release.

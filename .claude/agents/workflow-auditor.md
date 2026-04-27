@@ -71,7 +71,39 @@ There are three acceptable mechanisms, in order of preference for the common cas
 
 **Exception — rate-limit awareness.** When scanning large workspaces, `gh api releases/latest` calls count against the 5000/hr authenticated ceiling. Cap at one query per distinct `<owner>/<repo>` per audit run and log the total count in the report header. If the cap would exceed 60 distinct repos, split the audit or accept partial results and say so.
 
-## §3 — (reserved for future rules)
+## §3 — Extractable bash → composite action
+
+**Rule.** Inline `run:` bash in workflow files that performs a cohesive domain operation (version resolution, tag/release lookup, workflow trigger, file-state validation) is a candidate for extraction to a composite action under `optivem/actions`. Inline copies tend to drift from each other and from any existing composite that already does the same job — defects fixed in one place silently regress in another.
+
+**In scope:** every `run:` block (default `bash` shell) in any workflow file under the scanned repos, including reusable workflow `_*.yml` files and any `action.yml` composites discovered alongside them. PowerShell, Python, and other shells are out of scope for v1; revisit if non-bash duplication actually shows up in findings.
+
+**Out of scope (de-prioritize, note in examined-and-rejected if obvious):**
+
+- `run:` blocks ≤ 5 lines with no `gh` / `git` / `curl` / `jq` domain command (echo, derivation of inputs, env exports).
+- Blocks that only write to `$GITHUB_OUTPUT` / `$GITHUB_STEP_SUMMARY` / `$GITHUB_ENV`.
+- Blocks tightly coupled to workflow-specific `${{ github.* }}` / `${{ needs.*.outputs.* }}` context that wouldn't parameterize cleanly.
+
+**How to check.**
+
+1. For every `run:` block, capture: file, step id (or label), starting line, line count, raw bash content, and the set of "domain commands" used (any of `gh `, `git tag`, `git ls-remote`, `git describe`, `git fetch`, `gh release`, `gh api`, `gh workflow`, `curl`, `jq`).
+2. **For category G**, normalize each block (strip leading whitespace, comments, and `${{ ... }}` interpolations to a placeholder), tokenize, and flag any group of ≥ 2 blocks whose token sequence matches **exactly** across files. Cross-repo duplicates count — consolidation value is highest there. Start with exact-token-sequence matching; tighten to fuzzy similarity later only if false negatives become a problem.
+3. **For category H**, flag any single block > 10 lines (post-comment-strip) that contains ≥ 1 domain command and is not already covered by a category G group.
+4. **For category I**, index `optivem/actions/*/action.yml` by `name:` + `description:` keywords (lowercased, stop-words removed). For each candidate block, compute keyword overlap; flag matches that share ≥ 3 distinctive keywords with an existing action (e.g. "validate", "version", "tag", "release", "unreleased"). Approximate matching is fine — accept some false negatives; this is a seed rule, not an optimizer.
+
+**Categories of finding** (use these exact labels in the report):
+
+- **G — Duplicated bash logic.** The same normalized block appears in 2+ workflow files (within or across the scanned repos). Recommendation: extract to `optivem/actions/<name>/action.yml`, replace each occurrence with `uses: optivem/actions/<name>@v1`.
+- **H — Shared-domain step without composite.** A single `run:` block > 10 lines invoking domain commands for a cohesive operation, with no existing composite to reuse. Recommendation: search `optivem/actions/` for a fit; if none, propose a new action and name it.
+- **I — Near-duplicate of existing action.** Inline logic whose intent matches an existing composite in `optivem/actions` (by description-keyword overlap). Recommendation: swap inline for `uses: optivem/actions/<name>@v1`. Do NOT recommend a swap if the inline block does materially different work — call out the divergence and let the human review.
+
+**Anti-patterns to also flag** when found alongside §3 matches:
+
+- Inline retry/poll loops (`while true; do ... sleep N; done`) with no shared timeout/back-off policy. Recommendation: extract to a composite that owns the retry semantics — drift in retry parameters across workflows is a frequent silent-failure source.
+- Inline `gh release view <tag> >/dev/null 2>&1 || ...` constructs. The `validate-version-unreleased` composite already encodes this check correctly with a fail-on-error knob.
+
+**False-positive handling.** Inline bash that looks domain-y but is actually workflow-specific (e.g. reads `${{ needs.X.outputs.Y }}` in non-obvious ways, branches on `${{ github.event_name }}`) should be rejected, not flagged. The de-prioritize heuristics cover the obvious cases; iterate based on first report.
+
+## §4 — (reserved for future rules)
 
 Extend this file as new classes of workflow issue are identified. Suggested next candidates: `permissions:` block hygiene, pinned action SHAs vs tag refs, `GITHUB_TOKEN` vs PAT selection, job-level `timeout-minutes` caps, reusable-workflow vs `gh workflow run` decision.
 
@@ -84,6 +116,9 @@ Extend this file as new classes of workflow issue are identified. Suggested next
 5. **Collect `uses:` refs for §2.** Across every enumerated file, extract each `uses: <owner>/<repo>[/path]@<ref>` token with its file + line. Drop local refs (`./`, `../`) and first-party internal refs (`optivem/actions/*`, `optivem/<name>-action`). Deduplicate by `<owner>/<repo>` for the upstream queries.
 6. **Query upstream latest-major** for each distinct in-scope `<owner>/<repo>` via `gh api repos/<owner>/<repo>/releases/latest --jq .tag_name`. Record the result; tolerate 404 (no releases) and archived-repo API responses — those become category F findings rather than version comparisons.
 7. **Classify each `uses:` ref** against §2 categories D, E, F and apply the §2 anti-pattern checks. Group findings by action identity (one entry per distinct `<owner>/<repo>@<major>`), listing every call site with `<repo>/<path>.yml:<line>`.
+8. **Enumerate `run:` blocks for §3.** Walk every workflow / `action.yml` file already enumerated in step 1. For each `run:` value, record: file, step id or label, start line, line count, raw bash content, and domain-command set (per §3 "How to check" item 1). Skip blocks that match the §3 out-of-scope heuristics.
+9. **Index existing composites for §3 category I.** Glob `optivem/actions/*/action.yml`; from each, read `name:` and `description:`. Build a keyword index (lowercased, stop-words removed) for description-overlap matching. Cache for the duration of the audit.
+10. **Classify each `run:` block** against §3 categories G, H, I via the rules in §3 "How to check". A block can hit multiple categories; list every match. Apply §3 anti-pattern checks.
 
 # Output
 
@@ -105,6 +140,7 @@ Generated by `workflow-auditor`. Scope: <list of repos scanned>.
 - Jobs inspected: <M>
 - §1 findings — A: <a> · B: <b> · C: <c>
 - §2 findings — D: <d> · E: <e> · F: <f> · Distinct upstream repos queried: <Q>
+- §3 findings — G: <g> · H: <h> · I: <i> · Run-blocks scanned: <R>
 
 ## §1 findings
 
@@ -153,6 +189,32 @@ Generated by `workflow-auditor`. Scope: <list of repos scanned>.
 
 (If none, write `None.`)
 
+## §3 findings
+
+### Category G — Duplicated bash logic
+- **<short label or token fingerprint>** — <K> occurrences:
+  - `<repo>/<path>.yml:<line>` (step `<id>`, <N> lines)
+  - `<repo>/<path>.yml:<line>` (step `<id>`, <N> lines)
+  - Recommendation: extract to `optivem/actions/<proposed-name>/action.yml`. Replace all call sites with `uses: optivem/actions/<proposed-name>@v1`.
+
+(If none, write `None.`)
+
+### Category H — Shared-domain step without composite
+- **`<repo>/<path>.yml` :: `<job-name>` :: step `<id>`** — line <L>, <N> lines. Domain commands: <list>. Recommendation: <existing action that fits | propose new action `<name>`>.
+
+(If none, write `None.`)
+
+### Category I — Near-duplicate of existing action
+- **`<repo>/<path>.yml` :: `<job-name>` :: step `<id>`** — line <L>. Matches `optivem/actions/<name>` (overlap: <keywords>). Recommendation: swap for `uses: optivem/actions/<name>@v1`. Divergence to confirm before swap: <list, or "none observed">.
+
+(If none, write `None.`)
+
+### §3 anti-patterns
+- **Inline retry/poll loop.** `<repo>/<path>.yml:<line>`. Recommendation: extract — retry policy should not be ad-hoc per workflow.
+- **Inline release-view check.** `<repo>/<path>.yml:<line>`. Recommendation: use `optivem/actions/validate-version-unreleased`.
+
+(If none, write `None.`)
+
 ## Examined-and-rejected
 Jobs that might look like a finding but were deliberately not flagged. Lists intentional cross-repo `--repo` flags, etc. Makes the curation visible.
 ```
@@ -162,8 +224,8 @@ Jobs that might look like a finding but were deliberately not flagged. Lists int
 Brief summary (not the full report):
 
 - Path of the written file.
-- Counts per category — §1 (A/B/C) and §2 (D/E/F plus anti-patterns).
-- Top items by severity, in this order: Category C (will-fail-at-runtime), Category F (deprecated upstream — functional risk), Category D on actions with the most call sites, Category A with high call-site jobs, Category E, Category B.
+- Counts per category — §1 (A/B/C), §2 (D/E/F + anti-patterns), §3 (G/H/I + anti-patterns).
+- Top items by severity, in this order: Category C (will-fail-at-runtime), Category F (deprecated upstream — functional risk), Category I (near-duplicate of existing action — safest extraction, mechanical swap), Category G (duplicated bash — highest consolidation value, multiple call sites), Category D on actions with the most call sites, Category A with high call-site jobs, Category H, Category E, Category B.
 
 Do NOT paste full file contents into chat.
 
@@ -180,3 +242,5 @@ Do NOT paste full file contents into chat.
 The Category A/B/C rule originates from a production failure in `optivem/gh-optivem` run 24798229677 (2026-04-22): the `trigger-gh-release-stage` job in `gh-acceptance-stage.yml` called `gh workflow run` without checkout and without `GH_REPO`, failing with `not a git repository`. Fix landed in commit 8b8d109.
 
 The Category D/E/F rule originates from a workspace-wide audit on 2026-04-23: ~170 `actions/checkout@v5` refs were still in use after upstream shipped `@v6.0.0` (2025-11-20), and `google-github-actions/*@v2`, `docker/build-push-action@v6`, `gradle/actions/*@v4`, `softprops/action-gh-release@v2`, and `actions/create-release@v1` (archived) were all behind latest. See the rubric §1.9 "Marketplace-action version currency" dimension for the shared rationale applied by both this agent and `actions-auditor`.
+
+The Category G/H/I rule originates from the 2026-04-23 extraction of `validate-version-unreleased` to `optivem/actions/`. Release-stage needed a fail-fast check ahead of GoReleaser to avoid ~60s of wasted artifact-build work when the target version was already published. At the time of extraction, an inline copy of the same `gh release view` check still lived in `gh-acceptance-stage.yml` — a Case I the auditor should have flagged but couldn't, because §3 didn't exist yet. The acceptance-stage workflow has since been refactored (the inline copy was removed when the file was split into `gh-acceptance-stage.yml` + `_gh-acceptance-pipeline.yml`), but the *recurrence pattern* — inline `gh release view <tag>` and similar `gh`/`git` domain checks proliferating in workflows after the canonical composite is published — is the steady-state risk this rule catches.

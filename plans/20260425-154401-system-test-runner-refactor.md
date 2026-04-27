@@ -4,30 +4,17 @@
 
 ## Status
 
-PR 2 work is committed locally on this branch in two repos: `gh-optivem` (verify.go switched to runner package, dead-code prune/dimensions files removed, runner subcommand cwd derived from `--system` / `--tests` flag) and `shop` (12 JSON configs written, 19 legacy PowerShell test-runner scripts deleted, `_prerelease-pipeline.yml` switched to `gh optivem`, docs and per-lang READMEs rewritten, `run-all-system-tests.sh` added).
-
-End-to-end smoke test for typescript / monolith passed: `gh optivem run system → test system --suite smoke-stub --sample → stop system` cleanly cycles up, runs, and stops.
+Merged to `main` and released as gh-optivem `v1.3.10` on 2026-04-25; shop cutover commit `e900fbff` on `main`. All three per-lang prerelease pipelines green since 2026-04-25T21:01Z.
 
 ## Items still open
-
-### Release coordination
-
-Shop's CI installs `gh-optivem` via `gh extension install optivem/gh-optivem`, which pulls from the latest release. **Before merging PR 2:** tag and release a new gh-optivem version that includes the runner package + the runner subcommand cwd derivation from PR 2. (Third-party visible — not auto-executed by the agent.)
 
 ### Verification still owed
 
 1. ✅ **Local end-to-end (Windows dev)** — typescript monolith smoke-stub passed via `scripts/manual-test-runner-shop.sh`.
-2. ⏳ **Linux CI dry-run** — push the branch, watch `_prerelease-pipeline.yml` go green on ubuntu-latest. Expect to surface the Java cross-platform issue (see "Known follow-ups" below).
-3. ⏳ **gh-optivem self-test** — `bash scripts/manual-test.sh --no-cleanup ...` (per `CONTRIBUTING.md:40-43`) to verify the scaffolder copies JSON correctly and the verify step uses the runner package without pwsh.
-4. ⏳ **Diff the suite results table** before/after on all 3 langs, to confirm no behavior drift.
+2. ⏳ **gh-optivem self-test** — `bash scripts/manual-test.sh --no-cleanup ...` (per `CONTRIBUTING.md:40-43`) to verify the scaffolder copies JSON correctly and the verify step uses the runner package without pwsh.
+3. ⏳ **Diff the suite results table** before/after on all 3 langs, to confirm no behavior drift.
 
 ## Known follow-ups (not addressed in PR 2)
-
-### Java cross-platform suite commands ✅ resolved 2026-04-25
-
-`tests-*.json` for Java used `.\gradlew.bat ...` literally — Windows-only. Linux CI surfaced this in `meta-prerelease-stage` run [24937323802](https://github.com/optivem/shop/actions/runs/24937323802) (multitier-java + monolith-java both failed in `Setup: Clean Build` with `exec: ".\\gradlew.bat": executable file not found in $PATH`).
-
-Fix: `normalizeExe` in `internal/runner/tests.go` translates Windows wrapper paths to Unix on non-Windows hosts (`.\gradlew.bat` → `./gradlew`). The JSON literals stay Windows-style; the runner resolves at exec time. README note in `system-test/java/README.md` removed.
 
 ### Port-clash with other scaffolded projects
 
