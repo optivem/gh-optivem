@@ -101,8 +101,8 @@ func FixupMultirepoToken(repoDir string) {
 			return
 		}
 		files.ReplaceInFile(path,
-			"GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}",
-			"GITHUB_TOKEN: ${{ secrets.GHCR_TOKEN }}")
+			"password: ${{ secrets.GITHUB_TOKEN }}",
+			"password: ${{ secrets.GHCR_TOKEN }}")
 	})
 }
 
