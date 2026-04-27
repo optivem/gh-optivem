@@ -39,12 +39,6 @@ Mixed negation and verb choices on booleans:
   - `--keep-local` → `--no-cleanup-local` (or keep it as-is and deprecate other `--no-*` flags; trade-off).
 - **Recommended:** unify on `--no-<thing>` for "turn off default behavior" and verb-noun for opt-in actions. Do this as a single breaking-change pass with old-flag aliases printing a deprecation warning for one release.
 
-### 5. No `--yes`/`--force` for unattended runs
-
-[confirmRepoExists](../internal/config/config.go#L751) prompts `[y/N]` and aborts on non-TTY. Running against a pre-existing repo in CI is impossible without stdin tricks.
-
-- **How to apply:** add `--yes`/`-y` that skips all interactive confirms (including the `--report-bug` confirmation). Document that `--yes` on CI is the expected pattern.
-
 ### 6. Auto-upgrade mid-run is unusual (design call)
 
 [checkForUpdate](../main.go#L523-L570) silently upgrades and re-execs with the user's original args. Clever but surprising; most CLIs (including `gh` itself for extensions) notify and let the user decide.

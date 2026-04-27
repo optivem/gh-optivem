@@ -439,6 +439,11 @@ func confirmBugReport(cfg *config.Config, debugBranchURL string) bool {
 	fmt.Println("  is resolved — the debug branch is needed to triage the failure.")
 	fmt.Println()
 
+	if cfg.AssumeYes {
+		log.Infof("Proceeding without confirmation (--yes).")
+		return true
+	}
+
 	if !isInteractive() {
 		log.Infof("Non-interactive session detected; proceeding with --report-bug opt-in.")
 		return true
@@ -610,6 +615,7 @@ func printBanner(cfg *config.Config) {
 	log.Infof("--report-bug:      %v%s", cfg.BugReport, tag("report-bug"))
 	log.Infof("--no-commit-on-failure: %v%s", cfg.NoCommitOnFailure, tag("no-commit-on-failure"))
 	log.Infof("--no-auto-upgrade: %v%s", cfg.NoAutoUpgrade, tag("no-auto-upgrade"))
+	log.Infof("--yes:             %v%s", cfg.AssumeYes, tag("yes"))
 	log.Infof("--workdir:         %s%s", cfg.Raw.WorkDir, tag("workdir"))
 	log.Infof("--log-file:        %s%s", cfg.LogFile, tag("log-file"))
 	log.Infof("--verbose:         %v%s", cfg.Verbose, tag("verbose"))

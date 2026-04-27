@@ -62,6 +62,7 @@ type Config struct {
 	Quiet        bool   // suppress info-level output
 	LogFile      string // optional path to mirror plain-text log output
 	NoAutoUpgrade bool  // skip auto-upgrade when a newer release is available
+	AssumeYes    bool   // skip all interactive confirmations (existing-repo, --report-bug)
 	WorkDir    string
 	ShopPath string
 	ShopRef  string // Pinned optivem/shop ref (SHA, tag, or branch). Never empty.
@@ -471,6 +472,7 @@ type rawFlags struct {
 	bugReport, showVersion                                       *bool
 	noCommitOnFailure                                            *bool
 	verbose, verboseShort, quiet, quietShort, noAutoUpgrade      *bool
+	assumeYes, assumeYesShort                                    *bool
 	logFile                                                      *string
 }
 
@@ -503,6 +505,8 @@ func registerFlags() rawFlags {
 		quietShort:    flag.Bool("q", false, "Short for --quiet"),
 		logFile:       flag.String("log-file", "", "Also write plain-text log output to this file (no ANSI colors, all levels)"),
 		noAutoUpgrade: flag.Bool("no-auto-upgrade", false, "Skip auto-upgrade when a newer release is available (useful for CI/debugging)"),
+		assumeYes:      flag.Bool("yes", false, "Skip all interactive confirmations (existing-repo prompt, --report-bug confirmation). Expected pattern for CI/unattended runs."),
+		assumeYesShort: flag.Bool("y", false, "Short for --yes"),
 	}
 }
 
@@ -748,7 +752,9 @@ func checkOwnerExists(owner string) {
 // confirmRepoExists checks whether fullRepo ("<owner>/<name>") already exists.
 // If it does, prompts the user to confirm scaffolding into the existing repo.
 // Aborts via FatalExit if the user declines or stdin is not available.
-func confirmRepoExists(fullRepo string) {
+// When assumeYes is true (--yes/-y), the prompt is skipped and the run proceeds
+// after a warning — the expected pattern for CI/unattended use.
+func confirmRepoExists(fullRepo string, assumeYes bool) {
 	cmd := exec.Command("gh", "api", "repos/"+fullRepo, ghAPISilent)
 	cmd.Stderr = nil // 404 is the expected case — suppress the noise
 	if err := cmd.Run(); err != nil {
@@ -759,13 +765,19 @@ func confirmRepoExists(fullRepo string) {
 
 	log.Warnf("Repository %s already exists on GitHub.", fullRepo)
 	log.Warnf("Proceeding will scaffold into the existing repository and may overwrite its contents.")
+
+	if assumeYes {
+		log.Infof("Proceeding without confirmation (--yes).")
+		return
+	}
+
 	fmt.Fprint(os.Stderr, "Proceed? [y/N]: ")
 
 	reader := bufio.NewReader(os.Stdin)
 	resp, err := reader.ReadString('\n')
 	if err != nil {
 		// EOF or non-interactive stdin — treat as "no" with an actionable message.
-		log.FatalExit(fmt.Sprintf("Aborted: repository %s already exists and no confirmation was provided", fullRepo))
+		log.FatalExit(fmt.Sprintf("Aborted: repository %s already exists and no confirmation was provided (pass --yes to proceed unattended)", fullRepo))
 	}
 	resp = strings.TrimSpace(strings.ToLower(resp))
 	if resp != "y" && resp != "yes" {
@@ -811,6 +823,7 @@ func ParseAndValidate() *Config {
 	if verbose && quiet {
 		log.FatalExit("--verbose and --quiet are mutually exclusive")
 	}
+	assumeYes := *f.assumeYes || *f.assumeYesShort
 
 	// === Phase 1: in-memory format validation (fast, no network) ===
 	if err := ValidateOwnerFormat(*f.owner); err != "" {
@@ -842,15 +855,15 @@ func ParseAndValidate() *Config {
 	validateTokensAuth(env, *f.dryRun)
 	checkGhAuth(*f.dryRun)
 	checkOwnerExists(*f.owner)
-	confirmRepoExists(*f.owner + "/" + repoName)
+	confirmRepoExists(*f.owner+"/"+repoName, assumeYes)
 	if mr.backendFullRepo != "" {
-		confirmRepoExists(mr.backendFullRepo)
+		confirmRepoExists(mr.backendFullRepo, assumeYes)
 	}
 	if mr.frontendFullRepo != "" {
-		confirmRepoExists(mr.frontendFullRepo)
+		confirmRepoExists(mr.frontendFullRepo, assumeYes)
 	}
 	if mr.systemFullRepo != "" {
-		confirmRepoExists(mr.systemFullRepo)
+		confirmRepoExists(mr.systemFullRepo, assumeYes)
 	}
 
 	// === Phase 3: resolve shop ref (fast API call; actual clone happens in the Prepare step) ===
@@ -901,6 +914,7 @@ func ParseAndValidate() *Config {
 		Quiet:        quiet,
 		LogFile:      logFilePath,
 		NoAutoUpgrade: *f.noAutoUpgrade,
+		AssumeYes:    assumeYes,
 		WorkDir:    wd,
 		// ShopPath, RepoDir, and the multirepo-component dirs are pre-computed
 		// from WorkDir so the startup banner can show them before Phase 1. The
