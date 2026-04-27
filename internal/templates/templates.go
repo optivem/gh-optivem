@@ -93,11 +93,15 @@ func FixupMonolithMultirepoImageURLs(repoDir, systemRepo string) {
 	})
 }
 
-// FixupMultirepoToken replaces GITHUB_TOKEN with GHCR_TOKEN in acceptance/prod stage workflows.
+// FixupMultirepoToken replaces GITHUB_TOKEN with GHCR_TOKEN in acceptance/qa/prod stage workflows.
+// In multirepo, images live in sibling component repos, so the workflow's default GITHUB_TOKEN
+// cannot pull them — a PAT (GHCR_TOKEN) with cross-repo `read:packages` is required.
 func FixupMultirepoToken(repoDir string) {
 	forEachWorkflowYml(repoDir, func(path string) {
 		name := filepath.Base(path)
-		if !strings.Contains(name, "acceptance-stage") && !strings.Contains(name, "prod-stage") {
+		if !strings.Contains(name, "acceptance-stage") &&
+			!strings.Contains(name, "qa-stage") &&
+			!strings.Contains(name, "prod-stage") {
 			return
 		}
 		files.ReplaceInFile(path,
