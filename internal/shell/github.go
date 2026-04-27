@@ -169,6 +169,10 @@ func RunPassthrough(cmdStr, cwd string) error {
 }
 
 // splitCommand splits a command string into parts, respecting quotes.
+// Inside double quotes, \" and \\ are honored as escape sequences so that
+// callers using fmt.Sprintf("%q", s) — which emits Go-style escaping — do
+// not have an embedded \" prematurely terminate the quoted run. Inside
+// single quotes, content is fully literal (POSIX semantics).
 // Returns an error if the input has an unterminated quote.
 func splitCommand(s string) ([]string, error) {
 	var parts []string
@@ -185,6 +189,10 @@ func splitCommand(s string) ([]string, error) {
 
 	for i := 0; i < len(s); i++ {
 		c := s[i]
+		if consumed := tryEscape(s, i, inQuote, quoteChar, &current); consumed {
+			i++
+			continue
+		}
 		switch {
 		case inQuote && c == quoteChar:
 			inQuote = false
@@ -204,6 +212,21 @@ func splitCommand(s string) ([]string, error) {
 	}
 	flush()
 	return parts, nil
+}
+
+// tryEscape handles \" and \\ inside a double-quoted run. Returns true and
+// writes the unescaped byte when an escape was consumed; the caller must then
+// advance past the trailing byte. Returns false in all other cases.
+func tryEscape(s string, i int, inQuote bool, quoteChar byte, out *strings.Builder) bool {
+	if !inQuote || quoteChar != '"' || s[i] != '\\' || i+1 >= len(s) {
+		return false
+	}
+	next := s[i+1]
+	if next != '"' && next != '\\' {
+		return false
+	}
+	out.WriteByte(next)
+	return true
 }
 
 // CheckRateLimit checks the GitHub API rate limit and waits if low.
