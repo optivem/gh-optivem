@@ -74,6 +74,7 @@ type Config struct {
 	SonarToken       string
 	GHCRToken        string
 	WorkflowToken    string
+	RepoToken        string // Classic PAT with `repo` scope for cross-repo Contents:read in multirepo prod-stage
 
 	// Derived naming
 	OwnerPascal   string
@@ -600,7 +601,7 @@ func resolveLangs(f *RawFlags) langChoice {
 }
 
 type envTokens struct {
-	dockerHubUsername, dockerHubToken, sonarToken, ghcrToken, workflowToken string
+	dockerHubUsername, dockerHubToken, sonarToken, ghcrToken, workflowToken, repoToken string
 }
 
 func readEnvTokens() envTokens {
@@ -610,6 +611,7 @@ func readEnvTokens() envTokens {
 		sonarToken:        os.Getenv("SONAR_TOKEN"),
 		ghcrToken:         os.Getenv("GHCR_TOKEN"),
 		workflowToken:     os.Getenv("WORKFLOW_TOKEN"),
+		repoToken:         os.Getenv("REPO_TOKEN"),
 	}
 }
 
@@ -620,6 +622,7 @@ func validateEnvTokens(e envTokens) {
 		{"SONAR_TOKEN", e.sonarToken},
 		{"WORKFLOW_TOKEN", e.workflowToken},
 		{"GHCR_TOKEN", e.ghcrToken},
+		{"REPO_TOKEN", e.repoToken},
 	}
 	for _, r := range required {
 		if r.val == "" {
@@ -628,21 +631,34 @@ func validateEnvTokens(e envTokens) {
 	}
 }
 
+const (
+	envRequiredSuffix  = " environment variable is required.\n"
+	patSettingsURLLine = "  https://github.com/settings/tokens\n"
+)
+
 func failMissingEnv(name string) {
 	switch name {
 	case "GHCR_TOKEN":
-		log.FatalExit(name + " environment variable is required.\n" +
+		log.FatalExit(name + envRequiredSuffix +
 			"  The scaffolded repo's acceptance/prod stages use it to tag images in GHCR.\n" +
 			"  Create a Personal Access Token (classic) with write:packages + read:packages scopes:\n" +
-			"  https://github.com/settings/tokens\n" +
+			patSettingsURLLine +
 			"  Then: export GHCR_TOKEN=<your-token>")
 	case "WORKFLOW_TOKEN":
-		log.FatalExit(name + " environment variable is required.\n" +
+		log.FatalExit(name + envRequiredSuffix +
 			"  The scaffolded repo's acceptance/QA/prod stages use it to push release tags\n" +
 			"  (default GITHUB_TOKEN cannot push tags whose commit diffs workflow files).\n" +
 			"  Create a Personal Access Token (classic) with repo + workflow scopes:\n" +
-			"  https://github.com/settings/tokens\n" +
+			patSettingsURLLine +
 			"  Then: export WORKFLOW_TOKEN=<your-token>")
+	case "REPO_TOKEN":
+		log.FatalExit(name + envRequiredSuffix +
+			"  In multitier+multirepo scaffolds, the system-level prod-stage uses it to read\n" +
+			"  each component repo's VERSION file via the GitHub API (cross-repo Contents:read).\n" +
+			"  Create a Personal Access Token (classic) with repo scope, OR a fine-grained PAT\n" +
+			"  with Contents:Read on the component repos:\n" +
+			patSettingsURLLine +
+			"  Then: export REPO_TOKEN=<your-token>")
 	default:
 		log.Fatalf("%s environment variable is required", name)
 	}
@@ -940,6 +956,7 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 		SonarToken:       env.sonarToken,
 		GHCRToken:        env.ghcrToken,
 		WorkflowToken:    env.workflowToken,
+		RepoToken:        env.repoToken,
 
 		OwnerPascal:   ownerPascal,
 		OwnerLower:    ownerLower,

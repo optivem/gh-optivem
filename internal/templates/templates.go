@@ -148,6 +148,35 @@ func FixupMultirepoToken(repoDir string) {
 	})
 }
 
+// FixupMultirepoVersionEntries rewrites `read-base-versions` entries in workflow files
+// to fetch each component's VERSION cross-repo via the GitHub API instead of from the
+// local working tree. In multirepo, the system-level prod-stage runs in the root repo,
+// but `backend/VERSION` and `frontend/VERSION` only exist in the component repos at
+// their roots. Replaces:
+//
+//	"file": "backend/VERSION"  -> "file": "VERSION", "repo": "<owner>/<backendRepo>"
+//	"file": "frontend/VERSION" -> "file": "VERSION", "repo": "<owner>/<frontendRepo>"
+//
+// Requires the read-base-versions action @v1 (or later) which understands the optional
+// `repo` field. The action's `token` input must be a PAT/app token with cross-repo
+// `Contents: read` — the shop template wires it to `secrets.WORKFLOW_TOKEN`, which is
+// already defined in scaffolded repos.
+//
+// Must run AFTER the monolithic-style fixups have rewritten
+// `system/multitier/{backend,frontend}-<lang>/VERSION` to `backend/VERSION` and
+// `frontend/VERSION`.
+func FixupMultirepoVersionEntries(repoDir, owner, frontendRepo, backendRepo string) {
+	replacements := [][2]string{
+		{`"file": "backend/VERSION"`, `"file": "VERSION", "repo": "` + owner + `/` + backendRepo + `"`},
+		{`"file": "frontend/VERSION"`, `"file": "VERSION", "repo": "` + owner + `/` + frontendRepo + `"`},
+	}
+	forEachWorkflowYml(repoDir, func(path string) {
+		for _, r := range replacements {
+			files.ReplaceInFile(path, r[0], r[1])
+		}
+	})
+}
+
 // FixupMultirepoDockerCompose replaces root repo name with component repo names in docker-compose.
 func FixupMultirepoDockerCompose(repoDir, repoName, frontendRepo, backendRepo string) {
 	filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {

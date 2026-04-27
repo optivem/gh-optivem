@@ -369,6 +369,11 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	log.Info("Fixing up multirepo image URLs and tokens...")
 	templates.FixupMultirepoImageURLs(repoDir, cfg.FrontendRepo, cfg.BackendRepo)
 	templates.FixupMultirepoToken(repoDir)
+
+	// Rewrite read-base-versions entries to fetch VERSIONs cross-repo via API
+	log.Info("Fixing up multirepo VERSION entries to fetch cross-repo...")
+	templates.FixupMultirepoVersionEntries(repoDir, cfg.Owner, cfg.FrontendRepo, cfg.BackendRepo)
+
 	log.Success("Applied root repo template (multitier multirepo)")
 
 	// Backend repo: code + commit stage

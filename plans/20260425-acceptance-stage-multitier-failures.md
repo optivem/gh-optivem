@@ -61,51 +61,16 @@ The four failures are **three different bugs**, not one. Each was confirmed by d
 - **Cause:** GitHub release-asset CDN returned 502 while downloading the Gradle distribution for the wrapper. Pure infrastructure flake — not a code or workflow bug.
 - **Why multitier+multirepo+java specifically:** the Java frontend in multirepo runs its own Gradle build in a separate repo, so it hits the Gradle download path that other combos don't. (Other Java builds may have been cached; this scaffold's repo is fresh, so no cache.)
 
-### 3. Production stage — hardcoded monorepo path `backend/VERSION`
-
-- **Affected combos:** multitier + multirepo + (typescript+dotnet) and multitier + multirepo + (java+typescript)
-- **Child runs:**
-  - [test-app-49d7cc1b / prod-stage / 24940849271](https://github.com/valentinajemuovic/test-app-49d7cc1b-0337d873df67d311/actions/runs/24940849271)
-  - [test-app-7c241a55 / prod-stage / 24940769603](https://github.com/valentinajemuovic/test-app-7c241a55-55bdab64c1e1971e/actions/runs/24940769603)
-- **Failing step:** `Read Component Base Versions`
-- **Error:**
-  ```
-  ##[error]VERSION file not found: backend/VERSION
-    (key: ghcr.io/valentinajemuovic/test-app-…-backend/backend:v1.0.47-rc.1)
-  ```
-- **Cause:** the `prod-stage` workflow asks the `read-component-base-versions` action for `backend/VERSION` and `frontend/VERSION`. That layout is correct for **monorepo** (where `backend/` and `frontend/` are sibling subdirs), but in **multirepo** the backend repo's VERSION file lives at the repo root (just `VERSION`). The workflow template doesn't switch the path based on `repo-style`.
-- **Why monolith and multirepo+monolith pass:** monolith only has one VERSION file; multirepo+monolith effectively still resolves a single component path; only the multitier+multirepo combination requires per-component VERSION lookups across two separate repos, which the template doesn't account for.
-- **Why multitier+multirepo+dotnet+java didn't hit this:** it failed earlier at Phase 6 (Gradle 502), so prod-stage never ran. If we fix #2 first, this combo will likely surface the same `backend/VERSION` error.
-
 ## Severity & priority
 
 | # | Bug                                  | Type            | Severity | Priority |
 | - | ------------------------------------ | --------------- | -------- | -------- |
 | 1 | GHCR write_package race              | Flaky infra/perm| Medium   | P2       |
 | 2 | Gradle CDN 502                       | Transient flake | Low      | P3       |
-| 3 | `backend/VERSION` hardcoded          | Real workflow bug | High   | P1       |
 
-#3 is the only deterministic bug — it will fail every time on multitier+multirepo until fixed. #1 and #2 are flakes that need retry/recovery.
+#1 and #2 are flakes that need retry/recovery. Fix #3 (`backend/VERSION` hardcoded — the only deterministic bug) was resolved in this session via Option E1: extended `read-base-versions` action with optional cross-repo `repo` field + scaffolder fixup that adds the field for multitier+multirepo entries. New `REPO_TOKEN` env var required for scaffolds.
 
 ## Proposed fixes
-
-### Fix #3 (P1) — make VERSION path repo-style-aware
-
-**Where:** the `prod-stage` workflow template that's emitted into scaffolded apps. Search for `read-component-base-versions` action invocations and the `entries` JSON they pass.
-
-**Change:** when generating the `entries` array, pick path based on `repo-style`:
-
-- monorepo: `backend/VERSION`, `frontend/VERSION` (current behaviour)
-- multirepo: `VERSION` for each component, but **resolved against the correct repo** — the action needs to checkout the backend repo and the frontend repo separately, then read `VERSION` at the root of each.
-
-Two implementation options:
-
-- **Option A (recommended)** — extend `read-component-base-versions` to accept a `repo` field per entry; when present, the action does a sparse `gh api repos/{repo}/contents/{file}` fetch instead of reading from the working tree. Cleaner and avoids checking out two repos in the prod-stage workflow.
-- **Option B** — in the prod-stage template, add two `actions/checkout` steps (one per component repo) when `repo-style == multirepo`, then run the existing action with paths pointing at each checkout. Heavier, but no action change required.
-
-Recommended: **A**, because the action is the right level of abstraction for "read a VERSION for a component" and the prod-stage template stays simple.
-
-**Verification:** re-run the matrix; multitier+multirepo+(ts+dotnet) and (java+ts) should reach the end without the VERSION error. Add a unit test to `read-component-base-versions` covering the cross-repo case.
 
 ### Fix #2 (P3) — wrap Gradle download in retry
 
@@ -142,11 +107,10 @@ Recommended: start with **retry** (cheap, reversible). If it still flakes, escal
 
 ## Order of work
 
-1. **Fix #3** — single deterministic bug, blocks 2-3 multitier+multirepo combos.
-2. **Fix #2** — small, safe retry wrapper. Unblocks the dotnet+java combo so we can see whether it then also hits #3.
-3. **Fix #1** — retry wrapper on docker push. Lower priority because it's intermittent and may go away once the GHCR namespaces stabilise.
+1. **Fix #2** — small, safe retry wrapper. Unblocks the dotnet+java combo.
+2. **Fix #1** — retry wrapper on docker push. Lower priority because it's intermittent and may go away once the GHCR namespaces stabilise.
 
-After all three: the matrix should be 16/16 green on a clean run. Re-run twice to confirm flake elimination.
+After both: the matrix should be 16/16 green on a clean run. Re-run twice to confirm flake elimination.
 
 ## Out of scope (noted but not addressed here)
 
