@@ -113,24 +113,22 @@ func FixupMultirepoToken(repoDir string) {
 // FixupMultirepoVersionEntries rewrites `read-base-versions` entries in workflow files
 // to fetch each component's VERSION cross-repo via the GitHub API instead of from the
 // local working tree. In multirepo, the system-level prod-stage runs in the root repo,
-// but `backend/VERSION` and `frontend/VERSION` only exist in the component repos at
-// their roots. Replaces:
+// but `backend/VERSION` and `frontend/VERSION` live inside the component repos at the
+// same `backend/` / `frontend/` paths (applyMultitierMultirepo copies the component
+// source into a `backend/` or `frontend/` subdir of the component repo, mirroring the
+// monorepo layout). Adds the cross-repo `repo` field while preserving the path:
 //
-//	"file": "backend/VERSION"  -> "file": "VERSION", "repo": "<owner>/<backendRepo>"
-//	"file": "frontend/VERSION" -> "file": "VERSION", "repo": "<owner>/<frontendRepo>"
+//	"file": "backend/VERSION"  -> "file": "backend/VERSION", "repo": "<owner>/<backendRepo>"
+//	"file": "frontend/VERSION" -> "file": "frontend/VERSION", "repo": "<owner>/<frontendRepo>"
 //
 // Requires the read-base-versions action @v1 (or later) which understands the optional
 // `repo` field. The action's `token` input must be a PAT/app token with cross-repo
 // `Contents: read` — the shop template wires it to `secrets.WORKFLOW_TOKEN`, which is
 // already defined in scaffolded repos.
-//
-// Must run AFTER the monolithic-style fixups have rewritten
-// `system/multitier/{backend,frontend}-<lang>/VERSION` to `backend/VERSION` and
-// `frontend/VERSION`.
 func FixupMultirepoVersionEntries(repoDir, owner, frontendRepo, backendRepo string) {
 	replacements := [][2]string{
-		{`"file": "backend/VERSION"`, `"file": "VERSION", "repo": "` + owner + `/` + backendRepo + `"`},
-		{`"file": "frontend/VERSION"`, `"file": "VERSION", "repo": "` + owner + `/` + frontendRepo + `"`},
+		{`"file": "backend/VERSION"`, `"file": "backend/VERSION", "repo": "` + owner + `/` + backendRepo + `"`},
+		{`"file": "frontend/VERSION"`, `"file": "frontend/VERSION", "repo": "` + owner + `/` + frontendRepo + `"`},
 	}
 	forEachWorkflowYml(repoDir, func(path string) {
 		for _, r := range replacements {
