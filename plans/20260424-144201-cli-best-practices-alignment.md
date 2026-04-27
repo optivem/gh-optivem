@@ -31,20 +31,13 @@ Hand-rolled subcommand dispatch, short/long pairs, and usage. Fine for one subco
 Mixed negation and verb choices on booleans:
 
 - `--skip-local-tests` vs `--exclude-legacy` (skip vs exclude — same intent, two words)
-- `--no-commit-on-failure`, `--no-auto-upgrade` (use `no-`) vs `--keep-local`, `--dry-run` (don't)
+- `--no-commit-on-failure` (use `no-`) vs `--keep-local`, `--dry-run` (don't)
 - `--report-bug` (verb-noun) vs `--keep-local` (verb-adj)
 
 - **How to apply:** pick one convention and rewrite. Common rule: default is the positive/safe behavior, `--no-X` flips it off. So:
   - `--exclude-legacy` → keep; `--skip-local-tests` → `--no-local-tests` (or `--exclude-local-tests` for parallelism with `--exclude-legacy`).
   - `--keep-local` → `--no-cleanup-local` (or keep it as-is and deprecate other `--no-*` flags; trade-off).
 - **Recommended:** unify on `--no-<thing>` for "turn off default behavior" and verb-noun for opt-in actions. Do this as a single breaking-change pass with old-flag aliases printing a deprecation warning for one release.
-
-### 6. Auto-upgrade mid-run is unusual (design call)
-
-[checkForUpdate](../main.go#L523-L570) silently upgrades and re-execs with the user's original args. Clever but surprising; most CLIs (including `gh` itself for extensions) notify and let the user decide.
-
-- **How to apply:** flip the default to "notify only". Keep auto-upgrade behind an opt-in flag (e.g. `--auto-upgrade`) instead of opt-out (`--no-auto-upgrade`).
-- **Trade-off:** if the UX goal is "always run the latest so bug reports are actionable", keep the current behavior — but at least print a one-line notice before the upgrade starts ("Upgrading to X.Y.Z... re-run with --no-auto-upgrade to skip").
 
 ## Fix — low priority
 
