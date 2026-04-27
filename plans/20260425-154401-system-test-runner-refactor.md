@@ -6,7 +6,7 @@
 
 PR 2 work is committed locally on this branch in two repos: `gh-optivem` (verify.go switched to runner package, dead-code prune/dimensions files removed, runner subcommand cwd derived from `--system` / `--tests` flag) and `shop` (12 JSON configs written, 18 PS1 files + `Run-AllSystemTests.ps1` deleted, `_prerelease-pipeline.yml` switched to `gh optivem`, docs and per-lang READMEs rewritten, `run-all-system-tests.sh` added).
 
-End-to-end smoke test for typescript / monolith passed: `gh optivem run system → run system tests --suite smoke-stub --sample → stop system` cleanly cycles up, runs, and stops.
+End-to-end smoke test for typescript / monolith passed: `gh optivem run system → test system --suite smoke-stub --sample → stop system` cleanly cycles up, runs, and stops.
 
 ## Items still open
 

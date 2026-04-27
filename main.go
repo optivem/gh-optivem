@@ -77,6 +77,8 @@ func main() {
 		dispatchBuild(os.Args[2:])
 	case "run":
 		dispatchRun(os.Args[2:])
+	case "test":
+		dispatchTest(os.Args[2:])
 	case "stop":
 		dispatchStop(os.Args[2:])
 	default:
@@ -92,8 +94,8 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "  init                Scaffold a new pipeline project\n")
 	fmt.Fprintf(os.Stderr, "  build system        docker compose build for every entry in system.json\n")
 	fmt.Fprintf(os.Stderr, "  run system          docker compose up + wait for health\n")
-	fmt.Fprintf(os.Stderr, "  stop system         docker compose down + container cleanup\n")
-	fmt.Fprintf(os.Stderr, "  run system tests    Run setup commands + suites from tests.json\n\n")
+	fmt.Fprintf(os.Stderr, "  test system         Run setup commands + suites from tests.json\n")
+	fmt.Fprintf(os.Stderr, "  stop system         docker compose down + container cleanup\n\n")
 	fmt.Fprintf(os.Stderr, "Flags:\n")
 	fmt.Fprintf(os.Stderr, "  --version   Print version and exit\n")
 }

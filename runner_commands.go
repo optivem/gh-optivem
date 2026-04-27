@@ -1,7 +1,7 @@
-// runner_commands.go wires the `build system`, `run system`, `stop system`,
-// and `run system tests` subcommands into the main package. The runner
-// package is fully agnostic — these handlers just translate CLI flags into
-// runner.* calls.
+// runner_commands.go wires the `build system`, `run system`, `test system`,
+// and `stop system` subcommands into the main package. The runner package is
+// fully agnostic — these handlers just translate CLI flags into runner.*
+// calls.
 //
 // Working-dir contract: each command operates against the user's current
 // working directory. JSON config paths default to ./system.json and
@@ -97,16 +97,16 @@ func runStopSystem(args []string) {
 	}
 }
 
-// runRunSystemTests implements:
+// runTestSystem implements:
 //
-//	gh optivem run system tests [--system path] [--tests path]
-//	                            [--suite id] [--test name] [--sample]
+//	gh optivem test system [--system path] [--tests path]
+//	                       [--suite id] [--test name] [--sample]
 //
 // Runs setup commands then iterates suites. The system must already be up
 // (the runner verifies via an HTTP probe and errors out otherwise) — bring
 // it up first with `gh optivem run system`.
-func runRunSystemTests(args []string) {
-	fs := flag.NewFlagSet("run system tests", flag.ExitOnError)
+func runTestSystem(args []string) {
+	fs := flag.NewFlagSet("test system", flag.ExitOnError)
 	systemPath := fs.String("system", defaultSystemConfig, "Path to system.json")
 	testsPath := fs.String("tests", defaultTestsConfig, "Path to tests.json")
 	suite := fs.String("suite", "", "Run only the suite with this id")
@@ -166,24 +166,32 @@ func dispatchStop(args []string) {
 	}
 }
 
-// dispatchRun routes `gh optivem run <noun> [<sub-noun>]`. The only nested
-// form today is `run system tests`; everything else is `run system` (with
-// flags after).
+// dispatchRun routes `gh optivem run <noun>`.
 func dispatchRun(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: gh optivem run system [tests] [flags]")
+		fmt.Fprintln(os.Stderr, "Usage: gh optivem run system [flags]")
 		os.Exit(1)
 	}
 	switch args[0] {
 	case "system":
-		// `run system tests ...` vs `run system ...`
-		if len(args) > 1 && args[1] == "tests" {
-			runRunSystemTests(args[2:])
-			return
-		}
 		runRunSystem(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown run target: %s\n", args[0])
+		os.Exit(1)
+	}
+}
+
+// dispatchTest routes `gh optivem test <noun>`.
+func dispatchTest(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Usage: gh optivem test system [--system path] [--tests path]")
+		os.Exit(1)
+	}
+	switch args[0] {
+	case "system":
+		runTestSystem(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown test target: %s\n", args[0])
 		os.Exit(1)
 	}
 }

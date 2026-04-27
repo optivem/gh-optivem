@@ -6,10 +6,10 @@
 # Steps:
 #   1. Rebuild the gh-optivem binary from this repo.
 #   2. From shop/system-test/typescript/:
-#        gh-optivem run system        --system monolith/system.json
-#        gh-optivem run system tests  --system monolith/system.json --tests tests-latest.json
-#        gh-optivem run system tests  --system monolith/system.json --tests tests-legacy.json
-#        gh-optivem stop system       --system monolith/system.json
+#        gh-optivem run system   --system monolith/system.json
+#        gh-optivem test system  --system monolith/system.json --tests tests-latest.json
+#        gh-optivem test system  --system monolith/system.json --tests tests-legacy.json
+#        gh-optivem stop system  --system monolith/system.json
 #   3. Print a per-phase pass/fail summary.
 #
 # Requires: docker, node 22+, the optivem academy workspace cloned alongside
@@ -50,14 +50,14 @@ if [ $UP_RC -ne 0 ]; then
 fi
 
 echo
-echo "=== Step 3/5: run system tests — Latest (full suite) ==="
+echo "=== Step 3/5: test system — Latest (full suite) ==="
 LATEST_RC=0
-( cd "$TS_DIR" && "$BIN" run system tests --system "$SYSTEM" --tests tests-latest.json ) || LATEST_RC=$?
+( cd "$TS_DIR" && "$BIN" test system --system "$SYSTEM" --tests tests-latest.json ) || LATEST_RC=$?
 
 echo
-echo "=== Step 4/5: run system tests — Legacy (full suite) ==="
+echo "=== Step 4/5: test system — Legacy (full suite) ==="
 LEGACY_RC=0
-( cd "$TS_DIR" && "$BIN" run system tests --system "$SYSTEM" --tests tests-legacy.json ) || LEGACY_RC=$?
+( cd "$TS_DIR" && "$BIN" test system --system "$SYSTEM" --tests tests-legacy.json ) || LEGACY_RC=$?
 
 echo
 echo "=== Step 5/5: stop system (cleanup) ==="
