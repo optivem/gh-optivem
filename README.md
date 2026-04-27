@@ -69,8 +69,8 @@ gh optivem init ... --verify-level commit        # + commit stage CI
 gh optivem init ... --verify-level acceptance    # + acceptance stage CI (latest + legacy in parallel)
 gh optivem init ... --verify-level qa            # + QA stage + QA signoff
 gh optivem init ... --verify-level release       # + production stage (default)
-gh optivem init ... --exclude-legacy             # skip legacy in local tests and acceptance
-gh optivem init ... --skip-local-tests           # skip the local system-tests step
+gh optivem init ... --no-legacy                  # skip legacy in local tests and acceptance
+gh optivem init ... --no-local-tests             # skip the local system-tests step
 ```
 
 ### Local cleanup

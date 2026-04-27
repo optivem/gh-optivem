@@ -124,11 +124,11 @@ func VerifyCommitStage(cfg *config.Config, gh *shell.GitHub) {
 
 // VerifyAcceptanceStages triggers the latest and legacy acceptance-stage
 // workflows and watches both runs in parallel. Legacy is skipped when
-// --exclude-legacy is set. Downstream stages (QA, prod) resolve the latest RC
+// --no-legacy is set. Downstream stages (QA, prod) resolve the latest RC
 // internally when dispatched with an empty version, so no RC lookup is needed
 // here.
 func VerifyAcceptanceStages(cfg *config.Config, gh *shell.GitHub) {
-	includeLegacy := !cfg.ExcludeLegacy
+	includeLegacy := !cfg.NoLegacy
 
 	if includeLegacy {
 		log.Info("Triggering acceptance stage (latest + legacy in parallel)...")
@@ -349,8 +349,8 @@ func setupMultirepoSymlinks(cfg *config.Config) {
 }
 
 // VerifyLocalTesting runs the runner package against the scaffolded project's
-// system-test/ directory — latest plus legacy (unless --exclude-legacy).
-// Skipped entirely when --skip-local-tests is set (the gate lives in main.go).
+// system-test/ directory — latest plus legacy (unless --no-legacy).
+// Skipped entirely when --no-local-tests is set (the gate lives in main.go).
 func VerifyLocalTesting(cfg *config.Config) {
 	log.Info("Running local system tests...")
 
@@ -368,7 +368,7 @@ func VerifyLocalTesting(cfg *config.Config) {
 
 	runLocalTestsViaRunner("Local system tests (latest)", testDir, "tests-latest.json")
 
-	if !cfg.ExcludeLegacy {
+	if !cfg.NoLegacy {
 		runLocalTestsViaRunner("Local system tests (legacy)", testDir, "tests-legacy.json")
 	}
 }

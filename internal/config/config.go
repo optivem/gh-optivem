@@ -55,8 +55,8 @@ type Config struct {
 	License    string
 	DryRun       bool
 	VerifyLevel    string // "none", "local", "commit", "acceptance", "qa", "release"
-	ExcludeLegacy  bool   // exclude legacy from local tests and acceptance stage
-	SkipLocalTests bool   // skip the "Verify local testing" step (runner package over system-test/)
+	NoLegacy       bool   // exclude legacy from local tests and acceptance stage
+	NoLocalTests   bool   // skip the "Verify local testing" step (runner package over system-test/)
 	KeepLocal    bool   // keep the local scaffolded clone dir after a successful run (default: delete it)
 	BugReport    bool   // opt in to auto-creating a GitHub issue on failure (default: off)
 	NoCommitOnFailure bool // skip pushing partial scaffold to a debug/<timestamp> branch on failure (by default we push it for triage)
@@ -487,8 +487,8 @@ type RawFlags struct {
 	LogFile           string
 	DryRun            bool
 	KeepLocal         bool
-	ExcludeLegacy     bool
-	SkipLocalTests    bool
+	NoLegacy          bool
+	NoLocalTests      bool
 	BugReport         bool
 	NoCommitOnFailure bool
 	Verbose           bool
@@ -515,8 +515,8 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs.BoolVar(&f.DryRun, "dry-run", false, "Print actions without executing")
 	fs.BoolVar(&f.KeepLocal, "keep-local", false, "Keep the local scaffolded clone dir instead of deleting it on success")
 	fs.StringVar(&f.VerifyLevel, "verify-level", "release", "Verification level: none, local, commit, acceptance, qa, release")
-	fs.BoolVar(&f.ExcludeLegacy, "exclude-legacy", false, "Exclude legacy from local tests and acceptance stage")
-	fs.BoolVar(&f.SkipLocalTests, "skip-local-tests", false, "Skip the 'Verify local testing' step (runner package over system-test/)")
+	fs.BoolVar(&f.NoLegacy, "no-legacy", false, "Exclude legacy from local tests and acceptance stage")
+	fs.BoolVar(&f.NoLocalTests, "no-local-tests", false, "Skip the 'Verify local testing' step (runner package over system-test/)")
 	fs.BoolVar(&f.BugReport, "report-bug", false, "On failure, auto-create a GitHub issue in optivem/gh-optivem with scaffold config and debug-branch URL. Off by default — file one yourself if the failure is worth reporting.")
 	fs.BoolVar(&f.NoCommitOnFailure, "no-commit-on-failure", false, "Skip pushing the partial scaffold to a debug/<timestamp> branch on failure. By default the partial scaffold is pushed so it can be inspected and linked from the auto-filed bug report.")
 	fs.StringVar(&f.Deploy, "deploy", "docker", "Deployment target: docker or cloud-run")
@@ -930,8 +930,8 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 		License:    f.License,
 		DryRun:       f.DryRun,
 		VerifyLevel:    resolvedLevel,
-		ExcludeLegacy:  f.ExcludeLegacy,
-		SkipLocalTests: f.SkipLocalTests,
+		NoLegacy:       f.NoLegacy,
+		NoLocalTests:   f.NoLocalTests,
 		KeepLocal:    f.KeepLocal,
 		BugReport:    f.BugReport,
 		NoCommitOnFailure: f.NoCommitOnFailure,

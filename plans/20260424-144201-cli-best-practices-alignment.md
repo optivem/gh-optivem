@@ -17,21 +17,6 @@ Verdict: mostly aligned. Output layer (colors, streams, levels) is solid. Flag l
 - TTY detection in `confirmBugReport` ([main.go:430-436](../main.go#L430-L436)).
 - Banner shows `(default)` vs user-supplied via `flag.Visit`.
 
-## Fix — medium priority
-
-### 4. Flag-name inconsistency
-
-Mixed negation and verb choices on booleans:
-
-- `--skip-local-tests` vs `--exclude-legacy` (skip vs exclude — same intent, two words)
-- `--no-commit-on-failure` (use `no-`) vs `--keep-local`, `--dry-run` (don't)
-- `--report-bug` (verb-noun) vs `--keep-local` (verb-adj)
-
-- **How to apply:** pick one convention and rewrite. Common rule: default is the positive/safe behavior, `--no-X` flips it off. So:
-  - `--exclude-legacy` → keep; `--skip-local-tests` → `--no-local-tests` (or `--exclude-local-tests` for parallelism with `--exclude-legacy`).
-  - `--keep-local` → `--no-cleanup-local` (or keep it as-is and deprecate other `--no-*` flags; trade-off).
-- **Recommended:** unify on `--no-<thing>` for "turn off default behavior" and verb-noun for opt-in actions. Do this as a single breaking-change pass with old-flag aliases printing a deprecation warning for one release.
-
 ## Fix — low priority
 
 ### 9. No `--json` machine-readable output
