@@ -53,19 +53,20 @@ func exitOnError(err error) {
 	os.Exit(1)
 }
 
-// runBuildSystem implements `gh optivem build system [--system path] [--no-cache]`.
-// Builds every entry in systems[] via `docker compose build`. With --no-cache,
-// every layer is rebuilt from scratch (analog of dotnet's --no-incremental
-// and gradle's --rerun-tasks).
+// runBuildSystem implements `gh optivem build system [--system path] [--rebuild]`.
+// Builds every entry in systems[] via `docker compose build`. With --rebuild,
+// every layer is rebuilt from scratch (internally `docker compose build
+// --no-cache`). Analog of dotnet's --no-incremental and gradle's
+// --rerun-tasks — outcome-oriented naming.
 func runBuildSystem(args []string) {
 	fs := flag.NewFlagSet("build system", flag.ExitOnError)
 	systemPath := fs.String("system", defaultSystemConfig, flagSystemUsage)
-	noCache := fs.Bool("no-cache", false, "Pass --no-cache to docker compose build (force full rebuild)")
+	rebuild := fs.Bool("rebuild", false, "Force a full rebuild from scratch (no layer cache reuse)")
 	_ = fs.Parse(args)
 
 	sys, err := runner.LoadSystem(*systemPath)
 	exitOnError(err)
-	exitOnError(runner.Build(sys, cwdForPath(*systemPath), runner.BuildOptions{NoCache: *noCache}))
+	exitOnError(runner.Build(sys, cwdForPath(*systemPath), runner.BuildOptions{Rebuild: *rebuild}))
 }
 
 // runRunSystem implements `gh optivem run system [--system path] [--restart] [--log-lines 50]`.
@@ -154,7 +155,7 @@ func runTestSystem(args []string) {
 // supported; new nouns can be added here without touching main().
 func dispatchBuild(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: gh optivem build system [--system path] [--no-cache]")
+		fmt.Fprintln(os.Stderr, "Usage: gh optivem build system [--system path] [--rebuild]")
 		os.Exit(1)
 	}
 	switch args[0] {

@@ -24,10 +24,12 @@ type SystemOptions struct {
 
 // BuildOptions tunes behavior of Build. Zero-values are safe defaults.
 type BuildOptions struct {
-	// NoCache, when true, passes --no-cache to `docker compose build` so
-	// every layer is rebuilt from scratch. Analog of dotnet's
-	// `build --no-incremental` and gradle's `--rerun-tasks`.
-	NoCache bool
+	// Rebuild, when true, forces a full rebuild from scratch (every layer
+	// rebuilt, no cache reuse). Maps to `docker compose build --no-cache`
+	// under the hood. Analog of dotnet's `build --no-incremental` and
+	// gradle's `--rerun-tasks` — outcome-oriented ("rebuild") rather than
+	// mechanism-oriented ("skip cache").
+	Rebuild bool
 }
 
 func (o SystemOptions) logLines() int {
@@ -46,12 +48,12 @@ var transientNetRE = regexp.MustCompile(
 // Build runs `docker compose -f <composeFile> build` for every entry in sys.
 // cwd is the working directory the compose-file paths are resolved against
 // (typically the system-test directory holding system.json). When
-// opts.NoCache is true, `--no-cache` is appended so every layer is rebuilt.
+// opts.Rebuild is true, `--no-cache` is appended so every layer is rebuilt.
 func Build(sys *SystemConfig, cwd string, opts BuildOptions) error {
 	for _, s := range sys.Systems {
 		fmt.Fprintf(os.Stdout, "\n=== Build %s (%s) ===\n", s.Label, s.ComposeFile)
 		args := []string{"-f", s.ComposeFile, "build"}
-		if opts.NoCache {
+		if opts.Rebuild {
 			args = append(args, "--no-cache")
 		}
 		if err := runCompose(cwd, args...); err != nil {

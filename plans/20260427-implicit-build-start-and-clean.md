@@ -15,7 +15,7 @@ Inspired by `dotnet test` and `./gradlew test`: those tools implicitly build the
 | `gh optivem test system --no-start` | n/a | Skip implicit start; error if not already up (today's behavior) |
 | `gh optivem test system --restart` | n/a | Force tear-down + restart before tests (forwards to `SystemOptions.Restart`) |
 | `gh optivem build system` | `docker compose build` | unchanged |
-| `gh optivem build system --no-cache` | n/a | `docker compose build --no-cache` (analog of gradle `--rerun-tasks` / dotnet `--no-incremental`) |
+| `gh optivem build system --rebuild` | n/a | Force full rebuild — internally `docker compose build --no-cache` (analog of gradle `--rerun-tasks` / dotnet `--no-incremental`) |
 | `gh optivem run system` | start + health-wait | unchanged |
 | `gh optivem run system --restart` | force tear-down + restart | unchanged |
 | `gh optivem stop system` | `docker compose down` | unchanged |
@@ -31,7 +31,7 @@ Naming follows dotnet/gradle precedent: `clean` is its own command (not a `--cle
 | Implicit build before test | yes | yes | yes (new) |
 | Skip build flag | `--no-build` | (exclude task) | `--no-build` (new) |
 | Skip start | n/a | n/a | `--no-start` (new — gh optivem-specific) |
-| Force rebuild w/o clean | `build --no-incremental` | `--rerun-tasks` | `build system --no-cache` (new) |
+| Force rebuild w/o clean | `build --no-incremental` | `--rerun-tasks` | `build system --rebuild` (new) |
 | Delete outputs | `dotnet clean` | `./gradlew clean` | `clean system` (new) |
 
 ## Implementation
@@ -69,7 +69,7 @@ Reuse `runCompose` / `downOne` patterns. Like `Down`, errors per-system should b
 [runner_commands.go](../runner_commands.go):
 
 - **`runTestSystem`** ([runner_commands.go:108-136](../runner_commands.go#L108-L136)): add `--no-build`, `--no-start`, `--restart` flags; populate `TestOptions{NoBuild, NoStart, Restart}`. Update the doc comment ([runner_commands.go:100-107](../runner_commands.go#L100-L107)) to describe implicit build/start as the default.
-- **`runBuildSystem`** ([runner_commands.go:42-56](../runner_commands.go#L42-L56)): add `--no-cache` flag; pass through to a new `BuildOptions{NoCache bool}` on `runner.Build`. When set, append `--no-cache` to the `docker compose build` invocation.
+- **`runBuildSystem`** ([runner_commands.go:42-56](../runner_commands.go#L42-L56)): add `--rebuild` flag; pass through to a new `BuildOptions{Rebuild bool}` on `runner.Build`. When set, append `--no-cache` to the `docker compose build` invocation. Outcome-oriented naming consistent with `--restart` (force) rather than mechanism-oriented `--no-cache` (skip).
 - **New `runCleanSystem`**: same shape as `runStopSystem`, calls `runner.Clean`.
 - **`dispatchClean`**: new dispatcher routing `gh optivem clean <noun>` (only `system` for now). Wire into `main.go`'s top-level switch.
 
@@ -101,7 +101,7 @@ The perf benefit of `--no-build` is preserved in either variant: when the image 
 
 1. **Should `clean system` imply `stop system` first?** `docker compose down -v --rmi local` already does the stop, so this is a non-issue — clean is strictly a superset of stop. Documentation should call this out so users don't run them in sequence unnecessarily.
 2. **Should `--no-build` imply `--no-start`?** In dotnet, `--no-build` implies `--no-restore` because you can't build without restored packages. The analog here would be: if you're not building, you might still want to start (using whatever images already exist). They're independent — keep them as separate flags.
-3. **What about `--rerun` semantics?** Gradle's `--rerun-tasks` forces re-execution without deleting outputs. The closest docker-compose analog is `build --no-cache` (forces rebuild, keeps existing volumes). That's already covered by item 3 above. Not adding a `test system --rerun` for now — if needed later, it would map to `--restart` (force re-up) and is already there.
+3. **What about `--rerun` semantics?** Gradle's `--rerun-tasks` forces re-execution without deleting outputs. The closest docker-compose analog is `build --rebuild` (forces rebuild, keeps existing volumes). That's already covered by item 3 above. Not adding a `test system --rerun` for now — if needed later, it would map to `--restart` (force re-up) and is already there.
 
 ## Out of scope
 
