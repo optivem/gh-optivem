@@ -307,20 +307,6 @@ func runLocalTestsViaRunner(label, dockerDir, testDir, testsFile string) {
 	log.Successf(msgStagePassed, label)
 }
 
-// canRunLocalTests checks common preconditions for local test execution.
-// Returns (dockerDir, testDir), or ("","") if tests should be skipped. Whether
-// to call this step at all is gated by --verify-level in main.go.
-func canRunLocalTests(cfg *config.Config, testKind string) (string, string) {
-	dockerDir := filepath.Join(cfg.RepoDir, dockerDir_name)
-	testDir := filepath.Join(cfg.RepoDir, systemTestDir_name)
-	if _, err := os.Stat(filepath.Join(dockerDir, "system.json")); err != nil {
-		log.Warnf("system.json not found in scaffolded project, skipping local %s", testKind)
-		return "", ""
-	}
-
-	return dockerDir, testDir
-}
-
 // setupMultirepoSymlinks creates symlinks inside the root repo so that Docker Compose
 // build contexts (e.g. ../backend, ../frontend, ../system) resolve to the component
 // repos cloned in separate directories.
@@ -365,10 +351,8 @@ func VerifyLocalTesting(cfg *config.Config) {
 		return
 	}
 
-	dockerDir, testDir := canRunLocalTests(cfg, "system tests")
-	if dockerDir == "" {
-		return
-	}
+	dockerDir := filepath.Join(cfg.RepoDir, dockerDir_name, cfg.EffectiveLang(), cfg.Arch)
+	testDir := filepath.Join(cfg.RepoDir, systemTestDir_name)
 
 	setupMultirepoSymlinks(cfg)
 
