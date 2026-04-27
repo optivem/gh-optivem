@@ -57,6 +57,7 @@ type Config struct {
 	VerifyLevel    string // "none", "local", "commit", "acceptance", "qa", "release"
 	NoLegacy       bool   // exclude legacy from local tests and acceptance stage
 	NoLocalTests   bool   // skip the "Verify local testing" step (runner package over system-test/)
+	NoLocalSonar   bool   // skip the "Verify local SonarCloud scan" step (per-component Run-Sonar.ps1)
 	KeepLocal    bool   // keep the local scaffolded clone dir after a successful run (default: delete it)
 	BugReport    bool   // opt in to auto-creating a GitHub issue on failure (default: off)
 	Verbose      bool   // enable debug output
@@ -488,6 +489,7 @@ type RawFlags struct {
 	KeepLocal         bool
 	NoLegacy          bool
 	NoLocalTests      bool
+	NoLocalSonar      bool
 	BugReport         bool
 	Verbose           bool
 	Quiet             bool
@@ -515,6 +517,7 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs.StringVar(&f.VerifyLevel, "verify-level", "release", "Verification level: none, local, commit, acceptance, qa, release")
 	fs.BoolVar(&f.NoLegacy, "no-legacy", false, "Exclude legacy from local tests and acceptance stage")
 	fs.BoolVar(&f.NoLocalTests, "no-local-tests", false, "Skip the 'Verify local testing' step (runner package over system-test/)")
+	fs.BoolVar(&f.NoLocalSonar, "no-local-sonar", false, "Skip the 'Verify local SonarCloud scan' step (per-component Run-Sonar.ps1 against the SonarCloud project)")
 	fs.BoolVar(&f.BugReport, "report-bug", false, "On failure, auto-create a GitHub issue in optivem/gh-optivem with scaffold config. Off by default — file one yourself if the failure is worth reporting.")
 	fs.StringVar(&f.Deploy, "deploy", "docker", "Deployment target: docker or cloud-run")
 	fs.StringVar(&f.WorkDir, "workdir", "", "Working directory for cloning (default: temp dir)")
@@ -929,6 +932,7 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 		VerifyLevel:    resolvedLevel,
 		NoLegacy:       f.NoLegacy,
 		NoLocalTests:   f.NoLocalTests,
+		NoLocalSonar:   f.NoLocalSonar,
 		KeepLocal:    f.KeepLocal,
 		BugReport:    f.BugReport,
 		Verbose:      f.Verbose,

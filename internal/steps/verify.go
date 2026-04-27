@@ -340,6 +340,37 @@ func setupMultirepoSymlinks(cfg *config.Config) {
 	}
 }
 
+// VerifyLocalSonar runs the per-component Run-Sonar.ps1 script against each
+// scaffolded component, pushing analysis to the SonarCloud project created
+// earlier in the same run. The token is picked up from $SONAR_TOKEN by each
+// script (already validated and set on the parent process env). Requires pwsh
+// (PowerShell 7+) on PATH. Skipped entirely when --no-local-sonar is set
+// (the gate lives in main.go).
+func VerifyLocalSonar(cfg *config.Config) {
+	log.Info("Running local SonarCloud scans...")
+
+	if cfg.DryRun {
+		log.Info("[DRY RUN] Would run local SonarCloud scans for all components")
+		return
+	}
+
+	if cfg.Arch == "monolith" {
+		sonarComponent("system source", systemDir(cfg))
+	} else {
+		sonarComponent("backend", backendDir(cfg))
+		sonarComponent("frontend", frontendDir(cfg))
+	}
+	sonarComponent("system tests", systemTestDir(cfg))
+}
+
+func sonarComponent(label, dir string) {
+	out, err := shell.Run(`pwsh -File .\Run-Sonar.ps1`, false, true, dir)
+	if err != nil {
+		log.Fatalf("SonarCloud scan failed for %s in %s: %v\n%s", label, dir, err, out)
+	}
+	log.Successf("SonarCloud scanned %s", label)
+}
+
 // VerifyLocalTesting runs the runner package against the scaffolded project's
 // system-test/ directory — latest plus legacy (unless --no-legacy).
 // Skipped entirely when --no-local-tests is set (the gate lives in main.go).
