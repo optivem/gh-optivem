@@ -7,7 +7,19 @@ on:
   workflow_dispatch:
     inputs:
       verify-level:
-        description: 'Verification level for system tests'
+        description: 'Verification level for the run (full acceptance) matrix'
+        required: false
+        default: 'release'
+        type: choice
+        options:
+          - none
+          - local
+          - commit
+          - acceptance
+          - qa
+          - release
+      smoke-verify-level:
+        description: 'Verification level for the smoke matrix (independent of verify-level)'
         required: false
         default: 'release'
         type: choice
@@ -76,6 +88,7 @@ jobs:
     secrets: inherit
     with:
       verify-level: ${{ inputs.verify-level }}
+      smoke-verify-level: ${{ inputs.smoke-verify-level }}
       smoke-mode: ${{ inputs.smoke-mode }}
       acceptance-mode: ${{ inputs.acceptance-mode }}
       shop-tag: ${{ inputs.shop-tag }}

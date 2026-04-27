@@ -4,7 +4,12 @@ on:
   workflow_call:
     inputs:
       verify-level:
-        description: 'Verification level for system tests (none, local, commit, acceptance, qa, release).'
+        description: 'Verification level for the run (full acceptance) matrix (none, local, commit, acceptance, qa, release).'
+        required: false
+        type: string
+        default: 'release'
+      smoke-verify-level:
+        description: 'Verification level for the smoke matrix (none, local, commit, acceptance, qa, release). Independent of verify-level so smoke can be tuned separately.'
         required: false
         type: string
         default: 'release'
@@ -399,7 +404,7 @@ jobs:
           repo-strategy: ${{ matrix.scenario.repo-strategy }}
           lang: ${{ matrix.scenario.lang }}
           test-lang: typescript
-          verify-level: local
+          verify-level: ${{ inputs.smoke-verify-level }}
           no-legacy: 'true'
           shop-tag: ${{ needs.check.outputs.shop-tag }}
           retain-repos: ${{ needs.check.outputs.retain-repos }}

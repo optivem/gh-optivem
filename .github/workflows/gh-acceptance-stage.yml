@@ -10,7 +10,13 @@ on:
   workflow_dispatch:
     inputs:
       verify-level:
-        description: 'Verification level (none, local, commit, acceptance, qa, release)'
+        description: 'Verification level for the run (full acceptance) matrix'
+        required: false
+        type: choice
+        options: [none, local, commit, acceptance, qa, release]
+        default: release
+      smoke-verify-level:
+        description: 'Verification level for the smoke matrix (independent of verify-level)'
         required: false
         type: choice
         options: [none, local, commit, acceptance, qa, release]
@@ -53,6 +59,7 @@ jobs:
       #   verify-level: ${{ github.event.schedule == '0 * * * *' && 'local' || inputs.verify-level }}
       # (hourly cron → `local` verify, 6-hour cron + manual dispatch → input-driven, default `release`.)
       verify-level: ${{ inputs.verify-level }}
+      smoke-verify-level: ${{ inputs.smoke-verify-level }}
       smoke-mode: ${{ inputs.smoke-mode }}
       acceptance-mode: ${{ inputs.acceptance-mode }}
       shop-tag: ${{ inputs.shop-tag }}
