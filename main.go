@@ -532,7 +532,7 @@ func createBugReport(cfg *config.Config, errorCount int, debugBranchURL string) 
 	bodyFile.Close()
 
 	out, err := shell.Run(
-		fmt.Sprintf(`gh issue create --repo optivem/gh-optivem --title %q --body-file %s --assignee valentinajemuovic`, title, bodyFile.Name()),
+		fmt.Sprintf(`gh issue create --repo optivem/gh-optivem --title %q --body-file %s`, title, bodyFile.Name()),
 		false, false, "")
 	if err != nil {
 		log.Infof("WARN: Failed to create bug report: %v\n%s", err, out)
