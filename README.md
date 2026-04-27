@@ -81,6 +81,29 @@ On a successful run the local scaffold dir is deleted — the end result is just
 
 Only `--deploy docker` is currently supported (the default). `--deploy cloud-run` is in development and may be available in a future release.
 
+### Running tests against a scaffolded project
+
+`gh optivem` also provides runner subcommands for working with the system tests in a scaffolded project. Inspired by `dotnet test` and `./gradlew test`, `test system` builds and starts the system implicitly — you don't need to run `build` or `run` first.
+
+```bash
+gh optivem test system                 # build (incremental) + start (if needed) + run tests
+gh optivem test system --no-build      # skip the explicit build step
+gh optivem test system --no-start      # skip the start step (system must already be up)
+gh optivem test system --restart       # force tear-down + restart before tests
+gh optivem test system --suite smoke   # run only the suite with this id
+
+gh optivem build system                # docker compose build for every entry in system.json
+gh optivem build system --rebuild      # force full rebuild (no layer cache reuse)
+
+gh optivem run system                  # docker compose up + wait for health
+gh optivem run system --restart        # force tear-down + restart
+
+gh optivem stop system                 # docker compose down + container cleanup
+gh optivem clean system                # docker compose down -v --rmi local (delete volumes + locally-built images)
+```
+
+`clean system` is the analog of `dotnet clean` / `./gradlew clean` — it deletes build outputs (containers, named volumes, locally-built images) without touching the dependency cache (registry-pulled images are kept). Chain it explicitly for a fresh start: `gh optivem clean system && gh optivem test system`.
+
 ## Troubleshooting
 
 ### Partial scaffold on failure

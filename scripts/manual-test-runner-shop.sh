@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# End-to-end test for the new runner subcommands against the real shop
-# repo's TypeScript / monolith layout. Runs the full latest + legacy suites
-# (not --sample, not a single --suite filter).
+# End-to-end test for the runner subcommands against the real shop repo's
+# TypeScript / monolith layout. Exercises the implicit-build/start path that
+# `gh optivem test system` provides (inspired by `dotnet test` / `gradle
+# test`) by starting from a stopped state.
 #
 # Steps:
 #   1. Rebuild the gh-optivem binary from this repo.
 #   2. From shop/system-test/typescript/:
-#        gh-optivem run system        --system monolith/system.json
-#        gh-optivem run system tests  --system monolith/system.json --tests tests-latest.json
-#        gh-optivem run system tests  --system monolith/system.json --tests tests-legacy.json
-#        gh-optivem stop system       --system monolith/system.json
+#        gh-optivem stop system  --system monolith/system.json   (best effort, cold start)
+#        gh-optivem test system  --system monolith/system.json --tests tests-latest.json   (cold — implicit build + start)
+#        gh-optivem test system  --system monolith/system.json --tests tests-legacy.json   (warm — fast re-run path)
+#        gh-optivem stop system  --system monolith/system.json
 #   3. Print a per-phase pass/fail summary.
 #
 # Requires: docker, node 22+, the optivem academy workspace cloned alongside
@@ -39,25 +40,18 @@ if [ ! -d "$TS_DIR" ]; then
 fi
 
 echo
-echo "=== Step 2/5: run system (Up) ==="
-( cd "$TS_DIR" && "$BIN" run system --system "$SYSTEM" )
-UP_RC=$?
-if [ $UP_RC -ne 0 ]; then
-  echo "FAILED: run system exited $UP_RC" >&2
-  echo "Attempting cleanup..."
-  ( cd "$TS_DIR" && "$BIN" stop system --system "$SYSTEM" ) || true
-  exit 1
-fi
+echo "=== Step 2/5: stop system (ensure cold start) ==="
+( cd "$TS_DIR" && "$BIN" stop system --system "$SYSTEM" ) || echo "warn: stop system failed (continuing — system may already be down)"
 
 echo
-echo "=== Step 3/5: run system tests — Latest (full suite) ==="
+echo "=== Step 3/5: test system — Latest (cold: implicit build + start + tests) ==="
 LATEST_RC=0
-( cd "$TS_DIR" && "$BIN" run system tests --system "$SYSTEM" --tests tests-latest.json ) || LATEST_RC=$?
+( cd "$TS_DIR" && "$BIN" test system --system "$SYSTEM" --tests tests-latest.json ) || LATEST_RC=$?
 
 echo
-echo "=== Step 4/5: run system tests — Legacy (full suite) ==="
+echo "=== Step 4/5: test system — Legacy (warm: system already up, fast re-run) ==="
 LEGACY_RC=0
-( cd "$TS_DIR" && "$BIN" run system tests --system "$SYSTEM" --tests tests-legacy.json ) || LEGACY_RC=$?
+( cd "$TS_DIR" && "$BIN" test system --system "$SYSTEM" --tests tests-legacy.json ) || LEGACY_RC=$?
 
 echo
 echo "=== Step 5/5: stop system (cleanup) ==="
