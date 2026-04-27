@@ -6,12 +6,6 @@
 
 Merged to `main` and released as gh-optivem `v1.3.10` on 2026-04-25; shop cutover commit `e900fbff` on `main`. All three per-lang prerelease pipelines green since 2026-04-25T21:01Z.
 
-## Items still open
-
-### Verification still owed
-
-1. ⏳ **Diff the suite results table** before/after on all 3 langs, to confirm no behavior drift.
-
 ## Known follow-ups (not addressed in PR 2)
 
 ### Port-clash with other scaffolded projects
