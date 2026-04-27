@@ -19,7 +19,7 @@ Verdict: mostly aligned. Output layer (colors, streams, levels) is solid. Flag l
 
 ### 1. `-v` means two different things
 
-[main.go:58](../main.go#L58) treats `-v` as `--version` before the subcommand, but [config.go:434](../internal/config/config.go#L434) registers `-v` as short for `--verbose`. So `gh optivem -v` prints version while `gh optivem init -v` enables verbose. Confusing and accidental.
+[main.go:58](../main.go#L58) treats `-v` as `--version` before the subcommand, but [config.go:501](../internal/config/config.go#L501) registers `-v` as short for `--verbose`. So `gh optivem -v` prints version while `gh optivem init -v` enables verbose. Confusing and accidental.
 
 - **How to apply:** pick one of these:
   - (a) Drop the `-v` alias for `--version`; keep `-v` for `--verbose` only. `--version` stays as the only way to print version.
@@ -36,10 +36,10 @@ Verdict: mostly aligned. Output layer (colors, streams, levels) is solid. Flag l
 
 ### 3. Stdlib `flag` is a ceiling
 
-Hand-rolled subcommand dispatch, short/long pairs, and usage. Fine for one subcommand; painful once there's a second.
+Hand-rolled subcommand dispatch, short/long pairs, and usage. Fine for one subcommand; painful once there's a second — and there are now six (`init`, `build`, `run`, `test`, `stop`, `clean` at [main.go:71-90](../main.go#L71-L90)), each routed through its own `dispatchX` function.
 
 - **How to apply:** migrate to [spf13/cobra](https://github.com/spf13/cobra) (what `gh` itself uses). Buys: nested subcommands, `-h`/`--help` on every level, auto-generated `completion bash|zsh|fish|pwsh`, consistent help output, env-var binding via viper, man-page generation.
-- **When:** defer until a second subcommand is actually needed. Don't do it speculatively.
+- **When:** the deferral trigger has fired — six subcommands now duplicate dispatch boilerplate. Migration is now the right next move.
 
 ### 4. Flag-name inconsistency
 
@@ -56,13 +56,13 @@ Mixed negation and verb choices on booleans:
 
 ### 5. No `--yes`/`--force` for unattended runs
 
-[confirmRepoExists](../internal/config/config.go#L685) prompts `[y/N]` and aborts on non-TTY. Running against a pre-existing repo in CI is impossible without stdin tricks.
+[confirmRepoExists](../internal/config/config.go#L751) prompts `[y/N]` and aborts on non-TTY. Running against a pre-existing repo in CI is impossible without stdin tricks.
 
 - **How to apply:** add `--yes`/`-y` that skips all interactive confirms (including the `--report-bug` confirmation). Document that `--yes` on CI is the expected pattern.
 
 ### 6. Auto-upgrade mid-run is unusual (design call)
 
-[checkForUpdate](../main.go#L501-L548) silently upgrades and re-execs with the user's original args. Clever but surprising; most CLIs (including `gh` itself for extensions) notify and let the user decide.
+[checkForUpdate](../main.go#L523-L570) silently upgrades and re-execs with the user's original args. Clever but surprising; most CLIs (including `gh` itself for extensions) notify and let the user decide.
 
 - **How to apply:** flip the default to "notify only". Keep auto-upgrade behind an opt-in flag (e.g. `--auto-upgrade`) instead of opt-out (`--no-auto-upgrade`).
 - **Trade-off:** if the UX goal is "always run the latest so bug reports are actionable", keep the current behavior — but at least print a one-line notice before the upgrade starts ("Upgrading to X.Y.Z... re-run with --no-auto-upgrade to skip").
@@ -71,9 +71,9 @@ Mixed negation and verb choices on booleans:
 
 ### 7. `printUsage` is thin
 
-[main.go:83-89](../main.go#L83-L89) lists `init` with no example and no hint that `init --help` shows flags.
+[main.go:93-104](../main.go#L93-L104) now lists six commands (`init`, `build system`, `run system`, `test system`, `stop system`, `clean system`) with no example for any of them and no hint that `<command> --help` shows flags.
 
-- **How to apply:** add one concrete example and a "Run `gh optivem <command> --help` for command-specific flags." footer.
+- **How to apply:** add one concrete example per command (or at least for `init`) and a "Run `gh optivem <command> --help` for command-specific flags." footer.
 
 ### 8. No shell completion
 
@@ -98,6 +98,6 @@ Five required flags is a lot. `gh repo create <name>` takes name positionally �
 1. Item 1 (`-v` ambiguity) + item 2 (top-level `--help`). Tiny, user-visible, no breaking change.
 2. Item 5 (`--yes`). Small, unblocks CI use.
 3. Item 6 (auto-upgrade default). One-line change + a notice; biggest surprise to remove.
-4. Item 4 (flag-name pass). Do as one batch with deprecation warnings; ship in a dedicated release.
-5. Item 3 (Cobra migration) only when a second subcommand is actually needed — at that point items 7, 8, 10 come along for free.
+4. Item 3 (Cobra migration). The deferral trigger has fired — six subcommands now duplicate dispatch logic. Items 7, 8, and 10 fall out of this work, so do them in the same migration rather than separately.
+5. Item 4 (flag-name pass). Do as one batch with deprecation warnings; ship in a dedicated release. Easier post-Cobra (uniform flag definitions).
 6. Item 9 (`--json`) only if a real consumer needs it.
