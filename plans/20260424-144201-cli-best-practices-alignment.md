@@ -1,5 +1,7 @@
 # CLI best-practices alignment for `gh optivem init`
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-04-27T06:12:50Z`
+
 Review of `main.go`, `internal/config/config.go`, and `internal/log/log.go` against standard CLI conventions (clig.dev, POSIX/GNU flag norms, typical `gh` extension shape).
 
 Verdict: mostly aligned. Output layer (colors, streams, levels) is solid. Flag layer has real rough edges that will surface as the command surface grows.

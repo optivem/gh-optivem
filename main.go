@@ -55,7 +55,7 @@ func main() {
 	originalArgs = append([]string{}, os.Args...)
 
 	// Handle --version before anything else
-	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+	if len(os.Args) > 1 && os.Args[1] == "--version" {
 		fmt.Println(version.Full())
 		os.Exit(0)
 	}
