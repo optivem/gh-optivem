@@ -61,7 +61,7 @@ type Config struct {
 	Verbose      bool   // enable debug output
 	Quiet        bool   // suppress info-level output
 	LogFile      string // optional path to mirror plain-text log output
-	NoAutoUpgrade bool  // skip auto-upgrade when a newer release is available
+	AutoUpgrade  bool   // opt in to auto-upgrade-and-re-exec when a newer release is available (default: notify only)
 	AssumeYes    bool   // skip all interactive confirmations (existing-repo, --report-bug)
 	WorkDir    string
 	ShopPath string
@@ -471,7 +471,7 @@ type rawFlags struct {
 	excludeLegacy, skipLocalTests                                *bool
 	bugReport, showVersion                                       *bool
 	noCommitOnFailure                                            *bool
-	verbose, verboseShort, quiet, quietShort, noAutoUpgrade      *bool
+	verbose, verboseShort, quiet, quietShort, autoUpgrade        *bool
 	assumeYes, assumeYesShort                                    *bool
 	logFile                                                      *string
 }
@@ -504,7 +504,7 @@ func registerFlags() rawFlags {
 		quiet:         flag.Bool("quiet", false, "Suppress info-level output (warnings and errors still shown)"),
 		quietShort:    flag.Bool("q", false, "Short for --quiet"),
 		logFile:       flag.String("log-file", "", "Also write plain-text log output to this file (no ANSI colors, all levels)"),
-		noAutoUpgrade: flag.Bool("no-auto-upgrade", false, "Skip auto-upgrade when a newer release is available (useful for CI/debugging)"),
+		autoUpgrade:   flag.Bool("auto-upgrade", false, "On outdated version, auto-upgrade in-place and re-exec with the original args. Default is notify-only — print 'Update available' and continue."),
 		assumeYes:      flag.Bool("yes", false, "Skip all interactive confirmations (existing-repo prompt, --report-bug confirmation). Expected pattern for CI/unattended runs."),
 		assumeYesShort: flag.Bool("y", false, "Short for --yes"),
 	}
@@ -913,7 +913,7 @@ func ParseAndValidate() *Config {
 		Verbose:      verbose,
 		Quiet:        quiet,
 		LogFile:      logFilePath,
-		NoAutoUpgrade: *f.noAutoUpgrade,
+		AutoUpgrade:  *f.autoUpgrade,
 		AssumeYes:    assumeYes,
 		WorkDir:    wd,
 		// ShopPath, RepoDir, and the multirepo-component dirs are pre-computed
