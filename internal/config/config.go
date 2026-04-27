@@ -59,7 +59,6 @@ type Config struct {
 	NoLocalTests   bool   // skip the "Verify local testing" step (runner package over system-test/)
 	KeepLocal    bool   // keep the local scaffolded clone dir after a successful run (default: delete it)
 	BugReport    bool   // opt in to auto-creating a GitHub issue on failure (default: off)
-	NoCommitOnFailure bool // skip pushing partial scaffold to a debug/<timestamp> branch on failure (by default we push it for triage)
 	Verbose      bool   // enable debug output
 	Quiet        bool   // suppress info-level output
 	LogFile      string // optional path to mirror plain-text log output
@@ -490,7 +489,6 @@ type RawFlags struct {
 	NoLegacy          bool
 	NoLocalTests      bool
 	BugReport         bool
-	NoCommitOnFailure bool
 	Verbose           bool
 	Quiet             bool
 	AutoUpgrade       bool
@@ -517,8 +515,7 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs.StringVar(&f.VerifyLevel, "verify-level", "release", "Verification level: none, local, commit, acceptance, qa, release")
 	fs.BoolVar(&f.NoLegacy, "no-legacy", false, "Exclude legacy from local tests and acceptance stage")
 	fs.BoolVar(&f.NoLocalTests, "no-local-tests", false, "Skip the 'Verify local testing' step (runner package over system-test/)")
-	fs.BoolVar(&f.BugReport, "report-bug", false, "On failure, auto-create a GitHub issue in optivem/gh-optivem with scaffold config and debug-branch URL. Off by default — file one yourself if the failure is worth reporting.")
-	fs.BoolVar(&f.NoCommitOnFailure, "no-commit-on-failure", false, "Skip pushing the partial scaffold to a debug/<timestamp> branch on failure. By default the partial scaffold is pushed so it can be inspected and linked from the auto-filed bug report.")
+	fs.BoolVar(&f.BugReport, "report-bug", false, "On failure, auto-create a GitHub issue in optivem/gh-optivem with scaffold config. Off by default — file one yourself if the failure is worth reporting.")
 	fs.StringVar(&f.Deploy, "deploy", "docker", "Deployment target: docker or cloud-run")
 	fs.StringVar(&f.WorkDir, "workdir", "", "Working directory for cloning (default: temp dir)")
 	fs.StringVar(&f.ShopRef, "shop-ref", "", "Pin optivem/shop to this ref (tag, SHA, or branch — e.g. meta-v1.2.3, main, a1b2c3d). Overrides build-time pin. Default: latest meta-v* release.")
@@ -934,7 +931,6 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 		NoLocalTests:   f.NoLocalTests,
 		KeepLocal:    f.KeepLocal,
 		BugReport:    f.BugReport,
-		NoCommitOnFailure: f.NoCommitOnFailure,
 		Verbose:      f.Verbose,
 		Quiet:        f.Quiet,
 		LogFile:      logFilePath,
