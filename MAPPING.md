@@ -230,16 +230,16 @@ Note: The root repo does not get a SonarCloud project — only code components (
 
 The scaffolder copies docs from the shop into the root repo:
 
-Source: `shop/docs/{arch}/` + `shop/docs/shared/` → `{repo}/docs/`
+Source: `shop/docs/design/{arch}/` + `shop/docs/design/shared/` → `{repo}/docs/`
 
 Scaffolded docs structure (all combinations):
 
 ```
 {repo}/
   docs/
-    use-cases.md              # from: docs/shared/use-cases.md
-    use-case-narrative.md     # from: docs/shared/use-case-narrative.md
-    project-registration.md   # from: docs/shared/project-registration.md
-    architecture.md           # from: docs/{arch}/architecture.md
+    use-cases.md              # from: docs/design/shared/use-cases.md
+    use-case-narrative.md     # from: docs/design/shared/use-case-narrative.md
+    project-registration.md   # from: docs/design/shared/project-registration.md
+    architecture.md           # from: docs/design/{arch}/architecture.md
 ```
 
