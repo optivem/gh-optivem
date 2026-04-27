@@ -268,10 +268,11 @@ var verifyLevelOrder = map[string]int{
 }
 
 // buildVerifySteps assembles the verify pipeline in a fixed order that mirrors
-// the CI pipeline stages: local compile → local tests → commit → acceptance
-// (latest + legacy in parallel) → QA (stage + signoff) → production. Each step
-// is gated by --verify-level; local tests can additionally be skipped with
-// --no-local-tests, and legacy is dropped everywhere via --no-legacy.
+// the CI pipeline stages: local compile → local tests → local sonar → commit →
+// acceptance (latest + legacy in parallel) → QA (stage + signoff) → production.
+// Each step is gated by --verify-level; local tests and local sonar can
+// additionally be skipped with --no-local-tests / --no-local-sonar, and legacy
+// is dropped everywhere via --no-legacy.
 func buildVerifySteps(cfg *config.Config, gh *shell.GitHub) []stepDef {
 	level := verifyLevelOrder[cfg.VerifyLevel]
 	if level == 0 {
@@ -293,28 +294,36 @@ func buildVerifySteps(cfg *config.Config, gh *shell.GitHub) []stepDef {
 		)
 	}
 
-	// Step 3: Commit stage CI.
+	// Step 3: Local SonarCloud scan — per-component Run-Sonar.ps1 against the
+	// SonarCloud project created in the apply-template phase.
+	if !cfg.NoLocalSonar {
+		s = append(s,
+			stepDef{name: "Verify local SonarCloud scan", phase: phaseVerifyLocal, fn: func() { steps.VerifyLocalSonar(cfg) }},
+		)
+	}
+
+	// Step 4: Commit stage CI.
 	if level >= verifyLevelOrder["commit"] {
 		s = append(s,
 			stepDef{name: "Verify commit stage", phase: phaseVerifyCommit, fn: func() { steps.VerifyCommitStage(cfg, gh) }},
 		)
 	}
 
-	// Step 4: Acceptance stage CI (latest + legacy parallel, legacy optional).
+	// Step 5: Acceptance stage CI (latest + legacy parallel, legacy optional).
 	if level >= verifyLevelOrder["acceptance"] {
 		s = append(s,
 			stepDef{name: "Verify acceptance stage", phase: phaseVerifyAcceptance, fn: func() { steps.VerifyAcceptanceStages(cfg, gh) }},
 		)
 	}
 
-	// Step 5: QA stage CI (stage + signoff).
+	// Step 6: QA stage CI (stage + signoff).
 	if level >= verifyLevelOrder["qa"] {
 		s = append(s,
 			stepDef{name: "Verify QA stage", phase: phaseVerifyQA, fn: func() { steps.VerifyQA(cfg, gh) }},
 		)
 	}
 
-	// Step 6: Production stage CI.
+	// Step 7: Production stage CI.
 	if level >= verifyLevelOrder["release"] {
 		s = append(s,
 			stepDef{name: "Verify production stage", phase: phaseVerifyProduction, fn: func() { steps.VerifyProdStage(cfg, gh) }},
@@ -623,6 +632,7 @@ func printBanner(cfg *config.Config) {
 	log.Infof("--verify-level:      %s%s", cfg.Raw.VerifyLevel, tag("verify-level"))
 	log.Infof("--no-legacy:         %v%s", cfg.NoLegacy, tag("no-legacy"))
 	log.Infof("--no-local-tests:    %v%s", cfg.NoLocalTests, tag("no-local-tests"))
+	log.Infof("--no-local-sonar:    %v%s", cfg.NoLocalSonar, tag("no-local-sonar"))
 	log.Infof("--shop-ref:        %s%s", cfg.Raw.ShopRef, tag("shop-ref"))
 	log.Infof("--dry-run:         %v%s", cfg.DryRun, tag("dry-run"))
 	log.Infof("--keep-local:      %v%s", cfg.Raw.KeepLocal, tag("keep-local"))
