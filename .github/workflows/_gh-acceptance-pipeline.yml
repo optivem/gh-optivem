@@ -89,7 +89,7 @@ jobs:
       verify-level: ${{ steps.mode.outputs.verify-level }}
       head-mode: ${{ steps.mode.outputs.head-mode }}
       release-mode: ${{ steps.mode.outputs.release-mode }}
-      shop-tag: ${{ steps.mode.outputs.head-mode == 'true' && '' || steps.shop-tag.outputs.tag }}
+      shop-tag: ${{ steps.mode.outputs.head-mode == 'true' && 'main' || steps.shop-tag.outputs.tag }}
       shop-sha: ${{ steps.mode.outputs.head-mode == 'true' && '' || ((steps.mode.outputs.verify-level == 'release' || inputs.shop-tag != '') && steps.shop-sha.outputs.sha || '') }}
       should-run: ${{ steps.prior-status.outputs.exists != 'true' }}
       retain-repos: ${{ inputs.retain-repos && 'true' || 'false' }}

@@ -25,7 +25,7 @@ inputs:
     required: false
     default: 'false'
   shop-tag:
-    description: 'optivem/shop meta-v* release tag to pin during the test. Empty = HEAD.'
+    description: 'optivem/shop ref to pin during the test (meta-v* tag, SHA, or branch — e.g. "main" for HEAD). Empty = CLI resolves to the latest meta-v* release.'
     required: false
     default: ''
   retain-repos:
