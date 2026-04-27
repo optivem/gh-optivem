@@ -162,7 +162,7 @@ jobs:
             -Dsonar.projectName=shop-system \
             -Dsonar.organization=optivem
 `,
-		"system-test/docker-compose.pipeline.monolith.real.yml": `services:
+		"docker/docker-compose.pipeline.monolith.real.yml": `services:
   system:
     image: ghcr.io/optivem/shop/system:latest
 `,

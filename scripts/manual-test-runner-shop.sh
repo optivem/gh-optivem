@@ -6,11 +6,11 @@
 #
 # Steps:
 #   1. Rebuild the gh-optivem binary from this repo.
-#   2. From shop/system-test/typescript/:
-#        gh-optivem stop system  --system monolith/system.json   (best effort, cold start)
-#        gh-optivem test system  --system monolith/system.json --tests tests-latest.json   (cold — implicit build + start)
-#        gh-optivem test system  --system monolith/system.json --tests tests-legacy.json   (warm — fast re-run path)
-#        gh-optivem stop system  --system monolith/system.json
+#   2. From shop/ root:
+#        gh-optivem stop system  --system docker/typescript/monolith/system.json   (best effort, cold start)
+#        gh-optivem test system  --system docker/typescript/monolith/system.json --tests system-test/typescript/tests-latest.json   (cold — implicit build + start)
+#        gh-optivem test system  --system docker/typescript/monolith/system.json --tests system-test/typescript/tests-legacy.json   (warm — fast re-run path)
+#        gh-optivem stop system  --system docker/typescript/monolith/system.json
 #   3. Print a per-phase pass/fail summary.
 #
 # Requires: docker, node 22+, the optivem academy workspace cloned alongside
@@ -23,10 +23,11 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORKSPACE_ROOT="$(cd "$REPO_ROOT/.." && pwd)"
 SHOP_DIR="$WORKSPACE_ROOT/shop"
-TS_DIR="$SHOP_DIR/system-test/typescript"
 BIN="$REPO_ROOT/gh-optivem.exe"
 
-SYSTEM="monolith/system.json"
+SYSTEM="docker/typescript/monolith/system.json"
+TESTS_LATEST="system-test/typescript/tests-latest.json"
+TESTS_LEGACY="system-test/typescript/tests-legacy.json"
 
 echo "=== Step 1/5: Build gh-optivem ==="
 ( cd "$REPO_ROOT" && go build -o gh-optivem.exe . ) || {
@@ -34,28 +35,28 @@ echo "=== Step 1/5: Build gh-optivem ==="
   exit 1
 }
 
-if [ ! -d "$TS_DIR" ]; then
-  echo "FAILED: shop typescript dir not found at $TS_DIR" >&2
+if [ ! -f "$SHOP_DIR/$SYSTEM" ]; then
+  echo "FAILED: shop system.json not found at $SHOP_DIR/$SYSTEM" >&2
   exit 1
 fi
 
 echo
 echo "=== Step 2/5: stop system (ensure cold start) ==="
-( cd "$TS_DIR" && "$BIN" stop system --system "$SYSTEM" ) || echo "warn: stop system failed (continuing — system may already be down)"
+( cd "$SHOP_DIR" && "$BIN" stop system --system "$SYSTEM" ) || echo "warn: stop system failed (continuing — system may already be down)"
 
 echo
 echo "=== Step 3/5: test system — Latest (cold: implicit build + start + tests) ==="
 LATEST_RC=0
-( cd "$TS_DIR" && "$BIN" test system --system "$SYSTEM" --tests tests-latest.json ) || LATEST_RC=$?
+( cd "$SHOP_DIR" && "$BIN" test system --system "$SYSTEM" --tests "$TESTS_LATEST" ) || LATEST_RC=$?
 
 echo
 echo "=== Step 4/5: test system — Legacy (warm: system already up, fast re-run) ==="
 LEGACY_RC=0
-( cd "$TS_DIR" && "$BIN" test system --system "$SYSTEM" --tests tests-legacy.json ) || LEGACY_RC=$?
+( cd "$SHOP_DIR" && "$BIN" test system --system "$SYSTEM" --tests "$TESTS_LEGACY" ) || LEGACY_RC=$?
 
 echo
 echo "=== Step 5/5: stop system (cleanup) ==="
-( cd "$TS_DIR" && "$BIN" stop system --system "$SYSTEM" ) || echo "warn: stop system failed (continuing)"
+( cd "$SHOP_DIR" && "$BIN" stop system --system "$SYSTEM" ) || echo "warn: stop system failed (continuing)"
 
 echo
 echo "=== Summary ==="

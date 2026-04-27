@@ -1,4 +1,4 @@
-// Package templates provides template helpers: copy workflows, docker-compose selection, fixups.
+// Package templates provides template helpers: copy workflows, fixups.
 package templates
 
 import (
@@ -59,48 +59,6 @@ func CopyWorkflows(mappings map[string]string, shop, repoDir string) {
 		}
 		files.CopyFile(src, filepath.Join(wfDst, dstName))
 	}
-}
-
-// SelectDockerCompose flattens shop's arch-subdir layout into a single-arch
-// scaffolded layout. Shop organizes system-test content as:
-//
-//	system-test/<lang>/
-//	├── tests-latest.json               (arch-agnostic, kept)
-//	├── tests-legacy.json               (arch-agnostic, kept)
-//	├── README.md                       (arch-agnostic, kept)
-//	├── monolith/                       ← compose files + system.json + per-arch README
-//	└── multitier/                      ← same
-//
-// A scaffolded repo locks in one arch, so this function:
-//  1. Removes the non-selected arch's entire subdirectory.
-//  2. Drops the selected arch's README.md (its arch-switching examples don't fit a
-//     scaffolded repo — the top-level arch-agnostic README is kept instead and
-//     fixed up later).
-//  3. Moves the selected arch's remaining files (compose files + system.json) up
-//     into system-test/.
-//  4. Removes the now-empty selected-arch subdir.
-//
-// variant: "single" for monolith, "multi" for multitier.
-func SelectDockerCompose(testDst, variant string) {
-	keep, remove := "monolith", "multitier"
-	if variant != "single" {
-		keep, remove = "multitier", "monolith"
-	}
-	os.RemoveAll(filepath.Join(testDst, remove))
-
-	keepDir := filepath.Join(testDst, keep)
-	os.Remove(filepath.Join(keepDir, "README.md"))
-
-	entries, err := os.ReadDir(keepDir)
-	if err != nil {
-		return
-	}
-	for _, e := range entries {
-		src := filepath.Join(keepDir, e.Name())
-		dst := filepath.Join(testDst, e.Name())
-		os.Rename(src, dst)
-	}
-	os.Remove(keepDir)
 }
 
 // CopyVersion copies the VERSION file from shop to repo.
