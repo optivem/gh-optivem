@@ -327,8 +327,13 @@ jobs:
       #   (e.g. recovering from a stuck release) or when smoke-mode+acceptance-mode=none
       #   is used to go straight to Create Prerelease.
       # single = 1 combo: ubuntu-latest + monolith/monorepo/TS. Cheapest smoke.
-      # full = 4 combos: 2 OS × 2 scenarios (java/monolith/monorepo +
-      #   dotnet/multitier/multirepo). Current default.
+      # full = 4 combos: every arch × repo-strategy on ubuntu-latest, with the
+      #   system-lang rotated (java/dotnet/typescript) so each scaffolding lang
+      #   is exercised at least once. test-lang is fixed to typescript (cheapest
+      #   test stack). Windows binary-level regressions are caught by
+      #   gh-post-release-stage.yml's cross-OS install matrix; Windows hosted
+      #   runners have no Docker so they cannot exercise the docker-compose-based
+      #   local-test path anyway.
       - id: smoke-matrix
         shell: bash
         env:
@@ -344,9 +349,9 @@ jobs:
             *)
               MATRIX='{"include":[
                 {"os":"ubuntu-latest","scenario":{"arch":"monolith","repo-strategy":"monorepo","lang":"java"}},
-                {"os":"ubuntu-latest","scenario":{"arch":"multitier","repo-strategy":"multirepo","lang":"dotnet"}},
-                {"os":"windows-latest","scenario":{"arch":"monolith","repo-strategy":"monorepo","lang":"java"}},
-                {"os":"windows-latest","scenario":{"arch":"multitier","repo-strategy":"multirepo","lang":"dotnet"}}
+                {"os":"ubuntu-latest","scenario":{"arch":"monolith","repo-strategy":"multirepo","lang":"dotnet"}},
+                {"os":"ubuntu-latest","scenario":{"arch":"multitier","repo-strategy":"monorepo","lang":"typescript"}},
+                {"os":"ubuntu-latest","scenario":{"arch":"multitier","repo-strategy":"multirepo","lang":"java"}}
               ]}'
               ;;
           esac
@@ -355,10 +360,10 @@ jobs:
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           echo "| smoke-mode | $MODE ($COUNT combos) |" >> "$GITHUB_STEP_SUMMARY"
 
-  # Cross-OS smoke check — verifies the CLI works on both Linux and Windows
-  # before we burn the expensive matrix. TypeScript is the test-lang in both
-  # scenarios (cheapest/fastest test stack); the two scenarios cover a monolith
-  # and a multitier with different system-langs so a language-specific Windows
+  # Smoke check — verifies the CLI scaffolds + tests cleanly before we burn
+  # the expensive acceptance matrix. TypeScript is the test-lang in every
+  # combo (cheapest/fastest test stack); the four combos cover every
+  # arch × repo-strategy with the system-lang rotated so a language-specific
   # regression surfaces early.
   smoke:
     name: Smoke (${{ matrix.os }}, ${{ matrix.scenario.arch }}, ${{ matrix.scenario.repo-strategy }}, ${{ matrix.scenario.lang }})
@@ -389,8 +394,8 @@ jobs:
       WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
       REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
     strategy:
-      # All smoke combos run to completion even if one fails, so a Windows-only
-      # failure doesn't mask an unrelated Linux regression (or vice versa).
+      # All smoke combos run to completion even if one fails, so a single combo's
+      # failure doesn't mask regressions in the others.
       fail-fast: false
       matrix: ${{ fromJSON(needs.check.outputs.smoke-matrix) }}
     steps:
@@ -409,11 +414,6 @@ jobs:
           shop-tag: ${{ needs.check.outputs.shop-tag }}
           retain-repos: ${{ needs.check.outputs.retain-repos }}
           jitter-max-seconds: '30'
-          # Windows hosted runners no longer ship Docker Desktop, so the
-          # scaffolded project's docker-compose-based local tests cannot run
-          # there. Windows smoke covers CLI scaffolding only; Linux smoke
-          # covers the full local-test path.
-          no-local-tests: ${{ matrix.os == 'windows-latest' && 'true' || 'false' }}
 
   run:
     name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})
