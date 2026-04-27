@@ -55,11 +55,19 @@ type SuiteResult struct {
 //     (Up itself short-circuits when IsAnyURLUp is true, so re-runs are
 //     fast). If opts.NoStart is true, falls back to today's behavior:
 //     probe each system; error out if any aren't up.
-//  3. Runs each setupCommand in cwd. A failure aborts before any suite runs.
+//  3. Runs each setupCommand in testsCwd. A failure aborts before any suite runs.
 //  4. Filters suites per opts.Suite. Errors out with the available ids if
 //     opts.Suite doesn't match any suite.
 //  5. Runs each remaining suite. After the last suite (or first failure),
 //     prints a summary table.
+//
+// Two cwds because the two configs can live in different directories:
+// systemCwd is system.json's dir (compose-file paths resolve against it);
+// testsCwd is tests.json's dir (setupCommands and suite.path resolve against
+// it). When both configs sit in the same directory — e.g. a scaffolded
+// project — the two are equal and behavior is unchanged. When they differ —
+// e.g. shop's `system-test/<lang>/<arch>/system.json` plus
+// `system-test/<lang>/tests-*.json` layout — each base resolves correctly.
 //
 // Inspired by `dotnet test` and `./gradlew test`, which build the test code
 // implicitly before running. Compose orchestration is the gh-optivem
@@ -67,14 +75,14 @@ type SuiteResult struct {
 //
 // Returns the first failure or nil. The summary table is printed regardless,
 // so the user always sees per-suite status.
-func RunTests(sys *SystemConfig, tests *TestsConfig, cwd string, opts TestOptions) error {
-	if err := prepareSystem(sys, cwd, opts); err != nil {
+func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string, opts TestOptions) error {
+	if err := prepareSystem(sys, systemCwd, opts); err != nil {
 		return err
 	}
 
 	for _, sc := range tests.SetupCommands {
 		fmt.Fprintf(os.Stdout, "\n--- Setup: %s ---\n", sc.Name)
-		if err := runShell(sc.Command, cwd, sc.Env); err != nil {
+		if err := runShell(sc.Command, testsCwd, sc.Env); err != nil {
 			return fmt.Errorf("setup %q: %w", sc.Name, err)
 		}
 	}
@@ -91,7 +99,7 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, cwd string, opts TestOption
 
 	for _, suite := range suites {
 		start := time.Now()
-		err := runOneSuite(suite, tests.TestFilter, cwd, opts)
+		err := runOneSuite(suite, tests.TestFilter, testsCwd, opts)
 		dur := time.Since(start)
 		status := "PASSED"
 		if err != nil {

@@ -296,7 +296,7 @@ func runLocalTestsViaRunner(label, testDir, testsFile string) {
 	if err := runner.Up(sys, testDir, runner.SystemOptions{}); err != nil {
 		fail(err)
 	}
-	if err := runner.RunTests(sys, tests, testDir, runner.TestOptions{}); err != nil {
+	if err := runner.RunTests(sys, tests, testDir, testDir, runner.TestOptions{}); err != nil {
 		fail(err)
 	}
 	log.Successf(msgStagePassed, label)

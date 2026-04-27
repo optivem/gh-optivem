@@ -237,7 +237,7 @@ func newTestSystemCmd() *cobra.Command {
 				NoStart: noStart,
 				Restart: restart,
 			}
-			exitOnError(runner.RunTests(sys, tests, cwdForPath(testsPath), opts))
+			exitOnError(runner.RunTests(sys, tests, cwdForPath(systemPath), cwdForPath(testsPath), opts))
 		},
 	}
 	cmd.Flags().StringVar(&systemPath, "system", defaultSystemConfig, flagSystemUsage)
