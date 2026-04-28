@@ -452,9 +452,7 @@ func confirmBugReport(cfg *config.Config) bool {
 	fmt.Println()
 	fmt.Printf("  - Issue created at: https://github.com/optivem/gh-optivem/issues\n")
 	fmt.Printf("  - Linking to your repo: https://github.com/%s\n", cfg.FullRepo)
-	if cfg.LogFile != "" {
-		fmt.Printf("  - Last %d lines of your log: %s\n", bugReportLogTailLines, cfg.LogFile)
-	}
+	fmt.Printf("  - Last %d lines of your log: %s\n", bugReportLogTailLines, cfg.LogFile)
 	fmt.Println()
 
 	if cfg.AssumeYes {
@@ -501,11 +499,7 @@ func offerBugReport(cfg *config.Config) bool {
 	fmt.Println()
 	fmt.Printf("  - Issue created at: https://github.com/optivem/gh-optivem/issues\n")
 	fmt.Printf("  - Linking to your repo: https://github.com/%s\n", cfg.FullRepo)
-	if cfg.LogFile != "" {
-		fmt.Printf("  - Last %d lines of your log: %s\n", bugReportLogTailLines, cfg.LogFile)
-	} else {
-		fmt.Println("  - (no log file — pass --log-file or --report-bug to attach a log tail)")
-	}
+	fmt.Printf("  - Last %d lines of your log: %s\n", bugReportLogTailLines, cfg.LogFile)
 	fmt.Println()
 	fmt.Print("  File a bug report? [y/N]: ")
 

@@ -849,16 +849,13 @@ func pluralY(n int) string {
 	return "ies"
 }
 
-// resolveLogFilePath returns the log-file destination for this run. When
-// --report-bug is set and --log-file isn't, the run needs a log file anyway
-// (the confirmation prompt shows the path, and the log tail is attached to
-// the filed issue), so route to a predictable temp path.
-func resolveLogFilePath(explicit string, bugReport bool) string {
+// resolveLogFilePath returns the log-file destination for this run. Always
+// writes a log to a predictable temp path when --log-file isn't given, so the
+// on-failure bug-report prompt can always offer to attach a log tail without
+// requiring upfront opt-in via --report-bug.
+func resolveLogFilePath(explicit string) string {
 	if explicit != "" {
 		return explicit
-	}
-	if !bugReport {
-		return ""
 	}
 	return filepath.Join(os.TempDir(),
 		fmt.Sprintf("gh-optivem-%s.log", time.Now().UTC().Format("20060102-150405")))
@@ -927,7 +924,7 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 	wd := resolveWorkDir(f.WorkDir)
 	clones := resolveCloneDirs(wd, f.RepoStrategy, f.Arch)
 
-	logFilePath := resolveLogFilePath(f.LogFile, f.BugReport)
+	logFilePath := resolveLogFilePath(f.LogFile)
 
 	return &Config{
 		Owner:      f.Owner,
