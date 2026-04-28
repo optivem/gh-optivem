@@ -106,6 +106,7 @@ jobs:
             SONAR_TOKEN
             GHCR_TOKEN
             WORKFLOW_TOKEN
+            VERIFY_TOKEN
         env:
           TEST_OWNER: ${{ vars.TEST_OWNER }}
           DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
@@ -113,6 +114,31 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+          VERIFY_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+
+      # Fail fast if VERIFY_TOKEN is already drained — every matrix combo uses it
+      # to scaffold a test repo, set secrets/variables, and watch workflows. With
+      # remaining < 1000 a condensed (12-combo) matrix would partly fail mid-run
+      # and burn runner minutes for nothing. Reset is hourly per-token, so the
+      # right action is to wait for the displayed reset time and re-dispatch.
+      - name: Check VERIFY_TOKEN rate limit
+        env:
+          GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          core=$(gh api rate_limit --jq .resources.core)
+          remaining=$(jq -r .remaining <<< "$core")
+          reset=$(jq -r .reset <<< "$core")
+          reset_iso=$(date -u -d "@$reset" +'%Y-%m-%dT%H:%M:%SZ')
+          echo "VERIFY_TOKEN core: remaining=$remaining, resets at $reset_iso"
+          {
+            echo "| VERIFY_TOKEN remaining | $remaining (resets $reset_iso) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$remaining" -lt 1000 ]; then
+            echo "::error::VERIFY_TOKEN rate limit too low ($remaining < 1000) — wait for reset at $reset_iso and re-run."
+            exit 1
+          fi
 
       # Single source of truth for the three mode signals downstream steps/jobs key off:
       #   verify-level  — pass-through from caller input
