@@ -2,10 +2,13 @@ package steps
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/optivem/gh-optivem/internal/config"
@@ -333,16 +336,53 @@ func setupMultirepoSymlinks(cfg *config.Config) {
 		if _, err := os.Stat(linkPath); err == nil {
 			continue // already exists (e.g. monorepo layout)
 		}
-		if err := os.Symlink(target, linkPath); err != nil {
-			hint := "Pass --no-local-tests to skip local verification."
-			if runtime.GOOS == "windows" {
-				hint = "On Windows, symlink creation requires Developer Mode (Settings -> System -> For developers) " +
-					"or running as administrator. Enable Developer Mode and re-run, or pass --no-local-tests to skip local verification."
-			}
-			log.Fatalf("Cannot create symlink %s -> %s: %v\n%s", linkPath, target, err, hint)
+		if err := createDirLink(linkPath, target); err != nil {
+			log.Fatalf("Cannot link %s -> %s: %v\nPass --no-local-tests to skip local verification.",
+				linkPath, target, err)
 		}
-		log.Successf("Symlinked %s -> %s", linkPath, target)
 	}
+}
+
+// createDirLink links linkPath to the target directory. It tries a real
+// symlink first (works on Linux/macOS, and on Windows when SeCreateSymbolicLinkPrivilege
+// is held — i.e. admin or Developer Mode). On Windows, when the symlink is
+// rejected for privilege reasons, falls back to a directory junction
+// (mklink /J), which is the standard NTFS reparse point used by pnpm/Yarn/WSL
+// for the same problem. Junctions don't require any privilege and are resolved
+// transparently by Docker, Go, and modern Windows tooling.
+func createDirLink(linkPath, target string) error {
+	err := os.Symlink(target, linkPath)
+	if err == nil {
+		log.Successf("Symlinked %s -> %s", linkPath, target)
+		return nil
+	}
+	if runtime.GOOS != "windows" || !isWindowsPrivilegeError(err) {
+		return err
+	}
+	if jerr := mklinkJ(linkPath, target); jerr != nil {
+		return fmt.Errorf("symlink failed for privilege reasons (Developer Mode off?); junction fallback also failed: %w", jerr)
+	}
+	log.Successf("Junctioned %s -> %s (symlink privilege not held; junction fallback)", linkPath, target)
+	return nil
+}
+
+// mklinkJ creates a Windows directory junction at link pointing to target,
+// using the cmd builtin "mklink /J". Junctions are NTFS reparse points that
+// require no special privilege (unlike symlinks). Same-volume only.
+func mklinkJ(link, target string) error {
+	cmd := exec.Command("cmd", "/c", "mklink", "/J", link, target)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("mklink /J: %v: %s", err, out)
+	}
+	return nil
+}
+
+// isWindowsPrivilegeError reports whether err is ERROR_PRIVILEGE_NOT_HELD (1314),
+// the Windows error returned by os.Symlink when the user lacks
+// SeCreateSymbolicLinkPrivilege (not admin, Developer Mode off).
+func isWindowsPrivilegeError(err error) bool {
+	var errno syscall.Errno
+	return errors.As(err, &errno) && errno == 1314
 }
 
 // VerifyLocalSonar runs the per-component Run-Sonar.ps1 script against each
