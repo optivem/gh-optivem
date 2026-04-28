@@ -77,6 +77,27 @@ cd gh-optivem
 gh extension install .
 ```
 
+## Test the released version (real-user flow)
+
+Smoke-test what an end user actually gets — useful after publishing a release, or to reproduce a user-reported issue against the same binary they're running. Unlike `go run .` or `gh extension install .` (which use whatever is on disk), this exercises the released binary and the shop SHA baked in at release time.
+
+```bash
+# Install the published extension (or upgrade if already installed)
+gh extension install optivem/gh-optivem
+# gh optivem upgrade
+
+# Confirm the version matches the latest release
+gh optivem --version
+
+# Run the same scaffold a user would (no --shop-ref — uses the baked-in SHA)
+gh optivem init --owner valentinajemuovic --system-name "Page Turner" --repo page-turner \
+    --arch multitier --repo-strategy multirepo \
+    --backend-lang dotnet --frontend-lang react --test-lang typescript
+
+# Clean up the extension when done
+gh extension remove optivem
+```
+
 ## Build
 
 Produces a standalone `gh-optivem` binary. Not needed for local testing (`go run .` handles that) — use this only to ship an artifact or sanity-check that the code compiles:

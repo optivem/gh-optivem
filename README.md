@@ -47,12 +47,24 @@ gh optivem init --owner acme --system-name "Page Turner" --repo page-turner \
     --arch monolith --repo-strategy monorepo --monolith-lang java
 ```
 
+The repo name can also be passed positionally — `gh optivem init page-turner --owner acme ...` — in which case `--repo` is optional.
+
 ### Scaffold a multitier project
 
 ```bash
 gh optivem init --owner acme --system-name "Page Turner" --repo page-turner \
     --arch multitier --repo-strategy multirepo \
     --backend-lang java --frontend-lang react
+```
+
+### Other init flags
+
+```bash
+gh optivem init ... --license apache-2.0          # mit (default), apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense
+gh optivem init ... --test-lang typescript         # override; defaults to --monolith-lang or --backend-lang
+gh optivem init ... --workdir ./scratch            # custom clone dir; defaults to a temp dir
+gh optivem init ... --shop-ref meta-v1.2.3         # pin optivem/shop to a tag, SHA, or branch
+gh optivem init ... --no-atdd                      # skip installing ATDD agents/commands/prompts from shop
 ```
 
 ### Dry run
@@ -66,13 +78,15 @@ gh optivem init ... --dry-run
 Control how deep pipeline verification goes after scaffolding:
 
 ```bash
-gh optivem init ... --verify-level local          # local compilation + local tests only (no CI)
+gh optivem init ... --verify-level none          # skip all verification
+gh optivem init ... --verify-level local         # local compilation + local tests + local SonarCloud scan (no CI)
 gh optivem init ... --verify-level commit        # + commit stage CI
 gh optivem init ... --verify-level acceptance    # + acceptance stage CI (latest + legacy in parallel)
 gh optivem init ... --verify-level qa            # + QA stage + QA signoff
 gh optivem init ... --verify-level release       # + production stage (default)
 gh optivem init ... --no-legacy                  # skip legacy in local tests and acceptance
 gh optivem init ... --no-local-tests             # skip the local system-tests step
+gh optivem init ... --no-local-sonar             # skip the local SonarCloud scan step
 ```
 
 ### Local cleanup
@@ -87,6 +101,16 @@ Pass `--yes` (or `-y`) to skip all interactive confirmations — the existing-re
 gh optivem init ... --yes
 ```
 
+### Logging flags
+
+Available on `init`:
+
+```bash
+gh optivem init ... --verbose          # -v; debug output (retry/wait chatter, diagnostics)
+gh optivem init ... --quiet            # -q; suppress info-level output (warnings + errors still shown)
+gh optivem init ... --log-file run.log # also write a plain-text log (no ANSI colors, all levels)
+```
+
 ### Deployment target
 
 Only `--deploy docker` is currently supported (the default). `--deploy cloud-run` is in development and may be available in a future release.
@@ -96,21 +120,27 @@ Only `--deploy docker` is currently supported (the default). `--deploy cloud-run
 `gh optivem` also provides runner subcommands for working with the system tests in a scaffolded project. Inspired by `dotnet test` and `./gradlew test`, `test system` builds and starts the system implicitly — you don't need to run `build` or `run` first.
 
 ```bash
-gh optivem test system                 # build (incremental) + start (if needed) + run tests
-gh optivem test system --no-build      # skip the explicit build step
-gh optivem test system --no-start      # skip the start step (system must already be up)
-gh optivem test system --restart       # force tear-down + restart before tests
-gh optivem test system --suite smoke   # run only the suite with this id
+gh optivem test system                       # build (incremental) + start (if needed) + run tests
+gh optivem test system --no-build            # skip the explicit build step
+gh optivem test system --rebuild             # force full rebuild in the implicit build step (ignored with --no-build)
+gh optivem test system --no-start            # skip the start step (system must already be up)
+gh optivem test system --restart             # force tear-down + restart before tests
+gh optivem test system --suite smoke         # run only the suite with this id
+gh optivem test system --test "MyTest"       # narrow execution to one test name (substituted into the suite's testFilter)
+gh optivem test system --sample              # use each suite's sampleTest field as the test name
 
-gh optivem build system                # docker compose build for every entry in system.json
-gh optivem build system --rebuild      # force full rebuild (no layer cache reuse)
+gh optivem build system                      # docker compose build for every entry in system.json
+gh optivem build system --rebuild            # force full rebuild (no layer cache reuse)
 
-gh optivem run system                  # docker compose up + wait for health
-gh optivem run system --restart        # force tear-down + restart
+gh optivem run system                        # docker compose up + wait for health
+gh optivem run system --restart              # force tear-down + restart
+gh optivem run system --log-lines 200        # lines of compose logs to dump on health-probe failure (default 50)
 
-gh optivem stop system                 # docker compose down + container cleanup
-gh optivem clean system                # docker compose down -v --rmi local (delete volumes + locally-built images)
+gh optivem stop system                       # docker compose down + container cleanup
+gh optivem clean system                      # docker compose down -v --rmi local (delete volumes + locally-built images)
 ```
+
+All runner subcommands also accept `--system <path>` (default `./system.json`) and the `test` subcommand accepts `--tests <path>` (default `./tests.json`) for projects where the config files live elsewhere.
 
 `clean system` is the analog of `dotnet clean` / `./gradlew clean` — it deletes build outputs (containers, named volumes, locally-built images) without touching the dependency cache (registry-pulled images are kept). Chain it explicitly for a fresh start: `gh optivem clean system && gh optivem test system`.
 
