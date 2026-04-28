@@ -116,7 +116,7 @@ jobs:
         uses: optivem/actions/resolve-latest-tag-from-sha@v1
         with:
           repository: optivem/shop
-          pattern: '*'
+          pattern: 'meta-v*'
           commit-sha: ${{ steps.shop-sha.outputs.description }}
 
   run:

@@ -14,7 +14,7 @@ on:
         required: false
         type: choice
         options: [none, local, commit, acceptance, qa, release]
-        default: release
+        default: none
       smoke-verify-level:
         description: 'Verification level for the smoke matrix (independent of verify-level)'
         required: false
