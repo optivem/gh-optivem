@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -333,10 +334,14 @@ func setupMultirepoSymlinks(cfg *config.Config) {
 			continue // already exists (e.g. monorepo layout)
 		}
 		if err := os.Symlink(target, linkPath); err != nil {
-			log.Warnf("Failed to create symlink %s -> %s: %v", linkPath, target, err)
-		} else {
-			log.Successf("Symlinked %s -> %s", linkPath, target)
+			hint := "Pass --no-local-tests to skip local verification."
+			if runtime.GOOS == "windows" {
+				hint = "On Windows, symlink creation requires Developer Mode (Settings -> System -> For developers) " +
+					"or running as administrator. Enable Developer Mode and re-run, or pass --no-local-tests to skip local verification."
+			}
+			log.Fatalf("Cannot create symlink %s -> %s: %v\n%s", linkPath, target, err, hint)
 		}
+		log.Successf("Symlinked %s -> %s", linkPath, target)
 	}
 }
 
