@@ -16,6 +16,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -32,10 +33,12 @@ import (
 	"github.com/optivem/gh-optivem/internal/version"
 )
 
-// bugReportLogTailLines is how many trailing lines of the log file are
-// embedded in the filed issue body. Large enough to capture the failure +
-// preceding context; small enough to stay under GitHub's issue-body limit.
-const bugReportLogTailLines = 100
+// bugReportLogMaxBytes is the inline log budget for a filed issue body.
+// GitHub caps issue bodies at 65,536 chars; 50 KB leaves comfortable room
+// for the metadata block plus the <details> wrapper. The whole log is
+// embedded when it fits; otherwise the trailing 50 KB (trimmed to the next
+// newline) is embedded with a "truncated" note.
+const bugReportLogMaxBytes = 50 * 1024
 
 const separator = "=========================================="
 
@@ -452,7 +455,7 @@ func confirmBugReport(cfg *config.Config) bool {
 	fmt.Println()
 	fmt.Printf("  - Issue created at: https://github.com/optivem/gh-optivem/issues\n")
 	fmt.Printf("  - Linking to your repo: https://github.com/%s\n", cfg.FullRepo)
-	fmt.Printf("  - Last %d lines of your log: %s\n", bugReportLogTailLines, cfg.LogFile)
+	fmt.Printf("  - Log file: %s\n", cfg.LogFile)
 	fmt.Println()
 
 	if cfg.AssumeYes {
@@ -499,7 +502,7 @@ func offerBugReport(cfg *config.Config) bool {
 	fmt.Println()
 	fmt.Printf("  - Issue created at: https://github.com/optivem/gh-optivem/issues\n")
 	fmt.Printf("  - Linking to your repo: https://github.com/%s\n", cfg.FullRepo)
-	fmt.Printf("  - Last %d lines of your log: %s\n", bugReportLogTailLines, cfg.LogFile)
+	fmt.Printf("  - Log file: %s\n", cfg.LogFile)
 	fmt.Println()
 	fmt.Print("  File a bug report? [y/N]: ")
 
@@ -521,18 +524,25 @@ func isInteractive() bool {
 	return fi.Mode()&os.ModeCharDevice != 0
 }
 
-// tailFile returns the last maxLines lines of the file at path. Returns an
-// empty string if the file is unreadable or empty.
-func tailFile(path string, maxLines int) string {
+// readLogForBugReport returns the log contents to embed in a bug-report body,
+// capped at bugReportLogMaxBytes so the issue body stays under GitHub's
+// 65 KB limit. When the log is small enough, returns the whole thing
+// (truncated=false). Otherwise returns the trailing bugReportLogMaxBytes,
+// trimmed forward to the next newline so embedding never starts mid-line
+// (truncated=true). Returns ("", false) when the log is unreadable or empty.
+func readLogForBugReport(path string) (content string, truncated bool) {
 	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
+	if err != nil || len(data) == 0 {
+		return "", false
 	}
-	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
-	if len(lines) > maxLines {
-		lines = lines[len(lines)-maxLines:]
+	if len(data) <= bugReportLogMaxBytes {
+		return strings.TrimRight(string(data), "\n"), false
 	}
-	return strings.Join(lines, "\n")
+	tail := data[len(data)-bugReportLogMaxBytes:]
+	if idx := bytes.IndexByte(tail, '\n'); idx != -1 && idx < len(tail)-1 {
+		tail = tail[idx+1:]
+	}
+	return strings.TrimRight(string(tail), "\n"), true
 }
 
 func createBugReport(cfg *config.Config, errorCount int) {
@@ -552,9 +562,14 @@ func createBugReport(cfg *config.Config, errorCount int) {
 			"- **Repository:** https://github.com/%s\n",
 		errorCount, cfg.SystemName, cfg.Arch, cfg.RepoStrategy,
 		lang, cfg.TestLang, cfg.FullRepo)
-	if tail := tailFile(cfg.LogFile, bugReportLogTailLines); tail != "" {
-		body += fmt.Sprintf("\n<details>\n<summary>Last %d log lines (%s)</summary>\n\n```\n%s\n```\n</details>\n",
-			bugReportLogTailLines, cfg.LogFile, tail)
+	if content, truncated := readLogForBugReport(cfg.LogFile); content != "" {
+		summary := fmt.Sprintf("Log (%s)", cfg.LogFile)
+		if truncated {
+			summary = fmt.Sprintf("Last %d KB of log — truncated; full log at %s",
+				bugReportLogMaxBytes/1024, cfg.LogFile)
+		}
+		body += fmt.Sprintf("\n<details>\n<summary>%s</summary>\n\n```\n%s\n```\n</details>\n",
+			summary, content)
 	}
 
 	bodyFile, err := os.CreateTemp("", "gh-issue-body-*.md")
