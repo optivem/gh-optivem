@@ -123,6 +123,13 @@ type Config struct {
 	FrontendRepoDir string
 	BackendRepoDir  string
 	SystemRepoDir   string
+
+	// PreExistingRepos is the set of "owner/name" repos that already existed on
+	// GitHub when scaffold started. Used by finalize: a clean working tree at
+	// commit time is acceptable for these (re-scaffold of identical content is
+	// a no-op), but is treated as a hard error for freshly created repos
+	// (signals the template apply produced nothing).
+	PreExistingRepos map[string]bool
 }
 
 // Casings is the set of case variants for a single identifier token (owner or
@@ -791,7 +798,13 @@ func checkOwnerExists(owner string) {
 //
 // Batched (vs one prompt per repo) so multirepo runs with all three repos
 // already present don't ask the user the same question three times in a row.
-func confirmReposExist(fullRepos []string, assumeYes bool) {
+//
+// Returns the subset of fullRepos that already existed, so callers can record
+// which repos were pre-existing — finalize uses this to allow a clean working
+// tree at commit time (legitimate "re-scaffold same content" case) only for
+// pre-existing repos, while still treating a clean tree on a freshly created
+// repo as a hard error (something went wrong with the template apply).
+func confirmReposExist(fullRepos []string, assumeYes bool) []string {
 	var existing []string
 	for _, fullRepo := range fullRepos {
 		if fullRepo == "" {
@@ -807,7 +820,7 @@ func confirmReposExist(fullRepos []string, assumeYes bool) {
 	}
 
 	if len(existing) == 0 {
-		return
+		return nil
 	}
 
 	if len(existing) == 1 {
@@ -823,7 +836,7 @@ func confirmReposExist(fullRepos []string, assumeYes bool) {
 
 	if assumeYes {
 		log.Infof("Proceeding without confirmation (--yes).")
-		return
+		return existing
 	}
 
 	fmt.Fprint(os.Stderr, "Proceed? [y/N]: ")
@@ -839,6 +852,7 @@ func confirmReposExist(fullRepos []string, assumeYes bool) {
 	if resp != "y" && resp != "yes" {
 		log.FatalExit(fmt.Sprintf("Aborted: %d repositor%s already exist", len(existing), pluralY(len(existing))))
 	}
+	return existing
 }
 
 // pluralY returns the suffix for "repositor{y,ies}" given a count.
@@ -907,12 +921,16 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 	validateTokensAuth(env, f.DryRun)
 	checkGhAuth(f.DryRun)
 	checkOwnerExists(f.Owner)
-	confirmReposExist([]string{
+	preExisting := confirmReposExist([]string{
 		f.Owner + "/" + repoName,
 		mr.backendFullRepo,
 		mr.frontendFullRepo,
 		mr.systemFullRepo,
 	}, f.AssumeYes)
+	preExistingSet := make(map[string]bool, len(preExisting))
+	for _, r := range preExisting {
+		preExistingSet[r] = true
+	}
 
 	// === Phase 3: resolve shop ref (fast API call; actual clone happens in the Prepare step) ===
 	resolvedShopRef := resolveShopRef(f.ShopRef)
@@ -1012,6 +1030,8 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 
 		SystemRepo:     mr.systemRepo,
 		SystemFullRepo: mr.systemFullRepo,
+
+		PreExistingRepos: preExistingSet,
 	}
 }
 

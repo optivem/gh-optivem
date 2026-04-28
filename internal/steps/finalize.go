@@ -82,19 +82,19 @@ func CommitAndPush(cfg *config.Config, failureNote string) {
 		log.Warnf("Committing partial scaffold for troubleshooting (failed at %s)", failureNote)
 	}
 
-	commitAndPushRepo(cfg.RepoDir, cfg.FullRepo, commitMsg)
+	commitAndPushRepo(cfg.RepoDir, cfg.FullRepo, commitMsg, cfg.PreExistingRepos[cfg.FullRepo])
 
 	if cfg.RepoStrategy == "multirepo" {
 		if cfg.Arch == "multitier" {
-			commitAndPushRepo(cfg.BackendRepoDir, cfg.BackendFullRepo, commitMsg)
-			commitAndPushRepo(cfg.FrontendRepoDir, cfg.FrontendFullRepo, commitMsg)
+			commitAndPushRepo(cfg.BackendRepoDir, cfg.BackendFullRepo, commitMsg, cfg.PreExistingRepos[cfg.BackendFullRepo])
+			commitAndPushRepo(cfg.FrontendRepoDir, cfg.FrontendFullRepo, commitMsg, cfg.PreExistingRepos[cfg.FrontendFullRepo])
 		} else {
-			commitAndPushRepo(cfg.SystemRepoDir, cfg.SystemFullRepo, commitMsg)
+			commitAndPushRepo(cfg.SystemRepoDir, cfg.SystemFullRepo, commitMsg, cfg.PreExistingRepos[cfg.SystemFullRepo])
 		}
 	}
 }
 
-func commitAndPushRepo(repoDir, fullRepo, commitMsg string) {
+func commitAndPushRepo(repoDir, fullRepo, commitMsg string, preExisted bool) {
 	if _, err := shell.Run("git add -A", false, true, repoDir); err != nil {
 		log.Fatalf("git add failed in %s: %v", fullRepo, err)
 	}
@@ -102,8 +102,24 @@ func commitAndPushRepo(repoDir, fullRepo, commitMsg string) {
 	// bit). Scan every tracked path — scripts like gradlew can live in nested
 	// subprojects (e.g. system/gradlew, system-test/gradlew in a monorepo).
 	fixExecBits(repoDir, fullRepo)
-	if _, err := shell.Run(fmt.Sprintf(`git commit -m %q`, commitMsg), false, true, repoDir); err != nil {
-		log.Fatalf("git commit failed in %s: %v", fullRepo, err)
+	status, err := shell.RunCapture("git status --porcelain", repoDir)
+	if err != nil {
+		log.Fatalf("git status failed in %s: %v", fullRepo, err)
+	}
+	cleanTree := strings.TrimSpace(status) == ""
+	if cleanTree {
+		// A clean tree at commit time only makes sense for a re-scaffold of an
+		// already-existing repo whose contents already match the template. On a
+		// freshly created repo it means the template apply produced nothing,
+		// which is a real bug — fail loudly.
+		if !preExisted {
+			log.Fatalf("git tree is clean in freshly created repo %s -- template apply produced no changes (bug)", fullRepo)
+		}
+		log.Infof("No changes to commit in %s -- skipping commit (repo already existed with matching content)", fullRepo)
+	} else {
+		if _, err := shell.Run(fmt.Sprintf(`git commit -m %q`, commitMsg), false, true, repoDir); err != nil {
+			log.Fatalf("git commit failed in %s: %v", fullRepo, err)
+		}
 	}
 	if out, err := shell.Run("git push", false, true, repoDir); err != nil {
 		log.Fatalf("git push failed in %s: %v\n%s", fullRepo, err, out)
