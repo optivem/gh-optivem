@@ -783,22 +783,43 @@ func checkOwnerExists(owner string) {
 	log.FatalExit(fmt.Sprintf("--owner %q: no GitHub user or organization with that name", owner))
 }
 
-// confirmRepoExists checks whether fullRepo ("<owner>/<name>") already exists.
-// If it does, prompts the user to confirm scaffolding into the existing repo.
-// Aborts via FatalExit if the user declines or stdin is not available.
+// confirmReposExist probes every repo in fullRepos ("<owner>/<name>") and, if
+// any already exist on GitHub, asks the user once whether to proceed scaffolding
+// into them. Aborts via FatalExit if the user declines or stdin is not available.
 // When assumeYes is true (--yes/-y), the prompt is skipped and the run proceeds
 // after a warning — the expected pattern for CI/unattended use.
-func confirmRepoExists(fullRepo string, assumeYes bool) {
-	cmd := exec.Command("gh", "api", "repos/"+fullRepo, ghAPISilent)
-	cmd.Stderr = nil // 404 is the expected case — suppress the noise
-	if err := cmd.Run(); err != nil {
-		// Repo doesn't exist (or API is unreachable). Continue — if it's really
-		// unreachable, later steps will fail with a clearer error.
+//
+// Batched (vs one prompt per repo) so multirepo runs with all three repos
+// already present don't ask the user the same question three times in a row.
+func confirmReposExist(fullRepos []string, assumeYes bool) {
+	var existing []string
+	for _, fullRepo := range fullRepos {
+		if fullRepo == "" {
+			continue
+		}
+		cmd := exec.Command("gh", "api", "repos/"+fullRepo, ghAPISilent)
+		cmd.Stderr = nil // 404 is the expected case — suppress the noise
+		if err := cmd.Run(); err == nil {
+			existing = append(existing, fullRepo)
+		}
+		// On error, repo doesn't exist (or API is unreachable). Continue —
+		// if it's really unreachable, later steps will fail with a clearer error.
+	}
+
+	if len(existing) == 0 {
 		return
 	}
 
-	log.Warnf("Repository %s already exists on GitHub.", fullRepo)
-	log.Warnf("Proceeding will scaffold into the existing repository and may overwrite its contents.")
+	if len(existing) == 1 {
+		log.Warnf("Repository %s already exists on GitHub.", existing[0])
+		log.Warnf("Proceeding will scaffold into the existing repository and may overwrite its contents.")
+	} else {
+		log.Warnf("The following repositories already exist on GitHub:")
+		for _, r := range existing {
+			log.Warnf("  - %s", r)
+		}
+		log.Warnf("Proceeding will scaffold into the existing repositories and may overwrite their contents.")
+	}
 
 	if assumeYes {
 		log.Infof("Proceeding without confirmation (--yes).")
@@ -811,12 +832,21 @@ func confirmRepoExists(fullRepo string, assumeYes bool) {
 	resp, err := reader.ReadString('\n')
 	if err != nil {
 		// EOF or non-interactive stdin — treat as "no" with an actionable message.
-		log.FatalExit(fmt.Sprintf("Aborted: repository %s already exists and no confirmation was provided (pass --yes to proceed unattended)", fullRepo))
+		log.FatalExit(fmt.Sprintf("Aborted: %d repositor%s already exist and no confirmation was provided (pass --yes to proceed unattended)",
+			len(existing), pluralY(len(existing))))
 	}
 	resp = strings.TrimSpace(strings.ToLower(resp))
 	if resp != "y" && resp != "yes" {
-		log.FatalExit(fmt.Sprintf("Aborted: repository %s already exists", fullRepo))
+		log.FatalExit(fmt.Sprintf("Aborted: %d repositor%s already exist", len(existing), pluralY(len(existing))))
 	}
+}
+
+// pluralY returns the suffix for "repositor{y,ies}" given a count.
+func pluralY(n int) string {
+	if n == 1 {
+		return "y"
+	}
+	return "ies"
 }
 
 // resolveLogFilePath returns the log-file destination for this run. When
@@ -880,16 +910,12 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 	validateTokensAuth(env, f.DryRun)
 	checkGhAuth(f.DryRun)
 	checkOwnerExists(f.Owner)
-	confirmRepoExists(f.Owner+"/"+repoName, f.AssumeYes)
-	if mr.backendFullRepo != "" {
-		confirmRepoExists(mr.backendFullRepo, f.AssumeYes)
-	}
-	if mr.frontendFullRepo != "" {
-		confirmRepoExists(mr.frontendFullRepo, f.AssumeYes)
-	}
-	if mr.systemFullRepo != "" {
-		confirmRepoExists(mr.systemFullRepo, f.AssumeYes)
-	}
+	confirmReposExist([]string{
+		f.Owner + "/" + repoName,
+		mr.backendFullRepo,
+		mr.frontendFullRepo,
+		mr.systemFullRepo,
+	}, f.AssumeYes)
 
 	// === Phase 3: resolve shop ref (fast API call; actual clone happens in the Prepare step) ===
 	resolvedShopRef := resolveShopRef(f.ShopRef)
