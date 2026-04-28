@@ -411,7 +411,13 @@ func printSummary(cfg *config.Config, errors int, totalDuration time.Duration) {
 	fmt.Println(separator)
 	if errors > 0 {
 		log.Errorf("Setup completed with %d error(s) in %s", errors, formatDuration(totalDuration))
-		if cfg.BugReport && confirmBugReport(cfg) {
+		fileIt := false
+		if cfg.BugReport {
+			fileIt = confirmBugReport(cfg)
+		} else {
+			fileIt = offerBugReport(cfg)
+		}
+		if fileIt {
 			createBugReport(cfg, errors)
 		}
 	} else {
@@ -462,6 +468,47 @@ func confirmBugReport(cfg *config.Config) bool {
 	}
 
 	fmt.Print("  Proceed? [y/N]: ")
+	reader := bufio.NewReader(os.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		log.Warnf("Could not read confirmation: %v. Skipping bug report.", err)
+		return false
+	}
+	resp := strings.ToLower(strings.TrimSpace(line))
+	return resp == "y" || resp == "yes"
+}
+
+// offerBugReport prompts the user (after a failure) whether they want to file
+// a bug report. Used when --report-bug was NOT set explicitly — opt-out by
+// default. Skipped without prompting in unattended modes (--yes or
+// non-interactive stdin), so failures in CI don't pester or auto-file silently.
+// Shows the same "what will be sent" details as confirmBugReport so the user
+// can decide informed before answering.
+func offerBugReport(cfg *config.Config) bool {
+	if cfg.AssumeYes {
+		return false // unattended: don't pester; user must opt in via --report-bug
+	}
+	if !isInteractive() {
+		return false // can't prompt
+	}
+
+	fmt.Println()
+	fmt.Println(separator)
+	fmt.Println("  Bug report — share this failure with the maintainers?")
+	fmt.Println(separator)
+	fmt.Println()
+	fmt.Println("  On confirm, the following will be filed upstream:")
+	fmt.Println()
+	fmt.Printf("  - Issue created at: https://github.com/optivem/gh-optivem/issues\n")
+	fmt.Printf("  - Linking to your repo: https://github.com/%s\n", cfg.FullRepo)
+	if cfg.LogFile != "" {
+		fmt.Printf("  - Last %d lines of your log: %s\n", bugReportLogTailLines, cfg.LogFile)
+	} else {
+		fmt.Println("  - (no log file — pass --log-file or --report-bug to attach a log tail)")
+	}
+	fmt.Println()
+	fmt.Print("  File a bug report? [y/N]: ")
+
 	reader := bufio.NewReader(os.Stdin)
 	line, err := reader.ReadString('\n')
 	if err != nil {
