@@ -259,17 +259,16 @@ func CheckRateLimit() {
 
 // GitHub wraps gh CLI calls for a specific repo.
 type GitHub struct {
-	Repo    string
-	License string
-	DryRun  bool
+	Repo   string
+	DryRun bool
 }
 
 func NewGitHub(cfg *config.Config) *GitHub {
-	return &GitHub{Repo: cfg.FullRepo, License: cfg.License, DryRun: cfg.DryRun}
+	return &GitHub{Repo: cfg.FullRepo, DryRun: cfg.DryRun}
 }
 
 func (g *GitHub) ForRepo(fullRepo string) *GitHub {
-	return &GitHub{Repo: fullRepo, License: g.License, DryRun: g.DryRun}
+	return &GitHub{Repo: fullRepo, DryRun: g.DryRun}
 }
 
 func (g *GitHub) run(cmd string) (string, error) {
@@ -351,11 +350,13 @@ func (g *GitHub) waitForRepoVisible() {
 		g.Repo, maxAttempts, err, out)
 }
 
-// initRepo pushes the initial commit (README + LICENSE) so the default branch
-// exists immediately without waiting for GitHub's async initialization.
+// initRepo pushes the initial commit (README) so the default branch exists
+// immediately without waiting for GitHub's async initialization. The LICENSE
+// file is written later by steps.WriteLicense as a regular scaffold step, so
+// it lands regardless of whether the repo was pre-created by a wrapper.
 func (g *GitHub) initRepo() {
 	if g.DryRun {
-		log.Infof("[DRY RUN] Would initialize repo %s with README%s", g.Repo, licenseSuffix(g.License))
+		log.Infof("[DRY RUN] Would initialize repo %s with README", g.Repo)
 		return
 	}
 
@@ -381,33 +382,10 @@ func (g *GitHub) initRepo() {
 		log.Fatalf("failed to write README.md at %s: %v", readmePath, err)
 	}
 
-	// Write LICENSE if a license is configured.
-	if g.License != "" {
-		licenseBody, lerr := RunCapture(fmt.Sprintf("gh api licenses/%s --jq .body", g.License), "")
-		switch {
-		case lerr != nil:
-			log.Warnf("Could not fetch license template %q: %v -- skipping LICENSE file", g.License, lerr)
-		case licenseBody == "":
-			log.Warnf("License template %q returned empty body -- skipping LICENSE file", g.License)
-		default:
-			licensePath := filepath.Join(dir, "LICENSE")
-			if werr := os.WriteFile(licensePath, []byte(licenseBody+"\n"), 0644); werr != nil {
-				log.Warnf("Could not write LICENSE file at %s: %v -- continuing without LICENSE", licensePath, werr)
-			}
-		}
-	}
-
 	// Commit and push.
 	MustRun("git add -A", g.DryRun, dir)
 	MustRun("git commit -m \"Initial commit\"", g.DryRun, dir)
 	MustRun("git push", g.DryRun, dir)
-}
-
-func licenseSuffix(license string) string {
-	if license == "" {
-		return ""
-	}
-	return " and LICENSE"
 }
 
 func (g *GitHub) CreateEnvironment(name string) {

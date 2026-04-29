@@ -48,6 +48,54 @@ func writeConfigToDir(dir string, jsonBytes []byte) {
 	os.WriteFile(filepath.Join(configDir, "config.json"), jsonBytes, 0644)
 }
 
+// WriteLicense writes a LICENSE file to the scaffolded repo(s) using the
+// GitHub licenses API. Runs as a regular scaffold step (not part of repo
+// initialization) so it works whether the repo was created by gh-optivem or
+// pre-created by a wrapper script.
+func WriteLicense(cfg *config.Config) {
+	log.Info("Writing LICENSE...")
+
+	if cfg.DryRun {
+		log.Info("[DRY RUN] Would write LICENSE")
+		return
+	}
+
+	if cfg.License == "" {
+		log.Info("No license configured -- skipping LICENSE file")
+		return
+	}
+
+	body, err := shell.RunCapture(fmt.Sprintf("gh api licenses/%s --jq .body", cfg.License), "")
+	switch {
+	case err != nil:
+		log.Warnf("Could not fetch license template %q: %v -- skipping LICENSE file", cfg.License, err)
+		return
+	case body == "":
+		log.Warnf("License template %q returned empty body -- skipping LICENSE file", cfg.License)
+		return
+	}
+
+	writeLicenseToDir(cfg.RepoDir, body)
+
+	if cfg.RepoStrategy == "multirepo" {
+		if cfg.Arch == "multitier" {
+			writeLicenseToDir(cfg.BackendRepoDir, body)
+			writeLicenseToDir(cfg.FrontendRepoDir, body)
+		} else {
+			writeLicenseToDir(cfg.SystemRepoDir, body)
+		}
+	}
+
+	log.Success("Wrote LICENSE")
+}
+
+func writeLicenseToDir(dir, body string) {
+	licensePath := filepath.Join(dir, "LICENSE")
+	if err := os.WriteFile(licensePath, []byte(body+"\n"), 0644); err != nil {
+		log.Warnf("Could not write LICENSE file at %s: %v -- continuing without LICENSE", licensePath, err)
+	}
+}
+
 // CreateSonarCloudProjects creates SonarCloud org and projects.
 func CreateSonarCloudProjects(cfg *config.Config, sc *shell.SonarCloud) {
 	log.Info("Creating SonarCloud projects...")
