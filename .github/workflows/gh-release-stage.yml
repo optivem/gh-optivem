@@ -84,14 +84,14 @@ jobs:
         env:
           TAG: ${{ steps.gen.outputs.version }}
         run: |
-          BUMP_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/gh-auto-bump-patch.yml"
+          BUMP_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/gh-bump-patch-version.yml"
           RC_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/gh-acceptance-stage.yml"
           {
             echo "## Version already released"
             echo ""
             echo "\`$TAG\` already exists as a final release. To ship a new version:"
             echo ""
-            echo "1. Bump VERSION — run [\`gh-auto-bump-patch.yml\`](${BUMP_URL})."
+            echo "1. Bump VERSION — run [\`gh-bump-patch-version.yml\`](${BUMP_URL})."
             echo "2. Create a new RC — run [\`gh-acceptance-stage.yml\`](${RC_URL})."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::error::Version $TAG is already released. Bump VERSION: ${BUMP_URL}. Create a new RC: ${RC_URL}."
@@ -152,10 +152,10 @@ jobs:
           shop-tag: ${{ needs.check.outputs.shop-tag }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-  auto-bump-patch:
-    name: Auto-Bump Patch
+  bump-patch-version:
+    name: Bump Patch Version
     needs: [check, run]
-    uses: ./.github/workflows/gh-auto-bump-patch.yml
+    uses: ./.github/workflows/gh-bump-patch-version.yml
     secrets: inherit
 
   post-release-stage:

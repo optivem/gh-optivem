@@ -236,3 +236,48 @@ func TestContentReplacementsStripsEnvPrefix(t *testing.T) {
 		})
 	}
 }
+
+// TestContentReplacementsRenamesAutoBumpPatch asserts that the per-flavor
+// bump-patch-version workflow name and concurrency group get rewritten to the
+// scaffolded name `bump-patch-version` (matching the renamed file). Regression
+// guard for student repos receiving an `bump-patch-version.yml` whose internal
+// `name:` and `concurrency.group:` still reference the shop flavor variant.
+func TestContentReplacementsRenamesAutoBumpPatch(t *testing.T) {
+	cases := []struct {
+		name     string
+		in       string
+		pairs    [][2]string
+		expected string
+	}{
+		{
+			name:     "monolith-dotnet name",
+			in:       "name: monolith-dotnet-bump-patch-version\n",
+			pairs:    monolithContentReplacements("dotnet", "dotnet"),
+			expected: "name: bump-patch-version\n",
+		},
+		{
+			name:     "monolith-java concurrency group",
+			in:       "  group: monolith-java-bump-patch-version\n",
+			pairs:    monolithContentReplacements("java", "java"),
+			expected: "  group: bump-patch-version\n",
+		},
+		{
+			name:     "monolith-typescript name",
+			in:       "name: monolith-typescript-bump-patch-version\n",
+			pairs:    monolithContentReplacements("typescript", "typescript"),
+			expected: "name: bump-patch-version\n",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.in
+			for _, p := range tc.pairs {
+				got = strings.ReplaceAll(got, p[0], p[1])
+			}
+			if got != tc.expected {
+				t.Errorf("got  %q\nwant %q", got, tc.expected)
+			}
+		})
+	}
+}

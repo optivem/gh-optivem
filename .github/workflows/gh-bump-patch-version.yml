@@ -1,4 +1,4 @@
-name: gh-auto-bump-patch
+name: gh-bump-patch-version
 
 # Post-release VERSION bumper. Triggered automatically at the end of gh-release-stage
 # when a release has just been cut, or manually by a developer (workflow_dispatch) to
@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: gh-optivem-auto-bump-patch
+  group: gh-optivem-bump-patch-version
 
 jobs:
   bump:

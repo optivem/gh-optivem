@@ -214,7 +214,7 @@ jobs:
           version=$(tr -d '[:space:]' < VERSION)
           tag="v${version}"
           if git tag -l "$tag" | grep -qx "$tag"; then
-            BUMP_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/gh-auto-bump-patch.yml"
+            BUMP_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/gh-bump-patch-version.yml"
             {
               echo "## Version already released"
               echo ""
@@ -222,9 +222,9 @@ jobs:
               echo ""
               echo "- \`${tag}\` (from VERSION)"
               echo ""
-              echo "Run the [gh-auto-bump-patch workflow](${BUMP_URL}) to bump the VERSION file, then re-run this workflow."
+              echo "Run the [gh-bump-patch-version workflow](${BUMP_URL}) to bump the VERSION file, then re-run this workflow."
             } >> "$GITHUB_STEP_SUMMARY"
-            echo "::error::Version already released: ${tag}. Run the gh-auto-bump-patch workflow to bump the VERSION file, then re-run this workflow: ${BUMP_URL}"
+            echo "::error::Version already released: ${tag}. Run the gh-bump-patch-version workflow to bump the VERSION file, then re-run this workflow: ${BUMP_URL}"
             exit 1
           fi
           echo "Version tag ${tag} has not been released yet — OK to proceed."

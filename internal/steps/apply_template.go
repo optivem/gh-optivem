@@ -170,6 +170,7 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	log.Info("Copying pipeline and commit-stage workflows...")
 	wfMap := monolithPipelineWorkflows(testLang, stageSuffix)
 	wfMap[prefixMonolith+lang+commitStageYml] = "commit-stage.yml"
+	wfMap["bump-patch-version-"+prefixMonolith+lang+".yml"] = "bump-patch-version.yml"
 	addLegacyWorkflow(wfMap, prefixMonolith, testLang, cfg.Deploy)
 	templates.CopyWorkflows(wfMap, shop, repoDir)
 
@@ -452,6 +453,7 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 		{envPrefixYAML + envPrefix + "production", envPrefixYAML + "production"},
 		// Workflow names (longer patterns first to avoid partial matches)
 		{mono + lang + suffixCommitStage, "commit-stage"},
+		{mono + lang + "-bump-patch-version", "bump-patch-version"},
 		{monoTest + suffixAcceptanceStage, "acceptance-stage"},
 		{monoTest + suffixQAStage, "qa-stage"},
 		{monoTest + suffixQASignoff, "qa-signoff"},
