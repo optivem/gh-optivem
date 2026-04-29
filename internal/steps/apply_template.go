@@ -221,6 +221,7 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	// Root repo: pipeline stage workflows + system-test
 	log.Info("Copying root repo pipeline workflows...")
 	rootWfMap := monolithPipelineWorkflows(testLang, stageSuffix)
+	rootWfMap["bump-patch-version-multirepo.yml"] = "bump-patch-version.yml"
 	addLegacyWorkflow(rootWfMap, prefixMonolith, testLang, cfg.Deploy)
 	templates.CopyWorkflows(rootWfMap, shop, repoDir)
 
@@ -252,9 +253,17 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	log.Info("Fixing up multirepo image URLs and tokens...")
 	templates.FixupMonolithMultirepoImageURLs(repoDir, cfg.SystemRepo)
 	templates.FixupMultirepoToken(repoDir)
+
+	// Rewrite the bump-patch-version-multirepo dispatcher's __SIBLING_REPOS__
+	// placeholder to the system repo's full name (single sibling).
+	log.Info("Wiring bump-patch-version-multirepo dispatcher with sibling repo...")
+	templates.FixupWorkflowContent(repoDir, [][2]string{
+		{"__SIBLING_REPOS__", cfg.SystemFullRepo},
+	})
+
 	log.Success("Applied root repo template (monolith multirepo)")
 
-	// System repo: system code + commit stage
+	// System repo: system code + commit stage + bump-patch-version (per-component)
 	EnsureWorkflowDir(sysDir)
 
 	log.Info("Copying system code to system repo...")
@@ -262,16 +271,18 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	files.CopyDir(systemSrc, filepath.Join(sysDir, "system"))
 	templates.CopyVersion(shop, sysDir)
 
-	log.Info("Copying commit-stage workflow to system repo...")
+	log.Info("Copying commit-stage and bump-patch-version workflows to system repo...")
 	systemWfMap := map[string]string{
-		prefixMonolith + lang + commitStageYml: "commit-stage.yml",
-		cleanupWorkflow:                        cleanupWorkflow,
+		prefixMonolith + lang + commitStageYml:        "commit-stage.yml",
+		"bump-patch-version-" + prefixMonolith + lang + ".yml": "bump-patch-version.yml",
+		cleanupWorkflow:                               cleanupWorkflow,
 	}
 	templates.CopyWorkflows(systemWfMap, shop, sysDir)
 
 	log.Info("Fixing up system repo workflow content and SonarCloud keys...")
 	sysContentReplacements := [][2]string{
 		{prefixMonolith + lang + suffixCommitStage, "commit-stage"},
+		{prefixMonolith + lang + "-bump-patch-version", "bump-patch-version"},
 		{systemMonolithDir + lang, "system"},
 		{prefixMonolithSystem + lang, "system"},
 	}
@@ -352,6 +363,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	// Root repo: pipeline stage workflows + system-test + externals
 	log.Info("Copying root repo pipeline workflows...")
 	rootWfMap := multitierPipelineWorkflows(testLang, stageSuffix)
+	rootWfMap["bump-patch-version-multirepo.yml"] = "bump-patch-version.yml"
 	addLegacyWorkflow(rootWfMap, prefixMultitier, testLang, cfg.Deploy)
 	templates.CopyWorkflows(rootWfMap, shop, repoDir)
 
@@ -388,6 +400,14 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	log.Info("Fixing up multirepo VERSION entries to fetch cross-repo...")
 	templates.FixupMultirepoVersionEntries(repoDir, cfg.Owner, cfg.FrontendRepo, cfg.BackendRepo)
 
+	// Rewrite the bump-patch-version-multirepo dispatcher's __SIBLING_REPOS__
+	// placeholder to the backend + frontend full names (space-separated list
+	// consumed by the dispatcher's shell loop).
+	log.Info("Wiring bump-patch-version-multirepo dispatcher with sibling repos...")
+	templates.FixupWorkflowContent(repoDir, [][2]string{
+		{"__SIBLING_REPOS__", cfg.BackendFullRepo + " " + cfg.FrontendFullRepo},
+	})
+
 	log.Success("Applied root repo template (multitier multirepo)")
 
 	// Backend repo: code + commit stage
@@ -396,9 +416,10 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	backendSrc := filepath.Join(shop, systemMultitierBackend+backendLang)
 	files.CopyDir(backendSrc, filepath.Join(bDir, "backend"))
 
-	log.Info("Copying commit-stage workflow to backend repo...")
+	log.Info("Copying commit-stage and bump-patch-version workflows to backend repo...")
 	backendWfMap := map[string]string{
-		prefixMultitierBackend + backendLang + commitStageYml: "backend-commit-stage.yml",
+		prefixMultitierBackend + backendLang + commitStageYml:                   "backend-commit-stage.yml",
+		"bump-patch-version-" + prefixMultitierBackend + backendLang + ".yml": "bump-patch-version.yml",
 		cleanupWorkflow: cleanupWorkflow,
 	}
 	templates.CopyWorkflows(backendWfMap, shop, bDir)
@@ -408,6 +429,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 		{prefixMultitierBackend + backendLang + suffixCommitStage, "backend-commit-stage"},
 		{systemMultitierBackend + backendLang, "backend"},
 		{prefixMultitierBackend + backendLang, "backend"},
+		{"backend-bump-patch-version", "bump-patch-version"},
 	}
 	templates.FixupWorkflowContent(bDir, backendReplacements)
 	templates.FixupAllTextFiles(bDir, multitierSonarKeyReplacements(backendLang, frontendLang))
@@ -419,9 +441,10 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	frontendSrc := filepath.Join(shop, "system", "multitier", "frontend-"+frontendLang)
 	files.CopyDir(frontendSrc, filepath.Join(fDir, "frontend"))
 
-	log.Info("Copying commit-stage workflow to frontend repo...")
+	log.Info("Copying commit-stage and bump-patch-version workflows to frontend repo...")
 	frontendWfMap := map[string]string{
-		prefixMultitierFrontend + frontendLang + commitStageYml: "frontend-commit-stage.yml",
+		prefixMultitierFrontend + frontendLang + commitStageYml:                   "frontend-commit-stage.yml",
+		"bump-patch-version-" + prefixMultitierFrontend + frontendLang + ".yml": "bump-patch-version.yml",
 		cleanupWorkflow: cleanupWorkflow,
 	}
 	templates.CopyWorkflows(frontendWfMap, shop, fDir)
@@ -431,6 +454,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 		{prefixMultitierFrontend + frontendLang + suffixCommitStage, "frontend-commit-stage"},
 		{"system/multitier/frontend-" + frontendLang, "frontend"},
 		{prefixMultitierFrontend + frontendLang, "frontend"},
+		{"frontend-bump-patch-version", "bump-patch-version"},
 	}
 	templates.FixupWorkflowContent(fDir, frontendReplacements)
 	templates.FixupAllTextFiles(fDir, multitierSonarKeyReplacements(backendLang, frontendLang))
