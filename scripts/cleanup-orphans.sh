@@ -34,7 +34,7 @@ usage() {
   echo "Options:"
   echo "  --delete              Actually delete (default: dry run)"
   echo "  --before <date>       Only include repos created before this date (exclusive, ISO 8601 e.g. 2026-04-01)"
-  echo "  --prefixes <list>     Space-separated prefixes (default: test-app- page-turner- course-tester- ct- manual-test-)"
+  echo "  --prefixes <list>     Space-separated prefixes (default: test-app- page-turner- course-tester- ct- manual-test- valentinas-special-)"
   echo "  --tmp-dir <path>      Local orphan dir (default: <academy>/.tmp)"
   echo "  --sonar-token <tok>   SonarCloud token (or set SONAR_TOKEN env var)"
   echo "  -h, --help            Show this help"
@@ -50,7 +50,7 @@ CLEAN_REPOS=0
 CLEAN_DOCKER=0
 CLEAN_TMP=0
 TMP_DIR=""
-DEFAULT_PREFIXES="test-app- page-turner- course-tester- ct- manual-test-"
+DEFAULT_PREFIXES="test-app- page-turner- course-tester- ct- manual-test- valentinas-special-"
 PREFIXES=""
 BEFORE_DATE=""
 SONAR_TOKEN="${SONAR_TOKEN:-}"
@@ -133,10 +133,21 @@ else
     sonar_prefix="${TEST_OWNER}_${prefix}"
     echo "Searching SonarCloud for projects matching prefix: $sonar_prefix"
 
-    found=$(curl -s \
+    sonar_search_url="${SONAR_API_URL}/projects/search?organization=${TEST_OWNER}&ps=100"
+    sonar_search_body=$(curl -sS --fail-with-body \
       -H "Authorization: Bearer ${SONAR_TOKEN}" \
-      "${SONAR_API_URL}/projects/search?organization=${TEST_OWNER}&ps=100" \
-      | jq -r ".components[] | select(.key | startswith(\"${sonar_prefix}\")) | .key") || true
+      "$sonar_search_url") || {
+        rc=$?
+        echo "ERROR: SonarCloud project search failed (curl exit $rc) for prefix '${sonar_prefix}' against ${sonar_search_url}" >&2
+        echo "Response body (if any): $sonar_search_body" >&2
+        exit "$rc"
+      }
+    found=$(echo "$sonar_search_body" | jq -r ".components[] | select(.key | startswith(\"${sonar_prefix}\")) | .key") || {
+      rc=$?
+      echo "ERROR: jq failed parsing SonarCloud search response for prefix '${sonar_prefix}' (exit $rc)" >&2
+      echo "Response body: $sonar_search_body" >&2
+      exit "$rc"
+    }
 
     if [[ -n "$found" ]]; then
       if [[ -n "$sonar_projects" ]]; then
@@ -159,10 +170,15 @@ else
         echo "  [dry run] would delete SonarCloud project: $project_key"
       else
         echo "  Deleting SonarCloud project: $project_key ..."
-        curl -s -X POST \
+        sonar_delete_response=$(curl -sS --fail-with-body -X POST \
           -H "Authorization: Bearer ${SONAR_TOKEN}" \
           "${SONAR_API_URL}/projects/delete" \
-          -d "project=${project_key}" > /dev/null
+          -d "project=${project_key}") || {
+            rc=$?
+            echo "ERROR: SonarCloud delete failed for ${project_key} (curl exit $rc)" >&2
+            echo "Response body: $sonar_delete_response" >&2
+            exit "$rc"
+          }
         sleep 1
       fi
     done
@@ -186,7 +202,11 @@ if [[ "$CLEAN_REPOS" == "1" ]]; then
     before_jq=" and .createdAt < \"${BEFORE_DATE}\""
   fi
   wait_for_rate_limit
-  repos=$(gh_retry repo list "$TEST_OWNER" --limit 1000 --json name,createdAt --jq "[.[] | select((.name | ${jq_filter})${before_jq})] | sort_by(.createdAt) | .[].name") || true
+  repos=$(gh_retry repo list "$TEST_OWNER" --limit 1000 --json name,createdAt --jq "[.[] | select((.name | ${jq_filter})${before_jq})] | sort_by(.createdAt) | .[].name") || {
+    rc=$?
+    echo "ERROR: 'gh repo list $TEST_OWNER' failed (exit $rc) — see stderr above for the underlying gh error" >&2
+    exit "$rc"
+  }
 
   if [[ -z "$repos" ]]; then
     echo "No orphaned test repos found."
@@ -202,7 +222,13 @@ if [[ "$CLEAN_REPOS" == "1" ]]; then
       else
         echo "  Deleting $full ..."
         wait_for_rate_limit
-        gh_retry repo delete "$full" --yes
+        if ! gh_retry repo delete "$full" --yes; then
+          rc=$?
+          echo "ERROR: 'gh repo delete $full --yes' failed (exit $rc)." >&2
+          echo "       Common causes: GH token missing 'delete_repo' scope, token user mismatch, repo already deleted." >&2
+          echo "       See preceding gh stderr lines for the underlying message." >&2
+          exit "$rc"
+        fi
         sleep 10
       fi
     done
@@ -235,7 +261,20 @@ else
   done
 
   # --- Containers (stopped and running) ---
-  orphan_containers=$(docker ps -a --format '{{.Names}}' | grep -E "^(${grep_pattern})" || true)
+  all_containers=$(docker ps -a --format '{{.Names}}') || {
+    rc=$?
+    echo "ERROR: 'docker ps -a' failed (exit $rc) — see stderr above" >&2
+    exit "$rc"
+  }
+  # grep exit 1 (no match) is expected here; only fail on grep error (exit >=2).
+  orphan_containers=$(printf '%s\n' "$all_containers" | grep -E "^(${grep_pattern})") || {
+    rc=$?
+    if (( rc >= 2 )); then
+      echo "ERROR: grep failed (exit $rc) filtering docker container names" >&2
+      exit "$rc"
+    fi
+    orphan_containers=""
+  }
 
   if [[ -z "$orphan_containers" ]]; then
     echo "No orphaned Docker containers found."
@@ -264,7 +303,19 @@ else
   echo ""
 
   # --- Images ---
-  orphan_images=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -E "(${grep_pattern})" || true)
+  all_images=$(docker images --format '{{.Repository}}:{{.Tag}}') || {
+    rc=$?
+    echo "ERROR: 'docker images' failed (exit $rc) — see stderr above" >&2
+    exit "$rc"
+  }
+  orphan_images=$(printf '%s\n' "$all_images" | grep -E "(${grep_pattern})") || {
+    rc=$?
+    if (( rc >= 2 )); then
+      echo "ERROR: grep failed (exit $rc) filtering docker image names" >&2
+      exit "$rc"
+    fi
+    orphan_images=""
+  }
 
   if [[ -z "$orphan_images" ]]; then
     echo "No orphaned Docker images found."
@@ -319,21 +370,29 @@ if [[ "$CLEAN_TMP" == "1" ]]; then
         continue
       fi
 
-      dirty="$(git -C "$dir" status --porcelain 2>/dev/null || echo "ERR")"
-      if [[ "$dirty" == "ERR" ]]; then
+      git_err=$(mktemp -t cleanup-git-err.XXXXXX)
+      if ! dirty="$(git -C "$dir" status --porcelain 2>"$git_err")"; then
+        echo "  ! git status failed for $name:" >&2
+        cat "$git_err" >&2
+        rm -f "$git_err"
         unsafe_dirs+=("$name (git status failed)")
         continue
       fi
+      rm -f "$git_err"
       if [[ -n "$dirty" ]]; then
         unsafe_dirs+=("$name (uncommitted changes)")
         continue
       fi
 
-      unpushed="$(git -C "$dir" log --branches --not --remotes --oneline 2>/dev/null || echo "ERR")"
-      if [[ "$unpushed" == "ERR" ]]; then
+      git_err=$(mktemp -t cleanup-git-err.XXXXXX)
+      if ! unpushed="$(git -C "$dir" log --branches --not --remotes --oneline 2>"$git_err")"; then
+        echo "  ! git log (unpushed check) failed for $name:" >&2
+        cat "$git_err" >&2
+        rm -f "$git_err"
         unsafe_dirs+=("$name (unpushed check failed)")
         continue
       fi
+      rm -f "$git_err"
       if [[ -n "$unpushed" ]]; then
         unsafe_dirs+=("$name (unpushed commits)")
         continue
