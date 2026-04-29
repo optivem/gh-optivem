@@ -248,6 +248,30 @@ func VerifyProdStage(cfg *config.Config, gh *shell.GitHub) {
 	verifyWorkflow(gh, "Production stage", "prod-stage.yml", nil, 300)
 }
 
+// VerifyBumpPatchVersion verifies that bump-patch-version.yml ran successfully.
+// It is invoked automatically by prod-stage as a downstream called workflow,
+// so prod-stage's overall conclusion already reflects its outcome — we add
+// this explicit step for clearer failure attribution if the bump itself
+// breaks (syntax error, action breakage, permission issue).
+//
+// Skipped in multirepo setups: cross-repo bump support is deferred, so
+// multirepo students do not have a bump-patch-version.yml workflow.
+func VerifyBumpPatchVersion(cfg *config.Config, gh *shell.GitHub) {
+	log.Info("Verifying bump-patch-version workflow...")
+
+	if cfg.DryRun {
+		log.Info("[DRY RUN] Would verify bump-patch-version workflow")
+		return
+	}
+
+	if cfg.RepoStrategy == "multirepo" {
+		log.Info("Skipping (multirepo: bump-patch-version not scaffolded)")
+		return
+	}
+
+	verifyNamedWorkflow(gh, "bump-patch-version", "bump-patch-version.yml", 30)
+}
+
 // VerifyCleanup triggers cleanup.yml in dry-run mode in every repo where it
 // was scaffolded. cleanup.yml is otherwise only fired by its nightly schedule,
 // so a syntax error or stale action reference would silently slip past init
