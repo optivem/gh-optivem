@@ -61,6 +61,39 @@ func TestPrepareSystemNilIsNoOp(t *testing.T) {
 	}
 }
 
+// TestRunTestsNoSetupSkipsSetupCommands verifies the --no-setup flag wires
+// through to RunTests and short-circuits the setupCommands loop. We use a
+// distinctive sentinel command (`exit 9`) for setup so we can tell the
+// difference between "setup ran and failed" (RunTests would error) and
+// "setup was skipped" (RunTests proceeds to the suites).
+func TestRunTestsNoSetupSkipsSetupCommands(t *testing.T) {
+	tests := &TestsConfig{
+		SetupCommands: []SetupCommand{
+			{Name: "should not run", Command: "exit 9"},
+		},
+		Suites: []Suite{
+			{ID: "noop", Name: "noop", Command: "go version", Path: "."},
+		},
+	}
+
+	t.Run("NoSetup=false → setup runs and surfaces its failure", func(t *testing.T) {
+		err := RunTests(nil, tests, ".", ".", TestOptions{NoBuild: true, NoStart: true})
+		if err == nil {
+			t.Fatal("want error from failing setup command")
+		}
+		if !strings.Contains(err.Error(), "should not run") {
+			t.Errorf("want error to name the setup command, got: %v", err)
+		}
+	})
+
+	t.Run("NoSetup=true → setup is skipped, suite runs to completion", func(t *testing.T) {
+		err := RunTests(nil, tests, ".", ".", TestOptions{NoBuild: true, NoStart: true, NoSetup: true})
+		if err != nil {
+			t.Fatalf("setup should have been skipped, but got error: %v", err)
+		}
+	})
+}
+
 func TestPrepareSystemNoStartProbesWhenDown(t *testing.T) {
 	// SystemEntry with no components/external systems → IsAnyURLUp returns
 	// false trivially without making any network calls. With NoStart=true,

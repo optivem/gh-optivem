@@ -199,6 +199,7 @@ func newTestCmd() *cobra.Command {
 //	gh optivem test system [--system path] [--tests path]
 //	                       [--suite id] [--test name] [--sample]
 //	                       [--no-build] [--rebuild] [--no-start] [--restart]
+//	                       [--no-setup]
 //
 // By default, builds images (incremental), starts the system if not already
 // up, then runs setup commands and suites. Inspired by `dotnet test` and
@@ -220,6 +221,7 @@ func newTestSystemCmd() *cobra.Command {
 		rebuild    bool
 		noStart    bool
 		restart    bool
+		noSetup    bool
 	)
 	cmd := &cobra.Command{
 		Use:   "system",
@@ -241,6 +243,7 @@ func newTestSystemCmd() *cobra.Command {
 				Rebuild: rebuild,
 				NoStart: noStart,
 				Restart: restart,
+				NoSetup: noSetup,
 			}
 			exitOnError(runner.RunTests(sys, tests, cwdForPath(systemPath), cwdForPath(testsPath), opts))
 		},
@@ -254,5 +257,6 @@ func newTestSystemCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&rebuild, "rebuild", false, "Force a full rebuild from scratch in the implicit build step (ignored with --no-build)")
 	cmd.Flags().BoolVar(&noStart, "no-start", false, "Skip the implicit start step; system must already be up")
 	cmd.Flags().BoolVar(&restart, "restart", false, "Force tear-down + restart during the implicit start step")
+	cmd.Flags().BoolVar(&noSetup, "no-setup", false, "Skip the setupCommands block from tests.json (use when an earlier invocation in the same job already ran setup)")
 	return cmd
 }

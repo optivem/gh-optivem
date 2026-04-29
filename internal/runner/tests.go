@@ -37,6 +37,12 @@ type TestOptions struct {
 	// already be responding to its health probe; otherwise RunTests errors
 	// out with "start it first" (today's pre-implicit-start behavior).
 	NoStart bool
+	// NoSetup, when true, skips the `setupCommands` block from tests.json.
+	// Intended for callers that drive per-suite invocations (e.g. CI workflows
+	// running each suite as its own step) where setupCommands have already
+	// been executed by an earlier invocation in the same job. Per-suite
+	// `testInstallCommands` are NOT skipped — they're a separate concern.
+	NoSetup bool
 	// Restart, when true, forces tear-down + restart during the implicit
 	// Up step (forwarded to SystemOptions.Restart). Ignored when NoStart
 	// is set. Analog of gradle's `--rerun-tasks` for the start phase.
@@ -86,10 +92,12 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 		return err
 	}
 
-	for _, sc := range tests.SetupCommands {
-		fmt.Fprintf(os.Stdout, "\n--- Setup: %s ---\n", sc.Name)
-		if err := runShell(sc.Command, testsCwd, sc.Env); err != nil {
-			return fmt.Errorf("setup %q: %w", sc.Name, err)
+	if !opts.NoSetup {
+		for _, sc := range tests.SetupCommands {
+			fmt.Fprintf(os.Stdout, "\n--- Setup: %s ---\n", sc.Name)
+			if err := runShell(sc.Command, testsCwd, sc.Env); err != nil {
+				return fmt.Errorf("setup %q: %w", sc.Name, err)
+			}
 		}
 	}
 
