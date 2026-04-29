@@ -295,6 +295,7 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	wfMap := multitierPipelineWorkflows(testLang, stageSuffix)
 	wfMap[prefixMultitierBackend+backendLang+commitStageYml] = "backend-commit-stage.yml"
 	wfMap[prefixMultitierFrontend+frontendLang+commitStageYml] = "frontend-commit-stage.yml"
+	wfMap["bump-patch-version-"+prefixMultitier+backendLang+".yml"] = "bump-patch-version.yml"
 	addLegacyWorkflow(wfMap, prefixMultitier, testLang, cfg.Deploy)
 	templates.CopyWorkflows(wfMap, shop, repoDir)
 
@@ -537,6 +538,9 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 		{multiTest + suffixQASignoff, "qa-signoff"},
 		{multiTest + suffixProdStage, "prod-stage"},
 		{multiTest + "-verify", "verify"},
+		// bump-patch-version variant is keyed by backendLang (frontend is always react),
+		// distinct from the pipeline-stage rewrites above which use testLang.
+		{prefixMultitier + backendLang + "-bump-patch-version", "bump-patch-version"},
 		// Docker working-directory: shop keeps per-lang/arch subdirs under
 		// docker/, but the scaffolder copies only the selected lang/arch up
 		// into docker/, so "working-directory: docker/<testLang>/<arch>" must

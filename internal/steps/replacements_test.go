@@ -237,12 +237,12 @@ func TestContentReplacementsStripsEnvPrefix(t *testing.T) {
 	}
 }
 
-// TestContentReplacementsRenamesAutoBumpPatch asserts that the per-flavor
+// TestContentReplacementsRenamesBumpPatchVersion asserts that the per-flavor
 // bump-patch-version workflow name and concurrency group get rewritten to the
 // scaffolded name `bump-patch-version` (matching the renamed file). Regression
-// guard for student repos receiving an `bump-patch-version.yml` whose internal
+// guard for student repos receiving a `bump-patch-version.yml` whose internal
 // `name:` and `concurrency.group:` still reference the shop flavor variant.
-func TestContentReplacementsRenamesAutoBumpPatch(t *testing.T) {
+func TestContentReplacementsRenamesBumpPatchVersion(t *testing.T) {
 	cases := []struct {
 		name     string
 		in       string
@@ -265,6 +265,24 @@ func TestContentReplacementsRenamesAutoBumpPatch(t *testing.T) {
 			name:     "monolith-typescript name",
 			in:       "name: monolith-typescript-bump-patch-version\n",
 			pairs:    monolithContentReplacements("typescript", "typescript"),
+			expected: "name: bump-patch-version\n",
+		},
+		{
+			name:     "multitier-dotnet name",
+			in:       "name: multitier-dotnet-bump-patch-version\n",
+			pairs:    multitierContentReplacements("dotnet", "react", "dotnet"),
+			expected: "name: bump-patch-version\n",
+		},
+		{
+			name:     "multitier-java concurrency group",
+			in:       "  group: multitier-java-bump-patch-version\n",
+			pairs:    multitierContentReplacements("java", "react", "java"),
+			expected: "  group: bump-patch-version\n",
+		},
+		{
+			name:     "multitier-typescript name",
+			in:       "name: multitier-typescript-bump-patch-version\n",
+			pairs:    multitierContentReplacements("typescript", "react", "typescript"),
 			expected: "name: bump-patch-version\n",
 		},
 	}
