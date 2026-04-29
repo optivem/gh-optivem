@@ -267,7 +267,8 @@ var verifyLevelOrder = map[string]int{
 
 // buildVerifySteps assembles the verify pipeline in a fixed order that mirrors
 // the CI pipeline stages: local compile → local tests → local sonar → commit →
-// acceptance (latest + legacy in parallel) → QA (stage + signoff) → production.
+// acceptance (latest + legacy in parallel) → QA (stage + signoff) → production
+// → cleanup (dry-run, schedule-only workflows only fire when init runs).
 // Each step is gated by --verify-level; local tests and local sonar can
 // additionally be skipped with --no-local-tests / --no-local-sonar, and legacy
 // is dropped everywhere via --no-legacy.
@@ -325,6 +326,15 @@ func buildVerifySteps(cfg *config.Config, gh *shell.GitHub) []stepDef {
 	if level >= verifyLevelOrder["release"] {
 		s = append(s,
 			stepDef{name: "Verify production stage", phase: phaseVerifyProduction, fn: func() { steps.VerifyProdStage(cfg, gh) }},
+		)
+	}
+
+	// Step 8: Cleanup workflow (dry-run). cleanup.yml otherwise only fires on
+	// schedule, so a syntax error or stale action reference would silently slip
+	// past init and surface the next night.
+	if level >= verifyLevelOrder["release"] {
+		s = append(s,
+			stepDef{name: "Verify cleanup workflow", phase: phaseVerifyProduction, fn: func() { steps.VerifyCleanup(cfg, gh) }},
 		)
 	}
 

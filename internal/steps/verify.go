@@ -248,6 +248,40 @@ func VerifyProdStage(cfg *config.Config, gh *shell.GitHub) {
 	verifyWorkflow(gh, "Production stage", "prod-stage.yml", nil, 300)
 }
 
+// VerifyCleanup triggers cleanup.yml in dry-run mode in every repo where it
+// was scaffolded. cleanup.yml is otherwise only fired by its nightly schedule,
+// so a syntax error or stale action reference would silently slip past init
+// and surface the next night when the student isn't looking. Dry-run prevents
+// it from touching the freshly published v1.0.0 release. In multirepo setups
+// cleanup.yml is also copied to the sister repos (system / backend+frontend),
+// so each is exercised in turn — apply_template.go writes the same template
+// content to all of them but each repo has its own actions enablement and
+// permissions, so we still verify each.
+func VerifyCleanup(cfg *config.Config, gh *shell.GitHub) {
+	log.Info("Triggering and verifying cleanup workflow (dry-run)...")
+
+	if cfg.DryRun {
+		log.Info("[DRY RUN] Would trigger and wait for cleanup workflow")
+		return
+	}
+
+	verifyCleanupIn(gh, "Cleanup")
+
+	if cfg.RepoStrategy != "multirepo" {
+		return
+	}
+	if cfg.Arch == "monolith" {
+		verifyCleanupIn(gh.ForRepo(cfg.SystemFullRepo), "Cleanup (system repo)")
+	} else {
+		verifyCleanupIn(gh.ForRepo(cfg.BackendFullRepo), "Cleanup (backend repo)")
+		verifyCleanupIn(gh.ForRepo(cfg.FrontendFullRepo), "Cleanup (frontend repo)")
+	}
+}
+
+func verifyCleanupIn(gh *shell.GitHub, label string) {
+	verifyWorkflow(gh, label, "cleanup.yml", map[string]string{"dry-run": "true"}, 300)
+}
+
 func verifyNamedWorkflow(gh *shell.GitHub, label, workflowFile string, intervalSecs int) {
 	shell.CheckRateLimit()
 	err := gh.RunWatchWorkflow(workflowFile, intervalSecs)
