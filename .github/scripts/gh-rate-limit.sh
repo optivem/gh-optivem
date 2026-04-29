@@ -28,16 +28,30 @@
 RATE_LIMIT_THRESHOLD="${RATE_LIMIT_THRESHOLD:-50}"
 
 wait_for_rate_limit() {
-    local remaining
-    remaining=$(gh api rate_limit --jq '.resources.core.remaining' 2>/dev/null || echo "")
-
+    local remaining probe_err probe_stderr
+    probe_err=$(mktemp -t gh-rate-limit-err.XXXXXX)
     # If the probe fails (no token, offline, etc.) don't block — let the real
-    # call surface the underlying error.
+    # call surface the underlying error. We still surface stderr as a notice so
+    # the failure is visible in the workflow log instead of silently discarded.
+    if ! remaining=$(gh api rate_limit --jq '.resources.core.remaining' 2>"$probe_err"); then
+        probe_stderr=$(tr '\n' ' ' <"$probe_err")
+        rm -f "$probe_err"
+        [[ -n "$probe_stderr" ]] && echo "::notice::[rate-limit] probe failed: ${probe_stderr}— continuing without pre-check" >&2
+        return 0
+    fi
+    rm -f "$probe_err"
     [[ -z "$remaining" ]] && return 0
 
     if (( remaining < RATE_LIMIT_THRESHOLD )); then
-        local reset_ts now_ts wait_secs
-        reset_ts=$(gh api rate_limit --jq '.resources.core.reset' 2>/dev/null || echo "0")
+        local reset_ts now_ts wait_secs reset_err reset_stderr
+        reset_err=$(mktemp -t gh-rate-limit-err.XXXXXX)
+        if ! reset_ts=$(gh api rate_limit --jq '.resources.core.reset' 2>"$reset_err"); then
+            reset_stderr=$(tr '\n' ' ' <"$reset_err")
+            rm -f "$reset_err"
+            [[ -n "$reset_stderr" ]] && echo "::notice::[rate-limit] reset probe failed: ${reset_stderr}— skipping wait" >&2
+            return 0
+        fi
+        rm -f "$reset_err"
         now_ts=$(date +%s)
         wait_secs=$(( reset_ts - now_ts + 5 ))
 
