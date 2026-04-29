@@ -5,35 +5,35 @@
 // Behavior:
 //
 //	TTY     — animated braille glyph + status text on a single line, redrawn
-//	          every ~100ms via \r. Status text is updateable via Update().
-//	non-TTY — falls back to a single log line on Start and periodic log lines
-//	          (every 30s by default) so piped/redirected output stays clean.
-//	--quiet — same as non-TTY: no animation, periodic log lines suppressed.
+//	          every ~100ms. Status text is updateable via Update(). Backed by
+//	          github.com/briandowns/spinner (handles cursor hide, terminal
+//	          quirks, NO_COLOR, Windows fallback).
+//	non-TTY — the underlying library auto-disables animation; we still print
+//	          the upfront log line so piped/redirected output records the wait.
 //
-// Always safe to Stop() — idempotent. If Start was a no-op (non-TTY), Stop
-// just emits a final log line so the user sees the wait ended.
+// Nested Starts (a Start while another Spinner is still active) return a
+// suppressed Spinner so two animations don't compete for the same line.
 package spinner
 
 import (
 	"fmt"
-	"os"
 	"sync"
 	"time"
+
+	libspinner "github.com/briandowns/spinner"
 
 	"github.com/optivem/gh-optivem/internal/log"
 )
 
-const (
-	frameInterval = 100 * time.Millisecond
-	plainTickGap  = 30 * time.Second
-)
+const frameInterval = 100 * time.Millisecond
 
-var frames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+// CharSets[14] is the braille-dot animation: ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏
+const charsetIdx = 14
 
-// Active-spinner gate: only the outermost Spinner animates / ticks. Nested
-// Start calls (e.g. CheckRateLimit fired from inside pollRunUntilComplete)
-// return a suppressed Spinner that just logs the upfront message and is a
-// no-op for Update/Stop. Avoids two animations competing for the same line.
+// Active-spinner gate: only the outermost Spinner animates. Nested Start
+// calls (e.g. CheckRateLimit fired from inside pollRunUntilComplete) return
+// a suppressed Spinner that just logs the upfront message and is a no-op for
+// Update/Stop.
 var (
 	activeMu    sync.Mutex
 	activeCount int
@@ -41,68 +41,87 @@ var (
 
 // Spinner is a live status indicator. Returned by Start; finalized by Stop.
 type Spinner struct {
-	mu         sync.Mutex
-	status     string
+	inner      *libspinner.Spinner
 	started    time.Time
-	stopCh     chan struct{}
-	doneCh     chan struct{}
-	tty        bool
-	stopped    bool
 	prefix     string
+	status     string
 	suppressed bool
+	stopped    bool
+	stopCh     chan struct{}
+	mu         sync.Mutex
 }
 
 // Start prints an upfront "this may take several minutes — please don't stop
 // the process" line, then begins animating. message is shown as the spinner
 // prefix; pass something like "Waiting for workflow run #4821".
-//
-// Nested Starts (a Start while another Spinner is still active) return a
-// suppressed Spinner so two animations don't compete for the same line.
 func Start(message string) *Spinner {
 	activeMu.Lock()
 	suppressed := activeCount > 0
 	activeCount++
 	activeMu.Unlock()
 
-	tty := isTerminal(os.Stdout)
-	s := &Spinner{
-		status:     "",
-		started:    time.Now(),
-		stopCh:     make(chan struct{}),
-		doneCh:     make(chan struct{}),
-		tty:        tty,
-		prefix:     message,
-		suppressed: suppressed,
-	}
-
 	log.Infof("%s — this may take several minutes, please don't stop the process.", message)
 
+	s := &Spinner{
+		started:    time.Now(),
+		prefix:     message,
+		suppressed: suppressed,
+		stopCh:     make(chan struct{}),
+	}
 	if suppressed {
-		close(s.doneCh) // no goroutine started; Stop() must not block.
 		return s
 	}
 
-	if tty {
-		go s.animate()
-	} else {
-		go s.tick() // periodic log lines for non-TTY
-	}
+	s.inner = libspinner.New(libspinner.CharSets[charsetIdx], frameInterval)
+	s.inner.FinalMSG = "" // clear line on Stop
+	s.refreshSuffix()
+	s.inner.Start()
+	go s.tickElapsed()
 	return s
 }
 
+// tickElapsed refreshes the suffix every second so the elapsed counter
+// advances even when no one calls Update.
+func (s *Spinner) tickElapsed() {
+	t := time.NewTicker(1 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-s.stopCh:
+			return
+		case <-t.C:
+			s.mu.Lock()
+			if !s.stopped {
+				s.refreshSuffix()
+			}
+			s.mu.Unlock()
+		}
+	}
+}
+
+// refreshSuffix rebuilds the suffix from current state. Caller holds s.mu
+// (or is initializing before any goroutine sees s).
+func (s *Spinner) refreshSuffix() {
+	if s.status == "" {
+		s.inner.Suffix = fmt.Sprintf(" %s · %s", s.prefix, elapsed(s.started))
+	} else {
+		s.inner.Suffix = fmt.Sprintf(" %s — %s · %s", s.prefix, s.status, elapsed(s.started))
+	}
+}
+
 // Update changes the status suffix shown after the prefix and elapsed time.
-// Safe to call from any goroutine. No-op after Stop.
+// Safe to call from any goroutine. No-op after Stop or for suppressed spinners.
 func (s *Spinner) Update(status string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.stopped {
+	if s.stopped || s.suppressed {
 		return
 	}
 	s.status = status
+	s.refreshSuffix()
 }
 
-// Stop halts animation and clears the spinner line (TTY) or prints a final
-// completion log line (non-TTY). Idempotent.
+// Stop halts animation and clears the spinner line. Idempotent.
 func (s *Spinner) Stop() {
 	s.mu.Lock()
 	if s.stopped {
@@ -120,58 +139,8 @@ func (s *Spinner) Stop() {
 	if suppressed {
 		return
 	}
-
 	close(s.stopCh)
-	<-s.doneCh
-
-	if s.tty {
-		// Clear the spinner line so the next log line starts clean.
-		fmt.Fprint(os.Stdout, "\r\033[K")
-	}
-}
-
-func (s *Spinner) animate() {
-	defer close(s.doneCh)
-	ticker := time.NewTicker(frameInterval)
-	defer ticker.Stop()
-	i := 0
-	for {
-		select {
-		case <-s.stopCh:
-			return
-		case <-ticker.C:
-			s.mu.Lock()
-			line := fmt.Sprintf("\r%s %s · %s", frames[i%len(frames)], s.line(), elapsed(s.started))
-			s.mu.Unlock()
-			fmt.Fprint(os.Stdout, line, "\033[K") // \033[K clears to end of line
-			i++
-		}
-	}
-}
-
-func (s *Spinner) tick() {
-	defer close(s.doneCh)
-	ticker := time.NewTicker(plainTickGap)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-s.stopCh:
-			return
-		case <-ticker.C:
-			s.mu.Lock()
-			msg := fmt.Sprintf("%s · %s · %s", s.prefix, s.status, elapsed(s.started))
-			s.mu.Unlock()
-			log.Infof("%s", msg)
-		}
-	}
-}
-
-// line returns the current display text (prefix + status). Caller holds s.mu.
-func (s *Spinner) line() string {
-	if s.status == "" {
-		return s.prefix
-	}
-	return s.prefix + " — " + s.status
+	s.inner.Stop()
 }
 
 func elapsed(start time.Time) string {
@@ -179,14 +148,4 @@ func elapsed(start time.Time) string {
 	mins := int(d.Minutes())
 	secs := int(d.Seconds()) % 60
 	return fmt.Sprintf("%d:%02d elapsed", mins, secs)
-}
-
-// isTerminal reports whether f is connected to a terminal. Works on both
-// Unix and Windows without an external dependency.
-func isTerminal(f *os.File) bool {
-	fi, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return (fi.Mode() & os.ModeCharDevice) != 0
 }
