@@ -15,6 +15,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/pathx"
+	"github.com/optivem/gh-optivem/internal/spinner"
 )
 
 const (
@@ -249,11 +250,31 @@ func CheckRateLimit() {
 	if data.Remaining < rateLimitThreshold {
 		waitSecs := data.Reset - time.Now().Unix() + 5
 		if waitSecs > 0 {
-			log.Infof("Rate limit low (%d remaining). Waiting %ds for reset...", data.Remaining, waitSecs)
-			time.Sleep(time.Duration(waitSecs) * time.Second)
+			waitForRateLimitReset(data.Remaining, waitSecs)
 		} else {
 			log.Infof("Rate limit low (%d remaining) but reset is imminent.", data.Remaining)
 		}
+	}
+}
+
+// waitForRateLimitReset sleeps for waitSecs while showing a live spinner so
+// the user can see the process is alive (waits can be tens of minutes). The
+// status text counts down remaining seconds, updated each second.
+func waitForRateLimitReset(remaining int, waitSecs int64) {
+	msg := fmt.Sprintf("Rate limit low (%d remaining) — waiting for reset", remaining)
+	s := spinner.Start(msg)
+	defer s.Stop()
+
+	deadline := time.Now().Add(time.Duration(waitSecs) * time.Second)
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+	for {
+		left := time.Until(deadline).Round(time.Second)
+		if left <= 0 {
+			return
+		}
+		s.Update(fmt.Sprintf("%s remaining", left))
+		<-ticker.C
 	}
 }
 
@@ -328,6 +349,10 @@ func (g *GitHub) waitForRepoVisible() {
 	const maxAttempts = 15
 	const pollDelay = 1 * time.Second
 	viewCmd := fmt.Sprintf("gh repo view %s --json name", g.Repo)
+
+	sp := spinner.Start(fmt.Sprintf("Waiting for %s to become visible via GraphQL", g.Repo))
+	defer sp.Stop()
+
 	var out string
 	var err error
 	for i := 1; i <= maxAttempts; i++ {
@@ -339,9 +364,7 @@ func (g *GitHub) waitForRepoVisible() {
 		if errors.As(err, &rle) {
 			log.Fatalf("rate limit hit while waiting for %s to become visible: %v", g.Repo, err)
 		}
-		if i == 1 {
-			log.Debugf("Waiting for %s to become visible via GraphQL...", g.Repo)
-		}
+		sp.Update(fmt.Sprintf("attempt %d/%d", i, maxAttempts))
 		if i < maxAttempts {
 			sleepFn(pollDelay)
 		}
@@ -455,6 +478,7 @@ func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
 		listCmd = fmt.Sprintf("gh run list --repo %s --limit 1 --json databaseId --jq .[0].databaseId", g.Repo)
 	}
 
+	sp := spinner.Start(fmt.Sprintf("Waiting for workflow run to appear (%s)", workflow))
 	var out string
 	var err error
 	for attempt := 1; attempt <= 12; attempt++ {
@@ -462,11 +486,12 @@ func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
 		if err == nil && strings.TrimSpace(out) != "" {
 			break
 		}
+		sp.Update(fmt.Sprintf("attempt %d/12", attempt))
 		if attempt < 12 {
-			log.Debugf("Waiting for workflow run to appear (attempt %d/12)...", attempt)
 			time.Sleep(5 * time.Second)
 		}
 	}
+	sp.Stop()
 	if err != nil || strings.TrimSpace(out) == "" {
 		return fmt.Errorf("no workflow runs found for %s (workflow: %s) after 12 attempts", g.Repo, workflow)
 	}
@@ -496,6 +521,9 @@ func (g *GitHub) pollRunUntilComplete(runID string) error {
 	deadline := time.Now().Add(pollMaxDuration)
 	viewCmd := fmt.Sprintf("gh run view %s --repo %s --json status,conclusion --jq '[.status,.conclusion] | join(\",\")'", runID, g.Repo)
 
+	sp := spinner.Start(fmt.Sprintf("Polling workflow run %s", runID))
+	defer sp.Stop()
+
 	for {
 		if time.Now().After(deadline) {
 			return fmt.Errorf("polling run %s timed out after %s", runID, pollMaxDuration)
@@ -507,7 +535,7 @@ func (g *GitHub) pollRunUntilComplete(runID string) error {
 		if err != nil {
 			var rle *RateLimitExceeded
 			if errors.As(err, &rle) {
-				log.Infof("Rate limit hit polling run %s — waiting 60s before retry...", runID)
+				sp.Update("rate limit hit, retrying in 60s")
 				time.Sleep(60 * time.Second)
 				continue
 			}
@@ -533,7 +561,7 @@ func (g *GitHub) pollRunUntilComplete(runID string) error {
 			}
 		}
 
-		log.Infof("Run %s status: %s — polling again in 60s...", runID, status)
+		sp.Update(fmt.Sprintf("status: %s", status))
 		time.Sleep(60 * time.Second)
 	}
 }

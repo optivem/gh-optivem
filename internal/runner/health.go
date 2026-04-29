@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/optivem/gh-optivem/internal/spinner"
 )
 
 // Default polling parameters for health checks. Mirrors the PS1 runner's
@@ -66,7 +68,10 @@ func WaitForURL(url string, opts HealthOptions) error {
 // returns 200 OK. Components without a URL are skipped. Returns the first
 // failure (with the failed URL) or nil on success.
 func WaitForSystem(sys SystemEntry, opts HealthOptions) error {
+	sp := spinner.Start(fmt.Sprintf("Waiting for system %q to be healthy", sys.Label))
+	defer sp.Stop()
 	for _, ext := range sys.ExternalSystems {
+		sp.Update(fmt.Sprintf("checking %s", ext.Name))
 		if err := WaitForURL(ext.URL, opts); err != nil {
 			return fmt.Errorf("%s: %w", ext.Name, err)
 		}
@@ -75,6 +80,7 @@ func WaitForSystem(sys SystemEntry, opts HealthOptions) error {
 		if comp.URL == "" {
 			continue
 		}
+		sp.Update(fmt.Sprintf("checking %s", comp.Name))
 		if err := WaitForURL(comp.URL, opts); err != nil {
 			return fmt.Errorf("%s: %w", comp.Name, err)
 		}
