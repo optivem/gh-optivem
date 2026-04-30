@@ -49,7 +49,7 @@ on:
         type: boolean
         default: false
       no-local-tests:
-        description: 'Skip the "Verify local testing" step for the acceptance matrix. Does not affect the smoke job.'
+        description: 'Skip the "Verify local testing" step in both the acceptance and smoke matrices.'
         required: false
         type: boolean
         default: false
@@ -437,6 +437,7 @@ jobs:
           test-lang: typescript
           verify-level: ${{ inputs.smoke-verify-level }}
           no-legacy: ${{ inputs.no-legacy && 'true' || 'false' }}
+          no-local-tests: ${{ inputs.no-local-tests && 'true' || 'false' }}
           shop-tag: ${{ needs.check.outputs.shop-tag }}
           retain-repos: ${{ needs.check.outputs.retain-repos }}
           jitter-max-seconds: '30'
