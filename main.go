@@ -238,6 +238,17 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, fail
 		})
 	}
 
+	// Lint scaffolded workflows BEFORE push so a broken `uses:` reference or
+	// invalid syntax aborts the run locally, instead of landing in the test-app
+	// and surfacing 10+ minutes later at workflow-dispatch time. Runs even at
+	// --verify-level=none — output correctness is part of the scaffold, not a
+	// verify-level concern.
+	allSteps = append(allSteps, stepDef{
+		name:  "Verify scaffolded workflows",
+		phase: phaseApplyTemplate,
+		fn:    func() { steps.VerifyScaffoldWorkflows(cfg) },
+	})
+
 	allSteps = append(allSteps, stepDef{
 		name:      "Commit and push",
 		phase:     phaseApplyTemplate,
@@ -283,9 +294,9 @@ func buildVerifySteps(cfg *config.Config, gh *shell.GitHub) []stepDef {
 	var s []stepDef
 
 	// Step 1: Local compilation — runs at every level above none.
+	// (Workflow lint runs in phaseApplyTemplate before push, not here.)
 	s = append(s,
 		stepDef{name: "Verify local compilation", phase: phaseVerifyLocal, fn: func() { steps.VerifyCompilation(cfg) }},
-		stepDef{name: "Verify scaffolded workflows", phase: phaseVerifyLocal, fn: func() { steps.VerifyScaffoldWorkflows(cfg) }},
 	)
 
 	// Step 2: Local testing — runner package against system-test/ (latest + legacy).
