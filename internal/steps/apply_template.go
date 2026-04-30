@@ -684,6 +684,12 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 		r = append(r,
 			[2]string{systemMultitierBackend + testLang, "backend"},
 			[2]string{prefixMultitierBackend + testLang, "backend"},
+			// Pipeline-stage workflows (acceptance/qa/prod) come from the testLang
+			// template, so their `read-base-version` step references
+			// system/multitier/<testLang>/VERSION. Scaffolded repos hold one root
+			// VERSION (CopyVersion → VERSION; system/multitier/<testLang>/ does not
+			// exist in the scaffold), so collapse this path to root VERSION too.
+			[2]string{systemMultitierDir + testLang + "/VERSION", "VERSION"},
 		)
 	}
 	return r

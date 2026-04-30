@@ -511,6 +511,60 @@ func TestMonolithCrossLangVersionPathCollapsesToRoot(t *testing.T) {
 	}
 }
 
+// TestMultitierCrossLangVersionPathCollapsesToRoot asserts that for cross-lang
+// multitier scaffolds (backendLang != testLang) the testLang-flavored
+// system/multitier/<testLang>/VERSION path embedded in the testLang pipeline
+// stage workflows (acceptance/qa/prod) collapses to root VERSION. Regression
+// guard for scaffolded acceptance-stage shipping with `file:
+// system/multitier/typescript/VERSION` against a Java multitier repo (where
+// CopyDir flattened system/multitier/java/ to system/ and CopyVersion put the
+// VERSION at root).
+func TestMultitierCrossLangVersionPathCollapsesToRoot(t *testing.T) {
+	cases := []struct {
+		name     string
+		in       string
+		pairs    [][2]string
+		expected string
+	}{
+		{
+			name:     "java backend, typescript tests",
+			in:       "          file: system/multitier/typescript/VERSION\n",
+			pairs:    multitierContentReplacements("java", "react", "typescript"),
+			expected: "          file: VERSION\n",
+		},
+		{
+			name:     "dotnet backend, java tests",
+			in:       "          file: system/multitier/java/VERSION\n",
+			pairs:    multitierContentReplacements("dotnet", "react", "java"),
+			expected: "          file: VERSION\n",
+		},
+		{
+			name:     "typescript backend, dotnet tests",
+			in:       "          file: system/multitier/dotnet/VERSION\n",
+			pairs:    multitierContentReplacements("typescript", "react", "dotnet"),
+			expected: "          file: VERSION\n",
+		},
+		{
+			name:     "backendLang VERSION still collapses (commit-stage path) for cross-lang",
+			in:       "          file: system/multitier/java/VERSION\n",
+			pairs:    multitierContentReplacements("java", "react", "typescript"),
+			expected: "          file: VERSION\n",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.in
+			for _, p := range tc.pairs {
+				got = strings.ReplaceAll(got, p[0], p[1])
+			}
+			if got != tc.expected {
+				t.Errorf("got  %q\nwant %q", got, tc.expected)
+			}
+		})
+	}
+}
+
 // TestSystemPrefixDropReplacementsCollapsesPerComponent3SegmentTags asserts
 // that systemPrefixDropReplacements collapses 3-segment per-component
 // release-tag prefixes (introduced when multitier prod-stage started
