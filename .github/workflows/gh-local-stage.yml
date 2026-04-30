@@ -1,5 +1,8 @@
 name: gh-local-stage
 
+# TODO: revisit — overlaps with shop's cross-lang-system-verification (different
+# concerns but similar end-effect). Decide whether to keep or delete.
+
 on:
   workflow_dispatch:
 
@@ -97,14 +100,8 @@ jobs:
       - shop-local-multitier-java
       - shop-local-multitier-dotnet
       - shop-local-multitier-typescript
-    runs-on: ubuntu-latest
-    steps:
-      - uses: optivem/actions/trigger-and-wait-for-workflow@v1
-        env:
-          GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
-        with:
-          token: ${{ secrets.VERIFY_TOKEN }}
-          workflow: gh-acceptance-stage.yml
-          workflow-inputs: '{"verify-level": "local"}'
-          poll-interval: '600'
-          timeout-seconds: '7200'
+    uses: ./.github/workflows/_gh-acceptance-pipeline.yml
+    secrets: inherit
+    with:
+      verify-level: local
+      smoke-verify-level: local

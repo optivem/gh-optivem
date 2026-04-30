@@ -1,26 +1,13 @@
 name: gh-acceptance-stage
 
 run-name: >-
-  gh Acceptance Stage — ${{ github.event.schedule == '0 * * * *' && 'local' || 'release' }}
+  gh Acceptance Stage${{ inputs.debug-skip-tests && ' [debug-skip-tests]' || '' }}
 
 on:
   # schedule:
-  #   - cron: '0 */6 * * *'  # Every 6 hours — verify-level=release
-  #   - cron: '0 * * * *'    # Every hour — verify-level=local
+  #   - cron: '0 */6 * * *'  # Every 6 hours
   workflow_dispatch:
     inputs:
-      verify-level:
-        description: 'Verification level for the run (full acceptance) matrix'
-        required: false
-        type: choice
-        options: [none, local, commit, acceptance, qa, release]
-        default: release
-      smoke-verify-level:
-        description: 'Verification level for the smoke matrix (independent of verify-level)'
-        required: false
-        type: choice
-        options: [none, local, commit, acceptance, qa, release]
-        default: release
       smoke-mode:
         description: 'Smoke matrix size'
         required: false
@@ -38,8 +25,8 @@ on:
         required: false
         type: string
         default: ''
-      skip-tests:
-        description: 'Bypass ALL test phases (smoke + acceptance matrix) and create the RC prerelease directly. Forces release-mode regardless of verify-level. The version-not-already-released check still runs. smoke-mode and acceptance-mode are ignored when this is true.'
+      debug-skip-tests:
+        description: 'Bypass ALL test phases (smoke + acceptance matrix) and create the RC prerelease directly. The version-not-already-released check still runs. smoke-mode and acceptance-mode are ignored when this is true.'
         required: false
         type: boolean
         default: false
@@ -55,15 +42,12 @@ jobs:
     uses: ./.github/workflows/_gh-acceptance-pipeline.yml
     secrets: inherit
     with:
-      # When the hourly cron is re-enabled, switch this back to the schedule-aware form:
-      #   verify-level: ${{ github.event.schedule == '0 * * * *' && 'local' || inputs.verify-level }}
-      # (hourly cron → `local` verify, 6-hour cron + manual dispatch → input-driven, default `release`.)
-      verify-level: ${{ inputs.verify-level }}
-      smoke-verify-level: ${{ inputs.smoke-verify-level }}
+      verify-level: release
+      smoke-verify-level: release
       smoke-mode: ${{ inputs.smoke-mode }}
       acceptance-mode: ${{ inputs.acceptance-mode }}
       shop-tag: ${{ inputs.shop-tag }}
       shop-head: false
       retain-repos: false
       skip-prerelease: false
-      skip-tests: ${{ inputs.skip-tests == null && false || inputs.skip-tests }}
+      debug-skip-tests: ${{ inputs.debug-skip-tests == null && false || inputs.debug-skip-tests }}

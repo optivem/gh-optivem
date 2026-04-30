@@ -365,6 +365,60 @@ func TestContentReplacementsFlattensDockerCLIArgs(t *testing.T) {
 	}
 }
 
+// TestMonolithCrossLangVersionPathCollapsesToRoot asserts that for cross-lang
+// monolith scaffolds (lang != testLang) the testLang-flavored
+// system/monolith/<testLang>/VERSION path embedded in the testLang pipeline
+// stage workflows (acceptance/qa/prod) collapses to root VERSION. Regression
+// guard for scaffolded acceptance-stage shipping with `file:
+// system/monolith/typescript/VERSION` against a Java monolith repo (where
+// CopyDir flattened system/monolith/java/ to system/ and CopyVersion put the
+// VERSION at root).
+func TestMonolithCrossLangVersionPathCollapsesToRoot(t *testing.T) {
+	cases := []struct {
+		name     string
+		in       string
+		pairs    [][2]string
+		expected string
+	}{
+		{
+			name:     "java system, typescript tests",
+			in:       "          file: system/monolith/typescript/VERSION\n",
+			pairs:    monolithContentReplacements("java", "typescript"),
+			expected: "          file: VERSION\n",
+		},
+		{
+			name:     "dotnet system, java tests",
+			in:       "          file: system/monolith/java/VERSION\n",
+			pairs:    monolithContentReplacements("dotnet", "java"),
+			expected: "          file: VERSION\n",
+		},
+		{
+			name:     "typescript system, dotnet tests",
+			in:       "          file: system/monolith/dotnet/VERSION\n",
+			pairs:    monolithContentReplacements("typescript", "dotnet"),
+			expected: "          file: VERSION\n",
+		},
+		{
+			name:     "lang VERSION still collapses (commit-stage path) for cross-lang",
+			in:       "          file: system/monolith/java/VERSION\n",
+			pairs:    monolithContentReplacements("java", "typescript"),
+			expected: "          file: VERSION\n",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.in
+			for _, p := range tc.pairs {
+				got = strings.ReplaceAll(got, p[0], p[1])
+			}
+			if got != tc.expected {
+				t.Errorf("got  %q\nwant %q", got, tc.expected)
+			}
+		})
+	}
+}
+
 // TestSystemPrefixDropReplacementsCollapsesPerComponent3SegmentTags asserts
 // that systemPrefixDropReplacements collapses 3-segment per-component
 // release-tag prefixes (introduced when multitier prod-stage started
