@@ -1,6 +1,6 @@
 # v2b: auto-dispatch ATDD agents via the `claude` CLI
 
-🤖 **Picked up by agent** — `Valentina_Desk` at `2026-04-30T14:04:55Z`
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-04-30T14:08:01Z`
 
 **Status: Active (un-deferred 2026-04-30).** The "operator fatigue from the two-window workflow" trigger (§Trigger to undefer, second bullet) fired before the v1 soak completed — switching between the driver terminal and the Claude Code chat window per phase is too slow to be usable. Proceeding without the v1 soak token-measurement gate; we accept that v2b ships before tokens are formally measured against v1.
 
@@ -109,35 +109,26 @@ v1's `--autonomous` flag is mostly stubbed. v2b makes it meaningful:
 
 ## Implementation outline
 
-1. **New package `internal/atdd/runtime/clauderun/`** — owns subprocess invocation. Single exported function `Dispatch(ctx, opts) (CommitInfo, error)` that:
-   - Builds the prompt from a template + opts.
-   - Runs `claude -p <prompt> --no-update-check`.
-   - Captures HEAD before/after.
-   - Returns `CommitInfo{SHA, Subject}` or an error with surfaced stderr.
-   - Has a `ClaudeRunner` interface so tests can inject fakes (mirrors `gates.GhRunner` / `actions.realShell`).
+The engine seam (clauderun package, prompt template, unit tests) shipped 2026-04-30 — see `internal/atdd/runtime/clauderun/`. Remaining items below.
 
-2. **Driver wiring** (`internal/atdd/runtime/driver/driver.go`):
+1. **Driver wiring** (`internal/atdd/runtime/driver/driver.go`):
    - `wrapAgentDispatchers` currently registers a "pause-and-prompt" wrapper; v2b registers a "dispatch via clauderun" wrapper instead.
    - Mode selection: stdin pause vs auto-dispatch is a driver `Options` field (default = auto-dispatch in v2b; v1 behaviour reachable via `--manual-agents` for fallback).
    - Read overrides from the new CLI flags into `override.Hooks` and pass into `clauderun.Dispatch`.
 
-3. **CLI flags** (`atdd_commands.go`):
+2. **CLI flags** (`atdd_commands.go`):
    - `--extra NODE=text` (repeatable; parsed into a map).
    - `--replace NODE=text` (repeatable).
    - `--interactive` (bool).
    - `--manual-agents` (bool; v1 stdin-pause behaviour for diagnosis).
 
-4. **Prompt template** — short Markdown / plain-text in `clauderun/prompt.tmpl` (Go `text/template`), parameterised on the fields above. Versioned in source so prompt drift is reviewable.
+3. **Driver integration test** in `internal/atdd/runtime/driver/driver_test.go` (new file) wiring a fake clauderun + a tiny in-memory git repo, verifying the engine advances on commit and halts on no-commit.
 
-5. **Tests:**
-   - `clauderun_test.go` — fake `ClaudeRunner` returning canned exit codes + canned HEAD-changes; assert prompt construction, commit detection, error paths.
-   - Integration test in `internal/atdd/runtime/driver/driver_test.go` (new file) wiring a fake clauderun + a tiny in-memory git repo, verifying the engine advances on commit and halts on no-commit.
-
-6. **Documentation:**
+4. **Documentation:**
    - `CONTRIBUTING.md` "Testing the ATDD driver" section gains a v2 paragraph: same workflow, now without Window 2 unless using `--manual-agents`.
    - One-liner in shop's `docs/atdd/config.yaml` example pointing at the v2 mode.
 
-Estimated total effort: 2–3 days of focused work plus a soak.
+Estimated remaining effort: 1–1.5 days of focused work plus a soak.
 
 ## Risks / open questions
 

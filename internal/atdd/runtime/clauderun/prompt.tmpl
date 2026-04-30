@@ -1,0 +1,16 @@
+Launch the {{.Agent}} subagent for the current ATDD phase.
+
+Ticket: #{{.IssueNum}} "{{.IssueTitle}}" ({{.IssueRepo}})
+{{- if .ProjectURL}}
+Project: {{.ProjectTitle}} ({{.ProjectURL}})
+{{- end}}
+Phase: {{.NodeDescription}}
+Phase doc: {{.PhaseDoc}}
+{{- if .OverrideText}}
+
+{{.OverrideText}}
+{{- end}}
+
+When the agent finishes, do not summarise — exit cleanly. The Go driver
+detects completion by polling HEAD; your COMMIT must land on HEAD before
+you exit.
