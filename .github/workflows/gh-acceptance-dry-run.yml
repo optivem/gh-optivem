@@ -70,6 +70,11 @@ on:
         required: false
         default: false
         type: boolean
+      no-local-sonar:
+        description: 'Skip the "Verify local SonarCloud scan" step (per-component Run-Sonar.ps1) in both the acceptance and smoke matrices.'
+        required: false
+        default: false
+        type: boolean
       no-legacy:
         description: 'Drop legacy runs from the acceptance matrix (CLI --no-legacy). Speeds up dry-runs by skipping the legacy stage verification.'
         required: false
@@ -95,6 +100,7 @@ jobs:
       debug-shop-head: ${{ inputs.debug-shop-head }}
       retain-repos: ${{ inputs.retain-repos }}
       no-local-tests: ${{ inputs.no-local-tests }}
+      no-local-sonar: ${{ inputs.no-local-sonar }}
       no-legacy: ${{ inputs.no-legacy }}
       # Dry-run never produces a prerelease/release, regardless of verify-level.
       skip-prerelease: true

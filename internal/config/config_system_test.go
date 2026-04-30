@@ -66,6 +66,9 @@ func verifyFlags() []string {
 	if os.Getenv("TEST_NO_LOCAL_TESTS") == "true" {
 		flags = append(flags, "--no-local-tests")
 	}
+	if os.Getenv("TEST_NO_LOCAL_SONAR") == "true" {
+		flags = append(flags, "--no-local-sonar")
+	}
 	if tag := os.Getenv("TEST_SHOP_TAG"); tag != "" {
 		flags = append(flags, "--shop-ref", tag)
 	}
