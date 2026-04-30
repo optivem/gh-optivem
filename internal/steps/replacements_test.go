@@ -392,20 +392,20 @@ func TestSystemPrefixDropReplacementsCollapsesPerComponent3SegmentTags(t *testin
 		},
 		{
 			name:     "multitier-backend-java git-tag value in bump-patch-version",
-			in:       `              {"path": "system/multitier/backend-java/VERSION", "signal": "git-tag", "value": "multitier-backend-java-v"}` + "\n",
+			in:       `              {"path": "system/multitier/backend-java/VERSION", "value": "multitier-backend-java-v"}` + "\n",
 			pairs:    systemPrefixDropReplacements("multitier-backend-java"),
-			expected: `              {"path": "system/multitier/backend-java/VERSION", "signal": "git-tag", "value": "v"}` + "\n",
+			expected: `              {"path": "system/multitier/backend-java/VERSION", "value": "v"}` + "\n",
 		},
 		{
 			name: "multi-prefix variadic call collapses both backend and frontend",
-			in: `              {"path": "system/multitier/backend-typescript/VERSION", "signal": "git-tag", "value": "multitier-backend-typescript-v"},
+			in: `              {"path": "system/multitier/backend-typescript/VERSION", "value": "multitier-backend-typescript-v"},
               {"path": "system/multitier/frontend-react/VERSION",     "signal": "git-tag", "value": "multitier-frontend-react-v"}` + "\n",
 			pairs: systemPrefixDropReplacements(
 				"multitier-typescript",
 				"multitier-backend-typescript",
 				"multitier-frontend-react",
 			),
-			expected: `              {"path": "system/multitier/backend-typescript/VERSION", "signal": "git-tag", "value": "v"},
+			expected: `              {"path": "system/multitier/backend-typescript/VERSION", "value": "v"},
               {"path": "system/multitier/frontend-react/VERSION",     "signal": "git-tag", "value": "v"}` + "\n",
 		},
 		{
@@ -449,11 +449,11 @@ func TestMultitierPrefixDropAndContentReplacementsOrderingFixesPartialMatch(t *t
 	}{
 		{
 			name:         "multitier-dotnet bump-patch-version git-tag values",
-			in:           `              {"path": "system/multitier/backend-dotnet/VERSION", "signal": "git-tag", "value": "multitier-backend-dotnet-v"},` + "\n              " + `{"path": "system/multitier/frontend-react/VERSION",  "signal": "git-tag", "value": "multitier-frontend-react-v"}` + "\n",
+			in:           `              {"path": "system/multitier/backend-dotnet/VERSION", "value": "multitier-backend-dotnet-v"},` + "\n              " + `{"path": "system/multitier/frontend-react/VERSION",  "signal": "git-tag", "value": "multitier-frontend-react-v"}` + "\n",
 			backendLang:  "dotnet",
 			frontendLang: "react",
 			testLang:     "dotnet",
-			expected:     `              {"path": "backend/VERSION", "signal": "git-tag", "value": "v"},` + "\n              " + `{"path": "frontend/VERSION",  "signal": "git-tag", "value": "v"}` + "\n",
+			expected:     `              {"path": "backend/VERSION", "value": "v"},` + "\n              " + `{"path": "frontend/VERSION",  "signal": "git-tag", "value": "v"}` + "\n",
 		},
 		{
 			name:         "multitier-typescript prod-stage per-component publish-tag",
@@ -504,7 +504,7 @@ func TestMultirepoBackendAndFrontendReplacementsCollapseGitTagValue(t *testing.T
 	}{
 		{
 			name: "backend repo (multitier-backend-dotnet)",
-			in:   `              {"path": "system/multitier/backend-dotnet/VERSION", "signal": "git-tag", "value": "multitier-backend-dotnet-v"}` + "\n",
+			in:   `              {"path": "system/multitier/backend-dotnet/VERSION", "value": "multitier-backend-dotnet-v"}` + "\n",
 			// Mirrors backendReplacements composition in applyMultitierMultirepo.
 			pairs: append(
 				systemPrefixDropReplacements("multitier-backend-dotnet"),
@@ -513,11 +513,11 @@ func TestMultirepoBackendAndFrontendReplacementsCollapseGitTagValue(t *testing.T
 				[2]string{"multitier-backend-dotnet", "backend"},
 				[2]string{"backend-bump-patch-version", "bump-patch-version"},
 			),
-			expected: `              {"path": "backend/VERSION", "signal": "git-tag", "value": "v"}` + "\n",
+			expected: `              {"path": "backend/VERSION", "value": "v"}` + "\n",
 		},
 		{
 			name: "frontend repo (multitier-frontend-react)",
-			in:   `              {"path": "system/multitier/frontend-react/VERSION", "signal": "git-tag", "value": "multitier-frontend-react-v"}` + "\n",
+			in:   `              {"path": "system/multitier/frontend-react/VERSION", "value": "multitier-frontend-react-v"}` + "\n",
 			// Mirrors frontendReplacements composition in applyMultitierMultirepo.
 			pairs: append(
 				systemPrefixDropReplacements("multitier-frontend-react"),
@@ -526,7 +526,7 @@ func TestMultirepoBackendAndFrontendReplacementsCollapseGitTagValue(t *testing.T
 				[2]string{"multitier-frontend-react", "frontend"},
 				[2]string{"frontend-bump-patch-version", "bump-patch-version"},
 			),
-			expected: `              {"path": "frontend/VERSION", "signal": "git-tag", "value": "v"}` + "\n",
+			expected: `              {"path": "frontend/VERSION", "value": "v"}` + "\n",
 		},
 	}
 

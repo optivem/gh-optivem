@@ -61,9 +61,13 @@ func CopyWorkflows(mappings map[string]string, shop, repoDir string) {
 	}
 }
 
-// CopyVersion copies the VERSION file from shop to repo.
-func CopyVersion(shop, repoDir string) {
-	src := filepath.Join(shop, "VERSION")
+// CopyVersion copies the per-system VERSION file from shop to the scaffolded
+// repo's root. Source: `shop/system/<arch>/<lang>/VERSION`. Destination:
+// `repoDir/VERSION`. The shop holds one VERSION file per (arch, lang) flavor
+// (decoupled from shop's root meta VERSION); scaffolded repos host one
+// system, so root VERSION is the system version.
+func CopyVersion(shop, repoDir, arch, lang string) {
+	src := filepath.Join(shop, "system", arch, lang, "VERSION")
 	if _, err := os.Stat(src); err == nil {
 		files.CopyFile(src, filepath.Join(repoDir, "VERSION"))
 	}

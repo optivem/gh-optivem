@@ -78,8 +78,10 @@ func copyExternals(shop, repoDir string) {
 // copySystemTests copies system-test/{testLang}/ -> system-test/ (tests +
 // README only) and docker/{testLang}/{arch}/ -> docker/ (system.json +
 // compose files for the selected arch). composeVariant is "single" (monolith)
-// or "multi" (multitier).
-func copySystemTests(shop, repoDir, testLang, composeVariant string) string {
+// or "multi" (multitier). systemLang identifies the per-system VERSION file
+// to copy from shop (cfg.Lang for monolith, cfg.BackendLang for multitier);
+// the file at shop/system/<arch>/<systemLang>/VERSION becomes repoDir/VERSION.
+func copySystemTests(shop, repoDir, testLang, composeVariant, systemLang string) string {
 	testDst := filepath.Join(repoDir, dirSystemTest)
 	files.CopyDir(filepath.Join(shop, dirSystemTest, testLang), testDst)
 
@@ -90,7 +92,7 @@ func copySystemTests(shop, repoDir, testLang, composeVariant string) string {
 	dockerDst := filepath.Join(repoDir, dirDocker)
 	files.CopyDir(filepath.Join(shop, dirDocker, testLang, arch), dockerDst)
 
-	templates.CopyVersion(shop, repoDir)
+	templates.CopyVersion(shop, repoDir, arch, systemLang)
 	return testDst
 }
 
@@ -185,7 +187,7 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	copyExternals(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	copySystemTests(shop, repoDir, testLang, "single")
+	copySystemTests(shop, repoDir, testLang, "single", lang)
 
 	// Fix workflow content: paths, image names, workflow names
 	log.Info("Fixing up workflow and docker-compose content...")
@@ -229,7 +231,7 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	copyExternals(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	copySystemTests(shop, repoDir, testLang, "single")
+	copySystemTests(shop, repoDir, testLang, "single", lang)
 
 	// Fix root repo workflow content
 	log.Info("Fixing up root repo workflow and docker-compose content...")
@@ -269,7 +271,7 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	log.Info("Copying system code to system repo...")
 	systemSrc := filepath.Join(shop, "system", "monolith", lang)
 	files.CopyDir(systemSrc, filepath.Join(sysDir, "system"))
-	templates.CopyVersion(shop, sysDir)
+	templates.CopyVersion(shop, sysDir, "monolith", lang)
 
 	log.Info("Copying commit-stage and bump-patch-version workflows to system repo...")
 	systemWfMap := map[string]string{
@@ -283,6 +285,9 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	sysContentReplacements := [][2]string{
 		{prefixMonolith + lang + suffixCommitStage, "commit-stage"},
 		{prefixMonolith + lang + "-bump-patch-version", "bump-patch-version"},
+		// Same precedence rule as monolithContentReplacements: VERSION-specific
+		// rule before the broader system/monolith/<lang> -> system rule.
+		{systemMonolithDir + lang + "/VERSION", "VERSION"},
 		{systemMonolithDir + lang, "system"},
 		{prefixMonolithSystem + lang, "system"},
 	}
@@ -326,7 +331,7 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	copyExternals(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	copySystemTests(shop, repoDir, testLang, "multi")
+	copySystemTests(shop, repoDir, testLang, "multi", backendLang)
 
 	// Fix workflow content: paths and image names
 	log.Info("Fixing up workflow and docker-compose content...")
@@ -381,7 +386,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	copyExternals(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	copySystemTests(shop, repoDir, testLang, "multi")
+	copySystemTests(shop, repoDir, testLang, "multi", backendLang)
 
 	// Fix root repo workflow content
 	log.Info("Fixing up root repo workflow and docker-compose content...")
@@ -510,6 +515,11 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 		{monoTest + suffixQASignoff, "qa-signoff"},
 		{monoTest + suffixProdStage, "prod-stage"},
 		{monoTest + "-verify", "verify"},
+		// VERSION file: shop holds per-flavor system/monolith/<lang>/VERSION,
+		// scaffolded student repos hold one root VERSION. Must precede the
+		// broader system/monolith/<lang> -> system rule below; otherwise the
+		// path collapses to "system/VERSION" instead of "VERSION".
+		{systemMonolithDir + lang + "/VERSION", "VERSION"},
 		// Working directory
 		{systemMonolithDir + lang, "system"},
 		// System-test path
@@ -623,6 +633,11 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 		// docker/<testLang>/multitier/system.json" in per-suite acceptance-stage
 		// `run:` lines), which the working-directory rule above does not cover.
 		{dirDocker + "/" + testLang + "/multitier/", dirDocker + "/"},
+		// VERSION file: shop holds per-flavor system/multitier/<backendLang>/VERSION
+		// (the system bundle), scaffolded multitier monorepo student repos hold
+		// one root VERSION. Must precede the broader system/multitier/<lang>
+		// rules below.
+		{systemMultitierDir + backendLang + "/VERSION", "VERSION"},
 		// Working directories (these also transform commit stage workflow names:
 		// backend-{lang}-commit-stage -> backend-commit-stage, etc.)
 		{systemMultitierBackend + backendLang, "backend"},
