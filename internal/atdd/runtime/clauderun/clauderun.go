@@ -69,6 +69,13 @@ type Options struct {
 	// interpolated into the prompt template. Empty string is fine.
 	OverrideText string
 
+	// RawPrompt, when non-empty, replaces the templated prompt entirely.
+	// Used by override.Hooks Replace where the operator wants to swap the
+	// whole prompt rather than append text via OverrideText. When set,
+	// every other prompt-shaping field (NodeDescription, OverrideText, …)
+	// is ignored.
+	RawPrompt string
+
 	// Autonomous — when true, run via `claude -p` (one-shot, headless).
 	// When false, run interactively so the operator can observe / interject.
 	Autonomous bool
@@ -153,9 +160,13 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (CommitInfo, error) 
 	deps = deps.withDefaults()
 	opts = opts.withDefaults()
 
-	prompt, err := renderPrompt(opts)
-	if err != nil {
-		return CommitInfo{}, fmt.Errorf("clauderun: render prompt: %w", err)
+	prompt := opts.RawPrompt
+	if prompt == "" {
+		var err error
+		prompt, err = renderPrompt(opts)
+		if err != nil {
+			return CommitInfo{}, fmt.Errorf("clauderun: render prompt: %w", err)
+		}
 	}
 
 	headBefore, err := readHEAD(ctx, deps.Git, opts.RepoPath)
@@ -219,6 +230,21 @@ func renderPrompt(opts Options) (string, error) {
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+// RenderPrompt is the public counterpart to renderPrompt: it expands
+// prompt.tmpl with opts and returns the prompt string Dispatch would
+// hand to the subprocess, without invoking it. The driver's agent
+// dispatcher uses this for the --interactive prompt-review hook so the
+// operator can preview the prompt and append last-minute additions.
+//
+// If opts.RawPrompt is non-empty, it is returned verbatim — RenderPrompt
+// mirrors Dispatch's "RawPrompt wins" rule.
+func RenderPrompt(opts Options) (string, error) {
+	if opts.RawPrompt != "" {
+		return opts.RawPrompt, nil
+	}
+	return renderPrompt(opts)
 }
 
 func (o Options) withDefaults() Options {

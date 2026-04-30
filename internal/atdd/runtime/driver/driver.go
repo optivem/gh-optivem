@@ -4,8 +4,8 @@
 //
 // The driver is deliberately thin — the heavy lifting lives in the runtime
 // sub-packages (statemachine, gates, actions, verify, override, board,
-// classify, release). This file's job is to compose them and expose two
-// run modes:
+// classify, release, clauderun). This file's job is to compose them and
+// expose two run modes:
 //
 //   - Run with Options.IssueNum > 0 → implement-ticket mode: pre-resolve the
 //     project item for the given issue, seed Context, and skip the picker by
@@ -14,14 +14,15 @@
 //     flow runs from START, picking the top Ready ticket from the project
 //     board.
 //
-// Agent dispatch in v1: every user_task whose `agent:` value is something
-// other than `human` registers a "pause-and-prompt" dispatcher. The driver
-// prints the YAML node's description / phase_doc and blocks on stdin while
-// the operator launches the corresponding Claude Code agent (e.g. via the
-// Task tool). When the agent's COMMIT lands on HEAD the operator presses
-// Enter, the post-condition verify check kicks in (commit-message HEAD
-// match), and the engine moves on. Auto-dispatch via the Agent SDK is a v2
-// concern and out of scope for this session.
+// Agent dispatch (v2): every user_task whose `agent:` value is something
+// other than `human` shells out to the `claude` CLI via the clauderun
+// package. The driver constructs a prompt from the node's Raw metadata
+// and the live Context, hands it to clauderun.Dispatch, and detects
+// success by HEAD diff (a fresh commit on the same branch). v1's
+// "pause and let the operator launch the agent in a second window"
+// behaviour is preserved as a fallback under Options.ManualAgents — it
+// lets us bisect "did v2 misroute the agent?" against "did v1 see the
+// commit?" without two parallel binaries.
 package driver
 
 import (
@@ -37,6 +38,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/actions"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/board"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/clauderun"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/config"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/gates"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
@@ -77,14 +79,27 @@ type Options struct {
 	// and for shell-outs. Optional; defaults to cwd.
 	RepoPath string
 
-	// Autonomous skips human-approval STOPs. v1 still pauses at agent
-	// dispatch points (the Go driver does not auto-launch agents); the
-	// flag is propagated to gates / actions for their own decisions.
+	// Autonomous skips human-approval STOPs. In v2 it also flips agent
+	// dispatch into headless `claude -p` mode. Default (false) runs
+	// `claude` interactively so the operator can observe / interject.
 	Autonomous bool
+
+	// ManualAgents falls back to the v1 "pause and let the operator
+	// launch the agent in a second window" behaviour at every user_task
+	// dispatch. Default (false) shells out to the `claude` CLI via the
+	// clauderun package. ManualAgents is mutually exclusive with the
+	// override hooks (the prompt-construction layer is what consumes
+	// them — bypass that and they have nothing to attach to).
+	ManualAgents bool
 
 	// Override holds the per-node override hooks (Extra / Replace /
 	// Interactive). v2 wires CLI flags into this struct; v1 leaves it nil.
 	Override *override.Hooks
+
+	// ClaudeRunDeps lets tests inject fake `claude` and `git` runners
+	// without spawning real subprocesses. Production callers leave this
+	// zero-valued; clauderun falls back to real execClaude / execGit.
+	ClaudeRunDeps clauderun.Deps
 
 	// Stdout / Stderr are the diagnostic targets. nil → os.Stdout / os.Stderr.
 	Stdout io.Writer
@@ -270,11 +285,13 @@ func registerAgentDispatchers(r *agents.Registry) {
 	}
 }
 
-// wrapAgentDispatchers replaces every non-human user_task NodeFn with a
-// pause-and-prompt wrapper that tells the operator to launch the named
-// agent. v1 cannot auto-launch agents from a Go binary — the operator
-// drives the Claude Code session — so we serialise the operator's role at
-// each dispatch.
+// wrapAgentDispatchers replaces every non-human user_task NodeFn with
+// either a clauderun-based dispatcher (the v2 default — auto-launches
+// the named Claude Code subagent via the `claude` CLI) or, when
+// opts.ManualAgents is true, the v1 pause-and-prompt fallback. The
+// dispatcher closure has access to the YAML node's Raw metadata
+// (description, phase_doc, agent name) and the per-run Options, which
+// together provide everything the prompt template needs.
 func wrapAgentDispatchers(eng *statemachine.Engine, opts Options) {
 	for _, flow := range eng.Flows {
 		for id, node := range flow.Nodes {
@@ -285,20 +302,91 @@ func wrapAgentDispatchers(eng *statemachine.Engine, opts Options) {
 				continue
 			}
 			raw := node.Raw
+			nodeID := id
 			inner := node.Fn
-			node.Fn = func(ctx *statemachine.Context) statemachine.Outcome {
-				if err := promptForAgent(opts, raw); err != nil {
-					return statemachine.Outcome{Err: err}
-				}
-				return inner(ctx)
+			if opts.ManualAgents {
+				node.Fn = newManualAgentDispatcher(opts, raw, inner)
+			} else {
+				node.Fn = newClaudeRunDispatcher(opts, raw, nodeID, inner)
 			}
 			flow.Nodes[id] = node
 		}
 	}
 }
 
+// newManualAgentDispatcher returns the v1 pause-and-prompt wrapper. The
+// operator launches the named agent in a second window (typically the
+// Task tool in a separate Claude Code session), commits, then presses
+// Enter at the driver's prompt to advance.
+func newManualAgentDispatcher(opts Options, raw statemachine.RawNode, inner statemachine.NodeFn) statemachine.NodeFn {
+	return func(ctx *statemachine.Context) statemachine.Outcome {
+		if err := promptForAgent(opts, raw); err != nil {
+			return statemachine.Outcome{Err: err}
+		}
+		return inner(ctx)
+	}
+}
+
+// newClaudeRunDispatcher returns the v2 dispatcher. It reads the override
+// hints written to the Context state by override.Wrap, pulls the ticket
+// fields populated by preResolveIssue / PICK_TOP_READY, hands the lot to
+// clauderun.Dispatch, and surfaces the resulting commit SHA via
+// Outcome.Commit (which the verify post-condition decorator keys off).
+func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID string, inner statemachine.NodeFn) statemachine.NodeFn {
+	return func(ctx *statemachine.Context) statemachine.Outcome {
+		extraText := ctx.GetString(override.KeyExtra)
+		replaceText := ctx.GetString(override.KeyReplace)
+		interactive, _ := ctx.Get(override.KeyInteractive).(bool)
+
+		issueNum, _ := strconv.Atoi(ctx.GetString("issue_num"))
+
+		cOpts := clauderun.Options{
+			Agent:           raw.Agent,
+			PhaseDoc:        raw.PhaseDoc,
+			NodeDescription: raw.Description,
+			IssueNum:        issueNum,
+			IssueTitle:      ctx.GetString("issue_title"),
+			IssueRepo:       ctx.GetString("issue_repo"),
+			ProjectTitle:    ctx.GetString("project_title"),
+			ProjectURL:      ctx.GetString("project_url"),
+			OverrideText:    extraText,
+			RawPrompt:       replaceText,
+			Autonomous:      opts.Autonomous,
+			RepoPath:        opts.RepoPath,
+			Stdout:          opts.Stdout,
+			Stderr:          opts.Stderr,
+			Stdin:           opts.Stdin,
+		}
+
+		if interactive {
+			additional, err := promptForInteractiveExtra(opts, cOpts, nodeID)
+			if err != nil {
+				return statemachine.Outcome{Err: err}
+			}
+			if additional != "" {
+				if cOpts.OverrideText == "" {
+					cOpts.OverrideText = additional
+				} else {
+					cOpts.OverrideText = cOpts.OverrideText + "\n" + additional
+				}
+			}
+		}
+
+		info, err := clauderun.Dispatch(context.Background(), opts.ClaudeRunDeps, cOpts)
+		if err != nil {
+			return statemachine.Outcome{Err: err}
+		}
+		out := inner(ctx)
+		if out.Err != nil {
+			return out
+		}
+		out.Commit = info.SHA
+		return out
+	}
+}
+
 // promptForAgent prints the per-node dispatch banner and blocks on stdin
-// until the operator types Enter (continue) or `abort` (halt).
+// until the operator types Enter (continue) or `abort` (halt). v1 / fallback path.
 func promptForAgent(opts Options, raw statemachine.RawNode) error {
 	fmt.Fprintln(opts.Stdout)
 	fmt.Fprintf(opts.Stdout, "DISPATCH: %s\n", raw.Agent)
@@ -320,6 +408,28 @@ func promptForAgent(opts Options, raw statemachine.RawNode) error {
 		return fmt.Errorf("operator aborted at %s dispatch", raw.Agent)
 	}
 	return nil
+}
+
+// promptForInteractiveExtra implements the --interactive override hook:
+// render the prompt clauderun.Dispatch would build, print it for review,
+// and read one trailing line from stdin to append. An empty line is the
+// "no addition" signal.
+func promptForInteractiveExtra(opts Options, cOpts clauderun.Options, nodeID string) (string, error) {
+	rendered, err := clauderun.RenderPrompt(cOpts)
+	if err != nil {
+		return "", fmt.Errorf("render prompt for review: %w", err)
+	}
+	fmt.Fprintln(opts.Stdout)
+	fmt.Fprintf(opts.Stdout, "── DISPATCH PREVIEW: %s (%s) ──\n", cOpts.Agent, nodeID)
+	fmt.Fprintln(opts.Stdout, rendered)
+	fmt.Fprintln(opts.Stdout, "──")
+	fmt.Fprintln(opts.Stdout, "Additional text to append (single line; press Enter to skip):")
+	r := bufio.NewReader(opts.Stdin)
+	line, err := r.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", fmt.Errorf("read interactive extra: %w", err)
+	}
+	return strings.TrimRight(line, "\r\n"), nil
 }
 
 // wrapOverride applies the override.Wrap decorator to every node. Wrapping
