@@ -12,6 +12,7 @@ Thumbs.db
 
 # Binaries
 *.exe
+*~
 
 # Claude
 .claude/settings.local.json

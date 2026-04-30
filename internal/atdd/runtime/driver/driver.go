@@ -37,6 +37,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/actions"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/board"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/config"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/gates"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
@@ -208,15 +209,33 @@ func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Conte
 	if err != nil {
 		return err
 	}
+	// Project name preference: config (zero round-trips) → live `gh project
+	// view` title (already fetched by FindIssue) → bare URL fallback.
+	projectName := pick.ProjectTitle
+	repoPath := opts.RepoPath
+	if repoPath == "" {
+		if cwd, err := os.Getwd(); err == nil {
+			repoPath = cwd
+		}
+	}
+	if cfg, err := config.Load(repoPath); err == nil && cfg != nil && cfg.Project.Name != "" {
+		projectName = cfg.Project.Name
+	}
+
 	sCtx.Set("issue_num", strconv.Itoa(pick.IssueNum))
 	sCtx.Set("issue_url", pick.IssueURL)
 	sCtx.Set("issue_title", pick.Title)
 	sCtx.Set("issue_repo", pick.Repo)
 	sCtx.Set("project_id", pick.ProjectID)
+	sCtx.Set("project_title", projectName)
 	sCtx.Set("item_id", pick.ItemID)
 
+	projectLabel := projectURL
+	if projectName != "" {
+		projectLabel = fmt.Sprintf("%s (%s)", projectName, projectURL)
+	}
 	fmt.Fprintf(opts.Stdout, "Resolved issue #%d %q (%s) on project %s.\n",
-		pick.IssueNum, pick.Title, pick.Repo, projectURL)
+		pick.IssueNum, pick.Title, pick.Repo, projectLabel)
 	return nil
 }
 
@@ -235,6 +254,7 @@ var agentNames = []string{
 	"atdd-backend",
 	"atdd-frontend",
 	"atdd-stubs",
+	"atdd-release",
 }
 
 // registerAgentDispatchers registers a no-op base dispatcher for every

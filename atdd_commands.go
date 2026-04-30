@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -65,7 +66,7 @@ lands on HEAD, the operator presses Enter and the engine moves on.`,
 // PICK_TOP_READY picker).
 func newAtddImplementTicketCmd() *cobra.Command {
 	var (
-		issue      int
+		issueArg   string
 		projectURL string
 		autonomous bool
 	)
@@ -73,11 +74,11 @@ func newAtddImplementTicketCmd() *cobra.Command {
 		Use:   "implement-ticket",
 		Short: "Walk the ATDD pipeline for a specific GitHub issue",
 		Example: `  gh optivem atdd implement-ticket --issue 42
+  gh optivem atdd implement-ticket --issue https://github.com/optivem/shop/issues/42
   gh optivem atdd implement-ticket --issue 42 --project https://github.com/orgs/optivem/projects/3`,
 		Run: func(cmd *cobra.Command, args []string) {
-			if issue <= 0 {
-				exitOnError(fmt.Errorf("--issue is required (got %d)", issue))
-			}
+			issue, err := parseIssueArg(issueArg)
+			exitOnError(err)
 			exitOnError(driver.Run(context.Background(), driver.Options{
 				IssueNum:   issue,
 				ProjectURL: projectURL,
@@ -85,7 +86,7 @@ func newAtddImplementTicketCmd() *cobra.Command {
 			}))
 		},
 	}
-	cmd.Flags().IntVar(&issue, "issue", 0, "GitHub issue number to implement (required)")
+	cmd.Flags().StringVar(&issueArg, "issue", "", "GitHub issue number or URL (required; accepts e.g. 42 or https://github.com/owner/repo/issues/42)")
 	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to README.md or git-remote lookup)")
 	cmd.Flags().BoolVar(&autonomous, "autonomous", false, "Skip human-approval STOPs (agent-dispatch pauses still apply in v1)")
 	return cmd
@@ -163,16 +164,15 @@ func newAtddDebugPickTopReadyCmd() *cobra.Command {
 // orchestration side-effects.
 func newAtddDebugClassifyCmd() *cobra.Command {
 	var (
-		issue int
-		repo  string
+		issueArg string
+		repo     string
 	)
 	cmd := &cobra.Command{
 		Use:   "classify",
 		Short: "Classify a ticket via the deterministic fast path",
 		Run: func(cmd *cobra.Command, args []string) {
-			if issue <= 0 {
-				exitOnError(fmt.Errorf("--issue is required (got %d)", issue))
-			}
+			issue, err := parseIssueArg(issueArg)
+			exitOnError(err)
 			res, err := classify.Classify(context.Background(), issue, classify.Options{Repo: repo})
 			exitOnError(err)
 			fmt.Printf("issue:           #%d\n", res.IssueNum)
@@ -183,7 +183,7 @@ func newAtddDebugClassifyCmd() *cobra.Command {
 			fmt.Printf("reasoning:       %s\n", res.Reasoning)
 		},
 	}
-	cmd.Flags().IntVar(&issue, "issue", 0, "GitHub issue number (required)")
+	cmd.Flags().StringVar(&issueArg, "issue", "", "GitHub issue number or URL (required)")
 	cmd.Flags().StringVar(&repo, "repo", "", "owner/repo override for `gh issue view`")
 	return cmd
 }
@@ -273,19 +273,18 @@ func newAtddDebugGateCmd() *cobra.Command {
 // dirty working tree without re-walking the pipeline.
 func newAtddDebugReleaseCmd() *cobra.Command {
 	var (
-		issue   int
-		roots   []string
-		message string
-		noClose bool
-		dryRun  bool
+		issueArg string
+		roots    []string
+		message  string
+		noClose  bool
+		dryRun   bool
 	)
 	cmd := &cobra.Command{
 		Use:   "release",
 		Short: "Remove @Disabled markers, commit, and (optionally) close the issue",
 		Run: func(cmd *cobra.Command, args []string) {
-			if issue <= 0 {
-				exitOnError(fmt.Errorf("--issue is required (got %d)", issue))
-			}
+			issue, err := parseIssueArg(issueArg)
+			exitOnError(err)
 			if message == "" {
 				message = fmt.Sprintf("Release | issue #%d", issue)
 			}
@@ -319,7 +318,7 @@ func newAtddDebugReleaseCmd() *cobra.Command {
 			}
 		},
 	}
-	cmd.Flags().IntVar(&issue, "issue", 0, "GitHub issue number (required)")
+	cmd.Flags().StringVar(&issueArg, "issue", "", "GitHub issue number or URL (required)")
 	cmd.Flags().StringSliceVar(&roots, "root", nil, "Test root to walk (repeatable; defaults to system-test/{java,dotnet,typescript})")
 	cmd.Flags().StringVar(&message, "message", "", "Commit message (defaults to 'Release | issue #N')")
 	cmd.Flags().BoolVar(&noClose, "no-close", false, "Skip the gh issue close step")
@@ -327,3 +326,25 @@ func newAtddDebugReleaseCmd() *cobra.Command {
 	return cmd
 }
 
+// parseIssueArg accepts either a bare issue number ("42") or a GitHub issue
+// URL ("https://github.com/owner/repo/issues/42") and returns the integer
+// issue number. Mirrors `gh issue view`, which accepts both forms.
+func parseIssueArg(s string) (int, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, fmt.Errorf("--issue is required")
+	}
+	s = strings.TrimRight(s, "/")
+	if i := strings.LastIndex(s, "/"); i >= 0 {
+		s = s[i+1:]
+	}
+	s = strings.TrimPrefix(s, "#")
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, fmt.Errorf("cannot parse issue number from %q", s)
+	}
+	if n <= 0 {
+		return 0, fmt.Errorf("--issue must be positive (got %d)", n)
+	}
+	return n, nil
+}
