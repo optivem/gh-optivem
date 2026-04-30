@@ -1,5 +1,18 @@
 # Contributing
 
+## ATDD Testing
+
+valen_4rjvn9e@Valentina_Desk MINGW64 /c/GitHub/optivem/academy/shop (main)
+
+
+cd shop
+./scripts/atdd-rehearsal-start.sh atdd-cli
+cd ..
+cd rehearsal-atdd-cli
+go -C ../gh-optivem build -o gh-optivem.exe .
+../gh-optivem/gh-optivem.exe atdd implement-ticket --issue https://github.com/optivem/shop/issues/61
+./scripts/atdd-rehearsal-end.sh atdd-cli
+
 ## Prerequisites
 
 - [Go 1.22+](https://go.dev/dl/)
