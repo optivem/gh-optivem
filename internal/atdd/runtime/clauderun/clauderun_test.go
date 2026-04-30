@@ -175,7 +175,6 @@ func TestDispatch_AutonomousFlagPropagates(t *testing.T) {
 
 	opts := newOpts()
 	opts.Autonomous = true
-	opts.MaxTurns = 50
 
 	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
@@ -183,9 +182,6 @@ func TestDispatch_AutonomousFlagPropagates(t *testing.T) {
 	got := claudeFake.calls[0]
 	if !got.Autonomous {
 		t.Errorf("Autonomous: got false, want true")
-	}
-	if got.MaxTurns != 50 {
-		t.Errorf("MaxTurns: got %d, want 50", got.MaxTurns)
 	}
 }
 

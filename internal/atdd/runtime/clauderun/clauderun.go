@@ -21,7 +21,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -34,18 +33,11 @@ var promptTmplSrc string
 
 var promptTmpl = template.Must(template.New("clauderun").Parse(promptTmplSrc))
 
-// DefaultMaxTurns caps how many tool-use turns `claude -p` may take in a
-// single autonomous dispatch. 200 is generous — most ATDD phases finish in
-// under 30 turns — and leaves headroom before the operator re-runs
-// interactively. Surface as a config knob if real workloads bump into it.
-const DefaultMaxTurns = 200
-
 // Options bundles every input Dispatch needs to construct a prompt and run
 // the subprocess. Zero values yield a usable configuration where it makes
-// sense (Stdout/Stderr/Stdin default to the OS streams; MaxTurns defaults
-// to DefaultMaxTurns). Required fields (Agent, PhaseDoc, IssueNum,
-// IssueTitle, IssueRepo, NodeDescription) are not zero-defaulted because
-// missing them yields a meaningless prompt.
+// sense (Stdout/Stderr/Stdin default to the OS streams). Required fields
+// (Agent, PhaseDoc, IssueNum, IssueTitle, IssueRepo, NodeDescription) are
+// not zero-defaulted because missing them yields a meaningless prompt.
 type Options struct {
 	// Agent is the subagent name to launch (e.g. "atdd-test").
 	Agent string
@@ -79,10 +71,6 @@ type Options struct {
 	// Autonomous — when true, run via `claude -p` (one-shot, headless).
 	// When false, run interactively so the operator can observe / interject.
 	Autonomous bool
-
-	// MaxTurns caps tool-use turns in autonomous mode. Zero → DefaultMaxTurns.
-	// Ignored in interactive mode.
-	MaxTurns int
 
 	// RepoPath is the working directory the subprocess runs in (and the
 	// directory git rev-parse / git log query). Empty → current cwd.
@@ -119,7 +107,6 @@ type ClaudeRunner interface {
 type RunOpts struct {
 	Prompt     string
 	Autonomous bool
-	MaxTurns   int
 	Dir        string
 	Stdin      io.Reader
 	Stdout     io.Writer
@@ -180,7 +167,6 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (CommitInfo, error) 
 	runErr := deps.Claude.Run(ctx, RunOpts{
 		Prompt:     prompt,
 		Autonomous: opts.Autonomous,
-		MaxTurns:   opts.MaxTurns,
 		Dir:        opts.RepoPath,
 		Stdin:      opts.Stdin,
 		Stdout:     opts.Stdout,
@@ -256,9 +242,6 @@ func (o Options) withDefaults() Options {
 	}
 	if o.Stdin == nil {
 		o.Stdin = os.Stdin
-	}
-	if o.MaxTurns <= 0 {
-		o.MaxTurns = DefaultMaxTurns
 	}
 	return o
 }
@@ -340,23 +323,18 @@ const elapsedRound = time.Second
 
 type execClaude struct{}
 
-// Run invokes the `claude` CLI. Autonomous → `claude -p <prompt> --no-update-check
-// --max-turns N`. Interactive → `claude --no-update-check <prompt>` with the
-// caller's stdin/stdout/stderr connected directly so the operator sees the
-// full Claude Code UI and can interject.
+// Run invokes the `claude` CLI. Autonomous → `claude -p <prompt>`.
+// Interactive → `claude <prompt>` with the caller's stdin/stdout/stderr
+// connected directly so the operator sees the full Claude Code UI and
+// can interject.
 //
 // `claude -p` prints incrementally; we connect stdout/stderr directly
 // (not buffered) so output streams as the model produces it, matching the
 // "interactive UX even in autonomous mode" goal from the design plan.
 func (execClaude) Run(ctx context.Context, opts RunOpts) error {
-	args := []string{"--no-update-check"}
+	var args []string
 	if opts.Autonomous {
 		args = append(args, "-p", opts.Prompt)
-		max := opts.MaxTurns
-		if max <= 0 {
-			max = DefaultMaxTurns
-		}
-		args = append(args, "--max-turns", strconv.Itoa(max))
 	} else {
 		// Interactive: pass the prompt as a positional argument so it
 		// seeds the first user turn. Subsequent turns come from the TTY.
