@@ -53,6 +53,11 @@ on:
         required: false
         type: boolean
         default: false
+      no-local-sonar:
+        description: 'Skip the "Verify local SonarCloud scan" step in both the acceptance and smoke matrices.'
+        required: false
+        type: boolean
+        default: false
       no-legacy:
         description: 'Drop legacy runs from the acceptance matrix (CLI --no-legacy). Applies to both smoke and run jobs.'
         required: false
@@ -197,6 +202,7 @@ jobs:
             echo "| skip-prerelease | $SKIP_PRE |"
             echo "| debug-skip-tests | $SKIP_TESTS |"
             echo "| no-local-tests | ${{ inputs.no-local-tests }} |"
+            echo "| no-local-sonar | ${{ inputs.no-local-sonar }} |"
             echo "| no-legacy | ${{ inputs.no-legacy }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -438,6 +444,7 @@ jobs:
           verify-level: ${{ inputs.smoke-verify-level }}
           no-legacy: ${{ inputs.no-legacy && 'true' || 'false' }}
           no-local-tests: ${{ inputs.no-local-tests && 'true' || 'false' }}
+          no-local-sonar: ${{ inputs.no-local-sonar && 'true' || 'false' }}
           shop-tag: ${{ needs.check.outputs.shop-tag }}
           retain-repos: ${{ needs.check.outputs.retain-repos }}
           jitter-max-seconds: '30'
@@ -486,6 +493,7 @@ jobs:
           verify-level: ${{ needs.check.outputs.verify-level }}
           no-legacy: ${{ inputs.no-legacy && 'true' || 'false' }}
           no-local-tests: ${{ inputs.no-local-tests && 'true' || 'false' }}
+          no-local-sonar: ${{ inputs.no-local-sonar && 'true' || 'false' }}
           shop-tag: ${{ needs.check.outputs.shop-tag }}
           retain-repos: ${{ needs.check.outputs.retain-repos }}
 

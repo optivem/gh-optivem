@@ -474,7 +474,8 @@ func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
 		listCmd = fmt.Sprintf("gh run list --repo %s --limit 1 --json databaseId --jq .[0].databaseId", g.Repo)
 	}
 
-	sp := spinner.Start(fmt.Sprintf("Waiting for workflow run to appear (%s)", workflow))
+	const appearPollSecs = 5
+	sp := spinner.Start(fmt.Sprintf("Waiting for workflow run to appear (%s, polling every %ds)", workflow, appearPollSecs))
 	var out string
 	var err error
 	for attempt := 1; attempt <= 12; attempt++ {
@@ -484,7 +485,7 @@ func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
 		}
 		sp.Update(fmt.Sprintf("attempt %d/12", attempt))
 		if attempt < 12 {
-			time.Sleep(5 * time.Second)
+			time.Sleep(appearPollSecs * time.Second)
 		}
 	}
 	sp.Stop()
@@ -493,7 +494,7 @@ func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
 	}
 
 	runID := strings.TrimSpace(out)
-	log.Successf("Watching workflow run: https://github.com/%s/actions/runs/%s", g.Repo, runID)
+	log.Successf("Watching workflow run (polling every %ds): https://github.com/%s/actions/runs/%s", intervalSecs, g.Repo, runID)
 	_, err = Run(fmt.Sprintf("gh run watch %s --repo %s --exit-status --interval %d", runID, g.Repo, intervalSecs), false, true, "")
 	if err == nil {
 		return nil
@@ -517,7 +518,7 @@ func (g *GitHub) pollRunUntilComplete(runID string) error {
 	deadline := time.Now().Add(pollMaxDuration)
 	viewCmd := fmt.Sprintf("gh run view %s --repo %s --json status,conclusion --jq '[.status,.conclusion] | join(\",\")'", runID, g.Repo)
 
-	sp := spinner.Start(fmt.Sprintf("Polling workflow run %s", runID))
+	sp := spinner.Start(fmt.Sprintf("Polling workflow run %s (every 60s)", runID))
 	defer sp.Stop()
 
 	for {

@@ -24,6 +24,10 @@ inputs:
     description: 'Skip the "Verify local testing" step (the runner-package-driven local system tests). Maps to the CLI --no-local-tests flag.'
     required: false
     default: 'false'
+  no-local-sonar:
+    description: 'Skip the "Verify local SonarCloud scan" step (per-component Run-Sonar.ps1). Maps to the CLI --no-local-sonar flag.'
+    required: false
+    default: 'false'
   shop-tag:
     description: 'optivem/shop ref to pin during the test (meta-v* tag, SHA, or branch — e.g. "main" for HEAD). Empty = CLI resolves to the latest meta-v* release.'
     required: false
@@ -166,6 +170,7 @@ runs:
         TEST_VERIFY_LEVEL: ${{ inputs.verify-level }}
         TEST_NO_LEGACY: ${{ inputs.no-legacy }}
         TEST_NO_LOCAL_TESTS: ${{ inputs.no-local-tests }}
+        TEST_NO_LOCAL_SONAR: ${{ inputs.no-local-sonar }}
         TEST_SHOP_TAG: ${{ inputs.shop-tag }}
         TEST_NO_CLEANUP: ${{ inputs.retain-repos == 'true' && '1' || '' }}
 
