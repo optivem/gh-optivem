@@ -320,7 +320,7 @@ func wrapAgentDispatchers(eng *statemachine.Engine, opts Options) {
 // Enter at the driver's prompt to advance.
 func newManualAgentDispatcher(opts Options, raw statemachine.RawNode, inner statemachine.NodeFn) statemachine.NodeFn {
 	return func(ctx *statemachine.Context) statemachine.Outcome {
-		if err := promptForAgent(opts, raw); err != nil {
+		if err := promptForAgent(opts, raw, ctx.Params); err != nil {
 			return statemachine.Outcome{Err: err}
 		}
 		return inner(ctx)
@@ -341,9 +341,9 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 		issueNum, _ := strconv.Atoi(ctx.GetString("issue_num"))
 
 		cOpts := clauderun.Options{
-			Agent:           raw.Agent,
-			PhaseDoc:        raw.PhaseDoc,
-			NodeDescription: raw.Description,
+			Agent:           statemachine.ExpandParams(raw.Agent, ctx.Params),
+			PhaseDoc:        statemachine.ExpandParams(raw.PhaseDoc, ctx.Params),
+			NodeDescription: statemachine.ExpandParams(raw.Description, ctx.Params),
 			IssueNum:        issueNum,
 			IssueTitle:      ctx.GetString("issue_title"),
 			IssueRepo:       ctx.GetString("issue_repo"),
@@ -387,16 +387,25 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 
 // promptForAgent prints the per-node dispatch banner and blocks on stdin
 // until the operator types Enter (continue) or `abort` (halt). v1 / fallback path.
-func promptForAgent(opts Options, raw statemachine.RawNode) error {
+//
+// params is the live Context.Params for the call_activity scope; templated
+// fields in raw (e.g. ${agent} / ${phase_doc} / ${phase} inside the shared
+// structural_cycle) are expanded against it so the operator sees the
+// substituted name in the banner instead of the literal placeholder.
+func promptForAgent(opts Options, raw statemachine.RawNode, params map[string]string) error {
+	agent := statemachine.ExpandParams(raw.Agent, params)
+	phaseDoc := statemachine.ExpandParams(raw.PhaseDoc, params)
+	description := statemachine.ExpandParams(raw.Description, params)
+
 	fmt.Fprintln(opts.Stdout)
-	fmt.Fprintf(opts.Stdout, "DISPATCH: %s\n", raw.Agent)
-	if raw.Description != "" {
-		fmt.Fprintf(opts.Stdout, "  Phase: %s\n", raw.Description)
+	fmt.Fprintf(opts.Stdout, "DISPATCH: %s\n", agent)
+	if description != "" {
+		fmt.Fprintf(opts.Stdout, "  Phase: %s\n", description)
 	}
-	if raw.PhaseDoc != "" {
-		fmt.Fprintf(opts.Stdout, "  Phase doc: %s\n", raw.PhaseDoc)
+	if phaseDoc != "" {
+		fmt.Fprintf(opts.Stdout, "  Phase doc: %s\n", phaseDoc)
 	}
-	fmt.Fprintf(opts.Stdout, "  Launch the %s agent now (e.g. via the Task tool in Claude Code).\n", raw.Agent)
+	fmt.Fprintf(opts.Stdout, "  Launch the %s agent now (e.g. via the Task tool in Claude Code).\n", agent)
 	fmt.Fprintln(opts.Stdout, "  When the agent's COMMIT lands on HEAD, press Enter to continue. Type 'abort' to halt.")
 
 	r := bufio.NewReader(opts.Stdin)
@@ -405,7 +414,7 @@ func promptForAgent(opts Options, raw statemachine.RawNode) error {
 		return fmt.Errorf("read agent-dispatch confirmation: %w", err)
 	}
 	if strings.EqualFold(strings.TrimSpace(line), "abort") {
-		return fmt.Errorf("operator aborted at %s dispatch", raw.Agent)
+		return fmt.Errorf("operator aborted at %s dispatch", agent)
 	}
 	return nil
 }

@@ -146,14 +146,14 @@ var transitionTable = []transitionCase{
 	{flow: "main", from: "ATDD_CHORE", wantTo: "STOP_INTAKE"},
 	{flow: "main", from: "STOP_INTAKE", wantTo: "GATE_LEGACY"},
 	{flow: "main", from: "GATE_LEGACY", state: map[string]any{"legacy_coverage_section_present": true}, wantTo: "LEGACY_CYCLE"},
-	{flow: "main", from: "GATE_LEGACY", state: map[string]any{"legacy_coverage_section_present": false}, wantTo: "GATE_CHANGE_DRIVEN"},
-	{flow: "main", from: "LEGACY_CYCLE", wantTo: "GATE_CHANGE_DRIVEN"},
-	{flow: "main", from: "GATE_CHANGE_DRIVEN", state: map[string]any{"ticket_type": "story"}, wantTo: "AT_CYCLE"},
-	{flow: "main", from: "GATE_CHANGE_DRIVEN", state: map[string]any{"ticket_type": "bug"}, wantTo: "AT_CYCLE"},
-	{flow: "main", from: "GATE_CHANGE_DRIVEN", state: map[string]any{"ticket_type": "system-api-task"}, wantTo: "SYSAPI_CYCLE"},
-	{flow: "main", from: "GATE_CHANGE_DRIVEN", state: map[string]any{"ticket_type": "system-ui-task"}, wantTo: "SYSUI_CYCLE"},
-	{flow: "main", from: "GATE_CHANGE_DRIVEN", state: map[string]any{"ticket_type": "external-api-task"}, wantTo: "EXTAPI_CYCLE"},
-	{flow: "main", from: "GATE_CHANGE_DRIVEN", state: map[string]any{"ticket_type": "chore"}, wantTo: "CHORE_CYCLE"},
+	{flow: "main", from: "GATE_LEGACY", state: map[string]any{"legacy_coverage_section_present": false}, wantTo: "GATE_TYPE_CYCLE"},
+	{flow: "main", from: "LEGACY_CYCLE", wantTo: "GATE_TYPE_CYCLE"},
+	{flow: "main", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "story"}, wantTo: "AT_CYCLE"},
+	{flow: "main", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "bug"}, wantTo: "AT_CYCLE"},
+	{flow: "main", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "system-api-task"}, wantTo: "SYSAPI_CYCLE"},
+	{flow: "main", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "system-ui-task"}, wantTo: "SYSUI_CYCLE"},
+	{flow: "main", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "external-api-task"}, wantTo: "EXTAPI_CYCLE"},
+	{flow: "main", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "chore"}, wantTo: "CHORE_CYCLE"},
 	{flow: "main", from: "AT_CYCLE", wantTo: "TICKET_IN_ACCEPTANCE"},
 	{flow: "main", from: "SYSAPI_CYCLE", wantTo: "TICKET_IN_ACCEPTANCE"},
 	{flow: "main", from: "SYSUI_CYCLE", wantTo: "TICKET_IN_ACCEPTANCE"},
@@ -331,6 +331,29 @@ func TestGapDecision_SmokeTestFailStopsAtAskSupport(t *testing.T) {
 	}
 	if got != "ASK_SUPPORT" {
 		t.Errorf("smoke fail: got next=%q, want ASK_SUPPORT (no auto-resume)", got)
+	}
+}
+
+func TestGapDecision_TypeCycleRoutesByTicketType(t *testing.T) {
+	// GATE_TYPE_CYCLE replaced the dead GATE_CHANGE_DRIVEN gate, which
+	// computed a `change_driven_ac_produced` bool that no outgoing edge ever
+	// read. Lock the new shape: the gateway binds to `ticket_type` (already
+	// populated by CLASSIFY) and fans out to one cycle per type — no prompt
+	// round-trip in the no-Legacy path.
+	eng := loadSnapshot(t)
+	flow := eng.Flows["main"]
+	gate, ok := flow.Nodes["GATE_TYPE_CYCLE"]
+	if !ok {
+		t.Fatalf("GATE_TYPE_CYCLE node missing")
+	}
+	if gate.Kind != Gateway {
+		t.Errorf("GATE_TYPE_CYCLE: kind got %v, want Gateway", gate.Kind)
+	}
+	if gate.Raw.Binding != "ticket_type" {
+		t.Errorf("GATE_TYPE_CYCLE: binding got %q, want %q", gate.Raw.Binding, "ticket_type")
+	}
+	if _, dead := flow.Nodes["GATE_CHANGE_DRIVEN"]; dead {
+		t.Errorf("GATE_CHANGE_DRIVEN must not exist after deletion")
 	}
 }
 

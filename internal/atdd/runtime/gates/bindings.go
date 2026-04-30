@@ -93,7 +93,6 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("system_driver_interface_changed", b.systemDriverInterfaceChanged)
 	r.Register("ticket_type", b.ticketType)
 	r.Register("legacy_coverage_section_present", b.legacyCoverageSectionPresent)
-	r.Register("change_driven_ac_produced", b.changeDrivenACProduced)
 	r.Register("external_system_driver_exists", b.externalSystemDriverExists)
 	r.Register("external_system_test_instance_accessible", b.externalSystemTestInstanceAccessible)
 	r.Register("smoke_test_passes", b.smokeTestPasses)
@@ -209,16 +208,6 @@ func (b bindings) legacyCoverageSectionPresent(ctx *statemachine.Context) statem
 	}
 	body := extractIssueBody(out)
 	return statemachine.Outcome{Bool: containsLegacyCoverageHeading(body)}
-}
-
-// changeDrivenACProduced is set by the intake agent's COMMIT output (atdd-
-// story / atdd-bug / atdd-task / atdd-chore decide whether their scenarios
-// are change-driven). v1 falls back to a prompt for runs where the Context
-// is unset (manual replays, transitions tests bypassing intake).
-func (b bindings) changeDrivenACProduced(ctx *statemachine.Context) statemachine.Outcome {
-	return b.boolGate(ctx,
-		"change_driven_ac_produced",
-		"Change-driven AC produced by the intake agent? [y/N]: ")
 }
 
 // externalSystemDriverExists is asked once at the top of the onboarding

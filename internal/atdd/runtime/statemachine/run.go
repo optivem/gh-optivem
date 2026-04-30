@@ -64,7 +64,7 @@ func (e *Engine) resolve(flow *Flow, node Node) (NodeFn, error) {
 			ref := node.Raw.Agent
 			lookup := e.AgentFn
 			return func(ctx *Context) Outcome {
-				name := expandParams(ref, ctx.Params)
+				name := ExpandParams(ref, ctx.Params)
 				fn := lookup(name)
 				if fn == nil {
 					return Outcome{Err: fmt.Errorf("user_task agent %q (from template %q) not registered", name, ref)}
@@ -229,11 +229,13 @@ func (e *Engine) nextEdge(flow *Flow, from string, ctx *Context) (string, error)
 	return "", fmt.Errorf("no outgoing edge predicate matched current state")
 }
 
-// expandParams substitutes ${name} occurrences in the input string using the
-// given params map. Used by diagnostic helpers and the diagram generator;
-// the runtime itself doesn't need to mutate node fields because NodeFns read
-// params via Context.Params at dispatch time.
-func expandParams(s string, params map[string]string) string {
+// ExpandParams substitutes ${name} occurrences in the input string using the
+// given params map. Used by the engine to resolve templated agent names at
+// dispatch time, and by the driver to render user-facing strings (banners,
+// phase docs) with the same substitutions the engine sees. Idempotent on
+// already-substituted strings (no ${…} placeholders → identity); a nil
+// params map returns s unchanged.
+func ExpandParams(s string, params map[string]string) string {
 	for k, v := range params {
 		s = strings.ReplaceAll(s, "${"+k+"}", v)
 	}

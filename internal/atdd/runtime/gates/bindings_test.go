@@ -327,7 +327,6 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"system_driver_interface_changed",
 		"ticket_type",
 		"legacy_coverage_section_present",
-		"change_driven_ac_produced",
 		"external_system_driver_exists",
 		"external_system_test_instance_accessible",
 		"smoke_test_passes",
