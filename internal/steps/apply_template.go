@@ -510,14 +510,14 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 		// Workflow names (longer patterns first to avoid partial matches)
 		{mono + lang + suffixCommitStage, "commit-stage"},
 		{mono + lang + "-bump-patch-version", "bump-patch-version"},
-		// Filename form used in `uses: ./.github/workflows/bump-patch-version-<flavor>.yml`
-		// references inside prod-stage. Distinct from the rule above (which catches the
-		// `name:` / `concurrency.group:` form). Keyed by testLang because the prod-stage
-		// source is `monolith-<testLang>-prod-stage.yml` and its `uses:` line hardcodes
-		// the same flavor's bump-patch-version filename — `bump-patch-version-monolith-<testLang>.yml`.
-		// Without this, polyglot scaffolds (lang != testLang) leave the shop filename in
-		// place and actionlint fails with "could not read reusable workflow file".
-		{"bump-patch-version-" + mono + testLang, "bump-patch-version"},
+		// Filename form used in `uses: ./.github/workflows/<flavor>-bump-patch-version.yml`
+		// references inside prod-stage. Same shape as the rule above but keyed by
+		// testLang because the prod-stage source is `monolith-<testLang>-prod-stage.yml`
+		// and its `uses:` line hardcodes the same flavor's bump-patch-version filename —
+		// `monolith-<testLang>-bump-patch-version.yml`. Without this, polyglot scaffolds
+		// (lang != testLang) leave the shop filename in place and actionlint fails with
+		// "could not read reusable workflow file".
+		{mono + testLang + "-bump-patch-version", "bump-patch-version"},
 		{monoTest + suffixAcceptanceStage, "acceptance-stage"},
 		{monoTest + suffixQAStage, "qa-stage"},
 		{monoTest + suffixQASignoff, "qa-signoff"},
@@ -640,16 +640,16 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 		// bump-patch-version variant is keyed by backendLang (frontend is always react),
 		// distinct from the pipeline-stage rewrites above which use testLang. This rule
 		// catches the `name:` / `concurrency.group:` form inside the bump-patch-version
-		// source itself (`bump-patch-version-multitier-<backendLang>.yml`).
+		// source itself (`multitier-<backendLang>-bump-patch-version.yml`).
 		{prefixMultitier + backendLang + "-bump-patch-version", "bump-patch-version"},
-		// Filename form used in `uses: ./.github/workflows/bump-patch-version-<flavor>.yml`
-		// references inside prod-stage. Distinct from the rule above (which catches the
-		// `name:` / `concurrency.group:` form). Keyed by testLang because the prod-stage
-		// source is `multitier-<testLang>-prod-stage.yml` and its `uses:` line hardcodes
-		// the same flavor's bump-patch-version filename — `bump-patch-version-multitier-<testLang>.yml`.
-		// Without this, polyglot scaffolds (backendLang != testLang) leave the shop
-		// filename in place and actionlint fails with "could not read reusable workflow file".
-		{"bump-patch-version-" + prefixMultitier + testLang, "bump-patch-version"},
+		// Filename form used in `uses: ./.github/workflows/<flavor>-bump-patch-version.yml`
+		// references inside prod-stage. Same shape as the rule above but keyed by
+		// testLang because the prod-stage source is `multitier-<testLang>-prod-stage.yml`
+		// and its `uses:` line hardcodes the same flavor's bump-patch-version filename —
+		// `multitier-<testLang>-bump-patch-version.yml`. Without this, polyglot scaffolds
+		// (backendLang != testLang) leave the shop filename in place and actionlint fails
+		// with "could not read reusable workflow file".
+		{prefixMultitier + testLang + "-bump-patch-version", "bump-patch-version"},
 		// Docker working-directory: shop keeps per-lang/arch subdirs under
 		// docker/, but the scaffolder copies only the selected lang/arch up
 		// into docker/, so "working-directory: docker/<testLang>/<arch>" must

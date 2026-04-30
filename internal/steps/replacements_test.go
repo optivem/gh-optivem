@@ -301,10 +301,11 @@ func TestContentReplacementsRenamesBumpPatchVersion(t *testing.T) {
 }
 
 // TestContentReplacementsRewritesBumpPatchVersionUsesReference is a regression
-// guard for the filename form `bump-patch-version-<flavor>.yml` used inside
-// `uses: ./.github/workflows/...` references in prod-stage. The previous rule
-// only caught the `name:` / `concurrency.group:` form (`<flavor>-bump-patch-version`);
-// without this reverse-order rule the scaffolded prod-stage kept the shop
+// guard for the filename form `<flavor>-bump-patch-version.yml` used inside
+// `uses: ./.github/workflows/...` references in prod-stage. The first rule
+// catches the lang-keyed form (when lang == testLang); this testLang-keyed
+// rule covers polyglot scaffolds where the prod-stage's `uses:` line hardcodes
+// the testLang flavor. Without it the scaffolded prod-stage kept the shop
 // filename in its `uses:` line and `gh workflow run` failed at dispatch with
 // HTTP 422 "workflow was not found". See gh-optivem run 25158207965 phase 8.
 func TestContentReplacementsRewritesBumpPatchVersionUsesReference(t *testing.T) {
@@ -316,64 +317,64 @@ func TestContentReplacementsRewritesBumpPatchVersionUsesReference(t *testing.T) 
 	}{
 		{
 			name:     "monolith-dotnet uses reference",
-			in:       "    uses: ./.github/workflows/bump-patch-version-monolith-dotnet.yml\n",
+			in:       "    uses: ./.github/workflows/monolith-dotnet-bump-patch-version.yml\n",
 			pairs:    monolithContentReplacements("dotnet", "dotnet"),
 			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
 		},
 		{
 			name:     "monolith-java uses reference",
-			in:       "    uses: ./.github/workflows/bump-patch-version-monolith-java.yml\n",
+			in:       "    uses: ./.github/workflows/monolith-java-bump-patch-version.yml\n",
 			pairs:    monolithContentReplacements("java", "java"),
 			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
 		},
 		{
 			name:     "monolith-typescript uses reference",
-			in:       "    uses: ./.github/workflows/bump-patch-version-monolith-typescript.yml\n",
+			in:       "    uses: ./.github/workflows/monolith-typescript-bump-patch-version.yml\n",
 			pairs:    monolithContentReplacements("typescript", "typescript"),
 			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
 		},
 		{
 			name:     "multitier-dotnet uses reference",
-			in:       "    uses: ./.github/workflows/bump-patch-version-multitier-dotnet.yml\n",
+			in:       "    uses: ./.github/workflows/multitier-dotnet-bump-patch-version.yml\n",
 			pairs:    multitierContentReplacements("dotnet", "react", "dotnet"),
 			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
 		},
 		{
 			name:     "multitier-java uses reference",
-			in:       "    uses: ./.github/workflows/bump-patch-version-multitier-java.yml\n",
+			in:       "    uses: ./.github/workflows/multitier-java-bump-patch-version.yml\n",
 			pairs:    multitierContentReplacements("java", "react", "java"),
 			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
 		},
 		{
 			name:     "multitier-typescript uses reference",
-			in:       "    uses: ./.github/workflows/bump-patch-version-multitier-typescript.yml\n",
+			in:       "    uses: ./.github/workflows/multitier-typescript-bump-patch-version.yml\n",
 			pairs:    multitierContentReplacements("typescript", "react", "typescript"),
 			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
 		},
 		// Polyglot cases (lang != testLang). Source prod-stage is the testLang flavor
-		// and references `bump-patch-version-<arch>-<testLang>.yml`, so the rewrite
+		// and references `<arch>-<testLang>-bump-patch-version.yml`, so the rewrite
 		// must key off testLang, not the system lang.
 		{
 			name:     "monolith polyglot java/typescript uses reference",
-			in:       "    uses: ./.github/workflows/bump-patch-version-monolith-typescript.yml\n",
+			in:       "    uses: ./.github/workflows/monolith-typescript-bump-patch-version.yml\n",
 			pairs:    monolithContentReplacements("java", "typescript"),
 			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
 		},
 		{
 			name:     "monolith polyglot dotnet/typescript uses reference",
-			in:       "    uses: ./.github/workflows/bump-patch-version-monolith-typescript.yml\n",
+			in:       "    uses: ./.github/workflows/monolith-typescript-bump-patch-version.yml\n",
 			pairs:    monolithContentReplacements("dotnet", "typescript"),
 			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
 		},
 		{
 			name:     "multitier polyglot java/typescript uses reference",
-			in:       "    uses: ./.github/workflows/bump-patch-version-multitier-typescript.yml\n",
+			in:       "    uses: ./.github/workflows/multitier-typescript-bump-patch-version.yml\n",
 			pairs:    multitierContentReplacements("java", "react", "typescript"),
 			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
 		},
 		{
 			name:     "multitier polyglot dotnet/typescript uses reference",
-			in:       "    uses: ./.github/workflows/bump-patch-version-multitier-typescript.yml\n",
+			in:       "    uses: ./.github/workflows/multitier-typescript-bump-patch-version.yml\n",
 			pairs:    multitierContentReplacements("dotnet", "react", "typescript"),
 			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
 		},
