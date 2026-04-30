@@ -249,6 +249,85 @@ func PickTopReady(ctx context.Context, opts Options) (Pick, error) {
 	return Pick{}, ErrEmptyReady
 }
 
+// FindIssue is the specific-issue counterpart to PickTopReady: given an
+// explicit issue number, it walks the project item list and returns the
+// matching item's metadata. Used by the implement-ticket mode of the driver
+// when the user has chosen an issue and the picker is bypassed.
+//
+// Returns ErrEmptyReady's sibling — a fmt.Errorf wrapping issue not found —
+// if no project item matches the supplied issue number. The caller typically
+// surfaces that as "issue #N is not on the board".
+func FindIssue(ctx context.Context, issueNum int, opts Options) (Pick, error) {
+	if issueNum <= 0 {
+		return Pick{}, fmt.Errorf("board: FindIssue requires a positive issue number, got %d", issueNum)
+	}
+	projectURL, err := resolveProjectURL(opts)
+	if err != nil {
+		return Pick{}, err
+	}
+	owner, number, err := parseProjectURL(projectURL)
+	if err != nil {
+		return Pick{}, err
+	}
+	gh := opts.GhRunner
+	if gh == nil {
+		gh = execGh{}
+	}
+
+	viewOut, err := gh.Run(ctx, "project", "view", strconv.Itoa(number), "--owner", owner, "--format", "json")
+	if err != nil {
+		return Pick{}, fmt.Errorf("board: gh project view: %w", err)
+	}
+	var view struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(viewOut, &view); err != nil {
+		return Pick{}, fmt.Errorf("board: parse gh project view output: %w", err)
+	}
+
+	listOut, err := gh.Run(ctx, "project", "item-list", strconv.Itoa(number), "--owner", owner, "--format", "json", "--limit", "200")
+	if err != nil {
+		return Pick{}, fmt.Errorf("board: gh project item-list: %w", err)
+	}
+	type itemContent struct {
+		Number     int    `json:"number"`
+		Repository string `json:"repository"`
+		Title      string `json:"title"`
+		Type       string `json:"type"`
+		URL        string `json:"url"`
+	}
+	type item struct {
+		ID      string      `json:"id"`
+		Status  string      `json:"status"`
+		Title   string      `json:"title"`
+		Content itemContent `json:"content"`
+	}
+	var listResp struct {
+		Items []item `json:"items"`
+	}
+	if err := json.Unmarshal(listOut, &listResp); err != nil {
+		return Pick{}, fmt.Errorf("board: parse gh project item-list output: %w", err)
+	}
+
+	for _, it := range listResp.Items {
+		if it.Content.Type != "Issue" {
+			continue
+		}
+		if it.Content.Number != issueNum {
+			continue
+		}
+		return Pick{
+			IssueNum:  it.Content.Number,
+			IssueURL:  it.Content.URL,
+			Title:     it.Content.Title,
+			Repo:      it.Content.Repository,
+			ProjectID: view.ID,
+			ItemID:    it.ID,
+		}, nil
+	}
+	return Pick{}, fmt.Errorf("board: issue #%d not found on project %s/%d", issueNum, owner, number)
+}
+
 // MoveToInProgress sets the project item's Status field to "In progress".
 // Placement at the bottom of the lane is the GitHub default when a card's
 // status changes via the API — `gh project item-edit` does not expose a

@@ -166,6 +166,23 @@ func (e *Engine) RunFlow(name string, ctx *Context) error {
 	return nil
 }
 
+// NextEdge is the public counterpart to nextEdge: given a flow name, source
+// node ID, and Context, return the node ID Run would advance to next.
+// Used by the `gh optivem atdd debug next-phase` diagnostic helper.
+//
+// Errors mirror nextEdge: an unknown flow / node returns a descriptive
+// error; a node with no outgoing edges returns "" with nil error (terminal).
+func (e *Engine) NextEdge(flowName, fromNode string, ctx *Context) (string, error) {
+	flow, ok := e.Flows[flowName]
+	if !ok {
+		return "", fmt.Errorf("unknown flow %q", flowName)
+	}
+	if _, ok := flow.Nodes[fromNode]; !ok {
+		return "", fmt.Errorf("node %q not in flow %q", fromNode, flowName)
+	}
+	return e.nextEdge(flow, fromNode, ctx)
+}
+
 // nextEdge picks the first outgoing edge from `from` whose predicate matches
 // the current Context state. Returns "" if there are no outgoing edges
 // (terminal node). Returns an error if multiple guarded edges all evaluate
