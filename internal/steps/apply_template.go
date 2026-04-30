@@ -538,7 +538,15 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 		{prefixMonolithSystem + lang, "system"},
 	}
 	if lang != testLang {
-		r = append(r, [2]string{prefixMonolithSystem + testLang, "system"})
+		r = append(r,
+			[2]string{prefixMonolithSystem + testLang, "system"},
+			// Pipeline-stage workflows (acceptance/qa/prod) come from the testLang
+			// template, so their `read-base-version` step references
+			// system/monolith/<testLang>/VERSION. Scaffolded repos hold one root
+			// VERSION (CopyVersion → VERSION; system/monolith/<testLang>/ does not
+			// exist in the scaffold), so collapse this path to root VERSION too.
+			[2]string{systemMonolithDir + testLang + "/VERSION", "VERSION"},
+		)
 	}
 	return r
 }
