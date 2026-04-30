@@ -1,6 +1,8 @@
 # v2b: auto-dispatch ATDD agents via the `claude` CLI
 
-**Status: Deferred.** Open this plan after the v1 soak (parent plan `shop/plans/20260429-211522-script-vs-agent-atdd-orchestration.md` items 1–2) confirms the human-in-the-loop driver is stable and tokens drop ≥30%.
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-04-30T14:04:55Z`
+
+**Status: Active (un-deferred 2026-04-30).** The "operator fatigue from the two-window workflow" trigger (§Trigger to undefer, second bullet) fired before the v1 soak completed — switching between the driver terminal and the Claude Code chat window per phase is too slow to be usable. Proceeding without the v1 soak token-measurement gate; we accept that v2b ships before tokens are formally measured against v1.
 
 ## Motivation
 
@@ -20,13 +22,34 @@ This is the natural progression after v1 stabilises, not a parallel track.
 
 ### Subprocess invocation
 
-For each `user_task` node whose `agent:` is something other than `human`, the driver runs:
+For each `user_task` node whose `agent:` is something other than `human`, the driver shells out to the `claude` CLI. **Default is interactive** (operator can observe and interject); `--autonomous` falls back to non-interactive `-p`:
+
+| Mode | Subprocess | Stdin | Stdout/Stderr | Operator interjection |
+|---|---|---|---|---|
+| Default (interactive) | `claude --no-update-check` | constructed prompt seeded as first user turn via stdin | TTY pass-through | yes — it's their chat session |
+| `--autonomous` | `claude -p "<prompt>" --no-update-check` | (none) | streamed live to driver stdout | no |
+
+In interactive mode the operator sees Claude Code's full UI (Read/Edit/Bash tool calls, subagent dispatches, the lot) and can type into the chat to nudge the agent if it goes off-track. They `/exit` when satisfied; driver then verifies the commit landed (HEAD-changed check, see §Commit detection) and advances. This collapses Window 2 into the driver while preserving the observability/interjection that v1's two-window setup provided.
+
+In `--autonomous` mode there's no operator present, so `-p` is the right choice — one-shot, headless, runs to completion, output streamed for log capture.
+
+**Visual boundary banners** wrap the subprocess in both modes so the operator can see exactly when they cross into and out of agent mode:
 
 ```
-claude -p "<constructed-prompt>" --no-update-check
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🤖 ENTERING AGENT: atdd-test  (AT-RED-TEST)
+   Issue: #42 "..."  Repo: optivem/shop
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Claude Code UI runs here — its own colors / formatting]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ EXITED AGENT: committed abc1234  (1m23s)
+"AT-RED-TEST: scenario for ..."
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-`-p` is non-interactive print mode. The prompt is constructed from:
+Bold + box-drawing characters, cyan when stdout is a TTY, plain otherwise. Respects `NO_COLOR`. The agent's own UI is not ANSI-wrapped — Claude Code already has distinct visuals, so the banners alone are the boundary signal.
+
+The prompt is constructed from:
 
 - Agent name (e.g. `atdd-test`).
 - Phase doc path (e.g. `docs/atdd/process/at-red-test.md`).
@@ -118,12 +141,13 @@ Estimated total effort: 2–3 days of focused work plus a soak.
 
 ## Risks / open questions
 
-1. **"Launch the X subagent" prompt phrasing.** Whether Claude Code reliably routes that to a `Task` tool call with `subagent_type: X` — or whether we need a more explicit instruction — must be verified by hand before committing to the prompt template. Test against all 9 agent names (atdd-{story,bug,task,chore,test,dsl,driver,backend,frontend}).
-2. **`claude -p` behaviour during long agent runs.** A WRITE phase that takes 5–10 minutes — does `-p` mode handle that gracefully, or does it have an internal timeout we need to flag in `--max-turns`? Verify before shipping.
-3. **Streaming output.** v1 watched the agent in Window 2 in real time. v2b's `claude -p` runs to completion before returning, so the driver sees nothing until exit. We should at minimum tail the agent's stderr to the driver's stdout during the run (subprocess plumbing) so the operator can see progress; "live" tool-use streaming would need `claude --stream` (does that exist?) or polling a sidecar log. v1 stdout-only is acceptable for v2b's MVP.
+1. ~~**"Launch the X subagent" prompt phrasing.**~~ **Mitigated by interactive default.** In interactive mode the operator watches the prompt land and the routing happen; if Claude Code interprets "Launch the {{agent}} subagent" as something other than a `Task` tool call with `subagent_type: X`, the operator sees it on screen and can correct in-chat. We still want to tune the prompt to minimise the correction frequency — track misroutes per agent name in a one-line log entry and revisit after ~10 real tickets.
+2. ~~**`claude -p` behaviour during long agent runs.**~~ **Mitigated for interactive default.** Only matters in `--autonomous`. Set `--max-turns` generously (default: 200) and surface as a config knob. Document the failure mode for autonomous runs: if the cap is hit, the subprocess exits non-zero, driver halts, operator re-runs interactively.
+3. ~~**Streaming output.**~~ **Solved by interactive default** — interactive mode is, by definition, the live stream. For `--autonomous`, connect `os.Stdout`/`os.Stderr` directly (not buffered) so `claude -p`'s output streams as the model produces it.
 4. **Subscription rate limits.** A fully autonomous run might burn through a Pro plan's weekly cap on a single complex ticket. Document the failure mode (rate-limit error mid-run); halt with a clear message rather than a partial state.
 5. **Repo-state assumptions.** The driver assumes the working tree is clean before each user_task and that the agent commits on the same branch. If the agent leaves untracked files, the diff detection above misses them. Consider adding an explicit "clean state" pre-condition (verify decorator) before each dispatch.
 6. **Auth surface.** `claude` CLI looks up auth from the user's home directory (`~/.claude/`). In CI / non-interactive runners, this needs `claude /login` to have been run as the executing user. Document the bootstrap.
+7. **Interactive-mode commit detection.** In interactive mode the operator may keep chatting after a commit lands (refining, asking questions). Driver should advance only when the subprocess exits, not the moment HEAD changes — otherwise the operator's continuing chat is stranded outside the flow. Implement: `Wait()` on the subprocess, then HEAD diff. If operator exits without committing, halt with the same "no commit" message as `-p` mode.
 
 ## Trigger to undefer
 
