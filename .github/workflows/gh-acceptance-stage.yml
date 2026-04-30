@@ -1,7 +1,7 @@
 name: gh-acceptance-stage
 
 run-name: >-
-  gh Acceptance Stage${{ inputs.debug-skip-tests && ' [debug-skip-tests]' || '' }}
+  gh Acceptance Stage${{ inputs.debug-shop-head && ' [debug-shop-head]' || '' }}${{ inputs.debug-skip-tests && ' [debug-skip-tests]' || '' }}
 
 on:
   # schedule:
@@ -25,6 +25,11 @@ on:
         required: false
         type: string
         default: ''
+      debug-shop-head:
+        description: 'Run against optivem/shop HEAD (latest main) instead of the latest meta-v* release tag. No RC prerelease is created. Mutually exclusive with shop-tag. Troubleshooting use only.'
+        required: false
+        type: boolean
+        default: false
       debug-skip-tests:
         description: 'Bypass ALL test phases (smoke + acceptance matrix) and create the RC prerelease directly. The version-not-already-released check still runs. smoke-mode and acceptance-mode are ignored when this is true.'
         required: false
@@ -47,7 +52,7 @@ jobs:
       smoke-mode: ${{ inputs.smoke-mode }}
       acceptance-mode: ${{ inputs.acceptance-mode }}
       shop-tag: ${{ inputs.shop-tag }}
-      shop-head: false
+      debug-shop-head: ${{ inputs.debug-shop-head }}
       retain-repos: false
-      skip-prerelease: false
+      skip-prerelease: ${{ inputs.debug-shop-head }}
       debug-skip-tests: ${{ inputs.debug-skip-tests == null && false || inputs.debug-skip-tests }}
