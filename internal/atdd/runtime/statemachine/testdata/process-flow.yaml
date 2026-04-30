@@ -121,10 +121,10 @@ flows:
         type: call_activity
         flow: legacy_coverage
 
-      - id: GATE_CHANGE_DRIVEN
+      - id: GATE_TYPE_CYCLE
         type: gateway
-        binding: change_driven_ac_produced
-        description: "Change-driven AC produced?"
+        binding: ticket_type
+        description: "Cycle by ticket type"
 
       - id: AT_CYCLE
         type: call_activity
@@ -184,13 +184,13 @@ flows:
       - {from: ATDD_CHORE,           to: STOP_INTAKE}
       - {from: STOP_INTAKE,          to: GATE_LEGACY}
       - {from: GATE_LEGACY,          to: LEGACY_CYCLE,           when: "legacy_coverage_section_present == true"}
-      - {from: GATE_LEGACY,          to: GATE_CHANGE_DRIVEN,     when: "legacy_coverage_section_present == false"}
-      - {from: LEGACY_CYCLE,         to: GATE_CHANGE_DRIVEN}
-      - {from: GATE_CHANGE_DRIVEN,   to: AT_CYCLE,               when: "ticket_type in [story, bug]"}
-      - {from: GATE_CHANGE_DRIVEN,   to: SYSAPI_CYCLE,           when: "ticket_type == system-api-task"}
-      - {from: GATE_CHANGE_DRIVEN,   to: SYSUI_CYCLE,            when: "ticket_type == system-ui-task"}
-      - {from: GATE_CHANGE_DRIVEN,   to: EXTAPI_CYCLE,           when: "ticket_type == external-api-task"}
-      - {from: GATE_CHANGE_DRIVEN,   to: CHORE_CYCLE,            when: "ticket_type == chore"}
+      - {from: GATE_LEGACY,          to: GATE_TYPE_CYCLE,        when: "legacy_coverage_section_present == false"}
+      - {from: LEGACY_CYCLE,         to: GATE_TYPE_CYCLE}
+      - {from: GATE_TYPE_CYCLE,      to: AT_CYCLE,               when: "ticket_type in [story, bug]"}
+      - {from: GATE_TYPE_CYCLE,      to: SYSAPI_CYCLE,           when: "ticket_type == system-api-task"}
+      - {from: GATE_TYPE_CYCLE,      to: SYSUI_CYCLE,            when: "ticket_type == system-ui-task"}
+      - {from: GATE_TYPE_CYCLE,      to: EXTAPI_CYCLE,           when: "ticket_type == external-api-task"}
+      - {from: GATE_TYPE_CYCLE,      to: CHORE_CYCLE,            when: "ticket_type == chore"}
       - {from: AT_CYCLE,             to: TICKET_IN_ACCEPTANCE}
       - {from: SYSAPI_CYCLE,         to: TICKET_IN_ACCEPTANCE}
       - {from: SYSUI_CYCLE,          to: TICKET_IN_ACCEPTANCE}

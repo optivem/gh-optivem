@@ -10,6 +10,7 @@
 package driver
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -36,12 +37,12 @@ type fakeClaude struct {
 	headFn func()
 }
 
-func (f *fakeClaude) Run(_ context.Context, opts clauderun.RunOpts) error {
+func (f *fakeClaude) Run(_ context.Context, opts clauderun.RunOpts) (clauderun.RunResult, error) {
 	f.calls = append(f.calls, opts)
 	if f.headFn != nil {
 		f.headFn()
 	}
-	return f.err
+	return clauderun.RunResult{}, f.err
 }
 
 // fakeGit serves canned outputs in call order. Dispatch calls
@@ -86,13 +87,45 @@ flows:
       - { from: AT_RED_TEST, to: END }
 `
 
+// templatedYAML mirrors the structural_cycle's parameterised user_task: the
+// agent / phase_doc / description fields all carry ${…} placeholders that
+// only resolve once Context.Params is populated by the calling
+// call_activity. The dispatcher must expand these before printing them or
+// passing them to clauderun.
+const templatedYAML = `
+flows:
+  main:
+    start: START
+    nodes:
+      - id: START
+        type: start_event
+      - id: STRUCT_WRITE
+        type: user_task
+        agent: ${agent}
+        description: ${phase} - WRITE
+        phase_doc: ${phase_doc}
+      - id: END
+        type: end_event
+    sequence_flows:
+      - { from: START, to: STRUCT_WRITE }
+      - { from: STRUCT_WRITE, to: END }
+`
+
 // buildEngine returns a freshly-bound engine + the wrapped NodeFn for
 // AT_RED_TEST. Callers supply fakes via opts.ClaudeRunDeps. Verification /
 // override decorators are intentionally NOT applied — those layers have
 // their own tests; this fixture targets the agent-dispatch wiring alone.
 func buildEngine(t *testing.T, opts Options) statemachine.NodeFn {
 	t.Helper()
-	eng, err := statemachine.LoadBytes([]byte(minimalYAML))
+	return buildEngineFrom(t, opts, minimalYAML, "AT_RED_TEST")
+}
+
+// buildEngineFrom is the parameterisable form: it loads the supplied YAML
+// and returns the wrapped NodeFn for the named node. Used by the templated
+// regression cases that need a node whose agent: is a ${…} placeholder.
+func buildEngineFrom(t *testing.T, opts Options, yamlSrc, nodeID string) statemachine.NodeFn {
+	t.Helper()
+	eng, err := statemachine.LoadBytes([]byte(yamlSrc))
 	if err != nil {
 		t.Fatalf("LoadBytes: %v", err)
 	}
@@ -103,7 +136,7 @@ func buildEngine(t *testing.T, opts Options) statemachine.NodeFn {
 		t.Fatalf("Bind: %v", err)
 	}
 	wrapAgentDispatchers(eng, opts)
-	return eng.Flows["main"].Nodes["AT_RED_TEST"].Fn
+	return eng.Flows["main"].Nodes[nodeID].Fn
 }
 
 func newDriverOpts(deps clauderun.Deps) Options {
@@ -307,5 +340,94 @@ func TestManualAgents_AbortHaltsRun(t *testing.T) {
 	}
 	if !strings.Contains(out.Err.Error(), "aborted") {
 		t.Errorf("error wording: got %q", out.Err.Error())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Templated dispatch — ${agent} / ${phase} / ${phase_doc} expansion
+// ---------------------------------------------------------------------------
+
+func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
+	// The structural_cycle reuses one set of YAML nodes across SYSAPI /
+	// SYSUI / CHORE by injecting ${agent} / ${phase} / ${phase_doc} via
+	// call_activity params. Before the fix the dispatcher passed the raw
+	// placeholder strings through to clauderun, which then rendered a
+	// prompt asking the operator to "Launch the ${agent} subagent" —
+	// useless dispatch.
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaaaaa1\n"),
+			[]byte("bbbbbbb2\n"),
+			[]byte("subject\n"),
+		},
+	}
+	claudeFake := &fakeClaude{}
+	fn := buildEngineFrom(t, newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake}),
+		templatedYAML, "STRUCT_WRITE")
+
+	ctx := newCtxWithIssue()
+	ctx.Params = map[string]string{
+		"agent":     "atdd-task",
+		"phase":     "SYSTEM UI REDESIGN",
+		"phase_doc": "docs/atdd/process/sysui-redesign.md",
+	}
+
+	out := fn(ctx)
+	if out.Err != nil {
+		t.Fatalf("dispatch: %v", out.Err)
+	}
+	if len(claudeFake.calls) != 1 {
+		t.Fatalf("expected 1 claude call, got %d", len(claudeFake.calls))
+	}
+	prompt := claudeFake.calls[0].Prompt
+	if strings.Contains(prompt, "${") {
+		t.Errorf("prompt still contains ${...} placeholder:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "Launch the atdd-task subagent") {
+		t.Errorf("prompt missing expanded agent launch line:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "docs/atdd/process/sysui-redesign.md") {
+		t.Errorf("prompt missing expanded phase_doc:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "SYSTEM UI REDESIGN - WRITE") {
+		t.Errorf("prompt missing expanded phase description:\n%s", prompt)
+	}
+}
+
+func TestManualAgents_BannerSubstitutesTemplatedFields(t *testing.T) {
+	// The v1/manual fallback prints a "DISPATCH: <agent>" banner directly to
+	// stdout. The templated structural_cycle exposed the same leak: operator
+	// saw "DISPATCH: ${agent}" instead of the substituted name.
+	var buf bytes.Buffer
+	opts := Options{
+		ManualAgents: true,
+		Stdout:       &buf,
+		Stderr:       io.Discard,
+		Stdin:        strings.NewReader("\n"),
+	}
+	fn := buildEngineFrom(t, opts, templatedYAML, "STRUCT_WRITE")
+
+	ctx := newCtxWithIssue()
+	ctx.Params = map[string]string{
+		"agent":     "atdd-task",
+		"phase":     "SYSTEM UI REDESIGN",
+		"phase_doc": "docs/atdd/process/sysui-redesign.md",
+	}
+
+	if out := fn(ctx); out.Err != nil {
+		t.Fatalf("dispatch: %v", out.Err)
+	}
+	got := buf.String()
+	if strings.Contains(got, "${") {
+		t.Errorf("banner still contains ${...} placeholder:\n%s", got)
+	}
+	if !strings.Contains(got, "DISPATCH: atdd-task") {
+		t.Errorf("banner missing expanded DISPATCH line:\n%s", got)
+	}
+	if !strings.Contains(got, "Launch the atdd-task agent") {
+		t.Errorf("banner missing expanded launch line:\n%s", got)
+	}
+	if !strings.Contains(got, "docs/atdd/process/sysui-redesign.md") {
+		t.Errorf("banner missing expanded phase doc:\n%s", got)
 	}
 }

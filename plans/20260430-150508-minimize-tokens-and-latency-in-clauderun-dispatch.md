@@ -23,62 +23,11 @@ The dispatch design intent — "host is a thin shim, subagent does the work" —
 
 ## Items
 
-Ordered by ROI. Items 1–3 are pure gh-optivem changes; items 4–7 require coordination with shop.
+Ordered by ROI. Item 3 is deferred (no current CLI flag). Items 4–7 require coordination with shop.
 
-### 1. Tighten the prompt template to forbid pre-investigation
+### 3. Disable update check on every dispatch — ⏳ Deferred
 
-**File:** `internal/atdd/runtime/clauderun/prompt.tmpl`
-
-Current template is permissive — it tells the host *what* to do (launch the subagent) but not *what not to do*. Append an explicit dispatch-only section:
-
-```
-This is a dispatch-only session. Your job is to invoke the
-{{.Agent}} subagent via the Agent tool and exit. Do NOT:
-
-- Run git status, git log, git diff, gh issue view, gh optivem,
-  or any other tool before dispatching.
-- Read files, search the repo, or inspect ticket state.
-- Summarise after the subagent returns — exit cleanly.
-
-The subagent has its own onboarding and runs in isolated context —
-anything you fetch here is wasted tokens and latency. Pass the
-issue number and phase context through to the subagent and let it
-do its own onboarding.
-```
-
-Place this BEFORE the existing "When the agent finishes, do not summarise" sentence (which already handles the post-dispatch yapping problem; the new section handles the pre-dispatch yapping problem).
-
-**Estimated effort:** 30 minutes including a unit test that asserts the new clause is rendered.
-
-**Risk:** none. Worst case the host still pre-investigates (model doesn't honour the prompt strictly) — same state as today.
-
-### 2. Restrict the host's tool surface in autonomous mode
-
-**File:** `internal/atdd/runtime/clauderun/clauderun.go` → `execClaude.Run`
-
-In **autonomous** mode (`claude -p`), the host has no legitimate reason to call any tool other than `Agent` (to dispatch the subagent). Pass `--allowed-tools=Task` to make pre-investigation literally impossible — any `Bash`/`Read`/`Grep` call by the host fails fast and the model is forced to dispatch.
-
-```go
-if opts.Autonomous {
-    args = append(args, "-p", opts.Prompt, "--allowed-tools", "Task")
-}
-```
-
-In **interactive** mode this is the wrong restriction (the operator may want to chat with the host after dispatch, inspect repo state, etc.) — leave unrestricted.
-
-**Estimated effort:** 1 hour including verification that the `--allowed-tools` flag exists in the supported `claude` CLI version. If the flag is named differently, adjust.
-
-**Risk:** if the host genuinely needs to read one file before dispatching (unlikely given the design), this hard-blocks it. Mitigation: monitor the first few autonomous runs after rollout for unexpected dispatch failures.
-
-### 3. Disable update check on every dispatch
-
-**File:** `internal/atdd/runtime/clauderun/clauderun.go` → `execClaude.Run`
-
-Pass `--no-update-check` (or whatever the equivalent flag is in the current `claude` CLI) so each dispatch doesn't pay the cost of checking for a new CLI version. Per ATDD pipeline run there are 4–8 dispatches; even 100ms per dispatch adds up.
-
-**Estimated effort:** 15 minutes.
-
-**Risk:** tiny — operator may run a stale CLI longer. Solo runs of `claude` outside the orchestrator will still update-check, so this only suppresses inside the dispatch path.
+**Reason:** the `claude` CLI does not expose an `--no-update-check` flag (or any equivalent) as of the version probed 2026-04-30 — `claude --help` lists `update|upgrade` as a subcommand but no flag to suppress the per-invocation check. Recent commit `aeeff82` already removed an earlier attempt at this flag from `execClaude.Run` for the same reason. Re-pick up only if/when an upstream flag or env-var lands.
 
 ### 4. Pass the resolved issue body into the subagent prompt (eliminates per-subagent `gh issue view`)
 
@@ -116,23 +65,6 @@ Each tier-down on a hot-path agent is roughly: cost ÷ 5–10×, latency ÷ 2–
 
 **Estimated effort:** 2 hours including a soak run on each retiered agent.
 
-### 6. Add token/latency observability to the exit banner
-
-**File:** `internal/atdd/runtime/clauderun/clauderun.go` → `writeExitBanner`
-
-`claude -p --output-format json` emits a final JSON object with `total_cost_usd` and `usage.{input,output,cache_creation,cache_read}_tokens`. Capture it and surface in the green "EXITED AGENT" banner alongside the elapsed time and commit SHA. Helps the operator (and future-you) spot the agents bleeding the most tokens.
-
-```
-✅ EXITED AGENT: committed abc1234  (47s, 12.4k in / 1.8k out, $0.18)
-   "atdd: red phase — failing test"
-```
-
-For interactive mode the JSON output isn't available — gracefully degrade to today's elapsed-time-only banner.
-
-**Estimated effort:** 3–4 hours including JSON parse + per-agent total in the final session summary.
-
-**Risk:** the JSON envelope shape is `claude` CLI-specific; pin it behind a feature gate so a CLI version bump can't break the dispatch path.
-
 ### 7. Background long-running shell commands in heavy agents
 
 Not a gh-optivem change. Some ATDD agents shell out to `./compile-all.sh`, `./gradlew build`, or `./test-all.sh`, which can run 30–120 seconds. If invoked with default (foreground) `Bash`, the model sits in context the entire time.
@@ -149,7 +81,7 @@ The aggressive items (1, 2, 4) all narrow the host's discretion. If a real ATDD 
 
 ## Phased rollout
 
-- **Phase 1** (this plan): items 1, 2, 3, 6 — pure gh-optivem changes. Land in one PR.
+- **Phase 1** ✅ shipped: items 1, 2, 6 — pure gh-optivem changes. Item 3 deferred (no upstream flag).
 - **Phase 2** (sister plan in shop): item 5 (model retiering) + item 7 (background commands). Tracked separately because it's shop-side.
 - **Phase 3** (coordinated): item 4 (issue-body pass-through). gh-optivem side ships additively first; shop-agent updates follow agent-by-agent.
 

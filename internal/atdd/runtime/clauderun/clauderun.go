@@ -16,6 +16,7 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -98,7 +99,7 @@ type CommitInfo struct {
 // runner has to choose between interactive and `-p` invocations and stream
 // stdout/stderr back to the driver during long autonomous runs.
 type ClaudeRunner interface {
-	Run(ctx context.Context, opts RunOpts) error
+	Run(ctx context.Context, opts RunOpts) (RunResult, error)
 }
 
 // RunOpts is the cross-cut between Options and the subprocess invocation.
@@ -111,6 +112,25 @@ type RunOpts struct {
 	Stdin      io.Reader
 	Stdout     io.Writer
 	Stderr     io.Writer
+}
+
+// RunResult is what the runner reports back to Dispatch. Usage is best-effort
+// — populated only when the runner can parse a structured envelope (currently
+// autonomous mode via `claude -p --output-format json`). Interactive mode
+// leaves it nil and the banner falls back to elapsed-time-only.
+type RunResult struct {
+	Usage *TokenUsage
+}
+
+// TokenUsage is the cost/throughput summary surfaced in the exit banner.
+// Field names mirror the `claude -p --output-format json` envelope so the
+// JSON shape can be decoded directly into this struct.
+type TokenUsage struct {
+	InputTokens              int     `json:"input_tokens"`
+	OutputTokens             int     `json:"output_tokens"`
+	CacheCreationInputTokens int     `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     int     `json:"cache_read_input_tokens"`
+	TotalCostUSD             float64 `json:"-"`
 }
 
 // GitRunner runs the `git` CLI in a given directory. Mirrors the GhRunner
@@ -164,7 +184,7 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (CommitInfo, error) 
 	writeEnterBanner(opts)
 	startedAt := nowFn()
 
-	runErr := deps.Claude.Run(ctx, RunOpts{
+	runResult, runErr := deps.Claude.Run(ctx, RunOpts{
 		Prompt:     prompt,
 		Autonomous: opts.Autonomous,
 		Dir:        opts.RepoPath,
@@ -173,29 +193,29 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (CommitInfo, error) 
 		Stderr:     opts.Stderr,
 	})
 	if runErr != nil {
-		writeExitBanner(opts, "", "", nowFn().Sub(startedAt), runErr)
+		writeExitBanner(opts, "", "", nowFn().Sub(startedAt), runResult.Usage, runErr)
 		return CommitInfo{}, fmt.Errorf("clauderun: %s exited non-zero: %w", opts.Agent, runErr)
 	}
 
 	headAfter, err := readHEAD(ctx, deps.Git, opts.RepoPath)
 	if err != nil {
-		writeExitBanner(opts, "", "", nowFn().Sub(startedAt), err)
+		writeExitBanner(opts, "", "", nowFn().Sub(startedAt), runResult.Usage, err)
 		return CommitInfo{}, fmt.Errorf("clauderun: read HEAD after dispatch: %w", err)
 	}
 
 	if headBefore == headAfter {
-		writeExitBanner(opts, "", "", nowFn().Sub(startedAt), errNoCommit)
+		writeExitBanner(opts, "", "", nowFn().Sub(startedAt), runResult.Usage, errNoCommit)
 		return CommitInfo{}, fmt.Errorf("clauderun: %s exited cleanly but produced no commit (HEAD unchanged at %s)",
 			opts.Agent, shortSHA(headBefore))
 	}
 
 	subject, err := readCommitSubject(ctx, deps.Git, opts.RepoPath, headAfter)
 	if err != nil {
-		writeExitBanner(opts, headAfter, "", nowFn().Sub(startedAt), err)
+		writeExitBanner(opts, headAfter, "", nowFn().Sub(startedAt), runResult.Usage, err)
 		return CommitInfo{}, fmt.Errorf("clauderun: read commit subject for %s: %w", shortSHA(headAfter), err)
 	}
 
-	writeExitBanner(opts, headAfter, subject, nowFn().Sub(startedAt), nil)
+	writeExitBanner(opts, headAfter, subject, nowFn().Sub(startedAt), runResult.Usage, nil)
 	return CommitInfo{SHA: headAfter, Subject: subject}, nil
 }
 
@@ -295,24 +315,47 @@ func writeEnterBanner(opts Options) {
 	fmt.Fprintln(w, cyan.Sprint(banner))
 }
 
-func writeExitBanner(opts Options, sha, subject string, elapsed time.Duration, runErr error) {
+func writeExitBanner(opts Options, sha, subject string, elapsed time.Duration, usage *TokenUsage, runErr error) {
 	w := opts.Stdout
 	if runErr != nil {
 		red := color.New(color.FgRed, color.Bold)
 		fmt.Fprintln(w, red.Sprint(banner))
-		fmt.Fprintln(w, red.Sprintf("❌ AGENT FAILED: %s  (%s)", opts.Agent, elapsed.Round(elapsedRound)))
+		fmt.Fprintln(w, red.Sprintf("❌ AGENT FAILED: %s  (%s%s)", opts.Agent, elapsed.Round(elapsedRound), formatUsageSuffix(usage)))
 		fmt.Fprintln(w, red.Sprintf("   %s", runErr))
 		fmt.Fprintln(w, red.Sprint(banner))
 		return
 	}
 	green := color.New(color.FgGreen, color.Bold)
 	fmt.Fprintln(w, green.Sprint(banner))
-	fmt.Fprintln(w, green.Sprintf("✅ EXITED AGENT: committed %s  (%s)",
-		shortSHA(sha), elapsed.Round(elapsedRound)))
+	fmt.Fprintln(w, green.Sprintf("✅ EXITED AGENT: committed %s  (%s%s)",
+		shortSHA(sha), elapsed.Round(elapsedRound), formatUsageSuffix(usage)))
 	if subject != "" {
 		fmt.Fprintln(w, green.Sprintf("   %q", subject))
 	}
 	fmt.Fprintln(w, green.Sprint(banner))
+}
+
+// formatUsageSuffix renders ", 12.4k in / 1.8k out, $0.18" if usage is non-nil
+// and non-empty. Returns "" otherwise so the banner gracefully degrades to
+// elapsed-time-only when the runner couldn't extract a JSON envelope (e.g.
+// interactive mode, or an autonomous-mode parse failure).
+func formatUsageSuffix(usage *TokenUsage) string {
+	if usage == nil {
+		return ""
+	}
+	in := usage.InputTokens + usage.CacheCreationInputTokens + usage.CacheReadInputTokens
+	out := usage.OutputTokens
+	if in == 0 && out == 0 && usage.TotalCostUSD == 0 {
+		return ""
+	}
+	return fmt.Sprintf(", %s in / %s out, $%.2f", formatTokens(in), formatTokens(out), usage.TotalCostUSD)
+}
+
+func formatTokens(n int) string {
+	if n < 1000 {
+		return fmt.Sprintf("%d", n)
+	}
+	return fmt.Sprintf("%.1fk", float64(n)/1000)
 }
 
 const elapsedRound = time.Second
@@ -323,34 +366,96 @@ const elapsedRound = time.Second
 
 type execClaude struct{}
 
-// Run invokes the `claude` CLI. Autonomous → `claude -p <prompt>`.
-// Interactive → `claude <prompt>` with the caller's stdin/stdout/stderr
-// connected directly so the operator sees the full Claude Code UI and
-// can interject.
+// Run invokes the `claude` CLI.
 //
-// `claude -p` prints incrementally; we connect stdout/stderr directly
-// (not buffered) so output streams as the model produces it, matching the
-// "interactive UX even in autonomous mode" goal from the design plan.
-func (execClaude) Run(ctx context.Context, opts RunOpts) error {
-	var args []string
+// Interactive mode → `claude <prompt>` with stdin/stdout/stderr connected
+// directly so the operator sees the full Claude Code UI and can interject.
+//
+// Autonomous mode → `claude -p <prompt> --allowed-tools Task --output-format json`:
+//
+//   - --allowed-tools Task narrows the host's tool surface to the subagent
+//     dispatch primitive only. The host has no legitimate reason to call
+//     git / gh / Read / Grep before dispatching — those tools belong to the
+//     subagent (which runs in isolated context). Restricting up-front
+//     forces the dispatch and saves the tokens of speculative pre-work.
+//   - --output-format json buffers the run into a single JSON envelope
+//     containing `total_cost_usd` and `usage.{input,output,cache_*}_tokens`
+//     so we can surface cost/throughput in the exit banner. The trade-off
+//     is no streaming output during the run; acceptable here because items
+//     1+2 leave the host with nothing to say (it dispatches and exits).
+//
+// JSON parsing is best-effort — a future CLI version that changes the
+// envelope shape leaves Usage nil and the banner falls back gracefully.
+func (execClaude) Run(ctx context.Context, opts RunOpts) (RunResult, error) {
 	if opts.Autonomous {
-		args = append(args, "-p", opts.Prompt)
-	} else {
-		// Interactive: pass the prompt as a positional argument so it
-		// seeds the first user turn. Subsequent turns come from the TTY.
-		args = append(args, opts.Prompt)
+		return runAutonomous(ctx, opts)
 	}
-	cmd := exec.CommandContext(ctx, "claude", args...)
+	return runInteractive(ctx, opts)
+}
+
+func runInteractive(ctx context.Context, opts RunOpts) (RunResult, error) {
+	// Interactive: pass the prompt as a positional argument so it seeds
+	// the first user turn. Subsequent turns come from the TTY.
+	cmd := exec.CommandContext(ctx, "claude", opts.Prompt)
 	if opts.Dir != "" {
 		cmd.Dir = opts.Dir
 	}
 	cmd.Stdin = opts.Stdin
 	cmd.Stdout = opts.Stdout
 	cmd.Stderr = opts.Stderr
-	if err := cmd.Run(); err != nil {
-		return err
+	return RunResult{}, cmd.Run()
+}
+
+func runAutonomous(ctx context.Context, opts RunOpts) (RunResult, error) {
+	args := []string{
+		"-p", opts.Prompt,
+		"--allowed-tools", "Task",
+		"--output-format", "json",
 	}
-	return nil
+	cmd := exec.CommandContext(ctx, "claude", args...)
+	if opts.Dir != "" {
+		cmd.Dir = opts.Dir
+	}
+	cmd.Stdin = opts.Stdin
+
+	// Capture stdout for JSON parsing. The buffered envelope is dumped to
+	// opts.Stdout after the run so the operator still gets the host's
+	// final result text, just not streaming.
+	var captured bytes.Buffer
+	cmd.Stdout = &captured
+	cmd.Stderr = opts.Stderr
+
+	runErr := cmd.Run()
+
+	usage, resultText := parseClaudeJSON(captured.Bytes())
+	if resultText != "" {
+		fmt.Fprintln(opts.Stdout, resultText)
+	} else if runErr != nil && captured.Len() > 0 {
+		// Run failed before the JSON envelope landed — surface the raw
+		// bytes so the operator sees whatever claude did print.
+		opts.Stdout.Write(captured.Bytes())
+	}
+	return RunResult{Usage: usage}, runErr
+}
+
+// parseClaudeJSON decodes the `claude -p --output-format json` envelope.
+// Returns (nil, "") when the bytes don't decode — callers treat that as
+// "no usage data, fall back to elapsed-time-only banner".
+func parseClaudeJSON(b []byte) (*TokenUsage, string) {
+	if len(bytes.TrimSpace(b)) == 0 {
+		return nil, ""
+	}
+	var env struct {
+		Result       string     `json:"result"`
+		TotalCostUSD float64    `json:"total_cost_usd"`
+		Usage        TokenUsage `json:"usage"`
+	}
+	if err := json.Unmarshal(b, &env); err != nil {
+		return nil, ""
+	}
+	usage := env.Usage
+	usage.TotalCostUSD = env.TotalCostUSD
+	return &usage, env.Result
 }
 
 type execGit struct{}
