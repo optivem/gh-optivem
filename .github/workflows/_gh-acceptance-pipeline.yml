@@ -516,6 +516,8 @@ jobs:
       - name: Read target version
         id: target
         uses: optivem/actions/read-base-version@v1
+        with:
+          file: VERSION
 
       - name: Generate RC Version
         id: gen
