@@ -350,6 +350,33 @@ func TestContentReplacementsRewritesBumpPatchVersionUsesReference(t *testing.T) 
 			pairs:    multitierContentReplacements("typescript", "react", "typescript"),
 			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
 		},
+		// Polyglot cases (lang != testLang). Source prod-stage is the testLang flavor
+		// and references `bump-patch-version-<arch>-<testLang>.yml`, so the rewrite
+		// must key off testLang, not the system lang.
+		{
+			name:     "monolith polyglot java/typescript uses reference",
+			in:       "    uses: ./.github/workflows/bump-patch-version-monolith-typescript.yml\n",
+			pairs:    monolithContentReplacements("java", "typescript"),
+			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
+		},
+		{
+			name:     "monolith polyglot dotnet/typescript uses reference",
+			in:       "    uses: ./.github/workflows/bump-patch-version-monolith-typescript.yml\n",
+			pairs:    monolithContentReplacements("dotnet", "typescript"),
+			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
+		},
+		{
+			name:     "multitier polyglot java/typescript uses reference",
+			in:       "    uses: ./.github/workflows/bump-patch-version-multitier-typescript.yml\n",
+			pairs:    multitierContentReplacements("java", "react", "typescript"),
+			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
+		},
+		{
+			name:     "multitier polyglot dotnet/typescript uses reference",
+			in:       "    uses: ./.github/workflows/bump-patch-version-multitier-typescript.yml\n",
+			pairs:    multitierContentReplacements("dotnet", "react", "typescript"),
+			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
+		},
 	}
 
 	for _, tc := range cases {
