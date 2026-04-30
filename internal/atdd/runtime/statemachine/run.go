@@ -20,15 +20,20 @@ import (
 // Bind must run after every registry has been populated; calling Run before
 // Bind will dereference nil functions and panic.
 func (e *Engine) Bind() error {
+	var errs []string
 	for _, flow := range e.Flows {
 		for id, node := range flow.Nodes {
 			fn, err := e.resolve(flow, node)
 			if err != nil {
-				return fmt.Errorf("flow %q node %q: %w", flow.Name, id, err)
+				errs = append(errs, fmt.Sprintf("flow %q node %q: %v", flow.Name, id, err))
+				continue
 			}
 			node.Fn = fn
 			flow.Nodes[id] = node
 		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("%d bind error(s):\n  - %s", len(errs), strings.Join(errs, "\n  - "))
 	}
 	return nil
 }
@@ -51,6 +56,21 @@ func (e *Engine) resolve(flow *Flow, node Node) (NodeFn, error) {
 	case UserTask:
 		if e.AgentFn == nil {
 			return nil, fmt.Errorf("AgentFn registry is nil but node is user_task")
+		}
+		// Templated agent names (e.g. ${agent} in structural_cycle) are
+		// resolved at dispatch time once Context.Params is set by the calling
+		// call_activity. Bind validates only static names.
+		if strings.Contains(node.Raw.Agent, "${") {
+			ref := node.Raw.Agent
+			lookup := e.AgentFn
+			return func(ctx *Context) Outcome {
+				name := expandParams(ref, ctx.Params)
+				fn := lookup(name)
+				if fn == nil {
+					return Outcome{Err: fmt.Errorf("user_task agent %q (from template %q) not registered", name, ref)}
+				}
+				return fn(ctx)
+			}, nil
 		}
 		fn := e.AgentFn(node.Raw.Agent)
 		if fn == nil {

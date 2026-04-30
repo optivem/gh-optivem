@@ -141,6 +141,65 @@ go test -tags=system ./internal/config/ -v -timeout 2h \
     -run "TestValidMonolithConfigurations/monolith_monorepo_java_dotnet"
 ```
 
+## Testing the ATDD driver
+
+The ATDD driver walks `docs/atdd/process/process-flow.yaml` against a real GitHub issue, dispatching service tasks inline and pausing at each user-task node so you can launch the matching Claude Code agent. The YAML is read from the **current working directory**, so smoke-tests run from inside a consumer repo (typically `shop`), not from `gh-optivem`.
+
+### Smoke-test against a single ticket
+
+`go run` won't work from the consumer repo (it needs a module in cwd), so the iteration loop is build-once-then-invoke. `go -C` builds in `../gh-optivem` without moving your shell, and the resulting binary, when run from `shop`, sees `shop` as its cwd:
+
+```bash
+cd ../shop
+
+# Build (rerun after any gh-optivem code change):
+go -C ../gh-optivem build -o gh-optivem.exe .
+
+# Run (accepts bare number or full GitHub issue URL):
+../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 42
+../gh-optivem/gh-optivem.exe atdd implement-ticket --issue https://github.com/optivem/shop/issues/42
+
+# Pick the top Ready item from the project board instead of supplying --issue:
+../gh-optivem/gh-optivem.exe atdd manage-project
+
+# Disambiguate the project explicitly when multiple match the repo:
+../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 42 \
+    --project https://github.com/orgs/optivem/projects/20
+```
+
+Or, for the closer-to-real-user flow, install once as a gh extension and use `gh optivem` directly (rerun the install after code changes):
+
+```bash
+(cd ../gh-optivem && gh extension install --force .)
+cd ../shop
+gh optivem atdd implement-ticket --issue 42
+```
+
+The driver pre-resolves the project item, moves it to **In Progress**, then walks the flow node by node. When the agent's COMMIT lands on HEAD, press Enter and the engine advances. `--autonomous` skips the human-approval STOPs (agent-dispatch pauses still apply in v1).
+
+### Debug a single phase in isolation
+
+The hidden `gh optivem atdd debug …` subcommands exercise individual runtime packages standalone — useful for reproducing one phase without rerunning the whole pipeline. Flag shapes here are not part of the stable API.
+
+```bash
+# What would manage-project pick? (no move)
+gh optivem atdd debug pick-top-ready
+
+# Classify a ticket via the deterministic fast path:
+gh optivem atdd debug classify --issue 42
+
+# Which edge would nextEdge pick from GATE_DSL under a synthetic state?
+gh optivem atdd debug next-phase --node GATE_DSL --state dsl_interface_changed=true
+
+# Evaluate one gateway binding standalone:
+gh optivem atdd debug gate dsl_changed
+
+# Replay the release primitives (regex strip + commit + close), dry-run first:
+gh optivem atdd debug release --issue 42 --dry-run
+```
+
+Run `gh optivem atdd debug --help` to list them all.
+
 ## Releasing
 
 This project uses [semantic versioning](https://semver.org/). To create a new release:

@@ -235,6 +235,7 @@ var agentNames = []string{
 	"atdd-backend",
 	"atdd-frontend",
 	"atdd-stubs",
+	"atdd-release",
 }
 
 // registerAgentDispatchers registers a no-op base dispatcher for every
