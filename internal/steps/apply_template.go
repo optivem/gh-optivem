@@ -512,9 +512,12 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 		{mono + lang + "-bump-patch-version", "bump-patch-version"},
 		// Filename form used in `uses: ./.github/workflows/bump-patch-version-<flavor>.yml`
 		// references inside prod-stage. Distinct from the rule above (which catches the
-		// `name:` / `concurrency.group:` form). Without this, prod-stage's `uses:` keeps
-		// the shop filename and dispatch fails with HTTP 422 "workflow was not found".
-		{"bump-patch-version-" + mono + lang, "bump-patch-version"},
+		// `name:` / `concurrency.group:` form). Keyed by testLang because the prod-stage
+		// source is `monolith-<testLang>-prod-stage.yml` and its `uses:` line hardcodes
+		// the same flavor's bump-patch-version filename — `bump-patch-version-monolith-<testLang>.yml`.
+		// Without this, polyglot scaffolds (lang != testLang) leave the shop filename in
+		// place and actionlint fails with "could not read reusable workflow file".
+		{"bump-patch-version-" + mono + testLang, "bump-patch-version"},
 		{monoTest + suffixAcceptanceStage, "acceptance-stage"},
 		{monoTest + suffixQAStage, "qa-stage"},
 		{monoTest + suffixQASignoff, "qa-signoff"},
@@ -635,13 +638,18 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 		{multiTest + suffixProdStage, "prod-stage"},
 		{multiTest + "-verify", "verify"},
 		// bump-patch-version variant is keyed by backendLang (frontend is always react),
-		// distinct from the pipeline-stage rewrites above which use testLang.
+		// distinct from the pipeline-stage rewrites above which use testLang. This rule
+		// catches the `name:` / `concurrency.group:` form inside the bump-patch-version
+		// source itself (`bump-patch-version-multitier-<backendLang>.yml`).
 		{prefixMultitier + backendLang + "-bump-patch-version", "bump-patch-version"},
 		// Filename form used in `uses: ./.github/workflows/bump-patch-version-<flavor>.yml`
 		// references inside prod-stage. Distinct from the rule above (which catches the
-		// `name:` / `concurrency.group:` form). Without this, prod-stage's `uses:` keeps
-		// the shop filename and dispatch fails with HTTP 422 "workflow was not found".
-		{"bump-patch-version-" + prefixMultitier + backendLang, "bump-patch-version"},
+		// `name:` / `concurrency.group:` form). Keyed by testLang because the prod-stage
+		// source is `multitier-<testLang>-prod-stage.yml` and its `uses:` line hardcodes
+		// the same flavor's bump-patch-version filename — `bump-patch-version-multitier-<testLang>.yml`.
+		// Without this, polyglot scaffolds (backendLang != testLang) leave the shop
+		// filename in place and actionlint fails with "could not read reusable workflow file".
+		{"bump-patch-version-" + prefixMultitier + testLang, "bump-patch-version"},
 		// Docker working-directory: shop keeps per-lang/arch subdirs under
 		// docker/, but the scaffolder copies only the selected lang/arch up
 		// into docker/, so "working-directory: docker/<testLang>/<arch>" must

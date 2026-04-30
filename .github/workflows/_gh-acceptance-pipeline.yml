@@ -22,7 +22,7 @@ on:
         description: 'Acceptance matrix size: none, single, minimal, condensed, or full.'
         required: false
         type: string
-        default: 'none'
+        default: 'condensed'
       shop-tag:
         description: 'optivem/shop meta-v* release tag to test against. Empty = latest meta-v* release.'
         required: false

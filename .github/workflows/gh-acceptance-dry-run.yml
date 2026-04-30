@@ -42,7 +42,7 @@ on:
       acceptance-mode:
         description: 'Acceptance matrix size: none (0 combos), single (1 combo — monolith/monorepo/TS/TS), minimal (8 combos), condensed (12 polyglot combos), or full (36 combos).'
         required: false
-        default: 'none'
+        default: 'condensed'
         type: choice
         options:
           - none
