@@ -341,7 +341,8 @@ func VerifyCleanup(cfg *config.Config, gh *shell.GitHub) {
 }
 
 func verifyCleanupIn(gh *shell.GitHub, label string) {
-	verifyWorkflow(gh, label, "cleanup.yml", map[string]string{"dry-run": "true"}, 300)
+	// Cleanup is short-lived; poll every 60s instead of the 300s default.
+	verifyWorkflow(gh, label, "cleanup.yml", map[string]string{"dry-run": "true"}, 60)
 }
 
 func verifyNamedWorkflow(gh *shell.GitHub, label, workflowFile string, intervalSecs int) {
