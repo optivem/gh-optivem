@@ -46,6 +46,10 @@ func isDockerComposeYml(name string) bool {
 
 // CopyWorkflows copies workflow files from shop to repo, renaming them.
 // mappings is a map of source filename -> destination filename.
+// When the names differ, the top-level `name:` field inside the YAML is also
+// rewritten to match the destination basename, so the workflow's display name
+// in GitHub Actions matches its filename (e.g. `bump-patch-version-multirepo`
+// → `bump-patch-version` when the file is renamed to `bump-patch-version.yml`).
 func CopyWorkflows(mappings map[string]string, shop, repoDir string) {
 	wfSrc := filepath.Join(shop, githubDir, workflowsDir)
 	wfDst := workflowDir(repoDir)
@@ -57,7 +61,29 @@ func CopyWorkflows(mappings map[string]string, shop, repoDir string) {
 			log.Warnf("Workflow not found: %s", srcName)
 			continue
 		}
-		files.CopyFile(src, filepath.Join(wfDst, dstName))
+		dst := filepath.Join(wfDst, dstName)
+		files.CopyFile(src, dst)
+		if srcName != dstName {
+			rewriteWorkflowName(dst, strings.TrimSuffix(dstName, ymlExt))
+		}
+	}
+}
+
+// rewriteWorkflowName replaces the top-level `name:` line in a workflow YAML.
+// Only the first column-0 `name:` line is rewritten; per-job and per-step
+// `name:` keys are indented and therefore untouched.
+func rewriteWorkflowName(path, newName string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	lines := strings.Split(string(data), "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(line, "name:") {
+			lines[i] = "name: " + newName
+			os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0644)
+			return
+		}
 	}
 }
 

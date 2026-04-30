@@ -310,28 +310,6 @@ func VerifyProdStage(cfg *config.Config, gh *shell.GitHub) {
 	verifyWorkflow(gh, "Production stage", "prod-stage.yml", nil, 300)
 }
 
-// VerifyBumpPatchVersion verifies that bump-patch-version.yml ran successfully
-// in the root repo. In monorepo, that file is the per-flavor bumper that bumps
-// VERSION locally based on the GHCR image tag. In multirepo, that file is the
-// dispatcher variant that fires bump-patch-version.yml in each sibling repo
-// via cross-repo workflow_dispatch — its success means the dispatch happened
-// (sibling-side outcomes are tracked in their own Actions tabs).
-//
-// In all cases it is invoked automatically by prod-stage as a downstream
-// called workflow, so prod-stage's overall conclusion already reflects its
-// outcome — this explicit step exists for clearer failure attribution if the
-// bump or dispatch itself breaks.
-func VerifyBumpPatchVersion(cfg *config.Config, gh *shell.GitHub) {
-	log.Info("Verifying bump-patch-version workflow...")
-
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would verify bump-patch-version workflow")
-		return
-	}
-
-	verifyNamedWorkflow(gh, "bump-patch-version", "bump-patch-version.yml", 30)
-}
-
 // VerifyCleanup triggers cleanup.yml in dry-run mode in every repo where it
 // was scaffolded. cleanup.yml is otherwise only fired by its nightly schedule,
 // so a syntax error or stale action reference would silently slip past init

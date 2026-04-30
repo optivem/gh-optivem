@@ -343,16 +343,7 @@ func buildVerifySteps(cfg *config.Config, gh *shell.GitHub) []stepDef {
 		)
 	}
 
-	// Step 8: bump-patch-version (post-release VERSION bump). Invoked as a
-	// downstream called workflow by prod-stage; we verify explicitly here for
-	// clearer failure attribution. Skipped in multirepo (bump deferred).
-	if level >= verifyLevelOrder["release"] {
-		s = append(s,
-			stepDef{name: "Verify bump-patch-version workflow", phase: phaseVerifyProduction, fn: func() { steps.VerifyBumpPatchVersion(cfg, gh) }},
-		)
-	}
-
-	// Step 9: Cleanup workflow (dry-run). cleanup.yml otherwise only fires on
+	// Step 8: Cleanup workflow (dry-run). cleanup.yml otherwise only fires on
 	// schedule, so a syntax error or stale action reference would silently slip
 	// past init and surface the next night.
 	if level >= verifyLevelOrder["release"] {

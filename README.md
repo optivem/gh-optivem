@@ -11,6 +11,7 @@ A GitHub CLI extension for scaffolding pipeline projects.
 ## Prerequisites
 
 - [GitHub CLI](https://cli.github.com/) (`gh auth login`)
+- [`actionlint`](https://github.com/rhysd/actionlint) v1.7.7 — used by the `Verify scaffolded workflows` step. Install: `go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7` or `bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7`
 
 ## Installation
 
