@@ -331,7 +331,17 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	// Fix workflow content: paths and image names
 	log.Info("Fixing up workflow and docker-compose content...")
 	contentReplacements := appendCloudReplacement(multitierContentReplacements(backendLang, frontendLang, testLang), cfg.Deploy)
-	contentReplacements = append(contentReplacements, systemPrefixDropReplacements(prefixMultitier+testLang)...)
+	// Prepend prefix-drops so 3-segment "multitier-backend-{lang}-v" / "multitier-frontend-react-v"
+	// collapse to "v" before the bare 3-segment image-name rules in
+	// multitierContentReplacements partial-match them into "backend-v"/"frontend-v".
+	contentReplacements = append(
+		systemPrefixDropReplacements(
+			prefixMultitier+testLang,
+			prefixMultitierBackend+backendLang,
+			prefixMultitierFrontend+frontendLang,
+		),
+		contentReplacements...,
+	)
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, multitierDockerComposeReplacements(backendLang, frontendLang, testLang))
 
@@ -376,7 +386,15 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	// Fix root repo workflow content
 	log.Info("Fixing up root repo workflow and docker-compose content...")
 	contentReplacements := appendCloudReplacement(multitierContentReplacements(backendLang, frontendLang, testLang), cfg.Deploy)
-	contentReplacements = append(contentReplacements, systemPrefixDropReplacements(prefixMultitier+testLang)...)
+	// Prepend prefix-drops; see comment in applyMultitierMonorepo for rationale.
+	contentReplacements = append(
+		systemPrefixDropReplacements(
+			prefixMultitier+testLang,
+			prefixMultitierBackend+backendLang,
+			prefixMultitierFrontend+frontendLang,
+		),
+		contentReplacements...,
+	)
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, multitierDockerComposeReplacements(backendLang, frontendLang, testLang))
 
@@ -425,12 +443,16 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	templates.CopyWorkflows(backendWfMap, shop, bDir)
 
 	log.Info("Fixing up backend repo workflow content and SonarCloud keys...")
-	backendReplacements := [][2]string{
-		{prefixMultitierBackend + backendLang + suffixCommitStage, "backend-commit-stage"},
-		{systemMultitierBackend + backendLang, "backend"},
-		{prefixMultitierBackend + backendLang, "backend"},
-		{"backend-bump-patch-version", "bump-patch-version"},
-	}
+	// Prepend prefix-drop so "multitier-backend-{lang}-v" (in bump-patch-version.yml's
+	// git-tag value) collapses to "v" before the bare 3-segment "multitier-backend-{lang}"
+	// → "backend" rule below partial-matches it into "backend-v".
+	backendReplacements := append(
+		systemPrefixDropReplacements(prefixMultitierBackend+backendLang),
+		[2]string{prefixMultitierBackend + backendLang + suffixCommitStage, "backend-commit-stage"},
+		[2]string{systemMultitierBackend + backendLang, "backend"},
+		[2]string{prefixMultitierBackend + backendLang, "backend"},
+		[2]string{"backend-bump-patch-version", "bump-patch-version"},
+	)
 	templates.FixupWorkflowContent(bDir, backendReplacements)
 	templates.FixupAllTextFiles(bDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 	log.Success("Applied backend repo template")
@@ -450,12 +472,16 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	templates.CopyWorkflows(frontendWfMap, shop, fDir)
 
 	log.Info("Fixing up frontend repo workflow content and SonarCloud keys...")
-	frontendReplacements := [][2]string{
-		{prefixMultitierFrontend + frontendLang + suffixCommitStage, "frontend-commit-stage"},
-		{"system/multitier/frontend-" + frontendLang, "frontend"},
-		{prefixMultitierFrontend + frontendLang, "frontend"},
-		{"frontend-bump-patch-version", "bump-patch-version"},
-	}
+	// Prepend prefix-drop so "multitier-frontend-react-v" (in bump-patch-version.yml's
+	// git-tag value) collapses to "v" before the bare 3-segment "multitier-frontend-react"
+	// → "frontend" rule below partial-matches it into "frontend-v".
+	frontendReplacements := append(
+		systemPrefixDropReplacements(prefixMultitierFrontend+frontendLang),
+		[2]string{prefixMultitierFrontend + frontendLang + suffixCommitStage, "frontend-commit-stage"},
+		[2]string{"system/multitier/frontend-" + frontendLang, "frontend"},
+		[2]string{prefixMultitierFrontend + frontendLang, "frontend"},
+		[2]string{"frontend-bump-patch-version", "bump-patch-version"},
+	)
 	templates.FixupWorkflowContent(fDir, frontendReplacements)
 	templates.FixupAllTextFiles(fDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 	log.Success("Applied frontend repo template")
@@ -507,26 +533,45 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 	return r
 }
 
-// systemPrefixDropReplacements strips the 2-segment system tag prefix
-// (e.g. "monolith-typescript-", "multitier-java-") from workflow content.
-// The 3-segment component form ("<arch>-<component>-<lang>-") is untouched
-// because it does not contain the 2-segment form as a literal substring.
-// Must run after workflow-name and image-name replacements, and after the
-// cloud-suffix normalization, so the `-cloud` variant has already collapsed.
+// systemPrefixDropReplacements strips system tag prefixes from workflow
+// content. Each input is a tag prefix (the part before "-v") whose
+// "<prefix>-v" form should collapse to "v" and whose "prefix: <prefix>"
+// form should collapse to "prefix: ''".
 //
-// Ordering matters: the "-v" form must run before the bare "prefix:" form
-// because "prefix: monolith-typescript" is a substring of "tag-prefix:
-// monolith-typescript-v", and we need the longer tag-prefix context to
-// consume first so the short rule does not leave a "”-v" fragment behind.
-func systemPrefixDropReplacements(archTest string) [][2]string {
-	return [][2]string{
-		// tag: / tag-prefix: inputs and description examples — rewrites
-		// "monolith-typescript-v" to "v".
-		{archTest + "-v", "v"},
-		// compose-prerelease-version step — explicit empty string preserves
-		// the key so the YAML shape matches what the action expects.
-		{"prefix: " + archTest, "prefix: ''"},
+// Callers pass:
+//   - 2-segment prefixes (e.g. "monolith-typescript", "multitier-java") —
+//     the flavor-level tag prefix used by every prod-stage's flavor-tag
+//     publish and prerelease-version step.
+//   - 3-segment per-component prefixes (e.g. "multitier-backend-dotnet",
+//     "multitier-frontend-react") — the per-component release tags that
+//     multitier prod-stages publish in addition to the flavor tag, and
+//     that bump-patch-version files probe via the git-tag signal.
+//
+// Multi-prefix multitier callers (monorepo and multirepo root) must
+// **prepend** the result before multitierContentReplacements: the bare
+// 3-segment "multitier-backend-{lang}" → "backend" rule there is a
+// substring of "multitier-backend-{lang}-v" and would partial-match into
+// "backend-v" otherwise.
+//
+// Single-prefix monolith callers can keep appending — monolith content
+// replacements have no bare 2-segment rule to collide with.
+//
+// Ordering inside the function: each prefix's "-v" form is emitted before
+// its bare "prefix:" form so that "prefix: monolith-typescript" is not
+// consumed early as a partial match of "tag-prefix: monolith-typescript-v".
+func systemPrefixDropReplacements(archTests ...string) [][2]string {
+	r := make([][2]string, 0, 2*len(archTests))
+	for _, at := range archTests {
+		r = append(r,
+			// tag: / tag-prefix: inputs and description examples — rewrites
+			// "<prefix>-v" to "v".
+			[2]string{at + "-v", "v"},
+			// compose-prerelease-version step — explicit empty string preserves
+			// the key so the YAML shape matches what the action expects.
+			[2]string{"prefix: " + at, "prefix: ''"},
+		)
 	}
+	return r
 }
 
 // monolithDockerComposeReplacements returns docker-compose content replacements for monolith.

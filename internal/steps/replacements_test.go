@@ -364,3 +364,181 @@ func TestContentReplacementsFlattensDockerCLIArgs(t *testing.T) {
 		})
 	}
 }
+
+// TestSystemPrefixDropReplacementsCollapsesPerComponent3SegmentTags asserts
+// that systemPrefixDropReplacements collapses 3-segment per-component
+// release-tag prefixes (introduced when multitier prod-stage started
+// publishing per-component git tags alongside the flavor tag) — both in
+// `tag:` step inputs (prod-stage publish-tag) and in `value:` JSON entries
+// (bump-patch-version git-tag signal).
+func TestSystemPrefixDropReplacementsCollapsesPerComponent3SegmentTags(t *testing.T) {
+	cases := []struct {
+		name     string
+		in       string
+		pairs    [][2]string
+		expected string
+	}{
+		{
+			name:     "multitier-backend-dotnet tag in prod-stage",
+			in:       "          tag: multitier-backend-dotnet-v${{ steps.x.outputs.backend }}\n",
+			pairs:    systemPrefixDropReplacements("multitier-backend-dotnet"),
+			expected: "          tag: v${{ steps.x.outputs.backend }}\n",
+		},
+		{
+			name:     "multitier-frontend-react tag in prod-stage",
+			in:       "          tag: multitier-frontend-react-v${{ steps.x.outputs.frontend }}\n",
+			pairs:    systemPrefixDropReplacements("multitier-frontend-react"),
+			expected: "          tag: v${{ steps.x.outputs.frontend }}\n",
+		},
+		{
+			name:     "multitier-backend-java git-tag value in bump-patch-version",
+			in:       `              {"path": "system/multitier/backend-java/VERSION", "signal": "git-tag", "value": "multitier-backend-java-v"}` + "\n",
+			pairs:    systemPrefixDropReplacements("multitier-backend-java"),
+			expected: `              {"path": "system/multitier/backend-java/VERSION", "signal": "git-tag", "value": "v"}` + "\n",
+		},
+		{
+			name: "multi-prefix variadic call collapses both backend and frontend",
+			in: `              {"path": "system/multitier/backend-typescript/VERSION", "signal": "git-tag", "value": "multitier-backend-typescript-v"},
+              {"path": "system/multitier/frontend-react/VERSION",     "signal": "git-tag", "value": "multitier-frontend-react-v"}` + "\n",
+			pairs: systemPrefixDropReplacements(
+				"multitier-typescript",
+				"multitier-backend-typescript",
+				"multitier-frontend-react",
+			),
+			expected: `              {"path": "system/multitier/backend-typescript/VERSION", "signal": "git-tag", "value": "v"},
+              {"path": "system/multitier/frontend-react/VERSION",     "signal": "git-tag", "value": "v"}` + "\n",
+		},
+		{
+			name:     "2-segment monolith form unchanged (regression guard)",
+			in:       "          tag: monolith-typescript-v${{ steps.x.outputs.version }}\n",
+			pairs:    systemPrefixDropReplacements("monolith-typescript"),
+			expected: "          tag: v${{ steps.x.outputs.version }}\n",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.in
+			for _, p := range tc.pairs {
+				got = strings.ReplaceAll(got, p[0], p[1])
+			}
+			if got != tc.expected {
+				t.Errorf("got  %q\nwant %q", got, tc.expected)
+			}
+		})
+	}
+}
+
+// TestMultitierPrefixDropAndContentReplacementsOrderingFixesPartialMatch
+// asserts that prepending systemPrefixDropReplacements (with the 3-segment
+// per-component prefixes) before multitierContentReplacements collapses
+// "multitier-backend-{lang}-v" / "multitier-frontend-react-v" to "v" instead
+// of letting the bare "multitier-backend-{lang}" → "backend" /
+// "multitier-frontend-react" → "frontend" rules in
+// multitierContentReplacements partial-match them into "backend-v" /
+// "frontend-v". Mirrors the call-site composition in applyMultitierMonorepo
+// and applyMultitierMultirepo (root repo).
+func TestMultitierPrefixDropAndContentReplacementsOrderingFixesPartialMatch(t *testing.T) {
+	cases := []struct {
+		name         string
+		in           string
+		backendLang  string
+		frontendLang string
+		testLang     string
+		expected     string
+	}{
+		{
+			name:         "multitier-dotnet bump-patch-version git-tag values",
+			in:           `              {"path": "system/multitier/backend-dotnet/VERSION", "signal": "git-tag", "value": "multitier-backend-dotnet-v"},` + "\n              " + `{"path": "system/multitier/frontend-react/VERSION",  "signal": "git-tag", "value": "multitier-frontend-react-v"}` + "\n",
+			backendLang:  "dotnet",
+			frontendLang: "react",
+			testLang:     "dotnet",
+			expected:     `              {"path": "backend/VERSION", "signal": "git-tag", "value": "v"},` + "\n              " + `{"path": "frontend/VERSION",  "signal": "git-tag", "value": "v"}` + "\n",
+		},
+		{
+			name:         "multitier-typescript prod-stage per-component publish-tag",
+			in:           "          tag: multitier-backend-typescript-v${{ steps.x.outputs.backend }}\n          tag: multitier-frontend-react-v${{ steps.x.outputs.frontend }}\n",
+			backendLang:  "typescript",
+			frontendLang: "react",
+			testLang:     "typescript",
+			expected:     "          tag: v${{ steps.x.outputs.backend }}\n          tag: v${{ steps.x.outputs.frontend }}\n",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Compose pairs in the same order as applyMultitierMonorepo /
+			// applyMultitierMultirepo: prefix-drops first, then content.
+			pairs := append(
+				systemPrefixDropReplacements(
+					"multitier-"+tc.testLang,
+					"multitier-backend-"+tc.backendLang,
+					"multitier-frontend-"+tc.frontendLang,
+				),
+				multitierContentReplacements(tc.backendLang, tc.frontendLang, tc.testLang)...,
+			)
+			got := tc.in
+			for _, p := range pairs {
+				got = strings.ReplaceAll(got, p[0], p[1])
+			}
+			if got != tc.expected {
+				t.Errorf("got  %q\nwant %q", got, tc.expected)
+			}
+		})
+	}
+}
+
+// TestMultirepoBackendAndFrontendReplacementsCollapseGitTagValue asserts
+// that the backendReplacements / frontendReplacements lists composed in
+// applyMultitierMultirepo (per-component repo path) collapse the 3-segment
+// "multitier-backend-{lang}-v" / "multitier-frontend-react-v" git-tag value
+// in bump-patch-version.yml to "v". Without the prepended
+// systemPrefixDropReplacements call, the bare "multitier-backend-{lang}" →
+// "backend" rule would partial-match and leave a "backend-v" fragment.
+func TestMultirepoBackendAndFrontendReplacementsCollapseGitTagValue(t *testing.T) {
+	cases := []struct {
+		name     string
+		in       string
+		pairs    [][2]string
+		expected string
+	}{
+		{
+			name: "backend repo (multitier-backend-dotnet)",
+			in:   `              {"path": "system/multitier/backend-dotnet/VERSION", "signal": "git-tag", "value": "multitier-backend-dotnet-v"}` + "\n",
+			// Mirrors backendReplacements composition in applyMultitierMultirepo.
+			pairs: append(
+				systemPrefixDropReplacements("multitier-backend-dotnet"),
+				[2]string{"multitier-backend-dotnet-commit-stage", "backend-commit-stage"},
+				[2]string{"system/multitier/backend-dotnet", "backend"},
+				[2]string{"multitier-backend-dotnet", "backend"},
+				[2]string{"backend-bump-patch-version", "bump-patch-version"},
+			),
+			expected: `              {"path": "backend/VERSION", "signal": "git-tag", "value": "v"}` + "\n",
+		},
+		{
+			name: "frontend repo (multitier-frontend-react)",
+			in:   `              {"path": "system/multitier/frontend-react/VERSION", "signal": "git-tag", "value": "multitier-frontend-react-v"}` + "\n",
+			// Mirrors frontendReplacements composition in applyMultitierMultirepo.
+			pairs: append(
+				systemPrefixDropReplacements("multitier-frontend-react"),
+				[2]string{"multitier-frontend-react-commit-stage", "frontend-commit-stage"},
+				[2]string{"system/multitier/frontend-react", "frontend"},
+				[2]string{"multitier-frontend-react", "frontend"},
+				[2]string{"frontend-bump-patch-version", "bump-patch-version"},
+			),
+			expected: `              {"path": "frontend/VERSION", "signal": "git-tag", "value": "v"}` + "\n",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.in
+			for _, p := range tc.pairs {
+				got = strings.ReplaceAll(got, p[0], p[1])
+			}
+			if got != tc.expected {
+				t.Errorf("got  %q\nwant %q", got, tc.expected)
+			}
+		})
+	}
+}
