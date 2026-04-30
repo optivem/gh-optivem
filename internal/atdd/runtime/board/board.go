@@ -25,6 +25,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/config"
 )
 
 // ---------------------------------------------------------------------------
@@ -36,12 +38,13 @@ import (
 // (used by MoveToInProgress), and ProjectID is the project node ID (also
 // required by `gh project item-edit`).
 type Pick struct {
-	IssueNum  int
-	IssueURL  string
-	Title     string
-	Repo      string // owner/repo where the issue lives
-	ProjectID string // node id (gh project's --format json field)
-	ItemID    string // node id of the project item (for later move calls)
+	IssueNum     int
+	IssueURL     string
+	Title        string
+	Repo         string // owner/repo where the issue lives
+	ProjectID    string // node id (gh project's --format json field)
+	ProjectTitle string // human-readable project title (e.g. "Shop Project")
+	ItemID       string // node id of the project item (for later move calls)
 }
 
 // Options bundles the inputs for PickTopReady and MoveToInProgress.
@@ -97,13 +100,15 @@ var ErrStatusFieldMissing = errors.New("board: project is missing a Status field
 // Public functions
 // ---------------------------------------------------------------------------
 
-// ResolveProjectURL implements the README-then-git-remote fallback chain
-// from the orchestrator agent body:
+// ResolveProjectURL implements the config-then-README-then-git-remote
+// fallback chain:
 //
-//  1. Read <repoPath>/README.md and look for the canonical pattern
+//  1. Read <repoPath>/docs/atdd/config.yaml; if `project.url` is set,
+//     return it.
+//  2. Read <repoPath>/README.md and look for the canonical pattern
 //     `https://github.com/orgs/<org>/projects/<n>` or the user variant
 //     `https://github.com/users/<user>/projects/<n>`.
-//  2. On miss, shell out to `git -C <repoPath> remote get-url origin`,
+//  3. On miss, shell out to `git -C <repoPath> remote get-url origin`,
 //     extract the org, list projects for that org, and return the URL if
 //     exactly one matches the repo name in title (case-insensitive
 //     substring) — otherwise ErrNoProjectLink.
@@ -114,6 +119,12 @@ var ErrStatusFieldMissing = errors.New("board: project is missing a Status field
 func ResolveProjectURL(repoPath string, git GitRunner) (string, error) {
 	if repoPath == "" {
 		return "", fmt.Errorf("board: repoPath is required")
+	}
+
+	if cfg, err := config.Load(repoPath); err != nil {
+		return "", fmt.Errorf("board: load config: %w", err)
+	} else if cfg != nil && cfg.Project.URL != "" {
+		return cfg.Project.URL, nil
 	}
 
 	if url, ok := readProjectURLFromReadme(repoPath); ok {
@@ -197,7 +208,8 @@ func PickTopReady(ctx context.Context, opts Options) (Pick, error) {
 		return Pick{}, fmt.Errorf("board: gh project view: %w", err)
 	}
 	var view struct {
-		ID string `json:"id"`
+		ID    string `json:"id"`
+		Title string `json:"title"`
 	}
 	if err := json.Unmarshal(viewOut, &view); err != nil {
 		return Pick{}, fmt.Errorf("board: parse gh project view output: %w", err)
@@ -238,12 +250,13 @@ func PickTopReady(ctx context.Context, opts Options) (Pick, error) {
 			continue
 		}
 		return Pick{
-			IssueNum:  it.Content.Number,
-			IssueURL:  it.Content.URL,
-			Title:     it.Content.Title,
-			Repo:      it.Content.Repository,
-			ProjectID: view.ID,
-			ItemID:    it.ID,
+			IssueNum:     it.Content.Number,
+			IssueURL:     it.Content.URL,
+			Title:        it.Content.Title,
+			Repo:         it.Content.Repository,
+			ProjectID:    view.ID,
+			ProjectTitle: view.Title,
+			ItemID:       it.ID,
 		}, nil
 	}
 	return Pick{}, ErrEmptyReady
@@ -279,7 +292,8 @@ func FindIssue(ctx context.Context, issueNum int, opts Options) (Pick, error) {
 		return Pick{}, fmt.Errorf("board: gh project view: %w", err)
 	}
 	var view struct {
-		ID string `json:"id"`
+		ID    string `json:"id"`
+		Title string `json:"title"`
 	}
 	if err := json.Unmarshal(viewOut, &view); err != nil {
 		return Pick{}, fmt.Errorf("board: parse gh project view output: %w", err)
@@ -317,12 +331,13 @@ func FindIssue(ctx context.Context, issueNum int, opts Options) (Pick, error) {
 			continue
 		}
 		return Pick{
-			IssueNum:  it.Content.Number,
-			IssueURL:  it.Content.URL,
-			Title:     it.Content.Title,
-			Repo:      it.Content.Repository,
-			ProjectID: view.ID,
-			ItemID:    it.ID,
+			IssueNum:     it.Content.Number,
+			IssueURL:     it.Content.URL,
+			Title:        it.Content.Title,
+			Repo:         it.Content.Repository,
+			ProjectID:    view.ID,
+			ProjectTitle: view.Title,
+			ItemID:       it.ID,
 		}, nil
 	}
 	return Pick{}, fmt.Errorf("board: issue #%d not found on project %s/%d", issueNum, owner, number)

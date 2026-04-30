@@ -238,18 +238,38 @@ func (a actions) classifyTicket(ctx *statemachine.Context) statemachine.Outcome 
 	}
 	final := string(res.Classification)
 	if res.Classification == classify.Task {
-		// Subtype prompt — must match one of the YAML's task subtype values.
-		subtype, err := a.deps.Prompter.Ask(
-			"Task subtype? (system-api-task | system-ui-task | external-api-task): ")
-		if err != nil {
-			return statemachine.Outcome{Err: fmt.Errorf("classify_ticket: %w", err)}
+		// Auto-resolve the subtype when exactly one of the known subtype
+		// labels is on the issue — the renamed shop labels (system-api-task,
+		// system-ui-task, external-api-task) double as both the type signal
+		// and the routing value, so prompting again would be redundant.
+		knownSubtypes := []string{"system-api-task", "system-ui-task", "external-api-task"}
+		var matched []string
+		for _, l := range res.LabelsSeen {
+			for _, k := range knownSubtypes {
+				if l == k {
+					matched = append(matched, l)
+					break
+				}
+			}
 		}
-		subtype = strings.ToLower(strings.TrimSpace(subtype))
-		switch subtype {
-		case "system-api-task", "system-ui-task", "external-api-task":
-			final = subtype
+		switch len(matched) {
+		case 1:
+			final = matched[0]
+		case 0:
+			subtype, err := a.deps.Prompter.Ask(
+				"Task subtype? (system-api-task | system-ui-task | external-api-task): ")
+			if err != nil {
+				return statemachine.Outcome{Err: fmt.Errorf("classify_ticket: %w", err)}
+			}
+			subtype = strings.ToLower(strings.TrimSpace(subtype))
+			switch subtype {
+			case "system-api-task", "system-ui-task", "external-api-task":
+				final = subtype
+			default:
+				return statemachine.Outcome{Err: fmt.Errorf("classify_ticket: unrecognised task subtype %q", subtype)}
+			}
 		default:
-			return statemachine.Outcome{Err: fmt.Errorf("classify_ticket: unrecognised task subtype %q", subtype)}
+			return statemachine.Outcome{Err: fmt.Errorf("classify_ticket: multiple subtype labels on issue (%s); resolve manually", strings.Join(matched, ", "))}
 		}
 	}
 	ctx.Set("ticket_type", final)
