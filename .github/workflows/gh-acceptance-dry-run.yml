@@ -1,7 +1,7 @@
 name: gh-acceptance-dry-run
 
 run-name: >-
-  gh Acceptance Dry-Run — ${{ inputs.shop-head && format('HEAD / {0}', inputs.verify-level) || inputs.verify-level }} [smoke:${{ inputs.smoke-mode }}, acceptance:${{ inputs.acceptance-mode }}]
+  gh Acceptance Dry-Run — ${{ inputs.debug-shop-head && format('HEAD / {0}', inputs.verify-level) || inputs.verify-level }} [smoke:${{ inputs.smoke-mode }}, acceptance:${{ inputs.acceptance-mode }}]
 
 on:
   workflow_dispatch:
@@ -51,11 +51,11 @@ on:
           - condensed
           - full
       shop-tag:
-        description: 'optivem/shop meta-v* release tag to test against. Empty = latest meta-v* release. Mutually exclusive with shop-head.'
+        description: 'optivem/shop meta-v* release tag to test against. Empty = latest meta-v* release. Mutually exclusive with debug-shop-head.'
         required: false
         default: ''
         type: string
-      shop-head:
+      debug-shop-head:
         description: 'Run against optivem/shop HEAD (latest main) instead of a meta-v* release tag. Mutually exclusive with shop-tag and verify-level=release.'
         required: false
         default: true
@@ -92,7 +92,7 @@ jobs:
       smoke-mode: ${{ inputs.smoke-mode }}
       acceptance-mode: ${{ inputs.acceptance-mode }}
       shop-tag: ${{ inputs.shop-tag }}
-      shop-head: ${{ inputs.shop-head }}
+      debug-shop-head: ${{ inputs.debug-shop-head }}
       retain-repos: ${{ inputs.retain-repos }}
       no-local-tests: ${{ inputs.no-local-tests }}
       no-legacy: ${{ inputs.no-legacy }}

@@ -28,7 +28,7 @@ on:
         required: false
         type: string
         default: ''
-      shop-head:
+      debug-shop-head:
         description: 'Run against optivem/shop HEAD (latest main) instead of a meta-v* release tag.'
         required: false
         type: boolean
@@ -44,7 +44,7 @@ on:
         type: boolean
         default: false
       debug-skip-tests:
-        description: 'Bypass ALL test phases (smoke + acceptance matrix) and create the RC prerelease directly. Forces release-mode regardless of verify-level. The version-not-already-released check still runs. Mutually exclusive with shop-head=true unless skip-prerelease=true.'
+        description: 'Bypass ALL test phases (smoke + acceptance matrix) and create the RC prerelease directly. Forces release-mode regardless of verify-level. The version-not-already-released check still runs. Mutually exclusive with debug-shop-head=true unless skip-prerelease=true.'
         required: false
         type: boolean
         default: false
@@ -66,7 +66,7 @@ permissions:
 jobs:
   preflight:
     name: Preflight
-    if: ${{ !inputs.shop-head }}
+    if: ${{ !inputs.debug-shop-head }}
     runs-on: ubuntu-latest
     outputs:
       shop-release-exists: ${{ steps.check-shop.outputs.exists }}
@@ -83,7 +83,7 @@ jobs:
     needs: preflight
     if: >-
       ${{ !failure() && !cancelled() &&
-      (inputs.shop-head || needs.preflight.outputs.shop-release-exists == 'true') }}
+      (inputs.debug-shop-head || needs.preflight.outputs.shop-release-exists == 'true') }}
     runs-on: ubuntu-latest
     outputs:
       verify-level: ${{ steps.mode.outputs.verify-level }}
@@ -144,12 +144,12 @@ jobs:
       #   verify-level  — pass-through from caller input
       #   head-mode     — running against shop HEAD (no release path)
       #   release-mode  — this run should publish a real release (gates create-prerelease)
-      # Also fails fast on shop-head mutual-exclusion violations.
+      # Also fails fast on debug-shop-head mutual-exclusion violations.
       - id: mode
         shell: bash
         env:
           LEVEL: ${{ inputs.verify-level }}
-          SHOP_HEAD: ${{ inputs.shop-head }}
+          SHOP_HEAD: ${{ inputs.debug-shop-head }}
           SHOP_TAG: ${{ inputs.shop-tag }}
           SKIP_PRE: ${{ inputs.skip-prerelease }}
           SKIP_TESTS: ${{ inputs.debug-skip-tests }}
@@ -158,15 +158,15 @@ jobs:
 
           if [ "$SHOP_HEAD" = "true" ]; then
             if [ -n "$SHOP_TAG" ]; then
-              echo "::error::shop-head=true is mutually exclusive with shop-tag (got: '$SHOP_TAG'). Leave shop-tag empty when running against HEAD."
+              echo "::error::debug-shop-head=true is mutually exclusive with shop-tag (got: '$SHOP_TAG'). Leave shop-tag empty when running against HEAD."
               exit 1
             fi
             if [ "$LEVEL" = "release" ] && [ "$SKIP_PRE" != "true" ]; then
-              echo "::error::shop-head=true + verify-level=release requires skip-prerelease=true. HEAD mode cannot produce a real release; the dry-run workflow sets skip-prerelease=true automatically for exactly this case."
+              echo "::error::debug-shop-head=true + verify-level=release requires skip-prerelease=true. HEAD mode cannot produce a real release; the dry-run workflow sets skip-prerelease=true automatically for exactly this case."
               exit 1
             fi
             if [ "$SKIP_TESTS" = "true" ] && [ "$SKIP_PRE" != "true" ]; then
-              echo "::error::shop-head=true + debug-skip-tests=true requires skip-prerelease=true. HEAD mode cannot produce a prerelease."
+              echo "::error::debug-shop-head=true + debug-skip-tests=true requires skip-prerelease=true. HEAD mode cannot produce a prerelease."
               exit 1
             fi
             echo "Running against optivem/shop HEAD — no prerelease or release will be created."
@@ -192,7 +192,7 @@ jobs:
             echo "| smoke-mode | ${{ inputs.smoke-mode }} |"
             echo "| acceptance-mode | ${{ inputs.acceptance-mode }} |"
             echo "| shop-tag | $SHOP_TAG |"
-            echo "| shop-head | $SHOP_HEAD |"
+            echo "| debug-shop-head | $SHOP_HEAD |"
             echo "| retain-repos | ${{ inputs.retain-repos }} |"
             echo "| skip-prerelease | $SKIP_PRE |"
             echo "| debug-skip-tests | $SKIP_TESTS |"
@@ -394,7 +394,7 @@ jobs:
   smoke:
     name: Smoke (${{ matrix.os }}, ${{ matrix.scenario.arch }}, ${{ matrix.scenario.repo-strategy }}, ${{ matrix.scenario.lang }})
     needs: check
-    # !failure() && !cancelled() (not success()) so a skipped preflight (shop-head=true
+    # !failure() && !cancelled() (not success()) so a skipped preflight (debug-shop-head=true
     # path) does not cause the implicit success() check to drop this job — check itself
     # succeeded, which is what we actually care about.
     # Matrix-emptiness guard: smoke-mode=none produces {"include":[]}, which errors
@@ -444,7 +444,7 @@ jobs:
   run:
     name: Run (${{ matrix.arch }}, ${{ matrix.repo-strategy }}, ${{ matrix.lang }}, ${{ matrix.test-lang }})
     needs: [check, smoke]
-    # !failure() && !cancelled() (not success()) so a skipped preflight (shop-head=true
+    # !failure() && !cancelled() (not success()) so a skipped preflight (debug-shop-head=true
     # path) does not cause the implicit success() check to drop this job.
     # Matrix-emptiness guard: acceptance-mode=none produces {"include":[]}, which
     # errors at strategy evaluation ("matrix must define at least one vector") and
