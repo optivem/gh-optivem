@@ -285,6 +285,7 @@ func buildVerifySteps(cfg *config.Config, gh *shell.GitHub) []stepDef {
 	// Step 1: Local compilation — runs at every level above none.
 	s = append(s,
 		stepDef{name: "Verify local compilation", phase: phaseVerifyLocal, fn: func() { steps.VerifyCompilation(cfg) }},
+		stepDef{name: "Verify scaffolded workflows", phase: phaseVerifyLocal, fn: func() { steps.VerifyScaffoldWorkflows(cfg) }},
 	)
 
 	// Step 2: Local testing — runner package against system-test/ (latest + legacy).

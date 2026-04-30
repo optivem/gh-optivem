@@ -300,6 +300,71 @@ func TestContentReplacementsRenamesBumpPatchVersion(t *testing.T) {
 	}
 }
 
+// TestContentReplacementsRewritesBumpPatchVersionUsesReference is a regression
+// guard for the filename form `bump-patch-version-<flavor>.yml` used inside
+// `uses: ./.github/workflows/...` references in prod-stage. The previous rule
+// only caught the `name:` / `concurrency.group:` form (`<flavor>-bump-patch-version`);
+// without this reverse-order rule the scaffolded prod-stage kept the shop
+// filename in its `uses:` line and `gh workflow run` failed at dispatch with
+// HTTP 422 "workflow was not found". See gh-optivem run 25158207965 phase 8.
+func TestContentReplacementsRewritesBumpPatchVersionUsesReference(t *testing.T) {
+	cases := []struct {
+		name     string
+		in       string
+		pairs    [][2]string
+		expected string
+	}{
+		{
+			name:     "monolith-dotnet uses reference",
+			in:       "    uses: ./.github/workflows/bump-patch-version-monolith-dotnet.yml\n",
+			pairs:    monolithContentReplacements("dotnet", "dotnet"),
+			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
+		},
+		{
+			name:     "monolith-java uses reference",
+			in:       "    uses: ./.github/workflows/bump-patch-version-monolith-java.yml\n",
+			pairs:    monolithContentReplacements("java", "java"),
+			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
+		},
+		{
+			name:     "monolith-typescript uses reference",
+			in:       "    uses: ./.github/workflows/bump-patch-version-monolith-typescript.yml\n",
+			pairs:    monolithContentReplacements("typescript", "typescript"),
+			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
+		},
+		{
+			name:     "multitier-dotnet uses reference",
+			in:       "    uses: ./.github/workflows/bump-patch-version-multitier-dotnet.yml\n",
+			pairs:    multitierContentReplacements("dotnet", "react", "dotnet"),
+			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
+		},
+		{
+			name:     "multitier-java uses reference",
+			in:       "    uses: ./.github/workflows/bump-patch-version-multitier-java.yml\n",
+			pairs:    multitierContentReplacements("java", "react", "java"),
+			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
+		},
+		{
+			name:     "multitier-typescript uses reference",
+			in:       "    uses: ./.github/workflows/bump-patch-version-multitier-typescript.yml\n",
+			pairs:    multitierContentReplacements("typescript", "react", "typescript"),
+			expected: "    uses: ./.github/workflows/bump-patch-version.yml\n",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.in
+			for _, p := range tc.pairs {
+				got = strings.ReplaceAll(got, p[0], p[1])
+			}
+			if got != tc.expected {
+				t.Errorf("got  %q\nwant %q", got, tc.expected)
+			}
+		})
+	}
+}
+
 // TestContentReplacementsFlattensDockerCLIArgs asserts that unprefixed
 // docker/<testLang>/<arch>/ paths embedded in `run:` CLI args (e.g. the
 // per-suite acceptance-stage workflow's `gh optivem test system --system
