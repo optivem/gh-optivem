@@ -46,7 +46,12 @@ type stepDef struct {
 	name      string
 	phase     string
 	alwaysRun bool
-	fn        func()
+	// failHard short-circuits the whole pipeline on failure: subsequent steps
+	// are skipped even if they are alwaysRun. Used by lint-style steps where a
+	// failure means the local scaffold is broken and pushing it would just
+	// publish bad output (e.g. invalid YAML in a scaffolded workflow).
+	failHard bool
+	fn       func()
 }
 
 func main() {
@@ -186,6 +191,8 @@ const (
 	phasePrepare            = "Prepare"
 	phaseSetupRepo          = "Setup repository"
 	phaseApplyTemplate      = "Apply template"
+	phaseLintScaffold       = "Lint scaffold"
+	phasePushScaffold       = "Push scaffold"
 	phaseVerifyLocal        = "Verify local"
 	phaseVerifyCommit       = "Verify commit stage"
 	phaseVerifyAcceptance   = "Verify acceptance stage"
@@ -204,7 +211,8 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, fail
 		{name: "Setup environments", phase: phaseSetupRepo, fn: func() { steps.SetupEnvironments(cfg, gh) }},
 		{name: "Setup variables and secrets", phase: phaseSetupRepo, fn: func() { steps.SetupVariablesAndSecrets(cfg, gh) }},
 
-		// PHASE: APPLY TEMPLATE — clone, templatize locally, push (even on failure)
+		// PHASE: APPLY TEMPLATE — clone, templatize locally
+		// (Lint and push are split into their own phases below.)
 		{name: "Clone repos", phase: phaseApplyTemplate, fn: func() { steps.CloneRepos(cfg, gh) }},
 		{name: "Apply template", phase: phaseApplyTemplate, fn: func() { steps.ApplyTemplate(cfg) }},
 		{name: "Replace repository references", phase: phaseApplyTemplate, fn: func() { steps.ReplaceRepoReferences(cfg) }},
@@ -241,18 +249,21 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, fail
 
 	// Lint scaffolded workflows BEFORE push so a broken `uses:` reference or
 	// invalid syntax aborts the run locally, instead of landing in the test-app
-	// and surfacing 10+ minutes later at workflow-dispatch time. Runs even at
-	// --verify-level=none — output correctness is part of the scaffold, not a
-	// verify-level concern.
+	// and surfacing 10+ minutes later at workflow-dispatch time. failHard skips
+	// the alwaysRun Commit and push that follows — pushing a workflow GitHub
+	// can't parse has no troubleshooting value, only red runs on the new repo.
+	// Runs even at --verify-level=none — output correctness is part of the
+	// scaffold, not a verify-level concern.
 	allSteps = append(allSteps, stepDef{
-		name:  "Verify scaffolded workflows",
-		phase: phaseApplyTemplate,
-		fn:    func() { steps.VerifyScaffoldWorkflows(cfg) },
+		name:     "Verify scaffolded workflows",
+		phase:    phaseLintScaffold,
+		failHard: true,
+		fn:       func() { steps.VerifyScaffoldWorkflows(cfg) },
 	})
 
 	allSteps = append(allSteps, stepDef{
 		name:      "Commit and push",
-		phase:     phaseApplyTemplate,
+		phase:     phasePushScaffold,
 		alwaysRun: true,
 		fn:        func() { steps.CommitAndPush(cfg, *failureNote) },
 	})
@@ -357,6 +368,7 @@ func buildVerifySteps(cfg *config.Config, gh *shell.GitHub) []stepDef {
 
 func executeSteps(allSteps []stepDef, failureNote *string) (int, time.Duration) {
 	errors := 0
+	hardFailed := false
 	totalStart := time.Now()
 	totalByPhase := countStepsByPhase(allSteps)
 	order := phaseOrder(allSteps)
@@ -371,7 +383,13 @@ func executeSteps(allSteps []stepDef, failureNote *string) (int, time.Duration) 
 	for _, s := range allSteps {
 		// Skip non-alwaysRun steps once something has failed, so a broken
 		// scaffold still pushes the partial output (for troubleshooting) but
-		// stops running the downstream validate/verify steps.
+		// stops running the downstream validate/verify steps. A failHard step
+		// (e.g. workflow lint) escalates the skip to alwaysRun steps too — at
+		// that point pushing the broken scaffold has no troubleshooting value,
+		// only red runs on the new repo.
+		if hardFailed {
+			continue
+		}
 		if errors > 0 && !s.alwaysRun {
 			continue
 		}
@@ -387,6 +405,9 @@ func executeSteps(allSteps []stepDef, failureNote *string) (int, time.Duration) 
 
 		if !runStep(s, posInPhase, totalByPhase[s.phase], failureNote) {
 			errors++
+			if s.failHard {
+				hardFailed = true
+			}
 		}
 	}
 	return errors, time.Since(totalStart)
