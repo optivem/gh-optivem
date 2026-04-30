@@ -461,10 +461,6 @@ func (g *GitHub) WorkflowRun(workflow string, fields map[string]string) {
 	g.mustRun(fmt.Sprintf("workflow run %s%s", workflow, fieldArgs))
 }
 
-func (g *GitHub) RunWatch(intervalSecs int) error {
-	return g.RunWatchWorkflow("", intervalSecs)
-}
-
 // RunWatchWorkflow watches the latest run for a specific workflow name.
 // If workflow is empty, watches the overall latest run.
 // Retries up to 12 times (60s total) waiting for the run to appear.
