@@ -98,6 +98,68 @@ func systemTestDir(cfg *config.Config) string {
 	return filepath.Join(cfg.RepoDir, systemTestDir_name)
 }
 
+// VerifyScaffoldWorkflows lints the scaffolded workflows with actionlint.
+// Catches broken `uses: ./.github/workflows/*.yml` references, invalid syntax,
+// and other static issues that would otherwise only surface 10+ minutes into
+// the verification pipeline at workflow-dispatch time (HTTP 422 "workflow was
+// not found"). Runs after apply_template has rewritten filenames and content,
+// before any push or workflow trigger.
+func VerifyScaffoldWorkflows(cfg *config.Config) {
+	log.Info("Linting scaffolded workflows with actionlint...")
+
+	if cfg.DryRun {
+		log.Info("[DRY RUN] Would run actionlint against scaffolded .github/workflows/")
+		return
+	}
+
+	if _, err := exec.LookPath("actionlint"); err != nil {
+		// CI must have actionlint (the gh-acceptance composite action installs
+		// it). On dev machines it's optional — warn and skip rather than
+		// blocking the whole scaffold flow.
+		if os.Getenv("GITHUB_ACTIONS") == "true" {
+			log.Fatalf("actionlint not found on PATH but GITHUB_ACTIONS=true — install step missing from the runner")
+		}
+		log.Warnf("actionlint not found on PATH — skipping workflow lint. Install: bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7")
+		return
+	}
+
+	for _, repoDir := range scaffoldRepoDirs(cfg) {
+		wfDir := filepath.Join(repoDir, ".github", "workflows")
+		if _, err := os.Stat(wfDir); errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		out, err := shell.Run("actionlint -color", false, true, repoDir)
+		if err != nil {
+			log.Fatalf("actionlint failed in %s:\n%s", wfDir, out)
+		}
+		log.Successf("Linted scaffolded workflows in %s", repoDir)
+	}
+}
+
+// scaffoldRepoDirs returns every scaffolded repo directory that has its own
+// .github/workflows/. For monorepo strategies that's just RepoDir; for
+// multirepo, additionally the per-component repos that received commit-stage
+// and bump-patch-version workflows.
+func scaffoldRepoDirs(cfg *config.Config) []string {
+	dirs := []string{cfg.RepoDir}
+	if cfg.RepoStrategy != "multirepo" {
+		return dirs
+	}
+	if cfg.Arch == "monolith" {
+		if cfg.SystemRepoDir != "" {
+			dirs = append(dirs, cfg.SystemRepoDir)
+		}
+		return dirs
+	}
+	if cfg.BackendRepoDir != "" {
+		dirs = append(dirs, cfg.BackendRepoDir)
+	}
+	if cfg.FrontendRepoDir != "" {
+		dirs = append(dirs, cfg.FrontendRepoDir)
+	}
+	return dirs
+}
+
 // VerifyCommitStage waits for commit stage workflow to pass.
 func VerifyCommitStage(cfg *config.Config, gh *shell.GitHub) {
 	log.Info("Verifying commit stage workflow...")
@@ -318,7 +380,7 @@ func verifyWorkflow(gh *shell.GitHub, label, triggerWorkflow string, fields map[
 	}
 
 	shell.CheckRateLimit()
-	err := gh.RunWatch(intervalSecs)
+	err := gh.RunWatchWorkflow(triggerWorkflow, intervalSecs)
 	handleWorkflowResult(err, label, gh.Repo)
 }
 

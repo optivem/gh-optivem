@@ -510,6 +510,11 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 		// Workflow names (longer patterns first to avoid partial matches)
 		{mono + lang + suffixCommitStage, "commit-stage"},
 		{mono + lang + "-bump-patch-version", "bump-patch-version"},
+		// Filename form used in `uses: ./.github/workflows/bump-patch-version-<flavor>.yml`
+		// references inside prod-stage. Distinct from the rule above (which catches the
+		// `name:` / `concurrency.group:` form). Without this, prod-stage's `uses:` keeps
+		// the shop filename and dispatch fails with HTTP 422 "workflow was not found".
+		{"bump-patch-version-" + mono + lang, "bump-patch-version"},
 		{monoTest + suffixAcceptanceStage, "acceptance-stage"},
 		{monoTest + suffixQAStage, "qa-stage"},
 		{monoTest + suffixQASignoff, "qa-signoff"},
@@ -632,6 +637,11 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 		// bump-patch-version variant is keyed by backendLang (frontend is always react),
 		// distinct from the pipeline-stage rewrites above which use testLang.
 		{prefixMultitier + backendLang + "-bump-patch-version", "bump-patch-version"},
+		// Filename form used in `uses: ./.github/workflows/bump-patch-version-<flavor>.yml`
+		// references inside prod-stage. Distinct from the rule above (which catches the
+		// `name:` / `concurrency.group:` form). Without this, prod-stage's `uses:` keeps
+		// the shop filename and dispatch fails with HTTP 422 "workflow was not found".
+		{"bump-patch-version-" + prefixMultitier + backendLang, "bump-patch-version"},
 		// Docker working-directory: shop keeps per-lang/arch subdirs under
 		// docker/, but the scaffolder copies only the selected lang/arch up
 		// into docker/, so "working-directory: docker/<testLang>/<arch>" must

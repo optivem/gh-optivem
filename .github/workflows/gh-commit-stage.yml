@@ -44,6 +44,6 @@ jobs:
             -Dsonar.projectName=gh-optivem
             -Dsonar.organization=optivem
             -Dsonar.sources=.
-            -Dsonar.exclusions=**/*_test.go
+            -Dsonar.exclusions=**/*_test.go,**/testdata/**
             -Dsonar.tests=.
             -Dsonar.test.inclusions=**/*_test.go
