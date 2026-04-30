@@ -143,7 +143,9 @@ go test -tags=system ./internal/config/ -v -timeout 2h \
 
 ## Testing the ATDD driver
 
-The ATDD driver walks `docs/atdd/process/process-flow.yaml` against a real GitHub issue, dispatching service tasks inline and pausing at each user-task node so you can launch the matching Claude Code agent. The YAML is read from the **current working directory**, so smoke-tests run from inside a consumer repo (typically `shop`), not from `gh-optivem`.
+The ATDD driver walks `docs/atdd/process/process-flow.yaml` against a real GitHub issue, dispatching service tasks inline. At each user-task node it shells out to the `claude` CLI (auto-launching the matching Claude Code subagent in your terminal); when the subprocess exits and a fresh commit lands on HEAD, the engine advances. The YAML is read from the **current working directory**, so smoke-tests run from inside a consumer repo (typically `shop`), not from `gh-optivem`.
+
+The dispatch is interactive by default — Claude Code's full UI runs in your terminal so you can observe tool calls and interject in chat. Use `--autonomous` to run agents headless via `claude -p`, or `--manual-agents` to fall back to the v1 two-window workflow (driver pauses, you launch the agent in a separate Claude Code session, press Enter to advance). `--manual-agents` is the right choice when you want to bisect "did v2 misroute the agent?" against "did v1 see the commit?".
 
 ### Smoke-test against a single ticket
 
@@ -175,7 +177,16 @@ cd ../shop
 gh optivem atdd implement-ticket --issue 42
 ```
 
-The driver pre-resolves the project item, moves it to **In Progress**, then walks the flow node by node. When the agent's COMMIT lands on HEAD, press Enter and the engine advances. `--autonomous` skips the human-approval STOPs (agent-dispatch pauses still apply in v1).
+The driver pre-resolves the project item, moves it to **In Progress**, then walks the flow node by node, auto-dispatching each agent via the `claude` CLI. `--autonomous` skips human-approval STOPs and runs agents headless. `--manual-agents` reverts to v1 two-window dispatch. `--extra NODE="text"` and `--replace NODE="text"` (both repeatable) shape the prompt for a specific YAML node ID; `--interactive` previews the constructed prompt and reads stdin for last-minute additions before each dispatch.
+
+```bash
+# Tune one phase's prompt without editing the template:
+../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 42 \
+    --extra AT_RED_DSL_WRITE="prefer record types"
+
+# Diagnose a misroute by reverting to v1 manual dispatch:
+../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 42 --manual-agents
+```
 
 ### Debug a single phase in isolation
 

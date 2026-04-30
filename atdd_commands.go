@@ -30,6 +30,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/classify"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/driver"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/gates"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/release"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 )
@@ -66,29 +67,42 @@ lands on HEAD, the operator presses Enter and the engine moves on.`,
 // PICK_TOP_READY picker).
 func newAtddImplementTicketCmd() *cobra.Command {
 	var (
-		issueArg   string
-		projectURL string
-		autonomous bool
+		issueArg     string
+		projectURL   string
+		autonomous   bool
+		manualAgents bool
+		interactive  bool
+		extraPairs   []string
+		replacePairs []string
 	)
 	cmd := &cobra.Command{
 		Use:   "implement-ticket",
 		Short: "Walk the ATDD pipeline for a specific GitHub issue",
 		Example: `  gh optivem atdd implement-ticket --issue 42
   gh optivem atdd implement-ticket --issue https://github.com/optivem/shop/issues/42
-  gh optivem atdd implement-ticket --issue 42 --project https://github.com/orgs/optivem/projects/3`,
+  gh optivem atdd implement-ticket --issue 42 --project https://github.com/orgs/optivem/projects/3
+  gh optivem atdd implement-ticket --issue 42 --extra AT_RED_DSL_WRITE="prefer record types"`,
 		Run: func(cmd *cobra.Command, args []string) {
 			issue, err := parseIssueArg(issueArg)
 			exitOnError(err)
+			hooks, err := buildOverrideHooks(extraPairs, replacePairs, interactive)
+			exitOnError(err)
 			exitOnError(driver.Run(context.Background(), driver.Options{
-				IssueNum:   issue,
-				ProjectURL: projectURL,
-				Autonomous: autonomous,
+				IssueNum:     issue,
+				ProjectURL:   projectURL,
+				Autonomous:   autonomous,
+				ManualAgents: manualAgents,
+				Override:     hooks,
 			}))
 		},
 	}
 	cmd.Flags().StringVar(&issueArg, "issue", "", "GitHub issue number or URL (required; accepts e.g. 42 or https://github.com/owner/repo/issues/42)")
 	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to README.md or git-remote lookup)")
-	cmd.Flags().BoolVar(&autonomous, "autonomous", false, "Skip human-approval STOPs (agent-dispatch pauses still apply in v1)")
+	cmd.Flags().BoolVar(&autonomous, "autonomous", false, "Skip human-approval STOPs and run agent dispatches headless via `claude -p`")
+	cmd.Flags().BoolVar(&manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
+	cmd.Flags().BoolVar(&interactive, "interactive", false, "Before each user_task dispatch, print the constructed prompt and read stdin for last-minute additions")
+	cmd.Flags().StringSliceVar(&extraPairs, "extra", nil, "Per-node extra prompt text, repeatable (e.g. --extra AT_RED_DSL_WRITE=\"prefer record types\")")
+	cmd.Flags().StringSliceVar(&replacePairs, "replace", nil, "Per-node prompt replacement, repeatable (escape hatch — full prompt swap)")
 	return cmd
 }
 
@@ -97,8 +111,12 @@ func newAtddImplementTicketCmd() *cobra.Command {
 // from START.
 func newAtddManageProjectCmd() *cobra.Command {
 	var (
-		projectURL string
-		autonomous bool
+		projectURL   string
+		autonomous   bool
+		manualAgents bool
+		interactive  bool
+		extraPairs   []string
+		replacePairs []string
 	)
 	cmd := &cobra.Command{
 		Use:   "manage-project",
@@ -106,15 +124,73 @@ func newAtddManageProjectCmd() *cobra.Command {
 		Example: `  gh optivem atdd manage-project
   gh optivem atdd manage-project --project https://github.com/orgs/optivem/projects/3`,
 		Run: func(cmd *cobra.Command, args []string) {
+			hooks, err := buildOverrideHooks(extraPairs, replacePairs, interactive)
+			exitOnError(err)
 			exitOnError(driver.Run(context.Background(), driver.Options{
-				ProjectURL: projectURL,
-				Autonomous: autonomous,
+				ProjectURL:   projectURL,
+				Autonomous:   autonomous,
+				ManualAgents: manualAgents,
+				Override:     hooks,
 			}))
 		},
 	}
 	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to README.md or git-remote lookup)")
-	cmd.Flags().BoolVar(&autonomous, "autonomous", false, "Skip human-approval STOPs (agent-dispatch pauses still apply in v1)")
+	cmd.Flags().BoolVar(&autonomous, "autonomous", false, "Skip human-approval STOPs and run agent dispatches headless via `claude -p`")
+	cmd.Flags().BoolVar(&manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
+	cmd.Flags().BoolVar(&interactive, "interactive", false, "Before each user_task dispatch, print the constructed prompt and read stdin for last-minute additions")
+	cmd.Flags().StringSliceVar(&extraPairs, "extra", nil, "Per-node extra prompt text, repeatable (e.g. --extra AT_RED_DSL_WRITE=\"prefer record types\")")
+	cmd.Flags().StringSliceVar(&replacePairs, "replace", nil, "Per-node prompt replacement, repeatable (escape hatch — full prompt swap)")
 	return cmd
+}
+
+// buildOverrideHooks parses the --extra / --replace NODE=text pairs into
+// override.Hooks. Returns nil (no overrides) when every list is empty and
+// --interactive is off, so the driver's wrapOverride sees a no-op decorator
+// rather than an empty-but-allocated struct. NODE keys are case-sensitive
+// to match the YAML node ID convention (UPPER_SNAKE_CASE).
+func buildOverrideHooks(extraPairs, replacePairs []string, interactive bool) (*override.Hooks, error) {
+	if len(extraPairs) == 0 && len(replacePairs) == 0 && !interactive {
+		return nil, nil
+	}
+	hooks := &override.Hooks{Interactive: interactive}
+	if len(extraPairs) > 0 {
+		extra, err := parseNodeKVPairs("--extra", extraPairs)
+		if err != nil {
+			return nil, err
+		}
+		hooks.Extra = extra
+	}
+	if len(replacePairs) > 0 {
+		replace, err := parseNodeKVPairs("--replace", replacePairs)
+		if err != nil {
+			return nil, err
+		}
+		hooks.Replace = replace
+	}
+	return hooks, nil
+}
+
+// parseNodeKVPairs splits each `NODE=text` pair on the first `=`. Empty
+// node IDs and duplicate node IDs are user errors — they almost always
+// indicate a typo in the flag invocation, and silently merging would lead
+// to "why did my override not apply?" debugging.
+func parseNodeKVPairs(flag string, pairs []string) (map[string]string, error) {
+	out := make(map[string]string, len(pairs))
+	for _, p := range pairs {
+		k, v, ok := strings.Cut(p, "=")
+		if !ok {
+			return nil, fmt.Errorf("%s value %q must be NODE=text", flag, p)
+		}
+		k = strings.TrimSpace(k)
+		if k == "" {
+			return nil, fmt.Errorf("%s value %q has empty NODE", flag, p)
+		}
+		if _, dup := out[k]; dup {
+			return nil, fmt.Errorf("%s NODE %q specified more than once", flag, k)
+		}
+		out[k] = v
+	}
+	return out, nil
 }
 
 // newAtddDebugCmd builds the hidden `gh optivem atdd debug` parent. The
