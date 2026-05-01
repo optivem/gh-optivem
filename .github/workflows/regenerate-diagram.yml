@@ -1,0 +1,75 @@
+name: regenerate-diagram
+
+# Regenerates docs/process-flow-diagram.md whenever the canonical
+# process-flow YAML (or the renderer itself) changes on main, and
+# commits the diff back to main if anything changed. The diagram is
+# author-side ground truth for what the orchestration looks like —
+# committing it keeps github.com's Mermaid rendering in sync without
+# the contributor having to remember to run the renderer.
+#
+# Pull-request runs render the diagram and fail the job if the
+# committed file is stale, surfacing "you edited the YAML but didn't
+# regenerate the diagram" before merge.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - internal/atdd/runtime/statemachine/process-flow.yaml
+      - internal/atdd/runtime/diagram/**
+      - .github/workflows/regenerate-diagram.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - internal/atdd/runtime/statemachine/process-flow.yaml
+      - internal/atdd/runtime/diagram/**
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    name: Regenerate process-flow diagram
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # Use a token that can push back to the branch on main; the
+          # default GITHUB_TOKEN works because contents:write is set above.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Render diagram
+        run: |
+          go run . atdd show diagram > docs/process-flow-diagram.md
+
+      - name: Detect changes
+        id: diff
+        run: |
+          if git diff --quiet -- docs/process-flow-diagram.md; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fail PR when diagram is stale
+        if: github.event_name == 'pull_request' && steps.diff.outputs.changed == 'true'
+        run: |
+          echo "::error::docs/process-flow-diagram.md is stale; run 'go run . atdd show diagram > docs/process-flow-diagram.md' and commit."
+          git diff --stat -- docs/process-flow-diagram.md
+          exit 1
+
+      - name: Commit and push regenerated diagram
+        if: github.event_name == 'push' && steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/process-flow-diagram.md
+          git commit -m "atdd: regenerate process-flow diagram"
+          git push

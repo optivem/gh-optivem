@@ -161,6 +161,8 @@ Off by default. Filing a quick issue yourself is usually clearer and keeps the s
 
 See [docs/how-it-works.md](docs/how-it-works.md) for a detailed walkthrough of the `main.go` logic, setup steps, and verification levels.
 
+For the ATDD pipeline orchestration view, see the rendered [process-flow diagram](docs/process-flow-diagram.md). It is regenerated automatically whenever the canonical YAML at `internal/atdd/runtime/statemachine/process-flow.yaml` changes; do not edit the diagram by hand.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and release instructions.

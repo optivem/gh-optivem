@@ -97,6 +97,20 @@ type Options struct {
 	// Interactive). v2 wires CLI flags into this struct; v1 leaves it nil.
 	Override *override.Hooks
 
+	// AgentPromptOverrides is a map from embedded-agent name (e.g.
+	// "atdd-test") to a prompt body that replaces the canonical embedded
+	// prompt for that agent. Wired from `--agent-prompt name=path` on
+	// the CLI; the values are the file contents, not the file paths
+	// (the CLI reads at parse time so missing-file failures surface at
+	// startup). Unrecognised agent names are rejected at parse time.
+	AgentPromptOverrides map[string]string
+
+	// ConfigPath, when non-empty, overrides the default
+	// `<repoPath>/docs/atdd/config.yaml` lookup with an explicit file
+	// path. Wired from `--config <path>`; missing-file is an error
+	// (unlike the default lookup, where absence is OK).
+	ConfigPath string
+
 	// ClaudeRunDeps lets tests inject fake `claude` and `git` runners
 	// without spawning real subprocesses. Production callers leave this
 	// zero-valued; clauderun falls back to real execClaude / execGit.
@@ -201,6 +215,26 @@ func Run(ctx context.Context, opts Options) error {
 	return eng.RunFlow(opts.FlowName, sCtx)
 }
 
+// loadDriverConfig returns the parsed config for the run. When configPath
+// is non-empty (operator passed `--config`), it must exist; missing-file
+// is an error to catch typos. Empty configPath falls back to the default
+// `<repoPath>/docs/atdd/config.yaml` lookup, where absence is OK
+// (returns nil).
+func loadDriverConfig(configPath, repoPath string) (*config.Config, error) {
+	if configPath != "" {
+		cfg, err := config.LoadFromPath(configPath)
+		if err != nil {
+			return nil, fmt.Errorf("driver: %w", err)
+		}
+		return cfg, nil
+	}
+	cfg, err := config.Load(repoPath)
+	if err != nil {
+		return nil, fmt.Errorf("driver: %w", err)
+	}
+	return cfg, nil
+}
+
 // preflightFn is the per-Run function that verifies the `claude` CLI
 // is on PATH and authenticated. Production points at preflightClaude;
 // tests can swap it for a no-op or canned-error stub. The seam is a
@@ -249,17 +283,23 @@ func (o Options) withDefaults() Options {
 // have set, reading from `gh project view` + `gh project item-list` (via
 // board.FindIssue). Called once at driver startup in implement-ticket mode.
 func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Context) error {
+	repoPath := opts.RepoPath
+	if repoPath == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("get working directory: %w", err)
+		}
+		repoPath = cwd
+	}
+
+	cfg, err := loadDriverConfig(opts.ConfigPath, repoPath)
+	if err != nil {
+		return err
+	}
+
 	projectURL := opts.ProjectURL
 	if projectURL == "" {
-		repoPath := opts.RepoPath
-		if repoPath == "" {
-			cwd, err := os.Getwd()
-			if err != nil {
-				return fmt.Errorf("get working directory: %w", err)
-			}
-			repoPath = cwd
-		}
-		resolved, err := board.ResolveProjectURL(repoPath, nil)
+		resolved, err := board.ResolveProjectURLFromConfig(cfg, repoPath, nil)
 		if err != nil {
 			return fmt.Errorf("resolve project URL: %w", err)
 		}
@@ -277,13 +317,7 @@ func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Conte
 	// Project name preference: config (zero round-trips) → live `gh project
 	// view` title (already fetched by FindIssue) → bare URL fallback.
 	projectName := pick.ProjectTitle
-	repoPath := opts.RepoPath
-	if repoPath == "" {
-		if cwd, err := os.Getwd(); err == nil {
-			repoPath = cwd
-		}
-	}
-	if cfg, err := config.Load(repoPath); err == nil && cfg != nil && cfg.Project.Name != "" {
+	if cfg != nil && cfg.Project.Name != "" {
 		projectName = cfg.Project.Name
 	}
 
@@ -374,8 +408,9 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 
 		issueNum, _ := strconv.Atoi(ctx.GetString("issue_num"))
 
+		agentName := statemachine.ExpandParams(raw.Agent, ctx.Params)
 		cOpts := clauderun.Options{
-			Agent:           statemachine.ExpandParams(raw.Agent, ctx.Params),
+			Agent:           agentName,
 			PhaseDoc:        statemachine.ExpandParams(raw.PhaseDoc, ctx.Params),
 			NodeDescription: statemachine.ExpandParams(raw.Description, ctx.Params),
 			IssueNum:        issueNum,
@@ -385,6 +420,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 			ProjectURL:      ctx.GetString("project_url"),
 			OverrideText:    extraText,
 			RawPrompt:       replaceText,
+			PromptOverride:  opts.AgentPromptOverrides[agentName],
 			Autonomous:      opts.Autonomous,
 			RepoPath:        opts.RepoPath,
 			Stdout:          opts.Stdout,

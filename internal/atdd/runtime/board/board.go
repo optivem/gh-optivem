@@ -120,10 +120,27 @@ func ResolveProjectURL(repoPath string, git GitRunner) (string, error) {
 	if repoPath == "" {
 		return "", fmt.Errorf("board: repoPath is required")
 	}
-
-	if cfg, err := config.Load(repoPath); err != nil {
+	cfg, err := config.Load(repoPath)
+	if err != nil {
 		return "", fmt.Errorf("board: load config: %w", err)
-	} else if cfg != nil && cfg.Project.URL != "" {
+	}
+	return ResolveProjectURLFromConfig(cfg, repoPath, git)
+}
+
+// ResolveProjectURLFromConfig is the explicit-config variant of
+// ResolveProjectURL. The caller passes a pre-loaded *Config (or nil to
+// skip the config branch entirely). Used by the driver when the operator
+// passed `--config <path>` so the alternate config takes precedence over
+// the default `docs/atdd/config.yaml` lookup.
+//
+// README + git-remote fallback semantics are otherwise identical to
+// ResolveProjectURL.
+func ResolveProjectURLFromConfig(cfg *config.Config, repoPath string, git GitRunner) (string, error) {
+	if repoPath == "" {
+		return "", fmt.Errorf("board: repoPath is required")
+	}
+
+	if cfg != nil && cfg.Project.URL != "" {
 		return cfg.Project.URL, nil
 	}
 

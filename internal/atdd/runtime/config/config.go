@@ -64,3 +64,22 @@ func Load(repoPath string) (*Config, error) {
 	}
 	return &cfg, nil
 }
+
+// LoadFromPath reads and parses a config file at the given absolute or
+// relative path. Unlike Load, missing-file is an error — when the operator
+// passes an explicit path (e.g. via `--config`), they expect the file to
+// exist; silently falling through to defaults would mask a typo.
+func LoadFromPath(path string) (*Config, error) {
+	if path == "" {
+		return nil, fmt.Errorf("config: path is required")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("config: read %s: %w", path, err)
+	}
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("config: parse %s: %w", path, err)
+	}
+	return &cfg, nil
+}

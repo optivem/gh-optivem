@@ -23,69 +23,6 @@ The architectural shift, in one line: **gh-optivem stops treating Claude Code as
 
 Sequence: YAML embed first (small, mechanical, unblocks the BPMN plan); then agent-prompt embed (the substantial change); then override flags, the diagram CLI replacement, and consumer cleanup. Each item is one PR.
 
-### 3. Override flags — `--yaml`, `--agent-prompt`, `--config`
-
-**Files (gh-optivem):**
-- `internal/atdd/runtime/driver/driver.go` (add `Options.AgentPromptOverrides map[string]string`, `Options.ConfigPath string`)
-- `atdd_commands.go` (wire `--yaml`, `--agent-prompt`, `--config` into `implement-ticket` and `manage-project`)
-
-| Flag | Overrides | Default |
-|---|---|---|
-| `--yaml <path>` | embedded process-flow YAML | embedded canonical |
-| `--agent-prompt <name>=<path>` (repeatable) | one named agent prompt | embedded canonical |
-| `--config <path>` | path to project config | `<repo-root>/optivem.yaml` |
-
-All three follow the same shape: override-by-pointing-at-a-file, not override-by-individual-value. Per-axis overrides (`--architecture`, `--system-lang`) are deliberately *not* added — if you need to deviate from the repo's `config.yaml`, you point at a different config file (itself a stable artifact you can check in or keep around). Same discipline as `--yaml`: scope changes are document-level, not flag-level.
-
-This makes the override story a uniform CLI surface, not a filesystem layout. `--help` documents what's overridable; consumers don't need to know that `.claude/agents/atdd/` or `docs/atdd/` are magic directories.
-
-### 4. Author-side rendered diagram in gh-optivem; consumers view, not generate
-
-**Files (gh-optivem):**
-- `internal/atdd/runtime/diagram/` (NEW; emits the Mermaid markdown wrapper from `statemachine.Engine`)
-- `docs/process-flow-diagram.md` (NEW; rendered output, committed to gh-optivem)
-- `atdd_commands.go` (`gh optivem atdd show diagram` subcommand — prints the embedded markdown to stdout)
-- `.github/workflows/regenerate-diagram.yml` (NEW; on push that touches `internal/atdd/runtime/statemachine/process-flow.yaml`, regenerates `docs/process-flow-diagram.md` and commits if changed) — OR a pre-commit hook in `.git/hooks/` shipped via the contributor-setup script
-- `README.md` link to the rendered diagram
-
-**Files (shop):**
-- `.claude/agents/atdd/meta/diagram-generator.md` — delete (no longer needed; gh-optivem owns the diagram)
-- `docs/atdd/process/diagram-process.md` — delete; replace any prose-doc cross-reference with a link to `https://github.com/optivem/gh-optivem/blob/main/docs/process-flow-diagram.md`
-
-**Why author-side, not user-side:**
-
-- gh-optivem ships exactly one rendered diagram, regenerated automatically whenever the YAML changes. github.com renders Mermaid natively, so anyone browsing the gh-optivem repo sees the diagram with zero tooling.
-- No per-consumer-repo `diagram-process.md` — same consolidation principle as the YAML and prompts.
-- Consumer prose docs link to a stable github.com URL on gh-optivem; the link survives consumer-side moves.
-- `gh optivem atdd show diagram` covers the offline / pipeline-it-into-something-else case (prints the embedded markdown to stdout). Useful but rarely needed.
-- Aligns with `CLAUDE.md`'s "docs as plain markdown under `docs/`, linked via relative paths from the README" pattern.
-
-Generation is part of gh-optivem's own dev workflow (CI hook on YAML change), not the consumer's. The user does not generate the diagram; the user views it.
-
-Prose-doc cross-references in shop / rehearsal-atdd-cli that today point at `docs/atdd/process/process-flow.yaml` are rewritten to point at the gh-optivem-hosted diagram or removed.
-
-### 5. Delete consumer-side copies
-
-**Files (shop, separate commit):**
-- `docs/atdd/process/process-flow.yaml` — git rm
-- `.claude/agents/atdd/<name>.md` — git rm (~11 files)
-- `.claude/agents/atdd/meta/diagram-generator.md` — git rm
-- `docs/atdd/process/diagram-process.md` — git rm (gh-optivem now hosts the canonical rendered diagram)
-- Skill shells under `.claude/commands/atdd/` — KEEP (they save typing; they're 5-line wrappers and don't drift)
-- Any prose-doc cross-reference touching the deleted files
-
-**Files (rehearsal-atdd-cli, separate commit):**
-- Same `git rm` cleanup as shop.
-
-This is the payoff: every consumer repo carries zero ATDD orchestration scaffolding. New repos opt in by installing `gh-optivem` and (optionally) running an `init` to drop the slash-command shells.
-
-### 6. Smoke-test the consumer-empty path
-
-**Files (gh-optivem):**
-- A new integration test that constructs a temp repo with no `.claude/` and no `docs/atdd/process/` and runs `gh optivem atdd implement-ticket --issue 42` (mocked clauderun + git) end-to-end. Asserts the dispatch completes against embedded artifacts only.
-
-This locks the property that future schema changes don't accidentally reintroduce a consumer-side dependency.
-
 ### 7. Migrate slash-command logic into native gh-optivem CLI + config; delete the slash commands
 
 **Motivation.** The slash commands (`shop/.claude/commands/atdd/atdd-implement-ticket.md` — 182 lines, `atdd-manage-project.md` — 31 lines) aren't thin wrappers; they encode features that today only work via the slash command (rehearsal worktrees, scope-axis flags, run-mode confirmation). After this plan they have nowhere to live unless we either reintroduce them as per-repo files or migrate the features into gh-optivem proper. We do the latter, then delete the slash commands.

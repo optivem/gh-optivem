@@ -72,6 +72,15 @@ type Options struct {
 	// is ignored.
 	RawPrompt string
 
+	// PromptOverride, when non-empty, replaces the embedded agent prompt
+	// body (i.e. agents.Prompt(opts.Agent)) with this string. Unlike
+	// RawPrompt, the override still goes through ${name} expansion against
+	// the live ticket context and still has OverrideText appended. Used by
+	// the driver's `--agent-prompt name=path` flag, where the operator
+	// wants to swap the canonical prompt for one named agent without
+	// touching the surrounding render machinery.
+	PromptOverride string
+
 	// Autonomous — when true, run via `claude -p` (one-shot, headless).
 	// When false, run interactively so the operator can observe / interject.
 	Autonomous bool
@@ -262,13 +271,20 @@ var errNoCommit = errors.New("no commit produced")
 // output. Production points at time.Now.
 var nowFn = time.Now
 
-// renderPrompt reads the embedded prompt for opts.Agent, expands ${name}
-// placeholders against the ticket context, and appends opts.OverrideText
-// (if any) as a trailing block. Public-ish for the test file; not exported.
+// renderPrompt reads the embedded prompt for opts.Agent (or opts.PromptOverride
+// when non-empty), expands ${name} placeholders against the ticket context,
+// and appends opts.OverrideText (if any) as a trailing block. Public-ish for
+// the test file; not exported.
 func renderPrompt(opts Options) (string, error) {
-	body, err := agents.Prompt(opts.Agent)
-	if err != nil {
-		return "", err
+	var body string
+	if opts.PromptOverride != "" {
+		body = opts.PromptOverride
+	} else {
+		var err error
+		body, err = agents.Prompt(opts.Agent)
+		if err != nil {
+			return "", err
+		}
 	}
 	params := map[string]string{
 		"issue_num":     strconv.Itoa(opts.IssueNum),
