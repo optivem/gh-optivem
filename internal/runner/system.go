@@ -1,6 +1,8 @@
 package runner
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -8,6 +10,12 @@ import (
 	"strings"
 	"time"
 )
+
+// defaultUpTimeout caps a single `docker compose up -d` attempt. Picked to be
+// 3x the observed legitimate worst-case (~90s for a multi-service stack with
+// fresh image pulls), so a stuck Docker Hub pull surfaces as a retryable
+// failure instead of consuming the entire test budget.
+const defaultUpTimeout = 5 * time.Minute
 
 // SystemOptions tunes behavior of Up/Down. Zero-values are safe defaults.
 type SystemOptions struct {
@@ -20,6 +28,10 @@ type SystemOptions struct {
 	Restart bool
 	// Health overrides default polling parameters.
 	Health HealthOptions
+	// UpTimeout caps a single `docker compose up -d` attempt. Zero uses
+	// defaultUpTimeout. The Up retry loop treats a timeout as transient and
+	// retries, so the effective ceiling is roughly UpTimeout * maxAttempts.
+	UpTimeout time.Duration
 }
 
 // BuildOptions tunes behavior of Build. Zero-values are safe defaults.
@@ -37,6 +49,13 @@ func (o SystemOptions) logLines() int {
 		return 50
 	}
 	return o.LogLines
+}
+
+func (o SystemOptions) upTimeout() time.Duration {
+	if o.UpTimeout <= 0 {
+		return defaultUpTimeout
+	}
+	return o.UpTimeout
 }
 
 // transientNetRE matches docker-compose pull/build errors that are usually
@@ -94,17 +113,23 @@ func upOne(s SystemEntry, cwd string, opts SystemOptions) error {
 
 	const maxAttempts = 3
 	const retryDelay = 10 * time.Second
+	timeout := opts.upTimeout()
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		err := runCompose(cwd, "-f", s.ComposeFile, "up", "-d")
+		err := runComposeCtx(cwd, timeout, "-f", s.ComposeFile, "up", "-d")
 		if err == nil {
 			lastErr = nil
 			break
 		}
 		lastErr = err
-		if attempt < maxAttempts && transientNetRE.MatchString(err.Error()) {
-			fmt.Fprintf(os.Stderr, "warn: transient network error on attempt %d/%d, retrying in %s...\n",
-				attempt, maxAttempts, retryDelay)
+		retriable := errors.Is(err, context.DeadlineExceeded) || transientNetRE.MatchString(err.Error())
+		if attempt < maxAttempts && retriable {
+			reason := "transient network error"
+			if errors.Is(err, context.DeadlineExceeded) {
+				reason = fmt.Sprintf("compose up exceeded %s", timeout)
+			}
+			fmt.Fprintf(os.Stderr, "warn: %s on attempt %d/%d, retrying in %s...\n",
+				reason, attempt, maxAttempts, retryDelay)
 			time.Sleep(retryDelay)
 			continue
 		}
@@ -201,6 +226,24 @@ func runCompose(cwd string, args ...string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// runComposeCtx is runCompose with a hard deadline. If the deadline elapses,
+// the process is killed and the returned error wraps context.DeadlineExceeded
+// so the caller's retry loop can recognise it as transient.
+func runComposeCtx(cwd string, timeout time.Duration, args ...string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	full := append([]string{"compose"}, args...)
+	cmd := exec.CommandContext(ctx, "docker", full...)
+	cmd.Dir = cwd
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		return fmt.Errorf("docker compose %s: %w", strings.Join(args, " "), context.DeadlineExceeded)
+	}
+	return err
 }
 
 // runDocker executes `docker <args...>` with output streamed to the user.
