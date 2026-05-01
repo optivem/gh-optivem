@@ -13,45 +13,15 @@ These concerns are unblockers for production-grade soak, not enhancements; until
 
 ## Items
 
-### 1. Surface rate-limit hits clearly
-
-When `claude -p` exits non-zero, capture the last ~20 lines of stderr and grep for known rate-limit / auth signatures. When matched, produce a dedicated error message: "Rate limit hit on Pro plan; weekly cap exhausted. Re-run after the next reset window or upgrade to Max." Otherwise fall through to today's generic message.
-
-Implementation surface: `internal/atdd/runtime/clauderun/clauderun.go`'s `Dispatch` already wraps the runner error with `"clauderun: %s exited non-zero: %w"`. Extend the wrap with a small classifier that inspects the captured stderr (already streamed to opts.Stderr in autonomous mode — capture into a `bytes.Buffer` tee rather than discarding). Add unit tests with sample stderr from a real cap-hit run.
-
-Estimated effort: 3–4 hours.
-
-### 2. Detect leftover untracked files / wrong-branch commits
-
-Before each user_task dispatch:
-- Snapshot `git status --porcelain` → record initial untracked-file set + current branch name.
-- After dispatch (subprocess exit, before HEAD diff): re-run `git status --porcelain` → diff against snapshot. Surface any new untracked files in the dispatch banner. Verify branch is unchanged; halt with a clear message if the agent switched branches.
-
-This is a verify-decorator-shaped concern but lives more naturally inside the clauderun dispatcher because it needs to fire *between* subprocess exit and HEAD diff. Add it as a pre/post step in `clauderun.Dispatch`. The "warn about untracked" path is non-fatal (the operator may have intended them); the "branch switched" path halts.
-
-Estimated effort: half a day including tests.
-
-### 3. Document and test the CI auth bootstrap
-
-Two pieces:
-- **Doc:** add a "Running ATDD on CI" section to `CONTRIBUTING.md` covering: the `claude /login` requirement, where credentials live (`~/.claude/`), the option to bake credentials into a CI image vs mounting them at job start, and the failure mode when missing (with the actual error text).
-- **Pre-flight check:** at driver startup (before walking the flow), if `Options.ManualAgents` is false, run `claude --no-update-check --version` once and surface a helpful error if it fails. This catches "no claude binary on PATH" and "not authenticated" before the engine begins, rather than after the operator has watched several service-task spinners scroll by.
-
-Estimated effort: 2–3 hours.
-
-### 4. Soak interactive mode against real ATDD runs
-
-The interactive-mode flow (default) is unit-tested with fakes but unverified end-to-end. Goals:
-- Run `gh optivem atdd implement-ticket --issue <N>` against ~5 real shop tickets.
-- Track per agent name: misroute count (Claude Code interprets "Launch the X subagent" as something other than a `Task` call with `subagent_type: X`), no-commit-but-clean-exit count, branch-switch incidents.
-- Capture the failure modes (and operator workarounds) in a soak log.
-- After ~10 tickets, decide whether the prompt template needs tuning, whether item #2's branch-switch detection is worth shipping, and whether `--manual-agents` is being used as a workaround for any specific class of failure.
-
-Estimated effort: scattered across one to two weeks of normal ATDD work; not a focused-implementation block.
+- [ ] **Item 4: Soak interactive mode against real ATDD runs** — ⏳ Deferred: requires real-ticket runs over ~1–2 weeks of ATDD work, not implementable from a code-edit session. Goals:
+  - Run `gh optivem atdd implement-ticket --issue <N>` against ~5 real shop tickets.
+  - Track per agent name: misroute count (Claude Code interprets "Launch the X subagent" as something other than a `Task` call with `subagent_type: X`), no-commit-but-clean-exit count, branch-switch incidents (item 2's check now logs these explicitly).
+  - Capture the failure modes (and operator workarounds) in a soak log.
+  - After ~10 tickets, decide whether the prompt template needs tuning and whether `--manual-agents` is being used as a workaround for any specific class of failure.
 
 ## Trigger to undefer
 
-This plan is **active**. Items 1–3 are pure code/doc work and can be picked up immediately. Item 4 needs operator availability to drive real tickets — it can run in parallel with 1–3 once at least one v2b run has happened.
+Items 1–3 shipped on 2026-05-01. Item 4 (the soak) is deferred until the operator drives ~5–10 real tickets through `gh optivem atdd implement-ticket` and can report the per-agent misroute / no-commit / branch-switch counts.
 
 ## See also
 

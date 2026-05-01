@@ -22,6 +22,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"text/template"
 	"time"
@@ -159,10 +160,19 @@ func (d Deps) withDefaults() Deps {
 
 // Dispatch builds the prompt, runs the subprocess, and verifies a commit
 // landed. Returns CommitInfo on success. Errors are returned for:
-//   - Subprocess exit status non-zero (stderr surfaced).
+//   - Subprocess exit status non-zero (stderr surfaced; a small classifier
+//     turns known rate-limit / auth signatures into actionable messages
+//     before falling through to the generic wrapper).
 //   - Subprocess exit zero but HEAD unchanged (the agent ran clean but
 //     produced no commit — same shape as v1's "abort" path).
+//   - Subprocess exit zero but the agent switched branches mid-run (the
+//     pre/post snapshot diff catches this so the operator gets a clear
+//     "switched branches" message instead of a confusing "no commit").
 //   - Any of the surrounding git / template steps failing.
+//
+// Pre/post snapshots also surface stranded untracked files (created by
+// the agent but never `git add`ed) as a non-fatal warning after the
+// success banner.
 func Dispatch(ctx context.Context, deps Deps, opts Options) (CommitInfo, error) {
 	deps = deps.withDefaults()
 	opts = opts.withDefaults()
@@ -176,13 +186,21 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (CommitInfo, error) 
 		}
 	}
 
-	headBefore, err := readHEAD(ctx, deps.Git, opts.RepoPath)
+	preState, err := snapshotRepo(ctx, deps.Git, opts.RepoPath)
 	if err != nil {
-		return CommitInfo{}, fmt.Errorf("clauderun: read HEAD before dispatch: %w", err)
+		return CommitInfo{}, fmt.Errorf("clauderun: snapshot before dispatch: %w", err)
 	}
 
 	writeEnterBanner(opts)
 	startedAt := nowFn()
+
+	// Tee stderr so we can classify rate-limit / auth failures after a
+	// non-zero exit without losing the operator-visible stream. Bounded
+	// to a reasonable cap to avoid pathological memory growth on a chatty
+	// runner.
+	var stderrCapture cappedBuffer
+	stderrCapture.cap = 64 * 1024
+	runStderr := io.MultiWriter(opts.Stderr, &stderrCapture)
 
 	runResult, runErr := deps.Claude.Run(ctx, RunOpts{
 		Prompt:     prompt,
@@ -190,33 +208,47 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (CommitInfo, error) 
 		Dir:        opts.RepoPath,
 		Stdin:      opts.Stdin,
 		Stdout:     opts.Stdout,
-		Stderr:     opts.Stderr,
+		Stderr:     runStderr,
 	})
 	if runErr != nil {
 		writeExitBanner(opts, "", "", nowFn().Sub(startedAt), runResult.Usage, runErr)
+		if classified := classifyRunError(stderrCapture.Bytes()); classified != nil {
+			return CommitInfo{}, fmt.Errorf("clauderun: %s: %w", opts.Agent, classified)
+		}
 		return CommitInfo{}, fmt.Errorf("clauderun: %s exited non-zero: %w", opts.Agent, runErr)
 	}
 
-	headAfter, err := readHEAD(ctx, deps.Git, opts.RepoPath)
+	postState, err := snapshotRepo(ctx, deps.Git, opts.RepoPath)
 	if err != nil {
 		writeExitBanner(opts, "", "", nowFn().Sub(startedAt), runResult.Usage, err)
-		return CommitInfo{}, fmt.Errorf("clauderun: read HEAD after dispatch: %w", err)
+		return CommitInfo{}, fmt.Errorf("clauderun: snapshot after dispatch: %w", err)
 	}
 
-	if headBefore == headAfter {
+	if postState.branch != preState.branch {
+		switchErr := fmt.Errorf("agent switched branches mid-run (was %q, now %q) — original-branch HEAD unchanged at %s",
+			preState.branch, postState.branch, shortSHA(preState.head))
+		writeExitBanner(opts, "", "", nowFn().Sub(startedAt), runResult.Usage, switchErr)
+		return CommitInfo{}, fmt.Errorf("clauderun: %s: %w", opts.Agent, switchErr)
+	}
+
+	if preState.head == postState.head {
 		writeExitBanner(opts, "", "", nowFn().Sub(startedAt), runResult.Usage, errNoCommit)
 		return CommitInfo{}, fmt.Errorf("clauderun: %s exited cleanly but produced no commit (HEAD unchanged at %s)",
-			opts.Agent, shortSHA(headBefore))
+			opts.Agent, shortSHA(preState.head))
 	}
 
-	subject, err := readCommitSubject(ctx, deps.Git, opts.RepoPath, headAfter)
+	subject, err := readCommitSubject(ctx, deps.Git, opts.RepoPath, postState.head)
 	if err != nil {
-		writeExitBanner(opts, headAfter, "", nowFn().Sub(startedAt), runResult.Usage, err)
-		return CommitInfo{}, fmt.Errorf("clauderun: read commit subject for %s: %w", shortSHA(headAfter), err)
+		writeExitBanner(opts, postState.head, "", nowFn().Sub(startedAt), runResult.Usage, err)
+		return CommitInfo{}, fmt.Errorf("clauderun: read commit subject for %s: %w", shortSHA(postState.head), err)
 	}
 
-	writeExitBanner(opts, headAfter, subject, nowFn().Sub(startedAt), runResult.Usage, nil)
-	return CommitInfo{SHA: headAfter, Subject: subject}, nil
+	if newUntracked := diffUntracked(preState.untracked, postState.untracked); len(newUntracked) > 0 {
+		writeUntrackedWarning(opts, newUntracked)
+	}
+
+	writeExitBanner(opts, postState.head, subject, nowFn().Sub(startedAt), runResult.Usage, nil)
+	return CommitInfo{SHA: postState.head, Subject: subject}, nil
 }
 
 // errNoCommit is the sentinel for "subprocess succeeded but HEAD didn't
@@ -267,15 +299,73 @@ func (o Options) withDefaults() Options {
 }
 
 // ---------------------------------------------------------------------------
-// HEAD detection
+// Repo snapshot (pre/post) and HEAD detection
 // ---------------------------------------------------------------------------
 
-func readHEAD(ctx context.Context, git GitRunner, dir string) (string, error) {
-	out, err := git.Run(ctx, dir, "rev-parse", "HEAD")
+// repoState is the "before"/"after" snapshot Dispatch takes around the
+// runner call. The diff catches two failure modes:
+//   - Branch-switch: the agent runs `git checkout -b feature/foo`,
+//     commits there, and never returns. HEAD on the original branch is
+//     unchanged → without snapshot we'd halt with the misleading "no
+//     commit produced"; with snapshot we say "switched branches".
+//   - Stranded untracked files: the agent created files but never
+//     `git add`ed them. The commit lands fine but the new files sit
+//     outside it (silent data-loss class). Snapshot diff surfaces them
+//     as a non-fatal warning.
+type repoState struct {
+	head      string
+	branch    string
+	untracked map[string]bool
+}
+
+func snapshotRepo(ctx context.Context, git GitRunner, dir string) (repoState, error) {
+	headOut, err := git.Run(ctx, dir, "rev-parse", "HEAD")
 	if err != nil {
-		return "", err
+		return repoState{}, fmt.Errorf("rev-parse HEAD: %w", err)
 	}
-	return strings.TrimSpace(string(out)), nil
+	branchOut, err := git.Run(ctx, dir, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return repoState{}, fmt.Errorf("rev-parse --abbrev-ref HEAD: %w", err)
+	}
+	statusOut, err := git.Run(ctx, dir, "status", "--porcelain")
+	if err != nil {
+		return repoState{}, fmt.Errorf("status --porcelain: %w", err)
+	}
+	return repoState{
+		head:      strings.TrimSpace(string(headOut)),
+		branch:    strings.TrimSpace(string(branchOut)),
+		untracked: parseUntracked(statusOut),
+	}, nil
+}
+
+// parseUntracked picks out the `??<space><path>` rows from `git status
+// --porcelain` output. Other status codes (modified, staged, etc.) are
+// ignored — only untracked files are the silent-data-loss class we
+// care about for the post-dispatch warning.
+func parseUntracked(porcelain []byte) map[string]bool {
+	m := map[string]bool{}
+	for line := range strings.SplitSeq(string(porcelain), "\n") {
+		if len(line) >= 4 && line[0] == '?' && line[1] == '?' {
+			path := strings.TrimSpace(line[3:])
+			if path != "" {
+				m[path] = true
+			}
+		}
+	}
+	return m
+}
+
+// diffUntracked returns paths present in post but not pre, sorted for
+// stable banner output.
+func diffUntracked(pre, post map[string]bool) []string {
+	var out []string
+	for p := range post {
+		if !pre[p] {
+			out = append(out, p)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func readCommitSubject(ctx context.Context, git GitRunner, dir, sha string) (string, error) {
@@ -292,6 +382,97 @@ func shortSHA(sha string) string {
 	}
 	return sha
 }
+
+// ---------------------------------------------------------------------------
+// Stderr classification (rate limit / auth)
+// ---------------------------------------------------------------------------
+
+// rateLimitSignatures are case-insensitive substrings that mean "claude
+// refused to dispatch because of a billing / rate limit". First match
+// wins. Patterns are deliberately broad — false positives here only
+// change the wording of an already-failing run.
+var rateLimitSignatures = []string{
+	"rate limit",
+	"rate_limit_error",
+	"weekly limit",
+	"5-hour limit",
+	"usage limit",
+	"quota exceeded",
+	"too many requests",
+}
+
+// authSignatures are case-insensitive substrings that mean "claude
+// refused because credentials are missing or invalid". The pre-flight
+// check at driver startup catches this before the first dispatch in
+// the happy path; this branch covers credentials expiring mid-run.
+var authSignatures = []string{
+	"not authenticated",
+	"auth required",
+	"authentication required",
+	"invalid api key",
+	"please run /login",
+	"please log in",
+	"please login",
+}
+
+// classifyRunError inspects the captured stderr from a non-zero claude
+// exit and returns a more actionable error when a known signature
+// matches. Returns nil meaning "fall through to the generic wrapper".
+func classifyRunError(stderr []byte) error {
+	tail := lastLines(stderr, 20)
+	lower := strings.ToLower(string(tail))
+	for _, sig := range rateLimitSignatures {
+		if strings.Contains(lower, sig) {
+			return errors.New("rate limit hit on Claude subscription; weekly cap likely exhausted — re-run after the next reset window or upgrade your plan")
+		}
+	}
+	for _, sig := range authSignatures {
+		if strings.Contains(lower, sig) {
+			return errors.New("claude CLI is not authenticated — run `claude /login` (credentials live in ~/.claude/) before re-dispatching")
+		}
+	}
+	return nil
+}
+
+// lastLines returns the trailing n lines of b. Used to bound the
+// classifier's scan to the most recent error output — if the runner
+// printed a wall of progress text before failing, we want to look at
+// the failure tail, not the noise above it.
+func lastLines(b []byte, n int) []byte {
+	if n <= 0 || len(b) == 0 {
+		return b
+	}
+	count := 0
+	for i := len(b) - 1; i >= 0; i-- {
+		if b[i] == '\n' {
+			count++
+			if count > n {
+				return b[i+1:]
+			}
+		}
+	}
+	return b
+}
+
+// cappedBuffer is a write-only buffer that drops bytes past `cap`.
+// Used to capture stderr for classification without unbounded memory
+// growth on a runner that streams a lot of output before failing.
+type cappedBuffer struct {
+	buf bytes.Buffer
+	cap int
+}
+
+func (c *cappedBuffer) Write(p []byte) (int, error) {
+	if c.cap > 0 && c.buf.Len() >= c.cap {
+		return len(p), nil
+	}
+	if c.cap > 0 && c.buf.Len()+len(p) > c.cap {
+		p = p[:c.cap-c.buf.Len()]
+	}
+	return c.buf.Write(p)
+}
+
+func (c *cappedBuffer) Bytes() []byte { return c.buf.Bytes() }
 
 // ---------------------------------------------------------------------------
 // Banners
@@ -356,6 +537,21 @@ func formatTokens(n int) string {
 		return fmt.Sprintf("%d", n)
 	}
 	return fmt.Sprintf("%.1fk", float64(n)/1000)
+}
+
+// writeUntrackedWarning surfaces files the agent created but never
+// `git add`ed. Emitted after writeExitBanner on the success path so
+// the operator sees the commit SHA first, then the warning. Non-fatal:
+// the operator may have intended to leave them (e.g. ad-hoc scratch
+// files) — but the typical case is they meant to commit them and the
+// stranded files are silent data loss.
+func writeUntrackedWarning(opts Options, paths []string) {
+	yellow := color.New(color.FgYellow, color.Bold)
+	w := opts.Stdout
+	fmt.Fprintln(w, yellow.Sprintf("⚠  %s left %d untracked file(s) outside the commit:", opts.Agent, len(paths)))
+	for _, p := range paths {
+		fmt.Fprintln(w, yellow.Sprintf("    %s", p))
+	}
 }
 
 const elapsedRound = time.Second

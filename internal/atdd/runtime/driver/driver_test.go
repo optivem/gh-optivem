@@ -45,17 +45,26 @@ func (f *fakeClaude) Run(_ context.Context, opts clauderun.RunOpts) (clauderun.R
 	return clauderun.RunResult{}, f.err
 }
 
-// fakeGit serves canned outputs in call order. Dispatch calls
-// rev-parse twice (before / after) and `log -1 --format=%s` once on
-// success, so a single FIFO of byte-slices covers every path.
+// fakeGit serves canned outputs. The HEAD rev-parse and log calls
+// consume the `out` FIFO. Snapshot calls (rev-parse --abbrev-ref HEAD,
+// status --porcelain) get sensible defaults so existing tests don't
+// have to enumerate them — the dispatcher's branch-switch /
+// stranded-untracked detection (clauderun item 2) is exercised in
+// clauderun's own test suite, not here.
 type fakeGit struct {
 	out [][]byte
 	err error
 }
 
-func (f *fakeGit) Run(_ context.Context, _ string, _ ...string) ([]byte, error) {
+func (f *fakeGit) Run(_ context.Context, _ string, args ...string) ([]byte, error) {
 	if f.err != nil {
 		return nil, f.err
+	}
+	if len(args) >= 3 && args[0] == "rev-parse" && args[1] == "--abbrev-ref" {
+		return []byte("main\n"), nil
+	}
+	if len(args) >= 2 && args[0] == "status" && args[1] == "--porcelain" {
+		return []byte(""), nil
 	}
 	if len(f.out) == 0 {
 		return nil, errors.New("fakeGit: no canned output left")
@@ -340,6 +349,64 @@ func TestManualAgents_AbortHaltsRun(t *testing.T) {
 	}
 	if !strings.Contains(out.Err.Error(), "aborted") {
 		t.Errorf("error wording: got %q", out.Err.Error())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Pre-flight (clauderun item 3)
+// ---------------------------------------------------------------------------
+
+func TestPreflightSkippedUnderManualAgents(t *testing.T) {
+	// Pre-flight must NOT run when --manual-agents is set: the v1
+	// fallback doesn't need the CLI, and forcing a `claude --version`
+	// would defeat the purpose of the operator's escape hatch.
+	called := false
+	prev := preflightFn
+	t.Cleanup(func() { preflightFn = prev })
+	preflightFn = func(ctx context.Context) error {
+		called = true
+		return errors.New("should not be called")
+	}
+
+	// Run will fail on YAML load (we're not in a consumer repo), but we
+	// only care that pre-flight wasn't invoked first.
+	_ = Run(context.Background(), Options{
+		ManualAgents: true,
+		YAMLPath:     "/nonexistent.yaml",
+		Stdout:       io.Discard,
+		Stderr:       io.Discard,
+		Stdin:        strings.NewReader(""),
+	})
+	if called {
+		t.Errorf("preflightFn must not run under --manual-agents")
+	}
+}
+
+func TestPreflightFailureSurfacesEarly(t *testing.T) {
+	// When pre-flight fails, Run must return its error before doing any
+	// flow-walking work. We assert by setting a non-existent YAMLPath:
+	// if pre-flight didn't short-circuit, we'd see a YAML-load error.
+	prev := preflightFn
+	t.Cleanup(func() { preflightFn = prev })
+	preflightFn = func(ctx context.Context) error {
+		return errors.New("claude CLI pre-flight failed: not on PATH")
+	}
+
+	err := Run(context.Background(), Options{
+		ManualAgents: false,
+		YAMLPath:     "/nonexistent.yaml",
+		Stdout:       io.Discard,
+		Stderr:       io.Discard,
+		Stdin:        strings.NewReader(""),
+	})
+	if err == nil {
+		t.Fatalf("expected pre-flight error, got nil")
+	}
+	if !strings.Contains(err.Error(), "pre-flight failed") {
+		t.Errorf("error should surface pre-flight wording, got %q", err.Error())
+	}
+	if strings.Contains(err.Error(), "load YAML") {
+		t.Errorf("YAML load must not run when pre-flight fails: %q", err.Error())
 	}
 }
 

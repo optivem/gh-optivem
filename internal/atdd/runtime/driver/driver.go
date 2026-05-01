@@ -27,11 +27,13 @@ package driver
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 
@@ -114,6 +116,17 @@ type Options struct {
 func Run(ctx context.Context, opts Options) error {
 	opts = opts.withDefaults()
 
+	// Pre-flight the `claude` CLI when subprocess dispatch is enabled,
+	// so missing-binary or missing-credentials failures surface at
+	// startup instead of after several service-task spinners scroll by.
+	// Skipped under --manual-agents (the v1 fallback that doesn't need
+	// the CLI at all).
+	if !opts.ManualAgents {
+		if err := preflightFn(ctx); err != nil {
+			return fmt.Errorf("driver: %w", err)
+		}
+	}
+
 	eng, err := statemachine.LoadFile(opts.YAMLPath)
 	if err != nil {
 		return fmt.Errorf("driver: load YAML %q: %w", opts.YAMLPath, err)
@@ -174,6 +187,34 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	return eng.RunFlow(opts.FlowName, sCtx)
+}
+
+// preflightFn is the per-Run function that verifies the `claude` CLI
+// is on PATH and authenticated. Production points at preflightClaude;
+// tests can swap it for a no-op or canned-error stub. The seam is a
+// package-level var rather than an Options field because pre-flight is
+// a startup-time concern, not part of the per-run dispatch surface.
+var preflightFn = preflightClaude
+
+// preflightClaude runs `claude --no-update-check --version` as a cheap
+// health check at driver startup. Failure surfaces with operator
+// guidance pointing at the auth bootstrap doc — without this, missing
+// credentials manifest as a confusing "exited non-zero" several
+// service-task spinners deep into the run.
+func preflightClaude(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, "claude", "--no-update-check", "--version")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		tail := strings.TrimSpace(stderr.String())
+		if tail == "" {
+			tail = err.Error()
+		}
+		return fmt.Errorf(
+			"claude CLI pre-flight failed: %s\n  Ensure `claude` is on PATH and authenticated via `claude /login` (credentials live in ~/.claude/).\n  Use --manual-agents to fall back to the v1 two-window workflow without the CLI.",
+			tail)
+	}
+	return nil
 }
 
 func (o Options) withDefaults() Options {

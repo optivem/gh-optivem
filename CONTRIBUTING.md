@@ -224,6 +224,27 @@ gh optivem atdd debug release --issue 42 --dry-run
 
 Run `gh optivem atdd debug --help` to list them all.
 
+### Running ATDD on CI
+
+The default v2 dispatcher shells out to the `claude` CLI for every user-task agent dispatch. The CLI looks up credentials from `~/.claude/` — that directory is empty in a fresh CI runner unless someone has already authenticated as the executing user. Without this, the failure surface is a confusing `clauderun: <agent> exited non-zero: ...` deep into the first dispatch.
+
+The driver runs a pre-flight `claude --no-update-check --version` at startup (skipped under `--manual-agents`) so this class of failure surfaces before any flow-walking work happens. If you see `claude CLI pre-flight failed`, the binary is missing or unauthenticated — fix one of the bootstrap paths below before re-running.
+
+Bootstrap options:
+
+- **Bake credentials into a CI image.** Run `claude /login` once locally as the user the image will execute as, then copy `~/.claude/` into the image at build time. Simplest path for a self-hosted runner.
+- **Mount credentials at job start.** Store the contents of `~/.claude/` (typically `credentials.json`) as an encrypted secret and write it before invoking `gh optivem atdd …`:
+
+  ```bash
+  mkdir -p ~/.claude
+  printf '%s' "$CLAUDE_CREDENTIALS" > ~/.claude/credentials.json
+  chmod 600 ~/.claude/credentials.json
+  ```
+
+- **Fall back to `--manual-agents`.** When credentials aren't available, use the v1 two-window workflow — the driver pauses, a human launches each agent in a separate Claude Code session, then presses Enter to advance. This bypasses the CLI subprocess entirely and is the right choice when you want CI to walk the gates / actions but not the agent dispatches.
+
+Rate-limit / quota failures during a long autonomous run surface as `rate limit hit on Claude subscription; weekly cap likely exhausted — re-run after the next reset window or upgrade your plan`. Mid-run credential expiry surfaces as `claude CLI is not authenticated — run `claude /login` …`. Both are detected from the runner's stderr signature.
+
 ## Releasing
 
 This project uses [semantic versioning](https://semver.org/). To create a new release:
