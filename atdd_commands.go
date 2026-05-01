@@ -46,11 +46,11 @@ func newAtddCmd() *cobra.Command {
 		Short: "Run the ATDD pipeline driver",
 		Long: `Run the ATDD pipeline driver.
 
-The driver loads docs/atdd/process/process-flow.yaml from the consumer's
-working directory and walks it node by node — dispatching service tasks
-inline (board picks, classification, smoke tests, commits) and pausing at
-each user-task node so the operator can launch the corresponding Claude
-Code agent (atdd-story, atdd-test, atdd-dsl, …). When the agent's COMMIT
+The driver loads the canonical process-flow YAML embedded in gh-optivem
+and walks it node by node — dispatching service tasks inline (board
+picks, classification, smoke tests, commits) and pausing at each
+user-task node so the operator can launch the corresponding Claude Code
+agent (atdd-story, atdd-test, atdd-dsl, …). When the agent's COMMIT
 lands on HEAD, the operator presses Enter and the engine moves on.`,
 	}
 	cmd.AddCommand(
@@ -280,16 +280,19 @@ func newAtddDebugNextPhaseCmd() *cobra.Command {
 		Example: `  gh optivem atdd debug next-phase --node GATE_DSL --state dsl_interface_changed=true
   gh optivem atdd debug next-phase --flow at_cycle --node AT_RED_TEST_COMMIT`,
 		Run: func(cmd *cobra.Command, args []string) {
-			if yamlPath == "" {
-				yamlPath = driver.DefaultYAMLPath
-			}
 			if flowName == "" {
 				flowName = driver.DefaultFlowName
 			}
 			if nodeID == "" {
 				exitOnError(fmt.Errorf("--node is required"))
 			}
-			eng, err := statemachine.LoadFile(yamlPath)
+			var eng *statemachine.Engine
+			var err error
+			if yamlPath == "" {
+				eng, err = statemachine.LoadDefault()
+			} else {
+				eng, err = statemachine.LoadFile(yamlPath)
+			}
 			exitOnError(err)
 			sCtx := statemachine.NewContext()
 			for _, kv := range strings.Split(stateRaw, ",") {
@@ -309,7 +312,7 @@ func newAtddDebugNextPhaseCmd() *cobra.Command {
 			fmt.Printf("to:    %s\n", next)
 		},
 	}
-	cmd.Flags().StringVar(&yamlPath, "yaml", "", "Path to process-flow.yaml (defaults to docs/atdd/process/process-flow.yaml)")
+	cmd.Flags().StringVar(&yamlPath, "yaml", "", "Path to a process-flow YAML override (defaults to the embedded canonical document)")
 	cmd.Flags().StringVar(&flowName, "flow", "", "Flow name (defaults to main)")
 	cmd.Flags().StringVar(&nodeID, "node", "", "Source node ID (required)")
 	cmd.Flags().StringVar(&stateRaw, "state", "", "Comma-separated key=value pairs to seed Context (e.g. dsl_interface_changed=true,ticket_type=story)")

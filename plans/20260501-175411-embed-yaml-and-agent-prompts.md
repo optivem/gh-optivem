@@ -23,46 +23,6 @@ The architectural shift, in one line: **gh-optivem stops treating Claude Code as
 
 Sequence: YAML embed first (small, mechanical, unblocks the BPMN plan); then agent-prompt embed (the substantial change); then override flags, the diagram CLI replacement, and consumer cleanup. Each item is one PR.
 
-### 1. Move YAML out of `testdata/`; embed canonically; default driver to it
-
-**Files (gh-optivem):**
-- `internal/atdd/runtime/statemachine/testdata/process-flow.yaml` → move to `internal/atdd/runtime/statemachine/process-flow.yaml`
-- `internal/atdd/runtime/statemachine/embed.go` (NEW)
-- `internal/atdd/runtime/statemachine/transitions_test.go` (use `LoadDefault`)
-- `internal/atdd/runtime/driver/driver.go` (drop `DefaultYAMLPath`; branch on empty `YAMLPath`)
-- `atdd_commands.go` (update `next-phase` debug helper)
-
-The YAML stops being a test fixture and becomes the canonical source. Both production and tests load via `//go:embed`.
-
-```go
-// internal/atdd/runtime/statemachine/embed.go
-package statemachine
-
-import _ "embed"
-
-//go:embed process-flow.yaml
-var DefaultYAML []byte
-
-// LoadDefault loads the canonical embedded process-flow document.
-// Equivalent to LoadBytes(DefaultYAML).
-func LoadDefault() (*Engine, error) {
-    return LoadBytes(DefaultYAML)
-}
-```
-
-`driver.Run` chooses embedded vs. file:
-
-```go
-var eng *statemachine.Engine
-if opts.YAMLPath == "" {
-    eng, err = statemachine.LoadDefault()
-} else {
-    eng, err = statemachine.LoadFile(opts.YAMLPath)
-}
-```
-
-`DefaultYAMLPath` and the YAML default in `withDefaults` go away. Update the package comment that calls gh-optivem "repo-agnostic by design" — that framing is obsolete after this item.
-
 ### 2. Embed agent prompts; rewrite `clauderun.Dispatch` to inline them; drop the Task-subagent indirection
 
 **Files (gh-optivem):**

@@ -48,20 +48,17 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/verify"
 )
 
-// DefaultYAMLPath is the canonical relative location of the process-flow
-// document inside a consumer repo. Read from the consumer's CWD — gh-optivem
-// is repo-agnostic by design.
-const DefaultYAMLPath = "docs/atdd/process/process-flow.yaml"
-
 // DefaultFlowName is the entry flow loaded by every public CLI command.
 const DefaultFlowName = "main"
 
 // Options bundles every driver knob that callers (the `gh optivem atdd …`
 // commands and tests) might want to set. Zero values yield a usable
-// configuration: load DefaultYAMLPath, enter DefaultFlowName, no overrides,
-// real shell-outs.
+// configuration: load the embedded canonical YAML, enter DefaultFlowName,
+// no overrides, real shell-outs.
 type Options struct {
-	// YAMLPath is the process-flow file to load. Empty → DefaultYAMLPath.
+	// YAMLPath, when non-empty, points the driver at an on-disk YAML file
+	// instead of the canonical embedded document (statemachine.DefaultYAML).
+	// Empty → load the embedded YAML via statemachine.LoadDefault.
 	YAMLPath string
 
 	// FlowName is the entry flow. Empty → DefaultFlowName.
@@ -127,14 +124,27 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 
-	eng, err := statemachine.LoadFile(opts.YAMLPath)
-	if err != nil {
-		return fmt.Errorf("driver: load YAML %q: %w", opts.YAMLPath, err)
+	var eng *statemachine.Engine
+	var err error
+	if opts.YAMLPath == "" {
+		eng, err = statemachine.LoadDefault()
+		if err != nil {
+			return fmt.Errorf("driver: load embedded YAML: %w", err)
+		}
+	} else {
+		eng, err = statemachine.LoadFile(opts.YAMLPath)
+		if err != nil {
+			return fmt.Errorf("driver: load YAML %q: %w", opts.YAMLPath, err)
+		}
 	}
 
 	flow, ok := eng.Flows[opts.FlowName]
 	if !ok {
-		return fmt.Errorf("driver: flow %q not in YAML %q", opts.FlowName, opts.YAMLPath)
+		source := opts.YAMLPath
+		if source == "" {
+			source = "embedded"
+		}
+		return fmt.Errorf("driver: flow %q not in YAML %q", opts.FlowName, source)
 	}
 
 	gateReg := gates.New()
@@ -218,9 +228,6 @@ func preflightClaude(ctx context.Context) error {
 }
 
 func (o Options) withDefaults() Options {
-	if o.YAMLPath == "" {
-		o.YAMLPath = DefaultYAMLPath
-	}
 	if o.FlowName == "" {
 		o.FlowName = DefaultFlowName
 	}
@@ -296,7 +303,7 @@ func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Conte
 }
 
 // agentNames lists every Claude Code agent referenced by a user_task in
-// docs/atdd/process/process-flow.yaml. Adding a new agent to the YAML
+// the embedded process-flow YAML. Adding a new agent to the YAML
 // requires adding its name here so the dispatch registry resolves; the
 // engine refuses to start with an unknown binding.
 var agentNames = []string{
