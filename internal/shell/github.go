@@ -334,7 +334,6 @@ func (g *GitHub) CreateRepo() {
 	}
 	MustRunWithRetry("gh repo create "+g.Repo+" --public", false, "")
 	g.waitForRepoVisible()
-	g.initRepo()
 }
 
 // waitForRepoVisible polls gh repo view until the repo resolves via GraphQL.
@@ -371,44 +370,6 @@ func (g *GitHub) waitForRepoVisible() {
 	}
 	log.Fatalf("repository %s did not become visible within %ds after creation: %v\n%s",
 		g.Repo, maxAttempts, err, out)
-}
-
-// initRepo pushes the initial commit (README) so the default branch exists
-// immediately without waiting for GitHub's async initialization. The LICENSE
-// file is written later by steps.WriteLicense as a regular scaffold step, so
-// it lands regardless of whether the repo was pre-created by a wrapper.
-func (g *GitHub) initRepo() {
-	if g.DryRun {
-		log.Infof("[DRY RUN] Would initialize repo %s with README", g.Repo)
-		return
-	}
-
-	dir, err := os.MkdirTemp("", "repo-init-*")
-	if err != nil {
-		log.Fatalf("failed to create temp dir for repo init: %v", err)
-	}
-	defer os.RemoveAll(dir)
-
-	// Clone the empty repo. Use the post-create retry wrapper because clone's
-	// GraphQL resolve can lag behind the create's primary write even after
-	// waitForRepoVisible succeeded — view-poll and clone-resolve can land on
-	// different replicas. See MustRunPostCreate doc for rationale.
-	MustRunPostCreate(fmt.Sprintf("gh repo clone %s %s", g.Repo, dir), "")
-
-	// Write README.md.
-	repoName := g.Repo
-	if idx := strings.Index(repoName, "/"); idx >= 0 {
-		repoName = repoName[idx+1:]
-	}
-	readmePath := filepath.Join(dir, "README.md")
-	if err := os.WriteFile(readmePath, []byte("# "+repoName+"\n"), 0644); err != nil {
-		log.Fatalf("failed to write README.md at %s: %v", readmePath, err)
-	}
-
-	// Commit and push.
-	MustRun("git add -A", g.DryRun, dir)
-	MustRun("git commit -m \"Initial commit\"", g.DryRun, dir)
-	MustRun("git push", g.DryRun, dir)
 }
 
 func (g *GitHub) CreateEnvironment(name string) {

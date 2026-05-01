@@ -169,7 +169,14 @@ func commitAndPushRepo(repoDir, fullRepo, commitMsg string, preExisted bool) {
 			log.Fatalf("git commit failed in %s: %v", fullRepo, err)
 		}
 	}
-	if out, err := shell.Run("git push", false, true, repoDir); err != nil {
+	// `-u origin main` works for both fresh repos (ref-creation push, since
+	// CreateRepo no longer pre-pushes a placeholder commit) and existing repos
+	// (the upstream is already set; -u just re-applies it). No retry: post-create
+	// replica lag is documented at clone time (see MustRunPostCreate) but not
+	// at push time -- by Phase 5 the repo has been touched by clone + several
+	// gh api calls, so every replica has caught up. Auth, permission, and
+	// branch-protection failures are permanent and should fail fast.
+	if out, err := shell.Run("git push -u origin main", false, true, repoDir); err != nil {
 		log.Fatalf("git push failed in %s: %v\n%s", fullRepo, err, out)
 	}
 	log.Successf("Pushed template to %s", fullRepo)

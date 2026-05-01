@@ -29,14 +29,15 @@ A full local-first pipeline reshuffle (`gh repo create --source=. --push`, with 
 
 ## Approach: unified flow for new and existing repos
 
-Same six steps regardless of whether the repo is new or pre-existing. Only step 1 short-circuits when the repo already exists.
+Same five steps regardless of whether the repo is new or pre-existing. Only step 1 short-circuits when the repo already exists.
 
 1. **Ensure repo exists** — `gh repo view`; if missing, `gh repo create --public` (no auto-init, no `initRepo`).
-2. **Clone** — `gh repo clone <repo> <dir>`. Works on empty repos (emits a warning, produces a `.git` dir with an unborn `main`) and on populated repos (normal clone).
-3. **Pin local branch to `main`** — `git -C <dir> symbolic-ref HEAD refs/heads/main`. No-op for existing repos. For empty repos, this guarantees the first commit lands on `main` regardless of the user's `init.defaultBranch` config (could be `master` on older git installs).
-4. **Apply template** — every existing step in Phase 3 unchanged.
-5. **Commit** — `git add -A`, `git commit` (skip if clean tree, as today; `commitAndPushRepo` already handles this for pre-existing repos at `finalize.go:157–166`).
-6. **Push** — `git push -u origin main`. For empty remote: creates `main` (ref-creation push). For existing remote: fast-forward.
+2. **Clone** — `gh repo clone <repo> <dir>`. Verified empirically (gh 2.80.0): on an empty repo this exits 0, emits a warning, and produces a `.git` dir with `HEAD = refs/heads/main` already (GitHub sets the default branch on repo creation; the clone honors it). On populated repos: normal clone.
+3. **Apply template** — every existing step in Phase 3 unchanged.
+4. **Commit** — `git add -A`, `git commit` (skip if clean tree, as today; `commitAndPushRepo` already handles this for pre-existing repos at `finalize.go:157–166`).
+5. **Push** — `git push -u origin main`. For empty remote: creates `main` (ref-creation push, verified to work end-to-end during the Q1 probe). For existing remote: fast-forward.
+
+We considered adding `git symbolic-ref HEAD refs/heads/main` after the clone as defensive insurance against a user with a non-`main` GitHub account default branch. Skipped: the empirical probe showed HEAD is already at `refs/heads/main` for the realistic case, and the edge case (account configured with a different default) is rare and would surface as a clear, traceable push error if it ever occurred. Adding defensive code for an unobserved scenario isn't justified.
 
 ## File-by-file changes
 
@@ -50,23 +51,9 @@ Same six steps regardless of whether the repo is new or pre-existing. Only step 
 
 The `waitForRepoVisible` call stays; it still closes the GraphQL-vs-create race for downstream `gh api` calls (environments, secrets).
 
-### `internal/shell/github.go` (`Clone` method)
-
-**Pin HEAD to `main` after clone.**
-
-In `Clone(dest)` (line 441), after the clone succeeds and the `.git` check passes, run:
-
-```go
-MustRun("git symbolic-ref HEAD refs/heads/main", g.DryRun, dest)
-```
-
-This is idempotent: for a populated clone HEAD is already `refs/heads/main`, the call is a no-op write. For an empty clone, it pins the unborn branch name.
-
-Question to confirm during implementation: does `gh repo clone` of an empty repo exit non-zero or just emit a warning? If non-zero, `MustRunWithRetry` at line 442 will treat it as a failure and abort. If so, switch to a non-failing check or filter on the specific empty-repo warning.
-
 ### `internal/steps/finalize.go`
 
-**Change push to handle ref-creation and add post-create-style retry tolerance.**
+**Change push to handle ref-creation. Keep plain `shell.Run` (no retry hardening).**
 
 Line 172 today:
 
@@ -79,14 +66,19 @@ if out, err := shell.Run("git push", false, true, repoDir); err != nil {
 Change to:
 
 ```go
-if out, err := shell.RunPostCreate("git push -u origin main", repoDir); err != nil {
+// Plain Run, no retry: post-create replica lag is documented at clone time
+// (see MustRunPostCreate) but not at push time -- by Phase 5 the repo has
+// been touched by clone + several gh api calls, so every replica that
+// matters has caught up. If push-time lag ever surfaces, design a targeted
+// retry around the actual error string then; don't speculate now.
+if out, err := shell.Run("git push -u origin main", false, true, repoDir); err != nil {
     log.Fatalf("git push failed in %s: %v\n%s", fullRepo, err, out)
 }
 ```
 
-`-u origin main` works for both cases: ref-creation on empty remote, normal upstream-already-set push on existing repo (the `-u` re-applies the same upstream that the clone already set, harmless).
+`-u origin main` works for both cases: ref-creation on empty remote (the new-repo path; verified end-to-end during the Q1 probe), normal upstream-already-set push on existing repo (the `-u` re-applies the same upstream that the clone already set, harmless).
 
-The retry tolerance handles the adjacent replica-lag class: an empty repo created in Phase 2 may not be visible to every git replica at Phase 5 push time. Today the push is plain `shell.Run`; we want the same "retry on any non-rate-limit error in the post-create window" behaviour that `MustRunPostCreate` provides for the clone. Either reuse `MustRunPostCreate` directly (it `Fatalf`s, which matches the current behaviour) or add a `RunPostCreate` non-Fatal sibling and keep the explicit `log.Fatalf` here for the formatted message.
+No retry classifier is added. Auth failures, permission errors, and branch-protection rejections are all permanent and should fail fast. The clone uses `MustRunPostCreate` because post-create clone lag was observed in production; push-time lag has not been observed and adding a retry on speculation would mask future real bugs.
 
 ### Tests
 
@@ -108,6 +100,6 @@ The retry tolerance handles the adjacent replica-lag class: an empty repo create
 
 ## Open questions
 
-1. **Empty-repo clone exit code** — does `gh repo clone` of a no-commit repo exit 0 with a warning, or non-zero? Affects whether `MustRunWithRetry` in `Clone()` swallows it correctly. Verify before editing `Clone`.
-2. **`git symbolic-ref` placement** — better in `Clone()` (one line, minimal blast radius) or in a new `steps.PrepareLocalRepo` step (more visible in the pipeline)? Leaning toward `Clone()` for minimal churn.
-3. **Retry classifier for push** — `MustRunPostCreate` retries on *any* non-rate-limit error. For the push, that's broad: a real auth failure or a malformed ref would also retry. Acceptable in the post-create window (≤65s of retries before abort), but worth confirming against historical push failures we'd want to fail fast on.
+1. ~~**Empty-repo clone exit code**~~ — Resolved by empirical probe (gh 2.80.0): `gh repo clone` of an empty repo exits 0, emits a warning to stderr, and produces a working `.git` dir with `HEAD = refs/heads/main`. CI uses gh 2.89.0 — re-confirm on first acceptance run, but no behaviour change is expected across this minor-version bump.
+2. ~~**`git symbolic-ref` placement**~~ — Resolved: not adding the call. The empirical probe showed it would be a no-op in the realistic case, and the edge-case scenario (non-`main` GitHub account default branch) is unobserved.
+3. ~~**Retry classifier for push**~~ — Resolved: no retry. Best-practice retry policy ties retries to *observed* transient failure modes; push-time replica lag is unobserved, and adding speculative retry hardening would mask future real failures (auth, permission, branch protection). If push-time lag ever surfaces, target the retry around the actual error string then.
