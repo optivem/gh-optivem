@@ -474,23 +474,24 @@ func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
 		listCmd = fmt.Sprintf("gh run list --repo %s --limit 1 --json databaseId --jq .[0].databaseId", g.Repo)
 	}
 
-	const appearPollSecs = 5
+	const appearPollSecs = 10
+	const appearAttempts = 6
 	sp := spinner.Start(fmt.Sprintf("Waiting for workflow run to appear (%s, polling every %ds)", workflow, appearPollSecs))
 	var out string
 	var err error
-	for attempt := 1; attempt <= 12; attempt++ {
+	for attempt := 1; attempt <= appearAttempts; attempt++ {
 		out, err = RunCapture(listCmd, "")
 		if err == nil && strings.TrimSpace(out) != "" {
 			break
 		}
-		sp.Update(fmt.Sprintf("attempt %d/12", attempt))
-		if attempt < 12 {
+		sp.Update(fmt.Sprintf("attempt %d/%d", attempt, appearAttempts))
+		if attempt < appearAttempts {
 			time.Sleep(appearPollSecs * time.Second)
 		}
 	}
 	sp.Stop()
 	if err != nil || strings.TrimSpace(out) == "" {
-		return fmt.Errorf("no workflow runs found for %s (workflow: %s) after 12 attempts", g.Repo, workflow)
+		return fmt.Errorf("no workflow runs found for %s (workflow: %s) after %d attempts", g.Repo, workflow, appearAttempts)
 	}
 
 	runID := strings.TrimSpace(out)

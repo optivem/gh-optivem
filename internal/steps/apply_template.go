@@ -11,15 +11,12 @@ import (
 )
 
 const (
-	cleanupWorkflow         = "cleanup.yml"
-	deployCloudRun          = "cloud-run"
-	cloudSuffix             = "-cloud"
-	commitStageYml          = "-commit-stage.yml"
-	acceptStageYml          = "acceptance-stage.yml"
-	qaStageYml              = "qa-stage.yml"
-	qaSignoffYml            = "qa-signoff.yml"
-	prodStageYml            = "prod-stage.yml"
-	acceptStageLegacyYml    = "acceptance-stage-legacy.yml"
+	deployCloudRun = "cloud-run"
+	cloudSuffix    = "-cloud"
+
+	// Substring fragments still consumed by the content-replacement helpers
+	// (monolithContentReplacements, multitierContentReplacements, etc.).
+	// Filename and folder-path templates live in Names; see names.go.
 	suffixAcceptanceStage   = "-acceptance-stage"
 	suffixQAStage           = "-qa-stage"
 	suffixQASignoff         = "-qa-signoff"
@@ -82,46 +79,48 @@ func copyExternals(shop, repoDir string) {
 // to copy from shop (cfg.Lang for monolith, cfg.BackendLang for multitier);
 // the file at shop/system/<arch>/<systemLang>/VERSION becomes repoDir/VERSION.
 func copySystemTests(shop, repoDir, testLang, composeVariant, systemLang string) string {
-	testDst := filepath.Join(repoDir, dirSystemTest)
-	files.CopyDir(filepath.Join(shop, dirSystemTest, testLang), testDst)
-
 	arch := "monolith"
 	if composeVariant != "single" {
 		arch = "multitier"
 	}
-	dockerDst := filepath.Join(repoDir, dirDocker)
-	files.CopyDir(filepath.Join(shop, dirDocker, testLang, arch), dockerDst)
+	vars := map[string]string{"testLang": testLang, "arch": arch}
+
+	testDst := filepath.Join(repoDir, Names.TargetSystemTestDir)
+	files.CopyDir(filepath.Join(shop, Expand(Names.ShopSystemTestDir, vars)), testDst)
+
+	dockerDst := filepath.Join(repoDir, Names.TargetDockerDir)
+	files.CopyDir(filepath.Join(shop, Expand(Names.ShopDockerDir, vars)), dockerDst)
 
 	templates.CopyVersion(shop, repoDir, arch, systemLang)
 	return testDst
 }
 
-// monolithPipelineWorkflows builds workflow source->dest map for monolith pipeline stages.
-func monolithPipelineWorkflows(testLang, stageSuffix string) map[string]string {
-	p := prefixMonolith + testLang
-	return map[string]string{
-		p + suffixAcceptanceStage + stageSuffix + ".yml": acceptStageYml,
-		p + suffixQAStage + stageSuffix + ".yml":         qaStageYml,
-		p + suffixQASignoff + ".yml":                     qaSignoffYml,
-		p + suffixProdStage + stageSuffix + ".yml":       prodStageYml,
+// pipelineWorkflows builds the workflow source->dest map for the four
+// pipeline-stage workflows (acceptance/qa/prod take stageSuffix; qa-signoff
+// does not, since it does not vary by deploy target).
+func pipelineWorkflows(srcTmpl string, baseVars map[string]string) map[string]string {
+	out := map[string]string{}
+	for _, stage := range []string{"acceptance-stage", "qa-stage", "prod-stage"} {
+		v := MergeVars(baseVars, map[string]string{"stage": stage})
+		out[Expand(srcTmpl, v)] = Expand(Names.DestPipelineStageWf, v)
 	}
+	v := MergeVars(baseVars, map[string]string{"stage": "qa-signoff", "stageSuffix": ""})
+	out[Expand(srcTmpl, v)] = Expand(Names.DestPipelineStageWf, v)
+	return out
 }
 
-// multitierPipelineWorkflows builds workflow source->dest map for multitier pipeline stages.
-func multitierPipelineWorkflows(testLang, stageSuffix string) map[string]string {
-	p := prefixMultitier + testLang
-	return map[string]string{
-		p + suffixAcceptanceStage + stageSuffix + ".yml": acceptStageYml,
-		p + suffixQAStage + stageSuffix + ".yml":         qaStageYml,
-		p + suffixQASignoff + ".yml":                     qaSignoffYml,
-		p + suffixProdStage + stageSuffix + ".yml":       prodStageYml,
-	}
+func monolithPipelineWorkflows(vars map[string]string) map[string]string {
+	return pipelineWorkflows(Names.MonolithPipelineStageWf, vars)
+}
+
+func multitierPipelineWorkflows(vars map[string]string) map[string]string {
+	return pipelineWorkflows(Names.MultitierPipelineStageWf, vars)
 }
 
 // addLegacyWorkflow adds the acceptance-stage-legacy workflow for docker deploy.
-func addLegacyWorkflow(wfMap map[string]string, prefix, testLang, deploy string) {
+func addLegacyWorkflow(wfMap map[string]string, srcTmpl string, vars map[string]string, deploy string) {
 	if deploy == "docker" {
-		wfMap[prefix+testLang+"-acceptance-stage-legacy.yml"] = acceptStageLegacyYml
+		wfMap[Expand(srcTmpl, vars)] = Names.DestLegacyAcceptWf
 	}
 }
 
@@ -139,7 +138,7 @@ func ApplyTemplate(cfg *config.Config) {
 	// Copy architecture-independent workflows
 	log.Info("Copying cleanup workflow...")
 	templates.CopyWorkflows(map[string]string{
-		cleanupWorkflow: cleanupWorkflow,
+		Names.CleanupWf: Names.CleanupWf,
 	}, cfg.ShopPath, cfg.RepoDir)
 
 	if cfg.Arch == "monolith" {
@@ -166,21 +165,21 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	testLang := cfg.TestLang
 	shop := cfg.ShopPath
 	repoDir := cfg.RepoDir
-	stageSuffix := cloudRunSuffix(cfg.Deploy)
+	vars := VarsForCfg(cfg)
 
 	// Workflows: rename to language-agnostic names
 	log.Info("Copying pipeline and commit-stage workflows...")
-	wfMap := monolithPipelineWorkflows(testLang, stageSuffix)
-	wfMap[prefixMonolith+lang+commitStageYml] = "commit-stage.yml"
-	wfMap[prefixMonolith+lang+"-bump-patch-version.yml"] = "bump-patch-version.yml"
-	addLegacyWorkflow(wfMap, prefixMonolith, testLang, cfg.Deploy)
+	wfMap := monolithPipelineWorkflows(vars)
+	wfMap[Expand(Names.MonolithCommitStageWf, vars)] = Names.DestCommitStageWf
+	wfMap[Expand(Names.MonolithBumpPatchVersionWf, vars)] = Names.DestBumpPatchVersionWf
+	addLegacyWorkflow(wfMap, Names.MonolithLegacyAcceptWf, vars, cfg.Deploy)
 	templates.CopyWorkflows(wfMap, shop, repoDir)
 
 	// System code: system/monolith/{lang}/ -> system/
 	log.Info("Copying system code...")
 	files.CopyDir(
-		filepath.Join(shop, "system", "monolith", lang),
-		filepath.Join(repoDir, "system"),
+		filepath.Join(shop, Expand(Names.ShopSystemMonolithDir, vars)),
+		filepath.Join(repoDir, Names.TargetSystemDir),
 	)
 
 	log.Info(infoCopyingExternals)
@@ -218,13 +217,13 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	shop := cfg.ShopPath
 	repoDir := cfg.RepoDir
 	sysDir := cfg.SystemRepoDir
-	stageSuffix := cloudRunSuffix(cfg.Deploy)
+	vars := VarsForCfg(cfg)
 
 	// Root repo: pipeline stage workflows + system-test
 	log.Info("Copying root repo pipeline workflows...")
-	rootWfMap := monolithPipelineWorkflows(testLang, stageSuffix)
-	rootWfMap["bump-patch-version-multirepo.yml"] = "bump-patch-version.yml"
-	addLegacyWorkflow(rootWfMap, prefixMonolith, testLang, cfg.Deploy)
+	rootWfMap := monolithPipelineWorkflows(vars)
+	rootWfMap[Names.BumpPatchVersionMultirepoWf] = Names.DestBumpPatchVersionWf
+	addLegacyWorkflow(rootWfMap, Names.MonolithLegacyAcceptWf, vars, cfg.Deploy)
 	templates.CopyWorkflows(rootWfMap, shop, repoDir)
 
 	log.Info(infoCopyingExternals)
@@ -269,27 +268,27 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	EnsureWorkflowDir(sysDir)
 
 	log.Info("Copying system code to system repo...")
-	systemSrc := filepath.Join(shop, "system", "monolith", lang)
-	files.CopyDir(systemSrc, filepath.Join(sysDir, "system"))
+	systemSrc := filepath.Join(shop, Expand(Names.ShopSystemMonolithDir, vars))
+	files.CopyDir(systemSrc, filepath.Join(sysDir, Names.TargetSystemDir))
 	templates.CopyVersion(shop, sysDir, "monolith", lang)
 
 	log.Info("Copying commit-stage and bump-patch-version workflows to system repo...")
 	systemWfMap := map[string]string{
-		prefixMonolith + lang + commitStageYml:                 "commit-stage.yml",
-		prefixMonolith + lang + "-bump-patch-version.yml":      "bump-patch-version.yml",
-		cleanupWorkflow:                                        cleanupWorkflow,
+		Expand(Names.MonolithCommitStageWf, vars):      Names.DestCommitStageWf,
+		Expand(Names.MonolithBumpPatchVersionWf, vars): Names.DestBumpPatchVersionWf,
+		Names.CleanupWf:                                Names.CleanupWf,
 	}
 	templates.CopyWorkflows(systemWfMap, shop, sysDir)
 
 	log.Info("Fixing up system repo workflow content and SonarCloud keys...")
 	sysContentReplacements := [][2]string{
-		{prefixMonolith + lang + suffixCommitStage, "commit-stage"},
-		{prefixMonolith + lang + "-bump-patch-version", "bump-patch-version"},
+		{ExpandRef(Names.MonolithCommitStageWf, vars), "commit-stage"},
+		{ExpandRef(Names.MonolithBumpPatchVersionWf, vars), "bump-patch-version"},
 		// Same precedence rule as monolithContentReplacements: VERSION-specific
 		// rule before the broader system/monolith/<lang> -> system rule.
-		{systemMonolithDir + lang + "/VERSION", "VERSION"},
-		{systemMonolithDir + lang, "system"},
-		{prefixMonolithSystem + lang, "system"},
+		{Expand(Names.ShopVersionFile, vars), "VERSION"},
+		{Expand(Names.ShopSystemMonolithDir, vars), Names.TargetSystemDir},
+		{Expand(Names.MonolithImageRef, vars), Names.TargetSystemDir},
 	}
 	templates.FixupWorkflowContent(sysDir, sysContentReplacements)
 	templates.FixupAllTextFiles(sysDir, monolithSonarKeyReplacements(lang))
@@ -304,27 +303,27 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	testLang := cfg.TestLang
 	shop := cfg.ShopPath
 	repoDir := cfg.RepoDir
-	stageSuffix := cloudRunSuffix(cfg.Deploy)
+	vars := VarsForCfg(cfg)
 
 	// Workflows: rename to language-agnostic names
 	log.Info("Copying pipeline and commit-stage workflows...")
-	wfMap := multitierPipelineWorkflows(testLang, stageSuffix)
-	wfMap[prefixMultitierBackend+backendLang+commitStageYml] = "backend-commit-stage.yml"
-	wfMap[prefixMultitierFrontend+frontendLang+commitStageYml] = "frontend-commit-stage.yml"
-	wfMap[prefixMultitier+backendLang+"-bump-patch-version.yml"] = "bump-patch-version.yml"
-	addLegacyWorkflow(wfMap, prefixMultitier, testLang, cfg.Deploy)
+	wfMap := multitierPipelineWorkflows(vars)
+	wfMap[Expand(Names.MultitierBackendCommitStageWf, vars)] = Names.DestBackendCommitStageWf
+	wfMap[Expand(Names.MultitierFrontendCommitStageWf, vars)] = Names.DestFrontendCommitStageWf
+	wfMap[Expand(Names.MultitierBumpPatchVersionWf, vars)] = Names.DestBumpPatchVersionWf
+	addLegacyWorkflow(wfMap, Names.MultitierLegacyAcceptWf, vars, cfg.Deploy)
 	templates.CopyWorkflows(wfMap, shop, repoDir)
 
 	// Backend code: system/multitier/backend-{lang}/ -> backend/
 	log.Info("Copying backend code...")
-	backendSrc := filepath.Join(shop, systemMultitierBackend+backendLang)
-	files.CopyDir(backendSrc, filepath.Join(repoDir, "backend"))
+	backendSrc := filepath.Join(shop, Expand(Names.ShopSystemMultitierBackend, vars))
+	files.CopyDir(backendSrc, filepath.Join(repoDir, Names.TargetBackendDir))
 	log.Success("Applied backend template")
 
 	// Frontend code: system/multitier/frontend-{lang}/ -> frontend/
 	log.Info("Copying frontend code...")
-	frontendSrc := filepath.Join(shop, "system", "multitier", "frontend-"+frontendLang)
-	files.CopyDir(frontendSrc, filepath.Join(repoDir, "frontend"))
+	frontendSrc := filepath.Join(shop, Expand(Names.ShopSystemMultitierFrontend, vars))
+	files.CopyDir(frontendSrc, filepath.Join(repoDir, Names.TargetFrontendDir))
 	log.Success("Applied frontend template")
 
 	log.Info(infoCopyingExternals)
@@ -373,13 +372,13 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	repoDir := cfg.RepoDir
 	bDir := cfg.BackendRepoDir
 	fDir := cfg.FrontendRepoDir
-	stageSuffix := cloudRunSuffix(cfg.Deploy)
+	vars := VarsForCfg(cfg)
 
 	// Root repo: pipeline stage workflows + system-test + externals
 	log.Info("Copying root repo pipeline workflows...")
-	rootWfMap := multitierPipelineWorkflows(testLang, stageSuffix)
-	rootWfMap["bump-patch-version-multirepo.yml"] = "bump-patch-version.yml"
-	addLegacyWorkflow(rootWfMap, prefixMultitier, testLang, cfg.Deploy)
+	rootWfMap := multitierPipelineWorkflows(vars)
+	rootWfMap[Names.BumpPatchVersionMultirepoWf] = Names.DestBumpPatchVersionWf
+	addLegacyWorkflow(rootWfMap, Names.MultitierLegacyAcceptWf, vars, cfg.Deploy)
 	templates.CopyWorkflows(rootWfMap, shop, repoDir)
 
 	log.Info(infoCopyingExternals)
@@ -436,14 +435,14 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	// Backend repo: code + commit stage
 	EnsureWorkflowDir(bDir)
 	log.Info("Copying backend code to backend repo...")
-	backendSrc := filepath.Join(shop, systemMultitierBackend+backendLang)
-	files.CopyDir(backendSrc, filepath.Join(bDir, "backend"))
+	backendSrc := filepath.Join(shop, Expand(Names.ShopSystemMultitierBackend, vars))
+	files.CopyDir(backendSrc, filepath.Join(bDir, Names.TargetBackendDir))
 
 	log.Info("Copying commit-stage and bump-patch-version workflows to backend repo...")
 	backendWfMap := map[string]string{
-		prefixMultitierBackend + backendLang + commitStageYml:               "backend-commit-stage.yml",
-		prefixMultitierBackend + backendLang + "-bump-patch-version.yml":    "bump-patch-version.yml",
-		cleanupWorkflow:                                                     cleanupWorkflow,
+		Expand(Names.MultitierBackendCommitStageWf, vars): Names.DestBackendCommitStageWf,
+		Expand(Names.MultitierBackendBumpPatchWf, vars):   Names.DestBumpPatchVersionWf,
+		Names.CleanupWf:                                   Names.CleanupWf,
 	}
 	templates.CopyWorkflows(backendWfMap, shop, bDir)
 
@@ -452,10 +451,10 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	// git-tag value) collapses to "v" before the bare 3-segment "multitier-backend-{lang}"
 	// → "backend" rule below partial-matches it into "backend-v".
 	backendReplacements := append(
-		systemPrefixDropReplacements(prefixMultitierBackend+backendLang),
-		[2]string{prefixMultitierBackend + backendLang + suffixCommitStage, "backend-commit-stage"},
-		[2]string{systemMultitierBackend + backendLang, "backend"},
-		[2]string{prefixMultitierBackend + backendLang, "backend"},
+		systemPrefixDropReplacements(Expand(Names.MultitierBackendRef, vars)),
+		[2]string{ExpandRef(Names.MultitierBackendCommitStageWf, vars), "backend-commit-stage"},
+		[2]string{Expand(Names.ShopSystemMultitierBackend, vars), Names.TargetBackendDir},
+		[2]string{Expand(Names.MultitierBackendRef, vars), Names.TargetBackendDir},
 		[2]string{"backend-bump-patch-version", "bump-patch-version"},
 	)
 	templates.FixupWorkflowContent(bDir, backendReplacements)
@@ -465,14 +464,14 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	// Frontend repo: code + commit stage
 	EnsureWorkflowDir(fDir)
 	log.Info("Copying frontend code to frontend repo...")
-	frontendSrc := filepath.Join(shop, "system", "multitier", "frontend-"+frontendLang)
-	files.CopyDir(frontendSrc, filepath.Join(fDir, "frontend"))
+	frontendSrc := filepath.Join(shop, Expand(Names.ShopSystemMultitierFrontend, vars))
+	files.CopyDir(frontendSrc, filepath.Join(fDir, Names.TargetFrontendDir))
 
 	log.Info("Copying commit-stage and bump-patch-version workflows to frontend repo...")
 	frontendWfMap := map[string]string{
-		prefixMultitierFrontend + frontendLang + commitStageYml:              "frontend-commit-stage.yml",
-		prefixMultitierFrontend + frontendLang + "-bump-patch-version.yml":   "bump-patch-version.yml",
-		cleanupWorkflow:                                                      cleanupWorkflow,
+		Expand(Names.MultitierFrontendCommitStageWf, vars): Names.DestFrontendCommitStageWf,
+		Expand(Names.MultitierFrontendBumpPatchWf, vars):   Names.DestBumpPatchVersionWf,
+		Names.CleanupWf:                                    Names.CleanupWf,
 	}
 	templates.CopyWorkflows(frontendWfMap, shop, fDir)
 
@@ -481,10 +480,10 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	// git-tag value) collapses to "v" before the bare 3-segment "multitier-frontend-react"
 	// → "frontend" rule below partial-matches it into "frontend-v".
 	frontendReplacements := append(
-		systemPrefixDropReplacements(prefixMultitierFrontend+frontendLang),
-		[2]string{prefixMultitierFrontend + frontendLang + suffixCommitStage, "frontend-commit-stage"},
-		[2]string{"system/multitier/frontend-" + frontendLang, "frontend"},
-		[2]string{prefixMultitierFrontend + frontendLang, "frontend"},
+		systemPrefixDropReplacements(Expand(Names.MultitierFrontendRef, vars)),
+		[2]string{ExpandRef(Names.MultitierFrontendCommitStageWf, vars), "frontend-commit-stage"},
+		[2]string{Expand(Names.ShopSystemMultitierFrontend, vars), Names.TargetFrontendDir},
+		[2]string{Expand(Names.MultitierFrontendRef, vars), Names.TargetFrontendDir},
 		[2]string{"frontend-bump-patch-version", "bump-patch-version"},
 	)
 	templates.FixupWorkflowContent(fDir, frontendReplacements)
@@ -734,9 +733,9 @@ func multitierSonarKeyReplacements(backendLang, frontendLang string) [][2]string
 
 // copyDocs copies arch-specific and shared docs templates into {repoDir}/docs/.
 func copyDocs(shop, repoDir, arch string) {
-	dst := filepath.Join(repoDir, "docs")
-	files.CopyDir(filepath.Join(shop, "docs", "design", arch), dst)
-	files.CopyDir(filepath.Join(shop, "docs", "design", "shared"), dst)
+	dst := filepath.Join(repoDir, Names.TargetDocsDir)
+	files.CopyDir(filepath.Join(shop, Expand(Names.ShopDocsArchDir, map[string]string{"arch": arch})), dst)
+	files.CopyDir(filepath.Join(shop, Names.ShopDocsSharedDir), dst)
 }
 
 // copyCloudRunScripts copies setup-gcp.sh and teardown-gcp.sh from shop to repo.
