@@ -11,6 +11,23 @@
 # (at-red-test.md, at-red-dsl.md, ...) and stay agent-internal. The YAML
 # describes the orchestrator's view: what dispatches next, gated by which flag.
 #
+# Document shape:
+#
+#   flows:
+#     <flow_name>:
+#       start: <node_id>            # entry node — must appear in nodes:
+#       nodes:                      # ids unique per flow (reuse across flows is fine)
+#         - id: <node_id>
+#           type: <node_type>       # body fields depend on type:
+#                                   #   service_task  → action: <name>
+#                                   #   user_task     → agent: <name>   (or "human" for a STOP)
+#                                   #   gateway       → binding: <name>
+#                                   #   call_activity → flow: <flow_name>   [+ params: <map>]
+#                                   #   start_event / end_event → no body
+#       sequence_flows:
+#         - {from: <id>, to: <id>}                        # unconditional edge
+#         - {from: <id>, to: <id>, when: "<predicate>"}   # gateway-guarded edge
+#
 # Node types (BPMN-shaped vocabulary):
 #   start_event    Flow entry.
 #   end_event      Flow terminus.
