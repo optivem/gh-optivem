@@ -23,46 +23,6 @@ The architectural shift, in one line: **gh-optivem stops treating Claude Code as
 
 Sequence: YAML embed first (small, mechanical, unblocks the BPMN plan); then agent-prompt embed (the substantial change); then override flags, the diagram CLI replacement, and consumer cleanup. Each item is one PR.
 
-### 2. Embed agent prompts; rewrite `clauderun.Dispatch` to inline them; drop the Task-subagent indirection
-
-**Files (gh-optivem):**
-- `internal/atdd/runtime/agents/prompts/<name>.md` (NEW; ~11 files migrated from `shop/.claude/agents/atdd/`)
-- `internal/atdd/runtime/agents/embed.go` (NEW)
-- `internal/atdd/runtime/clauderun/clauderun.go` (rewrite render path)
-- `internal/atdd/runtime/clauderun/clauderun_test.go` (update assertions)
-- `internal/atdd/runtime/driver/driver.go` (update dispatcher wiring; `agentNames` becomes a filesystem walk of embedded prompts)
-- `internal/atdd/runtime/driver/driver_test.go`
-
-Per-agent prompt body is migrated in self-contained form: any `@includes` pointing at per-phase docs (`at-red-test.md`, etc.) are resolved at copy-in time so the embedded prompt is one file with no Claude-Code-specific resolution. Substitution placeholders use `${name}` (matching the YAML's existing param syntax — see `ExpandParams` in `run.go`) so authors only learn one substitution dialect.
-
-```go
-// internal/atdd/runtime/agents/embed.go
-package agents
-
-import (
-    "embed"
-    "fmt"
-)
-
-//go:embed prompts/*.md
-var promptFS embed.FS
-
-// Prompt returns the embedded prompt template for the given agent name.
-// Returns an error if no prompt is embedded under that name.
-func Prompt(name string) ([]byte, error) {
-    data, err := promptFS.ReadFile("prompts/" + name + ".md")
-    if err != nil {
-        return nil, fmt.Errorf("agents: no embedded prompt for %q", name)
-    }
-    return data, nil
-}
-
-// Names returns every embedded agent name (filesystem-walked once at startup).
-func Names() []string { … }
-```
-
-`clauderun.Dispatch` reads the embedded template, runs `${name}` substitution against ticket context (`${issue_num}`, `${issue_title}`, `${issue_repo}`, `${project_title}`, `${project_url}`, `${phase_doc}`, `${phase}`, …), and passes the rendered string as the sole input to `claude -p`. The "Launch the `<name>` subagent" templating is removed. The `--manual-agents` v1 fallback continues to work (it prints a banner and blocks on stdin — no `claude` invocation either way).
-
 ### 3. Override flags — `--yaml`, `--agent-prompt`, `--config`
 
 **Files (gh-optivem):**

@@ -193,15 +193,19 @@ func TestClaudeRunDispatch_AdvancesOnFreshCommit(t *testing.T) {
 		t.Fatalf("expected 1 claude call, got %d", len(claudeFake.calls))
 	}
 	got := claudeFake.calls[0].Prompt
-	// Prompt should be constructed from the YAML node + ticket context.
-	if !strings.Contains(got, "Launch the atdd-test subagent") {
-		t.Errorf("prompt missing launch line:\n%s", got)
+	// Prompt should be the embedded agent's body with ${name} placeholders
+	// substituted from ticket context; v2 has no parent-claude wrapper.
+	if !strings.Contains(got, "You are the Test Agent") {
+		t.Errorf("prompt missing agent identity line")
 	}
 	if !strings.Contains(got, "#42") || !strings.Contains(got, "optivem/shop") {
-		t.Errorf("prompt missing ticket context:\n%s", got)
+		t.Errorf("prompt missing ticket context")
 	}
 	if !strings.Contains(got, "docs/atdd/process/at-red-test.md") {
-		t.Errorf("prompt missing phase doc:\n%s", got)
+		t.Errorf("prompt missing phase doc")
+	}
+	if strings.Contains(got, "${") {
+		t.Errorf("prompt still contains ${...} placeholder")
 	}
 }
 
@@ -279,8 +283,8 @@ func TestClaudeRunDispatch_AppendsOverrideExtraToPrompt(t *testing.T) {
 }
 
 func TestClaudeRunDispatch_ReplaceOverrideShortCircuitsTemplate(t *testing.T) {
-	// --replace swaps the entire prompt. The templated launch line must
-	// be absent and only the operator-supplied text reaches the runner.
+	// --replace swaps the entire prompt. The embedded agent body must be
+	// absent and only the operator-supplied text reaches the runner.
 	gitFake := &fakeGit{
 		out: [][]byte{
 			[]byte("aaaa\n"),
@@ -302,8 +306,8 @@ func TestClaudeRunDispatch_ReplaceOverrideShortCircuitsTemplate(t *testing.T) {
 	if got != custom {
 		t.Errorf("prompt: got %q, want %q", got, custom)
 	}
-	if strings.Contains(got, "Launch the atdd-test subagent") {
-		t.Errorf("templated prompt leaked through --replace:\n%s", got)
+	if strings.Contains(got, "You are the Test Agent") {
+		t.Errorf("embedded agent body leaked through --replace")
 	}
 }
 
@@ -417,10 +421,9 @@ func TestPreflightFailureSurfacesEarly(t *testing.T) {
 func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	// The structural_cycle reuses one set of YAML nodes across SYSAPI /
 	// SYSUI / CHORE by injecting ${agent} / ${phase} / ${phase_doc} via
-	// call_activity params. Before the fix the dispatcher passed the raw
-	// placeholder strings through to clauderun, which then rendered a
-	// prompt asking the operator to "Launch the ${agent} subagent" —
-	// useless dispatch.
+	// call_activity params. The dispatcher must resolve raw.Agent before
+	// looking up the embedded prompt — otherwise it would try to load a
+	// prompt named "${agent}", which doesn't exist.
 	gitFake := &fakeGit{
 		out: [][]byte{
 			[]byte("aaaaaaa1\n"),
@@ -448,16 +451,16 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	}
 	prompt := claudeFake.calls[0].Prompt
 	if strings.Contains(prompt, "${") {
-		t.Errorf("prompt still contains ${...} placeholder:\n%s", prompt)
+		t.Errorf("prompt still contains ${...} placeholder")
 	}
-	if !strings.Contains(prompt, "Launch the atdd-task subagent") {
-		t.Errorf("prompt missing expanded agent launch line:\n%s", prompt)
+	if !strings.Contains(prompt, "You are the Task Agent") {
+		t.Errorf("prompt missing expanded agent identity line (atdd-task → Task Agent)")
 	}
 	if !strings.Contains(prompt, "docs/atdd/process/sysui-redesign.md") {
-		t.Errorf("prompt missing expanded phase_doc:\n%s", prompt)
+		t.Errorf("prompt missing expanded phase_doc")
 	}
 	if !strings.Contains(prompt, "SYSTEM UI REDESIGN - WRITE") {
-		t.Errorf("prompt missing expanded phase description:\n%s", prompt)
+		t.Errorf("prompt missing expanded phase description")
 	}
 }
 

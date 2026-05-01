@@ -16,13 +16,15 @@
 //
 // Agent dispatch (v2): every user_task whose `agent:` value is something
 // other than `human` shells out to the `claude` CLI via the clauderun
-// package. The driver constructs a prompt from the node's Raw metadata
-// and the live Context, hands it to clauderun.Dispatch, and detects
-// success by HEAD diff (a fresh commit on the same branch). v1's
-// "pause and let the operator launch the agent in a second window"
-// behaviour is preserved as a fallback under Options.ManualAgents — it
-// lets us bisect "did v2 misroute the agent?" against "did v1 see the
-// commit?" without two parallel binaries.
+// package. clauderun reads the embedded per-agent prompt (from
+// internal/atdd/runtime/agents/prompts/), substitutes ${name} placeholders
+// from the live Context, and hands the rendered string to `claude -p` as
+// the agent's full one-shot input — there is no parent-claude harness or
+// Task-tool indirection. Success is detected by HEAD diff (a fresh commit
+// on the same branch). v1's "pause and let the operator launch the agent
+// in a second window" behaviour is preserved as a fallback under
+// Options.ManualAgents — it lets us bisect "did v2 misroute the agent?"
+// against "did v1 see the commit?" without two parallel binaries.
 package driver
 
 import (
@@ -302,33 +304,17 @@ func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Conte
 	return nil
 }
 
-// agentNames lists every Claude Code agent referenced by a user_task in
-// the embedded process-flow YAML. Adding a new agent to the YAML
-// requires adding its name here so the dispatch registry resolves; the
-// engine refuses to start with an unknown binding.
-var agentNames = []string{
-	"atdd-story",
-	"atdd-bug",
-	"atdd-task",
-	"atdd-chore",
-	"atdd-test",
-	"atdd-dsl",
-	"atdd-driver",
-	"atdd-backend",
-	"atdd-frontend",
-	"atdd-stubs",
-	"atdd-release",
-}
-
 // registerAgentDispatchers registers a no-op base dispatcher for every
-// known agent name. The substantive prompt-and-pause behaviour is layered
-// on after Bind by wrapAgentDispatchers, which has access to per-node
-// RawNode metadata (description, phase_doc).
+// agent that has an embedded prompt (filesystem walk via agents.Names).
+// The substantive prompt-and-pause behaviour is layered on after Bind by
+// wrapAgentDispatchers, which has access to per-node RawNode metadata
+// (description, phase_doc). Adding a new agent is now: drop a prompt
+// under internal/atdd/runtime/agents/prompts/, recompile.
 func registerAgentDispatchers(r *agents.Registry) {
 	noop := func(ctx *statemachine.Context) statemachine.Outcome {
 		return statemachine.Outcome{}
 	}
-	for _, name := range agentNames {
+	for _, name := range agents.Names() {
 		r.Register(name, noop)
 	}
 }

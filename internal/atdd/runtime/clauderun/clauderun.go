@@ -2,10 +2,16 @@
 // agent for the current phase, replacing v1's "pause and let the operator
 // launch the agent in a second window" workflow.
 //
-// Dispatch builds a prompt from prompt.tmpl, invokes `claude` (interactive or
-// `claude -p` autonomous), and detects success by diffing git HEAD before
-// and after. The agent is expected to commit on the same branch — that
-// commit landing is what the engine's downstream verify decorator keys off.
+// Dispatch reads the embedded per-agent prompt (see internal/atdd/runtime/
+// agents/embed.go), substitutes ${name} placeholders against the live ticket
+// context, invokes `claude` (interactive or `claude -p` autonomous), and
+// detects success by diffing git HEAD before and after. The agent is
+// expected to commit on the same branch — that commit landing is what the
+// engine's downstream verify decorator keys off.
+//
+// v2 architectural note: there is no parent-claude harness or Task-tool
+// indirection. The rendered prompt IS the agent's full one-shot input —
+// `claude -p` runs the agent's instructions directly.
 //
 // The package exposes a ClaudeRunner / GitRunner pair so tests can inject
 // canned exit codes and HEAD values; the production defaults exec the real
@@ -15,7 +21,6 @@ package clauderun
 import (
 	"bytes"
 	"context"
-	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,17 +28,14 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 )
-
-//go:embed prompt.tmpl
-var promptTmplSrc string
-
-var promptTmpl = template.Must(template.New("clauderun").Parse(promptTmplSrc))
 
 // Options bundles every input Dispatch needs to construct a prompt and run
 // the subprocess. Zero values yield a usable configuration where it makes
@@ -260,21 +262,35 @@ var errNoCommit = errors.New("no commit produced")
 // output. Production points at time.Now.
 var nowFn = time.Now
 
-// renderPrompt expands prompt.tmpl with opts. Public-ish for the test
-// file; not exported.
+// renderPrompt reads the embedded prompt for opts.Agent, expands ${name}
+// placeholders against the ticket context, and appends opts.OverrideText
+// (if any) as a trailing block. Public-ish for the test file; not exported.
 func renderPrompt(opts Options) (string, error) {
-	var buf bytes.Buffer
-	if err := promptTmpl.Execute(&buf, opts); err != nil {
+	body, err := agents.Prompt(opts.Agent)
+	if err != nil {
 		return "", err
 	}
-	return buf.String(), nil
+	params := map[string]string{
+		"issue_num":     strconv.Itoa(opts.IssueNum),
+		"issue_title":   opts.IssueTitle,
+		"issue_repo":    opts.IssueRepo,
+		"project_title": opts.ProjectTitle,
+		"project_url":   opts.ProjectURL,
+		"phase":         opts.NodeDescription,
+		"phase_doc":     opts.PhaseDoc,
+	}
+	rendered := statemachine.ExpandParams(body, params)
+	if opts.OverrideText != "" {
+		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + opts.OverrideText + "\n"
+	}
+	return rendered, nil
 }
 
-// RenderPrompt is the public counterpart to renderPrompt: it expands
-// prompt.tmpl with opts and returns the prompt string Dispatch would
-// hand to the subprocess, without invoking it. The driver's agent
-// dispatcher uses this for the --interactive prompt-review hook so the
-// operator can preview the prompt and append last-minute additions.
+// RenderPrompt is the public counterpart to renderPrompt: it returns the
+// prompt string Dispatch would hand to the subprocess, without invoking
+// it. The driver's agent dispatcher uses this for the --interactive
+// prompt-review hook so the operator can preview the prompt and append
+// last-minute additions.
 //
 // If opts.RawPrompt is non-empty, it is returned verbatim — RenderPrompt
 // mirrors Dispatch's "RawPrompt wins" rule.
@@ -567,18 +583,16 @@ type execClaude struct{}
 // Interactive mode → `claude <prompt>` with stdin/stdout/stderr connected
 // directly so the operator sees the full Claude Code UI and can interject.
 //
-// Autonomous mode → `claude -p <prompt> --allowed-tools Task --output-format json`:
+// Autonomous mode → `claude -p <prompt> --output-format json`:
 //
-//   - --allowed-tools Task narrows the host's tool surface to the subagent
-//     dispatch primitive only. The host has no legitimate reason to call
-//     git / gh / Read / Grep before dispatching — those tools belong to the
-//     subagent (which runs in isolated context). Restricting up-front
-//     forces the dispatch and saves the tokens of speculative pre-work.
+//   - The prompt is the embedded agent's full instructions (rendered by
+//     renderPrompt). v2 has no host/subagent split — `claude -p` IS the
+//     agent and needs the default tool set (Read/Glob/Grep/Edit/Write/Bash)
+//     to do real work.
 //   - --output-format json buffers the run into a single JSON envelope
 //     containing `total_cost_usd` and `usage.{input,output,cache_*}_tokens`
 //     so we can surface cost/throughput in the exit banner. The trade-off
-//     is no streaming output during the run; acceptable here because items
-//     1+2 leave the host with nothing to say (it dispatches and exits).
+//     is no streaming output during the run.
 //
 // JSON parsing is best-effort — a future CLI version that changes the
 // envelope shape leaves Usage nil and the banner falls back gracefully.
@@ -605,7 +619,6 @@ func runInteractive(ctx context.Context, opts RunOpts) (RunResult, error) {
 func runAutonomous(ctx context.Context, opts RunOpts) (RunResult, error) {
 	args := []string{
 		"-p", opts.Prompt,
-		"--allowed-tools", "Task",
 		"--output-format", "json",
 	}
 	cmd := exec.CommandContext(ctx, "claude", args...)

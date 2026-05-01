@@ -150,7 +150,9 @@ func TestRenderPrompt_IncludesAllFields(t *testing.T) {
 		t.Fatalf("renderPrompt: %v", err)
 	}
 
-	mustContain(t, got, "Launch the atdd-test subagent")
+	// v2: prompt is the embedded agent body with ${name} placeholders
+	// substituted; the parent-claude "Launch the X subagent" wrapper is gone.
+	mustContain(t, got, "You are the Test Agent")
 	mustContain(t, got, `#42 "Add PUT /carts/{id}/items endpoint"`)
 	mustContain(t, got, "(optivem/shop)")
 	mustContain(t, got, "Shop ATDD (https://github.com/orgs/optivem/projects/1)")
@@ -158,51 +160,20 @@ func TestRenderPrompt_IncludesAllFields(t *testing.T) {
 	mustContain(t, got, "Phase doc: docs/atdd/process/at-red-test.md")
 	mustContain(t, got, "prefer record types")
 	mustContain(t, got, "your COMMIT must land on HEAD")
+	// All ${…} placeholders must be expanded — none should leak through.
+	if strings.Contains(got, "${") {
+		t.Errorf("prompt still contains ${...} placeholder")
+	}
 }
 
-func TestRenderPrompt_OmitsOverrideTextSection_WhenEmpty(t *testing.T) {
+func TestRenderPrompt_ReturnsErrorForUnknownAgent(t *testing.T) {
+	// agents.Prompt errors when no embedded prompt matches the name; the
+	// driver relies on this so a YAML referencing an unembedded agent
+	// fails loudly at dispatch time.
 	opts := newOpts()
-	opts.OverrideText = ""
-
-	got, err := renderPrompt(opts)
-	if err != nil {
-		t.Fatalf("renderPrompt: %v", err)
-	}
-	// The header line above the override block is "Phase doc: ...", and
-	// the line after is "When the agent finishes". With empty override
-	// there should not be a stray double-blank between them.
-	if strings.Contains(got, "\n\n\n") {
-		t.Fatalf("expected no triple-newline (orphan override block), got:\n%s", got)
-	}
-}
-
-func TestRenderPrompt_IncludesDispatchOnlyForbidsPreInvestigation(t *testing.T) {
-	// Item 1 of the dispatch-tightening plan: the host gets an explicit
-	// "do not investigate before dispatching" clause, since otherwise the
-	// model burns tokens on git status / gh issue view / gh optivem
-	// invocations that the isolated subagent will redo anyway.
-	got, err := renderPrompt(newOpts())
-	if err != nil {
-		t.Fatalf("renderPrompt: %v", err)
-	}
-	mustContain(t, got, "dispatch-only session")
-	mustContain(t, got, "Do NOT")
-	mustContain(t, got, "git status")
-	mustContain(t, got, "gh issue view")
-	mustContain(t, got, "isolated context")
-}
-
-func TestRenderPrompt_OmitsProjectLine_WhenURLMissing(t *testing.T) {
-	opts := newOpts()
-	opts.ProjectTitle = ""
-	opts.ProjectURL = ""
-
-	got, err := renderPrompt(opts)
-	if err != nil {
-		t.Fatalf("renderPrompt: %v", err)
-	}
-	if strings.Contains(got, "Project:") {
-		t.Fatalf("expected no Project: line when URL is empty, got:\n%s", got)
+	opts.Agent = "atdd-doesnotexist"
+	if _, err := renderPrompt(opts); err == nil {
+		t.Fatalf("expected error for unknown agent, got nil")
 	}
 }
 
@@ -234,8 +205,8 @@ func TestDispatch_SuccessReturnsCommitInfo(t *testing.T) {
 		t.Fatalf("expected 1 claude call, got %d", len(claudeFake.calls))
 	}
 	// Prompt is constructed and passed through to the runner.
-	if !strings.Contains(claudeFake.calls[0].Prompt, "Launch the atdd-test subagent") {
-		t.Errorf("prompt missing launch line:\n%s", claudeFake.calls[0].Prompt)
+	if !strings.Contains(claudeFake.calls[0].Prompt, "You are the Test Agent") {
+		t.Errorf("prompt missing agent identity line")
 	}
 }
 
