@@ -1,5 +1,7 @@
 # Consolidate process-flow with standard BPMN — terminology and substance
 
+> **Blocked on `plans/20260501-175411-embed-yaml-and-agent-prompts.md`.** Once that lands, the consumer YAML copies disappear and Item 1 below reduces to a 1-repo change in `gh-optivem` (loader + embedded YAML + Go API). Until then, executing Item 1 would require synchronised key renames across `gh-optivem`, `shop`, and `rehearsal-atdd-cli`.
+
 ## Motivation
 
 The header of `internal/atdd/runtime/statemachine/testdata/process-flow.yaml` claims "BPMN-shaped vocabulary". The shape is largely faithful (node types, sequence flows, callable sub-processes), but three places diverge from BPMN in ways that have started to bite:
