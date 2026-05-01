@@ -172,7 +172,7 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	log.Info("Copying pipeline and commit-stage workflows...")
 	wfMap := monolithPipelineWorkflows(testLang, stageSuffix)
 	wfMap[prefixMonolith+lang+commitStageYml] = "commit-stage.yml"
-	wfMap["bump-patch-version-"+prefixMonolith+lang+".yml"] = "bump-patch-version.yml"
+	wfMap[prefixMonolith+lang+"-bump-patch-version.yml"] = "bump-patch-version.yml"
 	addLegacyWorkflow(wfMap, prefixMonolith, testLang, cfg.Deploy)
 	templates.CopyWorkflows(wfMap, shop, repoDir)
 
@@ -275,9 +275,9 @@ func applyMonolithMultirepo(cfg *config.Config) {
 
 	log.Info("Copying commit-stage and bump-patch-version workflows to system repo...")
 	systemWfMap := map[string]string{
-		prefixMonolith + lang + commitStageYml:        "commit-stage.yml",
-		"bump-patch-version-" + prefixMonolith + lang + ".yml": "bump-patch-version.yml",
-		cleanupWorkflow:                               cleanupWorkflow,
+		prefixMonolith + lang + commitStageYml:                 "commit-stage.yml",
+		prefixMonolith + lang + "-bump-patch-version.yml":      "bump-patch-version.yml",
+		cleanupWorkflow:                                        cleanupWorkflow,
 	}
 	templates.CopyWorkflows(systemWfMap, shop, sysDir)
 
@@ -311,7 +311,7 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	wfMap := multitierPipelineWorkflows(testLang, stageSuffix)
 	wfMap[prefixMultitierBackend+backendLang+commitStageYml] = "backend-commit-stage.yml"
 	wfMap[prefixMultitierFrontend+frontendLang+commitStageYml] = "frontend-commit-stage.yml"
-	wfMap["bump-patch-version-"+prefixMultitier+backendLang+".yml"] = "bump-patch-version.yml"
+	wfMap[prefixMultitier+backendLang+"-bump-patch-version.yml"] = "bump-patch-version.yml"
 	addLegacyWorkflow(wfMap, prefixMultitier, testLang, cfg.Deploy)
 	templates.CopyWorkflows(wfMap, shop, repoDir)
 
@@ -441,9 +441,9 @@ func applyMultitierMultirepo(cfg *config.Config) {
 
 	log.Info("Copying commit-stage and bump-patch-version workflows to backend repo...")
 	backendWfMap := map[string]string{
-		prefixMultitierBackend + backendLang + commitStageYml:                   "backend-commit-stage.yml",
-		"bump-patch-version-" + prefixMultitierBackend + backendLang + ".yml": "bump-patch-version.yml",
-		cleanupWorkflow: cleanupWorkflow,
+		prefixMultitierBackend + backendLang + commitStageYml:               "backend-commit-stage.yml",
+		prefixMultitierBackend + backendLang + "-bump-patch-version.yml":    "bump-patch-version.yml",
+		cleanupWorkflow:                                                     cleanupWorkflow,
 	}
 	templates.CopyWorkflows(backendWfMap, shop, bDir)
 
@@ -470,9 +470,9 @@ func applyMultitierMultirepo(cfg *config.Config) {
 
 	log.Info("Copying commit-stage and bump-patch-version workflows to frontend repo...")
 	frontendWfMap := map[string]string{
-		prefixMultitierFrontend + frontendLang + commitStageYml:                   "frontend-commit-stage.yml",
-		"bump-patch-version-" + prefixMultitierFrontend + frontendLang + ".yml": "bump-patch-version.yml",
-		cleanupWorkflow: cleanupWorkflow,
+		prefixMultitierFrontend + frontendLang + commitStageYml:              "frontend-commit-stage.yml",
+		prefixMultitierFrontend + frontendLang + "-bump-patch-version.yml":   "bump-patch-version.yml",
+		cleanupWorkflow:                                                      cleanupWorkflow,
 	}
 	templates.CopyWorkflows(frontendWfMap, shop, fDir)
 
