@@ -4,7 +4,7 @@
 
 Each section corresponds to one named flow in the YAML. `call_activity` nodes appear as boxes pointing at the linked sub-flow's heading.
 
-## Top-Level Pipeline
+## Ticket Lifecycle
 
 ```mermaid
 flowchart TD
@@ -12,21 +12,14 @@ flowchart TD
     ATDD_CHORE["atdd-chore (intake)"]
     ATDD_STORY["atdd-story (intake)"]
     ATDD_TASK["atdd-task (intake)"]
-    AT_CYCLE[AT_CYCLE — see § AT Cycle]
-    CHORE_CYCLE["CHORE_CYCLE — see § Structural Cycle (shared)"]
     CLASSIFY["Classify ticket (fast path; ask user on conflict)"]
+    CYCLE_SELECTION[CYCLE_SELECTION — see § Cycle Selection]
     END((End))
-    EXTAPI_CYCLE[EXTAPI_CYCLE — see § External API Task Cycle]
-    GATE_LEGACY{Legacy Coverage section present?}
     GATE_TICKET_TYPE{Ticket Type?}
-    GATE_TYPE_CYCLE{Cycle by ticket type}
-    LEGACY_CYCLE[LEGACY_CYCLE — see § Legacy Coverage Cycle]
     MOVE_TO_IN_PROGRESS["Move ticket to In Progress (bottom of lane)"]
     PICK_TOP_READY[Pick top Ready ticket]
     START((Start))
     STOP_INTAKE[STOP - HUMAN REVIEW — approve scenarios]
-    SYSAPI_CYCLE["SYSAPI_CYCLE — see § Structural Cycle (shared)"]
-    SYSUI_CYCLE["SYSUI_CYCLE — see § Structural Cycle (shared)"]
     TICKET_IN_ACCEPTANCE[Tick checklist + move issue to IN ACCEPTANCE]
 
     START -- board --> PICK_TOP_READY
@@ -42,7 +35,32 @@ flowchart TD
     ATDD_BUG --> STOP_INTAKE
     ATDD_TASK --> STOP_INTAKE
     ATDD_CHORE --> STOP_INTAKE
-    STOP_INTAKE --> GATE_LEGACY
+    STOP_INTAKE --> CYCLE_SELECTION
+    CYCLE_SELECTION --> TICKET_IN_ACCEPTANCE
+    TICKET_IN_ACCEPTANCE --> END
+
+    classDef humanReviewNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000
+    class STOP_INTAKE humanReviewNode
+```
+
+## Cycle Selection
+
+```mermaid
+flowchart TD
+    CYCLE_END((End))
+    GATE_LEGACY{Legacy Coverage section present?}
+    GATE_TYPE_CYCLE{Cycle by ticket type}
+    LEGACY_CYCLE[LEGACY_CYCLE — see § Legacy Coverage Cycle]
+    subgraph behavioral[Behavioral]
+    AT_CYCLE[AT_CYCLE — see § AT Cycle]
+    end
+    subgraph structural[Structural]
+    CHORE_CYCLE["CHORE_CYCLE — see § Structural Cycle (shared)"]
+    EXTAPI_CYCLE[EXTAPI_CYCLE — see § External API Task Cycle]
+    SYSAPI_CYCLE["SYSAPI_CYCLE — see § Structural Cycle (shared)"]
+    SYSUI_CYCLE["SYSUI_CYCLE — see § Structural Cycle (shared)"]
+    end
+
     GATE_LEGACY -- Yes --> LEGACY_CYCLE
     GATE_LEGACY -- No --> GATE_TYPE_CYCLE
     LEGACY_CYCLE --> GATE_TYPE_CYCLE
@@ -51,15 +69,11 @@ flowchart TD
     GATE_TYPE_CYCLE -- system-ui-task --> SYSUI_CYCLE
     GATE_TYPE_CYCLE -- external-api-task --> EXTAPI_CYCLE
     GATE_TYPE_CYCLE -- chore --> CHORE_CYCLE
-    AT_CYCLE --> TICKET_IN_ACCEPTANCE
-    SYSAPI_CYCLE --> TICKET_IN_ACCEPTANCE
-    SYSUI_CYCLE --> TICKET_IN_ACCEPTANCE
-    EXTAPI_CYCLE --> TICKET_IN_ACCEPTANCE
-    CHORE_CYCLE --> TICKET_IN_ACCEPTANCE
-    TICKET_IN_ACCEPTANCE --> END
-
-    classDef humanReviewNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000
-    class STOP_INTAKE humanReviewNode
+    AT_CYCLE --> CYCLE_END
+    SYSAPI_CYCLE --> CYCLE_END
+    SYSUI_CYCLE --> CYCLE_END
+    EXTAPI_CYCLE --> CYCLE_END
+    CHORE_CYCLE --> CYCLE_END
 ```
 
 ## AT Cycle

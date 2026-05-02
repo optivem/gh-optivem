@@ -20,6 +20,7 @@ type RawNode struct {
 	PhaseDoc    string            `yaml:"phase_doc,omitempty"`
 	Description string            `yaml:"description,omitempty"`
 	Role        string            `yaml:"role,omitempty"`
+	Group       string            `yaml:"group,omitempty"`
 	Params      map[string]string `yaml:"params,omitempty"`
 }
 

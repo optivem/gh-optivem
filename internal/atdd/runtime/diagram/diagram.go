@@ -29,7 +29,8 @@ import (
 // "you added a flow without giving it a heading alias" loudly when a
 // new flow appears in the YAML.
 var flowAlias = map[string]string{
-	"main":                       "Top-Level Pipeline",
+	"main":                       "Ticket Lifecycle",
+	"cycle_selection":            "Cycle Selection",
 	"at_cycle":                   "AT Cycle",
 	"at_green_system":            "AT - GREEN - SYSTEM",
 	"ct_subprocess":              "Contract Test Sub-Process",
@@ -39,10 +40,19 @@ var flowAlias = map[string]string{
 	"legacy_coverage":            "Legacy Coverage Cycle",
 }
 
+// groupAlias maps a node's `group:` annotation to a human-readable
+// subgraph title rendered around the grouped nodes. Groups not in the
+// map fall back to the raw key as the title.
+var groupAlias = map[string]string{
+	"behavioral": "Behavioral",
+	"structural": "Structural",
+}
+
 // flowOrder is the order flows are rendered in the output. Flows not
 // listed here come last in lexical order.
 var flowOrder = []string{
 	"main",
+	"cycle_selection",
 	"at_cycle",
 	"at_green_system",
 	"ct_subprocess",
@@ -110,8 +120,39 @@ func writeFlowSection(b *strings.Builder, name string, flow *statemachine.Flow) 
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
+
+	// Partition nodes into ungrouped and per-group buckets. Ungrouped
+	// nodes render at the top level; grouped nodes render inside
+	// `subgraph <KEY>[<Title>]` ... `end` blocks so Mermaid draws a
+	// labelled box around them.
+	var ungrouped []string
+	groupBuckets := map[string][]string{}
 	for _, id := range ids {
+		g := flow.Nodes[id].Raw.Group
+		if g == "" {
+			ungrouped = append(ungrouped, id)
+		} else {
+			groupBuckets[g] = append(groupBuckets[g], id)
+		}
+	}
+	for _, id := range ungrouped {
 		writeNode(b, flow.Nodes[id])
+	}
+	groupKeys := make([]string, 0, len(groupBuckets))
+	for k := range groupBuckets {
+		groupKeys = append(groupKeys, k)
+	}
+	sort.Strings(groupKeys)
+	for _, k := range groupKeys {
+		title := groupAlias[k]
+		if title == "" {
+			title = k
+		}
+		fmt.Fprintf(b, "    subgraph %s[%s]\n", k, mermaidLabel(title))
+		for _, id := range groupBuckets[k] {
+			writeNode(b, flow.Nodes[id])
+		}
+		b.WriteString("    end\n")
 	}
 	b.WriteString("\n")
 
