@@ -1,6 +1,6 @@
 # Embed orchestration YAML and agent prompts in gh-optivem; drop consumer-side copies and Claude Code subagent dependency
 
-🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-02T08:17:59Z`
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-02T11:38:56Z`
 
 ## Motivation
 
@@ -24,85 +24,6 @@ The architectural shift, in one line: **gh-optivem stops treating Claude Code as
 ## Items
 
 Sequence: YAML embed first (small, mechanical, unblocks the BPMN plan); then agent-prompt embed (the substantial change); then override flags, the diagram CLI replacement, and consumer cleanup. Each item is one PR.
-
-### 7. Migrate slash-command logic into native gh-optivem CLI + config; delete the slash commands
-
-**Motivation.** The slash commands (`shop/.claude/commands/atdd/atdd-implement-ticket.md` — 182 lines, `atdd-manage-project.md` — 31 lines) aren't thin wrappers; they encode features that today only work via the slash command (rehearsal worktrees, scope-axis flags, run-mode confirmation). After this plan they have nowhere to live unless we either reintroduce them as per-repo files or migrate the features into gh-optivem proper. We do the latter, then delete the slash commands.
-
-**Files (gh-optivem):**
-- `internal/atdd/runtime/config/` → move to `internal/config/` (the file holds project-level facts useful beyond ATDD; the package shouldn't sit under the ATDD subtree).
-- `internal/config/config.go` — extend the `Config` schema and rename `Path`:
-  - `Path` const: `docs/atdd/config.yaml` → `optivem.yaml` (project root).
-  - Add `Project.Layout` (`single-repo` | `multi-repo`).
-  - Add `Project.Repos []string` (required when `Layout: multi-repo`; optional / implicit-self when `single-repo`).
-  - Add a top-level `Scope` group: `Architecture` (`monolith` | `multitier` | `both`), `SystemLang` (`java` | `dotnet` | `typescript` | `all`), `TestLang` (same enum).
-  - Update package comment — drop "ATDD configuration"; describe as "project configuration".
-- `internal/config/config_test.go` — coverage for the new fields, including absence-is-OK and validation on the multi-repo branch (empty `Repos` with `Layout: multi-repo` is an error).
-- `internal/atdd/runtime/driver/driver.go` — update import path (`internal/atdd/runtime/config` → `internal/config`); read scope + layout, surface them on `Options` (or directly into `statemachine.Context.Params`), thread into agent prompt context as `${architecture}`, `${system_lang}`, `${test_lang}`, `${layout}`, `${repos}`.
-- `internal/atdd/runtime/board/` — update import path.
-- `atdd_commands.go` — no per-axis CLI override flags; deviation goes through `--config <path>` (defined in Item 3).
-- Run-mode detection: `--issue` present → specific-issue mode; absent → board mode. Drop the slash-command's "ask the user to confirm" step (the flag presence already disambiguates).
-- **Rehearsal-mode worktree handling is removed from gh-optivem entirely.** It was a dev-workflow concern, not a pipeline feature. Replaced by a separate maintenance script (see Item 8). gh-optivem itself stays focused on running the ATDD pipeline against the current repo / cwd.
-
-**Files (shop, separate commit):**
-- `.claude/commands/atdd/atdd-implement-ticket.md` — git rm
-- `.claude/commands/atdd/atdd-manage-project.md` — git rm
-- `docs/atdd/config.yaml` → `git mv` to `optivem.yaml` at the repo root, then add the new fields (`project.layout`, `project.repos` if multi-repo, `scope.architecture`, `scope.system_lang`, `scope.test_lang`).
-
-**Files (rehearsal-atdd-cli, separate commit):**
-- Same `git rm` for the slash-command files.
-- Same config relocation: existing `docs/atdd/config.yaml` → `optivem.yaml` at root, populate the new fields.
-
-**Resulting CLI surface:**
-```
-gh optivem atdd implement-ticket --issue 42
-gh optivem atdd implement-ticket --issue 42 --config optivem-multitier.yaml
-gh optivem atdd manage-project
-gh optivem atdd manage-project --autonomous
-```
-
-**`optivem.yaml` after this item:**
-```yaml
-project:
-  url: https://github.com/orgs/optivem/projects/3
-  name: Shop Project
-  layout: single-repo                  # single-repo | multi-repo
-  repos:                                # required only when layout: multi-repo
-    - shop                              # implicit-self when single-repo
-
-scope:
-  architecture: monolith                # monolith | multitier | both
-  system_lang: java                     # java | dotnet | typescript | all
-  test_lang: java
-```
-
-**Three tiers, each with a clear ownership story:**
-- **Embedded in gh-optivem** (canonical, identical for everyone): YAML, agent prompts, diagram.
-- **Per-repo config** (`optivem.yaml`): repo-stable facts that legitimately differ — project URL, layout, scope axes.
-- **Per-invocation CLI flags**: ticket- or session-specific — `--issue`, `--autonomous`. Document-level overrides (`--yaml`, `--agent-prompt`, `--config`) point at alternate files when you need to deviate from the embedded / repo defaults.
-
-### 8. Author-side maintenance script for rehearsal worktrees
-
-Rehearsal-mode worktree handling moves out of gh-optivem (per Item 7) and into a separate maintenance script for the plan author's personal dev workflow. It is *not* a CLI feature consumers need.
-
-**Files (suggested location: `gh-optivem/scripts/atdd-rehearsal.sh`, or `github-utils/scripts/atdd-rehearsal.sh` if it should live workspace-wide):**
-
-```bash
-#!/usr/bin/env bash
-# Wraps `gh optivem atdd implement-ticket` in a throwaway git worktree.
-#
-# Usage: atdd-rehearsal.sh <issue-num> [label]
-#   issue-num: GitHub issue number to dispatch.
-#   label:     optional [A-Za-z0-9_-]+ tacked onto the worktree id for sortability.
-#
-# Workflow:
-#   1. Resolve <id> = <ts>[-<label>] where <ts>=date +%Y%m%d-%H%M%S.
-#   2. Create sibling worktree at ../rehearsal-<id> on branch rehearsal/<id>.
-#   3. Cd into it, run `gh optivem atdd implement-ticket --issue <issue-num>`.
-#   4. On exit, prompt the user to delete the worktree (default: yes).
-```
-
-The script is the user's to author; this plan only reserves the location and codifies the contract (worktree-create → CLI invoke → worktree-cleanup prompt). It can live in `gh-optivem/scripts/` if it's gh-optivem-specific, or `github-utils/scripts/` if other workspace tooling needs the same lifecycle.
 
 ### 9. `gh optivem atdd init` — interactive consumer-repo setup
 
