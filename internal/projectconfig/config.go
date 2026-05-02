@@ -76,9 +76,9 @@ type Config struct {
 // repos when RepoStrategy is multi-repo; for mono-repo the field is
 // optional and defaults to the implicit-self repo.
 type Project struct {
-	URL          string   `yaml:"url"`
-	Name         string   `yaml:"name"`
-	RepoStrategy string   `yaml:"repo_strategy"`
+	URL          string   `yaml:"url,omitempty"`
+	Name         string   `yaml:"name,omitempty"`
+	RepoStrategy string   `yaml:"repo_strategy,omitempty"`
 	Repos        []string `yaml:"repos,omitempty"`
 }
 
@@ -89,9 +89,9 @@ type Project struct {
 // var expands to the empty string); invalid non-empty values fail
 // validation at load time.
 type Scope struct {
-	Architecture string `yaml:"architecture"`
-	SystemLang   string `yaml:"system_lang"`
-	TestLang     string `yaml:"test_lang"`
+	Architecture string `yaml:"architecture,omitempty"`
+	SystemLang   string `yaml:"system_lang,omitempty"`
+	TestLang     string `yaml:"test_lang,omitempty"`
 }
 
 // Validate enforces the enum and cross-field rules. Empty values are
@@ -190,4 +190,28 @@ func parse(data []byte, source string) (*Config, error) {
 		return nil, fmt.Errorf("config: %s: %w", source, err)
 	}
 	return &cfg, nil
+}
+
+// Write marshals cfg to <repoPath>/optivem.yaml (0644). Validates first so a
+// caller can't accidentally persist a config that Load would reject — the
+// round-trip Write→Load must always succeed for the same value.
+func Write(repoPath string, cfg *Config) error {
+	if repoPath == "" {
+		return fmt.Errorf("config: repoPath is required")
+	}
+	if cfg == nil {
+		return fmt.Errorf("config: cfg is required")
+	}
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("config: marshal: %w", err)
+	}
+	full := filepath.Join(repoPath, Path)
+	if err := os.WriteFile(full, data, 0o644); err != nil {
+		return fmt.Errorf("config: write %s: %w", full, err)
+	}
+	return nil
 }

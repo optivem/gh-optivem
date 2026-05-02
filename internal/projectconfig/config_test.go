@@ -238,3 +238,85 @@ func TestLoadFromPath_EmptyPathErrors(t *testing.T) {
 		t.Fatal("expected error for empty path, got nil")
 	}
 }
+
+func TestWrite_RoundTrip(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	want := &Config{
+		Project: Project{
+			URL:          "https://github.com/orgs/optivem/projects/20",
+			RepoStrategy: RepoStrategyMultiRepo,
+			Repos:        []string{"optivem/shop-backend", "optivem/shop-frontend"},
+		},
+		Scope: Scope{
+			Architecture: ArchMultitier,
+			SystemLang:   LangJava,
+			TestLang:     LangTypescript,
+		},
+	}
+	if err := Write(dir, want); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	got, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load after Write: %v", err)
+	}
+	if got.Project.URL != want.Project.URL ||
+		got.Project.RepoStrategy != want.Project.RepoStrategy ||
+		got.Scope.Architecture != want.Scope.Architecture ||
+		got.Scope.SystemLang != want.Scope.SystemLang ||
+		got.Scope.TestLang != want.Scope.TestLang {
+		t.Fatalf("round-trip mismatch: got %+v, want %+v", got, want)
+	}
+	if len(got.Project.Repos) != len(want.Project.Repos) {
+		t.Fatalf("repos length mismatch: got %v, want %v", got.Project.Repos, want.Project.Repos)
+	}
+}
+
+func TestWrite_OmitsEmptyFields(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := &Config{
+		Scope: Scope{Architecture: ArchMonolith},
+	}
+	if err := Write(dir, cfg); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, Path))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	body := string(data)
+	if strings.Contains(body, "url:") || strings.Contains(body, "name:") || strings.Contains(body, "repo_strategy:") {
+		t.Fatalf("expected empty project fields to be omitted; got:\n%s", body)
+	}
+	if strings.Contains(body, "system_lang:") || strings.Contains(body, "test_lang:") {
+		t.Fatalf("expected empty scope fields to be omitted; got:\n%s", body)
+	}
+	if !strings.Contains(body, "architecture: monolith") {
+		t.Fatalf("expected architecture line; got:\n%s", body)
+	}
+}
+
+func TestWrite_RejectsInvalidConfig(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := &Config{Project: Project{RepoStrategy: RepoStrategyMultiRepo}}
+	if err := Write(dir, cfg); err == nil {
+		t.Fatal("expected validation error for multi-repo with empty repos, got nil")
+	}
+}
+
+func TestWrite_NilCfgErrors(t *testing.T) {
+	t.Parallel()
+	if err := Write(t.TempDir(), nil); err == nil {
+		t.Fatal("expected error for nil cfg, got nil")
+	}
+}
+
+func TestWrite_EmptyRepoPathErrors(t *testing.T) {
+	t.Parallel()
+	if err := Write("", &Config{}); err == nil {
+		t.Fatal("expected error for empty repoPath, got nil")
+	}
+}

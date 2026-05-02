@@ -53,6 +53,12 @@ type Config struct {
 
 	Deploy     string // "docker" (default) or "cloud-run"
 	License    string
+
+	// ProjectURL is the GitHub Project URL written into optivem.yaml at the
+	// "Write optivem.yaml" step. Empty is allowed — the file is still
+	// generated, just with project.url absent (the runtime falls back to
+	// README scraping / git-remote lookup).
+	ProjectURL string
 	DryRun       bool
 	VerifyLevel    string // "none", "local", "commit", "acceptance", "qa", "release"
 	NoLegacy       bool   // exclude legacy from local tests and acceptance stage
@@ -492,6 +498,7 @@ type RawFlags struct {
 	WorkDir           string
 	ShopRef           string
 	LogFile           string
+	ProjectURL        string
 	DryRun            bool
 	KeepLocal         bool
 	NoLegacy          bool
@@ -534,6 +541,7 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs.BoolVarP(&f.Quiet, "quiet", "q", false, "Suppress info-level output (warnings and errors still shown)")
 	fs.StringVar(&f.LogFile, "log-file", "", "Also write plain-text log output to this file (no ANSI colors, all levels)")
 	fs.BoolVarP(&f.AssumeYes, "yes", "y", false, "Skip all interactive confirmations (existing-repo prompt, --report-bug confirmation). Expected pattern for CI/unattended runs.")
+	fs.StringVar(&f.ProjectURL, "project-url", "", "GitHub Project URL to bake into optivem.yaml (optional; leave empty to fill in by hand later)")
 }
 
 func resolveVerifyLevel(level string) string {
@@ -969,6 +977,7 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 
 		Deploy:     f.Deploy,
 		License:    f.License,
+		ProjectURL: f.ProjectURL,
 		DryRun:       f.DryRun,
 		VerifyLevel:    resolvedLevel,
 		NoLegacy:       f.NoLegacy,
