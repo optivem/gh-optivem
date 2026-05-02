@@ -16,47 +16,6 @@ This is the enforcement layer that sits behind item 4's documentation layer. Bot
 
 ## Items
 
-### 1. Hook installer in `clauderun.Dispatch`
-
-Before invoking the agent subprocess, write `<RepoPath>/.git/hooks/pre-commit` (idempotent: skip if the file already exists with our content). Hook body:
-
-```sh
-#!/bin/sh
-if [ "${CLAUDERUN_CLI_COMMIT:-}" != "1" ]; then
-  echo "clauderun: refusing commit — only the CLI commits on dispatch branches." >&2
-  echo "  (set CLAUDERUN_CLI_COMMIT=1 if you are clauderun.commitChanges)" >&2
-  exit 1
-fi
-```
-
-Make executable (0755). On Windows the file mode may be ignored — the hook still runs because git uses its own bundled sh.
-
-**Idempotency check:** read the file and compare to the expected content. If it differs (operator added their own hook), error out with a clear message rather than silently overwriting; let the operator decide.
-
-### 2. Env-var plumbing through `commitChanges`
-
-`commitChanges` calls `deps.Git.Run(ctx, dir, "commit", ...)`. The current `GitRunner` interface doesn't expose env vars. Two options:
-
-- **(a)** Extend `GitRunner` with an env parameter: `Run(ctx, dir, env []string, args ...string)`. Cleanest but touches every caller.
-- **(b)** Set the env var process-wide via `os.Setenv` around the git-commit call (defer-restore). Pragmatic; only `commitChanges` needs it; no API churn.
-
-Recommend (b). Single call site, single env var, defer-restore confines the side effect.
-
-### 3. Gate hook installation behind `--cli-commits`
-
-Legacy mode (`--cli-commits=off`) still expects the agent to commit. Installing the hook unconditionally would break existing rehearsals.
-
-Install the hook only when `opts.CLICommits == true`. Once item 5 of the parent plan removes `--agent-commits` (post-soak), drop the gate and install unconditionally.
-
-### 4. Tests
-
-In `clauderun_test.go`:
-
-- `TestDispatch_CLICommits_InstallsPreCommitHook` — assert the hook file exists with expected content after Dispatch.
-- `TestDispatch_LegacyMode_DoesNotInstallHook` — assert `--cli-commits=off` leaves the worktree's hooks dir untouched.
-- `TestCommitChanges_SetsEnvVarForCommit` — assert `CLAUDERUN_CLI_COMMIT=1` is set when commitChanges runs the commit (use a fake `GitRunner` that captures `os.Getenv` at call time).
-- `TestDispatch_HookConflict_RefusesToOverwrite` — pre-create a different `pre-commit` hook in the test worktree and assert Dispatch errors with a clear message.
-
 ### 5. Manual rehearsal verification
 
 After landing items 1–4, run a rehearsal with `--cli-commits` and confirm:
@@ -74,6 +33,6 @@ After landing items 1–4, run a rehearsal with `--cli-commits` and confirm:
 
 ## Order of operations
 
-1. Land items 1–4 in `gh-optivem`.
+1. ~~Land items 1–4 in `gh-optivem`.~~ **Done (2026-05-02).**
 2. Run item 5 (manual rehearsal verification) to confirm the enforcement works end-to-end.
 3. After parent plan's step 5 (remove `--agent-commits`), drop the `--cli-commits` gate from item 3 — hook installs unconditionally on every dispatch.

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -64,10 +65,19 @@ type fakeGit struct {
 
 	abbrevCount int
 	statusCount int
+
+	// commitEnv captures os.Getenv("CLAUDERUN_CLI_COMMIT") at the moment
+	// args[0] == "commit" — lets the hook-env test assert the var is set
+	// during the commit call without leaking process state.
+	commitEnv    string
+	commitEnvSet bool
 }
 
 func (f *fakeGit) Run(_ context.Context, _ string, args ...string) ([]byte, error) {
 	f.args = append(f.args, args)
+	if len(args) > 0 && args[0] == "commit" {
+		f.commitEnv, f.commitEnvSet = os.LookupEnv("CLAUDERUN_CLI_COMMIT")
+	}
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -1057,6 +1067,126 @@ func TestCappedBuffer_TruncatesPastCap(t *testing.T) {
 	b.Write([]byte("ABCDEFG")) // dropped
 	if got := string(b.Bytes()); got != "0123456789" {
 		t.Errorf("cappedBuffer: got %q, want %q", got, "0123456789")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Pre-commit hook installer (plans/20260502-200525-pre-commit-hook-blocks-agent-commits.md)
+// ---------------------------------------------------------------------------
+
+func TestDispatch_CLICommits_InstallsPreCommitHook(t *testing.T) {
+	dir := t.TempDir()
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaa\n"), []byte("aaaa\n"),
+		},
+	}
+	opts := newOpts()
+	opts.CLICommits = true
+	opts.RepoPath = dir
+
+	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+
+	hookPath := filepath.Join(dir, ".git", "hooks", "pre-commit")
+	body, err := os.ReadFile(hookPath)
+	if err != nil {
+		t.Fatalf("read installed hook: %v", err)
+	}
+	if string(body) != preCommitHookBody {
+		t.Errorf("hook body mismatch:\n  got:\n%s\n  want:\n%s", body, preCommitHookBody)
+	}
+}
+
+func TestDispatch_LegacyMode_DoesNotInstallHook(t *testing.T) {
+	// CLICommits=false — the hook must not be written, so legacy
+	// rehearsals where the agent commits keep working.
+	dir := t.TempDir()
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaa\n"), []byte("bbbb\n"), []byte("subject\n"),
+		},
+	}
+	opts := newOpts()
+	opts.RepoPath = dir
+
+	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, ".git", "hooks", "pre-commit")); !os.IsNotExist(err) {
+		t.Errorf("expected no pre-commit hook in legacy mode; got err=%v", err)
+	}
+}
+
+func TestDispatch_HookConflict_RefusesToOverwrite(t *testing.T) {
+	// Pre-existing pre-commit hook with different content — Dispatch
+	// must surface a clear error rather than silently clobber the
+	// operator's hook.
+	dir := t.TempDir()
+	hookDir := filepath.Join(dir, ".git", "hooks")
+	if err := os.MkdirAll(hookDir, 0o755); err != nil {
+		t.Fatalf("setup hooks dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(hookDir, "pre-commit"), []byte("#!/bin/sh\necho operator hook\n"), 0o755); err != nil {
+		t.Fatalf("seed conflicting hook: %v", err)
+	}
+
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n")},
+	}
+	opts := newOpts()
+	opts.CLICommits = true
+	opts.RepoPath = dir
+
+	_, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
+	if err == nil {
+		t.Fatalf("expected hook-conflict error, got nil")
+	}
+	if !strings.Contains(err.Error(), "refusing to overwrite") {
+		t.Errorf("error wording: got %q", err.Error())
+	}
+	// Subprocess must not have run — the hook conflict is a pre-flight
+	// gate, same shape as snapshot failures.
+	// (We use the canned-out FIFO for the pre-snapshot HEAD only; the
+	// `args` slice would show subsequent calls if any happened.)
+}
+
+func TestCommitChanges_SetsEnvVarForCommit(t *testing.T) {
+	// commitChanges must set CLAUDERUN_CLI_COMMIT=1 in the process env
+	// for the duration of the `git commit` call so the installed hook
+	// recognizes the CLI as the authorized committer. The fake captures
+	// os.Getenv at call time; this assertion is what links the env-var
+	// plumbing (item 2) to the hook (item 1).
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte(""),                      // git add -A -- foo.go
+			[]byte("foo.go | 2 +-\n"),       // git diff --cached --stat
+			[]byte(""),                      // git commit -m
+			[]byte("bbbb\n"),                // git rev-parse HEAD
+		},
+	}
+	opts := newOpts()
+	opts.RepoPath = t.TempDir()
+
+	pre := repoState{head: "aaaa", branch: "main", dirty: map[string]bool{}}
+	post := repoState{head: "aaaa", branch: "main", dirty: map[string]bool{"foo.go": true}}
+
+	// Make sure the var is unset going in so we can verify defer-restore
+	// actually clears it after the call.
+	os.Unsetenv("CLAUDERUN_CLI_COMMIT")
+
+	if _, err := commitChanges(context.Background(), gitFake, opts, pre, post); err != nil {
+		t.Fatalf("commitChanges: %v", err)
+	}
+
+	if !gitFake.commitEnvSet || gitFake.commitEnv != "1" {
+		t.Errorf("CLAUDERUN_CLI_COMMIT during commit: got set=%v value=%q, want set=true value=\"1\"",
+			gitFake.commitEnvSet, gitFake.commitEnv)
+	}
+	if _, stillSet := os.LookupEnv("CLAUDERUN_CLI_COMMIT"); stillSet {
+		t.Errorf("CLAUDERUN_CLI_COMMIT must be unset after commitChanges returns")
 	}
 }
 

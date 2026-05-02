@@ -224,6 +224,12 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (CommitInfo, error) 
 		return CommitInfo{}, fmt.Errorf("clauderun: snapshot before dispatch: %w", err)
 	}
 
+	if opts.CLICommits {
+		if err := installPreCommitHook(opts.RepoPath); err != nil {
+			return CommitInfo{}, fmt.Errorf("clauderun: install pre-commit hook: %w", err)
+		}
+	}
+
 	writeEnterBanner(opts)
 	startedAt := nowFn()
 
@@ -331,7 +337,7 @@ func commitChanges(ctx context.Context, git GitRunner, opts Options, pre, post r
 		return CommitInfo{}, fmt.Errorf("git diff --cached --stat: %w", err)
 	}
 	msg := renderCommitMessage(opts, strings.TrimSpace(string(statOut)))
-	if _, err := git.Run(ctx, opts.RepoPath, "commit", "-m", msg); err != nil {
+	if err := runCLICommit(ctx, git, opts.RepoPath, msg); err != nil {
 		return CommitInfo{}, fmt.Errorf("git commit: %w", err)
 	}
 	headOut, err := git.Run(ctx, opts.RepoPath, "rev-parse", "HEAD")
@@ -341,6 +347,78 @@ func commitChanges(ctx context.Context, git GitRunner, opts Options, pre, post r
 	sha := strings.TrimSpace(string(headOut))
 	subject := strings.SplitN(msg, "\n", 2)[0]
 	return CommitInfo{SHA: sha, Subject: subject}, nil
+}
+
+// runCLICommit invokes `git commit -m msg` with CLAUDERUN_CLI_COMMIT=1
+// in the process environment, then restores the prior value (or unsets,
+// if there was none). This is the single env-var write site that pairs
+// with installPreCommitHook: the hook checks for the var and rejects any
+// commit not carrying it, so an agent that runs `git commit` directly
+// — without going through this function — fails at the git layer.
+//
+// Process-wide rather than per-call because GitRunner.Run takes no env
+// parameter; widening the interface would touch every caller for a
+// single use site. Defer-restore confines the side effect to this
+// function's stack frame.
+func runCLICommit(ctx context.Context, git GitRunner, dir, msg string) error {
+	const envKey = "CLAUDERUN_CLI_COMMIT"
+	prev, hadPrev := os.LookupEnv(envKey)
+	if err := os.Setenv(envKey, "1"); err != nil {
+		return fmt.Errorf("set %s: %w", envKey, err)
+	}
+	defer func() {
+		if hadPrev {
+			os.Setenv(envKey, prev)
+		} else {
+			os.Unsetenv(envKey)
+		}
+	}()
+	_, err := git.Run(ctx, dir, "commit", "-m", msg)
+	return err
+}
+
+// preCommitHookBody is the verbatim shell script written into a dispatch
+// worktree's `.git/hooks/pre-commit` when opts.CLICommits is true. The
+// script refuses any commit unless CLAUDERUN_CLI_COMMIT=1 is set in the
+// caller's env — runCLICommit is the only place that sets it.
+const preCommitHookBody = `#!/bin/sh
+if [ "${CLAUDERUN_CLI_COMMIT:-}" != "1" ]; then
+  echo "clauderun: refusing commit — only the CLI commits on dispatch branches." >&2
+  echo "  (set CLAUDERUN_CLI_COMMIT=1 if you are clauderun.commitChanges)" >&2
+  exit 1
+fi
+`
+
+// installPreCommitHook writes preCommitHookBody to <repoPath>/.git/hooks/
+// pre-commit so any `git commit` that doesn't carry the env var fails at
+// the git layer. Idempotent: a no-op when the file already exists with
+// our exact content. If the file exists with different content (an
+// operator's custom hook), returns an error rather than silently
+// overwriting — let the operator decide.
+//
+// On Windows the 0755 mode is largely ignored by the OS, but git's
+// bundled sh runs the hook regardless of file mode, so the chmod is
+// harmless and matches the POSIX expectation.
+func installPreCommitHook(repoPath string) error {
+	hookDir := filepath.Join(repoPath, ".git", "hooks")
+	if err := os.MkdirAll(hookDir, 0o755); err != nil {
+		return fmt.Errorf("mkdir hooks dir: %w", err)
+	}
+	hookPath := filepath.Join(hookDir, "pre-commit")
+	existing, err := os.ReadFile(hookPath)
+	if err == nil {
+		if string(existing) == preCommitHookBody {
+			return nil
+		}
+		return fmt.Errorf("pre-commit hook already exists at %s with different content; refusing to overwrite", hookPath)
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("read existing hook: %w", err)
+	}
+	if err := os.WriteFile(hookPath, []byte(preCommitHookBody), 0o755); err != nil {
+		return fmt.Errorf("write hook: %w", err)
+	}
+	return nil
 }
 
 // renderCommitMessage builds the templated commit message the CLI uses
