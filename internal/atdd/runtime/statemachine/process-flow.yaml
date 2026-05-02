@@ -69,9 +69,16 @@ flows:
 
   # ===========================================================================
   # main
-  # Entry flow for `gh optivem atdd implement-ticket --issue N` and
-  # `gh optivem atdd manage-project`. Drives intake, dispatches to the
-  # type-specific cycle, and ends at TICKET STATUS - IN ACCEPTANCE.
+  # Ticket Lifecycle — entry flow for `gh optivem atdd implement-ticket
+  # --issue N` and `gh optivem atdd manage-project`. Drives intake (board /
+  # specific_issue → in-progress → classify → type-specific intake agent →
+  # human review), then delegates the cycle dispatch to the cycle_selection
+  # sub-flow, and ends at TICKET STATUS - IN ACCEPTANCE.
+  #
+  # Cycle dispatch (legacy gate, type gate, the five cycle call_activities)
+  # lives in the cycle_selection flow below — splitting it out lets each
+  # diagram answer one question: "main" shows the ticket's lifecycle, and
+  # "cycle_selection" shows the behavioral-vs-structural cycle choice.
   # ===========================================================================
   main:
     start: START
@@ -129,53 +136,9 @@ flows:
         role: review
         description: "STOP - HUMAN REVIEW — approve scenarios"
 
-      - id: GATE_LEGACY
-        type: gateway
-        binding: legacy_coverage_section_present
-        description: "Legacy Coverage section present?"
-
-      - id: LEGACY_CYCLE
+      - id: CYCLE_SELECTION
         type: call_activity
-        flow: legacy_coverage
-
-      - id: GATE_TYPE_CYCLE
-        type: gateway
-        binding: ticket_type
-        description: "Cycle by ticket type"
-
-      - id: AT_CYCLE
-        type: call_activity
-        flow: at_cycle
-
-      - id: SYSAPI_CYCLE
-        type: call_activity
-        flow: structural_cycle
-        params:
-          phase: "SYSTEM API REDESIGN"
-          agent: atdd-task
-          phase_doc: docs/atdd/process/sysapi-redesign.md
-          subtype: system-api-redesign
-
-      - id: SYSUI_CYCLE
-        type: call_activity
-        flow: structural_cycle
-        params:
-          phase: "SYSTEM UI REDESIGN"
-          agent: atdd-task
-          phase_doc: docs/atdd/process/sysui-redesign.md
-          subtype: system-ui-redesign
-
-      - id: EXTAPI_CYCLE
-        type: call_activity
-        flow: external_api_task_cycle
-
-      - id: CHORE_CYCLE
-        type: call_activity
-        flow: structural_cycle
-        params:
-          phase: CHORE
-          agent: atdd-chore
-          phase_doc: docs/atdd/process/chore.md
+        flow: cycle_selection
 
       - id: TICKET_IN_ACCEPTANCE
         type: service_task
@@ -199,21 +162,94 @@ flows:
       - {from: ATDD_BUG,             to: STOP_INTAKE}
       - {from: ATDD_TASK,            to: STOP_INTAKE}
       - {from: ATDD_CHORE,           to: STOP_INTAKE}
-      - {from: STOP_INTAKE,          to: GATE_LEGACY}
-      - {from: GATE_LEGACY,          to: LEGACY_CYCLE,           when: "legacy_coverage_section_present == true"}
-      - {from: GATE_LEGACY,          to: GATE_TYPE_CYCLE,        when: "legacy_coverage_section_present == false"}
-      - {from: LEGACY_CYCLE,         to: GATE_TYPE_CYCLE}
-      - {from: GATE_TYPE_CYCLE,      to: AT_CYCLE,               when: "ticket_type in [story, bug]"}
-      - {from: GATE_TYPE_CYCLE,      to: SYSAPI_CYCLE,           when: "ticket_type == system-api-task"}
-      - {from: GATE_TYPE_CYCLE,      to: SYSUI_CYCLE,            when: "ticket_type == system-ui-task"}
-      - {from: GATE_TYPE_CYCLE,      to: EXTAPI_CYCLE,           when: "ticket_type == external-api-task"}
-      - {from: GATE_TYPE_CYCLE,      to: CHORE_CYCLE,            when: "ticket_type == chore"}
-      - {from: AT_CYCLE,             to: TICKET_IN_ACCEPTANCE}
-      - {from: SYSAPI_CYCLE,         to: TICKET_IN_ACCEPTANCE}
-      - {from: SYSUI_CYCLE,          to: TICKET_IN_ACCEPTANCE}
-      - {from: EXTAPI_CYCLE,         to: TICKET_IN_ACCEPTANCE}
-      - {from: CHORE_CYCLE,          to: TICKET_IN_ACCEPTANCE}
+      - {from: STOP_INTAKE,          to: CYCLE_SELECTION}
+      - {from: CYCLE_SELECTION,      to: TICKET_IN_ACCEPTANCE}
       - {from: TICKET_IN_ACCEPTANCE, to: END}
+
+  # ===========================================================================
+  # cycle_selection
+  # Decides which cycle to run for an intaken ticket and dispatches it. Two
+  # gates in series: (1) does the ticket carry a Legacy Coverage section?
+  # (2) which change-kind cycle does the ticket type require? The five cycle
+  # call_activities are grouped into Behavioral (AT_CYCLE, EXTAPI_CYCLE) and
+  # Structural (SYSAPI_CYCLE, SYSUI_CYCLE, CHORE_CYCLE) via `group:`
+  # annotations — the diagram renderer wraps each group in a Mermaid
+  # subgraph so the dichotomy is visually explicit. The `group:` field is
+  # diagram-only; the runtime ignores it.
+  # ===========================================================================
+  cycle_selection:
+    start: GATE_LEGACY
+    nodes:
+      - id: GATE_LEGACY
+        type: gateway
+        binding: legacy_coverage_section_present
+        description: "Legacy Coverage section present?"
+
+      - id: LEGACY_CYCLE
+        type: call_activity
+        flow: legacy_coverage
+
+      - id: GATE_TYPE_CYCLE
+        type: gateway
+        binding: ticket_type
+        description: "Cycle by ticket type"
+
+      - id: AT_CYCLE
+        type: call_activity
+        flow: at_cycle
+        group: behavioral
+
+      - id: EXTAPI_CYCLE
+        type: call_activity
+        flow: external_api_task_cycle
+        group: structural
+
+      - id: SYSAPI_CYCLE
+        type: call_activity
+        flow: structural_cycle
+        group: structural
+        params:
+          phase: "SYSTEM API REDESIGN"
+          agent: atdd-task
+          phase_doc: docs/atdd/process/sysapi-redesign.md
+          subtype: system-api-redesign
+
+      - id: SYSUI_CYCLE
+        type: call_activity
+        flow: structural_cycle
+        group: structural
+        params:
+          phase: "SYSTEM UI REDESIGN"
+          agent: atdd-task
+          phase_doc: docs/atdd/process/sysui-redesign.md
+          subtype: system-ui-redesign
+
+      - id: CHORE_CYCLE
+        type: call_activity
+        flow: structural_cycle
+        group: structural
+        params:
+          phase: CHORE
+          agent: atdd-chore
+          phase_doc: docs/atdd/process/chore.md
+
+      - id: CYCLE_END
+        type: end_event
+
+    sequence_flows:
+      - {from: GATE_LEGACY,     to: LEGACY_CYCLE,    when: "legacy_coverage_section_present == true"}
+      - {from: GATE_LEGACY,     to: GATE_TYPE_CYCLE, when: "legacy_coverage_section_present == false"}
+      - {from: LEGACY_CYCLE,    to: GATE_TYPE_CYCLE}
+      - {from: GATE_TYPE_CYCLE, to: AT_CYCLE,        when: "ticket_type in [story, bug]"}
+      - {from: GATE_TYPE_CYCLE, to: SYSAPI_CYCLE,    when: "ticket_type == system-api-task"}
+      - {from: GATE_TYPE_CYCLE, to: SYSUI_CYCLE,     when: "ticket_type == system-ui-task"}
+      - {from: GATE_TYPE_CYCLE, to: EXTAPI_CYCLE,    when: "ticket_type == external-api-task"}
+      - {from: GATE_TYPE_CYCLE, to: CHORE_CYCLE,     when: "ticket_type == chore"}
+      - {from: AT_CYCLE,        to: CYCLE_END}
+      - {from: SYSAPI_CYCLE,    to: CYCLE_END}
+      - {from: SYSUI_CYCLE,     to: CYCLE_END}
+      - {from: EXTAPI_CYCLE,    to: CYCLE_END}
+      - {from: CHORE_CYCLE,     to: CYCLE_END}
 
   # ===========================================================================
   # at_cycle
