@@ -1,5 +1,7 @@
 # Fix unfiltered workflow-status badges across `gh-optivem`, the scaffolding template, and the rest of the academy
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-02T11:52:06Z`
+
 ## Motivation
 
 GitHub's `actions/workflows/<file>.yml/badge.svg` endpoint, when called with no query string, shows the latest run **on the default branch for any event the workflow declares**. For workflows whose only trigger is `workflow_dispatch` or `workflow_call`, that run never happens via a "default" event, and the badge degrades to "no status" forever. For workflows that mix push + schedule + dispatch, the badge flips between unrelated runs and stops being a reliable signal.
@@ -34,6 +36,24 @@ If the commented-out cron in `gh-acceptance-stage.yml` is intended to be re-enab
 
 **Files:** `README.md` (this repo).
 
+**Sample output state:**
+
+*Before* (lines 1–5):
+
+```markdown
+[![gh Commit Stage](https://github.com/optivem/gh-optivem/actions/workflows/gh-commit-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/gh-commit-stage.yml)
+[![gh Acceptance Stage](https://github.com/optivem/gh-optivem/actions/workflows/gh-acceptance-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/gh-acceptance-stage.yml)
+[![gh Release Stage](https://github.com/optivem/gh-optivem/actions/workflows/gh-release-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/gh-release-stage.yml)
+[![gh Post-Release Stage](https://github.com/optivem/gh-optivem/actions/workflows/gh-post-release-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/gh-post-release-stage.yml)
+[![gh Local Stage](https://github.com/optivem/gh-optivem/actions/workflows/gh-local-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/gh-local-stage.yml)
+```
+
+*After* (single line replacing all five):
+
+```markdown
+[![gh Commit Stage](https://github.com/optivem/gh-optivem/actions/workflows/gh-commit-stage.yml/badge.svg?event=push)](https://github.com/optivem/gh-optivem/actions/workflows/gh-commit-stage.yml)
+```
+
 ### 2. `gh-optivem`/`internal/steps/readme.go` — make the scaffolding template emit filtered badges and drop dead pipeline-stage badges
 
 The badge format string is hardcoded at line 19:
@@ -63,21 +83,77 @@ Mapping the generated badges to the shop template's actual triggers (which the s
 
 **Files:** `internal/steps/readme.go` (and any test that asserts badge content — none observed at audit time, but check during implementation).
 
+**Sample output state (generated badge blocks, per scaffolding path):**
+
+Variables used below: `BASE = https://github.com/{owner}/{repo}/actions/workflows`. Repo-name placeholders shown literally (`{system}`, `{backend}`, `{frontend}`).
+
+*Monolith multirepo root* — `writeMonolithMultirepoReadme`, `--deploy docker`:
+
+Before — 6 badges:
+
+```
+[![commit-stage](BASE_system/commit-stage.yml/badge.svg)](BASE_system/commit-stage.yml)
+[![acceptance-stage](BASE/acceptance-stage.yml/badge.svg)](BASE/acceptance-stage.yml)
+[![acceptance-stage-legacy](BASE/acceptance-stage-legacy.yml/badge.svg)](BASE/acceptance-stage-legacy.yml)
+[![qa-stage](BASE/qa-stage.yml/badge.svg)](BASE/qa-stage.yml)
+[![qa-signoff](BASE/qa-signoff.yml/badge.svg)](BASE/qa-signoff.yml)
+[![prod-stage](BASE/prod-stage.yml/badge.svg)](BASE/prod-stage.yml)
+```
+
+After — 3 badges:
+
+```
+[![commit-stage](BASE_system/commit-stage.yml/badge.svg?event=push)](BASE_system/commit-stage.yml)
+[![acceptance-stage](BASE/acceptance-stage.yml/badge.svg?event=schedule)](BASE/acceptance-stage.yml)
+[![acceptance-stage-legacy](BASE/acceptance-stage-legacy.yml/badge.svg?event=schedule)](BASE/acceptance-stage-legacy.yml)
+```
+
+*Multitier multirepo root* — `writeMultitierMultirepoReadme`, `--deploy docker`:
+
+Before — 7 badges; after — 4:
+
+```
+[![backend-commit-stage](BASE_backend/backend-commit-stage.yml/badge.svg?event=push)](BASE_backend/backend-commit-stage.yml)
+[![frontend-commit-stage](BASE_frontend/frontend-commit-stage.yml/badge.svg?event=push)](BASE_frontend/frontend-commit-stage.yml)
+[![acceptance-stage](BASE/acceptance-stage.yml/badge.svg?event=schedule)](BASE/acceptance-stage.yml)
+[![acceptance-stage-legacy](BASE/acceptance-stage-legacy.yml/badge.svg?event=schedule)](BASE/acceptance-stage-legacy.yml)
+```
+
+*Monorepo (monolith or multitier)* — `generateBadges` → `writeReadme`, `--deploy docker`:
+
+After — 3 badges (monolith) / 4 (multitier):
+
+```
+[![commit-stage](BASE/commit-stage.yml/badge.svg?event=push)](BASE/commit-stage.yml)        # monolith
+# OR for multitier:
+[![backend-commit-stage](BASE/backend-commit-stage.yml/badge.svg?event=push)](BASE/backend-commit-stage.yml)
+[![frontend-commit-stage](BASE/frontend-commit-stage.yml/badge.svg?event=push)](BASE/frontend-commit-stage.yml)
+
+[![acceptance-stage](BASE/acceptance-stage.yml/badge.svg?event=schedule)](BASE/acceptance-stage.yml)
+[![acceptance-stage-legacy](BASE/acceptance-stage-legacy.yml/badge.svg?event=schedule)](BASE/acceptance-stage-legacy.yml)
+```
+
+*Component README* — `writeComponentReadme`:
+
+Before:
+
+```
+[![commit-stage](BASE/{component}-commit-stage.yml/badge.svg)](BASE/{component}-commit-stage.yml)
+```
+
+After:
+
+```
+[![commit-stage](BASE/{component}-commit-stage.yml/badge.svg?event=push)](BASE/{component}-commit-stage.yml)
+```
+
+*Non-docker deploy* (`cloud-run`, etc.): the `acceptance-stage-legacy` line is omitted in all four blocks above; everything else is identical. `qa-stage` / `qa-signoff` / `prod-stage` never appear in any block.
+
 ### 3. Academy-wide README sweep
 
-Six repos with badges, plus one bonus bug. Each is an independent README edit; group them however you like (one PR per repo, or one mass sweep — pick what's easier to review).
+Three repos with badges, plus one judgment-call repo (`hub`). Each is an independent README edit; group them however you like (one PR per repo, or one mass sweep — pick what's easier to review).
 
-#### `eshop` — broken paths **and** missing filter
-
-🚨 The README references `frontend-commit-stage.yml` / `backend-commit-stage.yml`, but the actual files in `.github/workflows/` are `commit-stage-frontend.yml` / `commit-stage-backend.yml`. Both badges are 404 today, regardless of any event filter.
-
-- Fix the workflow paths first, then append `?event=push` (both workflows are push-triggered — verify during the edit).
-
-#### `eshop-tests` — six schedule-driven badges
-
-All six acceptance-stage workflows (`{java,dotnet,typescript}-acceptance-stage{,-legacy}.yml`) are `schedule` + `workflow_dispatch`.
-
-- Append `?event=schedule` to all six.
+> `eshop` and `eshop-tests` were originally listed but are **out of scope** for this plan — `eshop` is archived in favor of `optivem/shop`, and `eshop-tests` is on the same archival path.
 
 #### `optivem-testing` — five badges, mixed
 
@@ -85,9 +161,47 @@ All six acceptance-stage workflows (`{java,dotnet,typescript}-acceptance-stage{,
 - `acceptance-stage.yml` → `schedule` + dispatch → `?event=schedule`.
 - `release-stage.yml` → `workflow_dispatch` only → **delete badge**.
 
+**Sample output state** (lines 3–9):
+
+Before:
+
+```markdown
+[![Java Commit Stage](https://github.com/optivem/optivem-testing/actions/workflows/java-commit-stage.yml/badge.svg)](https://github.com/optivem/optivem-testing/actions/workflows/java-commit-stage.yml)
+[![.NET Commit Stage](https://github.com/optivem/optivem-testing/actions/workflows/dotnet-commit-stage.yml/badge.svg)](https://github.com/optivem/optivem-testing/actions/workflows/dotnet-commit-stage.yml)
+[![TypeScript Commit Stage](https://github.com/optivem/optivem-testing/actions/workflows/typescript-commit-stage.yml/badge.svg)](https://github.com/optivem/optivem-testing/actions/workflows/typescript-commit-stage.yml)
+
+[![Acceptance Stage](https://github.com/optivem/optivem-testing/actions/workflows/acceptance-stage.yml/badge.svg)](https://github.com/optivem/optivem-testing/actions/workflows/acceptance-stage.yml)
+
+[![Release Stage](https://github.com/optivem/optivem-testing/actions/workflows/release-stage.yml/badge.svg)](https://github.com/optivem/optivem-testing/actions/workflows/release-stage.yml)
+```
+
+After (release-stage line and its surrounding blank line removed):
+
+```markdown
+[![Java Commit Stage](https://github.com/optivem/optivem-testing/actions/workflows/java-commit-stage.yml/badge.svg?event=push)](https://github.com/optivem/optivem-testing/actions/workflows/java-commit-stage.yml)
+[![.NET Commit Stage](https://github.com/optivem/optivem-testing/actions/workflows/dotnet-commit-stage.yml/badge.svg?event=push)](https://github.com/optivem/optivem-testing/actions/workflows/dotnet-commit-stage.yml)
+[![TypeScript Commit Stage](https://github.com/optivem/optivem-testing/actions/workflows/typescript-commit-stage.yml/badge.svg?event=push)](https://github.com/optivem/optivem-testing/actions/workflows/typescript-commit-stage.yml)
+
+[![Acceptance Stage](https://github.com/optivem/optivem-testing/actions/workflows/acceptance-stage.yml/badge.svg?event=schedule)](https://github.com/optivem/optivem-testing/actions/workflows/acceptance-stage.yml)
+```
+
 #### `actions` — one badge
 
 - `commit-stage.yml` → `push` + PR + dispatch → `?event=push`.
+
+**Sample output state** (line 3):
+
+Before:
+
+```markdown
+[![commit-stage](https://github.com/optivem/actions/actions/workflows/commit-stage.yml/badge.svg)](https://github.com/optivem/actions/actions/workflows/commit-stage.yml)
+```
+
+After:
+
+```markdown
+[![commit-stage](https://github.com/optivem/actions/actions/workflows/commit-stage.yml/badge.svg?event=push)](https://github.com/optivem/actions/actions/workflows/commit-stage.yml)
+```
 
 #### `hub` — one badge with four triggers
 
@@ -98,6 +212,22 @@ All six acceptance-stage workflows (`{java,dotnet,typescript}-acceptance-stage{,
 - Leaving it unfiltered means the badge flips between unrelated triggers but is rarely "no status" because something runs every 30 min anyway.
 
 **Recommendation:** `?event=push`, on the same logic as commit-stage badges elsewhere. But this one is a judgment call — flag it for the user before changing.
+
+**Sample output state** (line 5):
+
+Before:
+
+```markdown
+[![dashboard](https://github.com/optivem/hub/actions/workflows/dashboard.yml/badge.svg)](https://github.com/optivem/hub/actions/workflows/dashboard.yml)
+```
+
+After (recommended — `?event=push` shows the most recent main-branch deploy):
+
+```markdown
+[![dashboard](https://github.com/optivem/hub/actions/workflows/dashboard.yml/badge.svg?event=push)](https://github.com/optivem/hub/actions/workflows/dashboard.yml)
+```
+
+Alternative — `?event=schedule` (shows the recurring 30-min health check). Or leave unfiltered (badge flips between unrelated triggers, but rarely "no status" since something runs every 30 min).
 
 #### Repos with no badges (no action)
 
