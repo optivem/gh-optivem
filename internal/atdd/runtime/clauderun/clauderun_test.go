@@ -143,6 +143,9 @@ func newOpts() Options {
 // ---------------------------------------------------------------------------
 
 func TestRenderPrompt_IncludesAllFields(t *testing.T) {
+	// Default opts has CLICommits=false (legacy mode), so the rendered
+	// prompt swaps the new "do not commit" preamble back to the pre-rollout
+	// "your COMMIT must land on HEAD" sentence.
 	opts := newOpts()
 	opts.OverrideText = "prefer record types"
 
@@ -164,6 +167,77 @@ func TestRenderPrompt_IncludesAllFields(t *testing.T) {
 	// All ${…} placeholders must be expanded — none should leak through.
 	if strings.Contains(got, "${") {
 		t.Errorf("prompt still contains ${...} placeholder")
+	}
+}
+
+func TestRenderPrompt_CLICommits_StripsCommitGating(t *testing.T) {
+	// With --cli-commits on, the agent must not be told to commit. The
+	// preamble flips to the "do not commit" sentence and the embedded
+	// shared-commit-confirmation reference block is gone — neither the
+	// rule heading nor the legacy marker should leak into the output.
+	opts := newOpts()
+	opts.CLICommits = true
+
+	got, err := renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt: %v", err)
+	}
+
+	mustContain(t, got, "do not commit and do not summarise")
+	mustContain(t, got, "The CLI will stage and commit your changes after you exit")
+	if strings.Contains(got, "your COMMIT must land on HEAD") {
+		t.Errorf("CLI-commits prompt should not tell the agent to land a commit on HEAD")
+	}
+	if strings.Contains(got, "# Commit Confirmation Rule") {
+		t.Errorf("CLI-commits prompt should not embed the legacy commit-confirmation rule block")
+	}
+	if strings.Contains(got, "<!-- legacy-block:") {
+		t.Errorf("legacy-block marker leaked into rendered prompt: %q", got)
+	}
+}
+
+func TestRenderPrompt_LegacyMode_RestoresCommitConfirmationBlock(t *testing.T) {
+	// CLICommits=false (default) is the rehearsal-compatible mode: the
+	// reverse-substitution must put the legacy preamble back AND inject
+	// the shared-commit-confirmation reference block where the marker sits.
+	opts := newOpts()
+	opts.Agent = "atdd-task"
+
+	got, err := renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt: %v", err)
+	}
+
+	mustContain(t, got, "your COMMIT must land on HEAD")
+	mustContain(t, got, "# Commit Confirmation Rule")
+	mustContain(t, got, `### Reference: docs/atdd/process/shared-commit-confirmation.md`)
+	if strings.Contains(got, "<!-- legacy-block:") {
+		t.Errorf("legacy-block marker leaked into rendered prompt: %q", got)
+	}
+}
+
+func TestRenderPrompt_CLICommits_NoMarkerLeaksAcrossAgents(t *testing.T) {
+	// Smoke-test every embedded prompt: with --cli-commits on, none of
+	// them should leak the legacy-block marker or the legacy preamble.
+	for _, name := range []string{
+		"atdd-backend", "atdd-bug", "atdd-chore", "atdd-driver", "atdd-dsl",
+		"atdd-frontend", "atdd-release", "atdd-story", "atdd-stubs",
+		"atdd-task", "atdd-test",
+	} {
+		opts := newOpts()
+		opts.Agent = name
+		opts.CLICommits = true
+
+		got, err := renderPrompt(opts)
+		if err != nil {
+			t.Fatalf("%s: renderPrompt: %v", name, err)
+		}
+		if strings.Contains(got, "<!-- legacy-block:") {
+			t.Errorf("%s: legacy-block marker leaked", name)
+		}
+		if strings.Contains(got, "your COMMIT must land on HEAD") {
+			t.Errorf("%s: legacy preamble leaked", name)
+		}
 	}
 }
 

@@ -386,6 +386,7 @@ func renderPrompt(opts Options) (string, error) {
 			return "", err
 		}
 	}
+	body = applyCommitGating(body, opts.CLICommits)
 	params := map[string]string{
 		"issue_num":     strconv.Itoa(opts.IssueNum),
 		"issue_title":   opts.IssueTitle,
@@ -403,6 +404,35 @@ func renderPrompt(opts Options) (string, error) {
 		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + opts.OverrideText + "\n"
 	}
 	return rendered, nil
+}
+
+// applyCommitGating reconciles the embedded prompt body with the
+// --cli-commits flag. The committed source has prompts in their CLI-commits
+// target state: the preamble tells the agent not to commit, and the
+// shared-commit-confirmation reference block has been replaced by a marker
+// line. Production rendering then chooses between two views:
+//
+//   - cliCommits=true (target world): strip the marker so the rendered
+//     prompt is the clean target text.
+//   - cliCommits=false (legacy world): swap the new preamble back to the
+//     pre-rollout sentence and re-inject the original commit-confirmation
+//     reference block in place of the marker, so existing rehearsals see
+//     the same prompt they always did.
+//
+// The legacy-mode swap-back goes away when --agent-commits is removed
+// (step 5 of plans/20260430-171111-cli-owns-commit-not-agent.md).
+func applyCommitGating(body string, cliCommits bool) string {
+	const (
+		newPreamble    = "When the work is done, do not commit and do not summarise — exit cleanly. The CLI will stage and commit your changes after you exit. The agent must never run `git commit`, `git add`, or `gh issue close`."
+		legacyPreamble = "When the work is done, your COMMIT must land on HEAD before you exit. The Go driver detects completion by diffing HEAD pre/post."
+		marker         = "<!-- legacy-block:shared-commit-confirmation -->"
+	)
+	if cliCommits {
+		return strings.ReplaceAll(body, marker+"\n\n", "")
+	}
+	body = strings.ReplaceAll(body, newPreamble, legacyPreamble)
+	body = strings.ReplaceAll(body, marker, agents.LegacyCommitBlock())
+	return body
 }
 
 // scopeOrDefault returns fallback when value is empty, else value. The
