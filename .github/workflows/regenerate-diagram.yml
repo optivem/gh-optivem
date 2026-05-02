@@ -1,6 +1,6 @@
 name: regenerate-diagram
 
-# Regenerates docs/process-flow-diagram.md whenever the canonical
+# Regenerates docs/process-diagram.md whenever the canonical
 # process-flow YAML (or the renderer itself) changes on main, and
 # commits the diff back to main if anything changed. The diagram is
 # author-side ground truth for what the orchestration looks like —
@@ -45,31 +45,49 @@ jobs:
           go-version-file: go.mod
           cache: false
 
-      - name: Render diagram
+      - name: Render diagram markdown
         run: |
-          go run . atdd show diagram > docs/process-flow-diagram.md
+          go run . atdd show diagram > docs/process-diagram.md
 
-      - name: Detect changes
+      - name: Detect markdown changes
         id: diff
         run: |
-          if git diff --quiet -- docs/process-flow-diagram.md; then
+          if git diff --quiet -- docs/process-diagram.md; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Fail PR when diagram is stale
+      - name: Fail PR when diagram markdown is stale
         if: github.event_name == 'pull_request' && steps.diff.outputs.changed == 'true'
         run: |
-          echo "::error::docs/process-flow-diagram.md is stale; run 'go run . atdd show diagram > docs/process-flow-diagram.md' and commit."
-          git diff --stat -- docs/process-flow-diagram.md
+          echo "::error::docs/process-diagram.md is stale; run 'go run . atdd show diagram > docs/process-diagram.md' and commit."
+          git diff --stat -- docs/process-diagram.md
           exit 1
 
+      # SVGs are regenerated only on push to main and committed alongside the
+      # markdown so contributors don't need a local Node toolchain. PRs skip
+      # this step — mermaid-cli output isn't byte-stable enough across
+      # environments to gate merges on.
+      - name: Setup Node
+        if: github.event_name == 'push'
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Render diagram SVGs
+        if: github.event_name == 'push'
+        run: bash scripts/render-svgs.sh
+
       - name: Commit and push regenerated diagram
-        if: github.event_name == 'push' && steps.diff.outputs.changed == 'true'
+        if: github.event_name == 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/process-flow-diagram.md
+          git add docs/process-diagram.md docs/images/
+          if git diff --cached --quiet; then
+            echo "No diagram changes to commit."
+            exit 0
+          fi
           git commit -m "atdd: regenerate process-flow diagram"
           git push

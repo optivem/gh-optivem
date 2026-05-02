@@ -1,7 +1,7 @@
 // Package diagram renders the canonical Mermaid markdown for the ATDD
 // process flow.
 //
-// gh-optivem owns one rendered diagram (`docs/process-flow-diagram.md`),
+// gh-optivem owns one rendered diagram (`docs/process-diagram.md`),
 // regenerated whenever the embedded YAML at
 // `internal/atdd/runtime/statemachine/process-flow.yaml` changes.
 // github.com renders Mermaid natively, so anyone browsing the repo sees
@@ -53,7 +53,7 @@ var flowOrder = []string{
 }
 
 // Render returns the full Mermaid markdown body for eng's flows. The
-// output is suitable for writing to `docs/process-flow-diagram.md`.
+// output is suitable for writing to `docs/process-diagram.md`.
 func Render(eng *statemachine.Engine) string {
 	var b strings.Builder
 	writeHeader(&b)
@@ -66,7 +66,7 @@ func Render(eng *statemachine.Engine) string {
 
 func writeHeader(b *strings.Builder) {
 	b.WriteString("# ATDD Process Flow\n\n")
-	b.WriteString("> Generated from `internal/atdd/runtime/statemachine/process-flow.yaml` by `internal/atdd/runtime/diagram`. Do not edit by hand — edit the YAML and regenerate via `gh optivem atdd show diagram > docs/process-flow-diagram.md`.\n\n")
+	b.WriteString("> Generated from `internal/atdd/runtime/statemachine/process-flow.yaml` by `internal/atdd/runtime/diagram`. Do not edit by hand — edit the YAML and regenerate via `gh optivem atdd show diagram > docs/process-diagram.md`.\n\n")
 	b.WriteString("Each section corresponds to one named flow in the YAML. `call_activity` nodes appear as boxes pointing at the linked sub-flow's heading.\n\n")
 }
 

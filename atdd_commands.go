@@ -80,13 +80,13 @@ func newAtddShowCmd() *cobra.Command {
 
 // newAtddShowDiagramCmd renders the canonical process-flow Mermaid
 // markdown to stdout. CI's regenerate-diagram workflow pipes this
-// output to docs/process-flow-diagram.md and commits any diff.
+// output to docs/process-diagram.md and commits any diff.
 func newAtddShowDiagramCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "diagram",
 		Short: "Render the process-flow Mermaid diagram to stdout",
 		Example: `  gh optivem atdd show diagram
-  gh optivem atdd show diagram > docs/process-flow-diagram.md`,
+  gh optivem atdd show diagram > docs/process-diagram.md`,
 		Run: func(cmd *cobra.Command, args []string) {
 			eng, err := statemachine.LoadDefault()
 			exitOnError(err)

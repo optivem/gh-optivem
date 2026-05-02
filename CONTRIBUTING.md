@@ -74,14 +74,24 @@ The ATDD driver walks the embedded process-flow YAML against a real GitHub issue
 
 ### View the diagram
 
-The canonical rendered diagram is [docs/process-flow-diagram.md](docs/process-flow-diagram.md). GitHub renders Mermaid natively — just open it on github.com.
+The canonical rendered diagram is [docs/process-diagram.md](docs/process-diagram.md). GitHub renders Mermaid natively — just open it on github.com.
 
-### Render the diagram
+Standalone SVGs of each Mermaid chart are committed under `docs/images/` for tools that don't render Mermaid (slides, external docs). They're regenerated automatically by the `regenerate-diagram` workflow on push to main, so you normally don't need to render them yourself.
 
-Do not edit `docs/process-flow-diagram.md` by hand — it is generated from the YAML. To regenerate it locally:
+If you do want to render locally (requires `npx`):
 
 ```bash
-gh optivem atdd show diagram > docs/process-flow-diagram.md
+bash scripts/render-svgs.sh
+```
+
+The script pins `@mermaid-js/mermaid-cli` to match the version the workflow uses.
+
+### Regenerate the diagram
+
+Do not edit `docs/process-diagram.md` by hand — it is generated from the YAML. To regenerate it locally:
+
+```bash
+gh optivem atdd show diagram > docs/process-diagram.md
 ```
 
 The `regenerate-diagram` workflow watches `internal/atdd/runtime/statemachine/process-flow.yaml` and `internal/atdd/runtime/diagram/**`, but it behaves differently depending on the event:
