@@ -374,6 +374,7 @@ func handleWorkflowResult(err error, label, repo string) {
 		log.Fatalf("Rate limit exceeded while watching %s workflow. The workflow run may still be passing — check manually: https://github.com/%s/actions", label, repo)
 	}
 	log.Errorf(msgStageFailed, label)
+	log.Errorf("Underlying error from gh run watch: %v", err)
 	log.Fatalf("%s workflow failed. Check: https://github.com/%s/actions", label, repo)
 }
 
