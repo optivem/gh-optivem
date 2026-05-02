@@ -73,7 +73,7 @@ jobs:
         if: github.event_name == 'push'
         uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Render diagram SVGs
         if: github.event_name == 'push'
