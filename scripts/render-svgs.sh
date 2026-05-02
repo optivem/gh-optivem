@@ -21,7 +21,9 @@ rm -f "$out_dir"/process-diagram-*.svg
 
 # Pin mermaid-cli so local renders match what the regenerate-diagram
 # workflow commits. Bump in lockstep with .github/workflows/regenerate-diagram.yml.
-npx -y -p @mermaid-js/mermaid-cli@11.14.0 mmdc -i "$src" -o "$out_dir/process-diagram.svg"
+npx -y -p @mermaid-js/mermaid-cli@11.14.0 mmdc \
+    -p "$repo_root/scripts/puppeteer-config.json" \
+    -i "$src" -o "$out_dir/process-diagram.svg"
 
 # Rename mmdc's index-numbered outputs to include the section heading
 # slug. The Nth `## ` heading in the source markdown corresponds to
