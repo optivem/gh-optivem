@@ -5,7 +5,7 @@ Project: ${project_title} (${project_url})
 Phase: ${phase}
 Phase doc: ${phase_doc}
 
-When the work is done, your COMMIT must land on HEAD before you exit. The Go driver detects completion by diffing HEAD pre/post.
+When the work is done, do not commit and do not summarise — exit cleanly. The CLI will stage and commit your changes after you exit. The agent must never run `git commit`, `git add`, or `gh issue close`.
 
 ---
 

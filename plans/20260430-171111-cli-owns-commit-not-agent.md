@@ -1,7 +1,5 @@
 # CLI owns commit, agent never touches git
 
-> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-02T16:59:40Z`
-
 ## Plan revision (2026-05-02)
 
 The plan was written 2026-04-30 against the world where leaf agent prompts lived in `shop/.claude/agents/atdd/*.md` and `gh-optivem` had a `clauderun/prompt.tmpl`. Two commits since then have moved that ground:
@@ -42,33 +40,7 @@ Why this is the right split:
 
 ## Items
 
-Ordered by dependency. Items 1–3 (the core CLI-side flip + flag) landed; what remains is item 4 (prompt edits in gh-optivem) and item 5 (cleanup of the now-orphan shared doc in `shop`).
-
-### 4. Strip commit gating from leaf agent prompts (combines old 4 + 5)
-
-**Files (in `gh-optivem`):** every prompt under `internal/atdd/runtime/agents/prompts/atdd-*.md` that currently embeds the `shared-commit-confirmation.md` block — `grep -l "shared-commit-confirmation" internal/atdd/runtime/agents/prompts/` lists them. As of 2026-05-02 that's 9 files: `atdd-backend.md`, `atdd-chore.md`, `atdd-driver.md`, `atdd-dsl.md`, `atdd-frontend.md`, `atdd-release.md`, `atdd-task.md`, `atdd-test.md`, `atdd-stubs.md`.
-
-Each prompt has two pieces of commit-related text. Edit both in one pass per file:
-
-**a) Preamble (lines ≈8–10).** Replace:
-
-```
-When the work is done, your COMMIT must land on HEAD before you exit. The Go driver detects completion by diffing HEAD pre/post.
-```
-
-with:
-
-```
-When the work is done, do not commit and do not summarise — exit cleanly. The CLI will stage and commit your changes after you exit. The agent must never run `git commit`, `git add`, or `gh issue close`.
-```
-
-**b) Embedded `### Reference: docs/atdd/process/shared-commit-confirmation.md` block.** Delete the entire block (heading + the inlined rule body). Keep the WRITE-STOP step in the body (e.g. `atdd-task.md` step 5: *"After WRITE, STOP. Present the system + driver changes for human approval."*) — that's the human review point, still valid.
-
-Also: scrub any agent-internal procedural language about staging, commit messages, or `git commit` from the rest of each prompt. Replace, where appropriate, with the single line *"Do not run git commands. The CLI commits your changes after you exit."*.
-
-**Estimated effort:** 2–3 hours across all 9 prompts, mostly mechanical. Add a `clauderun_test.go` assertion that no rendered prompt contains the strings `Can I commit?` or `your COMMIT must land on HEAD`.
-
-### 5. Delete `shared-commit-confirmation.md` and rewrite cross-refs (was item 7)
+- [ ] **5. Delete `shared-commit-confirmation.md` and rewrite cross-refs (was item 7)** — ⏳ Deferred: gated on default flipping to `--cli-commits=on` and rehearsals running green (steps 3 of "Order of operations"). Until then, `shop`'s shared doc is still imported by the legacy-mode prompt path that gh-optivem swaps back when `--cli-commits=off`. Re-open this item once the flag default flips.
 
 **File:** `docs/atdd/process/shared-commit-confirmation.md` in `shop`. (rehearsal-atdd-cli is obsolete — see plan revision note.)
 
@@ -91,7 +63,7 @@ Steps:
 ## Order of operations for landing this
 
 1. ~~Land items 1–3 in `gh-optivem` behind a `--cli-commits` flag (default off) so existing rehearsals keep working.~~ **Done.**
-2. Land item 4 in `gh-optivem` (prompt edits) — gated to only apply when `--cli-commits` is on, OR ship them flag-unconditionally and accept that rehearsals against the default-off path will produce a no-op commit landed by neither side. Prefer the former.
+2. ~~Land item 4 in `gh-optivem` (prompt edits) — gated to only apply when `--cli-commits` is on.~~ **Done (2026-05-02).** Prompts now ship in their CLI-commits target state; `clauderun.applyCommitGating` reverse-substitutes the legacy preamble + commit-confirmation reference block when `--cli-commits=off`. Scope extended to 11 files (added `atdd-bug.md` and `atdd-story.md` for preamble parity; the plan's strict 9-file list missed them — they had the same legacy preamble line).
 3. Flip the default in `gh-optivem` (`--cli-commits` becomes default-on, with `--agent-commits` as the legacy escape hatch).
 4. Land item 5 in `shop` (delete shared doc, fix cross-refs) once the default has flipped and rehearsals have run green.
-5. Remove `--agent-commits` after one full soak window.
+5. Remove `--agent-commits` after one full soak window. At that point also delete `internal/atdd/runtime/agents/shared/legacy-commit-confirmation.md` and the `applyCommitGating` legacy branch.
