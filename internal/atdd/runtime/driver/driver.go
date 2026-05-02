@@ -43,7 +43,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/board"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/clauderun"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/config"
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/gates"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
@@ -106,9 +106,9 @@ type Options struct {
 	AgentPromptOverrides map[string]string
 
 	// ConfigPath, when non-empty, overrides the default
-	// `<repoPath>/docs/atdd/config.yaml` lookup with an explicit file
-	// path. Wired from `--config <path>`; missing-file is an error
-	// (unlike the default lookup, where absence is OK).
+	// `<repoPath>/optivem.yaml` lookup with an explicit file path. Wired
+	// from `--config <path>`; missing-file is an error (unlike the default
+	// lookup, where absence is OK).
 	ConfigPath string
 
 	// ClaudeRunDeps lets tests inject fake `claude` and `git` runners
@@ -195,13 +195,23 @@ func Run(ctx context.Context, opts Options) error {
 	verify.WrapAll(eng, verify.Deps{})
 	wrapOverride(eng, opts.Override)
 
+	repoPath, err := resolveRepoPath(opts.RepoPath)
+	if err != nil {
+		return fmt.Errorf("driver: %w", err)
+	}
+	cfg, err := loadDriverConfig(opts.ConfigPath, repoPath)
+	if err != nil {
+		return err
+	}
+
 	sCtx := statemachine.NewContext()
+	seedScopeParams(sCtx, cfg)
 	if opts.ProjectURL != "" {
 		sCtx.Set("project_url", opts.ProjectURL)
 	}
 
 	if opts.IssueNum > 0 {
-		if err := preResolveIssue(ctx, opts, sCtx); err != nil {
+		if err := preResolveIssue(ctx, opts, sCtx, cfg, repoPath); err != nil {
 			return fmt.Errorf("driver: pre-resolve issue #%d: %w", opts.IssueNum, err)
 		}
 		// Skip START → PICK_TOP_READY when running main. The pre-resolution
@@ -215,24 +225,63 @@ func Run(ctx context.Context, opts Options) error {
 	return eng.RunFlow(opts.FlowName, sCtx)
 }
 
+// resolveRepoPath returns the absolute path the driver treats as the
+// consumer repo. Empty input falls back to the process CWD; non-empty
+// is returned as-is (no canonicalisation, since callers and tests may
+// pass either absolute or relative paths).
+func resolveRepoPath(explicit string) (string, error) {
+	if explicit != "" {
+		return explicit, nil
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("get working directory: %w", err)
+	}
+	return cwd, nil
+}
+
 // loadDriverConfig returns the parsed config for the run. When configPath
 // is non-empty (operator passed `--config`), it must exist; missing-file
 // is an error to catch typos. Empty configPath falls back to the default
-// `<repoPath>/docs/atdd/config.yaml` lookup, where absence is OK
-// (returns nil).
-func loadDriverConfig(configPath, repoPath string) (*config.Config, error) {
+// `<repoPath>/optivem.yaml` lookup, where absence is OK (returns nil).
+func loadDriverConfig(configPath, repoPath string) (*projectconfig.Config, error) {
 	if configPath != "" {
-		cfg, err := config.LoadFromPath(configPath)
+		cfg, err := projectconfig.LoadFromPath(configPath)
 		if err != nil {
 			return nil, fmt.Errorf("driver: %w", err)
 		}
 		return cfg, nil
 	}
-	cfg, err := config.Load(repoPath)
+	cfg, err := projectconfig.Load(repoPath)
 	if err != nil {
 		return nil, fmt.Errorf("driver: %w", err)
 	}
 	return cfg, nil
+}
+
+// seedScopeParams copies repo-strategy and scope axes from a loaded config
+// into Context.Params so agent prompts can substitute ${repo_strategy},
+// ${repos}, ${architecture}, ${system_lang}, ${test_lang}. Empty values
+// are left absent (the template var expands to ""). nil cfg is a no-op.
+func seedScopeParams(sCtx *statemachine.Context, cfg *projectconfig.Config) {
+	if cfg == nil {
+		return
+	}
+	if cfg.Project.RepoStrategy != "" {
+		sCtx.Params["repo_strategy"] = cfg.Project.RepoStrategy
+	}
+	if len(cfg.Project.Repos) > 0 {
+		sCtx.Params["repos"] = strings.Join(cfg.Project.Repos, ",")
+	}
+	if cfg.Scope.Architecture != "" {
+		sCtx.Params["architecture"] = cfg.Scope.Architecture
+	}
+	if cfg.Scope.SystemLang != "" {
+		sCtx.Params["system_lang"] = cfg.Scope.SystemLang
+	}
+	if cfg.Scope.TestLang != "" {
+		sCtx.Params["test_lang"] = cfg.Scope.TestLang
+	}
 }
 
 // preflightFn is the per-Run function that verifies the `claude` CLI
@@ -282,21 +331,10 @@ func (o Options) withDefaults() Options {
 // preResolveIssue populates Context with everything PICK_TOP_READY would
 // have set, reading from `gh project view` + `gh project item-list` (via
 // board.FindIssue). Called once at driver startup in implement-ticket mode.
-func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Context) error {
-	repoPath := opts.RepoPath
-	if repoPath == "" {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return fmt.Errorf("get working directory: %w", err)
-		}
-		repoPath = cwd
-	}
-
-	cfg, err := loadDriverConfig(opts.ConfigPath, repoPath)
-	if err != nil {
-		return err
-	}
-
+// cfg is the pre-loaded project config (may be nil if no optivem.yaml and
+// no --config) and repoPath is the resolved consumer-repo path; both are
+// supplied by Run so the load happens once per driver invocation.
+func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Context, cfg *projectconfig.Config, repoPath string) error {
 	projectURL := opts.ProjectURL
 	if projectURL == "" {
 		resolved, err := board.ResolveProjectURLFromConfig(cfg, repoPath, nil)

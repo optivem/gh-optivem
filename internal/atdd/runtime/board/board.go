@@ -26,7 +26,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/config"
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
 // ---------------------------------------------------------------------------
@@ -103,8 +103,7 @@ var ErrStatusFieldMissing = errors.New("board: project is missing a Status field
 // ResolveProjectURL implements the config-then-README-then-git-remote
 // fallback chain:
 //
-//  1. Read <repoPath>/docs/atdd/config.yaml; if `project.url` is set,
-//     return it.
+//  1. Read <repoPath>/optivem.yaml; if `project.url` is set, return it.
 //  2. Read <repoPath>/README.md and look for the canonical pattern
 //     `https://github.com/orgs/<org>/projects/<n>` or the user variant
 //     `https://github.com/users/<user>/projects/<n>`.
@@ -120,7 +119,7 @@ func ResolveProjectURL(repoPath string, git GitRunner) (string, error) {
 	if repoPath == "" {
 		return "", fmt.Errorf("board: repoPath is required")
 	}
-	cfg, err := config.Load(repoPath)
+	cfg, err := projectconfig.Load(repoPath)
 	if err != nil {
 		return "", fmt.Errorf("board: load config: %w", err)
 	}
@@ -131,11 +130,11 @@ func ResolveProjectURL(repoPath string, git GitRunner) (string, error) {
 // ResolveProjectURL. The caller passes a pre-loaded *Config (or nil to
 // skip the config branch entirely). Used by the driver when the operator
 // passed `--config <path>` so the alternate config takes precedence over
-// the default `docs/atdd/config.yaml` lookup.
+// the default `optivem.yaml` lookup.
 //
 // README + git-remote fallback semantics are otherwise identical to
 // ResolveProjectURL.
-func ResolveProjectURLFromConfig(cfg *config.Config, repoPath string, git GitRunner) (string, error) {
+func ResolveProjectURLFromConfig(cfg *projectconfig.Config, repoPath string, git GitRunner) (string, error) {
 	if repoPath == "" {
 		return "", fmt.Errorf("board: repoPath is required")
 	}

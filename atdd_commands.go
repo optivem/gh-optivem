@@ -151,7 +151,7 @@ func newAtddImplementTicketCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&replacePairs, "replace", nil, "Per-node prompt replacement, repeatable (escape hatch — full prompt swap)")
 	cmd.Flags().StringVar(&yamlPath, "yaml", "", "Path to a process-flow YAML override (defaults to the embedded canonical document)")
 	cmd.Flags().StringSliceVar(&agentPromptPairs, "agent-prompt", nil, "Override one named agent prompt, repeatable (e.g. --agent-prompt atdd-test=./prompts/atdd-test.md)")
-	cmd.Flags().StringVar(&configPath, "config", "", "Path to a project config override (defaults to <repoPath>/docs/atdd/config.yaml)")
+	cmd.Flags().StringVar(&configPath, "config", "", "Path to a project config override (defaults to <repoPath>/optivem.yaml)")
 	return cmd
 }
 
@@ -200,7 +200,7 @@ func newAtddManageProjectCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&replacePairs, "replace", nil, "Per-node prompt replacement, repeatable (escape hatch — full prompt swap)")
 	cmd.Flags().StringVar(&yamlPath, "yaml", "", "Path to a process-flow YAML override (defaults to the embedded canonical document)")
 	cmd.Flags().StringSliceVar(&agentPromptPairs, "agent-prompt", nil, "Override one named agent prompt, repeatable (e.g. --agent-prompt atdd-test=./prompts/atdd-test.md)")
-	cmd.Flags().StringVar(&configPath, "config", "", "Path to a project config override (defaults to <repoPath>/docs/atdd/config.yaml)")
+	cmd.Flags().StringVar(&configPath, "config", "", "Path to a project config override (defaults to <repoPath>/optivem.yaml)")
 	return cmd
 }
 
