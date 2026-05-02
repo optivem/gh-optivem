@@ -27,6 +27,12 @@ on:
 permissions:
   contents: write
 
+# Serialize runs so two pushes to main can't produce racing auto-commits
+# that fight over the diagram artefacts.
+concurrency:
+  group: regenerate-diagram-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   regenerate:
     name: Regenerate process-flow diagram
@@ -90,4 +96,7 @@ jobs:
             exit 0
           fi
           git commit -m "atdd: regenerate process-flow diagram"
+          # Rebase onto any commits that landed on main while we were
+          # rendering, so the push isn't rejected by an unrelated push race.
+          git pull --rebase origin main
           git push
