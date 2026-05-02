@@ -4,6 +4,7 @@ Ticket: #${issue_num} "${issue_title}" (${issue_repo})
 Project: ${project_title} (${project_url})
 Phase: ${phase}
 Phase doc: ${phase_doc}
+Scope: Architecture=${architecture}, System Lang=${system_lang}, Test Lang=${test_lang}
 
 When the work is done, your COMMIT must land on HEAD before you exit. The Go driver detects completion by diffing HEAD pre/post.
 

@@ -62,6 +62,14 @@ type Options struct {
 	ProjectTitle string
 	ProjectURL   string
 
+	// Scope axes — copied from optivem.yaml's scope block via
+	// driver.seedScopeParams. Empty values render as the broadest option
+	// ("both" for Architecture, "all" for the language axes), matching the
+	// convention used in the prompt templates' Scope section.
+	Architecture string
+	SystemLang   string
+	TestLang     string
+
 	// OverrideText is the per-node `--extra` text from override.Hooks,
 	// interpolated into the prompt template. Empty string is fine.
 	OverrideText string
@@ -295,12 +303,25 @@ func renderPrompt(opts Options) (string, error) {
 		"project_url":   opts.ProjectURL,
 		"phase":         opts.NodeDescription,
 		"phase_doc":     opts.PhaseDoc,
+		"architecture":  scopeOrDefault(opts.Architecture, "both"),
+		"system_lang":   scopeOrDefault(opts.SystemLang, "all"),
+		"test_lang":     scopeOrDefault(opts.TestLang, "all"),
 	}
 	rendered := statemachine.ExpandParams(body, params)
 	if opts.OverrideText != "" {
 		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + opts.OverrideText + "\n"
 	}
 	return rendered, nil
+}
+
+// scopeOrDefault returns fallback when value is empty, else value. The
+// prompt-template Scope block uses "both" / "all" as the broadest options;
+// an unset axis in optivem.yaml is the same intent.
+func scopeOrDefault(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 // RenderPrompt is the public counterpart to renderPrompt: it returns the

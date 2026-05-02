@@ -167,6 +167,37 @@ func TestRenderPrompt_IncludesAllFields(t *testing.T) {
 	}
 }
 
+func TestRenderPrompt_TaskAgentScopeBlock_ExplicitValues(t *testing.T) {
+	opts := newOpts()
+	opts.Agent = "atdd-task"
+	opts.Architecture = "monolith"
+	opts.SystemLang = "java"
+	opts.TestLang = "dotnet"
+
+	got, err := renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt: %v", err)
+	}
+	mustContain(t, got, "Scope: Architecture=monolith, System Lang=java, Test Lang=dotnet")
+	if strings.Contains(got, "${") {
+		t.Errorf("prompt still contains ${...} placeholder: %s", got)
+	}
+}
+
+func TestRenderPrompt_TaskAgentScopeBlock_EmptyDefaultsToBroadest(t *testing.T) {
+	// When optivem.yaml omits the scope block, all three axes arrive empty.
+	// They must render as the broadest option ("both" / "all") so the agent
+	// reads a complete Scope line, not "Architecture=, System Lang=, …".
+	opts := newOpts()
+	opts.Agent = "atdd-chore"
+
+	got, err := renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt: %v", err)
+	}
+	mustContain(t, got, "Scope: Architecture=both, System Lang=all, Test Lang=all")
+}
+
 func TestRenderPrompt_ReturnsErrorForUnknownAgent(t *testing.T) {
 	// agents.Prompt errors when no embedded prompt matches the name; the
 	// driver relies on this so a YAML referencing an unembedded agent
