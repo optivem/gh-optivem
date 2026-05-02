@@ -27,6 +27,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -592,6 +593,59 @@ const elapsedRound = time.Second
 // Real subprocess implementations
 // ---------------------------------------------------------------------------
 
+// promptArgvLimit is the threshold above which materializePrompt spills
+// the prompt to a tempfile instead of passing it as an argv argument.
+// Windows' CreateProcess caps the full command line at ~32K chars; macOS
+// and Linux ARG_MAX are higher (~256K and ~131K) but the same overflow
+// is reachable as prompts grow. 8K leaves comfortable headroom under the
+// strictest OS limit, including the executable path and any quoting the
+// shell adds.
+const promptArgvLimit = 8000
+
+// materializePrompt returns the argv argument to hand to `claude` and a
+// cleanup func. For prompts under promptArgvLimit it returns the prompt
+// verbatim with a no-op cleanup — the historical fast path. Above the
+// limit it writes the prompt to a tempfile in dir and returns a short
+// bootstrap message instructing the agent to read and delete the file
+// (the only viable path on Windows, where the OS argv limit is too low
+// for large prompts and the `claude` CLI exposes no --prompt-file flag).
+//
+// The cleanup func is always safe to call. It removes the tempfile if
+// one was created — defensive against the agent forgetting to delete it
+// itself, or the run failing before reaching the deletion instruction.
+func materializePrompt(dir, prompt string) (string, func(), error) {
+	if len(prompt) <= promptArgvLimit {
+		return prompt, func() {}, nil
+	}
+	if dir == "" {
+		var err error
+		dir, err = os.Getwd()
+		if err != nil {
+			return "", func() {}, fmt.Errorf("materializePrompt: getwd: %w", err)
+		}
+	}
+	f, err := os.CreateTemp(dir, ".atdd-prompt-*.tmp.md")
+	if err != nil {
+		return "", func() {}, fmt.Errorf("materializePrompt: create tempfile: %w", err)
+	}
+	if _, err := f.WriteString(prompt); err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return "", func() {}, fmt.Errorf("materializePrompt: write tempfile: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(f.Name())
+		return "", func() {}, fmt.Errorf("materializePrompt: close tempfile: %w", err)
+	}
+	base := filepath.Base(f.Name())
+	bootstrap := fmt.Sprintf(
+		"Your full instructions are in `%s` in the working directory. As your very first action, read that file with the Read tool and carry out the instructions exactly. Delete `%s` when you finish.",
+		base, base,
+	)
+	cleanup := func() { os.Remove(f.Name()) }
+	return bootstrap, cleanup, nil
+}
+
 type execClaude struct{}
 
 // Run invokes the `claude` CLI.
@@ -622,7 +676,12 @@ func (execClaude) Run(ctx context.Context, opts RunOpts) (RunResult, error) {
 func runInteractive(ctx context.Context, opts RunOpts) (RunResult, error) {
 	// Interactive: pass the prompt as a positional argument so it seeds
 	// the first user turn. Subsequent turns come from the TTY.
-	cmd := exec.CommandContext(ctx, "claude", opts.Prompt)
+	arg, cleanup, err := materializePrompt(opts.Dir, opts.Prompt)
+	if err != nil {
+		return RunResult{}, err
+	}
+	defer cleanup()
+	cmd := exec.CommandContext(ctx, "claude", arg)
 	if opts.Dir != "" {
 		cmd.Dir = opts.Dir
 	}
@@ -633,8 +692,13 @@ func runInteractive(ctx context.Context, opts RunOpts) (RunResult, error) {
 }
 
 func runAutonomous(ctx context.Context, opts RunOpts) (RunResult, error) {
+	arg, cleanup, err := materializePrompt(opts.Dir, opts.Prompt)
+	if err != nil {
+		return RunResult{}, err
+	}
+	defer cleanup()
 	args := []string{
-		"-p", opts.Prompt,
+		"-p", arg,
 		"--output-format", "json",
 	}
 	cmd := exec.CommandContext(ctx, "claude", args...)

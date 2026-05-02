@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -614,6 +615,74 @@ func TestDispatch_DoesNotWarnWhenNoNewUntracked(t *testing.T) {
 	}
 	if strings.Contains(buf.String(), "untracked file") {
 		t.Errorf("must not warn about pre-existing untracked file:\n%s", buf.String())
+	}
+}
+
+func TestMaterializePrompt_BelowLimitReturnsVerbatim(t *testing.T) {
+	dir := t.TempDir()
+	prompt := strings.Repeat("x", promptArgvLimit)
+
+	arg, cleanup, err := materializePrompt(dir, prompt)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer cleanup()
+
+	if arg != prompt {
+		t.Errorf("expected verbatim prompt; got %d-byte arg", len(arg))
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 0 {
+		t.Errorf("no tempfile expected below limit; found %d entries", len(entries))
+	}
+}
+
+func TestMaterializePrompt_AboveLimitSpillsToFile(t *testing.T) {
+	dir := t.TempDir()
+	prompt := strings.Repeat("y", promptArgvLimit+1)
+
+	arg, cleanup, err := materializePrompt(dir, prompt)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer cleanup()
+
+	if len(arg) >= len(prompt) {
+		t.Errorf("expected short bootstrap arg; got %d bytes (prompt was %d)", len(arg), len(prompt))
+	}
+	if !strings.Contains(arg, ".atdd-prompt-") || !strings.Contains(arg, ".tmp.md") {
+		t.Errorf("bootstrap arg missing tempfile reference: %q", arg)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read tempdir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected exactly 1 tempfile; got %d", len(entries))
+	}
+	body, err := os.ReadFile(dir + string(os.PathSeparator) + entries[0].Name())
+	if err != nil {
+		t.Fatalf("read tempfile: %v", err)
+	}
+	if string(body) != prompt {
+		t.Errorf("tempfile content mismatch: got %d bytes, want %d", len(body), len(prompt))
+	}
+}
+
+func TestMaterializePrompt_CleanupRemovesTempfile(t *testing.T) {
+	dir := t.TempDir()
+	prompt := strings.Repeat("z", promptArgvLimit+1)
+
+	_, cleanup, err := materializePrompt(dir, prompt)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cleanup()
+
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 0 {
+		t.Errorf("cleanup must remove tempfile; %d entries remain", len(entries))
 	}
 }
 
