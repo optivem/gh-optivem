@@ -7,20 +7,35 @@ import (
 	"strings"
 )
 
-//go:embed prompts/*.md
+//go:embed prompts/*.md shared/*.md
 var promptFS embed.FS
 
-// Prompt returns the embedded prompt template for the given agent name.
-// Returns an error if no prompt is embedded under that name. The returned
-// content uses ${name} substitution placeholders matching the YAML's
-// ExpandParams dialect — callers run statemachine.ExpandParams against
-// the live ticket context before passing the result to `claude -p`.
+// sharedSessionEnd is the universal "end your reply with /exit cue" rule
+// appended to every agent prompt. Loaded once at init so a missing file
+// fails the binary at startup rather than at first dispatch.
+var sharedSessionEnd = mustReadShared("shared/session-end.md")
+
+func mustReadShared(path string) string {
+	data, err := promptFS.ReadFile(path)
+	if err != nil {
+		panic("agents: read embedded " + path + ": " + err.Error())
+	}
+	return strings.TrimRight(string(data), "\n")
+}
+
+// Prompt returns the embedded prompt template for the given agent name,
+// with the shared session-end rule appended. Returns an error if no
+// prompt is embedded under that name. The returned content uses ${name}
+// substitution placeholders matching the YAML's ExpandParams dialect —
+// callers run statemachine.ExpandParams against the live ticket context
+// before passing the result to `claude -p`.
 func Prompt(name string) (string, error) {
 	data, err := promptFS.ReadFile("prompts/" + name + ".md")
 	if err != nil {
 		return "", fmt.Errorf("agents: no embedded prompt for %q", name)
 	}
-	return string(data), nil
+	body := strings.TrimRight(string(data), "\n")
+	return body + "\n\n---\n\n" + sharedSessionEnd + "\n", nil
 }
 
 // Names returns every embedded agent name, sorted. The driver uses this to
