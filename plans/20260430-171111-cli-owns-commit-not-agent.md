@@ -64,6 +64,6 @@ Steps:
 
 1. ~~Land items 1–3 in `gh-optivem` behind a `--cli-commits` flag (default off) so existing rehearsals keep working.~~ **Done.**
 2. ~~Land item 4 in `gh-optivem` (prompt edits) — gated to only apply when `--cli-commits` is on.~~ **Done (2026-05-02).** Prompts now ship in their CLI-commits target state; `clauderun.applyCommitGating` reverse-substitutes the legacy preamble + commit-confirmation reference block when `--cli-commits=off`. Scope extended to 11 files (added `atdd-bug.md` and `atdd-story.md` for preamble parity; the plan's strict 9-file list missed them — they had the same legacy preamble line).
-3. Flip the default in `gh-optivem` (`--cli-commits` becomes default-on, with `--agent-commits` as the legacy escape hatch).
+3. ~~Flip the default in `gh-optivem` (`--cli-commits` becomes default-on, with `--agent-commits` as the legacy escape hatch).~~ **Done (2026-05-02).** `--cli-commits` now defaults to `true` and `--agent-commits` is the documented legacy escape hatch (errors if both are explicitly passed). Wiring lives in `atdd_commands.go:resolveCommitMode`.
 4. Land item 5 in `shop` (delete shared doc, fix cross-refs) once the default has flipped and rehearsals have run green.
 5. Remove `--agent-commits` after one full soak window. At that point also delete `internal/atdd/runtime/agents/shared/legacy-commit-confirmation.md` and the `applyCommitGating` legacy branch.
