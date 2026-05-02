@@ -1,7 +1,7 @@
 // Transitions test suite for the ATDD process-flow YAML.
 //
 // Strategy:
-//   - Load the snapshot YAML at testdata/process-flow.yaml.
+//   - Load the canonical embedded YAML via LoadDefault.
 //   - Assert structural invariants over every flow (start exists, edges
 //     reference existing nodes, gateways have at least one outgoing edge,
 //     no orphan nodes, every node either reaches an end or has an outgoing
@@ -19,23 +19,14 @@
 package statemachine
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 )
 
-const yamlSnapshotPath = "testdata/process-flow.yaml"
-
 func loadSnapshot(t *testing.T) *Engine {
 	t.Helper()
-	path := filepath.FromSlash(yamlSnapshotPath)
-	data, err := os.ReadFile(path)
+	eng, err := LoadDefault()
 	if err != nil {
-		t.Fatalf("read snapshot %s: %v", path, err)
-	}
-	eng, err := LoadBytes(data)
-	if err != nil {
-		t.Fatalf("load snapshot: %v", err)
+		t.Fatalf("load embedded process-flow: %v", err)
 	}
 	return eng
 }

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -100,13 +101,14 @@ func newRunCmd() *cobra.Command {
 	return cmd
 }
 
-// newRunSystemCmd implements `gh optivem run system [--system path] [--restart] [--log-lines 50]`.
+// newRunSystemCmd implements `gh optivem run system [--system path] [--restart] [--log-lines 50] [--up-timeout 5m]`.
 // Brings up every entry in systems[] and waits for health.
 func newRunSystemCmd() *cobra.Command {
 	var (
 		systemPath string
 		restart    bool
 		logLines   int
+		upTimeout  time.Duration
 	)
 	cmd := &cobra.Command{
 		Use:     "system",
@@ -115,13 +117,14 @@ func newRunSystemCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			sys, err := runner.LoadSystem(systemPath)
 			exitOnError(err)
-			opts := runner.SystemOptions{LogLines: logLines, Restart: restart}
+			opts := runner.SystemOptions{LogLines: logLines, Restart: restart, UpTimeout: upTimeout}
 			exitOnError(runner.Up(sys, cwdForPath(systemPath), opts))
 		},
 	}
 	cmd.Flags().StringVar(&systemPath, "system", defaultSystemConfig, flagSystemUsage)
 	cmd.Flags().BoolVar(&restart, "restart", false, "Force tear-down + restart even if the system is already up")
 	cmd.Flags().IntVar(&logLines, "log-lines", 50, "Lines of compose logs to dump on health-probe failure")
+	cmd.Flags().DurationVar(&upTimeout, "up-timeout", 0, "Per-attempt timeout for `docker compose up -d` (zero = 5m default)")
 	return cmd
 }
 

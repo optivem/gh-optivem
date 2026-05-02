@@ -191,8 +191,8 @@ const (
 	phasePrepare            = "Prepare"
 	phaseSetupRepo          = "Setup repository"
 	phaseApplyTemplate      = "Apply template"
-	phaseLintScaffold       = "Lint scaffold"
 	phasePushScaffold       = "Push scaffold"
+	phaseLintScaffold       = "Lint scaffold"
 	phaseVerifyLocal        = "Verify local"
 	phaseVerifyCommit       = "Verify commit stage"
 	phaseVerifyAcceptance   = "Verify acceptance stage"
@@ -220,6 +220,7 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, fail
 		{name: "Replace system name", phase: phaseApplyTemplate, fn: func() { steps.ReplaceSystemName(cfg) }},
 		{name: "Update README", phase: phaseApplyTemplate, fn: func() { steps.UpdateReadme(cfg) }},
 		{name: "Write project config", phase: phaseApplyTemplate, fn: func() { steps.WriteProjectConfig(cfg) }},
+		{name: "Write optivem.yaml", phase: phaseApplyTemplate, fn: func() { steps.WriteOptivemYAML(cfg) }},
 		{name: "Write LICENSE", phase: phaseApplyTemplate, fn: func() { steps.WriteLicense(cfg) }},
 		{name: "Create SonarCloud projects", phase: phaseApplyTemplate, fn: func() { steps.CreateSonarCloudProjects(cfg, sc) }},
 
@@ -247,25 +248,24 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, fail
 		})
 	}
 
-	// Lint scaffolded workflows BEFORE push so a broken `uses:` reference or
-	// invalid syntax aborts the run locally, instead of landing in the test-app
-	// and surfacing 10+ minutes later at workflow-dispatch time. failHard skips
-	// the alwaysRun Commit and push that follows — pushing a workflow GitHub
-	// can't parse has no troubleshooting value, only red runs on the new repo.
-	// Runs even at --verify-level=none — output correctness is part of the
-	// scaffold, not a verify-level concern.
-	allSteps = append(allSteps, stepDef{
-		name:     "Verify scaffolded workflows",
-		phase:    phaseLintScaffold,
-		failHard: true,
-		fn:       func() { steps.VerifyScaffoldWorkflows(cfg) },
-	})
-
 	allSteps = append(allSteps, stepDef{
 		name:      "Commit and push",
 		phase:     phasePushScaffold,
 		alwaysRun: true,
 		fn:        func() { steps.CommitAndPush(cfg, *failureNote) },
+	})
+
+	// Lint scaffolded workflows AFTER push so a broken scaffold lands on the
+	// remote where the author can inspect it — students hitting init issues need
+	// the bad state visible for troubleshooting, not aborted locally. failHard
+	// still skips the downstream verify phases when lint fails. Runs even at
+	// --verify-level=none — output correctness is part of the scaffold, not a
+	// verify-level concern.
+	allSteps = append(allSteps, stepDef{
+		name:     "Verify scaffolded workflows",
+		phase:    phaseLintScaffold,
+		failHard: true,
+		fn:       func() { steps.VerifyScaffoldWorkflows(cfg) },
 	})
 
 	allSteps = append(allSteps, buildVerifySteps(cfg, gh)...)

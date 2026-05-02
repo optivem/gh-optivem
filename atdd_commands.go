@@ -26,8 +26,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/board"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/classify"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/diagram"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/driver"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/gates"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
@@ -46,18 +48,51 @@ func newAtddCmd() *cobra.Command {
 		Short: "Run the ATDD pipeline driver",
 		Long: `Run the ATDD pipeline driver.
 
-The driver loads docs/atdd/process/process-flow.yaml from the consumer's
-working directory and walks it node by node — dispatching service tasks
-inline (board picks, classification, smoke tests, commits) and pausing at
-each user-task node so the operator can launch the corresponding Claude
-Code agent (atdd-story, atdd-test, atdd-dsl, …). When the agent's COMMIT
+The driver loads the canonical process-flow YAML embedded in gh-optivem
+and walks it node by node — dispatching service tasks inline (board
+picks, classification, smoke tests, commits) and pausing at each
+user-task node so the operator can launch the corresponding Claude Code
+agent (atdd-story, atdd-test, atdd-dsl, …). When the agent's COMMIT
 lands on HEAD, the operator presses Enter and the engine moves on.`,
 	}
 	cmd.AddCommand(
 		newAtddImplementTicketCmd(),
 		newAtddManageProjectCmd(),
+		newAtddShowCmd(),
 		newAtddDebugCmd(),
 	)
+	return cmd
+}
+
+// newAtddShowCmd builds the `gh optivem atdd show` parent. Children
+// emit human-readable views of the embedded orchestration artifacts —
+// today only the rendered process-flow diagram. The intent is the
+// "view, don't generate" principle: consumers and CI alike can read
+// the same artifact gh-optivem produces, with no per-repo tooling.
+func newAtddShowCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "show",
+		Short: "Print embedded orchestration artifacts (diagram, …)",
+	}
+	cmd.AddCommand(newAtddShowDiagramCmd())
+	return cmd
+}
+
+// newAtddShowDiagramCmd renders the canonical process-flow Mermaid
+// markdown to stdout. CI's regenerate-diagram workflow pipes this
+// output to docs/process-diagram.md and commits any diff.
+func newAtddShowDiagramCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "diagram",
+		Short: "Render the process-flow Mermaid diagram to stdout",
+		Example: `  gh optivem atdd show diagram
+  gh optivem atdd show diagram > docs/process-diagram.md`,
+		Run: func(cmd *cobra.Command, args []string) {
+			eng, err := statemachine.LoadDefault()
+			exitOnError(err)
+			fmt.Print(diagram.Render(eng))
+		},
+	}
 	return cmd
 }
 
@@ -67,13 +102,16 @@ lands on HEAD, the operator presses Enter and the engine moves on.`,
 // PICK_TOP_READY picker).
 func newAtddImplementTicketCmd() *cobra.Command {
 	var (
-		issueArg     string
-		projectURL   string
-		autonomous   bool
-		manualAgents bool
-		interactive  bool
-		extraPairs   []string
-		replacePairs []string
+		issueArg          string
+		projectURL        string
+		autonomous        bool
+		manualAgents      bool
+		interactive       bool
+		extraPairs        []string
+		replacePairs      []string
+		yamlPath          string
+		agentPromptPairs  []string
+		configPath        string
 	)
 	cmd := &cobra.Command{
 		Use:   "implement-ticket",
@@ -81,18 +119,26 @@ func newAtddImplementTicketCmd() *cobra.Command {
 		Example: `  gh optivem atdd implement-ticket --issue 42
   gh optivem atdd implement-ticket --issue https://github.com/optivem/shop/issues/42
   gh optivem atdd implement-ticket --issue 42 --project https://github.com/orgs/optivem/projects/3
-  gh optivem atdd implement-ticket --issue 42 --extra AT_RED_DSL_WRITE="prefer record types"`,
+  gh optivem atdd implement-ticket --issue 42 --extra AT_RED_DSL_WRITE="prefer record types"
+  gh optivem atdd implement-ticket --issue 42 --yaml ./alt-process-flow.yaml
+  gh optivem atdd implement-ticket --issue 42 --agent-prompt atdd-test=./prompts/atdd-test.md
+  gh optivem atdd implement-ticket --issue 42 --config ./optivem-multitier.yaml`,
 		Run: func(cmd *cobra.Command, args []string) {
 			issue, err := parseIssueArg(issueArg)
 			exitOnError(err)
 			hooks, err := buildOverrideHooks(extraPairs, replacePairs, interactive)
 			exitOnError(err)
+			promptOverrides, err := parseAgentPromptPairs(agentPromptPairs)
+			exitOnError(err)
 			exitOnError(driver.Run(context.Background(), driver.Options{
-				IssueNum:     issue,
-				ProjectURL:   projectURL,
-				Autonomous:   autonomous,
-				ManualAgents: manualAgents,
-				Override:     hooks,
+				IssueNum:             issue,
+				ProjectURL:           projectURL,
+				Autonomous:           autonomous,
+				ManualAgents:         manualAgents,
+				Override:             hooks,
+				YAMLPath:             yamlPath,
+				AgentPromptOverrides: promptOverrides,
+				ConfigPath:           configPath,
 			}))
 		},
 	}
@@ -103,6 +149,9 @@ func newAtddImplementTicketCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&interactive, "interactive", false, "Before each user_task dispatch, print the constructed prompt and read stdin for last-minute additions")
 	cmd.Flags().StringSliceVar(&extraPairs, "extra", nil, "Per-node extra prompt text, repeatable (e.g. --extra AT_RED_DSL_WRITE=\"prefer record types\")")
 	cmd.Flags().StringSliceVar(&replacePairs, "replace", nil, "Per-node prompt replacement, repeatable (escape hatch — full prompt swap)")
+	cmd.Flags().StringVar(&yamlPath, "yaml", "", "Path to a process-flow YAML override (defaults to the embedded canonical document)")
+	cmd.Flags().StringSliceVar(&agentPromptPairs, "agent-prompt", nil, "Override one named agent prompt, repeatable (e.g. --agent-prompt atdd-test=./prompts/atdd-test.md)")
+	cmd.Flags().StringVar(&configPath, "config", "", "Path to a project config override (defaults to <repoPath>/optivem.yaml)")
 	return cmd
 }
 
@@ -111,26 +160,35 @@ func newAtddImplementTicketCmd() *cobra.Command {
 // from START.
 func newAtddManageProjectCmd() *cobra.Command {
 	var (
-		projectURL   string
-		autonomous   bool
-		manualAgents bool
-		interactive  bool
-		extraPairs   []string
-		replacePairs []string
+		projectURL       string
+		autonomous       bool
+		manualAgents     bool
+		interactive      bool
+		extraPairs       []string
+		replacePairs     []string
+		yamlPath         string
+		agentPromptPairs []string
+		configPath       string
 	)
 	cmd := &cobra.Command{
 		Use:   "manage-project",
 		Short: "Pick the top Ready ticket and walk the ATDD pipeline",
 		Example: `  gh optivem atdd manage-project
-  gh optivem atdd manage-project --project https://github.com/orgs/optivem/projects/3`,
+  gh optivem atdd manage-project --project https://github.com/orgs/optivem/projects/3
+  gh optivem atdd manage-project --yaml ./alt-process-flow.yaml --config ./optivem-multitier.yaml`,
 		Run: func(cmd *cobra.Command, args []string) {
 			hooks, err := buildOverrideHooks(extraPairs, replacePairs, interactive)
 			exitOnError(err)
+			promptOverrides, err := parseAgentPromptPairs(agentPromptPairs)
+			exitOnError(err)
 			exitOnError(driver.Run(context.Background(), driver.Options{
-				ProjectURL:   projectURL,
-				Autonomous:   autonomous,
-				ManualAgents: manualAgents,
-				Override:     hooks,
+				ProjectURL:           projectURL,
+				Autonomous:           autonomous,
+				ManualAgents:         manualAgents,
+				Override:             hooks,
+				YAMLPath:             yamlPath,
+				AgentPromptOverrides: promptOverrides,
+				ConfigPath:           configPath,
 			}))
 		},
 	}
@@ -140,6 +198,9 @@ func newAtddManageProjectCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&interactive, "interactive", false, "Before each user_task dispatch, print the constructed prompt and read stdin for last-minute additions")
 	cmd.Flags().StringSliceVar(&extraPairs, "extra", nil, "Per-node extra prompt text, repeatable (e.g. --extra AT_RED_DSL_WRITE=\"prefer record types\")")
 	cmd.Flags().StringSliceVar(&replacePairs, "replace", nil, "Per-node prompt replacement, repeatable (escape hatch — full prompt swap)")
+	cmd.Flags().StringVar(&yamlPath, "yaml", "", "Path to a process-flow YAML override (defaults to the embedded canonical document)")
+	cmd.Flags().StringSliceVar(&agentPromptPairs, "agent-prompt", nil, "Override one named agent prompt, repeatable (e.g. --agent-prompt atdd-test=./prompts/atdd-test.md)")
+	cmd.Flags().StringVar(&configPath, "config", "", "Path to a project config override (defaults to <repoPath>/optivem.yaml)")
 	return cmd
 }
 
@@ -168,6 +229,49 @@ func buildOverrideHooks(extraPairs, replacePairs []string, interactive bool) (*o
 		hooks.Replace = replace
 	}
 	return hooks, nil
+}
+
+// parseAgentPromptPairs splits each `name=path` pair, validates that name
+// is a known embedded agent (typos surface at startup, not deep inside a
+// pipeline run), reads the file at startup (so missing files also surface
+// at startup), and returns the agent-name → prompt-body map the driver
+// passes through to the dispatcher. Returns (nil, nil) when pairs is
+// empty so the driver sees a clean nil map rather than an empty one.
+func parseAgentPromptPairs(pairs []string) (map[string]string, error) {
+	if len(pairs) == 0 {
+		return nil, nil
+	}
+	known := map[string]bool{}
+	for _, n := range agents.Names() {
+		known[n] = true
+	}
+	out := make(map[string]string, len(pairs))
+	for _, p := range pairs {
+		name, path, ok := strings.Cut(p, "=")
+		if !ok {
+			return nil, fmt.Errorf("--agent-prompt value %q must be name=path", p)
+		}
+		name = strings.TrimSpace(name)
+		path = strings.TrimSpace(path)
+		if name == "" {
+			return nil, fmt.Errorf("--agent-prompt value %q has empty name", p)
+		}
+		if path == "" {
+			return nil, fmt.Errorf("--agent-prompt %q has empty path", name)
+		}
+		if !known[name] {
+			return nil, fmt.Errorf("--agent-prompt name %q is not a known embedded agent", name)
+		}
+		if _, dup := out[name]; dup {
+			return nil, fmt.Errorf("--agent-prompt name %q specified more than once", name)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("--agent-prompt %s: read %s: %w", name, path, err)
+		}
+		out[name] = string(data)
+	}
+	return out, nil
 }
 
 // parseNodeKVPairs splits each `NODE=text` pair on the first `=`. Empty
@@ -280,16 +384,19 @@ func newAtddDebugNextPhaseCmd() *cobra.Command {
 		Example: `  gh optivem atdd debug next-phase --node GATE_DSL --state dsl_interface_changed=true
   gh optivem atdd debug next-phase --flow at_cycle --node AT_RED_TEST_COMMIT`,
 		Run: func(cmd *cobra.Command, args []string) {
-			if yamlPath == "" {
-				yamlPath = driver.DefaultYAMLPath
-			}
 			if flowName == "" {
 				flowName = driver.DefaultFlowName
 			}
 			if nodeID == "" {
 				exitOnError(fmt.Errorf("--node is required"))
 			}
-			eng, err := statemachine.LoadFile(yamlPath)
+			var eng *statemachine.Engine
+			var err error
+			if yamlPath == "" {
+				eng, err = statemachine.LoadDefault()
+			} else {
+				eng, err = statemachine.LoadFile(yamlPath)
+			}
 			exitOnError(err)
 			sCtx := statemachine.NewContext()
 			for _, kv := range strings.Split(stateRaw, ",") {
@@ -309,7 +416,7 @@ func newAtddDebugNextPhaseCmd() *cobra.Command {
 			fmt.Printf("to:    %s\n", next)
 		},
 	}
-	cmd.Flags().StringVar(&yamlPath, "yaml", "", "Path to process-flow.yaml (defaults to docs/atdd/process/process-flow.yaml)")
+	cmd.Flags().StringVar(&yamlPath, "yaml", "", "Path to a process-flow YAML override (defaults to the embedded canonical document)")
 	cmd.Flags().StringVar(&flowName, "flow", "", "Flow name (defaults to main)")
 	cmd.Flags().StringVar(&nodeID, "node", "", "Source node ID (required)")
 	cmd.Flags().StringVar(&stateRaw, "state", "", "Comma-separated key=value pairs to seed Context (e.g. dsl_interface_changed=true,ticket_type=story)")

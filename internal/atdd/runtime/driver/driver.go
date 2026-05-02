@@ -16,22 +16,26 @@
 //
 // Agent dispatch (v2): every user_task whose `agent:` value is something
 // other than `human` shells out to the `claude` CLI via the clauderun
-// package. The driver constructs a prompt from the node's Raw metadata
-// and the live Context, hands it to clauderun.Dispatch, and detects
-// success by HEAD diff (a fresh commit on the same branch). v1's
-// "pause and let the operator launch the agent in a second window"
-// behaviour is preserved as a fallback under Options.ManualAgents — it
-// lets us bisect "did v2 misroute the agent?" against "did v1 see the
-// commit?" without two parallel binaries.
+// package. clauderun reads the embedded per-agent prompt (from
+// internal/atdd/runtime/agents/prompts/), substitutes ${name} placeholders
+// from the live Context, and hands the rendered string to `claude -p` as
+// the agent's full one-shot input — there is no parent-claude harness or
+// Task-tool indirection. Success is detected by HEAD diff (a fresh commit
+// on the same branch). v1's "pause and let the operator launch the agent
+// in a second window" behaviour is preserved as a fallback under
+// Options.ManualAgents — it lets us bisect "did v2 misroute the agent?"
+// against "did v1 see the commit?" without two parallel binaries.
 package driver
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 
@@ -39,27 +43,24 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/board"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/clauderun"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/config"
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/gates"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/verify"
 )
 
-// DefaultYAMLPath is the canonical relative location of the process-flow
-// document inside a consumer repo. Read from the consumer's CWD — gh-optivem
-// is repo-agnostic by design.
-const DefaultYAMLPath = "docs/atdd/process/process-flow.yaml"
-
 // DefaultFlowName is the entry flow loaded by every public CLI command.
 const DefaultFlowName = "main"
 
 // Options bundles every driver knob that callers (the `gh optivem atdd …`
 // commands and tests) might want to set. Zero values yield a usable
-// configuration: load DefaultYAMLPath, enter DefaultFlowName, no overrides,
-// real shell-outs.
+// configuration: load the embedded canonical YAML, enter DefaultFlowName,
+// no overrides, real shell-outs.
 type Options struct {
-	// YAMLPath is the process-flow file to load. Empty → DefaultYAMLPath.
+	// YAMLPath, when non-empty, points the driver at an on-disk YAML file
+	// instead of the canonical embedded document (statemachine.DefaultYAML).
+	// Empty → load the embedded YAML via statemachine.LoadDefault.
 	YAMLPath string
 
 	// FlowName is the entry flow. Empty → DefaultFlowName.
@@ -96,6 +97,20 @@ type Options struct {
 	// Interactive). v2 wires CLI flags into this struct; v1 leaves it nil.
 	Override *override.Hooks
 
+	// AgentPromptOverrides is a map from embedded-agent name (e.g.
+	// "atdd-test") to a prompt body that replaces the canonical embedded
+	// prompt for that agent. Wired from `--agent-prompt name=path` on
+	// the CLI; the values are the file contents, not the file paths
+	// (the CLI reads at parse time so missing-file failures surface at
+	// startup). Unrecognised agent names are rejected at parse time.
+	AgentPromptOverrides map[string]string
+
+	// ConfigPath, when non-empty, overrides the default
+	// `<repoPath>/optivem.yaml` lookup with an explicit file path. Wired
+	// from `--config <path>`; missing-file is an error (unlike the default
+	// lookup, where absence is OK).
+	ConfigPath string
+
 	// ClaudeRunDeps lets tests inject fake `claude` and `git` runners
 	// without spawning real subprocesses. Production callers leave this
 	// zero-valued; clauderun falls back to real execClaude / execGit.
@@ -114,14 +129,38 @@ type Options struct {
 func Run(ctx context.Context, opts Options) error {
 	opts = opts.withDefaults()
 
-	eng, err := statemachine.LoadFile(opts.YAMLPath)
-	if err != nil {
-		return fmt.Errorf("driver: load YAML %q: %w", opts.YAMLPath, err)
+	// Pre-flight the `claude` CLI when subprocess dispatch is enabled,
+	// so missing-binary or missing-credentials failures surface at
+	// startup instead of after several service-task spinners scroll by.
+	// Skipped under --manual-agents (the v1 fallback that doesn't need
+	// the CLI at all).
+	if !opts.ManualAgents {
+		if err := preflightFn(ctx); err != nil {
+			return fmt.Errorf("driver: %w", err)
+		}
+	}
+
+	var eng *statemachine.Engine
+	var err error
+	if opts.YAMLPath == "" {
+		eng, err = statemachine.LoadDefault()
+		if err != nil {
+			return fmt.Errorf("driver: load embedded YAML: %w", err)
+		}
+	} else {
+		eng, err = statemachine.LoadFile(opts.YAMLPath)
+		if err != nil {
+			return fmt.Errorf("driver: load YAML %q: %w", opts.YAMLPath, err)
+		}
 	}
 
 	flow, ok := eng.Flows[opts.FlowName]
 	if !ok {
-		return fmt.Errorf("driver: flow %q not in YAML %q", opts.FlowName, opts.YAMLPath)
+		source := opts.YAMLPath
+		if source == "" {
+			source = "embedded"
+		}
+		return fmt.Errorf("driver: flow %q not in YAML %q", opts.FlowName, source)
 	}
 
 	gateReg := gates.New()
@@ -156,13 +195,23 @@ func Run(ctx context.Context, opts Options) error {
 	verify.WrapAll(eng, verify.Deps{})
 	wrapOverride(eng, opts.Override)
 
+	repoPath, err := resolveRepoPath(opts.RepoPath)
+	if err != nil {
+		return fmt.Errorf("driver: %w", err)
+	}
+	cfg, err := loadDriverConfig(opts.ConfigPath, repoPath)
+	if err != nil {
+		return err
+	}
+
 	sCtx := statemachine.NewContext()
+	seedScopeParams(sCtx, cfg)
 	if opts.ProjectURL != "" {
 		sCtx.Set("project_url", opts.ProjectURL)
 	}
 
 	if opts.IssueNum > 0 {
-		if err := preResolveIssue(ctx, opts, sCtx); err != nil {
+		if err := preResolveIssue(ctx, opts, sCtx, cfg, repoPath); err != nil {
 			return fmt.Errorf("driver: pre-resolve issue #%d: %w", opts.IssueNum, err)
 		}
 		// Skip START → PICK_TOP_READY when running main. The pre-resolution
@@ -176,10 +225,94 @@ func Run(ctx context.Context, opts Options) error {
 	return eng.RunFlow(opts.FlowName, sCtx)
 }
 
-func (o Options) withDefaults() Options {
-	if o.YAMLPath == "" {
-		o.YAMLPath = DefaultYAMLPath
+// resolveRepoPath returns the absolute path the driver treats as the
+// consumer repo. Empty input falls back to the process CWD; non-empty
+// is returned as-is (no canonicalisation, since callers and tests may
+// pass either absolute or relative paths).
+func resolveRepoPath(explicit string) (string, error) {
+	if explicit != "" {
+		return explicit, nil
 	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("get working directory: %w", err)
+	}
+	return cwd, nil
+}
+
+// loadDriverConfig returns the parsed config for the run. When configPath
+// is non-empty (operator passed `--config`), it must exist; missing-file
+// is an error to catch typos. Empty configPath falls back to the default
+// `<repoPath>/optivem.yaml` lookup, where absence is OK (returns nil).
+func loadDriverConfig(configPath, repoPath string) (*projectconfig.Config, error) {
+	if configPath != "" {
+		cfg, err := projectconfig.LoadFromPath(configPath)
+		if err != nil {
+			return nil, fmt.Errorf("driver: %w", err)
+		}
+		return cfg, nil
+	}
+	cfg, err := projectconfig.Load(repoPath)
+	if err != nil {
+		return nil, fmt.Errorf("driver: %w", err)
+	}
+	return cfg, nil
+}
+
+// seedScopeParams copies repo-strategy and scope axes from a loaded config
+// into Context.Params so agent prompts can substitute ${repo_strategy},
+// ${repos}, ${architecture}, ${system_lang}, ${test_lang}. Empty values
+// are left absent (the template var expands to ""). nil cfg is a no-op.
+func seedScopeParams(sCtx *statemachine.Context, cfg *projectconfig.Config) {
+	if cfg == nil {
+		return
+	}
+	if cfg.Project.RepoStrategy != "" {
+		sCtx.Params["repo_strategy"] = cfg.Project.RepoStrategy
+	}
+	if len(cfg.Project.Repos) > 0 {
+		sCtx.Params["repos"] = strings.Join(cfg.Project.Repos, ",")
+	}
+	if cfg.Scope.Architecture != "" {
+		sCtx.Params["architecture"] = cfg.Scope.Architecture
+	}
+	if cfg.Scope.SystemLang != "" {
+		sCtx.Params["system_lang"] = cfg.Scope.SystemLang
+	}
+	if cfg.Scope.TestLang != "" {
+		sCtx.Params["test_lang"] = cfg.Scope.TestLang
+	}
+}
+
+// preflightFn is the per-Run function that verifies the `claude` CLI
+// is on PATH and authenticated. Production points at preflightClaude;
+// tests can swap it for a no-op or canned-error stub. The seam is a
+// package-level var rather than an Options field because pre-flight is
+// a startup-time concern, not part of the per-run dispatch surface.
+var preflightFn = preflightClaude
+
+// preflightClaude runs `claude --no-update-check --version` as a cheap
+// health check at driver startup. Failure surfaces with operator
+// guidance pointing at the auth bootstrap doc — without this, missing
+// credentials manifest as a confusing "exited non-zero" several
+// service-task spinners deep into the run.
+func preflightClaude(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, "claude", "--no-update-check", "--version")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		tail := strings.TrimSpace(stderr.String())
+		if tail == "" {
+			tail = err.Error()
+		}
+		return fmt.Errorf(
+			"claude CLI pre-flight failed: %s\n  Ensure `claude` is on PATH and authenticated via `claude /login` (credentials live in ~/.claude/).\n  Use --manual-agents to fall back to the v1 two-window workflow without the CLI.",
+			tail)
+	}
+	return nil
+}
+
+func (o Options) withDefaults() Options {
 	if o.FlowName == "" {
 		o.FlowName = DefaultFlowName
 	}
@@ -198,18 +331,13 @@ func (o Options) withDefaults() Options {
 // preResolveIssue populates Context with everything PICK_TOP_READY would
 // have set, reading from `gh project view` + `gh project item-list` (via
 // board.FindIssue). Called once at driver startup in implement-ticket mode.
-func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Context) error {
+// cfg is the pre-loaded project config (may be nil if no optivem.yaml and
+// no --config) and repoPath is the resolved consumer-repo path; both are
+// supplied by Run so the load happens once per driver invocation.
+func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Context, cfg *projectconfig.Config, repoPath string) error {
 	projectURL := opts.ProjectURL
 	if projectURL == "" {
-		repoPath := opts.RepoPath
-		if repoPath == "" {
-			cwd, err := os.Getwd()
-			if err != nil {
-				return fmt.Errorf("get working directory: %w", err)
-			}
-			repoPath = cwd
-		}
-		resolved, err := board.ResolveProjectURL(repoPath, nil)
+		resolved, err := board.ResolveProjectURLFromConfig(cfg, repoPath, nil)
 		if err != nil {
 			return fmt.Errorf("resolve project URL: %w", err)
 		}
@@ -227,13 +355,7 @@ func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Conte
 	// Project name preference: config (zero round-trips) → live `gh project
 	// view` title (already fetched by FindIssue) → bare URL fallback.
 	projectName := pick.ProjectTitle
-	repoPath := opts.RepoPath
-	if repoPath == "" {
-		if cwd, err := os.Getwd(); err == nil {
-			repoPath = cwd
-		}
-	}
-	if cfg, err := config.Load(repoPath); err == nil && cfg != nil && cfg.Project.Name != "" {
+	if cfg != nil && cfg.Project.Name != "" {
 		projectName = cfg.Project.Name
 	}
 
@@ -254,33 +376,17 @@ func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Conte
 	return nil
 }
 
-// agentNames lists every Claude Code agent referenced by a user_task in
-// docs/atdd/process/process-flow.yaml. Adding a new agent to the YAML
-// requires adding its name here so the dispatch registry resolves; the
-// engine refuses to start with an unknown binding.
-var agentNames = []string{
-	"atdd-story",
-	"atdd-bug",
-	"atdd-task",
-	"atdd-chore",
-	"atdd-test",
-	"atdd-dsl",
-	"atdd-driver",
-	"atdd-backend",
-	"atdd-frontend",
-	"atdd-stubs",
-	"atdd-release",
-}
-
 // registerAgentDispatchers registers a no-op base dispatcher for every
-// known agent name. The substantive prompt-and-pause behaviour is layered
-// on after Bind by wrapAgentDispatchers, which has access to per-node
-// RawNode metadata (description, phase_doc).
+// agent that has an embedded prompt (filesystem walk via agents.Names).
+// The substantive prompt-and-pause behaviour is layered on after Bind by
+// wrapAgentDispatchers, which has access to per-node RawNode metadata
+// (description, phase_doc). Adding a new agent is now: drop a prompt
+// under internal/atdd/runtime/agents/prompts/, recompile.
 func registerAgentDispatchers(r *agents.Registry) {
 	noop := func(ctx *statemachine.Context) statemachine.Outcome {
 		return statemachine.Outcome{}
 	}
-	for _, name := range agentNames {
+	for _, name := range agents.Names() {
 		r.Register(name, noop)
 	}
 }
@@ -340,8 +446,9 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 
 		issueNum, _ := strconv.Atoi(ctx.GetString("issue_num"))
 
+		agentName := statemachine.ExpandParams(raw.Agent, ctx.Params)
 		cOpts := clauderun.Options{
-			Agent:           statemachine.ExpandParams(raw.Agent, ctx.Params),
+			Agent:           agentName,
 			PhaseDoc:        statemachine.ExpandParams(raw.PhaseDoc, ctx.Params),
 			NodeDescription: statemachine.ExpandParams(raw.Description, ctx.Params),
 			IssueNum:        issueNum,
@@ -351,6 +458,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 			ProjectURL:      ctx.GetString("project_url"),
 			OverrideText:    extraText,
 			RawPrompt:       replaceText,
+			PromptOverride:  opts.AgentPromptOverrides[agentName],
 			Autonomous:      opts.Autonomous,
 			RepoPath:        opts.RepoPath,
 			Stdout:          opts.Stdout,

@@ -49,6 +49,9 @@ type TestOptions struct {
 	Restart bool
 	// Health overrides default HTTP-probe parameters.
 	Health HealthOptions
+	// UpTimeout caps a single `docker compose up -d` attempt during the
+	// implicit Up step. Zero uses SystemOptions' default.
+	UpTimeout time.Duration
 }
 
 // SuiteResult records the outcome of one suite — used to print the summary
@@ -145,7 +148,7 @@ func prepareSystem(sys *SystemConfig, cwd string, opts TestOptions) error {
 		}
 	}
 	if !opts.NoStart {
-		return Up(sys, cwd, SystemOptions{Restart: opts.Restart, Health: opts.Health})
+		return Up(sys, cwd, SystemOptions{Restart: opts.Restart, Health: opts.Health, UpTimeout: opts.UpTimeout})
 	}
 	for _, s := range sys.Systems {
 		if !IsAnyURLUp(s, opts.Health) {

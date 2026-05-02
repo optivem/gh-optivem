@@ -23,12 +23,15 @@ import (
 // fakeClaude records the RunOpts it was called with and returns a canned
 // error. headFn (when set) is called inside Run so the test can simulate
 // the agent producing a commit during the subprocess — by mutating
-// fakeGit.heads in lock-step with the call sequence.
+// fakeGit.heads in lock-step with the call sequence. stderr (when set)
+// is written to opts.Stderr before returning, used by the rate-limit /
+// auth classification tests.
 type fakeClaude struct {
 	calls  []RunOpts
 	err    error
 	usage  *TokenUsage
 	headFn func()
+	stderr []byte
 }
 
 func (f *fakeClaude) Run(_ context.Context, opts RunOpts) (RunResult, error) {
@@ -36,17 +39,30 @@ func (f *fakeClaude) Run(_ context.Context, opts RunOpts) (RunResult, error) {
 	if f.headFn != nil {
 		f.headFn()
 	}
+	if len(f.stderr) > 0 && opts.Stderr != nil {
+		opts.Stderr.Write(f.stderr)
+	}
 	return RunResult{Usage: f.usage}, f.err
 }
 
-// fakeGit serves canned outputs in call order. revparse and log calls
-// alternate predictably (Dispatch calls rev-parse twice — before and after
-// — and log once on success), so a single FIFO of byte-slices is enough
-// for every test case below.
+// fakeGit serves canned outputs. The HEAD-rev-parse and log calls
+// consume the `out` FIFO (existing tests rely on this). Snapshot calls
+// (rev-parse --abbrev-ref HEAD, status --porcelain) get sensible
+// defaults so tests that don't care about item 2's branch-switch /
+// untracked detection don't have to enumerate them. Tests that DO care
+// can override via branchPre/branchPost (FIFO, used per call) and
+// statusPre/statusPost.
 type fakeGit struct {
-	out  [][]byte
-	err  error
-	args [][]string
+	out        [][]byte
+	err        error
+	args       [][]string
+	branchPre  string
+	branchPost string
+	statusPre  []byte
+	statusPost []byte
+
+	abbrevCount int
+	statusCount int
 }
 
 func (f *fakeGit) Run(_ context.Context, _ string, args ...string) ([]byte, error) {
@@ -54,12 +70,54 @@ func (f *fakeGit) Run(_ context.Context, _ string, args ...string) ([]byte, erro
 	if f.err != nil {
 		return nil, f.err
 	}
+	if len(args) >= 3 && args[0] == "rev-parse" && args[1] == "--abbrev-ref" {
+		f.abbrevCount++
+		v := f.branchPre
+		if f.abbrevCount > 1 {
+			v = f.branchPost
+		}
+		if v == "" {
+			v = "main"
+		}
+		return []byte(v + "\n"), nil
+	}
+	if len(args) >= 2 && args[0] == "status" && args[1] == "--porcelain" {
+		f.statusCount++
+		v := f.statusPre
+		if f.statusCount > 1 {
+			v = f.statusPost
+		}
+		return v, nil
+	}
 	if len(f.out) == 0 {
 		return nil, errors.New("fakeGit: no canned output left")
 	}
 	v := f.out[0]
 	f.out = f.out[1:]
 	return v, nil
+}
+
+// hasGitArg reports whether any recorded git call started with the given
+// argument prefix. Used by tests that previously asserted on call counts
+// — the snapshot calls have shifted those counts, so we now assert on
+// the substantive calls (`log`, `rev-parse HEAD`) instead.
+func (f *fakeGit) hasGitArg(prefix ...string) bool {
+	for _, args := range f.args {
+		if len(args) < len(prefix) {
+			continue
+		}
+		match := true
+		for i, p := range prefix {
+			if args[i] != p {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
 }
 
 func newOpts() Options {
@@ -92,7 +150,9 @@ func TestRenderPrompt_IncludesAllFields(t *testing.T) {
 		t.Fatalf("renderPrompt: %v", err)
 	}
 
-	mustContain(t, got, "Launch the atdd-test subagent")
+	// v2: prompt is the embedded agent body with ${name} placeholders
+	// substituted; the parent-claude "Launch the X subagent" wrapper is gone.
+	mustContain(t, got, "You are the Test Agent")
 	mustContain(t, got, `#42 "Add PUT /carts/{id}/items endpoint"`)
 	mustContain(t, got, "(optivem/shop)")
 	mustContain(t, got, "Shop ATDD (https://github.com/orgs/optivem/projects/1)")
@@ -100,51 +160,20 @@ func TestRenderPrompt_IncludesAllFields(t *testing.T) {
 	mustContain(t, got, "Phase doc: docs/atdd/process/at-red-test.md")
 	mustContain(t, got, "prefer record types")
 	mustContain(t, got, "your COMMIT must land on HEAD")
+	// All ${…} placeholders must be expanded — none should leak through.
+	if strings.Contains(got, "${") {
+		t.Errorf("prompt still contains ${...} placeholder")
+	}
 }
 
-func TestRenderPrompt_OmitsOverrideTextSection_WhenEmpty(t *testing.T) {
+func TestRenderPrompt_ReturnsErrorForUnknownAgent(t *testing.T) {
+	// agents.Prompt errors when no embedded prompt matches the name; the
+	// driver relies on this so a YAML referencing an unembedded agent
+	// fails loudly at dispatch time.
 	opts := newOpts()
-	opts.OverrideText = ""
-
-	got, err := renderPrompt(opts)
-	if err != nil {
-		t.Fatalf("renderPrompt: %v", err)
-	}
-	// The header line above the override block is "Phase doc: ...", and
-	// the line after is "When the agent finishes". With empty override
-	// there should not be a stray double-blank between them.
-	if strings.Contains(got, "\n\n\n") {
-		t.Fatalf("expected no triple-newline (orphan override block), got:\n%s", got)
-	}
-}
-
-func TestRenderPrompt_IncludesDispatchOnlyForbidsPreInvestigation(t *testing.T) {
-	// Item 1 of the dispatch-tightening plan: the host gets an explicit
-	// "do not investigate before dispatching" clause, since otherwise the
-	// model burns tokens on git status / gh issue view / gh optivem
-	// invocations that the isolated subagent will redo anyway.
-	got, err := renderPrompt(newOpts())
-	if err != nil {
-		t.Fatalf("renderPrompt: %v", err)
-	}
-	mustContain(t, got, "dispatch-only session")
-	mustContain(t, got, "Do NOT")
-	mustContain(t, got, "git status")
-	mustContain(t, got, "gh issue view")
-	mustContain(t, got, "isolated context")
-}
-
-func TestRenderPrompt_OmitsProjectLine_WhenURLMissing(t *testing.T) {
-	opts := newOpts()
-	opts.ProjectTitle = ""
-	opts.ProjectURL = ""
-
-	got, err := renderPrompt(opts)
-	if err != nil {
-		t.Fatalf("renderPrompt: %v", err)
-	}
-	if strings.Contains(got, "Project:") {
-		t.Fatalf("expected no Project: line when URL is empty, got:\n%s", got)
+	opts.Agent = "atdd-doesnotexist"
+	if _, err := renderPrompt(opts); err == nil {
+		t.Fatalf("expected error for unknown agent, got nil")
 	}
 }
 
@@ -176,8 +205,8 @@ func TestDispatch_SuccessReturnsCommitInfo(t *testing.T) {
 		t.Fatalf("expected 1 claude call, got %d", len(claudeFake.calls))
 	}
 	// Prompt is constructed and passed through to the runner.
-	if !strings.Contains(claudeFake.calls[0].Prompt, "Launch the atdd-test subagent") {
-		t.Errorf("prompt missing launch line:\n%s", claudeFake.calls[0].Prompt)
+	if !strings.Contains(claudeFake.calls[0].Prompt, "You are the Test Agent") {
+		t.Errorf("prompt missing agent identity line")
 	}
 }
 
@@ -210,7 +239,7 @@ func TestDispatch_AutonomousFlagPropagates(t *testing.T) {
 func TestDispatch_FailsWhenSubprocessExitsNonZero(t *testing.T) {
 	gitFake := &fakeGit{
 		out: [][]byte{
-			[]byte("aaaa\n"), // only the "before" rev-parse should land
+			[]byte("aaaa\n"), // only the pre-snapshot rev-parse HEAD lands
 		},
 	}
 	claudeFake := &fakeClaude{err: errors.New("exit status 1")}
@@ -222,17 +251,20 @@ func TestDispatch_FailsWhenSubprocessExitsNonZero(t *testing.T) {
 	if !strings.Contains(err.Error(), "exited non-zero") {
 		t.Errorf("error wording: got %q", err.Error())
 	}
-	// The "after" rev-parse and the log call must NOT happen on the
-	// non-zero-exit path — surfacing stderr is the only useful action.
-	if len(gitFake.args) != 1 {
-		t.Errorf("expected 1 git call (rev-parse before only), got %d: %v", len(gitFake.args), gitFake.args)
+	// On the non-zero-exit path neither the post-snapshot nor the log
+	// call should run — surfacing stderr is the only useful action.
+	if gitFake.hasGitArg("log") {
+		t.Errorf("git log must not run on subprocess failure: %v", gitFake.args)
+	}
+	if gitFake.statusCount != 1 {
+		t.Errorf("expected exactly 1 status --porcelain (pre-snapshot only), got %d", gitFake.statusCount)
 	}
 }
 
 func TestDispatch_FailsWhenHEADUnchanged(t *testing.T) {
 	// Same HEAD before and after → "subprocess succeeded but produced no
-	// commit". Important: we still expect the rev-parse-after call to land
-	// (so we can compare), but no `git log` since there's no new SHA.
+	// commit". Both pre and post snapshots run (so we can compare), but
+	// no `git log` since there's no new SHA.
 	gitFake := &fakeGit{
 		out: [][]byte{
 			[]byte("samesha\n"),
@@ -248,8 +280,8 @@ func TestDispatch_FailsWhenHEADUnchanged(t *testing.T) {
 	if !strings.Contains(err.Error(), "no commit") {
 		t.Errorf("error wording: got %q", err.Error())
 	}
-	if len(gitFake.args) != 2 {
-		t.Errorf("expected 2 git calls (both rev-parses, no log), got %d: %v", len(gitFake.args), gitFake.args)
+	if gitFake.hasGitArg("log") {
+		t.Errorf("git log must not run when HEAD is unchanged: %v", gitFake.args)
 	}
 }
 
@@ -261,7 +293,7 @@ func TestDispatch_PropagatesGitFailureBeforeRun(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "read HEAD before dispatch") {
+	if !strings.Contains(err.Error(), "snapshot before dispatch") {
 		t.Errorf("error wording: got %q", err.Error())
 	}
 	if len(claudeFake.calls) != 0 {
@@ -368,6 +400,230 @@ func TestExitBanner_OmitsUsageSuffixWhenNil(t *testing.T) {
 	mustContain(t, got, "EXITED AGENT")
 	if strings.Contains(got, "$") || strings.Contains(got, " in ") {
 		t.Errorf("expected no token suffix when usage is nil, got:\n%s", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Stderr classification (item 1: rate limit / auth)
+// ---------------------------------------------------------------------------
+
+func TestClassifyRunError(t *testing.T) {
+	tests := []struct {
+		name     string
+		stderr   string
+		wantSub  string // "" → expect nil
+		wantNone bool
+	}{
+		{name: "empty", stderr: "", wantNone: true},
+		{name: "unrelated", stderr: "panic: something else", wantNone: true},
+		{name: "rate_limit_error", stderr: "Error: rate_limit_error: weekly cap reached", wantSub: "rate limit"},
+		{name: "weekly limit", stderr: "weekly limit hit. Try again later.", wantSub: "rate limit"},
+		{name: "5-hour limit", stderr: "you've hit your 5-hour limit", wantSub: "rate limit"},
+		{name: "too many requests", stderr: "HTTP 429: Too many requests", wantSub: "rate limit"},
+		{name: "not authenticated", stderr: "Error: not authenticated", wantSub: "claude /login"},
+		{name: "please login", stderr: "Please log in to continue", wantSub: "claude /login"},
+		{name: "invalid api key", stderr: "Error: invalid api key", wantSub: "claude /login"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := classifyRunError([]byte(tt.stderr))
+			if tt.wantNone {
+				if got != nil {
+					t.Errorf("expected nil, got %v", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("expected error containing %q, got nil", tt.wantSub)
+			}
+			if !strings.Contains(got.Error(), tt.wantSub) {
+				t.Errorf("error %q does not contain %q", got.Error(), tt.wantSub)
+			}
+		})
+	}
+}
+
+func TestClassifyRunError_OnlyScansLastLines(t *testing.T) {
+	// A noisy runner that prints a wall of progress before failing must
+	// not have unrelated lines suppress the trailing rate-limit signature.
+	// The classifier scans the last ~20 lines, which is more than enough
+	// to catch a typical CLI failure.
+	var noisy strings.Builder
+	for range 100 {
+		noisy.WriteString("progress chatter\n")
+	}
+	noisy.WriteString("Error: rate_limit_error: weekly cap reached\n")
+
+	got := classifyRunError([]byte(noisy.String()))
+	if got == nil {
+		t.Fatalf("expected rate-limit classification, got nil")
+	}
+	if !strings.Contains(got.Error(), "rate limit") {
+		t.Errorf("got %q", got.Error())
+	}
+}
+
+func TestDispatch_ClassifiesRateLimitInStderr(t *testing.T) {
+	gitFake := &fakeGit{out: [][]byte{[]byte("aaaa\n")}}
+	claudeFake := &fakeClaude{
+		err:    errors.New("exit status 1"),
+		stderr: []byte("Error: rate_limit_error: weekly limit reached.\n"),
+	}
+
+	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "rate limit") {
+		t.Errorf("expected rate-limit specific message, got %q", err.Error())
+	}
+	// Should NOT fall through to the generic wrapper when classified.
+	if strings.Contains(err.Error(), "exited non-zero") {
+		t.Errorf("classified error must not also carry generic wrapper: %q", err.Error())
+	}
+}
+
+func TestDispatch_ClassifiesAuthErrorInStderr(t *testing.T) {
+	gitFake := &fakeGit{out: [][]byte{[]byte("aaaa\n")}}
+	claudeFake := &fakeClaude{
+		err:    errors.New("exit status 1"),
+		stderr: []byte("Error: not authenticated. Run /login.\n"),
+	}
+
+	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "claude /login") {
+		t.Errorf("expected auth-specific message, got %q", err.Error())
+	}
+}
+
+func TestDispatch_FallsThroughToGenericOnUnknownStderr(t *testing.T) {
+	// Arbitrary stderr that doesn't match any signature → keep the
+	// existing "exited non-zero" wrapper so the operator still sees the
+	// underlying exec error.
+	gitFake := &fakeGit{out: [][]byte{[]byte("aaaa\n")}}
+	claudeFake := &fakeClaude{
+		err:    errors.New("exit status 1"),
+		stderr: []byte("panic: nil pointer dereference\n"),
+	}
+
+	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "exited non-zero") {
+		t.Errorf("expected generic wrapper, got %q", err.Error())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Repo snapshot (item 2: branch-switch / stranded untracked detection)
+// ---------------------------------------------------------------------------
+
+func TestParseUntracked(t *testing.T) {
+	porcelain := []byte(" M foo.go\n?? new1.txt\n?? new2.go\nA  staged.go\n")
+	got := parseUntracked(porcelain)
+	if len(got) != 2 || !got["new1.txt"] || !got["new2.go"] {
+		t.Errorf("parseUntracked: got %v, want {new1.txt, new2.go}", got)
+	}
+}
+
+func TestDiffUntracked_SortedNew(t *testing.T) {
+	pre := map[string]bool{"existing.txt": true}
+	post := map[string]bool{"existing.txt": true, "zeta.go": true, "alpha.go": true}
+	got := diffUntracked(pre, post)
+	if len(got) != 2 || got[0] != "alpha.go" || got[1] != "zeta.go" {
+		t.Errorf("diffUntracked: got %v, want [alpha.go zeta.go]", got)
+	}
+}
+
+func TestDispatch_HaltsOnBranchSwitch(t *testing.T) {
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaa\n"), // pre HEAD
+			[]byte("bbbb\n"), // post HEAD (also new — but branch switched, so we never reach the log)
+		},
+		branchPre:  "main",
+		branchPost: "feature/foo",
+	}
+	claudeFake := &fakeClaude{}
+
+	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "switched branches") {
+		t.Errorf("expected branch-switch wording, got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "main") || !strings.Contains(err.Error(), "feature/foo") {
+		t.Errorf("expected both branch names in error, got %q", err.Error())
+	}
+	if gitFake.hasGitArg("log") {
+		t.Errorf("log must not run when branches diverged: %v", gitFake.args)
+	}
+}
+
+func TestDispatch_WarnsOnStrandedUntracked(t *testing.T) {
+	var buf bytes.Buffer
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaa\n"),
+			[]byte("bbbb\n"),
+			[]byte("subject\n"),
+		},
+		statusPre:  []byte(""),
+		statusPost: []byte("?? scratch/notes.txt\n?? new_file.go\n"),
+	}
+	opts := newOpts()
+	opts.Stdout = &buf
+
+	got, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
+	if err != nil {
+		t.Fatalf("Dispatch should succeed (warning is non-fatal): %v", err)
+	}
+	if got.SHA != "bbbb" {
+		t.Errorf("SHA: got %q, want bbbb", got.SHA)
+	}
+	output := buf.String()
+	mustContain(t, output, "untracked file")
+	mustContain(t, output, "scratch/notes.txt")
+	mustContain(t, output, "new_file.go")
+}
+
+func TestDispatch_DoesNotWarnWhenNoNewUntracked(t *testing.T) {
+	// Files that were already untracked before dispatch should NOT be
+	// reported as "left … outside the commit" — the operator already
+	// knew about them.
+	var buf bytes.Buffer
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaa\n"),
+			[]byte("bbbb\n"),
+			[]byte("subject\n"),
+		},
+		statusPre:  []byte("?? pre-existing.txt\n"),
+		statusPost: []byte("?? pre-existing.txt\n"),
+	}
+	opts := newOpts()
+	opts.Stdout = &buf
+
+	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if strings.Contains(buf.String(), "untracked file") {
+		t.Errorf("must not warn about pre-existing untracked file:\n%s", buf.String())
+	}
+}
+
+func TestCappedBuffer_TruncatesPastCap(t *testing.T) {
+	var b cappedBuffer
+	b.cap = 10
+	b.Write([]byte("0123456789"))
+	b.Write([]byte("ABCDEFG")) // dropped
+	if got := string(b.Bytes()); got != "0123456789" {
+		t.Errorf("cappedBuffer: got %q, want %q", got, "0123456789")
 	}
 }
 

@@ -45,17 +45,26 @@ func (f *fakeClaude) Run(_ context.Context, opts clauderun.RunOpts) (clauderun.R
 	return clauderun.RunResult{}, f.err
 }
 
-// fakeGit serves canned outputs in call order. Dispatch calls
-// rev-parse twice (before / after) and `log -1 --format=%s` once on
-// success, so a single FIFO of byte-slices covers every path.
+// fakeGit serves canned outputs. The HEAD rev-parse and log calls
+// consume the `out` FIFO. Snapshot calls (rev-parse --abbrev-ref HEAD,
+// status --porcelain) get sensible defaults so existing tests don't
+// have to enumerate them — the dispatcher's branch-switch /
+// stranded-untracked detection (clauderun item 2) is exercised in
+// clauderun's own test suite, not here.
 type fakeGit struct {
 	out [][]byte
 	err error
 }
 
-func (f *fakeGit) Run(_ context.Context, _ string, _ ...string) ([]byte, error) {
+func (f *fakeGit) Run(_ context.Context, _ string, args ...string) ([]byte, error) {
 	if f.err != nil {
 		return nil, f.err
+	}
+	if len(args) >= 3 && args[0] == "rev-parse" && args[1] == "--abbrev-ref" {
+		return []byte("main\n"), nil
+	}
+	if len(args) >= 2 && args[0] == "status" && args[1] == "--porcelain" {
+		return []byte(""), nil
 	}
 	if len(f.out) == 0 {
 		return nil, errors.New("fakeGit: no canned output left")
@@ -184,15 +193,19 @@ func TestClaudeRunDispatch_AdvancesOnFreshCommit(t *testing.T) {
 		t.Fatalf("expected 1 claude call, got %d", len(claudeFake.calls))
 	}
 	got := claudeFake.calls[0].Prompt
-	// Prompt should be constructed from the YAML node + ticket context.
-	if !strings.Contains(got, "Launch the atdd-test subagent") {
-		t.Errorf("prompt missing launch line:\n%s", got)
+	// Prompt should be the embedded agent's body with ${name} placeholders
+	// substituted from ticket context; v2 has no parent-claude wrapper.
+	if !strings.Contains(got, "You are the Test Agent") {
+		t.Errorf("prompt missing agent identity line")
 	}
 	if !strings.Contains(got, "#42") || !strings.Contains(got, "optivem/shop") {
-		t.Errorf("prompt missing ticket context:\n%s", got)
+		t.Errorf("prompt missing ticket context")
 	}
 	if !strings.Contains(got, "docs/atdd/process/at-red-test.md") {
-		t.Errorf("prompt missing phase doc:\n%s", got)
+		t.Errorf("prompt missing phase doc")
+	}
+	if strings.Contains(got, "${") {
+		t.Errorf("prompt still contains ${...} placeholder")
 	}
 }
 
@@ -270,8 +283,8 @@ func TestClaudeRunDispatch_AppendsOverrideExtraToPrompt(t *testing.T) {
 }
 
 func TestClaudeRunDispatch_ReplaceOverrideShortCircuitsTemplate(t *testing.T) {
-	// --replace swaps the entire prompt. The templated launch line must
-	// be absent and only the operator-supplied text reaches the runner.
+	// --replace swaps the entire prompt. The embedded agent body must be
+	// absent and only the operator-supplied text reaches the runner.
 	gitFake := &fakeGit{
 		out: [][]byte{
 			[]byte("aaaa\n"),
@@ -293,8 +306,8 @@ func TestClaudeRunDispatch_ReplaceOverrideShortCircuitsTemplate(t *testing.T) {
 	if got != custom {
 		t.Errorf("prompt: got %q, want %q", got, custom)
 	}
-	if strings.Contains(got, "Launch the atdd-test subagent") {
-		t.Errorf("templated prompt leaked through --replace:\n%s", got)
+	if strings.Contains(got, "You are the Test Agent") {
+		t.Errorf("embedded agent body leaked through --replace")
 	}
 }
 
@@ -344,16 +357,73 @@ func TestManualAgents_AbortHaltsRun(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Pre-flight (clauderun item 3)
+// ---------------------------------------------------------------------------
+
+func TestPreflightSkippedUnderManualAgents(t *testing.T) {
+	// Pre-flight must NOT run when --manual-agents is set: the v1
+	// fallback doesn't need the CLI, and forcing a `claude --version`
+	// would defeat the purpose of the operator's escape hatch.
+	called := false
+	prev := preflightFn
+	t.Cleanup(func() { preflightFn = prev })
+	preflightFn = func(ctx context.Context) error {
+		called = true
+		return errors.New("should not be called")
+	}
+
+	// Run will fail on YAML load (we're not in a consumer repo), but we
+	// only care that pre-flight wasn't invoked first.
+	_ = Run(context.Background(), Options{
+		ManualAgents: true,
+		YAMLPath:     "/nonexistent.yaml",
+		Stdout:       io.Discard,
+		Stderr:       io.Discard,
+		Stdin:        strings.NewReader(""),
+	})
+	if called {
+		t.Errorf("preflightFn must not run under --manual-agents")
+	}
+}
+
+func TestPreflightFailureSurfacesEarly(t *testing.T) {
+	// When pre-flight fails, Run must return its error before doing any
+	// flow-walking work. We assert by setting a non-existent YAMLPath:
+	// if pre-flight didn't short-circuit, we'd see a YAML-load error.
+	prev := preflightFn
+	t.Cleanup(func() { preflightFn = prev })
+	preflightFn = func(ctx context.Context) error {
+		return errors.New("claude CLI pre-flight failed: not on PATH")
+	}
+
+	err := Run(context.Background(), Options{
+		ManualAgents: false,
+		YAMLPath:     "/nonexistent.yaml",
+		Stdout:       io.Discard,
+		Stderr:       io.Discard,
+		Stdin:        strings.NewReader(""),
+	})
+	if err == nil {
+		t.Fatalf("expected pre-flight error, got nil")
+	}
+	if !strings.Contains(err.Error(), "pre-flight failed") {
+		t.Errorf("error should surface pre-flight wording, got %q", err.Error())
+	}
+	if strings.Contains(err.Error(), "load YAML") {
+		t.Errorf("YAML load must not run when pre-flight fails: %q", err.Error())
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Templated dispatch — ${agent} / ${phase} / ${phase_doc} expansion
 // ---------------------------------------------------------------------------
 
 func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	// The structural_cycle reuses one set of YAML nodes across SYSAPI /
 	// SYSUI / CHORE by injecting ${agent} / ${phase} / ${phase_doc} via
-	// call_activity params. Before the fix the dispatcher passed the raw
-	// placeholder strings through to clauderun, which then rendered a
-	// prompt asking the operator to "Launch the ${agent} subagent" —
-	// useless dispatch.
+	// call_activity params. The dispatcher must resolve raw.Agent before
+	// looking up the embedded prompt — otherwise it would try to load a
+	// prompt named "${agent}", which doesn't exist.
 	gitFake := &fakeGit{
 		out: [][]byte{
 			[]byte("aaaaaaa1\n"),
@@ -381,16 +451,16 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	}
 	prompt := claudeFake.calls[0].Prompt
 	if strings.Contains(prompt, "${") {
-		t.Errorf("prompt still contains ${...} placeholder:\n%s", prompt)
+		t.Errorf("prompt still contains ${...} placeholder")
 	}
-	if !strings.Contains(prompt, "Launch the atdd-task subagent") {
-		t.Errorf("prompt missing expanded agent launch line:\n%s", prompt)
+	if !strings.Contains(prompt, "You are the Task Agent") {
+		t.Errorf("prompt missing expanded agent identity line (atdd-task → Task Agent)")
 	}
 	if !strings.Contains(prompt, "docs/atdd/process/sysui-redesign.md") {
-		t.Errorf("prompt missing expanded phase_doc:\n%s", prompt)
+		t.Errorf("prompt missing expanded phase_doc")
 	}
 	if !strings.Contains(prompt, "SYSTEM UI REDESIGN - WRITE") {
-		t.Errorf("prompt missing expanded phase description:\n%s", prompt)
+		t.Errorf("prompt missing expanded phase description")
 	}
 }
 
