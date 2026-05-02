@@ -1,257 +1,249 @@
 # Contributing
 
-## ATDD Testing
+## Contents
 
-valen_4rjvn9e@Valentina_Desk MINGW64 /c/GitHub/optivem/academy/shop (main)
-
-
-cd shop
-./scripts/atdd-rehearsal-start.sh atdd-cli
-cd ..
-cd rehearsal-atdd-cli
-go -C ../gh-optivem build -o gh-optivem.exe .
-../gh-optivem/gh-optivem.exe atdd implement-ticket --issue https://github.com/optivem/shop/issues/61
-./scripts/atdd-rehearsal-end.sh atdd-cli
+- [Prerequisites](#prerequisites)
+- [Run locally](#run-locally)
+- [Install from source](#install-from-source)
+- [Tests](#tests)
+- [ATDD process](#atdd-process)
+  - [View the diagram](#view-the-diagram)
+  - [Render the diagram](#render-the-diagram)
+  - [implement-ticket — what it does](#implement-ticket--what-it-does)
+  - [Two ways to rehearse the full flow](#two-ways-to-rehearse-the-full-flow)
+    - [Part 1 — dev loop: local gh-optivem against existing shop](#part-1--dev-loop-local-gh-optivem-against-existing-shop)
+    - [Part 2 — external-user flow: released extension + brand-new scaffolded repo](#part-2--external-user-flow-released-extension--brand-new-scaffolded-repo)
+  - [Debug a single phase](#debug-a-single-phase)
+  - [Running on CI](#running-on-ci)
+- [Releasing](#releasing)
 
 ## Prerequisites
 
 - [Go 1.22+](https://go.dev/dl/)
 - [GitHub CLI](https://cli.github.com/) (`gh auth login`)
 
-## Shop version in local builds
+## Quick smoke test (no install)
 
-Local builds (`go run .`, `go build`, `gh extension install .`) have no shop ref baked in, so `gh optivem init` resolves `--shop-ref` as follows:
-
-1. `--shop-ref <ref>` — use that exact ref (tag, SHA, or branch — e.g. `meta-v1.2.3`, `main`, `a1b2c3d`).
-2. Otherwise — fetch the **latest `meta-v*` release** from `optivem/shop` via `gh api` and use that.
-
-Released binaries (`gh extension install optivem/gh-optivem`) are pinned to the shop SHA baked in at release time and do **not** auto-upgrade to the latest `meta-v*` release. Users can still override with `--shop-ref`, but the default (baked-in SHA) is what you want in almost all cases.
-
-For reproducible local testing, pass `--shop-ref meta-vX.Y.Z` explicitly. To test scaffolding against unreleased shop changes, pass `--shop-ref main` (or a specific SHA).
-
-## Run locally
-
-Fastest iteration — compiles and runs in one step, no install needed:
+Sanity-check that the code compiles and the CLI runs without touching your `gh` extension state:
 
 ```bash
 go run . --version
-
-# Dry-run a monolith scaffold (no side effects):
-go run . init --owner valentinajemuovic --system-name "Page Turner" --repo page-turner \
-    --arch monolith --repo-strategy monorepo --monolith-lang java --dry-run
 ```
 
-For a real manual test run (random repo name; on success the local dir is deleted by init and the GitHub repos + Sonar projects are deleted by scripts/cleanup-orphans.sh; on failure everything is kept for debugging):
+For invocations beyond `--version`, see the README for usage examples — once you want to iterate, `bash scripts/install.sh` (below) gives you `gh optivem` for the natural invocation form.
+
+End-to-end manual test (creates real GitHub repos + SonarCloud projects; cleaned up by `scripts/cleanup-orphans.sh` on success, kept on failure for debugging):
 
 ```bash
-# FULL
-bash scripts/manual-test.sh --no-cleanup --owner valentinajemuovic --system-name "Page Turner" \
+bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner" \
     --arch multitier --repo-strategy multirepo \
     --backend-lang dotnet --frontend-lang react --test-lang typescript \
     --shop-ref main
-
-bash scripts/manual-test.sh --no-cleanup --owner valentinajemuovic --system-name "Page Turner" \
-    --arch monolith --repo-strategy monorepo \
-    --monolith-lang typescript --test-lang typescript \
-    --shop-ref main
-
-
-# SKIP LOCAL & LEGACY (MONOLITH)
-bash scripts/manual-test.sh --no-cleanup --owner valentinajemuovic --system-name "Page Turner" \
-    --arch monolith --repo-strategy monorepo \
-    --monolith-lang typescript --test-lang typescript \
-    --shop-ref main \
-    --no-local-tests --no-local-sonar --no-legacy
-
-
-# SKIP LOCAL & LEGACY (MULTIREPO)
-bash scripts/manual-test.sh --no-cleanup --owner valentinajemuovic --system-name "Page Turner" \
-    --arch multitier --repo-strategy multirepo \
-    --backend-lang dotnet --frontend-lang react --test-lang typescript \
-    --shop-ref main \
-    --no-local-tests --no-legacy
-
-
-
-
-
-# Keep the repo after a successful run (for inspection):
-bash scripts/manual-test.sh --no-cleanup --owner valentinajemuovic ...
 ```
 
-See [README.md](README.md#usage) for the full flag set and multitier examples.
+Skip slow steps with `--no-local-tests --no-local-sonar --no-legacy`. Keep the scaffold dir on success with `--no-cleanup` / `--keep-local`. See [README.md](README.md#usage) for the full flag set.
 
 ## Install from source
 
-Installs your local working copy as the `gh optivem` extension (replaces any previously-installed version). Use this when you want to invoke it as `gh optivem ...` — otherwise prefer `go run .`:
-
 ```bash
-cd gh-optivem
-gh extension install .
+bash scripts/install.sh   # rebuilds gh-optivem.exe and links it as `gh optivem`
 ```
 
-## Test the released version (real-user flow)
+Run this any time you edit CLI source (e.g. `atdd_commands.go`, anything under `internal/atdd/runtime/diagram/`, etc.). Without rebuilding, `gh optivem …` keeps running the previously built binary and silently masks your changes — cobra falls through to help text for subcommands the old binary doesn't know about, and `>` redirects then clobber whatever file you piped into.
 
-Smoke-test what an end user actually gets — useful after publishing a release, or to reproduce a user-reported issue against the same binary they're running. Unlike `go run .` or `gh extension install .` (which use whatever is on disk), this exercises the released binary and the shop SHA baked in at release time.
+`--shop-ref` resolution for local builds: explicit flag wins; otherwise the latest `meta-v*` release of `optivem/shop`. Released binaries (`gh extension install optivem/gh-optivem`) pin the shop SHA baked in at release time and do **not** auto-upgrade. Pass `--shop-ref main` to test against unreleased shop changes.
+
+## Tests
 
 ```bash
-# Install the published extension (or upgrade if already installed)
-gh extension install optivem/gh-optivem
-# gh optivem upgrade
-
-# Confirm the version matches the latest release
-gh optivem --version
-
-# Run the same scaffold a user would (no --shop-ref — uses the baked-in SHA)
-gh optivem init --owner valentinajemuovic --system-name "Page Turner" --repo page-turner \
-    --arch multitier --repo-strategy multirepo \
-    --backend-lang dotnet --frontend-lang react --test-lang typescript
-
-# Clean up the extension when done
-gh extension remove optivem
+go test ./...                                 # unit
+go test -tags=system ./...                    # all system tests
+bash scripts/test-system.sh                   # quick subset
 ```
 
-## Build
-
-Produces a standalone `gh-optivem` binary. Not needed for local testing (`go run .` handles that) — use this only to ship an artifact or sanity-check that the code compiles:
+A single system test (requires `TEST_OWNER`, `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `SONAR_TOKEN`, `GHCR_TOKEN`, `WORKFLOW_TOKEN` in env):
 
 ```bash
-go build ./...
-```
-
-## Running Tests
-
-### Unit tests
-
-```bash
-go test ./... -v
-```
-
-### System tests
-
-Run all system tests:
-
-```bash
-go test -tags=system ./... -v
-```
-
-Run a quick subset locally:
-
-```bash
-bash scripts/test-system.sh
-```
-
-Run a single test locally (e.g. monolith monorepo java dotnet):
-
-```bash
-export TEST_OWNER=valentinajemuovic
-export DOCKERHUB_USERNAME=valentinajemuovic
-export DOCKERHUB_TOKEN=...
-export SONAR_TOKEN=...
-export GHCR_TOKEN=...
-export WORKFLOW_TOKEN=...
 go test -tags=system ./internal/config/ -v -timeout 2h \
     -run "TestValidMonolithConfigurations/monolith_monorepo_java_dotnet"
 ```
 
-## Testing the ATDD driver
+## ATDD process
 
-The ATDD driver walks `docs/atdd/process/process-flow.yaml` against a real GitHub issue, dispatching service tasks inline. At each user-task node it shells out to the `claude` CLI (auto-launching the matching Claude Code subagent in your terminal); when the subprocess exits and a fresh commit lands on HEAD, the engine advances. The YAML is read from the **current working directory**, so smoke-tests run from inside a consumer repo (typically `shop`), not from `gh-optivem`.
+The ATDD driver walks the embedded process-flow YAML against a real GitHub issue, dispatching agent prompts to the `claude` CLI at each user-task node. The YAML is read from the **caller's working directory**, so smoke-tests run from inside a consumer repo (typically `shop`).
 
-The dispatch is interactive by default — Claude Code's full UI runs in your terminal so you can observe tool calls and interject in chat. Use `--autonomous` to run agents headless via `claude -p`, or `--manual-agents` to fall back to the v1 two-window workflow (driver pauses, you launch the agent in a separate Claude Code session, press Enter to advance). `--manual-agents` is the right choice when you want to bisect "did v2 misroute the agent?" against "did v1 see the commit?".
+### View the diagram
 
-### Smoke-test against a single ticket
+The canonical rendered diagram is [docs/process-flow-diagram.md](docs/process-flow-diagram.md). GitHub renders Mermaid natively — just open it on github.com.
 
-`go run` won't work from the consumer repo (it needs a module in cwd), so the iteration loop is build-once-then-invoke. `go -C` builds in `../gh-optivem` without moving your shell, and the resulting binary, when run from `shop`, sees `shop` as its cwd:
+### Render the diagram
+
+Do not edit `docs/process-flow-diagram.md` by hand — it is generated from the YAML. To regenerate it locally:
 
 ```bash
+gh optivem atdd show diagram > docs/process-flow-diagram.md
+```
+
+The `regenerate-diagram` workflow watches `internal/atdd/runtime/statemachine/process-flow.yaml` and `internal/atdd/runtime/diagram/**`, but it behaves differently depending on the event:
+
+- **Pull requests** — renders and **fails the PR** if the committed diagram is stale. It does *not* auto-fix the PR branch. So when you edit the YAML in a feature branch, run the command above and commit the result alongside your YAML change before opening the PR.
+- **Push to `main`** — regenerates and commits the updated diagram back to main as `github-actions[bot]`. Direct main pushes are the only path where you don't have to regenerate yourself.
+
+### implement-ticket — what it does
+
+`gh optivem atdd implement-ticket --issue <n>` moves the issue to **In Progress**, then walks the embedded process-flow node-by-node, launching the matching Claude Code subagent in your terminal at each user-task node. When the subagent commits and exits, the engine advances.
+
+Useful flags:
+
+- `--autonomous` — headless agents (`claude -p`)
+- `--manual-agents` — v1 two-window dispatch (driver pauses, human launches the agent in a separate Claude Code session, presses Enter to advance). Right tool when bisecting "did v2 misroute?" vs. "did v1 see the commit?".
+- `--extra NODE="text"` / `--replace NODE="text"` — shape the prompt for one YAML node ID
+- `--interactive` — preview the constructed prompt and read stdin for last-minute additions before each dispatch
+
+The two rehearsal flows below show how to actually invoke it.
+
+### Two ways to rehearse the full flow
+
+Both end with `implement-ticket` walking a real GitHub issue. Pick based on what you're testing.
+
+#### Part 1 — dev loop: local gh-optivem against existing shop
+
+Fast iteration on the driver. **Local working copy of gh-optivem** + **existing shop repo** (no scaffolding). A throwaway git worktree on a `rehearsal/<timestamp>[-<label>]` branch keeps the rehearsal off shop's main; the worktree is the right model here precisely because shop is a long-lived repo you don't want to dirty.
+
+##### Quick path (no extra flags)
+
+`scripts/atdd-rehearsal.sh` does **everything** end-to-end: `go build`s `gh-optivem.exe` from your working copy, creates the worktree, runs `implement-ticket` inside it, prompts to delete the worktree + branch on exit.
+
+```bash
+# Step 1 — go to shop
 cd ../shop
 
-# Build (rerun after any gh-optivem code change):
+# Step 2 — run the rehearsal (pick one form)
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 61
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 61 ticket-cli                       # optional sortable label
+bash ../gh-optivem/scripts/atdd-rehearsal.sh https://github.com/optivem/shop/issues/61
+
+# Step 3 — answer the cleanup prompt (default Y deletes worktree + branch; n keeps for inspection)
+```
+
+The worktree lands at `../rehearsal-<id>` (sibling of shop).
+
+##### Iterating on the same worktree
+
+The rehearsal script is one-shot — it runs `implement-ticket` once, then exits with the cleanup prompt. If you answered `n` to keep the worktree (e.g. the run failed and you want to retry with a fixed driver, or you want to extend the same branch), iterate by hand. The worktree path was logged at the start of the script; assume it's `../rehearsal-<id>`.
+
+```bash
+# Step 1 — edit gh-optivem code in the gh-optivem repo (not in the worktree)
+
+# Step 2 — rebuild gh-optivem.exe from shop
+cd ../shop
 go -C ../gh-optivem build -o gh-optivem.exe .
 
-# Run (accepts bare number or full GitHub issue URL):
-../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 42
-../gh-optivem/gh-optivem.exe atdd implement-ticket --issue https://github.com/optivem/shop/issues/42
+# Step 3 — cd into the kept worktree and re-run implement-ticket
+cd ../rehearsal-<id>           # tab-complete <id> from the script's log line
+../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 61
 
-# Pick the top Ready item from the project board instead of supplying --issue:
-../gh-optivem/gh-optivem.exe atdd manage-project
-
-# Disambiguate the project explicitly when multiple match the repo:
-../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 42 \
-    --project https://github.com/orgs/optivem/projects/20
-```
-
-Or, for the closer-to-real-user flow, install once as a gh extension and use `gh optivem` directly (rerun the install after code changes):
-
-```bash
-(cd ../gh-optivem && gh extension install --force .)
+# Step 4 — when truly done, clean up from shop
 cd ../shop
-gh optivem atdd implement-ticket --issue 42
+git worktree remove --force ../rehearsal-<id>
+git branch -D rehearsal/<id>
 ```
 
-The driver pre-resolves the project item, moves it to **In Progress**, then walks the flow node by node, auto-dispatching each agent via the `claude` CLI. `--autonomous` skips human-approval STOPs and runs agents headless. `--manual-agents` reverts to v1 two-window dispatch. `--extra NODE="text"` and `--replace NODE="text"` (both repeatable) shape the prompt for a specific YAML node ID; `--interactive` previews the constructed prompt and reads stdin for last-minute additions before each dispatch.
+Re-running on the same worktree means subsequent commits land on the same `rehearsal/<id>` branch, so the diff accumulates. If you want a clean slate, exit, choose to delete the worktree, and run the rehearsal script again — that creates a fresh `rehearsal/<new-ts>` branch.
+
+##### Flag-aware path (when you need `--autonomous`, `--manual-agents`, `--extra`, …)
+
+The rehearsal script doesn't accept extra flags, so do it by hand:
 
 ```bash
-# Tune one phase's prompt without editing the template:
+# Step 1 — go to shop
+cd ../shop
+
+# Step 2 — build gh-optivem from your local working copy
+go -C ../gh-optivem build -o gh-optivem.exe .
+
+# Step 3 — create a throwaway worktree on a rehearsal branch
+TS=$(date +%Y%m%d-%H%M%S)
+git worktree add -b "rehearsal/${TS}" "../rehearsal-${TS}"
+cd "../rehearsal-${TS}"
+
+# Step 4 — run implement-ticket with whatever flags you need (pick one)
+../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 42
+../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 42 --autonomous
+../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 42 --manual-agents
 ../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 42 \
     --extra AT_RED_DSL_WRITE="prefer record types"
+../gh-optivem/gh-optivem.exe atdd manage-project                                  # pick top Ready item from project board
 
-# Diagnose a misroute by reverting to v1 manual dispatch:
-../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 42 --manual-agents
+# Step 5 — clean up the worktree + branch when done
+cd ../shop
+git worktree remove --force "../rehearsal-${TS}"
+git branch -D "rehearsal/${TS}"
 ```
 
-### Debug a single phase in isolation
+#### Part 2 — external-user flow: released extension + brand-new scaffolded repo
 
-The hidden `gh optivem atdd debug …` subcommands exercise individual runtime packages standalone — useful for reproducing one phase without rerunning the whole pipeline. Flag shapes here are not part of the stable API.
+What a real user actually does. **Released `gh-optivem` extension** (pins the shop SHA baked in at release time — does not auto-upgrade) + a **completely fresh repo** scaffolded by `gh optivem init`. No worktree — the scaffold is a brand new repo, you just work on main.
 
 ```bash
-# What would manage-project pick? (no move)
-gh optivem atdd debug pick-top-ready
+# Step 1 — install (or upgrade) the published extension
+gh extension install optivem/gh-optivem
+# gh extension upgrade optivem        # if already installed
 
-# Classify a ticket via the deterministic fast path:
-gh optivem atdd debug classify --issue 42
+# Step 2 — confirm you're on the latest release
+gh optivem --version
 
-# Which edge would nextEdge pick from GATE_DSL under a synthetic state?
-gh optivem atdd debug next-phase --node GATE_DSL --state dsl_interface_changed=true
+# Step 3 — scaffold a fresh project (no --shop-ref → uses the baked-in SHA)
+gh optivem init --owner valentinajemuovic --system-name "Page Turner" --repo page-turner \
+    --arch multitier --repo-strategy multirepo \
+    --backend-lang dotnet --frontend-lang react --test-lang typescript
 
-# Evaluate one gateway binding standalone:
-gh optivem atdd debug gate dsl_changed
+# Step 4 — walk an issue on the new repo
+cd page-turner
+gh optivem atdd implement-ticket --issue 1
 
-# Replay the release primitives (regex strip + commit + close), dry-run first:
-gh optivem atdd debug release --issue 42 --dry-run
+# Step 5 — (optional) remove the extension
+gh extension remove optivem
 ```
 
-Run `gh optivem atdd debug --help` to list them all.
+Use this to reproduce a user-reported issue against the same binary they're running, or to smoke-test what an external user gets right after a release.
 
-### Running ATDD on CI
+### Debug a single phase
 
-The default v2 dispatcher shells out to the `claude` CLI for every user-task agent dispatch. The CLI looks up credentials from `~/.claude/` — that directory is empty in a fresh CI runner unless someone has already authenticated as the executing user. Without this, the failure surface is a confusing `clauderun: <agent> exited non-zero: ...` deep into the first dispatch.
+`gh optivem atdd debug …` exercises individual runtime packages standalone. Flag shapes here are not part of the stable API.
 
-The driver runs a pre-flight `claude --no-update-check --version` at startup (skipped under `--manual-agents`) so this class of failure surfaces before any flow-walking work happens. If you see `claude CLI pre-flight failed`, the binary is missing or unauthenticated — fix one of the bootstrap paths below before re-running.
+```bash
+gh optivem atdd debug pick-top-ready                              # what would manage-project pick?
+gh optivem atdd debug classify --issue 42                         # deterministic fast path
+gh optivem atdd debug next-phase --node GATE_DSL --state dsl_interface_changed=true
+gh optivem atdd debug gate dsl_changed                            # one gateway binding
+gh optivem atdd debug release --issue 42 --dry-run                # release primitives
+```
 
-Bootstrap options:
+Run `gh optivem atdd debug --help` for the full list.
 
-- **Bake credentials into a CI image.** Run `claude /login` once locally as the user the image will execute as, then copy `~/.claude/` into the image at build time. Simplest path for a self-hosted runner.
-- **Mount credentials at job start.** Store the contents of `~/.claude/` (typically `credentials.json`) as an encrypted secret and write it before invoking `gh optivem atdd …`:
+### Running on CI
 
+The driver shells out to `claude`, which needs `~/.claude/credentials.json`. A pre-flight `claude --no-update-check --version` runs at startup (skipped under `--manual-agents`) so a missing/unauthenticated CLI surfaces before any flow-walking. Bootstrap options:
+
+- **Bake credentials into the runner image** — run `claude /login` once locally as the executing user, copy `~/.claude/` into the image.
+- **Mount at job start** from an encrypted secret:
   ```bash
   mkdir -p ~/.claude
   printf '%s' "$CLAUDE_CREDENTIALS" > ~/.claude/credentials.json
   chmod 600 ~/.claude/credentials.json
   ```
+- **Fall back to `--manual-agents`** — driver pauses at each user-task; a human dispatches the agent and presses Enter to advance. Right choice when CI should walk the gates / actions but not the agent dispatches.
 
-- **Fall back to `--manual-agents`.** When credentials aren't available, use the v1 two-window workflow — the driver pauses, a human launches each agent in a separate Claude Code session, then presses Enter to advance. This bypasses the CLI subprocess entirely and is the right choice when you want CI to walk the gates / actions but not the agent dispatches.
-
-Rate-limit / quota failures during a long autonomous run surface as `rate limit hit on Claude subscription; weekly cap likely exhausted — re-run after the next reset window or upgrade your plan`. Mid-run credential expiry surfaces as `claude CLI is not authenticated — run `claude /login` …`. Both are detected from the runner's stderr signature.
+Rate-limit failures surface as `rate limit hit on Claude subscription; weekly cap likely exhausted …`; mid-run credential expiry surfaces as `claude CLI is not authenticated — run \`claude /login\` …`. Both are detected from the runner's stderr signature.
 
 ## Releasing
 
-This project uses [semantic versioning](https://semver.org/). To create a new release:
+This project uses [semantic versioning](https://semver.org/).
 
 ```bash
 git tag v1.2.3
 git push origin v1.2.3
 ```
 
-This triggers the Release workflow, which uses GoReleaser to build binaries for all platforms and publish a GitHub Release. Users who installed via `gh extension install` will get the new version on their next `gh extension upgrade`.
+Triggers the Release workflow (GoReleaser builds binaries for all platforms and publishes a GitHub Release). Users on `gh extension install optivem/gh-optivem` get the new version on their next `gh extension upgrade`.
