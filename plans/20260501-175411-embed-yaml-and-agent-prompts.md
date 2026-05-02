@@ -1,5 +1,7 @@
 # Embed orchestration YAML and agent prompts in gh-optivem; drop consumer-side copies and Claude Code subagent dependency
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-02T08:17:59Z`
+
 ## Motivation
 
 Today the orchestration YAML and the per-agent prompts live in each consumer repo, not in `gh-optivem`:
