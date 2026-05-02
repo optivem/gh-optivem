@@ -106,6 +106,7 @@ func newAtddImplementTicketCmd() *cobra.Command {
 		projectURL        string
 		autonomous        bool
 		manualAgents      bool
+		cliCommits        bool
 		interactive       bool
 		extraPairs        []string
 		replacePairs      []string
@@ -135,6 +136,7 @@ func newAtddImplementTicketCmd() *cobra.Command {
 				ProjectURL:           projectURL,
 				Autonomous:           autonomous,
 				ManualAgents:         manualAgents,
+				CLICommits:           cliCommits,
 				Override:             hooks,
 				YAMLPath:             yamlPath,
 				AgentPromptOverrides: promptOverrides,
@@ -146,6 +148,7 @@ func newAtddImplementTicketCmd() *cobra.Command {
 	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to README.md or git-remote lookup)")
 	cmd.Flags().BoolVar(&autonomous, "autonomous", false, "Skip human-approval STOPs and run agent dispatches headless via `claude -p`")
 	cmd.Flags().BoolVar(&manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
+	cmd.Flags().BoolVar(&cliCommits, "cli-commits", false, "After each agent dispatch, the CLI stages and commits the working-tree delta (instead of polling HEAD for an agent-produced commit)")
 	cmd.Flags().BoolVar(&interactive, "interactive", false, "Before each user_task dispatch, print the constructed prompt and read stdin for last-minute additions")
 	cmd.Flags().StringSliceVar(&extraPairs, "extra", nil, "Per-node extra prompt text, repeatable (e.g. --extra AT_RED_DSL_WRITE=\"prefer record types\")")
 	cmd.Flags().StringSliceVar(&replacePairs, "replace", nil, "Per-node prompt replacement, repeatable (escape hatch — full prompt swap)")
@@ -163,6 +166,7 @@ func newAtddManageProjectCmd() *cobra.Command {
 		projectURL       string
 		autonomous       bool
 		manualAgents     bool
+		cliCommits       bool
 		interactive      bool
 		extraPairs       []string
 		replacePairs     []string
@@ -185,6 +189,7 @@ func newAtddManageProjectCmd() *cobra.Command {
 				ProjectURL:           projectURL,
 				Autonomous:           autonomous,
 				ManualAgents:         manualAgents,
+				CLICommits:           cliCommits,
 				Override:             hooks,
 				YAMLPath:             yamlPath,
 				AgentPromptOverrides: promptOverrides,
@@ -195,6 +200,7 @@ func newAtddManageProjectCmd() *cobra.Command {
 	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to README.md or git-remote lookup)")
 	cmd.Flags().BoolVar(&autonomous, "autonomous", false, "Skip human-approval STOPs and run agent dispatches headless via `claude -p`")
 	cmd.Flags().BoolVar(&manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
+	cmd.Flags().BoolVar(&cliCommits, "cli-commits", false, "After each agent dispatch, the CLI stages and commits the working-tree delta (instead of polling HEAD for an agent-produced commit)")
 	cmd.Flags().BoolVar(&interactive, "interactive", false, "Before each user_task dispatch, print the constructed prompt and read stdin for last-minute additions")
 	cmd.Flags().StringSliceVar(&extraPairs, "extra", nil, "Per-node extra prompt text, repeatable (e.g. --extra AT_RED_DSL_WRITE=\"prefer record types\")")
 	cmd.Flags().StringSliceVar(&replacePairs, "replace", nil, "Per-node prompt replacement, repeatable (escape hatch — full prompt swap)")

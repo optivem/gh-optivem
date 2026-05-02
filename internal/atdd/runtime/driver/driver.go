@@ -85,6 +85,13 @@ type Options struct {
 	// `claude` interactively so the operator can observe / interject.
 	Autonomous bool
 
+	// CLICommits flips dispatch into "CLI owns the commit" mode: instead
+	// of polling HEAD for an agent-produced commit, the CLI stages and
+	// commits the working-tree delta after the subprocess exits. Default
+	// off; gated rollout per
+	// plans/20260430-171111-cli-owns-commit-not-agent.md.
+	CLICommits bool
+
 	// ManualAgents falls back to the v1 "pause and let the operator
 	// launch the agent in a second window" behaviour at every user_task
 	// dispatch. Default (false) shells out to the `claude` CLI via the
@@ -463,6 +470,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 			RawPrompt:       replaceText,
 			PromptOverride:  opts.AgentPromptOverrides[agentName],
 			Autonomous:      opts.Autonomous,
+			CLICommits:      opts.CLICommits,
 			RepoPath:        opts.RepoPath,
 			Stdout:          opts.Stdout,
 			Stderr:          opts.Stderr,

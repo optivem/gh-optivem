@@ -94,6 +94,19 @@ type Options struct {
 	// When false, run interactively so the operator can observe / interject.
 	Autonomous bool
 
+	// CLICommits — when true, Dispatch stages and commits the working-tree
+	// delta produced by the subprocess (with a templated message built from
+	// Options + git diff --stat) instead of relying on the agent to commit.
+	// Subprocess exit IS the approval signal; the human review loop happens
+	// inside the agent window. Default off; gated rollout per
+	// plans/20260430-171111-cli-owns-commit-not-agent.md.
+	//
+	// When the agent commits anyway (e.g. running with stale prompts that
+	// still tell it to), Dispatch honors that commit rather than double-
+	// committing — the leftover working-tree state, if any, is the
+	// operator's to reconcile.
+	CLICommits bool
+
 	// RepoPath is the working directory the subprocess runs in (and the
 	// directory git rev-parse / git log query). Empty → current cwd.
 	RepoPath string
@@ -251,6 +264,16 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (CommitInfo, error) 
 		return CommitInfo{}, fmt.Errorf("clauderun: %s: %w", opts.Agent, switchErr)
 	}
 
+	if opts.CLICommits {
+		info, err := commitChanges(ctx, deps.Git, opts, preState, postState)
+		if err != nil {
+			writeExitBanner(opts, "", "", nowFn().Sub(startedAt), runResult.Usage, err)
+			return CommitInfo{}, fmt.Errorf("clauderun: %s: %w", opts.Agent, err)
+		}
+		writeExitBanner(opts, info.SHA, info.Subject, nowFn().Sub(startedAt), runResult.Usage, nil)
+		return info, nil
+	}
+
 	if preState.head == postState.head {
 		writeExitBanner(opts, "", "", nowFn().Sub(startedAt), runResult.Usage, errNoCommit)
 		return CommitInfo{}, fmt.Errorf("clauderun: %s exited cleanly but produced no commit (HEAD unchanged at %s)",
@@ -269,6 +292,74 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (CommitInfo, error) 
 
 	writeExitBanner(opts, postState.head, subject, nowFn().Sub(startedAt), runResult.Usage, nil)
 	return CommitInfo{SHA: postState.head, Subject: subject}, nil
+}
+
+// commitChanges stages the working-tree delta produced during dispatch
+// and commits it with a templated message. Used only when opts.CLICommits
+// is true.
+//
+// Staging policy (item 3 of cli-owns-commit-not-agent.md):
+//   - Stage every path present in postState.dirty but not preState.dirty
+//     (modified-tracked, new-untracked, deleted-tracked).
+//   - Skip pre-existing dirty paths — those are the operator's, not the
+//     agent's, and folding them into the commit would silently absorb
+//     unrelated work.
+//   - If the delta is empty AND the agent committed itself (HEAD moved),
+//     honor the agent's commit. The plan's order-of-operations explicitly
+//     covers the migration window where prompts may not yet have caught
+//     up; double-committing on top would be worse than honoring it.
+//   - If the delta is empty and HEAD is unchanged, return CommitInfo{} —
+//     a legitimate no-op phase, not an error.
+func commitChanges(ctx context.Context, git GitRunner, opts Options, pre, post repoState) (CommitInfo, error) {
+	delta := diffDirty(pre.dirty, post.dirty)
+	if len(delta) == 0 {
+		if pre.head != post.head {
+			subject, err := readCommitSubject(ctx, git, opts.RepoPath, post.head)
+			if err != nil {
+				return CommitInfo{}, fmt.Errorf("read commit subject for %s: %w", shortSHA(post.head), err)
+			}
+			return CommitInfo{SHA: post.head, Subject: subject}, nil
+		}
+		return CommitInfo{}, nil
+	}
+	addArgs := append([]string{"add", "-A", "--"}, delta...)
+	if _, err := git.Run(ctx, opts.RepoPath, addArgs...); err != nil {
+		return CommitInfo{}, fmt.Errorf("git add: %w", err)
+	}
+	statOut, err := git.Run(ctx, opts.RepoPath, "diff", "--cached", "--stat")
+	if err != nil {
+		return CommitInfo{}, fmt.Errorf("git diff --cached --stat: %w", err)
+	}
+	msg := renderCommitMessage(opts, strings.TrimSpace(string(statOut)))
+	if _, err := git.Run(ctx, opts.RepoPath, "commit", "-m", msg); err != nil {
+		return CommitInfo{}, fmt.Errorf("git commit: %w", err)
+	}
+	headOut, err := git.Run(ctx, opts.RepoPath, "rev-parse", "HEAD")
+	if err != nil {
+		return CommitInfo{}, fmt.Errorf("git rev-parse HEAD: %w", err)
+	}
+	sha := strings.TrimSpace(string(headOut))
+	subject := strings.SplitN(msg, "\n", 2)[0]
+	return CommitInfo{SHA: sha, Subject: subject}, nil
+}
+
+// renderCommitMessage builds the templated commit message the CLI uses
+// when opts.CLICommits is true. Format is intentionally boring: one
+// subject line keying off agent + issue, one Phase: line, then the diff
+// stat as the body. The shape is tested directly so future tweaks are
+// caught.
+func renderCommitMessage(opts Options, diffStat string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s(#%d): %s\n", opts.Agent, opts.IssueNum, opts.IssueTitle)
+	if opts.NodeDescription != "" {
+		fmt.Fprintf(&b, "\nPhase: %s\n", opts.NodeDescription)
+	}
+	if diffStat != "" {
+		b.WriteString("\n")
+		b.WriteString(diffStat)
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 // errNoCommit is the sentinel for "subprocess succeeded but HEAD didn't
@@ -370,6 +461,12 @@ type repoState struct {
 	head      string
 	branch    string
 	untracked map[string]bool
+	// dirty is the union of every path mentioned in `git status
+	// --porcelain` (untracked, modified, deleted, staged, …). Used by
+	// the CLICommits staging policy: the post-pre delta is exactly
+	// "what the agent touched that wasn't already dirty," which is
+	// what we stage and commit.
+	dirty map[string]bool
 }
 
 func snapshotRepo(ctx context.Context, git GitRunner, dir string) (repoState, error) {
@@ -389,7 +486,43 @@ func snapshotRepo(ctx context.Context, git GitRunner, dir string) (repoState, er
 		head:      strings.TrimSpace(string(headOut)),
 		branch:    strings.TrimSpace(string(branchOut)),
 		untracked: parseUntracked(statusOut),
+		dirty:     parseDirty(statusOut),
 	}, nil
+}
+
+// parseDirty returns every path mentioned in `git status --porcelain`
+// output, regardless of status code. Renames (R old -> new) collapse
+// to the new path — that is what we want to stage. Lines too short to
+// hold "XY path" are skipped silently (defensive against trailing
+// blank lines).
+func parseDirty(porcelain []byte) map[string]bool {
+	m := map[string]bool{}
+	for line := range strings.SplitSeq(string(porcelain), "\n") {
+		if len(line) < 4 {
+			continue
+		}
+		path := strings.TrimSpace(line[3:])
+		if idx := strings.Index(path, " -> "); idx >= 0 {
+			path = path[idx+len(" -> "):]
+		}
+		if path != "" {
+			m[path] = true
+		}
+	}
+	return m
+}
+
+// diffDirty returns paths present in post but not pre, sorted for
+// stable test output and a deterministic `git add` argv.
+func diffDirty(pre, post map[string]bool) []string {
+	var out []string
+	for p := range post {
+		if !pre[p] {
+			out = append(out, p)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // parseUntracked picks out the `??<space><path>` rows from `git status
@@ -562,6 +695,12 @@ func writeExitBanner(opts Options, sha, subject string, elapsed time.Duration, u
 	}
 	green := color.New(color.FgGreen, color.Bold)
 	fmt.Fprintln(w, green.Sprint(banner))
+	if sha == "" {
+		fmt.Fprintln(w, green.Sprintf("✅ EXITED AGENT: no changes  (%s%s)",
+			elapsed.Round(elapsedRound), formatUsageSuffix(usage)))
+		fmt.Fprintln(w, green.Sprint(banner))
+		return
+	}
 	fmt.Fprintln(w, green.Sprintf("✅ EXITED AGENT: committed %s  (%s%s)",
 		shortSHA(sha), elapsed.Round(elapsedRound), formatUsageSuffix(usage)))
 	if subject != "" {

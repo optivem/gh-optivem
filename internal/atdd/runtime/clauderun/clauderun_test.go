@@ -649,6 +649,265 @@ func TestDispatch_DoesNotWarnWhenNoNewUntracked(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// CLI-commits mode (items 1–3 of cli-owns-commit-not-agent.md)
+// ---------------------------------------------------------------------------
+
+func TestRenderCommitMessage_FormatShape(t *testing.T) {
+	opts := newOpts()
+	opts.Agent = "atdd-task"
+	opts.IssueNum = 61
+	opts.IssueTitle = "Redesigning New Order UI"
+	opts.NodeDescription = "SYSTEM UI TASK - WRITE"
+
+	got := renderCommitMessage(opts, "monolith-typescript/.../home.tsx | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)")
+
+	want := "atdd-task(#61): Redesigning New Order UI\n" +
+		"\nPhase: SYSTEM UI TASK - WRITE\n" +
+		"\nmonolith-typescript/.../home.tsx | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)\n"
+	if got != want {
+		t.Errorf("renderCommitMessage:\n  got:\n%s\n  want:\n%s", got, want)
+	}
+}
+
+func TestRenderCommitMessage_OmitsEmptyOptionalSections(t *testing.T) {
+	// NodeDescription empty → no Phase: line. Empty diffStat → no body.
+	opts := newOpts()
+	opts.Agent = "atdd-chore"
+	opts.IssueNum = 7
+	opts.IssueTitle = "tidy"
+	opts.NodeDescription = ""
+
+	got := renderCommitMessage(opts, "")
+	want := "atdd-chore(#7): tidy\n"
+	if got != want {
+		t.Errorf("renderCommitMessage: got %q, want %q", got, want)
+	}
+}
+
+func TestParseDirty_AllStatusKinds(t *testing.T) {
+	porcelain := []byte(" M modified.go\n?? new.txt\n D deleted.go\nA  staged.go\nR  old.go -> renamed.go\n")
+	got := parseDirty(porcelain)
+	want := []string{"modified.go", "new.txt", "deleted.go", "staged.go", "renamed.go"}
+	for _, p := range want {
+		if !got[p] {
+			t.Errorf("parseDirty: missing %q in %v", p, got)
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("parseDirty: got %d entries, want %d (%v)", len(got), len(want), got)
+	}
+}
+
+func TestDispatch_CLICommits_StagesAndCommitsModifiedFile(t *testing.T) {
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaa\n"),                                // pre rev-parse HEAD
+			[]byte("aaaa\n"),                                // post rev-parse HEAD (same — agent didn't commit)
+			[]byte(""),                                      // git add -A -- foo.go
+			[]byte("foo.go | 2 +-\n 1 file changed\n"),      // git diff --cached --stat
+			[]byte(""),                                      // git commit -m
+			[]byte("bbbb\n"),                                // git rev-parse HEAD (new commit SHA)
+		},
+		statusPre:  []byte(""),
+		statusPost: []byte(" M foo.go\n"),
+	}
+	opts := newOpts()
+	opts.CLICommits = true
+
+	got, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
+	if err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if got.SHA != "bbbb" {
+		t.Errorf("SHA: got %q, want bbbb", got.SHA)
+	}
+	if !strings.Contains(got.Subject, "atdd-test(#42)") {
+		t.Errorf("Subject: got %q", got.Subject)
+	}
+	if !gitFake.hasGitArg("add", "-A", "--", "foo.go") {
+		t.Errorf("expected `git add -A -- foo.go`, got calls: %v", gitFake.args)
+	}
+	if !gitFake.hasGitArg("commit", "-m") {
+		t.Errorf("expected `git commit -m ...`, got calls: %v", gitFake.args)
+	}
+}
+
+func TestDispatch_CLICommits_StagesUntrackedFile(t *testing.T) {
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaa\n"), []byte("aaaa\n"),
+			[]byte(""), []byte("new.txt | 1 +\n"), []byte(""), []byte("bbbb\n"),
+		},
+		statusPre:  []byte(""),
+		statusPost: []byte("?? new.txt\n"),
+	}
+	opts := newOpts()
+	opts.CLICommits = true
+
+	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if !gitFake.hasGitArg("add", "-A", "--", "new.txt") {
+		t.Errorf("expected `git add -A -- new.txt`, got: %v", gitFake.args)
+	}
+}
+
+func TestDispatch_CLICommits_StagesDeletedFile(t *testing.T) {
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaa\n"), []byte("aaaa\n"),
+			[]byte(""), []byte("gone.go | 5 -----\n"), []byte(""), []byte("bbbb\n"),
+		},
+		statusPre:  []byte(""),
+		statusPost: []byte(" D gone.go\n"),
+	}
+	opts := newOpts()
+	opts.CLICommits = true
+
+	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if !gitFake.hasGitArg("add", "-A", "--", "gone.go") {
+		t.Errorf("expected `git add -A -- gone.go`, got: %v", gitFake.args)
+	}
+}
+
+func TestDispatch_CLICommits_SkipsPreExistingDirty(t *testing.T) {
+	// Pre-existing `M dirty.go` is already in the operator's working
+	// tree — must NOT be picked up by the CLI commit. Only the new
+	// untracked file shows up in the staging delta.
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaa\n"), []byte("aaaa\n"),
+			[]byte(""), []byte("new.txt | 1 +\n"), []byte(""), []byte("bbbb\n"),
+		},
+		statusPre:  []byte(" M dirty.go\n"),
+		statusPost: []byte(" M dirty.go\n?? new.txt\n"),
+	}
+	opts := newOpts()
+	opts.CLICommits = true
+
+	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if !gitFake.hasGitArg("add", "-A", "--", "new.txt") {
+		t.Errorf("expected `git add` to include only new.txt, got: %v", gitFake.args)
+	}
+	for _, args := range gitFake.args {
+		if len(args) >= 1 && args[0] == "add" {
+			for _, a := range args {
+				if a == "dirty.go" {
+					t.Errorf("`git add` must not include pre-existing dirty path, got: %v", args)
+				}
+			}
+		}
+	}
+}
+
+func TestDispatch_CLICommits_NoChangesIsNoOp(t *testing.T) {
+	// Clean before, clean after, HEAD unchanged → legitimate no-op
+	// phase. Return zero CommitInfo without erroring; do not call
+	// `git add` / `git commit`.
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaa\n"), []byte("aaaa\n"),
+		},
+		statusPre:  []byte(""),
+		statusPost: []byte(""),
+	}
+	opts := newOpts()
+	opts.CLICommits = true
+
+	got, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
+	if err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if got.SHA != "" {
+		t.Errorf("expected empty SHA on no-op, got %q", got.SHA)
+	}
+	if gitFake.hasGitArg("add") {
+		t.Errorf("`git add` must not run when delta is empty: %v", gitFake.args)
+	}
+	if gitFake.hasGitArg("commit") {
+		t.Errorf("`git commit` must not run when delta is empty: %v", gitFake.args)
+	}
+}
+
+func TestDispatch_CLICommits_HonorsAgentCommitWhenHeadMovesAndDeltaIsEmpty(t *testing.T) {
+	// Migration window: prompts may still tell the agent to commit. If
+	// HEAD moved during the subprocess and there's no leftover dirt,
+	// honor the agent's commit instead of double-committing.
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaa\n"),                  // pre rev-parse HEAD
+			[]byte("bbbb\n"),                  // post rev-parse HEAD (agent committed)
+			[]byte("atdd-task: agent did it\n"), // git log -1 --format=%s
+		},
+		statusPre:  []byte(""),
+		statusPost: []byte(""),
+	}
+	opts := newOpts()
+	opts.CLICommits = true
+
+	got, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
+	if err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if got.SHA != "bbbb" {
+		t.Errorf("SHA: got %q, want bbbb (agent's commit)", got.SHA)
+	}
+	if got.Subject != "atdd-task: agent did it" {
+		t.Errorf("Subject: got %q", got.Subject)
+	}
+	if gitFake.hasGitArg("add") || gitFake.hasGitArg("commit") {
+		t.Errorf("must not stage/commit on top of agent's commit: %v", gitFake.args)
+	}
+}
+
+func TestDispatch_CLICommits_NoOpBannerSaysNoChanges(t *testing.T) {
+	var buf bytes.Buffer
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	opts := newOpts()
+	opts.CLICommits = true
+	opts.Stdout = &buf
+
+	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	got := buf.String()
+	mustContain(t, got, "EXITED AGENT: no changes")
+	if strings.Contains(got, "committed") {
+		t.Errorf("no-op banner must not say 'committed': %s", got)
+	}
+}
+
+func TestDispatch_CLICommits_BranchSwitchStillHalts(t *testing.T) {
+	// Branch-switch detection applies in both modes — even with CLI
+	// commits, we don't try to commit on whatever branch the agent
+	// jumped to.
+	gitFake := &fakeGit{
+		out:        [][]byte{[]byte("aaaa\n"), []byte("bbbb\n")},
+		branchPre:  "main",
+		branchPost: "feature/foo",
+	}
+	opts := newOpts()
+	opts.CLICommits = true
+
+	_, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
+	if err == nil {
+		t.Fatalf("expected branch-switch error, got nil")
+	}
+	if !strings.Contains(err.Error(), "switched branches") {
+		t.Errorf("got %q", err.Error())
+	}
+	if gitFake.hasGitArg("add") || gitFake.hasGitArg("commit") {
+		t.Errorf("must not commit when branch switched: %v", gitFake.args)
+	}
+}
+
 func TestMaterializePrompt_BelowLimitReturnsVerbatim(t *testing.T) {
 	dir := t.TempDir()
 	prompt := strings.Repeat("x", promptArgvLimit)
