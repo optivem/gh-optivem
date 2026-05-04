@@ -39,7 +39,9 @@ func TestLoadSnapshot_AllFlowsParse(t *testing.T) {
 	eng := loadSnapshot(t)
 	wantFlows := []string{
 		"main",
-		"cycle_selection",
+		"intake",
+		"run_legacy_cycle",
+		"run_cycle",
 		"at_cycle",
 		"at_green_system",
 		"ct_subprocess",
@@ -124,40 +126,53 @@ var transitionTable = []transitionCase{
 	{flow: "main", from: "START", state: map[string]any{"mode": "board"}, wantTo: "PICK_TOP_READY", desc: "board mode enters via PICK_TOP_READY"},
 	{flow: "main", from: "START", state: map[string]any{"mode": "specific_issue"}, wantTo: "MOVE_TO_IN_PROGRESS", desc: "specific-issue mode skips PICK_TOP_READY"},
 	{flow: "main", from: "PICK_TOP_READY", wantTo: "MOVE_TO_IN_PROGRESS"},
-	{flow: "main", from: "MOVE_TO_IN_PROGRESS", wantTo: "CLASSIFY"},
-	{flow: "main", from: "CLASSIFY", wantTo: "GATE_TICKET_TYPE"},
-	{flow: "main", from: "GATE_TICKET_TYPE", state: map[string]any{"ticket_type": "story"}, wantTo: "ATDD_STORY"},
-	{flow: "main", from: "GATE_TICKET_TYPE", state: map[string]any{"ticket_type": "bug"}, wantTo: "ATDD_BUG"},
-	{flow: "main", from: "GATE_TICKET_TYPE", state: map[string]any{"ticket_type": "system-api-task"}, wantTo: "ATDD_TASK"},
-	{flow: "main", from: "GATE_TICKET_TYPE", state: map[string]any{"ticket_type": "system-ui-task"}, wantTo: "ATDD_TASK"},
-	{flow: "main", from: "GATE_TICKET_TYPE", state: map[string]any{"ticket_type": "external-api-task"}, wantTo: "ATDD_TASK"},
-	{flow: "main", from: "GATE_TICKET_TYPE", state: map[string]any{"ticket_type": "chore"}, wantTo: "ATDD_CHORE"},
-	{flow: "main", from: "ATDD_STORY", wantTo: "STOP_INTAKE"},
-	{flow: "main", from: "ATDD_BUG", wantTo: "STOP_INTAKE"},
-	{flow: "main", from: "ATDD_TASK", wantTo: "STOP_INTAKE"},
-	{flow: "main", from: "ATDD_CHORE", wantTo: "STOP_INTAKE"},
-	{flow: "main", from: "STOP_INTAKE", wantTo: "CYCLE_SELECTION"},
-	{flow: "main", from: "CYCLE_SELECTION", wantTo: "TICKET_IN_ACCEPTANCE"},
+	{flow: "main", from: "MOVE_TO_IN_PROGRESS", wantTo: "INTAKE"},
+	{flow: "main", from: "INTAKE", wantTo: "RUN_LEGACY_CYCLE"},
+	{flow: "main", from: "RUN_LEGACY_CYCLE", wantTo: "RUN_CYCLE"},
+	{flow: "main", from: "RUN_CYCLE", wantTo: "TICKET_IN_ACCEPTANCE"},
 	{flow: "main", from: "TICKET_IN_ACCEPTANCE", wantTo: "END"},
 
-	// ---- cycle_selection ----
+	// ---- intake ----
 	// Extracted from main so the top-level diagram shows the ticket lifecycle
-	// only and the cycle dispatch (legacy gate + change-kind gate + five
-	// cycles) lives in its own diagram, with behavioral/structural grouping.
-	{flow: "cycle_selection", from: "GATE_LEGACY", state: map[string]any{"legacy_coverage_section_present": true}, wantTo: "LEGACY_CYCLE"},
-	{flow: "cycle_selection", from: "GATE_LEGACY", state: map[string]any{"legacy_coverage_section_present": false}, wantTo: "GATE_TYPE_CYCLE"},
-	{flow: "cycle_selection", from: "LEGACY_CYCLE", wantTo: "GATE_TYPE_CYCLE"},
-	{flow: "cycle_selection", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "story"}, wantTo: "AT_CYCLE"},
-	{flow: "cycle_selection", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "bug"}, wantTo: "AT_CYCLE"},
-	{flow: "cycle_selection", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "system-api-task"}, wantTo: "SYSAPI_CYCLE"},
-	{flow: "cycle_selection", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "system-ui-task"}, wantTo: "SYSUI_CYCLE"},
-	{flow: "cycle_selection", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "external-api-task"}, wantTo: "EXTAPI_CYCLE"},
-	{flow: "cycle_selection", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "chore"}, wantTo: "CHORE_CYCLE"},
-	{flow: "cycle_selection", from: "AT_CYCLE", wantTo: "CYCLE_END"},
-	{flow: "cycle_selection", from: "SYSAPI_CYCLE", wantTo: "CYCLE_END"},
-	{flow: "cycle_selection", from: "SYSUI_CYCLE", wantTo: "CYCLE_END"},
-	{flow: "cycle_selection", from: "EXTAPI_CYCLE", wantTo: "CYCLE_END"},
-	{flow: "cycle_selection", from: "CHORE_CYCLE", wantTo: "CYCLE_END"},
+	// only and the type-specific intake fan-out (classify, conflict gate,
+	// type gate, four agents, scenario approval) lives in its own diagram.
+	{flow: "intake", from: "CLASSIFY", wantTo: "GATE_CLASSIFY_CONFIDENT"},
+	{flow: "intake", from: "GATE_CLASSIFY_CONFIDENT", state: map[string]any{"classify_confident": true}, wantTo: "GATE_TICKET_TYPE"},
+	{flow: "intake", from: "GATE_CLASSIFY_CONFIDENT", state: map[string]any{"classify_confident": false}, wantTo: "STOP_CLASSIFY_CONFLICT"},
+	{flow: "intake", from: "STOP_CLASSIFY_CONFLICT", wantTo: "GATE_TICKET_TYPE"},
+	{flow: "intake", from: "GATE_TICKET_TYPE", state: map[string]any{"ticket_type": "story"}, wantTo: "ATDD_STORY"},
+	{flow: "intake", from: "GATE_TICKET_TYPE", state: map[string]any{"ticket_type": "bug"}, wantTo: "ATDD_BUG"},
+	{flow: "intake", from: "GATE_TICKET_TYPE", state: map[string]any{"ticket_type": "system-api-task"}, wantTo: "ATDD_TASK"},
+	{flow: "intake", from: "GATE_TICKET_TYPE", state: map[string]any{"ticket_type": "system-ui-task"}, wantTo: "ATDD_TASK"},
+	{flow: "intake", from: "GATE_TICKET_TYPE", state: map[string]any{"ticket_type": "external-api-task"}, wantTo: "ATDD_TASK"},
+	{flow: "intake", from: "GATE_TICKET_TYPE", state: map[string]any{"ticket_type": "chore"}, wantTo: "ATDD_CHORE"},
+	{flow: "intake", from: "ATDD_STORY", wantTo: "STOP_INTAKE"},
+	{flow: "intake", from: "ATDD_BUG", wantTo: "STOP_INTAKE"},
+	{flow: "intake", from: "ATDD_TASK", wantTo: "STOP_INTAKE"},
+	{flow: "intake", from: "ATDD_CHORE", wantTo: "STOP_INTAKE"},
+	{flow: "intake", from: "STOP_INTAKE", wantTo: "INTAKE_END"},
+
+	// ---- run_legacy_cycle ----
+	// Backfill cycle for legacy coverage. Self-contained: gates internally on
+	// presence and no-ops when absent so main can call it unconditionally.
+	{flow: "run_legacy_cycle", from: "GATE_LEGACY_PRESENT", state: map[string]any{"legacy_coverage_section_present": true}, wantTo: "LEGACY_CYCLE"},
+	{flow: "run_legacy_cycle", from: "GATE_LEGACY_PRESENT", state: map[string]any{"legacy_coverage_section_present": false}, wantTo: "RUN_LEGACY_END"},
+	{flow: "run_legacy_cycle", from: "LEGACY_CYCLE", wantTo: "RUN_LEGACY_END"},
+
+	// ---- run_cycle ----
+	// Change cycle dispatch — type gate + five behavioral/structural cycles.
+	// Legacy backfill lives in run_legacy_cycle so this flow is just dispatch.
+	{flow: "run_cycle", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "story"}, wantTo: "AT_CYCLE"},
+	{flow: "run_cycle", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "bug"}, wantTo: "AT_CYCLE"},
+	{flow: "run_cycle", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "system-api-task"}, wantTo: "SYSAPI_CYCLE"},
+	{flow: "run_cycle", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "system-ui-task"}, wantTo: "SYSUI_CYCLE"},
+	{flow: "run_cycle", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "external-api-task"}, wantTo: "EXTAPI_CYCLE"},
+	{flow: "run_cycle", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "chore"}, wantTo: "CHORE_CYCLE"},
+	{flow: "run_cycle", from: "AT_CYCLE", wantTo: "CYCLE_END"},
+	{flow: "run_cycle", from: "SYSAPI_CYCLE", wantTo: "CYCLE_END"},
+	{flow: "run_cycle", from: "SYSUI_CYCLE", wantTo: "CYCLE_END"},
+	{flow: "run_cycle", from: "EXTAPI_CYCLE", wantTo: "CYCLE_END"},
+	{flow: "run_cycle", from: "CHORE_CYCLE", wantTo: "CYCLE_END"},
 
 	// ---- at_cycle ----
 	{flow: "at_cycle", from: "AT_RED_TEST", wantTo: "GATE_DSL_AT"},
@@ -339,17 +354,17 @@ func TestGapDecision_TypeCycleRoutesByTicketType(t *testing.T) {
 	// populated by CLASSIFY) and fans out to one cycle per type — no prompt
 	// round-trip in the no-Legacy path.
 	//
-	// The gate moved from `main` to `cycle_selection` when the cycle dispatch
+	// The gate moved from `main` to `run_cycle` when the cycle dispatch
 	// was extracted into its own flow; assert it lives there now and is
 	// absent from main.
 	eng := loadSnapshot(t)
-	flow := eng.Flows["cycle_selection"]
+	flow := eng.Flows["run_cycle"]
 	if flow == nil {
-		t.Fatalf("cycle_selection flow missing")
+		t.Fatalf("run_cycle flow missing")
 	}
 	gate, ok := flow.Nodes["GATE_TYPE_CYCLE"]
 	if !ok {
-		t.Fatalf("GATE_TYPE_CYCLE node missing from cycle_selection")
+		t.Fatalf("GATE_TYPE_CYCLE node missing from run_cycle")
 	}
 	if gate.Kind != Gateway {
 		t.Errorf("GATE_TYPE_CYCLE: kind got %v, want Gateway", gate.Kind)
@@ -361,7 +376,7 @@ func TestGapDecision_TypeCycleRoutesByTicketType(t *testing.T) {
 		t.Errorf("GATE_CHANGE_DRIVEN must not exist after deletion")
 	}
 	if _, leftover := eng.Flows["main"].Nodes["GATE_TYPE_CYCLE"]; leftover {
-		t.Errorf("GATE_TYPE_CYCLE should have moved out of main into cycle_selection")
+		t.Errorf("GATE_TYPE_CYCLE should have moved out of main into run_cycle")
 	}
 }
 

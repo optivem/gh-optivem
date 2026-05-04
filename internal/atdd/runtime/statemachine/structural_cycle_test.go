@@ -58,6 +58,7 @@ func TestImplementTicket_SystemUiRedesign(t *testing.T) {
 	eng.Flows["main"].Start = "MOVE_TO_IN_PROGRESS"
 	ctx := NewContext()
 	ctx.Set("ticket_type", "system-ui-task")
+	ctx.Set("classify_confident", true)
 	ctx.Set("legacy_coverage_section_present", false)
 	ctx.Set("structural_test_mode", "full")
 

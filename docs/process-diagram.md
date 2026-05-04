@@ -8,25 +8,44 @@ Each section corresponds to one named flow in the YAML. `call_activity` nodes ap
 
 ```mermaid
 flowchart TD
-    ATDD_BUG["atdd-bug (intake)"]
-    ATDD_CHORE["atdd-chore (intake)"]
-    ATDD_STORY["atdd-story (intake)"]
-    ATDD_TASK["atdd-task (intake)"]
-    CLASSIFY["Classify ticket (fast path; ask user on conflict)"]
-    CYCLE_SELECTION[CYCLE_SELECTION — see § Cycle Selection]
     END((End))
-    GATE_TICKET_TYPE{Ticket Type?}
+    INTAKE[INTAKE — see § Intake]
     MOVE_TO_IN_PROGRESS["Move ticket to In Progress (bottom of lane)"]
     PICK_TOP_READY[Pick top Ready ticket]
+    RUN_CYCLE[RUN_CYCLE — see § Run Cycle]
+    RUN_LEGACY_CYCLE[RUN_LEGACY_CYCLE — see § Run Legacy Cycle]
     START((Start))
-    STOP_INTAKE[STOP - HUMAN REVIEW — approve scenarios]
     TICKET_IN_ACCEPTANCE[Tick checklist + move issue to IN ACCEPTANCE]
 
     START -- board --> PICK_TOP_READY
     START -- specific_issue --> MOVE_TO_IN_PROGRESS
     PICK_TOP_READY --> MOVE_TO_IN_PROGRESS
-    MOVE_TO_IN_PROGRESS --> CLASSIFY
-    CLASSIFY --> GATE_TICKET_TYPE
+    MOVE_TO_IN_PROGRESS --> INTAKE
+    INTAKE --> RUN_LEGACY_CYCLE
+    RUN_LEGACY_CYCLE --> RUN_CYCLE
+    RUN_CYCLE --> TICKET_IN_ACCEPTANCE
+    TICKET_IN_ACCEPTANCE --> END
+```
+
+## Intake
+
+```mermaid
+flowchart TD
+    ATDD_BUG["atdd-bug (intake)"]
+    ATDD_CHORE["atdd-chore (intake)"]
+    ATDD_STORY["atdd-story (intake)"]
+    ATDD_TASK["atdd-task (intake)"]
+    CLASSIFY[Auto-classify ticket]
+    GATE_CLASSIFY_CONFIDENT{Classification confident?}
+    GATE_TICKET_TYPE{Ticket Type?}
+    INTAKE_END((End))
+    STOP_CLASSIFY_CONFLICT[STOP - HUMAN REVIEW — resolve classification conflict]
+    STOP_INTAKE[STOP - HUMAN REVIEW — approve scenarios]
+
+    CLASSIFY --> GATE_CLASSIFY_CONFIDENT
+    GATE_CLASSIFY_CONFIDENT -- Yes --> GATE_TICKET_TYPE
+    GATE_CLASSIFY_CONFIDENT -- No --> STOP_CLASSIFY_CONFLICT
+    STOP_CLASSIFY_CONFLICT --> GATE_TICKET_TYPE
     GATE_TICKET_TYPE -- story --> ATDD_STORY
     GATE_TICKET_TYPE -- bug --> ATDD_BUG
     GATE_TICKET_TYPE -- system-api-task / system-ui-task / external-api-task --> ATDD_TASK
@@ -35,22 +54,31 @@ flowchart TD
     ATDD_BUG --> STOP_INTAKE
     ATDD_TASK --> STOP_INTAKE
     ATDD_CHORE --> STOP_INTAKE
-    STOP_INTAKE --> CYCLE_SELECTION
-    CYCLE_SELECTION --> TICKET_IN_ACCEPTANCE
-    TICKET_IN_ACCEPTANCE --> END
+    STOP_INTAKE --> INTAKE_END
 
     classDef humanReviewNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000
-    class STOP_INTAKE humanReviewNode
+    class STOP_CLASSIFY_CONFLICT,STOP_INTAKE humanReviewNode
 ```
 
-## Cycle Selection
+## Run Legacy Cycle
+
+```mermaid
+flowchart TD
+    GATE_LEGACY_PRESENT{Legacy Coverage section present?}
+    LEGACY_CYCLE[LEGACY_CYCLE — see § Legacy Coverage Cycle]
+    RUN_LEGACY_END((End))
+
+    GATE_LEGACY_PRESENT -- Yes --> LEGACY_CYCLE
+    GATE_LEGACY_PRESENT -- No --> RUN_LEGACY_END
+    LEGACY_CYCLE --> RUN_LEGACY_END
+```
+
+## Run Cycle
 
 ```mermaid
 flowchart TD
     CYCLE_END((End))
-    GATE_LEGACY{Legacy Coverage section present?}
     GATE_TYPE_CYCLE{Cycle by ticket type}
-    LEGACY_CYCLE[LEGACY_CYCLE — see § Legacy Coverage Cycle]
     subgraph behavioral[System Behavior Change]
     AT_CYCLE[AT_CYCLE — see § AT Cycle]
     end
@@ -69,9 +97,6 @@ flowchart TD
     end
     end
 
-    GATE_LEGACY -- Yes --> LEGACY_CYCLE
-    GATE_LEGACY -- No --> GATE_TYPE_CYCLE
-    LEGACY_CYCLE --> GATE_TYPE_CYCLE
     GATE_TYPE_CYCLE -- story / bug --> AT_CYCLE
     GATE_TYPE_CYCLE -- system-api-task --> SYSAPI_CYCLE
     GATE_TYPE_CYCLE -- system-ui-task --> SYSUI_CYCLE
