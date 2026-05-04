@@ -30,7 +30,9 @@ import (
 // new flow appears in the YAML.
 var flowAlias = map[string]string{
 	"main":                       "Ticket Lifecycle",
-	"cycle_selection":            "Cycle Selection",
+	"intake":                     "Intake",
+	"run_legacy_cycle":           "Run Legacy Cycle",
+	"run_cycle":                  "Run Cycle",
 	"at_cycle":                   "AT Cycle",
 	"at_green_system":            "AT - GREEN - SYSTEM",
 	"ct_subprocess":              "Contract Test Sub-Process",
@@ -58,7 +60,9 @@ var groupAlias = map[string]string{
 // listed here come last in lexical order.
 var flowOrder = []string{
 	"main",
-	"cycle_selection",
+	"intake",
+	"run_legacy_cycle",
+	"run_cycle",
 	"at_cycle",
 	"at_green_system",
 	"ct_subprocess",

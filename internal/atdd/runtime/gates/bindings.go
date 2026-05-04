@@ -92,6 +92,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("external_system_driver_interface_changed", b.externalSystemDriverInterfaceChanged)
 	r.Register("system_driver_interface_changed", b.systemDriverInterfaceChanged)
 	r.Register("ticket_type", b.ticketType)
+	r.Register("classify_confident", b.classifyConfident)
 	r.Register("legacy_coverage_section_present", b.legacyCoverageSectionPresent)
 	r.Register("external_system_driver_exists", b.externalSystemDriverExists)
 	r.Register("external_system_test_instance_accessible", b.externalSystemTestInstanceAccessible)
@@ -184,6 +185,16 @@ func (b bindings) structuralTestMode(ctx *statemachine.Context) statemachine.Out
 // ---------------------------------------------------------------------------
 // Boolean gates — backed by upstream actions or one-off prompts
 // ---------------------------------------------------------------------------
+
+// classifyConfident reads the confidence flag set by the classify_ticket
+// service task. The action is expected to write `true` when classification
+// is unambiguous and `false` when it needs human resolution. Falls back to a
+// prompt for hand-debugging.
+func (b bindings) classifyConfident(ctx *statemachine.Context) statemachine.Outcome {
+	return b.boolGate(ctx,
+		"classify_confident",
+		"Classification confident? [Y/n]: ")
+}
 
 // legacyCoverageSectionPresent reads the issue body via `gh issue view` and
 // scans for an H2 heading named `Legacy Coverage`. Falls back to a prompt

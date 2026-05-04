@@ -70,15 +70,17 @@ flows:
   # ===========================================================================
   # main
   # Ticket Lifecycle — entry flow for `gh optivem atdd implement-ticket
-  # --issue N` and `gh optivem atdd manage-project`. Drives intake (board /
-  # specific_issue → in-progress → classify → type-specific intake agent →
-  # human review), then delegates the cycle dispatch to the cycle_selection
-  # sub-flow, and ends at TICKET STATUS - IN ACCEPTANCE.
+  # --issue N` and `gh optivem atdd manage-project`. Pulls the next ticket
+  # (board / specific_issue → in-progress), then runs intake, runs the
+  # legacy coverage cycle (no-op when the ticket carries no Legacy Coverage
+  # section), runs the change cycle for the ticket's type, and ends at
+  # TICKET STATUS - IN ACCEPTANCE.
   #
-  # Cycle dispatch (legacy gate, type gate, the five cycle call_activities)
-  # lives in the cycle_selection flow below — splitting it out lets each
-  # diagram answer one question: "main" shows the ticket's lifecycle, and
-  # "cycle_selection" shows the behavioral-vs-structural cycle choice.
+  # Each sub-flow encapsulates its own gates so main stays linear and
+  # gate-free. Splitting them lets each diagram answer one question:
+  # "main" shows the ticket's lifecycle, "intake" shows the type-specific
+  # intake fan-out, "run_legacy_cycle" shows the legacy-coverage backfill,
+  # and "run_cycle" shows the behavioral-vs-structural change-cycle choice.
   # ===========================================================================
   main:
     start: START
@@ -96,10 +98,62 @@ flows:
         action: move_to_in_progress
         description: "Move ticket to In Progress (bottom of lane)"
 
+      - id: INTAKE
+        type: call_activity
+        flow: intake
+
+      - id: RUN_LEGACY_CYCLE
+        type: call_activity
+        flow: run_legacy_cycle
+
+      - id: RUN_CYCLE
+        type: call_activity
+        flow: run_cycle
+
+      - id: TICKET_IN_ACCEPTANCE
+        type: service_task
+        action: move_to_in_acceptance
+        description: "Tick checklist + move issue to IN ACCEPTANCE"
+
+      - id: END
+        type: end_event
+
+    sequence_flows:
+      - {from: START,                to: PICK_TOP_READY,      when: "mode == board"}
+      - {from: START,                to: MOVE_TO_IN_PROGRESS, when: "mode == specific_issue"}
+      - {from: PICK_TOP_READY,       to: MOVE_TO_IN_PROGRESS}
+      - {from: MOVE_TO_IN_PROGRESS,  to: INTAKE}
+      - {from: INTAKE,               to: RUN_LEGACY_CYCLE}
+      - {from: RUN_LEGACY_CYCLE,     to: RUN_CYCLE}
+      - {from: RUN_CYCLE,            to: TICKET_IN_ACCEPTANCE}
+      - {from: TICKET_IN_ACCEPTANCE, to: END}
+
+  # ===========================================================================
+  # intake
+  # Owns the full "understand this ticket" responsibility: classify it,
+  # surface low-confidence classifications for human resolution, then
+  # dispatch the type-specific intake agent and collect the human
+  # approval of scenarios. Self-contained — main only sees INTAKE start
+  # and finish.
+  # ===========================================================================
+  intake:
+    start: CLASSIFY
+    nodes:
       - id: CLASSIFY
         type: service_task
         action: classify_ticket
-        description: "Classify ticket (fast path; ask user on conflict)"
+        description: "Auto-classify ticket"
+
+      - id: GATE_CLASSIFY_CONFIDENT
+        type: gateway
+        binding: classify_confident
+        description: "Classification confident?"
+
+      - id: STOP_CLASSIFY_CONFLICT
+        type: user_task
+        agent: human
+        role: review
+        description: "STOP - HUMAN REVIEW — resolve classification conflict"
 
       - id: GATE_TICKET_TYPE
         type: gateway
@@ -136,51 +190,35 @@ flows:
         role: review
         description: "STOP - HUMAN REVIEW — approve scenarios"
 
-      - id: CYCLE_SELECTION
-        type: call_activity
-        flow: cycle_selection
-
-      - id: TICKET_IN_ACCEPTANCE
-        type: service_task
-        action: move_to_in_acceptance
-        description: "Tick checklist + move issue to IN ACCEPTANCE"
-
-      - id: END
+      - id: INTAKE_END
         type: end_event
 
     sequence_flows:
-      - {from: START,                to: PICK_TOP_READY,         when: "mode == board"}
-      - {from: START,                to: MOVE_TO_IN_PROGRESS,    when: "mode == specific_issue"}
-      - {from: PICK_TOP_READY,       to: MOVE_TO_IN_PROGRESS}
-      - {from: MOVE_TO_IN_PROGRESS,  to: CLASSIFY}
-      - {from: CLASSIFY,             to: GATE_TICKET_TYPE}
-      - {from: GATE_TICKET_TYPE,     to: ATDD_STORY,             when: "ticket_type == story"}
-      - {from: GATE_TICKET_TYPE,     to: ATDD_BUG,               when: "ticket_type == bug"}
-      - {from: GATE_TICKET_TYPE,     to: ATDD_TASK,              when: "ticket_type in [system-api-task, system-ui-task, external-api-task]"}
-      - {from: GATE_TICKET_TYPE,     to: ATDD_CHORE,             when: "ticket_type == chore"}
-      - {from: ATDD_STORY,           to: STOP_INTAKE}
-      - {from: ATDD_BUG,             to: STOP_INTAKE}
-      - {from: ATDD_TASK,            to: STOP_INTAKE}
-      - {from: ATDD_CHORE,           to: STOP_INTAKE}
-      - {from: STOP_INTAKE,          to: CYCLE_SELECTION}
-      - {from: CYCLE_SELECTION,      to: TICKET_IN_ACCEPTANCE}
-      - {from: TICKET_IN_ACCEPTANCE, to: END}
+      - {from: CLASSIFY,                to: GATE_CLASSIFY_CONFIDENT}
+      - {from: GATE_CLASSIFY_CONFIDENT, to: GATE_TICKET_TYPE,        when: "classify_confident == true"}
+      - {from: GATE_CLASSIFY_CONFIDENT, to: STOP_CLASSIFY_CONFLICT,  when: "classify_confident == false"}
+      - {from: STOP_CLASSIFY_CONFLICT,  to: GATE_TICKET_TYPE}
+      - {from: GATE_TICKET_TYPE,        to: ATDD_STORY,              when: "ticket_type == story"}
+      - {from: GATE_TICKET_TYPE,        to: ATDD_BUG,                when: "ticket_type == bug"}
+      - {from: GATE_TICKET_TYPE,        to: ATDD_TASK,               when: "ticket_type in [system-api-task, system-ui-task, external-api-task]"}
+      - {from: GATE_TICKET_TYPE,        to: ATDD_CHORE,              when: "ticket_type == chore"}
+      - {from: ATDD_STORY,              to: STOP_INTAKE}
+      - {from: ATDD_BUG,                to: STOP_INTAKE}
+      - {from: ATDD_TASK,               to: STOP_INTAKE}
+      - {from: ATDD_CHORE,              to: STOP_INTAKE}
+      - {from: STOP_INTAKE,             to: INTAKE_END}
 
   # ===========================================================================
-  # cycle_selection
-  # Decides which cycle to run for an intaken ticket and dispatches it. Two
-  # gates in series: (1) does the ticket carry a Legacy Coverage section?
-  # (2) which change-kind cycle does the ticket type require? The five cycle
-  # call_activities are grouped into Behavioral (AT_CYCLE, EXTAPI_CYCLE) and
-  # Structural (SYSAPI_CYCLE, SYSUI_CYCLE, CHORE_CYCLE) via `group:`
-  # annotations — the diagram renderer wraps each group in a Mermaid
-  # subgraph so the dichotomy is visually explicit. The `group:` field is
-  # diagram-only; the runtime ignores it.
+  # run_legacy_cycle
+  # Backfill cycle for tickets that carry a "Legacy Coverage" section in
+  # their issue body — covers previously-untested behavior before the new
+  # change cycle runs. Self-contained: gates internally on presence and
+  # no-ops when absent, so main can call it unconditionally.
   # ===========================================================================
-  cycle_selection:
-    start: GATE_LEGACY
+  run_legacy_cycle:
+    start: GATE_LEGACY_PRESENT
     nodes:
-      - id: GATE_LEGACY
+      - id: GATE_LEGACY_PRESENT
         type: gateway
         binding: legacy_coverage_section_present
         description: "Legacy Coverage section present?"
@@ -189,6 +227,27 @@ flows:
         type: call_activity
         flow: legacy_coverage
 
+      - id: RUN_LEGACY_END
+        type: end_event
+
+    sequence_flows:
+      - {from: GATE_LEGACY_PRESENT, to: LEGACY_CYCLE,    when: "legacy_coverage_section_present == true"}
+      - {from: GATE_LEGACY_PRESENT, to: RUN_LEGACY_END,  when: "legacy_coverage_section_present == false"}
+      - {from: LEGACY_CYCLE,        to: RUN_LEGACY_END}
+
+  # ===========================================================================
+  # run_cycle
+  # Change cycle for the current ticket — dispatches the behavioral or
+  # structural cycle the ticket's type requires. The five cycle
+  # call_activities are grouped into Behavioral (AT_CYCLE, EXTAPI_CYCLE)
+  # and Structural (SYSAPI_CYCLE, SYSUI_CYCLE, CHORE_CYCLE) via `group:`
+  # annotations — the diagram renderer wraps each group in a Mermaid
+  # subgraph so the dichotomy is visually explicit. The `group:` field is
+  # diagram-only; the runtime ignores it.
+  # ===========================================================================
+  run_cycle:
+    start: GATE_TYPE_CYCLE
+    nodes:
       - id: GATE_TYPE_CYCLE
         type: gateway
         binding: ticket_type
@@ -237,14 +296,11 @@ flows:
         type: end_event
 
     sequence_flows:
-      - {from: GATE_LEGACY,     to: LEGACY_CYCLE,    when: "legacy_coverage_section_present == true"}
-      - {from: GATE_LEGACY,     to: GATE_TYPE_CYCLE, when: "legacy_coverage_section_present == false"}
-      - {from: LEGACY_CYCLE,    to: GATE_TYPE_CYCLE}
-      - {from: GATE_TYPE_CYCLE, to: AT_CYCLE,        when: "ticket_type in [story, bug]"}
-      - {from: GATE_TYPE_CYCLE, to: SYSAPI_CYCLE,    when: "ticket_type == system-api-task"}
-      - {from: GATE_TYPE_CYCLE, to: SYSUI_CYCLE,     when: "ticket_type == system-ui-task"}
-      - {from: GATE_TYPE_CYCLE, to: EXTAPI_CYCLE,    when: "ticket_type == external-api-task"}
-      - {from: GATE_TYPE_CYCLE, to: CHORE_CYCLE,     when: "ticket_type == chore"}
+      - {from: GATE_TYPE_CYCLE, to: AT_CYCLE,     when: "ticket_type in [story, bug]"}
+      - {from: GATE_TYPE_CYCLE, to: SYSAPI_CYCLE, when: "ticket_type == system-api-task"}
+      - {from: GATE_TYPE_CYCLE, to: SYSUI_CYCLE,  when: "ticket_type == system-ui-task"}
+      - {from: GATE_TYPE_CYCLE, to: EXTAPI_CYCLE, when: "ticket_type == external-api-task"}
+      - {from: GATE_TYPE_CYCLE, to: CHORE_CYCLE,  when: "ticket_type == chore"}
       - {from: AT_CYCLE,        to: CYCLE_END}
       - {from: SYSAPI_CYCLE,    to: CYCLE_END}
       - {from: SYSUI_CYCLE,     to: CYCLE_END}
