@@ -26,14 +26,27 @@ set -euo pipefail
 #   2. Resolve <id> = <ts>[-<label>], where <ts> = date +%Y%m%d-%H%M%S.
 #   3. From the consumer repo (CWD), create a sibling worktree at
 #      ../rehearsal-<id> on a new branch rehearsal/<id>.
-#   4. cd into it and run:
+#   4. Inside the new worktree, run `<gh-optivem>/gh-optivem.exe config init …`
+#      to materialise gh-optivem.yaml (the shop template doesn't commit it;
+#      implement-ticket needs it to resolve project URL and scope axes).
+#      Commit the YAML so the rehearsal branch carries a coherent history.
+#   5. cd into it and run:
 #        <gh-optivem>/gh-optivem.exe atdd implement-ticket --issue <issue-num>
-#   5. On exit (success, failure, or interrupt), prompt the user to delete
+#   6. On exit (success, failure, or interrupt), prompt the user to delete
 #      the worktree + branch (default: yes).
 #
 # Run from inside the consumer repo's working tree (e.g. shop/). The script
 # discovers the consumer repo via `git rev-parse --show-toplevel` from CWD;
 # if you are not in a git tree, it errors out.
+
+# === REHEARSAL CONFIG === (edit these for your setup)
+REHEARSAL_OWNER="optivem"
+REHEARSAL_REPO="shop"
+REHEARSAL_ARCH="monolith"
+REHEARSAL_REPO_STRATEGY="monorepo"
+REHEARSAL_MONOLITH_LANG="java"
+REHEARSAL_PROJECT_URL="https://github.com/orgs/optivem/projects/20"
+# === END REHEARSAL CONFIG ===
 
 GH_OPTIVEM_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN="$GH_OPTIVEM_ROOT/gh-optivem.exe"
@@ -129,6 +142,24 @@ fi
 # Trap installed *after* worktree creation: pre-worktree failures do not
 # trigger the cleanup prompt.
 trap cleanup EXIT
+
+# The shop template doesn't commit gh-optivem.yaml (real users get one from
+# `gh optivem init`), so the worktree starts without it. Materialise the file
+# via `config init` and commit it so the rehearsal branch carries a coherent
+# history that matches what a real init-scaffolded repo would look like.
+log "Writing gh-optivem.yaml into worktree..."
+( cd "$WORKTREE_PATH" && "$BIN" config init \
+    --owner "$REHEARSAL_OWNER" \
+    --repo "$REHEARSAL_REPO" \
+    --arch "$REHEARSAL_ARCH" \
+    --repo-strategy "$REHEARSAL_REPO_STRATEGY" \
+    --monolith-lang "$REHEARSAL_MONOLITH_LANG" \
+    --project-url "$REHEARSAL_PROJECT_URL" )
+
+log "Committing gh-optivem.yaml to rehearsal branch..."
+( cd "$WORKTREE_PATH" \
+    && git add gh-optivem.yaml \
+    && git commit -m "Add gh-optivem.yaml for rehearsal" )
 
 log "Running implement-ticket --issue $ISSUE in $WORKTREE_PATH..."
 RC=0
