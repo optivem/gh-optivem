@@ -281,7 +281,7 @@ func (a actions) classifyTicket(ctx *statemachine.Context) statemachine.Outcome 
 
 // runSmokeTest prompts the user to run the smoke test and report the result.
 // v1 ships with a prompt rather than a real docker invocation because the
-// stack-up command is repo-specific (`gh optivem run system --system …`).
+// stack-up command is repo-specific (`gh optivem run system --system-config …`).
 // The Outcome's Bool is also recorded under `smoke_test_passes` so the
 // downstream gateway reads it back through the standard wrapGateway path.
 func (a actions) runSmokeTest(ctx *statemachine.Context) statemachine.Outcome {

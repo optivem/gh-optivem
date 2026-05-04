@@ -7,10 +7,10 @@
 # Steps:
 #   1. Rebuild the gh-optivem binary from this repo.
 #   2. From shop/ root:
-#        gh-optivem stop system  --system docker/typescript/monolith/system.json   (best effort, cold start)
-#        gh-optivem test system  --system docker/typescript/monolith/system.json --tests system-test/typescript/tests-latest.json   (cold — implicit build + start)
-#        gh-optivem test system  --system docker/typescript/monolith/system.json --tests system-test/typescript/tests-legacy.json   (warm — fast re-run path)
-#        gh-optivem stop system  --system docker/typescript/monolith/system.json
+#        gh-optivem stop system  --system-config docker/typescript/monolith/system.json   (best effort, cold start)
+#        gh-optivem test system  --system-config docker/typescript/monolith/system.json --test-config system-test/typescript/tests-latest.json   (cold — implicit build + start)
+#        gh-optivem test system  --system-config docker/typescript/monolith/system.json --test-config system-test/typescript/tests-legacy.json   (warm — fast re-run path)
+#        gh-optivem stop system  --system-config docker/typescript/monolith/system.json
 #   3. Print a per-phase pass/fail summary.
 #
 # Requires: docker, node 22+, the optivem academy workspace cloned alongside
@@ -42,21 +42,21 @@ fi
 
 echo
 echo "=== Step 2/5: stop system (ensure cold start) ==="
-( cd "$SHOP_DIR" && "$BIN" stop system --system "$SYSTEM" ) || echo "warn: stop system failed (continuing — system may already be down)"
+( cd "$SHOP_DIR" && "$BIN" stop system --system-config "$SYSTEM" ) || echo "warn: stop system failed (continuing — system may already be down)"
 
 echo
 echo "=== Step 3/5: test system — Latest (cold: implicit build + start + tests) ==="
 LATEST_RC=0
-( cd "$SHOP_DIR" && "$BIN" test system --system "$SYSTEM" --tests "$TESTS_LATEST" ) || LATEST_RC=$?
+( cd "$SHOP_DIR" && "$BIN" test system --system-config "$SYSTEM" --test-config "$TESTS_LATEST" ) || LATEST_RC=$?
 
 echo
 echo "=== Step 4/5: test system — Legacy (warm: system already up, fast re-run) ==="
 LEGACY_RC=0
-( cd "$SHOP_DIR" && "$BIN" test system --system "$SYSTEM" --tests "$TESTS_LEGACY" ) || LEGACY_RC=$?
+( cd "$SHOP_DIR" && "$BIN" test system --system-config "$SYSTEM" --test-config "$TESTS_LEGACY" ) || LEGACY_RC=$?
 
 echo
 echo "=== Step 5/5: stop system (cleanup) ==="
-( cd "$SHOP_DIR" && "$BIN" stop system --system "$SYSTEM" ) || echo "warn: stop system failed (continuing)"
+( cd "$SHOP_DIR" && "$BIN" stop system --system-config "$SYSTEM" ) || echo "warn: stop system failed (continuing)"
 
 echo
 echo "=== Summary ==="

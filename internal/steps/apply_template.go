@@ -537,7 +537,7 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 		// into docker/, so "working-directory: docker/<testLang>/<arch>" must
 		// flatten to "working-directory: docker".
 		{wdPrefixYAML + dirDocker + "/" + testLang + "/monolith", wdPrefixYAML + dirDocker},
-		// Same flattening for unprefixed CLI-arg forms (e.g. "--system
+		// Same flattening for unprefixed CLI-arg forms (e.g. "--system-config
 		// docker/<testLang>/monolith/system.json" in per-suite acceptance-stage
 		// `run:` lines), which the working-directory rule above does not cover.
 		{dirDocker + "/" + testLang + "/monolith/", dirDocker + "/"},
@@ -654,7 +654,7 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 		// into docker/, so "working-directory: docker/<testLang>/<arch>" must
 		// flatten to "working-directory: docker".
 		{wdPrefixYAML + dirDocker + "/" + testLang + "/multitier", wdPrefixYAML + dirDocker},
-		// Same flattening for unprefixed CLI-arg forms (e.g. "--system
+		// Same flattening for unprefixed CLI-arg forms (e.g. "--system-config
 		// docker/<testLang>/multitier/system.json" in per-suite acceptance-stage
 		// `run:` lines), which the working-directory rule above does not cover.
 		{dirDocker + "/" + testLang + "/multitier/", dirDocker + "/"},
