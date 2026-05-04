@@ -53,11 +53,17 @@ func TestImplementTicket_SystemUiRedesign(t *testing.T) {
 	}
 
 	// implement-ticket mode skips the picker (driver.Run mutates Start).
-	// Pre-seed the routing state preResolveIssue + CLASSIFY would set,
-	// plus the structural_cycle TEST gate choice.
+	// Pre-seed the routing state preResolveIssue + CLASSIFY would set —
+	// ticket_type still drives intake's agent dispatch, while the change_*
+	// classification fields drive run_cycle and da_cycle's dispatch — plus
+	// the structural_cycle TEST gate choice.
 	eng.Flows["main"].Start = "MOVE_TO_IN_PROGRESS"
 	ctx := NewContext()
 	ctx.Set("ticket_type", "system-ui-task")
+	ctx.Set("change_type", "structure")
+	ctx.Set("change_subtype", "interface")
+	ctx.Set("change_scope", "system")
+	ctx.Set("change_channel", "ui")
 	ctx.Set("classify_confident", true)
 	ctx.Set("legacy_coverage_section_present", false)
 	ctx.Set("structural_test_mode", "full")

@@ -322,6 +322,14 @@ func TestClassifyTicket_StoryFastPath(t *testing.T) {
 	if got := ctx.GetString("ticket_type"); got != "story" {
 		t.Fatalf("ticket_type: got %q, want %q", got, "story")
 	}
+	if got := ctx.GetString("change_type"); got != "behavior" {
+		t.Fatalf("change_type: got %q, want %q", got, "behavior")
+	}
+	for _, k := range []string{"change_subtype", "change_scope", "change_channel"} {
+		if got := ctx.GetString(k); got != "" {
+			t.Fatalf("%s: got %q, want empty for story", k, got)
+		}
+	}
 }
 
 func TestClassifyTicket_TaskPromptsForSubtype(t *testing.T) {
@@ -347,6 +355,47 @@ func TestClassifyTicket_TaskPromptsForSubtype(t *testing.T) {
 	}
 	if got := ctx.GetString("ticket_type"); got != "system-api-task" {
 		t.Fatalf("ticket_type: got %q, want system-api-task", got)
+	}
+	wantClassification := map[string]string{
+		"change_type":    "structure",
+		"change_subtype": "interface",
+		"change_scope":   "system",
+		"change_channel": "api",
+	}
+	for k, want := range wantClassification {
+		if got := ctx.GetString(k); got != want {
+			t.Fatalf("%s: got %q, want %q", k, got, want)
+		}
+	}
+}
+
+func TestClassificationFromTicketType(t *testing.T) {
+	// Lock the ticket_type → classification mapping. The four classification
+	// fields drive run_cycle and da_cycle dispatch; unmapped axes must stay
+	// empty so the gate's prompt fallback can be reached if ever needed.
+	for _, tc := range []struct {
+		ticketType string
+		want       map[string]string
+	}{
+		{ticketType: "story", want: map[string]string{"change_type": "behavior"}},
+		{ticketType: "bug", want: map[string]string{"change_type": "behavior"}},
+		{ticketType: "chore", want: map[string]string{"change_type": "structure", "change_subtype": "implementation"}},
+		{ticketType: "system-api-task", want: map[string]string{"change_type": "structure", "change_subtype": "interface", "change_scope": "system", "change_channel": "api"}},
+		{ticketType: "system-ui-task", want: map[string]string{"change_type": "structure", "change_subtype": "interface", "change_scope": "system", "change_channel": "ui"}},
+		{ticketType: "external-api-task", want: map[string]string{"change_type": "structure", "change_subtype": "interface", "change_scope": "external_system"}},
+		{ticketType: "unknown", want: nil},
+	} {
+		t.Run(tc.ticketType, func(t *testing.T) {
+			got := classificationFromTicketType(tc.ticketType)
+			if len(got) != len(tc.want) {
+				t.Fatalf("classification: got %v, want %v", got, tc.want)
+			}
+			for k, v := range tc.want {
+				if got[k] != v {
+					t.Errorf("%s: got %q, want %q", k, got[k], v)
+				}
+			}
+		})
 	}
 }
 

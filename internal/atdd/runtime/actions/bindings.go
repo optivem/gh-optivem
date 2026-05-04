@@ -271,8 +271,37 @@ func (a actions) classifyTicket(ctx *statemachine.Context) statemachine.Outcome 
 		}
 	}
 	ctx.Set("ticket_type", final)
+	for k, v := range classificationFromTicketType(final) {
+		ctx.Set(k, v)
+	}
 	fmt.Fprintf(a.deps.Stdout, "Classified #%d as %s.\n", issueNum, final)
 	return statemachine.Outcome{}
+}
+
+// classificationFromTicketType maps the deterministic ticket_type into the
+// change classification consumed by run_cycle / da_cycle:
+//
+//	change_type     behavior | structure
+//	change_subtype  interface | implementation  (only when type == structure)
+//	change_scope    system | external_system    (only when subtype == interface)
+//	change_channel  api | ui                    (only when scope == system)
+//
+// Axes that do not apply for a given ticket_type are omitted from the map so
+// the gate's binding falls back to its prompt path if ever reached.
+func classificationFromTicketType(ticketType string) map[string]string {
+	switch ticketType {
+	case "story", "bug":
+		return map[string]string{"change_type": "behavior"}
+	case "chore":
+		return map[string]string{"change_type": "structure", "change_subtype": "implementation"}
+	case "system-api-task":
+		return map[string]string{"change_type": "structure", "change_subtype": "interface", "change_scope": "system", "change_channel": "api"}
+	case "system-ui-task":
+		return map[string]string{"change_type": "structure", "change_subtype": "interface", "change_scope": "system", "change_channel": "ui"}
+	case "external-api-task":
+		return map[string]string{"change_type": "structure", "change_subtype": "interface", "change_scope": "external_system"}
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------

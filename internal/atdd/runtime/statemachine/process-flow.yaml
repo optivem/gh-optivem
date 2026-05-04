@@ -237,75 +237,54 @@ flows:
 
   # ===========================================================================
   # run_cycle
-  # Change cycle for the current ticket — dispatches the behavioral or
-  # structural cycle the ticket's type requires. The five cycle
-  # call_activities are grouped into Behavioral (AT_CYCLE, EXTAPI_CYCLE)
-  # and Structural (SYSAPI_CYCLE, SYSUI_CYCLE, CHORE_CYCLE) via `group:`
-  # annotations — the diagram renderer wraps each group in a Mermaid
-  # subgraph so the dichotomy is visually explicit. The `group:` field is
-  # diagram-only; the runtime ignores it.
+  # Change cycle for the current ticket — dispatches by the change's
+  # classification, not its ticket type. Three cycles cover the full space,
+  # named after the test-stack layer at which the change is visible:
+  #   - behavior                 → at_cycle  (AT-layer change)
+  #   - structure / interface    → da_cycle  (Driver Adapter seam change)
+  #   - structure / implementation → sut_cycle (System Under Test internal)
+  #
+  # ticket_type stays inside intake (which uses it to pick the right intake
+  # agent) and does not leak into run_cycle. The classification fields
+  # (change_type, change_subtype, change_scope, change_channel) are produced
+  # by intake and consumed here and in da_cycle.
   # ===========================================================================
   run_cycle:
-    start: GATE_TYPE_CYCLE
+    start: GATE_CHANGE_TYPE
     nodes:
-      - id: GATE_TYPE_CYCLE
+      - id: GATE_CHANGE_TYPE
         type: gateway
-        binding: ticket_type
-        description: "Cycle by ticket type"
+        binding: change_type
+        description: "Cycle by change type"
+
+      - id: GATE_CHANGE_SUBTYPE
+        type: gateway
+        binding: change_subtype
+        description: "Structural change subtype?"
 
       - id: AT_CYCLE
         type: call_activity
         flow: at_cycle
-        group: behavioral
 
-      - id: EXTAPI_CYCLE
+      - id: DA_CYCLE
         type: call_activity
-        flow: external_api_task_cycle
-        group: external_structural/interface
+        flow: da_cycle
 
-      - id: SYSAPI_CYCLE
+      - id: SUT_CYCLE
         type: call_activity
-        flow: structural_cycle
-        group: structural/interface
-        params:
-          phase: "SYSTEM API REDESIGN"
-          agent: atdd-task
-          phase_doc: docs/atdd/process/sysapi-redesign.md
-          subtype: system-api-redesign
-
-      - id: SYSUI_CYCLE
-        type: call_activity
-        flow: structural_cycle
-        group: structural/interface
-        params:
-          phase: "SYSTEM UI REDESIGN"
-          agent: atdd-task
-          phase_doc: docs/atdd/process/sysui-redesign.md
-          subtype: system-ui-redesign
-
-      - id: CHORE_CYCLE
-        type: call_activity
-        flow: structural_cycle
-        group: structural/implementation
-        params:
-          phase: CHORE
-          agent: atdd-chore
-          phase_doc: docs/atdd/process/chore.md
+        flow: sut_cycle
 
       - id: CYCLE_END
         type: end_event
 
     sequence_flows:
-      - {from: GATE_TYPE_CYCLE, to: AT_CYCLE,     when: "ticket_type in [story, bug]"}
-      - {from: GATE_TYPE_CYCLE, to: SYSAPI_CYCLE, when: "ticket_type == system-api-task"}
-      - {from: GATE_TYPE_CYCLE, to: SYSUI_CYCLE,  when: "ticket_type == system-ui-task"}
-      - {from: GATE_TYPE_CYCLE, to: EXTAPI_CYCLE, when: "ticket_type == external-api-task"}
-      - {from: GATE_TYPE_CYCLE, to: CHORE_CYCLE,  when: "ticket_type == chore"}
-      - {from: AT_CYCLE,        to: CYCLE_END}
-      - {from: SYSAPI_CYCLE,    to: CYCLE_END}
-      - {from: SYSUI_CYCLE,     to: CYCLE_END}
-      - {from: EXTAPI_CYCLE,    to: CYCLE_END}
-      - {from: CHORE_CYCLE,     to: CYCLE_END}
+      - {from: GATE_CHANGE_TYPE,    to: AT_CYCLE,            when: "change_type == behavior"}
+      - {from: GATE_CHANGE_TYPE,    to: GATE_CHANGE_SUBTYPE, when: "change_type == structure"}
+      - {from: GATE_CHANGE_SUBTYPE, to: DA_CYCLE,            when: "change_subtype == interface"}
+      - {from: GATE_CHANGE_SUBTYPE, to: SUT_CYCLE,           when: "change_subtype == implementation"}
+      - {from: AT_CYCLE,  to: CYCLE_END}
+      - {from: DA_CYCLE,  to: CYCLE_END}
+      - {from: SUT_CYCLE, to: CYCLE_END}
 
   # ===========================================================================
   # at_cycle
@@ -655,22 +634,85 @@ flows:
       - {from: TICK,               to: STRUCT_END}
 
   # ===========================================================================
-  # external_api_task_cycle
-  # Thin wrapper — has no standalone WRITE/REVIEW/TEST/COMMIT; routes entirely
-  # through the CT sub-process. Per cycles.md "External API Task Cycle".
+  # da_cycle
+  # Driver Adapter cycle — entered when the change is structural and changes
+  # an interface. Splits on scope:
+  #   - system: a Driver Adapter we own (System API or System UI), routed
+  #     through structural_cycle with channel-specific phase / agent /
+  #     phase_doc params.
+  #   - external_system: an External System Driver Adapter, routed through
+  #     ct_subprocess (which embeds External System Onboarding when the
+  #     driver doesn't yet exist).
   # ===========================================================================
-  external_api_task_cycle:
-    start: EXTAPI_CT
+  da_cycle:
+    start: GATE_CHANGE_SCOPE
     nodes:
-      - id: EXTAPI_CT
+      - id: GATE_CHANGE_SCOPE
+        type: gateway
+        binding: change_scope
+        description: "Driver Adapter scope?"
+
+      - id: GATE_CHANGE_CHANNEL
+        type: gateway
+        binding: change_channel
+        description: "System interface channel?"
+
+      - id: SYSAPI_CYCLE
+        type: call_activity
+        flow: structural_cycle
+        params:
+          phase: "SYSTEM API REDESIGN"
+          agent: atdd-task
+          phase_doc: docs/atdd/process/sysapi-redesign.md
+          subtype: system-api-redesign
+
+      - id: SYSUI_CYCLE
+        type: call_activity
+        flow: structural_cycle
+        params:
+          phase: "SYSTEM UI REDESIGN"
+          agent: atdd-task
+          phase_doc: docs/atdd/process/sysui-redesign.md
+          subtype: system-ui-redesign
+
+      - id: EXTAPI_CYCLE
         type: call_activity
         flow: ct_subprocess
 
-      - id: EXTAPI_END
+      - id: DA_END
         type: end_event
 
     sequence_flows:
-      - {from: EXTAPI_CT, to: EXTAPI_END}
+      - {from: GATE_CHANGE_SCOPE,   to: GATE_CHANGE_CHANNEL, when: "change_scope == system"}
+      - {from: GATE_CHANGE_SCOPE,   to: EXTAPI_CYCLE,        when: "change_scope == external_system"}
+      - {from: GATE_CHANGE_CHANNEL, to: SYSAPI_CYCLE,        when: "change_channel == api"}
+      - {from: GATE_CHANGE_CHANNEL, to: SYSUI_CYCLE,         when: "change_channel == ui"}
+      - {from: SYSAPI_CYCLE, to: DA_END}
+      - {from: SYSUI_CYCLE,  to: DA_END}
+      - {from: EXTAPI_CYCLE, to: DA_END}
+
+  # ===========================================================================
+  # sut_cycle
+  # System Under Test cycle — structural change with no test-stack artifact
+  # changing (no AT, no DA). Routes through structural_cycle with the chore
+  # phase / agent / phase_doc.
+  # ===========================================================================
+  sut_cycle:
+    start: CHORE_CYCLE
+    nodes:
+      - id: CHORE_CYCLE
+        type: call_activity
+        flow: structural_cycle
+        params:
+          phase: CHORE
+          agent: atdd-chore
+          phase_doc: docs/atdd/process/chore.md
+
+      - id: SUT_END
+        type: end_event
+
+    sequence_flows:
+      - {from: CHORE_CYCLE, to: SUT_END}
 
   # ===========================================================================
   # legacy_coverage

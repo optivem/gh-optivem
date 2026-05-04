@@ -35,10 +35,11 @@ var flowAlias = map[string]string{
 	"run_cycle":                  "Run Cycle",
 	"at_cycle":                   "AT Cycle",
 	"at_green_system":            "AT - GREEN - SYSTEM",
+	"da_cycle":                   "DA Cycle",
+	"sut_cycle":                  "SUT Cycle",
 	"ct_subprocess":              "Contract Test Sub-Process",
 	"external_system_onboarding": "External System Onboarding Sub-Process",
 	"structural_cycle":           "Structural Cycle (shared)",
-	"external_api_task_cycle":    "External API Task Cycle",
 	"legacy_coverage":            "Legacy Coverage Cycle",
 }
 
