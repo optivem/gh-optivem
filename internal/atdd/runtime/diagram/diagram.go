@@ -35,11 +35,17 @@ var flowAlias = map[string]string{
 	"run_cycle":                  "Run Cycle",
 	"at_cycle":                   "AT Cycle",
 	"at_green_system":            "AT - GREEN - SYSTEM",
+	"da_cycle":                   "DA Cycle",
+	"sut_cycle":                  "SUT Cycle",
 	"ct_subprocess":              "Contract Test Sub-Process",
 	"external_system_onboarding": "External System Onboarding Sub-Process",
 	"structural_cycle":           "Structural Cycle (shared)",
+<<<<<<< HEAD
 	"external_api_task_cycle":    "External API Task Cycle",
 	"legacy_acceptance_criteria":            "Legacy Acceptance Criteria Cycle",
+=======
+	"legacy_coverage":            "Legacy Coverage Cycle",
+>>>>>>> 0597e55cbe89f5d620b4cd45fef37e5af661d379
 }
 
 // groupAlias maps a node's `group:` annotation (a slash-delimited

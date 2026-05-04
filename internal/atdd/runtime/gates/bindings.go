@@ -92,6 +92,10 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("external_system_driver_interface_changed", b.externalSystemDriverInterfaceChanged)
 	r.Register("system_driver_interface_changed", b.systemDriverInterfaceChanged)
 	r.Register("ticket_type", b.ticketType)
+	r.Register("change_type", b.changeType)
+	r.Register("change_subtype", b.changeSubtype)
+	r.Register("change_scope", b.changeScope)
+	r.Register("change_channel", b.changeChannel)
 	r.Register("classify_confident", b.classifyConfident)
 	r.Register("legacy_acceptance_criteria_section_present", b.legacyAcceptanceCriteriaSectionPresent)
 	r.Register("external_system_driver_exists", b.externalSystemDriverExists)
@@ -155,6 +159,93 @@ func (b bindings) ticketType(ctx *statemachine.Context) statemachine.Outcome {
 		return statemachine.Outcome{Value: answer}
 	default:
 		return statemachine.Outcome{Err: fmt.Errorf("ticket_type: unrecognised value %q", answer)}
+	}
+}
+
+// changeType reads the top-level change classification produced upstream
+// (classify_ticket service task or the intake agent). Range mirrors the YAML
+// predicates: behavior | structure. Falls back to a prompt for hand-debugging.
+func (b bindings) changeType(ctx *statemachine.Context) statemachine.Outcome {
+	v := ctx.GetString("change_type")
+	if v != "" {
+		return statemachine.Outcome{Value: v}
+	}
+	answer, err := b.deps.Prompter.Ask(
+		"Change type? (behavior | structure): ")
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("change_type: %w", err)}
+	}
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	switch answer {
+	case "behavior", "structure":
+		return statemachine.Outcome{Value: answer}
+	default:
+		return statemachine.Outcome{Err: fmt.Errorf("change_type: unrecognised value %q", answer)}
+	}
+}
+
+// changeSubtype distinguishes structural changes by the artifact they touch:
+// interface (Driver Adapter seam) | implementation (System Under Test
+// internals). Only reached when change_type == structure.
+func (b bindings) changeSubtype(ctx *statemachine.Context) statemachine.Outcome {
+	v := ctx.GetString("change_subtype")
+	if v != "" {
+		return statemachine.Outcome{Value: v}
+	}
+	answer, err := b.deps.Prompter.Ask(
+		"Structural subtype? (interface | implementation): ")
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("change_subtype: %w", err)}
+	}
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	switch answer {
+	case "interface", "implementation":
+		return statemachine.Outcome{Value: answer}
+	default:
+		return statemachine.Outcome{Err: fmt.Errorf("change_subtype: unrecognised value %q", answer)}
+	}
+}
+
+// changeScope distinguishes whose interface is changing for structure/interface
+// changes: system (one of our own Driver Adapters) | external_system (a
+// Driver Adapter for an external system). Only reached inside da_cycle.
+func (b bindings) changeScope(ctx *statemachine.Context) statemachine.Outcome {
+	v := ctx.GetString("change_scope")
+	if v != "" {
+		return statemachine.Outcome{Value: v}
+	}
+	answer, err := b.deps.Prompter.Ask(
+		"Change scope? (system | external_system): ")
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("change_scope: %w", err)}
+	}
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	switch answer {
+	case "system", "external_system":
+		return statemachine.Outcome{Value: answer}
+	default:
+		return statemachine.Outcome{Err: fmt.Errorf("change_scope: unrecognised value %q", answer)}
+	}
+}
+
+// changeChannel selects which system Driver Adapter is being changed: api | ui.
+// Only reached inside da_cycle when change_scope == system.
+func (b bindings) changeChannel(ctx *statemachine.Context) statemachine.Outcome {
+	v := ctx.GetString("change_channel")
+	if v != "" {
+		return statemachine.Outcome{Value: v}
+	}
+	answer, err := b.deps.Prompter.Ask(
+		"System interface channel? (api | ui): ")
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("change_channel: %w", err)}
+	}
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	switch answer {
+	case "api", "ui":
+		return statemachine.Outcome{Value: answer}
+	default:
+		return statemachine.Outcome{Err: fmt.Errorf("change_channel: unrecognised value %q", answer)}
 	}
 }
 

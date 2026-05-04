@@ -44,11 +44,17 @@ func TestLoadSnapshot_AllFlowsParse(t *testing.T) {
 		"run_cycle",
 		"at_cycle",
 		"at_green_system",
+		"da_cycle",
+		"sut_cycle",
 		"ct_subprocess",
 		"external_system_onboarding",
 		"structural_cycle",
+<<<<<<< HEAD
 		"external_api_task_cycle",
 		"legacy_acceptance_criteria",
+=======
+		"legacy_coverage",
+>>>>>>> 0597e55cbe89f5d620b4cd45fef37e5af661d379
 	}
 	for _, name := range wantFlows {
 		if _, ok := eng.Flows[name]; !ok {
@@ -160,19 +166,34 @@ var transitionTable = []transitionCase{
 	{flow: "run_legacy_cycle", from: "LEGACY_CYCLE", wantTo: "RUN_LEGACY_END"},
 
 	// ---- run_cycle ----
-	// Change cycle dispatch — type gate + five behavioral/structural cycles.
-	// Legacy backfill lives in run_legacy_cycle so this flow is just dispatch.
-	{flow: "run_cycle", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "story"}, wantTo: "AT_CYCLE"},
-	{flow: "run_cycle", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "bug"}, wantTo: "AT_CYCLE"},
-	{flow: "run_cycle", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "system-api-task"}, wantTo: "SYSAPI_CYCLE"},
-	{flow: "run_cycle", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "system-ui-task"}, wantTo: "SYSUI_CYCLE"},
-	{flow: "run_cycle", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "external-api-task"}, wantTo: "EXTAPI_CYCLE"},
-	{flow: "run_cycle", from: "GATE_TYPE_CYCLE", state: map[string]any{"ticket_type": "chore"}, wantTo: "CHORE_CYCLE"},
+	// Change cycle dispatch — gates on the classification produced by intake
+	// (change_type, change_subtype), not ticket_type. Three top-level cycles:
+	// AT_CYCLE (behavior), DA_CYCLE (structure/interface), SUT_CYCLE
+	// (structure/implementation).
+	{flow: "run_cycle", from: "GATE_CHANGE_TYPE", state: map[string]any{"change_type": "behavior"}, wantTo: "AT_CYCLE"},
+	{flow: "run_cycle", from: "GATE_CHANGE_TYPE", state: map[string]any{"change_type": "structure"}, wantTo: "GATE_CHANGE_SUBTYPE"},
+	{flow: "run_cycle", from: "GATE_CHANGE_SUBTYPE", state: map[string]any{"change_subtype": "interface"}, wantTo: "DA_CYCLE"},
+	{flow: "run_cycle", from: "GATE_CHANGE_SUBTYPE", state: map[string]any{"change_subtype": "implementation"}, wantTo: "SUT_CYCLE"},
 	{flow: "run_cycle", from: "AT_CYCLE", wantTo: "CYCLE_END"},
-	{flow: "run_cycle", from: "SYSAPI_CYCLE", wantTo: "CYCLE_END"},
-	{flow: "run_cycle", from: "SYSUI_CYCLE", wantTo: "CYCLE_END"},
-	{flow: "run_cycle", from: "EXTAPI_CYCLE", wantTo: "CYCLE_END"},
-	{flow: "run_cycle", from: "CHORE_CYCLE", wantTo: "CYCLE_END"},
+	{flow: "run_cycle", from: "DA_CYCLE", wantTo: "CYCLE_END"},
+	{flow: "run_cycle", from: "SUT_CYCLE", wantTo: "CYCLE_END"},
+
+	// ---- da_cycle ----
+	// Driver Adapter cycle. Splits structure/interface changes by scope
+	// (system → channel-specific structural_cycle; external_system →
+	// ct_subprocess).
+	{flow: "da_cycle", from: "GATE_CHANGE_SCOPE", state: map[string]any{"change_scope": "system"}, wantTo: "GATE_CHANGE_CHANNEL"},
+	{flow: "da_cycle", from: "GATE_CHANGE_SCOPE", state: map[string]any{"change_scope": "external_system"}, wantTo: "EXTAPI_CYCLE"},
+	{flow: "da_cycle", from: "GATE_CHANGE_CHANNEL", state: map[string]any{"change_channel": "api"}, wantTo: "SYSAPI_CYCLE"},
+	{flow: "da_cycle", from: "GATE_CHANGE_CHANNEL", state: map[string]any{"change_channel": "ui"}, wantTo: "SYSUI_CYCLE"},
+	{flow: "da_cycle", from: "SYSAPI_CYCLE", wantTo: "DA_END"},
+	{flow: "da_cycle", from: "SYSUI_CYCLE", wantTo: "DA_END"},
+	{flow: "da_cycle", from: "EXTAPI_CYCLE", wantTo: "DA_END"},
+
+	// ---- sut_cycle ----
+	// System Under Test cycle. Single node calling structural_cycle with
+	// chore-flavour params.
+	{flow: "sut_cycle", from: "CHORE_CYCLE", wantTo: "SUT_END"},
 
 	// ---- at_cycle ----
 	{flow: "at_cycle", from: "AT_RED_TEST", wantTo: "GATE_DSL_AT"},
@@ -241,11 +262,16 @@ var transitionTable = []transitionCase{
 	{flow: "structural_cycle", from: "COMMIT_STRUCT", wantTo: "TICK"},
 	{flow: "structural_cycle", from: "TICK", wantTo: "STRUCT_END"},
 
+<<<<<<< HEAD
 	// ---- external_api_task_cycle ----
 	{flow: "external_api_task_cycle", from: "EXTAPI_CT", wantTo: "EXTAPI_END"},
 
 	// ---- legacy_acceptance_criteria ----
 	// Legacy Acceptance Criteria Cycle interim spec: a single STOP node, per
+=======
+	// ---- legacy_coverage ----
+	// Legacy Coverage Cycle interim spec: a single STOP node, per
+>>>>>>> 0597e55cbe89f5d620b4cd45fef37e5af661d379
 	// glossary.md TBD. Locked here so the placeholder cannot silently
 	// regress to "TBD" by accident.
 	{flow: "legacy_acceptance_criteria", from: "LEGACY_TBD", wantTo: "LEGACY_END", desc: "interim spec: single human-review STOP"},
@@ -347,36 +373,35 @@ func TestGapDecision_SmokeTestFailStopsAtAskSupport(t *testing.T) {
 	}
 }
 
-func TestGapDecision_TypeCycleRoutesByTicketType(t *testing.T) {
-	// GATE_TYPE_CYCLE replaced the dead GATE_CHANGE_DRIVEN gate, which
-	// computed a `change_driven_ac_produced` bool that no outgoing edge ever
-	// read. Lock the new shape: the gateway binds to `ticket_type` (already
-	// populated by CLASSIFY) and fans out to one cycle per type — no prompt
-	// round-trip in the no-Legacy path.
-	//
-	// The gate moved from `main` to `run_cycle` when the cycle dispatch
-	// was extracted into its own flow; assert it lives there now and is
-	// absent from main.
+func TestGapDecision_RunCycleRoutesByChangeClassification(t *testing.T) {
+	// run_cycle gates on the change classification produced by intake
+	// (change_type → change_subtype), not on ticket_type. Ticket type stays
+	// inside intake (it picks the right intake agent); run_cycle consumes
+	// the classification fields and dispatches to one of three cycles
+	// (at_cycle, da_cycle, sut_cycle). Lock that shape so a future edit
+	// cannot silently route by ticket_type again.
 	eng := loadSnapshot(t)
 	flow := eng.Flows["run_cycle"]
 	if flow == nil {
 		t.Fatalf("run_cycle flow missing")
 	}
-	gate, ok := flow.Nodes["GATE_TYPE_CYCLE"]
+	gate, ok := flow.Nodes["GATE_CHANGE_TYPE"]
 	if !ok {
-		t.Fatalf("GATE_TYPE_CYCLE node missing from run_cycle")
+		t.Fatalf("GATE_CHANGE_TYPE node missing from run_cycle")
 	}
 	if gate.Kind != Gateway {
-		t.Errorf("GATE_TYPE_CYCLE: kind got %v, want Gateway", gate.Kind)
+		t.Errorf("GATE_CHANGE_TYPE: kind got %v, want Gateway", gate.Kind)
 	}
-	if gate.Raw.Binding != "ticket_type" {
-		t.Errorf("GATE_TYPE_CYCLE: binding got %q, want %q", gate.Raw.Binding, "ticket_type")
+	if gate.Raw.Binding != "change_type" {
+		t.Errorf("GATE_CHANGE_TYPE: binding got %q, want %q", gate.Raw.Binding, "change_type")
 	}
-	if _, dead := flow.Nodes["GATE_CHANGE_DRIVEN"]; dead {
-		t.Errorf("GATE_CHANGE_DRIVEN must not exist after deletion")
+	if _, dead := flow.Nodes["GATE_TYPE_CYCLE"]; dead {
+		t.Errorf("GATE_TYPE_CYCLE must not exist after rerouting to change classification")
 	}
-	if _, leftover := eng.Flows["main"].Nodes["GATE_TYPE_CYCLE"]; leftover {
-		t.Errorf("GATE_TYPE_CYCLE should have moved out of main into run_cycle")
+	for id, node := range flow.Nodes {
+		if node.Kind == Gateway && node.Raw.Binding == "ticket_type" {
+			t.Errorf("run_cycle gate %q still binds to ticket_type", id)
+		}
 	}
 }
 

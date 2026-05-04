@@ -86,36 +86,20 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CYCLE_END((End))
-    GATE_TYPE_CYCLE{Cycle by ticket type}
-    subgraph behavioral[System Behavior Change]
     AT_CYCLE[AT_CYCLE — see § AT Cycle]
-    end
-    subgraph external_structural[External System Structure Change]
-    subgraph external_structural_interface[External System Structure Interface Change]
-    EXTAPI_CYCLE[EXTAPI_CYCLE — see § External API Task Cycle]
-    end
-    end
-    subgraph structural[System Structure Change]
-    subgraph structural_implementation[System Structure Implementation Change]
-    CHORE_CYCLE["CHORE_CYCLE — see § Structural Cycle (shared)"]
-    end
-    subgraph structural_interface[System Structure Interface Change]
-    SYSAPI_CYCLE["SYSAPI_CYCLE — see § Structural Cycle (shared)"]
-    SYSUI_CYCLE["SYSUI_CYCLE — see § Structural Cycle (shared)"]
-    end
-    end
+    CYCLE_END((End))
+    DA_CYCLE[DA_CYCLE — see § DA Cycle]
+    GATE_CHANGE_SUBTYPE{Structural change subtype?}
+    GATE_CHANGE_TYPE{Cycle by change type}
+    SUT_CYCLE[SUT_CYCLE — see § SUT Cycle]
 
-    GATE_TYPE_CYCLE -- story / bug --> AT_CYCLE
-    GATE_TYPE_CYCLE -- system-api-task --> SYSAPI_CYCLE
-    GATE_TYPE_CYCLE -- system-ui-task --> SYSUI_CYCLE
-    GATE_TYPE_CYCLE -- external-api-task --> EXTAPI_CYCLE
-    GATE_TYPE_CYCLE -- chore --> CHORE_CYCLE
+    GATE_CHANGE_TYPE -- behavior --> AT_CYCLE
+    GATE_CHANGE_TYPE -- structure --> GATE_CHANGE_SUBTYPE
+    GATE_CHANGE_SUBTYPE -- interface --> DA_CYCLE
+    GATE_CHANGE_SUBTYPE -- implementation --> SUT_CYCLE
     AT_CYCLE --> CYCLE_END
-    SYSAPI_CYCLE --> CYCLE_END
-    SYSUI_CYCLE --> CYCLE_END
-    EXTAPI_CYCLE --> CYCLE_END
-    CHORE_CYCLE --> CYCLE_END
+    DA_CYCLE --> CYCLE_END
+    SUT_CYCLE --> CYCLE_END
 ```
 
 ## AT Cycle
@@ -274,6 +258,7 @@ flowchart TD
     class STOP_STRUCT_REVIEW,STOP_STRUCT_TEST humanNode
 ```
 
+<<<<<<< HEAD
 ## External API Task Cycle
 
 ```mermaid
@@ -285,6 +270,9 @@ flowchart TD
 ```
 
 ## Legacy Acceptance Criteria Cycle
+=======
+## Legacy Coverage Cycle
+>>>>>>> 0597e55cbe89f5d620b4cd45fef37e5af661d379
 
 ```mermaid
 flowchart TD
@@ -295,5 +283,35 @@ flowchart TD
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
     class LEGACY_TBD humanNode
+```
+
+## DA Cycle
+
+```mermaid
+flowchart TD
+    DA_END((End))
+    EXTAPI_CYCLE[EXTAPI_CYCLE — see § Contract Test Sub-Process]
+    GATE_CHANGE_CHANNEL{System interface channel?}
+    GATE_CHANGE_SCOPE{Driver Adapter scope?}
+    SYSAPI_CYCLE["SYSAPI_CYCLE — see § Structural Cycle (shared)"]
+    SYSUI_CYCLE["SYSUI_CYCLE — see § Structural Cycle (shared)"]
+
+    GATE_CHANGE_SCOPE -- system --> GATE_CHANGE_CHANNEL
+    GATE_CHANGE_SCOPE -- external_system --> EXTAPI_CYCLE
+    GATE_CHANGE_CHANNEL -- api --> SYSAPI_CYCLE
+    GATE_CHANGE_CHANNEL -- ui --> SYSUI_CYCLE
+    SYSAPI_CYCLE --> DA_END
+    SYSUI_CYCLE --> DA_END
+    EXTAPI_CYCLE --> DA_END
+```
+
+## SUT Cycle
+
+```mermaid
+flowchart TD
+    CHORE_CYCLE["CHORE_CYCLE — see § Structural Cycle (shared)"]
+    SUT_END((End))
+
+    CHORE_CYCLE --> SUT_END
 ```
 
