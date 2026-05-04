@@ -211,6 +211,13 @@ func (a actions) moveToInAcceptance(ctx *statemachine.Context) statemachine.Outc
 // Classification
 // ---------------------------------------------------------------------------
 
+// classifyIssueTypeQuery fetches the native issue type via GraphQL.
+// Used in place of `gh issue view --json issueType` because that JSON field
+// is not exposed by any released gh CLI as of 2026-05; the GraphQL schema
+// has carried `issueType` for some time, so the GraphQL path is the only
+// portable way to read it from the CLI today.
+const classifyIssueTypeQuery = `query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { issue(number: $number) { issueType { name } } } }`
+
 // classifyTicket reads the issue's native GitHub issue type (Story / Bug /
 // Task) and writes the lowercased name to `ticket_type`. The native type is
 // authoritative — it's set by the Issue Form's `type:` field at filing time
@@ -225,13 +232,21 @@ func (a actions) classifyTicket(ctx *statemachine.Context) statemachine.Outcome 
 	if err != nil || issueNum <= 0 {
 		return statemachine.Outcome{Err: fmt.Errorf("classify_ticket: issue_num not set or not a positive integer (%q)", ctx.GetString("issue_num"))}
 	}
-	args := []string{"issue", "view", strconv.Itoa(issueNum), "--json", "issueType"}
-	if repo := ctx.GetString("issue_repo"); repo != "" {
-		args = append(args, "--repo", repo)
+	repo := ctx.GetString("issue_repo")
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" || name == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("classify_ticket: issue_repo must be set as owner/name (got %q)", repo)}
+	}
+	args := []string{
+		"api", "graphql",
+		"-f", "owner=" + owner,
+		"-f", "name=" + name,
+		"-F", "number=" + strconv.Itoa(issueNum),
+		"-f", "query=" + classifyIssueTypeQuery,
 	}
 	out, err := a.deps.Gh.Run(context.Background(), args...)
 	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("classify_ticket: gh issue view: %w", err)}
+		return statemachine.Outcome{Err: fmt.Errorf("classify_ticket: gh api graphql: %w", err)}
 	}
 	issueType := extractIssueType(out)
 	if issueType == "" {
@@ -249,7 +264,9 @@ func (a actions) classifyTicket(ctx *statemachine.Context) statemachine.Outcome 
 	return statemachine.Outcome{}
 }
 
-// extractIssueType pulls .issueType.name out of `gh issue view --json issueType`.
+// extractIssueType pulls .issueType.name out of the GraphQL response (or any
+// JSON containing an "issueType" key — jsonFieldRaw byte-searches, so it
+// works on the nested .data.repository.issue.issueType envelope too).
 // Returns the raw type name as GitHub stores it (e.g. "Story", "Bug", "Task")
 // or empty when the issue has no type set.
 func extractIssueType(raw []byte) string {

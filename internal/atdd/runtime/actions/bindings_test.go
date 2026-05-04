@@ -297,8 +297,14 @@ func TestClassifyTicket_NativeIssueType(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			gh := newFakeRunner(t, "gh")
 			gh.on(
-				[]string{"issue", "view", "42", "--json", "issueType", "--repo", "optivem/shop"},
-				[]byte(fmt.Sprintf(`{"issueType":%s}`, tc.issueTypeJSON)),
+				[]string{
+					"api", "graphql",
+					"-f", "owner=optivem",
+					"-f", "name=shop",
+					"-F", "number=42",
+					"-f", "query=" + classifyIssueTypeQuery,
+				},
+				[]byte(fmt.Sprintf(`{"data":{"repository":{"issue":{"issueType":%s}}}}`, tc.issueTypeJSON)),
 				nil,
 			)
 			if tc.wantConfident {
@@ -330,8 +336,14 @@ func TestClassifyTicket_NativeIssueType(t *testing.T) {
 func TestClassifyTicket_PrintsNamedSections(t *testing.T) {
 	gh := newFakeRunner(t, "gh")
 	gh.on(
-		[]string{"issue", "view", "7", "--json", "issueType"},
-		[]byte(`{"issueType":{"name":"Story"}}`),
+		[]string{
+			"api", "graphql",
+			"-f", "owner=optivem",
+			"-f", "name=shop",
+			"-F", "number=7",
+			"-f", "query=" + classifyIssueTypeQuery,
+		},
+		[]byte(`{"data":{"repository":{"issue":{"issueType":{"name":"Story"}}}}}`),
 		nil,
 	)
 	body := "Intro line.\n\n" +
@@ -340,7 +352,7 @@ func TestClassifyTicket_PrintsNamedSections(t *testing.T) {
 		"## Checklist\n\n- [ ] Step\n"
 	rawBody, _ := json.Marshal(body)
 	gh.on(
-		[]string{"issue", "view", "7", "--json", "body"},
+		[]string{"issue", "view", "7", "--json", "body", "--repo", "optivem/shop"},
 		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
 		nil,
 	)
@@ -348,6 +360,7 @@ func TestClassifyTicket_PrintsNamedSections(t *testing.T) {
 	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}, Stdout: &stdout})
 	ctx := statemachine.NewContext()
 	ctx.Set("issue_num", "7")
+	ctx.Set("issue_repo", "optivem/shop")
 
 	out := a.classifyTicket(ctx)
 	if out.Err != nil {
