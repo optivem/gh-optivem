@@ -91,6 +91,12 @@ func newAtddShowDiagramCmd() *cobra.Command {
 		Short: "Render the process-flow Mermaid diagram to stdout",
 		Example: `  gh optivem atdd show diagram
   gh optivem atdd show diagram > docs/process-diagram.md`,
+		// Override the atdd parent's gh CLI version check: this command
+		// only renders an embedded YAML to Mermaid and never shells out
+		// to gh, so it must run on hosted CI runners (which lag the
+		// supported gh floor) and on contributor machines that haven't
+		// upgraded gh yet.
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error { return nil },
 		Run: func(cmd *cobra.Command, args []string) {
 			eng, err := statemachine.LoadDefault()
 			exitOnError(err)
