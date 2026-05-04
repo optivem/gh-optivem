@@ -202,7 +202,8 @@ var transitionTable = []transitionCase{
 	{flow: "at_cycle", from: "CT_SUBPROCESS", wantTo: "GATE_SYS_AT", desc: "CT exit re-evaluates system_driver_interface_changed (process-audit gap resolved)"},
 	{flow: "at_cycle", from: "GATE_SYS_AT", state: map[string]any{"system_driver_interface_changed": true}, wantTo: "AT_RED_SYSTEM_DRIVER"},
 	{flow: "at_cycle", from: "GATE_SYS_AT", state: map[string]any{"system_driver_interface_changed": false}, wantTo: "AT_GREEN_SYSTEM"},
-	{flow: "at_cycle", from: "AT_RED_SYSTEM_DRIVER", wantTo: "AT_GREEN_SYSTEM"},
+	{flow: "at_cycle", from: "AT_RED_SYSTEM_DRIVER", wantTo: "VERIFY_AT_DRIVER"},
+	{flow: "at_cycle", from: "VERIFY_AT_DRIVER", wantTo: "AT_GREEN_SYSTEM"},
 	{flow: "at_cycle", from: "AT_GREEN_SYSTEM", wantTo: "AT_END"},
 
 	// ---- at_green_system ----
@@ -219,7 +220,8 @@ var transitionTable = []transitionCase{
 	{flow: "ct_subprocess", from: "CT_RED_DSL", wantTo: "GATE_EXT_CT"},
 	{flow: "ct_subprocess", from: "GATE_EXT_CT", state: map[string]any{"external_system_driver_interface_changed": false}, wantTo: "CT_GREEN_STUBS"},
 	{flow: "ct_subprocess", from: "GATE_EXT_CT", state: map[string]any{"external_system_driver_interface_changed": true}, wantTo: "CT_RED_EXTERNAL_DRIVER"},
-	{flow: "ct_subprocess", from: "CT_RED_EXTERNAL_DRIVER", wantTo: "CT_GREEN_STUBS"},
+	{flow: "ct_subprocess", from: "CT_RED_EXTERNAL_DRIVER", wantTo: "VERIFY_CT_DRIVER"},
+	{flow: "ct_subprocess", from: "VERIFY_CT_DRIVER", wantTo: "CT_GREEN_STUBS"},
 	{flow: "ct_subprocess", from: "CT_GREEN_STUBS", wantTo: "CT_END"},
 
 	// ---- external_system_onboarding ----
@@ -243,7 +245,8 @@ var transitionTable = []transitionCase{
 	// Structural-cycle escape: process-audit gap resolved — the TEST=skip
 	// branch jumps directly to ASK_COMMIT, bypassing both COMPILE/SAMPLE and
 	// the second STOP_STRUCT_TEST review.
-	{flow: "structural_cycle", from: "STRUCT_WRITE", wantTo: "STOP_STRUCT_REVIEW"},
+	{flow: "structural_cycle", from: "STRUCT_WRITE", wantTo: "VERIFY_STRUCT_DRIVER"},
+	{flow: "structural_cycle", from: "VERIFY_STRUCT_DRIVER", wantTo: "STOP_STRUCT_REVIEW"},
 	{flow: "structural_cycle", from: "STOP_STRUCT_REVIEW", wantTo: "GATE_TEST_MODE"},
 	{flow: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "skip"}, wantTo: "ASK_COMMIT", desc: "skip mode escapes the TEST sub-loop entirely"},
 	{flow: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "compile"}, wantTo: "COMPILE"},

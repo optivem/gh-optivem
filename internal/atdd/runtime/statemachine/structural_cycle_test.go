@@ -80,6 +80,7 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 		"CLASSIFY_SUBTYPE",
 		"PARSE_BODY",
 		"STRUCT_WRITE",
+		"VERIFY_STRUCT_DRIVER",
 		"STOP_STRUCT_REVIEW",
 		"COMPILE",
 		"SAMPLE",
