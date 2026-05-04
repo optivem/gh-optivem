@@ -35,9 +35,9 @@ set -euo pipefail
 #   6. On exit (success, failure, or interrupt), prompt the user to delete
 #      the worktree + branch (default: yes).
 #
-# Run from inside the consumer repo's working tree (e.g. shop/). The script
-# discovers the consumer repo via `git rev-parse --show-toplevel` from CWD;
-# if you are not in a git tree, it errors out.
+# The consumer repo is always resolved as a sibling of gh-optivem named
+# per REHEARSAL_REPO (e.g. ../shop). The script can be invoked from any
+# CWD — it does not consult the current working tree.
 
 # === REHEARSAL CONFIG === (edit these for your setup)
 REHEARSAL_OWNER="optivem"
@@ -76,11 +76,12 @@ if [[ -n "$LABEL" && ! "$LABEL" =~ ^[A-Za-z0-9_-]+$ ]]; then
   exit 2
 fi
 
-CONSUMER_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
-  echo "ERROR: $PWD is not inside a git working tree." >&2
-  echo "Run this script from the consumer repo (e.g. shop/)." >&2
+CONSUMER_ROOT="$(cd "$GH_OPTIVEM_ROOT/.." && pwd)/$REHEARSAL_REPO"
+if [[ ! -d "$CONSUMER_ROOT/.git" ]]; then
+  echo "ERROR: consumer repo not found at $CONSUMER_ROOT" >&2
+  echo "Expected sibling of $GH_OPTIVEM_ROOT named '$REHEARSAL_REPO'." >&2
   exit 2
-}
+fi
 
 TS="$(date +%Y%m%d-%H%M%S)"
 if [[ -n "$LABEL" ]]; then
