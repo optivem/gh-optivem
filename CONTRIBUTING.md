@@ -60,7 +60,8 @@ Run this any time you edit CLI source (e.g. `atdd_commands.go`, anything under `
 go test -p 2 ./...                            # unit; -p caps parallel package builds (see Windows tip below)
 go test -tags=system ./...                    # all system tests
 bash scripts/test-system.sh                   # quick subset
-bash scripts/test.sh ./internal/atdd/...      # wrapper, honors $GO_TEST_P (default 2)
+bash scripts/test.sh ./internal/atdd/...      # wrapper: caps -p (default 2), refuses ./... without --all
+bash scripts/test.sh --all ./...              # opt in to a repo-wide run (still capped)
 ```
 
 While you're iterating in one package, run just that package: `go test ./internal/atdd/runtime/clauderun`. Save `./...` for pre-push and CI.
