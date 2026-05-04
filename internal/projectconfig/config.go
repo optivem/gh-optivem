@@ -68,17 +68,12 @@ type Config struct {
 // `gh project list` fallback. Operators must configure project.url
 // explicitly (or pass the alternate file via --config).
 //
-// Name is the human-readable project title (e.g. "Shop Project"). When set,
-// the driver displays it in the "Resolved issue" line without making an
-// extra `gh project view` round-trip just for the title.
-//
 // RepoStrategy declares whether the system lives in one repo (mono-repo)
 // or is split across several (multi-repo). Repos lists the participating
 // repos when RepoStrategy is multi-repo; for mono-repo the field is
 // optional and defaults to the implicit-self repo.
 type Project struct {
 	URL          string   `yaml:"url,omitempty"`
-	Name         string   `yaml:"name,omitempty"`
 	RepoStrategy string   `yaml:"repo_strategy,omitempty"`
 	Repos        []string `yaml:"repos,omitempty"`
 }

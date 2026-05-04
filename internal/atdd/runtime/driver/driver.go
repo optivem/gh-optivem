@@ -294,7 +294,6 @@ func printConfig(w io.Writer, opts Options, cfg *projectconfig.Config, repoPath 
 	}
 	fmt.Fprintf(w, "  project URL:   %s%s\n", orPlaceholder(projectURL, "(unset — pre-resolve will fail)"), projectURLNote)
 	if cfg != nil {
-		fmt.Fprintf(w, "  project name:  %s\n", orPlaceholder(cfg.Project.Name, "(unset)"))
 		fmt.Fprintf(w, "  repo strategy: %s\n", orPlaceholder(cfg.Project.RepoStrategy, "(unset)"))
 		if len(cfg.Project.Repos) > 0 {
 			fmt.Fprintf(w, "  repos:         %s\n", strings.Join(cfg.Project.Repos, ", "))
@@ -418,12 +417,7 @@ func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Conte
 	if err != nil {
 		return err
 	}
-	// Project name preference: config (zero round-trips) → live `gh project
-	// view` title (already fetched by FindIssue) → bare URL fallback.
 	projectName := pick.ProjectTitle
-	if cfg != nil && cfg.Project.Name != "" {
-		projectName = cfg.Project.Name
-	}
 
 	sCtx.Set("issue_num", strconv.Itoa(pick.IssueNum))
 	sCtx.Set("issue_url", pick.IssueURL)

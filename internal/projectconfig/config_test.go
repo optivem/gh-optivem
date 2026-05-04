@@ -76,22 +76,6 @@ func TestLoad_EmptyRepoPathErrors(t *testing.T) {
 	}
 }
 
-func TestLoad_ProjectName(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	writeConfig(t, dir, `project:
-  url: https://github.com/orgs/x/projects/1
-  name: Acme Project
-`)
-	cfg, err := Load(dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if cfg.Project.Name != "Acme Project" {
-		t.Fatalf("project name: got %q, want %q", cfg.Project.Name, "Acme Project")
-	}
-}
-
 func TestLoad_RepoStrategyAndRepos(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
