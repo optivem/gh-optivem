@@ -512,13 +512,18 @@ type RawFlags struct {
 	AssumeYes         bool
 }
 
-// BindInitFlags binds every `gh optivem init` CLI flag to the corresponding
-// field on f. Cobra parses on Execute(); ParseAndValidate then validates the
-// populated struct.
-func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
-	fs := cmd.Flags()
+// bindYAMLAffectingFlags binds the subset of init flags that influence the
+// generated gh-optivem.yaml. Shared between BindInitFlags and BindConfigInitFlags
+// so adding a new YAML-affecting flag (e.g. another scope axis) flows to both
+// the `init` and `config init` surfaces in lockstep.
+//
+// Note: --system-name is NOT in this subset. The init flow needs it for
+// templating (Java namespaces, casings, derived identifiers), but
+// buildOptivemYAML never reads cfg.SystemName — the YAML's project/scope
+// fields are name-agnostic. Including it on `config init` would force
+// callers to invent a name to satisfy validation when the value is unused.
+func bindYAMLAffectingFlags(fs *pflag.FlagSet, f *RawFlags) {
 	fs.StringVar(&f.Owner, "owner", "", "GitHub username or org (required)")
-	fs.StringVar(&f.SystemName, "system-name", "", `System name, e.g. "Page Turner" (required)`)
 	fs.StringVar(&f.Repo, "repo", "", "Repository name, e.g. page-turner (required, or pass positionally)")
 	fs.StringVar(&f.Arch, "arch", "", "Architecture: monolith or multitier (required)")
 	fs.StringVar(&f.RepoStrategy, "repo-strategy", "", "Repo strategy: monorepo or multirepo (required)")
@@ -526,6 +531,16 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs.StringVar(&f.TestLang, "test-lang", "", "Test language (defaults to --monolith-lang or --backend-lang)")
 	fs.StringVar(&f.BackendLang, "backend-lang", "", "Backend language: java, dotnet, typescript (multitier)")
 	fs.StringVar(&f.FrontendLang, "frontend-lang", "", "Frontend language: react (multitier)")
+	fs.StringVar(&f.ProjectURL, "project-url", "", "GitHub Project URL to bake into gh-optivem.yaml (optional; leave empty to fill in by hand later)")
+}
+
+// BindInitFlags binds every `gh optivem init` CLI flag to the corresponding
+// field on f. Cobra parses on Execute(); ParseAndValidate then validates the
+// populated struct.
+func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
+	fs := cmd.Flags()
+	bindYAMLAffectingFlags(fs, f)
+	fs.StringVar(&f.SystemName, "system-name", "", `System name, e.g. "Page Turner" (required)`)
 	fs.StringVar(&f.License, "license", "mit", "License: mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense")
 	fs.BoolVar(&f.DryRun, "dry-run", false, "Print actions without executing")
 	fs.BoolVar(&f.KeepLocal, "keep-local", false, "Keep the local scaffolded clone dir instead of deleting it on success")
@@ -542,7 +557,14 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs.BoolVarP(&f.Quiet, "quiet", "q", false, "Suppress info-level output (warnings and errors still shown)")
 	fs.StringVar(&f.LogFile, "log-file", "", "Also write plain-text log output to this file (no ANSI colors, all levels)")
 	fs.BoolVarP(&f.AssumeYes, "yes", "y", false, "Skip all interactive confirmations (existing-repo prompt, --report-bug confirmation). Expected pattern for CI/unattended runs.")
-	fs.StringVar(&f.ProjectURL, "project-url", "", "GitHub Project URL to bake into gh-optivem.yaml (optional; leave empty to fill in by hand later)")
+}
+
+// BindConfigInitFlags binds the YAML-affecting flag subset for `gh optivem
+// config init`. The --force / --dir flags are command-local and bound by the
+// caller (newConfigInitCmd); they don't belong on RawFlags because they have
+// no analog on `init`.
+func BindConfigInitFlags(cmd *cobra.Command, f *RawFlags) {
+	bindYAMLAffectingFlags(cmd.Flags(), f)
 }
 
 func resolveVerifyLevel(level string) string {
@@ -1120,4 +1142,96 @@ func (c *Config) EffectiveLang() string {
 		return c.Lang
 	}
 	return c.BackendLang
+}
+
+// ValidateAndDeriveForYAML validates the YAML-affecting flag subset (the flags
+// BindConfigInitFlags binds) and returns a *Config populated with just the
+// fields steps.WriteOptivemYAMLToPath reads. Used by `gh optivem config init`
+// to render gh-optivem.yaml without doing the full ParseAndValidate — no
+// GitHub network checks, no env tokens, no workdir/clone-dir derivation.
+//
+// Returns an error rather than calling log.FatalExit so callers can drive
+// behaviour from tests and so the pure local-file-write CLI surface fails
+// with a regular error instead of a hard exit.
+func ValidateAndDeriveForYAML(f *RawFlags) (*Config, error) {
+	if f.Owner == "" || f.Repo == "" || f.Arch == "" || f.RepoStrategy == "" {
+		return nil, fmt.Errorf("required flags: --owner, --repo, --arch, --repo-strategy")
+	}
+	if msg := ValidateOwnerFormat(f.Owner); msg != "" {
+		return nil, fmt.Errorf("--owner: %s", msg)
+	}
+	if msg := ValidateRepoFormat(f.Repo); msg != "" {
+		return nil, fmt.Errorf("--repo: %s", msg)
+	}
+	if f.Arch != "monolith" && f.Arch != "multitier" {
+		return nil, fmt.Errorf("--arch must be 'monolith' or 'multitier'")
+	}
+	if f.RepoStrategy != "monorepo" && f.RepoStrategy != "multirepo" {
+		return nil, fmt.Errorf("--repo-strategy must be 'monorepo' or 'multirepo'")
+	}
+	lc, err := resolveLangsForYAML(f)
+	if err != nil {
+		return nil, err
+	}
+	mr := deriveMultirepoNames(f.RepoStrategy, f.Arch, f.Owner, f.Repo)
+	return &Config{
+		Owner:            f.Owner,
+		Repo:             f.Repo,
+		FullRepo:         f.Owner + "/" + f.Repo,
+		Arch:             f.Arch,
+		RepoStrategy:     f.RepoStrategy,
+		Lang:             lc.lang,
+		BackendLang:      lc.backendLang,
+		FrontendLang:     lc.frontendLang,
+		TestLang:         lc.testLang,
+		ProjectURL:       f.ProjectURL,
+		FrontendRepo:     mr.frontendRepo,
+		BackendRepo:      mr.backendRepo,
+		FrontendFullRepo: mr.frontendFullRepo,
+		BackendFullRepo:  mr.backendFullRepo,
+		SystemRepo:       mr.systemRepo,
+		SystemFullRepo:   mr.systemFullRepo,
+	}, nil
+}
+
+// resolveLangsForYAML mirrors resolveLangs but returns errors instead of
+// calling log.FatalExit. The two paths can't share a body without rewiring
+// resolveLangs's call site (ParseAndValidate) to handle errors, which is out
+// of scope for this change.
+func resolveLangsForYAML(f *RawFlags) (langChoice, error) {
+	validLangs := map[string]bool{"java": true, "dotnet": true, "typescript": true}
+	var c langChoice
+	if f.Arch == "monolith" {
+		if f.Lang == "" {
+			return c, fmt.Errorf("--monolith-lang is required for monolith architecture")
+		}
+		if !validLangs[f.Lang] {
+			return c, fmt.Errorf("--monolith-lang must be java, dotnet, or typescript")
+		}
+		c.lang = f.Lang
+		c.testLang = f.TestLang
+		if c.testLang == "" {
+			c.testLang = c.lang
+		}
+		return c, nil
+	}
+	if f.BackendLang == "" {
+		return c, fmt.Errorf("--backend-lang is required for multitier architecture")
+	}
+	if f.FrontendLang == "" {
+		return c, fmt.Errorf("--frontend-lang is required for multitier architecture")
+	}
+	if !validLangs[f.BackendLang] {
+		return c, fmt.Errorf("--backend-lang must be java, dotnet, or typescript")
+	}
+	if f.FrontendLang != "react" {
+		return c, fmt.Errorf("--frontend-lang must be react")
+	}
+	c.backendLang = f.BackendLang
+	c.frontendLang = f.FrontendLang
+	c.testLang = f.TestLang
+	if c.testLang == "" {
+		c.testLang = c.backendLang
+	}
+	return c, nil
 }

@@ -82,6 +82,7 @@ func newRootCmd() *cobra.Command {
 	cmd.Flags().Bool("version", false, "Print version and exit")
 	cmd.AddCommand(
 		newInitCmd(),
+		newConfigCmd(),
 		newBuildCmd(),
 		newRunCmd(),
 		newTestCmd(),

@@ -41,6 +41,15 @@ func WriteOptivemYAML(cfg *config.Config) {
 	log.Success("Wrote gh-optivem.yaml")
 }
 
+// WriteOptivemYAMLToPath renders cfg as a projectconfig.Config and writes it to
+// <dir>/gh-optivem.yaml. Single-target sibling of WriteOptivemYAML — used by
+// `gh optivem config init` where the caller knows exactly one directory to
+// write into (CWD or --dir), with no multirepo fan-out.
+func WriteOptivemYAMLToPath(cfg *config.Config, dir string) error {
+	pc := buildOptivemYAML(cfg)
+	return projectconfig.Write(dir, pc)
+}
+
 func writeOptivemYAMLToDir(dir string, pc *projectconfig.Config) {
 	if err := projectconfig.Write(dir, pc); err != nil {
 		log.Fatalf("Write gh-optivem.yaml: %v", err)
