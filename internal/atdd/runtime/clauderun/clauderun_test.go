@@ -1187,10 +1187,10 @@ func TestDispatch_LegacyMode_DoesNotInstallHook(t *testing.T) {
 	}
 }
 
-func TestDispatch_HookConflict_RefusesToOverwrite(t *testing.T) {
-	// Pre-existing pre-commit hook with different content — Dispatch
-	// must surface a clear error rather than silently clobber the
-	// operator's hook.
+func TestDispatch_HookConflict_RefusesToOverwriteOperatorHook(t *testing.T) {
+	// Pre-existing pre-commit hook authored by the operator (no clauderun
+	// signature) — Dispatch must surface a clear error rather than silently
+	// clobber it.
 	hooksDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(hooksDir, "pre-commit"), []byte("#!/bin/sh\necho operator hook\n"), 0o755); err != nil {
 		t.Fatalf("seed conflicting hook: %v", err)
@@ -1208,8 +1208,39 @@ func TestDispatch_HookConflict_RefusesToOverwrite(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected hook-conflict error, got nil")
 	}
-	if !strings.Contains(err.Error(), "refusing to overwrite") {
+	if !strings.Contains(err.Error(), "refusing to overwrite operator-owned hook") {
 		t.Errorf("error wording: got %q", err.Error())
+	}
+}
+
+func TestDispatch_HookConflict_RefreshesStaleClauderunHook(t *testing.T) {
+	// Pre-existing pre-commit hook that DOES carry the clauderun signature
+	// but has a different body (e.g. left over from a prior release).
+	// Install must overwrite it with the current body, not refuse.
+	hooksDir := t.TempDir()
+	stale := "#!/bin/sh\n" + preCommitHookSignature + "\necho stale clauderun body\n"
+	if err := os.WriteFile(filepath.Join(hooksDir, "pre-commit"), []byte(stale), 0o755); err != nil {
+		t.Fatalf("seed stale hook: %v", err)
+	}
+
+	gitFake := &fakeGit{
+		out:      [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+		hooksDir: hooksDir,
+		gitDir:   t.TempDir(),
+	}
+	opts := newOpts()
+	opts.CLICommits = true
+
+	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+
+	body, err := os.ReadFile(filepath.Join(hooksDir, "pre-commit"))
+	if err != nil {
+		t.Fatalf("read hook: %v", err)
+	}
+	if string(body) != preCommitHookBody {
+		t.Errorf("stale hook was not refreshed:\n  got:\n%s\n  want:\n%s", body, preCommitHookBody)
 	}
 }
 

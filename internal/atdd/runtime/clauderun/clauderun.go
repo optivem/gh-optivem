@@ -384,6 +384,13 @@ func runCLICommit(ctx context.Context, git GitRunner, dir, msg string) error {
 	return err
 }
 
+// preCommitHookSignature identifies a pre-commit hook as clauderun-managed.
+// installPreCommitHook treats any existing hook containing this line as
+// safe to overwrite (i.e. one of our prior versions); a hook without it is
+// assumed to be operator-owned and the install refuses rather than clobber.
+// Keep the string unique enough that nobody types it by accident.
+const preCommitHookSignature = "# clauderun-managed-hook (do not edit; replaced by clauderun on dispatch)"
+
 // preCommitHookBody is the verbatim shell script written into the
 // repo's hooks directory when opts.CLICommits is true.
 //
@@ -394,7 +401,12 @@ func runCLICommit(ctx context.Context, git GitRunner, dir, msg string) error {
 // installing a strict hook globally would block every commit the
 // operator makes in their main checkout. The marker scopes
 // enforcement to the active dispatch worktree.
+//
+// The body embeds preCommitHookSignature so installPreCommitHook can
+// recognise prior versions of itself and overwrite them when the body
+// changes between releases, without touching operator-authored hooks.
 const preCommitHookBody = `#!/bin/sh
+` + preCommitHookSignature + `
 GITDIR=$(git rev-parse --absolute-git-dir 2>/dev/null) || exit 0
 [ -f "$GITDIR/clauderun-dispatch" ] || exit 0
 if [ "${CLAUDERUN_CLI_COMMIT:-}" != "1" ]; then
@@ -416,9 +428,11 @@ const clauderunMarkerName = "clauderun-dispatch"
 // Two paths are involved:
 //   - Hooks dir (`git rev-parse --git-path hooks`) — git's shared
 //     hooks dir, the same one git looks at when the operator commits
-//     in any worktree. The hook itself is idempotent here: if it's
-//     already our content, no-op; if it's an operator's custom hook,
-//     error rather than overwrite.
+//     in any worktree. The hook here is identified by preCommitHook-
+//     Signature: a missing file gets written, a file containing the
+//     signature is treated as a prior clauderun version and over-
+//     written with the current body, and any other content is assumed
+//     operator-owned and triggers a refusal rather than a clobber.
 //   - Per-worktree git dir (`git rev-parse --absolute-git-dir`) — for
 //     a main repo this is `.git/`; for a linked worktree this is
 //     `<main>/.git/worktrees/<name>/`. The marker file lands here, so
@@ -441,17 +455,22 @@ func installPreCommitHook(ctx context.Context, git GitRunner, repoPath string) e
 	}
 	hookPath := filepath.Join(hookDir, "pre-commit")
 	existing, err := os.ReadFile(hookPath)
-	if err == nil {
-		if string(existing) != preCommitHookBody {
-			return fmt.Errorf("pre-commit hook already exists at %s with different content; refusing to overwrite", hookPath)
+	switch {
+	case err == nil:
+		if !bytes.Contains(existing, []byte(preCommitHookSignature)) {
+			return fmt.Errorf("pre-commit hook already exists at %s without clauderun signature; refusing to overwrite operator-owned hook", hookPath)
 		}
-	} else {
-		if !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("read existing hook: %w", err)
+		if !bytes.Equal(existing, []byte(preCommitHookBody)) {
+			if err := os.WriteFile(hookPath, []byte(preCommitHookBody), 0o755); err != nil {
+				return fmt.Errorf("refresh hook: %w", err)
+			}
 		}
+	case errors.Is(err, os.ErrNotExist):
 		if err := os.WriteFile(hookPath, []byte(preCommitHookBody), 0o755); err != nil {
 			return fmt.Errorf("write hook: %w", err)
 		}
+	default:
+		return fmt.Errorf("read existing hook: %w", err)
 	}
 	markerPath := filepath.Join(gitDir, clauderunMarkerName)
 	if err := os.WriteFile(markerPath, nil, 0o644); err != nil {
