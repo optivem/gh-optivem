@@ -86,13 +86,6 @@ type Options struct {
 	// `claude` interactively so the operator can observe / interject.
 	Autonomous bool
 
-	// CLICommits flips dispatch into "CLI owns the commit" mode: instead
-	// of polling HEAD for an agent-produced commit, the CLI stages and
-	// commits the working-tree delta after the subprocess exits. Default
-	// off; gated rollout per
-	// plans/20260430-171111-cli-owns-commit-not-agent.md.
-	CLICommits bool
-
 	// ManualAgents falls back to the v1 "pause and let the operator
 	// launch the agent in a second window" behaviour at every user_task
 	// dispatch. Default (false) shells out to the `claude` CLI via the
@@ -495,9 +488,9 @@ func newManualAgentDispatcher(opts Options, raw statemachine.RawNode, inner stat
 
 // newClaudeRunDispatcher returns the v2 dispatcher. It reads the override
 // hints written to the Context state by override.Wrap, pulls the ticket
-// fields populated by preResolveIssue / PICK_TOP_READY, hands the lot to
-// clauderun.Dispatch, and surfaces the resulting commit SHA via
-// Outcome.Commit (which the verify post-condition decorator keys off).
+// fields populated by preResolveIssue / PICK_TOP_READY, and hands the lot
+// to clauderun.Dispatch. The agent does not commit; the wrapping CLI
+// stages and commits the working-tree delta after dispatch returns.
 func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID string, inner statemachine.NodeFn) statemachine.NodeFn {
 	return func(ctx *statemachine.Context) statemachine.Outcome {
 		extraText := ctx.GetString(override.KeyExtra)
@@ -524,7 +517,6 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 			RawPrompt:       replaceText,
 			PromptOverride:  opts.AgentPromptOverrides[agentName],
 			Autonomous:      opts.Autonomous,
-			CLICommits:      opts.CLICommits,
 			RepoPath:        opts.RepoPath,
 			Stdout:          opts.Stdout,
 			Stderr:          opts.Stderr,
@@ -545,16 +537,10 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 			}
 		}
 
-		info, err := clauderun.Dispatch(context.Background(), opts.ClaudeRunDeps, cOpts)
-		if err != nil {
+		if err := clauderun.Dispatch(context.Background(), opts.ClaudeRunDeps, cOpts); err != nil {
 			return statemachine.Outcome{Err: err}
 		}
-		out := inner(ctx)
-		if out.Err != nil {
-			return out
-		}
-		out.Commit = info.SHA
-		return out
+		return inner(ctx)
 	}
 }
 

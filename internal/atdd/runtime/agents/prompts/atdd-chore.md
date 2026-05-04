@@ -43,8 +43,6 @@ After COMMIT, tick any checklist items completed by the commit.
 
 ## References
 
-<!-- legacy-block:shared-commit-confirmation -->
-
 ### Reference: docs/atdd/process/task-and-chore-cycles.md
 
 # Task and Chore Cycle Mechanics

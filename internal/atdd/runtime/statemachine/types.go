@@ -25,16 +25,14 @@ const (
 //
 //   - Bool: gateway result for boolean bindings (when: "x == true").
 //   - Value: gateway result for enum/string bindings (when: "x == story").
-//   - Commit: phase commit SHA for user_task nodes that produce one.
 //   - Err: stop the run and surface this error to the user.
 //
 // Predicate evaluation reads Value (string-coerced) and Bool, in that order;
 // see predicate.go.
 type Outcome struct {
-	Bool   bool
-	Value  string
-	Commit string
-	Err    error
+	Bool  bool
+	Value string
+	Err   error
 }
 
 // NodeFn is the body of a node. It receives the live Context and returns an

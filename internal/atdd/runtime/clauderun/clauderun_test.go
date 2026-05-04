@@ -3,7 +3,8 @@
 // Strategy: drive Dispatch through fakeClaude / fakeGit so the suite is
 // hermetic — no real `claude` or `git` invocations. Each fake captures
 // the args / Run call it received and emits canned values, letting us
-// assert prompt construction, commit-detection branches, and error paths.
+// assert prompt construction, working-tree-delta detection, and error
+// paths.
 package clauderun
 
 import (
@@ -12,7 +13,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -23,37 +23,29 @@ import (
 // ---------------------------------------------------------------------------
 
 // fakeClaude records the RunOpts it was called with and returns a canned
-// error. headFn (when set) is called inside Run so the test can simulate
-// the agent producing a commit during the subprocess — by mutating
-// fakeGit.heads in lock-step with the call sequence. stderr (when set)
-// is written to opts.Stderr before returning, used by the rate-limit /
-// auth classification tests.
+// error. stderr (when set) is written to opts.Stderr before returning,
+// used by the rate-limit / auth classification tests.
 type fakeClaude struct {
 	calls  []RunOpts
 	err    error
 	usage  *TokenUsage
-	headFn func()
 	stderr []byte
 }
 
 func (f *fakeClaude) Run(_ context.Context, opts RunOpts) (RunResult, error) {
 	f.calls = append(f.calls, opts)
-	if f.headFn != nil {
-		f.headFn()
-	}
 	if len(f.stderr) > 0 && opts.Stderr != nil {
 		opts.Stderr.Write(f.stderr)
 	}
 	return RunResult{Usage: f.usage}, f.err
 }
 
-// fakeGit serves canned outputs. The HEAD-rev-parse and log calls
-// consume the `out` FIFO (existing tests rely on this). Snapshot calls
-// (rev-parse --abbrev-ref HEAD, status --porcelain) get sensible
-// defaults so tests that don't care about item 2's branch-switch /
-// untracked detection don't have to enumerate them. Tests that DO care
-// can override via branchPre/branchPost (FIFO, used per call) and
-// statusPre/statusPost.
+// fakeGit serves canned outputs. The HEAD-rev-parse calls consume the
+// `out` FIFO. Snapshot calls (rev-parse --abbrev-ref HEAD, status
+// --porcelain) get sensible defaults so tests that don't care about
+// branch-switch / untracked detection don't have to enumerate them.
+// Tests that DO care can override via branchPre/branchPost (FIFO, used
+// per call) and statusPre/statusPost.
 type fakeGit struct {
 	out        [][]byte
 	err        error
@@ -65,38 +57,12 @@ type fakeGit struct {
 
 	abbrevCount int
 	statusCount int
-
-	// hooksDir is what fakeGit returns for `rev-parse --git-path hooks`
-	// — the call installPreCommitHook makes when CLICommits is on. Tests
-	// that exercise the install set this to a writable temp dir; tests
-	// in legacy mode never trigger the call so leaving it empty is fine.
-	hooksDir string
-
-	// gitDir is what fakeGit returns for `rev-parse --absolute-git-dir`
-	// — installPreCommitHook drops the per-worktree dispatch marker
-	// here. Tests set it to a writable temp dir.
-	gitDir string
-
-	// commitEnv captures os.Getenv("CLAUDERUN_CLI_COMMIT") at the moment
-	// args[0] == "commit" — lets the hook-env test assert the var is set
-	// during the commit call without leaking process state.
-	commitEnv    string
-	commitEnvSet bool
 }
 
 func (f *fakeGit) Run(_ context.Context, _ string, args ...string) ([]byte, error) {
 	f.args = append(f.args, args)
-	if len(args) > 0 && args[0] == "commit" {
-		f.commitEnv, f.commitEnvSet = os.LookupEnv("CLAUDERUN_CLI_COMMIT")
-	}
 	if f.err != nil {
 		return nil, f.err
-	}
-	if len(args) >= 3 && args[0] == "rev-parse" && args[1] == "--git-path" && args[2] == "hooks" {
-		return []byte(f.hooksDir + "\n"), nil
-	}
-	if len(args) >= 2 && args[0] == "rev-parse" && args[1] == "--absolute-git-dir" {
-		return []byte(f.gitDir + "\n"), nil
 	}
 	if len(args) >= 3 && args[0] == "rev-parse" && args[1] == "--abbrev-ref" {
 		f.abbrevCount++
@@ -126,9 +92,7 @@ func (f *fakeGit) Run(_ context.Context, _ string, args ...string) ([]byte, erro
 }
 
 // hasGitArg reports whether any recorded git call started with the given
-// argument prefix. Used by tests that previously asserted on call counts
-// — the snapshot calls have shifted those counts, so we now assert on
-// the substantive calls (`log`, `rev-parse HEAD`) instead.
+// argument prefix.
 func (f *fakeGit) hasGitArg(prefix ...string) bool {
 	for _, args := range f.args {
 		if len(args) < len(prefix) {
@@ -170,9 +134,6 @@ func newOpts() Options {
 // ---------------------------------------------------------------------------
 
 func TestRenderPrompt_IncludesAllFields(t *testing.T) {
-	// Default opts has CLICommits=false (legacy mode), so the rendered
-	// prompt swaps the new "do not commit" preamble back to the pre-rollout
-	// "your COMMIT must land on HEAD" sentence.
 	opts := newOpts()
 	opts.OverrideText = "prefer record types"
 
@@ -190,62 +151,18 @@ func TestRenderPrompt_IncludesAllFields(t *testing.T) {
 	mustContain(t, got, "Phase: Write the AT-RED scenario")
 	mustContain(t, got, "Phase doc: docs/atdd/process/at-red-test.md")
 	mustContain(t, got, "prefer record types")
-	mustContain(t, got, "your COMMIT must land on HEAD")
+	mustContain(t, got, "do not commit and do not summarise")
 	// All ${…} placeholders must be expanded — none should leak through.
 	if strings.Contains(got, "${") {
 		t.Errorf("prompt still contains ${...} placeholder")
 	}
 }
 
-func TestRenderPrompt_CLICommits_StripsCommitGating(t *testing.T) {
-	// With --cli-commits on, the agent must not be told to commit. The
-	// preamble flips to the "do not commit" sentence and the embedded
-	// shared-commit-confirmation reference block is gone — neither the
-	// rule heading nor the legacy marker should leak into the output.
-	opts := newOpts()
-	opts.CLICommits = true
-
-	got, err := renderPrompt(opts)
-	if err != nil {
-		t.Fatalf("renderPrompt: %v", err)
-	}
-
-	mustContain(t, got, "do not commit and do not summarise")
-	mustContain(t, got, "The CLI will stage and commit your changes after you exit")
-	if strings.Contains(got, "your COMMIT must land on HEAD") {
-		t.Errorf("CLI-commits prompt should not tell the agent to land a commit on HEAD")
-	}
-	if strings.Contains(got, "# Commit Confirmation Rule") {
-		t.Errorf("CLI-commits prompt should not embed the legacy commit-confirmation rule block")
-	}
-	if strings.Contains(got, "<!-- legacy-block:") {
-		t.Errorf("legacy-block marker leaked into rendered prompt: %q", got)
-	}
-}
-
-func TestRenderPrompt_LegacyMode_RestoresCommitConfirmationBlock(t *testing.T) {
-	// CLICommits=false (default) is the rehearsal-compatible mode: the
-	// reverse-substitution must put the legacy preamble back AND inject
-	// the shared-commit-confirmation reference block where the marker sits.
-	opts := newOpts()
-	opts.Agent = "atdd-task"
-
-	got, err := renderPrompt(opts)
-	if err != nil {
-		t.Fatalf("renderPrompt: %v", err)
-	}
-
-	mustContain(t, got, "your COMMIT must land on HEAD")
-	mustContain(t, got, "# Commit Confirmation Rule")
-	mustContain(t, got, `### Reference: docs/atdd/process/shared-commit-confirmation.md`)
-	if strings.Contains(got, "<!-- legacy-block:") {
-		t.Errorf("legacy-block marker leaked into rendered prompt: %q", got)
-	}
-}
-
-func TestRenderPrompt_CLICommits_NoMarkerLeaksAcrossAgents(t *testing.T) {
-	// Smoke-test every embedded prompt: with --cli-commits on, none of
-	// them should leak the legacy-block marker or the legacy preamble.
+func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
+	// The legacy commit-confirmation reference block and its placeholder
+	// marker were removed when clauderun stopped owning the commit. Smoke-
+	// test every embedded prompt to make sure no agent leaks the marker
+	// or the pre-rollout preamble.
 	for _, name := range []string{
 		"atdd-backend", "atdd-chore", "atdd-driver", "atdd-dsl",
 		"atdd-frontend", "atdd-release", "atdd-stubs",
@@ -253,7 +170,6 @@ func TestRenderPrompt_CLICommits_NoMarkerLeaksAcrossAgents(t *testing.T) {
 	} {
 		opts := newOpts()
 		opts.Agent = name
-		opts.CLICommits = true
 
 		got, err := renderPrompt(opts)
 		if err != nil {
@@ -264,6 +180,9 @@ func TestRenderPrompt_CLICommits_NoMarkerLeaksAcrossAgents(t *testing.T) {
 		}
 		if strings.Contains(got, "your COMMIT must land on HEAD") {
 			t.Errorf("%s: legacy preamble leaked", name)
+		}
+		if strings.Contains(got, "# Commit Confirmation Rule") {
+			t.Errorf("%s: legacy commit-confirmation rule block leaked", name)
 		}
 	}
 }
@@ -286,10 +205,6 @@ func TestRenderPrompt_TaskAgentScopeBlock_ExplicitValues(t *testing.T) {
 }
 
 func TestRenderPrompt_TaskAgentChecklistInjected(t *testing.T) {
-	// The atdd-task prompt embeds the parsed Checklist via ${checklist}
-	// instead of telling the agent to re-fetch the issue. Confirm the
-	// substitution lands and the old "Fetch the issue with `gh`" sentence
-	// is gone.
 	opts := newOpts()
 	opts.Agent = "atdd-task"
 	opts.Checklist = "- [x] Rename \"New Order\" to \"Place Order\"\n- [x] Rename SKU aria-label"
@@ -308,9 +223,6 @@ func TestRenderPrompt_TaskAgentChecklistInjected(t *testing.T) {
 }
 
 func TestRenderPrompt_TaskAgentScopeBlock_EmptyDefaultsToBroadest(t *testing.T) {
-	// When gh-optivem.yaml omits the scope block, all three axes arrive empty.
-	// They must render as the broadest option ("both" / "all") so the agent
-	// reads a complete Scope line, not "Architecture=, System Lang=, …".
 	opts := newOpts()
 	opts.Agent = "atdd-chore"
 
@@ -322,9 +234,6 @@ func TestRenderPrompt_TaskAgentScopeBlock_EmptyDefaultsToBroadest(t *testing.T) 
 }
 
 func TestRenderPrompt_ReturnsErrorForUnknownAgent(t *testing.T) {
-	// agents.Prompt errors when no embedded prompt matches the name; the
-	// driver relies on this so a YAML referencing an unembedded agent
-	// fails loudly at dispatch time.
 	opts := newOpts()
 	opts.Agent = "atdd-doesnotexist"
 	if _, err := renderPrompt(opts); err == nil {
@@ -336,49 +245,60 @@ func TestRenderPrompt_ReturnsErrorForUnknownAgent(t *testing.T) {
 // Dispatch — happy path
 // ---------------------------------------------------------------------------
 
-func TestDispatch_SuccessReturnsCommitInfo(t *testing.T) {
+func TestDispatch_SuccessReturnsNilOnCleanExit(t *testing.T) {
+	// Subprocess exits zero, working tree is dirty (one new file). HEAD
+	// stays put — clauderun no longer commits, so an unchanged HEAD is
+	// the expected shape, not an error.
 	gitFake := &fakeGit{
 		out: [][]byte{
-			[]byte("aaaaaaa1111111\n"),                                  // rev-parse before
-			[]byte("bbbbbbb2222222\n"),                                  // rev-parse after
-			[]byte("AT-RED-TEST: scenario for PUT /carts/{id}/items\n"), // log subject
+			[]byte("aaaaaaa1111111\n"), // pre rev-parse HEAD
+			[]byte("aaaaaaa1111111\n"), // post rev-parse HEAD (same)
 		},
+		statusPre:  []byte(""),
+		statusPost: []byte(" M foo.go\n"),
 	}
 	claudeFake := &fakeClaude{}
 
-	got, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
-	if err != nil {
+	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts()); err != nil {
 		t.Fatalf("Dispatch: %v", err)
-	}
-	if got.SHA != "bbbbbbb2222222" {
-		t.Errorf("SHA: got %q, want %q", got.SHA, "bbbbbbb2222222")
-	}
-	if got.Subject != "AT-RED-TEST: scenario for PUT /carts/{id}/items" {
-		t.Errorf("Subject: got %q", got.Subject)
 	}
 	if len(claudeFake.calls) != 1 {
 		t.Fatalf("expected 1 claude call, got %d", len(claudeFake.calls))
 	}
-	// Prompt is constructed and passed through to the runner.
 	if !strings.Contains(claudeFake.calls[0].Prompt, "You are the Test Agent") {
 		t.Errorf("prompt missing agent identity line")
+	}
+	if gitFake.hasGitArg("add") || gitFake.hasGitArg("commit") {
+		t.Errorf("clauderun must not stage or commit: %v", gitFake.args)
+	}
+}
+
+func TestDispatch_NoChangesIsNotAnError(t *testing.T) {
+	// Clean before, clean after, HEAD unchanged. Previously this was the
+	// "no commit produced" failure path; now it's a legitimate no-op.
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("samesha\n"),
+			[]byte("samesha\n"),
+		},
+	}
+	claudeFake := &fakeClaude{}
+
+	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts()); err != nil {
+		t.Fatalf("expected no error on clean no-op, got %v", err)
 	}
 }
 
 func TestDispatch_AutonomousFlagPropagates(t *testing.T) {
 	gitFake := &fakeGit{
-		out: [][]byte{
-			[]byte("aaaa\n"),
-			[]byte("bbbb\n"),
-			[]byte("subject\n"),
-		},
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
 	}
 	claudeFake := &fakeClaude{}
 
 	opts := newOpts()
 	opts.Autonomous = true
 
-	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	got := claudeFake.calls[0]
@@ -399,44 +319,16 @@ func TestDispatch_FailsWhenSubprocessExitsNonZero(t *testing.T) {
 	}
 	claudeFake := &fakeClaude{err: errors.New("exit status 1")}
 
-	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
+	err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
 	if !strings.Contains(err.Error(), "exited non-zero") {
 		t.Errorf("error wording: got %q", err.Error())
 	}
-	// On the non-zero-exit path neither the post-snapshot nor the log
-	// call should run — surfacing stderr is the only useful action.
-	if gitFake.hasGitArg("log") {
-		t.Errorf("git log must not run on subprocess failure: %v", gitFake.args)
-	}
+	// On the non-zero-exit path the post-snapshot must not run.
 	if gitFake.statusCount != 1 {
 		t.Errorf("expected exactly 1 status --porcelain (pre-snapshot only), got %d", gitFake.statusCount)
-	}
-}
-
-func TestDispatch_FailsWhenHEADUnchanged(t *testing.T) {
-	// Same HEAD before and after → "subprocess succeeded but produced no
-	// commit". Both pre and post snapshots run (so we can compare), but
-	// no `git log` since there's no new SHA.
-	gitFake := &fakeGit{
-		out: [][]byte{
-			[]byte("samesha\n"),
-			[]byte("samesha\n"),
-		},
-	}
-	claudeFake := &fakeClaude{}
-
-	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
-	if err == nil {
-		t.Fatalf("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "no commit") {
-		t.Errorf("error wording: got %q", err.Error())
-	}
-	if gitFake.hasGitArg("log") {
-		t.Errorf("git log must not run when HEAD is unchanged: %v", gitFake.args)
 	}
 }
 
@@ -444,7 +336,7 @@ func TestDispatch_PropagatesGitFailureBeforeRun(t *testing.T) {
 	gitFake := &fakeGit{err: errors.New("not a git repo")}
 	claudeFake := &fakeClaude{}
 
-	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
+	err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -465,25 +357,44 @@ func TestDispatch_WritesEnterAndExitBanners(t *testing.T) {
 	gitFake := &fakeGit{
 		out: [][]byte{
 			[]byte("aaaa\n"),
-			[]byte("bbbb\n"),
-			[]byte("subject\n"),
+			[]byte("aaaa\n"),
 		},
+		statusPre:  []byte(""),
+		statusPost: []byte(" M foo.go\n"),
 	}
 	opts := newOpts()
 	opts.Stdout = &buf
 
-	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+	if err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	got := buf.String()
 	mustContain(t, got, "ENTERING AGENT")
 	mustContain(t, got, "atdd-test")
 	mustContain(t, got, "EXITED AGENT")
-	mustContain(t, got, "bbbb") // short SHA prefix
+	mustContain(t, got, "1 file(s) changed")
+}
+
+func TestDispatch_BannerSaysNoChangesOnCleanExit(t *testing.T) {
+	var buf bytes.Buffer
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	opts := newOpts()
+	opts.Stdout = &buf
+
+	if err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	got := buf.String()
+	mustContain(t, got, "EXITED AGENT: no changes")
+	if strings.Contains(got, "committed") {
+		t.Errorf("no-op banner must not say 'committed': %s", got)
+	}
 }
 
 // ---------------------------------------------------------------------------
-// Token usage parsing & banner formatting (item 6)
+// Token usage parsing & banner formatting
 // ---------------------------------------------------------------------------
 
 func TestParseClaudeJSON_ExtractsUsageAndResultText(t *testing.T) {
@@ -507,14 +418,11 @@ func TestParseClaudeJSON_ExtractsUsageAndResultText(t *testing.T) {
 }
 
 func TestParseClaudeJSON_GracefulOnMalformed(t *testing.T) {
-	// Non-JSON output (e.g. a CLI error message printed before any envelope)
-	// must not panic and must not produce phantom usage.
 	usage, result := parseClaudeJSON([]byte("claude: command failed\n"))
 	if usage != nil || result != "" {
 		t.Errorf("expected (nil, \"\") on malformed input, got (%+v, %q)", usage, result)
 	}
 
-	// Empty input — same expectation.
 	usage, result = parseClaudeJSON(nil)
 	if usage != nil || result != "" {
 		t.Errorf("expected (nil, \"\") on empty input, got (%+v, %q)", usage, result)
@@ -533,10 +441,10 @@ func TestExitBanner_IncludesUsageWhenPresent(t *testing.T) {
 		CacheReadInputTokens:     2400,
 		TotalCostUSD:             0.18,
 	}
-	writeExitBanner(opts, "abc1234567", "atdd: red phase", 47*time.Second, usage, nil)
+	writeExitBanner(opts, 7, 47*time.Second, usage, nil)
 
 	got := buf.String()
-	mustContain(t, got, "EXITED AGENT: committed abc1234")
+	mustContain(t, got, "EXITED AGENT: 7 file(s) changed")
 	mustContain(t, got, "47s")
 	mustContain(t, got, "12.4k in") // 6 + 10000 + 2400 = 12406 → 12.4k
 	mustContain(t, got, "1.8k out")
@@ -549,7 +457,7 @@ func TestExitBanner_OmitsUsageSuffixWhenNil(t *testing.T) {
 	var buf bytes.Buffer
 	opts := newOpts()
 	opts.Stdout = &buf
-	writeExitBanner(opts, "abc1234", "subj", 5*time.Second, nil, nil)
+	writeExitBanner(opts, 1, 5*time.Second, nil, nil)
 
 	got := buf.String()
 	mustContain(t, got, "EXITED AGENT")
@@ -559,7 +467,7 @@ func TestExitBanner_OmitsUsageSuffixWhenNil(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Stderr classification (item 1: rate limit / auth)
+// Stderr classification (rate limit / auth)
 // ---------------------------------------------------------------------------
 
 func TestClassifyRunError(t *testing.T) {
@@ -599,10 +507,6 @@ func TestClassifyRunError(t *testing.T) {
 }
 
 func TestClassifyRunError_OnlyScansLastLines(t *testing.T) {
-	// A noisy runner that prints a wall of progress before failing must
-	// not have unrelated lines suppress the trailing rate-limit signature.
-	// The classifier scans the last ~20 lines, which is more than enough
-	// to catch a typical CLI failure.
 	var noisy strings.Builder
 	for range 100 {
 		noisy.WriteString("progress chatter\n")
@@ -625,14 +529,13 @@ func TestDispatch_ClassifiesRateLimitInStderr(t *testing.T) {
 		stderr: []byte("Error: rate_limit_error: weekly limit reached.\n"),
 	}
 
-	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
+	err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
 	if !strings.Contains(err.Error(), "rate limit") {
 		t.Errorf("expected rate-limit specific message, got %q", err.Error())
 	}
-	// Should NOT fall through to the generic wrapper when classified.
 	if strings.Contains(err.Error(), "exited non-zero") {
 		t.Errorf("classified error must not also carry generic wrapper: %q", err.Error())
 	}
@@ -645,7 +548,7 @@ func TestDispatch_ClassifiesAuthErrorInStderr(t *testing.T) {
 		stderr: []byte("Error: not authenticated. Run /login.\n"),
 	}
 
-	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
+	err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -655,16 +558,13 @@ func TestDispatch_ClassifiesAuthErrorInStderr(t *testing.T) {
 }
 
 func TestDispatch_FallsThroughToGenericOnUnknownStderr(t *testing.T) {
-	// Arbitrary stderr that doesn't match any signature → keep the
-	// existing "exited non-zero" wrapper so the operator still sees the
-	// underlying exec error.
 	gitFake := &fakeGit{out: [][]byte{[]byte("aaaa\n")}}
 	claudeFake := &fakeClaude{
 		err:    errors.New("exit status 1"),
 		stderr: []byte("panic: nil pointer dereference\n"),
 	}
 
-	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
+	err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -674,7 +574,7 @@ func TestDispatch_FallsThroughToGenericOnUnknownStderr(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Repo snapshot (item 2: branch-switch / stranded untracked detection)
+// Repo snapshot (branch-switch / stranded untracked detection)
 // ---------------------------------------------------------------------------
 
 func TestParseUntracked(t *testing.T) {
@@ -694,120 +594,6 @@ func TestDiffUntracked_SortedNew(t *testing.T) {
 	}
 }
 
-func TestDispatch_HaltsOnBranchSwitch(t *testing.T) {
-	gitFake := &fakeGit{
-		out: [][]byte{
-			[]byte("aaaa\n"), // pre HEAD
-			[]byte("bbbb\n"), // post HEAD (also new — but branch switched, so we never reach the log)
-		},
-		branchPre:  "main",
-		branchPost: "feature/foo",
-	}
-	claudeFake := &fakeClaude{}
-
-	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
-	if err == nil {
-		t.Fatalf("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "switched branches") {
-		t.Errorf("expected branch-switch wording, got %q", err.Error())
-	}
-	if !strings.Contains(err.Error(), "main") || !strings.Contains(err.Error(), "feature/foo") {
-		t.Errorf("expected both branch names in error, got %q", err.Error())
-	}
-	if gitFake.hasGitArg("log") {
-		t.Errorf("log must not run when branches diverged: %v", gitFake.args)
-	}
-}
-
-func TestDispatch_WarnsOnStrandedUntracked(t *testing.T) {
-	var buf bytes.Buffer
-	gitFake := &fakeGit{
-		out: [][]byte{
-			[]byte("aaaa\n"),
-			[]byte("bbbb\n"),
-			[]byte("subject\n"),
-		},
-		statusPre:  []byte(""),
-		statusPost: []byte("?? scratch/notes.txt\n?? new_file.go\n"),
-	}
-	opts := newOpts()
-	opts.Stdout = &buf
-
-	got, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
-	if err != nil {
-		t.Fatalf("Dispatch should succeed (warning is non-fatal): %v", err)
-	}
-	if got.SHA != "bbbb" {
-		t.Errorf("SHA: got %q, want bbbb", got.SHA)
-	}
-	output := buf.String()
-	mustContain(t, output, "untracked file")
-	mustContain(t, output, "scratch/notes.txt")
-	mustContain(t, output, "new_file.go")
-}
-
-func TestDispatch_DoesNotWarnWhenNoNewUntracked(t *testing.T) {
-	// Files that were already untracked before dispatch should NOT be
-	// reported as "left … outside the commit" — the operator already
-	// knew about them.
-	var buf bytes.Buffer
-	gitFake := &fakeGit{
-		out: [][]byte{
-			[]byte("aaaa\n"),
-			[]byte("bbbb\n"),
-			[]byte("subject\n"),
-		},
-		statusPre:  []byte("?? pre-existing.txt\n"),
-		statusPost: []byte("?? pre-existing.txt\n"),
-	}
-	opts := newOpts()
-	opts.Stdout = &buf
-
-	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
-		t.Fatalf("Dispatch: %v", err)
-	}
-	if strings.Contains(buf.String(), "untracked file") {
-		t.Errorf("must not warn about pre-existing untracked file:\n%s", buf.String())
-	}
-}
-
-// ---------------------------------------------------------------------------
-// CLI-commits mode (items 1–3 of cli-owns-commit-not-agent.md)
-// ---------------------------------------------------------------------------
-
-func TestRenderCommitMessage_FormatShape(t *testing.T) {
-	opts := newOpts()
-	opts.Agent = "atdd-task"
-	opts.IssueNum = 61
-	opts.IssueTitle = "Redesigning New Order UI"
-	opts.NodeDescription = "SYSTEM UI TASK - WRITE"
-
-	got := renderCommitMessage(opts, "monolith-typescript/.../home.tsx | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)")
-
-	want := "atdd-task(#61): Redesigning New Order UI\n" +
-		"\nPhase: SYSTEM UI TASK - WRITE\n" +
-		"\nmonolith-typescript/.../home.tsx | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)\n"
-	if got != want {
-		t.Errorf("renderCommitMessage:\n  got:\n%s\n  want:\n%s", got, want)
-	}
-}
-
-func TestRenderCommitMessage_OmitsEmptyOptionalSections(t *testing.T) {
-	// NodeDescription empty → no Phase: line. Empty diffStat → no body.
-	opts := newOpts()
-	opts.Agent = "atdd-chore"
-	opts.IssueNum = 7
-	opts.IssueTitle = "tidy"
-	opts.NodeDescription = ""
-
-	got := renderCommitMessage(opts, "")
-	want := "atdd-chore(#7): tidy\n"
-	if got != want {
-		t.Errorf("renderCommitMessage: got %q, want %q", got, want)
-	}
-}
-
 func TestParseDirty_AllStatusKinds(t *testing.T) {
 	porcelain := []byte(" M modified.go\n?? new.txt\n D deleted.go\nA  staged.go\nR  old.go -> renamed.go\n")
 	got := parseDirty(porcelain)
@@ -822,230 +608,75 @@ func TestParseDirty_AllStatusKinds(t *testing.T) {
 	}
 }
 
-func TestDispatch_CLICommits_StagesAndCommitsModifiedFile(t *testing.T) {
+func TestDispatch_HaltsOnBranchSwitch(t *testing.T) {
 	gitFake := &fakeGit{
 		out: [][]byte{
-			[]byte("aaaa\n"), // pre rev-parse HEAD
-			[]byte("aaaa\n"), // post rev-parse HEAD (same — agent didn't commit)
-			[]byte(""),       // git add -A -- foo.go
-			[]byte("foo.go | 2 +-\n 1 file changed\n"), // git diff --cached --stat
-			[]byte(""),       // git commit -m
-			[]byte("bbbb\n"), // git rev-parse HEAD (new commit SHA)
+			[]byte("aaaa\n"), // pre HEAD
+			[]byte("bbbb\n"), // post HEAD
 		},
-		statusPre:  []byte(""),
-		statusPost: []byte(" M foo.go\n"),
-		hooksDir:   t.TempDir(),
-		gitDir:     t.TempDir(),
-	}
-	opts := newOpts()
-	opts.CLICommits = true
-
-	got, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
-	if err != nil {
-		t.Fatalf("Dispatch: %v", err)
-	}
-	if got.SHA != "bbbb" {
-		t.Errorf("SHA: got %q, want bbbb", got.SHA)
-	}
-	if !strings.Contains(got.Subject, "atdd-test(#42)") {
-		t.Errorf("Subject: got %q", got.Subject)
-	}
-	if !gitFake.hasGitArg("add", "-A", "--", "foo.go") {
-		t.Errorf("expected `git add -A -- foo.go`, got calls: %v", gitFake.args)
-	}
-	if !gitFake.hasGitArg("commit", "-m") {
-		t.Errorf("expected `git commit -m ...`, got calls: %v", gitFake.args)
-	}
-}
-
-func TestDispatch_CLICommits_StagesUntrackedFile(t *testing.T) {
-	gitFake := &fakeGit{
-		out: [][]byte{
-			[]byte("aaaa\n"), []byte("aaaa\n"),
-			[]byte(""), []byte("new.txt | 1 +\n"), []byte(""), []byte("bbbb\n"),
-		},
-		statusPre:  []byte(""),
-		statusPost: []byte("?? new.txt\n"),
-		hooksDir:   t.TempDir(),
-		gitDir:     t.TempDir(),
-	}
-	opts := newOpts()
-	opts.CLICommits = true
-
-	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
-		t.Fatalf("Dispatch: %v", err)
-	}
-	if !gitFake.hasGitArg("add", "-A", "--", "new.txt") {
-		t.Errorf("expected `git add -A -- new.txt`, got: %v", gitFake.args)
-	}
-}
-
-func TestDispatch_CLICommits_StagesDeletedFile(t *testing.T) {
-	gitFake := &fakeGit{
-		out: [][]byte{
-			[]byte("aaaa\n"), []byte("aaaa\n"),
-			[]byte(""), []byte("gone.go | 5 -----\n"), []byte(""), []byte("bbbb\n"),
-		},
-		statusPre:  []byte(""),
-		statusPost: []byte(" D gone.go\n"),
-		hooksDir:   t.TempDir(),
-		gitDir:     t.TempDir(),
-	}
-	opts := newOpts()
-	opts.CLICommits = true
-
-	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
-		t.Fatalf("Dispatch: %v", err)
-	}
-	if !gitFake.hasGitArg("add", "-A", "--", "gone.go") {
-		t.Errorf("expected `git add -A -- gone.go`, got: %v", gitFake.args)
-	}
-}
-
-func TestDispatch_CLICommits_SkipsPreExistingDirty(t *testing.T) {
-	// Pre-existing `M dirty.go` is already in the operator's working
-	// tree — must NOT be picked up by the CLI commit. Only the new
-	// untracked file shows up in the staging delta.
-	gitFake := &fakeGit{
-		out: [][]byte{
-			[]byte("aaaa\n"), []byte("aaaa\n"),
-			[]byte(""), []byte("new.txt | 1 +\n"), []byte(""), []byte("bbbb\n"),
-		},
-		statusPre:  []byte(" M dirty.go\n"),
-		statusPost: []byte(" M dirty.go\n?? new.txt\n"),
-		hooksDir:   t.TempDir(),
-		gitDir:     t.TempDir(),
-	}
-	opts := newOpts()
-	opts.CLICommits = true
-
-	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
-		t.Fatalf("Dispatch: %v", err)
-	}
-	if !gitFake.hasGitArg("add", "-A", "--", "new.txt") {
-		t.Errorf("expected `git add` to include only new.txt, got: %v", gitFake.args)
-	}
-	for _, args := range gitFake.args {
-		if len(args) >= 1 && args[0] == "add" {
-			for _, a := range args {
-				if a == "dirty.go" {
-					t.Errorf("`git add` must not include pre-existing dirty path, got: %v", args)
-				}
-			}
-		}
-	}
-}
-
-func TestDispatch_CLICommits_NoChangesIsNoOp(t *testing.T) {
-	// Clean before, clean after, HEAD unchanged → legitimate no-op
-	// phase. Return zero CommitInfo without erroring; do not call
-	// `git add` / `git commit`.
-	gitFake := &fakeGit{
-		out: [][]byte{
-			[]byte("aaaa\n"), []byte("aaaa\n"),
-		},
-		statusPre:  []byte(""),
-		statusPost: []byte(""),
-		hooksDir:   t.TempDir(),
-		gitDir:     t.TempDir(),
-	}
-	opts := newOpts()
-	opts.CLICommits = true
-
-	got, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
-	if err != nil {
-		t.Fatalf("Dispatch: %v", err)
-	}
-	if got.SHA != "" {
-		t.Errorf("expected empty SHA on no-op, got %q", got.SHA)
-	}
-	if gitFake.hasGitArg("add") {
-		t.Errorf("`git add` must not run when delta is empty: %v", gitFake.args)
-	}
-	if gitFake.hasGitArg("commit") {
-		t.Errorf("`git commit` must not run when delta is empty: %v", gitFake.args)
-	}
-}
-
-func TestDispatch_CLICommits_HonorsAgentCommitWhenHeadMovesAndDeltaIsEmpty(t *testing.T) {
-	// Migration window: prompts may still tell the agent to commit. If
-	// HEAD moved during the subprocess and there's no leftover dirt,
-	// honor the agent's commit instead of double-committing.
-	gitFake := &fakeGit{
-		out: [][]byte{
-			[]byte("aaaa\n"),                    // pre rev-parse HEAD
-			[]byte("bbbb\n"),                    // post rev-parse HEAD (agent committed)
-			[]byte("atdd-task: agent did it\n"), // git log -1 --format=%s
-		},
-		statusPre:  []byte(""),
-		statusPost: []byte(""),
-		hooksDir:   t.TempDir(),
-		gitDir:     t.TempDir(),
-	}
-	opts := newOpts()
-	opts.CLICommits = true
-
-	got, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
-	if err != nil {
-		t.Fatalf("Dispatch: %v", err)
-	}
-	if got.SHA != "bbbb" {
-		t.Errorf("SHA: got %q, want bbbb (agent's commit)", got.SHA)
-	}
-	if got.Subject != "atdd-task: agent did it" {
-		t.Errorf("Subject: got %q", got.Subject)
-	}
-	if gitFake.hasGitArg("add") || gitFake.hasGitArg("commit") {
-		t.Errorf("must not stage/commit on top of agent's commit: %v", gitFake.args)
-	}
-}
-
-func TestDispatch_CLICommits_NoOpBannerSaysNoChanges(t *testing.T) {
-	var buf bytes.Buffer
-	gitFake := &fakeGit{
-		out:      [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
-		hooksDir: t.TempDir(),
-		gitDir:   t.TempDir(),
-	}
-	opts := newOpts()
-	opts.CLICommits = true
-	opts.Stdout = &buf
-
-	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
-		t.Fatalf("Dispatch: %v", err)
-	}
-	got := buf.String()
-	mustContain(t, got, "EXITED AGENT: no changes")
-	if strings.Contains(got, "committed") {
-		t.Errorf("no-op banner must not say 'committed': %s", got)
-	}
-}
-
-func TestDispatch_CLICommits_BranchSwitchStillHalts(t *testing.T) {
-	// Branch-switch detection applies in both modes — even with CLI
-	// commits, we don't try to commit on whatever branch the agent
-	// jumped to.
-	gitFake := &fakeGit{
-		out:        [][]byte{[]byte("aaaa\n"), []byte("bbbb\n")},
 		branchPre:  "main",
 		branchPost: "feature/foo",
-		hooksDir:   t.TempDir(),
-		gitDir:     t.TempDir(),
 	}
-	opts := newOpts()
-	opts.CLICommits = true
+	claudeFake := &fakeClaude{}
 
-	_, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
+	err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
 	if err == nil {
-		t.Fatalf("expected branch-switch error, got nil")
+		t.Fatalf("expected error, got nil")
 	}
 	if !strings.Contains(err.Error(), "switched branches") {
-		t.Errorf("got %q", err.Error())
+		t.Errorf("expected branch-switch wording, got %q", err.Error())
 	}
-	if gitFake.hasGitArg("add") || gitFake.hasGitArg("commit") {
-		t.Errorf("must not commit when branch switched: %v", gitFake.args)
+	if !strings.Contains(err.Error(), "main") || !strings.Contains(err.Error(), "feature/foo") {
+		t.Errorf("expected both branch names in error, got %q", err.Error())
 	}
 }
+
+func TestDispatch_WarnsOnStrandedUntracked(t *testing.T) {
+	var buf bytes.Buffer
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaa\n"),
+			[]byte("aaaa\n"),
+		},
+		statusPre:  []byte(""),
+		statusPost: []byte("?? scratch/notes.txt\n?? new_file.go\n"),
+	}
+	opts := newOpts()
+	opts.Stdout = &buf
+
+	if err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch should succeed (warning is non-fatal): %v", err)
+	}
+	output := buf.String()
+	mustContain(t, output, "untracked file")
+	mustContain(t, output, "scratch/notes.txt")
+	mustContain(t, output, "new_file.go")
+}
+
+func TestDispatch_DoesNotWarnWhenNoNewUntracked(t *testing.T) {
+	var buf bytes.Buffer
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaa\n"),
+			[]byte("aaaa\n"),
+		},
+		statusPre:  []byte("?? pre-existing.txt\n"),
+		statusPost: []byte("?? pre-existing.txt\n"),
+	}
+	opts := newOpts()
+	opts.Stdout = &buf
+
+	if err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if strings.Contains(buf.String(), "untracked file") {
+		t.Errorf("must not warn about pre-existing untracked file:\n%s", buf.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// materializePrompt (argv overflow handling)
+// ---------------------------------------------------------------------------
 
 func TestMaterializePrompt_BelowLimitReturnsVerbatim(t *testing.T) {
 	dir := t.TempDir()
@@ -1122,162 +753,6 @@ func TestCappedBuffer_TruncatesPastCap(t *testing.T) {
 	b.Write([]byte("ABCDEFG")) // dropped
 	if got := string(b.Bytes()); got != "0123456789" {
 		t.Errorf("cappedBuffer: got %q, want %q", got, "0123456789")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Pre-commit hook installer (plans/20260502-200525-pre-commit-hook-blocks-agent-commits.md)
-// ---------------------------------------------------------------------------
-
-func TestDispatch_CLICommits_InstallsPreCommitHook(t *testing.T) {
-	hooksDir := t.TempDir()
-	gitDir := t.TempDir()
-	gitFake := &fakeGit{
-		out: [][]byte{
-			[]byte("aaaa\n"), []byte("aaaa\n"),
-		},
-		hooksDir: hooksDir,
-		gitDir:   gitDir,
-	}
-	opts := newOpts()
-	opts.CLICommits = true
-
-	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
-		t.Fatalf("Dispatch: %v", err)
-	}
-
-	hookPath := filepath.Join(hooksDir, "pre-commit")
-	body, err := os.ReadFile(hookPath)
-	if err != nil {
-		t.Fatalf("read installed hook: %v", err)
-	}
-	if string(body) != preCommitHookBody {
-		t.Errorf("hook body mismatch:\n  got:\n%s\n  want:\n%s", body, preCommitHookBody)
-	}
-	markerPath := filepath.Join(gitDir, clauderunMarkerName)
-	if _, err := os.Stat(markerPath); err != nil {
-		t.Errorf("dispatch marker missing at %s: %v", markerPath, err)
-	}
-}
-
-func TestDispatch_LegacyMode_DoesNotInstallHook(t *testing.T) {
-	// CLICommits=false — the hook must not be written, so legacy
-	// rehearsals where the agent commits keep working.
-	hooksDir := t.TempDir()
-	gitFake := &fakeGit{
-		out: [][]byte{
-			[]byte("aaaa\n"), []byte("bbbb\n"), []byte("subject\n"),
-		},
-		hooksDir: hooksDir,
-		gitDir:   t.TempDir(),
-	}
-	opts := newOpts()
-
-	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
-		t.Fatalf("Dispatch: %v", err)
-	}
-
-	if _, err := os.Stat(filepath.Join(hooksDir, "pre-commit")); !os.IsNotExist(err) {
-		t.Errorf("expected no pre-commit hook in legacy mode; got err=%v", err)
-	}
-	for _, args := range gitFake.args {
-		if len(args) >= 3 && args[0] == "rev-parse" && args[1] == "--git-path" {
-			t.Errorf("install resolver must not run in legacy mode, got args: %v", args)
-		}
-	}
-}
-
-func TestDispatch_HookConflict_RefusesToOverwriteOperatorHook(t *testing.T) {
-	// Pre-existing pre-commit hook authored by the operator (no clauderun
-	// signature) — Dispatch must surface a clear error rather than silently
-	// clobber it.
-	hooksDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(hooksDir, "pre-commit"), []byte("#!/bin/sh\necho operator hook\n"), 0o755); err != nil {
-		t.Fatalf("seed conflicting hook: %v", err)
-	}
-
-	gitFake := &fakeGit{
-		out:      [][]byte{[]byte("aaaa\n")},
-		hooksDir: hooksDir,
-		gitDir:   t.TempDir(),
-	}
-	opts := newOpts()
-	opts.CLICommits = true
-
-	_, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
-	if err == nil {
-		t.Fatalf("expected hook-conflict error, got nil")
-	}
-	if !strings.Contains(err.Error(), "refusing to overwrite operator-owned hook") {
-		t.Errorf("error wording: got %q", err.Error())
-	}
-}
-
-func TestDispatch_HookConflict_RefreshesStaleClauderunHook(t *testing.T) {
-	// Pre-existing pre-commit hook that DOES carry the clauderun signature
-	// but has a different body (e.g. left over from a prior release).
-	// Install must overwrite it with the current body, not refuse.
-	hooksDir := t.TempDir()
-	stale := "#!/bin/sh\n" + preCommitHookSignature + "\necho stale clauderun body\n"
-	if err := os.WriteFile(filepath.Join(hooksDir, "pre-commit"), []byte(stale), 0o755); err != nil {
-		t.Fatalf("seed stale hook: %v", err)
-	}
-
-	gitFake := &fakeGit{
-		out:      [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
-		hooksDir: hooksDir,
-		gitDir:   t.TempDir(),
-	}
-	opts := newOpts()
-	opts.CLICommits = true
-
-	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
-		t.Fatalf("Dispatch: %v", err)
-	}
-
-	body, err := os.ReadFile(filepath.Join(hooksDir, "pre-commit"))
-	if err != nil {
-		t.Fatalf("read hook: %v", err)
-	}
-	if string(body) != preCommitHookBody {
-		t.Errorf("stale hook was not refreshed:\n  got:\n%s\n  want:\n%s", body, preCommitHookBody)
-	}
-}
-
-func TestCommitChanges_SetsEnvVarForCommit(t *testing.T) {
-	// commitChanges must set CLAUDERUN_CLI_COMMIT=1 in the process env
-	// for the duration of the `git commit` call so the installed hook
-	// recognizes the CLI as the authorized committer. The fake captures
-	// os.Getenv at call time; this assertion is what links the env-var
-	// plumbing (item 2) to the hook (item 1).
-	gitFake := &fakeGit{
-		out: [][]byte{
-			[]byte(""),                // git add -A -- foo.go
-			[]byte("foo.go | 2 +-\n"), // git diff --cached --stat
-			[]byte(""),                // git commit -m
-			[]byte("bbbb\n"),          // git rev-parse HEAD
-		},
-	}
-	opts := newOpts()
-	opts.RepoPath = t.TempDir()
-
-	pre := repoState{head: "aaaa", branch: "main", dirty: map[string]bool{}}
-	post := repoState{head: "aaaa", branch: "main", dirty: map[string]bool{"foo.go": true}}
-
-	// Make sure the var is unset going in so we can verify defer-restore
-	// actually clears it after the call.
-	os.Unsetenv("CLAUDERUN_CLI_COMMIT")
-
-	if _, err := commitChanges(context.Background(), gitFake, opts, pre, post); err != nil {
-		t.Fatalf("commitChanges: %v", err)
-	}
-
-	if !gitFake.commitEnvSet || gitFake.commitEnv != "1" {
-		t.Errorf("CLAUDERUN_CLI_COMMIT during commit: got set=%v value=%q, want set=true value=\"1\"",
-			gitFake.commitEnvSet, gitFake.commitEnv)
-	}
-	if _, stillSet := os.LookupEnv("CLAUDERUN_CLI_COMMIT"); stillSet {
-		t.Errorf("CLAUDERUN_CLI_COMMIT must be unset after commitChanges returns")
 	}
 }
 

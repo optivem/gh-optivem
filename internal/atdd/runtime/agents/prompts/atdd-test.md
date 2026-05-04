@@ -22,8 +22,6 @@ Report back exactly as the phase requires. After WRITE, fall through to REVIEW a
 
 ## References
 
-<!-- legacy-block:shared-commit-confirmation -->
-
 ### Reference: docs/atdd/process/at-cycle-conventions.md
 
 # AT Cycle Conventions

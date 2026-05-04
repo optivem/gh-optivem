@@ -5,9 +5,9 @@
 // Dispatch reads the embedded per-agent prompt (see internal/atdd/runtime/
 // agents/embed.go), substitutes ${name} placeholders against the live ticket
 // context, invokes `claude` (interactive or `claude -p` autonomous), and
-// detects success by diffing git HEAD before and after. The agent is
-// expected to commit on the same branch — that commit landing is what the
-// engine's downstream verify decorator keys off.
+// returns when the subprocess exits. The agent is instructed not to commit;
+// staging and committing is the wrapping CLI's responsibility, after the
+// dispatch returns and any human gates have fired.
 //
 // v2 architectural note: there is no parent-claude harness or Task-tool
 // indirection. The rendered prompt IS the agent's full one-shot input —
@@ -101,19 +101,6 @@ type Options struct {
 	// When false, run interactively so the operator can observe / interject.
 	Autonomous bool
 
-	// CLICommits — when true, Dispatch stages and commits the working-tree
-	// delta produced by the subprocess (with a templated message built from
-	// Options + git diff --stat) instead of relying on the agent to commit.
-	// Subprocess exit IS the approval signal; the human review loop happens
-	// inside the agent window. Default off; gated rollout per
-	// plans/20260430-171111-cli-owns-commit-not-agent.md.
-	//
-	// When the agent commits anyway (e.g. running with stale prompts that
-	// still tell it to), Dispatch honors that commit rather than double-
-	// committing — the leftover working-tree state, if any, is the
-	// operator's to reconcile.
-	CLICommits bool
-
 	// RepoPath is the working directory the subprocess runs in (and the
 	// directory git rev-parse / git log query). Empty → current cwd.
 	RepoPath string
@@ -125,14 +112,6 @@ type Options struct {
 
 	// Stdin is the operator's TTY in interactive mode. nil → os.Stdin.
 	Stdin io.Reader
-}
-
-// CommitInfo is the result of a successful Dispatch — the engine uses
-// these to surface the new commit to the driver's stdout and to feed the
-// downstream verify decorator.
-type CommitInfo struct {
-	SHA     string
-	Subject string
 }
 
 // ClaudeRunner runs the `claude` CLI. The default implementation is
@@ -198,22 +177,25 @@ func (d Deps) withDefaults() Deps {
 	return d
 }
 
-// Dispatch builds the prompt, runs the subprocess, and verifies a commit
-// landed. Returns CommitInfo on success. Errors are returned for:
+// Dispatch builds the prompt, runs the subprocess, and reports back. The
+// agent is told not to commit; staging and committing belongs to the
+// wrapping CLI, which fires after Dispatch returns. Errors are returned
+// for:
 //   - Subprocess exit status non-zero (stderr surfaced; a small classifier
 //     turns known rate-limit / auth signatures into actionable messages
 //     before falling through to the generic wrapper).
-//   - Subprocess exit zero but HEAD unchanged (the agent ran clean but
-//     produced no commit — same shape as v1's "abort" path).
 //   - Subprocess exit zero but the agent switched branches mid-run (the
 //     pre/post snapshot diff catches this so the operator gets a clear
-//     "switched branches" message instead of a confusing "no commit").
+//     "switched branches" message before the wrapping CLI tries to commit
+//     against the wrong branch).
 //   - Any of the surrounding git / template steps failing.
 //
-// Pre/post snapshots also surface stranded untracked files (created by
-// the agent but never `git add`ed) as a non-fatal warning after the
-// success banner.
-func Dispatch(ctx context.Context, deps Deps, opts Options) (CommitInfo, error) {
+// HEAD moving during dispatch is no longer a halt condition: an agent that
+// commits anyway is a misbehaviour for the wrapping CLI to flag, not for
+// clauderun. Pre/post snapshots also surface stranded untracked files
+// (created by the agent but never `git add`ed) as a non-fatal warning
+// after the success banner.
+func Dispatch(ctx context.Context, deps Deps, opts Options) error {
 	deps = deps.withDefaults()
 	opts = opts.withDefaults()
 
@@ -222,19 +204,13 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (CommitInfo, error) 
 		var err error
 		prompt, err = renderPrompt(opts)
 		if err != nil {
-			return CommitInfo{}, fmt.Errorf("clauderun: render prompt: %w", err)
+			return fmt.Errorf("clauderun: render prompt: %w", err)
 		}
 	}
 
 	preState, err := snapshotRepo(ctx, deps.Git, opts.RepoPath)
 	if err != nil {
-		return CommitInfo{}, fmt.Errorf("clauderun: snapshot before dispatch: %w", err)
-	}
-
-	if opts.CLICommits {
-		if err := installPreCommitHook(ctx, deps.Git, opts.RepoPath); err != nil {
-			return CommitInfo{}, fmt.Errorf("clauderun: install pre-commit hook: %w", err)
-		}
+		return fmt.Errorf("clauderun: snapshot before dispatch: %w", err)
 	}
 
 	writeEnterBanner(opts)
@@ -257,271 +233,34 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (CommitInfo, error) 
 		Stderr:     runStderr,
 	})
 	if runErr != nil {
-		writeExitBanner(opts, "", "", nowFn().Sub(startedAt), runResult.Usage, runErr)
+		writeExitBanner(opts, 0, nowFn().Sub(startedAt), runResult.Usage, runErr)
 		if classified := classifyRunError(stderrCapture.Bytes()); classified != nil {
-			return CommitInfo{}, fmt.Errorf("clauderun: %s: %w", opts.Agent, classified)
+			return fmt.Errorf("clauderun: %s: %w", opts.Agent, classified)
 		}
-		return CommitInfo{}, fmt.Errorf("clauderun: %s exited non-zero: %w", opts.Agent, runErr)
+		return fmt.Errorf("clauderun: %s exited non-zero: %w", opts.Agent, runErr)
 	}
 
 	postState, err := snapshotRepo(ctx, deps.Git, opts.RepoPath)
 	if err != nil {
-		writeExitBanner(opts, "", "", nowFn().Sub(startedAt), runResult.Usage, err)
-		return CommitInfo{}, fmt.Errorf("clauderun: snapshot after dispatch: %w", err)
+		writeExitBanner(opts, 0, nowFn().Sub(startedAt), runResult.Usage, err)
+		return fmt.Errorf("clauderun: snapshot after dispatch: %w", err)
 	}
 
 	if postState.branch != preState.branch {
 		switchErr := fmt.Errorf("agent switched branches mid-run (was %q, now %q) — original-branch HEAD unchanged at %s",
 			preState.branch, postState.branch, shortSHA(preState.head))
-		writeExitBanner(opts, "", "", nowFn().Sub(startedAt), runResult.Usage, switchErr)
-		return CommitInfo{}, fmt.Errorf("clauderun: %s: %w", opts.Agent, switchErr)
+		writeExitBanner(opts, 0, nowFn().Sub(startedAt), runResult.Usage, switchErr)
+		return fmt.Errorf("clauderun: %s: %w", opts.Agent, switchErr)
 	}
 
-	if opts.CLICommits {
-		info, err := commitChanges(ctx, deps.Git, opts, preState, postState)
-		if err != nil {
-			writeExitBanner(opts, "", "", nowFn().Sub(startedAt), runResult.Usage, err)
-			return CommitInfo{}, fmt.Errorf("clauderun: %s: %w", opts.Agent, err)
-		}
-		writeExitBanner(opts, info.SHA, info.Subject, nowFn().Sub(startedAt), runResult.Usage, nil)
-		return info, nil
-	}
-
-	if preState.head == postState.head {
-		writeExitBanner(opts, "", "", nowFn().Sub(startedAt), runResult.Usage, errNoCommit)
-		return CommitInfo{}, fmt.Errorf("clauderun: %s exited cleanly but produced no commit (HEAD unchanged at %s)",
-			opts.Agent, shortSHA(preState.head))
-	}
-
-	subject, err := readCommitSubject(ctx, deps.Git, opts.RepoPath, postState.head)
-	if err != nil {
-		writeExitBanner(opts, postState.head, "", nowFn().Sub(startedAt), runResult.Usage, err)
-		return CommitInfo{}, fmt.Errorf("clauderun: read commit subject for %s: %w", shortSHA(postState.head), err)
-	}
-
+	changed := diffDirty(preState.dirty, postState.dirty)
 	if newUntracked := diffUntracked(preState.untracked, postState.untracked); len(newUntracked) > 0 {
 		writeUntrackedWarning(opts, newUntracked)
 	}
 
-	writeExitBanner(opts, postState.head, subject, nowFn().Sub(startedAt), runResult.Usage, nil)
-	return CommitInfo{SHA: postState.head, Subject: subject}, nil
-}
-
-// commitChanges stages the working-tree delta produced during dispatch
-// and commits it with a templated message. Used only when opts.CLICommits
-// is true.
-//
-// Staging policy (item 3 of cli-owns-commit-not-agent.md):
-//   - Stage every path present in postState.dirty but not preState.dirty
-//     (modified-tracked, new-untracked, deleted-tracked).
-//   - Skip pre-existing dirty paths — those are the operator's, not the
-//     agent's, and folding them into the commit would silently absorb
-//     unrelated work.
-//   - If the delta is empty AND the agent committed itself (HEAD moved),
-//     honor the agent's commit. The plan's order-of-operations explicitly
-//     covers the migration window where prompts may not yet have caught
-//     up; double-committing on top would be worse than honoring it.
-//   - If the delta is empty and HEAD is unchanged, return CommitInfo{} —
-//     a legitimate no-op phase, not an error.
-func commitChanges(ctx context.Context, git GitRunner, opts Options, pre, post repoState) (CommitInfo, error) {
-	delta := diffDirty(pre.dirty, post.dirty)
-	if len(delta) == 0 {
-		if pre.head != post.head {
-			subject, err := readCommitSubject(ctx, git, opts.RepoPath, post.head)
-			if err != nil {
-				return CommitInfo{}, fmt.Errorf("read commit subject for %s: %w", shortSHA(post.head), err)
-			}
-			return CommitInfo{SHA: post.head, Subject: subject}, nil
-		}
-		return CommitInfo{}, nil
-	}
-	addArgs := append([]string{"add", "-A", "--"}, delta...)
-	if _, err := git.Run(ctx, opts.RepoPath, addArgs...); err != nil {
-		return CommitInfo{}, fmt.Errorf("git add: %w", err)
-	}
-	statOut, err := git.Run(ctx, opts.RepoPath, "diff", "--cached", "--stat")
-	if err != nil {
-		return CommitInfo{}, fmt.Errorf("git diff --cached --stat: %w", err)
-	}
-	msg := renderCommitMessage(opts, strings.TrimSpace(string(statOut)))
-	if err := runCLICommit(ctx, git, opts.RepoPath, msg); err != nil {
-		return CommitInfo{}, fmt.Errorf("git commit: %w", err)
-	}
-	headOut, err := git.Run(ctx, opts.RepoPath, "rev-parse", "HEAD")
-	if err != nil {
-		return CommitInfo{}, fmt.Errorf("git rev-parse HEAD: %w", err)
-	}
-	sha := strings.TrimSpace(string(headOut))
-	subject := strings.SplitN(msg, "\n", 2)[0]
-	return CommitInfo{SHA: sha, Subject: subject}, nil
-}
-
-// runCLICommit invokes `git commit -m msg` with CLAUDERUN_CLI_COMMIT=1
-// in the process environment, then restores the prior value (or unsets,
-// if there was none). This is the single env-var write site that pairs
-// with installPreCommitHook: the hook checks for the var and rejects any
-// commit not carrying it, so an agent that runs `git commit` directly
-// — without going through this function — fails at the git layer.
-//
-// Process-wide rather than per-call because GitRunner.Run takes no env
-// parameter; widening the interface would touch every caller for a
-// single use site. Defer-restore confines the side effect to this
-// function's stack frame.
-func runCLICommit(ctx context.Context, git GitRunner, dir, msg string) error {
-	const envKey = "CLAUDERUN_CLI_COMMIT"
-	prev, hadPrev := os.LookupEnv(envKey)
-	if err := os.Setenv(envKey, "1"); err != nil {
-		return fmt.Errorf("set %s: %w", envKey, err)
-	}
-	defer func() {
-		if hadPrev {
-			os.Setenv(envKey, prev)
-		} else {
-			os.Unsetenv(envKey)
-		}
-	}()
-	_, err := git.Run(ctx, dir, "commit", "-m", msg)
-	return err
-}
-
-// preCommitHookSignature identifies a pre-commit hook as clauderun-managed.
-// installPreCommitHook treats any existing hook containing this line as
-// safe to overwrite (i.e. one of our prior versions); a hook without it is
-// assumed to be operator-owned and the install refuses rather than clobber.
-// Keep the string unique enough that nobody types it by accident.
-const preCommitHookSignature = "# clauderun-managed-hook (do not edit; replaced by clauderun on dispatch)"
-
-// preCommitHookBody is the verbatim shell script written into the
-// repo's hooks directory when opts.CLICommits is true.
-//
-// The hook only enforces in worktrees that have the marker file
-// (clauderunMarkerName, written by installPreCommitHook into the
-// per-worktree git dir). Without the marker the hook is a no-op,
-// which matters because git's hooks dir is shared across worktrees:
-// installing a strict hook globally would block every commit the
-// operator makes in their main checkout. The marker scopes
-// enforcement to the active dispatch worktree.
-//
-// The body embeds preCommitHookSignature so installPreCommitHook can
-// recognise prior versions of itself and overwrite them when the body
-// changes between releases, without touching operator-authored hooks.
-const preCommitHookBody = `#!/bin/sh
-` + preCommitHookSignature + `
-GITDIR=$(git rev-parse --absolute-git-dir 2>/dev/null) || exit 0
-[ -f "$GITDIR/clauderun-dispatch" ] || exit 0
-if [ "${CLAUDERUN_CLI_COMMIT:-}" != "1" ]; then
-  echo "clauderun: refusing commit — only the CLI commits on dispatch branches." >&2
-  echo "  (set CLAUDERUN_CLI_COMMIT=1 if you are clauderun.commitChanges)" >&2
-  exit 1
-fi
-`
-
-// clauderunMarkerName is the filename installPreCommitHook drops into
-// the per-worktree git dir to flag the worktree as a dispatch context.
-// The hook script greps for this same name.
-const clauderunMarkerName = "clauderun-dispatch"
-
-// installPreCommitHook installs preCommitHookBody in the repo's hooks
-// directory and writes a per-worktree marker file so the hook only
-// enforces inside this worktree.
-//
-// Two paths are involved:
-//   - Hooks dir (`git rev-parse --git-path hooks`) — git's shared
-//     hooks dir, the same one git looks at when the operator commits
-//     in any worktree. The hook here is identified by preCommitHook-
-//     Signature: a missing file gets written, a file containing the
-//     signature is treated as a prior clauderun version and over-
-//     written with the current body, and any other content is assumed
-//     operator-owned and triggers a refusal rather than a clobber.
-//   - Per-worktree git dir (`git rev-parse --absolute-git-dir`) — for
-//     a main repo this is `.git/`; for a linked worktree this is
-//     `<main>/.git/worktrees/<name>/`. The marker file lands here, so
-//     it dies with the worktree on `git worktree remove`.
-//
-// On Windows the 0755 mode is largely ignored by the OS, but git's
-// bundled sh runs the hook regardless of file mode, so the chmod is
-// harmless and matches the POSIX expectation.
-func installPreCommitHook(ctx context.Context, git GitRunner, repoPath string) error {
-	hookDir, err := resolveGitPath(ctx, git, repoPath, "rev-parse", "--git-path", "hooks")
-	if err != nil {
-		return fmt.Errorf("resolve hooks dir: %w", err)
-	}
-	gitDir, err := resolveGitPath(ctx, git, repoPath, "rev-parse", "--absolute-git-dir")
-	if err != nil {
-		return fmt.Errorf("resolve git dir: %w", err)
-	}
-	if err := os.MkdirAll(hookDir, 0o755); err != nil {
-		return fmt.Errorf("mkdir hooks dir: %w", err)
-	}
-	hookPath := filepath.Join(hookDir, "pre-commit")
-	existing, err := os.ReadFile(hookPath)
-	switch {
-	case err == nil:
-		if !bytes.Contains(existing, []byte(preCommitHookSignature)) {
-			return fmt.Errorf("pre-commit hook already exists at %s without clauderun signature; refusing to overwrite operator-owned hook", hookPath)
-		}
-		if !bytes.Equal(existing, []byte(preCommitHookBody)) {
-			if err := os.WriteFile(hookPath, []byte(preCommitHookBody), 0o755); err != nil {
-				return fmt.Errorf("refresh hook: %w", err)
-			}
-		}
-	case errors.Is(err, os.ErrNotExist):
-		if err := os.WriteFile(hookPath, []byte(preCommitHookBody), 0o755); err != nil {
-			return fmt.Errorf("write hook: %w", err)
-		}
-	default:
-		return fmt.Errorf("read existing hook: %w", err)
-	}
-	markerPath := filepath.Join(gitDir, clauderunMarkerName)
-	if err := os.WriteFile(markerPath, nil, 0o644); err != nil {
-		return fmt.Errorf("write dispatch marker: %w", err)
-	}
+	writeExitBanner(opts, len(changed), nowFn().Sub(startedAt), runResult.Usage, nil)
 	return nil
 }
-
-// resolveGitPath runs the given `git rev-parse` invocation and returns
-// the resulting filesystem path. If git returns a relative path (the
-// case for plain `--git-path hooks` in a main repo), it is resolved
-// against repoPath. Returns an error on empty output so callers can
-// fail loudly rather than write into the cwd.
-func resolveGitPath(ctx context.Context, git GitRunner, repoPath string, args ...string) (string, error) {
-	out, err := git.Run(ctx, repoPath, args...)
-	if err != nil {
-		return "", err
-	}
-	p := strings.TrimSpace(string(out))
-	if p == "" {
-		return "", fmt.Errorf("git %s returned empty path", strings.Join(args, " "))
-	}
-	if !filepath.IsAbs(p) {
-		p = filepath.Join(repoPath, p)
-	}
-	return p, nil
-}
-
-// renderCommitMessage builds the templated commit message the CLI uses
-// when opts.CLICommits is true. Format is intentionally boring: one
-// subject line keying off agent + issue, one Phase: line, then the diff
-// stat as the body. The shape is tested directly so future tweaks are
-// caught.
-func renderCommitMessage(opts Options, diffStat string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s(#%d): %s\n", opts.Agent, opts.IssueNum, opts.IssueTitle)
-	if opts.NodeDescription != "" {
-		fmt.Fprintf(&b, "\nPhase: %s\n", opts.NodeDescription)
-	}
-	if diffStat != "" {
-		b.WriteString("\n")
-		b.WriteString(diffStat)
-		b.WriteString("\n")
-	}
-	return b.String()
-}
-
-// errNoCommit is the sentinel for "subprocess succeeded but HEAD didn't
-// move". Surfaced through writeExitBanner so the operator sees the failure
-// banner rather than a silent return.
-var errNoCommit = errors.New("no commit produced")
 
 // nowFn is a package-level seam so tests can pin elapsed time in banner
 // output. Production points at time.Now.
@@ -542,7 +281,6 @@ func renderPrompt(opts Options) (string, error) {
 			return "", err
 		}
 	}
-	body = applyCommitGating(body, opts.CLICommits)
 	params := map[string]string{
 		"issue_num":     strconv.Itoa(opts.IssueNum),
 		"issue_title":   opts.IssueTitle,
@@ -561,35 +299,6 @@ func renderPrompt(opts Options) (string, error) {
 		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + opts.OverrideText + "\n"
 	}
 	return rendered, nil
-}
-
-// applyCommitGating reconciles the embedded prompt body with the
-// --cli-commits flag. The committed source has prompts in their CLI-commits
-// target state: the preamble tells the agent not to commit, and the
-// shared-commit-confirmation reference block has been replaced by a marker
-// line. Production rendering then chooses between two views:
-//
-//   - cliCommits=true (target world): strip the marker so the rendered
-//     prompt is the clean target text.
-//   - cliCommits=false (legacy world): swap the new preamble back to the
-//     pre-rollout sentence and re-inject the original commit-confirmation
-//     reference block in place of the marker, so existing rehearsals see
-//     the same prompt they always did.
-//
-// The legacy-mode swap-back goes away when --agent-commits is removed
-// (step 5 of plans/20260430-171111-cli-owns-commit-not-agent.md).
-func applyCommitGating(body string, cliCommits bool) string {
-	const (
-		newPreamble    = "When the work is done, do not commit and do not summarise — exit cleanly. The CLI will stage and commit your changes after you exit. The agent must never run `git commit`, `git add`, or `gh issue close`."
-		legacyPreamble = "When the work is done, your COMMIT must land on HEAD before you exit. The Go driver detects completion by diffing HEAD pre/post."
-		marker         = "<!-- legacy-block:shared-commit-confirmation -->"
-	)
-	if cliCommits {
-		return strings.ReplaceAll(body, marker+"\n\n", "")
-	}
-	body = strings.ReplaceAll(body, newPreamble, legacyPreamble)
-	body = strings.ReplaceAll(body, marker, agents.LegacyCommitBlock())
-	return body
 }
 
 // scopeOrDefault returns fallback when value is empty, else value. The
@@ -742,14 +451,6 @@ func diffUntracked(pre, post map[string]bool) []string {
 	return out
 }
 
-func readCommitSubject(ctx context.Context, git GitRunner, dir, sha string) (string, error) {
-	out, err := git.Run(ctx, dir, "log", "-1", "--format=%s", sha)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
-}
-
 func shortSHA(sha string) string {
 	if len(sha) > 7 {
 		return sha[:7]
@@ -870,7 +571,13 @@ func writeEnterBanner(opts Options) {
 	fmt.Fprintln(w, cyan.Sprint(banner))
 }
 
-func writeExitBanner(opts Options, sha, subject string, elapsed time.Duration, usage *TokenUsage, runErr error) {
+// writeExitBanner reports the agent's exit. changedFiles is the count of
+// paths the agent touched (post-pre delta of `git status --porcelain`); the
+// outer CLI is what stages and commits them, so the banner only signals
+// the size of the work it has to act on. Zero changes is a legitimate
+// no-op — still a successful exit, surfaced so the operator can tell at a
+// glance there's nothing for the wrapper to commit.
+func writeExitBanner(opts Options, changedFiles int, elapsed time.Duration, usage *TokenUsage, runErr error) {
 	w := opts.Stdout
 	if runErr != nil {
 		red := color.New(color.FgRed, color.Bold)
@@ -882,17 +589,14 @@ func writeExitBanner(opts Options, sha, subject string, elapsed time.Duration, u
 	}
 	green := color.New(color.FgGreen, color.Bold)
 	fmt.Fprintln(w, green.Sprint(banner))
-	if sha == "" {
+	if changedFiles == 0 {
 		fmt.Fprintln(w, green.Sprintf("✅ EXITED AGENT: no changes  (%s%s)",
 			elapsed.Round(elapsedRound), formatUsageSuffix(usage)))
 		fmt.Fprintln(w, green.Sprint(banner))
 		return
 	}
-	fmt.Fprintln(w, green.Sprintf("✅ EXITED AGENT: committed %s  (%s%s)",
-		shortSHA(sha), elapsed.Round(elapsedRound), formatUsageSuffix(usage)))
-	if subject != "" {
-		fmt.Fprintln(w, green.Sprintf("   %q", subject))
-	}
+	fmt.Fprintln(w, green.Sprintf("✅ EXITED AGENT: %d file(s) changed  (%s%s)",
+		changedFiles, elapsed.Round(elapsedRound), formatUsageSuffix(usage)))
 	fmt.Fprintln(w, green.Sprint(banner))
 }
 

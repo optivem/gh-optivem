@@ -17,8 +17,6 @@ Report back what frontend changes were made and confirm UI tests are passing.
 
 ## References
 
-<!-- legacy-block:shared-commit-confirmation -->
-
 ### Reference: docs/atdd/process/at-green-system.md
 
 # AT - GREEN - SYSTEM

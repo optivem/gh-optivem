@@ -17,8 +17,6 @@ If a GitHub issue number was provided, use the GitHub MCP tools to tick the comp
 
 ## References
 
-<!-- legacy-block:shared-commit-confirmation -->
-
 ### Reference: docs/atdd/process/shared-phase-progression.md
 
 # Phase Progression

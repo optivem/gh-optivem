@@ -28,20 +28,14 @@ import (
 // ---------------------------------------------------------------------------
 
 // fakeClaude records each RunOpts so tests can assert prompt content and
-// returns a canned error. headFn (when set) is invoked inside Run so a test
-// can simulate the agent producing a commit during the subprocess by
-// mutating the next fakeGit response in lock-step.
+// returns a canned error.
 type fakeClaude struct {
-	calls  []clauderun.RunOpts
-	err    error
-	headFn func()
+	calls []clauderun.RunOpts
+	err   error
 }
 
 func (f *fakeClaude) Run(_ context.Context, opts clauderun.RunOpts) (clauderun.RunResult, error) {
 	f.calls = append(f.calls, opts)
-	if f.headFn != nil {
-		f.headFn()
-	}
 	return clauderun.RunResult{}, f.err
 }
 
@@ -171,12 +165,13 @@ func newCtxWithIssue() *statemachine.Context {
 // Default (clauderun) dispatch — happy path
 // ---------------------------------------------------------------------------
 
-func TestClaudeRunDispatch_AdvancesOnFreshCommit(t *testing.T) {
+func TestClaudeRunDispatch_AdvancesOnCleanExit(t *testing.T) {
+	// Subprocess exits zero. clauderun no longer commits, so HEAD is
+	// unchanged and the dispatcher just hands control back to the engine.
 	gitFake := &fakeGit{
 		out: [][]byte{
-			[]byte("aaaaaaa1\n"), // before
-			[]byte("bbbbbbb2\n"), // after
-			[]byte("AT-RED-TEST: scenario for PUT\n"),
+			[]byte("aaaaaaa1\n"), // pre rev-parse HEAD
+			[]byte("aaaaaaa1\n"), // post rev-parse HEAD (same)
 		},
 	}
 	claudeFake := &fakeClaude{}
@@ -185,9 +180,6 @@ func TestClaudeRunDispatch_AdvancesOnFreshCommit(t *testing.T) {
 	out := fn(newCtxWithIssue())
 	if out.Err != nil {
 		t.Fatalf("dispatch: %v", out.Err)
-	}
-	if out.Commit != "bbbbbbb2" {
-		t.Errorf("Commit: got %q, want %q", out.Commit, "bbbbbbb2")
 	}
 	if len(claudeFake.calls) != 1 {
 		t.Fatalf("expected 1 claude call, got %d", len(claudeFake.calls))
@@ -212,27 +204,6 @@ func TestClaudeRunDispatch_AdvancesOnFreshCommit(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Default dispatch — failure paths
 // ---------------------------------------------------------------------------
-
-func TestClaudeRunDispatch_HaltsWhenHEADUnchanged(t *testing.T) {
-	// Subprocess succeeds but produces no commit. Driver must surface this
-	// as Outcome.Err so the engine halts rather than advancing on a clean
-	// exit alone — same shape as v1's "abort" path.
-	gitFake := &fakeGit{
-		out: [][]byte{
-			[]byte("samesha\n"),
-			[]byte("samesha\n"),
-		},
-	}
-	fn := buildEngine(t, newDriverOpts(clauderun.Deps{Claude: &fakeClaude{}, Git: gitFake}))
-
-	out := fn(newCtxWithIssue())
-	if out.Err == nil {
-		t.Fatalf("expected error, got nil")
-	}
-	if !strings.Contains(out.Err.Error(), "no commit") {
-		t.Errorf("error wording: got %q", out.Err.Error())
-	}
-}
 
 func TestClaudeRunDispatch_HaltsWhenSubprocessFails(t *testing.T) {
 	gitFake := &fakeGit{
@@ -260,8 +231,7 @@ func TestClaudeRunDispatch_AppendsOverrideExtraToPrompt(t *testing.T) {
 	gitFake := &fakeGit{
 		out: [][]byte{
 			[]byte("aaaa\n"),
-			[]byte("bbbb\n"),
-			[]byte("subject\n"),
+			[]byte("aaaa\n"),
 		},
 	}
 	claudeFake := &fakeClaude{}
@@ -288,8 +258,7 @@ func TestClaudeRunDispatch_ReplaceOverrideShortCircuitsTemplate(t *testing.T) {
 	gitFake := &fakeGit{
 		out: [][]byte{
 			[]byte("aaaa\n"),
-			[]byte("bbbb\n"),
-			[]byte("subject\n"),
+			[]byte("aaaa\n"),
 		},
 	}
 	claudeFake := &fakeClaude{}
@@ -428,8 +397,7 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	gitFake := &fakeGit{
 		out: [][]byte{
 			[]byte("aaaaaaa1\n"),
-			[]byte("bbbbbbb2\n"),
-			[]byte("subject\n"),
+			[]byte("aaaaaaa1\n"),
 		},
 	}
 	claudeFake := &fakeClaude{}
