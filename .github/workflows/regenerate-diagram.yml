@@ -23,6 +23,10 @@ on:
     paths:
       - internal/atdd/runtime/statemachine/process-flow.yaml
       - internal/atdd/runtime/diagram/**
+  # Manual escape hatch: lets us re-run after fixing rendering bugs that
+  # don't otherwise touch a path-filtered file (e.g. a CLI behaviour change
+  # in `gh optivem atdd show diagram`).
+  workflow_dispatch:
 
 permissions:
   contents: write
