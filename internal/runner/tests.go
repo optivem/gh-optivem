@@ -17,9 +17,10 @@ import (
 type TestOptions struct {
 	// Suite, when non-empty, limits the run to the suite with this id.
 	Suite string
-	// Test, when non-empty, narrows execution to one test name. Injected
-	// into the suite's Command via TestsConfig.TestFilter.
-	Test string
+	// Test, when non-empty, narrows execution to the given test names.
+	// Injected into the suite's Command via TestsConfig.TestFilter and
+	// joined per TestsConfig.TestFilterJoin.
+	Test []string
 	// Sample, when true, uses each suite's sampleTest field as the test
 	// name (if both Sample is set and Test is non-empty, Test wins).
 	Sample bool
@@ -116,7 +117,7 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 
 	for _, suite := range suites {
 		start := time.Now()
-		err := runOneSuite(suite, tests.TestFilter, testsCwd, opts)
+		err := runOneSuite(suite, tests.TestFilter, tests.TestFilterJoin, testsCwd, opts)
 		dur := time.Since(start)
 		status := "PASSED"
 		if err != nil {
@@ -170,7 +171,7 @@ func selectSuites(tests *TestsConfig, suiteID string) ([]Suite, error) {
 	return []Suite{*suite}, nil
 }
 
-func runOneSuite(suite Suite, testFilter, cwd string, opts TestOptions) error {
+func runOneSuite(suite Suite, testFilter, testFilterJoin, cwd string, opts TestOptions) error {
 	suiteDir := cwd
 	if suite.Path != "" && suite.Path != "." {
 		suiteDir = filepath.Join(cwd, suite.Path)
@@ -183,11 +184,7 @@ func runOneSuite(suite Suite, testFilter, cwd string, opts TestOptions) error {
 		}
 	}
 
-	cmd := suite.Command
-	if filterValue := pickFilterValue(suite, opts); filterValue != "" && testFilter != "" {
-		expr := strings.ReplaceAll(testFilter, "<test>", filterValue)
-		cmd = appendTestFilter(cmd, expr)
-	}
+	cmd := applyTestFilter(suite.Command, testFilter, testFilterJoin, pickFilterValue(suite, opts))
 
 	fmt.Fprintf(os.Stdout, "\n--- Running %s ---\n", suite.Name)
 	if err := runShell(cmd, suiteDir, suite.Env); err != nil {
@@ -205,14 +202,39 @@ func runOneSuite(suite Suite, testFilter, cwd string, opts TestOptions) error {
 	return nil
 }
 
-func pickFilterValue(suite Suite, opts TestOptions) string {
-	if opts.Test != "" {
+func pickFilterValue(suite Suite, opts TestOptions) []string {
+	if len(opts.Test) > 0 {
 		return opts.Test
 	}
-	if opts.Sample {
-		return suite.SampleTest
+	if opts.Sample && suite.SampleTest != "" {
+		return []string{suite.SampleTest}
 	}
-	return ""
+	return nil
+}
+
+// applyTestFilter substitutes the supplied test names into testFilter and
+// merges the result into command. join controls multi-value semantics:
+//
+//	"" / "or" — join names with "|" and substitute once. Works for runners
+//	            that already treat "|" as alternation in their filter syntax.
+//	"repeat"  — substitute the whole testFilter once per name and append each
+//	            result independently. Required when the flag itself must
+//	            repeat (e.g. gradle's `--tests T1 --tests T2`).
+//
+// Returns command unchanged when names is empty or testFilter is empty.
+func applyTestFilter(command, testFilter, join string, names []string) string {
+	if len(names) == 0 || testFilter == "" {
+		return command
+	}
+	if join == "repeat" {
+		for _, name := range names {
+			expr := strings.ReplaceAll(testFilter, "<test>", name)
+			command = appendTestFilter(command, expr)
+		}
+		return command
+	}
+	expr := strings.ReplaceAll(testFilter, "<test>", strings.Join(names, "|"))
+	return appendTestFilter(command, expr)
 }
 
 // filterInjectionRE matches "--filter '<existing-fragment>" so we can inject

@@ -38,16 +38,27 @@ type Component struct {
 // TestsConfig describes test-runner setup + suites. Loaded from tests.json.
 //
 // TestFilter is a template containing the literal "<test>" — the runner
-// substitutes the user-supplied --test value (or a suite's sampleTest field
-// when --sample is set). Two forms are supported:
+// substitutes the user-supplied --test value(s) (or a suite's sampleTest
+// field when --sample is set). Two forms are supported:
 //
 //	"--grep '<test>'"       — full flag; appended as a new argument
 //	"&Category=<test>"      — expression fragment beginning with "&"; injected
 //	                           into an existing --filter '...' argument
+//
+// TestFilterJoin controls how multiple --test values are combined:
+//
+//	"" / "or" (default) — join names with "|" and substitute once. Covers
+//	                       dotnet (`&DisplayName~T1|T2`) and playwright/jest
+//	                       (`--grep 'T1|T2'`) where the runner already treats
+//	                       "|" as alternation.
+//	"repeat"            — substitute the whole TestFilter once per name and
+//	                       concatenate. Covers gradle (`--tests T1 --tests T2`)
+//	                       where the *flag itself* must repeat.
 type TestsConfig struct {
-	SetupCommands []SetupCommand `json:"setupCommands"`
-	TestFilter    string         `json:"testFilter"`
-	Suites        []Suite        `json:"suites"`
+	SetupCommands  []SetupCommand `json:"setupCommands"`
+	TestFilter     string         `json:"testFilter"`
+	TestFilterJoin string         `json:"testFilterJoin,omitempty"`
+	Suites         []Suite        `json:"suites"`
 }
 
 // SetupCommand is one test-runner-side setup step — npm ci, dotnet build,
