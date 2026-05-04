@@ -51,14 +51,22 @@ flowchart TD
     GATE_LEGACY{Legacy Coverage section present?}
     GATE_TYPE_CYCLE{Cycle by ticket type}
     LEGACY_CYCLE[LEGACY_CYCLE — see § Legacy Coverage Cycle]
-    subgraph behavioral[Behavioral]
+    subgraph behavioral[System Behavior Change]
     AT_CYCLE[AT_CYCLE — see § AT Cycle]
     end
-    subgraph structural[Structural]
-    CHORE_CYCLE["CHORE_CYCLE — see § Structural Cycle (shared)"]
+    subgraph external_structural[External System Structure Change]
+    subgraph external_structural_interface[External System Structure Interface Change]
     EXTAPI_CYCLE[EXTAPI_CYCLE — see § External API Task Cycle]
+    end
+    end
+    subgraph structural[System Structure Change]
+    subgraph structural_implementation[System Structure Implementation Change]
+    CHORE_CYCLE["CHORE_CYCLE — see § Structural Cycle (shared)"]
+    end
+    subgraph structural_interface[System Structure Interface Change]
     SYSAPI_CYCLE["SYSAPI_CYCLE — see § Structural Cycle (shared)"]
     SYSUI_CYCLE["SYSUI_CYCLE — see § Structural Cycle (shared)"]
+    end
     end
 
     GATE_LEGACY -- Yes --> LEGACY_CYCLE

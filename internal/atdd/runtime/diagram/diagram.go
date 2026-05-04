@@ -40,12 +40,18 @@ var flowAlias = map[string]string{
 	"legacy_coverage":            "Legacy Coverage Cycle",
 }
 
-// groupAlias maps a node's `group:` annotation to a human-readable
-// subgraph title rendered around the grouped nodes. Groups not in the
-// map fall back to the raw key as the title.
+// groupAlias maps a node's `group:` annotation (a slash-delimited
+// path like "structural/interface") to a human-readable subgraph
+// title rendered around the grouped nodes. The renderer first looks
+// up the full path; if absent, it falls back to the path's last
+// segment, then to the segment verbatim.
 var groupAlias = map[string]string{
-	"behavioral": "Behavioral",
-	"structural": "Structural",
+	"behavioral":                    "System Behavior Change",
+	"structural":                    "System Structure Change",
+	"structural/interface":          "System Structure Interface Change",
+	"structural/implementation":     "System Structure Implementation Change",
+	"external_structural":           "External System Structure Change",
+	"external_structural/interface": "External System Structure Interface Change",
 }
 
 // flowOrder is the order flows are rendered in the output. Flows not
@@ -121,38 +127,28 @@ func writeFlowSection(b *strings.Builder, name string, flow *statemachine.Flow) 
 	}
 	sort.Strings(ids)
 
-	// Partition nodes into ungrouped and per-group buckets. Ungrouped
-	// nodes render at the top level; grouped nodes render inside
-	// `subgraph <KEY>[<Title>]` ... `end` blocks so Mermaid draws a
-	// labelled box around them.
+	// Partition nodes into ungrouped and a tree of nested groups
+	// keyed by slash-delimited `group:` paths (e.g. "structural" or
+	// "structural/interface"). Ungrouped nodes render at the top
+	// level; grouped nodes render inside nested `subgraph` blocks
+	// matching the path hierarchy. Mermaid supports nested subgraphs
+	// natively — the inner blocks are drawn as labelled boxes inside
+	// the outer block.
+	root := newGroupTree("")
 	var ungrouped []string
-	groupBuckets := map[string][]string{}
 	for _, id := range ids {
 		g := flow.Nodes[id].Raw.Group
 		if g == "" {
 			ungrouped = append(ungrouped, id)
-		} else {
-			groupBuckets[g] = append(groupBuckets[g], id)
+			continue
 		}
+		root.insert(strings.Split(g, "/"), id)
 	}
 	for _, id := range ungrouped {
 		writeNode(b, flow.Nodes[id])
 	}
-	groupKeys := make([]string, 0, len(groupBuckets))
-	for k := range groupBuckets {
-		groupKeys = append(groupKeys, k)
-	}
-	sort.Strings(groupKeys)
-	for _, k := range groupKeys {
-		title := groupAlias[k]
-		if title == "" {
-			title = k
-		}
-		fmt.Fprintf(b, "    subgraph %s[%s]\n", k, mermaidLabel(title))
-		for _, id := range groupBuckets[k] {
-			writeNode(b, flow.Nodes[id])
-		}
-		b.WriteString("    end\n")
+	for _, child := range root.sortedChildren() {
+		writeGroupSubgraph(b, flow, child)
 	}
 	b.WriteString("\n")
 
@@ -164,6 +160,82 @@ func writeFlowSection(b *strings.Builder, name string, flow *statemachine.Flow) 
 
 	writeRoleStyling(b, flow)
 	b.WriteString("```\n\n")
+}
+
+// groupTree is a node in the slash-delimited subgraph hierarchy. The
+// root has fullPath="" and represents the (implicit) outermost scope;
+// its direct children are top-level groups.
+type groupTree struct {
+	fullPath string                // joined path, e.g. "structural/interface"
+	name     string                // last path segment
+	nodes    []string              // flow node IDs grouped at this level
+	children map[string]*groupTree // segment → subtree
+}
+
+func newGroupTree(name string) *groupTree {
+	return &groupTree{name: name, children: map[string]*groupTree{}}
+}
+
+// insert places nodeID under the path segments. Creates intermediate
+// subtrees as needed; idempotent on the path.
+func (g *groupTree) insert(segments []string, nodeID string) {
+	cur := g
+	path := ""
+	for _, seg := range segments {
+		if path == "" {
+			path = seg
+		} else {
+			path = path + "/" + seg
+		}
+		child, ok := cur.children[seg]
+		if !ok {
+			child = newGroupTree(seg)
+			child.fullPath = path
+			cur.children[seg] = child
+		}
+		cur = child
+	}
+	cur.nodes = append(cur.nodes, nodeID)
+}
+
+// sortedChildren returns the direct children in deterministic order
+// (alphabetical by segment name) so diagram output is stable across
+// runs.
+func (g *groupTree) sortedChildren() []*groupTree {
+	keys := make([]string, 0, len(g.children))
+	for k := range g.children {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]*groupTree, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, g.children[k])
+	}
+	return out
+}
+
+// writeGroupSubgraph emits a `subgraph` block for g, then recurses
+// into nested children. The subgraph's stable Mermaid ID derives from
+// the full path with "/" replaced by "_" (Mermaid disallows "/" in
+// identifiers). Title resolution: full path → last segment → raw
+// segment.
+func writeGroupSubgraph(b *strings.Builder, flow *statemachine.Flow, g *groupTree) {
+	title := groupAlias[g.fullPath]
+	if title == "" {
+		title = groupAlias[g.name]
+	}
+	if title == "" {
+		title = g.name
+	}
+	sid := strings.ReplaceAll(g.fullPath, "/", "_")
+	fmt.Fprintf(b, "    subgraph %s[%s]\n", sid, mermaidLabel(title))
+	for _, id := range g.nodes {
+		writeNode(b, flow.Nodes[id])
+	}
+	for _, child := range g.sortedChildren() {
+		writeGroupSubgraph(b, flow, child)
+	}
+	b.WriteString("    end\n")
 }
 
 // writeNode emits one Mermaid node line. Shape depends on the YAML
