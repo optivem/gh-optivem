@@ -5,7 +5,7 @@
 //
 // Working-dir contract: each command operates against the user's current
 // working directory. JSON config paths default to ./system.json and
-// ./tests.json; both can be overridden with --system / --tests.
+// ./tests.json; both can be overridden with --system-config / --test-config.
 package main
 
 import (
@@ -66,7 +66,7 @@ func newBuildCmd() *cobra.Command {
 	return cmd
 }
 
-// newBuildSystemCmd implements `gh optivem build system [--system path] [--rebuild]`.
+// newBuildSystemCmd implements `gh optivem build system [--system-config path] [--rebuild]`.
 // Builds every entry in systems[] via `docker compose build`. With --rebuild,
 // every layer is rebuilt from scratch (internally `docker compose build
 // --no-cache`). Analog of dotnet's --no-incremental and gradle's
@@ -86,7 +86,7 @@ func newBuildSystemCmd() *cobra.Command {
 			exitOnError(runner.Build(sys, cwdForPath(systemPath), runner.BuildOptions{Rebuild: rebuild}))
 		},
 	}
-	cmd.Flags().StringVar(&systemPath, "system", defaultSystemConfig, flagSystemUsage)
+	cmd.Flags().StringVar(&systemPath, "system-config", defaultSystemConfig, flagSystemUsage)
 	cmd.Flags().BoolVar(&rebuild, "rebuild", false, "Force a full rebuild from scratch (no layer cache reuse)")
 	return cmd
 }
@@ -101,7 +101,7 @@ func newRunCmd() *cobra.Command {
 	return cmd
 }
 
-// newRunSystemCmd implements `gh optivem run system [--system path] [--restart] [--log-lines 50] [--up-timeout 5m]`.
+// newRunSystemCmd implements `gh optivem run system [--system-config path] [--restart] [--log-lines 50] [--up-timeout 5m]`.
 // Brings up every entry in systems[] and waits for health.
 func newRunSystemCmd() *cobra.Command {
 	var (
@@ -121,7 +121,7 @@ func newRunSystemCmd() *cobra.Command {
 			exitOnError(runner.Up(sys, cwdForPath(systemPath), opts))
 		},
 	}
-	cmd.Flags().StringVar(&systemPath, "system", defaultSystemConfig, flagSystemUsage)
+	cmd.Flags().StringVar(&systemPath, "system-config", defaultSystemConfig, flagSystemUsage)
 	cmd.Flags().BoolVar(&restart, "restart", false, "Force tear-down + restart even if the system is already up")
 	cmd.Flags().IntVar(&logLines, "log-lines", 50, "Lines of compose logs to dump on health-probe failure")
 	cmd.Flags().DurationVar(&upTimeout, "up-timeout", 0, "Per-attempt timeout for `docker compose up -d` (zero = 5m default)")
@@ -138,7 +138,7 @@ func newStopCmd() *cobra.Command {
 	return cmd
 }
 
-// newStopSystemCmd implements `gh optivem stop system [--system path]`.
+// newStopSystemCmd implements `gh optivem stop system [--system-config path]`.
 // Tears down every entry in systems[] and force-removes stray containers.
 func newStopSystemCmd() *cobra.Command {
 	var systemPath string
@@ -152,7 +152,7 @@ func newStopSystemCmd() *cobra.Command {
 			exitOnError(runner.Down(sys, cwdForPath(systemPath)))
 		},
 	}
-	cmd.Flags().StringVar(&systemPath, "system", defaultSystemConfig, flagSystemUsage)
+	cmd.Flags().StringVar(&systemPath, "system-config", defaultSystemConfig, flagSystemUsage)
 	return cmd
 }
 
@@ -166,7 +166,7 @@ func newCleanCmd() *cobra.Command {
 	return cmd
 }
 
-// newCleanSystemCmd implements `gh optivem clean system [--system path]`.
+// newCleanSystemCmd implements `gh optivem clean system [--system-config path]`.
 // Tears down every entry in systems[] and removes its named volumes plus
 // locally-built images (`docker compose down -v --rmi local`). Analog of
 // `dotnet clean` and `./gradlew clean` — deletes build outputs without
@@ -183,7 +183,7 @@ func newCleanSystemCmd() *cobra.Command {
 			exitOnError(runner.Clean(sys, cwdForPath(systemPath)))
 		},
 	}
-	cmd.Flags().StringVar(&systemPath, "system", defaultSystemConfig, flagSystemUsage)
+	cmd.Flags().StringVar(&systemPath, "system-config", defaultSystemConfig, flagSystemUsage)
 	return cmd
 }
 
@@ -199,7 +199,7 @@ func newTestCmd() *cobra.Command {
 
 // newTestSystemCmd implements:
 //
-//	gh optivem test system [--system path] [--tests path]
+//	gh optivem test system [--system-config path] [--test-config path]
 //	                       [--suite id] [--test name] [--sample]
 //	                       [--no-build] [--rebuild] [--no-start] [--restart]
 //	                       [--no-setup]
@@ -251,8 +251,8 @@ func newTestSystemCmd() *cobra.Command {
 			exitOnError(runner.RunTests(sys, tests, cwdForPath(systemPath), cwdForPath(testsPath), opts))
 		},
 	}
-	cmd.Flags().StringVar(&systemPath, "system", defaultSystemConfig, flagSystemUsage)
-	cmd.Flags().StringVar(&testsPath, "tests", defaultTestsConfig, flagTestsUsage)
+	cmd.Flags().StringVar(&systemPath, "system-config", defaultSystemConfig, flagSystemUsage)
+	cmd.Flags().StringVar(&testsPath, "test-config", defaultTestsConfig, flagTestsUsage)
 	cmd.Flags().StringVar(&suite, "suite", "", "Run only the suite with this id")
 	cmd.Flags().StringVar(&test, "test", "", "Narrow execution to one test name (substituted into the suite's testFilter)")
 	cmd.Flags().BoolVar(&sample, "sample", false, "Use each suite's sampleTest field as the test name")

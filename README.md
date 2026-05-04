@@ -141,7 +141,7 @@ gh optivem stop system                       # docker compose down + container c
 gh optivem clean system                      # docker compose down -v --rmi local (delete volumes + locally-built images)
 ```
 
-All runner subcommands also accept `--system <path>` (default `./system.json`) and the `test` subcommand accepts `--tests <path>` (default `./tests.json`) for projects where the config files live elsewhere.
+All runner subcommands also accept `--system-config <path>` (default `./system.json`) and the `test` subcommand accepts `--test-config <path>` (default `./tests.json`) for projects where the config files live elsewhere.
 
 `clean system` is the analog of `dotnet clean` / `./gradlew clean` — it deletes build outputs (containers, named volumes, locally-built images) without touching the dependency cache (registry-pulled images are kept). Chain it explicitly for a fresh start: `gh optivem clean system && gh optivem test system`.
 
