@@ -54,8 +54,8 @@ type Config struct {
 	Deploy     string // "docker" (default) or "cloud-run"
 	License    string
 
-	// ProjectURL is the GitHub Project URL written into optivem.yaml at the
-	// "Write optivem.yaml" step. Empty is allowed — the file is still
+	// ProjectURL is the GitHub Project URL written into gh-optivem.yaml at the
+	// "Write gh-optivem.yaml" step. Empty is allowed — the file is still
 	// generated, just with project.url absent. If left empty here, the
 	// operator must set it before running the ATDD pipeline (the runtime
 	// has no discovery fallback).
@@ -542,7 +542,7 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs.BoolVarP(&f.Quiet, "quiet", "q", false, "Suppress info-level output (warnings and errors still shown)")
 	fs.StringVar(&f.LogFile, "log-file", "", "Also write plain-text log output to this file (no ANSI colors, all levels)")
 	fs.BoolVarP(&f.AssumeYes, "yes", "y", false, "Skip all interactive confirmations (existing-repo prompt, --report-bug confirmation). Expected pattern for CI/unattended runs.")
-	fs.StringVar(&f.ProjectURL, "project-url", "", "GitHub Project URL to bake into optivem.yaml (optional; leave empty to fill in by hand later)")
+	fs.StringVar(&f.ProjectURL, "project-url", "", "GitHub Project URL to bake into gh-optivem.yaml (optional; leave empty to fill in by hand later)")
 }
 
 func resolveVerifyLevel(level string) string {

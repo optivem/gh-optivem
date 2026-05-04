@@ -1,5 +1,5 @@
 // Package projectconfig loads the consumer repo's per-project configuration
-// file at optivem.yaml (project root). The file holds project-level facts
+// file at gh-optivem.yaml (project root). The file holds project-level facts
 // — board URL, repo strategy, and the scope axes the ATDD pipeline runs
 // against — that legitimately differ between consumer repos but stay
 // stable across pipeline invocations within one repo.
@@ -33,7 +33,7 @@ import (
 // Path is the canonical relative location of the file inside a consumer
 // repo (project root). Read from the consumer's CWD — gh-optivem is
 // repo-agnostic by design.
-const Path = "optivem.yaml"
+const Path = "gh-optivem.yaml"
 
 // Repo strategy enum values, surfaced as YAML strings.
 const (
@@ -148,7 +148,7 @@ func validateLang(field, value string) error {
 	}
 }
 
-// Load reads <repoPath>/optivem.yaml and returns the parsed Config. A
+// Load reads <repoPath>/gh-optivem.yaml and returns the parsed Config. A
 // missing file returns (nil, nil) — callers treat absence as "no config,
 // fall through". I/O errors other than not-found are surfaced. YAML parse
 // errors and validation errors are surfaced.
@@ -193,7 +193,7 @@ func parse(data []byte, source string) (*Config, error) {
 	return &cfg, nil
 }
 
-// Write marshals cfg to <repoPath>/optivem.yaml (0644). Validates first so a
+// Write marshals cfg to <repoPath>/gh-optivem.yaml (0644). Validates first so a
 // caller can't accidentally persist a config that Load would reject — the
 // round-trip Write→Load must always succeed for the same value.
 func Write(repoPath string, cfg *Config) error {

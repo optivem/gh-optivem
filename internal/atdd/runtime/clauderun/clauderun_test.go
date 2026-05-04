@@ -286,7 +286,7 @@ func TestRenderPrompt_TaskAgentScopeBlock_ExplicitValues(t *testing.T) {
 }
 
 func TestRenderPrompt_TaskAgentScopeBlock_EmptyDefaultsToBroadest(t *testing.T) {
-	// When optivem.yaml omits the scope block, all three axes arrive empty.
+	// When gh-optivem.yaml omits the scope block, all three axes arrive empty.
 	// They must render as the broadest option ("both" / "all") so the agent
 	// reads a complete Scope line, not "Architecture=, System Lang=, …".
 	opts := newOpts()

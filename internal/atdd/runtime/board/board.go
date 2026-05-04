@@ -49,7 +49,7 @@ type Pick struct {
 // Options bundles the inputs for PickTopReady and MoveToInProgress.
 //
 // ProjectURL: optional. When empty, ResolveProjectURL is invoked against
-// RepoPath (which loads optivem.yaml). When set, must be a canonical
+// RepoPath (which loads gh-optivem.yaml). When set, must be a canonical
 // project URL of the form `https://github.com/orgs/<org>/projects/<n>`
 // or `https://github.com/users/<user>/projects/<n>`.
 //
@@ -76,7 +76,7 @@ type GhRunner interface {
 // `project.url` set in the loaded config (or no config was loaded at
 // all). Project URL must be configured explicitly — there is no
 // discovery fallback.
-var ErrNoProjectURL = errors.New("board: project.url is not set in optivem.yaml (the only configured source); set it or pass --config <path>")
+var ErrNoProjectURL = errors.New("board: project.url is not set in gh-optivem.yaml (the only configured source); set it or pass --config <path>")
 
 // ErrEmptyReady is returned when PickTopReady runs successfully but the
 // Ready column has no items. This is a normal "nothing to do" outcome,
@@ -93,7 +93,7 @@ var ErrStatusFieldMissing = errors.New("board: project is missing a Status field
 // Public functions
 // ---------------------------------------------------------------------------
 
-// ResolveProjectURL loads <repoPath>/optivem.yaml and returns
+// ResolveProjectURL loads <repoPath>/gh-optivem.yaml and returns
 // `project.url`. The only supported sources for project URL are this file
 // (default) and a file passed via `--config <path>` at the CLI (handled
 // upstream by the driver, which calls ResolveProjectURLFromConfig with
@@ -116,7 +116,7 @@ func ResolveProjectURL(repoPath string) (string, error) {
 // ResolveProjectURL. The caller passes a pre-loaded *Config (or nil for
 // "no config available"). Used by the driver when the operator passed
 // `--config <path>` so the alternate config takes precedence over the
-// default `optivem.yaml` lookup.
+// default `gh-optivem.yaml` lookup.
 //
 // A nil *Config or an empty `project.url` returns ErrNoProjectURL —
 // project URL must be configured explicitly.

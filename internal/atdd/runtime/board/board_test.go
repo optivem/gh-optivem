@@ -58,7 +58,7 @@ func joinArgs(args []string) string {
 // ResolveProjectURL — config-only sources
 // ---------------------------------------------------------------------------
 //
-// Project URL is sourced exclusively from optivem.yaml (default lookup)
+// Project URL is sourced exclusively from gh-optivem.yaml (default lookup)
 // or from a path passed via --config (handled by the driver, which calls
 // ResolveProjectURLFromConfig with a pre-loaded *Config). There is no
 // README scrape, no `git remote` fallback, and no `gh project list`
@@ -67,9 +67,9 @@ func joinArgs(args []string) string {
 
 func TestResolveProjectURL_FromOptivemYAML(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "optivem.yaml"),
+	if err := os.WriteFile(filepath.Join(dir, "gh-optivem.yaml"),
 		[]byte("project:\n  url: https://github.com/orgs/optivem/projects/20\n"), 0o644); err != nil {
-		t.Fatalf("write optivem.yaml: %v", err)
+		t.Fatalf("write gh-optivem.yaml: %v", err)
 	}
 
 	got, err := ResolveProjectURL(dir)
@@ -83,7 +83,7 @@ func TestResolveProjectURL_FromOptivemYAML(t *testing.T) {
 
 func TestResolveProjectURL_NoConfigFile(t *testing.T) {
 	dir := t.TempDir()
-	// No optivem.yaml — must fail with ErrNoProjectURL.
+	// No gh-optivem.yaml — must fail with ErrNoProjectURL.
 	_, err := ResolveProjectURL(dir)
 	if !errors.Is(err, ErrNoProjectURL) {
 		t.Errorf("expected ErrNoProjectURL, got %v", err)
@@ -92,9 +92,9 @@ func TestResolveProjectURL_NoConfigFile(t *testing.T) {
 
 func TestResolveProjectURL_ConfigPresentButURLEmpty(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "optivem.yaml"),
+	if err := os.WriteFile(filepath.Join(dir, "gh-optivem.yaml"),
 		[]byte("project:\n  name: Shop Project\n"), 0o644); err != nil {
-		t.Fatalf("write optivem.yaml: %v", err)
+		t.Fatalf("write gh-optivem.yaml: %v", err)
 	}
 
 	_, err := ResolveProjectURL(dir)

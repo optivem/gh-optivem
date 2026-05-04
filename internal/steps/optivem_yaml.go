@@ -6,7 +6,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
-// WriteOptivemYAML writes <repoRoot>/optivem.yaml in the scaffolded repo(s),
+// WriteOptivemYAML writes <repoRoot>/gh-optivem.yaml in the scaffolded repo(s),
 // translating already-resolved init flags into the projectconfig.Config schema.
 // The file is consumed by the ATDD pipeline at runtime (project URL, repo
 // strategy, scope axes). It is the single config the gh-optivem binary reads.
@@ -18,10 +18,10 @@ import (
 // `multirepo`); this function translates to the schema's spelling (`mono-repo`
 // / `multi-repo`) at write-time so the two surfaces can evolve independently.
 func WriteOptivemYAML(cfg *config.Config) {
-	log.Info("Writing optivem.yaml...")
+	log.Info("Writing gh-optivem.yaml...")
 
 	if cfg.DryRun {
-		log.Info("[DRY RUN] Would write optivem.yaml")
+		log.Info("[DRY RUN] Would write gh-optivem.yaml")
 		return
 	}
 
@@ -38,12 +38,12 @@ func WriteOptivemYAML(cfg *config.Config) {
 		}
 	}
 
-	log.Success("Wrote optivem.yaml")
+	log.Success("Wrote gh-optivem.yaml")
 }
 
 func writeOptivemYAMLToDir(dir string, pc *projectconfig.Config) {
 	if err := projectconfig.Write(dir, pc); err != nil {
-		log.Fatalf("Write optivem.yaml: %v", err)
+		log.Fatalf("Write gh-optivem.yaml: %v", err)
 	}
 }
 

@@ -62,7 +62,7 @@ type Options struct {
 	ProjectTitle string
 	ProjectURL   string
 
-	// Scope axes — copied from optivem.yaml's scope block via
+	// Scope axes — copied from gh-optivem.yaml's scope block via
 	// driver.seedScopeParams. Empty values render as the broadest option
 	// ("both" for Architecture, "all" for the language axes), matching the
 	// convention used in the prompt templates' Scope section.
@@ -567,7 +567,7 @@ func applyCommitGating(body string, cliCommits bool) string {
 
 // scopeOrDefault returns fallback when value is empty, else value. The
 // prompt-template Scope block uses "both" / "all" as the broadest options;
-// an unset axis in optivem.yaml is the same intent.
+// an unset axis in gh-optivem.yaml is the same intent.
 func scopeOrDefault(value, fallback string) string {
 	if value == "" {
 		return fallback

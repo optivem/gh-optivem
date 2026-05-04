@@ -73,7 +73,7 @@ type Options struct {
 	IssueNum int
 
 	// ProjectURL overrides config-based project resolution. Optional; when
-	// empty, board.ResolveProjectURL loads RepoPath/optivem.yaml (or the
+	// empty, board.ResolveProjectURL loads RepoPath/gh-optivem.yaml (or the
 	// file passed via ConfigPath, if set) and reads `project.url`.
 	ProjectURL string
 
@@ -114,7 +114,7 @@ type Options struct {
 	AgentPromptOverrides map[string]string
 
 	// ConfigPath, when non-empty, overrides the default
-	// `<repoPath>/optivem.yaml` lookup with an explicit file path. Wired
+	// `<repoPath>/gh-optivem.yaml` lookup with an explicit file path. Wired
 	// from `--config <path>`; missing-file is an error (unlike the default
 	// lookup, where absence is OK).
 	ConfigPath string
@@ -252,7 +252,7 @@ func resolveRepoPath(explicit string) (string, error) {
 // loadDriverConfig returns the parsed config for the run. When configPath
 // is non-empty (operator passed `--config`), it must exist; missing-file
 // is an error to catch typos. Empty configPath falls back to the default
-// `<repoPath>/optivem.yaml` lookup, where absence is OK (returns nil).
+// `<repoPath>/gh-optivem.yaml` lookup, where absence is OK (returns nil).
 func loadDriverConfig(configPath, repoPath string) (*projectconfig.Config, error) {
 	if configPath != "" {
 		cfg, err := projectconfig.LoadFromPath(configPath)
@@ -315,7 +315,7 @@ func configSourceLabel(explicitPath string, cfg *projectconfig.Config, repoPath 
 	if cfg != nil {
 		return filepath.Join(repoPath, projectconfig.Path)
 	}
-	return "(none — no optivem.yaml at repo root)"
+	return "(none — no gh-optivem.yaml at repo root)"
 }
 
 func orPlaceholder(s, placeholder string) string {
@@ -397,7 +397,7 @@ func (o Options) withDefaults() Options {
 // preResolveIssue populates Context with everything PICK_TOP_READY would
 // have set, reading from `gh project view` + `gh project item-list` (via
 // board.FindIssue). Called once at driver startup in implement-ticket mode.
-// cfg is the pre-loaded project config (may be nil if no optivem.yaml and
+// cfg is the pre-loaded project config (may be nil if no gh-optivem.yaml and
 // no --config); supplied by Run so the load happens once per driver
 // invocation.
 func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Context, cfg *projectconfig.Config) error {

@@ -147,7 +147,7 @@ func newAtddImplementTicketCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&issueArg, "issue", "", "GitHub issue number or URL (required; accepts e.g. 42 or https://github.com/owner/repo/issues/42)")
-	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to project.url in optivem.yaml or the file passed via --config)")
+	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to project.url in gh-optivem.yaml or the file passed via --config)")
 	cmd.Flags().BoolVar(&autonomous, "autonomous", false, "Skip human-approval STOPs and run agent dispatches headless via `claude -p`")
 	cmd.Flags().BoolVar(&manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
 	cmd.Flags().BoolVar(&cliCommits, "cli-commits", true, "After each agent dispatch, the CLI stages and commits the working-tree delta (default; pass --agent-commits to fall back to legacy)")
@@ -157,7 +157,7 @@ func newAtddImplementTicketCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&replacePairs, "replace", nil, "Per-node prompt replacement, repeatable (escape hatch — full prompt swap)")
 	cmd.Flags().StringVar(&yamlPath, "yaml", "", "Path to a process-flow YAML override (defaults to the embedded canonical document)")
 	cmd.Flags().StringSliceVar(&agentPromptPairs, "agent-prompt", nil, "Override one named agent prompt, repeatable (e.g. --agent-prompt atdd-test=./prompts/atdd-test.md)")
-	cmd.Flags().StringVar(&configPath, "config", "", "Path to a project config override (defaults to <repoPath>/optivem.yaml)")
+	cmd.Flags().StringVar(&configPath, "config", "", "Path to a project config override (defaults to <repoPath>/gh-optivem.yaml)")
 	return cmd
 }
 
@@ -202,7 +202,7 @@ func newAtddManageProjectCmd() *cobra.Command {
 			}))
 		},
 	}
-	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to project.url in optivem.yaml or the file passed via --config)")
+	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to project.url in gh-optivem.yaml or the file passed via --config)")
 	cmd.Flags().BoolVar(&autonomous, "autonomous", false, "Skip human-approval STOPs and run agent dispatches headless via `claude -p`")
 	cmd.Flags().BoolVar(&manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
 	cmd.Flags().BoolVar(&cliCommits, "cli-commits", true, "After each agent dispatch, the CLI stages and commits the working-tree delta (default; pass --agent-commits to fall back to legacy)")
@@ -212,7 +212,7 @@ func newAtddManageProjectCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&replacePairs, "replace", nil, "Per-node prompt replacement, repeatable (escape hatch — full prompt swap)")
 	cmd.Flags().StringVar(&yamlPath, "yaml", "", "Path to a process-flow YAML override (defaults to the embedded canonical document)")
 	cmd.Flags().StringSliceVar(&agentPromptPairs, "agent-prompt", nil, "Override one named agent prompt, repeatable (e.g. --agent-prompt atdd-test=./prompts/atdd-test.md)")
-	cmd.Flags().StringVar(&configPath, "config", "", "Path to a project config override (defaults to <repoPath>/optivem.yaml)")
+	cmd.Flags().StringVar(&configPath, "config", "", "Path to a project config override (defaults to <repoPath>/gh-optivem.yaml)")
 	return cmd
 }
 
@@ -367,7 +367,7 @@ func newAtddDebugPickTopReadyCmd() *cobra.Command {
 			fmt.Printf("item:     %s\n", pick.ItemID)
 		},
 	}
-	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to project.url in optivem.yaml or the file passed via --config)")
+	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to project.url in gh-optivem.yaml or the file passed via --config)")
 	return cmd
 }
 
