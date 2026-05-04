@@ -1,12 +1,14 @@
 # `gh optivem init` auto-creates the GitHub Project board
 
+> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-04T10:36:47Z`
+
 ## User-facing CLI
 
 What the operator/student types and sees after this change:
 
 - `gh optivem init` — same invocation; now also creates a Project (v2) board with the ATDD-ready status set (`Backlog / Ready / In Progress / In Acceptance / In QA / Done`), links the scaffolded repo(s) to it, and bakes the URL into `gh-optivem.yaml`. No new required flags.
 - `--project-url <url>` — **unchanged at the CLI surface**, but now also **verifies that the required ATDD statuses exist** on the supplied project. Skips create + link (the operator-supplied board wins for identity). If any required option (`Ready`, `In Progress`, `In Acceptance`, `In QA`) is missing, the step **prompts the operator for confirmation** before adding it; existing custom columns are preserved either way (nothing is renamed or removed). Aborts with a clear error if the operator declines.
-- `--yes` — **new (or reuse existing assume-yes flag if one exists)**. Skips the supplied-URL confirmation prompt for non-interactive / CI use. Without it, a non-TTY run with missing required statuses errors out instead of silently mutating the board.
+- `--yes / -y` — **reuses the existing `AssumeYes` flag** (`internal/config/config.go:559`). Now also skips the supplied-URL confirmation prompt for non-interactive / CI use. Without it, a non-TTY run with missing required statuses errors out instead of silently mutating the board.
 - `--no-project` — **new opt-out**. Skips project creation **and** status-ensure entirely. Intended for CI smoke tests of the scaffolder that shouldn't litter the org with throwaway projects, or for the case where the operator wants to manage the board out-of-band and not be prompted.
 
 Output changes:
@@ -51,10 +53,11 @@ Add a new step `EnsureProjectBoard` in `internal/steps/project.go`, slotted into
 
 **Path A — auto-create (URL not supplied):**
 
-1. Create the project: `gh project create --owner <Owner> --title <Title> --format json` → parse `{url, number, id}`.
-2. Apply the **canonical** Status option set: `Backlog, Ready, In Progress, In Acceptance, In QA, Done` (replace the GitHub default `Todo / In Progress / Done`).
-3. Link the scaffolded repo(s) to the project: `gh project link <number> --owner <owner> --repo <fullRepo>`. For multirepo, link each component repo.
-4. Write the resulting URL into `cfg.ProjectURL` so the **existing** `WriteOptivemYAML` step (which runs later at `main.go:222` and reads `cfg.ProjectURL`) bakes it into `gh-optivem.yaml`. No separate file-update step needed.
+1. List existing projects in the owner: `gh project list --owner <owner> --format json` → look for one matching `cfg.SystemName` (case-sensitive title match; mirrors `CreateRepo`'s identity check).
+2. If found: reuse its `{url, number, id}`, log `Reusing existing project board: <url>`. If not found: create via `gh project create --owner <owner> --title <cfg.SystemName> --format json` → parse `{url, number, id}`, log `Created project board: <url>`.
+3. Apply the **canonical** Status option set: `Backlog, Ready, In Progress, In Acceptance, In QA, Done` (replace the GitHub default `Todo / In Progress / Done`). Runs on both create and reuse — protects against drift between runs and matches Path B's "always ensure" behaviour.
+4. Link the scaffolded repo(s) to the project: `gh project link <number> --owner <owner> --repo <fullRepo>`. For multirepo, link each component repo. On reuse, the link may already exist — implementation should tolerate "already linked" responses gracefully.
+5. Write the resulting URL into `cfg.ProjectURL` so the **existing** `WriteOptivemYAML` step (which runs later at `main.go:222` and reads `cfg.ProjectURL`) bakes it into `gh-optivem.yaml`. No separate file-update step needed.
 
 **Path B — supplied via `--project-url`:**
 
@@ -81,14 +84,19 @@ The choice to ensure statuses additively for Path B (rather than replace the opt
 **File:** `internal/steps/project.go` (new).
 
 - `func EnsureProjectBoard(cfg *config.Config, gh *shell.GitHub)` — signature matches the other `Setup*` steps.
+- Project title = `cfg.SystemName` (e.g. "Page Turner").
 - Early return when `cfg.NoProject` is true (info log, no shell calls).
 - Branch on `cfg.ProjectURL`:
-  - **Empty:** Path A — call `createProject(...)`, then `ensureStatusOptions(canonical)`, then `linkRepos(...)`, then write `cfg.ProjectURL`.
+  - **Empty:** Path A —
+    1. `findOrCreateProject(...)` — list owner's projects via `gh project list --owner <owner> --format json`, match title case-sensitively against `cfg.SystemName`. Reuse on match (log `Reusing existing project board`); create otherwise (log `Created project board`).
+    2. `ensureStatusOptions(canonical)` — runs on both create and reuse paths.
+    3. `linkRepos(...)` — tolerate "already linked" responses gracefully on reuse.
+    4. Write the resulting URL into `cfg.ProjectURL`.
   - **Set:** Path B — resolve the supplied URL to a `{owner, number}` pair (helper `parseProjectURL`), then call `ensureStatusOptions(atddRequired)`. No create, no link.
 - Honour `cfg.DryRun` in both paths — print the planned `gh`/`gh api graphql` commands, no execution.
 - Use `shell.RunCapture` for any call whose JSON output we parse, so log noise doesn't corrupt parsing.
 - Fail-fast (`log.Fatalf`) on parse error, missing Status field, or empty URL after create.
-- Log clearly which path ran: `Created project board: <url>` for Path A, `Verified project board: <url>` (or `Added missing statuses: <list>`) for Path B.
+- Log clearly which path ran: `Created project board: <url>` / `Reusing existing project board: <url>` for Path A; `Verified project board: <url>` (or `Added missing statuses: <list>`) for Path B.
 
 **Constants:**
 
@@ -118,7 +126,7 @@ The shared helper used by both paths. Signature: `ensureStatusOptions(projectID 
 - For `cfg.RepoStrategy == "multirepo"`:
   - `multitier`: link `cfg.BackendFullRepo` and `cfg.FrontendFullRepo`.
   - `monolith`: link `cfg.SystemFullRepo`.
-- Linking allows `gh project item-list` to surface issues from the repo. Note: linking does NOT auto-add new issues to the board — it just establishes the relationship. See Open Questions below for the auto-add workflow decision.
+- Linking allows `gh project item-list` to surface issues from the repo. Note: linking does NOT auto-add new issues to the board — it just establishes the relationship. Auto-add is **out of scope** for this plan (see "Out of scope" below).
 
 ### 4. Wire the step into the pipeline
 
@@ -154,8 +162,9 @@ The shared helper used by both paths. Signature: `ensureStatusOptions(projectID 
 
 **Files:** new tests in `internal/steps/project_test.go` and additions to existing test files where helpful.
 
-- Pure-logic test: title derivation from `cfg` (whatever Open Question 1 lands on), and the JSON-parse path against captured `gh project create --format json` and `gh project field-list --format json` samples.
-- **Path A (auto-create) — happy path:** stubbed shell records the four command sequence (create, field-list, field-update, link). Assert the canonical option list (`Backlog, Ready, In Progress, In Acceptance, In QA, Done`) is passed to the `updateProjectV2Field` mutation.
+- Pure-logic test: title derivation (`cfg.SystemName` → project title), and the JSON-parse path against captured `gh project list --format json`, `gh project create --format json`, and `gh project field-list --format json` samples.
+- **Path A — first-run (create):** stubbed shell records the five command sequence (list, create, field-list, field-update, link). Assert the `gh project list` response is consulted, no match → `gh project create` fires, and the canonical option list (`Backlog, Ready, In Progress, In Acceptance, In QA, Done`) is passed to the `updateProjectV2Field` mutation.
+- **Path A — reuse (existing project):** seed `gh project list` response with an existing project whose title matches `cfg.SystemName`. Assert no `gh project create` call, but `ensureStatusOptions` and `linkRepos` still run; the link step tolerates "already linked"; log says `Reusing existing project board`.
 - **Path B (supplied URL) — additive merge:** seed the field-list response with `["Todo", "In Progress", "Done"]`. Assert the mutation is called with the union including the four ATDD-required options, that existing `Todo` is preserved, and that the diff log mentions only the additions.
 - **Path B — already complete:** seed the field-list response with all four required options (mixed casing). Assert no mutation call (case-insensitive match), and the log says "no changes needed".
 - **Path B — confirmation gate:** when missing options are detected, assert the step prompts for confirmation and respects `--yes`/non-interactive flags (see Item 9).
@@ -187,41 +196,17 @@ Flow on Path B:
    ```
 
 4. **On `y` / `yes`:** apply the additions (Item 2), log what was added, continue.
-5. **On `n` / anything else:** abort the step with a hard error explaining that ATDD will fail at runtime without these statuses, and that the operator can either re-run with `--no-project` to skip the check entirely, add the statuses themselves via the GitHub UI, or accept the prompt on the next run.
+5. **On `n` / anything else:** abort the step with a hard error. The message differentiates by which option(s) were declined:
+   - For `Ready` / `In Progress` / `In Acceptance`: "ATDD runtime will fail without this status — the pipeline reads/writes it directly (`internal/atdd/runtime/board/board.go`)."
+   - For `In QA`: "ATDD runtime does not read/write `In QA` today, but the broader board workflow expects this column for the QA hand-off lane."
 
-**Non-interactive mode:** Add `--yes` (or reuse an existing assume-yes flag if `gh-optivem` already has one — check `internal/config/config.go` flag set) to bypass the prompt for CI/scripted runs. When stdin is not a TTY and `--yes` is not passed, fail with the same hard error as a `n` response, instructing the user to add `--yes` or `--no-project`.
+   The operator can either re-run with `--no-project` to skip the check entirely, add the statuses themselves via the GitHub UI, or accept the prompt on the next run.
+
+**Non-interactive mode:** Reuse the existing `AssumeYes` flag (`--yes / -y`, defined at `internal/config/config.go:559`) to bypass the prompt for CI/scripted runs. Update the flag's help text to mention this new prompt alongside the existing existing-repo / `--report-bug` confirmations. When stdin is not a TTY and `--yes` is not passed, fail with the same hard error as a `n` response, instructing the user to add `--yes` or `--no-project`.
 
 **Dry-run interaction:** Under `--dry-run`, print the planned mutation and the prompt that *would* be shown, but do not block on input and do not apply changes.
 
 **Path A is exempt.** When the project is auto-created, the canonical option set is part of the scaffold contract — no separate confirmation needed beyond the existing `init` "Will create…" banner, which already lists the project board (Item 4) and gives the operator their global cancel point before any work begins.
-
-### 8. Auto-add workflow (depends on Open Question 3)
-
-**Files** (if pursued): `templates/shop` (or wherever the scaffold template lives) — add a `.github/workflows/auto-add-to-project.yml` using the `actions/add-to-project@v1` action, parameterised on the project URL.
-
-- Parameter for the action's `project-url` input would need to be set per-repo. Since `gh-optivem.yaml` already has the URL, the workflow could read it via a small step that parses the YAML — or the URL could be substituted into the workflow at scaffold time by `apply_template.go`'s replacement pass.
-- This is the only way to keep the board populated automatically; without it, every issue needs `gh project item-add` by hand or via another mechanism.
-
-## Open questions
-
-- **Project title.** Options:
-  - `cfg.SystemName` (e.g. "Page Turner") — simplest, matches the repo's display name.
-  - `cfg.SystemName + " ATDD"` — matches the `clauderun_test.go:189` convention ("Shop ATDD"), signals the board's purpose, but couples the title to a single workflow.
-  - Configurable via `--project-title <title>` flag. Most flexible, more surface area.
-  - **Lean:** `cfg.SystemName`. Students get a board named after their system; the ATDD lineage is implicit. Easy to rename in the UI later.
-- **Auto-add workflow (Item 8).** Without it, linked repos still require manual `gh project item-add` per issue. Three paths:
-  - Drop a `auto-add-to-project.yml` into the scaffold during `init` (Item 8 above). Pros: one-and-done; matches the "scaffolder produces a working pipeline" promise. Cons: extra workflow file in every scaffolded repo.
-  - Document the manual step in the README and stop. Pros: no extra workflow. Cons: every new issue is a friction point — ATDD board-mode picks from `Ready`, so an empty board means the cycle has nothing to do.
-  - Use the project's built-in workflow rules (configurable via the GitHub UI on the project itself) and have `init` set those up via GraphQL. Pros: no per-repo workflow file. Cons: the GraphQL surface for project workflow rules is more involved than the action-based path; needs verification.
-  - **Lean:** include the auto-add workflow file (path 1). The scaffolder's promise is "running this gives you a working pipeline"; an empty board violates that.
-- **Status options — required set.** The pipeline-critical minimum is now `Ready / In Progress / In Acceptance / In QA`. Path A (auto-create) applies the canonical superset `Backlog / Ready / In Progress / In Acceptance / In QA / Done`; Path B (supplied URL) ensures only the four required (additive). Question: are there other statuses that should be required?
-  - **Lean:** stop at the four. `Backlog` and `Done` are nice-to-have for legibility on a fresh board but not load-bearing — including them in the auto-create canonical list is enough.
-- **`In QA` semantics.** The pipeline today reads/writes `Ready`, `In progress`, `In acceptance` in the source (sentence case literals — case-insensitive comparison via `equalStatus`). `In QA` is required by the broader board workflow but not yet referenced from the ATDD runtime code. Confirm: is `In QA` a column students/QA move cards into manually, or does some automation we haven't found also write to it? If the latter, the implementing PR should grep the runtime for it before we lock in the option set.
-- **Idempotency on re-run.** What happens if the user re-runs `init` against an existing repo (`CreateRepo` already handles "exists" gracefully — `internal/shell/github.go:323`)? Two paths:
-  - Mirror `CreateRepo`: list existing projects (`gh project list --owner <owner> --format json`), skip creation if a project with the same title exists, log a warning, and reuse the existing URL.
-  - Always create a new project (each `init` run produces a fresh board). Simpler but pollutes the org with duplicates if the user is iterating.
-  - **Lean:** mirror `CreateRepo` — list-first, reuse on title match. Aligns with the rest of `init`'s "rerunnable scaffold" contract.
-- **`field-edit` vs `gh api graphql` for Status options.** The CLI flag may or may not work against built-in Status fields depending on gh version, and it overwrites the option set wholesale (which would clobber operator columns on Path B). Plan currently commits to GraphQL `updateProjectV2Field` for both paths because it lets us pass the explicit union and is version-stable. Verify the GraphQL surface still accepts adding options to a project's built-in Status field at the gh version pinned in CI.
 
 ## Out of scope
 
@@ -231,16 +216,16 @@ Flow on Path B:
 - **Migrating existing scaffolded repos to a new auto-created project.** The `--project-url` opt-out covers the "I already have a board" case.
 - **Deleting the project on init failure.** `cfg.KeepLocal = true` on error (`main.go:179`) — we keep the local scaffold for inspection; same logic should keep the remote project so the user can inspect it. Cleanup is the user's call.
 - **A `gh optivem project` subcommand for board management.** The board CRUD that ATDD does internally is enough; a dedicated CLI surface is a separate plan if it ever becomes useful.
+- **Auto-add workflow for new issues.** Linking a repo to a project (Item 3) does not auto-add new issues to the board. Adding `actions/add-to-project@v1` (or equivalent) to the scaffold is deferred — students/instructors handle ticket-to-board mechanics out-of-band (manually, via existing org-wide rules, or in a future plan).
 
 ## Order of operations
 
-1. Resolve the Open Questions above (especially: confirm `In QA` is the right addition, and whether the existing flag set already has an assume-yes flag we should reuse for Item 9).
-2. Verify the GraphQL `updateProjectV2Field` mutation works for adding options to the built-in Status field at the gh version pinned in CI.
-3. Land Items 1, 2, 3, 4 together — the step + its pipeline wiring is one coherent change.
-4. Land Item 9 (Path B confirmation gate) in the same PR — it's part of the supplied-URL contract and shouldn't ship without it.
-5. Land Item 5 (summary / registration print) in the same PR (small, related).
-6. Land Item 6 (`--no-project` flag) in the same PR (one-line addition to the flag set + one-line check in the step).
-7. Land Item 7 (tests) in the same PR.
-8. Land Item 8 (auto-add workflow) — only if Open Question 2 lands on path 1; otherwise drop this item.
-9. **Manual rehearsal — Path A:** run `init` end-to-end against a throwaway test repo, verify the project is created with `Backlog / Ready / In Progress / In Acceptance / In QA / Done`, verify the repo is linked, verify `implement-ticket` resolves the URL from `gh-optivem.yaml` and the ATDD cycle picks/moves cards correctly.
-10. **Manual rehearsal — Path B:** run `init --project-url <url>` against a project that's missing `In Acceptance` and `In QA`. Verify the prompt fires, lists exactly those two options, and that confirming adds them while declining aborts the step. Re-run with the same URL and verify the second run says "all required statuses present" and does not prompt again.
+1. **Verify GraphQL `updateProjectV2Field` mutation** works for adding options to the built-in Status field at the `gh` version pinned in CI. Run against a throwaway project. If it fails, fall back to `gh project field-edit` with full-replace logic and revisit Item 2.
+2. Land Items 1, 2, 3, 4 together — the step + its pipeline wiring is one coherent change.
+3. Land Item 9 (Path B confirmation gate) in the same PR — it's part of the supplied-URL contract and shouldn't ship without it.
+4. Land Item 5 (summary / registration print) in the same PR (small, related).
+5. Land Item 6 (`--no-project` flag) in the same PR (one-line addition to the flag set + one-line check in the step).
+6. Land Item 7 (tests) in the same PR.
+7. **Manual rehearsal — Path A (first run):** run `init` end-to-end against a throwaway test repo, verify the project is created with `Backlog / Ready / In Progress / In Acceptance / In QA / Done`, verify the repo is linked, verify `implement-ticket` resolves the URL from `gh-optivem.yaml` and the ATDD cycle picks/moves cards correctly.
+8. **Manual rehearsal — Path A (reuse):** re-run `init` with the same `cfg.SystemName` against the same owner. Verify the existing project is reused (log says `Reusing existing project board`), `ensureStatusOptions` re-runs cleanly (no-op when columns already match), `linkRepos` tolerates the already-linked repo, and the URL in `gh-optivem.yaml` matches the prior run.
+9. **Manual rehearsal — Path B:** run `init --project-url <url>` against a project that's missing `In Acceptance` and `In QA`. Verify the prompt fires, lists exactly those two options with the differentiated `In QA` workflow-column note, that confirming adds them while declining aborts the step with the differentiated error message. Re-run with the same URL and verify the second run says "all required statuses present" and does not prompt again.
