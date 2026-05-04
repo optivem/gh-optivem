@@ -147,7 +147,7 @@ func newAtddImplementTicketCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&issueArg, "issue", "", "GitHub issue number or URL (required; accepts e.g. 42 or https://github.com/owner/repo/issues/42)")
-	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to README.md or git-remote lookup)")
+	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to project.url in optivem.yaml or the file passed via --config)")
 	cmd.Flags().BoolVar(&autonomous, "autonomous", false, "Skip human-approval STOPs and run agent dispatches headless via `claude -p`")
 	cmd.Flags().BoolVar(&manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
 	cmd.Flags().BoolVar(&cliCommits, "cli-commits", true, "After each agent dispatch, the CLI stages and commits the working-tree delta (default; pass --agent-commits to fall back to legacy)")
@@ -202,7 +202,7 @@ func newAtddManageProjectCmd() *cobra.Command {
 			}))
 		},
 	}
-	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to README.md or git-remote lookup)")
+	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to project.url in optivem.yaml or the file passed via --config)")
 	cmd.Flags().BoolVar(&autonomous, "autonomous", false, "Skip human-approval STOPs and run agent dispatches headless via `claude -p`")
 	cmd.Flags().BoolVar(&manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
 	cmd.Flags().BoolVar(&cliCommits, "cli-commits", true, "After each agent dispatch, the CLI stages and commits the working-tree delta (default; pass --agent-commits to fall back to legacy)")
@@ -367,7 +367,7 @@ func newAtddDebugPickTopReadyCmd() *cobra.Command {
 			fmt.Printf("item:     %s\n", pick.ItemID)
 		},
 	}
-	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to README.md or git-remote lookup)")
+	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to project.url in optivem.yaml or the file passed via --config)")
 	return cmd
 }
 

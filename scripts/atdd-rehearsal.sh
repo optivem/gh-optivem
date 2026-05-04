@@ -100,6 +100,20 @@ cleanup() {
   return $rc
 }
 
+# Rehearsal-only configuration. The binary prints the consumer-facing
+# bits (project URL, scope, etc.) once it's invoked; here we surface only
+# the values the script itself materialises (worktree + branch) plus the
+# fact that we're exercising a freshly-built binary out of GH_OPTIVEM_ROOT
+# rather than whatever `gh optivem` is installed on PATH.
+log "${C_BOLD}Rehearsal:${C_RESET}"
+log "  worktree:    $WORKTREE_PATH"
+log "  branch:      $BRANCH"
+if [[ -n "$LABEL" ]]; then
+  log "  label:       $LABEL"
+fi
+log "  built from:  $GH_OPTIVEM_ROOT"
+log "  binary:      $BIN"
+
 log "Building gh-optivem..."
 if ! ( cd "$GH_OPTIVEM_ROOT" && go build -o gh-optivem.exe . ); then
   log "go build failed — aborting before worktree."

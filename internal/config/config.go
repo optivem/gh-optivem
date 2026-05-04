@@ -56,8 +56,9 @@ type Config struct {
 
 	// ProjectURL is the GitHub Project URL written into optivem.yaml at the
 	// "Write optivem.yaml" step. Empty is allowed — the file is still
-	// generated, just with project.url absent (the runtime falls back to
-	// README scraping / git-remote lookup).
+	// generated, just with project.url absent. If left empty here, the
+	// operator must set it before running the ATDD pipeline (the runtime
+	// has no discovery fallback).
 	ProjectURL string
 	DryRun       bool
 	VerifyLevel    string // "none", "local", "commit", "acceptance", "qa", "release"

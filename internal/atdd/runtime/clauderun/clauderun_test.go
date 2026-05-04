@@ -66,6 +66,17 @@ type fakeGit struct {
 	abbrevCount int
 	statusCount int
 
+	// hooksDir is what fakeGit returns for `rev-parse --git-path hooks`
+	// — the call installPreCommitHook makes when CLICommits is on. Tests
+	// that exercise the install set this to a writable temp dir; tests
+	// in legacy mode never trigger the call so leaving it empty is fine.
+	hooksDir string
+
+	// gitDir is what fakeGit returns for `rev-parse --absolute-git-dir`
+	// — installPreCommitHook drops the per-worktree dispatch marker
+	// here. Tests set it to a writable temp dir.
+	gitDir string
+
 	// commitEnv captures os.Getenv("CLAUDERUN_CLI_COMMIT") at the moment
 	// args[0] == "commit" — lets the hook-env test assert the var is set
 	// during the commit call without leaking process state.
@@ -80,6 +91,12 @@ func (f *fakeGit) Run(_ context.Context, _ string, args ...string) ([]byte, erro
 	}
 	if f.err != nil {
 		return nil, f.err
+	}
+	if len(args) >= 3 && args[0] == "rev-parse" && args[1] == "--git-path" && args[2] == "hooks" {
+		return []byte(f.hooksDir + "\n"), nil
+	}
+	if len(args) >= 2 && args[0] == "rev-parse" && args[1] == "--absolute-git-dir" {
+		return []byte(f.gitDir + "\n"), nil
 	}
 	if len(args) >= 3 && args[0] == "rev-parse" && args[1] == "--abbrev-ref" {
 		f.abbrevCount++
@@ -795,6 +812,8 @@ func TestDispatch_CLICommits_StagesAndCommitsModifiedFile(t *testing.T) {
 		},
 		statusPre:  []byte(""),
 		statusPost: []byte(" M foo.go\n"),
+		hooksDir:   t.TempDir(),
+		gitDir:     t.TempDir(),
 	}
 	opts := newOpts()
 	opts.CLICommits = true
@@ -825,6 +844,8 @@ func TestDispatch_CLICommits_StagesUntrackedFile(t *testing.T) {
 		},
 		statusPre:  []byte(""),
 		statusPost: []byte("?? new.txt\n"),
+		hooksDir:   t.TempDir(),
+		gitDir:     t.TempDir(),
 	}
 	opts := newOpts()
 	opts.CLICommits = true
@@ -845,6 +866,8 @@ func TestDispatch_CLICommits_StagesDeletedFile(t *testing.T) {
 		},
 		statusPre:  []byte(""),
 		statusPost: []byte(" D gone.go\n"),
+		hooksDir:   t.TempDir(),
+		gitDir:     t.TempDir(),
 	}
 	opts := newOpts()
 	opts.CLICommits = true
@@ -868,6 +891,8 @@ func TestDispatch_CLICommits_SkipsPreExistingDirty(t *testing.T) {
 		},
 		statusPre:  []byte(" M dirty.go\n"),
 		statusPost: []byte(" M dirty.go\n?? new.txt\n"),
+		hooksDir:   t.TempDir(),
+		gitDir:     t.TempDir(),
 	}
 	opts := newOpts()
 	opts.CLICommits = true
@@ -899,6 +924,8 @@ func TestDispatch_CLICommits_NoChangesIsNoOp(t *testing.T) {
 		},
 		statusPre:  []byte(""),
 		statusPost: []byte(""),
+		hooksDir:   t.TempDir(),
+		gitDir:     t.TempDir(),
 	}
 	opts := newOpts()
 	opts.CLICommits = true
@@ -930,6 +957,8 @@ func TestDispatch_CLICommits_HonorsAgentCommitWhenHeadMovesAndDeltaIsEmpty(t *te
 		},
 		statusPre:  []byte(""),
 		statusPost: []byte(""),
+		hooksDir:   t.TempDir(),
+		gitDir:     t.TempDir(),
 	}
 	opts := newOpts()
 	opts.CLICommits = true
@@ -952,7 +981,9 @@ func TestDispatch_CLICommits_HonorsAgentCommitWhenHeadMovesAndDeltaIsEmpty(t *te
 func TestDispatch_CLICommits_NoOpBannerSaysNoChanges(t *testing.T) {
 	var buf bytes.Buffer
 	gitFake := &fakeGit{
-		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+		out:      [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+		hooksDir: t.TempDir(),
+		gitDir:   t.TempDir(),
 	}
 	opts := newOpts()
 	opts.CLICommits = true
@@ -976,6 +1007,8 @@ func TestDispatch_CLICommits_BranchSwitchStillHalts(t *testing.T) {
 		out:        [][]byte{[]byte("aaaa\n"), []byte("bbbb\n")},
 		branchPre:  "main",
 		branchPost: "feature/foo",
+		hooksDir:   t.TempDir(),
+		gitDir:     t.TempDir(),
 	}
 	opts := newOpts()
 	opts.CLICommits = true
@@ -1075,21 +1108,23 @@ func TestCappedBuffer_TruncatesPastCap(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDispatch_CLICommits_InstallsPreCommitHook(t *testing.T) {
-	dir := t.TempDir()
+	hooksDir := t.TempDir()
+	gitDir := t.TempDir()
 	gitFake := &fakeGit{
 		out: [][]byte{
 			[]byte("aaaa\n"), []byte("aaaa\n"),
 		},
+		hooksDir: hooksDir,
+		gitDir:   gitDir,
 	}
 	opts := newOpts()
 	opts.CLICommits = true
-	opts.RepoPath = dir
 
 	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 
-	hookPath := filepath.Join(dir, ".git", "hooks", "pre-commit")
+	hookPath := filepath.Join(hooksDir, "pre-commit")
 	body, err := os.ReadFile(hookPath)
 	if err != nil {
 		t.Fatalf("read installed hook: %v", err)
@@ -1097,26 +1132,36 @@ func TestDispatch_CLICommits_InstallsPreCommitHook(t *testing.T) {
 	if string(body) != preCommitHookBody {
 		t.Errorf("hook body mismatch:\n  got:\n%s\n  want:\n%s", body, preCommitHookBody)
 	}
+	markerPath := filepath.Join(gitDir, clauderunMarkerName)
+	if _, err := os.Stat(markerPath); err != nil {
+		t.Errorf("dispatch marker missing at %s: %v", markerPath, err)
+	}
 }
 
 func TestDispatch_LegacyMode_DoesNotInstallHook(t *testing.T) {
 	// CLICommits=false — the hook must not be written, so legacy
 	// rehearsals where the agent commits keep working.
-	dir := t.TempDir()
+	hooksDir := t.TempDir()
 	gitFake := &fakeGit{
 		out: [][]byte{
 			[]byte("aaaa\n"), []byte("bbbb\n"), []byte("subject\n"),
 		},
+		hooksDir: hooksDir,
+		gitDir:   t.TempDir(),
 	}
 	opts := newOpts()
-	opts.RepoPath = dir
 
 	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 
-	if _, err := os.Stat(filepath.Join(dir, ".git", "hooks", "pre-commit")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(hooksDir, "pre-commit")); !os.IsNotExist(err) {
 		t.Errorf("expected no pre-commit hook in legacy mode; got err=%v", err)
+	}
+	for _, args := range gitFake.args {
+		if len(args) >= 3 && args[0] == "rev-parse" && args[1] == "--git-path" {
+			t.Errorf("install resolver must not run in legacy mode, got args: %v", args)
+		}
 	}
 }
 
@@ -1124,21 +1169,18 @@ func TestDispatch_HookConflict_RefusesToOverwrite(t *testing.T) {
 	// Pre-existing pre-commit hook with different content — Dispatch
 	// must surface a clear error rather than silently clobber the
 	// operator's hook.
-	dir := t.TempDir()
-	hookDir := filepath.Join(dir, ".git", "hooks")
-	if err := os.MkdirAll(hookDir, 0o755); err != nil {
-		t.Fatalf("setup hooks dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(hookDir, "pre-commit"), []byte("#!/bin/sh\necho operator hook\n"), 0o755); err != nil {
+	hooksDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(hooksDir, "pre-commit"), []byte("#!/bin/sh\necho operator hook\n"), 0o755); err != nil {
 		t.Fatalf("seed conflicting hook: %v", err)
 	}
 
 	gitFake := &fakeGit{
-		out: [][]byte{[]byte("aaaa\n")},
+		out:      [][]byte{[]byte("aaaa\n")},
+		hooksDir: hooksDir,
+		gitDir:   t.TempDir(),
 	}
 	opts := newOpts()
 	opts.CLICommits = true
-	opts.RepoPath = dir
 
 	_, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
 	if err == nil {
@@ -1147,10 +1189,6 @@ func TestDispatch_HookConflict_RefusesToOverwrite(t *testing.T) {
 	if !strings.Contains(err.Error(), "refusing to overwrite") {
 		t.Errorf("error wording: got %q", err.Error())
 	}
-	// Subprocess must not have run — the hook conflict is a pre-flight
-	// gate, same shape as snapshot failures.
-	// (We use the canned-out FIFO for the pre-snapshot HEAD only; the
-	// `args` slice would show subsequent calls if any happened.)
 }
 
 func TestCommitChanges_SetsEnvVarForCommit(t *testing.T) {

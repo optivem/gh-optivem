@@ -4,9 +4,9 @@
 // against — that legitimately differ between consumer repos but stay
 // stable across pipeline invocations within one repo.
 //
-// The file is optional; absence is not an error. Callers either consult it
-// before falling back to README scraping / git-remote-based discovery
-// (board.ResolveProjectURL) or thread its contents into agent prompt
+// The file is optional; absence is not an error. Callers either consult
+// it as the sole source of project URL (board.ResolveProjectURL — there
+// is no discovery fallback) or thread its contents into agent prompt
 // context (driver.Run via Context.Params).
 //
 // The package sits at internal/projectconfig (not internal/config) because
@@ -63,9 +63,10 @@ type Config struct {
 
 // Project holds project-board configuration and repo-layout facts.
 //
-// URL is the canonical GitHub Project URL (org or user variant). When set,
-// board.ResolveProjectURL returns it directly without scanning README or
-// listing org projects.
+// URL is the canonical GitHub Project URL (org or user variant). When
+// unset, board.ResolveProjectURL fails — there is no README scrape or
+// `gh project list` fallback. Operators must configure project.url
+// explicitly (or pass the alternate file via --config).
 //
 // Name is the human-readable project title (e.g. "Shop Project"). When set,
 // the driver displays it in the "Resolved issue" line without making an

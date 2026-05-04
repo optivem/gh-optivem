@@ -132,7 +132,6 @@ func (a actions) pickTopReady(ctx *statemachine.Context) statemachine.Outcome {
 		ProjectURL: a.deps.ProjectURL,
 		RepoPath:   a.deps.RepoPath,
 		GhRunner:   ghAdapter{a.deps.Gh},
-		GitRunner:  gitAdapter{a.deps.Git},
 	})
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("pick_top_ready: %w", err)}
@@ -168,7 +167,6 @@ func (a actions) moveToInProgress(ctx *statemachine.Context) statemachine.Outcom
 		ProjectURL: a.deps.ProjectURL,
 		RepoPath:   a.deps.RepoPath,
 		GhRunner:   ghAdapter{a.deps.Gh},
-		GitRunner:  gitAdapter{a.deps.Git},
 	})
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("move_to_in_progress: %w", err)}
@@ -819,20 +817,14 @@ func splitJSONArray(arr []byte) [][]byte {
 // Adapter shims (different runner interfaces across packages must not leak)
 // ---------------------------------------------------------------------------
 
-// ghAdapter / gitAdapter / ghClassifyAdapter / gitReleaseAdapter exist
-// because each underlying package (board, classify, release) defines its
-// own GhRunner / GitRunner interface — Go's structural typing means we
-// can wrap once instead of teaching every package to depend on a shared
-// runner type. The wrappers are zero-cost.
+// ghAdapter / ghClassifyAdapter / gitReleaseAdapter exist because each
+// underlying package (board, classify, release) defines its own GhRunner
+// / GitRunner interface — Go's structural typing means we can wrap once
+// instead of teaching every package to depend on a shared runner type.
+// The wrappers are zero-cost.
 type ghAdapter struct{ inner GhRunner }
 
 func (g ghAdapter) Run(ctx context.Context, args ...string) ([]byte, error) {
-	return g.inner.Run(ctx, args...)
-}
-
-type gitAdapter struct{ inner GitRunner }
-
-func (g gitAdapter) Run(ctx context.Context, args ...string) ([]byte, error) {
 	return g.inner.Run(ctx, args...)
 }
 

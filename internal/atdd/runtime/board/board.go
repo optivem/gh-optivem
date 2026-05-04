@@ -9,9 +9,9 @@
 // "board mode vs specific issue" (that is a higher-level concern) and it
 // does not classify tickets (that is `atdd-dispatcher`'s job).
 //
-// All GitHub state mutations go through `gh` (project commands and
-// optionally `git remote get-url origin`). The runners are interface-typed
-// so tests can substitute fakes; nil falls back to real `os/exec`.
+// All GitHub state mutations go through `gh project` commands. The
+// GhRunner interface lets tests substitute a fake; nil falls back to
+// real `os/exec`.
 package board
 
 import (
@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -50,19 +49,18 @@ type Pick struct {
 // Options bundles the inputs for PickTopReady and MoveToInProgress.
 //
 // ProjectURL: optional. When empty, ResolveProjectURL is invoked against
-// RepoPath. When set, must be a canonical project URL of the form
-// `https://github.com/orgs/<org>/projects/<n>` or
-// `https://github.com/users/<user>/projects/<n>`.
+// RepoPath (which loads optivem.yaml). When set, must be a canonical
+// project URL of the form `https://github.com/orgs/<org>/projects/<n>`
+// or `https://github.com/users/<user>/projects/<n>`.
 //
 // RepoPath: optional. Defaults to the current working directory.
 //
-// GhRunner / GitRunner: optional. nil means "shell out for real". Tests
-// inject fakes to avoid network and to assert argv.
+// GhRunner: optional. nil means "shell out for real". Tests inject fakes
+// to avoid network and to assert argv.
 type Options struct {
 	ProjectURL string
 	RepoPath   string
 	GhRunner   GhRunner
-	GitRunner  GitRunner
 }
 
 // GhRunner runs the `gh` CLI. The default implementation is execGh.
@@ -70,20 +68,15 @@ type GhRunner interface {
 	Run(ctx context.Context, args ...string) ([]byte, error)
 }
 
-// GitRunner runs the `git` CLI. The default implementation is execGit.
-type GitRunner interface {
-	Run(ctx context.Context, args ...string) ([]byte, error)
-}
-
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
 
-// ErrNoProjectLink is returned when ResolveProjectURL cannot find a
-// project link in README.md and the git-remote fallback fails to identify
-// an unambiguous project. Callers (e.g. the future Cobra command) typically
-// translate this into a "stop and ask the user" prompt.
-var ErrNoProjectLink = errors.New("board: no GitHub Project link found in README.md or via git remote")
+// ErrNoProjectURL is returned when project URL resolution finds no
+// `project.url` set in the loaded config (or no config was loaded at
+// all). Project URL must be configured explicitly — there is no
+// discovery fallback.
+var ErrNoProjectURL = errors.New("board: project.url is not set in optivem.yaml (the only configured source); set it or pass --config <path>")
 
 // ErrEmptyReady is returned when PickTopReady runs successfully but the
 // Ready column has no items. This is a normal "nothing to do" outcome,
@@ -100,22 +93,15 @@ var ErrStatusFieldMissing = errors.New("board: project is missing a Status field
 // Public functions
 // ---------------------------------------------------------------------------
 
-// ResolveProjectURL implements the config-then-README-then-git-remote
-// fallback chain:
-//
-//  1. Read <repoPath>/optivem.yaml; if `project.url` is set, return it.
-//  2. Read <repoPath>/README.md and look for the canonical pattern
-//     `https://github.com/orgs/<org>/projects/<n>` or the user variant
-//     `https://github.com/users/<user>/projects/<n>`.
-//  3. On miss, shell out to `git -C <repoPath> remote get-url origin`,
-//     extract the org, list projects for that org, and return the URL if
-//     exactly one matches the repo name in title (case-insensitive
-//     substring) — otherwise ErrNoProjectLink.
-//
-// The fallback is intentionally conservative: when there is more than one
-// candidate project, the agent body says "stop and ask the user", and we
-// surface that as ErrNoProjectLink so the caller can do the asking.
-func ResolveProjectURL(repoPath string, git GitRunner) (string, error) {
+// ResolveProjectURL loads <repoPath>/optivem.yaml and returns
+// `project.url`. The only supported sources for project URL are this file
+// (default) and a file passed via `--config <path>` at the CLI (handled
+// upstream by the driver, which calls ResolveProjectURLFromConfig with
+// the pre-loaded *Config). There is intentionally no README scrape, no
+// `git remote` fallback, and no `gh project list` discovery — earlier
+// fallbacks created surprising "the wrong project moved" failures when
+// repo names overlapped or README links rotted.
+func ResolveProjectURL(repoPath string) (string, error) {
 	if repoPath == "" {
 		return "", fmt.Errorf("board: repoPath is required")
 	}
@@ -123,79 +109,22 @@ func ResolveProjectURL(repoPath string, git GitRunner) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("board: load config: %w", err)
 	}
-	return ResolveProjectURLFromConfig(cfg, repoPath, git)
+	return ResolveProjectURLFromConfig(cfg)
 }
 
 // ResolveProjectURLFromConfig is the explicit-config variant of
-// ResolveProjectURL. The caller passes a pre-loaded *Config (or nil to
-// skip the config branch entirely). Used by the driver when the operator
-// passed `--config <path>` so the alternate config takes precedence over
-// the default `optivem.yaml` lookup.
+// ResolveProjectURL. The caller passes a pre-loaded *Config (or nil for
+// "no config available"). Used by the driver when the operator passed
+// `--config <path>` so the alternate config takes precedence over the
+// default `optivem.yaml` lookup.
 //
-// README + git-remote fallback semantics are otherwise identical to
-// ResolveProjectURL.
-func ResolveProjectURLFromConfig(cfg *projectconfig.Config, repoPath string, git GitRunner) (string, error) {
-	if repoPath == "" {
-		return "", fmt.Errorf("board: repoPath is required")
+// A nil *Config or an empty `project.url` returns ErrNoProjectURL —
+// project URL must be configured explicitly.
+func ResolveProjectURLFromConfig(cfg *projectconfig.Config) (string, error) {
+	if cfg == nil || cfg.Project.URL == "" {
+		return "", ErrNoProjectURL
 	}
-
-	if cfg != nil && cfg.Project.URL != "" {
-		return cfg.Project.URL, nil
-	}
-
-	if url, ok := readProjectURLFromReadme(repoPath); ok {
-		return url, nil
-	}
-
-	// README miss — fall back to git remote + project listing.
-	if git == nil {
-		git = execGit{}
-	}
-	ctx := context.Background()
-	out, err := git.Run(ctx, "-C", repoPath, "remote", "get-url", "origin")
-	if err != nil {
-		return "", fmt.Errorf("board: read git remote origin: %w", err)
-	}
-	owner, repoName, ok := parseRepoFromRemote(strings.TrimSpace(string(out)))
-	if !ok {
-		return "", fmt.Errorf("%w: could not parse owner/repo from git remote %q", ErrNoProjectLink, strings.TrimSpace(string(out)))
-	}
-
-	gh := execGh{}
-	listOut, err := gh.Run(ctx, "project", "list", "--owner", owner, "--format", "json")
-	if err != nil {
-		return "", fmt.Errorf("board: gh project list: %w", err)
-	}
-
-	var listResp struct {
-		Projects []struct {
-			Closed bool   `json:"closed"`
-			Title  string `json:"title"`
-			URL    string `json:"url"`
-		} `json:"projects"`
-	}
-	if err := json.Unmarshal(listOut, &listResp); err != nil {
-		return "", fmt.Errorf("board: parse gh project list output: %w", err)
-	}
-
-	var matches []string
-	needle := strings.ToLower(repoName)
-	for _, p := range listResp.Projects {
-		if p.Closed {
-			continue
-		}
-		if strings.Contains(strings.ToLower(p.Title), needle) {
-			matches = append(matches, p.URL)
-		}
-	}
-	switch len(matches) {
-	case 0:
-		return "", fmt.Errorf("%w: no project for %s/%s", ErrNoProjectLink, owner, repoName)
-	case 1:
-		return matches[0], nil
-	default:
-		return "", fmt.Errorf("%w: ambiguous — %d projects match repo %q (%s)", ErrNoProjectLink, len(matches), repoName, strings.Join(matches, ", "))
-	}
+	return cfg.Project.URL, nil
 }
 
 // PickTopReady reads the project and returns the topmost item with
@@ -414,21 +343,6 @@ func MoveToInProgress(ctx context.Context, projectID, itemID string, opts Option
 // Capture 1: "orgs"|"users"; capture 2: owner login; capture 3: project number.
 var projectURLPattern = regexp.MustCompile(`https://github\.com/(orgs|users)/([A-Za-z0-9][A-Za-z0-9-]*)/projects/(\d+)`)
 
-// readProjectURLFromReadme scans <repoPath>/README.md for the first
-// occurrence of the canonical project URL pattern and returns it. Any I/O
-// error (missing README, permission denied, etc.) is reported as a miss —
-// the fallback chain handles the actual error reporting.
-func readProjectURLFromReadme(repoPath string) (string, bool) {
-	data, err := os.ReadFile(filepath.Join(repoPath, "README.md"))
-	if err != nil {
-		return "", false
-	}
-	if m := projectURLPattern.FindString(string(data)); m != "" {
-		return m, true
-	}
-	return "", false
-}
-
 // parseProjectURL splits a canonical project URL into owner login + number.
 // Both org and user variants resolve identically — `gh project` accepts
 // either as `--owner`.
@@ -442,19 +356,6 @@ func parseProjectURL(url string) (owner string, number int, err error) {
 		return "", 0, fmt.Errorf("board: invalid project number in %q: %w", url, convErr)
 	}
 	return m[2], n, nil
-}
-
-// remoteOriginPattern matches the two canonical git remote forms for
-// GitHub: `https://github.com/<owner>/<repo>(.git)?` and
-// `git@github.com:<owner>/<repo>(.git)?`.
-var remoteOriginPattern = regexp.MustCompile(`(?:https://github\.com/|git@github\.com:)([A-Za-z0-9][A-Za-z0-9-]*)/([A-Za-z0-9._-]+?)(?:\.git)?$`)
-
-func parseRepoFromRemote(remote string) (owner, repo string, ok bool) {
-	m := remoteOriginPattern.FindStringSubmatch(remote)
-	if m == nil {
-		return "", "", false
-	}
-	return m[1], m[2], true
 }
 
 // resolveProjectURL prefers an explicit ProjectURL, then falls back to
@@ -471,7 +372,7 @@ func resolveProjectURL(opts Options) (string, error) {
 		}
 		repoPath = cwd
 	}
-	return ResolveProjectURL(repoPath, opts.GitRunner)
+	return ResolveProjectURL(repoPath)
 }
 
 // equalStatus compares status strings case-insensitively. GitHub Projects
@@ -539,17 +440,3 @@ func (execGh) Run(ctx context.Context, args ...string) ([]byte, error) {
 	return out, nil
 }
 
-type execGit struct{}
-
-func (execGit) Run(ctx context.Context, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
-	out, err := cmd.Output()
-	if err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
-			return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(ee.Stderr)))
-		}
-		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
-	}
-	return out, nil
-}

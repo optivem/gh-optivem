@@ -55,130 +55,58 @@ func joinArgs(args []string) string {
 }
 
 // ---------------------------------------------------------------------------
-// ResolveProjectURL — README path
+// ResolveProjectURL — config-only sources
 // ---------------------------------------------------------------------------
+//
+// Project URL is sourced exclusively from optivem.yaml (default lookup)
+// or from a path passed via --config (handled by the driver, which calls
+// ResolveProjectURLFromConfig with a pre-loaded *Config). There is no
+// README scrape, no `git remote` fallback, and no `gh project list`
+// discovery — those were removed because they produced surprising
+// "wrong project moved" failures when repo names overlapped.
 
-func TestResolveProjectURL_FromReadme(t *testing.T) {
-	cases := []struct {
-		name    string
-		readme  string
-		want    string
-		wantErr bool
-	}{
-		{
-			name:   "canonical org link",
-			readme: "# MyShop\n\nProject board: https://github.com/orgs/optivem/projects/20\n",
-			want:   "https://github.com/orgs/optivem/projects/20",
-		},
-		{
-			name:   "user variant",
-			readme: "Solo project: https://github.com/users/alice/projects/3 see board\n",
-			want:   "https://github.com/users/alice/projects/3",
-		},
-		{
-			name:   "embedded in markdown link",
-			readme: "See [the board](https://github.com/orgs/optivem/projects/12).\n",
-			want:   "https://github.com/orgs/optivem/projects/12",
-		},
-		{
-			name:    "missing — empty README",
-			readme:  "# MyShop\n\nNo project link here.\n",
-			wantErr: true,
-		},
-		{
-			name:    "malformed — wrong path",
-			readme:  "Bad URL: https://github.com/optivem/projects/20\n",
-			wantErr: true,
-		},
+func TestResolveProjectURL_FromOptivemYAML(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "optivem.yaml"),
+		[]byte("project:\n  url: https://github.com/orgs/optivem/projects/20\n"), 0o644); err != nil {
+		t.Fatalf("write optivem.yaml: %v", err)
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(tc.readme), 0o644); err != nil {
-				t.Fatalf("write README: %v", err)
-			}
-			git := newFakeRunner(t, "git")
-			// Wire a fallback so the README-miss cases fail closed
-			// (no remote configured).
-			git.fallback = func(args []string) ([]byte, error) {
-				return nil, fmt.Errorf("no remote configured")
-			}
-
-			got, err := ResolveProjectURL(dir, git)
-			if tc.wantErr {
-				if err == nil {
-					t.Fatalf("expected error, got %q", got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != tc.want {
-				t.Errorf("got %q, want %q", got, tc.want)
-			}
-			// README path must not invoke git.
-			if len(git.calls) > 0 {
-				t.Errorf("README-path resolution invoked git: %v", git.calls)
-			}
-		})
+	got, err := ResolveProjectURL(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := "https://github.com/orgs/optivem/projects/20"; got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
-// ---------------------------------------------------------------------------
-// ResolveProjectURL — git remote fallback
-// ---------------------------------------------------------------------------
-
-func TestResolveProjectURL_GitRemoteFallback(t *testing.T) {
+func TestResolveProjectURL_NoConfigFile(t *testing.T) {
 	dir := t.TempDir()
-	// No README — force the fallback.
-
-	git := newFakeRunner(t, "git")
-	git.on([]string{"-C", dir, "remote", "get-url", "origin"},
-		[]byte("https://github.com/optivem/shop.git\n"), nil)
-
-	// Note: this test path *would* shell out to a real `gh` for the
-	// project list — we don't want that. We assert the git invocation
-	// happened and accept the inevitable failure on the unmocked gh
-	// step. The dedicated PickTopReady tests below cover gh interaction.
-	_, err := ResolveProjectURL(dir, git)
-	if err == nil {
-		t.Fatalf("expected error (real gh not mocked) but got nil")
-	}
-	if len(git.calls) == 0 {
-		t.Fatalf("expected git remote call, got none")
-	}
-	wantArgs := []string{"-C", dir, "remote", "get-url", "origin"}
-	if joinArgs(git.calls[0]) != joinArgs(wantArgs) {
-		t.Errorf("git argv = %v, want %v", git.calls[0], wantArgs)
+	// No optivem.yaml — must fail with ErrNoProjectURL.
+	_, err := ResolveProjectURL(dir)
+	if !errors.Is(err, ErrNoProjectURL) {
+		t.Errorf("expected ErrNoProjectURL, got %v", err)
 	}
 }
 
-func TestResolveProjectURL_GitRemoteFails(t *testing.T) {
+func TestResolveProjectURL_ConfigPresentButURLEmpty(t *testing.T) {
 	dir := t.TempDir()
-	git := newFakeRunner(t, "git")
-	git.on([]string{"-C", dir, "remote", "get-url", "origin"},
-		nil, fmt.Errorf("not a git repo"))
-
-	_, err := ResolveProjectURL(dir, git)
-	if err == nil {
-		t.Fatalf("expected error, got nil")
+	if err := os.WriteFile(filepath.Join(dir, "optivem.yaml"),
+		[]byte("project:\n  name: Shop Project\n"), 0o644); err != nil {
+		t.Fatalf("write optivem.yaml: %v", err)
 	}
-	if !strings.Contains(err.Error(), "read git remote origin") {
-		t.Errorf("error message did not wrap git failure: %v", err)
+
+	_, err := ResolveProjectURL(dir)
+	if !errors.Is(err, ErrNoProjectURL) {
+		t.Errorf("expected ErrNoProjectURL, got %v", err)
 	}
 }
 
-func TestResolveProjectURL_UnparseableRemote(t *testing.T) {
-	dir := t.TempDir()
-	git := newFakeRunner(t, "git")
-	git.on([]string{"-C", dir, "remote", "get-url", "origin"},
-		[]byte("file:///some/local/path\n"), nil)
-
-	_, err := ResolveProjectURL(dir, git)
-	if !errors.Is(err, ErrNoProjectLink) {
-		t.Errorf("expected ErrNoProjectLink, got %v", err)
+func TestResolveProjectURLFromConfig_NilConfig(t *testing.T) {
+	_, err := ResolveProjectURLFromConfig(nil)
+	if !errors.Is(err, ErrNoProjectURL) {
+		t.Errorf("expected ErrNoProjectURL, got %v", err)
 	}
 }
 
@@ -467,32 +395,6 @@ func TestMoveToInProgress_GhItemEditError(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Lower-level helpers
 // ---------------------------------------------------------------------------
-
-func TestParseRepoFromRemote(t *testing.T) {
-	cases := []struct {
-		in        string
-		owner     string
-		repo      string
-		ok        bool
-	}{
-		{"https://github.com/optivem/shop.git", "optivem", "shop", true},
-		{"https://github.com/optivem/shop", "optivem", "shop", true},
-		{"git@github.com:optivem/shop.git", "optivem", "shop", true},
-		{"git@github.com:optivem/shop", "optivem", "shop", true},
-		{"https://github.com/some-org/some-repo-name.git", "some-org", "some-repo-name", true},
-		{"file:///local/path", "", "", false},
-		{"random garbage", "", "", false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.in, func(t *testing.T) {
-			owner, repo, ok := parseRepoFromRemote(tc.in)
-			if ok != tc.ok || owner != tc.owner || repo != tc.repo {
-				t.Errorf("got (%q, %q, %v), want (%q, %q, %v)",
-					owner, repo, ok, tc.owner, tc.repo, tc.ok)
-			}
-		})
-	}
-}
 
 func TestParseProjectURL(t *testing.T) {
 	cases := []struct {

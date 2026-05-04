@@ -225,7 +225,7 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (CommitInfo, error) 
 	}
 
 	if opts.CLICommits {
-		if err := installPreCommitHook(opts.RepoPath); err != nil {
+		if err := installPreCommitHook(ctx, deps.Git, opts.RepoPath); err != nil {
 			return CommitInfo{}, fmt.Errorf("clauderun: install pre-commit hook: %w", err)
 		}
 	}
@@ -377,11 +377,19 @@ func runCLICommit(ctx context.Context, git GitRunner, dir, msg string) error {
 	return err
 }
 
-// preCommitHookBody is the verbatim shell script written into a dispatch
-// worktree's `.git/hooks/pre-commit` when opts.CLICommits is true. The
-// script refuses any commit unless CLAUDERUN_CLI_COMMIT=1 is set in the
-// caller's env — runCLICommit is the only place that sets it.
+// preCommitHookBody is the verbatim shell script written into the
+// repo's hooks directory when opts.CLICommits is true.
+//
+// The hook only enforces in worktrees that have the marker file
+// (clauderunMarkerName, written by installPreCommitHook into the
+// per-worktree git dir). Without the marker the hook is a no-op,
+// which matters because git's hooks dir is shared across worktrees:
+// installing a strict hook globally would block every commit the
+// operator makes in their main checkout. The marker scopes
+// enforcement to the active dispatch worktree.
 const preCommitHookBody = `#!/bin/sh
+GITDIR=$(git rev-parse --absolute-git-dir 2>/dev/null) || exit 0
+[ -f "$GITDIR/clauderun-dispatch" ] || exit 0
 if [ "${CLAUDERUN_CLI_COMMIT:-}" != "1" ]; then
   echo "clauderun: refusing commit — only the CLI commits on dispatch branches." >&2
   echo "  (set CLAUDERUN_CLI_COMMIT=1 if you are clauderun.commitChanges)" >&2
@@ -389,36 +397,80 @@ if [ "${CLAUDERUN_CLI_COMMIT:-}" != "1" ]; then
 fi
 `
 
-// installPreCommitHook writes preCommitHookBody to <repoPath>/.git/hooks/
-// pre-commit so any `git commit` that doesn't carry the env var fails at
-// the git layer. Idempotent: a no-op when the file already exists with
-// our exact content. If the file exists with different content (an
-// operator's custom hook), returns an error rather than silently
-// overwriting — let the operator decide.
+// clauderunMarkerName is the filename installPreCommitHook drops into
+// the per-worktree git dir to flag the worktree as a dispatch context.
+// The hook script greps for this same name.
+const clauderunMarkerName = "clauderun-dispatch"
+
+// installPreCommitHook installs preCommitHookBody in the repo's hooks
+// directory and writes a per-worktree marker file so the hook only
+// enforces inside this worktree.
+//
+// Two paths are involved:
+//   - Hooks dir (`git rev-parse --git-path hooks`) — git's shared
+//     hooks dir, the same one git looks at when the operator commits
+//     in any worktree. The hook itself is idempotent here: if it's
+//     already our content, no-op; if it's an operator's custom hook,
+//     error rather than overwrite.
+//   - Per-worktree git dir (`git rev-parse --absolute-git-dir`) — for
+//     a main repo this is `.git/`; for a linked worktree this is
+//     `<main>/.git/worktrees/<name>/`. The marker file lands here, so
+//     it dies with the worktree on `git worktree remove`.
 //
 // On Windows the 0755 mode is largely ignored by the OS, but git's
 // bundled sh runs the hook regardless of file mode, so the chmod is
 // harmless and matches the POSIX expectation.
-func installPreCommitHook(repoPath string) error {
-	hookDir := filepath.Join(repoPath, ".git", "hooks")
+func installPreCommitHook(ctx context.Context, git GitRunner, repoPath string) error {
+	hookDir, err := resolveGitPath(ctx, git, repoPath, "rev-parse", "--git-path", "hooks")
+	if err != nil {
+		return fmt.Errorf("resolve hooks dir: %w", err)
+	}
+	gitDir, err := resolveGitPath(ctx, git, repoPath, "rev-parse", "--absolute-git-dir")
+	if err != nil {
+		return fmt.Errorf("resolve git dir: %w", err)
+	}
 	if err := os.MkdirAll(hookDir, 0o755); err != nil {
 		return fmt.Errorf("mkdir hooks dir: %w", err)
 	}
 	hookPath := filepath.Join(hookDir, "pre-commit")
 	existing, err := os.ReadFile(hookPath)
 	if err == nil {
-		if string(existing) == preCommitHookBody {
-			return nil
+		if string(existing) != preCommitHookBody {
+			return fmt.Errorf("pre-commit hook already exists at %s with different content; refusing to overwrite", hookPath)
 		}
-		return fmt.Errorf("pre-commit hook already exists at %s with different content; refusing to overwrite", hookPath)
+	} else {
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("read existing hook: %w", err)
+		}
+		if err := os.WriteFile(hookPath, []byte(preCommitHookBody), 0o755); err != nil {
+			return fmt.Errorf("write hook: %w", err)
+		}
 	}
-	if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("read existing hook: %w", err)
-	}
-	if err := os.WriteFile(hookPath, []byte(preCommitHookBody), 0o755); err != nil {
-		return fmt.Errorf("write hook: %w", err)
+	markerPath := filepath.Join(gitDir, clauderunMarkerName)
+	if err := os.WriteFile(markerPath, nil, 0o644); err != nil {
+		return fmt.Errorf("write dispatch marker: %w", err)
 	}
 	return nil
+}
+
+// resolveGitPath runs the given `git rev-parse` invocation and returns
+// the resulting filesystem path. If git returns a relative path (the
+// case for plain `--git-path hooks` in a main repo), it is resolved
+// against repoPath. Returns an error on empty output so callers can
+// fail loudly rather than write into the cwd.
+func resolveGitPath(ctx context.Context, git GitRunner, repoPath string, args ...string) (string, error) {
+	out, err := git.Run(ctx, repoPath, args...)
+	if err != nil {
+		return "", err
+	}
+	p := strings.TrimSpace(string(out))
+	if p == "" {
+		return "", fmt.Errorf("git %s returned empty path", strings.Join(args, " "))
+	}
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(repoPath, p)
+	}
+	return p, nil
 }
 
 // renderCommitMessage builds the templated commit message the CLI uses

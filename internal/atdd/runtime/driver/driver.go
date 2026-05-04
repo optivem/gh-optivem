@@ -36,6 +36,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -71,9 +72,9 @@ type Options struct {
 	// the project item for the given issue.
 	IssueNum int
 
-	// ProjectURL overrides README/git-remote project resolution. Optional;
-	// when empty, board.ResolveProjectURL handles the lookup against
-	// RepoPath / cwd.
+	// ProjectURL overrides config-based project resolution. Optional; when
+	// empty, board.ResolveProjectURL loads RepoPath/optivem.yaml (or the
+	// file passed via ConfigPath, if set) and reads `project.url`.
 	ProjectURL string
 
 	// RepoPath overrides the working directory used for project resolution
@@ -210,6 +211,7 @@ func Run(ctx context.Context, opts Options) error {
 	if err != nil {
 		return err
 	}
+	printConfig(opts.Stdout, opts, cfg, repoPath)
 
 	sCtx := statemachine.NewContext()
 	seedScopeParams(sCtx, cfg)
@@ -218,7 +220,7 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	if opts.IssueNum > 0 {
-		if err := preResolveIssue(ctx, opts, sCtx, cfg, repoPath); err != nil {
+		if err := preResolveIssue(ctx, opts, sCtx, cfg); err != nil {
 			return fmt.Errorf("driver: pre-resolve issue #%d: %w", opts.IssueNum, err)
 		}
 		// Skip START → PICK_TOP_READY when running main. The pre-resolution
@@ -264,6 +266,63 @@ func loadDriverConfig(configPath, repoPath string) (*projectconfig.Config, error
 		return nil, fmt.Errorf("driver: %w", err)
 	}
 	return cfg, nil
+}
+
+// printConfig writes a one-shot configuration banner to w so the operator
+// sees the resolved consumer repo, config source, project URL/name, repo
+// strategy, and scope axes at startup — well before the first agent
+// dispatch (or pre-resolve failure) would otherwise reveal them.
+//
+// Script-specific values (worktree path, rehearsal branch, build source
+// dir) deliberately stay in the rehearsal wrapper — those have no meaning
+// outside the rehearsal scenario, so the binary doesn't know about them.
+func printConfig(w io.Writer, opts Options, cfg *projectconfig.Config, repoPath string) {
+	source := configSourceLabel(opts.ConfigPath, cfg, repoPath)
+	fmt.Fprintln(w, "Configuration:")
+	fmt.Fprintf(w, "  consumer repo: %s\n", repoPath)
+	fmt.Fprintf(w, "  config file:   %s\n", source)
+	if opts.IssueNum > 0 {
+		fmt.Fprintf(w, "  issue:         #%d\n", opts.IssueNum)
+	}
+	projectURL := opts.ProjectURL
+	projectURLNote := ""
+	if projectURL == "" && cfg != nil {
+		projectURL = cfg.Project.URL
+	}
+	if opts.ProjectURL != "" {
+		projectURLNote = " (from --project)"
+	}
+	fmt.Fprintf(w, "  project URL:   %s%s\n", orPlaceholder(projectURL, "(unset — pre-resolve will fail)"), projectURLNote)
+	if cfg != nil {
+		fmt.Fprintf(w, "  project name:  %s\n", orPlaceholder(cfg.Project.Name, "(unset)"))
+		fmt.Fprintf(w, "  repo strategy: %s\n", orPlaceholder(cfg.Project.RepoStrategy, "(unset)"))
+		if len(cfg.Project.Repos) > 0 {
+			fmt.Fprintf(w, "  repos:         %s\n", strings.Join(cfg.Project.Repos, ", "))
+		}
+		fmt.Fprintf(w, "  scope:         architecture=%s system_lang=%s test_lang=%s\n",
+			orPlaceholder(cfg.Scope.Architecture, "-"),
+			orPlaceholder(cfg.Scope.SystemLang, "-"),
+			orPlaceholder(cfg.Scope.TestLang, "-"))
+	}
+}
+
+// configSourceLabel returns a human-readable description of where the
+// driver loaded its config from, suitable for the printConfig banner.
+func configSourceLabel(explicitPath string, cfg *projectconfig.Config, repoPath string) string {
+	if explicitPath != "" {
+		return explicitPath + " (--config)"
+	}
+	if cfg != nil {
+		return filepath.Join(repoPath, projectconfig.Path)
+	}
+	return "(none — no optivem.yaml at repo root)"
+}
+
+func orPlaceholder(s, placeholder string) string {
+	if s == "" {
+		return placeholder
+	}
+	return s
 }
 
 // seedScopeParams copies repo-strategy and scope axes from a loaded config
@@ -339,12 +398,12 @@ func (o Options) withDefaults() Options {
 // have set, reading from `gh project view` + `gh project item-list` (via
 // board.FindIssue). Called once at driver startup in implement-ticket mode.
 // cfg is the pre-loaded project config (may be nil if no optivem.yaml and
-// no --config) and repoPath is the resolved consumer-repo path; both are
-// supplied by Run so the load happens once per driver invocation.
-func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Context, cfg *projectconfig.Config, repoPath string) error {
+// no --config); supplied by Run so the load happens once per driver
+// invocation.
+func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Context, cfg *projectconfig.Config) error {
 	projectURL := opts.ProjectURL
 	if projectURL == "" {
-		resolved, err := board.ResolveProjectURLFromConfig(cfg, repoPath, nil)
+		resolved, err := board.ResolveProjectURLFromConfig(cfg)
 		if err != nil {
 			return fmt.Errorf("resolve project URL: %w", err)
 		}
