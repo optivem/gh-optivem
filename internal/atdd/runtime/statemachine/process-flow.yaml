@@ -549,7 +549,7 @@ flows:
   # ===========================================================================
   # structural_cycle
   # Shared by system-api-task, system-ui-task, and chore via call_activity
-  # `params:`. The Go runtime substitutes ${phase}, ${agent}, ${phase_doc} at
+  # `params:`. The Go runtime substitutes ${change_type}, ${agent}, ${phase_doc} at
   # dispatch time. The TEST gate (full | compile | skip) is asked upfront —
   # nothing inside TEST runs until the user chooses.
   # ===========================================================================
@@ -560,7 +560,7 @@ flows:
         type: user_task
         agent: ${agent}
         phase_doc: ${phase_doc}
-        description: "${phase} - WRITE"
+        description: "${change_type} - WRITE"
 
       - id: STOP_STRUCT_REVIEW
         type: user_task
@@ -603,8 +603,8 @@ flows:
         type: service_task
         action: commit_phase
         params:
-          phase: ${phase}
-        description: "COMMIT: <Ticket> | ${phase}"
+          change_type: ${change_type}
+        description: "COMMIT: <Ticket> | ${change_type}"
 
       - id: TICK
         type: service_task
@@ -652,7 +652,7 @@ flows:
         type: call_activity
         flow: structural_cycle
         params:
-          phase: "SYSTEM INTERFACE REDESIGN"
+          change_type: "SYSTEM INTERFACE REDESIGN"
           agent: atdd-task
           phase_doc: docs/atdd/process/system-interface-redesign.md
           subtype: system-interface-redesign
@@ -674,7 +674,7 @@ flows:
   # sut_cycle
   # System Under Test cycle — structural change with no test-stack artifact
   # changing (no AT, no DA). Routes through structural_cycle with the chore
-  # phase / agent / phase_doc.
+  # change_type / agent / phase_doc.
   # ===========================================================================
   sut_cycle:
     start: CHORE_CYCLE
@@ -683,7 +683,7 @@ flows:
         type: call_activity
         flow: structural_cycle
         params:
-          phase: CHORE
+          change_type: CHORE
           agent: atdd-chore
           phase_doc: docs/atdd/process/chore.md
 

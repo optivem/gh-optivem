@@ -561,7 +561,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 // until the operator types Enter (continue) or `abort` (halt). v1 / fallback path.
 //
 // params is the live Context.Params for the call_activity scope; templated
-// fields in raw (e.g. ${agent} / ${phase_doc} / ${phase} inside the shared
+// fields in raw (e.g. ${agent} / ${phase_doc} / ${change_type} inside the shared
 // structural_cycle) are expanded against it so the operator sees the
 // substituted name in the banner instead of the literal placeholder.
 func promptForAgent(opts Options, raw statemachine.RawNode, params map[string]string) error {

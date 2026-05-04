@@ -463,20 +463,20 @@ func (a actions) commitOnboarding(ctx *statemachine.Context) statemachine.Outcom
 }
 
 // commitPhase creates the phase commit. The message format mirrors
-// cycles.md: `<Ticket Title> | <PHASE NAME>`. Both pieces come from
-// Context — issue_title from pick_top_ready / move_to_in_progress, phase
-// from the call_activity params (substituted into the action's params at
-// dispatch time).
+// cycles.md: `<Ticket Title> | <CHANGE TYPE>`. Both pieces come from
+// Context — issue_title from pick_top_ready / move_to_in_progress,
+// change_type from the call_activity params (substituted into the action's
+// params at dispatch time).
 func (a actions) commitPhase(ctx *statemachine.Context) statemachine.Outcome {
 	title := ctx.GetString("issue_title")
 	if title == "" {
 		title = "<unknown ticket>"
 	}
-	phase := ctx.Params["phase"]
-	if phase == "" {
-		phase = "PHASE"
+	changeType := ctx.Params["change_type"]
+	if changeType == "" {
+		changeType = "CHANGE_TYPE"
 	}
-	msg := fmt.Sprintf("%s | %s", title, phase)
+	msg := fmt.Sprintf("%s | %s", title, changeType)
 	if err := release.Commit(context.Background(), release.CommitOptions{
 		Message:   msg,
 		Confirm:   a.confirmer(),

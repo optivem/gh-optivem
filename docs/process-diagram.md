@@ -223,7 +223,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     ASK_COMMIT[[Ask: Can I commit?]]
-    COMMIT_STRUCT[["COMMIT: <Ticket> | ${phase}"]]
+    COMMIT_STRUCT[["COMMIT: <Ticket> | ${change_type}"]]
     COMPILE[[Compile in-scope projects]]
     DRIFT[[Print drift warning if applicable]]
     GATE_TEST_MODE{"TEST mode? (full | compile | skip)"}
@@ -231,7 +231,7 @@ flowchart TD
     STOP_STRUCT_REVIEW[STOP - HUMAN REVIEW — approve implementation]
     STOP_STRUCT_TEST[STOP - HUMAN REVIEW — review TEST results]
     STRUCT_END((End))
-    STRUCT_WRITE["${phase} - WRITE"]
+    STRUCT_WRITE["${change_type} - WRITE"]
     TICK[[Tick checklist items]]
 
     STRUCT_WRITE --> STOP_STRUCT_REVIEW

@@ -111,7 +111,7 @@ flows:
       - id: STRUCT_WRITE
         type: user_task
         agent: ${agent}
-        description: ${phase} - WRITE
+        description: ${change_type} - WRITE
         phase_doc: ${phase_doc}
       - id: END
         type: end_event
@@ -415,13 +415,13 @@ func TestPreflightFailureSurfacesEarly(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Templated dispatch — ${agent} / ${phase} / ${phase_doc} expansion
+// Templated dispatch — ${agent} / ${change_type} / ${phase_doc} expansion
 // ---------------------------------------------------------------------------
 
 func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	// The structural_cycle reuses one set of YAML nodes across
 	// SYSTEM_INTERFACE_REDESIGN_CYCLE / CHORE_CYCLE by injecting
-	// ${agent} / ${phase} / ${phase_doc} via
+	// ${agent} / ${change_type} / ${phase_doc} via
 	// call_activity params. The dispatcher must resolve raw.Agent before
 	// looking up the embedded prompt — otherwise it would try to load a
 	// prompt named "${agent}", which doesn't exist.
@@ -438,9 +438,9 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 
 	ctx := newCtxWithIssue()
 	ctx.Params = map[string]string{
-		"agent":     "atdd-task",
-		"phase":     "SYSTEM UI REDESIGN",
-		"phase_doc": "docs/atdd/process/sysui-redesign.md",
+		"agent":       "atdd-task",
+		"change_type": "SYSTEM UI REDESIGN",
+		"phase_doc":   "docs/atdd/process/sysui-redesign.md",
 	}
 
 	out := fn(ctx)
@@ -480,9 +480,9 @@ func TestManualAgents_BannerSubstitutesTemplatedFields(t *testing.T) {
 
 	ctx := newCtxWithIssue()
 	ctx.Params = map[string]string{
-		"agent":     "atdd-task",
-		"phase":     "SYSTEM UI REDESIGN",
-		"phase_doc": "docs/atdd/process/sysui-redesign.md",
+		"agent":       "atdd-task",
+		"change_type": "SYSTEM UI REDESIGN",
+		"phase_doc":   "docs/atdd/process/sysui-redesign.md",
 	}
 
 	if out := fn(ctx); out.Err != nil {

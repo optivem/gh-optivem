@@ -229,7 +229,7 @@ func TestCommitPhase_SuccessPath(t *testing.T) {
 	a := newActions(Deps{Git: git, Prompter: p})
 	ctx := statemachine.NewContext()
 	ctx.Set("issue_title", "Register Customer")
-	ctx.Params["phase"] = "AT - RED - TEST"
+	ctx.Params["change_type"] = "AT - RED - TEST"
 	out := a.commitPhase(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
@@ -256,7 +256,7 @@ func TestCommitPhase_DeclineHaltsRun(t *testing.T) {
 	a := newActions(Deps{Git: git, Prompter: p})
 	ctx := statemachine.NewContext()
 	ctx.Set("issue_title", "Register Customer")
-	ctx.Params["phase"] = "AT - RED - TEST"
+	ctx.Params["change_type"] = "AT - RED - TEST"
 	out := a.commitPhase(ctx)
 	if out.Err == nil {
 		t.Fatalf("expected error on decline")
