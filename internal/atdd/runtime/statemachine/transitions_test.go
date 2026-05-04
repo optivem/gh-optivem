@@ -139,9 +139,12 @@ var transitionTable = []transitionCase{
 	// with two STOPs for unhappy paths (classification conflict, parse
 	// error). No LLM dispatch — no agent fan-out by ticket type.
 	{flow: "intake", from: "CLASSIFY", wantTo: "GATE_CLASSIFY_CONFIDENT"},
-	{flow: "intake", from: "GATE_CLASSIFY_CONFIDENT", state: map[string]any{"classify_confident": true}, wantTo: "CLASSIFY_SUBTYPE"},
+	{flow: "intake", from: "GATE_CLASSIFY_CONFIDENT", state: map[string]any{"classify_confident": true}, wantTo: "GATE_NEEDS_SUBTYPE"},
 	{flow: "intake", from: "GATE_CLASSIFY_CONFIDENT", state: map[string]any{"classify_confident": false}, wantTo: "STOP_CLASSIFY_CONFLICT"},
-	{flow: "intake", from: "STOP_CLASSIFY_CONFLICT", wantTo: "CLASSIFY_SUBTYPE"},
+	{flow: "intake", from: "STOP_CLASSIFY_CONFLICT", wantTo: "GATE_NEEDS_SUBTYPE"},
+	{flow: "intake", from: "GATE_NEEDS_SUBTYPE", state: map[string]any{"ticket_type": "task"}, wantTo: "CLASSIFY_SUBTYPE"},
+	{flow: "intake", from: "GATE_NEEDS_SUBTYPE", state: map[string]any{"ticket_type": "story"}, wantTo: "PARSE_BODY"},
+	{flow: "intake", from: "GATE_NEEDS_SUBTYPE", state: map[string]any{"ticket_type": "bug"}, wantTo: "PARSE_BODY"},
 	{flow: "intake", from: "CLASSIFY_SUBTYPE", wantTo: "PARSE_BODY"},
 	{flow: "intake", from: "PARSE_BODY", wantTo: "GATE_PARSE_OK"},
 	{flow: "intake", from: "GATE_PARSE_OK", state: map[string]any{"parse_ok": true}, wantTo: "INTAKE_END"},

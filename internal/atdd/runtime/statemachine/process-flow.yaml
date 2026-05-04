@@ -160,10 +160,15 @@ flows:
         role: review
         description: "STOP - HUMAN REVIEW — set issue type / re-run"
 
+      - id: GATE_NEEDS_SUBTYPE
+        type: gateway
+        binding: ticket_type
+        description: "Task ticket?"
+
       - id: CLASSIFY_SUBTYPE
         type: service_task
         action: classify_subtype
-        description: "Auto-classify subtype (task tickets only)"
+        description: "Auto-classify subtype"
 
       - id: PARSE_BODY
         type: service_task
@@ -186,9 +191,11 @@ flows:
 
     sequence_flows:
       - {from: CLASSIFY,                to: GATE_CLASSIFY_CONFIDENT}
-      - {from: GATE_CLASSIFY_CONFIDENT, to: CLASSIFY_SUBTYPE,        when: "classify_confident == true"}
+      - {from: GATE_CLASSIFY_CONFIDENT, to: GATE_NEEDS_SUBTYPE,      when: "classify_confident == true"}
       - {from: GATE_CLASSIFY_CONFIDENT, to: STOP_CLASSIFY_CONFLICT,  when: "classify_confident == false"}
-      - {from: STOP_CLASSIFY_CONFLICT,  to: CLASSIFY_SUBTYPE}
+      - {from: STOP_CLASSIFY_CONFLICT,  to: GATE_NEEDS_SUBTYPE}
+      - {from: GATE_NEEDS_SUBTYPE,      to: CLASSIFY_SUBTYPE,        when: "ticket_type == task"}
+      - {from: GATE_NEEDS_SUBTYPE,      to: PARSE_BODY,              when: "ticket_type in [story, bug]"}
       - {from: CLASSIFY_SUBTYPE,        to: PARSE_BODY}
       - {from: PARSE_BODY,              to: GATE_PARSE_OK}
       - {from: GATE_PARSE_OK,           to: INTAKE_END,              when: "parse_ok == true"}

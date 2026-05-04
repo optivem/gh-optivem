@@ -391,27 +391,6 @@ func TestClassifySubtype_TaskWithSingleLabel(t *testing.T) {
 	}
 }
 
-func TestClassifySubtype_BehavioralTicketsSkipped(t *testing.T) {
-	for _, tt := range []string{"story", "bug"} {
-		t.Run(tt, func(t *testing.T) {
-			gh := newFakeRunner(t, "gh") // gh must NOT be called for non-task
-			a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}})
-			ctx := statemachine.NewContext()
-			ctx.Set("ticket_type", tt)
-			out := a.classifySubtype(ctx)
-			if out.Err != nil {
-				t.Fatalf("unexpected error: %v", out.Err)
-			}
-			if got := ctx.GetString("subtype"); got != "" {
-				t.Fatalf("subtype: got %q, want empty for %s", got, tt)
-			}
-			if len(gh.calls) != 0 {
-				t.Fatalf("gh was called %v but should be skipped for %s", gh.calls, tt)
-			}
-		})
-	}
-}
-
 func TestClassifySubtype_MissingLabelHalts(t *testing.T) {
 	gh := newFakeRunner(t, "gh")
 	gh.on(

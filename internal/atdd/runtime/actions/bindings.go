@@ -265,21 +265,18 @@ func extractIssueType(raw []byte) string {
 }
 
 // classifySubtype reads `subtype:*` labels on the ticket and writes the
-// trimmed value to `subtype`. Skips entirely for behavioral tickets
-// (story, bug) — `subtype` stays unset and run_cycle's top gate routes
-// them to AT_CYCLE without consulting it.
+// trimmed value to `subtype`. The intake flow's GATE_NEEDS_SUBTYPE only
+// routes here for task tickets, so behavioral tickets never reach this
+// action.
 //
-// Halts the run on 0 or 2+ `subtype:*` labels for a task ticket.
-// Resolution is "edit the issue's labels and re-run" — same shape as
-// classify_ticket setting classify_confident=false: the unhappy path is
-// "fix the ticket, re-run", not "supply the missing classification
-// inline." A separate gateway node would let the human resolve labels at
-// a STOP, but that adds two nodes to the diagram for a case that is
-// mechanically a re-run anyway.
+// Halts the run on 0 or 2+ `subtype:*` labels. Resolution is "edit the
+// issue's labels and re-run" — same shape as classify_ticket setting
+// classify_confident=false: the unhappy path is "fix the ticket,
+// re-run", not "supply the missing classification inline." A separate
+// gateway node would let the human resolve labels at a STOP, but that
+// adds two nodes to the diagram for a case that is mechanically a
+// re-run anyway.
 func (a actions) classifySubtype(ctx *statemachine.Context) statemachine.Outcome {
-	if ctx.GetString("ticket_type") != "task" {
-		return statemachine.Outcome{}
-	}
 	issueNum, err := strconv.Atoi(ctx.GetString("issue_num"))
 	if err != nil || issueNum <= 0 {
 		return statemachine.Outcome{Err: fmt.Errorf("classify_subtype: issue_num not set or not a positive integer (%q)", ctx.GetString("issue_num"))}
