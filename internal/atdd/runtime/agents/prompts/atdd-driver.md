@@ -36,6 +36,8 @@ Each acceptance test is annotated with a channel. Use the matching suite placeho
 
 If a test covers both channels, run both suites.
 
+After a driver-adapter change in AT - RED - SYSTEM DRIVER - WRITE, the orchestrator (not the agent) runs a **targeted subset** of these suites — the tests that traverse the changed adapter methods — after the agent exits. If any changed adapter method cannot be statically traced to a test, the orchestrator falls back to running the full suite for safety.
+
 ## Commit Message Format
 
 Every commit message follows the pattern: `<Ticket> | <Phase>`.
@@ -64,6 +66,8 @@ Each contract test runs against two parallel suites — the real external-system
 - `<suite-contract-stub>` — the contract suite executed against the **dockerized stub** External System.
 
 A CT phase that names only one of these placeholders is exercising one side of the real-vs-stub contract pair; CT - RED - TEST runs both, CT - RED - DSL and CT - GREEN - STUBS run the stub side only.
+
+After a driver-adapter change in CT - RED - EXTERNAL DRIVER - WRITE, the orchestrator (not the agent) runs a **targeted subset** of `<suite-contract-stub>` — the tests that traverse the changed adapter methods — after the agent exits. If any changed adapter method cannot be statically traced to a test, the orchestrator falls back to running the full stub suite for safety.
 
 ## Commit Message Format
 
@@ -125,11 +129,7 @@ public RegisterCustomerResponse register(RegisterCustomerRequest request) {
 
 1. Enable the tests marked disabled with reason `"AT - RED - DSL"`.
 2. Implement the System Drivers — replace each "TODO: Driver" prototype with actual logic. Stay within `driver-port/` and `driver-adapter/` under `shop/`. Model new methods on existing Driver methods in the same file.
-3. Run the tests and verify they fail with a runtime error:
-   ```bash
-   gh optivem test system --suite <acceptance-api> --test <TestMethodName>
-   gh optivem test system --suite <acceptance-ui> --test <TestMethodName>
-   ```
+3. Do NOT run the tests yourself. The orchestrator runs a targeted subset of `<acceptance-api>` / `<acceptance-ui>` after you exit, based on which adapter methods you changed; an unmapped change triggers a full-suite fallback. Exit cleanly when the implementation is in place.
 
 ## AT - RED - SYSTEM DRIVER - REVIEW (STOP)
 
@@ -202,10 +202,7 @@ Replace the `"TODO: Driver"` prototype with a real HTTP call to the external sys
 2. Implement the External System Drivers — replace each `"TODO: Driver"` prototype with actual logic.
    - Only edit files under `external/` (driver-port and driver-adapter).
    - Do NOT read external-system source code to figure out behavior; rely on the contract tests and the published external API contract.
-3. Run the contract tests against the stub and verify they fail with a runtime error (the stub does not yet implement the new contract):
-   ```bash
-   gh optivem test system --suite <suite-contract-stub> --test <TestMethodName>
-   ```
+3. Do NOT run the tests yourself. The orchestrator runs a targeted subset of `<suite-contract-stub>` after you exit, based on which adapter methods you changed; an unmapped change triggers a full-suite fallback. Exit cleanly when the implementation is in place.
 
 ## CT - RED - EXTERNAL DRIVER - REVIEW (STOP)
 

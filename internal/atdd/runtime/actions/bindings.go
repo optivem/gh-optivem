@@ -31,6 +31,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/intake"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/release"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/testselect"
 )
 
 // Deps bundles the side-effecting collaborators every action may need. All
@@ -111,6 +112,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("ask_can_i_commit", a.askCanICommit)
 	r.Register("commit_phase", a.commitPhase)
 	r.Register("tick_checklist", a.tickChecklist)
+	r.Register("verify_run_tests_after_driver", a.verifyRunTestsAfterDriver)
 }
 
 type actions struct {
@@ -572,6 +574,172 @@ func (a actions) printDriftWarning(ctx *statemachine.Context) statemachine.Outco
 			"DRIFT WARNING: compile-only TEST mode skipped sample suites — run `./test-all.sh --sample` before merging.")
 	}
 	return statemachine.Outcome{}
+}
+
+// ---------------------------------------------------------------------------
+// Targeted-subset test verification (post driver-adapter WRITE)
+// ---------------------------------------------------------------------------
+
+// verifyRunTestsAfterDriver runs after any driver-WRITE phase that may have
+// touched `driver-adapter/**`. It diffs HEAD against the previous commit,
+// asks the testselect package which tests traverse the changed adapter
+// methods, and prompts the user how to proceed:
+//
+//   [r] run selected tests now
+//   [a] approve without running
+//   [x] reject and stop the run
+//   [f] run the full suite instead of the selected subset
+//
+// When no driver-adapter file changed, the action exits silently — the
+// generic structural_cycle node also reaches it via DA_CYCLE / chore, and
+// only DA_CYCLE actually touches adapters.
+//
+// When `Result.Unmapped` is non-empty, a warning is printed and the run
+// falls back to the full set of suites named by the result (the safe
+// default — the unmapped change might still break a test we couldn't
+// statically reach).
+func (a actions) verifyRunTestsAfterDriver(ctx *statemachine.Context) statemachine.Outcome {
+	repoRoot := a.deps.RepoPath
+	if repoRoot == "" {
+		repoRoot = "."
+	}
+	baseRef := ctx.Params["base_ref"]
+	if baseRef == "" {
+		baseRef = "HEAD"
+	}
+
+	res, err := testselect.Select(repoRoot, baseRef)
+	if err != nil {
+		fmt.Fprintf(a.deps.Stderr, "verify_run_tests_after_driver: selector failed (%v) — skipping\n", err)
+		return statemachine.Outcome{}
+	}
+	if len(res.Selections) == 0 && len(res.Unmapped) == 0 {
+		// No driver-adapter changes — nothing to do.
+		return statemachine.Outcome{}
+	}
+
+	a.printVerifySummary(res)
+	if verifyVerbose() {
+		for _, d := range res.Diagnostics {
+			fmt.Fprintf(a.deps.Stdout, "  trace: %s\n", d)
+		}
+		fmt.Fprintln(a.deps.Stdout)
+	}
+
+	answer, err := a.deps.Prompter.Ask("Choose: [r]un selected, [a]pprove without running, [x]reject, [f]ull suite: ")
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("verify_run_tests_after_driver: %w", err)}
+	}
+	choice := strings.ToLower(strings.TrimSpace(answer))
+
+	// `f` is the explicit "I don't trust the selection" escape hatch; it
+	// runs every suite the selector identified, in full. Treat unmapped
+	// the same way (the selector tells us we cannot guarantee coverage).
+	runFull := choice == "f" || len(res.Unmapped) > 0
+
+	switch choice {
+	case "x":
+		return statemachine.Outcome{Err: errors.New("verify_run_tests_after_driver: user rejected and halted the run")}
+	case "a":
+		fmt.Fprintln(a.deps.Stdout, "Approving without running the selected tests.")
+		return statemachine.Outcome{}
+	case "r", "f":
+		// proceed
+	case "":
+		fmt.Fprintln(a.deps.Stdout, "No choice given — defaulting to approve without running.")
+		return statemachine.Outcome{}
+	default:
+		fmt.Fprintf(a.deps.Stderr, "Unrecognised choice %q — defaulting to approve without running.\n", choice)
+		return statemachine.Outcome{}
+	}
+
+	if runFull && len(res.Unmapped) > 0 {
+		fmt.Fprintf(a.deps.Stderr,
+			"WARNING: %d adapter method(s) could not be statically traced to a test — running full suite for safety:\n",
+			len(res.Unmapped))
+		for _, cm := range res.Unmapped {
+			fmt.Fprintf(a.deps.Stderr, "  - %s::%s\n", cm.File, cm.Method)
+		}
+	}
+
+	for _, sel := range res.Selections {
+		if runFull {
+			cmd := fmt.Sprintf("gh optivem test system --suite %s", shellEscape(sel.Suite))
+			a.runVerifyCommand(cmd)
+			continue
+		}
+		for _, t := range sel.Tests {
+			cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s",
+				shellEscape(sel.Suite), shellEscape(t))
+			a.runVerifyCommand(cmd)
+		}
+	}
+	return statemachine.Outcome{}
+}
+
+// printVerifySummary writes the selected tests table and any unmapped
+// methods to stdout — the user reads this *before* answering r/a/x/f.
+func (a actions) printVerifySummary(res testselect.Result) {
+	w := a.deps.Stdout
+	total := 0
+	for _, s := range res.Selections {
+		total += len(s.Tests)
+	}
+	if total == 0 && len(res.Unmapped) > 0 {
+		fmt.Fprintf(w, "\nDriver-adapter change detected; selector could not map any test (full-suite fallback).\n")
+	} else {
+		fmt.Fprintf(w, "\nSelected tests for verification (%d):\n", total)
+	}
+	for _, s := range res.Selections {
+		for _, t := range s.Tests {
+			fmt.Fprintf(w, "  %s: %s\n", s.Suite, t)
+		}
+	}
+	if len(res.Unmapped) > 0 {
+		fmt.Fprintf(w, "Unmapped (will trigger full-suite fallback):\n")
+		for _, cm := range res.Unmapped {
+			fmt.Fprintf(w, "  %s::%s (%s)\n", cm.File, cm.Method, cm.Layer)
+		}
+	}
+	fmt.Fprintln(w)
+}
+
+// runVerifyCommand shells out and surfaces test failures as informational
+// output — the action does not halt the state machine on test failure
+// (per plan: verification is feedback, not gating).
+func (a actions) runVerifyCommand(cmd string) {
+	fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
+	out, err := a.deps.Shell.Run(context.Background(), cmd)
+	if len(out) > 0 {
+		fmt.Fprintln(a.deps.Stdout, string(out))
+	}
+	if err != nil {
+		fmt.Fprintf(a.deps.Stderr, "(test run failed: %v — continuing)\n", err)
+	}
+}
+
+// verifyVerbose reports whether ATDD_VERIFY_VERBOSE is set to a truthy
+// value. Off by default per the plan ("students see the test list,
+// instructors troubleshooting selection see the trace").
+func verifyVerbose() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("ATDD_VERIFY_VERBOSE"))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
+// shellEscape quotes a value for safe insertion into a bash command line.
+// We use single quotes so `$`, backticks, and other meta-characters are
+// taken literally; embedded single quotes are split-and-rejoined.
+func shellEscape(s string) string {
+	if s == "" {
+		return "''"
+	}
+	if !strings.ContainsAny(s, " \t'\"`$\\;|&<>(){}[]?*~#!") {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // ---------------------------------------------------------------------------

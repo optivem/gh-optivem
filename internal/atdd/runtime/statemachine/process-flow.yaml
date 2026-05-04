@@ -342,6 +342,11 @@ flows:
         phase_doc: docs/atdd/process/at-red-system-driver.md
         description: "AT - RED - SYSTEM DRIVER"
 
+      - id: VERIFY_AT_DRIVER
+        type: service_task
+        action: verify_run_tests_after_driver
+        description: "Verify: run targeted acceptance tests after driver-adapter change"
+
       - id: AT_GREEN_SYSTEM
         type: call_activity
         flow: at_green_system
@@ -359,7 +364,8 @@ flows:
       - {from: CT_SUBPROCESS,        to: GATE_SYS_AT}
       - {from: GATE_SYS_AT,          to: AT_RED_SYSTEM_DRIVER,   when: "system_driver_interface_changed == true"}
       - {from: GATE_SYS_AT,          to: AT_GREEN_SYSTEM,        when: "system_driver_interface_changed == false"}
-      - {from: AT_RED_SYSTEM_DRIVER, to: AT_GREEN_SYSTEM}
+      - {from: AT_RED_SYSTEM_DRIVER, to: VERIFY_AT_DRIVER}
+      - {from: VERIFY_AT_DRIVER,     to: AT_GREEN_SYSTEM}
       - {from: AT_GREEN_SYSTEM,      to: AT_END}
 
   # ===========================================================================
@@ -446,6 +452,11 @@ flows:
         phase_doc: docs/atdd/process/ct-red-external-driver.md
         description: "CT - RED - EXTERNAL DRIVER"
 
+      - id: VERIFY_CT_DRIVER
+        type: service_task
+        action: verify_run_tests_after_driver
+        description: "Verify: run targeted contract tests after external driver-adapter change"
+
       - id: CT_GREEN_STUBS
         # Ownership TBD per process-audit gap on stubs ownership.
         # Placeholder agent name; resolve before the Go runtime ships.
@@ -465,7 +476,8 @@ flows:
       - {from: CT_RED_DSL,             to: GATE_EXT_CT}
       - {from: GATE_EXT_CT,            to: CT_GREEN_STUBS,         when: "external_system_driver_interface_changed == false"}
       - {from: GATE_EXT_CT,            to: CT_RED_EXTERNAL_DRIVER, when: "external_system_driver_interface_changed == true"}
-      - {from: CT_RED_EXTERNAL_DRIVER, to: CT_GREEN_STUBS}
+      - {from: CT_RED_EXTERNAL_DRIVER, to: VERIFY_CT_DRIVER}
+      - {from: VERIFY_CT_DRIVER,       to: CT_GREEN_STUBS}
       - {from: CT_GREEN_STUBS,         to: CT_END}
 
   # ===========================================================================
@@ -576,6 +588,11 @@ flows:
         phase_doc: ${phase_doc}
         description: "${change_type} - WRITE"
 
+      - id: VERIFY_STRUCT_DRIVER
+        type: service_task
+        action: verify_run_tests_after_driver
+        description: "Verify: run targeted tests if driver-adapter changed (no-op for chore)"
+
       - id: STOP_STRUCT_REVIEW
         type: user_task
         agent: human
@@ -629,7 +646,8 @@ flows:
         type: end_event
 
     sequence_flows:
-      - {from: STRUCT_WRITE,       to: STOP_STRUCT_REVIEW}
+      - {from: STRUCT_WRITE,         to: VERIFY_STRUCT_DRIVER}
+      - {from: VERIFY_STRUCT_DRIVER, to: STOP_STRUCT_REVIEW}
       - {from: STOP_STRUCT_REVIEW, to: GATE_TEST_MODE}
       - {from: GATE_TEST_MODE,     to: ASK_COMMIT,        when: "structural_test_mode == skip"}
       - {from: GATE_TEST_MODE,     to: COMPILE,           when: "structural_test_mode in [compile, full]"}
