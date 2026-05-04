@@ -39,19 +39,151 @@ func TestPickFilterValue(t *testing.T) {
 	cases := []struct {
 		name     string
 		opts     TestOptions
-		expected string
+		expected []string
 	}{
-		{"explicit Test wins over Sample", TestOptions{Test: "explicit", Sample: true}, "explicit"},
-		{"only Test", TestOptions{Test: "explicit"}, "explicit"},
-		{"only Sample", TestOptions{Sample: true}, "shouldWork"},
-		{"neither", TestOptions{}, ""},
+		{"explicit Test wins over Sample", TestOptions{Test: []string{"explicit"}, Sample: true}, []string{"explicit"}},
+		{"only Test, single value", TestOptions{Test: []string{"explicit"}}, []string{"explicit"}},
+		{"only Test, multiple values", TestOptions{Test: []string{"T1", "T2"}}, []string{"T1", "T2"}},
+		{"only Sample", TestOptions{Sample: true}, []string{"shouldWork"}},
+		{"sample on suite without sampleTest", TestOptions{Sample: true}, []string{"shouldWork"}},
+		{"neither", TestOptions{}, nil},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := pickFilterValue(suite, c.opts); got != c.expected {
-				t.Errorf("got %q, want %q", got, c.expected)
+			if got := pickFilterValue(suite, c.opts); !reflect.DeepEqual(got, c.expected) {
+				t.Errorf("got %v, want %v", got, c.expected)
 			}
 		})
+	}
+}
+
+func TestPickFilterValueSampleNoSampleTestReturnsNil(t *testing.T) {
+	// Regression: --sample on a suite that hasn't declared sampleTest must
+	// not force an empty <test> substitution; behaves like "no filter".
+	got := pickFilterValue(Suite{}, TestOptions{Sample: true})
+	if got != nil {
+		t.Errorf("got %v, want nil", got)
+	}
+}
+
+func TestApplyTestFilterSingleNameRegression(t *testing.T) {
+	// One test name + default join must produce the exact same command as
+	// the pre-fan-out implementation: substitute <test> once, append once.
+	cases := []struct {
+		name       string
+		command    string
+		testFilter string
+		want       string
+	}{
+		{
+			name:       "playwright --grep full flag",
+			command:    "npx playwright test smoke",
+			testFilter: "--grep '<test>'",
+			want:       "npx playwright test smoke --grep 'shouldWork'",
+		},
+		{
+			name:       "dotnet &-fragment injected into existing --filter",
+			command:    "dotnet test --filter 'FullyQualifiedName~Smoke'",
+			testFilter: "&DisplayName~<test>",
+			want:       "dotnet test --filter 'FullyQualifiedName~Smoke&DisplayName~shouldWork'",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := applyTestFilter(c.command, c.testFilter, "", []string{"shouldWork"})
+			if got != c.want {
+				t.Errorf("\n got:  %q\n want: %q", got, c.want)
+			}
+		})
+	}
+}
+
+func TestApplyTestFilterOrJoinsWithPipe(t *testing.T) {
+	cases := []struct {
+		name       string
+		command    string
+		testFilter string
+		join       string
+		names      []string
+		want       string
+	}{
+		{
+			name:       "playwright --grep with two names",
+			command:    "npx playwright test smoke",
+			testFilter: "--grep '<test>'",
+			join:       "or",
+			names:      []string{"T1", "T2"},
+			want:       "npx playwright test smoke --grep 'T1|T2'",
+		},
+		{
+			name:       "dotnet fragment with two names",
+			command:    "dotnet test --filter 'FullyQualifiedName~Smoke'",
+			testFilter: "&DisplayName~<test>",
+			join:       "or",
+			names:      []string{"T1", "T2"},
+			want:       "dotnet test --filter 'FullyQualifiedName~Smoke&DisplayName~T1|T2'",
+		},
+		{
+			name:       "empty join string defaults to or",
+			command:    "npx playwright test smoke",
+			testFilter: "--grep '<test>'",
+			join:       "",
+			names:      []string{"T1", "T2", "T3"},
+			want:       "npx playwright test smoke --grep 'T1|T2|T3'",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := applyTestFilter(c.command, c.testFilter, c.join, c.names)
+			if got != c.want {
+				t.Errorf("\n got:  %q\n want: %q", got, c.want)
+			}
+		})
+	}
+}
+
+func TestApplyTestFilterRepeatAppendsPerName(t *testing.T) {
+	// gradle's --tests is Ant-glob, no OR — multi-value requires the whole
+	// flag to repeat once per name.
+	got := applyTestFilter(
+		"./gradlew acceptanceTest",
+		"--tests <test>",
+		"repeat",
+		[]string{"T1", "T2"},
+	)
+	want := "./gradlew acceptanceTest --tests T1 --tests T2"
+	if got != want {
+		t.Errorf("\n got:  %q\n want: %q", got, want)
+	}
+}
+
+func TestApplyTestFilterEmptyNamesPassesThrough(t *testing.T) {
+	// No --test / no --sample → no filter applied, no <test> substitution.
+	cases := []struct {
+		name       string
+		testFilter string
+		join       string
+	}{
+		{"or, full flag template", "--grep '<test>'", "or"},
+		{"or, &-fragment template", "&DisplayName~<test>", "or"},
+		{"repeat, full flag template", "--tests <test>", "repeat"},
+	}
+	const command = "npx playwright test smoke"
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := applyTestFilter(command, c.testFilter, c.join, nil); got != command {
+				t.Errorf("want command unchanged, got %q", got)
+			}
+		})
+	}
+}
+
+func TestApplyTestFilterEmptyTestFilterPassesThrough(t *testing.T) {
+	// A suite with no testFilter template configured can't substitute names —
+	// command must come back unchanged regardless of how many names we pass.
+	got := applyTestFilter("./gradlew test", "", "or", []string{"T1", "T2"})
+	if got != "./gradlew test" {
+		t.Errorf("want command unchanged, got %q", got)
 	}
 }
 

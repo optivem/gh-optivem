@@ -218,7 +218,7 @@ func newTestSystemCmd() *cobra.Command {
 		systemPath string
 		testsPath  string
 		suite      string
-		test       string
+		test       []string
 		sample     bool
 		noBuild    bool
 		rebuild    bool
@@ -232,7 +232,9 @@ func newTestSystemCmd() *cobra.Command {
 		Example: `  gh optivem test system
   gh optivem test system --suite smoke
   gh optivem test system --rebuild --suite smoke
-  gh optivem test system --no-build --no-start`,
+  gh optivem test system --no-build --no-start
+  gh optivem test system --suite smoke --test T1 --test T2
+  gh optivem test system --suite smoke --test T1,T2`,
 		Run: func(cmd *cobra.Command, args []string) {
 			sys, err := runner.LoadSystem(systemPath)
 			exitOnError(err)
@@ -254,7 +256,7 @@ func newTestSystemCmd() *cobra.Command {
 	cmd.Flags().StringVar(&systemPath, "system-config", defaultSystemConfig, flagSystemUsage)
 	cmd.Flags().StringVar(&testsPath, "test-config", defaultTestsConfig, flagTestsUsage)
 	cmd.Flags().StringVar(&suite, "suite", "", "Run only the suite with this id")
-	cmd.Flags().StringVar(&test, "test", "", "Narrow execution to one test name (substituted into the suite's testFilter)")
+	cmd.Flags().StringSliceVar(&test, "test", nil, "Narrow execution to the given test name(s); repeatable, also accepts comma-separated values (substituted into the suite's testFilter)")
 	cmd.Flags().BoolVar(&sample, "sample", false, "Use each suite's sampleTest field as the test name")
 	cmd.Flags().BoolVar(&noBuild, "no-build", false, "Skip the implicit build step (analog of dotnet test --no-build)")
 	cmd.Flags().BoolVar(&rebuild, "rebuild", false, "Force a full rebuild from scratch in the implicit build step (ignored with --no-build)")

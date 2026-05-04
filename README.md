@@ -128,6 +128,8 @@ gh optivem test system --no-start            # skip the start step (system must 
 gh optivem test system --restart             # force tear-down + restart before tests
 gh optivem test system --suite smoke         # run only the suite with this id
 gh optivem test system --test "MyTest"       # narrow execution to one test name (substituted into the suite's testFilter)
+gh optivem test system --test T1 --test T2   # multiple names, repeatable
+gh optivem test system --test T1,T2          # ...or comma-separated
 gh optivem test system --sample              # use each suite's sampleTest field as the test name
 
 gh optivem build system                      # docker compose build for every entry in system.json
@@ -142,6 +144,8 @@ gh optivem clean system                      # docker compose down -v --rmi loca
 ```
 
 All runner subcommands also accept `--system-config <path>` (default `./system.json`) and the `test` subcommand accepts `--test-config <path>` (default `./tests.json`) for projects where the config files live elsewhere.
+
+Multi-test semantics depend on the suite's `testFilter` in `tests.json`. The runner combines multiple `--test` values per `testFilterJoin`: `"or"` (default) joins names with `|` and substitutes once — works for dotnet (`&DisplayName~T1|T2`) and playwright/jest (`--grep 'T1|T2'`); `"repeat"` substitutes the whole `testFilter` once per name and concatenates — required for gradle (`--tests T1 --tests T2`). Practical ceiling on Windows is ~600 typical test names per invocation (the OS caps each command line at 32K characters).
 
 `clean system` is the analog of `dotnet clean` / `./gradlew clean` — it deletes build outputs (containers, named volumes, locally-built images) without touching the dependency cache (registry-pulled images are kept). Chain it explicitly for a fresh start: `gh optivem clean system && gh optivem test system`.
 

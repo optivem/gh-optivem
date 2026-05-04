@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -59,10 +61,43 @@ func (o SystemOptions) upTimeout() time.Duration {
 }
 
 // transientNetRE matches docker-compose pull/build errors that are usually
-// resolved by retrying — DNS hiccups, Docker Hub blips, ECONNRESET. Mirrors
-// the bash/PS1 retry pattern.
+// resolved by retrying — DNS hiccups, Docker Hub blips, ECONNRESET, plus
+// registry-side flakes (manifest 403/429, buildx metadata-resolve failures).
+// Mirrors the bash/PS1 retry pattern.
 var transientNetRE = regexp.MustCompile(
-	`ECONNRESET|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|i/o timeout|TLS handshake|Bad Gateway|Service Unavailable|Gateway Timeout`)
+	`ECONNRESET|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|i/o timeout|TLS handshake|` +
+		`Bad Gateway|Service Unavailable|Gateway Timeout|` +
+		// Registry-side flakes: docker buildx / compose pull failures that surface
+		// as transient HTTP errors against image registries (Docker Hub, MCR, GHCR).
+		// MCR returns intermittent 403 on public manifests during cache hiccups,
+		// not as a real auth signal.
+		`unexpected status from HEAD request|failed to resolve source metadata|` +
+		`manifest unknown|429 Too Many Requests|403 Forbidden|toomanyrequests`)
+
+// tailWriter is an io.Writer that retains only the last cap bytes written to
+// it. Used to capture a bounded tail of streamed subprocess output for
+// error-pattern matching, without buffering the full stream.
+type tailWriter struct {
+	mu  sync.Mutex
+	cap int
+	buf []byte
+}
+
+func (t *tailWriter) Write(p []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.buf = append(t.buf, p...)
+	if len(t.buf) > t.cap {
+		t.buf = t.buf[len(t.buf)-t.cap:]
+	}
+	return len(p), nil
+}
+
+func (t *tailWriter) String() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return string(t.buf)
+}
 
 // Build runs `docker compose -f <composeFile> build` for every entry in sys.
 // cwd is the working directory the compose-file paths are resolved against
@@ -231,19 +266,28 @@ func runCompose(cwd string, args ...string) error {
 // runComposeCtx is runCompose with a hard deadline. If the deadline elapses,
 // the process is killed and the returned error wraps context.DeadlineExceeded
 // so the caller's retry loop can recognise it as transient.
+//
+// Compose streams build/pull errors (registry 403, ECONNRESET, etc.) to its
+// stdio, not to its exit code. To make those visible to the caller's retry
+// regex, the last 16KB of stdio are mirrored into the returned error message.
 func runComposeCtx(cwd string, timeout time.Duration, args ...string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	full := append([]string{"compose"}, args...)
 	cmd := exec.CommandContext(ctx, "docker", full...)
 	cmd.Dir = cwd
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	tail := &tailWriter{cap: 16 * 1024}
+	cmd.Stdout = io.MultiWriter(os.Stdout, tail)
+	cmd.Stderr = io.MultiWriter(os.Stderr, tail)
 	err := cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
 		return fmt.Errorf("docker compose %s: %w", strings.Join(args, " "), context.DeadlineExceeded)
 	}
-	return err
+	if err != nil {
+		return fmt.Errorf("docker compose %s: %w\nstderr tail:\n%s",
+			strings.Join(args, " "), err, tail.String())
+	}
+	return nil
 }
 
 // runDocker executes `docker <args...>` with output streamed to the user.
