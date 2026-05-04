@@ -51,7 +51,7 @@ The rehearsal script then:
 
 Behaviour:
 - Writes `<CWD>/gh-optivem.yaml` (or `<--dir>/gh-optivem.yaml`).
-- Refuses to overwrite an existing file unless `--force` is passed (overwriting the central config silently is dangerous).
+- Refuses to overwrite an existing file unless `--force` is passed. Conventional fit for a "scaffold a whole file" command — matches `cargo init`, `dotnet new`, `helm create`. The file is the single source of truth for the tool, and it may be hand-edited; silent overwrite would be a foot-gun. (The rehearsal path never triggers this — fresh worktrees have no pre-existing YAML — so the refuse default doesn't add friction there.)
 - Validates input the same way `init` does (lang/arch/repo-strategy enums + cross-field rules).
 - No network, no GitHub, no SonarCloud — pure local file write.
 
@@ -69,7 +69,20 @@ Behaviour:
 
 **File:** `scripts/atdd-rehearsal.sh`
 
-After the `git worktree add` block (~line 124) and before the `implement-ticket` invocation (~line 135), add:
+Add a clearly-marked config block near the top of the script (after the shebang/header comment, before any logic). Single source of truth for rehearsal values; greppable; no env-var indirection. Hardcoded `REHEARSAL_PROJECT_URL` because we always rehearse against the same GitHub Project.
+
+```bash
+# === REHEARSAL CONFIG === (edit these for your setup)
+REHEARSAL_OWNER="..."
+REHEARSAL_REPO="..."
+REHEARSAL_ARCH="monolith"
+REHEARSAL_REPO_STRATEGY="monorepo"
+REHEARSAL_MONOLITH_LANG="java"
+REHEARSAL_PROJECT_URL="..."
+# === END REHEARSAL CONFIG ===
+```
+
+After the `git worktree add` block (~line 124) and before the `implement-ticket` invocation (~line 135), add the `config init` call followed by an explicit commit so the YAML lands on the rehearsal branch (visible to anyone viewing the branch on github.com):
 
 ```bash
 log "Writing gh-optivem.yaml into worktree..."
@@ -80,9 +93,12 @@ log "Writing gh-optivem.yaml into worktree..."
     --repo-strategy "$REHEARSAL_REPO_STRATEGY" \
     --monolith-lang "$REHEARSAL_MONOLITH_LANG" \
     --project-url "$REHEARSAL_PROJECT_URL" )
-```
 
-Source the values from a small config block at the top of the script (single-author tool — env vars are overkill, but a clearly-marked block is easier to edit than scattered defaults).
+log "Committing gh-optivem.yaml to rehearsal branch..."
+( cd "$WORKTREE_PATH" \
+    && git add gh-optivem.yaml \
+    && git commit -m "Add gh-optivem.yaml for rehearsal" )
+```
 
 ### 5. Update help text and header comment
 
@@ -111,20 +127,16 @@ Renumber subsequent steps. No `--help` flag changes needed (existing `<issue-num
 - **Auto-detecting rehearsal values from the consumer repo.** The author knows the values; a config block in the script is fine.
 - **`--config-only` mode for `init`.** Was an alternative; rejected once `config init` was on the table — `init --config-only` muddies init's contract while `config init` reads cleanly.
 
-## Open questions
+## Decisions (resolved 2026-05-04)
 
-- **Should the YAML get committed to the rehearsal branch?** If students see the output branch and it's missing `gh-optivem.yaml`, they may wonder why. Two paths:
-  - Have the rehearsal script `git add gh-optivem.yaml && git commit -m "Add gh-optivem.yaml for rehearsal"` after `config init`. Simple, keeps the demo branch self-contained.
-  - Leave it as a working-tree change and let `implement-ticket` decide. Cleaner separation but unpredictable from the rehearsal author's perspective.
-  - Lean: explicit commit by the rehearsal script, before `implement-ticket` runs.
-- **Where do the project-specific values come from?** Recommend a clearly-marked config block at the top of the script. Easier to edit than scattered defaults; lighter than env-var indirection for a single-author tool.
-- **What `--project-url` value to use?** The rehearsal needs a real GitHub Project URL for `implement-ticket` to resolve the issue against. Fixed rehearsal-only project URL, or read from an env var? Confirm.
-- **Default behaviour for `config init` when the file already exists.** Refuse + suggest `--force`, or overwrite silently? Lean: refuse + suggest `--force` (the file is the central config; silent overwrite is a foot-gun).
+- **YAML gets committed to the rehearsal branch.** The script runs `git add gh-optivem.yaml && git commit -m "Add gh-optivem.yaml for rehearsal"` after `config init`, before `implement-ticket`. Reasons: (1) anyone viewing the branch on github.com sees a coherent history; a working-tree-only YAML is invisible remotely; (2) predictable regardless of what `implement-ticket` does with its own commits; (3) matches what real `gh optivem init` users get (the YAML lands in their initial scaffold commit at `main.go:251-254`).
+- **Project-specific values live in a `# === REHEARSAL CONFIG ===` block at the top of the script.** Single greppable place to edit. Env vars rejected as friction without benefit for a single-author tool.
+- **`--project-url` is hardcoded** in the rehearsal config block — we always rehearse against the same GitHub Project. If that ever changes, promote it to an env var or third script arg.
+- **`config init` refuses to overwrite existing files; `--force` opts in.** Conventional for whole-file scaffolders (`cargo init`, `dotnet new`, `helm create`). Doesn't affect the rehearsal path (worktrees start without a YAML), only matters for manual `config init` invocations against already-configured repos.
 
 ## Order of operations
 
-1. Resolve the four open questions above.
-2. Land Items 1 + 2 + 3 (`config` parent + `init` + `validate`) together — they all share the same wiring scaffold and ship as one coherent CLI surface.
-3. Land Item 6 (tests) in the same PR as Items 1-3.
-4. Land Items 4 + 5 (rehearsal script + header comment) together, after the binary is in.
-5. Manual rehearsal: run the script end-to-end, verify the worktree has `gh-optivem.yaml` with correct contents, verify `implement-ticket` consumes it (project URL resolves), verify `gh optivem config validate` exits 0 against the generated file.
+1. Land Items 1 + 2 + 3 (`config` parent + `init` + `validate`) together — they share the same wiring scaffold and ship as one coherent CLI surface.
+2. Land Item 6 (tests) in the same PR as Items 1-3.
+3. Land Items 4 + 5 (rehearsal script + header comment) together, after the binary is in.
+4. Manual rehearsal: run the script end-to-end, verify the worktree has `gh-optivem.yaml` with correct contents committed, verify `implement-ticket` consumes it (project URL resolves), verify `gh optivem config validate` exits 0 against the generated file.
