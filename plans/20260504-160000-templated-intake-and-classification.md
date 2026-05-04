@@ -1,5 +1,7 @@
 # Templated intake and form-driven classification
 
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-04T10:37:41Z`
+
 ## Motivation
 
 The `intake` process in `internal/atdd/runtime/statemachine/process-flow.yaml:141-211` fans out to four near-identical agents (`atdd-story`, `atdd-bug`, `atdd-task`, `atdd-chore`). Each one does the same shape of work — read the ticket body, extract the canonical sections (Acceptance Criteria, Checklist, Legacy Acceptance Criteria), classify the change. The differences between the four agents are small enough that they could be one prompt, and most of the work isn't actually creative — it's parsing markdown.
@@ -66,32 +68,6 @@ The pedagogical signal is preserved: students still write Acceptance Criteria as
 
 Sequence: forms first (so the parser has something concrete to target), then runtime changes, then retire the old agents. One PR per item.
 
-### 1. Author the three issue forms in shop
-
-**Files:**
-- `shop/.github/ISSUE_TEMPLATE/story.yml` (new)
-- `shop/.github/ISSUE_TEMPLATE/bug.yml` (new)
-- `shop/.github/ISSUE_TEMPLATE/task.yml` (new)
-- `shop/.github/ISSUE_TEMPLATE/config.yml` (new — `blank_issues_enabled: false`)
-
-**Form shape (common to all three):**
-
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `Context` | textarea | yes | Why the ticket exists. One paragraph. |
-| `Legacy Acceptance Criteria` | textarea | no | Backfill section. Empty when absent. |
-| `Links` | input | no | Related issues / PRs / docs. |
-
-**Type-specific fields:**
-
-- `story.yml`, `bug.yml`: add `Acceptance Criteria` textarea (required, Given/When/Then placeholder, `render: markdown`). `bug.yml` also adds `Steps to Reproduce` (textarea, required). No subtype — behavioral tickets go straight to `at_cycle`.
-- `task.yml`: add `Checklist` textarea (required, `- [ ]` placeholder, `render: markdown`). No subtype dropdown — subtype is carried by a `subtype:*` label applied post-form (Decision 4).
-
-**Native issue type (not labels):**
-- `story.yml` sets `type: Story`, `bug.yml` sets `type: Bug`, `task.yml` sets `type: Task`. These are GitHub's native issue-type values (Decision 3). No `labels:` block for type.
-
-**Validation (manual, before runtime work):** create one test ticket per form against a sandbox repo, dump the rendered markdown body, confirm headings are exactly `## Acceptance Criteria`, `## Legacy Acceptance Criteria`, `## Checklist`, etc. Also confirm `issue.type` is set on each test ticket. The parser's contract depends on this.
-
 ### 2. Wire the forms into the scaffolder, and seed `subtype:*` labels
 
 **Why this item exists at all:** today's scaffolder (`internal/steps/apply_template.go:128`) doesn't bulk-copy `shop/`. It explicitly copies named subdirectories: workflows via `CopyWorkflows`, system code via `files.CopyDir`, externals, system-tests, docker, cloud-run scripts, docs via `copyDocs`. Dropping `.github/ISSUE_TEMPLATE/*.yml` into shop without a corresponding scaffolder step means the YAMLs sit unused — the new repo never receives them. Labels also need seeding — they live per-repo, and the runtime expects `subtype:*` to exist as choosable labels in any scaffolded repo.
@@ -139,8 +115,7 @@ const (
     SectionLegacyAcceptanceCriteria = "Legacy Acceptance Criteria"
     SectionChecklist                = "Checklist"
     SectionStepsToReproduce         = "Steps to Reproduce"
-    SectionContext                  = "Context"
-    SectionLinks                    = "Links"
+    SectionDescription              = "Description"
 )
 ```
 
