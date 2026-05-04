@@ -202,12 +202,12 @@ flows:
       - id: EXTAPI_CYCLE
         type: call_activity
         flow: external_api_task_cycle
-        group: structural
+        group: external_structural/interface
 
       - id: SYSAPI_CYCLE
         type: call_activity
         flow: structural_cycle
-        group: structural
+        group: structural/interface
         params:
           phase: "SYSTEM API REDESIGN"
           agent: atdd-task
@@ -217,7 +217,7 @@ flows:
       - id: SYSUI_CYCLE
         type: call_activity
         flow: structural_cycle
-        group: structural
+        group: structural/interface
         params:
           phase: "SYSTEM UI REDESIGN"
           agent: atdd-task
@@ -227,7 +227,7 @@ flows:
       - id: CHORE_CYCLE
         type: call_activity
         flow: structural_cycle
-        group: structural
+        group: structural/implementation
         params:
           phase: CHORE
           agent: atdd-chore
