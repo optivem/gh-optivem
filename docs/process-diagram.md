@@ -34,39 +34,30 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    ATDD_BUG["atdd-bug (intake)"]
-    ATDD_CHORE["atdd-chore (intake)"]
-    ATDD_STORY["atdd-story (intake)"]
-    ATDD_TASK["atdd-task (intake)"]
     CLASSIFY[[Auto-classify ticket]]
+    CLASSIFY_SUBTYPE[["Auto-classify subtype (task tickets only)"]]
     GATE_CLASSIFY_CONFIDENT{Classification confident?}
-    GATE_TICKET_TYPE{Ticket Type?}
+    GATE_PARSE_OK{Parsed OK?}
     INTAKE_END((End))
-    STOP_CLASSIFY_CONFLICT[STOP - HUMAN REVIEW — resolve classification conflict]
-    STOP_INTAKE[STOP - HUMAN REVIEW — approve scenarios]
+    PARSE_BODY[[Parse ticket body sections]]
+    STOP_CLASSIFY_CONFLICT[STOP - HUMAN REVIEW — set issue type / re-run]
+    STOP_PARSE_ERROR[STOP - HUMAN REVIEW — fix ticket body / re-run]
 
     CLASSIFY --> GATE_CLASSIFY_CONFIDENT
-    GATE_CLASSIFY_CONFIDENT -- Yes --> GATE_TICKET_TYPE
+    GATE_CLASSIFY_CONFIDENT -- Yes --> CLASSIFY_SUBTYPE
     GATE_CLASSIFY_CONFIDENT -- No --> STOP_CLASSIFY_CONFLICT
-    STOP_CLASSIFY_CONFLICT --> GATE_TICKET_TYPE
-    GATE_TICKET_TYPE -- story --> ATDD_STORY
-    GATE_TICKET_TYPE -- bug --> ATDD_BUG
-    GATE_TICKET_TYPE -- system-api-task / system-ui-task / external-api-task --> ATDD_TASK
-    GATE_TICKET_TYPE -- chore --> ATDD_CHORE
-    ATDD_STORY --> STOP_INTAKE
-    ATDD_BUG --> STOP_INTAKE
-    ATDD_TASK --> STOP_INTAKE
-    ATDD_CHORE --> STOP_INTAKE
-    STOP_INTAKE --> INTAKE_END
+    STOP_CLASSIFY_CONFLICT --> CLASSIFY_SUBTYPE
+    CLASSIFY_SUBTYPE --> PARSE_BODY
+    PARSE_BODY --> GATE_PARSE_OK
+    GATE_PARSE_OK -- Yes --> INTAKE_END
+    GATE_PARSE_OK -- No --> STOP_PARSE_ERROR
+    STOP_PARSE_ERROR --> PARSE_BODY
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class CLASSIFY serviceNode
-
-    classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
-    class ATDD_BUG,ATDD_CHORE,ATDD_STORY,ATDD_TASK agentNode
+    class CLASSIFY,CLASSIFY_SUBTYPE,PARSE_BODY serviceNode
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class STOP_CLASSIFY_CONFLICT,STOP_INTAKE humanNode
+    class STOP_CLASSIFY_CONFLICT,STOP_PARSE_ERROR humanNode
 ```
 
 ## Run Legacy Cycle
@@ -89,14 +80,14 @@ flowchart TD
     AT_CYCLE[AT_CYCLE — see § AT Cycle]
     CYCLE_END((End))
     DA_CYCLE[DA_CYCLE — see § DA Cycle]
-    GATE_CHANGE_SUBTYPE{Structural change subtype?}
-    GATE_CHANGE_TYPE{Cycle by change type}
+    GATE_SUBTYPE{Cycle by subtype}
+    GATE_TICKET_TYPE{Behavioral or structural?}
     SUT_CYCLE[SUT_CYCLE — see § SUT Cycle]
 
-    GATE_CHANGE_TYPE -- behavior --> AT_CYCLE
-    GATE_CHANGE_TYPE -- structure --> GATE_CHANGE_SUBTYPE
-    GATE_CHANGE_SUBTYPE -- interface --> DA_CYCLE
-    GATE_CHANGE_SUBTYPE -- implementation --> SUT_CYCLE
+    GATE_TICKET_TYPE -- story / bug --> AT_CYCLE
+    GATE_TICKET_TYPE -- task --> GATE_SUBTYPE
+    GATE_SUBTYPE -- system-interface-redesign / external-system-interface-redesign --> DA_CYCLE
+    GATE_SUBTYPE -- system-implementation-change --> SUT_CYCLE
     AT_CYCLE --> CYCLE_END
     DA_CYCLE --> CYCLE_END
     SUT_CYCLE --> CYCLE_END
@@ -277,17 +268,12 @@ flowchart TD
 flowchart TD
     DA_END((End))
     EXTAPI_CYCLE[EXTAPI_CYCLE — see § Contract Test Sub-Process]
-    GATE_CHANGE_CHANNEL{System interface channel?}
-    GATE_CHANGE_SCOPE{Driver Adapter scope?}
-    SYSAPI_CYCLE["SYSAPI_CYCLE — see § Structural Cycle (shared)"]
-    SYSUI_CYCLE["SYSUI_CYCLE — see § Structural Cycle (shared)"]
+    GATE_SUBTYPE{System or external-system interface?}
+    SYSTEM_INTERFACE_CYCLE["SYSTEM_INTERFACE_CYCLE — see § Structural Cycle (shared)"]
 
-    GATE_CHANGE_SCOPE -- system --> GATE_CHANGE_CHANNEL
-    GATE_CHANGE_SCOPE -- external_system --> EXTAPI_CYCLE
-    GATE_CHANGE_CHANNEL -- api --> SYSAPI_CYCLE
-    GATE_CHANGE_CHANNEL -- ui --> SYSUI_CYCLE
-    SYSAPI_CYCLE --> DA_END
-    SYSUI_CYCLE --> DA_END
+    GATE_SUBTYPE -- system-interface-redesign --> SYSTEM_INTERFACE_CYCLE
+    GATE_SUBTYPE -- external-system-interface-redesign --> EXTAPI_CYCLE
+    SYSTEM_INTERFACE_CYCLE --> DA_END
     EXTAPI_CYCLE --> DA_END
 ```
 

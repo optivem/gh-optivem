@@ -152,8 +152,8 @@ func TestRunSmokeTest_RecordsBoolInContext(t *testing.T) {
 
 func TestPrintDriftWarning_OnlyPrintsForCompileMode(t *testing.T) {
 	for _, tc := range []struct {
-		mode      string
-		wantWarn  bool
+		mode     string
+		wantWarn bool
 	}{
 		{mode: "compile", wantWarn: true},
 		{mode: "full", wantWarn: false},
@@ -182,9 +182,9 @@ func TestPrintDriftWarning_OnlyPrintsForCompileMode(t *testing.T) {
 
 func TestCompileInScope_RunsScriptAndPropagatesError(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
+		name     string
 		shellErr error
-		wantErr bool
+		wantErr  bool
 	}{
 		{name: "success", shellErr: nil, wantErr: false},
 		{name: "failure", shellErr: errors.New("compile failed"), wantErr: true},
@@ -366,6 +366,205 @@ func TestClassifyTicket_PrintsNamedSections(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// classifySubtype
+// ---------------------------------------------------------------------------
+
+func TestClassifySubtype_TaskWithSingleLabel(t *testing.T) {
+	gh := newFakeRunner(t, "gh")
+	gh.on(
+		[]string{"issue", "view", "42", "--json", "labels", "--repo", "optivem/shop"},
+		[]byte(`{"labels":[{"name":"area:billing"},{"name":"subtype:system-interface-redesign"}]}`),
+		nil,
+	)
+	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket_type", "task")
+	ctx.Set("issue_num", "42")
+	ctx.Set("issue_repo", "optivem/shop")
+	out := a.classifySubtype(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if got := ctx.GetString("subtype"); got != "system-interface-redesign" {
+		t.Fatalf("subtype: got %q, want %q", got, "system-interface-redesign")
+	}
+}
+
+func TestClassifySubtype_BehavioralTicketsSkipped(t *testing.T) {
+	for _, tt := range []string{"story", "bug"} {
+		t.Run(tt, func(t *testing.T) {
+			gh := newFakeRunner(t, "gh") // gh must NOT be called for non-task
+			a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}})
+			ctx := statemachine.NewContext()
+			ctx.Set("ticket_type", tt)
+			out := a.classifySubtype(ctx)
+			if out.Err != nil {
+				t.Fatalf("unexpected error: %v", out.Err)
+			}
+			if got := ctx.GetString("subtype"); got != "" {
+				t.Fatalf("subtype: got %q, want empty for %s", got, tt)
+			}
+			if len(gh.calls) != 0 {
+				t.Fatalf("gh was called %v but should be skipped for %s", gh.calls, tt)
+			}
+		})
+	}
+}
+
+func TestClassifySubtype_MissingLabelHalts(t *testing.T) {
+	gh := newFakeRunner(t, "gh")
+	gh.on(
+		[]string{"issue", "view", "7", "--json", "labels"},
+		[]byte(`{"labels":[{"name":"area:billing"}]}`),
+		nil,
+	)
+	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket_type", "task")
+	ctx.Set("issue_num", "7")
+	out := a.classifySubtype(ctx)
+	if out.Err == nil {
+		t.Fatalf("expected error for missing subtype label")
+	}
+	if !strings.Contains(out.Err.Error(), "no subtype:*") {
+		t.Fatalf("unexpected error message: %v", out.Err)
+	}
+}
+
+func TestClassifySubtype_MultipleLabelsHalt(t *testing.T) {
+	gh := newFakeRunner(t, "gh")
+	gh.on(
+		[]string{"issue", "view", "7", "--json", "labels"},
+		[]byte(`{"labels":[{"name":"subtype:system-interface-redesign"},{"name":"subtype:system-implementation-change"}]}`),
+		nil,
+	)
+	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket_type", "task")
+	ctx.Set("issue_num", "7")
+	out := a.classifySubtype(ctx)
+	if out.Err == nil {
+		t.Fatalf("expected error for multiple subtype labels")
+	}
+	if !strings.Contains(out.Err.Error(), "multiple subtype:*") {
+		t.Fatalf("unexpected error message: %v", out.Err)
+	}
+}
+
+func TestExtractSubtypeLabels(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{name: "single", raw: `{"labels":[{"name":"subtype:foo"}]}`, want: []string{"foo"}},
+		{name: "many_with_other_labels", raw: `{"labels":[{"name":"area:x"},{"name":"subtype:bar"},{"name":"subtype:baz"}]}`, want: []string{"bar", "baz"}},
+		{name: "none", raw: `{"labels":[{"name":"area:x"}]}`, want: nil},
+		{name: "empty_array", raw: `{"labels":[]}`, want: nil},
+		{name: "no_labels_key", raw: `{"title":"x"}`, want: nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := extractSubtypeLabels([]byte(tc.raw))
+			if fmt.Sprintf("%v", got) != fmt.Sprintf("%v", tc.want) {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// parseTicketBody
+// ---------------------------------------------------------------------------
+
+func TestParseTicketBody_StorySuccess(t *testing.T) {
+	body := "## Acceptance Criteria\n\nScenario: ok\n  Given x\n  When y\n  Then z\n\n## Legacy Acceptance Criteria\n\n- old\n"
+	rawBody, _ := json.Marshal(body)
+	gh := newFakeRunner(t, "gh")
+	gh.on(
+		[]string{"issue", "view", "42", "--json", "body", "--repo", "optivem/shop"},
+		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
+		nil,
+	)
+	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket_type", "story")
+	ctx.Set("issue_num", "42")
+	ctx.Set("issue_repo", "optivem/shop")
+	out := a.parseTicketBody(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if got := ctx.Get("parse_ok"); got != true {
+		t.Fatalf("parse_ok: got %v, want true", got)
+	}
+	if got := ctx.Get("legacy_acceptance_criteria_section_present"); got != true {
+		t.Fatalf("legacy_acceptance_criteria_section_present: got %v, want true", got)
+	}
+}
+
+func TestParseTicketBody_TaskMissingChecklistSetsParseOkFalse(t *testing.T) {
+	body := "## Description\n\nNo checklist.\n"
+	rawBody, _ := json.Marshal(body)
+	gh := newFakeRunner(t, "gh")
+	gh.on(
+		[]string{"issue", "view", "7", "--json", "body"},
+		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
+		nil,
+	)
+	var stderr bytes.Buffer
+	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}, Stderr: &stderr})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket_type", "task")
+	ctx.Set("issue_num", "7")
+	out := a.parseTicketBody(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected hard error: %v", out.Err)
+	}
+	if got := ctx.Get("parse_ok"); got != false {
+		t.Fatalf("parse_ok: got %v, want false", got)
+	}
+	if !strings.Contains(stderr.String(), "Checklist") {
+		t.Fatalf("stderr should mention Checklist: %q", stderr.String())
+	}
+}
+
+func TestParseTicketBody_StoryWithoutLegacyACSetsLegacyFalse(t *testing.T) {
+	body := "## Acceptance Criteria\n\nScenario: ok\n"
+	rawBody, _ := json.Marshal(body)
+	gh := newFakeRunner(t, "gh")
+	gh.on(
+		[]string{"issue", "view", "1", "--json", "body"},
+		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
+		nil,
+	)
+	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket_type", "story")
+	ctx.Set("issue_num", "1")
+	out := a.parseTicketBody(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if got := ctx.Get("parse_ok"); got != true {
+		t.Fatalf("parse_ok: got %v, want true", got)
+	}
+	if got := ctx.Get("legacy_acceptance_criteria_section_present"); got != false {
+		t.Fatalf("legacy_acceptance_criteria_section_present: got %v, want false", got)
+	}
+}
+
+func TestParseTicketBody_EmptyTicketTypeFailsHard(t *testing.T) {
+	a := newActions(Deps{Gh: newFakeRunner(t, "gh"), Prompter: &fakePrompter{}})
+	ctx := statemachine.NewContext()
+	ctx.Set("issue_num", "1")
+	out := a.parseTicketBody(ctx)
+	if out.Err == nil {
+		t.Fatalf("expected hard error for empty ticket_type")
+	}
+}
+
 func TestExtractIssueType(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -506,6 +705,8 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"pick_top_ready",
 		"move_to_in_progress",
 		"classify_ticket",
+		"classify_subtype",
+		"parse_ticket_body",
 		"move_to_in_acceptance",
 		"run_smoke_test",
 		"commit_onboarding",

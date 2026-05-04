@@ -247,8 +247,8 @@ func TestRenderPrompt_CLICommits_NoMarkerLeaksAcrossAgents(t *testing.T) {
 	// Smoke-test every embedded prompt: with --cli-commits on, none of
 	// them should leak the legacy-block marker or the legacy preamble.
 	for _, name := range []string{
-		"atdd-backend", "atdd-bug", "atdd-chore", "atdd-driver", "atdd-dsl",
-		"atdd-frontend", "atdd-release", "atdd-story", "atdd-stubs",
+		"atdd-backend", "atdd-chore", "atdd-driver", "atdd-dsl",
+		"atdd-frontend", "atdd-release", "atdd-stubs",
 		"atdd-task", "atdd-test",
 	} {
 		opts := newOpts()
@@ -317,8 +317,8 @@ func TestRenderPrompt_ReturnsErrorForUnknownAgent(t *testing.T) {
 func TestDispatch_SuccessReturnsCommitInfo(t *testing.T) {
 	gitFake := &fakeGit{
 		out: [][]byte{
-			[]byte("aaaaaaa1111111\n"), // rev-parse before
-			[]byte("bbbbbbb2222222\n"), // rev-parse after
+			[]byte("aaaaaaa1111111\n"),                                  // rev-parse before
+			[]byte("bbbbbbb2222222\n"),                                  // rev-parse after
 			[]byte("AT-RED-TEST: scenario for PUT /carts/{id}/items\n"), // log subject
 		},
 	}
@@ -803,12 +803,12 @@ func TestParseDirty_AllStatusKinds(t *testing.T) {
 func TestDispatch_CLICommits_StagesAndCommitsModifiedFile(t *testing.T) {
 	gitFake := &fakeGit{
 		out: [][]byte{
-			[]byte("aaaa\n"),                                // pre rev-parse HEAD
-			[]byte("aaaa\n"),                                // post rev-parse HEAD (same — agent didn't commit)
-			[]byte(""),                                      // git add -A -- foo.go
-			[]byte("foo.go | 2 +-\n 1 file changed\n"),      // git diff --cached --stat
-			[]byte(""),                                      // git commit -m
-			[]byte("bbbb\n"),                                // git rev-parse HEAD (new commit SHA)
+			[]byte("aaaa\n"), // pre rev-parse HEAD
+			[]byte("aaaa\n"), // post rev-parse HEAD (same — agent didn't commit)
+			[]byte(""),       // git add -A -- foo.go
+			[]byte("foo.go | 2 +-\n 1 file changed\n"), // git diff --cached --stat
+			[]byte(""),       // git commit -m
+			[]byte("bbbb\n"), // git rev-parse HEAD (new commit SHA)
 		},
 		statusPre:  []byte(""),
 		statusPost: []byte(" M foo.go\n"),
@@ -951,8 +951,8 @@ func TestDispatch_CLICommits_HonorsAgentCommitWhenHeadMovesAndDeltaIsEmpty(t *te
 	// honor the agent's commit instead of double-committing.
 	gitFake := &fakeGit{
 		out: [][]byte{
-			[]byte("aaaa\n"),                  // pre rev-parse HEAD
-			[]byte("bbbb\n"),                  // post rev-parse HEAD (agent committed)
+			[]byte("aaaa\n"),                    // pre rev-parse HEAD
+			[]byte("bbbb\n"),                    // post rev-parse HEAD (agent committed)
 			[]byte("atdd-task: agent did it\n"), // git log -1 --format=%s
 		},
 		statusPre:  []byte(""),
@@ -1199,10 +1199,10 @@ func TestCommitChanges_SetsEnvVarForCommit(t *testing.T) {
 	// plumbing (item 2) to the hook (item 1).
 	gitFake := &fakeGit{
 		out: [][]byte{
-			[]byte(""),                      // git add -A -- foo.go
-			[]byte("foo.go | 2 +-\n"),       // git diff --cached --stat
-			[]byte(""),                      // git commit -m
-			[]byte("bbbb\n"),                // git rev-parse HEAD
+			[]byte(""),                // git add -A -- foo.go
+			[]byte("foo.go | 2 +-\n"), // git diff --cached --stat
+			[]byte(""),                // git commit -m
+			[]byte("bbbb\n"),          // git rev-parse HEAD
 		},
 	}
 	opts := newOpts()

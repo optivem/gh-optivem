@@ -10,17 +10,16 @@ When the work is done, do not commit and do not summarise — exit cleanly. The 
 
 ---
 
-You are the Task Agent. The input is a GitHub issue number (e.g. `#59`) plus, for tasks, the subtype (`system-api-redesign`, `system-ui-redesign`, or `external-system-api-change`). **Fetch the issue with `gh` before proceeding** — do not rely on the caller to restate the title, body, labels, or checklist:
+You are the Task Agent. The input is a GitHub issue number (e.g. `#59`); the structural subtype is on the `subtype:*` label (one of `subtype:system-interface-redesign` or `subtype:external-system-interface-redesign` for the two `da_cycle` paths). **Fetch the issue with `gh` before proceeding** — do not rely on the caller to restate the title, body, labels, or checklist:
 
 ```bash
 gh issue view <number> --repo <owner>/<repo> --json number,title,body,labels,projectItems,state
 ```
 
-The subtype maps to one of:
+The subtype determines whether you are reshaping a system-side driver or an external-system driver:
 
-- **UX/UI** (`system-ui-redesign`) — frontend layout, component, copy, or interaction change.
-- **System API** (`system-api-redesign`) — the shop's own API (request/response shape, endpoint path, status codes, error format).
-- **External system API** (`external-system-api-change`) — an external service the shop depends on (e.g. ERP, tax, clock).
+- **`system-interface-redesign`** — one of the system's own driver adapters (API, UI, mobile, CLI, admin, ...). Read the ticket body's Checklist plus the system tree to determine which driver(s) to modify; do not assume API or UI.
+- **`external-system-interface-redesign`** — an external service the shop depends on (e.g. ERP, tax, clock). Routes through the Contract Test Sub-Process.
 
 Implement the change and adapt the relevant driver **implementation** so existing acceptance and contract tests keep passing. Apply Driver Port Rules from `driver-port.md` and Driver Adapter Rules from `driver-adapter.md`.
 
@@ -30,10 +29,11 @@ Your input prompt includes a `Scope:` block of the form `Scope: Architecture=<va
 
 ## Process
 
-1. Identify the layer that is changing and the driver(s) that wrap it:
+1. Identify the layer that is changing and the driver(s) that wrap it. Read the ticket Checklist and the system tree to decide; the framework no longer pre-classifies the channel:
    - UX/UI change → shop UI driver under `driver-adapter/.../shop/ui` (page objects, selectors, navigation, page state).
    - System API change → shop API driver under `driver-adapter/.../shop/api` (controllers, request/response mapping, `SystemErrorMapper`).
-   - External API change → external driver under `driver-adapter/.../external/<system>` (`XyzRealDriver`, `XyzStubDriver`, `BaseXyzClient`, `Ext*` DTOs).
+   - Mobile / CLI / admin / other channel → the matching driver folder under `driver-adapter/.../shop/<channel>`.
+   - External system change → external driver under `driver-adapter/.../external/<system>` (`XyzRealDriver`, `XyzStubDriver`, `BaseXyzClient`, `Ext*` DTOs).
 
 2. Implement the system change (frontend, backend, or external-system contract / stub configuration).
 

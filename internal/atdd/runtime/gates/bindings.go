@@ -3,18 +3,18 @@
 //
 // Each binding is a `statemachine.NodeFn` that:
 //
-//   1. Reads the live Context for a pre-set value under the binding key. If
-//      an upstream service task or intake agent has already declared the
-//      result (e.g. classify_ticket sets ticket_type, run_smoke_test sets
-//      smoke_test_passes), that value is returned verbatim. This is the
-//      common path in production runs and lets transitions tests seed state
-//      directly without touching shell-outs.
+//  1. Reads the live Context for a pre-set value under the binding key. If
+//     an upstream service task or intake agent has already declared the
+//     result (e.g. classify_ticket sets ticket_type, run_smoke_test sets
+//     smoke_test_passes), that value is returned verbatim. This is the
+//     common path in production runs and lets transitions tests seed state
+//     directly without touching shell-outs.
 //
-//   2. Falls back to a forward-looking user prompt when the value is absent.
-//      Gates after a WRITE phase ("did the DSL interface change?") are
-//      questions only the user can answer in v1 — git-diff inspection is a
-//      v2 candidate. Prompt strings come from the YAML node descriptions so
-//      the engine and the diagram stay in sync.
+//  2. Falls back to a forward-looking user prompt when the value is absent.
+//     Gates after a WRITE phase ("did the DSL interface change?") are
+//     questions only the user can answer in v1 — git-diff inspection is a
+//     v2 candidate. Prompt strings come from the YAML node descriptions so
+//     the engine and the diagram stay in sync.
 //
 // Tests substitute fake Prompter / GhRunner / GitRunner implementations via
 // Deps; production callers pass a Deps zero-value and the package falls back
@@ -92,11 +92,9 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("external_system_driver_interface_changed", b.externalSystemDriverInterfaceChanged)
 	r.Register("system_driver_interface_changed", b.systemDriverInterfaceChanged)
 	r.Register("ticket_type", b.ticketType)
-	r.Register("change_type", b.changeType)
-	r.Register("change_subtype", b.changeSubtype)
-	r.Register("change_scope", b.changeScope)
-	r.Register("change_channel", b.changeChannel)
+	r.Register("subtype", b.subtype)
 	r.Register("classify_confident", b.classifyConfident)
+	r.Register("parse_ok", b.parseOK)
 	r.Register("legacy_acceptance_criteria_section_present", b.legacyAcceptanceCriteriaSectionPresent)
 	r.Register("external_system_driver_exists", b.externalSystemDriverExists)
 	r.Register("external_system_test_instance_accessible", b.externalSystemTestInstanceAccessible)
@@ -138,114 +136,50 @@ func (b bindings) systemDriverInterfaceChanged(ctx *statemachine.Context) statem
 // String / enum gates — backed by upstream actions, with prompt fallback
 // ---------------------------------------------------------------------------
 
-// ticketType reads the classification produced by the classify_ticket service
-// task. Range mirrors the YAML predicates: story | bug | chore |
-// system-api-task | system-ui-task | external-api-task. The action is
-// expected to write the canonical lowercased form.
+// ticketType reads the classification produced by the classify_ticket
+// service task — the lowercased name of the issue's native GitHub type.
+// Range matches the three configured types: story | bug | task. The
+// action is expected to write the canonical lowercased form.
 func (b bindings) ticketType(ctx *statemachine.Context) statemachine.Outcome {
 	v := ctx.GetString("ticket_type")
 	if v != "" {
 		return statemachine.Outcome{Value: v}
 	}
-	answer, err := b.deps.Prompter.Ask(
-		"Ticket type? (story | bug | chore | system-api-task | system-ui-task | external-api-task): ")
+	answer, err := b.deps.Prompter.Ask("Ticket type? (story | bug | task): ")
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("ticket_type: %w", err)}
 	}
 	answer = strings.ToLower(strings.TrimSpace(answer))
 	switch answer {
-	case "story", "bug", "chore",
-		"system-api-task", "system-ui-task", "external-api-task":
+	case "story", "bug", "task":
 		return statemachine.Outcome{Value: answer}
 	default:
 		return statemachine.Outcome{Err: fmt.Errorf("ticket_type: unrecognised value %q", answer)}
 	}
 }
 
-// changeType reads the top-level change classification produced upstream
-// (classify_ticket service task or the intake agent). Range mirrors the YAML
-// predicates: behavior | structure. Falls back to a prompt for hand-debugging.
-func (b bindings) changeType(ctx *statemachine.Context) statemachine.Outcome {
-	v := ctx.GetString("change_type")
+// subtype reads the structural-change subtype produced by the
+// classify_subtype service task — the trimmed value of the `subtype:*`
+// label on a task ticket. Only reached for tasks; behavioral tickets
+// route past this gate.
+func (b bindings) subtype(ctx *statemachine.Context) statemachine.Outcome {
+	v := ctx.GetString("subtype")
 	if v != "" {
 		return statemachine.Outcome{Value: v}
 	}
 	answer, err := b.deps.Prompter.Ask(
-		"Change type? (behavior | structure): ")
+		"Subtype? (system-interface-redesign | external-system-interface-redesign | system-implementation-change): ")
 	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("change_type: %w", err)}
+		return statemachine.Outcome{Err: fmt.Errorf("subtype: %w", err)}
 	}
 	answer = strings.ToLower(strings.TrimSpace(answer))
 	switch answer {
-	case "behavior", "structure":
+	case "system-interface-redesign",
+		"external-system-interface-redesign",
+		"system-implementation-change":
 		return statemachine.Outcome{Value: answer}
 	default:
-		return statemachine.Outcome{Err: fmt.Errorf("change_type: unrecognised value %q", answer)}
-	}
-}
-
-// changeSubtype distinguishes structural changes by the artifact they touch:
-// interface (Driver Adapter seam) | implementation (System Under Test
-// internals). Only reached when change_type == structure.
-func (b bindings) changeSubtype(ctx *statemachine.Context) statemachine.Outcome {
-	v := ctx.GetString("change_subtype")
-	if v != "" {
-		return statemachine.Outcome{Value: v}
-	}
-	answer, err := b.deps.Prompter.Ask(
-		"Structural subtype? (interface | implementation): ")
-	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("change_subtype: %w", err)}
-	}
-	answer = strings.ToLower(strings.TrimSpace(answer))
-	switch answer {
-	case "interface", "implementation":
-		return statemachine.Outcome{Value: answer}
-	default:
-		return statemachine.Outcome{Err: fmt.Errorf("change_subtype: unrecognised value %q", answer)}
-	}
-}
-
-// changeScope distinguishes whose interface is changing for structure/interface
-// changes: system (one of our own Driver Adapters) | external_system (a
-// Driver Adapter for an external system). Only reached inside da_cycle.
-func (b bindings) changeScope(ctx *statemachine.Context) statemachine.Outcome {
-	v := ctx.GetString("change_scope")
-	if v != "" {
-		return statemachine.Outcome{Value: v}
-	}
-	answer, err := b.deps.Prompter.Ask(
-		"Change scope? (system | external_system): ")
-	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("change_scope: %w", err)}
-	}
-	answer = strings.ToLower(strings.TrimSpace(answer))
-	switch answer {
-	case "system", "external_system":
-		return statemachine.Outcome{Value: answer}
-	default:
-		return statemachine.Outcome{Err: fmt.Errorf("change_scope: unrecognised value %q", answer)}
-	}
-}
-
-// changeChannel selects which system Driver Adapter is being changed: api | ui.
-// Only reached inside da_cycle when change_scope == system.
-func (b bindings) changeChannel(ctx *statemachine.Context) statemachine.Outcome {
-	v := ctx.GetString("change_channel")
-	if v != "" {
-		return statemachine.Outcome{Value: v}
-	}
-	answer, err := b.deps.Prompter.Ask(
-		"System interface channel? (api | ui): ")
-	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("change_channel: %w", err)}
-	}
-	answer = strings.ToLower(strings.TrimSpace(answer))
-	switch answer {
-	case "api", "ui":
-		return statemachine.Outcome{Value: answer}
-	default:
-		return statemachine.Outcome{Err: fmt.Errorf("change_channel: unrecognised value %q", answer)}
+		return statemachine.Outcome{Err: fmt.Errorf("subtype: unrecognised value %q", answer)}
 	}
 }
 
@@ -285,6 +219,15 @@ func (b bindings) classifyConfident(ctx *statemachine.Context) statemachine.Outc
 	return b.boolGate(ctx,
 		"classify_confident",
 		"Classification confident? [Y/n]: ")
+}
+
+// parseOK reads the parse-success flag set by the parse_ticket_body
+// service task. true → intake completes; false → STOP_PARSE_ERROR. Falls
+// back to a prompt for hand-debugging.
+func (b bindings) parseOK(ctx *statemachine.Context) statemachine.Outcome {
+	return b.boolGate(ctx,
+		"parse_ok",
+		"Ticket body parsed OK? [Y/n]: ")
 }
 
 // legacyAcceptanceCriteriaSectionPresent reads the issue body via `gh issue view` and

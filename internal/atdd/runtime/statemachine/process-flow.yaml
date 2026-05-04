@@ -2,9 +2,10 @@
 #
 # Single source of truth for cycle-level orchestration. Encodes the AT cycle,
 # the CT sub-process, the External System Onboarding sub-process, the shared
-# structural cycle (used by system-api-task / system-ui-task / chore), the
-# external-api-task wrapper, and the (TBD) Legacy Acceptance Criteria cycle as named flows
-# of typed nodes connected by sequence flows.
+# structural cycle (used by the system-interface-redesign and
+# system-implementation-change subtypes), the external-system-interface-redesign
+# wrapper, and the (TBD) Legacy Acceptance Criteria cycle as named flows of
+# typed nodes connected by sequence flows.
 #
 # Per-phase WRITE/COMMIT mechanics (e.g. the inner compile/run/disable loop of
 # AT - RED - TEST) are *not* encoded here — they live in the per-phase docs
@@ -132,11 +133,13 @@ flows:
 
   # ===========================================================================
   # intake
-  # Owns the full "understand this ticket" responsibility: classify it,
-  # surface low-confidence classifications for human resolution, then
-  # dispatch the type-specific intake agent and collect the human
-  # approval of scenarios. Self-contained — main only sees INTAKE start
-  # and finish.
+  # Owns the full "understand this ticket" responsibility: classify the
+  # ticket type from GitHub's native issue type, surface low-confidence
+  # classifications for human resolution, classify the structural subtype
+  # from the `subtype:*` label (task tickets only), and parse the body's
+  # canonical sections deterministically. No LLM is dispatched — Issue
+  # Forms enforce the schema upstream so the parser is unambiguous.
+  # Self-contained: main only sees INTAKE start and finish.
   # ===========================================================================
   intake:
     start: CLASSIFY
@@ -155,60 +158,42 @@ flows:
         type: user_task
         agent: human
         role: review
-        description: "STOP - HUMAN REVIEW — resolve classification conflict"
+        description: "STOP - HUMAN REVIEW — set issue type / re-run"
 
-      - id: GATE_TICKET_TYPE
+      - id: CLASSIFY_SUBTYPE
+        type: service_task
+        action: classify_subtype
+        description: "Auto-classify subtype (task tickets only)"
+
+      - id: PARSE_BODY
+        type: service_task
+        action: parse_ticket_body
+        description: "Parse ticket body sections"
+
+      - id: GATE_PARSE_OK
         type: gateway
-        binding: ticket_type
-        description: "Ticket Type?"
+        binding: parse_ok
+        description: "Parsed OK?"
 
-      - id: ATDD_STORY
-        type: user_task
-        agent: atdd-story
-        phase_doc: docs/atdd/process/intake-story.md  # to be created in step 1b
-        description: "atdd-story (intake)"
-
-      - id: ATDD_BUG
-        type: user_task
-        agent: atdd-bug
-        phase_doc: docs/atdd/process/intake-bug.md
-        description: "atdd-bug (intake)"
-
-      - id: ATDD_TASK
-        type: user_task
-        agent: atdd-task
-        phase_doc: docs/atdd/process/intake-task.md
-        description: "atdd-task (intake)"
-
-      - id: ATDD_CHORE
-        type: user_task
-        agent: atdd-chore
-        phase_doc: docs/atdd/process/intake-chore.md
-        description: "atdd-chore (intake)"
-
-      - id: STOP_INTAKE
+      - id: STOP_PARSE_ERROR
         type: user_task
         agent: human
         role: review
-        description: "STOP - HUMAN REVIEW — approve scenarios"
+        description: "STOP - HUMAN REVIEW — fix ticket body / re-run"
 
       - id: INTAKE_END
         type: end_event
 
     sequence_flows:
       - {from: CLASSIFY,                to: GATE_CLASSIFY_CONFIDENT}
-      - {from: GATE_CLASSIFY_CONFIDENT, to: GATE_TICKET_TYPE,        when: "classify_confident == true"}
+      - {from: GATE_CLASSIFY_CONFIDENT, to: CLASSIFY_SUBTYPE,        when: "classify_confident == true"}
       - {from: GATE_CLASSIFY_CONFIDENT, to: STOP_CLASSIFY_CONFLICT,  when: "classify_confident == false"}
-      - {from: STOP_CLASSIFY_CONFLICT,  to: GATE_TICKET_TYPE}
-      - {from: GATE_TICKET_TYPE,        to: ATDD_STORY,              when: "ticket_type == story"}
-      - {from: GATE_TICKET_TYPE,        to: ATDD_BUG,                when: "ticket_type == bug"}
-      - {from: GATE_TICKET_TYPE,        to: ATDD_TASK,               when: "ticket_type in [system-api-task, system-ui-task, external-api-task]"}
-      - {from: GATE_TICKET_TYPE,        to: ATDD_CHORE,              when: "ticket_type == chore"}
-      - {from: ATDD_STORY,              to: STOP_INTAKE}
-      - {from: ATDD_BUG,                to: STOP_INTAKE}
-      - {from: ATDD_TASK,               to: STOP_INTAKE}
-      - {from: ATDD_CHORE,              to: STOP_INTAKE}
-      - {from: STOP_INTAKE,             to: INTAKE_END}
+      - {from: STOP_CLASSIFY_CONFLICT,  to: CLASSIFY_SUBTYPE}
+      - {from: CLASSIFY_SUBTYPE,        to: PARSE_BODY}
+      - {from: PARSE_BODY,              to: GATE_PARSE_OK}
+      - {from: GATE_PARSE_OK,           to: INTAKE_END,              when: "parse_ok == true"}
+      - {from: GATE_PARSE_OK,           to: STOP_PARSE_ERROR,        when: "parse_ok == false"}
+      - {from: STOP_PARSE_ERROR,        to: PARSE_BODY}
 
   # ===========================================================================
   # run_legacy_cycle
@@ -239,30 +224,32 @@ flows:
 
   # ===========================================================================
   # run_cycle
-  # Change cycle for the current ticket — dispatches by the change's
-  # classification, not its ticket type. Three cycles cover the full space,
+  # Change cycle for the current ticket — dispatches by ticket_type first
+  # (behavioral vs structural) and then, for tasks, by `subtype` (the value
+  # carried on the `subtype:*` label). Three cycles cover the full space,
   # named after the test-stack layer at which the change is visible:
-  #   - behavior                 → at_cycle  (AT-layer change)
-  #   - structure / interface    → da_cycle  (Driver Adapter seam change)
-  #   - structure / implementation → sut_cycle (System Under Test internal)
+  #   - story / bug                            → at_cycle  (AT-layer change)
+  #   - task + system-interface-redesign       → da_cycle  (Driver Adapter seam change, system-side)
+  #   - task + external-system-interface-redesign → da_cycle (Driver Adapter seam change, external-side)
+  #   - task + system-implementation-change    → sut_cycle (System Under Test internal)
   #
-  # ticket_type stays inside intake (which uses it to pick the right intake
-  # agent) and does not leak into run_cycle. The classification fields
-  # (change_type, change_subtype, change_scope, change_channel) are produced
-  # by intake and consumed here and in da_cycle.
+  # ticket_type comes from the issue's native GitHub type (Story / Bug / Task
+  # — set by the Issue Form's `type:` field). subtype comes from the
+  # `subtype:*` label and is undefined for behavioral tickets — the
+  # ticket_type gate routes them past the subtype gate.
   # ===========================================================================
   run_cycle:
-    start: GATE_CHANGE_TYPE
+    start: GATE_TICKET_TYPE
     nodes:
-      - id: GATE_CHANGE_TYPE
+      - id: GATE_TICKET_TYPE
         type: gateway
-        binding: change_type
-        description: "Cycle by change type"
+        binding: ticket_type
+        description: "Behavioral or structural?"
 
-      - id: GATE_CHANGE_SUBTYPE
+      - id: GATE_SUBTYPE
         type: gateway
-        binding: change_subtype
-        description: "Structural change subtype?"
+        binding: subtype
+        description: "Cycle by subtype"
 
       - id: AT_CYCLE
         type: call_activity
@@ -280,10 +267,10 @@ flows:
         type: end_event
 
     sequence_flows:
-      - {from: GATE_CHANGE_TYPE,    to: AT_CYCLE,            when: "change_type == behavior"}
-      - {from: GATE_CHANGE_TYPE,    to: GATE_CHANGE_SUBTYPE, when: "change_type == structure"}
-      - {from: GATE_CHANGE_SUBTYPE, to: DA_CYCLE,            when: "change_subtype == interface"}
-      - {from: GATE_CHANGE_SUBTYPE, to: SUT_CYCLE,           when: "change_subtype == implementation"}
+      - {from: GATE_TICKET_TYPE, to: AT_CYCLE,     when: "ticket_type in [story, bug]"}
+      - {from: GATE_TICKET_TYPE, to: GATE_SUBTYPE, when: "ticket_type == task"}
+      - {from: GATE_SUBTYPE,     to: DA_CYCLE,     when: "subtype in [system-interface-redesign, external-system-interface-redesign]"}
+      - {from: GATE_SUBTYPE,     to: SUT_CYCLE,    when: "subtype == system-implementation-change"}
       - {from: AT_CYCLE,  to: CYCLE_END}
       - {from: DA_CYCLE,  to: CYCLE_END}
       - {from: SUT_CYCLE, to: CYCLE_END}
@@ -636,45 +623,32 @@ flows:
 
   # ===========================================================================
   # da_cycle
-  # Driver Adapter cycle — entered when the change is structural and changes
-  # an interface. Splits on scope:
-  #   - system: a Driver Adapter we own (System API or System UI), routed
-  #     through structural_cycle with channel-specific phase / agent /
-  #     phase_doc params.
-  #   - external_system: an External System Driver Adapter, routed through
-  #     ct_subprocess (which embeds External System Onboarding when the
-  #     driver doesn't yet exist).
+  # Driver Adapter cycle — entered when the change is a structural interface
+  # change. Splits on `subtype`:
+  #   - system-interface-redesign: a Driver Adapter we own (API, UI, mobile,
+  #     CLI, ...). Routed through structural_cycle. The WRITE agent reads the
+  #     ticket body + system to figure out which driver(s) to modify — the
+  #     framework no longer pre-classifies the channel.
+  #   - external-system-interface-redesign: an External System Driver
+  #     Adapter, routed through ct_subprocess (which embeds External System
+  #     Onboarding when the driver doesn't yet exist).
   # ===========================================================================
   da_cycle:
-    start: GATE_CHANGE_SCOPE
+    start: GATE_SUBTYPE
     nodes:
-      - id: GATE_CHANGE_SCOPE
+      - id: GATE_SUBTYPE
         type: gateway
-        binding: change_scope
-        description: "Driver Adapter scope?"
+        binding: subtype
+        description: "System or external-system interface?"
 
-      - id: GATE_CHANGE_CHANNEL
-        type: gateway
-        binding: change_channel
-        description: "System interface channel?"
-
-      - id: SYSAPI_CYCLE
+      - id: SYSTEM_INTERFACE_CYCLE
         type: call_activity
         flow: structural_cycle
         params:
-          phase: "SYSTEM API REDESIGN"
+          phase: "SYSTEM INTERFACE REDESIGN"
           agent: atdd-task
-          phase_doc: docs/atdd/process/sysapi-redesign.md
-          subtype: system-api-redesign
-
-      - id: SYSUI_CYCLE
-        type: call_activity
-        flow: structural_cycle
-        params:
-          phase: "SYSTEM UI REDESIGN"
-          agent: atdd-task
-          phase_doc: docs/atdd/process/sysui-redesign.md
-          subtype: system-ui-redesign
+          phase_doc: docs/atdd/process/system-interface-redesign.md
+          subtype: system-interface-redesign
 
       - id: EXTAPI_CYCLE
         type: call_activity
@@ -684,13 +658,10 @@ flows:
         type: end_event
 
     sequence_flows:
-      - {from: GATE_CHANGE_SCOPE,   to: GATE_CHANGE_CHANNEL, when: "change_scope == system"}
-      - {from: GATE_CHANGE_SCOPE,   to: EXTAPI_CYCLE,        when: "change_scope == external_system"}
-      - {from: GATE_CHANGE_CHANNEL, to: SYSAPI_CYCLE,        when: "change_channel == api"}
-      - {from: GATE_CHANGE_CHANNEL, to: SYSUI_CYCLE,         when: "change_channel == ui"}
-      - {from: SYSAPI_CYCLE, to: DA_END}
-      - {from: SYSUI_CYCLE,  to: DA_END}
-      - {from: EXTAPI_CYCLE, to: DA_END}
+      - {from: GATE_SUBTYPE,           to: SYSTEM_INTERFACE_CYCLE, when: "subtype == system-interface-redesign"}
+      - {from: GATE_SUBTYPE,           to: EXTAPI_CYCLE,           when: "subtype == external-system-interface-redesign"}
+      - {from: SYSTEM_INTERFACE_CYCLE, to: DA_END}
+      - {from: EXTAPI_CYCLE,           to: DA_END}
 
   # ===========================================================================
   # sut_cycle

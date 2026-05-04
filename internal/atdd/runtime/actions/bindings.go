@@ -28,6 +28,7 @@ import (
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/board"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/intake"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/release"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 )
@@ -99,6 +100,8 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("pick_top_ready", a.pickTopReady)
 	r.Register("move_to_in_progress", a.moveToInProgress)
 	r.Register("classify_ticket", a.classifyTicket)
+	r.Register("classify_subtype", a.classifySubtype)
+	r.Register("parse_ticket_body", a.parseTicketBody)
 	r.Register("move_to_in_acceptance", a.moveToInAcceptance)
 	r.Register("run_smoke_test", a.runSmokeTest)
 	r.Register("commit_onboarding", a.commitOnboarding)
@@ -259,6 +262,108 @@ func extractIssueType(raw []byte) string {
 	}
 	name, _ := jsonFieldString(block, "name")
 	return name
+}
+
+// classifySubtype reads `subtype:*` labels on the ticket and writes the
+// trimmed value to `subtype`. Skips entirely for behavioral tickets
+// (story, bug) — `subtype` stays unset and run_cycle's top gate routes
+// them to AT_CYCLE without consulting it.
+//
+// Halts the run on 0 or 2+ `subtype:*` labels for a task ticket.
+// Resolution is "edit the issue's labels and re-run" — same shape as
+// classify_ticket setting classify_confident=false: the unhappy path is
+// "fix the ticket, re-run", not "supply the missing classification
+// inline." A separate gateway node would let the human resolve labels at
+// a STOP, but that adds two nodes to the diagram for a case that is
+// mechanically a re-run anyway.
+func (a actions) classifySubtype(ctx *statemachine.Context) statemachine.Outcome {
+	if ctx.GetString("ticket_type") != "task" {
+		return statemachine.Outcome{}
+	}
+	issueNum, err := strconv.Atoi(ctx.GetString("issue_num"))
+	if err != nil || issueNum <= 0 {
+		return statemachine.Outcome{Err: fmt.Errorf("classify_subtype: issue_num not set or not a positive integer (%q)", ctx.GetString("issue_num"))}
+	}
+	args := []string{"issue", "view", strconv.Itoa(issueNum), "--json", "labels"}
+	if repo := ctx.GetString("issue_repo"); repo != "" {
+		args = append(args, "--repo", repo)
+	}
+	out, err := a.deps.Gh.Run(context.Background(), args...)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("classify_subtype: gh issue view: %w", err)}
+	}
+	subs := extractSubtypeLabels(out)
+	switch len(subs) {
+	case 0:
+		return statemachine.Outcome{Err: fmt.Errorf("classify_subtype: issue #%d has no subtype:* label — apply exactly one of subtype:system-interface-redesign / subtype:external-system-interface-redesign / subtype:system-implementation-change and re-run", issueNum)}
+	case 1:
+		ctx.Set("subtype", subs[0])
+		fmt.Fprintf(a.deps.Stdout, "Subtype for #%d: %s.\n", issueNum, subs[0])
+		return statemachine.Outcome{}
+	default:
+		return statemachine.Outcome{Err: fmt.Errorf("classify_subtype: issue #%d has multiple subtype:* labels (%v) — apply exactly one and re-run", issueNum, subs)}
+	}
+}
+
+// extractSubtypeLabels pulls every `subtype:*` label from `gh issue view
+// --json labels`, returning each value with the prefix stripped.
+func extractSubtypeLabels(raw []byte) []string {
+	arr, ok := jsonFieldRaw(raw, "labels")
+	if !ok {
+		return nil
+	}
+	var subs []string
+	for _, obj := range splitJSONArray(arr) {
+		name, _ := jsonFieldString(obj, "name")
+		if strings.HasPrefix(name, "subtype:") {
+			subs = append(subs, strings.TrimPrefix(name, "subtype:"))
+		}
+	}
+	return subs
+}
+
+// parseTicketBody is the deterministic markdown parser that replaces the
+// four LLM-driven intake agents (atdd-story / atdd-bug / atdd-task /
+// atdd-chore). Reads the issue body, extracts canonical sections by their
+// Issue-Form-enforced headings, and validates the required-section set
+// for the ticket's type.
+//
+// Sets two Context fields the downstream flow consumes:
+//   - parse_ok: boolean, drives GATE_PARSE_OK.
+//   - legacy_acceptance_criteria_section_present: boolean, drives the
+//     existing run_legacy_cycle gate.
+//
+// On parse failure (missing required section), parse_ok is set to false
+// and the gateway routes to STOP_PARSE_ERROR. Resolution is "fix the
+// ticket body to match the form template and re-run."
+func (a actions) parseTicketBody(ctx *statemachine.Context) statemachine.Outcome {
+	issueNum, err := strconv.Atoi(ctx.GetString("issue_num"))
+	if err != nil || issueNum <= 0 {
+		return statemachine.Outcome{Err: fmt.Errorf("parse_ticket_body: issue_num not set or not a positive integer (%q)", ctx.GetString("issue_num"))}
+	}
+	ticketType := ctx.GetString("ticket_type")
+	if ticketType == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("parse_ticket_body: ticket_type not set — classify_ticket must run first")}
+	}
+	args := []string{"issue", "view", strconv.Itoa(issueNum), "--json", "body"}
+	if repo := ctx.GetString("issue_repo"); repo != "" {
+		args = append(args, "--repo", repo)
+	}
+	out, err := a.deps.Gh.Run(context.Background(), args...)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("parse_ticket_body: gh issue view: %w", err)}
+	}
+	body := extractIssueBody(out)
+	result, parseErr := intake.Parse(body, ticketType)
+	if parseErr != nil {
+		ctx.Set("parse_ok", false)
+		fmt.Fprintf(a.deps.Stderr, "parse_ticket_body: %v — fix the ticket body and re-run.\n", parseErr)
+		return statemachine.Outcome{}
+	}
+	ctx.Set("parse_ok", true)
+	ctx.Set("legacy_acceptance_criteria_section_present", result.LegacyAcceptanceCriteria.Found)
+	fmt.Fprintf(a.deps.Stdout, "Parsed #%d (%s): all required sections present.\n", issueNum, ticketType)
+	return statemachine.Outcome{}
 }
 
 // printClassifiedSections fetches the issue body and prints the three

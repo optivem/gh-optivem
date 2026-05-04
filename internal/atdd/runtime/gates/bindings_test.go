@@ -158,10 +158,7 @@ func TestTicketType_FromContext(t *testing.T) {
 }
 
 func TestTicketType_PromptValid(t *testing.T) {
-	for _, want := range []string{
-		"story", "bug", "chore",
-		"system-api-task", "system-ui-task", "external-api-task",
-	} {
+	for _, want := range []string{"story", "bug", "task"} {
 		t.Run(want, func(t *testing.T) {
 			p := &fakePrompter{answers: []string{want}}
 			b := newBindings(t, Deps{Prompter: p})
@@ -187,6 +184,80 @@ func TestTicketType_PromptInvalid(t *testing.T) {
 	}
 	if !strings.Contains(out.Err.Error(), "unrecognised value") {
 		t.Fatalf("unexpected error message: %v", out.Err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// subtype
+// ---------------------------------------------------------------------------
+
+func TestSubtype_FromContext(t *testing.T) {
+	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+	ctx := statemachine.NewContext()
+	ctx.Set("subtype", "system-interface-redesign")
+	out := b.subtype(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if out.Value != "system-interface-redesign" {
+		t.Fatalf("Value: got %q", out.Value)
+	}
+}
+
+func TestSubtype_PromptValid(t *testing.T) {
+	for _, want := range []string{
+		"system-interface-redesign",
+		"external-system-interface-redesign",
+		"system-implementation-change",
+	} {
+		t.Run(want, func(t *testing.T) {
+			p := &fakePrompter{answers: []string{want}}
+			b := newBindings(t, Deps{Prompter: p})
+			out := b.subtype(statemachine.NewContext())
+			if out.Err != nil {
+				t.Fatalf("unexpected error: %v", out.Err)
+			}
+			if out.Value != want {
+				t.Fatalf("Value: got %q, want %q", out.Value, want)
+			}
+		})
+	}
+}
+
+func TestSubtype_PromptInvalid(t *testing.T) {
+	p := &fakePrompter{answers: []string{"refactor"}}
+	b := newBindings(t, Deps{Prompter: p})
+	out := b.subtype(statemachine.NewContext())
+	if out.Err == nil {
+		t.Fatalf("expected error for invalid subtype")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// parseOK
+// ---------------------------------------------------------------------------
+
+func TestParseOK_FromContext(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		val  any
+		want bool
+	}{
+		{name: "true", val: true, want: true},
+		{name: "false", val: false, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+			ctx := statemachine.NewContext()
+			ctx.Set("parse_ok", tc.val)
+			out := b.parseOK(ctx)
+			if out.Err != nil {
+				t.Fatalf("unexpected error: %v", out.Err)
+			}
+			if out.Bool != tc.want {
+				t.Fatalf("Bool: got %v, want %v", out.Bool, tc.want)
+			}
+		})
 	}
 }
 
@@ -326,6 +397,9 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"external_system_driver_interface_changed",
 		"system_driver_interface_changed",
 		"ticket_type",
+		"subtype",
+		"classify_confident",
+		"parse_ok",
 		"legacy_acceptance_criteria_section_present",
 		"external_system_driver_exists",
 		"external_system_test_instance_accessible",

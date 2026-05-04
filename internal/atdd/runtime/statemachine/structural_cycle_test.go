@@ -5,13 +5,14 @@ import (
 	"testing"
 )
 
-// TestImplementTicket_SystemUiRedesign mirrors the ATDD-shaped scenario the
-// driver runs for `gh optivem atdd implement-ticket --issue N` against a
-// system-ui-task ticket. Agents (claude shell-outs) and github-touching
-// service tasks are mocked out; the runner walks `main` from the
-// implement-ticket entry point (MOVE_TO_IN_PROGRESS); a spy collects the
-// ordered list of work-doing nodes it visited.
-func TestImplementTicket_SystemUiRedesign(t *testing.T) {
+// TestImplementTicket_SystemInterfaceRedesign mirrors the ATDD-shaped
+// scenario the driver runs for `gh optivem atdd implement-ticket --issue
+// N` against a Task ticket carrying the `subtype:system-interface-redesign`
+// label. Agents (claude shell-outs) and github-touching service tasks are
+// mocked out; the runner walks `main` from the implement-ticket entry
+// point (MOVE_TO_IN_PROGRESS); a spy collects the ordered list of
+// work-doing nodes it visited.
+func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 	// ── ARRANGE ─────────────────────────────────────────────────────────
 	eng := loadSnapshot(t)
 
@@ -53,18 +54,16 @@ func TestImplementTicket_SystemUiRedesign(t *testing.T) {
 	}
 
 	// implement-ticket mode skips the picker (driver.Run mutates Start).
-	// Pre-seed the routing state preResolveIssue + CLASSIFY would set —
-	// ticket_type still drives intake's agent dispatch, while the change_*
-	// classification fields drive run_cycle and da_cycle's dispatch — plus
-	// the structural_cycle TEST gate choice.
+	// Pre-seed the routing state intake would set — ticket_type drives the
+	// run_cycle top gate (task → subtype gate); subtype drives both that
+	// run_cycle inner gate and the da_cycle gate; classify_confident +
+	// parse_ok pass intake; structural_test_mode picks the TEST gate.
 	eng.Flows["main"].Start = "MOVE_TO_IN_PROGRESS"
 	ctx := NewContext()
-	ctx.Set("ticket_type", "system-ui-task")
-	ctx.Set("change_type", "structure")
-	ctx.Set("change_subtype", "interface")
-	ctx.Set("change_scope", "system")
-	ctx.Set("change_channel", "ui")
+	ctx.Set("ticket_type", "task")
+	ctx.Set("subtype", "system-interface-redesign")
 	ctx.Set("classify_confident", true)
+	ctx.Set("parse_ok", true)
 	ctx.Set("legacy_acceptance_criteria_section_present", false)
 	ctx.Set("structural_test_mode", "full")
 
@@ -77,8 +76,8 @@ func TestImplementTicket_SystemUiRedesign(t *testing.T) {
 	want := []string{
 		"MOVE_TO_IN_PROGRESS",
 		"CLASSIFY",
-		"ATDD_TASK",
-		"STOP_INTAKE",
+		"CLASSIFY_SUBTYPE",
+		"PARSE_BODY",
 		"STRUCT_WRITE",
 		"STOP_STRUCT_REVIEW",
 		"COMPILE",
