@@ -17,49 +17,33 @@ optivem tool with its own config schema, and aligns file ⇄ binary
 naming.
 
 This is a **convenience rename**, not a correctness fix. The current
-name works; the new name is only better. The cost is a non-trivial
-transition across already-scaffolded consumer repos. Defer until a
-quiet window.
+name works; the new name is only better.
 
 ## Approach
 
-Two layers, applied together so the rename never breaks an existing
-scaffolded repo:
+Hard rename. There are no consumer repos in the wild yet — the shop
+template will be regenerated, and no third-party scaffolds exist —
+so a dual-read shim with deprecation warning would be dead weight.
+Flip the constant, write the new name, sweep references in one pass.
 
-### 1. Code: dual-read with deprecation
+### 1. Code: flip the constant
 
-`projectconfig.Load(repoPath)` looks for `gh-optivem.yaml` first; on
-miss, falls back to `optivem.yaml` and prints a one-line deprecation
-warning to stderr ("optivem.yaml is deprecated; rename to
-gh-optivem.yaml"). After one soak window, drop the fallback.
-
-The default `Path` constant flips to `gh-optivem.yaml`. Tests assert
-both branches: canonical-name path returns config without warning;
-legacy-name path returns config plus deprecation warning.
+`projectconfig.Path` becomes `gh-optivem.yaml`. `Load` still does the
+single canonical lookup; no fallback. Any consumer repo with an old
+`optivem.yaml` on disk will surface `ErrNoProjectURL` until it's
+renamed by hand — acceptable because there are no such repos right
+now.
 
 ### 2. Scaffolder: write the new name
 
-`steps.WriteOptivemYAML` (rename to `WriteGhOptivemYAML`) writes
-`gh-optivem.yaml`. Newly scaffolded repos start clean; existing
-scaffolds keep working under the dual-read shim until they regenerate
-or commit a manual rename.
+`steps.WriteOptivemYAML` writes `gh-optivem.yaml`. Optionally rename
+the Go function to `WriteGhOptivemYAML` for symmetry; cosmetic.
 
-### 3. Docs + comments
+### 3. Docs + comments + tests
 
-Update every doc reference, code comment, error message, and CLI flag
-help text. Most surfaces use the literal string `optivem.yaml`, so a
-careful global rename is feasible — but every change must be reviewed
-to catch the few sites that should keep saying `optivem.yaml` (e.g.
-the deprecation warning itself, the dual-read fallback, the changelog
-entry for the rename).
-
-### 4. Migration command (optional)
-
-A small `gh optivem atdd migrate-config` subcommand that detects
-`optivem.yaml` and renames it to `gh-optivem.yaml` in-place (with
-`git mv` if the consumer is in a git tree). Lets operators clean up
-without hand-editing. Worth doing only if there are many consumer repos
-to migrate.
+Sweep every doc reference, code comment, error message, CLI flag help
+text, and test fixture. The string `optivem.yaml` should not appear
+anywhere after the sweep.
 
 ## Affected surfaces (initial inventory)
 
@@ -68,7 +52,7 @@ Counted via `grep optivem.yaml` on 2026-05-04 — recheck before starting:
 **gh-optivem (11 files):**
 - `main.go` — scaffold step name
 - `internal/steps/optivem_yaml.go` — function name + doc + write logic
-- `internal/projectconfig/config.go` — `Path` constant + Load logic + doc
+- `internal/projectconfig/config.go` — `Path` constant + doc
 - `internal/atdd/runtime/board/board.go` — `ErrNoProjectURL` message
 - `internal/atdd/runtime/board/board_test.go` — test fixtures
 - `internal/atdd/runtime/driver/driver.go` — config-source label + Options doc
@@ -82,41 +66,27 @@ Counted via `grep optivem.yaml` on 2026-05-04 — recheck before starting:
 - `docs/atdd/process/task-and-chore-cycles.md`
 - `docs/atdd/process/cycles.md`
 
-**Existing scaffolded consumer repos (out-of-tree):** every shop scaffold
-in the wild has `optivem.yaml` on disk. The dual-read shim keeps them
-working until they regenerate or `git mv` to the new name.
-
 ## Out of scope
 
 - Renaming `gh-optivem` itself. The binary name is fine; only the file
   is being renamed.
-- Renaming `WriteOptivemYAML` Go function (cosmetic; do or don't, no
-  external impact).
 - Touching `system.json` / `tests.json` (different files, different
   audience — runner subcommands).
 
 ## Order of operations
 
-1. Land `projectconfig` dual-read shim with tests for both branches.
-2. Flip `projectconfig.Path` to `gh-optivem.yaml`.
-3. Update `steps.WriteOptivemYAML` to write the new name.
-4. Sweep every other surface in the inventory above. Run `go test ./...`
+1. Flip `projectconfig.Path` to `gh-optivem.yaml`.
+2. Update `steps.WriteOptivemYAML` to write the new name.
+3. Sweep every other surface in the inventory above. Run `go test ./...`
    after each batch.
-5. Sweep shop docs.
-6. Manual rehearsal (`bash scripts/atdd-rehearsal.sh <issue>`) against a
-   shop repo that still has `optivem.yaml` to confirm the deprecation
-   warning fires and the run still succeeds.
-7. Manual rehearsal against a shop repo that has been renamed to
-   `gh-optivem.yaml` to confirm the canonical path is silent.
-8. Optional: ship `migrate-config` subcommand and use it on the academy
-   workspace shop scaffolds.
-9. After one soak window (≥ a couple of weeks of regular use), drop the
-   `optivem.yaml` fallback in `projectconfig.Load`.
+4. Sweep shop docs.
+5. Manual rehearsal (`bash scripts/atdd-rehearsal.sh <issue>`) against
+   a freshly regenerated shop scaffold to confirm the canonical path
+   works end-to-end.
 
 ## Risk
 
-Low. The dual-read shim makes the rename non-breaking for in-flight
-consumer repos. The only cost is the fan-out of the sweep itself —
-which is mechanical. Worst case: a missed reference somewhere prints
-the literal string `optivem.yaml` in a log line; cosmetic, fixable in
-the next pass.
+Low. No live consumers means no migration concern. The only cost is
+the fan-out of the mechanical sweep itself. Worst case: a missed
+reference somewhere prints the literal string `optivem.yaml` in a log
+line; cosmetic, fixable in the next pass.
