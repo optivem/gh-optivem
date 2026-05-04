@@ -8,14 +8,11 @@ import (
 
 // WriteOptivemYAML writes <repoRoot>/optivem.yaml in the scaffolded repo(s),
 // translating already-resolved init flags into the projectconfig.Config schema.
-// Sibling to WriteProjectConfig (.system/config.json) — different file, different
-// audience: optivem.yaml is consumed by the ATDD pipeline at runtime, while
-// .system/config.json drives the runner subcommands. The two overlap on
-// architecture only; consolidating them is out of scope.
+// The file is consumed by the ATDD pipeline at runtime (project URL, repo
+// strategy, scope axes). It is the single config the gh-optivem binary reads.
 //
 // Multi-repo: writes the same file to every per-tier repo so `gh optivem atdd
-// implement-ticket` can be invoked from any of them. Mirrors the existing
-// WriteProjectConfig fan-out.
+// implement-ticket` can be invoked from any of them.
 //
 // `cfg.RepoStrategy` arrives in the init flag's spelling (`monorepo` /
 // `multirepo`); this function translates to the schema's spelling (`mono-repo`

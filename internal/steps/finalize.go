@@ -1,7 +1,6 @@
 package steps
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,42 +10,6 @@ import (
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/shell"
 )
-
-// WriteProjectConfig writes .system/config.json to the scaffolded project root(s).
-func WriteProjectConfig(cfg *config.Config) {
-	log.Info("Writing project config...")
-
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would write .system/config.json")
-		return
-	}
-
-	configData := map[string]string{
-		"architecture": cfg.Arch,
-		"deploy":       cfg.Deploy,
-	}
-	jsonBytes, _ := json.MarshalIndent(configData, "", "  ")
-	jsonBytes = append(jsonBytes, '\n')
-
-	writeConfigToDir(cfg.RepoDir, jsonBytes)
-
-	if cfg.RepoStrategy == "multirepo" {
-		if cfg.Arch == "multitier" {
-			writeConfigToDir(cfg.BackendRepoDir, jsonBytes)
-			writeConfigToDir(cfg.FrontendRepoDir, jsonBytes)
-		} else {
-			writeConfigToDir(cfg.SystemRepoDir, jsonBytes)
-		}
-	}
-
-	log.Success("Wrote .system/config.json")
-}
-
-func writeConfigToDir(dir string, jsonBytes []byte) {
-	configDir := filepath.Join(dir, ".system")
-	os.MkdirAll(configDir, 0755)
-	os.WriteFile(filepath.Join(configDir, "config.json"), jsonBytes, 0644)
-}
 
 // WriteLicense writes a LICENSE file to the scaffolded repo(s) using the
 // GitHub licenses API. Runs as a regular scaffold step (not part of repo
