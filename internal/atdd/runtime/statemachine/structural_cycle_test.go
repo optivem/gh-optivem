@@ -63,6 +63,7 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 	ctx.Set("ticket_type", "task")
 	ctx.Set("subtype", "system-interface-redesign")
 	ctx.Set("classify_confident", true)
+	ctx.Set("subtype_ok", true)
 	ctx.Set("parse_ok", true)
 	ctx.Set("legacy_acceptance_criteria_section_present", false)
 	ctx.Set("structural_test_mode", "full")
