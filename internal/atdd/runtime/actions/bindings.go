@@ -99,7 +99,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	a := actions{deps: deps}
 	r.Register("pick_top_ready", a.pickTopReady)
 	r.Register("move_to_in_progress", a.moveToInProgress)
-	r.Register("classify_ticket", a.classifyTicket)
+	r.Register("classify_ticket_type", a.classifyTicketType)
 	r.Register("classify_subtype", a.classifySubtype)
 	r.Register("parse_ticket_body", a.parseTicketBody)
 	r.Register("move_to_in_acceptance", a.moveToInAcceptance)
@@ -218,24 +218,29 @@ func (a actions) moveToInAcceptance(ctx *statemachine.Context) statemachine.Outc
 // portable way to read it from the CLI today.
 const classifyIssueTypeQuery = `query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { issue(number: $number) { issueType { name } } } }`
 
-// classifyTicket reads the issue's native GitHub issue type (Story / Bug /
-// Task) and writes the lowercased name to `ticket_type`. The native type is
-// authoritative — it's set by the Issue Form's `type:` field at filing time
-// and cannot drift from a label-based heuristic.
+// supportedTicketTypes is the set of native GitHub issue types this pipeline
+// knows how to drive. Anything outside it routes to STOP_CLASSIFY_CONFLICT
+// — the operator must change the type in GitHub before re-running.
+var supportedTicketTypes = map[string]bool{"story": true, "bug": true, "task": true}
+
+// classifyTicketType reads the issue's native GitHub issue type (Story /
+// Bug / Task) and writes the lowercased name to `ticket_type`. The native
+// type is authoritative — it's set by the Issue Form's `type:` field at
+// filing time and cannot drift from a label-based heuristic.
 //
-// When the issue has no native type (filed outside the form, or before the
-// org configured the Story type), classify_confident is set to false so the
-// downstream gate routes to STOP_CLASSIFY_CONFLICT. Resolution is "set the
-// issue type in GitHub, then re-run" — there is no LLM fallback.
-func (a actions) classifyTicket(ctx *statemachine.Context) statemachine.Outcome {
+// classify_confident is set to false (routing to STOP_CLASSIFY_CONFLICT) in
+// two cases: the issue has no native type set, or the type is not one of
+// Story / Bug / Task. Both resolutions are "set a supported type in GitHub
+// and re-run" — there is no LLM fallback.
+func (a actions) classifyTicketType(ctx *statemachine.Context) statemachine.Outcome {
 	issueNum, err := strconv.Atoi(ctx.GetString("issue_num"))
 	if err != nil || issueNum <= 0 {
-		return statemachine.Outcome{Err: fmt.Errorf("classify_ticket: issue_num not set or not a positive integer (%q)", ctx.GetString("issue_num"))}
+		return statemachine.Outcome{Err: fmt.Errorf("classify_ticket_type: issue_num not set or not a positive integer (%q)", ctx.GetString("issue_num"))}
 	}
 	repo := ctx.GetString("issue_repo")
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok || owner == "" || name == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("classify_ticket: issue_repo must be set as owner/name (got %q)", repo)}
+		return statemachine.Outcome{Err: fmt.Errorf("classify_ticket_type: issue_repo must be set as owner/name (got %q)", repo)}
 	}
 	args := []string{
 		"api", "graphql",
@@ -246,17 +251,24 @@ func (a actions) classifyTicket(ctx *statemachine.Context) statemachine.Outcome 
 	}
 	out, err := a.deps.Gh.Run(context.Background(), args...)
 	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("classify_ticket: gh api graphql: %w", err)}
+		return statemachine.Outcome{Err: fmt.Errorf("classify_ticket_type: gh api graphql: %w", err)}
 	}
 	issueType := extractIssueType(out)
 	if issueType == "" {
 		ctx.Set("classify_confident", false)
 		fmt.Fprintf(a.deps.Stderr,
-			"classify_ticket: issue #%d has no native issue type — set Story / Bug / Task in the GitHub UI and re-run.\n",
+			"classify_ticket_type: issue #%d has no native issue type — set Story / Bug / Task in the GitHub UI and re-run.\n",
 			issueNum)
 		return statemachine.Outcome{}
 	}
 	ticketType := strings.ToLower(issueType)
+	if !supportedTicketTypes[ticketType] {
+		ctx.Set("classify_confident", false)
+		fmt.Fprintf(a.deps.Stderr,
+			"classify_ticket_type: issue #%d has unsupported issue type %q — set Story / Bug / Task in the GitHub UI and re-run.\n",
+			issueNum, issueType)
+		return statemachine.Outcome{}
+	}
 	ctx.Set("ticket_type", ticketType)
 	ctx.Set("classify_confident", true)
 	fmt.Fprintf(a.deps.Stdout, "Classified #%d as %s.\n", issueNum, ticketType)
@@ -286,13 +298,11 @@ func extractIssueType(raw []byte) string {
 // routes here for task tickets, so behavioral tickets never reach this
 // action.
 //
-// Halts the run on 0 or 2+ `subtype:*` labels. Resolution is "edit the
-// issue's labels and re-run" — same shape as classify_ticket setting
-// classify_confident=false: the unhappy path is "fix the ticket,
-// re-run", not "supply the missing classification inline." A separate
-// gateway node would let the human resolve labels at a STOP, but that
-// adds two nodes to the diagram for a case that is mechanically a
-// re-run anyway.
+// Sets `subtype_ok`: true on a single label (with `subtype` populated),
+// false on 0 or 2+ labels. The downstream GATE_SUBTYPE_OK routes to
+// STOP_SUBTYPE_MISSING on false so the operator can fix the labels and
+// re-run — same shape as classify_ticket_type → STOP_CLASSIFY_CONFLICT and
+// parse_ticket_body → STOP_PARSE_ERROR.
 func (a actions) classifySubtype(ctx *statemachine.Context) statemachine.Outcome {
 	issueNum, err := strconv.Atoi(ctx.GetString("issue_num"))
 	if err != nil || issueNum <= 0 {
@@ -309,13 +319,22 @@ func (a actions) classifySubtype(ctx *statemachine.Context) statemachine.Outcome
 	subs := extractSubtypeLabels(out)
 	switch len(subs) {
 	case 0:
-		return statemachine.Outcome{Err: fmt.Errorf("classify_subtype: issue #%d has no subtype:* label — apply exactly one of subtype:system-interface-redesign / subtype:external-system-interface-redesign / subtype:system-implementation-change and re-run", issueNum)}
+		ctx.Set("subtype_ok", false)
+		fmt.Fprintf(a.deps.Stderr,
+			"classify_subtype: issue #%d has no subtype:* label — apply exactly one of subtype:system-interface-redesign / subtype:external-system-interface-redesign / subtype:system-implementation-change and re-run.\n",
+			issueNum)
+		return statemachine.Outcome{}
 	case 1:
 		ctx.Set("subtype", subs[0])
+		ctx.Set("subtype_ok", true)
 		fmt.Fprintf(a.deps.Stdout, "Subtype for #%d: %s.\n", issueNum, subs[0])
 		return statemachine.Outcome{}
 	default:
-		return statemachine.Outcome{Err: fmt.Errorf("classify_subtype: issue #%d has multiple subtype:* labels (%v) — apply exactly one and re-run", issueNum, subs)}
+		ctx.Set("subtype_ok", false)
+		fmt.Fprintf(a.deps.Stderr,
+			"classify_subtype: issue #%d has multiple subtype:* labels (%v) — apply exactly one and re-run.\n",
+			issueNum, subs)
+		return statemachine.Outcome{}
 	}
 }
 
@@ -342,10 +361,13 @@ func extractSubtypeLabels(raw []byte) []string {
 // Issue-Form-enforced headings, and validates the required-section set
 // for the ticket's type.
 //
-// Sets two Context fields the downstream flow consumes:
+// Sets three Context fields the downstream flow consumes:
 //   - parse_ok: boolean, drives GATE_PARSE_OK.
 //   - legacy_acceptance_criteria_section_present: boolean, drives the
 //     existing run_legacy_cycle gate.
+//   - ticket_checklist: string, the parsed Checklist body — handed to the
+//     task agent via clauderun.Options.Checklist so it doesn't have to
+//     re-fetch the issue.
 //
 // On parse failure (missing required section), parse_ok is set to false
 // and the gateway routes to STOP_PARSE_ERROR. Resolution is "fix the
@@ -357,7 +379,7 @@ func (a actions) parseTicketBody(ctx *statemachine.Context) statemachine.Outcome
 	}
 	ticketType := ctx.GetString("ticket_type")
 	if ticketType == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("parse_ticket_body: ticket_type not set — classify_ticket must run first")}
+		return statemachine.Outcome{Err: fmt.Errorf("parse_ticket_body: ticket_type not set — classify_ticket_type must run first")}
 	}
 	args := []string{"issue", "view", strconv.Itoa(issueNum), "--json", "body"}
 	if repo := ctx.GetString("issue_repo"); repo != "" {
@@ -376,6 +398,7 @@ func (a actions) parseTicketBody(ctx *statemachine.Context) statemachine.Outcome
 	}
 	ctx.Set("parse_ok", true)
 	ctx.Set("legacy_acceptance_criteria_section_present", result.LegacyAcceptanceCriteria.Found)
+	ctx.Set("ticket_checklist", result.Checklist.Body)
 	fmt.Fprintf(a.deps.Stdout, "Parsed #%d (%s): all required sections present.\n", issueNum, ticketType)
 	return statemachine.Outcome{}
 }

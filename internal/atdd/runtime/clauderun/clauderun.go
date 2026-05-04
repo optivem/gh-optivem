@@ -70,6 +70,13 @@ type Options struct {
 	SystemLang   string
 	TestLang     string
 
+	// Checklist is the body of the ticket's Checklist section as parsed by
+	// intake.Parse. Surfaced to the agent prompt via the ${checklist}
+	// placeholder so structural-task agents don't have to re-fetch the
+	// issue body via `gh issue view`. Empty when the ticket has no
+	// Checklist (e.g. story / bug intake).
+	Checklist string
+
 	// OverrideText is the per-node `--extra` text from override.Hooks,
 	// interpolated into the prompt template. Empty string is fine.
 	OverrideText string
@@ -528,6 +535,7 @@ func renderPrompt(opts Options) (string, error) {
 		"architecture":  scopeOrDefault(opts.Architecture, "both"),
 		"system_lang":   scopeOrDefault(opts.SystemLang, "all"),
 		"test_lang":     scopeOrDefault(opts.TestLang, "all"),
+		"checklist":     opts.Checklist,
 	}
 	rendered := statemachine.ExpandParams(body, params)
 	if opts.OverrideText != "" {

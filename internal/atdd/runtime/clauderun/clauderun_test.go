@@ -285,6 +285,28 @@ func TestRenderPrompt_TaskAgentScopeBlock_ExplicitValues(t *testing.T) {
 	}
 }
 
+func TestRenderPrompt_TaskAgentChecklistInjected(t *testing.T) {
+	// The atdd-task prompt embeds the parsed Checklist via ${checklist}
+	// instead of telling the agent to re-fetch the issue. Confirm the
+	// substitution lands and the old "Fetch the issue with `gh`" sentence
+	// is gone.
+	opts := newOpts()
+	opts.Agent = "atdd-task"
+	opts.Checklist = "- [x] Rename \"New Order\" to \"Place Order\"\n- [x] Rename SKU aria-label"
+
+	got, err := renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt: %v", err)
+	}
+	mustContain(t, got, opts.Checklist)
+	if strings.Contains(got, "Fetch the issue with `gh`") {
+		t.Errorf("atdd-task prompt should no longer instruct the agent to fetch the issue: %s", got)
+	}
+	if strings.Contains(got, "${checklist}") {
+		t.Errorf("${checklist} placeholder leaked into rendered prompt")
+	}
+}
+
 func TestRenderPrompt_TaskAgentScopeBlock_EmptyDefaultsToBroadest(t *testing.T) {
 	// When gh-optivem.yaml omits the scope block, all three axes arrive empty.
 	// They must render as the broadest option ("both" / "all") so the agent

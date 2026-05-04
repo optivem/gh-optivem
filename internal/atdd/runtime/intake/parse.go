@@ -68,7 +68,7 @@ func Parse(body, ticketType string) (*Result, error) {
 			missing = append(missing, SectionChecklist)
 		}
 	case "":
-		return nil, fmt.Errorf("ticket_type is empty — classify_ticket must run before parse")
+		return nil, fmt.Errorf("ticket_type is empty — classify_ticket_type must run before parse")
 	default:
 		return nil, fmt.Errorf("unsupported ticket_type %q (expected story | bug | task)", ticketType)
 	}

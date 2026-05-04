@@ -10,11 +10,11 @@ When the work is done, do not commit and do not summarise — exit cleanly. The 
 
 ---
 
-You are the Task Agent. The input is a GitHub issue number (e.g. `#59`); the structural subtype is on the `subtype:*` label (one of `subtype:system-interface-redesign` or `subtype:external-system-interface-redesign` for the two `da_cycle` paths). **Fetch the issue with `gh` before proceeding** — do not rely on the caller to restate the title, body, labels, or checklist:
+You are the Task Agent. The input is a GitHub issue number (e.g. `#59`); the structural subtype is on the `subtype:*` label (one of `subtype:system-interface-redesign` or `subtype:external-system-interface-redesign` for the two `da_cycle` paths). The Checklist below was parsed from the ticket body during intake — work from it directly rather than re-fetching the issue.
 
-```bash
-gh issue view <number> --repo <owner>/<repo> --json number,title,body,labels,projectItems,state
-```
+## Checklist
+
+${checklist}
 
 The subtype determines whether you are reshaping a system-side driver or an external-system driver:
 

@@ -146,7 +146,7 @@ flows:
     nodes:
       - id: CLASSIFY
         type: service_task
-        action: classify_ticket
+        action: classify_ticket_type
         description: "Auto-classify ticket"
 
       - id: GATE_CLASSIFY_CONFIDENT
@@ -169,6 +169,17 @@ flows:
         type: service_task
         action: classify_subtype
         description: "Auto-classify subtype"
+
+      - id: GATE_SUBTYPE_OK
+        type: gateway
+        binding: subtype_ok
+        description: "Subtype label detected?"
+
+      - id: STOP_SUBTYPE_MISSING
+        type: user_task
+        agent: human
+        role: review
+        description: "STOP - HUMAN REVIEW — apply exactly one subtype:* label / re-run"
 
       - id: PARSE_BODY
         type: service_task
@@ -193,10 +204,13 @@ flows:
       - {from: CLASSIFY,                to: GATE_CLASSIFY_CONFIDENT}
       - {from: GATE_CLASSIFY_CONFIDENT, to: GATE_NEEDS_SUBTYPE,      when: "classify_confident == true"}
       - {from: GATE_CLASSIFY_CONFIDENT, to: STOP_CLASSIFY_CONFLICT,  when: "classify_confident == false"}
-      - {from: STOP_CLASSIFY_CONFLICT,  to: GATE_NEEDS_SUBTYPE}
+      - {from: STOP_CLASSIFY_CONFLICT,  to: CLASSIFY}
       - {from: GATE_NEEDS_SUBTYPE,      to: CLASSIFY_SUBTYPE,        when: "ticket_type == task"}
       - {from: GATE_NEEDS_SUBTYPE,      to: PARSE_BODY,              when: "ticket_type in [story, bug]"}
-      - {from: CLASSIFY_SUBTYPE,        to: PARSE_BODY}
+      - {from: CLASSIFY_SUBTYPE,        to: GATE_SUBTYPE_OK}
+      - {from: GATE_SUBTYPE_OK,         to: PARSE_BODY,              when: "subtype_ok == true"}
+      - {from: GATE_SUBTYPE_OK,         to: STOP_SUBTYPE_MISSING,    when: "subtype_ok == false"}
+      - {from: STOP_SUBTYPE_MISSING,    to: CLASSIFY_SUBTYPE}
       - {from: PARSE_BODY,              to: GATE_PARSE_OK}
       - {from: GATE_PARSE_OK,           to: INTAKE_END,              when: "parse_ok == true"}
       - {from: GATE_PARSE_OK,           to: STOP_PARSE_ERROR,        when: "parse_ok == false"}

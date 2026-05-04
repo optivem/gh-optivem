@@ -519,6 +519,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 			Architecture:    ctx.GetString("architecture"),
 			SystemLang:      ctx.GetString("system_lang"),
 			TestLang:        ctx.GetString("test_lang"),
+			Checklist:       ctx.GetString("ticket_checklist"),
 			OverrideText:    extraText,
 			RawPrompt:       replaceText,
 			PromptOverride:  opts.AgentPromptOverrides[agentName],

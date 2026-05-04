@@ -279,10 +279,10 @@ func TestCommitOnboarding_UsesExternalSystemName(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// classifyTicket
+// classifyTicketType
 // ---------------------------------------------------------------------------
 
-func TestClassifyTicket_NativeIssueType(t *testing.T) {
+func TestClassifyTicketType_NativeIssueType(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
 		issueTypeJSON  string
@@ -293,6 +293,7 @@ func TestClassifyTicket_NativeIssueType(t *testing.T) {
 		{name: "bug", issueTypeJSON: `{"name":"Bug"}`, wantTicketType: "bug", wantConfident: true},
 		{name: "task", issueTypeJSON: `{"name":"Task"}`, wantTicketType: "task", wantConfident: true},
 		{name: "no_type_set", issueTypeJSON: `null`, wantTicketType: "", wantConfident: false},
+		{name: "unsupported_type", issueTypeJSON: `{"name":"Spike"}`, wantTicketType: "", wantConfident: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			gh := newFakeRunner(t, "gh")
@@ -319,7 +320,7 @@ func TestClassifyTicket_NativeIssueType(t *testing.T) {
 			ctx.Set("issue_num", "42")
 			ctx.Set("issue_repo", "optivem/shop")
 
-			out := a.classifyTicket(ctx)
+			out := a.classifyTicketType(ctx)
 			if out.Err != nil {
 				t.Fatalf("unexpected error: %v", out.Err)
 			}
@@ -333,7 +334,7 @@ func TestClassifyTicket_NativeIssueType(t *testing.T) {
 	}
 }
 
-func TestClassifyTicket_PrintsNamedSections(t *testing.T) {
+func TestClassifyTicketType_PrintsNamedSections(t *testing.T) {
 	gh := newFakeRunner(t, "gh")
 	gh.on(
 		[]string{
@@ -362,7 +363,7 @@ func TestClassifyTicket_PrintsNamedSections(t *testing.T) {
 	ctx.Set("issue_num", "7")
 	ctx.Set("issue_repo", "optivem/shop")
 
-	out := a.classifyTicket(ctx)
+	out := a.classifyTicketType(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
@@ -402,45 +403,56 @@ func TestClassifySubtype_TaskWithSingleLabel(t *testing.T) {
 	if got := ctx.GetString("subtype"); got != "system-interface-redesign" {
 		t.Fatalf("subtype: got %q, want %q", got, "system-interface-redesign")
 	}
+	if got := ctx.Get("subtype_ok"); got != true {
+		t.Fatalf("subtype_ok: got %v, want true", got)
+	}
 }
 
-func TestClassifySubtype_MissingLabelHalts(t *testing.T) {
+func TestClassifySubtype_MissingLabel_RoutesToStop(t *testing.T) {
 	gh := newFakeRunner(t, "gh")
 	gh.on(
 		[]string{"issue", "view", "7", "--json", "labels"},
 		[]byte(`{"labels":[{"name":"area:billing"}]}`),
 		nil,
 	)
-	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}})
+	var stderr bytes.Buffer
+	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}, Stderr: &stderr})
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "7")
 	out := a.classifySubtype(ctx)
-	if out.Err == nil {
-		t.Fatalf("expected error for missing subtype label")
+	if out.Err != nil {
+		t.Fatalf("expected clean Outcome (STOP, not hard error), got: %v", out.Err)
 	}
-	if !strings.Contains(out.Err.Error(), "no subtype:*") {
-		t.Fatalf("unexpected error message: %v", out.Err)
+	if got := ctx.Get("subtype_ok"); got != false {
+		t.Fatalf("subtype_ok: got %v, want false", got)
+	}
+	if !strings.Contains(stderr.String(), "no subtype:*") {
+		t.Fatalf("expected stderr message about missing subtype, got: %q", stderr.String())
 	}
 }
 
-func TestClassifySubtype_MultipleLabelsHalt(t *testing.T) {
+func TestClassifySubtype_MultipleLabels_RoutesToStop(t *testing.T) {
 	gh := newFakeRunner(t, "gh")
 	gh.on(
 		[]string{"issue", "view", "7", "--json", "labels"},
 		[]byte(`{"labels":[{"name":"subtype:system-interface-redesign"},{"name":"subtype:system-implementation-change"}]}`),
 		nil,
 	)
-	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}})
+	var stderr bytes.Buffer
+	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}, Stderr: &stderr})
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "7")
 	out := a.classifySubtype(ctx)
-	if out.Err == nil {
-		t.Fatalf("expected error for multiple subtype labels")
+	if out.Err != nil {
+		t.Fatalf("expected clean Outcome (STOP, not hard error), got: %v", out.Err)
 	}
-	if !strings.Contains(out.Err.Error(), "multiple subtype:*") {
-		t.Fatalf("unexpected error message: %v", out.Err)
+	if got := ctx.Get("subtype_ok"); got != false {
+		t.Fatalf("subtype_ok: got %v, want false", got)
+	}
+	if !strings.Contains(stderr.String(), "multiple subtype:*") {
+		t.Fatalf("expected stderr message about multiple subtypes, got: %q", stderr.String())
 	}
 }
 
@@ -493,6 +505,36 @@ func TestParseTicketBody_StorySuccess(t *testing.T) {
 	}
 	if got := ctx.Get("legacy_acceptance_criteria_section_present"); got != true {
 		t.Fatalf("legacy_acceptance_criteria_section_present: got %v, want true", got)
+	}
+	if got := ctx.GetString("ticket_checklist"); got != "" {
+		t.Fatalf("ticket_checklist: got %q, want empty (story has no Checklist section)", got)
+	}
+}
+
+func TestParseTicketBody_TaskSuccessPopulatesChecklist(t *testing.T) {
+	checklist := "- [x] Rename \"New Order\" card to \"Place Order\"\n- [x] Rename SKU aria-label to \"Product SKU\""
+	body := "## Checklist\n\n" + checklist + "\n"
+	rawBody, _ := json.Marshal(body)
+	gh := newFakeRunner(t, "gh")
+	gh.on(
+		[]string{"issue", "view", "61", "--json", "body", "--repo", "optivem/shop"},
+		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
+		nil,
+	)
+	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket_type", "task")
+	ctx.Set("issue_num", "61")
+	ctx.Set("issue_repo", "optivem/shop")
+	out := a.parseTicketBody(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if got := ctx.Get("parse_ok"); got != true {
+		t.Fatalf("parse_ok: got %v, want true", got)
+	}
+	if got := ctx.GetString("ticket_checklist"); got != checklist {
+		t.Fatalf("ticket_checklist: got %q, want %q", got, checklist)
 	}
 }
 
@@ -696,7 +738,7 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 	want := []string{
 		"pick_top_ready",
 		"move_to_in_progress",
-		"classify_ticket",
+		"classify_ticket_type",
 		"classify_subtype",
 		"parse_ticket_body",
 		"move_to_in_acceptance",

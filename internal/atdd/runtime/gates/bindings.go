@@ -5,7 +5,7 @@
 //
 //  1. Reads the live Context for a pre-set value under the binding key. If
 //     an upstream service task or intake agent has already declared the
-//     result (e.g. classify_ticket sets ticket_type, run_smoke_test sets
+//     result (e.g. classify_ticket_type sets ticket_type, run_smoke_test sets
 //     smoke_test_passes), that value is returned verbatim. This is the
 //     common path in production runs and lets transitions tests seed state
 //     directly without touching shell-outs.
@@ -94,6 +94,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("ticket_type", b.ticketType)
 	r.Register("subtype", b.subtype)
 	r.Register("classify_confident", b.classifyConfident)
+	r.Register("subtype_ok", b.subtypeOK)
 	r.Register("parse_ok", b.parseOK)
 	r.Register("legacy_acceptance_criteria_section_present", b.legacyAcceptanceCriteriaSectionPresent)
 	r.Register("external_system_driver_exists", b.externalSystemDriverExists)
@@ -136,7 +137,7 @@ func (b bindings) systemDriverInterfaceChanged(ctx *statemachine.Context) statem
 // String / enum gates — backed by upstream actions, with prompt fallback
 // ---------------------------------------------------------------------------
 
-// ticketType reads the classification produced by the classify_ticket
+// ticketType reads the classification produced by the classify_ticket_type
 // service task — the lowercased name of the issue's native GitHub type.
 // Range matches the three configured types: story | bug | task. The
 // action is expected to write the canonical lowercased form.
@@ -211,7 +212,7 @@ func (b bindings) structuralTestMode(ctx *statemachine.Context) statemachine.Out
 // Boolean gates — backed by upstream actions or one-off prompts
 // ---------------------------------------------------------------------------
 
-// classifyConfident reads the confidence flag set by the classify_ticket
+// classifyConfident reads the confidence flag set by the classify_ticket_type
 // service task. The action is expected to write `true` when classification
 // is unambiguous and `false` when it needs human resolution. Falls back to a
 // prompt for hand-debugging.
@@ -219,6 +220,15 @@ func (b bindings) classifyConfident(ctx *statemachine.Context) statemachine.Outc
 	return b.boolGate(ctx,
 		"classify_confident",
 		"Classification confident? [Y/n]: ")
+}
+
+// subtypeOK reads the flag set by the classify_subtype service task.
+// true → exactly one subtype:* label was found; false → 0 or 2+, route to
+// STOP_SUBTYPE_MISSING. Falls back to a prompt for hand-debugging.
+func (b bindings) subtypeOK(ctx *statemachine.Context) statemachine.Outcome {
+	return b.boolGate(ctx,
+		"subtype_ok",
+		"Subtype label detected? [Y/n]: ")
 }
 
 // parseOK reads the parse-success flag set by the parse_ticket_body
