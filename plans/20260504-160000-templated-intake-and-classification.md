@@ -1,4 +1,4 @@
-# Templated intake and label-driven classification
+# Templated intake and form-driven classification
 
 ## Motivation
 
@@ -8,8 +8,8 @@ Today the agents have to be LLM-driven because ticket bodies are free-form markd
 
 The fix is upstream: enforce ticket structure at creation time with **GitHub Issue Forms** (`.github/ISSUE_TEMPLATE/*.yml`). With forms enforcing the structure:
 
-- The ticket type lands in a label (`type:story` / `type:bug` / `type:task` / `type:chore`) — `auto-classify-ticket` becomes "read the label", no LLM.
-- The structural-change classification lands in a single `change_kind` dropdown on `task.yml` (and is hardcoded for `chore.yml`) — `auto-classify-change-kind` becomes "read the dropdown / hardcoded value", no LLM.
+- The ticket type lands in the **native GitHub issue type** field (Story / Bug / Task), set by the form's `type:` field — `auto-classify-ticket` becomes "read `issue.type`", no LLM.
+- The structural-change subtype lands in a `subtype:*` **label** on task tickets — `auto-classify-subtype` becomes "read the label", no LLM.
 - Section headings are guaranteed canonical — intake becomes a deterministic markdown parser, not an agent.
 - The four type-specific intake agents collapse to one service task.
 - `STOP_INTAKE` shrinks from "human approves scenarios" to "human resolves parse errors" (and disappears for happy-path tickets).
@@ -20,43 +20,61 @@ The pedagogical signal is preserved: students still write Acceptance Criteria as
 
 ## Decisions
 
-1. **Fallback for non-template tickets: reject.** Tickets without a `type:*` label or with missing/malformed canonical headings fail intake fast. No LLM fallback path, no retained intake agents for "legacy" tickets. Students learn the template path; one explicit rejection message teaches more than a graceful fallback hides. The four intake agents (`atdd-story`, `atdd-bug`, `atdd-task`, `atdd-chore`) are deleted outright in their intake role — see item 7.
+1. **Fallback for non-template tickets: reject.** Tickets without a native issue type, or (for tasks) without a `subtype:*` label, or with missing/malformed canonical headings, fail intake fast. No LLM fallback path, no retained intake agents for "legacy" tickets. Students learn the template path; one explicit rejection message teaches more than a graceful fallback hides. The four intake agents (`atdd-story`, `atdd-bug`, `atdd-task`, `atdd-chore`) are deleted outright in their intake role — see item 8.
 
-   Implication for `STOP_CLASSIFY_CONFLICT`: it stays as the unhappy-path stop, but the resolution is "go fix the ticket (apply a `type:*` label or recreate via the template) and re-run", not "the human supplies the missing classification inline."
+   Implication for `STOP_CLASSIFY_CONFLICT`: it stays as the unhappy-path stop, but the resolution is "go fix the ticket (set its issue type, apply a `subtype:*` label, or recreate via the template) and re-run", not "the human supplies the missing classification inline."
 
    Implication for `STOP_PARSE_ERROR`: same shape — "go fix the ticket body to match the template, then re-run." Not "the human writes the missing scenarios inline."
 
-2. **Implementation order: forms-first.** Scaffold the four issue-form YAMLs (item 1) and submit one test ticket per form against a sandbox repo before any runtime work begins. The `parse_ticket_body` action's contract depends on the exact markdown GitHub emits when an issue form is submitted — observe that against real output rather than fitting forms to a parser written from docs. Items 2–9 only start once the rendered markdown shape is confirmed.
+2. **Implementation order: forms-first.** Scaffold the three issue-form YAMLs (item 1) and submit one test ticket per form against a sandbox repo before any runtime work begins. The `parse_ticket_body` action's contract depends on the exact markdown GitHub emits when an issue form is submitted — observe that against real output rather than fitting forms to a parser written from docs. Items 2–10 only start once the rendered markdown shape is confirmed.
 
-3. **Single `change_kind` enum, no separate channel.** The four orthogonal runtime fields (`change_type`, `change_subtype`, `change_scope`, `change_channel`) collapse to one field, `change_kind`, with four flat values:
+3. **Type via native GitHub issue type, not labels.** GitHub Issues now have a first-class `type` field (Story / Bug / Task) — a typed enum, not a label. Use it.
 
-   | `change_kind` value | Replaces (old fields) | Cycle |
+   - Forms set the field via `type:` (alongside `name:` and `description:`).
+   - `auto-classify-ticket` reads `issue.type` from the GitHub API and writes its lowercased name to context as `ticket_type`.
+   - No `type:*` labels exist on disk; no label-naming convention to maintain.
+
+   **Setup prerequisite (out of scope for the runtime change but in scope for rollout):** the `optivem` org needs Story, Bug, and Task configured as issue types. Bug and Task are GitHub defaults; Story must be added once as a custom type at the org level. This is a one-time admin task — no scaffolder automation required (it's an org-level setting, not a per-repo one).
+
+4. **Subtype via `subtype:*` labels, not a form dropdown.** The structural subtype is carried by a label, applied by the student after filing.
+
+   Three labels, one per value:
+
+   | Label | `subtype` value | Cycle |
    |---|---|---|
-   | `system-api-redesign` | `structure` + `interface` + `system` + `api` | `SYSAPI_CYCLE` |
-   | `system-ui-redesign` | `structure` + `interface` + `system` + `ui` | `SYSUI_CYCLE` |
-   | `external-system-interface-redesign` | `structure` + `interface` + `external_system` | `ct_subprocess` (via `EXTAPI_CYCLE`) |
-   | `system-implementation-change` | `structure` + `implementation` + `system` (chore) | `sut_cycle` |
+   | `subtype:system-interface-redesign` | `system-interface-redesign` | `da_cycle` → `structural_cycle` |
+   | `subtype:external-system-interface-redesign` | `external-system-interface-redesign` | `da_cycle` → `ct_subprocess` |
+   | `subtype:system-implementation-change` | `system-implementation-change` | `sut_cycle` |
 
-   Behavioral tickets (story / bug) **do not get a `change_kind`** — `run_cycle` dispatches them via `ticket_type` straight into `at_cycle`. `change_kind` is only meaningful for structural tickets (task / chore).
+   Behavioral tickets (Story / Bug) **do not get a `subtype:*` label** — `run_cycle` dispatches them via `ticket_type` straight into `at_cycle`. `subtype:*` is only meaningful for tasks.
 
-   Why one field, not two coupled dropdowns: GitHub issue forms can't conditionally show a channel field based on another dropdown. A two-dropdown design would need an "n/a" option for `external-system-interface-redesign` plus parser-side validation that "n/a" only pairs with the external value. Folding the channel into the value name removes that coupling — the form has *more values* in the case where channel matters and *no separate channel field at all*. Side benefit: `da_cycle` collapses two nested gates (`change_scope` × `change_channel`) into one (`change_kind`).
+   Why labels, not a dropdown:
 
-   Why values describe the *work* not the *ticket type* (no `-task` / `-chore` suffix): the ticket type already lives in `ticket_type` (set by the form label). `change_kind` exists to describe *what kind of change*. Suffixing values with the container's name (`-task`) duplicates a field we already have; suffixing with the work (`-redesign`, `-change`) tells you something the label doesn't.
+   - **Symmetric mechanism.** Subtype joins the same world as type-routing already lives in (post-issue-creation, GitHub-native).
+   - **Editable post-hoc.** Wrong subtype = swap labels in one click. With a dropdown, the student would have to re-file the issue (the dropdown value is baked into the body and can't be re-read after edit without re-rendering the form).
+   - **Form simpler.** `task.yml` loses its dropdown entirely — same fields as story/bug minus AC.
+   - **No body parsing for this field.** Parser doesn't need a subtype section in the body — the value lives on a label.
+   - **Workflow-friendly.** Bots and Actions can apply labels; they can't edit form-rendered dropdown values.
+
+   **No channel concept.** The old design had four orthogonal runtime fields (`change_type`, `change_subtype`, `change_scope`, `change_channel`). The previous draft of this plan collapsed them to a four-value `subtype` enum that included `system-api-redesign` and `system-ui-redesign` as separate values. That distinction did nothing the framework cared about: both cycles called the same agent (`atdd-task`), the same `structural_cycle`, with the same params bar a phase label and a phase_doc path that pointed at non-existent files. Worse, it forced the *human filing the ticket* to pre-classify what the WRITE agent derives anyway, and it doesn't generalize: a student repo with a CLI driver, mobile driver, or admin-UI driver would need framework code changes to onboard another channel.
+
+   The fix is to drop the channel concept entirely. The WRITE agent reads the system, the ticket body, and the Checklist, and figures out which driver(s) — `SystemApiDriver`, `SystemUiDriver`, `SystemMobileDriver`, etc. — to modify. The framework only forks on distinctions that change the *flow*: behavioral vs structural (different cycles), system vs external-system interface (the latter pulls in `ct_subprocess` and `external_system_onboarding`), interface vs implementation (`da_cycle` vs `sut_cycle`).
+
+   **One structural form, not two.** With channel gone, `task.yml` and `chore.yml` would have identical fields and differ only in their `subtype:*` label. Collapse them: a single `task.yml` covers all structural work, and the runtime dispatches off `subtype`. There is no `chore` ticket type — the implementation-change variant is just one of the three `subtype:*` label values applied to a Task issue.
 
 ## Items
 
 Sequence: forms first (so the parser has something concrete to target), then runtime changes, then retire the old agents. One PR per item.
 
-### 1. Author the four issue forms in shop
+### 1. Author the three issue forms in shop
 
 **Files:**
 - `shop/.github/ISSUE_TEMPLATE/story.yml` (new)
 - `shop/.github/ISSUE_TEMPLATE/bug.yml` (new)
 - `shop/.github/ISSUE_TEMPLATE/task.yml` (new)
-- `shop/.github/ISSUE_TEMPLATE/chore.yml` (new)
 - `shop/.github/ISSUE_TEMPLATE/config.yml` (new — `blank_issues_enabled: false`)
 
-**Form shape (common to all four):**
+**Form shape (common to all three):**
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
@@ -66,26 +84,23 @@ Sequence: forms first (so the parser has something concrete to target), then run
 
 **Type-specific fields:**
 
-- `story.yml`, `bug.yml`: add `Acceptance Criteria` textarea (required, Given/When/Then placeholder, `render: markdown`). `bug.yml` also adds `Steps to Reproduce` (textarea, required). No `change_kind` — behavioral tickets go straight to `at_cycle`.
-- `task.yml`: add `Checklist` textarea (required, `- [ ]` placeholder, `render: markdown`); add `change_kind` dropdown (required) with three values:
-  - `system-api-redesign`
-  - `system-ui-redesign`
-  - `external-system-interface-redesign`
-- `chore.yml`: add `Checklist` textarea (required). No `change_kind` dropdown — chore is always hardcoded to `system-implementation-change` at classify-time (item 5).
+- `story.yml`, `bug.yml`: add `Acceptance Criteria` textarea (required, Given/When/Then placeholder, `render: markdown`). `bug.yml` also adds `Steps to Reproduce` (textarea, required). No subtype — behavioral tickets go straight to `at_cycle`.
+- `task.yml`: add `Checklist` textarea (required, `- [ ]` placeholder, `render: markdown`). No subtype dropdown — subtype is carried by a `subtype:*` label applied post-form (Decision 4).
 
-**Labels:**
-- Each form sets `labels: ["type:story"]` (etc.) so `auto-classify-ticket` can read the label.
+**Native issue type (not labels):**
+- `story.yml` sets `type: Story`, `bug.yml` sets `type: Bug`, `task.yml` sets `type: Task`. These are GitHub's native issue-type values (Decision 3). No `labels:` block for type.
 
-**Validation (manual, before runtime work):** create one test ticket per form against a sandbox repo, dump the rendered markdown body, confirm headings are exactly `## Acceptance Criteria`, `## Legacy Acceptance Criteria`, `## Checklist`, etc. The parser's contract depends on this.
+**Validation (manual, before runtime work):** create one test ticket per form against a sandbox repo, dump the rendered markdown body, confirm headings are exactly `## Acceptance Criteria`, `## Legacy Acceptance Criteria`, `## Checklist`, etc. Also confirm `issue.type` is set on each test ticket. The parser's contract depends on this.
 
-### 2. Wire the forms into the scaffolder
+### 2. Wire the forms into the scaffolder, and seed `subtype:*` labels
 
-**Why this item exists at all:** today's scaffolder (`internal/steps/apply_template.go:128`) doesn't bulk-copy `shop/`. It explicitly copies named subdirectories: workflows via `CopyWorkflows`, system code via `files.CopyDir`, externals, system-tests, docker, cloud-run scripts, docs via `copyDocs`. Dropping `.github/ISSUE_TEMPLATE/*.yml` into shop without a corresponding scaffolder step means the YAMLs sit unused — the new repo never receives them.
+**Why this item exists at all:** today's scaffolder (`internal/steps/apply_template.go:128`) doesn't bulk-copy `shop/`. It explicitly copies named subdirectories: workflows via `CopyWorkflows`, system code via `files.CopyDir`, externals, system-tests, docker, cloud-run scripts, docs via `copyDocs`. Dropping `.github/ISSUE_TEMPLATE/*.yml` into shop without a corresponding scaffolder step means the YAMLs sit unused — the new repo never receives them. Labels also need seeding — they live per-repo, and the runtime expects `subtype:*` to exist as choosable labels in any scaffolded repo.
 
-**Scope:** five-line addition. No fixups, no content replacements, no per-language variation. Issue forms are fully scaffold-agnostic — same files in every student repo.
+**Scope:** small addition — copy the form directory and seed three labels. No fixups, no content replacements, no per-language variation. Issue forms are fully scaffold-agnostic — same files in every student repo.
 
 **Files:**
 - `internal/steps/apply_template.go` — add a `copyIssueTemplates(shop, repoDir)` helper alongside `copyDocs` / `copyExternals`, and call it once from `ApplyTemplate` before the arch-specific dispatch.
+- `internal/steps/apply_template.go` (or a new sibling step) — after the repo is created on GitHub, seed the three `subtype:*` labels via `gh label create`.
 
 ```go
 func copyIssueTemplates(shop, repoDir string) {
@@ -94,9 +109,22 @@ func copyIssueTemplates(shop, repoDir string) {
         files.CopyDir(src, filepath.Join(repoDir, ".github", "ISSUE_TEMPLATE"))
     }
 }
+
+func seedSubtypeLabels(repo string) {
+    labels := []struct{ name, color, desc string }{
+        {"subtype:system-interface-redesign",          "1d76db", "Structural change to a system Driver Adapter"},
+        {"subtype:external-system-interface-redesign", "0e8a16", "Structural change to an External System Driver Adapter"},
+        {"subtype:system-implementation-change",       "5319e7", "Structural change to system internals (no test-stack artifact)"},
+    }
+    for _, l := range labels {
+        gh("label", "create", l.name, "--repo", repo, "--color", l.color, "--description", l.desc, "--force")
+    }
+}
 ```
 
-Optionally extend `ValidateNoLeftoverTemplateRefs` (`apply_template.go:768`) to confirm the four expected `*.yml` files landed — but issue forms have no templated content, so a missing-file check is the only meaningful post-condition.
+`--force` makes the seeding idempotent (re-running update colors/descriptions without erroring on existing labels).
+
+Optionally extend `ValidateNoLeftoverTemplateRefs` (`apply_template.go:768`) to confirm the three expected `*.yml` files landed — but issue forms have no templated content, so a missing-file check is the only meaningful post-condition.
 
 ### 3. Hardcode section-heading constants
 
@@ -118,48 +146,75 @@ const (
 
 Single source of truth for headings. Not configurable (see motivation in the prior conversation — pedagogical signal lives in the canonical names).
 
-### 4. Replace `auto-classify-ticket` with a label reader
+### 4. Replace `auto-classify-ticket` with a native-issue-type reader
 
 **Files:**
 - `internal/atdd/runtime/actions/bindings.go`
 - `internal/atdd/runtime/actions/bindings_test.go`
 - `internal/atdd/runtime/statemachine/process-flow.yaml`
+- `internal/atdd/runtime/board/board.go` (or wherever `Board` is defined) — add `IssueType(ctx) string` accessor that wraps the GitHub API field
 
 Today's `classify_ticket` action presumably runs an LLM (or heuristic) over the ticket body. Replace with:
 
 ```go
 func (a *Actions) ClassifyTicket(ctx context.Context) error {
-    labels := a.Board.IssueLabels(ctx)
-    ticketType := pickTypeLabel(labels) // "type:story" → "story"
-    if ticketType == "" {
+    issueType := a.Board.IssueType(ctx) // "Story" | "Bug" | "Task" | ""
+    if issueType == "" {
         return ErrTicketTypeUnknown // forces STOP_CLASSIFY_CONFLICT
     }
-    ctx.Set("ticket_type", ticketType)
+    ctx.Set("ticket_type", strings.ToLower(issueType)) // "story" | "bug" | "task"
     ctx.Set("classify_confident", true)
     return nil
 }
 ```
 
-`STOP_CLASSIFY_CONFLICT` stays in the YAML as the unhappy-path stop — it now triggers when the ticket has no `type:*` label, not when the LLM was uncertain.
+Implementation note: `IssueType` reads the `type` field on the issue object (GraphQL `issue.issueType.name`, or the `type` field if/when it lands in REST). The runtime should depend only on the typed name string, not on the underlying API shape, so this stays one accessor.
 
-### 5. Add `auto-classify-change-kind` service task
+`STOP_CLASSIFY_CONFLICT` stays in the YAML as the unhappy-path stop — it now triggers when the ticket has no native issue type set (e.g. created outside the form, or before the org configured the Story type), not when the LLM was uncertain.
+
+### 5. Add `auto-classify-subtype` service task (label reader)
 
 **Files:**
 - `internal/atdd/runtime/actions/bindings.go`
 - `internal/atdd/runtime/actions/bindings_test.go`
 - `internal/atdd/runtime/statemachine/process-flow.yaml`
 
-New action `ClassifyChangeKind` runs after `ClassifyTicket`. Sets a single field, `change_kind`, based on `ticket_type` plus (for `task` only) the form's `change_kind` dropdown:
+New action `ClassifySubtype` runs after `ClassifyTicket`. Sets a single field, `subtype`, by reading `subtype:*` labels on the ticket:
 
-| `ticket_type` | `change_kind` set to | Source |
+| `ticket_type` | `subtype` set to | Source |
 |---|---|---|
 | story, bug | (unset — behavioral) | — |
-| task | one of `system-api-redesign` / `system-ui-redesign` / `external-system-interface-redesign` | form dropdown rendered into the issue body (e.g. `### Change kind\n\nsystem-api-redesign`) |
-| chore | `system-implementation-change` | hardcoded |
+| task | one of `system-interface-redesign` / `external-system-interface-redesign` / `system-implementation-change` | the `subtype:*` label on the issue |
 
-The action reads the issue body, locates the `### Change kind` section rendered by the issue-form `change_kind` dropdown, and writes the value to context. For `chore` it skips the body read and hardcodes the value. For `story` / `bug` it skips entirely — `change_kind` is undefined for behavioral tickets and `run_cycle`'s top gate (`ticket_type`) routes them away from the `change_kind` gate before that field is ever read.
+```go
+func (a *Actions) ClassifySubtype(ctx context.Context) error {
+    if ctx.Get("ticket_type") != "task" {
+        return nil // behavioral tickets have no subtype
+    }
+    labels := a.Board.IssueLabels(ctx)
+    var subtypeLabels []string
+    for _, l := range labels {
+        if strings.HasPrefix(l, "subtype:") {
+            subtypeLabels = append(subtypeLabels, l)
+        }
+    }
+    switch len(subtypeLabels) {
+    case 0:
+        return ErrSubtypeMissing  // → STOP_CLASSIFY_CONFLICT
+    case 1:
+        ctx.Set("subtype", strings.TrimPrefix(subtypeLabels[0], "subtype:"))
+        return nil
+    default:
+        return ErrSubtypeAmbiguous // → STOP_CLASSIFY_CONFLICT, "exactly one subtype:* label expected"
+    }
+}
+```
 
-The runtime fields `change_type`, `change_subtype`, `change_scope`, `change_channel` are **removed** from the context in this same change. Any binding or gate that reads them migrates to `change_kind` (item 7 covers the gate updates).
+For `story` / `bug` it skips entirely — `subtype` is undefined for behavioral tickets and `run_cycle`'s top gate (`ticket_type`) routes them away from the `subtype` gate before that field is ever read.
+
+The runtime fields `change_type`, `change_subtype`, `change_scope`, `change_channel` are **removed** from the context in this same change. Any binding or gate that reads them migrates to `subtype` (item 7 covers the gate updates).
+
+`STOP_CLASSIFY_CONFLICT` now has two failure modes for tasks: missing `subtype:*` label, and multiple `subtype:*` labels. Both are resolved by editing the issue's labels and re-running.
 
 ### 6. Replace 4-way intake fan-out with `parse_ticket_body` service task
 
@@ -174,7 +229,7 @@ New action `ParseTicketBody` (service task) replaces the fan-out. It:
 1. Reads the issue body.
 2. For each canonical heading (constants from item 3), extracts the section content.
 3. For behavioral tickets (story, bug): produces a list of `Scenario` structs from the AC section.
-4. For structural tickets (task, chore): produces a list of `ChecklistItem` structs from the Checklist section.
+4. For structural tickets (task): produces a list of `ChecklistItem` structs from the Checklist section.
 5. For any ticket: extracts `LegacyAcceptanceCriteria` (empty struct when absent — drives the existing `legacy_acceptance_criteria_section_present` gate at `process-flow.yaml:225`).
 6. On parse failure (missing required section, malformed scenario, etc.): returns an error → `STOP_INTAKE` becomes the parse-error stop.
 
@@ -193,9 +248,9 @@ intake:
     - id: STOP_CLASSIFY_CONFLICT
       type: user_task
       agent: human
-    - id: CLASSIFY_CHANGE_KIND
+    - id: CLASSIFY_SUBTYPE
       type: service_task
-      action: classify_change_kind
+      action: classify_subtype
     - id: PARSE_BODY
       type: service_task
       action: parse_ticket_body
@@ -210,10 +265,10 @@ intake:
       type: end_event
   sequence_flows:
     - {from: CLASSIFY_TICKET,         to: GATE_CLASSIFY_CONFIDENT}
-    - {from: GATE_CLASSIFY_CONFIDENT, to: CLASSIFY_CHANGE_KIND,  when: "classify_confident == true"}
+    - {from: GATE_CLASSIFY_CONFIDENT, to: CLASSIFY_SUBTYPE,  when: "classify_confident == true"}
     - {from: GATE_CLASSIFY_CONFIDENT, to: STOP_CLASSIFY_CONFLICT, when: "classify_confident == false"}
-    - {from: STOP_CLASSIFY_CONFLICT,  to: CLASSIFY_CHANGE_KIND}
-    - {from: CLASSIFY_CHANGE_KIND,    to: PARSE_BODY}
+    - {from: STOP_CLASSIFY_CONFLICT,  to: CLASSIFY_SUBTYPE}
+    - {from: CLASSIFY_SUBTYPE,    to: PARSE_BODY}
     - {from: PARSE_BODY,              to: GATE_PARSE_OK}
     - {from: GATE_PARSE_OK,           to: INTAKE_END,            when: "parse_ok == true"}
     - {from: GATE_PARSE_OK,           to: STOP_PARSE_ERROR,      when: "parse_ok == false"}
@@ -222,7 +277,7 @@ intake:
 
 Note: `GATE_TICKET_TYPE` and the four `ATDD_*` user_tasks disappear. `STOP_INTAKE` ("approve scenarios") disappears — humans no longer approve agent output because there is no agent.
 
-### 7. Update `run_cycle` and `da_cycle` to gate on `change_kind`
+### 7. Update `run_cycle` and `da_cycle` to gate on `subtype`
 
 **Files:**
 - `internal/atdd/runtime/statemachine/process-flow.yaml`
@@ -230,7 +285,7 @@ Note: `GATE_TICKET_TYPE` and the four `ATDD_*` user_tasks disappear. `STOP_INTAK
 - `internal/atdd/runtime/gates/bindings_test.go`
 - `internal/atdd/runtime/gates/registry.go`
 
-Today `run_cycle` (`process-flow.yaml:254-289`) gates on `change_type` then `change_subtype`, and `da_cycle` (`process-flow.yaml:648-693`) gates on `change_scope` then `change_channel`. With the flat `change_kind` enum (Decision 3) those four nested gates collapse to one gate per cycle.
+Today `run_cycle` (`process-flow.yaml:254-289`) gates on `change_type` then `change_subtype`, and `da_cycle` (`process-flow.yaml:648-693`) gates on `change_scope` then `change_channel`. With the flat `subtype` enum (Decision 4) those four nested gates collapse to one gate per cycle. The system/UI split inside `da_cycle` also collapses (Decision 4) — both used the same agent and the same `structural_cycle`, so there's nothing to split on.
 
 **`run_cycle` rewrite:**
 
@@ -242,10 +297,10 @@ run_cycle:
       type: gateway
       binding: ticket_type
       description: "Behavioral or structural?"
-    - id: GATE_CHANGE_KIND
+    - id: GATE_SUBTYPE
       type: gateway
-      binding: change_kind
-      description: "Cycle by change kind"
+      binding: subtype
+      description: "Cycle by subtype"
     - id: AT_CYCLE
       type: call_activity
       flow: at_cycle
@@ -259,9 +314,9 @@ run_cycle:
       type: end_event
   sequence_flows:
     - {from: GATE_TICKET_TYPE, to: AT_CYCLE,         when: "ticket_type in [story, bug]"}
-    - {from: GATE_TICKET_TYPE, to: GATE_CHANGE_KIND, when: "ticket_type in [task, chore]"}
-    - {from: GATE_CHANGE_KIND, to: DA_CYCLE,         when: "change_kind in [system-api-redesign, system-ui-redesign, external-system-interface-redesign]"}
-    - {from: GATE_CHANGE_KIND, to: SUT_CYCLE,        when: "change_kind == system-implementation-change"}
+    - {from: GATE_TICKET_TYPE, to: GATE_SUBTYPE, when: "ticket_type == task"}
+    - {from: GATE_SUBTYPE, to: DA_CYCLE,         when: "subtype in [system-interface-redesign, external-system-interface-redesign]"}
+    - {from: GATE_SUBTYPE, to: SUT_CYCLE,        when: "subtype == system-implementation-change"}
     - {from: AT_CYCLE,  to: CYCLE_END}
     - {from: DA_CYCLE,  to: CYCLE_END}
     - {from: SUT_CYCLE, to: CYCLE_END}
@@ -271,44 +326,36 @@ run_cycle:
 
 ```yaml
 da_cycle:
-  start: GATE_CHANGE_KIND
+  start: GATE_SUBTYPE
   nodes:
-    - id: GATE_CHANGE_KIND
+    - id: GATE_SUBTYPE
       type: gateway
-      binding: change_kind
-      description: "Driver Adapter target?"
-    - id: SYSAPI_CYCLE
+      binding: subtype
+      description: "System or external-system interface?"
+    - id: SYSTEM_INTERFACE_CYCLE
       type: call_activity
       flow: structural_cycle
       params:
-        phase: "SYSTEM API REDESIGN"
+        phase: "SYSTEM INTERFACE REDESIGN"
         agent: atdd-task
-        phase_doc: docs/atdd/process/sysapi-redesign.md
-        subtype: system-api-redesign
-    - id: SYSUI_CYCLE
-      type: call_activity
-      flow: structural_cycle
-      params:
-        phase: "SYSTEM UI REDESIGN"
-        agent: atdd-task
-        phase_doc: docs/atdd/process/sysui-redesign.md
-        subtype: system-ui-redesign
+        phase_doc: docs/atdd/process/system-interface-redesign.md
+        subtype: system-interface-redesign
     - id: EXTAPI_CYCLE
       type: call_activity
       flow: ct_subprocess
     - id: DA_END
       type: end_event
   sequence_flows:
-    - {from: GATE_CHANGE_KIND, to: SYSAPI_CYCLE, when: "change_kind == system-api-redesign"}
-    - {from: GATE_CHANGE_KIND, to: SYSUI_CYCLE,  when: "change_kind == system-ui-redesign"}
-    - {from: GATE_CHANGE_KIND, to: EXTAPI_CYCLE, when: "change_kind == external-system-interface-redesign"}
-    - {from: SYSAPI_CYCLE, to: DA_END}
-    - {from: SYSUI_CYCLE,  to: DA_END}
-    - {from: EXTAPI_CYCLE, to: DA_END}
+    - {from: GATE_SUBTYPE, to: SYSTEM_INTERFACE_CYCLE, when: "subtype == system-interface-redesign"}
+    - {from: GATE_SUBTYPE, to: EXTAPI_CYCLE,           when: "subtype == external-system-interface-redesign"}
+    - {from: SYSTEM_INTERFACE_CYCLE, to: DA_END}
+    - {from: EXTAPI_CYCLE,           to: DA_END}
 ```
 
+The WRITE agent (`atdd-task`) reads the system, the ticket body, and the Checklist to figure out which driver(s) — API, UI, mobile, CLI, admin, etc. — to modify. The framework no longer pre-classifies the channel.
+
 **Gate-binding changes (`internal/atdd/runtime/gates/bindings.go`):**
-- Add: `ChangeKind(ctx) string` — returns the value set by `ClassifyChangeKind` (item 5).
+- Add: `Subtype(ctx) string` — returns the value set by `ClassifySubtype` (item 5).
 - Remove: `ChangeType`, `ChangeSubtype`, `ChangeScope`, `ChangeChannel` and their registry entries.
 - Keep: `TicketType` (already exists; now consumed by `run_cycle` directly instead of solely by intake).
 
@@ -319,13 +366,13 @@ da_cycle:
 - `docs/atdd/process/intake-bug.md`
 - `docs/atdd/process/intake-task.md`
 - `docs/atdd/process/intake-chore.md`
-- Any embedded agent prompt files for `atdd-story`, `atdd-bug`, `atdd-task`, `atdd-chore` under `internal/atdd/runtime/agents/`
+- Any embedded agent prompt files for `atdd-story`, `atdd-bug`, `atdd-task`, `atdd-chore` under `internal/atdd/runtime/agents/` (intake role only)
 
 **Files (update):**
-- `internal/atdd/runtime/agents/registry.go` — remove the four agent registrations
-- `internal/atdd/runtime/agents/embed.go` — remove the four embed directives
+- `internal/atdd/runtime/agents/registry.go` — remove the four agent registrations (intake role)
+- `internal/atdd/runtime/agents/embed.go` — remove the four embed directives (intake role)
 
-Cross-check: search for any remaining references to these agent names in `da_cycle` etc. — `da_cycle` reuses `atdd-task` for `SYSAPI_CYCLE` and `SYSUI_CYCLE` (`process-flow.yaml:666, 675`). That's *not* the intake agent — it's a structural-cycle WRITE agent that happens to share the name. Confirm whether they're the same agent in `internal/atdd/runtime/agents/registry.go` before deleting; if so, keep the agent and only retire its intake role. If they're distinct, the rename ambiguity is itself a smell — fix during this work.
+Cross-check: `atdd-task` is reused as the WRITE agent in `da_cycle`'s `SYSTEM_INTERFACE_CYCLE` (item 7), and `atdd-chore` is reused as the WRITE agent in `sut_cycle` (`process-flow.yaml:709`). Those are *not* the intake agents — they're structural-cycle WRITE agents that share the names. Confirm whether intake and WRITE roles share a registry entry in `internal/atdd/runtime/agents/registry.go` before deleting; if so, keep the agent and only retire its intake role. If they're distinct, the name collision is itself a smell — fix during this work.
 
 ### 9. Update tests, diagrams, docs
 
@@ -334,10 +381,11 @@ Cross-check: search for any remaining references to these agent names in `da_cyc
 - `internal/atdd/runtime/statemachine/structural_cycle_test.go`
 - `internal/atdd/runtime/diagram/diagram.go` (if intake fan-out has special-case rendering)
 - `internal/atdd/runtime/diagram/diagram_test.go`
+- `docs/atdd/process/system-interface-redesign.md` (new) — single phase doc for system Driver Adapter redesigns. Replaces the never-existed `sysapi-redesign.md` / `sysui-redesign.md` references in the old `da_cycle`. The agent reads the system and ticket body to determine which driver(s) — API, UI, mobile, CLI, etc. — to modify.
 - `docs/process-diagram.md` — regenerate
-- `docs/images/process-diagram-*-intake-cycle.svg`, `*-da-cycle.svg`, `*-run-cycle.svg` — regenerate (intake fan-out collapses; `da_cycle` and `run_cycle` lose their inner gates)
-- `CLAUDE.md` / agent-facing docs that reference the four intake agents
-- `internal/atdd/runtime/statemachine/process-flow.yaml` header comment (`process-flow.yaml:248-253`) — update the prose describing `change_type` / `change_subtype` / `change_scope` / `change_channel` to describe the single `change_kind` field instead
+- `docs/images/process-diagram-*-intake-cycle.svg`, `*-da-cycle.svg`, `*-run-cycle.svg` — regenerate (intake fan-out collapses; `da_cycle` and `run_cycle` lose their inner gates and channel split)
+- `CLAUDE.md` / agent-facing docs that reference the four intake agents, the deleted `chore` ticket type, or `system-api-redesign` / `system-ui-redesign` as separate kinds
+- `internal/atdd/runtime/statemachine/process-flow.yaml` header comment (`process-flow.yaml:248-253`) — update the prose describing `change_type` / `change_subtype` / `change_scope` / `change_channel` to describe the single `subtype` field, sourced from a `subtype:*` label on task tickets
 
 Run `gh optivem atdd regen-diagrams` (or whatever the regen entry point is — see `internal/atdd/runtime/diagram/`) and commit the updated SVGs.
 
@@ -346,14 +394,17 @@ Run `gh optivem atdd regen-diagrams` (or whatever the regen entry point is — s
 **Files:** none (manual).
 
 After items 1–9 land:
-1. `gh optivem init` a fresh sandbox repo → confirm forms appear in `.github/ISSUE_TEMPLATE/`.
-2. Open each of the four forms in the GitHub UI, fill in, submit → confirm `type:*` label is applied and rendered body matches what the parser expects (especially the `### Change kind` section on the task form).
-3. Run `gh optivem atdd implement-ticket --issue N` against each ticket type → confirm intake passes through `parse_ticket_body` to `RUN_LEGACY_CYCLE` / `RUN_CYCLE` without dispatching any LLM agent, and that `run_cycle` / `da_cycle` route to the correct sub-cycle for each `change_kind` value.
-4. Create one ticket *outside* the template (raw markdown, no `type:*` label) → confirm `STOP_CLASSIFY_CONFLICT` fires with a clear message.
+1. `gh optivem init` a fresh sandbox repo → confirm forms appear in `.github/ISSUE_TEMPLATE/` and the three `subtype:*` labels exist (`gh label list`).
+2. Open each of the three forms in the GitHub UI, fill in, submit → confirm the native issue type (Story / Bug / Task) is set on the resulting issue and the rendered body matches what the parser expects.
+3. For a task ticket, apply one of the `subtype:*` labels by hand. Run `gh optivem atdd implement-ticket --issue N` → confirm intake passes through `parse_ticket_body` to `RUN_LEGACY_CYCLE` / `RUN_CYCLE` without dispatching any LLM agent, and that `run_cycle` / `da_cycle` route to the correct sub-cycle for each `subtype` value.
+4. Create one ticket *outside* the template (raw markdown, no native issue type) → confirm `STOP_CLASSIFY_CONFLICT` fires with a clear message.
+5. Create a Task issue with no `subtype:*` label → confirm `STOP_CLASSIFY_CONFLICT` fires with the "missing subtype label" message. Apply a label and re-run; confirm it proceeds.
+6. Create a Task issue with two `subtype:*` labels → confirm `STOP_CLASSIFY_CONFLICT` fires with the "ambiguous subtype" message.
 
 ## Out of scope
 
 - Migrating existing tickets in production student repos — the new path applies to newly-created tickets; legacy tickets keep their current handling until manually re-classified.
-- A YAML linter for issue forms (overkill — five small files, manually verified).
+- A YAML linter for issue forms (overkill — four small files, manually verified).
+- Org-level configuration of the `Story` custom issue type. The runtime depends on it being present (Decision 3) but creating it is a one-time admin task, not a code change.
 - Repurposing the deleted intake agents for other phases — if there's a reuse opportunity, capture it in a separate plan.
-- Any change to `at_cycle`, `sut_cycle`, `ct_subprocess`, `external_system_onboarding`, `structural_cycle`, or `legacy_acceptance_criteria` flow internals — they don't consume `change_type` / `change_subtype` / `change_scope` / `change_channel` directly and are unaffected by Decision 3. (`run_cycle` and `da_cycle` *do* change — see item 7 — because they were the gates that consumed those fields.)
+- Any change to `at_cycle`, `sut_cycle`, `ct_subprocess`, `external_system_onboarding`, `structural_cycle`, or `legacy_acceptance_criteria` flow internals — they don't consume `change_type` / `change_subtype` / `change_scope` / `change_channel` directly and are unaffected by Decision 4. (`run_cycle` and `da_cycle` *do* change — see item 7 — because they were the gates that consumed those fields.)
