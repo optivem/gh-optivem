@@ -39,33 +39,33 @@ flowchart TD
     GATE_CLASSIFY_CONFIDENT{Classification confident?}
     GATE_NEEDS_SUBTYPE{Task ticket?}
     GATE_PARSE_OK{Parsed OK?}
+    GATE_SUBTYPE_OK{Subtype label detected?}
     INTAKE_END((End))
-    INTAKE_OUTPUTS[/"Outputs: ticket_type, subtype (tasks), parsed body sections"/]
     PARSE_BODY[[Parse ticket body sections]]
     STOP_CLASSIFY_CONFLICT[STOP - HUMAN REVIEW — set issue type / re-run]
     STOP_PARSE_ERROR[STOP - HUMAN REVIEW — fix ticket body / re-run]
+    STOP_SUBTYPE_MISSING[STOP - HUMAN REVIEW — apply exactly one subtype:* label / re-run]
 
     CLASSIFY --> GATE_CLASSIFY_CONFIDENT
     GATE_CLASSIFY_CONFIDENT -- Yes --> GATE_NEEDS_SUBTYPE
     GATE_CLASSIFY_CONFIDENT -- No --> STOP_CLASSIFY_CONFLICT
-    STOP_CLASSIFY_CONFLICT --> GATE_NEEDS_SUBTYPE
+    STOP_CLASSIFY_CONFLICT --> CLASSIFY
     GATE_NEEDS_SUBTYPE -- task --> CLASSIFY_SUBTYPE
     GATE_NEEDS_SUBTYPE -- story / bug --> PARSE_BODY
-    CLASSIFY_SUBTYPE --> PARSE_BODY
+    CLASSIFY_SUBTYPE --> GATE_SUBTYPE_OK
+    GATE_SUBTYPE_OK -- Yes --> PARSE_BODY
+    GATE_SUBTYPE_OK -- No --> STOP_SUBTYPE_MISSING
+    STOP_SUBTYPE_MISSING --> CLASSIFY_SUBTYPE
     PARSE_BODY --> GATE_PARSE_OK
     GATE_PARSE_OK -- Yes --> INTAKE_END
     GATE_PARSE_OK -- No --> STOP_PARSE_ERROR
     STOP_PARSE_ERROR --> PARSE_BODY
-    INTAKE_END -. produces .-> INTAKE_OUTPUTS
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
     class CLASSIFY,CLASSIFY_SUBTYPE,PARSE_BODY serviceNode
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class STOP_CLASSIFY_CONFLICT,STOP_PARSE_ERROR humanNode
-
-    classDef outputNode fill:#e3f2fd,stroke:#1976d2,stroke-width:1px,color:#000000,stroke-dasharray:5 5
-    class INTAKE_OUTPUTS outputNode
+    class STOP_CLASSIFY_CONFLICT,STOP_PARSE_ERROR,STOP_SUBTYPE_MISSING humanNode
 ```
 
 ## Run Legacy Cycle
