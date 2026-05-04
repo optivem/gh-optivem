@@ -15,12 +15,6 @@ var promptFS embed.FS
 // fails the binary at startup rather than at first dispatch.
 var sharedSessionEnd = mustReadShared("shared/session-end.md")
 
-// sharedLegacyCommitBlock is the pre-CLI-commits "Commit Confirmation Rule"
-// reference that used to be inlined into every committing leaf prompt.
-// Re-injected at render time when --cli-commits is off, replacing the
-// LegacyCommitConfirmationMarker placeholder.
-var sharedLegacyCommitBlock = mustReadShared("shared/legacy-commit-confirmation.md")
-
 func mustReadShared(path string) string {
 	data, err := promptFS.ReadFile(path)
 	if err != nil {
@@ -42,13 +36,6 @@ func Prompt(name string) (string, error) {
 	}
 	body := strings.TrimRight(string(data), "\n")
 	return body + "\n\n---\n\n" + sharedSessionEnd + "\n", nil
-}
-
-// LegacyCommitBlock returns the pre-CLI-commits commit-confirmation rule
-// reference. Used by clauderun.renderPrompt to swap back the legacy
-// commit-gating language when --cli-commits is off.
-func LegacyCommitBlock() string {
-	return sharedLegacyCommitBlock
 }
 
 // Names returns every embedded agent name, sorted. The driver uses this to

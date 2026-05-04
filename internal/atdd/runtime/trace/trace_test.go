@@ -17,19 +17,29 @@ func fixedClock() time.Time {
 	return time.Date(2026, 5, 4, 12, 34, 56, 0, time.UTC)
 }
 
-// fakeGit is a stub GitRunner used to assert filesInCommit calls without
-// shelling out. It records the last argv and returns the canned output.
+// fakeGit is a stub GitRunner used to drive the working-tree snapshots
+// without shelling out. Each call consumes the next entry of `outs` (so a
+// pre/post pair returns two distinct porcelains in order). lastArgs
+// records every argv for assertions.
 type fakeGit struct {
-	out     []byte
-	err     error
-	lastDir string
-	lastArg []string
+	outs     [][]byte
+	err      error
+	lastDir  string
+	lastArgs [][]string
 }
 
 func (g *fakeGit) Run(_ context.Context, dir string, args ...string) ([]byte, error) {
 	g.lastDir = dir
-	g.lastArg = args
-	return g.out, g.err
+	g.lastArgs = append(g.lastArgs, args)
+	if g.err != nil {
+		return nil, g.err
+	}
+	if len(g.outs) == 0 {
+		return nil, nil
+	}
+	v := g.outs[0]
+	g.outs = g.outs[1:]
+	return v, nil
 }
 
 func TestWrap_ServiceTaskLogsEntryAndExit(t *testing.T) {
@@ -105,13 +115,18 @@ func TestWrap_UserTaskLogsAgentAndFiles(t *testing.T) {
 	t.Cleanup(func() { nowFn = prevNow })
 
 	var buf bytes.Buffer
-	git := &fakeGit{out: []byte("path/a.go\npath/b.go\n")}
+	// Pre-snapshot: clean. Post-snapshot: two new files plus one
+	// pre-existing dirty path that should be filtered out by dirtyDelta.
+	git := &fakeGit{outs: [][]byte{
+		[]byte(" M existing.go\n"),
+		[]byte(" M existing.go\n M path/a.go\n?? path/b.go\n"),
+	}}
 	node := statemachine.Node{
 		ID:   "AT_RED_TEST_WRITE",
 		Kind: statemachine.UserTask,
 		Raw:  statemachine.RawNode{Agent: "atdd-test"},
 		Fn: func(ctx *statemachine.Context) statemachine.Outcome {
-			return statemachine.Outcome{Commit: "deadbeef0000000000000000000000000000beef"}
+			return statemachine.Outcome{}
 		},
 	}
 	deps := Deps{Out: &buf, Git: git, RepoPath: "/repo"}.withDefaults()
@@ -122,7 +137,7 @@ func TestWrap_UserTaskLogsAgentAndFiles(t *testing.T) {
 	got := buf.String()
 	wantSubs := []string{
 		"> AT_RED_TEST_WRITE  kind=user_task agent=atdd-test",
-		"OK AT_RED_TEST_WRITE -> commit=deadbee",
+		"OK AT_RED_TEST_WRITE",
 		"files: path/a.go, path/b.go",
 	}
 	for _, s := range wantSubs {
@@ -130,12 +145,47 @@ func TestWrap_UserTaskLogsAgentAndFiles(t *testing.T) {
 			t.Errorf("trace output missing %q\nfull output:\n%s", s, got)
 		}
 	}
+	if strings.Contains(got, "existing.go") {
+		t.Errorf("trace must filter pre-existing dirty paths; got:\n%s", got)
+	}
 	if git.lastDir != "/repo" {
 		t.Errorf("git called with dir %q, want /repo", git.lastDir)
 	}
-	wantArgs := []string{"show", "--name-only", "--format=", "deadbeef0000000000000000000000000000beef"}
-	if fmt.Sprint(git.lastArg) != fmt.Sprint(wantArgs) {
-		t.Errorf("git called with args %v, want %v", git.lastArg, wantArgs)
+	if len(git.lastArgs) != 2 {
+		t.Fatalf("expected 2 git calls (pre+post snapshot); got %d", len(git.lastArgs))
+	}
+	wantArgs := []string{"status", "--porcelain"}
+	for i, args := range git.lastArgs {
+		if fmt.Sprint(args) != fmt.Sprint(wantArgs) {
+			t.Errorf("snapshot[%d]: git args %v, want %v", i, args, wantArgs)
+		}
+	}
+}
+
+func TestWrap_ServiceTaskSkipsWorkingTreeSnapshot(t *testing.T) {
+	// Service tasks shouldn't trigger git status — those calls add up
+	// fast over a full pipeline run. Only user_task nodes need the
+	// snapshot.
+	prevNow := nowFn
+	nowFn = fixedClock
+	t.Cleanup(func() { nowFn = prevNow })
+
+	var buf bytes.Buffer
+	git := &fakeGit{}
+	node := statemachine.Node{
+		ID:   "MOVE_TO_IN_PROGRESS",
+		Kind: statemachine.ServiceTask,
+		Raw:  statemachine.RawNode{Action: "move_to_in_progress"},
+		Fn: func(ctx *statemachine.Context) statemachine.Outcome {
+			return statemachine.Outcome{}
+		},
+	}
+	wrapped := wrap(node, Deps{Out: &buf, Git: git}.withDefaults())
+
+	wrapped(statemachine.NewContext())
+
+	if len(git.lastArgs) != 0 {
+		t.Errorf("service_task triggered %d git call(s); should be 0", len(git.lastArgs))
 	}
 }
 

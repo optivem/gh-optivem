@@ -17,8 +17,6 @@ Report back what backend changes were made and confirm API tests are passing.
 
 ## References
 
-<!-- legacy-block:shared-commit-confirmation -->
-
 ### Reference: docs/atdd/process/shared-phase-progression.md
 
 # Phase Progression

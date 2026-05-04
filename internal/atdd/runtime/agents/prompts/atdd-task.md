@@ -56,8 +56,6 @@ Your input prompt includes a `Scope:` block of the form `Scope: Architecture=<va
 
 ## References
 
-<!-- legacy-block:shared-commit-confirmation -->
-
 ### Reference: docs/atdd/architecture/system.md
 
 # System Code Layout

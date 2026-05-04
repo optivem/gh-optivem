@@ -3,7 +3,7 @@
 //
 //   - service_task: action name, ctx.State keys mutated, Outcome.Value/Bool
 //   - gateway:      binding name, evaluated value, ctx.State keys mutated
-//   - user_task:    agent name, Outcome.Commit, files in that commit
+//   - user_task:    agent name, working-tree paths the agent touched
 //   - call_activity:flow name, params pushed
 //   - start/end:    just the node id and kind
 //
@@ -11,6 +11,14 @@
 // it logs is exactly what the engine's RunFlow loop dispatches. Output is
 // plain text with `[trace HH:MM:SS]` prefixes so the trace stream is easy
 // to grep alongside clauderun's existing colored agent banners.
+//
+// File-list capture for user_task nodes works by taking a `git status
+// --porcelain` snapshot before and after the wrapped NodeFn fires. The
+// diff is the set of paths the agent introduced or modified. The
+// subsequent commit_phase action will commit those paths, but at trace
+// time we want them visible *as soon as the agent exits* — well before
+// commit_phase runs — so the operator can see what landed even if the
+// run halts before commit.
 //
 // trace is testable without shelling out: GitRunner is an injectable seam
 // (default execGit) and Out is the writer the decorator writes to (default
@@ -76,17 +84,22 @@ func WrapAll(eng *statemachine.Engine, deps Deps) {
 
 // wrap returns a NodeFn that logs entry/exit around inner. The closure
 // captures the original Node (kind + raw) so it has the metadata it needs
-// to render the entry banner without re-querying the engine.
+// to render the entry banner without re-querying the engine. For
+// user_task nodes the wrapper also snapshots the working tree (via
+// `git status --porcelain`) on each side of the dispatch so the exit
+// banner can list what the agent changed.
 func wrap(node statemachine.Node, deps Deps) statemachine.NodeFn {
 	inner := node.Fn
 	return func(ctx *statemachine.Context) statemachine.Outcome {
 		writeEnter(deps.Out, node, ctx)
 		preState := snapshotState(ctx.State)
+		preDirty := snapshotDirty(deps, node.Kind)
 		started := nowFn()
 		out := inner(ctx)
 		elapsed := nowFn().Sub(started).Round(time.Millisecond)
 		postState := snapshotState(ctx.State)
-		writeExit(deps, node, out, elapsed, preState, postState)
+		postDirty := snapshotDirty(deps, node.Kind)
+		writeExit(deps, node, out, elapsed, preState, postState, preDirty, postDirty)
 		return out
 	}
 }
@@ -129,7 +142,7 @@ func writeEnter(out io.Writer, node statemachine.Node, ctx *statemachine.Context
 }
 
 // writeExit prints the per-node exit banner and any follow-on detail
-// (state-delta keys, files-in-commit). The format is:
+// (state-delta keys, working-tree-delta paths). The format is:
 //
 //	[trace HH:MM:SS] OK NODE_ID -> <outcome>  (<elapsed>)
 //	[trace HH:MM:SS]    state: key=value, …
@@ -140,7 +153,7 @@ func writeEnter(out io.Writer, node statemachine.Node, ctx *statemachine.Context
 //	[trace HH:MM:SS] FAIL NODE_ID -> <error>  (<elapsed>)
 //
 // and no follow-on lines are emitted (the engine halts the run anyway).
-func writeExit(deps Deps, node statemachine.Node, out statemachine.Outcome, elapsed time.Duration, pre, post map[string]string) {
+func writeExit(deps Deps, node statemachine.Node, out statemachine.Outcome, elapsed time.Duration, pre, post map[string]string, preDirty, postDirty map[string]bool) {
 	w := deps.Out
 	if out.Err != nil {
 		fmt.Fprintf(w, "%s FAIL %s -> %v  (%s)\n", tracePrefix(), node.ID, out.Err, elapsed)
@@ -150,13 +163,9 @@ func writeExit(deps Deps, node statemachine.Node, out statemachine.Outcome, elap
 	if delta := stateDelta(pre, post); delta != "" {
 		fmt.Fprintf(w, "%s    state: %s\n", tracePrefix(), delta)
 	}
-	if node.Kind == statemachine.UserTask && out.Commit != "" {
-		paths, err := filesInCommit(deps, out.Commit)
-		switch {
-		case err != nil:
-			fmt.Fprintf(w, "%s    files: (lookup failed: %v)\n", tracePrefix(), err)
-		case len(paths) > 0:
-			fmt.Fprintf(w, "%s    files: %s\n", tracePrefix(), strings.Join(paths, ", "))
+	if node.Kind == statemachine.UserTask {
+		if files := dirtyDelta(preDirty, postDirty); len(files) > 0 {
+			fmt.Fprintf(w, "%s    files: %s\n", tracePrefix(), strings.Join(files, ", "))
 		}
 	}
 }
@@ -186,8 +195,6 @@ func kindLabel(k statemachine.NodeKind) string {
 // the exit banner. Empty Outcome returns "(no result)".
 func formatOutcome(out statemachine.Outcome) string {
 	switch {
-	case out.Commit != "":
-		return fmt.Sprintf("commit=%s", shortSHA(out.Commit))
 	case out.Value != "":
 		return fmt.Sprintf("value=%s", out.Value)
 	case out.Bool:
@@ -272,36 +279,66 @@ func formatParams(params map[string]string) string {
 	return strings.Join(parts, ",")
 }
 
-// filesInCommit returns the paths touched by `git show --name-only --format= sha`.
-// Returns an empty slice (not an error) when the SHA is empty so callers can
-// uniformly skip the "files:" line.
-func filesInCommit(deps Deps, sha string) ([]string, error) {
-	if sha == "" {
-		return nil, nil
+// snapshotDirty captures the set of working-tree paths that `git status
+// --porcelain` reports right now. We only call git for user_task nodes
+// because those are the ones an agent might mutate the working tree
+// from — service tasks and gateways are pure-Go and have no need for
+// the snapshot (skipping them avoids one git shell-out per service node,
+// which adds up fast on a full pipeline run).
+//
+// Failures (e.g. `git` missing, not in a repo) return nil rather than
+// propagating: file listing is informational, not load-bearing for
+// transitions tests or sandbox dry-runs.
+func snapshotDirty(deps Deps, kind statemachine.NodeKind) map[string]bool {
+	if kind != statemachine.UserTask {
+		return nil
 	}
-	out, err := deps.Git.Run(context.Background(), deps.RepoPath, "show", "--name-only", "--format=", sha)
+	out, err := deps.Git.Run(context.Background(), deps.RepoPath, "status", "--porcelain")
 	if err != nil {
-		return nil, err
+		return nil
 	}
-	var paths []string
-	for line := range strings.SplitSeq(string(out), "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			paths = append(paths, line)
+	return parseDirty(out)
+}
+
+// parseDirty mirrors clauderun.parseDirty: every path mentioned in
+// `git status --porcelain` regardless of status code, with rename
+// arrows (`R old -> new`) collapsed to the new path. Lines too short
+// to hold "XY path" are skipped silently (defensive against trailing
+// blank lines).
+func parseDirty(porcelain []byte) map[string]bool {
+	m := map[string]bool{}
+	for line := range strings.SplitSeq(string(porcelain), "\n") {
+		if len(line) < 4 {
+			continue
+		}
+		path := strings.TrimSpace(line[3:])
+		if idx := strings.Index(path, " -> "); idx >= 0 {
+			path = path[idx+len(" -> "):]
+		}
+		if path != "" {
+			m[path] = true
 		}
 	}
-	return paths, nil
+	return m
+}
+
+// dirtyDelta returns paths present in post but not pre, sorted for
+// stable output. The intent is "what did the agent introduce or modify
+// during this user_task" — pre-existing dirty paths are excluded so the
+// listing isn't polluted by the operator's unrelated work.
+func dirtyDelta(pre, post map[string]bool) []string {
+	var out []string
+	for p := range post {
+		if !pre[p] {
+			out = append(out, p)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func tracePrefix() string {
 	return fmt.Sprintf("[trace %s]", nowFn().Format("15:04:05"))
-}
-
-func shortSHA(sha string) string {
-	if len(sha) > 7 {
-		return sha[:7]
-	}
-	return sha
 }
 
 // execGit is the production GitRunner. Mirrors the implementation pattern

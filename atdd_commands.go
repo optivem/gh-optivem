@@ -102,19 +102,17 @@ func newAtddShowDiagramCmd() *cobra.Command {
 // PICK_TOP_READY picker).
 func newAtddImplementTicketCmd() *cobra.Command {
 	var (
-		issueArg          string
-		projectURL        string
-		autonomous        bool
-		manualAgents      bool
-		cliCommits        bool
-		agentCommits      bool
-		interactive       bool
-		extraPairs        []string
-		replacePairs      []string
-		yamlPath          string
-		agentPromptPairs  []string
-		configPath        string
-		logFile           string
+		issueArg         string
+		projectURL       string
+		autonomous       bool
+		manualAgents     bool
+		interactive      bool
+		extraPairs       []string
+		replacePairs     []string
+		yamlPath         string
+		agentPromptPairs []string
+		configPath       string
+		logFile          string
 	)
 	cmd := &cobra.Command{
 		Use:   "implement-ticket",
@@ -130,7 +128,6 @@ func newAtddImplementTicketCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			issue, err := parseIssueArg(issueArg)
 			exitOnError(err)
-			exitOnError(resolveCommitMode(cmd, &cliCommits, agentCommits))
 			hooks, err := buildOverrideHooks(extraPairs, replacePairs, interactive)
 			exitOnError(err)
 			promptOverrides, err := parseAgentPromptPairs(agentPromptPairs)
@@ -140,7 +137,6 @@ func newAtddImplementTicketCmd() *cobra.Command {
 				ProjectURL:           projectURL,
 				Autonomous:           autonomous,
 				ManualAgents:         manualAgents,
-				CLICommits:           cliCommits,
 				Override:             hooks,
 				YAMLPath:             yamlPath,
 				AgentPromptOverrides: promptOverrides,
@@ -153,8 +149,6 @@ func newAtddImplementTicketCmd() *cobra.Command {
 	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to project.url in gh-optivem.yaml or the file passed via --config)")
 	cmd.Flags().BoolVar(&autonomous, "autonomous", false, "Skip human-approval STOPs and run agent dispatches headless via `claude -p`")
 	cmd.Flags().BoolVar(&manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
-	cmd.Flags().BoolVar(&cliCommits, "cli-commits", true, "After each agent dispatch, the CLI stages and commits the working-tree delta (default; pass --agent-commits to fall back to legacy)")
-	cmd.Flags().BoolVar(&agentCommits, "agent-commits", false, "Legacy escape hatch: rely on the agent to run `git commit` during dispatch. Mutually exclusive with --cli-commits; scheduled for removal after one soak window.")
 	cmd.Flags().BoolVar(&interactive, "interactive", false, "Before each user_task dispatch, print the constructed prompt and read stdin for last-minute additions")
 	cmd.Flags().StringSliceVar(&extraPairs, "extra", nil, "Per-node extra prompt text, repeatable (e.g. --extra AT_RED_DSL_WRITE=\"prefer record types\")")
 	cmd.Flags().StringSliceVar(&replacePairs, "replace", nil, "Per-node prompt replacement, repeatable (escape hatch — full prompt swap)")
@@ -173,8 +167,6 @@ func newAtddManageProjectCmd() *cobra.Command {
 		projectURL       string
 		autonomous       bool
 		manualAgents     bool
-		cliCommits       bool
-		agentCommits     bool
 		interactive      bool
 		extraPairs       []string
 		replacePairs     []string
@@ -191,7 +183,6 @@ func newAtddManageProjectCmd() *cobra.Command {
   gh optivem atdd manage-project --yaml ./alt-process-flow.yaml --config ./optivem-multitier.yaml
   gh optivem atdd manage-project --log-file run.log`,
 		Run: func(cmd *cobra.Command, args []string) {
-			exitOnError(resolveCommitMode(cmd, &cliCommits, agentCommits))
 			hooks, err := buildOverrideHooks(extraPairs, replacePairs, interactive)
 			exitOnError(err)
 			promptOverrides, err := parseAgentPromptPairs(agentPromptPairs)
@@ -200,7 +191,6 @@ func newAtddManageProjectCmd() *cobra.Command {
 				ProjectURL:           projectURL,
 				Autonomous:           autonomous,
 				ManualAgents:         manualAgents,
-				CLICommits:           cliCommits,
 				Override:             hooks,
 				YAMLPath:             yamlPath,
 				AgentPromptOverrides: promptOverrides,
@@ -212,8 +202,6 @@ func newAtddManageProjectCmd() *cobra.Command {
 	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to project.url in gh-optivem.yaml or the file passed via --config)")
 	cmd.Flags().BoolVar(&autonomous, "autonomous", false, "Skip human-approval STOPs and run agent dispatches headless via `claude -p`")
 	cmd.Flags().BoolVar(&manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
-	cmd.Flags().BoolVar(&cliCommits, "cli-commits", true, "After each agent dispatch, the CLI stages and commits the working-tree delta (default; pass --agent-commits to fall back to legacy)")
-	cmd.Flags().BoolVar(&agentCommits, "agent-commits", false, "Legacy escape hatch: rely on the agent to run `git commit` during dispatch. Mutually exclusive with --cli-commits; scheduled for removal after one soak window.")
 	cmd.Flags().BoolVar(&interactive, "interactive", false, "Before each user_task dispatch, print the constructed prompt and read stdin for last-minute additions")
 	cmd.Flags().StringSliceVar(&extraPairs, "extra", nil, "Per-node extra prompt text, repeatable (e.g. --extra AT_RED_DSL_WRITE=\"prefer record types\")")
 	cmd.Flags().StringSliceVar(&replacePairs, "replace", nil, "Per-node prompt replacement, repeatable (escape hatch — full prompt swap)")
@@ -222,25 +210,6 @@ func newAtddManageProjectCmd() *cobra.Command {
 	cmd.Flags().StringVar(&configPath, "config", "", "Path to a project config override (defaults to <repoPath>/gh-optivem.yaml)")
 	cmd.Flags().StringVar(&logFile, "log-file", "", "Mirror everything stdout/stderr emit during the run to this file (in addition to streaming live)")
 	return cmd
-}
-
-// resolveCommitMode reconciles --cli-commits (default true) and
-// --agent-commits (default false, legacy escape hatch). The flag pair is
-// mutually exclusive when both are explicitly set; passing one is the
-// signal — passing both is ambiguous and we error rather than guess.
-// When --agent-commits is set, *cliCommits is forced to false so the
-// rest of the driver runs in legacy mode.
-//
-// The flag pair will collapse to a single --cli-commits=true once
-// --agent-commits is removed (parent plan step 5, post-soak).
-func resolveCommitMode(cmd *cobra.Command, cliCommits *bool, agentCommits bool) error {
-	if cmd.Flags().Changed("cli-commits") && cmd.Flags().Changed("agent-commits") {
-		return fmt.Errorf("--cli-commits and --agent-commits are mutually exclusive; pass one or the other")
-	}
-	if agentCommits {
-		*cliCommits = false
-	}
-	return nil
 }
 
 // buildOverrideHooks parses the --extra / --replace NODE=text pairs into
