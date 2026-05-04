@@ -174,10 +174,10 @@ var transitionTable = []transitionCase{
 	// Driver Adapter cycle. Splits on subtype: system-interface-redesign →
 	// shared structural_cycle (with the WRITE agent figuring out which
 	// driver to modify); external-system-interface-redesign → ct_subprocess.
-	{flow: "da_cycle", from: "GATE_SUBTYPE", state: map[string]any{"subtype": "system-interface-redesign"}, wantTo: "SYSTEM_INTERFACE_CYCLE"},
-	{flow: "da_cycle", from: "GATE_SUBTYPE", state: map[string]any{"subtype": "external-system-interface-redesign"}, wantTo: "EXTAPI_CYCLE"},
-	{flow: "da_cycle", from: "SYSTEM_INTERFACE_CYCLE", wantTo: "DA_END"},
-	{flow: "da_cycle", from: "EXTAPI_CYCLE", wantTo: "DA_END"},
+	{flow: "da_cycle", from: "GATE_SUBTYPE", state: map[string]any{"subtype": "system-interface-redesign"}, wantTo: "SYSTEM_INTERFACE_REDESIGN_CYCLE"},
+	{flow: "da_cycle", from: "GATE_SUBTYPE", state: map[string]any{"subtype": "external-system-interface-redesign"}, wantTo: "EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE"},
+	{flow: "da_cycle", from: "SYSTEM_INTERFACE_REDESIGN_CYCLE", wantTo: "DA_END"},
+	{flow: "da_cycle", from: "EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE", wantTo: "DA_END"},
 
 	// ---- sut_cycle ----
 	// System Under Test cycle. Single node calling structural_cycle with

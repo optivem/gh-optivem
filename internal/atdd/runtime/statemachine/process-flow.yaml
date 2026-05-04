@@ -641,7 +641,7 @@ flows:
         binding: subtype
         description: "System or external-system interface?"
 
-      - id: SYSTEM_INTERFACE_CYCLE
+      - id: SYSTEM_INTERFACE_REDESIGN_CYCLE
         type: call_activity
         flow: structural_cycle
         params:
@@ -650,7 +650,7 @@ flows:
           phase_doc: docs/atdd/process/system-interface-redesign.md
           subtype: system-interface-redesign
 
-      - id: EXTAPI_CYCLE
+      - id: EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE
         type: call_activity
         flow: ct_subprocess
 
@@ -658,10 +658,10 @@ flows:
         type: end_event
 
     sequence_flows:
-      - {from: GATE_SUBTYPE,           to: SYSTEM_INTERFACE_CYCLE, when: "subtype == system-interface-redesign"}
-      - {from: GATE_SUBTYPE,           to: EXTAPI_CYCLE,           when: "subtype == external-system-interface-redesign"}
-      - {from: SYSTEM_INTERFACE_CYCLE, to: DA_END}
-      - {from: EXTAPI_CYCLE,           to: DA_END}
+      - {from: GATE_SUBTYPE,                       to: SYSTEM_INTERFACE_REDESIGN_CYCLE,          when: "subtype == system-interface-redesign"}
+      - {from: GATE_SUBTYPE,                       to: EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE, when: "subtype == external-system-interface-redesign"}
+      - {from: SYSTEM_INTERFACE_REDESIGN_CYCLE,    to: DA_END}
+      - {from: EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE, to: DA_END}
 
   # ===========================================================================
   # sut_cycle

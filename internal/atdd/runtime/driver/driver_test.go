@@ -419,8 +419,9 @@ func TestPreflightFailureSurfacesEarly(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
-	// The structural_cycle reuses one set of YAML nodes across SYSAPI /
-	// SYSUI / CHORE by injecting ${agent} / ${phase} / ${phase_doc} via
+	// The structural_cycle reuses one set of YAML nodes across
+	// SYSTEM_INTERFACE_REDESIGN_CYCLE / CHORE_CYCLE by injecting
+	// ${agent} / ${phase} / ${phase_doc} via
 	// call_activity params. The dispatcher must resolve raw.Agent before
 	// looking up the embedded prompt — otherwise it would try to load a
 	// prompt named "${agent}", which doesn't exist.

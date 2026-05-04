@@ -8,7 +8,7 @@ The runtime change in `plans/20260504-160000-templated-intake-and-classification
 # internal/atdd/runtime/statemachine/process-flow.yaml — gh-optivem
 da_cycle:
   ...
-  - id: SYSTEM_INTERFACE_CYCLE
+  - id: SYSTEM_INTERFACE_REDESIGN_CYCLE
     type: call_activity
     flow: structural_cycle
     params:

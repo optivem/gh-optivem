@@ -267,14 +267,14 @@ flowchart TD
 ```mermaid
 flowchart TD
     DA_END((End))
-    EXTAPI_CYCLE[EXTAPI_CYCLE — see § Contract Test Sub-Process]
+    EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE[EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE — see § Contract Test Sub-Process]
     GATE_SUBTYPE{System or external-system interface?}
-    SYSTEM_INTERFACE_CYCLE["SYSTEM_INTERFACE_CYCLE — see § Structural Cycle (shared)"]
+    SYSTEM_INTERFACE_REDESIGN_CYCLE["SYSTEM_INTERFACE_REDESIGN_CYCLE — see § Structural Cycle (shared)"]
 
-    GATE_SUBTYPE -- system-interface-redesign --> SYSTEM_INTERFACE_CYCLE
-    GATE_SUBTYPE -- external-system-interface-redesign --> EXTAPI_CYCLE
-    SYSTEM_INTERFACE_CYCLE --> DA_END
-    EXTAPI_CYCLE --> DA_END
+    GATE_SUBTYPE -- system-interface-redesign --> SYSTEM_INTERFACE_REDESIGN_CYCLE
+    GATE_SUBTYPE -- external-system-interface-redesign --> EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE
+    SYSTEM_INTERFACE_REDESIGN_CYCLE --> DA_END
+    EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE --> DA_END
 ```
 
 ## SUT Cycle
