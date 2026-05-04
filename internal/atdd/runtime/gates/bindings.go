@@ -93,7 +93,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("system_driver_interface_changed", b.systemDriverInterfaceChanged)
 	r.Register("ticket_type", b.ticketType)
 	r.Register("classify_confident", b.classifyConfident)
-	r.Register("legacy_coverage_section_present", b.legacyCoverageSectionPresent)
+	r.Register("legacy_acceptance_criteria_section_present", b.legacyAcceptanceCriteriaSectionPresent)
 	r.Register("external_system_driver_exists", b.externalSystemDriverExists)
 	r.Register("external_system_test_instance_accessible", b.externalSystemTestInstanceAccessible)
 	r.Register("smoke_test_passes", b.smokeTestPasses)
@@ -196,18 +196,18 @@ func (b bindings) classifyConfident(ctx *statemachine.Context) statemachine.Outc
 		"Classification confident? [Y/n]: ")
 }
 
-// legacyCoverageSectionPresent reads the issue body via `gh issue view` and
-// scans for an H2 heading named `Legacy Coverage`. Falls back to a prompt
+// legacyAcceptanceCriteriaSectionPresent reads the issue body via `gh issue view` and
+// scans for an H2 heading named `Legacy Acceptance Criteria`. Falls back to a prompt
 // when no issue number is in the Context (off-board mode).
-func (b bindings) legacyCoverageSectionPresent(ctx *statemachine.Context) statemachine.Outcome {
-	if v := ctx.Get("legacy_coverage_section_present"); v != nil {
+func (b bindings) legacyAcceptanceCriteriaSectionPresent(ctx *statemachine.Context) statemachine.Outcome {
+	if v := ctx.Get("legacy_acceptance_criteria_section_present"); v != nil {
 		return outcomeFromBoolish(v)
 	}
 	issueNum := ctx.GetString("issue_num")
 	if issueNum == "" {
 		return b.boolGate(ctx,
-			"legacy_coverage_section_present",
-			"Legacy Coverage section present in the issue? [y/N]: ")
+			"legacy_acceptance_criteria_section_present",
+			"Legacy Acceptance Criteria section present in the issue? [y/N]: ")
 	}
 	args := []string{"issue", "view", issueNum, "--json", "body"}
 	if repo := ctx.GetString("issue_repo"); repo != "" {
@@ -215,10 +215,10 @@ func (b bindings) legacyCoverageSectionPresent(ctx *statemachine.Context) statem
 	}
 	out, err := b.deps.Gh.Run(context.Background(), args...)
 	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("legacy_coverage_section_present: gh issue view: %w", err)}
+		return statemachine.Outcome{Err: fmt.Errorf("legacy_acceptance_criteria_section_present: gh issue view: %w", err)}
 	}
 	body := extractIssueBody(out)
-	return statemachine.Outcome{Bool: containsLegacyCoverageHeading(body)}
+	return statemachine.Outcome{Bool: containsLegacyAcceptanceCriteriaHeading(body)}
 }
 
 // externalSystemDriverExists is asked once at the top of the onboarding
@@ -355,10 +355,10 @@ func extractIssueBody(raw []byte) string {
 	return sb.String()
 }
 
-// containsLegacyCoverageHeading scans an issue body for an H2 (or deeper)
-// markdown heading whose text matches "Legacy Coverage" case-insensitively.
-// Per cycles.md, the section is conventionally `## Legacy Coverage`.
-func containsLegacyCoverageHeading(body string) bool {
+// containsLegacyAcceptanceCriteriaHeading scans an issue body for an H2 (or deeper)
+// markdown heading whose text matches "Legacy Acceptance Criteria" case-insensitively.
+// Per cycles.md, the section is conventionally `## Legacy Acceptance Criteria`.
+func containsLegacyAcceptanceCriteriaHeading(body string) bool {
 	for _, line := range strings.Split(body, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if !strings.HasPrefix(trimmed, "#") {
@@ -366,7 +366,7 @@ func containsLegacyCoverageHeading(body string) bool {
 		}
 		// Drop leading hashes and any single space separator.
 		text := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
-		if strings.EqualFold(text, "Legacy Coverage") {
+		if strings.EqualFold(text, "Legacy Acceptance Criteria") {
 			return true
 		}
 	}

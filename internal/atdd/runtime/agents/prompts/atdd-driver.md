@@ -88,7 +88,7 @@ Replace the System-Driver "TODO: Driver" prototypes from AT - RED - DSL with rea
 ## What it produces
 
 - Commit `<Ticket> | AT - RED - SYSTEM DRIVER` containing real System Driver implementations under `shop/`.
-- Tests in state: change-driven scenarios disabled with reason `"AT - RED - SYSTEM DRIVER"`; legacy-coverage scenarios still enabled and passing.
+- Tests in state: change-driven scenarios disabled with reason `"AT - RED - SYSTEM DRIVER"`; legacy-acceptance-criteria scenarios still enabled and passing.
 
 ## Conventions
 

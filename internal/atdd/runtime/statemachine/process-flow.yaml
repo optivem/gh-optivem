@@ -3,7 +3,7 @@
 # Single source of truth for cycle-level orchestration. Encodes the AT cycle,
 # the CT sub-process, the External System Onboarding sub-process, the shared
 # structural cycle (used by system-api-task / system-ui-task / chore), the
-# external-api-task wrapper, and the (TBD) Legacy Coverage cycle as named flows
+# external-api-task wrapper, and the (TBD) Legacy Acceptance Criteria cycle as named flows
 # of typed nodes connected by sequence flows.
 #
 # Per-phase WRITE/COMMIT mechanics (e.g. the inner compile/run/disable loop of
@@ -52,16 +52,18 @@
 #
 # Optional fields:
 #   description:   Free-text node label; rendered in the Mermaid diagram.
-#   role:          `review` (human-review STOP — yellow styling)
-#                  or `implement` (substantive engineering work — blue styling).
-#                  Drives diagram-generator output only; not consumed by the runtime.
+#   role:          `review` or `implement` — annotation only. The Go runtime
+#                  doesn't consume it, and the diagram generator no longer
+#                  styles by role (it colors by executor: white = service_task,
+#                  yellow = user_task agent: human, dark blue = user_task with
+#                  any other agent). Kept on existing nodes for documentation.
 #   params:        Map of name→value substituted into the called flow's nodes
 #                  at dispatch time (used by call_activity to parameterise
 #                  the shared structural_cycle).
 #
 # Open gaps preserved as TBDs (do not silently resolve):
-#   - legacy_coverage flow: single TBD node; full mechanics deferred per
-#     glossary.md ("The Legacy Coverage Cycle's own internal phases are TBD").
+#   - legacy_acceptance_criteria flow: single TBD node; full mechanics deferred per
+#     glossary.md ("The Legacy Acceptance Criteria Cycle's own internal phases are TBD").
 #   - ct_green_stubs node: agent set to `atdd-stubs`; ownership is TBD per the
 #     process-audit gap on stubs ownership (see plans/20260429-100633-process-audit.md).
 
@@ -72,14 +74,14 @@ flows:
   # Ticket Lifecycle — entry flow for `gh optivem atdd implement-ticket
   # --issue N` and `gh optivem atdd manage-project`. Pulls the next ticket
   # (board / specific_issue → in-progress), then runs intake, runs the
-  # legacy coverage cycle (no-op when the ticket carries no Legacy Coverage
+  # legacy acceptance criteria cycle (no-op when the ticket carries no Legacy Acceptance Criteria
   # section), runs the change cycle for the ticket's type, and ends at
   # TICKET STATUS - IN ACCEPTANCE.
   #
   # Each sub-flow encapsulates its own gates so main stays linear and
   # gate-free. Splitting them lets each diagram answer one question:
   # "main" shows the ticket's lifecycle, "intake" shows the type-specific
-  # intake fan-out, "run_legacy_cycle" shows the legacy-coverage backfill,
+  # intake fan-out, "run_legacy_cycle" shows the legacy-acceptance-criteria backfill,
   # and "run_cycle" shows the behavioral-vs-structural change-cycle choice.
   # ===========================================================================
   main:
@@ -210,7 +212,7 @@ flows:
 
   # ===========================================================================
   # run_legacy_cycle
-  # Backfill cycle for tickets that carry a "Legacy Coverage" section in
+  # Backfill cycle for tickets that carry a "Legacy Acceptance Criteria" section in
   # their issue body — covers previously-untested behavior before the new
   # change cycle runs. Self-contained: gates internally on presence and
   # no-ops when absent, so main can call it unconditionally.
@@ -220,19 +222,19 @@ flows:
     nodes:
       - id: GATE_LEGACY_PRESENT
         type: gateway
-        binding: legacy_coverage_section_present
-        description: "Legacy Coverage section present?"
+        binding: legacy_acceptance_criteria_section_present
+        description: "Legacy Acceptance Criteria section present?"
 
       - id: LEGACY_CYCLE
         type: call_activity
-        flow: legacy_coverage
+        flow: legacy_acceptance_criteria
 
       - id: RUN_LEGACY_END
         type: end_event
 
     sequence_flows:
-      - {from: GATE_LEGACY_PRESENT, to: LEGACY_CYCLE,    when: "legacy_coverage_section_present == true"}
-      - {from: GATE_LEGACY_PRESENT, to: RUN_LEGACY_END,  when: "legacy_coverage_section_present == false"}
+      - {from: GATE_LEGACY_PRESENT, to: LEGACY_CYCLE,    when: "legacy_acceptance_criteria_section_present == true"}
+      - {from: GATE_LEGACY_PRESENT, to: RUN_LEGACY_END,  when: "legacy_acceptance_criteria_section_present == false"}
       - {from: LEGACY_CYCLE,        to: RUN_LEGACY_END}
 
   # ===========================================================================
@@ -488,7 +490,6 @@ flows:
   #
   # Implementation steps are currently agent-less (`agent: human`) — there is
   # no dedicated atdd-onboarding agent today; replace once one exists.
-  # `role: implement` flags substantive engineering work for diagram styling.
   # ===========================================================================
   external_system_onboarding:
     start: GATE_DRIVER_EXISTS
@@ -673,21 +674,21 @@ flows:
       - {from: EXTAPI_CT, to: EXTAPI_END}
 
   # ===========================================================================
-  # legacy_coverage
-  # TBD per glossary.md ("The Legacy Coverage Cycle's own internal phases are
-  # TBD") and process-audit gap on Legacy Coverage Cycle interim spec.
+  # legacy_acceptance_criteria
+  # TBD per glossary.md ("The Legacy Acceptance Criteria Cycle's own internal phases are
+  # TBD") and process-audit gap on Legacy Acceptance Criteria Cycle interim spec.
   # The placeholder is a single human-review STOP so the runtime can dispatch
   # something sensible until the spec lands; replace once cycles.md fills the
   # internal flow.
   # ===========================================================================
-  legacy_coverage:
+  legacy_acceptance_criteria:
     start: LEGACY_TBD
     nodes:
       - id: LEGACY_TBD
         type: user_task
         agent: human
         role: review
-        description: "STOP - HUMAN REVIEW — Legacy Coverage Cycle TBD"
+        description: "STOP - HUMAN REVIEW — Legacy Acceptance Criteria Cycle TBD"
 
       - id: LEGACY_END
         type: end_event

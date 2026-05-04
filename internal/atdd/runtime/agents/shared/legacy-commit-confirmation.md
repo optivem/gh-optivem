@@ -10,7 +10,7 @@ This rule is intentionally separate from `cycles.md`: that file decides *which* 
 
 **No agent may run `git commit` or `gh issue close` without first asking the user "Can I commit?" and receiving an explicit "yes" reply in the same turn.**
 
-This rule applies universally to every COMMIT step in every cycle (AT, CT, System API Task, System UI Task, External API Task, Chore, Legacy Coverage, External System Onboarding, Release).
+This rule applies universally to every COMMIT step in every cycle (AT, CT, System API Task, System UI Task, External API Task, Chore, Legacy Acceptance Criteria, External System Onboarding, Release).
 
 ## Scope: not every GitHub mutation
 

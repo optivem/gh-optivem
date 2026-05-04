@@ -30,14 +30,14 @@ Take all change-driven acceptance tests from RED to GREEN by implementing the sy
 ## What it produces
 
 - Commit `<Ticket> | AT - GREEN - SYSTEM` containing backend implementation, frontend implementation, and the test re-enabling step from WRITE — all in a single commit.
-- Tests in state: every change-driven scenario for the ticket is green. Legacy-coverage scenarios remain green.
+- Tests in state: every change-driven scenario for the ticket is green. Legacy-acceptance-criteria scenarios remain green.
 - Issue moved to **TICKET STATUS - IN ACCEPTANCE** with the ticket's checklist items ticked.
 
 ## Conventions
 
 - Backend and frontend ship in **one** commit. The agent has full-stack access; there is no per-layer commit split.
 - When fixing failing acceptance tests, change only the system implementation — never tests, DSL, or Drivers.
-- Legacy-coverage tests live alongside change-driven tests in the same test class (per the ordering rule in [at-red-test.md](at-red-test.md)). Once the cycle is green there is no special handling — they are just tests that pass.
+- Legacy-acceptance-criteria tests live alongside change-driven tests in the same test class (per the ordering rule in [at-red-test.md](at-red-test.md)). Once the cycle is green there is no special handling — they are just tests that pass.
 - Suite selection (`<acceptance-api>` / `<acceptance-ui>`) and commit-message format: see [at-cycle-conventions.md](at-cycle-conventions.md).
 - `@Disabled` / skip syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
 - Commit confirmation gate: see [shared-commit-confirmation.md](shared-commit-confirmation.md).
@@ -93,7 +93,7 @@ STOP. Present the implementation to the user and ask for approval. Do NOT contin
 
 **Review checklist:**
 - All change-driven acceptance tests are green.
-- All legacy-coverage tests remain green.
+- All legacy-acceptance-criteria tests remain green.
 - Only system code (backend + frontend) was changed — no test, DSL, or Driver edits in the diff.
 - The diff is the minimum needed to make the tests pass; no speculative refactors.
 

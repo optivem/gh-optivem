@@ -272,7 +272,32 @@ func (a actions) classifyTicket(ctx *statemachine.Context) statemachine.Outcome 
 	}
 	ctx.Set("ticket_type", final)
 	fmt.Fprintf(a.deps.Stdout, "Classified #%d as %s.\n", issueNum, final)
+	a.printClassifiedSections(ctx, issueNum)
 	return statemachine.Outcome{}
+}
+
+// printClassifiedSections fetches the issue body and prints the three
+// canonical sections users want to see after classification: Legacy
+// Acceptance Criteria, Acceptance Criteria, and Checklist. Best-effort —
+// fetch failures and missing sections are silent. Each section is printed
+// only when present in the body.
+func (a actions) printClassifiedSections(ctx *statemachine.Context, issueNum int) {
+	args := []string{"issue", "view", strconv.Itoa(issueNum), "--json", "body"}
+	if repo := ctx.GetString("issue_repo"); repo != "" {
+		args = append(args, "--repo", repo)
+	}
+	out, err := a.deps.Gh.Run(context.Background(), args...)
+	if err != nil {
+		return
+	}
+	body := extractIssueBody(out)
+	for _, heading := range []string{"Legacy Acceptance Criteria", "Acceptance Criteria", "Checklist"} {
+		section, ok := extractIssueSection(body, heading)
+		if !ok {
+			continue
+		}
+		fmt.Fprintf(a.deps.Stdout, "\n## %s\n\n%s\n", heading, section)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -501,6 +526,60 @@ func parseYesNo(s string) (bool, bool) {
 	default:
 		return false, false
 	}
+}
+
+// extractIssueSection finds an H2-or-deeper markdown heading whose text
+// matches `heading` (case-insensitive, exact match after dropping leading
+// hashes). Returns the section's contents — every line after the heading
+// up to (but not including) the next heading at the same depth or
+// shallower, with surrounding blank lines trimmed. Returns ok=false when
+// the heading is absent.
+func extractIssueSection(body, heading string) (string, bool) {
+	lines := strings.Split(body, "\n")
+	startIdx := -1
+	startDepth := 0
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		depth := 0
+		for depth < len(trimmed) && trimmed[depth] == '#' {
+			depth++
+		}
+		if depth < 2 {
+			continue
+		}
+		text := strings.TrimSpace(trimmed[depth:])
+		if strings.EqualFold(text, heading) {
+			startIdx = i + 1
+			startDepth = depth
+			break
+		}
+	}
+	if startIdx < 0 {
+		return "", false
+	}
+	endIdx := len(lines)
+	for i := startIdx; i < len(lines); i++ {
+		trimmed := strings.TrimSpace(lines[i])
+		if !strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		depth := 0
+		for depth < len(trimmed) && trimmed[depth] == '#' {
+			depth++
+		}
+		if depth <= startDepth {
+			endIdx = i
+			break
+		}
+	}
+	section := strings.Trim(strings.Join(lines[startIdx:endIdx], "\n"), "\n")
+	if section == "" {
+		return "", false
+	}
+	return section, true
 }
 
 // extractIssueBody pulls .body out of `gh issue view --json body`. Same

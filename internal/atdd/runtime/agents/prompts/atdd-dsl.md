@@ -98,7 +98,7 @@ Replace the "TODO: DSL" prototypes from AT - RED - TEST with real DSL logic, and
 - Commit `<Ticket> | AT - RED - DSL` containing real DSL implementations, any Driver interface changes, and Driver "TODO: Driver" prototypes for any Driver interface that changed.
 - Flag set: `External System Driver Interface Changed = yes|no`.
 - Flag set: `System Driver Interface Changed = yes|no`.
-- Tests in state: change-driven scenarios disabled with reason `"AT - RED - DSL"`; legacy-coverage scenarios still enabled and passing.
+- Tests in state: change-driven scenarios disabled with reason `"AT - RED - DSL"`; legacy-acceptance-criteria scenarios still enabled and passing.
 
 ## Conventions
 

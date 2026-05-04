@@ -59,7 +59,7 @@ func TestImplementTicket_SystemUiRedesign(t *testing.T) {
 	ctx := NewContext()
 	ctx.Set("ticket_type", "system-ui-task")
 	ctx.Set("classify_confident", true)
-	ctx.Set("legacy_coverage_section_present", false)
+	ctx.Set("legacy_acceptance_criteria_section_present", false)
 	ctx.Set("structural_test_mode", "full")
 
 	// ── ACT ─────────────────────────────────────────────────────────────
