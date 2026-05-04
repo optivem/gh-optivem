@@ -6,6 +6,12 @@ import "fmt"
 // Version is set at build time via -ldflags "-X github.com/optivem/gh-optivem/internal/version.Version=v1.0.0"
 var Version = "dev"
 
+// MinGhCLIVersion is the gh CLI floor we test against. Older releases may
+// still work but are unsupported — bump this when local/CI gh is upgraded
+// and the test suite passes against the new version. Frame to users as the
+// "tested-against" floor (npm engines / go.mod-style), not a hard minimum.
+const MinGhCLIVersion = "2.92.0"
+
 // ShopRef is the optivem/shop commit SHA baked into this build.
 // Set at release time via -ldflags "-X github.com/optivem/gh-optivem/internal/version.ShopRef=<40-char SHA>"
 // Empty in dev builds — resolveShopRef() falls back to the latest meta-v* release.
