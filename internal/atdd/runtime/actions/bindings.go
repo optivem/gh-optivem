@@ -28,7 +28,6 @@ import (
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/board"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/classify"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/release"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 )
@@ -209,74 +208,57 @@ func (a actions) moveToInAcceptance(ctx *statemachine.Context) statemachine.Outc
 // Classification
 // ---------------------------------------------------------------------------
 
-// classifyTicket runs the deterministic fast-path classifier and writes
-// `ticket_type` into Context. When the classifier returns FastPath, the
-// stored value is the canonical class (story | bug | task | chore). For
-// `task` we additionally prompt for the subtype because the YAML predicates
-// branch on system-api-task / system-ui-task / external-api-task — the
-// fast-path package only commits to the top level.
+// classifyTicket reads the issue's native GitHub issue type (Story / Bug /
+// Task) and writes the lowercased name to `ticket_type`. The native type is
+// authoritative — it's set by the Issue Form's `type:` field at filing time
+// and cannot drift from a label-based heuristic.
 //
-// Fallback (LLM dispatcher) is currently surfaced as a hard error so the
-// run halts and the user can manually classify; Session 3 wires the agent
-// dispatch.
+// When the issue has no native type (filed outside the form, or before the
+// org configured the Story type), classify_confident is set to false so the
+// downstream gate routes to STOP_CLASSIFY_CONFLICT. Resolution is "set the
+// issue type in GitHub, then re-run" — there is no LLM fallback.
 func (a actions) classifyTicket(ctx *statemachine.Context) statemachine.Outcome {
 	issueNum, err := strconv.Atoi(ctx.GetString("issue_num"))
 	if err != nil || issueNum <= 0 {
 		return statemachine.Outcome{Err: fmt.Errorf("classify_ticket: issue_num not set or not a positive integer (%q)", ctx.GetString("issue_num"))}
 	}
-	res, err := classify.Classify(context.Background(), issueNum, classify.Options{
-		Repo:     ctx.GetString("issue_repo"),
-		GhRunner: ghClassifyAdapter{a.deps.Gh},
-	})
+	args := []string{"issue", "view", strconv.Itoa(issueNum), "--json", "issueType"}
+	if repo := ctx.GetString("issue_repo"); repo != "" {
+		args = append(args, "--repo", repo)
+	}
+	out, err := a.deps.Gh.Run(context.Background(), args...)
 	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("classify_ticket: %w", err)}
+		return statemachine.Outcome{Err: fmt.Errorf("classify_ticket: gh issue view: %w", err)}
 	}
-	if res.Route == classify.Fallback {
-		return statemachine.Outcome{Err: fmt.Errorf("classify_ticket: fallback required (%s); LLM dispatcher not wired in v1", res.Reasoning)}
+	issueType := extractIssueType(out)
+	if issueType == "" {
+		ctx.Set("classify_confident", false)
+		fmt.Fprintf(a.deps.Stderr,
+			"classify_ticket: issue #%d has no native issue type — set Story / Bug / Task in the GitHub UI and re-run.\n",
+			issueNum)
+		return statemachine.Outcome{}
 	}
-	final := string(res.Classification)
-	if res.Classification == classify.Task {
-		// Auto-resolve the subtype when exactly one of the known subtype
-		// labels is on the issue — the renamed shop labels (system-api-task,
-		// system-ui-task, external-api-task) double as both the type signal
-		// and the routing value, so prompting again would be redundant.
-		knownSubtypes := []string{"system-api-task", "system-ui-task", "external-api-task"}
-		var matched []string
-		for _, l := range res.LabelsSeen {
-			for _, k := range knownSubtypes {
-				if l == k {
-					matched = append(matched, l)
-					break
-				}
-			}
-		}
-		switch len(matched) {
-		case 1:
-			final = matched[0]
-		case 0:
-			subtype, err := a.deps.Prompter.Ask(
-				"Task subtype? (system-api-task | system-ui-task | external-api-task): ")
-			if err != nil {
-				return statemachine.Outcome{Err: fmt.Errorf("classify_ticket: %w", err)}
-			}
-			subtype = strings.ToLower(strings.TrimSpace(subtype))
-			switch subtype {
-			case "system-api-task", "system-ui-task", "external-api-task":
-				final = subtype
-			default:
-				return statemachine.Outcome{Err: fmt.Errorf("classify_ticket: unrecognised task subtype %q", subtype)}
-			}
-		default:
-			return statemachine.Outcome{Err: fmt.Errorf("classify_ticket: multiple subtype labels on issue (%s); resolve manually", strings.Join(matched, ", "))}
-		}
-	}
-	ctx.Set("ticket_type", final)
-	for k, v := range classificationFromTicketType(final) {
-		ctx.Set(k, v)
-	}
-	fmt.Fprintf(a.deps.Stdout, "Classified #%d as %s.\n", issueNum, final)
+	ticketType := strings.ToLower(issueType)
+	ctx.Set("ticket_type", ticketType)
+	ctx.Set("classify_confident", true)
+	fmt.Fprintf(a.deps.Stdout, "Classified #%d as %s.\n", issueNum, ticketType)
 	a.printClassifiedSections(ctx, issueNum)
 	return statemachine.Outcome{}
+}
+
+// extractIssueType pulls .issueType.name out of `gh issue view --json issueType`.
+// Returns the raw type name as GitHub stores it (e.g. "Story", "Bug", "Task")
+// or empty when the issue has no type set.
+func extractIssueType(raw []byte) string {
+	block, ok := jsonFieldRaw(raw, "issueType")
+	if !ok {
+		return ""
+	}
+	if len(block) >= 4 && string(block[:4]) == "null" {
+		return ""
+	}
+	name, _ := jsonFieldString(block, "name")
+	return name
 }
 
 // printClassifiedSections fetches the issue body and prints the three
@@ -301,26 +283,6 @@ func (a actions) printClassifiedSections(ctx *statemachine.Context, issueNum int
 		}
 		fmt.Fprintf(a.deps.Stdout, "\n## %s\n\n%s\n", heading, section)
 	}
-}
-
-// classificationFromTicketType maps the deterministic ticket_type into the
-// change classification consumed by run_cycle / da_cycle. Removed in item 5
-// of the templated-intake plan — kept for now while item 4's rewrite of
-// classifyTicket lands, then deleted.
-func classificationFromTicketType(ticketType string) map[string]string {
-	switch ticketType {
-	case "story", "bug":
-		return map[string]string{"change_type": "behavior"}
-	case "chore":
-		return map[string]string{"change_type": "structure", "change_subtype": "implementation"}
-	case "system-api-task":
-		return map[string]string{"change_type": "structure", "change_subtype": "interface", "change_scope": "system", "change_channel": "api"}
-	case "system-ui-task":
-		return map[string]string{"change_type": "structure", "change_subtype": "interface", "change_scope": "system", "change_channel": "ui"}
-	case "external-api-task":
-		return map[string]string{"change_type": "structure", "change_subtype": "interface", "change_scope": "external_system"}
-	}
-	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -919,20 +881,13 @@ func splitJSONArray(arr []byte) [][]byte {
 // Adapter shims (different runner interfaces across packages must not leak)
 // ---------------------------------------------------------------------------
 
-// ghAdapter / ghClassifyAdapter / gitReleaseAdapter exist because each
-// underlying package (board, classify, release) defines its own GhRunner
-// / GitRunner interface — Go's structural typing means we can wrap once
-// instead of teaching every package to depend on a shared runner type.
-// The wrappers are zero-cost.
+// ghAdapter / gitReleaseAdapter exist because each underlying package
+// (board, release) defines its own GhRunner / GitRunner interface — Go's
+// structural typing means we can wrap once instead of teaching every
+// package to depend on a shared runner type. The wrappers are zero-cost.
 type ghAdapter struct{ inner GhRunner }
 
 func (g ghAdapter) Run(ctx context.Context, args ...string) ([]byte, error) {
-	return g.inner.Run(ctx, args...)
-}
-
-type ghClassifyAdapter struct{ inner GhRunner }
-
-func (g ghClassifyAdapter) Run(ctx context.Context, args ...string) ([]byte, error) {
 	return g.inner.Run(ctx, args...)
 }
 

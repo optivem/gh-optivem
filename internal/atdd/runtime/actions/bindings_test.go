@@ -17,25 +17,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 )
-
-// getwd / chdir wrap os.Getwd / os.Chdir with t.Fatalf on error so each test
-// can switch CWD without four lines of plumbing per call site. classify
-// writes ./classify.log relative to CWD; tests need a temp dir to avoid
-// littering the repo.
-func getwd() (string, error) { return os.Getwd() }
-
-func chdir(t *testing.T, dir string) {
-	t.Helper()
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir %q: %v", dir, err)
-	}
-}
 
 // ---------------------------------------------------------------------------
 // Fakes
@@ -296,117 +282,46 @@ func TestCommitOnboarding_UsesExternalSystemName(t *testing.T) {
 // classifyTicket
 // ---------------------------------------------------------------------------
 
-func TestClassifyTicket_StoryFastPath(t *testing.T) {
-	gh := newFakeRunner(t, "gh")
-	// classify.Classify calls `gh issue view <N> --json …` with optional --repo.
-	gh.on(
-		[]string{"issue", "view", "42", "--json", "number,title,labels,projectItems", "--repo", "optivem/shop"},
-		[]byte(`{"number":42,"title":"Register customer","labels":[{"name":"story"}],"projectItems":[]}`),
-		nil,
-	)
-	// classifyTicket additionally fetches the body to print named sections.
-	gh.on(
-		[]string{"issue", "view", "42", "--json", "body", "--repo", "optivem/shop"},
-		[]byte(`{"body":""}`),
-		nil,
-	)
-	a := newActions(Deps{
-		Gh:       gh,
-		Prompter: &fakePrompter{},
-	})
-	ctx := statemachine.NewContext()
-	ctx.Set("issue_num", "42")
-	ctx.Set("issue_repo", "optivem/shop")
-	// classify also writes to ./classify.log, so chdir to a tempdir first.
-	tmp := t.TempDir()
-	cwd, _ := getwd()
-	defer chdir(t, cwd)
-	chdir(t, tmp)
-
-	out := a.classifyTicket(ctx)
-	if out.Err != nil {
-		t.Fatalf("unexpected error: %v", out.Err)
-	}
-	if got := ctx.GetString("ticket_type"); got != "story" {
-		t.Fatalf("ticket_type: got %q, want %q", got, "story")
-	}
-	if got := ctx.GetString("change_type"); got != "behavior" {
-		t.Fatalf("change_type: got %q, want %q", got, "behavior")
-	}
-	for _, k := range []string{"change_subtype", "change_scope", "change_channel"} {
-		if got := ctx.GetString(k); got != "" {
-			t.Fatalf("%s: got %q, want empty for story", k, got)
-		}
-	}
-}
-
-func TestClassifyTicket_TaskPromptsForSubtype(t *testing.T) {
-	gh := newFakeRunner(t, "gh")
-	gh.on(
-		[]string{"issue", "view", "42", "--json", "number,title,labels,projectItems"},
-		[]byte(`{"number":42,"title":"Move /products to v2","labels":[{"name":"task"}],"projectItems":[]}`),
-		nil,
-	)
-	gh.on(
-		[]string{"issue", "view", "42", "--json", "body"},
-		[]byte(`{"body":""}`),
-		nil,
-	)
-	p := &fakePrompter{answers: []string{"system-api-task"}}
-	a := newActions(Deps{Gh: gh, Prompter: p})
-	ctx := statemachine.NewContext()
-	ctx.Set("issue_num", "42")
-
-	tmp := t.TempDir()
-	cwd, _ := getwd()
-	defer chdir(t, cwd)
-	chdir(t, tmp)
-
-	out := a.classifyTicket(ctx)
-	if out.Err != nil {
-		t.Fatalf("unexpected error: %v", out.Err)
-	}
-	if got := ctx.GetString("ticket_type"); got != "system-api-task" {
-		t.Fatalf("ticket_type: got %q, want system-api-task", got)
-	}
-	wantClassification := map[string]string{
-		"change_type":    "structure",
-		"change_subtype": "interface",
-		"change_scope":   "system",
-		"change_channel": "api",
-	}
-	for k, want := range wantClassification {
-		if got := ctx.GetString(k); got != want {
-			t.Fatalf("%s: got %q, want %q", k, got, want)
-		}
-	}
-}
-
-func TestClassificationFromTicketType(t *testing.T) {
-	// Lock the ticket_type → classification mapping. The four classification
-	// fields drive run_cycle and da_cycle dispatch; unmapped axes must stay
-	// empty so the gate's prompt fallback can be reached if ever needed.
+func TestClassifyTicket_NativeIssueType(t *testing.T) {
 	for _, tc := range []struct {
-		ticketType string
-		want       map[string]string
+		name           string
+		issueTypeJSON  string
+		wantTicketType string
+		wantConfident  bool
 	}{
-		{ticketType: "story", want: map[string]string{"change_type": "behavior"}},
-		{ticketType: "bug", want: map[string]string{"change_type": "behavior"}},
-		{ticketType: "chore", want: map[string]string{"change_type": "structure", "change_subtype": "implementation"}},
-		{ticketType: "system-api-task", want: map[string]string{"change_type": "structure", "change_subtype": "interface", "change_scope": "system", "change_channel": "api"}},
-		{ticketType: "system-ui-task", want: map[string]string{"change_type": "structure", "change_subtype": "interface", "change_scope": "system", "change_channel": "ui"}},
-		{ticketType: "external-api-task", want: map[string]string{"change_type": "structure", "change_subtype": "interface", "change_scope": "external_system"}},
-		{ticketType: "unknown", want: nil},
+		{name: "story", issueTypeJSON: `{"name":"Story"}`, wantTicketType: "story", wantConfident: true},
+		{name: "bug", issueTypeJSON: `{"name":"Bug"}`, wantTicketType: "bug", wantConfident: true},
+		{name: "task", issueTypeJSON: `{"name":"Task"}`, wantTicketType: "task", wantConfident: true},
+		{name: "no_type_set", issueTypeJSON: `null`, wantTicketType: "", wantConfident: false},
 	} {
-		t.Run(tc.ticketType, func(t *testing.T) {
-			got := classificationFromTicketType(tc.ticketType)
-			if len(got) != len(tc.want) {
-				t.Fatalf("classification: got %v, want %v", got, tc.want)
+		t.Run(tc.name, func(t *testing.T) {
+			gh := newFakeRunner(t, "gh")
+			gh.on(
+				[]string{"issue", "view", "42", "--json", "issueType", "--repo", "optivem/shop"},
+				[]byte(fmt.Sprintf(`{"issueType":%s}`, tc.issueTypeJSON)),
+				nil,
+			)
+			if tc.wantConfident {
+				gh.on(
+					[]string{"issue", "view", "42", "--json", "body", "--repo", "optivem/shop"},
+					[]byte(`{"body":""}`),
+					nil,
+				)
 			}
-			for k, v := range tc.want {
-				if got[k] != v {
-					t.Errorf("%s: got %q, want %q", k, got[k], v)
-				}
+			a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}})
+			ctx := statemachine.NewContext()
+			ctx.Set("issue_num", "42")
+			ctx.Set("issue_repo", "optivem/shop")
+
+			out := a.classifyTicket(ctx)
+			if out.Err != nil {
+				t.Fatalf("unexpected error: %v", out.Err)
+			}
+			if got := ctx.GetString("ticket_type"); got != tc.wantTicketType {
+				t.Fatalf("ticket_type: got %q, want %q", got, tc.wantTicketType)
+			}
+			if got := ctx.Get("classify_confident"); got != tc.wantConfident {
+				t.Fatalf("classify_confident: got %v, want %v", got, tc.wantConfident)
 			}
 		})
 	}
@@ -415,8 +330,8 @@ func TestClassificationFromTicketType(t *testing.T) {
 func TestClassifyTicket_PrintsNamedSections(t *testing.T) {
 	gh := newFakeRunner(t, "gh")
 	gh.on(
-		[]string{"issue", "view", "7", "--json", "number,title,labels,projectItems"},
-		[]byte(`{"number":7,"title":"Add discount","labels":[{"name":"story"}],"projectItems":[]}`),
+		[]string{"issue", "view", "7", "--json", "issueType"},
+		[]byte(`{"issueType":{"name":"Story"}}`),
 		nil,
 	)
 	body := "Intro line.\n\n" +
@@ -434,11 +349,6 @@ func TestClassifyTicket_PrintsNamedSections(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("issue_num", "7")
 
-	tmp := t.TempDir()
-	cwd, _ := getwd()
-	defer chdir(t, cwd)
-	chdir(t, tmp)
-
 	out := a.classifyTicket(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
@@ -453,6 +363,26 @@ func TestClassifyTicket_PrintsNamedSections(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("stdout missing %q\nfull stdout:\n%s", want, got)
 		}
+	}
+}
+
+func TestExtractIssueType(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "story", raw: `{"issueType":{"name":"Story"}}`, want: "Story"},
+		{name: "bug_with_extra_fields", raw: `{"issueType":{"id":"abc","name":"Bug","description":"x"}}`, want: "Bug"},
+		{name: "null_type", raw: `{"issueType":null}`, want: ""},
+		{name: "missing_field", raw: `{"title":"x"}`, want: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := extractIssueType([]byte(tc.raw))
+			if got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
