@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"strings"
 	"sync"
@@ -160,19 +161,51 @@ func verifySonarToken(client *http.Client, token string) error {
 	return nil
 }
 
+// githubUserAuthCheck calls GitHub's /user endpoint with the given Bearer
+// token. Retries once on HTTP 401 after a short jittered sleep: when
+// concurrent matrix jobs hit api.github.com with the same PAT, GitHub's
+// per-token throttling can return a transient 401 (rather than 429/403)
+// even though the token is valid. Without retry, a single transient miss
+// kills the whole acceptance job; one retry makes that vanishingly rare.
+//
+// Caller is responsible for closing the returned response body.
+func githubUserAuthCheck(client *http.Client, token string) (*http.Response, error) {
+	do := func() (*http.Response, error) {
+		req, err := http.NewRequest("GET", "https://api.github.com/user", nil)
+		if err != nil {
+			return nil, fmt.Errorf(errFmtBuildRequest, err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Accept", "application/vnd.github+json")
+		return client.Do(req)
+	}
+
+	resp, err := do()
+	if err != nil {
+		return nil, fmt.Errorf(errFmtNetwork, err)
+	}
+	if resp.StatusCode != http.StatusUnauthorized {
+		return resp, nil
+	}
+	resp.Body.Close()
+
+	// 2-5s jittered backoff so concurrent retriers don't re-collide.
+	time.Sleep(2*time.Second + time.Duration(rand.IntN(3001))*time.Millisecond)
+
+	resp, err = do()
+	if err != nil {
+		return nil, fmt.Errorf(errFmtNetwork, err)
+	}
+	return resp, nil
+}
+
 // verifyGitHubToken calls GitHub's /user endpoint. Also checks the token
 // carries 'repo' scope via the X-OAuth-Scopes response header — workflow
 // pushes and tag creation both require it.
 func verifyGitHubToken(client *http.Client, token, name string) error {
-	req, err := http.NewRequest("GET", "https://api.github.com/user", nil)
+	resp, err := githubUserAuthCheck(client, token)
 	if err != nil {
-		return fmt.Errorf(errFmtBuildRequest, err)
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf(errFmtNetwork, err)
+		return err
 	}
 	defer resp.Body.Close()
 
@@ -205,15 +238,9 @@ func verifyGitHubToken(client *http.Client, token, name string) error {
 // /v2/ can return 401 even for valid credentials. Verifying the underlying
 // PAT via api.github.com is faster and gives a clearer error message.
 func verifyGHCRToken(client *http.Client, username, token string) error {
-	req, err := http.NewRequest("GET", "https://api.github.com/user", nil)
+	resp, err := githubUserAuthCheck(client, token)
 	if err != nil {
-		return fmt.Errorf(errFmtBuildRequest, err)
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf(errFmtNetwork, err)
+		return err
 	}
 	defer resp.Body.Close()
 
