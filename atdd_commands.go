@@ -35,7 +35,6 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/release"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
-	"github.com/optivem/gh-optivem/internal/version"
 )
 
 // newAtddCmd builds the `gh optivem atdd` parent. The parent has no Run, so
@@ -55,9 +54,6 @@ picks, classification, smoke tests, commits) and pausing at each
 user-task node so the operator can launch the corresponding Claude Code
 agent (atdd-story, atdd-test, atdd-dsl, …). When the agent's COMMIT
 lands on HEAD, the operator presses Enter and the engine moves on.`,
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			return version.CheckGhCLI()
-		},
 	}
 	cmd.AddCommand(
 		newAtddImplementTicketCmd(),
@@ -91,12 +87,6 @@ func newAtddShowDiagramCmd() *cobra.Command {
 		Short: "Render the process-flow Mermaid diagram to stdout",
 		Example: `  gh optivem atdd show diagram
   gh optivem atdd show diagram > docs/process-diagram.md`,
-		// Override the atdd parent's gh CLI version check: this command
-		// only renders an embedded YAML to Mermaid and never shells out
-		// to gh, so it must run on hosted CI runners (which lag the
-		// supported gh floor) and on contributor machines that haven't
-		// upgraded gh yet.
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error { return nil },
 		Run: func(cmd *cobra.Command, args []string) {
 			eng, err := statemachine.LoadDefault()
 			exitOnError(err)

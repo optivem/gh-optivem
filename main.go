@@ -94,15 +94,6 @@ func newRootCmd() *cobra.Command {
 	return cmd
 }
 
-// requireGhCLI is the PersistentPreRunE wired into gh-dependent subtrees
-// (init, atdd). It enforces the supported gh CLI floor declared in
-// internal/version. Local-only subcommands (build/run/test/stop/clean) skip
-// it because they don't shell out to gh; `upgrade` skips it so users can
-// still update gh-optivem on an old gh.
-func requireGhCLI(cmd *cobra.Command, args []string) error {
-	return version.CheckGhCLI()
-}
-
 // newUpgradeCmd implements `gh optivem upgrade` — a thin wrapper around
 // `gh extension upgrade optivem` so users don't have to remember the longer
 // gh-extension form. Streams stdout/stderr through unchanged.
@@ -147,8 +138,7 @@ verify the pipeline up to the requested --verify-level.`,
   gh optivem init page-turner --owner acme --system-name "Page Turner" \
       --arch multitier --repo-strategy multirepo \
       --backend-lang java --frontend-lang react`,
-		Args:              cobra.MaximumNArgs(1),
-		PersistentPreRunE: requireGhCLI,
+		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			// Positional repo wins only if --repo wasn't passed explicitly.
 			if len(args) == 1 && f.Repo == "" {
