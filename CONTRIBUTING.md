@@ -6,6 +6,7 @@
 - [Run locally](#run-locally)
 - [Install from source](#install-from-source)
 - [Tests](#tests)
+  - [Windows: keep `go test ./...` fast](#windows-keep-go-test--fast)
 - [ATDD process](#atdd-process)
   - [View the diagram](#view-the-diagram)
   - [Render the diagram](#render-the-diagram)
@@ -56,10 +57,13 @@ Run this any time you edit CLI source (e.g. `atdd_commands.go`, anything under `
 ## Tests
 
 ```bash
-go test ./...                                 # unit
+go test -p 2 ./...                            # unit; -p caps parallel package builds (see Windows tip below)
 go test -tags=system ./...                    # all system tests
 bash scripts/test-system.sh                   # quick subset
+bash scripts/test.sh ./internal/atdd/...      # wrapper, honors $GO_TEST_P (default 2)
 ```
+
+While you're iterating in one package, run just that package: `go test ./internal/atdd/runtime/clauderun`. Save `./...` for pre-push and CI.
 
 A single system test (requires `TEST_OWNER`, `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `SONAR_TOKEN`, `GHCR_TOKEN`, `WORKFLOW_TOKEN` in env):
 
@@ -67,6 +71,18 @@ A single system test (requires `TEST_OWNER`, `DOCKERHUB_USERNAME`, `DOCKERHUB_TO
 go test -tags=system ./internal/config/ -v -timeout 2h \
     -run "TestValidMonolithConfigurations/monolith_monorepo_java_dotnet"
 ```
+
+### Windows: keep `go test ./...` fast
+
+`go test ./...` builds a separate test binary per package. On Windows the linker is the slow phase and Defender real-time-scans every fresh `.exe` Go writes — the 13+ packages under `internal/atdd/` link-storm the box for several minutes at peak RAM.
+
+- Cap parallel package builds: `go test -p 2 ./...` (Go's default is `NumCPU`).
+- Add Defender exclusions — Settings → Virus & threat protection → Exclusions:
+  - Folders: `%LocalAppData%\go-build`, `%USERPROFILE%\go`, the repo root.
+  - Processes: `go.exe`, `link.exe`, `compile.exe`, `gofmt.exe`.
+- Confirm `go env GOCACHE GOMODCACHE` aren't under OneDrive / Dropbox / a network drive — sync clients re-read every cache file Go writes. If they are: `setx GOCACHE C:\go-cache` and `setx GOMODCACHE C:\go-mod`.
+
+CI runs Linux and isn't affected; CI parallelism is unchanged.
 
 ## ATDD process
 
