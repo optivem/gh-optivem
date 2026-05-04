@@ -88,7 +88,7 @@ Turn the ticket's change-driven AC into compiling, runtime-failing acceptance te
 ## What it produces
 
 - Commit `<Ticket> | AT - RED - TEST` containing the new test class(es) and any DSL interface additions plus DSL "TODO: DSL" prototypes if compilation required them.
-- Tests in state: change-driven scenarios disabled with reason `"AT - RED - TEST"`; legacy-coverage scenarios enabled and passing.
+- Tests in state: change-driven scenarios disabled with reason `"AT - RED - TEST"`; legacy-acceptance-criteria scenarios enabled and passing.
 
 ## Conventions
 
@@ -131,7 +131,7 @@ public ThenSuccess register() {
    - Specify only the minimum data needed — inputs directly relevant to what is being tested, and assertions directly relevant to the expected outcome. Omit any field not relevant to the scenario and let the DSL use its default.
    - If the DSL needs new methods, call them directly in the test as if they exist — do not add them to the DSL interface yet. Compile errors are expected and intentional.
    - **Scenario ordering within the test class:**
-     1. Legacy Coverage scenarios (from the `## Legacy Coverage` section of the ticket, if any)
+     1. Legacy Acceptance Criteria scenarios (from the `## Legacy Acceptance Criteria` section of the ticket, if any)
      2. New feature scenarios that use only existing DSL
      3. New feature scenarios that need new DSL
    - After writing each test, verify it matches the AC exactly — Given maps to Given, When maps to When, Then maps to Then. Every precondition stated in the scenario must appear in the test. If anything is unclear, ask before proceeding.
@@ -142,7 +142,7 @@ STOP. Present the tests to the user for review (the user may revise DSL usage). 
 
 **Review checklist:**
 - One test method per scenario; the mapping is one-to-one.
-- Test ordering matches the rule above (legacy-coverage first, then existing-DSL, then needs-new-DSL).
+- Test ordering matches the rule above (legacy-acceptance-criteria first, then existing-DSL, then needs-new-DSL).
 - No noise: no extra fields, no extra assertions, no speculative setup.
 - New DSL calls (if any) are used directly without being declared in the interface yet.
 
@@ -158,13 +158,13 @@ STOP. Present the tests to the user for review (the user may revise DSL usage). 
    gh optivem test system --suite <acceptance-api> --test <TestMethodName>
    gh optivem test system --suite <acceptance-ui> --test <TestMethodName>
    ```
-4. Mark the tests as disabled with reason `"AT - RED - TEST"` (see [language-equivalents.md](../code/language-equivalents.md)). Disable **only the change-driven scenarios** (categories 2 and 3 in the ordering above). Legacy-coverage scenarios (category 1) are test-last — they should pass on first run and must NOT be disabled. If a legacy-coverage test fails on first run, STOP and ask the user — that is a real bug, not an expected RED.
+4. Mark the tests as disabled with reason `"AT - RED - TEST"` (see [language-equivalents.md](../code/language-equivalents.md)). Disable **only the change-driven scenarios** (categories 2 and 3 in the ordering above). Legacy-acceptance-criteria scenarios (category 1) are test-last — they should pass on first run and must NOT be disabled. If a legacy-acceptance-criteria test fails on first run, STOP and ask the user — that is a real bug, not an expected RED.
 5. COMMIT with message `<Ticket> | AT - RED - TEST`.
 
 ## Anti-patterns
 
 - **Implementing too much in WRITE.** WRITE produces test code only. DSL prototypes are added at COMMIT *after* the compile attempt fails — not preemptively while writing tests.
-- **Disabling a legacy-coverage scenario.** Legacy coverage is test-last; it must pass on first run. A failing legacy-coverage test signals a real bug — surface it, do not paper over it with `@Disabled`.
+- **Disabling a legacy-acceptance-criteria scenario.** Legacy acceptance criteria is test-last; it must pass on first run. A failing legacy-acceptance-criteria test signals a real bug — surface it, do not paper over it with `@Disabled`.
 - **Adding "noise" assertions or fields.** Anything not directly tied to Given/When/Then for the scenario is noise. Trust the DSL defaults.
 - **Hand-coding DSL bodies in this phase.** Real DSL logic belongs to AT - RED - DSL. Here, prototypes throw `"TODO: DSL"` and nothing more.
 

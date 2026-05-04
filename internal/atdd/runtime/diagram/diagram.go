@@ -40,7 +40,12 @@ var flowAlias = map[string]string{
 	"ct_subprocess":              "Contract Test Sub-Process",
 	"external_system_onboarding": "External System Onboarding Sub-Process",
 	"structural_cycle":           "Structural Cycle (shared)",
+<<<<<<< HEAD
+	"external_api_task_cycle":    "External API Task Cycle",
+	"legacy_acceptance_criteria":            "Legacy Acceptance Criteria Cycle",
+=======
 	"legacy_coverage":            "Legacy Coverage Cycle",
+>>>>>>> 0597e55cbe89f5d620b4cd45fef37e5af661d379
 }
 
 // groupAlias maps a node's `group:` annotation (a slash-delimited
@@ -70,7 +75,7 @@ var flowOrder = []string{
 	"external_system_onboarding",
 	"structural_cycle",
 	"external_api_task_cycle",
-	"legacy_coverage",
+	"legacy_acceptance_criteria",
 }
 
 // Render returns the full Mermaid markdown body for eng's flows. The
@@ -163,7 +168,7 @@ func writeFlowSection(b *strings.Builder, name string, flow *statemachine.Flow) 
 		writeEdge(b, e)
 	}
 
-	writeRoleStyling(b, flow)
+	writeExecutorStyling(b, flow)
 	b.WriteString("```\n\n")
 }
 
@@ -247,6 +252,18 @@ func writeGroupSubgraph(b *strings.Builder, flow *statemachine.Flow, g *groupTre
 // node type; label comes from the `description:` field, falling back
 // to the node ID when absent. call_activity nodes get a "see § …"
 // suffix pointing the reader at the sub-flow's heading.
+//
+// Shape mapping (BPMN-shaped vocabulary):
+//
+//	start_event / end_event → circle              `((label))`
+//	gateway                 → diamond             `{label}`
+//	service_task            → subroutine          `[[label]]`
+//	user_task               → plain rectangle     `[label]`
+//	call_activity           → plain rectangle     `[label]`  (with "see § …" suffix)
+//
+// Shape conveys the BPMN node type; executor coloring (applied later
+// in writeExecutorStyling) conveys *who* runs each task: white =
+// service_task (Go runtime), dark blue = LLM agent, yellow = human.
 func writeNode(b *strings.Builder, n statemachine.Node) {
 	label := n.Raw.Description
 	if label == "" {
@@ -259,6 +276,8 @@ func writeNode(b *strings.Builder, n statemachine.Node) {
 		fmt.Fprintf(b, "    %s((%s))\n", n.ID, mermaidLabel("End"))
 	case statemachine.Gateway:
 		fmt.Fprintf(b, "    %s{%s}\n", n.ID, mermaidLabel(label))
+	case statemachine.ServiceTask:
+		fmt.Fprintf(b, "    %s[[%s]]\n", n.ID, mermaidLabel(label))
 	case statemachine.CallActivity:
 		target := n.Raw.Flow
 		linkLabel := flowAlias[target]
@@ -282,32 +301,48 @@ func writeEdge(b *strings.Builder, e statemachine.Edge) {
 	fmt.Fprintf(b, "    %s -- %s --> %s\n", e.From, edgeLabel(e.Predicate), e.To)
 }
 
-// writeRoleStyling appends the effortNode and humanReviewNode classDef
-// blocks if the flow contains any nodes carrying the corresponding
-// `role:` annotation. Flows without role-annotated nodes get no
-// styling block.
-func writeRoleStyling(b *strings.Builder, flow *statemachine.Flow) {
-	var effort, review []string
+// writeExecutorStyling colors nodes by who executes them, so a reader
+// can see at a glance which steps the Go runtime runs, which an LLM
+// agent runs, and which a human runs. Three classes:
+//
+//	serviceNode  white fill, black text   — service_task (Go runtime)
+//	agentNode    dark blue, white text    — user_task with agent: <name>
+//	humanNode    yellow, black text       — user_task with agent: human
+//
+// Empty classes are omitted. start_event / end_event / gateway /
+// call_activity are unstyled — they're shape-distinguished and not
+// "executed by" anyone in the same sense.
+func writeExecutorStyling(b *strings.Builder, flow *statemachine.Flow) {
+	var service, agent, human []string
 	ids := make([]string, 0, len(flow.Nodes))
 	for id := range flow.Nodes {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
 	for _, id := range ids {
-		switch flow.Nodes[id].Raw.Role {
-		case "implement":
-			effort = append(effort, id)
-		case "review":
-			review = append(review, id)
+		n := flow.Nodes[id]
+		switch n.Kind {
+		case statemachine.ServiceTask:
+			service = append(service, id)
+		case statemachine.UserTask:
+			if n.Raw.Agent == "human" {
+				human = append(human, id)
+			} else if n.Raw.Agent != "" {
+				agent = append(agent, id)
+			}
 		}
 	}
-	if len(effort) > 0 {
-		b.WriteString("\n    classDef effortNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff\n")
-		fmt.Fprintf(b, "    class %s effortNode\n", strings.Join(effort, ","))
+	if len(service) > 0 {
+		b.WriteString("\n    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000\n")
+		fmt.Fprintf(b, "    class %s serviceNode\n", strings.Join(service, ","))
 	}
-	if len(review) > 0 {
-		b.WriteString("\n    classDef humanReviewNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000\n")
-		fmt.Fprintf(b, "    class %s humanReviewNode\n", strings.Join(review, ","))
+	if len(agent) > 0 {
+		b.WriteString("\n    classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff\n")
+		fmt.Fprintf(b, "    class %s agentNode\n", strings.Join(agent, ","))
+	}
+	if len(human) > 0 {
+		b.WriteString("\n    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000\n")
+		fmt.Fprintf(b, "    class %s humanNode\n", strings.Join(human, ","))
 	}
 }
 

@@ -10,12 +10,12 @@ Each section corresponds to one named flow in the YAML. `call_activity` nodes ap
 flowchart TD
     END((End))
     INTAKE[INTAKE — see § Intake]
-    MOVE_TO_IN_PROGRESS["Move ticket to In Progress (bottom of lane)"]
-    PICK_TOP_READY[Pick top Ready ticket]
+    MOVE_TO_IN_PROGRESS[["Move ticket to In Progress (bottom of lane)"]]
+    PICK_TOP_READY[[Pick top Ready ticket]]
     RUN_CYCLE[RUN_CYCLE — see § Run Cycle]
     RUN_LEGACY_CYCLE[RUN_LEGACY_CYCLE — see § Run Legacy Cycle]
     START((Start))
-    TICKET_IN_ACCEPTANCE[Tick checklist + move issue to IN ACCEPTANCE]
+    TICKET_IN_ACCEPTANCE[[Tick checklist + move issue to IN ACCEPTANCE]]
 
     START -- board --> PICK_TOP_READY
     START -- specific_issue --> MOVE_TO_IN_PROGRESS
@@ -25,6 +25,9 @@ flowchart TD
     RUN_LEGACY_CYCLE --> RUN_CYCLE
     RUN_CYCLE --> TICKET_IN_ACCEPTANCE
     TICKET_IN_ACCEPTANCE --> END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class MOVE_TO_IN_PROGRESS,PICK_TOP_READY,TICKET_IN_ACCEPTANCE serviceNode
 ```
 
 ## Intake
@@ -35,7 +38,7 @@ flowchart TD
     ATDD_CHORE["atdd-chore (intake)"]
     ATDD_STORY["atdd-story (intake)"]
     ATDD_TASK["atdd-task (intake)"]
-    CLASSIFY[Auto-classify ticket]
+    CLASSIFY[[Auto-classify ticket]]
     GATE_CLASSIFY_CONFIDENT{Classification confident?}
     GATE_TICKET_TYPE{Ticket Type?}
     INTAKE_END((End))
@@ -56,16 +59,22 @@ flowchart TD
     ATDD_CHORE --> STOP_INTAKE
     STOP_INTAKE --> INTAKE_END
 
-    classDef humanReviewNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000
-    class STOP_CLASSIFY_CONFLICT,STOP_INTAKE humanReviewNode
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class CLASSIFY serviceNode
+
+    classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
+    class ATDD_BUG,ATDD_CHORE,ATDD_STORY,ATDD_TASK agentNode
+
+    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
+    class STOP_CLASSIFY_CONFLICT,STOP_INTAKE humanNode
 ```
 
 ## Run Legacy Cycle
 
 ```mermaid
 flowchart TD
-    GATE_LEGACY_PRESENT{Legacy Coverage section present?}
-    LEGACY_CYCLE[LEGACY_CYCLE — see § Legacy Coverage Cycle]
+    GATE_LEGACY_PRESENT{Legacy Acceptance Criteria section present?}
+    LEGACY_CYCLE[LEGACY_CYCLE — see § Legacy Acceptance Criteria Cycle]
     RUN_LEGACY_END((End))
 
     GATE_LEGACY_PRESENT -- Yes --> LEGACY_CYCLE
@@ -118,6 +127,9 @@ flowchart TD
     GATE_SYS_AT -- No --> AT_GREEN_SYSTEM
     AT_RED_SYSTEM_DRIVER --> AT_GREEN_SYSTEM
     AT_GREEN_SYSTEM --> AT_END
+
+    classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
+    class AT_RED_DSL,AT_RED_SYSTEM_DRIVER,AT_RED_TEST agentNode
 ```
 
 ## AT - GREEN - SYSTEM
@@ -135,8 +147,11 @@ flowchart TD
     STOP_GREEN_REVIEW --> ATDD_RELEASE
     ATDD_RELEASE --> GS_END
 
-    classDef humanReviewNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000
-    class STOP_GREEN_REVIEW humanReviewNode
+    classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
+    class ATDD_BACKEND,ATDD_FRONTEND,ATDD_RELEASE agentNode
+
+    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
+    class STOP_GREEN_REVIEW humanNode
 ```
 
 ## Contract Test Sub-Process
@@ -161,6 +176,9 @@ flowchart TD
     GATE_EXT_CT -- Yes --> CT_RED_EXTERNAL_DRIVER
     CT_RED_EXTERNAL_DRIVER --> CT_GREEN_STUBS
     CT_GREEN_STUBS --> CT_END
+
+    classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
+    class CT_GREEN_STUBS,CT_RED_DSL,CT_RED_EXTERNAL_DRIVER,CT_RED_TEST agentNode
 ```
 
 ## External System Onboarding Sub-Process
@@ -168,7 +186,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     ASK_SUPPORT[Ask user for support and STOP]
-    COMMIT_ONBOARD["COMMIT: External System Onboarding | <name>"]
+    COMMIT_ONBOARD[["COMMIT: External System Onboarding | <name>"]]
     DEFINE_IFACE[Define minimal Driver interface]
     GATE_DRIVER_EXISTS{External System Driver exists?}
     GATE_INSTANCE_ACCESSIBLE{Test Instance accessible?}
@@ -176,7 +194,7 @@ flowchart TD
     IMPL_DRIVER[Implement Driver impl for Smoke Test]
     ONBOARD_END((End))
     PROVISION[Provision dockerized stand-in]
-    RUN_SMOKE[Run Smoke Test]
+    RUN_SMOKE[[Run Smoke Test]]
     STOP_ONBOARD_REVIEW[STOP - HUMAN REVIEW — approve onboarding artifacts]
     WRITE_SMOKE[Write single Smoke Test]
 
@@ -194,28 +212,28 @@ flowchart TD
     STOP_ONBOARD_REVIEW --> COMMIT_ONBOARD
     COMMIT_ONBOARD --> ONBOARD_END
 
-    classDef effortNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
-    class DEFINE_IFACE,IMPL_DRIVER,PROVISION,WRITE_SMOKE effortNode
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class COMMIT_ONBOARD,RUN_SMOKE serviceNode
 
-    classDef humanReviewNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000
-    class ASK_SUPPORT,STOP_ONBOARD_REVIEW humanReviewNode
+    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
+    class ASK_SUPPORT,DEFINE_IFACE,IMPL_DRIVER,PROVISION,STOP_ONBOARD_REVIEW,WRITE_SMOKE humanNode
 ```
 
 ## Structural Cycle (shared)
 
 ```mermaid
 flowchart TD
-    ASK_COMMIT[Ask: Can I commit?]
-    COMMIT_STRUCT["COMMIT: <Ticket> | ${phase}"]
-    COMPILE[Compile in-scope projects]
-    DRIFT[Print drift warning if applicable]
+    ASK_COMMIT[[Ask: Can I commit?]]
+    COMMIT_STRUCT[["COMMIT: <Ticket> | ${phase}"]]
+    COMPILE[[Compile in-scope projects]]
+    DRIFT[[Print drift warning if applicable]]
     GATE_TEST_MODE{"TEST mode? (full | compile | skip)"}
-    SAMPLE[Run sample suite]
+    SAMPLE[[Run sample suite]]
     STOP_STRUCT_REVIEW[STOP - HUMAN REVIEW — approve implementation]
     STOP_STRUCT_TEST[STOP - HUMAN REVIEW — review TEST results]
     STRUCT_END((End))
     STRUCT_WRITE["${phase} - WRITE"]
-    TICK[Tick checklist items]
+    TICK[[Tick checklist items]]
 
     STRUCT_WRITE --> STOP_STRUCT_REVIEW
     STOP_STRUCT_REVIEW --> GATE_TEST_MODE
@@ -230,21 +248,41 @@ flowchart TD
     COMMIT_STRUCT --> TICK
     TICK --> STRUCT_END
 
-    classDef humanReviewNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000
-    class STOP_STRUCT_REVIEW,STOP_STRUCT_TEST humanReviewNode
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class ASK_COMMIT,COMMIT_STRUCT,COMPILE,DRIFT,SAMPLE,TICK serviceNode
+
+    classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
+    class STRUCT_WRITE agentNode
+
+    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
+    class STOP_STRUCT_REVIEW,STOP_STRUCT_TEST humanNode
 ```
 
+<<<<<<< HEAD
+## External API Task Cycle
+
+```mermaid
+flowchart TD
+    EXTAPI_CT[EXTAPI_CT — see § Contract Test Sub-Process]
+    EXTAPI_END((End))
+
+    EXTAPI_CT --> EXTAPI_END
+```
+
+## Legacy Acceptance Criteria Cycle
+=======
 ## Legacy Coverage Cycle
+>>>>>>> 0597e55cbe89f5d620b4cd45fef37e5af661d379
 
 ```mermaid
 flowchart TD
     LEGACY_END((End))
-    LEGACY_TBD[STOP - HUMAN REVIEW — Legacy Coverage Cycle TBD]
+    LEGACY_TBD[STOP - HUMAN REVIEW — Legacy Acceptance Criteria Cycle TBD]
 
     LEGACY_TBD --> LEGACY_END
 
-    classDef humanReviewNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000
-    class LEGACY_TBD humanReviewNode
+    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
+    class LEGACY_TBD humanNode
 ```
 
 ## DA Cycle

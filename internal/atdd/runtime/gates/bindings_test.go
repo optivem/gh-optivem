@@ -232,10 +232,10 @@ func TestStructuralTestMode_Invalid(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// legacyCoverageSectionPresent
+// legacyAcceptanceCriteriaSectionPresent
 // ---------------------------------------------------------------------------
 
-func TestLegacyCoverage_FromGhIssueBody(t *testing.T) {
+func TestLegacyAcceptanceCriteria_FromGhIssueBody(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		body string
@@ -243,12 +243,12 @@ func TestLegacyCoverage_FromGhIssueBody(t *testing.T) {
 	}{
 		{
 			name: "present_h2",
-			body: "Description.\n\n## Legacy Coverage\n\n- old test\n",
+			body: "Description.\n\n## Legacy Acceptance Criteria\n\n- old test\n",
 			want: true,
 		},
 		{
 			name: "present_h3_case_insensitive",
-			body: "## Story\n\n### legacy coverage\n\nfoo\n",
+			body: "## Story\n\n### legacy acceptance criteria\n\nfoo\n",
 			want: true,
 		},
 		{
@@ -263,7 +263,7 @@ func TestLegacyCoverage_FromGhIssueBody(t *testing.T) {
 			ctx := statemachine.NewContext()
 			ctx.Set("issue_num", "42")
 			ctx.Set("issue_repo", "optivem/shop")
-			out := b.legacyCoverageSectionPresent(ctx)
+			out := b.legacyAcceptanceCriteriaSectionPresent(ctx)
 			if out.Err != nil {
 				t.Fatalf("unexpected error: %v", out.Err)
 			}
@@ -274,11 +274,11 @@ func TestLegacyCoverage_FromGhIssueBody(t *testing.T) {
 	}
 }
 
-func TestLegacyCoverage_NoIssueNumPrompts(t *testing.T) {
+func TestLegacyAcceptanceCriteria_NoIssueNumPrompts(t *testing.T) {
 	p := &fakePrompter{answers: []string{"y"}}
 	b := newBindings(t, Deps{Prompter: p})
 	ctx := statemachine.NewContext()
-	out := b.legacyCoverageSectionPresent(ctx)
+	out := b.legacyAcceptanceCriteriaSectionPresent(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
@@ -326,7 +326,7 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"external_system_driver_interface_changed",
 		"system_driver_interface_changed",
 		"ticket_type",
-		"legacy_coverage_section_present",
+		"legacy_acceptance_criteria_section_present",
 		"external_system_driver_exists",
 		"external_system_test_instance_accessible",
 		"smoke_test_passes",

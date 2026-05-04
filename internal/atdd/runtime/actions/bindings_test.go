@@ -12,7 +12,9 @@
 package actions
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -302,6 +304,12 @@ func TestClassifyTicket_StoryFastPath(t *testing.T) {
 		[]byte(`{"number":42,"title":"Register customer","labels":[{"name":"story"}],"projectItems":[]}`),
 		nil,
 	)
+	// classifyTicket additionally fetches the body to print named sections.
+	gh.on(
+		[]string{"issue", "view", "42", "--json", "body", "--repo", "optivem/shop"},
+		[]byte(`{"body":""}`),
+		nil,
+	)
 	a := newActions(Deps{
 		Gh:       gh,
 		Prompter: &fakePrompter{},
@@ -337,6 +345,11 @@ func TestClassifyTicket_TaskPromptsForSubtype(t *testing.T) {
 	gh.on(
 		[]string{"issue", "view", "42", "--json", "number,title,labels,projectItems"},
 		[]byte(`{"number":42,"title":"Move /products to v2","labels":[{"name":"task"}],"projectItems":[]}`),
+		nil,
+	)
+	gh.on(
+		[]string{"issue", "view", "42", "--json", "body"},
+		[]byte(`{"body":""}`),
 		nil,
 	)
 	p := &fakePrompter{answers: []string{"system-api-task"}}
@@ -394,6 +407,82 @@ func TestClassificationFromTicketType(t *testing.T) {
 				if got[k] != v {
 					t.Errorf("%s: got %q, want %q", k, got[k], v)
 				}
+			}
+		})
+	}
+}
+
+func TestClassifyTicket_PrintsNamedSections(t *testing.T) {
+	gh := newFakeRunner(t, "gh")
+	gh.on(
+		[]string{"issue", "view", "7", "--json", "number,title,labels,projectItems"},
+		[]byte(`{"number":7,"title":"Add discount","labels":[{"name":"story"}],"projectItems":[]}`),
+		nil,
+	)
+	body := "Intro line.\n\n" +
+		"## Acceptance Criteria\n\n- AC1\n- AC2\n\n" +
+		"## Legacy Acceptance Criteria\n\n- legacy 1\n\n" +
+		"## Checklist\n\n- [ ] Step\n"
+	rawBody, _ := json.Marshal(body)
+	gh.on(
+		[]string{"issue", "view", "7", "--json", "body"},
+		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
+		nil,
+	)
+	var stdout bytes.Buffer
+	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}, Stdout: &stdout})
+	ctx := statemachine.NewContext()
+	ctx.Set("issue_num", "7")
+
+	tmp := t.TempDir()
+	cwd, _ := getwd()
+	defer chdir(t, cwd)
+	chdir(t, tmp)
+
+	out := a.classifyTicket(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	got := stdout.String()
+	for _, want := range []string{
+		"Classified #7 as story.",
+		"## Legacy Acceptance Criteria\n\n- legacy 1",
+		"## Acceptance Criteria\n\n- AC1\n- AC2",
+		"## Checklist\n\n- [ ] Step",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("stdout missing %q\nfull stdout:\n%s", want, got)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// extractIssueSection (helper)
+// ---------------------------------------------------------------------------
+
+func TestExtractIssueSection(t *testing.T) {
+	body := "Intro.\n\n" +
+		"## Acceptance Criteria\n\n- AC1\n- AC2\n\n" +
+		"### Sub heading\n\nnested content\n\n" +
+		"## Checklist\n\n- [ ] step\n"
+	for _, tc := range []struct {
+		name    string
+		heading string
+		want    string
+		ok      bool
+	}{
+		{name: "ac_with_nested", heading: "Acceptance Criteria", want: "- AC1\n- AC2\n\n### Sub heading\n\nnested content", ok: true},
+		{name: "checklist", heading: "Checklist", want: "- [ ] step", ok: true},
+		{name: "case_insensitive", heading: "checklist", want: "- [ ] step", ok: true},
+		{name: "absent", heading: "Legacy Acceptance Criteria", ok: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := extractIssueSection(body, tc.heading)
+			if ok != tc.ok {
+				t.Fatalf("ok: got %v, want %v", ok, tc.ok)
+			}
+			if got != tc.want {
+				t.Fatalf("got %q\nwant %q", got, tc.want)
 			}
 		})
 	}

@@ -65,7 +65,7 @@ func TestImplementTicket_SystemUiRedesign(t *testing.T) {
 	ctx.Set("change_scope", "system")
 	ctx.Set("change_channel", "ui")
 	ctx.Set("classify_confident", true)
-	ctx.Set("legacy_coverage_section_present", false)
+	ctx.Set("legacy_acceptance_criteria_section_present", false)
 	ctx.Set("structural_test_mode", "full")
 
 	// ── ACT ─────────────────────────────────────────────────────────────

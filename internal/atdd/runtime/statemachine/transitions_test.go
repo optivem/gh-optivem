@@ -11,7 +11,7 @@
 //     exercised explicitly so a YAML edit that drops a branch will fail
 //     here.
 //   - Explicitly assert the decisions encoded for the open process-audit
-//     gaps (CT exit re-evaluation, smoke-test resume path, legacy-coverage
+//     gaps (CT exit re-evaluation, smoke-test resume path, legacy-acceptance-criteria
 //     interim spec) so they can no longer drift back to TBDs.
 //
 // Tests use the unbound Engine (no Bind()) — nextEdge does not need NodeFn
@@ -49,7 +49,12 @@ func TestLoadSnapshot_AllFlowsParse(t *testing.T) {
 		"ct_subprocess",
 		"external_system_onboarding",
 		"structural_cycle",
+<<<<<<< HEAD
+		"external_api_task_cycle",
+		"legacy_acceptance_criteria",
+=======
 		"legacy_coverage",
+>>>>>>> 0597e55cbe89f5d620b4cd45fef37e5af661d379
 	}
 	for _, name := range wantFlows {
 		if _, ok := eng.Flows[name]; !ok {
@@ -154,10 +159,10 @@ var transitionTable = []transitionCase{
 	{flow: "intake", from: "STOP_INTAKE", wantTo: "INTAKE_END"},
 
 	// ---- run_legacy_cycle ----
-	// Backfill cycle for legacy coverage. Self-contained: gates internally on
+	// Backfill cycle for legacy acceptance criteria. Self-contained: gates internally on
 	// presence and no-ops when absent so main can call it unconditionally.
-	{flow: "run_legacy_cycle", from: "GATE_LEGACY_PRESENT", state: map[string]any{"legacy_coverage_section_present": true}, wantTo: "LEGACY_CYCLE"},
-	{flow: "run_legacy_cycle", from: "GATE_LEGACY_PRESENT", state: map[string]any{"legacy_coverage_section_present": false}, wantTo: "RUN_LEGACY_END"},
+	{flow: "run_legacy_cycle", from: "GATE_LEGACY_PRESENT", state: map[string]any{"legacy_acceptance_criteria_section_present": true}, wantTo: "LEGACY_CYCLE"},
+	{flow: "run_legacy_cycle", from: "GATE_LEGACY_PRESENT", state: map[string]any{"legacy_acceptance_criteria_section_present": false}, wantTo: "RUN_LEGACY_END"},
 	{flow: "run_legacy_cycle", from: "LEGACY_CYCLE", wantTo: "RUN_LEGACY_END"},
 
 	// ---- run_cycle ----
@@ -257,11 +262,19 @@ var transitionTable = []transitionCase{
 	{flow: "structural_cycle", from: "COMMIT_STRUCT", wantTo: "TICK"},
 	{flow: "structural_cycle", from: "TICK", wantTo: "STRUCT_END"},
 
+<<<<<<< HEAD
+	// ---- external_api_task_cycle ----
+	{flow: "external_api_task_cycle", from: "EXTAPI_CT", wantTo: "EXTAPI_END"},
+
+	// ---- legacy_acceptance_criteria ----
+	// Legacy Acceptance Criteria Cycle interim spec: a single STOP node, per
+=======
 	// ---- legacy_coverage ----
 	// Legacy Coverage Cycle interim spec: a single STOP node, per
+>>>>>>> 0597e55cbe89f5d620b4cd45fef37e5af661d379
 	// glossary.md TBD. Locked here so the placeholder cannot silently
 	// regress to "TBD" by accident.
-	{flow: "legacy_coverage", from: "LEGACY_TBD", wantTo: "LEGACY_END", desc: "interim spec: single human-review STOP"},
+	{flow: "legacy_acceptance_criteria", from: "LEGACY_TBD", wantTo: "LEGACY_END", desc: "interim spec: single human-review STOP"},
 }
 
 func TestTransitions(t *testing.T) {
@@ -315,17 +328,17 @@ func TestTransitionTable_CoversEverySequenceFlow(t *testing.T) {
 // Process-audit gap decisions — explicit anchors so they cannot drift back
 // ---------------------------------------------------------------------------
 
-func TestGapDecision_LegacyCoverageSingleStop(t *testing.T) {
+func TestGapDecision_LegacyAcceptanceCriteriaSingleStop(t *testing.T) {
 	eng := loadSnapshot(t)
-	flow, ok := eng.Flows["legacy_coverage"]
+	flow, ok := eng.Flows["legacy_acceptance_criteria"]
 	if !ok {
-		t.Fatalf("legacy_coverage flow missing")
+		t.Fatalf("legacy_acceptance_criteria flow missing")
 	}
 	if flow.Start != "LEGACY_TBD" {
-		t.Errorf("legacy_coverage start: got %q, want LEGACY_TBD", flow.Start)
+		t.Errorf("legacy_acceptance_criteria start: got %q, want LEGACY_TBD", flow.Start)
 	}
 	if got := len(flow.Nodes); got != 2 {
-		t.Errorf("legacy_coverage node count: got %d, want 2 (STOP + END)", got)
+		t.Errorf("legacy_acceptance_criteria node count: got %d, want 2 (STOP + END)", got)
 	}
 	stop, ok := flow.Nodes["LEGACY_TBD"]
 	if !ok {
@@ -477,9 +490,9 @@ func TestPredicate_InListNegative(t *testing.T) {
 // stub NodeFns directly to keep the test deterministic).
 // ---------------------------------------------------------------------------
 
-func TestEngine_RunFlow_LegacyCoverage_StopsCleanly(t *testing.T) {
+func TestEngine_RunFlow_LegacyAcceptanceCriteria_StopsCleanly(t *testing.T) {
 	eng := loadSnapshot(t)
-	// Bind every user_task to a no-op so legacy_coverage runs without
+	// Bind every user_task to a no-op so legacy_acceptance_criteria runs without
 	// blocking on stdin; gateways/actions aren't reached in this flow.
 	noop := func(ctx *Context) Outcome { return Outcome{} }
 	eng.AgentFn = func(name string) NodeFn { return noop }
@@ -488,7 +501,7 @@ func TestEngine_RunFlow_LegacyCoverage_StopsCleanly(t *testing.T) {
 	if err := eng.Bind(); err != nil {
 		t.Fatalf("Bind: %v", err)
 	}
-	if err := eng.RunFlow("legacy_coverage", NewContext()); err != nil {
-		t.Errorf("RunFlow legacy_coverage: %v", err)
+	if err := eng.RunFlow("legacy_acceptance_criteria", NewContext()); err != nil {
+		t.Errorf("RunFlow legacy_acceptance_criteria: %v", err)
 	}
 }
