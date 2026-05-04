@@ -114,6 +114,7 @@ func newAtddImplementTicketCmd() *cobra.Command {
 		yamlPath          string
 		agentPromptPairs  []string
 		configPath        string
+		logFile           string
 	)
 	cmd := &cobra.Command{
 		Use:   "implement-ticket",
@@ -124,7 +125,8 @@ func newAtddImplementTicketCmd() *cobra.Command {
   gh optivem atdd implement-ticket --issue 42 --extra AT_RED_DSL_WRITE="prefer record types"
   gh optivem atdd implement-ticket --issue 42 --yaml ./alt-process-flow.yaml
   gh optivem atdd implement-ticket --issue 42 --agent-prompt atdd-test=./prompts/atdd-test.md
-  gh optivem atdd implement-ticket --issue 42 --config ./optivem-multitier.yaml`,
+  gh optivem atdd implement-ticket --issue 42 --config ./optivem-multitier.yaml
+  gh optivem atdd implement-ticket --issue 42 --log-file run.log`,
 		Run: func(cmd *cobra.Command, args []string) {
 			issue, err := parseIssueArg(issueArg)
 			exitOnError(err)
@@ -143,6 +145,7 @@ func newAtddImplementTicketCmd() *cobra.Command {
 				YAMLPath:             yamlPath,
 				AgentPromptOverrides: promptOverrides,
 				ConfigPath:           configPath,
+				LogFile:              logFile,
 			}))
 		},
 	}
@@ -158,6 +161,7 @@ func newAtddImplementTicketCmd() *cobra.Command {
 	cmd.Flags().StringVar(&yamlPath, "yaml", "", "Path to a process-flow YAML override (defaults to the embedded canonical document)")
 	cmd.Flags().StringSliceVar(&agentPromptPairs, "agent-prompt", nil, "Override one named agent prompt, repeatable (e.g. --agent-prompt atdd-test=./prompts/atdd-test.md)")
 	cmd.Flags().StringVar(&configPath, "config", "", "Path to a project config override (defaults to <repoPath>/gh-optivem.yaml)")
+	cmd.Flags().StringVar(&logFile, "log-file", "", "Mirror everything stdout/stderr emit during the run to this file (in addition to streaming live)")
 	return cmd
 }
 
@@ -177,13 +181,15 @@ func newAtddManageProjectCmd() *cobra.Command {
 		yamlPath         string
 		agentPromptPairs []string
 		configPath       string
+		logFile          string
 	)
 	cmd := &cobra.Command{
 		Use:   "manage-project",
 		Short: "Pick the top Ready ticket and walk the ATDD pipeline",
 		Example: `  gh optivem atdd manage-project
   gh optivem atdd manage-project --project https://github.com/orgs/optivem/projects/3
-  gh optivem atdd manage-project --yaml ./alt-process-flow.yaml --config ./optivem-multitier.yaml`,
+  gh optivem atdd manage-project --yaml ./alt-process-flow.yaml --config ./optivem-multitier.yaml
+  gh optivem atdd manage-project --log-file run.log`,
 		Run: func(cmd *cobra.Command, args []string) {
 			exitOnError(resolveCommitMode(cmd, &cliCommits, agentCommits))
 			hooks, err := buildOverrideHooks(extraPairs, replacePairs, interactive)
@@ -199,6 +205,7 @@ func newAtddManageProjectCmd() *cobra.Command {
 				YAMLPath:             yamlPath,
 				AgentPromptOverrides: promptOverrides,
 				ConfigPath:           configPath,
+				LogFile:              logFile,
 			}))
 		},
 	}
@@ -213,6 +220,7 @@ func newAtddManageProjectCmd() *cobra.Command {
 	cmd.Flags().StringVar(&yamlPath, "yaml", "", "Path to a process-flow YAML override (defaults to the embedded canonical document)")
 	cmd.Flags().StringSliceVar(&agentPromptPairs, "agent-prompt", nil, "Override one named agent prompt, repeatable (e.g. --agent-prompt atdd-test=./prompts/atdd-test.md)")
 	cmd.Flags().StringVar(&configPath, "config", "", "Path to a project config override (defaults to <repoPath>/gh-optivem.yaml)")
+	cmd.Flags().StringVar(&logFile, "log-file", "", "Mirror everything stdout/stderr emit during the run to this file (in addition to streaming live)")
 	return cmd
 }
 
