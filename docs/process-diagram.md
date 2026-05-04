@@ -114,6 +114,7 @@ flowchart TD
     GATE_DSL_AT{DSL Interface Changed?}
     GATE_EXT_AT{External System Driver Interface Changed?}
     GATE_SYS_AT{System Driver Interface Changed?}
+    VERIFY_AT_DRIVER[[Verify: run targeted acceptance tests after driver-adapter change]]
 
     AT_RED_TEST --> GATE_DSL_AT
     GATE_DSL_AT -- No --> AT_GREEN_SYSTEM
@@ -124,8 +125,12 @@ flowchart TD
     CT_SUBPROCESS --> GATE_SYS_AT
     GATE_SYS_AT -- Yes --> AT_RED_SYSTEM_DRIVER
     GATE_SYS_AT -- No --> AT_GREEN_SYSTEM
-    AT_RED_SYSTEM_DRIVER --> AT_GREEN_SYSTEM
+    AT_RED_SYSTEM_DRIVER --> VERIFY_AT_DRIVER
+    VERIFY_AT_DRIVER --> AT_GREEN_SYSTEM
     AT_GREEN_SYSTEM --> AT_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class VERIFY_AT_DRIVER serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
     class AT_RED_DSL,AT_RED_SYSTEM_DRIVER,AT_RED_TEST agentNode
@@ -165,6 +170,7 @@ flowchart TD
     GATE_DSL_CT{DSL Interface Changed?}
     GATE_EXT_CT{External System Driver Interface Changed?}
     ONBOARDING[ONBOARDING — see § External System Onboarding Sub-Process]
+    VERIFY_CT_DRIVER[[Verify: run targeted contract tests after external driver-adapter change]]
 
     ONBOARDING --> CT_RED_TEST
     CT_RED_TEST --> GATE_DSL_CT
@@ -173,8 +179,12 @@ flowchart TD
     CT_RED_DSL --> GATE_EXT_CT
     GATE_EXT_CT -- No --> CT_GREEN_STUBS
     GATE_EXT_CT -- Yes --> CT_RED_EXTERNAL_DRIVER
-    CT_RED_EXTERNAL_DRIVER --> CT_GREEN_STUBS
+    CT_RED_EXTERNAL_DRIVER --> VERIFY_CT_DRIVER
+    VERIFY_CT_DRIVER --> CT_GREEN_STUBS
     CT_GREEN_STUBS --> CT_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class VERIFY_CT_DRIVER serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
     class CT_GREEN_STUBS,CT_RED_DSL,CT_RED_EXTERNAL_DRIVER,CT_RED_TEST agentNode
@@ -233,8 +243,10 @@ flowchart TD
     STRUCT_END((End))
     STRUCT_WRITE["${change_type} - WRITE"]
     TICK[[Tick checklist items]]
+    VERIFY_STRUCT_DRIVER[["Verify: run targeted tests if driver-adapter changed (no-op for chore)"]]
 
-    STRUCT_WRITE --> STOP_STRUCT_REVIEW
+    STRUCT_WRITE --> VERIFY_STRUCT_DRIVER
+    VERIFY_STRUCT_DRIVER --> STOP_STRUCT_REVIEW
     STOP_STRUCT_REVIEW --> GATE_TEST_MODE
     GATE_TEST_MODE -- skip --> ASK_COMMIT
     GATE_TEST_MODE -- compile / full --> COMPILE
@@ -248,7 +260,7 @@ flowchart TD
     TICK --> STRUCT_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class ASK_COMMIT,COMMIT_STRUCT,COMPILE,DRIFT,SAMPLE,TICK serviceNode
+    class ASK_COMMIT,COMMIT_STRUCT,COMPILE,DRIFT,SAMPLE,TICK,VERIFY_STRUCT_DRIVER serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
     class STRUCT_WRITE agentNode
