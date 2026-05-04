@@ -83,6 +83,15 @@ jobs:
           repository: optivem/shop
           tag: meta-v*
 
+  # Source-health gate: build, vet, and unit-test gh-optivem itself before
+  # burning the smoke/acceptance matrices. Catches things like unresolved
+  # merge-conflict markers on main that would otherwise fail every matrix leg
+  # at the build step.
+  commit-stage:
+    name: Commit Stage
+    uses: ./.github/workflows/gh-commit-stage.yml
+    secrets: inherit
+
   check:
     name: Check
     needs: preflight
@@ -399,7 +408,7 @@ jobs:
   # regression surfaces early.
   smoke:
     name: Smoke (${{ matrix.os }}, ${{ matrix.scenario.arch }}, ${{ matrix.scenario.repo-strategy }}, ${{ matrix.scenario.lang }})
-    needs: check
+    needs: [check, commit-stage]
     # !failure() && !cancelled() (not success()) so a skipped preflight (debug-shop-head=true
     # path) does not cause the implicit success() check to drop this job — check itself
     # succeeded, which is what we actually care about.
