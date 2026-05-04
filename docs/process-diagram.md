@@ -258,21 +258,7 @@ flowchart TD
     class STOP_STRUCT_REVIEW,STOP_STRUCT_TEST humanNode
 ```
 
-<<<<<<< HEAD
-## External API Task Cycle
-
-```mermaid
-flowchart TD
-    EXTAPI_CT[EXTAPI_CT — see § Contract Test Sub-Process]
-    EXTAPI_END((End))
-
-    EXTAPI_CT --> EXTAPI_END
-```
-
 ## Legacy Acceptance Criteria Cycle
-=======
-## Legacy Coverage Cycle
->>>>>>> 0597e55cbe89f5d620b4cd45fef37e5af661d379
 
 ```mermaid
 flowchart TD

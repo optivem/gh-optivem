@@ -49,12 +49,7 @@ func TestLoadSnapshot_AllFlowsParse(t *testing.T) {
 		"ct_subprocess",
 		"external_system_onboarding",
 		"structural_cycle",
-<<<<<<< HEAD
-		"external_api_task_cycle",
 		"legacy_acceptance_criteria",
-=======
-		"legacy_coverage",
->>>>>>> 0597e55cbe89f5d620b4cd45fef37e5af661d379
 	}
 	for _, name := range wantFlows {
 		if _, ok := eng.Flows[name]; !ok {
@@ -262,16 +257,8 @@ var transitionTable = []transitionCase{
 	{flow: "structural_cycle", from: "COMMIT_STRUCT", wantTo: "TICK"},
 	{flow: "structural_cycle", from: "TICK", wantTo: "STRUCT_END"},
 
-<<<<<<< HEAD
-	// ---- external_api_task_cycle ----
-	{flow: "external_api_task_cycle", from: "EXTAPI_CT", wantTo: "EXTAPI_END"},
-
 	// ---- legacy_acceptance_criteria ----
 	// Legacy Acceptance Criteria Cycle interim spec: a single STOP node, per
-=======
-	// ---- legacy_coverage ----
-	// Legacy Coverage Cycle interim spec: a single STOP node, per
->>>>>>> 0597e55cbe89f5d620b4cd45fef37e5af661d379
 	// glossary.md TBD. Locked here so the placeholder cannot silently
 	// regress to "TBD" by accident.
 	{flow: "legacy_acceptance_criteria", from: "LEGACY_TBD", wantTo: "LEGACY_END", desc: "interim spec: single human-review STOP"},

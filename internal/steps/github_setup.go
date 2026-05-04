@@ -68,6 +68,27 @@ func SetupEnvironments(cfg *config.Config, gh *shell.GitHub) {
 	}
 }
 
+// SeedSubtypeLabels creates the three `subtype:*` labels the ATDD runtime
+// reads from task tickets to dispatch the right structural cycle. Idempotent
+// (gh label create --force updates color/description on existing labels).
+func SeedSubtypeLabels(cfg *config.Config, gh *shell.GitHub) {
+	log.Info("Seeding subtype:* labels...")
+	for _, l := range subtypeLabels {
+		gh.LabelCreate(l.name, l.color, l.description)
+		log.Successf("  label: %s", l.name)
+	}
+}
+
+var subtypeLabels = []struct {
+	name        string
+	color       string
+	description string
+}{
+	{"subtype:system-interface-redesign", "1d76db", "Structural change to a system Driver Adapter"},
+	{"subtype:external-system-interface-redesign", "0e8a16", "Structural change to an External System Driver Adapter"},
+	{"subtype:system-implementation-change", "5319e7", "Structural change to system internals (no test-stack artifact)"},
+}
+
 // SetupVariablesAndSecrets sets GitHub Actions variables and secrets.
 func SetupVariablesAndSecrets(cfg *config.Config, gh *shell.GitHub) {
 	log.Info("Setting variables and secrets...")

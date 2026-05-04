@@ -40,12 +40,7 @@ var flowAlias = map[string]string{
 	"ct_subprocess":              "Contract Test Sub-Process",
 	"external_system_onboarding": "External System Onboarding Sub-Process",
 	"structural_cycle":           "Structural Cycle (shared)",
-<<<<<<< HEAD
-	"external_api_task_cycle":    "External API Task Cycle",
-	"legacy_acceptance_criteria":            "Legacy Acceptance Criteria Cycle",
-=======
-	"legacy_coverage":            "Legacy Coverage Cycle",
->>>>>>> 0597e55cbe89f5d620b4cd45fef37e5af661d379
+	"legacy_acceptance_criteria": "Legacy Acceptance Criteria Cycle",
 }
 
 // groupAlias maps a node's `group:` annotation (a slash-delimited
@@ -74,7 +69,6 @@ var flowOrder = []string{
 	"ct_subprocess",
 	"external_system_onboarding",
 	"structural_cycle",
-	"external_api_task_cycle",
 	"legacy_acceptance_criteria",
 }
 

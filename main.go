@@ -210,6 +210,7 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, fail
 		// PHASE: SETUP REPOSITORY — remote infra for this repo
 		{name: "Create repositories", phase: phaseSetupRepo, fn: func() { steps.CreateRepos(cfg, gh) }},
 		{name: "Setup environments", phase: phaseSetupRepo, fn: func() { steps.SetupEnvironments(cfg, gh) }},
+		{name: "Seed subtype labels", phase: phaseSetupRepo, fn: func() { steps.SeedSubtypeLabels(cfg, gh) }},
 		{name: "Setup variables and secrets", phase: phaseSetupRepo, fn: func() { steps.SetupVariablesAndSecrets(cfg, gh) }},
 
 		// PHASE: APPLY TEMPLATE — clone, templatize locally

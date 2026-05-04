@@ -376,6 +376,15 @@ func (g *GitHub) CreateEnvironment(name string) {
 	MustRunWithRetry(fmt.Sprintf("gh api repos/%s/environments/%s -X PUT", g.Repo, name), g.DryRun, "")
 }
 
+// LabelCreate creates (or updates) a repo label. `--force` makes the call
+// idempotent: re-running updates color/description without erroring on
+// existing labels.
+func (g *GitHub) LabelCreate(name, color, description string) {
+	cmd := fmt.Sprintf("gh label create %s --repo %s --color %s --description %q --force",
+		name, g.Repo, color, description)
+	MustRunWithRetry(cmd, g.DryRun, "")
+}
+
 func (g *GitHub) SecretSet(name, value string) {
 	if g.DryRun {
 		log.Infof("[DRY RUN] gh secret set %s --repo %s (stdin: ***)", name, g.Repo)

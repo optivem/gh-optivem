@@ -72,6 +72,16 @@ func copyExternals(shop, repoDir string) {
 	}
 }
 
+// copyIssueTemplates copies shop/.github/ISSUE_TEMPLATE/ into the scaffolded
+// repo. Issue forms have no templated content (no language / arch / lang
+// substitutions), so a plain directory copy is the whole job.
+func copyIssueTemplates(shop, repoDir string) {
+	src := filepath.Join(shop, ".github", "ISSUE_TEMPLATE")
+	if _, err := os.Stat(src); err == nil {
+		files.CopyDir(src, filepath.Join(repoDir, ".github", "ISSUE_TEMPLATE"))
+	}
+}
+
 // copySystemTests copies system-test/{testLang}/ -> system-test/ (tests +
 // README only) and docker/{testLang}/{arch}/ -> docker/ (system.json +
 // compose files for the selected arch). composeVariant is "single" (monolith)
@@ -140,6 +150,11 @@ func ApplyTemplate(cfg *config.Config) {
 	templates.CopyWorkflows(map[string]string{
 		Names.CleanupWf: Names.CleanupWf,
 	}, cfg.ShopPath, cfg.RepoDir)
+
+	// Issue forms (.github/ISSUE_TEMPLATE/*.yml) — same files in every
+	// scaffolded repo regardless of arch / lang.
+	log.Info("Copying issue templates...")
+	copyIssueTemplates(cfg.ShopPath, cfg.RepoDir)
 
 	if cfg.Arch == "monolith" {
 		if cfg.RepoStrategy == "monorepo" {
