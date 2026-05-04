@@ -66,8 +66,6 @@ The pedagogical signal is preserved: students still write Acceptance Criteria as
 
 Sequence: forms first (so the parser has something concrete to target), then runtime changes, then retire the old agents. One PR per item.
 
-- [ ] **Cross-repo follow-up: shop-side phase doc** — ⏳ Deferred: create `shop/docs/atdd/process/system-interface-redesign.md` (consolidating the SYSTEM API REDESIGN / SYSTEM UI REDESIGN sections of `task-and-chore-cycles.md` into one channel-agnostic phase doc) and remove the now-stale separate sections. The runtime YAML param `phase_doc: docs/atdd/process/system-interface-redesign.md` already references it, but no test in gh-optivem fails on its absence — the WRITE agent gracefully falls back to the ticket body. Also update `task-and-chore-cycles.md`'s "Purpose" header and the rest of the file to drop the old `system-api-task` / `system-ui-task` / `external-api-task` / `chore` ticket-type names. Crosses repo boundary; better as its own PR in the `shop` template.
-
 ### 10. Smoke test against real GitHub
 
 **Files:** none (manual).
