@@ -35,6 +35,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/release"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/version"
 )
 
 // newAtddCmd builds the `gh optivem atdd` parent. The parent has no Run, so
@@ -54,6 +55,9 @@ picks, classification, smoke tests, commits) and pausing at each
 user-task node so the operator can launch the corresponding Claude Code
 agent (atdd-story, atdd-test, atdd-dsl, …). When the agent's COMMIT
 lands on HEAD, the operator presses Enter and the engine moves on.`,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			return version.CheckGhCLI()
+		},
 	}
 	cmd.AddCommand(
 		newAtddImplementTicketCmd(),
