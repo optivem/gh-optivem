@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -93,6 +94,63 @@ func callersOfTest(methodName string, testFiles []string, testIdx map[string][]t
 	for _, h := range hits {
 		out = append(out, h)
 	}
+	return out
+}
+
+// resolveAdapterToPortBackedMethods bridges a changed adapter method up
+// to whichever adapter method actually fulfils a port contract. Page
+// Object helpers (e.g. `NewOrderPage.inputSku`) live under the adapter
+// tree but have no corresponding port method — the port is named after
+// the driver-level method (e.g. `placeOrder`) that calls them. The
+// selector therefore walks adapter callers transitively and stops at
+// the first port-backed ancestor on each branch.
+//
+// Returns []string{name} when `name` itself is port-backed; the bridged
+// set when it is not; nil when no resolution is possible. Empty result
+// means "still unmapped — fall back to full suite".
+func resolveAdapterToPortBackedMethods(
+	name string,
+	portMethods *methodIndex,
+	adapterFiles []string,
+	adapterMethods *methodIndex,
+	lay *layout,
+	read func(string, string) ([]byte, error),
+) []string {
+	if _, ok := portMethods.byName[name]; ok {
+		return []string{name}
+	}
+
+	visited := map[string]bool{name: true}
+	frontier := []string{name}
+	resolved := map[string]bool{}
+
+	for len(frontier) > 0 {
+		var next []string
+		for _, n := range frontier {
+			callers := callersOf(n, adapterFiles, adapterMethods, lay, read)
+			for _, c := range callers {
+				if visited[c] {
+					continue
+				}
+				visited[c] = true
+				if _, ok := portMethods.byName[c]; ok {
+					resolved[c] = true
+					continue
+				}
+				next = append(next, c)
+			}
+		}
+		frontier = next
+	}
+
+	if len(resolved) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(resolved))
+	for n := range resolved {
+		out = append(out, n)
+	}
+	sort.Strings(out)
 	return out
 }
 

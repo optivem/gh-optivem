@@ -24,6 +24,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -677,10 +678,37 @@ func (a actions) verifyRunTestsAfterDriver(ctx *statemachine.Context) statemachi
 	return statemachine.Outcome{}
 }
 
-// printVerifySummary writes the selected tests table and any unmapped
-// methods to stdout — the user reads this *before* answering r/a/x/f.
+// printVerifySummary writes the changed adapter files, selected tests
+// table, and any unmapped methods to stdout — the user reads this
+// *before* answering r/a/x/f.
 func (a actions) printVerifySummary(res testselect.Result) {
 	w := a.deps.Stdout
+	writeVerifySummary(w, res)
+}
+
+// writeVerifySummary is the io.Writer-shaped form of printVerifySummary,
+// pulled out so tests can assert the exact rendering without faking the
+// whole `actions` struct.
+func writeVerifySummary(w io.Writer, res testselect.Result) {
+	if len(res.Changed) > 0 {
+		byFile := map[string][]string{}
+		var fileOrder []string
+		for _, cm := range res.Changed {
+			if _, seen := byFile[cm.File]; !seen {
+				fileOrder = append(fileOrder, cm.File)
+			}
+			byFile[cm.File] = append(byFile[cm.File], cm.Method)
+		}
+		sort.Strings(fileOrder)
+		fmt.Fprintf(w, "\nDriver-adapter (%d file(s) changed):\n", len(fileOrder))
+		for _, f := range fileOrder {
+			methods := byFile[f]
+			sort.Strings(methods)
+			methods = dedupSorted(methods)
+			fmt.Fprintf(w, "  - %s — %s\n", f, strings.Join(methods, ", "))
+		}
+	}
+
 	total := 0
 	for _, s := range res.Selections {
 		total += len(s.Tests)
@@ -702,6 +730,20 @@ func (a actions) printVerifySummary(res testselect.Result) {
 		}
 	}
 	fmt.Fprintln(w)
+}
+
+// dedupSorted removes adjacent duplicates from a sorted slice.
+func dedupSorted(s []string) []string {
+	if len(s) <= 1 {
+		return s
+	}
+	out := s[:1]
+	for _, v := range s[1:] {
+		if v != out[len(out)-1] {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // runVerifyCommand shells out and surfaces test failures as informational

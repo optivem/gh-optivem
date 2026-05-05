@@ -45,11 +45,15 @@ type ChangedMethod struct {
 // Result is what Select returns. Selections is the curated list to run.
 // Unmapped enumerates changed methods we could not trace forward to a
 // test — the caller (typically the verification node) is expected to fall
-// back to a full-suite run when this is non-empty. Diagnostics carries the
-// human-readable trace of decisions, useful for verbose output.
+// back to a full-suite run when this is non-empty. Changed lists every
+// adapter method the diff touched (mapped or not), useful for surfacing
+// "what the agent edited" before the run/approve prompt. Diagnostics
+// carries the human-readable trace of decisions, useful for verbose
+// output.
 type Result struct {
 	Selections  []Selection
 	Unmapped    []ChangedMethod
+	Changed     []ChangedMethod
 	Diagnostics []string
 }
 
@@ -99,7 +103,7 @@ func SelectWithDeps(repoRoot, baseRef string, deps *Deps) (Result, error) {
 		return Result{}, nil
 	}
 
-	res := Result{}
+	res := Result{Changed: changed}
 
 	// Per-language pass — each language has its own port/dsl/test roots,
 	// regex shapes, and test-annotation conventions. Group changed methods
@@ -138,44 +142,64 @@ func SelectWithDeps(repoRoot, baseRef string, deps *Deps) (Result, error) {
 			return Result{}, fmt.Errorf("walk %s tests: %w", lang, err)
 		}
 		testFiles = filterPaths(testFiles, lay.TestMatch)
+		// Adapter tree — needed to bridge a changed method that is not
+		// itself port-backed (e.g. a Page Object helper) up to the
+		// adapter method that fulfils the port. Reuses PortRoot since
+		// adapters and ports share the language root in every layout.
+		adapterFiles, err := deps.Walk(repoRoot, []string{lay.PortRoot(repoRoot)}, lay.SourceExts)
+		if err != nil {
+			return Result{}, fmt.Errorf("walk %s adapters: %w", lang, err)
+		}
+		adapterFiles = filterPaths(adapterFiles, lay.AdapterMatch)
 
 		// 2. Build name → file caches once.
 		portMethods := indexMethods(portFiles, lay, deps.Read)
 		dslMethods := indexMethods(dslFiles, lay, deps.Read)
 		testMethods := indexTestMethods(testFiles, lay, deps.Read)
+		adapterMethods := indexMethods(adapterFiles, lay, deps.Read)
 
 		// 3. For each changed adapter method, find DSL methods reachable
 		//    through any port that names that method.
 		dslSet := map[string]bool{} // DSL method names that any changed adapter is reachable through
 
 		for _, cm := range methods {
-			ports, ok := portMethods.byName[cm.Method]
-			if !ok || len(ports) == 0 {
+			effective := resolveAdapterToPortBackedMethods(
+				cm.Method, portMethods, adapterFiles, adapterMethods, lay, deps.Read,
+			)
+			if len(effective) == 0 {
 				res.Unmapped = append(res.Unmapped, cm)
 				res.Diagnostics = append(res.Diagnostics,
-					fmt.Sprintf("unmapped: %s — no port method named %q", cm.File, cm.Method))
+					fmt.Sprintf("unmapped: %s — no port method named %q and no adapter caller resolves to one", cm.File, cm.Method))
 				continue
 			}
-			res.Diagnostics = append(res.Diagnostics,
-				fmt.Sprintf("port method %q matched %d port file(s)", cm.Method, len(ports)))
+			if len(effective) == 1 && effective[0] == cm.Method {
+				res.Diagnostics = append(res.Diagnostics,
+					fmt.Sprintf("port method %q matched %d port file(s)", cm.Method, len(portMethods.byName[cm.Method])))
+			} else {
+				res.Diagnostics = append(res.Diagnostics,
+					fmt.Sprintf("adapter method %q has no port; bridged via adapter callers to %v", cm.Method, effective))
+			}
 
 			anyDSL := false
-			for _, p := range ports {
-				callers := callersOf(p.Method, dslFiles, dslMethods, lay, deps.Read)
-				if len(callers) == 0 {
-					continue
+			for _, effName := range effective {
+				ports := portMethods.byName[effName]
+				for _, p := range ports {
+					callers := callersOf(p.Method, dslFiles, dslMethods, lay, deps.Read)
+					if len(callers) == 0 {
+						continue
+					}
+					anyDSL = true
+					for _, c := range callers {
+						dslSet[c] = true
+					}
+					res.Diagnostics = append(res.Diagnostics,
+						fmt.Sprintf("port method %q → DSL methods %v", p.Method, callers))
 				}
-				anyDSL = true
-				for _, c := range callers {
-					dslSet[c] = true
-				}
-				res.Diagnostics = append(res.Diagnostics,
-					fmt.Sprintf("port method %q → DSL methods %v", p.Method, callers))
 			}
 			if !anyDSL {
 				res.Unmapped = append(res.Unmapped, cm)
 				res.Diagnostics = append(res.Diagnostics,
-					fmt.Sprintf("unmapped: %s — port %q has no DSL caller", cm.File, cm.Method))
+					fmt.Sprintf("unmapped: %s — port for %q has no DSL caller", cm.File, cm.Method))
 			}
 		}
 

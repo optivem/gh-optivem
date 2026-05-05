@@ -342,14 +342,15 @@ public class RegisterCustomerWithDefaultsTest {
 	}
 }
 
-func TestSelect_UnmappedAdapterMethod_NoPort(t *testing.T) {
+func TestSelect_PrivateHelperBridgesToPortMethod(t *testing.T) {
+	// `internalDebugDump` has no port of its own, but `register()` (in the
+	// same adapter file) calls it and *is* port-backed. The selector should
+	// bridge through the adapter caller graph and treat the change as if
+	// `register()` had changed — no Unmapped entry, same selection.
 	files := map[string]string{
 		adapterPath: javaAdapterWithPrivate,
-		// note: NO port file at all → first method also unmapped, but test
-		// the helper behaviour by including the port for register() and
-		// asserting only internalDebugDump is unmapped.
-		portPath: javaPort,
-		dslPath:  javaDSL,
+		portPath:    javaPort,
+		dslPath:     javaDSL,
 		"system-test/java/src/test/java/com/mycompany/myshop/systemtest/latest/acceptance/RegisterCustomerPositiveTest.java": javaTest,
 	}
 	// Hunk covers both methods (lines 4 and 7).
@@ -359,15 +360,153 @@ func TestSelect_UnmappedAdapterMethod_NoPort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Select: %v", err)
 	}
-	// register() is mapped; internalDebugDump is unmapped (no port).
-	if len(res.Unmapped) != 1 || res.Unmapped[0].Method != "internalDebugDump" {
-		t.Errorf("unmapped: got %v want one entry for internalDebugDump", res.Unmapped)
+	if len(res.Unmapped) != 0 {
+		t.Errorf("expected no unmapped (helper should bridge to register), got %v", res.Unmapped)
 	}
 	if len(res.Selections) != 1 {
 		t.Fatalf("expected one selection for register(), got %+v", res.Selections)
 	}
 	if res.Selections[0].Suite != "acceptance-api" {
 		t.Errorf("suite: %q", res.Selections[0].Suite)
+	}
+	if !reflect.DeepEqual(res.Selections[0].Tests, []string{"RegisterCustomerPositiveTest.shouldRegister"}) {
+		t.Errorf("tests: %v", res.Selections[0].Tests)
+	}
+	// Diagnostic should record the bridge.
+	hasBridge := false
+	for _, d := range res.Diagnostics {
+		if strings.Contains(d, "internalDebugDump") && strings.Contains(d, "bridged") {
+			hasBridge = true
+		}
+	}
+	if !hasBridge {
+		t.Errorf("expected bridge diagnostic, got %v", res.Diagnostics)
+	}
+}
+
+func TestSelect_TrulyUnmappedAdapterMethod_NoCallerNoPort(t *testing.T) {
+	// An orphan adapter method: no port match, and no other adapter method
+	// calls it. Bridging should fail and the method should land in Unmapped.
+	const javaAdapterOrphan = `package com.mycompany.myshop.testkit.driver.adapter.myshop.api;
+public class CustomerApiAdapter implements RegisterCustomerPort {
+  @Override
+  public void register(String email) {
+  }
+  public void orphanedHelper() {
+  }
+}
+`
+	files := map[string]string{
+		adapterPath: javaAdapterOrphan,
+		portPath:    javaPort,
+		dslPath:     javaDSL,
+		"system-test/java/src/test/java/com/mycompany/myshop/systemtest/latest/acceptance/RegisterCustomerPositiveTest.java": javaTest,
+	}
+	// Hunk targets only the orphan helper (line 6 of the file).
+	diff := diffBlock(adapterPath, "@@ -6,1 +6,1 @@")
+
+	res, err := SelectWithDeps("repo", "HEAD", makeDeps(diff, files))
+	if err != nil {
+		t.Fatalf("Select: %v", err)
+	}
+	if len(res.Unmapped) != 1 || res.Unmapped[0].Method != "orphanedHelper" {
+		t.Errorf("expected one unmapped entry for orphanedHelper, got %v", res.Unmapped)
+	}
+	if len(res.Selections) != 0 {
+		t.Errorf("expected no selections, got %+v", res.Selections)
+	}
+}
+
+func TestSelect_TypeScriptPageObjectBridgesToDriverMethod(t *testing.T) {
+	// Mirrors the real shop layout: `inputSku` lives on a Page Object
+	// helper class under `testkit/driver/adapter/.../pages/`. The port is
+	// named `placeOrder`, not `inputSku`. The adapter driver
+	// (`my-shop-ui-driver.ts`) implements `placeOrder` and calls
+	// `newOrderPage.inputSku(...)` from inside it. A change to `inputSku`
+	// should bridge up to `placeOrder` and select the corresponding test.
+	const tsPageObject = `import { BasePage } from './BasePage.js';
+export class NewOrderPage extends BasePage {
+  async inputSku(sku: string): Promise<void> {
+    await this.page.locator('[aria-label="SKU"]').fill(sku);
+  }
+}
+`
+	const tsAdapter = `import { NewOrderPage } from './client/pages/NewOrderPage.js';
+export class MyShopUiDriver implements MyShopDriver {
+  async placeOrder(request: PlaceOrderRequest): Promise<void> {
+    const newOrderPage = new NewOrderPage(this.page);
+    await newOrderPage.inputSku(request.sku);
+  }
+}
+`
+	const tsPort = `export interface MyShopDriver {
+  placeOrder(request: PlaceOrderRequest): Promise<void>;
+}
+`
+	const tsDsl = `export class OrderDsl {
+  constructor(private port: MyShopDriver) {}
+  async whenPlacingOrder(request: PlaceOrderRequest): Promise<void> {
+    return this.port.placeOrder(request);
+  }
+}
+`
+	const tsTest = `// @channel(UI)
+describe("Place Order", () => {
+  it("should place order", async () => {
+    await dsl.whenPlacingOrder({sku: "S1"});
+  });
+});
+`
+	const pagePath = "system-test/typescript/src/testkit/driver/adapter/myShop/ui/client/pages/NewOrderPage.ts"
+	const driverPath = "system-test/typescript/src/testkit/driver/adapter/myShop/ui/my-shop-ui-driver.ts"
+	const portPath = "system-test/typescript/src/testkit/driver/port/myShop/my-shop-driver.ts"
+	const dslPath = "system-test/typescript/src/testkit/dsl/core/usecase/myShop/order-dsl.ts"
+	const testPath = "system-test/typescript/src/tests/place-order.spec.ts"
+
+	files := map[string]string{
+		pagePath:   tsPageObject,
+		driverPath: tsAdapter,
+		portPath:   tsPort,
+		dslPath:    tsDsl,
+		testPath:   tsTest,
+	}
+	// Hunk targets `inputSku` body (line 4 of NewOrderPage.ts).
+	diff := diffBlock(pagePath, "@@ -4,1 +4,1 @@")
+
+	res, err := SelectWithDeps("repo", "HEAD", makeDeps(diff, files))
+	if err != nil {
+		t.Fatalf("Select: %v", err)
+	}
+	if len(res.Unmapped) != 0 {
+		t.Errorf("expected no unmapped (page-object should bridge to placeOrder), got %v; diag: %v",
+			res.Unmapped, res.Diagnostics)
+	}
+	if len(res.Selections) == 0 {
+		t.Fatalf("expected at least one selection, got none; diag: %v", res.Diagnostics)
+	}
+	// At least one selection must include the place-order test.
+	wantTest := "Place Order.should place order"
+	found := false
+	for _, s := range res.Selections {
+		for _, n := range s.Tests {
+			if n == wantTest {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected test %q in selections, got %+v; diag: %v",
+			wantTest, res.Selections, res.Diagnostics)
+	}
+	// Diagnostic should record the bridge from inputSku → placeOrder.
+	hasBridge := false
+	for _, d := range res.Diagnostics {
+		if strings.Contains(d, "inputSku") && strings.Contains(d, "placeOrder") && strings.Contains(d, "bridged") {
+			hasBridge = true
+		}
+	}
+	if !hasBridge {
+		t.Errorf("expected bridge diagnostic mentioning inputSku → placeOrder, got %v", res.Diagnostics)
 	}
 }
 

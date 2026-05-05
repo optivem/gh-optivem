@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/testselect"
 )
 
 // ---------------------------------------------------------------------------
@@ -755,5 +756,109 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		if r.Lookup(name) == nil {
 			t.Errorf("action %q not registered", name)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// writeVerifySummary
+// ---------------------------------------------------------------------------
+
+func TestWriteVerifySummary_DriverAdapterChangedBlock(t *testing.T) {
+	// Three changed adapter files across the three languages, all touching
+	// a method that maps to the same DSL → test (the page-object case the
+	// selector now bridges). The print order is alphabetical by file.
+	res := testselect.Result{
+		Changed: []testselect.ChangedMethod{
+			{
+				File:   "system-test/typescript/src/testkit/driver/adapter/myShop/ui/client/pages/NewOrderPage.ts",
+				Method: "inputSku",
+				Layer:  "shop",
+				Lang:   "typescript",
+			},
+			{
+				File:   "system-test/java/src/main/java/com/mycompany/myshop/testkit/driver/adapter/myshop/ui/client/pages/NewOrderPage.java",
+				Method: "inputSku",
+				Layer:  "shop",
+				Lang:   "java",
+			},
+			{
+				File:   "system-test/dotnet/Driver.Adapter/MyShop/Ui/Client/Pages/NewOrderPage.cs",
+				Method: "InputSku",
+				Layer:  "shop",
+				Lang:   "dotnet",
+			},
+		},
+		Selections: []testselect.Selection{
+			{Suite: "acceptance-ui", Tests: []string{"PlaceOrderPositiveTest.shouldPlaceOrder"}},
+		},
+	}
+
+	var buf bytes.Buffer
+	writeVerifySummary(&buf, res)
+	got := buf.String()
+
+	wantHeader := "Driver-adapter (3 file(s) changed):"
+	if !strings.Contains(got, wantHeader) {
+		t.Errorf("missing header %q in:\n%s", wantHeader, got)
+	}
+	wantLines := []string{
+		"  - system-test/dotnet/Driver.Adapter/MyShop/Ui/Client/Pages/NewOrderPage.cs — InputSku",
+		"  - system-test/java/src/main/java/com/mycompany/myshop/testkit/driver/adapter/myshop/ui/client/pages/NewOrderPage.java — inputSku",
+		"  - system-test/typescript/src/testkit/driver/adapter/myShop/ui/client/pages/NewOrderPage.ts — inputSku",
+	}
+	for _, want := range wantLines {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing line %q in:\n%s", want, got)
+		}
+	}
+	// Ordering: the changed-block must appear before the selected-tests
+	// block (which the operator reads next).
+	driverIdx := strings.Index(got, wantHeader)
+	selectedIdx := strings.Index(got, "Selected tests for verification")
+	if driverIdx < 0 || selectedIdx < 0 || driverIdx > selectedIdx {
+		t.Errorf("expected driver-adapter block before selected-tests block; got:\n%s", got)
+	}
+}
+
+func TestWriteVerifySummary_MultipleMethodsPerFile(t *testing.T) {
+	// Two methods edited in the same file → the line collapses them with
+	// a comma-separated list, sorted and deduplicated.
+	res := testselect.Result{
+		Changed: []testselect.ChangedMethod{
+			{File: "a/b.ts", Method: "beta", Lang: "typescript"},
+			{File: "a/b.ts", Method: "alpha", Lang: "typescript"},
+			{File: "a/b.ts", Method: "alpha", Lang: "typescript"}, // duplicate
+		},
+	}
+	var buf bytes.Buffer
+	writeVerifySummary(&buf, res)
+	got := buf.String()
+
+	wantLine := "  - a/b.ts — alpha, beta"
+	if !strings.Contains(got, wantLine) {
+		t.Errorf("missing line %q in:\n%s", wantLine, got)
+	}
+	if !strings.Contains(got, "Driver-adapter (1 file(s) changed):") {
+		t.Errorf("expected single-file header, got:\n%s", got)
+	}
+}
+
+func TestWriteVerifySummary_NoChangedFiles_OmitsBlock(t *testing.T) {
+	// A degenerate result (no Changed entries) should not print the header
+	// — the existing Selected/Unmapped output stays untouched.
+	res := testselect.Result{
+		Selections: []testselect.Selection{
+			{Suite: "acceptance-api", Tests: []string{"X.y"}},
+		},
+	}
+	var buf bytes.Buffer
+	writeVerifySummary(&buf, res)
+	got := buf.String()
+
+	if strings.Contains(got, "Driver-adapter (") {
+		t.Errorf("did not expect driver-adapter block, got:\n%s", got)
+	}
+	if !strings.Contains(got, "Selected tests for verification (1):") {
+		t.Errorf("expected selected-tests block, got:\n%s", got)
 	}
 }
