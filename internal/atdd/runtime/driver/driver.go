@@ -337,14 +337,35 @@ func printConfig(w io.Writer, opts Options, cfg *projectconfig.Config, repoPath 
 	}
 	fmt.Fprintf(w, "  project URL:   %s%s\n", orPlaceholder(projectURL, "(unset — pre-resolve will fail)"), projectURLNote)
 	if cfg != nil {
-		fmt.Fprintf(w, "  repo strategy: %s\n", orPlaceholder(cfg.Project.RepoStrategy, "(unset)"))
-		if len(cfg.Project.Repos) > 0 {
-			fmt.Fprintf(w, "  repos:         %s\n", strings.Join(cfg.Project.Repos, ", "))
+		fmt.Fprintf(w, "  repo strategy: %s\n", orPlaceholder(cfg.RepoStrategy, "(unset)"))
+		if repos := cfg.Repos(); len(repos) > 0 {
+			fmt.Fprintf(w, "  repos:         %s\n", strings.Join(repos, ", "))
 		}
-		fmt.Fprintf(w, "  scope:         architecture=%s system_lang=%s test_lang=%s\n",
-			orPlaceholder(cfg.Scope.Architecture, "-"),
-			orPlaceholder(cfg.Scope.SystemLang, "-"),
-			orPlaceholder(cfg.Scope.TestLang, "-"))
+		fmt.Fprintf(w, "  architecture:  %s\n", orPlaceholder(cfg.System.Architecture, "-"))
+		switch cfg.System.Architecture {
+		case projectconfig.ArchMonolith:
+			fmt.Fprintf(w, "  system:        %s (lang: %s, repo: %s)\n",
+				cfg.System.Path, cfg.System.Lang, cfg.System.Repo)
+		case projectconfig.ArchMultitier:
+			fmt.Fprintf(w, "  backend:       %s (lang: %s, repo: %s)\n",
+				cfg.System.Backend.Path, cfg.System.Backend.Lang, cfg.System.Backend.Repo)
+			fmt.Fprintf(w, "  frontend:      %s (lang: %s, repo: %s)\n",
+				cfg.System.Frontend.Path, cfg.System.Frontend.Lang, cfg.System.Frontend.Repo)
+		}
+		if !cfg.SystemTest.IsEmpty() {
+			fmt.Fprintf(w, "  system_test:   %s (lang: %s, repo: %s)\n",
+				cfg.SystemTest.Path, cfg.SystemTest.Lang, cfg.SystemTest.Repo)
+		}
+		if !cfg.ExternalSystems.Stubs.IsEmpty() || !cfg.ExternalSystems.Simulators.IsEmpty() {
+			if !cfg.ExternalSystems.Stubs.IsEmpty() {
+				fmt.Fprintf(w, "  ext stubs:     %s (repo: %s)\n",
+					cfg.ExternalSystems.Stubs.Path, cfg.ExternalSystems.Stubs.Repo)
+			}
+			if !cfg.ExternalSystems.Simulators.IsEmpty() {
+				fmt.Fprintf(w, "  ext sims:      %s (repo: %s)\n",
+					cfg.ExternalSystems.Simulators.Path, cfg.ExternalSystems.Simulators.Repo)
+			}
+		}
 	}
 }
 
@@ -367,29 +388,74 @@ func orPlaceholder(s, placeholder string) string {
 	return s
 }
 
-// seedScopeParams copies repo-strategy and scope axes from a loaded config
-// into Context.Params so agent prompts can substitute ${repo_strategy},
-// ${repos}, ${architecture}, ${system_lang}, ${test_lang}. Empty values
-// are left absent (the template var expands to ""). nil cfg is a no-op.
+// seedScopeParams copies repo-strategy and architecture from a loaded
+// config into Context.Params so agent prompts can substitute
+// ${repo_strategy}, ${repos}, ${architecture}, and ${allowed_roots}.
+// ${allowed_roots} is a pre-rendered multi-line block listing the paths
+// the agent is allowed to write into; the rendering happens here once
+// per run rather than at every dispatch site. Empty values are left
+// absent. nil cfg is a no-op.
 func seedScopeParams(sCtx *statemachine.Context, cfg *projectconfig.Config) {
 	if cfg == nil {
 		return
 	}
-	if cfg.Project.RepoStrategy != "" {
-		sCtx.Params["repo_strategy"] = cfg.Project.RepoStrategy
+	if cfg.RepoStrategy != "" {
+		sCtx.Params["repo_strategy"] = cfg.RepoStrategy
 	}
-	if len(cfg.Project.Repos) > 0 {
-		sCtx.Params["repos"] = strings.Join(cfg.Project.Repos, ",")
+	if repos := cfg.Repos(); len(repos) > 0 {
+		sCtx.Params["repos"] = strings.Join(repos, ",")
 	}
-	if cfg.Scope.Architecture != "" {
-		sCtx.Params["architecture"] = cfg.Scope.Architecture
+	if cfg.System.Architecture != "" {
+		sCtx.Params["architecture"] = cfg.System.Architecture
 	}
-	if cfg.Scope.SystemLang != "" {
-		sCtx.Params["system_lang"] = cfg.Scope.SystemLang
+	if rendered := renderAllowedRoots(cfg); rendered != "" {
+		sCtx.Params["allowed_roots"] = rendered
 	}
-	if cfg.Scope.TestLang != "" {
-		sCtx.Params["test_lang"] = cfg.Scope.TestLang
+}
+
+// renderAllowedRoots produces the multi-line "Allowed write roots" block
+// the atdd-task / atdd-chore prompts substitute via ${allowed_roots}.
+// The block lists every tier the agent is allowed to edit, plus a
+// separate external-systems section when those are declared.
+//
+// Returns "" when cfg has no architecture (the caller leaves the param
+// unset, and the template variable expands to "").
+func renderAllowedRoots(cfg *projectconfig.Config) string {
+	if cfg == nil || cfg.System.Architecture == "" {
+		return ""
 	}
+	var b strings.Builder
+
+	// System + tests block.
+	switch cfg.System.Architecture {
+	case projectconfig.ArchMonolith:
+		fmt.Fprintf(&b, "- System: %s (lang: %s)\n",
+			cfg.System.Path, cfg.System.Lang)
+	case projectconfig.ArchMultitier:
+		fmt.Fprintf(&b, "- Backend: %s (lang: %s)\n",
+			cfg.System.Backend.Path, cfg.System.Backend.Lang)
+		fmt.Fprintf(&b, "- Frontend: %s (lang: %s)\n",
+			cfg.System.Frontend.Path, cfg.System.Frontend.Lang)
+	}
+	if !cfg.SystemTest.IsEmpty() {
+		fmt.Fprintf(&b, "- System tests: %s (lang: %s)\n",
+			cfg.SystemTest.Path, cfg.SystemTest.Lang)
+	}
+
+	// External-systems block — only when declared. Stubs first (cycle 2),
+	// simulators second (cycle 3).
+	ext := cfg.ExternalSystems
+	if !ext.Stubs.IsEmpty() || !ext.Simulators.IsEmpty() {
+		b.WriteString("\nExternal-system roots (modify only when the ticket calls for stub/sim changes):\n")
+		if !ext.Stubs.IsEmpty() {
+			fmt.Fprintf(&b, "- Stubs: %s\n", ext.Stubs.Path)
+		}
+		if !ext.Simulators.IsEmpty() {
+			fmt.Fprintf(&b, "- Simulators: %s\n", ext.Simulators.Path)
+		}
+	}
+
+	return b.String()
 }
 
 // preflightFn is the per-Run function that verifies the `claude` CLI
@@ -560,8 +626,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 			ProjectTitle:    ctx.GetString("project_title"),
 			ProjectURL:      ctx.GetString("project_url"),
 			Architecture:    ctx.GetString("architecture"),
-			SystemLang:      ctx.GetString("system_lang"),
-			TestLang:        ctx.GetString("test_lang"),
+			AllowedRoots:    ctx.GetString("allowed_roots"),
 			Checklist:       ctx.GetString("ticket_checklist"),
 			OverrideText:    extraText,
 			RawPrompt:       replaceText,

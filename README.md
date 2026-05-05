@@ -161,6 +161,20 @@ gh optivem init ... --report-bug
 
 Off by default. Filing a quick issue yourself is usually clearer and keeps the scaffold config private unless you decide to share it.
 
+## Project config (`gh-optivem.yaml`)
+
+Every scaffolded repo gets a `gh-optivem.yaml` at its root. The file declares five top-level keys:
+
+- `project:` — the GitHub Projects board URL.
+- `repo_strategy:` — `mono-repo` or `multi-repo`.
+- `system:` — the system being built. Polymorphic by architecture: under `monolith`, `system:` carries flat `path:` / `repo:` / `lang:` directly; under `multitier`, it nests `backend:` and `frontend:` blocks (each with its own per-component language).
+- `system_test:` — the acceptance-test suite that drives the system. Top-level (not nested under `system:`) because tests aren't part of the system; they drive it.
+- `external_systems:` (optional) — vendored stand-ins for third-party dependencies. `stubs:` is the cycle-2 WireMock-style pattern; `simulators:` is the cycle-3 real-sim pattern.
+
+Every populated tier carries the same `path:` (repo-relative) and `repo:` (slug from the participating repos) pair; system-tier blocks additionally carry `lang:`. The runtime preflight on `gh optivem atdd implement-ticket` validates that every declared path exists on disk before any agent runs, so a config / layout mismatch fails fast with a readable error rather than mid-pipeline.
+
+For the canonical reference, see the four sample configs (mono-repo × multi-repo crossed with monolith × multitier) in [`plans/20260505-100000-scope-paths-and-implement-ticket-preflight.md`](plans/20260505-100000-scope-paths-and-implement-ticket-preflight.md).
+
 ## How it works
 
 See [docs/how-it-works.md](docs/how-it-works.md) for a detailed walkthrough of the `main.go` logic, setup steps, and verification levels.

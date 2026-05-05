@@ -33,8 +33,11 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/driver"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/gates"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/preflight"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/release"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/repolocator"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
 // newAtddCmd builds the `gh optivem atdd` parent. The parent has no Run, so
@@ -113,6 +116,7 @@ func newAtddImplementTicketCmd() *cobra.Command {
 		agentPromptPairs []string
 		configPath       string
 		logFile          string
+		repoDirPairs     []string
 	)
 	cmd := &cobra.Command{
 		Use:   "implement-ticket",
@@ -124,6 +128,7 @@ func newAtddImplementTicketCmd() *cobra.Command {
   gh optivem atdd implement-ticket --issue 42 --yaml ./alt-process-flow.yaml
   gh optivem atdd implement-ticket --issue 42 --agent-prompt atdd-test=./prompts/atdd-test.md
   gh optivem atdd implement-ticket --issue 42 --config ./optivem-multitier.yaml
+  gh optivem atdd implement-ticket --issue 42 --repo-dir optivem/shop=/abs/path/to/shop
   gh optivem atdd implement-ticket --issue 42 --log-file run.log`,
 		Run: func(cmd *cobra.Command, args []string) {
 			issue, err := parseIssueArg(issueArg)
@@ -132,6 +137,9 @@ func newAtddImplementTicketCmd() *cobra.Command {
 			exitOnError(err)
 			promptOverrides, err := parseAgentPromptPairs(agentPromptPairs)
 			exitOnError(err)
+			repoDirs, err := repolocator.ParseRepoDirFlag(repoDirPairs)
+			exitOnError(err)
+			exitOnError(runImplementTicketPreflight(configPath, repoDirs))
 			exitOnError(driver.Run(context.Background(), driver.Options{
 				IssueNum:             issue,
 				ProjectURL:           projectURL,
@@ -155,8 +163,35 @@ func newAtddImplementTicketCmd() *cobra.Command {
 	cmd.Flags().StringVar(&yamlPath, "yaml", "", "Path to a process-flow YAML override (defaults to the embedded canonical document)")
 	cmd.Flags().StringSliceVar(&agentPromptPairs, "agent-prompt", nil, "Override one named agent prompt, repeatable (e.g. --agent-prompt atdd-test=./prompts/atdd-test.md)")
 	cmd.Flags().StringVar(&configPath, "config", "", "Path to a project config override (defaults to <repoPath>/gh-optivem.yaml)")
+	cmd.Flags().StringSliceVar(&repoDirPairs, "repo-dir", nil, "Per-repo local-clone path override, repeatable (e.g. --repo-dir optivem/shop=/abs/path/to/shop). Otherwise resolved via $GH_OPTIVEM_WORKSPACE then sibling-dir convention.")
 	cmd.Flags().StringVar(&logFile, "log-file", "", "Mirror everything stdout/stderr emit during the run to this file (in addition to streaming live)")
 	return cmd
+}
+
+// runImplementTicketPreflight loads the consumer's gh-optivem.yaml (if
+// any) and runs the on-disk preflight before any board, classify, or
+// agent dispatch happens. A failure prints one error block listing every
+// missing repo or path and exits non-zero — see preflight.Run.
+//
+// Loaded config is discarded after preflight; the driver's flow re-loads
+// it via loadDriverConfig. The double load is deliberate: keeps the
+// driver's lifecycle untouched, and a config file is small enough that
+// the second read is free.
+func runImplementTicketPreflight(configPath string, repoDirs map[string]string) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("preflight: getwd: %w", err)
+	}
+	var cfg *projectconfig.Config
+	if configPath != "" {
+		cfg, err = projectconfig.LoadFromPath(configPath)
+	} else {
+		cfg, err = projectconfig.Load(cwd)
+	}
+	if err != nil {
+		return err
+	}
+	return preflight.Run(cfg, repoDirs, cwd)
 }
 
 // newAtddManageProjectCmd implements `gh optivem atdd manage-project`. The

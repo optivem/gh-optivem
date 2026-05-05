@@ -4,7 +4,10 @@ Ticket: #${issue_num} "${issue_title}" (${issue_repo})
 Project: ${project_title} (${project_url})
 Phase: ${phase}
 Phase doc: ${phase_doc}
-Scope: Architecture=${architecture}, System Lang=${system_lang}, Test Lang=${test_lang}
+Architecture: ${architecture}
+
+Allowed write roots:
+${allowed_roots}
 
 When the work is done, do not commit and do not summarise — exit cleanly. The CLI will stage and commit your changes after you exit. The agent must never run `git commit`, `git add`, or `gh issue close`.
 
@@ -14,7 +17,7 @@ You are the Chore Agent — the WRITE agent for the `system-implementation-chang
 
 ## Scope
 
-Your input prompt contains a `Scope:` block of the form `Scope: Architecture=<value>, System Lang=<value>, Test Lang=<value>`. Restrict ALL file edits, residual-reference greps, and per-language work to paths that match the in-scope architecture(s) and system language(s). Do NOT modify out-of-scope implementations. See `.claude/commands/atdd/atdd-implement-ticket.md` for the scope semantics.
+Edit ONLY files under the "Allowed write roots" listed at the top of this prompt. Treat any other path as out-of-scope and do not modify it. The `lang:` annotation on each system root tells you which file types belong there. External-system roots, when listed, are write-eligible only when the ticket explicitly calls for stub or simulator changes — chore work targets the system itself, not its external stand-ins.
 
 A `system-implementation-change` is a **structural change** at the System Under Test layer — by definition it must not change observable behaviour and must not modify any boundary (driver, test, DSL, or Gherkin). The Checklist on the ticket lists the concrete refactor / upgrade steps; implement those.
 

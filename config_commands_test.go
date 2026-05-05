@@ -43,11 +43,20 @@ func TestRunConfigInit_MonolithRoundTrip(t *testing.T) {
 	if cfg.Project.URL != f.ProjectURL {
 		t.Errorf("project.url: got %q, want %q", cfg.Project.URL, f.ProjectURL)
 	}
-	if cfg.Project.RepoStrategy != projectconfig.RepoStrategyMonoRepo {
-		t.Errorf("project.repo_strategy: got %q, want %q", cfg.Project.RepoStrategy, projectconfig.RepoStrategyMonoRepo)
+	if cfg.RepoStrategy != projectconfig.RepoStrategyMonoRepo {
+		t.Errorf("repo_strategy: got %q, want %q", cfg.RepoStrategy, projectconfig.RepoStrategyMonoRepo)
 	}
-	if cfg.Scope.Architecture != "monolith" || cfg.Scope.SystemLang != "java" || cfg.Scope.TestLang != "java" {
-		t.Errorf("scope mismatch: got %+v", cfg.Scope)
+	if cfg.System.Architecture != "monolith" || cfg.System.Lang != "java" {
+		t.Errorf("system mismatch: got %+v", cfg.System)
+	}
+	if cfg.SystemTest.Lang != "java" {
+		t.Errorf("system_test.lang: got %q, want java", cfg.SystemTest.Lang)
+	}
+	if cfg.System.Path != "system/monolith/java" {
+		t.Errorf("system.path: got %q", cfg.System.Path)
+	}
+	if cfg.System.Repo != "acme/page-turner" {
+		t.Errorf("system.repo: got %q, want acme/page-turner", cfg.System.Repo)
 	}
 }
 
@@ -70,18 +79,25 @@ func TestRunConfigInit_MultitierMultirepo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Project.RepoStrategy != projectconfig.RepoStrategyMultiRepo {
-		t.Errorf("project.repo_strategy: got %q", cfg.Project.RepoStrategy)
+	if cfg.RepoStrategy != projectconfig.RepoStrategyMultiRepo {
+		t.Errorf("repo_strategy: got %q", cfg.RepoStrategy)
 	}
 	wantRepos := []string{"acme/page-turner-backend", "acme/page-turner-frontend"}
-	if len(cfg.Project.Repos) != 2 || cfg.Project.Repos[0] != wantRepos[0] || cfg.Project.Repos[1] != wantRepos[1] {
-		t.Errorf("project.repos: got %v, want %v", cfg.Project.Repos, wantRepos)
+	gotRepos := cfg.Repos()
+	if len(gotRepos) != 2 || gotRepos[0] != wantRepos[0] || gotRepos[1] != wantRepos[1] {
+		t.Errorf("Repos(): got %v, want %v", gotRepos, wantRepos)
 	}
-	if cfg.Scope.SystemLang != "dotnet" {
-		t.Errorf("scope.system_lang: got %q, want backend lang %q", cfg.Scope.SystemLang, "dotnet")
+	if cfg.System.Backend.Lang != "dotnet" {
+		t.Errorf("system.backend.lang: got %q, want dotnet", cfg.System.Backend.Lang)
 	}
-	if cfg.Scope.TestLang != "typescript" {
-		t.Errorf("scope.test_lang: got %q", cfg.Scope.TestLang)
+	if cfg.System.Backend.Repo != "acme/page-turner-backend" {
+		t.Errorf("system.backend.repo: got %q", cfg.System.Backend.Repo)
+	}
+	if cfg.System.Frontend.Lang != "typescript" {
+		t.Errorf("system.frontend.lang: got %q, want typescript", cfg.System.Frontend.Lang)
+	}
+	if cfg.SystemTest.Lang != "typescript" {
+		t.Errorf("system_test.lang: got %q", cfg.SystemTest.Lang)
 	}
 }
 
@@ -198,7 +214,9 @@ func TestRunConfigValidate_InvalidContent(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	yamlPath := filepath.Join(dir, projectconfig.Path)
-	bad := []byte("project:\n  repo_strategy: bogus\n")
+	// Top-level repo_strategy with a bogus value — exercises the new
+	// schema's location for the field (not nested under `project:`).
+	bad := []byte("repo_strategy: bogus\n")
 	if err := os.WriteFile(yamlPath, bad, 0o644); err != nil {
 		t.Fatalf("seed bad yaml: %v", err)
 	}

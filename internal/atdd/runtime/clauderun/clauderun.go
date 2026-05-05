@@ -62,13 +62,17 @@ type Options struct {
 	ProjectTitle string
 	ProjectURL   string
 
-	// Scope axes — copied from gh-optivem.yaml's scope block via
-	// driver.seedScopeParams. Empty values render as the broadest option
-	// ("both" for Architecture, "all" for the language axes), matching the
-	// convention used in the prompt templates' Scope section.
+	// Architecture is "monolith" or "multitier", surfaced to the agent
+	// prompt via ${architecture}. Empty when no system.architecture is
+	// declared in gh-optivem.yaml.
 	Architecture string
-	SystemLang   string
-	TestLang     string
+
+	// AllowedRoots is a pre-rendered multi-line block listing the paths
+	// the agent is allowed to write into. The driver computes it from
+	// projectconfig.Config (system + system_test + optional external_systems)
+	// and passes it as a single ${allowed_roots} placeholder so the prompt
+	// template stays a flat substitution.
+	AllowedRoots string
 
 	// Checklist is the body of the ticket's Checklist section as parsed by
 	// intake.Parse. Surfaced to the agent prompt via the ${checklist}
@@ -289,9 +293,8 @@ func renderPrompt(opts Options) (string, error) {
 		"project_url":   opts.ProjectURL,
 		"phase":         opts.NodeDescription,
 		"phase_doc":     opts.PhaseDoc,
-		"architecture":  scopeOrDefault(opts.Architecture, "both"),
-		"system_lang":   scopeOrDefault(opts.SystemLang, "all"),
-		"test_lang":     scopeOrDefault(opts.TestLang, "all"),
+		"architecture":  opts.Architecture,
+		"allowed_roots": opts.AllowedRoots,
 		"checklist":     opts.Checklist,
 	}
 	rendered := statemachine.ExpandParams(body, params)
@@ -299,16 +302,6 @@ func renderPrompt(opts Options) (string, error) {
 		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + opts.OverrideText + "\n"
 	}
 	return rendered, nil
-}
-
-// scopeOrDefault returns fallback when value is empty, else value. The
-// prompt-template Scope block uses "both" / "all" as the broadest options;
-// an unset axis in gh-optivem.yaml is the same intent.
-func scopeOrDefault(value, fallback string) string {
-	if value == "" {
-		return fallback
-	}
-	return value
 }
 
 // RenderPrompt is the public counterpart to renderPrompt: it returns the
