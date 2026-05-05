@@ -91,14 +91,30 @@ func LoadSystem(path string) (*SystemConfig, error) {
 	}
 	var cfg SystemConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parse system config %s: %w", path, err)
+		return nil, fmt.Errorf("system config %s: expected JSON file format, but content is not valid JSON: %w", path, err)
 	}
 	if len(cfg.Systems) == 0 {
 		return nil, fmt.Errorf("system config %s: systems[] is empty", path)
 	}
 	for i, s := range cfg.Systems {
+		if s.Label == "" {
+			return nil, fmt.Errorf("system config %s: systems[%d] missing label", path, i)
+		}
 		if s.ComposeFile == "" {
-			return nil, fmt.Errorf("system config %s: systems[%d] missing composeFile", path, i)
+			return nil, fmt.Errorf("system config %s: systems[%d] (%s) missing composeFile", path, i, s.Label)
+		}
+		for j, c := range s.Components {
+			if c.Name == "" {
+				return nil, fmt.Errorf("system config %s: systems[%d] (%s) components[%d] missing name", path, i, s.Label, j)
+			}
+		}
+		for j, e := range s.ExternalSystems {
+			if e.Name == "" {
+				return nil, fmt.Errorf("system config %s: systems[%d] (%s) externalSystems[%d] missing name", path, i, s.Label, j)
+			}
+			if e.URL == "" {
+				return nil, fmt.Errorf("system config %s: systems[%d] (%s) externalSystems[%d] (%s) missing url", path, i, s.Label, j, e.Name)
+			}
 		}
 	}
 	return &cfg, nil
@@ -112,7 +128,15 @@ func LoadTests(path string) (*TestsConfig, error) {
 	}
 	var cfg TestsConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parse tests config %s: %w", path, err)
+		return nil, fmt.Errorf("tests config %s: expected JSON file format, but content is not valid JSON: %w", path, err)
+	}
+	for i, sc := range cfg.SetupCommands {
+		if sc.Name == "" {
+			return nil, fmt.Errorf("tests config %s: setupCommands[%d] missing name", path, i)
+		}
+		if sc.Command == "" {
+			return nil, fmt.Errorf("tests config %s: setupCommands[%d] (%s) missing command", path, i, sc.Name)
+		}
 	}
 	if len(cfg.Suites) == 0 {
 		return nil, fmt.Errorf("tests config %s: suites[] is empty", path)
@@ -120,6 +144,9 @@ func LoadTests(path string) (*TestsConfig, error) {
 	for i, s := range cfg.Suites {
 		if s.ID == "" {
 			return nil, fmt.Errorf("tests config %s: suites[%d] missing id", path, i)
+		}
+		if s.Name == "" {
+			return nil, fmt.Errorf("tests config %s: suites[%d] (%s) missing name", path, i, s.ID)
 		}
 		if s.Command == "" {
 			return nil, fmt.Errorf("tests config %s: suites[%d] (%s) missing command", path, i, s.ID)

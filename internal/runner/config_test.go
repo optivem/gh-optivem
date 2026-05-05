@@ -84,8 +84,58 @@ func TestLoadSystemFileNotFound(t *testing.T) {
 func TestLoadSystemInvalidJSON(t *testing.T) {
 	path := writeTempFile(t, systemJSONFilename, `{"systems":[`)
 	_, err := LoadSystem(path)
-	if err == nil || !strings.Contains(err.Error(), "parse") {
-		t.Errorf("want parse error, got: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "expected JSON file format") {
+		t.Errorf("want JSON-format error, got: %v", err)
+	}
+}
+
+// TestLoadSystemNonJSONFileRejected covers the case a user passes a
+// docker-compose YAML to --system-config — the parse error should explicitly
+// mention the expected JSON format, not just byte-offset gibberish from the
+// JSON parser.
+func TestLoadSystemNonJSONFileRejected(t *testing.T) {
+	path := writeTempFile(t, systemJSONFilename, "services:\n  app:\n    image: example\n")
+	_, err := LoadSystem(path)
+	if err == nil || !strings.Contains(err.Error(), "expected JSON file format") {
+		t.Errorf("want JSON-format error, got: %v", err)
+	}
+}
+
+func TestLoadSystemMissingLabelRejected(t *testing.T) {
+	path := writeTempFile(t, systemJSONFilename, `{
+		"systems": [{ "composeFile": "x.yml" }]
+	}`)
+	_, err := LoadSystem(path)
+	if err == nil || !strings.Contains(err.Error(), "missing label") {
+		t.Errorf("want 'missing label' error, got: %v", err)
+	}
+}
+
+func TestLoadSystemMissingComponentNameRejected(t *testing.T) {
+	path := writeTempFile(t, systemJSONFilename, `{
+		"systems": [{
+			"label": "real",
+			"composeFile": "x.yml",
+			"components": [{ "url": "http://localhost:1" }]
+		}]
+	}`)
+	_, err := LoadSystem(path)
+	if err == nil || !strings.Contains(err.Error(), "components[0] missing name") {
+		t.Errorf("want 'components[0] missing name' error, got: %v", err)
+	}
+}
+
+func TestLoadSystemMissingExternalSystemURLRejected(t *testing.T) {
+	path := writeTempFile(t, systemJSONFilename, `{
+		"systems": [{
+			"label": "real",
+			"composeFile": "x.yml",
+			"externalSystems": [{ "name": "ERP" }]
+		}]
+	}`)
+	_, err := LoadSystem(path)
+	if err == nil || !strings.Contains(err.Error(), "missing url") {
+		t.Errorf("want 'missing url' error, got: %v", err)
 	}
 }
 
@@ -150,6 +200,48 @@ func TestLoadTestsMissingCommandRejected(t *testing.T) {
 	_, err := LoadTests(path)
 	if err == nil || !strings.Contains(err.Error(), "missing command") {
 		t.Errorf("want 'missing command' error, got: %v", err)
+	}
+}
+
+func TestLoadTestsMissingSuiteNameRejected(t *testing.T) {
+	path := writeTempFile(t, testsJSONFilename, `{
+		"suites": [{ "id": "smoke", "command": "x" }]
+	}`)
+	_, err := LoadTests(path)
+	if err == nil || !strings.Contains(err.Error(), "missing name") {
+		t.Errorf("want 'missing name' error, got: %v", err)
+	}
+}
+
+func TestLoadTestsMissingSetupCommandNameRejected(t *testing.T) {
+	path := writeTempFile(t, testsJSONFilename, `{
+		"setupCommands": [{ "command": "npm ci" }],
+		"suites": [{ "id": "smoke", "name": "Smoke", "command": "x" }]
+	}`)
+	_, err := LoadTests(path)
+	if err == nil || !strings.Contains(err.Error(), "setupCommands[0] missing name") {
+		t.Errorf("want 'setupCommands[0] missing name' error, got: %v", err)
+	}
+}
+
+func TestLoadTestsMissingSetupCommandCommandRejected(t *testing.T) {
+	path := writeTempFile(t, testsJSONFilename, `{
+		"setupCommands": [{ "name": "Install" }],
+		"suites": [{ "id": "smoke", "name": "Smoke", "command": "x" }]
+	}`)
+	_, err := LoadTests(path)
+	if err == nil || !strings.Contains(err.Error(), "missing command") {
+		t.Errorf("want 'missing command' error, got: %v", err)
+	}
+}
+
+// TestLoadTestsNonJSONFileRejected covers the case a user passes a YAML or
+// other non-JSON file to --test-config.
+func TestLoadTestsNonJSONFileRejected(t *testing.T) {
+	path := writeTempFile(t, testsJSONFilename, "suites:\n  - id: smoke\n")
+	_, err := LoadTests(path)
+	if err == nil || !strings.Contains(err.Error(), "expected JSON file format") {
+		t.Errorf("want JSON-format error, got: %v", err)
 	}
 }
 

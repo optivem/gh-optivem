@@ -9,7 +9,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -55,6 +57,29 @@ func exitOnError(err error) {
 	os.Exit(1)
 }
 
+// hintIfMissing wraps a "file not found" error from runner.Load* with a hint
+// telling the user which flag overrides the default path. Other errors are
+// returned unchanged.
+func hintIfMissing(err error, flag, defaultPath string) error {
+	if err == nil || !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return fmt.Errorf("%w\n  hint: pass %s <path> to point at a different file (default: %s)", err, flag, defaultPath)
+}
+
+// loadSystem wraps runner.LoadSystem so a missing file points the user at
+// --system-config instead of just reporting "file not found".
+func loadSystem(path string) (*runner.SystemConfig, error) {
+	sys, err := runner.LoadSystem(path)
+	return sys, hintIfMissing(err, "--system-config", defaultSystemConfig)
+}
+
+// loadTests wraps runner.LoadTests with the same flag hint as loadSystem.
+func loadTests(path string) (*runner.TestsConfig, error) {
+	tests, err := runner.LoadTests(path)
+	return tests, hintIfMissing(err, "--test-config", defaultTestsConfig)
+}
+
 // newBuildCmd wires `gh optivem build` and its `system` child. The parent has
 // no Run, so Cobra prints help if the user invokes `gh optivem build` alone.
 func newBuildCmd() *cobra.Command {
@@ -81,7 +106,7 @@ func newBuildSystemCmd() *cobra.Command {
 		Short:   "docker compose build for every entry in system.json",
 		Example: `  gh optivem build system --rebuild`,
 		Run: func(cmd *cobra.Command, args []string) {
-			sys, err := runner.LoadSystem(systemPath)
+			sys, err := loadSystem(systemPath)
 			exitOnError(err)
 			exitOnError(runner.Build(sys, cwdForPath(systemPath), runner.BuildOptions{Rebuild: rebuild}))
 		},
@@ -115,7 +140,7 @@ func newRunSystemCmd() *cobra.Command {
 		Short:   "docker compose up + wait for health",
 		Example: `  gh optivem run system --restart`,
 		Run: func(cmd *cobra.Command, args []string) {
-			sys, err := runner.LoadSystem(systemPath)
+			sys, err := loadSystem(systemPath)
 			exitOnError(err)
 			opts := runner.SystemOptions{LogLines: logLines, Restart: restart, UpTimeout: upTimeout}
 			exitOnError(runner.Up(sys, cwdForPath(systemPath), opts))
@@ -147,7 +172,7 @@ func newStopSystemCmd() *cobra.Command {
 		Short:   "docker compose down + container cleanup",
 		Example: `  gh optivem stop system`,
 		Run: func(cmd *cobra.Command, args []string) {
-			sys, err := runner.LoadSystem(systemPath)
+			sys, err := loadSystem(systemPath)
 			exitOnError(err)
 			exitOnError(runner.Down(sys, cwdForPath(systemPath)))
 		},
@@ -178,7 +203,7 @@ func newCleanSystemCmd() *cobra.Command {
 		Short:   "docker compose down -v --rmi local (delete volumes + locally-built images)",
 		Example: `  gh optivem clean system && gh optivem test system`,
 		Run: func(cmd *cobra.Command, args []string) {
-			sys, err := runner.LoadSystem(systemPath)
+			sys, err := loadSystem(systemPath)
 			exitOnError(err)
 			exitOnError(runner.Clean(sys, cwdForPath(systemPath)))
 		},
@@ -236,9 +261,9 @@ func newTestSystemCmd() *cobra.Command {
   gh optivem test system --suite smoke --test T1 --test T2
   gh optivem test system --suite smoke --test T1,T2`,
 		Run: func(cmd *cobra.Command, args []string) {
-			sys, err := runner.LoadSystem(systemPath)
+			sys, err := loadSystem(systemPath)
 			exitOnError(err)
-			tests, err := runner.LoadTests(testsPath)
+			tests, err := loadTests(testsPath)
 			exitOnError(err)
 			opts := runner.TestOptions{
 				Suite:   suite,
