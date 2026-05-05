@@ -95,6 +95,70 @@ func TestParse_TaskWithChecklistPasses(t *testing.T) {
 	if !r.Checklist.Found {
 		t.Fatalf("Checklist not found")
 	}
+	if got, want := len(r.Checklist.Items), 2; got != want {
+		t.Fatalf("Items length: got %d, want %d", got, want)
+	}
+	if got := r.Checklist.CheckedCount(); got != 0 {
+		t.Fatalf("CheckedCount: got %d, want 0", got)
+	}
+}
+
+func TestExtractChecklist_CountsCheckedAndUnchecked(t *testing.T) {
+	body := "## Checklist\n\n- [x] Done one\n- [ ] Pending two\n- [X] Done three (capital X)\n"
+	got := ExtractChecklist(body)
+	if !got.Found {
+		t.Fatalf("Found: got false, want true")
+	}
+	if n := len(got.Items); n != 3 {
+		t.Fatalf("Items length: got %d, want 3", n)
+	}
+	if c := got.CheckedCount(); c != 2 {
+		t.Fatalf("CheckedCount: got %d, want 2", c)
+	}
+	wants := []ChecklistItem{
+		{Text: "Done one", Checked: true},
+		{Text: "Pending two", Checked: false},
+		{Text: "Done three (capital X)", Checked: true},
+	}
+	for i, want := range wants {
+		if got.Items[i] != want {
+			t.Fatalf("item %d: got %+v, want %+v", i, got.Items[i], want)
+		}
+	}
+}
+
+func TestExtractChecklist_PreservesRawBodyForPromptSubstitution(t *testing.T) {
+	raw := "- [x] Item one\n- [ ] Item two"
+	body := "## Checklist\n\n" + raw + "\n"
+	got := ExtractChecklist(body)
+	if got.Body != raw {
+		t.Fatalf("Body got %q, want %q", got.Body, raw)
+	}
+}
+
+func TestExtractChecklist_AbsentReturnsEmpty(t *testing.T) {
+	got := ExtractChecklist("## Description\n\nno checklist here\n")
+	if got.Found {
+		t.Fatalf("Found: got true, want false")
+	}
+	if len(got.Items) != 0 {
+		t.Fatalf("Items: got %d, want 0", len(got.Items))
+	}
+	if got.CheckedCount() != 0 {
+		t.Fatalf("CheckedCount: want 0")
+	}
+}
+
+func TestExtractChecklist_IgnoresNonCheckboxBullets(t *testing.T) {
+	// Plain bullets and prose should not be counted as checklist items.
+	body := "## Checklist\n\nIntro line.\n\n- [x] Real item\n- A plain bullet\n* Another bullet\n"
+	got := ExtractChecklist(body)
+	if n := len(got.Items); n != 1 {
+		t.Fatalf("Items length: got %d, want 1", n)
+	}
+	if got.Items[0].Text != "Real item" || !got.Items[0].Checked {
+		t.Fatalf("got %+v, want {Text:'Real item', Checked:true}", got.Items[0])
+	}
 }
 
 func TestParse_LegacyAcceptanceCriteriaOptional(t *testing.T) {

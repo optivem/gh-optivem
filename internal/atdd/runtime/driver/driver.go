@@ -185,6 +185,7 @@ func Run(ctx context.Context, opts Options) error {
 	actions.RegisterAll(actionReg, actions.Deps{
 		ProjectURL: opts.ProjectURL,
 		RepoPath:   opts.RepoPath,
+		Autonomous: opts.Autonomous,
 	})
 
 	agentReg := agents.New()

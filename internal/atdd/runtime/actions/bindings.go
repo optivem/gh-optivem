@@ -47,6 +47,12 @@ type Deps struct {
 	Stderr     io.Writer
 	ProjectURL string // optional — explicit override for board operations
 	RepoPath   string // optional — defaults to current working directory
+	// Autonomous mirrors driver.Opts.Autonomous: when true, actions that
+	// would prompt the operator instead emit a warning and proceed. Today
+	// only parseTicketBody's "all checklist items already [x]" guard reads
+	// this; other prompts (smoke test, can-I-commit) do not yet have an
+	// autonomous-mode codepath.
+	Autonomous bool
 }
 
 // Prompter is the same interface gates uses; redefined here so the actions
@@ -403,7 +409,67 @@ func (a actions) parseTicketBody(ctx *statemachine.Context) statemachine.Outcome
 	ctx.Set("legacy_acceptance_criteria_section_present", result.LegacyAcceptanceCriteria.Found)
 	ctx.Set("ticket_checklist", result.Checklist.Body)
 	fmt.Fprintf(a.deps.Stdout, "Parsed #%d (%s): all required sections present.\n", issueNum, ticketType)
+	printChecklistSummary(a.deps.Stdout, result.Checklist)
+	if total := len(result.Checklist.Items); total > 0 && result.Checklist.CheckedCount() == total {
+		if a.deps.Autonomous {
+			fmt.Fprintf(a.deps.Stderr, "warning: all %d checklist items are already marked [x] — proceeding anyway in autonomous mode\n", total)
+		} else {
+			proceed, err := a.confirmPreCheckedChecklist(issueNum, total)
+			if err != nil {
+				return statemachine.Outcome{Err: fmt.Errorf("parse_ticket_body: %w", err)}
+			}
+			if !proceed {
+				ctx.Set("parse_ok", false)
+				fmt.Fprintf(a.deps.Stdout, "Skipped #%d per operator request — checklist was already fully checked.\n", issueNum)
+			}
+		}
+	}
 	return statemachine.Outcome{}
+}
+
+// confirmPreCheckedChecklist prompts the operator to disambiguate a
+// fully-pre-checked checklist: (a) work already done → skip; (b) stale
+// checkbox state → proceed. Default-N because the destructive direction is
+// proceeding when the work is already done; a skipped ticket can be
+// re-run, an over-eager edit costs a worktree-discard.
+func (a actions) confirmPreCheckedChecklist(issueNum, total int) (bool, error) {
+	fmt.Fprintf(a.deps.Stdout, "\nAll %d checklist items are already marked [x].\n", total)
+	fmt.Fprintf(a.deps.Stdout, "This usually means either:\n")
+	fmt.Fprintf(a.deps.Stdout, "  (a) the work was already done — run `gh issue close #%d` and skip this cycle.\n", issueNum)
+	fmt.Fprintf(a.deps.Stdout, "  (b) the checklist is stale — proceed and the agent will inspect the code.\n\n")
+	answer, err := a.deps.Prompter.Ask("Proceed with the cycle? [y/N]: ")
+	if err != nil {
+		return false, fmt.Errorf("confirmation prompt: %w", err)
+	}
+	yes, _ := parseYesNo(answer)
+	return yes, nil
+}
+
+// printChecklistSummary writes a structured summary of the parsed checklist
+// to w. It is the operator-facing signal that the checklist arrives
+// pre-checked — without it, an "all [x]" intake is invisible on stdout and
+// the operator cannot tell (a) the work was already done from (b) a stale
+// checklist. Skipped silently when the section is absent (story / bug
+// tickets) or has no `- [ ]` / `- [x]` lines.
+func printChecklistSummary(w io.Writer, c intake.ChecklistResult) {
+	if len(c.Items) == 0 {
+		return
+	}
+	checked := c.CheckedCount()
+	total := len(c.Items)
+	mixed := checked > 0 && checked < total
+	fmt.Fprintf(w, "Checklist (%d items, %d already [x]):\n", total, checked)
+	for _, it := range c.Items {
+		mark := " "
+		suffix := ""
+		if it.Checked {
+			mark = "x"
+			if mixed {
+				suffix = " (already done)"
+			}
+		}
+		fmt.Fprintf(w, "  [%s] %s%s\n", mark, it.Text, suffix)
+	}
 }
 
 // printClassifiedSections fetches the issue body and prints the three

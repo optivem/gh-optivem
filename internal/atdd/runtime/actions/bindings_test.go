@@ -522,7 +522,11 @@ func TestParseTicketBody_TaskSuccessPopulatesChecklist(t *testing.T) {
 		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
 		nil,
 	)
-	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}})
+	var stdout bytes.Buffer
+	// Autonomous: true so the all-[x] guard doesn't prompt — this test
+	// covers the success-path wiring (parse_ok / ticket_checklist /
+	// summary block); the prompt branches have dedicated tests below.
+	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}, Stdout: &stdout, Autonomous: true})
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "61")
@@ -536,6 +540,209 @@ func TestParseTicketBody_TaskSuccessPopulatesChecklist(t *testing.T) {
 	}
 	if got := ctx.GetString("ticket_checklist"); got != checklist {
 		t.Fatalf("ticket_checklist: got %q, want %q", got, checklist)
+	}
+	wantLines := []string{
+		"Parsed #61 (task): all required sections present.",
+		"Checklist (2 items, 2 already [x]):",
+		`  [x] Rename "New Order" card to "Place Order"`,
+		`  [x] Rename SKU aria-label to "Product SKU"`,
+	}
+	for _, line := range wantLines {
+		if !strings.Contains(stdout.String(), line) {
+			t.Fatalf("stdout missing %q\ngot:\n%s", line, stdout.String())
+		}
+	}
+}
+
+func TestParseTicketBody_TaskAllUncheckedPrintsZeroChecked(t *testing.T) {
+	body := "## Checklist\n\n- [ ] Rename foo\n- [ ] Move bar\n- [ ] Delete baz\n"
+	rawBody, _ := json.Marshal(body)
+	gh := newFakeRunner(t, "gh")
+	gh.on(
+		[]string{"issue", "view", "100", "--json", "body"},
+		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
+		nil,
+	)
+	var stdout bytes.Buffer
+	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}, Stdout: &stdout})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket_type", "task")
+	ctx.Set("issue_num", "100")
+	if out := a.parseTicketBody(ctx); out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if !strings.Contains(stdout.String(), "Checklist (3 items, 0 already [x]):") {
+		t.Fatalf("missing zero-checked header:\n%s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "(already done)") {
+		t.Fatalf("(already done) suffix should only appear in the mixed case:\n%s", stdout.String())
+	}
+}
+
+func TestParseTicketBody_TaskMixedPrintsAlreadyDoneSuffix(t *testing.T) {
+	body := "## Checklist\n\n- [x] Rename foo\n- [ ] Move bar\n- [ ] Delete baz\n"
+	rawBody, _ := json.Marshal(body)
+	gh := newFakeRunner(t, "gh")
+	gh.on(
+		[]string{"issue", "view", "101", "--json", "body"},
+		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
+		nil,
+	)
+	var stdout bytes.Buffer
+	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}, Stdout: &stdout})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket_type", "task")
+	ctx.Set("issue_num", "101")
+	if out := a.parseTicketBody(ctx); out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	wantLines := []string{
+		"Checklist (3 items, 1 already [x]):",
+		"  [x] Rename foo (already done)",
+		"  [ ] Move bar",
+		"  [ ] Delete baz",
+	}
+	for _, line := range wantLines {
+		if !strings.Contains(stdout.String(), line) {
+			t.Fatalf("stdout missing %q\ngot:\n%s", line, stdout.String())
+		}
+	}
+}
+
+func TestParseTicketBody_AllCheckedInteractiveYesProceeds(t *testing.T) {
+	body := "## Checklist\n\n- [x] One\n- [x] Two\n"
+	rawBody, _ := json.Marshal(body)
+	gh := newFakeRunner(t, "gh")
+	gh.on(
+		[]string{"issue", "view", "61", "--json", "body"},
+		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
+		nil,
+	)
+	prompter := &fakePrompter{answers: []string{"y"}}
+	var stdout bytes.Buffer
+	a := newActions(Deps{Gh: gh, Prompter: prompter, Stdout: &stdout})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket_type", "task")
+	ctx.Set("issue_num", "61")
+	if out := a.parseTicketBody(ctx); out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if got := ctx.Get("parse_ok"); got != true {
+		t.Fatalf("parse_ok: got %v, want true (operator proceeded)", got)
+	}
+	if len(prompter.asked) != 1 {
+		t.Fatalf("expected 1 prompt, got %d: %q", len(prompter.asked), prompter.asked)
+	}
+	if !strings.Contains(stdout.String(), "All 2 checklist items are already marked [x].") {
+		t.Fatalf("expected ambiguity preamble on stdout:\n%s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "Skipped #") {
+		t.Fatalf("should not log skip when operator said yes:\n%s", stdout.String())
+	}
+}
+
+func TestParseTicketBody_AllCheckedInteractiveDefaultNoSkips(t *testing.T) {
+	body := "## Checklist\n\n- [x] One\n- [x] Two\n"
+	rawBody, _ := json.Marshal(body)
+	gh := newFakeRunner(t, "gh")
+	gh.on(
+		[]string{"issue", "view", "61", "--json", "body"},
+		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
+		nil,
+	)
+	// Empty answer → default-N per parseYesNo.
+	prompter := &fakePrompter{answers: []string{""}}
+	var stdout bytes.Buffer
+	a := newActions(Deps{Gh: gh, Prompter: prompter, Stdout: &stdout})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket_type", "task")
+	ctx.Set("issue_num", "61")
+	out := a.parseTicketBody(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected hard error: %v", out.Err)
+	}
+	if got := ctx.Get("parse_ok"); got != false {
+		t.Fatalf("parse_ok: got %v, want false (operator skipped)", got)
+	}
+	if !strings.Contains(stdout.String(), "Skipped #61 per operator request") {
+		t.Fatalf("expected skip line on stdout:\n%s", stdout.String())
+	}
+}
+
+func TestParseTicketBody_AllCheckedAutonomousWarnsAndProceeds(t *testing.T) {
+	body := "## Checklist\n\n- [x] One\n- [x] Two\n"
+	rawBody, _ := json.Marshal(body)
+	gh := newFakeRunner(t, "gh")
+	gh.on(
+		[]string{"issue", "view", "61", "--json", "body"},
+		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
+		nil,
+	)
+	prompter := &fakePrompter{} // no answers — must NOT be asked
+	var stdout, stderr bytes.Buffer
+	a := newActions(Deps{Gh: gh, Prompter: prompter, Stdout: &stdout, Stderr: &stderr, Autonomous: true})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket_type", "task")
+	ctx.Set("issue_num", "61")
+	if out := a.parseTicketBody(ctx); out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if got := ctx.Get("parse_ok"); got != true {
+		t.Fatalf("parse_ok: got %v, want true (autonomous proceeds)", got)
+	}
+	if len(prompter.asked) != 0 {
+		t.Fatalf("autonomous mode must not prompt; got asks: %q", prompter.asked)
+	}
+	if !strings.Contains(stderr.String(), "warning: all 2 checklist items are already marked [x]") {
+		t.Fatalf("expected autonomous-mode warning on stderr:\n%s", stderr.String())
+	}
+}
+
+func TestParseTicketBody_PartiallyCheckedDoesNotPrompt(t *testing.T) {
+	body := "## Checklist\n\n- [x] One\n- [ ] Two\n"
+	rawBody, _ := json.Marshal(body)
+	gh := newFakeRunner(t, "gh")
+	gh.on(
+		[]string{"issue", "view", "61", "--json", "body"},
+		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
+		nil,
+	)
+	prompter := &fakePrompter{} // no answers — must NOT be asked
+	var stdout bytes.Buffer
+	a := newActions(Deps{Gh: gh, Prompter: prompter, Stdout: &stdout})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket_type", "task")
+	ctx.Set("issue_num", "61")
+	if out := a.parseTicketBody(ctx); out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if len(prompter.asked) != 0 {
+		t.Fatalf("partially-checked checklist must not prompt; got asks: %q", prompter.asked)
+	}
+	if got := ctx.Get("parse_ok"); got != true {
+		t.Fatalf("parse_ok: got %v, want true", got)
+	}
+}
+
+func TestParseTicketBody_StoryHasNoChecklistSummary(t *testing.T) {
+	body := "## Acceptance Criteria\n\nScenario: ok\n"
+	rawBody, _ := json.Marshal(body)
+	gh := newFakeRunner(t, "gh")
+	gh.on(
+		[]string{"issue", "view", "1", "--json", "body"},
+		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
+		nil,
+	)
+	var stdout bytes.Buffer
+	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}, Stdout: &stdout})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket_type", "story")
+	ctx.Set("issue_num", "1")
+	if out := a.parseTicketBody(ctx); out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if strings.Contains(stdout.String(), "Checklist (") {
+		t.Fatalf("story should not print checklist summary:\n%s", stdout.String())
 	}
 }
 

@@ -2,6 +2,7 @@ package intake
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -17,6 +18,33 @@ type Section struct {
 	Found   bool
 }
 
+// ChecklistResult is the Checklist section with its `- [ ]` / `- [x]` items
+// pre-parsed. Items is empty when the section is absent or has no checkbox
+// lines; the embedded Section still carries the raw body so callers that
+// only want the markdown (e.g. the prompt's ${checklist} substitution)
+// keep working unchanged.
+type ChecklistResult struct {
+	Section
+	Items []ChecklistItem
+}
+
+// ChecklistItem is one parsed `- [ ]` / `- [x]` line.
+type ChecklistItem struct {
+	Text    string
+	Checked bool
+}
+
+// CheckedCount returns the number of items with Checked == true.
+func (c ChecklistResult) CheckedCount() int {
+	n := 0
+	for _, it := range c.Items {
+		if it.Checked {
+			n++
+		}
+	}
+	return n
+}
+
 // Result is the parsed shape of a ticket body. The fields a downstream
 // cycle reads depend on ticket_type — story/bug consume AcceptanceCriteria,
 // task consumes Checklist; LegacyAcceptanceCriteria is orthogonal and
@@ -25,7 +53,7 @@ type Result struct {
 	Description              Section
 	AcceptanceCriteria       Section
 	StepsToReproduce         Section
-	Checklist                Section
+	Checklist                ChecklistResult
 	LegacyAcceptanceCriteria Section
 }
 
@@ -46,7 +74,7 @@ func Parse(body, ticketType string) (*Result, error) {
 		Description:              ExtractSection(body, SectionDescription),
 		AcceptanceCriteria:       ExtractSection(body, SectionAcceptanceCriteria),
 		StepsToReproduce:         ExtractSection(body, SectionStepsToReproduce),
-		Checklist:                ExtractSection(body, SectionChecklist),
+		Checklist:                ExtractChecklist(body),
 		LegacyAcceptanceCriteria: ExtractSection(body, SectionLegacyAcceptanceCriteria),
 	}
 
@@ -117,6 +145,39 @@ func ExtractSection(body, name string) Section {
 	}
 	body2 := strings.Trim(strings.Join(lines[startIdx:endIdx], "\n"), "\n")
 	return Section{Heading: name, Body: body2, Found: body2 != ""}
+}
+
+// ExtractChecklist extracts the Checklist section and pre-parses every
+// `- [ ]` / `- [x]` line into a typed item. The embedded Section still
+// carries the raw body so callers that only need the markdown (e.g. the
+// prompt's ${checklist} substitution) are unaffected.
+func ExtractChecklist(body string) ChecklistResult {
+	sec := ExtractSection(body, SectionChecklist)
+	res := ChecklistResult{Section: sec}
+	if !sec.Found {
+		return res
+	}
+	for line := range strings.SplitSeq(sec.Body, "\n") {
+		if it, ok := parseChecklistLine(line); ok {
+			res.Items = append(res.Items, it)
+		}
+	}
+	return res
+}
+
+// checklistLineRE matches a markdown task-list line: optional indent, a
+// list marker (`-`, `*`, or `+`), `[ ]` / `[x]` / `[X]`, and the text.
+var checklistLineRE = regexp.MustCompile(`^\s*[-*+]\s+\[([ xX])\]\s*(.*)$`)
+
+func parseChecklistLine(line string) (ChecklistItem, bool) {
+	m := checklistLineRE.FindStringSubmatch(line)
+	if m == nil {
+		return ChecklistItem{}, false
+	}
+	return ChecklistItem{
+		Text:    strings.TrimRight(m[2], " \t"),
+		Checked: m[1] == "x" || m[1] == "X",
+	}, true
 }
 
 // headingDepthAndText returns (depth, text, true) when line is a markdown
