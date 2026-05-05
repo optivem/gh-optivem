@@ -48,6 +48,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/gates"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/trace"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/verify"
 )
 
@@ -111,6 +112,19 @@ type Options struct {
 	// from `--config <path>`; missing-file is an error (unlike the default
 	// lookup, where absence is OK).
 	ConfigPath string
+
+	// LogFile, when non-empty, mirrors everything Stdout and Stderr would
+	// emit during the run — clauderun banners, the driver's resolution
+	// banner, and the per-node trace stream — to the named file. Wired
+	// from `--log-file <path>`. Existing files are truncated. Empty
+	// string disables file mirroring — output still streams to Stdout/
+	// Stderr so the operator can follow live.
+	//
+	// The mirror is byte-for-byte: clauderun's colored banners include
+	// ANSI escape sequences when stdout is a TTY, so the file will too.
+	// View with `less -R`, or set `NO_COLOR=1` (the `color` package
+	// honors it) to get a plain-text file.
+	LogFile string
 
 	// ClaudeRunDeps lets tests inject fake `claude` and `git` runners
 	// without spawning real subprocesses. Production callers leave this
@@ -189,9 +203,12 @@ func Run(ctx context.Context, opts Options) error {
 	//      RawNode metadata only available after Bind).
 	//   2. Apply verify pre/post-condition decorators (commit-message HEAD
 	//      checks).
-	//   3. Apply override hooks last — they sit at the outermost layer so a
-	//      v2 --replace short-circuits both the verify check and the agent
-	//      dispatcher (which is the documented escape-hatch behaviour).
+	//   3. Apply override hooks — they sit on top of verify so a v2
+	//      --replace short-circuits both the verify check and the agent
+	//      dispatcher (the documented escape-hatch behaviour).
+	//   4. Apply the trace decorator last so its entry/exit lines bracket
+	//      every other decorator's behaviour. The operator sees the
+	//      composed call as one node fire.
 	wrapAgentDispatchers(eng, opts)
 	verify.WrapAll(eng, verify.Deps{})
 	wrapOverride(eng, opts.Override)
@@ -200,6 +217,16 @@ func Run(ctx context.Context, opts Options) error {
 	if err != nil {
 		return fmt.Errorf("driver: %w", err)
 	}
+
+	logClose, err := installLogFileMirror(&opts)
+	if err != nil {
+		return fmt.Errorf("driver: %w", err)
+	}
+	defer logClose()
+	trace.WrapAll(eng, trace.Deps{
+		Out:      opts.Stdout,
+		RepoPath: repoPath,
+	})
 	cfg, err := loadDriverConfig(opts.ConfigPath, repoPath)
 	if err != nil {
 		return err
@@ -240,6 +267,29 @@ func resolveRepoPath(explicit string) (string, error) {
 		return "", fmt.Errorf("get working directory: %w", err)
 	}
 	return cwd, nil
+}
+
+// installLogFileMirror opens opts.LogFile (when non-empty), wraps
+// opts.Stdout and opts.Stderr to tee into it, and returns a close func
+// the caller defers. When opts.LogFile is empty, the writers are left
+// untouched and the close func is a no-op.
+//
+// The mutation is in-place on the caller's Options so every downstream
+// site that already reads opts.Stdout / opts.Stderr (printConfig, the
+// resolve-issue banner, the trace decorator, every clauderun.Dispatch
+// invocation that pulls Stdout/Stderr from Options) automatically gains
+// file-mirroring without a per-call-site change.
+func installLogFileMirror(opts *Options) (func(), error) {
+	if opts.LogFile == "" {
+		return func() {}, nil
+	}
+	f, err := os.OpenFile(opts.LogFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return func() {}, fmt.Errorf("open log file %s: %w", opts.LogFile, err)
+	}
+	opts.Stdout = io.MultiWriter(opts.Stdout, f)
+	opts.Stderr = io.MultiWriter(opts.Stderr, f)
+	return func() { f.Close() }, nil
 }
 
 // loadDriverConfig returns the parsed config for the run. When configPath

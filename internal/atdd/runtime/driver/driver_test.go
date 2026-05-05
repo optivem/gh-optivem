@@ -14,6 +14,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -468,5 +470,90 @@ func TestManualAgents_BannerSubstitutesTemplatedFields(t *testing.T) {
 	}
 	if !strings.Contains(got, "docs/atdd/process/sysui-redesign.md") {
 		t.Errorf("banner missing expanded phase doc:\n%s", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// --log-file mirroring (installLogFileMirror)
+// ---------------------------------------------------------------------------
+
+func TestInstallLogFileMirror_TeesStdoutAndStderrToFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "run.log")
+
+	var stdout, stderr bytes.Buffer
+	opts := Options{
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+		LogFile: path,
+	}
+	closeFn, err := installLogFileMirror(&opts)
+	if err != nil {
+		t.Fatalf("installLogFileMirror: %v", err)
+	}
+	defer closeFn()
+
+	io.WriteString(opts.Stdout, "stdout-line\n")
+	io.WriteString(opts.Stderr, "stderr-line\n")
+
+	// Close the file before reading so the buffered bytes flush.
+	closeFn()
+
+	// Live streams still got the bytes — file mirroring must not steal
+	// the operator's view.
+	if got := stdout.String(); got != "stdout-line\n" {
+		t.Errorf("stdout buffer = %q, want %q", got, "stdout-line\n")
+	}
+	if got := stderr.String(); got != "stderr-line\n" {
+		t.Errorf("stderr buffer = %q, want %q", got, "stderr-line\n")
+	}
+
+	// File got both streams in source order.
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read log file: %v", err)
+	}
+	want := "stdout-line\nstderr-line\n"
+	if got := string(body); got != want {
+		t.Errorf("log file body = %q, want %q", got, want)
+	}
+}
+
+func TestInstallLogFileMirror_EmptyPathIsNoOp(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	origStdout := stdout
+	origStderr := stderr
+	opts := Options{
+		Stdout:  stdout,
+		Stderr:  stderr,
+		LogFile: "",
+	}
+	closeFn, err := installLogFileMirror(&opts)
+	if err != nil {
+		t.Fatalf("installLogFileMirror: %v", err)
+	}
+	defer closeFn()
+
+	if opts.Stdout != origStdout {
+		t.Errorf("Stdout was wrapped despite empty LogFile")
+	}
+	if opts.Stderr != origStderr {
+		t.Errorf("Stderr was wrapped despite empty LogFile")
+	}
+}
+
+func TestInstallLogFileMirror_OpenFailureReturnsError(t *testing.T) {
+	// A path inside a non-existent parent dir is the typo case --log-file
+	// is supposed to surface up-front.
+	opts := Options{
+		Stdout:  io.Discard,
+		Stderr:  io.Discard,
+		LogFile: filepath.Join(t.TempDir(), "no", "such", "dir", "run.log"),
+	}
+	closeFn, err := installLogFileMirror(&opts)
+	defer closeFn()
+	if err == nil {
+		t.Fatal("expected error for unreachable log path, got nil")
 	}
 }
