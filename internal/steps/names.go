@@ -123,8 +123,8 @@ var Names = struct {
 	ShopDocsArchDir:             "docs/design/${arch}",
 	ShopDocsSharedDir:           "docs/design/shared",
 	ShopVersionFile:             "system/${arch}/${lang}/VERSION",
-	ShopExternalRealSimDir:      "system/external-real-sim",
-	ShopExternalStubDir:         "system/external-stub",
+	ShopExternalRealSimDir:      "external-systems/external-real-sim",
+	ShopExternalStubDir:         "external-systems/external-stub",
 
 	TargetSystemDir:     "system",
 	TargetBackendDir:    "backend",

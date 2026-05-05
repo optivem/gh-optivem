@@ -31,9 +31,10 @@ const (
 	wdPrefixYAML            = "working-directory: "
 	dirSystemTest           = "system-test"
 	dirDocker               = "docker"
-	dirExternalRealSim      = "external-real-sim"
-	dirExternalStub         = "external-stub"
-	shopSystemPrefix        = "../../../system/"
+	dirExternalRealSim         = "external-real-sim"
+	dirExternalStub            = "external-stub"
+	shopSystemPrefix           = "../../../system/"
+	shopExternalSystemsPrefix  = "../../../external-systems/"
 	systemMonolithDir       = "system/monolith/"
 	systemMultitierDir      = "system/multitier/"
 	systemMultitierBackend  = systemMultitierDir + "backend-"
@@ -65,7 +66,7 @@ func appendCloudReplacement(r [][2]string, deploy string) [][2]string {
 // copyExternals copies external system simulator directories from shop to repo.
 func copyExternals(shop, repoDir string) {
 	for _, dir := range externalSimDirs {
-		src := filepath.Join(shop, "system", dir)
+		src := filepath.Join(shop, "external-systems", dir)
 		if _, err := os.Stat(src); err == nil {
 			files.CopyDir(src, filepath.Join(repoDir, dir))
 		}
@@ -624,8 +625,8 @@ func monolithDockerComposeReplacements(lang, testLang string) [][2]string {
 		// there, but scaffold flattens arch subdir → system-test/, so the context becomes ../system.
 		{shopSystemPrefix + "monolith/" + lang, "../system"},
 		// Volume mount paths: old layout had system-test/{lang}/, new has system-test/
-		{shopSystemPrefix + dirExternalRealSim, "../" + dirExternalRealSim},
-		{shopSystemPrefix + dirExternalStub, "../" + dirExternalStub},
+		{shopExternalSystemsPrefix + dirExternalRealSim, "../" + dirExternalRealSim},
+		{shopExternalSystemsPrefix + dirExternalStub, "../" + dirExternalStub},
 	}
 	if lang != testLang {
 		r = append(r, [2]string{shopSystemPrefix + "monolith/" + testLang, "../system"})
@@ -717,8 +718,8 @@ func multitierDockerComposeReplacements(backendLang, frontendLang, testLang stri
 		{prefixMultitierBackend + backendLang, "backend"},
 		{prefixMultitierFrontend + frontendLang, "frontend"},
 		// Volume mount paths: old layout had system-test/{lang}/, new has system-test/
-		{shopSystemPrefix + dirExternalRealSim, "../" + dirExternalRealSim},
-		{shopSystemPrefix + dirExternalStub, "../" + dirExternalStub},
+		{shopExternalSystemsPrefix + dirExternalRealSim, "../" + dirExternalRealSim},
+		{shopExternalSystemsPrefix + dirExternalStub, "../" + dirExternalStub},
 	}
 	// Docker build contexts always reference the test-lang backend and the frontend lang in the
 	// shop layout (e.g. backend-typescript, frontend-react). After scaffolding these become
