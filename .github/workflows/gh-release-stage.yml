@@ -94,7 +94,7 @@ jobs:
             echo "1. Bump VERSION — run [\`gh-bump-patch-version.yml\`](${BUMP_URL})."
             echo "2. Create a new RC — run [\`gh-acceptance-stage.yml\`](${RC_URL})."
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "::error::Version $TAG is already released. Bump VERSION: ${BUMP_URL}. Create a new RC: ${RC_URL}."
+          echo "::error::Version $TAG is already released. See job summary for next steps."
           exit 1
 
       - id: shop-sha
