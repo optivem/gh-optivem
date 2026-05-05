@@ -9,7 +9,8 @@ import (
 // WriteOptivemYAML writes <repoRoot>/gh-optivem.yaml in the scaffolded repo(s),
 // translating already-resolved init flags into the projectconfig.Config schema.
 // The file is consumed by the ATDD pipeline at runtime (project URL, repo
-// strategy, scope axes). It is the single config the gh-optivem binary reads.
+// strategy, system architecture + per-component layout, system_test layout,
+// and external-system stand-in declarations).
 //
 // Multi-repo: writes the same file to every per-tier repo so `gh optivem atdd
 // implement-ticket` can be invoked from any of them.
@@ -59,19 +60,25 @@ func writeOptivemYAMLToDir(dir string, pc *projectconfig.Config) {
 // buildOptivemYAML translates the init Config into the projectconfig schema.
 // Kept as a pure function (no I/O) so tests can verify the translation
 // independently of file writing.
+//
+// Path conventions emitted here mirror the directories the scaffold actually
+// creates (see internal/steps/apply_template.go and the shop template). The
+// mapping is the scaffold's responsibility — the runtime never derives paths
+// from the scope axes.
 func buildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	pc := &projectconfig.Config{
-		Project: projectconfig.Project{
-			URL:          cfg.ProjectURL,
-			RepoStrategy: mapRepoStrategy(cfg.RepoStrategy),
-			Repos:        repoSlugs(cfg),
-		},
-		Scope: projectconfig.Scope{
-			Architecture: cfg.Arch,
-			SystemLang:   systemLangFor(cfg),
-			TestLang:     cfg.TestLang,
-		},
+		Project:      projectconfig.Project{URL: cfg.ProjectURL},
+		RepoStrategy: mapRepoStrategy(cfg.RepoStrategy),
 	}
+	if cfg.Arch == "" {
+		// Partial config (no architecture chosen yet) — emit just the
+		// project + repo_strategy keys; the rest stays empty and Validate
+		// accepts that shape.
+		return pc
+	}
+	pc.System = buildSystem(cfg)
+	pc.SystemTest = buildSystemTest(cfg)
+	pc.ExternalSystems = buildExternals(cfg)
 	return pc
 }
 
@@ -88,27 +95,100 @@ func mapRepoStrategy(s string) string {
 	}
 }
 
-// systemLangFor resolves the single system_lang value for the YAML. For
-// monolith the system language IS Lang; for multitier we surface the backend
-// language, since system tests run end-to-end against the backend service
-// (the frontend tier is captured separately in scope or out of scope).
-func systemLangFor(cfg *config.Config) string {
-	if cfg.Arch == "multitier" {
-		return cfg.BackendLang
+// buildSystem populates the System block from cfg. Polymorphic by
+// architecture: monolith uses flat Path/Repo/Lang; multitier nests Backend
+// and Frontend.
+func buildSystem(cfg *config.Config) projectconfig.System {
+	s := projectconfig.System{Architecture: cfg.Arch}
+	switch cfg.Arch {
+	case "monolith":
+		s.Path = "system/monolith/" + cfg.Lang
+		s.Repo = systemRepoSlug(cfg)
+		s.Lang = cfg.Lang
+	case "multitier":
+		s.Backend = projectconfig.TierSpec{
+			Path: "system/multitier/backend-" + cfg.BackendLang,
+			Repo: backendRepoSlug(cfg),
+			Lang: cfg.BackendLang,
+		}
+		// The scaffold currently emits a single React+TypeScript frontend
+		// regardless of system_lang. Lang is the underlying source
+		// language (typescript), not the framework — adding more
+		// frontend frameworks later is out of scope.
+		s.Frontend = projectconfig.TierSpec{
+			Path: "system/multitier/frontend-react",
+			Repo: frontendRepoSlug(cfg),
+			Lang: projectconfig.LangTypescript,
+		}
 	}
-	return cfg.Lang
+	return s
 }
 
-// repoSlugs returns the owner/repo list to write to project.repos. Empty for
-// mono-repo (the schema accepts mono-repo with empty repos as the implicit-
-// self case). Multi-repo enumerates the per-tier slugs so the field matches
-// the schema's "non-empty repos required" rule.
-func repoSlugs(cfg *config.Config) []string {
+// buildSystemTest populates the SystemTest tier. The path is keyed on
+// test_lang (not system_lang) since the test suite directory is named
+// after the test language.
+func buildSystemTest(cfg *config.Config) projectconfig.TierSpec {
+	return projectconfig.TierSpec{
+		Path: "system-test/" + cfg.TestLang,
+		Repo: systemTestRepoSlug(cfg),
+		Lang: cfg.TestLang,
+	}
+}
+
+// buildExternals populates the ExternalSystems block. Both stubs and
+// simulators are always emitted because the scaffold creates both
+// directories at the workspace root (per the related shop-side plan
+// `shop/plans/20260505-move-external-systems-out-of-system.md` — externals
+// flatten to `<repo>/external-stub` and `<repo>/external-real-sim`).
+func buildExternals(cfg *config.Config) projectconfig.ExternalSystems {
+	repo := externalsRepoSlug(cfg)
+	return projectconfig.ExternalSystems{
+		Stubs:      projectconfig.ExternalSpec{Path: "external-stub", Repo: repo},
+		Simulators: projectconfig.ExternalSpec{Path: "external-real-sim", Repo: repo},
+	}
+}
+
+// systemRepoSlug returns the slug for the monolith system tier:
+//   - mono-repo: cfg.FullRepo (the workspace repo)
+//   - multi-repo: cfg.SystemFullRepo (the per-system repo)
+func systemRepoSlug(cfg *config.Config) string {
+	if cfg.RepoStrategy == "multirepo" {
+		return cfg.SystemFullRepo
+	}
+	return cfg.FullRepo
+}
+
+// backendRepoSlug returns the slug for the multitier backend tier.
+func backendRepoSlug(cfg *config.Config) string {
+	if cfg.RepoStrategy == "multirepo" {
+		return cfg.BackendFullRepo
+	}
+	return cfg.FullRepo
+}
+
+// frontendRepoSlug returns the slug for the multitier frontend tier.
+func frontendRepoSlug(cfg *config.Config) string {
+	if cfg.RepoStrategy == "multirepo" {
+		return cfg.FrontendFullRepo
+	}
+	return cfg.FullRepo
+}
+
+// systemTestRepoSlug returns the slug for system_test. Defaults to the
+// system repo (mono-repo or multi-repo monolith) or the backend repo
+// (multi-repo multitier) — the operator can override post-scaffold.
+func systemTestRepoSlug(cfg *config.Config) string {
 	if cfg.RepoStrategy != "multirepo" {
-		return nil
+		return cfg.FullRepo
 	}
 	if cfg.Arch == "multitier" {
-		return []string{cfg.BackendFullRepo, cfg.FrontendFullRepo}
+		return cfg.BackendFullRepo
 	}
-	return []string{cfg.SystemFullRepo}
+	return cfg.SystemFullRepo
+}
+
+// externalsRepoSlug returns the slug for external-system tiers, mirroring
+// the system-test default (operator can override post-scaffold).
+func externalsRepoSlug(cfg *config.Config) string {
+	return systemTestRepoSlug(cfg)
 }

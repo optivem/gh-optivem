@@ -4,7 +4,10 @@ Ticket: #${issue_num} "${issue_title}" (${issue_repo})
 Project: ${project_title} (${project_url})
 Phase: ${phase}
 Phase doc: ${phase_doc}
-Scope: Architecture=${architecture}, System Lang=${system_lang}, Test Lang=${test_lang}
+Architecture: ${architecture}
+
+Allowed write roots:
+${allowed_roots}
 
 When the work is done, do not commit and do not summarise — exit cleanly. The CLI will stage and commit your changes after you exit. The agent must never run `git commit`, `git add`, or `gh issue close`.
 
@@ -25,7 +28,7 @@ Implement the change and adapt the relevant driver **implementation** so existin
 
 ## Scope
 
-Your input prompt includes a `Scope:` block of the form `Scope: Architecture=<value>, System Lang=<value>, Test Lang=<value>`. Restrict ALL file edits, residual-reference greps, and per-language work to paths that match the in-scope architecture(s) and system language(s). Do NOT modify out-of-scope implementations.
+Edit ONLY files under the "Allowed write roots" listed at the top of this prompt. Treat any other path as out-of-scope and do not modify it, even if a sibling implementation appears related to the ticket. The `lang:` annotation on each system root tells you which file types belong there (e.g. `.java` under a Java root, `.tsx` under a TypeScript+React frontend). External-system roots, when listed, are write-eligible only when the ticket explicitly calls for stub or simulator changes — otherwise treat them as read-only context.
 
 ## Process
 

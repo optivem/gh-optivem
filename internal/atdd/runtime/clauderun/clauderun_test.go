@@ -187,18 +187,20 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 	}
 }
 
-func TestRenderPrompt_TaskAgentScopeBlock_ExplicitValues(t *testing.T) {
+func TestRenderPrompt_TaskAgentArchitectureAndAllowedRoots_ExplicitValues(t *testing.T) {
 	opts := newOpts()
 	opts.Agent = "atdd-task"
 	opts.Architecture = "monolith"
-	opts.SystemLang = "java"
-	opts.TestLang = "dotnet"
+	opts.AllowedRoots = "- System: system/monolith/java (lang: java)\n- System tests: system-test/java (lang: java)\n"
 
 	got, err := renderPrompt(opts)
 	if err != nil {
 		t.Fatalf("renderPrompt: %v", err)
 	}
-	mustContain(t, got, "Scope: Architecture=monolith, System Lang=java, Test Lang=dotnet")
+	mustContain(t, got, "Architecture: monolith")
+	mustContain(t, got, "Allowed write roots:")
+	mustContain(t, got, "- System: system/monolith/java (lang: java)")
+	mustContain(t, got, "- System tests: system-test/java (lang: java)")
 	if strings.Contains(got, "${") {
 		t.Errorf("prompt still contains ${...} placeholder: %s", got)
 	}
@@ -222,7 +224,12 @@ func TestRenderPrompt_TaskAgentChecklistInjected(t *testing.T) {
 	}
 }
 
-func TestRenderPrompt_TaskAgentScopeBlock_EmptyDefaultsToBroadest(t *testing.T) {
+func TestRenderPrompt_ChoreAgent_EmptyArchitectureAndRootsRender(t *testing.T) {
+	// When architecture and allowed_roots are empty (e.g. fresh config or
+	// pre-resolution), the placeholders expand to empty strings — the
+	// prompt still renders without leaking ${...}. There is no longer a
+	// "broadest defaults" fallback; per-component lang has replaced
+	// `Architecture=both`/`Lang=all` semantics.
 	opts := newOpts()
 	opts.Agent = "atdd-chore"
 
@@ -230,7 +237,11 @@ func TestRenderPrompt_TaskAgentScopeBlock_EmptyDefaultsToBroadest(t *testing.T) 
 	if err != nil {
 		t.Fatalf("renderPrompt: %v", err)
 	}
-	mustContain(t, got, "Scope: Architecture=both, System Lang=all, Test Lang=all")
+	mustContain(t, got, "Architecture: ")
+	mustContain(t, got, "Allowed write roots:")
+	if strings.Contains(got, "${") {
+		t.Errorf("prompt still contains ${...} placeholder: %s", got)
+	}
 }
 
 func TestRenderPrompt_ReturnsErrorForUnknownAgent(t *testing.T) {
