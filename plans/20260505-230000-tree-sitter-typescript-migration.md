@@ -29,29 +29,88 @@ tooling (Roslyn / ts-morph / JavaSymbolSolver) only if a specific case
 forces cross-file type resolution.** TypeScript has accumulated enough
 to graduate to step 2.
 
-## Binding decision: WASM via Wazero (not CGo)
+## Binding decision: WASM via Wazero (`malivvan/tree-sitter`)
 
-Two viable Go bindings:
+We use [`github.com/malivvan/tree-sitter`](https://github.com/malivvan/tree-sitter)
+— it wraps a WASM build of upstream
+[tree-sitter](https://github.com/tree-sitter/tree-sitter) and runs it
+via [Wazero](https://wazero.io/), a zero-dependency, pure-Go
+WebAssembly runtime. No CGo, no C toolchain. Preserves the project's
+`CGO_ENABLED=0` build property in `.goreleaser.yml`.
 
-| Option | Build cost | Runtime cost | Distribution |
-|---|---|---|---|
-| `github.com/tree-sitter/go-tree-sitter` (CGo) | C toolchain on every build host (MinGW/MSVC on Windows, gcc on Linux); cross-compilation needs `CC=...` per target | Native parser speed | Static binary still possible but build complexity grows |
-| `github.com/wasilibs/go-tree-sitter` (WASM via Wazero) | Pure Go; `go build` on stock Windows or Linux | ~3–5× slower per parse than native | Single static binary, no toolchain assumptions |
+The parser core is the **same upstream C tree-sitter source**, just
+compiled to WASM (via wasi-sdk in upstream's modern build pipeline)
+instead of compiled to native via CGo. Parser correctness is
+equivalent to `smacker/go-tree-sitter`'s. The maturity gap is in the
+Go-side wrapper code (memory management, query API, lifetimes), not
+in the parser.
 
-**Recommendation: WASM.** The "single-binary, stock-Go build" property
-was load-bearing in the Tier 1 vs Tier 2 decision — going CGo here
-quietly forfeits the main reason tree-sitter beat per-language AST
-helpers. Parser speed is not the bottleneck: the bridge runs once per
-verify cycle on a small file set (low hundreds of TS files in a typical
-shop), and Wazero parses on the order of MB/s. Even at 3–5× slower
-than native, this is sub-second work.
+**Why WASM-via-Wazero over CGo + `smacker/go-tree-sitter`:**
 
-**Verification before committing:** confirm `wasilibs/go-tree-sitter`
-ships a TypeScript grammar (or that a compatible TS grammar binding
-exists in the wasilibs ecosystem) before sinking implementation effort.
-If the TS grammar isn't available there, fall back to the CGo binding
-and accept the build complexity — surface the trade-off and ask before
-flipping.
+The smacker route is more mature at the Go-wrapper layer — years of
+production use, batteries-included grammars. Four factors dominate
+the trade-off at our scale:
+
+1. **CGo cost is permanent; wrapper risk is bounded.** Dropping
+   `CGO_ENABLED=0` is an ongoing tax on every release: per-target C
+   toolchains in CI (MinGW for Windows, Xcode CLT or osxcross for
+   Darwin), more brittle goreleaser config, `scripts/install.sh`
+   rework, and friction for every future OS/arch addition. The
+   malivvan wrapper risk, if realized, costs a fork or a swap to a
+   different binding — bounded, recoverable, and localised to one
+   file (`treesitter_typescript.go`).
+
+2. **Our distribution model is the dominant constraint.** The tool
+   ships as `gh extension install` across six OS/arch targets
+   (linux/darwin/windows × amd64/arm64) cross-compiled from a single
+   Linux runner. That is exactly the scenario CGo punishes most. A
+   teaching tool whose install story breaks on one platform is worse
+   than a teaching tool whose parser has an edge-case bug.
+
+3. **The wrapper-maturity gap is smaller than it looks at our
+   scale.** Educational shop code is small, simple, short-lived. The
+   bug classes an immature Go wrapper produces (memory leaks over
+   long sessions, goroutine races at high concurrency, API
+   papercuts) do not get exercised by a CLI that parses a handful of
+   files per verify cycle and exits. The bug classes that *do*
+   surface (correctness on weird shapes) live in the parser, and the
+   parser is upstream-equivalent.
+
+4. **Reversibility favors WASM.** If `malivvan/tree-sitter` rots,
+   the escape hatches are: fork it (it is small), swap to a
+   roll-your-own thin Wazero wrapper around `tree-sitter.wasm` (~few
+   hundred lines, feasible), or revisit CGo *then* with concrete
+   evidence. If we go CGo now and regret the CI cost, undoing it is
+   harder — CI assumptions accrete around per-OS toolchains.
+
+**Pure-Go reimplementation rejected.**
+[`odvcencio/gotreesitter`](https://github.com/odvcencio/gotreesitter)
+(GLR reimplementation in Go, embedded grammars) was considered. Two
+problems: single author with AI-generated authorship concerns flagged
+on HN, and a separate grammar pipeline that can drift from upstream.
+The malivvan path keeps the canonical upstream parser; gotreesitter
+forks it.
+
+**Roll-our-own thin Wazero wrapper.** Considered as a fallback if
+malivvan stalls. Feasible (~few hundred lines around
+`tree-sitter.wasm` and the query API), but writing infrastructure
+that should arguably be a community library, for a tool of this
+scope, is hard to justify *now*.
+
+**Operational guardrails:**
+
+- **Pin `malivvan/tree-sitter` tightly** in `go.mod`. Pre-release
+  software with low star count deserves a pinned version and an
+  explicit upgrade ritual, not `@latest`. Record the chosen version
+  in this plan when the dependency is added.
+- **Verify the bundled WASM blob's upstream lineage** at integration
+  time — confirm malivvan's WASM is built from a recent upstream
+  tree-sitter release, not a long-stale fork. If the lag is large,
+  the roll-our-own option becomes more attractive.
+- **Fix the stale package reference in the saved escalation-policy
+  memory.** The memory currently says `github.com/wasilibs/...`; the
+  actual library is `github.com/malivvan/tree-sitter`. (`wasilibs`
+  ships related Wazero helpers but no tree-sitter wrapper.)
 
 ## What's in scope (TS only)
 
@@ -140,8 +199,11 @@ Concretely:
      decorators are stage-3 but shop code may use them; the
      tree-sitter query should not be tripped by them.
 3. Add a benchmark `BenchmarkTreeSitterIndex_TypeScript` over a fixture
-   resembling a small shop's TS tree (~50 files). Confirms the WASM
-   backend stays sub-second; if it doesn't, flag before proceeding.
+   resembling a small shop's TS tree (~50 files). WASM via Wazero is
+   roughly 3–5× slower per parse than native CGo, but on shop-sized
+   inputs verify-cycle latency is dominated by test runs, not parsing
+   — sub-second is the expectation. Sanity-check coverage, not a
+   load-bearing gate.
 
 ## Out of scope
 
@@ -159,27 +221,36 @@ Concretely:
 
 ## Order of operations
 
-1. Verify `wasilibs/go-tree-sitter` (or compatible) ships a TypeScript
-   grammar. If not, surface CGo trade-off and pause for decision.
-2. Refactor: add `MethodIndexer` / `CallerFinder` function-pointer
+1. Refactor: add `MethodIndexer` / `CallerFinder` function-pointer
    fields to the layout struct, wire all three layouts (TS, Java, C#)
-   to their existing regex implementations. Confirm all existing tests
-   still pass — pure refactor, no behaviour change.
-3. Implement `treesitter_typescript.go`: parse, query, emit
-   `methodRegion` and call-site offsets compatible with the existing
-   pipeline.
-4. Swap the TS layout's wiring to use the tree-sitter functions; delete
-   the TS regex closures in the same change. Java and C# layouts
-   untouched. Run the full test suite — every existing TS test must
-   pass without modification (parity gate).
-5. Add new fixture tests for shapes the regex couldn't parse
+   to their existing regex implementations. Confirm all existing
+   tests still pass — pure refactor, no behaviour change.
+2. Add `github.com/malivvan/tree-sitter` and its TypeScript grammar
+   subpackage as dependencies. Pin to a specific version in `go.mod`
+   (no `@latest`); record the chosen version in this plan. **No CI
+   changes needed** — `CGO_ENABLED=0` stays, single-runner
+   cross-compile to all six targets stays, `scripts/install.sh`
+   stays.
+3. Verify upstream lineage of the bundled WASM blob: inspect
+   `malivvan/tree-sitter`'s build provenance and confirm the WASM is
+   built from a recent upstream tree-sitter release, not a long-stale
+   fork. If the lag is large, escalate to the roll-your-own Wazero
+   wrapper option before sinking implementation work into the
+   malivvan path.
+4. Implement `treesitter_typescript.go`: parse via malivvan, query
+   for method declarations and call sites, emit `methodRegion` and
+   call-site offsets compatible with the existing pipeline.
+5. Swap the TS layout's wiring to use the tree-sitter functions;
+   delete the TS regex closures in the same change. Java and C#
+   layouts untouched. Run the full test suite — every existing TS
+   test must pass without modification (parity gate).
+6. Add new fixture tests for shapes the regex couldn't parse
    (arrow-property class field, multi-line signature, getter/setter,
    decorated method). Confirm they pass under tree-sitter.
-6. Add the WASM backend benchmark. Confirm sub-second on a 50-file
-   fixture.
-7. Build the branch via `scripts/install.sh`. Run a real shop WRITE
+7. Add the tree-sitter index benchmark. Sanity check.
+8. Build the branch via `scripts/install.sh`. Run a real shop WRITE
    cycle that previously hit the `inputSku` failure with
    `ATDD_VERIFY_VERBOSE=1`. Confirm the tracer succeeds with one
    selection per channel, no `WARNING: tracer could not stage`.
-8. Merge. Java and C# slices unblocked at this point — open separate
+9. Merge. Java and C# slices unblocked at this point — open separate
    plans.
