@@ -58,6 +58,13 @@ type layout struct {
 	// file path, marks the test as a contract test. (Falls back to suite
 	// rules.)
 	ContractTestPathHint string
+	// ClassDeclRE matches `class Foo` / `interface Foo` declarations and
+	// captures group 1 = the type name. Used by class-qualification —
+	// each adapter file's parent types (the things after extends /
+	// implements / `:`) and each port file's declared types are extracted
+	// once and intersected so a same-named method on an unrelated port is
+	// not falsely matched.
+	ClassDeclRE *regexp.Regexp
 }
 
 // layouts is keyed by language code: "java" | "dotnet" | "typescript".
@@ -123,6 +130,7 @@ func javaLayout() *layout {
 		},
 		ChannelAnnotationRE:  regexp.MustCompile(`@Channel\s*\(([^)]*)\)`),
 		ContractTestPathHint: "/contract/",
+		ClassDeclRE:          regexp.MustCompile(`\b(?:class|interface|record)\s+(\w+)\b`),
 	}
 }
 
@@ -178,6 +186,7 @@ func dotnetLayout() *layout {
 		},
 		ChannelAnnotationRE:  regexp.MustCompile(`\[Channel\s*\(([^)]*)\)\]`),
 		ContractTestPathHint: "/contract/",
+		ClassDeclRE:          regexp.MustCompile(`\b(?:class|interface|record|struct)\s+(\w+)\b`),
 	}
 }
 
@@ -241,5 +250,6 @@ func typescriptLayout() *layout {
 		// or a describe block tag.
 		ChannelAnnotationRE:  regexp.MustCompile(`@channel\s*\(([^)]*)\)`),
 		ContractTestPathHint: "/contract/",
+		ClassDeclRE:          regexp.MustCompile(`\b(?:class|interface)\s+(\w+)\b`),
 	}
 }

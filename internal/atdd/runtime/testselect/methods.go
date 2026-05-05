@@ -457,6 +457,107 @@ func indexTSTests(file, body string, lay *layout, out map[string][]testHit) {
 	}
 }
 
+// extractDeclaredAndParentTypes scans a class/interface declaration in
+// `body` and returns:
+//
+//	declared — every type name introduced (class Foo, interface Foo, …)
+//	parents  — every type name appearing in an extends / implements / `:`
+//	           clause (with package prefixes stripped)
+//
+// Used by class-qualification: a port whose declaring file's interface
+// name is in some adapter file's parents list is the same logical
+// contract; a port whose declared types do not overlap is a same-named
+// method on an unrelated port and should be filtered out.
+//
+// The parser is permissive: any non-keyword identifier between the type
+// name and the body's opening brace is treated as a parent. Generic
+// blocks (`<T>`) are stripped first so `Foo<T> implements Bar<T>` yields
+// a single `Bar` parent rather than `Bar` plus `T`.
+func extractDeclaredAndParentTypes(body string, lay *layout) (declared, parents []string) {
+	if lay.ClassDeclRE == nil {
+		return nil, nil
+	}
+	matches := lay.ClassDeclRE.FindAllStringSubmatchIndex(body, -1)
+	for _, m := range matches {
+		name := body[m[2]:m[3]]
+		declared = append(declared, name)
+		rest := body[m[3]:]
+		braceIdx := strings.IndexByte(rest, '{')
+		if braceIdx < 0 {
+			continue
+		}
+		parents = append(parents, parseParentNames(rest[:braceIdx])...)
+	}
+	return declared, parents
+}
+
+// parseParentNames extracts identifier tokens from a class/interface
+// header (the text between the type name and the opening brace),
+// dropping structural keywords like `extends` / `implements` / `where`.
+// Generics are stripped before tokenizing.
+func parseParentNames(header string) []string {
+	header = stripGenerics(header)
+	var names []string
+	var cur strings.Builder
+	flush := func() {
+		if cur.Len() == 0 {
+			return
+		}
+		tok := cur.String()
+		cur.Reset()
+		if isParentSeparatorKeyword(tok) {
+			return
+		}
+		if dot := strings.LastIndex(tok, "."); dot >= 0 {
+			tok = tok[dot+1:]
+		}
+		names = append(names, tok)
+	}
+	for i := 0; i < len(header); i++ {
+		c := header[i]
+		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+			(c >= '0' && c <= '9') || c == '_' || c == '.' {
+			cur.WriteByte(c)
+			continue
+		}
+		flush()
+	}
+	flush()
+	return names
+}
+
+func isParentSeparatorKeyword(tok string) bool {
+	switch tok {
+	case "extends", "implements", "where", "by":
+		return true
+	}
+	return false
+}
+
+// stripGenerics removes balanced `<…>` blocks from a string. Non-generic
+// `<` / `>` tokens (e.g. arithmetic) are extremely unlikely in a class
+// header, so this is conservative enough for our use.
+func stripGenerics(s string) string {
+	var out strings.Builder
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch c {
+		case '<':
+			depth++
+		case '>':
+			if depth > 0 {
+				depth--
+			}
+		default:
+			if depth == 0 {
+				out.WriteByte(c)
+			}
+		}
+	}
+	return out.String()
+}
+
 // readQuotedArg reads the first quoted argument from a call expression
 // like `it("foo bar", () => { ... })`. Supports single, double, and
 // backtick quotes.

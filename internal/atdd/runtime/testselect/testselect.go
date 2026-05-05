@@ -158,6 +158,54 @@ func SelectWithDeps(repoRoot, baseRef string, deps *Deps) (Result, error) {
 		testMethods := indexTestMethods(testFiles, lay, deps.Read)
 		adapterMethods := indexMethods(adapterFiles, lay, deps.Read)
 
+		// 2b. Class-qualification indices. Per-file parent-type lists for
+		// adapters and declared-type lists for ports let us narrow port
+		// candidates: a port method matches only when its declaring
+		// interface is in some adapter's implements list. dslFilesByPortType
+		// then narrows callersOf so a same-named method on an unrelated
+		// port doesn't fan out across DSLs that don't actually inject it.
+		adapterParentsByFile := map[string][]string{}
+		for _, f := range adapterFiles {
+			body, err := deps.Read("", f)
+			if err != nil {
+				continue
+			}
+			_, parents := extractDeclaredAndParentTypes(string(body), lay)
+			if len(parents) > 0 {
+				adapterParentsByFile[f] = parents
+			}
+		}
+		portDeclaredByFile := map[string][]string{}
+		for _, f := range portFiles {
+			body, err := deps.Read("", f)
+			if err != nil {
+				continue
+			}
+			declared, _ := extractDeclaredAndParentTypes(string(body), lay)
+			if len(declared) > 0 {
+				portDeclaredByFile[f] = declared
+			}
+		}
+		dslFilesByPortType := map[string]map[string]bool{}
+		for _, f := range dslFiles {
+			body, err := deps.Read("", f)
+			if err != nil {
+				continue
+			}
+			text := string(body)
+			for _, types := range portDeclaredByFile {
+				for _, portType := range types {
+					if !strings.Contains(text, portType) {
+						continue
+					}
+					if dslFilesByPortType[portType] == nil {
+						dslFilesByPortType[portType] = map[string]bool{}
+					}
+					dslFilesByPortType[portType][f] = true
+				}
+			}
+		}
+
 		// 3. For each changed adapter method, find DSL methods reachable
 		//    through any port that names that method.
 		dslSet := map[string]bool{} // DSL method names that any changed adapter is reachable through
@@ -182,9 +230,21 @@ func SelectWithDeps(repoRoot, baseRef string, deps *Deps) (Result, error) {
 
 			anyDSL := false
 			for _, effName := range effective {
-				ports := portMethods.byName[effName]
+				candidates := portMethods.byName[effName]
+				ports := classQualifyPortCandidates(
+					effName, candidates, adapterMethods, adapterParentsByFile, portDeclaredByFile,
+				)
+				if len(ports) > 0 && len(ports) < len(candidates) {
+					res.Diagnostics = append(res.Diagnostics,
+						fmt.Sprintf("port method %q narrowed by class qualification: %d → %d candidate(s)",
+							effName, len(candidates), len(ports)))
+				}
+				if len(ports) == 0 {
+					ports = candidates
+				}
 				for _, p := range ports {
-					callers := callersOf(p.Method, dslFiles, dslMethods, lay, deps.Read)
+					narrowedDSL := narrowDSLByPortType(dslFiles, dslFilesByPortType, portDeclaredByFile[p.File])
+					callers := callersOf(p.Method, narrowedDSL, dslMethods, lay, deps.Read)
 					if len(callers) == 0 {
 						continue
 					}

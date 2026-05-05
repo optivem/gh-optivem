@@ -154,6 +154,69 @@ func resolveAdapterToPortBackedMethods(
 	return out
 }
 
+// classQualifyPortCandidates narrows port matches by interface
+// compatibility. A port record survives only if its declaring file's
+// interface name is in the implements / extends / `:` parents list of
+// some adapter file that declares `methodName`. Returns nil when no
+// candidate survives — the caller falls back to the unfiltered list so
+// fixtures and corner cases without parseable class info keep working.
+func classQualifyPortCandidates(
+	methodName string,
+	candidates []methodRecord,
+	adapterMethods *methodIndex,
+	adapterParentsByFile map[string][]string,
+	portDeclaredByFile map[string][]string,
+) []methodRecord {
+	parentSet := map[string]bool{}
+	for _, rec := range adapterMethods.byName[methodName] {
+		for _, p := range adapterParentsByFile[rec.File] {
+			parentSet[p] = true
+		}
+	}
+	if len(parentSet) == 0 {
+		return nil
+	}
+	var out []methodRecord
+	for _, c := range candidates {
+		for _, decl := range portDeclaredByFile[c.File] {
+			if parentSet[decl] {
+				out = append(out, c)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// narrowDSLByPortType returns the subset of `dslFiles` that mention any
+// of the given port type names. Used to skip DSLs that don't actually
+// inject the port whose method we're chasing — without this, a regex
+// match on `port.foo(` in an unrelated DSL fans out into tests that have
+// nothing to do with the change. Falls back to the full list when no DSL
+// mentions any port type (treats as "type info unparseable, behave as
+// before").
+func narrowDSLByPortType(dslFiles []string, dslByPortType map[string]map[string]bool, portTypes []string) []string {
+	if len(portTypes) == 0 {
+		return dslFiles
+	}
+	union := map[string]bool{}
+	for _, t := range portTypes {
+		for f := range dslByPortType[t] {
+			union[f] = true
+		}
+	}
+	if len(union) == 0 {
+		return dslFiles
+	}
+	var out []string
+	for _, f := range dslFiles {
+		if union[f] {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 // transitiveDSLClosure expands the DSL set to include any DSL method that
 // (transitively) calls a method already in the set. Returns the expanded
 // set. The input set is not mutated.

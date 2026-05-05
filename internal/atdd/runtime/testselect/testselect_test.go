@@ -726,6 +726,88 @@ public class RegisterCustomerDsl {
 	}
 }
 
+func TestSelect_ClassQualifiedPortMatch_DisambiguatesOverload(t *testing.T) {
+	// Two unrelated ports both declare a method named `register`. When
+	// the customer adapter changes, the selector should resolve only the
+	// customer chain — class qualification narrows the port lookup to
+	// RegisterCustomerPort (the interface the adapter implements), and
+	// dsl-file-by-port-type narrowing keeps RegisterOrderDsl out of the
+	// caller search even though it also has `port.register(`.
+	const portB = `package com.mycompany.myshop.testkit.driver.port.myshop;
+public interface RegisterOrderPort {
+  void register(int orderId);
+}
+`
+	const dslB = `package com.mycompany.myshop.testkit.dsl.core.usecase.myshop;
+public class RegisterOrderDsl {
+  private final RegisterOrderPort port;
+  public RegisterOrderDsl(RegisterOrderPort port) {
+    this.port = port;
+  }
+  public void registerOrder(int id) {
+    port.register(id);
+  }
+}
+`
+	const testB = `package com.mycompany.myshop.systemtest.latest.acceptance;
+public class RegisterOrderTest {
+  @TestTemplate
+  @Channel({ChannelType.API})
+  public void shouldRegisterOrder() {
+    dsl.registerOrder(1);
+  }
+}
+`
+	files := map[string]string{
+		adapterPath: javaAdapter, // implements RegisterCustomerPort
+		portPath:    javaPort,    // RegisterCustomerPort.register(String)
+		"system-test/java/src/main/java/com/mycompany/myshop/testkit/driver/port/myshop/RegisterOrderPort.java":     portB,
+		dslPath: javaDSL, // RegisterCustomerDsl uses RegisterCustomerPort
+		"system-test/java/src/main/java/com/mycompany/myshop/testkit/dsl/core/usecase/myshop/RegisterOrderDsl.java": dslB,
+		"system-test/java/src/test/java/com/mycompany/myshop/systemtest/latest/acceptance/RegisterCustomerPositiveTest.java": javaTest,
+		"system-test/java/src/test/java/com/mycompany/myshop/systemtest/latest/acceptance/RegisterOrderTest.java":             testB,
+	}
+	diff := diffBlock(adapterPath, "@@ -4,1 +4,1 @@")
+
+	res, err := SelectWithDeps("repo", "HEAD", makeDeps(diff, files))
+	if err != nil {
+		t.Fatalf("Select: %v", err)
+	}
+	if len(res.Unmapped) != 0 {
+		t.Errorf("unmapped: %v", res.Unmapped)
+	}
+	var got []string
+	for _, s := range res.Selections {
+		got = append(got, s.Tests...)
+	}
+	sort.Strings(got)
+	containsTest := func(slice []string, v string) bool {
+		for _, x := range slice {
+			if x == v {
+				return true
+			}
+		}
+		return false
+	}
+	if !containsTest(got, "RegisterCustomerPositiveTest.shouldRegister") {
+		t.Errorf("expected customer test in selection, got %v; diag: %v", got, res.Diagnostics)
+	}
+	if containsTest(got, "RegisterOrderTest.shouldRegisterOrder") {
+		t.Errorf("did NOT expect order test (overload fusion); got %v; diag: %v",
+			got, res.Diagnostics)
+	}
+	// Diagnostic should mention the qualification narrowing.
+	hasNarrowDiag := false
+	for _, d := range res.Diagnostics {
+		if strings.Contains(d, "narrowed by class qualification") {
+			hasNarrowDiag = true
+		}
+	}
+	if !hasNarrowDiag {
+		t.Errorf("expected class-qualification diagnostic, got %v", res.Diagnostics)
+	}
+}
+
 func TestSelect_DotNet_HappyPath(t *testing.T) {
 	files := map[string]string{
 		"system-test/dotnet/Driver.Adapter/MyShop/Api/CustomerApiAdapter.cs": `namespace MyCompany.MyShop.Testkit.Driver.Adapter.MyShop.Api;
