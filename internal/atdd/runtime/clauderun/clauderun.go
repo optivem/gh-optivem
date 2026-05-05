@@ -28,6 +28,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -104,6 +105,20 @@ type Options struct {
 	// Autonomous — when true, run via `claude -p` (one-shot, headless).
 	// When false, run interactively so the operator can observe / interject.
 	Autonomous bool
+
+	// PromptLogPath, when non-empty, is the file path Dispatch writes the
+	// rendered prompt to (creating parent dirs as needed) before invoking
+	// the runner. The driver computes a per-run-and-dispatch path so the
+	// log persists after the run, unlike the materializePrompt tempfile
+	// (deleted on dispatch exit). I/O failure is a non-fatal warning to
+	// Stderr — diagnostics shouldn't break the dispatch.
+	PromptLogPath string
+
+	// ShowPrompt, when true, dumps the full rendered prompt to Stdout
+	// between the prepared-prompt summary banner and the ENTERING AGENT
+	// banner. Off by default; useful for debugging template edits or
+	// auditing a new agent's body.
+	ShowPrompt bool
 
 	// RepoPath is the working directory the subprocess runs in (and the
 	// directory git rev-parse / git log query). Empty → current cwd.
@@ -210,6 +225,17 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) error {
 		if err != nil {
 			return fmt.Errorf("clauderun: render prompt: %w", err)
 		}
+		if leftovers := findUnfilledPlaceholders(prompt); len(leftovers) > 0 {
+			return fmt.Errorf(
+				"clauderun: prompt has unfilled placeholders after substitution: %s\n  this usually means the field was not seeded into Context.State before dispatch — check seedScopeState and preResolveIssue",
+				strings.Join(leftovers, ", "))
+		}
+	}
+
+	if opts.PromptLogPath != "" {
+		if err := writePromptLog(opts.PromptLogPath, prompt); err != nil {
+			fmt.Fprintf(opts.Stderr, "clauderun: warning: failed to write prompt log %s: %v\n", opts.PromptLogPath, err)
+		}
 	}
 
 	preState, err := snapshotRepo(ctx, deps.Git, opts.RepoPath)
@@ -217,6 +243,10 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) error {
 		return fmt.Errorf("clauderun: snapshot before dispatch: %w", err)
 	}
 
+	writePreparedPromptBanner(opts, prompt)
+	if opts.ShowPrompt {
+		fmt.Fprintln(opts.Stdout, prompt)
+	}
 	writeEnterBanner(opts)
 	startedAt := nowFn()
 
@@ -269,6 +299,49 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) error {
 // nowFn is a package-level seam so tests can pin elapsed time in banner
 // output. Production points at time.Now.
 var nowFn = time.Now
+
+// unfilledPlaceholderRE matches a `${name}` token that survived
+// renderPrompt's substitution pass. Matches a leading `$`, an opening
+// brace, an identifier, and a closing brace — same shape ExpandParams
+// recognises on the way in. Anchoring is intentional: substring
+// like `\$amount{}` doesn't match (the `${` is split), and that is the
+// correct behaviour because it isn't a placeholder.
+var unfilledPlaceholderRE = regexp.MustCompile(`\$\{[a-zA-Z_][a-zA-Z0-9_]*\}`)
+
+// findUnfilledPlaceholders returns each distinct `${name}` token still
+// present in the rendered prompt, preserving first-seen order. Empty
+// slice means "no leftovers — every placeholder was substituted".
+//
+// This is the smallest correct guardrail against the wires-crossed
+// substitution bug class: any field the prompt template references but
+// the dispatcher never seeded into Context.State (or Options) shows up
+// here, and Dispatch refuses to launch. A per-field schema would be
+// more work and duplicate information already encoded in the template.
+func findUnfilledPlaceholders(s string) []string {
+	matches := unfilledPlaceholderRE.FindAllString(s, -1)
+	seen := map[string]bool{}
+	var out []string
+	for _, m := range matches {
+		if seen[m] {
+			continue
+		}
+		seen[m] = true
+		out = append(out, m)
+	}
+	return out
+}
+
+// writePromptLog writes the rendered prompt to path, creating parent
+// directories as needed. Used by Dispatch when Options.PromptLogPath is
+// set so the operator has a persistent record of what the agent was
+// asked to do — independent of materializePrompt's tempfile, which is
+// deleted on dispatch exit.
+func writePromptLog(path, prompt string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(prompt), 0o644)
+}
 
 // renderPrompt reads the embedded prompt for opts.Agent (or opts.PromptOverride
 // when non-empty), expands ${name} placeholders against the ticket context,
@@ -547,6 +620,107 @@ func (c *cappedBuffer) Bytes() []byte { return c.buf.Bytes() }
 // ---------------------------------------------------------------------------
 
 const banner = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+// writePreparedPromptBanner prints a structured summary of the prompt
+// the runner is about to receive. Always emitted (the noise cost is
+// trivial vs. the bug class it catches: empty substitution fields like
+// "architecture: " or "allowed roots: (empty)" become visible at a
+// glance instead of bleeding into a multi-tree edit blowout).
+//
+// In RawPrompt mode every introspection field is meaningless (the
+// operator deliberately swapped the templated body), so the banner
+// degrades to a one-line `override mode — N bytes` notice.
+func writePreparedPromptBanner(opts Options, prompt string) {
+	cyan := color.New(color.FgCyan)
+	w := opts.Stdout
+	fmt.Fprintln(w, cyan.Sprint(banner))
+	if opts.RawPrompt != "" {
+		fmt.Fprintln(w, cyan.Sprintf("📋 PREPARED PROMPT for %s  (override mode — %s)",
+			opts.Agent, formatPromptSize(len(prompt))))
+		fmt.Fprintln(w, cyan.Sprint(banner))
+		return
+	}
+	fmt.Fprintln(w, cyan.Sprintf("📋 PREPARED PROMPT for %s", opts.Agent))
+	fmt.Fprintln(w, cyan.Sprintf("   size:           %s", formatPromptSize(len(prompt))))
+	fmt.Fprintln(w, cyan.Sprintf("   architecture:   %s", orPlaceholderClauderun(opts.Architecture, "(empty)")))
+	fmt.Fprintln(w, cyan.Sprintf("   allowed roots:  %s", summarizeAllowedRoots(opts.AllowedRoots)))
+	fmt.Fprintln(w, cyan.Sprintf("   checklist:      %s", summarizeChecklist(opts.Checklist)))
+	fmt.Fprintln(w, cyan.Sprintf("   override text:  %s", orPlaceholderClauderun(opts.OverrideText, "(none)")))
+	fmt.Fprintln(w, cyan.Sprintf("   log:            %s", orPlaceholderClauderun(opts.PromptLogPath, "(none)")))
+	fmt.Fprintln(w, cyan.Sprint(banner))
+}
+
+func orPlaceholderClauderun(s, placeholder string) string {
+	if s == "" {
+		return placeholder
+	}
+	return s
+}
+
+func formatPromptSize(n int) string {
+	if n < 1024 {
+		return fmt.Sprintf("%d B", n)
+	}
+	return fmt.Sprintf("%.1f KB", float64(n)/1024)
+}
+
+// summarizeAllowedRoots reduces the multi-line ${allowed_roots} block
+// to a one-line count for the banner. Counts `- ` prefix lines, split
+// across system-tier vs external-systems sections (the heading
+// "External-system roots" marks the boundary as written by
+// renderAllowedRoots in the driver). Empty input → "(empty)".
+func summarizeAllowedRoots(s string) string {
+	if s == "" {
+		return "(empty)"
+	}
+	var main, ext int
+	inExternal := false
+	for line := range strings.SplitSeq(s, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "External-system roots") {
+			inExternal = true
+			continue
+		}
+		if strings.HasPrefix(trimmed, "- ") {
+			if inExternal {
+				ext++
+			} else {
+				main++
+			}
+		}
+	}
+	if main+ext == 0 {
+		return "(empty)"
+	}
+	if ext == 0 {
+		return fmt.Sprintf("%d path(s)", main)
+	}
+	return fmt.Sprintf("%d path(s), %d external", main, ext)
+}
+
+// summarizeChecklist counts checklist items in the ${checklist} block.
+// Recognises `- [ ]` and `- [x]` / `- [X]` rows; lines that are not
+// markdown task rows are ignored. Empty input → "(empty)".
+func summarizeChecklist(s string) string {
+	if s == "" {
+		return "(empty)"
+	}
+	total, checked := 0, 0
+	for line := range strings.SplitSeq(s, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "- [") || len(trimmed) < 6 {
+			continue
+		}
+		total++
+		if trimmed[3] == 'x' || trimmed[3] == 'X' {
+			checked++
+		}
+	}
+	if total == 0 {
+		return "(empty)"
+	}
+	return fmt.Sprintf("%d item(s) (%d already [x])", total, checked)
+}
 
 func writeEnterBanner(opts Options) {
 	cyan := color.New(color.FgCyan, color.Bold)

@@ -117,6 +117,8 @@ func newAtddImplementTicketCmd() *cobra.Command {
 		configPath       string
 		logFile          string
 		repoDirPairs     []string
+		keepRuns         int
+		showPrompt       bool
 	)
 	cmd := &cobra.Command{
 		Use:   "implement-ticket",
@@ -129,7 +131,9 @@ func newAtddImplementTicketCmd() *cobra.Command {
   gh optivem atdd implement-ticket --issue 42 --agent-prompt atdd-test=./prompts/atdd-test.md
   gh optivem atdd implement-ticket --issue 42 --config ./optivem-multitier.yaml
   gh optivem atdd implement-ticket --issue 42 --repo-dir optivem/shop=/abs/path/to/shop
-  gh optivem atdd implement-ticket --issue 42 --log-file run.log`,
+  gh optivem atdd implement-ticket --issue 42 --log-file run.log
+  gh optivem atdd implement-ticket --issue 42 --show-prompt
+  gh optivem atdd implement-ticket --issue 42 --keep-runs 0   # never prune`,
 		Run: func(cmd *cobra.Command, args []string) {
 			issue, err := parseIssueArg(issueArg)
 			exitOnError(err)
@@ -139,6 +143,7 @@ func newAtddImplementTicketCmd() *cobra.Command {
 			exitOnError(err)
 			repoDirs, err := repolocator.ParseRepoDirFlag(repoDirPairs)
 			exitOnError(err)
+			exitOnError(validateKeepRuns(keepRuns))
 			exitOnError(runImplementTicketPreflight(configPath, repoDirs))
 			exitOnError(driver.Run(context.Background(), driver.Options{
 				IssueNum:             issue,
@@ -150,6 +155,8 @@ func newAtddImplementTicketCmd() *cobra.Command {
 				AgentPromptOverrides: promptOverrides,
 				ConfigPath:           configPath,
 				LogFile:              logFile,
+				KeepRuns:             keepRuns,
+				ShowPrompt:           showPrompt,
 			}))
 		},
 	}
@@ -165,7 +172,18 @@ func newAtddImplementTicketCmd() *cobra.Command {
 	cmd.Flags().StringVar(&configPath, "config", "", "Path to a project config override (defaults to <repoPath>/gh-optivem.yaml)")
 	cmd.Flags().StringSliceVar(&repoDirPairs, "repo-dir", nil, "Per-repo local-clone path override, repeatable (e.g. --repo-dir optivem/shop=/abs/path/to/shop). Otherwise resolved via $GH_OPTIVEM_WORKSPACE then sibling-dir convention.")
 	cmd.Flags().StringVar(&logFile, "log-file", "", "Mirror everything stdout/stderr emit during the run to this file (in addition to streaming live)")
+	cmd.Flags().IntVar(&keepRuns, "keep-runs", 10, "Max prompt-log run directories to keep under .gh-optivem/runs/ at startup (0 = never prune)")
+	cmd.Flags().BoolVar(&showPrompt, "show-prompt", false, "Dump each agent's full rendered prompt to stdout before dispatch (default: summary banner only)")
 	return cmd
+}
+
+// validateKeepRuns surfaces the documented "negative values are rejected"
+// rule at flag-parse time. 0 is allowed (means "never prune").
+func validateKeepRuns(n int) error {
+	if n < 0 {
+		return fmt.Errorf("--keep-runs must be >= 0 (got %d); use 0 to disable pruning", n)
+	}
+	return nil
 }
 
 // runImplementTicketPreflight loads the consumer's gh-optivem.yaml (if
@@ -209,6 +227,8 @@ func newAtddManageProjectCmd() *cobra.Command {
 		agentPromptPairs []string
 		configPath       string
 		logFile          string
+		keepRuns         int
+		showPrompt       bool
 	)
 	cmd := &cobra.Command{
 		Use:   "manage-project",
@@ -222,6 +242,7 @@ func newAtddManageProjectCmd() *cobra.Command {
 			exitOnError(err)
 			promptOverrides, err := parseAgentPromptPairs(agentPromptPairs)
 			exitOnError(err)
+			exitOnError(validateKeepRuns(keepRuns))
 			exitOnError(driver.Run(context.Background(), driver.Options{
 				ProjectURL:           projectURL,
 				Autonomous:           autonomous,
@@ -231,6 +252,8 @@ func newAtddManageProjectCmd() *cobra.Command {
 				AgentPromptOverrides: promptOverrides,
 				ConfigPath:           configPath,
 				LogFile:              logFile,
+				KeepRuns:             keepRuns,
+				ShowPrompt:           showPrompt,
 			}))
 		},
 	}
@@ -244,6 +267,8 @@ func newAtddManageProjectCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&agentPromptPairs, "agent-prompt", nil, "Override one named agent prompt, repeatable (e.g. --agent-prompt atdd-test=./prompts/atdd-test.md)")
 	cmd.Flags().StringVar(&configPath, "config", "", "Path to a project config override (defaults to <repoPath>/gh-optivem.yaml)")
 	cmd.Flags().StringVar(&logFile, "log-file", "", "Mirror everything stdout/stderr emit during the run to this file (in addition to streaming live)")
+	cmd.Flags().IntVar(&keepRuns, "keep-runs", 10, "Max prompt-log run directories to keep under .gh-optivem/runs/ at startup (0 = never prune)")
+	cmd.Flags().BoolVar(&showPrompt, "show-prompt", false, "Dump each agent's full rendered prompt to stdout before dispatch (default: summary banner only)")
 	return cmd
 }
 
