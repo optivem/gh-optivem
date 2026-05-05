@@ -39,7 +39,7 @@ func TestLoadSnapshot_AllFlowsParse(t *testing.T) {
 	eng := loadSnapshot(t)
 	wantFlows := []string{
 		"main",
-		"intake",
+		"github_intake",
 		"run_legacy_cycle",
 		"run_cycle",
 		"at_cycle",
@@ -138,21 +138,22 @@ var transitionTable = []transitionCase{
 	// service-task pipeline (classify ticket, classify subtype, parse body)
 	// with two STOPs for unhappy paths (classification conflict, parse
 	// error). No LLM dispatch — no agent fan-out by ticket type.
-	{flow: "intake", from: "CLASSIFY", wantTo: "GATE_CLASSIFY_CONFIDENT"},
-	{flow: "intake", from: "GATE_CLASSIFY_CONFIDENT", state: map[string]any{"classify_confident": true}, wantTo: "GATE_NEEDS_SUBTYPE"},
-	{flow: "intake", from: "GATE_CLASSIFY_CONFIDENT", state: map[string]any{"classify_confident": false}, wantTo: "STOP_CLASSIFY_CONFLICT"},
-	{flow: "intake", from: "STOP_CLASSIFY_CONFLICT", wantTo: "CLASSIFY"},
-	{flow: "intake", from: "GATE_NEEDS_SUBTYPE", state: map[string]any{"ticket_type": "task"}, wantTo: "CLASSIFY_SUBTYPE"},
-	{flow: "intake", from: "GATE_NEEDS_SUBTYPE", state: map[string]any{"ticket_type": "story"}, wantTo: "PARSE_BODY"},
-	{flow: "intake", from: "GATE_NEEDS_SUBTYPE", state: map[string]any{"ticket_type": "bug"}, wantTo: "PARSE_BODY"},
-	{flow: "intake", from: "CLASSIFY_SUBTYPE", wantTo: "GATE_SUBTYPE_OK"},
-	{flow: "intake", from: "GATE_SUBTYPE_OK", state: map[string]any{"subtype_ok": true}, wantTo: "PARSE_BODY"},
-	{flow: "intake", from: "GATE_SUBTYPE_OK", state: map[string]any{"subtype_ok": false}, wantTo: "STOP_SUBTYPE_MISSING"},
-	{flow: "intake", from: "STOP_SUBTYPE_MISSING", wantTo: "CLASSIFY_SUBTYPE"},
-	{flow: "intake", from: "PARSE_BODY", wantTo: "GATE_PARSE_OK"},
-	{flow: "intake", from: "GATE_PARSE_OK", state: map[string]any{"parse_ok": true}, wantTo: "INTAKE_END"},
-	{flow: "intake", from: "GATE_PARSE_OK", state: map[string]any{"parse_ok": false}, wantTo: "STOP_PARSE_ERROR"},
-	{flow: "intake", from: "STOP_PARSE_ERROR", wantTo: "PARSE_BODY"},
+	{flow: "github_intake", from: "CLASSIFY", wantTo: "GATE_CLASSIFY_CONFIDENT"},
+	{flow: "github_intake", from: "GATE_CLASSIFY_CONFIDENT", state: map[string]any{"ticket_type_recognized": true}, wantTo: "GATE_TICKET_TYPE_INTAKE"},
+	{flow: "github_intake", from: "GATE_CLASSIFY_CONFIDENT", state: map[string]any{"ticket_type_recognized": false}, wantTo: "STOP_CLASSIFY_CONFLICT"},
+	{flow: "github_intake", from: "STOP_CLASSIFY_CONFLICT", wantTo: "CLASSIFY"},
+	{flow: "github_intake", from: "GATE_TICKET_TYPE_INTAKE", state: map[string]any{"ticket_type": "story"}, wantTo: "PARSE_BODY"},
+	{flow: "github_intake", from: "GATE_TICKET_TYPE_INTAKE", state: map[string]any{"ticket_type": "bug"}, wantTo: "PARSE_BODY"},
+	{flow: "github_intake", from: "GATE_TICKET_TYPE_INTAKE", state: map[string]any{"ticket_type": "task"}, wantTo: "CLASSIFY_SUBTYPE"},
+	{flow: "github_intake", from: "CLASSIFY_SUBTYPE", wantTo: "GATE_SUBTYPE_OK"},
+	{flow: "github_intake", from: "GATE_SUBTYPE_OK", state: map[string]any{"subtype_ok": true}, wantTo: "PARSE_BODY"},
+	{flow: "github_intake", from: "GATE_SUBTYPE_OK", state: map[string]any{"subtype_ok": false}, wantTo: "STOP_SUBTYPE_MISSING"},
+	{flow: "github_intake", from: "STOP_SUBTYPE_MISSING", wantTo: "CLASSIFY_SUBTYPE"},
+	{flow: "github_intake", from: "PARSE_BODY", wantTo: "GATE_PARSE_OK"},
+	{flow: "github_intake", from: "GATE_PARSE_OK", state: map[string]any{"parse_ok": true}, wantTo: "REPORT_INTAKE_SUMMARY"},
+	{flow: "github_intake", from: "GATE_PARSE_OK", state: map[string]any{"parse_ok": false}, wantTo: "STOP_PARSE_ERROR"},
+	{flow: "github_intake", from: "STOP_PARSE_ERROR", wantTo: "PARSE_BODY"},
+	{flow: "github_intake", from: "REPORT_INTAKE_SUMMARY", wantTo: "INTAKE_END"},
 
 	// ---- run_legacy_cycle ----
 	// Backfill cycle for legacy acceptance criteria. Self-contained: gates internally on
@@ -162,26 +163,24 @@ var transitionTable = []transitionCase{
 	{flow: "run_legacy_cycle", from: "LEGACY_CYCLE", wantTo: "RUN_LEGACY_END"},
 
 	// ---- run_cycle ----
-	// Change cycle dispatch — gates on ticket_type first (story/bug → AT,
-	// task → subtype gate) then on subtype for tasks. Three top-level
-	// cycles: AT_CYCLE (behavioral), DA_CYCLE (interface redesign — system
-	// or external), SUT_CYCLE (system-implementation-change).
-	{flow: "run_cycle", from: "GATE_TICKET_TYPE", state: map[string]any{"ticket_type": "story"}, wantTo: "AT_CYCLE"},
-	{flow: "run_cycle", from: "GATE_TICKET_TYPE", state: map[string]any{"ticket_type": "bug"}, wantTo: "AT_CYCLE"},
-	{flow: "run_cycle", from: "GATE_TICKET_TYPE", state: map[string]any{"ticket_type": "task"}, wantTo: "GATE_SUBTYPE"},
-	{flow: "run_cycle", from: "GATE_SUBTYPE", state: map[string]any{"subtype": "system-interface-redesign"}, wantTo: "DA_CYCLE"},
-	{flow: "run_cycle", from: "GATE_SUBTYPE", state: map[string]any{"subtype": "external-system-interface-redesign"}, wantTo: "DA_CYCLE"},
-	{flow: "run_cycle", from: "GATE_SUBTYPE", state: map[string]any{"subtype": "system-implementation-change"}, wantTo: "SUT_CYCLE"},
+	// Change cycle dispatch — single-axis gate on the derived `change_type`.
+	// Four branches: AT_CYCLE (behavioral), DA_CYCLE (system /
+	// external-system interface redesign), SUT_CYCLE
+	// (system-implementation-change).
+	{flow: "run_cycle", from: "GATE_CHANGE_TYPE", state: map[string]any{"change_type": "behavioral"}, wantTo: "AT_CYCLE"},
+	{flow: "run_cycle", from: "GATE_CHANGE_TYPE", state: map[string]any{"change_type": "system-interface-redesign"}, wantTo: "DA_CYCLE"},
+	{flow: "run_cycle", from: "GATE_CHANGE_TYPE", state: map[string]any{"change_type": "external-system-interface-redesign"}, wantTo: "DA_CYCLE"},
+	{flow: "run_cycle", from: "GATE_CHANGE_TYPE", state: map[string]any{"change_type": "system-implementation-change"}, wantTo: "SUT_CYCLE"},
 	{flow: "run_cycle", from: "AT_CYCLE", wantTo: "CYCLE_END"},
 	{flow: "run_cycle", from: "DA_CYCLE", wantTo: "CYCLE_END"},
 	{flow: "run_cycle", from: "SUT_CYCLE", wantTo: "CYCLE_END"},
 
 	// ---- da_cycle ----
-	// Driver Adapter cycle. Splits on subtype: system-interface-redesign →
+	// Driver Adapter cycle. Splits on `change_type`: system-interface-redesign →
 	// shared structural_cycle (with the WRITE agent figuring out which
 	// driver to modify); external-system-interface-redesign → ct_subprocess.
-	{flow: "da_cycle", from: "GATE_SUBTYPE", state: map[string]any{"subtype": "system-interface-redesign"}, wantTo: "SYSTEM_INTERFACE_REDESIGN_CYCLE"},
-	{flow: "da_cycle", from: "GATE_SUBTYPE", state: map[string]any{"subtype": "external-system-interface-redesign"}, wantTo: "EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE"},
+	{flow: "da_cycle", from: "GATE_CHANGE_TYPE_DA", state: map[string]any{"change_type": "system-interface-redesign"}, wantTo: "SYSTEM_INTERFACE_REDESIGN_CYCLE"},
+	{flow: "da_cycle", from: "GATE_CHANGE_TYPE_DA", state: map[string]any{"change_type": "external-system-interface-redesign"}, wantTo: "EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE"},
 	{flow: "da_cycle", from: "SYSTEM_INTERFACE_REDESIGN_CYCLE", wantTo: "DA_END"},
 	{flow: "da_cycle", from: "EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE", wantTo: "DA_END"},
 
@@ -363,37 +362,31 @@ func TestGapDecision_SmokeTestFailStopsAtAskSupport(t *testing.T) {
 	}
 }
 
-func TestGapDecision_RunCycleRoutesByTicketTypeThenSubtype(t *testing.T) {
-	// run_cycle gates on ticket_type first (story/bug → AT, task →
-	// subtype gate) and then on subtype for tasks. The deleted intake
-	// agents and the deleted change_type/change_subtype/change_scope/
-	// change_channel fields are gone; classification rides on the issue's
-	// native type and its `subtype:*` label only.
+func TestGapDecision_RunCycleRoutesByChangeType(t *testing.T) {
+	// run_cycle is single-axis: a derived `change_type` decides between
+	// AT / DA / SUT cycles. The previous two-gate (ticket_type →
+	// subtype) shape is collapsed to one. The deleted change_subtype /
+	// change_scope / change_channel fields are gone; the only carried
+	// axis is change_type ∈ {behavioral, system-interface-redesign,
+	// external-system-interface-redesign, system-implementation-change}.
 	eng := loadSnapshot(t)
 	flow := eng.Flows["run_cycle"]
 	if flow == nil {
 		t.Fatalf("run_cycle flow missing")
 	}
-	top, ok := flow.Nodes["GATE_TICKET_TYPE"]
+	top, ok := flow.Nodes["GATE_CHANGE_TYPE"]
 	if !ok {
-		t.Fatalf("GATE_TICKET_TYPE node missing from run_cycle")
+		t.Fatalf("GATE_CHANGE_TYPE node missing from run_cycle")
 	}
-	if top.Kind != Gateway || top.Raw.Binding != "ticket_type" {
-		t.Errorf("GATE_TICKET_TYPE: kind=%v binding=%q, want Gateway/ticket_type", top.Kind, top.Raw.Binding)
-	}
-	sub, ok := flow.Nodes["GATE_SUBTYPE"]
-	if !ok {
-		t.Fatalf("GATE_SUBTYPE node missing from run_cycle")
-	}
-	if sub.Kind != Gateway || sub.Raw.Binding != "subtype" {
-		t.Errorf("GATE_SUBTYPE: kind=%v binding=%q, want Gateway/subtype", sub.Kind, sub.Raw.Binding)
+	if top.Kind != Gateway || top.Raw.Binding != "change_type" {
+		t.Errorf("GATE_CHANGE_TYPE: kind=%v binding=%q, want Gateway/change_type", top.Kind, top.Raw.Binding)
 	}
 	for id, node := range flow.Nodes {
 		if node.Kind != Gateway {
 			continue
 		}
 		switch node.Raw.Binding {
-		case "change_type", "change_subtype", "change_scope", "change_channel":
+		case "change_subtype", "change_scope", "change_channel":
 			t.Errorf("run_cycle gate %q still binds to deprecated %q", id, node.Raw.Binding)
 		}
 	}

@@ -165,7 +165,7 @@ func TestPrintDriftWarning_OnlyPrintsForCompileMode(t *testing.T) {
 			a := newActions(Deps{Stderr: &stderr})
 			ctx := statemachine.NewContext()
 			ctx.Set("structural_test_mode", tc.mode)
-			out := a.printDriftWarning(ctx)
+			out := a.reportDriftWarning(ctx)
 			if out.Err != nil {
 				t.Fatalf("unexpected error: %v", out.Err)
 			}
@@ -321,15 +321,15 @@ func TestClassifyTicketType_NativeIssueType(t *testing.T) {
 			ctx.Set("issue_num", "42")
 			ctx.Set("issue_repo", "optivem/shop")
 
-			out := a.classifyTicketType(ctx)
+			out := a.readTicketType(ctx)
 			if out.Err != nil {
 				t.Fatalf("unexpected error: %v", out.Err)
 			}
 			if got := ctx.GetString("ticket_type"); got != tc.wantTicketType {
 				t.Fatalf("ticket_type: got %q, want %q", got, tc.wantTicketType)
 			}
-			if got := ctx.Get("classify_confident"); got != tc.wantConfident {
-				t.Fatalf("classify_confident: got %v, want %v", got, tc.wantConfident)
+			if got := ctx.Get("ticket_type_recognized"); got != tc.wantConfident {
+				t.Fatalf("ticket_type_recognized: got %v, want %v", got, tc.wantConfident)
 			}
 		})
 	}
@@ -364,16 +364,82 @@ func TestClassifyTicketType_PrintsNamedSections(t *testing.T) {
 	ctx.Set("issue_num", "7")
 	ctx.Set("issue_repo", "optivem/shop")
 
-	out := a.classifyTicketType(ctx)
+	out := a.readTicketType(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
 	got := stdout.String()
 	for _, want := range []string{
-		"Classified #7 as story.",
+		"Read ticket type for #7: story.",
 		"## Legacy Acceptance Criteria\n\n- legacy 1",
 		"## Acceptance Criteria\n\n- AC1\n- AC2",
 		"## Checklist\n\n- [ ] Step",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("stdout missing %q\nfull stdout:\n%s", want, got)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// reportIntakeSummary
+// ---------------------------------------------------------------------------
+
+func TestReportIntakeSummary_PrintsCanonicalLines(t *testing.T) {
+	var stdout bytes.Buffer
+	a := newActions(Deps{Stdout: &stdout})
+	ctx := statemachine.NewContext()
+	ctx.Set("issue_num", "42")
+	ctx.Set("ticket_type", "task")
+	ctx.Set("subtype", "system-interface-redesign")
+	ctx.Set("change_type", "system-interface-redesign")
+	ctx.Set("parsed_section_names", []string{"Checklist", "Legacy Acceptance Criteria"})
+
+	out := a.reportIntakeSummary(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	got := stdout.String()
+	for _, want := range []string{
+		"Intake summary:",
+		"ticket: #42",
+		"ticket_type: task",
+		"subtype: system-interface-redesign",
+		"change_type: system-interface-redesign",
+		"parsed sections: Checklist, Legacy Acceptance Criteria",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("stdout missing %q\nfull stdout:\n%s", want, got)
+		}
+	}
+}
+
+func TestReportIntakeSummary_OmitsFieldsWhenAbsent(t *testing.T) {
+	// Story has no subtype, and change_type may not yet be set in older
+	// callers. The summary should still print without crashing or emitting
+	// blank "subtype: " lines.
+	var stdout bytes.Buffer
+	a := newActions(Deps{Stdout: &stdout})
+	ctx := statemachine.NewContext()
+	ctx.Set("issue_num", "7")
+	ctx.Set("ticket_type", "story")
+	ctx.Set("parsed_section_names", []string{"Acceptance Criteria"})
+
+	out := a.reportIntakeSummary(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	got := stdout.String()
+	if strings.Contains(got, "subtype:") {
+		t.Errorf("stdout should not include subtype line for story:\n%s", got)
+	}
+	if strings.Contains(got, "change_type:") {
+		t.Errorf("stdout should not include change_type line when unset:\n%s", got)
+	}
+	for _, want := range []string{
+		"ticket: #7",
+		"ticket_type: story",
+		"parsed sections: Acceptance Criteria",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("stdout missing %q\nfull stdout:\n%s", want, got)
@@ -397,7 +463,7 @@ func TestClassifySubtype_TaskWithSingleLabel(t *testing.T) {
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "42")
 	ctx.Set("issue_repo", "optivem/shop")
-	out := a.classifySubtype(ctx)
+	out := a.readSubtype(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
@@ -421,7 +487,7 @@ func TestClassifySubtype_MissingLabel_RoutesToStop(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "7")
-	out := a.classifySubtype(ctx)
+	out := a.readSubtype(ctx)
 	if out.Err != nil {
 		t.Fatalf("expected clean Outcome (STOP, not hard error), got: %v", out.Err)
 	}
@@ -445,7 +511,7 @@ func TestClassifySubtype_MultipleLabels_RoutesToStop(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "7")
-	out := a.classifySubtype(ctx)
+	out := a.readSubtype(ctx)
 	if out.Err != nil {
 		t.Fatalf("expected clean Outcome (STOP, not hard error), got: %v", out.Err)
 	}
@@ -946,15 +1012,16 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 	want := []string{
 		"pick_top_ready",
 		"move_to_in_progress",
-		"classify_ticket_type",
-		"classify_subtype",
+		"read_ticket_type",
+		"read_subtype",
 		"parse_ticket_body",
+		"report_intake_summary",
 		"move_to_in_acceptance",
 		"run_smoke_test",
 		"commit_onboarding",
 		"compile_in_scope",
 		"run_sample_suite",
-		"print_drift_warning",
+		"report_drift_warning",
 		"ask_can_i_commit",
 		"commit_phase",
 		"tick_checklist",

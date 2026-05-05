@@ -54,15 +54,17 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 	}
 
 	// implement-ticket mode skips the picker (driver.Run mutates Start).
-	// Pre-seed the routing state intake would set — ticket_type drives the
-	// run_cycle top gate (task → subtype gate); subtype drives both that
-	// run_cycle inner gate and the da_cycle gate; classify_confident +
+	// Pre-seed the routing state intake would derive — change_type drives
+	// both the run_cycle gate and the da_cycle gate; ticket_type +
+	// subtype are kept around so the gates' Context-first short-circuit
+	// works for the upstream intake nodes; ticket_type_recognized +
 	// parse_ok pass intake; structural_test_mode picks the TEST gate.
 	eng.Flows["main"].Start = "MOVE_TO_IN_PROGRESS"
 	ctx := NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("subtype", "system-interface-redesign")
-	ctx.Set("classify_confident", true)
+	ctx.Set("change_type", "system-interface-redesign")
+	ctx.Set("ticket_type_recognized", true)
 	ctx.Set("subtype_ok", true)
 	ctx.Set("parse_ok", true)
 	ctx.Set("legacy_acceptance_criteria_section_present", false)
@@ -79,6 +81,7 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 		"CLASSIFY",
 		"CLASSIFY_SUBTYPE",
 		"PARSE_BODY",
+		"REPORT_INTAKE_SUMMARY",
 		"STRUCT_WRITE",
 		"VERIFY_STRUCT_DRIVER",
 		"STOP_STRUCT_REVIEW",

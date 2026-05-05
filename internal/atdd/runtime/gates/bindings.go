@@ -93,7 +93,8 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("system_driver_interface_changed", b.systemDriverInterfaceChanged)
 	r.Register("ticket_type", b.ticketType)
 	r.Register("subtype", b.subtype)
-	r.Register("classify_confident", b.classifyConfident)
+	r.Register("change_type", b.changeType)
+	r.Register("ticket_type_recognized", b.ticketTypeRecognized)
 	r.Register("subtype_ok", b.subtypeOK)
 	r.Register("parse_ok", b.parseOK)
 	r.Register("legacy_acceptance_criteria_section_present", b.legacyAcceptanceCriteriaSectionPresent)
@@ -159,6 +160,33 @@ func (b bindings) ticketType(ctx *statemachine.Context) statemachine.Outcome {
 	}
 }
 
+// changeType reads the single-axis change-type derived during intake
+// from (ticket_type, subtype). Range: behavioral |
+// system-interface-redesign | external-system-interface-redesign |
+// system-implementation-change. Falls back to a prompt for
+// hand-debugging if the upstream derivation hasn't run.
+func (b bindings) changeType(ctx *statemachine.Context) statemachine.Outcome {
+	v := ctx.GetString("change_type")
+	if v != "" {
+		return statemachine.Outcome{Value: v}
+	}
+	answer, err := b.deps.Prompter.Ask(
+		"Change type? (behavioral | system-interface-redesign | external-system-interface-redesign | system-implementation-change): ")
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("change_type: %w", err)}
+	}
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	switch answer {
+	case "behavioral",
+		"system-interface-redesign",
+		"external-system-interface-redesign",
+		"system-implementation-change":
+		return statemachine.Outcome{Value: answer}
+	default:
+		return statemachine.Outcome{Err: fmt.Errorf("change_type: unrecognised value %q", answer)}
+	}
+}
+
 // subtype reads the structural-change subtype produced by the
 // classify_subtype service task — the trimmed value of the `subtype:*`
 // label on a task ticket. Only reached for tasks; behavioral tickets
@@ -212,14 +240,14 @@ func (b bindings) structuralTestMode(ctx *statemachine.Context) statemachine.Out
 // Boolean gates — backed by upstream actions or one-off prompts
 // ---------------------------------------------------------------------------
 
-// classifyConfident reads the confidence flag set by the classify_ticket_type
-// service task. The action is expected to write `true` when classification
-// is unambiguous and `false` when it needs human resolution. Falls back to a
-// prompt for hand-debugging.
-func (b bindings) classifyConfident(ctx *statemachine.Context) statemachine.Outcome {
+// ticketTypeRecognized reads the recognition flag set by the read_ticket_type
+// service task. The action is expected to write `true` when the ticket's
+// native GitHub type is one of Story / Bug / Task and `false` when it
+// needs human resolution. Falls back to a prompt for hand-debugging.
+func (b bindings) ticketTypeRecognized(ctx *statemachine.Context) statemachine.Outcome {
 	return b.boolGate(ctx,
-		"classify_confident",
-		"Classification confident? [Y/n]: ")
+		"ticket_type_recognized",
+		"Ticket type recognized? [Y/n]: ")
 }
 
 // subtypeOK reads the flag set by the classify_subtype service task.

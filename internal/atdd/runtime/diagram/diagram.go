@@ -30,7 +30,7 @@ import (
 // new flow appears in the YAML.
 var flowAlias = map[string]string{
 	"main":                       "Ticket Lifecycle",
-	"intake":                     "Intake",
+	"github_intake":              "GitHub Intake",
 	"run_legacy_cycle":           "Run Legacy Cycle",
 	"run_cycle":                  "Run Cycle",
 	"at_cycle":                   "AT Cycle",
@@ -61,7 +61,7 @@ var groupAlias = map[string]string{
 // listed here come last in lexical order.
 var flowOrder = []string{
 	"main",
-	"intake",
+	"github_intake",
 	"run_legacy_cycle",
 	"run_cycle",
 	"at_cycle",
@@ -162,8 +162,35 @@ func writeFlowSection(b *strings.Builder, name string, flow *statemachine.Flow) 
 		writeEdge(b, e)
 	}
 
+	writeOutputsBlock(b, name, flow)
 	writeExecutorStyling(b, flow)
 	b.WriteString("```\n\n")
+}
+
+// writeOutputsBlock emits a BPMN-style data-object node listing the
+// flow's published outputs and a dashed `produces` edge from every
+// reachable end_event to that node. No-op when the flow has no
+// outputs declared.
+func writeOutputsBlock(b *strings.Builder, name string, flow *statemachine.Flow) {
+	if len(flow.Outputs) == 0 {
+		return
+	}
+	outputsNodeID := strings.ToUpper(name) + "_OUTPUTS"
+	label := strings.Join(flow.Outputs, ", ")
+	fmt.Fprintf(b, "    %s[/%s/]\n", outputsNodeID, mermaidLabel(label))
+
+	endIDs := make([]string, 0)
+	for id, node := range flow.Nodes {
+		if node.Kind == statemachine.EndEvent {
+			endIDs = append(endIDs, id)
+		}
+	}
+	sort.Strings(endIDs)
+	for _, id := range endIDs {
+		fmt.Fprintf(b, "    %s -. produces .-> %s\n", id, outputsNodeID)
+	}
+	b.WriteString("\n    classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000\n")
+	fmt.Fprintf(b, "    class %s outputNode\n", outputsNodeID)
 }
 
 // groupTree is a node in the slash-delimited subgraph hierarchy. The

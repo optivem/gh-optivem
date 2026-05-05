@@ -9,7 +9,7 @@ Each section corresponds to one named flow in the YAML. `call_activity` nodes ap
 ```mermaid
 flowchart TD
     END((End))
-    INTAKE[INTAKE — see § Intake]
+    INTAKE[INTAKE — see § GitHub Intake]
     MOVE_TO_IN_PROGRESS[["Move ticket to In Progress (bottom of lane)"]]
     PICK_TOP_READY[[Pick top Ready ticket]]
     RUN_CYCLE[RUN_CYCLE — see § Run Cycle]
@@ -30,39 +30,47 @@ flowchart TD
     class MOVE_TO_IN_PROGRESS,PICK_TOP_READY,TICKET_IN_ACCEPTANCE serviceNode
 ```
 
-## Intake
+## GitHub Intake
 
 ```mermaid
 flowchart TD
-    CLASSIFY[[Auto-classify ticket]]
-    CLASSIFY_SUBTYPE[[Auto-classify subtype]]
-    GATE_CLASSIFY_CONFIDENT{Classification confident?}
-    GATE_NEEDS_SUBTYPE{Task ticket?}
+    CLASSIFY[[Read ticket type]]
+    CLASSIFY_SUBTYPE[[Read ticket subtype]]
+    GATE_CLASSIFY_CONFIDENT{Ticket type recognized?}
     GATE_PARSE_OK{Parsed OK?}
     GATE_SUBTYPE_OK{Subtype label detected?}
+    GATE_TICKET_TYPE_INTAKE{Ticket type?}
     INTAKE_END((End))
     PARSE_BODY[[Parse ticket body sections]]
+    REPORT_INTAKE_SUMMARY[[Report intake summary]]
     STOP_CLASSIFY_CONFLICT[STOP - HUMAN REVIEW — set issue type / re-run]
     STOP_PARSE_ERROR[STOP - HUMAN REVIEW — fix ticket body / re-run]
     STOP_SUBTYPE_MISSING[STOP - HUMAN REVIEW — apply exactly one subtype:* label / re-run]
 
     CLASSIFY --> GATE_CLASSIFY_CONFIDENT
-    GATE_CLASSIFY_CONFIDENT -- Yes --> GATE_NEEDS_SUBTYPE
+    GATE_CLASSIFY_CONFIDENT -- Yes --> GATE_TICKET_TYPE_INTAKE
     GATE_CLASSIFY_CONFIDENT -- No --> STOP_CLASSIFY_CONFLICT
     STOP_CLASSIFY_CONFLICT --> CLASSIFY
-    GATE_NEEDS_SUBTYPE -- task --> CLASSIFY_SUBTYPE
-    GATE_NEEDS_SUBTYPE -- story / bug --> PARSE_BODY
+    GATE_TICKET_TYPE_INTAKE -- story --> PARSE_BODY
+    GATE_TICKET_TYPE_INTAKE -- bug --> PARSE_BODY
+    GATE_TICKET_TYPE_INTAKE -- task --> CLASSIFY_SUBTYPE
     CLASSIFY_SUBTYPE --> GATE_SUBTYPE_OK
     GATE_SUBTYPE_OK -- Yes --> PARSE_BODY
     GATE_SUBTYPE_OK -- No --> STOP_SUBTYPE_MISSING
     STOP_SUBTYPE_MISSING --> CLASSIFY_SUBTYPE
     PARSE_BODY --> GATE_PARSE_OK
-    GATE_PARSE_OK -- Yes --> INTAKE_END
+    GATE_PARSE_OK -- Yes --> REPORT_INTAKE_SUMMARY
     GATE_PARSE_OK -- No --> STOP_PARSE_ERROR
     STOP_PARSE_ERROR --> PARSE_BODY
+    REPORT_INTAKE_SUMMARY --> INTAKE_END
+    GITHUB_INTAKE_OUTPUTS[/"ticket_type, subtype (tasks), change_type, parsed body sections"/]
+    INTAKE_END -. produces .-> GITHUB_INTAKE_OUTPUTS
+
+    classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
+    class GITHUB_INTAKE_OUTPUTS outputNode
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class CLASSIFY,CLASSIFY_SUBTYPE,PARSE_BODY serviceNode
+    class CLASSIFY,CLASSIFY_SUBTYPE,PARSE_BODY,REPORT_INTAKE_SUMMARY serviceNode
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
     class STOP_CLASSIFY_CONFLICT,STOP_PARSE_ERROR,STOP_SUBTYPE_MISSING humanNode
@@ -88,14 +96,13 @@ flowchart TD
     AT_CYCLE[AT_CYCLE — see § AT Cycle]
     CYCLE_END((End))
     DA_CYCLE[DA_CYCLE — see § DA Cycle]
-    GATE_SUBTYPE{Cycle by subtype}
-    GATE_TICKET_TYPE{Behavioral or structural?}
+    GATE_CHANGE_TYPE{Change type?}
     SUT_CYCLE[SUT_CYCLE — see § SUT Cycle]
 
-    GATE_TICKET_TYPE -- story / bug --> AT_CYCLE
-    GATE_TICKET_TYPE -- task --> GATE_SUBTYPE
-    GATE_SUBTYPE -- system-interface-redesign / external-system-interface-redesign --> DA_CYCLE
-    GATE_SUBTYPE -- system-implementation-change --> SUT_CYCLE
+    GATE_CHANGE_TYPE -- behavioral --> AT_CYCLE
+    GATE_CHANGE_TYPE -- system-interface-redesign --> DA_CYCLE
+    GATE_CHANGE_TYPE -- external-system-interface-redesign --> DA_CYCLE
+    GATE_CHANGE_TYPE -- system-implementation-change --> SUT_CYCLE
     AT_CYCLE --> CYCLE_END
     DA_CYCLE --> CYCLE_END
     SUT_CYCLE --> CYCLE_END
@@ -235,7 +242,7 @@ flowchart TD
     ASK_COMMIT[[Ask: Can I commit?]]
     COMMIT_STRUCT[["COMMIT: <Ticket> | ${change_type}"]]
     COMPILE[[Compile in-scope projects]]
-    DRIFT[[Print drift warning if applicable]]
+    DRIFT[[Report drift warning if applicable]]
     GATE_TEST_MODE{"TEST mode? (full | compile | skip)"}
     SAMPLE[[Run sample suite]]
     STOP_STRUCT_REVIEW[STOP - HUMAN REVIEW — approve implementation]
@@ -288,11 +295,11 @@ flowchart TD
 flowchart TD
     DA_END((End))
     EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE[EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE — see § Contract Test Sub-Process]
-    GATE_SUBTYPE{System or external-system interface?}
+    GATE_CHANGE_TYPE_DA{System or external-system interface?}
     SYSTEM_INTERFACE_REDESIGN_CYCLE["SYSTEM_INTERFACE_REDESIGN_CYCLE — see § Structural Cycle (shared)"]
 
-    GATE_SUBTYPE -- system-interface-redesign --> SYSTEM_INTERFACE_REDESIGN_CYCLE
-    GATE_SUBTYPE -- external-system-interface-redesign --> EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE
+    GATE_CHANGE_TYPE_DA -- system-interface-redesign --> SYSTEM_INTERFACE_REDESIGN_CYCLE
+    GATE_CHANGE_TYPE_DA -- external-system-interface-redesign --> EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE
     SYSTEM_INTERFACE_REDESIGN_CYCLE --> DA_END
     EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE --> DA_END
 ```

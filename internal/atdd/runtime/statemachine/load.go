@@ -35,6 +35,7 @@ type rawEdge struct {
 // rawFlow mirrors one named flow.
 type rawFlow struct {
 	Start         string    `yaml:"start"`
+	Outputs       []string  `yaml:"outputs,omitempty"`
 	Nodes         []RawNode `yaml:"nodes"`
 	SequenceFlows []rawEdge `yaml:"sequence_flows"`
 }
@@ -91,6 +92,7 @@ func buildFlow(name string, rf rawFlow) (*Flow, error) {
 	flow := &Flow{
 		Name:           name,
 		Start:          rf.Start,
+		Outputs:        append([]string(nil), rf.Outputs...),
 		Nodes:          make(map[string]Node, len(rf.Nodes)),
 		Edges:          make([]Edge, 0, len(rf.SequenceFlows)),
 		OutgoingByNode: make(map[string][]Edge),

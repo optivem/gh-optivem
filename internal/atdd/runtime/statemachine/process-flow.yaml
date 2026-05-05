@@ -81,9 +81,10 @@ flows:
   #
   # Each sub-flow encapsulates its own gates so main stays linear and
   # gate-free. Splitting them lets each diagram answer one question:
-  # "main" shows the ticket's lifecycle, "intake" shows the type-specific
-  # intake fan-out, "run_legacy_cycle" shows the legacy-acceptance-criteria backfill,
-  # and "run_cycle" shows the behavioral-vs-structural change-cycle choice.
+  # "main" shows the ticket's lifecycle, "github_intake" shows the
+  # type-specific intake fan-out, "run_legacy_cycle" shows the
+  # legacy-acceptance-criteria backfill, and "run_cycle" shows the
+  # behavioral-vs-structural change-cycle choice.
   # ===========================================================================
   main:
     start: START
@@ -103,7 +104,7 @@ flows:
 
       - id: INTAKE
         type: call_activity
-        flow: intake
+        flow: github_intake
 
       - id: RUN_LEGACY_CYCLE
         type: call_activity
@@ -132,27 +133,36 @@ flows:
       - {from: TICKET_IN_ACCEPTANCE, to: END}
 
   # ===========================================================================
-  # intake
-  # Owns the full "understand this ticket" responsibility: classify the
-  # ticket type from GitHub's native issue type, surface low-confidence
-  # classifications for human resolution, classify the structural subtype
-  # from the `subtype:*` label (task tickets only), and parse the body's
-  # canonical sections deterministically. No LLM is dispatched — Issue
-  # Forms enforce the schema upstream so the parser is unambiguous.
-  # Self-contained: main only sees INTAKE start and finish.
+  # github_intake
+  # Owns the full "understand this GitHub ticket" responsibility: read the
+  # ticket type from GitHub's native issue type, surface unrecognised types
+  # for human resolution, read the structural subtype from the `subtype:*`
+  # label (task tickets only), and parse the body's canonical sections
+  # deterministically. No LLM is dispatched — Issue Forms enforce the schema
+  # upstream so the parser is unambiguous. Self-contained: main only sees
+  # INTAKE start and finish.
+  #
+  # Named `github_intake` (not just `intake`) because it is GitHub-coupled —
+  # it reads the issue's native type, labels, and body via `gh`. A
+  # source-agnostic wrapper is deferred until a second source exists.
   # ===========================================================================
-  intake:
+  github_intake:
     start: CLASSIFY
+    outputs:
+      - ticket_type
+      - subtype (tasks)
+      - change_type
+      - parsed body sections
     nodes:
       - id: CLASSIFY
         type: service_task
-        action: classify_ticket_type
-        description: "Auto-classify ticket"
+        action: read_ticket_type
+        description: "Read ticket type"
 
       - id: GATE_CLASSIFY_CONFIDENT
         type: gateway
-        binding: classify_confident
-        description: "Classification confident?"
+        binding: ticket_type_recognized
+        description: "Ticket type recognized?"
 
       - id: STOP_CLASSIFY_CONFLICT
         type: user_task
@@ -160,15 +170,15 @@ flows:
         role: review
         description: "STOP - HUMAN REVIEW — set issue type / re-run"
 
-      - id: GATE_NEEDS_SUBTYPE
+      - id: GATE_TICKET_TYPE_INTAKE
         type: gateway
         binding: ticket_type
-        description: "Task ticket?"
+        description: "Ticket type?"
 
       - id: CLASSIFY_SUBTYPE
         type: service_task
-        action: classify_subtype
-        description: "Auto-classify subtype"
+        action: read_subtype
+        description: "Read ticket subtype"
 
       - id: GATE_SUBTYPE_OK
         type: gateway
@@ -197,24 +207,31 @@ flows:
         role: review
         description: "STOP - HUMAN REVIEW — fix ticket body / re-run"
 
+      - id: REPORT_INTAKE_SUMMARY
+        type: service_task
+        action: report_intake_summary
+        description: "Report intake summary"
+
       - id: INTAKE_END
         type: end_event
 
     sequence_flows:
       - {from: CLASSIFY,                to: GATE_CLASSIFY_CONFIDENT}
-      - {from: GATE_CLASSIFY_CONFIDENT, to: GATE_NEEDS_SUBTYPE,      when: "classify_confident == true"}
-      - {from: GATE_CLASSIFY_CONFIDENT, to: STOP_CLASSIFY_CONFLICT,  when: "classify_confident == false"}
+      - {from: GATE_CLASSIFY_CONFIDENT, to: GATE_TICKET_TYPE_INTAKE, when: "ticket_type_recognized == true"}
+      - {from: GATE_CLASSIFY_CONFIDENT, to: STOP_CLASSIFY_CONFLICT,  when: "ticket_type_recognized == false"}
       - {from: STOP_CLASSIFY_CONFLICT,  to: CLASSIFY}
-      - {from: GATE_NEEDS_SUBTYPE,      to: CLASSIFY_SUBTYPE,        when: "ticket_type == task"}
-      - {from: GATE_NEEDS_SUBTYPE,      to: PARSE_BODY,              when: "ticket_type in [story, bug]"}
+      - {from: GATE_TICKET_TYPE_INTAKE, to: PARSE_BODY,              when: "ticket_type == story"}
+      - {from: GATE_TICKET_TYPE_INTAKE, to: PARSE_BODY,              when: "ticket_type == bug"}
+      - {from: GATE_TICKET_TYPE_INTAKE, to: CLASSIFY_SUBTYPE,        when: "ticket_type == task"}
       - {from: CLASSIFY_SUBTYPE,        to: GATE_SUBTYPE_OK}
       - {from: GATE_SUBTYPE_OK,         to: PARSE_BODY,              when: "subtype_ok == true"}
       - {from: GATE_SUBTYPE_OK,         to: STOP_SUBTYPE_MISSING,    when: "subtype_ok == false"}
       - {from: STOP_SUBTYPE_MISSING,    to: CLASSIFY_SUBTYPE}
       - {from: PARSE_BODY,              to: GATE_PARSE_OK}
-      - {from: GATE_PARSE_OK,           to: INTAKE_END,              when: "parse_ok == true"}
+      - {from: GATE_PARSE_OK,           to: REPORT_INTAKE_SUMMARY,   when: "parse_ok == true"}
       - {from: GATE_PARSE_OK,           to: STOP_PARSE_ERROR,        when: "parse_ok == false"}
       - {from: STOP_PARSE_ERROR,        to: PARSE_BODY}
+      - {from: REPORT_INTAKE_SUMMARY,   to: INTAKE_END}
 
   # ===========================================================================
   # run_legacy_cycle
@@ -245,32 +262,26 @@ flows:
 
   # ===========================================================================
   # run_cycle
-  # Change cycle for the current ticket — dispatches by ticket_type first
-  # (behavioral vs structural) and then, for tasks, by `subtype` (the value
-  # carried on the `subtype:*` label). Three cycles cover the full space,
-  # named after the test-stack layer at which the change is visible:
-  #   - story / bug                            → at_cycle  (AT-layer change)
-  #   - task + system-interface-redesign       → da_cycle  (Driver Adapter seam change, system-side)
-  #   - task + external-system-interface-redesign → da_cycle (Driver Adapter seam change, external-side)
-  #   - task + system-implementation-change    → sut_cycle (System Under Test internal)
+  # Change cycle for the current ticket — dispatches on `change_type`, the
+  # single-axis classification derived during intake from (ticket_type,
+  # subtype). Three cycles cover the full space, named after the test-stack
+  # layer at which the change is visible:
+  #   - behavioral                          → at_cycle  (AT-layer change)
+  #   - system-interface-redesign           → da_cycle  (Driver Adapter seam change, system-side)
+  #   - external-system-interface-redesign  → da_cycle  (Driver Adapter seam change, external-side)
+  #   - system-implementation-change        → sut_cycle (System Under Test internal)
   #
-  # ticket_type comes from the issue's native GitHub type (Story / Bug / Task
-  # — set by the Issue Form's `type:` field). subtype comes from the
-  # `subtype:*` label and is undefined for behavioral tickets — the
-  # ticket_type gate routes them past the subtype gate.
+  # change_type derivation lives in the parse_ticket_body action. The value
+  # is `behavioral` for story / bug tickets and equals the subtype label for
+  # task tickets.
   # ===========================================================================
   run_cycle:
-    start: GATE_TICKET_TYPE
+    start: GATE_CHANGE_TYPE
     nodes:
-      - id: GATE_TICKET_TYPE
+      - id: GATE_CHANGE_TYPE
         type: gateway
-        binding: ticket_type
-        description: "Behavioral or structural?"
-
-      - id: GATE_SUBTYPE
-        type: gateway
-        binding: subtype
-        description: "Cycle by subtype"
+        binding: change_type
+        description: "Change type?"
 
       - id: AT_CYCLE
         type: call_activity
@@ -288,10 +299,10 @@ flows:
         type: end_event
 
     sequence_flows:
-      - {from: GATE_TICKET_TYPE, to: AT_CYCLE,     when: "ticket_type in [story, bug]"}
-      - {from: GATE_TICKET_TYPE, to: GATE_SUBTYPE, when: "ticket_type == task"}
-      - {from: GATE_SUBTYPE,     to: DA_CYCLE,     when: "subtype in [system-interface-redesign, external-system-interface-redesign]"}
-      - {from: GATE_SUBTYPE,     to: SUT_CYCLE,    when: "subtype == system-implementation-change"}
+      - {from: GATE_CHANGE_TYPE, to: AT_CYCLE,  when: "change_type == behavioral"}
+      - {from: GATE_CHANGE_TYPE, to: DA_CYCLE,  when: "change_type == system-interface-redesign"}
+      - {from: GATE_CHANGE_TYPE, to: DA_CYCLE,  when: "change_type == external-system-interface-redesign"}
+      - {from: GATE_CHANGE_TYPE, to: SUT_CYCLE, when: "change_type == system-implementation-change"}
       - {from: AT_CYCLE,  to: CYCLE_END}
       - {from: DA_CYCLE,  to: CYCLE_END}
       - {from: SUT_CYCLE, to: CYCLE_END}
@@ -616,8 +627,8 @@ flows:
 
       - id: DRIFT
         type: service_task
-        action: print_drift_warning
-        description: "Print drift warning if applicable"
+        action: report_drift_warning
+        description: "Report drift warning if applicable"
 
       - id: STOP_STRUCT_TEST
         type: user_task
@@ -673,11 +684,11 @@ flows:
   #     Onboarding when the driver doesn't yet exist).
   # ===========================================================================
   da_cycle:
-    start: GATE_SUBTYPE
+    start: GATE_CHANGE_TYPE_DA
     nodes:
-      - id: GATE_SUBTYPE
+      - id: GATE_CHANGE_TYPE_DA
         type: gateway
-        binding: subtype
+        binding: change_type
         description: "System or external-system interface?"
 
       - id: SYSTEM_INTERFACE_REDESIGN_CYCLE
@@ -697,8 +708,8 @@ flows:
         type: end_event
 
     sequence_flows:
-      - {from: GATE_SUBTYPE,                       to: SYSTEM_INTERFACE_REDESIGN_CYCLE,          when: "subtype == system-interface-redesign"}
-      - {from: GATE_SUBTYPE,                       to: EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE, when: "subtype == external-system-interface-redesign"}
+      - {from: GATE_CHANGE_TYPE_DA,                to: SYSTEM_INTERFACE_REDESIGN_CYCLE,          when: "change_type == system-interface-redesign"}
+      - {from: GATE_CHANGE_TYPE_DA,                to: EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE, when: "change_type == external-system-interface-redesign"}
       - {from: SYSTEM_INTERFACE_REDESIGN_CYCLE,    to: DA_END}
       - {from: EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE, to: DA_END}
 

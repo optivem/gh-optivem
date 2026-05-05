@@ -119,15 +119,16 @@ func RegisterAll(r *Registry, deps Deps) {
 	a := actions{deps: deps}
 	r.Register("pick_top_ready", a.pickTopReady)
 	r.Register("move_to_in_progress", a.moveToInProgress)
-	r.Register("classify_ticket_type", a.classifyTicketType)
-	r.Register("classify_subtype", a.classifySubtype)
+	r.Register("read_ticket_type", a.readTicketType)
+	r.Register("read_subtype", a.readSubtype)
 	r.Register("parse_ticket_body", a.parseTicketBody)
+	r.Register("report_intake_summary", a.reportIntakeSummary)
 	r.Register("move_to_in_acceptance", a.moveToInAcceptance)
 	r.Register("run_smoke_test", a.runSmokeTest)
 	r.Register("commit_onboarding", a.commitOnboarding)
 	r.Register("compile_in_scope", a.compileInScope)
 	r.Register("run_sample_suite", a.runSampleSuite)
-	r.Register("print_drift_warning", a.printDriftWarning)
+	r.Register("report_drift_warning", a.reportDriftWarning)
 	r.Register("ask_can_i_commit", a.askCanICommit)
 	r.Register("commit_phase", a.commitPhase)
 	r.Register("tick_checklist", a.tickChecklist)
@@ -244,24 +245,24 @@ const classifyIssueTypeQuery = `query($owner: String!, $name: String!, $number: 
 // — the operator must change the type in GitHub before re-running.
 var supportedTicketTypes = map[string]bool{"story": true, "bug": true, "task": true}
 
-// classifyTicketType reads the issue's native GitHub issue type (Story /
+// readTicketType reads the issue's native GitHub issue type (Story /
 // Bug / Task) and writes the lowercased name to `ticket_type`. The native
 // type is authoritative — it's set by the Issue Form's `type:` field at
 // filing time and cannot drift from a label-based heuristic.
 //
-// classify_confident is set to false (routing to STOP_CLASSIFY_CONFLICT) in
-// two cases: the issue has no native type set, or the type is not one of
+// ticket_type_recognized is set to false (routing to STOP_CLASSIFY_CONFLICT)
+// in two cases: the issue has no native type set, or the type is not one of
 // Story / Bug / Task. Both resolutions are "set a supported type in GitHub
 // and re-run" — there is no LLM fallback.
-func (a actions) classifyTicketType(ctx *statemachine.Context) statemachine.Outcome {
+func (a actions) readTicketType(ctx *statemachine.Context) statemachine.Outcome {
 	issueNum, err := strconv.Atoi(ctx.GetString("issue_num"))
 	if err != nil || issueNum <= 0 {
-		return statemachine.Outcome{Err: fmt.Errorf("classify_ticket_type: issue_num not set or not a positive integer (%q)", ctx.GetString("issue_num"))}
+		return statemachine.Outcome{Err: fmt.Errorf("read_ticket_type: issue_num not set or not a positive integer (%q)", ctx.GetString("issue_num"))}
 	}
 	repo := ctx.GetString("issue_repo")
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok || owner == "" || name == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("classify_ticket_type: issue_repo must be set as owner/name (got %q)", repo)}
+		return statemachine.Outcome{Err: fmt.Errorf("read_ticket_type: issue_repo must be set as owner/name (got %q)", repo)}
 	}
 	args := []string{
 		"api", "graphql",
@@ -272,27 +273,27 @@ func (a actions) classifyTicketType(ctx *statemachine.Context) statemachine.Outc
 	}
 	out, err := a.deps.Gh.Run(context.Background(), args...)
 	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("classify_ticket_type: gh api graphql: %w", err)}
+		return statemachine.Outcome{Err: fmt.Errorf("read_ticket_type: gh api graphql: %w", err)}
 	}
 	issueType := extractIssueType(out)
 	if issueType == "" {
-		ctx.Set("classify_confident", false)
+		ctx.Set("ticket_type_recognized", false)
 		fmt.Fprintf(a.deps.Stderr,
-			"classify_ticket_type: issue #%d has no native issue type — set Story / Bug / Task in the GitHub UI and re-run.\n",
+			"read_ticket_type: issue #%d has no native issue type — set Story / Bug / Task in the GitHub UI and re-run.\n",
 			issueNum)
 		return statemachine.Outcome{}
 	}
 	ticketType := strings.ToLower(issueType)
 	if !supportedTicketTypes[ticketType] {
-		ctx.Set("classify_confident", false)
+		ctx.Set("ticket_type_recognized", false)
 		fmt.Fprintf(a.deps.Stderr,
-			"classify_ticket_type: issue #%d has unsupported issue type %q — set Story / Bug / Task in the GitHub UI and re-run.\n",
+			"read_ticket_type: issue #%d has unsupported issue type %q — set Story / Bug / Task in the GitHub UI and re-run.\n",
 			issueNum, issueType)
 		return statemachine.Outcome{}
 	}
 	ctx.Set("ticket_type", ticketType)
-	ctx.Set("classify_confident", true)
-	fmt.Fprintf(a.deps.Stdout, "Classified #%d as %s.\n", issueNum, ticketType)
+	ctx.Set("ticket_type_recognized", true)
+	fmt.Fprintf(a.deps.Stdout, "Read ticket type for #%d: %s.\n", issueNum, ticketType)
 	a.printClassifiedSections(ctx, issueNum)
 	return statemachine.Outcome{}
 }
@@ -314,7 +315,7 @@ func extractIssueType(raw []byte) string {
 	return name
 }
 
-// classifySubtype reads `subtype:*` labels on the ticket and writes the
+// readSubtype reads `subtype:*` labels on the ticket and writes the
 // trimmed value to `subtype`. The intake flow's GATE_NEEDS_SUBTYPE only
 // routes here for task tickets, so behavioral tickets never reach this
 // action.
@@ -322,12 +323,12 @@ func extractIssueType(raw []byte) string {
 // Sets `subtype_ok`: true on a single label (with `subtype` populated),
 // false on 0 or 2+ labels. The downstream GATE_SUBTYPE_OK routes to
 // STOP_SUBTYPE_MISSING on false so the operator can fix the labels and
-// re-run — same shape as classify_ticket_type → STOP_CLASSIFY_CONFLICT and
+// re-run — same shape as read_ticket_type → STOP_CLASSIFY_CONFLICT and
 // parse_ticket_body → STOP_PARSE_ERROR.
-func (a actions) classifySubtype(ctx *statemachine.Context) statemachine.Outcome {
+func (a actions) readSubtype(ctx *statemachine.Context) statemachine.Outcome {
 	issueNum, err := strconv.Atoi(ctx.GetString("issue_num"))
 	if err != nil || issueNum <= 0 {
-		return statemachine.Outcome{Err: fmt.Errorf("classify_subtype: issue_num not set or not a positive integer (%q)", ctx.GetString("issue_num"))}
+		return statemachine.Outcome{Err: fmt.Errorf("read_subtype: issue_num not set or not a positive integer (%q)", ctx.GetString("issue_num"))}
 	}
 	args := []string{"issue", "view", strconv.Itoa(issueNum), "--json", "labels"}
 	if repo := ctx.GetString("issue_repo"); repo != "" {
@@ -335,14 +336,14 @@ func (a actions) classifySubtype(ctx *statemachine.Context) statemachine.Outcome
 	}
 	out, err := a.deps.Gh.Run(context.Background(), args...)
 	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("classify_subtype: gh issue view: %w", err)}
+		return statemachine.Outcome{Err: fmt.Errorf("read_subtype: gh issue view: %w", err)}
 	}
 	subs := extractSubtypeLabels(out)
 	switch len(subs) {
 	case 0:
 		ctx.Set("subtype_ok", false)
 		fmt.Fprintf(a.deps.Stderr,
-			"classify_subtype: issue #%d has no subtype:* label — apply exactly one of subtype:system-interface-redesign / subtype:external-system-interface-redesign / subtype:system-implementation-change and re-run.\n",
+			"read_subtype: issue #%d has no subtype:* label — apply exactly one of subtype:system-interface-redesign / subtype:external-system-interface-redesign / subtype:system-implementation-change and re-run.\n",
 			issueNum)
 		return statemachine.Outcome{}
 	case 1:
@@ -353,7 +354,7 @@ func (a actions) classifySubtype(ctx *statemachine.Context) statemachine.Outcome
 	default:
 		ctx.Set("subtype_ok", false)
 		fmt.Fprintf(a.deps.Stderr,
-			"classify_subtype: issue #%d has multiple subtype:* labels (%v) — apply exactly one and re-run.\n",
+			"read_subtype: issue #%d has multiple subtype:* labels (%v) — apply exactly one and re-run.\n",
 			issueNum, subs)
 		return statemachine.Outcome{}
 	}
@@ -420,6 +421,10 @@ func (a actions) parseTicketBody(ctx *statemachine.Context) statemachine.Outcome
 	ctx.Set("parse_ok", true)
 	ctx.Set("legacy_acceptance_criteria_section_present", result.LegacyAcceptanceCriteria.Found)
 	ctx.Set("ticket_checklist", result.Checklist.Body)
+	ctx.Set("parsed_section_names", parsedSectionNames(result))
+	if ct := deriveChangeType(ticketType, ctx.GetString("subtype")); ct != "" {
+		ctx.Set("change_type", ct)
+	}
 	fmt.Fprintf(a.deps.Stdout, "Parsed #%d (%s): all required sections present.\n", issueNum, ticketType)
 	printChecklistSummary(a.deps.Stdout, result.Checklist)
 	if total := len(result.Checklist.Items); total > 0 && result.Checklist.CheckedCount() == total {
@@ -455,6 +460,75 @@ func (a actions) confirmPreCheckedChecklist(issueNum, total int) (bool, error) {
 	}
 	yes, _ := parseYesNo(answer)
 	return yes, nil
+}
+
+// deriveChangeType maps (ticket_type, subtype) to the single-axis
+// change_type that drives the run_cycle dispatch. story / bug both
+// produce "behavioral"; task tickets use the subtype directly.
+// Returns "" when the inputs are insufficient — the caller leaves
+// change_type unset and a downstream gate will surface the issue.
+func deriveChangeType(ticketType, subtype string) string {
+	switch ticketType {
+	case "story", "bug":
+		return "behavioral"
+	case "task":
+		switch subtype {
+		case "system-interface-redesign",
+			"external-system-interface-redesign",
+			"system-implementation-change":
+			return subtype
+		}
+	}
+	return ""
+}
+
+// parsedSectionNames returns the canonical heading names of every section
+// that the parser found populated in the ticket body. Order matches the
+// canonical document order so the summary reads top-to-bottom.
+func parsedSectionNames(r *intake.Result) []string {
+	var names []string
+	if r.Description.Found {
+		names = append(names, intake.SectionDescription)
+	}
+	if r.AcceptanceCriteria.Found {
+		names = append(names, intake.SectionAcceptanceCriteria)
+	}
+	if r.StepsToReproduce.Found {
+		names = append(names, intake.SectionStepsToReproduce)
+	}
+	if r.Checklist.Found {
+		names = append(names, intake.SectionChecklist)
+	}
+	if r.LegacyAcceptanceCriteria.Found {
+		names = append(names, intake.SectionLegacyAcceptanceCriteria)
+	}
+	return names
+}
+
+// reportIntakeSummary prints the consolidated intake outcome — ticket
+// number, ticket type, subtype (if any), change_type (if derived), and
+// the canonical section names found in the body. The action is the
+// single observer-facing checkpoint at the end of github_intake.
+func (a actions) reportIntakeSummary(ctx *statemachine.Context) statemachine.Outcome {
+	w := a.deps.Stdout
+	fmt.Fprintln(w, "Intake summary:")
+	if v := ctx.GetString("issue_num"); v != "" {
+		fmt.Fprintf(w, "  ticket: #%s\n", v)
+	}
+	if v := ctx.GetString("ticket_type"); v != "" {
+		fmt.Fprintf(w, "  ticket_type: %s\n", v)
+	}
+	if v := ctx.GetString("subtype"); v != "" {
+		fmt.Fprintf(w, "  subtype: %s\n", v)
+	}
+	if v := ctx.GetString("change_type"); v != "" {
+		fmt.Fprintf(w, "  change_type: %s\n", v)
+	}
+	names, _ := ctx.Get("parsed_section_names").([]string)
+	if len(names) > 0 {
+		fmt.Fprintf(w, "  parsed sections: %s\n", strings.Join(names, ", "))
+	}
+	return statemachine.Outcome{}
 }
 
 // printChecklistSummary writes a structured summary of the parsed checklist
@@ -643,10 +717,10 @@ func (a actions) runSampleSuite(ctx *statemachine.Context) statemachine.Outcome 
 	return statemachine.Outcome{}
 }
 
-// printDriftWarning emits a one-line reminder when only the compile sweep
+// reportDriftWarning emits a one-line reminder when only the compile sweep
 // ran (no sample tests). The warning text is informational; the engine
 // keeps moving regardless.
-func (a actions) printDriftWarning(ctx *statemachine.Context) statemachine.Outcome {
+func (a actions) reportDriftWarning(ctx *statemachine.Context) statemachine.Outcome {
 	mode := ctx.GetString("structural_test_mode")
 	if mode == "compile" {
 		fmt.Fprintln(a.deps.Stderr,

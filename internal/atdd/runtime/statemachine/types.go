@@ -68,6 +68,7 @@ type Edge struct {
 type Flow struct {
 	Name           string
 	Start          string
+	Outputs        []string // optional BPMN-style data outputs published by the flow
 	Nodes          map[string]Node
 	Edges          []Edge
 	OutgoingByNode map[string][]Edge // index for nextEdge lookup

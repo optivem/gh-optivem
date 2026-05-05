@@ -78,6 +78,73 @@ func TestEdgeLabel(t *testing.T) {
 	}
 }
 
+func TestRender_FlowWithOutputsEmitsDataObjectAndProducesEdge(t *testing.T) {
+	yaml := []byte(`
+flows:
+  sample_flow:
+    start: WORK
+    outputs:
+      - alpha
+      - beta
+    nodes:
+      - id: WORK
+        type: service_task
+        action: do_work
+        description: "Do work"
+      - id: SAMPLE_END
+        type: end_event
+    sequence_flows:
+      - {from: WORK, to: SAMPLE_END}
+`)
+	eng, err := statemachine.LoadBytes(yaml)
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+	got := Render(eng)
+
+	for _, want := range []string{
+		"SAMPLE_FLOW_OUTPUTS[/alpha, beta/]",
+		"SAMPLE_END -. produces .-> SAMPLE_FLOW_OUTPUTS",
+		"classDef outputNode",
+		"class SAMPLE_FLOW_OUTPUTS outputNode",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in rendered output:\n%s", want, got)
+		}
+	}
+}
+
+func TestRender_FlowWithoutOutputsHasNoDataObject(t *testing.T) {
+	yaml := []byte(`
+flows:
+  sample_flow:
+    start: WORK
+    nodes:
+      - id: WORK
+        type: service_task
+        action: do_work
+        description: "Do work"
+      - id: SAMPLE_END
+        type: end_event
+    sequence_flows:
+      - {from: WORK, to: SAMPLE_END}
+`)
+	eng, err := statemachine.LoadBytes(yaml)
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+	got := Render(eng)
+	for _, banned := range []string{
+		"_OUTPUTS",
+		"produces",
+		"outputNode",
+	} {
+		if strings.Contains(got, banned) {
+			t.Errorf("unexpected %q in rendered output for flow with no outputs:\n%s", banned, got)
+		}
+	}
+}
+
 func TestMermaidLabel_QuotesReservedChars(t *testing.T) {
 	cases := []struct {
 		in, want string
