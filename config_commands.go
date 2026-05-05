@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/optivem/gh-optivem/internal/config"
+	"github.com/optivem/gh-optivem/internal/files"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/steps"
 )
@@ -105,6 +106,9 @@ func runConfigInit(f *config.RawFlags, dir string, force bool) (string, error) {
 	}
 	if err := steps.WriteOptivemYAMLToPath(cfg, target); err != nil {
 		return "", err
+	}
+	if err := files.EnsureGitignoreLine(target, ".gh-optivem/"); err != nil {
+		return "", fmt.Errorf("ensure .gitignore: %w", err)
 	}
 	return yamlPath, nil
 }

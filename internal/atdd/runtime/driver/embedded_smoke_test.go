@@ -124,7 +124,7 @@ func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 	if err := eng.Bind(); err != nil {
 		t.Fatalf("Bind: %v", err)
 	}
-	wrapAgentDispatchers(eng, opts)
+	wrapAgentDispatchers(eng, opts, nil)
 
 	flow, ok := eng.Flows["at_cycle"]
 	if !ok {

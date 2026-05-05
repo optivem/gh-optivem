@@ -18,11 +18,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/clauderun"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
 // ---------------------------------------------------------------------------
@@ -140,7 +142,7 @@ func buildEngineFrom(t *testing.T, opts Options, yamlSrc, nodeID string) statema
 	if err := eng.Bind(); err != nil {
 		t.Fatalf("Bind: %v", err)
 	}
-	wrapAgentDispatchers(eng, opts)
+	wrapAgentDispatchers(eng, opts, nil)
 	return eng.Flows["main"].Nodes[nodeID].Fn
 }
 
@@ -555,5 +557,209 @@ func TestInstallLogFileMirror_OpenFailureReturnsError(t *testing.T) {
 	defer closeFn()
 	if err == nil {
 		t.Fatal("expected error for unreachable log path, got nil")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// End-to-end prompt substitution regression (item 6)
+// ---------------------------------------------------------------------------
+
+// TestEndToEnd_SubstitutionAndPromptLog drives a fake clauderun.Options
+// build through the same seedScopeState + newClaudeRunDispatcher path
+// production uses, with a fake runner that captures the prompt argument.
+// Asserts the captured prompt contains the substituted scope values
+// (Architecture, AllowedRoots system+test+external lines) and that the
+// per-dispatch prompt log file was written byte-for-byte. This pins down
+// the seedScopeParams → seedScopeState fix end-to-end: a regression that
+// re-introduced the wrong-map bug would here surface as an unsubstituted
+// `${architecture}` placeholder instead of the literal "monolith".
+func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
+	tmpRepo := t.TempDir()
+
+	cfg := &projectconfig.Config{
+		RepoStrategy: projectconfig.RepoStrategyMonoRepo,
+		System: projectconfig.System{
+			Architecture: projectconfig.ArchMonolith,
+			Path:         "system/monolith/typescript",
+			Repo:         "optivem/shop",
+			Lang:         projectconfig.LangTypescript,
+		},
+		SystemTest: projectconfig.TierSpec{
+			Path: "system-test/typescript",
+			Repo: "optivem/shop",
+			Lang: projectconfig.LangTypescript,
+		},
+		ExternalSystems: projectconfig.ExternalSystems{
+			Stubs:      projectconfig.ExternalSpec{Path: "external-systems/stubs", Repo: "optivem/shop"},
+			Simulators: projectconfig.ExternalSpec{Path: "external-systems/simulators", Repo: "optivem/shop"},
+		},
+	}
+
+	sCtx := newCtxWithIssue()
+	seedScopeState(sCtx, cfg)
+
+	rs := &runState{runTimestamp: "20260505-150000", repoPath: tmpRepo}
+
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaaaaa1\n"),
+			[]byte("aaaaaaa1\n"),
+		},
+	}
+	claudeFake := &fakeClaude{}
+	opts := newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake})
+	opts.RepoPath = tmpRepo
+
+	// minimalYAML's user_task uses agent: atdd-test, but the prompt-
+	// substitution failure mode is most visible on agents whose
+	// prompt body references ${architecture} / ${allowed_roots}
+	// (atdd-task / atdd-chore). Use a YAML variant with agent: atdd-task
+	// so wrapAgentDispatchers picks the right closure on first walk.
+	yamlSrc := strings.Replace(minimalYAML, "agent: atdd-test", "agent: atdd-task", 1)
+
+	eng, err := statemachine.LoadBytes([]byte(yamlSrc))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+	agentReg := agents.New()
+	registerAgentDispatchers(agentReg)
+	eng.AgentFn = agentReg.Lookup
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+	wrapAgentDispatchers(eng, opts, rs)
+	fn := eng.Flows["main"].Nodes["AT_RED_TEST"].Fn
+
+	out := fn(sCtx)
+	if out.Err != nil {
+		t.Fatalf("dispatch: %v", out.Err)
+	}
+	if len(claudeFake.calls) != 1 {
+		t.Fatalf("expected 1 claude call, got %d", len(claudeFake.calls))
+	}
+	prompt := claudeFake.calls[0].Prompt
+
+	// Substitution assertions — these would fail if scope params were
+	// being written to Context.Params (the original bug) instead of
+	// Context.State (the fix). Empty Architecture would render as
+	// "Architecture: " and the AllowedRoots block would be absent.
+	mustContainHere(t, prompt, "Architecture: monolith")
+	mustContainHere(t, prompt, "- System: system/monolith/typescript (lang: typescript)")
+	mustContainHere(t, prompt, "- System tests: system-test/typescript (lang: typescript)")
+	mustContainHere(t, prompt, "- Stubs: external-systems/stubs")
+	mustContainHere(t, prompt, "- Simulators: external-systems/simulators")
+	if strings.Contains(prompt, "${") {
+		t.Errorf("prompt still contains ${...} placeholder:\n%s", prompt)
+	}
+
+	// Bonus: the log file path is composed deterministically from
+	// runState. Read it back and compare byte-for-byte against the
+	// captured prompt — this pins down item 2 (PromptLogPath plumbing)
+	// alongside item 1 (the substitution fix).
+	logPath := filepath.Join(tmpRepo, ".gh-optivem", "runs", "20260505-150000", "001-atdd-task.prompt.md")
+	body, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read prompt log: %v", err)
+	}
+	if string(body) != prompt {
+		t.Errorf("log file does not match captured prompt byte-for-byte:\n got %d bytes\nwant %d bytes", len(body), len(prompt))
+	}
+}
+
+func mustContainHere(t *testing.T, haystack, needle string) {
+	t.Helper()
+	if !strings.Contains(haystack, needle) {
+		t.Errorf("missing %q in:\n%s", needle, haystack)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// pruneOldRuns (item 2)
+// ---------------------------------------------------------------------------
+
+func TestPruneOldRuns_KeepsMostRecent(t *testing.T) {
+	dir := t.TempDir()
+	// Make 5 dirs with explicit increasing mtimes (oldest first).
+	names := []string{"run-a", "run-b", "run-c", "run-d", "run-e"}
+	for i, n := range names {
+		p := filepath.Join(dir, n)
+		if err := os.Mkdir(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// Time deltas large enough not to collide on any FS — 1 day apart.
+		ts := time.Date(2026, 1, 1+i, 0, 0, 0, 0, time.UTC)
+		if err := os.Chtimes(p, ts, ts); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := pruneOldRuns(dir, 3); err != nil {
+		t.Fatalf("pruneOldRuns: %v", err)
+	}
+
+	entries, _ := os.ReadDir(dir)
+	gotNames := make(map[string]bool)
+	for _, e := range entries {
+		gotNames[e.Name()] = true
+	}
+	// Keep N=3 means keep N-1=2 entries (room for the run we're about
+	// to create). Two newest are run-d and run-e.
+	want := map[string]bool{"run-d": true, "run-e": true}
+	if len(gotNames) != len(want) {
+		t.Fatalf("expected %d dirs after prune, got %d: %v", len(want), len(gotNames), gotNames)
+	}
+	for n := range want {
+		if !gotNames[n] {
+			t.Errorf("expected %q to remain, missing", n)
+		}
+	}
+}
+
+func TestPruneOldRuns_NoOpOnMissingDir(t *testing.T) {
+	if err := pruneOldRuns(filepath.Join(t.TempDir(), "no", "such", "runs"), 5); err != nil {
+		t.Errorf("missing runs/ should be a no-op, got %v", err)
+	}
+}
+
+func TestPruneOldRuns_ZeroKeepIsNoOp(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := pruneOldRuns(dir, 0); err != nil {
+		t.Fatalf("pruneOldRuns: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "old")); err != nil {
+		t.Errorf("KeepRuns=0 must skip pruning, but old/ was removed: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// runState.promptLogPath
+// ---------------------------------------------------------------------------
+
+func TestRunState_PromptLogPathSequencesPerDispatch(t *testing.T) {
+	rs := &runState{runTimestamp: "20260505-150000", repoPath: "/tmp/repo"}
+	got := []string{
+		rs.promptLogPath("atdd-task"),
+		rs.promptLogPath("atdd-test"),
+		rs.promptLogPath("atdd-task"),
+	}
+	want := []string{
+		filepath.Join("/tmp/repo", ".gh-optivem", "runs", "20260505-150000", "001-atdd-task.prompt.md"),
+		filepath.Join("/tmp/repo", ".gh-optivem", "runs", "20260505-150000", "002-atdd-test.prompt.md"),
+		filepath.Join("/tmp/repo", ".gh-optivem", "runs", "20260505-150000", "003-atdd-task.prompt.md"),
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("got[%d] = %q, want %q", i, got[i], w)
+		}
+	}
+}
+
+func TestRunState_PromptLogPathNilIsEmpty(t *testing.T) {
+	var rs *runState
+	if got := rs.promptLogPath("atdd-task"); got != "" {
+		t.Errorf("nil runState should return empty path, got %q", got)
 	}
 }

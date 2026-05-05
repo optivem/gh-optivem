@@ -13,6 +13,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -754,6 +755,292 @@ func TestMaterializePrompt_CleanupRemovesTempfile(t *testing.T) {
 	entries, _ := os.ReadDir(dir)
 	if len(entries) != 0 {
 		t.Errorf("cleanup must remove tempfile; %d entries remain", len(entries))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Unfilled-placeholder guard (item 3)
+// ---------------------------------------------------------------------------
+
+func TestDispatch_HaltsOnUnfilledPlaceholder(t *testing.T) {
+	// PromptOverride is the simplest way to inject a known-missing
+	// ${...} key into the rendered prompt without modifying an embedded
+	// agent body. ${unmapped_field} has no entry in renderPrompt's
+	// params map, so ExpandParams leaves it untouched and the guardrail
+	// catches it. RawPrompt would skip the check entirely (documented
+	// escape hatch); PromptOverride still goes through ExpandParams +
+	// the guard.
+	gitFake := &fakeGit{}
+	claudeFake := &fakeClaude{}
+	opts := newOpts()
+	opts.PromptOverride = "Imagine: ${unmapped_field}\nDo the thing."
+
+	err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts)
+	if err == nil {
+		t.Fatalf("expected error when ${unmapped_field} is unfilled, got nil")
+	}
+	if !strings.Contains(err.Error(), "unfilled placeholders") {
+		t.Errorf("error should mention unfilled placeholders, got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "${unmapped_field}") {
+		t.Errorf("error should name the leftover placeholder, got %q", err.Error())
+	}
+	if len(claudeFake.calls) != 0 {
+		t.Errorf("claude must not run when placeholders are unfilled, got %d calls", len(claudeFake.calls))
+	}
+}
+
+func TestDispatch_RawPromptSkipsPlaceholderCheck(t *testing.T) {
+	// --replace short-circuits the substitution path entirely; an operator
+	// who deliberately writes ${foo} in their replacement text should not
+	// be blocked by the guardrail.
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	claudeFake := &fakeClaude{}
+	opts := newOpts()
+	opts.RawPrompt = "Literal ${unfilled} text — RawPrompt mode."
+
+	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch with RawPrompt: %v", err)
+	}
+	if len(claudeFake.calls) != 1 {
+		t.Fatalf("expected 1 claude call, got %d", len(claudeFake.calls))
+	}
+	if claudeFake.calls[0].Prompt != opts.RawPrompt {
+		t.Errorf("RawPrompt did not pass through verbatim:\n got: %q\nwant: %q",
+			claudeFake.calls[0].Prompt, opts.RawPrompt)
+	}
+}
+
+func TestFindUnfilledPlaceholders_ReturnsDistinctOrdered(t *testing.T) {
+	got := findUnfilledPlaceholders("first ${foo}, then ${bar}, then ${foo} again, ${baz_quux}")
+	want := []string{"${foo}", "${bar}", "${baz_quux}"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestFindUnfilledPlaceholders_NoMatchesReturnsNil(t *testing.T) {
+	if got := findUnfilledPlaceholders("nothing to see here, $literal $$double"); got != nil {
+		t.Errorf("expected nil, got %v", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Prompt log (item 2)
+// ---------------------------------------------------------------------------
+
+func TestDispatch_WritesPromptLogWhenPathSet(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "runs", "001-atdd-test.prompt.md")
+
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	claudeFake := &fakeClaude{}
+	opts := newOpts()
+	opts.PromptLogPath = logPath
+
+	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	body, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read prompt log: %v", err)
+	}
+	if string(body) != claudeFake.calls[0].Prompt {
+		t.Errorf("prompt log does not match captured prompt byte-for-byte\n got len=%d\nwant len=%d",
+			len(body), len(claudeFake.calls[0].Prompt))
+	}
+}
+
+func TestDispatch_PromptLogFailureIsNonFatal(t *testing.T) {
+	// Pointing PromptLogPath at a file path that exists *as a directory*
+	// makes os.WriteFile fail. Dispatch should warn to stderr and continue.
+	dir := t.TempDir()
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	claudeFake := &fakeClaude{}
+	var stderr bytes.Buffer
+	opts := newOpts()
+	opts.Stderr = &stderr
+	opts.PromptLogPath = dir // path is a directory → WriteFile fails
+
+	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+		t.Fatalf("expected log failure to be non-fatal, got %v", err)
+	}
+	if !strings.Contains(stderr.String(), "failed to write prompt log") {
+		t.Errorf("expected stderr warning, got %q", stderr.String())
+	}
+}
+
+func TestDispatch_NoLogWhenPathEmpty(t *testing.T) {
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	claudeFake := &fakeClaude{}
+	opts := newOpts() // PromptLogPath is "" by default
+
+	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Prepared-prompt summary banner (item 5)
+// ---------------------------------------------------------------------------
+
+func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
+	var buf bytes.Buffer
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	claudeFake := &fakeClaude{}
+	opts := newOpts()
+	opts.Stdout = &buf
+	opts.Agent = "atdd-task"
+	opts.Architecture = "monolith"
+	opts.AllowedRoots = "- System: system/monolith/typescript (lang: typescript)\n- System tests: system-test/typescript (lang: typescript)\n"
+	opts.Checklist = "- [x] One done\n- [ ] Two pending"
+	opts.PromptLogPath = "/tmp/runs/001-atdd-task.prompt.md"
+
+	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	got := buf.String()
+	mustContain(t, got, "PREPARED PROMPT for atdd-task")
+	mustContain(t, got, "architecture:")
+	mustContain(t, got, "monolith")
+	mustContain(t, got, "allowed roots:")
+	mustContain(t, got, "2 path(s)")
+	mustContain(t, got, "checklist:")
+	mustContain(t, got, "2 item(s) (1 already [x])")
+	mustContain(t, got, "/tmp/runs/001-atdd-task.prompt.md")
+}
+
+func TestDispatch_PreparedPromptBannerUsesPlaceholdersForEmpties(t *testing.T) {
+	// The bug we're guarding against shows up here: when Architecture and
+	// AllowedRoots are empty (the seedScopeParams → seedScopeState bug), the
+	// banner makes that visible at a glance.
+	var buf bytes.Buffer
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	claudeFake := &fakeClaude{}
+	opts := newOpts()
+	opts.Stdout = &buf
+	// Architecture and AllowedRoots default to "".
+
+	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	got := buf.String()
+	mustContain(t, got, "(empty)")
+	mustContain(t, got, "(none)") // override text + log
+}
+
+func TestDispatch_PreparedPromptBanner_RawPromptShowsOverrideMode(t *testing.T) {
+	var buf bytes.Buffer
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	claudeFake := &fakeClaude{}
+	opts := newOpts()
+	opts.Stdout = &buf
+	opts.RawPrompt = "operator-supplied prompt"
+
+	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	got := buf.String()
+	mustContain(t, got, "override mode")
+	if strings.Contains(got, "architecture:") {
+		t.Errorf("override-mode banner must not list introspection fields:\n%s", got)
+	}
+}
+
+func TestDispatch_ShowPromptDumpsFullPrompt(t *testing.T) {
+	var buf bytes.Buffer
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	claudeFake := &fakeClaude{}
+	opts := newOpts()
+	opts.Stdout = &buf
+	opts.ShowPrompt = true
+
+	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	got := buf.String()
+	mustContain(t, got, "You are the Test Agent") // the embedded body is dumped
+}
+
+func TestDispatch_ShowPromptOffByDefault(t *testing.T) {
+	var buf bytes.Buffer
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	claudeFake := &fakeClaude{}
+	opts := newOpts()
+	opts.Stdout = &buf
+
+	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if strings.Contains(buf.String(), "You are the Test Agent") {
+		t.Errorf("--show-prompt off must not dump the prompt body:\n%s", buf.String())
+	}
+}
+
+func TestSummarizeAllowedRoots(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty", "", "(empty)"},
+		{"only system", "- System: a (lang: java)\n- System tests: b (lang: java)\n", "2 path(s)"},
+		{"with externals",
+			"- System: a\n- System tests: b\n\nExternal-system roots (note):\n- Stubs: c\n- Simulators: d\n",
+			"2 path(s), 2 external"},
+		{"only externals",
+			"\nExternal-system roots:\n- Stubs: c\n",
+			"0 path(s), 1 external"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := summarizeAllowedRoots(tt.in); got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSummarizeChecklist(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty", "", "(empty)"},
+		{"all done", "- [x] One\n- [X] Two", "2 item(s) (2 already [x])"},
+		{"mixed", "- [x] One\n- [ ] Two\n- [ ] Three", "3 item(s) (1 already [x])"},
+		{"non-checklist text", "Just some prose", "(empty)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := summarizeChecklist(tt.in); got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

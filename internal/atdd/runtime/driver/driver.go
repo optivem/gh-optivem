@@ -37,8 +37,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/actions"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
@@ -50,6 +53,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/trace"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/verify"
+	"github.com/optivem/gh-optivem/internal/files"
 )
 
 // DefaultFlowName is the entry flow loaded by every public CLI command.
@@ -126,6 +130,20 @@ type Options struct {
 	// honors it) to get a plain-text file.
 	LogFile string
 
+	// KeepRuns caps how many directories under <repoPath>/.gh-optivem/runs/
+	// the driver retains at startup. The current run's directory is created
+	// after pruning, so the post-prune count is min(N, on-disk-count) + 1.
+	// Zero (the default) disables pruning — useful in tests where the runs/
+	// directory is irrelevant. Negative values are rejected at the CLI;
+	// the runtime treats anything <=0 as "skip pruning".
+	KeepRuns int
+
+	// ShowPrompt threads through to clauderun.Options.ShowPrompt for every
+	// dispatch so `gh optivem atdd implement-ticket --show-prompt` dumps
+	// the full rendered prompt to stdout before each agent launches. Off
+	// by default — the prepared-prompt summary banner is always on.
+	ShowPrompt bool
+
 	// ClaudeRunDeps lets tests inject fake `claude` and `git` runners
 	// without spawning real subprocesses. Production callers leave this
 	// zero-valued; clauderun falls back to real execClaude / execGit.
@@ -198,6 +216,20 @@ func Run(ctx context.Context, opts Options) error {
 		return fmt.Errorf("driver: bind engine: %w", err)
 	}
 
+	repoPath, err := resolveRepoPath(opts.RepoPath)
+	if err != nil {
+		return fmt.Errorf("driver: %w", err)
+	}
+
+	// Per-run diagnostic state: timestamp + monotonic dispatch counter,
+	// shared by every dispatcher closure registered by wrapAgentDispatchers.
+	// Used to compose <run-ts>/<seq>-<agent>.prompt.md log paths so files
+	// sort in dispatch order regardless of clock granularity.
+	runState := &runState{
+		runTimestamp: nowFn().UTC().Format("20060102-150405"),
+		repoPath:     repoPath,
+	}
+
 	// Post-Bind decoration order matters:
 	//   1. Wrap user_task agent dispatch with per-node info-printer (uses
 	//      RawNode metadata only available after Bind).
@@ -209,20 +241,28 @@ func Run(ctx context.Context, opts Options) error {
 	//   4. Apply the trace decorator last so its entry/exit lines bracket
 	//      every other decorator's behaviour. The operator sees the
 	//      composed call as one node fire.
-	wrapAgentDispatchers(eng, opts)
+	wrapAgentDispatchers(eng, opts, runState)
 	verify.WrapAll(eng, verify.Deps{})
 	wrapOverride(eng, opts.Override)
-
-	repoPath, err := resolveRepoPath(opts.RepoPath)
-	if err != nil {
-		return fmt.Errorf("driver: %w", err)
-	}
 
 	logClose, err := installLogFileMirror(&opts)
 	if err != nil {
 		return fmt.Errorf("driver: %w", err)
 	}
 	defer logClose()
+
+	// Diagnostic-side effects on the consumer repo, both idempotent so
+	// re-running the driver from a fresh checkout never leaves the
+	// developer with mystery files committed by mistake. Pruning failures
+	// surface as warnings — they shouldn't block a real ticket run.
+	if err := ensureGhOptivemGitignore(repoPath); err != nil {
+		fmt.Fprintf(opts.Stderr, "driver: warning: ensure .gitignore for .gh-optivem/: %v\n", err)
+	}
+	if opts.KeepRuns > 0 {
+		if err := pruneOldRuns(filepath.Join(repoPath, ".gh-optivem", "runs"), opts.KeepRuns); err != nil {
+			fmt.Fprintf(opts.Stderr, "driver: warning: prune old runs: %v\n", err)
+		}
+	}
 	trace.WrapAll(eng, trace.Deps{
 		Out:      opts.Stdout,
 		RepoPath: repoPath,
@@ -234,7 +274,7 @@ func Run(ctx context.Context, opts Options) error {
 	printConfig(opts.Stdout, opts, cfg, repoPath)
 
 	sCtx := statemachine.NewContext()
-	seedScopeParams(sCtx, cfg)
+	seedScopeState(sCtx, cfg)
 	if opts.ProjectURL != "" {
 		sCtx.Set("project_url", opts.ProjectURL)
 	}
@@ -388,28 +428,34 @@ func orPlaceholder(s, placeholder string) string {
 	return s
 }
 
-// seedScopeParams copies repo-strategy and architecture from a loaded
-// config into Context.Params so agent prompts can substitute
+// seedScopeState copies repo-strategy and architecture from a loaded
+// config into Context.State so agent prompts can substitute
 // ${repo_strategy}, ${repos}, ${architecture}, and ${allowed_roots}.
 // ${allowed_roots} is a pre-rendered multi-line block listing the paths
 // the agent is allowed to write into; the rendering happens here once
 // per run rather than at every dispatch site. Empty values are left
 // absent. nil cfg is a no-op.
-func seedScopeParams(sCtx *statemachine.Context, cfg *projectconfig.Config) {
+//
+// State (not Params) is the right destination: these four facts are
+// project-scoped and stable for the entire run, alongside issue_title /
+// project_title / ticket_checklist (also written via Set). The
+// dispatcher reads them back via ctx.GetString, which is a State lookup
+// — writing to Params would silently expand to "" at substitution time.
+func seedScopeState(sCtx *statemachine.Context, cfg *projectconfig.Config) {
 	if cfg == nil {
 		return
 	}
 	if cfg.RepoStrategy != "" {
-		sCtx.Params["repo_strategy"] = cfg.RepoStrategy
+		sCtx.Set("repo_strategy", cfg.RepoStrategy)
 	}
 	if repos := cfg.Repos(); len(repos) > 0 {
-		sCtx.Params["repos"] = strings.Join(repos, ",")
+		sCtx.Set("repos", strings.Join(repos, ","))
 	}
 	if cfg.System.Architecture != "" {
-		sCtx.Params["architecture"] = cfg.System.Architecture
+		sCtx.Set("architecture", cfg.System.Architecture)
 	}
 	if rendered := renderAllowedRoots(cfg); rendered != "" {
-		sCtx.Params["allowed_roots"] = rendered
+		sCtx.Set("allowed_roots", rendered)
 	}
 }
 
@@ -567,7 +613,13 @@ func registerAgentDispatchers(r *agents.Registry) {
 // dispatcher closure has access to the YAML node's Raw metadata
 // (description, phase_doc, agent name) and the per-run Options, which
 // together provide everything the prompt template needs.
-func wrapAgentDispatchers(eng *statemachine.Engine, opts Options) {
+//
+// rs threads the per-run timestamp + monotonic dispatch counter through
+// every closure so each clauderun.Dispatch can compute a unique
+// PromptLogPath without coordinating across nodes. nil is fine for
+// tests that don't care about the run-log path; the closure falls back
+// to an empty PromptLogPath which clauderun treats as "skip log".
+func wrapAgentDispatchers(eng *statemachine.Engine, opts Options, rs *runState) {
 	for _, flow := range eng.Flows {
 		for id, node := range flow.Nodes {
 			if node.Kind != statemachine.UserTask {
@@ -582,7 +634,7 @@ func wrapAgentDispatchers(eng *statemachine.Engine, opts Options) {
 			if opts.ManualAgents {
 				node.Fn = newManualAgentDispatcher(opts, raw, inner)
 			} else {
-				node.Fn = newClaudeRunDispatcher(opts, raw, nodeID, inner)
+				node.Fn = newClaudeRunDispatcher(opts, raw, nodeID, rs, inner)
 			}
 			flow.Nodes[id] = node
 		}
@@ -607,7 +659,11 @@ func newManualAgentDispatcher(opts Options, raw statemachine.RawNode, inner stat
 // fields populated by preResolveIssue / PICK_TOP_READY, and hands the lot
 // to clauderun.Dispatch. The agent does not commit; the wrapping CLI
 // stages and commits the working-tree delta after dispatch returns.
-func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID string, inner statemachine.NodeFn) statemachine.NodeFn {
+//
+// rs supplies the per-dispatch PromptLogPath. nil rs (only happens in
+// tests today) skips the log — clauderun treats empty PromptLogPath as
+// "no diagnostics file".
+func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID string, rs *runState, inner statemachine.NodeFn) statemachine.NodeFn {
 	return func(ctx *statemachine.Context) statemachine.Outcome {
 		extraText := ctx.GetString(override.KeyExtra)
 		replaceText := ctx.GetString(override.KeyReplace)
@@ -632,6 +688,8 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 			RawPrompt:       replaceText,
 			PromptOverride:  opts.AgentPromptOverrides[agentName],
 			Autonomous:      opts.Autonomous,
+			ShowPrompt:      opts.ShowPrompt,
+			PromptLogPath:   rs.promptLogPath(agentName),
 			RepoPath:        opts.RepoPath,
 			Stdout:          opts.Stdout,
 			Stderr:          opts.Stderr,
@@ -729,4 +787,103 @@ func wrapOverride(eng *statemachine.Engine, hooks *override.Hooks) {
 			flow.Nodes[id] = node
 		}
 	}
+}
+
+// nowFn is the package-level clock. Production points at time.Now;
+// tests can swap it to pin runState.runTimestamp deterministically.
+var nowFn = time.Now
+
+// runState carries the per-Run diagnostic context shared across every
+// dispatcher closure: the run timestamp (used as the prompt-log
+// directory name) and a monotonic dispatch counter.
+//
+// The counter is an atomic.Int64 so concurrent dispatches (none today,
+// but the engine doesn't structurally rule it out) get unique seq
+// numbers. zero seq is never used: promptLogPath calls Add(1) before
+// formatting, so the first dispatch sees seq=1 → "001-…".
+type runState struct {
+	runTimestamp string
+	repoPath     string
+	seq          atomic.Int64
+}
+
+// promptLogPath composes <repoPath>/.gh-optivem/runs/<run-ts>/<seq>-<agent>.prompt.md
+// for the current dispatch. Bumps the per-run sequence counter so log
+// files sort in dispatch order regardless of clock granularity.
+//
+// Returns empty when rs is nil — used by tests that bypass the
+// driver-managed runState; clauderun treats an empty PromptLogPath as
+// "skip the log".
+func (rs *runState) promptLogPath(agentName string) string {
+	if rs == nil {
+		return ""
+	}
+	seq := rs.seq.Add(1)
+	filename := fmt.Sprintf("%03d-%s.prompt.md", seq, agentName)
+	return filepath.Join(rs.repoPath, ".gh-optivem", "runs", rs.runTimestamp, filename)
+}
+
+// pruneOldRuns deletes all but the most recent (keep-1) directories in
+// runsDir, sorted by mtime descending. The "-1" leaves room for the run
+// we're about to create. Missing runsDir is a no-op (first-ever run on
+// this consumer).
+//
+// Errors removing a single directory are surfaced back to the caller,
+// which logs them as a warning — pruning is diagnostics, not load-bearing.
+func pruneOldRuns(runsDir string, keep int) error {
+	if keep <= 0 {
+		return nil
+	}
+	entries, err := os.ReadDir(runsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	type entry struct {
+		path  string
+		mtime time.Time
+	}
+	var dirs []entry
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		dirs = append(dirs, entry{
+			path:  filepath.Join(runsDir, e.Name()),
+			mtime: info.ModTime(),
+		})
+	}
+	sort.Slice(dirs, func(i, j int) bool {
+		return dirs[i].mtime.After(dirs[j].mtime)
+	})
+	cutoff := keep - 1
+	if cutoff < 0 {
+		cutoff = 0
+	}
+	if len(dirs) <= cutoff {
+		return nil
+	}
+	var firstErr error
+	for _, d := range dirs[cutoff:] {
+		if err := os.RemoveAll(d.path); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+// ensureGhOptivemGitignore appends ".gh-optivem/" as a line in
+// <repoPath>/.gitignore when it isn't already present. Idempotent:
+// existing matches (with or without trailing slash, with or without a
+// leading "/") are accepted as already-ignoring. Creates .gitignore if
+// missing. Used by both driver.Run (upgrade path for repos that pre-date
+// this guardrail) and `gh optivem config init` (fresh consumer setup).
+func ensureGhOptivemGitignore(repoPath string) error {
+	return files.EnsureGitignoreLine(repoPath, ".gh-optivem/")
 }
