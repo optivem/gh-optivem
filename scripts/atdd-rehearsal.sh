@@ -46,6 +46,15 @@ REHEARSAL_ARCH="monolith"
 REHEARSAL_REPO_STRATEGY="monorepo"
 REHEARSAL_MONOLITH_LANG="java"
 REHEARSAL_PROJECT_URL="https://github.com/orgs/optivem/projects/20"
+
+# Tier paths matching shop's worktree layout. `gh optivem config init` no
+# longer derives paths — every caller passes them explicitly. Shop nests
+# system code under system/<arch>/<lang>/ and tests under system-test/<lang>/
+# so the rehearsal worktree (which is shop's tree) needs these spellings.
+REHEARSAL_SYSTEM_PATH="system/${REHEARSAL_ARCH}/${REHEARSAL_MONOLITH_LANG}"
+REHEARSAL_SYSTEM_TEST_PATH="system-test/${REHEARSAL_MONOLITH_LANG}"
+REHEARSAL_STUBS_PATH="external-systems/external-stub"
+REHEARSAL_SIMULATORS_PATH="external-systems/external-real-sim"
 # === END REHEARSAL CONFIG ===
 
 GH_OPTIVEM_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -155,7 +164,11 @@ log "Writing gh-optivem.yaml into worktree..."
     --arch "$REHEARSAL_ARCH" \
     --repo-strategy "$REHEARSAL_REPO_STRATEGY" \
     --monolith-lang "$REHEARSAL_MONOLITH_LANG" \
-    --project-url "$REHEARSAL_PROJECT_URL" )
+    --project-url "$REHEARSAL_PROJECT_URL" \
+    --system-path "$REHEARSAL_SYSTEM_PATH" \
+    --system-test-path "$REHEARSAL_SYSTEM_TEST_PATH" \
+    --stubs-path "$REHEARSAL_STUBS_PATH" \
+    --simulators-path "$REHEARSAL_SIMULATORS_PATH" )
 
 log "Committing gh-optivem.yaml to rehearsal branch..."
 ( cd "$WORKTREE_PATH" \

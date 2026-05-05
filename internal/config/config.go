@@ -51,6 +51,18 @@ type Config struct {
 	FrontendLang string // multitier only
 	TestLang     string
 
+	// Tier paths written into gh-optivem.yaml. Each is required when Arch is
+	// set (the YAML emitter does no path derivation — every call site that
+	// produces a Config supplies the paths matching its own on-disk layout).
+	// SystemPath applies only to monolith; BackendPath/FrontendPath apply only
+	// to multitier. SystemTestPath, StubsPath, SimulatorsPath apply to both.
+	SystemPath      string
+	SystemTestPath  string
+	BackendPath     string
+	FrontendPath    string
+	StubsPath       string
+	SimulatorsPath  string
+
 	Deploy     string // "docker" (default) or "cloud-run"
 	License    string
 
@@ -500,6 +512,12 @@ type RawFlags struct {
 	ShopRef           string
 	LogFile           string
 	ProjectURL        string
+	SystemPath        string
+	SystemTestPath    string
+	BackendPath       string
+	FrontendPath      string
+	StubsPath         string
+	SimulatorsPath    string
 	DryRun            bool
 	KeepLocal         bool
 	NoLegacy          bool
@@ -532,6 +550,15 @@ func bindYAMLAffectingFlags(fs *pflag.FlagSet, f *RawFlags) {
 	fs.StringVar(&f.BackendLang, "backend-lang", "", "Backend language: java, dotnet, typescript (multitier)")
 	fs.StringVar(&f.FrontendLang, "frontend-lang", "", "Frontend language: react (multitier)")
 	fs.StringVar(&f.ProjectURL, "project-url", "", "GitHub Project URL to bake into gh-optivem.yaml (optional; leave empty to fill in by hand later)")
+	// Tier paths: required on 'config init' when --arch is set; on 'init'
+	// they are optional and default to the flat layout the scaffolder
+	// produces.
+	fs.StringVar(&f.SystemPath, "system-path", "", "Repo-relative path to system code (monolith only; required on 'config init')")
+	fs.StringVar(&f.SystemTestPath, "system-test-path", "", "Repo-relative path to system tests (required on 'config init' when --arch is set)")
+	fs.StringVar(&f.BackendPath, "backend-path", "", "Repo-relative path to backend code (multitier only; required on 'config init')")
+	fs.StringVar(&f.FrontendPath, "frontend-path", "", "Repo-relative path to frontend code (multitier only; required on 'config init')")
+	fs.StringVar(&f.StubsPath, "stubs-path", "", "Repo-relative path to external-system stubs (required on 'config init' when --arch is set)")
+	fs.StringVar(&f.SimulatorsPath, "simulators-path", "", "Repo-relative path to external-system simulators (required on 'config init' when --arch is set)")
 }
 
 // BindInitFlags binds every `gh optivem init` CLI flag to the corresponding
@@ -636,6 +663,40 @@ func resolveLangs(f *RawFlags) langChoice {
 		c.testLang = c.backendLang
 	}
 	return c
+}
+
+// resolveScaffoldPaths fills in any tier-path flags the user did not pass on
+// `gh optivem init` with the flat layout the scaffolder actually produces.
+// Mutates f in place. Anything the user did supply is preserved (so an
+// advanced user can override the flat default per-tier without losing the
+// other defaults).
+//
+// `gh optivem config init` does NOT call this — there the YAML is being
+// written for an existing layout the tool did not produce, so the caller
+// must specify the paths explicitly (validatePathFlagsForYAML enforces).
+func resolveScaffoldPaths(f *RawFlags) {
+	if f.SystemTestPath == "" {
+		f.SystemTestPath = "system-test"
+	}
+	if f.StubsPath == "" {
+		f.StubsPath = "external-systems/external-stub"
+	}
+	if f.SimulatorsPath == "" {
+		f.SimulatorsPath = "external-systems/external-real-sim"
+	}
+	switch f.Arch {
+	case "monolith":
+		if f.SystemPath == "" {
+			f.SystemPath = "system"
+		}
+	case "multitier":
+		if f.BackendPath == "" {
+			f.BackendPath = "backend"
+		}
+		if f.FrontendPath == "" {
+			f.FrontendPath = "frontend"
+		}
+	}
 }
 
 type envTokens struct {
@@ -936,6 +997,7 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 	resolvedLevel := resolveVerifyLevel(f.VerifyLevel)
 	validateCommonFlags(f.Deploy, f.Arch, f.RepoStrategy)
 	lc := resolveLangs(f)
+	resolveScaffoldPaths(f)
 
 	repoName := f.Repo
 
@@ -1001,6 +1063,12 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 		Deploy:     f.Deploy,
 		License:    f.License,
 		ProjectURL: f.ProjectURL,
+		SystemPath:     f.SystemPath,
+		SystemTestPath: f.SystemTestPath,
+		BackendPath:    f.BackendPath,
+		FrontendPath:   f.FrontendPath,
+		StubsPath:      f.StubsPath,
+		SimulatorsPath: f.SimulatorsPath,
 		DryRun:       f.DryRun,
 		VerifyLevel:    resolvedLevel,
 		NoLegacy:       f.NoLegacy,
@@ -1173,6 +1241,9 @@ func ValidateAndDeriveForYAML(f *RawFlags) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := validatePathFlagsForYAML(f); err != nil {
+		return nil, err
+	}
 	mr := deriveMultirepoNames(f.RepoStrategy, f.Arch, f.Owner, f.Repo)
 	return &Config{
 		Owner:            f.Owner,
@@ -1185,6 +1256,12 @@ func ValidateAndDeriveForYAML(f *RawFlags) (*Config, error) {
 		FrontendLang:     lc.frontendLang,
 		TestLang:         lc.testLang,
 		ProjectURL:       f.ProjectURL,
+		SystemPath:       f.SystemPath,
+		SystemTestPath:   f.SystemTestPath,
+		BackendPath:      f.BackendPath,
+		FrontendPath:     f.FrontendPath,
+		StubsPath:        f.StubsPath,
+		SimulatorsPath:   f.SimulatorsPath,
 		FrontendRepo:     mr.frontendRepo,
 		BackendRepo:      mr.backendRepo,
 		FrontendFullRepo: mr.frontendFullRepo,
@@ -1192,6 +1269,52 @@ func ValidateAndDeriveForYAML(f *RawFlags) (*Config, error) {
 		SystemRepo:       mr.systemRepo,
 		SystemFullRepo:   mr.systemFullRepo,
 	}, nil
+}
+
+// validatePathFlagsForYAML enforces the explicit-paths contract for
+// `gh optivem config init`: when an architecture is set, every relevant tier
+// path flag must be non-empty. Architecture-independent flags (system-test,
+// stubs, simulators) are required for both architectures; system-path is
+// monolith-only; backend-path and frontend-path are multitier-only.
+//
+// Mismatched flags (e.g. --system-path on multitier) are also rejected so a
+// typo in the rehearsal script doesn't silently land in the YAML.
+func validatePathFlagsForYAML(f *RawFlags) error {
+	var missing []string
+	require := func(name, val string) {
+		if val == "" {
+			missing = append(missing, name)
+		}
+	}
+	reject := func(name, val string) error {
+		if val != "" {
+			return fmt.Errorf("--%s is not valid for --arch %s", name, f.Arch)
+		}
+		return nil
+	}
+	require("system-test-path", f.SystemTestPath)
+	require("stubs-path", f.StubsPath)
+	require("simulators-path", f.SimulatorsPath)
+	switch f.Arch {
+	case "monolith":
+		require("system-path", f.SystemPath)
+		if err := reject("backend-path", f.BackendPath); err != nil {
+			return err
+		}
+		if err := reject("frontend-path", f.FrontendPath); err != nil {
+			return err
+		}
+	case "multitier":
+		require("backend-path", f.BackendPath)
+		require("frontend-path", f.FrontendPath)
+		if err := reject("system-path", f.SystemPath); err != nil {
+			return err
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("required path flags for --arch %s: --%s", f.Arch, strings.Join(missing, ", --"))
+	}
+	return nil
 }
 
 // resolveLangsForYAML mirrors resolveLangs but returns errors instead of

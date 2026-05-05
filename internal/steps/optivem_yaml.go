@@ -61,10 +61,12 @@ func writeOptivemYAMLToDir(dir string, pc *projectconfig.Config) {
 // Kept as a pure function (no I/O) so tests can verify the translation
 // independently of file writing.
 //
-// Path conventions emitted here mirror the directories the scaffold actually
-// creates (see internal/steps/apply_template.go and the shop template). The
-// mapping is the scaffold's responsibility — the runtime never derives paths
-// from the scope axes.
+// Tier paths are read verbatim from cfg — buildOptivemYAML does no path
+// derivation. Each call site that produces a Config supplies the paths
+// matching its own on-disk layout (the scaffolder via resolveScaffoldPaths,
+// `config init` via explicit --*-path flags). This keeps the YAML emitter
+// agnostic to whether it is writing for a scaffolded repo, shop's worktree,
+// or a hand-rolled layout.
 func buildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	pc := &projectconfig.Config{
 		Project:      projectconfig.Project{URL: cfg.ProjectURL},
@@ -97,17 +99,19 @@ func mapRepoStrategy(s string) string {
 
 // buildSystem populates the System block from cfg. Polymorphic by
 // architecture: monolith uses flat Path/Repo/Lang; multitier nests Backend
-// and Frontend.
+// and Frontend. Paths come from cfg verbatim — the resolution responsibility
+// lives at the call site (resolveScaffoldPaths for `init`, --*-path flags
+// for `config init`).
 func buildSystem(cfg *config.Config) projectconfig.System {
 	s := projectconfig.System{Architecture: cfg.Arch}
 	switch cfg.Arch {
 	case "monolith":
-		s.Path = "system/monolith/" + cfg.Lang
+		s.Path = cfg.SystemPath
 		s.Repo = systemRepoSlug(cfg)
 		s.Lang = cfg.Lang
 	case "multitier":
 		s.Backend = projectconfig.TierSpec{
-			Path: "system/multitier/backend-" + cfg.BackendLang,
+			Path: cfg.BackendPath,
 			Repo: backendRepoSlug(cfg),
 			Lang: cfg.BackendLang,
 		}
@@ -116,7 +120,7 @@ func buildSystem(cfg *config.Config) projectconfig.System {
 		// language (typescript), not the framework — adding more
 		// frontend frameworks later is out of scope.
 		s.Frontend = projectconfig.TierSpec{
-			Path: "system/multitier/frontend-react",
+			Path: cfg.FrontendPath,
 			Repo: frontendRepoSlug(cfg),
 			Lang: projectconfig.LangTypescript,
 		}
@@ -124,27 +128,22 @@ func buildSystem(cfg *config.Config) projectconfig.System {
 	return s
 }
 
-// buildSystemTest populates the SystemTest tier. The path is keyed on
-// test_lang (not system_lang) since the test suite directory is named
-// after the test language.
+// buildSystemTest populates the SystemTest tier from cfg.SystemTestPath.
 func buildSystemTest(cfg *config.Config) projectconfig.TierSpec {
 	return projectconfig.TierSpec{
-		Path: "system-test/" + cfg.TestLang,
+		Path: cfg.SystemTestPath,
 		Repo: systemTestRepoSlug(cfg),
 		Lang: cfg.TestLang,
 	}
 }
 
-// buildExternals populates the ExternalSystems block. Both stubs and
-// simulators are always emitted because the scaffold creates both
-// directories at the workspace root (per the related shop-side plan
-// `shop/plans/20260505-move-external-systems-out-of-system.md` — externals
-// flatten to `<repo>/external-stub` and `<repo>/external-real-sim`).
+// buildExternals populates the ExternalSystems block from cfg.StubsPath and
+// cfg.SimulatorsPath.
 func buildExternals(cfg *config.Config) projectconfig.ExternalSystems {
 	repo := externalsRepoSlug(cfg)
 	return projectconfig.ExternalSystems{
-		Stubs:      projectconfig.ExternalSpec{Path: "external-stub", Repo: repo},
-		Simulators: projectconfig.ExternalSpec{Path: "external-real-sim", Repo: repo},
+		Stubs:      projectconfig.ExternalSpec{Path: cfg.StubsPath, Repo: repo},
+		Simulators: projectconfig.ExternalSpec{Path: cfg.SimulatorsPath, Repo: repo},
 	}
 }
 

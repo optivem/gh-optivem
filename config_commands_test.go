@@ -14,17 +14,29 @@ import (
 // what `config init` writes through `config validate` is the contract
 // users care about (write a fresh YAML, hand-edit, re-validate).
 
+// monolithMonorepoFlags returns a RawFlags pre-populated with valid path
+// flags matching shop's worktree layout — what the rehearsal script passes
+// to `gh optivem config init`. Tests reuse this so the explicit-paths
+// contract isn't restated at every call site.
+func monolithMonorepoFlags() *config.RawFlags {
+	return &config.RawFlags{
+		Owner:          "acme",
+		Repo:           "page-turner",
+		Arch:           "monolith",
+		RepoStrategy:   "monorepo",
+		Lang:           "java",
+		SystemPath:     "system/monolith/java",
+		SystemTestPath: "system-test/java",
+		StubsPath:      "external-systems/external-stub",
+		SimulatorsPath: "external-systems/external-real-sim",
+	}
+}
+
 func TestRunConfigInit_MonolithRoundTrip(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	f := &config.RawFlags{
-		Owner:        "acme",
-		Repo:         "page-turner",
-		Arch:         "monolith",
-		RepoStrategy: "monorepo",
-		Lang:         "java",
-		ProjectURL:   "https://github.com/orgs/acme/projects/1",
-	}
+	f := monolithMonorepoFlags()
+	f.ProjectURL = "https://github.com/orgs/acme/projects/1"
 	path, err := runConfigInit(f, dir, false)
 	if err != nil {
 		t.Fatalf("runConfigInit: %v", err)
@@ -53,7 +65,7 @@ func TestRunConfigInit_MonolithRoundTrip(t *testing.T) {
 		t.Errorf("system_test.lang: got %q, want java", cfg.SystemTest.Lang)
 	}
 	if cfg.System.Path != "system/monolith/java" {
-		t.Errorf("system.path: got %q", cfg.System.Path)
+		t.Errorf("system.path: got %q (should round-trip the --system-path flag)", cfg.System.Path)
 	}
 	if cfg.System.Repo != "acme/page-turner" {
 		t.Errorf("system.repo: got %q, want acme/page-turner", cfg.System.Repo)
@@ -64,13 +76,18 @@ func TestRunConfigInit_MultitierMultirepo(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	f := &config.RawFlags{
-		Owner:        "acme",
-		Repo:         "page-turner",
-		Arch:         "multitier",
-		RepoStrategy: "multirepo",
-		BackendLang:  "dotnet",
-		FrontendLang: "react",
-		TestLang:     "typescript",
+		Owner:          "acme",
+		Repo:           "page-turner",
+		Arch:           "multitier",
+		RepoStrategy:   "multirepo",
+		BackendLang:    "dotnet",
+		FrontendLang:   "react",
+		TestLang:       "typescript",
+		BackendPath:    "system/multitier/backend-dotnet",
+		FrontendPath:   "system/multitier/frontend-react",
+		SystemTestPath: "system-test/typescript",
+		StubsPath:      "external-systems/external-stub",
+		SimulatorsPath: "external-systems/external-real-sim",
 	}
 	if _, err := runConfigInit(f, dir, false); err != nil {
 		t.Fatalf("runConfigInit: %v", err)
@@ -104,13 +121,7 @@ func TestRunConfigInit_MultitierMultirepo(t *testing.T) {
 func TestRunConfigInit_RefusesOverwrite(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	f := &config.RawFlags{
-		Owner:        "acme",
-		Repo:         "page-turner",
-		Arch:         "monolith",
-		RepoStrategy: "monorepo",
-		Lang:         "java",
-	}
+	f := monolithMonorepoFlags()
 	if _, err := runConfigInit(f, dir, false); err != nil {
 		t.Fatalf("first init: %v", err)
 	}
@@ -130,6 +141,14 @@ func TestRunConfigInit_RefusesOverwrite(t *testing.T) {
 
 func TestRunConfigInit_RejectsBadFlags(t *testing.T) {
 	t.Parallel()
+	// withPaths returns a copy of monolithMonorepoFlags with the given
+	// transform applied — used to isolate a single bad-flag scenario from
+	// path-validation noise.
+	withPaths := func(mutate func(*config.RawFlags)) *config.RawFlags {
+		f := monolithMonorepoFlags()
+		mutate(f)
+		return f
+	}
 	cases := []struct {
 		name string
 		f    *config.RawFlags
@@ -142,23 +161,50 @@ func TestRunConfigInit_RejectsBadFlags(t *testing.T) {
 		},
 		{
 			"bad arch",
-			&config.RawFlags{Owner: "acme", Repo: "sky-travel", Arch: "bogus", RepoStrategy: "monorepo", Lang: "java"},
+			withPaths(func(f *config.RawFlags) { f.Arch = "bogus"; f.Repo = "sky-travel" }),
 			"--arch",
 		},
 		{
 			"bad repo-strategy",
-			&config.RawFlags{Owner: "acme", Repo: "sky-travel", Arch: "monolith", RepoStrategy: "bogus", Lang: "java"},
+			withPaths(func(f *config.RawFlags) { f.RepoStrategy = "bogus"; f.Repo = "sky-travel" }),
 			"--repo-strategy",
 		},
 		{
 			"monolith missing lang",
-			&config.RawFlags{Owner: "acme", Repo: "sky-travel", Arch: "monolith", RepoStrategy: "monorepo"},
+			withPaths(func(f *config.RawFlags) { f.Lang = ""; f.Repo = "sky-travel" }),
 			"--monolith-lang",
 		},
 		{
 			"multitier missing backend lang",
-			&config.RawFlags{Owner: "acme", Repo: "sky-travel", Arch: "multitier", RepoStrategy: "multirepo", FrontendLang: "react"},
+			&config.RawFlags{
+				Owner: "acme", Repo: "sky-travel", Arch: "multitier", RepoStrategy: "multirepo", FrontendLang: "react",
+				FrontendPath:   "frontend",
+				SystemTestPath: "system-test",
+				StubsPath:      "external-systems/external-stub",
+				SimulatorsPath: "external-systems/external-real-sim",
+			},
 			"--backend-lang",
+		},
+		{
+			"missing path flags",
+			&config.RawFlags{
+				Owner: "acme", Repo: "sky-travel", Arch: "monolith", RepoStrategy: "monorepo", Lang: "java",
+			},
+			"--system-path",
+		},
+		{
+			"system-path on multitier",
+			&config.RawFlags{
+				Owner: "acme", Repo: "sky-travel", Arch: "multitier", RepoStrategy: "multirepo",
+				BackendLang: "java", FrontendLang: "react",
+				SystemPath:     "system",
+				BackendPath:    "backend",
+				FrontendPath:   "frontend",
+				SystemTestPath: "system-test",
+				StubsPath:      "external-systems/external-stub",
+				SimulatorsPath: "external-systems/external-real-sim",
+			},
+			"--system-path is not valid for --arch multitier",
 		},
 	}
 	for _, tc := range cases {
@@ -194,10 +240,8 @@ func TestRunConfigValidate_Missing(t *testing.T) {
 func TestRunConfigValidate_Valid(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	f := &config.RawFlags{
-		Owner: "acme", Repo: "sky-travel",
-		Arch: "monolith", RepoStrategy: "monorepo", Lang: "java",
-	}
+	f := monolithMonorepoFlags()
+	f.Repo = "sky-travel"
 	if _, err := runConfigInit(f, dir, false); err != nil {
 		t.Fatalf("seed init: %v", err)
 	}

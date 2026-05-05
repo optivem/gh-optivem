@@ -7,17 +7,36 @@ import (
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
+// monolithFlatPaths returns the path values the scaffolder injects into a
+// monolith Config (matching resolveScaffoldPaths in internal/config). Tests
+// that exercise buildOptivemYAML for the post-scaffold layout reuse these
+// instead of repeating the literal strings.
+func monolithFlatPaths() (system, systemTest, stubs, simulators string) {
+	return "system", "system-test", "external-systems/external-stub", "external-systems/external-real-sim"
+}
+
+// multitierFlatPaths returns the path values the scaffolder injects into a
+// multitier Config.
+func multitierFlatPaths() (backend, frontend, systemTest, stubs, simulators string) {
+	return "backend", "frontend", "system-test", "external-systems/external-stub", "external-systems/external-real-sim"
+}
+
 func TestBuildOptivemYAML_MonolithMonorepo(t *testing.T) {
 	t.Parallel()
+	sys, sysTest, stubs, sims := monolithFlatPaths()
 	cfg := &config.Config{
-		Arch:         "monolith",
-		RepoStrategy: "monorepo",
-		Owner:        "x",
-		Repo:         "shop",
-		FullRepo:     "x/shop",
-		Lang:         "java",
-		TestLang:     "java",
-		ProjectURL:   "https://github.com/orgs/x/projects/1",
+		Arch:           "monolith",
+		RepoStrategy:   "monorepo",
+		Owner:          "x",
+		Repo:           "shop",
+		FullRepo:       "x/shop",
+		Lang:           "java",
+		TestLang:       "java",
+		ProjectURL:     "https://github.com/orgs/x/projects/1",
+		SystemPath:     sys,
+		SystemTestPath: sysTest,
+		StubsPath:      stubs,
+		SimulatorsPath: sims,
 	}
 	got := buildOptivemYAML(cfg)
 	if got.Project.URL != cfg.ProjectURL {
@@ -29,7 +48,7 @@ func TestBuildOptivemYAML_MonolithMonorepo(t *testing.T) {
 	if got.System.Architecture != "monolith" {
 		t.Errorf("System.Architecture: got %q", got.System.Architecture)
 	}
-	if got.System.Path != "system/monolith/java" {
+	if got.System.Path != "system" {
 		t.Errorf("System.Path: got %q", got.System.Path)
 	}
 	if got.System.Repo != "x/shop" {
@@ -38,19 +57,20 @@ func TestBuildOptivemYAML_MonolithMonorepo(t *testing.T) {
 	if got.System.Lang != "java" {
 		t.Errorf("System.Lang: got %q", got.System.Lang)
 	}
-	if got.SystemTest.Path != "system-test/java" || got.SystemTest.Repo != "x/shop" || got.SystemTest.Lang != "java" {
+	if got.SystemTest.Path != "system-test" || got.SystemTest.Repo != "x/shop" || got.SystemTest.Lang != "java" {
 		t.Errorf("SystemTest mismatch: %+v", got.SystemTest)
 	}
-	if got.ExternalSystems.Stubs.Path != "external-stub" || got.ExternalSystems.Stubs.Repo != "x/shop" {
+	if got.ExternalSystems.Stubs.Path != "external-systems/external-stub" || got.ExternalSystems.Stubs.Repo != "x/shop" {
 		t.Errorf("Stubs mismatch: %+v", got.ExternalSystems.Stubs)
 	}
-	if got.ExternalSystems.Simulators.Path != "external-real-sim" || got.ExternalSystems.Simulators.Repo != "x/shop" {
+	if got.ExternalSystems.Simulators.Path != "external-systems/external-real-sim" || got.ExternalSystems.Simulators.Repo != "x/shop" {
 		t.Errorf("Simulators mismatch: %+v", got.ExternalSystems.Simulators)
 	}
 }
 
 func TestBuildOptivemYAML_MultitierMultirepo(t *testing.T) {
 	t.Parallel()
+	be, fe, sysTest, stubs, sims := multitierFlatPaths()
 	cfg := &config.Config{
 		Arch:             "multitier",
 		RepoStrategy:     "multirepo",
@@ -59,24 +79,29 @@ func TestBuildOptivemYAML_MultitierMultirepo(t *testing.T) {
 		TestLang:         "typescript",
 		BackendFullRepo:  "acme/shop-backend",
 		FrontendFullRepo: "acme/shop-frontend",
+		BackendPath:      be,
+		FrontendPath:     fe,
+		SystemTestPath:   sysTest,
+		StubsPath:        stubs,
+		SimulatorsPath:   sims,
 	}
 	got := buildOptivemYAML(cfg)
 	if got.RepoStrategy != projectconfig.RepoStrategyMultiRepo {
 		t.Errorf("RepoStrategy: got %q, want %q", got.RepoStrategy, projectconfig.RepoStrategyMultiRepo)
 	}
-	if got.System.Backend.Path != "system/multitier/backend-dotnet" {
+	if got.System.Backend.Path != "backend" {
 		t.Errorf("Backend.Path: got %q", got.System.Backend.Path)
 	}
 	if got.System.Backend.Repo != "acme/shop-backend" || got.System.Backend.Lang != "dotnet" {
 		t.Errorf("Backend mismatch: %+v", got.System.Backend)
 	}
-	if got.System.Frontend.Path != "system/multitier/frontend-react" {
+	if got.System.Frontend.Path != "frontend" {
 		t.Errorf("Frontend.Path: got %q", got.System.Frontend.Path)
 	}
 	if got.System.Frontend.Repo != "acme/shop-frontend" || got.System.Frontend.Lang != "typescript" {
 		t.Errorf("Frontend mismatch: %+v", got.System.Frontend)
 	}
-	if got.SystemTest.Path != "system-test/typescript" {
+	if got.SystemTest.Path != "system-test" {
 		t.Errorf("SystemTest.Path: got %q", got.SystemTest.Path)
 	}
 	// SystemTest defaults to the backend repo in multi-repo + multitier.
@@ -90,15 +115,20 @@ func TestBuildOptivemYAML_MultitierMultirepo(t *testing.T) {
 
 func TestBuildOptivemYAML_MonolithMultirepo(t *testing.T) {
 	t.Parallel()
+	sys, sysTest, stubs, sims := monolithFlatPaths()
 	cfg := &config.Config{
 		Arch:           "monolith",
 		RepoStrategy:   "multirepo",
 		Lang:           "typescript",
 		TestLang:       "typescript",
 		SystemFullRepo: "acme/shop-system",
+		SystemPath:     sys,
+		SystemTestPath: sysTest,
+		StubsPath:      stubs,
+		SimulatorsPath: sims,
 	}
 	got := buildOptivemYAML(cfg)
-	if got.System.Path != "system/monolith/typescript" {
+	if got.System.Path != "system" {
 		t.Errorf("System.Path: got %q", got.System.Path)
 	}
 	if got.System.Repo != "acme/shop-system" {
@@ -109,15 +139,48 @@ func TestBuildOptivemYAML_MonolithMultirepo(t *testing.T) {
 	}
 }
 
+// TestBuildOptivemYAML_NonScaffoldPaths exercises the explicit-paths
+// contract: any caller can supply arbitrary paths (e.g. the rehearsal
+// script writing a YAML for shop's worktree, where system code lives at
+// system/monolith/{lang}/ rather than the flat system/).
+func TestBuildOptivemYAML_NonScaffoldPaths(t *testing.T) {
+	t.Parallel()
+	cfg := &config.Config{
+		Arch:           "monolith",
+		RepoStrategy:   "monorepo",
+		FullRepo:       "optivem/shop",
+		Lang:           "java",
+		TestLang:       "java",
+		SystemPath:     "system/monolith/java",
+		SystemTestPath: "system-test/java",
+		StubsPath:      "external-systems/external-stub",
+		SimulatorsPath: "external-systems/external-real-sim",
+	}
+	got := buildOptivemYAML(cfg)
+	if got.System.Path != "system/monolith/java" {
+		t.Errorf("System.Path: got %q, want shop-style path", got.System.Path)
+	}
+	if got.SystemTest.Path != "system-test/java" {
+		t.Errorf("SystemTest.Path: got %q, want shop-style path", got.SystemTest.Path)
+	}
+}
+
 func TestBuildOptivemYAML_OutputValidates(t *testing.T) {
 	t.Parallel()
+	monoSys, monoTest, monoStubs, monoSims := monolithFlatPaths()
+	multiBE, multiFE, multiTest, multiStubs, multiSims := multitierFlatPaths()
 	cases := []*config.Config{
-		{Arch: "monolith", RepoStrategy: "monorepo", FullRepo: "x/y", Lang: "java", TestLang: "java"},
+		{Arch: "monolith", RepoStrategy: "monorepo", FullRepo: "x/y", Lang: "java", TestLang: "java",
+			SystemPath: monoSys, SystemTestPath: monoTest, StubsPath: monoStubs, SimulatorsPath: monoSims},
 		{Arch: "multitier", RepoStrategy: "multirepo", BackendLang: "java", FrontendLang: "react", TestLang: "java",
-			BackendFullRepo: "x/y-backend", FrontendFullRepo: "x/y-frontend"},
-		{Arch: "monolith", RepoStrategy: "multirepo", Lang: "dotnet", TestLang: "dotnet", SystemFullRepo: "x/y-system"},
-		{Arch: "monolith", RepoStrategy: "monorepo", FullRepo: "x/y", Lang: "typescript", TestLang: "typescript"},
-		{Arch: "multitier", RepoStrategy: "monorepo", FullRepo: "x/y", BackendLang: "java", FrontendLang: "react", TestLang: "java"},
+			BackendFullRepo: "x/y-backend", FrontendFullRepo: "x/y-frontend",
+			BackendPath: multiBE, FrontendPath: multiFE, SystemTestPath: multiTest, StubsPath: multiStubs, SimulatorsPath: multiSims},
+		{Arch: "monolith", RepoStrategy: "multirepo", Lang: "dotnet", TestLang: "dotnet", SystemFullRepo: "x/y-system",
+			SystemPath: monoSys, SystemTestPath: monoTest, StubsPath: monoStubs, SimulatorsPath: monoSims},
+		{Arch: "monolith", RepoStrategy: "monorepo", FullRepo: "x/y", Lang: "typescript", TestLang: "typescript",
+			SystemPath: monoSys, SystemTestPath: monoTest, StubsPath: monoStubs, SimulatorsPath: monoSims},
+		{Arch: "multitier", RepoStrategy: "monorepo", FullRepo: "x/y", BackendLang: "java", FrontendLang: "react", TestLang: "java",
+			BackendPath: multiBE, FrontendPath: multiFE, SystemTestPath: multiTest, StubsPath: multiStubs, SimulatorsPath: multiSims},
 	}
 	for i, cfg := range cases {
 		pc := buildOptivemYAML(cfg)

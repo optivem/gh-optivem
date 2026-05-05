@@ -64,8 +64,9 @@ Single repo with system code and tests together.
 ```
 {repo}/
   system/                    # from: system/monolith/{lang}/
-  external-real-sim/         # from: external-systems/external-real-sim/
-  external-stub/             # from: external-systems/external-stub/
+  external-systems/
+    external-real-sim/       # from: external-systems/external-real-sim/
+    external-stub/           # from: external-systems/external-stub/
   system-test/               # from: system-test/{testLang}/
   .github/workflows/
     commit-stage.yml         # from: monolith-{lang}-commit-stage.yml
@@ -84,8 +85,9 @@ Two repos: root repo (tests + pipeline stages) and monolith repo (system code + 
 **Root repo** (`{repo}/`):
 ```
 {repo}/
-  external-real-sim/         # from: external-systems/external-real-sim/
-  external-stub/             # from: external-systems/external-stub/
+  external-systems/
+    external-real-sim/       # from: external-systems/external-real-sim/
+    external-stub/           # from: external-systems/external-stub/
   system-test/               # from: system-test/{testLang}/
   .github/workflows/
     acceptance-stage.yml     # from: monolith-{testLang}-acceptance-stage.yml
@@ -113,8 +115,9 @@ Single repo with backend, frontend, and tests together.
 {repo}/
   backend/                     # from: system/multitier/backend-{backendLang}/
   frontend/                    # from: system/multitier/frontend-{frontendLang}/
-  external-real-sim/           # from: external-systems/external-real-sim/
-  external-stub/               # from: external-systems/external-stub/
+  external-systems/
+    external-real-sim/         # from: external-systems/external-real-sim/
+    external-stub/             # from: external-systems/external-stub/
   system-test/                 # from: system-test/{testLang}/
   .github/workflows/
     backend-commit-stage.yml   # from: multitier-backend-{backendLang}-commit-stage.yml
@@ -134,8 +137,9 @@ Three repos: root repo, backend repo, frontend repo.
 **Root repo** (`{repo}/`):
 ```
 {repo}/
-  external-real-sim/         # from: external-systems/external-real-sim/
-  external-stub/             # from: external-systems/external-stub/
+  external-systems/
+    external-real-sim/       # from: external-systems/external-real-sim/
+    external-stub/           # from: external-systems/external-stub/
   system-test/               # from: system-test/{testLang}/
   .github/workflows/
     acceptance-stage.yml     # from: multitier-{testLang}-acceptance-stage.yml
