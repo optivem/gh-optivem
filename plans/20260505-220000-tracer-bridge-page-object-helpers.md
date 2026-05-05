@@ -135,7 +135,10 @@ Add fixture coverage in `internal/atdd/runtime/testselect/tracer_test.go`
 that mirrors the failing case: a TS Page Object with `inputSku = async
 (sku) => { ... }` (or whichever shape H2 confirmed), called from a
 sibling adapter that satisfies a port. Assert tracer succeeds, no
-unmapped.
+unmapped. `TestSelectTracer_TypeScriptPageObjectChain` (line 317)
+already exercises the regular `async inputSku(sku: string)` shape and
+passes — the new fixture should cover the arrow-property / multi-line
+shapes specifically, not the case that already works.
 
 ### If H3: tighten the BFS
 
