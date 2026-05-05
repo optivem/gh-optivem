@@ -37,6 +37,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fatih/color"
+	"github.com/mattn/go-isatty"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 )
 
@@ -52,6 +54,11 @@ type Deps struct {
 	Out      io.Writer
 	Git      GitRunner
 	RepoPath string
+
+	// colorize is set by withDefaults when Out is an interactive stdout TTY.
+	// MultiWriter (--log-file) and bytes.Buffer (tests) keep it false so the
+	// log file and test fixtures stay ANSI-free.
+	colorize bool
 }
 
 func (d Deps) withDefaults() Deps {
@@ -61,7 +68,23 @@ func (d Deps) withDefaults() Deps {
 	if d.Git == nil {
 		d.Git = execGit{}
 	}
+	if f, ok := d.Out.(*os.File); ok && f == os.Stdout && isatty.IsTerminal(f.Fd()) {
+		d.colorize = true
+	}
 	return d
+}
+
+// paint wraps s in c's ANSI escapes when colorize is true; otherwise returns
+// s unchanged. Per-instance EnableColor avoids touching fatih/color's global
+// NoColor flag — tests in other packages that share the process must not see
+// our color choice flip on them.
+func (d Deps) paint(s string, attrs ...color.Attribute) string {
+	if !d.colorize {
+		return s
+	}
+	c := color.New(attrs...)
+	c.EnableColor()
+	return c.Sprint(s)
 }
 
 // nowFn is the package-level seam for tests that need a stable timestamp.
@@ -91,7 +114,7 @@ func WrapAll(eng *statemachine.Engine, deps Deps) {
 func wrap(node statemachine.Node, deps Deps) statemachine.NodeFn {
 	inner := node.Fn
 	return func(ctx *statemachine.Context) statemachine.Outcome {
-		writeEnter(deps.Out, node, ctx)
+		writeEnter(deps, node, ctx)
 		preState := snapshotState(ctx.State)
 		preDirty := snapshotDirty(deps, node.Kind)
 		started := nowFn()
@@ -112,7 +135,11 @@ func wrap(node statemachine.Node, deps Deps) statemachine.NodeFn {
 // Templated fields (e.g. ${agent} on structural_cycle nodes) are expanded
 // against ctx.Params so the operator sees the substituted name rather
 // than the literal placeholder.
-func writeEnter(out io.Writer, node statemachine.Node, ctx *statemachine.Context) {
+//
+// On a TTY: `[trace …]` faint, `>` cyan, node ID bold (cyan-bold for
+// call_activity so flow boundaries stand out as the "phase" markers above
+// their service_task / gateway / user_task children).
+func writeEnter(deps Deps, node statemachine.Node, ctx *statemachine.Context) {
 	parts := []string{
 		fmt.Sprintf("kind=%s", kindLabel(node.Kind)),
 	}
@@ -138,7 +165,11 @@ func writeEnter(out io.Writer, node statemachine.Node, ctx *statemachine.Context
 			parts = append(parts, fmt.Sprintf("params=%s", formatParams(node.Raw.Params)))
 		}
 	}
-	fmt.Fprintf(out, "%s > %s  %s\n", tracePrefix(), node.ID, strings.Join(parts, " "))
+	fmt.Fprintf(deps.Out, "%s %s %s  %s\n",
+		deps.tracePrefix(),
+		deps.paint(">", color.FgCyan),
+		deps.nodeIDPaint(node),
+		strings.Join(parts, " "))
 }
 
 // writeExit prints the per-node exit banner and any follow-on detail
@@ -156,16 +187,24 @@ func writeEnter(out io.Writer, node statemachine.Node, ctx *statemachine.Context
 func writeExit(deps Deps, node statemachine.Node, out statemachine.Outcome, elapsed time.Duration, pre, post map[string]string, preDirty, postDirty map[string]bool) {
 	w := deps.Out
 	if out.Err != nil {
-		fmt.Fprintf(w, "%s FAIL %s -> %v  (%s)\n", tracePrefix(), node.ID, out.Err, elapsed)
+		fmt.Fprintf(w, "%s %s %s -> %v  (%s)\n",
+			deps.tracePrefix(),
+			deps.paint("FAIL", color.FgRed),
+			deps.nodeIDPaint(node),
+			out.Err, elapsed)
 		return
 	}
-	fmt.Fprintf(w, "%s OK %s -> %s  (%s)\n", tracePrefix(), node.ID, formatOutcome(out), elapsed)
+	fmt.Fprintf(w, "%s %s %s -> %s  (%s)\n",
+		deps.tracePrefix(),
+		deps.paint("OK", color.FgGreen),
+		deps.nodeIDPaint(node),
+		formatOutcome(out), elapsed)
 	if delta := stateDelta(pre, post); delta != "" {
-		fmt.Fprintf(w, "%s    state: %s\n", tracePrefix(), delta)
+		fmt.Fprintf(w, "%s    %s %s\n", deps.tracePrefix(), deps.paint("state:", color.Faint), delta)
 	}
 	if node.Kind == statemachine.UserTask {
 		if files := dirtyDelta(preDirty, postDirty); len(files) > 0 {
-			fmt.Fprintf(w, "%s    files: %s\n", tracePrefix(), strings.Join(files, ", "))
+			fmt.Fprintf(w, "%s    %s %s\n", deps.tracePrefix(), deps.paint("files:", color.Faint), strings.Join(files, ", "))
 		}
 	}
 }
@@ -337,8 +376,18 @@ func dirtyDelta(pre, post map[string]bool) []string {
 	return out
 }
 
-func tracePrefix() string {
-	return fmt.Sprintf("[trace %s]", nowFn().Format("15:04:05"))
+func (d Deps) tracePrefix() string {
+	return d.paint(fmt.Sprintf("[trace %s]", nowFn().Format("15:04:05")), color.Faint)
+}
+
+// nodeIDPaint renders the node id with the kind-appropriate emphasis. On a
+// TTY: cyan-bold for call_activity (so flow boundaries pop as the "phase"
+// markers), plain bold for everything else, plain text off-TTY.
+func (d Deps) nodeIDPaint(node statemachine.Node) string {
+	if node.Kind == statemachine.CallActivity {
+		return d.paint(node.ID, color.FgCyan, color.Bold)
+	}
+	return d.paint(node.ID, color.Bold)
 }
 
 // execGit is the production GitRunner. Mirrors the implementation pattern

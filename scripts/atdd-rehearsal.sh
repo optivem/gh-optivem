@@ -44,7 +44,7 @@ REHEARSAL_OWNER="optivem"
 REHEARSAL_REPO="shop"
 REHEARSAL_ARCH="monolith"
 REHEARSAL_REPO_STRATEGY="monorepo"
-REHEARSAL_MONOLITH_LANG="java"
+REHEARSAL_MONOLITH_LANG="typescript"
 REHEARSAL_PROJECT_URL="https://github.com/orgs/optivem/projects/20"
 
 # Tier paths matching shop's worktree layout. `gh optivem config init` no
