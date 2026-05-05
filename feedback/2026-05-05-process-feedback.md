@@ -2,7 +2,11 @@
 
 For each of the topics below, please provide feedback to me... then when we reach mutual agreement you can mark it as ticked....
 
+We can discuss one by one.
+
 Based on this feedback you can make a correspidnign plan file. For each item, write if action for it was created in plan file.
+
+Mark each item one by one as soon as we discuss it.
 
 ## Intake Feedback
 
@@ -17,3 +21,7 @@ Intake - does it classify ticket as behavioral of structural change (change type
 ## Run Cycle Feedback
 
 Run Cycle - the diamond is behavioral or structural, so then the paths should be behavioral (story / bug) and structural (task)
+
+## AT Cycle
+
+AT Cycle - is AT - RED - TEST a step or a subprocess?

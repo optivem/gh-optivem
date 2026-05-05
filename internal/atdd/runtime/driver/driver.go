@@ -606,13 +606,18 @@ func registerAgentDispatchers(r *agents.Registry) {
 	}
 }
 
-// wrapAgentDispatchers replaces every non-human user_task NodeFn with
-// either a clauderun-based dispatcher (the v2 default — auto-launches
-// the named Claude Code subagent via the `claude` CLI) or, when
-// opts.ManualAgents is true, the v1 pause-and-prompt fallback. The
-// dispatcher closure has access to the YAML node's Raw metadata
-// (description, phase_doc, agent name) and the per-run Options, which
-// together provide everything the prompt template needs.
+// wrapAgentDispatchers replaces every user_task NodeFn with a
+// per-node closure that has access to the YAML node's Raw metadata
+// (description, phase_doc, agent name) and the per-run Options:
+//
+//   - `agent: human` STOP nodes get a human-stop dispatcher that
+//     prints the node ID + description before blocking on stdin, so
+//     the operator can see what they're approving instead of the
+//     bare "STOP — press Enter" prompt.
+//   - Other agents get either a clauderun-based dispatcher (the v2
+//     default — auto-launches the named Claude Code subagent via
+//     the `claude` CLI) or, when opts.ManualAgents is true, the v1
+//     pause-and-prompt fallback.
 //
 // rs threads the per-run timestamp + monotonic dispatch counter through
 // every closure so each clauderun.Dispatch can compute a unique
@@ -625,19 +630,57 @@ func wrapAgentDispatchers(eng *statemachine.Engine, opts Options, rs *runState) 
 			if node.Kind != statemachine.UserTask {
 				continue
 			}
-			if node.Raw.Agent == "human" || node.Raw.Agent == "" {
-				continue
-			}
 			raw := node.Raw
 			nodeID := id
 			inner := node.Fn
-			if opts.ManualAgents {
+			switch {
+			case raw.Agent == "":
+				continue
+			case raw.Agent == "human":
+				node.Fn = newHumanStopDispatcher(opts, raw, nodeID)
+			case opts.ManualAgents:
 				node.Fn = newManualAgentDispatcher(opts, raw, inner)
-			} else {
+			default:
 				node.Fn = newClaudeRunDispatcher(opts, raw, nodeID, rs, inner)
 			}
 			flow.Nodes[id] = node
 		}
+	}
+}
+
+// newHumanStopDispatcher returns a NodeFn for `agent: human` STOP
+// nodes. It prints the node ID and the YAML description (with any
+// ${...} placeholders expanded against the live Context.Params) so
+// the operator can see what they're approving, then blocks on
+// opts.Stdin until they press Enter (continue) or type `abort` /
+// `stop` (halt).
+//
+// This replaces the bare `humanStop` from agents/registry.go for any
+// flow that's been wrapped by wrapAgentDispatchers — the registry
+// version stays in place as the fallback for tests and code paths
+// that bypass the driver wrapping.
+func newHumanStopDispatcher(opts Options, raw statemachine.RawNode, nodeID string) statemachine.NodeFn {
+	return func(ctx *statemachine.Context) statemachine.Outcome {
+		description := statemachine.ExpandParams(raw.Description, ctx.Params)
+
+		fmt.Fprintln(opts.Stdout)
+		if description != "" {
+			fmt.Fprintf(opts.Stdout, "[%s] %s\n", nodeID, description)
+		} else {
+			fmt.Fprintf(opts.Stdout, "[%s] STOP\n", nodeID)
+		}
+		fmt.Fprintln(opts.Stdout, "  Press Enter to continue, or type `abort` to halt:")
+
+		r := bufio.NewReader(opts.Stdin)
+		line, err := r.ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return statemachine.Outcome{Err: fmt.Errorf("read STOP confirmation at %s: %w", nodeID, err)}
+		}
+		line = strings.ToLower(strings.TrimSpace(line))
+		if line == "abort" || line == "stop" {
+			return statemachine.Outcome{Err: fmt.Errorf("user aborted at %s", nodeID)}
+		}
+		return statemachine.Outcome{}
 	}
 }
 

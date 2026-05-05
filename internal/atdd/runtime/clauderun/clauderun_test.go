@@ -920,8 +920,12 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	mustContain(t, got, "monolith")
 	mustContain(t, got, "allowed roots:")
 	mustContain(t, got, "2 path(s)")
+	mustContain(t, got, "- System: system/monolith/typescript (lang: typescript)")
+	mustContain(t, got, "- System tests: system-test/typescript (lang: typescript)")
 	mustContain(t, got, "checklist:")
 	mustContain(t, got, "2 item(s) (1 already [x])")
+	mustContain(t, got, "- [x] One done")
+	mustContain(t, got, "- [ ] Two pending")
 	mustContain(t, got, "/tmp/runs/001-atdd-task.prompt.md")
 }
 

@@ -644,10 +644,27 @@ func writePreparedPromptBanner(opts Options, prompt string) {
 	fmt.Fprintln(w, cyan.Sprintf("   size:           %s", formatPromptSize(len(prompt))))
 	fmt.Fprintln(w, cyan.Sprintf("   architecture:   %s", orPlaceholderClauderun(opts.Architecture, "(empty)")))
 	fmt.Fprintln(w, cyan.Sprintf("   allowed roots:  %s", summarizeAllowedRoots(opts.AllowedRoots)))
+	writeIndentedBlock(w, cyan, opts.AllowedRoots)
 	fmt.Fprintln(w, cyan.Sprintf("   checklist:      %s", summarizeChecklist(opts.Checklist)))
+	writeIndentedBlock(w, cyan, opts.Checklist)
 	fmt.Fprintln(w, cyan.Sprintf("   override text:  %s", orPlaceholderClauderun(opts.OverrideText, "(none)")))
 	fmt.Fprintln(w, cyan.Sprintf("   log:            %s", orPlaceholderClauderun(opts.PromptLogPath, "(none)")))
 	fmt.Fprintln(w, cyan.Sprint(banner))
+}
+
+// writeIndentedBlock prints each non-empty line of s under the
+// preceding summary line, indented to align beneath the field value.
+// Skips blank lines so the rendered ${allowed_roots} block (which has
+// a leading blank before the External-systems heading) doesn't leave
+// a gap in the banner.
+func writeIndentedBlock(w io.Writer, c *color.Color, s string) {
+	for line := range strings.SplitSeq(s, "\n") {
+		trimmed := strings.TrimRight(line, " \t\r")
+		if trimmed == "" {
+			continue
+		}
+		fmt.Fprintln(w, c.Sprintf("     %s", trimmed))
+	}
 }
 
 func orPlaceholderClauderun(s, placeholder string) string {
