@@ -47,6 +47,12 @@ type Deps struct {
 	Stderr     io.Writer
 	ProjectURL string // optional — explicit override for board operations
 	RepoPath   string // optional — defaults to current working directory
+
+	// Select / SelectTracer are the verify_run_tests_after_driver test
+	// selectors. Function-typed for hermetic substitution in tests; default
+	// to the production testselect package.
+	Select       func(repoRoot, baseRef string) (testselect.Result, error)
+	SelectTracer func(repoRoot, baseRef string) (testselect.TracerResult, error)
 }
 
 // Prompter is the same interface gates uses; redefined here so the actions
@@ -91,6 +97,12 @@ func (d Deps) withDefaults() Deps {
 	}
 	if d.Stderr == nil {
 		d.Stderr = os.Stderr
+	}
+	if d.Select == nil {
+		d.Select = testselect.Select
+	}
+	if d.SelectTracer == nil {
+		d.SelectTracer = testselect.SelectTracer
 	}
 	return d
 }
@@ -586,19 +598,27 @@ func (a actions) printDriftWarning(ctx *statemachine.Context) statemachine.Outco
 // asks the testselect package which tests traverse the changed adapter
 // methods, and prompts the user how to proceed:
 //
-//   [r] run selected tests now
+//   [t] tracer-bullet (default) — one test per (changed method × channel)
+//   [r] run all selected tests   — the full affected set
 //   [a] approve without running
 //   [x] reject and stop the run
 //   [f] run the full suite instead of the selected subset
+//
+// The tracer mode answers the WRITE-phase question "did I break the
+// layering I just edited?" with one test per change; the affected-set
+// mode answers "is the world still correct?". The tracer is the default
+// because it matches the iteration-time gate the WRITE phase actually
+// needs — see plans/20260505-141500-tracer-bullet-test-after-driver-adapter-change.md.
 //
 // When no driver-adapter file changed, the action exits silently — the
 // generic structural_cycle node also reaches it via DA_CYCLE / chore, and
 // only DA_CYCLE actually touches adapters.
 //
-// When `Result.Unmapped` is non-empty, a warning is printed and the run
-// falls back to the full set of suites named by the result (the safe
-// default — the unmapped change might still break a test we couldn't
-// statically reach).
+// When `Result.Unmapped` is non-empty (affected-set mode) or
+// `TracerResult.Unmapped` is non-empty (tracer mode), a warning is printed
+// and the run falls back to the full set of suites named by the result
+// (the safe default — the unmapped change might still break a test we
+// couldn't statically reach).
 func (a actions) verifyRunTestsAfterDriver(ctx *statemachine.Context) statemachine.Outcome {
 	repoRoot := a.deps.RepoPath
 	if repoRoot == "" {
@@ -609,7 +629,7 @@ func (a actions) verifyRunTestsAfterDriver(ctx *statemachine.Context) statemachi
 		baseRef = "HEAD"
 	}
 
-	res, err := testselect.Select(repoRoot, baseRef)
+	res, err := a.deps.Select(repoRoot, baseRef)
 	if err != nil {
 		fmt.Fprintf(a.deps.Stderr, "verify_run_tests_after_driver: selector failed (%v) — skipping\n", err)
 		return statemachine.Outcome{}
@@ -627,16 +647,11 @@ func (a actions) verifyRunTestsAfterDriver(ctx *statemachine.Context) statemachi
 		fmt.Fprintln(a.deps.Stdout)
 	}
 
-	answer, err := a.deps.Prompter.Ask("Choose: [r]un selected, [a]pprove without running, [x]reject, [f]ull suite: ")
+	answer, err := a.deps.Prompter.Ask("Choose: [t]racer (default), [r]un all selected, [a]pprove, [x]reject, [f]ull suite: ")
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("verify_run_tests_after_driver: %w", err)}
 	}
 	choice := strings.ToLower(strings.TrimSpace(answer))
-
-	// `f` is the explicit "I don't trust the selection" escape hatch; it
-	// runs every suite the selector identified, in full. Treat unmapped
-	// the same way (the selector tells us we cannot guarantee coverage).
-	runFull := choice == "f" || len(res.Unmapped) > 0
 
 	switch choice {
 	case "x":
@@ -644,16 +659,69 @@ func (a actions) verifyRunTestsAfterDriver(ctx *statemachine.Context) statemachi
 	case "a":
 		fmt.Fprintln(a.deps.Stdout, "Approving without running the selected tests.")
 		return statemachine.Outcome{}
-	case "r", "f":
-		// proceed
-	case "":
-		fmt.Fprintln(a.deps.Stdout, "No choice given — defaulting to approve without running.")
-		return statemachine.Outcome{}
+	case "t", "":
+		return a.runTracerVerify(repoRoot, baseRef, res)
+	case "r":
+		return a.runAffectedSetVerify(res, false)
+	case "f":
+		return a.runAffectedSetVerify(res, true)
 	default:
 		fmt.Fprintf(a.deps.Stderr, "Unrecognised choice %q — defaulting to approve without running.\n", choice)
 		return statemachine.Outcome{}
 	}
+}
 
+// runTracerVerify is the WRITE-phase iteration gate. One test per
+// (changed adapter method × channel). When SelectTracer can't trace some
+// change to a test, fall back to the full affected-set's suites — the
+// unmapped change might still break a test the tracer's pick rule didn't
+// catch.
+func (a actions) runTracerVerify(repoRoot, baseRef string, res testselect.Result) statemachine.Outcome {
+	tracer, err := a.deps.SelectTracer(repoRoot, baseRef)
+	if err != nil {
+		fmt.Fprintf(a.deps.Stderr, "verify_run_tests_after_driver: tracer selector failed (%v) — falling back to full suite\n", err)
+		return a.runAffectedSetVerify(res, true)
+	}
+
+	if len(tracer.Unmapped) > 0 {
+		fmt.Fprintf(a.deps.Stderr,
+			"WARNING: tracer could not stage %d adapter method(s) — running full suite for safety:\n",
+			len(tracer.Unmapped))
+		for _, cm := range tracer.Unmapped {
+			fmt.Fprintf(a.deps.Stderr, "  - %s::%s\n", cm.File, cm.Method)
+		}
+		return a.runAffectedSetVerify(res, true)
+	}
+
+	if len(tracer.Selections) == 0 {
+		fmt.Fprintln(a.deps.Stdout, "Tracer found no selectable test — running full suite for safety.")
+		return a.runAffectedSetVerify(res, true)
+	}
+
+	a.printTracerSummary(tracer)
+	if verifyVerbose() {
+		for _, d := range tracer.Diagnostics {
+			fmt.Fprintf(a.deps.Stdout, "  trace: %s\n", d)
+		}
+		fmt.Fprintln(a.deps.Stdout)
+	}
+
+	for _, sel := range tracer.Selections {
+		cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s",
+			shellEscape(sel.Suite), shellEscape(sel.Test))
+		a.runVerifyCommand(cmd)
+	}
+	return statemachine.Outcome{}
+}
+
+// runAffectedSetVerify runs the affected-set suites (commit-time gate).
+// `runFull` is true when the user explicitly chose [f]ull suite, or when
+// the selector couldn't statically trace some change — both treat the
+// suites as opaque and run them whole.
+func (a actions) runAffectedSetVerify(res testselect.Result, runFull bool) statemachine.Outcome {
+	if !runFull {
+		runFull = len(res.Unmapped) > 0
+	}
 	if runFull && len(res.Unmapped) > 0 {
 		fmt.Fprintf(a.deps.Stderr,
 			"WARNING: %d adapter method(s) could not be statically traced to a test — running full suite for safety:\n",
@@ -676,6 +744,30 @@ func (a actions) verifyRunTestsAfterDriver(ctx *statemachine.Context) statemachi
 		}
 	}
 	return statemachine.Outcome{}
+}
+
+// printTracerSummary prints one chain block per tracer selection. The
+// chain format is: changed method (file) → port → DSL (stage) → test
+// (suite). This is what the user reads to verify the tracer picked a
+// representative test for each change.
+func (a actions) printTracerSummary(tracer testselect.TracerResult) {
+	writeTracerSummary(a.deps.Stdout, tracer)
+}
+
+// writeTracerSummary is the io.Writer-shaped form of printTracerSummary.
+func writeTracerSummary(w io.Writer, tracer testselect.TracerResult) {
+	fmt.Fprintf(w, "\nTracer selections (%d):\n", len(tracer.Selections))
+	for _, sel := range tracer.Selections {
+		fmt.Fprintf(w, "  %s (%s)\n", sel.AdapterMethod, sel.AdapterFile)
+		fmt.Fprintf(w, "    → port %s\n", sel.PortMethod)
+		stage := sel.Stage
+		if stage == "" {
+			stage = "no stage"
+		}
+		fmt.Fprintf(w, "    → DSL %s (%s)\n", sel.DSLMethod, stage)
+		fmt.Fprintf(w, "    → test %s (%s)\n", sel.Test, sel.Suite)
+	}
+	fmt.Fprintln(w)
 }
 
 // printVerifySummary writes the changed adapter files, selected tests

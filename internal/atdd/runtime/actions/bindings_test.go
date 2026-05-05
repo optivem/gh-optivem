@@ -862,3 +862,268 @@ func TestWriteVerifySummary_NoChangedFiles_OmitsBlock(t *testing.T) {
 		t.Errorf("expected selected-tests block, got:\n%s", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// verifyRunTestsAfterDriver — prompt dispatch
+// ---------------------------------------------------------------------------
+
+// fakeVerifyDeps is a small bundle of canned selector outputs and a fake
+// shell to capture the test-run commands. Used to drive the prompt
+// dispatcher without touching git or testselect.
+type fakeVerifyDeps struct {
+	selectResult testselect.Result
+	tracerResult testselect.TracerResult
+	selectErr    error
+	tracerErr    error
+}
+
+func (f *fakeVerifyDeps) Select(repoRoot, baseRef string) (testselect.Result, error) {
+	return f.selectResult, f.selectErr
+}
+
+func (f *fakeVerifyDeps) SelectTracer(repoRoot, baseRef string) (testselect.TracerResult, error) {
+	return f.tracerResult, f.tracerErr
+}
+
+func makeAffectedSet() testselect.Result {
+	return testselect.Result{
+		Changed: []testselect.ChangedMethod{
+			{File: "system-test/typescript/src/testkit/driver/adapter/myShop/ui/client/pages/NewOrderPage.ts",
+				Method: "inputSku", Layer: "shop", Lang: "typescript"},
+		},
+		Selections: []testselect.Selection{
+			{Suite: "acceptance-ui", Tests: []string{"PlaceOrderPositiveTest.shouldPlaceOrder", "PlaceOrderNegativeTest.shouldRejectInvalidSku"}},
+		},
+	}
+}
+
+func makeTracer() testselect.TracerResult {
+	return testselect.TracerResult{
+		Changed: []testselect.ChangedMethod{
+			{File: "system-test/typescript/src/testkit/driver/adapter/myShop/ui/client/pages/NewOrderPage.ts",
+				Method: "inputSku", Layer: "shop", Lang: "typescript"},
+		},
+		Selections: []testselect.TracerSelection{
+			{
+				Suite:         "acceptance-ui",
+				Test:          "PlaceOrderPositiveTest.shouldPlaceOrder",
+				DSLMethod:     "whenPlacingOrder",
+				PortMethod:    "placeOrder",
+				AdapterFile:   "system-test/typescript/src/testkit/driver/adapter/myShop/ui/client/pages/NewOrderPage.ts",
+				AdapterMethod: "inputSku",
+				Stage:         "when",
+			},
+		},
+	}
+}
+
+func TestVerifyRunTestsAfterDriver_EmptyInputRunsTracer(t *testing.T) {
+	fv := &fakeVerifyDeps{
+		selectResult: makeAffectedSet(),
+		tracerResult: makeTracer(),
+	}
+	sh := &fakeShell{out: []byte("ok")}
+	p := &fakePrompter{answers: []string{""}} // empty input → tracer default
+	var stdout, stderr bytes.Buffer
+	a := newActions(Deps{
+		Shell:        sh,
+		Prompter:     p,
+		Stdout:       &stdout,
+		Stderr:       &stderr,
+		Select:       fv.Select,
+		SelectTracer: fv.SelectTracer,
+	})
+	out := a.verifyRunTestsAfterDriver(statemachine.NewContext())
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if len(sh.calls) != 1 {
+		t.Fatalf("expected 1 shell call (tracer test), got %d: %v", len(sh.calls), sh.calls)
+	}
+	want := "gh optivem test system --suite acceptance-ui --test PlaceOrderPositiveTest.shouldPlaceOrder"
+	if sh.calls[0] != want {
+		t.Errorf("call: got %q want %q", sh.calls[0], want)
+	}
+	if !strings.Contains(stdout.String(), "Tracer selections (1)") {
+		t.Errorf("stdout missing tracer summary header, got:\n%s", stdout.String())
+	}
+}
+
+func TestVerifyRunTestsAfterDriver_TRunsTracer(t *testing.T) {
+	fv := &fakeVerifyDeps{
+		selectResult: makeAffectedSet(),
+		tracerResult: makeTracer(),
+	}
+	sh := &fakeShell{out: []byte("ok")}
+	p := &fakePrompter{answers: []string{"t"}}
+	a := newActions(Deps{
+		Shell:        sh,
+		Prompter:     p,
+		Select:       fv.Select,
+		SelectTracer: fv.SelectTracer,
+	})
+	out := a.verifyRunTestsAfterDriver(statemachine.NewContext())
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if len(sh.calls) != 1 {
+		t.Fatalf("expected 1 shell call, got %d: %v", len(sh.calls), sh.calls)
+	}
+	if !strings.Contains(sh.calls[0], "--test PlaceOrderPositiveTest.shouldPlaceOrder") {
+		t.Errorf("call: got %q (no --test flag)", sh.calls[0])
+	}
+}
+
+func TestVerifyRunTestsAfterDriver_RRunsAffectedSet(t *testing.T) {
+	fv := &fakeVerifyDeps{
+		selectResult: makeAffectedSet(),
+		tracerResult: makeTracer(),
+	}
+	sh := &fakeShell{out: []byte("ok")}
+	p := &fakePrompter{answers: []string{"r"}}
+	a := newActions(Deps{
+		Shell:        sh,
+		Prompter:     p,
+		Select:       fv.Select,
+		SelectTracer: fv.SelectTracer,
+	})
+	out := a.verifyRunTestsAfterDriver(statemachine.NewContext())
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	// Two affected-set tests → two shell calls, both --test flagged.
+	if len(sh.calls) != 2 {
+		t.Fatalf("expected 2 shell calls, got %d: %v", len(sh.calls), sh.calls)
+	}
+	for _, c := range sh.calls {
+		if !strings.Contains(c, "--test ") {
+			t.Errorf("call: %q has no --test flag (should be per-test, not full-suite)", c)
+		}
+	}
+}
+
+func TestVerifyRunTestsAfterDriver_TracerUnmapped_FallsBackToFullSuite(t *testing.T) {
+	tracer := makeTracer()
+	tracer.Unmapped = []testselect.ChangedMethod{
+		{File: "some/orphan/path.ts", Method: "doStuff", Layer: "shop", Lang: "typescript"},
+	}
+	fv := &fakeVerifyDeps{
+		selectResult: makeAffectedSet(),
+		tracerResult: tracer,
+	}
+	sh := &fakeShell{out: []byte("ok")}
+	p := &fakePrompter{answers: []string{"t"}}
+	var stderr bytes.Buffer
+	a := newActions(Deps{
+		Shell:        sh,
+		Prompter:     p,
+		Stderr:       &stderr,
+		Select:       fv.Select,
+		SelectTracer: fv.SelectTracer,
+	})
+	out := a.verifyRunTestsAfterDriver(statemachine.NewContext())
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	// Fallback path runs each suite as a whole — one shell call (no --test
+	// flag), since the affected set has one suite.
+	if len(sh.calls) != 1 {
+		t.Fatalf("expected 1 full-suite call, got %d: %v", len(sh.calls), sh.calls)
+	}
+	if strings.Contains(sh.calls[0], "--test") {
+		t.Errorf("expected full-suite call (no --test), got %q", sh.calls[0])
+	}
+	if !strings.Contains(sh.calls[0], "--suite acceptance-ui") {
+		t.Errorf("expected --suite acceptance-ui, got %q", sh.calls[0])
+	}
+	if !strings.Contains(stderr.String(), "tracer could not stage") {
+		t.Errorf("expected tracer warning in stderr, got:\n%s", stderr.String())
+	}
+}
+
+func TestVerifyRunTestsAfterDriver_FRunsFullSuite(t *testing.T) {
+	fv := &fakeVerifyDeps{
+		selectResult: makeAffectedSet(),
+		tracerResult: makeTracer(),
+	}
+	sh := &fakeShell{out: []byte("ok")}
+	p := &fakePrompter{answers: []string{"f"}}
+	a := newActions(Deps{
+		Shell:        sh,
+		Prompter:     p,
+		Select:       fv.Select,
+		SelectTracer: fv.SelectTracer,
+	})
+	out := a.verifyRunTestsAfterDriver(statemachine.NewContext())
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if len(sh.calls) != 1 {
+		t.Fatalf("expected 1 full-suite call, got %d: %v", len(sh.calls), sh.calls)
+	}
+	if strings.Contains(sh.calls[0], "--test") {
+		t.Errorf("expected no --test on full-suite call, got %q", sh.calls[0])
+	}
+}
+
+func TestVerifyRunTestsAfterDriver_AApprovesWithoutRunning(t *testing.T) {
+	fv := &fakeVerifyDeps{
+		selectResult: makeAffectedSet(),
+		tracerResult: makeTracer(),
+	}
+	sh := &fakeShell{}
+	p := &fakePrompter{answers: []string{"a"}}
+	a := newActions(Deps{
+		Shell:        sh,
+		Prompter:     p,
+		Select:       fv.Select,
+		SelectTracer: fv.SelectTracer,
+	})
+	out := a.verifyRunTestsAfterDriver(statemachine.NewContext())
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if len(sh.calls) != 0 {
+		t.Errorf("expected no shell calls on approve, got %v", sh.calls)
+	}
+}
+
+func TestVerifyRunTestsAfterDriver_XRejects(t *testing.T) {
+	fv := &fakeVerifyDeps{
+		selectResult: makeAffectedSet(),
+		tracerResult: makeTracer(),
+	}
+	sh := &fakeShell{}
+	p := &fakePrompter{answers: []string{"x"}}
+	a := newActions(Deps{
+		Shell:        sh,
+		Prompter:     p,
+		Select:       fv.Select,
+		SelectTracer: fv.SelectTracer,
+	})
+	out := a.verifyRunTestsAfterDriver(statemachine.NewContext())
+	if out.Err == nil {
+		t.Fatalf("expected error on reject")
+	}
+	if len(sh.calls) != 0 {
+		t.Errorf("expected no shell calls on reject, got %v", sh.calls)
+	}
+}
+
+func TestWriteTracerSummary_ChainShape(t *testing.T) {
+	tracer := makeTracer()
+	var buf bytes.Buffer
+	writeTracerSummary(&buf, tracer)
+	got := buf.String()
+	for _, want := range []string{
+		"Tracer selections (1):",
+		"inputSku (system-test/typescript/src/testkit/driver/adapter/myShop/ui/client/pages/NewOrderPage.ts)",
+		"→ port placeOrder",
+		"→ DSL whenPlacingOrder (when)",
+		"→ test PlaceOrderPositiveTest.shouldPlaceOrder (acceptance-ui)",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary missing %q\nfull:\n%s", want, got)
+		}
+	}
+}
