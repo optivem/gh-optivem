@@ -55,8 +55,17 @@ func callersOfTest(methodName string, testFiles []string, testIdx map[string][]t
 		if len(offsets) == 0 {
 			continue
 		}
-		// For each match, find the enclosing test method using the
-		// existing test index plus extract regions for the file.
+		// TS test-region resolution is file-granular: tree-sitter doesn't recognise it()/describe() arrow callbacks as methods.
+		if lay.Lang == "typescript" {
+			for _, candidates := range testIdx {
+				for _, h := range candidates {
+					if h.File == f {
+						hits[h.Name] = h
+					}
+				}
+			}
+			continue
+		}
 		regions := lay.MethodIndexer(string(body))
 		for _, off := range offsets {
 			line := byteOffsetToLine(string(body), off)
@@ -64,24 +73,9 @@ func callersOfTest(methodName string, testFiles []string, testIdx map[string][]t
 				if line < r.startLine || line > r.endLine {
 					continue
 				}
-				// Find the testHit (if any) for this method name in this file.
 				for _, h := range testIdx[r.name] {
-					if h.File != f {
-						continue
-					}
-					hits[h.Name] = h
-				}
-				// TS path: hits keyed differently — search testIdx full
-				// names for ones whose file matches and whose enclosing
-				// region covers `line`.
-				if lay.Lang == "typescript" {
-					for _, candidates := range testIdx {
-						for _, h := range candidates {
-							if h.File != f {
-								continue
-							}
-							hits[h.Name] = h
-						}
+					if h.File == f {
+						hits[h.Name] = h
 					}
 				}
 				break
