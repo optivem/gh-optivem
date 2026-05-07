@@ -168,9 +168,9 @@ flowchart TD
 flowchart TD
     CT_END((End))
     CT_GREEN_STUBS[CT - GREEN - STUBS]
-    CT_RED_DSL[CT - RED - DSL]
-    CT_RED_EXTERNAL_DRIVER[CT - RED - EXTERNAL DRIVER]
-    CT_RED_TEST[CT - RED - TEST]
+    CT_RED_DSL[CT - RED - DSL — see § red_phase_cycle]
+    CT_RED_EXTERNAL_DRIVER[CT - RED - EXTERNAL DRIVER — see § red_phase_cycle]
+    CT_RED_TEST[CT - RED - TEST — see § red_phase_cycle]
     GATE_DSL_CT{DSL Interface Changed?}
     GATE_EXT_CT{External System Driver Interface Changed?}
     ONBOARDING[ONBOARDING — see § External System Onboarding Sub-Process]
@@ -191,7 +191,7 @@ flowchart TD
     class VERIFY_CT_DRIVER serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
-    class CT_GREEN_STUBS,CT_RED_DSL,CT_RED_EXTERNAL_DRIVER,CT_RED_TEST agentNode
+    class CT_GREEN_STUBS agentNode
 ```
 
 ## External System Onboarding Sub-Process
@@ -315,11 +315,15 @@ flowchart TD
     DISABLE[[Disable change-driven scenarios]]
     GATE_COMPILE_OK{Compile passed?}
     GATE_RUN_FAILED_RUNTIME{"Tests fail at runtime (not compile)?"}
+    GATE_VERIFY_REAL_PASS{Real suite passes?}
+    GATE_VERIFY_REAL_REQUIRED{Verify against real suite first?}
     RED_END((End))
     RUN[[Run targeted tests]]
     STOP_PROTOTYPE_REVIEW["STOP - HUMAN REVIEW — ${phase_label} prototypes"]
     STOP_RED_NOT_RUNTIME_FAIL["STOP - HUMAN REVIEW — ${phase_label} tests not runtime-failing"]
     STOP_RED_REVIEW["STOP - HUMAN REVIEW — ${phase_label} tests"]
+    STOP_VERIFY_REAL_FAIL["STOP - HUMAN REVIEW — ${phase_label} real-suite contract problem"]
+    VERIFY_REAL[["Verify ${verify_real_suite} passes"]]
     WRITE["${phase_label} - WRITE"]
     WRITE_PROTOTYPES["${phase_label} - PROTOTYPES"]
 
@@ -327,9 +331,15 @@ flowchart TD
     STOP_RED_REVIEW --> COMPILE
     COMPILE --> GATE_COMPILE_OK
     GATE_COMPILE_OK -- No --> WRITE_PROTOTYPES
-    GATE_COMPILE_OK -- Yes --> RUN
+    GATE_COMPILE_OK -- Yes --> GATE_VERIFY_REAL_REQUIRED
     WRITE_PROTOTYPES --> STOP_PROTOTYPE_REVIEW
     STOP_PROTOTYPE_REVIEW --> COMPILE
+    GATE_VERIFY_REAL_REQUIRED -- Yes --> VERIFY_REAL
+    GATE_VERIFY_REAL_REQUIRED -- No --> RUN
+    VERIFY_REAL --> GATE_VERIFY_REAL_PASS
+    GATE_VERIFY_REAL_PASS -- Yes --> RUN
+    GATE_VERIFY_REAL_PASS -- No --> STOP_VERIFY_REAL_FAIL
+    STOP_VERIFY_REAL_FAIL --> WRITE
     RUN --> GATE_RUN_FAILED_RUNTIME
     GATE_RUN_FAILED_RUNTIME -- Yes --> DISABLE
     GATE_RUN_FAILED_RUNTIME -- No --> STOP_RED_NOT_RUNTIME_FAIL
@@ -338,13 +348,13 @@ flowchart TD
     COMMIT --> RED_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class COMMIT,COMPILE,DISABLE,RUN serviceNode
+    class COMMIT,COMPILE,DISABLE,RUN,VERIFY_REAL serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
     class WRITE,WRITE_PROTOTYPES agentNode
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class STOP_PROTOTYPE_REVIEW,STOP_RED_NOT_RUNTIME_FAIL,STOP_RED_REVIEW humanNode
+    class STOP_PROTOTYPE_REVIEW,STOP_RED_NOT_RUNTIME_FAIL,STOP_RED_REVIEW,STOP_VERIFY_REAL_FAIL humanNode
 ```
 
 ## SUT Cycle
