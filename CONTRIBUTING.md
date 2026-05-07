@@ -23,6 +23,7 @@
 - [Go 1.22+](https://go.dev/dl/)
 - [GitHub CLI](https://cli.github.com/) (`gh auth login`)
 - A C compiler on `PATH` (`gh-optivem` builds with `CGO_ENABLED=1` because the tree-sitter language bindings require CGo). Check first with `gcc --version` — if it prints a version, you're done. Otherwise install: Windows: `scoop install gcc` (MinGW) or `choco install mingw` (admin shell, then restart your terminal so `PATH` picks it up). macOS: `xcode-select --install`. Linux: `apt install gcc` (or your distro's equivalent). End users on `gh extension install optivem/gh-optivem` don't need this — they download the prebuilt binary.
+- `CGO_ENABLED=1` in your Go env. Check with `go env CGO_ENABLED` — if it prints `0`, run `go env -w CGO_ENABLED=1`. Without this, Go silently excludes the tree-sitter binding files via build constraints and `go build` fails with `build constraints exclude all Go files in …/tree-sitter-typescript@…/bindings/go`.
 
 ## Quick smoke test (no install)
 
