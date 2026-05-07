@@ -109,6 +109,13 @@ func RegisterAll(r *Registry, deps Deps) {
 	// AT_RED_TEST through the shared sub-flow that will use them.
 	r.Register("compile_ok", b.compileOK)
 	r.Register("tests_failed_runtime", b.testsFailedRuntime)
+	// Optional CT real-vs-stub verification (per AT/CT split plan): gates the
+	// pre-RUN verification step. `verify_real_required` reads the
+	// `verify_real_suite` call_activity param (set only by CT_RED_TEST today),
+	// so AT phases route past it as a no-op. `verify_real_pass` reads the
+	// flag set by `verify_real_suite_passes`.
+	r.Register("verify_real_required", b.verifyRealRequired)
+	r.Register("verify_real_pass", b.verifyRealPass)
 	// structural-cycle verify routing (per
 	// plans/20260505-214300-verify-failure-dispatch-fix-agent.md, Item 3):
 	// reads ctx.State["verify_class"] (stamped by the verify action's
@@ -409,6 +416,32 @@ func (b bindings) testsFailedRuntime(ctx *statemachine.Context) statemachine.Out
 	return b.boolGate(ctx,
 		"tests_failed_runtime",
 		"Tests failed at runtime (not compile)? [Y/n]: ")
+}
+
+// verifyRealRequired routes the optional "verify against real suite" branch
+// of red_phase_cycle. Reads the `verify_real_suite` param the calling
+// call_activity stamped onto Context.Params: a non-empty value means the
+// caller wants the orchestrator to run that suite before the regular RUN.
+// CT_RED_TEST sets it to <suite-contract-real>; AT phases leave it unset
+// and the gate routes straight through to RUN.
+//
+// No prompt fallback: the param is structural metadata of the call site,
+// not a runtime decision the user re-makes per cycle.
+func (b bindings) verifyRealRequired(ctx *statemachine.Context) statemachine.Outcome {
+	suite := strings.TrimSpace(ctx.Params["verify_real_suite"])
+	return statemachine.Outcome{Bool: suite != ""}
+}
+
+// verifyRealPass reads the `verify_real_pass` flag set by the
+// verify_real_suite_passes action. true → real-suite contract holds, route
+// to RUN; false → the new tests do not pass against the real external
+// system, route to STOP_VERIFY_REAL_FAIL so the human can decide whether
+// to fix the test or escalate the contract problem. Falls back to a prompt
+// for hand-debugging.
+func (b bindings) verifyRealPass(ctx *statemachine.Context) statemachine.Outcome {
+	return b.boolGate(ctx,
+		"verify_real_pass",
+		"Real-suite verification passed? [Y/n]: ")
 }
 
 // ---------------------------------------------------------------------------

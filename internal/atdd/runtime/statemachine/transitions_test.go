@@ -265,15 +265,22 @@ var transitionTable = []transitionCase{
 
 	// ---- red_phase_cycle (shared by AT/CT RED-WRITE phases via params) ----
 	// Splits creative WRITE work from mechanical compile/run/disable/commit.
-	// AT_RED_TEST is the first migrated caller; further callers land in
-	// later phases of the AT/CT split refactor.
+	// All three AT RED phases and all three CT RED phases call into this
+	// flow; CT_RED_TEST additionally enables the optional verify_real_suite
+	// branch by setting the same-named param.
 	{flow: "red_phase_cycle", from: "WRITE", wantTo: "STOP_RED_REVIEW"},
 	{flow: "red_phase_cycle", from: "STOP_RED_REVIEW", wantTo: "COMPILE"},
 	{flow: "red_phase_cycle", from: "COMPILE", wantTo: "GATE_COMPILE_OK"},
 	{flow: "red_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": false}, wantTo: "WRITE_PROTOTYPES", desc: "compile fail loops through prototype WRITE"},
-	{flow: "red_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": true}, wantTo: "RUN"},
+	{flow: "red_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": true}, wantTo: "GATE_VERIFY_REAL_REQUIRED", desc: "compile pass enters the optional verify-real branch"},
 	{flow: "red_phase_cycle", from: "WRITE_PROTOTYPES", wantTo: "STOP_PROTOTYPE_REVIEW"},
 	{flow: "red_phase_cycle", from: "STOP_PROTOTYPE_REVIEW", wantTo: "COMPILE", desc: "prototype loop returns to COMPILE"},
+	{flow: "red_phase_cycle", from: "GATE_VERIFY_REAL_REQUIRED", state: map[string]any{"verify_real_required": true}, wantTo: "VERIFY_REAL", desc: "CT_RED_TEST sets verify_real_suite → run real-suite check"},
+	{flow: "red_phase_cycle", from: "GATE_VERIFY_REAL_REQUIRED", state: map[string]any{"verify_real_required": false}, wantTo: "RUN", desc: "AT phases skip the verify-real branch"},
+	{flow: "red_phase_cycle", from: "VERIFY_REAL", wantTo: "GATE_VERIFY_REAL_PASS"},
+	{flow: "red_phase_cycle", from: "GATE_VERIFY_REAL_PASS", state: map[string]any{"verify_real_pass": true}, wantTo: "RUN", desc: "real-suite holds → continue to stub RUN"},
+	{flow: "red_phase_cycle", from: "GATE_VERIFY_REAL_PASS", state: map[string]any{"verify_real_pass": false}, wantTo: "STOP_VERIFY_REAL_FAIL", desc: "real-suite fails → STOP, contract problem"},
+	{flow: "red_phase_cycle", from: "STOP_VERIFY_REAL_FAIL", wantTo: "WRITE", desc: "after STOP, retry from WRITE"},
 	{flow: "red_phase_cycle", from: "RUN", wantTo: "GATE_RUN_FAILED_RUNTIME"},
 	{flow: "red_phase_cycle", from: "GATE_RUN_FAILED_RUNTIME", state: map[string]any{"tests_failed_runtime": true}, wantTo: "DISABLE"},
 	{flow: "red_phase_cycle", from: "GATE_RUN_FAILED_RUNTIME", state: map[string]any{"tests_failed_runtime": false}, wantTo: "STOP_RED_NOT_RUNTIME_FAIL", desc: "tests not runtime-failing → human STOP"},

@@ -141,6 +141,11 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("compile_targeted", a.compileTargeted)
 	r.Register("run_targeted_tests", a.runTargetedTests)
 	r.Register("disable_change_driven", a.disableChangeDriven)
+	// Optional CT real-vs-stub verification (per AT/CT split plan): runs the
+	// suite named in the `verify_real_suite` call_activity param against the
+	// just-written tests and asserts every one passes. Driven by the
+	// `verify_real_required` gate, which is no-op for AT phases.
+	r.Register("verify_real_suite_passes", a.verifyRealSuitePasses)
 }
 
 // Context keys consumed by the red_phase_cycle actions. Centralised so the
@@ -186,6 +191,12 @@ const (
 	// record that every observed failure was a runtime failure (not
 	// compile). Read by the tests_failed_runtime gate.
 	CtxKeyTestsFailedRuntime = "tests_failed_runtime"
+
+	// CtxKeyVerifyRealPass is the bool verify_real_suite_passes writes to
+	// record whether every test passed against the suite named in the
+	// `verify_real_suite` call_activity param. Read by the verify_real_pass
+	// gate.
+	CtxKeyVerifyRealPass = "verify_real_pass"
 )
 
 type actions struct {
@@ -950,6 +961,60 @@ func (a actions) disableChangeDriven(ctx *statemachine.Context) statemachine.Out
 		}
 	}
 	return statemachine.Outcome{}
+}
+
+// verifyRealSuitePasses runs the suite named in the `verify_real_suite`
+// call_activity param against the test methods in CtxKeyTestNames and
+// asserts every one passes. Used by CT_RED_TEST to prove the new contract
+// tests describe behaviour that the real external system actually
+// honours, before the regular RUN exercises the dockerized stub. AT
+// phases leave the param unset; the surrounding `verify_real_required`
+// gate routes around this action without invoking it.
+//
+// Reads:
+//   - ctx.Params["verify_real_suite"] (string) — required; the suite
+//     placeholder, e.g. "<suite-contract-real>".
+//   - CtxKeyTestNames ([]string) — required; method names dispatched one
+//     per `gh optivem test system --suite <suite> --test <name>` shell-out.
+//
+// Writes:
+//   - CtxKeyVerifyRealPass (bool) — true iff every test passed; read by
+//     the verify_real_pass gate.
+//
+// Pass/fail is the only signal: classification (compile vs runtime) is
+// not relevant — any failure means the contract does not hold against the
+// real instance, which is a STOP-and-ask-the-human condition.
+func (a actions) verifyRealSuitePasses(ctx *statemachine.Context) statemachine.Outcome {
+	suite := strings.TrimSpace(ctx.Params["verify_real_suite"])
+	if suite == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("verify_real_suite_passes: verify_real_suite param not set")}
+	}
+	rawNames, ok := ctx.State[CtxKeyTestNames]
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("verify_real_suite_passes: %s not set in Context", CtxKeyTestNames)}
+	}
+	names, ok := rawNames.([]string)
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("verify_real_suite_passes: %s is %T, want []string", CtxKeyTestNames, rawNames)}
+	}
+	if len(names) == 0 {
+		return statemachine.Outcome{Err: fmt.Errorf("verify_real_suite_passes: %s is empty", CtxKeyTestNames)}
+	}
+	allPass := true
+	for _, name := range names {
+		cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s",
+			shellEscape(suite), shellEscape(name))
+		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
+		out, err := a.deps.Shell.Run(context.Background(), cmd)
+		if len(out) > 0 {
+			fmt.Fprintln(a.deps.Stdout, string(out))
+		}
+		if err != nil {
+			allPass = false
+		}
+	}
+	ctx.Set(CtxKeyVerifyRealPass, allPass)
+	return statemachine.Outcome{Bool: allPass}
 }
 
 // reportDriftWarning emits a one-line reminder when only the compile sweep

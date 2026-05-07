@@ -13,11 +13,12 @@ You are the DSL Agent. Follow the phase specified in the input:
 
 - **AT - RED - DSL - WRITE** — replace "TODO: DSL" prototypes with real DSL logic, update Driver interfaces, set the two change flags (no compile, no run, no disable, no commit). The orchestrator handles the rest. See `at-red-dsl.md`.
 - **AT - RED - DSL - PROTOTYPES** — add `"TODO: Driver"` prototypes for any new/changed Driver methods so the tests compile. The orchestrator re-runs compile after you exit. See `at-red-dsl.md`.
-- **CT - RED - DSL - WRITE** (falling through to **CT - RED - DSL - REVIEW** STOP) or **CT - RED - DSL - COMMIT** — from `ct-red-dsl.md`. CT has not yet been migrated to the split sub-flow; it still drives its own inner cycle.
+- **CT - RED - DSL - WRITE** — replace `"TODO: DSL"` prototypes with real DSL logic for the external system, update External System Driver interfaces, set the `external_system_driver_interface_changed` flag. See `ct-red-dsl.md`.
+- **CT - RED - DSL - PROTOTYPES** — add `"TODO: Driver"` prototypes under `external/` for any new/changed Driver methods so the contract tests compile. See `ct-red-dsl.md`.
 
 Apply DSL Core Rules from `dsl-core.md` and Driver Port Rules from `driver-port.md`.
 
-After WRITE the orchestrator runs the REVIEW STOP — do not present or wait for approval inside the agent for the AT phase. CT phases still STOP at REVIEW from within the agent.
+After WRITE the orchestrator runs the REVIEW STOP — do not present or wait for approval inside the agent.
 
 ---
 
@@ -173,20 +174,20 @@ This dispatch only happens when the WRITE dispatch left compile errors (because 
 
 Replace the `"TODO: DSL"` prototypes left behind by CT - RED - TEST with real DSL logic for the external system, and surface whether the work changes any External System Driver interfaces.
 
-## What it produces
+The phase decomposes into two creative agent dispatches — **CT - RED - DSL - WRITE** (always) and **CT - RED - DSL - PROTOTYPES** (only when WRITE leaves a compile failure because new Driver methods are referenced). Compile, the targeted test run against the stub, change-driven `@Disabled` markup, and the COMMIT are mechanical and run as service tasks in the orchestrator's `red_phase_cycle` sub-flow. The agent must never invoke them.
 
-- Commit `<Ticket> | CT - RED - DSL` containing the real DSL implementation, any updated Driver interfaces, and `"TODO: Driver"` prototypes for new/changed Driver methods
-- Flag set: `external_system_driver_interface_changed = yes|no`
-- Tests in state: contract tests disabled with reason `"CT - RED - DSL"`
-- GitHub issue comment summarising DSL interface changes (if an issue number was provided as input)
+## What the agent produces
+
+- **CT - RED - DSL - WRITE** dispatch: real DSL implementations for the external system, External System Driver interface changes (where needed), and the flag `External System Driver Interface Changed = yes|no`. Tests previously disabled with reason `"CT - RED - TEST"` are re-enabled.
+- **CT - RED - DSL - PROTOTYPES** dispatch (only when needed): `"TODO: Driver"` prototype implementations for the new/changed External System Driver methods.
+
+What the orchestrator produces afterward (not the agent's job): the targeted compile, the targeted test run against `<suite-contract-stub>`, the change-driven `@Disabled` markup with reason `"CT - RED - DSL"`, and the commit `<Ticket> | CT - RED - DSL`. If a GitHub issue number was provided as input, the orchestrator (not the agent) posts the issue comment summarising the DSL interface changes after COMMIT.
 
 ## Conventions
 
-- Suite selection (real vs stub): see [ct-cycle-conventions.md](ct-cycle-conventions.md). This phase exercises the stub side only.
-- Commit message format: see [ct-cycle-conventions.md](ct-cycle-conventions.md).
-- Commit gate ("Can I commit?"): see [shared-commit-confirmation.md](shared-commit-confirmation.md).
-- Phase progression and STOP semantics: see [shared-phase-progression.md](shared-phase-progression.md).
-- `"TODO: Driver"` exception string and `@Disabled` syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
+- Unit of work: the **ticket**. All scenarios for the ticket are written together as a batch — there is no per-scenario inner loop.
+- Suite selection (real vs stub): see [ct-cycle-conventions.md](ct-cycle-conventions.md). This phase exercises the stub side only — the orchestrator reads the suite from context.
+- `"TODO: Driver"` prototype syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
 - Definitions of DSL Interface and External System Driver: see [glossary.md](glossary.md).
 
 ## Example
@@ -201,40 +202,34 @@ Replace the `"TODO: DSL"` prototype with real DSL logic. Driver methods stay as 
  }
 ```
 
+(The agent does not add `@Disabled` here. The orchestrator marks the change-driven scenarios disabled with reason `"CT - RED - DSL"` after the test run, as a service task.)
+
 ## CT - RED - DSL - WRITE
 
 1. Enable the tests marked disabled with reason `"CT - RED - TEST"`.
 2. Implement the DSL for real — replace each `"TODO: DSL"` prototype with actual logic.
 3. Update the External System Driver interfaces as needed.
-4. Determine whether any interface changes affect files under an `external/` package and set `external_system_driver_interface_changed = yes|no`.
+4. Determine whether any interface changes affect files under an `external/` package and set the flag: **External System Driver Interface Changed = yes/no**.
+5. Do **not** add Driver prototypes here — that is the PROTOTYPES dispatch's job, only triggered if compile fails.
+6. Do **not** add `@Disabled` / `Skip` markup. The orchestrator does that after the test run.
+7. Do **not** attempt to compile, do **not** run tests, do **not** commit. Exit cleanly when the DSL changes and flag are in place.
 
-## CT - RED - DSL - REVIEW (STOP)
+## CT - RED - DSL - PROTOTYPES
 
-STOP. Present the DSL implementation, Driver interface changes, and the `external_system_driver_interface_changed` flag to the user and ask for approval. Do NOT continue.
+This dispatch only happens when the WRITE dispatch left compile errors (because tests reference External System Driver methods that do not yet exist).
 
-**Review checklist:**
-
-- DSL methods now contain real logic — no `"TODO: DSL"` strings remain.
-- Driver interface changes (if any) are confined to files under `external/`.
-- The `external_system_driver_interface_changed` flag accurately reflects whether any Driver interface changed.
-
-## CT - RED - DSL - COMMIT
-
-1. For any new or changed External System Driver methods, add `"TODO: Driver"` prototypes that throw a not-implemented exception (see [language-equivalents.md](../code/language-equivalents.md)).
-2. Run the contract tests and verify they fail with a runtime error:
-   ```bash
-   gh optivem test system --suite <suite-contract-stub> --test <TestMethodName>
-   ```
-3. Mark the tests as disabled with reason `"CT - RED - DSL"` (see [language-equivalents.md](../code/language-equivalents.md)).
-4. COMMIT with message `<Ticket> | CT - RED - DSL`.
-5. If a GitHub issue number was provided as input, post a comment on the issue summarising the DSL interface changes (new methods added, interfaces updated).
+- For each new or changed Driver method, add a prototype that throws a `"TODO: Driver"` not-implemented exception (see [language-equivalents.md](../code/language-equivalents.md)). Do not implement real Driver behavior — that belongs to CT - RED - EXTERNAL DRIVER.
+- Stay within `external/`. System Drivers under `shop/` are off-limits here.
+- Exit cleanly. The orchestrator re-runs the targeted compile after you exit; if it still fails, this dispatch repeats.
 
 ## Anti-patterns
 
-- Implementing External System Drivers here — Driver bodies belong in CT - RED - EXTERNAL DRIVER. Only Driver *prototypes* (`"TODO: Driver"`) are added in this phase.
-- Forgetting to post the GitHub-issue comment when an issue number was provided — it's the audit trail of the DSL interface change.
-- Leaving `"TODO: DSL"` strings behind in the committed code — every prototype must be replaced with real logic.
-- Editing files outside `external/` to "fix" failing contract tests — the contract is between the system and the external boundary, not internal code.
+- **Implementing External System Drivers here.** Driver bodies belong to CT - RED - EXTERNAL DRIVER. Only Driver *prototypes* (`"TODO: Driver"`) are added — and only in the PROTOTYPES dispatch.
+- **Adding Driver prototypes preemptively in WRITE.** Prototypes are added by the PROTOTYPES dispatch *after* the orchestrator's compile attempt fails — not preemptively while writing the DSL.
+- **Adding `@Disabled` markup yourself.** That is the orchestrator's job (`disable_change_driven` service task).
+- **Running compile, tests, or commit yourself.** The orchestrator owns those service tasks. The agent should never shell out.
+- **Leaving `"TODO: DSL"` strings behind.** If any DSL method still throws `"TODO: DSL"` after WRITE, the phase is not done.
+- **Editing files outside `external/` to "fix" failing contract tests.** The contract is between the system and the external boundary, not internal code.
 
 ---
 
