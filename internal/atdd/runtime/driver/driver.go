@@ -1,6 +1,6 @@
 // Package driver wires together the ATDD pipeline runtime: it loads the
 // process-flow YAML, registers gates / actions / agents, applies override and
-// verify decorators, and walks the named flow end to end.
+// verify decorators, and walks the named process end to end.
 //
 // The driver is deliberately thin — the heavy lifting lives in the runtime
 // sub-packages (statemachine, gates, actions, verify, override, board,
@@ -9,9 +9,9 @@
 //
 //   - Run with Options.IssueNum > 0 → implement-ticket mode: pre-resolve the
 //     project item for the given issue, seed Context, and skip the picker by
-//     starting the main flow at MOVE_TO_IN_PROGRESS.
+//     starting the main process at MOVE_TO_IN_PROGRESS.
 //   - Run with Options.IssueNum == 0 → manage-project mode: the YAML's main
-//     flow runs from START, picking the top Ready ticket from the project
+//     process runs from START, picking the top Ready ticket from the project
 //     board.
 //
 // Agent dispatch (v2): every user_task whose `agent:` value is something
@@ -56,12 +56,12 @@ import (
 	"github.com/optivem/gh-optivem/internal/files"
 )
 
-// DefaultFlowName is the entry flow loaded by every public CLI command.
-const DefaultFlowName = "main"
+// DefaultProcessName is the entry process loaded by every public CLI command.
+const DefaultProcessName = "main"
 
 // Options bundles every driver knob that callers (the `gh optivem atdd …`
 // commands and tests) might want to set. Zero values yield a usable
-// configuration: load the embedded canonical YAML, enter DefaultFlowName,
+// configuration: load the embedded canonical YAML, enter DefaultProcessName,
 // no overrides, real shell-outs.
 type Options struct {
 	// YAMLPath, when non-empty, points the driver at an on-disk YAML file
@@ -69,8 +69,8 @@ type Options struct {
 	// Empty → load the embedded YAML via statemachine.LoadDefault.
 	YAMLPath string
 
-	// FlowName is the entry flow. Empty → DefaultFlowName.
-	FlowName string
+	// ProcessName is the entry process. Empty → DefaultProcessName.
+	ProcessName string
 
 	// IssueNum, when > 0, switches the driver into implement-ticket mode:
 	// the picker (PICK_TOP_READY) is bypassed and the driver pre-resolves
@@ -158,7 +158,7 @@ type Options struct {
 }
 
 // Run loads the YAML, wires the registries, applies decorators, optionally
-// pre-resolves an issue, and walks the chosen flow.
+// pre-resolves an issue, and walks the chosen process.
 func Run(ctx context.Context, opts Options) error {
 	opts = opts.withDefaults()
 
@@ -187,13 +187,13 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 
-	flow, ok := eng.Flows[opts.FlowName]
+	process, ok := eng.Processes[opts.ProcessName]
 	if !ok {
 		source := opts.YAMLPath
 		if source == "" {
 			source = "embedded"
 		}
-		return fmt.Errorf("driver: flow %q not in YAML %q", opts.FlowName, source)
+		return fmt.Errorf("driver: process %q not in YAML %q", opts.ProcessName, source)
 	}
 
 	gateReg := gates.New()
@@ -287,12 +287,12 @@ func Run(ctx context.Context, opts Options) error {
 		// Skip START → PICK_TOP_READY when running main. The pre-resolution
 		// has already populated everything PICK_TOP_READY would have set;
 		// MOVE_TO_IN_PROGRESS is the next service task downstream.
-		if opts.FlowName == DefaultFlowName {
-			flow.Start = "MOVE_TO_IN_PROGRESS"
+		if opts.ProcessName == DefaultProcessName {
+			process.Start = "MOVE_TO_IN_PROGRESS"
 		}
 	}
 
-	return eng.RunFlow(opts.FlowName, sCtx)
+	return eng.RunProcess(opts.ProcessName, sCtx)
 }
 
 // resolveRepoPath returns the absolute path the driver treats as the
@@ -534,8 +534,8 @@ func preflightClaude(ctx context.Context) error {
 }
 
 func (o Options) withDefaults() Options {
-	if o.FlowName == "" {
-		o.FlowName = DefaultFlowName
+	if o.ProcessName == "" {
+		o.ProcessName = DefaultProcessName
 	}
 	if o.Stdout == nil {
 		o.Stdout = os.Stdout
@@ -626,8 +626,8 @@ func registerAgentDispatchers(r *agents.Registry) {
 // tests that don't care about the run-log path; the closure falls back
 // to an empty PromptLogPath which clauderun treats as "skip log".
 func wrapAgentDispatchers(eng *statemachine.Engine, opts Options, rs *runState) {
-	for _, flow := range eng.Flows {
-		for id, node := range flow.Nodes {
+	for _, process := range eng.Processes {
+		for id, node := range process.Nodes {
 			if node.Kind != statemachine.UserTask {
 				continue
 			}
@@ -644,7 +644,7 @@ func wrapAgentDispatchers(eng *statemachine.Engine, opts Options, rs *runState) 
 			default:
 				node.Fn = newClaudeRunDispatcher(opts, raw, nodeID, rs, inner)
 			}
-			flow.Nodes[id] = node
+			process.Nodes[id] = node
 		}
 	}
 }
@@ -657,12 +657,12 @@ func wrapAgentDispatchers(eng *statemachine.Engine, opts Options, rs *runState) 
 // `stop` (halt).
 //
 // This replaces the bare `humanStop` from agents/registry.go for any
-// flow that's been wrapped by wrapAgentDispatchers — the registry
+// process that's been wrapped by wrapAgentDispatchers — the registry
 // version stays in place as the fallback for tests and code paths
 // that bypass the driver wrapping.
 func newHumanStopDispatcher(opts Options, raw statemachine.RawNode, nodeID string) statemachine.NodeFn {
 	return func(ctx *statemachine.Context) statemachine.Outcome {
-		description := statemachine.ExpandParams(raw.Description, ctx.Params)
+		description := statemachine.ExpandParams(raw.Documentation, ctx.Params)
 
 		fmt.Fprintln(opts.Stdout)
 		if description != "" {
@@ -719,7 +719,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 		cOpts := clauderun.Options{
 			Agent:           agentName,
 			PhaseDoc:        statemachine.ExpandParams(raw.PhaseDoc, ctx.Params),
-			NodeDescription: statemachine.ExpandParams(raw.Description, ctx.Params),
+			NodeDescription: statemachine.ExpandParams(raw.Documentation, ctx.Params),
 			IssueNum:        issueNum,
 			IssueTitle:      ctx.GetString("issue_title"),
 			IssueRepo:       ctx.GetString("issue_repo"),
@@ -800,12 +800,19 @@ func fixVerifyChangedFiles(agent, repoPath string) string {
 func promptForAgent(opts Options, raw statemachine.RawNode, params map[string]string) error {
 	agent := statemachine.ExpandParams(raw.Agent, params)
 	phaseDoc := statemachine.ExpandParams(raw.PhaseDoc, params)
-	description := statemachine.ExpandParams(raw.Description, params)
+	documentation := statemachine.ExpandParams(raw.Documentation, params)
+	step := raw.Name
+	if step == "" {
+		step = raw.ID
+	}
 
 	fmt.Fprintln(opts.Stdout)
 	fmt.Fprintf(opts.Stdout, "DISPATCH: %s\n", agent)
-	if description != "" {
-		fmt.Fprintf(opts.Stdout, "  Phase: %s\n", description)
+	if step != "" {
+		fmt.Fprintf(opts.Stdout, "  Step: %s\n", step)
+	}
+	if documentation != "" {
+		fmt.Fprintf(opts.Stdout, "  Phase: %s\n", documentation)
 	}
 	if phaseDoc != "" {
 		fmt.Fprintf(opts.Stdout, "  Phase doc: %s\n", phaseDoc)
@@ -854,10 +861,10 @@ func wrapOverride(eng *statemachine.Engine, hooks *override.Hooks) {
 	if hooks == nil {
 		hooks = &override.Hooks{}
 	}
-	for _, flow := range eng.Flows {
-		for id, node := range flow.Nodes {
+	for _, process := range eng.Processes {
+		for id, node := range process.Nodes {
 			node.Fn = override.Wrap(node.Fn, id, hooks)
-			flow.Nodes[id] = node
+			process.Nodes[id] = node
 		}
 	}
 }

@@ -101,7 +101,7 @@ func newAtddShowDiagramCmd() *cobra.Command {
 
 // newAtddImplementTicketCmd implements `gh optivem atdd implement-ticket
 // --issue N`. The driver pre-resolves the project item for the issue, seeds
-// Context, and walks the main flow from MOVE_TO_IN_PROGRESS (skipping the
+// Context, and walks the main process from MOVE_TO_IN_PROGRESS (skipping the
 // PICK_TOP_READY picker).
 func newAtddImplementTicketCmd() *cobra.Command {
 	var (
@@ -191,7 +191,7 @@ func validateKeepRuns(n int) error {
 // agent dispatch happens. A failure prints one error block listing every
 // missing repo or path and exits non-zero — see preflight.Run.
 //
-// Loaded config is discarded after preflight; the driver's flow re-loads
+// Loaded config is discarded after preflight; the driver's process re-loads
 // it via loadDriverConfig. The double load is deliberate: keeps the
 // driver's lifecycle untouched, and a config file is small enough that
 // the second read is free.
@@ -213,7 +213,7 @@ func runImplementTicketPreflight(configPath string, repoDirs map[string]string) 
 }
 
 // newAtddManageProjectCmd implements `gh optivem atdd manage-project`. The
-// driver picks the top item from the Ready column and walks the main flow
+// driver picks the top item from the Ready column and walks the main process
 // from START.
 func newAtddManageProjectCmd() *cobra.Command {
 	var (
@@ -441,19 +441,19 @@ func newAtddDebugClassifyCmd() *cobra.Command {
 // a synthetic state. Useful for "why did the driver follow the No edge?".
 func newAtddDebugNextPhaseCmd() *cobra.Command {
 	var (
-		yamlPath string
-		flowName string
-		nodeID   string
-		stateRaw string
+		yamlPath    string
+		processName string
+		nodeID      string
+		stateRaw    string
 	)
 	cmd := &cobra.Command{
 		Use:   "next-phase",
 		Short: "Print the next node nextEdge would pick from --node under --state",
 		Example: `  gh optivem atdd debug next-phase --node GATE_DSL --state dsl_interface_changed=true
-  gh optivem atdd debug next-phase --flow at_cycle --node AT_RED_TEST_COMMIT`,
+  gh optivem atdd debug next-phase --process at_cycle --node AT_RED_TEST_COMMIT`,
 		Run: func(cmd *cobra.Command, args []string) {
-			if flowName == "" {
-				flowName = driver.DefaultFlowName
+			if processName == "" {
+				processName = driver.DefaultProcessName
 			}
 			if nodeID == "" {
 				exitOnError(fmt.Errorf("--node is required"))
@@ -478,14 +478,14 @@ func newAtddDebugNextPhaseCmd() *cobra.Command {
 				}
 				sCtx.Set(strings.TrimSpace(k), strings.TrimSpace(v))
 			}
-			next, err := eng.NextEdge(flowName, nodeID, sCtx)
+			next, err := eng.NextEdge(processName, nodeID, sCtx)
 			exitOnError(err)
 			fmt.Printf("from:  %s\n", nodeID)
 			fmt.Printf("to:    %s\n", next)
 		},
 	}
 	cmd.Flags().StringVar(&yamlPath, "yaml", "", "Path to a process-flow YAML override (defaults to the embedded canonical document)")
-	cmd.Flags().StringVar(&flowName, "flow", "", "Flow name (defaults to main)")
+	cmd.Flags().StringVar(&processName, "process", "", "Process name (defaults to main)")
 	cmd.Flags().StringVar(&nodeID, "node", "", "Source node ID (required)")
 	cmd.Flags().StringVar(&stateRaw, "state", "", "Comma-separated key=value pairs to seed Context (e.g. dsl_interface_changed=true,ticket_type=story)")
 	return cmd

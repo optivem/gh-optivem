@@ -7,30 +7,30 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 )
 
-func TestRender_AllFlowsAppearAsHeadings(t *testing.T) {
+func TestRender_AllProcessesAppearAsHeadings(t *testing.T) {
 	eng, err := statemachine.LoadDefault()
 	if err != nil {
 		t.Fatalf("load default YAML: %v", err)
 	}
 	got := Render(eng)
 
-	// Every flow ID in the loaded engine must appear as either an aliased
-	// heading or its raw ID. Catches "added a flow but forgot to update
-	// flowAlias / flowOrder" — the renderer falls back to raw ID, so the
+	// Every process ID in the loaded engine must appear as either an aliased
+	// heading or its raw ID. Catches "added a process but forgot to update
+	// processAlias / processOrder" — the renderer falls back to raw ID, so the
 	// section still appears, but this also asserts we produce headings.
-	for name := range eng.Flows {
-		heading := flowAlias[name]
+	for name := range eng.Processes {
+		heading := processAlias[name]
 		if heading == "" {
 			heading = name
 		}
 		want := "## " + heading + "\n"
 		if !strings.Contains(got, want) {
-			t.Errorf("missing heading for flow %q: want %q in output", name, want)
+			t.Errorf("missing heading for process %q: want %q in output", name, want)
 		}
 	}
 }
 
-func TestRender_CallActivityLinksToTargetFlow(t *testing.T) {
+func TestRender_CallActivityLinksToTargetProcess(t *testing.T) {
 	eng, err := statemachine.LoadDefault()
 	if err != nil {
 		t.Fatalf("load default YAML: %v", err)
@@ -78,9 +78,9 @@ func TestEdgeLabel(t *testing.T) {
 	}
 }
 
-func TestRender_FlowWithOutputsEmitsDataObjectAndProducesEdge(t *testing.T) {
+func TestRender_ProcessWithOutputsEmitsDataObjectAndProducesEdge(t *testing.T) {
 	yaml := []byte(`
-flows:
+processes:
   sample_flow:
     start: WORK
     outputs:
@@ -90,7 +90,7 @@ flows:
       - id: WORK
         type: service_task
         action: do_work
-        description: "Do work"
+        documentation: "Do work"
       - id: SAMPLE_END
         type: end_event
     sequence_flows:
@@ -114,16 +114,16 @@ flows:
 	}
 }
 
-func TestRender_FlowWithoutOutputsHasNoDataObject(t *testing.T) {
+func TestRender_ProcessWithoutOutputsHasNoDataObject(t *testing.T) {
 	yaml := []byte(`
-flows:
+processes:
   sample_flow:
     start: WORK
     nodes:
       - id: WORK
         type: service_task
         action: do_work
-        description: "Do work"
+        documentation: "Do work"
       - id: SAMPLE_END
         type: end_event
     sequence_flows:
@@ -140,7 +140,7 @@ flows:
 		"outputNode",
 	} {
 		if strings.Contains(got, banned) {
-			t.Errorf("unexpected %q in rendered output for flow with no outputs:\n%s", banned, got)
+			t.Errorf("unexpected %q in rendered output for process with no outputs:\n%s", banned, got)
 		}
 	}
 }

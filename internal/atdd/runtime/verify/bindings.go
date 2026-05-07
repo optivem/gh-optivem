@@ -7,7 +7,7 @@
 //
 // Each check is best-effort: a missing git binary or a fresh repo with no
 // HEAD commit returns "skip" rather than an error so transitions tests and
-// dry-runs still walk the flow. Hard authoring bugs (HEAD points at a
+// dry-runs still walk the process. Hard authoring bugs (HEAD points at a
 // different phase than the predecessor would have produced) surface as Err.
 package verify
 
@@ -68,21 +68,21 @@ func Bindings(deps Deps) map[string]struct {
 }
 
 // WrapAll applies every binding from Bindings to the matching node in every
-// flow of the supplied engine. Call this once during driver startup, after
+// process of the supplied engine. Call this once during driver startup, after
 // engine.Bind. Nodes without a binding pass through unchanged.
 //
-// We mutate the engine's flow nodes in place so the engine's RunFlow loop
+// We mutate the engine's process nodes in place so the engine's RunProcess loop
 // sees the wrapped Fn the next time it dispatches the node.
 func WrapAll(eng *statemachine.Engine, deps Deps) {
 	bindings := Bindings(deps)
-	for _, flow := range eng.Flows {
-		for id, node := range flow.Nodes {
+	for _, process := range eng.Processes {
+		for id, node := range process.Nodes {
 			b, ok := bindings[id]
 			if !ok {
 				continue
 			}
 			node.Fn = Wrap(node.Fn, id, b.Pre, b.Post)
-			flow.Nodes[id] = node
+			process.Nodes[id] = node
 		}
 	}
 }

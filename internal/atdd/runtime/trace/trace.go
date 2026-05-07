@@ -4,11 +4,11 @@
 //   - service_task: action name, ctx.State keys mutated, Outcome.Value/Bool
 //   - gateway:      binding name, evaluated value, ctx.State keys mutated
 //   - user_task:    agent name, working-tree paths the agent touched
-//   - call_activity:flow name, params pushed
+//   - call_activity:process name, params pushed
 //   - start/end:    just the node id and kind
 //
 // The decorator sits at the outermost layer (after override.Wrap), so what
-// it logs is exactly what the engine's RunFlow loop dispatches. Output is
+// it logs is exactly what the engine's RunProcess loop dispatches. Output is
 // plain text with `[trace HH:MM:SS]` prefixes so the trace stream is easy
 // to grep alongside clauderun's existing colored agent banners.
 //
@@ -97,10 +97,10 @@ var nowFn = time.Now
 // the outermost layer so the entry/exit lines bracket everything else.
 func WrapAll(eng *statemachine.Engine, deps Deps) {
 	deps = deps.withDefaults()
-	for _, flow := range eng.Flows {
-		for id, node := range flow.Nodes {
+	for _, process := range eng.Processes {
+		for id, node := range process.Nodes {
 			node.Fn = wrap(node, deps)
-			flow.Nodes[id] = node
+			process.Nodes[id] = node
 		}
 	}
 }
@@ -131,13 +131,13 @@ func wrap(node statemachine.Node, deps Deps) statemachine.NodeFn {
 //
 //	[trace HH:MM:SS] > NODE_ID  kind=<kind> <selector>=<name>
 //
-// where <selector> is action / agent / binding / flow depending on Kind.
+// where <selector> is action / agent / binding / process depending on Kind.
 // Templated fields (e.g. ${agent} on structural_cycle nodes) are expanded
 // against ctx.Params so the operator sees the substituted name rather
 // than the literal placeholder.
 //
 // On a TTY: `[trace …]` faint, `>` cyan, node ID bold (cyan-bold for
-// call_activity so flow boundaries stand out as the "phase" markers above
+// call_activity so process boundaries stand out as the "phase" markers above
 // their service_task / gateway / user_task children).
 func writeEnter(deps Deps, node statemachine.Node, ctx *statemachine.Context) {
 	parts := []string{
@@ -158,8 +158,8 @@ func writeEnter(deps Deps, node statemachine.Node, ctx *statemachine.Context) {
 			parts = append(parts, fmt.Sprintf("binding=%s", node.Raw.Binding))
 		}
 	case statemachine.CallActivity:
-		if node.Raw.Flow != "" {
-			parts = append(parts, fmt.Sprintf("flow=%s", node.Raw.Flow))
+		if node.Raw.Process != "" {
+			parts = append(parts, fmt.Sprintf("process=%s", node.Raw.Process))
 		}
 		if len(node.Raw.Params) > 0 {
 			parts = append(parts, fmt.Sprintf("params=%s", formatParams(node.Raw.Params)))

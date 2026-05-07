@@ -13,7 +13,7 @@ import (
 //   - gateway      → GateFn(binding); the bound function must Set(binding, …)
 //                    on the Context so downstream `when:` predicates can read
 //                    the result.
-//   - call_activity → built-in dispatch into the named sub-flow
+//   - call_activity → built-in dispatch into the named sub-process
 //   - start_event / end_event → built-in no-ops; routing is decided entirely
 //                    by `when:` predicates against the initial Context state.
 //
@@ -21,15 +21,15 @@ import (
 // Bind will dereference nil functions and panic.
 func (e *Engine) Bind() error {
 	var errs []string
-	for _, flow := range e.Flows {
-		for id, node := range flow.Nodes {
-			fn, err := e.resolve(flow, node)
+	for _, process := range e.Processes {
+		for id, node := range process.Nodes {
+			fn, err := e.resolve(node)
 			if err != nil {
-				errs = append(errs, fmt.Sprintf("flow %q node %q: %v", flow.Name, id, err))
+				errs = append(errs, fmt.Sprintf("process %q node %q: %v", process.Name, id, err))
 				continue
 			}
 			node.Fn = fn
-			flow.Nodes[id] = node
+			process.Nodes[id] = node
 		}
 	}
 	if len(errs) > 0 {
@@ -40,7 +40,7 @@ func (e *Engine) Bind() error {
 
 // resolve picks the right NodeFn for one node based on its kind and the
 // engine's registries.
-func (e *Engine) resolve(flow *Flow, node Node) (NodeFn, error) {
+func (e *Engine) resolve(node Node) (NodeFn, error) {
 	switch node.Kind {
 	case StartEvent, EndEvent:
 		return func(ctx *Context) Outcome { return Outcome{} }, nil
@@ -113,17 +113,17 @@ func (e *Engine) wrapGateway(binding string, fn NodeFn) NodeFn {
 	}
 }
 
-// wrapCallActivity returns a NodeFn that runs the named sub-flow to
+// wrapCallActivity returns a NodeFn that runs the named sub-process to
 // completion. Params from the call site are pushed onto the Context and
-// popped on return, so the called flow sees only its own substitutions.
+// popped on return, so the called process sees only its own substitutions.
 func (e *Engine) wrapCallActivity(raw RawNode) NodeFn {
 	return func(ctx *Context) Outcome {
-		sub, ok := e.Flows[raw.Flow]
+		sub, ok := e.Processes[raw.Process]
 		if !ok {
-			return Outcome{Err: fmt.Errorf("call_activity references unknown flow %q", raw.Flow)}
+			return Outcome{Err: fmt.Errorf("call_activity references unknown process %q", raw.Process)}
 		}
 		// Push params; restore on exit. Caller-scoped state is preserved so
-		// gateway results from outer flows remain visible to inner gateways
+		// gateway results from outer processes remain visible to inner gateways
 		// when they share binding names.
 		prev := ctx.Params
 		merged := make(map[string]string, len(prev)+len(raw.Params))
@@ -136,47 +136,47 @@ func (e *Engine) wrapCallActivity(raw RawNode) NodeFn {
 		ctx.Params = merged
 		defer func() { ctx.Params = prev }()
 
-		if err := e.RunFlow(sub.Name, ctx); err != nil {
+		if err := e.RunProcess(sub.Name, ctx); err != nil {
 			return Outcome{Err: err}
 		}
 		return Outcome{}
 	}
 }
 
-// RunFlow walks one flow from its start node to an end node. It uses
+// RunProcess walks one process from its start node to an end node. It uses
 // nextEdge to pick the outgoing edge whose predicate matches the current
 // state, and stops on the first node with no outgoing edges (treating that
-// as terminal — covers both end_event and any node placed as a flow tail).
+// as terminal — covers both end_event and any node placed as a process tail).
 //
 // Nodes are dispatched after expandParams substitutes ${name} occurrences in
 // the raw node fields the body may want to read (agent, phase_doc, etc.).
 // The NodeFn itself is bound at load time and does not see the substitutions
 // directly — actions/gates/agents that need params read them via the live
 // Context.Params map.
-func (e *Engine) RunFlow(name string, ctx *Context) error {
-	flow, ok := e.Flows[name]
+func (e *Engine) RunProcess(name string, ctx *Context) error {
+	process, ok := e.Processes[name]
 	if !ok {
-		return fmt.Errorf("unknown flow %q", name)
+		return fmt.Errorf("unknown process %q", name)
 	}
-	cur := flow.Start
+	cur := process.Start
 	for cur != "" {
-		node, ok := flow.Nodes[cur]
+		node, ok := process.Nodes[cur]
 		if !ok {
-			return fmt.Errorf("flow %q: dangling reference to node %q", name, cur)
+			return fmt.Errorf("process %q: dangling reference to node %q", name, cur)
 		}
 		if node.Fn == nil {
-			return fmt.Errorf("flow %q node %q: NodeFn not bound (call Bind first)", name, cur)
+			return fmt.Errorf("process %q node %q: NodeFn not bound (call Bind first)", name, cur)
 		}
 		out := node.Fn(ctx)
 		if out.Err != nil {
-			return fmt.Errorf("flow %q node %q: %w", name, cur, out.Err)
+			return fmt.Errorf("process %q node %q: %w", name, cur, out.Err)
 		}
 		if node.Kind == EndEvent {
 			return nil
 		}
-		next, err := e.nextEdge(flow, cur, ctx)
+		next, err := e.nextEdge(process, cur, ctx)
 		if err != nil {
-			return fmt.Errorf("flow %q after node %q: %w", name, cur, err)
+			return fmt.Errorf("process %q after node %q: %w", name, cur, err)
 		}
 		if next == "" {
 			return nil // terminal node with no outgoing edges
@@ -186,29 +186,29 @@ func (e *Engine) RunFlow(name string, ctx *Context) error {
 	return nil
 }
 
-// NextEdge is the public counterpart to nextEdge: given a flow name, source
+// NextEdge is the public counterpart to nextEdge: given a process name, source
 // node ID, and Context, return the node ID Run would advance to next.
 // Used by the `gh optivem atdd debug next-phase` diagnostic helper.
 //
-// Errors mirror nextEdge: an unknown flow / node returns a descriptive
+// Errors mirror nextEdge: an unknown process / node returns a descriptive
 // error; a node with no outgoing edges returns "" with nil error (terminal).
-func (e *Engine) NextEdge(flowName, fromNode string, ctx *Context) (string, error) {
-	flow, ok := e.Flows[flowName]
+func (e *Engine) NextEdge(processName, fromNode string, ctx *Context) (string, error) {
+	process, ok := e.Processes[processName]
 	if !ok {
-		return "", fmt.Errorf("unknown flow %q", flowName)
+		return "", fmt.Errorf("unknown process %q", processName)
 	}
-	if _, ok := flow.Nodes[fromNode]; !ok {
-		return "", fmt.Errorf("node %q not in flow %q", fromNode, flowName)
+	if _, ok := process.Nodes[fromNode]; !ok {
+		return "", fmt.Errorf("node %q not in process %q", fromNode, processName)
 	}
-	return e.nextEdge(flow, fromNode, ctx)
+	return e.nextEdge(process, fromNode, ctx)
 }
 
 // nextEdge picks the first outgoing edge from `from` whose predicate matches
 // the current Context state. Returns "" if there are no outgoing edges
 // (terminal node). Returns an error if multiple guarded edges all evaluate
 // false — that's an authoring bug in the YAML (gateway should be exhaustive).
-func (e *Engine) nextEdge(flow *Flow, from string, ctx *Context) (string, error) {
-	edges := flow.OutgoingByNode[from]
+func (e *Engine) nextEdge(process *Process, from string, ctx *Context) (string, error) {
+	edges := process.OutgoingByNode[from]
 	if len(edges) == 0 {
 		return "", nil
 	}

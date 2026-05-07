@@ -2,7 +2,7 @@
 // BPMN-shaped graph traversal that walks a process-flow YAML node-by-node,
 // dispatching service tasks and user-task agents in turn.
 //
-// The engine has three job-shaped types: Outcome, NodeFn, and Flow. Everything
+// The engine has three job-shaped types: Outcome, NodeFn, and Process. Everything
 // else (gates, actions, agents) plugs in through registries.
 package statemachine
 
@@ -17,7 +17,7 @@ const (
 	ServiceTask  // mechanical action; auto-executed via the actions registry
 	UserTask     // creative work; dispatches an agent (or blocks on human input)
 	Gateway      // XOR decision; binding evaluated via the gates registry
-	CallActivity // embedded sub-flow; runs to completion, returns to caller
+	CallActivity // embedded sub-process; runs to completion, returns to caller
 )
 
 // Outcome is what every NodeFn returns. The fields are union-style and only
@@ -50,6 +50,17 @@ type Node struct {
 	Raw   RawNode // the original YAML record, retained for diagnostics
 }
 
+// Label returns the canonical short label for this node — Raw.Name when
+// set, otherwise ID. Used by render sites (spy/history, dispatch banners,
+// trace logs) that surface "which step ran" to the operator. The
+// per-process id-uniqueness invariant guarantees Label is never empty.
+func (n Node) Label() string {
+	if n.Raw.Name != "" {
+		return n.Raw.Name
+	}
+	return n.ID
+}
+
 // Edge is a directed sequence flow between two nodes, optionally guarded by a
 // predicate over the Context state map.
 //
@@ -63,21 +74,21 @@ type Edge struct {
 	Predicate string // raw expression text from `when:`, "" means always-true
 }
 
-// Flow is one named flow definition (main, at_cycle, ct_subprocess, …),
+// Process is one named process definition (main, at_cycle, ct_subprocess, …),
 // loaded from the YAML and bound to NodeFns.
-type Flow struct {
+type Process struct {
 	Name           string
 	Start          string
-	Outputs        []string // optional BPMN-style data outputs published by the flow
+	Outputs        []string // optional BPMN-style data outputs published by the process
 	Nodes          map[string]Node
 	Edges          []Edge
 	OutgoingByNode map[string][]Edge // index for nextEdge lookup
 }
 
-// Engine holds every loaded Flow plus the registries needed to dispatch nodes.
-// Run picks a flow by name and walks it.
+// Engine holds every loaded Process plus the registries needed to dispatch
+// nodes. Run picks a process by name and walks it.
 type Engine struct {
-	Flows map[string]*Flow
+	Processes map[string]*Process
 
 	// Registries — set during Load by binding string references in the YAML
 	// (action:, agent:, binding:) to runtime functions.

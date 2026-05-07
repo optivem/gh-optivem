@@ -7,8 +7,9 @@
 // github.com renders Mermaid natively, so anyone browsing the repo sees
 // the diagram with zero tooling.
 //
-// Render is intentionally mechanical — one block per YAML flow,
-// labels straight from the `description:` field, edges labelled with
+// Render is intentionally mechanical — one block per YAML process,
+// labels straight from the `documentation:` field (with `name` then `id`
+// as fallbacks), edges labelled with
 // the `when:` predicate after light boolean → Yes/No translation. It
 // does not aggregate predicates or rename nodes for prose. The aim is a
 // deterministic, reviewable artifact, not a hand-polished presentation
@@ -24,11 +25,11 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 )
 
-// flowAlias maps internal flow IDs to human-readable section heading
+// processAlias maps internal process IDs to human-readable section heading
 // names. Flows not in the map render with the raw ID — that surfaces
-// "you added a flow without giving it a heading alias" loudly when a
-// new flow appears in the YAML.
-var flowAlias = map[string]string{
+// "you added a process without giving it a heading alias" loudly when a
+// new process appears in the YAML.
+var processAlias = map[string]string{
 	"main":                       "Ticket Lifecycle",
 	"github_intake":              "GitHub Intake",
 	"run_legacy_cycle":           "Run Legacy Cycle",
@@ -57,9 +58,9 @@ var groupAlias = map[string]string{
 	"external_structural/interface": "External System Structure Interface Change",
 }
 
-// flowOrder is the order flows are rendered in the output. Flows not
+// processOrder is the order flows are rendered in the output. Flows not
 // listed here come last in lexical order.
-var flowOrder = []string{
+var processOrder = []string{
 	"main",
 	"github_intake",
 	"run_legacy_cycle",
@@ -77,9 +78,9 @@ var flowOrder = []string{
 func Render(eng *statemachine.Engine) string {
 	var b strings.Builder
 	writeHeader(&b)
-	for _, name := range orderedFlowNames(eng) {
-		flow := eng.Flows[name]
-		writeFlowSection(&b, name, flow)
+	for _, name := range orderedProcessNames(eng) {
+		process := eng.Processes[name]
+		writeProcessSection(&b, name, process)
 	}
 	return b.String()
 }
@@ -87,23 +88,23 @@ func Render(eng *statemachine.Engine) string {
 func writeHeader(b *strings.Builder) {
 	b.WriteString("# ATDD Process Flow\n\n")
 	b.WriteString("> Generated from `internal/atdd/runtime/statemachine/process-flow.yaml` by `internal/atdd/runtime/diagram`. Do not edit by hand — edit the YAML and regenerate via `gh optivem atdd show diagram > docs/process-diagram.md`.\n\n")
-	b.WriteString("Each section corresponds to one named flow in the YAML. `call_activity` nodes appear as boxes pointing at the linked sub-flow's heading.\n\n")
+	b.WriteString("Each section corresponds to one named process in the YAML. `call_activity` nodes appear as boxes pointing at the linked sub-process's heading.\n\n")
 }
 
-// orderedFlowNames returns flow names in the canonical order: every
-// name in flowOrder that exists, followed by any extras in lexical
+// orderedProcessNames returns process names in the canonical order: every
+// name in processOrder that exists, followed by any extras in lexical
 // order.
-func orderedFlowNames(eng *statemachine.Engine) []string {
+func orderedProcessNames(eng *statemachine.Engine) []string {
 	seen := map[string]bool{}
 	var out []string
-	for _, name := range flowOrder {
-		if _, ok := eng.Flows[name]; ok {
+	for _, name := range processOrder {
+		if _, ok := eng.Processes[name]; ok {
 			out = append(out, name)
 			seen[name] = true
 		}
 	}
 	var extras []string
-	for name := range eng.Flows {
+	for name := range eng.Processes {
 		if !seen[name] {
 			extras = append(extras, name)
 		}
@@ -112,21 +113,21 @@ func orderedFlowNames(eng *statemachine.Engine) []string {
 	return append(out, extras...)
 }
 
-func writeFlowSection(b *strings.Builder, name string, flow *statemachine.Flow) {
-	heading := flowAlias[name]
+func writeProcessSection(b *strings.Builder, name string, process *statemachine.Process) {
+	heading := processAlias[name]
 	if heading == "" {
 		heading = name
 	}
 	fmt.Fprintf(b, "## %s\n\n", heading)
 	b.WriteString("```mermaid\nflowchart TD\n")
 
-	// Stable node order: walk flow.Nodes in YAML insertion order.
-	// statemachine.Flow.Nodes is a map, so we sort by ID for
+	// Stable node order: walk process.Nodes in YAML insertion order.
+	// statemachine.Process.Nodes is a map, so we sort by ID for
 	// deterministic output. (The YAML source order is lost at parse
 	// time; alphabetical is the next-best stable choice, and node
 	// rendering order does not affect Mermaid layout.)
-	ids := make([]string, 0, len(flow.Nodes))
-	for id := range flow.Nodes {
+	ids := make([]string, 0, len(process.Nodes))
+	for id := range process.Nodes {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
@@ -141,7 +142,7 @@ func writeFlowSection(b *strings.Builder, name string, flow *statemachine.Flow) 
 	root := newGroupTree("")
 	var ungrouped []string
 	for _, id := range ids {
-		g := flow.Nodes[id].Raw.Group
+		g := process.Nodes[id].Raw.Group
 		if g == "" {
 			ungrouped = append(ungrouped, id)
 			continue
@@ -149,38 +150,38 @@ func writeFlowSection(b *strings.Builder, name string, flow *statemachine.Flow) 
 		root.insert(strings.Split(g, "/"), id)
 	}
 	for _, id := range ungrouped {
-		writeNode(b, flow.Nodes[id])
+		writeNode(b, process.Nodes[id])
 	}
 	for _, child := range root.sortedChildren() {
-		writeGroupSubgraph(b, flow, child)
+		writeGroupSubgraph(b, process, child)
 	}
 	b.WriteString("\n")
 
-	// Edges in YAML declaration order — that's what flow.Edges
+	// Edges in YAML declaration order — that's what process.Edges
 	// preserves.
-	for _, e := range flow.Edges {
+	for _, e := range process.Edges {
 		writeEdge(b, e)
 	}
 
-	writeOutputsBlock(b, name, flow)
-	writeExecutorStyling(b, flow)
+	writeOutputsBlock(b, name, process)
+	writeExecutorStyling(b, process)
 	b.WriteString("```\n\n")
 }
 
 // writeOutputsBlock emits a BPMN-style data-object node listing the
-// flow's published outputs and a dashed `produces` edge from every
-// reachable end_event to that node. No-op when the flow has no
+// process's published outputs and a dashed `produces` edge from every
+// reachable end_event to that node. No-op when the process has no
 // outputs declared.
-func writeOutputsBlock(b *strings.Builder, name string, flow *statemachine.Flow) {
-	if len(flow.Outputs) == 0 {
+func writeOutputsBlock(b *strings.Builder, name string, process *statemachine.Process) {
+	if len(process.Outputs) == 0 {
 		return
 	}
 	outputsNodeID := strings.ToUpper(name) + "_OUTPUTS"
-	label := strings.Join(flow.Outputs, ", ")
+	label := strings.Join(process.Outputs, ", ")
 	fmt.Fprintf(b, "    %s[/%s/]\n", outputsNodeID, mermaidLabel(label))
 
 	endIDs := make([]string, 0)
-	for id, node := range flow.Nodes {
+	for id, node := range process.Nodes {
 		if node.Kind == statemachine.EndEvent {
 			endIDs = append(endIDs, id)
 		}
@@ -199,7 +200,7 @@ func writeOutputsBlock(b *strings.Builder, name string, flow *statemachine.Flow)
 type groupTree struct {
 	fullPath string                // joined path, e.g. "structural/interface"
 	name     string                // last path segment
-	nodes    []string              // flow node IDs grouped at this level
+	nodes    []string              // process node IDs grouped at this level
 	children map[string]*groupTree // segment → subtree
 }
 
@@ -250,7 +251,7 @@ func (g *groupTree) sortedChildren() []*groupTree {
 // the full path with "/" replaced by "_" (Mermaid disallows "/" in
 // identifiers). Title resolution: full path → last segment → raw
 // segment.
-func writeGroupSubgraph(b *strings.Builder, flow *statemachine.Flow, g *groupTree) {
+func writeGroupSubgraph(b *strings.Builder, process *statemachine.Process, g *groupTree) {
 	title := groupAlias[g.fullPath]
 	if title == "" {
 		title = groupAlias[g.name]
@@ -261,18 +262,18 @@ func writeGroupSubgraph(b *strings.Builder, flow *statemachine.Flow, g *groupTre
 	sid := strings.ReplaceAll(g.fullPath, "/", "_")
 	fmt.Fprintf(b, "    subgraph %s[%s]\n", sid, mermaidLabel(title))
 	for _, id := range g.nodes {
-		writeNode(b, flow.Nodes[id])
+		writeNode(b, process.Nodes[id])
 	}
 	for _, child := range g.sortedChildren() {
-		writeGroupSubgraph(b, flow, child)
+		writeGroupSubgraph(b, process, child)
 	}
 	b.WriteString("    end\n")
 }
 
 // writeNode emits one Mermaid node line. Shape depends on the YAML
-// node type; label comes from the `description:` field, falling back
-// to the node ID when absent. call_activity nodes get a "see § …"
-// suffix pointing the reader at the sub-flow's heading.
+// node type; label comes from the `documentation:` field (with `name`
+// then `id` as fallbacks). call_activity nodes get a "see § …"
+// suffix pointing the reader at the sub-process's heading.
 //
 // Shape mapping (BPMN-shaped vocabulary):
 //
@@ -286,7 +287,7 @@ func writeGroupSubgraph(b *strings.Builder, flow *statemachine.Flow, g *groupTre
 // in writeExecutorStyling) conveys *who* runs each task: white =
 // service_task (Go runtime), dark blue = LLM agent, yellow = human.
 func writeNode(b *strings.Builder, n statemachine.Node) {
-	label := n.Raw.Description
+	label := n.Raw.Documentation
 	if label == "" {
 		label = n.ID
 	}
@@ -300,8 +301,8 @@ func writeNode(b *strings.Builder, n statemachine.Node) {
 	case statemachine.ServiceTask:
 		fmt.Fprintf(b, "    %s[[%s]]\n", n.ID, mermaidLabel(label))
 	case statemachine.CallActivity:
-		target := n.Raw.Flow
-		linkLabel := flowAlias[target]
+		target := n.Raw.Process
+		linkLabel := processAlias[target]
 		if linkLabel == "" {
 			linkLabel = target
 		}
@@ -333,15 +334,15 @@ func writeEdge(b *strings.Builder, e statemachine.Edge) {
 // Empty classes are omitted. start_event / end_event / gateway /
 // call_activity are unstyled — they're shape-distinguished and not
 // "executed by" anyone in the same sense.
-func writeExecutorStyling(b *strings.Builder, flow *statemachine.Flow) {
+func writeExecutorStyling(b *strings.Builder, process *statemachine.Process) {
 	var service, agent, human []string
-	ids := make([]string, 0, len(flow.Nodes))
-	for id := range flow.Nodes {
+	ids := make([]string, 0, len(process.Nodes))
+	for id := range process.Nodes {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
 	for _, id := range ids {
-		n := flow.Nodes[id]
+		n := process.Nodes[id]
 		switch n.Kind {
 		case statemachine.ServiceTask:
 			service = append(service, id)

@@ -52,7 +52,7 @@ type Options struct {
 	// (e.g. "docs/atdd/process/at-red-test.md").
 	PhaseDoc string
 
-	// NodeDescription is the YAML node's `description:` — surfaced in the
+	// NodeDescription is the YAML node's `documentation:` — surfaced in the
 	// prompt so the agent has the same context the operator would have read.
 	NodeDescription string
 

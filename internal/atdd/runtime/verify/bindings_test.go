@@ -2,7 +2,7 @@
 //
 // Coverage:
 //   - requireHeadMatches accepts/rejects HEAD messages by phase suffix.
-//   - WrapAll inserts the binding into every flow and surfaces Pre errors
+//   - WrapAll inserts the binding into every process and surfaces Pre errors
 //     through Outcome.Err.
 //   - Soft-skip paths (no commits / no git) return nil rather than failing.
 package verify
@@ -113,9 +113,9 @@ func TestRequireHeadMatches_EmptyOutput(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestWrapAll_AppliesPreCheckToATRedDsl(t *testing.T) {
-	// Build a tiny engine with a single flow containing AT_RED_DSL.
+	// Build a tiny engine with a single process containing AT_RED_DSL.
 	eng := &statemachine.Engine{
-		Flows: map[string]*statemachine.Flow{
+		Processes: map[string]*statemachine.Process{
 			"at_cycle": {
 				Name:  "at_cycle",
 				Start: "AT_RED_DSL",
@@ -135,7 +135,7 @@ func TestWrapAll_AppliesPreCheckToATRedDsl(t *testing.T) {
 
 	// Wrong-phase HEAD should cause the wrapped Fn to surface an error.
 	WrapAll(eng, Deps{Git: fakeGit{out: []byte("Foo | AT - RED - DSL")}})
-	out := eng.Flows["at_cycle"].Nodes["AT_RED_DSL"].Fn(statemachine.NewContext())
+	out := eng.Processes["at_cycle"].Nodes["AT_RED_DSL"].Fn(statemachine.NewContext())
 	if out.Err == nil {
 		t.Fatalf("expected verify error, got Outcome %+v", out)
 	}
@@ -147,7 +147,7 @@ func TestWrapAll_AppliesPreCheckToATRedDsl(t *testing.T) {
 func TestWrapAll_LeavesUntargetedNodesUntouched(t *testing.T) {
 	called := false
 	eng := &statemachine.Engine{
-		Flows: map[string]*statemachine.Flow{
+		Processes: map[string]*statemachine.Process{
 			"main": {
 				Name:  "main",
 				Start: "OTHER_NODE",
@@ -166,7 +166,7 @@ func TestWrapAll_LeavesUntargetedNodesUntouched(t *testing.T) {
 		},
 	}
 	WrapAll(eng, Deps{Git: fakeGit{out: []byte("anything")}})
-	out := eng.Flows["main"].Nodes["OTHER_NODE"].Fn(statemachine.NewContext())
+	out := eng.Processes["main"].Nodes["OTHER_NODE"].Fn(statemachine.NewContext())
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}

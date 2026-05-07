@@ -53,7 +53,7 @@ func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadDefault: %v", err)
 	}
-	if len(eng.Flows) == 0 {
+	if len(eng.Processes) == 0 {
 		t.Fatalf("embedded YAML produced zero flows")
 	}
 
@@ -70,8 +70,8 @@ func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 	// `${agent}` nodes (resolved at runtime via call_activity params)
 	// are skipped here; their resolved values are covered by the
 	// existing TestClaudeRunDispatch_ExpandsTemplatedNodeFields.
-	for flowName, flow := range eng.Flows {
-		for nodeID, node := range flow.Nodes {
+	for processName, process := range eng.Processes {
+		for nodeID, node := range process.Nodes {
 			if node.Kind != statemachine.UserTask {
 				continue
 			}
@@ -80,8 +80,8 @@ func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 				continue
 			}
 			if _, err := agents.Prompt(agent); err != nil {
-				t.Errorf("flow %s node %s: agent %q has no embedded prompt: %v",
-					flowName, nodeID, agent, err)
+				t.Errorf("process %s node %s: agent %q has no embedded prompt: %v",
+					processName, nodeID, agent, err)
 			}
 		}
 	}
@@ -134,13 +134,13 @@ func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 	}
 	wrapAgentDispatchers(eng, opts, nil)
 
-	flow, ok := eng.Flows["structural_cycle"]
+	process, ok := eng.Processes["structural_cycle"]
 	if !ok {
-		t.Fatal("embedded YAML missing structural_cycle flow")
+		t.Fatal("embedded YAML missing structural_cycle process")
 	}
-	node, ok := flow.Nodes["FIX_STRUCT_VERIFY"]
+	node, ok := process.Nodes["FIX_STRUCT_VERIFY"]
 	if !ok {
-		t.Fatal("structural_cycle flow missing FIX_STRUCT_VERIFY node")
+		t.Fatal("structural_cycle process missing FIX_STRUCT_VERIFY node")
 	}
 
 	// FIX_STRUCT_VERIFY's phase_doc is templated (`${phase_doc}`) — the
@@ -187,7 +187,7 @@ flows:
       - id: STOP
         type: user_task
         agent: human
-        description: smoke
+        documentation: smoke
     sequence_flows: []
 `
 	yamlPath := filepath.Join(tempDir, "smoke-flow.yaml")

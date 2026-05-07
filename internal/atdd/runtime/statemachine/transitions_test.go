@@ -2,7 +2,7 @@
 //
 // Strategy:
 //   - Load the canonical embedded YAML via LoadDefault.
-//   - Assert structural invariants over every flow (start exists, edges
+//   - Assert structural invariants over every process (start exists, edges
 //     reference existing nodes, gateways have at least one outgoing edge,
 //     no orphan nodes, every node either reaches an end or has an outgoing
 //     edge).
@@ -35,9 +35,9 @@ func loadSnapshot(t *testing.T) *Engine {
 // Structural invariants
 // ---------------------------------------------------------------------------
 
-func TestLoadSnapshot_AllFlowsParse(t *testing.T) {
+func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 	eng := loadSnapshot(t)
-	wantFlows := []string{
+	wantProcesses := []string{
 		"main",
 		"github_intake",
 		"run_legacy_cycle",
@@ -53,31 +53,31 @@ func TestLoadSnapshot_AllFlowsParse(t *testing.T) {
 		"green_phase_cycle",
 		"legacy_acceptance_criteria",
 	}
-	for _, name := range wantFlows {
-		if _, ok := eng.Flows[name]; !ok {
-			t.Errorf("flow %q missing from loaded snapshot", name)
+	for _, name := range wantProcesses {
+		if _, ok := eng.Processes[name]; !ok {
+			t.Errorf("process %q missing from loaded snapshot", name)
 		}
 	}
 }
 
 func TestStructuralIntegrity_StartNodesExist(t *testing.T) {
 	eng := loadSnapshot(t)
-	for name, flow := range eng.Flows {
-		if _, ok := flow.Nodes[flow.Start]; !ok {
-			t.Errorf("flow %q: start node %q not in nodes list", name, flow.Start)
+	for name, process := range eng.Processes {
+		if _, ok := process.Nodes[process.Start]; !ok {
+			t.Errorf("process %q: start node %q not in nodes list", name, process.Start)
 		}
 	}
 }
 
 func TestStructuralIntegrity_GatewaysHaveOutgoingEdges(t *testing.T) {
 	eng := loadSnapshot(t)
-	for name, flow := range eng.Flows {
-		for id, node := range flow.Nodes {
+	for name, process := range eng.Processes {
+		for id, node := range process.Nodes {
 			if node.Kind != Gateway {
 				continue
 			}
-			if len(flow.OutgoingByNode[id]) == 0 {
-				t.Errorf("flow %q gateway %q has no outgoing edges", name, id)
+			if len(process.OutgoingByNode[id]) == 0 {
+				t.Errorf("process %q gateway %q has no outgoing edges", name, id)
 			}
 		}
 	}
@@ -92,18 +92,18 @@ func TestStructuralIntegrity_NonEndNodesHaveSuccessor(t *testing.T) {
 	//     resolved as "STOP, do not auto-resume").
 	// Anything else is a missing-edge bug.
 	eng := loadSnapshot(t)
-	for name, flow := range eng.Flows {
-		for id, node := range flow.Nodes {
+	for name, process := range eng.Processes {
+		for id, node := range process.Nodes {
 			if node.Kind == EndEvent {
 				continue
 			}
-			if len(flow.OutgoingByNode[id]) > 0 {
+			if len(process.OutgoingByNode[id]) > 0 {
 				continue
 			}
 			if node.Kind == UserTask && node.Raw.Agent == "human" {
 				continue // intentional STOP-and-halt
 			}
-			t.Errorf("flow %q non-end node %q has no outgoing edges", name, id)
+			t.Errorf("process %q non-end node %q has no outgoing edges", name, id)
 		}
 	}
 }
@@ -113,7 +113,7 @@ func TestStructuralIntegrity_NonEndNodesHaveSuccessor(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 type transitionCase struct {
-	flow   string
+	process string
 	from   string
 	state  map[string]any
 	params map[string]string
@@ -125,87 +125,87 @@ type transitionCase struct {
 // asserted with state=nil; guarded edges are asserted under the state that
 // satisfies the predicate.
 var transitionTable = []transitionCase{
-	// ---- main flow ----
-	{flow: "main", from: "START", state: map[string]any{"mode": "board"}, wantTo: "PICK_TOP_READY", desc: "board mode enters via PICK_TOP_READY"},
-	{flow: "main", from: "START", state: map[string]any{"mode": "specific_issue"}, wantTo: "MOVE_TO_IN_PROGRESS", desc: "specific-issue mode skips PICK_TOP_READY"},
-	{flow: "main", from: "PICK_TOP_READY", wantTo: "MOVE_TO_IN_PROGRESS"},
-	{flow: "main", from: "MOVE_TO_IN_PROGRESS", wantTo: "INTAKE"},
-	{flow: "main", from: "INTAKE", wantTo: "RUN_LEGACY_CYCLE"},
-	{flow: "main", from: "RUN_LEGACY_CYCLE", wantTo: "RUN_CYCLE"},
-	{flow: "main", from: "RUN_CYCLE", wantTo: "TICKET_IN_ACCEPTANCE"},
-	{flow: "main", from: "TICKET_IN_ACCEPTANCE", wantTo: "END"},
+	// ---- main process ----
+	{process: "main", from: "START", state: map[string]any{"mode": "board"}, wantTo: "PICK_TOP_READY", desc: "board mode enters via PICK_TOP_READY"},
+	{process: "main", from: "START", state: map[string]any{"mode": "specific_issue"}, wantTo: "MOVE_TO_IN_PROGRESS", desc: "specific-issue mode skips PICK_TOP_READY"},
+	{process: "main", from: "PICK_TOP_READY", wantTo: "MOVE_TO_IN_PROGRESS"},
+	{process: "main", from: "MOVE_TO_IN_PROGRESS", wantTo: "INTAKE"},
+	{process: "main", from: "INTAKE", wantTo: "RUN_LEGACY_CYCLE"},
+	{process: "main", from: "RUN_LEGACY_CYCLE", wantTo: "RUN_CYCLE"},
+	{process: "main", from: "RUN_CYCLE", wantTo: "TICKET_IN_ACCEPTANCE"},
+	{process: "main", from: "TICKET_IN_ACCEPTANCE", wantTo: "END"},
 
 	// ---- intake ----
 	// Issue Forms enforce the ticket schema upstream so intake is a pure
 	// service-task pipeline (classify ticket, classify subtype, parse body)
 	// with two STOPs for unhappy paths (classification conflict, parse
 	// error). No LLM dispatch — no agent fan-out by ticket type.
-	{flow: "github_intake", from: "CLASSIFY", wantTo: "GATE_CLASSIFY_CONFIDENT"},
-	{flow: "github_intake", from: "GATE_CLASSIFY_CONFIDENT", state: map[string]any{"ticket_type_recognized": true}, wantTo: "GATE_TICKET_TYPE_INTAKE"},
-	{flow: "github_intake", from: "GATE_CLASSIFY_CONFIDENT", state: map[string]any{"ticket_type_recognized": false}, wantTo: "STOP_CLASSIFY_CONFLICT"},
-	{flow: "github_intake", from: "STOP_CLASSIFY_CONFLICT", wantTo: "CLASSIFY"},
-	{flow: "github_intake", from: "GATE_TICKET_TYPE_INTAKE", state: map[string]any{"ticket_type": "story"}, wantTo: "PARSE_BODY"},
-	{flow: "github_intake", from: "GATE_TICKET_TYPE_INTAKE", state: map[string]any{"ticket_type": "bug"}, wantTo: "PARSE_BODY"},
-	{flow: "github_intake", from: "GATE_TICKET_TYPE_INTAKE", state: map[string]any{"ticket_type": "task"}, wantTo: "CLASSIFY_SUBTYPE"},
-	{flow: "github_intake", from: "CLASSIFY_SUBTYPE", wantTo: "GATE_SUBTYPE_OK"},
-	{flow: "github_intake", from: "GATE_SUBTYPE_OK", state: map[string]any{"subtype_ok": true}, wantTo: "PARSE_BODY"},
-	{flow: "github_intake", from: "GATE_SUBTYPE_OK", state: map[string]any{"subtype_ok": false}, wantTo: "STOP_SUBTYPE_MISSING"},
-	{flow: "github_intake", from: "STOP_SUBTYPE_MISSING", wantTo: "CLASSIFY_SUBTYPE"},
-	{flow: "github_intake", from: "PARSE_BODY", wantTo: "GATE_PARSE_OK"},
-	{flow: "github_intake", from: "GATE_PARSE_OK", state: map[string]any{"parse_ok": true}, wantTo: "REPORT_INTAKE_SUMMARY"},
-	{flow: "github_intake", from: "GATE_PARSE_OK", state: map[string]any{"parse_ok": false}, wantTo: "STOP_PARSE_ERROR"},
-	{flow: "github_intake", from: "STOP_PARSE_ERROR", wantTo: "PARSE_BODY"},
-	{flow: "github_intake", from: "REPORT_INTAKE_SUMMARY", wantTo: "INTAKE_END"},
+	{process: "github_intake", from: "CLASSIFY", wantTo: "GATE_CLASSIFY_CONFIDENT"},
+	{process: "github_intake", from: "GATE_CLASSIFY_CONFIDENT", state: map[string]any{"ticket_type_recognized": true}, wantTo: "GATE_TICKET_TYPE_INTAKE"},
+	{process: "github_intake", from: "GATE_CLASSIFY_CONFIDENT", state: map[string]any{"ticket_type_recognized": false}, wantTo: "STOP_CLASSIFY_CONFLICT"},
+	{process: "github_intake", from: "STOP_CLASSIFY_CONFLICT", wantTo: "CLASSIFY"},
+	{process: "github_intake", from: "GATE_TICKET_TYPE_INTAKE", state: map[string]any{"ticket_type": "story"}, wantTo: "PARSE_BODY"},
+	{process: "github_intake", from: "GATE_TICKET_TYPE_INTAKE", state: map[string]any{"ticket_type": "bug"}, wantTo: "PARSE_BODY"},
+	{process: "github_intake", from: "GATE_TICKET_TYPE_INTAKE", state: map[string]any{"ticket_type": "task"}, wantTo: "CLASSIFY_SUBTYPE"},
+	{process: "github_intake", from: "CLASSIFY_SUBTYPE", wantTo: "GATE_SUBTYPE_OK"},
+	{process: "github_intake", from: "GATE_SUBTYPE_OK", state: map[string]any{"subtype_ok": true}, wantTo: "PARSE_BODY"},
+	{process: "github_intake", from: "GATE_SUBTYPE_OK", state: map[string]any{"subtype_ok": false}, wantTo: "STOP_SUBTYPE_MISSING"},
+	{process: "github_intake", from: "STOP_SUBTYPE_MISSING", wantTo: "CLASSIFY_SUBTYPE"},
+	{process: "github_intake", from: "PARSE_BODY", wantTo: "GATE_PARSE_OK"},
+	{process: "github_intake", from: "GATE_PARSE_OK", state: map[string]any{"parse_ok": true}, wantTo: "REPORT_INTAKE_SUMMARY"},
+	{process: "github_intake", from: "GATE_PARSE_OK", state: map[string]any{"parse_ok": false}, wantTo: "STOP_PARSE_ERROR"},
+	{process: "github_intake", from: "STOP_PARSE_ERROR", wantTo: "PARSE_BODY"},
+	{process: "github_intake", from: "REPORT_INTAKE_SUMMARY", wantTo: "INTAKE_END"},
 
 	// ---- run_legacy_cycle ----
 	// Backfill cycle for legacy acceptance criteria. Self-contained: gates internally on
 	// presence and no-ops when absent so main can call it unconditionally.
-	{flow: "run_legacy_cycle", from: "GATE_LEGACY_PRESENT", state: map[string]any{"legacy_acceptance_criteria_section_present": true}, wantTo: "LEGACY_CYCLE"},
-	{flow: "run_legacy_cycle", from: "GATE_LEGACY_PRESENT", state: map[string]any{"legacy_acceptance_criteria_section_present": false}, wantTo: "RUN_LEGACY_END"},
-	{flow: "run_legacy_cycle", from: "LEGACY_CYCLE", wantTo: "RUN_LEGACY_END"},
+	{process: "run_legacy_cycle", from: "GATE_LEGACY_PRESENT", state: map[string]any{"legacy_acceptance_criteria_section_present": true}, wantTo: "LEGACY_CYCLE"},
+	{process: "run_legacy_cycle", from: "GATE_LEGACY_PRESENT", state: map[string]any{"legacy_acceptance_criteria_section_present": false}, wantTo: "RUN_LEGACY_END"},
+	{process: "run_legacy_cycle", from: "LEGACY_CYCLE", wantTo: "RUN_LEGACY_END"},
 
 	// ---- run_cycle ----
 	// Change cycle dispatch — single-axis gate on the derived `change_type`.
 	// Four branches: AT_CYCLE (behavioral), DA_CYCLE (system /
 	// external-system interface redesign), SUT_CYCLE
 	// (system-implementation-change).
-	{flow: "run_cycle", from: "GATE_CHANGE_TYPE", state: map[string]any{"change_type": "behavioral"}, wantTo: "AT_CYCLE"},
-	{flow: "run_cycle", from: "GATE_CHANGE_TYPE", state: map[string]any{"change_type": "system-interface-redesign"}, wantTo: "DA_CYCLE"},
-	{flow: "run_cycle", from: "GATE_CHANGE_TYPE", state: map[string]any{"change_type": "external-system-interface-redesign"}, wantTo: "DA_CYCLE"},
-	{flow: "run_cycle", from: "GATE_CHANGE_TYPE", state: map[string]any{"change_type": "system-implementation-change"}, wantTo: "SUT_CYCLE"},
-	{flow: "run_cycle", from: "AT_CYCLE", wantTo: "CYCLE_END"},
-	{flow: "run_cycle", from: "DA_CYCLE", wantTo: "CYCLE_END"},
-	{flow: "run_cycle", from: "SUT_CYCLE", wantTo: "CYCLE_END"},
+	{process: "run_cycle", from: "GATE_CHANGE_TYPE", state: map[string]any{"change_type": "behavioral"}, wantTo: "AT_CYCLE"},
+	{process: "run_cycle", from: "GATE_CHANGE_TYPE", state: map[string]any{"change_type": "system-interface-redesign"}, wantTo: "DA_CYCLE"},
+	{process: "run_cycle", from: "GATE_CHANGE_TYPE", state: map[string]any{"change_type": "external-system-interface-redesign"}, wantTo: "DA_CYCLE"},
+	{process: "run_cycle", from: "GATE_CHANGE_TYPE", state: map[string]any{"change_type": "system-implementation-change"}, wantTo: "SUT_CYCLE"},
+	{process: "run_cycle", from: "AT_CYCLE", wantTo: "CYCLE_END"},
+	{process: "run_cycle", from: "DA_CYCLE", wantTo: "CYCLE_END"},
+	{process: "run_cycle", from: "SUT_CYCLE", wantTo: "CYCLE_END"},
 
 	// ---- da_cycle ----
 	// Driver Adapter cycle. Splits on `change_type`: system-interface-redesign →
 	// shared structural_cycle (with the WRITE agent figuring out which
 	// driver to modify); external-system-interface-redesign → ct_subprocess.
-	{flow: "da_cycle", from: "GATE_CHANGE_TYPE_DA", state: map[string]any{"change_type": "system-interface-redesign"}, wantTo: "SYSTEM_INTERFACE_REDESIGN_CYCLE"},
-	{flow: "da_cycle", from: "GATE_CHANGE_TYPE_DA", state: map[string]any{"change_type": "external-system-interface-redesign"}, wantTo: "EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE"},
-	{flow: "da_cycle", from: "SYSTEM_INTERFACE_REDESIGN_CYCLE", wantTo: "DA_END"},
-	{flow: "da_cycle", from: "EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE", wantTo: "DA_END"},
+	{process: "da_cycle", from: "GATE_CHANGE_TYPE_DA", state: map[string]any{"change_type": "system-interface-redesign"}, wantTo: "SYSTEM_INTERFACE_REDESIGN_CYCLE"},
+	{process: "da_cycle", from: "GATE_CHANGE_TYPE_DA", state: map[string]any{"change_type": "external-system-interface-redesign"}, wantTo: "EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE"},
+	{process: "da_cycle", from: "SYSTEM_INTERFACE_REDESIGN_CYCLE", wantTo: "DA_END"},
+	{process: "da_cycle", from: "EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE", wantTo: "DA_END"},
 
 	// ---- sut_cycle ----
 	// System Under Test cycle. Single node calling structural_cycle with
 	// chore-flavour params.
-	{flow: "sut_cycle", from: "CHORE_CYCLE", wantTo: "SUT_END"},
+	{process: "sut_cycle", from: "CHORE_CYCLE", wantTo: "SUT_END"},
 
 	// ---- at_cycle ----
-	{flow: "at_cycle", from: "AT_RED_TEST", wantTo: "GATE_DSL_AT"},
-	{flow: "at_cycle", from: "GATE_DSL_AT", state: map[string]any{"dsl_interface_changed": false}, wantTo: "AT_GREEN_SYSTEM"},
-	{flow: "at_cycle", from: "GATE_DSL_AT", state: map[string]any{"dsl_interface_changed": true}, wantTo: "AT_RED_DSL"},
-	{flow: "at_cycle", from: "AT_RED_DSL", wantTo: "GATE_EXT_AT"},
-	{flow: "at_cycle", from: "GATE_EXT_AT", state: map[string]any{"external_system_driver_interface_changed": true}, wantTo: "CT_SUBPROCESS"},
-	{flow: "at_cycle", from: "GATE_EXT_AT", state: map[string]any{"external_system_driver_interface_changed": false}, wantTo: "GATE_SYS_AT"},
+	{process: "at_cycle", from: "AT_RED_TEST", wantTo: "GATE_DSL_AT"},
+	{process: "at_cycle", from: "GATE_DSL_AT", state: map[string]any{"dsl_interface_changed": false}, wantTo: "AT_GREEN_SYSTEM"},
+	{process: "at_cycle", from: "GATE_DSL_AT", state: map[string]any{"dsl_interface_changed": true}, wantTo: "AT_RED_DSL"},
+	{process: "at_cycle", from: "AT_RED_DSL", wantTo: "GATE_EXT_AT"},
+	{process: "at_cycle", from: "GATE_EXT_AT", state: map[string]any{"external_system_driver_interface_changed": true}, wantTo: "CT_SUBPROCESS"},
+	{process: "at_cycle", from: "GATE_EXT_AT", state: map[string]any{"external_system_driver_interface_changed": false}, wantTo: "GATE_SYS_AT"},
 	// CT exit re-evaluation: process-audit gap resolved — CT_SUBPROCESS returns
 	// to GATE_SYS_AT so System Driver changes are still routed through after CT.
-	{flow: "at_cycle", from: "CT_SUBPROCESS", wantTo: "GATE_SYS_AT", desc: "CT exit re-evaluates system_driver_interface_changed (process-audit gap resolved)"},
-	{flow: "at_cycle", from: "GATE_SYS_AT", state: map[string]any{"system_driver_interface_changed": true}, wantTo: "AT_RED_SYSTEM_DRIVER"},
-	{flow: "at_cycle", from: "GATE_SYS_AT", state: map[string]any{"system_driver_interface_changed": false}, wantTo: "AT_GREEN_SYSTEM"},
-	{flow: "at_cycle", from: "AT_RED_SYSTEM_DRIVER", wantTo: "VERIFY_AT_DRIVER"},
-	{flow: "at_cycle", from: "VERIFY_AT_DRIVER", wantTo: "AT_GREEN_SYSTEM"},
-	{flow: "at_cycle", from: "AT_GREEN_SYSTEM", wantTo: "AT_END"},
+	{process: "at_cycle", from: "CT_SUBPROCESS", wantTo: "GATE_SYS_AT", desc: "CT exit re-evaluates system_driver_interface_changed (process-audit gap resolved)"},
+	{process: "at_cycle", from: "GATE_SYS_AT", state: map[string]any{"system_driver_interface_changed": true}, wantTo: "AT_RED_SYSTEM_DRIVER"},
+	{process: "at_cycle", from: "GATE_SYS_AT", state: map[string]any{"system_driver_interface_changed": false}, wantTo: "AT_GREEN_SYSTEM"},
+	{process: "at_cycle", from: "AT_RED_SYSTEM_DRIVER", wantTo: "VERIFY_AT_DRIVER"},
+	{process: "at_cycle", from: "VERIFY_AT_DRIVER", wantTo: "AT_GREEN_SYSTEM"},
+	{process: "at_cycle", from: "AT_GREEN_SYSTEM", wantTo: "AT_END"},
 
 	// ---- at_green_system ----
 	// Decomposed per the AT/CT split plan: ENABLE_TESTS (re-enable disabled
@@ -213,89 +213,89 @@ var transitionTable = []transitionCase{
 	// shared green_phase_cycle, one per channel) → STOP_GREEN_REVIEW →
 	// COMMIT_GREEN → TICK → MOVE_TO_IN_ACCEPTANCE. The legacy ATDD_RELEASE
 	// user_task is replaced by the existing service_task actions.
-	{flow: "at_green_system", from: "ENABLE_TESTS", wantTo: "AT_GREEN_BACKEND"},
-	{flow: "at_green_system", from: "AT_GREEN_BACKEND", wantTo: "AT_GREEN_FRONTEND"},
-	{flow: "at_green_system", from: "AT_GREEN_FRONTEND", wantTo: "STOP_GREEN_REVIEW"},
-	{flow: "at_green_system", from: "STOP_GREEN_REVIEW", wantTo: "COMMIT_GREEN"},
-	{flow: "at_green_system", from: "COMMIT_GREEN", wantTo: "TICK"},
-	{flow: "at_green_system", from: "TICK", wantTo: "MOVE_TO_IN_ACCEPTANCE"},
-	{flow: "at_green_system", from: "MOVE_TO_IN_ACCEPTANCE", wantTo: "GS_END"},
+	{process: "at_green_system", from: "ENABLE_TESTS", wantTo: "AT_GREEN_BACKEND"},
+	{process: "at_green_system", from: "AT_GREEN_BACKEND", wantTo: "AT_GREEN_FRONTEND"},
+	{process: "at_green_system", from: "AT_GREEN_FRONTEND", wantTo: "STOP_GREEN_REVIEW"},
+	{process: "at_green_system", from: "STOP_GREEN_REVIEW", wantTo: "COMMIT_GREEN"},
+	{process: "at_green_system", from: "COMMIT_GREEN", wantTo: "TICK"},
+	{process: "at_green_system", from: "TICK", wantTo: "MOVE_TO_IN_ACCEPTANCE"},
+	{process: "at_green_system", from: "MOVE_TO_IN_ACCEPTANCE", wantTo: "GS_END"},
 
 	// ---- ct_subprocess ----
-	{flow: "ct_subprocess", from: "ONBOARDING", wantTo: "CT_RED_TEST"},
-	{flow: "ct_subprocess", from: "CT_RED_TEST", wantTo: "GATE_DSL_CT"},
-	{flow: "ct_subprocess", from: "GATE_DSL_CT", state: map[string]any{"dsl_interface_changed": false}, wantTo: "CT_GREEN_STUBS"},
-	{flow: "ct_subprocess", from: "GATE_DSL_CT", state: map[string]any{"dsl_interface_changed": true}, wantTo: "CT_RED_DSL"},
-	{flow: "ct_subprocess", from: "CT_RED_DSL", wantTo: "GATE_EXT_CT"},
-	{flow: "ct_subprocess", from: "GATE_EXT_CT", state: map[string]any{"external_system_driver_interface_changed": false}, wantTo: "CT_GREEN_STUBS"},
-	{flow: "ct_subprocess", from: "GATE_EXT_CT", state: map[string]any{"external_system_driver_interface_changed": true}, wantTo: "CT_RED_EXTERNAL_DRIVER"},
-	{flow: "ct_subprocess", from: "CT_RED_EXTERNAL_DRIVER", wantTo: "VERIFY_CT_DRIVER"},
-	{flow: "ct_subprocess", from: "VERIFY_CT_DRIVER", wantTo: "CT_GREEN_STUBS"},
-	{flow: "ct_subprocess", from: "CT_GREEN_STUBS", wantTo: "CT_END"},
+	{process: "ct_subprocess", from: "ONBOARDING", wantTo: "CT_RED_TEST"},
+	{process: "ct_subprocess", from: "CT_RED_TEST", wantTo: "GATE_DSL_CT"},
+	{process: "ct_subprocess", from: "GATE_DSL_CT", state: map[string]any{"dsl_interface_changed": false}, wantTo: "CT_GREEN_STUBS"},
+	{process: "ct_subprocess", from: "GATE_DSL_CT", state: map[string]any{"dsl_interface_changed": true}, wantTo: "CT_RED_DSL"},
+	{process: "ct_subprocess", from: "CT_RED_DSL", wantTo: "GATE_EXT_CT"},
+	{process: "ct_subprocess", from: "GATE_EXT_CT", state: map[string]any{"external_system_driver_interface_changed": false}, wantTo: "CT_GREEN_STUBS"},
+	{process: "ct_subprocess", from: "GATE_EXT_CT", state: map[string]any{"external_system_driver_interface_changed": true}, wantTo: "CT_RED_EXTERNAL_DRIVER"},
+	{process: "ct_subprocess", from: "CT_RED_EXTERNAL_DRIVER", wantTo: "VERIFY_CT_DRIVER"},
+	{process: "ct_subprocess", from: "VERIFY_CT_DRIVER", wantTo: "CT_GREEN_STUBS"},
+	{process: "ct_subprocess", from: "CT_GREEN_STUBS", wantTo: "CT_END"},
 
 	// ---- external_system_onboarding ----
 	// Smoke-test resume path: process-audit gap resolved — when the smoke
 	// test fails the run STOPs at ASK_SUPPORT (no resume; user must pair).
-	{flow: "external_system_onboarding", from: "GATE_DRIVER_EXISTS", state: map[string]any{"external_system_driver_exists": true}, wantTo: "ONBOARD_END", desc: "early return when driver already exists"},
-	{flow: "external_system_onboarding", from: "GATE_DRIVER_EXISTS", state: map[string]any{"external_system_driver_exists": false}, wantTo: "GATE_INSTANCE_ACCESSIBLE"},
-	{flow: "external_system_onboarding", from: "GATE_INSTANCE_ACCESSIBLE", state: map[string]any{"external_system_test_instance_accessible": true}, wantTo: "DEFINE_IFACE"},
-	{flow: "external_system_onboarding", from: "GATE_INSTANCE_ACCESSIBLE", state: map[string]any{"external_system_test_instance_accessible": false}, wantTo: "PROVISION"},
-	{flow: "external_system_onboarding", from: "PROVISION", wantTo: "DEFINE_IFACE"},
-	{flow: "external_system_onboarding", from: "DEFINE_IFACE", wantTo: "IMPL_DRIVER"},
-	{flow: "external_system_onboarding", from: "IMPL_DRIVER", wantTo: "WRITE_SMOKE"},
-	{flow: "external_system_onboarding", from: "WRITE_SMOKE", wantTo: "RUN_SMOKE"},
-	{flow: "external_system_onboarding", from: "RUN_SMOKE", wantTo: "GATE_SMOKE_PASS"},
-	{flow: "external_system_onboarding", from: "GATE_SMOKE_PASS", state: map[string]any{"smoke_test_passes": false}, wantTo: "ASK_SUPPORT", desc: "smoke fail → STOP and ask user (no auto-resume)"},
-	{flow: "external_system_onboarding", from: "GATE_SMOKE_PASS", state: map[string]any{"smoke_test_passes": true}, wantTo: "STOP_ONBOARD_REVIEW"},
-	{flow: "external_system_onboarding", from: "STOP_ONBOARD_REVIEW", wantTo: "COMMIT_ONBOARD"},
-	{flow: "external_system_onboarding", from: "COMMIT_ONBOARD", wantTo: "ONBOARD_END"},
+	{process: "external_system_onboarding", from: "GATE_DRIVER_EXISTS", state: map[string]any{"external_system_driver_exists": true}, wantTo: "ONBOARD_END", desc: "early return when driver already exists"},
+	{process: "external_system_onboarding", from: "GATE_DRIVER_EXISTS", state: map[string]any{"external_system_driver_exists": false}, wantTo: "GATE_INSTANCE_ACCESSIBLE"},
+	{process: "external_system_onboarding", from: "GATE_INSTANCE_ACCESSIBLE", state: map[string]any{"external_system_test_instance_accessible": true}, wantTo: "DEFINE_IFACE"},
+	{process: "external_system_onboarding", from: "GATE_INSTANCE_ACCESSIBLE", state: map[string]any{"external_system_test_instance_accessible": false}, wantTo: "PROVISION"},
+	{process: "external_system_onboarding", from: "PROVISION", wantTo: "DEFINE_IFACE"},
+	{process: "external_system_onboarding", from: "DEFINE_IFACE", wantTo: "IMPL_DRIVER"},
+	{process: "external_system_onboarding", from: "IMPL_DRIVER", wantTo: "WRITE_SMOKE"},
+	{process: "external_system_onboarding", from: "WRITE_SMOKE", wantTo: "RUN_SMOKE"},
+	{process: "external_system_onboarding", from: "RUN_SMOKE", wantTo: "GATE_SMOKE_PASS"},
+	{process: "external_system_onboarding", from: "GATE_SMOKE_PASS", state: map[string]any{"smoke_test_passes": false}, wantTo: "ASK_SUPPORT", desc: "smoke fail → STOP and ask user (no auto-resume)"},
+	{process: "external_system_onboarding", from: "GATE_SMOKE_PASS", state: map[string]any{"smoke_test_passes": true}, wantTo: "STOP_ONBOARD_REVIEW"},
+	{process: "external_system_onboarding", from: "STOP_ONBOARD_REVIEW", wantTo: "COMMIT_ONBOARD"},
+	{process: "external_system_onboarding", from: "COMMIT_ONBOARD", wantTo: "ONBOARD_END"},
 
 	// ---- structural_cycle (shared by SYSAPI / SYSUI / CHORE via params) ----
 	// Structural-cycle escape: process-audit gap resolved — the TEST=skip
 	// branch jumps directly to ASK_COMMIT, bypassing both COMPILE/SAMPLE and
 	// the second STOP_STRUCT_TEST review.
-	{flow: "structural_cycle", from: "STRUCT_WRITE", wantTo: "VERIFY_STRUCT_DRIVER"},
-	{flow: "structural_cycle", from: "VERIFY_STRUCT_DRIVER", wantTo: "GATE_STRUCT_VERIFY"},
-	{flow: "structural_cycle", from: "GATE_STRUCT_VERIFY", state: map[string]any{"structural_verify_outcome": "ok"}, wantTo: "STOP_STRUCT_REVIEW", desc: "ok class continues to human review"},
-	{flow: "structural_cycle", from: "GATE_STRUCT_VERIFY", state: map[string]any{"structural_verify_outcome": "red"}, wantTo: "FIX_STRUCT_VERIFY", desc: "red class dispatches the fix-verify agent (one retry)"},
-	{flow: "structural_cycle", from: "FIX_STRUCT_VERIFY", wantTo: "VERIFY_STRUCT_DRIVER", desc: "fix agent loops back into verify for re-classification"},
-	{flow: "structural_cycle", from: "STOP_STRUCT_REVIEW", wantTo: "GATE_TEST_MODE"},
-	{flow: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "skip"}, wantTo: "ASK_COMMIT", desc: "skip mode escapes the TEST sub-loop entirely"},
-	{flow: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "compile"}, wantTo: "COMPILE"},
-	{flow: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "full"}, wantTo: "COMPILE"},
-	{flow: "structural_cycle", from: "COMPILE", state: map[string]any{"structural_test_mode": "full"}, wantTo: "SAMPLE"},
-	{flow: "structural_cycle", from: "COMPILE", state: map[string]any{"structural_test_mode": "compile"}, wantTo: "DRIFT"},
-	{flow: "structural_cycle", from: "SAMPLE", wantTo: "DRIFT"},
-	{flow: "structural_cycle", from: "DRIFT", wantTo: "STOP_STRUCT_TEST"},
-	{flow: "structural_cycle", from: "STOP_STRUCT_TEST", wantTo: "ASK_COMMIT"},
-	{flow: "structural_cycle", from: "ASK_COMMIT", wantTo: "COMMIT_STRUCT"},
-	{flow: "structural_cycle", from: "COMMIT_STRUCT", wantTo: "TICK"},
-	{flow: "structural_cycle", from: "TICK", wantTo: "STRUCT_END"},
+	{process: "structural_cycle", from: "STRUCT_WRITE", wantTo: "VERIFY_STRUCT_DRIVER"},
+	{process: "structural_cycle", from: "VERIFY_STRUCT_DRIVER", wantTo: "GATE_STRUCT_VERIFY"},
+	{process: "structural_cycle", from: "GATE_STRUCT_VERIFY", state: map[string]any{"structural_verify_outcome": "ok"}, wantTo: "STOP_STRUCT_REVIEW", desc: "ok class continues to human review"},
+	{process: "structural_cycle", from: "GATE_STRUCT_VERIFY", state: map[string]any{"structural_verify_outcome": "red"}, wantTo: "FIX_STRUCT_VERIFY", desc: "red class dispatches the fix-verify agent (one retry)"},
+	{process: "structural_cycle", from: "FIX_STRUCT_VERIFY", wantTo: "VERIFY_STRUCT_DRIVER", desc: "fix agent loops back into verify for re-classification"},
+	{process: "structural_cycle", from: "STOP_STRUCT_REVIEW", wantTo: "GATE_TEST_MODE"},
+	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "skip"}, wantTo: "ASK_COMMIT", desc: "skip mode escapes the TEST sub-loop entirely"},
+	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "compile"}, wantTo: "COMPILE"},
+	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "full"}, wantTo: "COMPILE"},
+	{process: "structural_cycle", from: "COMPILE", state: map[string]any{"structural_test_mode": "full"}, wantTo: "SAMPLE"},
+	{process: "structural_cycle", from: "COMPILE", state: map[string]any{"structural_test_mode": "compile"}, wantTo: "DRIFT"},
+	{process: "structural_cycle", from: "SAMPLE", wantTo: "DRIFT"},
+	{process: "structural_cycle", from: "DRIFT", wantTo: "STOP_STRUCT_TEST"},
+	{process: "structural_cycle", from: "STOP_STRUCT_TEST", wantTo: "ASK_COMMIT"},
+	{process: "structural_cycle", from: "ASK_COMMIT", wantTo: "COMMIT_STRUCT"},
+	{process: "structural_cycle", from: "COMMIT_STRUCT", wantTo: "TICK"},
+	{process: "structural_cycle", from: "TICK", wantTo: "STRUCT_END"},
 
 	// ---- red_phase_cycle (shared by AT/CT RED-WRITE phases via params) ----
 	// Splits creative WRITE work from mechanical compile/run/disable/commit.
 	// All three AT RED phases and all three CT RED phases call into this
-	// flow; CT_RED_TEST additionally enables the optional verify_real_suite
+	// process; CT_RED_TEST additionally enables the optional verify_real_suite
 	// branch by setting the same-named param.
-	{flow: "red_phase_cycle", from: "WRITE", wantTo: "STOP_RED_REVIEW"},
-	{flow: "red_phase_cycle", from: "STOP_RED_REVIEW", wantTo: "COMPILE"},
-	{flow: "red_phase_cycle", from: "COMPILE", wantTo: "GATE_COMPILE_OK"},
-	{flow: "red_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": false}, wantTo: "WRITE_PROTOTYPES", desc: "compile fail loops through prototype WRITE"},
-	{flow: "red_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": true}, wantTo: "GATE_VERIFY_REAL_REQUIRED", desc: "compile pass enters the optional verify-real branch"},
-	{flow: "red_phase_cycle", from: "WRITE_PROTOTYPES", wantTo: "STOP_PROTOTYPE_REVIEW"},
-	{flow: "red_phase_cycle", from: "STOP_PROTOTYPE_REVIEW", wantTo: "COMPILE", desc: "prototype loop returns to COMPILE"},
-	{flow: "red_phase_cycle", from: "GATE_VERIFY_REAL_REQUIRED", state: map[string]any{"verify_real_required": true}, wantTo: "VERIFY_REAL", desc: "CT_RED_TEST sets verify_real_suite → run real-suite check"},
-	{flow: "red_phase_cycle", from: "GATE_VERIFY_REAL_REQUIRED", state: map[string]any{"verify_real_required": false}, wantTo: "RUN", desc: "AT phases skip the verify-real branch"},
-	{flow: "red_phase_cycle", from: "VERIFY_REAL", wantTo: "GATE_VERIFY_REAL_PASS"},
-	{flow: "red_phase_cycle", from: "GATE_VERIFY_REAL_PASS", state: map[string]any{"verify_real_pass": true}, wantTo: "RUN", desc: "real-suite holds → continue to stub RUN"},
-	{flow: "red_phase_cycle", from: "GATE_VERIFY_REAL_PASS", state: map[string]any{"verify_real_pass": false}, wantTo: "STOP_VERIFY_REAL_FAIL", desc: "real-suite fails → STOP, contract problem"},
-	{flow: "red_phase_cycle", from: "STOP_VERIFY_REAL_FAIL", wantTo: "WRITE", desc: "after STOP, retry from WRITE"},
-	{flow: "red_phase_cycle", from: "RUN", wantTo: "GATE_RUN_FAILED_RUNTIME"},
-	{flow: "red_phase_cycle", from: "GATE_RUN_FAILED_RUNTIME", state: map[string]any{"tests_failed_runtime": true}, wantTo: "DISABLE"},
-	{flow: "red_phase_cycle", from: "GATE_RUN_FAILED_RUNTIME", state: map[string]any{"tests_failed_runtime": false}, wantTo: "STOP_RED_NOT_RUNTIME_FAIL", desc: "tests not runtime-failing → human STOP"},
-	{flow: "red_phase_cycle", from: "STOP_RED_NOT_RUNTIME_FAIL", wantTo: "WRITE", desc: "after STOP, retry from WRITE"},
-	{flow: "red_phase_cycle", from: "DISABLE", wantTo: "COMMIT"},
-	{flow: "red_phase_cycle", from: "COMMIT", wantTo: "RED_END"},
+	{process: "red_phase_cycle", from: "WRITE", wantTo: "STOP_RED_REVIEW"},
+	{process: "red_phase_cycle", from: "STOP_RED_REVIEW", wantTo: "COMPILE"},
+	{process: "red_phase_cycle", from: "COMPILE", wantTo: "GATE_COMPILE_OK"},
+	{process: "red_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": false}, wantTo: "WRITE_PROTOTYPES", desc: "compile fail loops through prototype WRITE"},
+	{process: "red_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": true}, wantTo: "GATE_VERIFY_REAL_REQUIRED", desc: "compile pass enters the optional verify-real branch"},
+	{process: "red_phase_cycle", from: "WRITE_PROTOTYPES", wantTo: "STOP_PROTOTYPE_REVIEW"},
+	{process: "red_phase_cycle", from: "STOP_PROTOTYPE_REVIEW", wantTo: "COMPILE", desc: "prototype loop returns to COMPILE"},
+	{process: "red_phase_cycle", from: "GATE_VERIFY_REAL_REQUIRED", state: map[string]any{"verify_real_required": true}, wantTo: "VERIFY_REAL", desc: "CT_RED_TEST sets verify_real_suite → run real-suite check"},
+	{process: "red_phase_cycle", from: "GATE_VERIFY_REAL_REQUIRED", state: map[string]any{"verify_real_required": false}, wantTo: "RUN", desc: "AT phases skip the verify-real branch"},
+	{process: "red_phase_cycle", from: "VERIFY_REAL", wantTo: "GATE_VERIFY_REAL_PASS"},
+	{process: "red_phase_cycle", from: "GATE_VERIFY_REAL_PASS", state: map[string]any{"verify_real_pass": true}, wantTo: "RUN", desc: "real-suite holds → continue to stub RUN"},
+	{process: "red_phase_cycle", from: "GATE_VERIFY_REAL_PASS", state: map[string]any{"verify_real_pass": false}, wantTo: "STOP_VERIFY_REAL_FAIL", desc: "real-suite fails → STOP, contract problem"},
+	{process: "red_phase_cycle", from: "STOP_VERIFY_REAL_FAIL", wantTo: "WRITE", desc: "after STOP, retry from WRITE"},
+	{process: "red_phase_cycle", from: "RUN", wantTo: "GATE_RUN_FAILED_RUNTIME"},
+	{process: "red_phase_cycle", from: "GATE_RUN_FAILED_RUNTIME", state: map[string]any{"tests_failed_runtime": true}, wantTo: "DISABLE"},
+	{process: "red_phase_cycle", from: "GATE_RUN_FAILED_RUNTIME", state: map[string]any{"tests_failed_runtime": false}, wantTo: "STOP_RED_NOT_RUNTIME_FAIL", desc: "tests not runtime-failing → human STOP"},
+	{process: "red_phase_cycle", from: "STOP_RED_NOT_RUNTIME_FAIL", wantTo: "WRITE", desc: "after STOP, retry from WRITE"},
+	{process: "red_phase_cycle", from: "DISABLE", wantTo: "COMMIT"},
+	{process: "red_phase_cycle", from: "COMMIT", wantTo: "RED_END"},
 
 	// ---- green_phase_cycle (shared by AT GREEN backend/frontend WRITEs) ----
 	// Mirrors red_phase_cycle but with success-pass semantics: each gate's
@@ -303,30 +303,30 @@ var transitionTable = []transitionCase{
 	// WRITE so the agent re-dispatches with fresh failure context. There
 	// is no DISABLE/COMMIT inside — at_green_system commits backend and
 	// frontend together at the parent level after both call_activities end.
-	{flow: "green_phase_cycle", from: "WRITE", wantTo: "COMPILE"},
-	{flow: "green_phase_cycle", from: "COMPILE", wantTo: "GATE_COMPILE_OK"},
-	{flow: "green_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": false}, wantTo: "STOP_GREEN_COMPILE_FAIL", desc: "compile fail → human STOP"},
-	{flow: "green_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": true}, wantTo: "RUN", desc: "compile ok → run tests"},
-	{flow: "green_phase_cycle", from: "STOP_GREEN_COMPILE_FAIL", wantTo: "WRITE", desc: "after STOP, retry from WRITE"},
-	{flow: "green_phase_cycle", from: "RUN", wantTo: "GATE_TESTS_PASS"},
-	{flow: "green_phase_cycle", from: "GATE_TESTS_PASS", state: map[string]any{"tests_pass": true}, wantTo: "GREEN_END", desc: "all tests pass → end"},
-	{flow: "green_phase_cycle", from: "GATE_TESTS_PASS", state: map[string]any{"tests_pass": false}, wantTo: "STOP_GREEN_TEST_FAIL", desc: "any test fails → human STOP"},
-	{flow: "green_phase_cycle", from: "STOP_GREEN_TEST_FAIL", wantTo: "WRITE", desc: "after STOP, retry from WRITE"},
+	{process: "green_phase_cycle", from: "WRITE", wantTo: "COMPILE"},
+	{process: "green_phase_cycle", from: "COMPILE", wantTo: "GATE_COMPILE_OK"},
+	{process: "green_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": false}, wantTo: "STOP_GREEN_COMPILE_FAIL", desc: "compile fail → human STOP"},
+	{process: "green_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": true}, wantTo: "RUN", desc: "compile ok → run tests"},
+	{process: "green_phase_cycle", from: "STOP_GREEN_COMPILE_FAIL", wantTo: "WRITE", desc: "after STOP, retry from WRITE"},
+	{process: "green_phase_cycle", from: "RUN", wantTo: "GATE_TESTS_PASS"},
+	{process: "green_phase_cycle", from: "GATE_TESTS_PASS", state: map[string]any{"tests_pass": true}, wantTo: "GREEN_END", desc: "all tests pass → end"},
+	{process: "green_phase_cycle", from: "GATE_TESTS_PASS", state: map[string]any{"tests_pass": false}, wantTo: "STOP_GREEN_TEST_FAIL", desc: "any test fails → human STOP"},
+	{process: "green_phase_cycle", from: "STOP_GREEN_TEST_FAIL", wantTo: "WRITE", desc: "after STOP, retry from WRITE"},
 
 	// ---- legacy_acceptance_criteria ----
 	// Legacy Acceptance Criteria Cycle interim spec: a single STOP node, per
 	// glossary.md TBD. Locked here so the placeholder cannot silently
 	// regress to "TBD" by accident.
-	{flow: "legacy_acceptance_criteria", from: "LEGACY_TBD", wantTo: "LEGACY_END", desc: "interim spec: single human-review STOP"},
+	{process: "legacy_acceptance_criteria", from: "LEGACY_TBD", wantTo: "LEGACY_END", desc: "interim spec: single human-review STOP"},
 }
 
 func TestTransitions(t *testing.T) {
 	eng := loadSnapshot(t)
 	for _, tc := range transitionTable {
-		t.Run(tc.flow+"/"+tc.from+"->"+tc.wantTo, func(t *testing.T) {
-			flow, ok := eng.Flows[tc.flow]
+		t.Run(tc.process+"/"+tc.from+"->"+tc.wantTo, func(t *testing.T) {
+			process, ok := eng.Processes[tc.process]
 			if !ok {
-				t.Fatalf("flow %q not in loaded engine", tc.flow)
+				t.Fatalf("process %q not in loaded engine", tc.process)
 			}
 			ctx := NewContext()
 			for k, v := range tc.state {
@@ -335,7 +335,7 @@ func TestTransitions(t *testing.T) {
 			if tc.params != nil {
 				ctx.Params = tc.params
 			}
-			got, err := eng.nextEdge(flow, tc.from, ctx)
+			got, err := eng.nextEdge(process, tc.from, ctx)
 			if err != nil {
 				t.Fatalf("nextEdge from %q: %v", tc.from, err)
 			}
@@ -354,14 +354,14 @@ func TestTransitionTable_CoversEverySequenceFlow(t *testing.T) {
 	eng := loadSnapshot(t)
 	covered := make(map[string]bool)
 	for _, tc := range transitionTable {
-		key := tc.flow + ":" + tc.from + "->" + tc.wantTo
+		key := tc.process + ":" + tc.from + "->" + tc.wantTo
 		covered[key] = true
 	}
-	for name, flow := range eng.Flows {
-		for _, edge := range flow.Edges {
+	for name, process := range eng.Processes {
+		for _, edge := range process.Edges {
 			key := name + ":" + edge.From + "->" + edge.To
 			if !covered[key] {
-				t.Errorf("uncovered edge in flow %q: %s -> %s (when=%q)", name, edge.From, edge.To, edge.Predicate)
+				t.Errorf("uncovered edge in process %q: %s -> %s (when=%q)", name, edge.From, edge.To, edge.Predicate)
 			}
 		}
 	}
@@ -373,17 +373,17 @@ func TestTransitionTable_CoversEverySequenceFlow(t *testing.T) {
 
 func TestGapDecision_LegacyAcceptanceCriteriaSingleStop(t *testing.T) {
 	eng := loadSnapshot(t)
-	flow, ok := eng.Flows["legacy_acceptance_criteria"]
+	process, ok := eng.Processes["legacy_acceptance_criteria"]
 	if !ok {
-		t.Fatalf("legacy_acceptance_criteria flow missing")
+		t.Fatalf("legacy_acceptance_criteria process missing")
 	}
-	if flow.Start != "LEGACY_TBD" {
-		t.Errorf("legacy_acceptance_criteria start: got %q, want LEGACY_TBD", flow.Start)
+	if process.Start != "LEGACY_TBD" {
+		t.Errorf("legacy_acceptance_criteria start: got %q, want LEGACY_TBD", process.Start)
 	}
-	if got := len(flow.Nodes); got != 2 {
+	if got := len(process.Nodes); got != 2 {
 		t.Errorf("legacy_acceptance_criteria node count: got %d, want 2 (STOP + END)", got)
 	}
-	stop, ok := flow.Nodes["LEGACY_TBD"]
+	stop, ok := process.Nodes["LEGACY_TBD"]
 	if !ok {
 		t.Fatalf("LEGACY_TBD node missing")
 	}
@@ -394,8 +394,8 @@ func TestGapDecision_LegacyAcceptanceCriteriaSingleStop(t *testing.T) {
 
 func TestGapDecision_CTExitReturnsToSystemDriverGate(t *testing.T) {
 	eng := loadSnapshot(t)
-	flow := eng.Flows["at_cycle"]
-	for _, edge := range flow.OutgoingByNode["CT_SUBPROCESS"] {
+	process := eng.Processes["at_cycle"]
+	for _, edge := range process.OutgoingByNode["CT_SUBPROCESS"] {
 		if edge.To != "GATE_SYS_AT" {
 			t.Errorf("CT_SUBPROCESS exit edge: got to=%q, want GATE_SYS_AT", edge.To)
 		}
@@ -404,10 +404,10 @@ func TestGapDecision_CTExitReturnsToSystemDriverGate(t *testing.T) {
 
 func TestGapDecision_SmokeTestFailStopsAtAskSupport(t *testing.T) {
 	eng := loadSnapshot(t)
-	flow := eng.Flows["external_system_onboarding"]
+	process := eng.Processes["external_system_onboarding"]
 	ctx := NewContext()
 	ctx.Set("smoke_test_passes", false)
-	got, err := eng.nextEdge(flow, "GATE_SMOKE_PASS", ctx)
+	got, err := eng.nextEdge(process, "GATE_SMOKE_PASS", ctx)
 	if err != nil {
 		t.Fatalf("nextEdge: %v", err)
 	}
@@ -424,18 +424,18 @@ func TestGapDecision_RunCycleRoutesByChangeType(t *testing.T) {
 	// axis is change_type ∈ {behavioral, system-interface-redesign,
 	// external-system-interface-redesign, system-implementation-change}.
 	eng := loadSnapshot(t)
-	flow := eng.Flows["run_cycle"]
-	if flow == nil {
-		t.Fatalf("run_cycle flow missing")
+	process := eng.Processes["run_cycle"]
+	if process == nil {
+		t.Fatalf("run_cycle process missing")
 	}
-	top, ok := flow.Nodes["GATE_CHANGE_TYPE"]
+	top, ok := process.Nodes["GATE_CHANGE_TYPE"]
 	if !ok {
 		t.Fatalf("GATE_CHANGE_TYPE node missing from run_cycle")
 	}
 	if top.Kind != Gateway || top.Raw.Binding != "change_type" {
 		t.Errorf("GATE_CHANGE_TYPE: kind=%v binding=%q, want Gateway/change_type", top.Kind, top.Raw.Binding)
 	}
-	for id, node := range flow.Nodes {
+	for id, node := range process.Nodes {
 		if node.Kind != Gateway {
 			continue
 		}
@@ -452,7 +452,7 @@ func TestGapDecision_StubsOwnershipPlaceholder(t *testing.T) {
 	// that resolves the gap will fail this test, prompting an explicit
 	// update + decision record.
 	eng := loadSnapshot(t)
-	stubs := eng.Flows["ct_subprocess"].Nodes["CT_GREEN_STUBS"]
+	stubs := eng.Processes["ct_subprocess"].Nodes["CT_GREEN_STUBS"]
 	if stubs.Raw.Agent != "atdd-stubs" {
 		t.Errorf("CT_GREEN_STUBS agent: got %q, want %q (placeholder pending stubs-ownership decision)", stubs.Raw.Agent, "atdd-stubs")
 	}
@@ -531,10 +531,10 @@ func TestPredicate_InListNegative(t *testing.T) {
 // stub NodeFns directly to keep the test deterministic).
 // ---------------------------------------------------------------------------
 
-func TestEngine_RunFlow_LegacyAcceptanceCriteria_StopsCleanly(t *testing.T) {
+func TestEngine_RunProcess_LegacyAcceptanceCriteria_StopsCleanly(t *testing.T) {
 	eng := loadSnapshot(t)
 	// Bind every user_task to a no-op so legacy_acceptance_criteria runs without
-	// blocking on stdin; gateways/actions aren't reached in this flow.
+	// blocking on stdin; gateways/actions aren't reached in this process.
 	noop := func(ctx *Context) Outcome { return Outcome{} }
 	eng.AgentFn = func(name string) NodeFn { return noop }
 	eng.ActionFn = func(name string) NodeFn { return noop }
@@ -542,7 +542,7 @@ func TestEngine_RunFlow_LegacyAcceptanceCriteria_StopsCleanly(t *testing.T) {
 	if err := eng.Bind(); err != nil {
 		t.Fatalf("Bind: %v", err)
 	}
-	if err := eng.RunFlow("legacy_acceptance_criteria", NewContext()); err != nil {
-		t.Errorf("RunFlow legacy_acceptance_criteria: %v", err)
+	if err := eng.RunProcess("legacy_acceptance_criteria", NewContext()); err != nil {
+		t.Errorf("RunProcess legacy_acceptance_criteria: %v", err)
 	}
 }

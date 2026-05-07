@@ -11,17 +11,18 @@ import (
 // loading and downstream diagnostics (Mermaid generation, doctor checks).
 // Optional fields use omitempty so the zero value is "absent in YAML".
 type RawNode struct {
-	ID          string            `yaml:"id"`
-	Type        string            `yaml:"type"`
-	Action      string            `yaml:"action,omitempty"`
-	Agent       string            `yaml:"agent,omitempty"`
-	Binding     string            `yaml:"binding,omitempty"`
-	Flow        string            `yaml:"flow,omitempty"`
-	PhaseDoc    string            `yaml:"phase_doc,omitempty"`
-	Description string            `yaml:"description,omitempty"`
-	Role        string            `yaml:"role,omitempty"`
-	Group       string            `yaml:"group,omitempty"`
-	Params      map[string]string `yaml:"params,omitempty"`
+	ID            string            `yaml:"id"`
+	Name          string            `yaml:"name,omitempty"`
+	Type          string            `yaml:"type"`
+	Action        string            `yaml:"action,omitempty"`
+	Agent         string            `yaml:"agent,omitempty"`
+	Binding       string            `yaml:"binding,omitempty"`
+	Process       string            `yaml:"process,omitempty"`
+	PhaseDoc      string            `yaml:"phase_doc,omitempty"`
+	Documentation string            `yaml:"documentation,omitempty"`
+	Role          string            `yaml:"role,omitempty"`
+	Group         string            `yaml:"group,omitempty"`
+	Params        map[string]string `yaml:"params,omitempty"`
 }
 
 // rawEdge mirrors the YAML sequence_flow schema. `When` carries the raw
@@ -32,8 +33,8 @@ type rawEdge struct {
 	When string `yaml:"when,omitempty"`
 }
 
-// rawFlow mirrors one named flow.
-type rawFlow struct {
+// rawProcess mirrors one named process.
+type rawProcess struct {
 	Start         string    `yaml:"start"`
 	Outputs       []string  `yaml:"outputs,omitempty"`
 	Nodes         []RawNode `yaml:"nodes"`
@@ -42,11 +43,11 @@ type rawFlow struct {
 
 // rawSpec is the top-level YAML document.
 type rawSpec struct {
-	Flows map[string]rawFlow `yaml:"flows"`
+	Processes map[string]rawProcess `yaml:"processes"`
 }
 
 // LoadFile reads a process-flow YAML document from disk and returns an Engine
-// whose Flows are linked but whose registries are nil. Wire registries
+// whose Processes are linked but whose registries are nil. Wire registries
 // afterwards with engine.Bind* before calling Run.
 //
 // Loading is structural only — node bodies (NodeFn) are not resolved until
@@ -68,63 +69,63 @@ func LoadBytes(data []byte) (*Engine, error) {
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parse process-flow YAML: %w", err)
 	}
-	if len(raw.Flows) == 0 {
-		return nil, fmt.Errorf("process-flow YAML defines no flows under `flows:`")
+	if len(raw.Processes) == 0 {
+		return nil, fmt.Errorf("process-flow YAML defines no processes under `processes:`")
 	}
 
-	eng := &Engine{Flows: map[string]*Flow{}}
-	for name, rf := range raw.Flows {
-		flow, err := buildFlow(name, rf)
+	eng := &Engine{Processes: map[string]*Process{}}
+	for name, rp := range raw.Processes {
+		process, err := buildProcess(name, rp)
 		if err != nil {
 			return nil, err
 		}
-		eng.Flows[name] = flow
+		eng.Processes[name] = process
 	}
 	return eng, nil
 }
 
-// buildFlow turns one rawFlow into a Flow with a node map, edge list, and
-// outgoing-edges-by-source-node index. NodeFn is left nil — Bind* fills it.
-func buildFlow(name string, rf rawFlow) (*Flow, error) {
-	if rf.Start == "" {
-		return nil, fmt.Errorf("flow %q: missing `start:`", name)
+// buildProcess turns one rawProcess into a Process with a node map, edge list,
+// and outgoing-edges-by-source-node index. NodeFn is left nil — Bind* fills it.
+func buildProcess(name string, rp rawProcess) (*Process, error) {
+	if rp.Start == "" {
+		return nil, fmt.Errorf("process %q: missing `start:`", name)
 	}
-	flow := &Flow{
+	process := &Process{
 		Name:           name,
-		Start:          rf.Start,
-		Outputs:        append([]string(nil), rf.Outputs...),
-		Nodes:          make(map[string]Node, len(rf.Nodes)),
-		Edges:          make([]Edge, 0, len(rf.SequenceFlows)),
+		Start:          rp.Start,
+		Outputs:        append([]string(nil), rp.Outputs...),
+		Nodes:          make(map[string]Node, len(rp.Nodes)),
+		Edges:          make([]Edge, 0, len(rp.SequenceFlows)),
 		OutgoingByNode: make(map[string][]Edge),
 	}
-	for _, rn := range rf.Nodes {
+	for _, rn := range rp.Nodes {
 		if rn.ID == "" {
-			return nil, fmt.Errorf("flow %q: node missing `id:`", name)
+			return nil, fmt.Errorf("process %q: node missing `id:`", name)
 		}
-		if _, dup := flow.Nodes[rn.ID]; dup {
-			return nil, fmt.Errorf("flow %q: duplicate node id %q", name, rn.ID)
+		if _, dup := process.Nodes[rn.ID]; dup {
+			return nil, fmt.Errorf("process %q: duplicate node id %q", name, rn.ID)
 		}
 		kind, err := parseKind(rn.Type)
 		if err != nil {
-			return nil, fmt.Errorf("flow %q node %q: %w", name, rn.ID, err)
+			return nil, fmt.Errorf("process %q node %q: %w", name, rn.ID, err)
 		}
-		flow.Nodes[rn.ID] = Node{ID: rn.ID, Kind: kind, Raw: rn}
+		process.Nodes[rn.ID] = Node{ID: rn.ID, Kind: kind, Raw: rn}
 	}
-	if _, ok := flow.Nodes[rf.Start]; !ok {
-		return nil, fmt.Errorf("flow %q: start node %q not in nodes list", name, rf.Start)
+	if _, ok := process.Nodes[rp.Start]; !ok {
+		return nil, fmt.Errorf("process %q: start node %q not in nodes list", name, rp.Start)
 	}
-	for _, re := range rf.SequenceFlows {
-		if _, ok := flow.Nodes[re.From]; !ok {
-			return nil, fmt.Errorf("flow %q: edge from unknown node %q", name, re.From)
+	for _, re := range rp.SequenceFlows {
+		if _, ok := process.Nodes[re.From]; !ok {
+			return nil, fmt.Errorf("process %q: edge from unknown node %q", name, re.From)
 		}
-		if _, ok := flow.Nodes[re.To]; !ok {
-			return nil, fmt.Errorf("flow %q: edge to unknown node %q", name, re.To)
+		if _, ok := process.Nodes[re.To]; !ok {
+			return nil, fmt.Errorf("process %q: edge to unknown node %q", name, re.To)
 		}
 		edge := Edge{From: re.From, To: re.To, Predicate: re.When}
-		flow.Edges = append(flow.Edges, edge)
-		flow.OutgoingByNode[re.From] = append(flow.OutgoingByNode[re.From], edge)
+		process.Edges = append(process.Edges, edge)
+		process.OutgoingByNode[re.From] = append(process.OutgoingByNode[re.From], edge)
 	}
-	return flow, nil
+	return process, nil
 }
 
 // parseKind maps the YAML `type:` string onto a NodeKind.

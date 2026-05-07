@@ -1,46 +1,63 @@
-# Process-flow node ID rename — open questions
+# Process-flow node ID rename — decisions
 
 ## Motivation
 
-Iterating on renaming node IDs in `internal/atdd/runtime/statemachine/testdata/process-flow.yaml` to a verb-prefix vocabulary (e.g. `MOVE_TICKET_IN_PROGRESS`, `CLASSIFY_TICKET`, `DISPATCH_<agent>_AGENT`, `REQUEST_HUMAN_REVIEW`). Several questions surfaced during the proposal that need to be settled before batching the rename across the YAML, `transitions_test.go`, `structural_cycle_test.go`, `driver.go`, and `atdd_commands.go`.
+Iterating on renaming node IDs in `internal/atdd/runtime/statemachine/process-flow.yaml` to a verb-prefix vocabulary (e.g. `MOVE_TICKET_IN_PROGRESS`, `CLASSIFY_TICKET`, `DISPATCH_<agent>_AGENT`, `REQUEST_HUMAN_REVIEW`). Several questions surfaced during the proposal that needed settling before batching the rename across the YAML, `transitions_test.go`, `structural_cycle_test.go`, `driver.go`, and `atdd_commands.go`.
 
 The rename is partially-specified — the user listed renames for the intake nodes and the structural cycle with "..." trailing each list, and the same conceptual step (`REQUEST_HUMAN_REVIEW`) appears at multiple points in the graph. The YAML schema requires unique node IDs per flow, which collides with that consistency goal.
 
-## Open questions
+> **Note on YAML drift.** The questions below reference node IDs from an earlier YAML revision (e.g. `STOP_INTAKE`, `MOVE_TO_IN_PROGRESS`, sibling `ATDD_STORY/BUG/CHORE` user_tasks). The YAML has since been restructured: intake STOPs are now `STOP_CLASSIFY_CONFLICT` / `STOP_SUBTYPE_MISSING` / `STOP_PARSE_ERROR`, and ticket-type fan-out happens via `change_type` call_activity dispatch in `run_cycle`, not via per-type `ATDD_*` user_tasks. Resolutions below are recorded against the current YAML state, and the per-node rename mappings still need to be re-derived against the current YAML before the rename pass batch lands.
 
-### 1. Schema strategy for repeating step names *(blocks everything else)*
+## Resolutions
 
-`REQUEST_HUMAN_REVIEW` is proposed as the rename for at least `STOP_INTAKE`, `STOP_STRUCT_REVIEW`, and `STOP_STRUCT_TEST`. The YAML has 5 human-review STOPs total: `STOP_INTAKE`, `STOP_GREEN_REVIEW`, `STOP_ONBOARD_REVIEW`, `STOP_STRUCT_REVIEW`, `STOP_STRUCT_TEST`. The latter two live in the same flow (`structural_cycle`), so a single shared id collides at YAML load time (`buildFlow` rejects duplicates).
+### 1. Schema strategy for repeating step names
 
-Two paths under discussion:
-
-- **Option 1** — keep the canonical step name in the existing `description:` field; let `id:` stay unique/positional (e.g. `REVIEW_IMPL` / `REVIEW_TESTS`). Diagrams, logs, and the spy render the description, not the id. No engine change.
-- **Option 2** — add a new `step:` (or `name:`) field to the node schema, dedicated to the reusable step name; keep `id:` separate. Cleaner long-term, requires small changes to `load.go` + `types.go` + every site that reads node metadata.
+**Resolution:** Option 2 — add a new `name:` field to the node schema. `id:` stays per-process unique (used by `sequence_flows.from/to` and node lookups); `name:` carries the reusable canonical step vocabulary and may repeat freely. Implementation lands in `plans/20260501-155353-consolidate-process-flow-with-bpmn.md` Item 2.
 
 ### 2. `_TICKET` suffix in `DISPATCH_ATDD_TASK_TICKET_AGENT`
 
-The proposed name reads with a redundant `_TICKET`. Confirm: intentional vocabulary, or did you mean `DISPATCH_ATDD_TASK_AGENT`?
+**Resolution:** Drop the `_TICKET` suffix. The canonical name is `DISPATCH_ATDD_TASK_AGENT`.
 
-### 3. Sibling intake agents
+### 3. Sibling agents
 
-If `ATDD_TASK` is renamed via the `DISPATCH_<agent>_AGENT` pattern, do the siblings (`ATDD_STORY`, `ATDD_BUG`, `ATDD_CHORE`) follow the same pattern?
+**Resolution:** Yes — sibling agents follow the `DISPATCH_<agent>_AGENT` pattern. Against the current YAML (the `ATDD_STORY/BUG/CHORE` siblings no longer exist as user_tasks), this applies to the `at_green_system` siblings:
+
+- `ATDD_BACKEND` → `name: DISPATCH_ATDD_BACKEND_AGENT`
+- `ATDD_FRONTEND` → `name: DISPATCH_ATDD_FRONTEND_AGENT`
+- `ATDD_RELEASE` → `name: DISPATCH_ATDD_RELEASE_AGENT`
+
+(`id:` may stay positional.)
 
 ### 4. `STRUCT_WRITE` agent name
 
-Proposed: `STRUCT_WRITE → DISPATCH_WRITE_DRIVERS_AGENT`. The node has `agent: ${agent}`, parameterised to `atdd-task` for SYSAPI / SYSUI / CHORE — none involve drivers (drivers are written in `AT_RED_DSL`, `AT_RED_SYSTEM_DRIVER`, `CT_RED_EXTERNAL_DRIVER`). Did you mean `DISPATCH_WRITE_AGENT`, or do you want to specialise the shared structural cycle into per-phase WRITE nodes?
+**Resolution:** `name: DISPATCH_AGENT`. The node's agent is parameterised (`atdd-task` for system-interface-redesign, `atdd-chore` for chore) — naming it after a specific agent would be wrong, and "DRIVERS" is wrong for the chore call site (chore has no drivers). The generic `DISPATCH_AGENT` matches the parameterised reality without extra schema work.
 
 ### 5. `COMPILE` split — rename or process change?
 
-`COMPILE → COMPILE_SOURCE, then COMPILE_TESTS` isn't a rename — it splits one node into two with a new edge between them, adding a step the runtime currently doesn't have. Did you mean to introduce a new step, or rename `COMPILE` to one of the two (the other being a typo)?
+**Resolution:** Dropped from the rename pass. Splitting `COMPILE → COMPILE_SOURCE / COMPILE_TESTS` is a process change (new node, new edge, new action), not a rename. Revisit only when someone proposes the split with a real motivation. For the rename pass, leave `COMPILE` ids as-is.
 
 ### 6. Scope of "..." — pattern extension
 
-Renames so far cover the intake nodes (4) and the structural cycle (9). The "..." in both lists suggests the convention extends further; how far?
+**Resolution:** Minimal rename scope. Apply the verb-prefix convention only where it adds clarity — not to gateways (which have their own consistent `GATE_` convention). Specifically:
 
-- Other service_tasks: `MOVE_TO_IN_ACCEPTANCE`, `PICK_TOP_READY`, `RUN_SMOKE`, `COMMIT_ONBOARD`.
-- Every `AT_RED_*` / `AT_GREEN_*` / `CT_RED_*` user_task (AT cycle, AT-green-system, CT subprocess).
-- Gateway nodes (`GATE_TICKET_TYPE`, `GATE_LEGACY`, `GATE_TYPE_CYCLE`, `GATE_DSL_AT`, `GATE_EXT_AT`, `GATE_SYS_AT`, `GATE_DSL_CT`, `GATE_EXT_CT`, `GATE_DRIVER_EXISTS`, `GATE_INSTANCE_ACCESSIBLE`, `GATE_SMOKE_PASS`, `GATE_TEST_MODE`) — verb-prefix would be e.g. `CHECK_TICKET_TYPE`, but verbs sit awkwardly on routing nodes.
+- Schema-driven: human-review STOPs get `name: REQUEST_HUMAN_REVIEW` (where the intent is "approve / review"). Per-node mapping for fix-and-resume STOPs (`STOP_CLASSIFY_CONFLICT`, `STOP_SUBTYPE_MISSING`, `STOP_PARSE_ERROR`) still TBD — see remaining work below.
+- `DISPATCH_*_AGENT` for user_task dispatch nodes.
+- Verb prefix for the few service_tasks that lack one: `TICK`, `SAMPLE`, `DRIFT`, `TICKET_IN_ACCEPTANCE`.
+- Gateways (`GATE_*`) untouched.
 
-### 7. `TICK_TICKET_ITEM` parallel
+### 7. `TICK_TICKET_ITEM` parallel — `TICKET_IN_ACCEPTANCE`
 
-`TICK → TICK_TICKET_ITEM` has a parallel: `TICKET_IN_ACCEPTANCE` is also a service_task that ticks the top-level checklist (and additionally moves the issue to "In Acceptance"). Should it also be renamed/split — e.g. `TICK_TICKET_HEADER` + `MOVE_TICKET_TO_IN_ACCEPTANCE`?
+**Resolution:** Pure rename, no split. Under the new schema:
+
+- `TICK` (`structural_cycle`) → `name: TICK_CHECKLIST_ITEM` (or similar — TBD when mapping #3 lands).
+- `TICKET_IN_ACCEPTANCE` (`main`) → `name: MOVE_TICKET_TO_IN_ACCEPTANCE`.
+
+The fact that `TICKET_IN_ACCEPTANCE` also ticks the ticket header stays in `description:` — the action's primary intent is the move.
+
+## Remaining work — per-node rename mappings
+
+The schema decisions above are settled. The actual per-node `id` / `name` mappings against the current YAML still need to be enumerated before the rename batch (Item 3 of the consolidate-bpmn plan) can run. Specifically:
+
+1. **Which human-review STOPs share `name: REQUEST_HUMAN_REVIEW`?** The current YAML has ~12 user_tasks with `agent: human, role: review`. The "approve" STOPs (e.g. `STOP_GREEN_REVIEW`, `STOP_STRUCT_REVIEW`, `STOP_ONBOARD_REVIEW`) clearly share that name; the "fix and re-run" STOPs (`STOP_CLASSIFY_CONFLICT`, `STOP_SUBTYPE_MISSING`, `STOP_PARSE_ERROR`) and the "review test results" STOPs (`STOP_RED_REVIEW`, `STOP_PROTOTYPE_REVIEW`, `STOP_RED_NOT_RUNTIME_FAIL`, `STOP_STRUCT_TEST`) are open. `ASK_SUPPORT` (asks for help, not review) and `LEGACY_TBD` (placeholder) are likely separate.
+2. **Full enumeration of `name:` values for every renamed node** — each node touched under Q6's minimal scope needs its `name:` chosen.
+3. **`id:` adjustments** — only where the new schema requires it (e.g. positional ids when multiple nodes share a `name:`). Most existing ids can stay.

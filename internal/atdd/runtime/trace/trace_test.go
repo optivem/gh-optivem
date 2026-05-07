@@ -318,7 +318,7 @@ func TestWrapAll_DecoratesEveryNodeInEveryFlow(t *testing.T) {
 		return statemachine.Outcome{}
 	}
 	eng := &statemachine.Engine{
-		Flows: map[string]*statemachine.Flow{
+		Processes: map[string]*statemachine.Process{
 			"main": {
 				Nodes: map[string]statemachine.Node{
 					"A": {ID: "A", Kind: statemachine.ServiceTask, Raw: statemachine.RawNode{Action: "a"}, Fn: body},
@@ -331,7 +331,7 @@ func TestWrapAll_DecoratesEveryNodeInEveryFlow(t *testing.T) {
 	var buf bytes.Buffer
 	WrapAll(eng, Deps{Out: &buf})
 
-	for _, n := range eng.Flows["main"].Nodes {
+	for _, n := range eng.Processes["main"].Nodes {
 		n.Fn(statemachine.NewContext())
 	}
 	if calls != 2 {

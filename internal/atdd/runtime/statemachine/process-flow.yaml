@@ -1,10 +1,10 @@
-# ATDD Pipeline — Orchestration Flow
+# ATDD Pipeline — Orchestration Process
 #
 # Single source of truth for cycle-level orchestration. Encodes the AT cycle,
 # the CT sub-process, the External System Onboarding sub-process, the shared
 # structural cycle (used by the system-interface-redesign and
 # system-implementation-change subtypes), the external-system-interface-redesign
-# wrapper, and the (TBD) Legacy Acceptance Criteria cycle as named flows of
+# wrapper, and the (TBD) Legacy Acceptance Criteria cycle as named processes of
 # typed nodes connected by sequence flows.
 #
 # Per-phase WRITE/COMMIT mechanics (e.g. the inner compile/run/disable loop of
@@ -14,24 +14,24 @@
 #
 # Document shape:
 #
-#   flows:
-#     <flow_name>:
+#   processes:
+#     <process_name>:
 #       start: <node_id>            # entry node — must appear in nodes:
-#       nodes:                      # ids unique per flow (reuse across flows is fine)
+#       nodes:                      # ids unique per process (reuse across processes is fine)
 #         - id: <node_id>
 #           type: <node_type>       # body fields depend on type:
 #                                   #   service_task  → action: <name>
 #                                   #   user_task     → agent: <name>   (or "human" for a STOP)
 #                                   #   gateway       → binding: <name>
-#                                   #   call_activity → flow: <flow_name>   [+ params: <map>]
+#                                   #   call_activity → process: <process_name>   [+ params: <map>]
 #                                   #   start_event / end_event → no body
 #       sequence_flows:
 #         - {from: <id>, to: <id>}                        # unconditional edge
 #         - {from: <id>, to: <id>, when: "<predicate>"}   # gateway-guarded edge
 #
 # Node types (BPMN-shaped vocabulary):
-#   start_event    Flow entry.
-#   end_event      Flow terminus.
+#   start_event    Process entry.
+#   end_event      Process terminus.
 #   service_task   Mechanical action; the Go runtime auto-executes
 #                  actions.<action> with no agent dispatch.
 #   user_task      Creative work; the Go runtime dispatches the named agent
@@ -41,7 +41,7 @@
 #   gateway        XOR decision; the Go runtime calls gates.<binding>(ctx)
 #                  and follows the outgoing edge whose `when:` predicate
 #                  matches the returned value.
-#   call_activity  Embedded sub-flow; control returns to the parent flow's
+#   call_activity  Embedded sub-process; control returns to the parent process's
 #                  next sequence flow on completion.
 #
 # Sequence flows:
@@ -52,34 +52,34 @@
 #                                          `binding:` function.
 #
 # Optional fields:
-#   description:   Free-text node label; rendered in the Mermaid diagram.
+#   documentation: Free-text node label; rendered in the Mermaid diagram.
 #   role:          `review` or `implement` — annotation only. The Go runtime
 #                  doesn't consume it, and the diagram generator no longer
 #                  styles by role (it colors by executor: white = service_task,
 #                  yellow = user_task agent: human, dark blue = user_task with
 #                  any other agent). Kept on existing nodes for documentation.
-#   params:        Map of name→value substituted into the called flow's nodes
+#   params:        Map of name→value substituted into the called process's nodes
 #                  at dispatch time (used by call_activity to parameterise
 #                  the shared structural_cycle).
 #
 # Open gaps preserved as TBDs (do not silently resolve):
-#   - legacy_acceptance_criteria flow: single TBD node; full mechanics deferred per
+#   - legacy_acceptance_criteria process: single TBD node; full mechanics deferred per
 #     glossary.md ("The Legacy Acceptance Criteria Cycle's own internal phases are TBD").
 #   - ct_green_stubs node: agent set to `atdd-stubs`; ownership is TBD per the
 #     process-audit gap on stubs ownership (see plans/20260429-100633-process-audit.md).
 
-flows:
+processes:
 
   # ===========================================================================
   # main
-  # Ticket Lifecycle — entry flow for `gh optivem atdd implement-ticket
+  # Ticket Lifecycle — entry process for `gh optivem atdd implement-ticket
   # --issue N` and `gh optivem atdd manage-project`. Pulls the next ticket
   # (board / specific_issue → in-progress), then runs intake, runs the
   # legacy acceptance criteria cycle (no-op when the ticket carries no Legacy Acceptance Criteria
   # section), runs the change cycle for the ticket's type, and ends at
   # TICKET STATUS - IN ACCEPTANCE.
   #
-  # Each sub-flow encapsulates its own gates so main stays linear and
+  # Each sub-process encapsulates its own gates so main stays linear and
   # gate-free. Splitting them lets each diagram answer one question:
   # "main" shows the ticket's lifecycle, "github_intake" shows the
   # type-specific intake fan-out, "run_legacy_cycle" shows the
@@ -95,29 +95,29 @@ flows:
       - id: PICK_TOP_READY
         type: service_task
         action: pick_top_ready
-        description: "Pick top Ready ticket"
+        documentation: "Pick top Ready ticket"
 
       - id: MOVE_TO_IN_PROGRESS
         type: service_task
         action: move_to_in_progress
-        description: "Move ticket to In Progress (bottom of lane)"
+        documentation: "Move ticket to In Progress (bottom of lane)"
 
       - id: INTAKE
         type: call_activity
-        flow: github_intake
+        process: github_intake
 
       - id: RUN_LEGACY_CYCLE
         type: call_activity
-        flow: run_legacy_cycle
+        process: run_legacy_cycle
 
       - id: RUN_CYCLE
         type: call_activity
-        flow: run_cycle
+        process: run_cycle
 
       - id: TICKET_IN_ACCEPTANCE
         type: service_task
         action: move_to_in_acceptance
-        description: "Tick checklist + move issue to IN ACCEPTANCE"
+        documentation: "Tick checklist + move issue to IN ACCEPTANCE"
 
       - id: END
         type: end_event
@@ -157,60 +157,60 @@ flows:
       - id: CLASSIFY
         type: service_task
         action: read_ticket_type
-        description: "Read ticket type"
+        documentation: "Read ticket type"
 
       - id: GATE_CLASSIFY_CONFIDENT
         type: gateway
         binding: ticket_type_recognized
-        description: "Ticket type recognized?"
+        documentation: "Ticket type recognized?"
 
       - id: STOP_CLASSIFY_CONFLICT
         type: user_task
         agent: human
         role: review
-        description: "STOP - HUMAN REVIEW — set issue type / re-run"
+        documentation: "STOP - HUMAN REVIEW — set issue type / re-run"
 
       - id: GATE_TICKET_TYPE_INTAKE
         type: gateway
         binding: ticket_type
-        description: "Ticket type?"
+        documentation: "Ticket type?"
 
       - id: CLASSIFY_SUBTYPE
         type: service_task
         action: read_subtype
-        description: "Read ticket subtype"
+        documentation: "Read ticket subtype"
 
       - id: GATE_SUBTYPE_OK
         type: gateway
         binding: subtype_ok
-        description: "Subtype label detected?"
+        documentation: "Subtype label detected?"
 
       - id: STOP_SUBTYPE_MISSING
         type: user_task
         agent: human
         role: review
-        description: "STOP - HUMAN REVIEW — apply exactly one subtype:* label / re-run"
+        documentation: "STOP - HUMAN REVIEW — apply exactly one subtype:* label / re-run"
 
       - id: PARSE_BODY
         type: service_task
         action: parse_ticket_body
-        description: "Parse ticket body sections"
+        documentation: "Parse ticket body sections"
 
       - id: GATE_PARSE_OK
         type: gateway
         binding: parse_ok
-        description: "Parsed OK?"
+        documentation: "Parsed OK?"
 
       - id: STOP_PARSE_ERROR
         type: user_task
         agent: human
         role: review
-        description: "STOP - HUMAN REVIEW — fix ticket body / re-run"
+        documentation: "STOP - HUMAN REVIEW — fix ticket body / re-run"
 
       - id: REPORT_INTAKE_SUMMARY
         type: service_task
         action: report_intake_summary
-        description: "Report intake summary"
+        documentation: "Report intake summary"
 
       - id: INTAKE_END
         type: end_event
@@ -246,11 +246,11 @@ flows:
       - id: GATE_LEGACY_PRESENT
         type: gateway
         binding: legacy_acceptance_criteria_section_present
-        description: "Legacy Acceptance Criteria section present?"
+        documentation: "Legacy Acceptance Criteria section present?"
 
       - id: LEGACY_CYCLE
         type: call_activity
-        flow: legacy_acceptance_criteria
+        process: legacy_acceptance_criteria
 
       - id: RUN_LEGACY_END
         type: end_event
@@ -281,19 +281,19 @@ flows:
       - id: GATE_CHANGE_TYPE
         type: gateway
         binding: change_type
-        description: "Change type?"
+        documentation: "Change type?"
 
       - id: AT_CYCLE
         type: call_activity
-        flow: at_cycle
+        process: at_cycle
 
       - id: DA_CYCLE
         type: call_activity
-        flow: da_cycle
+        process: da_cycle
 
       - id: SUT_CYCLE
         type: call_activity
-        flow: sut_cycle
+        process: sut_cycle
 
       - id: CYCLE_END
         type: end_event
@@ -311,68 +311,68 @@ flows:
   # at_cycle
   # AT Cycle — driven by change-driven AC (story / bug).
   # Embeds the CT sub-process when External Driver interfaces change.
-  # Embeds at_green_system as its terminal sub-flow.
+  # Embeds at_green_system as its terminal sub-process.
   # ===========================================================================
   at_cycle:
     start: AT_RED_TEST
     nodes:
       - id: AT_RED_TEST
         type: call_activity
-        flow: red_phase_cycle
+        process: red_phase_cycle
         params:
           agent: atdd-test
           phase_doc: docs/atdd/process/at-red-test.md
           phase_label: "AT - RED - TEST"
           change_type: "AT - RED - TEST"
-        description: "AT - RED - TEST"
+        documentation: "AT - RED - TEST"
 
       - id: GATE_DSL_AT
         type: gateway
         binding: dsl_interface_changed
-        description: "DSL Interface Changed?"
+        documentation: "DSL Interface Changed?"
 
       - id: AT_RED_DSL
         type: call_activity
-        flow: red_phase_cycle
+        process: red_phase_cycle
         params:
           agent: atdd-dsl
           phase_doc: docs/atdd/process/at-red-dsl.md
           phase_label: "AT - RED - DSL"
           change_type: "AT - RED - DSL"
-        description: "AT - RED - DSL"
+        documentation: "AT - RED - DSL"
 
       - id: GATE_EXT_AT
         type: gateway
         binding: external_system_driver_interface_changed
-        description: "External System Driver Interface Changed?"
+        documentation: "External System Driver Interface Changed?"
 
       - id: CT_SUBPROCESS
         type: call_activity
-        flow: ct_subprocess
+        process: ct_subprocess
 
       - id: GATE_SYS_AT
         type: gateway
         binding: system_driver_interface_changed
-        description: "System Driver Interface Changed?"
+        documentation: "System Driver Interface Changed?"
 
       - id: AT_RED_SYSTEM_DRIVER
         type: call_activity
-        flow: red_phase_cycle
+        process: red_phase_cycle
         params:
           agent: atdd-driver
           phase_doc: docs/atdd/process/at-red-system-driver.md
           phase_label: "AT - RED - SYSTEM DRIVER"
           change_type: "AT - RED - SYSTEM DRIVER"
-        description: "AT - RED - SYSTEM DRIVER"
+        documentation: "AT - RED - SYSTEM DRIVER"
 
       - id: VERIFY_AT_DRIVER
         type: service_task
         action: verify_run_tests_after_driver
-        description: "Verify: run targeted acceptance tests after driver-adapter change"
+        documentation: "Verify: run targeted acceptance tests after driver-adapter change"
 
       - id: AT_GREEN_SYSTEM
         type: call_activity
-        flow: at_green_system
+        process: at_green_system
 
       - id: AT_END
         type: end_event
@@ -406,52 +406,52 @@ flows:
       - id: ENABLE_TESTS
         type: service_task
         action: enable_change_driven
-        description: "Re-enable tests disabled in AT - RED - SYSTEM DRIVER"
+        documentation: "Re-enable tests disabled in AT - RED - SYSTEM DRIVER"
 
       - id: AT_GREEN_BACKEND
         type: call_activity
-        flow: green_phase_cycle
+        process: green_phase_cycle
         params:
           agent: atdd-backend
           phase_doc: docs/atdd/process/at-green-system.md
           phase_label: "AT - GREEN - SYSTEM (backend)"
           suite: "<acceptance-api>"
           rebuild_before_run: "true"
-        description: "AT - GREEN - SYSTEM - WRITE (backend)"
+        documentation: "AT - GREEN - SYSTEM - WRITE (backend)"
 
       - id: AT_GREEN_FRONTEND
         type: call_activity
-        flow: green_phase_cycle
+        process: green_phase_cycle
         params:
           agent: atdd-frontend
           phase_doc: docs/atdd/process/at-green-system.md
           phase_label: "AT - GREEN - SYSTEM (frontend)"
           suite: "<acceptance-ui>"
           rebuild_before_run: "true"
-        description: "AT - GREEN - SYSTEM - WRITE (frontend)"
+        documentation: "AT - GREEN - SYSTEM - WRITE (frontend)"
 
       - id: STOP_GREEN_REVIEW
         type: user_task
         agent: human
         role: review
-        description: "STOP - HUMAN REVIEW — approve implementation"
+        documentation: "STOP - HUMAN REVIEW — approve implementation"
 
       - id: COMMIT_GREEN
         type: service_task
         action: commit_phase
         params:
           change_type: "AT - GREEN - SYSTEM"
-        description: "COMMIT: <Ticket> | AT - GREEN - SYSTEM"
+        documentation: "COMMIT: <Ticket> | AT - GREEN - SYSTEM"
 
       - id: TICK
         type: service_task
         action: tick_checklist
-        description: "Tick acceptance-criteria checklist items"
+        documentation: "Tick acceptance-criteria checklist items"
 
       - id: MOVE_TO_IN_ACCEPTANCE
         type: service_task
         action: move_to_in_acceptance
-        description: "Move ticket to TICKET STATUS - IN ACCEPTANCE"
+        documentation: "Move ticket to TICKET STATUS - IN ACCEPTANCE"
 
       - id: GS_END
         type: end_event
@@ -476,53 +476,53 @@ flows:
     nodes:
       - id: ONBOARDING
         type: call_activity
-        flow: external_system_onboarding
+        process: external_system_onboarding
 
       - id: CT_RED_TEST
         type: call_activity
-        flow: red_phase_cycle
+        process: red_phase_cycle
         params:
           agent: atdd-test
           phase_doc: docs/atdd/process/ct-red-test.md
           phase_label: "CT - RED - TEST"
           change_type: "CT - RED - TEST"
           verify_real_suite: "<suite-contract-real>"
-        description: "CT - RED - TEST"
+        documentation: "CT - RED - TEST"
 
       - id: GATE_DSL_CT
         type: gateway
         binding: dsl_interface_changed
-        description: "DSL Interface Changed?"
+        documentation: "DSL Interface Changed?"
 
       - id: CT_RED_DSL
         type: call_activity
-        flow: red_phase_cycle
+        process: red_phase_cycle
         params:
           agent: atdd-dsl
           phase_doc: docs/atdd/process/ct-red-dsl.md
           phase_label: "CT - RED - DSL"
           change_type: "CT - RED - DSL"
-        description: "CT - RED - DSL"
+        documentation: "CT - RED - DSL"
 
       - id: GATE_EXT_CT
         type: gateway
         binding: external_system_driver_interface_changed
-        description: "External System Driver Interface Changed?"
+        documentation: "External System Driver Interface Changed?"
 
       - id: CT_RED_EXTERNAL_DRIVER
         type: call_activity
-        flow: red_phase_cycle
+        process: red_phase_cycle
         params:
           agent: atdd-driver
           phase_doc: docs/atdd/process/ct-red-external-driver.md
           phase_label: "CT - RED - EXTERNAL DRIVER"
           change_type: "CT - RED - EXTERNAL DRIVER"
-        description: "CT - RED - EXTERNAL DRIVER"
+        documentation: "CT - RED - EXTERNAL DRIVER"
 
       - id: VERIFY_CT_DRIVER
         type: service_task
         action: verify_run_tests_after_driver
-        description: "Verify: run targeted contract tests after external driver-adapter change"
+        documentation: "Verify: run targeted contract tests after external driver-adapter change"
 
       - id: CT_GREEN_STUBS
         # Ownership TBD per process-audit gap on stubs ownership.
@@ -530,7 +530,7 @@ flows:
         type: user_task
         agent: atdd-stubs
         phase_doc: docs/atdd/process/ct-green-stubs.md
-        description: "CT - GREEN - STUBS"
+        documentation: "CT - GREEN - STUBS"
 
       - id: CT_END
         type: end_event
@@ -563,63 +563,63 @@ flows:
       - id: GATE_DRIVER_EXISTS
         type: gateway
         binding: external_system_driver_exists
-        description: "External System Driver exists?"
+        documentation: "External System Driver exists?"
 
       - id: GATE_INSTANCE_ACCESSIBLE
         type: gateway
         binding: external_system_test_instance_accessible
-        description: "Test Instance accessible?"
+        documentation: "Test Instance accessible?"
 
       - id: PROVISION
         type: user_task
         agent: human
         role: implement
-        description: "Provision dockerized stand-in"
+        documentation: "Provision dockerized stand-in"
 
       - id: DEFINE_IFACE
         type: user_task
         agent: human
         role: implement
-        description: "Define minimal Driver interface"
+        documentation: "Define minimal Driver interface"
 
       - id: IMPL_DRIVER
         type: user_task
         agent: human
         role: implement
-        description: "Implement Driver impl for Smoke Test"
+        documentation: "Implement Driver impl for Smoke Test"
 
       - id: WRITE_SMOKE
         type: user_task
         agent: human
         role: implement
-        description: "Write single Smoke Test"
+        documentation: "Write single Smoke Test"
 
       - id: RUN_SMOKE
         type: service_task
         action: run_smoke_test
-        description: "Run Smoke Test"
+        documentation: "Run Smoke Test"
 
       - id: GATE_SMOKE_PASS
         type: gateway
         binding: smoke_test_passes
-        description: "Smoke Test passes?"
+        documentation: "Smoke Test passes?"
 
       - id: ASK_SUPPORT
         type: user_task
         agent: human
         role: review
-        description: "Ask user for support and STOP"
+        documentation: "Ask user for support and STOP"
 
       - id: STOP_ONBOARD_REVIEW
         type: user_task
         agent: human
         role: review
-        description: "STOP - HUMAN REVIEW — approve onboarding artifacts"
+        documentation: "STOP - HUMAN REVIEW — approve onboarding artifacts"
 
       - id: COMMIT_ONBOARD
         type: service_task
         action: commit_onboarding
-        description: "COMMIT: External System Onboarding | <name>"
+        documentation: "COMMIT: External System Onboarding | <name>"
 
       - id: ONBOARD_END
         type: end_event
@@ -653,72 +653,72 @@ flows:
         type: user_task
         agent: ${agent}
         phase_doc: ${phase_doc}
-        description: "${change_type} - WRITE"
+        documentation: "${change_type} - WRITE"
 
       - id: VERIFY_STRUCT_DRIVER
         type: service_task
         action: verify_run_tests_after_driver
-        description: "Verify: run targeted tests if driver-adapter changed (no-op for chore)"
+        documentation: "Verify: run targeted tests if driver-adapter changed (no-op for chore)"
 
       - id: GATE_STRUCT_VERIFY
         type: gateway
         binding: structural_verify_outcome
-        description: "Verify outcome? (ok | red — fix and retry)"
+        documentation: "Verify outcome? (ok | red — fix and retry)"
 
       - id: FIX_STRUCT_VERIFY
         type: user_task
         agent: atdd-fix-verify
         phase_doc: ${phase_doc}
-        description: "Dispatch fix agent on verify RED — structural cycle expects green"
+        documentation: "Dispatch fix agent on verify RED — structural cycle expects green"
 
       - id: STOP_STRUCT_REVIEW
         type: user_task
         agent: human
         role: review
-        description: "STOP - HUMAN REVIEW — approve implementation"
+        documentation: "STOP - HUMAN REVIEW — approve implementation"
 
       - id: GATE_TEST_MODE
         type: gateway
         binding: structural_test_mode
-        description: "TEST mode? (full | compile | skip)"
+        documentation: "TEST mode? (full | compile | skip)"
 
       - id: COMPILE
         type: service_task
         action: compile_in_scope
-        description: "Compile in-scope projects"
+        documentation: "Compile in-scope projects"
 
       - id: SAMPLE
         type: service_task
         action: run_sample_suite
-        description: "Run sample suite"
+        documentation: "Run sample suite"
 
       - id: DRIFT
         type: service_task
         action: report_drift_warning
-        description: "Report drift warning if applicable"
+        documentation: "Report drift warning if applicable"
 
       - id: STOP_STRUCT_TEST
         type: user_task
         agent: human
         role: review
-        description: "STOP - HUMAN REVIEW — review TEST results"
+        documentation: "STOP - HUMAN REVIEW — review TEST results"
 
       - id: ASK_COMMIT
         type: service_task
         action: ask_can_i_commit
-        description: "Ask: Can I commit?"
+        documentation: "Ask: Can I commit?"
 
       - id: COMMIT_STRUCT
         type: service_task
         action: commit_phase
         params:
           change_type: ${change_type}
-        description: "COMMIT: <Ticket> | ${change_type}"
+        documentation: "COMMIT: <Ticket> | ${change_type}"
 
       - id: TICK
         type: service_task
         action: tick_checklist
-        description: "Tick checklist items"
+        documentation: "Tick checklist items"
 
       - id: STRUCT_END
         type: end_event
@@ -743,7 +743,7 @@ flows:
 
   # ===========================================================================
   # red_phase_cycle
-  # Shared sub-flow for every RED-phase node that splits creative WRITE work
+  # Shared sub-process for every RED-phase node that splits creative WRITE work
   # (LLM-required) from mechanical compile/run/disable/commit work
   # (deterministic). Mirrors how `structural_cycle` factors creative
   # `STRUCT_WRITE` from its mechanical surroundings.
@@ -790,84 +790,84 @@ flows:
         type: user_task
         agent: ${agent}
         phase_doc: ${phase_doc}
-        description: "${phase_label} - WRITE"
+        documentation: "${phase_label} - WRITE"
 
       - id: STOP_RED_REVIEW
         type: user_task
         agent: human
         role: review
-        description: "STOP - HUMAN REVIEW — ${phase_label} tests"
+        documentation: "STOP - HUMAN REVIEW — ${phase_label} tests"
 
       - id: COMPILE
         type: service_task
         action: compile_targeted
-        description: "Compile in scope"
+        documentation: "Compile in scope"
 
       - id: GATE_COMPILE_OK
         type: gateway
         binding: compile_ok
-        description: "Compile passed?"
+        documentation: "Compile passed?"
 
       - id: WRITE_PROTOTYPES
         type: user_task
         agent: ${agent}
         phase_doc: ${phase_doc}
-        description: "${phase_label} - PROTOTYPES"
+        documentation: "${phase_label} - PROTOTYPES"
 
       - id: STOP_PROTOTYPE_REVIEW
         type: user_task
         agent: human
         role: review
-        description: "STOP - HUMAN REVIEW — ${phase_label} prototypes"
+        documentation: "STOP - HUMAN REVIEW — ${phase_label} prototypes"
 
       - id: GATE_VERIFY_REAL_REQUIRED
         type: gateway
         binding: verify_real_required
-        description: "Verify against real suite first?"
+        documentation: "Verify against real suite first?"
 
       - id: VERIFY_REAL
         type: service_task
         action: verify_real_suite_passes
-        description: "Verify ${verify_real_suite} passes"
+        documentation: "Verify ${verify_real_suite} passes"
 
       - id: GATE_VERIFY_REAL_PASS
         type: gateway
         binding: verify_real_pass
-        description: "Real suite passes?"
+        documentation: "Real suite passes?"
 
       - id: STOP_VERIFY_REAL_FAIL
         type: user_task
         agent: human
         role: review
-        description: "STOP - HUMAN REVIEW — ${phase_label} real-suite contract problem"
+        documentation: "STOP - HUMAN REVIEW — ${phase_label} real-suite contract problem"
 
       - id: RUN
         type: service_task
         action: run_targeted_tests
-        description: "Run targeted tests"
+        documentation: "Run targeted tests"
 
       - id: GATE_RUN_FAILED_RUNTIME
         type: gateway
         binding: tests_failed_runtime
-        description: "Tests fail at runtime (not compile)?"
+        documentation: "Tests fail at runtime (not compile)?"
 
       - id: STOP_RED_NOT_RUNTIME_FAIL
         type: user_task
         agent: human
         role: review
-        description: "STOP - HUMAN REVIEW — ${phase_label} tests not runtime-failing"
+        documentation: "STOP - HUMAN REVIEW — ${phase_label} tests not runtime-failing"
 
       - id: DISABLE
         type: service_task
         action: disable_change_driven
-        description: "Disable change-driven scenarios"
+        documentation: "Disable change-driven scenarios"
 
       - id: COMMIT
         type: service_task
         action: commit_phase
         params:
           change_type: ${change_type}
-        description: "COMMIT: <Ticket> | ${change_type}"
+        documentation: "COMMIT: <Ticket> | ${change_type}"
 
       - id: RED_END
         type: end_event
@@ -895,7 +895,7 @@ flows:
 
   # ===========================================================================
   # green_phase_cycle
-  # Shared sub-flow for GREEN-phase WRITE work that splits creative WRITE
+  # Shared sub-process for GREEN-phase WRITE work that splits creative WRITE
   # (LLM-required) from mechanical compile / run-test verification
   # (deterministic). Mirrors red_phase_cycle's shape but with success-pass
   # semantics: each gate's "wrong" branch routes to a STOP for human review
@@ -916,8 +916,8 @@ flows:
   #
   # COMMIT does NOT live in green_phase_cycle: AT_GREEN_SYSTEM commits both
   # backend and frontend together at the parent level (the full-stack-as-one-
-  # commit convention). The sub-flow ends after verifying tests pass; the
-  # parent flow owns the commit.
+  # commit convention). The sub-process ends after verifying tests pass; the
+  # parent process owns the commit.
   # ===========================================================================
   green_phase_cycle:
     start: WRITE
@@ -926,39 +926,39 @@ flows:
         type: user_task
         agent: ${agent}
         phase_doc: ${phase_doc}
-        description: "${phase_label} - WRITE"
+        documentation: "${phase_label} - WRITE"
 
       - id: COMPILE
         type: service_task
         action: compile_targeted
-        description: "Compile in scope"
+        documentation: "Compile in scope"
 
       - id: GATE_COMPILE_OK
         type: gateway
         binding: compile_ok
-        description: "Compile passed?"
+        documentation: "Compile passed?"
 
       - id: STOP_GREEN_COMPILE_FAIL
         type: user_task
         agent: human
         role: review
-        description: "STOP - HUMAN REVIEW — ${phase_label} compile failed"
+        documentation: "STOP - HUMAN REVIEW — ${phase_label} compile failed"
 
       - id: RUN
         type: service_task
         action: run_targeted_tests
-        description: "Run targeted tests against ${suite}"
+        documentation: "Run targeted tests against ${suite}"
 
       - id: GATE_TESTS_PASS
         type: gateway
         binding: tests_pass
-        description: "All tests passed?"
+        documentation: "All tests passed?"
 
       - id: STOP_GREEN_TEST_FAIL
         type: user_task
         agent: human
         role: review
-        description: "STOP - HUMAN REVIEW — ${phase_label} tests failed"
+        documentation: "STOP - HUMAN REVIEW — ${phase_label} tests failed"
 
       - id: GREEN_END
         type: end_event
@@ -992,11 +992,11 @@ flows:
       - id: GATE_CHANGE_TYPE_DA
         type: gateway
         binding: change_type
-        description: "System or external-system interface?"
+        documentation: "System or external-system interface?"
 
       - id: SYSTEM_INTERFACE_REDESIGN_CYCLE
         type: call_activity
-        flow: structural_cycle
+        process: structural_cycle
         params:
           change_type: "SYSTEM INTERFACE REDESIGN"
           agent: atdd-task
@@ -1005,7 +1005,7 @@ flows:
 
       - id: EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE
         type: call_activity
-        flow: ct_subprocess
+        process: ct_subprocess
 
       - id: DA_END
         type: end_event
@@ -1027,7 +1027,7 @@ flows:
     nodes:
       - id: CHORE_CYCLE
         type: call_activity
-        flow: structural_cycle
+        process: structural_cycle
         params:
           change_type: CHORE
           agent: atdd-chore
@@ -1045,7 +1045,7 @@ flows:
   # TBD") and process-audit gap on Legacy Acceptance Criteria Cycle interim spec.
   # The placeholder is a single human-review STOP so the runtime can dispatch
   # something sensible until the spec lands; replace once cycles.md fills the
-  # internal flow.
+  # internal process.
   # ===========================================================================
   legacy_acceptance_criteria:
     start: LEGACY_TBD
@@ -1054,7 +1054,7 @@ flows:
         type: user_task
         agent: human
         role: review
-        description: "STOP - HUMAN REVIEW — Legacy Acceptance Criteria Cycle TBD"
+        documentation: "STOP - HUMAN REVIEW — Legacy Acceptance Criteria Cycle TBD"
 
       - id: LEGACY_END
         type: end_event

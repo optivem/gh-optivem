@@ -39,17 +39,17 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 	// start/end events are routing scaffolding, not "steps the runner
 	// executes", so they're excluded.
 	var history []string
-	for _, flow := range eng.Flows {
-		for id, node := range flow.Nodes {
+	for _, process := range eng.Processes {
+		for id, node := range process.Nodes {
 			if node.Kind != ServiceTask && node.Kind != UserTask {
 				continue
 			}
-			id, inner := id, node.Fn
+			label, inner := node.Label(), node.Fn
 			node.Fn = func(ctx *Context) Outcome {
-				history = append(history, id)
+				history = append(history, label)
 				return inner(ctx)
 			}
-			flow.Nodes[id] = node
+			process.Nodes[id] = node
 		}
 	}
 
@@ -59,7 +59,7 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 	// subtype are kept around so the gates' Context-first short-circuit
 	// works for the upstream intake nodes; ticket_type_recognized +
 	// parse_ok pass intake; structural_test_mode picks the TEST gate.
-	eng.Flows["main"].Start = "MOVE_TO_IN_PROGRESS"
+	eng.Processes["main"].Start = "MOVE_TO_IN_PROGRESS"
 	ctx := NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("subtype", "system-interface-redesign")
@@ -77,8 +77,8 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 	ctx.Set("structural_verify_outcome", "ok")
 
 	// ── ACT ─────────────────────────────────────────────────────────────
-	if err := eng.RunFlow("main", ctx); err != nil {
-		t.Fatalf("RunFlow main: %v", err)
+	if err := eng.RunProcess("main", ctx); err != nil {
+		t.Fatalf("RunProcess main: %v", err)
 	}
 
 	// ── ASSERT ──────────────────────────────────────────────────────────

@@ -76,7 +76,7 @@ func (f *fakeGit) Run(_ context.Context, _ string, args ...string) ([]byte, erro
 // START → user_task → END. Nothing in the engine cares about the surrounding
 // edges or descriptions, but they're spelled out so the YAML parses cleanly.
 const minimalYAML = `
-flows:
+processes:
   main:
     start: START
     nodes:
@@ -85,7 +85,7 @@ flows:
       - id: AT_RED_TEST
         type: user_task
         agent: atdd-test
-        description: Write the AT-RED scenario
+        documentation: Write the AT-RED scenario
         phase_doc: docs/atdd/process/at-red-test.md
       - id: END
         type: end_event
@@ -100,7 +100,7 @@ flows:
 // call_activity. The dispatcher must expand these before printing them or
 // passing them to clauderun.
 const templatedYAML = `
-flows:
+processes:
   main:
     start: START
     nodes:
@@ -109,7 +109,7 @@ flows:
       - id: STRUCT_WRITE
         type: user_task
         agent: ${agent}
-        description: ${change_type} - WRITE
+        documentation: ${change_type} - WRITE
         phase_doc: ${phase_doc}
       - id: END
         type: end_event
@@ -143,7 +143,7 @@ func buildEngineFrom(t *testing.T, opts Options, yamlSrc, nodeID string) statema
 		t.Fatalf("Bind: %v", err)
 	}
 	wrapAgentDispatchers(eng, opts, nil)
-	return eng.Flows["main"].Nodes[nodeID].Fn
+	return eng.Processes["main"].Nodes[nodeID].Fn
 }
 
 func newDriverOpts(deps clauderun.Deps) Options {
@@ -628,7 +628,7 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 		t.Fatalf("Bind: %v", err)
 	}
 	wrapAgentDispatchers(eng, opts, rs)
-	fn := eng.Flows["main"].Nodes["AT_RED_TEST"].Fn
+	fn := eng.Processes["main"].Nodes["AT_RED_TEST"].Fn
 
 	out := fn(sCtx)
 	if out.Err != nil {
