@@ -234,21 +234,30 @@ Concretely:
 
 The refactor pass, the tree-sitter implementation file, the TS wiring
 swap (with TS regex closures dropped), the new shape-coverage fixture
-tests, and the index benchmark have landed. Parity must still be
-verified in CI (this machine has no C compiler so `go test` was not
-run locally — CI compiles with CGo + zig). Remaining steps:
+tests, and the index benchmark have landed on `main`. Parity in CI
+(CGo + zig) is implied by the green build but the live behavioural
+gates remain. Java and C# follow-up plans have been authored:
+`plans/deferred/20260507-100400-tree-sitter-java-migration.md` and
+`plans/deferred/20260507-100500-tree-sitter-csharp-migration.md`.
+Both are deferred behind the gates below.
 
-1. Build the branch via `scripts/install.sh`. Run a real shop WRITE
-   cycle that previously hit the `inputSku` failure with
-   `ATDD_VERIFY_VERBOSE=1`. Confirm the tracer succeeds with one
-   selection per channel, no `WARNING: tracer could not stage`.
-2. Validate Windows binaries are self-contained. After the next CI
-   release (or on-demand snapshot run), download the Windows
-   binary and confirm it runs on a stock Windows machine (no
-   `libwinpthread-1.dll` etc. errors). The current
-   `.goreleaser.yml` adds `-extldflags=-static` for `windows`
-   targets via a Go template, which should statically link MinGW
-   runtime; this step verifies the assumption holds.
-3. Merge. Java and C# slices unblocked at this point — open separate
-   plans (reuse the same binding, add `tree-sitter-java` and
-   `tree-sitter-c-sharp` as additional deps).
+Remaining items:
+
+- [ ] Step 1: Build the branch via `scripts/install.sh`. Run a real
+  shop WRITE cycle that previously hit the `inputSku` failure with
+  `ATDD_VERIFY_VERBOSE=1`. Confirm the tracer succeeds with one
+  selection per channel, no `WARNING: tracer could not stage`. — ⏳
+  Deferred: requires a zig-equipped dev box (this machine has no C
+  compiler) plus access to the shop scenario; fires on the next time
+  someone runs the verify cycle on a tree-sitter-eligible WRITE.
+- [ ] Step 2: Validate Windows binaries are self-contained. After
+  the next CI release (or an on-demand snapshot run), download the
+  Windows binary and confirm it runs on a stock Windows machine
+  (no `libwinpthread-1.dll` etc. errors). The current
+  `.goreleaser.yml` adds `-extldflags=-static` for `windows`
+  targets via a Go template, which should statically link MinGW
+  runtime; this step verifies the assumption holds. — ⏳ Deferred:
+  fires on the next goreleaser release.
+
+When **both** of the above pass, this plan can be deleted and the
+Java / C# deferred plans can be moved back to `plans/`.
