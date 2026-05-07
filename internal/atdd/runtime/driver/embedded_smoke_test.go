@@ -180,7 +180,7 @@ func TestEmbeddedDriver_RunBypassesConsumerScaffolding(t *testing.T) {
 	// The point is to assert Run() doesn't reach for consumer files
 	// during its setup (engine-load, register, bind, wrap).
 	yaml := `
-flows:
+processes:
   main:
     start: STOP
     nodes:
