@@ -116,7 +116,7 @@ flowchart TD
     AT_GREEN_SYSTEM[AT_GREEN_SYSTEM — see § AT - GREEN - SYSTEM]
     AT_RED_DSL[AT - RED - DSL]
     AT_RED_SYSTEM_DRIVER[AT - RED - SYSTEM DRIVER]
-    AT_RED_TEST[AT - RED - TEST]
+    AT_RED_TEST[AT - RED - TEST — see § red_phase_cycle]
     CT_SUBPROCESS[CT_SUBPROCESS — see § Contract Test Sub-Process]
     GATE_DSL_AT{DSL Interface Changed?}
     GATE_EXT_AT{External System Driver Interface Changed?}
@@ -140,7 +140,7 @@ flowchart TD
     class VERIFY_AT_DRIVER serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
-    class AT_RED_DSL,AT_RED_SYSTEM_DRIVER,AT_RED_TEST agentNode
+    class AT_RED_DSL,AT_RED_SYSTEM_DRIVER agentNode
 ```
 
 ## AT - GREEN - SYSTEM
@@ -302,6 +302,47 @@ flowchart TD
     GATE_CHANGE_TYPE_DA -- external-system-interface-redesign --> EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE
     SYSTEM_INTERFACE_REDESIGN_CYCLE --> DA_END
     EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE --> DA_END
+```
+
+## red_phase_cycle
+
+```mermaid
+flowchart TD
+    COMMIT[["COMMIT: <Ticket> | ${change_type}"]]
+    COMPILE[[Compile in scope]]
+    DISABLE[[Disable change-driven scenarios]]
+    GATE_COMPILE_OK{Compile passed?}
+    GATE_RUN_FAILED_RUNTIME{"Tests fail at runtime (not compile)?"}
+    RED_END((End))
+    RUN[[Run targeted tests]]
+    STOP_DSL_PROTOTYPE_REVIEW["STOP - HUMAN REVIEW — ${phase_label} DSL prototypes"]
+    STOP_RED_NOT_RUNTIME_FAIL["STOP - HUMAN REVIEW — ${phase_label} tests not runtime-failing"]
+    STOP_RED_REVIEW["STOP - HUMAN REVIEW — ${phase_label} tests"]
+    WRITE["${phase_label} - WRITE"]
+    WRITE_DSL_PROTOTYPES["${phase_label} - DSL PROTOTYPES"]
+
+    WRITE --> STOP_RED_REVIEW
+    STOP_RED_REVIEW --> COMPILE
+    COMPILE --> GATE_COMPILE_OK
+    GATE_COMPILE_OK -- No --> WRITE_DSL_PROTOTYPES
+    GATE_COMPILE_OK -- Yes --> RUN
+    WRITE_DSL_PROTOTYPES --> STOP_DSL_PROTOTYPE_REVIEW
+    STOP_DSL_PROTOTYPE_REVIEW --> COMPILE
+    RUN --> GATE_RUN_FAILED_RUNTIME
+    GATE_RUN_FAILED_RUNTIME -- Yes --> DISABLE
+    GATE_RUN_FAILED_RUNTIME -- No --> STOP_RED_NOT_RUNTIME_FAIL
+    STOP_RED_NOT_RUNTIME_FAIL --> WRITE
+    DISABLE --> COMMIT
+    COMMIT --> RED_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class COMMIT,COMPILE,DISABLE,RUN serviceNode
+
+    classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
+    class WRITE,WRITE_DSL_PROTOTYPES agentNode
+
+    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
+    class STOP_DSL_PROTOTYPE_REVIEW,STOP_RED_NOT_RUNTIME_FAIL,STOP_RED_REVIEW humanNode
 ```
 
 ## SUT Cycle
