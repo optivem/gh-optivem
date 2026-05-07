@@ -1029,6 +1029,7 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"compile_targeted",
 		"run_targeted_tests",
 		"disable_change_driven",
+		"enable_change_driven",
 		"verify_real_suite_passes",
 	}
 	for _, name := range want {
@@ -1941,6 +1942,186 @@ func TestDisableChangeDriven_FirstFailureHaltsRun(t *testing.T) {
 	}
 	if len(sh.calls) != 1 {
 		t.Fatalf("got %d calls, want 1 (must halt on first failure): %v", len(sh.calls), sh.calls)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// enableChangeDriven — inverse of disableChangeDriven, used by AT GREEN to
+// re-enable tests that the prior RED phase disabled.
+// ---------------------------------------------------------------------------
+
+func TestEnableChangeDriven_RequiresAllInputs(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		setup      func(*statemachine.Context)
+		wantSubstr string
+	}{
+		{name: "no_language", setup: func(ctx *statemachine.Context) {}, wantSubstr: "language"},
+		{name: "no_reason", setup: func(ctx *statemachine.Context) {
+			ctx.Set("language", "java")
+		}, wantSubstr: "disable_reason"},
+		{name: "no_targets", setup: func(ctx *statemachine.Context) {
+			ctx.Set("language", "java")
+			ctx.Set("disable_reason", "AT - RED - SYSTEM DRIVER")
+		}, wantSubstr: "disable_targets"},
+		{name: "targets_wrong_type", setup: func(ctx *statemachine.Context) {
+			ctx.Set("language", "java")
+			ctx.Set("disable_reason", "AT - RED - SYSTEM DRIVER")
+			ctx.State["disable_targets"] = "not-a-slice"
+		}, wantSubstr: "[]string"},
+		{name: "targets_empty", setup: func(ctx *statemachine.Context) {
+			ctx.Set("language", "java")
+			ctx.Set("disable_reason", "AT - RED - SYSTEM DRIVER")
+			ctx.State["disable_targets"] = []string{}
+		}, wantSubstr: "empty"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newActions(Deps{})
+			ctx := statemachine.NewContext()
+			tc.setup(ctx)
+			out := a.enableChangeDriven(ctx)
+			if out.Err == nil {
+				t.Fatalf("expected error")
+			}
+			if !strings.Contains(out.Err.Error(), tc.wantSubstr) {
+				t.Fatalf("error %v does not mention %q", out.Err, tc.wantSubstr)
+			}
+		})
+	}
+}
+
+func TestEnableChangeDriven_ShellsOncePerTarget(t *testing.T) {
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+		{out: []byte("ok")},
+		{out: []byte("ok")},
+	}}
+	a := newActions(Deps{Shell: sh})
+	ctx := statemachine.NewContext()
+	ctx.Set("language", "java")
+	ctx.Set("disable_reason", "AT - RED - SYSTEM DRIVER")
+	ctx.State["disable_targets"] = []string{
+		"src/test/java/A.java:shouldFooSucceed",
+		"src/test/java/B.java:shouldBarSucceed",
+	}
+	out := a.enableChangeDriven(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	want := []string{
+		"./enable-test.sh java 'AT - RED - SYSTEM DRIVER' src/test/java/A.java:shouldFooSucceed",
+		"./enable-test.sh java 'AT - RED - SYSTEM DRIVER' src/test/java/B.java:shouldBarSucceed",
+	}
+	if len(sh.calls) != len(want) {
+		t.Fatalf("got %d calls, want %d: %v", len(sh.calls), len(want), sh.calls)
+	}
+	for i, w := range want {
+		if sh.calls[i] != w {
+			t.Errorf("call[%d]: got %q, want %q", i, sh.calls[i], w)
+		}
+	}
+}
+
+func TestEnableChangeDriven_FirstFailureHaltsRun(t *testing.T) {
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+		{out: []byte("could not parse"), err: errors.New("exit 2")},
+	}}
+	a := newActions(Deps{Shell: sh})
+	ctx := statemachine.NewContext()
+	ctx.Set("language", "typescript")
+	ctx.Set("disable_reason", "AT - RED - SYSTEM DRIVER")
+	ctx.State["disable_targets"] = []string{
+		"system-test/typescript/A.spec.ts:should_foo",
+		"system-test/typescript/B.spec.ts:should_bar",
+	}
+	out := a.enableChangeDriven(ctx)
+	if out.Err == nil {
+		t.Fatalf("expected error on first-target failure")
+	}
+	if !strings.Contains(out.Err.Error(), "A.spec.ts:should_foo") {
+		t.Fatalf("error should name the failing target: %v", out.Err)
+	}
+	if len(sh.calls) != 1 {
+		t.Fatalf("got %d calls, want 1 (must halt on first failure)", len(sh.calls))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// runTargetedTests — green-phase additions: tests_pass write, rebuild flag
+// ---------------------------------------------------------------------------
+
+func TestRunTargetedTests_AllPassWritesTestsPassTrue(t *testing.T) {
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+		{out: []byte("OK"), err: nil},
+		{out: []byte("OK"), err: nil},
+	}}
+	a := newActions(Deps{Shell: sh})
+	ctx := statemachine.NewContext()
+	ctx.Set("suite", "<acceptance-api>")
+	ctx.State["test_names"] = []string{"a", "b"}
+	out := a.runTargetedTests(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if got := ctx.Get("tests_pass"); got != true {
+		t.Fatalf("tests_pass: got %v, want true", got)
+	}
+	if got := ctx.Get("tests_failed_runtime"); got != false {
+		t.Fatalf("tests_failed_runtime: got %v, want false", got)
+	}
+}
+
+func TestRunTargetedTests_AnyFailureWritesTestsPassFalse(t *testing.T) {
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+		{out: []byte("OK"), err: nil},
+		{out: []byte("AssertionError"), err: errors.New("exit 1")},
+	}}
+	a := newActions(Deps{Shell: sh})
+	ctx := statemachine.NewContext()
+	ctx.Set("suite", "<acceptance-api>")
+	ctx.State["test_names"] = []string{"a", "b"}
+	out := a.runTargetedTests(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if got := ctx.Get("tests_pass"); got != false {
+		t.Fatalf("tests_pass: got %v, want false (any failure must demote)", got)
+	}
+}
+
+func TestRunTargetedTests_RebuildParamPassesFlag(t *testing.T) {
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+		{out: []byte("OK"), err: nil},
+	}}
+	a := newActions(Deps{Shell: sh})
+	ctx := statemachine.NewContext()
+	ctx.Set("suite", "<acceptance-api>")
+	ctx.State["test_names"] = []string{"x"}
+	ctx.Params["rebuild_before_run"] = "true"
+	out := a.runTargetedTests(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	want := "gh optivem test system --rebuild --suite '<acceptance-api>' --test x"
+	if len(sh.calls) != 1 || sh.calls[0] != want {
+		t.Fatalf("got %v, want %q", sh.calls, want)
+	}
+}
+
+func TestRunTargetedTests_NoRebuildParamOmitsFlag(t *testing.T) {
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+		{out: []byte("OK"), err: nil},
+	}}
+	a := newActions(Deps{Shell: sh})
+	ctx := statemachine.NewContext()
+	ctx.Set("suite", "<acceptance-api>")
+	ctx.State["test_names"] = []string{"x"}
+	out := a.runTargetedTests(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	want := "gh optivem test system --suite '<acceptance-api>' --test x"
+	if len(sh.calls) != 1 || sh.calls[0] != want {
+		t.Fatalf("got %v, want %q", sh.calls, want)
 	}
 }
 

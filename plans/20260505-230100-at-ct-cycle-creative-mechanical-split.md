@@ -164,18 +164,16 @@ Same shrink applies to `atdd-dsl`, `atdd-driver` and the other RED-phase agents.
 
 ## Sequencing
 
-This refactor is too large for a single commit. Suggested split:
+Remaining work:
 
-1. **Reassess `at_green_system`'s `ATDD_BACKEND` / `ATDD_FRONTEND`** — likely benefit from the same split but evaluate after the RED phases settle. Out of scope until then.
-2. **Reassess `CT_GREEN_STUBS`** — currently has a TBD agent (`atdd-stubs`); fold ownership decision into this work.
-
-Each step is a separate commit and is independently mergeable.
+1. - [ ] **Reassess `CT_GREEN_STUBS`** — currently has a TBD agent (`atdd-stubs`); fold ownership decision into this work. — ⏳ Deferred: revisit when a stubs phase doc is being written; no owner picked yet.
 
 Already landed:
 - Infrastructure step: actions `compile_targeted`, `run_targeted_tests`, `disable_change_driven`; gate bindings `compile_ok`, `tests_failed_runtime`; structured context keys.
 - `red_phase_cycle` shared sub-flow + `AT_RED_TEST` migrated to `call_activity` with params (agent=atdd-test, phase_doc=at-red-test.md, phase_label="AT - RED - TEST", change_type="AT - RED - TEST"). The compile-failure dispatch reuses the same `${agent}` with description `"${phase_label} - PROTOTYPES"` so the agent distinguishes via `${phase}`. Tests on the new flow's transitions added; `atdd-test` prompt shrunk to WRITE + PROTOTYPES only (no compile/run/disable/commit).
 - `AT_RED_DSL` and `AT_RED_SYSTEM_DRIVER` migrated to `call_activity: red_phase_cycle` with phase-specific params. `atdd-dsl` and `atdd-driver` prompts shrunk to creative WRITE + (rare) PROTOTYPES dispatches; their embedded `at-red-dsl.md` / `at-red-system-driver.md` phase docs rewritten to mirror `at-red-test.md`'s orchestrator-aware shape. The shared sub-flow's `WRITE_DSL_PROTOTYPES` / `STOP_DSL_PROTOTYPE_REVIEW` nodes were renamed to `WRITE_PROTOTYPES` / `STOP_PROTOTYPE_REVIEW` (description `"${phase_label} - PROTOTYPES"`) because for AT_RED_DSL the prototypes are Driver TODOs, not DSL — the generic name fits all callers.
 - `CT_RED_TEST`, `CT_RED_DSL`, `CT_RED_EXTERNAL_DRIVER` migrated to `call_activity: red_phase_cycle` with phase-specific params. CT-specific real-vs-stub verification implemented as an optional `verify_real_suite` param on the shared sub-flow rather than a CT wrapper — when set (CT_RED_TEST passes `<suite-contract-real>`), the orchestrator inserts `VERIFY_REAL` + `GATE_VERIFY_REAL_PASS` between COMPILE and RUN; when unset (AT phases, CT_RED_DSL, CT_RED_EXTERNAL_DRIVER), the gate routes straight through. New gate bindings `verify_real_required` (param-only, no prompt) and `verify_real_pass`, plus action `verify_real_suite_passes`, wired in. The CT phase docs in the `atdd-test`/`atdd-dsl`/`atdd-driver` prompts were rewritten to mirror the AT shape (WRITE + PROTOTYPES dispatches, no inner-cycle compile/run/disable/commit), and the prompt headers no longer carry the "CT has not yet been migrated" caveat.
+- `at_green_system` decomposed (ATDD_BACKEND/ATDD_FRONTEND/STOP/ATDD_RELEASE → ENABLE_TESTS service_task → AT_GREEN_BACKEND/AT_GREEN_FRONTEND `call_activity: green_phase_cycle` per channel → STOP_GREEN_REVIEW → COMMIT_GREEN/TICK/MOVE_TO_IN_ACCEPTANCE service_tasks). New shared `green_phase_cycle` sub-flow mirrors `red_phase_cycle`'s shape with success-pass semantics: WRITE → COMPILE → GATE_COMPILE_OK (false → STOP_GREEN_COMPILE_FAIL → loop back to WRITE; true → RUN) → GATE_TESTS_PASS (true → END; false → STOP_GREEN_TEST_FAIL → loop back to WRITE). New action `enable_change_driven` (mirror of `disable_change_driven`); new gate binding `tests_pass`; `run_targeted_tests` extended to write `tests_pass` flag and read optional `rebuild_before_run` call_activity param (AT GREEN passes `--rebuild`). `atdd-backend` and `atdd-frontend` prompts shrunk to creative WRITE only; embedded `at-green-system.md` reference rewritten to the orchestrator-aware shape used by AT - RED - TEST. The legacy `atdd-release` agent and prompt deleted — its responsibilities (commit, tick checklist, move to IN ACCEPTANCE) are now the existing service_tasks invoked by the parent flow.
 
 ## Verification
 

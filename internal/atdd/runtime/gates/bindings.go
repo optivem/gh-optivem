@@ -109,6 +109,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	// AT_RED_TEST through the shared sub-flow that will use them.
 	r.Register("compile_ok", b.compileOK)
 	r.Register("tests_failed_runtime", b.testsFailedRuntime)
+	r.Register("tests_pass", b.testsPass)
 	// Optional CT real-vs-stub verification (per AT/CT split plan): gates the
 	// pre-RUN verification step. `verify_real_required` reads the
 	// `verify_real_suite` call_activity param (set only by CT_RED_TEST today),
@@ -416,6 +417,17 @@ func (b bindings) testsFailedRuntime(ctx *statemachine.Context) statemachine.Out
 	return b.boolGate(ctx,
 		"tests_failed_runtime",
 		"Tests failed at runtime (not compile)? [Y/n]: ")
+}
+
+// testsPass reads the `tests_pass` flag set by run_targeted_tests. true →
+// every test in the run passed, route to GREEN_END; false → at least one
+// failed (compile or runtime), route to STOP_GREEN_TEST_FAIL so the human
+// can review before the agent re-dispatches. Used by green_phase_cycle.
+// Falls back to a prompt for hand-debugging.
+func (b bindings) testsPass(ctx *statemachine.Context) statemachine.Outcome {
+	return b.boolGate(ctx,
+		"tests_pass",
+		"All tests passed? [Y/n]: ")
 }
 
 // verifyRealRequired routes the optional "verify against real suite" branch

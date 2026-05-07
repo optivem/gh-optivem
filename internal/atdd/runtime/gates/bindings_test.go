@@ -510,6 +510,7 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"structural_test_mode",
 		"compile_ok",
 		"tests_failed_runtime",
+		"tests_pass",
 		"verify_real_required",
 		"verify_real_pass",
 		"structural_verify_outcome",
@@ -583,6 +584,38 @@ func TestTestsFailedRuntime_ReadsContext(t *testing.T) {
 	}
 	if len(p.asked) != 0 {
 		t.Fatalf("Ask was called %d times, expected 0", len(p.asked))
+	}
+}
+
+func TestTestsPass_ReadsContext(t *testing.T) {
+	p := &fakePrompter{}
+	b := newBindings(t, Deps{Prompter: p})
+	ctx := statemachine.NewContext()
+	ctx.Set("tests_pass", true)
+	out := b.testsPass(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if !out.Bool {
+		t.Fatalf("Bool: got false, want true")
+	}
+	if len(p.asked) != 0 {
+		t.Fatalf("Ask was called %d times, expected 0", len(p.asked))
+	}
+}
+
+func TestTestsPass_PromptFallback(t *testing.T) {
+	p := &fakePrompter{answers: []string{"y"}}
+	b := newBindings(t, Deps{Prompter: p})
+	out := b.testsPass(statemachine.NewContext())
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if !out.Bool {
+		t.Fatalf("Bool: got false, want true")
+	}
+	if len(p.asked) != 1 {
+		t.Fatalf("Ask was called %d times, expected 1", len(p.asked))
 	}
 }
 

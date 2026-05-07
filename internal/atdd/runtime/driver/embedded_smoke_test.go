@@ -88,16 +88,19 @@ func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 }
 
 // TestEmbeddedDispatch_RunsInConsumerEmptyDir walks a real production
-// user_task (ATDD_BACKEND in the embedded `at_green_system` flow)
+// user_task (FIX_STRUCT_VERIFY in the embedded `structural_cycle` flow)
 // against the fake clauderun + git pair, with RepoPath set to a temp
 // dir that contains no consumer-side scaffolding. Asserts the dispatch
-// completes and the rendered prompt is the embedded atdd-backend body —
+// completes and the rendered prompt is the embedded atdd-fix-verify body —
 // proves the dispatcher reaches the embedded prompt without any
 // consumer-file dependency.
 //
 // AT_RED_TEST was the original target; after the AT/CT creative-vs-
 // mechanical split, every RED-phase node in at_cycle is a call_activity
-// into red_phase_cycle, so a sibling user_task is used here. Any
+// into red_phase_cycle, and the AT_GREEN_SYSTEM phase's backend/frontend
+// nodes are now call_activities into green_phase_cycle. The remaining
+// statically-bound user_tasks live inside structural_cycle (and the
+// deferred CT stubs node), so FIX_STRUCT_VERIFY is used here. Any
 // embedded user_task with a static (non-templated) agent will do.
 func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 	tempDir := t.TempDir()
@@ -131,13 +134,13 @@ func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 	}
 	wrapAgentDispatchers(eng, opts, nil)
 
-	flow, ok := eng.Flows["at_green_system"]
+	flow, ok := eng.Flows["structural_cycle"]
 	if !ok {
-		t.Fatal("embedded YAML missing at_green_system flow")
+		t.Fatal("embedded YAML missing structural_cycle flow")
 	}
-	node, ok := flow.Nodes["ATDD_BACKEND"]
+	node, ok := flow.Nodes["FIX_STRUCT_VERIFY"]
 	if !ok {
-		t.Fatal("at_green_system flow missing ATDD_BACKEND node")
+		t.Fatal("structural_cycle flow missing FIX_STRUCT_VERIFY node")
 	}
 
 	out := node.Fn(newCtxWithIssue())
@@ -148,7 +151,7 @@ func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 		t.Fatalf("expected 1 claude call, got %d", len(claudeFake.calls))
 	}
 	prompt := claudeFake.calls[0].Prompt
-	if !strings.Contains(prompt, "You are the Backend Agent") {
+	if !strings.Contains(prompt, "You are the Fix-Verify Agent") {
 		t.Errorf("dispatched prompt missing embedded-prompt sentinel; consumer-side fallback may have leaked in")
 	}
 }

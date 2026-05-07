@@ -141,6 +141,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("compile_targeted", a.compileTargeted)
 	r.Register("run_targeted_tests", a.runTargetedTests)
 	r.Register("disable_change_driven", a.disableChangeDriven)
+	r.Register("enable_change_driven", a.enableChangeDriven)
 	// Optional CT real-vs-stub verification (per AT/CT split plan): runs the
 	// suite named in the `verify_real_suite` call_activity param against the
 	// just-written tests and asserts every one passes. Driven by the
@@ -191,6 +192,11 @@ const (
 	// record that every observed failure was a runtime failure (not
 	// compile). Read by the tests_failed_runtime gate.
 	CtxKeyTestsFailedRuntime = "tests_failed_runtime"
+
+	// CtxKeyTestsPass is the bool run_targeted_tests writes to record
+	// whether every test in the run passed. Read by the tests_pass gate
+	// (green_phase_cycle's success-or-loop signal).
+	CtxKeyTestsPass = "tests_pass"
 
 	// CtxKeyVerifyRealPass is the bool verify_real_suite_passes writes to
 	// record whether every test passed against the suite named in the
@@ -863,17 +869,24 @@ func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcom
 		return statemachine.Outcome{Err: fmt.Errorf("run_targeted_tests: %s is empty", CtxKeyTestNames)}
 	}
 
+	rebuildFlag := ""
+	if strings.EqualFold(strings.TrimSpace(ctx.Params["rebuild_before_run"]), "true") {
+		rebuildFlag = "--rebuild "
+	}
+
 	runtimeFailures := 0
 	compileFailures := 0
+	passed := 0
 	for _, name := range names {
-		cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s",
-			shellEscape(suite), shellEscape(name))
+		cmd := fmt.Sprintf("gh optivem test system %s--suite %s --test %s",
+			rebuildFlag, shellEscape(suite), shellEscape(name))
 		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
 		out, err := a.deps.Shell.Run(context.Background(), cmd)
 		if len(out) > 0 {
 			fmt.Fprintln(a.deps.Stdout, string(out))
 		}
 		if err == nil {
+			passed++
 			continue
 		}
 		if isCompileFailureOutput(out) {
@@ -885,6 +898,8 @@ func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcom
 
 	failedRuntime := compileFailures == 0 && runtimeFailures > 0
 	ctx.Set(CtxKeyTestsFailedRuntime, failedRuntime)
+	allPass := compileFailures == 0 && runtimeFailures == 0 && passed == len(names)
+	ctx.Set(CtxKeyTestsPass, allPass)
 	return statemachine.Outcome{Bool: failedRuntime}
 }
 
@@ -958,6 +973,56 @@ func (a actions) disableChangeDriven(ctx *statemachine.Context) statemachine.Out
 		}
 		if err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven (%s): %w", target, err)}
+		}
+	}
+	return statemachine.Outcome{}
+}
+
+// enableChangeDriven inverts disableChangeDriven: it removes the
+// per-language disable markup matching `reason` from the same change-driven
+// test methods. v1 shells out to ./enable-test.sh once per target — the
+// script owns the per-language edit syntax (mirroring disable-test.sh).
+// Used at the start of green_phase_cycle's parent flow (at_green_system) to
+// re-enable tests that the prior RED phase disabled.
+//
+// Reads:
+//   - CtxKeyLanguage (string)        — required; java | csharp | typescript
+//   - CtxKeyDisableReason (string)   — required; the reason whose markers
+//     this run is removing (e.g. "AT - RED - SYSTEM DRIVER")
+//   - CtxKeyDisableTargets ([]string) — required; one entry per test,
+//     formatted "<file>:<method>"
+//
+// First failure halts the action with Outcome.Err — committing a partially
+// re-enabled test set would leave the repo in an inconsistent state.
+func (a actions) enableChangeDriven(ctx *statemachine.Context) statemachine.Outcome {
+	lang := ctx.GetString(CtxKeyLanguage)
+	if lang == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("enable_change_driven: %s not set in Context", CtxKeyLanguage)}
+	}
+	reason := ctx.GetString(CtxKeyDisableReason)
+	if reason == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("enable_change_driven: %s not set in Context", CtxKeyDisableReason)}
+	}
+	rawTargets, ok := ctx.State[CtxKeyDisableTargets]
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("enable_change_driven: %s not set in Context", CtxKeyDisableTargets)}
+	}
+	targets, ok := rawTargets.([]string)
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("enable_change_driven: %s is %T, want []string", CtxKeyDisableTargets, rawTargets)}
+	}
+	if len(targets) == 0 {
+		return statemachine.Outcome{Err: fmt.Errorf("enable_change_driven: %s is empty", CtxKeyDisableTargets)}
+	}
+	for _, target := range targets {
+		cmd := fmt.Sprintf("./enable-test.sh %s %s %s",
+			shellEscape(lang), shellEscape(reason), shellEscape(target))
+		out, err := a.deps.Shell.Run(context.Background(), cmd)
+		if len(out) > 0 {
+			fmt.Fprintln(a.deps.Stdout, string(out))
+		}
+		if err != nil {
+			return statemachine.Outcome{Err: fmt.Errorf("enable_change_driven (%s): %w", target, err)}
 		}
 	}
 	return statemachine.Outcome{}

@@ -393,24 +393,41 @@ flows:
 
   # ===========================================================================
   # at_green_system
-  # AT - GREEN - SYSTEM — backend + frontend WRITE, human review, release COMMIT.
-  # Per cycles.md "Phase-to-Agent Mapping": atdd-backend handles API channel,
-  # atdd-frontend handles UI channel, the orchestrator owns REVIEW STOP, and
-  # atdd-release runs the COMMIT step.
+  # AT - GREEN - SYSTEM — re-enable disabled tests, then write backend +
+  # frontend implementation through the shared green_phase_cycle (one
+  # call_activity per channel), human review, and a fully mechanical
+  # COMMIT / TICK / MOVE-TO-IN-ACCEPTANCE tail. Per the AT/CT split plan,
+  # the legacy `atdd-release` agent is replaced by the existing service_task
+  # actions commit_phase, tick_checklist, and move_to_in_acceptance.
   # ===========================================================================
   at_green_system:
-    start: ATDD_BACKEND
+    start: ENABLE_TESTS
     nodes:
-      - id: ATDD_BACKEND
-        type: user_task
-        agent: atdd-backend
-        phase_doc: docs/atdd/process/at-green-system.md
+      - id: ENABLE_TESTS
+        type: service_task
+        action: enable_change_driven
+        description: "Re-enable tests disabled in AT - RED - SYSTEM DRIVER"
+
+      - id: AT_GREEN_BACKEND
+        type: call_activity
+        flow: green_phase_cycle
+        params:
+          agent: atdd-backend
+          phase_doc: docs/atdd/process/at-green-system.md
+          phase_label: "AT - GREEN - SYSTEM (backend)"
+          suite: "<acceptance-api>"
+          rebuild_before_run: "true"
         description: "AT - GREEN - SYSTEM - WRITE (backend)"
 
-      - id: ATDD_FRONTEND
-        type: user_task
-        agent: atdd-frontend
-        phase_doc: docs/atdd/process/at-green-system.md
+      - id: AT_GREEN_FRONTEND
+        type: call_activity
+        flow: green_phase_cycle
+        params:
+          agent: atdd-frontend
+          phase_doc: docs/atdd/process/at-green-system.md
+          phase_label: "AT - GREEN - SYSTEM (frontend)"
+          suite: "<acceptance-ui>"
+          rebuild_before_run: "true"
         description: "AT - GREEN - SYSTEM - WRITE (frontend)"
 
       - id: STOP_GREEN_REVIEW
@@ -419,20 +436,34 @@ flows:
         role: review
         description: "STOP - HUMAN REVIEW — approve implementation"
 
-      - id: ATDD_RELEASE
-        type: user_task
-        agent: atdd-release
-        phase_doc: docs/atdd/process/at-green-system.md
-        description: "AT - GREEN - SYSTEM - COMMIT (atdd-release)"
+      - id: COMMIT_GREEN
+        type: service_task
+        action: commit_phase
+        params:
+          change_type: "AT - GREEN - SYSTEM"
+        description: "COMMIT: <Ticket> | AT - GREEN - SYSTEM"
+
+      - id: TICK
+        type: service_task
+        action: tick_checklist
+        description: "Tick acceptance-criteria checklist items"
+
+      - id: MOVE_TO_IN_ACCEPTANCE
+        type: service_task
+        action: move_to_in_acceptance
+        description: "Move ticket to TICKET STATUS - IN ACCEPTANCE"
 
       - id: GS_END
         type: end_event
 
     sequence_flows:
-      - {from: ATDD_BACKEND,      to: ATDD_FRONTEND}
-      - {from: ATDD_FRONTEND,     to: STOP_GREEN_REVIEW}
-      - {from: STOP_GREEN_REVIEW, to: ATDD_RELEASE}
-      - {from: ATDD_RELEASE,      to: GS_END}
+      - {from: ENABLE_TESTS,         to: AT_GREEN_BACKEND}
+      - {from: AT_GREEN_BACKEND,     to: AT_GREEN_FRONTEND}
+      - {from: AT_GREEN_FRONTEND,    to: STOP_GREEN_REVIEW}
+      - {from: STOP_GREEN_REVIEW,    to: COMMIT_GREEN}
+      - {from: COMMIT_GREEN,         to: TICK}
+      - {from: TICK,                 to: MOVE_TO_IN_ACCEPTANCE}
+      - {from: MOVE_TO_IN_ACCEPTANCE, to: GS_END}
 
   # ===========================================================================
   # ct_subprocess
@@ -861,6 +892,87 @@ flows:
       - {from: STOP_RED_NOT_RUNTIME_FAIL, to: WRITE}
       - {from: DISABLE,                   to: COMMIT}
       - {from: COMMIT,                    to: RED_END}
+
+  # ===========================================================================
+  # green_phase_cycle
+  # Shared sub-flow for GREEN-phase WRITE work that splits creative WRITE
+  # (LLM-required) from mechanical compile / run-test verification
+  # (deterministic). Mirrors red_phase_cycle's shape but with success-pass
+  # semantics: each gate's "wrong" branch routes to a STOP for human review
+  # and then loops back to WRITE so the agent can re-dispatch with fresh
+  # failure context.
+  #
+  # Callers supply via `params:`:
+  #   - agent              — the WRITE agent (e.g. atdd-backend, atdd-frontend)
+  #   - phase_doc          — the per-phase doc the agent reads
+  #   - phase_label        — human-readable phase tag, used in node
+  #                          descriptions (e.g. "AT - GREEN - SYSTEM (backend)")
+  #   - suite              — the test suite passed to run_targeted_tests
+  #                          (e.g. "<acceptance-api>", "<acceptance-ui>")
+  #   - rebuild_before_run — optional. When "true", run_targeted_tests passes
+  #                          --rebuild so the implementation under test is
+  #                          rebuilt before each per-test invocation. AT GREEN
+  #                          callers set this; defaults to no rebuild.
+  #
+  # COMMIT does NOT live in green_phase_cycle: AT_GREEN_SYSTEM commits both
+  # backend and frontend together at the parent level (the full-stack-as-one-
+  # commit convention). The sub-flow ends after verifying tests pass; the
+  # parent flow owns the commit.
+  # ===========================================================================
+  green_phase_cycle:
+    start: WRITE
+    nodes:
+      - id: WRITE
+        type: user_task
+        agent: ${agent}
+        phase_doc: ${phase_doc}
+        description: "${phase_label} - WRITE"
+
+      - id: COMPILE
+        type: service_task
+        action: compile_targeted
+        description: "Compile in scope"
+
+      - id: GATE_COMPILE_OK
+        type: gateway
+        binding: compile_ok
+        description: "Compile passed?"
+
+      - id: STOP_GREEN_COMPILE_FAIL
+        type: user_task
+        agent: human
+        role: review
+        description: "STOP - HUMAN REVIEW — ${phase_label} compile failed"
+
+      - id: RUN
+        type: service_task
+        action: run_targeted_tests
+        description: "Run targeted tests against ${suite}"
+
+      - id: GATE_TESTS_PASS
+        type: gateway
+        binding: tests_pass
+        description: "All tests passed?"
+
+      - id: STOP_GREEN_TEST_FAIL
+        type: user_task
+        agent: human
+        role: review
+        description: "STOP - HUMAN REVIEW — ${phase_label} tests failed"
+
+      - id: GREEN_END
+        type: end_event
+
+    sequence_flows:
+      - {from: WRITE,                    to: COMPILE}
+      - {from: COMPILE,                  to: GATE_COMPILE_OK}
+      - {from: GATE_COMPILE_OK,          to: STOP_GREEN_COMPILE_FAIL, when: "compile_ok == false"}
+      - {from: GATE_COMPILE_OK,          to: RUN,                    when: "compile_ok == true"}
+      - {from: STOP_GREEN_COMPILE_FAIL,  to: WRITE}
+      - {from: RUN,                      to: GATE_TESTS_PASS}
+      - {from: GATE_TESTS_PASS,          to: GREEN_END,              when: "tests_pass == true"}
+      - {from: GATE_TESTS_PASS,          to: STOP_GREEN_TEST_FAIL,   when: "tests_pass == false"}
+      - {from: STOP_GREEN_TEST_FAIL,     to: WRITE}
 
   # ===========================================================================
   # da_cycle

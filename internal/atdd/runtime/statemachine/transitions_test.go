@@ -50,6 +50,7 @@ func TestLoadSnapshot_AllFlowsParse(t *testing.T) {
 		"external_system_onboarding",
 		"structural_cycle",
 		"red_phase_cycle",
+		"green_phase_cycle",
 		"legacy_acceptance_criteria",
 	}
 	for _, name := range wantFlows {
@@ -207,10 +208,18 @@ var transitionTable = []transitionCase{
 	{flow: "at_cycle", from: "AT_GREEN_SYSTEM", wantTo: "AT_END"},
 
 	// ---- at_green_system ----
-	{flow: "at_green_system", from: "ATDD_BACKEND", wantTo: "ATDD_FRONTEND"},
-	{flow: "at_green_system", from: "ATDD_FRONTEND", wantTo: "STOP_GREEN_REVIEW"},
-	{flow: "at_green_system", from: "STOP_GREEN_REVIEW", wantTo: "ATDD_RELEASE"},
-	{flow: "at_green_system", from: "ATDD_RELEASE", wantTo: "GS_END"},
+	// Decomposed per the AT/CT split plan: ENABLE_TESTS (re-enable disabled
+	// tests) → AT_GREEN_BACKEND/AT_GREEN_FRONTEND (call_activity into the
+	// shared green_phase_cycle, one per channel) → STOP_GREEN_REVIEW →
+	// COMMIT_GREEN → TICK → MOVE_TO_IN_ACCEPTANCE. The legacy ATDD_RELEASE
+	// user_task is replaced by the existing service_task actions.
+	{flow: "at_green_system", from: "ENABLE_TESTS", wantTo: "AT_GREEN_BACKEND"},
+	{flow: "at_green_system", from: "AT_GREEN_BACKEND", wantTo: "AT_GREEN_FRONTEND"},
+	{flow: "at_green_system", from: "AT_GREEN_FRONTEND", wantTo: "STOP_GREEN_REVIEW"},
+	{flow: "at_green_system", from: "STOP_GREEN_REVIEW", wantTo: "COMMIT_GREEN"},
+	{flow: "at_green_system", from: "COMMIT_GREEN", wantTo: "TICK"},
+	{flow: "at_green_system", from: "TICK", wantTo: "MOVE_TO_IN_ACCEPTANCE"},
+	{flow: "at_green_system", from: "MOVE_TO_IN_ACCEPTANCE", wantTo: "GS_END"},
 
 	// ---- ct_subprocess ----
 	{flow: "ct_subprocess", from: "ONBOARDING", wantTo: "CT_RED_TEST"},
@@ -287,6 +296,22 @@ var transitionTable = []transitionCase{
 	{flow: "red_phase_cycle", from: "STOP_RED_NOT_RUNTIME_FAIL", wantTo: "WRITE", desc: "after STOP, retry from WRITE"},
 	{flow: "red_phase_cycle", from: "DISABLE", wantTo: "COMMIT"},
 	{flow: "red_phase_cycle", from: "COMMIT", wantTo: "RED_END"},
+
+	// ---- green_phase_cycle (shared by AT GREEN backend/frontend WRITEs) ----
+	// Mirrors red_phase_cycle but with success-pass semantics: each gate's
+	// "wrong" branch routes to a STOP for human review and loops back to
+	// WRITE so the agent re-dispatches with fresh failure context. There
+	// is no DISABLE/COMMIT inside — at_green_system commits backend and
+	// frontend together at the parent level after both call_activities end.
+	{flow: "green_phase_cycle", from: "WRITE", wantTo: "COMPILE"},
+	{flow: "green_phase_cycle", from: "COMPILE", wantTo: "GATE_COMPILE_OK"},
+	{flow: "green_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": false}, wantTo: "STOP_GREEN_COMPILE_FAIL", desc: "compile fail → human STOP"},
+	{flow: "green_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": true}, wantTo: "RUN", desc: "compile ok → run tests"},
+	{flow: "green_phase_cycle", from: "STOP_GREEN_COMPILE_FAIL", wantTo: "WRITE", desc: "after STOP, retry from WRITE"},
+	{flow: "green_phase_cycle", from: "RUN", wantTo: "GATE_TESTS_PASS"},
+	{flow: "green_phase_cycle", from: "GATE_TESTS_PASS", state: map[string]any{"tests_pass": true}, wantTo: "GREEN_END", desc: "all tests pass → end"},
+	{flow: "green_phase_cycle", from: "GATE_TESTS_PASS", state: map[string]any{"tests_pass": false}, wantTo: "STOP_GREEN_TEST_FAIL", desc: "any test fails → human STOP"},
+	{flow: "green_phase_cycle", from: "STOP_GREEN_TEST_FAIL", wantTo: "WRITE", desc: "after STOP, retry from WRITE"},
 
 	// ---- legacy_acceptance_criteria ----
 	// Legacy Acceptance Criteria Cycle interim spec: a single STOP node, per
