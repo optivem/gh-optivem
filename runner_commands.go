@@ -250,6 +250,7 @@ func newTestSystemCmd() *cobra.Command {
 		noStart    bool
 		restart    bool
 		noSetup    bool
+		list       bool
 	)
 	cmd := &cobra.Command{
 		Use:   "system",
@@ -259,11 +260,18 @@ func newTestSystemCmd() *cobra.Command {
   gh optivem test system --rebuild --suite smoke
   gh optivem test system --no-build --no-start
   gh optivem test system --suite smoke --test T1 --test T2
-  gh optivem test system --suite smoke --test T1,T2`,
+  gh optivem test system --suite smoke --test T1,T2
+  gh optivem test system --list`,
 		Run: func(cmd *cobra.Command, args []string) {
-			sys, err := loadSystem(systemPath)
-			exitOnError(err)
 			tests, err := loadTests(testsPath)
+			exitOnError(err)
+			if list {
+				for _, id := range tests.SuiteIDs() {
+					fmt.Fprintln(os.Stdout, id)
+				}
+				return
+			}
+			sys, err := loadSystem(systemPath)
 			exitOnError(err)
 			opts := runner.TestOptions{
 				Suite:   suite,
@@ -288,5 +296,6 @@ func newTestSystemCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&noStart, "no-start", false, "Skip the implicit start step; system must already be up")
 	cmd.Flags().BoolVar(&restart, "restart", false, "Force tear-down + restart during the implicit start step")
 	cmd.Flags().BoolVar(&noSetup, "no-setup", false, "Skip the setupCommands block from tests.json (use when an earlier invocation in the same job already ran setup)")
+	cmd.Flags().BoolVar(&list, "list", false, "Print suite ids from tests.json (one per line) and exit without running")
 	return cmd
 }

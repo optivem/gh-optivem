@@ -24,7 +24,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -32,7 +31,6 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/intake"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/release"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/testselect"
 )
 
 // Deps bundles the side-effecting collaborators every action may need. All
@@ -53,12 +51,6 @@ type Deps struct {
 	// this; other prompts (smoke test, can-I-commit) do not yet have an
 	// autonomous-mode codepath.
 	Autonomous bool
-
-	// Select / SelectTracer are the verify_run_tests_after_driver test
-	// selectors. Function-typed for hermetic substitution in tests; default
-	// to the production testselect package.
-	Select       func(repoRoot, baseRef string) (testselect.Result, error)
-	SelectTracer func(repoRoot, baseRef string) (testselect.TracerResult, error)
 }
 
 // Prompter is the same interface gates uses; redefined here so the actions
@@ -103,12 +95,6 @@ func (d Deps) withDefaults() Deps {
 	}
 	if d.Stderr == nil {
 		d.Stderr = os.Stderr
-	}
-	if d.Select == nil {
-		d.Select = testselect.Select
-	}
-	if d.SelectTracer == nil {
-		d.SelectTracer = testselect.SelectTracer
 	}
 	return d
 }
@@ -1098,167 +1084,223 @@ func (a actions) reportDriftWarning(ctx *statemachine.Context) statemachine.Outc
 // Targeted-subset test verification (post driver-adapter WRITE)
 // ---------------------------------------------------------------------------
 
-// verifyRunTestsAfterDriver runs after any driver-WRITE phase that may have
-// touched `driver-adapter/**`. It diffs HEAD against the previous commit,
-// asks the testselect package which tests traverse the changed adapter
-// methods, and prompts the user how to proceed:
+// verifyRunTestsAfterDriver is the human-driven system-test gate. The
+// operator picks the scope each cycle: every suite, a chosen subset of
+// suites, specific tests within one suite, or nothing at all. After a
+// green run the prompt loops so they can verify additional scopes
+// without leaving the cycle; on red the loop exits so the structural
+// gateway dispatches the fix agent.
 //
-//   [t] tracer-bullet (default) — one test per (changed method × channel)
-//   [r] run all selected tests   — the full affected set
-//   [a] approve without running
-//   [x] reject and stop the run
-//   [f] run the full suite instead of the selected subset
+// Top-level menu:
 //
-// The tracer mode answers the WRITE-phase question "did I break the
-// layering I just edited?" with one test per change; the affected-set
-// mode answers "is the world still correct?". The tracer is the default
-// because it matches the iteration-time gate the WRITE phase actually
-// needs — see plans/20260505-141500-tracer-bullet-test-after-driver-adapter-change.md.
+//   [a] all system tests           — `gh optivem test system`
+//   [s] some suites                — pick suite ids, run each whole
+//   [p] specific tests in a suite  — pick a suite, type test names
+//   [n] no tests (approve)         — record nothing, advance
+//   [x] reject                     — halt the run
 //
-// When no driver-adapter file changed, the action exits silently — the
-// generic structural_cycle node also reaches it via DA_CYCLE / chore, and
-// only DA_CYCLE actually touches adapters.
-//
-// When `Result.Unmapped` is non-empty (affected-set mode) or
-// `TracerResult.Unmapped` is non-empty (tracer mode), a warning is printed
-// and the run falls back to the full set of suites named by the result
-// (the safe default — the unmapped change might still break a test we
-// couldn't statically reach).
+// Suite ids come from `gh optivem test system --list`, so the menu is
+// always whatever tests.json declares for the project.
 func (a actions) verifyRunTestsAfterDriver(ctx *statemachine.Context) statemachine.Outcome {
-	repoRoot := a.deps.RepoPath
-	if repoRoot == "" {
-		repoRoot = "."
-	}
-	baseRef := ctx.Params["base_ref"]
-	if baseRef == "" {
-		baseRef = "HEAD"
-	}
-
-	res, err := a.deps.Select(repoRoot, baseRef)
-	if err != nil {
-		fmt.Fprintf(a.deps.Stderr, "verify_run_tests_after_driver: selector failed (%v) — skipping\n", err)
-		return statemachine.Outcome{}
-	}
-	if len(res.Selections) == 0 && len(res.Unmapped) == 0 {
-		// No driver-adapter changes — nothing to do.
-		return statemachine.Outcome{}
-	}
-
-	a.printVerifySummary(res)
-	if verifyVerbose() {
-		for _, d := range res.Diagnostics {
-			fmt.Fprintf(a.deps.Stdout, "  trace: %s\n", d)
+	for {
+		ans, err := a.deps.Prompter.Ask("Run system tests? [a]ll, [s]ome suites, [p]ick specific tests, [n]one (approve), e[x]it (reject): ")
+		if err != nil {
+			return statemachine.Outcome{Err: fmt.Errorf("verify_run_tests_after_driver: %w", err)}
 		}
-		fmt.Fprintln(a.deps.Stdout)
-	}
+		choice := strings.ToLower(strings.TrimSpace(ans))
 
-	answer, err := a.deps.Prompter.Ask("Choose: [t]racer (default), [r]un all selected, [a]pprove, [x]reject, [f]ull suite: ")
-	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("verify_run_tests_after_driver: %w", err)}
-	}
-	choice := strings.ToLower(strings.TrimSpace(answer))
-
-	switch choice {
-	case "x":
-		return statemachine.Outcome{Err: errors.New("verify_run_tests_after_driver: user rejected and halted the run")}
-	case "a":
-		fmt.Fprintln(a.deps.Stdout, "Approving without running the selected tests.")
-		return statemachine.Outcome{}
-	case "t", "":
-		out, results := a.runTracerVerify(repoRoot, baseRef, res)
-		return a.finalizeVerify(ctx, out, results)
-	case "r":
-		out, results := a.runAffectedSetVerify(res, false)
-		return a.finalizeVerify(ctx, out, results)
-	case "f":
-		out, results := a.runAffectedSetVerify(res, true)
-		return a.finalizeVerify(ctx, out, results)
-	default:
-		fmt.Fprintf(a.deps.Stderr, "Unrecognised choice %q — defaulting to approve without running.\n", choice)
-		return statemachine.Outcome{}
-	}
-}
-
-// runTracerVerify is the WRITE-phase iteration gate. One test per
-// (changed adapter method × channel). When SelectTracer can't trace some
-// change to a test, fall back to the full affected-set's suites — the
-// unmapped change might still break a test the tracer's pick rule didn't
-// catch.
-//
-// Returns the per-command results so the caller can aggregate them into
-// a single failureClass (the fallback paths delegate to runAffectedSetVerify
-// and pass through whatever it collected).
-func (a actions) runTracerVerify(repoRoot, baseRef string, res testselect.Result) (statemachine.Outcome, []verifyCommandResult) {
-	tracer, err := a.deps.SelectTracer(repoRoot, baseRef)
-	if err != nil {
-		fmt.Fprintf(a.deps.Stderr, "verify_run_tests_after_driver: tracer selector failed (%v) — falling back to full suite\n", err)
-		return a.runAffectedSetVerify(res, true)
-	}
-
-	if len(tracer.Unmapped) > 0 {
-		fmt.Fprintf(a.deps.Stderr,
-			"WARNING: tracer could not stage %d adapter method(s) — running full suite for safety:\n",
-			len(tracer.Unmapped))
-		for _, cm := range tracer.Unmapped {
-			fmt.Fprintf(a.deps.Stderr, "  - %s::%s\n", cm.File, cm.Method)
-		}
-		return a.runAffectedSetVerify(res, true)
-	}
-
-	if len(tracer.Selections) == 0 {
-		fmt.Fprintln(a.deps.Stdout, "Tracer found no selectable test — running full suite for safety.")
-		return a.runAffectedSetVerify(res, true)
-	}
-
-	a.printTracerSummary(tracer)
-	if verifyVerbose() {
-		for _, d := range tracer.Diagnostics {
-			fmt.Fprintf(a.deps.Stdout, "  trace: %s\n", d)
-		}
-		fmt.Fprintln(a.deps.Stdout)
-	}
-
-	results := make([]verifyCommandResult, 0, len(tracer.Selections))
-	for _, sel := range tracer.Selections {
-		cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s",
-			shellEscape(sel.Suite), shellEscape(sel.Test))
-		results = append(results, a.runVerifyCommand(cmd))
-	}
-	return statemachine.Outcome{}, results
-}
-
-// runAffectedSetVerify runs the affected-set suites (commit-time gate).
-// `runFull` is true when the user explicitly chose [f]ull suite, or when
-// the selector couldn't statically trace some change — both treat the
-// suites as opaque and run them whole. Returns one verifyCommandResult
-// per shelled-out command (the caller aggregates).
-func (a actions) runAffectedSetVerify(res testselect.Result, runFull bool) (statemachine.Outcome, []verifyCommandResult) {
-	if !runFull {
-		runFull = len(res.Unmapped) > 0
-	}
-	if runFull && len(res.Unmapped) > 0 {
-		fmt.Fprintf(a.deps.Stderr,
-			"WARNING: %d adapter method(s) could not be statically traced to a test — running full suite for safety:\n",
-			len(res.Unmapped))
-		for _, cm := range res.Unmapped {
-			fmt.Fprintf(a.deps.Stderr, "  - %s::%s\n", cm.File, cm.Method)
-		}
-	}
-
-	var results []verifyCommandResult
-	for _, sel := range res.Selections {
-		if runFull {
-			cmd := fmt.Sprintf("gh optivem test system --suite %s", shellEscape(sel.Suite))
-			results = append(results, a.runVerifyCommand(cmd))
+		var commands []string
+		switch choice {
+		case "x":
+			return statemachine.Outcome{Err: errors.New("verify_run_tests_after_driver: user rejected and halted the run")}
+		case "n", "":
+			fmt.Fprintln(a.deps.Stdout, "Skipping system tests for this cycle.")
+			return statemachine.Outcome{}
+		case "a":
+			commands = []string{"gh optivem test system"}
+		case "s":
+			cmds, err := a.promptSomeSuites()
+			if err != nil {
+				fmt.Fprintf(a.deps.Stderr, "%v — try again.\n", err)
+				continue
+			}
+			if len(cmds) == 0 {
+				continue
+			}
+			commands = cmds
+		case "p":
+			cmd, err := a.promptSpecificTests()
+			if err != nil {
+				fmt.Fprintf(a.deps.Stderr, "%v — try again.\n", err)
+				continue
+			}
+			if cmd == "" {
+				continue
+			}
+			commands = []string{cmd}
+		default:
+			fmt.Fprintf(a.deps.Stderr, "Unrecognised choice %q — try again.\n", choice)
 			continue
 		}
-		for _, t := range sel.Tests {
-			cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s",
-				shellEscape(sel.Suite), shellEscape(t))
+
+		results := make([]verifyCommandResult, 0, len(commands))
+		for _, cmd := range commands {
 			results = append(results, a.runVerifyCommand(cmd))
 		}
+		out := a.finalizeVerify(ctx, statemachine.Outcome{}, results)
+		if out.Err != nil {
+			return out
+		}
+		if out.Value == classRed.String() {
+			return out
+		}
+
+		more, err := a.deps.Prompter.Ask("Run more tests? [y/N]: ")
+		if err != nil {
+			return statemachine.Outcome{Err: fmt.Errorf("verify_run_tests_after_driver: %w", err)}
+		}
+		if yes, _ := parseYesNo(more); !yes {
+			return out
+		}
 	}
-	return statemachine.Outcome{}, results
+}
+
+// listSystemSuites shells out to `gh optivem test system --list` and
+// returns one suite id per non-empty output line. The action calls this
+// at prompt time so the menu always reflects whatever tests.json
+// declares — no separate catalog to keep in sync.
+func (a actions) listSystemSuites() ([]string, error) {
+	out, err := a.deps.Shell.Run(context.Background(), "gh optivem test system --list")
+	if err != nil {
+		return nil, fmt.Errorf("list suites failed: %w (output: %s)", err, strings.TrimSpace(string(out)))
+	}
+	var suites []string
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			suites = append(suites, line)
+		}
+	}
+	if len(suites) == 0 {
+		return nil, errors.New("no suites declared in tests.json")
+	}
+	return suites, nil
+}
+
+// promptSuiteMenu prints a numbered list of suites and asks the user to
+// pick one or more by number. `multi` controls whether the prompt
+// accepts a comma-separated list. Returns the selected suite ids in
+// pick order; an empty answer yields an empty result so the caller can
+// loop back to the top-level menu.
+func (a actions) promptSuiteMenu(multi bool) ([]string, error) {
+	suites, err := a.listSystemSuites()
+	if err != nil {
+		return nil, err
+	}
+	fmt.Fprintln(a.deps.Stdout, "Available suites:")
+	for i, id := range suites {
+		fmt.Fprintf(a.deps.Stdout, "  [%d] %s\n", i+1, id)
+	}
+	prompt := "Pick one suite (number): "
+	if multi {
+		prompt = "Pick suites (comma-separated numbers, e.g. 1,3): "
+	}
+	ans, err := a.deps.Prompter.Ask(prompt)
+	if err != nil {
+		return nil, err
+	}
+	picks, err := parsePickNumbers(ans, len(suites))
+	if err != nil {
+		return nil, err
+	}
+	if !multi && len(picks) > 1 {
+		picks = picks[:1]
+	}
+	out := make([]string, 0, len(picks))
+	for _, idx := range picks {
+		out = append(out, suites[idx-1])
+	}
+	return out, nil
+}
+
+// promptSomeSuites asks the user which suites to run whole and returns
+// one `gh optivem test system --suite <id>` command per pick.
+func (a actions) promptSomeSuites() ([]string, error) {
+	picked, err := a.promptSuiteMenu(true)
+	if err != nil {
+		return nil, err
+	}
+	cmds := make([]string, 0, len(picked))
+	for _, id := range picked {
+		cmds = append(cmds, fmt.Sprintf("gh optivem test system --suite %s", shellEscape(id)))
+	}
+	return cmds, nil
+}
+
+// promptSpecificTests asks the user to pick one suite and then type the
+// test names to run within it. Returns a single `gh optivem test system
+// --suite <id> --test <n1> --test <n2>` command, or "" if the user
+// declined to name any tests.
+func (a actions) promptSpecificTests() (string, error) {
+	picked, err := a.promptSuiteMenu(false)
+	if err != nil {
+		return "", err
+	}
+	if len(picked) == 0 {
+		return "", nil
+	}
+	suite := picked[0]
+	ans, err := a.deps.Prompter.Ask(fmt.Sprintf("Test names in %s (comma-separated): ", suite))
+	if err != nil {
+		return "", err
+	}
+	var names []string
+	for _, t := range strings.Split(ans, ",") {
+		t = strings.TrimSpace(t)
+		if t != "" {
+			names = append(names, t)
+		}
+	}
+	if len(names) == 0 {
+		return "", nil
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "gh optivem test system --suite %s", shellEscape(suite))
+	for _, n := range names {
+		fmt.Fprintf(&b, " --test %s", shellEscape(n))
+	}
+	return b.String(), nil
+}
+
+// parsePickNumbers parses a comma-separated list of 1-based indices,
+// rejecting non-numeric tokens and out-of-range values. Duplicates
+// collapse to the first occurrence so the operator can paste a sloppy
+// list without surprise re-runs.
+func parsePickNumbers(s string, max int) ([]int, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, nil
+	}
+	var picks []int
+	seen := make(map[int]bool)
+	for _, tok := range strings.Split(s, ",") {
+		tok = strings.TrimSpace(tok)
+		if tok == "" {
+			continue
+		}
+		n, err := strconv.Atoi(tok)
+		if err != nil {
+			return nil, fmt.Errorf("invalid pick %q (expect a number)", tok)
+		}
+		if n < 1 || n > max {
+			return nil, fmt.Errorf("pick %d out of range (expect 1-%d)", n, max)
+		}
+		if !seen[n] {
+			seen[n] = true
+			picks = append(picks, n)
+		}
+	}
+	return picks, nil
 }
 
 // finalizeVerify aggregates per-command results into a single failure
@@ -1402,98 +1444,6 @@ func firstNonEmptyLine(s string) string {
 	return ""
 }
 
-// printTracerSummary prints one chain block per tracer selection. The
-// chain format is: changed method (file) → port → DSL (stage) → test
-// (suite). This is what the user reads to verify the tracer picked a
-// representative test for each change.
-func (a actions) printTracerSummary(tracer testselect.TracerResult) {
-	writeTracerSummary(a.deps.Stdout, tracer)
-}
-
-// writeTracerSummary is the io.Writer-shaped form of printTracerSummary.
-func writeTracerSummary(w io.Writer, tracer testselect.TracerResult) {
-	fmt.Fprintf(w, "\nTracer selections (%d):\n", len(tracer.Selections))
-	for _, sel := range tracer.Selections {
-		fmt.Fprintf(w, "  %s (%s)\n", sel.AdapterMethod, sel.AdapterFile)
-		fmt.Fprintf(w, "    → port %s\n", sel.PortMethod)
-		stage := sel.Stage
-		if stage == "" {
-			stage = "no stage"
-		}
-		fmt.Fprintf(w, "    → DSL %s (%s)\n", sel.DSLMethod, stage)
-		fmt.Fprintf(w, "    → test %s (%s)\n", sel.Test, sel.Suite)
-	}
-	fmt.Fprintln(w)
-}
-
-// printVerifySummary writes the changed adapter files, selected tests
-// table, and any unmapped methods to stdout — the user reads this
-// *before* answering r/a/x/f.
-func (a actions) printVerifySummary(res testselect.Result) {
-	w := a.deps.Stdout
-	writeVerifySummary(w, res)
-}
-
-// writeVerifySummary is the io.Writer-shaped form of printVerifySummary,
-// pulled out so tests can assert the exact rendering without faking the
-// whole `actions` struct.
-func writeVerifySummary(w io.Writer, res testselect.Result) {
-	if len(res.Changed) > 0 {
-		byFile := map[string][]string{}
-		var fileOrder []string
-		for _, cm := range res.Changed {
-			if _, seen := byFile[cm.File]; !seen {
-				fileOrder = append(fileOrder, cm.File)
-			}
-			byFile[cm.File] = append(byFile[cm.File], cm.Method)
-		}
-		sort.Strings(fileOrder)
-		fmt.Fprintf(w, "\nDriver-adapter (%d file(s) changed):\n", len(fileOrder))
-		for _, f := range fileOrder {
-			methods := byFile[f]
-			sort.Strings(methods)
-			methods = dedupSorted(methods)
-			fmt.Fprintf(w, "  - %s — %s\n", f, strings.Join(methods, ", "))
-		}
-	}
-
-	total := 0
-	for _, s := range res.Selections {
-		total += len(s.Tests)
-	}
-	if total == 0 && len(res.Unmapped) > 0 {
-		fmt.Fprintf(w, "\nDriver-adapter change detected; selector could not map any test (full-suite fallback).\n")
-	} else {
-		fmt.Fprintf(w, "\nSelected tests for verification (%d):\n", total)
-	}
-	for _, s := range res.Selections {
-		for _, t := range s.Tests {
-			fmt.Fprintf(w, "  %s: %s\n", s.Suite, t)
-		}
-	}
-	if len(res.Unmapped) > 0 {
-		fmt.Fprintf(w, "Unmapped (will trigger full-suite fallback):\n")
-		for _, cm := range res.Unmapped {
-			fmt.Fprintf(w, "  %s::%s (%s)\n", cm.File, cm.Method, cm.Layer)
-		}
-	}
-	fmt.Fprintln(w)
-}
-
-// dedupSorted removes adjacent duplicates from a sorted slice.
-func dedupSorted(s []string) []string {
-	if len(s) <= 1 {
-		return s
-	}
-	out := s[:1]
-	for _, v := range s[1:] {
-		if v != out[len(out)-1] {
-			out = append(out, v)
-		}
-	}
-	return out
-}
-
 // verifyCommandResult is the captured outcome of one `gh optivem test ...`
 // invocation. The verify action collects a slice of these per cycle and
 // aggregates them into a single failureClass — see aggregateVerifyClass.
@@ -1515,13 +1465,13 @@ type verifyCommandResult struct {
 }
 
 // runVerifyCommand shells out and captures the per-command outcome. The
-// caller (runTracerVerify / runAffectedSetVerify) collects results across
-// commands; aggregation into a single class happens in finalizeVerify.
+// caller in verifyRunTestsAfterDriver collects results across commands;
+// aggregation into a single class happens in finalizeVerify.
 //
 // Failures still surface inline as before — the design point ("verification
-// is feedback, not gating") stays intact for WRITE-phase callers — but the
-// returned result carries the classification so a structural-cycle gateway
-// can route on it without re-parsing the printed line.
+// is feedback, not gating") stays intact — but the returned result carries
+// the classification so a structural-cycle gateway can route on it without
+// re-parsing the printed line.
 func (a actions) runVerifyCommand(cmd string) verifyCommandResult {
 	fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
 	out, err := a.deps.Shell.Run(context.Background(), cmd)
@@ -1561,17 +1511,6 @@ func aggregateVerifyClass(results []verifyCommandResult) failureClass {
 		}
 	}
 	return worst
-}
-
-// verifyVerbose reports whether ATDD_VERIFY_VERBOSE is set to a truthy
-// value. Off by default per the plan ("students see the test list,
-// instructors troubleshooting selection see the trace").
-func verifyVerbose() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("ATDD_VERIFY_VERBOSE"))) {
-	case "1", "true", "yes", "on":
-		return true
-	}
-	return false
 }
 
 // shellEscape quotes a value for safe insertion into a bash command line.

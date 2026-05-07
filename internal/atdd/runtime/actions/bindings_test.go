@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/testselect"
 )
 
 // ---------------------------------------------------------------------------
@@ -1040,347 +1039,27 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// writeVerifySummary
+// verifyRunTestsAfterDriver — tiered prompt
+//
+// Top-level menu: a/s/p/n/x. For s and p the action shells out to
+// `gh optivem test system --list` to fetch the suite catalogue, then asks
+// the operator which numbered suites (and, for p, which test names) to run.
+// On a green run the loop offers another picker pass; on red it exits so
+// the structural-cycle gateway can dispatch the fix agent.
 // ---------------------------------------------------------------------------
 
-func TestWriteVerifySummary_DriverAdapterChangedBlock(t *testing.T) {
-	// Three changed adapter files across the three languages, all touching
-	// a method that maps to the same DSL → test (the page-object case the
-	// selector now bridges). The print order is alphabetical by file.
-	res := testselect.Result{
-		Changed: []testselect.ChangedMethod{
-			{
-				File:   "system-test/typescript/src/testkit/driver/adapter/myShop/ui/client/pages/NewOrderPage.ts",
-				Method: "inputSku",
-				Layer:  "shop",
-				Lang:   "typescript",
-			},
-			{
-				File:   "system-test/java/src/main/java/com/mycompany/myshop/testkit/driver/adapter/myshop/ui/client/pages/NewOrderPage.java",
-				Method: "inputSku",
-				Layer:  "shop",
-				Lang:   "java",
-			},
-			{
-				File:   "system-test/dotnet/Driver.Adapter/MyShop/Ui/Client/Pages/NewOrderPage.cs",
-				Method: "InputSku",
-				Layer:  "shop",
-				Lang:   "dotnet",
-			},
-		},
-		Selections: []testselect.Selection{
-			{Suite: "acceptance-ui", Tests: []string{"PlaceOrderPositiveTest.shouldPlaceOrder"}},
-		},
-	}
+const suiteListOut = "acceptance-api\nacceptance-ui\n"
 
-	var buf bytes.Buffer
-	writeVerifySummary(&buf, res)
-	got := buf.String()
-
-	wantHeader := "Driver-adapter (3 file(s) changed):"
-	if !strings.Contains(got, wantHeader) {
-		t.Errorf("missing header %q in:\n%s", wantHeader, got)
-	}
-	wantLines := []string{
-		"  - system-test/dotnet/Driver.Adapter/MyShop/Ui/Client/Pages/NewOrderPage.cs — InputSku",
-		"  - system-test/java/src/main/java/com/mycompany/myshop/testkit/driver/adapter/myshop/ui/client/pages/NewOrderPage.java — inputSku",
-		"  - system-test/typescript/src/testkit/driver/adapter/myShop/ui/client/pages/NewOrderPage.ts — inputSku",
-	}
-	for _, want := range wantLines {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing line %q in:\n%s", want, got)
-		}
-	}
-	// Ordering: the changed-block must appear before the selected-tests
-	// block (which the operator reads next).
-	driverIdx := strings.Index(got, wantHeader)
-	selectedIdx := strings.Index(got, "Selected tests for verification")
-	if driverIdx < 0 || selectedIdx < 0 || driverIdx > selectedIdx {
-		t.Errorf("expected driver-adapter block before selected-tests block; got:\n%s", got)
-	}
-}
-
-func TestWriteVerifySummary_MultipleMethodsPerFile(t *testing.T) {
-	// Two methods edited in the same file → the line collapses them with
-	// a comma-separated list, sorted and deduplicated.
-	res := testselect.Result{
-		Changed: []testselect.ChangedMethod{
-			{File: "a/b.ts", Method: "beta", Lang: "typescript"},
-			{File: "a/b.ts", Method: "alpha", Lang: "typescript"},
-			{File: "a/b.ts", Method: "alpha", Lang: "typescript"}, // duplicate
-		},
-	}
-	var buf bytes.Buffer
-	writeVerifySummary(&buf, res)
-	got := buf.String()
-
-	wantLine := "  - a/b.ts — alpha, beta"
-	if !strings.Contains(got, wantLine) {
-		t.Errorf("missing line %q in:\n%s", wantLine, got)
-	}
-	if !strings.Contains(got, "Driver-adapter (1 file(s) changed):") {
-		t.Errorf("expected single-file header, got:\n%s", got)
-	}
-}
-
-func TestWriteVerifySummary_NoChangedFiles_OmitsBlock(t *testing.T) {
-	// A degenerate result (no Changed entries) should not print the header
-	// — the existing Selected/Unmapped output stays untouched.
-	res := testselect.Result{
-		Selections: []testselect.Selection{
-			{Suite: "acceptance-api", Tests: []string{"X.y"}},
-		},
-	}
-	var buf bytes.Buffer
-	writeVerifySummary(&buf, res)
-	got := buf.String()
-
-	if strings.Contains(got, "Driver-adapter (") {
-		t.Errorf("did not expect driver-adapter block, got:\n%s", got)
-	}
-	if !strings.Contains(got, "Selected tests for verification (1):") {
-		t.Errorf("expected selected-tests block, got:\n%s", got)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// verifyRunTestsAfterDriver — prompt dispatch
-// ---------------------------------------------------------------------------
-
-// fakeVerifyDeps is a small bundle of canned selector outputs and a fake
-// shell to capture the test-run commands. Used to drive the prompt
-// dispatcher without touching git or testselect.
-type fakeVerifyDeps struct {
-	selectResult testselect.Result
-	tracerResult testselect.TracerResult
-	selectErr    error
-	tracerErr    error
-}
-
-func (f *fakeVerifyDeps) Select(repoRoot, baseRef string) (testselect.Result, error) {
-	return f.selectResult, f.selectErr
-}
-
-func (f *fakeVerifyDeps) SelectTracer(repoRoot, baseRef string) (testselect.TracerResult, error) {
-	return f.tracerResult, f.tracerErr
-}
-
-func makeAffectedSet() testselect.Result {
-	return testselect.Result{
-		Changed: []testselect.ChangedMethod{
-			{File: "system-test/typescript/src/testkit/driver/adapter/myShop/ui/client/pages/NewOrderPage.ts",
-				Method: "inputSku", Layer: "shop", Lang: "typescript"},
-		},
-		Selections: []testselect.Selection{
-			{Suite: "acceptance-ui", Tests: []string{"PlaceOrderPositiveTest.shouldPlaceOrder", "PlaceOrderNegativeTest.shouldRejectInvalidSku"}},
-		},
-	}
-}
-
-func makeTracer() testselect.TracerResult {
-	return testselect.TracerResult{
-		Changed: []testselect.ChangedMethod{
-			{File: "system-test/typescript/src/testkit/driver/adapter/myShop/ui/client/pages/NewOrderPage.ts",
-				Method: "inputSku", Layer: "shop", Lang: "typescript"},
-		},
-		Selections: []testselect.TracerSelection{
-			{
-				Suite:         "acceptance-ui",
-				Test:          "PlaceOrderPositiveTest.shouldPlaceOrder",
-				DSLMethod:     "whenPlacingOrder",
-				PortMethod:    "placeOrder",
-				AdapterFile:   "system-test/typescript/src/testkit/driver/adapter/myShop/ui/client/pages/NewOrderPage.ts",
-				AdapterMethod: "inputSku",
-				Stage:         "when",
-			},
-		},
-	}
-}
-
-func TestVerifyRunTestsAfterDriver_EmptyInputRunsTracer(t *testing.T) {
-	fv := &fakeVerifyDeps{
-		selectResult: makeAffectedSet(),
-		tracerResult: makeTracer(),
-	}
-	sh := &fakeShell{out: []byte("ok")}
-	p := &fakePrompter{answers: []string{""}} // empty input → tracer default
-	var stdout, stderr bytes.Buffer
-	a := newActions(Deps{
-		Shell:        sh,
-		Prompter:     p,
-		Stdout:       &stdout,
-		Stderr:       &stderr,
-		Select:       fv.Select,
-		SelectTracer: fv.SelectTracer,
-	})
-	out := a.verifyRunTestsAfterDriver(statemachine.NewContext())
-	if out.Err != nil {
-		t.Fatalf("unexpected error: %v", out.Err)
-	}
-	if len(sh.calls) != 1 {
-		t.Fatalf("expected 1 shell call (tracer test), got %d: %v", len(sh.calls), sh.calls)
-	}
-	want := "gh optivem test system --suite acceptance-ui --test PlaceOrderPositiveTest.shouldPlaceOrder"
-	if sh.calls[0] != want {
-		t.Errorf("call: got %q want %q", sh.calls[0], want)
-	}
-	if !strings.Contains(stdout.String(), "Tracer selections (1)") {
-		t.Errorf("stdout missing tracer summary header, got:\n%s", stdout.String())
-	}
-}
-
-func TestVerifyRunTestsAfterDriver_TRunsTracer(t *testing.T) {
-	fv := &fakeVerifyDeps{
-		selectResult: makeAffectedSet(),
-		tracerResult: makeTracer(),
-	}
-	sh := &fakeShell{out: []byte("ok")}
-	p := &fakePrompter{answers: []string{"t"}}
-	a := newActions(Deps{
-		Shell:        sh,
-		Prompter:     p,
-		Select:       fv.Select,
-		SelectTracer: fv.SelectTracer,
-	})
-	out := a.verifyRunTestsAfterDriver(statemachine.NewContext())
-	if out.Err != nil {
-		t.Fatalf("unexpected error: %v", out.Err)
-	}
-	if len(sh.calls) != 1 {
-		t.Fatalf("expected 1 shell call, got %d: %v", len(sh.calls), sh.calls)
-	}
-	if !strings.Contains(sh.calls[0], "--test PlaceOrderPositiveTest.shouldPlaceOrder") {
-		t.Errorf("call: got %q (no --test flag)", sh.calls[0])
-	}
-}
-
-func TestVerifyRunTestsAfterDriver_RRunsAffectedSet(t *testing.T) {
-	fv := &fakeVerifyDeps{
-		selectResult: makeAffectedSet(),
-		tracerResult: makeTracer(),
-	}
-	sh := &fakeShell{out: []byte("ok")}
-	p := &fakePrompter{answers: []string{"r"}}
-	a := newActions(Deps{
-		Shell:        sh,
-		Prompter:     p,
-		Select:       fv.Select,
-		SelectTracer: fv.SelectTracer,
-	})
-	out := a.verifyRunTestsAfterDriver(statemachine.NewContext())
-	if out.Err != nil {
-		t.Fatalf("unexpected error: %v", out.Err)
-	}
-	// Two affected-set tests → two shell calls, both --test flagged.
-	if len(sh.calls) != 2 {
-		t.Fatalf("expected 2 shell calls, got %d: %v", len(sh.calls), sh.calls)
-	}
-	for _, c := range sh.calls {
-		if !strings.Contains(c, "--test ") {
-			t.Errorf("call: %q has no --test flag (should be per-test, not full-suite)", c)
-		}
-	}
-}
-
-func TestVerifyRunTestsAfterDriver_TracerUnmapped_FallsBackToFullSuite(t *testing.T) {
-	tracer := makeTracer()
-	tracer.Unmapped = []testselect.ChangedMethod{
-		{File: "some/orphan/path.ts", Method: "doStuff", Layer: "shop", Lang: "typescript"},
-	}
-	fv := &fakeVerifyDeps{
-		selectResult: makeAffectedSet(),
-		tracerResult: tracer,
-	}
-	sh := &fakeShell{out: []byte("ok")}
-	p := &fakePrompter{answers: []string{"t"}}
-	var stderr bytes.Buffer
-	a := newActions(Deps{
-		Shell:        sh,
-		Prompter:     p,
-		Stderr:       &stderr,
-		Select:       fv.Select,
-		SelectTracer: fv.SelectTracer,
-	})
-	out := a.verifyRunTestsAfterDriver(statemachine.NewContext())
-	if out.Err != nil {
-		t.Fatalf("unexpected error: %v", out.Err)
-	}
-	// Fallback path runs each suite as a whole — one shell call (no --test
-	// flag), since the affected set has one suite.
-	if len(sh.calls) != 1 {
-		t.Fatalf("expected 1 full-suite call, got %d: %v", len(sh.calls), sh.calls)
-	}
-	if strings.Contains(sh.calls[0], "--test") {
-		t.Errorf("expected full-suite call (no --test), got %q", sh.calls[0])
-	}
-	if !strings.Contains(sh.calls[0], "--suite acceptance-ui") {
-		t.Errorf("expected --suite acceptance-ui, got %q", sh.calls[0])
-	}
-	if !strings.Contains(stderr.String(), "tracer could not stage") {
-		t.Errorf("expected tracer warning in stderr, got:\n%s", stderr.String())
-	}
-}
-
-func TestVerifyRunTestsAfterDriver_FRunsFullSuite(t *testing.T) {
-	fv := &fakeVerifyDeps{
-		selectResult: makeAffectedSet(),
-		tracerResult: makeTracer(),
-	}
-	sh := &fakeShell{out: []byte("ok")}
-	p := &fakePrompter{answers: []string{"f"}}
-	a := newActions(Deps{
-		Shell:        sh,
-		Prompter:     p,
-		Select:       fv.Select,
-		SelectTracer: fv.SelectTracer,
-	})
-	out := a.verifyRunTestsAfterDriver(statemachine.NewContext())
-	if out.Err != nil {
-		t.Fatalf("unexpected error: %v", out.Err)
-	}
-	if len(sh.calls) != 1 {
-		t.Fatalf("expected 1 full-suite call, got %d: %v", len(sh.calls), sh.calls)
-	}
-	if strings.Contains(sh.calls[0], "--test") {
-		t.Errorf("expected no --test on full-suite call, got %q", sh.calls[0])
-	}
-}
-
-func TestVerifyRunTestsAfterDriver_AApprovesWithoutRunning(t *testing.T) {
-	fv := &fakeVerifyDeps{
-		selectResult: makeAffectedSet(),
-		tracerResult: makeTracer(),
-	}
-	sh := &fakeShell{}
-	p := &fakePrompter{answers: []string{"a"}}
-	a := newActions(Deps{
-		Shell:        sh,
-		Prompter:     p,
-		Select:       fv.Select,
-		SelectTracer: fv.SelectTracer,
-	})
-	out := a.verifyRunTestsAfterDriver(statemachine.NewContext())
-	if out.Err != nil {
-		t.Fatalf("unexpected error: %v", out.Err)
-	}
-	if len(sh.calls) != 0 {
-		t.Errorf("expected no shell calls on approve, got %v", sh.calls)
-	}
+// makeListResponse is the canned `--list` reply scriptedShell tests expect
+// before any test-run command — the action prints its menu off this output.
+func makeListResponse() scriptedResponse {
+	return scriptedResponse{out: []byte(suiteListOut)}
 }
 
 func TestVerifyRunTestsAfterDriver_XRejects(t *testing.T) {
-	fv := &fakeVerifyDeps{
-		selectResult: makeAffectedSet(),
-		tracerResult: makeTracer(),
-	}
-	sh := &fakeShell{}
+	sh := &scriptedShell{t: t}
 	p := &fakePrompter{answers: []string{"x"}}
-	a := newActions(Deps{
-		Shell:        sh,
-		Prompter:     p,
-		Select:       fv.Select,
-		SelectTracer: fv.SelectTracer,
-	})
+	a := newActions(Deps{Shell: sh, Prompter: p})
 	out := a.verifyRunTestsAfterDriver(statemachine.NewContext())
 	if out.Err == nil {
 		t.Fatalf("expected error on reject")
@@ -1390,21 +1069,189 @@ func TestVerifyRunTestsAfterDriver_XRejects(t *testing.T) {
 	}
 }
 
-func TestWriteTracerSummary_ChainShape(t *testing.T) {
-	tracer := makeTracer()
-	var buf bytes.Buffer
-	writeTracerSummary(&buf, tracer)
-	got := buf.String()
-	for _, want := range []string{
-		"Tracer selections (1):",
-		"inputSku (system-test/typescript/src/testkit/driver/adapter/myShop/ui/client/pages/NewOrderPage.ts)",
-		"→ port placeOrder",
-		"→ DSL whenPlacingOrder (when)",
-		"→ test PlaceOrderPositiveTest.shouldPlaceOrder (acceptance-ui)",
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("summary missing %q\nfull:\n%s", want, got)
+func TestVerifyRunTestsAfterDriver_NSkipsWithoutRunning(t *testing.T) {
+	sh := &scriptedShell{t: t}
+	p := &fakePrompter{answers: []string{"n"}}
+	ctx := statemachine.NewContext()
+	a := newActions(Deps{Shell: sh, Prompter: p})
+	out := a.verifyRunTestsAfterDriver(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if len(sh.calls) != 0 {
+		t.Errorf("expected no shell calls on skip, got %v", sh.calls)
+	}
+	if out.Value != "" {
+		t.Errorf("Outcome.Value: got %q, want empty", out.Value)
+	}
+	if _, ok := ctx.State["verify_class"]; ok {
+		t.Errorf("ctx.verify_class set on skip")
+	}
+}
+
+func TestVerifyRunTestsAfterDriver_ARunsAllSystemTests(t *testing.T) {
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{{out: []byte("PASS")}}}
+	p := &fakePrompter{answers: []string{"a", "n"}} // [a]ll, then no-more-tests
+	ctx := statemachine.NewContext()
+	a := newActions(Deps{Shell: sh, Prompter: p})
+	out := a.verifyRunTestsAfterDriver(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if len(sh.calls) != 1 || sh.calls[0] != "gh optivem test system" {
+		t.Fatalf("expected single bare-`gh optivem test system` call, got %v", sh.calls)
+	}
+	if out.Value != "ok" {
+		t.Errorf("Outcome.Value: got %q, want ok", out.Value)
+	}
+}
+
+func TestVerifyRunTestsAfterDriver_SRunsPickedSuites(t *testing.T) {
+	// [s]ome suites → --list yields two suites, the user picks 1,2 → two
+	// `--suite <id>` runs in pick order.
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+		makeListResponse(),
+		{out: []byte("PASS")},
+		{out: []byte("PASS")},
+	}}
+	p := &fakePrompter{answers: []string{"s", "1,2", "n"}}
+	a := newActions(Deps{Shell: sh, Prompter: p})
+	out := a.verifyRunTestsAfterDriver(statemachine.NewContext())
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	wantCalls := []string{
+		"gh optivem test system --list",
+		"gh optivem test system --suite acceptance-api",
+		"gh optivem test system --suite acceptance-ui",
+	}
+	if len(sh.calls) != len(wantCalls) {
+		t.Fatalf("calls: got %v, want %v", sh.calls, wantCalls)
+	}
+	for i, want := range wantCalls {
+		if sh.calls[i] != want {
+			t.Errorf("call[%d]: got %q, want %q", i, sh.calls[i], want)
 		}
+	}
+}
+
+func TestVerifyRunTestsAfterDriver_PRunsSpecificTests(t *testing.T) {
+	// [p]ick → --list, pick suite 2, type "T1, T2" → one combined run.
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+		makeListResponse(),
+		{out: []byte("PASS")},
+	}}
+	p := &fakePrompter{answers: []string{"p", "2", "T1, T2", "n"}}
+	a := newActions(Deps{Shell: sh, Prompter: p})
+	out := a.verifyRunTestsAfterDriver(statemachine.NewContext())
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	wantCalls := []string{
+		"gh optivem test system --list",
+		"gh optivem test system --suite acceptance-ui --test T1 --test T2",
+	}
+	if len(sh.calls) != len(wantCalls) {
+		t.Fatalf("calls: got %v, want %v", sh.calls, wantCalls)
+	}
+	for i, want := range wantCalls {
+		if sh.calls[i] != want {
+			t.Errorf("call[%d]: got %q, want %q", i, sh.calls[i], want)
+		}
+	}
+}
+
+func TestVerifyRunTestsAfterDriver_LoopsOnGreen(t *testing.T) {
+	// First [a]ll → green → user says "y" to "Run more?" → second [a]ll →
+	// green → "n" exits. Two test-system calls observed.
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+		{out: []byte("PASS")},
+		{out: []byte("PASS")},
+	}}
+	p := &fakePrompter{answers: []string{"a", "y", "a", "n"}}
+	a := newActions(Deps{Shell: sh, Prompter: p})
+	out := a.verifyRunTestsAfterDriver(statemachine.NewContext())
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if len(sh.calls) != 2 {
+		t.Fatalf("expected two test-system calls, got %d: %v", len(sh.calls), sh.calls)
+	}
+	// The second-prompt sequence: top-menu, more?, top-menu, more?.
+	if got := len(p.asked); got != 4 {
+		t.Errorf("prompt count: got %d, want 4 (top, more?, top, more?)", got)
+	}
+}
+
+func TestVerifyRunTestsAfterDriver_ExitsLoopOnRed(t *testing.T) {
+	// [a]ll → red → action returns immediately, the "Run more?" prompt is
+	// never asked (gateway will dispatch fix agent).
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+		{out: []byte("--- FAIL: TestThing\n"), err: errors.New("exit status 1")},
+	}}
+	p := &fakePrompter{answers: []string{"a"}}
+	ctx := statemachine.NewContext()
+	a := newActions(Deps{Shell: sh, Prompter: p})
+	out := a.verifyRunTestsAfterDriver(ctx)
+	if out.Err != nil {
+		t.Fatalf("verify is feedback, not gating; got Err: %v", out.Err)
+	}
+	if out.Value != "red" {
+		t.Errorf("Outcome.Value: got %q, want red", out.Value)
+	}
+	if got := ctx.GetString("verify_class"); got != "red" {
+		t.Errorf("ctx verify_class: got %q, want red", got)
+	}
+	if len(p.asked) != 1 {
+		t.Errorf("expected exactly the top-level prompt; asked: %v", p.asked)
+	}
+}
+
+func TestVerifyRunTestsAfterDriver_UnknownChoiceReprompts(t *testing.T) {
+	sh := &scriptedShell{t: t}
+	p := &fakePrompter{answers: []string{"q", "n"}}
+	a := newActions(Deps{Shell: sh, Prompter: p, Stderr: &bytes.Buffer{}})
+	out := a.verifyRunTestsAfterDriver(statemachine.NewContext())
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if len(sh.calls) != 0 {
+		t.Errorf("expected no shell calls, got %v", sh.calls)
+	}
+}
+
+func TestParsePickNumbers(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   string
+		max  int
+		want []int
+		err  bool
+	}{
+		{name: "single", in: "2", max: 3, want: []int{2}},
+		{name: "list", in: "1,3", max: 3, want: []int{1, 3}},
+		{name: "spaces", in: " 1 , 2 ", max: 3, want: []int{1, 2}},
+		{name: "dedupes", in: "1,2,2,1", max: 3, want: []int{1, 2}},
+		{name: "empty", in: "", max: 3, want: nil},
+		{name: "bad_token", in: "1,foo", max: 3, err: true},
+		{name: "out_of_range", in: "4", max: 3, err: true},
+		{name: "zero", in: "0", max: 3, err: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parsePickNumbers(tc.in, tc.max)
+			if tc.err {
+				if err == nil {
+					t.Fatalf("want error, got %v", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected err: %v", err)
+			}
+			if fmt.Sprint(got) != fmt.Sprint(tc.want) {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -1412,34 +1259,24 @@ func TestWriteTracerSummary_ChainShape(t *testing.T) {
 // verifyRunTestsAfterDriver — class plumbing
 //
 // The verify action stamps Outcome.Value and ctx.State with one of {ok,
-// red, infra} so the trace banner (Item 6) and the structural-cycle
-// gateway (Item 3 of the verify-failure-dispatch plan) can route on the
-// classification rather than re-parsing the inline output.
+// red, infra} so the trace banner and the structural-cycle gateway can
+// route on the classification rather than re-parsing the inline output.
 // ---------------------------------------------------------------------------
 
 func TestVerifyRunTestsAfterDriver_StampsOKWhenAllSucceed(t *testing.T) {
-	fv := &fakeVerifyDeps{
-		selectResult: makeAffectedSet(),
-		tracerResult: makeTracer(),
-	}
-	sh := &fakeShell{out: []byte("ok")} // err=nil → classOK
-	p := &fakePrompter{answers: []string{""}}
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{{out: []byte("ok")}}}
+	p := &fakePrompter{answers: []string{"a", "n"}}
 	ctx := statemachine.NewContext()
-	a := newActions(Deps{
-		Shell:        sh,
-		Prompter:     p,
-		Select:       fv.Select,
-		SelectTracer: fv.SelectTracer,
-	})
+	a := newActions(Deps{Shell: sh, Prompter: p})
 	out := a.verifyRunTestsAfterDriver(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
 	if out.Value != "ok" {
-		t.Errorf("Outcome.Value: got %q, want %q", out.Value, "ok")
+		t.Errorf("Outcome.Value: got %q, want ok", out.Value)
 	}
 	if got := ctx.GetString("verify_class"); got != "ok" {
-		t.Errorf("ctx verify_class: got %q, want %q", got, "ok")
+		t.Errorf("ctx verify_class: got %q, want ok", got)
 	}
 	results, _ := ctx.Get("verify_results").([]verifyCommandResult)
 	if len(results) != 1 || results[0].Class != classOK {
@@ -1448,34 +1285,23 @@ func TestVerifyRunTestsAfterDriver_StampsOKWhenAllSucceed(t *testing.T) {
 }
 
 func TestVerifyRunTestsAfterDriver_StampsRedOnTestFailure(t *testing.T) {
-	fv := &fakeVerifyDeps{
-		selectResult: makeAffectedSet(),
-		tracerResult: makeTracer(),
-	}
 	// Non-nil err with neutral output → no infra pattern → classRed.
-	sh := &fakeShell{out: []byte("--- FAIL: TestThing\n"), err: errors.New("exit status 1")}
-	p := &fakePrompter{answers: []string{""}}
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+		{out: []byte("--- FAIL: TestThing\n"), err: errors.New("exit status 1")},
+	}}
+	p := &fakePrompter{answers: []string{"a"}} // red exits the loop, no "more?"
 	ctx := statemachine.NewContext()
-	a := newActions(Deps{
-		Shell:        sh,
-		Prompter:     p,
-		Select:       fv.Select,
-		SelectTracer: fv.SelectTracer,
-	})
+	a := newActions(Deps{Shell: sh, Prompter: p})
 	out := a.verifyRunTestsAfterDriver(ctx)
 	if out.Err != nil {
 		t.Fatalf("expected no Outcome.Err (verify is feedback, not gating); got %v", out.Err)
 	}
 	if out.Value != "red" {
-		t.Errorf("Outcome.Value: got %q, want %q", out.Value, "red")
+		t.Errorf("Outcome.Value: got %q, want red", out.Value)
 	}
 	if got := ctx.GetString("verify_class"); got != "red" {
-		t.Errorf("ctx verify_class: got %q, want %q", got, "red")
+		t.Errorf("ctx verify_class: got %q, want red", got)
 	}
-	// verify_results_text is the substitution body for the fix-verify
-	// agent prompt's ${verify_results} placeholder. Must contain the
-	// failed command and the runner's captured stdout/stderr so the
-	// fix agent has the same signal the operator saw inline.
 	resultsText := ctx.GetString("verify_results_text")
 	for _, want := range []string{
 		"gh optivem test system",
@@ -1489,32 +1315,25 @@ func TestVerifyRunTestsAfterDriver_StampsRedOnTestFailure(t *testing.T) {
 }
 
 func TestVerifyRunTestsAfterDriver_HaltsOnInfraWithDiagnostic(t *testing.T) {
-	// Item 5 of the verify-failure-dispatch plan: an infra-class result
-	// halts the run with Outcome.Err and prints the detailed banner so
-	// the operator sees *which* runner-side problem fired (here the
-	// missing-system-config / cwd-bug fingerprint), the command tried,
-	// and the cwd. Without this halt the structural cycle silently
-	// advanced into STOP_STRUCT_REVIEW with zero verify signal.
-	fv := &fakeVerifyDeps{
-		selectResult: makeAffectedSet(),
-		tracerResult: makeTracer(),
-	}
-	// The exact stderr the user saw in the morning trace — should match
-	// the "missing system config" infra row.
-	sh := &fakeShell{
-		out: []byte("ERROR: read system config ./system.json: open ./system.json: The system cannot find the file specified."),
-		err: errors.New("exit status 1"),
-	}
-	p := &fakePrompter{answers: []string{""}}
+	// Infra-class result halts with Outcome.Err and prints the detailed
+	// banner so the operator sees *which* runner-side problem fired (here
+	// the missing-system-config / cwd-bug fingerprint), the command tried,
+	// and the cwd. Without this halt the structural cycle would silently
+	// advance into STOP_STRUCT_REVIEW with zero verify signal.
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+		{
+			out: []byte("ERROR: read system config ./system.json: open ./system.json: The system cannot find the file specified."),
+			err: errors.New("exit status 1"),
+		},
+	}}
+	p := &fakePrompter{answers: []string{"a"}}
 	ctx := statemachine.NewContext()
 	var stderr bytes.Buffer
 	a := newActions(Deps{
-		Shell:        sh,
-		Prompter:     p,
-		Stderr:       &stderr,
-		RepoPath:     "/tmp/sandbox",
-		Select:       fv.Select,
-		SelectTracer: fv.SelectTracer,
+		Shell:    sh,
+		Prompter: p,
+		Stderr:   &stderr,
+		RepoPath: "/tmp/sandbox",
 	})
 	out := a.verifyRunTestsAfterDriver(ctx)
 	if out.Err == nil {
@@ -1523,13 +1342,9 @@ func TestVerifyRunTestsAfterDriver_HaltsOnInfraWithDiagnostic(t *testing.T) {
 	if !strings.Contains(out.Err.Error(), "infra") {
 		t.Errorf("Outcome.Err should mention infra; got: %v", out.Err)
 	}
-	// ctx.verify_class is still stamped — downstream gates / fix agents
-	// (Items 3 & 4) can read the class even on the halt path.
 	if got := ctx.GetString("verify_class"); got != "infra" {
 		t.Errorf("ctx verify_class: got %q, want %q", got, "infra")
 	}
-	// Banner content: the matched label, the runner's leading line,
-	// the command, the cwd, and the cross-link to the cwd-bug plan.
 	se := stderr.String()
 	for _, want := range []string{
 		"runner failed before any test ran",
@@ -1566,35 +1381,6 @@ func TestAggregateVerifyClass_InfraDominatesRedDominatesOK(t *testing.T) {
 				t.Errorf("aggregateVerifyClass(%v) = %v, want %v", tc.in, got, tc.want)
 			}
 		})
-	}
-}
-
-func TestVerifyRunTestsAfterDriver_ApprovePathDoesNotStampValue(t *testing.T) {
-	// "a" choice runs no commands; nothing was verified, so the trace
-	// should keep its honest "(no result)" rendering rather than
-	// claiming a class.
-	fv := &fakeVerifyDeps{
-		selectResult: makeAffectedSet(),
-		tracerResult: makeTracer(),
-	}
-	sh := &fakeShell{}
-	p := &fakePrompter{answers: []string{"a"}}
-	ctx := statemachine.NewContext()
-	a := newActions(Deps{
-		Shell:        sh,
-		Prompter:     p,
-		Select:       fv.Select,
-		SelectTracer: fv.SelectTracer,
-	})
-	out := a.verifyRunTestsAfterDriver(ctx)
-	if out.Err != nil {
-		t.Fatalf("unexpected err: %v", out.Err)
-	}
-	if out.Value != "" {
-		t.Errorf("Outcome.Value: got %q, want empty (no commands ran)", out.Value)
-	}
-	if _, ok := ctx.State["verify_class"]; ok {
-		t.Errorf("ctx.verify_class set on approve-without-running")
 	}
 }
 
