@@ -1,108 +1,19 @@
 # Consolidate process-flow with standard BPMN — terminology and substance
 
-> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-07T11:07:37Z`
-
-> **Unblocked.** The embed-yaml-and-agent-prompts work has landed (plan dropped from `plans/`), so the consumer YAML copies are gone and Item 1 is now a 1-repo change in `gh-optivem` (loader + embedded YAML + Go API).
-
 ## Motivation
 
-The header of `internal/atdd/runtime/statemachine/process-flow.yaml` claims "BPMN-shaped vocabulary". The shape is largely faithful (node types, sequence flows, callable sub-processes), but three places diverge from BPMN in ways that have started to bite:
-
-- **`flows:` at the top level is what BPMN calls `processes:`.** "Flow" in BPMN means *Sequence Flow* — an edge between elements within a process — which the YAML correctly uses for `sequence_flows:`. The dual meaning is confusing for anyone arriving with a BPMN background, and the divergence is mirrored across every Go consumer (`Flow`, `RunFlow`, `FlowName`, …).
-- **`id` carries the canonical step name.** Today's ids (`STOP_INTAKE`, `MOVE_TO_IN_PROGRESS`, `STRUCT_WRITE`) conflate BPMN's `id` role (machine ref, must be unique) with the `name` role (human label, can repeat). This collides as soon as the same conceptual step (e.g. `REQUEST_HUMAN_REVIEW`) needs to appear in two places — exactly the rename effort currently in flight.
-- **`call_activity.flow:`** references a sub-process by name; BPMN spells the field `process:`.
-
-Closing these gaps makes the "BPMN-shaped" docstring honest, makes the YAML readable cold by anyone with a BPMN background, and removes the technical reason the rename effort keeps tripping over name collisions. It also lays the groundwork for switching to a real BPMN renderer / linter in future without a second rename pass.
+Items 1 (terminology rename `flows`→`processes`, Go API rename) and 2 (new `name:` field, `description:`→`documentation:`) have landed. What remains is the per-node rename pass, which still needs the per-node mapping enumeration in `plans/20260501-144322-process-flow-node-id-rename-open-questions.md` to be resolved against the current YAML before it can run.
 
 ## Items
 
-Sequence: terminology first (shallow rename, no schema change), then the substance change (new `name:` field), then the per-node renames against the new schema. One PR per item keeps each diff focused.
-
-### 1. Terminology rename — `flows` → `processes`
-
-**Files:**
-- `internal/atdd/runtime/statemachine/process-flow.yaml`
-- `internal/atdd/runtime/statemachine/{types.go,load.go,run.go}`
-- `internal/atdd/runtime/statemachine/{transitions_test.go,structural_cycle_test.go}`
-- `internal/atdd/runtime/driver/{driver.go,driver_test.go}`
-- `atdd_commands.go`
-
-YAML schema:
-
-| Before | After |
-|---|---|
-| `flows:` (top-level container) | `processes:` |
-| `call_activity.flow: <name>` | `call_activity.process: <name>` |
-
-Go API (mechanical rename):
-
-| Before | After |
-|---|---|
-| `Flow` (struct type) | `Process` |
-| `Engine.Flows` map | `Engine.Processes` |
-| `Engine.RunFlow(name, ctx)` | `Engine.RunProcess(name, ctx)` |
-| `Engine.NextEdge(flowName, …)` | `Engine.NextEdge(processName, …)` |
-| `Options.FlowName` (driver) | `Options.ProcessName` |
-| `DefaultFlowName` const | `DefaultProcessName` |
-| `flow.Name / Start / Nodes / Edges / OutgoingByNode` | `process.*` |
-| `rawFlow`, `buildFlow` (loader internals) | `rawProcess`, `buildProcess` |
-| `RawNode.Flow` (call_activity sub-process ref) | `RawNode.Process` |
-| YAML tags `yaml:"flow"` / `yaml:"flows"` | `yaml:"process"` / `yaml:"processes"` |
-
-Sweep comments, docstrings, banner text, and error messages that say "flow" in the *process* sense → "process". Keep `sequence_flows:` and any "Sequence Flow" prose intact — that **is** BPMN-correct.
-
-### 2. Substance change — separate `id` from `name` (+ `description:` → `documentation:`)
-
-**Files:** same as #1.
-
-Add a new `name:` field to the node schema. `id:` stays as the unique-per-process machine reference (used by `sequence_flows.from/to` and `Process.Nodes` lookups); `name:` carries the canonical step vocabulary (`REQUEST_HUMAN_REVIEW`, `DISPATCH_AGENT`, `MOVE_TICKET`, …). `name:` has no uniqueness constraint and may repeat freely.
-
-Bundled with this item: rename `description:` → `documentation:` per BPMN's terminology (`name` = label, `documentation` = free-text detail). Existing semantics unchanged.
-
-Schema:
-
-```go
-// types.go / load.go
-type RawNode struct {
-    ID   string `yaml:"id"`
-    Name string `yaml:"name,omitempty"`   // NEW — canonical step vocabulary, may repeat
-    Type string `yaml:"type"`
-    // ...existing fields unchanged...
-}
-```
-
-YAML use:
-
-```yaml
-- id: STRUCT_REVIEW_IMPL
-  name: REQUEST_HUMAN_REVIEW
-  type: user_task
-  agent: human
-  role: review
-
-- id: STRUCT_REVIEW_TESTS
-  name: REQUEST_HUMAN_REVIEW          # repeat — different id, same name
-  type: user_task
-  agent: human
-  role: review
-```
-
-Render `name` (with `id` fallback when absent) in:
-- the spy/history in `structural_cycle_test.go`
-- the driver's `promptForAgent` banner
-- Mermaid / diagram generators
-- log lines that surface "step ran"
-
-Per-process id-uniqueness is already enforced by the loader (`buildFlow` → `buildProcess`); that stays. Per-name uniqueness is intentionally not enforced.
-
 ### 3. Per-node rename pass against the new schema
 
-Once #2 lands, batch the renames sketched in `plans/20260501-144322-process-flow-node-id-rename-open-questions.md` against the new two-field schema:
+Batch the renames sketched in `plans/20260501-144322-process-flow-node-id-rename-open-questions.md` against the new two-field schema:
 
-- `id`s become positional / contextual (e.g. `STRUCT_REVIEW_IMPL`, `STRUCT_REVIEW_TESTS`, `INTAKE_REVIEW`, `ONBOARD_REVIEW`).
-- `name`s become canonical vocabulary (`REQUEST_HUMAN_REVIEW`, `DISPATCH_AGENT`, `CLASSIFY_TICKET`, `MOVE_TICKET`, `COMMIT`, …).
+- `id`s stay positional / contextual (most existing ids are fine).
+- `name`s carry canonical vocabulary (`REQUEST_HUMAN_REVIEW`, `DISPATCH_AGENT`, `CLASSIFY_TICKET`, `MOVE_TICKET`, `COMMIT`, …).
 
-The per-rename open questions in that older plan (which mappings, scope of "...", `_TICKET_AGENT` clarification, `COMPILE` split-or-rename, etc.) still need to be resolved before this batch lands. That plan stays the source of truth for the specific mappings; this plan is the wider BPMN-alignment roadmap.
+Schema-level questions in the older plan are resolved (separate `id`/`name`, `_TICKET` suffix dropped, sibling `DISPATCH_*_AGENT` pattern, `STRUCT_WRITE`→`DISPATCH_AGENT`, COMPILE split dropped from rename pass, minimal scope, `TICKET_IN_ACCEPTANCE`→`MOVE_TICKET_TO_IN_ACCEPTANCE`). Remaining work is the per-node mapping enumeration against the current YAML — specifically which human-review STOPs share `name: REQUEST_HUMAN_REVIEW` and the full per-node `name:` value list.
 
 ## Out of scope
 
@@ -121,10 +32,3 @@ The following app-level extensions are deliberate engine choices, **not** diverg
 - `params:` on `call_activity` (simpler than `<dataInputAssociation>`)
 - `binding:` on gateway (gateway computes a value via `GateFn(binding)`; edge predicates read it back through `Context.State` — useful for hand-edited YAML, lets downstream gates reuse upstream decisions)
 - `when:` predicates as plain strings (custom mini-language instead of XPath/FEEL)
-
-## Decisions
-
-- Sequencing: #1 → #2 → #3, one PR per item.
-- #1 lands as a single PR (YAML key swap + Go struct/method rename together — the loader needs both).
-- `description:` → `documentation:` is bundled into #2 (was originally listed as optional Item 4).
-- Per-node id/name mappings for #3 are tracked in `plans/20260501-144322-process-flow-node-id-rename-open-questions.md`. The schema-level questions there are resolved; remaining work is the per-node mapping enumeration against the current YAML.

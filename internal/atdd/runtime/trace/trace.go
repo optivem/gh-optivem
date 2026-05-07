@@ -426,14 +426,15 @@ func (d Deps) tracePrefix() string {
 	return d.paint(fmt.Sprintf("[trace %s]", nowFn().Format("15:04:05")), color.Faint)
 }
 
-// nodeIDPaint renders the node id with the kind-appropriate emphasis. On a
-// TTY: cyan-bold for call_activity (so flow boundaries pop as the "phase"
-// markers), plain bold for everything else, plain text off-TTY.
+// nodeIDPaint renders the node label (Name when set, else ID) with the
+// kind-appropriate emphasis. On a TTY: cyan-bold for call_activity (so
+// process boundaries pop as the "phase" markers), plain bold for
+// everything else, plain text off-TTY.
 func (d Deps) nodeIDPaint(node statemachine.Node) string {
 	if node.Kind == statemachine.CallActivity {
-		return d.paint(node.ID, color.FgCyan, color.Bold)
+		return d.paint(node.Label(), color.FgCyan, color.Bold)
 	}
-	return d.paint(node.ID, color.Bold)
+	return d.paint(node.Label(), color.Bold)
 }
 
 // execGit is the production GitRunner. Mirrors the implementation pattern
