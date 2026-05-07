@@ -179,6 +179,13 @@ func writeEnter(deps Deps, node statemachine.Node, ctx *statemachine.Context) {
 //	[trace HH:MM:SS]    state: key=value, …
 //	[trace HH:MM:SS]    files: path, …
 //
+// The status word is normally OK, but verify-style actions stamp
+// Outcome.Value with a failure class so the banner can render `RED
+// NODE_ID` or `INFRA NODE_ID` instead — see outcomeStatusLabel. The
+// previous "OK VERIFY_STRUCT_DRIVER -> (no result)" line was the most
+// misleading thing in the trace; it directly contradicted the inline
+// "(test run failed: ... — continuing)" the same node had just printed.
+//
 // On Outcome.Err the first line becomes:
 //
 //	[trace HH:MM:SS] FAIL NODE_ID -> <error>  (<elapsed>)
@@ -194,11 +201,20 @@ func writeExit(deps Deps, node statemachine.Node, out statemachine.Outcome, elap
 			out.Err, elapsed)
 		return
 	}
-	fmt.Fprintf(w, "%s %s %s -> %s  (%s)\n",
-		deps.tracePrefix(),
-		deps.paint("OK", color.FgGreen),
-		deps.nodeIDPaint(node),
-		formatOutcome(out), elapsed)
+	label, attr := outcomeStatusLabel(out)
+	if detail := formatOutcome(out); detail != "" {
+		fmt.Fprintf(w, "%s %s %s -> %s  (%s)\n",
+			deps.tracePrefix(),
+			deps.paint(label, attr),
+			deps.nodeIDPaint(node),
+			detail, elapsed)
+	} else {
+		fmt.Fprintf(w, "%s %s %s  (%s)\n",
+			deps.tracePrefix(),
+			deps.paint(label, attr),
+			deps.nodeIDPaint(node),
+			elapsed)
+	}
 	if delta := stateDelta(pre, post); delta != "" {
 		fmt.Fprintf(w, "%s    %s %s\n", deps.tracePrefix(), deps.paint("state:", color.Faint), delta)
 	}
@@ -207,6 +223,27 @@ func writeExit(deps Deps, node statemachine.Node, out statemachine.Outcome, elap
 			fmt.Fprintf(w, "%s    %s %s\n", deps.tracePrefix(), deps.paint("files:", color.Faint), strings.Join(files, ", "))
 		}
 	}
+}
+
+// outcomeStatusLabel returns the status word and its color for the
+// trace banner. Most outcomes render as green "OK", but the verify
+// action stamps Outcome.Value with one of {ok, red, infra} so a
+// structural-cycle test failure (red) or an orchestrator-side blow-up
+// (infra) shows up as RED / INFRA in the banner. INFRA is yellow rather
+// than red because the SUT itself isn't proven broken — the runner
+// never got that far.
+//
+// "ok" still reads as OK but is treated as a known status so
+// formatOutcome can suppress the redundant `-> value=ok` suffix that
+// would otherwise repeat the same signal.
+func outcomeStatusLabel(out statemachine.Outcome) (string, color.Attribute) {
+	switch out.Value {
+	case "red":
+		return "RED", color.FgRed
+	case "infra":
+		return "INFRA", color.FgYellow
+	}
+	return "OK", color.FgGreen
 }
 
 // kindLabel maps NodeKind to the YAML vocabulary the operator already
@@ -231,8 +268,17 @@ func kindLabel(k statemachine.NodeKind) string {
 }
 
 // formatOutcome renders the populated Outcome field as `key=value` for
-// the exit banner. Empty Outcome returns "(no result)".
+// the exit banner. Returns the empty string when the status word
+// already conveys the outcome (verify classes — see outcomeStatusLabel),
+// so the caller can drop the "-> ..." suffix entirely. Otherwise empty
+// Outcome returns "(no result)".
 func formatOutcome(out statemachine.Outcome) string {
+	switch out.Value {
+	case "ok", "red", "infra":
+		// Status word already shows this; "-> value=red" would just be
+		// noise. The empty return tells writeExit to skip the suffix.
+		return ""
+	}
 	switch {
 	case out.Value != "":
 		return fmt.Sprintf("value=%s", out.Value)

@@ -1407,6 +1407,161 @@ func TestWriteTracerSummary_ChainShape(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// verifyRunTestsAfterDriver — class plumbing
+//
+// The verify action stamps Outcome.Value and ctx.State with one of {ok,
+// red, infra} so the trace banner (Item 6) and the structural-cycle
+// gateway (Item 3 of the verify-failure-dispatch plan) can route on the
+// classification rather than re-parsing the inline output.
+// ---------------------------------------------------------------------------
+
+func TestVerifyRunTestsAfterDriver_StampsOKWhenAllSucceed(t *testing.T) {
+	fv := &fakeVerifyDeps{
+		selectResult: makeAffectedSet(),
+		tracerResult: makeTracer(),
+	}
+	sh := &fakeShell{out: []byte("ok")} // err=nil → classOK
+	p := &fakePrompter{answers: []string{""}}
+	ctx := statemachine.NewContext()
+	a := newActions(Deps{
+		Shell:        sh,
+		Prompter:     p,
+		Select:       fv.Select,
+		SelectTracer: fv.SelectTracer,
+	})
+	out := a.verifyRunTestsAfterDriver(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if out.Value != "ok" {
+		t.Errorf("Outcome.Value: got %q, want %q", out.Value, "ok")
+	}
+	if got := ctx.GetString("verify_class"); got != "ok" {
+		t.Errorf("ctx verify_class: got %q, want %q", got, "ok")
+	}
+	results, _ := ctx.Get("verify_results").([]verifyCommandResult)
+	if len(results) != 1 || results[0].Class != classOK {
+		t.Errorf("ctx verify_results: got %#v, want one classOK result", results)
+	}
+}
+
+func TestVerifyRunTestsAfterDriver_StampsRedOnTestFailure(t *testing.T) {
+	fv := &fakeVerifyDeps{
+		selectResult: makeAffectedSet(),
+		tracerResult: makeTracer(),
+	}
+	// Non-nil err with neutral output → no infra pattern → classRed.
+	sh := &fakeShell{out: []byte("--- FAIL: TestThing\n"), err: errors.New("exit status 1")}
+	p := &fakePrompter{answers: []string{""}}
+	ctx := statemachine.NewContext()
+	a := newActions(Deps{
+		Shell:        sh,
+		Prompter:     p,
+		Select:       fv.Select,
+		SelectTracer: fv.SelectTracer,
+	})
+	out := a.verifyRunTestsAfterDriver(ctx)
+	if out.Err != nil {
+		t.Fatalf("expected no Outcome.Err (verify is feedback, not gating); got %v", out.Err)
+	}
+	if out.Value != "red" {
+		t.Errorf("Outcome.Value: got %q, want %q", out.Value, "red")
+	}
+	if got := ctx.GetString("verify_class"); got != "red" {
+		t.Errorf("ctx verify_class: got %q, want %q", got, "red")
+	}
+}
+
+func TestVerifyRunTestsAfterDriver_StampsInfraOnConfigError(t *testing.T) {
+	fv := &fakeVerifyDeps{
+		selectResult: makeAffectedSet(),
+		tracerResult: makeTracer(),
+	}
+	// The exact stderr the user saw in the morning trace — should match
+	// the "missing system config" infra row.
+	sh := &fakeShell{
+		out: []byte("ERROR: read system config ./system.json: open ./system.json: The system cannot find the file specified."),
+		err: errors.New("exit status 1"),
+	}
+	p := &fakePrompter{answers: []string{""}}
+	ctx := statemachine.NewContext()
+	var stderr bytes.Buffer
+	a := newActions(Deps{
+		Shell:        sh,
+		Prompter:     p,
+		Stderr:       &stderr,
+		Select:       fv.Select,
+		SelectTracer: fv.SelectTracer,
+	})
+	out := a.verifyRunTestsAfterDriver(ctx)
+	if out.Err != nil {
+		t.Fatalf("Outcome.Err: %v (Item 5 will halt here; Item 2 just plumbs the class)", out.Err)
+	}
+	if out.Value != "infra" {
+		t.Errorf("Outcome.Value: got %q, want %q", out.Value, "infra")
+	}
+	if got := ctx.GetString("verify_class"); got != "infra" {
+		t.Errorf("ctx verify_class: got %q, want %q", got, "infra")
+	}
+	if !strings.Contains(stderr.String(), "[infra]") {
+		t.Errorf("expected per-command stderr to tag the class; got:\n%s", stderr.String())
+	}
+}
+
+func TestAggregateVerifyClass_InfraDominatesRedDominatesOK(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   []failureClass
+		want failureClass
+	}{
+		{name: "empty_is_ok", in: nil, want: classOK},
+		{name: "all_ok", in: []failureClass{classOK, classOK}, want: classOK},
+		{name: "any_red", in: []failureClass{classOK, classRed, classOK}, want: classRed},
+		{name: "infra_dominates_red", in: []failureClass{classRed, classInfra, classOK}, want: classInfra},
+		{name: "infra_alone", in: []failureClass{classInfra}, want: classInfra},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			results := make([]verifyCommandResult, len(tc.in))
+			for i, c := range tc.in {
+				results[i] = verifyCommandResult{Class: c}
+			}
+			if got := aggregateVerifyClass(results); got != tc.want {
+				t.Errorf("aggregateVerifyClass(%v) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestVerifyRunTestsAfterDriver_ApprovePathDoesNotStampValue(t *testing.T) {
+	// "a" choice runs no commands; nothing was verified, so the trace
+	// should keep its honest "(no result)" rendering rather than
+	// claiming a class.
+	fv := &fakeVerifyDeps{
+		selectResult: makeAffectedSet(),
+		tracerResult: makeTracer(),
+	}
+	sh := &fakeShell{}
+	p := &fakePrompter{answers: []string{"a"}}
+	ctx := statemachine.NewContext()
+	a := newActions(Deps{
+		Shell:        sh,
+		Prompter:     p,
+		Select:       fv.Select,
+		SelectTracer: fv.SelectTracer,
+	})
+	out := a.verifyRunTestsAfterDriver(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if out.Value != "" {
+		t.Errorf("Outcome.Value: got %q, want empty (no commands ran)", out.Value)
+	}
+	if _, ok := ctx.State["verify_class"]; ok {
+		t.Errorf("ctx.verify_class set on approve-without-running")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // red_phase_cycle infrastructure (Step 1 of the AT/CT split)
 // ---------------------------------------------------------------------------
 

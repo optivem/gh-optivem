@@ -208,25 +208,6 @@ regardless of cycle, and otherwise continues.
 
 ## Items
 
-### 2. Plumb verify results through the action
-
-**File:** `internal/atdd/runtime/actions/bindings.go`
-
-- `runVerifyCommand` returns `verifyCommandResult`.
-- `runTracerVerify` / `runAffectedSetVerify` collect them.
-- `verifyRunTestsAfterDriver` returns an Outcome with the classification
-  result attached. Reuse existing `Outcome.Params` (string-keyed) so
-  the gateway binding can read it without a schema change to
-  `statemachine.Outcome`.
-
-The "OK VERIFY_STRUCT_DRIVER" trace line should become "RED ..." or
-"INFRA ..." when classification != ok, so the trace stops contradicting
-the inline output.
-
-**File:** `internal/atdd/runtime/actions/bindings_test.go`
-
-Extend the existing fake-shell-driven tests to cover the three classes.
-
 ### 3. Gateway + fix-loop wiring
 
 **File:** `internal/atdd/runtime/statemachine/process-flow.yaml`
@@ -274,15 +255,6 @@ Cross-link sibling plan `20260505-220100-verify-runs-from-wrong-cwd.md`
 in the prompt itself if the cwd fingerprint matches — saves the user
 from re-diagnosing.
 
-### 6. Trace-line consistency
-
-**File:** `internal/atdd/runtime/trace/trace.go` (or wherever
-`OK <node>` is rendered).
-
-Render `RED <node>`, `INFRA <node>`, `OK <node>` based on the verify
-outcome's class. The current "OK ... -> (no result)" line is the most
-misleading thing in the trace today.
-
 ## Out of scope
 
 - **WRITE-phase fix loop.** `VERIFY_AT_DRIVER` / `VERIFY_CT_DRIVER`
@@ -305,16 +277,12 @@ misleading thing in the trace today.
 
 ## Order of operations
 
-1. Land Item 2 (plumb results) + Item 6 (trace line). One PR — both
-   touch bindings + the trace renderer; splitting them yields a
-   confusing intermediate state.
-2. Land Item 5 (infra halt) on top. Smallest user-visible improvement
-   alone — even without the gateway, the cwd-bug case stops silently
-   advancing.
-3. Land Item 3 (gateway + state machine) + Item 4 (agent prompt) +
+1. Land Item 5 (infra halt). Smallest user-visible improvement alone —
+   even without the gateway, the cwd-bug case stops silently advancing.
+2. Land Item 3 (gateway + state machine) + Item 4 (agent prompt) +
    tests in one PR. The fix loop is a single feature; partial
    landings are confusing.
-4. **Manual rehearsal.** Reproduce the failing structural cycle,
+3. **Manual rehearsal.** Reproduce the failing structural cycle,
    confirm: (a) infra failure halts with the cross-link, (b) a real
    red routes to the fix agent, (c) the fix agent's edits trigger a
    re-verify, (d) on green the human sees `OK STOP_STRUCT_REVIEW`

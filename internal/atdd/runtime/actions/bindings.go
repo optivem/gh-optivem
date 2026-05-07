@@ -1035,11 +1035,14 @@ func (a actions) verifyRunTestsAfterDriver(ctx *statemachine.Context) statemachi
 		fmt.Fprintln(a.deps.Stdout, "Approving without running the selected tests.")
 		return statemachine.Outcome{}
 	case "t", "":
-		return a.runTracerVerify(repoRoot, baseRef, res)
+		out, results := a.runTracerVerify(repoRoot, baseRef, res)
+		return a.finalizeVerify(ctx, out, results)
 	case "r":
-		return a.runAffectedSetVerify(res, false)
+		out, results := a.runAffectedSetVerify(res, false)
+		return a.finalizeVerify(ctx, out, results)
 	case "f":
-		return a.runAffectedSetVerify(res, true)
+		out, results := a.runAffectedSetVerify(res, true)
+		return a.finalizeVerify(ctx, out, results)
 	default:
 		fmt.Fprintf(a.deps.Stderr, "Unrecognised choice %q — defaulting to approve without running.\n", choice)
 		return statemachine.Outcome{}
@@ -1051,7 +1054,11 @@ func (a actions) verifyRunTestsAfterDriver(ctx *statemachine.Context) statemachi
 // change to a test, fall back to the full affected-set's suites — the
 // unmapped change might still break a test the tracer's pick rule didn't
 // catch.
-func (a actions) runTracerVerify(repoRoot, baseRef string, res testselect.Result) statemachine.Outcome {
+//
+// Returns the per-command results so the caller can aggregate them into
+// a single failureClass (the fallback paths delegate to runAffectedSetVerify
+// and pass through whatever it collected).
+func (a actions) runTracerVerify(repoRoot, baseRef string, res testselect.Result) (statemachine.Outcome, []verifyCommandResult) {
 	tracer, err := a.deps.SelectTracer(repoRoot, baseRef)
 	if err != nil {
 		fmt.Fprintf(a.deps.Stderr, "verify_run_tests_after_driver: tracer selector failed (%v) — falling back to full suite\n", err)
@@ -1081,19 +1088,21 @@ func (a actions) runTracerVerify(repoRoot, baseRef string, res testselect.Result
 		fmt.Fprintln(a.deps.Stdout)
 	}
 
+	results := make([]verifyCommandResult, 0, len(tracer.Selections))
 	for _, sel := range tracer.Selections {
 		cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s",
 			shellEscape(sel.Suite), shellEscape(sel.Test))
-		a.runVerifyCommand(cmd)
+		results = append(results, a.runVerifyCommand(cmd))
 	}
-	return statemachine.Outcome{}
+	return statemachine.Outcome{}, results
 }
 
 // runAffectedSetVerify runs the affected-set suites (commit-time gate).
 // `runFull` is true when the user explicitly chose [f]ull suite, or when
 // the selector couldn't statically trace some change — both treat the
-// suites as opaque and run them whole.
-func (a actions) runAffectedSetVerify(res testselect.Result, runFull bool) statemachine.Outcome {
+// suites as opaque and run them whole. Returns one verifyCommandResult
+// per shelled-out command (the caller aggregates).
+func (a actions) runAffectedSetVerify(res testselect.Result, runFull bool) (statemachine.Outcome, []verifyCommandResult) {
 	if !runFull {
 		runFull = len(res.Unmapped) > 0
 	}
@@ -1106,19 +1115,42 @@ func (a actions) runAffectedSetVerify(res testselect.Result, runFull bool) state
 		}
 	}
 
+	var results []verifyCommandResult
 	for _, sel := range res.Selections {
 		if runFull {
 			cmd := fmt.Sprintf("gh optivem test system --suite %s", shellEscape(sel.Suite))
-			a.runVerifyCommand(cmd)
+			results = append(results, a.runVerifyCommand(cmd))
 			continue
 		}
 		for _, t := range sel.Tests {
 			cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s",
 				shellEscape(sel.Suite), shellEscape(t))
-			a.runVerifyCommand(cmd)
+			results = append(results, a.runVerifyCommand(cmd))
 		}
 	}
-	return statemachine.Outcome{}
+	return statemachine.Outcome{}, results
+}
+
+// finalizeVerify aggregates per-command results into a single failure
+// class and stashes everything the gateway-and-fix-loop (Item 3) will
+// need: ctx.State["verify_class"] for predicate evaluation,
+// ctx.State["verify_results"] for the fix agent's prompt template, and
+// Outcome.Value so the trace decorator (Item 6) renders RED/INFRA/OK
+// instead of the misleading blanket OK.
+//
+// When no commands ran (approve-without-running, no driver-adapter
+// changes, or an early bailout), Outcome.Value is left empty. The trace
+// then falls through to its default "(no result)" rendering, which is
+// honest: nothing was verified.
+func (a actions) finalizeVerify(ctx *statemachine.Context, out statemachine.Outcome, results []verifyCommandResult) statemachine.Outcome {
+	if out.Err != nil || len(results) == 0 {
+		return out
+	}
+	class := aggregateVerifyClass(results)
+	ctx.Set("verify_class", class.String())
+	ctx.Set("verify_results", results)
+	out.Value = class.String()
+	return out
 }
 
 // printTracerSummary prints one chain block per tracer selection. The
@@ -1213,18 +1245,73 @@ func dedupSorted(s []string) []string {
 	return out
 }
 
-// runVerifyCommand shells out and surfaces test failures as informational
-// output — the action does not halt the state machine on test failure
-// (per plan: verification is feedback, not gating).
-func (a actions) runVerifyCommand(cmd string) {
+// verifyCommandResult is the captured outcome of one `gh optivem test ...`
+// invocation. The verify action collects a slice of these per cycle and
+// aggregates them into a single failureClass — see aggregateVerifyClass.
+//
+// Output is the combined stdout/stderr the runner produced (Shell.Run
+// returns one stream); classifyShellErr's regex anchors are runner-prefix
+// based, so feeding the combined stream is fine. ExitErr mirrors what
+// Shell.Run returned; nil means the command succeeded.
+//
+// The fix-agent dispatch (Item 3 of the verify-failure-dispatch-fix-agent
+// plan) reads this struct out of ctx.State["verify_results"]; the trace
+// banner reads the aggregated class out of Outcome.Value (Item 6).
+type verifyCommandResult struct {
+	Cmd     string
+	Output  string
+	ExitErr error
+	Class   failureClass
+	Label   string // populated only for classInfra (the matched pattern's label)
+}
+
+// runVerifyCommand shells out and captures the per-command outcome. The
+// caller (runTracerVerify / runAffectedSetVerify) collects results across
+// commands; aggregation into a single class happens in finalizeVerify.
+//
+// Failures still surface inline as before — the design point ("verification
+// is feedback, not gating") stays intact for WRITE-phase callers — but the
+// returned result carries the classification so a structural-cycle gateway
+// can route on it without re-parsing the printed line.
+func (a actions) runVerifyCommand(cmd string) verifyCommandResult {
 	fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
 	out, err := a.deps.Shell.Run(context.Background(), cmd)
 	if len(out) > 0 {
 		fmt.Fprintln(a.deps.Stdout, string(out))
 	}
+	class, label := classifyShellErr(string(out), err)
 	if err != nil {
-		fmt.Fprintf(a.deps.Stderr, "(test run failed: %v — continuing)\n", err)
+		fmt.Fprintf(a.deps.Stderr, "(test run failed [%s]: %v — continuing)\n", class, err)
 	}
+	return verifyCommandResult{
+		Cmd:     cmd,
+		Output:  string(out),
+		ExitErr: err,
+		Class:   class,
+		Label:   label,
+	}
+}
+
+// aggregateVerifyClass returns the worst class across results. Infra
+// dominates red dominates ok: an orchestrator-side failure means we
+// never learned what the runner would have said about the SUT, so we
+// surface infra over red rather than letting a phantom red trigger the
+// fix agent on a problem the SUT can't actually solve.
+//
+// An empty result slice means no commands ran (approve-without-running,
+// no driver-adapter changes); the caller (finalizeVerify) treats that
+// case specially and does not stamp Outcome.Value.
+func aggregateVerifyClass(results []verifyCommandResult) failureClass {
+	worst := classOK
+	for _, r := range results {
+		if r.Class == classInfra {
+			return classInfra
+		}
+		if r.Class == classRed {
+			worst = classRed
+		}
+	}
+	return worst
 }
 
 // verifyVerbose reports whether ATDD_VERIFY_VERBOSE is set to a truthy
