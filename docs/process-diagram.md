@@ -2,7 +2,7 @@
 
 > Generated from `internal/atdd/runtime/statemachine/process-flow.yaml` by `internal/atdd/runtime/diagram`. Do not edit by hand — edit the YAML and regenerate via `gh optivem atdd show diagram > docs/process-diagram.md`.
 
-Each section corresponds to one named flow in the YAML. `call_activity` nodes appear as boxes pointing at the linked sub-flow's heading.
+Each section corresponds to one named process in the YAML. `call_activity` nodes appear as boxes pointing at the linked sub-process's heading.
 
 ## Ticket Lifecycle
 
