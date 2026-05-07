@@ -35,9 +35,9 @@ type layout struct {
 	TestRoots func(repoRoot string) []string
 
 	// MethodIndexer returns every method-shaped region in `body` for this
-	// language. Wired per language — currently to a regex-based scan that
-	// recognises a class-body method declaration shape; will swap to a
-	// tree-sitter walk per the migration plan.
+	// language. Wired per language: TypeScript uses a tree-sitter query
+	// (treesitterMethodIndexer); Java and C# still use the regex scan
+	// (regexMethodIndexer) until their slices follow.
 	MethodIndexer func(body string) []methodRegion
 	// CallerFinder returns the byte offsets in `body` where `methodName`
 	// is invoked. Each offset is the start of the call expression. The
@@ -181,13 +181,6 @@ func dotnetLayout() *layout {
 }
 
 func typescriptLayout() *layout {
-	// Method declaration in a class body OR a function declaration.
-	sig := regexp.MustCompile(
-		`^\s*(?:public\s+|private\s+|protected\s+|static\s+|async\s+|export\s+|function\s+)*` +
-			`(\w+)\s*` +
-			`(?:<[^>]*>)?\s*\(`,
-	)
-	classDeclRE := regexp.MustCompile(`\b(?:class|interface)\s+(\w+)\b`)
 	return &layout{
 		Lang:       "typescript",
 		SourceExts: []string{".ts"},
@@ -221,9 +214,9 @@ func typescriptLayout() *layout {
 		TestRoots: func(repoRoot string) []string {
 			return []string{filepath.Join(repoRoot, "system-test", "typescript")}
 		},
-		MethodIndexer:  regexMethodIndexer(sig),
-		CallerFinder:   regexCallerFinder,
-		ClassExtractor: regexClassExtractor(classDeclRE),
+		MethodIndexer:  treesitterMethodIndexer,
+		CallerFinder:   treesitterCallerFinder,
+		ClassExtractor: treesitterClassExtractor,
 		IsTestAnnotation: func(line string) bool {
 			t := strings.TrimSpace(line)
 			return strings.HasPrefix(t, "it(") ||
@@ -239,11 +232,9 @@ func typescriptLayout() *layout {
 	}
 }
 
-// regexCallerFinder is the shared regex implementation of CallerFinder.
-// All three current languages (java, dotnet, typescript) use the same
-// `\b<name>\s*\(` shape, so they share one implementation. The TypeScript
-// slice will replace this with a tree-sitter query for `call_expression`
-// nodes whose function ends in `property_identifier` or `identifier`.
+// regexCallerFinder is the shared regex implementation of CallerFinder
+// used by Java and C#. Both share the same `\b<name>\s*\(` shape.
+// TypeScript uses treesitterCallerFinder instead.
 func regexCallerFinder(body, methodName string) []int {
 	re := regexp.MustCompile(`\b` + regexp.QuoteMeta(methodName) + `\s*\(`)
 	matches := re.FindAllStringIndex(body, -1)

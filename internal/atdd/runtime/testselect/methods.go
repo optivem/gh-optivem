@@ -17,8 +17,8 @@ type methodRegion struct {
 
 // regexMethodIndexer returns a MethodIndexer that recognises method
 // signatures via the given regex and walks brace depth to find each
-// method's body span. This is the regex implementation; the TypeScript
-// slice swaps the wiring for a tree-sitter walk.
+// method's body span. Used by Java and C#; TypeScript uses
+// treesitterMethodIndexer.
 func regexMethodIndexer(sig *regexp.Regexp) func(body string) []methodRegion {
 	return func(body string) []methodRegion {
 		return extractMethodRegions(body, sig)

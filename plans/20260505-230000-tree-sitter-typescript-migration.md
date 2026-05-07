@@ -232,31 +232,23 @@ Concretely:
 
 ## Order of operations
 
-The refactor pass (per-language `MethodIndexer` / `CallerFinder` /
-`ClassExtractor` extension points on the layout struct, all three
-languages wired to their existing regex implementations) has landed.
-Remaining steps:
+The refactor pass, the tree-sitter implementation file, the TS wiring
+swap (with TS regex closures dropped), the new shape-coverage fixture
+tests, and the index benchmark have landed. Parity must still be
+verified in CI (this machine has no C compiler so `go test` was not
+run locally — CI compiles with CGo + zig). Remaining steps:
 
-1. Swap the TS layout's wiring to use the tree-sitter functions;
-   delete the TS regex closures in the same change. Java and C#
-   layouts untouched. Run the full test suite — every existing TS
-   test must pass without modification (parity gate). Requires gcc
-   on PATH locally to compile the testselect package's CGo imports.
-2. Add new fixture tests for shapes the regex couldn't parse
-   (arrow-property class field, multi-line signature, getter/setter,
-   decorated method). Confirm they pass under tree-sitter.
-3. Add the tree-sitter index benchmark. Sanity check.
-4. Build the branch via `scripts/install.sh`. Run a real shop WRITE
+1. Build the branch via `scripts/install.sh`. Run a real shop WRITE
    cycle that previously hit the `inputSku` failure with
    `ATDD_VERIFY_VERBOSE=1`. Confirm the tracer succeeds with one
    selection per channel, no `WARNING: tracer could not stage`.
-5. Validate Windows binaries are self-contained. After the next CI
+2. Validate Windows binaries are self-contained. After the next CI
    release (or on-demand snapshot run), download the Windows
    binary and confirm it runs on a stock Windows machine (no
    `libwinpthread-1.dll` etc. errors). The current
    `.goreleaser.yml` adds `-extldflags=-static` for `windows`
    targets via a Go template, which should statically link MinGW
    runtime; this step verifies the assumption holds.
-6. Merge. Java and C# slices unblocked at this point — open separate
+3. Merge. Java and C# slices unblocked at this point — open separate
    plans (reuse the same binding, add `tree-sitter-java` and
    `tree-sitter-c-sharp` as additional deps).
