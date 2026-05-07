@@ -1,5 +1,7 @@
 # Verify-time test failures should not silently flow into human review
 
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-07T08:27:04Z`
+
 ## Symptom
 
 Running an `AT - RED - SYSTEM DRIVER - WRITE` cycle (chore on a Page Object
@@ -208,16 +210,6 @@ regardless of cycle, and otherwise continues.
 
 ## Items
 
-### 1. Classify `runVerifyCommand` failures
-
-**File (new):** `internal/atdd/runtime/actions/verify_classify.go`
-
-Table-driven `classifyShellErr(stderr string, err error) failureClass`.
-Fixtures cover the cwd bug stderr, missing-toolchain stderr, real-red
-stderr (e.g. Jest "Tests: 1 failed, 5 passed").
-
-**File:** `internal/atdd/runtime/actions/verify_classify_test.go`
-
 ### 2. Plumb verify results through the action
 
 **File:** `internal/atdd/runtime/actions/bindings.go`
@@ -315,17 +307,16 @@ misleading thing in the trace today.
 
 ## Order of operations
 
-1. Land Item 1 (classify) + its tests. Pure function, isolated.
-2. Land Item 2 (plumb results) + Item 6 (trace line). One PR — both
+1. Land Item 2 (plumb results) + Item 6 (trace line). One PR — both
    touch bindings + the trace renderer; splitting them yields a
    confusing intermediate state.
-3. Land Item 5 (infra halt) on top. Smallest user-visible improvement
+2. Land Item 5 (infra halt) on top. Smallest user-visible improvement
    alone — even without the gateway, the cwd-bug case stops silently
    advancing.
-4. Land Item 3 (gateway + state machine) + Item 4 (agent prompt) +
+3. Land Item 3 (gateway + state machine) + Item 4 (agent prompt) +
    tests in one PR. The fix loop is a single feature; partial
    landings are confusing.
-5. **Manual rehearsal.** Reproduce the failing structural cycle,
+4. **Manual rehearsal.** Reproduce the failing structural cycle,
    confirm: (a) infra failure halts with the cross-link, (b) a real
    red routes to the fix agent, (c) the fix agent's edits trigger a
    re-verify, (d) on green the human sees `OK STOP_STRUCT_REVIEW`
