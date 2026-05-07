@@ -144,19 +144,25 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    ATDD_BACKEND["AT - GREEN - SYSTEM - WRITE (backend)"]
-    ATDD_FRONTEND["AT - GREEN - SYSTEM - WRITE (frontend)"]
-    ATDD_RELEASE["AT - GREEN - SYSTEM - COMMIT (atdd-release)"]
+    AT_GREEN_BACKEND["AT - GREEN - SYSTEM - WRITE (backend) — see § green_phase_cycle"]
+    AT_GREEN_FRONTEND["AT - GREEN - SYSTEM - WRITE (frontend) — see § green_phase_cycle"]
+    COMMIT_GREEN[["COMMIT: <Ticket> | AT - GREEN - SYSTEM"]]
+    ENABLE_TESTS[[Re-enable tests disabled in AT - RED - SYSTEM DRIVER]]
     GS_END((End))
+    MOVE_TO_IN_ACCEPTANCE[[Move ticket to TICKET STATUS - IN ACCEPTANCE]]
     STOP_GREEN_REVIEW[STOP - HUMAN REVIEW — approve implementation]
+    TICK[[Tick acceptance-criteria checklist items]]
 
-    ATDD_BACKEND --> ATDD_FRONTEND
-    ATDD_FRONTEND --> STOP_GREEN_REVIEW
-    STOP_GREEN_REVIEW --> ATDD_RELEASE
-    ATDD_RELEASE --> GS_END
+    ENABLE_TESTS --> AT_GREEN_BACKEND
+    AT_GREEN_BACKEND --> AT_GREEN_FRONTEND
+    AT_GREEN_FRONTEND --> STOP_GREEN_REVIEW
+    STOP_GREEN_REVIEW --> COMMIT_GREEN
+    COMMIT_GREEN --> TICK
+    TICK --> MOVE_TO_IN_ACCEPTANCE
+    MOVE_TO_IN_ACCEPTANCE --> GS_END
 
-    classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
-    class ATDD_BACKEND,ATDD_FRONTEND,ATDD_RELEASE agentNode
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class COMMIT_GREEN,ENABLE_TESTS,MOVE_TO_IN_ACCEPTANCE,TICK serviceNode
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
     class STOP_GREEN_REVIEW humanNode
@@ -304,6 +310,39 @@ flowchart TD
     GATE_CHANGE_TYPE_DA -- external-system-interface-redesign --> EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE
     SYSTEM_INTERFACE_REDESIGN_CYCLE --> DA_END
     EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE --> DA_END
+```
+
+## green_phase_cycle
+
+```mermaid
+flowchart TD
+    COMPILE[[Compile in scope]]
+    GATE_COMPILE_OK{Compile passed?}
+    GATE_TESTS_PASS{All tests passed?}
+    GREEN_END((End))
+    RUN[["Run targeted tests against ${suite}"]]
+    STOP_GREEN_COMPILE_FAIL["STOP - HUMAN REVIEW — ${phase_label} compile failed"]
+    STOP_GREEN_TEST_FAIL["STOP - HUMAN REVIEW — ${phase_label} tests failed"]
+    WRITE["${phase_label} - WRITE"]
+
+    WRITE --> COMPILE
+    COMPILE --> GATE_COMPILE_OK
+    GATE_COMPILE_OK -- No --> STOP_GREEN_COMPILE_FAIL
+    GATE_COMPILE_OK -- Yes --> RUN
+    STOP_GREEN_COMPILE_FAIL --> WRITE
+    RUN --> GATE_TESTS_PASS
+    GATE_TESTS_PASS -- Yes --> GREEN_END
+    GATE_TESTS_PASS -- No --> STOP_GREEN_TEST_FAIL
+    STOP_GREEN_TEST_FAIL --> WRITE
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class COMPILE,RUN serviceNode
+
+    classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
+    class WRITE agentNode
+
+    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
+    class STOP_GREEN_COMPILE_FAIL,STOP_GREEN_TEST_FAIL humanNode
 ```
 
 ## red_phase_cycle
