@@ -22,7 +22,7 @@
 
 - [Go 1.22+](https://go.dev/dl/)
 - [GitHub CLI](https://cli.github.com/) (`gh auth login`)
-- A C compiler on `PATH` (`gh-optivem` builds with `CGO_ENABLED=1` because the tree-sitter language bindings require CGo). Windows: `scoop install gcc` (MinGW) or `choco install mingw`. macOS: `xcode-select --install`. Linux: `apt install gcc` (or your distro's equivalent). End users on `gh extension install optivem/gh-optivem` don't need this — they download the prebuilt binary.
+- A C compiler on `PATH` (`gh-optivem` builds with `CGO_ENABLED=1` because the tree-sitter language bindings require CGo). Check first with `gcc --version` — if it prints a version, you're done. Otherwise install: Windows: `scoop install gcc` (MinGW) or `choco install mingw` (admin shell, then restart your terminal so `PATH` picks it up). macOS: `xcode-select --install`. Linux: `apt install gcc` (or your distro's equivalent). End users on `gh extension install optivem/gh-optivem` don't need this — they download the prebuilt binary.
 
 ## Quick smoke test (no install)
 
