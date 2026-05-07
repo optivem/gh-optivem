@@ -553,6 +553,12 @@ jobs:
           commit-sha: ${{ needs.check.outputs.shop-sha }}
           pattern: '*'
 
+      - name: Record Shop Tag
+        uses: optivem/actions/create-commit-status@v1
+        with:
+          context: shop-tag
+          description: ${{ steps.shop-tag.outputs.tag }}
+
       - name: Publish RC Tag
         uses: optivem/actions/publish-tag@v1
         with:

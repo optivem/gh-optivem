@@ -21,7 +21,7 @@ jobs:
       rc-sha: ${{ steps.rc.outputs.sha }}
       release-version: ${{ steps.gen.outputs.version }}
       shop-sha: ${{ steps.shop-sha.outputs.description }}
-      shop-tag: ${{ steps.shop-tag.outputs.tag }}
+      shop-tag: ${{ steps.shop-tag.outputs.description }}
     steps:
       - name: Ensure Environment Variables Defined
         uses: optivem/actions/validate-env-vars-defined@v1
@@ -113,11 +113,19 @@ jobs:
           exit 1
 
       - id: shop-tag
-        uses: optivem/actions/resolve-latest-tag-from-sha@v1
+        uses: optivem/actions/get-commit-status@v1
         with:
-          repository: optivem/shop
-          pattern: 'meta-v*'
-          commit-sha: ${{ steps.shop-sha.outputs.description }}
+          commit-sha: ${{ steps.rc.outputs.sha }}
+          context: shop-tag
+
+      - name: Ensure Shop Tag Resolved
+        if: steps.shop-tag.outputs.description == ''
+        shell: bash
+        env:
+          RC_SHA: ${{ steps.rc.outputs.sha }}
+        run: |
+          echo "::error::No shop-tag commit status found on $RC_SHA. Run acceptance-stage with verify-level=release first."
+          exit 1
 
   run:
     name: Run

@@ -849,16 +849,6 @@ func computeOwnerPascal(owner string) string {
 	return p
 }
 
-func checkGhAuth(dryRun bool) {
-	if dryRun {
-		return
-	}
-	cmd := exec.Command("gh", "auth", "status")
-	if err := cmd.Run(); err != nil {
-		log.FatalExit("gh CLI is not authenticated. Run 'gh auth login' first.")
-	}
-}
-
 // ghAPISilent is the flag used with `gh api` to suppress the response body on
 // success. 4xx/5xx still produce non-zero exit codes, which is what we key on.
 const ghAPISilent = "--silent"
@@ -1012,7 +1002,6 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 	// Token auth runs first because it's the most common failure mode and
 	// aborts before we touch gh / GitHub / SonarCloud for existence checks.
 	validateTokensAuth(env, f.DryRun)
-	checkGhAuth(f.DryRun)
 	checkOwnerExists(f.Owner)
 	preExisting := confirmReposExist([]string{
 		f.Owner + "/" + repoName,
