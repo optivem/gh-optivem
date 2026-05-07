@@ -102,6 +102,13 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("external_system_test_instance_accessible", b.externalSystemTestInstanceAccessible)
 	r.Register("smoke_test_passes", b.smokeTestPasses)
 	r.Register("structural_test_mode", b.structuralTestMode)
+	// red_phase_cycle infrastructure (per
+	// plans/20260505-230100-at-ct-cycle-creative-mechanical-split.md):
+	// the two new gates that route the inner compile-then-run loop. No
+	// YAML node references them yet; Step 2 of the AT/CT split wires
+	// AT_RED_TEST through the shared sub-flow that will use them.
+	r.Register("compile_ok", b.compileOK)
+	r.Register("tests_failed_runtime", b.testsFailedRuntime)
 }
 
 // bindings is a thin closure-receiver so each method has access to deps
@@ -319,6 +326,29 @@ func (b bindings) smokeTestPasses(ctx *statemachine.Context) statemachine.Outcom
 	return b.boolGate(ctx,
 		"smoke_test_passes",
 		"Smoke test passed? [y/N]: ")
+}
+
+// compileOK reads the `compile_ok` flag set by the compile_targeted action.
+// true → continue to the RUN node; false → route to WRITE_DSL_PROTOTYPES so
+// the agent adds prototype DSL methods for whatever the test referenced
+// that does not yet exist. Falls back to a prompt for hand-debugging when
+// no upstream action ran.
+func (b bindings) compileOK(ctx *statemachine.Context) statemachine.Outcome {
+	return b.boolGate(ctx,
+		"compile_ok",
+		"Compile passed? [Y/n]: ")
+}
+
+// testsFailedRuntime reads the `tests_failed_runtime` flag set by the
+// run_targeted_tests action. true → tests failed at runtime as expected
+// for RED, route to DISABLE; false → either the tests passed (suspicious;
+// the WRITE phase did not produce a failing test) or some failed at
+// compile (the compile-loop stabilised by the gate above is not actually
+// stable). Falls back to a prompt for hand-debugging.
+func (b bindings) testsFailedRuntime(ctx *statemachine.Context) statemachine.Outcome {
+	return b.boolGate(ctx,
+		"tests_failed_runtime",
+		"Tests failed at runtime (not compile)? [Y/n]: ")
 }
 
 // ---------------------------------------------------------------------------

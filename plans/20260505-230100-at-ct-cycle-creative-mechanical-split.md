@@ -166,14 +166,15 @@ Same shrink applies to `atdd-dsl`, `atdd-driver` and the other RED-phase agents.
 
 This refactor is too large for a single commit. Suggested split:
 
-1. **Build `red_phase_cycle` infrastructure** — new actions (`compile_targeted`, `run_targeted_tests`, `disable_change_driven`), new gate bindings (`compile_ok`, `tests_failed_runtime`), context plumbing. Land without wiring any RED node to it.
-2. **Migrate `AT_RED_TEST` first** — single node converted to `call_activity: red_phase_cycle`. Shrink `atdd-test` prompt. Decide on DSL-prototype dispatch (same agent vs split). End-to-end test on a known ticket before continuing.
-3. **Migrate `AT_RED_DSL` and `AT_RED_SYSTEM_DRIVER`** — same pattern, smaller increments now that the framework is proven.
-4. **Migrate the CT RED phases** — `CT_RED_TEST`, `CT_RED_DSL`, `CT_RED_EXTERNAL_DRIVER`. Address CT-specific real-vs-stub verification (extension to the shared sub-flow vs CT-specific wrapper).
-5. **Reassess `at_green_system`'s `ATDD_BACKEND` / `ATDD_FRONTEND`** — likely benefit from the same split but evaluate after the RED phases settle. Out of scope until then.
-6. **Reassess `CT_GREEN_STUBS`** — currently has a TBD agent (`atdd-stubs`); fold ownership decision into this work.
+1. **Migrate `AT_RED_TEST` first** — single node converted to `call_activity: red_phase_cycle`. Shrink `atdd-test` prompt. Decide on DSL-prototype dispatch (same agent vs split). End-to-end test on a known ticket before continuing.
+2. **Migrate `AT_RED_DSL` and `AT_RED_SYSTEM_DRIVER`** — same pattern, smaller increments now that the framework is proven.
+3. **Migrate the CT RED phases** — `CT_RED_TEST`, `CT_RED_DSL`, `CT_RED_EXTERNAL_DRIVER`. Address CT-specific real-vs-stub verification (extension to the shared sub-flow vs CT-specific wrapper).
+4. **Reassess `at_green_system`'s `ATDD_BACKEND` / `ATDD_FRONTEND`** — likely benefit from the same split but evaluate after the RED phases settle. Out of scope until then.
+5. **Reassess `CT_GREEN_STUBS`** — currently has a TBD agent (`atdd-stubs`); fold ownership decision into this work.
 
 Each step is a separate commit and is independently mergeable.
+
+The infrastructure step (new actions `compile_targeted`, `run_targeted_tests`, `disable_change_driven`; new gate bindings `compile_ok`, `tests_failed_runtime`; structured context keys) is already landed and is the foundation for the migration steps above.
 
 ## Verification
 

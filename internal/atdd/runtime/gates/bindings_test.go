@@ -400,16 +400,99 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"subtype",
 		"change_type",
 		"ticket_type_recognized",
+		"subtype_ok",
 		"parse_ok",
 		"legacy_acceptance_criteria_section_present",
 		"external_system_driver_exists",
 		"external_system_test_instance_accessible",
 		"smoke_test_passes",
 		"structural_test_mode",
+		"compile_ok",
+		"tests_failed_runtime",
 	}
 	for _, name := range want {
 		if r.Lookup(name) == nil {
 			t.Errorf("binding %q not registered", name)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// compile_ok / tests_failed_runtime — red_phase_cycle gates
+// ---------------------------------------------------------------------------
+
+func TestCompileOK_ReadsContext(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		val  any
+		want bool
+	}{
+		{name: "true_bool", val: true, want: true},
+		{name: "false_bool", val: false, want: false},
+		{name: "true_string", val: "true", want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &fakePrompter{}
+			b := newBindings(t, Deps{Prompter: p})
+			ctx := statemachine.NewContext()
+			ctx.Set("compile_ok", tc.val)
+			out := b.compileOK(ctx)
+			if out.Err != nil {
+				t.Fatalf("unexpected error: %v", out.Err)
+			}
+			if out.Bool != tc.want {
+				t.Fatalf("Bool: got %v, want %v", out.Bool, tc.want)
+			}
+			if len(p.asked) != 0 {
+				t.Fatalf("Ask was called %d times, expected 0", len(p.asked))
+			}
+		})
+	}
+}
+
+func TestCompileOK_PromptFallback(t *testing.T) {
+	p := &fakePrompter{answers: []string{"y"}}
+	b := newBindings(t, Deps{Prompter: p})
+	out := b.compileOK(statemachine.NewContext())
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if !out.Bool {
+		t.Fatalf("Bool: got false, want true")
+	}
+	if len(p.asked) != 1 {
+		t.Fatalf("Ask was called %d times, expected 1", len(p.asked))
+	}
+}
+
+func TestTestsFailedRuntime_ReadsContext(t *testing.T) {
+	p := &fakePrompter{}
+	b := newBindings(t, Deps{Prompter: p})
+	ctx := statemachine.NewContext()
+	ctx.Set("tests_failed_runtime", true)
+	out := b.testsFailedRuntime(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if !out.Bool {
+		t.Fatalf("Bool: got false, want true")
+	}
+	if len(p.asked) != 0 {
+		t.Fatalf("Ask was called %d times, expected 0", len(p.asked))
+	}
+}
+
+func TestTestsFailedRuntime_PromptFallback(t *testing.T) {
+	p := &fakePrompter{answers: []string{"n"}}
+	b := newBindings(t, Deps{Prompter: p})
+	out := b.testsFailedRuntime(statemachine.NewContext())
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if out.Bool {
+		t.Fatalf("Bool: got true, want false")
+	}
+	if len(p.asked) != 1 {
+		t.Fatalf("Ask was called %d times, expected 1", len(p.asked))
 	}
 }

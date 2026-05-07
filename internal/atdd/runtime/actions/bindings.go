@@ -133,7 +133,60 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("commit_phase", a.commitPhase)
 	r.Register("tick_checklist", a.tickChecklist)
 	r.Register("verify_run_tests_after_driver", a.verifyRunTestsAfterDriver)
+	// red_phase_cycle infrastructure (per
+	// plans/20260505-230100-at-ct-cycle-creative-mechanical-split.md): the
+	// shared sub-flow's mechanical steps. Registered here so the registry
+	// is complete before any RED node migrates to call_activity into the
+	// shared flow; no current YAML node references these names.
+	r.Register("compile_targeted", a.compileTargeted)
+	r.Register("run_targeted_tests", a.runTargetedTests)
+	r.Register("disable_change_driven", a.disableChangeDriven)
 }
+
+// Context keys consumed by the red_phase_cycle actions. Centralised so the
+// agent dispatcher (Step 2 of the AT/CT split) and tests have one place to
+// find the contract. The corresponding values are populated from the
+// ticket parse (Scope, Suite, Language) and the WRITE phase's output
+// (TestNames, DisableTargets, DisableReason).
+const (
+	// CtxKeyScope is the build/compile scope handed to compile_targeted —
+	// e.g. a path, a Gradle module, an npm workspace. Forwarded verbatim
+	// to ./compile-targeted.sh as a single positional argument.
+	CtxKeyScope = "scope"
+
+	// CtxKeySuite is the test suite name handed to run_targeted_tests —
+	// e.g. "<acceptance-api>", "<suite-contract-real>".
+	CtxKeySuite = "suite"
+
+	// CtxKeyTestNames is the []string of test method names run_targeted_tests
+	// dispatches against the suite, one per `gh optivem test system --test`
+	// invocation.
+	CtxKeyTestNames = "test_names"
+
+	// CtxKeyLanguage is the language disable_change_driven hands to
+	// ./disable-test.sh: java | csharp | typescript. The script owns the
+	// per-language `@Disabled` / `Skip = "..."` / `test.skip(true, "...")`
+	// edit syntax.
+	CtxKeyLanguage = "language"
+
+	// CtxKeyDisableReason is the reason string written into the disable
+	// markup — e.g. "AT - RED - TEST", "CT - RED - TEST". Mirrors the
+	// language-equivalents.md contract.
+	CtxKeyDisableReason = "disable_reason"
+
+	// CtxKeyDisableTargets is the []string of "<file>:<method>" pairs
+	// disable_change_driven applies the disable markup to.
+	CtxKeyDisableTargets = "disable_targets"
+
+	// CtxKeyCompileOK is the bool compile_targeted writes to record
+	// whether the targeted compile passed. Read by the compile_ok gate.
+	CtxKeyCompileOK = "compile_ok"
+
+	// CtxKeyTestsFailedRuntime is the bool run_targeted_tests writes to
+	// record that every observed failure was a runtime failure (not
+	// compile). Read by the tests_failed_runtime gate.
+	CtxKeyTestsFailedRuntime = "tests_failed_runtime"
+)
 
 type actions struct {
 	deps Deps
@@ -713,6 +766,188 @@ func (a actions) runSampleSuite(ctx *statemachine.Context) statemachine.Outcome 
 	}
 	if len(out) > 0 {
 		fmt.Fprintln(a.deps.Stdout, string(out))
+	}
+	return statemachine.Outcome{}
+}
+
+// ---------------------------------------------------------------------------
+// red_phase_cycle infrastructure (Step 1 of the AT/CT creative/mechanical
+// split — see plans/20260505-230100-at-ct-cycle-creative-mechanical-split.md).
+// These three actions own the mechanical work the shared red_phase_cycle
+// will dispatch (compile, run targeted tests, disable change-driven
+// scenarios). They are registered but unwired in v1: no YAML node calls
+// them yet. Step 2 of the split refactor wires AT_RED_TEST through them
+// first, then the remaining six RED phases follow.
+// ---------------------------------------------------------------------------
+
+// compileTargeted runs a scope-targeted compile via ./compile-targeted.sh,
+// the targeted analog of compile_in_scope. Where compile_in_scope sweeps
+// the whole repo, compile_targeted compiles only the path the WRITE phase
+// just edited (e.g. the test file being brought green at AT - RED - TEST).
+//
+// Reads:
+//   - CtxKeyScope (string) — required; passed verbatim to
+//     ./compile-targeted.sh as the single positional argument.
+//
+// Writes:
+//   - CtxKeyCompileOK (bool) — read by the compile_ok gate to route the
+//     compile-failed loop (route to WRITE_DSL_PROTOTYPES) or proceed.
+//
+// Compile failure is NOT surfaced as Outcome.Err — the flow's
+// compile-failed loop is the intended consumer; routing a false Bool is
+// the correct behaviour. Other failure modes (missing scope, missing
+// script) DO surface as Err so the run halts.
+func (a actions) compileTargeted(ctx *statemachine.Context) statemachine.Outcome {
+	scope := ctx.GetString(CtxKeyScope)
+	if scope == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("compile_targeted: %s not set in Context", CtxKeyScope)}
+	}
+	cmdLine := fmt.Sprintf("./compile-targeted.sh %s", shellEscape(scope))
+	out, err := a.deps.Shell.Run(context.Background(), cmdLine)
+	if len(out) > 0 {
+		fmt.Fprintln(a.deps.Stdout, string(out))
+	}
+	ok := err == nil
+	ctx.Set(CtxKeyCompileOK, ok)
+	if err != nil {
+		fmt.Fprintf(a.deps.Stderr, "compile_targeted: %v\n", err)
+	}
+	return statemachine.Outcome{Bool: ok}
+}
+
+// runTargetedTests runs each test method named in CtxKeyTestNames against
+// the suite captured in CtxKeySuite, classifies any failures as
+// compile-vs-runtime, and writes CtxKeyTestsFailedRuntime for the gate.
+//
+// Reads:
+//   - CtxKeySuite (string)        — required; e.g. "<acceptance-api>".
+//   - CtxKeyTestNames ([]string)  — required; method names dispatched one
+//     per `gh optivem test system --suite <suite> --test <name>` shell-out.
+//
+// Writes:
+//   - CtxKeyTestsFailedRuntime (bool) — true iff at least one test failed
+//     and every observed failure was a runtime failure (not compile). The
+//     RED phase's gate routes downstream only on true; false means the
+//     RED loop has not yet stabilised (tests passed, or some failed at
+//     compile).
+//
+// The runtime-vs-compile classifier scans the captured stdout/stderr for
+// language-specific compile-error markers (see isCompileFailureOutput).
+// It is conservative: any compile marker present demotes the run to
+// "not yet runtime-failing".
+func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcome {
+	suite := ctx.GetString(CtxKeySuite)
+	if suite == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("run_targeted_tests: %s not set in Context", CtxKeySuite)}
+	}
+	rawNames, ok := ctx.State[CtxKeyTestNames]
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("run_targeted_tests: %s not set in Context", CtxKeyTestNames)}
+	}
+	names, ok := rawNames.([]string)
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("run_targeted_tests: %s is %T, want []string", CtxKeyTestNames, rawNames)}
+	}
+	if len(names) == 0 {
+		return statemachine.Outcome{Err: fmt.Errorf("run_targeted_tests: %s is empty", CtxKeyTestNames)}
+	}
+
+	runtimeFailures := 0
+	compileFailures := 0
+	for _, name := range names {
+		cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s",
+			shellEscape(suite), shellEscape(name))
+		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
+		out, err := a.deps.Shell.Run(context.Background(), cmd)
+		if len(out) > 0 {
+			fmt.Fprintln(a.deps.Stdout, string(out))
+		}
+		if err == nil {
+			continue
+		}
+		if isCompileFailureOutput(out) {
+			compileFailures++
+			continue
+		}
+		runtimeFailures++
+	}
+
+	failedRuntime := compileFailures == 0 && runtimeFailures > 0
+	ctx.Set(CtxKeyTestsFailedRuntime, failedRuntime)
+	return statemachine.Outcome{Bool: failedRuntime}
+}
+
+// isCompileFailureOutput reports whether the captured test runner output
+// contains a language-specific compile-error marker. Conservative match —
+// a single hit demotes the failure to "compile".
+func isCompileFailureOutput(out []byte) bool {
+	s := strings.ToLower(string(out))
+	for _, marker := range []string{
+		"compilation failed",
+		"compile error",
+		"cannot find symbol",
+		"error cs",     // C# compiler error code prefix (e.g. "error CS0103")
+		"error ts",     // TS compiler error code prefix (e.g. "error TS2304")
+		"syntax error",
+	} {
+		if strings.Contains(s, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// disableChangeDriven applies per-language disable markup
+// (`@Disabled("reason")` / `[Fact(Skip = "reason")]` / `test.skip(true, "reason")`)
+// to the change-driven test methods identified at WRITE. v1 shells out to
+// ./disable-test.sh once per target — the script owns the language-specific
+// edit syntax (the language-equivalents.md table). This mirrors how
+// compile_in_scope and run_sample_suite delegate language mechanics to
+// repo-owned scripts.
+//
+// Reads:
+//   - CtxKeyLanguage (string)        — required; java | csharp | typescript
+//   - CtxKeyDisableReason (string)   — required; the reason written into
+//     the markup (e.g. "AT - RED - TEST")
+//   - CtxKeyDisableTargets ([]string) — required; one entry per test,
+//     formatted "<file>:<method>"
+//
+// Each target produces:
+//
+//   ./disable-test.sh <language> "<reason>" <file>:<method>
+//
+// First failure halts the action with Outcome.Err — committing a partially
+// disabled test set would leave the repo in an inconsistent state.
+func (a actions) disableChangeDriven(ctx *statemachine.Context) statemachine.Outcome {
+	lang := ctx.GetString(CtxKeyLanguage)
+	if lang == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven: %s not set in Context", CtxKeyLanguage)}
+	}
+	reason := ctx.GetString(CtxKeyDisableReason)
+	if reason == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven: %s not set in Context", CtxKeyDisableReason)}
+	}
+	rawTargets, ok := ctx.State[CtxKeyDisableTargets]
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven: %s not set in Context", CtxKeyDisableTargets)}
+	}
+	targets, ok := rawTargets.([]string)
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven: %s is %T, want []string", CtxKeyDisableTargets, rawTargets)}
+	}
+	if len(targets) == 0 {
+		return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven: %s is empty", CtxKeyDisableTargets)}
+	}
+	for _, target := range targets {
+		cmd := fmt.Sprintf("./disable-test.sh %s %s %s",
+			shellEscape(lang), shellEscape(reason), shellEscape(target))
+		out, err := a.deps.Shell.Run(context.Background(), cmd)
+		if len(out) > 0 {
+			fmt.Fprintln(a.deps.Stdout, string(out))
+		}
+		if err != nil {
+			return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven (%s): %w", target, err)}
+		}
 	}
 	return statemachine.Outcome{}
 }

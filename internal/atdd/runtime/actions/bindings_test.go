@@ -1025,6 +1025,10 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"ask_can_i_commit",
 		"commit_phase",
 		"tick_checklist",
+		"verify_run_tests_after_driver",
+		"compile_targeted",
+		"run_targeted_tests",
+		"disable_change_driven",
 	}
 	for _, name := range want {
 		if r.Lookup(name) == nil {
@@ -1401,3 +1405,351 @@ func TestWriteTracerSummary_ChainShape(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// red_phase_cycle infrastructure (Step 1 of the AT/CT split)
+// ---------------------------------------------------------------------------
+
+// scriptedShell returns each scripted response in order. Used by the
+// red_phase_cycle action tests where one action issues multiple shell-outs
+// (one per test name / disable target) and we want to assert the exact
+// command sequence and surface different fail/succeed outcomes per call.
+type scriptedShell struct {
+	t        *testing.T
+	calls    []string
+	scripted []scriptedResponse
+}
+
+type scriptedResponse struct {
+	out []byte
+	err error
+}
+
+func (s *scriptedShell) Run(_ context.Context, cmd string) ([]byte, error) {
+	s.calls = append(s.calls, cmd)
+	if len(s.scripted) == 0 {
+		s.t.Fatalf("scriptedShell: unexpected call %q (no responses left)", cmd)
+		return nil, errors.New("unreachable")
+	}
+	r := s.scripted[0]
+	s.scripted = s.scripted[1:]
+	return r.out, r.err
+}
+
+func TestCompileTargeted_ScopeRequired(t *testing.T) {
+	a := newActions(Deps{})
+	out := a.compileTargeted(statemachine.NewContext())
+	if out.Err == nil {
+		t.Fatalf("expected error when scope is missing")
+	}
+	if !strings.Contains(out.Err.Error(), "scope") {
+		t.Fatalf("error message does not mention scope: %v", out.Err)
+	}
+}
+
+func TestCompileTargeted_PassWritesContextAndDoesNotErr(t *testing.T) {
+	sh := &fakeShell{out: []byte("BUILD SUCCESSFUL")}
+	a := newActions(Deps{Shell: sh})
+	ctx := statemachine.NewContext()
+	ctx.Set("scope", "shop/api")
+	out := a.compileTargeted(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if !out.Bool {
+		t.Fatalf("Bool: got false, want true")
+	}
+	if got := ctx.Get("compile_ok"); got != true {
+		t.Fatalf("compile_ok: got %v, want true", got)
+	}
+	if len(sh.calls) != 1 || sh.calls[0] != "./compile-targeted.sh shop/api" {
+		t.Fatalf("unexpected shell calls: %v", sh.calls)
+	}
+}
+
+func TestCompileTargeted_ShellEscapesScope(t *testing.T) {
+	sh := &fakeShell{}
+	a := newActions(Deps{Shell: sh})
+	ctx := statemachine.NewContext()
+	ctx.Set("scope", "path with spaces/x")
+	_ = a.compileTargeted(ctx)
+	if len(sh.calls) != 1 || sh.calls[0] != "./compile-targeted.sh 'path with spaces/x'" {
+		t.Fatalf("unexpected shell call (no escaping?): %v", sh.calls)
+	}
+}
+
+func TestCompileTargeted_FailureRoutesNotErrors(t *testing.T) {
+	sh := &fakeShell{out: []byte("compilation failed"), err: errors.New("exit 1")}
+	a := newActions(Deps{Shell: sh})
+	ctx := statemachine.NewContext()
+	ctx.Set("scope", "shop/api")
+	out := a.compileTargeted(ctx)
+	// Compile failure must NOT surface as Err — the gate routes the
+	// compile-failed loop and the run continues.
+	if out.Err != nil {
+		t.Fatalf("compile failure should route, not halt: %v", out.Err)
+	}
+	if out.Bool {
+		t.Fatalf("Bool: got true, want false")
+	}
+	if got := ctx.Get("compile_ok"); got != false {
+		t.Fatalf("compile_ok: got %v, want false", got)
+	}
+}
+
+func TestRunTargetedTests_RequiresSuiteAndTestNames(t *testing.T) {
+	t.Run("no_suite", func(t *testing.T) {
+		a := newActions(Deps{})
+		ctx := statemachine.NewContext()
+		ctx.State["test_names"] = []string{"x"}
+		out := a.runTargetedTests(ctx)
+		if out.Err == nil || !strings.Contains(out.Err.Error(), "suite") {
+			t.Fatalf("expected suite error, got %v", out.Err)
+		}
+	})
+	t.Run("no_test_names", func(t *testing.T) {
+		a := newActions(Deps{})
+		ctx := statemachine.NewContext()
+		ctx.Set("suite", "<acceptance-api>")
+		out := a.runTargetedTests(ctx)
+		if out.Err == nil || !strings.Contains(out.Err.Error(), "test_names") {
+			t.Fatalf("expected test_names error, got %v", out.Err)
+		}
+	})
+	t.Run("test_names_wrong_type", func(t *testing.T) {
+		a := newActions(Deps{})
+		ctx := statemachine.NewContext()
+		ctx.Set("suite", "<acceptance-api>")
+		ctx.State["test_names"] = "not-a-slice"
+		out := a.runTargetedTests(ctx)
+		if out.Err == nil || !strings.Contains(out.Err.Error(), "[]string") {
+			t.Fatalf("expected []string error, got %v", out.Err)
+		}
+	})
+	t.Run("test_names_empty", func(t *testing.T) {
+		a := newActions(Deps{})
+		ctx := statemachine.NewContext()
+		ctx.Set("suite", "<acceptance-api>")
+		ctx.State["test_names"] = []string{}
+		out := a.runTargetedTests(ctx)
+		if out.Err == nil || !strings.Contains(out.Err.Error(), "empty") {
+			t.Fatalf("expected empty error, got %v", out.Err)
+		}
+	})
+}
+
+func TestRunTargetedTests_AllRuntimeFailuresWritesTrue(t *testing.T) {
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+		{out: []byte("AssertionError: expected 1 was 0"), err: errors.New("exit 1")},
+		{out: []byte("AssertionError: expected 2 was 0"), err: errors.New("exit 1")},
+	}}
+	a := newActions(Deps{Shell: sh})
+	ctx := statemachine.NewContext()
+	ctx.Set("suite", "<acceptance-api>")
+	ctx.State["test_names"] = []string{"shouldFooSucceed", "shouldBarSucceed"}
+	out := a.runTargetedTests(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if !out.Bool {
+		t.Fatalf("Bool: got false, want true")
+	}
+	if got := ctx.Get("tests_failed_runtime"); got != true {
+		t.Fatalf("tests_failed_runtime: got %v, want true", got)
+	}
+	want := []string{
+		"gh optivem test system --suite '<acceptance-api>' --test shouldFooSucceed",
+		"gh optivem test system --suite '<acceptance-api>' --test shouldBarSucceed",
+	}
+	if len(sh.calls) != len(want) {
+		t.Fatalf("got %d calls, want %d: %v", len(sh.calls), len(want), sh.calls)
+	}
+	for i, w := range want {
+		if sh.calls[i] != w {
+			t.Errorf("call[%d]: got %q, want %q", i, sh.calls[i], w)
+		}
+	}
+}
+
+func TestRunTargetedTests_CompileFailureWritesFalse(t *testing.T) {
+	for _, marker := range []string{
+		"compilation failed",
+		"cannot find symbol method foo()",
+		"error CS0103: 'whenPlacingOrder' does not exist",
+		"error TS2304: Cannot find name 'register'",
+		"syntax error",
+	} {
+		t.Run(marker, func(t *testing.T) {
+			sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+				{out: []byte(marker), err: errors.New("exit 1")},
+			}}
+			a := newActions(Deps{Shell: sh})
+			ctx := statemachine.NewContext()
+			ctx.Set("suite", "<acceptance-api>")
+			ctx.State["test_names"] = []string{"x"}
+			out := a.runTargetedTests(ctx)
+			if out.Err != nil {
+				t.Fatalf("unexpected error: %v", out.Err)
+			}
+			if out.Bool {
+				t.Fatalf("Bool: got true, want false (compile failure must demote)")
+			}
+			if got := ctx.Get("tests_failed_runtime"); got != false {
+				t.Fatalf("tests_failed_runtime: got %v, want false", got)
+			}
+		})
+	}
+}
+
+func TestRunTargetedTests_AllPassesWritesFalse(t *testing.T) {
+	// "All tests pass" is also a not-yet-RED state — runtime failure was
+	// not observed so we cannot route to DISABLE.
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+		{out: []byte("OK"), err: nil},
+	}}
+	a := newActions(Deps{Shell: sh})
+	ctx := statemachine.NewContext()
+	ctx.Set("suite", "<acceptance-api>")
+	ctx.State["test_names"] = []string{"x"}
+	out := a.runTargetedTests(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if out.Bool {
+		t.Fatalf("Bool: got true, want false")
+	}
+}
+
+func TestRunTargetedTests_MixedRuntimeAndCompileWritesFalse(t *testing.T) {
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+		{out: []byte("AssertionError"), err: errors.New("exit 1")},
+		{out: []byte("compilation failed"), err: errors.New("exit 1")},
+	}}
+	a := newActions(Deps{Shell: sh})
+	ctx := statemachine.NewContext()
+	ctx.Set("suite", "<acceptance-api>")
+	ctx.State["test_names"] = []string{"a", "b"}
+	out := a.runTargetedTests(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if out.Bool {
+		t.Fatalf("Bool: got true, want false (any compile failure must demote)")
+	}
+}
+
+func TestDisableChangeDriven_RequiresAllInputs(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		setup       func(*statemachine.Context)
+		wantSubstr  string
+	}{
+		{
+			name:       "no_language",
+			setup:      func(ctx *statemachine.Context) {},
+			wantSubstr: "language",
+		},
+		{
+			name: "no_reason",
+			setup: func(ctx *statemachine.Context) {
+				ctx.Set("language", "java")
+			},
+			wantSubstr: "disable_reason",
+		},
+		{
+			name: "no_targets",
+			setup: func(ctx *statemachine.Context) {
+				ctx.Set("language", "java")
+				ctx.Set("disable_reason", "AT - RED - TEST")
+			},
+			wantSubstr: "disable_targets",
+		},
+		{
+			name: "targets_wrong_type",
+			setup: func(ctx *statemachine.Context) {
+				ctx.Set("language", "java")
+				ctx.Set("disable_reason", "AT - RED - TEST")
+				ctx.State["disable_targets"] = "not-a-slice"
+			},
+			wantSubstr: "[]string",
+		},
+		{
+			name: "targets_empty",
+			setup: func(ctx *statemachine.Context) {
+				ctx.Set("language", "java")
+				ctx.Set("disable_reason", "AT - RED - TEST")
+				ctx.State["disable_targets"] = []string{}
+			},
+			wantSubstr: "empty",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newActions(Deps{})
+			ctx := statemachine.NewContext()
+			tc.setup(ctx)
+			out := a.disableChangeDriven(ctx)
+			if out.Err == nil {
+				t.Fatalf("expected error")
+			}
+			if !strings.Contains(out.Err.Error(), tc.wantSubstr) {
+				t.Fatalf("error %v does not mention %q", out.Err, tc.wantSubstr)
+			}
+		})
+	}
+}
+
+func TestDisableChangeDriven_ShellsOncePerTarget(t *testing.T) {
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+		{out: []byte("ok")},
+		{out: []byte("ok")},
+	}}
+	a := newActions(Deps{Shell: sh})
+	ctx := statemachine.NewContext()
+	ctx.Set("language", "java")
+	ctx.Set("disable_reason", "AT - RED - TEST")
+	ctx.State["disable_targets"] = []string{
+		"src/test/java/A.java:shouldFooSucceed",
+		"src/test/java/B.java:shouldBarSucceed",
+	}
+	out := a.disableChangeDriven(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	want := []string{
+		"./disable-test.sh java 'AT - RED - TEST' src/test/java/A.java:shouldFooSucceed",
+		"./disable-test.sh java 'AT - RED - TEST' src/test/java/B.java:shouldBarSucceed",
+	}
+	if len(sh.calls) != len(want) {
+		t.Fatalf("got %d calls, want %d: %v", len(sh.calls), len(want), sh.calls)
+	}
+	for i, w := range want {
+		if sh.calls[i] != w {
+			t.Errorf("call[%d]: got %q, want %q", i, sh.calls[i], w)
+		}
+	}
+}
+
+func TestDisableChangeDriven_FirstFailureHaltsRun(t *testing.T) {
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+		{out: []byte("could not parse method"), err: errors.New("exit 2")},
+	}}
+	a := newActions(Deps{Shell: sh})
+	ctx := statemachine.NewContext()
+	ctx.Set("language", "csharp")
+	ctx.Set("disable_reason", "CT - RED - TEST")
+	ctx.State["disable_targets"] = []string{
+		"Tests/A.cs:Should_Fail_When",
+		"Tests/B.cs:Should_Other_Fail",
+	}
+	out := a.disableChangeDriven(ctx)
+	if out.Err == nil {
+		t.Fatalf("expected error on first-target failure")
+	}
+	if !strings.Contains(out.Err.Error(), "Tests/A.cs:Should_Fail_When") {
+		t.Fatalf("error should name the failing target: %v", out.Err)
+	}
+	if len(sh.calls) != 1 {
+		t.Fatalf("got %d calls, want 1 (must halt on first failure): %v", len(sh.calls), sh.calls)
+	}
+}
+
