@@ -1470,6 +1470,20 @@ func TestVerifyRunTestsAfterDriver_StampsRedOnTestFailure(t *testing.T) {
 	if got := ctx.GetString("verify_class"); got != "red" {
 		t.Errorf("ctx verify_class: got %q, want %q", got, "red")
 	}
+	// verify_results_text is the substitution body for the fix-verify
+	// agent prompt's ${verify_results} placeholder. Must contain the
+	// failed command and the runner's captured stdout/stderr so the
+	// fix agent has the same signal the operator saw inline.
+	resultsText := ctx.GetString("verify_results_text")
+	for _, want := range []string{
+		"gh optivem test system",
+		"--- FAIL: TestThing",
+		"Classification: red",
+	} {
+		if !strings.Contains(resultsText, want) {
+			t.Errorf("verify_results_text missing %q\nfull:\n%s", want, resultsText)
+		}
+	}
 }
 
 func TestVerifyRunTestsAfterDriver_HaltsOnInfraWithDiagnostic(t *testing.T) {

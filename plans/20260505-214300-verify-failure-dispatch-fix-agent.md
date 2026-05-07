@@ -1,6 +1,6 @@
 # Verify-time test failures should not silently flow into human review
 
-🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-07T09:13:17Z`
+> **Status:** Items 1–6 landed. Manual rehearsal still owed.
 
 ## Symptom
 
@@ -208,34 +208,6 @@ The gateway dispatches the fix agent only when
 `StructuralCycle && Class == red`, halts when `Class == infra`
 regardless of cycle, and otherwise continues.
 
-## Items
-
-### 3. Gateway + fix-loop wiring
-
-**File:** `internal/atdd/runtime/statemachine/process-flow.yaml`
-
-Insert `GATE_STRUCT_VERIFY` and `FIX_STRUCT_VERIFY` per Item B.
-Increment retry counter via the same mechanism `structural_test_mode`
-uses today.
-
-**File:** `internal/atdd/runtime/statemachine/structural_cycle_test.go`
-
-Three new test cases:
-
-- `ok` → goes straight to `STOP_STRUCT_REVIEW` (regression-check the
-  current behaviour).
-- `red` → routes to `FIX_STRUCT_VERIFY`, then back to
-  `VERIFY_STRUCT_DRIVER`, then if `ok` second time → review.
-- `infra` → halts with the captured classification.
-
-### 4. Fix-verify agent prompt
-
-**File (new):** `internal/atdd/runtime/agents/prompts/atdd-fix-verify.md`
-
-Body per "C" above. Register in
-`internal/atdd/runtime/agents/registry.go` and embed via
-`internal/atdd/runtime/agents/embed.go`.
-
 ## Out of scope
 
 - **WRITE-phase fix loop.** `VERIFY_AT_DRIVER` / `VERIFY_CT_DRIVER`
@@ -256,15 +228,9 @@ Body per "C" above. Register in
   Existing `clauderun` is fine for dispatching the fix agent;
   redesigning the dispatch model is an unrelated v2 question.
 
-## Order of operations
+## Manual rehearsal (still owed)
 
-1. Land Item 5 (infra halt). Smallest user-visible improvement alone —
-   even without the gateway, the cwd-bug case stops silently advancing.
-2. Land Item 3 (gateway + state machine) + Item 4 (agent prompt) +
-   tests in one PR. The fix loop is a single feature; partial
-   landings are confusing.
-3. **Manual rehearsal.** Reproduce the failing structural cycle,
-   confirm: (a) infra failure halts with the cross-link, (b) a real
-   red routes to the fix agent, (c) the fix agent's edits trigger a
-   re-verify, (d) on green the human sees `OK STOP_STRUCT_REVIEW`
-   for real.
+Reproduce the failing structural cycle, confirm: (a) infra failure
+halts with the cross-link, (b) a real red routes to the fix agent,
+(c) the fix agent's edits trigger a re-verify, (d) on green the
+human sees `OK STOP_STRUCT_REVIEW` for real.

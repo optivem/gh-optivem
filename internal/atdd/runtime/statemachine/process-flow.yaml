@@ -608,6 +608,17 @@ flows:
         action: verify_run_tests_after_driver
         description: "Verify: run targeted tests if driver-adapter changed (no-op for chore)"
 
+      - id: GATE_STRUCT_VERIFY
+        type: gateway
+        binding: structural_verify_outcome
+        description: "Verify outcome? (ok | red — fix and retry)"
+
+      - id: FIX_STRUCT_VERIFY
+        type: user_task
+        agent: atdd-fix-verify
+        phase_doc: ${phase_doc}
+        description: "Dispatch fix agent on verify RED — structural cycle expects green"
+
       - id: STOP_STRUCT_REVIEW
         type: user_task
         agent: human
@@ -662,7 +673,10 @@ flows:
 
     sequence_flows:
       - {from: STRUCT_WRITE,         to: VERIFY_STRUCT_DRIVER}
-      - {from: VERIFY_STRUCT_DRIVER, to: STOP_STRUCT_REVIEW}
+      - {from: VERIFY_STRUCT_DRIVER, to: GATE_STRUCT_VERIFY}
+      - {from: GATE_STRUCT_VERIFY,   to: STOP_STRUCT_REVIEW,    when: "structural_verify_outcome == ok"}
+      - {from: GATE_STRUCT_VERIFY,   to: FIX_STRUCT_VERIFY,     when: "structural_verify_outcome == red"}
+      - {from: FIX_STRUCT_VERIFY,    to: VERIFY_STRUCT_DRIVER}
       - {from: STOP_STRUCT_REVIEW, to: GATE_TEST_MODE}
       - {from: GATE_TEST_MODE,     to: ASK_COMMIT,        when: "structural_test_mode == skip"}
       - {from: GATE_TEST_MODE,     to: COMPILE,           when: "structural_test_mode in [compile, full]"}

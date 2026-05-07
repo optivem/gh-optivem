@@ -303,6 +303,107 @@ func TestStructuralTestMode_Invalid(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// structuralVerifyOutcome — ok / red / red-after-retry / infra / unknown
+//
+// Item 3 of the verify-failure-dispatch-fix-agent plan: this gate routes
+// the post-VERIFY_STRUCT_DRIVER edge based on the failure class the
+// verify action stamped into ctx.State["verify_class"], and is the only
+// place the one-retry budget is enforced.
+// ---------------------------------------------------------------------------
+
+func TestStructuralVerifyOutcome_OkRoutesToReview(t *testing.T) {
+	b := newBindings(t, Deps{})
+	ctx := statemachine.NewContext()
+	ctx.Set("verify_class", "ok")
+	out := b.structuralVerifyOutcome(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if out.Value != "ok" {
+		t.Errorf("Value: got %q, want %q", out.Value, "ok")
+	}
+	if r, _ := ctx.Get("verify_retries").(int); r != 0 {
+		t.Errorf("verify_retries should not increment on ok; got %d", r)
+	}
+}
+
+func TestStructuralVerifyOutcome_EmptyClassTreatedAsOk(t *testing.T) {
+	// Approve-without-running and "no driver-adapter changes" leave
+	// verify_class empty. The gate should not invent a class — the human
+	// review still owns the call.
+	b := newBindings(t, Deps{})
+	ctx := statemachine.NewContext()
+	out := b.structuralVerifyOutcome(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if out.Value != "ok" {
+		t.Errorf("Value: got %q, want %q", out.Value, "ok")
+	}
+}
+
+func TestStructuralVerifyOutcome_FirstRedDispatchesFix(t *testing.T) {
+	// First red: route to FIX_STRUCT_VERIFY and bump verify_retries to 1
+	// so a second red after the agent's retry halts.
+	b := newBindings(t, Deps{})
+	ctx := statemachine.NewContext()
+	ctx.Set("verify_class", "red")
+	out := b.structuralVerifyOutcome(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if out.Value != "red" {
+		t.Errorf("Value: got %q, want %q", out.Value, "red")
+	}
+	if r, _ := ctx.Get("verify_retries").(int); r != 1 {
+		t.Errorf("verify_retries: got %d, want 1", r)
+	}
+}
+
+func TestStructuralVerifyOutcome_SecondRedHalts(t *testing.T) {
+	// After one fix-agent retry: the gate halts. The cycle's contract is
+	// "behaviour-preserving"; a second red after a fix attempt means the
+	// agent could not restore green — surface to the human.
+	b := newBindings(t, Deps{})
+	ctx := statemachine.NewContext()
+	ctx.Set("verify_class", "red")
+	ctx.Set("verify_retries", 1)
+	out := b.structuralVerifyOutcome(ctx)
+	if out.Err == nil {
+		t.Fatalf("expected halt on second red; got Value=%q", out.Value)
+	}
+	if !strings.Contains(out.Err.Error(), "still RED") {
+		t.Errorf("halt error should describe the state; got: %v", out.Err)
+	}
+}
+
+func TestStructuralVerifyOutcome_InfraIsDefensiveError(t *testing.T) {
+	// Item 5 halts at the action level on infra. Reaching the gate with
+	// class=infra means that halt was bypassed — surface as a bug rather
+	// than silently routing.
+	b := newBindings(t, Deps{})
+	ctx := statemachine.NewContext()
+	ctx.Set("verify_class", "infra")
+	out := b.structuralVerifyOutcome(ctx)
+	if out.Err == nil {
+		t.Fatalf("expected defensive halt on infra; got Value=%q", out.Value)
+	}
+	if !strings.Contains(out.Err.Error(), "infra") {
+		t.Errorf("err should mention infra; got: %v", out.Err)
+	}
+}
+
+func TestStructuralVerifyOutcome_UnknownClassErrors(t *testing.T) {
+	b := newBindings(t, Deps{})
+	ctx := statemachine.NewContext()
+	ctx.Set("verify_class", "warning")
+	out := b.structuralVerifyOutcome(ctx)
+	if out.Err == nil {
+		t.Fatalf("expected error for unknown class; got Value=%q", out.Value)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // legacyAcceptanceCriteriaSectionPresent
 // ---------------------------------------------------------------------------
 
@@ -409,6 +510,7 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"structural_test_mode",
 		"compile_ok",
 		"tests_failed_runtime",
+		"structural_verify_outcome",
 	}
 	for _, name := range want {
 		if r.Lookup(name) == nil {

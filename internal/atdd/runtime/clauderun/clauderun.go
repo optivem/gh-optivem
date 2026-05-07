@@ -82,6 +82,23 @@ type Options struct {
 	// Checklist (e.g. story / bug intake).
 	Checklist string
 
+	// VerifyResults is the formatted block describing every red-class
+	// verifyCommandResult the most recent VERIFY_STRUCT_DRIVER produced.
+	// Substituted into atdd-fix-verify's ${verify_results} placeholder so
+	// the fix agent reads the same captured runner output the operator
+	// saw inline. Empty for every other agent — the rendered prompt
+	// just leaves the placeholder verbatim, which is harmless because
+	// no other agent's prompt references this name.
+	VerifyResults string
+
+	// ChangedFiles is the working-tree diff (as `git status --porcelain`)
+	// at the moment of dispatch. Substituted into atdd-fix-verify's
+	// ${changed_files} placeholder so the fix agent can scope its
+	// reasoning to "what the WRITE phase just edited" without re-running
+	// `git status`. Empty when the dispatcher couldn't shell out (e.g.
+	// tests with no Git seam).
+	ChangedFiles string
+
 	// OverrideText is the per-node `--extra` text from override.Hooks,
 	// interpolated into the prompt template. Empty string is fine.
 	OverrideText string
@@ -359,16 +376,18 @@ func renderPrompt(opts Options) (string, error) {
 		}
 	}
 	params := map[string]string{
-		"issue_num":     strconv.Itoa(opts.IssueNum),
-		"issue_title":   opts.IssueTitle,
-		"issue_repo":    opts.IssueRepo,
-		"project_title": opts.ProjectTitle,
-		"project_url":   opts.ProjectURL,
-		"phase":         opts.NodeDescription,
-		"phase_doc":     opts.PhaseDoc,
-		"architecture":  opts.Architecture,
-		"allowed_roots": opts.AllowedRoots,
-		"checklist":     opts.Checklist,
+		"issue_num":      strconv.Itoa(opts.IssueNum),
+		"issue_title":    opts.IssueTitle,
+		"issue_repo":     opts.IssueRepo,
+		"project_title":  opts.ProjectTitle,
+		"project_url":    opts.ProjectURL,
+		"phase":          opts.NodeDescription,
+		"phase_doc":      opts.PhaseDoc,
+		"architecture":   opts.Architecture,
+		"allowed_roots":  opts.AllowedRoots,
+		"checklist":      opts.Checklist,
+		"verify_results": opts.VerifyResults,
+		"changed_files":  opts.ChangedFiles,
 	}
 	rendered := statemachine.ExpandParams(body, params)
 	if opts.OverrideText != "" {

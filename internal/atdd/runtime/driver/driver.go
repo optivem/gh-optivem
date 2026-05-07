@@ -728,6 +728,8 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 			Architecture:    ctx.GetString("architecture"),
 			AllowedRoots:    ctx.GetString("allowed_roots"),
 			Checklist:       ctx.GetString("ticket_checklist"),
+			VerifyResults:   ctx.GetString("verify_results_text"),
+			ChangedFiles:    fixVerifyChangedFiles(agentName, opts.RepoPath),
 			OverrideText:    extraText,
 			RawPrompt:       replaceText,
 			PromptOverride:  opts.AgentPromptOverrides[agentName],
@@ -759,6 +761,33 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 		}
 		return inner(ctx)
 	}
+}
+
+// fixVerifyChangedFiles returns the working-tree dirty-file listing
+// (one path per line) the dispatcher passes into atdd-fix-verify's
+// ${changed_files} placeholder. We only shell out for that one agent
+// because it is the only one whose prompt template references the
+// substitution — every other dispatch leaves the placeholder out of
+// the template anyway, so paying for a `git status` on every node
+// would be wasted work.
+//
+// On any shell error (no git in PATH, not a repo, …) we return the
+// empty string. The fix-verify prompt simply renders an empty
+// "Changed files" block; the agent can re-run `git status` itself if
+// it needs the listing. The dispatch is feedback, not load-bearing.
+func fixVerifyChangedFiles(agent, repoPath string) string {
+	if agent != "atdd-fix-verify" {
+		return ""
+	}
+	cmd := exec.Command("git", "status", "--porcelain")
+	if repoPath != "" {
+		cmd.Dir = repoPath
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimRight(string(out), "\n")
 }
 
 // promptForAgent prints the per-node dispatch banner and blocks on stdin

@@ -14,6 +14,9 @@ require (
 require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
+	github.com/mattn/go-pointer v0.0.1 // indirect
+	github.com/tree-sitter/go-tree-sitter v0.24.0 // indirect
+	github.com/tree-sitter/tree-sitter-typescript v0.23.2 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/term v0.1.0 // indirect
 )

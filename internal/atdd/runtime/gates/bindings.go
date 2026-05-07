@@ -109,6 +109,14 @@ func RegisterAll(r *Registry, deps Deps) {
 	// AT_RED_TEST through the shared sub-flow that will use them.
 	r.Register("compile_ok", b.compileOK)
 	r.Register("tests_failed_runtime", b.testsFailedRuntime)
+	// structural-cycle verify routing (per
+	// plans/20260505-214300-verify-failure-dispatch-fix-agent.md, Item 3):
+	// reads ctx.State["verify_class"] (stamped by the verify action's
+	// finalizeVerify) and decides ok → review, red → fix-agent retry,
+	// red after one retry → halt. Infra is intercepted upstream by the
+	// action's halt-on-infra; reaching the gate with class=infra is a
+	// bug.
+	r.Register("structural_verify_outcome", b.structuralVerifyOutcome)
 }
 
 // bindings is a thin closure-receiver so each method has access to deps
@@ -216,6 +224,58 @@ func (b bindings) subtype(ctx *statemachine.Context) statemachine.Outcome {
 		return statemachine.Outcome{Value: answer}
 	default:
 		return statemachine.Outcome{Err: fmt.Errorf("subtype: unrecognised value %q", answer)}
+	}
+}
+
+// structuralVerifyOutcome routes the post-VERIFY_STRUCT_DRIVER gateway
+// based on the failure class the verify action stamped into
+// ctx.State["verify_class"]. Behaviour-preserving structural cycles are
+// the *only* place we want to auto-dispatch a fix agent on red — RED is
+// not expected here, so the cycle should heal itself once before
+// surfacing to a human.
+//
+// Routing tokens (consumed by the YAML's `when:` clauses):
+//
+//   - "ok"       — green (or no commands ran). Continue to STOP_STRUCT_REVIEW.
+//   - "red"      — first red of this cycle. Increments verify_retries and
+//                  returns "red" so the gateway routes to FIX_STRUCT_VERIFY,
+//                  which dispatches atdd-fix-verify and loops back to
+//                  VERIFY_STRUCT_DRIVER.
+//
+// Halt paths return Outcome.Err directly (no routing token):
+//
+//   - infra      — defensive. The verify action's finalizeVerify halts on
+//                  infra at the action level (Item 5); reaching the gate
+//                  with infra means that halt was bypassed. Surface as a
+//                  bug rather than silently routing.
+//   - red after  — the fix agent had its one retry and the cycle is still
+//     a retry      red. Halt with a diagnostic so the human takes over.
+//   - unknown    — class outside {ok, red, infra} means the action
+//                  contract drifted from the gate; halt loudly.
+//
+// Empty class is treated as "ok": the verify action stamps an empty
+// value when no commands ran (approve-without-running, no driver-adapter
+// changes), which the trace honestly renders as "(no result)" — the
+// human still owns the review decision.
+func (b bindings) structuralVerifyOutcome(ctx *statemachine.Context) statemachine.Outcome {
+	class := ctx.GetString("verify_class")
+	switch class {
+	case "", "ok":
+		return statemachine.Outcome{Value: "ok"}
+	case "infra":
+		return statemachine.Outcome{Err: fmt.Errorf(
+			"structural_verify_outcome: infra-class verify reached gateway — verify action's halt-on-infra (Item 5) was bypassed")}
+	case "red":
+		retries, _ := ctx.Get("verify_retries").(int)
+		if retries >= 1 {
+			return statemachine.Outcome{Err: fmt.Errorf(
+				"structural_verify_outcome: structural cycle still RED after %d fix-agent retry — see verify_results above", retries)}
+		}
+		ctx.Set("verify_retries", retries+1)
+		return statemachine.Outcome{Value: "red"}
+	default:
+		return statemachine.Outcome{Err: fmt.Errorf(
+			"structural_verify_outcome: unrecognised verify_class %q (action stamped a value the gate does not handle)", class)}
 	}
 }
 
