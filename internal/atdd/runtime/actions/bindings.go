@@ -791,7 +791,7 @@ func (a actions) runSampleSuite(ctx *statemachine.Context) statemachine.Outcome 
 //
 // Writes:
 //   - CtxKeyCompileOK (bool) — read by the compile_ok gate to route the
-//     compile-failed loop (route to WRITE_DSL_PROTOTYPES) or proceed.
+//     compile-failed loop (route to WRITE_PROTOTYPES) or proceed.
 //
 // Compile failure is NOT surfaced as Outcome.Err — the flow's
 // compile-failed loop is the intended consumer; routing a false Bool is

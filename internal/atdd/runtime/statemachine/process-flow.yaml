@@ -332,9 +332,13 @@ flows:
         description: "DSL Interface Changed?"
 
       - id: AT_RED_DSL
-        type: user_task
-        agent: atdd-dsl
-        phase_doc: docs/atdd/process/at-red-dsl.md
+        type: call_activity
+        flow: red_phase_cycle
+        params:
+          agent: atdd-dsl
+          phase_doc: docs/atdd/process/at-red-dsl.md
+          phase_label: "AT - RED - DSL"
+          change_type: "AT - RED - DSL"
         description: "AT - RED - DSL"
 
       - id: GATE_EXT_AT
@@ -352,9 +356,13 @@ flows:
         description: "System Driver Interface Changed?"
 
       - id: AT_RED_SYSTEM_DRIVER
-        type: user_task
-        agent: atdd-driver
-        phase_doc: docs/atdd/process/at-red-system-driver.md
+        type: call_activity
+        flow: red_phase_cycle
+        params:
+          agent: atdd-driver
+          phase_doc: docs/atdd/process/at-red-system-driver.md
+          phase_label: "AT - RED - SYSTEM DRIVER"
+          change_type: "AT - RED - SYSTEM DRIVER"
         description: "AT - RED - SYSTEM DRIVER"
 
       - id: VERIFY_AT_DRIVER
@@ -706,10 +714,13 @@ flows:
   #                   with structural_cycle's params shape; typically equal
   #                   to phase_label).
   #
-  # The DSL-prototype dispatch reuses the same `${agent}` and `${phase_doc}`
+  # The PROTOTYPES dispatch reuses the same `${agent}` and `${phase_doc}`
   # — distinguishing the two dispatches happens via the node description
-  # (`${phase_label} - WRITE` vs `${phase_label} - DSL PROTOTYPES`), which
-  # the agent reads as `${phase}` from its prompt template.
+  # (`${phase_label} - WRITE` vs `${phase_label} - PROTOTYPES`), which
+  # the agent reads as `${phase}` from its prompt template. The PROTOTYPES
+  # dispatch covers any TODO-throwing prototype the phase needs to make
+  # compile pass — `"TODO: DSL"` for AT_RED_TEST, `"TODO: Driver"` for
+  # AT_RED_DSL, etc.
   #
   # The `tests_failed_runtime == false` branch covers two unexpected states
   # (tests pass, or compile errors leaked through). The plan defers the
@@ -746,17 +757,17 @@ flows:
         binding: compile_ok
         description: "Compile passed?"
 
-      - id: WRITE_DSL_PROTOTYPES
+      - id: WRITE_PROTOTYPES
         type: user_task
         agent: ${agent}
         phase_doc: ${phase_doc}
-        description: "${phase_label} - DSL PROTOTYPES"
+        description: "${phase_label} - PROTOTYPES"
 
-      - id: STOP_DSL_PROTOTYPE_REVIEW
+      - id: STOP_PROTOTYPE_REVIEW
         type: user_task
         agent: human
         role: review
-        description: "STOP - HUMAN REVIEW — ${phase_label} DSL prototypes"
+        description: "STOP - HUMAN REVIEW — ${phase_label} prototypes"
 
       - id: RUN
         type: service_task
@@ -793,10 +804,10 @@ flows:
       - {from: WRITE,                     to: STOP_RED_REVIEW}
       - {from: STOP_RED_REVIEW,           to: COMPILE}
       - {from: COMPILE,                   to: GATE_COMPILE_OK}
-      - {from: GATE_COMPILE_OK,           to: WRITE_DSL_PROTOTYPES,      when: "compile_ok == false"}
+      - {from: GATE_COMPILE_OK,           to: WRITE_PROTOTYPES,          when: "compile_ok == false"}
       - {from: GATE_COMPILE_OK,           to: RUN,                       when: "compile_ok == true"}
-      - {from: WRITE_DSL_PROTOTYPES,      to: STOP_DSL_PROTOTYPE_REVIEW}
-      - {from: STOP_DSL_PROTOTYPE_REVIEW, to: COMPILE}
+      - {from: WRITE_PROTOTYPES,          to: STOP_PROTOTYPE_REVIEW}
+      - {from: STOP_PROTOTYPE_REVIEW,     to: COMPILE}
       - {from: RUN,                       to: GATE_RUN_FAILED_RUNTIME}
       - {from: GATE_RUN_FAILED_RUNTIME,   to: DISABLE,                   when: "tests_failed_runtime == true"}
       - {from: GATE_RUN_FAILED_RUNTIME,   to: STOP_RED_NOT_RUNTIME_FAIL, when: "tests_failed_runtime == false"}

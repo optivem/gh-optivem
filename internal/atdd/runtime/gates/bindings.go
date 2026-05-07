@@ -389,10 +389,10 @@ func (b bindings) smokeTestPasses(ctx *statemachine.Context) statemachine.Outcom
 }
 
 // compileOK reads the `compile_ok` flag set by the compile_targeted action.
-// true → continue to the RUN node; false → route to WRITE_DSL_PROTOTYPES so
-// the agent adds prototype DSL methods for whatever the test referenced
-// that does not yet exist. Falls back to a prompt for hand-debugging when
-// no upstream action ran.
+// true → continue to the RUN node; false → route to WRITE_PROTOTYPES so the
+// agent adds prototype methods (TODO: DSL / TODO: Driver / ...) for whatever
+// the WRITE phase referenced that does not yet exist. Falls back to a prompt
+// for hand-debugging when no upstream action ran.
 func (b bindings) compileOK(ctx *statemachine.Context) statemachine.Outcome {
 	return b.boolGate(ctx,
 		"compile_ok",

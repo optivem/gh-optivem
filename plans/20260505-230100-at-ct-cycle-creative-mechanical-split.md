@@ -166,19 +166,16 @@ Same shrink applies to `atdd-dsl`, `atdd-driver` and the other RED-phase agents.
 
 This refactor is too large for a single commit. Suggested split:
 
-1. **Wire up context plumbing for the `red_phase_cycle` service tasks.** The shared sub-flow's `compile_targeted` reads `scope`; `run_targeted_tests` reads `suite` and `test_names`; `disable_change_driven` reads `language`, `disable_reason`, `disable_targets`. Today nothing populates these — `AT_RED_TEST` is converted but the sub-flow halts at the first service task. Two halves:
-   - Static keys (`scope`, `suite`, `language`, `disable_reason`) — seed from the ticket parse / call_activity params or a phase-doc-driven static map. The simplest cut: derive `scope` from the ticket repo and `disable_reason` from `${phase_label}`, hard-code `suite` based on `${phase_label}` for now (one-of `<acceptance-api>`, `<acceptance-ui>`), and read `language` from the project tier spec.
-   - Dynamic keys (`test_names`, `disable_targets`) — populated by the WRITE agent's output. Pick a convention: trailing structured block in stdout the runtime parses, or a dedicated artefact file. Decide before implementing.
-2. **Migrate `AT_RED_DSL` and `AT_RED_SYSTEM_DRIVER`** — same pattern as Step 1's already-landed AT_RED_TEST conversion. Each becomes `call_activity: red_phase_cycle` with phase-specific params.
-3. **Migrate the CT RED phases** — `CT_RED_TEST`, `CT_RED_DSL`, `CT_RED_EXTERNAL_DRIVER`. Address CT-specific real-vs-stub verification (extension to the shared sub-flow vs CT-specific wrapper). Includes shrinking the `ct-red-test.md` reference inside the `atdd-test` prompt (left intact at the AT_RED_TEST migration since CT was still on the inner-cycle pattern at that point).
-4. **Reassess `at_green_system`'s `ATDD_BACKEND` / `ATDD_FRONTEND`** — likely benefit from the same split but evaluate after the RED phases settle. Out of scope until then.
-5. **Reassess `CT_GREEN_STUBS`** — currently has a TBD agent (`atdd-stubs`); fold ownership decision into this work.
+1. **Migrate the CT RED phases** — `CT_RED_TEST`, `CT_RED_DSL`, `CT_RED_EXTERNAL_DRIVER`. Address CT-specific real-vs-stub verification (extension to the shared sub-flow vs CT-specific wrapper). Includes shrinking the `ct-red-test.md` reference inside the `atdd-test` prompt and the corresponding sections in `atdd-dsl` / `atdd-driver` (left intact at the AT migration since CT was still on the inner-cycle pattern at that point).
+2. **Reassess `at_green_system`'s `ATDD_BACKEND` / `ATDD_FRONTEND`** — likely benefit from the same split but evaluate after the RED phases settle. Out of scope until then.
+3. **Reassess `CT_GREEN_STUBS`** — currently has a TBD agent (`atdd-stubs`); fold ownership decision into this work.
 
 Each step is a separate commit and is independently mergeable.
 
 Already landed:
 - Infrastructure step: actions `compile_targeted`, `run_targeted_tests`, `disable_change_driven`; gate bindings `compile_ok`, `tests_failed_runtime`; structured context keys.
-- `red_phase_cycle` shared sub-flow + `AT_RED_TEST` migrated to `call_activity` with params (agent=atdd-test, phase_doc=at-red-test.md, phase_label="AT - RED - TEST", change_type="AT - RED - TEST"). DSL-prototype dispatch reuses the same `atdd-test` agent with description `"AT - RED - TEST - DSL PROTOTYPES"` so the agent distinguishes via `${phase}`. Tests on the new flow's transitions added; `atdd-test` prompt shrunk to WRITE + DSL PROTOTYPES only (no compile/run/disable/commit).
+- `red_phase_cycle` shared sub-flow + `AT_RED_TEST` migrated to `call_activity` with params (agent=atdd-test, phase_doc=at-red-test.md, phase_label="AT - RED - TEST", change_type="AT - RED - TEST"). The compile-failure dispatch reuses the same `${agent}` with description `"${phase_label} - PROTOTYPES"` so the agent distinguishes via `${phase}`. Tests on the new flow's transitions added; `atdd-test` prompt shrunk to WRITE + PROTOTYPES only (no compile/run/disable/commit).
+- `AT_RED_DSL` and `AT_RED_SYSTEM_DRIVER` migrated to `call_activity: red_phase_cycle` with phase-specific params. `atdd-dsl` and `atdd-driver` prompts shrunk to creative WRITE + (rare) PROTOTYPES dispatches; their embedded `at-red-dsl.md` / `at-red-system-driver.md` phase docs rewritten to mirror `at-red-test.md`'s orchestrator-aware shape. The shared sub-flow's `WRITE_DSL_PROTOTYPES` / `STOP_DSL_PROTOTYPE_REVIEW` nodes were renamed to `WRITE_PROTOTYPES` / `STOP_PROTOTYPE_REVIEW` (description `"${phase_label} - PROTOTYPES"`) because for AT_RED_DSL the prototypes are Driver TODOs, not DSL — the generic name fits all callers.
 
 ## Verification
 
