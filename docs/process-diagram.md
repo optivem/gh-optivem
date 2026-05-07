@@ -114,8 +114,8 @@ flowchart TD
 flowchart TD
     AT_END((End))
     AT_GREEN_SYSTEM[AT_GREEN_SYSTEM — see § AT - GREEN - SYSTEM]
-    AT_RED_DSL[AT - RED - DSL]
-    AT_RED_SYSTEM_DRIVER[AT - RED - SYSTEM DRIVER]
+    AT_RED_DSL[AT - RED - DSL — see § red_phase_cycle]
+    AT_RED_SYSTEM_DRIVER[AT - RED - SYSTEM DRIVER — see § red_phase_cycle]
     AT_RED_TEST[AT - RED - TEST — see § red_phase_cycle]
     CT_SUBPROCESS[CT_SUBPROCESS — see § Contract Test Sub-Process]
     GATE_DSL_AT{DSL Interface Changed?}
@@ -138,9 +138,6 @@ flowchart TD
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
     class VERIFY_AT_DRIVER serviceNode
-
-    classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
-    class AT_RED_DSL,AT_RED_SYSTEM_DRIVER agentNode
 ```
 
 ## AT - GREEN - SYSTEM
@@ -320,19 +317,19 @@ flowchart TD
     GATE_RUN_FAILED_RUNTIME{"Tests fail at runtime (not compile)?"}
     RED_END((End))
     RUN[[Run targeted tests]]
-    STOP_DSL_PROTOTYPE_REVIEW["STOP - HUMAN REVIEW — ${phase_label} DSL prototypes"]
+    STOP_PROTOTYPE_REVIEW["STOP - HUMAN REVIEW — ${phase_label} prototypes"]
     STOP_RED_NOT_RUNTIME_FAIL["STOP - HUMAN REVIEW — ${phase_label} tests not runtime-failing"]
     STOP_RED_REVIEW["STOP - HUMAN REVIEW — ${phase_label} tests"]
     WRITE["${phase_label} - WRITE"]
-    WRITE_DSL_PROTOTYPES["${phase_label} - DSL PROTOTYPES"]
+    WRITE_PROTOTYPES["${phase_label} - PROTOTYPES"]
 
     WRITE --> STOP_RED_REVIEW
     STOP_RED_REVIEW --> COMPILE
     COMPILE --> GATE_COMPILE_OK
-    GATE_COMPILE_OK -- No --> WRITE_DSL_PROTOTYPES
+    GATE_COMPILE_OK -- No --> WRITE_PROTOTYPES
     GATE_COMPILE_OK -- Yes --> RUN
-    WRITE_DSL_PROTOTYPES --> STOP_DSL_PROTOTYPE_REVIEW
-    STOP_DSL_PROTOTYPE_REVIEW --> COMPILE
+    WRITE_PROTOTYPES --> STOP_PROTOTYPE_REVIEW
+    STOP_PROTOTYPE_REVIEW --> COMPILE
     RUN --> GATE_RUN_FAILED_RUNTIME
     GATE_RUN_FAILED_RUNTIME -- Yes --> DISABLE
     GATE_RUN_FAILED_RUNTIME -- No --> STOP_RED_NOT_RUNTIME_FAIL
@@ -344,10 +341,10 @@ flowchart TD
     class COMMIT,COMPILE,DISABLE,RUN serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
-    class WRITE,WRITE_DSL_PROTOTYPES agentNode
+    class WRITE,WRITE_PROTOTYPES agentNode
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class STOP_DSL_PROTOTYPE_REVIEW,STOP_RED_NOT_RUNTIME_FAIL,STOP_RED_REVIEW humanNode
+    class STOP_PROTOTYPE_REVIEW,STOP_RED_NOT_RUNTIME_FAIL,STOP_RED_REVIEW humanNode
 ```
 
 ## SUT Cycle
