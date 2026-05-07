@@ -10,7 +10,7 @@ import (
 // N` against a Task ticket carrying the `subtype:system-interface-redesign`
 // label. Agents (claude shell-outs) and github-touching service tasks are
 // mocked out; the runner walks `main` from the implement-ticket entry
-// point (MOVE_TO_IN_PROGRESS); a spy collects the ordered list of
+// point (MOVE_TICKET_IN_PROGRESS); a spy collects the ordered list of
 // work-doing nodes it visited.
 func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 	// ── ARRANGE ─────────────────────────────────────────────────────────
@@ -37,14 +37,20 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 	// Spy: every service_task / user_task records its node ID before
 	// firing the (mocked) inner function. Gateways, call_activities, and
 	// start/end events are routing scaffolding, not "steps the runner
-	// executes", so they're excluded.
+	// executes", so they're excluded. Entries are qualified with the
+	// process name (e.g. "structural_cycle.COMPILE") because node IDs are
+	// only unique per process — COMPILE, TICK, and WRITE collide across
+	// structural_cycle / red_phase_cycle / green_phase_cycle /
+	// at_green_system, so an unqualified trail would silently accept the
+	// wrong call site once a sibling test exercises one of those cycles.
 	var history []string
 	for _, process := range eng.Processes {
+		procName := process.Name
 		for id, node := range process.Nodes {
 			if node.Kind != ServiceTask && node.Kind != UserTask {
 				continue
 			}
-			label, inner := node.Label(), node.Fn
+			label, inner := procName+"."+node.ID, node.Fn
 			node.Fn = func(ctx *Context) Outcome {
 				history = append(history, label)
 				return inner(ctx)
@@ -59,7 +65,7 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 	// subtype are kept around so the gates' Context-first short-circuit
 	// works for the upstream intake nodes; ticket_type_recognized +
 	// parse_ok pass intake; structural_test_mode picks the TEST gate.
-	eng.Processes["main"].Start = "MOVE_TO_IN_PROGRESS"
+	eng.Processes["main"].Start = "MOVE_TICKET_IN_PROGRESS"
 	ctx := NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("subtype", "system-interface-redesign")
@@ -69,11 +75,12 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 	ctx.Set("parse_ok", true)
 	ctx.Set("legacy_acceptance_criteria_section_present", false)
 	ctx.Set("structural_test_mode", "full")
-	// Happy-path verify: the structural-cycle gateway routes ok → review.
-	// The test's gate mock echoes whatever ctx[binding] is, so we seed
-	// the gateway's binding name directly. Red would route to
-	// FIX_STRUCT_VERIFY then back to verify; gate-specific routing
-	// (retry counter etc.) is exercised in gates/bindings_test.go.
+	// Happy-path verify: GATE_STRUCT_VERIFY (post-RUN_TESTS) routes ok →
+	// STOP_STRUCT_TEST. The test's gate mock echoes whatever ctx[binding]
+	// is, so we seed the gateway's binding name directly. Red would route
+	// to STOP_STRUCT_VERIFY_REVIEW → FIX_STRUCT_VERIFY → CHOOSE_TESTS;
+	// gate-specific routing (retry counter etc.) is exercised in
+	// gates/bindings_test.go.
 	ctx.Set("structural_verify_outcome", "ok")
 
 	// ── ACT ─────────────────────────────────────────────────────────────
@@ -83,22 +90,21 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 
 	// ── ASSERT ──────────────────────────────────────────────────────────
 	want := []string{
-		"MOVE_TO_IN_PROGRESS",
-		"CLASSIFY",
-		"CLASSIFY_SUBTYPE",
-		"PARSE_BODY",
-		"REPORT_INTAKE_SUMMARY",
-		"STRUCT_WRITE",
-		"VERIFY_STRUCT_DRIVER",
-		"STOP_STRUCT_REVIEW",
-		"COMPILE",
-		"SAMPLE",
-		"DRIFT",
-		"STOP_STRUCT_TEST",
-		"ASK_COMMIT",
-		"COMMIT_STRUCT",
-		"TICK",
-		"TICKET_IN_ACCEPTANCE",
+		"main.MOVE_TICKET_IN_PROGRESS",
+		"github_intake.CLASSIFY_TICKET_TYPE",
+		"github_intake.CLASSIFY_TICKET_SUBTYPE",
+		"github_intake.READ_TICKET_BODY",
+		"github_intake.REPORT_TICKET_DETAILS",
+		"structural_cycle.IMPLEMENT_STRUCTURAL_CHANGE",
+		"structural_cycle.APPROVE_STRUCTURAL_CHANGE",
+		"structural_cycle.COMPILE",
+		"structural_cycle.CHOOSE_TESTS",
+		"structural_cycle.RUN_TESTS",
+		"structural_cycle.STOP_STRUCT_TEST",
+		"structural_cycle.ASK_COMMIT",
+		"structural_cycle.COMMIT_STRUCT",
+		"structural_cycle.TICK_CHECKLIST",
+		"main.MOVE_TICKET_IN_ACCEPTANCE",
 	}
 	if !reflect.DeepEqual(history, want) {
 		t.Errorf("step history:\n got=%v\nwant=%v", history, want)

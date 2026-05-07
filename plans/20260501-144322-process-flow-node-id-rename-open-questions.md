@@ -42,7 +42,7 @@ The rename is partially-specified — the user listed renames for the intake nod
 
 - Schema-driven: human-review STOPs get `name: REQUEST_HUMAN_REVIEW` (where the intent is "approve / review"). Per-node mapping for fix-and-resume STOPs (`STOP_CLASSIFY_CONFLICT`, `STOP_SUBTYPE_MISSING`, `STOP_PARSE_ERROR`) still TBD — see remaining work below.
 - `DISPATCH_*_AGENT` for user_task dispatch nodes.
-- Verb prefix for the few service_tasks that lack one: `TICK`, `SAMPLE`, `DRIFT`, `TICKET_IN_ACCEPTANCE`.
+- Verb prefix for the few service_tasks that lack one: `TICK`, `SAMPLE`, `TICKET_IN_ACCEPTANCE`.
 - Gateways (`GATE_*`) untouched.
 
 ### 7. `TICK_TICKET_ITEM` parallel — `TICKET_IN_ACCEPTANCE`

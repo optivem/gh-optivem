@@ -235,20 +235,19 @@ func (b bindings) subtype(ctx *statemachine.Context) statemachine.Outcome {
 	}
 }
 
-// structuralVerifyOutcome routes the post-VERIFY_STRUCT_DRIVER gateway
-// based on the failure class the verify action stamped into
-// ctx.State["verify_class"]. Behaviour-preserving structural cycles are
-// the *only* place we want to auto-dispatch a fix agent on red — RED is
-// not expected here, so the cycle should heal itself once before
-// surfacing to a human.
+// structuralVerifyOutcome routes the post-RUN_TESTS gateway based on the
+// failure class the verify action stamped into ctx.State["verify_class"].
+// Behaviour-preserving structural cycles are the *only* place we want to
+// auto-dispatch a fix agent on red — RED is not expected here, so the
+// cycle should heal itself once before surfacing to a human.
 //
 // Routing tokens (consumed by the YAML's `when:` clauses):
 //
-//   - "ok"       — green (or no commands ran). Continue to STOP_STRUCT_REVIEW.
+//   - "ok"       — green (or no commands ran). Continue to STOP_STRUCT_TEST.
 //   - "red"      — first red of this cycle. Increments verify_retries and
 //                  returns "red" so the gateway routes to FIX_STRUCT_VERIFY,
 //                  which dispatches atdd-fix-verify and loops back to
-//                  VERIFY_STRUCT_DRIVER.
+//                  CHOOSE_TESTS so the operator can re-pick scope.
 //
 // Halt paths return Outcome.Err directly (no routing token):
 //

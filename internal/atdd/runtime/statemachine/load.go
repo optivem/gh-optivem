@@ -12,7 +12,6 @@ import (
 // Optional fields use omitempty so the zero value is "absent in YAML".
 type RawNode struct {
 	ID            string            `yaml:"id"`
-	Name          string            `yaml:"name,omitempty"`
 	Type          string            `yaml:"type"`
 	Action        string            `yaml:"action,omitempty"`
 	Agent         string            `yaml:"agent,omitempty"`

@@ -11,7 +11,7 @@ When the work is done, do not commit and do not summarise — exit cleanly. The 
 
 ## Why you were dispatched
 
-You are running because **VERIFY_STRUCT_DRIVER** classified the post-WRITE test run as **red** on a structural cycle. Structural cycles (`SYSTEM INTERFACE REDESIGN`, `SYSTEM IMPLEMENTATION CHANGE`) are **behaviour-preserving by definition** — RED is **not** expected here, so a real test failure points at a regression introduced by the WRITE phase that just landed.
+You are running because **RUN_TESTS** classified the operator-selected test run as **red** on a structural cycle. Structural cycles (`SYSTEM INTERFACE REDESIGN`, `SYSTEM IMPLEMENTATION CHANGE`) are **behaviour-preserving by definition** — RED is **not** expected here, so a real test failure points at a regression introduced by the WRITE phase that just landed.
 
 This is not the AT/CT WRITE-cycle policy ("verification is feedback, not gating; RED is the whole point"). On structural cycles, the test result is a hard signal: either the WRITE-phase edit broke a behaviour that was previously green, or a test was already coupled to the surface the WRITE-phase legitimately reshaped and the test itself must follow. Both outcomes call for the smallest change that turns the failure green again.
 
@@ -35,7 +35,7 @@ You get **one** retry. If verify is still red after your fix, the orchestrator h
 
 4. **Do not commit.** Do not run `git add`, `git commit`, or `gh issue close`. The orchestrator stages and commits the merged diff after re-verify confirms green.
 
-5. **Do not run the tests yourself.** The orchestrator re-enters VERIFY_STRUCT_DRIVER after you exit and runs the same targeted subset against your edits.
+5. **Do not run the tests yourself.** The orchestrator re-enters CHOOSE_TESTS / RUN_TESTS after you exit, so the operator can re-pick scope and re-run against your edits.
 
 ## Anti-patterns
 

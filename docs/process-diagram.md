@@ -10,59 +10,59 @@ Each section corresponds to one named process in the YAML. `call_activity` nodes
 flowchart TD
     END((End))
     INTAKE[INTAKE — see § GitHub Intake]
-    MOVE_TO_IN_PROGRESS[["Move ticket to In Progress (bottom of lane)"]]
+    MOVE_TICKET_IN_ACCEPTANCE[[Tick checklist + move issue to IN ACCEPTANCE]]
+    MOVE_TICKET_IN_PROGRESS[["Move ticket to In Progress (bottom of lane)"]]
     PICK_TOP_READY[[Pick top Ready ticket]]
     RUN_CYCLE[RUN_CYCLE — see § Run Cycle]
     RUN_LEGACY_CYCLE[RUN_LEGACY_CYCLE — see § Run Legacy Cycle]
     START((Start))
-    TICKET_IN_ACCEPTANCE[[Tick checklist + move issue to IN ACCEPTANCE]]
 
     START -- board --> PICK_TOP_READY
-    START -- specific_issue --> MOVE_TO_IN_PROGRESS
-    PICK_TOP_READY --> MOVE_TO_IN_PROGRESS
-    MOVE_TO_IN_PROGRESS --> INTAKE
+    START -- specific_issue --> MOVE_TICKET_IN_PROGRESS
+    PICK_TOP_READY --> MOVE_TICKET_IN_PROGRESS
+    MOVE_TICKET_IN_PROGRESS --> INTAKE
     INTAKE --> RUN_LEGACY_CYCLE
     RUN_LEGACY_CYCLE --> RUN_CYCLE
-    RUN_CYCLE --> TICKET_IN_ACCEPTANCE
-    TICKET_IN_ACCEPTANCE --> END
+    RUN_CYCLE --> MOVE_TICKET_IN_ACCEPTANCE
+    MOVE_TICKET_IN_ACCEPTANCE --> END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class MOVE_TO_IN_PROGRESS,PICK_TOP_READY,TICKET_IN_ACCEPTANCE serviceNode
+    class MOVE_TICKET_IN_ACCEPTANCE,MOVE_TICKET_IN_PROGRESS,PICK_TOP_READY serviceNode
 ```
 
 ## GitHub Intake
 
 ```mermaid
 flowchart TD
-    CLASSIFY[[Read ticket type]]
-    CLASSIFY_SUBTYPE[[Read ticket subtype]]
+    CLASSIFY_TICKET_SUBTYPE[[Read ticket subtype]]
+    CLASSIFY_TICKET_TYPE[[Read ticket type]]
     GATE_CLASSIFY_CONFIDENT{Ticket type recognized?}
     GATE_PARSE_OK{Parsed OK?}
     GATE_SUBTYPE_OK{Subtype label detected?}
     GATE_TICKET_TYPE_INTAKE{Ticket type?}
     INTAKE_END((End))
-    PARSE_BODY[[Parse ticket body sections]]
-    REPORT_INTAKE_SUMMARY[[Report intake summary]]
+    READ_TICKET_BODY[[Parse ticket body sections]]
+    REPORT_TICKET_DETAILS[[Report intake summary]]
     STOP_CLASSIFY_CONFLICT[STOP - HUMAN REVIEW — set issue type / re-run]
     STOP_PARSE_ERROR[STOP - HUMAN REVIEW — fix ticket body / re-run]
     STOP_SUBTYPE_MISSING[STOP - HUMAN REVIEW — apply exactly one subtype:* label / re-run]
 
-    CLASSIFY --> GATE_CLASSIFY_CONFIDENT
+    CLASSIFY_TICKET_TYPE --> GATE_CLASSIFY_CONFIDENT
     GATE_CLASSIFY_CONFIDENT -- Yes --> GATE_TICKET_TYPE_INTAKE
     GATE_CLASSIFY_CONFIDENT -- No --> STOP_CLASSIFY_CONFLICT
-    STOP_CLASSIFY_CONFLICT --> CLASSIFY
-    GATE_TICKET_TYPE_INTAKE -- story --> PARSE_BODY
-    GATE_TICKET_TYPE_INTAKE -- bug --> PARSE_BODY
-    GATE_TICKET_TYPE_INTAKE -- task --> CLASSIFY_SUBTYPE
-    CLASSIFY_SUBTYPE --> GATE_SUBTYPE_OK
-    GATE_SUBTYPE_OK -- Yes --> PARSE_BODY
+    STOP_CLASSIFY_CONFLICT --> CLASSIFY_TICKET_TYPE
+    GATE_TICKET_TYPE_INTAKE -- story --> READ_TICKET_BODY
+    GATE_TICKET_TYPE_INTAKE -- bug --> READ_TICKET_BODY
+    GATE_TICKET_TYPE_INTAKE -- task --> CLASSIFY_TICKET_SUBTYPE
+    CLASSIFY_TICKET_SUBTYPE --> GATE_SUBTYPE_OK
+    GATE_SUBTYPE_OK -- Yes --> READ_TICKET_BODY
     GATE_SUBTYPE_OK -- No --> STOP_SUBTYPE_MISSING
-    STOP_SUBTYPE_MISSING --> CLASSIFY_SUBTYPE
-    PARSE_BODY --> GATE_PARSE_OK
-    GATE_PARSE_OK -- Yes --> REPORT_INTAKE_SUMMARY
+    STOP_SUBTYPE_MISSING --> CLASSIFY_TICKET_SUBTYPE
+    READ_TICKET_BODY --> GATE_PARSE_OK
+    GATE_PARSE_OK -- Yes --> REPORT_TICKET_DETAILS
     GATE_PARSE_OK -- No --> STOP_PARSE_ERROR
-    STOP_PARSE_ERROR --> PARSE_BODY
-    REPORT_INTAKE_SUMMARY --> INTAKE_END
+    STOP_PARSE_ERROR --> READ_TICKET_BODY
+    REPORT_TICKET_DETAILS --> INTAKE_END
     GITHUB_INTAKE_OUTPUTS[/"ticket_type, subtype (tasks), change_type, parsed body sections"/]
     INTAKE_END -. produces .-> GITHUB_INTAKE_OUTPUTS
 
@@ -70,7 +70,7 @@ flowchart TD
     class GITHUB_INTAKE_OUTPUTS outputNode
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class CLASSIFY,CLASSIFY_SUBTYPE,PARSE_BODY,REPORT_INTAKE_SUMMARY serviceNode
+    class CLASSIFY_TICKET_SUBTYPE,CLASSIFY_TICKET_TYPE,READ_TICKET_BODY,REPORT_TICKET_DETAILS serviceNode
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
     class STOP_CLASSIFY_CONFLICT,STOP_PARSE_ERROR,STOP_SUBTYPE_MISSING humanNode
@@ -149,7 +149,7 @@ flowchart TD
     COMMIT_GREEN[["COMMIT: <Ticket> | AT - GREEN - SYSTEM"]]
     ENABLE_TESTS[[Re-enable tests disabled in AT - RED - SYSTEM DRIVER]]
     GS_END((End))
-    MOVE_TO_IN_ACCEPTANCE[[Move ticket to TICKET STATUS - IN ACCEPTANCE]]
+    MOVE_TICKET_IN_ACCEPTANCE[[Move ticket to TICKET STATUS - IN ACCEPTANCE]]
     STOP_GREEN_REVIEW[STOP - HUMAN REVIEW — approve implementation]
     TICK[[Tick acceptance-criteria checklist items]]
 
@@ -158,11 +158,11 @@ flowchart TD
     AT_GREEN_FRONTEND --> STOP_GREEN_REVIEW
     STOP_GREEN_REVIEW --> COMMIT_GREEN
     COMMIT_GREEN --> TICK
-    TICK --> MOVE_TO_IN_ACCEPTANCE
-    MOVE_TO_IN_ACCEPTANCE --> GS_END
+    TICK --> MOVE_TICKET_IN_ACCEPTANCE
+    MOVE_TICKET_IN_ACCEPTANCE --> GS_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class COMMIT_GREEN,ENABLE_TESTS,MOVE_TO_IN_ACCEPTANCE,TICK serviceNode
+    class COMMIT_GREEN,ENABLE_TESTS,MOVE_TICKET_IN_ACCEPTANCE,TICK serviceNode
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
     class STOP_GREEN_REVIEW humanNode
@@ -242,46 +242,46 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    APPROVE_STRUCTURAL_CHANGE[STOP - HUMAN REVIEW — approve implementation]
     ASK_COMMIT[[Ask: Can I commit?]]
+    CHOOSE_TESTS[["Operator picks scope (all / some suites / specific tests / skip)"]]
     COMMIT_STRUCT[["COMMIT: <Ticket> | ${change_type}"]]
     COMPILE[[Compile in-scope projects]]
-    DRIFT[[Report drift warning if applicable]]
-    FIX_STRUCT_VERIFY[Dispatch fix agent on verify RED — structural cycle expects green]
-    GATE_STRUCT_VERIFY{"Verify outcome? (ok | red — fix and retry)"}
+    FIX_STRUCT_VERIFY[Dispatch fix agent on test RED — structural cycle expects green]
+    GATE_STRUCT_VERIFY{"Test outcome? (ok | red — fix and retry)"}
     GATE_TEST_MODE{"TEST mode? (full | compile | skip)"}
-    SAMPLE[[Run sample suite]]
-    STOP_STRUCT_REVIEW[STOP - HUMAN REVIEW — approve implementation]
+    IMPLEMENT_STRUCTURAL_CHANGE["${change_type} - WRITE"]
+    RUN_TESTS[["Run selected tests; classify pass/fail for the verify gate"]]
     STOP_STRUCT_TEST[STOP - HUMAN REVIEW — review TEST results]
+    STOP_STRUCT_VERIFY_REVIEW[STOP - HUMAN REVIEW — tests RED, dispatch fix agent?]
     STRUCT_END((End))
-    STRUCT_WRITE["${change_type} - WRITE"]
-    TICK[[Tick checklist items]]
-    VERIFY_STRUCT_DRIVER[["Verify: run targeted tests if driver-adapter changed (no-op for chore)"]]
+    TICK_CHECKLIST[[Tick checklist items]]
 
-    STRUCT_WRITE --> VERIFY_STRUCT_DRIVER
-    VERIFY_STRUCT_DRIVER --> GATE_STRUCT_VERIFY
-    GATE_STRUCT_VERIFY -- ok --> STOP_STRUCT_REVIEW
-    GATE_STRUCT_VERIFY -- red --> FIX_STRUCT_VERIFY
-    FIX_STRUCT_VERIFY --> VERIFY_STRUCT_DRIVER
-    STOP_STRUCT_REVIEW --> GATE_TEST_MODE
+    IMPLEMENT_STRUCTURAL_CHANGE --> APPROVE_STRUCTURAL_CHANGE
+    APPROVE_STRUCTURAL_CHANGE --> GATE_TEST_MODE
     GATE_TEST_MODE -- skip --> ASK_COMMIT
     GATE_TEST_MODE -- compile / full --> COMPILE
-    COMPILE -- full --> SAMPLE
-    COMPILE -- compile --> DRIFT
-    SAMPLE --> DRIFT
-    DRIFT --> STOP_STRUCT_TEST
+    COMPILE -- full --> CHOOSE_TESTS
+    COMPILE -- compile --> STOP_STRUCT_TEST
+    CHOOSE_TESTS --> RUN_TESTS
+    RUN_TESTS --> GATE_STRUCT_VERIFY
+    GATE_STRUCT_VERIFY -- ok --> STOP_STRUCT_TEST
+    GATE_STRUCT_VERIFY -- red --> STOP_STRUCT_VERIFY_REVIEW
+    STOP_STRUCT_VERIFY_REVIEW --> FIX_STRUCT_VERIFY
+    FIX_STRUCT_VERIFY --> CHOOSE_TESTS
     STOP_STRUCT_TEST --> ASK_COMMIT
     ASK_COMMIT --> COMMIT_STRUCT
-    COMMIT_STRUCT --> TICK
-    TICK --> STRUCT_END
+    COMMIT_STRUCT --> TICK_CHECKLIST
+    TICK_CHECKLIST --> STRUCT_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class ASK_COMMIT,COMMIT_STRUCT,COMPILE,DRIFT,SAMPLE,TICK,VERIFY_STRUCT_DRIVER serviceNode
+    class ASK_COMMIT,CHOOSE_TESTS,COMMIT_STRUCT,COMPILE,RUN_TESTS,TICK_CHECKLIST serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
-    class FIX_STRUCT_VERIFY,STRUCT_WRITE agentNode
+    class FIX_STRUCT_VERIFY,IMPLEMENT_STRUCTURAL_CHANGE agentNode
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class STOP_STRUCT_REVIEW,STOP_STRUCT_TEST humanNode
+    class APPROVE_STRUCTURAL_CHANGE,STOP_STRUCT_TEST,STOP_STRUCT_VERIFY_REVIEW humanNode
 ```
 
 ## Legacy Acceptance Criteria Cycle

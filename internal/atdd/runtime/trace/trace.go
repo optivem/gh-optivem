@@ -182,9 +182,9 @@ func writeEnter(deps Deps, node statemachine.Node, ctx *statemachine.Context) {
 // The status word is normally OK, but verify-style actions stamp
 // Outcome.Value with a failure class so the banner can render `RED
 // NODE_ID` or `INFRA NODE_ID` instead — see outcomeStatusLabel. The
-// previous "OK VERIFY_STRUCT_DRIVER -> (no result)" line was the most
-// misleading thing in the trace; it directly contradicted the inline
-// "(test run failed: ... — continuing)" the same node had just printed.
+// previous "OK RUN_TESTS -> (no result)" line was the most misleading
+// thing in the trace; it directly contradicted the inline "(test run
+// failed: ... — continuing)" the same node had just printed.
 //
 // On Outcome.Err the first line becomes:
 //
@@ -426,15 +426,14 @@ func (d Deps) tracePrefix() string {
 	return d.paint(fmt.Sprintf("[trace %s]", nowFn().Format("15:04:05")), color.Faint)
 }
 
-// nodeIDPaint renders the node label (Name when set, else ID) with the
-// kind-appropriate emphasis. On a TTY: cyan-bold for call_activity (so
-// process boundaries pop as the "phase" markers), plain bold for
-// everything else, plain text off-TTY.
+// nodeIDPaint renders the node ID with the kind-appropriate emphasis. On
+// a TTY: cyan-bold for call_activity (so process boundaries pop as the
+// "phase" markers), plain bold for everything else, plain text off-TTY.
 func (d Deps) nodeIDPaint(node statemachine.Node) string {
 	if node.Kind == statemachine.CallActivity {
-		return d.paint(node.Label(), color.FgCyan, color.Bold)
+		return d.paint(node.ID, color.FgCyan, color.Bold)
 	}
-	return d.paint(node.Label(), color.Bold)
+	return d.paint(node.ID, color.Bold)
 }
 
 // execGit is the production GitRunner. Mirrors the implementation pattern

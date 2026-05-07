@@ -9,7 +9,7 @@
 //
 //   - Run with Options.IssueNum > 0 → implement-ticket mode: pre-resolve the
 //     project item for the given issue, seed Context, and skip the picker by
-//     starting the main process at MOVE_TO_IN_PROGRESS.
+//     starting the main process at MOVE_TICKET_IN_PROGRESS.
 //   - Run with Options.IssueNum == 0 → manage-project mode: the YAML's main
 //     process runs from START, picking the top Ready ticket from the project
 //     board.
@@ -286,9 +286,9 @@ func Run(ctx context.Context, opts Options) error {
 		}
 		// Skip START → PICK_TOP_READY when running main. The pre-resolution
 		// has already populated everything PICK_TOP_READY would have set;
-		// MOVE_TO_IN_PROGRESS is the next service task downstream.
+		// MOVE_TICKET_IN_PROGRESS is the next service task downstream.
 		if opts.ProcessName == DefaultProcessName {
-			process.Start = "MOVE_TO_IN_PROGRESS"
+			process.Start = "MOVE_TICKET_IN_PROGRESS"
 		}
 	}
 
@@ -801,10 +801,7 @@ func promptForAgent(opts Options, raw statemachine.RawNode, params map[string]st
 	agent := statemachine.ExpandParams(raw.Agent, params)
 	phaseDoc := statemachine.ExpandParams(raw.PhaseDoc, params)
 	documentation := statemachine.ExpandParams(raw.Documentation, params)
-	step := raw.Name
-	if step == "" {
-		step = raw.ID
-	}
+	step := raw.ID
 
 	fmt.Fprintln(opts.Stdout)
 	fmt.Fprintf(opts.Stdout, "DISPATCH: %s\n", agent)

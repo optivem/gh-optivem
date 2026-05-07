@@ -113,12 +113,11 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("run_smoke_test", a.runSmokeTest)
 	r.Register("commit_onboarding", a.commitOnboarding)
 	r.Register("compile_in_scope", a.compileInScope)
-	r.Register("run_sample_suite", a.runSampleSuite)
-	r.Register("report_drift_warning", a.reportDriftWarning)
 	r.Register("ask_can_i_commit", a.askCanICommit)
 	r.Register("commit_phase", a.commitPhase)
 	r.Register("tick_checklist", a.tickChecklist)
-	r.Register("verify_run_tests_after_driver", a.verifyRunTestsAfterDriver)
+	r.Register("select_tests", a.selectTests)
+	r.Register("run_tests", a.runTests)
 	// red_phase_cycle infrastructure (per
 	// plans/20260505-230100-at-ct-cycle-creative-mechanical-split.md): the
 	// shared sub-flow's mechanical steps. Registered here so the registry
@@ -758,21 +757,6 @@ func (a actions) compileInScope(ctx *statemachine.Context) statemachine.Outcome 
 	return statemachine.Outcome{}
 }
 
-// runSampleSuite runs the canonical sample-suite sweep. v1 calls test-all.sh
-// with a --sample flag (matching the README's documented sample run).
-func (a actions) runSampleSuite(ctx *statemachine.Context) statemachine.Outcome {
-	cmdLine := "./test-all.sh --sample"
-	out, err := a.deps.Shell.Run(context.Background(), cmdLine)
-	if err != nil {
-		fmt.Fprintln(a.deps.Stderr, string(out))
-		return statemachine.Outcome{Err: fmt.Errorf("run_sample_suite: %w", err)}
-	}
-	if len(out) > 0 {
-		fmt.Fprintln(a.deps.Stdout, string(out))
-	}
-	return statemachine.Outcome{}
-}
-
 // ---------------------------------------------------------------------------
 // red_phase_cycle infrastructure (Step 1 of the AT/CT creative/mechanical
 // split — see plans/20260505-230100-at-ct-cycle-creative-mechanical-split.md).
@@ -855,6 +839,18 @@ func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcom
 		return statemachine.Outcome{Err: fmt.Errorf("run_targeted_tests: %s is empty", CtxKeyTestNames)}
 	}
 
+	// Resolve the runner's config-file paths once per invocation. Same
+	// cwd-bug fix as runTests — every `gh optivem test
+	// system ...` shell-out needs the resolved `--system-config` and
+	// `--test-config` flags appended, otherwise the runner's `./system.json`
+	// default fails 100% of the time under the orchestrator's cwd. Per
+	// plans/20260505-220100-verify-runs-from-wrong-cwd.md.
+	pathFlags, err := a.verifyPathFlags()
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf(
+			"run_targeted_tests: could not locate system.json/tests-latest.json under %q: %w", a.deps.RepoPath, err)}
+	}
+
 	rebuildFlag := ""
 	if strings.EqualFold(strings.TrimSpace(ctx.Params["rebuild_before_run"]), "true") {
 		rebuildFlag = "--rebuild "
@@ -864,8 +860,8 @@ func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcom
 	compileFailures := 0
 	passed := 0
 	for _, name := range names {
-		cmd := fmt.Sprintf("gh optivem test system %s--suite %s --test %s",
-			rebuildFlag, shellEscape(suite), shellEscape(name))
+		cmd := fmt.Sprintf("gh optivem test system %s--suite %s --test %s%s",
+			rebuildFlag, shellEscape(suite), shellEscape(name), pathFlags)
 		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
 		out, err := a.deps.Shell.Run(context.Background(), cmd)
 		if len(out) > 0 {
@@ -914,7 +910,7 @@ func isCompileFailureOutput(out []byte) bool {
 // to the change-driven test methods identified at WRITE. v1 shells out to
 // ./disable-test.sh once per target — the script owns the language-specific
 // edit syntax (the language-equivalents.md table). This mirrors how
-// compile_in_scope and run_sample_suite delegate language mechanics to
+// compile_in_scope delegates language mechanics to
 // repo-owned scripts.
 //
 // Reads:
@@ -1051,10 +1047,19 @@ func (a actions) verifyRealSuitePasses(ctx *statemachine.Context) statemachine.O
 	if len(names) == 0 {
 		return statemachine.Outcome{Err: fmt.Errorf("verify_real_suite_passes: %s is empty", CtxKeyTestNames)}
 	}
+	// Same cwd-bug fix as runTests / runTargetedTests:
+	// resolve --system-config / --test-config once and append to every
+	// shell-out so the runner doesn't read its broken `./system.json`
+	// default from the orchestrator's cwd.
+	pathFlags, err := a.verifyPathFlags()
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf(
+			"verify_real_suite_passes: could not locate system.json/tests-latest.json under %q: %w", a.deps.RepoPath, err)}
+	}
 	allPass := true
 	for _, name := range names {
-		cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s",
-			shellEscape(suite), shellEscape(name))
+		cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s%s",
+			shellEscape(suite), shellEscape(name), pathFlags)
 		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
 		out, err := a.deps.Shell.Run(context.Background(), cmd)
 		if len(out) > 0 {
@@ -1068,30 +1073,49 @@ func (a actions) verifyRealSuitePasses(ctx *statemachine.Context) statemachine.O
 	return statemachine.Outcome{Bool: allPass}
 }
 
-// reportDriftWarning emits a one-line reminder when only the compile sweep
-// ran (no sample tests). The warning text is informational; the engine
-// keeps moving regardless.
-func (a actions) reportDriftWarning(ctx *statemachine.Context) statemachine.Outcome {
-	mode := ctx.GetString("structural_test_mode")
-	if mode == "compile" {
-		fmt.Fprintln(a.deps.Stderr,
-			"DRIFT WARNING: compile-only TEST mode skipped sample suites — run `./test-all.sh --sample` before merging.")
-	}
-	return statemachine.Outcome{}
-}
-
 // ---------------------------------------------------------------------------
 // Targeted-subset test verification (post driver-adapter WRITE)
 // ---------------------------------------------------------------------------
 
-// verifyRunTestsAfterDriver is the human-driven system-test gate. The
-// operator picks the scope each cycle: every suite, a chosen subset of
-// suites, specific tests within one suite, or nothing at all. After a
-// green run the prompt loops so they can verify additional scopes
-// without leaving the cycle; on red the loop exits so the structural
-// gateway dispatches the fix agent.
+// ctxKeySelectedTestCommands is where selectTests stores the chosen
+// command list for runTests to pick up. The structural cycle splits
+// selection (CHOOSE_TESTS → select_tests) from execution (RUN_TESTS →
+// run_tests) so the BPMN diagram expresses both as separate nodes.
+// Empty []string means "skip" (operator chose [n]) and runTests no-ops.
+const ctxKeySelectedTestCommands = "selected_test_commands"
+
+// selectTests is the BPMN-pure selection step paired with runTests:
+// shows the same operator menu runTests would otherwise show inline,
+// but only records the choice in ctx[selected_test_commands] without
+// executing anything. The structural cycle's CHOOSE_TESTS node binds
+// to this; AT/CT verify gates skip it and let runTests do menu+exec
+// inline.
 //
-// Top-level menu:
+// Outcomes:
+//   - Outcome{} on a successful selection (commands written) or skip
+//     [n] (empty selection written so runTests treats it as no-op).
+//   - Outcome{Err} on user reject [x], path-resolution failure, or
+//     unrecoverable input error.
+func (a actions) selectTests(ctx *statemachine.Context) statemachine.Outcome {
+	cmds, out := a.gatherTestCommands(ctx)
+	if out.Err != nil {
+		return out
+	}
+	ctx.Set(ctxKeySelectedTestCommands, cmds)
+	return statemachine.Outcome{}
+}
+
+// runTests is the human-driven system-test gate. If an upstream node
+// already populated ctx[selected_test_commands] (the BPMN-pure path —
+// structural_cycle's CHOOSE_TESTS → RUN_TESTS), runTests reads that
+// selection and executes it once. Otherwise it falls back to the
+// legacy menu+exec inline (AT/CT verify gates that haven't been
+// split): the operator picks scope, the action runs it, on green the
+// prompt loops so they can verify additional scopes without leaving
+// the cycle; on red the loop exits so the structural gateway can
+// dispatch the fix agent.
+//
+// Top-level menu (inline path):
 //
 //   [a] all system tests           — `gh optivem test system`
 //   [s] some suites                — pick suite ids, run each whole
@@ -1101,53 +1125,20 @@ func (a actions) reportDriftWarning(ctx *statemachine.Context) statemachine.Outc
 //
 // Suite ids come from `gh optivem test system --list`, so the menu is
 // always whatever tests.json declares for the project.
-func (a actions) verifyRunTestsAfterDriver(ctx *statemachine.Context) statemachine.Outcome {
+func (a actions) runTests(ctx *statemachine.Context) statemachine.Outcome {
+	if preset, ok := ctx.Get(ctxKeySelectedTestCommands).([]string); ok {
+		return a.executeAndFinalize(ctx, preset)
+	}
+
 	for {
-		ans, err := a.deps.Prompter.Ask("Run system tests? [a]ll, [s]ome suites, [p]ick specific tests, [n]one (approve), e[x]it (reject): ")
-		if err != nil {
-			return statemachine.Outcome{Err: fmt.Errorf("verify_run_tests_after_driver: %w", err)}
+		cmds, out := a.gatherTestCommands(ctx)
+		if out.Err != nil {
+			return out
 		}
-		choice := strings.ToLower(strings.TrimSpace(ans))
-
-		var commands []string
-		switch choice {
-		case "x":
-			return statemachine.Outcome{Err: errors.New("verify_run_tests_after_driver: user rejected and halted the run")}
-		case "n", "":
-			fmt.Fprintln(a.deps.Stdout, "Skipping system tests for this cycle.")
+		if len(cmds) == 0 {
 			return statemachine.Outcome{}
-		case "a":
-			commands = []string{"gh optivem test system"}
-		case "s":
-			cmds, err := a.promptSomeSuites()
-			if err != nil {
-				fmt.Fprintf(a.deps.Stderr, "%v — try again.\n", err)
-				continue
-			}
-			if len(cmds) == 0 {
-				continue
-			}
-			commands = cmds
-		case "p":
-			cmd, err := a.promptSpecificTests()
-			if err != nil {
-				fmt.Fprintf(a.deps.Stderr, "%v — try again.\n", err)
-				continue
-			}
-			if cmd == "" {
-				continue
-			}
-			commands = []string{cmd}
-		default:
-			fmt.Fprintf(a.deps.Stderr, "Unrecognised choice %q — try again.\n", choice)
-			continue
 		}
-
-		results := make([]verifyCommandResult, 0, len(commands))
-		for _, cmd := range commands {
-			results = append(results, a.runVerifyCommand(cmd))
-		}
-		out := a.finalizeVerify(ctx, statemachine.Outcome{}, results)
+		out = a.executeAndFinalize(ctx, cmds)
 		if out.Err != nil {
 			return out
 		}
@@ -1157,7 +1148,7 @@ func (a actions) verifyRunTestsAfterDriver(ctx *statemachine.Context) statemachi
 
 		more, err := a.deps.Prompter.Ask("Run more tests? [y/N]: ")
 		if err != nil {
-			return statemachine.Outcome{Err: fmt.Errorf("verify_run_tests_after_driver: %w", err)}
+			return statemachine.Outcome{Err: fmt.Errorf("run_tests: %w", err)}
 		}
 		if yes, _ := parseYesNo(more); !yes {
 			return out
@@ -1165,12 +1156,143 @@ func (a actions) verifyRunTestsAfterDriver(ctx *statemachine.Context) statemachi
 	}
 }
 
+// gatherTestCommands runs the interactive a/s/p/n/x menu and returns
+// the chosen command list. Empty cmds with Outcome{} means the operator
+// picked [n] / blank to skip; cmds with Outcome{} means [a]/[s]/[p]
+// chose a non-empty scope; nil with Outcome{Err} means [x] reject,
+// path-resolution failure, or an input-read error. The re-prompt loop
+// for unrecognised choices and empty sub-selections is internal so
+// callers see one outcome per top-level choice.
+//
+// Per plans/20260505-220100-verify-runs-from-wrong-cwd.md (Item 2):
+// every `gh optivem test system ...` shell-out under verify needs the
+// resolved `--system-config` / `--test-config` flags appended (the
+// runner's `./system.json` default fails 100% of the time because the
+// orchestrator's cwd is the repo root, not the directory holding the
+// config). Resolution is lazy — [x] reject and [n] skip don't shell
+// out, so they shouldn't be blocked by a missing layout. needPathFlags
+// caches the lookup so [s]/[p] menus + per-suite runs share one result.
+func (a actions) gatherTestCommands(ctx *statemachine.Context) ([]string, statemachine.Outcome) {
+	var (
+		pathFlags    string
+		pathFlagsErr error
+		pathResolved bool
+	)
+	needPathFlags := func() (string, error) {
+		if !pathResolved {
+			pathFlags, pathFlagsErr = a.verifyPathFlags()
+			pathResolved = true
+		}
+		return pathFlags, pathFlagsErr
+	}
+	haltOnPathErr := func(err error) statemachine.Outcome {
+		ctx.Set("verify_class", "infra")
+		fmt.Fprintln(a.deps.Stderr, "── verify path resolution failed ──")
+		fmt.Fprintf(a.deps.Stderr, "  %v\n", err)
+		fmt.Fprintln(a.deps.Stderr, "  see plans/20260505-220100-verify-runs-from-wrong-cwd.md")
+		return statemachine.Outcome{Err: fmt.Errorf(
+			"run_tests: could not locate system.json/tests-latest.json — see banner above")}
+	}
+
+	for {
+		ans, err := a.deps.Prompter.Ask("Run system tests? [a]ll, [s]ome suites, [p]ick specific tests, [n]one (approve), e[x]it (reject): ")
+		if err != nil {
+			return nil, statemachine.Outcome{Err: fmt.Errorf("run_tests: %w", err)}
+		}
+		choice := strings.ToLower(strings.TrimSpace(ans))
+
+		switch choice {
+		case "x":
+			return nil, statemachine.Outcome{Err: errors.New("run_tests: user rejected and halted the run")}
+		case "n", "":
+			fmt.Fprintln(a.deps.Stdout, "Skipping system tests for this cycle.")
+			return nil, statemachine.Outcome{}
+		case "a":
+			flags, err := needPathFlags()
+			if err != nil {
+				return nil, haltOnPathErr(err)
+			}
+			return []string{"gh optivem test system" + flags}, statemachine.Outcome{}
+		case "s":
+			flags, err := needPathFlags()
+			if err != nil {
+				return nil, haltOnPathErr(err)
+			}
+			cmds, err := a.promptSomeSuites(flags)
+			if err != nil {
+				fmt.Fprintf(a.deps.Stderr, "%v — try again.\n", err)
+				continue
+			}
+			if len(cmds) == 0 {
+				continue
+			}
+			return cmds, statemachine.Outcome{}
+		case "p":
+			flags, err := needPathFlags()
+			if err != nil {
+				return nil, haltOnPathErr(err)
+			}
+			cmd, err := a.promptSpecificTests(flags)
+			if err != nil {
+				fmt.Fprintf(a.deps.Stderr, "%v — try again.\n", err)
+				continue
+			}
+			if cmd == "" {
+				continue
+			}
+			return []string{cmd}, statemachine.Outcome{}
+		default:
+			fmt.Fprintf(a.deps.Stderr, "Unrecognised choice %q — try again.\n", choice)
+			continue
+		}
+	}
+}
+
+// executeAndFinalize runs the resolved command list, captures every
+// invocation's verifyCommandResult, and stamps verify_class on ctx
+// via finalizeVerify. Empty cmds means "skip" → no-op Outcome (gate
+// treats absent verify_class as ok). Shared by selectTests-driven
+// preset path and the inline runTests menu+exec path.
+func (a actions) executeAndFinalize(ctx *statemachine.Context, cmds []string) statemachine.Outcome {
+	if len(cmds) == 0 {
+		return statemachine.Outcome{}
+	}
+	results := make([]verifyCommandResult, 0, len(cmds))
+	for _, cmd := range cmds {
+		results = append(results, a.runVerifyCommand(cmd))
+	}
+	return a.finalizeVerify(ctx, statemachine.Outcome{}, results)
+}
+
+// verifyPathFlags resolves the runner's system + tests config paths under
+// a.deps.RepoPath and returns them formatted as a leading-space-prefixed
+// `--system-config <p> --test-config <p>` suffix that callers append to a
+// `gh optivem test system ...` command line. The leading space lets call
+// sites use plain string concatenation without worrying about whether
+// they need a separator.
+//
+// Returns an error when no layout matches; the caller (verify action) is
+// expected to halt with infra-class semantics rather than running the
+// runner with broken `./system.json` defaults.
+func (a actions) verifyPathFlags() (string, error) {
+	sys, tests, err := ResolveSystemTestPaths(a.deps.RepoPath)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(" --system-config %s --test-config %s",
+		shellEscape(sys), shellEscape(tests)), nil
+}
+
 // listSystemSuites shells out to `gh optivem test system --list` and
 // returns one suite id per non-empty output line. The action calls this
 // at prompt time so the menu always reflects whatever tests.json
 // declares — no separate catalog to keep in sync.
-func (a actions) listSystemSuites() ([]string, error) {
-	out, err := a.deps.Shell.Run(context.Background(), "gh optivem test system --list")
+//
+// pathFlags is the suffix from verifyPathFlags — `--list` only reads
+// tests.json (the runner short-circuits before opening system.json), but
+// passing both flags keeps the command line uniform across [a]/[s]/[p].
+func (a actions) listSystemSuites(pathFlags string) ([]string, error) {
+	out, err := a.deps.Shell.Run(context.Background(), "gh optivem test system --list"+pathFlags)
 	if err != nil {
 		return nil, fmt.Errorf("list suites failed: %w (output: %s)", err, strings.TrimSpace(string(out)))
 	}
@@ -1192,8 +1314,11 @@ func (a actions) listSystemSuites() ([]string, error) {
 // accepts a comma-separated list. Returns the selected suite ids in
 // pick order; an empty answer yields an empty result so the caller can
 // loop back to the top-level menu.
-func (a actions) promptSuiteMenu(multi bool) ([]string, error) {
-	suites, err := a.listSystemSuites()
+//
+// pathFlags is threaded into the underlying `--list` shell-out so the
+// runner can find tests.json under the resolved test-config path.
+func (a actions) promptSuiteMenu(multi bool, pathFlags string) ([]string, error) {
+	suites, err := a.listSystemSuites(pathFlags)
 	if err != nil {
 		return nil, err
 	}
@@ -1224,15 +1349,17 @@ func (a actions) promptSuiteMenu(multi bool) ([]string, error) {
 }
 
 // promptSomeSuites asks the user which suites to run whole and returns
-// one `gh optivem test system --suite <id>` command per pick.
-func (a actions) promptSomeSuites() ([]string, error) {
-	picked, err := a.promptSuiteMenu(true)
+// one `gh optivem test system --suite <id>` command per pick. pathFlags
+// (from verifyPathFlags) is appended to every emitted command so the
+// runner can find system.json / tests.json.
+func (a actions) promptSomeSuites(pathFlags string) ([]string, error) {
+	picked, err := a.promptSuiteMenu(true, pathFlags)
 	if err != nil {
 		return nil, err
 	}
 	cmds := make([]string, 0, len(picked))
 	for _, id := range picked {
-		cmds = append(cmds, fmt.Sprintf("gh optivem test system --suite %s", shellEscape(id)))
+		cmds = append(cmds, fmt.Sprintf("gh optivem test system --suite %s%s", shellEscape(id), pathFlags))
 	}
 	return cmds, nil
 }
@@ -1240,9 +1367,10 @@ func (a actions) promptSomeSuites() ([]string, error) {
 // promptSpecificTests asks the user to pick one suite and then type the
 // test names to run within it. Returns a single `gh optivem test system
 // --suite <id> --test <n1> --test <n2>` command, or "" if the user
-// declined to name any tests.
-func (a actions) promptSpecificTests() (string, error) {
-	picked, err := a.promptSuiteMenu(false)
+// declined to name any tests. pathFlags (from verifyPathFlags) is
+// appended so the runner can find its config files.
+func (a actions) promptSpecificTests(pathFlags string) (string, error) {
+	picked, err := a.promptSuiteMenu(false, pathFlags)
 	if err != nil {
 		return "", err
 	}
@@ -1269,6 +1397,7 @@ func (a actions) promptSpecificTests() (string, error) {
 	for _, n := range names {
 		fmt.Fprintf(&b, " --test %s", shellEscape(n))
 	}
+	b.WriteString(pathFlags)
 	return b.String(), nil
 }
 
@@ -1314,7 +1443,7 @@ func parsePickNumbers(s string, max int) ([]int, error) {
 // runner, etc.) finalizeVerify halts the run by returning Outcome.Err
 // rather than letting the gateway route. Item 5 of the
 // verify-failure-dispatch plan: the cwd-bug case stops silently
-// advancing into STOP_STRUCT_REVIEW, regardless of whether the
+// advancing into APPROVE_STRUCTURAL_CHANGE, regardless of whether the
 // downstream gateway has been wired in yet. The detailed banner is
 // printed to stderr first so the operator sees *why* the run halted
 // (which infra pattern matched, which command was tried, the cwd) —
@@ -1343,7 +1472,7 @@ func (a actions) finalizeVerify(ctx *statemachine.Context, out statemachine.Outc
 	if class == classInfra {
 		a.printInfraHalt(results)
 		return statemachine.Outcome{
-			Err: errors.New("verify_run_tests_after_driver: runner failed before any test ran (infra) — see banner above"),
+			Err: errors.New("run_tests: runner failed before any test ran (infra) — see banner above"),
 		}
 	}
 	out.Value = class.String()
@@ -1417,7 +1546,7 @@ func (a actions) printInfraHalt(results []verifyCommandResult) {
 	}
 	w := a.deps.Stderr
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "verify_run_tests_after_driver: runner failed before any test ran.")
+	fmt.Fprintln(w, "run_tests: runner failed before any test ran.")
 	fmt.Fprintf(w, "Classified as: infra (orchestrator-side problem, not SUT) — %s.\n", first.Label)
 	fmt.Fprintf(w, "Detail: %s\n", firstNonEmptyLine(first.Output))
 	fmt.Fprintf(w, "Tried:  %s\n", first.Cmd)
@@ -1465,7 +1594,7 @@ type verifyCommandResult struct {
 }
 
 // runVerifyCommand shells out and captures the per-command outcome. The
-// caller in verifyRunTestsAfterDriver collects results across commands;
+// caller in runTests collects results across commands;
 // aggregation into a single class happens in finalizeVerify.
 //
 // Failures still surface inline as before — the design point ("verification
@@ -1478,7 +1607,13 @@ func (a actions) runVerifyCommand(cmd string) verifyCommandResult {
 	if len(out) > 0 {
 		fmt.Fprintln(a.deps.Stdout, string(out))
 	}
-	class, label := classifyShellErr(string(out), err)
+	// realShell.Run returns stdout in `out` and inlines stderr into err.Error()
+	// (as `(stderr: ...)`), so feeding only `string(out)` to the classifier
+	// blinds it to the runner's error output — every infra failure ends up
+	// classified as red because no infra pattern can match an empty stdout.
+	// Combine both streams here so the regex table actually sees the runner's
+	// fixed-prefix error lines.
+	class, label := classifyShellErr(combineShellText(out, err), err)
 	if err != nil {
 		fmt.Fprintf(a.deps.Stderr, "(test run failed [%s]: %v — continuing)\n", class, err)
 	}
@@ -1489,6 +1624,22 @@ func (a actions) runVerifyCommand(cmd string) verifyCommandResult {
 		Class:   class,
 		Label:   label,
 	}
+}
+
+// combineShellText folds stdout and any err-embedded stderr into the single
+// text blob the classifier scans. realShell wraps the OS error as
+// `shell %q: <inner> (stderr: <captured>)`; including err.Error() captures
+// that stderr substring without parsing it back out. Test fakes that put
+// runner output directly in `out` and use a plain error string still match
+// because we always include err.Error() too.
+func combineShellText(out []byte, err error) string {
+	if err == nil {
+		return string(out)
+	}
+	if len(out) == 0 {
+		return err.Error()
+	}
+	return string(out) + "\n" + err.Error()
 }
 
 // aggregateVerifyClass returns the worst class across results. Infra

@@ -97,7 +97,7 @@ processes:
         action: pick_top_ready
         documentation: "Pick top Ready ticket"
 
-      - id: MOVE_TO_IN_PROGRESS
+      - id: MOVE_TICKET_IN_PROGRESS
         type: service_task
         action: move_to_in_progress
         documentation: "Move ticket to In Progress (bottom of lane)"
@@ -114,7 +114,7 @@ processes:
         type: call_activity
         process: run_cycle
 
-      - id: TICKET_IN_ACCEPTANCE
+      - id: MOVE_TICKET_IN_ACCEPTANCE
         type: service_task
         action: move_to_in_acceptance
         documentation: "Tick checklist + move issue to IN ACCEPTANCE"
@@ -124,13 +124,13 @@ processes:
 
     sequence_flows:
       - {from: START,                to: PICK_TOP_READY,      when: "mode == board"}
-      - {from: START,                to: MOVE_TO_IN_PROGRESS, when: "mode == specific_issue"}
-      - {from: PICK_TOP_READY,       to: MOVE_TO_IN_PROGRESS}
-      - {from: MOVE_TO_IN_PROGRESS,  to: INTAKE}
+      - {from: START,                to: MOVE_TICKET_IN_PROGRESS, when: "mode == specific_issue"}
+      - {from: PICK_TOP_READY,       to: MOVE_TICKET_IN_PROGRESS}
+      - {from: MOVE_TICKET_IN_PROGRESS,  to: INTAKE}
       - {from: INTAKE,               to: RUN_LEGACY_CYCLE}
       - {from: RUN_LEGACY_CYCLE,     to: RUN_CYCLE}
-      - {from: RUN_CYCLE,            to: TICKET_IN_ACCEPTANCE}
-      - {from: TICKET_IN_ACCEPTANCE, to: END}
+      - {from: RUN_CYCLE,            to: MOVE_TICKET_IN_ACCEPTANCE}
+      - {from: MOVE_TICKET_IN_ACCEPTANCE, to: END}
 
   # ===========================================================================
   # github_intake
@@ -147,14 +147,14 @@ processes:
   # source-agnostic wrapper is deferred until a second source exists.
   # ===========================================================================
   github_intake:
-    start: CLASSIFY
+    start: CLASSIFY_TICKET_TYPE
     outputs:
       - ticket_type
       - subtype (tasks)
       - change_type
       - parsed body sections
     nodes:
-      - id: CLASSIFY
+      - id: CLASSIFY_TICKET_TYPE
         type: service_task
         action: read_ticket_type
         documentation: "Read ticket type"
@@ -175,7 +175,7 @@ processes:
         binding: ticket_type
         documentation: "Ticket type?"
 
-      - id: CLASSIFY_SUBTYPE
+      - id: CLASSIFY_TICKET_SUBTYPE
         type: service_task
         action: read_subtype
         documentation: "Read ticket subtype"
@@ -191,7 +191,7 @@ processes:
         role: review
         documentation: "STOP - HUMAN REVIEW — apply exactly one subtype:* label / re-run"
 
-      - id: PARSE_BODY
+      - id: READ_TICKET_BODY
         type: service_task
         action: parse_ticket_body
         documentation: "Parse ticket body sections"
@@ -207,7 +207,7 @@ processes:
         role: review
         documentation: "STOP - HUMAN REVIEW — fix ticket body / re-run"
 
-      - id: REPORT_INTAKE_SUMMARY
+      - id: REPORT_TICKET_DETAILS
         type: service_task
         action: report_intake_summary
         documentation: "Report intake summary"
@@ -216,22 +216,22 @@ processes:
         type: end_event
 
     sequence_flows:
-      - {from: CLASSIFY,                to: GATE_CLASSIFY_CONFIDENT}
+      - {from: CLASSIFY_TICKET_TYPE,    to: GATE_CLASSIFY_CONFIDENT}
       - {from: GATE_CLASSIFY_CONFIDENT, to: GATE_TICKET_TYPE_INTAKE, when: "ticket_type_recognized == true"}
       - {from: GATE_CLASSIFY_CONFIDENT, to: STOP_CLASSIFY_CONFLICT,  when: "ticket_type_recognized == false"}
-      - {from: STOP_CLASSIFY_CONFLICT,  to: CLASSIFY}
-      - {from: GATE_TICKET_TYPE_INTAKE, to: PARSE_BODY,              when: "ticket_type == story"}
-      - {from: GATE_TICKET_TYPE_INTAKE, to: PARSE_BODY,              when: "ticket_type == bug"}
-      - {from: GATE_TICKET_TYPE_INTAKE, to: CLASSIFY_SUBTYPE,        when: "ticket_type == task"}
-      - {from: CLASSIFY_SUBTYPE,        to: GATE_SUBTYPE_OK}
-      - {from: GATE_SUBTYPE_OK,         to: PARSE_BODY,              when: "subtype_ok == true"}
+      - {from: STOP_CLASSIFY_CONFLICT,  to: CLASSIFY_TICKET_TYPE}
+      - {from: GATE_TICKET_TYPE_INTAKE, to: READ_TICKET_BODY,              when: "ticket_type == story"}
+      - {from: GATE_TICKET_TYPE_INTAKE, to: READ_TICKET_BODY,              when: "ticket_type == bug"}
+      - {from: GATE_TICKET_TYPE_INTAKE, to: CLASSIFY_TICKET_SUBTYPE,        when: "ticket_type == task"}
+      - {from: CLASSIFY_TICKET_SUBTYPE,        to: GATE_SUBTYPE_OK}
+      - {from: GATE_SUBTYPE_OK,         to: READ_TICKET_BODY,              when: "subtype_ok == true"}
       - {from: GATE_SUBTYPE_OK,         to: STOP_SUBTYPE_MISSING,    when: "subtype_ok == false"}
-      - {from: STOP_SUBTYPE_MISSING,    to: CLASSIFY_SUBTYPE}
-      - {from: PARSE_BODY,              to: GATE_PARSE_OK}
-      - {from: GATE_PARSE_OK,           to: REPORT_INTAKE_SUMMARY,   when: "parse_ok == true"}
+      - {from: STOP_SUBTYPE_MISSING,    to: CLASSIFY_TICKET_SUBTYPE}
+      - {from: READ_TICKET_BODY,              to: GATE_PARSE_OK}
+      - {from: GATE_PARSE_OK,           to: REPORT_TICKET_DETAILS,   when: "parse_ok == true"}
       - {from: GATE_PARSE_OK,           to: STOP_PARSE_ERROR,        when: "parse_ok == false"}
-      - {from: STOP_PARSE_ERROR,        to: PARSE_BODY}
-      - {from: REPORT_INTAKE_SUMMARY,   to: INTAKE_END}
+      - {from: STOP_PARSE_ERROR,        to: READ_TICKET_BODY}
+      - {from: REPORT_TICKET_DETAILS,   to: INTAKE_END}
 
   # ===========================================================================
   # run_legacy_cycle
@@ -367,7 +367,7 @@ processes:
 
       - id: VERIFY_AT_DRIVER
         type: service_task
-        action: verify_run_tests_after_driver
+        action: run_tests
         documentation: "Verify: run targeted acceptance tests after driver-adapter change"
 
       - id: AT_GREEN_SYSTEM
@@ -448,7 +448,7 @@ processes:
         action: tick_checklist
         documentation: "Tick acceptance-criteria checklist items"
 
-      - id: MOVE_TO_IN_ACCEPTANCE
+      - id: MOVE_TICKET_IN_ACCEPTANCE
         type: service_task
         action: move_to_in_acceptance
         documentation: "Move ticket to TICKET STATUS - IN ACCEPTANCE"
@@ -462,8 +462,8 @@ processes:
       - {from: AT_GREEN_FRONTEND,    to: STOP_GREEN_REVIEW}
       - {from: STOP_GREEN_REVIEW,    to: COMMIT_GREEN}
       - {from: COMMIT_GREEN,         to: TICK}
-      - {from: TICK,                 to: MOVE_TO_IN_ACCEPTANCE}
-      - {from: MOVE_TO_IN_ACCEPTANCE, to: GS_END}
+      - {from: TICK,                 to: MOVE_TICKET_IN_ACCEPTANCE}
+      - {from: MOVE_TICKET_IN_ACCEPTANCE, to: GS_END}
 
   # ===========================================================================
   # ct_subprocess
@@ -521,7 +521,7 @@ processes:
 
       - id: VERIFY_CT_DRIVER
         type: service_task
-        action: verify_run_tests_after_driver
+        action: run_tests
         documentation: "Verify: run targeted contract tests after external driver-adapter change"
 
       - id: CT_GREEN_STUBS
@@ -647,31 +647,15 @@ processes:
   # nothing inside TEST runs until the user chooses.
   # ===========================================================================
   structural_cycle:
-    start: STRUCT_WRITE
+    start: IMPLEMENT_STRUCTURAL_CHANGE
     nodes:
-      - id: STRUCT_WRITE
+      - id: IMPLEMENT_STRUCTURAL_CHANGE
         type: user_task
         agent: ${agent}
         phase_doc: ${phase_doc}
         documentation: "${change_type} - WRITE"
 
-      - id: VERIFY_STRUCT_DRIVER
-        type: service_task
-        action: verify_run_tests_after_driver
-        documentation: "Verify: run targeted tests if driver-adapter changed (no-op for chore)"
-
-      - id: GATE_STRUCT_VERIFY
-        type: gateway
-        binding: structural_verify_outcome
-        documentation: "Verify outcome? (ok | red — fix and retry)"
-
-      - id: FIX_STRUCT_VERIFY
-        type: user_task
-        agent: atdd-fix-verify
-        phase_doc: ${phase_doc}
-        documentation: "Dispatch fix agent on verify RED — structural cycle expects green"
-
-      - id: STOP_STRUCT_REVIEW
+      - id: APPROVE_STRUCTURAL_CHANGE
         type: user_task
         agent: human
         role: review
@@ -687,15 +671,32 @@ processes:
         action: compile_in_scope
         documentation: "Compile in-scope projects"
 
-      - id: SAMPLE
+      - id: CHOOSE_TESTS
         type: service_task
-        action: run_sample_suite
-        documentation: "Run sample suite"
+        action: select_tests
+        documentation: "Operator picks scope (all / some suites / specific tests / skip)"
 
-      - id: DRIFT
+      - id: RUN_TESTS
         type: service_task
-        action: report_drift_warning
-        documentation: "Report drift warning if applicable"
+        action: run_tests
+        documentation: "Run selected tests; classify pass/fail for the verify gate"
+
+      - id: GATE_STRUCT_VERIFY
+        type: gateway
+        binding: structural_verify_outcome
+        documentation: "Test outcome? (ok | red — fix and retry)"
+
+      - id: STOP_STRUCT_VERIFY_REVIEW
+        type: user_task
+        agent: human
+        role: review
+        documentation: "STOP - HUMAN REVIEW — tests RED, dispatch fix agent?"
+
+      - id: FIX_STRUCT_VERIFY
+        type: user_task
+        agent: atdd-fix-verify
+        phase_doc: ${phase_doc}
+        documentation: "Dispatch fix agent on test RED — structural cycle expects green"
 
       - id: STOP_STRUCT_TEST
         type: user_task
@@ -715,7 +716,7 @@ processes:
           change_type: ${change_type}
         documentation: "COMMIT: <Ticket> | ${change_type}"
 
-      - id: TICK
+      - id: TICK_CHECKLIST
         type: service_task
         action: tick_checklist
         documentation: "Tick checklist items"
@@ -724,29 +725,29 @@ processes:
         type: end_event
 
     sequence_flows:
-      - {from: STRUCT_WRITE,         to: VERIFY_STRUCT_DRIVER}
-      - {from: VERIFY_STRUCT_DRIVER, to: GATE_STRUCT_VERIFY}
-      - {from: GATE_STRUCT_VERIFY,   to: STOP_STRUCT_REVIEW,    when: "structural_verify_outcome == ok"}
-      - {from: GATE_STRUCT_VERIFY,   to: FIX_STRUCT_VERIFY,     when: "structural_verify_outcome == red"}
-      - {from: FIX_STRUCT_VERIFY,    to: VERIFY_STRUCT_DRIVER}
-      - {from: STOP_STRUCT_REVIEW, to: GATE_TEST_MODE}
-      - {from: GATE_TEST_MODE,     to: ASK_COMMIT,        when: "structural_test_mode == skip"}
-      - {from: GATE_TEST_MODE,     to: COMPILE,           when: "structural_test_mode in [compile, full]"}
-      - {from: COMPILE,            to: SAMPLE,            when: "structural_test_mode == full"}
-      - {from: COMPILE,            to: DRIFT,             when: "structural_test_mode == compile"}
-      - {from: SAMPLE,             to: DRIFT}
-      - {from: DRIFT,              to: STOP_STRUCT_TEST}
-      - {from: STOP_STRUCT_TEST,   to: ASK_COMMIT}
-      - {from: ASK_COMMIT,         to: COMMIT_STRUCT}
-      - {from: COMMIT_STRUCT,      to: TICK}
-      - {from: TICK,               to: STRUCT_END}
+      - {from: IMPLEMENT_STRUCTURAL_CHANGE, to: APPROVE_STRUCTURAL_CHANGE}
+      - {from: APPROVE_STRUCTURAL_CHANGE,   to: GATE_TEST_MODE}
+      - {from: GATE_TEST_MODE,              to: ASK_COMMIT,                when: "structural_test_mode == skip"}
+      - {from: GATE_TEST_MODE,              to: COMPILE,                   when: "structural_test_mode in [compile, full]"}
+      - {from: COMPILE,                     to: CHOOSE_TESTS,              when: "structural_test_mode == full"}
+      - {from: COMPILE,                     to: STOP_STRUCT_TEST,          when: "structural_test_mode == compile"}
+      - {from: CHOOSE_TESTS,                to: RUN_TESTS}
+      - {from: RUN_TESTS,                   to: GATE_STRUCT_VERIFY}
+      - {from: GATE_STRUCT_VERIFY,          to: STOP_STRUCT_TEST,          when: "structural_verify_outcome == ok"}
+      - {from: GATE_STRUCT_VERIFY,          to: STOP_STRUCT_VERIFY_REVIEW, when: "structural_verify_outcome == red"}
+      - {from: STOP_STRUCT_VERIFY_REVIEW,   to: FIX_STRUCT_VERIFY}
+      - {from: FIX_STRUCT_VERIFY,           to: CHOOSE_TESTS}
+      - {from: STOP_STRUCT_TEST,            to: ASK_COMMIT}
+      - {from: ASK_COMMIT,                  to: COMMIT_STRUCT}
+      - {from: COMMIT_STRUCT,               to: TICK_CHECKLIST}
+      - {from: TICK_CHECKLIST,              to: STRUCT_END}
 
   # ===========================================================================
   # red_phase_cycle
   # Shared sub-process for every RED-phase node that splits creative WRITE work
   # (LLM-required) from mechanical compile/run/disable/commit work
   # (deterministic). Mirrors how `structural_cycle` factors creative
-  # `STRUCT_WRITE` from its mechanical surroundings.
+  # `IMPLEMENT_STRUCTURAL_CHANGE` from its mechanical surroundings.
   #
   # Callers supply via `params:`:
   #   - agent             — the WRITE agent (e.g. atdd-test, atdd-dsl, atdd-driver)

@@ -306,9 +306,9 @@ func TestStructuralTestMode_Invalid(t *testing.T) {
 // structuralVerifyOutcome — ok / red / red-after-retry / infra / unknown
 //
 // Item 3 of the verify-failure-dispatch-fix-agent plan: this gate routes
-// the post-VERIFY_STRUCT_DRIVER edge based on the failure class the
-// verify action stamped into ctx.State["verify_class"], and is the only
-// place the one-retry budget is enforced.
+// the post-RUN_TESTS edge based on the failure class the verify action
+// stamped into ctx.State["verify_class"], and is the only place the
+// one-retry budget is enforced.
 // ---------------------------------------------------------------------------
 
 func TestStructuralVerifyOutcome_OkRoutesToReview(t *testing.T) {

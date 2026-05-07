@@ -127,35 +127,35 @@ type transitionCase struct {
 var transitionTable = []transitionCase{
 	// ---- main process ----
 	{process: "main", from: "START", state: map[string]any{"mode": "board"}, wantTo: "PICK_TOP_READY", desc: "board mode enters via PICK_TOP_READY"},
-	{process: "main", from: "START", state: map[string]any{"mode": "specific_issue"}, wantTo: "MOVE_TO_IN_PROGRESS", desc: "specific-issue mode skips PICK_TOP_READY"},
-	{process: "main", from: "PICK_TOP_READY", wantTo: "MOVE_TO_IN_PROGRESS"},
-	{process: "main", from: "MOVE_TO_IN_PROGRESS", wantTo: "INTAKE"},
+	{process: "main", from: "START", state: map[string]any{"mode": "specific_issue"}, wantTo: "MOVE_TICKET_IN_PROGRESS", desc: "specific-issue mode skips PICK_TOP_READY"},
+	{process: "main", from: "PICK_TOP_READY", wantTo: "MOVE_TICKET_IN_PROGRESS"},
+	{process: "main", from: "MOVE_TICKET_IN_PROGRESS", wantTo: "INTAKE"},
 	{process: "main", from: "INTAKE", wantTo: "RUN_LEGACY_CYCLE"},
 	{process: "main", from: "RUN_LEGACY_CYCLE", wantTo: "RUN_CYCLE"},
-	{process: "main", from: "RUN_CYCLE", wantTo: "TICKET_IN_ACCEPTANCE"},
-	{process: "main", from: "TICKET_IN_ACCEPTANCE", wantTo: "END"},
+	{process: "main", from: "RUN_CYCLE", wantTo: "MOVE_TICKET_IN_ACCEPTANCE"},
+	{process: "main", from: "MOVE_TICKET_IN_ACCEPTANCE", wantTo: "END"},
 
 	// ---- intake ----
 	// Issue Forms enforce the ticket schema upstream so intake is a pure
 	// service-task pipeline (classify ticket, classify subtype, parse body)
 	// with two STOPs for unhappy paths (classification conflict, parse
 	// error). No LLM dispatch — no agent fan-out by ticket type.
-	{process: "github_intake", from: "CLASSIFY", wantTo: "GATE_CLASSIFY_CONFIDENT"},
+	{process: "github_intake", from: "CLASSIFY_TICKET_TYPE", wantTo: "GATE_CLASSIFY_CONFIDENT"},
 	{process: "github_intake", from: "GATE_CLASSIFY_CONFIDENT", state: map[string]any{"ticket_type_recognized": true}, wantTo: "GATE_TICKET_TYPE_INTAKE"},
 	{process: "github_intake", from: "GATE_CLASSIFY_CONFIDENT", state: map[string]any{"ticket_type_recognized": false}, wantTo: "STOP_CLASSIFY_CONFLICT"},
-	{process: "github_intake", from: "STOP_CLASSIFY_CONFLICT", wantTo: "CLASSIFY"},
-	{process: "github_intake", from: "GATE_TICKET_TYPE_INTAKE", state: map[string]any{"ticket_type": "story"}, wantTo: "PARSE_BODY"},
-	{process: "github_intake", from: "GATE_TICKET_TYPE_INTAKE", state: map[string]any{"ticket_type": "bug"}, wantTo: "PARSE_BODY"},
-	{process: "github_intake", from: "GATE_TICKET_TYPE_INTAKE", state: map[string]any{"ticket_type": "task"}, wantTo: "CLASSIFY_SUBTYPE"},
-	{process: "github_intake", from: "CLASSIFY_SUBTYPE", wantTo: "GATE_SUBTYPE_OK"},
-	{process: "github_intake", from: "GATE_SUBTYPE_OK", state: map[string]any{"subtype_ok": true}, wantTo: "PARSE_BODY"},
+	{process: "github_intake", from: "STOP_CLASSIFY_CONFLICT", wantTo: "CLASSIFY_TICKET_TYPE"},
+	{process: "github_intake", from: "GATE_TICKET_TYPE_INTAKE", state: map[string]any{"ticket_type": "story"}, wantTo: "READ_TICKET_BODY"},
+	{process: "github_intake", from: "GATE_TICKET_TYPE_INTAKE", state: map[string]any{"ticket_type": "bug"}, wantTo: "READ_TICKET_BODY"},
+	{process: "github_intake", from: "GATE_TICKET_TYPE_INTAKE", state: map[string]any{"ticket_type": "task"}, wantTo: "CLASSIFY_TICKET_SUBTYPE"},
+	{process: "github_intake", from: "CLASSIFY_TICKET_SUBTYPE", wantTo: "GATE_SUBTYPE_OK"},
+	{process: "github_intake", from: "GATE_SUBTYPE_OK", state: map[string]any{"subtype_ok": true}, wantTo: "READ_TICKET_BODY"},
 	{process: "github_intake", from: "GATE_SUBTYPE_OK", state: map[string]any{"subtype_ok": false}, wantTo: "STOP_SUBTYPE_MISSING"},
-	{process: "github_intake", from: "STOP_SUBTYPE_MISSING", wantTo: "CLASSIFY_SUBTYPE"},
-	{process: "github_intake", from: "PARSE_BODY", wantTo: "GATE_PARSE_OK"},
-	{process: "github_intake", from: "GATE_PARSE_OK", state: map[string]any{"parse_ok": true}, wantTo: "REPORT_INTAKE_SUMMARY"},
+	{process: "github_intake", from: "STOP_SUBTYPE_MISSING", wantTo: "CLASSIFY_TICKET_SUBTYPE"},
+	{process: "github_intake", from: "READ_TICKET_BODY", wantTo: "GATE_PARSE_OK"},
+	{process: "github_intake", from: "GATE_PARSE_OK", state: map[string]any{"parse_ok": true}, wantTo: "REPORT_TICKET_DETAILS"},
 	{process: "github_intake", from: "GATE_PARSE_OK", state: map[string]any{"parse_ok": false}, wantTo: "STOP_PARSE_ERROR"},
-	{process: "github_intake", from: "STOP_PARSE_ERROR", wantTo: "PARSE_BODY"},
-	{process: "github_intake", from: "REPORT_INTAKE_SUMMARY", wantTo: "INTAKE_END"},
+	{process: "github_intake", from: "STOP_PARSE_ERROR", wantTo: "READ_TICKET_BODY"},
+	{process: "github_intake", from: "REPORT_TICKET_DETAILS", wantTo: "INTAKE_END"},
 
 	// ---- run_legacy_cycle ----
 	// Backfill cycle for legacy acceptance criteria. Self-contained: gates internally on
@@ -211,15 +211,15 @@ var transitionTable = []transitionCase{
 	// Decomposed per the AT/CT split plan: ENABLE_TESTS (re-enable disabled
 	// tests) → AT_GREEN_BACKEND/AT_GREEN_FRONTEND (call_activity into the
 	// shared green_phase_cycle, one per channel) → STOP_GREEN_REVIEW →
-	// COMMIT_GREEN → TICK → MOVE_TO_IN_ACCEPTANCE. The legacy ATDD_RELEASE
+	// COMMIT_GREEN → TICK → MOVE_TICKET_IN_ACCEPTANCE. The legacy ATDD_RELEASE
 	// user_task is replaced by the existing service_task actions.
 	{process: "at_green_system", from: "ENABLE_TESTS", wantTo: "AT_GREEN_BACKEND"},
 	{process: "at_green_system", from: "AT_GREEN_BACKEND", wantTo: "AT_GREEN_FRONTEND"},
 	{process: "at_green_system", from: "AT_GREEN_FRONTEND", wantTo: "STOP_GREEN_REVIEW"},
 	{process: "at_green_system", from: "STOP_GREEN_REVIEW", wantTo: "COMMIT_GREEN"},
 	{process: "at_green_system", from: "COMMIT_GREEN", wantTo: "TICK"},
-	{process: "at_green_system", from: "TICK", wantTo: "MOVE_TO_IN_ACCEPTANCE"},
-	{process: "at_green_system", from: "MOVE_TO_IN_ACCEPTANCE", wantTo: "GS_END"},
+	{process: "at_green_system", from: "TICK", wantTo: "MOVE_TICKET_IN_ACCEPTANCE"},
+	{process: "at_green_system", from: "MOVE_TICKET_IN_ACCEPTANCE", wantTo: "GS_END"},
 
 	// ---- ct_subprocess ----
 	{process: "ct_subprocess", from: "ONBOARDING", wantTo: "CT_RED_TEST"},
@@ -252,25 +252,28 @@ var transitionTable = []transitionCase{
 
 	// ---- structural_cycle (shared by SYSAPI / SYSUI / CHORE via params) ----
 	// Structural-cycle escape: process-audit gap resolved — the TEST=skip
-	// branch jumps directly to ASK_COMMIT, bypassing both COMPILE/SAMPLE and
+	// branch jumps directly to ASK_COMMIT, bypassing both COMPILE/CHOOSE_TESTS/RUN_TESTS and
 	// the second STOP_STRUCT_TEST review.
-	{process: "structural_cycle", from: "STRUCT_WRITE", wantTo: "VERIFY_STRUCT_DRIVER"},
-	{process: "structural_cycle", from: "VERIFY_STRUCT_DRIVER", wantTo: "GATE_STRUCT_VERIFY"},
-	{process: "structural_cycle", from: "GATE_STRUCT_VERIFY", state: map[string]any{"structural_verify_outcome": "ok"}, wantTo: "STOP_STRUCT_REVIEW", desc: "ok class continues to human review"},
-	{process: "structural_cycle", from: "GATE_STRUCT_VERIFY", state: map[string]any{"structural_verify_outcome": "red"}, wantTo: "FIX_STRUCT_VERIFY", desc: "red class dispatches the fix-verify agent (one retry)"},
-	{process: "structural_cycle", from: "FIX_STRUCT_VERIFY", wantTo: "VERIFY_STRUCT_DRIVER", desc: "fix agent loops back into verify for re-classification"},
-	{process: "structural_cycle", from: "STOP_STRUCT_REVIEW", wantTo: "GATE_TEST_MODE"},
+	// Verify gate sits AFTER RUN_TESTS (BPMN-clean): test failure routes
+	// through the fix-agent loop back into CHOOSE_TESTS so the operator can
+	// re-pick scope after the agent's fix.
+	{process: "structural_cycle", from: "IMPLEMENT_STRUCTURAL_CHANGE", wantTo: "APPROVE_STRUCTURAL_CHANGE"},
+	{process: "structural_cycle", from: "APPROVE_STRUCTURAL_CHANGE", wantTo: "GATE_TEST_MODE"},
 	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "skip"}, wantTo: "ASK_COMMIT", desc: "skip mode escapes the TEST sub-loop entirely"},
 	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "compile"}, wantTo: "COMPILE"},
 	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "full"}, wantTo: "COMPILE"},
-	{process: "structural_cycle", from: "COMPILE", state: map[string]any{"structural_test_mode": "full"}, wantTo: "SAMPLE"},
-	{process: "structural_cycle", from: "COMPILE", state: map[string]any{"structural_test_mode": "compile"}, wantTo: "DRIFT"},
-	{process: "structural_cycle", from: "SAMPLE", wantTo: "DRIFT"},
-	{process: "structural_cycle", from: "DRIFT", wantTo: "STOP_STRUCT_TEST"},
+	{process: "structural_cycle", from: "COMPILE", state: map[string]any{"structural_test_mode": "full"}, wantTo: "CHOOSE_TESTS"},
+	{process: "structural_cycle", from: "COMPILE", state: map[string]any{"structural_test_mode": "compile"}, wantTo: "STOP_STRUCT_TEST"},
+	{process: "structural_cycle", from: "CHOOSE_TESTS", wantTo: "RUN_TESTS"},
+	{process: "structural_cycle", from: "RUN_TESTS", wantTo: "GATE_STRUCT_VERIFY"},
+	{process: "structural_cycle", from: "GATE_STRUCT_VERIFY", state: map[string]any{"structural_verify_outcome": "ok"}, wantTo: "STOP_STRUCT_TEST", desc: "ok class continues to human TEST review"},
+	{process: "structural_cycle", from: "GATE_STRUCT_VERIFY", state: map[string]any{"structural_verify_outcome": "red"}, wantTo: "STOP_STRUCT_VERIFY_REVIEW", desc: "red class halts at a human review STOP before any fix-agent dispatch"},
+	{process: "structural_cycle", from: "STOP_STRUCT_VERIFY_REVIEW", wantTo: "FIX_STRUCT_VERIFY", desc: "human approves the dispatch and the fix-verify agent runs"},
+	{process: "structural_cycle", from: "FIX_STRUCT_VERIFY", wantTo: "CHOOSE_TESTS", desc: "fix agent loops back to test selection so the operator can re-pick scope"},
 	{process: "structural_cycle", from: "STOP_STRUCT_TEST", wantTo: "ASK_COMMIT"},
 	{process: "structural_cycle", from: "ASK_COMMIT", wantTo: "COMMIT_STRUCT"},
-	{process: "structural_cycle", from: "COMMIT_STRUCT", wantTo: "TICK"},
-	{process: "structural_cycle", from: "TICK", wantTo: "STRUCT_END"},
+	{process: "structural_cycle", from: "COMMIT_STRUCT", wantTo: "TICK_CHECKLIST"},
+	{process: "structural_cycle", from: "TICK_CHECKLIST", wantTo: "STRUCT_END"},
 
 	// ---- red_phase_cycle (shared by AT/CT RED-WRITE phases via params) ----
 	// Splits creative WRITE work from mechanical compile/run/disable/commit.

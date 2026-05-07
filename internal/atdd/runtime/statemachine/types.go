@@ -50,17 +50,6 @@ type Node struct {
 	Raw   RawNode // the original YAML record, retained for diagnostics
 }
 
-// Label returns the canonical short label for this node — Raw.Name when
-// set, otherwise ID. Used by render sites (spy/history, dispatch banners,
-// trace logs) that surface "which step ran" to the operator. The
-// per-process id-uniqueness invariant guarantees Label is never empty.
-func (n Node) Label() string {
-	if n.Raw.Name != "" {
-		return n.Raw.Name
-	}
-	return n.ID
-}
-
 // Edge is a directed sequence flow between two nodes, optionally guarded by a
 // predicate over the Context state map.
 //

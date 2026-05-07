@@ -173,7 +173,7 @@ func TestWrap_ServiceTaskSkipsWorkingTreeSnapshot(t *testing.T) {
 	var buf bytes.Buffer
 	git := &fakeGit{}
 	node := statemachine.Node{
-		ID:   "MOVE_TO_IN_PROGRESS",
+		ID:   "MOVE_TICKET_IN_PROGRESS",
 		Kind: statemachine.ServiceTask,
 		Raw:  statemachine.RawNode{Action: "move_to_in_progress"},
 		Fn: func(ctx *statemachine.Context) statemachine.Outcome {
@@ -247,7 +247,7 @@ func TestWrap_FailureExitLogsError(t *testing.T) {
 func TestWrap_VerifyClassRendersAsBannerStatusWord(t *testing.T) {
 	// The verify action stamps Outcome.Value with one of {ok, red, infra}
 	// so the trace banner can render the failure class as the status
-	// word — fixing the "OK VERIFY_STRUCT_DRIVER -> (no result)" line
+	// word — fixing the "OK RUN_TESTS -> (no result)" line
 	// that contradicted the inline "(test run failed: ... — continuing)"
 	// the same node had just printed.
 	prevNow := nowFn
@@ -260,20 +260,20 @@ func TestWrap_VerifyClassRendersAsBannerStatusWord(t *testing.T) {
 		wantWord  string
 		wantSlash bool // expect "-> ..." suffix?
 	}{
-		{name: "red", value: "red", wantWord: "RED VERIFY_STRUCT_DRIVER", wantSlash: false},
-		{name: "infra", value: "infra", wantWord: "INFRA VERIFY_STRUCT_DRIVER", wantSlash: false},
-		{name: "ok", value: "ok", wantWord: "OK VERIFY_STRUCT_DRIVER", wantSlash: false},
+		{name: "red", value: "red", wantWord: "RED RUN_TESTS", wantSlash: false},
+		{name: "infra", value: "infra", wantWord: "INFRA RUN_TESTS", wantSlash: false},
+		{name: "ok", value: "ok", wantWord: "OK RUN_TESTS", wantSlash: false},
 		// Empty Value preserves the historic "(no result)" rendering —
 		// no verify happened (e.g. approve-without-running), so the
 		// banner shouldn't claim a class.
-		{name: "empty_no_result", value: "", wantWord: "OK VERIFY_STRUCT_DRIVER -> (no result)", wantSlash: true},
+		{name: "empty_no_result", value: "", wantWord: "OK RUN_TESTS -> (no result)", wantSlash: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var buf bytes.Buffer
 			node := statemachine.Node{
-				ID:   "VERIFY_STRUCT_DRIVER",
+				ID:   "RUN_TESTS",
 				Kind: statemachine.ServiceTask,
-				Raw:  statemachine.RawNode{Action: "verify_run_tests_after_driver"},
+				Raw:  statemachine.RawNode{Action: "run_tests"},
 				Fn: func(ctx *statemachine.Context) statemachine.Outcome {
 					return statemachine.Outcome{Value: tc.value}
 				},

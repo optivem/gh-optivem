@@ -101,7 +101,7 @@ func newAtddShowDiagramCmd() *cobra.Command {
 
 // newAtddImplementTicketCmd implements `gh optivem atdd implement-ticket
 // --issue N`. The driver pre-resolves the project item for the issue, seeds
-// Context, and walks the main process from MOVE_TO_IN_PROGRESS (skipping the
+// Context, and walks the main process from MOVE_TICKET_IN_PROGRESS (skipping the
 // PICK_TOP_READY picker).
 func newAtddImplementTicketCmd() *cobra.Command {
 	var (

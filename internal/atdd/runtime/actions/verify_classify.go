@@ -35,7 +35,7 @@ const (
 
 // String renders the class as the lowercase identifier the gateway
 // binding compares against. Kept short so the trace line ("RED
-// VERIFY_STRUCT_DRIVER ...") is easy to scan.
+// RUN_TESTS ...") is easy to scan.
 func (c failureClass) String() string {
 	switch c {
 	case classOK:

@@ -83,7 +83,7 @@ type Options struct {
 	Checklist string
 
 	// VerifyResults is the formatted block describing every red-class
-	// verifyCommandResult the most recent VERIFY_STRUCT_DRIVER produced.
+	// verifyCommandResult the most recent RUN_TESTS produced.
 	// Substituted into atdd-fix-verify's ${verify_results} placeholder so
 	// the fix agent reads the same captured runner output the operator
 	// saw inline. Empty for every other agent — the rendered prompt
