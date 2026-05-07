@@ -1029,6 +1029,7 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"compile_targeted",
 		"run_targeted_tests",
 		"disable_change_driven",
+		"verify_real_suite_passes",
 	}
 	for _, name := range want {
 		if r.Lookup(name) == nil {
@@ -1940,6 +1941,122 @@ func TestDisableChangeDriven_FirstFailureHaltsRun(t *testing.T) {
 	}
 	if len(sh.calls) != 1 {
 		t.Fatalf("got %d calls, want 1 (must halt on first failure): %v", len(sh.calls), sh.calls)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// verifyRealSuitePasses — optional CT real-vs-stub verification
+// ---------------------------------------------------------------------------
+
+func TestVerifyRealSuitePasses_RequiresParamAndTestNames(t *testing.T) {
+	t.Run("no_param", func(t *testing.T) {
+		a := newActions(Deps{})
+		ctx := statemachine.NewContext()
+		ctx.State["test_names"] = []string{"x"}
+		out := a.verifyRealSuitePasses(ctx)
+		if out.Err == nil || !strings.Contains(out.Err.Error(), "verify_real_suite") {
+			t.Fatalf("expected verify_real_suite error, got %v", out.Err)
+		}
+	})
+	t.Run("whitespace_param", func(t *testing.T) {
+		a := newActions(Deps{})
+		ctx := statemachine.NewContext()
+		ctx.Params["verify_real_suite"] = "   "
+		ctx.State["test_names"] = []string{"x"}
+		out := a.verifyRealSuitePasses(ctx)
+		if out.Err == nil || !strings.Contains(out.Err.Error(), "verify_real_suite") {
+			t.Fatalf("expected verify_real_suite error, got %v", out.Err)
+		}
+	})
+	t.Run("no_test_names", func(t *testing.T) {
+		a := newActions(Deps{})
+		ctx := statemachine.NewContext()
+		ctx.Params["verify_real_suite"] = "<suite-contract-real>"
+		out := a.verifyRealSuitePasses(ctx)
+		if out.Err == nil || !strings.Contains(out.Err.Error(), "test_names") {
+			t.Fatalf("expected test_names error, got %v", out.Err)
+		}
+	})
+	t.Run("test_names_wrong_type", func(t *testing.T) {
+		a := newActions(Deps{})
+		ctx := statemachine.NewContext()
+		ctx.Params["verify_real_suite"] = "<suite-contract-real>"
+		ctx.State["test_names"] = "not-a-slice"
+		out := a.verifyRealSuitePasses(ctx)
+		if out.Err == nil || !strings.Contains(out.Err.Error(), "[]string") {
+			t.Fatalf("expected []string error, got %v", out.Err)
+		}
+	})
+	t.Run("test_names_empty", func(t *testing.T) {
+		a := newActions(Deps{})
+		ctx := statemachine.NewContext()
+		ctx.Params["verify_real_suite"] = "<suite-contract-real>"
+		ctx.State["test_names"] = []string{}
+		out := a.verifyRealSuitePasses(ctx)
+		if out.Err == nil || !strings.Contains(out.Err.Error(), "empty") {
+			t.Fatalf("expected empty error, got %v", out.Err)
+		}
+	})
+}
+
+func TestVerifyRealSuitePasses_AllPassWritesTrue(t *testing.T) {
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+		{out: []byte("OK"), err: nil},
+		{out: []byte("OK"), err: nil},
+	}}
+	a := newActions(Deps{Shell: sh})
+	ctx := statemachine.NewContext()
+	ctx.Params["verify_real_suite"] = "<suite-contract-real>"
+	ctx.State["test_names"] = []string{"shouldFooSucceed", "shouldBarSucceed"}
+	out := a.verifyRealSuitePasses(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if !out.Bool {
+		t.Fatalf("Bool: got false, want true")
+	}
+	if got := ctx.Get("verify_real_pass"); got != true {
+		t.Fatalf("verify_real_pass: got %v, want true", got)
+	}
+	want := []string{
+		"gh optivem test system --suite '<suite-contract-real>' --test shouldFooSucceed",
+		"gh optivem test system --suite '<suite-contract-real>' --test shouldBarSucceed",
+	}
+	if len(sh.calls) != len(want) {
+		t.Fatalf("got %d calls, want %d: %v", len(sh.calls), len(want), sh.calls)
+	}
+	for i, w := range want {
+		if sh.calls[i] != w {
+			t.Errorf("call[%d]: got %q, want %q", i, sh.calls[i], w)
+		}
+	}
+}
+
+func TestVerifyRealSuitePasses_AnyFailWritesFalse(t *testing.T) {
+	// Real-suite verification is a contract gate: classification of the
+	// failure does not matter, only that one happened. Mix a runtime
+	// failure with a pass to confirm the action does not require all
+	// failures to share a class.
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+		{out: []byte("OK"), err: nil},
+		{out: []byte("AssertionError"), err: errors.New("exit 1")},
+	}}
+	a := newActions(Deps{Shell: sh})
+	ctx := statemachine.NewContext()
+	ctx.Params["verify_real_suite"] = "<suite-contract-real>"
+	ctx.State["test_names"] = []string{"shouldFooPass", "shouldBarPass"}
+	out := a.verifyRealSuitePasses(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if out.Bool {
+		t.Fatalf("Bool: got true, want false (any failure must demote)")
+	}
+	if got := ctx.Get("verify_real_pass"); got != false {
+		t.Fatalf("verify_real_pass: got %v, want false", got)
+	}
+	if len(sh.calls) != 2 {
+		t.Fatalf("got %d calls, want 2 (action runs every test even after a failure): %v", len(sh.calls), sh.calls)
 	}
 }
 

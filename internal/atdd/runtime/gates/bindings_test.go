@@ -510,6 +510,8 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"structural_test_mode",
 		"compile_ok",
 		"tests_failed_runtime",
+		"verify_real_required",
+		"verify_real_pass",
 		"structural_verify_outcome",
 	}
 	for _, name := range want {
@@ -588,6 +590,85 @@ func TestTestsFailedRuntime_PromptFallback(t *testing.T) {
 	p := &fakePrompter{answers: []string{"n"}}
 	b := newBindings(t, Deps{Prompter: p})
 	out := b.testsFailedRuntime(statemachine.NewContext())
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if out.Bool {
+		t.Fatalf("Bool: got true, want false")
+	}
+	if len(p.asked) != 1 {
+		t.Fatalf("Ask was called %d times, expected 1", len(p.asked))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// verify_real_required / verify_real_pass — optional CT verify-real branch
+// ---------------------------------------------------------------------------
+
+func TestVerifyRealRequired_ReadsParamSet(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		suite string
+		want  bool
+	}{
+		{name: "ct_red_test", suite: "<suite-contract-real>", want: true},
+		{name: "at_unset", suite: "", want: false},
+		{name: "whitespace_only", suite: "   ", want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &fakePrompter{}
+			b := newBindings(t, Deps{Prompter: p})
+			ctx := statemachine.NewContext()
+			ctx.Params["verify_real_suite"] = tc.suite
+			out := b.verifyRealRequired(ctx)
+			if out.Err != nil {
+				t.Fatalf("unexpected error: %v", out.Err)
+			}
+			if out.Bool != tc.want {
+				t.Fatalf("Bool: got %v, want %v", out.Bool, tc.want)
+			}
+			if len(p.asked) != 0 {
+				t.Fatalf("Ask was called %d times, expected 0 (param-only gate)", len(p.asked))
+			}
+		})
+	}
+}
+
+func TestVerifyRealRequired_NilParams(t *testing.T) {
+	p := &fakePrompter{}
+	b := newBindings(t, Deps{Prompter: p})
+	ctx := statemachine.NewContext()
+	ctx.Params = nil
+	out := b.verifyRealRequired(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if out.Bool {
+		t.Fatalf("nil Params should route as required=false, got true")
+	}
+}
+
+func TestVerifyRealPass_ReadsContext(t *testing.T) {
+	p := &fakePrompter{}
+	b := newBindings(t, Deps{Prompter: p})
+	ctx := statemachine.NewContext()
+	ctx.Set("verify_real_pass", true)
+	out := b.verifyRealPass(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if !out.Bool {
+		t.Fatalf("Bool: got false, want true")
+	}
+	if len(p.asked) != 0 {
+		t.Fatalf("Ask was called %d times, expected 0", len(p.asked))
+	}
+}
+
+func TestVerifyRealPass_PromptFallback(t *testing.T) {
+	p := &fakePrompter{answers: []string{"n"}}
+	b := newBindings(t, Deps{Prompter: p})
+	out := b.verifyRealPass(statemachine.NewContext())
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}

@@ -13,11 +13,12 @@ You are the Driver Agent. Follow the phase specified in the input:
 
 - **AT - RED - SYSTEM DRIVER - WRITE** — replace `"TODO: Driver"` System Driver prototypes (under `shop/`) with real Driver logic (no compile, no run, no disable, no commit). The orchestrator handles the rest. See `at-red-system-driver.md`.
 - **AT - RED - SYSTEM DRIVER - PROTOTYPES** — add `"TODO: Driver"` prototypes for any newly-referenced Driver method so the tests compile. Rarely needed at this phase; the typical happy path skips this dispatch. See `at-red-system-driver.md`.
-- **CT - RED - EXTERNAL DRIVER - WRITE** (falling through to **CT - RED - EXTERNAL DRIVER - REVIEW** STOP) or **CT - RED - EXTERNAL DRIVER - COMMIT** — from `ct-red-external-driver.md`. CT has not yet been migrated to the split sub-flow; it still drives its own inner cycle.
+- **CT - RED - EXTERNAL DRIVER - WRITE** — replace `"TODO: Driver"` External System Driver prototypes (under `external/`) with real Driver logic. The orchestrator handles compile/run/disable/commit. See `ct-red-external-driver.md`.
+- **CT - RED - EXTERNAL DRIVER - PROTOTYPES** — add `"TODO: Driver"` prototypes under `external/` for any newly-referenced Driver method so the contract tests compile. Rarely needed; reaching it usually means an interface was missed in CT - RED - DSL. See `ct-red-external-driver.md`.
 
 Apply Driver Port Rules from `driver-port.md`.
 
-After WRITE the orchestrator runs the REVIEW STOP — do not present or wait for approval inside the agent for the AT phase. CT phases still STOP at REVIEW from within the agent.
+After WRITE the orchestrator runs the REVIEW STOP — do not present or wait for approval inside the agent.
 
 ---
 
@@ -162,20 +163,21 @@ This dispatch only happens when the WRITE dispatch left compile errors — typic
 
 Replace the `"TODO: Driver"` prototypes left behind by CT - RED - DSL with real External System Driver logic. The contract tests are still expected to fail at the end of this phase — the dockerized stub does not yet honor the new contract; that's CT - GREEN - STUBS.
 
-## What it produces
+The phase decomposes into one creative agent dispatch — **CT - RED - EXTERNAL DRIVER - WRITE** — and (rarely) a follow-up **CT - RED - EXTERNAL DRIVER - PROTOTYPES** dispatch only when WRITE leaves a compile failure. The typical happy path skips PROTOTYPES because Driver interfaces were settled in CT - RED - DSL. Compile, the targeted test run against the stub, change-driven `@Disabled` markup, and the COMMIT are mechanical and run as service tasks in the orchestrator's `red_phase_cycle` sub-flow. The agent must never invoke them.
 
-- Commit `<Ticket> | CT - RED - EXTERNAL DRIVER` containing real External System Driver implementations
-- Tests in state: contract tests disabled with reason `"CT - RED - EXTERNAL DRIVER"`
-- GitHub issue comment summarising Driver interface changes (if an issue number was provided as input)
+## What the agent produces
+
+- **CT - RED - EXTERNAL DRIVER - WRITE** dispatch: real External System Driver implementations under `external/`. Tests previously disabled with reason `"CT - RED - DSL"` are re-enabled.
+- **CT - RED - EXTERNAL DRIVER - PROTOTYPES** dispatch (rare): `"TODO: Driver"` prototypes for any newly-referenced Driver method. Reaching this dispatch usually means an interface was missed in CT - RED - DSL — flag it and proceed minimally.
+
+What the orchestrator produces afterward (not the agent's job): the targeted compile, the targeted test run against `<suite-contract-stub>`, the change-driven `@Disabled` markup with reason `"CT - RED - EXTERNAL DRIVER"`, and the commit `<Ticket> | CT - RED - EXTERNAL DRIVER`. If a GitHub issue number was provided as input, the orchestrator (not the agent) posts the issue comment summarising the Driver interface changes after COMMIT.
 
 ## Conventions
 
-- Scope is strictly limited to files under `external/` (e.g. `driver-port/.../external/...`, `driver-adapter/.../external/...`). Files under `shop/` are off-limits in this phase. See [glossary.md](glossary.md).
-- Suite selection (real vs stub): see [ct-cycle-conventions.md](ct-cycle-conventions.md). This phase exercises the stub side only.
-- Commit message format: see [ct-cycle-conventions.md](ct-cycle-conventions.md).
-- Commit gate ("Can I commit?"): see [shared-commit-confirmation.md](shared-commit-confirmation.md).
-- Phase progression and STOP semantics: see [shared-phase-progression.md](shared-phase-progression.md).
-- `@Disabled` syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
+- File scope: only files under `driver-port/.../external/...` and `driver-adapter/.../external/...`. Files under `shop/` are off-limits in this phase. See [glossary.md](glossary.md).
+- Do NOT read external-system source code to figure out behaviour. Drivers are written against the *contract* expressed by the contract tests and the published external API, not against internal implementation details.
+- Suite selection (real vs stub): see [ct-cycle-conventions.md](ct-cycle-conventions.md). This phase exercises the stub side only — the orchestrator reads the suite from context.
+- `"TODO: Driver"` prototype syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
 
 ## Example
 
@@ -194,36 +196,31 @@ Replace the `"TODO: Driver"` prototype with a real HTTP call to the external sys
  }
 ```
 
+(The agent does not add `@Disabled` here. The orchestrator marks the change-driven scenarios disabled with reason `"CT - RED - EXTERNAL DRIVER"` after the test run, as a service task.)
+
 ## CT - RED - EXTERNAL DRIVER - WRITE
 
 1. Enable the tests marked disabled with reason `"CT - RED - DSL"`.
-2. Implement the External System Drivers — replace each `"TODO: Driver"` prototype with actual logic.
-   - Only edit files under `external/` (driver-port and driver-adapter).
-   - Do NOT read external-system source code to figure out behavior; rely on the contract tests and the published external API contract.
-3. Do NOT run the tests yourself. The orchestrator runs a targeted subset of `<suite-contract-stub>` after you exit, based on which adapter methods you changed; an unmapped change triggers a full-suite fallback. Exit cleanly when the implementation is in place.
+2. Implement the External System Drivers — replace each `"TODO: Driver"` prototype with actual logic. Stay within `external/` (driver-port and driver-adapter).
+3. Do **not** add `@Disabled` / `Skip` markup. The orchestrator does that after the test run.
+4. Do **not** attempt to compile, do **not** run tests, do **not** commit. Exit cleanly when the implementation is in place.
 
-## CT - RED - EXTERNAL DRIVER - REVIEW (STOP)
+## CT - RED - EXTERNAL DRIVER - PROTOTYPES
 
-STOP. Present the Driver implementation to the user and ask for approval. Do NOT continue.
+This dispatch only happens when the WRITE dispatch left compile errors — typically a missed Driver method that should have been declared in CT - RED - DSL.
 
-**Review checklist:**
-
-- All changes are confined to files under `external/` — nothing under `shop/` was touched.
-- No `"TODO: Driver"` strings remain.
-- Tests fail with a runtime error against `<suite-contract-stub>` (still RED — that's expected).
-
-## CT - RED - EXTERNAL DRIVER - COMMIT
-
-1. Mark the tests as disabled with reason `"CT - RED - EXTERNAL DRIVER"` (see [language-equivalents.md](../code/language-equivalents.md)).
-2. COMMIT with message `<Ticket> | CT - RED - EXTERNAL DRIVER`.
-3. If a GitHub issue number was provided as input, post a comment on the issue summarising the Driver interface changes (new methods added, interfaces updated).
+- Add a `"TODO: Driver"` prototype for each missing method (see [language-equivalents.md](../code/language-equivalents.md)). Stay within `external/`.
+- Do not implement real Driver behavior in this dispatch — that's WRITE's job, and a recurring PROTOTYPES dispatch loop indicates a process issue worth flagging.
+- Exit cleanly. The orchestrator re-runs the targeted compile after you exit; if it still fails, this dispatch repeats.
 
 ## Anti-patterns
 
-- Editing files under `shop/` — those belong to System Drivers and the AT cycle, not the External System Driver phase.
-- Reading external-system source code to figure out behavior — Drivers are written against the *contract* expressed by the contract tests and the published API, not against internal implementation details.
-- Expecting the contract tests to pass at the end of this phase — they should still fail. The stub becomes contract-compatible in CT - GREEN - STUBS.
-- Skipping the issue comment when an issue number was provided — it's the audit trail of the Driver change.
+- **Editing files under `shop/`.** Those belong to System Drivers and the AT cycle, not the External System Driver phase.
+- **Reading external-system source code to figure out behavior.** Drivers are written against the *contract* expressed by the contract tests and the published API, not against internal implementation details.
+- **Expecting the contract tests to pass at the end of this phase.** They should still fail. The stub becomes contract-compatible in CT - GREEN - STUBS.
+- **Adding `@Disabled` markup yourself.** That is the orchestrator's job (`disable_change_driven` service task).
+- **Running compile, tests, or commit yourself.** The orchestrator owns those service tasks. The agent should never shell out.
+- **Leaving `"TODO: Driver"` behind.** Any remaining Driver prototype after WRITE means the phase is not done.
 
 ---
 

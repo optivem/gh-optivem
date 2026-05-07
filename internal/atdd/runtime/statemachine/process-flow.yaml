@@ -448,9 +448,14 @@ flows:
         flow: external_system_onboarding
 
       - id: CT_RED_TEST
-        type: user_task
-        agent: atdd-test
-        phase_doc: docs/atdd/process/ct-red-test.md
+        type: call_activity
+        flow: red_phase_cycle
+        params:
+          agent: atdd-test
+          phase_doc: docs/atdd/process/ct-red-test.md
+          phase_label: "CT - RED - TEST"
+          change_type: "CT - RED - TEST"
+          verify_real_suite: "<suite-contract-real>"
         description: "CT - RED - TEST"
 
       - id: GATE_DSL_CT
@@ -459,9 +464,13 @@ flows:
         description: "DSL Interface Changed?"
 
       - id: CT_RED_DSL
-        type: user_task
-        agent: atdd-dsl
-        phase_doc: docs/atdd/process/ct-red-dsl.md
+        type: call_activity
+        flow: red_phase_cycle
+        params:
+          agent: atdd-dsl
+          phase_doc: docs/atdd/process/ct-red-dsl.md
+          phase_label: "CT - RED - DSL"
+          change_type: "CT - RED - DSL"
         description: "CT - RED - DSL"
 
       - id: GATE_EXT_CT
@@ -470,9 +479,13 @@ flows:
         description: "External System Driver Interface Changed?"
 
       - id: CT_RED_EXTERNAL_DRIVER
-        type: user_task
-        agent: atdd-driver
-        phase_doc: docs/atdd/process/ct-red-external-driver.md
+        type: call_activity
+        flow: red_phase_cycle
+        params:
+          agent: atdd-driver
+          phase_doc: docs/atdd/process/ct-red-external-driver.md
+          phase_label: "CT - RED - EXTERNAL DRIVER"
+          change_type: "CT - RED - EXTERNAL DRIVER"
         description: "CT - RED - EXTERNAL DRIVER"
 
       - id: VERIFY_CT_DRIVER
@@ -705,14 +718,21 @@ flows:
   # `STRUCT_WRITE` from its mechanical surroundings.
   #
   # Callers supply via `params:`:
-  #   - agent       — the WRITE agent (e.g. atdd-test, atdd-dsl, atdd-driver)
-  #   - phase_doc   — the per-phase doc the agent reads
-  #   - phase_label — the human-readable phase tag, used in node descriptions
-  #                   (e.g. "AT - RED - TEST"). Substituted into ${phase_label}.
-  #   - change_type — the COMMIT-message suffix consumed by the existing
-  #                   `commit_phase` action (kept for backward compatibility
-  #                   with structural_cycle's params shape; typically equal
-  #                   to phase_label).
+  #   - agent             — the WRITE agent (e.g. atdd-test, atdd-dsl, atdd-driver)
+  #   - phase_doc         — the per-phase doc the agent reads
+  #   - phase_label       — the human-readable phase tag, used in node
+  #                         descriptions (e.g. "AT - RED - TEST"). Substituted
+  #                         into ${phase_label}.
+  #   - change_type       — the COMMIT-message suffix consumed by the existing
+  #                         `commit_phase` action (kept for backward
+  #                         compatibility with structural_cycle's params
+  #                         shape; typically equal to phase_label).
+  #   - verify_real_suite — optional. When set (CT_RED_TEST), the orchestrator
+  #                         runs the named suite *before* the regular RUN and
+  #                         requires every test to PASS — that is the
+  #                         "verify against the real external system" step
+  #                         from `ct-red-test.md`. AT phases leave it unset;
+  #                         the gate routes straight through to RUN.
   #
   # The PROTOTYPES dispatch reuses the same `${agent}` and `${phase_doc}`
   # — distinguishing the two dispatches happens via the node description
@@ -769,6 +789,27 @@ flows:
         role: review
         description: "STOP - HUMAN REVIEW — ${phase_label} prototypes"
 
+      - id: GATE_VERIFY_REAL_REQUIRED
+        type: gateway
+        binding: verify_real_required
+        description: "Verify against real suite first?"
+
+      - id: VERIFY_REAL
+        type: service_task
+        action: verify_real_suite_passes
+        description: "Verify ${verify_real_suite} passes"
+
+      - id: GATE_VERIFY_REAL_PASS
+        type: gateway
+        binding: verify_real_pass
+        description: "Real suite passes?"
+
+      - id: STOP_VERIFY_REAL_FAIL
+        type: user_task
+        agent: human
+        role: review
+        description: "STOP - HUMAN REVIEW — ${phase_label} real-suite contract problem"
+
       - id: RUN
         type: service_task
         action: run_targeted_tests
@@ -805,9 +846,15 @@ flows:
       - {from: STOP_RED_REVIEW,           to: COMPILE}
       - {from: COMPILE,                   to: GATE_COMPILE_OK}
       - {from: GATE_COMPILE_OK,           to: WRITE_PROTOTYPES,          when: "compile_ok == false"}
-      - {from: GATE_COMPILE_OK,           to: RUN,                       when: "compile_ok == true"}
+      - {from: GATE_COMPILE_OK,           to: GATE_VERIFY_REAL_REQUIRED, when: "compile_ok == true"}
       - {from: WRITE_PROTOTYPES,          to: STOP_PROTOTYPE_REVIEW}
       - {from: STOP_PROTOTYPE_REVIEW,     to: COMPILE}
+      - {from: GATE_VERIFY_REAL_REQUIRED, to: VERIFY_REAL,               when: "verify_real_required == true"}
+      - {from: GATE_VERIFY_REAL_REQUIRED, to: RUN,                       when: "verify_real_required == false"}
+      - {from: VERIFY_REAL,               to: GATE_VERIFY_REAL_PASS}
+      - {from: GATE_VERIFY_REAL_PASS,     to: RUN,                       when: "verify_real_pass == true"}
+      - {from: GATE_VERIFY_REAL_PASS,     to: STOP_VERIFY_REAL_FAIL,     when: "verify_real_pass == false"}
+      - {from: STOP_VERIFY_REAL_FAIL,     to: WRITE}
       - {from: RUN,                       to: GATE_RUN_FAILED_RUNTIME}
       - {from: GATE_RUN_FAILED_RUNTIME,   to: DISABLE,                   when: "tests_failed_runtime == true"}
       - {from: GATE_RUN_FAILED_RUNTIME,   to: STOP_RED_NOT_RUNTIME_FAIL, when: "tests_failed_runtime == false"}

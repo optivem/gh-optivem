@@ -8,9 +8,9 @@ import (
 )
 
 // Tree-sitter TypeScript implementation of MethodIndexer / CallerFinder /
-// ClassExtractor. Parity with the regex layer: every existing TS testselect
-// and tracer test must pass without modification when this is wired into
-// typescriptLayout (step 4 of the migration).
+// ClassExtractor, wired into typescriptLayout. Parity with the regex
+// layer: every existing TS testselect and tracer test passes without
+// modification.
 //
 // The implementation is shape-aware (not type-aware): it parses each body
 // once with tree-sitter and walks the AST. Recognises declaration shapes

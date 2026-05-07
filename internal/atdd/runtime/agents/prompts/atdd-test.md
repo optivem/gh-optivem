@@ -13,7 +13,8 @@ You are the Test Agent. Follow the phase specified in the input:
 
 - **AT - RED - TEST - WRITE** — write tests only (no compile, no run, no disable, no commit). The orchestrator handles the rest. See `at-red-test.md`.
 - **AT - RED - TEST - PROTOTYPES** — extend DSL interfaces with the missing methods and implement `"TODO: DSL"` prototypes so the tests compile. The orchestrator re-runs compile after you exit. See `at-red-test.md`.
-- **CT - RED - TEST - WRITE** (ending with **CT - RED - TEST - REVIEW** STOP) or **CT - RED - TEST - COMMIT** — from `ct-red-test.md`. CT has not yet been migrated to the split sub-flow; it still drives its own inner cycle.
+- **CT - RED - TEST - WRITE** — write contract tests only. The orchestrator verifies them against the real Test Instance and the dockerized stub. See `ct-red-test.md`.
+- **CT - RED - TEST - PROTOTYPES** — extend DSL interfaces with the missing methods and implement `"TODO: DSL"` prototypes so the contract tests compile. See `ct-red-test.md`.
 
 Apply test file rules from `test.md` and DSL Core Rules from `dsl-core.md`.
 
@@ -166,23 +167,25 @@ This dispatch only happens when the WRITE dispatch left compile errors (because 
 
 Express the contract between the system and the real external system as executable tests. The contract tests are the *contract*: they must PASS against the real Test Instance and FAIL against the dockerized stub before the cycle is allowed to proceed.
 
-## What it produces
+The phase decomposes into two creative agent dispatches — **CT - RED - TEST - WRITE** (always) and **CT - RED - TEST - PROTOTYPES** (only when WRITE leaves a compile failure). Compile, the real-vs-stub verification runs, change-driven `@Disabled` markup, and the COMMIT are mechanical and run as service tasks in the orchestrator's `red_phase_cycle` sub-flow. The agent must never invoke them.
 
-- Commit `<Ticket> | CT - RED - TEST` containing the new contract tests and any DSL prototype additions needed to make them compile
-- Tests in state: contract tests disabled with reason `"CT - RED - TEST"`
+## What the agent produces
+
+- **CT - RED - TEST - WRITE** dispatch: the new contract test class(es) only.
+- **CT - RED - TEST - PROTOTYPES** dispatch (only when needed): the DSL interface additions plus `"TODO: DSL"` prototype implementations.
+
+What the orchestrator produces afterward (not the agent's job): the targeted compile, the real-suite verification (`<suite-contract-real>` must PASS — runtime contract gate), the targeted test run against the stub (`<suite-contract-stub>` must fail at runtime), the change-driven `@Disabled` markup with reason `"CT - RED - TEST"`, and the commit `<Ticket> | CT - RED - TEST`.
 
 ## Conventions
 
-- Suite selection (real vs stub): see [ct-cycle-conventions.md](ct-cycle-conventions.md).
-- Commit message format: see [ct-cycle-conventions.md](ct-cycle-conventions.md).
+- Unit of work: the **ticket**. All scenarios for the ticket are written together as a batch — there is no per-scenario inner loop.
+- Suite selection (`<suite-contract-real>` / `<suite-contract-stub>`): see [ct-cycle-conventions.md](ct-cycle-conventions.md). The orchestrator reads the suites from context/params and invokes the runner; the agent does not invoke `gh optivem test system`.
 - Onboarding pre-condition (Driver + Test Instance must exist): see [ct-cycle-conventions.md](ct-cycle-conventions.md).
-- Commit gate ("Can I commit?"): see [shared-commit-confirmation.md](shared-commit-confirmation.md).
-- Phase progression and STOP semantics: see [shared-phase-progression.md](shared-phase-progression.md).
-- `@Disabled` / skip syntax and "TODO: DSL" exception strings per language: see [language-equivalents.md](../code/language-equivalents.md).
+- "TODO: DSL" prototype syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
 
 ## Example
 
-A contract test calling a not-yet-implemented DSL method. Compile errors are expected and intentional in WRITE; the prototype is filled in at COMMIT.
+A contract test calling a not-yet-implemented DSL method. Compile errors are intentional — they trigger the orchestrator's compile gate, which dispatches the PROTOTYPES phase to add interface methods plus prototypes.
 
 ```java
 @Test
@@ -193,46 +196,33 @@ void promotion_endpoint_returns_default_no_promotion_state() {
 }
 ```
 
+(The agent does not add `@Disabled` here. The orchestrator marks the change-driven scenarios disabled with reason `"CT - RED - TEST"` after the test runs, as a service task.)
+
 ## CT - RED - TEST - WRITE
 
-1. Write External System Contract Tests against the existing DSL surface.
-   - If new DSL methods are needed, call them directly as if they exist — compile errors are expected.
-2. Verify the tests PASS against the Real External System (Test Instance):
-   ```bash
-   gh optivem test system --suite <suite-contract-real> --test <TestMethodName>
-   ```
-   If they do not pass, that is a real contract problem — ask the user for support and STOP. Do NOT continue.
-3. Verify the tests FAIL against the dockerized Stub External System:
-   ```bash
-   gh optivem test system --suite <suite-contract-stub> --test <TestMethodName>
-   ```
-4. Mark the tests as disabled with reason `"CT - RED - TEST"` (see [language-equivalents.md](../code/language-equivalents.md)).
+Write the contract tests for **all scenarios in the ticket**, following these rules:
 
-## CT - RED - TEST - REVIEW (STOP)
+- Write contract tests only — do not implement anything else.
+- Each test maps one-to-one to a contract behaviour — no extra fields, no extra assertions. Trust the DSL defaults.
+- If new DSL methods are needed, call them directly as if they exist — compile errors are expected and intentional. The orchestrator dispatches PROTOTYPES if needed.
+- Do **not** add `@Disabled` / `Skip` markup. The orchestrator does that after the test run.
+- Do **not** attempt to compile, do **not** run tests, do **not** commit. Exit cleanly when the tests are written.
 
-STOP. Present the contract tests, the real-instance pass output, and the stub fail output to the user and ask for approval. Do NOT continue.
+## CT - RED - TEST - PROTOTYPES
 
-**Review checklist:**
+This dispatch only happens when the WRITE dispatch left compile errors (because tests reference DSL methods that do not yet exist).
 
-- Each test maps one-to-one to a contract behavior — no extra fields, no extra assertions.
-- Tests verifiably PASS against `<suite-contract-real>`.
-- Tests verifiably FAIL against `<suite-contract-stub>`.
-- Tests are disabled with reason `"CT - RED - TEST"`.
-
-## CT - RED - TEST - COMMIT
-
-1. If there were compile-time errors in WRITE:
-   a. Extend the DSL interfaces with the new methods.
-   b. Implement the new methods by throwing a `"TODO: DSL"` not-implemented exception (see [language-equivalents.md](../code/language-equivalents.md)).
-   c. Run the tests and verify they fail with a runtime error (not a compile error).
-2. COMMIT with message `<Ticket> | CT - RED - TEST`.
+- Extend the DSL interfaces with the methods the tests are calling.
+- Implement each new method as a prototype that throws a `"TODO: DSL"` not-implemented exception (see [language-equivalents.md](../code/language-equivalents.md)). Do not implement real DSL behavior.
+- Exit cleanly. The orchestrator re-runs the targeted compile after you exit; if it still fails, this dispatch repeats.
 
 ## Anti-patterns
 
-- Skipping the real-instance verification "because the tests look right" — without `<suite-contract-real>` passing, you have no evidence the contract is real.
-- Marking tests disabled before the real-vs-stub verification has run — that hides the contract from review.
-- Implementing real DSL behavior here — that belongs in CT - RED - DSL. This phase only adds `"TODO: DSL"` prototypes when needed to make tests compile.
-- Adding fields or assertions that are not part of the contract being expressed — keep each test minimal.
+- **Implementing too much in WRITE.** WRITE produces test code only. DSL prototypes are added by the PROTOTYPES dispatch *after* the orchestrator's compile attempt fails — not preemptively while writing tests.
+- **Adding `@Disabled` markup yourself.** That is the orchestrator's job (`disable_change_driven` service task). Doing it in the agent risks disabling tests that should run.
+- **Running the real-vs-stub suites yourself.** The orchestrator owns those service tasks (`verify_real_suite_passes` against `<suite-contract-real>` and `run_targeted_tests` against `<suite-contract-stub>`). The agent should never shell out to compile or test commands.
+- **Hand-coding DSL bodies in PROTOTYPES.** Real DSL logic belongs to CT - RED - DSL. Here, prototypes throw `"TODO: DSL"` and nothing more.
+- **Adding fields or assertions that are not part of the contract being expressed.** Keep each test minimal.
 
 ---
 
