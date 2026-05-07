@@ -302,20 +302,19 @@ func callersOfWithFiles(
 	lay *layout,
 	read func(string, string) ([]byte, error),
 ) []dslHit {
-	re := lay.CallerREFor(methodName)
 	hits := map[string]dslHit{}
 	for _, f := range dslFiles {
 		body, err := read("", f)
 		if err != nil {
 			continue
 		}
-		matches := re.FindAllStringIndex(string(body), -1)
-		if len(matches) == 0 {
+		offsets := lay.CallerFinder(string(body), methodName)
+		if len(offsets) == 0 {
 			continue
 		}
 		regions := idx.byFile[f]
-		for _, m := range matches {
-			line := byteOffsetToLine(string(body), m[0])
+		for _, off := range offsets {
+			line := byteOffsetToLine(string(body), off)
 			for _, r := range regions {
 				if line >= r.startLine && line <= r.endLine {
 					if r.name == methodName {

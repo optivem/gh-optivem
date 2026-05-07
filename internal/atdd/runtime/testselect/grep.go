@@ -12,20 +12,19 @@ import (
 // least one call-site matching `methodName`. The returned set is sorted
 // and deduplicated.
 func callersOf(methodName string, dslFiles []string, idx *methodIndex, lay *layout, read func(string, string) ([]byte, error)) []string {
-	re := lay.CallerREFor(methodName)
 	hits := map[string]bool{}
 	for _, f := range dslFiles {
 		body, err := read("", f)
 		if err != nil {
 			continue
 		}
-		matches := re.FindAllStringIndex(string(body), -1)
-		if len(matches) == 0 {
+		offsets := lay.CallerFinder(string(body), methodName)
+		if len(offsets) == 0 {
 			continue
 		}
 		regions := idx.byFile[f]
-		for _, m := range matches {
-			line := byteOffsetToLine(string(body), m[0])
+		for _, off := range offsets {
+			line := byteOffsetToLine(string(body), off)
 			for _, r := range regions {
 				if line >= r.startLine && line <= r.endLine {
 					if r.name != methodName { // ignore self-recursion
@@ -46,22 +45,21 @@ func callersOf(methodName string, dslFiles []string, idx *methodIndex, lay *layo
 // callersOfTest is callersOf for test files: each hit is a testHit (we
 // already indexed annotations) so the caller can read channels directly.
 func callersOfTest(methodName string, testFiles []string, testIdx map[string][]testHit, lay *layout, read func(string, string) ([]byte, error)) []testHit {
-	re := lay.CallerREFor(methodName)
 	hits := map[string]testHit{}
 	for _, f := range testFiles {
 		body, err := read("", f)
 		if err != nil {
 			continue
 		}
-		matches := re.FindAllStringIndex(string(body), -1)
-		if len(matches) == 0 {
+		offsets := lay.CallerFinder(string(body), methodName)
+		if len(offsets) == 0 {
 			continue
 		}
 		// For each match, find the enclosing test method using the
 		// existing test index plus extract regions for the file.
-		regions := extractMethodRegions(string(body), lay)
-		for _, m := range matches {
-			line := byteOffsetToLine(string(body), m[0])
+		regions := lay.MethodIndexer(string(body))
+		for _, off := range offsets {
+			line := byteOffsetToLine(string(body), off)
 			for _, r := range regions {
 				if line < r.startLine || line > r.endLine {
 					continue

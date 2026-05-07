@@ -133,7 +133,60 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("commit_phase", a.commitPhase)
 	r.Register("tick_checklist", a.tickChecklist)
 	r.Register("verify_run_tests_after_driver", a.verifyRunTestsAfterDriver)
+	// red_phase_cycle infrastructure (per
+	// plans/20260505-230100-at-ct-cycle-creative-mechanical-split.md): the
+	// shared sub-flow's mechanical steps. Registered here so the registry
+	// is complete before any RED node migrates to call_activity into the
+	// shared flow; no current YAML node references these names.
+	r.Register("compile_targeted", a.compileTargeted)
+	r.Register("run_targeted_tests", a.runTargetedTests)
+	r.Register("disable_change_driven", a.disableChangeDriven)
 }
+
+// Context keys consumed by the red_phase_cycle actions. Centralised so the
+// agent dispatcher (Step 2 of the AT/CT split) and tests have one place to
+// find the contract. The corresponding values are populated from the
+// ticket parse (Scope, Suite, Language) and the WRITE phase's output
+// (TestNames, DisableTargets, DisableReason).
+const (
+	// CtxKeyScope is the build/compile scope handed to compile_targeted —
+	// e.g. a path, a Gradle module, an npm workspace. Forwarded verbatim
+	// to ./compile-targeted.sh as a single positional argument.
+	CtxKeyScope = "scope"
+
+	// CtxKeySuite is the test suite name handed to run_targeted_tests —
+	// e.g. "<acceptance-api>", "<suite-contract-real>".
+	CtxKeySuite = "suite"
+
+	// CtxKeyTestNames is the []string of test method names run_targeted_tests
+	// dispatches against the suite, one per `gh optivem test system --test`
+	// invocation.
+	CtxKeyTestNames = "test_names"
+
+	// CtxKeyLanguage is the language disable_change_driven hands to
+	// ./disable-test.sh: java | csharp | typescript. The script owns the
+	// per-language `@Disabled` / `Skip = "..."` / `test.skip(true, "...")`
+	// edit syntax.
+	CtxKeyLanguage = "language"
+
+	// CtxKeyDisableReason is the reason string written into the disable
+	// markup — e.g. "AT - RED - TEST", "CT - RED - TEST". Mirrors the
+	// language-equivalents.md contract.
+	CtxKeyDisableReason = "disable_reason"
+
+	// CtxKeyDisableTargets is the []string of "<file>:<method>" pairs
+	// disable_change_driven applies the disable markup to.
+	CtxKeyDisableTargets = "disable_targets"
+
+	// CtxKeyCompileOK is the bool compile_targeted writes to record
+	// whether the targeted compile passed. Read by the compile_ok gate.
+	CtxKeyCompileOK = "compile_ok"
+
+	// CtxKeyTestsFailedRuntime is the bool run_targeted_tests writes to
+	// record that every observed failure was a runtime failure (not
+	// compile). Read by the tests_failed_runtime gate.
+	CtxKeyTestsFailedRuntime = "tests_failed_runtime"
+)
 
 type actions struct {
 	deps Deps
@@ -717,6 +770,188 @@ func (a actions) runSampleSuite(ctx *statemachine.Context) statemachine.Outcome 
 	return statemachine.Outcome{}
 }
 
+// ---------------------------------------------------------------------------
+// red_phase_cycle infrastructure (Step 1 of the AT/CT creative/mechanical
+// split — see plans/20260505-230100-at-ct-cycle-creative-mechanical-split.md).
+// These three actions own the mechanical work the shared red_phase_cycle
+// will dispatch (compile, run targeted tests, disable change-driven
+// scenarios). They are registered but unwired in v1: no YAML node calls
+// them yet. Step 2 of the split refactor wires AT_RED_TEST through them
+// first, then the remaining six RED phases follow.
+// ---------------------------------------------------------------------------
+
+// compileTargeted runs a scope-targeted compile via ./compile-targeted.sh,
+// the targeted analog of compile_in_scope. Where compile_in_scope sweeps
+// the whole repo, compile_targeted compiles only the path the WRITE phase
+// just edited (e.g. the test file being brought green at AT - RED - TEST).
+//
+// Reads:
+//   - CtxKeyScope (string) — required; passed verbatim to
+//     ./compile-targeted.sh as the single positional argument.
+//
+// Writes:
+//   - CtxKeyCompileOK (bool) — read by the compile_ok gate to route the
+//     compile-failed loop (route to WRITE_PROTOTYPES) or proceed.
+//
+// Compile failure is NOT surfaced as Outcome.Err — the flow's
+// compile-failed loop is the intended consumer; routing a false Bool is
+// the correct behaviour. Other failure modes (missing scope, missing
+// script) DO surface as Err so the run halts.
+func (a actions) compileTargeted(ctx *statemachine.Context) statemachine.Outcome {
+	scope := ctx.GetString(CtxKeyScope)
+	if scope == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("compile_targeted: %s not set in Context", CtxKeyScope)}
+	}
+	cmdLine := fmt.Sprintf("./compile-targeted.sh %s", shellEscape(scope))
+	out, err := a.deps.Shell.Run(context.Background(), cmdLine)
+	if len(out) > 0 {
+		fmt.Fprintln(a.deps.Stdout, string(out))
+	}
+	ok := err == nil
+	ctx.Set(CtxKeyCompileOK, ok)
+	if err != nil {
+		fmt.Fprintf(a.deps.Stderr, "compile_targeted: %v\n", err)
+	}
+	return statemachine.Outcome{Bool: ok}
+}
+
+// runTargetedTests runs each test method named in CtxKeyTestNames against
+// the suite captured in CtxKeySuite, classifies any failures as
+// compile-vs-runtime, and writes CtxKeyTestsFailedRuntime for the gate.
+//
+// Reads:
+//   - CtxKeySuite (string)        — required; e.g. "<acceptance-api>".
+//   - CtxKeyTestNames ([]string)  — required; method names dispatched one
+//     per `gh optivem test system --suite <suite> --test <name>` shell-out.
+//
+// Writes:
+//   - CtxKeyTestsFailedRuntime (bool) — true iff at least one test failed
+//     and every observed failure was a runtime failure (not compile). The
+//     RED phase's gate routes downstream only on true; false means the
+//     RED loop has not yet stabilised (tests passed, or some failed at
+//     compile).
+//
+// The runtime-vs-compile classifier scans the captured stdout/stderr for
+// language-specific compile-error markers (see isCompileFailureOutput).
+// It is conservative: any compile marker present demotes the run to
+// "not yet runtime-failing".
+func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcome {
+	suite := ctx.GetString(CtxKeySuite)
+	if suite == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("run_targeted_tests: %s not set in Context", CtxKeySuite)}
+	}
+	rawNames, ok := ctx.State[CtxKeyTestNames]
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("run_targeted_tests: %s not set in Context", CtxKeyTestNames)}
+	}
+	names, ok := rawNames.([]string)
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("run_targeted_tests: %s is %T, want []string", CtxKeyTestNames, rawNames)}
+	}
+	if len(names) == 0 {
+		return statemachine.Outcome{Err: fmt.Errorf("run_targeted_tests: %s is empty", CtxKeyTestNames)}
+	}
+
+	runtimeFailures := 0
+	compileFailures := 0
+	for _, name := range names {
+		cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s",
+			shellEscape(suite), shellEscape(name))
+		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
+		out, err := a.deps.Shell.Run(context.Background(), cmd)
+		if len(out) > 0 {
+			fmt.Fprintln(a.deps.Stdout, string(out))
+		}
+		if err == nil {
+			continue
+		}
+		if isCompileFailureOutput(out) {
+			compileFailures++
+			continue
+		}
+		runtimeFailures++
+	}
+
+	failedRuntime := compileFailures == 0 && runtimeFailures > 0
+	ctx.Set(CtxKeyTestsFailedRuntime, failedRuntime)
+	return statemachine.Outcome{Bool: failedRuntime}
+}
+
+// isCompileFailureOutput reports whether the captured test runner output
+// contains a language-specific compile-error marker. Conservative match —
+// a single hit demotes the failure to "compile".
+func isCompileFailureOutput(out []byte) bool {
+	s := strings.ToLower(string(out))
+	for _, marker := range []string{
+		"compilation failed",
+		"compile error",
+		"cannot find symbol",
+		"error cs",     // C# compiler error code prefix (e.g. "error CS0103")
+		"error ts",     // TS compiler error code prefix (e.g. "error TS2304")
+		"syntax error",
+	} {
+		if strings.Contains(s, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// disableChangeDriven applies per-language disable markup
+// (`@Disabled("reason")` / `[Fact(Skip = "reason")]` / `test.skip(true, "reason")`)
+// to the change-driven test methods identified at WRITE. v1 shells out to
+// ./disable-test.sh once per target — the script owns the language-specific
+// edit syntax (the language-equivalents.md table). This mirrors how
+// compile_in_scope and run_sample_suite delegate language mechanics to
+// repo-owned scripts.
+//
+// Reads:
+//   - CtxKeyLanguage (string)        — required; java | csharp | typescript
+//   - CtxKeyDisableReason (string)   — required; the reason written into
+//     the markup (e.g. "AT - RED - TEST")
+//   - CtxKeyDisableTargets ([]string) — required; one entry per test,
+//     formatted "<file>:<method>"
+//
+// Each target produces:
+//
+//   ./disable-test.sh <language> "<reason>" <file>:<method>
+//
+// First failure halts the action with Outcome.Err — committing a partially
+// disabled test set would leave the repo in an inconsistent state.
+func (a actions) disableChangeDriven(ctx *statemachine.Context) statemachine.Outcome {
+	lang := ctx.GetString(CtxKeyLanguage)
+	if lang == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven: %s not set in Context", CtxKeyLanguage)}
+	}
+	reason := ctx.GetString(CtxKeyDisableReason)
+	if reason == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven: %s not set in Context", CtxKeyDisableReason)}
+	}
+	rawTargets, ok := ctx.State[CtxKeyDisableTargets]
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven: %s not set in Context", CtxKeyDisableTargets)}
+	}
+	targets, ok := rawTargets.([]string)
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven: %s is %T, want []string", CtxKeyDisableTargets, rawTargets)}
+	}
+	if len(targets) == 0 {
+		return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven: %s is empty", CtxKeyDisableTargets)}
+	}
+	for _, target := range targets {
+		cmd := fmt.Sprintf("./disable-test.sh %s %s %s",
+			shellEscape(lang), shellEscape(reason), shellEscape(target))
+		out, err := a.deps.Shell.Run(context.Background(), cmd)
+		if len(out) > 0 {
+			fmt.Fprintln(a.deps.Stdout, string(out))
+		}
+		if err != nil {
+			return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven (%s): %w", target, err)}
+		}
+	}
+	return statemachine.Outcome{}
+}
+
 // reportDriftWarning emits a one-line reminder when only the compile sweep
 // ran (no sample tests). The warning text is informational; the engine
 // keeps moving regardless.
@@ -800,11 +1035,14 @@ func (a actions) verifyRunTestsAfterDriver(ctx *statemachine.Context) statemachi
 		fmt.Fprintln(a.deps.Stdout, "Approving without running the selected tests.")
 		return statemachine.Outcome{}
 	case "t", "":
-		return a.runTracerVerify(repoRoot, baseRef, res)
+		out, results := a.runTracerVerify(repoRoot, baseRef, res)
+		return a.finalizeVerify(ctx, out, results)
 	case "r":
-		return a.runAffectedSetVerify(res, false)
+		out, results := a.runAffectedSetVerify(res, false)
+		return a.finalizeVerify(ctx, out, results)
 	case "f":
-		return a.runAffectedSetVerify(res, true)
+		out, results := a.runAffectedSetVerify(res, true)
+		return a.finalizeVerify(ctx, out, results)
 	default:
 		fmt.Fprintf(a.deps.Stderr, "Unrecognised choice %q — defaulting to approve without running.\n", choice)
 		return statemachine.Outcome{}
@@ -816,7 +1054,11 @@ func (a actions) verifyRunTestsAfterDriver(ctx *statemachine.Context) statemachi
 // change to a test, fall back to the full affected-set's suites — the
 // unmapped change might still break a test the tracer's pick rule didn't
 // catch.
-func (a actions) runTracerVerify(repoRoot, baseRef string, res testselect.Result) statemachine.Outcome {
+//
+// Returns the per-command results so the caller can aggregate them into
+// a single failureClass (the fallback paths delegate to runAffectedSetVerify
+// and pass through whatever it collected).
+func (a actions) runTracerVerify(repoRoot, baseRef string, res testselect.Result) (statemachine.Outcome, []verifyCommandResult) {
 	tracer, err := a.deps.SelectTracer(repoRoot, baseRef)
 	if err != nil {
 		fmt.Fprintf(a.deps.Stderr, "verify_run_tests_after_driver: tracer selector failed (%v) — falling back to full suite\n", err)
@@ -846,19 +1088,21 @@ func (a actions) runTracerVerify(repoRoot, baseRef string, res testselect.Result
 		fmt.Fprintln(a.deps.Stdout)
 	}
 
+	results := make([]verifyCommandResult, 0, len(tracer.Selections))
 	for _, sel := range tracer.Selections {
 		cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s",
 			shellEscape(sel.Suite), shellEscape(sel.Test))
-		a.runVerifyCommand(cmd)
+		results = append(results, a.runVerifyCommand(cmd))
 	}
-	return statemachine.Outcome{}
+	return statemachine.Outcome{}, results
 }
 
 // runAffectedSetVerify runs the affected-set suites (commit-time gate).
 // `runFull` is true when the user explicitly chose [f]ull suite, or when
 // the selector couldn't statically trace some change — both treat the
-// suites as opaque and run them whole.
-func (a actions) runAffectedSetVerify(res testselect.Result, runFull bool) statemachine.Outcome {
+// suites as opaque and run them whole. Returns one verifyCommandResult
+// per shelled-out command (the caller aggregates).
+func (a actions) runAffectedSetVerify(res testselect.Result, runFull bool) (statemachine.Outcome, []verifyCommandResult) {
 	if !runFull {
 		runFull = len(res.Unmapped) > 0
 	}
@@ -871,19 +1115,161 @@ func (a actions) runAffectedSetVerify(res testselect.Result, runFull bool) state
 		}
 	}
 
+	var results []verifyCommandResult
 	for _, sel := range res.Selections {
 		if runFull {
 			cmd := fmt.Sprintf("gh optivem test system --suite %s", shellEscape(sel.Suite))
-			a.runVerifyCommand(cmd)
+			results = append(results, a.runVerifyCommand(cmd))
 			continue
 		}
 		for _, t := range sel.Tests {
 			cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s",
 				shellEscape(sel.Suite), shellEscape(t))
-			a.runVerifyCommand(cmd)
+			results = append(results, a.runVerifyCommand(cmd))
 		}
 	}
-	return statemachine.Outcome{}
+	return statemachine.Outcome{}, results
+}
+
+// finalizeVerify aggregates per-command results into a single failure
+// class and stashes everything the gateway-and-fix-loop (Item 3) will
+// need: ctx.State["verify_class"] for predicate evaluation,
+// ctx.State["verify_results"] for the fix agent's prompt template, and
+// Outcome.Value so the trace decorator (Item 6) renders RED/INFRA/OK
+// instead of the misleading blanket OK.
+//
+// On `infra` (orchestrator-side blow-up: missing config, missing
+// runner, etc.) finalizeVerify halts the run by returning Outcome.Err
+// rather than letting the gateway route. Item 5 of the
+// verify-failure-dispatch plan: the cwd-bug case stops silently
+// advancing into STOP_STRUCT_REVIEW, regardless of whether the
+// downstream gateway has been wired in yet. The detailed banner is
+// printed to stderr first so the operator sees *why* the run halted
+// (which infra pattern matched, which command was tried, the cwd) —
+// the engine wraps Outcome.Err with the node ID and surfaces it, but
+// the captured stderr lines are what point at the actual fix.
+//
+// When no commands ran (approve-without-running, no driver-adapter
+// changes, or an early bailout), Outcome.Value is left empty. The trace
+// then falls through to its default "(no result)" rendering, which is
+// honest: nothing was verified.
+func (a actions) finalizeVerify(ctx *statemachine.Context, out statemachine.Outcome, results []verifyCommandResult) statemachine.Outcome {
+	if out.Err != nil || len(results) == 0 {
+		return out
+	}
+	class := aggregateVerifyClass(results)
+	ctx.Set("verify_class", class.String())
+	ctx.Set("verify_results", results)
+	// Pre-format the per-command failures into one human-readable block
+	// so the fix-verify agent's prompt template can substitute it in via
+	// ${verify_results} without the dispatcher needing to import this
+	// package's verifyCommandResult type. Skipped on ok/infra: ok needs
+	// no agent dispatch, and infra halts at the action level (below).
+	if class == classRed {
+		ctx.Set("verify_results_text", formatVerifyResultsText(results))
+	}
+	if class == classInfra {
+		a.printInfraHalt(results)
+		return statemachine.Outcome{
+			Err: errors.New("verify_run_tests_after_driver: runner failed before any test ran (infra) — see banner above"),
+		}
+	}
+	out.Value = class.String()
+	return out
+}
+
+// formatVerifyResultsText renders the failed verifyCommandResults as a
+// markdown-style block suitable for substitution into the
+// atdd-fix-verify prompt's ${verify_results} placeholder. Each failed
+// command becomes one block with the command line, the classification
+// label (when present), and the captured stdout/stderr the runner
+// produced. Successful commands are omitted — they are not what the
+// fix agent needs to read.
+//
+// Output is plain text (no syntax highlighting) so the same string
+// renders the same way in any LLM's context window. Ordering follows
+// the input slice so the operator can correlate the prompt with the
+// inline "(test run failed [class]: ...)" lines they already saw on
+// the trace.
+func formatVerifyResultsText(results []verifyCommandResult) string {
+	var b strings.Builder
+	for _, r := range results {
+		if r.Class == classOK {
+			continue
+		}
+		fmt.Fprintf(&b, "Command: %s\n", r.Cmd)
+		fmt.Fprintf(&b, "Classification: %s", r.Class)
+		if r.Label != "" {
+			fmt.Fprintf(&b, " (%s)", r.Label)
+		}
+		fmt.Fprintln(&b)
+		out := strings.TrimRight(r.Output, "\n")
+		if out == "" {
+			fmt.Fprintln(&b, "(no output captured)")
+		} else {
+			fmt.Fprintln(&b, out)
+		}
+		fmt.Fprintln(&b)
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// printInfraHalt writes the user-facing diagnostic for the infra-class
+// halt. The banner cites:
+//
+//   - the friendly classification label from the matched infraPattern
+//     (e.g. "missing system config"), so the operator does not have to
+//     re-read regex tables to understand which row fired;
+//   - the first stderr line from the captured output, which is the
+//     literal prefix the runner emitted (e.g. the `ERROR: read system
+//     config ./system.json` from the morning's reproducer);
+//   - the exact command tried, including any --suite / --test flags;
+//   - the cwd the orchestrator was running from, since the canonical
+//     infra failure mode is "verify ran from the wrong directory and
+//     couldn't find the runner config".
+//
+// When the matched label fingerprints the cwd-bug, cross-link the
+// sibling plan so the operator does not have to re-diagnose what is
+// already a known issue.
+func (a actions) printInfraHalt(results []verifyCommandResult) {
+	var first verifyCommandResult
+	for _, r := range results {
+		if r.Class == classInfra {
+			first = r
+			break
+		}
+	}
+	cwd := a.deps.RepoPath
+	if cwd == "" {
+		cwd = "."
+	}
+	w := a.deps.Stderr
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "verify_run_tests_after_driver: runner failed before any test ran.")
+	fmt.Fprintf(w, "Classified as: infra (orchestrator-side problem, not SUT) — %s.\n", first.Label)
+	fmt.Fprintf(w, "Detail: %s\n", firstNonEmptyLine(first.Output))
+	fmt.Fprintf(w, "Tried:  %s\n", first.Cmd)
+	fmt.Fprintf(w, "Cwd:    %s\n", cwd)
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "This is an orchestrator bug. Halting before human review so the")
+	fmt.Fprintln(w, "review prompt isn't asked under false assumptions.")
+	if first.Label == "missing system config" {
+		fmt.Fprintln(w, "See plans/20260505-220100-verify-runs-from-wrong-cwd.md.")
+	}
+}
+
+// firstNonEmptyLine returns the first non-blank line from s, trimmed.
+// Used by printInfraHalt to surface the runner's leading error line —
+// usually the only line a human needs to confirm which infra mode
+// fired.
+func firstNonEmptyLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 // printTracerSummary prints one chain block per tracer selection. The
@@ -978,18 +1364,73 @@ func dedupSorted(s []string) []string {
 	return out
 }
 
-// runVerifyCommand shells out and surfaces test failures as informational
-// output — the action does not halt the state machine on test failure
-// (per plan: verification is feedback, not gating).
-func (a actions) runVerifyCommand(cmd string) {
+// verifyCommandResult is the captured outcome of one `gh optivem test ...`
+// invocation. The verify action collects a slice of these per cycle and
+// aggregates them into a single failureClass — see aggregateVerifyClass.
+//
+// Output is the combined stdout/stderr the runner produced (Shell.Run
+// returns one stream); classifyShellErr's regex anchors are runner-prefix
+// based, so feeding the combined stream is fine. ExitErr mirrors what
+// Shell.Run returned; nil means the command succeeded.
+//
+// The fix-agent dispatch (Item 3 of the verify-failure-dispatch-fix-agent
+// plan) reads this struct out of ctx.State["verify_results"]; the trace
+// banner reads the aggregated class out of Outcome.Value (Item 6).
+type verifyCommandResult struct {
+	Cmd     string
+	Output  string
+	ExitErr error
+	Class   failureClass
+	Label   string // populated only for classInfra (the matched pattern's label)
+}
+
+// runVerifyCommand shells out and captures the per-command outcome. The
+// caller (runTracerVerify / runAffectedSetVerify) collects results across
+// commands; aggregation into a single class happens in finalizeVerify.
+//
+// Failures still surface inline as before — the design point ("verification
+// is feedback, not gating") stays intact for WRITE-phase callers — but the
+// returned result carries the classification so a structural-cycle gateway
+// can route on it without re-parsing the printed line.
+func (a actions) runVerifyCommand(cmd string) verifyCommandResult {
 	fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
 	out, err := a.deps.Shell.Run(context.Background(), cmd)
 	if len(out) > 0 {
 		fmt.Fprintln(a.deps.Stdout, string(out))
 	}
+	class, label := classifyShellErr(string(out), err)
 	if err != nil {
-		fmt.Fprintf(a.deps.Stderr, "(test run failed: %v — continuing)\n", err)
+		fmt.Fprintf(a.deps.Stderr, "(test run failed [%s]: %v — continuing)\n", class, err)
 	}
+	return verifyCommandResult{
+		Cmd:     cmd,
+		Output:  string(out),
+		ExitErr: err,
+		Class:   class,
+		Label:   label,
+	}
+}
+
+// aggregateVerifyClass returns the worst class across results. Infra
+// dominates red dominates ok: an orchestrator-side failure means we
+// never learned what the runner would have said about the SUT, so we
+// surface infra over red rather than letting a phantom red trigger the
+// fix agent on a problem the SUT can't actually solve.
+//
+// An empty result slice means no commands ran (approve-without-running,
+// no driver-adapter changes); the caller (finalizeVerify) treats that
+// case specially and does not stamp Outcome.Value.
+func aggregateVerifyClass(results []verifyCommandResult) failureClass {
+	worst := classOK
+	for _, r := range results {
+		if r.Class == classInfra {
+			return classInfra
+		}
+		if r.Class == classRed {
+			worst = classRed
+		}
+	}
+	return worst
 }
 
 // verifyVerbose reports whether ATDD_VERIFY_VERBOSE is set to a truthy

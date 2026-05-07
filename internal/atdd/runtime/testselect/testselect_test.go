@@ -648,7 +648,7 @@ func TestParseHunkHeader(t *testing.T) {
 }
 
 func TestExtractMethodRegions_Java(t *testing.T) {
-	regions := extractMethodRegions(javaDSL, layouts["java"])
+	regions := layouts["java"].MethodIndexer(javaDSL)
 	names := map[string]bool{}
 	for _, r := range regions {
 		names[r.name] = true

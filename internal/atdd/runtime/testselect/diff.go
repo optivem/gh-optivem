@@ -50,7 +50,7 @@ func parseChangedMethods(repoRoot, baseRef string, deps *Deps) ([]ChangedMethod,
 			// Deleted files leave hunks but no current contents — skip.
 			continue
 		}
-		regions := extractMethodRegions(string(body), lay)
+		regions := lay.MethodIndexer(string(body))
 		seen := map[string]bool{}
 		for _, hunk := range f.addedLines {
 			for _, m := range regions {

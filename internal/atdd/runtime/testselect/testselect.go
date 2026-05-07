@@ -170,7 +170,7 @@ func SelectWithDeps(repoRoot, baseRef string, deps *Deps) (Result, error) {
 			if err != nil {
 				continue
 			}
-			_, parents := extractDeclaredAndParentTypes(string(body), lay)
+			_, parents := lay.ClassExtractor(string(body))
 			if len(parents) > 0 {
 				adapterParentsByFile[f] = parents
 			}
@@ -181,7 +181,7 @@ func SelectWithDeps(repoRoot, baseRef string, deps *Deps) (Result, error) {
 			if err != nil {
 				continue
 			}
-			declared, _ := extractDeclaredAndParentTypes(string(body), lay)
+			declared, _ := lay.ClassExtractor(string(body))
 			if len(declared) > 0 {
 				portDeclaredByFile[f] = declared
 			}

@@ -244,6 +244,58 @@ func TestWrap_FailureExitLogsError(t *testing.T) {
 	}
 }
 
+func TestWrap_VerifyClassRendersAsBannerStatusWord(t *testing.T) {
+	// The verify action stamps Outcome.Value with one of {ok, red, infra}
+	// so the trace banner can render the failure class as the status
+	// word — fixing the "OK VERIFY_STRUCT_DRIVER -> (no result)" line
+	// that contradicted the inline "(test run failed: ... — continuing)"
+	// the same node had just printed.
+	prevNow := nowFn
+	nowFn = fixedClock
+	t.Cleanup(func() { nowFn = prevNow })
+
+	for _, tc := range []struct {
+		name      string
+		value     string
+		wantWord  string
+		wantSlash bool // expect "-> ..." suffix?
+	}{
+		{name: "red", value: "red", wantWord: "RED VERIFY_STRUCT_DRIVER", wantSlash: false},
+		{name: "infra", value: "infra", wantWord: "INFRA VERIFY_STRUCT_DRIVER", wantSlash: false},
+		{name: "ok", value: "ok", wantWord: "OK VERIFY_STRUCT_DRIVER", wantSlash: false},
+		// Empty Value preserves the historic "(no result)" rendering —
+		// no verify happened (e.g. approve-without-running), so the
+		// banner shouldn't claim a class.
+		{name: "empty_no_result", value: "", wantWord: "OK VERIFY_STRUCT_DRIVER -> (no result)", wantSlash: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			node := statemachine.Node{
+				ID:   "VERIFY_STRUCT_DRIVER",
+				Kind: statemachine.ServiceTask,
+				Raw:  statemachine.RawNode{Action: "verify_run_tests_after_driver"},
+				Fn: func(ctx *statemachine.Context) statemachine.Outcome {
+					return statemachine.Outcome{Value: tc.value}
+				},
+			}
+			wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+			out := wrapped(statemachine.NewContext())
+			if out.Err != nil {
+				t.Fatalf("unexpected err: %v", out.Err)
+			}
+			got := buf.String()
+			if !strings.Contains(got, tc.wantWord) {
+				t.Errorf("trace output missing %q\nfull output:\n%s", tc.wantWord, got)
+			}
+			// Verify-class banners drop the "-> value=red" suffix; the
+			// status word already conveys the class.
+			if !tc.wantSlash && tc.value != "" && strings.Contains(got, "-> value=") {
+				t.Errorf("trace output should not include redundant `-> value=%s` suffix when status word already shows it; got:\n%s", tc.value, got)
+			}
+		})
+	}
+}
+
 func TestStateDelta_IgnoresOverrideKeysAndSortsKeys(t *testing.T) {
 	pre := map[string]string{"a": "1", "_override_extra": ""}
 	post := map[string]string{"a": "2", "b": "3", "_override_extra": "hint"}

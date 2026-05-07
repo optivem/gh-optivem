@@ -49,6 +49,7 @@ func TestLoadSnapshot_AllFlowsParse(t *testing.T) {
 		"ct_subprocess",
 		"external_system_onboarding",
 		"structural_cycle",
+		"red_phase_cycle",
 		"legacy_acceptance_criteria",
 	}
 	for _, name := range wantFlows {
@@ -245,7 +246,10 @@ var transitionTable = []transitionCase{
 	// branch jumps directly to ASK_COMMIT, bypassing both COMPILE/SAMPLE and
 	// the second STOP_STRUCT_TEST review.
 	{flow: "structural_cycle", from: "STRUCT_WRITE", wantTo: "VERIFY_STRUCT_DRIVER"},
-	{flow: "structural_cycle", from: "VERIFY_STRUCT_DRIVER", wantTo: "STOP_STRUCT_REVIEW"},
+	{flow: "structural_cycle", from: "VERIFY_STRUCT_DRIVER", wantTo: "GATE_STRUCT_VERIFY"},
+	{flow: "structural_cycle", from: "GATE_STRUCT_VERIFY", state: map[string]any{"structural_verify_outcome": "ok"}, wantTo: "STOP_STRUCT_REVIEW", desc: "ok class continues to human review"},
+	{flow: "structural_cycle", from: "GATE_STRUCT_VERIFY", state: map[string]any{"structural_verify_outcome": "red"}, wantTo: "FIX_STRUCT_VERIFY", desc: "red class dispatches the fix-verify agent (one retry)"},
+	{flow: "structural_cycle", from: "FIX_STRUCT_VERIFY", wantTo: "VERIFY_STRUCT_DRIVER", desc: "fix agent loops back into verify for re-classification"},
 	{flow: "structural_cycle", from: "STOP_STRUCT_REVIEW", wantTo: "GATE_TEST_MODE"},
 	{flow: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "skip"}, wantTo: "ASK_COMMIT", desc: "skip mode escapes the TEST sub-loop entirely"},
 	{flow: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "compile"}, wantTo: "COMPILE"},
@@ -258,6 +262,24 @@ var transitionTable = []transitionCase{
 	{flow: "structural_cycle", from: "ASK_COMMIT", wantTo: "COMMIT_STRUCT"},
 	{flow: "structural_cycle", from: "COMMIT_STRUCT", wantTo: "TICK"},
 	{flow: "structural_cycle", from: "TICK", wantTo: "STRUCT_END"},
+
+	// ---- red_phase_cycle (shared by AT/CT RED-WRITE phases via params) ----
+	// Splits creative WRITE work from mechanical compile/run/disable/commit.
+	// AT_RED_TEST is the first migrated caller; further callers land in
+	// later phases of the AT/CT split refactor.
+	{flow: "red_phase_cycle", from: "WRITE", wantTo: "STOP_RED_REVIEW"},
+	{flow: "red_phase_cycle", from: "STOP_RED_REVIEW", wantTo: "COMPILE"},
+	{flow: "red_phase_cycle", from: "COMPILE", wantTo: "GATE_COMPILE_OK"},
+	{flow: "red_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": false}, wantTo: "WRITE_PROTOTYPES", desc: "compile fail loops through prototype WRITE"},
+	{flow: "red_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": true}, wantTo: "RUN"},
+	{flow: "red_phase_cycle", from: "WRITE_PROTOTYPES", wantTo: "STOP_PROTOTYPE_REVIEW"},
+	{flow: "red_phase_cycle", from: "STOP_PROTOTYPE_REVIEW", wantTo: "COMPILE", desc: "prototype loop returns to COMPILE"},
+	{flow: "red_phase_cycle", from: "RUN", wantTo: "GATE_RUN_FAILED_RUNTIME"},
+	{flow: "red_phase_cycle", from: "GATE_RUN_FAILED_RUNTIME", state: map[string]any{"tests_failed_runtime": true}, wantTo: "DISABLE"},
+	{flow: "red_phase_cycle", from: "GATE_RUN_FAILED_RUNTIME", state: map[string]any{"tests_failed_runtime": false}, wantTo: "STOP_RED_NOT_RUNTIME_FAIL", desc: "tests not runtime-failing → human STOP"},
+	{flow: "red_phase_cycle", from: "STOP_RED_NOT_RUNTIME_FAIL", wantTo: "WRITE", desc: "after STOP, retry from WRITE"},
+	{flow: "red_phase_cycle", from: "DISABLE", wantTo: "COMMIT"},
+	{flow: "red_phase_cycle", from: "COMMIT", wantTo: "RED_END"},
 
 	// ---- legacy_acceptance_criteria ----
 	// Legacy Acceptance Criteria Cycle interim spec: a single STOP node, per

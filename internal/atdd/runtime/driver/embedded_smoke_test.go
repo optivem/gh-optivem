@@ -88,12 +88,17 @@ func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 }
 
 // TestEmbeddedDispatch_RunsInConsumerEmptyDir walks a real production
-// user_task (AT_RED_TEST in the embedded `at_cycle` flow) against the
-// fake clauderun + git pair, with RepoPath set to a temp dir that
-// contains no consumer-side scaffolding. Asserts the dispatch
-// completes and the rendered prompt is the embedded atdd-test body —
+// user_task (ATDD_BACKEND in the embedded `at_green_system` flow)
+// against the fake clauderun + git pair, with RepoPath set to a temp
+// dir that contains no consumer-side scaffolding. Asserts the dispatch
+// completes and the rendered prompt is the embedded atdd-backend body —
 // proves the dispatcher reaches the embedded prompt without any
 // consumer-file dependency.
+//
+// AT_RED_TEST was the original target; after the AT/CT creative-vs-
+// mechanical split, every RED-phase node in at_cycle is a call_activity
+// into red_phase_cycle, so a sibling user_task is used here. Any
+// embedded user_task with a static (non-templated) agent will do.
 func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 	tempDir := t.TempDir()
 
@@ -126,13 +131,13 @@ func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 	}
 	wrapAgentDispatchers(eng, opts, nil)
 
-	flow, ok := eng.Flows["at_cycle"]
+	flow, ok := eng.Flows["at_green_system"]
 	if !ok {
-		t.Fatal("embedded YAML missing at_cycle flow")
+		t.Fatal("embedded YAML missing at_green_system flow")
 	}
-	node, ok := flow.Nodes["AT_RED_TEST"]
+	node, ok := flow.Nodes["ATDD_BACKEND"]
 	if !ok {
-		t.Fatal("at_cycle flow missing AT_RED_TEST node")
+		t.Fatal("at_green_system flow missing ATDD_BACKEND node")
 	}
 
 	out := node.Fn(newCtxWithIssue())
@@ -143,7 +148,7 @@ func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 		t.Fatalf("expected 1 claude call, got %d", len(claudeFake.calls))
 	}
 	prompt := claudeFake.calls[0].Prompt
-	if !strings.Contains(prompt, "You are the Test Agent") {
+	if !strings.Contains(prompt, "You are the Backend Agent") {
 		t.Errorf("dispatched prompt missing embedded-prompt sentinel; consumer-side fallback may have leaked in")
 	}
 }

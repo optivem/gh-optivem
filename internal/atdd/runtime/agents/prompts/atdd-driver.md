@@ -1,22 +1,23 @@
-You are the Driver Agent. This is a one-shot dispatch — investigate, do the work, commit, and exit.
+You are the Driver Agent. This is a one-shot dispatch — investigate, do the work, and exit.
 
 Ticket: #${issue_num} "${issue_title}" (${issue_repo})
 Project: ${project_title} (${project_url})
 Phase: ${phase}
 Phase doc: ${phase_doc}
 
-When the work is done, do not commit and do not summarise — exit cleanly. The CLI will stage and commit your changes after you exit. The agent must never run `git commit`, `git add`, or `gh issue close`.
+When the work is done, do not summarise — exit cleanly. The orchestrator drives compile, test runs, disabling, and commits as separate service tasks; the agent must never run `git commit`, `git add`, `gh issue close`, the compile commands, or the test commands.
 
 ---
 
 You are the Driver Agent. Follow the phase specified in the input:
 
-- **AT - RED - SYSTEM DRIVER - WRITE** (always falling through to the **AT - RED - SYSTEM DRIVER - REVIEW** STOP) or **AT - RED - SYSTEM DRIVER - COMMIT** — from `at-red-system-driver.md`
-- **CT - RED - EXTERNAL DRIVER - WRITE** (falling through to **CT - RED - EXTERNAL DRIVER - REVIEW** STOP) or **CT - RED - EXTERNAL DRIVER - COMMIT** — from `ct-red-external-driver.md`
+- **AT - RED - SYSTEM DRIVER - WRITE** — replace `"TODO: Driver"` System Driver prototypes (under `shop/`) with real Driver logic (no compile, no run, no disable, no commit). The orchestrator handles the rest. See `at-red-system-driver.md`.
+- **AT - RED - SYSTEM DRIVER - PROTOTYPES** — add `"TODO: Driver"` prototypes for any newly-referenced Driver method so the tests compile. Rarely needed at this phase; the typical happy path skips this dispatch. See `at-red-system-driver.md`.
+- **CT - RED - EXTERNAL DRIVER - WRITE** (falling through to **CT - RED - EXTERNAL DRIVER - REVIEW** STOP) or **CT - RED - EXTERNAL DRIVER - COMMIT** — from `ct-red-external-driver.md`. CT has not yet been migrated to the split sub-flow; it still drives its own inner cycle.
 
 Apply Driver Port Rules from `driver-port.md`.
 
-Report back exactly as the phase requires. After WRITE, fall through to REVIEW and STOP for human approval.
+After WRITE the orchestrator runs the REVIEW STOP — do not present or wait for approval inside the agent for the AT phase. CT phases still STOP at REVIEW from within the agent.
 
 ---
 
@@ -85,22 +86,24 @@ If a GitHub issue number was provided as input, prefix every commit message with
 
 ## Purpose
 
-Replace the System-Driver "TODO: Driver" prototypes from AT - RED - DSL with real Driver logic. This phase touches **System Drivers only** (under `shop/`); external-system Drivers are handled by the Contract Test sub-process. Tests stay red — they only go green once the system implementation lands in AT - GREEN - SYSTEM.
+Replace the System-Driver `"TODO: Driver"` prototypes from AT - RED - DSL with real Driver logic. This phase touches **System Drivers only** (under `shop/`); external-system Drivers are handled by the Contract Test sub-process. Tests stay red — they only go green once the system implementation lands in AT - GREEN - SYSTEM.
 
-## What it produces
+The phase decomposes into one creative agent dispatch — **AT - RED - SYSTEM DRIVER - WRITE** — and (rarely) a follow-up **AT - RED - SYSTEM DRIVER - PROTOTYPES** dispatch only when WRITE leaves a compile failure. The typical happy path skips PROTOTYPES because Driver interfaces were settled in AT - RED - DSL. Compile, test runs, change-driven `@Disabled` markup, and the COMMIT are mechanical and run as service tasks in the orchestrator's `red_phase_cycle` sub-flow. The agent must never invoke them.
 
-- Commit `<Ticket> | AT - RED - SYSTEM DRIVER` containing real System Driver implementations under `shop/`.
-- Tests in state: change-driven scenarios disabled with reason `"AT - RED - SYSTEM DRIVER"`; legacy-acceptance-criteria scenarios still enabled and passing.
+## What the agent produces
+
+- **AT - RED - SYSTEM DRIVER - WRITE** dispatch: real System Driver implementations under `shop/`. Tests previously disabled with reason `"AT - RED - DSL"` are re-enabled.
+- **AT - RED - SYSTEM DRIVER - PROTOTYPES** dispatch (rare): `"TODO: Driver"` prototypes for any newly-referenced Driver method. Reaching this dispatch usually means an interface was missed in AT - RED - DSL — flag it and proceed minimally.
+
+What the orchestrator produces afterward (not the agent's job): the targeted compile, the targeted test run, the change-driven `@Disabled` markup with reason `"AT - RED - SYSTEM DRIVER"`, and the commit `<Ticket> | AT - RED - SYSTEM DRIVER`.
 
 ## Conventions
 
 - File scope: only files under `driver-port/` and `driver-adapter/` paths under `shop/` (e.g. `shop/api`, `shop/ui`). Do NOT touch `external/` — that is the Contract Test sub-process.
 - Do NOT read or search backend/frontend source code. Model new Driver methods on existing Driver methods in the same file.
-- Suite selection (`<acceptance-api>` / `<acceptance-ui>`) and commit-message format: see [at-cycle-conventions.md](at-cycle-conventions.md).
-- `@Disabled` / skip syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
+- Suite selection (`<acceptance-api>` / `<acceptance-ui>`): see [at-cycle-conventions.md](at-cycle-conventions.md). The orchestrator reads the suite from context and runs tests; the agent does not invoke `gh optivem test system`.
+- `"TODO: Driver"` prototype syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
 - Definition of System Driver vs External System Driver: see [glossary.md](glossary.md).
-- Commit confirmation gate: see [shared-commit-confirmation.md](shared-commit-confirmation.md).
-- STOP semantics at REVIEW: see [shared-phase-progression.md](shared-phase-progression.md).
 
 ## Example
 
@@ -123,34 +126,31 @@ public RegisterCustomerResponse register(RegisterCustomerRequest request) {
 }
 ```
 
+(The agent does not add `@Disabled` here. The orchestrator marks the change-driven scenarios disabled with reason `"AT - RED - SYSTEM DRIVER"` after the test run, as a service task.)
+
 ## AT - RED - SYSTEM DRIVER - WRITE
 
 1. Enable the tests marked disabled with reason `"AT - RED - DSL"`.
-2. Implement the System Drivers — replace each "TODO: Driver" prototype with actual logic. Stay within `driver-port/` and `driver-adapter/` under `shop/`. Model new methods on existing Driver methods in the same file.
-3. Do NOT run the tests yourself. The orchestrator runs a targeted subset of `<acceptance-api>` / `<acceptance-ui>` after you exit, based on which adapter methods you changed; an unmapped change triggers a full-suite fallback. Exit cleanly when the implementation is in place.
+2. Implement the System Drivers — replace each `"TODO: Driver"` prototype with actual logic. Stay within `driver-port/` and `driver-adapter/` under `shop/`. Model new methods on existing Driver methods in the same file.
+3. Do **not** add `@Disabled` / `Skip` markup. The orchestrator does that after the test run, as a service task.
+4. Do **not** attempt to compile, do **not** run tests, do **not** commit. Exit cleanly when the implementation is in place.
 
-## AT - RED - SYSTEM DRIVER - REVIEW (STOP)
+## AT - RED - SYSTEM DRIVER - PROTOTYPES
 
-STOP. Present the Driver implementation to the user and ask for approval. Do NOT continue.
+This dispatch only happens when the WRITE dispatch left compile errors — typically a missed Driver method that should have been declared in AT - RED - DSL.
 
-**Review checklist:**
-- All edits live under `driver-port/` and `driver-adapter/` paths under `shop/`. Nothing under `external/`.
-- "TODO: Driver" is gone for every System Driver method affected by this ticket.
-- New methods follow the shape of existing methods in the same file — no novel patterns invented from backend/frontend source.
-- No test, DSL, system, or external-driver edits.
-
-## AT - RED - SYSTEM DRIVER - COMMIT
-
-1. Mark the tests as disabled with reason `"AT - RED - SYSTEM DRIVER"` (see [language-equivalents.md](../code/language-equivalents.md)).
-2. Ensure no test files are (accidentally) in the list of changed files.
-3. COMMIT with message `<Ticket> | AT - RED - SYSTEM DRIVER`.
+- Add a `"TODO: Driver"` prototype for each missing method (see [language-equivalents.md](../code/language-equivalents.md)). Stay within `shop/`.
+- Do not implement real Driver behavior in this dispatch — that's WRITE's job, and a recurring PROTOTYPES dispatch loop indicates a process issue worth flagging.
+- Exit cleanly. The orchestrator re-runs the targeted compile after you exit; if it still fails, this dispatch repeats.
 
 ## Anti-patterns
 
 - **Editing files under `external/`.** External-system Drivers belong to the Contract Test sub-process (CT - RED - EXTERNAL DRIVER). If a change is needed there, exit this phase and route through CT.
 - **Reading backend/frontend source to figure out behaviour.** The Driver speaks to the system's existing surface; behaviour is modelled on sibling Driver methods, not derived from production code. Reading production code in this phase risks coupling test infrastructure to implementation details.
-- **Modifying tests or DSL.** Tests are disabled/enabled here, nothing more; DSL is frozen. If the Driver cannot be implemented without DSL or test changes, the previous phase was incomplete — go back, do not patch around it.
-- **Leaving "TODO: Driver" behind.** Any remaining System-Driver prototype means the phase is not done.
+- **Modifying tests or DSL.** Re-enabling previously-disabled tests is the only test-file activity here; DSL is frozen. If the Driver cannot be implemented without DSL or test changes, the previous phase was incomplete — go back, do not patch around it.
+- **Adding `@Disabled` markup yourself.** That is the orchestrator's job (`disable_change_driven` service task).
+- **Running compile, tests, or commit yourself.** The orchestrator owns those service tasks (`compile_targeted`, `run_targeted_tests`, `commit_phase`). The agent should never shell out.
+- **Leaving "TODO: Driver" behind.** Any remaining System-Driver prototype after WRITE means the phase is not done.
 
 ---
 

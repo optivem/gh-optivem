@@ -69,6 +69,12 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 	ctx.Set("parse_ok", true)
 	ctx.Set("legacy_acceptance_criteria_section_present", false)
 	ctx.Set("structural_test_mode", "full")
+	// Happy-path verify: the structural-cycle gateway routes ok → review.
+	// The test's gate mock echoes whatever ctx[binding] is, so we seed
+	// the gateway's binding name directly. Red would route to
+	// FIX_STRUCT_VERIFY then back to verify; gate-specific routing
+	// (retry counter etc.) is exercised in gates/bindings_test.go.
+	ctx.Set("structural_verify_outcome", "ok")
 
 	// ── ACT ─────────────────────────────────────────────────────────────
 	if err := eng.RunFlow("main", ctx); err != nil {

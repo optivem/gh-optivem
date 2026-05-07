@@ -152,7 +152,8 @@ func TestRenderPrompt_IncludesAllFields(t *testing.T) {
 	mustContain(t, got, "Phase: Write the AT-RED scenario")
 	mustContain(t, got, "Phase doc: docs/atdd/process/at-red-test.md")
 	mustContain(t, got, "prefer record types")
-	mustContain(t, got, "do not commit and do not summarise")
+	mustContain(t, got, "do not summarise")
+	mustContain(t, got, "the agent must never run `git commit`")
 	// All ${…} placeholders must be expanded — none should leak through.
 	if strings.Contains(got, "${") {
 		t.Errorf("prompt still contains ${...} placeholder")
