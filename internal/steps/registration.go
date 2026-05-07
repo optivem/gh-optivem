@@ -40,6 +40,9 @@ func PrintRegistration(cfg *config.Config) {
 	fmt.Printf("  Repository:    %s\n", repoURL)
 	fmt.Printf("  Actions:       %s\n", actionsURL)
 	fmt.Printf("  SonarCloud:    %s\n", sonarURL)
+	if cfg.ProjectURL != "" {
+		fmt.Printf("  Project:       %s\n", cfg.ProjectURL)
+	}
 
 	if cfg.RepoStrategy == "multirepo" {
 		if cfg.Arch == "multitier" {

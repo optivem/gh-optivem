@@ -209,6 +209,7 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, fail
 
 		// PHASE: SETUP REPOSITORY — remote infra for this repo
 		{name: "Create repositories", phase: phaseSetupRepo, fn: func() { steps.CreateRepos(cfg, gh) }},
+		{name: "Ensure project board", phase: phaseSetupRepo, fn: func() { steps.EnsureProjectBoard(cfg, gh) }},
 		{name: "Setup environments", phase: phaseSetupRepo, fn: func() { steps.SetupEnvironments(cfg, gh) }},
 		{name: "Seed subtype labels", phase: phaseSetupRepo, fn: func() { steps.SeedSubtypeLabels(cfg, gh) }},
 		{name: "Setup variables and secrets", phase: phaseSetupRepo, fn: func() { steps.SetupVariablesAndSecrets(cfg, gh) }},
@@ -477,6 +478,9 @@ func printSummary(cfg *config.Config, errors int, totalDuration time.Duration) {
 	fmt.Printf("  System:     %s\n", cfg.SystemName)
 	fmt.Printf("  Repository: https://github.com/%s\n", cfg.FullRepo)
 	fmt.Printf("  Actions:    https://github.com/%s/actions\n", cfg.FullRepo)
+	if cfg.ProjectURL != "" {
+		fmt.Printf("  Project:    %s\n", cfg.ProjectURL)
+	}
 	if cfg.RepoStrategy == "multirepo" {
 		if cfg.Arch == "multitier" {
 			fmt.Printf("  Backend:    https://github.com/%s\n", cfg.BackendFullRepo)
@@ -689,6 +693,7 @@ func printBanner(cfg *config.Config) {
 	log.Infof("--no-legacy:         %v%s", cfg.NoLegacy, tag("no-legacy"))
 	log.Infof("--no-local-tests:    %v%s", cfg.NoLocalTests, tag("no-local-tests"))
 	log.Infof("--no-local-sonar:    %v%s", cfg.NoLocalSonar, tag("no-local-sonar"))
+	log.Infof("--no-project:        %v%s", cfg.NoProject, tag("no-project"))
 	log.Infof("--shop-ref:        %s%s", cfg.Raw.ShopRef, tag("shop-ref"))
 	log.Infof("--dry-run:         %v%s", cfg.DryRun, tag("dry-run"))
 	log.Infof("--keep-local:      %v%s", cfg.Raw.KeepLocal, tag("keep-local"))
@@ -738,6 +743,14 @@ func printBanner(cfg *config.Config) {
 	log.Infof("Environments:    acceptance, qa, production")
 	log.Infof("Variables:       DOCKERHUB_USERNAME")
 	log.Infof("Secrets:         %s", strings.Join(willCreateSecrets(cfg), ", "))
+	if !cfg.NoProject {
+		switch {
+		case cfg.ProjectURL == "":
+			log.Infof("Project board:   auto-create with canonical status set")
+		default:
+			log.Infof("Project board:   verify required statuses on supplied URL — may add missing options")
+		}
+	}
 
 	fmt.Println()
 	fmt.Println("  Local clones")

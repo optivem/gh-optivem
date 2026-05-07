@@ -78,6 +78,7 @@ type Config struct {
 	NoLocalTests   bool   // skip the "Verify local testing" step (runner package over system-test/)
 	NoLocalSonar   bool   // skip the "Verify local SonarCloud scan" step (per-component Run-Sonar.ps1)
 	NoAtdd         bool   // skip the "Install ATDD assets" step (skip copying agents/commands/prompts from shop)
+	NoProject      bool   // skip the "Ensure project board" step entirely (no auto-create, no status-ensure on supplied URL)
 	KeepLocal    bool   // keep the local scaffolded clone dir after a successful run (default: delete it)
 	BugReport    bool   // opt in to auto-creating a GitHub issue on failure (default: off)
 	Verbose      bool   // enable debug output
@@ -524,6 +525,7 @@ type RawFlags struct {
 	NoLocalTests      bool
 	NoLocalSonar      bool
 	NoAtdd            bool
+	NoProject         bool
 	BugReport         bool
 	Verbose           bool
 	Quiet             bool
@@ -576,6 +578,7 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs.BoolVar(&f.NoLocalTests, "no-local-tests", false, "Skip the 'Verify local testing' step (runner package over system-test/)")
 	fs.BoolVar(&f.NoLocalSonar, "no-local-sonar", false, "Skip the 'Verify local SonarCloud scan' step (per-component Run-Sonar.ps1 against the SonarCloud project)")
 	fs.BoolVar(&f.NoAtdd, "no-atdd", false, "Skip installing ATDD agents/commands/prompts from shop into the scaffolded repo")
+	fs.BoolVar(&f.NoProject, "no-project", false, "Skip the 'Ensure project board' step entirely (no auto-create, no status-ensure on a supplied --project-url). For CI smoke tests of the scaffolder, or to manage the board out-of-band.")
 	fs.BoolVar(&f.BugReport, "report-bug", false, "On failure, auto-create a GitHub issue in optivem/gh-optivem with scaffold config. Off by default — file one yourself if the failure is worth reporting.")
 	fs.StringVar(&f.Deploy, "deploy", "docker", "Deployment target: docker or cloud-run")
 	fs.StringVar(&f.WorkDir, "workdir", "", "Working directory for cloning (default: temp dir)")
@@ -583,7 +586,7 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs.BoolVarP(&f.Verbose, "verbose", "v", false, "Enable debug output (retry/wait chatter, diagnostics)")
 	fs.BoolVarP(&f.Quiet, "quiet", "q", false, "Suppress info-level output (warnings and errors still shown)")
 	fs.StringVar(&f.LogFile, "log-file", "", "Also write plain-text log output to this file (no ANSI colors, all levels)")
-	fs.BoolVarP(&f.AssumeYes, "yes", "y", false, "Skip all interactive confirmations (existing-repo prompt, --report-bug confirmation). Expected pattern for CI/unattended runs.")
+	fs.BoolVarP(&f.AssumeYes, "yes", "y", false, "Skip all interactive confirmations (existing-repo prompt, --report-bug confirmation, project-board status-ensure on supplied --project-url). Expected pattern for CI/unattended runs.")
 }
 
 // BindConfigInitFlags binds the YAML-affecting flag subset for `gh optivem
@@ -1064,6 +1067,7 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 		NoLocalTests:   f.NoLocalTests,
 		NoLocalSonar:   f.NoLocalSonar,
 		NoAtdd:         f.NoAtdd,
+		NoProject:      f.NoProject,
 		KeepLocal:    f.KeepLocal,
 		BugReport:    f.BugReport,
 		Verbose:      f.Verbose,
