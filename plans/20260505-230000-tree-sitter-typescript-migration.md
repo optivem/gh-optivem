@@ -242,20 +242,6 @@ Remaining steps:
    `go mod tidy`, confirm the module graph resolves cleanly. No
    compilation in this step — pure module-graph operation, deferred
    smoke-test validation to step 2 where the toolchain is in place.
-2. Switch the build to CGo. `.goreleaser.yml`: set `CGO_ENABLED=1`
-   and add per-target `CC=zig cc -target ...` env entries to keep
-   single-Linux-runner cross-compile to all six targets
-   (linux/darwin/windows × amd64/arm64). `.github/actions/run-goreleaser`:
-   add a zig install step ahead of the goreleaser run. Local dev:
-   document zig as a prerequisite in the contributor docs (one-time
-   `scoop install zig` on Windows). `scripts/install.sh` stays
-   unchanged. Validate by (a) running a tiny CGo smoke test locally
-   that parses a TypeScript snippet via `tree-sitter-typescript` —
-   does not need to be committed — to confirm the binding works
-   end-to-end, then (b) running goreleaser locally in dry-run mode
-   (`goreleaser release --snapshot --clean`) — must produce all six
-   binaries, must run with `CGO_ENABLED=1`, must not require a system
-   C compiler beyond zig.
 3. Implement `treesitter_typescript.go`: parse via
    `tree-sitter/go-tree-sitter` with the TypeScript language module,
    author tree-sitter queries for method declarations / call sites /
