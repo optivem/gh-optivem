@@ -1,6 +1,7 @@
 package testselect
 
 import (
+	"regexp"
 	"strings"
 )
 
@@ -14,6 +15,16 @@ type methodRegion struct {
 	endLine   int
 }
 
+// regexMethodIndexer returns a MethodIndexer that recognises method
+// signatures via the given regex and walks brace depth to find each
+// method's body span. This is the regex implementation; the TypeScript
+// slice swaps the wiring for a tree-sitter walk.
+func regexMethodIndexer(sig *regexp.Regexp) func(body string) []methodRegion {
+	return func(body string) []methodRegion {
+		return extractMethodRegions(body, sig)
+	}
+}
+
 // extractMethodRegions scans `body` once and returns every method-shaped
 // region. Used both for adapters (intersect with diff hunks) and for
 // ports / DSL / tests (find enclosing method of any caller hit).
@@ -22,7 +33,7 @@ type methodRegion struct {
 // matches inside string literals or block comments are tolerable: the
 // downstream consumer only cares about the *name → file* mapping for
 // callers, and a stray name in a comment is harmless.
-func extractMethodRegions(body string, lay *layout) []methodRegion {
+func extractMethodRegions(body string, sig *regexp.Regexp) []methodRegion {
 	lines := strings.Split(body, "\n")
 	var regions []methodRegion
 
@@ -47,7 +58,7 @@ func extractMethodRegions(body string, lay *layout) []methodRegion {
 		// We use the same regex everywhere — within the body the regex
 		// is conservative enough to avoid false positives.
 		if pending < 0 {
-			if m := lay.MethodSignatureRE.FindStringSubmatchIndex(line); m != nil {
+			if m := sig.FindStringSubmatchIndex(line); m != nil {
 				name := line[m[2]:m[3]]
 				if !isReservedKeyword(name) && !isControlBlockKeyword(name) {
 					// If the line ends with `;` (after stripping trailing
@@ -205,7 +216,7 @@ type methodRecord struct {
 }
 
 // indexMethods reads each file once and indexes every method declaration
-// found by the layout's MethodSignatureRE.
+// returned by the layout's MethodIndexer.
 func indexMethods(files []string, lay *layout, read func(string, string) ([]byte, error)) *methodIndex {
 	idx := &methodIndex{
 		byName: map[string][]methodRecord{},
@@ -216,7 +227,7 @@ func indexMethods(files []string, lay *layout, read func(string, string) ([]byte
 		if err != nil {
 			continue
 		}
-		regions := extractMethodRegions(string(body), lay)
+		regions := lay.MethodIndexer(string(body))
 		idx.byFile[f] = regions
 		for _, r := range regions {
 			idx.byName[r.name] = append(idx.byName[r.name], methodRecord{
@@ -268,7 +279,7 @@ func indexTestMethods(files []string, lay *layout, read func(string, string) ([]
 // Multiple test annotations stack — `@Test` plus `@Channel(API)` etc.
 func indexClassTests(file, body string, lay *layout, out map[string][]testHit) {
 	lines := strings.Split(body, "\n")
-	regions := extractMethodRegions(body, lay)
+	regions := lay.MethodIndexer(body)
 
 	// Collect class names by line number.
 	classByLine := classDeclarationLineMap(lines)
@@ -457,38 +468,28 @@ func indexTSTests(file, body string, lay *layout, out map[string][]testHit) {
 	}
 }
 
-// extractDeclaredAndParentTypes scans a class/interface declaration in
-// `body` and returns:
-//
-//	declared — every type name introduced (class Foo, interface Foo, …)
-//	parents  — every type name appearing in an extends / implements / `:`
-//	           clause (with package prefixes stripped)
-//
-// Used by class-qualification: a port whose declaring file's interface
-// name is in some adapter file's parents list is the same logical
-// contract; a port whose declared types do not overlap is a same-named
-// method on an unrelated port and should be filtered out.
-//
-// The parser is permissive: any non-keyword identifier between the type
-// name and the body's opening brace is treated as a parent. Generic
-// blocks (`<T>`) are stripped first so `Foo<T> implements Bar<T>` yields
-// a single `Bar` parent rather than `Bar` plus `T`.
-func extractDeclaredAndParentTypes(body string, lay *layout) (declared, parents []string) {
-	if lay.ClassDeclRE == nil {
-		return nil, nil
-	}
-	matches := lay.ClassDeclRE.FindAllStringSubmatchIndex(body, -1)
-	for _, m := range matches {
-		name := body[m[2]:m[3]]
-		declared = append(declared, name)
-		rest := body[m[3]:]
-		braceIdx := strings.IndexByte(rest, '{')
-		if braceIdx < 0 {
-			continue
+// regexClassExtractor returns a ClassExtractor that uses the given
+// class-declaration regex. The regex captures group 1 = declared type
+// name; the parents list is parsed from the header text between the
+// declaration and the body's opening brace.
+func regexClassExtractor(classDeclRE *regexp.Regexp) func(body string) (declared, parents []string) {
+	return func(body string) (declared, parents []string) {
+		if classDeclRE == nil {
+			return nil, nil
 		}
-		parents = append(parents, parseParentNames(rest[:braceIdx])...)
+		matches := classDeclRE.FindAllStringSubmatchIndex(body, -1)
+		for _, m := range matches {
+			name := body[m[2]:m[3]]
+			declared = append(declared, name)
+			rest := body[m[3]:]
+			braceIdx := strings.IndexByte(rest, '{')
+			if braceIdx < 0 {
+				continue
+			}
+			parents = append(parents, parseParentNames(rest[:braceIdx])...)
+		}
+		return declared, parents
 	}
-	return declared, parents
 }
 
 // parseParentNames extracts identifier tokens from a class/interface

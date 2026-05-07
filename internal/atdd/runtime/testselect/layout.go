@@ -7,8 +7,8 @@ import (
 )
 
 // layout describes how to find driver-adapter, driver-port, dsl, and test
-// sources for one language, plus the regex shapes for method signatures,
-// callers, test methods, and channel annotations.
+// sources for one language, plus the per-language indexer / caller-finder /
+// class-extractor extension points the rest of the package routes through.
 //
 // Path roots are *absolute* paths under repoRoot. We compute them lazily
 // because the system-test root layout differs slightly between languages.
@@ -34,37 +34,33 @@ type layout struct {
 	// TestRoots returns the absolute paths to test source roots.
 	TestRoots func(repoRoot string) []string
 
-	// MethodSignatureRE captures group 1 = method name. Anchored to start
-	// of line; conservative so it picks up real method declarations rather
-	// than calls. Used both for adapters (during diff parsing) and for
-	// ports/DSL (during caller resolution).
-	MethodSignatureRE *regexp.Regexp
-	// CallerRE captures `.<methodName>(` style invocations. Composed with
-	// the target method name at use time.
-	CallerREFor func(methodName string) *regexp.Regexp
-	// TestMethodSignatureRE captures group 1 = test method name. Used to
-	// determine the enclosing test method of any caller match.
-	TestMethodSignatureRE *regexp.Regexp
-	// TestAnnotationLines returns true when the given line declares the
+	// MethodIndexer returns every method-shaped region in `body` for this
+	// language. Wired per language — currently to a regex-based scan that
+	// recognises a class-body method declaration shape; will swap to a
+	// tree-sitter walk per the migration plan.
+	MethodIndexer func(body string) []methodRegion
+	// CallerFinder returns the byte offsets in `body` where `methodName`
+	// is invoked. Each offset is the start of the call expression. The
+	// existing pipeline maps offsets to lines via byteOffsetToLine.
+	CallerFinder func(body, methodName string) []int
+	// ClassExtractor returns the class/interface names declared in `body`
+	// and the parent type names in their extends/implements clauses, in
+	// declaration order. Used by class-qualification to align port and
+	// adapter contracts.
+	ClassExtractor func(body string) (declared, parents []string)
+
+	// IsTestAnnotation returns true when the given line declares the
 	// method as a test (e.g. `@Test`, `@TestTemplate`, `[Fact]`, `it(` /
-	// `test(`). Used to filter test methods from non-test methods inside
-	// the same test file (e.g. helper methods).
+	// `test(`). Line-shape matcher; tree-sitter doesn't help here.
 	IsTestAnnotation func(line string) bool
 	// ChannelAnnotationRE matches the @Channel(...) annotation; group 1
 	// is the parenthesised contents. Empty if the language has no
-	// equivalent.
+	// equivalent. Line-shape matcher; tree-sitter doesn't help here.
 	ChannelAnnotationRE *regexp.Regexp
 	// ContractTestPathHint is a substring that, when present in a test
 	// file path, marks the test as a contract test. (Falls back to suite
 	// rules.)
 	ContractTestPathHint string
-	// ClassDeclRE matches `class Foo` / `interface Foo` declarations and
-	// captures group 1 = the type name. Used by class-qualification —
-	// each adapter file's parent types (the things after extends /
-	// implements / `:`) and each port file's declared types are extracted
-	// once and intersected so a same-named method on an unrelated port is
-	// not falsely matched.
-	ClassDeclRE *regexp.Regexp
 }
 
 // layouts is keyed by language code: "java" | "dotnet" | "typescript".
@@ -85,6 +81,7 @@ func javaLayout() *layout {
 			`[\w<>\[\],\s\?\.]+?\s+` + // return type (greedy-light)
 			`(\w+)\s*\(`, // method name + open paren
 	)
+	classDeclRE := regexp.MustCompile(`\b(?:class|interface|record)\s+(\w+)\b`)
 	return &layout{
 		Lang:       "java",
 		SourceExts: []string{".java"},
@@ -114,13 +111,9 @@ func javaLayout() *layout {
 		TestRoots: func(repoRoot string) []string {
 			return []string{filepath.Join(repoRoot, "system-test", "java", "src", "test", "java")}
 		},
-		MethodSignatureRE: sig,
-		CallerREFor: func(name string) *regexp.Regexp {
-			// Word boundary + dot/space-prefixed call; rules out partial-name
-			// false positives (e.g. `.placeOrderEx(` not matching `placeOrder`).
-			return regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\s*\(`)
-		},
-		TestMethodSignatureRE: sig,
+		MethodIndexer:  regexMethodIndexer(sig),
+		CallerFinder:   regexCallerFinder,
+		ClassExtractor: regexClassExtractor(classDeclRE),
 		IsTestAnnotation: func(line string) bool {
 			t := strings.TrimSpace(line)
 			return strings.HasPrefix(t, "@Test") ||
@@ -130,7 +123,6 @@ func javaLayout() *layout {
 		},
 		ChannelAnnotationRE:  regexp.MustCompile(`@Channel\s*\(([^)]*)\)`),
 		ContractTestPathHint: "/contract/",
-		ClassDeclRE:          regexp.MustCompile(`\b(?:class|interface|record)\s+(\w+)\b`),
 	}
 }
 
@@ -142,6 +134,7 @@ func dotnetLayout() *layout {
 			`[\w<>\[\],\s\?\.]+?\s+` +
 			`(\w+)\s*\(`,
 	)
+	classDeclRE := regexp.MustCompile(`\b(?:class|interface|record|struct)\s+(\w+)\b`)
 	return &layout{
 		Lang:       "dotnet",
 		SourceExts: []string{".cs"},
@@ -172,11 +165,9 @@ func dotnetLayout() *layout {
 		TestRoots: func(repoRoot string) []string {
 			return []string{filepath.Join(repoRoot, "system-test", "dotnet")}
 		},
-		MethodSignatureRE: sig,
-		CallerREFor: func(name string) *regexp.Regexp {
-			return regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\s*\(`)
-		},
-		TestMethodSignatureRE: sig,
+		MethodIndexer:  regexMethodIndexer(sig),
+		CallerFinder:   regexCallerFinder,
+		ClassExtractor: regexClassExtractor(classDeclRE),
 		IsTestAnnotation: func(line string) bool {
 			t := strings.TrimSpace(line)
 			return strings.HasPrefix(t, "[Fact") ||
@@ -186,7 +177,6 @@ func dotnetLayout() *layout {
 		},
 		ChannelAnnotationRE:  regexp.MustCompile(`\[Channel\s*\(([^)]*)\)\]`),
 		ContractTestPathHint: "/contract/",
-		ClassDeclRE:          regexp.MustCompile(`\b(?:class|interface|record|struct)\s+(\w+)\b`),
 	}
 }
 
@@ -197,6 +187,7 @@ func typescriptLayout() *layout {
 			`(\w+)\s*` +
 			`(?:<[^>]*>)?\s*\(`,
 	)
+	classDeclRE := regexp.MustCompile(`\b(?:class|interface)\s+(\w+)\b`)
 	return &layout{
 		Lang:       "typescript",
 		SourceExts: []string{".ts"},
@@ -230,14 +221,9 @@ func typescriptLayout() *layout {
 		TestRoots: func(repoRoot string) []string {
 			return []string{filepath.Join(repoRoot, "system-test", "typescript")}
 		},
-		MethodSignatureRE: sig,
-		CallerREFor: func(name string) *regexp.Regexp {
-			return regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\s*\(`)
-		},
-		// In TS we don't use the same regex — tests are detected by
-		// `it(` / `test(` blocks. testMethodIndex handles this specially
-		// and ignores TestMethodSignatureRE for TS.
-		TestMethodSignatureRE: sig,
+		MethodIndexer:  regexMethodIndexer(sig),
+		CallerFinder:   regexCallerFinder,
+		ClassExtractor: regexClassExtractor(classDeclRE),
 		IsTestAnnotation: func(line string) bool {
 			t := strings.TrimSpace(line)
 			return strings.HasPrefix(t, "it(") ||
@@ -250,6 +236,20 @@ func typescriptLayout() *layout {
 		// or a describe block tag.
 		ChannelAnnotationRE:  regexp.MustCompile(`@channel\s*\(([^)]*)\)`),
 		ContractTestPathHint: "/contract/",
-		ClassDeclRE:          regexp.MustCompile(`\b(?:class|interface)\s+(\w+)\b`),
 	}
+}
+
+// regexCallerFinder is the shared regex implementation of CallerFinder.
+// All three current languages (java, dotnet, typescript) use the same
+// `\b<name>\s*\(` shape, so they share one implementation. The TypeScript
+// slice will replace this with a tree-sitter query for `call_expression`
+// nodes whose function ends in `property_identifier` or `identifier`.
+func regexCallerFinder(body, methodName string) []int {
+	re := regexp.MustCompile(`\b` + regexp.QuoteMeta(methodName) + `\s*\(`)
+	matches := re.FindAllStringIndex(body, -1)
+	out := make([]int, 0, len(matches))
+	for _, m := range matches {
+		out = append(out, m[0])
+	}
+	return out
 }

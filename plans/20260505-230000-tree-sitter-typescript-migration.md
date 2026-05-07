@@ -221,36 +221,37 @@ Concretely:
 
 ## Order of operations
 
-1. Refactor: add `MethodIndexer` / `CallerFinder` function-pointer
-   fields to the layout struct, wire all three layouts (TS, Java, C#)
-   to their existing regex implementations. Confirm all existing
-   tests still pass — pure refactor, no behaviour change.
-2. Add `github.com/malivvan/tree-sitter` and its TypeScript grammar
+The refactor pass (per-language `MethodIndexer` / `CallerFinder` /
+`ClassExtractor` extension points on the layout struct, all three
+languages wired to their existing regex implementations) has landed.
+Remaining steps:
+
+1. Add `github.com/malivvan/tree-sitter` and its TypeScript grammar
    subpackage as dependencies. Pin to a specific version in `go.mod`
    (no `@latest`); record the chosen version in this plan. **No CI
    changes needed** — `CGO_ENABLED=0` stays, single-runner
    cross-compile to all six targets stays, `scripts/install.sh`
    stays.
-3. Verify upstream lineage of the bundled WASM blob: inspect
+2. Verify upstream lineage of the bundled WASM blob: inspect
    `malivvan/tree-sitter`'s build provenance and confirm the WASM is
    built from a recent upstream tree-sitter release, not a long-stale
    fork. If the lag is large, escalate to the roll-your-own Wazero
    wrapper option before sinking implementation work into the
    malivvan path.
-4. Implement `treesitter_typescript.go`: parse via malivvan, query
+3. Implement `treesitter_typescript.go`: parse via malivvan, query
    for method declarations and call sites, emit `methodRegion` and
    call-site offsets compatible with the existing pipeline.
-5. Swap the TS layout's wiring to use the tree-sitter functions;
+4. Swap the TS layout's wiring to use the tree-sitter functions;
    delete the TS regex closures in the same change. Java and C#
    layouts untouched. Run the full test suite — every existing TS
    test must pass without modification (parity gate).
-6. Add new fixture tests for shapes the regex couldn't parse
+5. Add new fixture tests for shapes the regex couldn't parse
    (arrow-property class field, multi-line signature, getter/setter,
    decorated method). Confirm they pass under tree-sitter.
-7. Add the tree-sitter index benchmark. Sanity check.
-8. Build the branch via `scripts/install.sh`. Run a real shop WRITE
+6. Add the tree-sitter index benchmark. Sanity check.
+7. Build the branch via `scripts/install.sh`. Run a real shop WRITE
    cycle that previously hit the `inputSku` failure with
    `ATDD_VERIFY_VERBOSE=1`. Confirm the tracer succeeds with one
    selection per channel, no `WARNING: tracer could not stage`.
-9. Merge. Java and C# slices unblocked at this point — open separate
+8. Merge. Java and C# slices unblocked at this point — open separate
    plans.
