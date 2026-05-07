@@ -49,6 +49,7 @@ func TestLoadSnapshot_AllFlowsParse(t *testing.T) {
 		"ct_subprocess",
 		"external_system_onboarding",
 		"structural_cycle",
+		"red_phase_cycle",
 		"legacy_acceptance_criteria",
 	}
 	for _, name := range wantFlows {
@@ -258,6 +259,24 @@ var transitionTable = []transitionCase{
 	{flow: "structural_cycle", from: "ASK_COMMIT", wantTo: "COMMIT_STRUCT"},
 	{flow: "structural_cycle", from: "COMMIT_STRUCT", wantTo: "TICK"},
 	{flow: "structural_cycle", from: "TICK", wantTo: "STRUCT_END"},
+
+	// ---- red_phase_cycle (shared by AT/CT RED-WRITE phases via params) ----
+	// Splits creative WRITE work from mechanical compile/run/disable/commit.
+	// AT_RED_TEST is the first migrated caller; further callers land in
+	// later phases of the AT/CT split refactor.
+	{flow: "red_phase_cycle", from: "WRITE", wantTo: "STOP_RED_REVIEW"},
+	{flow: "red_phase_cycle", from: "STOP_RED_REVIEW", wantTo: "COMPILE"},
+	{flow: "red_phase_cycle", from: "COMPILE", wantTo: "GATE_COMPILE_OK"},
+	{flow: "red_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": false}, wantTo: "WRITE_DSL_PROTOTYPES", desc: "compile fail loops through DSL-prototype WRITE"},
+	{flow: "red_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": true}, wantTo: "RUN"},
+	{flow: "red_phase_cycle", from: "WRITE_DSL_PROTOTYPES", wantTo: "STOP_DSL_PROTOTYPE_REVIEW"},
+	{flow: "red_phase_cycle", from: "STOP_DSL_PROTOTYPE_REVIEW", wantTo: "COMPILE", desc: "prototype loop returns to COMPILE"},
+	{flow: "red_phase_cycle", from: "RUN", wantTo: "GATE_RUN_FAILED_RUNTIME"},
+	{flow: "red_phase_cycle", from: "GATE_RUN_FAILED_RUNTIME", state: map[string]any{"tests_failed_runtime": true}, wantTo: "DISABLE"},
+	{flow: "red_phase_cycle", from: "GATE_RUN_FAILED_RUNTIME", state: map[string]any{"tests_failed_runtime": false}, wantTo: "STOP_RED_NOT_RUNTIME_FAIL", desc: "tests not runtime-failing → human STOP"},
+	{flow: "red_phase_cycle", from: "STOP_RED_NOT_RUNTIME_FAIL", wantTo: "WRITE", desc: "after STOP, retry from WRITE"},
+	{flow: "red_phase_cycle", from: "DISABLE", wantTo: "COMMIT"},
+	{flow: "red_phase_cycle", from: "COMMIT", wantTo: "RED_END"},
 
 	// ---- legacy_acceptance_criteria ----
 	// Legacy Acceptance Criteria Cycle interim spec: a single STOP node, per

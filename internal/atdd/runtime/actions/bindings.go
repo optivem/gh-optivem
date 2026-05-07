@@ -1138,6 +1138,17 @@ func (a actions) runAffectedSetVerify(res testselect.Result, runFull bool) (stat
 // Outcome.Value so the trace decorator (Item 6) renders RED/INFRA/OK
 // instead of the misleading blanket OK.
 //
+// On `infra` (orchestrator-side blow-up: missing config, missing
+// runner, etc.) finalizeVerify halts the run by returning Outcome.Err
+// rather than letting the gateway route. Item 5 of the
+// verify-failure-dispatch plan: the cwd-bug case stops silently
+// advancing into STOP_STRUCT_REVIEW, regardless of whether the
+// downstream gateway has been wired in yet. The detailed banner is
+// printed to stderr first so the operator sees *why* the run halted
+// (which infra pattern matched, which command was tried, the cwd) —
+// the engine wraps Outcome.Err with the node ID and surfaces it, but
+// the captured stderr lines are what point at the actual fix.
+//
 // When no commands ran (approve-without-running, no driver-adapter
 // changes, or an early bailout), Outcome.Value is left empty. The trace
 // then falls through to its default "(no result)" rendering, which is
@@ -1149,8 +1160,116 @@ func (a actions) finalizeVerify(ctx *statemachine.Context, out statemachine.Outc
 	class := aggregateVerifyClass(results)
 	ctx.Set("verify_class", class.String())
 	ctx.Set("verify_results", results)
+	// Pre-format the per-command failures into one human-readable block
+	// so the fix-verify agent's prompt template can substitute it in via
+	// ${verify_results} without the dispatcher needing to import this
+	// package's verifyCommandResult type. Skipped on ok/infra: ok needs
+	// no agent dispatch, and infra halts at the action level (below).
+	if class == classRed {
+		ctx.Set("verify_results_text", formatVerifyResultsText(results))
+	}
+	if class == classInfra {
+		a.printInfraHalt(results)
+		return statemachine.Outcome{
+			Err: errors.New("verify_run_tests_after_driver: runner failed before any test ran (infra) — see banner above"),
+		}
+	}
 	out.Value = class.String()
 	return out
+}
+
+// formatVerifyResultsText renders the failed verifyCommandResults as a
+// markdown-style block suitable for substitution into the
+// atdd-fix-verify prompt's ${verify_results} placeholder. Each failed
+// command becomes one block with the command line, the classification
+// label (when present), and the captured stdout/stderr the runner
+// produced. Successful commands are omitted — they are not what the
+// fix agent needs to read.
+//
+// Output is plain text (no syntax highlighting) so the same string
+// renders the same way in any LLM's context window. Ordering follows
+// the input slice so the operator can correlate the prompt with the
+// inline "(test run failed [class]: ...)" lines they already saw on
+// the trace.
+func formatVerifyResultsText(results []verifyCommandResult) string {
+	var b strings.Builder
+	for _, r := range results {
+		if r.Class == classOK {
+			continue
+		}
+		fmt.Fprintf(&b, "Command: %s\n", r.Cmd)
+		fmt.Fprintf(&b, "Classification: %s", r.Class)
+		if r.Label != "" {
+			fmt.Fprintf(&b, " (%s)", r.Label)
+		}
+		fmt.Fprintln(&b)
+		out := strings.TrimRight(r.Output, "\n")
+		if out == "" {
+			fmt.Fprintln(&b, "(no output captured)")
+		} else {
+			fmt.Fprintln(&b, out)
+		}
+		fmt.Fprintln(&b)
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// printInfraHalt writes the user-facing diagnostic for the infra-class
+// halt. The banner cites:
+//
+//   - the friendly classification label from the matched infraPattern
+//     (e.g. "missing system config"), so the operator does not have to
+//     re-read regex tables to understand which row fired;
+//   - the first stderr line from the captured output, which is the
+//     literal prefix the runner emitted (e.g. the `ERROR: read system
+//     config ./system.json` from the morning's reproducer);
+//   - the exact command tried, including any --suite / --test flags;
+//   - the cwd the orchestrator was running from, since the canonical
+//     infra failure mode is "verify ran from the wrong directory and
+//     couldn't find the runner config".
+//
+// When the matched label fingerprints the cwd-bug, cross-link the
+// sibling plan so the operator does not have to re-diagnose what is
+// already a known issue.
+func (a actions) printInfraHalt(results []verifyCommandResult) {
+	var first verifyCommandResult
+	for _, r := range results {
+		if r.Class == classInfra {
+			first = r
+			break
+		}
+	}
+	cwd := a.deps.RepoPath
+	if cwd == "" {
+		cwd = "."
+	}
+	w := a.deps.Stderr
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "verify_run_tests_after_driver: runner failed before any test ran.")
+	fmt.Fprintf(w, "Classified as: infra (orchestrator-side problem, not SUT) — %s.\n", first.Label)
+	fmt.Fprintf(w, "Detail: %s\n", firstNonEmptyLine(first.Output))
+	fmt.Fprintf(w, "Tried:  %s\n", first.Cmd)
+	fmt.Fprintf(w, "Cwd:    %s\n", cwd)
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "This is an orchestrator bug. Halting before human review so the")
+	fmt.Fprintln(w, "review prompt isn't asked under false assumptions.")
+	if first.Label == "missing system config" {
+		fmt.Fprintln(w, "See plans/20260505-220100-verify-runs-from-wrong-cwd.md.")
+	}
+}
+
+// firstNonEmptyLine returns the first non-blank line from s, trimmed.
+// Used by printInfraHalt to surface the runner's leading error line —
+// usually the only line a human needs to confirm which infra mode
+// fired.
+func firstNonEmptyLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 // printTracerSummary prints one chain block per tracer selection. The

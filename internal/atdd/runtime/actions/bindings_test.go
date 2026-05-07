@@ -1472,7 +1472,13 @@ func TestVerifyRunTestsAfterDriver_StampsRedOnTestFailure(t *testing.T) {
 	}
 }
 
-func TestVerifyRunTestsAfterDriver_StampsInfraOnConfigError(t *testing.T) {
+func TestVerifyRunTestsAfterDriver_HaltsOnInfraWithDiagnostic(t *testing.T) {
+	// Item 5 of the verify-failure-dispatch plan: an infra-class result
+	// halts the run with Outcome.Err and prints the detailed banner so
+	// the operator sees *which* runner-side problem fired (here the
+	// missing-system-config / cwd-bug fingerprint), the command tried,
+	// and the cwd. Without this halt the structural cycle silently
+	// advanced into STOP_STRUCT_REVIEW with zero verify signal.
 	fv := &fakeVerifyDeps{
 		selectResult: makeAffectedSet(),
 		tracerResult: makeTracer(),
@@ -1490,21 +1496,36 @@ func TestVerifyRunTestsAfterDriver_StampsInfraOnConfigError(t *testing.T) {
 		Shell:        sh,
 		Prompter:     p,
 		Stderr:       &stderr,
+		RepoPath:     "/tmp/sandbox",
 		Select:       fv.Select,
 		SelectTracer: fv.SelectTracer,
 	})
 	out := a.verifyRunTestsAfterDriver(ctx)
-	if out.Err != nil {
-		t.Fatalf("Outcome.Err: %v (Item 5 will halt here; Item 2 just plumbs the class)", out.Err)
+	if out.Err == nil {
+		t.Fatalf("expected Outcome.Err for infra-class halt; got nil")
 	}
-	if out.Value != "infra" {
-		t.Errorf("Outcome.Value: got %q, want %q", out.Value, "infra")
+	if !strings.Contains(out.Err.Error(), "infra") {
+		t.Errorf("Outcome.Err should mention infra; got: %v", out.Err)
 	}
+	// ctx.verify_class is still stamped — downstream gates / fix agents
+	// (Items 3 & 4) can read the class even on the halt path.
 	if got := ctx.GetString("verify_class"); got != "infra" {
 		t.Errorf("ctx verify_class: got %q, want %q", got, "infra")
 	}
-	if !strings.Contains(stderr.String(), "[infra]") {
-		t.Errorf("expected per-command stderr to tag the class; got:\n%s", stderr.String())
+	// Banner content: the matched label, the runner's leading line,
+	// the command, the cwd, and the cross-link to the cwd-bug plan.
+	se := stderr.String()
+	for _, want := range []string{
+		"runner failed before any test ran",
+		"missing system config",
+		"ERROR: read system config",
+		"gh optivem test system",
+		"Cwd:    /tmp/sandbox",
+		"plans/20260505-220100-verify-runs-from-wrong-cwd.md",
+	} {
+		if !strings.Contains(se, want) {
+			t.Errorf("infra halt banner missing %q\nfull stderr:\n%s", want, se)
+		}
 	}
 }
 

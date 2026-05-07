@@ -317,9 +317,13 @@ flows:
     start: AT_RED_TEST
     nodes:
       - id: AT_RED_TEST
-        type: user_task
-        agent: atdd-test
-        phase_doc: docs/atdd/process/at-red-test.md
+        type: call_activity
+        flow: red_phase_cycle
+        params:
+          agent: atdd-test
+          phase_doc: docs/atdd/process/at-red-test.md
+          phase_label: "AT - RED - TEST"
+          change_type: "AT - RED - TEST"
         description: "AT - RED - TEST"
 
       - id: GATE_DSL_AT
@@ -670,6 +674,121 @@ flows:
       - {from: ASK_COMMIT,         to: COMMIT_STRUCT}
       - {from: COMMIT_STRUCT,      to: TICK}
       - {from: TICK,               to: STRUCT_END}
+
+  # ===========================================================================
+  # red_phase_cycle
+  # Shared sub-flow for every RED-phase node that splits creative WRITE work
+  # (LLM-required) from mechanical compile/run/disable/commit work
+  # (deterministic). Mirrors how `structural_cycle` factors creative
+  # `STRUCT_WRITE` from its mechanical surroundings.
+  #
+  # Callers supply via `params:`:
+  #   - agent       — the WRITE agent (e.g. atdd-test, atdd-dsl, atdd-driver)
+  #   - phase_doc   — the per-phase doc the agent reads
+  #   - phase_label — the human-readable phase tag, used in node descriptions
+  #                   (e.g. "AT - RED - TEST"). Substituted into ${phase_label}.
+  #   - change_type — the COMMIT-message suffix consumed by the existing
+  #                   `commit_phase` action (kept for backward compatibility
+  #                   with structural_cycle's params shape; typically equal
+  #                   to phase_label).
+  #
+  # The DSL-prototype dispatch reuses the same `${agent}` and `${phase_doc}`
+  # — distinguishing the two dispatches happens via the node description
+  # (`${phase_label} - WRITE` vs `${phase_label} - DSL PROTOTYPES`), which
+  # the agent reads as `${phase}` from its prompt template.
+  #
+  # The `tests_failed_runtime == false` branch covers two unexpected states
+  # (tests pass, or compile errors leaked through). The plan defers the
+  # final shape — for now route to a human STOP that loops back to WRITE.
+  #
+  # Context plumbing TODO: `compile_targeted` reads `scope`,
+  # `run_targeted_tests` reads `suite` and `test_names`, and
+  # `disable_change_driven` reads `language`, `disable_reason`,
+  # `disable_targets`. Today nothing populates these — see the AT/CT split
+  # plan's "context plumbing" follow-up.
+  # ===========================================================================
+  red_phase_cycle:
+    start: WRITE
+    nodes:
+      - id: WRITE
+        type: user_task
+        agent: ${agent}
+        phase_doc: ${phase_doc}
+        description: "${phase_label} - WRITE"
+
+      - id: STOP_RED_REVIEW
+        type: user_task
+        agent: human
+        role: review
+        description: "STOP - HUMAN REVIEW — ${phase_label} tests"
+
+      - id: COMPILE
+        type: service_task
+        action: compile_targeted
+        description: "Compile in scope"
+
+      - id: GATE_COMPILE_OK
+        type: gateway
+        binding: compile_ok
+        description: "Compile passed?"
+
+      - id: WRITE_DSL_PROTOTYPES
+        type: user_task
+        agent: ${agent}
+        phase_doc: ${phase_doc}
+        description: "${phase_label} - DSL PROTOTYPES"
+
+      - id: STOP_DSL_PROTOTYPE_REVIEW
+        type: user_task
+        agent: human
+        role: review
+        description: "STOP - HUMAN REVIEW — ${phase_label} DSL prototypes"
+
+      - id: RUN
+        type: service_task
+        action: run_targeted_tests
+        description: "Run targeted tests"
+
+      - id: GATE_RUN_FAILED_RUNTIME
+        type: gateway
+        binding: tests_failed_runtime
+        description: "Tests fail at runtime (not compile)?"
+
+      - id: STOP_RED_NOT_RUNTIME_FAIL
+        type: user_task
+        agent: human
+        role: review
+        description: "STOP - HUMAN REVIEW — ${phase_label} tests not runtime-failing"
+
+      - id: DISABLE
+        type: service_task
+        action: disable_change_driven
+        description: "Disable change-driven scenarios"
+
+      - id: COMMIT
+        type: service_task
+        action: commit_phase
+        params:
+          change_type: ${change_type}
+        description: "COMMIT: <Ticket> | ${change_type}"
+
+      - id: RED_END
+        type: end_event
+
+    sequence_flows:
+      - {from: WRITE,                     to: STOP_RED_REVIEW}
+      - {from: STOP_RED_REVIEW,           to: COMPILE}
+      - {from: COMPILE,                   to: GATE_COMPILE_OK}
+      - {from: GATE_COMPILE_OK,           to: WRITE_DSL_PROTOTYPES,      when: "compile_ok == false"}
+      - {from: GATE_COMPILE_OK,           to: RUN,                       when: "compile_ok == true"}
+      - {from: WRITE_DSL_PROTOTYPES,      to: STOP_DSL_PROTOTYPE_REVIEW}
+      - {from: STOP_DSL_PROTOTYPE_REVIEW, to: COMPILE}
+      - {from: RUN,                       to: GATE_RUN_FAILED_RUNTIME}
+      - {from: GATE_RUN_FAILED_RUNTIME,   to: DISABLE,                   when: "tests_failed_runtime == true"}
+      - {from: GATE_RUN_FAILED_RUNTIME,   to: STOP_RED_NOT_RUNTIME_FAIL, when: "tests_failed_runtime == false"}
+      - {from: STOP_RED_NOT_RUNTIME_FAIL, to: WRITE}
+      - {from: DISABLE,                   to: COMMIT}
+      - {from: COMMIT,                    to: RED_END}
 
   # ===========================================================================
   # da_cycle

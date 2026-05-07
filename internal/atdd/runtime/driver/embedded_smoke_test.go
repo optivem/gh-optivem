@@ -88,12 +88,16 @@ func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 }
 
 // TestEmbeddedDispatch_RunsInConsumerEmptyDir walks a real production
-// user_task (AT_RED_TEST in the embedded `at_cycle` flow) against the
+// user_task (AT_RED_DSL in the embedded `at_cycle` flow) against the
 // fake clauderun + git pair, with RepoPath set to a temp dir that
 // contains no consumer-side scaffolding. Asserts the dispatch
-// completes and the rendered prompt is the embedded atdd-test body —
+// completes and the rendered prompt is the embedded atdd-dsl body —
 // proves the dispatcher reaches the embedded prompt without any
 // consumer-file dependency.
+//
+// AT_RED_TEST was the original target; after the AT/CT split it is a
+// call_activity into red_phase_cycle, so a sibling user_task is used
+// here. Any embedded user_task in at_cycle would do.
 func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 	tempDir := t.TempDir()
 
@@ -130,9 +134,9 @@ func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 	if !ok {
 		t.Fatal("embedded YAML missing at_cycle flow")
 	}
-	node, ok := flow.Nodes["AT_RED_TEST"]
+	node, ok := flow.Nodes["AT_RED_DSL"]
 	if !ok {
-		t.Fatal("at_cycle flow missing AT_RED_TEST node")
+		t.Fatal("at_cycle flow missing AT_RED_DSL node")
 	}
 
 	out := node.Fn(newCtxWithIssue())
@@ -143,7 +147,7 @@ func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 		t.Fatalf("expected 1 claude call, got %d", len(claudeFake.calls))
 	}
 	prompt := claudeFake.calls[0].Prompt
-	if !strings.Contains(prompt, "You are the Test Agent") {
+	if !strings.Contains(prompt, "You are the DSL Agent") {
 		t.Errorf("dispatched prompt missing embedded-prompt sentinel; consumer-side fallback may have leaked in")
 	}
 }

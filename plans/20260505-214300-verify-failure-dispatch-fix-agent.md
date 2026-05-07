@@ -1,5 +1,7 @@
 # Verify-time test failures should not silently flow into human review
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-07T09:13:17Z`
+
 ## Symptom
 
 Running an `AT - RED - SYSTEM DRIVER - WRITE` cycle (chore on a Page Object
@@ -233,27 +235,6 @@ Three new test cases:
 Body per "C" above. Register in
 `internal/atdd/runtime/agents/registry.go` and embed via
 `internal/atdd/runtime/agents/embed.go`.
-
-### 5. Halt-with-clarity for infra failures
-
-**File:** `internal/atdd/runtime/actions/bindings.go`
-
-When `Class == infra`, before halting, print:
-
-```
-verify_run_tests_after_driver: runner failed before any test ran.
-Classified as: infra (orchestrator-side problem, not SUT).
-Detail: <captured stderr line that triggered classification>
-Tried: <command-line as printed>
-Cwd:   <repo root>
-
-This is an orchestrator bug. Halting before human review so the
-review prompt isn't asked under false assumptions.
-```
-
-Cross-link sibling plan `20260505-220100-verify-runs-from-wrong-cwd.md`
-in the prompt itself if the cwd fingerprint matches — saves the user
-from re-diagnosing.
 
 ## Out of scope
 
