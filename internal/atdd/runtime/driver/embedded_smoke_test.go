@@ -143,7 +143,14 @@ func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 		t.Fatal("structural_cycle flow missing FIX_STRUCT_VERIFY node")
 	}
 
-	out := node.Fn(newCtxWithIssue())
+	// FIX_STRUCT_VERIFY's phase_doc is templated (`${phase_doc}`) — the
+	// production caller is a call_activity that injects the value via
+	// params. Seed it directly here since this test invokes node.Fn
+	// outside the call_activity dispatch path.
+	ctx := newCtxWithIssue()
+	ctx.Params["phase_doc"] = "docs/atdd/process/system-interface-redesign.md"
+
+	out := node.Fn(ctx)
 	if out.Err != nil {
 		t.Fatalf("dispatch in consumer-empty dir failed: %v", out.Err)
 	}
