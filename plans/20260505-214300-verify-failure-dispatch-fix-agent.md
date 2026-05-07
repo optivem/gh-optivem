@@ -1,7 +1,5 @@
 # Verify-time test failures should not silently flow into human review
 
-> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-07T08:27:04Z`
-
 ## Symptom
 
 Running an `AT - RED - SYSTEM DRIVER - WRITE` cycle (chore on a Page Object
