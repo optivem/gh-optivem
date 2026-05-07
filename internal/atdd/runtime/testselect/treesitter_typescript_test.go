@@ -150,7 +150,7 @@ func BenchmarkTreeSitterIndex_TypeScript(b *testing.B) {
 func makeShopFixtureFiles(n int) []string {
 	out := make([]string, 0, n)
 	for i := 0; i < n; i++ {
-		out = append(out, fmt.Sprintf(shopFixtureTemplate, i, i, i, i, strings.Repeat("    await this.helper();\n", 4)))
+		out = append(out, fmt.Sprintf(shopFixtureTemplate, i, i, i, strings.Repeat("    await this.helper();\n", 4), i))
 	}
 	return out
 }
