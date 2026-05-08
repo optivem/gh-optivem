@@ -92,31 +92,6 @@ func newActions(deps Deps) actions {
 }
 
 // ---------------------------------------------------------------------------
-// askCanICommit
-// ---------------------------------------------------------------------------
-
-func TestAskCanICommit(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		answer  string
-		wantErr bool
-	}{
-		{name: "yes", answer: "y", wantErr: false},
-		{name: "no", answer: "n", wantErr: true},
-		{name: "empty_is_no", answer: "", wantErr: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			p := &fakePrompter{answers: []string{tc.answer}}
-			a := newActions(Deps{Prompter: p})
-			out := a.askCanICommit(statemachine.NewContext())
-			if (out.Err != nil) != tc.wantErr {
-				t.Fatalf("wantErr=%v, got %v", tc.wantErr, out.Err)
-			}
-		})
-	}
-}
-
-// ---------------------------------------------------------------------------
 // runSmokeTest
 // ---------------------------------------------------------------------------
 
@@ -978,7 +953,6 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"run_smoke_test",
 		"commit_onboarding",
 		"compile_in_scope",
-		"ask_can_i_commit",
 		"commit_phase",
 		"tick_checklist",
 		"select_tests",

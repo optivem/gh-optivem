@@ -113,7 +113,6 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("run_smoke_test", a.runSmokeTest)
 	r.Register("commit_onboarding", a.commitOnboarding)
 	r.Register("compile_in_scope", a.compileInScope)
-	r.Register("ask_can_i_commit", a.askCanICommit)
 	r.Register("commit_phase", a.commitPhase)
 	r.Register("tick_checklist", a.tickChecklist)
 	r.Register("select_tests", a.selectTests)
@@ -717,21 +716,6 @@ func (a actions) commitPhase(ctx *statemachine.Context) statemachine.Outcome {
 		Stdout:    a.deps.Stdout,
 	}); err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("commit_phase: %w", err)}
-	}
-	return statemachine.Outcome{}
-}
-
-// askCanICommit is the explicit "ask before every commit" gate from user
-// memory. A `no` answer halts the run; the user can resume from the same
-// node after fixing whatever they found wrong.
-func (a actions) askCanICommit(ctx *statemachine.Context) statemachine.Outcome {
-	ans, err := a.deps.Prompter.Ask("Can I commit? [y/N]: ")
-	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("ask_can_i_commit: %w", err)}
-	}
-	yes, ok := parseYesNo(ans)
-	if !ok || !yes {
-		return statemachine.Outcome{Err: errors.New("ask_can_i_commit: user declined commit; halting run")}
 	}
 	return statemachine.Outcome{}
 }

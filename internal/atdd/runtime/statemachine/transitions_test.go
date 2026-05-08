@@ -178,9 +178,10 @@ var transitionTable = []transitionCase{
 	{process: "run_cycle", from: "SUT_CYCLE", wantTo: "CYCLE_END"},
 
 	// ---- da_cycle ----
-	// Driver Adapter cycle. Splits on `change_type`: system-interface-redesign →
-	// shared structural_cycle (with the WRITE agent figuring out which
-	// driver to modify); external-system-interface-redesign → ct_subprocess.
+	// Driver Adapter cycle. Splits on `change_type`; both branches route to
+	// structural_cycle (system-interface-redesign rewrites an own Driver
+	// Adapter; external-system-interface-redesign rewrites an external Driver
+	// Adapter + its stub, leaving the DSL-level CT and DSL untouched).
 	{process: "da_cycle", from: "GATE_CHANGE_TYPE_DA", state: map[string]any{"change_type": "system-interface-redesign"}, wantTo: "SYSTEM_INTERFACE_REDESIGN_CYCLE"},
 	{process: "da_cycle", from: "GATE_CHANGE_TYPE_DA", state: map[string]any{"change_type": "external-system-interface-redesign"}, wantTo: "EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE"},
 	{process: "da_cycle", from: "SYSTEM_INTERFACE_REDESIGN_CYCLE", wantTo: "DA_END"},
@@ -252,26 +253,24 @@ var transitionTable = []transitionCase{
 
 	// ---- structural_cycle (shared by SYSAPI / SYSUI / CHORE via params) ----
 	// Structural-cycle escape: process-audit gap resolved — the TEST=skip
-	// branch jumps directly to ASK_COMMIT, bypassing both COMPILE/CHOOSE_TESTS/RUN_TESTS and
-	// the second STOP_STRUCT_TEST review.
+	// branch jumps directly to APPROVE_COMMIT, bypassing COMPILE/CHOOSE_TESTS/RUN_TESTS.
 	// Verify gate sits AFTER RUN_TESTS (BPMN-clean): test failure routes
 	// through the fix-agent loop back into CHOOSE_TESTS so the operator can
 	// re-pick scope after the agent's fix.
 	{process: "structural_cycle", from: "IMPLEMENT_STRUCTURAL_CHANGE", wantTo: "APPROVE_STRUCTURAL_CHANGE"},
 	{process: "structural_cycle", from: "APPROVE_STRUCTURAL_CHANGE", wantTo: "GATE_TEST_MODE"},
-	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "skip"}, wantTo: "ASK_COMMIT", desc: "skip mode escapes the TEST sub-loop entirely"},
+	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "skip"}, wantTo: "APPROVE_COMMIT", desc: "skip mode escapes the TEST sub-loop entirely"},
 	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "compile"}, wantTo: "COMPILE"},
 	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "full"}, wantTo: "COMPILE"},
 	{process: "structural_cycle", from: "COMPILE", state: map[string]any{"structural_test_mode": "full"}, wantTo: "CHOOSE_TESTS"},
-	{process: "structural_cycle", from: "COMPILE", state: map[string]any{"structural_test_mode": "compile"}, wantTo: "STOP_STRUCT_TEST"},
+	{process: "structural_cycle", from: "COMPILE", state: map[string]any{"structural_test_mode": "compile"}, wantTo: "APPROVE_COMMIT"},
 	{process: "structural_cycle", from: "CHOOSE_TESTS", wantTo: "RUN_TESTS"},
 	{process: "structural_cycle", from: "RUN_TESTS", wantTo: "GATE_STRUCT_VERIFY"},
-	{process: "structural_cycle", from: "GATE_STRUCT_VERIFY", state: map[string]any{"structural_verify_outcome": "ok"}, wantTo: "STOP_STRUCT_TEST", desc: "ok class continues to human TEST review"},
+	{process: "structural_cycle", from: "GATE_STRUCT_VERIFY", state: map[string]any{"structural_verify_outcome": "ok"}, wantTo: "APPROVE_COMMIT", desc: "ok class continues directly to commit gate"},
 	{process: "structural_cycle", from: "GATE_STRUCT_VERIFY", state: map[string]any{"structural_verify_outcome": "red"}, wantTo: "STOP_STRUCT_VERIFY_REVIEW", desc: "red class halts at a human review STOP before any fix-agent dispatch"},
 	{process: "structural_cycle", from: "STOP_STRUCT_VERIFY_REVIEW", wantTo: "FIX_STRUCT_VERIFY", desc: "human approves the dispatch and the fix-verify agent runs"},
 	{process: "structural_cycle", from: "FIX_STRUCT_VERIFY", wantTo: "CHOOSE_TESTS", desc: "fix agent loops back to test selection so the operator can re-pick scope"},
-	{process: "structural_cycle", from: "STOP_STRUCT_TEST", wantTo: "ASK_COMMIT"},
-	{process: "structural_cycle", from: "ASK_COMMIT", wantTo: "COMMIT_STRUCT"},
+	{process: "structural_cycle", from: "APPROVE_COMMIT", wantTo: "COMMIT_STRUCT"},
 	{process: "structural_cycle", from: "COMMIT_STRUCT", wantTo: "TICK_CHECKLIST"},
 	{process: "structural_cycle", from: "TICK_CHECKLIST", wantTo: "STRUCT_END"},
 

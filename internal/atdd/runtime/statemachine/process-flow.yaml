@@ -698,16 +698,11 @@ processes:
         phase_doc: ${phase_doc}
         documentation: "Dispatch fix agent on test RED — structural cycle expects green"
 
-      - id: STOP_STRUCT_TEST
+      - id: APPROVE_COMMIT
         type: user_task
         agent: human
         role: review
-        documentation: "STOP - HUMAN REVIEW — review TEST results"
-
-      - id: ASK_COMMIT
-        type: service_task
-        action: ask_can_i_commit
-        documentation: "Ask: Can I commit?"
+        documentation: "STOP - HUMAN REVIEW — approve commit?"
 
       - id: COMMIT_STRUCT
         type: service_task
@@ -727,18 +722,17 @@ processes:
     sequence_flows:
       - {from: IMPLEMENT_STRUCTURAL_CHANGE, to: APPROVE_STRUCTURAL_CHANGE}
       - {from: APPROVE_STRUCTURAL_CHANGE,   to: GATE_TEST_MODE}
-      - {from: GATE_TEST_MODE,              to: ASK_COMMIT,                when: "structural_test_mode == skip"}
+      - {from: GATE_TEST_MODE,              to: APPROVE_COMMIT,                when: "structural_test_mode == skip"}
       - {from: GATE_TEST_MODE,              to: COMPILE,                   when: "structural_test_mode in [compile, full]"}
       - {from: COMPILE,                     to: CHOOSE_TESTS,              when: "structural_test_mode == full"}
-      - {from: COMPILE,                     to: STOP_STRUCT_TEST,          when: "structural_test_mode == compile"}
+      - {from: COMPILE,                     to: APPROVE_COMMIT,                when: "structural_test_mode == compile"}
       - {from: CHOOSE_TESTS,                to: RUN_TESTS}
       - {from: RUN_TESTS,                   to: GATE_STRUCT_VERIFY}
-      - {from: GATE_STRUCT_VERIFY,          to: STOP_STRUCT_TEST,          when: "structural_verify_outcome == ok"}
+      - {from: GATE_STRUCT_VERIFY,          to: APPROVE_COMMIT,                when: "structural_verify_outcome == ok"}
       - {from: GATE_STRUCT_VERIFY,          to: STOP_STRUCT_VERIFY_REVIEW, when: "structural_verify_outcome == red"}
       - {from: STOP_STRUCT_VERIFY_REVIEW,   to: FIX_STRUCT_VERIFY}
       - {from: FIX_STRUCT_VERIFY,           to: CHOOSE_TESTS}
-      - {from: STOP_STRUCT_TEST,            to: ASK_COMMIT}
-      - {from: ASK_COMMIT,                  to: COMMIT_STRUCT}
+      - {from: APPROVE_COMMIT,                  to: COMMIT_STRUCT}
       - {from: COMMIT_STRUCT,               to: TICK_CHECKLIST}
       - {from: TICK_CHECKLIST,              to: STRUCT_END}
 
@@ -978,14 +972,15 @@ processes:
   # ===========================================================================
   # da_cycle
   # Driver Adapter cycle — entered when the change is a structural interface
-  # change. Splits on `subtype`:
+  # change. Splits on `subtype`, both branches routed through structural_cycle:
   #   - system-interface-redesign: a Driver Adapter we own (API, UI, mobile,
-  #     CLI, ...). Routed through structural_cycle. The WRITE agent reads the
-  #     ticket body + system to figure out which driver(s) to modify — the
-  #     framework no longer pre-classifies the channel.
-  #   - external-system-interface-redesign: an External System Driver
-  #     Adapter, routed through ct_subprocess (which embeds External System
-  #     Onboarding when the driver doesn't yet exist).
+  #     CLI, ...). The WRITE agent reads the ticket body + system to figure
+  #     out which driver(s) to modify — the framework no longer pre-classifies
+  #     the channel.
+  #   - external-system-interface-redesign: an External System Driver Adapter.
+  #     Pure adapter rewrite (and its stub); CT and DSL are at higher
+  #     abstraction and stay untouched, so test-first contract machinery
+  #     (ct_subprocess) is not used here.
   # ===========================================================================
   da_cycle:
     start: GATE_CHANGE_TYPE_DA
@@ -1006,7 +1001,12 @@ processes:
 
       - id: EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE
         type: call_activity
-        process: ct_subprocess
+        process: structural_cycle
+        params:
+          change_type: "EXTERNAL SYSTEM INTERFACE REDESIGN"
+          agent: atdd-task
+          phase_doc: docs/atdd/process/external-system-interface-redesign.md
+          subtype: external-system-interface-redesign
 
       - id: DA_END
         type: end_event

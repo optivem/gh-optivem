@@ -242,8 +242,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    APPROVE_COMMIT[STOP - HUMAN REVIEW — approve commit?]
     APPROVE_STRUCTURAL_CHANGE[STOP - HUMAN REVIEW — approve implementation]
-    ASK_COMMIT[[Ask: Can I commit?]]
     CHOOSE_TESTS[["Operator picks scope (all / some suites / specific tests / skip)"]]
     COMMIT_STRUCT[["COMMIT: <Ticket> | ${change_type}"]]
     COMPILE[[Compile in-scope projects]]
@@ -252,36 +252,34 @@ flowchart TD
     GATE_TEST_MODE{"TEST mode? (full | compile | skip)"}
     IMPLEMENT_STRUCTURAL_CHANGE["${change_type} - WRITE"]
     RUN_TESTS[["Run selected tests; classify pass/fail for the verify gate"]]
-    STOP_STRUCT_TEST[STOP - HUMAN REVIEW — review TEST results]
     STOP_STRUCT_VERIFY_REVIEW[STOP - HUMAN REVIEW — tests RED, dispatch fix agent?]
     STRUCT_END((End))
     TICK_CHECKLIST[[Tick checklist items]]
 
     IMPLEMENT_STRUCTURAL_CHANGE --> APPROVE_STRUCTURAL_CHANGE
     APPROVE_STRUCTURAL_CHANGE --> GATE_TEST_MODE
-    GATE_TEST_MODE -- skip --> ASK_COMMIT
+    GATE_TEST_MODE -- skip --> APPROVE_COMMIT
     GATE_TEST_MODE -- compile / full --> COMPILE
     COMPILE -- full --> CHOOSE_TESTS
-    COMPILE -- compile --> STOP_STRUCT_TEST
+    COMPILE -- compile --> APPROVE_COMMIT
     CHOOSE_TESTS --> RUN_TESTS
     RUN_TESTS --> GATE_STRUCT_VERIFY
-    GATE_STRUCT_VERIFY -- ok --> STOP_STRUCT_TEST
+    GATE_STRUCT_VERIFY -- ok --> APPROVE_COMMIT
     GATE_STRUCT_VERIFY -- red --> STOP_STRUCT_VERIFY_REVIEW
     STOP_STRUCT_VERIFY_REVIEW --> FIX_STRUCT_VERIFY
     FIX_STRUCT_VERIFY --> CHOOSE_TESTS
-    STOP_STRUCT_TEST --> ASK_COMMIT
-    ASK_COMMIT --> COMMIT_STRUCT
+    APPROVE_COMMIT --> COMMIT_STRUCT
     COMMIT_STRUCT --> TICK_CHECKLIST
     TICK_CHECKLIST --> STRUCT_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class ASK_COMMIT,CHOOSE_TESTS,COMMIT_STRUCT,COMPILE,RUN_TESTS,TICK_CHECKLIST serviceNode
+    class CHOOSE_TESTS,COMMIT_STRUCT,COMPILE,RUN_TESTS,TICK_CHECKLIST serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
     class FIX_STRUCT_VERIFY,IMPLEMENT_STRUCTURAL_CHANGE agentNode
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class APPROVE_STRUCTURAL_CHANGE,STOP_STRUCT_TEST,STOP_STRUCT_VERIFY_REVIEW humanNode
+    class APPROVE_COMMIT,APPROVE_STRUCTURAL_CHANGE,STOP_STRUCT_VERIFY_REVIEW humanNode
 ```
 
 ## Legacy Acceptance Criteria Cycle

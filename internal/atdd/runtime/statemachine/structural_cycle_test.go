@@ -76,7 +76,7 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 	ctx.Set("legacy_acceptance_criteria_section_present", false)
 	ctx.Set("structural_test_mode", "full")
 	// Happy-path verify: GATE_STRUCT_VERIFY (post-RUN_TESTS) routes ok →
-	// STOP_STRUCT_TEST. The test's gate mock echoes whatever ctx[binding]
+	// APPROVE_COMMIT. The test's gate mock echoes whatever ctx[binding]
 	// is, so we seed the gateway's binding name directly. Red would route
 	// to STOP_STRUCT_VERIFY_REVIEW → FIX_STRUCT_VERIFY → CHOOSE_TESTS;
 	// gate-specific routing (retry counter etc.) is exercised in
@@ -100,8 +100,7 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 		"structural_cycle.COMPILE",
 		"structural_cycle.CHOOSE_TESTS",
 		"structural_cycle.RUN_TESTS",
-		"structural_cycle.STOP_STRUCT_TEST",
-		"structural_cycle.ASK_COMMIT",
+		"structural_cycle.APPROVE_COMMIT",
 		"structural_cycle.COMMIT_STRUCT",
 		"structural_cycle.TICK_CHECKLIST",
 		"main.MOVE_TICKET_IN_ACCEPTANCE",

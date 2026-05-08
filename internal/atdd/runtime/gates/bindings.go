@@ -243,7 +243,7 @@ func (b bindings) subtype(ctx *statemachine.Context) statemachine.Outcome {
 //
 // Routing tokens (consumed by the YAML's `when:` clauses):
 //
-//   - "ok"       — green (or no commands ran). Continue to STOP_STRUCT_TEST.
+//   - "ok"       — green (or no commands ran). Continue to APPROVE_COMMIT.
 //   - "red"      — first red of this cycle. Increments verify_retries and
 //                  returns "red" so the gateway routes to FIX_STRUCT_VERIFY,
 //                  which dispatches atdd-fix-verify and loops back to
