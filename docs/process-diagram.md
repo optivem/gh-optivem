@@ -300,7 +300,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     DA_END((End))
-    EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE[EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE — see § Contract Test Sub-Process]
+    EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE["EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE — see § Structural Cycle (shared)"]
     GATE_CHANGE_TYPE_DA{System or external-system interface?}
     SYSTEM_INTERFACE_REDESIGN_CYCLE["SYSTEM_INTERFACE_REDESIGN_CYCLE — see § Structural Cycle (shared)"]
 
