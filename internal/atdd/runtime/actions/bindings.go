@@ -111,7 +111,6 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("report_intake_summary", a.reportIntakeSummary)
 	r.Register("move_to_in_acceptance", a.moveToInAcceptance)
 	r.Register("run_smoke_test", a.runSmokeTest)
-	r.Register("commit_onboarding", a.commitOnboarding)
 	r.Register("compile_in_scope", a.compileInScope)
 	r.Register("commit_phase", a.commitPhase)
 	r.Register("tick_checklist", a.tickChecklist)
@@ -666,33 +665,6 @@ func (a actions) runSmokeTest(ctx *statemachine.Context) statemachine.Outcome {
 // ---------------------------------------------------------------------------
 // Commit / release actions
 // ---------------------------------------------------------------------------
-
-// commitOnboarding creates a single commit named after the external system
-// being onboarded. The system name comes from Context["external_system_name"]
-// (set by the onboarding sub-flow's intake) or falls back to a prompt.
-func (a actions) commitOnboarding(ctx *statemachine.Context) statemachine.Outcome {
-	name := ctx.GetString("external_system_name")
-	if name == "" {
-		ans, err := a.deps.Prompter.Ask("External system name (for commit message): ")
-		if err != nil {
-			return statemachine.Outcome{Err: fmt.Errorf("commit_onboarding: %w", err)}
-		}
-		name = strings.TrimSpace(ans)
-		if name == "" {
-			return statemachine.Outcome{Err: fmt.Errorf("commit_onboarding: external system name is required")}
-		}
-	}
-	msg := fmt.Sprintf("External System Onboarding | %s", name)
-	if err := release.Commit(context.Background(), release.CommitOptions{
-		Message:   msg,
-		Confirm:   a.confirmer(),
-		GitRunner: gitReleaseAdapter{a.deps.Git},
-		Stdout:    a.deps.Stdout,
-	}); err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("commit_onboarding: %w", err)}
-	}
-	return statemachine.Outcome{}
-}
 
 // commitPhase creates the phase commit. The message format mirrors
 // cycles.md: `<Ticket Title> | <CHANGE TYPE>`. Both pieces come from

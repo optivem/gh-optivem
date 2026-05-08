@@ -100,8 +100,11 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 		"structural_cycle.COMPILE",
 		"structural_cycle.CHOOSE_TESTS",
 		"structural_cycle.RUN_TESTS",
-		"structural_cycle.APPROVE_COMMIT",
-		"structural_cycle.COMMIT_STRUCT",
+		// structural_cycle.COMMIT is a call_activity into the shared commit
+		// sub-process — its inner APPROVE_COMMIT + EXECUTE_COMMIT show up
+		// here instead of a single structural_cycle.COMMIT service_task.
+		"commit.APPROVE_COMMIT",
+		"commit.EXECUTE_COMMIT",
 		"structural_cycle.TICK_CHECKLIST",
 		"main.MOVE_TICKET_IN_ACCEPTANCE",
 	}

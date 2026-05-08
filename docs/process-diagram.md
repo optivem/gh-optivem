@@ -146,26 +146,21 @@ flowchart TD
 flowchart TD
     AT_GREEN_BACKEND["AT - GREEN - SYSTEM - WRITE (backend) — see § green_phase_cycle"]
     AT_GREEN_FRONTEND["AT - GREEN - SYSTEM - WRITE (frontend) — see § green_phase_cycle"]
-    COMMIT_GREEN[["COMMIT: <Ticket> | AT - GREEN - SYSTEM"]]
+    COMMIT[COMMIT — see § Commit Sub-Process]
     ENABLE_TESTS[[Re-enable tests disabled in AT - RED - SYSTEM DRIVER]]
     GS_END((End))
     MOVE_TICKET_IN_ACCEPTANCE[[Move ticket to TICKET STATUS - IN ACCEPTANCE]]
-    STOP_GREEN_REVIEW[STOP - HUMAN REVIEW — approve implementation]
     TICK[[Tick acceptance-criteria checklist items]]
 
     ENABLE_TESTS --> AT_GREEN_BACKEND
     AT_GREEN_BACKEND --> AT_GREEN_FRONTEND
-    AT_GREEN_FRONTEND --> STOP_GREEN_REVIEW
-    STOP_GREEN_REVIEW --> COMMIT_GREEN
-    COMMIT_GREEN --> TICK
+    AT_GREEN_FRONTEND --> COMMIT
+    COMMIT --> TICK
     TICK --> MOVE_TICKET_IN_ACCEPTANCE
     MOVE_TICKET_IN_ACCEPTANCE --> GS_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class COMMIT_GREEN,ENABLE_TESTS,MOVE_TICKET_IN_ACCEPTANCE,TICK serviceNode
-
-    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class STOP_GREEN_REVIEW humanNode
+    class ENABLE_TESTS,MOVE_TICKET_IN_ACCEPTANCE,TICK serviceNode
 ```
 
 ## Contract Test Sub-Process
@@ -205,7 +200,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     ASK_SUPPORT[Ask user for support and STOP]
-    COMMIT_ONBOARD[["COMMIT: External System Onboarding | <name>"]]
+    COMMIT[COMMIT — see § Commit Sub-Process]
     DEFINE_IFACE[Define minimal Driver interface]
     GATE_DRIVER_EXISTS{External System Driver exists?}
     GATE_INSTANCE_ACCESSIBLE{Test Instance accessible?}
@@ -214,7 +209,6 @@ flowchart TD
     ONBOARD_END((End))
     PROVISION[Provision dockerized stand-in]
     RUN_SMOKE[[Run Smoke Test]]
-    STOP_ONBOARD_REVIEW[STOP - HUMAN REVIEW — approve onboarding artifacts]
     WRITE_SMOKE[Write single Smoke Test]
 
     GATE_DRIVER_EXISTS -- Yes --> ONBOARD_END
@@ -227,25 +221,23 @@ flowchart TD
     WRITE_SMOKE --> RUN_SMOKE
     RUN_SMOKE --> GATE_SMOKE_PASS
     GATE_SMOKE_PASS -- No --> ASK_SUPPORT
-    GATE_SMOKE_PASS -- Yes --> STOP_ONBOARD_REVIEW
-    STOP_ONBOARD_REVIEW --> COMMIT_ONBOARD
-    COMMIT_ONBOARD --> ONBOARD_END
+    GATE_SMOKE_PASS -- Yes --> COMMIT
+    COMMIT --> ONBOARD_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class COMMIT_ONBOARD,RUN_SMOKE serviceNode
+    class RUN_SMOKE serviceNode
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class ASK_SUPPORT,DEFINE_IFACE,IMPL_DRIVER,PROVISION,STOP_ONBOARD_REVIEW,WRITE_SMOKE humanNode
+    class ASK_SUPPORT,DEFINE_IFACE,IMPL_DRIVER,PROVISION,WRITE_SMOKE humanNode
 ```
 
 ## Structural Cycle (shared)
 
 ```mermaid
 flowchart TD
-    APPROVE_COMMIT[STOP - HUMAN REVIEW — approve commit?]
     APPROVE_STRUCTURAL_CHANGE[STOP - HUMAN REVIEW — approve implementation]
     CHOOSE_TESTS[["Operator picks scope (all / some suites / specific tests / skip)"]]
-    COMMIT_STRUCT[["COMMIT: <Ticket> | ${change_type}"]]
+    COMMIT[COMMIT — see § Commit Sub-Process]
     COMPILE[[Compile in-scope projects]]
     FIX_STRUCT_VERIFY[Dispatch fix agent on test RED — structural cycle expects green]
     GATE_STRUCT_VERIFY{"Test outcome? (ok | red — fix and retry)"}
@@ -258,28 +250,45 @@ flowchart TD
 
     IMPLEMENT_STRUCTURAL_CHANGE --> APPROVE_STRUCTURAL_CHANGE
     APPROVE_STRUCTURAL_CHANGE --> GATE_TEST_MODE
-    GATE_TEST_MODE -- skip --> APPROVE_COMMIT
+    GATE_TEST_MODE -- skip --> COMMIT
     GATE_TEST_MODE -- compile / full --> COMPILE
     COMPILE -- full --> CHOOSE_TESTS
-    COMPILE -- compile --> APPROVE_COMMIT
+    COMPILE -- compile --> COMMIT
     CHOOSE_TESTS --> RUN_TESTS
     RUN_TESTS --> GATE_STRUCT_VERIFY
-    GATE_STRUCT_VERIFY -- ok --> APPROVE_COMMIT
+    GATE_STRUCT_VERIFY -- ok --> COMMIT
     GATE_STRUCT_VERIFY -- red --> STOP_STRUCT_VERIFY_REVIEW
     STOP_STRUCT_VERIFY_REVIEW --> FIX_STRUCT_VERIFY
     FIX_STRUCT_VERIFY --> CHOOSE_TESTS
-    APPROVE_COMMIT --> COMMIT_STRUCT
-    COMMIT_STRUCT --> TICK_CHECKLIST
+    COMMIT --> TICK_CHECKLIST
     TICK_CHECKLIST --> STRUCT_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class CHOOSE_TESTS,COMMIT_STRUCT,COMPILE,RUN_TESTS,TICK_CHECKLIST serviceNode
+    class CHOOSE_TESTS,COMPILE,RUN_TESTS,TICK_CHECKLIST serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
     class FIX_STRUCT_VERIFY,IMPLEMENT_STRUCTURAL_CHANGE agentNode
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class APPROVE_COMMIT,APPROVE_STRUCTURAL_CHANGE,STOP_STRUCT_VERIFY_REVIEW humanNode
+    class APPROVE_STRUCTURAL_CHANGE,STOP_STRUCT_VERIFY_REVIEW humanNode
+```
+
+## Commit Sub-Process
+
+```mermaid
+flowchart TD
+    APPROVE_COMMIT[STOP - HUMAN REVIEW — approve commit?]
+    COMMIT_END((End))
+    EXECUTE_COMMIT[["COMMIT: <Ticket> | ${change_type}"]]
+
+    APPROVE_COMMIT --> EXECUTE_COMMIT
+    EXECUTE_COMMIT --> COMMIT_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class EXECUTE_COMMIT serviceNode
+
+    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
+    class APPROVE_COMMIT humanNode
 ```
 
 ## Legacy Acceptance Criteria Cycle
@@ -300,7 +309,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     DA_END((End))
-    EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE[EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE — see § Contract Test Sub-Process]
+    EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE["EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE — see § Structural Cycle (shared)"]
     GATE_CHANGE_TYPE_DA{System or external-system interface?}
     SYSTEM_INTERFACE_REDESIGN_CYCLE["SYSTEM_INTERFACE_REDESIGN_CYCLE — see § Structural Cycle (shared)"]
 
@@ -347,7 +356,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    COMMIT[["COMMIT: <Ticket> | ${change_type}"]]
+    COMMIT[COMMIT — see § Commit Sub-Process]
     COMPILE[[Compile in scope]]
     DISABLE[[Disable change-driven scenarios]]
     GATE_COMPILE_OK{Compile passed?}
@@ -385,7 +394,7 @@ flowchart TD
     COMMIT --> RED_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class COMMIT,COMPILE,DISABLE,RUN,VERIFY_REAL serviceNode
+    class COMPILE,DISABLE,RUN,VERIFY_REAL serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
     class WRITE,WRITE_PROTOTYPES agentNode

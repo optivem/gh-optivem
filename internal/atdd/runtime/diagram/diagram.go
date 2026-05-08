@@ -41,6 +41,7 @@ var processAlias = map[string]string{
 	"ct_subprocess":              "Contract Test Sub-Process",
 	"external_system_onboarding": "External System Onboarding Sub-Process",
 	"structural_cycle":           "Structural Cycle (shared)",
+	"commit":                     "Commit Sub-Process",
 	"legacy_acceptance_criteria": "Legacy Acceptance Criteria Cycle",
 }
 
@@ -70,6 +71,7 @@ var processOrder = []string{
 	"ct_subprocess",
 	"external_system_onboarding",
 	"structural_cycle",
+	"commit",
 	"legacy_acceptance_criteria",
 }
 

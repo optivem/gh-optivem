@@ -51,6 +51,7 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"structural_cycle",
 		"red_phase_cycle",
 		"green_phase_cycle",
+		"commit",
 		"legacy_acceptance_criteria",
 	}
 	for _, name := range wantProcesses {
@@ -211,14 +212,14 @@ var transitionTable = []transitionCase{
 	// ---- at_green_system ----
 	// Decomposed per the AT/CT split plan: ENABLE_TESTS (re-enable disabled
 	// tests) → AT_GREEN_BACKEND/AT_GREEN_FRONTEND (call_activity into the
-	// shared green_phase_cycle, one per channel) → STOP_GREEN_REVIEW →
-	// COMMIT_GREEN → TICK → MOVE_TICKET_IN_ACCEPTANCE. The legacy ATDD_RELEASE
-	// user_task is replaced by the existing service_task actions.
+	// shared green_phase_cycle, one per channel) → COMMIT (call_activity
+	// into the shared commit sub-process) → TICK → MOVE_TICKET_IN_ACCEPTANCE.
+	// The legacy ATDD_RELEASE user_task is replaced by the existing
+	// service_task actions.
 	{process: "at_green_system", from: "ENABLE_TESTS", wantTo: "AT_GREEN_BACKEND"},
 	{process: "at_green_system", from: "AT_GREEN_BACKEND", wantTo: "AT_GREEN_FRONTEND"},
-	{process: "at_green_system", from: "AT_GREEN_FRONTEND", wantTo: "STOP_GREEN_REVIEW"},
-	{process: "at_green_system", from: "STOP_GREEN_REVIEW", wantTo: "COMMIT_GREEN"},
-	{process: "at_green_system", from: "COMMIT_GREEN", wantTo: "TICK"},
+	{process: "at_green_system", from: "AT_GREEN_FRONTEND", wantTo: "COMMIT"},
+	{process: "at_green_system", from: "COMMIT", wantTo: "TICK"},
 	{process: "at_green_system", from: "TICK", wantTo: "MOVE_TICKET_IN_ACCEPTANCE"},
 	{process: "at_green_system", from: "MOVE_TICKET_IN_ACCEPTANCE", wantTo: "GS_END"},
 
@@ -247,31 +248,30 @@ var transitionTable = []transitionCase{
 	{process: "external_system_onboarding", from: "WRITE_SMOKE", wantTo: "RUN_SMOKE"},
 	{process: "external_system_onboarding", from: "RUN_SMOKE", wantTo: "GATE_SMOKE_PASS"},
 	{process: "external_system_onboarding", from: "GATE_SMOKE_PASS", state: map[string]any{"smoke_test_passes": false}, wantTo: "ASK_SUPPORT", desc: "smoke fail → STOP and ask user (no auto-resume)"},
-	{process: "external_system_onboarding", from: "GATE_SMOKE_PASS", state: map[string]any{"smoke_test_passes": true}, wantTo: "STOP_ONBOARD_REVIEW"},
-	{process: "external_system_onboarding", from: "STOP_ONBOARD_REVIEW", wantTo: "COMMIT_ONBOARD"},
-	{process: "external_system_onboarding", from: "COMMIT_ONBOARD", wantTo: "ONBOARD_END"},
+	{process: "external_system_onboarding", from: "GATE_SMOKE_PASS", state: map[string]any{"smoke_test_passes": true}, wantTo: "COMMIT"},
+	{process: "external_system_onboarding", from: "COMMIT", wantTo: "ONBOARD_END"},
 
 	// ---- structural_cycle (shared by SYSAPI / SYSUI / CHORE via params) ----
 	// Structural-cycle escape: process-audit gap resolved — the TEST=skip
-	// branch jumps directly to APPROVE_COMMIT, bypassing COMPILE/CHOOSE_TESTS/RUN_TESTS.
-	// Verify gate sits AFTER RUN_TESTS (BPMN-clean): test failure routes
-	// through the fix-agent loop back into CHOOSE_TESTS so the operator can
-	// re-pick scope after the agent's fix.
+	// branch jumps directly to COMMIT (the call_activity into the shared
+	// commit sub-process), bypassing COMPILE/CHOOSE_TESTS/RUN_TESTS. Verify
+	// gate sits AFTER RUN_TESTS (BPMN-clean): test failure routes through
+	// the fix-agent loop back into CHOOSE_TESTS so the operator can re-pick
+	// scope after the agent's fix.
 	{process: "structural_cycle", from: "IMPLEMENT_STRUCTURAL_CHANGE", wantTo: "APPROVE_STRUCTURAL_CHANGE"},
 	{process: "structural_cycle", from: "APPROVE_STRUCTURAL_CHANGE", wantTo: "GATE_TEST_MODE"},
-	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "skip"}, wantTo: "APPROVE_COMMIT", desc: "skip mode escapes the TEST sub-loop entirely"},
+	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "skip"}, wantTo: "COMMIT", desc: "skip mode escapes the TEST sub-loop entirely"},
 	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "compile"}, wantTo: "COMPILE"},
 	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "full"}, wantTo: "COMPILE"},
 	{process: "structural_cycle", from: "COMPILE", state: map[string]any{"structural_test_mode": "full"}, wantTo: "CHOOSE_TESTS"},
-	{process: "structural_cycle", from: "COMPILE", state: map[string]any{"structural_test_mode": "compile"}, wantTo: "APPROVE_COMMIT"},
+	{process: "structural_cycle", from: "COMPILE", state: map[string]any{"structural_test_mode": "compile"}, wantTo: "COMMIT"},
 	{process: "structural_cycle", from: "CHOOSE_TESTS", wantTo: "RUN_TESTS"},
 	{process: "structural_cycle", from: "RUN_TESTS", wantTo: "GATE_STRUCT_VERIFY"},
-	{process: "structural_cycle", from: "GATE_STRUCT_VERIFY", state: map[string]any{"structural_verify_outcome": "ok"}, wantTo: "APPROVE_COMMIT", desc: "ok class continues directly to commit gate"},
+	{process: "structural_cycle", from: "GATE_STRUCT_VERIFY", state: map[string]any{"structural_verify_outcome": "ok"}, wantTo: "COMMIT", desc: "ok class continues directly to commit gate"},
 	{process: "structural_cycle", from: "GATE_STRUCT_VERIFY", state: map[string]any{"structural_verify_outcome": "red"}, wantTo: "STOP_STRUCT_VERIFY_REVIEW", desc: "red class halts at a human review STOP before any fix-agent dispatch"},
 	{process: "structural_cycle", from: "STOP_STRUCT_VERIFY_REVIEW", wantTo: "FIX_STRUCT_VERIFY", desc: "human approves the dispatch and the fix-verify agent runs"},
 	{process: "structural_cycle", from: "FIX_STRUCT_VERIFY", wantTo: "CHOOSE_TESTS", desc: "fix agent loops back to test selection so the operator can re-pick scope"},
-	{process: "structural_cycle", from: "APPROVE_COMMIT", wantTo: "COMMIT_STRUCT"},
-	{process: "structural_cycle", from: "COMMIT_STRUCT", wantTo: "TICK_CHECKLIST"},
+	{process: "structural_cycle", from: "COMMIT", wantTo: "TICK_CHECKLIST"},
 	{process: "structural_cycle", from: "TICK_CHECKLIST", wantTo: "STRUCT_END"},
 
 	// ---- red_phase_cycle (shared by AT/CT RED-WRITE phases via params) ----
@@ -314,6 +314,13 @@ var transitionTable = []transitionCase{
 	{process: "green_phase_cycle", from: "GATE_TESTS_PASS", state: map[string]any{"tests_pass": true}, wantTo: "GREEN_END", desc: "all tests pass → end"},
 	{process: "green_phase_cycle", from: "GATE_TESTS_PASS", state: map[string]any{"tests_pass": false}, wantTo: "STOP_GREEN_TEST_FAIL", desc: "any test fails → human STOP"},
 	{process: "green_phase_cycle", from: "STOP_GREEN_TEST_FAIL", wantTo: "WRITE", desc: "after STOP, retry from WRITE"},
+
+	// ---- commit (shared sub-process: pairs APPROVE_COMMIT with EXECUTE_COMMIT) ----
+	// Every commit in the orchestration is dispatched through this sub-process;
+	// extracting it makes "approval precedes execution" a structural invariant
+	// rather than a pattern any caller could quietly break.
+	{process: "commit", from: "APPROVE_COMMIT", wantTo: "EXECUTE_COMMIT"},
+	{process: "commit", from: "EXECUTE_COMMIT", wantTo: "COMMIT_END"},
 
 	// ---- legacy_acceptance_criteria ----
 	// Legacy Acceptance Criteria Cycle interim spec: a single STOP node, per

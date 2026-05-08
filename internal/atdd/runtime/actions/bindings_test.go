@@ -151,7 +151,7 @@ func TestCompileInScope_RunsScriptAndPropagatesError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// commitPhase / commitOnboarding (exercise the release.Confirmer wiring)
+// commitPhase (exercises the release.Confirmer wiring)
 // ---------------------------------------------------------------------------
 
 func TestCommitPhase_SuccessPath(t *testing.T) {
@@ -194,21 +194,6 @@ func TestCommitPhase_DeclineHaltsRun(t *testing.T) {
 	out := a.commitPhase(ctx)
 	if out.Err == nil {
 		t.Fatalf("expected error on decline")
-	}
-}
-
-func TestCommitOnboarding_UsesExternalSystemName(t *testing.T) {
-	git := newFakeRunner(t, "git")
-	git.on([]string{"add", "-A"}, nil, nil)
-	git.on([]string{"status", "--short"}, []byte(""), nil)
-	git.on([]string{"commit", "-m", "External System Onboarding | acme-inventory"}, nil, nil)
-	p := &fakePrompter{answers: []string{"y"}}
-	a := newActions(Deps{Git: git, Prompter: p})
-	ctx := statemachine.NewContext()
-	ctx.Set("external_system_name", "acme-inventory")
-	out := a.commitOnboarding(ctx)
-	if out.Err != nil {
-		t.Fatalf("unexpected error: %v", out.Err)
 	}
 }
 
@@ -951,7 +936,6 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"report_intake_summary",
 		"move_to_in_acceptance",
 		"run_smoke_test",
-		"commit_onboarding",
 		"compile_in_scope",
 		"commit_phase",
 		"tick_checklist",

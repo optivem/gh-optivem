@@ -126,7 +126,11 @@ func TestImplementTicket_Behavioral_TestOnly(t *testing.T) {
 		"red_phase_cycle.COMPILE",
 		"red_phase_cycle.RUN",
 		"red_phase_cycle.DISABLE",
-		"red_phase_cycle.COMMIT",
+		// red_phase_cycle.COMMIT is a call_activity into the shared commit
+		// sub-process — its inner APPROVE_COMMIT + EXECUTE_COMMIT show up
+		// here instead of a single red_phase_cycle.COMMIT service_task.
+		"commit.APPROVE_COMMIT",
+		"commit.EXECUTE_COMMIT",
 		// AT - GREEN - SYSTEM (green_phase_cycle dispatched twice)
 		"at_green_system.ENABLE_TESTS",
 		"green_phase_cycle.WRITE", // backend
@@ -135,8 +139,8 @@ func TestImplementTicket_Behavioral_TestOnly(t *testing.T) {
 		"green_phase_cycle.WRITE", // frontend
 		"green_phase_cycle.COMPILE",
 		"green_phase_cycle.RUN",
-		"at_green_system.STOP_GREEN_REVIEW",
-		"at_green_system.COMMIT_GREEN",
+		"commit.APPROVE_COMMIT",
+		"commit.EXECUTE_COMMIT",
 		"at_green_system.TICK",
 		"at_green_system.MOVE_TICKET_IN_ACCEPTANCE",
 		"main.MOVE_TICKET_IN_ACCEPTANCE",
@@ -189,14 +193,18 @@ func TestImplementTicket_Behavioral_TestAndDSL(t *testing.T) {
 		"red_phase_cycle.COMPILE",
 		"red_phase_cycle.RUN",
 		"red_phase_cycle.DISABLE",
-		"red_phase_cycle.COMMIT",
+		// commit sub-process for AT - RED - TEST
+		"commit.APPROVE_COMMIT",
+		"commit.EXECUTE_COMMIT",
 		// AT - RED - DSL (red_phase_cycle dispatched with agent=atdd-dsl)
 		"red_phase_cycle.WRITE",
 		"red_phase_cycle.STOP_RED_REVIEW",
 		"red_phase_cycle.COMPILE",
 		"red_phase_cycle.RUN",
 		"red_phase_cycle.DISABLE",
-		"red_phase_cycle.COMMIT",
+		// commit sub-process for AT - RED - DSL
+		"commit.APPROVE_COMMIT",
+		"commit.EXECUTE_COMMIT",
 		// AT - GREEN - SYSTEM (green_phase_cycle dispatched twice)
 		"at_green_system.ENABLE_TESTS",
 		"green_phase_cycle.WRITE", // backend
@@ -205,8 +213,9 @@ func TestImplementTicket_Behavioral_TestAndDSL(t *testing.T) {
 		"green_phase_cycle.WRITE", // frontend
 		"green_phase_cycle.COMPILE",
 		"green_phase_cycle.RUN",
-		"at_green_system.STOP_GREEN_REVIEW",
-		"at_green_system.COMMIT_GREEN",
+		// commit sub-process for AT - GREEN - SYSTEM
+		"commit.APPROVE_COMMIT",
+		"commit.EXECUTE_COMMIT",
 		"at_green_system.TICK",
 		"at_green_system.MOVE_TICKET_IN_ACCEPTANCE",
 		"main.MOVE_TICKET_IN_ACCEPTANCE",

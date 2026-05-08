@@ -430,18 +430,11 @@ processes:
           rebuild_before_run: "true"
         documentation: "AT - GREEN - SYSTEM - WRITE (frontend)"
 
-      - id: STOP_GREEN_REVIEW
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — approve implementation"
-
-      - id: COMMIT_GREEN
-        type: service_task
-        action: commit_phase
+      - id: COMMIT
+        type: call_activity
+        process: commit
         params:
           change_type: "AT - GREEN - SYSTEM"
-        documentation: "COMMIT: <Ticket> | AT - GREEN - SYSTEM"
 
       - id: TICK
         type: service_task
@@ -459,9 +452,8 @@ processes:
     sequence_flows:
       - {from: ENABLE_TESTS,         to: AT_GREEN_BACKEND}
       - {from: AT_GREEN_BACKEND,     to: AT_GREEN_FRONTEND}
-      - {from: AT_GREEN_FRONTEND,    to: STOP_GREEN_REVIEW}
-      - {from: STOP_GREEN_REVIEW,    to: COMMIT_GREEN}
-      - {from: COMMIT_GREEN,         to: TICK}
+      - {from: AT_GREEN_FRONTEND,    to: COMMIT}
+      - {from: COMMIT,               to: TICK}
       - {from: TICK,                 to: MOVE_TICKET_IN_ACCEPTANCE}
       - {from: MOVE_TICKET_IN_ACCEPTANCE, to: GS_END}
 
@@ -610,16 +602,11 @@ processes:
         role: review
         documentation: "Ask user for support and STOP"
 
-      - id: STOP_ONBOARD_REVIEW
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — approve onboarding artifacts"
-
-      - id: COMMIT_ONBOARD
-        type: service_task
-        action: commit_onboarding
-        documentation: "COMMIT: External System Onboarding | <name>"
+      - id: COMMIT
+        type: call_activity
+        process: commit
+        params:
+          change_type: "External System Onboarding | <name>"
 
       - id: ONBOARD_END
         type: end_event
@@ -635,9 +622,8 @@ processes:
       - {from: WRITE_SMOKE,             to: RUN_SMOKE}
       - {from: RUN_SMOKE,               to: GATE_SMOKE_PASS}
       - {from: GATE_SMOKE_PASS,         to: ASK_SUPPORT,             when: "smoke_test_passes == false"}
-      - {from: GATE_SMOKE_PASS,         to: STOP_ONBOARD_REVIEW,     when: "smoke_test_passes == true"}
-      - {from: STOP_ONBOARD_REVIEW,     to: COMMIT_ONBOARD}
-      - {from: COMMIT_ONBOARD,          to: ONBOARD_END}
+      - {from: GATE_SMOKE_PASS,         to: COMMIT,                  when: "smoke_test_passes == true"}
+      - {from: COMMIT,                  to: ONBOARD_END}
 
   # ===========================================================================
   # structural_cycle
@@ -698,18 +684,11 @@ processes:
         phase_doc: ${phase_doc}
         documentation: "Dispatch fix agent on test RED — structural cycle expects green"
 
-      - id: APPROVE_COMMIT
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — approve commit?"
-
-      - id: COMMIT_STRUCT
-        type: service_task
-        action: commit_phase
+      - id: COMMIT
+        type: call_activity
+        process: commit
         params:
           change_type: ${change_type}
-        documentation: "COMMIT: <Ticket> | ${change_type}"
 
       - id: TICK_CHECKLIST
         type: service_task
@@ -722,18 +701,17 @@ processes:
     sequence_flows:
       - {from: IMPLEMENT_STRUCTURAL_CHANGE, to: APPROVE_STRUCTURAL_CHANGE}
       - {from: APPROVE_STRUCTURAL_CHANGE,   to: GATE_TEST_MODE}
-      - {from: GATE_TEST_MODE,              to: APPROVE_COMMIT,                when: "structural_test_mode == skip"}
+      - {from: GATE_TEST_MODE,              to: COMMIT,                    when: "structural_test_mode == skip"}
       - {from: GATE_TEST_MODE,              to: COMPILE,                   when: "structural_test_mode in [compile, full]"}
       - {from: COMPILE,                     to: CHOOSE_TESTS,              when: "structural_test_mode == full"}
-      - {from: COMPILE,                     to: APPROVE_COMMIT,                when: "structural_test_mode == compile"}
+      - {from: COMPILE,                     to: COMMIT,                    when: "structural_test_mode == compile"}
       - {from: CHOOSE_TESTS,                to: RUN_TESTS}
       - {from: RUN_TESTS,                   to: GATE_STRUCT_VERIFY}
-      - {from: GATE_STRUCT_VERIFY,          to: APPROVE_COMMIT,                when: "structural_verify_outcome == ok"}
+      - {from: GATE_STRUCT_VERIFY,          to: COMMIT,                    when: "structural_verify_outcome == ok"}
       - {from: GATE_STRUCT_VERIFY,          to: STOP_STRUCT_VERIFY_REVIEW, when: "structural_verify_outcome == red"}
       - {from: STOP_STRUCT_VERIFY_REVIEW,   to: FIX_STRUCT_VERIFY}
       - {from: FIX_STRUCT_VERIFY,           to: CHOOSE_TESTS}
-      - {from: APPROVE_COMMIT,                  to: COMMIT_STRUCT}
-      - {from: COMMIT_STRUCT,               to: TICK_CHECKLIST}
+      - {from: COMMIT,                      to: TICK_CHECKLIST}
       - {from: TICK_CHECKLIST,              to: STRUCT_END}
 
   # ===========================================================================
@@ -858,11 +836,10 @@ processes:
         documentation: "Disable change-driven scenarios"
 
       - id: COMMIT
-        type: service_task
-        action: commit_phase
+        type: call_activity
+        process: commit
         params:
           change_type: ${change_type}
-        documentation: "COMMIT: <Ticket> | ${change_type}"
 
       - id: RED_END
         type: end_event
@@ -968,6 +945,42 @@ processes:
       - {from: GATE_TESTS_PASS,          to: GREEN_END,              when: "tests_pass == true"}
       - {from: GATE_TESTS_PASS,          to: STOP_GREEN_TEST_FAIL,   when: "tests_pass == false"}
       - {from: STOP_GREEN_TEST_FAIL,     to: WRITE}
+
+  # ===========================================================================
+  # commit
+  # Shared sub-process called wherever a commit happens. Pairs the human
+  # APPROVE_COMMIT gate with the mechanical EXECUTE_COMMIT service task by
+  # construction — callers cannot skip approval because they cannot reference
+  # EXECUTE_COMMIT directly. Every commit in the orchestration is therefore
+  # human-approved.
+  #
+  # Callers supply via `params:`:
+  #   - change_type — the COMMIT-message suffix consumed by the existing
+  #                   `commit_phase` action. Mirrors structural_cycle /
+  #                   red_phase_cycle's existing param shape.
+  # ===========================================================================
+  commit:
+    start: APPROVE_COMMIT
+    nodes:
+      - id: APPROVE_COMMIT
+        type: user_task
+        agent: human
+        role: review
+        documentation: "STOP - HUMAN REVIEW — approve commit?"
+
+      - id: EXECUTE_COMMIT
+        type: service_task
+        action: commit_phase
+        params:
+          change_type: ${change_type}
+        documentation: "COMMIT: <Ticket> | ${change_type}"
+
+      - id: COMMIT_END
+        type: end_event
+
+    sequence_flows:
+      - {from: APPROVE_COMMIT, to: EXECUTE_COMMIT}
+      - {from: EXECUTE_COMMIT, to: COMMIT_END}
 
   # ===========================================================================
   # da_cycle
