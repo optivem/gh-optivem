@@ -1,7 +1,6 @@
 package statemachine
 
 import (
-	"reflect"
 	"testing"
 )
 
@@ -52,27 +51,31 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 
 	// ── ASSERT ──────────────────────────────────────────────────────────
 	siParams := systemInterfaceRedesignParams()
-	want := []DispatchEvent{
-		serviceTask("main", "MOVE_TICKET_IN_PROGRESS", "move_to_in_progress", noParams()),
-		serviceTask("github_intake", "CLASSIFY_TICKET_TYPE", "read_ticket_type", noParams()),
-		serviceTask("github_intake", "CLASSIFY_TICKET_SUBTYPE", "read_subtype", noParams()),
-		serviceTask("github_intake", "READ_TICKET_BODY", "parse_ticket_body", noParams()),
-		serviceTask("github_intake", "REPORT_TICKET_DETAILS", "report_intake_summary", noParams()),
-		userTask("structural_cycle", "WRITE", "atdd-task", siParams),
-		userTask("structural_cycle", "APPROVE_CHANGE", "human", siParams),
-		serviceTask("structural_cycle", "COMPILE", "compile_in_scope", siParams),
-		serviceTask("structural_cycle", "CHOOSE_TESTS", "select_tests", siParams),
-		serviceTask("structural_cycle", "RUN_TESTS", "run_tests", siParams),
-		// commit sub-process: structural_cycle.COMMIT pushes
-		// {change_type: ${change_type}}; the runtime stores the literal
-		// placeholder (wrapCallActivity does not call ExpandParams on
-		// raw.Params), which commitFrom encodes.
-		userTask("commit", "APPROVE_COMMIT", "human", commitFrom(siParams)),
-		serviceTask("commit", "EXECUTE_COMMIT", "commit_phase", commitFrom(siParams)),
-		serviceTask("structural_cycle", "TICK_CHECKLIST", "tick_checklist", siParams),
-		serviceTask("main", "MOVE_TICKET_IN_ACCEPTANCE", "move_to_in_acceptance", noParams()),
-	}
-	if !reflect.DeepEqual(*events, want) {
-		t.Errorf("dispatch events:\n got=\n%s\nwant=\n%s", formatEvents(*events), formatEvents(want))
-	}
+	expect(events).
+		process("main", noParams()).
+		serviceTask("MOVE_TICKET_IN_PROGRESS", "move_to_in_progress").
+		then().
+		process("github_intake", noParams()).
+		serviceTask("CLASSIFY_TICKET_TYPE", "read_ticket_type").
+		serviceTask("CLASSIFY_TICKET_SUBTYPE", "read_subtype").
+		serviceTask("READ_TICKET_BODY", "parse_ticket_body").
+		serviceTask("REPORT_TICKET_DETAILS", "report_intake_summary").
+		then().
+		process("structural_cycle", siParams).
+		userTask("WRITE", "atdd-task").
+		userTask("APPROVE_CHANGE", "human").
+		serviceTask("COMPILE", "compile_in_scope").
+		serviceTask("CHOOSE_TESTS", "select_tests").
+		serviceTask("RUN_TESTS", "run_tests").
+		then().
+		process("commit", commitFrom(siParams)).
+		userTask("APPROVE_COMMIT", "human").
+		serviceTask("EXECUTE_COMMIT", "commit_phase").
+		then().
+		process("structural_cycle", siParams).
+		serviceTask("TICK_CHECKLIST", "tick_checklist").
+		then().
+		process("main", noParams()).
+		serviceTask("MOVE_TICKET_IN_ACCEPTANCE", "move_to_in_acceptance").
+		assert(t)
 }

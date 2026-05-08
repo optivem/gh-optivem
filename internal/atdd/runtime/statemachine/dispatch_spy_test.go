@@ -114,16 +114,6 @@ func cloneParams(params map[string]string) map[string]string {
 	return out
 }
 
-// serviceTask / userTask are constructor helpers that keep want-slice rows
-// to a single line.
-func serviceTask(process, nodeID, action string, params map[string]string) DispatchEvent {
-	return DispatchEvent{Process: process, NodeID: nodeID, Kind: ServiceTask, Action: action, ParamsIn: params}
-}
-
-func userTask(process, nodeID, agent string, params map[string]string) DispatchEvent {
-	return DispatchEvent{Process: process, NodeID: nodeID, Kind: UserTask, Agent: agent, ParamsIn: params}
-}
-
 // noParams is the empty map expected at dispatches whose enclosing scope is
 // a call_activity that pushed no `params:` (e.g. main / github_intake /
 // at_green_system).

@@ -1,7 +1,6 @@
 package statemachine
 
 import (
-	"reflect"
 	"testing"
 )
 
@@ -30,74 +29,57 @@ func seedBehavioralIntake(ctx *Context) {
 	ctx.Set("tests_pass", true)
 }
 
-// redCycleEvents returns the trail one red_phase_cycle dispatch produces on
-// the shared happy path: WRITE → STOP_RED_REVIEW → COMPILE → RUN → DISABLE,
-// then the commit sub-process. params is the full ctx.Params snapshot the
-// outer call_activity pushed; commitFrom(params) reflects the inner
-// change_type-overlay the runtime applies inside commit.
-func redCycleEvents(params map[string]string) []DispatchEvent {
-	commit := commitFrom(params)
-	return []DispatchEvent{
-		userTask("red_phase_cycle", "WRITE", params["agent"], params),
-		userTask("red_phase_cycle", "STOP_RED_REVIEW", "human", params),
-		serviceTask("red_phase_cycle", "COMPILE", "compile_targeted", params),
-		serviceTask("red_phase_cycle", "RUN", "run_targeted_tests", params),
-		serviceTask("red_phase_cycle", "DISABLE", "disable_change_driven", params),
-		userTask("commit", "APPROVE_COMMIT", "human", commit),
-		serviceTask("commit", "EXECUTE_COMMIT", "commit_phase", commit),
-	}
+// behavioralIntake walks the implement-ticket entry through github_intake
+// for a Story/Bug ticket — story tickets skip CLASSIFY_TICKET_SUBTYPE
+// (GATE_TICKET_TYPE_INTAKE routes story → READ_TICKET_BODY directly).
+func (e *expectDispatch) behavioralIntake() *expectDispatch {
+	return e.process("main", noParams()).
+		serviceTask("MOVE_TICKET_IN_PROGRESS", "move_to_in_progress").
+		process("github_intake", noParams()).
+		serviceTask("CLASSIFY_TICKET_TYPE", "read_ticket_type").
+		serviceTask("READ_TICKET_BODY", "parse_ticket_body").
+		serviceTask("REPORT_TICKET_DETAILS", "report_intake_summary")
 }
 
-// greenCycleEvents returns the trail one green_phase_cycle dispatch produces
-// on the shared happy path: WRITE → COMPILE → RUN. Commit is owned by the
-// parent (at_green_system commits backend + frontend together), so the
+// redCycle walks one red_phase_cycle dispatch on the shared happy path:
+// WRITE → STOP_RED_REVIEW → COMPILE → RUN → DISABLE, then the commit
+// sub-process. params is the full ctx.Params snapshot the outer
+// call_activity pushed; commitFrom(params) reflects the inner change_type
+// overlay the runtime applies inside commit.
+func (e *expectDispatch) redCycle(params map[string]string) *expectDispatch {
+	return e.process("red_phase_cycle", params).
+		userTask("WRITE", params["agent"]).
+		userTask("STOP_RED_REVIEW", "human").
+		serviceTask("COMPILE", "compile_targeted").
+		serviceTask("RUN", "run_targeted_tests").
+		serviceTask("DISABLE", "disable_change_driven").
+		process("commit", commitFrom(params)).
+		userTask("APPROVE_COMMIT", "human").
+		serviceTask("EXECUTE_COMMIT", "commit_phase")
+}
+
+// greenCycle walks one green_phase_cycle dispatch on the shared happy
+// path: WRITE → COMPILE → RUN. Commit is owned by the parent
+// (at_green_system commits backend + frontend together), so the
 // sub-process ends here.
-func greenCycleEvents(params map[string]string) []DispatchEvent {
-	return []DispatchEvent{
-		userTask("green_phase_cycle", "WRITE", params["agent"], params),
-		serviceTask("green_phase_cycle", "COMPILE", "compile_targeted", params),
-		serviceTask("green_phase_cycle", "RUN", "run_targeted_tests", params),
-	}
+func (e *expectDispatch) greenCycle(params map[string]string) *expectDispatch {
+	return e.process("green_phase_cycle", params).
+		userTask("WRITE", params["agent"]).
+		serviceTask("COMPILE", "compile_targeted").
+		serviceTask("RUN", "run_targeted_tests")
 }
 
-// atGreenSystemTail returns the trail at_green_system runs after both
+// atGreenSystemTail walks the trail at_green_system runs after both
 // green_phase_cycle dispatches: the shared parent commit (literal
 // change_type, no ${…} placeholder), then TICK and the sub-process'
 // MOVE_TICKET_IN_ACCEPTANCE.
-func atGreenSystemTail() []DispatchEvent {
-	commit := atGreenCommitParams()
-	return []DispatchEvent{
-		userTask("commit", "APPROVE_COMMIT", "human", commit),
-		serviceTask("commit", "EXECUTE_COMMIT", "commit_phase", commit),
-		serviceTask("at_green_system", "TICK", "tick_checklist", noParams()),
-		serviceTask("at_green_system", "MOVE_TICKET_IN_ACCEPTANCE", "move_to_in_acceptance", noParams()),
-	}
-}
-
-// behavioralIntakePrefix is the common opening of every behavioral test
-// trail: implement-ticket entry through the github_intake reads. Story
-// tickets skip CLASSIFY_TICKET_SUBTYPE (the GATE_TICKET_TYPE_INTAKE routes
-// story → READ_TICKET_BODY directly).
-func behavioralIntakePrefix() []DispatchEvent {
-	return []DispatchEvent{
-		serviceTask("main", "MOVE_TICKET_IN_PROGRESS", "move_to_in_progress", noParams()),
-		serviceTask("github_intake", "CLASSIFY_TICKET_TYPE", "read_ticket_type", noParams()),
-		serviceTask("github_intake", "READ_TICKET_BODY", "parse_ticket_body", noParams()),
-		serviceTask("github_intake", "REPORT_TICKET_DETAILS", "report_intake_summary", noParams()),
-	}
-}
-
-// concat returns a single slice concatenating its inputs.
-func concat(slices ...[]DispatchEvent) []DispatchEvent {
-	n := 0
-	for _, s := range slices {
-		n += len(s)
-	}
-	out := make([]DispatchEvent, 0, n)
-	for _, s := range slices {
-		out = append(out, s...)
-	}
-	return out
+func (e *expectDispatch) atGreenSystemTail() *expectDispatch {
+	return e.process("commit", atGreenCommitParams()).
+		userTask("APPROVE_COMMIT", "human").
+		serviceTask("EXECUTE_COMMIT", "commit_phase").
+		process("at_green_system", noParams()).
+		serviceTask("TICK", "tick_checklist").
+		serviceTask("MOVE_TICKET_IN_ACCEPTANCE", "move_to_in_acceptance")
 }
 
 // TestImplementTicket_Behavioral_TestOnly is the simplest behavioral happy
@@ -126,22 +108,23 @@ func TestImplementTicket_Behavioral_TestOnly(t *testing.T) {
 	// ── ASSERT ──────────────────────────────────────────────────────────
 	// at_green_system has its own MOVE_TICKET_IN_ACCEPTANCE before main's,
 	// so move_to_in_acceptance fires twice on the behavioral happy path.
-	want := concat(
-		behavioralIntakePrefix(),
-		redCycleEvents(atRedTestParams()),
-		[]DispatchEvent{
-			serviceTask("at_green_system", "ENABLE_TESTS", "enable_change_driven", noParams()),
-		},
-		greenCycleEvents(atGreenBackendParams()),
-		greenCycleEvents(atGreenFrontendParams()),
-		atGreenSystemTail(),
-		[]DispatchEvent{
-			serviceTask("main", "MOVE_TICKET_IN_ACCEPTANCE", "move_to_in_acceptance", noParams()),
-		},
-	)
-	if !reflect.DeepEqual(*events, want) {
-		t.Errorf("dispatch events:\n got=\n%s\nwant=\n%s", formatEvents(*events), formatEvents(want))
-	}
+	expect(events).
+		behavioralIntake().
+		then().
+		redCycle(atRedTestParams()).
+		then().
+		process("at_green_system", noParams()).
+		serviceTask("ENABLE_TESTS", "enable_change_driven").
+		then().
+		greenCycle(atGreenBackendParams()).
+		then().
+		greenCycle(atGreenFrontendParams()).
+		then().
+		atGreenSystemTail().
+		then().
+		process("main", noParams()).
+		serviceTask("MOVE_TICKET_IN_ACCEPTANCE", "move_to_in_acceptance").
+		assert(t)
 }
 
 // TestImplementTicket_Behavioral_TestAndDSL extends the test-only path: the
@@ -170,23 +153,25 @@ func TestImplementTicket_Behavioral_TestAndDSL(t *testing.T) {
 	}
 
 	// ── ASSERT ──────────────────────────────────────────────────────────
-	want := concat(
-		behavioralIntakePrefix(),
-		redCycleEvents(atRedTestParams()),
-		redCycleEvents(atRedDslParams()),
-		[]DispatchEvent{
-			serviceTask("at_green_system", "ENABLE_TESTS", "enable_change_driven", noParams()),
-		},
-		greenCycleEvents(atGreenBackendParams()),
-		greenCycleEvents(atGreenFrontendParams()),
-		atGreenSystemTail(),
-		[]DispatchEvent{
-			serviceTask("main", "MOVE_TICKET_IN_ACCEPTANCE", "move_to_in_acceptance", noParams()),
-		},
-	)
-	if !reflect.DeepEqual(*events, want) {
-		t.Errorf("dispatch events:\n got=\n%s\nwant=\n%s", formatEvents(*events), formatEvents(want))
-	}
+	expect(events).
+		behavioralIntake().
+		then().
+		redCycle(atRedTestParams()).
+		then().
+		redCycle(atRedDslParams()).
+		then().
+		process("at_green_system", noParams()).
+		serviceTask("ENABLE_TESTS", "enable_change_driven").
+		then().
+		greenCycle(atGreenBackendParams()).
+		then().
+		greenCycle(atGreenFrontendParams()).
+		then().
+		atGreenSystemTail().
+		then().
+		process("main", noParams()).
+		serviceTask("MOVE_TICKET_IN_ACCEPTANCE", "move_to_in_acceptance").
+		assert(t)
 }
 
 // TestImplementTicket_Behavioral_TestAndDSLAndExternal extends test+DSL: the
@@ -229,29 +214,36 @@ func TestImplementTicket_Behavioral_TestAndDSLAndExternal(t *testing.T) {
 	// red_phase_cycle's WRITE/STOP/COMPILE/RUN/DISABLE/COMMIT trail repeats
 	// five times in this run. CT_RED_TEST is the only red_phase_cycle call
 	// site that pushes verify_real_suite — the rest match the AT shape.
-	want := concat(
-		behavioralIntakePrefix(),
-		redCycleEvents(atRedTestParams()),
-		redCycleEvents(atRedDslParams()),
-		// CT_SUBPROCESS — ONBOARDING short-circuits (driver exists), no
-		// node fires; CT_RED_TEST → CT_RED_DSL → CT_RED_EXTERNAL_DRIVER
-		// each dispatch red_phase_cycle once.
-		redCycleEvents(ctRedTestParams()),
-		redCycleEvents(ctRedDslParams()),
-		redCycleEvents(ctRedExternalDriverParams()),
-		[]DispatchEvent{
-			serviceTask("ct_subprocess", "VERIFY_CT_DRIVER", "run_tests", noParams()),
-			userTask("ct_subprocess", "CT_GREEN_STUBS", "atdd-stubs", noParams()),
-			serviceTask("at_green_system", "ENABLE_TESTS", "enable_change_driven", noParams()),
-		},
-		greenCycleEvents(atGreenBackendParams()),
-		greenCycleEvents(atGreenFrontendParams()),
-		atGreenSystemTail(),
-		[]DispatchEvent{
-			serviceTask("main", "MOVE_TICKET_IN_ACCEPTANCE", "move_to_in_acceptance", noParams()),
-		},
-	)
-	if !reflect.DeepEqual(*events, want) {
-		t.Errorf("dispatch events:\n got=\n%s\nwant=\n%s", formatEvents(*events), formatEvents(want))
-	}
+	// CT_SUBPROCESS — ONBOARDING short-circuits (driver exists), no node
+	// fires; CT_RED_TEST → CT_RED_DSL → CT_RED_EXTERNAL_DRIVER each
+	// dispatch red_phase_cycle once.
+	expect(events).
+		behavioralIntake().
+		then().
+		redCycle(atRedTestParams()).
+		then().
+		redCycle(atRedDslParams()).
+		then().
+		redCycle(ctRedTestParams()).
+		then().
+		redCycle(ctRedDslParams()).
+		then().
+		redCycle(ctRedExternalDriverParams()).
+		then().
+		process("ct_subprocess", noParams()).
+		serviceTask("VERIFY_CT_DRIVER", "run_tests").
+		userTask("CT_GREEN_STUBS", "atdd-stubs").
+		then().
+		process("at_green_system", noParams()).
+		serviceTask("ENABLE_TESTS", "enable_change_driven").
+		then().
+		greenCycle(atGreenBackendParams()).
+		then().
+		greenCycle(atGreenFrontendParams()).
+		then().
+		atGreenSystemTail().
+		then().
+		process("main", noParams()).
+		serviceTask("MOVE_TICKET_IN_ACCEPTANCE", "move_to_in_acceptance").
+		assert(t)
 }
