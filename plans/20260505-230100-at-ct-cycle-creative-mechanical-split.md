@@ -11,7 +11,6 @@ This plan refactored the AT/CT pipeline so creative WRITE work goes to LLM-dispa
 ## Verification (still open)
 
 - End-to-end manual run against a story ticket, a bug ticket, and at least one of each task subtype — confirm the orchestrator drives compile/run/disable/commit while the agent only writes.
-- Regenerate `docs/process-diagram.md` and the per-flow SVGs on a CGo-enabled machine (`gh optivem atdd show diagram > docs/process-diagram.md`); they haven't been refreshed since the `green_phase_cycle` work landed.
 - Token-cost sample on one ticket end-to-end pre/post refactor; record in this plan as an addendum.
 
 ## Out of scope for this plan
