@@ -224,3 +224,111 @@ func TestImplementTicket_Behavioral_TestAndDSL(t *testing.T) {
 		t.Errorf("step history:\n got=%v\nwant=%v", history, want)
 	}
 }
+
+// TestImplementTicket_Behavioral_TestAndDSLAndExternal extends test+DSL: the
+// new DSL binding also reaches a new External System Driver, so AT_RED_DSL is
+// followed by CT_SUBPROCESS. The system-side driver is unchanged
+// (system_driver_interface_changed=false), so AT_RED_SYSTEM_DRIVER and
+// VERIFY_AT_DRIVER stay unvisited and at_cycle still ends in AT_GREEN_SYSTEM
+// after CT_SUBPROCESS.
+//
+// external_system_onboarding short-circuits via external_system_driver_exists
+// = true — the Driver and Test Instance are assumed to already exist, so the
+// sub-process exits at GATE_DRIVER_EXISTS without firing any service_task or
+// user_task. Onboarding's own happy path (provision / define iface / impl
+// driver / smoke / commit) belongs in a separate test.
+func TestImplementTicket_Behavioral_TestAndDSLAndExternal(t *testing.T) {
+	// ── ARRANGE ─────────────────────────────────────────────────────────
+	var history []string
+	eng := behavioralSpy(t, &history)
+
+	ctx := NewContext()
+	seedBehavioralIntake(ctx)
+	// at_cycle: dsl=true routes through AT_RED_DSL, ext=true routes through
+	// CT_SUBPROCESS, sys=false skips AT_RED_SYSTEM_DRIVER and falls through
+	// to AT_GREEN_SYSTEM.
+	ctx.Set("dsl_interface_changed", true)
+	ctx.Set("external_system_driver_interface_changed", true)
+	ctx.Set("system_driver_interface_changed", false)
+	// external_system_onboarding: Driver already exists, so the sub-process
+	// exits before any service_task / user_task fires.
+	ctx.Set("external_system_driver_exists", true)
+
+	// ── ACT ─────────────────────────────────────────────────────────────
+	if err := eng.RunProcess("main", ctx); err != nil {
+		t.Fatalf("RunProcess main: %v", err)
+	}
+
+	// ── ASSERT ──────────────────────────────────────────────────────────
+	// CT_SUBPROCESS dispatches red_phase_cycle three times (TEST, DSL,
+	// EXTERNAL DRIVER) on top of the two AT - RED - * dispatches, so
+	// red_phase_cycle's WRITE/STOP/COMPILE/RUN/DISABLE/COMMIT trail repeats
+	// five times in this run. As before, the process-qualified trail can't
+	// distinguish dispatches by agent — that distinction lives in params
+	// (asserted by the bindings tests), not in this trail.
+	want := []string{
+		"main.MOVE_TICKET_IN_PROGRESS",
+		"github_intake.CLASSIFY_TICKET_TYPE",
+		"github_intake.READ_TICKET_BODY",
+		"github_intake.REPORT_TICKET_DETAILS",
+		// AT - RED - TEST (red_phase_cycle dispatched with agent=atdd-test)
+		"red_phase_cycle.WRITE",
+		"red_phase_cycle.STOP_RED_REVIEW",
+		"red_phase_cycle.COMPILE",
+		"red_phase_cycle.RUN",
+		"red_phase_cycle.DISABLE",
+		"commit.APPROVE_COMMIT",
+		"commit.EXECUTE_COMMIT",
+		// AT - RED - DSL (red_phase_cycle dispatched with agent=atdd-dsl)
+		"red_phase_cycle.WRITE",
+		"red_phase_cycle.STOP_RED_REVIEW",
+		"red_phase_cycle.COMPILE",
+		"red_phase_cycle.RUN",
+		"red_phase_cycle.DISABLE",
+		"commit.APPROVE_COMMIT",
+		"commit.EXECUTE_COMMIT",
+		// CT_SUBPROCESS — ONBOARDING short-circuits (driver exists), no node fires.
+		// CT - RED - TEST (red_phase_cycle dispatched with agent=atdd-test)
+		"red_phase_cycle.WRITE",
+		"red_phase_cycle.STOP_RED_REVIEW",
+		"red_phase_cycle.COMPILE",
+		"red_phase_cycle.RUN",
+		"red_phase_cycle.DISABLE",
+		"commit.APPROVE_COMMIT",
+		"commit.EXECUTE_COMMIT",
+		// CT - RED - DSL (red_phase_cycle dispatched with agent=atdd-dsl)
+		"red_phase_cycle.WRITE",
+		"red_phase_cycle.STOP_RED_REVIEW",
+		"red_phase_cycle.COMPILE",
+		"red_phase_cycle.RUN",
+		"red_phase_cycle.DISABLE",
+		"commit.APPROVE_COMMIT",
+		"commit.EXECUTE_COMMIT",
+		// CT - RED - EXTERNAL DRIVER (red_phase_cycle dispatched with agent=atdd-driver)
+		"red_phase_cycle.WRITE",
+		"red_phase_cycle.STOP_RED_REVIEW",
+		"red_phase_cycle.COMPILE",
+		"red_phase_cycle.RUN",
+		"red_phase_cycle.DISABLE",
+		"commit.APPROVE_COMMIT",
+		"commit.EXECUTE_COMMIT",
+		"ct_subprocess.VERIFY_CT_DRIVER",
+		"ct_subprocess.CT_GREEN_STUBS",
+		// AT - GREEN - SYSTEM (green_phase_cycle dispatched twice)
+		"at_green_system.ENABLE_TESTS",
+		"green_phase_cycle.WRITE", // backend
+		"green_phase_cycle.COMPILE",
+		"green_phase_cycle.RUN",
+		"green_phase_cycle.WRITE", // frontend
+		"green_phase_cycle.COMPILE",
+		"green_phase_cycle.RUN",
+		"commit.APPROVE_COMMIT",
+		"commit.EXECUTE_COMMIT",
+		"at_green_system.TICK",
+		"at_green_system.MOVE_TICKET_IN_ACCEPTANCE",
+		"main.MOVE_TICKET_IN_ACCEPTANCE",
+	}
+	if !reflect.DeepEqual(history, want) {
+		t.Errorf("step history:\n got=%v\nwant=%v", history, want)
+	}
+}
