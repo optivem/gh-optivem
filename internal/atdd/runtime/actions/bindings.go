@@ -1399,7 +1399,7 @@ func parsePickNumbers(s string, max int) ([]int, error) {
 // runner, etc.) finalizeVerify halts the run by returning Outcome.Err
 // rather than letting the gateway route. Item 5 of the
 // verify-failure-dispatch plan: the cwd-bug case stops silently
-// advancing into APPROVE_STRUCTURAL_CHANGE, regardless of whether the
+// advancing into APPROVE_CHANGE, regardless of whether the
 // downstream gateway has been wired in yet. The detailed banner is
 // printed to stderr first so the operator sees *why* the run halted
 // (which infra pattern matched, which command was tried, the cwd) —

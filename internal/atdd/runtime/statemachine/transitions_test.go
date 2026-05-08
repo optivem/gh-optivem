@@ -258,8 +258,8 @@ var transitionTable = []transitionCase{
 	// gate sits AFTER RUN_TESTS (BPMN-clean): test failure routes through
 	// the fix-agent loop back into CHOOSE_TESTS so the operator can re-pick
 	// scope after the agent's fix.
-	{process: "structural_cycle", from: "IMPLEMENT_STRUCTURAL_CHANGE", wantTo: "APPROVE_STRUCTURAL_CHANGE"},
-	{process: "structural_cycle", from: "APPROVE_STRUCTURAL_CHANGE", wantTo: "GATE_TEST_MODE"},
+	{process: "structural_cycle", from: "WRITE", wantTo: "APPROVE_CHANGE"},
+	{process: "structural_cycle", from: "APPROVE_CHANGE", wantTo: "GATE_TEST_MODE"},
 	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "skip"}, wantTo: "COMMIT", desc: "skip mode escapes the TEST sub-loop entirely"},
 	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "compile"}, wantTo: "COMPILE"},
 	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "full"}, wantTo: "COMPILE"},

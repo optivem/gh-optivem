@@ -1263,7 +1263,7 @@ func TestVerifyRunTestsAfterDriver_HaltsOnInfraWithDiagnostic(t *testing.T) {
 	// Infra-class result halts with Outcome.Err and prints the detailed
 	// banner so the operator sees *which* runner-side problem fired and
 	// the command tried. Without this halt the structural cycle would
-	// silently advance into APPROVE_STRUCTURAL_CHANGE with zero verify signal.
+	// silently advance into APPROVE_CHANGE with zero verify signal.
 	//
 	// This case simulates the runner reaching out and failing for reasons
 	// the path resolution can't catch — e.g. missing toolchain, docker

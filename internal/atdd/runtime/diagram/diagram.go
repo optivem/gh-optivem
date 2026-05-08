@@ -91,6 +91,39 @@ func writeHeader(b *strings.Builder) {
 	b.WriteString("# ATDD Process Flow\n\n")
 	b.WriteString("> Generated from `internal/atdd/runtime/statemachine/process-flow.yaml` by `internal/atdd/runtime/diagram`. Do not edit by hand — edit the YAML and regenerate via `gh optivem atdd show diagram > docs/process-diagram.md`.\n\n")
 	b.WriteString("Each section corresponds to one named process in the YAML. `call_activity` nodes appear as boxes pointing at the linked sub-process's heading.\n\n")
+	writeLegend(b)
+}
+
+// writeLegend emits a "Legend" section explaining the encoding shared
+// by every process diagram below: shape conveys the BPMN node type,
+// fill color conveys *who* executes the task. The Mermaid block reuses
+// the same classDef styles as the real diagrams so the legend renders
+// as a literal sample.
+func writeLegend(b *strings.Builder) {
+	b.WriteString("## Legend\n\n")
+	b.WriteString("Node **shape** encodes the BPMN type; **fill color** encodes the executor.\n\n")
+	b.WriteString("- `((circle))` — start / end event\n")
+	b.WriteString("- `{diamond}` — gateway (decision)\n")
+	b.WriteString("- `[[subroutine]]` — service task — mechanical step run by the Go runtime (white)\n")
+	b.WriteString("- `[rectangle]` — user task — LLM agent (dark blue) or human STOP (yellow); `call_activity` rectangles are unfilled and link to a sub-process heading\n")
+	b.WriteString("- `[/skewed/]` — published outputs of a process (dashed border)\n\n")
+	b.WriteString("```mermaid\nflowchart LR\n")
+	b.WriteString("    EVT((Start / End))\n")
+	b.WriteString("    GW{Gateway}\n")
+	b.WriteString("    SVC[[Service task — Go runtime]]\n")
+	b.WriteString("    AGT[Agent task — LLM]\n")
+	b.WriteString("    HUM[Human STOP]\n")
+	b.WriteString("    CALL[Call activity — sub-process]\n")
+	b.WriteString("    OUT[/Outputs/]\n")
+	b.WriteString("\n    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000\n")
+	b.WriteString("    class SVC serviceNode\n")
+	b.WriteString("\n    classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff\n")
+	b.WriteString("    class AGT agentNode\n")
+	b.WriteString("\n    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000\n")
+	b.WriteString("    class HUM humanNode\n")
+	b.WriteString("\n    classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000\n")
+	b.WriteString("    class OUT outputNode\n")
+	b.WriteString("```\n\n")
 }
 
 // orderedProcessNames returns process names in the canonical order: every

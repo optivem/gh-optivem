@@ -134,10 +134,13 @@ processes:
 		t.Fatalf("LoadBytes: %v", err)
 	}
 	got := Render(eng)
+	// `outputNode` is intentionally emitted once by the top-level Legend
+	// section regardless of process outputs, so it isn't a useful ban
+	// here — the per-process `_OUTPUTS` node ID and `produces` edge verb
+	// are sufficient to verify the data-object block was skipped.
 	for _, banned := range []string{
 		"_OUTPUTS",
 		"produces",
-		"outputNode",
 	} {
 		if strings.Contains(got, banned) {
 			t.Errorf("unexpected %q in rendered output for process with no outputs:\n%s", banned, got)

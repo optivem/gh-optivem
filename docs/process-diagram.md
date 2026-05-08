@@ -4,6 +4,39 @@
 
 Each section corresponds to one named process in the YAML. `call_activity` nodes appear as boxes pointing at the linked sub-process's heading.
 
+## Legend
+
+Node **shape** encodes the BPMN type; **fill color** encodes the executor.
+
+- `((circle))` — start / end event
+- `{diamond}` — gateway (decision)
+- `[[subroutine]]` — service task — mechanical step run by the Go runtime (white)
+- `[rectangle]` — user task — LLM agent (dark blue) or human STOP (yellow); `call_activity` rectangles are unfilled and link to a sub-process heading
+- `[/skewed/]` — published outputs of a process (dashed border)
+
+```mermaid
+flowchart LR
+    EVT((Start / End))
+    GW{Gateway}
+    SVC[[Service task — Go runtime]]
+    AGT[Agent task — LLM]
+    HUM[Human STOP]
+    CALL[Call activity — sub-process]
+    OUT[/Outputs/]
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class SVC serviceNode
+
+    classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
+    class AGT agentNode
+
+    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
+    class HUM humanNode
+
+    classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
+    class OUT outputNode
+```
+
 ## Ticket Lifecycle
 
 ```mermaid
@@ -235,21 +268,21 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    APPROVE_STRUCTURAL_CHANGE[STOP - HUMAN REVIEW — approve implementation]
+    APPROVE_CHANGE[STOP - HUMAN REVIEW — approve implementation]
     CHOOSE_TESTS[["Operator picks scope (all / some suites / specific tests / skip)"]]
     COMMIT[COMMIT — see § Commit Sub-Process]
     COMPILE[[Compile in-scope projects]]
     FIX_STRUCT_VERIFY[Dispatch fix agent on test RED — structural cycle expects green]
     GATE_STRUCT_VERIFY{"Test outcome? (ok | red — fix and retry)"}
     GATE_TEST_MODE{"TEST mode? (full | compile | skip)"}
-    IMPLEMENT_STRUCTURAL_CHANGE["${change_type} - WRITE"]
     RUN_TESTS[["Run selected tests; classify pass/fail for the verify gate"]]
     STOP_STRUCT_VERIFY_REVIEW[STOP - HUMAN REVIEW — tests RED, dispatch fix agent?]
     STRUCT_END((End))
     TICK_CHECKLIST[[Tick checklist items]]
+    WRITE["${change_type} - WRITE"]
 
-    IMPLEMENT_STRUCTURAL_CHANGE --> APPROVE_STRUCTURAL_CHANGE
-    APPROVE_STRUCTURAL_CHANGE --> GATE_TEST_MODE
+    WRITE --> APPROVE_CHANGE
+    APPROVE_CHANGE --> GATE_TEST_MODE
     GATE_TEST_MODE -- skip --> COMMIT
     GATE_TEST_MODE -- compile / full --> COMPILE
     COMPILE -- full --> CHOOSE_TESTS
@@ -267,10 +300,10 @@ flowchart TD
     class CHOOSE_TESTS,COMPILE,RUN_TESTS,TICK_CHECKLIST serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
-    class FIX_STRUCT_VERIFY,IMPLEMENT_STRUCTURAL_CHANGE agentNode
+    class FIX_STRUCT_VERIFY,WRITE agentNode
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class APPROVE_STRUCTURAL_CHANGE,STOP_STRUCT_VERIFY_REVIEW humanNode
+    class APPROVE_CHANGE,STOP_STRUCT_VERIFY_REVIEW humanNode
 ```
 
 ## Commit Sub-Process

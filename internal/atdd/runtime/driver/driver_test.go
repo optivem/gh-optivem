@@ -106,7 +106,7 @@ processes:
     nodes:
       - id: START
         type: start_event
-      - id: IMPLEMENT_STRUCTURAL_CHANGE
+      - id: WRITE
         type: user_task
         agent: ${agent}
         documentation: ${change_type} - WRITE
@@ -114,8 +114,8 @@ processes:
       - id: END
         type: end_event
     sequence_flows:
-      - { from: START, to: IMPLEMENT_STRUCTURAL_CHANGE }
-      - { from: IMPLEMENT_STRUCTURAL_CHANGE, to: END }
+      - { from: START, to: WRITE }
+      - { from: WRITE, to: END }
 `
 
 // buildEngine returns a freshly-bound engine + the wrapped NodeFn for
@@ -406,7 +406,7 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	}
 	claudeFake := &fakeClaude{}
 	fn := buildEngineFrom(t, newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake}),
-		templatedYAML, "IMPLEMENT_STRUCTURAL_CHANGE")
+		templatedYAML, "WRITE")
 
 	ctx := newCtxWithIssue()
 	ctx.Params = map[string]string{
@@ -448,7 +448,7 @@ func TestManualAgents_BannerSubstitutesTemplatedFields(t *testing.T) {
 		Stderr:       io.Discard,
 		Stdin:        strings.NewReader("\n"),
 	}
-	fn := buildEngineFrom(t, opts, templatedYAML, "IMPLEMENT_STRUCTURAL_CHANGE")
+	fn := buildEngineFrom(t, opts, templatedYAML, "WRITE")
 
 	ctx := newCtxWithIssue()
 	ctx.Params = map[string]string{
