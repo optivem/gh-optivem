@@ -633,15 +633,15 @@ processes:
   # nothing inside TEST runs until the user chooses.
   # ===========================================================================
   structural_cycle:
-    start: IMPLEMENT_STRUCTURAL_CHANGE
+    start: WRITE
     nodes:
-      - id: IMPLEMENT_STRUCTURAL_CHANGE
+      - id: WRITE
         type: user_task
         agent: ${agent}
         phase_doc: ${phase_doc}
         documentation: "${change_type} - WRITE"
 
-      - id: APPROVE_STRUCTURAL_CHANGE
+      - id: APPROVE_CHANGE
         type: user_task
         agent: human
         role: review
@@ -699,8 +699,8 @@ processes:
         type: end_event
 
     sequence_flows:
-      - {from: IMPLEMENT_STRUCTURAL_CHANGE, to: APPROVE_STRUCTURAL_CHANGE}
-      - {from: APPROVE_STRUCTURAL_CHANGE,   to: GATE_TEST_MODE}
+      - {from: WRITE,          to: APPROVE_CHANGE}
+      - {from: APPROVE_CHANGE,  to: GATE_TEST_MODE}
       - {from: GATE_TEST_MODE,              to: COMMIT,                    when: "structural_test_mode == skip"}
       - {from: GATE_TEST_MODE,              to: COMPILE,                   when: "structural_test_mode in [compile, full]"}
       - {from: COMPILE,                     to: CHOOSE_TESTS,              when: "structural_test_mode == full"}
@@ -719,7 +719,7 @@ processes:
   # Shared sub-process for every RED-phase node that splits creative WRITE work
   # (LLM-required) from mechanical compile/run/disable/commit work
   # (deterministic). Mirrors how `structural_cycle` factors creative
-  # `IMPLEMENT_STRUCTURAL_CHANGE` from its mechanical surroundings.
+  # `WRITE` from its mechanical surroundings.
   #
   # Callers supply via `params:`:
   #   - agent             — the WRITE agent (e.g. atdd-test, atdd-dsl, atdd-driver)
