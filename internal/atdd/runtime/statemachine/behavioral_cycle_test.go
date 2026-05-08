@@ -5,64 +5,6 @@ import (
 	"testing"
 )
 
-// behavioralSpy mirrors the ARRANGE block used by every behavioral-cycle
-// test: load the embedded snapshot, mock every registry (ActionFn / AgentFn
-// → noop, GateFn → echo ctx[binding]), Bind, then wrap every service_task /
-// user_task NodeFn with a spy that appends the process-qualified node ID to
-// *history before firing the inner function. Gateways, call_activities, and
-// start/end events are routing scaffolding, not "steps the runner executes",
-// so they're excluded from the trail.
-//
-// Entries are qualified with the process name (e.g. "red_phase_cycle.WRITE")
-// because node IDs are only unique per process — WRITE / COMPILE / RUN
-// collide across red_phase_cycle and green_phase_cycle, and at_green_system
-// has its own MOVE_TICKET_IN_ACCEPTANCE that shadows main's, so an
-// unqualified trail would silently conflate sibling cycles.
-//
-// implement-ticket mode skips the picker (driver.Run mutates Start), so we
-// override main.Start to MOVE_TICKET_IN_PROGRESS — the same entry point the
-// real `gh optivem atdd implement-ticket --issue N` uses.
-func behavioralSpy(t *testing.T, history *[]string) *Engine {
-	t.Helper()
-	eng := loadSnapshot(t)
-
-	noop := func(*Context) Outcome { return Outcome{} }
-	eng.AgentFn = func(string) NodeFn { return noop }  // mocks claude dispatch
-	eng.ActionFn = func(string) NodeFn { return noop } // mocks gh / git side effects
-	eng.GateFn = func(name string) NodeFn {            // gates echo pre-seeded routing state
-		return func(ctx *Context) Outcome {
-			switch v := ctx.Get(name).(type) {
-			case string:
-				return Outcome{Value: v}
-			case bool:
-				return Outcome{Bool: v}
-			}
-			return Outcome{}
-		}
-	}
-	if err := eng.Bind(); err != nil {
-		t.Fatalf("Bind: %v", err)
-	}
-
-	for _, process := range eng.Processes {
-		procName := process.Name
-		for id, node := range process.Nodes {
-			if node.Kind != ServiceTask && node.Kind != UserTask {
-				continue
-			}
-			label, inner := procName+"."+node.ID, node.Fn
-			node.Fn = func(ctx *Context) Outcome {
-				*history = append(*history, label)
-				return inner(ctx)
-			}
-			process.Nodes[id] = node
-		}
-	}
-
-	eng.Processes["main"].Start = "MOVE_TICKET_IN_PROGRESS"
-	return eng
-}
-
 // seedBehavioralIntake sets the routing state that intake would derive for a
 // Story / Bug ticket — the half of the Context that's identical across every
 // behavioral-cycle variant. Per-variant gate state (dsl_interface_changed
@@ -88,6 +30,76 @@ func seedBehavioralIntake(ctx *Context) {
 	ctx.Set("tests_pass", true)
 }
 
+// redCycleEvents returns the trail one red_phase_cycle dispatch produces on
+// the shared happy path: WRITE → STOP_RED_REVIEW → COMPILE → RUN → DISABLE,
+// then the commit sub-process. params is the full ctx.Params snapshot the
+// outer call_activity pushed; commitFrom(params) reflects the inner
+// change_type-overlay the runtime applies inside commit.
+func redCycleEvents(params map[string]string) []DispatchEvent {
+	commit := commitFrom(params)
+	return []DispatchEvent{
+		userTask("red_phase_cycle", "WRITE", params["agent"], params),
+		userTask("red_phase_cycle", "STOP_RED_REVIEW", "human", params),
+		serviceTask("red_phase_cycle", "COMPILE", "compile_targeted", params),
+		serviceTask("red_phase_cycle", "RUN", "run_targeted_tests", params),
+		serviceTask("red_phase_cycle", "DISABLE", "disable_change_driven", params),
+		userTask("commit", "APPROVE_COMMIT", "human", commit),
+		serviceTask("commit", "EXECUTE_COMMIT", "commit_phase", commit),
+	}
+}
+
+// greenCycleEvents returns the trail one green_phase_cycle dispatch produces
+// on the shared happy path: WRITE → COMPILE → RUN. Commit is owned by the
+// parent (at_green_system commits backend + frontend together), so the
+// sub-process ends here.
+func greenCycleEvents(params map[string]string) []DispatchEvent {
+	return []DispatchEvent{
+		userTask("green_phase_cycle", "WRITE", params["agent"], params),
+		serviceTask("green_phase_cycle", "COMPILE", "compile_targeted", params),
+		serviceTask("green_phase_cycle", "RUN", "run_targeted_tests", params),
+	}
+}
+
+// atGreenSystemTail returns the trail at_green_system runs after both
+// green_phase_cycle dispatches: the shared parent commit (literal
+// change_type, no ${…} placeholder), then TICK and the sub-process'
+// MOVE_TICKET_IN_ACCEPTANCE.
+func atGreenSystemTail() []DispatchEvent {
+	commit := atGreenCommitParams()
+	return []DispatchEvent{
+		userTask("commit", "APPROVE_COMMIT", "human", commit),
+		serviceTask("commit", "EXECUTE_COMMIT", "commit_phase", commit),
+		serviceTask("at_green_system", "TICK", "tick_checklist", noParams()),
+		serviceTask("at_green_system", "MOVE_TICKET_IN_ACCEPTANCE", "move_to_in_acceptance", noParams()),
+	}
+}
+
+// behavioralIntakePrefix is the common opening of every behavioral test
+// trail: implement-ticket entry through the github_intake reads. Story
+// tickets skip CLASSIFY_TICKET_SUBTYPE (the GATE_TICKET_TYPE_INTAKE routes
+// story → READ_TICKET_BODY directly).
+func behavioralIntakePrefix() []DispatchEvent {
+	return []DispatchEvent{
+		serviceTask("main", "MOVE_TICKET_IN_PROGRESS", "move_to_in_progress", noParams()),
+		serviceTask("github_intake", "CLASSIFY_TICKET_TYPE", "read_ticket_type", noParams()),
+		serviceTask("github_intake", "READ_TICKET_BODY", "parse_ticket_body", noParams()),
+		serviceTask("github_intake", "REPORT_TICKET_DETAILS", "report_intake_summary", noParams()),
+	}
+}
+
+// concat returns a single slice concatenating its inputs.
+func concat(slices ...[]DispatchEvent) []DispatchEvent {
+	n := 0
+	for _, s := range slices {
+		n += len(s)
+	}
+	out := make([]DispatchEvent, 0, n)
+	for _, s := range slices {
+		out = append(out, s...)
+	}
+	return out
+}
+
 // TestImplementTicket_Behavioral_TestOnly is the simplest behavioral happy
 // path: a Story ticket where only the acceptance test is added (no DSL
 // binding changes, no driver-adapter changes). The dsl_interface_changed
@@ -95,9 +107,9 @@ func seedBehavioralIntake(ctx *Context) {
 // AT - RED - * phase dispatched is AT - RED - TEST.
 func TestImplementTicket_Behavioral_TestOnly(t *testing.T) {
 	// ── ARRANGE ─────────────────────────────────────────────────────────
-	var history []string
-	eng := behavioralSpy(t, &history)
+	eng, events := dispatchSpy(t)
 
+	eng.Processes["main"].Start = "MOVE_TICKET_IN_PROGRESS"
 	ctx := NewContext()
 	seedBehavioralIntake(ctx)
 	// at_cycle: dsl=false short-circuits straight to AT_GREEN_SYSTEM, so
@@ -113,40 +125,22 @@ func TestImplementTicket_Behavioral_TestOnly(t *testing.T) {
 
 	// ── ASSERT ──────────────────────────────────────────────────────────
 	// at_green_system has its own MOVE_TICKET_IN_ACCEPTANCE before main's,
-	// so move_to_in_acceptance fires twice on the behavioral happy path —
-	// the qualified trail makes that explicit rather than hiding it.
-	want := []string{
-		"main.MOVE_TICKET_IN_PROGRESS",
-		"github_intake.CLASSIFY_TICKET_TYPE",
-		"github_intake.READ_TICKET_BODY",
-		"github_intake.REPORT_TICKET_DETAILS",
-		// AT - RED - TEST (red_phase_cycle dispatched with agent=atdd-test)
-		"red_phase_cycle.WRITE",
-		"red_phase_cycle.STOP_RED_REVIEW",
-		"red_phase_cycle.COMPILE",
-		"red_phase_cycle.RUN",
-		"red_phase_cycle.DISABLE",
-		// red_phase_cycle.COMMIT is a call_activity into the shared commit
-		// sub-process — its inner APPROVE_COMMIT + EXECUTE_COMMIT show up
-		// here instead of a single red_phase_cycle.COMMIT service_task.
-		"commit.APPROVE_COMMIT",
-		"commit.EXECUTE_COMMIT",
-		// AT - GREEN - SYSTEM (green_phase_cycle dispatched twice)
-		"at_green_system.ENABLE_TESTS",
-		"green_phase_cycle.WRITE", // backend
-		"green_phase_cycle.COMPILE",
-		"green_phase_cycle.RUN",
-		"green_phase_cycle.WRITE", // frontend
-		"green_phase_cycle.COMPILE",
-		"green_phase_cycle.RUN",
-		"commit.APPROVE_COMMIT",
-		"commit.EXECUTE_COMMIT",
-		"at_green_system.TICK",
-		"at_green_system.MOVE_TICKET_IN_ACCEPTANCE",
-		"main.MOVE_TICKET_IN_ACCEPTANCE",
-	}
-	if !reflect.DeepEqual(history, want) {
-		t.Errorf("step history:\n got=%v\nwant=%v", history, want)
+	// so move_to_in_acceptance fires twice on the behavioral happy path.
+	want := concat(
+		behavioralIntakePrefix(),
+		redCycleEvents(atRedTestParams()),
+		[]DispatchEvent{
+			serviceTask("at_green_system", "ENABLE_TESTS", "enable_change_driven", noParams()),
+		},
+		greenCycleEvents(atGreenBackendParams()),
+		greenCycleEvents(atGreenFrontendParams()),
+		atGreenSystemTail(),
+		[]DispatchEvent{
+			serviceTask("main", "MOVE_TICKET_IN_ACCEPTANCE", "move_to_in_acceptance", noParams()),
+		},
+	)
+	if !reflect.DeepEqual(*events, want) {
+		t.Errorf("dispatch events:\n got=\n%s\nwant=\n%s", formatEvents(*events), formatEvents(want))
 	}
 }
 
@@ -157,9 +151,9 @@ func TestImplementTicket_Behavioral_TestOnly(t *testing.T) {
 // at_cycle still falls through to AT_GREEN_SYSTEM after AT_RED_DSL.
 func TestImplementTicket_Behavioral_TestAndDSL(t *testing.T) {
 	// ── ARRANGE ─────────────────────────────────────────────────────────
-	var history []string
-	eng := behavioralSpy(t, &history)
+	eng, events := dispatchSpy(t)
 
+	eng.Processes["main"].Start = "MOVE_TICKET_IN_PROGRESS"
 	ctx := NewContext()
 	seedBehavioralIntake(ctx)
 	// at_cycle: dsl=true routes through AT_RED_DSL. The downstream gates
@@ -176,52 +170,22 @@ func TestImplementTicket_Behavioral_TestAndDSL(t *testing.T) {
 	}
 
 	// ── ASSERT ──────────────────────────────────────────────────────────
-	// red_phase_cycle's WRITE/STOP/COMPILE/RUN/DISABLE/COMMIT trail repeats
-	// once per AT - RED - * dispatch (atdd-test then atdd-dsl). The
-	// process-qualified trail can't distinguish the two dispatches by
-	// agent — both render to "red_phase_cycle.<NODE>" — so the agent
-	// distinction lives in the params (asserted by the bindings tests),
-	// not in this trail.
-	want := []string{
-		"main.MOVE_TICKET_IN_PROGRESS",
-		"github_intake.CLASSIFY_TICKET_TYPE",
-		"github_intake.READ_TICKET_BODY",
-		"github_intake.REPORT_TICKET_DETAILS",
-		// AT - RED - TEST (red_phase_cycle dispatched with agent=atdd-test)
-		"red_phase_cycle.WRITE",
-		"red_phase_cycle.STOP_RED_REVIEW",
-		"red_phase_cycle.COMPILE",
-		"red_phase_cycle.RUN",
-		"red_phase_cycle.DISABLE",
-		// commit sub-process for AT - RED - TEST
-		"commit.APPROVE_COMMIT",
-		"commit.EXECUTE_COMMIT",
-		// AT - RED - DSL (red_phase_cycle dispatched with agent=atdd-dsl)
-		"red_phase_cycle.WRITE",
-		"red_phase_cycle.STOP_RED_REVIEW",
-		"red_phase_cycle.COMPILE",
-		"red_phase_cycle.RUN",
-		"red_phase_cycle.DISABLE",
-		// commit sub-process for AT - RED - DSL
-		"commit.APPROVE_COMMIT",
-		"commit.EXECUTE_COMMIT",
-		// AT - GREEN - SYSTEM (green_phase_cycle dispatched twice)
-		"at_green_system.ENABLE_TESTS",
-		"green_phase_cycle.WRITE", // backend
-		"green_phase_cycle.COMPILE",
-		"green_phase_cycle.RUN",
-		"green_phase_cycle.WRITE", // frontend
-		"green_phase_cycle.COMPILE",
-		"green_phase_cycle.RUN",
-		// commit sub-process for AT - GREEN - SYSTEM
-		"commit.APPROVE_COMMIT",
-		"commit.EXECUTE_COMMIT",
-		"at_green_system.TICK",
-		"at_green_system.MOVE_TICKET_IN_ACCEPTANCE",
-		"main.MOVE_TICKET_IN_ACCEPTANCE",
-	}
-	if !reflect.DeepEqual(history, want) {
-		t.Errorf("step history:\n got=%v\nwant=%v", history, want)
+	want := concat(
+		behavioralIntakePrefix(),
+		redCycleEvents(atRedTestParams()),
+		redCycleEvents(atRedDslParams()),
+		[]DispatchEvent{
+			serviceTask("at_green_system", "ENABLE_TESTS", "enable_change_driven", noParams()),
+		},
+		greenCycleEvents(atGreenBackendParams()),
+		greenCycleEvents(atGreenFrontendParams()),
+		atGreenSystemTail(),
+		[]DispatchEvent{
+			serviceTask("main", "MOVE_TICKET_IN_ACCEPTANCE", "move_to_in_acceptance", noParams()),
+		},
+	)
+	if !reflect.DeepEqual(*events, want) {
+		t.Errorf("dispatch events:\n got=\n%s\nwant=\n%s", formatEvents(*events), formatEvents(want))
 	}
 }
 
@@ -239,9 +203,9 @@ func TestImplementTicket_Behavioral_TestAndDSL(t *testing.T) {
 // driver / smoke / commit) belongs in a separate test.
 func TestImplementTicket_Behavioral_TestAndDSLAndExternal(t *testing.T) {
 	// ── ARRANGE ─────────────────────────────────────────────────────────
-	var history []string
-	eng := behavioralSpy(t, &history)
+	eng, events := dispatchSpy(t)
 
+	eng.Processes["main"].Start = "MOVE_TICKET_IN_PROGRESS"
 	ctx := NewContext()
 	seedBehavioralIntake(ctx)
 	// at_cycle: dsl=true routes through AT_RED_DSL, ext=true routes through
@@ -263,72 +227,31 @@ func TestImplementTicket_Behavioral_TestAndDSLAndExternal(t *testing.T) {
 	// CT_SUBPROCESS dispatches red_phase_cycle three times (TEST, DSL,
 	// EXTERNAL DRIVER) on top of the two AT - RED - * dispatches, so
 	// red_phase_cycle's WRITE/STOP/COMPILE/RUN/DISABLE/COMMIT trail repeats
-	// five times in this run. As before, the process-qualified trail can't
-	// distinguish dispatches by agent — that distinction lives in params
-	// (asserted by the bindings tests), not in this trail.
-	want := []string{
-		"main.MOVE_TICKET_IN_PROGRESS",
-		"github_intake.CLASSIFY_TICKET_TYPE",
-		"github_intake.READ_TICKET_BODY",
-		"github_intake.REPORT_TICKET_DETAILS",
-		// AT - RED - TEST (red_phase_cycle dispatched with agent=atdd-test)
-		"red_phase_cycle.WRITE",
-		"red_phase_cycle.STOP_RED_REVIEW",
-		"red_phase_cycle.COMPILE",
-		"red_phase_cycle.RUN",
-		"red_phase_cycle.DISABLE",
-		"commit.APPROVE_COMMIT",
-		"commit.EXECUTE_COMMIT",
-		// AT - RED - DSL (red_phase_cycle dispatched with agent=atdd-dsl)
-		"red_phase_cycle.WRITE",
-		"red_phase_cycle.STOP_RED_REVIEW",
-		"red_phase_cycle.COMPILE",
-		"red_phase_cycle.RUN",
-		"red_phase_cycle.DISABLE",
-		"commit.APPROVE_COMMIT",
-		"commit.EXECUTE_COMMIT",
-		// CT_SUBPROCESS — ONBOARDING short-circuits (driver exists), no node fires.
-		// CT - RED - TEST (red_phase_cycle dispatched with agent=atdd-test)
-		"red_phase_cycle.WRITE",
-		"red_phase_cycle.STOP_RED_REVIEW",
-		"red_phase_cycle.COMPILE",
-		"red_phase_cycle.RUN",
-		"red_phase_cycle.DISABLE",
-		"commit.APPROVE_COMMIT",
-		"commit.EXECUTE_COMMIT",
-		// CT - RED - DSL (red_phase_cycle dispatched with agent=atdd-dsl)
-		"red_phase_cycle.WRITE",
-		"red_phase_cycle.STOP_RED_REVIEW",
-		"red_phase_cycle.COMPILE",
-		"red_phase_cycle.RUN",
-		"red_phase_cycle.DISABLE",
-		"commit.APPROVE_COMMIT",
-		"commit.EXECUTE_COMMIT",
-		// CT - RED - EXTERNAL DRIVER (red_phase_cycle dispatched with agent=atdd-driver)
-		"red_phase_cycle.WRITE",
-		"red_phase_cycle.STOP_RED_REVIEW",
-		"red_phase_cycle.COMPILE",
-		"red_phase_cycle.RUN",
-		"red_phase_cycle.DISABLE",
-		"commit.APPROVE_COMMIT",
-		"commit.EXECUTE_COMMIT",
-		"ct_subprocess.VERIFY_CT_DRIVER",
-		"ct_subprocess.CT_GREEN_STUBS",
-		// AT - GREEN - SYSTEM (green_phase_cycle dispatched twice)
-		"at_green_system.ENABLE_TESTS",
-		"green_phase_cycle.WRITE", // backend
-		"green_phase_cycle.COMPILE",
-		"green_phase_cycle.RUN",
-		"green_phase_cycle.WRITE", // frontend
-		"green_phase_cycle.COMPILE",
-		"green_phase_cycle.RUN",
-		"commit.APPROVE_COMMIT",
-		"commit.EXECUTE_COMMIT",
-		"at_green_system.TICK",
-		"at_green_system.MOVE_TICKET_IN_ACCEPTANCE",
-		"main.MOVE_TICKET_IN_ACCEPTANCE",
-	}
-	if !reflect.DeepEqual(history, want) {
-		t.Errorf("step history:\n got=%v\nwant=%v", history, want)
+	// five times in this run. CT_RED_TEST is the only red_phase_cycle call
+	// site that pushes verify_real_suite — the rest match the AT shape.
+	want := concat(
+		behavioralIntakePrefix(),
+		redCycleEvents(atRedTestParams()),
+		redCycleEvents(atRedDslParams()),
+		// CT_SUBPROCESS — ONBOARDING short-circuits (driver exists), no
+		// node fires; CT_RED_TEST → CT_RED_DSL → CT_RED_EXTERNAL_DRIVER
+		// each dispatch red_phase_cycle once.
+		redCycleEvents(ctRedTestParams()),
+		redCycleEvents(ctRedDslParams()),
+		redCycleEvents(ctRedExternalDriverParams()),
+		[]DispatchEvent{
+			serviceTask("ct_subprocess", "VERIFY_CT_DRIVER", "run_tests", noParams()),
+			userTask("ct_subprocess", "CT_GREEN_STUBS", "atdd-stubs", noParams()),
+			serviceTask("at_green_system", "ENABLE_TESTS", "enable_change_driven", noParams()),
+		},
+		greenCycleEvents(atGreenBackendParams()),
+		greenCycleEvents(atGreenFrontendParams()),
+		atGreenSystemTail(),
+		[]DispatchEvent{
+			serviceTask("main", "MOVE_TICKET_IN_ACCEPTANCE", "move_to_in_acceptance", noParams()),
+		},
+	)
+	if !reflect.DeepEqual(*events, want) {
+		t.Errorf("dispatch events:\n got=\n%s\nwant=\n%s", formatEvents(*events), formatEvents(want))
 	}
 }
