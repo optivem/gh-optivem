@@ -17,6 +17,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -261,6 +262,92 @@ func verifyGHCRToken(client *http.Client, username, token string) error {
 			"Regenerate the token with write:packages + read:packages at https://github.com/settings/tokens", scopes)
 	}
 	return nil
+}
+
+// VerifyTokens runs presence + live auth checks against every credential the
+// gh-optivem CLI reads from environment: DOCKERHUB_TOKEN, SONAR_TOKEN,
+// GHCR_TOKEN, WORKFLOW_TOKEN, REPO_TOKEN, plus DOCKERHUB_USERNAME for the
+// Docker Hub login call. Workflow-only tokens (e.g. VERIFY_TOKEN, used by
+// the gh-acceptance meta-test for `gh api` calls) are out of scope — those
+// are validated by the workflow's own preflight steps.
+//
+// Designed to be invoked from a CI preflight job — fails fast before the
+// scaffolding matrix fans out, so a single expired token surfaces once
+// instead of once per matrix combo. All checks run regardless of earlier
+// failures so the user sees every broken token in one pass.
+//
+// Returns nil on full success, otherwise an aggregated error listing every
+// failure (missing or rejected). On nil return, prints one success line per
+// token via the log package (caller is responsible for log.Init).
+func VerifyTokens() error {
+	e := readEnvTokens()
+
+	required := []struct{ name, val string }{
+		{"DOCKERHUB_USERNAME", e.dockerHubUsername},
+		{"DOCKERHUB_TOKEN", e.dockerHubToken},
+		{"SONAR_TOKEN", e.sonarToken},
+		{"GHCR_TOKEN", e.ghcrToken},
+		{"WORKFLOW_TOKEN", e.workflowToken},
+		{"REPO_TOKEN", e.repoToken},
+	}
+	var missing []string
+	for _, r := range required {
+		if r.val == "" {
+			missing = append(missing, r.name)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("missing required environment variable(s): %s", strings.Join(missing, ", "))
+	}
+
+	log.Info("Verifying credentials with providers...")
+
+	client := &http.Client{Timeout: tokenAuthTimeout}
+
+	type check struct {
+		name string
+		fn   func() error
+	}
+	checks := []check{
+		{"DOCKERHUB_TOKEN", func() error { return verifyDockerHubAuth(client, e.dockerHubUsername, e.dockerHubToken) }},
+		{"SONAR_TOKEN", func() error { return verifySonarToken(client, e.sonarToken) }},
+		{"GHCR_TOKEN", func() error { return verifyGHCRToken(client, e.dockerHubUsername, e.ghcrToken) }},
+		{"WORKFLOW_TOKEN", func() error { return verifyGitHubToken(client, e.workflowToken, "WORKFLOW_TOKEN") }},
+		{"REPO_TOKEN", func() error { return verifyGitHubToken(client, e.repoToken, "REPO_TOKEN") }},
+	}
+
+	results := make([]tokenAuthResult, len(checks))
+	var wg sync.WaitGroup
+	for i, c := range checks {
+		wg.Add(1)
+		go func(i int, c check) {
+			defer wg.Done()
+			results[i] = tokenAuthResult{name: c.name, err: c.fn()}
+		}(i, c)
+	}
+	wg.Wait()
+
+	var failures []tokenAuthResult
+	for _, r := range results {
+		if r.err == nil {
+			log.Successf("  %s: valid", r.name)
+			continue
+		}
+		failures = append(failures, r)
+	}
+	if len(failures) == 0 {
+		return nil
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Credential verification failed for %d token(s):\n", len(failures))
+	for _, f := range failures {
+		b.WriteString("\n  ")
+		b.WriteString(f.name)
+		b.WriteString(": ")
+		b.WriteString(f.err.Error())
+	}
+	return errors.New(b.String())
 }
 
 func scopeContains(scopesHeader, want string) bool {
