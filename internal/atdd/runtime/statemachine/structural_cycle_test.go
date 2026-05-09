@@ -9,13 +9,16 @@ import (
 // N` against a Task ticket carrying the `subtype:system-interface-redesign`
 // label. Agents (claude shell-outs) and github-touching service tasks are
 // mocked out; the runner walks `main` from the implement-ticket entry
-// point (MOVE_TICKET_IN_PROGRESS); the spy captures each dispatched
-// service_task / user_task with its resolved action/agent and ctx.Params
-// snapshot.
+// point (MOVE_TICKET_IN_PROGRESS); the spy captures every node — service
+// tasks, user tasks, gateways, call_activities, and end_events — with its
+// resolved action / agent / outcome / call target and ctx.Params snapshot.
 //
-// Asserting params alongside the trail catches three classes of regression
-// the old string-trail couldn't see: call_activity param push/pop, ${…}
-// expansion at user_task dispatch, and node-level params merging.
+// Asserting the full BPMN trail catches three classes of regression the
+// old service/user-only spy couldn't see: gateway routing decisions
+// (binding + chosen branch), call_activity push/pop param shape at every
+// call site, and end-event termination of each sub-process. ${…}
+// expansion at user_task dispatch and node-level params merging fall out
+// of the same trail.
 func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 	// ── ARRANGE ─────────────────────────────────────────────────────────
 	eng, events := dispatchSpy(t)
@@ -54,28 +57,59 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 	expect(events).
 		process("main", noParams()).
 		serviceTask("MOVE_TICKET_IN_PROGRESS", "move_to_in_progress").
+		callActivity("INTAKE", "github_intake", noParams()).
 		then().
 		process("github_intake", noParams()).
 		serviceTask("CLASSIFY_TICKET_TYPE", "read_ticket_type").
+		gateway("GATE_CLASSIFY_CONFIDENT", "ticket_type_recognized", true).
+		gateway("GATE_TICKET_TYPE_INTAKE", "ticket_type", "task").
 		serviceTask("CLASSIFY_TICKET_SUBTYPE", "read_subtype").
+		gateway("GATE_SUBTYPE_OK", "subtype_ok", true).
 		serviceTask("READ_TICKET_BODY", "parse_ticket_body").
+		gateway("GATE_PARSE_OK", "parse_ok", true).
 		serviceTask("REPORT_TICKET_DETAILS", "report_intake_summary").
+		endEvent("INTAKE_END").
+		then().
+		process("main", noParams()).
+		callActivity("RUN_LEGACY_CYCLE", "run_legacy_cycle", noParams()).
+		then().
+		process("run_legacy_cycle", noParams()).
+		gateway("GATE_LEGACY_PRESENT", "legacy_acceptance_criteria_section_present", false).
+		endEvent("RUN_LEGACY_END").
+		then().
+		process("main", noParams()).
+		callActivity("RUN_CYCLE", "run_cycle", noParams()).
+		then().
+		process("run_cycle", noParams()).
+		gateway("GATE_CHANGE_TYPE", "change_type", "system-interface-redesign").
+		callActivity("DA_CYCLE", "da_cycle", noParams()).
+		then().
+		process("da_cycle", noParams()).
+		gateway("GATE_CHANGE_TYPE_DA", "change_type", "system-interface-redesign").
+		callActivity("SYSTEM_INTERFACE_REDESIGN_CYCLE", "structural_cycle", siParams).
 		then().
 		process("structural_cycle", siParams).
 		userTask("WRITE", "atdd-task").
 		userTask("APPROVE_CHANGE", "human").
-		serviceTask("COMPILE", "compile_in_scope").
-		serviceTask("CHOOSE_TESTS", "select_tests").
-		serviceTask("RUN_TESTS", "run_tests").
+		callActivity("COMMIT", "commit", commitFromTemplateParams()).
 		then().
 		process("commit", commitFrom(siParams)).
 		userTask("APPROVE_COMMIT", "human").
 		serviceTask("EXECUTE_COMMIT", "commit_phase").
+		endEvent("COMMIT_END").
 		then().
 		process("structural_cycle", siParams).
 		serviceTask("TICK_CHECKLIST", "tick_checklist").
+		endEvent("STRUCT_END").
+		then().
+		process("da_cycle", noParams()).
+		endEvent("DA_END").
+		then().
+		process("run_cycle", noParams()).
+		endEvent("CYCLE_END").
 		then().
 		process("main", noParams()).
 		serviceTask("MOVE_TICKET_IN_ACCEPTANCE", "move_to_in_acceptance").
+		endEvent("END").
 		assert(t)
 }

@@ -629,8 +629,11 @@ processes:
   # structural_cycle
   # Shared by system-api-task, system-ui-task, and chore via call_activity
   # `params:`. The Go runtime substitutes ${change_type}, ${agent}, ${phase_doc} at
-  # dispatch time. The TEST gate (full | compile | skip) is asked upfront —
-  # nothing inside TEST runs until the user chooses.
+  # dispatch time. APPROVE_CHANGE goes straight to COMMIT; the test-choice
+  # subgraph (GATE_TEST_MODE / COMPILE / CHOOSE_TESTS / RUN_TESTS /
+  # GATE_STRUCT_VERIFY / STOP_STRUCT_VERIFY_REVIEW / FIX_STRUCT_VERIFY) is left
+  # defined but unreachable for now — it will be re-wired when test-choice
+  # handling is reworked.
   # ===========================================================================
   structural_cycle:
     start: WRITE
@@ -700,7 +703,7 @@ processes:
 
     sequence_flows:
       - {from: WRITE,          to: APPROVE_CHANGE}
-      - {from: APPROVE_CHANGE,  to: GATE_TEST_MODE}
+      - {from: APPROVE_CHANGE,  to: COMMIT}
       - {from: GATE_TEST_MODE,              to: COMMIT,                    when: "structural_test_mode == skip"}
       - {from: GATE_TEST_MODE,              to: COMPILE,                   when: "structural_test_mode in [compile, full]"}
       - {from: COMPILE,                     to: CHOOSE_TESTS,              when: "structural_test_mode == full"}

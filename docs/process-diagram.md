@@ -282,7 +282,7 @@ flowchart TD
     WRITE["${change_type} - WRITE"]
 
     WRITE --> APPROVE_CHANGE
-    APPROVE_CHANGE --> GATE_TEST_MODE
+    APPROVE_CHANGE --> COMMIT
     GATE_TEST_MODE -- skip --> COMMIT
     GATE_TEST_MODE -- compile / full --> COMPILE
     COMPILE -- full --> CHOOSE_TESTS
