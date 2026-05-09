@@ -696,12 +696,14 @@ func (a actions) commitPhase(ctx *statemachine.Context) statemachine.Outcome {
 // Test-mode actions
 // ---------------------------------------------------------------------------
 
-// compileInScope runs the canonical compile sweep. v1 calls compile-all.sh
-// from the repo root unconditionally; per-language scoping is a v2 nicety
-// (would require knowing the in-scope languages, which the structural cycle
-// does not yet expose).
+// compileInScope runs the canonical compile sweep by shelling out to
+// `gh optivem compile`, which dispatches per-language compile commands for
+// every in-scope tier listed in gh-optivem.yaml (see compile_commands.go +
+// internal/compiler). The bare `compile` form runs `compile system` then
+// `compile system-tests` sequentially, halting on first failure — matching
+// the behaviour the action needs from a single shell-out.
 func (a actions) compileInScope(ctx *statemachine.Context) statemachine.Outcome {
-	cmdLine := "./compile-all.sh"
+	cmdLine := "gh optivem compile"
 	out, err := a.deps.Shell.Run(context.Background(), cmdLine)
 	if err != nil {
 		fmt.Fprintln(a.deps.Stderr, string(out))

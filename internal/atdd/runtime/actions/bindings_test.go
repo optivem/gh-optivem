@@ -143,7 +143,7 @@ func TestCompileInScope_RunsScriptAndPropagatesError(t *testing.T) {
 			if (out.Err != nil) != tc.wantErr {
 				t.Fatalf("wantErr=%v, got %v", tc.wantErr, out.Err)
 			}
-			if len(sh.calls) != 1 || sh.calls[0] != "./compile-all.sh" {
+			if len(sh.calls) != 1 || sh.calls[0] != "gh optivem compile" {
 				t.Fatalf("unexpected shell calls: %v", sh.calls)
 			}
 		})
