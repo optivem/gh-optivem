@@ -259,7 +259,7 @@ var transitionTable = []transitionCase{
 	// the fix-agent loop back into CHOOSE_TESTS so the operator can re-pick
 	// scope after the agent's fix.
 	{process: "structural_cycle", from: "WRITE", wantTo: "APPROVE_CHANGE"},
-	{process: "structural_cycle", from: "APPROVE_CHANGE", wantTo: "GATE_TEST_MODE"},
+	{process: "structural_cycle", from: "APPROVE_CHANGE", wantTo: "COMMIT", desc: "test-choice handling deferred — APPROVE_CHANGE goes straight to COMMIT; GATE_TEST_MODE/COMPILE/CHOOSE_TESTS/RUN_TESTS/GATE_STRUCT_VERIFY/STOP_STRUCT_VERIFY_REVIEW/FIX_STRUCT_VERIFY remain defined but unreachable"},
 	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "skip"}, wantTo: "COMMIT", desc: "skip mode escapes the TEST sub-loop entirely"},
 	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "compile"}, wantTo: "COMPILE"},
 	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "full"}, wantTo: "COMPILE"},

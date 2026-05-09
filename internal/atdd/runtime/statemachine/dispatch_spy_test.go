@@ -7,23 +7,45 @@ import (
 	"testing"
 )
 
-// DispatchEvent is one observation from the cycle-test spy: a service_task or
-// user_task fired, here are its identifying fields, what action/agent
-// resolved (post ${…} expansion for templated user_tasks), and a snapshot of
-// the live ctx.Params at dispatch.
+// DispatchEvent is one observation from the cycle-test spy: any BPMN node
+// fired, here are its identifying fields, the kind-specific resolved data
+// (action / agent / gate outcome / call target), and a snapshot of the live
+// ctx.Params at dispatch.
 //
-// Gateways, call_activities, start/end events are excluded — they're routing
-// scaffolding, not "steps the runner executes". Outcome / Outputs are
-// excluded too: under noop mocks they carry no signal, and routing is
-// already proven indirectly by the next event in the trail firing per the
-// expected `when:` predicate.
+// Every NodeKind is captured (start_event, end_event, service_task,
+// user_task, gateway, call_activity). Routing scaffolding nodes are kept so
+// the trail directly proves which gates fired with what outcome and which
+// call_activity sites pushed which params, instead of inferring routing
+// indirectly from the next mechanical task to fire. Outcome.Err / Outputs
+// are not captured: under noop mocks they carry no signal.
 type DispatchEvent struct {
 	Process  string
 	NodeID   string
 	Kind     NodeKind
-	Action   string            // service_task: the registered action name
-	Agent    string            // user_task: the resolved agent name
-	ParamsIn map[string]string // shallow copy of ctx.Params at dispatch time
+	ParamsIn map[string]string // shallow copy of ctx.Params at dispatch (parent scope for call_activity)
+
+	// service_task: the registered action name.
+	Action string
+	// user_task: the resolved agent name (post ${…} expansion for templated agents).
+	Agent string
+
+	// gateway: the binding name from YAML and the resolved Outcome. Exactly
+	// one of GateValue / GateBool is meaningful — GateValue carries
+	// string-typed outcomes (e.g. "ok", "story"), GateBool carries
+	// boolean-typed outcomes. GateIsBool disambiguates the zero case
+	// (GateValue=="" with GateBool=false would otherwise be ambiguous).
+	Binding    string
+	GateValue  string
+	GateBool   bool
+	GateIsBool bool
+
+	// call_activity: the target sub-process name and the literal raw.Params
+	// declared at the call site (unexpanded — `${change_type}` stays literal
+	// because the runtime's wrapCallActivity merges raw.Params without
+	// ExpandParams). The merged effective scope inside the sub-process is
+	// observable on the next event's ParamsIn.
+	CallTarget string
+	CallParams map[string]string
 }
 
 // dispatchSpy returns a bound Engine plus a pointer to the event log. The
@@ -31,20 +53,25 @@ type DispatchEvent struct {
 //
 // Capture mechanism — three coordinated pieces:
 //
-//  1. Per-node decorator wraps every service_task / user_task NodeFn so it
-//     appends a partially-filled DispatchEvent to *events* before calling
-//     the inner function.
+//  1. Per-node decorator wraps every node's NodeFn so it appends a
+//     DispatchEvent (with kind-specific raw fields + ParamsIn snapshot)
+//     before calling the inner function. For Gateway, after inner returns
+//     the decorator back-fills the captured Outcome (Value or Bool).
 //  2. AgentFn / ActionFn registry mocks — invoked from inside the inner
 //     function — back-fill the most recently appended event with the
-//     resolved name and a shallow copy of ctx.Params.
-//  3. GateFn echoes pre-seeded routing state, unchanged from the previous
-//     spy shape.
+//     resolved name. (For service/user tasks the decorator's append is
+//     always the latest event when the inner runs because those kinds
+//     don't recurse into sub-events.)
+//  3. GateFn echoes pre-seeded routing state.
 //
-// Ordering invariant: decorator appends → decorator calls inner → inner is
-// the Bind-returned wrapper (a ServiceTask closure or, for templated
-// user_tasks, the run.go wrapper that calls AgentFn(resolvedName) at
-// dispatch) → that body back-fills events[len-1]. Single goroutine,
-// deterministic, no synchronisation needed.
+// Ordering invariant: decorator appends → decorator captures index →
+// decorator calls inner → inner is the Bind-returned wrapper (a ServiceTask
+// closure, a UserTask wrapper that calls AgentFn at dispatch, wrapGateway
+// for Gateway, or wrapCallActivity for CallActivity) → for ServiceTask /
+// UserTask the body back-fills events[len-1]; for Gateway / CallActivity
+// the decorator back-fills events[idx] *after* inner returns. CallActivity
+// is the only kind whose inner appends sub-events, hence the captured idx
+// rather than relying on len-1 after inner.
 func dispatchSpy(t *testing.T) (*Engine, *[]DispatchEvent) {
 	t.Helper()
 	eng := loadSnapshot(t)
@@ -53,17 +80,13 @@ func dispatchSpy(t *testing.T) (*Engine, *[]DispatchEvent) {
 
 	eng.AgentFn = func(name string) NodeFn {
 		return func(ctx *Context) Outcome {
-			e := &(*events)[len(*events)-1]
-			e.Agent = name
-			e.ParamsIn = cloneParams(ctx.Params)
+			(*events)[len(*events)-1].Agent = name
 			return Outcome{}
 		}
 	}
 	eng.ActionFn = func(name string) NodeFn {
 		return func(ctx *Context) Outcome {
-			e := &(*events)[len(*events)-1]
-			e.Action = name
-			e.ParamsIn = cloneParams(ctx.Params)
+			(*events)[len(*events)-1].Action = name
 			return Outcome{}
 		}
 	}
@@ -85,13 +108,33 @@ func dispatchSpy(t *testing.T) (*Engine, *[]DispatchEvent) {
 	for _, process := range eng.Processes {
 		procName := process.Name
 		for id, node := range process.Nodes {
-			if node.Kind != ServiceTask && node.Kind != UserTask {
-				continue
-			}
-			proc, nid, kind, inner := procName, node.ID, node.Kind, node.Fn
+			proc, nid, kind, raw, inner := procName, node.ID, node.Kind, node.Raw, node.Fn
 			node.Fn = func(ctx *Context) Outcome {
-				*events = append(*events, DispatchEvent{Process: proc, NodeID: nid, Kind: kind})
-				return inner(ctx)
+				ev := DispatchEvent{
+					Process:  proc,
+					NodeID:   nid,
+					Kind:     kind,
+					ParamsIn: cloneParams(ctx.Params),
+				}
+				switch kind {
+				case Gateway:
+					ev.Binding = raw.Binding
+				case CallActivity:
+					ev.CallTarget = raw.Process
+					ev.CallParams = cloneParams(raw.Params)
+				}
+				*events = append(*events, ev)
+				idx := len(*events) - 1
+				out := inner(ctx)
+				if kind == Gateway {
+					if out.Value != "" {
+						(*events)[idx].GateValue = out.Value
+					} else {
+						(*events)[idx].GateBool = out.Bool
+						(*events)[idx].GateIsBool = true
+					}
+				}
+				return out
 			}
 			process.Nodes[id] = node
 		}
@@ -114,16 +157,6 @@ func cloneParams(params map[string]string) map[string]string {
 	return out
 }
 
-// serviceTask / userTask are constructor helpers that keep want-slice rows
-// to a single line.
-func serviceTask(process, nodeID, action string, params map[string]string) DispatchEvent {
-	return DispatchEvent{Process: process, NodeID: nodeID, Kind: ServiceTask, Action: action, ParamsIn: params}
-}
-
-func userTask(process, nodeID, agent string, params map[string]string) DispatchEvent {
-	return DispatchEvent{Process: process, NodeID: nodeID, Kind: UserTask, Agent: agent, ParamsIn: params}
-}
-
 // noParams is the empty map expected at dispatches whose enclosing scope is
 // a call_activity that pushed no `params:` (e.g. main / github_intake /
 // at_green_system).
@@ -143,9 +176,20 @@ func commitFrom(parent map[string]string) map[string]string {
 	return out
 }
 
+// commitFromTemplateParams is the literal raw.Params declared at every
+// COMMIT call_activity inside structural_cycle / red_phase_cycle —
+// `{change_type: ${change_type}}` (unexpanded). Used to assert the
+// CallParams field on those CallActivity events.
+func commitFromTemplateParams() map[string]string {
+	return map[string]string{"change_type": "${change_type}"}
+}
+
 // Per-call-site param baselines — one helper per distinct call_activity
 // `params:` block in the YAML. Each represents the ctx.Params snapshot
-// observed at the *first* dispatch inside the called sub-process.
+// observed at the *first* dispatch inside the called sub-process — and,
+// equivalently for these call sites (parent scope is empty for all of
+// them), the literal raw.Params declared at the call site that's asserted
+// on the CallActivity event's CallParams field.
 
 // red_phase_cycle dispatched from at_cycle.AT_RED_TEST.
 func atRedTestParams() map[string]string {
@@ -246,6 +290,17 @@ func formatEvent(e DispatchEvent) string {
 		sel = "action=" + e.Action
 	case UserTask:
 		sel = "agent=" + e.Agent
+	case Gateway:
+		if e.GateIsBool {
+			sel = fmt.Sprintf("binding=%s bool=%t", e.Binding, e.GateBool)
+		} else {
+			sel = fmt.Sprintf("binding=%s value=%s", e.Binding, e.GateValue)
+		}
+	case CallActivity:
+		sel = fmt.Sprintf("target=%s call_params=%s", e.CallTarget, formatParams(e.CallParams))
+	}
+	if sel == "" {
+		return fmt.Sprintf("%s.%s [%s] params=%s", e.Process, e.NodeID, kindLabel(e.Kind), formatParams(e.ParamsIn))
 	}
 	return fmt.Sprintf("%s.%s [%s] %s params=%s",
 		e.Process, e.NodeID, kindLabel(e.Kind), sel, formatParams(e.ParamsIn))
@@ -253,10 +308,18 @@ func formatEvent(e DispatchEvent) string {
 
 func kindLabel(k NodeKind) string {
 	switch k {
+	case StartEvent:
+		return "start_event"
+	case EndEvent:
+		return "end_event"
 	case ServiceTask:
 		return "service_task"
 	case UserTask:
 		return "user_task"
+	case Gateway:
+		return "gateway"
+	case CallActivity:
+		return "call_activity"
 	}
 	return fmt.Sprintf("kind%d", k)
 }
