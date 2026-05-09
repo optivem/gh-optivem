@@ -51,12 +51,15 @@ var (
 )
 
 // ghProject identifies a GitHub Project (v2) by its API + URL fields.
+// Owner is populated from the caller, not the JSON — `gh project list/create`
+// emits owner as an object (`{"login":..., "type":...}`) which would fail
+// to unmarshal into a string field.
 type ghProject struct {
 	ID     string
 	Number int
 	Title  string
 	URL    string
-	Owner  string
+	Owner  string `json:"-"`
 }
 
 type projectListResponse struct {
