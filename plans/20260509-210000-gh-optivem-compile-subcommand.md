@@ -105,7 +105,55 @@ needs targeted compile.
 
 ### Remaining questions
 
-*(none — plan is ready to execute)*
+#### Unify with `gh optivem init`'s `VerifyCompilation`?
+
+**Context (raised post-implementation, 2026-05-09):** Steps 1–3 introduced
+`internal/compiler.commandsFor` as the per-language dispatch table for the
+runtime compile path. There is a parallel dispatcher at scaffold-time in
+`internal/steps/verify.go:58-74` (`buildCommands`), called by
+`VerifyCompilation` (`:30-45`) → `compileComponent` (`:47-56`) during the
+"Verify local compilation" step of `gh optivem init`. Two real divergences
+between the two dispatchers:
+
+1. **Java**: init runs `compileJava compileTestJava` (covers test code);
+   runtime `internal/compiler` runs `compileJava` only. The plan resolved
+   the runtime case to `compileJava` — and the structural cycle compiles
+   test code separately via `compile system-tests`, so that's correct *for
+   the runtime path*. Init's `compileTestJava` is needed because init
+   compiles `system/` and `system-tests/` as separate verifies, and
+   `system/`'s gradle project may include test sources that have to
+   typecheck.
+2. **react**: init handles a `react` lang case as `npm ci && npm run build`;
+   `internal/compiler` doesn't (no `LangReact` enum). React isn't an
+   architecture-tier language in `gh-optivem.yaml` today — frontend
+   `lang: typescript` covers it — so this only matters at init-time when
+   `--frontend-lang react` is passed.
+
+**Possible approaches:**
+
+- **A. Move both onto `internal/compiler`, parameterize java for test
+  compile.** Add a `CompileOptions{IncludeTests bool}` (or a second
+  entry-point `CompileWithTests`) so init's verify pass can opt in. Drop
+  the `react` case from init by treating it as typescript-with-build (or
+  add `LangReact` to `projectconfig`). One source of truth, one place to
+  edit when a language's tooling changes.
+- **B. Leave them separate.** Init's compile is a "does it build at all"
+  check on a freshly-scaffolded local clone, before any `gh-optivem.yaml`
+  is read into the runner; runtime's compile is driven by the YAML the
+  user can edit. Different inputs, different timing — keeping them apart
+  avoids overcoupling.
+- **C. Half-step: extract just `commandsFor`.** Move the `lang → []string`
+  table to a shared internal helper, but keep the call sites (which differ
+  in cwd resolution, error semantics, and the test-code variant) separate.
+
+**Open call:** A is the right answer eventually, but blocked on a small
+design call — does init's java compile actually need `compileTestJava`,
+or is that a habit from before `compile system-tests` existed? If the tests
+live under a separate gradle project rooted at `system-test/`, init could
+compile them via a second `Compile(systemTest, ...)` call and drop
+`compileTestJava` from the system-tier compile. That would make A
+trivially clean. C is the safe interim if the gradle layout question
+isn't worth digging into right now.
 
 ## Out of scope
 
