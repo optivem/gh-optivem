@@ -111,10 +111,11 @@ type Options struct {
 	// startup). Unrecognised agent names are rejected at parse time.
 	AgentPromptOverrides map[string]string
 
-	// ConfigPath, when non-empty, overrides the default
-	// `<repoPath>/gh-optivem.yaml` lookup with an explicit file path. Wired
-	// from `--config <path>`; missing-file is an error (unlike the default
-	// lookup, where absence is OK).
+	// ConfigPath is the resolved gh-optivem.yaml path. The caller (cobra
+	// layer in atdd_commands.go) populates it via projectconfig.ResolvePath
+	// so flag > env > <cwd>/gh-optivem.yaml precedence is applied once and
+	// the driver sees a single, always-non-empty path. Missing-file is a
+	// hard error.
 	ConfigPath string
 
 	// LogFile, when non-empty, mirrors everything Stdout and Stderr would
@@ -333,19 +334,22 @@ func installLogFileMirror(opts *Options) (func(), error) {
 	return func() { f.Close() }, nil
 }
 
-// loadDriverConfig returns the parsed config for the run. When configPath
-// is non-empty (operator passed `--config`), it must exist; missing-file
-// is an error to catch typos. Empty configPath falls back to the default
-// `<repoPath>/gh-optivem.yaml` lookup, where absence is OK (returns nil).
+// loadDriverConfig returns the parsed config for the run. configPath is
+// the resolved gh-optivem.yaml path supplied by the cobra layer (which
+// applies projectconfig.ResolvePath); missing-file is a hard error.
+//
+// Programmatic callers (embedded driver smoke tests) may pass an empty
+// configPath when they have no config to provide — that case falls back
+// to the legacy Load(repoPath) behaviour where absence returns nil.
 func loadDriverConfig(configPath, repoPath string) (*projectconfig.Config, error) {
-	if configPath != "" {
-		cfg, err := projectconfig.LoadFromPath(configPath)
+	if configPath == "" {
+		cfg, err := projectconfig.Load(repoPath)
 		if err != nil {
 			return nil, fmt.Errorf("driver: %w", err)
 		}
 		return cfg, nil
 	}
-	cfg, err := projectconfig.Load(repoPath)
+	cfg, err := projectconfig.LoadFromPath(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("driver: %w", err)
 	}
@@ -412,14 +416,26 @@ func printConfig(w io.Writer, opts Options, cfg *projectconfig.Config, repoPath 
 
 // configSourceLabel returns a human-readable description of where the
 // driver loaded its config from, suitable for the printConfig banner.
-func configSourceLabel(explicitPath string, cfg *projectconfig.Config, repoPath string) string {
-	if explicitPath != "" {
-		return explicitPath + " (--config)"
+//
+// resolvedPath empty corresponds to the programmatic-caller path through
+// loadDriverConfig (cfg loaded via Load(repoPath) tolerating absence);
+// otherwise resolvedPath is the path the cobra layer's ResolvePath
+// produced (flag > env > cwd) and the suffix flags how it was sourced.
+func configSourceLabel(resolvedPath string, cfg *projectconfig.Config, repoPath string) string {
+	if resolvedPath == "" {
+		if cfg != nil {
+			return filepath.Join(repoPath, projectconfig.Path)
+		}
+		return "(none — no gh-optivem.yaml at repo root)"
 	}
-	if cfg != nil {
-		return filepath.Join(repoPath, projectconfig.Path)
+	defaultPath, explicit := projectconfig.ResolvePath("")
+	if explicit && resolvedPath == defaultPath {
+		return resolvedPath + " ($" + projectconfig.EnvVar + ")"
 	}
-	return "(none — no gh-optivem.yaml at repo root)"
+	if resolvedPath == defaultPath {
+		return resolvedPath
+	}
+	return resolvedPath + " (--config)"
 }
 
 func orPlaceholder(s, placeholder string) string {

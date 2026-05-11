@@ -42,6 +42,12 @@ const bugReportLogMaxBytes = 50 * 1024
 
 const separator = "=========================================="
 
+// projectConfigPath holds the value of the persistent root --config / -c
+// flag (or empty when the user didn't pass it). Read by every subcommand
+// that needs to locate gh-optivem.yaml — they pass it through
+// projectconfig.ResolvePath for the flag > env > default cascade.
+var projectConfigPath string
+
 type stepDef struct {
 	name      string
 	phase     string
@@ -80,6 +86,8 @@ func newRootCmd() *cobra.Command {
 	// resolving to --verbose. Cobra's InitDefaultVersionFlag detects the
 	// flag is already present and skips adding its default `-v` alias.
 	cmd.Flags().Bool("version", false, "Print version and exit")
+	cmd.PersistentFlags().StringVarP(&projectConfigPath, "config", "c", "",
+		"Path to gh-optivem.yaml (default: $GH_OPTIVEM_CONFIG or ./gh-optivem.yaml)")
 	cmd.AddCommand(
 		newInitCmd(),
 		newConfigCmd(),

@@ -699,3 +699,96 @@ func TestWrite_EmptyRepoPathErrors(t *testing.T) {
 		t.Fatal("expected error for empty repoPath, got nil")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// ResolvePath
+// ---------------------------------------------------------------------------
+
+// TestResolvePath_FlagBeatsEnvAndDefault verifies the flag value wins over
+// $GH_OPTIVEM_CONFIG and the cwd default.
+func TestResolvePath_FlagBeatsEnvAndDefault(t *testing.T) {
+	// Not parallel — mutates env.
+	t.Setenv(EnvVar, "/env/from-env.yaml")
+	path, explicit := ResolvePath("/flag/explicit.yaml")
+	if path != "/flag/explicit.yaml" {
+		t.Errorf("path: got %q, want /flag/explicit.yaml", path)
+	}
+	if !explicit {
+		t.Error("explicit: got false, want true")
+	}
+}
+
+// TestResolvePath_EnvUsedWhenFlagEmpty verifies $GH_OPTIVEM_CONFIG is the
+// second-tier source when --config / -c wasn't passed.
+func TestResolvePath_EnvUsedWhenFlagEmpty(t *testing.T) {
+	t.Setenv(EnvVar, "/env/from-env.yaml")
+	path, explicit := ResolvePath("")
+	if path != "/env/from-env.yaml" {
+		t.Errorf("path: got %q, want /env/from-env.yaml", path)
+	}
+	if !explicit {
+		t.Error("explicit: got false, want true (env counts as explicit)")
+	}
+}
+
+// TestResolvePath_DefaultFallsBackToCwd verifies the default branch joins
+// CWD with the canonical Path constant and reports explicit=false.
+func TestResolvePath_DefaultFallsBackToCwd(t *testing.T) {
+	t.Setenv(EnvVar, "")
+	path, explicit := ResolvePath("")
+	cwd, _ := os.Getwd()
+	want := filepath.Join(cwd, Path)
+	if path != want {
+		t.Errorf("path: got %q, want %q", path, want)
+	}
+	if explicit {
+		t.Error("explicit: got true, want false (cwd default isn't explicit)")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// WriteToPath
+// ---------------------------------------------------------------------------
+
+// TestWriteToPath_NonCanonicalFilename round-trips through a non-canonical
+// filename (used when --config points at a non-default file).
+func TestWriteToPath_NonCanonicalFilename(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	yamlPath := filepath.Join(dir, "gh-optivem.alt.yaml")
+	in := &Config{
+		Project:      Project{URL: "https://github.com/orgs/acme/projects/7"},
+		RepoStrategy: RepoStrategyMonoRepo,
+		System: System{
+			Architecture: ArchMonolith,
+			Path:         "system/monolith/java",
+			Repo:         "acme/page-turner",
+			Lang:         LangJava,
+		},
+		SystemTest: TierSpec{
+			Path: "system-test/java",
+			Repo: "acme/page-turner",
+			Lang: LangJava,
+		},
+	}
+	if err := WriteToPath(yamlPath, in); err != nil {
+		t.Fatalf("WriteToPath: %v", err)
+	}
+	out, err := LoadFromPath(yamlPath)
+	if err != nil {
+		t.Fatalf("LoadFromPath: %v", err)
+	}
+	if out.Project.URL != in.Project.URL {
+		t.Errorf("project.url mismatch after round-trip")
+	}
+	if out.System.Lang != in.System.Lang {
+		t.Errorf("system.lang mismatch after round-trip")
+	}
+}
+
+func TestWriteToPath_EmptyPathErrors(t *testing.T) {
+	t.Parallel()
+	if err := WriteToPath("", &Config{}); err == nil {
+		t.Fatal("expected error for empty yamlPath, got nil")
+	}
+}

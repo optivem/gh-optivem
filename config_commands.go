@@ -49,6 +49,11 @@ non-scaffolded repo, or re-validating after a hand edit).`,
 // unless --force is passed (the file may be hand-edited; silent overwrite
 // is a foot-gun). Pure local file write — no network, no GitHub, no
 // SonarCloud.
+//
+// Target path precedence: persistent --config / -c (or $GH_OPTIVEM_CONFIG)
+// > --dir > current working directory. --config names an exact target
+// file (any filename); --dir names a parent directory and the canonical
+// `gh-optivem.yaml` filename is appended.
 func newConfigInitCmd() *cobra.Command {
 	f := &config.RawFlags{}
 	var (
@@ -58,8 +63,10 @@ func newConfigInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Write a fresh gh-optivem.yaml in the current repo",
-		Long: `Write a fresh gh-optivem.yaml in the current working directory (or
-the directory passed via --dir) from the supplied flags.
+		Long: `Write a fresh gh-optivem.yaml from the supplied flags.
+
+Target path precedence: --config <path> (also honored as $GH_OPTIVEM_CONFIG)
+> --dir <dir> (writes <dir>/gh-optivem.yaml) > current working directory.
 
 Refuses to overwrite an existing file unless --force is passed. The
 file is the single source of truth for the tool and may be hand-edited;
@@ -69,28 +76,32 @@ silent overwrite would be a foot-gun.`,
       --arch monolith --repo-strategy monorepo --monolith-lang java \
       --project-url https://github.com/orgs/acme/projects/1
 
+  # Write to a non-default filename (shop's multi-combination matrix)
+  gh optivem -c ./gh-optivem.monolith-java.yaml config init --owner acme ...
+
   # Overwrite an existing file
   gh optivem config init --owner acme ... --force`,
 		Run: func(cmd *cobra.Command, args []string) {
-			path, err := runConfigInit(f, dir, force)
+			yamlPath, err := resolveConfigInitTarget(projectConfigPath, dir)
 			exitOnError(err)
-			fmt.Printf("Wrote %s\n", path)
+			written, err := runConfigInit(f, yamlPath, force)
+			exitOnError(err)
+			fmt.Printf("Wrote %s\n", written)
 		},
 	}
 	config.BindConfigInitFlags(cmd, f)
 	cmd.Flags().BoolVar(&force, "force", false, "Overwrite an existing gh-optivem.yaml")
-	cmd.Flags().StringVar(&dir, "dir", "", "Directory to write gh-optivem.yaml into (default: current working directory)")
+	cmd.Flags().StringVar(&dir, "dir", "", "Directory to write gh-optivem.yaml into (ignored if --config is set; default: current working directory)")
 	return cmd
 }
 
-// runConfigInit is the testable core of `gh optivem config init`. It validates
-// the flags, resolves the target directory, refuses to overwrite an existing
-// file unless force is true, and writes the YAML. Returns the absolute path
-// written on success.
-func runConfigInit(f *config.RawFlags, dir string, force bool) (string, error) {
-	cfg, err := config.ValidateAndDeriveForYAML(f)
-	if err != nil {
-		return "", err
+// resolveConfigInitTarget picks the YAML file path config init should
+// write to: persistent --config wins (or $GH_OPTIVEM_CONFIG via
+// ResolvePath's explicit=true); else --dir + canonical filename; else
+// cwd + canonical filename.
+func resolveConfigInitTarget(flagVal, dir string) (string, error) {
+	if path, explicit := projectconfig.ResolvePath(flagVal); explicit {
+		return path, nil
 	}
 	target := dir
 	if target == "" {
@@ -100,74 +111,69 @@ func runConfigInit(f *config.RawFlags, dir string, force bool) (string, error) {
 		}
 		target = cwd
 	}
-	yamlPath := filepath.Join(target, projectconfig.Path)
+	return filepath.Join(target, projectconfig.Path), nil
+}
+
+// runConfigInit is the testable core of `gh optivem config init`. It validates
+// the flags, refuses to overwrite an existing file unless force is true, and
+// writes the YAML to yamlPath. Returns yamlPath on success.
+func runConfigInit(f *config.RawFlags, yamlPath string, force bool) (string, error) {
+	cfg, err := config.ValidateAndDeriveForYAML(f)
+	if err != nil {
+		return "", err
+	}
 	if _, err := os.Stat(yamlPath); err == nil && !force {
 		return "", fmt.Errorf("%s already exists; pass --force to overwrite", yamlPath)
 	}
-	if err := steps.WriteOptivemYAMLToPath(cfg, target); err != nil {
+	if err := steps.WriteOptivemYAMLToFilePath(cfg, yamlPath); err != nil {
 		return "", err
 	}
-	if err := files.EnsureGitignoreLine(target, ".gh-optivem/"); err != nil {
+	if err := files.EnsureGitignoreLine(filepath.Dir(yamlPath), ".gh-optivem/"); err != nil {
 		return "", fmt.Errorf("ensure .gitignore: %w", err)
 	}
 	return yamlPath, nil
 }
 
-// newConfigValidateCmd implements `gh optivem config validate`. Reads
-// <dir>/gh-optivem.yaml and runs it through projectconfig.Validate (Load
-// invokes Validate internally — successful Load = valid file). Surfaces
-// the existing-but-currently-unreachable Validate capability so anyone
-// hand-editing the YAML can check it before running implement-ticket.
+// newConfigValidateCmd implements `gh optivem config validate`. Reads the
+// gh-optivem.yaml at the path resolved by the persistent --config / -c flag
+// (or $GH_OPTIVEM_CONFIG, or cwd) and runs it through projectconfig.Validate
+// (LoadFromPath invokes Validate internally — successful load = valid file).
+// Surfaces the existing-but-otherwise-unreachable Validate capability so
+// anyone hand-editing the YAML can check it before running implement-ticket.
 func newConfigValidateCmd() *cobra.Command {
-	var dir string
 	cmd := &cobra.Command{
 		Use:   "validate",
 		Short: "Validate gh-optivem.yaml in the current repo",
-		Long: `Read <dir>/gh-optivem.yaml (defaults to the current working directory)
-and validate it against the projectconfig schema. Exits 0 when valid,
-non-zero with the validation error otherwise.`,
+		Long: `Validate gh-optivem.yaml against the projectconfig schema. Exits 0
+when valid, non-zero with the validation error otherwise.
+
+The target file is resolved via the persistent --config / -c flag
+(or $GH_OPTIVEM_CONFIG, or ./gh-optivem.yaml).`,
 		Example: `  gh optivem config validate
-  gh optivem config validate --dir ./some-other-repo`,
+  gh optivem -c ./gh-optivem.shop-monolith.yaml config validate`,
 		Run: func(cmd *cobra.Command, args []string) {
-			path, err := runConfigValidate(dir)
+			path, _ := projectconfig.ResolvePath(projectConfigPath)
+			validated, err := runConfigValidate(path)
 			exitOnError(err)
-			fmt.Printf("%s is valid\n", path)
+			fmt.Printf("%s is valid\n", validated)
 		},
 	}
-	cmd.Flags().StringVar(&dir, "dir", "", "Directory containing gh-optivem.yaml (default: current working directory)")
 	return cmd
 }
 
 // runConfigValidate is the testable core of `gh optivem config validate`. It
-// reads <dir>/gh-optivem.yaml (defaulting dir to CWD), runs it through
-// projectconfig.Load (which invokes Validate), and returns the absolute path
-// validated on success. Missing file returns a wrapped error pointing the
-// user at `gh optivem config init`.
-func runConfigValidate(dir string) (string, error) {
-	target := dir
-	if target == "" {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return "", err
-		}
-		target = cwd
-	}
-	yamlPath := filepath.Join(target, projectconfig.Path)
+// reads the file at yamlPath, runs it through projectconfig.LoadFromPath
+// (which invokes Validate), and returns yamlPath on success. Missing file
+// returns a wrapped error pointing the user at `gh optivem config init`.
+func runConfigValidate(yamlPath string) (string, error) {
 	if _, err := os.Stat(yamlPath); err != nil {
 		if os.IsNotExist(err) {
-			return "", fmt.Errorf("no gh-optivem.yaml in %s; run `gh optivem config init` first", target)
+			return "", fmt.Errorf("no gh-optivem.yaml at %s; run `gh optivem config init` first", yamlPath)
 		}
 		return "", err
 	}
-	cfg, err := projectconfig.Load(target)
-	if err != nil {
+	if _, err := projectconfig.LoadFromPath(yamlPath); err != nil {
 		return "", err
-	}
-	if cfg == nil {
-		// Defensive — Load returns (nil, nil) only on missing file, which the
-		// os.Stat above already caught. Reaching here means a race between
-		// stat and read.
-		return "", fmt.Errorf("no gh-optivem.yaml in %s", target)
 	}
 	return yamlPath, nil
 }

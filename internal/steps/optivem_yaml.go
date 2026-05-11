@@ -51,6 +51,15 @@ func WriteOptivemYAMLToPath(cfg *config.Config, dir string) error {
 	return projectconfig.Write(dir, pc)
 }
 
+// WriteOptivemYAMLToFilePath renders cfg as a projectconfig.Config and writes
+// it to an exact yaml file path. Used by `gh optivem config init` when the
+// caller has chosen a non-default filename via the persistent --config flag
+// (e.g. `gh-optivem.monolith-java.yaml`).
+func WriteOptivemYAMLToFilePath(cfg *config.Config, yamlPath string) error {
+	pc := buildOptivemYAML(cfg)
+	return projectconfig.WriteToPath(yamlPath, pc)
+}
+
 func writeOptivemYAMLToDir(dir string, pc *projectconfig.Config) {
 	if err := projectconfig.Write(dir, pc); err != nil {
 		log.Fatalf("Write gh-optivem.yaml: %v", err)

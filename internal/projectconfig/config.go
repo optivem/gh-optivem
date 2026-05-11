@@ -38,6 +38,11 @@ import (
 // repo-agnostic by design.
 const Path = "gh-optivem.yaml"
 
+// EnvVar is the environment-variable equivalent of the persistent
+// --config / -c flag. When set, every command resolves config lookups
+// to its value (unless the flag is explicitly passed, which wins).
+const EnvVar = "GH_OPTIVEM_CONFIG"
+
 // Repo strategy enum values, surfaced as YAML strings.
 const (
 	RepoStrategyMonoRepo  = "mono-repo"
@@ -388,6 +393,27 @@ func looksLikeWindowsDriveAbsolute(v string) bool {
 		((v[0] >= 'a' && v[0] <= 'z') || (v[0] >= 'A' && v[0] <= 'Z'))
 }
 
+// ResolvePath produces the gh-optivem.yaml path every command should
+// read, applying flag > env > default precedence:
+//
+//   - flagVal non-empty (operator passed --config / -c): that path, explicit=true.
+//   - $GH_OPTIVEM_CONFIG set: that path, explicit=true.
+//   - otherwise: <cwd>/gh-optivem.yaml, explicit=false.
+//
+// The explicit return tells callers whether the path was operator-chosen
+// (a typo'd path should hard-error, not silently fall back) vs the
+// default (where future UX work can offer to scaffold the file in-place).
+func ResolvePath(flagVal string) (path string, explicit bool) {
+	if flagVal != "" {
+		return flagVal, true
+	}
+	if v := os.Getenv(EnvVar); v != "" {
+		return v, true
+	}
+	cwd, _ := os.Getwd()
+	return filepath.Join(cwd, Path), false
+}
+
 // Load reads <repoPath>/gh-optivem.yaml and returns the parsed Config. A
 // missing file returns (nil, nil) — callers treat absence as "no config,
 // fall through". I/O errors other than not-found are surfaced. YAML parse
@@ -440,6 +466,16 @@ func Write(repoPath string, cfg *Config) error {
 	if repoPath == "" {
 		return fmt.Errorf("config: repoPath is required")
 	}
+	return WriteToPath(filepath.Join(repoPath, Path), cfg)
+}
+
+// WriteToPath marshals cfg to the given exact file path (0644), allowing
+// callers to choose a non-canonical filename (e.g. `gh-optivem.shop.yaml`)
+// when --config points at one. Validates first.
+func WriteToPath(yamlPath string, cfg *Config) error {
+	if yamlPath == "" {
+		return fmt.Errorf("config: yamlPath is required")
+	}
 	if cfg == nil {
 		return fmt.Errorf("config: cfg is required")
 	}
@@ -450,9 +486,8 @@ func Write(repoPath string, cfg *Config) error {
 	if err != nil {
 		return fmt.Errorf("config: marshal: %w", err)
 	}
-	full := filepath.Join(repoPath, Path)
-	if err := os.WriteFile(full, data, 0o644); err != nil {
-		return fmt.Errorf("config: write %s: %w", full, err)
+	if err := os.WriteFile(yamlPath, data, 0o644); err != nil {
+		return fmt.Errorf("config: write %s: %w", yamlPath, err)
 	}
 	return nil
 }

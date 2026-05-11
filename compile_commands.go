@@ -14,9 +14,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
+	"io/fs"
 
 	"github.com/spf13/cobra"
 
@@ -82,17 +82,20 @@ func newCompileSystemTestsCmd() *cobra.Command {
 	}
 }
 
-// loadProjectConfigOrExit loads gh-optivem.yaml from the user's CWD. Missing
-// file is a hard error — compile dispatches by language fields that only
-// exist in this file. The hint matches the wording used by `config validate`.
+// loadProjectConfigOrExit resolves the project config path via the
+// persistent --config / -c flag (or $GH_OPTIVEM_CONFIG, or cwd) and loads
+// it. Missing file is a hard error — compile dispatches by language
+// fields that only exist in this file. The hint matches the wording used
+// by `config validate`.
 func loadProjectConfigOrExit() *projectconfig.Config {
-	cwd, err := os.Getwd()
-	exitOnError(err)
-	cfg, err := projectconfig.Load(cwd)
-	exitOnError(err)
-	if cfg == nil {
-		exitOnError(fmt.Errorf("no %s in %s; run `gh optivem config init` first",
-			projectconfig.Path, filepath.Clean(cwd)))
+	path, _ := projectconfig.ResolvePath(projectConfigPath)
+	cfg, err := projectconfig.LoadFromPath(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			exitOnError(fmt.Errorf("no %s at %s; run `gh optivem config init` first",
+				projectconfig.Path, path))
+		}
+		exitOnError(err)
 	}
 	return cfg
 }
