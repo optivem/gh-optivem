@@ -3,14 +3,20 @@
 //
 // Compile is the entry point used by the `gh optivem compile` Cobra commands
 // (compile_commands.go) and, indirectly, the structural-cycle compile_in_scope
-// action — which shells out to `gh optivem compile`.
+// action — which shells out to `gh optivem compile`. CompileIn is the same
+// dispatch keyed only on (lang, cwd), for callers without a TierSpec — most
+// importantly internal/steps.VerifyCompilation, which `gh optivem init` calls
+// against a freshly-cloned shop variant before the YAML is in scope.
 //
-// Per-language commands match what `verify-compilation` does at scaffold time
-// (internal/steps/verify.go:buildCommands), trimmed to compileJava only for
-// the java case (the structural-cycle compile sweep is a source-level "does
-// it parse" check, not a test compile). TypeScript runs `npm ci` first
-// because bare `npx tsc --noEmit` errors with "This is not the tsc command
-// you are looking for" when no install ever ran.
+// Per-language commands compile main source AND unit tests together so a
+// structural change cannot silently break test typechecking:
+//
+//	dotnet     -> dotnet build  (the .sln in the tier root pulls in Tests/)
+//	java       -> gradlew compileJava compileTestJava  (src/test/java)
+//	typescript -> npm ci && npx tsc --noEmit  (tsconfig include covers tests)
+//
+// TypeScript runs `npm ci` first because bare `npx tsc --noEmit` errors with
+// "This is not the tsc command you are looking for" when no install ever ran.
 package compiler
 
 import (
@@ -83,18 +89,33 @@ func checkTierLayout(lang, cwd string) error {
 		lang, strings.Join(pats, " or "), cwd)
 }
 
+// CompileIn runs the per-language compile sequence in cwd. Same dispatch
+// table as Compile, but for callers that already have an absolute cwd and
+// no TierSpec — i.e. internal/steps.VerifyCompilation, which compiles each
+// component of a freshly-cloned shop variant by absolute path before any
+// gh-optivem.yaml exists.
+func CompileIn(lang, cwd string) error {
+	if err := checkTierLayout(lang, cwd); err != nil {
+		return err
+	}
+	return runCommands(lang, cwd, passthroughShell{})
+}
+
 // CompileWith is the testable variant of Compile. Production callers use
 // Compile, which injects the passthrough Shell. Tests inject a fake Shell
 // to assert the dispatched command sequence.
 func CompileWith(tier projectconfig.TierSpec, repoRoot string, sh Shell) error {
-	cmds, err := commandsFor(tier.Lang)
+	return runCommands(tier.Lang, filepath.Join(repoRoot, tier.Path), sh)
+}
+
+func runCommands(lang, cwd string, sh Shell) error {
+	cmds, err := commandsFor(lang)
 	if err != nil {
 		return err
 	}
-	cwd := filepath.Join(repoRoot, tier.Path)
 	for _, c := range cmds {
 		if err := sh.Run(c, cwd); err != nil {
-			return fmt.Errorf("compile (%s) %q in %s: %w", tier.Lang, c, cwd, err)
+			return fmt.Errorf("compile (%s) %q in %s: %w", lang, c, cwd, err)
 		}
 	}
 	return nil
@@ -110,7 +131,7 @@ func commandsFor(lang string) ([]string, error) {
 	case projectconfig.LangDotnet:
 		return []string{"dotnet build"}, nil
 	case projectconfig.LangJava:
-		return []string{`.\gradlew.bat compileJava`}, nil
+		return []string{`.\gradlew.bat compileJava compileTestJava`}, nil
 	case projectconfig.LangTypescript:
 		return []string{"npm ci", "npx tsc --noEmit"}, nil
 	default:
