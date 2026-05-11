@@ -59,7 +59,7 @@ Multitier:
 ```bash
 gh optivem config init --owner acme --repo page-turner --system-name "Page Turner" \
     --arch multitier --repo-strategy multirepo \
-    --backend-lang java --frontend-lang react \
+    --backend-lang java --frontend-lang typescript \
     --project-url https://github.com/orgs/acme/projects/1 \
     --backend-path backend --frontend-path frontend \
     --system-test-path system-test \

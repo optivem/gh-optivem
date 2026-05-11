@@ -281,7 +281,7 @@ func TestSonarProjectKeys(t *testing.T) {
 			cfg: Config{
 				Owner: "acme", Repo: "page-turner",
 				Arch: "multitier", RepoStrategy: "monorepo",
-				BackendLang: "java", FrontendLang: "react",
+				BackendLang: "java", FrontendLang: "typescript",
 			},
 			expected: []string{"acme_page-turner-backend", "acme_page-turner-frontend"},
 		},
@@ -290,7 +290,7 @@ func TestSonarProjectKeys(t *testing.T) {
 			cfg: Config{
 				Owner: "acme", Repo: "page-turner",
 				Arch: "multitier", RepoStrategy: "multirepo",
-				BackendLang: "java", FrontendLang: "react",
+				BackendLang: "java", FrontendLang: "typescript",
 				BackendRepo: "page-turner-backend", FrontendRepo: "page-turner-frontend",
 			},
 			expected: []string{"acme_page-turner-backend", "acme_page-turner-frontend"},

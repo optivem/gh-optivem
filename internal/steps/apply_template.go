@@ -318,7 +318,10 @@ func applyMonolithMultirepo(cfg *config.Config) {
 
 func applyMultitierMonorepo(cfg *config.Config) {
 	backendLang := cfg.BackendLang
-	frontendLang := cfg.FrontendLang
+	// "react" is the shop-side framework directory token (frontend-react/,
+	// multitier-frontend-react-*.yml). cfg.FrontendLang is the user-facing
+	// source language ("typescript") and is not used for shop-path lookups.
+	frontendLang := "react"
 	testLang := cfg.TestLang
 	shop := cfg.ShopPath
 	repoDir := cfg.RepoDir
@@ -385,7 +388,8 @@ func applyMultitierMonorepo(cfg *config.Config) {
 
 func applyMultitierMultirepo(cfg *config.Config) {
 	backendLang := cfg.BackendLang
-	frontendLang := cfg.FrontendLang
+	// See applyMultitierMonorepo: shop-side framework token, not cfg.FrontendLang.
+	frontendLang := "react"
 	testLang := cfg.TestLang
 	shop := cfg.ShopPath
 	repoDir := cfg.RepoDir
@@ -813,7 +817,10 @@ func forbiddenTemplateRefs(cfg *config.Config) []string {
 	if cfg.Arch == "monolith" {
 		return monolithForbiddenRefs(cfg.Lang, cfg.TestLang)
 	}
-	return multitierForbiddenRefs(cfg.BackendLang, cfg.FrontendLang, cfg.TestLang)
+	// "react" is the shop-side framework token in forbidden refs
+	// (multitier-frontend-react, system/multitier/frontend-react), not
+	// cfg.FrontendLang ("typescript").
+	return multitierForbiddenRefs(cfg.BackendLang, "react", cfg.TestLang)
 }
 
 func monolithForbiddenRefs(lang, testLang string) []string {

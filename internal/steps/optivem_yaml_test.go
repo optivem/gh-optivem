@@ -75,7 +75,7 @@ func TestBuildOptivemYAML_MultitierMultirepo(t *testing.T) {
 		Arch:             "multitier",
 		RepoStrategy:     "multirepo",
 		BackendLang:      "dotnet",
-		FrontendLang:     "react",
+		FrontendLang:     "typescript",
 		TestLang:         "typescript",
 		BackendFullRepo:  "acme/shop-backend",
 		FrontendFullRepo: "acme/shop-frontend",
@@ -173,14 +173,14 @@ func TestBuildOptivemYAML_OutputValidates(t *testing.T) {
 	cases := []*config.Config{
 		{Arch: "monolith", RepoStrategy: "monorepo", FullRepo: "x/y", Lang: "java", TestLang: "java", ProjectURL: url,
 			SystemPath: monoSys, SystemTestPath: monoTest, StubsPath: monoStubs, SimulatorsPath: monoSims},
-		{Arch: "multitier", RepoStrategy: "multirepo", BackendLang: "java", FrontendLang: "react", TestLang: "java", ProjectURL: url,
+		{Arch: "multitier", RepoStrategy: "multirepo", BackendLang: "java", FrontendLang: "typescript", TestLang: "java", ProjectURL: url,
 			BackendFullRepo: "x/y-backend", FrontendFullRepo: "x/y-frontend",
 			BackendPath: multiBE, FrontendPath: multiFE, SystemTestPath: multiTest, StubsPath: multiStubs, SimulatorsPath: multiSims},
 		{Arch: "monolith", RepoStrategy: "multirepo", Lang: "dotnet", TestLang: "dotnet", SystemFullRepo: "x/y-system", ProjectURL: url,
 			SystemPath: monoSys, SystemTestPath: monoTest, StubsPath: monoStubs, SimulatorsPath: monoSims},
 		{Arch: "monolith", RepoStrategy: "monorepo", FullRepo: "x/y", Lang: "typescript", TestLang: "typescript", ProjectURL: url,
 			SystemPath: monoSys, SystemTestPath: monoTest, StubsPath: monoStubs, SimulatorsPath: monoSims},
-		{Arch: "multitier", RepoStrategy: "monorepo", FullRepo: "x/y", BackendLang: "java", FrontendLang: "react", TestLang: "java", ProjectURL: url,
+		{Arch: "multitier", RepoStrategy: "monorepo", FullRepo: "x/y", BackendLang: "java", FrontendLang: "typescript", TestLang: "java", ProjectURL: url,
 			BackendPath: multiBE, FrontendPath: multiFE, SystemTestPath: multiTest, StubsPath: multiStubs, SimulatorsPath: multiSims},
 	}
 	for i, cfg := range cases {

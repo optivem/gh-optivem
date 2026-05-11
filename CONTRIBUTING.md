@@ -40,7 +40,7 @@ End-to-end manual test (creates real GitHub repos + SonarCloud projects; cleaned
 ```bash
 bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner" \
     --arch multitier --repo-strategy multirepo \
-    --backend-lang dotnet --frontend-lang react --test-lang typescript \
+    --backend-lang dotnet --frontend-lang typescript --test-lang typescript \
     --shop-ref main
 ```
 
@@ -224,7 +224,7 @@ gh optivem --version
 # Step 3 — generate gh-optivem.yaml for the project (interactive or via flags)
 gh optivem config init --owner valentinajemuovic --repo page-turner \
     --system-name "Page Turner" --arch multitier --repo-strategy multirepo \
-    --backend-lang dotnet --frontend-lang react --test-lang typescript \
+    --backend-lang dotnet --frontend-lang typescript --test-lang typescript \
     --project-url https://github.com/orgs/valentinajemuovic/projects/N \
     --backend-path backend --frontend-path frontend \
     --system-test-path system-test \

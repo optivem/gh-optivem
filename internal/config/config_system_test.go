@@ -252,24 +252,24 @@ func TestValidMultitierConfigurations(t *testing.T) {
 		name, arch, repoStrategy, backendLang, frontendLang, testLang string
 	}{
 		//              arch         repoStrategy  backendLang   frontendLang  testLang
-		{"multitier monorepo java react java",         "multitier", "monorepo",  "java",       "react", "java"},
-		{"multitier monorepo java react dotnet",       "multitier", "monorepo",  "java",       "react", "dotnet"},
-		{"multitier monorepo java react typescript",   "multitier", "monorepo",  "java",       "react", "typescript"},
-		{"multitier monorepo dotnet react java",       "multitier", "monorepo",  "dotnet",     "react", "java"},
-		{"multitier monorepo dotnet react dotnet",     "multitier", "monorepo",  "dotnet",     "react", "dotnet"},
-		{"multitier monorepo dotnet react typescript", "multitier", "monorepo",  "dotnet",     "react", "typescript"},
-		{"multitier monorepo ts react java",           "multitier", "monorepo",  "typescript", "react", "java"},
-		{"multitier monorepo ts react dotnet",         "multitier", "monorepo",  "typescript", "react", "dotnet"},
-		{"multitier monorepo ts react typescript",     "multitier", "monorepo",  "typescript", "react", "typescript"},
-		{"multitier multirepo java react java",         "multitier", "multirepo", "java",       "react", "java"},
-		{"multitier multirepo java react dotnet",       "multitier", "multirepo", "java",       "react", "dotnet"},
-		{"multitier multirepo java react typescript",   "multitier", "multirepo", "java",       "react", "typescript"},
-		{"multitier multirepo dotnet react java",       "multitier", "multirepo", "dotnet",     "react", "java"},
-		{"multitier multirepo dotnet react dotnet",     "multitier", "multirepo", "dotnet",     "react", "dotnet"},
-		{"multitier multirepo dotnet react typescript", "multitier", "multirepo", "dotnet",     "react", "typescript"},
-		{"multitier multirepo ts react java",           "multitier", "multirepo", "typescript", "react", "java"},
-		{"multitier multirepo ts react dotnet",         "multitier", "multirepo", "typescript", "react", "dotnet"},
-		{"multitier multirepo ts react typescript",     "multitier", "multirepo", "typescript", "react", "typescript"},
+		{"multitier monorepo java ts java",         "multitier", "monorepo",  "java",       "typescript", "java"},
+		{"multitier monorepo java ts dotnet",       "multitier", "monorepo",  "java",       "typescript", "dotnet"},
+		{"multitier monorepo java ts typescript",   "multitier", "monorepo",  "java",       "typescript", "typescript"},
+		{"multitier monorepo dotnet ts java",       "multitier", "monorepo",  "dotnet",     "typescript", "java"},
+		{"multitier monorepo dotnet ts dotnet",     "multitier", "monorepo",  "dotnet",     "typescript", "dotnet"},
+		{"multitier monorepo dotnet ts typescript", "multitier", "monorepo",  "dotnet",     "typescript", "typescript"},
+		{"multitier monorepo ts ts java",           "multitier", "monorepo",  "typescript", "typescript", "java"},
+		{"multitier monorepo ts ts dotnet",         "multitier", "monorepo",  "typescript", "typescript", "dotnet"},
+		{"multitier monorepo ts ts typescript",     "multitier", "monorepo",  "typescript", "typescript", "typescript"},
+		{"multitier multirepo java ts java",         "multitier", "multirepo", "java",       "typescript", "java"},
+		{"multitier multirepo java ts dotnet",       "multitier", "multirepo", "java",       "typescript", "dotnet"},
+		{"multitier multirepo java ts typescript",   "multitier", "multirepo", "java",       "typescript", "typescript"},
+		{"multitier multirepo dotnet ts java",       "multitier", "multirepo", "dotnet",     "typescript", "java"},
+		{"multitier multirepo dotnet ts dotnet",     "multitier", "multirepo", "dotnet",     "typescript", "dotnet"},
+		{"multitier multirepo dotnet ts typescript", "multitier", "multirepo", "dotnet",     "typescript", "typescript"},
+		{"multitier multirepo ts ts java",           "multitier", "multirepo", "typescript", "typescript", "java"},
+		{"multitier multirepo ts ts dotnet",         "multitier", "multirepo", "typescript", "typescript", "dotnet"},
+		{"multitier multirepo ts ts typescript",     "multitier", "multirepo", "typescript", "typescript", "typescript"},
 	}
 
 	for _, tt := range tests {
@@ -354,7 +354,7 @@ func TestInvalidConfigurations(t *testing.T) {
 		},
 		{
 			name: "multitier missing backend-lang",
-			args: append(withBase("--arch", "multitier", "--repo-strategy", "multirepo", "--frontend-lang", "react"), "--dry-run"),
+			args: append(withBase("--arch", "multitier", "--repo-strategy", "multirepo", "--frontend-lang", "typescript"), "--dry-run"),
 		},
 		{
 			name: "multitier missing frontend-lang",
@@ -366,7 +366,7 @@ func TestInvalidConfigurations(t *testing.T) {
 		},
 		{
 			name: "multitier invalid backend-lang",
-			args: append(withBase("--arch", "multitier", "--repo-strategy", "multirepo", "--backend-lang", "python", "--frontend-lang", "react"), "--dry-run"),
+			args: append(withBase("--arch", "multitier", "--repo-strategy", "multirepo", "--backend-lang", "python", "--frontend-lang", "typescript"), "--dry-run"),
 		},
 	}
 

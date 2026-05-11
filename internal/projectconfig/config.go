@@ -240,10 +240,12 @@ func (c *Config) Repos() []string {
 // Validate enforces the enum and cross-field rules. Empty values are
 // accepted — only non-empty invalid values are errors when scope is not
 // set; when scope (system.architecture) IS set, the architecture-specific
-// shape is required. The single hard requirement is project.url: the
-// pipeline cannot operate without a GitHub Project board to read from,
-// and silently letting `validate` pass on an empty url just defers the
-// failure to the first ATDD command.
+// shape is required. project.url may also be empty: `gh optivem init`'s
+// EnsureProjectBoard step auto-creates a board and writes the URL back
+// into gh-optivem.yaml (Path A in internal/steps/project.go), so an empty
+// project.url is a valid intermediate state between `config init` and
+// the first `init` run. The ATDD runtime still requires a non-empty
+// project.url (board.ResolveProjectURL), which is enforced there.
 func (c *Config) Validate() error {
 	if c == nil {
 		return nil
@@ -398,12 +400,11 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	// Rule 9: project.url is mandatory. Placed last so any other config
-	// problem surfaces with a more specific error first; the URL check is
-	// the catch-all for an otherwise-coherent but unbound config.
-	if c.Project.URL == "" {
-		return fmt.Errorf("config: project.url is required (the GitHub Project board URL written by `gh optivem config init --project-url ...`)")
-	}
+	// Rule 9 (formerly project.url required): empty project.url is now
+	// accepted at validate-time. `gh optivem init` Path A auto-creates a
+	// board and persists the URL on its first run; the ATDD runtime
+	// re-checks presence at board-resolution time, so an empty value here
+	// is not silently absorbed downstream.
 
 	// Rule 10: process_flow path validity (when set).
 	if err := validatePath("process_flow", c.ProcessFlow); err != nil {

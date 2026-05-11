@@ -30,9 +30,10 @@ func FillRawFlagsFromYAML(f *RawFlags, pc *projectconfig.Config) error {
 	if pc.System.Architecture == "" {
 		return missingYAMLField("system.architecture")
 	}
-	if pc.Project.URL == "" {
-		return missingYAMLField("project.url")
-	}
+	// project.url may be empty here: EnsureProjectBoard's Path A
+	// (internal/steps/project.go) auto-creates the board, sets
+	// cfg.ProjectURL, and the later WriteOptivemYAML step bakes it back
+	// into gh-optivem.yaml.
 	if pc.RepoStrategy == "" {
 		return missingYAMLField("repo_strategy")
 	}

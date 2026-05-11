@@ -163,11 +163,17 @@ func ExpandRef(tmpl string, vars map[string]string) string {
 
 // VarsForCfg builds the placeholder map for a Config. Stage and stageSuffix
 // are not set (callers add per-call values).
+//
+// frontendLang is hardcoded to "react" — the placeholder feeds shop-side
+// paths (system/multitier/frontend-react/, multitier-frontend-react-*.yml)
+// where "react" is the framework directory token, not the source language.
+// cfg.FrontendLang ("typescript") is the user-facing source language and is
+// not used here.
 func VarsForCfg(cfg *config.Config) map[string]string {
 	return map[string]string{
 		"lang":         cfg.Lang,
 		"backendLang":  cfg.BackendLang,
-		"frontendLang": cfg.FrontendLang,
+		"frontendLang": "react",
 		"testLang":     cfg.TestLang,
 		"arch":         cfg.Arch,
 		"stageSuffix":  cloudRunSuffix(cfg.Deploy),

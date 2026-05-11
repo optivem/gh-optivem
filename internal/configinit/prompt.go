@@ -190,9 +190,9 @@ func askRepoStrategy(r *bufio.Reader, out io.Writer, f *config.RawFlags) error {
 
 // askLang asks one language question that matches the chosen arch:
 // monolith → --monolith-lang; multitier → --backend-lang. On multitier
-// the frontend lang is hardcoded to react in applyDefaults (today's only
-// valid value); when frontend-lang accepts more than react, add a
-// matching prompt here.
+// the frontend lang is hardcoded to typescript in applyDefaults (today's
+// only valid value); when frontend-lang accepts more than typescript,
+// add a matching prompt here.
 func askLang(r *bufio.Reader, out io.Writer, f *config.RawFlags) error {
 	validBackend := func(v string) bool {
 		return v == "java" || v == "dotnet" || v == "typescript"
@@ -229,10 +229,10 @@ func askProjectURL(r *bufio.Reader, out io.Writer, f *config.RawFlags) error {
 }
 
 // applyDefaults fills the fields the prompt does NOT ask for: tier paths
-// to the flat scaffold layout, frontend-lang to react on multitier, and
-// deploy to docker (cloud-run is in development; prompt this when a real
-// choice exists).
-// TODO: prompt for frontend-lang when more than react is valid.
+// to the flat scaffold layout, frontend-lang to typescript on multitier,
+// and deploy to docker (cloud-run is in development; prompt this when a
+// real choice exists).
+// TODO: prompt for frontend-lang when more than typescript is valid.
 // TODO: prompt for deploy when cloud-run ships.
 func applyDefaults(f *config.RawFlags) {
 	f.SystemTestPath = defaultSystemTestPath
@@ -245,7 +245,7 @@ func applyDefaults(f *config.RawFlags) {
 	case "multitier":
 		f.BackendPath = defaultBackendPath
 		f.FrontendPath = defaultFrontendPath
-		f.FrontendLang = "react"
+		f.FrontendLang = "typescript"
 	}
 }
 

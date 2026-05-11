@@ -446,7 +446,7 @@ func bindYAMLAffectingFlags(fs *pflag.FlagSet, f *RawFlags) {
 	fs.StringVar(&f.Lang, "monolith-lang", "", "System language: java, dotnet, typescript (monolith)")
 	fs.StringVar(&f.TestLang, "test-lang", "", "Test language (defaults to --monolith-lang or --backend-lang)")
 	fs.StringVar(&f.BackendLang, "backend-lang", "", "Backend language: java, dotnet, typescript (multitier)")
-	fs.StringVar(&f.FrontendLang, "frontend-lang", "", "Frontend language: react (multitier)")
+	fs.StringVar(&f.FrontendLang, "frontend-lang", "", "Frontend language: typescript (multitier)")
 	fs.StringVar(&f.License, "license", "mit", "License: mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense")
 	fs.StringVar(&f.Deploy, "deploy", "docker", "Deployment target: docker or cloud-run")
 	fs.StringVar(&f.ProjectURL, "project-url", "", "GitHub Project URL to bake into gh-optivem.yaml (required; e.g. https://github.com/orgs/<org>/projects/<n>)")
@@ -556,8 +556,8 @@ func resolveLangs(f *RawFlags) langChoice {
 	if !validLangs[f.BackendLang] {
 		log.FatalExit("--backend-lang must be java, dotnet, or typescript")
 	}
-	if f.FrontendLang != "react" {
-		log.FatalExit("--frontend-lang must be react")
+	if f.FrontendLang != "typescript" {
+		log.FatalExit("--frontend-lang must be typescript")
 	}
 	c.backendLang = f.BackendLang
 	c.frontendLang = f.FrontendLang
@@ -1148,12 +1148,13 @@ func ValidateAndDeriveForYAML(f *RawFlags) (*Config, error) {
 	if err := validatePathFlagsForYAML(f); err != nil {
 		return nil, err
 	}
-	// --project-url is checked last so a more specific flag error (bad
-	// arch, missing path, etc.) surfaces first; the URL is the catch-all
-	// required field that projectconfig.Validate also enforces.
-	if f.ProjectURL == "" {
-		return nil, fmt.Errorf("--project-url is required (the GitHub Project board URL written into gh-optivem.yaml)")
-	}
+	// --project-url may be omitted: the resulting gh-optivem.yaml has
+	// project.url empty, and `gh optivem init` Path A (EnsureProjectBoard
+	// → findOrCreateProject in internal/steps/project.go) auto-creates a
+	// GitHub Project named SystemName under Owner on first run, then
+	// rewrites the yaml with the resulting URL. Pass --project-url
+	// explicitly to bind the scaffold to an existing board (Path B,
+	// status-set verification instead of creation).
 	mr := deriveMultirepoNames(f.RepoStrategy, f.Arch, f.Owner, f.Repo)
 	return &Config{
 		Owner:            f.Owner,
@@ -1260,8 +1261,8 @@ func resolveLangsForYAML(f *RawFlags) (langChoice, error) {
 	if !validLangs[f.BackendLang] {
 		return c, fmt.Errorf("--backend-lang must be java, dotnet, or typescript")
 	}
-	if f.FrontendLang != "react" {
-		return c, fmt.Errorf("--frontend-lang must be react")
+	if f.FrontendLang != "typescript" {
+		return c, fmt.Errorf("--frontend-lang must be typescript")
 	}
 	c.backendLang = f.BackendLang
 	c.frontendLang = f.FrontendLang

@@ -14,7 +14,6 @@ import (
 	"github.com/optivem/gh-optivem/internal/compiler"
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
-	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/runner"
 	"github.com/optivem/gh-optivem/internal/shell"
 )
@@ -48,16 +47,8 @@ func VerifyCompilation(cfg *config.Config) {
 
 // compileComponent dispatches to the shared internal/compiler package so the
 // init-time verify pass and the runtime `gh optivem compile` use the same
-// per-language command tables. `react` is normalized to typescript: the
-// scaffolded frontend is a Next.js project whose tsc-level typecheck is the
-// same as any other typescript tier; the framework name only matters for
-// path resolution upstream of here (cfg.FrontendLang is kept as "react"
-// elsewhere — display strings, paths — and only flattened here at the
-// compile callsite).
+// per-language command tables.
 func compileComponent(label, lang, dir string) {
-	if lang == "react" {
-		lang = projectconfig.LangTypescript
-	}
 	if err := compiler.CompileIn(lang, dir); err != nil {
 		log.Fatalf("Compilation failed for %s in %s: %v", label, dir, err)
 	}

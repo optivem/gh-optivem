@@ -8,7 +8,7 @@
 //
 //	Multitier:
 //	  gh optivem init --owner acme --system-name "Page Turner" --repo page-turner \
-//	      --arch multitier --backend-lang java --frontend-lang react
+//	      --arch multitier --backend-lang java --frontend-lang typescript
 //
 //	Dry run:
 //	  gh optivem init ... --dry-run

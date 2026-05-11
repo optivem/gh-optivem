@@ -162,16 +162,25 @@ func TestLoad_ParsesProjectURL(t *testing.T) {
 	}
 }
 
-func TestLoad_EmptyFileRejectedByValidate(t *testing.T) {
+// TestLoad_EmptyFileLoads pins the contract that an empty gh-optivem.yaml
+// loads to a zero-value config without error: Validate accepts empty
+// values across the board, and project.url is no longer a hard
+// requirement at validate-time (auto-create happens in `gh optivem init`
+// Path A). Specific consumers (FillRawFlagsFromYAML, ATDD runtime) still
+// enforce the fields they actually need.
+func TestLoad_EmptyFileLoads(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	writeConfig(t, dir, "")
-	_, err := Load(dir)
-	if err == nil {
-		t.Fatal("empty file should fail Validate (project.url missing), got nil")
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("empty file should load to a zero-value config, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "project.url") {
-		t.Fatalf("error should mention project.url, got: %v", err)
+	if cfg == nil {
+		t.Fatal("expected non-nil config for empty file")
+	}
+	if cfg.Project.URL != "" {
+		t.Errorf("project.url on empty config: want empty, got %q", cfg.Project.URL)
 	}
 }
 
@@ -551,15 +560,16 @@ func TestValidate_RejectsConfigOnBackendOrFrontend(t *testing.T) {
 // Validation rules
 // ---------------------------------------------------------------------------
 
-func TestValidate_RejectsEmptyProjectURL(t *testing.T) {
+// TestValidate_AcceptsEmptyProjectURL pins the contract that an empty
+// project.url is valid at YAML-load time: `gh optivem init` Path A
+// auto-creates the board on first run and rewrites the file with the
+// URL. The ATDD runtime (internal/atdd/runtime/board) still enforces
+// non-empty at use time.
+func TestValidate_AcceptsEmptyProjectURL(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{}
-	err := cfg.Validate()
-	if err == nil {
-		t.Fatal("zero-value config (missing project.url) should fail Validate, got nil")
-	}
-	if !strings.Contains(err.Error(), "project.url") {
-		t.Fatalf("error should mention project.url, got: %v", err)
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("zero-value config (empty project.url) should validate now that Path A auto-creates; got: %v", err)
 	}
 }
 
@@ -571,8 +581,8 @@ func TestValidate_NilReceiverIsOK(t *testing.T) {
 	}
 }
 
-// TestValidate_OnlyProjectURLIsOK verifies the minimal valid config — just
-// the mandatory project.url, everything else empty — passes. Matches the
+// TestValidate_OnlyProjectURLIsOK verifies that a config carrying just a
+// project.url (everything else empty) passes Validate. Matches the
 // "partial config written before architecture is chosen" flow.
 func TestValidate_OnlyProjectURLIsOK(t *testing.T) {
 	t.Parallel()

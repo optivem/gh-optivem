@@ -104,8 +104,8 @@ func TestPrompt_MultitierHappyPath(t *testing.T) {
 	if f.BackendLang != "dotnet" {
 		t.Errorf("BackendLang: got %q", f.BackendLang)
 	}
-	if f.FrontendLang != "react" {
-		t.Errorf("FrontendLang should be hardcoded to react, got %q", f.FrontendLang)
+	if f.FrontendLang != "typescript" {
+		t.Errorf("FrontendLang should be hardcoded to typescript, got %q", f.FrontendLang)
 	}
 	if f.BackendPath != defaultBackendPath || f.FrontendPath != defaultFrontendPath {
 		t.Errorf("multitier path defaults: got backend=%q frontend=%q", f.BackendPath, f.FrontendPath)

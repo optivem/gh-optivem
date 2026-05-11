@@ -119,6 +119,24 @@ func TestFillRawFlagsFromYAML_DefaultsAbsentLicenseAndDeploy(t *testing.T) {
 	}
 }
 
+// TestFillRawFlagsFromYAML_AcceptsEmptyProjectURL pins the contract that
+// yaml-load tolerates an absent project.url. Path A in
+// internal/steps/project.go (EnsureProjectBoard) auto-creates the board
+// on first `init` run and rewrites gh-optivem.yaml with the resulting
+// URL, so the empty value is a legitimate intermediate state.
+func TestFillRawFlagsFromYAML_AcceptsEmptyProjectURL(t *testing.T) {
+	t.Parallel()
+	pc := validMonolithYAML()
+	pc.Project.URL = ""
+	f := &RawFlags{}
+	if err := FillRawFlagsFromYAML(f, pc); err != nil {
+		t.Fatalf("empty project.url should load (Path A auto-creates); got: %v", err)
+	}
+	if f.ProjectURL != "" {
+		t.Errorf("ProjectURL should propagate as empty, got %q", f.ProjectURL)
+	}
+}
+
 func TestFillRawFlagsFromYAML_NilErrorsWithInitHint(t *testing.T) {
 	t.Parallel()
 	f := &RawFlags{}
@@ -140,7 +158,6 @@ func TestFillRawFlagsFromYAML_RejectsMissingRequired(t *testing.T) {
 	}{
 		{"system_name", func(pc *projectconfig.Config) { pc.SystemName = "" }, "system_name"},
 		{"architecture", func(pc *projectconfig.Config) { pc.System.Architecture = "" }, "system.architecture"},
-		{"project.url", func(pc *projectconfig.Config) { pc.Project.URL = "" }, "project.url"},
 		{"repo_strategy", func(pc *projectconfig.Config) { pc.RepoStrategy = "" }, "repo_strategy"},
 	}
 	for _, tc := range cases {

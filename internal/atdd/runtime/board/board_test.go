@@ -91,11 +91,10 @@ func TestResolveProjectURL_NoConfigFile(t *testing.T) {
 }
 
 // TestResolveProjectURL_ConfigPresentButURLEmpty — a gh-optivem.yaml that
-// parses but has no project.url no longer reaches ResolveProjectURL: it
-// fails projectconfig.Validate at Load time. The error surfaces from
-// Load (wrapped as "board: load config: ...") rather than as the
-// ErrNoProjectURL sentinel — the sentinel is now reserved for the
-// no-config-file / nil-config case.
+// parses but has no project.url returns ErrNoProjectURL. Validate no
+// longer rejects empty project.url at Load time (auto-create in `gh
+// optivem init` Path A is now the canonical way to populate it), so the
+// sentinel case covers both "no config file" and "config without URL".
 func TestResolveProjectURL_ConfigPresentButURLEmpty(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "gh-optivem.yaml"),
@@ -104,14 +103,8 @@ func TestResolveProjectURL_ConfigPresentButURLEmpty(t *testing.T) {
 	}
 
 	_, err := ResolveProjectURL(dir)
-	if err == nil {
-		t.Fatal("expected error for config without project.url, got nil")
-	}
-	if errors.Is(err, ErrNoProjectURL) {
-		t.Errorf("missing-url is now a Validate failure, not ErrNoProjectURL: %v", err)
-	}
-	if !strings.Contains(err.Error(), "project.url") {
-		t.Errorf("error should mention project.url, got: %v", err)
+	if !errors.Is(err, ErrNoProjectURL) {
+		t.Errorf("expected ErrNoProjectURL for config without project.url, got: %v", err)
 	}
 }
 

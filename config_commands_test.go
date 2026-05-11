@@ -85,7 +85,7 @@ func TestRunConfigInit_MultitierMultirepo(t *testing.T) {
 		Arch:           "multitier",
 		RepoStrategy:   "multirepo",
 		BackendLang:    "dotnet",
-		FrontendLang:   "react",
+		FrontendLang:   "typescript",
 		TestLang:       "typescript",
 		BackendPath:    "system/multitier/backend-dotnet",
 		FrontendPath:   "system/multitier/frontend-react",
@@ -184,7 +184,7 @@ func TestRunConfigInit_RejectsBadFlags(t *testing.T) {
 			"multitier missing backend lang",
 			&config.RawFlags{
 				Owner: "acme", Repo: "sky-travel", SystemName: "Sky Travel",
-				Arch: "multitier", RepoStrategy: "multirepo", FrontendLang: "react",
+				Arch: "multitier", RepoStrategy: "multirepo", FrontendLang: "typescript",
 				FrontendPath:   "frontend",
 				SystemTestPath: "system-test",
 				StubsPath:      "external-systems/external-stub",
@@ -205,7 +205,7 @@ func TestRunConfigInit_RejectsBadFlags(t *testing.T) {
 			&config.RawFlags{
 				Owner: "acme", Repo: "sky-travel", SystemName: "Sky Travel",
 				Arch: "multitier", RepoStrategy: "multirepo",
-				BackendLang: "java", FrontendLang: "react",
+				BackendLang: "java", FrontendLang: "typescript",
 				SystemPath:     "system",
 				BackendPath:    "backend",
 				FrontendPath:   "frontend",
