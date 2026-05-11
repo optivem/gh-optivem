@@ -1,15 +1,15 @@
 // verify_paths.go — locate the runner's config files relative to the repo
 // root, so verify can pass `--system-config <path> --test-config <path>`
-// rather than relying on the runner's `./system.json` default (which fails
+// rather than relying on the runner's `./systems.json` default (which fails
 // 100% of the time because the orchestrator's cwd is the repo root, not
-// the directory holding system.json).
+// the directory holding systems.json).
 //
 // Two layouts to handle:
 //
-//   - Flat (every scaffolded student repo): `docker/system.json` and
+//   - Flat (every scaffolded student repo): `docker/systems.json` and
 //     `system-test/tests-latest.json` at fixed paths under the repo root.
 //   - Templated (the shop template itself, occasionally used for rehearsal):
-//     `docker/<lang>/<arch>/system.json` and `system-test/<lang>/tests-latest.json`,
+//     `docker/<lang>/<arch>/systems.json` and `system-test/<lang>/tests-latest.json`,
 //     where <arch> is monolith | multitier.
 //
 // We probe flat first because it is the production case. The templated
@@ -27,7 +27,7 @@ import (
 	"path/filepath"
 )
 
-// ResolveSystemTestPaths returns the paths to system.json and
+// ResolveSystemTestPaths returns the paths to systems.json and
 // tests-latest.json under repoRoot, discovering whichever layout is
 // present. Returns an error when neither layout matches — the caller
 // should surface this as an infra-class halt rather than running the
@@ -42,18 +42,18 @@ func ResolveSystemTestPaths(repoRoot string) (systemConfig, testConfig string, e
 		repoRoot = "."
 	}
 
-	// 1. Flat layout — `docker/system.json` + `system-test/tests-latest.json`.
-	flatSys := filepath.Join(repoRoot, "docker", "system.json")
+	// 1. Flat layout — `docker/systems.json` + `system-test/tests-latest.json`.
+	flatSys := filepath.Join(repoRoot, "docker", "systems.json")
 	flatTests := filepath.Join(repoRoot, "system-test", "tests-latest.json")
 	if fileExists(flatSys) && fileExists(flatTests) {
 		return flatSys, flatTests, nil
 	}
 
-	// 2. Templated layout — `docker/<lang>/<arch>/system.json` paired with
+	// 2. Templated layout — `docker/<lang>/<arch>/systems.json` paired with
 	//    `system-test/<lang>/tests-latest.json`. Probe <arch> in monolith,
 	//    multitier order. The first <lang> with both files wins.
 	for _, arch := range []string{"monolith", "multitier"} {
-		pattern := filepath.Join(repoRoot, "docker", "*", arch, "system.json")
+		pattern := filepath.Join(repoRoot, "docker", "*", arch, "systems.json")
 		matches, _ := filepath.Glob(pattern)
 		for _, sys := range matches {
 			lang := langFromTemplatedSystemPath(repoRoot, sys)
@@ -67,11 +67,11 @@ func ResolveSystemTestPaths(repoRoot string) (systemConfig, testConfig string, e
 		}
 	}
 
-	return "", "", fmt.Errorf("could not locate system.json/tests-latest.json under %q (tried docker/system.json, docker/*/monolith/system.json, docker/*/multitier/system.json)", repoRoot)
+	return "", "", fmt.Errorf("could not locate systems.json/tests-latest.json under %q (tried docker/systems.json, docker/*/monolith/systems.json, docker/*/multitier/systems.json)", repoRoot)
 }
 
 // langFromTemplatedSystemPath extracts <lang> from a path of the form
-// <repoRoot>/docker/<lang>/<arch>/system.json. Returns "" when the path
+// <repoRoot>/docker/<lang>/<arch>/systems.json. Returns "" when the path
 // does not match that shape (defensive — the glob caller already enforces
 // it, but a manual call shouldn't crash).
 func langFromTemplatedSystemPath(repoRoot, sys string) string {
@@ -79,7 +79,7 @@ func langFromTemplatedSystemPath(repoRoot, sys string) string {
 	if err != nil {
 		return ""
 	}
-	// rel == "<lang>/<arch>/system.json"; the OS separator is platform
+	// rel == "<lang>/<arch>/systems.json"; the OS separator is platform
 	// dependent, so split with filepath.SplitList won't work — peel one
 	// component off the front.
 	dir, _ := filepath.Split(rel)         // dir == "<lang>/<arch>/"

@@ -81,9 +81,9 @@ type SuiteResult struct {
 //     prints a summary table.
 //
 // Two cwds because the two configs live in different directories:
-// systemCwd is system.json's dir (compose-file paths resolve against it);
+// systemCwd is systems.json's dir (compose-file paths resolve against it);
 // testsCwd is tests.json's dir (setupCommands and suite.path resolve against
-// it). Shop's layout has `docker/<lang>/<arch>/system.json` + compose files
+// it). Shop's layout has `docker/<lang>/<arch>/systems.json` + compose files
 // alongside the SUT-deployment infrastructure, and `system-test/<lang>/tests-*.json`
 // + the test-runner project alongside the test code. Scaffolded projects flatten
 // these to `docker/` and `system-test/` respectively.

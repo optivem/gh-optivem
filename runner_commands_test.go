@@ -116,10 +116,10 @@ func TestValidateSuiteTestCombo(t *testing.T) {
 
 // TestLoadSystemMissingFileHintsAtFlag verifies that `gh optivem build/run/...`
 // commands surface the three-knob hint (--system-config flag, system_config:
-// YAML field, default path) when the resolved system.json is absent — the
+// YAML field, default path) when the resolved systems.json is absent — the
 // case a new user runs into first.
 func TestLoadSystemMissingFileHintsAtFlag(t *testing.T) {
-	missing := filepath.Join(t.TempDir(), "system.json")
+	missing := filepath.Join(t.TempDir(), "systems.json")
 	_, err := loadSystem(missing)
 	if err == nil {
 		t.Fatalf("loadSystem(%q): want error, got nil", missing)
@@ -205,14 +205,14 @@ func writeYAMLConfig(t *testing.T, tmpDir string, systemConfig, testConfig strin
 func TestResolveSystemPath_FlagWins(t *testing.T) {
 	tmp := t.TempDir()
 	runnerResolveSetup(t, tmp)
-	writeYAMLConfig(t, tmp, "yaml/system.json", "")
+	writeYAMLConfig(t, tmp, "yaml/systems.json", "")
 
-	got, err := resolveSystemPath("./flag/system.json")
+	got, err := resolveSystemPath("./flag/systems.json")
 	if err != nil {
 		t.Fatalf("resolveSystemPath: %v", err)
 	}
-	if got != "./flag/system.json" {
-		t.Errorf("got %q, want ./flag/system.json (flag must beat YAML)", got)
+	if got != "./flag/systems.json" {
+		t.Errorf("got %q, want ./flag/systems.json (flag must beat YAML)", got)
 	}
 }
 
@@ -221,14 +221,14 @@ func TestResolveSystemPath_FlagWins(t *testing.T) {
 func TestResolveSystemPath_YAMLUsedWhenFlagAbsent(t *testing.T) {
 	tmp := t.TempDir()
 	runnerResolveSetup(t, tmp)
-	writeYAMLConfig(t, tmp, "yaml/system.json", "")
+	writeYAMLConfig(t, tmp, "yaml/systems.json", "")
 
 	got, err := resolveSystemPath("")
 	if err != nil {
 		t.Fatalf("resolveSystemPath: %v", err)
 	}
-	if got != "yaml/system.json" {
-		t.Errorf("got %q, want yaml/system.json (YAML field should be used)", got)
+	if got != "yaml/systems.json" {
+		t.Errorf("got %q, want yaml/systems.json (YAML field should be used)", got)
 	}
 }
 

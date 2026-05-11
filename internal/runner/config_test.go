@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	systemJSONFilename = "system.json"
+	systemJSONFilename = "systems.json"
 	testsJSONFilename  = "tests.json"
 )
 

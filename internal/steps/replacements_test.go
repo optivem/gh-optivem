@@ -396,7 +396,7 @@ func TestContentReplacementsRewritesBumpPatchVersionUsesReference(t *testing.T) 
 // TestContentReplacementsFlattensDockerCLIArgs asserts that unprefixed
 // docker/<testLang>/<arch>/ paths embedded in `run:` CLI args (e.g. the
 // per-suite acceptance-stage workflow's `gh optivem test system --system-config
-// docker/<lang>/<arch>/system.json`) get flattened to `docker/`, matching the
+// docker/<lang>/<arch>/systems.json`) get flattened to `docker/`, matching the
 // scaffolder's flattened on-disk layout. Regression guard for the per-suite
 // migration in shop where these paths bypass the existing `working-directory:`
 // rule.
@@ -409,39 +409,39 @@ func TestContentReplacementsFlattensDockerCLIArgs(t *testing.T) {
 	}{
 		{
 			name:     "monolith-dotnet --system-config",
-			in:       "    run: gh optivem test system --system-config docker/dotnet/monolith/system.json --test-config system-test/dotnet/tests-latest.json\n",
+			in:       "    run: gh optivem test system --system-config docker/dotnet/monolith/systems.json --test-config system-test/dotnet/tests-latest.json\n",
 			pairs:    monolithContentReplacements("dotnet", "dotnet"),
-			expected: "    run: gh optivem test system --system-config docker/system.json --test-config system-test/tests-latest.json\n",
+			expected: "    run: gh optivem test system --system-config docker/systems.json --test-config system-test/tests-latest.json\n",
 		},
 		{
 			name:     "monolith-java --system-config",
-			in:       "    run: gh optivem test system --system-config docker/java/monolith/system.json\n",
+			in:       "    run: gh optivem test system --system-config docker/java/monolith/systems.json\n",
 			pairs:    monolithContentReplacements("java", "java"),
-			expected: "    run: gh optivem test system --system-config docker/system.json\n",
+			expected: "    run: gh optivem test system --system-config docker/systems.json\n",
 		},
 		{
 			name:     "monolith-typescript --system-config",
-			in:       "    run: gh optivem test system --system-config docker/typescript/monolith/system.json\n",
+			in:       "    run: gh optivem test system --system-config docker/typescript/monolith/systems.json\n",
 			pairs:    monolithContentReplacements("typescript", "typescript"),
-			expected: "    run: gh optivem test system --system-config docker/system.json\n",
+			expected: "    run: gh optivem test system --system-config docker/systems.json\n",
 		},
 		{
 			name:     "multitier-dotnet --system-config",
-			in:       "    run: gh optivem test system --system-config docker/dotnet/multitier/system.json --test-config system-test/dotnet/tests-latest.json\n",
+			in:       "    run: gh optivem test system --system-config docker/dotnet/multitier/systems.json --test-config system-test/dotnet/tests-latest.json\n",
 			pairs:    multitierContentReplacements("dotnet", "react", "dotnet"),
-			expected: "    run: gh optivem test system --system-config docker/system.json --test-config system-test/tests-latest.json\n",
+			expected: "    run: gh optivem test system --system-config docker/systems.json --test-config system-test/tests-latest.json\n",
 		},
 		{
 			name:     "multitier-java --system-config",
-			in:       "    run: gh optivem test system --system-config docker/java/multitier/system.json\n",
+			in:       "    run: gh optivem test system --system-config docker/java/multitier/systems.json\n",
 			pairs:    multitierContentReplacements("java", "react", "java"),
-			expected: "    run: gh optivem test system --system-config docker/system.json\n",
+			expected: "    run: gh optivem test system --system-config docker/systems.json\n",
 		},
 		{
 			name:     "multitier-typescript --system-config",
-			in:       "    run: gh optivem test system --system-config docker/typescript/multitier/system.json\n",
+			in:       "    run: gh optivem test system --system-config docker/typescript/multitier/systems.json\n",
 			pairs:    multitierContentReplacements("typescript", "react", "typescript"),
-			expected: "    run: gh optivem test system --system-config docker/system.json\n",
+			expected: "    run: gh optivem test system --system-config docker/systems.json\n",
 		},
 	}
 

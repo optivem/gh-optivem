@@ -4,7 +4,7 @@
 // flags into runner.* calls.
 //
 // Working-dir contract: each command operates against the user's current
-// working directory. JSON config paths default to ./system.json and
+// working directory. JSON config paths default to ./systems.json and
 // ./tests.json; both can be overridden with --system-config / --test-config.
 package main
 
@@ -23,10 +23,10 @@ import (
 )
 
 // cwdForPath returns the directory to run docker / setup / suite commands in
-// for a given config file. Compose paths in system.json are relative to
-// system.json's directory; setup commands and suite.path in tests.json are
+// for a given config file. Compose paths in systems.json are relative to
+// systems.json's directory; setup commands and suite.path in tests.json are
 // relative to tests.json's directory. This lets shop's source layout
-// (system.json under <lang>/<arch>/, tests-*.json + package.json under
+// (systems.json under <lang>/<arch>/, tests-*.json + package.json under
 // <lang>/) work without per-layout flags. In a scaffolded project both files
 // live in the same directory and this is just ".".
 func cwdForPath(configPath string) string {
@@ -38,10 +38,10 @@ func cwdForPath(configPath string) string {
 }
 
 const (
-	defaultSystemConfig = "./system.json"
+	defaultSystemConfig = "./systems.json"
 	defaultTestsConfig  = "./tests.json"
 
-	flagSystemUsage = "Path to system.json (default resolves to gh-optivem.yaml's system_config: field, then ./system.json)"
+	flagSystemUsage = "Path to systems.json (default resolves to gh-optivem.yaml's system_config: field, then ./systems.json)"
 	flagTestsUsage  = "Path to tests.json (default resolves to gh-optivem.yaml's test_config: field, then ./tests.json)"
 
 	errorFormat = "ERROR: %v\n"
@@ -73,7 +73,7 @@ func hintIfMissing(err error, flag, yamlField, defaultPath string) error {
 // resolveSystemPath applies the runner's three-tier path lookup:
 //  1. --system-config flag (explicit operator override)
 //  2. gh-optivem.yaml's system_config: field
-//  3. defaultSystemConfig (./system.json)
+//  3. defaultSystemConfig (./systems.json)
 //
 // A missing gh-optivem.yaml is "no preference" and falls through to the
 // default — runner commands still work in repos without one. A YAML that
@@ -164,7 +164,7 @@ func newBuildSystemCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:     "system",
-		Short:   "docker compose build for every entry in system.json",
+		Short:   "docker compose build for every entry in systems.json",
 		Example: `  gh optivem build system --rebuild`,
 		Run: func(cmd *cobra.Command, args []string) {
 			resolved, err := resolveSystemPath(systemPath)

@@ -8,19 +8,19 @@ import (
 )
 
 // TestResolveSystemTestPaths_FlatLayout covers the production case: every
-// scaffolded academy repo has docker/system.json and
+// scaffolded academy repo has docker/systems.json and
 // system-test/tests-latest.json at fixed paths after the template's
 // path-flattening pass.
 func TestResolveSystemTestPaths_FlatLayout(t *testing.T) {
 	root := t.TempDir()
-	mustWriteFile(t, filepath.Join(root, "docker", "system.json"), "{}")
+	mustWriteFile(t, filepath.Join(root, "docker", "systems.json"), "{}")
 	mustWriteFile(t, filepath.Join(root, "system-test", "tests-latest.json"), "{}")
 
 	sys, tests, err := ResolveSystemTestPaths(root)
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
-	wantSys := filepath.Join(root, "docker", "system.json")
+	wantSys := filepath.Join(root, "docker", "systems.json")
 	wantTests := filepath.Join(root, "system-test", "tests-latest.json")
 	if sys != wantSys {
 		t.Errorf("systemConfig: got %q, want %q", sys, wantSys)
@@ -35,15 +35,15 @@ func TestResolveSystemTestPaths_FlatLayout(t *testing.T) {
 // because the verify path has no language plumbing.
 func TestResolveSystemTestPaths_TemplatedMonolith(t *testing.T) {
 	root := t.TempDir()
-	mustWriteFile(t, filepath.Join(root, "docker", "typescript", "monolith", "system.json"), "{}")
+	mustWriteFile(t, filepath.Join(root, "docker", "typescript", "monolith", "systems.json"), "{}")
 	mustWriteFile(t, filepath.Join(root, "system-test", "typescript", "tests-latest.json"), "{}")
 
 	sys, tests, err := ResolveSystemTestPaths(root)
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
-	if !strings.HasSuffix(filepath.ToSlash(sys), "docker/typescript/monolith/system.json") {
-		t.Errorf("systemConfig: got %q, want suffix docker/typescript/monolith/system.json", sys)
+	if !strings.HasSuffix(filepath.ToSlash(sys), "docker/typescript/monolith/systems.json") {
+		t.Errorf("systemConfig: got %q, want suffix docker/typescript/monolith/systems.json", sys)
 	}
 	if !strings.HasSuffix(filepath.ToSlash(tests), "system-test/typescript/tests-latest.json") {
 		t.Errorf("testConfig: got %q, want suffix system-test/typescript/tests-latest.json", tests)
@@ -54,15 +54,15 @@ func TestResolveSystemTestPaths_TemplatedMonolith(t *testing.T) {
 // for multitier — the probe order tries monolith first then multitier.
 func TestResolveSystemTestPaths_TemplatedMultitier(t *testing.T) {
 	root := t.TempDir()
-	mustWriteFile(t, filepath.Join(root, "docker", "java", "multitier", "system.json"), "{}")
+	mustWriteFile(t, filepath.Join(root, "docker", "java", "multitier", "systems.json"), "{}")
 	mustWriteFile(t, filepath.Join(root, "system-test", "java", "tests-latest.json"), "{}")
 
 	sys, tests, err := ResolveSystemTestPaths(root)
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
-	if !strings.HasSuffix(filepath.ToSlash(sys), "docker/java/multitier/system.json") {
-		t.Errorf("systemConfig: got %q, want suffix docker/java/multitier/system.json", sys)
+	if !strings.HasSuffix(filepath.ToSlash(sys), "docker/java/multitier/systems.json") {
+		t.Errorf("systemConfig: got %q, want suffix docker/java/multitier/systems.json", sys)
 	}
 	if !strings.HasSuffix(filepath.ToSlash(tests), "system-test/java/tests-latest.json") {
 		t.Errorf("testConfig: got %q, want suffix system-test/java/tests-latest.json", tests)
@@ -71,21 +71,21 @@ func TestResolveSystemTestPaths_TemplatedMultitier(t *testing.T) {
 
 // TestResolveSystemTestPaths_FlatTakesPrecedence guards against a regression
 // where a stray template file in a flat repo would shift resolution to
-// templated probe and pick the wrong system.json. Production repos are flat,
+// templated probe and pick the wrong systems.json. Production repos are flat,
 // so flat must always win when present.
 func TestResolveSystemTestPaths_FlatTakesPrecedence(t *testing.T) {
 	root := t.TempDir()
-	mustWriteFile(t, filepath.Join(root, "docker", "system.json"), `{"flat":true}`)
+	mustWriteFile(t, filepath.Join(root, "docker", "systems.json"), `{"flat":true}`)
 	mustWriteFile(t, filepath.Join(root, "system-test", "tests-latest.json"), "{}")
 	// Stray templated files that should NOT be picked.
-	mustWriteFile(t, filepath.Join(root, "docker", "typescript", "monolith", "system.json"), `{"templated":true}`)
+	mustWriteFile(t, filepath.Join(root, "docker", "typescript", "monolith", "systems.json"), `{"templated":true}`)
 	mustWriteFile(t, filepath.Join(root, "system-test", "typescript", "tests-latest.json"), "{}")
 
 	sys, _, err := ResolveSystemTestPaths(root)
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
-	if filepath.ToSlash(sys) != filepath.ToSlash(filepath.Join(root, "docker", "system.json")) {
+	if filepath.ToSlash(sys) != filepath.ToSlash(filepath.Join(root, "docker", "systems.json")) {
 		t.Errorf("flat layout should win; got %q", sys)
 	}
 }

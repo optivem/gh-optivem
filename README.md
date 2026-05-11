@@ -134,7 +134,7 @@ gh optivem test system --test T1 --test T2   # multiple names, repeatable
 gh optivem test system --test T1,T2          # ...or comma-separated
 gh optivem test system --sample              # use each suite's sampleTest field as the test name
 
-gh optivem build system                      # docker compose build for every entry in system.json
+gh optivem build system                      # docker compose build for every entry in systems.json
 gh optivem build system --rebuild            # force full rebuild (no layer cache reuse)
 
 gh optivem run system                        # docker compose up + wait for health
@@ -179,12 +179,12 @@ For the canonical reference, see the four sample configs (mono-repo × multi-rep
 
 ### Pointing at non-default configs
 
-Three knobs decide which `gh-optivem.yaml` / `system.json` / `tests.json` the tool reads, in ascending order of permanence. Each knob overrides everything below it:
+Three knobs decide which `gh-optivem.yaml` / `systems.json` / `tests.json` the tool reads, in ascending order of permanence. Each knob overrides everything below it:
 
 ```bash
 # 1. One-shot flag (highest precedence)
 gh optivem -c ./gh-optivem.shop-monolith.yaml test system \
-    --system-config docker/java/monolith/system.json \
+    --system-config docker/java/monolith/systems.json \
     --test-config system-test/java/tests-latest.json
 
 # 2. Shell-session env var (for gh-optivem.yaml only)
@@ -192,7 +192,7 @@ export GH_OPTIVEM_CONFIG=./gh-optivem.shop-monolith.yaml
 gh optivem test system
 
 # 3. Per-project default baked into gh-optivem.yaml (lowest precedence)
-system_config: docker/system.json
+system_config: docker/systems.json
 test_config:   system-test/tests-latest.json
 ```
 

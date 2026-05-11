@@ -981,9 +981,9 @@ func makeListResponse() scriptedResponse {
 func setupVerifyRepoLayout(t *testing.T) (root, pathFlagsSuffix string) {
 	t.Helper()
 	root = t.TempDir()
-	mustWriteFile(t, filepath.Join(root, "docker", "system.json"), "{}")
+	mustWriteFile(t, filepath.Join(root, "docker", "systems.json"), "{}")
 	mustWriteFile(t, filepath.Join(root, "system-test", "tests-latest.json"), "{}")
-	sys := filepath.Join(root, "docker", "system.json")
+	sys := filepath.Join(root, "docker", "systems.json")
 	tests := filepath.Join(root, "system-test", "tests-latest.json")
 	pathFlagsSuffix = fmt.Sprintf(" --system-config %s --test-config %s",
 		shellEscape(sys), shellEscape(tests))
@@ -1076,7 +1076,7 @@ func TestVerifyRunTestsAfterDriver_SRunsPickedSuites(t *testing.T) {
 func TestVerifyRunTestsAfterDriver_PRunsSpecificTests(t *testing.T) {
 	// [p]ick → --list, pick suite 2, type "T1, T2" → one combined run. The
 	// path flags suffix every shell-out (the runner needs them to find
-	// system.json / tests.json under the resolved layout).
+	// systems.json / tests.json under the resolved layout).
 	root, flags := setupVerifyRepoLayout(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		makeListResponse(),
@@ -1314,7 +1314,7 @@ func TestVerifyRunTestsAfterDriver_HaltsOnInfraWithDiagnostic(t *testing.T) {
 // where ResolveSystemTestPaths returns an error — neither flat nor
 // templated layout matches under RepoPath. The action halts with an
 // infra-class diagnostic *before* shelling out, because running with the
-// runner's broken `./system.json` defaults would only manufacture noise.
+// runner's broken `./systems.json` defaults would only manufacture noise.
 func TestVerifyRunTestsAfterDriver_HaltsOnUnresolvablePaths(t *testing.T) {
 	root := t.TempDir() // empty — no docker/, no system-test/
 	sh := &scriptedShell{t: t}
@@ -2068,7 +2068,7 @@ func TestVerifyRealSuitePasses_AnyFailWritesFalse(t *testing.T) {
 // TestRunTargetedTests_HaltsOnUnresolvablePaths and the verify_real twin
 // cover the case where ResolveSystemTestPaths returns an error: action
 // halts via Outcome.Err rather than running the runner with broken
-// `./system.json` defaults. Unlike runTests this halt is
+// `./systems.json` defaults. Unlike runTests this halt is
 // a plain Outcome.Err (no infra-class banner) — these actions are
 // deterministic mechanics without a verify-style halt protocol.
 func TestRunTargetedTests_HaltsOnUnresolvablePaths(t *testing.T) {
@@ -2082,7 +2082,7 @@ func TestRunTargetedTests_HaltsOnUnresolvablePaths(t *testing.T) {
 	if out.Err == nil {
 		t.Fatalf("expected Outcome.Err when paths cannot be resolved")
 	}
-	if !strings.Contains(out.Err.Error(), "could not locate system.json") {
+	if !strings.Contains(out.Err.Error(), "could not locate systems.json") {
 		t.Errorf("Err should mention path resolution; got %v", out.Err)
 	}
 	if len(sh.calls) != 0 {
@@ -2101,7 +2101,7 @@ func TestVerifyRealSuitePasses_HaltsOnUnresolvablePaths(t *testing.T) {
 	if out.Err == nil {
 		t.Fatalf("expected Outcome.Err when paths cannot be resolved")
 	}
-	if !strings.Contains(out.Err.Error(), "could not locate system.json") {
+	if !strings.Contains(out.Err.Error(), "could not locate systems.json") {
 		t.Errorf("Err should mention path resolution; got %v", out.Err)
 	}
 	if len(sh.calls) != 0 {

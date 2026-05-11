@@ -1,5 +1,5 @@
 // Package runner orchestrates docker-compose-backed system tests using two
-// JSON config files: a system.json (compose + health probes) and a tests.json
+// JSON config files: a systems.json (compose + health probes) and a tests.json
 // (setup commands + suites). The runner has no concept of architecture,
 // language, or suite flavor — those identities live in shop's filenames and
 // directory names. This package treats every input as opaque.
@@ -12,7 +12,7 @@ import (
 )
 
 // SystemConfig describes one or more docker-compose stacks ("systems") to
-// build, bring up, and probe for health. Loaded from system.json.
+// build, bring up, and probe for health. Loaded from systems.json.
 type SystemConfig struct {
 	Systems []SystemEntry `json:"systems"`
 }
@@ -83,7 +83,7 @@ type Suite struct {
 	TestInstallCommands []string          `json:"testInstallCommands,omitempty"`
 }
 
-// LoadSystem reads and validates system.json from path.
+// LoadSystem reads and validates systems.json from path.
 func LoadSystem(path string) (*SystemConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

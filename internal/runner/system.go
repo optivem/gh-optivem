@@ -101,7 +101,7 @@ func (t *tailWriter) String() string {
 
 // Build runs `docker compose -f <composeFile> build` for every entry in sys.
 // cwd is the working directory the compose-file paths are resolved against
-// (typically the system-test directory holding system.json). When
+// (typically the system-test directory holding systems.json). When
 // opts.Rebuild is true, `--no-cache` is appended so every layer is rebuilt.
 func Build(sys *SystemConfig, cwd string, opts BuildOptions) error {
 	for _, s := range sys.Systems {

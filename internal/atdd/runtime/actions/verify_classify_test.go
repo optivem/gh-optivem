@@ -36,16 +36,16 @@ func TestClassifyShellErr(t *testing.T) {
 		},
 		// ---- infra: cwd / missing system config ---------------------------
 		{
-			name: "missing system.json (cwd bug)",
-			stderr: "ERROR: read system config ./system.json: open ./system.json: " +
+			name: "missing systems.json (cwd bug)",
+			stderr: "ERROR: read system config ./systems.json: open ./systems.json: " +
 				"The system cannot find the file specified.",
 			err:       exitErr,
 			wantClass: classInfra,
 			wantLabel: "missing system config",
 		},
 		{
-			name:      "missing system.json on linux",
-			stderr:    "open /tmp/system.json: no such file or directory",
+			name:      "missing systems.json on linux",
+			stderr:    "open /tmp/systems.json: no such file or directory",
 			err:       exitErr,
 			wantClass: classInfra,
 			wantLabel: "missing system config",

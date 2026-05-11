@@ -7,10 +7,10 @@
 # Steps:
 #   1. Rebuild the gh-optivem binary from this repo.
 #   2. From shop/ root:
-#        gh-optivem stop system  --system-config docker/typescript/monolith/system.json   (best effort, cold start)
-#        gh-optivem test system  --system-config docker/typescript/monolith/system.json --test-config system-test/typescript/tests-latest.json   (cold — implicit build + start)
-#        gh-optivem test system  --system-config docker/typescript/monolith/system.json --test-config system-test/typescript/tests-legacy.json   (warm — fast re-run path)
-#        gh-optivem stop system  --system-config docker/typescript/monolith/system.json
+#        gh-optivem stop system  --system-config docker/typescript/monolith/systems.json   (best effort, cold start)
+#        gh-optivem test system  --system-config docker/typescript/monolith/systems.json --test-config system-test/typescript/tests-latest.json   (cold — implicit build + start)
+#        gh-optivem test system  --system-config docker/typescript/monolith/systems.json --test-config system-test/typescript/tests-legacy.json   (warm — fast re-run path)
+#        gh-optivem stop system  --system-config docker/typescript/monolith/systems.json
 #   3. Print a per-phase pass/fail summary.
 #
 # Requires: docker, node 22+, the optivem academy workspace cloned alongside
@@ -25,7 +25,7 @@ WORKSPACE_ROOT="$(cd "$REPO_ROOT/.." && pwd)"
 SHOP_DIR="$WORKSPACE_ROOT/shop"
 BIN="$REPO_ROOT/gh-optivem.exe"
 
-SYSTEM="docker/typescript/monolith/system.json"
+SYSTEM="docker/typescript/monolith/systems.json"
 TESTS_LATEST="system-test/typescript/tests-latest.json"
 TESTS_LEGACY="system-test/typescript/tests-legacy.json"
 
@@ -36,7 +36,7 @@ echo "=== Step 1/5: Build gh-optivem ==="
 }
 
 if [ ! -f "$SHOP_DIR/$SYSTEM" ]; then
-  echo "FAILED: shop system.json not found at $SHOP_DIR/$SYSTEM" >&2
+  echo "FAILED: shop systems.json not found at $SHOP_DIR/$SYSTEM" >&2
   exit 1
 fi
 

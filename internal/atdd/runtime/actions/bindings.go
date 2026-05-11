@@ -800,13 +800,13 @@ func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcom
 	// Resolve the runner's config-file paths once per invocation. Same
 	// cwd-bug fix as runTests — every `gh optivem test
 	// system ...` shell-out needs the resolved `--system-config` and
-	// `--test-config` flags appended, otherwise the runner's `./system.json`
+	// `--test-config` flags appended, otherwise the runner's `./systems.json`
 	// default fails 100% of the time under the orchestrator's cwd. Per
 	// plans/20260505-220100-verify-runs-from-wrong-cwd.md.
 	pathFlags, err := a.verifyPathFlags()
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf(
-			"run_targeted_tests: could not locate system.json/tests-latest.json under %q: %w", a.deps.RepoPath, err)}
+			"run_targeted_tests: could not locate systems.json/tests-latest.json under %q: %w", a.deps.RepoPath, err)}
 	}
 
 	rebuildFlag := ""
@@ -1007,12 +1007,12 @@ func (a actions) verifyRealSuitePasses(ctx *statemachine.Context) statemachine.O
 	}
 	// Same cwd-bug fix as runTests / runTargetedTests:
 	// resolve --system-config / --test-config once and append to every
-	// shell-out so the runner doesn't read its broken `./system.json`
+	// shell-out so the runner doesn't read its broken `./systems.json`
 	// default from the orchestrator's cwd.
 	pathFlags, err := a.verifyPathFlags()
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf(
-			"verify_real_suite_passes: could not locate system.json/tests-latest.json under %q: %w", a.deps.RepoPath, err)}
+			"verify_real_suite_passes: could not locate systems.json/tests-latest.json under %q: %w", a.deps.RepoPath, err)}
 	}
 	allPass := true
 	for _, name := range names {
@@ -1125,7 +1125,7 @@ func (a actions) runTests(ctx *statemachine.Context) statemachine.Outcome {
 // Per plans/20260505-220100-verify-runs-from-wrong-cwd.md (Item 2):
 // every `gh optivem test system ...` shell-out under verify needs the
 // resolved `--system-config` / `--test-config` flags appended (the
-// runner's `./system.json` default fails 100% of the time because the
+// runner's `./systems.json` default fails 100% of the time because the
 // orchestrator's cwd is the repo root, not the directory holding the
 // config). Resolution is lazy — [x] reject and [n] skip don't shell
 // out, so they shouldn't be blocked by a missing layout. needPathFlags
@@ -1149,7 +1149,7 @@ func (a actions) gatherTestCommands(ctx *statemachine.Context) ([]string, statem
 		fmt.Fprintf(a.deps.Stderr, "  %v\n", err)
 		fmt.Fprintln(a.deps.Stderr, "  see plans/20260505-220100-verify-runs-from-wrong-cwd.md")
 		return statemachine.Outcome{Err: fmt.Errorf(
-			"run_tests: could not locate system.json/tests-latest.json — see banner above")}
+			"run_tests: could not locate systems.json/tests-latest.json — see banner above")}
 	}
 
 	for {
@@ -1231,7 +1231,7 @@ func (a actions) executeAndFinalize(ctx *statemachine.Context, cmds []string) st
 //
 // Returns an error when no layout matches; the caller (verify action) is
 // expected to halt with infra-class semantics rather than running the
-// runner with broken `./system.json` defaults.
+// runner with broken `./systems.json` defaults.
 func (a actions) verifyPathFlags() (string, error) {
 	sys, tests, err := ResolveSystemTestPaths(a.deps.RepoPath)
 	if err != nil {
@@ -1247,7 +1247,7 @@ func (a actions) verifyPathFlags() (string, error) {
 // declares — no separate catalog to keep in sync.
 //
 // pathFlags is the suffix from verifyPathFlags — `--list` only reads
-// tests.json (the runner short-circuits before opening system.json), but
+// tests.json (the runner short-circuits before opening systems.json), but
 // passing both flags keeps the command line uniform across [a]/[s]/[p].
 func (a actions) listSystemSuites(pathFlags string) ([]string, error) {
 	out, err := a.deps.Shell.Run(context.Background(), "gh optivem test system --list"+pathFlags)
@@ -1309,7 +1309,7 @@ func (a actions) promptSuiteMenu(multi bool, pathFlags string) ([]string, error)
 // promptSomeSuites asks the user which suites to run whole and returns
 // one `gh optivem test system --suite <id>` command per pick. pathFlags
 // (from verifyPathFlags) is appended to every emitted command so the
-// runner can find system.json / tests.json.
+// runner can find systems.json / tests.json.
 func (a actions) promptSomeSuites(pathFlags string) ([]string, error) {
 	picked, err := a.promptSuiteMenu(true, pathFlags)
 	if err != nil {
@@ -1481,7 +1481,7 @@ func formatVerifyResultsText(results []verifyCommandResult) string {
 //     re-read regex tables to understand which row fired;
 //   - the first stderr line from the captured output, which is the
 //     literal prefix the runner emitted (e.g. the `ERROR: read system
-//     config ./system.json` from the morning's reproducer);
+//     config ./systems.json` from the morning's reproducer);
 //   - the exact command tried, including any --suite / --test flags;
 //   - the cwd the orchestrator was running from, since the canonical
 //     infra failure mode is "verify ran from the wrong directory and

@@ -274,7 +274,7 @@ func TestRoundTrip_PreservesSystemAndTestConfig(t *testing.T) {
 		dir := t.TempDir()
 		cfg := &Config{
 			Project:      Project{URL: "https://github.com/orgs/acme/projects/1"},
-			SystemConfig: "docker/system.json",
+			SystemConfig: "docker/systems.json",
 			TestConfig:   "system-test/tests-latest.json",
 		}
 		if err := Write(dir, cfg); err != nil {
