@@ -31,6 +31,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 )
 
 // Path is the canonical relative location of the file inside a consumer
@@ -89,6 +91,32 @@ type Config struct {
 	// falls back to ./tests.yaml or the explicit --test-config flag. Same
 	// conventions as SystemConfig.
 	TestConfig string `yaml:"test_config,omitempty"`
+
+	// ProcessFlow is the repo-relative path to a process-flow YAML override.
+	// When empty, the driver falls back to the canonical embedded document.
+	// Validated as repo-relative (no `..`); file existence is verified at
+	// load-time, not validate-time.
+	ProcessFlow string `yaml:"process_flow,omitempty"`
+
+	// AgentPrompts maps agent name → repo-relative path to a prompt body
+	// that replaces the embedded one. Partial overrides are allowed
+	// (an entry per agent the operator wants to customize). Validated:
+	// keys must be members of agents.Names(); values pass validatePath.
+	AgentPrompts map[string]string `yaml:"agent_prompts,omitempty"`
+
+	// NodeExtras maps process-flow node ID → literal text appended to that
+	// node's prompt. Values are inline (project-stable advice such as
+	// "prefer record types"). Node-ID keys are not validated here — the
+	// driver re-validates them against the loaded process flow at startup.
+	NodeExtras map[string]string `yaml:"node_extras,omitempty"`
+
+	// NodeReplacements maps process-flow node ID → repo-relative path
+	// whose file body replaces that node's prompt verbatim. Values pass
+	// validatePath. Like NodeExtras, node-ID keys are validated at
+	// startup, not here. A key appearing in both NodeExtras and
+	// NodeReplacements is rejected — replacement strictly supersedes
+	// extras, so the combination signals operator confusion.
+	NodeReplacements map[string]string `yaml:"node_replacements,omitempty"`
 }
 
 // Project carries the GitHub Projects board URL. Repo organization
@@ -325,7 +353,64 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("config: project.url is required (the GitHub Project board URL written by `gh optivem config init --project-url ...`)")
 	}
 
+	// Rule 10: process_flow path validity (when set).
+	if err := validatePath("process_flow", c.ProcessFlow); err != nil {
+		return err
+	}
+
+	// Rule 11: agent_prompts. Keys must be known embedded agents (typos
+	// surface at config-load, not deep inside the pipeline); values pass
+	// validatePath. Sorted iteration so errors are deterministic.
+	if len(c.AgentPrompts) > 0 {
+		known := map[string]bool{}
+		for _, n := range agents.Names() {
+			known[n] = true
+		}
+		for _, name := range sortedKeys(c.AgentPrompts) {
+			if !known[name] {
+				return fmt.Errorf("config: agent_prompts: %q is not a known embedded agent", name)
+			}
+			if err := validatePath("agent_prompts."+name, c.AgentPrompts[name]); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Rule 12: node_replacements paths pass validatePath. Sorted
+	// iteration for deterministic errors.
+	for _, node := range sortedKeys(c.NodeReplacements) {
+		if err := validatePath("node_replacements."+node, c.NodeReplacements[node]); err != nil {
+			return err
+		}
+	}
+
+	// Rule 13: a node ID may not appear in both node_extras and
+	// node_replacements — replace strictly supersedes extras, so the
+	// combination signals operator confusion. Node-ID validity against
+	// the resolved process flow is deferred to the driver (the process
+	// flow is itself configurable, so the node-ID set isn't known here).
+	for _, node := range sortedKeys(c.NodeExtras) {
+		if _, dup := c.NodeReplacements[node]; dup {
+			return fmt.Errorf("config: node %q appears in both node_extras and node_replacements (replace supersedes extras)", node)
+		}
+	}
+
 	return nil
+}
+
+// sortedKeys returns the keys of m in lexicographic order. Used by
+// Validate to produce deterministic error messages when multiple entries
+// could trip the same rule.
+func sortedKeys(m map[string]string) []string {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // IsEmpty reports whether t is the zero-value TierSpec (no fields set).

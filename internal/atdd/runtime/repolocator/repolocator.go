@@ -2,18 +2,17 @@
 // repo slug → absolute local clone path. It does not check that the
 // resolved paths exist on disk — that is the runtime preflight's job.
 //
-// Three resolution strategies are tried per slug, first match wins:
+// Resolution rule (one formula for both mono- and multi-repo layouts):
 //
-//  1. Explicit --repo-dir flag (`slug=path`, repeatable on the implement-
-//     ticket command). Bypasses the convention entirely.
-//  2. $GH_OPTIVEM_WORKSPACE env var. If set, the local path for repo
-//     `<owner>/<name>` is `$GH_OPTIVEM_WORKSPACE/<name>`.
-//  3. Sibling-dir convention. For mono-repo, the sole repo's local path
-//     is the CWD (already where implement-ticket runs). For multi-repo,
-//     each repo's local path is `<dirname(cwd)>/<repo-name>`.
+//	workspace        = --workspace flag value, or parent(CWD) if unset
+//	clone_path(slug) = <workspace>/<repo-name(slug)>
 //
-// Unresolved slugs (none of the three strategies produced a path) are
-// returned to the caller — the locator does not treat them as errors.
+// The clone directory's name must therefore match the repo-name component
+// of the slug. For mono-repo this is no constraint because the operator
+// runs from inside the clone (`parent(CWD)/<repo-name>` == CWD when CWD
+// is `<workspace>/<repo-name>`); for multi-repo it was already the
+// sibling-dir convention. Operators with outlier clones symlink them
+// into the workspace dir.
 package repolocator
 
 import (
@@ -25,13 +24,9 @@ import (
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
-// EnvWorkspace is the env var consulted for the second resolution
-// strategy. Exported so tests can clear/set it deterministically.
-const EnvWorkspace = "GH_OPTIVEM_WORKSPACE"
-
-// Result bundles the resolved-slug map and any slugs that fell off all
-// three strategies. Unresolved slugs are not an error here — the runtime
-// preflight decides whether to surface them.
+// Result bundles the resolved-slug map and any slugs that fell off the
+// formula. Unresolved slugs are not an error here — the runtime preflight
+// decides whether to surface them.
 type Result struct {
 	// Local maps repo slug (owner/name) → absolute local path.
 	Local map[string]string
@@ -39,11 +34,12 @@ type Result struct {
 	Unresolved []string
 }
 
-// Resolve walks the slugs in cfg.Repos() through the three strategies.
-// repoDirs is the parsed --repo-dir flag map (slug → path); empty when
-// the flag wasn't set. cwd is the working directory used by the sibling-
-// convention strategy; when empty, the process CWD is used.
-func Resolve(cfg *projectconfig.Config, repoDirs map[string]string, cwd string) (Result, error) {
+// Resolve places every slug in cfg.Repos() under <workspace>/<repo-name>.
+// workspace is the operator-supplied workspace root (from the --workspace
+// flag); when empty, the formula defaults to filepath.Dir(cwd). cwd is
+// the working directory used by the default branch; when empty, the
+// process CWD is used.
+func Resolve(cfg *projectconfig.Config, workspace string, cwd string) (Result, error) {
 	if cfg == nil {
 		return Result{Local: map[string]string{}}, nil
 	}
@@ -59,33 +55,14 @@ func Resolve(cfg *projectconfig.Config, repoDirs map[string]string, cwd string) 
 			return Result{}, fmt.Errorf("repolocator: getwd: %w", err)
 		}
 	}
-
-	wsEnv := os.Getenv(EnvWorkspace)
+	if workspace == "" {
+		workspace = filepath.Dir(cwd)
+	}
 
 	out := Result{Local: make(map[string]string, len(slugs))}
 	for _, slug := range slugs {
-		if path, ok := repoDirs[slug]; ok && path != "" {
-			out.Local[slug] = path
-			continue
-		}
-		if wsEnv != "" {
-			out.Local[slug] = filepath.Join(wsEnv, repoName(slug))
-			continue
-		}
-		// Sibling-dir convention.
-		if cfg.RepoStrategy == projectconfig.RepoStrategyMonoRepo || len(slugs) == 1 {
-			out.Local[slug] = cwd
-			continue
-		}
-		// Multi-repo: sibling of CWD with the repo's name.
-		parent := filepath.Dir(cwd)
-		out.Local[slug] = filepath.Join(parent, repoName(slug))
+		out.Local[slug] = filepath.Join(workspace, repoName(slug))
 	}
-
-	// No "unresolved" slugs in the current rule set — every slug ends up
-	// with a path under one of the three strategies. The Unresolved
-	// field is reserved for future rules where a slug might fall off
-	// (e.g. a future strategy that's allowed to refuse).
 	return out, nil
 }
 
@@ -96,25 +73,4 @@ func repoName(slug string) string {
 		return slug[idx+1:]
 	}
 	return slug
-}
-
-// ParseRepoDirFlag parses a `--repo-dir slug=path` string slice into the
-// map Resolve consumes. Returns an error on the first malformed entry.
-// Empty input returns an empty map (not nil) so callers can call without
-// a nil-check.
-func ParseRepoDirFlag(pairs []string) (map[string]string, error) {
-	out := make(map[string]string, len(pairs))
-	for _, p := range pairs {
-		idx := strings.Index(p, "=")
-		if idx <= 0 || idx == len(p)-1 {
-			return nil, fmt.Errorf("repolocator: --repo-dir %q must be slug=path", p)
-		}
-		slug := strings.TrimSpace(p[:idx])
-		path := strings.TrimSpace(p[idx+1:])
-		if slug == "" || path == "" {
-			return nil, fmt.Errorf("repolocator: --repo-dir %q must be slug=path", p)
-		}
-		out[slug] = path
-	}
-	return out, nil
 }

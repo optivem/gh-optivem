@@ -263,6 +263,142 @@ func TestWrite_RoundTripPreservesAllFourSamples(t *testing.T) {
 	}
 }
 
+// TestRoundTrip_PreservesProcessFlowAndOverrides verifies that the optional
+// process_flow: / agent_prompts: / node_extras: / node_replacements: fields
+// survive a Write→Load round-trip when set.
+func TestRoundTrip_PreservesProcessFlowAndOverrides(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := &Config{
+		Project:     Project{URL: "https://github.com/orgs/acme/projects/1"},
+		ProcessFlow: "config/process-flow.yaml",
+		AgentPrompts: map[string]string{
+			"atdd-test": "config/prompts/atdd-test.md",
+		},
+		NodeExtras: map[string]string{
+			"AT_RED_DSL_WRITE": "prefer record types",
+		},
+		NodeReplacements: map[string]string{
+			"AT_RED_TEST_WRITE": "config/prompts/at-red-test-write.md",
+		},
+	}
+	if err := Write(dir, cfg); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	got, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.ProcessFlow != cfg.ProcessFlow {
+		t.Errorf("process_flow: got %q, want %q", got.ProcessFlow, cfg.ProcessFlow)
+	}
+	if got.AgentPrompts["atdd-test"] != cfg.AgentPrompts["atdd-test"] {
+		t.Errorf("agent_prompts[atdd-test]: got %q, want %q",
+			got.AgentPrompts["atdd-test"], cfg.AgentPrompts["atdd-test"])
+	}
+	if got.NodeExtras["AT_RED_DSL_WRITE"] != cfg.NodeExtras["AT_RED_DSL_WRITE"] {
+		t.Errorf("node_extras: got %q", got.NodeExtras["AT_RED_DSL_WRITE"])
+	}
+	if got.NodeReplacements["AT_RED_TEST_WRITE"] != cfg.NodeReplacements["AT_RED_TEST_WRITE"] {
+		t.Errorf("node_replacements: got %q", got.NodeReplacements["AT_RED_TEST_WRITE"])
+	}
+}
+
+// TestValidate_ProcessFlow_RejectsAbsolutePath verifies path-validation
+// kicks in for the new process_flow: field.
+func TestValidate_ProcessFlow_RejectsAbsolutePath(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{
+		Project:     Project{URL: "https://github.com/orgs/acme/projects/1"},
+		ProcessFlow: "/abs/process-flow.yaml",
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for absolute process_flow, got nil")
+	}
+	if !strings.Contains(err.Error(), "process_flow") {
+		t.Fatalf("error should mention process_flow, got: %v", err)
+	}
+}
+
+// TestValidate_AgentPrompts_RejectsUnknownAgent verifies typos in agent
+// names surface at config-load, not deep inside the pipeline.
+func TestValidate_AgentPrompts_RejectsUnknownAgent(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{
+		Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
+		AgentPrompts: map[string]string{
+			"atdd-not-a-real-agent": "config/prompts/x.md",
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for unknown agent name, got nil")
+	}
+	if !strings.Contains(err.Error(), "atdd-not-a-real-agent") {
+		t.Fatalf("error should name the bad agent, got: %v", err)
+	}
+}
+
+// TestValidate_AgentPrompts_RejectsAbsolutePath verifies values pass the
+// same path-validation as system/system_test paths.
+func TestValidate_AgentPrompts_RejectsAbsolutePath(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{
+		Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
+		AgentPrompts: map[string]string{
+			"atdd-test": "/abs/prompts/atdd-test.md",
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for absolute agent_prompts path, got nil")
+	}
+}
+
+// TestValidate_NodeReplacements_RejectsAbsolutePath verifies values pass
+// the same path-validation as agent_prompts.
+func TestValidate_NodeReplacements_RejectsAbsolutePath(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{
+		Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
+		NodeReplacements: map[string]string{
+			"AT_RED_TEST_WRITE": "/abs/prompts/x.md",
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for absolute node_replacements path, got nil")
+	}
+}
+
+// TestValidate_RejectsSameKeyInExtrasAndReplacements verifies the
+// "replace supersedes extras" rule: a node ID may not appear in both
+// maps simultaneously.
+func TestValidate_RejectsSameKeyInExtrasAndReplacements(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{
+		Project:          Project{URL: "https://github.com/orgs/acme/projects/1"},
+		NodeExtras:       map[string]string{"AT_RED_DSL_WRITE": "prefer records"},
+		NodeReplacements: map[string]string{"AT_RED_DSL_WRITE": "config/prompts/x.md"},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for duplicate node key, got nil")
+	}
+	if !strings.Contains(err.Error(), "AT_RED_DSL_WRITE") {
+		t.Fatalf("error should name the duplicate node, got: %v", err)
+	}
+}
+
+// TestValidate_AcceptsEmptyOverrideMaps confirms a config with all four
+// override fields nil/empty validates cleanly (the common case).
+func TestValidate_AcceptsEmptyOverrideMaps(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{Project: Project{URL: "https://github.com/orgs/acme/projects/1"}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("empty override maps should validate, got: %v", err)
+	}
+}
+
 // TestRoundTrip_PreservesSystemAndTestConfig verifies that the optional
 // system_config: / test_config: fields survive a Write→Load round-trip when
 // set, and stay empty (and absent from the written YAML) when unset.

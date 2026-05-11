@@ -35,7 +35,6 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/preflight"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/release"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/repolocator"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/configinit"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
@@ -107,7 +106,6 @@ func newAtddShowDiagramCmd() *cobra.Command {
 func newAtddImplementTicketCmd() *cobra.Command {
 	var (
 		issueArg         string
-		projectURL       string
 		autonomous       bool
 		manualAgents     bool
 		interactive      bool
@@ -116,7 +114,7 @@ func newAtddImplementTicketCmd() *cobra.Command {
 		yamlPath         string
 		agentPromptPairs []string
 		logFile          string
-		repoDirPairs     []string
+		workspace        string
 		keepRuns         int
 		showPrompt       bool
 	)
@@ -125,12 +123,11 @@ func newAtddImplementTicketCmd() *cobra.Command {
 		Short: "Walk the ATDD pipeline for a specific GitHub issue",
 		Example: `  gh optivem atdd implement-ticket --issue 42
   gh optivem atdd implement-ticket --issue https://github.com/optivem/shop/issues/42
-  gh optivem atdd implement-ticket --issue 42 --project https://github.com/orgs/optivem/projects/3
   gh optivem atdd implement-ticket --issue 42 --extra AT_RED_DSL_WRITE="prefer record types"
   gh optivem atdd implement-ticket --issue 42 --yaml ./alt-process-flow.yaml
   gh optivem atdd implement-ticket --issue 42 --agent-prompt atdd-test=./prompts/atdd-test.md
   gh optivem -c ./optivem-multitier.yaml atdd implement-ticket --issue 42
-  gh optivem atdd implement-ticket --issue 42 --repo-dir optivem/shop=/abs/path/to/shop
+  gh optivem atdd implement-ticket --issue 42 --workspace /abs/path/to/workspace
   gh optivem atdd implement-ticket --issue 42 --log-file run.log
   gh optivem atdd implement-ticket --issue 42 --show-prompt
   gh optivem atdd implement-ticket --issue 42 --keep-runs 0   # never prune`,
@@ -141,14 +138,11 @@ func newAtddImplementTicketCmd() *cobra.Command {
 			exitOnError(err)
 			promptOverrides, err := parseAgentPromptPairs(agentPromptPairs)
 			exitOnError(err)
-			repoDirs, err := repolocator.ParseRepoDirFlag(repoDirPairs)
-			exitOnError(err)
 			exitOnError(validateKeepRuns(keepRuns))
 			resolvedConfigPath, _ := projectconfig.ResolvePath(projectConfigPath)
-			exitOnError(runImplementTicketPreflight(resolvedConfigPath, repoDirs))
+			exitOnError(runImplementTicketPreflight(resolvedConfigPath, workspace))
 			exitOnError(driver.Run(context.Background(), driver.Options{
 				IssueNum:             issue,
-				ProjectURL:           projectURL,
 				Autonomous:           autonomous,
 				ManualAgents:         manualAgents,
 				Override:             hooks,
@@ -162,7 +156,6 @@ func newAtddImplementTicketCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&issueArg, "issue", "", "GitHub issue number or URL (required; accepts e.g. 42 or https://github.com/owner/repo/issues/42)")
-	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to project.url in the resolved gh-optivem.yaml)")
 	cmd.Flags().BoolVar(&autonomous, "autonomous", false, "Skip human-approval STOPs and run agent dispatches headless via `claude -p`")
 	cmd.Flags().BoolVar(&manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
 	cmd.Flags().BoolVar(&interactive, "interactive", false, "Before each user_task dispatch, print the constructed prompt and read stdin for last-minute additions")
@@ -170,7 +163,7 @@ func newAtddImplementTicketCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&replacePairs, "replace", nil, "Per-node prompt replacement, repeatable (escape hatch — full prompt swap)")
 	cmd.Flags().StringVar(&yamlPath, "yaml", "", "Path to a process-flow YAML override (defaults to the embedded canonical document)")
 	cmd.Flags().StringSliceVar(&agentPromptPairs, "agent-prompt", nil, "Override one named agent prompt, repeatable (e.g. --agent-prompt atdd-test=./prompts/atdd-test.md)")
-	cmd.Flags().StringSliceVar(&repoDirPairs, "repo-dir", nil, "Per-repo local-clone path override, repeatable (e.g. --repo-dir optivem/shop=/abs/path/to/shop). Otherwise resolved via $GH_OPTIVEM_WORKSPACE then sibling-dir convention.")
+	cmd.Flags().StringVar(&workspace, "workspace", "", "Workspace root containing one clone per repo (default: parent directory of CWD). Each clone dir must be named after the repo-name component of its slug; symlink outliers into place.")
 	cmd.Flags().StringVar(&logFile, "log-file", "", "Mirror everything stdout/stderr emit during the run to this file (in addition to streaming live)")
 	cmd.Flags().IntVar(&keepRuns, "keep-runs", 10, "Max prompt-log run directories to keep under .gh-optivem/runs/ at startup (0 = never prune)")
 	cmd.Flags().BoolVar(&showPrompt, "show-prompt", false, "Dump each agent's full rendered prompt to stdout before dispatch (default: summary banner only)")
@@ -198,7 +191,7 @@ func validateKeepRuns(n int) error {
 // it via loadDriverConfig. The double load is deliberate: keeps the
 // driver's lifecycle untouched, and a config file is small enough that
 // the second read is free.
-func runImplementTicketPreflight(configPath string, repoDirs map[string]string) error {
+func runImplementTicketPreflight(configPath string, workspace string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("preflight: getwd: %w", err)
@@ -210,7 +203,7 @@ func runImplementTicketPreflight(configPath string, repoDirs map[string]string) 
 	if err != nil {
 		return err
 	}
-	return preflight.Run(cfg, repoDirs, cwd)
+	return preflight.Run(cfg, workspace, cwd)
 }
 
 // newAtddManageProjectCmd implements `gh optivem atdd manage-project`. The
@@ -218,7 +211,6 @@ func runImplementTicketPreflight(configPath string, repoDirs map[string]string) 
 // from START.
 func newAtddManageProjectCmd() *cobra.Command {
 	var (
-		projectURL       string
 		autonomous       bool
 		manualAgents     bool
 		interactive      bool
@@ -234,7 +226,6 @@ func newAtddManageProjectCmd() *cobra.Command {
 		Use:   "manage-project",
 		Short: "Pick the top Ready ticket and walk the ATDD pipeline",
 		Example: `  gh optivem atdd manage-project
-  gh optivem atdd manage-project --project https://github.com/orgs/optivem/projects/3
   gh optivem -c ./optivem-multitier.yaml atdd manage-project --yaml ./alt-process-flow.yaml
   gh optivem atdd manage-project --log-file run.log`,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -245,7 +236,6 @@ func newAtddManageProjectCmd() *cobra.Command {
 			exitOnError(validateKeepRuns(keepRuns))
 			resolvedConfigPath, _ := projectconfig.ResolvePath(projectConfigPath)
 			exitOnError(driver.Run(context.Background(), driver.Options{
-				ProjectURL:           projectURL,
 				Autonomous:           autonomous,
 				ManualAgents:         manualAgents,
 				Override:             hooks,
@@ -258,7 +248,6 @@ func newAtddManageProjectCmd() *cobra.Command {
 			}))
 		},
 	}
-	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to project.url in the resolved gh-optivem.yaml)")
 	cmd.Flags().BoolVar(&autonomous, "autonomous", false, "Skip human-approval STOPs and run agent dispatches headless via `claude -p`")
 	cmd.Flags().BoolVar(&manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
 	cmd.Flags().BoolVar(&interactive, "interactive", false, "Before each user_task dispatch, print the constructed prompt and read stdin for last-minute additions")
@@ -387,14 +376,11 @@ func newAtddDebugCmd() *cobra.Command {
 // newAtddDebugPickTopReadyCmd runs board.PickTopReady standalone and prints
 // the picked item. No move; useful for "what would manage-project pick?".
 func newAtddDebugPickTopReadyCmd() *cobra.Command {
-	var projectURL string
 	cmd := &cobra.Command{
 		Use:   "pick-top-ready",
 		Short: "Print the top Ready item without moving it",
 		Run: func(cmd *cobra.Command, args []string) {
-			pick, err := board.PickTopReady(context.Background(), board.Options{
-				ProjectURL: projectURL,
-			})
+			pick, err := board.PickTopReady(context.Background(), board.Options{})
 			exitOnError(err)
 			fmt.Printf("issue:    #%d\n", pick.IssueNum)
 			fmt.Printf("title:    %s\n", pick.Title)
@@ -404,7 +390,6 @@ func newAtddDebugPickTopReadyCmd() *cobra.Command {
 			fmt.Printf("item:     %s\n", pick.ItemID)
 		},
 	}
-	cmd.Flags().StringVar(&projectURL, "project", "", "GitHub project URL (optional; defaults to project.url in gh-optivem.yaml or the file passed via --config)")
 	return cmd
 }
 

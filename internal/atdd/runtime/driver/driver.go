@@ -378,7 +378,7 @@ func printConfig(w io.Writer, opts Options, cfg *projectconfig.Config, repoPath 
 		projectURL = cfg.Project.URL
 	}
 	if opts.ProjectURL != "" {
-		projectURLNote = " (from --project)"
+		projectURLNote = " (from caller)"
 	}
 	fmt.Fprintf(w, "  project URL:   %s%s\n", orPlaceholder(projectURL, "(unset — pre-resolve will fail)"), projectURLNote)
 	if cfg != nil {
