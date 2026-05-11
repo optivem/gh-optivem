@@ -44,6 +44,76 @@ func TestNewTestSystemCmdRepeatableTestFlag(t *testing.T) {
 	}
 }
 
+// TestNewTestSystemCmdRepeatableSuiteFlag verifies cobra's StringSliceVar
+// wiring on --suite: the flag is repeatable AND comma-separated, and an
+// absent flag yields an empty slice (run-all-suites behavior).
+func TestNewTestSystemCmdRepeatableSuiteFlag(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{"repeated --suite", []string{"--suite", "A", "--suite", "B"}, []string{"A", "B"}},
+		{"comma-separated value", []string{"--suite", "A,B"}, []string{"A", "B"}},
+		{"mixed repeat + comma", []string{"--suite", "A,B", "--suite", "C"}, []string{"A", "B", "C"}},
+		{"single value", []string{"--suite", "Only"}, []string{"Only"}},
+		{"flag absent", []string{}, []string{}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cmd := newTestSystemCmd()
+			if err := cmd.ParseFlags(c.args); err != nil {
+				t.Fatalf("ParseFlags(%v): %v", c.args, err)
+			}
+			got, err := cmd.Flags().GetStringSlice("suite")
+			if err != nil {
+				t.Fatalf("GetStringSlice: %v", err)
+			}
+			if !reflect.DeepEqual(got, c.want) {
+				t.Errorf("got %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// TestValidateSuiteTestCombo guards the rejection path for the
+// --test + multi-`--suite` combination. The helper exists precisely so
+// this can be exercised without mocking os.Exit.
+func TestValidateSuiteTestCombo(t *testing.T) {
+	cases := []struct {
+		name    string
+		suites  []string
+		tests   []string
+		wantErr bool
+	}{
+		{"no suites, no tests", nil, nil, false},
+		{"no suites, one test", nil, []string{"T1"}, false},
+		{"single suite, no tests", []string{"A"}, nil, false},
+		{"single suite, one test", []string{"A"}, []string{"T1"}, false},
+		{"single suite, multiple tests", []string{"A"}, []string{"T1", "T2"}, false},
+		{"multiple suites, no tests", []string{"A", "B"}, nil, false},
+		{"multiple suites, one test (rejected)", []string{"A", "B"}, []string{"T1"}, true},
+		{"multiple suites, multiple tests (rejected)", []string{"A", "B"}, []string{"T1", "T2"}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := validateSuiteTestCombo(c.suites, c.tests)
+			if (err != nil) != c.wantErr {
+				t.Fatalf("got err=%v, wantErr=%v", err, c.wantErr)
+			}
+			if err == nil {
+				return
+			}
+			msg := err.Error()
+			for _, want := range []string{"--test", "--suite", "narrow to a single --suite"} {
+				if !strings.Contains(msg, want) {
+					t.Errorf("error message missing %q hint, got: %v", want, err)
+				}
+			}
+		})
+	}
+}
+
 // TestLoadSystemMissingFileHintsAtFlag verifies that `gh optivem build/run/...`
 // commands surface the three-knob hint (--system-config flag, system_config:
 // YAML field, default path) when the resolved system.json is absent — the

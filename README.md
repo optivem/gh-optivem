@@ -127,6 +127,8 @@ gh optivem test system --rebuild             # force full rebuild in the implici
 gh optivem test system --no-start            # skip the start step (system must already be up)
 gh optivem test system --restart             # force tear-down + restart before tests
 gh optivem test system --suite smoke         # run only the suite with this id
+gh optivem test system --suite acceptance-api --suite acceptance-ui   # multiple suites, repeatable
+gh optivem test system --suite acceptance-api,acceptance-ui           # ...or comma-separated
 gh optivem test system --test "MyTest"       # narrow execution to one test name (substituted into the suite's testFilter)
 gh optivem test system --test T1 --test T2   # multiple names, repeatable
 gh optivem test system --test T1,T2          # ...or comma-separated

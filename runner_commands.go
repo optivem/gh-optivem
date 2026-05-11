@@ -311,7 +311,7 @@ func newTestSystemCmd() *cobra.Command {
 	var (
 		systemPath string
 		testsPath  string
-		suite      string
+		suites     []string
 		test       []string
 		sample     bool
 		noBuild    bool
@@ -326,6 +326,8 @@ func newTestSystemCmd() *cobra.Command {
 		Short: "Build + start (if needed) + run setup commands and suites from tests.json",
 		Example: `  gh optivem test system
   gh optivem test system --suite smoke
+  gh optivem test system --suite acceptance-api --suite acceptance-ui
+  gh optivem test system --suite acceptance-api,acceptance-ui
   gh optivem test system --rebuild --suite smoke
   gh optivem test system --no-build --no-start
   gh optivem test system --suite smoke --test T1 --test T2
@@ -342,12 +344,13 @@ func newTestSystemCmd() *cobra.Command {
 				}
 				return
 			}
+			exitOnError(validateSuiteTestCombo(suites, test))
 			resolvedSystem, err := resolveSystemPath(systemPath)
 			exitOnError(err)
 			sys, err := loadSystem(resolvedSystem)
 			exitOnError(err)
 			opts := runner.TestOptions{
-				Suite:   suite,
+				Suite:   suites,
 				Test:    test,
 				Sample:  sample,
 				NoBuild: noBuild,
@@ -361,7 +364,7 @@ func newTestSystemCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&systemPath, "system-config", "", flagSystemUsage)
 	cmd.Flags().StringVar(&testsPath, "test-config", "", flagTestsUsage)
-	cmd.Flags().StringVar(&suite, "suite", "", "Run only the suite with this id")
+	cmd.Flags().StringSliceVar(&suites, "suite", nil, "Run only the suite(s) with these id(s); repeatable, also accepts comma-separated values")
 	cmd.Flags().StringSliceVar(&test, "test", nil, "Narrow execution to the given test name(s); repeatable, also accepts comma-separated values (substituted into the suite's testFilter)")
 	cmd.Flags().BoolVar(&sample, "sample", false, "Use each suite's sampleTest field as the test name")
 	cmd.Flags().BoolVar(&noBuild, "no-build", false, "Skip the implicit build step (analog of dotnet test --no-build)")
@@ -371,4 +374,17 @@ func newTestSystemCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&noSetup, "no-setup", false, "Skip the setupCommands block from tests.json (use when an earlier invocation in the same job already ran setup)")
 	cmd.Flags().BoolVar(&list, "list", false, "Print suite ids from tests.json (one per line) and exit without running")
 	return cmd
+}
+
+// validateSuiteTestCombo rejects --test alongside multiple --suite values:
+// --test is substituted into one suite's testFilter, so applying it across
+// suites is ambiguous (test names rarely exist in more than one suite).
+func validateSuiteTestCombo(suites, tests []string) error {
+	if len(suites) > 1 && len(tests) > 0 {
+		return fmt.Errorf(
+			"--test cannot be combined with multiple --suite values " +
+				"(test names are substituted into one suite's testFilter); " +
+				"narrow to a single --suite, or run the command once per suite")
+	}
+	return nil
 }

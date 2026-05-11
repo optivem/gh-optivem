@@ -246,7 +246,7 @@ func TestPrepareSystemNoStartProbesWhenDown(t *testing.T) {
 
 func TestSelectSuitesAllWhenSuiteIDEmpty(t *testing.T) {
 	cfg := &TestsConfig{Suites: []Suite{{ID: "a"}, {ID: "b"}, {ID: "c"}}}
-	got, err := selectSuites(cfg, "")
+	got, err := selectSuites(cfg, nil)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -257,7 +257,7 @@ func TestSelectSuitesAllWhenSuiteIDEmpty(t *testing.T) {
 
 func TestSelectSuitesFilterToOne(t *testing.T) {
 	cfg := &TestsConfig{Suites: []Suite{{ID: "a"}, {ID: "b"}, {ID: "c"}}}
-	got, err := selectSuites(cfg, "b")
+	got, err := selectSuites(cfg, []string{"b"})
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestSelectSuitesFilterToOne(t *testing.T) {
 
 func TestSelectSuitesUnknownIDListsAvailable(t *testing.T) {
 	cfg := &TestsConfig{Suites: []Suite{{ID: "smoke"}, {ID: "e2e"}}}
-	_, err := selectSuites(cfg, "missing")
+	_, err := selectSuites(cfg, []string{"missing"})
 	if err == nil {
 		t.Fatal("want error")
 	}
@@ -278,6 +278,55 @@ func TestSelectSuitesUnknownIDListsAvailable(t *testing.T) {
 	}
 	if !strings.Contains(msg, "smoke") || !strings.Contains(msg, "e2e") {
 		t.Errorf("want error to list available ids, got: %v", err)
+	}
+}
+
+func TestSelectSuitesMultiPreservesDeclarationOrder(t *testing.T) {
+	// User typed --suite C --suite A but declaration order is A, B, C —
+	// so the result must come back as [A, C], regardless of arg order.
+	cfg := &TestsConfig{Suites: []Suite{{ID: "A"}, {ID: "B"}, {ID: "C"}}}
+	got, err := selectSuites(cfg, []string{"C", "A"})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	gotIDs := []string{}
+	for _, s := range got {
+		gotIDs = append(gotIDs, s.ID)
+	}
+	want := []string{"A", "C"}
+	if !reflect.DeepEqual(gotIDs, want) {
+		t.Errorf("got %v, want %v", gotIDs, want)
+	}
+}
+
+func TestSelectSuitesPartialUnknownReportsThatID(t *testing.T) {
+	cfg := &TestsConfig{Suites: []Suite{{ID: "A"}, {ID: "B"}, {ID: "C"}}}
+	_, err := selectSuites(cfg, []string{"A", "Z"})
+	if err == nil {
+		t.Fatal("want error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "Z") {
+		t.Errorf("want error to mention 'Z', got: %v", err)
+	}
+	for _, id := range []string{"A", "B", "C"} {
+		if !strings.Contains(msg, id) {
+			t.Errorf("want error to list available id %q, got: %v", id, err)
+		}
+	}
+}
+
+func TestSelectSuitesAllUnknownReportsAll(t *testing.T) {
+	// Both unknown ids must show up in the error, not just the first —
+	// users typoing a multi-suite invocation should see every miss.
+	cfg := &TestsConfig{Suites: []Suite{{ID: "A"}, {ID: "B"}, {ID: "C"}}}
+	_, err := selectSuites(cfg, []string{"X", "Y"})
+	if err == nil {
+		t.Fatal("want error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "X") || !strings.Contains(msg, "Y") {
+		t.Errorf("want error to mention both 'X' and 'Y', got: %v", err)
 	}
 }
 

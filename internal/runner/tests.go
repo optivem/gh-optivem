@@ -15,8 +15,11 @@ import (
 
 // TestOptions narrows or modifies a tests run.
 type TestOptions struct {
-	// Suite, when non-empty, limits the run to the suite with this id.
-	Suite string
+	// Suite, when non-empty, limits the run to the suites with these ids.
+	// Order in the run follows tests.json declaration order, not slice
+	// order, so two invocations with the same ids run in the same order
+	// regardless of how the user typed them.
+	Suite []string
 	// Test, when non-empty, narrows execution to the given test names.
 	// Injected into the suite's Command via TestsConfig.TestFilter and
 	// joined per TestsConfig.TestFilterJoin.
@@ -72,8 +75,8 @@ type SuiteResult struct {
 //     fast). If opts.NoStart is true, falls back to today's behavior:
 //     probe each system; error out if any aren't up.
 //  3. Runs each setupCommand in testsCwd. A failure aborts before any suite runs.
-//  4. Filters suites per opts.Suite. Errors out with the available ids if
-//     opts.Suite doesn't match any suite.
+//  4. Filters suites per opts.Suite (a set; empty means all). Errors out
+//     with the available ids if any requested id doesn't match.
 //  5. Runs each remaining suite. After the last suite (or first failure),
 //     prints a summary table.
 //
@@ -159,16 +162,31 @@ func prepareSystem(sys *SystemConfig, cwd string, opts TestOptions) error {
 	return nil
 }
 
-func selectSuites(tests *TestsConfig, suiteID string) ([]Suite, error) {
-	if suiteID == "" {
+func selectSuites(tests *TestsConfig, suiteIDs []string) ([]Suite, error) {
+	if len(suiteIDs) == 0 {
 		return tests.Suites, nil
 	}
-	suite := tests.FindSuite(suiteID)
-	if suite == nil {
-		return nil, fmt.Errorf("suite %q not found. Available: %s",
-			suiteID, strings.Join(tests.SuiteIDs(), ", "))
+	want := make(map[string]bool, len(suiteIDs))
+	for _, id := range suiteIDs {
+		want[id] = true
 	}
-	return []Suite{*suite}, nil
+	var missing []string
+	for _, id := range suiteIDs {
+		if tests.FindSuite(id) == nil {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("suite(s) not found: %s. Available: %s",
+			strings.Join(missing, ", "), strings.Join(tests.SuiteIDs(), ", "))
+	}
+	var picked []Suite
+	for _, s := range tests.Suites { // preserve declaration order
+		if want[s.ID] {
+			picked = append(picked, s)
+		}
+	}
+	return picked, nil
 }
 
 func runOneSuite(suite Suite, testFilter, testFilterJoin, cwd string, opts TestOptions) error {
