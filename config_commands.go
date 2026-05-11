@@ -13,15 +13,12 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/optivem/gh-optivem/internal/config"
-	"github.com/optivem/gh-optivem/internal/files"
+	"github.com/optivem/gh-optivem/internal/configinit"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
-	"github.com/optivem/gh-optivem/internal/steps"
 )
 
 // newConfigCmd builds the `gh optivem config` parent. The parent has no Run,
@@ -82,9 +79,9 @@ silent overwrite would be a foot-gun.`,
   # Overwrite an existing file
   gh optivem config init --owner acme ... --force`,
 		Run: func(cmd *cobra.Command, args []string) {
-			yamlPath, err := resolveConfigInitTarget(projectConfigPath, dir)
+			yamlPath, err := configinit.ResolveTarget(projectConfigPath, dir)
 			exitOnError(err)
-			written, err := runConfigInit(f, yamlPath, force)
+			written, err := configinit.Run(f, yamlPath, force)
 			exitOnError(err)
 			fmt.Printf("Wrote %s\n", written)
 		},
@@ -93,45 +90,6 @@ silent overwrite would be a foot-gun.`,
 	cmd.Flags().BoolVar(&force, "force", false, "Overwrite an existing gh-optivem.yaml")
 	cmd.Flags().StringVar(&dir, "dir", "", "Directory to write gh-optivem.yaml into (ignored if --config is set; default: current working directory)")
 	return cmd
-}
-
-// resolveConfigInitTarget picks the YAML file path config init should
-// write to: persistent --config wins (or $GH_OPTIVEM_CONFIG via
-// ResolvePath's explicit=true); else --dir + canonical filename; else
-// cwd + canonical filename.
-func resolveConfigInitTarget(flagVal, dir string) (string, error) {
-	if path, explicit := projectconfig.ResolvePath(flagVal); explicit {
-		return path, nil
-	}
-	target := dir
-	if target == "" {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return "", err
-		}
-		target = cwd
-	}
-	return filepath.Join(target, projectconfig.Path), nil
-}
-
-// runConfigInit is the testable core of `gh optivem config init`. It validates
-// the flags, refuses to overwrite an existing file unless force is true, and
-// writes the YAML to yamlPath. Returns yamlPath on success.
-func runConfigInit(f *config.RawFlags, yamlPath string, force bool) (string, error) {
-	cfg, err := config.ValidateAndDeriveForYAML(f)
-	if err != nil {
-		return "", err
-	}
-	if _, err := os.Stat(yamlPath); err == nil && !force {
-		return "", fmt.Errorf("%s already exists; pass --force to overwrite", yamlPath)
-	}
-	if err := steps.WriteOptivemYAMLToFilePath(cfg, yamlPath); err != nil {
-		return "", err
-	}
-	if err := files.EnsureGitignoreLine(filepath.Dir(yamlPath), ".gh-optivem/"); err != nil {
-		return "", fmt.Errorf("ensure .gitignore: %w", err)
-	}
-	return yamlPath, nil
 }
 
 // newConfigValidateCmd implements `gh optivem config validate`. Reads the
@@ -162,14 +120,12 @@ The target file is resolved via the persistent --config / -c flag
 }
 
 // runConfigValidate is the testable core of `gh optivem config validate`. It
-// reads the file at yamlPath, runs it through projectconfig.LoadFromPath
-// (which invokes Validate), and returns yamlPath on success. Missing file
-// returns a wrapped error pointing the user at `gh optivem config init`.
+// runs EnsureExists (which on a TTY offers to create the file
+// interactively) and then validates via projectconfig.LoadFromPath.
+// Missing file on a non-TTY returns the terse error pointing the user at
+// `gh optivem config init`.
 func runConfigValidate(yamlPath string) (string, error) {
-	if _, err := os.Stat(yamlPath); err != nil {
-		if os.IsNotExist(err) {
-			return "", fmt.Errorf("no gh-optivem.yaml at %s; run `gh optivem config init` first", yamlPath)
-		}
+	if err := configinit.EnsureExists(yamlPath); err != nil {
 		return "", err
 	}
 	if _, err := projectconfig.LoadFromPath(yamlPath); err != nil {

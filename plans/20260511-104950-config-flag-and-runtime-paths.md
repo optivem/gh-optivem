@@ -48,16 +48,6 @@ Explicitly **not** introducing:
   first-class concept in the tool; it's just another file someone can
   point `--test-config` at. Removes vocabulary from the CLI.
 
-## Deferred
-
-- [ ] Step 4: Missing-file interactive prompt. — ⏳ Deferred:
-  Step 4 as written requires extracting `config init`'s body into a
-  callable package AND adding interactive prompting for the required
-  flags (`--owner`, `--repo`, `--arch`, language, paths). The current
-  error wording (`no gh-optivem.yaml at <path>; run gh optivem config
-  init first`) is preserved. Reopen when the interactive flag-
-  collection design is settled.
-
 ## Out of scope
 
 - **Profiles in `gh-optivem.yaml`.** Shop's multi-combination case is

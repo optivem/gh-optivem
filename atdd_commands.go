@@ -37,6 +37,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/release"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/repolocator"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/configinit"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
@@ -201,6 +202,9 @@ func runImplementTicketPreflight(configPath string, repoDirs map[string]string) 
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("preflight: getwd: %w", err)
+	}
+	if err := configinit.EnsureExists(configPath); err != nil {
+		return err
 	}
 	cfg, err := projectconfig.LoadFromPath(configPath)
 	if err != nil {

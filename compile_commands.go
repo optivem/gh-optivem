@@ -14,13 +14,12 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
 
 	"github.com/spf13/cobra"
 
 	"github.com/optivem/gh-optivem/internal/compiler"
+	"github.com/optivem/gh-optivem/internal/configinit"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
@@ -85,18 +84,14 @@ func newCompileSystemTestsCmd() *cobra.Command {
 // loadProjectConfigOrExit resolves the project config path via the
 // persistent --config / -c flag (or $GH_OPTIVEM_CONFIG, or cwd) and loads
 // it. Missing file is a hard error — compile dispatches by language
-// fields that only exist in this file. The hint matches the wording used
-// by `config validate`.
+// fields that only exist in this file. EnsureExists owns the recovery
+// flow (interactive prompt on a TTY, terse "run config init first"
+// error otherwise).
 func loadProjectConfigOrExit() *projectconfig.Config {
 	path, _ := projectconfig.ResolvePath(projectConfigPath)
+	exitOnError(configinit.EnsureExists(path))
 	cfg, err := projectconfig.LoadFromPath(path)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			exitOnError(fmt.Errorf("no %s at %s; run `gh optivem config init` first",
-				projectconfig.Path, path))
-		}
-		exitOnError(err)
-	}
+	exitOnError(err)
 	return cfg
 }
 

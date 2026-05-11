@@ -7,10 +7,11 @@ import (
 	"testing"
 
 	"github.com/optivem/gh-optivem/internal/config"
+	"github.com/optivem/gh-optivem/internal/configinit"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
-// runConfigInit/runConfigValidate are covered as a pair: round-tripping
+// configinit.Run/runConfigValidate are covered as a pair: round-tripping
 // what `config init` writes through `config validate` is the contract
 // users care about (write a fresh YAML, hand-edit, re-validate).
 
@@ -37,9 +38,9 @@ func TestRunConfigInit_MonolithRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	f := monolithMonorepoFlags()
 	f.ProjectURL = "https://github.com/orgs/acme/projects/1"
-	path, err := runConfigInit(f, filepath.Join(dir, projectconfig.Path), false)
+	path, err := configinit.Run(f, filepath.Join(dir, projectconfig.Path), false)
 	if err != nil {
-		t.Fatalf("runConfigInit: %v", err)
+		t.Fatalf("configinit.Run: %v", err)
 	}
 	want := filepath.Join(dir, projectconfig.Path)
 	if path != want {
@@ -89,8 +90,8 @@ func TestRunConfigInit_MultitierMultirepo(t *testing.T) {
 		StubsPath:      "external-systems/external-stub",
 		SimulatorsPath: "external-systems/external-real-sim",
 	}
-	if _, err := runConfigInit(f, filepath.Join(dir, projectconfig.Path), false); err != nil {
-		t.Fatalf("runConfigInit: %v", err)
+	if _, err := configinit.Run(f, filepath.Join(dir, projectconfig.Path), false); err != nil {
+		t.Fatalf("configinit.Run: %v", err)
 	}
 	cfg, err := projectconfig.Load(dir)
 	if err != nil {
@@ -123,11 +124,11 @@ func TestRunConfigInit_RefusesOverwrite(t *testing.T) {
 	dir := t.TempDir()
 	yamlPath := filepath.Join(dir, projectconfig.Path)
 	f := monolithMonorepoFlags()
-	if _, err := runConfigInit(f, yamlPath, false); err != nil {
+	if _, err := configinit.Run(f, yamlPath, false); err != nil {
 		t.Fatalf("first init: %v", err)
 	}
 	// Second invocation without --force should refuse.
-	_, err := runConfigInit(f, yamlPath, false)
+	_, err := configinit.Run(f, yamlPath, false)
 	if err == nil {
 		t.Fatal("second init without --force: want error, got nil")
 	}
@@ -135,7 +136,7 @@ func TestRunConfigInit_RefusesOverwrite(t *testing.T) {
 		t.Errorf("error should hint at --force, got: %v", err)
 	}
 	// With --force it should succeed.
-	if _, err := runConfigInit(f, yamlPath, true); err != nil {
+	if _, err := configinit.Run(f, yamlPath, true); err != nil {
 		t.Fatalf("init with --force: %v", err)
 	}
 }
@@ -212,7 +213,7 @@ func TestRunConfigInit_RejectsBadFlags(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
-			_, err := runConfigInit(tc.f, filepath.Join(dir, projectconfig.Path), false)
+			_, err := configinit.Run(tc.f, filepath.Join(dir, projectconfig.Path), false)
 			if err == nil {
 				t.Fatalf("want error containing %q, got nil", tc.want)
 			}
@@ -244,7 +245,7 @@ func TestRunConfigValidate_Valid(t *testing.T) {
 	yamlPath := filepath.Join(dir, projectconfig.Path)
 	f := monolithMonorepoFlags()
 	f.Repo = "sky-travel"
-	if _, err := runConfigInit(f, yamlPath, false); err != nil {
+	if _, err := configinit.Run(f, yamlPath, false); err != nil {
 		t.Fatalf("seed init: %v", err)
 	}
 	path, err := runConfigValidate(yamlPath)
@@ -283,7 +284,7 @@ func TestRunConfigValidate_NonDefaultFilename(t *testing.T) {
 	dir := t.TempDir()
 	yamlPath := filepath.Join(dir, "gh-optivem.shop-monolith.yaml")
 	f := monolithMonorepoFlags()
-	if _, err := runConfigInit(f, yamlPath, false); err != nil {
+	if _, err := configinit.Run(f, yamlPath, false); err != nil {
 		t.Fatalf("seed init: %v", err)
 	}
 	path, err := runConfigValidate(yamlPath)
@@ -300,9 +301,9 @@ func TestResolveConfigInitTarget_Precedence(t *testing.T) {
 	t.Parallel()
 	t.Run("flag wins over dir", func(t *testing.T) {
 		t.Parallel()
-		got, err := resolveConfigInitTarget("./explicit.yaml", "./somedir")
+		got, err := configinit.ResolveTarget("./explicit.yaml", "./somedir")
 		if err != nil {
-			t.Fatalf("resolveConfigInitTarget: %v", err)
+			t.Fatalf("configinit.ResolveTarget: %v", err)
 		}
 		if got != "./explicit.yaml" {
 			t.Errorf("got %q, want ./explicit.yaml (flag wins)", got)
@@ -310,9 +311,9 @@ func TestResolveConfigInitTarget_Precedence(t *testing.T) {
 	})
 	t.Run("dir falls back to canonical filename", func(t *testing.T) {
 		t.Parallel()
-		got, err := resolveConfigInitTarget("", "/tmp/somedir")
+		got, err := configinit.ResolveTarget("", "/tmp/somedir")
 		if err != nil {
-			t.Fatalf("resolveConfigInitTarget: %v", err)
+			t.Fatalf("configinit.ResolveTarget: %v", err)
 		}
 		want := filepath.Join("/tmp/somedir", projectconfig.Path)
 		if got != want {
