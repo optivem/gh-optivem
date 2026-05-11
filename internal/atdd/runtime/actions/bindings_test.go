@@ -2068,7 +2068,7 @@ func TestVerifyRealSuitePasses_AnyFailWritesFalse(t *testing.T) {
 // TestRunTargetedTests_HaltsOnUnresolvablePaths and the verify_real twin
 // cover the case where ResolveSystemTestPaths returns an error: action
 // halts via Outcome.Err rather than running the runner with broken
-// `./systems.json` defaults. Unlike runTests this halt is
+// `./systems.yaml` defaults. Unlike runTests this halt is
 // a plain Outcome.Err (no infra-class banner) — these actions are
 // deterministic mechanics without a verify-style halt protocol.
 func TestRunTargetedTests_HaltsOnUnresolvablePaths(t *testing.T) {
@@ -2082,7 +2082,7 @@ func TestRunTargetedTests_HaltsOnUnresolvablePaths(t *testing.T) {
 	if out.Err == nil {
 		t.Fatalf("expected Outcome.Err when paths cannot be resolved")
 	}
-	if !strings.Contains(out.Err.Error(), "could not locate systems.json") {
+	if !strings.Contains(out.Err.Error(), "could not locate systems") {
 		t.Errorf("Err should mention path resolution; got %v", out.Err)
 	}
 	if len(sh.calls) != 0 {
@@ -2101,7 +2101,7 @@ func TestVerifyRealSuitePasses_HaltsOnUnresolvablePaths(t *testing.T) {
 	if out.Err == nil {
 		t.Fatalf("expected Outcome.Err when paths cannot be resolved")
 	}
-	if !strings.Contains(out.Err.Error(), "could not locate systems.json") {
+	if !strings.Contains(out.Err.Error(), "could not locate systems") {
 		t.Errorf("Err should mention path resolution; got %v", out.Err)
 	}
 	if len(sh.calls) != 0 {

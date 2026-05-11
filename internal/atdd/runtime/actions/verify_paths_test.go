@@ -7,10 +7,11 @@ import (
 	"testing"
 )
 
-// TestResolveSystemTestPaths_FlatLayout covers the production case: every
-// scaffolded academy repo has docker/systems.json and
+// TestResolveSystemTestPaths_FlatLayout covers the legacy production case:
+// pre-migration academy repos have docker/systems.json and
 // system-test/tests-latest.json at fixed paths after the template's
-// path-flattening pass.
+// path-flattening pass. The `.json` extension still resolves via the
+// extension fallback after YAML and YML probes miss.
 func TestResolveSystemTestPaths_FlatLayout(t *testing.T) {
 	root := t.TempDir()
 	mustWriteFile(t, filepath.Join(root, "docker", "systems.json"), "{}")
@@ -97,6 +98,90 @@ func TestResolveSystemTestPaths_NeitherLayout(t *testing.T) {
 	root := t.TempDir()
 	if _, _, err := ResolveSystemTestPaths(root); err == nil {
 		t.Fatalf("expected error, got nil")
+	}
+}
+
+// TestResolveSystemTestPaths_FlatLayoutYAML covers the post-migration
+// scaffolder output: docker/systems.yaml + system-test/tests-latest.yaml.
+// `.yaml` is probed before `.json`, so a freshly scaffolded repo resolves
+// to YAML.
+func TestResolveSystemTestPaths_FlatLayoutYAML(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "docker", "systems.yaml"), "")
+	mustWriteFile(t, filepath.Join(root, "system-test", "tests-latest.yaml"), "")
+
+	sys, tests, err := ResolveSystemTestPaths(root)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	wantSys := filepath.Join(root, "docker", "systems.yaml")
+	wantTests := filepath.Join(root, "system-test", "tests-latest.yaml")
+	if sys != wantSys {
+		t.Errorf("systemConfig: got %q, want %q", sys, wantSys)
+	}
+	if tests != wantTests {
+		t.Errorf("testConfig: got %q, want %q", tests, wantTests)
+	}
+}
+
+// TestResolveSystemTestPaths_TemplatedYAML covers shop's pre-flatten layout
+// once it migrates to YAML — docker/<lang>/<arch>/systems.yaml +
+// system-test/<lang>/tests-latest.yaml.
+func TestResolveSystemTestPaths_TemplatedYAML(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "docker", "typescript", "monolith", "systems.yaml"), "")
+	mustWriteFile(t, filepath.Join(root, "system-test", "typescript", "tests-latest.yaml"), "")
+
+	sys, tests, err := ResolveSystemTestPaths(root)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if !strings.HasSuffix(filepath.ToSlash(sys), "docker/typescript/monolith/systems.yaml") {
+		t.Errorf("systemConfig: got %q, want suffix docker/typescript/monolith/systems.yaml", sys)
+	}
+	if !strings.HasSuffix(filepath.ToSlash(tests), "system-test/typescript/tests-latest.yaml") {
+		t.Errorf("testConfig: got %q, want suffix system-test/typescript/tests-latest.yaml", tests)
+	}
+}
+
+// TestResolveSystemTestPaths_YAMLBeatsJSON guards the probe order: when a
+// repo has both extensions (e.g. mid-migration), `.yaml` wins so the runner
+// reads the migrated file rather than the stale legacy one.
+func TestResolveSystemTestPaths_YAMLBeatsJSON(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "docker", "systems.yaml"), "")
+	mustWriteFile(t, filepath.Join(root, "docker", "systems.json"), "{}")
+	mustWriteFile(t, filepath.Join(root, "system-test", "tests-latest.yaml"), "")
+	mustWriteFile(t, filepath.Join(root, "system-test", "tests-latest.json"), "{}")
+
+	sys, tests, err := ResolveSystemTestPaths(root)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if filepath.Ext(sys) != ".yaml" {
+		t.Errorf("systemConfig: got %q, want .yaml extension", sys)
+	}
+	if filepath.Ext(tests) != ".yaml" {
+		t.Errorf("testConfig: got %q, want .yaml extension", tests)
+	}
+}
+
+// TestResolveSystemTestPaths_YMLExtension exercises the `.yml` shorthand.
+// `gopkg.in/yaml.v3` parses both; the probe should accept both.
+func TestResolveSystemTestPaths_YMLExtension(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "docker", "systems.yml"), "")
+	mustWriteFile(t, filepath.Join(root, "system-test", "tests-latest.yml"), "")
+
+	sys, tests, err := ResolveSystemTestPaths(root)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if filepath.Ext(sys) != ".yml" {
+		t.Errorf("systemConfig: got %q, want .yml extension", sys)
+	}
+	if filepath.Ext(tests) != ".yml" {
+		t.Errorf("testConfig: got %q, want .yml extension", tests)
 	}
 }
 

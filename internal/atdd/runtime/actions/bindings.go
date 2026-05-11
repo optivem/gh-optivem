@@ -800,13 +800,13 @@ func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcom
 	// Resolve the runner's config-file paths once per invocation. Same
 	// cwd-bug fix as runTests — every `gh optivem test
 	// system ...` shell-out needs the resolved `--system-config` and
-	// `--test-config` flags appended, otherwise the runner's `./systems.json`
+	// `--test-config` flags appended, otherwise the runner's `./systems.yaml`
 	// default fails 100% of the time under the orchestrator's cwd. Per
 	// plans/20260505-220100-verify-runs-from-wrong-cwd.md.
 	pathFlags, err := a.verifyPathFlags()
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf(
-			"run_targeted_tests: could not locate systems.json/tests-latest.json under %q: %w", a.deps.RepoPath, err)}
+			"run_targeted_tests: could not locate systems.{yaml,json}/tests-latest.{yaml,json} under %q: %w", a.deps.RepoPath, err)}
 	}
 
 	rebuildFlag := ""
@@ -1007,12 +1007,12 @@ func (a actions) verifyRealSuitePasses(ctx *statemachine.Context) statemachine.O
 	}
 	// Same cwd-bug fix as runTests / runTargetedTests:
 	// resolve --system-config / --test-config once and append to every
-	// shell-out so the runner doesn't read its broken `./systems.json`
+	// shell-out so the runner doesn't read its broken `./systems.yaml`
 	// default from the orchestrator's cwd.
 	pathFlags, err := a.verifyPathFlags()
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf(
-			"verify_real_suite_passes: could not locate systems.json/tests-latest.json under %q: %w", a.deps.RepoPath, err)}
+			"verify_real_suite_passes: could not locate systems.{yaml,json}/tests-latest.{yaml,json} under %q: %w", a.deps.RepoPath, err)}
 	}
 	allPass := true
 	for _, name := range names {
@@ -1149,7 +1149,7 @@ func (a actions) gatherTestCommands(ctx *statemachine.Context) ([]string, statem
 		fmt.Fprintf(a.deps.Stderr, "  %v\n", err)
 		fmt.Fprintln(a.deps.Stderr, "  see plans/20260505-220100-verify-runs-from-wrong-cwd.md")
 		return statemachine.Outcome{Err: fmt.Errorf(
-			"run_tests: could not locate systems.json/tests-latest.json — see banner above")}
+			"run_tests: could not locate systems.{yaml,json}/tests-latest.{yaml,json} — see banner above")}
 	}
 
 	for {
@@ -1231,7 +1231,7 @@ func (a actions) executeAndFinalize(ctx *statemachine.Context, cmds []string) st
 //
 // Returns an error when no layout matches; the caller (verify action) is
 // expected to halt with infra-class semantics rather than running the
-// runner with broken `./systems.json` defaults.
+// runner with broken `./systems.yaml` defaults.
 func (a actions) verifyPathFlags() (string, error) {
 	sys, tests, err := ResolveSystemTestPaths(a.deps.RepoPath)
 	if err != nil {

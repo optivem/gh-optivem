@@ -1,12 +1,12 @@
 // Package runner orchestrates docker-compose-backed system tests using two
-// config files: a systems.{yaml,json} (compose + health probes) and a
-// tests.{yaml,json} (setup commands + suites). The unmarshaller is picked
-// from the file extension — `.yaml` / `.yml` use YAML, anything else uses
-// JSON. Struct keys are identical in both formats (camelCase composeFile
-// etc.), so one struct round-trips either source. The runner has no concept
-// of architecture, language, or suite flavor — those identities live in
-// shop's filenames and directory names. This package treats every input as
-// opaque.
+// YAML config files (with legacy JSON fallback): a systems.yaml (compose +
+// health probes) and a tests.yaml (setup commands + suites). The
+// unmarshaller is picked from the file extension — `.yaml` / `.yml` use
+// YAML, anything else uses JSON. Struct keys are identical in both formats
+// (camelCase composeFile etc.), so one struct round-trips either source.
+// The runner has no concept of architecture, language, or suite flavor —
+// those identities live in shop's filenames and directory names. This
+// package treats every input as opaque.
 package runner
 
 import (

@@ -4,8 +4,10 @@
 // flags into runner.* calls.
 //
 // Working-dir contract: each command operates against the user's current
-// working directory. JSON config paths default to ./systems.json and
-// ./tests.json; both can be overridden with --system-config / --test-config.
+// working directory. Config paths default to ./systems.yaml and ./tests.yaml
+// (legacy ./systems.json / ./tests.json still resolve via the loader's
+// extension dispatch); both can be overridden with --system-config /
+// --test-config.
 package main
 
 import (
@@ -23,12 +25,12 @@ import (
 )
 
 // cwdForPath returns the directory to run docker / setup / suite commands in
-// for a given config file. Compose paths in systems.json are relative to
-// systems.json's directory; setup commands and suite.path in tests.json are
-// relative to tests.json's directory. This lets shop's source layout
-// (systems.json under <lang>/<arch>/, tests-*.json + package.json under
-// <lang>/) work without per-layout flags. In a scaffolded project both files
-// live in the same directory and this is just ".".
+// for a given config file. Compose paths in the system config are relative
+// to its directory; setup commands and suite.path in the tests config are
+// relative to its directory. This lets shop's source layout (system config
+// under <lang>/<arch>/, tests-*.yaml + package.json under <lang>/) work
+// without per-layout flags. In a scaffolded project both files live in the
+// same directory and this is just ".".
 func cwdForPath(configPath string) string {
 	dir := filepath.Dir(configPath)
 	if dir == "" {
@@ -38,11 +40,11 @@ func cwdForPath(configPath string) string {
 }
 
 const (
-	defaultSystemConfig = "./systems.json"
-	defaultTestsConfig  = "./tests.json"
+	defaultSystemConfig = "./systems.yaml"
+	defaultTestsConfig  = "./tests.yaml"
 
-	flagSystemUsage = "Path to systems.json (default resolves to gh-optivem.yaml's system_config: field, then ./systems.json)"
-	flagTestsUsage  = "Path to tests.json (default resolves to gh-optivem.yaml's test_config: field, then ./tests.json)"
+	flagSystemUsage = "Path to systems.{yaml,json} (default resolves to gh-optivem.yaml's system_config: field, then ./systems.yaml)"
+	flagTestsUsage  = "Path to tests.{yaml,json} (default resolves to gh-optivem.yaml's test_config: field, then ./tests.yaml)"
 
 	errorFormat = "ERROR: %v\n"
 )
@@ -73,7 +75,7 @@ func hintIfMissing(err error, flag, yamlField, defaultPath string) error {
 // resolveSystemPath applies the runner's three-tier path lookup:
 //  1. --system-config flag (explicit operator override)
 //  2. gh-optivem.yaml's system_config: field
-//  3. defaultSystemConfig (./systems.json)
+//  3. defaultSystemConfig (./systems.yaml)
 //
 // A missing gh-optivem.yaml is "no preference" and falls through to the
 // default — runner commands still work in repos without one. A YAML that
@@ -95,7 +97,7 @@ func resolveSystemPath(flagVal string) (string, error) {
 	return defaultSystemConfig, nil
 }
 
-// resolveTestsPath mirrors resolveSystemPath for tests.json / test_config:.
+// resolveTestsPath mirrors resolveSystemPath for the tests config / test_config:.
 func resolveTestsPath(flagVal string) (string, error) {
 	if flagVal != "" {
 		return flagVal, nil
@@ -164,7 +166,7 @@ func newBuildSystemCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:     "system",
-		Short:   "docker compose build for every entry in systems.json",
+		Short:   "docker compose build for every entry in systems.yaml",
 		Example: `  gh optivem build system --rebuild`,
 		Run: func(cmd *cobra.Command, args []string) {
 			resolved, err := resolveSystemPath(systemPath)
@@ -323,7 +325,7 @@ func newTestSystemCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "system",
-		Short: "Build + start (if needed) + run setup commands and suites from tests.json",
+		Short: "Build + start (if needed) + run setup commands and suites from tests.yaml",
 		Example: `  gh optivem test system
   gh optivem test system --suite smoke
   gh optivem test system --suite acceptance-api --suite acceptance-ui
@@ -371,8 +373,8 @@ func newTestSystemCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&rebuild, "rebuild", false, "Force a full rebuild from scratch in the implicit build step (ignored with --no-build)")
 	cmd.Flags().BoolVar(&noStart, "no-start", false, "Skip the implicit start step; system must already be up")
 	cmd.Flags().BoolVar(&restart, "restart", false, "Force tear-down + restart during the implicit start step")
-	cmd.Flags().BoolVar(&noSetup, "no-setup", false, "Skip the setupCommands block from tests.json (use when an earlier invocation in the same job already ran setup)")
-	cmd.Flags().BoolVar(&list, "list", false, "Print suite ids from tests.json (one per line) and exit without running")
+	cmd.Flags().BoolVar(&noSetup, "no-setup", false, "Skip the setupCommands block from tests.yaml (use when an earlier invocation in the same job already ran setup)")
+	cmd.Flags().BoolVar(&list, "list", false, "Print suite ids from tests.yaml (one per line) and exit without running")
 	return cmd
 }
 

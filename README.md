@@ -134,7 +134,7 @@ gh optivem test system --test T1 --test T2   # multiple names, repeatable
 gh optivem test system --test T1,T2          # ...or comma-separated
 gh optivem test system --sample              # use each suite's sampleTest field as the test name
 
-gh optivem build system                      # docker compose build for every entry in systems.json
+gh optivem build system                      # docker compose build for every entry in systems.yaml
 gh optivem build system --rebuild            # force full rebuild (no layer cache reuse)
 
 gh optivem run system                        # docker compose up + wait for health
@@ -147,7 +147,7 @@ gh optivem clean system                      # docker compose down -v --rmi loca
 
 All runner subcommands accept `--system-config <path>` and `test system` additionally accepts `--test-config <path>` for projects where these files live elsewhere. The paths are resolved through three knobs in ascending order of permanence — flag → `gh-optivem.yaml` field → built-in default. See [Pointing at non-default configs](#pointing-at-non-default-configs) below.
 
-Multi-test semantics depend on the suite's `testFilter` in `tests.json`. The runner combines multiple `--test` values per `testFilterJoin`: `"or"` (default) joins names with `|` and substitutes once — works for dotnet (`&DisplayName~T1|T2`) and playwright/jest (`--grep 'T1|T2'`); `"repeat"` substitutes the whole `testFilter` once per name and concatenates — required for gradle (`--tests T1 --tests T2`). Practical ceiling on Windows is ~600 typical test names per invocation (the OS caps each command line at 32K characters).
+Multi-test semantics depend on the suite's `testFilter` in `tests.yaml`. The runner combines multiple `--test` values per `testFilterJoin`: `"or"` (default) joins names with `|` and substitutes once — works for dotnet (`&DisplayName~T1|T2`) and playwright/jest (`--grep 'T1|T2'`); `"repeat"` substitutes the whole `testFilter` once per name and concatenates — required for gradle (`--tests T1 --tests T2`). Practical ceiling on Windows is ~600 typical test names per invocation (the OS caps each command line at 32K characters).
 
 `clean system` is the analog of `dotnet clean` / `./gradlew clean` — it deletes build outputs (containers, named volumes, locally-built images) without touching the dependency cache (registry-pulled images are kept). Chain it explicitly for a fresh start: `gh optivem clean system && gh optivem test system`.
 
@@ -179,22 +179,24 @@ For the canonical reference, see the four sample configs (mono-repo × multi-rep
 
 ### Pointing at non-default configs
 
-Three knobs decide which `gh-optivem.yaml` / `systems.json` / `tests.json` the tool reads, in ascending order of permanence. Each knob overrides everything below it:
+Three knobs decide which `gh-optivem.yaml` / `systems.yaml` / `tests.yaml` the tool reads, in ascending order of permanence. Each knob overrides everything below it:
 
 ```bash
 # 1. One-shot flag (highest precedence)
 gh optivem -c ./gh-optivem.shop-monolith.yaml test system \
-    --system-config docker/java/monolith/systems.json \
-    --test-config system-test/java/tests-latest.json
+    --system-config docker/java/monolith/systems.yaml \
+    --test-config system-test/java/tests-latest.yaml
 
 # 2. Shell-session env var (for gh-optivem.yaml only)
 export GH_OPTIVEM_CONFIG=./gh-optivem.shop-monolith.yaml
 gh optivem test system
 
 # 3. Per-project default baked into gh-optivem.yaml (lowest precedence)
-system_config: docker/systems.json
-test_config:   system-test/tests-latest.json
+system_config: docker/systems.yaml
+test_config:   system-test/tests-latest.yaml
 ```
+
+Legacy `.json` files still work — the loader picks the parser from the file extension, and any in-flight repo carrying `systems.json` / `tests-latest.json` keeps loading without changes.
 
 `gh optivem init` auto-populates `system_config:` / `test_config:` to the paths it produces, so freshly scaffolded repos work without any flags. `gh optivem config init` (hand-rolled repos) leaves both fields empty — add them once your layout is settled and drop the per-command flags.
 

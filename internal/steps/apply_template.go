@@ -87,7 +87,7 @@ func copyIssueTemplates(shop, repoDir string) {
 }
 
 // copySystemTests copies system-test/{testLang}/ -> system-test/ (tests +
-// README only) and docker/{testLang}/{arch}/ -> docker/ (systems.json +
+// README only) and docker/{testLang}/{arch}/ -> docker/ (systems.yaml +
 // compose files for the selected arch). composeVariant is "single" (monolith)
 // or "multi" (multitier). systemLang identifies the per-system VERSION file
 // to copy from shop (cfg.Lang for monolith, cfg.BackendLang for multitier);
@@ -557,7 +557,7 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 		// flatten to "working-directory: docker".
 		{wdPrefixYAML + dirDocker + "/" + testLang + "/monolith", wdPrefixYAML + dirDocker},
 		// Same flattening for unprefixed CLI-arg forms (e.g. "--system-config
-		// docker/<testLang>/monolith/systems.json" in per-suite acceptance-stage
+		// docker/<testLang>/monolith/systems.yaml" in per-suite acceptance-stage
 		// `run:` lines), which the working-directory rule above does not cover.
 		{dirDocker + "/" + testLang + "/monolith/", dirDocker + "/"},
 		// Docker image names
@@ -675,7 +675,7 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 		// flatten to "working-directory: docker".
 		{wdPrefixYAML + dirDocker + "/" + testLang + "/multitier", wdPrefixYAML + dirDocker},
 		// Same flattening for unprefixed CLI-arg forms (e.g. "--system-config
-		// docker/<testLang>/multitier/systems.json" in per-suite acceptance-stage
+		// docker/<testLang>/multitier/systems.yaml" in per-suite acceptance-stage
 		// `run:` lines), which the working-directory rule above does not cover.
 		{dirDocker + "/" + testLang + "/multitier/", dirDocker + "/"},
 		// VERSION file: shop holds per-flavor system/multitier/<backendLang>/VERSION

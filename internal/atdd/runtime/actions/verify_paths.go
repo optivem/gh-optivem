@@ -1,16 +1,20 @@
 // verify_paths.go — locate the runner's config files relative to the repo
 // root, so verify can pass `--system-config <path> --test-config <path>`
-// rather than relying on the runner's `./systems.json` default (which fails
+// rather than relying on the runner's `./systems.yaml` default (which fails
 // 100% of the time because the orchestrator's cwd is the repo root, not
-// the directory holding systems.json).
+// the directory holding systems.yaml).
 //
 // Two layouts to handle:
 //
-//   - Flat (every scaffolded student repo): `docker/systems.json` and
-//     `system-test/tests-latest.json` at fixed paths under the repo root.
+//   - Flat (every scaffolded student repo): `docker/systems.<ext>` and
+//     `system-test/tests-latest.<ext>` at fixed paths under the repo root.
 //   - Templated (the shop template itself, occasionally used for rehearsal):
-//     `docker/<lang>/<arch>/systems.json` and `system-test/<lang>/tests-latest.json`,
+//     `docker/<lang>/<arch>/systems.<ext>` and `system-test/<lang>/tests-latest.<ext>`,
 //     where <arch> is monolith | multitier.
+//
+// `<ext>` is probed in priority order `.yaml`, `.yml`, `.json`. YAML is the
+// scaffolder default; `.json` remains as a fallback for any legacy repos that
+// haven't migrated yet.
 //
 // We probe flat first because it is the production case. The templated
 // fallback discovers <lang> by globbing rather than asking the caller —
@@ -27,14 +31,19 @@ import (
 	"path/filepath"
 )
 
-// ResolveSystemTestPaths returns the paths to systems.json and
-// tests-latest.json under repoRoot, discovering whichever layout is
+// configExtensions lists candidate extensions for the runner's config files,
+// in probe priority order. YAML is preferred; JSON is kept as a fallback
+// until every academy repo has migrated.
+var configExtensions = []string{".yaml", ".yml", ".json"}
+
+// ResolveSystemTestPaths returns the paths to systems.<ext> and
+// tests-latest.<ext> under repoRoot, discovering whichever layout is
 // present. Returns an error when neither layout matches — the caller
 // should surface this as an infra-class halt rather than running the
 // runner with broken defaults.
 //
 // The returned paths are absolute when repoRoot is absolute, and relative
-// otherwise; the runner accepts both. v1 always pins to tests-latest.json
+// otherwise; the runner accepts both. v1 always pins to tests-latest
 // (legacy is only meaningful inside the warm rerun loop, not WRITE-phase
 // verify).
 func ResolveSystemTestPaths(repoRoot string) (systemConfig, testConfig string, err error) {
@@ -42,36 +51,49 @@ func ResolveSystemTestPaths(repoRoot string) (systemConfig, testConfig string, e
 		repoRoot = "."
 	}
 
-	// 1. Flat layout — `docker/systems.json` + `system-test/tests-latest.json`.
-	flatSys := filepath.Join(repoRoot, "docker", "systems.json")
-	flatTests := filepath.Join(repoRoot, "system-test", "tests-latest.json")
-	if fileExists(flatSys) && fileExists(flatTests) {
-		return flatSys, flatTests, nil
+	// 1. Flat layout — `docker/systems.<ext>` + `system-test/tests-latest.<ext>`.
+	if sys := firstExisting(filepath.Join(repoRoot, "docker", "systems"), configExtensions); sys != "" {
+		if tests := firstExisting(filepath.Join(repoRoot, "system-test", "tests-latest"), configExtensions); tests != "" {
+			return sys, tests, nil
+		}
 	}
 
-	// 2. Templated layout — `docker/<lang>/<arch>/systems.json` paired with
-	//    `system-test/<lang>/tests-latest.json`. Probe <arch> in monolith,
+	// 2. Templated layout — `docker/<lang>/<arch>/systems.<ext>` paired with
+	//    `system-test/<lang>/tests-latest.<ext>`. Probe <arch> in monolith,
 	//    multitier order. The first <lang> with both files wins.
 	for _, arch := range []string{"monolith", "multitier"} {
-		pattern := filepath.Join(repoRoot, "docker", "*", arch, "systems.json")
-		matches, _ := filepath.Glob(pattern)
-		for _, sys := range matches {
-			lang := langFromTemplatedSystemPath(repoRoot, sys)
-			if lang == "" {
-				continue
-			}
-			tests := filepath.Join(repoRoot, "system-test", lang, "tests-latest.json")
-			if fileExists(tests) {
-				return sys, tests, nil
+		for _, ext := range configExtensions {
+			pattern := filepath.Join(repoRoot, "docker", "*", arch, "systems"+ext)
+			matches, _ := filepath.Glob(pattern)
+			for _, sys := range matches {
+				lang := langFromTemplatedSystemPath(repoRoot, sys)
+				if lang == "" {
+					continue
+				}
+				if tests := firstExisting(filepath.Join(repoRoot, "system-test", lang, "tests-latest"), configExtensions); tests != "" {
+					return sys, tests, nil
+				}
 			}
 		}
 	}
 
-	return "", "", fmt.Errorf("could not locate systems.json/tests-latest.json under %q (tried docker/systems.json, docker/*/monolith/systems.json, docker/*/multitier/systems.json)", repoRoot)
+	return "", "", fmt.Errorf("could not locate systems.{yaml,yml,json}/tests-latest.{yaml,yml,json} under %q (tried docker/systems.*, docker/*/monolith/systems.*, docker/*/multitier/systems.*)", repoRoot)
+}
+
+// firstExisting returns the first file path formed by appending one of exts
+// to pathStem that exists on disk, or "" if none exist.
+func firstExisting(pathStem string, exts []string) string {
+	for _, ext := range exts {
+		p := pathStem + ext
+		if fileExists(p) {
+			return p
+		}
+	}
+	return ""
 }
 
 // langFromTemplatedSystemPath extracts <lang> from a path of the form
-// <repoRoot>/docker/<lang>/<arch>/systems.json. Returns "" when the path
+// <repoRoot>/docker/<lang>/<arch>/systems.<ext>. Returns "" when the path
 // does not match that shape (defensive — the glob caller already enforces
 // it, but a manual call shouldn't crash).
 func langFromTemplatedSystemPath(repoRoot, sys string) string {
@@ -79,7 +101,7 @@ func langFromTemplatedSystemPath(repoRoot, sys string) string {
 	if err != nil {
 		return ""
 	}
-	// rel == "<lang>/<arch>/systems.json"; the OS separator is platform
+	// rel == "<lang>/<arch>/systems.<ext>"; the OS separator is platform
 	// dependent, so split with filepath.SplitList won't work — peel one
 	// component off the front.
 	dir, _ := filepath.Split(rel)         // dir == "<lang>/<arch>/"

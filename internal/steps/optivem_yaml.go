@@ -10,12 +10,12 @@ import (
 // `system_config:` / `test_config:` fields. They mirror the layout that
 // copySystemTests produces (docker/<arch>/<lang>/ collapses to docker/, and
 // system-test/<lang>/ collapses to system-test/ — see apply_template.go's
-// flattening rules). `tests-latest.json` is chosen over `tests-legacy.json`
+// flattening rules). `tests-latest.yaml` is chosen over `tests-legacy.yaml`
 // to match the runner's default suite expectation; switching to legacy is a
 // one-shot `--test-config` override.
 const (
-	scaffoldedSystemConfigPath = "docker/systems.json"
-	scaffoldedTestConfigPath   = "system-test/tests-latest.json"
+	scaffoldedSystemConfigPath = "docker/systems.yaml"
+	scaffoldedTestConfigPath   = "system-test/tests-latest.yaml"
 )
 
 // WriteOptivemYAML writes <repoRoot>/gh-optivem.yaml in the scaffolded repo(s),
@@ -32,9 +32,9 @@ const (
 // / `multi-repo`) at write-time so the two surfaces can evolve independently.
 //
 // SystemConfig / TestConfig are auto-populated to the paths that copySystemTests
-// just produced (`docker/systems.json`, `system-test/tests-latest.json`). Without
+// just produced (`docker/systems.yaml`, `system-test/tests-latest.yaml`). Without
 // this, a freshly-scaffolded repo wouldn't work with `gh optivem run|test
-// system` from repo root — the runner defaults are `./systems.json` / `./tests.json`,
+// system` from repo root — the runner defaults are `./systems.yaml` / `./tests.yaml`,
 // neither of which exists in the scaffolded layout.
 func WriteOptivemYAML(cfg *config.Config) {
 	log.Info("Writing gh-optivem.yaml...")
