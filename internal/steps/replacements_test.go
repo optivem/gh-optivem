@@ -165,8 +165,8 @@ func TestRewritePublisherRefsSonar(t *testing.T) {
 			underscoreFull := "valentinajemuovic_" + tc.repo
 			expected := underscoreFull + "-system-test"
 			assertLiteralPresent(t, repoDir, "system-test/java/build.gradle", expected)
-			assertLiteralPresent(t, repoDir, "system-test/dotnet/Run-Sonar.ps1", expected)
-			assertLiteralPresent(t, repoDir, "system-test/typescript/Run-Sonar.ps1", expected)
+			assertLiteralPresent(t, repoDir, "system-test/dotnet/run-sonar.sh", expected)
+			assertLiteralPresent(t, repoDir, "system-test/typescript/run-sonar.sh", expected)
 		})
 	}
 }
@@ -201,11 +201,11 @@ jobs:
   }
 }
 `,
-		"system-test/dotnet/Run-Sonar.ps1": `$projectKey = "optivem_shop-tests-dotnet"
-$projectName = "shop-tests-dotnet"
+		"system-test/dotnet/run-sonar.sh": `projectKey="optivem_shop-tests-dotnet"
+projectName="shop-tests-dotnet"
 `,
-		"system-test/typescript/Run-Sonar.ps1": `npx sonar-scanner ` + "`" + `
-    "-Dsonar.projectKey=optivem_shop-tests-typescript" ` + "`" + `
+		"system-test/typescript/run-sonar.sh": `npx sonar-scanner \
+    "-Dsonar.projectKey=optivem_shop-tests-typescript" \
     "-Dsonar.projectName=shop-tests-typescript"
 `,
 	}

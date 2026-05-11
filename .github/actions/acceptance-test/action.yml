@@ -25,7 +25,7 @@ inputs:
     required: false
     default: 'false'
   no-local-sonar:
-    description: 'Skip the "Verify local SonarCloud scan" step (per-component Run-Sonar.ps1). Maps to the CLI --no-local-sonar flag.'
+    description: 'Skip the "Verify local SonarCloud scan" step (per-component run-sonar.sh). Maps to the CLI --no-local-sonar flag.'
     required: false
     default: 'false'
   shop-tag:

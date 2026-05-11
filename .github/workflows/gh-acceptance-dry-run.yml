@@ -71,7 +71,7 @@ on:
         default: false
         type: boolean
       no-local-sonar:
-        description: 'Skip the "Verify local SonarCloud scan" step (per-component Run-Sonar.ps1) in both the acceptance and smoke matrices.'
+        description: 'Skip the "Verify local SonarCloud scan" step (per-component run-sonar.sh) in both the acceptance and smoke matrices.'
         required: false
         default: false
         type: boolean

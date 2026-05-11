@@ -77,7 +77,7 @@ type Config struct {
 	VerifyLevel    string // "none", "local", "commit", "acceptance", "qa", "release"
 	NoLegacy       bool   // exclude legacy from local tests and acceptance stage
 	NoLocalTests   bool   // skip the "Verify local testing" step (runner package over system-test/)
-	NoLocalSonar   bool   // skip the "Verify local SonarCloud scan" step (per-component Run-Sonar.ps1)
+	NoLocalSonar   bool   // skip the "Verify local SonarCloud scan" step (per-component run-sonar.sh)
 	NoAtdd         bool   // skip the "Install ATDD assets" step (skip copying agents/commands/prompts from shop)
 	NoProject      bool   // skip the "Ensure project board" step entirely (no auto-create, no status-ensure on supplied URL)
 	KeepLocal    bool   // keep the local scaffolded clone dir after a successful run (default: delete it)
@@ -477,7 +477,7 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs.StringVar(&f.VerifyLevel, "verify-level", "release", "Verification level: none, local, commit, acceptance, qa, release")
 	fs.BoolVar(&f.NoLegacy, "no-legacy", false, "Exclude legacy from local tests and acceptance stage")
 	fs.BoolVar(&f.NoLocalTests, "no-local-tests", false, "Skip the 'Verify local testing' step (runner package over system-test/)")
-	fs.BoolVar(&f.NoLocalSonar, "no-local-sonar", false, "Skip the 'Verify local SonarCloud scan' step (per-component Run-Sonar.ps1 against the SonarCloud project)")
+	fs.BoolVar(&f.NoLocalSonar, "no-local-sonar", false, "Skip the 'Verify local SonarCloud scan' step (per-component run-sonar.sh against the SonarCloud project)")
 	fs.BoolVar(&f.NoAtdd, "no-atdd", false, "Skip installing ATDD agents/commands/prompts from shop into the scaffolded repo")
 	fs.BoolVar(&f.NoProject, "no-project", false, "Skip the 'Ensure project board' step entirely (no auto-create, no status-ensure on a supplied --project-url). For CI smoke tests of the scaffolder, or to manage the board out-of-band.")
 	fs.BoolVar(&f.BugReport, "report-bug", false, "On failure, auto-create a GitHub issue in optivem/gh-optivem with scaffold config. Off by default — file one yourself if the failure is worth reporting.")

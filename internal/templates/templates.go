@@ -224,12 +224,12 @@ func FixupDockerComposeContent(repoDir string, replacements [][2]string) {
 
 // FixupAllTextFiles applies replacements across all text files in a repo (not just workflows).
 // Used for SonarCloud key suffix changes that appear in build files (build.gradle, .csproj,
-// Run-Sonar.ps1, etc.).
+// run-sonar.sh, etc.).
 func FixupAllTextFiles(repoDir string, replacements [][2]string) {
 	textExts := []string{
 		ymlExt, ".yaml", ".gradle", ".gradle.kts",
 		".csproj", ".sln", ".slnx", ".json",
-		".xml", ".properties", ".cfg", ".txt", ".ps1",
+		".xml", ".properties", ".cfg", ".txt", ".sh",
 	}
 	for _, r := range replacements {
 		files.ReplaceInTree(repoDir, r[0], r[1], textExts)

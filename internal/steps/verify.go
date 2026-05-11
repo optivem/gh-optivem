@@ -465,11 +465,11 @@ func isWindowsPrivilegeError(err error) bool {
 	return errors.As(err, &errno) && errno == 1314
 }
 
-// VerifyLocalSonar runs the per-component Run-Sonar.ps1 script against each
+// VerifyLocalSonar runs the per-component run-sonar.sh script against each
 // scaffolded component, pushing analysis to the SonarCloud project created
 // earlier in the same run. The token is picked up from $SONAR_TOKEN by each
-// script (already validated and set on the parent process env). Requires pwsh
-// (PowerShell 7+) on PATH. Skipped entirely when --no-local-sonar is set
+// script (already validated and set on the parent process env). Requires bash
+// on PATH (Git Bash on Windows). Skipped entirely when --no-local-sonar is set
 // (the gate lives in main.go).
 func VerifyLocalSonar(cfg *config.Config) {
 	log.Info("Running local SonarCloud scans...")
@@ -477,6 +477,10 @@ func VerifyLocalSonar(cfg *config.Config) {
 	if cfg.DryRun {
 		log.Info("[DRY RUN] Would run local SonarCloud scans for all components")
 		return
+	}
+
+	if _, err := exec.LookPath("bash"); err != nil {
+		log.Fatalf("bash not found on PATH (required to run run-sonar.sh). Install Git Bash on Windows: https://git-scm.com/download/win")
 	}
 
 	if cfg.Arch == "monolith" {
@@ -489,7 +493,7 @@ func VerifyLocalSonar(cfg *config.Config) {
 }
 
 func sonarComponent(label, dir string) {
-	out, err := shell.Run(`pwsh -File .\Run-Sonar.ps1`, false, true, dir)
+	out, err := shell.Run("bash ./run-sonar.sh", false, true, dir)
 	if err != nil {
 		log.Fatalf("SonarCloud scan failed for %s in %s: %v\n%s", label, dir, err, out)
 	}

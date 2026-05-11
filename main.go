@@ -361,7 +361,7 @@ func buildVerifySteps(cfg *config.Config, gh *shell.GitHub) []stepDef {
 		)
 	}
 
-	// Step 3: Local SonarCloud scan — per-component Run-Sonar.ps1 against the
+	// Step 3: Local SonarCloud scan — per-component run-sonar.sh against the
 	// SonarCloud project created in the apply-template phase.
 	if !cfg.NoLocalSonar {
 		s = append(s,
