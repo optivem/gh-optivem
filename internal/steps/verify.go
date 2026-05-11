@@ -11,8 +11,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/optivem/gh-optivem/internal/compiler"
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/runner"
 	"github.com/optivem/gh-optivem/internal/shell"
 )
@@ -44,33 +46,22 @@ func VerifyCompilation(cfg *config.Config) {
 	compileComponent("system tests", cfg.TestLang, systemTestDir(cfg))
 }
 
+// compileComponent dispatches to the shared internal/compiler package so the
+// init-time verify pass and the runtime `gh optivem compile` use the same
+// per-language command tables. `react` is normalized to typescript: the
+// scaffolded frontend is a Next.js project whose tsc-level typecheck is the
+// same as any other typescript tier; the framework name only matters for
+// path resolution upstream of here (cfg.FrontendLang is kept as "react"
+// elsewhere — display strings, paths — and only flattened here at the
+// compile callsite).
 func compileComponent(label, lang, dir string) {
-	cmds := buildCommands(lang)
-	for _, cmd := range cmds {
-		out, err := shell.Run(cmd, false, true, dir)
-		if err != nil {
-			log.Fatalf("Compilation failed for %s (%s) in %s: %v\n%s", label, lang, dir, err, out)
-		}
+	if lang == "react" {
+		lang = projectconfig.LangTypescript
+	}
+	if err := compiler.CompileIn(lang, dir); err != nil {
+		log.Fatalf("Compilation failed for %s in %s: %v", label, dir, err)
 	}
 	log.Successf("Compiled %s (%s)", label, lang)
-}
-
-func buildCommands(lang string) []string {
-	switch lang {
-	case "typescript":
-		return []string{"npm ci", "npx tsc --noEmit"}
-	case "dotnet":
-		return []string{"dotnet build"}
-	case "java":
-		// shell.Run normalizes `.\gradlew.bat` to `./gradlew` on non-Windows
-		// hosts via pathx.NormalizeExe, so a single literal works on both.
-		return []string{`.\gradlew.bat compileJava compileTestJava`}
-	case "react":
-		return []string{"npm ci", "npm run build"}
-	default:
-		log.Fatalf("Unknown language for compilation: %s", lang)
-		return nil
-	}
 }
 
 func systemDir(cfg *config.Config) string {

@@ -43,7 +43,7 @@ func TestCompile_DispatchesPerLanguageCommandSequences(t *testing.T) {
 		want []string
 	}{
 		{"dotnet runs a single dotnet build", projectconfig.LangDotnet, []string{"dotnet build"}},
-		{"java runs gradlew compileJava only (no compileTestJava in the structural sweep)", projectconfig.LangJava, []string{`.\gradlew.bat compileJava`}},
+		{"java runs gradlew compileJava and compileTestJava so unit-test typechecks aren't silently skipped", projectconfig.LangJava, []string{`.\gradlew.bat compileJava compileTestJava`}},
 		{"typescript runs npm ci before npx tsc to fix the `not the tsc command` failure", projectconfig.LangTypescript, []string{"npm ci", "npx tsc --noEmit"}},
 	}
 	for _, tc := range cases {
@@ -81,7 +81,8 @@ func TestCompile_RunsCommandsInTierCwd(t *testing.T) {
 
 func TestCompile_HaltsOnFirstNonZeroExit(t *testing.T) {
 	// Typescript runs two commands; the first failure must abort before
-	// the second runs (matches today's compile-all.sh — first error wins).
+	// the second runs (first error wins — matches the per-tier semantics
+	// of the structural-cycle compile sweep).
 	boom := errors.New("npm install failed")
 	sh := &fakeShell{errs: []error{boom}}
 	tier := projectconfig.TierSpec{Path: "frontend", Lang: projectconfig.LangTypescript}

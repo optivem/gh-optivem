@@ -60,21 +60,24 @@ These are distinct enough to coexist; we just must not overload `build`.
 
 ## Plan
 
-### Step 4 — Reduce `compile-all.sh` to a wrapper in the shop template ⏳ Deferred: separate session, runs against the shop template repo (different repo, non-blocking per the plan note)
+### Step 4 — Multi-config fan-out in the shop template ✅ Done (2026-05-11)
 
-Replace the existing `compile-all.sh` in the shop template with a
-2-line wrapper:
+`compile-all.sh` is a **maintainer** tool, not a student-facing artifact
+(scaffolding never copies it). Its real job is "compile every variant of
+the template at once" — a cross-variant preflight before a shop commit.
 
-```bash
-#!/usr/bin/env bash
-set -e
-gh optivem compile
-```
+A 2-line `gh optivem compile` wrapper would have lost that, because
+`gh optivem compile` only compiles the one variant in `gh-optivem.yaml`.
+Instead we encoded the variant matrix as six named YAMLs in shop:
 
-Students still see a readable script at the repo root; the actual
-per-language logic lives in the Go binary. This change happens in the
-shop template repo, not in `gh-optivem` — it's non-blocking and can
-follow Step 3 in a separate PR.
+- `gh-optivem-monolith-{dotnet,java,typescript}.yaml`
+- `gh-optivem-multitier-{dotnet,java,typescript}.yaml`
+
+`compile-all.sh` now loops over `gh-optivem-*.yaml`, invoking
+`gh optivem compile -c <yaml>` per variant. Adding a variant = drop a
+YAML; no script edits. The unparameterized `gh-optivem.yaml` was
+**deleted** to prevent drift — every invocation in shop must name a
+variant explicitly. Same pattern can extend to `test-all.sh` later.
 
 ### Step 5 — `compile-targeted.sh` (deferred)
 
@@ -103,57 +106,28 @@ needs targeted compile.
   first failure. Codified in Step 2.
 - ~~Quiet flags~~ — **verbose**, no quiet flags. Codified in Step 1.
 
-### Remaining questions
+### Resolved: unify with `gh optivem init`'s `VerifyCompilation` ✅ Done (2026-05-11)
 
-#### Unify with `gh optivem init`'s `VerifyCompilation`?
+Approach **A** — full unify. `internal/steps/verify.go`'s `buildCommands`
+was deleted; `compileComponent` now calls `compiler.CompileIn(lang, cwd)`,
+normalizing `react` → `typescript` at the callsite (`cfg.FrontendLang`
+stays `"react"` everywhere else — display strings, path resolution —
+because flattening upstream would break those callers).
 
-**Context (raised post-implementation, 2026-05-09):** Steps 1–3 introduced
-`internal/compiler.commandsFor` as the per-language dispatch table for the
-runtime compile path. There is a parallel dispatcher at scaffold-time in
-`internal/steps/verify.go:58-74` (`buildCommands`), called by
-`VerifyCompilation` (`:30-45`) → `compileComponent` (`:47-56`) during the
-"Verify local compilation" step of `gh optivem init`. Two real divergences
-between the two dispatchers:
+The "does init's java compile actually need `compileTestJava`?" question
+turned out to have a stronger answer than the plan anticipated: yes, and
+so does the runtime path. `system/monolith/java/src/test/java` and
+`multitier/backend-java/src/test/java` both hold real JUnit unit tests
+(e.g. `MyShopApplicationTests.java`). The structural cycle was silently
+skipping their typecheck. So `compiler.commandsFor` now runs
+`compileJava compileTestJava` for java in **both** init and runtime;
+dotnet and typescript already covered tests via `.sln` and `tsconfig`
+include globs respectively. No `CompileOptions{IncludeTests bool}` flag
+was needed — tests are always in scope.
 
-1. **Java**: init runs `compileJava compileTestJava` (covers test code);
-   runtime `internal/compiler` runs `compileJava` only. The plan resolved
-   the runtime case to `compileJava` — and the structural cycle compiles
-   test code separately via `compile system-tests`, so that's correct *for
-   the runtime path*. Init's `compileTestJava` is needed because init
-   compiles `system/` and `system-tests/` as separate verifies, and
-   `system/`'s gradle project may include test sources that have to
-   typecheck.
-2. **react**: init handles a `react` lang case as `npm ci && npm run build`;
-   `internal/compiler` doesn't (no `LangReact` enum). React isn't an
-   architecture-tier language in `gh-optivem.yaml` today — frontend
-   `lang: typescript` covers it — so this only matters at init-time when
-   `--frontend-lang react` is passed.
-
-**Possible approaches:**
-
-- **A. Move both onto `internal/compiler`, parameterize java for test
-  compile.** Add a `CompileOptions{IncludeTests bool}` (or a second
-  entry-point `CompileWithTests`) so init's verify pass can opt in. Drop
-  the `react` case from init by treating it as typescript-with-build (or
-  add `LangReact` to `projectconfig`). One source of truth, one place to
-  edit when a language's tooling changes.
-- **B. Leave them separate.** Init's compile is a "does it build at all"
-  check on a freshly-scaffolded local clone, before any `gh-optivem.yaml`
-  is read into the runner; runtime's compile is driven by the YAML the
-  user can edit. Different inputs, different timing — keeping them apart
-  avoids overcoupling.
-- **C. Half-step: extract just `commandsFor`.** Move the `lang → []string`
-  table to a shared internal helper, but keep the call sites (which differ
-  in cwd resolution, error semantics, and the test-code variant) separate.
-
-**Open call:** A is the right answer eventually, but blocked on a small
-design call — does init's java compile actually need `compileTestJava`,
-or is that a habit from before `compile system-tests` existed? If the tests
-live under a separate gradle project rooted at `system-test/`, init could
-compile them via a second `Compile(systemTest, ...)` call and drop
-`compileTestJava` from the system-tier compile. That would make A
-trivially clean. C is the safe interim if the gradle layout question
-isn't worth digging into right now.
+React's `npm run build` (full Next.js bundle) is gone from init. The
+tradeoff (loses bundle-time errors that `tsc --noEmit` misses) was
+accepted in exchange for one source of truth.
 
 ## Out of scope
 
