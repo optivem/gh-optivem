@@ -148,7 +148,7 @@ Fast iteration on the driver. **Local working copy of gh-optivem** + **existing 
 cd ../shop
 
 # Step 2 — run the rehearsal (pick one form)
-bash ../gh-optivem/scripts/atdd-rehearsal.sh 61
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 61 --config gh-optivem-monolith-typescript.yaml
 bash ../gh-optivem/scripts/atdd-rehearsal.sh 61 ticket-cli                       # optional sortable label
 bash ../gh-optivem/scripts/atdd-rehearsal.sh https://github.com/optivem/shop/issues/61
 
