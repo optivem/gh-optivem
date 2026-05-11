@@ -49,10 +49,18 @@ halting on first failure. Use the explicit subcommands to scope to one tier.`,
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			cfg := loadProjectConfigOrExit()
+			sum := newCompileSummary()
+
 			log.PhaseHeader(1, 2, "Compile system")
-			exitOnError(compileSystem(cfg))
-			log.PhaseHeader(2, 2, "Compile system-tests")
-			exitOnError(compileSystemTests(cfg))
+			err := compileSystem(cfg, sum)
+			if err == nil {
+				log.PhaseHeader(2, 2, "Compile system-tests")
+				err = compileSystemTests(cfg, sum)
+			} else {
+				sum.MarkSkipped("Compile system-tests")
+			}
+			sum.Print()
+			exitOnError(err)
 		},
 	}
 	cmd.AddCommand(newCompileSystemCmd(), newCompileSystemTestsCmd())
@@ -67,8 +75,11 @@ func newCompileSystemCmd() *cobra.Command {
 		Example: `  gh optivem compile system`,
 		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
+			sum := newCompileSummary()
 			log.PhaseHeader(1, 1, "Compile system")
-			exitOnError(compileSystem(loadProjectConfigOrExit()))
+			err := compileSystem(loadProjectConfigOrExit(), sum)
+			sum.Print()
+			exitOnError(err)
 		},
 	}
 }
@@ -80,8 +91,11 @@ func newCompileSystemTestsCmd() *cobra.Command {
 		Example: `  gh optivem compile system-tests`,
 		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
+			sum := newCompileSummary()
 			log.PhaseHeader(1, 1, "Compile system-tests")
-			exitOnError(compileSystemTests(loadProjectConfigOrExit()))
+			err := compileSystemTests(loadProjectConfigOrExit(), sum)
+			sum.Print()
+			exitOnError(err)
 		},
 	}
 }
@@ -102,20 +116,29 @@ func loadProjectConfigOrExit() *projectconfig.Config {
 
 // compileSystem dispatches by architecture. Monolith uses the System tier;
 // multitier compiles Backend then Frontend, halting on first failure (matches
-// today's `compile-all.sh` behavior — first error wins).
-func compileSystem(cfg *projectconfig.Config) error {
+// today's `compile-all.sh` behavior — first error wins). Each `compiler.Compile`
+// call is timed and recorded on sum so the tail summary can report per-tier
+// outcomes.
+func compileSystem(cfg *projectconfig.Config, sum *compileSummary) error {
+	const phase = "Compile system"
 	switch cfg.System.Architecture {
 	case projectconfig.ArchMonolith:
 		tier := monolithTier(cfg)
 		log.Infof("Compiling system (%s) in %s", tier.Lang, tier.Path)
-		return compiler.Compile(tier, ".")
+		return recordCompile(sum, phase, "system", tier, func() error {
+			return compiler.Compile(tier, ".")
+		})
 	case projectconfig.ArchMultitier:
 		log.Infof("Compiling backend (%s) in %s", cfg.System.Backend.Lang, cfg.System.Backend.Path)
-		if err := compiler.Compile(cfg.System.Backend, "."); err != nil {
+		if err := recordCompile(sum, phase, "backend", cfg.System.Backend, func() error {
+			return compiler.Compile(cfg.System.Backend, ".")
+		}); err != nil {
 			return err
 		}
 		log.Infof("Compiling frontend (%s) in %s", cfg.System.Frontend.Lang, cfg.System.Frontend.Path)
-		return compiler.Compile(cfg.System.Frontend, ".")
+		return recordCompile(sum, phase, "frontend", cfg.System.Frontend, func() error {
+			return compiler.Compile(cfg.System.Frontend, ".")
+		})
 	case "":
 		return fmt.Errorf("compile system: %s has no system.architecture set", projectconfig.Path)
 	default:
@@ -133,10 +156,12 @@ func monolithTier(cfg *projectconfig.Config) projectconfig.TierSpec {
 	}
 }
 
-func compileSystemTests(cfg *projectconfig.Config) error {
+func compileSystemTests(cfg *projectconfig.Config, sum *compileSummary) error {
 	if cfg.SystemTest.IsEmpty() {
 		return fmt.Errorf("compile system-tests: %s has no system_test set", projectconfig.Path)
 	}
 	log.Infof("Compiling system-tests (%s) in %s", cfg.SystemTest.Lang, cfg.SystemTest.Path)
-	return compiler.Compile(cfg.SystemTest, ".")
+	return recordCompile(sum, "Compile system-tests", "system-tests", cfg.SystemTest, func() error {
+		return compiler.Compile(cfg.SystemTest, ".")
+	})
 }
