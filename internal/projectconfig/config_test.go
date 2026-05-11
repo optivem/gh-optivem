@@ -23,16 +23,21 @@ const sampleMonoRepoMonolith = `project:
 
 repo_strategy: mono-repo
 
+sonar:
+  organization: optivem
+
 system:
   architecture: monolith
   path: system/monolith/java
   repo: optivem/shop
   lang: java
+  sonar_project: optivem_shop-system
 
 system_test:
   path: system-test/java
   repo: optivem/shop
   lang: java
+  sonar_project: optivem_shop-system-test
 
 external_systems:
   stubs:
@@ -48,21 +53,27 @@ const sampleMonoRepoMultitier = `project:
 
 repo_strategy: mono-repo
 
+sonar:
+  organization: optivem
+
 system:
   architecture: multitier
   backend:
     path: system/multitier/backend-java
     repo: optivem/shop
     lang: java
+    sonar_project: optivem_shop-backend
   frontend:
     path: system/multitier/frontend-react
     repo: optivem/shop
     lang: typescript
+    sonar_project: optivem_shop-frontend
 
 system_test:
   path: system-test/java
   repo: optivem/shop
   lang: java
+  sonar_project: optivem_shop-system-test
 
 external_systems:
   stubs:
@@ -78,16 +89,21 @@ const sampleMultiRepoMonolith = `project:
 
 repo_strategy: multi-repo
 
+sonar:
+  organization: optivem
+
 system:
   architecture: monolith
   path: .
   repo: optivem/shop
   lang: java
+  sonar_project: optivem_shop-system
 
 system_test:
   path: system-test
   repo: optivem/shop
   lang: java
+  sonar_project: optivem_shop-system-test
 
 external_systems:
   stubs:
@@ -103,21 +119,27 @@ const sampleMultiRepoMultitier = `project:
 
 repo_strategy: multi-repo
 
+sonar:
+  organization: optivem
+
 system:
   architecture: multitier
   backend:
     path: .
     repo: optivem/shop-backend
     lang: java
+    sonar_project: optivem_shop-backend
   frontend:
     path: .
     repo: optivem/shop-frontend
     lang: typescript
+    sonar_project: optivem_shop-frontend
 
 system_test:
   path: system-test
-  repo: optivem/shop-main
+  repo: optivem/shop-backend
   lang: java
+  sonar_project: optivem_shop-system-test
 
 external_systems:
   stubs:
@@ -813,11 +835,13 @@ func TestValidate_AcceptsExternalSystemsOmitted(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
 		Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
+		Sonar:   Sonar{Organization: "x"},
 		System: System{
 			Architecture: ArchMonolith,
 			Path:         "p", Repo: "x/y", Lang: LangJava,
+			SonarProject: "x_y-system",
 		},
-		SystemTest: TierSpec{Path: "t", Repo: "x/y", Lang: LangJava},
+		SystemTest: TierSpec{Path: "t", Repo: "x/y", Lang: LangJava, SonarProject: "x_y-system-test"},
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("config without external_systems should validate, got: %v", err)
@@ -829,11 +853,13 @@ func TestValidate_AcceptsOnlyStubsOrOnlySimulators(t *testing.T) {
 	base := func() *Config {
 		return &Config{
 			Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
+			Sonar:   Sonar{Organization: "x"},
 			System: System{
 				Architecture: ArchMonolith,
 				Path:         "p", Repo: "x/y", Lang: LangJava,
+				SonarProject: "x_y-system",
 			},
-			SystemTest: TierSpec{Path: "t", Repo: "x/y", Lang: LangJava},
+			SystemTest: TierSpec{Path: "t", Repo: "x/y", Lang: LangJava, SonarProject: "x_y-system-test"},
 		}
 	}
 
@@ -870,15 +896,18 @@ func TestValidate_RejectsExternalWithMissingRepo(t *testing.T) {
 func TestValidate_AcceptsExternalRepoNotInOtherTiers(t *testing.T) {
 	t.Parallel()
 	// External systems can live in their own repo (multi-repo case).
+	// system_test.repo carries the canonical base ("x/main"), so the Sonar
+	// keys use base="main" — independent of where each component lives.
 	cfg := &Config{
 		Project:      Project{URL: "https://github.com/orgs/acme/projects/1"},
 		RepoStrategy: RepoStrategyMultiRepo,
+		Sonar:        Sonar{Organization: "x"},
 		System: System{
 			Architecture: ArchMultitier,
-			Backend:      TierSpec{Path: "be", Repo: "x/backend", Lang: LangJava},
-			Frontend:     TierSpec{Path: "fe", Repo: "x/frontend", Lang: LangTypescript},
+			Backend:      TierSpec{Path: "be", Repo: "x/backend", Lang: LangJava, SonarProject: "x_main-backend"},
+			Frontend:     TierSpec{Path: "fe", Repo: "x/frontend", Lang: LangTypescript, SonarProject: "x_main-frontend"},
 		},
-		SystemTest: TierSpec{Path: "t", Repo: "x/main", Lang: LangJava},
+		SystemTest: TierSpec{Path: "t", Repo: "x/main", Lang: LangJava, SonarProject: "x_main-system-test"},
 		ExternalSystems: ExternalSystems{
 			Stubs:      ExternalSpec{Path: "external-stub", Repo: "x/externals" /* unique slug */},
 			Simulators: ExternalSpec{Path: "external-real-sim", Repo: "x/externals"},
@@ -962,11 +991,13 @@ func TestWrite_OmitsEmptyOptionalFields(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &Config{
 		Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
+		Sonar:   Sonar{Organization: "x"},
 		System: System{
 			Architecture: ArchMonolith,
 			Path:         "p", Repo: "x/y", Lang: LangJava,
+			SonarProject: "x_y-system",
 		},
-		SystemTest: TierSpec{Path: "t", Repo: "x/y", Lang: LangJava},
+		SystemTest: TierSpec{Path: "t", Repo: "x/y", Lang: LangJava, SonarProject: "x_y-system-test"},
 	}
 	if err := Write(dir, cfg); err != nil {
 		t.Fatalf("Write: %v", err)
@@ -1066,16 +1097,19 @@ func TestWriteToPath_NonCanonicalFilename(t *testing.T) {
 	in := &Config{
 		Project:      Project{URL: "https://github.com/orgs/acme/projects/7"},
 		RepoStrategy: RepoStrategyMonoRepo,
+		Sonar:        Sonar{Organization: "acme"},
 		System: System{
 			Architecture: ArchMonolith,
 			Path:         "system/monolith/java",
 			Repo:         "acme/page-turner",
 			Lang:         LangJava,
+			SonarProject: "acme_page-turner-system",
 		},
 		SystemTest: TierSpec{
-			Path: "system-test/java",
-			Repo: "acme/page-turner",
-			Lang: LangJava,
+			Path:         "system-test/java",
+			Repo:         "acme/page-turner",
+			Lang:         LangJava,
+			SonarProject: "acme_page-turner-system-test",
 		},
 	}
 	if err := WriteToPath(yamlPath, in); err != nil {
@@ -1110,13 +1144,18 @@ func validMonolithBase() *Config {
 	return &Config{
 		Project:      Project{URL: "https://github.com/orgs/acme/projects/1"},
 		RepoStrategy: RepoStrategyMonoRepo,
+		Sonar:        Sonar{Organization: "acme"},
 		System: System{
 			Architecture: ArchMonolith,
 			Path:         "system",
 			Repo:         "acme/page-turner",
 			Lang:         LangJava,
+			SonarProject: "acme_page-turner-system",
 		},
-		SystemTest: TierSpec{Path: "system-test", Repo: "acme/page-turner", Lang: LangJava},
+		SystemTest: TierSpec{
+			Path: "system-test", Repo: "acme/page-turner", Lang: LangJava,
+			SonarProject: "acme_page-turner-system-test",
+		},
 	}
 }
 
@@ -1247,5 +1286,196 @@ func TestRoundTrip_PreservesIdentityFields(t *testing.T) {
 	}
 	if out.Deploy != in.Deploy {
 		t.Errorf("deploy: got %q, want %q", out.Deploy, in.Deploy)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Sonar block (Rules 17/18/19)
+// ---------------------------------------------------------------------------
+
+// TestValidate_RejectsMissingSonarOrganization pins Rule 17: once
+// architecture is set, sonar.organization is required.
+func TestValidate_RejectsMissingSonarOrganization(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	cfg.Sonar.Organization = ""
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate: want error for missing sonar.organization, got nil")
+	}
+	if !strings.Contains(err.Error(), "sonar.organization") {
+		t.Errorf("error should mention sonar.organization, got: %v", err)
+	}
+}
+
+// TestValidate_RejectsMissingPerTierSonarProject pins Rule 18: each
+// code tier that exists for the architecture must carry its sonar_project.
+func TestValidate_RejectsMissingPerTierSonarProject(t *testing.T) {
+	t.Parallel()
+
+	t.Run("monolith missing system.sonar_project", func(t *testing.T) {
+		cfg := validMonolithBase()
+		cfg.System.SonarProject = ""
+		if err := cfg.Validate(); err == nil ||
+			!strings.Contains(err.Error(), "system.sonar_project") {
+			t.Fatalf("want system.sonar_project error, got: %v", err)
+		}
+	})
+
+	t.Run("monolith missing system_test.sonar_project", func(t *testing.T) {
+		cfg := validMonolithBase()
+		cfg.SystemTest.SonarProject = ""
+		if err := cfg.Validate(); err == nil ||
+			!strings.Contains(err.Error(), "system_test.sonar_project") {
+			t.Fatalf("want system_test.sonar_project error, got: %v", err)
+		}
+	})
+
+	t.Run("multitier missing backend.sonar_project", func(t *testing.T) {
+		cfg := validMultitierBase()
+		cfg.System.Backend.SonarProject = ""
+		if err := cfg.Validate(); err == nil ||
+			!strings.Contains(err.Error(), "system.backend.sonar_project") {
+			t.Fatalf("want system.backend.sonar_project error, got: %v", err)
+		}
+	})
+
+	t.Run("multitier missing frontend.sonar_project", func(t *testing.T) {
+		cfg := validMultitierBase()
+		cfg.System.Frontend.SonarProject = ""
+		if err := cfg.Validate(); err == nil ||
+			!strings.Contains(err.Error(), "system.frontend.sonar_project") {
+			t.Fatalf("want system.frontend.sonar_project error, got: %v", err)
+		}
+	})
+}
+
+// TestValidate_RejectsSonarKeyOnWrongArchitecture pins the cross-tier
+// exclusivity in Rule 18: system.sonar_project belongs only on monolith,
+// backend/frontend.sonar_project belong only on multitier.
+func TestValidate_RejectsSonarKeyOnWrongArchitecture(t *testing.T) {
+	t.Parallel()
+
+	t.Run("monolith with stray backend.sonar_project", func(t *testing.T) {
+		cfg := validMonolithBase()
+		cfg.System.Backend.SonarProject = "acme_page-turner-backend"
+		if err := cfg.Validate(); err == nil ||
+			!strings.Contains(err.Error(), "system.backend.sonar_project") {
+			t.Fatalf("want exclusivity error, got: %v", err)
+		}
+	})
+
+	t.Run("multitier with stray system.sonar_project", func(t *testing.T) {
+		cfg := validMultitierBase()
+		cfg.System.SonarProject = "acme_page-turner-system"
+		if err := cfg.Validate(); err == nil ||
+			!strings.Contains(err.Error(), "system.sonar_project") {
+			t.Fatalf("want exclusivity error, got: %v", err)
+		}
+	})
+}
+
+// TestValidate_RejectsStaleSonarOrganization pins Rule 19's org-side
+// consistency: the YAML's sonar.organization must equal the lowercased
+// owner parsed from system_test.repo. Hand-editing org without updating
+// the rest of the YAML should fail.
+func TestValidate_RejectsStaleSonarOrganization(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	cfg.Sonar.Organization = "different-org"
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate: want consistency error for stale org, got nil")
+	}
+	if !strings.Contains(err.Error(), "sonar.organization") ||
+		!strings.Contains(err.Error(), "canonical derivation") {
+		t.Errorf("error should mention sonar.organization + canonical derivation, got: %v", err)
+	}
+}
+
+// TestValidate_RejectsStaleSonarProjectKey pins Rule 19's key-side
+// consistency across each code tier: a hand-edited mismatch from the
+// canonical <owner>_<repo>-<tier> shape fails. Covers monolith,
+// backend, frontend, and system_test independently so a stale edit on
+// any one tier doesn't silently leak through.
+func TestValidate_RejectsStaleSonarProjectKey(t *testing.T) {
+	t.Parallel()
+
+	t.Run("monolith system", func(t *testing.T) {
+		cfg := validMonolithBase()
+		cfg.System.SonarProject = "acme_wrong-system"
+		if err := cfg.Validate(); err == nil ||
+			!strings.Contains(err.Error(), "system.sonar_project") {
+			t.Fatalf("want stale system.sonar_project error, got: %v", err)
+		}
+	})
+
+	t.Run("multitier backend", func(t *testing.T) {
+		cfg := validMultitierBase()
+		cfg.System.Backend.SonarProject = "acme_wrong-backend"
+		if err := cfg.Validate(); err == nil ||
+			!strings.Contains(err.Error(), "system.backend.sonar_project") {
+			t.Fatalf("want stale backend.sonar_project error, got: %v", err)
+		}
+	})
+
+	t.Run("multitier frontend", func(t *testing.T) {
+		cfg := validMultitierBase()
+		cfg.System.Frontend.SonarProject = "acme_wrong-frontend"
+		if err := cfg.Validate(); err == nil ||
+			!strings.Contains(err.Error(), "system.frontend.sonar_project") {
+			t.Fatalf("want stale frontend.sonar_project error, got: %v", err)
+		}
+	})
+
+	t.Run("system_test", func(t *testing.T) {
+		cfg := validMonolithBase()
+		cfg.SystemTest.SonarProject = "acme_wrong-system-test"
+		if err := cfg.Validate(); err == nil ||
+			!strings.Contains(err.Error(), "system_test.sonar_project") {
+			t.Fatalf("want stale system_test.sonar_project error, got: %v", err)
+		}
+	})
+}
+
+// TestValidate_AcceptsEmptySonarBlockWithoutArchitecture confirms the
+// schema accepts a partial Config: when system.architecture is unset,
+// the sonar block has nothing to express and Rules 17/18/19 stay
+// dormant. Matches the pattern already used for repo_strategy /
+// system_test (architecture is the gate).
+func TestValidate_AcceptsEmptySonarBlockWithoutArchitecture(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{
+		Project:      Project{URL: "https://github.com/orgs/acme/projects/1"},
+		RepoStrategy: RepoStrategyMonoRepo,
+		// Arch empty; no Sonar block.
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("partial Config without architecture should validate: %v", err)
+	}
+}
+
+// validMultitierBase mirrors validMonolithBase for the multitier shape:
+// the smallest Config with architecture=multitier that Validate accepts.
+func validMultitierBase() *Config {
+	return &Config{
+		Project:      Project{URL: "https://github.com/orgs/acme/projects/1"},
+		RepoStrategy: RepoStrategyMonoRepo,
+		Sonar:        Sonar{Organization: "acme"},
+		System: System{
+			Architecture: ArchMultitier,
+			Backend: TierSpec{
+				Path: "backend", Repo: "acme/page-turner", Lang: LangJava,
+				SonarProject: "acme_page-turner-backend",
+			},
+			Frontend: TierSpec{
+				Path: "frontend", Repo: "acme/page-turner", Lang: LangTypescript,
+				SonarProject: "acme_page-turner-frontend",
+			},
+		},
+		SystemTest: TierSpec{
+			Path: "system-test", Repo: "acme/page-turner", Lang: LangJava,
+			SonarProject: "acme_page-turner-system-test",
+		},
 	}
 }

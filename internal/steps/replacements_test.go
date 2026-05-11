@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/optivem/gh-optivem/internal/config"
+	"github.com/optivem/gh-optivem/internal/templates"
 )
 
 // TestReplaceNamespacesAndSystemNameGeneric asserts that the generic
@@ -111,6 +112,11 @@ func assertNoLiteralSurvives(t *testing.T, repoDir string, literals []string) {
 // rewrite optivem/shop, optivem_shop, and sonar.organization for a fresh
 // scaffold (owner != optivem). Covers the three Apr-23 failure fixtures plus
 // the 2026-04-24 revert state where Sonar identifiers stay optivem_shop-*.
+// Also exercises the system-test sonar-key suffix replacement applied next
+// to ReplaceRepoReferences in apply_template.go — asserting that the
+// language-suffixed -tests-{java,dotnet,typescript} forms land as the
+// language-agnostic -system-test post-rewrite, matching the existing
+// -monolith-<lang> / -multitier-backend-<lang> language-stripping pattern.
 func TestRewritePublisherRefsSonar(t *testing.T) {
 	cases := []struct {
 		name string
@@ -137,13 +143,30 @@ func TestRewritePublisherRefsSonar(t *testing.T) {
 			}
 
 			ReplaceRepoReferences(cfg)
+			// Mirror apply_template.go's call alongside the existing
+			// monolith/multitier sonar-key replacements: strip the
+			// -tests-<lang> suffix from system-test build files.
+			templates.FixupAllTextFiles(repoDir, systemTestSonarKeyReplacements())
 
 			assertNoLiteralSurvives(t, repoDir, []string{
 				"optivem/shop",
 				"optivem_shop",
 				"api.optivem.com",
 				"@optivem/shop-system-test",
+				"-tests-java",
+				"-tests-dotnet",
+				"-tests-typescript",
 			})
+
+			// Confirm the system-test sonar key landed in the
+			// language-agnostic form. The owner_repo prefix is rewritten by
+			// ReplaceRepoReferences; the suffix is rewritten by the
+			// system-test sonar-key pass.
+			underscoreFull := "valentinajemuovic_" + tc.repo
+			expected := underscoreFull + "-system-test"
+			assertLiteralPresent(t, repoDir, "system-test/java/build.gradle", expected)
+			assertLiteralPresent(t, repoDir, "system-test/dotnet/Run-Sonar.ps1", expected)
+			assertLiteralPresent(t, repoDir, "system-test/typescript/Run-Sonar.ps1", expected)
 		})
 	}
 }
@@ -168,6 +191,23 @@ jobs:
 `,
 		"system-test/typescript/package-lock.json": `{"name": "@optivem/shop-system-test", "version": "1.0.0"}`,
 		"README.md": `See https://api.optivem.com/errors/validation`,
+		// System-test build files carry per-language Sonar keys in the
+		// shop template (one project per suite); scaffolded repos host
+		// one suite and must collapse to the language-agnostic suffix.
+		"system-test/java/build.gradle": `sonarqube {
+  properties {
+    property 'sonar.projectKey', 'optivem_shop-tests-java'
+    property 'sonar.projectName', 'shop-tests-java'
+  }
+}
+`,
+		"system-test/dotnet/Run-Sonar.ps1": `$projectKey = "optivem_shop-tests-dotnet"
+$projectName = "shop-tests-dotnet"
+`,
+		"system-test/typescript/Run-Sonar.ps1": `npx sonar-scanner ` + "`" + `
+    "-Dsonar.projectKey=optivem_shop-tests-typescript" ` + "`" + `
+    "-Dsonar.projectName=shop-tests-typescript"
+`,
 	}
 	for rel, content := range fixtures {
 		p := filepath.Join(repoDir, filepath.FromSlash(rel))
@@ -177,6 +217,18 @@ jobs:
 		if err := os.WriteFile(p, []byte(content), 0644); err != nil {
 			t.Fatalf("write %s: %v", p, err)
 		}
+	}
+}
+
+func assertLiteralPresent(t *testing.T, repoDir, rel, literal string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(repoDir, filepath.FromSlash(rel)))
+	if err != nil {
+		t.Errorf("read %s: %v", rel, err)
+		return
+	}
+	if !strings.Contains(string(data), literal) {
+		t.Errorf("file %s missing expected literal %q; got:\n%s", rel, literal, string(data))
 	}
 }
 

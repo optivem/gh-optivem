@@ -77,6 +77,7 @@ const (
 type Config struct {
 	Project         Project         `yaml:"project"`
 	RepoStrategy    string          `yaml:"repo_strategy,omitempty"`
+	Sonar           Sonar           `yaml:"sonar,omitempty"`
 	System          System          `yaml:"system"`
 	SystemTest      TierSpec        `yaml:"system_test"`
 	ExternalSystems ExternalSystems `yaml:"external_systems,omitempty"`
@@ -145,6 +146,20 @@ type Project struct {
 	URL string `yaml:"url,omitempty"`
 }
 
+// Sonar carries SonarCloud account identity. Singleton at the root because
+// one scaffold maps to one SonarCloud organization regardless of how many
+// code tiers it produces. Per-tier project keys live on the tier (see
+// System.SonarProject and TierSpec.SonarProject) — that 1:1 placement
+// mirrors how path, repo, and lang already sit on each tier.
+//
+// Organization is `strings.ToLower(owner)` by default, materialized by
+// `gh optivem config init`. The field is its own slot (not derived at
+// every read) so an operator whose SonarCloud org differs from their
+// GitHub owner can override the value without a schema migration.
+type Sonar struct {
+	Organization string `yaml:"organization,omitempty"`
+}
+
 // System describes the system being built. Polymorphic by architecture:
 //   - monolith:  Path/Repo/Lang are populated; Backend/Frontend are empty.
 //   - multitier: Backend/Frontend are populated; Path/Repo/Lang are empty.
@@ -165,9 +180,10 @@ type System struct {
 	Config string `yaml:"config,omitempty"`
 
 	// Monolith-only.
-	Path string `yaml:"path,omitempty"`
-	Repo string `yaml:"repo,omitempty"`
-	Lang string `yaml:"lang,omitempty"`
+	Path         string `yaml:"path,omitempty"`
+	Repo         string `yaml:"repo,omitempty"`
+	Lang         string `yaml:"lang,omitempty"`
+	SonarProject string `yaml:"sonar_project,omitempty"`
 
 	// Multitier-only.
 	Backend  TierSpec `yaml:"backend,omitempty"`
@@ -179,11 +195,15 @@ type System struct {
 // system_test. Path/Repo/Lang are mandatory whenever the tier is set;
 // no defaults, no inference. Config is only meaningful on system_test
 // (the tests.yaml path) — Validate rejects it on backend/frontend.
+// SonarProject carries the SonarCloud project key for the tier, required
+// when system.architecture is set (system_test, backend, frontend); see
+// Rules 18/19 in Validate.
 type TierSpec struct {
-	Path   string `yaml:"path,omitempty"`
-	Repo   string `yaml:"repo,omitempty"`
-	Lang   string `yaml:"lang,omitempty"`
-	Config string `yaml:"config,omitempty"`
+	Path         string `yaml:"path,omitempty"`
+	Repo         string `yaml:"repo,omitempty"`
+	Lang         string `yaml:"lang,omitempty"`
+	Config       string `yaml:"config,omitempty"`
+	SonarProject string `yaml:"sonar_project,omitempty"`
 }
 
 // ExternalSystems declares vendored stand-ins for third-party dependencies
@@ -473,7 +493,128 @@ func (c *Config) Validate() error {
 			c.Deploy, DeployDocker, DeployCloudRun)
 	}
 
+	// Rules 17/18/19: SonarCloud presence + consistency. The block is
+	// optional when no architecture is set (a partial config — project
+	// URL + repo_strategy only — has no Sonar identities to express).
+	// Once architecture is set, gh-optivem.yaml is expected to carry the
+	// canonical org + per-code-tier project keys produced by
+	// DeriveSonarProjects, so `gh optivem init` can create the
+	// SonarCloud projects without re-deriving from `cfg.Owner`/`cfg.Repo`.
+	if c.System.Architecture != "" {
+		if err := c.validateSonar(); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+// validateSonar enforces Rules 17/18/19. Split out to keep Validate's body
+// linear and to give the Sonar block one cohesive failure point — when any
+// one of the three rules fails, the error message points to the YAML field
+// that disagrees with the canonical derivation.
+func (c *Config) validateSonar() error {
+	// Rule 17: sonar.organization required when architecture is set.
+	if c.Sonar.Organization == "" {
+		return fmt.Errorf("config: system.architecture is set; sonar.organization is required")
+	}
+
+	// Rule 18: per-code-tier sonar_project required.
+	switch c.System.Architecture {
+	case ArchMonolith:
+		if c.System.SonarProject == "" {
+			return fmt.Errorf("config: system.architecture=%s requires system.sonar_project",
+				ArchMonolith)
+		}
+		if c.System.Backend.SonarProject != "" {
+			return fmt.Errorf("config: system.architecture=%s incompatible with system.backend.sonar_project (multitier-only)",
+				ArchMonolith)
+		}
+		if c.System.Frontend.SonarProject != "" {
+			return fmt.Errorf("config: system.architecture=%s incompatible with system.frontend.sonar_project (multitier-only)",
+				ArchMonolith)
+		}
+	case ArchMultitier:
+		if c.System.Backend.SonarProject == "" {
+			return fmt.Errorf("config: system.architecture=%s requires system.backend.sonar_project",
+				ArchMultitier)
+		}
+		if c.System.Frontend.SonarProject == "" {
+			return fmt.Errorf("config: system.architecture=%s requires system.frontend.sonar_project",
+				ArchMultitier)
+		}
+		if c.System.SonarProject != "" {
+			return fmt.Errorf("config: system.architecture=%s incompatible with system.sonar_project (monolith-only)",
+				ArchMultitier)
+		}
+	}
+	if c.SystemTest.SonarProject == "" {
+		return fmt.Errorf("config: system.architecture is set; system_test.sonar_project is required")
+	}
+
+	// Rule 19: consistency with canonical derivation. owner + base repo are
+	// recovered from system_test.repo — the YAML emitter places it on the
+	// canonical-base or component-suffixed slug depending on strategy, so
+	// the multirepo case strips the well-known component suffix to recover
+	// the base repo. A stale hand-edit to any of the Sonar fields then
+	// fails this check rather than silently shipping a key that points at
+	// a project the runtime never creates.
+	owner, baseRepo, err := c.parseOwnerBaseRepoForSonar()
+	if err != nil {
+		return err
+	}
+	expected := DeriveSonarProjects(owner, baseRepo, c.System.Architecture, c.RepoStrategy)
+	if wantOrg := strings.ToLower(owner); c.Sonar.Organization != wantOrg {
+		return fmt.Errorf("config: sonar.organization %q does not match canonical derivation %q (lowercased owner from system_test.repo)",
+			c.Sonar.Organization, wantOrg)
+	}
+	switch c.System.Architecture {
+	case ArchMonolith:
+		if c.System.SonarProject != expected.System {
+			return fmt.Errorf("config: system.sonar_project %q does not match canonical derivation %q",
+				c.System.SonarProject, expected.System)
+		}
+	case ArchMultitier:
+		if c.System.Backend.SonarProject != expected.Backend {
+			return fmt.Errorf("config: system.backend.sonar_project %q does not match canonical derivation %q",
+				c.System.Backend.SonarProject, expected.Backend)
+		}
+		if c.System.Frontend.SonarProject != expected.Frontend {
+			return fmt.Errorf("config: system.frontend.sonar_project %q does not match canonical derivation %q",
+				c.System.Frontend.SonarProject, expected.Frontend)
+		}
+	}
+	if c.SystemTest.SonarProject != expected.SystemTest {
+		return fmt.Errorf("config: system_test.sonar_project %q does not match canonical derivation %q",
+			c.SystemTest.SonarProject, expected.SystemTest)
+	}
+	return nil
+}
+
+// parseOwnerBaseRepoForSonar extracts owner and base repo name from
+// system_test.repo for the Rule 19 consistency check. The slug is
+// guaranteed non-empty here (Rule 6 already required system_test
+// completeness before validateSonar runs). For multirepo strategies the
+// scaffolder emits the component-suffixed slug (`<owner>/<repo>-system`
+// or `<owner>/<repo>-backend`); strip those suffixes to recover the
+// canonical base repo passed into DeriveSonarProjects.
+func (c *Config) parseOwnerBaseRepoForSonar() (owner, baseRepo string, err error) {
+	slug := c.SystemTest.Repo
+	parts := strings.SplitN(slug, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("config: system_test.repo %q must be <owner>/<repo>", slug)
+	}
+	owner = parts[0]
+	repo := parts[1]
+	if c.RepoStrategy == RepoStrategyMultiRepo {
+		switch c.System.Architecture {
+		case ArchMonolith:
+			repo = strings.TrimSuffix(repo, "-system")
+		case ArchMultitier:
+			repo = strings.TrimSuffix(repo, "-backend")
+		}
+	}
+	return owner, repo, nil
 }
 
 // sortedKeys returns the keys of m in lexicographic order. Used by

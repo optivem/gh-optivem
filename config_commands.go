@@ -106,9 +106,23 @@ func newConfigValidateCmd() *cobra.Command {
 when valid, non-zero with the validation error otherwise.
 
 The target file is resolved via the persistent --config / -c flag
-(or $GH_OPTIVEM_CONFIG, or ./gh-optivem.yaml).`,
+(or $GH_OPTIVEM_CONFIG, or ./gh-optivem.yaml).
+
+Coverage includes the SonarCloud block (when system.architecture is
+set): sonar.organization plus sonar_project on every code tier (system
+or backend+frontend, plus system_test). Both presence and consistency
+are checked — every key must match the canonical derivation from
+(owner, repo, arch, repo_strategy), so a stale hand-edit (e.g.
+overwriting system.backend.sonar_project to a value that points at a
+project ` + "`gh optivem init`" + ` never creates) fails fast at validate-time
+instead of leaving the runtime to fail later.`,
 		Example: `  gh optivem config validate
-  gh optivem -c ./gh-optivem.shop-monolith.yaml config validate`,
+  gh optivem -c ./gh-optivem.shop-monolith.yaml config validate
+
+  # Catches drift: editing system.backend.sonar_project by hand to
+  # acme_other-backend fails immediately with a consistency error
+  # pointing at the disagreement.
+  gh optivem config validate`,
 		Run: func(cmd *cobra.Command, args []string) {
 			path, _ := projectconfig.ResolvePath(projectConfigPath)
 			validated, err := runConfigValidate(path)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/shell"
 )
 
@@ -59,8 +60,16 @@ func writeLicenseToDir(dir, body string) {
 	}
 }
 
-// CreateSonarCloudProjects creates SonarCloud org and projects.
-func CreateSonarCloudProjects(cfg *config.Config, sc *shell.SonarCloud) {
+// CreateSonarCloudProjects creates the SonarCloud org and the per-code-tier
+// projects named in gh-optivem.yaml. Walks the loaded projectconfig's
+// sonar_project fields (system or backend+frontend, plus system_test) so
+// the YAML is the single source of truth for which projects exist; an
+// operator hand-edit (or future `config refresh`) propagates here for
+// free. Now creates 3 projects for monolith (system + system_test) and
+// 4 for multitier (backend + frontend + system_test) — up from 1/2 in
+// the pre-materialization world that relied on SonarCloud's auto-provision
+// of the system-test project on first scan.
+func CreateSonarCloudProjects(cfg *config.Config, pc *projectconfig.Config, sc *shell.SonarCloud) {
 	log.Info("Creating SonarCloud projects...")
 
 	if cfg.DryRun {
@@ -69,9 +78,36 @@ func CreateSonarCloudProjects(cfg *config.Config, sc *shell.SonarCloud) {
 	}
 
 	sc.CreateOrg()
-	for _, key := range GetSonarProjectKeys(cfg) {
+	for _, key := range sonarProjectKeysFromConfig(pc) {
 		sc.CreateProject(key)
 	}
+}
+
+// sonarProjectKeysFromConfig returns the per-code-tier SonarCloud project
+// keys carried by pc, in the order CreateSonarCloudProjects creates them:
+// system (monolith) or backend+frontend (multitier), then system_test.
+// Empty fields are skipped — Validate already guarantees presence when
+// architecture is set, so an empty value here means the projectconfig
+// itself was partial (architecture unset) and CreateSonarCloudProjects
+// wouldn't have been called via the normal `init` flow.
+func sonarProjectKeysFromConfig(pc *projectconfig.Config) []string {
+	if pc == nil {
+		return nil
+	}
+	var out []string
+	if pc.System.SonarProject != "" {
+		out = append(out, pc.System.SonarProject)
+	}
+	if pc.System.Backend.SonarProject != "" {
+		out = append(out, pc.System.Backend.SonarProject)
+	}
+	if pc.System.Frontend.SonarProject != "" {
+		out = append(out, pc.System.Frontend.SonarProject)
+	}
+	if pc.SystemTest.SonarProject != "" {
+		out = append(out, pc.SystemTest.SonarProject)
+	}
+	return out
 }
 
 // CommitAndPush commits and pushes changes to GitHub.

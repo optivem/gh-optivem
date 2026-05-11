@@ -3,6 +3,7 @@ package steps
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
@@ -134,8 +135,10 @@ func buildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 		// and Validate accepts that shape.
 		return pc
 	}
-	pc.System = buildSystem(cfg)
-	pc.SystemTest = buildSystemTest(cfg)
+	derived := projectconfig.DeriveSonarProjects(cfg.Owner, cfg.Repo, cfg.Arch, cfg.RepoStrategy)
+	pc.Sonar = projectconfig.Sonar{Organization: strings.ToLower(cfg.Owner)}
+	pc.System = buildSystem(cfg, derived)
+	pc.SystemTest = buildSystemTest(cfg, derived)
 	pc.ExternalSystems = buildExternals(cfg)
 	return pc
 }
@@ -157,39 +160,45 @@ func mapRepoStrategy(s string) string {
 // architecture: monolith uses flat Path/Repo/Lang; multitier nests Backend
 // and Frontend. Paths come from cfg verbatim — the resolution responsibility
 // lives at the call site (resolveScaffoldPaths for `init`, --*-path flags
-// for `config init`).
-func buildSystem(cfg *config.Config) projectconfig.System {
+// for `config init`). sonar_project values come from the pre-computed
+// DerivedSonar so the per-tier key matches projectconfig.Validate's
+// Rule 19 derivation.
+func buildSystem(cfg *config.Config, derived projectconfig.DerivedSonar) projectconfig.System {
 	s := projectconfig.System{Architecture: cfg.Arch}
 	switch cfg.Arch {
 	case "monolith":
 		s.Path = cfg.SystemPath
 		s.Repo = systemRepoSlug(cfg)
 		s.Lang = cfg.Lang
+		s.SonarProject = derived.System
 	case "multitier":
 		s.Backend = projectconfig.TierSpec{
-			Path: cfg.BackendPath,
-			Repo: backendRepoSlug(cfg),
-			Lang: cfg.BackendLang,
+			Path:         cfg.BackendPath,
+			Repo:         backendRepoSlug(cfg),
+			Lang:         cfg.BackendLang,
+			SonarProject: derived.Backend,
 		}
 		// The scaffold currently emits a single React+TypeScript frontend
 		// regardless of system_lang. Lang is the underlying source
 		// language (typescript), not the framework — adding more
 		// frontend frameworks later is out of scope.
 		s.Frontend = projectconfig.TierSpec{
-			Path: cfg.FrontendPath,
-			Repo: frontendRepoSlug(cfg),
-			Lang: projectconfig.LangTypescript,
+			Path:         cfg.FrontendPath,
+			Repo:         frontendRepoSlug(cfg),
+			Lang:         projectconfig.LangTypescript,
+			SonarProject: derived.Frontend,
 		}
 	}
 	return s
 }
 
 // buildSystemTest populates the SystemTest tier from cfg.SystemTestPath.
-func buildSystemTest(cfg *config.Config) projectconfig.TierSpec {
+func buildSystemTest(cfg *config.Config, derived projectconfig.DerivedSonar) projectconfig.TierSpec {
 	return projectconfig.TierSpec{
-		Path: cfg.SystemTestPath,
-		Repo: systemTestRepoSlug(cfg),
-		Lang: cfg.TestLang,
+		Path:         cfg.SystemTestPath,
+		Repo:         systemTestRepoSlug(cfg),
+		Lang:         cfg.TestLang,
+		SonarProject: derived.SystemTest,
 	}
 }
 

@@ -217,6 +217,7 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	// Fix SonarCloud key suffixes in build files (build.gradle, .csproj, etc.)
 	log.Info("Fixing up SonarCloud keys...")
 	templates.FixupAllTextFiles(repoDir, monolithSonarKeyReplacements(lang))
+	templates.FixupAllTextFiles(repoDir, systemTestSonarKeyReplacements())
 
 	if cfg.Deploy == deployCloudRun {
 		log.Info(infoCopyingCloudRun)
@@ -260,6 +261,7 @@ func applyMonolithMultirepo(cfg *config.Config) {
 
 	log.Info("Fixing up SonarCloud keys in root repo...")
 	templates.FixupAllTextFiles(repoDir, monolithSonarKeyReplacements(lang))
+	templates.FixupAllTextFiles(repoDir, systemTestSonarKeyReplacements())
 
 	if cfg.Deploy == deployCloudRun {
 		log.Info(infoCopyingCloudRun)
@@ -311,6 +313,7 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	}
 	templates.FixupWorkflowContent(sysDir, sysContentReplacements)
 	templates.FixupAllTextFiles(sysDir, monolithSonarKeyReplacements(lang))
+	templates.FixupAllTextFiles(sysDir, systemTestSonarKeyReplacements())
 	log.Success("Applied system repo template (monolith multirepo)")
 }
 
@@ -373,6 +376,7 @@ func applyMultitierMonorepo(cfg *config.Config) {
 
 	log.Info("Fixing up SonarCloud keys...")
 	templates.FixupAllTextFiles(repoDir, multitierSonarKeyReplacements(backendLang, frontendLang))
+	templates.FixupAllTextFiles(repoDir, systemTestSonarKeyReplacements())
 
 	if cfg.Deploy == deployCloudRun {
 		log.Info(infoCopyingCloudRun)
@@ -427,6 +431,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 
 	log.Info("Fixing up SonarCloud keys in root repo...")
 	templates.FixupAllTextFiles(repoDir, multitierSonarKeyReplacements(backendLang, frontendLang))
+	templates.FixupAllTextFiles(repoDir, systemTestSonarKeyReplacements())
 
 	if cfg.Deploy == deployCloudRun {
 		log.Info(infoCopyingCloudRun)
@@ -482,6 +487,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	)
 	templates.FixupWorkflowContent(bDir, backendReplacements)
 	templates.FixupAllTextFiles(bDir, multitierSonarKeyReplacements(backendLang, frontendLang))
+	templates.FixupAllTextFiles(bDir, systemTestSonarKeyReplacements())
 	log.Success("Applied backend repo template")
 
 	// Frontend repo: code + commit stage
@@ -511,6 +517,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	)
 	templates.FixupWorkflowContent(fDir, frontendReplacements)
 	templates.FixupAllTextFiles(fDir, multitierSonarKeyReplacements(backendLang, frontendLang))
+	templates.FixupAllTextFiles(fDir, systemTestSonarKeyReplacements())
 	log.Success("Applied frontend repo template")
 }
 
@@ -756,6 +763,19 @@ func multitierSonarKeyReplacements(backendLang, frontendLang string) [][2]string
 	}
 }
 
+// systemTestSonarKeyReplacements returns the language-stripping replacement
+// for the system-test Sonar key suffix. The shop template carries
+// -tests-{java,dotnet,typescript} per its multi-suite CI; scaffolded repos
+// host only one suite and use the language-agnostic -system-test suffix,
+// matching the existing -system / -backend / -frontend pattern.
+func systemTestSonarKeyReplacements() [][2]string {
+	return [][2]string{
+		{"-tests-java", "-system-test"},
+		{"-tests-dotnet", "-system-test"},
+		{"-tests-typescript", "-system-test"},
+	}
+}
+
 // copyDocs copies arch-specific and shared docs templates into {repoDir}/docs/.
 func copyDocs(shop, repoDir, arch string) {
 	dst := filepath.Join(repoDir, Names.TargetDocsDir)
@@ -832,6 +852,9 @@ func monolithForbiddenRefs(lang, testLang string) []string {
 		"-" + prefixMonolith + lang,                     // sonar key suffix
 		dirSystemTest + "/" + testLang + "/",            // un-flattened system-test path
 		dirDocker + "/" + testLang + "/",                // un-flattened docker path
+		"-tests-java",                                   // system-test sonar key suffix
+		"-tests-dotnet",
+		"-tests-typescript",
 	}
 	if lang != testLang {
 		refs = append(refs, prefixMonolithSystem+testLang)
@@ -849,6 +872,9 @@ func multitierForbiddenRefs(backendLang, frontendLang, testLang string) []string
 		"-" + prefixMultitierFrontend + frontendLang, // sonar key suffix
 		dirSystemTest + "/" + testLang + "/",
 		dirDocker + "/" + testLang + "/", // un-flattened docker path
+		"-tests-java",                    // system-test sonar key suffix
+		"-tests-dotnet",
+		"-tests-typescript",
 	}
 	if backendLang != testLang {
 		refs = append(refs, prefixMultitierBackend+testLang)

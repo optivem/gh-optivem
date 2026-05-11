@@ -205,14 +205,14 @@ func runInit(cmd *cobra.Command, f *config.RawFlags) {
 	checkForUpdate(cfg)
 
 	gh := shell.NewGitHub(cfg)
-	sc := shell.NewSonarCloud(cfg.SonarToken, cfg.OwnerLower)
+	sc := shell.NewSonarCloud(cfg.SonarToken, pc.Sonar.Organization)
 
-	printBanner(cfg)
+	printBanner(cfg, pc)
 
 	// failureNote is captured by the Commit-and-push closure so, if an earlier
 	// step failed, the commit message can flag the push as a partial scaffold.
 	var failureNote string
-	allSteps := buildSteps(cfg, gh, sc, &failureNote)
+	allSteps := buildSteps(cfg, pc, gh, sc, &failureNote)
 	errors, totalDuration := executeSteps(allSteps, &failureNote)
 
 	printSummary(cfg, errors, totalDuration)
@@ -243,7 +243,7 @@ const (
 	phaseFinalize           = "Finalize"
 )
 
-func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, failureNote *string) []stepDef {
+func buildSteps(cfg *config.Config, pc *projectconfig.Config, gh *shell.GitHub, sc *shell.SonarCloud, failureNote *string) []stepDef {
 	allSteps := []stepDef{
 		// PHASE: PREPARE — pull prerequisites (shop template) needed by all later phases
 		{name: "Clone shop template", phase: phasePrepare, fn: func() { steps.CloneShopTemplate(cfg) }},
@@ -265,7 +265,7 @@ func buildSteps(cfg *config.Config, gh *shell.GitHub, sc *shell.SonarCloud, fail
 		{name: "Update README", phase: phaseApplyTemplate, fn: func() { steps.UpdateReadme(cfg) }},
 		{name: "Write gh-optivem.yaml", phase: phaseApplyTemplate, fn: func() { steps.WriteOptivemYAML(cfg) }},
 		{name: "Write LICENSE", phase: phaseApplyTemplate, fn: func() { steps.WriteLicense(cfg) }},
-		{name: "Create SonarCloud projects", phase: phaseApplyTemplate, fn: func() { steps.CreateSonarCloudProjects(cfg, sc) }},
+		{name: "Create SonarCloud projects", phase: phaseApplyTemplate, fn: func() { steps.CreateSonarCloudProjects(cfg, pc, sc) }},
 
 		// Validation is grouped into the Apply template phase but runs last —
 		// i.e. after Commit and push — so broken output is already visible in
@@ -704,7 +704,7 @@ func checkForUpdate(cfg *config.Config) {
 	log.Warnf("Update available: %s → %s. Run `gh optivem upgrade` to upgrade.", version.Version, latest)
 }
 
-func printBanner(cfg *config.Config) {
+func printBanner(cfg *config.Config, pc *projectconfig.Config) {
 	fmt.Println()
 	fmt.Println(separator)
 	fmt.Println("  Pipeline Project Setup")
@@ -771,7 +771,7 @@ func printBanner(cfg *config.Config) {
 	log.Infof("Java ns:         %s", cfg.JavaNsNew)
 	log.Infof(".NET ns:         %s", cfg.DotnetNsNew)
 	log.Infof("TS package:      %s", cfg.TsPkgNew)
-	for _, key := range steps.GetSonarProjectKeys(cfg) {
+	for _, key := range collectBannerSonarKeys(pc) {
 		log.Infof("Sonar key:       %s", key)
 	}
 
@@ -818,6 +818,31 @@ func printBanner(cfg *config.Config) {
 // in the order SetupVariablesAndSecrets writes them.
 func willCreateSecrets(cfg *config.Config) []string {
 	return []string{"DOCKERHUB_TOKEN", "SONAR_TOKEN", "WORKFLOW_TOKEN", "GHCR_TOKEN"}
+}
+
+// collectBannerSonarKeys returns the per-code-tier SonarCloud project keys
+// in the order they appear in gh-optivem.yaml: system (monolith) or
+// backend+frontend (multitier), followed by system_test. The banner prints
+// each so the operator can see at a glance which SonarCloud projects the
+// scaffold will create.
+func collectBannerSonarKeys(pc *projectconfig.Config) []string {
+	if pc == nil {
+		return nil
+	}
+	var out []string
+	if pc.System.SonarProject != "" {
+		out = append(out, pc.System.SonarProject)
+	}
+	if pc.System.Backend.SonarProject != "" {
+		out = append(out, pc.System.Backend.SonarProject)
+	}
+	if pc.System.Frontend.SonarProject != "" {
+		out = append(out, pc.System.Frontend.SonarProject)
+	}
+	if pc.SystemTest.SonarProject != "" {
+		out = append(out, pc.SystemTest.SonarProject)
+	}
+	return out
 }
 
 // ghCLIVersion returns the first line of `gh --version` (e.g. "gh version 2.50.0 ...").
