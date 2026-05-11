@@ -16,6 +16,7 @@ package compiler
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/shell"
@@ -40,8 +41,46 @@ func (passthroughShell) Run(commandLine, cwd string) error {
 // repoRoot is typically "." (the user's cwd, where gh-optivem.yaml lives);
 // tier.Path is appended to form the per-tier cwd. Sequential commands run
 // in declaration order; the first non-zero exit halts the rest.
+//
+// Before exec, the cwd is checked for a per-language sentinel build file
+// (e.g. build.gradle for java) so a misconfigured tier path surfaces a
+// readable error instead of a raw `fork/exec` / `MSBuild MSB1003` / `npm
+// ENOENT` from the underlying tool. The sentinel check is here (not in
+// CompileWith) so the unit tests that pass fake paths to CompileWith are
+// not coupled to the real filesystem.
 func Compile(tier projectconfig.TierSpec, repoRoot string) error {
+	cwd := filepath.Join(repoRoot, tier.Path)
+	if err := checkTierLayout(tier.Lang, cwd); err != nil {
+		return err
+	}
 	return CompileWith(tier, repoRoot, passthroughShell{})
+}
+
+// langSentinels lists the build-manifest filenames that must exist in a
+// tier's cwd for it to be a valid compile target. Patterns are matched with
+// filepath.Glob, so wildcards are honored (`*.csproj`). Filenames only
+// (no executables) — this keeps the check OS-agnostic; e.g. the Gradle
+// wrapper is `gradlew.bat` on Windows and `gradlew` elsewhere, but
+// `build.gradle` is identical everywhere.
+var langSentinels = map[string][]string{
+	projectconfig.LangDotnet:     {"*.csproj", "*.sln"},
+	projectconfig.LangJava:       {"build.gradle", "build.gradle.kts"},
+	projectconfig.LangTypescript: {"package.json"},
+}
+
+func checkTierLayout(lang, cwd string) error {
+	pats, ok := langSentinels[lang]
+	if !ok {
+		return nil
+	}
+	for _, p := range pats {
+		matches, _ := filepath.Glob(filepath.Join(cwd, p))
+		if len(matches) > 0 {
+			return nil
+		}
+	}
+	return fmt.Errorf("compile (%s): no %s in %s — check the tier path in gh-optivem.yaml",
+		lang, strings.Join(pats, " or "), cwd)
 }
 
 // CompileWith is the testable variant of Compile. Production callers use
