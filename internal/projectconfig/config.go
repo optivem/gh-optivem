@@ -75,6 +75,19 @@ type Config struct {
 	System          System          `yaml:"system"`
 	SystemTest      TierSpec        `yaml:"system_test"`
 	ExternalSystems ExternalSystems `yaml:"external_systems,omitempty"`
+
+	// SystemConfig is the repo-relative path to system.json for `gh optivem
+	// run|build|test|stop|clean`. Optional; when empty, runner commands fall
+	// back to ./system.json or the explicit --system-config flag. Free-form
+	// path (no enum/shape check) — file-existence is verified at load-time,
+	// not validate-time, matching the convention for the other path fields
+	// in this schema.
+	SystemConfig string `yaml:"system_config,omitempty"`
+
+	// TestConfig is the repo-relative path to tests.json for `gh optivem
+	// test`. Optional; when empty, `test system` falls back to ./tests.json
+	// or the explicit --test-config flag. Same conventions as SystemConfig.
+	TestConfig string `yaml:"test_config,omitempty"`
 }
 
 // Project carries the GitHub Projects board URL. Repo organization

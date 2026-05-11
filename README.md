@@ -143,7 +143,7 @@ gh optivem stop system                       # docker compose down + container c
 gh optivem clean system                      # docker compose down -v --rmi local (delete volumes + locally-built images)
 ```
 
-All runner subcommands also accept `--system-config <path>` (default `./system.json`) and the `test` subcommand accepts `--test-config <path>` (default `./tests.json`) for projects where the config files live elsewhere.
+All runner subcommands accept `--system-config <path>` and `test system` additionally accepts `--test-config <path>` for projects where these files live elsewhere. The paths are resolved through three knobs in ascending order of permanence — flag → `gh-optivem.yaml` field → built-in default. See [Pointing at non-default configs](#pointing-at-non-default-configs) below.
 
 Multi-test semantics depend on the suite's `testFilter` in `tests.json`. The runner combines multiple `--test` values per `testFilterJoin`: `"or"` (default) joins names with `|` and substitutes once — works for dotnet (`&DisplayName~T1|T2`) and playwright/jest (`--grep 'T1|T2'`); `"repeat"` substitutes the whole `testFilter` once per name and concatenates — required for gradle (`--tests T1 --tests T2`). Practical ceiling on Windows is ~600 typical test names per invocation (the OS caps each command line at 32K characters).
 
@@ -174,6 +174,27 @@ Every scaffolded repo gets a `gh-optivem.yaml` at its root. The file declares fi
 Every populated tier carries the same `path:` (repo-relative) and `repo:` (slug from the participating repos) pair; system-tier blocks additionally carry `lang:`. The runtime preflight on `gh optivem atdd implement-ticket` validates that every declared path exists on disk before any agent runs, so a config / layout mismatch fails fast with a readable error rather than mid-pipeline.
 
 For the canonical reference, see the four sample configs (mono-repo × multi-repo crossed with monolith × multitier) in [`plans/20260505-100000-scope-paths-and-implement-ticket-preflight.md`](plans/20260505-100000-scope-paths-and-implement-ticket-preflight.md).
+
+### Pointing at non-default configs
+
+Three knobs decide which `gh-optivem.yaml` / `system.json` / `tests.json` the tool reads, in ascending order of permanence. Each knob overrides everything below it:
+
+```bash
+# 1. One-shot flag (highest precedence)
+gh optivem -c ./gh-optivem.shop-monolith.yaml test system \
+    --system-config docker/java/monolith/system.json \
+    --test-config system-test/java/tests-latest.json
+
+# 2. Shell-session env var (for gh-optivem.yaml only)
+export GH_OPTIVEM_CONFIG=./gh-optivem.shop-monolith.yaml
+gh optivem test system
+
+# 3. Per-project default baked into gh-optivem.yaml (lowest precedence)
+system_config: docker/system.json
+test_config:   system-test/tests-latest.json
+```
+
+`gh optivem init` auto-populates `system_config:` / `test_config:` to the paths it produces, so freshly scaffolded repos work without any flags. `gh optivem config init` (hand-rolled repos) leaves both fields empty — add them once your layout is settled and drop the per-command flags.
 
 ## How it works
 

@@ -266,6 +266,61 @@ func TestWrite_RoundTripPreservesAllFourSamples(t *testing.T) {
 	}
 }
 
+// TestRoundTrip_PreservesSystemAndTestConfig verifies that the optional
+// system_config: / test_config: fields survive a Write→Load round-trip when
+// set, and stay empty (and absent from the written YAML) when unset.
+func TestRoundTrip_PreservesSystemAndTestConfig(t *testing.T) {
+	t.Parallel()
+
+	t.Run("set", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		cfg := &Config{
+			SystemConfig: "docker/system.json",
+			TestConfig:   "system-test/tests-latest.json",
+		}
+		if err := Write(dir, cfg); err != nil {
+			t.Fatalf("Write: %v", err)
+		}
+		got, err := Load(dir)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if got.SystemConfig != cfg.SystemConfig {
+			t.Errorf("system_config: got %q, want %q", got.SystemConfig, cfg.SystemConfig)
+		}
+		if got.TestConfig != cfg.TestConfig {
+			t.Errorf("test_config: got %q, want %q", got.TestConfig, cfg.TestConfig)
+		}
+	})
+
+	t.Run("unset omits the keys", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		if err := Write(dir, &Config{}); err != nil {
+			t.Fatalf("Write: %v", err)
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, Path))
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		body := string(raw)
+		if strings.Contains(body, "system_config") {
+			t.Errorf("unset system_config should not appear in YAML, got:\n%s", body)
+		}
+		if strings.Contains(body, "test_config") {
+			t.Errorf("unset test_config should not appear in YAML, got:\n%s", body)
+		}
+		got, err := Load(dir)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if got.SystemConfig != "" || got.TestConfig != "" {
+			t.Errorf("zero-value round-trip got non-empty fields: %+v", got)
+		}
+	})
+}
+
 // ---------------------------------------------------------------------------
 // Validation rules
 // ---------------------------------------------------------------------------

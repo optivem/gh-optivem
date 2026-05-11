@@ -18,6 +18,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/runner"
 )
 
@@ -40,8 +41,8 @@ const (
 	defaultSystemConfig = "./system.json"
 	defaultTestsConfig  = "./tests.json"
 
-	flagSystemUsage = "Path to system.json"
-	flagTestsUsage  = "Path to tests.json"
+	flagSystemUsage = "Path to system.json (default resolves to gh-optivem.yaml's system_config: field, then ./system.json)"
+	flagTestsUsage  = "Path to tests.json (default resolves to gh-optivem.yaml's test_config: field, then ./tests.json)"
 
 	errorFormat = "ERROR: %v\n"
 )
@@ -58,26 +59,86 @@ func exitOnError(err error) {
 }
 
 // hintIfMissing wraps a "file not found" error from runner.Load* with a hint
-// telling the user which flag overrides the default path. Other errors are
+// listing the three knobs in resolution-precedence order (flag → YAML field
+// → default path), so the hint also documents lookup order. Other errors are
 // returned unchanged.
-func hintIfMissing(err error, flag, defaultPath string) error {
+func hintIfMissing(err error, flag, yamlField, defaultPath string) error {
 	if err == nil || !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	return fmt.Errorf("%w\n  hint: pass %s <path> to point at a different file (default: %s)", err, flag, defaultPath)
+	return fmt.Errorf("%w\n  hint: pass %s <path>, set %s: in gh-optivem.yaml, or create %s",
+		err, flag, yamlField, defaultPath)
+}
+
+// resolveSystemPath applies the runner's three-tier path lookup:
+//  1. --system-config flag (explicit operator override)
+//  2. gh-optivem.yaml's system_config: field
+//  3. defaultSystemConfig (./system.json)
+//
+// A missing gh-optivem.yaml is "no preference" and falls through to the
+// default — runner commands still work in repos without one. A YAML that
+// was loaded but has system_config empty falls through likewise. Parse or
+// validation errors propagate (a broken file shouldn't silently pick a
+// fallback the operator didn't ask for); a missing file at an *explicit*
+// --config / $GH_OPTIVEM_CONFIG target also propagates for the same reason.
+func resolveSystemPath(flagVal string) (string, error) {
+	if flagVal != "" {
+		return flagVal, nil
+	}
+	cfg, err := loadProjectConfigForRunner()
+	if err != nil {
+		return "", err
+	}
+	if cfg != nil && cfg.SystemConfig != "" {
+		return cfg.SystemConfig, nil
+	}
+	return defaultSystemConfig, nil
+}
+
+// resolveTestsPath mirrors resolveSystemPath for tests.json / test_config:.
+func resolveTestsPath(flagVal string) (string, error) {
+	if flagVal != "" {
+		return flagVal, nil
+	}
+	cfg, err := loadProjectConfigForRunner()
+	if err != nil {
+		return "", err
+	}
+	if cfg != nil && cfg.TestConfig != "" {
+		return cfg.TestConfig, nil
+	}
+	return defaultTestsConfig, nil
+}
+
+// loadProjectConfigForRunner reads gh-optivem.yaml via the persistent
+// --config / $GH_OPTIVEM_CONFIG resolution. A missing default-location file
+// returns (nil, nil) — runner subcommands must keep working in repos that
+// have no gh-optivem.yaml yet. A missing file at an *explicit* path is an
+// error: the operator pointed at it on purpose.
+func loadProjectConfigForRunner() (*projectconfig.Config, error) {
+	path, explicit := projectconfig.ResolvePath(projectConfigPath)
+	cfg, err := projectconfig.LoadFromPath(path)
+	if err == nil {
+		return cfg, nil
+	}
+	if errors.Is(err, fs.ErrNotExist) && !explicit {
+		return nil, nil
+	}
+	return nil, err
 }
 
 // loadSystem wraps runner.LoadSystem so a missing file points the user at
-// --system-config instead of just reporting "file not found".
+// the three resolution knobs (--system-config, system_config: in YAML,
+// default path).
 func loadSystem(path string) (*runner.SystemConfig, error) {
 	sys, err := runner.LoadSystem(path)
-	return sys, hintIfMissing(err, "--system-config", defaultSystemConfig)
+	return sys, hintIfMissing(err, "--system-config", "system_config", defaultSystemConfig)
 }
 
-// loadTests wraps runner.LoadTests with the same flag hint as loadSystem.
+// loadTests wraps runner.LoadTests with the same three-knob hint as loadSystem.
 func loadTests(path string) (*runner.TestsConfig, error) {
 	tests, err := runner.LoadTests(path)
-	return tests, hintIfMissing(err, "--test-config", defaultTestsConfig)
+	return tests, hintIfMissing(err, "--test-config", "test_config", defaultTestsConfig)
 }
 
 // newBuildCmd wires `gh optivem build` and its `system` child. The parent has
@@ -106,12 +167,14 @@ func newBuildSystemCmd() *cobra.Command {
 		Short:   "docker compose build for every entry in system.json",
 		Example: `  gh optivem build system --rebuild`,
 		Run: func(cmd *cobra.Command, args []string) {
-			sys, err := loadSystem(systemPath)
+			resolved, err := resolveSystemPath(systemPath)
 			exitOnError(err)
-			exitOnError(runner.Build(sys, cwdForPath(systemPath), runner.BuildOptions{Rebuild: rebuild}))
+			sys, err := loadSystem(resolved)
+			exitOnError(err)
+			exitOnError(runner.Build(sys, cwdForPath(resolved), runner.BuildOptions{Rebuild: rebuild}))
 		},
 	}
-	cmd.Flags().StringVar(&systemPath, "system-config", defaultSystemConfig, flagSystemUsage)
+	cmd.Flags().StringVar(&systemPath, "system-config", "", flagSystemUsage)
 	cmd.Flags().BoolVar(&rebuild, "rebuild", false, "Force a full rebuild from scratch (no layer cache reuse)")
 	return cmd
 }
@@ -140,13 +203,15 @@ func newRunSystemCmd() *cobra.Command {
 		Short:   "docker compose up + wait for health",
 		Example: `  gh optivem run system --restart`,
 		Run: func(cmd *cobra.Command, args []string) {
-			sys, err := loadSystem(systemPath)
+			resolved, err := resolveSystemPath(systemPath)
+			exitOnError(err)
+			sys, err := loadSystem(resolved)
 			exitOnError(err)
 			opts := runner.SystemOptions{LogLines: logLines, Restart: restart, UpTimeout: upTimeout}
-			exitOnError(runner.Up(sys, cwdForPath(systemPath), opts))
+			exitOnError(runner.Up(sys, cwdForPath(resolved), opts))
 		},
 	}
-	cmd.Flags().StringVar(&systemPath, "system-config", defaultSystemConfig, flagSystemUsage)
+	cmd.Flags().StringVar(&systemPath, "system-config", "", flagSystemUsage)
 	cmd.Flags().BoolVar(&restart, "restart", false, "Force tear-down + restart even if the system is already up")
 	cmd.Flags().IntVar(&logLines, "log-lines", 50, "Lines of compose logs to dump on health-probe failure")
 	cmd.Flags().DurationVar(&upTimeout, "up-timeout", 0, "Per-attempt timeout for `docker compose up -d` (zero = 5m default)")
@@ -172,12 +237,14 @@ func newStopSystemCmd() *cobra.Command {
 		Short:   "docker compose down + container cleanup",
 		Example: `  gh optivem stop system`,
 		Run: func(cmd *cobra.Command, args []string) {
-			sys, err := loadSystem(systemPath)
+			resolved, err := resolveSystemPath(systemPath)
 			exitOnError(err)
-			exitOnError(runner.Down(sys, cwdForPath(systemPath)))
+			sys, err := loadSystem(resolved)
+			exitOnError(err)
+			exitOnError(runner.Down(sys, cwdForPath(resolved)))
 		},
 	}
-	cmd.Flags().StringVar(&systemPath, "system-config", defaultSystemConfig, flagSystemUsage)
+	cmd.Flags().StringVar(&systemPath, "system-config", "", flagSystemUsage)
 	return cmd
 }
 
@@ -203,12 +270,14 @@ func newCleanSystemCmd() *cobra.Command {
 		Short:   "docker compose down -v --rmi local (delete volumes + locally-built images)",
 		Example: `  gh optivem clean system && gh optivem test system`,
 		Run: func(cmd *cobra.Command, args []string) {
-			sys, err := loadSystem(systemPath)
+			resolved, err := resolveSystemPath(systemPath)
 			exitOnError(err)
-			exitOnError(runner.Clean(sys, cwdForPath(systemPath)))
+			sys, err := loadSystem(resolved)
+			exitOnError(err)
+			exitOnError(runner.Clean(sys, cwdForPath(resolved)))
 		},
 	}
-	cmd.Flags().StringVar(&systemPath, "system-config", defaultSystemConfig, flagSystemUsage)
+	cmd.Flags().StringVar(&systemPath, "system-config", "", flagSystemUsage)
 	return cmd
 }
 
@@ -263,7 +332,9 @@ func newTestSystemCmd() *cobra.Command {
   gh optivem test system --suite smoke --test T1,T2
   gh optivem test system --list`,
 		Run: func(cmd *cobra.Command, args []string) {
-			tests, err := loadTests(testsPath)
+			resolvedTests, err := resolveTestsPath(testsPath)
+			exitOnError(err)
+			tests, err := loadTests(resolvedTests)
 			exitOnError(err)
 			if list {
 				for _, id := range tests.SuiteIDs() {
@@ -271,7 +342,9 @@ func newTestSystemCmd() *cobra.Command {
 				}
 				return
 			}
-			sys, err := loadSystem(systemPath)
+			resolvedSystem, err := resolveSystemPath(systemPath)
+			exitOnError(err)
+			sys, err := loadSystem(resolvedSystem)
 			exitOnError(err)
 			opts := runner.TestOptions{
 				Suite:   suite,
@@ -283,11 +356,11 @@ func newTestSystemCmd() *cobra.Command {
 				Restart: restart,
 				NoSetup: noSetup,
 			}
-			exitOnError(runner.RunTests(sys, tests, cwdForPath(systemPath), cwdForPath(testsPath), opts))
+			exitOnError(runner.RunTests(sys, tests, cwdForPath(resolvedSystem), cwdForPath(resolvedTests), opts))
 		},
 	}
-	cmd.Flags().StringVar(&systemPath, "system-config", defaultSystemConfig, flagSystemUsage)
-	cmd.Flags().StringVar(&testsPath, "test-config", defaultTestsConfig, flagTestsUsage)
+	cmd.Flags().StringVar(&systemPath, "system-config", "", flagSystemUsage)
+	cmd.Flags().StringVar(&testsPath, "test-config", "", flagTestsUsage)
 	cmd.Flags().StringVar(&suite, "suite", "", "Run only the suite with this id")
 	cmd.Flags().StringSliceVar(&test, "test", nil, "Narrow execution to the given test name(s); repeatable, also accepts comma-separated values (substituted into the suite's testFilter)")
 	cmd.Flags().BoolVar(&sample, "sample", false, "Use each suite's sampleTest field as the test name")

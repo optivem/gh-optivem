@@ -6,6 +6,18 @@ import (
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
+// Auto-populated path defaults written into the scaffolded gh-optivem.yaml's
+// `system_config:` / `test_config:` fields. They mirror the layout that
+// copySystemTests produces (docker/<arch>/<lang>/ collapses to docker/, and
+// system-test/<lang>/ collapses to system-test/ — see apply_template.go's
+// flattening rules). `tests-latest.json` is chosen over `tests-legacy.json`
+// to match the runner's default suite expectation; switching to legacy is a
+// one-shot `--test-config` override.
+const (
+	scaffoldedSystemConfigPath = "docker/system.json"
+	scaffoldedTestConfigPath   = "system-test/tests-latest.json"
+)
+
 // WriteOptivemYAML writes <repoRoot>/gh-optivem.yaml in the scaffolded repo(s),
 // translating already-resolved init flags into the projectconfig.Config schema.
 // The file is consumed by the ATDD pipeline at runtime (project URL, repo
@@ -18,6 +30,12 @@ import (
 // `cfg.RepoStrategy` arrives in the init flag's spelling (`monorepo` /
 // `multirepo`); this function translates to the schema's spelling (`mono-repo`
 // / `multi-repo`) at write-time so the two surfaces can evolve independently.
+//
+// SystemConfig / TestConfig are auto-populated to the paths that copySystemTests
+// just produced (`docker/system.json`, `system-test/tests-latest.json`). Without
+// this, a freshly-scaffolded repo wouldn't work with `gh optivem run|test
+// system` from repo root — the runner defaults are `./system.json` / `./tests.json`,
+// neither of which exists in the scaffolded layout.
 func WriteOptivemYAML(cfg *config.Config) {
 	log.Info("Writing gh-optivem.yaml...")
 
@@ -27,6 +45,8 @@ func WriteOptivemYAML(cfg *config.Config) {
 	}
 
 	pc := buildOptivemYAML(cfg)
+	pc.SystemConfig = scaffoldedSystemConfigPath
+	pc.TestConfig = scaffoldedTestConfigPath
 
 	writeOptivemYAMLToDir(cfg.RepoDir, pc)
 
