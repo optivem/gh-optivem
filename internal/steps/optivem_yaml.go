@@ -7,7 +7,7 @@ import (
 )
 
 // Auto-populated path defaults written into the scaffolded gh-optivem.yaml's
-// `system_config:` / `test_config:` fields. They mirror the layout that
+// `system.config:` / `system_test.config:` fields. They mirror the layout that
 // copySystemTests produces (docker/<arch>/<lang>/ collapses to docker/, and
 // system-test/<lang>/ collapses to system-test/ — see apply_template.go's
 // flattening rules). `tests-latest.yaml` is chosen over `tests-legacy.yaml`
@@ -31,11 +31,12 @@ const (
 // `multirepo`); this function translates to the schema's spelling (`mono-repo`
 // / `multi-repo`) at write-time so the two surfaces can evolve independently.
 //
-// SystemConfig / TestConfig are auto-populated to the paths that copySystemTests
-// just produced (`docker/systems.yaml`, `system-test/tests-latest.yaml`). Without
-// this, a freshly-scaffolded repo wouldn't work with `gh optivem run|test
-// system` from repo root — the runner defaults are `./systems.yaml` / `./tests.yaml`,
-// neither of which exists in the scaffolded layout.
+// System.Config / SystemTest.Config are auto-populated to the paths that
+// copySystemTests just produced (`docker/systems.yaml`,
+// `system-test/tests-latest.yaml`). Without this, a freshly-scaffolded repo
+// wouldn't work with `gh optivem run|test system` from repo root — the runner
+// defaults are `./systems.yaml` / `./tests.yaml`, neither of which exists in
+// the scaffolded layout.
 func WriteOptivemYAML(cfg *config.Config) {
 	log.Info("Writing gh-optivem.yaml...")
 
@@ -45,8 +46,8 @@ func WriteOptivemYAML(cfg *config.Config) {
 	}
 
 	pc := buildOptivemYAML(cfg)
-	pc.SystemConfig = scaffoldedSystemConfigPath
-	pc.TestConfig = scaffoldedTestConfigPath
+	pc.System.Config = scaffoldedSystemConfigPath
+	pc.SystemTest.Config = scaffoldedTestConfigPath
 
 	writeOptivemYAMLToDir(cfg.RepoDir, pc)
 

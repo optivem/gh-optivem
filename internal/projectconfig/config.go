@@ -76,19 +76,13 @@ type Config struct {
 	SystemTest      TierSpec        `yaml:"system_test"`
 	ExternalSystems ExternalSystems `yaml:"external_systems,omitempty"`
 
-	// SystemConfig is the repo-relative path to systems.yaml (or legacy
-	// systems.json) for `gh optivem run|build|test|stop|clean`. Optional;
-	// when empty, runner commands fall back to ./systems.yaml or the
-	// explicit --system-config flag. Free-form path (no enum/shape check) —
-	// file-existence is verified at load-time, not validate-time, matching
-	// the convention for the other path fields in this schema.
-	SystemConfig string `yaml:"system_config,omitempty"`
-
-	// TestConfig is the repo-relative path to tests.yaml (or legacy
-	// tests.json) for `gh optivem test`. Optional; when empty, `test system`
-	// falls back to ./tests.yaml or the explicit --test-config flag. Same
-	// conventions as SystemConfig.
-	TestConfig string `yaml:"test_config,omitempty"`
+	// LegacySystemConfig / LegacyTestConfig are the pre-2026-05 top-level
+	// spellings of System.Config / SystemTest.Config. Kept on the struct
+	// solely so Validate can surface a clear migration error when an old
+	// config is loaded; never written out (omitempty + Validate rejects
+	// any non-empty value before Write reaches the marshaller).
+	LegacySystemConfig string `yaml:"system_config,omitempty"`
+	LegacyTestConfig   string `yaml:"test_config,omitempty"`
 }
 
 // Project carries the GitHub Projects board URL. Repo organization
@@ -111,6 +105,16 @@ type Project struct {
 type System struct {
 	Architecture string `yaml:"architecture,omitempty"`
 
+	// Config is the repo-relative path to systems.yaml (or legacy systems.json)
+	// for `gh optivem run|build|test|stop|clean`. Optional; when empty, runner
+	// commands fall back to ./systems.yaml or the explicit --system-config flag.
+	// Free-form path (no enum/shape check) — file existence is verified at
+	// load-time, not validate-time, matching the convention for the other
+	// path fields in this schema. Belongs on System (not at top level)
+	// because it's a property of the system being run — the runner
+	// orchestration config, sibling to System.Path / System.Backend.Path.
+	Config string `yaml:"config,omitempty"`
+
 	// Monolith-only.
 	Path string `yaml:"path,omitempty"`
 	Repo string `yaml:"repo,omitempty"`
@@ -123,12 +127,14 @@ type System struct {
 
 // TierSpec describes one body of code: where it lives, in which repo,
 // and what language it is written in. Used for backend, frontend, and
-// system_test. All three fields are mandatory whenever the tier is set;
-// no defaults, no inference.
+// system_test. Path/Repo/Lang are mandatory whenever the tier is set;
+// no defaults, no inference. Config is only meaningful on system_test
+// (the tests.yaml path) — Validate rejects it on backend/frontend.
 type TierSpec struct {
-	Path string `yaml:"path,omitempty"`
-	Repo string `yaml:"repo,omitempty"`
-	Lang string `yaml:"lang,omitempty"`
+	Path   string `yaml:"path,omitempty"`
+	Repo   string `yaml:"repo,omitempty"`
+	Lang   string `yaml:"lang,omitempty"`
+	Config string `yaml:"config,omitempty"`
 }
 
 // ExternalSystems declares vendored stand-ins for third-party dependencies
@@ -192,6 +198,31 @@ func (c *Config) Repos() []string {
 func (c *Config) Validate() error {
 	if c == nil {
 		return nil
+	}
+
+	// Rule 0: deprecated top-level keys. Pre-2026-05 configs put the
+	// runner/test config paths at top level (`system_config:` / `test_config:`).
+	// They now live under `system.config:` / `system_test.config:`. Fail
+	// loudly with a migration hint rather than silently ignoring the value
+	// and falling through to ./systems.yaml.
+	if c.LegacySystemConfig != "" {
+		return fmt.Errorf("config: top-level system_config: %q is no longer supported — move it to system.config:",
+			c.LegacySystemConfig)
+	}
+	if c.LegacyTestConfig != "" {
+		return fmt.Errorf("config: top-level test_config: %q is no longer supported — move it to system_test.config:",
+			c.LegacyTestConfig)
+	}
+
+	// Rule 0b: Config on backend/frontend tiers is meaningless — the runner
+	// systems.yaml path lives on the System block, not on per-tier code
+	// specs. Reject early so a typo'd `system.backend.config:` doesn't
+	// silently parse as a no-op.
+	if c.System.Backend.Config != "" {
+		return fmt.Errorf("config: system.backend.config is not a supported field (use system.config for the runner systems.yaml)")
+	}
+	if c.System.Frontend.Config != "" {
+		return fmt.Errorf("config: system.frontend.config is not a supported field (use system.config for the runner systems.yaml)")
 	}
 
 	// Rule 1: repo strategy enum.
@@ -328,7 +359,10 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// IsEmpty reports whether t is the zero-value TierSpec (no fields set).
+// IsEmpty reports whether t has no tier identity set (Path/Repo/Lang all
+// empty). Config alone does not make a tier — `system_test: { config: x }`
+// is still IsEmpty so the architecture-presence rule fires the same way
+// it always did.
 func (t TierSpec) IsEmpty() bool {
 	return t.Path == "" && t.Repo == "" && t.Lang == ""
 }
