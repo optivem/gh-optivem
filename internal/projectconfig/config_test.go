@@ -998,3 +998,149 @@ func TestWriteToPath_EmptyPathErrors(t *testing.T) {
 		t.Fatal("expected error for empty yamlPath, got nil")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// system_name / license / deploy field validation
+// ---------------------------------------------------------------------------
+
+// validMonolithBase is the smallest Config that Validate accepts with
+// architecture set. Each system_name/license/deploy test mutates a copy.
+func validMonolithBase() *Config {
+	return &Config{
+		Project:      Project{URL: "https://github.com/orgs/acme/projects/1"},
+		RepoStrategy: RepoStrategyMonoRepo,
+		System: System{
+			Architecture: ArchMonolith,
+			Path:         "system",
+			Repo:         "acme/page-turner",
+			Lang:         LangJava,
+		},
+		SystemTest: TierSpec{Path: "system-test", Repo: "acme/page-turner", Lang: LangJava},
+	}
+}
+
+func TestValidate_AcceptsValidSystemName(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	cfg.SystemName = "Page Turner"
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate: %v", err)
+	}
+}
+
+func TestValidate_RejectsReservedSystemName(t *testing.T) {
+	t.Parallel()
+	cases := []string{"class", "shop", "Switch Class"}
+	for _, name := range cases {
+		cfg := validMonolithBase()
+		cfg.SystemName = name
+		err := cfg.Validate()
+		if err == nil {
+			t.Errorf("Validate(system_name=%q): want error, got nil", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), "system_name") {
+			t.Errorf("Validate(system_name=%q): want error mentioning system_name, got: %v", name, err)
+		}
+	}
+}
+
+func TestValidate_RejectsBadCharsInSystemName(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	cfg.SystemName = "page-turner" // hyphens not allowed; letters + spaces only
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate: want error for hyphenated name, got nil")
+	}
+	if !strings.Contains(err.Error(), "system_name") {
+		t.Errorf("error should mention system_name, got: %v", err)
+	}
+}
+
+func TestValidate_AcceptsKnownLicenses(t *testing.T) {
+	t.Parallel()
+	for _, key := range []string{LicenseMIT, LicenseApache2, LicenseGPL3, LicenseBSD2, LicenseBSD3, LicenseUnlicense} {
+		cfg := validMonolithBase()
+		cfg.License = key
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("Validate(license=%q): %v", key, err)
+		}
+	}
+}
+
+func TestValidate_RejectsUnknownLicense(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	cfg.License = "bogus-license"
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate: want error for unknown license, got nil")
+	}
+	if !strings.Contains(err.Error(), "license") {
+		t.Errorf("error should mention license, got: %v", err)
+	}
+}
+
+func TestValidate_AcceptsKnownDeploys(t *testing.T) {
+	t.Parallel()
+	for _, key := range []string{DeployDocker, DeployCloudRun} {
+		cfg := validMonolithBase()
+		cfg.Deploy = key
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("Validate(deploy=%q): %v", key, err)
+		}
+	}
+}
+
+func TestValidate_RejectsUnknownDeploy(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	cfg.Deploy = "bare-metal"
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate: want error for unknown deploy, got nil")
+	}
+	if !strings.Contains(err.Error(), "deploy") {
+		t.Errorf("error should mention deploy, got: %v", err)
+	}
+}
+
+func TestValidate_AcceptsEmptyIdentityFields(t *testing.T) {
+	t.Parallel()
+	// system_name / license / deploy are all optional at the schema layer
+	// (init re-checks presence). A config with architecture set and these
+	// fields absent must still validate.
+	cfg := validMonolithBase()
+	cfg.SystemName = ""
+	cfg.License = ""
+	cfg.Deploy = ""
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate: %v (empty system_name/license/deploy must be OK)", err)
+	}
+}
+
+func TestRoundTrip_PreservesIdentityFields(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	in := validMonolithBase()
+	in.SystemName = "Page Turner"
+	in.License = LicenseApache2
+	in.Deploy = DeployDocker
+	if err := Write(dir, in); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	out, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if out.SystemName != in.SystemName {
+		t.Errorf("system_name: got %q, want %q", out.SystemName, in.SystemName)
+	}
+	if out.License != in.License {
+		t.Errorf("license: got %q, want %q", out.License, in.License)
+	}
+	if out.Deploy != in.Deploy {
+		t.Errorf("deploy: got %q, want %q", out.Deploy, in.Deploy)
+	}
+}

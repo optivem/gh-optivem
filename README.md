@@ -41,32 +41,43 @@ Equivalent to `gh extension upgrade optivem` — either form works.
 
 ## Usage
 
-### Scaffold a monolith project
+Scaffolding is **two-phase**. First write `gh-optivem.yaml` — the file that carries every project-stable value (owner, repo, arch, langs, system name, license, deploy target, tier paths, project URL). Then run `gh optivem init` to create the GitHub repo(s) and apply the template.
+
+### 1) Write `gh-optivem.yaml`
 
 ```bash
-gh optivem init --owner acme --system-name "Page Turner" --repo page-turner \
-    --arch monolith --repo-strategy monorepo --monolith-lang java
+gh optivem config init --owner acme --repo page-turner --system-name "Page Turner" \
+    --arch monolith --repo-strategy monorepo --monolith-lang java \
+    --project-url https://github.com/orgs/acme/projects/1 \
+    --system-path system --system-test-path system-test \
+    --stubs-path external-systems/external-stub \
+    --simulators-path external-systems/external-real-sim
 ```
 
-The repo name can also be passed positionally — `gh optivem init page-turner --owner acme ...` — in which case `--repo` is optional.
-
-### Scaffold a multitier project
+Multitier:
 
 ```bash
-gh optivem init --owner acme --system-name "Page Turner" --repo page-turner \
+gh optivem config init --owner acme --repo page-turner --system-name "Page Turner" \
     --arch multitier --repo-strategy multirepo \
-    --backend-lang java --frontend-lang react
+    --backend-lang java --frontend-lang react \
+    --project-url https://github.com/orgs/acme/projects/1 \
+    --backend-path backend --frontend-path frontend \
+    --system-test-path system-test \
+    --stubs-path external-systems/external-stub \
+    --simulators-path external-systems/external-real-sim
 ```
 
-### Other init flags
+Or run `gh optivem config init` interactively when the file is missing — `gh-optivem` prompts for owner/repo (auto-inferred from `git remote origin` when available), system-name, arch, repo-strategy, lang, and project-url; everything else is defaulted.
+
+Review the generated `gh-optivem.yaml`, hand-edit if needed, then run `gh optivem config validate` to confirm.
+
+### 2) Scaffold
 
 ```bash
-gh optivem init ... --license apache-2.0          # mit (default), apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense
-gh optivem init ... --test-lang typescript         # override; defaults to --monolith-lang or --backend-lang
-gh optivem init ... --workdir ./scratch            # custom clone dir; defaults to a temp dir
-gh optivem init ... --shop-ref meta-v1.2.3         # pin optivem/shop to a tag, SHA, or branch
-gh optivem init ... --no-atdd                      # skip installing ATDD agents/commands/prompts from shop
+gh optivem init
 ```
+
+No flags needed — every project-stable value comes from `gh-optivem.yaml`. The `init` command accepts only per-invocation flags (dry-run, workdir, verify-level, no-*, log-file, …).
 
 ### Dry run
 
@@ -145,7 +156,7 @@ gh optivem stop system                       # docker compose down + container c
 gh optivem clean system                      # docker compose down -v --rmi local (delete volumes + locally-built images)
 ```
 
-All runner subcommands accept `--system-config <path>` and `test system` additionally accepts `--test-config <path>` for projects where these files live elsewhere. The paths are resolved through three knobs in ascending order of permanence — flag → `gh-optivem.yaml` field → built-in default. See [Pointing at non-default configs](#pointing-at-non-default-configs) below.
+The paths to `systems.yaml` / `tests.yaml` are resolved through two knobs in ascending order of permanence — `gh-optivem.yaml`'s `system_config:` / `test_config:` field → built-in default (`./systems.yaml` / `./tests.yaml`). Projects with non-default layouts (e.g. `docker/java/monolith/systems.yaml`) set the YAML field once and forget; to pick an alternate variant ad hoc, select a different `gh-optivem.yaml` via the persistent `-c` / `--config` flag. See [Pointing at non-default configs](#pointing-at-non-default-configs) below.
 
 Multi-test semantics depend on the suite's `testFilter` in `tests.yaml`. The runner combines multiple `--test` values per `testFilterJoin`: `"or"` (default) joins names with `|` and substitutes once — works for dotnet (`&DisplayName~T1|T2`) and playwright/jest (`--grep 'T1|T2'`); `"repeat"` substitutes the whole `testFilter` once per name and concatenates — required for gradle (`--tests T1 --tests T2`). Practical ceiling on Windows is ~600 typical test names per invocation (the OS caps each command line at 32K characters).
 
@@ -179,15 +190,13 @@ For the canonical reference, see the four sample configs (mono-repo × multi-rep
 
 ### Pointing at non-default configs
 
-Three knobs decide which `gh-optivem.yaml` / `systems.yaml` / `tests.yaml` the tool reads, in ascending order of permanence. Each knob overrides everything below it:
+Three knobs decide which `gh-optivem.yaml` the tool reads (and from there which `systems.yaml` / `tests.yaml`), in ascending order of permanence. Each knob overrides everything below it:
 
 ```bash
-# 1. One-shot flag (highest precedence)
-gh optivem -c ./gh-optivem.shop-monolith.yaml test system \
-    --system-config docker/java/monolith/systems.yaml \
-    --test-config system-test/java/tests-latest.yaml
+# 1. One-shot flag (highest precedence) — selects which gh-optivem.yaml to read
+gh optivem -c ./gh-optivem.shop-monolith.yaml test system
 
-# 2. Shell-session env var (for gh-optivem.yaml only)
+# 2. Shell-session env var (same role as --config)
 export GH_OPTIVEM_CONFIG=./gh-optivem.shop-monolith.yaml
 gh optivem test system
 
@@ -198,7 +207,23 @@ test_config:   system-test/tests-latest.yaml
 
 Legacy `.json` files still work — the loader picks the parser from the file extension, and any in-flight repo carrying `systems.json` / `tests-latest.json` keeps loading without changes.
 
-`gh optivem init` auto-populates `system_config:` / `test_config:` to the paths it produces, so freshly scaffolded repos work without any flags. `gh optivem config init` (hand-rolled repos) leaves both fields empty — add them once your layout is settled and drop the per-command flags.
+`gh optivem init` auto-populates `system_config:` / `test_config:` to the paths it produces, so freshly scaffolded repos work without any flags. `gh optivem config init` (hand-rolled repos) leaves both fields empty — add them once your layout is settled.
+
+#### ATDD-specific overrides
+
+The ATDD pipeline (`gh optivem atdd implement-ticket` / `manage-project`) reads four optional override fields from the same `gh-optivem.yaml`:
+
+```yaml
+process_flow: config/process-flow.yaml         # alternate process-flow YAML (default: embedded)
+agent_prompts:                                  # swap one or more embedded agent prompts
+  atdd-test: config/prompts/atdd-test.md
+node_extras:                                    # appended to a node's prompt at dispatch
+  AT_RED_DSL_WRITE: prefer record types
+node_replacements:                              # replaces a node's prompt verbatim with this file body
+  AT_RED_TEST_WRITE: config/prompts/at-red-test-write.md
+```
+
+All four fields are optional; absent means "use the embedded default." To experiment without committing a change to the project's `gh-optivem.yaml`, copy it to a side file and pass `--config ./gh-optivem.experimental.yaml`. There is no per-invocation flag for any of these — they are project-stable values by design.
 
 ## How it works
 

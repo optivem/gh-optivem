@@ -71,12 +71,33 @@ const (
 //   - system:          the system being built — polymorphic by architecture.
 //   - system_test:     the test suite that drives the system.
 //   - external_systems: optional vendored stand-ins (stubs, simulators).
+//   - system_name:     human-readable system label for templating.
+//   - license:         license key for the scaffolded LICENSE file.
+//   - deploy:          deployment target (docker | cloud-run).
 type Config struct {
 	Project         Project         `yaml:"project"`
 	RepoStrategy    string          `yaml:"repo_strategy,omitempty"`
 	System          System          `yaml:"system"`
 	SystemTest      TierSpec        `yaml:"system_test"`
 	ExternalSystems ExternalSystems `yaml:"external_systems,omitempty"`
+
+	// SystemName is the human-readable system label (e.g. "Page Turner")
+	// that drives template substitution at `gh optivem init` — Java package
+	// names, .NET namespaces, TypeScript package names, README headings.
+	// Project-stable: an operator does not change a system's name across
+	// init invocations. Validated against ValidateSystemName when set.
+	SystemName string `yaml:"system_name,omitempty"`
+
+	// License is the SPDX-like license key used to emit the scaffolded
+	// repo's LICENSE file and README badge (mit, apache-2.0, gpl-3.0,
+	// bsd-2-clause, bsd-3-clause, unlicense). Validated against the known
+	// set when set.
+	License string `yaml:"license,omitempty"`
+
+	// Deploy is the deployment target the scaffolded repo's workflows
+	// target (docker | cloud-run). Today only docker is production-ready;
+	// cloud-run is reserved for the in-development path.
+	Deploy string `yaml:"deploy,omitempty"`
 
 	// SystemConfig is the repo-relative path to systems.yaml (or legacy
 	// systems.json) for `gh optivem run|build|test|stop|clean`. Optional;
@@ -395,6 +416,31 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Rule 14: system_name format. Empty is accepted at the schema layer
+	// so partial configs (project URL + repo_strategy only, no system
+	// scope yet) keep working; `gh optivem init` re-checks presence at
+	// invocation time. When set, the value must match the full naming
+	// rule used by the templating pipeline.
+	if c.SystemName != "" {
+		if msg := ValidateSystemName(c.SystemName); msg != "" {
+			return fmt.Errorf("config: system_name: %s", msg)
+		}
+	}
+
+	// Rule 15: license enum. Empty is accepted (init layers a default
+	// when reading); a non-empty value must be a known key so the
+	// scaffolded LICENSE file isn't silently wrong.
+	if c.License != "" && !IsValidLicense(c.License) {
+		return fmt.Errorf("config: license %q must be one of mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense", c.License)
+	}
+
+	// Rule 16: deploy enum. Empty is accepted (init layers `docker` as
+	// the default); a non-empty value must be `docker` or `cloud-run`.
+	if c.Deploy != "" && !IsValidDeploy(c.Deploy) {
+		return fmt.Errorf("config: deploy %q must be one of %q, %q",
+			c.Deploy, DeployDocker, DeployCloudRun)
+	}
+
 	return nil
 }
 
@@ -589,18 +635,32 @@ func WriteToPath(yamlPath string, cfg *Config) error {
 	if yamlPath == "" {
 		return fmt.Errorf("config: yamlPath is required")
 	}
-	if cfg == nil {
-		return fmt.Errorf("config: cfg is required")
-	}
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-	data, err := yaml.Marshal(cfg)
+	data, err := Marshal(cfg)
 	if err != nil {
-		return fmt.Errorf("config: marshal: %w", err)
+		return err
 	}
 	if err := os.WriteFile(yamlPath, data, 0o644); err != nil {
 		return fmt.Errorf("config: write %s: %w", yamlPath, err)
 	}
 	return nil
+}
+
+// Marshal validates cfg and returns its YAML byte representation. Exposed
+// so callers that need to layer additional bytes onto the YAML (e.g.
+// prepend a banner comment in the interactive `config init` recovery
+// flow) don't have to round-trip through a file. Mirrors WriteToPath's
+// validate-then-marshal contract — what comes back is guaranteed to be
+// the same bytes WriteToPath would have written.
+func Marshal(cfg *Config) ([]byte, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("config: cfg is required")
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("config: marshal: %w", err)
+	}
+	return data, nil
 }

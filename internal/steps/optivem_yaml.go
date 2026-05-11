@@ -1,6 +1,9 @@
 package steps
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
@@ -80,6 +83,26 @@ func WriteOptivemYAMLToFilePath(cfg *config.Config, yamlPath string) error {
 	return projectconfig.WriteToPath(yamlPath, pc)
 }
 
+// WriteOptivemYAMLToFilePathWithBanner is the variant used by the
+// interactive `config init` recovery flow: marshals the YAML and prepends
+// a banner comment block so the operator sees which fields were
+// defaulted before running `gh optivem config validate`. The non-
+// interactive command keeps using WriteOptivemYAMLToFilePath (no banner)
+// — operators running that one have supplied every flag and don't need
+// a review checklist.
+func WriteOptivemYAMLToFilePathWithBanner(cfg *config.Config, yamlPath, banner string) error {
+	pc := buildOptivemYAML(cfg)
+	data, err := projectconfig.Marshal(pc)
+	if err != nil {
+		return err
+	}
+	body := append([]byte(banner), data...)
+	if err := os.WriteFile(yamlPath, body, 0o644); err != nil {
+		return fmt.Errorf("config: write %s: %w", yamlPath, err)
+	}
+	return nil
+}
+
 func writeOptivemYAMLToDir(dir string, pc *projectconfig.Config) {
 	if err := projectconfig.Write(dir, pc); err != nil {
 		log.Fatalf("Write gh-optivem.yaml: %v", err)
@@ -100,11 +123,14 @@ func buildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	pc := &projectconfig.Config{
 		Project:      projectconfig.Project{URL: cfg.ProjectURL},
 		RepoStrategy: mapRepoStrategy(cfg.RepoStrategy),
+		SystemName:   cfg.SystemName,
+		License:      cfg.License,
+		Deploy:       cfg.Deploy,
 	}
 	if cfg.Arch == "" {
 		// Partial config (no architecture chosen yet) — emit just the
-		// project + repo_strategy keys; the rest stays empty and Validate
-		// accepts that shape.
+		// project + repo_strategy + identity keys; the rest stays empty
+		// and Validate accepts that shape.
 		return pc
 	}
 	pc.System = buildSystem(cfg)

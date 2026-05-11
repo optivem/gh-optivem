@@ -42,6 +42,7 @@ set -euo pipefail
 # === REHEARSAL CONFIG === (edit these for your setup)
 REHEARSAL_OWNER="optivem"
 REHEARSAL_REPO="shop"
+REHEARSAL_SYSTEM_NAME="Shop"
 REHEARSAL_ARCH="monolith"
 REHEARSAL_REPO_STRATEGY="monorepo"
 REHEARSAL_MONOLITH_LANG="typescript"
@@ -180,6 +181,7 @@ log "Writing gh-optivem.yaml into worktree..."
 ( cd "$WORKTREE_PATH" && "$BIN" config init \
     --owner "$REHEARSAL_OWNER" \
     --repo "$REHEARSAL_REPO" \
+    --system-name "$REHEARSAL_SYSTEM_NAME" \
     --arch "$REHEARSAL_ARCH" \
     --repo-strategy "$REHEARSAL_REPO_STRATEGY" \
     --monolith-lang "$REHEARSAL_MONOLITH_LANG" \

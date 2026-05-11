@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"strings"
@@ -28,6 +29,7 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/shell"
 	"github.com/optivem/gh-optivem/internal/steps"
 	"github.com/optivem/gh-optivem/internal/version"
@@ -129,31 +131,35 @@ func newUpgradeCmd() *cobra.Command {
 	}
 }
 
-// newInitCmd builds the `init` subcommand. The repo name can be passed
-// positionally (`gh optivem init page-turner ...`) or via --repo; if both are
-// given, the explicit flag wins.
+// newInitCmd builds the `init` subcommand. Project-stable values
+// (owner, repo, system-name, arch, repo-strategy, langs, paths,
+// project-url, license, deploy) come from gh-optivem.yaml — written by
+// `gh optivem config init`. The init command surface is per-invocation
+// flags only.
 func newInitCmd() *cobra.Command {
 	f := &config.RawFlags{}
 	cmd := &cobra.Command{
-		Use:   "init [repo]",
+		Use:   "init",
 		Short: "Scaffold a new pipeline project",
 		Long: `Scaffold a new pipeline project: create the GitHub repo(s), apply the shop
 template with naming substitutions, wire up the SonarCloud project(s), and
-verify the pipeline up to the requested --verify-level.`,
-		Example: `  # Monolith, Java
-  gh optivem init page-turner --owner acme --system-name "Page Turner" \
-      --arch monolith --repo-strategy monorepo --monolith-lang java
+verify the pipeline up to the requested --verify-level.
 
-  # Multitier (Java backend, React frontend), one repo per tier
-  gh optivem init page-turner --owner acme --system-name "Page Turner" \
-      --arch multitier --repo-strategy multirepo \
-      --backend-lang java --frontend-lang react`,
-		Args: cobra.MaximumNArgs(1),
+Project-stable values are read from gh-optivem.yaml (run ` + "`gh optivem config init`" + `
+first to produce one). The init command itself only takes per-invocation
+flags — dry-run, verify-level, workdir, etc.`,
+		Example: `  # 1) generate gh-optivem.yaml (once per project, interactively or via flags)
+  gh optivem config init --owner acme --system-name "Page Turner" \
+      --repo page-turner --arch monolith --repo-strategy monorepo \
+      --monolith-lang java --project-url https://github.com/orgs/acme/projects/1 \
+      --system-path system --system-test-path system-test \
+      --stubs-path external-systems/external-stub \
+      --simulators-path external-systems/external-real-sim
+
+  # 2) review gh-optivem.yaml, then scaffold
+  gh optivem init`,
+		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			// Positional repo wins only if --repo wasn't passed explicitly.
-			if len(args) == 1 && f.Repo == "" {
-				f.Repo = args[0]
-			}
 			runInit(cmd, f)
 		},
 	}
@@ -161,7 +167,32 @@ verify the pipeline up to the requested --verify-level.`,
 	return cmd
 }
 
+// loadProjectConfigForInit resolves the gh-optivem.yaml path using the
+// shared flag > env > default cascade and reads the file. A missing file
+// is a hard error with a pointer to `gh optivem config init` so the
+// operator knows the single command that produces a complete yaml. The
+// runtime's "missing file = nil config" convention does not apply on
+// `init` — there is no fallback path.
+func loadProjectConfigForInit(flagPath string) (*projectconfig.Config, error) {
+	path, _ := projectconfig.ResolvePath(flagPath)
+	pc, err := projectconfig.LoadFromPath(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("no gh-optivem.yaml at %s; run `gh optivem config init` first", path)
+		}
+		return nil, err
+	}
+	return pc, nil
+}
+
 func runInit(cmd *cobra.Command, f *config.RawFlags) {
+	pc, err := loadProjectConfigForInit(projectConfigPath)
+	if err != nil {
+		log.FatalExit(err.Error())
+	}
+	if err := config.FillRawFlagsFromYAML(f, pc); err != nil {
+		log.FatalExit(err.Error())
+	}
 	cfg := config.ParseAndValidate(cmd, f)
 	if err := log.Init(cfg.Verbose, cfg.Quiet, cfg.LogFile); err != nil {
 		log.FatalExit(err.Error())
@@ -680,7 +711,22 @@ func printBanner(cfg *config.Config) {
 	fmt.Println(separator)
 
 	fmt.Println()
-	fmt.Println("  Inputs")
+	fmt.Println("  From gh-optivem.yaml")
+	fmt.Println()
+	log.Infof("owner:             %s", cfg.Owner)
+	log.Infof("repo:              %s", cfg.Repo)
+	log.Infof("system_name:       %s", cfg.SystemName)
+	log.Infof("system.architecture: %s", cfg.Arch)
+	log.Infof("repo_strategy:     %s", cfg.RepoStrategy)
+	log.Infof("system.lang:       %s", cfg.Lang)
+	log.Infof("system.backend.lang: %s", cfg.BackendLang)
+	log.Infof("system.frontend.lang: %s", cfg.FrontendLang)
+	log.Infof("system_test.lang:  %s", cfg.TestLang)
+	log.Infof("license:           %s", cfg.License)
+	log.Infof("deploy:            %s", cfg.Deploy)
+
+	fmt.Println()
+	fmt.Println("  Per-invocation flags")
 	fmt.Println()
 	tag := func(name string) string {
 		if cfg.UserSetFlags[name] {
@@ -688,17 +734,6 @@ func printBanner(cfg *config.Config) {
 		}
 		return " (default)"
 	}
-	log.Infof("--owner:           %s%s", cfg.Owner, tag("owner"))
-	log.Infof("--repo:            %s%s", cfg.Raw.Repo, tag("repo"))
-	log.Infof("--system-name:     %s%s", cfg.SystemName, tag("system-name"))
-	log.Infof("--arch:            %s%s", cfg.Arch, tag("arch"))
-	log.Infof("--repo-strategy:   %s%s", cfg.RepoStrategy, tag("repo-strategy"))
-	log.Infof("--monolith-lang:   %s%s", cfg.Lang, tag("monolith-lang"))
-	log.Infof("--backend-lang:    %s%s", cfg.BackendLang, tag("backend-lang"))
-	log.Infof("--frontend-lang:   %s%s", cfg.FrontendLang, tag("frontend-lang"))
-	log.Infof("--test-lang:       %s%s", cfg.Raw.TestLang, tag("test-lang"))
-	log.Infof("--license:         %s%s", cfg.License, tag("license"))
-	log.Infof("--deploy:          %s%s", cfg.Deploy, tag("deploy"))
 	log.Infof("--verify-level:      %s%s", cfg.Raw.VerifyLevel, tag("verify-level"))
 	log.Infof("--no-legacy:         %v%s", cfg.NoLegacy, tag("no-legacy"))
 	log.Infof("--no-local-tests:    %v%s", cfg.NoLocalTests, tag("no-local-tests"))

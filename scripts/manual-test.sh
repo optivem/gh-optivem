@@ -13,19 +13,27 @@ set -euo pipefail
 # scripts/cleanup-orphans.sh. The local scaffold dir is deleted by
 # `gh optivem init` itself (its default).
 #
+# Two-phase scaffolding: writes gh-optivem.yaml via `config init` first,
+# then runs `init` against it. Project-stable flags (--system-name,
+# --arch, langs, paths, project-url, etc.) go to `config init`;
+# per-invocation flags (--keep-local, --report-bug, --dry-run, --verbose,
+# --quiet, --log-file, --workdir, --shop-ref, --verify-level, --yes, the
+# --no-* set) go to `init`. The split is hardcoded — passing an unknown
+# flag is an error.
+#
 # On failure: nothing is deleted, so the scaffold dir + remote repos
 # stay around for debugging.
 #
 # Usage:
 #   bash scripts/manual-test.sh --owner <user> --system-name "Page Turner" \
-#       --arch monolith --repo-strategy monorepo --monolith-lang java
+#       --arch monolith --repo-strategy monorepo --monolith-lang java \
+#       --project-url https://github.com/orgs/<user>/projects/N
 #
 #   bash scripts/manual-test.sh --no-cleanup --owner <user> ...
 #
-# All flags (except --no-cleanup) are forwarded to `gh optivem init`.
-# The script supplies --repo; --no-cleanup is translated to --keep-local
-# (which also suppresses the post-run remote cleanup). Do not pass
-# --repo or --keep-local yourself — they will conflict.
+# The script supplies --repo (random name) and tier-path defaults; --no-cleanup
+# is translated to --keep-local on init. Do not pass --repo or --keep-local
+# yourself — they will conflict.
 #
 # Orphan cleanup if the script is killed mid-run:
 #   bash scripts/cleanup-orphans.sh --owner <user> --repos --sonar \
@@ -60,14 +68,42 @@ fi
 
 NO_CLEANUP=0
 OWNER=""
-PASSTHROUGH=()
+# Flags routed to `config init` (project-stable, written into gh-optivem.yaml).
+CONFIG_INIT_FLAGS=()
+# Flags routed to `init` (per-invocation only).
+INIT_FLAGS=()
+# Default tier paths matching the flat scaffold layout the binary itself
+# expects. Overridden if the caller passes their own --*-path flag.
+PATH_SYSTEM=""
+PATH_SYSTEM_TEST=""
+PATH_BACKEND=""
+PATH_FRONTEND=""
+PATH_STUBS=""
+PATH_SIMULATORS=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --no-cleanup) NO_CLEANUP=1; shift ;;
-    --owner)      OWNER="$2"; PASSTHROUGH+=("$1" "$2"); shift 2 ;;
-    -h|--help)    sed -n '4,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *)            PASSTHROUGH+=("$1"); shift ;;
+    -h|--help)    sed -n '4,33p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    # Project-stable flags → config init
+    --owner)             OWNER="$2"; CONFIG_INIT_FLAGS+=("$1" "$2"); shift 2 ;;
+    --system-name)       CONFIG_INIT_FLAGS+=("$1" "$2"); shift 2 ;;
+    --arch)              CONFIG_INIT_FLAGS+=("$1" "$2"); shift 2 ;;
+    --repo-strategy)     CONFIG_INIT_FLAGS+=("$1" "$2"); shift 2 ;;
+    --monolith-lang|--backend-lang|--frontend-lang|--test-lang) CONFIG_INIT_FLAGS+=("$1" "$2"); shift 2 ;;
+    --license|--deploy)  CONFIG_INIT_FLAGS+=("$1" "$2"); shift 2 ;;
+    --project-url)       CONFIG_INIT_FLAGS+=("$1" "$2"); shift 2 ;;
+    --system-path)       PATH_SYSTEM="$2"; shift 2 ;;
+    --system-test-path)  PATH_SYSTEM_TEST="$2"; shift 2 ;;
+    --backend-path)      PATH_BACKEND="$2"; shift 2 ;;
+    --frontend-path)     PATH_FRONTEND="$2"; shift 2 ;;
+    --stubs-path)        PATH_STUBS="$2"; shift 2 ;;
+    --simulators-path)   PATH_SIMULATORS="$2"; shift 2 ;;
+    # Per-invocation flags → init
+    --dry-run|--verbose|-v|--quiet|-q|--yes|-y|--no-legacy|--no-local-tests|--no-local-sonar|--no-atdd|--no-project|--report-bug|--keep-local)
+                         INIT_FLAGS+=("$1"); shift ;;
+    --verify-level|--workdir|--shop-ref|--log-file) INIT_FLAGS+=("$1" "$2"); shift 2 ;;
+    *) echo "ERROR: unknown flag $1" >&2; exit 2 ;;
   esac
 done
 
@@ -83,11 +119,25 @@ else
 fi
 REPO="manual-test-${SUFFIX}"
 
+# Inject --repo and tier-path defaults into the config-init flag set.
+CONFIG_INIT_FLAGS+=(--repo "$REPO")
+CONFIG_INIT_FLAGS+=(--system-test-path "${PATH_SYSTEM_TEST:-system-test}")
+CONFIG_INIT_FLAGS+=(--stubs-path "${PATH_STUBS:-external-systems/external-stub}")
+CONFIG_INIT_FLAGS+=(--simulators-path "${PATH_SIMULATORS:-external-systems/external-real-sim}")
+# Tier-specific defaults — the binary's path-flag validator rejects the
+# wrong-arch flag, so apply per arch. The caller must pass --arch.
+case " ${CONFIG_INIT_FLAGS[*]} " in
+  *" --arch monolith "*)
+    CONFIG_INIT_FLAGS+=(--system-path "${PATH_SYSTEM:-system}") ;;
+  *" --arch multitier "*)
+    CONFIG_INIT_FLAGS+=(--backend-path "${PATH_BACKEND:-backend}")
+    CONFIG_INIT_FLAGS+=(--frontend-path "${PATH_FRONTEND:-frontend}") ;;
+esac
+
 if [[ "$NO_CLEANUP" == "1" ]]; then
-  INIT_FLAGS=(--keep-local)
+  INIT_FLAGS+=(--keep-local)
   CLEANUP_DESC="none (--no-cleanup: keep local dir + GitHub repos + Sonar projects)"
 else
-  INIT_FLAGS=()
   CLEANUP_DESC="full (local dir deleted by init; GitHub repos + Sonar projects deleted after)"
 fi
 
@@ -96,7 +146,23 @@ log "Manual test repo:   $REPO"
 log "Cleanup on success: $CLEANUP_DESC"
 echo ""
 
-if ! go run . init --repo "$REPO" "${INIT_FLAGS[@]}" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}; then
+# Phase 1 — write gh-optivem.yaml into a per-test work dir so manual-test
+# runs in parallel don't stomp on each other. The pre-built binary at
+# ./gh-optivem.exe (line above) is invoked with an absolute path so it
+# works from outside this repo's module dir.
+BIN="$(pwd)/gh-optivem.exe"
+WORKDIR=$(mktemp -d -t manual-test-XXXXXX)
+log "Writing gh-optivem.yaml in $WORKDIR..."
+if ! ( cd "$WORKDIR" && "$BIN" config init "${CONFIG_INIT_FLAGS[@]}" ); then
+  echo ""
+  log "config init failed — yaml not written."
+  banner "${C_RED}" "MANUAL TEST FAILED — ${REPO}"
+  exit 1
+fi
+
+# Phase 2 — scaffold. Run init from $WORKDIR so it picks up the yaml just
+# written.
+if ! ( cd "$WORKDIR" && "$BIN" init "${INIT_FLAGS[@]}" ); then
   echo ""
   log "Scaffold failed — leaving local dir + GitHub repos + Sonar projects intact for debugging."
   log "Clean up later with:"

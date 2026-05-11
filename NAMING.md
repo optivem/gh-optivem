@@ -1,13 +1,13 @@
 # Naming: System Name Replacements
 
-During scaffolding, `gh optivem init` replaces the template system name (`Shop`) with the user's `--system-name` (provided in camelCase) across all source files, file names, and directories.
+During scaffolding, `gh optivem init` replaces the template system name (`Shop`) with the value of `system_name:` in `gh-optivem.yaml` across all source files, file names, and directories. The yaml field is populated by `gh optivem config init --system-name …`.
 
 ## Input Format
 
-The `--system-name` accepts a **camelCase** name. Word boundaries are detected from uppercase transitions. No spaces needed.
+`--system-name` (on `gh optivem config init`) accepts a **camelCase** name. Word boundaries are detected from uppercase transitions. No spaces needed.
 
 ```bash
-gh optivem init --system-name skyTravel ...
+gh optivem config init --system-name skyTravel ...
 ```
 
 ### Word Splitting Algorithm

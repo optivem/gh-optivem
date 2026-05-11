@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/version"
 )
 
@@ -380,117 +381,12 @@ func ValidateRepoFormat(repo string) string {
 
 // ValidateSystemName checks the system name against all naming constraints.
 // Returns an error message or empty string if valid.
+//
+// Thin shim over projectconfig.ValidateSystemName — the canonical rules
+// live with the YAML schema so `gh-optivem.yaml` round-trip validation
+// and `--system-name` flag validation share one source of truth.
 func ValidateSystemName(name string) string {
-	if msg := checkNameTrim(name); msg != "" {
-		return msg
-	}
-	words := strings.Fields(name)
-	if msg := checkWordChars(words); msg != "" {
-		return msg
-	}
-	if msg := checkReservedWords(words); msg != "" {
-		return msg
-	}
-	if msg := checkReservedDerived(name); msg != "" {
-		return msg
-	}
-	if len(name) > 50 {
-		return "system name exceeds 50 character limit"
-	}
-	return ""
-}
-
-func checkNameTrim(name string) string {
-	if len(strings.TrimSpace(name)) == 0 {
-		return "system name cannot be empty"
-	}
-	if name != strings.TrimSpace(name) {
-		return "system name cannot have leading or trailing spaces"
-	}
-	return ""
-}
-
-func checkWordChars(words []string) string {
-	for _, w := range words {
-		for _, c := range w {
-			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
-				return fmt.Sprintf("system name contains invalid character '%c' — only letters and spaces allowed", c)
-			}
-		}
-	}
-	return ""
-}
-
-func checkReservedWords(words []string) string {
-	for _, w := range words {
-		lower := strings.ToLower(w)
-		if isLanguageReserved(lower) {
-			return fmt.Sprintf("word %q is a language reserved keyword", w)
-		}
-		if isScaffoldReserved(lower) {
-			return fmt.Sprintf("word %q is a scaffold reserved word (collides with infrastructure names)", w)
-		}
-	}
-	return ""
-}
-
-func checkReservedDerived(name string) string {
-	camel := SpacesToCamel(name)
-	lower := SpacesToLower(name)
-	if isLanguageReserved(lower) {
-		return fmt.Sprintf("derived form %q is a language reserved keyword", lower)
-	}
-	if isLanguageReserved(camel) {
-		return fmt.Sprintf("derived form %q is a language reserved keyword", camel)
-	}
-	return ""
-}
-
-func isLanguageReserved(word string) bool {
-	reserved := map[string]bool{
-		// Java
-		"abstract": true, "assert": true, "boolean": true, "break": true, "byte": true,
-		"case": true, "catch": true, "char": true, "class": true, "const": true,
-		"continue": true, "default": true, "do": true, "double": true, "else": true,
-		"enum": true, "extends": true, "final": true, "finally": true, "float": true,
-		"for": true, "goto": true, "if": true, "implements": true, "import": true,
-		"instanceof": true, "int": true, "interface": true, "long": true, "native": true,
-		"new": true, "null": true, "package": true, "private": true, "protected": true,
-		"public": true, "return": true, "short": true, "static": true, "strictfp": true,
-		"super": true, "switch": true, "synchronized": true, "this": true, "throw": true,
-		"throws": true, "transient": true, "try": true, "void": true, "volatile": true,
-		"while": true,
-		// C# additional
-		"as": true, "base": true, "bool": true, "checked": true, "decimal": true,
-		"delegate": true, "event": true, "explicit": true, "extern": true, "fixed": true,
-		"foreach": true, "implicit": true, "in": true, "is": true, "lock": true,
-		"namespace": true, "object": true, "operator": true, "out": true, "override": true,
-		"params": true, "readonly": true, "ref": true, "sbyte": true, "sealed": true,
-		"sizeof": true, "stackalloc": true, "string": true, "struct": true, "typeof": true,
-		"uint": true, "ulong": true, "unchecked": true, "unsafe": true, "ushort": true,
-		"using": true, "virtual": true, "where": true, "yield": true,
-		// TypeScript additional
-		"any": true, "async": true, "await": true, "constructor": true, "declare": true,
-		"from": true, "get": true, "let": true, "module": true, "of": true,
-		"require": true, "set": true, "symbol": true, "type": true, "var": true,
-	}
-	return reserved[word]
-}
-
-func isScaffoldReserved(word string) bool {
-	reserved := map[string]bool{
-		"system": true, "backend": true, "frontend": true, "test": true, "api": true,
-		"external": true, "stub": true, "real": true, "monolith": true, "multitier": true,
-		"health": true, "postgres": true, "docker": true, "compose": true, "pipeline": true,
-		"local": true, "stage": true, "commit": true, "acceptance": true, "production": true,
-		"workflow": true, "action": true, "build": true, "deploy": true, "version": true,
-		"config": true, "app": true, "network": true, "service": true, "port": true,
-		"image": true, "container": true, "volume": true, "env": true, "run": true,
-		"src": true, "main": true, "lib": true, "bin": true, "dist": true,
-		"node": true, "gradle": true, "dotnet": true, "java": true, "typescript": true,
-		"react": true, "spring": true, "next": true, "shop": true,
-	}
-	return reserved[word]
+	return projectconfig.ValidateSystemName(name)
 }
 
 // RawFlags holds the unparsed CLI flag values for `init`. Flags bind directly
@@ -537,20 +433,22 @@ type RawFlags struct {
 // so adding a new YAML-affecting flag (e.g. another scope axis) flows to both
 // the `init` and `config init` surfaces in lockstep.
 //
-// Note: --system-name is NOT in this subset. The init flow needs it for
-// templating (Java namespaces, casings, derived identifiers), but
-// buildOptivemYAML never reads cfg.SystemName — the YAML's project/scope
-// fields are name-agnostic. Including it on `config init` would force
-// callers to invent a name to satisfy validation when the value is unused.
+// Project-stable scalars (--system-name, --license, --deploy) live here too:
+// the YAML now carries the templating inputs `init` needs to scaffold, not
+// just the scope axes the ATDD runtime reads. See the corresponding
+// system_name / license / deploy YAML fields on projectconfig.Config.
 func bindYAMLAffectingFlags(fs *pflag.FlagSet, f *RawFlags) {
 	fs.StringVar(&f.Owner, "owner", "", "GitHub username or org (required)")
 	fs.StringVar(&f.Repo, "repo", "", "Repository name, e.g. page-turner (required, or pass positionally)")
+	fs.StringVar(&f.SystemName, "system-name", "", `System name, e.g. "Page Turner" (required)`)
 	fs.StringVar(&f.Arch, "arch", "", "Architecture: monolith or multitier (required)")
 	fs.StringVar(&f.RepoStrategy, "repo-strategy", "", "Repo strategy: monorepo or multirepo (required)")
 	fs.StringVar(&f.Lang, "monolith-lang", "", "System language: java, dotnet, typescript (monolith)")
 	fs.StringVar(&f.TestLang, "test-lang", "", "Test language (defaults to --monolith-lang or --backend-lang)")
 	fs.StringVar(&f.BackendLang, "backend-lang", "", "Backend language: java, dotnet, typescript (multitier)")
 	fs.StringVar(&f.FrontendLang, "frontend-lang", "", "Frontend language: react (multitier)")
+	fs.StringVar(&f.License, "license", "mit", "License: mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense")
+	fs.StringVar(&f.Deploy, "deploy", "docker", "Deployment target: docker or cloud-run")
 	fs.StringVar(&f.ProjectURL, "project-url", "", "GitHub Project URL to bake into gh-optivem.yaml (required; e.g. https://github.com/orgs/<org>/projects/<n>)")
 	// Tier paths: required on 'config init' when --arch is set; on 'init'
 	// they are optional and default to the flat layout the scaffolder
@@ -566,11 +464,14 @@ func bindYAMLAffectingFlags(fs *pflag.FlagSet, f *RawFlags) {
 // BindInitFlags binds every `gh optivem init` CLI flag to the corresponding
 // field on f. Cobra parses on Execute(); ParseAndValidate then validates the
 // populated struct.
+//
+// Per-invocation flags only. Project-stable values (owner, repo, system-name,
+// arch, repo-strategy, langs, paths, project-url, license, deploy) live in
+// gh-optivem.yaml — read by runInit before ParseAndValidate and layered onto
+// f. The YAML-affecting flag set is intentionally absent here so the
+// help page reflects what the operator can actually steer per run.
 func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs := cmd.Flags()
-	bindYAMLAffectingFlags(fs, f)
-	fs.StringVar(&f.SystemName, "system-name", "", `System name, e.g. "Page Turner" (required)`)
-	fs.StringVar(&f.License, "license", "mit", "License: mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense")
 	fs.BoolVar(&f.DryRun, "dry-run", false, "Print actions without executing")
 	fs.BoolVar(&f.KeepLocal, "keep-local", false, "Keep the local scaffolded clone dir instead of deleting it on success")
 	fs.StringVar(&f.VerifyLevel, "verify-level", "release", "Verification level: none, local, commit, acceptance, qa, release")
@@ -580,7 +481,6 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs.BoolVar(&f.NoAtdd, "no-atdd", false, "Skip installing ATDD agents/commands/prompts from shop into the scaffolded repo")
 	fs.BoolVar(&f.NoProject, "no-project", false, "Skip the 'Ensure project board' step entirely (no auto-create, no status-ensure on a supplied --project-url). For CI smoke tests of the scaffolder, or to manage the board out-of-band.")
 	fs.BoolVar(&f.BugReport, "report-bug", false, "On failure, auto-create a GitHub issue in optivem/gh-optivem with scaffold config. Off by default — file one yourself if the failure is worth reporting.")
-	fs.StringVar(&f.Deploy, "deploy", "docker", "Deployment target: docker or cloud-run")
 	fs.StringVar(&f.WorkDir, "workdir", "", "Working directory for cloning (default: temp dir)")
 	fs.StringVar(&f.ShopRef, "shop-ref", "", "Pin optivem/shop to this ref (tag, SHA, or branch — e.g. meta-v1.2.3, main, a1b2c3d). Overrides build-time pin. Default: latest meta-v* release.")
 	fs.BoolVarP(&f.Verbose, "verbose", "v", false, "Enable debug output (retry/wait chatter, diagnostics)")
@@ -1181,20 +1081,12 @@ func latestMetaRelease() (string, error) {
 	return tag, nil
 }
 
-// LicenseName returns the human-readable license name.
+// LicenseName returns the human-readable license name. Thin shim over
+// projectconfig.LicenseName — the canonical key→name map lives with the
+// YAML schema so `gh-optivem.yaml`'s license field and the `--license`
+// flag stay in lockstep.
 func (c *Config) LicenseName() string {
-	names := map[string]string{
-		"mit":          "MIT License",
-		"apache-2.0":   "Apache License 2.0",
-		"gpl-3.0":      "GNU General Public License v3.0",
-		"bsd-2-clause": "BSD 2-Clause License",
-		"bsd-3-clause": "BSD 3-Clause License",
-		"unlicense":    "The Unlicense",
-	}
-	if name, ok := names[c.License]; ok {
-		return name
-	}
-	return c.License
+	return projectconfig.LicenseName(c.License)
 }
 
 // EffectiveLang returns the primary system language (lang for monolith, backend-lang for multitier).
@@ -1215,8 +1107,8 @@ func (c *Config) EffectiveLang() string {
 // behaviour from tests and so the pure local-file-write CLI surface fails
 // with a regular error instead of a hard exit.
 func ValidateAndDeriveForYAML(f *RawFlags) (*Config, error) {
-	if f.Owner == "" || f.Repo == "" || f.Arch == "" || f.RepoStrategy == "" {
-		return nil, fmt.Errorf("required flags: --owner, --repo, --arch, --repo-strategy")
+	if f.Owner == "" || f.Repo == "" || f.SystemName == "" || f.Arch == "" || f.RepoStrategy == "" {
+		return nil, fmt.Errorf("required flags: --owner, --repo, --system-name, --arch, --repo-strategy")
 	}
 	if msg := ValidateOwnerFormat(f.Owner); msg != "" {
 		return nil, fmt.Errorf("--owner: %s", msg)
@@ -1224,11 +1116,30 @@ func ValidateAndDeriveForYAML(f *RawFlags) (*Config, error) {
 	if msg := ValidateRepoFormat(f.Repo); msg != "" {
 		return nil, fmt.Errorf("--repo: %s", msg)
 	}
+	if msg := ValidateSystemName(f.SystemName); msg != "" {
+		return nil, fmt.Errorf("--system-name: %s", msg)
+	}
 	if f.Arch != "monolith" && f.Arch != "multitier" {
 		return nil, fmt.Errorf("--arch must be 'monolith' or 'multitier'")
 	}
 	if f.RepoStrategy != "monorepo" && f.RepoStrategy != "multirepo" {
 		return nil, fmt.Errorf("--repo-strategy must be 'monorepo' or 'multirepo'")
+	}
+	// License/Deploy default to the same values bindYAMLAffectingFlags
+	// uses when the operator doesn't pass the flag. Defaulting here too
+	// means callers who build RawFlags by hand (tests, library users)
+	// see identical behaviour to flag-driven callers.
+	if f.License == "" {
+		f.License = projectconfig.LicenseMIT
+	}
+	if !projectconfig.IsValidLicense(f.License) {
+		return nil, fmt.Errorf("--license %q must be one of mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense", f.License)
+	}
+	if f.Deploy == "" {
+		f.Deploy = projectconfig.DeployDocker
+	}
+	if !projectconfig.IsValidDeploy(f.Deploy) {
+		return nil, fmt.Errorf("--deploy %q must be 'docker' or 'cloud-run'", f.Deploy)
 	}
 	lc, err := resolveLangsForYAML(f)
 	if err != nil {
@@ -1248,12 +1159,15 @@ func ValidateAndDeriveForYAML(f *RawFlags) (*Config, error) {
 		Owner:            f.Owner,
 		Repo:             f.Repo,
 		FullRepo:         f.Owner + "/" + f.Repo,
+		SystemName:       f.SystemName,
 		Arch:             f.Arch,
 		RepoStrategy:     f.RepoStrategy,
 		Lang:             lc.lang,
 		BackendLang:      lc.backendLang,
 		FrontendLang:     lc.frontendLang,
 		TestLang:         lc.testLang,
+		License:          f.License,
+		Deploy:           f.Deploy,
 		ProjectURL:       f.ProjectURL,
 		SystemPath:       f.SystemPath,
 		SystemTestPath:   f.SystemTestPath,
