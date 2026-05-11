@@ -400,8 +400,8 @@ func TestValidate_AcceptsEmptyOverrideMaps(t *testing.T) {
 }
 
 // TestRoundTrip_PreservesSystemAndTestConfig verifies that the optional
-// system_config: / test_config: fields survive a Write→Load round-trip when
-// set, and stay empty (and absent from the written YAML) when unset.
+// system.config: / system_test.config: fields survive a Write→Load round-trip
+// when set, and stay empty (and absent from the written YAML) when unset.
 func TestRoundTrip_PreservesSystemAndTestConfig(t *testing.T) {
 	t.Parallel()
 
@@ -409,9 +409,9 @@ func TestRoundTrip_PreservesSystemAndTestConfig(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
 		cfg := &Config{
-			Project:      Project{URL: "https://github.com/orgs/acme/projects/1"},
-			SystemConfig: "docker/systems.json",
-			TestConfig:   "system-test/tests-latest.json",
+			Project:    Project{URL: "https://github.com/orgs/acme/projects/1"},
+			System:     System{Config: "docker/systems.json"},
+			SystemTest: TierSpec{Config: "system-test/tests-latest.json"},
 		}
 		if err := Write(dir, cfg); err != nil {
 			t.Fatalf("Write: %v", err)
@@ -420,11 +420,11 @@ func TestRoundTrip_PreservesSystemAndTestConfig(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
-		if got.SystemConfig != cfg.SystemConfig {
-			t.Errorf("system_config: got %q, want %q", got.SystemConfig, cfg.SystemConfig)
+		if got.System.Config != cfg.System.Config {
+			t.Errorf("system.config: got %q, want %q", got.System.Config, cfg.System.Config)
 		}
-		if got.TestConfig != cfg.TestConfig {
-			t.Errorf("test_config: got %q, want %q", got.TestConfig, cfg.TestConfig)
+		if got.SystemTest.Config != cfg.SystemTest.Config {
+			t.Errorf("system_test.config: got %q, want %q", got.SystemTest.Config, cfg.SystemTest.Config)
 		}
 	})
 
@@ -440,20 +440,111 @@ func TestRoundTrip_PreservesSystemAndTestConfig(t *testing.T) {
 			t.Fatalf("read: %v", err)
 		}
 		body := string(raw)
-		if strings.Contains(body, "system_config") {
-			t.Errorf("unset system_config should not appear in YAML, got:\n%s", body)
-		}
-		if strings.Contains(body, "test_config") {
-			t.Errorf("unset test_config should not appear in YAML, got:\n%s", body)
+		if strings.Contains(body, "config:") {
+			t.Errorf("unset config: should not appear in YAML, got:\n%s", body)
 		}
 		got, err := Load(dir)
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
-		if got.SystemConfig != "" || got.TestConfig != "" {
-			t.Errorf("zero-value round-trip got non-empty fields: %+v", got)
+		if got.System.Config != "" || got.SystemTest.Config != "" {
+			t.Errorf("zero-value round-trip got non-empty config fields: %+v", got)
 		}
 	})
+}
+
+// TestValidate_RejectsLegacyTopLevelConfigKeys verifies the pre-2026-05
+// top-level system_config: / test_config: spellings produce a clear
+// migration error rather than silently falling through to default paths.
+func TestValidate_RejectsLegacyTopLevelConfigKeys(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		body     string
+		wantHint string
+	}{
+		{
+			name: "legacy system_config",
+			body: `project:
+  url: https://github.com/orgs/acme/projects/1
+system_config: docker/systems.json
+`,
+			wantHint: "system.config",
+		},
+		{
+			name: "legacy test_config",
+			body: `project:
+  url: https://github.com/orgs/acme/projects/1
+test_config: system-test/tests.json
+`,
+			wantHint: "system_test.config",
+		},
+	}
+
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			writeConfig(t, dir, c.body)
+			_, err := Load(dir)
+			if err == nil {
+				t.Fatalf("expected migration error, got nil")
+			}
+			if !strings.Contains(err.Error(), c.wantHint) {
+				t.Errorf("error should hint at %q, got: %v", c.wantHint, err)
+			}
+		})
+	}
+}
+
+// TestValidate_RejectsConfigOnBackendOrFrontend verifies the Config field
+// is rejected on system.backend / system.frontend (it's only meaningful on
+// system_test). Catches typos like accidentally placing the tests.yaml path
+// under a code tier.
+func TestValidate_RejectsConfigOnBackendOrFrontend(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		cfg      *Config
+		wantHint string
+	}{
+		{
+			name: "backend.config",
+			cfg: &Config{
+				Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
+				System: System{
+					Backend: TierSpec{Path: "x", Repo: "r", Lang: LangJava, Config: "nope"},
+				},
+			},
+			wantHint: "system.backend.config",
+		},
+		{
+			name: "frontend.config",
+			cfg: &Config{
+				Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
+				System: System{
+					Frontend: TierSpec{Path: "x", Repo: "r", Lang: LangTypescript, Config: "nope"},
+				},
+			},
+			wantHint: "system.frontend.config",
+		},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			err := c.cfg.Validate()
+			if err == nil {
+				t.Fatalf("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), c.wantHint) {
+				t.Errorf("error should hint at %q, got: %v", c.wantHint, err)
+			}
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------

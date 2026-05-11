@@ -71,12 +71,12 @@ func hintIfMissing(err error, yamlField, defaultPath string) error {
 }
 
 // resolveSystemPath applies the runner's two-tier path lookup:
-//  1. gh-optivem.yaml's system_config: field
+//  1. gh-optivem.yaml's system.config: field
 //  2. defaultSystemConfig (./systems.yaml)
 //
 // A missing gh-optivem.yaml is "no preference" and falls through to the
 // default — runner commands still work in repos without one. A YAML that
-// was loaded but has system_config empty falls through likewise. Parse or
+// was loaded but has system.config empty falls through likewise. Parse or
 // validation errors propagate (a broken file shouldn't silently pick a
 // fallback the operator didn't ask for); a missing file at an *explicit*
 // --config / $GH_OPTIVEM_CONFIG target also propagates for the same reason.
@@ -87,20 +87,20 @@ func resolveSystemPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if cfg != nil && cfg.SystemConfig != "" {
-		return cfg.SystemConfig, nil
+	if cfg != nil && cfg.System.Config != "" {
+		return cfg.System.Config, nil
 	}
 	return defaultSystemConfig, nil
 }
 
-// resolveTestsPath mirrors resolveSystemPath for the tests config / test_config:.
+// resolveTestsPath mirrors resolveSystemPath for the tests config / system_test.config:.
 func resolveTestsPath() (string, error) {
 	cfg, err := loadProjectConfigForRunner()
 	if err != nil {
 		return "", err
 	}
-	if cfg != nil && cfg.TestConfig != "" {
-		return cfg.TestConfig, nil
+	if cfg != nil && cfg.SystemTest.Config != "" {
+		return cfg.SystemTest.Config, nil
 	}
 	return defaultTestsConfig, nil
 }
@@ -123,16 +123,16 @@ func loadProjectConfigForRunner() (*projectconfig.Config, error) {
 }
 
 // loadSystem wraps runner.LoadSystem so a missing file points the user at
-// the two resolution knobs (system_config: in YAML, default path).
+// the two resolution knobs (system.config: in YAML, default path).
 func loadSystem(path string) (*runner.SystemConfig, error) {
 	sys, err := runner.LoadSystem(path)
-	return sys, hintIfMissing(err, "system_config", defaultSystemConfig)
+	return sys, hintIfMissing(err, "system.config", defaultSystemConfig)
 }
 
 // loadTests wraps runner.LoadTests with the same two-knob hint as loadSystem.
 func loadTests(path string) (*runner.TestsConfig, error) {
 	tests, err := runner.LoadTests(path)
-	return tests, hintIfMissing(err, "test_config", defaultTestsConfig)
+	return tests, hintIfMissing(err, "system_test.config", defaultTestsConfig)
 }
 
 // newBuildCmd wires `gh optivem build` and its `system` child. The parent has

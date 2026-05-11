@@ -115,7 +115,7 @@ func TestValidateSuiteTestCombo(t *testing.T) {
 }
 
 // TestLoadSystemMissingFileHintsAtYAML verifies that `gh optivem build/run/...`
-// commands surface the two-knob hint (system_config: YAML field, default
+// commands surface the two-knob hint (system.config: YAML field, default
 // path) when the resolved systems.json is absent — the case a new user runs
 // into first.
 func TestLoadSystemMissingFileHintsAtYAML(t *testing.T) {
@@ -127,7 +127,7 @@ func TestLoadSystemMissingFileHintsAtYAML(t *testing.T) {
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("loadSystem: want errors.Is(err, fs.ErrNotExist), got %v", err)
 	}
-	for _, want := range []string{"system_config", defaultSystemConfig} {
+	for _, want := range []string{"system.config", defaultSystemConfig} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("loadSystem error missing %q hint: %v", want, err)
 		}
@@ -135,7 +135,7 @@ func TestLoadSystemMissingFileHintsAtYAML(t *testing.T) {
 }
 
 // TestLoadTestsMissingFileHintsAtYAML mirrors the two-knob hint check for
-// test_config: / defaultTestsConfig.
+// system_test.config: / defaultTestsConfig.
 func TestLoadTestsMissingFileHintsAtYAML(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "tests.json")
 	_, err := loadTests(missing)
@@ -145,7 +145,7 @@ func TestLoadTestsMissingFileHintsAtYAML(t *testing.T) {
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("loadTests: want errors.Is(err, fs.ErrNotExist), got %v", err)
 	}
-	for _, want := range []string{"test_config", defaultTestsConfig} {
+	for _, want := range []string{"system_test.config", defaultTestsConfig} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("loadTests error missing %q hint: %v", want, err)
 		}
@@ -157,11 +157,11 @@ func TestLoadTestsMissingFileHintsAtYAML(t *testing.T) {
 // gain a misleading hint).
 func TestHintIfMissingPassesThrough(t *testing.T) {
 	want := errors.New("parse system config: bad json")
-	got := hintIfMissing(want, "system_config", defaultSystemConfig)
+	got := hintIfMissing(want, "system.config", defaultSystemConfig)
 	if got != want {
 		t.Errorf("hintIfMissing rewrote a non-ENOENT error: got %v, want %v", got, want)
 	}
-	if hintIfMissing(nil, "system_config", defaultSystemConfig) != nil {
+	if hintIfMissing(nil, "system.config", defaultSystemConfig) != nil {
 		t.Errorf("hintIfMissing(nil) returned non-nil")
 	}
 }
@@ -181,8 +181,8 @@ func runnerResolveSetup(t *testing.T, tmpDir string) {
 
 // writeYAMLConfig persists pc to tmpDir/gh-optivem.yaml so the resolver under
 // test can pick it up via $GH_OPTIVEM_CONFIG. Skips Validate (the tests want
-// to exercise the bare system_config: / test_config: fields without setting
-// up a full architecture-shaped config).
+// to exercise the bare system.config: / system_test.config: fields without
+// setting up a full architecture-shaped config).
 func writeYAMLConfig(t *testing.T, tmpDir string, systemConfig, testConfig string) {
 	t.Helper()
 	// project.url is mandatory in any loadable gh-optivem.yaml; the value
@@ -190,10 +190,10 @@ func writeYAMLConfig(t *testing.T, tmpDir string, systemConfig, testConfig strin
 	// projectconfig.Load returns a non-nil cfg rather than a Validate error.
 	body := "project:\n  url: https://github.com/orgs/acme/projects/1\n"
 	if systemConfig != "" {
-		body += "system_config: " + systemConfig + "\n"
+		body += "system:\n  config: " + systemConfig + "\n"
 	}
 	if testConfig != "" {
-		body += "test_config: " + testConfig + "\n"
+		body += "system_test:\n  config: " + testConfig + "\n"
 	}
 	if err := os.WriteFile(filepath.Join(tmpDir, projectconfig.Path), []byte(body), 0o644); err != nil {
 		t.Fatalf("seed gh-optivem.yaml: %v", err)
