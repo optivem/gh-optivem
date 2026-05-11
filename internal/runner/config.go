@@ -1,41 +1,61 @@
 // Package runner orchestrates docker-compose-backed system tests using two
-// JSON config files: a systems.json (compose + health probes) and a tests.json
-// (setup commands + suites). The runner has no concept of architecture,
-// language, or suite flavor — those identities live in shop's filenames and
-// directory names. This package treats every input as opaque.
+// config files: a systems.{yaml,json} (compose + health probes) and a
+// tests.{yaml,json} (setup commands + suites). The unmarshaller is picked
+// from the file extension — `.yaml` / `.yml` use YAML, anything else uses
+// JSON. Struct keys are identical in both formats (camelCase composeFile
+// etc.), so one struct round-trips either source. The runner has no concept
+// of architecture, language, or suite flavor — those identities live in
+// shop's filenames and directory names. This package treats every input as
+// opaque.
 package runner
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
+// unmarshalConfig picks the codec by file extension. `.yaml` / `.yml` use
+// the YAML codec; anything else (including `.json`) uses JSON. YAML 1.2 is a
+// strict JSON superset, so a `.yaml` file written in JSON syntax still parses.
+func unmarshalConfig(path string, data []byte, out any) error {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".yaml", ".yml":
+		return yaml.Unmarshal(data, out)
+	default:
+		return json.Unmarshal(data, out)
+	}
+}
+
 // SystemConfig describes one or more docker-compose stacks ("systems") to
-// build, bring up, and probe for health. Loaded from systems.json.
+// build, bring up, and probe for health. Loaded from systems.{yaml,json}.
 type SystemConfig struct {
-	Systems []SystemEntry `json:"systems"`
+	Systems []SystemEntry `json:"systems" yaml:"systems"`
 }
 
 // SystemEntry is one compose stack. Label is a free-form log string; the
 // runner never interprets it (typical values in shop: "real", "stub").
 type SystemEntry struct {
-	Label           string      `json:"label"`
-	ComposeFile     string      `json:"composeFile"`
-	ContainerName   string      `json:"containerName"`
-	Components      []Component `json:"components"`
-	ExternalSystems []Component `json:"externalSystems"`
+	Label           string      `json:"label" yaml:"label"`
+	ComposeFile     string      `json:"composeFile" yaml:"composeFile"`
+	ContainerName   string      `json:"containerName" yaml:"containerName"`
+	Components      []Component `json:"components" yaml:"components"`
+	ExternalSystems []Component `json:"externalSystems" yaml:"externalSystems"`
 }
 
 // Component is one service within a system (a SUT component or external sim).
 // URL is optional — components without one are skipped during health probes.
 type Component struct {
-	Name          string `json:"name"`
-	URL           string `json:"url"`
-	ContainerName string `json:"containerName"`
+	Name          string `json:"name" yaml:"name"`
+	URL           string `json:"url" yaml:"url"`
+	ContainerName string `json:"containerName" yaml:"containerName"`
 }
 
-// TestsConfig describes test-runner setup + suites. Loaded from tests.json.
+// TestsConfig describes test-runner setup + suites. Loaded from tests.{yaml,json}.
 //
 // TestFilter is a template containing the literal "<test>" — the runner
 // substitutes the user-supplied --test value(s) (or a suite's sampleTest
@@ -55,43 +75,44 @@ type Component struct {
 //	                       concatenate. Covers gradle (`--tests T1 --tests T2`)
 //	                       where the *flag itself* must repeat.
 type TestsConfig struct {
-	SetupCommands  []SetupCommand `json:"setupCommands"`
-	TestFilter     string         `json:"testFilter"`
-	TestFilterJoin string         `json:"testFilterJoin,omitempty"`
-	Suites         []Suite        `json:"suites"`
+	SetupCommands  []SetupCommand `json:"setupCommands" yaml:"setupCommands"`
+	TestFilter     string         `json:"testFilter" yaml:"testFilter"`
+	TestFilterJoin string         `json:"testFilterJoin,omitempty" yaml:"testFilterJoin,omitempty"`
+	Suites         []Suite        `json:"suites" yaml:"suites"`
 }
 
 // SetupCommand is one test-runner-side setup step — npm ci, dotnet build,
 // gradle compileTestJava. NOT a SUT image build (use `build system` for that).
 type SetupCommand struct {
-	Name    string            `json:"name"`
-	Command string            `json:"command"`
-	Env     map[string]string `json:"env,omitempty"`
+	Name    string            `json:"name" yaml:"name"`
+	Command string            `json:"command" yaml:"command"`
+	Env     map[string]string `json:"env,omitempty" yaml:"env,omitempty"`
 }
 
 // Suite is one runnable test suite. Env vars are set on the test process,
 // not interpolated into Command. TestInstallCommands run once before the
 // suite if non-empty (e.g. installing playwright browsers per-suite).
 type Suite struct {
-	ID                  string            `json:"id"`
-	Name                string            `json:"name"`
-	Command             string            `json:"command"`
-	Env                 map[string]string `json:"env,omitempty"`
-	Path                string            `json:"path"`
-	TestReportPath      string            `json:"testReportPath"`
-	SampleTest          string            `json:"sampleTest,omitempty"`
-	TestInstallCommands []string          `json:"testInstallCommands,omitempty"`
+	ID                  string            `json:"id" yaml:"id"`
+	Name                string            `json:"name" yaml:"name"`
+	Command             string            `json:"command" yaml:"command"`
+	Env                 map[string]string `json:"env,omitempty" yaml:"env,omitempty"`
+	Path                string            `json:"path" yaml:"path"`
+	TestReportPath      string            `json:"testReportPath" yaml:"testReportPath"`
+	SampleTest          string            `json:"sampleTest,omitempty" yaml:"sampleTest,omitempty"`
+	TestInstallCommands []string          `json:"testInstallCommands,omitempty" yaml:"testInstallCommands,omitempty"`
 }
 
-// LoadSystem reads and validates systems.json from path.
+// LoadSystem reads and validates systems.{yaml,json} from path. The format is
+// chosen by extension (`.yaml` / `.yml` → YAML, anything else → JSON).
 func LoadSystem(path string) (*SystemConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read system config %s: %w", path, err)
 	}
 	var cfg SystemConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("system config %s: expected JSON file format, but content is not valid JSON: %w", path, err)
+	if err := unmarshalConfig(path, data, &cfg); err != nil {
+		return nil, fmt.Errorf("system config %s: expected JSON or YAML file format, but content is not valid: %w", path, err)
 	}
 	if len(cfg.Systems) == 0 {
 		return nil, fmt.Errorf("system config %s: systems[] is empty", path)
@@ -120,15 +141,16 @@ func LoadSystem(path string) (*SystemConfig, error) {
 	return &cfg, nil
 }
 
-// LoadTests reads and validates tests.json from path.
+// LoadTests reads and validates tests.{yaml,json} from path. The format is
+// chosen by extension (`.yaml` / `.yml` → YAML, anything else → JSON).
 func LoadTests(path string) (*TestsConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read tests config %s: %w", path, err)
 	}
 	var cfg TestsConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("tests config %s: expected JSON file format, but content is not valid JSON: %w", path, err)
+	if err := unmarshalConfig(path, data, &cfg); err != nil {
+		return nil, fmt.Errorf("tests config %s: expected JSON or YAML file format, but content is not valid: %w", path, err)
 	}
 	for i, sc := range cfg.SetupCommands {
 		if sc.Name == "" {

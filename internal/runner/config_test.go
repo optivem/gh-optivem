@@ -10,6 +10,8 @@ import (
 const (
 	systemJSONFilename = "systems.json"
 	testsJSONFilename  = "tests.json"
+	systemYAMLFilename = "systems.yaml"
+	testsYAMLFilename  = "tests.yaml"
 )
 
 func writeTempFile(t *testing.T, name, content string) string {
@@ -84,20 +86,20 @@ func TestLoadSystemFileNotFound(t *testing.T) {
 func TestLoadSystemInvalidJSON(t *testing.T) {
 	path := writeTempFile(t, systemJSONFilename, `{"systems":[`)
 	_, err := LoadSystem(path)
-	if err == nil || !strings.Contains(err.Error(), "expected JSON file format") {
-		t.Errorf("want JSON-format error, got: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "expected JSON or YAML file format") {
+		t.Errorf("want format error, got: %v", err)
 	}
 }
 
 // TestLoadSystemNonJSONFileRejected covers the case a user passes a
-// docker-compose YAML to --system-config — the parse error should explicitly
-// mention the expected JSON format, not just byte-offset gibberish from the
-// JSON parser.
+// docker-compose YAML to --system-config under a `.json` filename — the JSON
+// codec runs (extension dispatch) and the parse error mentions both accepted
+// formats so the operator knows renaming to .yaml is an option.
 func TestLoadSystemNonJSONFileRejected(t *testing.T) {
 	path := writeTempFile(t, systemJSONFilename, "services:\n  app:\n    image: example\n")
 	_, err := LoadSystem(path)
-	if err == nil || !strings.Contains(err.Error(), "expected JSON file format") {
-		t.Errorf("want JSON-format error, got: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "expected JSON or YAML file format") {
+		t.Errorf("want format error, got: %v", err)
 	}
 }
 
@@ -235,13 +237,278 @@ func TestLoadTestsMissingSetupCommandCommandRejected(t *testing.T) {
 	}
 }
 
-// TestLoadTestsNonJSONFileRejected covers the case a user passes a YAML or
-// other non-JSON file to --test-config.
+// TestLoadTestsNonJSONFileRejected covers the case a user passes YAML content
+// under a `.json` filename to --test-config — the JSON codec runs and the error
+// mentions both accepted formats.
 func TestLoadTestsNonJSONFileRejected(t *testing.T) {
 	path := writeTempFile(t, testsJSONFilename, "suites:\n  - id: smoke\n")
 	_, err := LoadTests(path)
-	if err == nil || !strings.Contains(err.Error(), "expected JSON file format") {
-		t.Errorf("want JSON-format error, got: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "expected JSON or YAML file format") {
+		t.Errorf("want format error, got: %v", err)
+	}
+}
+
+// --- YAML round-trip coverage ---------------------------------------------
+//
+// These tests mirror the JSON-fixture tests above with `.yaml` extensions and
+// YAML syntax. The struct tags carry both `json:"..."` and `yaml:"..."` with
+// identical camelCase keys, so the field-level error messages should be
+// byte-identical between formats — only the parse error differs.
+
+func TestLoadSystemHappyPathYAML(t *testing.T) {
+	path := writeTempFile(t, systemYAMLFilename, `
+systems:
+  - label: real
+    composeFile: monolith/docker-compose.local.real.yml
+    containerName: my-shop-real
+    components:
+      - name: Monolith
+        url: http://localhost:3311
+        containerName: system
+    externalSystems:
+      - name: ERP
+        url: http://localhost:9311/erp/health
+        containerName: external-real
+  - label: stub
+    composeFile: monolith/docker-compose.local.stub.yml
+    containerName: my-shop-stub
+    components: []
+    externalSystems: []
+`)
+	cfg, err := LoadSystem(path)
+	if err != nil {
+		t.Fatalf("LoadSystem: %v", err)
+	}
+	if len(cfg.Systems) != 2 {
+		t.Errorf("want 2 systems, got %d", len(cfg.Systems))
+	}
+	if cfg.Systems[0].Label != "real" {
+		t.Errorf("want first label 'real', got %q", cfg.Systems[0].Label)
+	}
+	if cfg.Systems[0].Components[0].URL != "http://localhost:3311" {
+		t.Errorf("component URL not parsed: %+v", cfg.Systems[0].Components[0])
+	}
+}
+
+func TestLoadSystemEmptySystemsRejectedYAML(t *testing.T) {
+	path := writeTempFile(t, systemYAMLFilename, "systems: []\n")
+	_, err := LoadSystem(path)
+	if err == nil || !strings.Contains(err.Error(), "systems[] is empty") {
+		t.Errorf("want 'systems[] is empty' error, got: %v", err)
+	}
+}
+
+func TestLoadSystemMissingComposeFileRejectedYAML(t *testing.T) {
+	path := writeTempFile(t, systemYAMLFilename, `
+systems:
+  - label: x
+    components: []
+    externalSystems: []
+`)
+	_, err := LoadSystem(path)
+	if err == nil || !strings.Contains(err.Error(), "missing composeFile") {
+		t.Errorf("want 'missing composeFile' error, got: %v", err)
+	}
+}
+
+func TestLoadSystemMissingLabelRejectedYAML(t *testing.T) {
+	path := writeTempFile(t, systemYAMLFilename, `
+systems:
+  - composeFile: x.yml
+`)
+	_, err := LoadSystem(path)
+	if err == nil || !strings.Contains(err.Error(), "missing label") {
+		t.Errorf("want 'missing label' error, got: %v", err)
+	}
+}
+
+func TestLoadSystemMissingComponentNameRejectedYAML(t *testing.T) {
+	path := writeTempFile(t, systemYAMLFilename, `
+systems:
+  - label: real
+    composeFile: x.yml
+    components:
+      - url: http://localhost:1
+`)
+	_, err := LoadSystem(path)
+	if err == nil || !strings.Contains(err.Error(), "components[0] missing name") {
+		t.Errorf("want 'components[0] missing name' error, got: %v", err)
+	}
+}
+
+func TestLoadSystemMissingExternalSystemURLRejectedYAML(t *testing.T) {
+	path := writeTempFile(t, systemYAMLFilename, `
+systems:
+  - label: real
+    composeFile: x.yml
+    externalSystems:
+      - name: ERP
+`)
+	_, err := LoadSystem(path)
+	if err == nil || !strings.Contains(err.Error(), "missing url") {
+		t.Errorf("want 'missing url' error, got: %v", err)
+	}
+}
+
+func TestLoadSystemInvalidYAML(t *testing.T) {
+	path := writeTempFile(t, systemYAMLFilename, "systems:\n  - label: real\n   composeFile: bad-indent\n")
+	_, err := LoadSystem(path)
+	if err == nil || !strings.Contains(err.Error(), "expected JSON or YAML file format") {
+		t.Errorf("want format error, got: %v", err)
+	}
+}
+
+// TestLoadSystemYAMLAcceptsJSONContent proves YAML 1.2 is a JSON superset —
+// a `.yaml` file containing valid JSON syntax still parses through the YAML
+// codec. Reassures shop operators that hand-renaming `.json` → `.yaml` works
+// without rewriting content.
+func TestLoadSystemYAMLAcceptsJSONContent(t *testing.T) {
+	path := writeTempFile(t, systemYAMLFilename, `{
+		"systems": [{
+			"label": "real",
+			"composeFile": "x.yml",
+			"containerName": "c",
+			"components": [],
+			"externalSystems": []
+		}]
+	}`)
+	cfg, err := LoadSystem(path)
+	if err != nil {
+		t.Fatalf("LoadSystem on JSON-in-.yaml: %v", err)
+	}
+	if cfg.Systems[0].Label != "real" {
+		t.Errorf("want label 'real', got %q", cfg.Systems[0].Label)
+	}
+}
+
+// TestLoadSystemYMLExtension covers the `.yml` alternative extension.
+func TestLoadSystemYMLExtension(t *testing.T) {
+	path := writeTempFile(t, "systems.yml", `
+systems:
+  - label: real
+    composeFile: x.yml
+    containerName: c
+    components: []
+    externalSystems: []
+`)
+	if _, err := LoadSystem(path); err != nil {
+		t.Errorf("LoadSystem on .yml: %v", err)
+	}
+}
+
+func TestLoadTestsHappyPathYAML(t *testing.T) {
+	path := writeTempFile(t, testsYAMLFilename, `
+setupCommands:
+  - name: Install
+    command: npm ci
+testFilter: "--grep '<test>'"
+suites:
+  - id: smoke
+    name: Smoke
+    command: npx playwright test smoke
+    env:
+      MODE: stub
+    path: .
+    testReportPath: playwright-report/index.html
+    sampleTest: shouldWork
+  - id: e2e
+    name: E2E
+    command: npx playwright test e2e
+`)
+	cfg, err := LoadTests(path)
+	if err != nil {
+		t.Fatalf("LoadTests: %v", err)
+	}
+	if len(cfg.Suites) != 2 {
+		t.Errorf("want 2 suites, got %d", len(cfg.Suites))
+	}
+	if cfg.Suites[0].Env["MODE"] != "stub" {
+		t.Errorf("env not parsed: %+v", cfg.Suites[0].Env)
+	}
+	if cfg.TestFilter != "--grep '<test>'" {
+		t.Errorf("testFilter not parsed: %q", cfg.TestFilter)
+	}
+}
+
+func TestLoadTestsEmptySuitesRejectedYAML(t *testing.T) {
+	path := writeTempFile(t, testsYAMLFilename, "suites: []\n")
+	_, err := LoadTests(path)
+	if err == nil || !strings.Contains(err.Error(), "suites[] is empty") {
+		t.Errorf("want 'suites[] is empty' error, got: %v", err)
+	}
+}
+
+func TestLoadTestsMissingIDRejectedYAML(t *testing.T) {
+	path := writeTempFile(t, testsYAMLFilename, `
+suites:
+  - name: X
+    command: x
+`)
+	_, err := LoadTests(path)
+	if err == nil || !strings.Contains(err.Error(), "missing id") {
+		t.Errorf("want 'missing id' error, got: %v", err)
+	}
+}
+
+func TestLoadTestsMissingCommandRejectedYAML(t *testing.T) {
+	path := writeTempFile(t, testsYAMLFilename, `
+suites:
+  - id: smoke
+    name: Smoke
+`)
+	_, err := LoadTests(path)
+	if err == nil || !strings.Contains(err.Error(), "missing command") {
+		t.Errorf("want 'missing command' error, got: %v", err)
+	}
+}
+
+func TestLoadTestsMissingSuiteNameRejectedYAML(t *testing.T) {
+	path := writeTempFile(t, testsYAMLFilename, `
+suites:
+  - id: smoke
+    command: x
+`)
+	_, err := LoadTests(path)
+	if err == nil || !strings.Contains(err.Error(), "missing name") {
+		t.Errorf("want 'missing name' error, got: %v", err)
+	}
+}
+
+func TestLoadTestsMissingSetupCommandNameRejectedYAML(t *testing.T) {
+	path := writeTempFile(t, testsYAMLFilename, `
+setupCommands:
+  - command: npm ci
+suites:
+  - id: smoke
+    name: Smoke
+    command: x
+`)
+	_, err := LoadTests(path)
+	if err == nil || !strings.Contains(err.Error(), "setupCommands[0] missing name") {
+		t.Errorf("want 'setupCommands[0] missing name' error, got: %v", err)
+	}
+}
+
+func TestLoadTestsMissingSetupCommandCommandRejectedYAML(t *testing.T) {
+	path := writeTempFile(t, testsYAMLFilename, `
+setupCommands:
+  - name: Install
+suites:
+  - id: smoke
+    name: Smoke
+    command: x
+`)
+	_, err := LoadTests(path)
+	if err == nil || !strings.Contains(err.Error(), "missing command") {
+		t.Errorf("want 'missing command' error, got: %v", err)
+	}
+}
+
+func TestLoadTestsInvalidYAML(t *testing.T) {
+	path := writeTempFile(t, testsYAMLFilename, "suites:\n  - id: smoke\n   name: bad-indent\n")
+	_, err := LoadTests(path)
+	if err == nil || !strings.Contains(err.Error(), "expected JSON or YAML file format") {
+		t.Errorf("want format error, got: %v", err)
 	}
 }
 
