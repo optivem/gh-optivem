@@ -638,9 +638,9 @@ func (a actions) printClassifiedSections(ctx *statemachine.Context, issueNum int
 
 // runSmokeTest prompts the user to run the smoke test and report the result.
 // v1 ships with a prompt rather than a real docker invocation because the
-// stack-up command is repo-specific (`gh optivem run system --system-config …`).
-// The Outcome's Bool is also recorded under `smoke_test_passes` so the
-// downstream gateway reads it back through the standard wrapGateway path.
+// stack-up command is repo-specific (`gh optivem run system`). The Outcome's
+// Bool is also recorded under `smoke_test_passes` so the downstream gateway
+// reads it back through the standard wrapGateway path.
 func (a actions) runSmokeTest(ctx *statemachine.Context) statemachine.Outcome {
 	answer, err := a.deps.Prompter.Ask("Run the smoke test now and report the result: did it pass? [y/N]: ")
 	if err != nil {
@@ -769,19 +769,6 @@ func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcom
 		return statemachine.Outcome{Err: fmt.Errorf("run_targeted_tests: %s is empty", CtxKeyTestNames)}
 	}
 
-	// Resolve the runner's config-file paths once per invocation. Same
-	// cwd-bug fix as runTests — every `gh optivem ...` shell-out needs the
-	// resolved `--system-config` (and `--test-config` for `test system`)
-	// appended, otherwise the runner's `./systems.yaml` default fails 100%
-	// of the time under the orchestrator's cwd. Per
-	// plans/20260505-220100-verify-runs-from-wrong-cwd.md.
-	pathFlags, err := a.verifyPathFlags()
-	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf(
-			"run_targeted_tests: could not locate systems.{yaml,json}/tests-latest.{yaml,json} under %q: %w", a.deps.RepoPath, err)}
-	}
-	systemPathFlag := a.systemPathFlagOnly(pathFlags)
-
 	// rebuild_before_run hoists a clean rebuild + restart of the SUT out of
 	// the per-test loop. `build system --rebuild` (no-cache nuke) and `run
 	// system --restart` are issued once for the whole batch — the per-test
@@ -790,7 +777,7 @@ func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcom
 	// what callers actually want (rebuild between iterations of the WRITE
 	// loop, not between every individual test name in one iteration).
 	if strings.EqualFold(strings.TrimSpace(ctx.Params["rebuild_before_run"]), "true") {
-		buildCmd := "gh optivem build system --rebuild" + systemPathFlag
+		buildCmd := "gh optivem build system --rebuild"
 		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", buildCmd)
 		if out, err := a.deps.Shell.Run(context.Background(), buildCmd); err != nil {
 			if len(out) > 0 {
@@ -798,7 +785,7 @@ func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcom
 			}
 			return statemachine.Outcome{Err: fmt.Errorf("run_targeted_tests: build failed: %w", err)}
 		}
-		runCmd := "gh optivem run system --restart" + systemPathFlag
+		runCmd := "gh optivem run system --restart"
 		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", runCmd)
 		if out, err := a.deps.Shell.Run(context.Background(), runCmd); err != nil {
 			if len(out) > 0 {
@@ -812,8 +799,8 @@ func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcom
 	compileFailures := 0
 	passed := 0
 	for _, name := range names {
-		cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s%s",
-			shellEscape(suite), shellEscape(name), pathFlags)
+		cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s",
+			shellEscape(suite), shellEscape(name))
 		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
 		out, err := a.deps.Shell.Run(context.Background(), cmd)
 		if len(out) > 0 {
@@ -997,19 +984,10 @@ func (a actions) verifyRealSuitePasses(ctx *statemachine.Context) statemachine.O
 	if len(names) == 0 {
 		return statemachine.Outcome{Err: fmt.Errorf("verify_real_suite_passes: %s is empty", CtxKeyTestNames)}
 	}
-	// Same cwd-bug fix as runTests / runTargetedTests:
-	// resolve --system-config / --test-config once and append to every
-	// shell-out so the runner doesn't read its broken `./systems.yaml`
-	// default from the orchestrator's cwd.
-	pathFlags, err := a.verifyPathFlags()
-	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf(
-			"verify_real_suite_passes: could not locate systems.{yaml,json}/tests-latest.{yaml,json} under %q: %w", a.deps.RepoPath, err)}
-	}
 	allPass := true
 	for _, name := range names {
-		cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s%s",
-			shellEscape(suite), shellEscape(name), pathFlags)
+		cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s",
+			shellEscape(suite), shellEscape(name))
 		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
 		out, err := a.deps.Shell.Run(context.Background(), cmd)
 		if len(out) > 0 {
@@ -1109,41 +1087,11 @@ func (a actions) runTests(ctx *statemachine.Context) statemachine.Outcome {
 // gatherTestCommands runs the interactive a/s/p/n/x menu and returns
 // the chosen command list. Empty cmds with Outcome{} means the operator
 // picked [n] / blank to skip; cmds with Outcome{} means [a]/[s]/[p]
-// chose a non-empty scope; nil with Outcome{Err} means [x] reject,
-// path-resolution failure, or an input-read error. The re-prompt loop
-// for unrecognised choices and empty sub-selections is internal so
-// callers see one outcome per top-level choice.
-//
-// Per plans/20260505-220100-verify-runs-from-wrong-cwd.md (Item 2):
-// every `gh optivem test system ...` shell-out under verify needs the
-// resolved `--system-config` / `--test-config` flags appended (the
-// runner's `./systems.json` default fails 100% of the time because the
-// orchestrator's cwd is the repo root, not the directory holding the
-// config). Resolution is lazy — [x] reject and [n] skip don't shell
-// out, so they shouldn't be blocked by a missing layout. needPathFlags
-// caches the lookup so [s]/[p] menus + per-suite runs share one result.
+// chose a non-empty scope; nil with Outcome{Err} means [x] reject or
+// an input-read error. The re-prompt loop for unrecognised choices and
+// empty sub-selections is internal so callers see one outcome per
+// top-level choice.
 func (a actions) gatherTestCommands(ctx *statemachine.Context) ([]string, statemachine.Outcome) {
-	var (
-		pathFlags    string
-		pathFlagsErr error
-		pathResolved bool
-	)
-	needPathFlags := func() (string, error) {
-		if !pathResolved {
-			pathFlags, pathFlagsErr = a.verifyPathFlags()
-			pathResolved = true
-		}
-		return pathFlags, pathFlagsErr
-	}
-	haltOnPathErr := func(err error) statemachine.Outcome {
-		ctx.Set("verify_class", "infra")
-		fmt.Fprintln(a.deps.Stderr, "── verify path resolution failed ──")
-		fmt.Fprintf(a.deps.Stderr, "  %v\n", err)
-		fmt.Fprintln(a.deps.Stderr, "  see plans/20260505-220100-verify-runs-from-wrong-cwd.md")
-		return statemachine.Outcome{Err: fmt.Errorf(
-			"run_tests: could not locate systems.{yaml,json}/tests-latest.{yaml,json} — see banner above")}
-	}
-
 	for {
 		ans, err := a.deps.Prompter.Ask("Run system tests? [a]ll, [s]ome suites, [p]ick specific tests, [n]one (approve), e[x]it (reject): ")
 		if err != nil {
@@ -1158,17 +1106,9 @@ func (a actions) gatherTestCommands(ctx *statemachine.Context) ([]string, statem
 			fmt.Fprintln(a.deps.Stdout, "Skipping system tests for this cycle.")
 			return nil, statemachine.Outcome{}
 		case "a":
-			flags, err := needPathFlags()
-			if err != nil {
-				return nil, haltOnPathErr(err)
-			}
-			return []string{"gh optivem test system" + flags}, statemachine.Outcome{}
+			return []string{"gh optivem test system"}, statemachine.Outcome{}
 		case "s":
-			flags, err := needPathFlags()
-			if err != nil {
-				return nil, haltOnPathErr(err)
-			}
-			cmds, err := a.promptSomeSuites(flags)
+			cmds, err := a.promptSomeSuites()
 			if err != nil {
 				fmt.Fprintf(a.deps.Stderr, "%v — try again.\n", err)
 				continue
@@ -1178,11 +1118,7 @@ func (a actions) gatherTestCommands(ctx *statemachine.Context) ([]string, statem
 			}
 			return cmds, statemachine.Outcome{}
 		case "p":
-			flags, err := needPathFlags()
-			if err != nil {
-				return nil, haltOnPathErr(err)
-			}
-			cmd, err := a.promptSpecificTests(flags)
+			cmd, err := a.promptSpecificTests()
 			if err != nil {
 				fmt.Fprintf(a.deps.Stderr, "%v — try again.\n", err)
 				continue
@@ -1214,48 +1150,12 @@ func (a actions) executeAndFinalize(ctx *statemachine.Context, cmds []string) st
 	return a.finalizeVerify(ctx, statemachine.Outcome{}, results)
 }
 
-// verifyPathFlags resolves the runner's system + tests config paths under
-// a.deps.RepoPath and returns them formatted as a leading-space-prefixed
-// `--system-config <p> --test-config <p>` suffix that callers append to a
-// `gh optivem test system ...` command line. The leading space lets call
-// sites use plain string concatenation without worrying about whether
-// they need a separator.
-//
-// Returns an error when no layout matches; the caller (verify action) is
-// expected to halt with infra-class semantics rather than running the
-// runner with broken `./systems.yaml` defaults.
-func (a actions) verifyPathFlags() (string, error) {
-	sys, tests, err := ResolveSystemTestPaths(a.deps.RepoPath)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf(" --system-config %s --test-config %s",
-		shellEscape(sys), shellEscape(tests)), nil
-}
-
-// systemPathFlagOnly strips the `--test-config <p>` portion from a
-// verifyPathFlags() suffix, leaving just ` --system-config <p>`. `build
-// system` and `run system` reject `--test-config` (Cobra unknown flag), so
-// any callsite that chains those verbs out of the test loop needs the
-// system-only suffix.
-func (a actions) systemPathFlagOnly(pathFlags string) string {
-	idx := strings.Index(pathFlags, " --test-config")
-	if idx < 0 {
-		return pathFlags
-	}
-	return pathFlags[:idx]
-}
-
 // listSystemSuites shells out to `gh optivem test system --list` and
 // returns one suite id per non-empty output line. The action calls this
 // at prompt time so the menu always reflects whatever tests.json
 // declares — no separate catalog to keep in sync.
-//
-// pathFlags is the suffix from verifyPathFlags — `--list` only reads
-// tests.json (the runner short-circuits before opening systems.json), but
-// passing both flags keeps the command line uniform across [a]/[s]/[p].
-func (a actions) listSystemSuites(pathFlags string) ([]string, error) {
-	out, err := a.deps.Shell.Run(context.Background(), "gh optivem test system --list"+pathFlags)
+func (a actions) listSystemSuites() ([]string, error) {
+	out, err := a.deps.Shell.Run(context.Background(), "gh optivem test system --list")
 	if err != nil {
 		return nil, fmt.Errorf("list suites failed: %w (output: %s)", err, strings.TrimSpace(string(out)))
 	}
@@ -1277,11 +1177,8 @@ func (a actions) listSystemSuites(pathFlags string) ([]string, error) {
 // accepts a comma-separated list. Returns the selected suite ids in
 // pick order; an empty answer yields an empty result so the caller can
 // loop back to the top-level menu.
-//
-// pathFlags is threaded into the underlying `--list` shell-out so the
-// runner can find tests.json under the resolved test-config path.
-func (a actions) promptSuiteMenu(multi bool, pathFlags string) ([]string, error) {
-	suites, err := a.listSystemSuites(pathFlags)
+func (a actions) promptSuiteMenu(multi bool) ([]string, error) {
+	suites, err := a.listSystemSuites()
 	if err != nil {
 		return nil, err
 	}
@@ -1312,17 +1209,15 @@ func (a actions) promptSuiteMenu(multi bool, pathFlags string) ([]string, error)
 }
 
 // promptSomeSuites asks the user which suites to run whole and returns
-// one `gh optivem test system --suite <id>` command per pick. pathFlags
-// (from verifyPathFlags) is appended to every emitted command so the
-// runner can find systems.json / tests.json.
-func (a actions) promptSomeSuites(pathFlags string) ([]string, error) {
-	picked, err := a.promptSuiteMenu(true, pathFlags)
+// one `gh optivem test system --suite <id>` command per pick.
+func (a actions) promptSomeSuites() ([]string, error) {
+	picked, err := a.promptSuiteMenu(true)
 	if err != nil {
 		return nil, err
 	}
 	cmds := make([]string, 0, len(picked))
 	for _, id := range picked {
-		cmds = append(cmds, fmt.Sprintf("gh optivem test system --suite %s%s", shellEscape(id), pathFlags))
+		cmds = append(cmds, fmt.Sprintf("gh optivem test system --suite %s", shellEscape(id)))
 	}
 	return cmds, nil
 }
@@ -1330,10 +1225,9 @@ func (a actions) promptSomeSuites(pathFlags string) ([]string, error) {
 // promptSpecificTests asks the user to pick one suite and then type the
 // test names to run within it. Returns a single `gh optivem test system
 // --suite <id> --test <n1> --test <n2>` command, or "" if the user
-// declined to name any tests. pathFlags (from verifyPathFlags) is
-// appended so the runner can find its config files.
-func (a actions) promptSpecificTests(pathFlags string) (string, error) {
-	picked, err := a.promptSuiteMenu(false, pathFlags)
+// declined to name any tests.
+func (a actions) promptSpecificTests() (string, error) {
+	picked, err := a.promptSuiteMenu(false)
 	if err != nil {
 		return "", err
 	}
@@ -1360,7 +1254,6 @@ func (a actions) promptSpecificTests(pathFlags string) (string, error) {
 	for _, n := range names {
 		fmt.Fprintf(&b, " --test %s", shellEscape(n))
 	}
-	b.WriteString(pathFlags)
 	return b.String(), nil
 }
 

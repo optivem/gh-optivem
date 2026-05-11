@@ -17,7 +17,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -1014,22 +1013,14 @@ func makeListResponse() scriptedResponse {
 	return scriptedResponse{out: []byte(suiteListOut)}
 }
 
-// setupVerifyRepoLayout builds a minimal flat-layout fake repo under
-// t.TempDir() with the two files ResolveSystemTestPaths probes for, and
-// returns the repo root + the path-flag suffix that verifyPathFlags will
-// produce. Tests pass the root via Deps.RepoPath and use the suffix to
-// construct expected command strings (matches what the production code
-// will emit, including spaces and quoting).
-func setupVerifyRepoLayout(t *testing.T) (root, pathFlagsSuffix string) {
+// setupRepo returns a t.TempDir() to use as a fake repo root. Tests pass
+// it via Deps.RepoPath when an action needs one — the value flows into
+// stderr banners and shell-out plumbing, but the action no longer reads
+// any files from it (config paths come from gh-optivem.yaml via
+// $GH_OPTIVEM_CONFIG, not from the repo layout).
+func setupRepo(t *testing.T) string {
 	t.Helper()
-	root = t.TempDir()
-	mustWriteFile(t, filepath.Join(root, "docker", "systems.json"), "{}")
-	mustWriteFile(t, filepath.Join(root, "system-test", "tests-latest.json"), "{}")
-	sys := filepath.Join(root, "docker", "systems.json")
-	tests := filepath.Join(root, "system-test", "tests-latest.json")
-	pathFlagsSuffix = fmt.Sprintf(" --system-config %s --test-config %s",
-		shellEscape(sys), shellEscape(tests))
-	return root, pathFlagsSuffix
+	return t.TempDir()
 }
 
 func TestVerifyRunTestsAfterDriver_XRejects(t *testing.T) {
@@ -1066,7 +1057,7 @@ func TestVerifyRunTestsAfterDriver_NSkipsWithoutRunning(t *testing.T) {
 }
 
 func TestVerifyRunTestsAfterDriver_ARunsAllSystemTests(t *testing.T) {
-	root, flags := setupVerifyRepoLayout(t)
+	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{{out: []byte("PASS")}}}
 	p := &fakePrompter{answers: []string{"a", "n"}} // [a]ll, then no-more-tests
 	ctx := statemachine.NewContext()
@@ -1075,7 +1066,7 @@ func TestVerifyRunTestsAfterDriver_ARunsAllSystemTests(t *testing.T) {
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
-	wantCall := "gh optivem test system" + flags
+	wantCall := "gh optivem test system"
 	if len(sh.calls) != 1 || sh.calls[0] != wantCall {
 		t.Fatalf("expected single `%s` call, got %v", wantCall, sh.calls)
 	}
@@ -1088,7 +1079,7 @@ func TestVerifyRunTestsAfterDriver_SRunsPickedSuites(t *testing.T) {
 	// [s]ome suites → --list yields two suites, the user picks 1,2 → two
 	// `--suite <id>` runs in pick order. Each shell-out gets the resolved
 	// `--system-config` / `--test-config` flags appended.
-	root, flags := setupVerifyRepoLayout(t)
+	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		makeListResponse(),
 		{out: []byte("PASS")},
@@ -1101,9 +1092,9 @@ func TestVerifyRunTestsAfterDriver_SRunsPickedSuites(t *testing.T) {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
 	wantCalls := []string{
-		"gh optivem test system --list" + flags,
-		"gh optivem test system --suite acceptance-api" + flags,
-		"gh optivem test system --suite acceptance-ui" + flags,
+		"gh optivem test system --list",
+		"gh optivem test system --suite acceptance-api",
+		"gh optivem test system --suite acceptance-ui",
 	}
 	if len(sh.calls) != len(wantCalls) {
 		t.Fatalf("calls: got %v, want %v", sh.calls, wantCalls)
@@ -1119,7 +1110,7 @@ func TestVerifyRunTestsAfterDriver_PRunsSpecificTests(t *testing.T) {
 	// [p]ick → --list, pick suite 2, type "T1, T2" → one combined run. The
 	// path flags suffix every shell-out (the runner needs them to find
 	// systems.json / tests.json under the resolved layout).
-	root, flags := setupVerifyRepoLayout(t)
+	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		makeListResponse(),
 		{out: []byte("PASS")},
@@ -1131,8 +1122,8 @@ func TestVerifyRunTestsAfterDriver_PRunsSpecificTests(t *testing.T) {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
 	wantCalls := []string{
-		"gh optivem test system --list" + flags,
-		"gh optivem test system --suite acceptance-ui --test T1 --test T2" + flags,
+		"gh optivem test system --list",
+		"gh optivem test system --suite acceptance-ui --test T1 --test T2",
 	}
 	if len(sh.calls) != len(wantCalls) {
 		t.Fatalf("calls: got %v, want %v", sh.calls, wantCalls)
@@ -1147,7 +1138,7 @@ func TestVerifyRunTestsAfterDriver_PRunsSpecificTests(t *testing.T) {
 func TestVerifyRunTestsAfterDriver_LoopsOnGreen(t *testing.T) {
 	// First [a]ll → green → user says "y" to "Run more?" → second [a]ll →
 	// green → "n" exits. Two test-system calls observed.
-	root, _ := setupVerifyRepoLayout(t)
+	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		{out: []byte("PASS")},
 		{out: []byte("PASS")},
@@ -1170,7 +1161,7 @@ func TestVerifyRunTestsAfterDriver_LoopsOnGreen(t *testing.T) {
 func TestVerifyRunTestsAfterDriver_ExitsLoopOnRed(t *testing.T) {
 	// [a]ll → red → action returns immediately, the "Run more?" prompt is
 	// never asked (gateway will dispatch fix agent after a human STOP).
-	root, _ := setupVerifyRepoLayout(t)
+	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		{out: []byte("--- FAIL: TestThing\n"), err: errors.New("exit status 1")},
 	}}
@@ -1249,7 +1240,7 @@ func TestParsePickNumbers(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestVerifyRunTestsAfterDriver_StampsOKWhenAllSucceed(t *testing.T) {
-	root, _ := setupVerifyRepoLayout(t)
+	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{{out: []byte("ok")}}}
 	p := &fakePrompter{answers: []string{"a", "n"}}
 	ctx := statemachine.NewContext()
@@ -1272,7 +1263,7 @@ func TestVerifyRunTestsAfterDriver_StampsOKWhenAllSucceed(t *testing.T) {
 
 func TestVerifyRunTestsAfterDriver_StampsRedOnTestFailure(t *testing.T) {
 	// Non-nil err with neutral output → no infra pattern → classRed.
-	root, _ := setupVerifyRepoLayout(t)
+	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		{out: []byte("--- FAIL: TestThing\n"), err: errors.New("exit status 1")},
 	}}
@@ -1312,7 +1303,7 @@ func TestVerifyRunTestsAfterDriver_HaltsOnInfraWithDiagnostic(t *testing.T) {
 	// daemon down. We seed the layout so resolution succeeds and the
 	// shell-out actually runs, then the runner-side error fingerprints
 	// `missing executable`.
-	root, _ := setupVerifyRepoLayout(t)
+	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		{
 			out: []byte(`exec: "node": executable file not found in $PATH`),
@@ -1352,41 +1343,6 @@ func TestVerifyRunTestsAfterDriver_HaltsOnInfraWithDiagnostic(t *testing.T) {
 	}
 }
 
-// TestVerifyRunTestsAfterDriver_HaltsOnUnresolvablePaths covers the case
-// where ResolveSystemTestPaths returns an error — neither flat nor
-// templated layout matches under RepoPath. The action halts with an
-// infra-class diagnostic *before* shelling out, because running with the
-// runner's broken `./systems.json` defaults would only manufacture noise.
-func TestVerifyRunTestsAfterDriver_HaltsOnUnresolvablePaths(t *testing.T) {
-	root := t.TempDir() // empty — no docker/, no system-test/
-	sh := &scriptedShell{t: t}
-	p := &fakePrompter{answers: []string{"a"}}
-	ctx := statemachine.NewContext()
-	var stderr bytes.Buffer
-	a := newActions(Deps{
-		Shell:    sh,
-		Prompter: p,
-		Stderr:   &stderr,
-		RepoPath: root,
-	})
-	out := a.runTests(ctx)
-	if out.Err == nil {
-		t.Fatalf("expected Outcome.Err when paths cannot be resolved")
-	}
-	if got := ctx.GetString("verify_class"); got != "infra" {
-		t.Errorf("ctx verify_class: got %q, want %q", got, "infra")
-	}
-	if len(sh.calls) != 0 {
-		t.Errorf("expected no shell calls when path resolution fails; got %v", sh.calls)
-	}
-	if !strings.Contains(stderr.String(), "verify path resolution failed") {
-		t.Errorf("expected 'verify path resolution failed' banner; stderr=\n%s", stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "20260505-220100-verify-runs-from-wrong-cwd") {
-		t.Errorf("banner should reference the cwd-bug plan; stderr=\n%s", stderr.String())
-	}
-}
-
 // TestVerifyRunTestsAfterDriver_HaltsOnInfraWhenStderrIsInError covers
 // the realShell shape: stdout is empty and the runner's error line is
 // folded into err.Error() (`shell %q: <inner> (stderr: <captured>)`).
@@ -1396,7 +1352,7 @@ func TestVerifyRunTestsAfterDriver_HaltsOnUnresolvablePaths(t *testing.T) {
 // so the runner is actually invoked — and the runner-side error in err
 // must still classify as infra.
 func TestVerifyRunTestsAfterDriver_HaltsOnInfraWhenStderrIsInError(t *testing.T) {
-	root, _ := setupVerifyRepoLayout(t)
+	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		{
 			// out is empty — exactly what cmd.Output() returns for a
@@ -1526,7 +1482,7 @@ func TestRunTargetedTests_RequiresSuiteAndTestNames(t *testing.T) {
 }
 
 func TestRunTargetedTests_AllRuntimeFailuresWritesTrue(t *testing.T) {
-	root, flags := setupVerifyRepoLayout(t)
+	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		{out: []byte("AssertionError: expected 1 was 0"), err: errors.New("exit 1")},
 		{out: []byte("AssertionError: expected 2 was 0"), err: errors.New("exit 1")},
@@ -1546,8 +1502,8 @@ func TestRunTargetedTests_AllRuntimeFailuresWritesTrue(t *testing.T) {
 		t.Fatalf("tests_failed_runtime: got %v, want true", got)
 	}
 	want := []string{
-		"gh optivem test system --suite '<acceptance-api>' --test shouldFooSucceed" + flags,
-		"gh optivem test system --suite '<acceptance-api>' --test shouldBarSucceed" + flags,
+		"gh optivem test system --suite '<acceptance-api>' --test shouldFooSucceed",
+		"gh optivem test system --suite '<acceptance-api>' --test shouldBarSucceed",
 	}
 	if len(sh.calls) != len(want) {
 		t.Fatalf("got %d calls, want %d: %v", len(sh.calls), len(want), sh.calls)
@@ -1568,7 +1524,7 @@ func TestRunTargetedTests_CompileFailureWritesFalse(t *testing.T) {
 		"syntax error",
 	} {
 		t.Run(marker, func(t *testing.T) {
-			root, _ := setupVerifyRepoLayout(t)
+			root := setupRepo(t)
 			sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 				{out: []byte(marker), err: errors.New("exit 1")},
 			}}
@@ -1593,7 +1549,7 @@ func TestRunTargetedTests_CompileFailureWritesFalse(t *testing.T) {
 func TestRunTargetedTests_AllPassesWritesFalse(t *testing.T) {
 	// "All tests pass" is also a not-yet-RED state — runtime failure was
 	// not observed so we cannot route to DISABLE.
-	root, _ := setupVerifyRepoLayout(t)
+	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		{out: []byte("OK"), err: nil},
 	}}
@@ -1611,7 +1567,7 @@ func TestRunTargetedTests_AllPassesWritesFalse(t *testing.T) {
 }
 
 func TestRunTargetedTests_MixedRuntimeAndCompileWritesFalse(t *testing.T) {
-	root, _ := setupVerifyRepoLayout(t)
+	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		{out: []byte("AssertionError"), err: errors.New("exit 1")},
 		{out: []byte("compilation failed"), err: errors.New("exit 1")},
@@ -1849,7 +1805,7 @@ func TestEnableChangeDriven_FirstFailureHaltsRun(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRunTargetedTests_AllPassWritesTestsPassTrue(t *testing.T) {
-	root, _ := setupVerifyRepoLayout(t)
+	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		{out: []byte("OK"), err: nil},
 		{out: []byte("OK"), err: nil},
@@ -1871,7 +1827,7 @@ func TestRunTargetedTests_AllPassWritesTestsPassTrue(t *testing.T) {
 }
 
 func TestRunTargetedTests_AnyFailureWritesTestsPassFalse(t *testing.T) {
-	root, _ := setupVerifyRepoLayout(t)
+	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		{out: []byte("OK"), err: nil},
 		{out: []byte("AssertionError"), err: errors.New("exit 1")},
@@ -1892,12 +1848,11 @@ func TestRunTargetedTests_AnyFailureWritesTestsPassFalse(t *testing.T) {
 // TestRunTargetedTests_RebuildParamHoistsBuildAndRun asserts that
 // rebuild_before_run=true hoists `build system --rebuild` + `run system
 // --restart` out of the per-test loop. The per-test loop still emits just
-// `test system --suite ... --test ...`; build/run/test commands accept a
-// different flag set (build/run take only --system-config; test takes both
-// --system-config and --test-config), so this also pins the path-flag
-// splitting behavior.
+// `test system --suite ... --test ...`. Config-file paths are resolved
+// through gh-optivem.yaml, not CLI flags, so no path-flag suffix is
+// appended to any of the three commands.
 func TestRunTargetedTests_RebuildParamHoistsBuildAndRun(t *testing.T) {
-	root, flags := setupVerifyRepoLayout(t)
+	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		{out: []byte("BUILD OK"), err: nil},
 		{out: []byte("RUN OK"), err: nil},
@@ -1912,11 +1867,10 @@ func TestRunTargetedTests_RebuildParamHoistsBuildAndRun(t *testing.T) {
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
-	systemFlag := a.systemPathFlagOnly(flags)
 	wantCalls := []string{
-		"gh optivem build system --rebuild" + systemFlag,
-		"gh optivem run system --restart" + systemFlag,
-		"gh optivem test system --suite '<acceptance-api>' --test x" + flags,
+		"gh optivem build system --rebuild",
+		"gh optivem run system --restart",
+		"gh optivem test system --suite '<acceptance-api>' --test x",
 	}
 	if !reflect.DeepEqual(sh.calls, wantCalls) {
 		t.Fatalf("got %v, want %v", sh.calls, wantCalls)
@@ -1927,7 +1881,7 @@ func TestRunTargetedTests_RebuildParamHoistsBuildAndRun(t *testing.T) {
 // default (rebuild_before_run unset) emits only the per-test `test system`
 // calls — no build, no run.
 func TestRunTargetedTests_NoRebuildParamSkipsBuildAndRun(t *testing.T) {
-	root, flags := setupVerifyRepoLayout(t)
+	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		{out: []byte("OK"), err: nil},
 	}}
@@ -1939,7 +1893,7 @@ func TestRunTargetedTests_NoRebuildParamSkipsBuildAndRun(t *testing.T) {
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
-	want := "gh optivem test system --suite '<acceptance-api>' --test x" + flags
+	want := "gh optivem test system --suite '<acceptance-api>' --test x"
 	if len(sh.calls) != 1 || sh.calls[0] != want {
 		t.Fatalf("got %v, want %q", sh.calls, want)
 	}
@@ -2001,7 +1955,7 @@ func TestVerifyRealSuitePasses_RequiresParamAndTestNames(t *testing.T) {
 }
 
 func TestVerifyRealSuitePasses_AllPassWritesTrue(t *testing.T) {
-	root, flags := setupVerifyRepoLayout(t)
+	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		{out: []byte("OK"), err: nil},
 		{out: []byte("OK"), err: nil},
@@ -2021,8 +1975,8 @@ func TestVerifyRealSuitePasses_AllPassWritesTrue(t *testing.T) {
 		t.Fatalf("verify_real_pass: got %v, want true", got)
 	}
 	want := []string{
-		"gh optivem test system --suite '<suite-contract-real>' --test shouldFooSucceed" + flags,
-		"gh optivem test system --suite '<suite-contract-real>' --test shouldBarSucceed" + flags,
+		"gh optivem test system --suite '<suite-contract-real>' --test shouldFooSucceed",
+		"gh optivem test system --suite '<suite-contract-real>' --test shouldBarSucceed",
 	}
 	if len(sh.calls) != len(want) {
 		t.Fatalf("got %d calls, want %d: %v", len(sh.calls), len(want), sh.calls)
@@ -2039,7 +1993,7 @@ func TestVerifyRealSuitePasses_AnyFailWritesFalse(t *testing.T) {
 	// failure does not matter, only that one happened. Mix a runtime
 	// failure with a pass to confirm the action does not require all
 	// failures to share a class.
-	root, _ := setupVerifyRepoLayout(t)
+	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		{out: []byte("OK"), err: nil},
 		{out: []byte("AssertionError"), err: errors.New("exit 1")},
@@ -2060,50 +2014,6 @@ func TestVerifyRealSuitePasses_AnyFailWritesFalse(t *testing.T) {
 	}
 	if len(sh.calls) != 2 {
 		t.Fatalf("got %d calls, want 2 (action runs every test even after a failure): %v", len(sh.calls), sh.calls)
-	}
-}
-
-// TestRunTargetedTests_HaltsOnUnresolvablePaths and the verify_real twin
-// cover the case where ResolveSystemTestPaths returns an error: action
-// halts via Outcome.Err rather than running the runner with broken
-// `./systems.yaml` defaults. Unlike runTests this halt is
-// a plain Outcome.Err (no infra-class banner) — these actions are
-// deterministic mechanics without a verify-style halt protocol.
-func TestRunTargetedTests_HaltsOnUnresolvablePaths(t *testing.T) {
-	root := t.TempDir() // empty — no docker/, no system-test/
-	sh := &scriptedShell{t: t}
-	a := newActions(Deps{Shell: sh, RepoPath: root})
-	ctx := statemachine.NewContext()
-	ctx.Set("suite", "<acceptance-api>")
-	ctx.State["test_names"] = []string{"x"}
-	out := a.runTargetedTests(ctx)
-	if out.Err == nil {
-		t.Fatalf("expected Outcome.Err when paths cannot be resolved")
-	}
-	if !strings.Contains(out.Err.Error(), "could not locate systems") {
-		t.Errorf("Err should mention path resolution; got %v", out.Err)
-	}
-	if len(sh.calls) != 0 {
-		t.Errorf("expected no shell calls when path resolution fails; got %v", sh.calls)
-	}
-}
-
-func TestVerifyRealSuitePasses_HaltsOnUnresolvablePaths(t *testing.T) {
-	root := t.TempDir()
-	sh := &scriptedShell{t: t}
-	a := newActions(Deps{Shell: sh, RepoPath: root})
-	ctx := statemachine.NewContext()
-	ctx.Params["verify_real_suite"] = "<suite-contract-real>"
-	ctx.State["test_names"] = []string{"x"}
-	out := a.verifyRealSuitePasses(ctx)
-	if out.Err == nil {
-		t.Fatalf("expected Outcome.Err when paths cannot be resolved")
-	}
-	if !strings.Contains(out.Err.Error(), "could not locate systems") {
-		t.Errorf("Err should mention path resolution; got %v", out.Err)
-	}
-	if len(sh.calls) != 0 {
-		t.Errorf("expected no shell calls when path resolution fails; got %v", sh.calls)
 	}
 }
 

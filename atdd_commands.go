@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -135,6 +136,7 @@ func newAtddImplementTicketCmd() *cobra.Command {
 			exitOnError(err)
 			exitOnError(validateKeepRuns(keepRuns))
 			resolvedConfigPath, _ := projectconfig.ResolvePath(projectConfigPath)
+			exportConfigForShellOuts(resolvedConfigPath)
 			cfg, err := runImplementTicketPreflight(resolvedConfigPath, workspace)
 			exitOnError(err)
 			hooks, err := overrideHooksFromConfig(cfg)
@@ -172,6 +174,23 @@ func validateKeepRuns(n int) error {
 		return fmt.Errorf("--keep-runs must be >= 0 (got %d); use 0 to disable pruning", n)
 	}
 	return nil
+}
+
+// exportConfigForShellOuts publishes the resolved gh-optivem.yaml path on
+// $GH_OPTIVEM_CONFIG so every child `gh optivem ...` shell-out fired by
+// ATDD bindings picks up the same project config without needing per-call
+// --config flags. An absolute path is exported so the value still resolves
+// after children chdir. A startup banner echoes the active config so the
+// operator can reproduce shell-outs by hand. Failures from filepath.Abs
+// are non-fatal — the runner's own ./gh-optivem.yaml fallback still
+// applies.
+func exportConfigForShellOuts(resolvedConfigPath string) {
+	abs, err := filepath.Abs(resolvedConfigPath)
+	if err != nil {
+		return
+	}
+	_ = os.Setenv("GH_OPTIVEM_CONFIG", abs)
+	fmt.Fprintf(os.Stdout, "Using gh-optivem config: %s\n", abs)
 }
 
 // runImplementTicketPreflight loads the consumer's gh-optivem.yaml at the
@@ -225,6 +244,7 @@ func newAtddManageProjectCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			exitOnError(validateKeepRuns(keepRuns))
 			resolvedConfigPath, _ := projectconfig.ResolvePath(projectConfigPath)
+			exportConfigForShellOuts(resolvedConfigPath)
 			cfg, err := projectconfig.LoadFromPath(resolvedConfigPath)
 			exitOnError(err)
 			hooks, err := overrideHooksFromConfig(cfg)
