@@ -732,6 +732,17 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 		issueNum, _ := strconv.Atoi(ctx.GetString("issue_num"))
 
 		agentName := statemachine.ExpandParams(raw.Agent, ctx.Params)
+		// Node-level params (e.g. `failure_type: compile` on FIX_COMPILE)
+		// are expanded against the live ctx scope and forwarded to the
+		// prompt renderer so the agent body can branch on per-call-site
+		// labels without a dedicated Options field per agent.
+		var nodeParams map[string]string
+		if len(raw.Params) > 0 {
+			nodeParams = make(map[string]string, len(raw.Params))
+			for k, v := range raw.Params {
+				nodeParams[k] = statemachine.ExpandParams(v, ctx.Params)
+			}
+		}
 		cOpts := clauderun.Options{
 			Agent:           agentName,
 			PhaseDoc:        statemachine.ExpandParams(raw.PhaseDoc, ctx.Params),
@@ -746,6 +757,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 			Checklist:       ctx.GetString("ticket_checklist"),
 			VerifyResults:   ctx.GetString("verify_results_text"),
 			ChangedFiles:    fixVerifyChangedFiles(agentName, opts.RepoPath),
+			NodeParams:      nodeParams,
 			OverrideText:    extraText,
 			RawPrompt:       replaceText,
 			PromptOverride:  opts.AgentPromptOverrides[agentName],

@@ -28,7 +28,8 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 	// both the run_cycle gate and the da_cycle gate; ticket_type +
 	// subtype are kept around so the gates' Context-first short-circuit
 	// works for the upstream intake nodes; ticket_type_recognized +
-	// parse_ok pass intake; structural_test_mode picks the TEST gate.
+	// parse_ok pass intake; compile_ok lets the structural compile gate
+	// fall through to CHOOSE_TESTS.
 	eng.Processes["main"].Start = "MOVE_TICKET_IN_PROGRESS"
 	ctx := NewContext()
 	ctx.Set("ticket_type", "task")
@@ -38,13 +39,13 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 	ctx.Set("subtype_ok", true)
 	ctx.Set("parse_ok", true)
 	ctx.Set("legacy_acceptance_criteria_section_present", false)
-	ctx.Set("structural_test_mode", "full")
+	ctx.Set("compile_ok", true)
 	// Happy-path verify: GATE_STRUCT_VERIFY (post-RUN_TESTS) routes ok →
 	// COMMIT (call_activity into the shared commit sub-process). The test's
 	// gate mock echoes whatever ctx[binding] is, so we seed the gateway's
-	// binding name directly. Red would route to STOP_STRUCT_VERIFY_REVIEW →
-	// FIX_STRUCT_VERIFY → CHOOSE_TESTS; gate-specific routing (retry
-	// counter etc.) is exercised in gates/bindings_test.go.
+	// binding name directly. Red would route to STOP_TEST_FAIL_REVIEW →
+	// FIX_TEST → RUN_TESTS; gate-specific routing (retry counter etc.) is
+	// exercised in gates/bindings_test.go.
 	ctx.Set("structural_verify_outcome", "ok")
 
 	// ── ACT ─────────────────────────────────────────────────────────────
@@ -91,6 +92,11 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 		process("structural_cycle", siParams).
 		userTask("WRITE", "atdd-task").
 		userTask("APPROVE_CHANGE", "human").
+		serviceTask("COMPILE", "compile_in_scope").
+		gateway("GATE_COMPILE_OK", "compile_ok", true).
+		serviceTask("CHOOSE_TESTS", "select_tests").
+		serviceTask("RUN_TESTS", "run_tests").
+		gateway("GATE_STRUCT_VERIFY", "structural_verify_outcome", "ok").
 		callActivity("COMMIT", "commit", commitFromTemplateParams()).
 		then().
 		process("commit", commitFrom(siParams)).

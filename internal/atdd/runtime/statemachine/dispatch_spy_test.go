@@ -164,16 +164,12 @@ func noParams() map[string]string { return map[string]string{} }
 
 // commitFrom returns the params snapshot seen *inside* the shared commit
 // sub-process when the COMMIT call_activity at the call site declares
-// `params: {change_type: ${change_type}}`. The runtime's wrapCallActivity
-// merges raw.Params on top of the parent scope without expanding ${…}, so
-// the inner change_type is the literal placeholder string. Locking that in
-// here means a future fix that adds ExpandParams to wrapCallActivity will
-// surface as a clear diff in test output rather than silently changing
-// runtime behavior.
+// `params: {change_type: ${change_type}}`. wrapCallActivity expands raw.Params
+// values against the parent scope before merging, so the inner change_type
+// is the parent's resolved string (re-binding ${change_type} to itself is a
+// no-op once expansion runs); all other parent keys carry through unchanged.
 func commitFrom(parent map[string]string) map[string]string {
-	out := cloneParams(parent)
-	out["change_type"] = "${change_type}"
-	return out
+	return cloneParams(parent)
 }
 
 // commitFromTemplateParams is the literal raw.Params declared at every

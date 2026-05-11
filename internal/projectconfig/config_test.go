@@ -162,19 +162,16 @@ func TestLoad_ParsesProjectURL(t *testing.T) {
 	}
 }
 
-func TestLoad_EmptyFileIsValid(t *testing.T) {
+func TestLoad_EmptyFileRejectedByValidate(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	writeConfig(t, dir, "")
-	cfg, err := Load(dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	_, err := Load(dir)
+	if err == nil {
+		t.Fatal("empty file should fail Validate (project.url missing), got nil")
 	}
-	if cfg == nil {
-		t.Fatal("empty file should yield non-nil zero-value config")
-	}
-	if cfg.Project.URL != "" {
-		t.Fatalf("expected empty project URL, got %q", cfg.Project.URL)
+	if !strings.Contains(err.Error(), "project.url") {
+		t.Fatalf("error should mention project.url, got: %v", err)
 	}
 }
 
@@ -276,6 +273,7 @@ func TestRoundTrip_PreservesSystemAndTestConfig(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
 		cfg := &Config{
+			Project:      Project{URL: "https://github.com/orgs/acme/projects/1"},
 			SystemConfig: "docker/system.json",
 			TestConfig:   "system-test/tests-latest.json",
 		}
@@ -297,7 +295,8 @@ func TestRoundTrip_PreservesSystemAndTestConfig(t *testing.T) {
 	t.Run("unset omits the keys", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
-		if err := Write(dir, &Config{}); err != nil {
+		cfg := &Config{Project: Project{URL: "https://github.com/orgs/acme/projects/1"}}
+		if err := Write(dir, cfg); err != nil {
 			t.Fatalf("Write: %v", err)
 		}
 		raw, err := os.ReadFile(filepath.Join(dir, Path))
@@ -325,11 +324,15 @@ func TestRoundTrip_PreservesSystemAndTestConfig(t *testing.T) {
 // Validation rules
 // ---------------------------------------------------------------------------
 
-func TestValidate_AbsenceIsOK(t *testing.T) {
+func TestValidate_RejectsEmptyProjectURL(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{}
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("zero-value config should validate, got: %v", err)
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("zero-value config (missing project.url) should fail Validate, got nil")
+	}
+	if !strings.Contains(err.Error(), "project.url") {
+		t.Fatalf("error should mention project.url, got: %v", err)
 	}
 }
 
@@ -338,6 +341,17 @@ func TestValidate_NilReceiverIsOK(t *testing.T) {
 	var cfg *Config
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("nil receiver should validate, got: %v", err)
+	}
+}
+
+// TestValidate_OnlyProjectURLIsOK verifies the minimal valid config — just
+// the mandatory project.url, everything else empty — passes. Matches the
+// "partial config written before architecture is chosen" flow.
+func TestValidate_OnlyProjectURLIsOK(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{Project: Project{URL: "https://github.com/orgs/acme/projects/1"}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("project-url-only config should validate, got: %v", err)
 	}
 }
 
@@ -561,6 +575,7 @@ func TestValidate_MultiRepoRejectsAllEmptyRepos(t *testing.T) {
 func TestValidate_AcceptsExternalSystemsOmitted(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
+		Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
 		System: System{
 			Architecture: ArchMonolith,
 			Path:         "p", Repo: "x/y", Lang: LangJava,
@@ -576,6 +591,7 @@ func TestValidate_AcceptsOnlyStubsOrOnlySimulators(t *testing.T) {
 	t.Parallel()
 	base := func() *Config {
 		return &Config{
+			Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
 			System: System{
 				Architecture: ArchMonolith,
 				Path:         "p", Repo: "x/y", Lang: LangJava,
@@ -618,6 +634,7 @@ func TestValidate_AcceptsExternalRepoNotInOtherTiers(t *testing.T) {
 	t.Parallel()
 	// External systems can live in their own repo (multi-repo case).
 	cfg := &Config{
+		Project:      Project{URL: "https://github.com/orgs/acme/projects/1"},
 		RepoStrategy: RepoStrategyMultiRepo,
 		System: System{
 			Architecture: ArchMultitier,
@@ -707,6 +724,7 @@ func TestWrite_OmitsEmptyOptionalFields(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	cfg := &Config{
+		Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
 		System: System{
 			Architecture: ArchMonolith,
 			Path:         "p", Repo: "x/y", Lang: LangJava,
@@ -723,9 +741,6 @@ func TestWrite_OmitsEmptyOptionalFields(t *testing.T) {
 	body := string(data)
 	if strings.Contains(body, "external_systems:") {
 		t.Errorf("expected external_systems to be omitted; got:\n%s", body)
-	}
-	if strings.Contains(body, "url:") {
-		t.Errorf("expected empty project.url to be omitted; got:\n%s", body)
 	}
 	if !strings.Contains(body, "architecture: monolith") {
 		t.Errorf("expected architecture line; got:\n%s", body)

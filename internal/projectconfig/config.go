@@ -93,6 +93,10 @@ type Config struct {
 // Project carries the GitHub Projects board URL. Repo organization
 // (mono-repo vs multi-repo) lives at top level, not here, because it
 // affects every tier's repo: field across system: and system_test:.
+//
+// URL is mandatory — Validate rejects an empty value. Kept as `omitempty`
+// at the YAML layer so a freshly-marshaled invalid Config doesn't print a
+// distracting `url: ""` line, but every value Load returns has it set.
 type Project struct {
 	URL string `yaml:"url,omitempty"`
 }
@@ -180,7 +184,10 @@ func (c *Config) Repos() []string {
 // Validate enforces the enum and cross-field rules. Empty values are
 // accepted — only non-empty invalid values are errors when scope is not
 // set; when scope (system.architecture) IS set, the architecture-specific
-// shape is required.
+// shape is required. The single hard requirement is project.url: the
+// pipeline cannot operate without a GitHub Project board to read from,
+// and silently letting `validate` pass on an empty url just defers the
+// failure to the first ATDD command.
 func (c *Config) Validate() error {
 	if c == nil {
 		return nil
@@ -308,6 +315,13 @@ func (c *Config) Validate() error {
 					RepoStrategyMultiRepo)
 			}
 		}
+	}
+
+	// Rule 9: project.url is mandatory. Placed last so any other config
+	// problem surfaces with a more specific error first; the URL check is
+	// the catch-all for an otherwise-coherent but unbound config.
+	if c.Project.URL == "" {
+		return fmt.Errorf("config: project.url is required (the GitHub Project board URL written by `gh optivem config init --project-url ...`)")
 	}
 
 	return nil

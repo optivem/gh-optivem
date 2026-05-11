@@ -80,10 +80,15 @@ func Prompt(in io.Reader, out io.Writer) (*config.RawFlags, error) {
 		return nil, err
 	}
 
-	// --project-url: optional; Enter accepts empty (matches the flag's
-	// existing semantics — the operator can fill it in by hand later).
-	if err := askOptional(r, out, "GitHub Project URL (optional, Enter to skip)", func(v string) {
+	// --project-url: required. The Validate rule in projectconfig rejects
+	// an empty url, so accepting it here would only push the failure to
+	// the write step a few lines later.
+	if err := ask(r, out, "GitHub Project URL", func(v string) (string, error) {
+		if !strings.HasPrefix(v, "https://github.com/") {
+			return "", fmt.Errorf("must be a https://github.com/... URL")
+		}
 		f.ProjectURL = v
+		return v, nil
 	}); err != nil {
 		return nil, err
 	}
@@ -229,15 +234,3 @@ func ask(r *bufio.Reader, out io.Writer, label string, accept func(string) (stri
 	}
 }
 
-// askOptional accepts Enter (empty input) as "leave unset" without re-
-// asking, but still reads exactly one line from stdin. Used for optional
-// fields like --project-url.
-func askOptional(r *bufio.Reader, out io.Writer, label string, store func(string)) error {
-	fmt.Fprintf(out, "  %s: ", label)
-	line, err := r.ReadString('\n')
-	if err != nil {
-		return fmt.Errorf("read %s: %w", label, err)
-	}
-	store(strings.TrimSpace(line))
-	return nil
-}

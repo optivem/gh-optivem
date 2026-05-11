@@ -30,6 +30,7 @@ func monolithMonorepoFlags() *config.RawFlags {
 		SystemTestPath: "system-test/java",
 		StubsPath:      "external-systems/external-stub",
 		SimulatorsPath: "external-systems/external-real-sim",
+		ProjectURL:     "https://github.com/orgs/acme/projects/1",
 	}
 }
 
@@ -89,6 +90,7 @@ func TestRunConfigInit_MultitierMultirepo(t *testing.T) {
 		SystemTestPath: "system-test/typescript",
 		StubsPath:      "external-systems/external-stub",
 		SimulatorsPath: "external-systems/external-real-sim",
+		ProjectURL:     "https://github.com/orgs/acme/projects/2",
 	}
 	if _, err := configinit.Run(f, filepath.Join(dir, projectconfig.Path), false); err != nil {
 		t.Fatalf("configinit.Run: %v", err)

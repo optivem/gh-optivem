@@ -628,12 +628,14 @@ processes:
   # ===========================================================================
   # structural_cycle
   # Shared by system-api-task, system-ui-task, and chore via call_activity
-  # `params:`. The Go runtime substitutes ${change_type}, ${agent}, ${phase_doc} at
-  # dispatch time. APPROVE_CHANGE goes straight to COMMIT; the test-choice
-  # subgraph (GATE_TEST_MODE / COMPILE / CHOOSE_TESTS / RUN_TESTS /
-  # GATE_STRUCT_VERIFY / STOP_STRUCT_VERIFY_REVIEW / FIX_STRUCT_VERIFY) is left
-  # defined but unreachable for now — it will be re-wired when test-choice
-  # handling is reworked.
+  # `params:`. The Go runtime substitutes ${change_type}, ${agent}, ${phase_doc}
+  # at dispatch time. COMPILE always runs after APPROVE_CHANGE; TEST scope is
+  # picked at CHOOSE_TESTS (a/s/p/n menu — `n` skips the suite). Compile or
+  # test RED routes through a human STOP (Enter = dispatch fix-agent, abort =
+  # halt the run) and then FIX_COMPILE / FIX_TEST — one shared agent
+  # (atdd-fix-verify) branching on ${failure_type}. Compile retries from
+  # COMPILE; test retries from RUN_TESTS (re-uses the previously selected
+  # commands stored in ctx[selected_test_commands]).
   # ===========================================================================
   structural_cycle:
     start: WRITE
@@ -650,15 +652,29 @@ processes:
         role: review
         documentation: "STOP - HUMAN REVIEW — approve implementation"
 
-      - id: GATE_TEST_MODE
-        type: gateway
-        binding: structural_test_mode
-        documentation: "TEST mode? (full | compile | skip)"
-
       - id: COMPILE
         type: service_task
         action: compile_in_scope
         documentation: "Compile in-scope projects"
+
+      - id: GATE_COMPILE_OK
+        type: gateway
+        binding: compile_ok
+        documentation: "Compile passed?"
+
+      - id: STOP_COMPILE_FAIL_REVIEW
+        type: user_task
+        agent: human
+        role: review
+        documentation: "STOP - HUMAN REVIEW — compile RED, dispatch fix agent?"
+
+      - id: FIX_COMPILE
+        type: user_task
+        agent: atdd-fix-verify
+        phase_doc: ${phase_doc}
+        params:
+          failure_type: compile
+        documentation: "Dispatch fix agent on compile RED — structural cycle expects green"
 
       - id: CHOOSE_TESTS
         type: service_task
@@ -675,16 +691,18 @@ processes:
         binding: structural_verify_outcome
         documentation: "Test outcome? (ok | red — fix and retry)"
 
-      - id: STOP_STRUCT_VERIFY_REVIEW
+      - id: STOP_TEST_FAIL_REVIEW
         type: user_task
         agent: human
         role: review
         documentation: "STOP - HUMAN REVIEW — tests RED, dispatch fix agent?"
 
-      - id: FIX_STRUCT_VERIFY
+      - id: FIX_TEST
         type: user_task
         agent: atdd-fix-verify
         phase_doc: ${phase_doc}
+        params:
+          failure_type: test
         documentation: "Dispatch fix agent on test RED — structural cycle expects green"
 
       - id: COMMIT
@@ -702,20 +720,21 @@ processes:
         type: end_event
 
     sequence_flows:
-      - {from: WRITE,          to: APPROVE_CHANGE}
-      - {from: APPROVE_CHANGE,  to: COMMIT}
-      - {from: GATE_TEST_MODE,              to: COMMIT,                    when: "structural_test_mode == skip"}
-      - {from: GATE_TEST_MODE,              to: COMPILE,                   when: "structural_test_mode in [compile, full]"}
-      - {from: COMPILE,                     to: CHOOSE_TESTS,              when: "structural_test_mode == full"}
-      - {from: COMPILE,                     to: COMMIT,                    when: "structural_test_mode == compile"}
-      - {from: CHOOSE_TESTS,                to: RUN_TESTS}
-      - {from: RUN_TESTS,                   to: GATE_STRUCT_VERIFY}
-      - {from: GATE_STRUCT_VERIFY,          to: COMMIT,                    when: "structural_verify_outcome == ok"}
-      - {from: GATE_STRUCT_VERIFY,          to: STOP_STRUCT_VERIFY_REVIEW, when: "structural_verify_outcome == red"}
-      - {from: STOP_STRUCT_VERIFY_REVIEW,   to: FIX_STRUCT_VERIFY}
-      - {from: FIX_STRUCT_VERIFY,           to: CHOOSE_TESTS}
-      - {from: COMMIT,                      to: TICK_CHECKLIST}
-      - {from: TICK_CHECKLIST,              to: STRUCT_END}
+      - {from: WRITE,                     to: APPROVE_CHANGE}
+      - {from: APPROVE_CHANGE,            to: COMPILE}
+      - {from: COMPILE,                   to: GATE_COMPILE_OK}
+      - {from: GATE_COMPILE_OK,           to: CHOOSE_TESTS,             when: "compile_ok == true"}
+      - {from: GATE_COMPILE_OK,           to: STOP_COMPILE_FAIL_REVIEW, when: "compile_ok == false"}
+      - {from: STOP_COMPILE_FAIL_REVIEW,  to: FIX_COMPILE}
+      - {from: FIX_COMPILE,               to: COMPILE}
+      - {from: CHOOSE_TESTS,              to: RUN_TESTS}
+      - {from: RUN_TESTS,                 to: GATE_STRUCT_VERIFY}
+      - {from: GATE_STRUCT_VERIFY,        to: COMMIT,                   when: "structural_verify_outcome == ok"}
+      - {from: GATE_STRUCT_VERIFY,        to: STOP_TEST_FAIL_REVIEW,    when: "structural_verify_outcome == red"}
+      - {from: STOP_TEST_FAIL_REVIEW,     to: FIX_TEST}
+      - {from: FIX_TEST,                  to: RUN_TESTS}
+      - {from: COMMIT,                    to: TICK_CHECKLIST}
+      - {from: TICK_CHECKLIST,            to: STRUCT_END}
 
   # ===========================================================================
   # red_phase_cycle

@@ -39,7 +39,7 @@ func multitierAnswers() []string {
 		"external-systems/external-real-sim",         // simulators-path
 		"system/multitier/backend-dotnet",            // backend-path
 		"system/multitier/frontend-react",            // frontend-path
-		"",                                           // project-url (skipped)
+		"https://github.com/orgs/acme/projects/2",    // project-url
 	}
 }
 
@@ -86,8 +86,8 @@ func TestPrompt_MultitierHappyPath(t *testing.T) {
 	if f.BackendPath != "system/multitier/backend-dotnet" || f.FrontendPath != "system/multitier/frontend-react" {
 		t.Errorf("paths: got backend=%q frontend=%q", f.BackendPath, f.FrontendPath)
 	}
-	if f.ProjectURL != "" {
-		t.Errorf("ProjectURL should be empty (Enter to skip), got %q", f.ProjectURL)
+	if f.ProjectURL != "https://github.com/orgs/acme/projects/2" {
+		t.Errorf("ProjectURL: got %q", f.ProjectURL)
 	}
 }
 
@@ -134,19 +134,31 @@ func TestPrompt_ReAsksOnBadArch(t *testing.T) {
 	}
 }
 
-// TestPrompt_EmptyProjectURLAccepted — Enter on --project-url leaves the
-// field empty without re-asking. Matches the flag's optional semantics.
-func TestPrompt_EmptyProjectURLAccepted(t *testing.T) {
+// TestPrompt_ReAsksOnBadProjectURL — empty input re-asks (URL is mandatory),
+// and a non-https://github.com URL is also rejected. Mirrors the Validate
+// rule in projectconfig: the pipeline cannot operate without a project board.
+func TestPrompt_ReAsksOnBadProjectURL(t *testing.T) {
 	t.Parallel()
 	answers := monolithAnswers()
-	answers[len(answers)-1] = "" // project-url
+	// Inject two bad URLs before the valid one: empty and wrong-host.
+	urlPos := len(answers) - 1
+	lines := append([]string{}, answers[:urlPos]...)
+	lines = append(lines, "", "https://gitlab.com/orgs/acme/projects/1")
+	lines = append(lines, answers[urlPos])
 	var out bytes.Buffer
-	f, err := Prompt(script(answers), &out)
+	f, err := Prompt(script(lines), &out)
 	if err != nil {
 		t.Fatalf("Prompt: %v", err)
 	}
-	if f.ProjectURL != "" {
-		t.Errorf("ProjectURL: got %q, want empty", f.ProjectURL)
+	if f.ProjectURL != "https://github.com/orgs/acme/projects/1" {
+		t.Errorf("ProjectURL: got %q (should have re-asked past the bad values)", f.ProjectURL)
+	}
+	body := out.String()
+	if !strings.Contains(body, "value cannot be empty") {
+		t.Errorf("output should re-ask on empty URL, got:\n%s", body)
+	}
+	if !strings.Contains(body, "must be a https://github.com/") {
+		t.Errorf("output should reject non-github URL, got:\n%s", body)
 	}
 }
 

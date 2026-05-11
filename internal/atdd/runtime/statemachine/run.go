@@ -116,6 +116,12 @@ func (e *Engine) wrapGateway(binding string, fn NodeFn) NodeFn {
 // wrapCallActivity returns a NodeFn that runs the named sub-process to
 // completion. Params from the call site are pushed onto the Context and
 // popped on return, so the called process sees only its own substitutions.
+//
+// Call-site param values are template-expanded against the parent scope
+// before being pushed, so a nested call_activity declaring
+// `params: {change_type: ${change_type}}` propagates the parent's resolved
+// value rather than the literal placeholder. ExpandParams is idempotent on
+// strings without ${…} placeholders, so leaf values pass through unchanged.
 func (e *Engine) wrapCallActivity(raw RawNode) NodeFn {
 	return func(ctx *Context) Outcome {
 		sub, ok := e.Processes[raw.Process]
@@ -131,7 +137,7 @@ func (e *Engine) wrapCallActivity(raw RawNode) NodeFn {
 			merged[k] = v
 		}
 		for k, v := range raw.Params {
-			merged[k] = v
+			merged[k] = ExpandParams(v, prev)
 		}
 		ctx.Params = merged
 		defer func() { ctx.Params = prev }()

@@ -185,7 +185,10 @@ func runnerResolveSetup(t *testing.T, tmpDir string) {
 // up a full architecture-shaped config).
 func writeYAMLConfig(t *testing.T, tmpDir string, systemConfig, testConfig string) {
 	t.Helper()
-	body := ""
+	// project.url is mandatory in any loadable gh-optivem.yaml; the value
+	// is irrelevant to these path-resolution tests but must be present so
+	// projectconfig.Load returns a non-nil cfg rather than a Validate error.
+	body := "project:\n  url: https://github.com/orgs/acme/projects/1\n"
 	if systemConfig != "" {
 		body += "system_config: " + systemConfig + "\n"
 	}

@@ -88,20 +88,21 @@ func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 }
 
 // TestEmbeddedDispatch_RunsInConsumerEmptyDir walks a real production
-// user_task (FIX_STRUCT_VERIFY in the embedded `structural_cycle` flow)
-// against the fake clauderun + git pair, with RepoPath set to a temp
-// dir that contains no consumer-side scaffolding. Asserts the dispatch
-// completes and the rendered prompt is the embedded atdd-fix-verify body —
-// proves the dispatcher reaches the embedded prompt without any
-// consumer-file dependency.
+// user_task (FIX_TEST in the embedded `structural_cycle` flow) against
+// the fake clauderun + git pair, with RepoPath set to a temp dir that
+// contains no consumer-side scaffolding. Asserts the dispatch completes
+// and the rendered prompt is the embedded atdd-fix-verify body — proves
+// the dispatcher reaches the embedded prompt without any consumer-file
+// dependency.
 //
 // AT_RED_TEST was the original target; after the AT/CT creative-vs-
 // mechanical split, every RED-phase node in at_cycle is a call_activity
 // into red_phase_cycle, and the AT_GREEN_SYSTEM phase's backend/frontend
 // nodes are now call_activities into green_phase_cycle. The remaining
 // statically-bound user_tasks live inside structural_cycle (and the
-// deferred CT stubs node), so FIX_STRUCT_VERIFY is used here. Any
-// embedded user_task with a static (non-templated) agent will do.
+// deferred CT stubs node), so FIX_TEST is used here (one of the two
+// atdd-fix-verify dispatch sites — FIX_COMPILE is its compile-RED twin).
+// Any embedded user_task with a static (non-templated) agent will do.
 func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 	tempDir := t.TempDir()
 
@@ -138,15 +139,15 @@ func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 	if !ok {
 		t.Fatal("embedded YAML missing structural_cycle process")
 	}
-	node, ok := process.Nodes["FIX_STRUCT_VERIFY"]
+	node, ok := process.Nodes["FIX_TEST"]
 	if !ok {
-		t.Fatal("structural_cycle process missing FIX_STRUCT_VERIFY node")
+		t.Fatal("structural_cycle process missing FIX_TEST node")
 	}
 
-	// FIX_STRUCT_VERIFY's phase_doc is templated (`${phase_doc}`) — the
-	// production caller is a call_activity that injects the value via
-	// params. Seed it directly here since this test invokes node.Fn
-	// outside the call_activity dispatch path.
+	// FIX_TEST's phase_doc is templated (`${phase_doc}`) — the production
+	// caller is a call_activity that injects the value via params. Seed
+	// it directly here since this test invokes node.Fn outside the
+	// call_activity dispatch path.
 	ctx := newCtxWithIssue()
 	ctx.Params["phase_doc"] = "docs/atdd/process/system-interface-redesign.md"
 

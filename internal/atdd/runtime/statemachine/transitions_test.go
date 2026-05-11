@@ -252,25 +252,24 @@ var transitionTable = []transitionCase{
 	{process: "external_system_onboarding", from: "COMMIT", wantTo: "ONBOARD_END"},
 
 	// ---- structural_cycle (shared by SYSAPI / SYSUI / CHORE via params) ----
-	// Structural-cycle escape: process-audit gap resolved — the TEST=skip
-	// branch jumps directly to COMMIT (the call_activity into the shared
-	// commit sub-process), bypassing COMPILE/CHOOSE_TESTS/RUN_TESTS. Verify
-	// gate sits AFTER RUN_TESTS (BPMN-clean): test failure routes through
-	// the fix-agent loop back into CHOOSE_TESTS so the operator can re-pick
-	// scope after the agent's fix.
+	// COMPILE always runs after APPROVE_CHANGE. Compile or test RED routes
+	// through a human STOP (Enter = dispatch fix-agent, abort = halt) and
+	// then FIX_COMPILE / FIX_TEST — one shared atdd-fix-verify agent
+	// branching on failure_type. Compile retries from COMPILE; test retries
+	// from RUN_TESTS (re-uses the previously selected commands).
 	{process: "structural_cycle", from: "WRITE", wantTo: "APPROVE_CHANGE"},
-	{process: "structural_cycle", from: "APPROVE_CHANGE", wantTo: "COMMIT", desc: "test-choice handling deferred — APPROVE_CHANGE goes straight to COMMIT; GATE_TEST_MODE/COMPILE/CHOOSE_TESTS/RUN_TESTS/GATE_STRUCT_VERIFY/STOP_STRUCT_VERIFY_REVIEW/FIX_STRUCT_VERIFY remain defined but unreachable"},
-	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "skip"}, wantTo: "COMMIT", desc: "skip mode escapes the TEST sub-loop entirely"},
-	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "compile"}, wantTo: "COMPILE"},
-	{process: "structural_cycle", from: "GATE_TEST_MODE", state: map[string]any{"structural_test_mode": "full"}, wantTo: "COMPILE"},
-	{process: "structural_cycle", from: "COMPILE", state: map[string]any{"structural_test_mode": "full"}, wantTo: "CHOOSE_TESTS"},
-	{process: "structural_cycle", from: "COMPILE", state: map[string]any{"structural_test_mode": "compile"}, wantTo: "COMMIT"},
+	{process: "structural_cycle", from: "APPROVE_CHANGE", wantTo: "COMPILE"},
+	{process: "structural_cycle", from: "COMPILE", wantTo: "GATE_COMPILE_OK"},
+	{process: "structural_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": true}, wantTo: "CHOOSE_TESTS", desc: "compile pass enters the test sub-loop"},
+	{process: "structural_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": false}, wantTo: "STOP_COMPILE_FAIL_REVIEW", desc: "compile fail halts at a human review STOP before fix-agent dispatch"},
+	{process: "structural_cycle", from: "STOP_COMPILE_FAIL_REVIEW", wantTo: "FIX_COMPILE", desc: "human approves the dispatch and the fix-verify agent runs in compile mode"},
+	{process: "structural_cycle", from: "FIX_COMPILE", wantTo: "COMPILE", desc: "fix agent loops back to COMPILE for re-verify"},
 	{process: "structural_cycle", from: "CHOOSE_TESTS", wantTo: "RUN_TESTS"},
 	{process: "structural_cycle", from: "RUN_TESTS", wantTo: "GATE_STRUCT_VERIFY"},
 	{process: "structural_cycle", from: "GATE_STRUCT_VERIFY", state: map[string]any{"structural_verify_outcome": "ok"}, wantTo: "COMMIT", desc: "ok class continues directly to commit gate"},
-	{process: "structural_cycle", from: "GATE_STRUCT_VERIFY", state: map[string]any{"structural_verify_outcome": "red"}, wantTo: "STOP_STRUCT_VERIFY_REVIEW", desc: "red class halts at a human review STOP before any fix-agent dispatch"},
-	{process: "structural_cycle", from: "STOP_STRUCT_VERIFY_REVIEW", wantTo: "FIX_STRUCT_VERIFY", desc: "human approves the dispatch and the fix-verify agent runs"},
-	{process: "structural_cycle", from: "FIX_STRUCT_VERIFY", wantTo: "CHOOSE_TESTS", desc: "fix agent loops back to test selection so the operator can re-pick scope"},
+	{process: "structural_cycle", from: "GATE_STRUCT_VERIFY", state: map[string]any{"structural_verify_outcome": "red"}, wantTo: "STOP_TEST_FAIL_REVIEW", desc: "red class halts at a human review STOP before any fix-agent dispatch"},
+	{process: "structural_cycle", from: "STOP_TEST_FAIL_REVIEW", wantTo: "FIX_TEST", desc: "human approves the dispatch and the fix-verify agent runs in test mode"},
+	{process: "structural_cycle", from: "FIX_TEST", wantTo: "RUN_TESTS", desc: "fix agent loops back to RUN_TESTS, re-using the previously selected commands"},
 	{process: "structural_cycle", from: "COMMIT", wantTo: "TICK_CHECKLIST"},
 	{process: "structural_cycle", from: "TICK_CHECKLIST", wantTo: "STRUCT_END"},
 

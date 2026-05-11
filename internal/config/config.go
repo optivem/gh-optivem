@@ -551,7 +551,7 @@ func bindYAMLAffectingFlags(fs *pflag.FlagSet, f *RawFlags) {
 	fs.StringVar(&f.TestLang, "test-lang", "", "Test language (defaults to --monolith-lang or --backend-lang)")
 	fs.StringVar(&f.BackendLang, "backend-lang", "", "Backend language: java, dotnet, typescript (multitier)")
 	fs.StringVar(&f.FrontendLang, "frontend-lang", "", "Frontend language: react (multitier)")
-	fs.StringVar(&f.ProjectURL, "project-url", "", "GitHub Project URL to bake into gh-optivem.yaml (optional; leave empty to fill in by hand later)")
+	fs.StringVar(&f.ProjectURL, "project-url", "", "GitHub Project URL to bake into gh-optivem.yaml (required; e.g. https://github.com/orgs/<org>/projects/<n>)")
 	// Tier paths: required on 'config init' when --arch is set; on 'init'
 	// they are optional and default to the flat layout the scaffolder
 	// produces.
@@ -1236,6 +1236,12 @@ func ValidateAndDeriveForYAML(f *RawFlags) (*Config, error) {
 	}
 	if err := validatePathFlagsForYAML(f); err != nil {
 		return nil, err
+	}
+	// --project-url is checked last so a more specific flag error (bad
+	// arch, missing path, etc.) surfaces first; the URL is the catch-all
+	// required field that projectconfig.Validate also enforces.
+	if f.ProjectURL == "" {
+		return nil, fmt.Errorf("--project-url is required (the GitHub Project board URL written into gh-optivem.yaml)")
 	}
 	mr := deriveMultirepoNames(f.RepoStrategy, f.Arch, f.Owner, f.Repo)
 	return &Config{

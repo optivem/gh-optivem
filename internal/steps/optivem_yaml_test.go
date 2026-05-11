@@ -169,17 +169,18 @@ func TestBuildOptivemYAML_OutputValidates(t *testing.T) {
 	t.Parallel()
 	monoSys, monoTest, monoStubs, monoSims := monolithFlatPaths()
 	multiBE, multiFE, multiTest, multiStubs, multiSims := multitierFlatPaths()
+	const url = "https://github.com/orgs/x/projects/1"
 	cases := []*config.Config{
-		{Arch: "monolith", RepoStrategy: "monorepo", FullRepo: "x/y", Lang: "java", TestLang: "java",
+		{Arch: "monolith", RepoStrategy: "monorepo", FullRepo: "x/y", Lang: "java", TestLang: "java", ProjectURL: url,
 			SystemPath: monoSys, SystemTestPath: monoTest, StubsPath: monoStubs, SimulatorsPath: monoSims},
-		{Arch: "multitier", RepoStrategy: "multirepo", BackendLang: "java", FrontendLang: "react", TestLang: "java",
+		{Arch: "multitier", RepoStrategy: "multirepo", BackendLang: "java", FrontendLang: "react", TestLang: "java", ProjectURL: url,
 			BackendFullRepo: "x/y-backend", FrontendFullRepo: "x/y-frontend",
 			BackendPath: multiBE, FrontendPath: multiFE, SystemTestPath: multiTest, StubsPath: multiStubs, SimulatorsPath: multiSims},
-		{Arch: "monolith", RepoStrategy: "multirepo", Lang: "dotnet", TestLang: "dotnet", SystemFullRepo: "x/y-system",
+		{Arch: "monolith", RepoStrategy: "multirepo", Lang: "dotnet", TestLang: "dotnet", SystemFullRepo: "x/y-system", ProjectURL: url,
 			SystemPath: monoSys, SystemTestPath: monoTest, StubsPath: monoStubs, SimulatorsPath: monoSims},
-		{Arch: "monolith", RepoStrategy: "monorepo", FullRepo: "x/y", Lang: "typescript", TestLang: "typescript",
+		{Arch: "monolith", RepoStrategy: "monorepo", FullRepo: "x/y", Lang: "typescript", TestLang: "typescript", ProjectURL: url,
 			SystemPath: monoSys, SystemTestPath: monoTest, StubsPath: monoStubs, SimulatorsPath: monoSims},
-		{Arch: "multitier", RepoStrategy: "monorepo", FullRepo: "x/y", BackendLang: "java", FrontendLang: "react", TestLang: "java",
+		{Arch: "multitier", RepoStrategy: "monorepo", FullRepo: "x/y", BackendLang: "java", FrontendLang: "react", TestLang: "java", ProjectURL: url,
 			BackendPath: multiBE, FrontendPath: multiFE, SystemTestPath: multiTest, StubsPath: multiStubs, SimulatorsPath: multiSims},
 	}
 	for i, cfg := range cases {

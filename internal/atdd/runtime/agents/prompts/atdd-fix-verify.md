@@ -4,6 +4,7 @@ Ticket: #${issue_num} "${issue_title}" (${issue_repo})
 Project: ${project_title} (${project_url})
 Phase: ${phase}
 Phase doc: ${phase_doc}
+Failure type: ${failure_type}
 
 When the work is done, do not commit and do not summarise — exit cleanly. The CLI will re-run verify against your edits and either confirm green or halt for human review. The agent must never run `git commit`, `git add`, or `gh issue close`.
 
@@ -11,9 +12,14 @@ When the work is done, do not commit and do not summarise — exit cleanly. The 
 
 ## Why you were dispatched
 
-You are running because **RUN_TESTS** classified the operator-selected test run as **red** on a structural cycle. Structural cycles (`SYSTEM INTERFACE REDESIGN`, `SYSTEM IMPLEMENTATION CHANGE`) are **behaviour-preserving by definition** — RED is **not** expected here, so a real test failure points at a regression introduced by the WRITE phase that just landed.
+You are running because the structural cycle's verify step classified RED. `${failure_type}` says which step — `compile` if **COMPILE** failed, `test` if **RUN_TESTS** failed — and that switches what you read first and what `${verify_results}` carries:
 
-This is not the AT/CT WRITE-cycle policy ("verification is feedback, not gating; RED is the whole point"). On structural cycles, the test result is a hard signal: either the WRITE-phase edit broke a behaviour that was previously green, or a test was already coupled to the surface the WRITE-phase legitimately reshaped and the test itself must follow. Both outcomes call for the smallest change that turns the failure green again.
+- **`failure_type=compile`** — the in-scope build failed. `${verify_results}` carries the compile log (stderr from `./compile-all.sh` / `./gradlew build` / `npx tsc --noEmit` / `dotnet build`, scoped to the in-scope projects). Read it, locate the offending file:line, fix the source. Do not touch tests. The orchestrator re-runs COMPILE after you exit.
+- **`failure_type=test`** — compile already passed; the operator-selected test commands ran red. `${verify_results}` carries one block per failed test (suite, test name, captured stderr/stdout). Read those first; the captured output is the signal. The orchestrator re-runs RUN_TESTS (re-using the previously selected commands) after you exit.
+
+Structural cycles (`SYSTEM INTERFACE REDESIGN`, `SYSTEM IMPLEMENTATION CHANGE`) are **behaviour-preserving by definition** — RED is **not** expected here, so either a real test failure or a compile failure points at a regression introduced by the WRITE phase that just landed.
+
+This is not the AT/CT WRITE-cycle policy ("verification is feedback, not gating; RED is the whole point"). On structural cycles, the verify result is a hard signal: either the WRITE-phase edit broke a behaviour that was previously green, or a test was already coupled to the surface the WRITE-phase legitimately reshaped and the test itself must follow. Both outcomes call for the smallest change that turns the failure green again.
 
 You get **one** retry. If verify is still red after your fix, the orchestrator halts and the human takes over.
 

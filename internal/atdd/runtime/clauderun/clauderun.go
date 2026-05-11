@@ -99,6 +99,15 @@ type Options struct {
 	// tests with no Git seam).
 	ChangedFiles string
 
+	// NodeParams carries the YAML node's `params:` block (already expanded
+	// against ctx.Params at dispatch time). Substituted into the prompt
+	// template by name — e.g. `failure_type: compile` on the FIX_COMPILE
+	// node surfaces as ${failure_type} = "compile" in the rendered prompt.
+	// This is how per-call-site labels reach the agent body without an
+	// agent-specific Options field. Lower precedence than the fixed-schema
+	// placeholders (issue_num, phase_doc, …) — those win on key collision.
+	NodeParams map[string]string
+
 	// OverrideText is the per-node `--extra` text from override.Hooks,
 	// interpolated into the prompt template. Empty string is fine.
 	OverrideText string
@@ -375,7 +384,14 @@ func renderPrompt(opts Options) (string, error) {
 			return "", err
 		}
 	}
-	params := map[string]string{
+	params := map[string]string{}
+	for k, v := range opts.NodeParams {
+		params[k] = v
+	}
+	// Fixed-schema placeholders win on key collision with NodeParams so a
+	// node author can't accidentally shadow ticket context by reusing a
+	// reserved name in YAML.
+	for k, v := range map[string]string{
 		"issue_num":      strconv.Itoa(opts.IssueNum),
 		"issue_title":    opts.IssueTitle,
 		"issue_repo":     opts.IssueRepo,
@@ -388,6 +404,8 @@ func renderPrompt(opts Options) (string, error) {
 		"checklist":      opts.Checklist,
 		"verify_results": opts.VerifyResults,
 		"changed_files":  opts.ChangedFiles,
+	} {
+		params[k] = v
 	}
 	rendered := statemachine.ExpandParams(body, params)
 	if opts.OverrideText != "" {
