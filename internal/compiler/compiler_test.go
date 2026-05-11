@@ -2,8 +2,10 @@ package compiler
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/optivem/gh-optivem/internal/projectconfig"
@@ -104,5 +106,56 @@ func TestCompile_RejectsUnsupportedLang(t *testing.T) {
 	}
 	if len(sh.calls) != 0 {
 		t.Fatalf("expected no shell calls for unsupported lang, got %v", sh.calls)
+	}
+}
+
+// TestCheckTierLayout_RejectsMissingSentinel guards the misconfiguration
+// caught for the user: yaml's system_test.path pointed at `system-test/`
+// instead of `system-test/java/`, and the resulting `fork/exec gradlew.bat`
+// error was opaque. The sentinel pre-flight surfaces a readable message
+// before exec; this test pins both the pass case (sentinel present) and
+// the fail case (sentinel absent, error mentions yaml).
+func TestCheckTierLayout_RejectsMissingSentinel(t *testing.T) {
+	cases := []struct {
+		name        string
+		lang        string
+		layout      []string // files to create in the tier dir
+		wantErr     bool
+		wantErrSubs []string
+	}{
+		{"java with build.gradle passes", projectconfig.LangJava, []string{"build.gradle"}, false, nil},
+		{"java with build.gradle.kts passes", projectconfig.LangJava, []string{"build.gradle.kts"}, false, nil},
+		{"java with no build file fails and names the yaml", projectconfig.LangJava, nil, true,
+			[]string{"build.gradle", "gh-optivem.yaml"}},
+		{"dotnet with .csproj passes", projectconfig.LangDotnet, []string{"App.csproj"}, false, nil},
+		{"dotnet with .sln passes", projectconfig.LangDotnet, []string{"App.sln"}, false, nil},
+		{"dotnet empty dir fails", projectconfig.LangDotnet, nil, true, []string{"*.csproj"}},
+		{"typescript with package.json passes", projectconfig.LangTypescript, []string{"package.json"}, false, nil},
+		{"typescript empty dir fails", projectconfig.LangTypescript, nil, true, []string{"package.json"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for _, f := range tc.layout {
+				if err := os.WriteFile(filepath.Join(dir, f), []byte("x"), 0644); err != nil {
+					t.Fatalf("seed %s: %v", f, err)
+				}
+			}
+			err := checkTierLayout(tc.lang, dir)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				for _, sub := range tc.wantErrSubs {
+					if !strings.Contains(err.Error(), sub) {
+						t.Errorf("error %q missing substring %q", err.Error(), sub)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
 	}
 }

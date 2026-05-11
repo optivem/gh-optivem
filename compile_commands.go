@@ -20,6 +20,7 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/compiler"
 	"github.com/optivem/gh-optivem/internal/configinit"
+	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
@@ -48,7 +49,9 @@ halting on first failure. Use the explicit subcommands to scope to one tier.`,
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			cfg := loadProjectConfigOrExit()
+			log.PhaseHeader(1, 2, "Compile system")
 			exitOnError(compileSystem(cfg))
+			log.PhaseHeader(2, 2, "Compile system-tests")
 			exitOnError(compileSystemTests(cfg))
 		},
 	}
@@ -64,6 +67,7 @@ func newCompileSystemCmd() *cobra.Command {
 		Example: `  gh optivem compile system`,
 		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
+			log.PhaseHeader(1, 1, "Compile system")
 			exitOnError(compileSystem(loadProjectConfigOrExit()))
 		},
 	}
@@ -76,6 +80,7 @@ func newCompileSystemTestsCmd() *cobra.Command {
 		Example: `  gh optivem compile system-tests`,
 		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
+			log.PhaseHeader(1, 1, "Compile system-tests")
 			exitOnError(compileSystemTests(loadProjectConfigOrExit()))
 		},
 	}
@@ -101,11 +106,15 @@ func loadProjectConfigOrExit() *projectconfig.Config {
 func compileSystem(cfg *projectconfig.Config) error {
 	switch cfg.System.Architecture {
 	case projectconfig.ArchMonolith:
-		return compiler.Compile(monolithTier(cfg), ".")
+		tier := monolithTier(cfg)
+		log.Infof("Compiling system (%s) in %s", tier.Lang, tier.Path)
+		return compiler.Compile(tier, ".")
 	case projectconfig.ArchMultitier:
+		log.Infof("Compiling backend (%s) in %s", cfg.System.Backend.Lang, cfg.System.Backend.Path)
 		if err := compiler.Compile(cfg.System.Backend, "."); err != nil {
 			return err
 		}
+		log.Infof("Compiling frontend (%s) in %s", cfg.System.Frontend.Lang, cfg.System.Frontend.Path)
 		return compiler.Compile(cfg.System.Frontend, ".")
 	case "":
 		return fmt.Errorf("compile system: %s has no system.architecture set", projectconfig.Path)
@@ -128,5 +137,6 @@ func compileSystemTests(cfg *projectconfig.Config) error {
 	if cfg.SystemTest.IsEmpty() {
 		return fmt.Errorf("compile system-tests: %s has no system_test set", projectconfig.Path)
 	}
+	log.Infof("Compiling system-tests (%s) in %s", cfg.SystemTest.Lang, cfg.SystemTest.Path)
 	return compiler.Compile(cfg.SystemTest, ".")
 }
