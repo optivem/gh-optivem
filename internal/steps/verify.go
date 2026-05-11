@@ -512,10 +512,10 @@ func VerifyLocalTesting(cfg *config.Config) {
 
 	setupMultirepoSymlinks(cfg)
 
-	runLocalTestsViaRunner("Local system tests (latest)", dockerDir, testDir, "tests-latest.yaml")
+	runLocalTestsViaRunner("Local system tests (latest)", dockerDir, testDir, "tests.yaml")
 
 	if !cfg.NoLegacy {
-		runLocalTestsViaRunner("Local system tests (legacy)", dockerDir, testDir, "tests-legacy.yaml")
+		runLocalTestsViaRunner("Local system tests (legacy)", dockerDir, testDir, "tests.legacy.yaml")
 	}
 }
 

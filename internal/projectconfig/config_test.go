@@ -420,7 +420,7 @@ func TestRoundTrip_PreservesSystemAndTestConfig(t *testing.T) {
 		cfg := &Config{
 			Project:    Project{URL: "https://github.com/orgs/acme/projects/1"},
 			System:     System{Config: "docker/systems.json"},
-			SystemTest: TierSpec{Config: "system-test/tests-latest.json"},
+			SystemTest: TierSpec{Config: "system-test/tests.json"},
 		}
 		if err := Write(dir, cfg); err != nil {
 			t.Fatalf("Write: %v", err)

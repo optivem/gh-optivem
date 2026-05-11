@@ -211,10 +211,10 @@ gh optivem test system
 
 # 3. Per-project default baked into gh-optivem.yaml (lowest precedence)
 system_config: docker/systems.yaml
-test_config:   system-test/tests-latest.yaml
+test_config:   system-test/tests.yaml
 ```
 
-Legacy `.json` files still work — the loader picks the parser from the file extension, and any in-flight repo carrying `systems.json` / `tests-latest.json` keeps loading without changes.
+Legacy `.json` files still work — the loader picks the parser from the file extension, and any in-flight repo carrying `systems.json` / `tests.json` keeps loading without changes.
 
 `gh optivem init` auto-populates `system_config:` / `test_config:` to the paths it produces, so freshly scaffolded repos work without any flags. `gh optivem config init` (hand-rolled repos) leaves both fields empty — add them once your layout is settled.
 
