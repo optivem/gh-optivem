@@ -272,27 +272,30 @@ flowchart TD
     CHOOSE_TESTS[["Operator picks scope (all / some suites / specific tests / skip)"]]
     COMMIT[COMMIT — see § Commit Sub-Process]
     COMPILE[[Compile in-scope projects]]
-    FIX_STRUCT_VERIFY[Dispatch fix agent on test RED — structural cycle expects green]
+    FIX_COMPILE[Dispatch fix agent on compile RED — structural cycle expects green]
+    FIX_TEST[Dispatch fix agent on test RED — structural cycle expects green]
+    GATE_COMPILE_OK{Compile passed?}
     GATE_STRUCT_VERIFY{"Test outcome? (ok | red — fix and retry)"}
-    GATE_TEST_MODE{"TEST mode? (full | compile | skip)"}
     RUN_TESTS[["Run selected tests; classify pass/fail for the verify gate"]]
-    STOP_STRUCT_VERIFY_REVIEW[STOP - HUMAN REVIEW — tests RED, dispatch fix agent?]
+    STOP_COMPILE_FAIL_REVIEW[STOP - HUMAN REVIEW — compile RED, dispatch fix agent?]
+    STOP_TEST_FAIL_REVIEW[STOP - HUMAN REVIEW — tests RED, dispatch fix agent?]
     STRUCT_END((End))
     TICK_CHECKLIST[[Tick checklist items]]
     WRITE["${change_type} - WRITE"]
 
     WRITE --> APPROVE_CHANGE
-    APPROVE_CHANGE --> COMMIT
-    GATE_TEST_MODE -- skip --> COMMIT
-    GATE_TEST_MODE -- compile / full --> COMPILE
-    COMPILE -- full --> CHOOSE_TESTS
-    COMPILE -- compile --> COMMIT
+    APPROVE_CHANGE --> COMPILE
+    COMPILE --> GATE_COMPILE_OK
+    GATE_COMPILE_OK -- Yes --> CHOOSE_TESTS
+    GATE_COMPILE_OK -- No --> STOP_COMPILE_FAIL_REVIEW
+    STOP_COMPILE_FAIL_REVIEW --> FIX_COMPILE
+    FIX_COMPILE --> COMPILE
     CHOOSE_TESTS --> RUN_TESTS
     RUN_TESTS --> GATE_STRUCT_VERIFY
     GATE_STRUCT_VERIFY -- ok --> COMMIT
-    GATE_STRUCT_VERIFY -- red --> STOP_STRUCT_VERIFY_REVIEW
-    STOP_STRUCT_VERIFY_REVIEW --> FIX_STRUCT_VERIFY
-    FIX_STRUCT_VERIFY --> CHOOSE_TESTS
+    GATE_STRUCT_VERIFY -- red --> STOP_TEST_FAIL_REVIEW
+    STOP_TEST_FAIL_REVIEW --> FIX_TEST
+    FIX_TEST --> RUN_TESTS
     COMMIT --> TICK_CHECKLIST
     TICK_CHECKLIST --> STRUCT_END
 
@@ -300,10 +303,10 @@ flowchart TD
     class CHOOSE_TESTS,COMPILE,RUN_TESTS,TICK_CHECKLIST serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
-    class FIX_STRUCT_VERIFY,WRITE agentNode
+    class FIX_COMPILE,FIX_TEST,WRITE agentNode
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class APPROVE_CHANGE,STOP_STRUCT_VERIFY_REVIEW humanNode
+    class APPROVE_CHANGE,STOP_COMPILE_FAIL_REVIEW,STOP_TEST_FAIL_REVIEW humanNode
 ```
 
 ## Commit Sub-Process
