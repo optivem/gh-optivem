@@ -1112,16 +1112,20 @@ func validMonolithBase() *Config {
 
 func TestValidate_AcceptsValidSystemName(t *testing.T) {
 	t.Parallel()
-	cfg := validMonolithBase()
-	cfg.SystemName = "Page Turner"
-	if err := cfg.Validate(); err != nil {
-		t.Errorf("Validate: %v", err)
+	// "Shop" is the template placeholder per NAMING.md — naming a system
+	// "Shop" produces no-op replacements, which is by definition safe.
+	for _, name := range []string{"Page Turner", "Shop"} {
+		cfg := validMonolithBase()
+		cfg.SystemName = name
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("Validate(system_name=%q): %v", name, err)
+		}
 	}
 }
 
 func TestValidate_RejectsReservedSystemName(t *testing.T) {
 	t.Parallel()
-	cases := []string{"class", "shop", "Switch Class"}
+	cases := []string{"class", "Switch Class"}
 	for _, name := range cases {
 		cfg := validMonolithBase()
 		cfg.SystemName = name

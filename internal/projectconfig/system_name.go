@@ -122,7 +122,7 @@ func isScaffoldReserved(word string) bool {
 		"image": true, "container": true, "volume": true, "env": true, "run": true,
 		"src": true, "main": true, "lib": true, "bin": true, "dist": true,
 		"node": true, "gradle": true, "dotnet": true, "java": true, "typescript": true,
-		"react": true, "spring": true, "next": true, "shop": true,
+		"react": true, "spring": true, "next": true,
 	}
 	return reserved[word]
 }

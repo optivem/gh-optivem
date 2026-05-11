@@ -42,7 +42,7 @@ set -euo pipefail
 # === REHEARSAL CONFIG === (edit these for your setup)
 REHEARSAL_OWNER="optivem"
 REHEARSAL_REPO="shop"
-REHEARSAL_SYSTEM_NAME="Shop"
+REHEARSAL_SYSTEM_NAME="Page Turner"
 REHEARSAL_ARCH="monolith"
 REHEARSAL_REPO_STRATEGY="monorepo"
 REHEARSAL_MONOLITH_LANG="typescript"
