@@ -92,7 +92,7 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 		process("structural_cycle", siParams).
 		userTask("WRITE", "atdd-task").
 		userTask("APPROVE_CHANGE", "human").
-		serviceTask("COMPILE", "compile_in_scope").
+		serviceTask("COMPILE", "compile_all").
 		gateway("GATE_COMPILE_OK", "compile_ok", true).
 		serviceTask("CHOOSE_TESTS", "select_tests").
 		serviceTask("RUN_TESTS", "run_tests").

@@ -2,7 +2,7 @@
 // scaffolded project, dispatching by language.
 //
 // Compile is the entry point used by the `gh optivem compile` Cobra commands
-// (compile_commands.go) and, indirectly, the structural-cycle compile_in_scope
+// (compile_commands.go) and, indirectly, the structural-cycle compile_all
 // action — which shells out to `gh optivem compile`. CompileIn is the same
 // dispatch keyed only on (lang, cwd), for callers without a TierSpec — most
 // importantly internal/steps.VerifyCompilation, which `gh optivem init` calls

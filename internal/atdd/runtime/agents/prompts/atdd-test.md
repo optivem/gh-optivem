@@ -153,7 +153,7 @@ This dispatch only happens when the WRITE dispatch left compile errors (because 
 
 - **Implementing too much in WRITE.** WRITE produces test code only. DSL prototypes are added by the PROTOTYPES dispatch *after* the orchestrator's compile attempt fails — not preemptively while writing tests.
 - **Adding `@Disabled` markup yourself.** That is the orchestrator's job (`disable_change_driven` service task), driven by the language and the change-driven scenario list. Doing it in the agent risks disabling legacy-acceptance-criteria scenarios that should run.
-- **Running compile or tests yourself.** The orchestrator owns those service tasks (`compile_targeted`, `run_targeted_tests`). The agent should never shell out to compile or test commands.
+- **Running compile or tests yourself.** The orchestrator owns those service tasks (`compile_system_tests`, `run_targeted_tests`). The agent should never shell out to compile or test commands.
 - **Adding "noise" assertions or fields.** Anything not directly tied to Given/When/Then for the scenario is noise. Trust the DSL defaults.
 - **Hand-coding DSL bodies in PROTOTYPES.** Real DSL logic belongs to AT - RED - DSL. Here, prototypes throw `"TODO: DSL"` and nothing more.
 

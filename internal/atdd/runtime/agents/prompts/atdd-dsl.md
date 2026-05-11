@@ -159,7 +159,7 @@ This dispatch only happens when the WRITE dispatch left compile errors (because 
 - **Implementing Driver bodies in this phase.** Drivers are prototyped here (`"TODO: Driver"`); real Driver code belongs to CT - RED - EXTERNAL DRIVER and/or AT - RED - SYSTEM DRIVER.
 - **Adding Driver prototypes preemptively in WRITE.** Prototypes are added by the PROTOTYPES dispatch *after* the orchestrator's compile attempt fails — not preemptively while writing the DSL. WRITE produces DSL code + interface changes + flags only.
 - **Adding `@Disabled` markup yourself.** That is the orchestrator's job (`disable_change_driven` service task), driven by the language and the change-driven scenario list.
-- **Running compile, tests, or commit yourself.** The orchestrator owns those service tasks (`compile_targeted`, `run_targeted_tests`, `commit_phase`). The agent should never shell out.
+- **Running compile, tests, or commit yourself.** The orchestrator owns those service tasks (`compile_system`, `run_targeted_tests`, `commit_phase`). The agent should never shell out.
 - **Forgetting to set both flags.** Both `External System Driver Interface Changed` and `System Driver Interface Changed` must be set explicitly — an unset flag is a bug. They gate downstream phases.
 - **Leaving "TODO: DSL" behind.** If any DSL method still throws `"TODO: DSL"` after WRITE, the phase is not done.
 - **Touching test files beyond the enable step.** Re-enabling tests at WRITE is the only test-file activity here. Anything else (changing assertions, adding scenarios) means you're in the wrong phase.

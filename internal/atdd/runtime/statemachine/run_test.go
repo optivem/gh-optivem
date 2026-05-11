@@ -145,3 +145,60 @@ processes:
 		t.Errorf("inner service_task saw change_type=%q, want %q (literal value should pass through)", seenChangeType, want)
 	}
 }
+
+// TestServiceTask_ResolvesActionTemplate locks in the dispatch-time action
+// lookup for templated `action: ${name}` fields. The cycle YAML uses this
+// to let one shared sub-process pick a different concrete action per call
+// site (e.g. red_phase_cycle's COMPILE node resolves to compile_system or
+// compile_system_tests depending on the `compile_action` param).
+func TestServiceTask_ResolvesActionTemplate(t *testing.T) {
+	const yaml = `
+processes:
+  outer:
+    start: CALL_CYCLE
+    nodes:
+      - id: CALL_CYCLE
+        type: call_activity
+        process: cycle
+        params:
+          chosen: do_thing_b
+      - id: OUTER_END
+        type: end_event
+    sequence_flows:
+      - {from: CALL_CYCLE, to: OUTER_END}
+
+  cycle:
+    start: ACT
+    nodes:
+      - id: ACT
+        type: service_task
+        action: ${chosen}
+      - id: CYCLE_END
+        type: end_event
+    sequence_flows:
+      - {from: ACT, to: CYCLE_END}
+`
+	eng, err := LoadBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+
+	var called string
+	eng.ActionFn = func(name string) NodeFn {
+		return func(ctx *Context) Outcome {
+			called = name
+			return Outcome{}
+		}
+	}
+	eng.AgentFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	eng.GateFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+	if err := eng.RunProcess("outer", NewContext()); err != nil {
+		t.Fatalf("RunProcess outer: %v", err)
+	}
+	if called != "do_thing_b" {
+		t.Errorf("service_task action template resolved to %q, want %q", called, "do_thing_b")
+	}
+}

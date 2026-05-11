@@ -359,7 +359,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    COMPILE[[Compile in scope]]
+    COMPILE[["Compile (${compile_action})"]]
     GATE_COMPILE_OK{Compile passed?}
     GATE_TESTS_PASS{All tests passed?}
     GREEN_END((End))
@@ -393,7 +393,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     COMMIT[COMMIT — see § Commit Sub-Process]
-    COMPILE[[Compile in scope]]
+    COMPILE[["Compile (${compile_action})"]]
     DISABLE[[Disable change-driven scenarios]]
     GATE_COMPILE_OK{Compile passed?}
     GATE_RUN_FAILED_RUNTIME{"Tests fail at runtime (not compile)?"}

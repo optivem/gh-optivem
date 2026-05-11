@@ -111,17 +111,18 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("report_intake_summary", a.reportIntakeSummary)
 	r.Register("move_to_in_acceptance", a.moveToInAcceptance)
 	r.Register("run_smoke_test", a.runSmokeTest)
-	r.Register("compile_in_scope", a.compileInScope)
+	r.Register("compile_all", a.compileAll)
+	r.Register("compile_system", a.compileSystem)
+	r.Register("compile_system_tests", a.compileSystemTests)
 	r.Register("commit_phase", a.commitPhase)
 	r.Register("tick_checklist", a.tickChecklist)
 	r.Register("select_tests", a.selectTests)
 	r.Register("run_tests", a.runTests)
-	// red_phase_cycle infrastructure (per
+	// red_phase_cycle / green_phase_cycle infrastructure (per
 	// plans/20260505-230100-at-ct-cycle-creative-mechanical-split.md): the
-	// shared sub-flow's mechanical steps. Registered here so the registry
-	// is complete before any RED node migrates to call_activity into the
-	// shared flow; no current YAML node references these names.
-	r.Register("compile_targeted", a.compileTargeted)
+	// shared sub-flows' mechanical steps. Compile is dispatched via
+	// ${compile_action} resolving to one of compile_{all,system,system_tests}
+	// above; the cycle's COMPILE node looks up by templated name at runtime.
 	r.Register("run_targeted_tests", a.runTargetedTests)
 	r.Register("disable_change_driven", a.disableChangeDriven)
 	r.Register("enable_change_driven", a.enableChangeDriven)
@@ -135,14 +136,9 @@ func RegisterAll(r *Registry, deps Deps) {
 // Context keys consumed by the red_phase_cycle actions. Centralised so the
 // agent dispatcher (Step 2 of the AT/CT split) and tests have one place to
 // find the contract. The corresponding values are populated from the
-// ticket parse (Scope, Suite, Language) and the WRITE phase's output
-// (TestNames, DisableTargets, DisableReason).
+// ticket parse (Suite, Language) and the WRITE phase's output (TestNames,
+// DisableTargets, DisableReason).
 const (
-	// CtxKeyScope is the build/compile scope handed to compile_targeted —
-	// e.g. a path, a Gradle module, an npm workspace. Forwarded verbatim
-	// to ./compile-targeted.sh as a single positional argument.
-	CtxKeyScope = "scope"
-
 	// CtxKeySuite is the test suite name handed to run_targeted_tests —
 	// e.g. "<acceptance-api>", "<suite-contract-real>".
 	CtxKeySuite = "suite"
@@ -167,8 +163,9 @@ const (
 	// disable_change_driven applies the disable markup to.
 	CtxKeyDisableTargets = "disable_targets"
 
-	// CtxKeyCompileOK is the bool compile_targeted writes to record
-	// whether the targeted compile passed. Read by the compile_ok gate.
+	// CtxKeyCompileOK is the bool the compile actions
+	// (compile_all / compile_system / compile_system_tests) write to record
+	// whether the compile passed. Read by the compile_ok gate.
 	CtxKeyCompileOK = "compile_ok"
 
 	// CtxKeyTestsFailedRuntime is the bool run_targeted_tests writes to
@@ -696,58 +693,33 @@ func (a actions) commitPhase(ctx *statemachine.Context) statemachine.Outcome {
 // Test-mode actions
 // ---------------------------------------------------------------------------
 
-// compileInScope runs the canonical compile sweep by shelling out to
-// `gh optivem compile`, which dispatches per-language compile commands for
-// every in-scope tier listed in gh-optivem.yaml (see compile_commands.go +
-// internal/compiler). The bare `compile` form runs `compile system` then
-// `compile system-tests` sequentially, halting on first failure — matching
-// the behaviour the action needs from a single shell-out.
-func (a actions) compileInScope(ctx *statemachine.Context) statemachine.Outcome {
-	cmdLine := "gh optivem compile"
-	out, err := a.deps.Shell.Run(context.Background(), cmdLine)
-	if err != nil {
-		fmt.Fprintln(a.deps.Stderr, string(out))
-		return statemachine.Outcome{Err: fmt.Errorf("compile_in_scope: %w", err)}
-	}
-	if len(out) > 0 {
-		fmt.Fprintln(a.deps.Stdout, string(out))
-	}
-	return statemachine.Outcome{}
+// compileAll, compileSystem, compileSystemTests are the three tier-targeted
+// compile actions. Each shells out to the matching `gh optivem compile`
+// subcommand (see compile_commands.go) and writes CtxKeyCompileOK so the
+// shared `compile_ok` gate can route the compile-failed loop to
+// WRITE_PROTOTYPES or proceed. The cycle's COMPILE node picks one via the
+// `${compile_action}` template param at the call site:
+//
+//   - AT_RED_TEST / CT_RED_TEST     → compile_system_tests
+//   - AT_RED_DSL / *_DRIVER / GREEN → compile_system
+//   - structural_cycle              → compile_all
+//
+// Compile failure is NOT surfaced as Outcome.Err — the cycle's compile-failed
+// loop is the intended consumer; routing the bool is the correct behaviour.
+
+func (a actions) compileAll(ctx *statemachine.Context) statemachine.Outcome {
+	return a.runCompile(ctx, "compile_all", "gh optivem compile")
 }
 
-// ---------------------------------------------------------------------------
-// red_phase_cycle infrastructure (Step 1 of the AT/CT creative/mechanical
-// split — see plans/20260505-230100-at-ct-cycle-creative-mechanical-split.md).
-// These three actions own the mechanical work the shared red_phase_cycle
-// will dispatch (compile, run targeted tests, disable change-driven
-// scenarios). They are registered but unwired in v1: no YAML node calls
-// them yet. Step 2 of the split refactor wires AT_RED_TEST through them
-// first, then the remaining six RED phases follow.
-// ---------------------------------------------------------------------------
+func (a actions) compileSystem(ctx *statemachine.Context) statemachine.Outcome {
+	return a.runCompile(ctx, "compile_system", "gh optivem compile system")
+}
 
-// compileTargeted runs a scope-targeted compile via ./compile-targeted.sh,
-// the targeted analog of compile_in_scope. Where compile_in_scope sweeps
-// the whole repo, compile_targeted compiles only the path the WRITE phase
-// just edited (e.g. the test file being brought green at AT - RED - TEST).
-//
-// Reads:
-//   - CtxKeyScope (string) — required; passed verbatim to
-//     ./compile-targeted.sh as the single positional argument.
-//
-// Writes:
-//   - CtxKeyCompileOK (bool) — read by the compile_ok gate to route the
-//     compile-failed loop (route to WRITE_PROTOTYPES) or proceed.
-//
-// Compile failure is NOT surfaced as Outcome.Err — the flow's
-// compile-failed loop is the intended consumer; routing a false Bool is
-// the correct behaviour. Other failure modes (missing scope, missing
-// script) DO surface as Err so the run halts.
-func (a actions) compileTargeted(ctx *statemachine.Context) statemachine.Outcome {
-	scope := ctx.GetString(CtxKeyScope)
-	if scope == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("compile_targeted: %s not set in Context", CtxKeyScope)}
-	}
-	cmdLine := fmt.Sprintf("./compile-targeted.sh %s", shellEscape(scope))
+func (a actions) compileSystemTests(ctx *statemachine.Context) statemachine.Outcome {
+	return a.runCompile(ctx, "compile_system_tests", "gh optivem compile system-tests")
+}
+
+func (a actions) runCompile(ctx *statemachine.Context, name, cmdLine string) statemachine.Outcome {
 	out, err := a.deps.Shell.Run(context.Background(), cmdLine)
 	if len(out) > 0 {
 		fmt.Fprintln(a.deps.Stdout, string(out))
@@ -755,7 +727,7 @@ func (a actions) compileTargeted(ctx *statemachine.Context) statemachine.Outcome
 	ok := err == nil
 	ctx.Set(CtxKeyCompileOK, ok)
 	if err != nil {
-		fmt.Fprintf(a.deps.Stderr, "compile_targeted: %v\n", err)
+		fmt.Fprintf(a.deps.Stderr, "%s: %v\n", name, err)
 	}
 	return statemachine.Outcome{Bool: ok}
 }
@@ -867,9 +839,7 @@ func isCompileFailureOutput(out []byte) bool {
 // (`@Disabled("reason")` / `[Fact(Skip = "reason")]` / `test.skip(true, "reason")`)
 // to the change-driven test methods identified at WRITE. v1 shells out to
 // ./disable-test.sh once per target — the script owns the language-specific
-// edit syntax (the language-equivalents.md table). This mirrors how
-// compile_in_scope delegates language mechanics to
-// repo-owned scripts.
+// edit syntax (the language-equivalents.md table).
 //
 // Reads:
 //   - CtxKeyLanguage (string)        — required; java | csharp | typescript

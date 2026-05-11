@@ -150,7 +150,7 @@ This dispatch only happens when the WRITE dispatch left compile errors — typic
 - **Reading backend/frontend source to figure out behaviour.** The Driver speaks to the system's existing surface; behaviour is modelled on sibling Driver methods, not derived from production code. Reading production code in this phase risks coupling test infrastructure to implementation details.
 - **Modifying tests or DSL.** Re-enabling previously-disabled tests is the only test-file activity here; DSL is frozen. If the Driver cannot be implemented without DSL or test changes, the previous phase was incomplete — go back, do not patch around it.
 - **Adding `@Disabled` markup yourself.** That is the orchestrator's job (`disable_change_driven` service task).
-- **Running compile, tests, or commit yourself.** The orchestrator owns those service tasks (`compile_targeted`, `run_targeted_tests`, `commit_phase`). The agent should never shell out.
+- **Running compile, tests, or commit yourself.** The orchestrator owns those service tasks (`compile_system`, `run_targeted_tests`, `commit_phase`). The agent should never shell out.
 - **Leaving "TODO: Driver" behind.** Any remaining System-Driver prototype after WRITE means the phase is not done.
 
 ---

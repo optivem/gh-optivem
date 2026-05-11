@@ -68,6 +68,6 @@ Implement the frontend changes needed to satisfy the ticket's change-driven acce
 ## Anti-patterns
 
 - **Changing tests, DSL, or Drivers to make tests pass.** Those layers are frozen by the time AT - GREEN - SYSTEM runs. If the system cannot satisfy the tests as written, the AC or the DSL is wrong — surface it to the user instead of patching around it.
-- **Running compile or tests yourself.** The orchestrator owns those service tasks (`compile_targeted`, `run_targeted_tests`). The agent should never shell out to compile or test commands.
+- **Running compile or tests yourself.** The orchestrator owns those service tasks (`compile_system`, `run_targeted_tests`). The agent should never shell out to compile or test commands.
 - **Implementing the backend changes here.** Backend belongs to the parallel atdd-backend dispatch. Stay in your channel.
 - **Re-enabling `@Disabled` markers, ticking checklist items, or moving the issue to IN ACCEPTANCE.** Those are orchestrator service tasks (`enable_change_driven`, `tick_checklist`, `move_to_in_acceptance`). The agent should not touch them.

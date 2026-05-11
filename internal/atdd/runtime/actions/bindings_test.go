@@ -123,28 +123,68 @@ func TestRunSmokeTest_RecordsBoolInContext(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// compileInScope / runSampleSuite
+// compileAll / compileSystem / compileSystemTests
 // ---------------------------------------------------------------------------
 
-func TestCompileInScope_RunsScriptAndPropagatesError(t *testing.T) {
-	for _, tc := range []struct {
-		name     string
-		shellErr error
-		wantErr  bool
-	}{
-		{name: "success", shellErr: nil, wantErr: false},
-		{name: "failure", shellErr: errors.New("compile failed"), wantErr: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			sh := &fakeShell{out: []byte("ok"), err: tc.shellErr}
+func TestCompileTierActions_ShellOutAndWriteCompileOK(t *testing.T) {
+	type tierCase struct {
+		name    string
+		invoke  func(actions, *statemachine.Context) statemachine.Outcome
+		wantCmd string
+	}
+	tiers := []tierCase{
+		{
+			name:    "compile_all",
+			invoke:  func(a actions, c *statemachine.Context) statemachine.Outcome { return a.compileAll(c) },
+			wantCmd: "gh optivem compile",
+		},
+		{
+			name:    "compile_system",
+			invoke:  func(a actions, c *statemachine.Context) statemachine.Outcome { return a.compileSystem(c) },
+			wantCmd: "gh optivem compile system",
+		},
+		{
+			name:    "compile_system_tests",
+			invoke:  func(a actions, c *statemachine.Context) statemachine.Outcome { return a.compileSystemTests(c) },
+			wantCmd: "gh optivem compile system-tests",
+		},
+	}
+	for _, tier := range tiers {
+		t.Run(tier.name+"/pass", func(t *testing.T) {
+			sh := &fakeShell{out: []byte("BUILD SUCCESSFUL")}
 			var stdout, stderr strings.Builder
 			a := newActions(Deps{Shell: sh, Stdout: &stdout, Stderr: &stderr})
-			out := a.compileInScope(statemachine.NewContext())
-			if (out.Err != nil) != tc.wantErr {
-				t.Fatalf("wantErr=%v, got %v", tc.wantErr, out.Err)
+			ctx := statemachine.NewContext()
+			out := tier.invoke(a, ctx)
+			if out.Err != nil {
+				t.Fatalf("unexpected error: %v", out.Err)
 			}
-			if len(sh.calls) != 1 || sh.calls[0] != "gh optivem compile" {
-				t.Fatalf("unexpected shell calls: %v", sh.calls)
+			if !out.Bool {
+				t.Fatalf("Bool: got false, want true")
+			}
+			if got := ctx.Get("compile_ok"); got != true {
+				t.Fatalf("compile_ok: got %v, want true", got)
+			}
+			if len(sh.calls) != 1 || sh.calls[0] != tier.wantCmd {
+				t.Fatalf("shell calls: got %v, want [%q]", sh.calls, tier.wantCmd)
+			}
+		})
+		t.Run(tier.name+"/fail_routes_not_errors", func(t *testing.T) {
+			sh := &fakeShell{out: []byte("compile error"), err: errors.New("exit 1")}
+			var stdout, stderr strings.Builder
+			a := newActions(Deps{Shell: sh, Stdout: &stdout, Stderr: &stderr})
+			ctx := statemachine.NewContext()
+			out := tier.invoke(a, ctx)
+			// Compile failure must NOT surface as Err — the gate routes the
+			// compile-failed loop and the run continues.
+			if out.Err != nil {
+				t.Fatalf("compile failure should route, not halt: %v", out.Err)
+			}
+			if out.Bool {
+				t.Fatalf("Bool: got true, want false")
+			}
+			if got := ctx.Get("compile_ok"); got != false {
+				t.Fatalf("compile_ok: got %v, want false", got)
 			}
 		})
 	}
@@ -936,12 +976,13 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"report_intake_summary",
 		"move_to_in_acceptance",
 		"run_smoke_test",
-		"compile_in_scope",
+		"compile_all",
+		"compile_system",
+		"compile_system_tests",
 		"commit_phase",
 		"tick_checklist",
 		"select_tests",
 		"run_tests",
-		"compile_targeted",
 		"run_targeted_tests",
 		"disable_change_driven",
 		"enable_change_driven",
@@ -1440,67 +1481,6 @@ func (s *scriptedShell) Run(_ context.Context, cmd string) ([]byte, error) {
 	r := s.scripted[0]
 	s.scripted = s.scripted[1:]
 	return r.out, r.err
-}
-
-func TestCompileTargeted_ScopeRequired(t *testing.T) {
-	a := newActions(Deps{})
-	out := a.compileTargeted(statemachine.NewContext())
-	if out.Err == nil {
-		t.Fatalf("expected error when scope is missing")
-	}
-	if !strings.Contains(out.Err.Error(), "scope") {
-		t.Fatalf("error message does not mention scope: %v", out.Err)
-	}
-}
-
-func TestCompileTargeted_PassWritesContextAndDoesNotErr(t *testing.T) {
-	sh := &fakeShell{out: []byte("BUILD SUCCESSFUL")}
-	a := newActions(Deps{Shell: sh})
-	ctx := statemachine.NewContext()
-	ctx.Set("scope", "shop/api")
-	out := a.compileTargeted(ctx)
-	if out.Err != nil {
-		t.Fatalf("unexpected error: %v", out.Err)
-	}
-	if !out.Bool {
-		t.Fatalf("Bool: got false, want true")
-	}
-	if got := ctx.Get("compile_ok"); got != true {
-		t.Fatalf("compile_ok: got %v, want true", got)
-	}
-	if len(sh.calls) != 1 || sh.calls[0] != "./compile-targeted.sh shop/api" {
-		t.Fatalf("unexpected shell calls: %v", sh.calls)
-	}
-}
-
-func TestCompileTargeted_ShellEscapesScope(t *testing.T) {
-	sh := &fakeShell{}
-	a := newActions(Deps{Shell: sh})
-	ctx := statemachine.NewContext()
-	ctx.Set("scope", "path with spaces/x")
-	_ = a.compileTargeted(ctx)
-	if len(sh.calls) != 1 || sh.calls[0] != "./compile-targeted.sh 'path with spaces/x'" {
-		t.Fatalf("unexpected shell call (no escaping?): %v", sh.calls)
-	}
-}
-
-func TestCompileTargeted_FailureRoutesNotErrors(t *testing.T) {
-	sh := &fakeShell{out: []byte("compilation failed"), err: errors.New("exit 1")}
-	a := newActions(Deps{Shell: sh})
-	ctx := statemachine.NewContext()
-	ctx.Set("scope", "shop/api")
-	out := a.compileTargeted(ctx)
-	// Compile failure must NOT surface as Err — the gate routes the
-	// compile-failed loop and the run continues.
-	if out.Err != nil {
-		t.Fatalf("compile failure should route, not halt: %v", out.Err)
-	}
-	if out.Bool {
-		t.Fatalf("Bool: got true, want false")
-	}
-	if got := ctx.Get("compile_ok"); got != false {
-		t.Fatalf("compile_ok: got %v, want false", got)
-	}
 }
 
 func TestRunTargetedTests_RequiresSuiteAndTestNames(t *testing.T) {

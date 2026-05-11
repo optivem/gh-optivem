@@ -48,6 +48,21 @@ func (e *Engine) resolve(node Node) (NodeFn, error) {
 		if e.ActionFn == nil {
 			return nil, fmt.Errorf("ActionFn registry is nil but node is service_task")
 		}
+		// Templated action names (e.g. ${compile_action} in red_phase_cycle)
+		// are resolved at dispatch time once Context.Params is set by the
+		// calling call_activity. Bind validates only static names.
+		if strings.Contains(node.Raw.Action, "${") {
+			ref := node.Raw.Action
+			lookup := e.ActionFn
+			return func(ctx *Context) Outcome {
+				name := ExpandParams(ref, ctx.Params)
+				fn := lookup(name)
+				if fn == nil {
+					return Outcome{Err: fmt.Errorf("service_task action %q (from template %q) not registered", name, ref)}
+				}
+				return fn(ctx)
+			}, nil
+		}
 		fn := e.ActionFn(node.Raw.Action)
 		if fn == nil {
 			return nil, fmt.Errorf("service_task action %q not registered", node.Raw.Action)

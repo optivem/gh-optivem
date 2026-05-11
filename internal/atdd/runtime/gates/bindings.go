@@ -395,7 +395,8 @@ func (b bindings) smokeTestPasses(ctx *statemachine.Context) statemachine.Outcom
 		"Smoke test passed? [y/N]: ")
 }
 
-// compileOK reads the `compile_ok` flag set by the compile_targeted action.
+// compileOK reads the `compile_ok` flag set by the active compile action
+// (compile_all / compile_system / compile_system_tests).
 // true → continue to the RUN node; false → route to WRITE_PROTOTYPES so the
 // agent adds prototype methods (TODO: DSL / TODO: Driver / ...) for whatever
 // the WRITE phase referenced that does not yet exist. Falls back to a prompt

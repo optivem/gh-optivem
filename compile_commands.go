@@ -7,7 +7,7 @@
 //
 // Bare `gh optivem compile` runs `system` then `system-tests` sequentially,
 // halting on first failure. This shortcut is the dominant use case (the
-// structural-cycle compile_in_scope action shells out to it as a single
+// structural-cycle compile_all action shells out to it as a single
 // command), and is a deliberate departure from build/run/test/stop/clean
 // which all require an explicit subcommand. The explicit subcommands stay
 // available for scoped local use.

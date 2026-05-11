@@ -87,7 +87,7 @@ func (e *expectDispatch) redCycle(callerNodeID string, params map[string]string)
 		process("red_phase_cycle", params).
 		userTask("WRITE", params["agent"]).
 		userTask("STOP_RED_REVIEW", "human").
-		serviceTask("COMPILE", "compile_targeted").
+		serviceTask("COMPILE", params["compile_action"]).
 		gateway("GATE_COMPILE_OK", "compile_ok", true).
 		gateway("GATE_VERIFY_REAL_REQUIRED", "verify_real_required", false).
 		serviceTask("RUN", "run_targeted_tests").
@@ -113,7 +113,7 @@ func (e *expectDispatch) greenCycle(callerNodeID string, params map[string]strin
 	return e.callActivity(callerNodeID, "green_phase_cycle", params).
 		process("green_phase_cycle", params).
 		userTask("WRITE", params["agent"]).
-		serviceTask("COMPILE", "compile_targeted").
+		serviceTask("COMPILE", params["compile_action"]).
 		gateway("GATE_COMPILE_OK", "compile_ok", true).
 		serviceTask("RUN", "run_targeted_tests").
 		gateway("GATE_TESTS_PASS", "tests_pass", true).
