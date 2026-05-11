@@ -360,21 +360,21 @@ func handleWorkflowResult(err error, label, repo string) {
 	log.Fatalf("%s workflow failed. Check: https://github.com/%s/actions", label, repo)
 }
 
-// runLocalTestsViaRunner brings up systems.json's stacks (no-op if already up),
+// runLocalTestsViaRunner brings up systems.yaml's stacks (no-op if already up),
 // then runs the given tests config against them. Fatals on any error.
 //
-// dockerDir holds systems.json + compose files (compose paths resolve against
-// it). testDir holds tests-*.json + the test-runner project (setupCommands
+// dockerDir holds systems.yaml + compose files (compose paths resolve against
+// it). testDir holds tests-*.yaml + the test-runner project (setupCommands
 // and suite.path resolve against it).
 func runLocalTestsViaRunner(label, dockerDir, testDir, testsFile string) {
-	log.Infof("Running: %s (system=%s/systems.json, tests=%s/%s)", label, dockerDir, testDir, testsFile)
+	log.Infof("Running: %s (system=%s/systems.yaml, tests=%s/%s)", label, dockerDir, testDir, testsFile)
 
 	fail := func(err error) {
 		log.Errorf("%s: %v", label, err)
 		log.Fatalf(msgStageFailed, label)
 	}
 
-	sys, err := runner.LoadSystem(filepath.Join(dockerDir, "systems.json"))
+	sys, err := runner.LoadSystem(filepath.Join(dockerDir, "systems.yaml"))
 	if err != nil {
 		fail(err)
 	}
@@ -512,10 +512,10 @@ func VerifyLocalTesting(cfg *config.Config) {
 
 	setupMultirepoSymlinks(cfg)
 
-	runLocalTestsViaRunner("Local system tests (latest)", dockerDir, testDir, "tests-latest.json")
+	runLocalTestsViaRunner("Local system tests (latest)", dockerDir, testDir, "tests-latest.yaml")
 
 	if !cfg.NoLegacy {
-		runLocalTestsViaRunner("Local system tests (legacy)", dockerDir, testDir, "tests-legacy.json")
+		runLocalTestsViaRunner("Local system tests (legacy)", dockerDir, testDir, "tests-legacy.yaml")
 	}
 }
 
