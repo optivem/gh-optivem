@@ -11,6 +11,7 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/shell"
 )
 
@@ -44,10 +45,12 @@ var statusOptionColors = map[string]string{
 // them to capture invocations and return canned responses without spawning
 // processes or reaching GitHub.
 var (
-	projectRunCapture = shell.RunCapture
-	projectRunStdin   = shell.RunStdin
-	projectRun        = shell.Run
-	projectConfirmFn  = readProjectConfirmation
+	projectRunCapture        = shell.RunCapture
+	projectRunStdin          = shell.RunStdin
+	projectRun               = shell.Run
+	projectConfirmFn         = readProjectConfirmation
+	projectLoadSourceConfig  = projectconfig.LoadFromPath
+	projectWriteSourceConfig = projectconfig.WriteToPath
 )
 
 // ghProject identifies a GitHub Project (v2) by its API + URL fields.
@@ -88,7 +91,12 @@ type projectFieldListResponse struct {
 //   - Path A — cfg.ProjectURL == "": list/create a project named cfg.SystemName
 //     under cfg.Owner, replace the default Status set with the canonical six,
 //     link the scaffolded repo(s), and write the URL back into cfg.ProjectURL
-//     so the later WriteOptivemYAML step bakes it into gh-optivem.yaml.
+//     so the later WriteOptivemYAML step bakes it into gh-optivem.yaml. When
+//     the source gh-optivem.yaml init read at startup had project.url empty,
+//     the auto-created URL is also persisted back into that source file
+//     (cfg.SourceConfigPath) so re-runs and future commands keyed off it
+//     see the URL — reused-by-title runs (source URL already set) leave
+//     the source file alone.
 //
 //   - Path B — cfg.ProjectURL set: validate the operator-supplied URL exposes
 //     every ATDD-required Status option. If any are missing, prompt for
@@ -154,6 +162,43 @@ func ensureProjectBoardAutoCreate(cfg *config.Config) {
 	}
 
 	cfg.ProjectURL = pr.URL
+	persistProjectURLToSourceConfig(cfg)
+}
+
+// persistProjectURLToSourceConfig writes cfg.ProjectURL back into the
+// gh-optivem.yaml file init read at startup (cfg.SourceConfigPath), so a
+// re-run sees the URL and the source file matches what was actually
+// provisioned on GitHub. No-ops in three cases: dry-run (just logs the
+// would-write), source already had a URL (reused-by-title runs leave
+// the file alone — no churn), and SourceConfigPath unset (defensive,
+// shouldn't happen via runInit).
+//
+// Marshalling is non-preserving: comments and key order in the source
+// file are dropped on rewrite. Acceptable tradeoff — the same yaml
+// emitter is what `config init` produces, and a partial-state failure
+// (project created on GitHub but not recorded locally) is worse than a
+// cosmetic reformat. log.Fatalf on any load/write error aborts init
+// rather than leave the operator with a desynchronised source file.
+func persistProjectURLToSourceConfig(cfg *config.Config) {
+	if cfg.DryRun {
+		log.Infof("[DRY RUN] would write project.url=%s to %s", cfg.ProjectURL, cfg.SourceConfigPath)
+		return
+	}
+	if !cfg.SourceProjectURLWasEmpty {
+		return
+	}
+	if cfg.SourceConfigPath == "" {
+		return
+	}
+	pc, err := projectLoadSourceConfig(cfg.SourceConfigPath)
+	if err != nil {
+		log.Fatalf("persist project URL to %s: %v", cfg.SourceConfigPath, err)
+	}
+	pc.Project.URL = cfg.ProjectURL
+	if err := projectWriteSourceConfig(cfg.SourceConfigPath, pc); err != nil {
+		log.Fatalf("persist project URL to %s: %v", cfg.SourceConfigPath, err)
+	}
+	log.Successf("Wrote project URL back to %s", cfg.SourceConfigPath)
 }
 
 // ensureProjectBoardSupplied is Path B. Verifies the operator-supplied URL

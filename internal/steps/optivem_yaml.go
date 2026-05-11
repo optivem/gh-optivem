@@ -3,6 +3,7 @@ package steps
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/config"
@@ -14,12 +15,15 @@ import (
 // `system.config:` / `system_test.config:` fields. They mirror the layout that
 // copySystemTests produces (docker/<arch>/<lang>/ collapses to docker/, and
 // system-test/<lang>/ collapses to system-test/ — see apply_template.go's
-// flattening rules). `tests.yaml` is chosen over `tests.legacy.yaml`
-// to match the runner's default suite expectation; switching to legacy is a
-// one-shot `--test-config` override.
+// flattening rules). The scaffold writes a pair: gh-optivem.yaml points at
+// tests.yaml (latest suites), gh-optivem.legacy.yaml points at
+// tests.legacy.yaml (mod-numbered legacy suites). The acceptance-stage and
+// acceptance-stage-legacy workflows pick between them via GH_OPTIVEM_CONFIG.
 const (
-	scaffoldedSystemConfigPath = "docker/systems.yaml"
-	scaffoldedTestConfigPath   = "system-test/tests.yaml"
+	scaffoldedSystemConfigPath     = "docker/systems.yaml"
+	scaffoldedTestConfigPath       = "system-test/tests.yaml"
+	scaffoldedTestConfigPathLegacy = "system-test/tests.legacy.yaml"
+	scaffoldedConfigFilenameLegacy = "gh-optivem.legacy.yaml"
 )
 
 // WriteOptivemYAML writes <repoRoot>/gh-optivem.yaml in the scaffolded repo(s),
@@ -42,10 +46,10 @@ const (
 // defaults are `./systems.yaml` / `./tests.yaml` in the working directory,
 // which don't resolve from the scaffolded repo root.
 func WriteOptivemYAML(cfg *config.Config) {
-	log.Info("Writing gh-optivem.yaml...")
+	log.Info("Writing gh-optivem.yaml + gh-optivem.legacy.yaml...")
 
 	if cfg.DryRun {
-		log.Info("[DRY RUN] Would write gh-optivem.yaml")
+		log.Info("[DRY RUN] Would write gh-optivem.yaml + gh-optivem.legacy.yaml")
 		return
 	}
 
@@ -53,18 +57,62 @@ func WriteOptivemYAML(cfg *config.Config) {
 	pc.System.Config = scaffoldedSystemConfigPath
 	pc.SystemTest.Config = scaffoldedTestConfigPath
 
-	writeOptivemYAMLToDir(cfg.RepoDir, pc)
+	pcLegacy := buildOptivemYAML(cfg)
+	pcLegacy.System.Config = scaffoldedSystemConfigPath
+	pcLegacy.SystemTest.Config = scaffoldedTestConfigPathLegacy
+
+	writePair := func(dir string) {
+		writeOptivemYAMLToDirIfNotSource(cfg, dir, pc)
+		writeLegacyOptivemYAMLToDir(dir, pcLegacy)
+	}
+
+	writePair(cfg.RepoDir)
 
 	if cfg.RepoStrategy == "multirepo" {
 		if cfg.Arch == "multitier" {
-			writeOptivemYAMLToDir(cfg.BackendRepoDir, pc)
-			writeOptivemYAMLToDir(cfg.FrontendRepoDir, pc)
+			writePair(cfg.BackendRepoDir)
+			writePair(cfg.FrontendRepoDir)
 		} else {
-			writeOptivemYAMLToDir(cfg.SystemRepoDir, pc)
+			writePair(cfg.SystemRepoDir)
 		}
 	}
 
-	log.Success("Wrote gh-optivem.yaml")
+	log.Success("Wrote gh-optivem.yaml + gh-optivem.legacy.yaml")
+}
+
+// writeLegacyOptivemYAMLToDir writes <dir>/gh-optivem.legacy.yaml. The
+// legacy variant is never the source config (callers point --config at the
+// latest file or at one of shop's per-flavor templates), so there's no
+// source-overwrite guard — unlike the latest file.
+func writeLegacyOptivemYAMLToDir(dir string, pc *projectconfig.Config) {
+	if dir == "" {
+		return
+	}
+	yamlPath := filepath.Join(dir, scaffoldedConfigFilenameLegacy)
+	if err := projectconfig.WriteToPath(yamlPath, pc); err != nil {
+		log.Fatalf("Write %s: %v", scaffoldedConfigFilenameLegacy, err)
+	}
+}
+
+// writeOptivemYAMLToDirIfNotSource writes the scaffolded gh-optivem.yaml
+// unless its target path resolves to the same file as cfg.SourceConfigPath
+// — the case where the operator ran init from inside cfg.RepoDir and the
+// project-board step has already written the source-config form there.
+// Overwriting in that case would replace the project-board write with the
+// scaffolded-repo content (path-fields, etc.) and undo the persist step.
+func writeOptivemYAMLToDirIfNotSource(cfg *config.Config, dir string, pc *projectconfig.Config) {
+	if dir == "" {
+		return
+	}
+	if cfg.SourceConfigPath != "" {
+		target, terr := filepath.Abs(filepath.Join(dir, projectconfig.Path))
+		source, serr := filepath.Abs(cfg.SourceConfigPath)
+		if terr == nil && serr == nil && filepath.Clean(target) == filepath.Clean(source) {
+			log.Infof("gh-optivem.yaml at %s is the source config — skipping scaffolded overwrite", target)
+			return
+		}
+	}
+	writeOptivemYAMLToDir(dir, pc)
 }
 
 // WriteOptivemYAMLToPath renders cfg as a projectconfig.Config and writes it to

@@ -573,6 +573,15 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 		{dirDocker + "/" + testLang + "/monolith/", dirDocker + "/"},
 		// Docker image names
 		{prefixMonolithSystem + lang, "system"},
+		// GH_OPTIVEM_CONFIG: shop's acceptance-stage workflows reference the
+		// shop's own per-flavor config file name. Scaffolded repos have a pair
+		// of canonical files — gh-optivem.yaml (latest, points at tests.yaml)
+		// and gh-optivem.legacy.yaml (points at tests.legacy.yaml). Rewrite the
+		// shop filenames to those.
+		// Legacy variant first so "monolith-<testLang>-legacy.yaml" doesn't
+		// partially match the bare "monolith-<testLang>.yaml" rule below.
+		{"gh-optivem-" + monoTest + "-legacy.yaml", "gh-optivem.legacy.yaml"},
+		{"gh-optivem-" + monoTest + ".yaml", "gh-optivem.yaml"},
 	}
 	if lang != testLang {
 		r = append(r,
@@ -704,6 +713,15 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 		// Docker image names (also transforms remaining workflow name references)
 		{prefixMultitierBackend + backendLang, "backend"},
 		{prefixMultitierFrontend + frontendLang, "frontend"},
+		// GH_OPTIVEM_CONFIG: shop's acceptance-stage workflows reference the
+		// shop's own per-flavor config file name. Scaffolded repos have a pair
+		// of canonical files — gh-optivem.yaml (latest, points at tests.yaml)
+		// and gh-optivem.legacy.yaml (points at tests.legacy.yaml). Rewrite the
+		// shop filenames to those.
+		// Legacy variant first so "multitier-<testLang>-legacy.yaml" doesn't
+		// partially match the bare "multitier-<testLang>.yaml" rule below.
+		{"gh-optivem-" + multiTest + "-legacy.yaml", "gh-optivem.legacy.yaml"},
+		{"gh-optivem-" + multiTest + ".yaml", "gh-optivem.yaml"},
 	}
 	// Pipeline-stage workflows (cloned from multitier-<testLang>-*-stage.yml) reference
 	// backend-<testLang> in image URLs and VERSION paths — shop authors them assuming
@@ -855,6 +873,7 @@ func monolithForbiddenRefs(lang, testLang string) []string {
 		"-tests-java",                                   // system-test sonar key suffix
 		"-tests-dotnet",
 		"-tests-typescript",
+		"gh-optivem-" + prefixMonolith + testLang,       // un-rewritten GH_OPTIVEM_CONFIG filename
 	}
 	if lang != testLang {
 		refs = append(refs, prefixMonolithSystem+testLang)
@@ -868,13 +887,14 @@ func multitierForbiddenRefs(backendLang, frontendLang, testLang string) []string
 		prefixMultitierFrontend + frontendLang + "-",
 		prefixMultitier + testLang + "-",
 		systemMultitierDir,
-		"-" + prefixMultitierBackend + backendLang,   // sonar key suffix
-		"-" + prefixMultitierFrontend + frontendLang, // sonar key suffix
+		"-" + prefixMultitierBackend + backendLang,    // sonar key suffix
+		"-" + prefixMultitierFrontend + frontendLang,  // sonar key suffix
 		dirSystemTest + "/" + testLang + "/",
-		dirDocker + "/" + testLang + "/", // un-flattened docker path
-		"-tests-java",                    // system-test sonar key suffix
+		dirDocker + "/" + testLang + "/",                // un-flattened docker path
+		"-tests-java",                                   // system-test sonar key suffix
 		"-tests-dotnet",
 		"-tests-typescript",
+		"gh-optivem-" + prefixMultitier + testLang,      // un-rewritten GH_OPTIVEM_CONFIG filename
 	}
 	if backendLang != testLang {
 		refs = append(refs, prefixMultitierBackend+testLang)
