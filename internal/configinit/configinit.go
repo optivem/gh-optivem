@@ -46,6 +46,20 @@ func ResolveTarget(flagVal, dir string) (string, error) {
 // excludes .gh-optivem/ — the runtime's per-run state dir, which is a
 // foot-gun if accidentally committed. Returns yamlPath on success.
 func Run(f *config.RawFlags, yamlPath string, force bool) (string, error) {
+	return runWithBanner(f, yamlPath, force, "")
+}
+
+// RunWithBanner is Run plus a comment block prepended to the YAML. Used
+// by the interactive missing-file recovery path so the operator sees
+// which fields were defaulted and can run `gh optivem config validate`
+// after editing. The non-interactive `config init` command uses Run
+// (no banner) — operators running that one supplied every flag and
+// don't need a review checklist.
+func RunWithBanner(f *config.RawFlags, yamlPath string, force bool, banner string) (string, error) {
+	return runWithBanner(f, yamlPath, force, banner)
+}
+
+func runWithBanner(f *config.RawFlags, yamlPath string, force bool, banner string) (string, error) {
 	cfg, err := config.ValidateAndDeriveForYAML(f)
 	if err != nil {
 		return "", err
@@ -53,8 +67,14 @@ func Run(f *config.RawFlags, yamlPath string, force bool) (string, error) {
 	if _, err := os.Stat(yamlPath); err == nil && !force {
 		return "", fmt.Errorf("%s already exists; pass --force to overwrite", yamlPath)
 	}
-	if err := steps.WriteOptivemYAMLToFilePath(cfg, yamlPath); err != nil {
-		return "", err
+	if banner == "" {
+		if err := steps.WriteOptivemYAMLToFilePath(cfg, yamlPath); err != nil {
+			return "", err
+		}
+	} else {
+		if err := steps.WriteOptivemYAMLToFilePathWithBanner(cfg, yamlPath, banner); err != nil {
+			return "", err
+		}
 	}
 	if err := files.EnsureGitignoreLine(filepath.Dir(yamlPath), ".gh-optivem/"); err != nil {
 		return "", fmt.Errorf("ensure .gitignore: %w", err)

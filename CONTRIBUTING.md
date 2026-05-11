@@ -126,8 +126,8 @@ Useful flags:
 
 - `--autonomous` — headless agents (`claude -p`)
 - `--manual-agents` — v1 two-window dispatch (driver pauses, human launches the agent in a separate Claude Code session, presses Enter to advance). Right tool when bisecting "did v2 misroute?" vs. "did v1 see the commit?".
-- `--extra NODE="text"` / `--replace NODE="text"` — shape the prompt for one YAML node ID
-- `--interactive` — preview the constructed prompt and read stdin for last-minute additions before each dispatch
+
+Per-node prompt shaping (`extra` text, full `replace`, alternate `process_flow`, or `agent_prompts` swaps) is configured via fields in `gh-optivem.yaml`, not flags — see the [ATDD-specific overrides](README.md#atdd-specific-overrides) section in the README.
 
 The two rehearsal flows below show how to actually invoke it.
 
@@ -180,7 +180,7 @@ git branch -D rehearsal/<id>
 
 Re-running on the same worktree means subsequent commits land on the same `rehearsal/<id>` branch, so the diff accumulates. If you want a clean slate, exit, choose to delete the worktree, and run the rehearsal script again — that creates a fresh `rehearsal/<new-ts>` branch.
 
-##### Flag-aware path (when you need `--autonomous`, `--manual-agents`, `--extra`, …)
+##### Flag-aware path (when you need `--autonomous`, `--manual-agents`, …)
 
 The rehearsal script doesn't accept extra flags, so do it by hand:
 
@@ -200,8 +200,7 @@ cd "../rehearsal-${TS}"
 ../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 42
 ../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 42 --autonomous
 ../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 42 --manual-agents
-../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 42 \
-    --extra AT_RED_DSL_WRITE="prefer record types"
+../gh-optivem/gh-optivem.exe -c ./gh-optivem.experimental.yaml atdd implement-ticket --issue 42  # swap node_extras / agent_prompts / process_flow via an alternate config
 ../gh-optivem/gh-optivem.exe atdd manage-project                                  # pick top Ready item from project board
 
 # Step 5 — clean up the worktree + branch when done
@@ -222,12 +221,20 @@ gh extension install optivem/gh-optivem
 # Step 2 — confirm you're on the latest release
 gh optivem --version
 
-# Step 3 — scaffold a fresh project (no --shop-ref → uses the baked-in SHA)
-gh optivem init --owner valentinajemuovic --system-name "Page Turner" --repo page-turner \
-    --arch multitier --repo-strategy multirepo \
-    --backend-lang dotnet --frontend-lang react --test-lang typescript
+# Step 3 — generate gh-optivem.yaml for the project (interactive or via flags)
+gh optivem config init --owner valentinajemuovic --repo page-turner \
+    --system-name "Page Turner" --arch multitier --repo-strategy multirepo \
+    --backend-lang dotnet --frontend-lang react --test-lang typescript \
+    --project-url https://github.com/orgs/valentinajemuovic/projects/N \
+    --backend-path backend --frontend-path frontend \
+    --system-test-path system-test \
+    --stubs-path external-systems/external-stub \
+    --simulators-path external-systems/external-real-sim
 
-# Step 4 — walk an issue on the new repo
+# Step 4 — scaffold a fresh project (no --shop-ref → uses the baked-in SHA)
+gh optivem init
+
+# Step 5 — walk an issue on the new repo
 cd page-turner
 gh optivem atdd implement-ticket --issue 1
 

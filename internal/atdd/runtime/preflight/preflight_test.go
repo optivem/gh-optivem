@@ -29,14 +29,14 @@ func makeDir(t *testing.T, dir string) {
 
 func TestRun_NilCfgIsOK(t *testing.T) {
 	t.Parallel()
-	if err := Run(nil, nil, ""); err != nil {
+	if err := Run(nil, "", ""); err != nil {
 		t.Errorf("nil cfg should pass preflight, got: %v", err)
 	}
 }
 
 func TestRun_MonoRepoMonolithAllPresent(t *testing.T) {
 	t.Parallel()
-	root := makeFakeRepo(t, t.TempDir())
+	root := makeFakeRepo(t, filepath.Join(t.TempDir(), "shop"))
 	makeDir(t, filepath.Join(root, "system", "monolith", "java"))
 	makeDir(t, filepath.Join(root, "system-test", "java"))
 
@@ -52,14 +52,14 @@ func TestRun_MonoRepoMonolithAllPresent(t *testing.T) {
 			Path: "system-test/java", Repo: "optivem/shop", Lang: projectconfig.LangJava,
 		},
 	}
-	if err := Run(cfg, nil, root); err != nil {
+	if err := Run(cfg, "", root); err != nil {
 		t.Errorf("expected nil, got: %v", err)
 	}
 }
 
 func TestRun_MissingSystemPath(t *testing.T) {
 	t.Parallel()
-	root := makeFakeRepo(t, t.TempDir())
+	root := makeFakeRepo(t, filepath.Join(t.TempDir(), "shop"))
 	// system/monolith/java intentionally NOT created.
 	makeDir(t, filepath.Join(root, "system-test", "java"))
 
@@ -75,7 +75,7 @@ func TestRun_MissingSystemPath(t *testing.T) {
 			Path: "system-test/java", Repo: "optivem/shop", Lang: projectconfig.LangJava,
 		},
 	}
-	err := Run(cfg, nil, root)
+	err := Run(cfg, "", root)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -86,7 +86,7 @@ func TestRun_MissingSystemPath(t *testing.T) {
 
 func TestRun_MissingSystemTestPath(t *testing.T) {
 	t.Parallel()
-	root := makeFakeRepo(t, t.TempDir())
+	root := makeFakeRepo(t, filepath.Join(t.TempDir(), "shop"))
 	makeDir(t, filepath.Join(root, "system", "monolith", "java"))
 	// system-test/java not created.
 
@@ -102,7 +102,7 @@ func TestRun_MissingSystemTestPath(t *testing.T) {
 			Path: "system-test/java", Repo: "optivem/shop", Lang: projectconfig.LangJava,
 		},
 	}
-	err := Run(cfg, nil, root)
+	err := Run(cfg, "", root)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -113,7 +113,7 @@ func TestRun_MissingSystemTestPath(t *testing.T) {
 
 func TestRun_MultitierMissingFrontend(t *testing.T) {
 	t.Parallel()
-	root := makeFakeRepo(t, t.TempDir())
+	root := makeFakeRepo(t, filepath.Join(t.TempDir(), "shop"))
 	makeDir(t, filepath.Join(root, "system", "multitier", "backend-java"))
 	makeDir(t, filepath.Join(root, "system-test", "java"))
 	// frontend-react not created.
@@ -133,7 +133,7 @@ func TestRun_MultitierMissingFrontend(t *testing.T) {
 			Path: "system-test/java", Repo: "optivem/shop", Lang: projectconfig.LangJava,
 		},
 	}
-	err := Run(cfg, nil, root)
+	err := Run(cfg, "", root)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -144,8 +144,7 @@ func TestRun_MultitierMissingFrontend(t *testing.T) {
 
 func TestRun_MultiRepoSingleRepoNotCloned(t *testing.T) {
 	wsRoot := t.TempDir()
-	// optivem/shop NOT cloned anywhere — neither sibling nor under env var.
-	t.Setenv("GH_OPTIVEM_WORKSPACE", wsRoot)
+	// optivem/shop NOT cloned anywhere under the workspace.
 
 	cfg := &projectconfig.Config{
 		RepoStrategy: projectconfig.RepoStrategyMultiRepo,
@@ -159,7 +158,7 @@ func TestRun_MultiRepoSingleRepoNotCloned(t *testing.T) {
 			Path: "system-test", Repo: "optivem/shop", Lang: projectconfig.LangJava,
 		},
 	}
-	err := Run(cfg, nil, t.TempDir())
+	err := Run(cfg, wsRoot, t.TempDir())
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -173,7 +172,6 @@ func TestRun_MultiRepoSingleRepoNotCloned(t *testing.T) {
 
 func TestRun_MultiRepoNotAGitRepo(t *testing.T) {
 	wsRoot := t.TempDir()
-	t.Setenv("GH_OPTIVEM_WORKSPACE", wsRoot)
 
 	// Create the directory but no .git.
 	beDir := filepath.Join(wsRoot, "shop-backend")
@@ -198,7 +196,7 @@ func TestRun_MultiRepoNotAGitRepo(t *testing.T) {
 			Path: "system-test", Repo: "optivem/shop-main", Lang: projectconfig.LangJava,
 		},
 	}
-	err := Run(cfg, nil, t.TempDir())
+	err := Run(cfg, wsRoot, t.TempDir())
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -212,7 +210,6 @@ func TestRun_MultiRepoNotAGitRepo(t *testing.T) {
 
 func TestRun_MultiRepoMultitierAllPresent(t *testing.T) {
 	wsRoot := t.TempDir()
-	t.Setenv("GH_OPTIVEM_WORKSPACE", wsRoot)
 
 	makeFakeRepo(t, filepath.Join(wsRoot, "shop-backend"))
 	makeFakeRepo(t, filepath.Join(wsRoot, "shop-frontend"))
@@ -234,14 +231,13 @@ func TestRun_MultiRepoMultitierAllPresent(t *testing.T) {
 			Path: "system-test", Repo: "optivem/shop-main", Lang: projectconfig.LangJava,
 		},
 	}
-	if err := Run(cfg, nil, t.TempDir()); err != nil {
+	if err := Run(cfg, wsRoot, t.TempDir()); err != nil {
 		t.Errorf("expected nil, got: %v", err)
 	}
 }
 
 func TestRun_TierPathExistsUnderWrongRepo(t *testing.T) {
 	wsRoot := t.TempDir()
-	t.Setenv("GH_OPTIVEM_WORKSPACE", wsRoot)
 
 	// Set up two repos. Put a "system-test" dir under the FRONTEND repo
 	// instead of the main repo where system_test claims to live.
@@ -267,7 +263,7 @@ func TestRun_TierPathExistsUnderWrongRepo(t *testing.T) {
 			Path: "system-test", Repo: "optivem/shop-main", Lang: projectconfig.LangJava,
 		},
 	}
-	err := Run(cfg, nil, t.TempDir())
+	err := Run(cfg, wsRoot, t.TempDir())
 	if err == nil {
 		t.Fatal("expected error — system-test exists under frontend repo, not main")
 	}
@@ -278,7 +274,7 @@ func TestRun_TierPathExistsUnderWrongRepo(t *testing.T) {
 
 func TestRun_ExternalSystemsDeclaredAndPresent(t *testing.T) {
 	t.Parallel()
-	root := makeFakeRepo(t, t.TempDir())
+	root := makeFakeRepo(t, filepath.Join(t.TempDir(), "shop"))
 	makeDir(t, filepath.Join(root, "system", "monolith", "java"))
 	makeDir(t, filepath.Join(root, "system-test", "java"))
 	makeDir(t, filepath.Join(root, "external-stub"))
@@ -300,14 +296,14 @@ func TestRun_ExternalSystemsDeclaredAndPresent(t *testing.T) {
 			Simulators: projectconfig.ExternalSpec{Path: "external-real-sim", Repo: "optivem/shop"},
 		},
 	}
-	if err := Run(cfg, nil, root); err != nil {
+	if err := Run(cfg, "", root); err != nil {
 		t.Errorf("expected nil, got: %v", err)
 	}
 }
 
 func TestRun_ExternalSystemsMissingPath(t *testing.T) {
 	t.Parallel()
-	root := makeFakeRepo(t, t.TempDir())
+	root := makeFakeRepo(t, filepath.Join(t.TempDir(), "shop"))
 	makeDir(t, filepath.Join(root, "system", "monolith", "java"))
 	makeDir(t, filepath.Join(root, "system-test", "java"))
 	// external-stub created but external-real-sim NOT.
@@ -329,7 +325,7 @@ func TestRun_ExternalSystemsMissingPath(t *testing.T) {
 			Simulators: projectconfig.ExternalSpec{Path: "external-real-sim", Repo: "optivem/shop"},
 		},
 	}
-	err := Run(cfg, nil, root)
+	err := Run(cfg, "", root)
 	if err == nil {
 		t.Fatal("expected error for missing simulators path")
 	}
@@ -340,7 +336,7 @@ func TestRun_ExternalSystemsMissingPath(t *testing.T) {
 
 func TestRun_ExternalSystemsOmittedDoesNotFail(t *testing.T) {
 	t.Parallel()
-	root := makeFakeRepo(t, t.TempDir())
+	root := makeFakeRepo(t, filepath.Join(t.TempDir(), "shop"))
 	makeDir(t, filepath.Join(root, "system", "monolith", "java"))
 	makeDir(t, filepath.Join(root, "system-test", "java"))
 
@@ -357,7 +353,7 @@ func TestRun_ExternalSystemsOmittedDoesNotFail(t *testing.T) {
 		},
 		// ExternalSystems omitted entirely.
 	}
-	if err := Run(cfg, nil, root); err != nil {
+	if err := Run(cfg, "", root); err != nil {
 		t.Errorf("expected nil with no external_systems, got: %v", err)
 	}
 }

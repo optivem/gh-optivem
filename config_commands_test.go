@@ -23,6 +23,7 @@ func monolithMonorepoFlags() *config.RawFlags {
 	return &config.RawFlags{
 		Owner:          "acme",
 		Repo:           "page-turner",
+		SystemName:     "Page Turner",
 		Arch:           "monolith",
 		RepoStrategy:   "monorepo",
 		Lang:           "java",
@@ -80,6 +81,7 @@ func TestRunConfigInit_MultitierMultirepo(t *testing.T) {
 	f := &config.RawFlags{
 		Owner:          "acme",
 		Repo:           "page-turner",
+		SystemName:     "Page Turner",
 		Arch:           "multitier",
 		RepoStrategy:   "multirepo",
 		BackendLang:    "dotnet",
@@ -181,7 +183,8 @@ func TestRunConfigInit_RejectsBadFlags(t *testing.T) {
 		{
 			"multitier missing backend lang",
 			&config.RawFlags{
-				Owner: "acme", Repo: "sky-travel", Arch: "multitier", RepoStrategy: "multirepo", FrontendLang: "react",
+				Owner: "acme", Repo: "sky-travel", SystemName: "Sky Travel",
+				Arch: "multitier", RepoStrategy: "multirepo", FrontendLang: "react",
 				FrontendPath:   "frontend",
 				SystemTestPath: "system-test",
 				StubsPath:      "external-systems/external-stub",
@@ -192,14 +195,16 @@ func TestRunConfigInit_RejectsBadFlags(t *testing.T) {
 		{
 			"missing path flags",
 			&config.RawFlags{
-				Owner: "acme", Repo: "sky-travel", Arch: "monolith", RepoStrategy: "monorepo", Lang: "java",
+				Owner: "acme", Repo: "sky-travel", SystemName: "Sky Travel",
+				Arch: "monolith", RepoStrategy: "monorepo", Lang: "java",
 			},
 			"--system-path",
 		},
 		{
 			"system-path on multitier",
 			&config.RawFlags{
-				Owner: "acme", Repo: "sky-travel", Arch: "multitier", RepoStrategy: "multirepo",
+				Owner: "acme", Repo: "sky-travel", SystemName: "Sky Travel",
+				Arch: "multitier", RepoStrategy: "multirepo",
 				BackendLang: "java", FrontendLang: "react",
 				SystemPath:     "system",
 				BackendPath:    "backend",

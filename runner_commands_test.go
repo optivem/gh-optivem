@@ -114,11 +114,11 @@ func TestValidateSuiteTestCombo(t *testing.T) {
 	}
 }
 
-// TestLoadSystemMissingFileHintsAtFlag verifies that `gh optivem build/run/...`
-// commands surface the three-knob hint (--system-config flag, system.config:
-// YAML field, default path) when the resolved systems.json is absent — the
-// case a new user runs into first.
-func TestLoadSystemMissingFileHintsAtFlag(t *testing.T) {
+// TestLoadSystemMissingFileHintsAtYAML verifies that `gh optivem build/run/...`
+// commands surface the two-knob hint (system.config: YAML field, default
+// path) when the resolved systems.json is absent — the case a new user runs
+// into first.
+func TestLoadSystemMissingFileHintsAtYAML(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "systems.json")
 	_, err := loadSystem(missing)
 	if err == nil {
@@ -127,16 +127,16 @@ func TestLoadSystemMissingFileHintsAtFlag(t *testing.T) {
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("loadSystem: want errors.Is(err, fs.ErrNotExist), got %v", err)
 	}
-	for _, want := range []string{"--system-config", "system.config", defaultSystemConfig} {
+	for _, want := range []string{"system.config", defaultSystemConfig} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("loadSystem error missing %q hint: %v", want, err)
 		}
 	}
 }
 
-// TestLoadTestsMissingFileHintsAtFlag mirrors the three-knob hint check for
-// --test-config / system_test.config: / defaultTestsConfig.
-func TestLoadTestsMissingFileHintsAtFlag(t *testing.T) {
+// TestLoadTestsMissingFileHintsAtYAML mirrors the two-knob hint check for
+// system_test.config: / defaultTestsConfig.
+func TestLoadTestsMissingFileHintsAtYAML(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "tests.json")
 	_, err := loadTests(missing)
 	if err == nil {
@@ -145,7 +145,7 @@ func TestLoadTestsMissingFileHintsAtFlag(t *testing.T) {
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("loadTests: want errors.Is(err, fs.ErrNotExist), got %v", err)
 	}
-	for _, want := range []string{"--test-config", "system_test.config", defaultTestsConfig} {
+	for _, want := range []string{"system_test.config", defaultTestsConfig} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("loadTests error missing %q hint: %v", want, err)
 		}
@@ -154,14 +154,14 @@ func TestLoadTestsMissingFileHintsAtFlag(t *testing.T) {
 
 // TestHintIfMissingPassesThrough ensures non-ENOENT errors come through
 // unchanged (e.g. JSON parse errors keep their original message and don't
-// gain a misleading "pass --... " suggestion).
+// gain a misleading hint).
 func TestHintIfMissingPassesThrough(t *testing.T) {
 	want := errors.New("parse system config: bad json")
-	got := hintIfMissing(want, "--system-config", "system.config", defaultSystemConfig)
+	got := hintIfMissing(want, "system.config", defaultSystemConfig)
 	if got != want {
 		t.Errorf("hintIfMissing rewrote a non-ENOENT error: got %v, want %v", got, want)
 	}
-	if hintIfMissing(nil, "--system-config", "system.config", defaultSystemConfig) != nil {
+	if hintIfMissing(nil, "system.config", defaultSystemConfig) != nil {
 		t.Errorf("hintIfMissing(nil) returned non-nil")
 	}
 }
@@ -200,30 +200,13 @@ func writeYAMLConfig(t *testing.T, tmpDir string, systemConfig, testConfig strin
 	}
 }
 
-// TestResolveSystemPath_FlagWins: explicit --system-config beats both the
-// YAML field and the default.
-func TestResolveSystemPath_FlagWins(t *testing.T) {
+// TestResolveSystemPath_YAMLUsedWhenSet: YAML field set → YAML value.
+func TestResolveSystemPath_YAMLUsedWhenSet(t *testing.T) {
 	tmp := t.TempDir()
 	runnerResolveSetup(t, tmp)
 	writeYAMLConfig(t, tmp, "yaml/systems.json", "")
 
-	got, err := resolveSystemPath("./flag/systems.json")
-	if err != nil {
-		t.Fatalf("resolveSystemPath: %v", err)
-	}
-	if got != "./flag/systems.json" {
-		t.Errorf("got %q, want ./flag/systems.json (flag must beat YAML)", got)
-	}
-}
-
-// TestResolveSystemPath_YAMLUsedWhenFlagAbsent: flag empty, YAML field set
-// → YAML value.
-func TestResolveSystemPath_YAMLUsedWhenFlagAbsent(t *testing.T) {
-	tmp := t.TempDir()
-	runnerResolveSetup(t, tmp)
-	writeYAMLConfig(t, tmp, "yaml/systems.json", "")
-
-	got, err := resolveSystemPath("")
+	got, err := resolveSystemPath()
 	if err != nil {
 		t.Fatalf("resolveSystemPath: %v", err)
 	}
@@ -232,14 +215,14 @@ func TestResolveSystemPath_YAMLUsedWhenFlagAbsent(t *testing.T) {
 	}
 }
 
-// TestResolveSystemPath_EmptyYAMLFallsThrough: flag empty AND YAML field
-// empty → defaultSystemConfig.
+// TestResolveSystemPath_EmptyYAMLFallsThrough: YAML field empty
+// → defaultSystemConfig.
 func TestResolveSystemPath_EmptyYAMLFallsThrough(t *testing.T) {
 	tmp := t.TempDir()
 	runnerResolveSetup(t, tmp)
 	writeYAMLConfig(t, tmp, "", "")
 
-	got, err := resolveSystemPath("")
+	got, err := resolveSystemPath()
 	if err != nil {
 		t.Fatalf("resolveSystemPath: %v", err)
 	}
@@ -248,8 +231,8 @@ func TestResolveSystemPath_EmptyYAMLFallsThrough(t *testing.T) {
 	}
 }
 
-// TestResolveSystemPath_MissingYAMLDefaultLocation: no flag, no YAML file at
-// the default location (and no explicit --config / env) → defaultSystemConfig.
+// TestResolveSystemPath_MissingYAMLDefaultLocation: no YAML file at the
+// default location (and no explicit --config / env) → defaultSystemConfig.
 // Runner subcommands must keep working in repos that have no gh-optivem.yaml.
 func TestResolveSystemPath_MissingYAMLDefaultLocation(t *testing.T) {
 	tmp := t.TempDir()
@@ -269,7 +252,7 @@ func TestResolveSystemPath_MissingYAMLDefaultLocation(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(cwd) })
 
-	got, err := resolveSystemPath("")
+	got, err := resolveSystemPath()
 	if err != nil {
 		t.Fatalf("resolveSystemPath: %v", err)
 	}
@@ -278,28 +261,13 @@ func TestResolveSystemPath_MissingYAMLDefaultLocation(t *testing.T) {
 	}
 }
 
-// TestResolveTestsPath_FlagWins mirrors the system flag-wins case.
-func TestResolveTestsPath_FlagWins(t *testing.T) {
+// TestResolveTestsPath_YAMLUsedWhenSet mirrors the system case.
+func TestResolveTestsPath_YAMLUsedWhenSet(t *testing.T) {
 	tmp := t.TempDir()
 	runnerResolveSetup(t, tmp)
 	writeYAMLConfig(t, tmp, "", "yaml/tests.json")
 
-	got, err := resolveTestsPath("./flag/tests.json")
-	if err != nil {
-		t.Fatalf("resolveTestsPath: %v", err)
-	}
-	if got != "./flag/tests.json" {
-		t.Errorf("got %q, want ./flag/tests.json (flag must beat YAML)", got)
-	}
-}
-
-// TestResolveTestsPath_YAMLUsedWhenFlagAbsent mirrors the system case.
-func TestResolveTestsPath_YAMLUsedWhenFlagAbsent(t *testing.T) {
-	tmp := t.TempDir()
-	runnerResolveSetup(t, tmp)
-	writeYAMLConfig(t, tmp, "", "yaml/tests.json")
-
-	got, err := resolveTestsPath("")
+	got, err := resolveTestsPath()
 	if err != nil {
 		t.Fatalf("resolveTestsPath: %v", err)
 	}
@@ -314,7 +282,7 @@ func TestResolveTestsPath_EmptyYAMLFallsThrough(t *testing.T) {
 	runnerResolveSetup(t, tmp)
 	writeYAMLConfig(t, tmp, "", "")
 
-	got, err := resolveTestsPath("")
+	got, err := resolveTestsPath()
 	if err != nil {
 		t.Fatalf("resolveTestsPath: %v", err)
 	}

@@ -792,9 +792,9 @@ func TestDispatch_HaltsOnUnfilledPlaceholder(t *testing.T) {
 }
 
 func TestDispatch_RawPromptSkipsPlaceholderCheck(t *testing.T) {
-	// --replace short-circuits the substitution path entirely; an operator
-	// who deliberately writes ${foo} in their replacement text should not
-	// be blocked by the guardrail.
+	// node_replacements: short-circuits the substitution path entirely;
+	// an operator who deliberately writes ${foo} in their replacement
+	// file body should not be blocked by the guardrail.
 	gitFake := &fakeGit{
 		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
 	}

@@ -49,7 +49,7 @@ func ensureExists(path string, isTTY bool, in io.Reader, out io.Writer) error {
 	if err != nil {
 		return missingFileError(path)
 	}
-	if _, err := Run(f, path, false); err != nil {
+	if _, err := RunWithBanner(f, path, false, Banner); err != nil {
 		return err
 	}
 	return nil

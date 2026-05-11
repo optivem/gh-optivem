@@ -1,6 +1,13 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/optivem/gh-optivem/internal/projectconfig"
+)
 
 func TestParseIssueArg(t *testing.T) {
 	t.Parallel()
@@ -38,5 +45,169 @@ func TestParseIssueArg(t *testing.T) {
 				t.Fatalf("parseIssueArg(%q): want %d, got %d", tc.in, tc.want, got)
 			}
 		})
+	}
+}
+
+// TestOverrideHooksFromConfig_NilAndEmpty: nil cfg and a cfg with no
+// override maps both yield (nil, nil), so wrapOverride sees a no-op hook
+// rather than an empty-but-allocated struct.
+func TestOverrideHooksFromConfig_NilAndEmpty(t *testing.T) {
+	t.Parallel()
+	hooks, err := overrideHooksFromConfig(nil)
+	if err != nil {
+		t.Fatalf("nil cfg: unexpected error %v", err)
+	}
+	if hooks != nil {
+		t.Errorf("nil cfg: expected nil hooks, got %+v", hooks)
+	}
+
+	cfg := &projectconfig.Config{Project: projectconfig.Project{URL: "https://github.com/orgs/x/projects/1"}}
+	hooks, err = overrideHooksFromConfig(cfg)
+	if err != nil {
+		t.Fatalf("empty maps: unexpected error %v", err)
+	}
+	if hooks != nil {
+		t.Errorf("empty maps: expected nil hooks, got %+v", hooks)
+	}
+}
+
+// TestOverrideHooksFromConfig_NodeExtrasPassedThrough: literal text from
+// cfg.NodeExtras lands verbatim in Hooks.Extra.
+func TestOverrideHooksFromConfig_NodeExtrasPassedThrough(t *testing.T) {
+	t.Parallel()
+	cfg := &projectconfig.Config{
+		Project: projectconfig.Project{URL: "https://github.com/orgs/x/projects/1"},
+		NodeExtras: map[string]string{
+			"AT_RED_DSL_WRITE": "prefer record types",
+		},
+	}
+	hooks, err := overrideHooksFromConfig(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if hooks == nil {
+		t.Fatal("expected non-nil hooks")
+	}
+	if got := hooks.Extra["AT_RED_DSL_WRITE"]; got != "prefer record types" {
+		t.Errorf("Extra[AT_RED_DSL_WRITE]: got %q, want %q", got, "prefer record types")
+	}
+	if len(hooks.Replace) != 0 {
+		t.Errorf("Replace should be empty when no node_replacements set, got %+v", hooks.Replace)
+	}
+}
+
+// TestOverrideHooksFromConfig_NodeReplacementsReadFiles: paths in
+// cfg.NodeReplacements are read at startup and Hooks.Replace carries the
+// file *body*, not the path.
+func TestOverrideHooksFromConfig_NodeReplacementsReadFiles(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	body := "Custom prompt body for AT_RED_TEST_WRITE.\nSecond line."
+	path := filepath.Join(dir, "at-red.md")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	cfg := &projectconfig.Config{
+		Project: projectconfig.Project{URL: "https://github.com/orgs/x/projects/1"},
+		NodeReplacements: map[string]string{
+			"AT_RED_TEST_WRITE": path,
+		},
+	}
+	hooks, err := overrideHooksFromConfig(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if hooks == nil {
+		t.Fatal("expected non-nil hooks")
+	}
+	if got := hooks.Replace["AT_RED_TEST_WRITE"]; got != body {
+		t.Errorf("Replace[AT_RED_TEST_WRITE]: got %q, want %q (file body, not path)", got, body)
+	}
+}
+
+// TestOverrideHooksFromConfig_MissingReplacementPathErrors: a missing file
+// surfaces at startup with the node ID and path in the message, so the
+// operator doesn't see "why didn't my override apply?" deep in the pipeline.
+func TestOverrideHooksFromConfig_MissingReplacementPathErrors(t *testing.T) {
+	t.Parallel()
+	cfg := &projectconfig.Config{
+		Project: projectconfig.Project{URL: "https://github.com/orgs/x/projects/1"},
+		NodeReplacements: map[string]string{
+			"AT_RED_TEST_WRITE": filepath.Join(t.TempDir(), "no-such.md"),
+		},
+	}
+	_, err := overrideHooksFromConfig(cfg)
+	if err == nil {
+		t.Fatal("expected error for missing node_replacements path, got nil")
+	}
+	if !strings.Contains(err.Error(), "AT_RED_TEST_WRITE") {
+		t.Errorf("error should name the node ID, got: %v", err)
+	}
+}
+
+// TestAgentPromptOverridesFromConfig_ReadsFiles: cfg.AgentPrompts paths are
+// read at startup and the returned map holds bodies, not paths.
+func TestAgentPromptOverridesFromConfig_ReadsFiles(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	body := "You are the customized atdd-test agent.\n"
+	path := filepath.Join(dir, "atdd-test.md")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	cfg := &projectconfig.Config{
+		Project: projectconfig.Project{URL: "https://github.com/orgs/x/projects/1"},
+		AgentPrompts: map[string]string{
+			"atdd-test": path,
+		},
+	}
+	out, err := agentPromptOverridesFromConfig(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := out["atdd-test"]; got != body {
+		t.Errorf("atdd-test: got %q, want %q (file body, not path)", got, body)
+	}
+}
+
+// TestAgentPromptOverridesFromConfig_NilAndEmpty: nil cfg and empty
+// AgentPrompts both yield (nil, nil), so the driver sees a clean nil map.
+func TestAgentPromptOverridesFromConfig_NilAndEmpty(t *testing.T) {
+	t.Parallel()
+	out, err := agentPromptOverridesFromConfig(nil)
+	if err != nil {
+		t.Fatalf("nil cfg: unexpected error %v", err)
+	}
+	if out != nil {
+		t.Errorf("nil cfg: expected nil map, got %+v", out)
+	}
+
+	cfg := &projectconfig.Config{Project: projectconfig.Project{URL: "https://github.com/orgs/x/projects/1"}}
+	out, err = agentPromptOverridesFromConfig(cfg)
+	if err != nil {
+		t.Fatalf("empty cfg: unexpected error %v", err)
+	}
+	if out != nil {
+		t.Errorf("empty cfg: expected nil map, got %+v", out)
+	}
+}
+
+// TestAgentPromptOverridesFromConfig_MissingPathErrors: a missing file
+// surfaces at startup naming the agent so the operator sees what's wrong
+// before any pipeline node runs.
+func TestAgentPromptOverridesFromConfig_MissingPathErrors(t *testing.T) {
+	t.Parallel()
+	cfg := &projectconfig.Config{
+		Project: projectconfig.Project{URL: "https://github.com/orgs/x/projects/1"},
+		AgentPrompts: map[string]string{
+			"atdd-test": filepath.Join(t.TempDir(), "no-such.md"),
+		},
+	}
+	_, err := agentPromptOverridesFromConfig(cfg)
+	if err == nil {
+		t.Fatal("expected error for missing agent_prompts path, got nil")
+	}
+	if !strings.Contains(err.Error(), "atdd-test") {
+		t.Errorf("error should name the agent, got: %v", err)
 	}
 }

@@ -28,19 +28,21 @@ import (
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
-// Run validates that cfg's declared layout exists on disk. cwd is the
-// working directory used by repolocator's sibling-convention strategy;
-// when empty, the process CWD is used.
+// Run validates that cfg's declared layout exists on disk. workspace is
+// the operator-supplied workspace root (from the --workspace flag);
+// when empty, the formula defaults to filepath.Dir(cwd). cwd is the
+// working directory used by the default branch; when empty, the process
+// CWD is used.
 //
 // Returns nil when everything checks out. Otherwise returns a single
 // error whose Error() lists every failure on its own line, prefixed with
 // "  - ". Callers (the implement-ticket cobra command) print it directly
 // to stderr and exit non-zero.
-func Run(cfg *projectconfig.Config, repoDirs map[string]string, cwd string) error {
+func Run(cfg *projectconfig.Config, workspace string, cwd string) error {
 	if cfg == nil {
 		return nil
 	}
-	res, err := repolocator.Resolve(cfg, repoDirs, cwd)
+	res, err := repolocator.Resolve(cfg, workspace, cwd)
 	if err != nil {
 		return fmt.Errorf("preflight: resolve repos: %w", err)
 	}

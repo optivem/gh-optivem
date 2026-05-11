@@ -43,10 +43,11 @@ func TestEnsureExists_MissingNonTTY(t *testing.T) {
 }
 
 // TestEnsureExists_MissingTTYValidPrompt — when stdin is a TTY and the
-// prompt completes successfully, EnsureExists writes the YAML and runs
-// the .gitignore side-effect that comes with Run.
+// prompt completes successfully, EnsureExists writes the YAML (with the
+// review-banner prepended) and runs the .gitignore side-effect that
+// comes with Run.
 func TestEnsureExists_MissingTTYValidPrompt(t *testing.T) {
-	t.Parallel()
+	stubInference(t, "https://github.com/acme/page-turner.git", true)
 	dir := t.TempDir()
 	path := filepath.Join(dir, projectconfig.Path)
 	in := script(monolithAnswers())
@@ -54,11 +55,18 @@ func TestEnsureExists_MissingTTYValidPrompt(t *testing.T) {
 	if err := ensureExists(path, true, in, &out); err != nil {
 		t.Fatalf("EnsureExists: %v", err)
 	}
-	if _, err := os.Stat(path); err != nil {
-		t.Errorf("YAML not written at %s: %v", path, err)
+	yamlBytes, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("YAML not written at %s: %v", path, err)
+	}
+	if !strings.HasPrefix(string(yamlBytes), "# gh-optivem.yaml") {
+		t.Errorf("generated YAML should start with the review banner, got first line: %.80s", string(yamlBytes))
+	}
+	if !strings.Contains(string(yamlBytes), "gh optivem config validate") {
+		t.Errorf("banner should mention the validate command, got:\n%s", yamlBytes)
 	}
 	// Run's gitignore side-effect — verifies the prompt path went all the
-	// way through Run, not just Prompt + WriteOptivemYAMLToFilePath.
+	// way through Run, not just Prompt + WriteOptivemYAMLToFilePathWithBanner.
 	giData, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
 	if err != nil {
 		t.Fatalf("read .gitignore: %v", err)
