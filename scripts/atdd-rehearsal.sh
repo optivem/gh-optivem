@@ -13,26 +13,29 @@ set -euo pipefail
 # feature consumers need.
 #
 # Usage:
-#   bash atdd-rehearsal.sh <issue-num> [label]
+#   bash atdd-rehearsal.sh <issue-num> [label] [--config <yaml>]
 #
 #   issue-num: GitHub issue number, or full issue URL — forwarded as-is to
 #              `gh optivem atdd implement-ticket --issue ...`.
 #   label:     optional [A-Za-z0-9_-]+ tacked onto the worktree id for
 #              sortability (e.g. "ticket-61", "follow-up").
+#   --config:  path (relative to the consumer worktree) of the gh-optivem.yaml
+#              variant to exercise. Default: gh-optivem-monolith-typescript.yaml.
+#              The shop template commits one yaml per stack (monolith/multitier
+#              × typescript/java/dotnet × legacy); pick the one matching the
+#              ticket you're rehearsing.
 #
 # Workflow:
 #   1. Build gh-optivem.exe from this repo (so the rehearsal exercises
 #      uncommitted local changes, not the installed `gh optivem`).
 #   2. Resolve <id> = <ts>[-<label>], where <ts> = date +%Y%m%d-%H%M%S.
 #   3. From the consumer repo (CWD), create a sibling worktree at
-#      ../rehearsal-<id> on a new branch rehearsal/<id>.
-#   4. Inside the new worktree, run `<gh-optivem>/gh-optivem.exe config init …`
-#      to materialise gh-optivem.yaml (the shop template doesn't commit it;
-#      implement-ticket needs it to resolve project URL and scope axes).
-#      Commit the YAML so the rehearsal branch carries a coherent history.
-#   5. cd into it and run:
+#      ../rehearsal-<id> on a new branch rehearsal/<id>. The chosen
+#      --config yaml is already committed in shop, so it lands in the
+#      worktree automatically — no copy or init step needed.
+#   4. cd into it and run, with $GH_OPTIVEM_CONFIG pointing at the chosen yaml:
 #        <gh-optivem>/gh-optivem.exe atdd implement-ticket --issue <issue-num>
-#   6. On exit (success, failure, or interrupt), prompt the user to delete
+#   5. On exit (success, failure, or interrupt), prompt the user to delete
 #      the worktree + branch (default: yes).
 #
 # The consumer repo is always resolved as a sibling of gh-optivem named
@@ -40,22 +43,8 @@ set -euo pipefail
 # CWD — it does not consult the current working tree.
 
 # === REHEARSAL CONFIG === (edit these for your setup)
-REHEARSAL_OWNER="optivem"
 REHEARSAL_REPO="shop"
-REHEARSAL_SYSTEM_NAME="Page Turner"
-REHEARSAL_ARCH="monolith"
-REHEARSAL_REPO_STRATEGY="monorepo"
-REHEARSAL_MONOLITH_LANG="typescript"
-REHEARSAL_PROJECT_URL="https://github.com/orgs/optivem/projects/20"
-
-# Tier paths matching shop's worktree layout. `gh optivem config init` no
-# longer derives paths — every caller passes them explicitly. Shop nests
-# system code under system/<arch>/<lang>/ and tests under system-test/<lang>/
-# so the rehearsal worktree (which is shop's tree) needs these spellings.
-REHEARSAL_SYSTEM_PATH="system/${REHEARSAL_ARCH}/${REHEARSAL_MONOLITH_LANG}"
-REHEARSAL_SYSTEM_TEST_PATH="system-test/${REHEARSAL_MONOLITH_LANG}"
-REHEARSAL_STUBS_PATH="external-systems/external-stub"
-REHEARSAL_SIMULATORS_PATH="external-systems/external-real-sim"
+REHEARSAL_DEFAULT_CONFIG="gh-optivem-monolith-typescript.yaml"
 # === END REHEARSAL CONFIG ===
 
 GH_OPTIVEM_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -69,17 +58,66 @@ fi
 PREFIX="${C_CYAN}[atdd-rehearsal]${C_RESET}"
 log() { echo "${PREFIX} $*"; }
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  sed -n '11,36p' "$0" | sed 's/^# \{0,1\}//'
-  exit 0
-fi
+usage() {
+  echo "Usage: $0 <issue-num> [label] [--config <yaml>]" >&2
+}
 
-if [[ $# -lt 1 || $# -gt 2 ]]; then
-  echo "Usage: $0 <issue-num> [label]" >&2
+ISSUE=""
+LABEL=""
+CONFIG="$REHEARSAL_DEFAULT_CONFIG"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      sed -n '12,42p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    -c|--config)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: $1 requires a value" >&2
+        exit 2
+      fi
+      CONFIG="$2"
+      shift 2
+      ;;
+    --config=*)
+      CONFIG="${1#--config=}"
+      shift
+      ;;
+    --)
+      shift
+      while [[ $# -gt 0 ]]; do
+        if [[ -z "$ISSUE" ]]; then ISSUE="$1"
+        elif [[ -z "$LABEL" ]]; then LABEL="$1"
+        else echo "ERROR: unexpected argument: $1" >&2; exit 2
+        fi
+        shift
+      done
+      ;;
+    -*)
+      echo "ERROR: unknown flag: $1" >&2
+      usage
+      exit 2
+      ;;
+    *)
+      if [[ -z "$ISSUE" ]]; then
+        ISSUE="$1"
+      elif [[ -z "$LABEL" ]]; then
+        LABEL="$1"
+      else
+        echo "ERROR: unexpected argument: $1" >&2
+        usage
+        exit 2
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$ISSUE" ]]; then
+  usage
   exit 2
 fi
-ISSUE="$1"
-LABEL="${2:-}"
 
 if [[ -n "$LABEL" && ! "$LABEL" =~ ^[A-Za-z0-9_-]+$ ]]; then
   echo "ERROR: label must match [A-Za-z0-9_-]+ (got: $LABEL)" >&2
@@ -135,6 +173,7 @@ log "  branch:      $BRANCH"
 if [[ -n "$LABEL" ]]; then
   log "  label:       $LABEL"
 fi
+log "  config:      $CONFIG"
 log "  built from:  $GH_OPTIVEM_ROOT"
 log "  binary:      $BIN"
 
@@ -173,32 +212,16 @@ fi
 # trigger the cleanup prompt.
 trap cleanup EXIT
 
-# The shop template doesn't commit gh-optivem.yaml (real users get one from
-# `gh optivem init`), so the worktree starts without it. Materialise the file
-# via `config init` and commit it so the rehearsal branch carries a coherent
-# history that matches what a real init-scaffolded repo would look like.
-log "Writing gh-optivem.yaml into worktree..."
-( cd "$WORKTREE_PATH" && "$BIN" config init \
-    --owner "$REHEARSAL_OWNER" \
-    --repo "$REHEARSAL_REPO" \
-    --system-name "$REHEARSAL_SYSTEM_NAME" \
-    --arch "$REHEARSAL_ARCH" \
-    --repo-strategy "$REHEARSAL_REPO_STRATEGY" \
-    --monolith-lang "$REHEARSAL_MONOLITH_LANG" \
-    --project-url "$REHEARSAL_PROJECT_URL" \
-    --system-path "$REHEARSAL_SYSTEM_PATH" \
-    --system-test-path "$REHEARSAL_SYSTEM_TEST_PATH" \
-    --stubs-path "$REHEARSAL_STUBS_PATH" \
-    --simulators-path "$REHEARSAL_SIMULATORS_PATH" )
-
-log "Committing gh-optivem.yaml to rehearsal branch..."
-( cd "$WORKTREE_PATH" \
-    && git add gh-optivem.yaml \
-    && git commit -m "Add gh-optivem.yaml for rehearsal" )
+CONFIG_FULL="$WORKTREE_PATH/$CONFIG"
+if [[ ! -f "$CONFIG_FULL" ]]; then
+  log "ERROR: config file not found in worktree: $CONFIG_FULL"
+  log "Expected one of the gh-optivem-*.yaml variants committed in $REHEARSAL_REPO."
+  exit 2
+fi
 
 log "Running implement-ticket --issue $ISSUE in $WORKTREE_PATH..."
 RC=0
-( cd "$WORKTREE_PATH" && "$BIN" atdd implement-ticket --issue "$ISSUE" ) || RC=$?
+( cd "$WORKTREE_PATH" && GH_OPTIVEM_CONFIG="$CONFIG_FULL" "$BIN" atdd implement-ticket --issue "$ISSUE" ) || RC=$?
 
 if [[ $RC -eq 0 ]]; then
   log "implement-ticket succeeded."
