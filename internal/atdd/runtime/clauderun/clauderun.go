@@ -108,24 +108,25 @@ type Options struct {
 	// placeholders (issue_num, phase_doc, …) — those win on key collision.
 	NodeParams map[string]string
 
-	// OverrideText is the per-node `--extra` text from override.Hooks,
-	// interpolated into the prompt template. Empty string is fine.
+	// OverrideText is the per-node extra text from override.Hooks.Extra
+	// (sourced from gh-optivem.yaml's node_extras:), interpolated into the
+	// prompt template. Empty string is fine.
 	OverrideText string
 
 	// RawPrompt, when non-empty, replaces the templated prompt entirely.
-	// Used by override.Hooks Replace where the operator wants to swap the
-	// whole prompt rather than append text via OverrideText. When set,
-	// every other prompt-shaping field (NodeDescription, OverrideText, …)
-	// is ignored.
+	// Used by override.Hooks.Replace (sourced from gh-optivem.yaml's
+	// node_replacements:) where the operator wants to swap the whole prompt
+	// rather than append text via OverrideText. When set, every other
+	// prompt-shaping field (NodeDescription, OverrideText, …) is ignored.
 	RawPrompt string
 
 	// PromptOverride, when non-empty, replaces the embedded agent prompt
 	// body (i.e. agents.Prompt(opts.Agent)) with this string. Unlike
 	// RawPrompt, the override still goes through ${name} expansion against
-	// the live ticket context and still has OverrideText appended. Used by
-	// the driver's `--agent-prompt name=path` flag, where the operator
-	// wants to swap the canonical prompt for one named agent without
-	// touching the surrounding render machinery.
+	// the live ticket context and still has OverrideText appended. Sourced
+	// from gh-optivem.yaml's agent_prompts: map, where the operator wants
+	// to swap the canonical prompt for one named agent without touching
+	// the surrounding render machinery.
 	PromptOverride string
 
 	// Autonomous — when true, run via `claude -p` (one-shot, headless).
@@ -416,9 +417,9 @@ func renderPrompt(opts Options) (string, error) {
 
 // RenderPrompt is the public counterpart to renderPrompt: it returns the
 // prompt string Dispatch would hand to the subprocess, without invoking
-// it. The driver's agent dispatcher uses this for the --interactive
-// prompt-review hook so the operator can preview the prompt and append
-// last-minute additions.
+// it. Kept as an exported test seam so the prompt-shape regression tests
+// (see clauderun_test.go's TestRenderPrompt_* suite) can assert on the
+// rendered text directly.
 //
 // If opts.RawPrompt is non-empty, it is returned verbatim — RenderPrompt
 // mirrors Dispatch's "RawPrompt wins" rule.

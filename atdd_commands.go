@@ -15,18 +15,25 @@
 // internal/atdd/runtime/* calls and surface their errors via exitOnError
 // (defined in runner_commands.go) for consistency with the rest of the
 // `optivem` binary.
+//
+// Process-flow / agent-prompt / per-node overrides are project-stable
+// values, so they live in `gh-optivem.yaml` (process_flow:, agent_prompts:,
+// node_extras:, node_replacements:) — not on flags. The cobra layer loads
+// the config once per run, reads those fields, and threads them into
+// driver.Options.
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/board"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/classify"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/diagram"
@@ -105,27 +112,19 @@ func newAtddShowDiagramCmd() *cobra.Command {
 // PICK_TOP_READY picker).
 func newAtddImplementTicketCmd() *cobra.Command {
 	var (
-		issueArg         string
-		autonomous       bool
-		manualAgents     bool
-		interactive      bool
-		extraPairs       []string
-		replacePairs     []string
-		yamlPath         string
-		agentPromptPairs []string
-		logFile          string
-		workspace        string
-		keepRuns         int
-		showPrompt       bool
+		issueArg     string
+		autonomous   bool
+		manualAgents bool
+		logFile      string
+		workspace    string
+		keepRuns     int
+		showPrompt   bool
 	)
 	cmd := &cobra.Command{
 		Use:   "implement-ticket",
 		Short: "Walk the ATDD pipeline for a specific GitHub issue",
 		Example: `  gh optivem atdd implement-ticket --issue 42
   gh optivem atdd implement-ticket --issue https://github.com/optivem/shop/issues/42
-  gh optivem atdd implement-ticket --issue 42 --extra AT_RED_DSL_WRITE="prefer record types"
-  gh optivem atdd implement-ticket --issue 42 --yaml ./alt-process-flow.yaml
-  gh optivem atdd implement-ticket --issue 42 --agent-prompt atdd-test=./prompts/atdd-test.md
   gh optivem -c ./optivem-multitier.yaml atdd implement-ticket --issue 42
   gh optivem atdd implement-ticket --issue 42 --workspace /abs/path/to/workspace
   gh optivem atdd implement-ticket --issue 42 --log-file run.log
@@ -134,19 +133,20 @@ func newAtddImplementTicketCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			issue, err := parseIssueArg(issueArg)
 			exitOnError(err)
-			hooks, err := buildOverrideHooks(extraPairs, replacePairs, interactive)
-			exitOnError(err)
-			promptOverrides, err := parseAgentPromptPairs(agentPromptPairs)
-			exitOnError(err)
 			exitOnError(validateKeepRuns(keepRuns))
 			resolvedConfigPath, _ := projectconfig.ResolvePath(projectConfigPath)
-			exitOnError(runImplementTicketPreflight(resolvedConfigPath, workspace))
+			cfg, err := runImplementTicketPreflight(resolvedConfigPath, workspace)
+			exitOnError(err)
+			hooks, err := overrideHooksFromConfig(cfg)
+			exitOnError(err)
+			promptOverrides, err := agentPromptOverridesFromConfig(cfg)
+			exitOnError(err)
 			exitOnError(driver.Run(context.Background(), driver.Options{
 				IssueNum:             issue,
 				Autonomous:           autonomous,
 				ManualAgents:         manualAgents,
 				Override:             hooks,
-				YAMLPath:             yamlPath,
+				YAMLPath:             cfg.ProcessFlow,
 				AgentPromptOverrides: promptOverrides,
 				ConfigPath:           resolvedConfigPath,
 				LogFile:              logFile,
@@ -158,11 +158,6 @@ func newAtddImplementTicketCmd() *cobra.Command {
 	cmd.Flags().StringVar(&issueArg, "issue", "", "GitHub issue number or URL (required; accepts e.g. 42 or https://github.com/owner/repo/issues/42)")
 	cmd.Flags().BoolVar(&autonomous, "autonomous", false, "Skip human-approval STOPs and run agent dispatches headless via `claude -p`")
 	cmd.Flags().BoolVar(&manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
-	cmd.Flags().BoolVar(&interactive, "interactive", false, "Before each user_task dispatch, print the constructed prompt and read stdin for last-minute additions")
-	cmd.Flags().StringSliceVar(&extraPairs, "extra", nil, "Per-node extra prompt text, repeatable (e.g. --extra AT_RED_DSL_WRITE=\"prefer record types\")")
-	cmd.Flags().StringSliceVar(&replacePairs, "replace", nil, "Per-node prompt replacement, repeatable (escape hatch — full prompt swap)")
-	cmd.Flags().StringVar(&yamlPath, "yaml", "", "Path to a process-flow YAML override (defaults to the embedded canonical document)")
-	cmd.Flags().StringSliceVar(&agentPromptPairs, "agent-prompt", nil, "Override one named agent prompt, repeatable (e.g. --agent-prompt atdd-test=./prompts/atdd-test.md)")
 	cmd.Flags().StringVar(&workspace, "workspace", "", "Workspace root containing one clone per repo (default: parent directory of CWD). Each clone dir must be named after the repo-name component of its slug; symlink outliers into place.")
 	cmd.Flags().StringVar(&logFile, "log-file", "", "Mirror everything stdout/stderr emit during the run to this file (in addition to streaming live)")
 	cmd.Flags().IntVar(&keepRuns, "keep-runs", 10, "Max prompt-log run directories to keep under .gh-optivem/runs/ at startup (0 = never prune)")
@@ -187,23 +182,27 @@ func validateKeepRuns(n int) error {
 // without it. A failure prints one error block listing every missing repo
 // or path and exits non-zero — see preflight.Run.
 //
-// Loaded config is discarded after preflight; the driver's process re-loads
-// it via loadDriverConfig. The double load is deliberate: keeps the
-// driver's lifecycle untouched, and a config file is small enough that
-// the second read is free.
-func runImplementTicketPreflight(configPath string, workspace string) error {
+// Returns the loaded cfg so the cobra layer can read process_flow:,
+// agent_prompts:, node_extras:, and node_replacements: without paying
+// for a second LoadFromPath. The driver still re-loads internally via
+// loadDriverConfig — the double load is deliberate and a config file is
+// small enough that the second read is free.
+func runImplementTicketPreflight(configPath string, workspace string) (*projectconfig.Config, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return fmt.Errorf("preflight: getwd: %w", err)
+		return nil, fmt.Errorf("preflight: getwd: %w", err)
 	}
 	if err := configinit.EnsureExists(configPath); err != nil {
-		return err
+		return nil, err
 	}
 	cfg, err := projectconfig.LoadFromPath(configPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return preflight.Run(cfg, workspace, cwd)
+	if err := preflight.Run(cfg, workspace, cwd); err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }
 
 // newAtddManageProjectCmd implements `gh optivem atdd manage-project`. The
@@ -211,35 +210,32 @@ func runImplementTicketPreflight(configPath string, workspace string) error {
 // from START.
 func newAtddManageProjectCmd() *cobra.Command {
 	var (
-		autonomous       bool
-		manualAgents     bool
-		interactive      bool
-		extraPairs       []string
-		replacePairs     []string
-		yamlPath         string
-		agentPromptPairs []string
-		logFile          string
-		keepRuns         int
-		showPrompt       bool
+		autonomous   bool
+		manualAgents bool
+		logFile      string
+		keepRuns     int
+		showPrompt   bool
 	)
 	cmd := &cobra.Command{
 		Use:   "manage-project",
 		Short: "Pick the top Ready ticket and walk the ATDD pipeline",
 		Example: `  gh optivem atdd manage-project
-  gh optivem -c ./optivem-multitier.yaml atdd manage-project --yaml ./alt-process-flow.yaml
+  gh optivem -c ./optivem-multitier.yaml atdd manage-project
   gh optivem atdd manage-project --log-file run.log`,
 		Run: func(cmd *cobra.Command, args []string) {
-			hooks, err := buildOverrideHooks(extraPairs, replacePairs, interactive)
-			exitOnError(err)
-			promptOverrides, err := parseAgentPromptPairs(agentPromptPairs)
-			exitOnError(err)
 			exitOnError(validateKeepRuns(keepRuns))
 			resolvedConfigPath, _ := projectconfig.ResolvePath(projectConfigPath)
+			cfg, err := projectconfig.LoadFromPath(resolvedConfigPath)
+			exitOnError(err)
+			hooks, err := overrideHooksFromConfig(cfg)
+			exitOnError(err)
+			promptOverrides, err := agentPromptOverridesFromConfig(cfg)
+			exitOnError(err)
 			exitOnError(driver.Run(context.Background(), driver.Options{
 				Autonomous:           autonomous,
 				ManualAgents:         manualAgents,
 				Override:             hooks,
-				YAMLPath:             yamlPath,
+				YAMLPath:             cfg.ProcessFlow,
 				AgentPromptOverrides: promptOverrides,
 				ConfigPath:           resolvedConfigPath,
 				LogFile:              logFile,
@@ -250,106 +246,59 @@ func newAtddManageProjectCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&autonomous, "autonomous", false, "Skip human-approval STOPs and run agent dispatches headless via `claude -p`")
 	cmd.Flags().BoolVar(&manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
-	cmd.Flags().BoolVar(&interactive, "interactive", false, "Before each user_task dispatch, print the constructed prompt and read stdin for last-minute additions")
-	cmd.Flags().StringSliceVar(&extraPairs, "extra", nil, "Per-node extra prompt text, repeatable (e.g. --extra AT_RED_DSL_WRITE=\"prefer record types\")")
-	cmd.Flags().StringSliceVar(&replacePairs, "replace", nil, "Per-node prompt replacement, repeatable (escape hatch — full prompt swap)")
-	cmd.Flags().StringVar(&yamlPath, "yaml", "", "Path to a process-flow YAML override (defaults to the embedded canonical document)")
-	cmd.Flags().StringSliceVar(&agentPromptPairs, "agent-prompt", nil, "Override one named agent prompt, repeatable (e.g. --agent-prompt atdd-test=./prompts/atdd-test.md)")
 	cmd.Flags().StringVar(&logFile, "log-file", "", "Mirror everything stdout/stderr emit during the run to this file (in addition to streaming live)")
 	cmd.Flags().IntVar(&keepRuns, "keep-runs", 10, "Max prompt-log run directories to keep under .gh-optivem/runs/ at startup (0 = never prune)")
 	cmd.Flags().BoolVar(&showPrompt, "show-prompt", false, "Dump each agent's full rendered prompt to stdout before dispatch (default: summary banner only)")
 	return cmd
 }
 
-// buildOverrideHooks parses the --extra / --replace NODE=text pairs into
-// override.Hooks. Returns nil (no overrides) when every list is empty and
-// --interactive is off, so the driver's wrapOverride sees a no-op decorator
-// rather than an empty-but-allocated struct. NODE keys are case-sensitive
-// to match the YAML node ID convention (UPPER_SNAKE_CASE).
-func buildOverrideHooks(extraPairs, replacePairs []string, interactive bool) (*override.Hooks, error) {
-	if len(extraPairs) == 0 && len(replacePairs) == 0 && !interactive {
+// overrideHooksFromConfig builds the per-node override hooks the driver
+// passes to the dispatcher, sourced from cfg.NodeExtras (inline text,
+// appended at dispatch) and cfg.NodeReplacements (paths whose file body
+// replaces the prompt verbatim). Returns (nil, nil) when both maps are
+// empty so the driver's wrapOverride sees a no-op decorator rather than
+// an empty-but-allocated struct. Node-ID validity against the resolved
+// process flow is enforced by the driver at startup; this layer only
+// reads the file bodies.
+func overrideHooksFromConfig(cfg *projectconfig.Config) (*override.Hooks, error) {
+	if cfg == nil || (len(cfg.NodeExtras) == 0 && len(cfg.NodeReplacements) == 0) {
 		return nil, nil
 	}
-	hooks := &override.Hooks{Interactive: interactive}
-	if len(extraPairs) > 0 {
-		extra, err := parseNodeKVPairs("--extra", extraPairs)
-		if err != nil {
-			return nil, err
-		}
-		hooks.Extra = extra
+	hooks := &override.Hooks{}
+	if len(cfg.NodeExtras) > 0 {
+		hooks.Extra = cfg.NodeExtras
 	}
-	if len(replacePairs) > 0 {
-		replace, err := parseNodeKVPairs("--replace", replacePairs)
-		if err != nil {
-			return nil, err
+	if len(cfg.NodeReplacements) > 0 {
+		replace := make(map[string]string, len(cfg.NodeReplacements))
+		for node, path := range cfg.NodeReplacements {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return nil, fmt.Errorf("node_replacements[%s]: read %s: %w", node, path, err)
+			}
+			replace[node] = string(data)
 		}
 		hooks.Replace = replace
 	}
 	return hooks, nil
 }
 
-// parseAgentPromptPairs splits each `name=path` pair, validates that name
-// is a known embedded agent (typos surface at startup, not deep inside a
-// pipeline run), reads the file at startup (so missing files also surface
-// at startup), and returns the agent-name → prompt-body map the driver
-// passes through to the dispatcher. Returns (nil, nil) when pairs is
-// empty so the driver sees a clean nil map rather than an empty one.
-func parseAgentPromptPairs(pairs []string) (map[string]string, error) {
-	if len(pairs) == 0 {
+// agentPromptOverridesFromConfig reads cfg.AgentPrompts (agent-name → path)
+// and returns the agent-name → prompt-body map the driver passes through to
+// the dispatcher. Files are read at startup so missing paths surface there,
+// not deep inside a pipeline run. Agent-name validity is enforced by
+// projectconfig.Validate (Rule 11) — this layer only reads the files.
+// Returns (nil, nil) when AgentPrompts is empty.
+func agentPromptOverridesFromConfig(cfg *projectconfig.Config) (map[string]string, error) {
+	if cfg == nil || len(cfg.AgentPrompts) == 0 {
 		return nil, nil
 	}
-	known := map[string]bool{}
-	for _, n := range agents.Names() {
-		known[n] = true
-	}
-	out := make(map[string]string, len(pairs))
-	for _, p := range pairs {
-		name, path, ok := strings.Cut(p, "=")
-		if !ok {
-			return nil, fmt.Errorf("--agent-prompt value %q must be name=path", p)
-		}
-		name = strings.TrimSpace(name)
-		path = strings.TrimSpace(path)
-		if name == "" {
-			return nil, fmt.Errorf("--agent-prompt value %q has empty name", p)
-		}
-		if path == "" {
-			return nil, fmt.Errorf("--agent-prompt %q has empty path", name)
-		}
-		if !known[name] {
-			return nil, fmt.Errorf("--agent-prompt name %q is not a known embedded agent", name)
-		}
-		if _, dup := out[name]; dup {
-			return nil, fmt.Errorf("--agent-prompt name %q specified more than once", name)
-		}
+	out := make(map[string]string, len(cfg.AgentPrompts))
+	for name, path := range cfg.AgentPrompts {
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return nil, fmt.Errorf("--agent-prompt %s: read %s: %w", name, path, err)
+			return nil, fmt.Errorf("agent_prompts[%s]: read %s: %w", name, path, err)
 		}
 		out[name] = string(data)
-	}
-	return out, nil
-}
-
-// parseNodeKVPairs splits each `NODE=text` pair on the first `=`. Empty
-// node IDs and duplicate node IDs are user errors — they almost always
-// indicate a typo in the flag invocation, and silently merging would lead
-// to "why did my override not apply?" debugging.
-func parseNodeKVPairs(flag string, pairs []string) (map[string]string, error) {
-	out := make(map[string]string, len(pairs))
-	for _, p := range pairs {
-		k, v, ok := strings.Cut(p, "=")
-		if !ok {
-			return nil, fmt.Errorf("%s value %q must be NODE=text", flag, p)
-		}
-		k = strings.TrimSpace(k)
-		if k == "" {
-			return nil, fmt.Errorf("%s value %q has empty NODE", flag, p)
-		}
-		if _, dup := out[k]; dup {
-			return nil, fmt.Errorf("%s NODE %q specified more than once", flag, k)
-		}
-		out[k] = v
 	}
 	return out, nil
 }
@@ -394,19 +343,18 @@ func newAtddDebugPickTopReadyCmd() *cobra.Command {
 }
 
 // newAtddDebugClassifyCmd runs classify.Classify and prints the result. No
-// orchestration side-effects.
+// orchestration side-effects. Falls back to gh's CWD git-remote inference
+// for the repo — operators debugging classify must cd into a clone of the
+// target repo first.
 func newAtddDebugClassifyCmd() *cobra.Command {
-	var (
-		issueArg string
-		repo     string
-	)
+	var issueArg string
 	cmd := &cobra.Command{
 		Use:   "classify",
 		Short: "Classify a ticket via the deterministic fast path",
 		Run: func(cmd *cobra.Command, args []string) {
 			issue, err := parseIssueArg(issueArg)
 			exitOnError(err)
-			res, err := classify.Classify(context.Background(), issue, classify.Options{Repo: repo})
+			res, err := classify.Classify(context.Background(), issue, classify.Options{})
 			exitOnError(err)
 			fmt.Printf("issue:           #%d\n", res.IssueNum)
 			fmt.Printf("classification:  %s\n", res.Classification)
@@ -417,16 +365,18 @@ func newAtddDebugClassifyCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&issueArg, "issue", "", "GitHub issue number or URL (required)")
-	cmd.Flags().StringVar(&repo, "repo", "", "owner/repo override for `gh issue view`")
 	return cmd
 }
 
 // newAtddDebugNextPhaseCmd loads the YAML, builds an unbound Engine, and
 // prints the outgoing edge that nextEdge would pick from a given node under
 // a synthetic state. Useful for "why did the driver follow the No edge?".
+// Operates against the configured process flow (gh-optivem.yaml's
+// process_flow:) when set, otherwise the embedded canonical document. To
+// poke an alternate flow, point --config at a gh-optivem.yaml whose
+// process_flow: names it.
 func newAtddDebugNextPhaseCmd() *cobra.Command {
 	var (
-		yamlPath    string
 		processName string
 		nodeID      string
 		stateRaw    string
@@ -443,12 +393,13 @@ func newAtddDebugNextPhaseCmd() *cobra.Command {
 			if nodeID == "" {
 				exitOnError(fmt.Errorf("--node is required"))
 			}
+			cfg, err := loadDebugConfig()
+			exitOnError(err)
 			var eng *statemachine.Engine
-			var err error
-			if yamlPath == "" {
-				eng, err = statemachine.LoadDefault()
+			if cfg != nil && cfg.ProcessFlow != "" {
+				eng, err = statemachine.LoadFile(cfg.ProcessFlow)
 			} else {
-				eng, err = statemachine.LoadFile(yamlPath)
+				eng, err = statemachine.LoadDefault()
 			}
 			exitOnError(err)
 			sCtx := statemachine.NewContext()
@@ -469,11 +420,26 @@ func newAtddDebugNextPhaseCmd() *cobra.Command {
 			fmt.Printf("to:    %s\n", next)
 		},
 	}
-	cmd.Flags().StringVar(&yamlPath, "yaml", "", "Path to a process-flow YAML override (defaults to the embedded canonical document)")
 	cmd.Flags().StringVar(&processName, "process", "", "Process name (defaults to main)")
 	cmd.Flags().StringVar(&nodeID, "node", "", "Source node ID (required)")
 	cmd.Flags().StringVar(&stateRaw, "state", "", "Comma-separated key=value pairs to seed Context (e.g. dsl_interface_changed=true,ticket_type=story)")
 	return cmd
+}
+
+// loadDebugConfig soft-loads gh-optivem.yaml via flag > env > cwd default
+// for the debug commands. Missing default-location file returns (nil, nil)
+// so the debug commands keep working in repos without one; a missing file
+// at an *explicit* --config / $GH_OPTIVEM_CONFIG target is an error.
+func loadDebugConfig() (*projectconfig.Config, error) {
+	path, explicit := projectconfig.ResolvePath(projectConfigPath)
+	cfg, err := projectconfig.LoadFromPath(path)
+	if err == nil {
+		return cfg, nil
+	}
+	if errors.Is(err, fs.ErrNotExist) && !explicit {
+		return nil, nil
+	}
+	return nil, err
 }
 
 // newAtddDebugGateCmd runs a single gateway binding standalone and prints

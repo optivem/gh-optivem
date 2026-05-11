@@ -146,7 +146,7 @@ func newBuildCmd() *cobra.Command {
 	return cmd
 }
 
-// newBuildSystemCmd implements `gh optivem build system [--system-config path] [--rebuild]`.
+// newBuildSystemCmd implements `gh optivem build system [--rebuild]`.
 // Builds every entry in systems[] via `docker compose build`. With --rebuild,
 // every layer is rebuilt from scratch (internally `docker compose build
 // --no-cache`). Analog of dotnet's --no-incremental and gradle's

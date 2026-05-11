@@ -99,16 +99,17 @@ type Options struct {
 	// them — bypass that and they have nothing to attach to).
 	ManualAgents bool
 
-	// Override holds the per-node override hooks (Extra / Replace /
-	// Interactive). v2 wires CLI flags into this struct; v1 leaves it nil.
+	// Override holds the per-node override hooks (Extra / Replace).
+	// Populated by the cobra layer from gh-optivem.yaml's node_extras: /
+	// node_replacements: fields. nil leaves the dispatcher unmodified.
 	Override *override.Hooks
 
 	// AgentPromptOverrides is a map from embedded-agent name (e.g.
 	// "atdd-test") to a prompt body that replaces the canonical embedded
-	// prompt for that agent. Wired from `--agent-prompt name=path` on
-	// the CLI; the values are the file contents, not the file paths
-	// (the CLI reads at parse time so missing-file failures surface at
-	// startup). Unrecognised agent names are rejected at parse time.
+	// prompt for that agent. Sourced from gh-optivem.yaml's agent_prompts:
+	// map by the cobra layer; the values are the file contents, not the
+	// file paths (the CLI reads at startup so missing-file failures surface
+	// there). Unrecognised agent names are rejected at projectconfig.Validate.
 	AgentPromptOverrides map[string]string
 
 	// ConfigPath is the resolved gh-optivem.yaml path. The caller (cobra
@@ -237,9 +238,9 @@ func Run(ctx context.Context, opts Options) error {
 	//      RawNode metadata only available after Bind).
 	//   2. Apply verify pre/post-condition decorators (commit-message HEAD
 	//      checks).
-	//   3. Apply override hooks — they sit on top of verify so a v2
-	//      --replace short-circuits both the verify check and the agent
-	//      dispatcher (the documented escape-hatch behaviour).
+	//   3. Apply override hooks — they sit on top of verify so a
+	//      node_replacements: swap short-circuits both the verify check
+	//      and the agent dispatcher (the documented escape-hatch behaviour).
 	//   4. Apply the trace decorator last so its entry/exit lines bracket
 	//      every other decorator's behaviour. The operator sees the
 	//      composed call as one node fire.
@@ -658,7 +659,7 @@ func wrapAgentDispatchers(eng *statemachine.Engine, opts Options, rs *runState) 
 			case opts.ManualAgents:
 				node.Fn = newManualAgentDispatcher(opts, raw, inner)
 			default:
-				node.Fn = newClaudeRunDispatcher(opts, raw, nodeID, rs, inner)
+				node.Fn = newClaudeRunDispatcher(opts, raw, rs, inner)
 			}
 			process.Nodes[id] = node
 		}
@@ -723,11 +724,10 @@ func newManualAgentDispatcher(opts Options, raw statemachine.RawNode, inner stat
 // rs supplies the per-dispatch PromptLogPath. nil rs (only happens in
 // tests today) skips the log — clauderun treats empty PromptLogPath as
 // "no diagnostics file".
-func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID string, rs *runState, inner statemachine.NodeFn) statemachine.NodeFn {
+func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, rs *runState, inner statemachine.NodeFn) statemachine.NodeFn {
 	return func(ctx *statemachine.Context) statemachine.Outcome {
 		extraText := ctx.GetString(override.KeyExtra)
 		replaceText := ctx.GetString(override.KeyReplace)
-		interactive, _ := ctx.Get(override.KeyInteractive).(bool)
 
 		issueNum, _ := strconv.Atoi(ctx.GetString("issue_num"))
 
@@ -768,20 +768,6 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 			Stdout:          opts.Stdout,
 			Stderr:          opts.Stderr,
 			Stdin:           opts.Stdin,
-		}
-
-		if interactive {
-			additional, err := promptForInteractiveExtra(opts, cOpts, nodeID)
-			if err != nil {
-				return statemachine.Outcome{Err: err}
-			}
-			if additional != "" {
-				if cOpts.OverrideText == "" {
-					cOpts.OverrideText = additional
-				} else {
-					cOpts.OverrideText = cOpts.OverrideText + "\n" + additional
-				}
-			}
 		}
 
 		if err := clauderun.Dispatch(context.Background(), opts.ClaudeRunDeps, cOpts); err != nil {
@@ -856,32 +842,11 @@ func promptForAgent(opts Options, raw statemachine.RawNode, params map[string]st
 	return nil
 }
 
-// promptForInteractiveExtra implements the --interactive override hook:
-// render the prompt clauderun.Dispatch would build, print it for review,
-// and read one trailing line from stdin to append. An empty line is the
-// "no addition" signal.
-func promptForInteractiveExtra(opts Options, cOpts clauderun.Options, nodeID string) (string, error) {
-	rendered, err := clauderun.RenderPrompt(cOpts)
-	if err != nil {
-		return "", fmt.Errorf("render prompt for review: %w", err)
-	}
-	fmt.Fprintln(opts.Stdout)
-	fmt.Fprintf(opts.Stdout, "── DISPATCH PREVIEW: %s (%s) ──\n", cOpts.Agent, nodeID)
-	fmt.Fprintln(opts.Stdout, rendered)
-	fmt.Fprintln(opts.Stdout, "──")
-	fmt.Fprintln(opts.Stdout, "Additional text to append (single line; press Enter to skip):")
-	r := bufio.NewReader(opts.Stdin)
-	line, err := r.ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return "", fmt.Errorf("read interactive extra: %w", err)
-	}
-	return strings.TrimRight(line, "\r\n"), nil
-}
-
 // wrapOverride applies the override.Wrap decorator to every node. Wrapping
-// happens for every node regardless of kind — the v1 hook is a pass-through
-// so there is no measurable cost, and v2 (which adds CLI surface for
-// --extra / --replace / --interactive) only has to fill in the body.
+// happens for every node regardless of kind so the dispatcher's per-node
+// Extra / Replace lookup is always populated (an empty hint map is a no-op
+// at the inner layer). Hooks themselves are sourced from gh-optivem.yaml's
+// node_extras: / node_replacements: via the cobra layer.
 func wrapOverride(eng *statemachine.Engine, hooks *override.Hooks) {
 	if hooks == nil {
 		hooks = &override.Hooks{}

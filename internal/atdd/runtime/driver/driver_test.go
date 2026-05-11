@@ -257,8 +257,10 @@ func TestClaudeRunDispatch_AppendsOverrideExtraToPrompt(t *testing.T) {
 }
 
 func TestClaudeRunDispatch_ReplaceOverrideShortCircuitsTemplate(t *testing.T) {
-	// --replace swaps the entire prompt. The embedded agent body must be
-	// absent and only the operator-supplied text reaches the runner.
+	// node_replacements swap: the entire prompt is replaced. The embedded
+	// agent body must be absent and only the operator-supplied text
+	// (sourced from gh-optivem.yaml's node_replacements: file body via
+	// override.Hooks.Replace) reaches the runner.
 	gitFake := &fakeGit{
 		out: [][]byte{
 			[]byte("aaaa\n"),
