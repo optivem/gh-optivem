@@ -22,6 +22,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -147,7 +148,10 @@ verify the pipeline up to the requested --verify-level.
 
 Project-stable values are read from gh-optivem.yaml (run ` + "`gh optivem config init`" + `
 first to produce one). The init command itself only takes per-invocation
-flags — dry-run, verify-level, workdir, etc.`,
+flags — dry-run, verify-level, workdir, etc.
+
+If project.url is empty, init will auto-create the project board and write
+the URL back into gh-optivem.yaml.`,
 		Example: `  # 1) generate gh-optivem.yaml (once per project, interactively or via flags)
   gh optivem config init --owner acme --system-name "Page Turner" \
       --repo page-turner --arch monolith --repo-strategy monorepo \
@@ -173,27 +177,39 @@ flags — dry-run, verify-level, workdir, etc.`,
 // operator knows the single command that produces a complete yaml. The
 // runtime's "missing file = nil config" convention does not apply on
 // `init` — there is no fallback path.
-func loadProjectConfigForInit(flagPath string) (*projectconfig.Config, error) {
+//
+// Returns the resolved absolute path alongside the parsed config so callers
+// can record it on cfg.SourceConfigPath — the project board step writes
+// the auto-created URL back into the same file, and re-resolving later
+// would risk a different answer if CWD or the env var changed.
+func loadProjectConfigForInit(flagPath string) (*projectconfig.Config, string, error) {
 	path, _ := projectconfig.ResolvePath(flagPath)
-	pc, err := projectconfig.LoadFromPath(path)
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, "", fmt.Errorf("resolve absolute path for %s: %w", path, err)
+	}
+	pc, err := projectconfig.LoadFromPath(abs)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("no gh-optivem.yaml at %s; run `gh optivem config init` first", path)
+			return nil, "", fmt.Errorf("no gh-optivem.yaml at %s; run `gh optivem config init` first", abs)
 		}
-		return nil, err
+		return nil, "", err
 	}
-	return pc, nil
+	return pc, abs, nil
 }
 
 func runInit(cmd *cobra.Command, f *config.RawFlags) {
-	pc, err := loadProjectConfigForInit(projectConfigPath)
+	pc, sourcePath, err := loadProjectConfigForInit(projectConfigPath)
 	if err != nil {
 		log.FatalExit(err.Error())
 	}
+	sourceProjectURLWasEmpty := pc.Project.URL == ""
 	if err := config.FillRawFlagsFromYAML(f, pc); err != nil {
 		log.FatalExit(err.Error())
 	}
 	cfg := config.ParseAndValidate(cmd, f)
+	cfg.SourceConfigPath = sourcePath
+	cfg.SourceProjectURLWasEmpty = sourceProjectURLWasEmpty
 	if err := log.Init(cfg.Verbose, cfg.Quiet, cfg.LogFile); err != nil {
 		log.FatalExit(err.Error())
 	}

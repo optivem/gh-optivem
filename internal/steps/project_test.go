@@ -3,10 +3,14 @@ package steps
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/optivem/gh-optivem/internal/config"
+	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
 // runRecord captures one shell invocation observed by a test.
@@ -45,6 +49,8 @@ func (s *stubRunner) install() {
 	prevStdin := projectRunStdin
 	prevRun := projectRun
 	prevConfirm := projectConfirmFn
+	prevLoad := projectLoadSourceConfig
+	prevWrite := projectWriteSourceConfig
 	projectRunCapture = func(cmd, _ string) (string, error) {
 		s.calls = append(s.calls, runRecord{cmd: cmd, via: "RunCapture"})
 		for k, v := range s.captureResp {
@@ -78,6 +84,8 @@ func (s *stubRunner) install() {
 		projectRunStdin = prevStdin
 		projectRun = prevRun
 		projectConfirmFn = prevConfirm
+		projectLoadSourceConfig = prevLoad
+		projectWriteSourceConfig = prevWrite
 	})
 }
 
@@ -586,5 +594,211 @@ func TestReposToLink(t *testing.T) {
 				t.Errorf("got %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// writeSourceYAML seeds a minimal gh-optivem.yaml at path with the given
+// project URL. Returns the file's bytes after seeding so callers can
+// compare them later for "untouched" assertions.
+func writeSourceYAML(t *testing.T, path, projectURL string) []byte {
+	t.Helper()
+	pc := &projectconfig.Config{Project: projectconfig.Project{URL: projectURL}}
+	if err := projectconfig.WriteToPath(path, pc); err != nil {
+		t.Fatalf("seed source yaml: %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read seeded yaml: %v", err)
+	}
+	return got
+}
+
+// stubAutoCreatePathA seeds the stub runner with the canned responses Path A
+// expects (project list → empty, create → URL, field-list → Status with
+// default options).
+func stubAutoCreatePathA(s *stubRunner, projectURL string) {
+	s.captureResp["project list"] = `{"projects":[]}`
+	s.captureResp["project create"] = fmt.Sprintf(
+		`{"id":"PVT_X","number":7,"title":"Page Turner","url":%q}`, projectURL)
+	s.captureResp["project field-list"] = `{"fields":[{"id":"PVTSSF_S","name":"Status","type":"ProjectV2SingleSelectField","options":[{"id":"o1","name":"Todo"}]}]}`
+}
+
+// TestEnsureProjectBoard_PathA_PersistsURLBackToSourceConfig: Path A with
+// an empty project.url in the source gh-optivem.yaml writes the
+// auto-created URL back into the same file.
+func TestEnsureProjectBoard_PathA_PersistsURLBackToSourceConfig(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "gh-optivem.yaml")
+	writeSourceYAML(t, src, "")
+
+	stub := newStubRunner(t)
+	stubAutoCreatePathA(stub, "https://github.com/users/acme/projects/7")
+	stub.install()
+
+	cfg := &config.Config{
+		Owner:                    "acme",
+		FullRepo:                 "acme/page-turner",
+		SystemName:               "Page Turner",
+		RepoStrategy:             "monorepo",
+		Arch:                     "monolith",
+		SourceConfigPath:         src,
+		SourceProjectURLWasEmpty: true,
+	}
+	EnsureProjectBoard(cfg, nil)
+
+	pc, err := projectconfig.LoadFromPath(src)
+	if err != nil {
+		t.Fatalf("reload source yaml: %v", err)
+	}
+	if pc.Project.URL != "https://github.com/users/acme/projects/7" {
+		t.Errorf("source yaml project.url not persisted: got %q", pc.Project.URL)
+	}
+	if cfg.ProjectURL != pc.Project.URL {
+		t.Errorf("cfg.ProjectURL %q != source url %q", cfg.ProjectURL, pc.Project.URL)
+	}
+}
+
+// TestEnsureProjectBoard_PathA_LeavesSourceUntouched_WhenURLAlreadyPresent:
+// reused-by-title runs (SourceProjectURLWasEmpty=false) must not rewrite
+// the source file — no churn, no marshalling round-trip.
+func TestEnsureProjectBoard_PathA_LeavesSourceUntouched_WhenURLAlreadyPresent(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "gh-optivem.yaml")
+	originalBytes := writeSourceYAML(t, src, "https://github.com/users/acme/projects/3")
+
+	stub := newStubRunner(t)
+	// Reuse path: project list returns the existing project, no create call.
+	stub.captureResp["project list"] = `{"projects":[{"id":"PVT_E","number":3,"title":"Page Turner","url":"https://github.com/users/acme/projects/3"}]}`
+	stub.captureResp["project field-list"] = `{"fields":[{"id":"PVTSSF_S","name":"Status","type":"ProjectV2SingleSelectField","options":[]}]}`
+	stub.install()
+
+	cfg := &config.Config{
+		Owner:                    "acme",
+		FullRepo:                 "acme/page-turner",
+		SystemName:               "Page Turner",
+		RepoStrategy:             "monorepo",
+		Arch:                     "monolith",
+		SourceConfigPath:         src,
+		SourceProjectURLWasEmpty: false,
+	}
+	EnsureProjectBoard(cfg, nil)
+
+	got, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("re-read source yaml: %v", err)
+	}
+	if string(got) != string(originalBytes) {
+		t.Errorf("source yaml mutated when SourceProjectURLWasEmpty=false:\noriginal:\n%s\ngot:\n%s", originalBytes, got)
+	}
+}
+
+// TestEnsureProjectBoard_PathA_DryRunSkipsSourceWrite: dry-run logs the
+// would-write but leaves the source file untouched and the seam unused.
+func TestEnsureProjectBoard_PathA_DryRunSkipsSourceWrite(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "gh-optivem.yaml")
+	originalBytes := writeSourceYAML(t, src, "")
+
+	stub := newStubRunner(t)
+	stub.install()
+	writeCalls := 0
+	projectWriteSourceConfig = func(_ string, _ *projectconfig.Config) error {
+		writeCalls++
+		return nil
+	}
+
+	cfg := &config.Config{
+		Owner:                    "acme",
+		FullRepo:                 "acme/page-turner",
+		SystemName:               "Page Turner",
+		RepoStrategy:             "monorepo",
+		Arch:                     "monolith",
+		DryRun:                   true,
+		SourceConfigPath:         src,
+		SourceProjectURLWasEmpty: true,
+	}
+	EnsureProjectBoard(cfg, nil)
+
+	if writeCalls != 0 {
+		t.Errorf("dry-run must not call write seam; got %d", writeCalls)
+	}
+	got, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("re-read source yaml: %v", err)
+	}
+	if string(got) != string(originalBytes) {
+		t.Errorf("dry-run must not rewrite source yaml")
+	}
+}
+
+// TestEnsureProjectBoard_PathA_WriteErrorAborts: when the write seam
+// returns an error, the step calls log.Fatalf (panics with *log.StepError).
+func TestEnsureProjectBoard_PathA_WriteErrorAborts(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "gh-optivem.yaml")
+	writeSourceYAML(t, src, "")
+
+	stub := newStubRunner(t)
+	stubAutoCreatePathA(stub, "https://github.com/users/acme/projects/7")
+	stub.install()
+	projectWriteSourceConfig = func(_ string, _ *projectconfig.Config) error {
+		return fmt.Errorf("simulated write failure")
+	}
+
+	cfg := &config.Config{
+		Owner:                    "acme",
+		FullRepo:                 "acme/page-turner",
+		SystemName:               "Page Turner",
+		RepoStrategy:             "monorepo",
+		Arch:                     "monolith",
+		SourceConfigPath:         src,
+		SourceProjectURLWasEmpty: true,
+	}
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected log.Fatalf panic, got none")
+		}
+		se, ok := r.(*log.StepError)
+		if !ok {
+			t.Fatalf("expected *log.StepError, got %T: %v", r, r)
+		}
+		if !strings.Contains(se.Msg, "persist project URL") {
+			t.Errorf("unexpected panic message: %q", se.Msg)
+		}
+	}()
+	EnsureProjectBoard(cfg, nil)
+}
+
+// TestEnsureProjectBoard_PathB_LeavesSourceUntouched: Path B never touches
+// the source file regardless of SourceProjectURLWasEmpty — the URL came
+// from the source config, nothing to persist.
+func TestEnsureProjectBoard_PathB_LeavesSourceUntouched(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "gh-optivem.yaml")
+	originalBytes := writeSourceYAML(t, src, "https://github.com/users/acme/projects/9")
+
+	stub := newStubRunner(t)
+	stub.captureResp["project field-list"] = `{"fields":[{"id":"PVTSSF_S","name":"Status","type":"ProjectV2SingleSelectField","options":[{"id":"o1","name":"Ready"},{"id":"o2","name":"In Progress"},{"id":"o3","name":"In Acceptance"},{"id":"o4","name":"In QA"}]}]}`
+	stub.install()
+
+	cfg := &config.Config{
+		Owner:                    "acme",
+		FullRepo:                 "acme/x",
+		ProjectURL:               "https://github.com/users/acme/projects/9",
+		RepoStrategy:             "monorepo",
+		Arch:                     "monolith",
+		SourceConfigPath:         src,
+		SourceProjectURLWasEmpty: false,
+	}
+	EnsureProjectBoard(cfg, nil)
+
+	got, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("re-read source yaml: %v", err)
+	}
+	if string(got) != string(originalBytes) {
+		t.Errorf("Path B mutated source yaml")
 	}
 }

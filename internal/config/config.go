@@ -73,6 +73,21 @@ type Config struct {
 	// operator must set it before running the ATDD pipeline (the runtime
 	// has no discovery fallback).
 	ProjectURL string
+
+	// SourceConfigPath is the absolute path of the gh-optivem.yaml the
+	// operator pointed init at (resolved via the flag > env > default cascade
+	// in projectconfig.ResolvePath). Captured at load time so the project
+	// board step can write the auto-created URL back into the same file
+	// without re-resolving and risking a different answer.
+	SourceConfigPath string
+
+	// SourceProjectURLWasEmpty records whether project.url in the source
+	// gh-optivem.yaml was empty at init startup. The Path A write-back gate
+	// reads this so reused-by-title runs (where the URL is already set in
+	// the source file) leave the file alone — no churn, no marshalling
+	// round-trip that drops comments.
+	SourceProjectURLWasEmpty bool
+
 	DryRun       bool
 	VerifyLevel    string // "none", "local", "commit", "acceptance", "qa", "release"
 	NoLegacy       bool   // exclude legacy from local tests and acceptance stage

@@ -3,6 +3,7 @@ package steps
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
@@ -52,18 +53,39 @@ func WriteOptivemYAML(cfg *config.Config) {
 	pc.System.Config = scaffoldedSystemConfigPath
 	pc.SystemTest.Config = scaffoldedTestConfigPath
 
-	writeOptivemYAMLToDir(cfg.RepoDir, pc)
+	writeOptivemYAMLToDirIfNotSource(cfg, cfg.RepoDir, pc)
 
 	if cfg.RepoStrategy == "multirepo" {
 		if cfg.Arch == "multitier" {
-			writeOptivemYAMLToDir(cfg.BackendRepoDir, pc)
-			writeOptivemYAMLToDir(cfg.FrontendRepoDir, pc)
+			writeOptivemYAMLToDirIfNotSource(cfg, cfg.BackendRepoDir, pc)
+			writeOptivemYAMLToDirIfNotSource(cfg, cfg.FrontendRepoDir, pc)
 		} else {
-			writeOptivemYAMLToDir(cfg.SystemRepoDir, pc)
+			writeOptivemYAMLToDirIfNotSource(cfg, cfg.SystemRepoDir, pc)
 		}
 	}
 
 	log.Success("Wrote gh-optivem.yaml")
+}
+
+// writeOptivemYAMLToDirIfNotSource writes the scaffolded gh-optivem.yaml
+// unless its target path resolves to the same file as cfg.SourceConfigPath
+// — the case where the operator ran init from inside cfg.RepoDir and the
+// project-board step has already written the source-config form there.
+// Overwriting in that case would replace the project-board write with the
+// scaffolded-repo content (path-fields, etc.) and undo the persist step.
+func writeOptivemYAMLToDirIfNotSource(cfg *config.Config, dir string, pc *projectconfig.Config) {
+	if dir == "" {
+		return
+	}
+	if cfg.SourceConfigPath != "" {
+		target, terr := filepath.Abs(filepath.Join(dir, projectconfig.Path))
+		source, serr := filepath.Abs(cfg.SourceConfigPath)
+		if terr == nil && serr == nil && filepath.Clean(target) == filepath.Clean(source) {
+			log.Infof("gh-optivem.yaml at %s is the source config — skipping scaffolded overwrite", target)
+			return
+		}
+	}
+	writeOptivemYAMLToDir(dir, pc)
 }
 
 // WriteOptivemYAMLToPath renders cfg as a projectconfig.Config and writes it to
