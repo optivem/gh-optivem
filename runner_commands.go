@@ -283,32 +283,29 @@ func newCleanSystemCmd() *cobra.Command {
 	return cmd
 }
 
-// newTestCmd wires `gh optivem test` and its `system` child.
+// newTestCmd wires `gh optivem test` and its `system` and `setup` children.
 func newTestCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "test",
 		Short: "Test a scaffolded project",
 	}
 	cmd.AddCommand(newTestSystemCmd())
+	cmd.AddCommand(newTestSetupCmd())
 	return cmd
 }
 
 // newTestSystemCmd implements:
 //
 //	gh optivem test system [--system-config path] [--test-config path]
-//	                       [--suite id] [--test name] [--sample]
-//	                       [--no-build] [--rebuild] [--no-start] [--restart]
-//	                       [--no-setup]
+//	                       [--suite id] [--test name] [--sample] [--list]
 //
-// By default, builds images (incremental), starts the system if not already
-// up, then runs setup commands and suites. Inspired by `dotnet test` and
-// `./gradlew test` which build the test code implicitly before running.
-//
-// --no-build skips our explicit Build step (compose `up` may still build
-// missing images). --rebuild forces a full rebuild from scratch in the
-// implicit Build step (ignored with --no-build). --no-start skips Up; the
-// system must already be up or the runner errors out. --restart forces
-// tear-down + restart during Up.
+// Runs suites against an already-running system. The caller is responsible
+// for the lifecycle: `gh optivem test setup` (once) → `gh optivem run system`
+// (once) → `gh optivem test system ...` (one or more times). The verb
+// health-probes every entry in systems.yaml first; if any aren't up it errors
+// with "start it first with `gh optivem run system`". Mirrors mainstream
+// service-lifecycle CLIs (docker compose, systemctl, kubectl) where each
+// phase is a separate verb.
 func newTestSystemCmd() *cobra.Command {
 	var (
 		systemPath string
@@ -316,22 +313,15 @@ func newTestSystemCmd() *cobra.Command {
 		suites     []string
 		test       []string
 		sample     bool
-		noBuild    bool
-		rebuild    bool
-		noStart    bool
-		restart    bool
-		noSetup    bool
 		list       bool
 	)
 	cmd := &cobra.Command{
 		Use:   "system",
-		Short: "Build + start (if needed) + run setup commands and suites from tests.yaml",
+		Short: "Run suites from tests.yaml against an already-running system",
 		Example: `  gh optivem test system
   gh optivem test system --suite smoke
   gh optivem test system --suite acceptance-api --suite acceptance-ui
   gh optivem test system --suite acceptance-api,acceptance-ui
-  gh optivem test system --rebuild --suite smoke
-  gh optivem test system --no-build --no-start
   gh optivem test system --suite smoke --test T1 --test T2
   gh optivem test system --suite smoke --test T1,T2
   gh optivem test system --list`,
@@ -352,14 +342,9 @@ func newTestSystemCmd() *cobra.Command {
 			sys, err := loadSystem(resolvedSystem)
 			exitOnError(err)
 			opts := runner.TestOptions{
-				Suite:   suites,
-				Test:    test,
-				Sample:  sample,
-				NoBuild: noBuild,
-				Rebuild: rebuild,
-				NoStart: noStart,
-				Restart: restart,
-				NoSetup: noSetup,
+				Suite:  suites,
+				Test:   test,
+				Sample: sample,
 			}
 			exitOnError(runner.RunTests(sys, tests, cwdForPath(resolvedSystem), cwdForPath(resolvedTests), opts))
 		},
@@ -369,12 +354,30 @@ func newTestSystemCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&suites, "suite", nil, "Run only the suite(s) with these id(s); repeatable, also accepts comma-separated values")
 	cmd.Flags().StringSliceVar(&test, "test", nil, "Narrow execution to the given test name(s); repeatable, also accepts comma-separated values (substituted into the suite's testFilter)")
 	cmd.Flags().BoolVar(&sample, "sample", false, "Use each suite's sampleTest field as the test name")
-	cmd.Flags().BoolVar(&noBuild, "no-build", false, "Skip the implicit build step (analog of dotnet test --no-build)")
-	cmd.Flags().BoolVar(&rebuild, "rebuild", false, "Force a full rebuild from scratch in the implicit build step (ignored with --no-build)")
-	cmd.Flags().BoolVar(&noStart, "no-start", false, "Skip the implicit start step; system must already be up")
-	cmd.Flags().BoolVar(&restart, "restart", false, "Force tear-down + restart during the implicit start step")
-	cmd.Flags().BoolVar(&noSetup, "no-setup", false, "Skip the setupCommands block from tests.yaml (use when an earlier invocation in the same job already ran setup)")
 	cmd.Flags().BoolVar(&list, "list", false, "Print suite ids from tests.yaml (one per line) and exit without running")
+	return cmd
+}
+
+// newTestSetupCmd implements `gh optivem test setup [--test-config path]`.
+// Runs the setupCommands block from tests.yaml — the test-harness preparation
+// step (npm ci, dependency restore, test-source compile, browser asset
+// downloads, etc.). Split out from `test system` so each lifecycle phase has
+// its own verb; CI workflows call it once per job, not per suite.
+func newTestSetupCmd() *cobra.Command {
+	var testsPath string
+	cmd := &cobra.Command{
+		Use:     "setup",
+		Short:   "Run setupCommands from tests.yaml (prepare the test harness)",
+		Example: `  gh optivem test setup`,
+		Run: func(cmd *cobra.Command, args []string) {
+			resolvedTests, err := resolveTestsPath(testsPath)
+			exitOnError(err)
+			tests, err := loadTests(resolvedTests)
+			exitOnError(err)
+			exitOnError(runner.RunSetup(tests, cwdForPath(resolvedTests)))
+		},
+	}
+	cmd.Flags().StringVar(&testsPath, "test-config", "", flagTestsUsage)
 	return cmd
 }
 

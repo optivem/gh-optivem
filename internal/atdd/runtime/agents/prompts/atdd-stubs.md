@@ -56,9 +56,11 @@ server.get('/erp/api/promotion', (req, res) => {
 
 1. Enable the tests marked disabled with reason `"CT - RED - EXTERNAL DRIVER"`.
 2. Implement the dockerized External System stub changes — add or update routes, fixtures, or middleware so the stub honors the new contract.
-3. Run the External System Contract Tests against the stub:
+3. Run the External System Contract Tests against the stub. Rebuild the stub image and restart the system so the new behavior is in the running container, then invoke the test:
    ```bash
-   gh optivem test system --rebuild --suite <suite-contract-stub> --test <TestMethodName>
+   gh optivem build system --rebuild
+   gh optivem run system --restart
+   gh optivem test system --suite <suite-contract-stub> --test <TestMethodName>
    ```
 4. Verify that the tests pass. If they fail, ask the user. STOP. Do NOT continue.
 

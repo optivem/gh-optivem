@@ -27,35 +27,10 @@ type TestOptions struct {
 	// Sample, when true, uses each suite's sampleTest field as the test
 	// name (if both Sample is set and Test is non-empty, Test wins).
 	Sample bool
-	// NoBuild, when true, skips the implicit `Build` step before tests.
-	// Compose's own `up` may still build missing images — this flag controls
-	// only our explicit pre-build pass. Analog of `dotnet test --no-build`.
-	NoBuild bool
-	// Rebuild, when true, forces the implicit Build step to rebuild every
-	// layer from scratch (no cache reuse). Forwarded to BuildOptions.Rebuild.
-	// Mutually informative with NoBuild — if NoBuild is set, Rebuild is
-	// ignored. Lets ATDD prompts collapse the two-line "build --rebuild;
-	// test --suite x" pattern to "test --rebuild --suite x".
-	Rebuild bool
-	// NoStart, when true, skips the implicit `Up` step. The system must
-	// already be responding to its health probe; otherwise RunTests errors
-	// out with "start it first" (today's pre-implicit-start behavior).
-	NoStart bool
-	// NoSetup, when true, skips the `setupCommands` block from tests.json.
-	// Intended for callers that drive per-suite invocations (e.g. CI workflows
-	// running each suite as its own step) where setupCommands have already
-	// been executed by an earlier invocation in the same job. Per-suite
-	// `testInstallCommands` are NOT skipped — they're a separate concern.
-	NoSetup bool
-	// Restart, when true, forces tear-down + restart during the implicit
-	// Up step (forwarded to SystemOptions.Restart). Ignored when NoStart
-	// is set. Analog of gradle's `--rerun-tasks` for the start phase.
-	Restart bool
-	// Health overrides default HTTP-probe parameters.
+	// Health overrides default HTTP-probe parameters used by the pre-run
+	// probe (every entry in systems.yaml must be responding before any suite
+	// runs).
 	Health HealthOptions
-	// UpTimeout caps a single `docker compose up -d` attempt during the
-	// implicit Up step. Zero uses SystemOptions' default.
-	UpTimeout time.Duration
 }
 
 // SuiteResult records the outcome of one suite — used to print the summary
@@ -66,44 +41,32 @@ type SuiteResult struct {
 	Duration time.Duration
 }
 
-// RunTests runs setupCommands once, then iterates suites in tests:
+// RunTests iterates suites in tests:
 //
-//  1. If sys is non-nil and opts.NoBuild is false, runs the implicit Build
-//     step (incremental — `docker compose build` reuses layer cache).
-//  2. If sys is non-nil and opts.NoStart is false, runs the implicit Up step
-//     (Up itself short-circuits when IsAnyURLUp is true, so re-runs are
-//     fast). If opts.NoStart is true, falls back to today's behavior:
-//     probe each system; error out if any aren't up.
-//  3. Runs each setupCommand in testsCwd. A failure aborts before any suite runs.
-//  4. Filters suites per opts.Suite (a set; empty means all). Errors out
+//  1. If sys is non-nil, probes every entry in sys.Systems and errors out
+//     if any isn't responding to its health probe (caller must have already
+//     started the system via `gh optivem run system`).
+//  2. Filters suites per opts.Suite (a set; empty means all). Errors out
 //     with the available ids if any requested id doesn't match.
-//  5. Runs each remaining suite. After the last suite (or first failure),
+//  3. Runs each remaining suite. After the last suite (or first failure),
 //     prints a summary table.
 //
-// Two cwds because the two configs live in different directories:
-// systemCwd is systems.json's dir (compose-file paths resolve against it);
 // testsCwd is tests.json's dir (setupCommands and suite.path resolve against
-// it). Shop's layout has `docker/<lang>/<arch>/systems.json` + compose files
-// alongside the SUT-deployment infrastructure, and `system-test/<lang>/tests-*.json`
-// + the test-runner project alongside the test code. Scaffolded projects flatten
-// these to `docker/` and `system-test/` respectively.
+// it). systemCwd is unused today but retained in the signature so callers don't
+// need a per-call branch on whether sys is supplied.
 //
-// Inspired by `dotnet test` and `./gradlew test`, which build the test code
-// implicitly before running. Compose orchestration is the gh-optivem
-// equivalent of "build the test artifacts" — same UX shape, broader scope.
+// setupCommands are not run by this verb — invoke `gh optivem test setup` (or
+// runner.RunSetup) explicitly before tests. This mirrors mainstream
+// service-lifecycle CLIs where each phase is a separate verb.
 //
 // Returns the first failure or nil. The summary table is printed regardless,
 // so the user always sees per-suite status.
 func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string, opts TestOptions) error {
-	if err := prepareSystem(sys, systemCwd, opts); err != nil {
-		return err
-	}
-
-	if !opts.NoSetup {
-		for _, sc := range tests.SetupCommands {
-			fmt.Fprintf(os.Stdout, "\n--- Setup: %s ---\n", sc.Name)
-			if err := runShell(sc.Command, testsCwd, sc.Env); err != nil {
-				return fmt.Errorf("setup %q: %w", sc.Name, err)
+	_ = systemCwd
+	if sys != nil {
+		for _, s := range sys.Systems {
+			if !IsAnyURLUp(s, opts.Health) {
+				return fmt.Errorf("system %s is not running — start it first with `gh optivem run system`", s.Label)
 			}
 		}
 	}
@@ -138,25 +101,14 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 	return nil
 }
 
-// prepareSystem runs the implicit Build + Up steps in front of a tests run,
-// gated by opts.NoBuild / opts.NoStart. When sys is nil, it is a no-op (the
-// runner is being driven without system orchestration). When NoStart is set,
-// it falls back to a strict probe — the system must already be up.
-func prepareSystem(sys *SystemConfig, cwd string, opts TestOptions) error {
-	if sys == nil {
-		return nil
-	}
-	if !opts.NoBuild {
-		if err := Build(sys, cwd, BuildOptions{Rebuild: opts.Rebuild}); err != nil {
-			return err
-		}
-	}
-	if !opts.NoStart {
-		return Up(sys, cwd, SystemOptions{Restart: opts.Restart, Health: opts.Health, UpTimeout: opts.UpTimeout})
-	}
-	for _, s := range sys.Systems {
-		if !IsAnyURLUp(s, opts.Health) {
-			return fmt.Errorf("system %s is not running — start it first with `gh optivem run system` (or omit --no-start)", s.Label)
+// RunSetup runs every entry in tests.SetupCommands in testsCwd. Used by the
+// `gh optivem test setup` verb. Each failure halts the run with a wrapped
+// error naming the failing command.
+func RunSetup(tests *TestsConfig, testsCwd string) error {
+	for _, sc := range tests.SetupCommands {
+		fmt.Fprintf(os.Stdout, "\n--- Setup: %s ---\n", sc.Name)
+		if err := runShell(sc.Command, testsCwd, sc.Env); err != nil {
+			return fmt.Errorf("setup %q: %w", sc.Name, err)
 		}
 	}
 	return nil

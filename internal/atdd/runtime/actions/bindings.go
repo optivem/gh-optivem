@@ -770,28 +770,50 @@ func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcom
 	}
 
 	// Resolve the runner's config-file paths once per invocation. Same
-	// cwd-bug fix as runTests — every `gh optivem test
-	// system ...` shell-out needs the resolved `--system-config` and
-	// `--test-config` flags appended, otherwise the runner's `./systems.yaml`
-	// default fails 100% of the time under the orchestrator's cwd. Per
+	// cwd-bug fix as runTests — every `gh optivem ...` shell-out needs the
+	// resolved `--system-config` (and `--test-config` for `test system`)
+	// appended, otherwise the runner's `./systems.yaml` default fails 100%
+	// of the time under the orchestrator's cwd. Per
 	// plans/20260505-220100-verify-runs-from-wrong-cwd.md.
 	pathFlags, err := a.verifyPathFlags()
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf(
 			"run_targeted_tests: could not locate systems.{yaml,json}/tests-latest.{yaml,json} under %q: %w", a.deps.RepoPath, err)}
 	}
+	systemPathFlag := a.systemPathFlagOnly(pathFlags)
 
-	rebuildFlag := ""
+	// rebuild_before_run hoists a clean rebuild + restart of the SUT out of
+	// the per-test loop. `build system --rebuild` (no-cache nuke) and `run
+	// system --restart` are issued once for the whole batch — the per-test
+	// `test system` shell-outs then run against the fresh image. Today's
+	// behavior was per-test, which mainstream CLIs don't do; per-batch is
+	// what callers actually want (rebuild between iterations of the WRITE
+	// loop, not between every individual test name in one iteration).
 	if strings.EqualFold(strings.TrimSpace(ctx.Params["rebuild_before_run"]), "true") {
-		rebuildFlag = "--rebuild "
+		buildCmd := "gh optivem build system --rebuild" + systemPathFlag
+		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", buildCmd)
+		if out, err := a.deps.Shell.Run(context.Background(), buildCmd); err != nil {
+			if len(out) > 0 {
+				fmt.Fprintln(a.deps.Stdout, string(out))
+			}
+			return statemachine.Outcome{Err: fmt.Errorf("run_targeted_tests: build failed: %w", err)}
+		}
+		runCmd := "gh optivem run system --restart" + systemPathFlag
+		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", runCmd)
+		if out, err := a.deps.Shell.Run(context.Background(), runCmd); err != nil {
+			if len(out) > 0 {
+				fmt.Fprintln(a.deps.Stdout, string(out))
+			}
+			return statemachine.Outcome{Err: fmt.Errorf("run_targeted_tests: restart failed: %w", err)}
+		}
 	}
 
 	runtimeFailures := 0
 	compileFailures := 0
 	passed := 0
 	for _, name := range names {
-		cmd := fmt.Sprintf("gh optivem test system %s--suite %s --test %s%s",
-			rebuildFlag, shellEscape(suite), shellEscape(name), pathFlags)
+		cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s%s",
+			shellEscape(suite), shellEscape(name), pathFlags)
 		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
 		out, err := a.deps.Shell.Run(context.Background(), cmd)
 		if len(out) > 0 {
@@ -1209,6 +1231,19 @@ func (a actions) verifyPathFlags() (string, error) {
 	}
 	return fmt.Sprintf(" --system-config %s --test-config %s",
 		shellEscape(sys), shellEscape(tests)), nil
+}
+
+// systemPathFlagOnly strips the `--test-config <p>` portion from a
+// verifyPathFlags() suffix, leaving just ` --system-config <p>`. `build
+// system` and `run system` reject `--test-config` (Cobra unknown flag), so
+// any callsite that chains those verbs out of the test loop needs the
+// system-only suffix.
+func (a actions) systemPathFlagOnly(pathFlags string) string {
+	idx := strings.Index(pathFlags, " --test-config")
+	if idx < 0 {
+		return pathFlags
+	}
+	return pathFlags[:idx]
 }
 
 // listSystemSuites shells out to `gh optivem test system --list` and

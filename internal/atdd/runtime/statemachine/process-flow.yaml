@@ -917,10 +917,13 @@ processes:
   #                          descriptions (e.g. "AT - GREEN - SYSTEM (backend)")
   #   - suite              — the test suite passed to run_targeted_tests
   #                          (e.g. "<acceptance-api>", "<acceptance-ui>")
-  #   - rebuild_before_run — optional. When "true", run_targeted_tests passes
-  #                          --rebuild so the implementation under test is
-  #                          rebuilt before each per-test invocation. AT GREEN
-  #                          callers set this; defaults to no rebuild.
+  #   - rebuild_before_run — optional. When "true", run_targeted_tests hoists
+  #                          `gh optivem build system --rebuild` + `gh optivem
+  #                          run system --restart` out of the per-test loop so
+  #                          the freshly-rebuilt implementation under test is
+  #                          in the running container before any per-test
+  #                          invocation. AT GREEN callers set this; defaults to
+  #                          no rebuild.
   #
   # COMMIT does NOT live in green_phase_cycle: AT_GREEN_SYSTEM commits both
   # backend and frontend together at the parent level (the full-stack-as-one-

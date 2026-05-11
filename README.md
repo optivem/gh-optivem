@@ -118,14 +118,12 @@ Only `--deploy docker` is currently supported (the default). `--deploy cloud-run
 
 ### Running tests against a scaffolded project
 
-`gh optivem` also provides runner subcommands for working with the system tests in a scaffolded project. Inspired by `dotnet test` and `./gradlew test`, `test system` builds and starts the system implicitly — you don't need to run `build` or `run` first.
+`gh optivem` also provides runner subcommands for working with the system tests in a scaffolded project. Each lifecycle phase is its own verb (mirrors `docker compose`, `systemctl`, `kubectl`, `terraform`): the typical sequence is `test setup` (prepare the test harness — `npm ci`, compile test sources, etc.) → `run system` (bring the SUT up) → `test system` (run suites) → `stop system`.
 
 ```bash
-gh optivem test system                       # build (incremental) + start (if needed) + run tests
-gh optivem test system --no-build            # skip the explicit build step
-gh optivem test system --rebuild             # force full rebuild in the implicit build step (ignored with --no-build)
-gh optivem test system --no-start            # skip the start step (system must already be up)
-gh optivem test system --restart             # force tear-down + restart before tests
+gh optivem test setup                        # run setupCommands from tests.yaml (npm ci, restore, compile test sources, ...)
+
+gh optivem test system                       # run every suite against the already-running system
 gh optivem test system --suite smoke         # run only the suite with this id
 gh optivem test system --suite acceptance-api --suite acceptance-ui   # multiple suites, repeatable
 gh optivem test system --suite acceptance-api,acceptance-ui           # ...or comma-separated
@@ -133,6 +131,7 @@ gh optivem test system --test "MyTest"       # narrow execution to one test name
 gh optivem test system --test T1 --test T2   # multiple names, repeatable
 gh optivem test system --test T1,T2          # ...or comma-separated
 gh optivem test system --sample              # use each suite's sampleTest field as the test name
+gh optivem test system --list                # print suite ids from tests.yaml and exit
 
 gh optivem build system                      # docker compose build for every entry in systems.yaml
 gh optivem build system --rebuild            # force full rebuild (no layer cache reuse)
@@ -145,7 +144,17 @@ gh optivem stop system                       # docker compose down + container c
 gh optivem clean system                      # docker compose down -v --rmi local (delete volumes + locally-built images)
 ```
 
-All runner subcommands accept `--system-config <path>` and `test system` additionally accepts `--test-config <path>` for projects where these files live elsewhere. The paths are resolved through three knobs in ascending order of permanence — flag → `gh-optivem.yaml` field → built-in default. See [Pointing at non-default configs](#pointing-at-non-default-configs) below.
+`test system` health-probes every entry in `systems.yaml` first; if any aren't up, it errors out with "start it first with `gh optivem run system`" rather than silently starting them. Chain the verbs explicitly:
+
+```bash
+gh optivem test setup
+gh optivem run system
+gh optivem test system --suite smoke
+gh optivem test system --suite acceptance-api
+gh optivem stop system
+```
+
+All runner subcommands accept `--system-config <path>`; `test system` and `test setup` additionally accept `--test-config <path>` for projects where these files live elsewhere. The paths are resolved through three knobs in ascending order of permanence — flag → `gh-optivem.yaml` field → built-in default. See [Pointing at non-default configs](#pointing-at-non-default-configs) below.
 
 Multi-test semantics depend on the suite's `testFilter` in `tests.yaml`. The runner combines multiple `--test` values per `testFilterJoin`: `"or"` (default) joins names with `|` and substitutes once — works for dotnet (`&DisplayName~T1|T2`) and playwright/jest (`--grep 'T1|T2'`); `"repeat"` substitutes the whole `testFilter` once per name and concatenates — required for gradle (`--tests T1 --tests T2`). Practical ceiling on Windows is ~600 typical test names per invocation (the OS caps each command line at 32K characters).
 

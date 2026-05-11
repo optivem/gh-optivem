@@ -104,8 +104,12 @@ func (s *compileSummary) Print() {
 		byPhase[r.phase] = append(byPhase[r.phase], r)
 	}
 
-	for _, phase := range phaseOrder {
+	for i, phase := range phaseOrder {
+		if i > 0 {
+			fmt.Println()
+		}
 		fmt.Printf("  %s\n", phase)
+		fmt.Println()
 		tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 		for _, r := range byPhase[phase] {
 			status := color.New(color.FgGreen, color.Bold).Sprint("OK  ")
@@ -129,11 +133,15 @@ func (s *compileSummary) Print() {
 		}
 	}
 
+	if len(s.skipped) > 0 && len(phaseOrder) > 0 {
+		fmt.Println()
+	}
 	for _, phase := range s.skipped {
 		fmt.Printf("  %s  %s\n", phase, color.New(color.Faint).Sprint("(skipped)"))
 	}
 
 	fmt.Println()
+	color.New(color.Faint).Println(rule)
 	parts := []string{}
 	if ok > 0 {
 		parts = append(parts, color.New(color.FgGreen, color.Bold).Sprintf("%d OK", ok))

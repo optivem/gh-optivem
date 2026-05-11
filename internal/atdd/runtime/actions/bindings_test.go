@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -1888,10 +1889,19 @@ func TestRunTargetedTests_AnyFailureWritesTestsPassFalse(t *testing.T) {
 	}
 }
 
-func TestRunTargetedTests_RebuildParamPassesFlag(t *testing.T) {
+// TestRunTargetedTests_RebuildParamHoistsBuildAndRun asserts that
+// rebuild_before_run=true hoists `build system --rebuild` + `run system
+// --restart` out of the per-test loop. The per-test loop still emits just
+// `test system --suite ... --test ...`; build/run/test commands accept a
+// different flag set (build/run take only --system-config; test takes both
+// --system-config and --test-config), so this also pins the path-flag
+// splitting behavior.
+func TestRunTargetedTests_RebuildParamHoistsBuildAndRun(t *testing.T) {
 	root, flags := setupVerifyRepoLayout(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
-		{out: []byte("OK"), err: nil},
+		{out: []byte("BUILD OK"), err: nil},
+		{out: []byte("RUN OK"), err: nil},
+		{out: []byte("TEST OK"), err: nil},
 	}}
 	a := newActions(Deps{Shell: sh, RepoPath: root})
 	ctx := statemachine.NewContext()
@@ -1902,13 +1912,21 @@ func TestRunTargetedTests_RebuildParamPassesFlag(t *testing.T) {
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
-	want := "gh optivem test system --rebuild --suite '<acceptance-api>' --test x" + flags
-	if len(sh.calls) != 1 || sh.calls[0] != want {
-		t.Fatalf("got %v, want %q", sh.calls, want)
+	systemFlag := a.systemPathFlagOnly(flags)
+	wantCalls := []string{
+		"gh optivem build system --rebuild" + systemFlag,
+		"gh optivem run system --restart" + systemFlag,
+		"gh optivem test system --suite '<acceptance-api>' --test x" + flags,
+	}
+	if !reflect.DeepEqual(sh.calls, wantCalls) {
+		t.Fatalf("got %v, want %v", sh.calls, wantCalls)
 	}
 }
 
-func TestRunTargetedTests_NoRebuildParamOmitsFlag(t *testing.T) {
+// TestRunTargetedTests_NoRebuildParamSkipsBuildAndRun asserts that the
+// default (rebuild_before_run unset) emits only the per-test `test system`
+// calls — no build, no run.
+func TestRunTargetedTests_NoRebuildParamSkipsBuildAndRun(t *testing.T) {
 	root, flags := setupVerifyRepoLayout(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		{out: []byte("OK"), err: nil},

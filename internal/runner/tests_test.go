@@ -187,61 +187,60 @@ func TestApplyTestFilterEmptyTestFilterPassesThrough(t *testing.T) {
 	}
 }
 
-func TestPrepareSystemNilIsNoOp(t *testing.T) {
-	if err := prepareSystem(nil, ".", TestOptions{}); err != nil {
-		t.Errorf("nil sys should be a no-op, got %v", err)
-	}
-}
-
-// TestRunTestsNoSetupSkipsSetupCommands verifies the --no-setup flag wires
-// through to RunTests and short-circuits the setupCommands loop. We use a
-// distinctive sentinel command (`exit 9`) for setup so we can tell the
-// difference between "setup ran and failed" (RunTests would error) and
-// "setup was skipped" (RunTests proceeds to the suites).
-func TestRunTestsNoSetupSkipsSetupCommands(t *testing.T) {
-	tests := &TestsConfig{
-		SetupCommands: []SetupCommand{
-			{Name: "should not run", Command: "exit 9"},
-		},
-		Suites: []Suite{
-			{ID: "noop", Name: "noop", Command: "go version", Path: "."},
-		},
-	}
-
-	t.Run("NoSetup=false → setup runs and surfaces its failure", func(t *testing.T) {
-		err := RunTests(nil, tests, ".", ".", TestOptions{NoBuild: true, NoStart: true})
-		if err == nil {
-			t.Fatal("want error from failing setup command")
-		}
-		if !strings.Contains(err.Error(), "should not run") {
-			t.Errorf("want error to name the setup command, got: %v", err)
-		}
-	})
-
-	t.Run("NoSetup=true → setup is skipped, suite runs to completion", func(t *testing.T) {
-		err := RunTests(nil, tests, ".", ".", TestOptions{NoBuild: true, NoStart: true, NoSetup: true})
-		if err != nil {
-			t.Fatalf("setup should have been skipped, but got error: %v", err)
-		}
-	})
-}
-
-func TestPrepareSystemNoStartProbesWhenDown(t *testing.T) {
+// TestRunTestsProbesWhenSystemDown asserts the test-only-by-default precheck:
+// RunTests refuses to proceed against a system whose health probe fails and
+// surfaces the "start it first" message naming the offending system label.
+func TestRunTestsProbesWhenSystemDown(t *testing.T) {
 	// SystemEntry with no components/external systems → IsAnyURLUp returns
-	// false trivially without making any network calls. With NoStart=true,
-	// prepareSystem should refuse to proceed and surface the "start it
-	// first" message.
+	// false trivially without making any network calls.
 	sys := &SystemConfig{Systems: []SystemEntry{{Label: "test-stack"}}}
-	err := prepareSystem(sys, ".", TestOptions{NoStart: true, NoBuild: true})
+	tests := &TestsConfig{Suites: []Suite{{ID: "noop", Name: "noop", Command: "go version", Path: "."}}}
+	err := RunTests(sys, tests, ".", ".", TestOptions{})
 	if err == nil {
-		t.Fatal("want error when --no-start and system not running")
+		t.Fatal("want error when system not running")
 	}
 	if !strings.Contains(err.Error(), "test-stack") {
 		t.Errorf("want error to name the system label, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "--no-start") {
-		t.Errorf("want error to mention --no-start, got: %v", err)
+	if !strings.Contains(err.Error(), "gh optivem run system") {
+		t.Errorf("want error to suggest `gh optivem run system`, got: %v", err)
 	}
+}
+
+// TestRunTestsNilSystemSkipsProbe asserts that passing sys=nil bypasses the
+// probe — the test-only verb can still be driven without system orchestration
+// (e.g. when the SUT is started by other means).
+func TestRunTestsNilSystemSkipsProbe(t *testing.T) {
+	tests := &TestsConfig{Suites: []Suite{{ID: "noop", Name: "noop", Command: "go version", Path: "."}}}
+	if err := RunTests(nil, tests, ".", ".", TestOptions{}); err != nil {
+		t.Fatalf("nil sys should skip the probe, got %v", err)
+	}
+}
+
+// TestRunSetupExecutesSetupCommandsInOrder asserts that RunSetup runs every
+// setupCommand in declaration order and wraps a failure with the failing
+// command's Name.
+func TestRunSetupExecutesSetupCommandsInOrder(t *testing.T) {
+	t.Run("all pass", func(t *testing.T) {
+		tests := &TestsConfig{SetupCommands: []SetupCommand{
+			{Name: "first", Command: "go version"},
+		}}
+		if err := RunSetup(tests, "."); err != nil {
+			t.Errorf("RunSetup: %v", err)
+		}
+	})
+	t.Run("failure wraps with command name", func(t *testing.T) {
+		tests := &TestsConfig{SetupCommands: []SetupCommand{
+			{Name: "boom", Command: "go nonexistent-subcommand-xyz"},
+		}}
+		err := RunSetup(tests, ".")
+		if err == nil {
+			t.Fatal("want error from failing setup command")
+		}
+		if !strings.Contains(err.Error(), "boom") {
+			t.Errorf("want error to name the setup command, got: %v", err)
+		}
+	})
 }
 
 func TestSelectSuitesAllWhenSuiteIDEmpty(t *testing.T) {
