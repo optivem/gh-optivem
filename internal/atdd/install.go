@@ -287,8 +287,8 @@ const acceptanceCommitSourceBlock = "1. In the `shop` repository: COMMIT all bac
 	"2. Remove the disabled annotation (reason `\"AT - RED - SYSTEM DRIVER\"`) from the tests.\n" +
 	"3. Run the tests and verify they all pass:\n" +
 	"   ```\n" +
-	"   gh optivem test system --suite <acceptance-api> --test <TestMethodName>\n" +
-	"   gh optivem test system --suite <acceptance-ui> --test <TestMethodName>\n" +
+	"   gh optivem test run --suite <acceptance-api> --test <TestMethodName>\n" +
+	"   gh optivem test run --suite <acceptance-ui> --test <TestMethodName>\n" +
 	"   ```\n" +
 	"4. Ensure that there are no non-test files in the list of changed files in the `shop` repository.\n" +
 	"5. COMMIT in the `shop` repository with message `<Scenario> | AT - GREEN - SYSTEM`."
@@ -297,8 +297,8 @@ const acceptanceCommitMultirepoMonolithBlock = "1. In the `shop-system` reposito
 	"2. Remove the disabled annotation (reason `\"AT - RED - SYSTEM DRIVER\"`) from the tests.\n" +
 	"3. Run the tests and verify they all pass:\n" +
 	"   ```\n" +
-	"   gh optivem test system --suite <acceptance-api> --test <TestMethodName>\n" +
-	"   gh optivem test system --suite <acceptance-ui> --test <TestMethodName>\n" +
+	"   gh optivem test run --suite <acceptance-api> --test <TestMethodName>\n" +
+	"   gh optivem test run --suite <acceptance-ui> --test <TestMethodName>\n" +
 	"   ```\n" +
 	"4. Ensure that there are no non-test files in the list of changed files in the `shop` repository.\n" +
 	"5. COMMIT in the `shop` repository with message `<Scenario> | AT - GREEN - SYSTEM`."
@@ -309,8 +309,8 @@ const acceptanceCommitMultirepoMultitierBlock = "1. Commit system changes:\n" +
 	"2. Remove the disabled annotation (reason `\"AT - RED - SYSTEM DRIVER\"`) from the tests.\n" +
 	"3. Run the tests and verify they all pass:\n" +
 	"   ```\n" +
-	"   gh optivem test system --suite <acceptance-api> --test <TestMethodName>\n" +
-	"   gh optivem test system --suite <acceptance-ui> --test <TestMethodName>\n" +
+	"   gh optivem test run --suite <acceptance-api> --test <TestMethodName>\n" +
+	"   gh optivem test run --suite <acceptance-ui> --test <TestMethodName>\n" +
 	"   ```\n" +
 	"4. Ensure that there are no non-test files in the list of changed files in the `shop` repository.\n" +
 	"5. COMMIT in the `shop` repository with message `<Scenario> | AT - GREEN - SYSTEM`."

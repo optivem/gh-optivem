@@ -12,10 +12,10 @@ import (
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
-// TestNewTestSystemCmdRepeatableTestFlag verifies cobra's StringSliceVar
+// TestNewTestRunCmdRepeatableTestFlag verifies cobra's StringSliceVar
 // wiring on --test: the flag is repeatable AND comma-separated, and an
 // absent flag yields an empty slice (no filter).
-func TestNewTestSystemCmdRepeatableTestFlag(t *testing.T) {
+func TestNewTestRunCmdRepeatableTestFlag(t *testing.T) {
 	cases := []struct {
 		name string
 		args []string
@@ -29,7 +29,7 @@ func TestNewTestSystemCmdRepeatableTestFlag(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			cmd := newTestSystemCmd()
+			cmd := newTestRunCmd()
 			if err := cmd.ParseFlags(c.args); err != nil {
 				t.Fatalf("ParseFlags(%v): %v", c.args, err)
 			}
@@ -44,10 +44,10 @@ func TestNewTestSystemCmdRepeatableTestFlag(t *testing.T) {
 	}
 }
 
-// TestNewTestSystemCmdRepeatableSuiteFlag verifies cobra's StringSliceVar
+// TestNewTestRunCmdRepeatableSuiteFlag verifies cobra's StringSliceVar
 // wiring on --suite: the flag is repeatable AND comma-separated, and an
 // absent flag yields an empty slice (run-all-suites behavior).
-func TestNewTestSystemCmdRepeatableSuiteFlag(t *testing.T) {
+func TestNewTestRunCmdRepeatableSuiteFlag(t *testing.T) {
 	cases := []struct {
 		name string
 		args []string
@@ -61,7 +61,7 @@ func TestNewTestSystemCmdRepeatableSuiteFlag(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			cmd := newTestSystemCmd()
+			cmd := newTestRunCmd()
 			if err := cmd.ParseFlags(c.args); err != nil {
 				t.Fatalf("ParseFlags(%v): %v", c.args, err)
 			}
@@ -114,10 +114,10 @@ func TestValidateSuiteTestCombo(t *testing.T) {
 	}
 }
 
-// TestLoadSystemMissingFileHintsAtYAML verifies that `gh optivem build/run/...`
-// commands surface the two-knob hint (system.config: YAML field, default
-// path) when the resolved systems.json is absent — the case a new user runs
-// into first.
+// TestLoadSystemMissingFileHintsAtYAML verifies that `gh optivem system build`
+// / `system start` / etc. surface the two-knob hint (system.config: YAML
+// field, default path) when the resolved systems.json is absent — the case a
+// new user runs into first.
 func TestLoadSystemMissingFileHintsAtYAML(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "systems.json")
 	_, err := loadSystem(missing)

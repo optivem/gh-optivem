@@ -918,8 +918,8 @@ processes:
   #   - suite              — the test suite passed to run_targeted_tests
   #                          (e.g. "<acceptance-api>", "<acceptance-ui>")
   #   - rebuild_before_run — optional. When "true", run_targeted_tests hoists
-  #                          `gh optivem build system --rebuild` + `gh optivem
-  #                          run system --restart` out of the per-test loop so
+  #                          `gh optivem system build --rebuild` + `gh optivem
+  #                          system start --restart` out of the per-test loop so
   #                          the freshly-rebuilt implementation under test is
   #                          in the running container before any per-test
   #                          invocation. AT GREEN callers set this; defaults to

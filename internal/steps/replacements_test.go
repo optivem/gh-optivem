@@ -447,7 +447,7 @@ func TestContentReplacementsRewritesBumpPatchVersionUsesReference(t *testing.T) 
 
 // TestContentReplacementsFlattensDockerCLIArgs asserts that unprefixed
 // docker/<testLang>/<arch>/ paths embedded in `run:` CLI args (e.g. the
-// per-suite acceptance-stage workflow's `gh optivem test system --system-config
+// per-suite acceptance-stage workflow's `gh optivem test run --system-config
 // docker/<lang>/<arch>/systems.json`) get flattened to `docker/`, matching the
 // scaffolder's flattened on-disk layout. Regression guard for the per-suite
 // migration in shop where these paths bypass the existing `working-directory:`
@@ -461,39 +461,39 @@ func TestContentReplacementsFlattensDockerCLIArgs(t *testing.T) {
 	}{
 		{
 			name:     "monolith-dotnet --system-config",
-			in:       "    run: gh optivem test system --system-config docker/dotnet/monolith/systems.yaml --test-config system-test/dotnet/tests.yaml\n",
+			in:       "    run: gh optivem test run --system-config docker/dotnet/monolith/systems.yaml --test-config system-test/dotnet/tests.yaml\n",
 			pairs:    monolithContentReplacements("dotnet", "dotnet"),
-			expected: "    run: gh optivem test system --system-config docker/systems.yaml --test-config system-test/tests.yaml\n",
+			expected: "    run: gh optivem test run --system-config docker/systems.yaml --test-config system-test/tests.yaml\n",
 		},
 		{
 			name:     "monolith-java --system-config",
-			in:       "    run: gh optivem test system --system-config docker/java/monolith/systems.yaml\n",
+			in:       "    run: gh optivem test run --system-config docker/java/monolith/systems.yaml\n",
 			pairs:    monolithContentReplacements("java", "java"),
-			expected: "    run: gh optivem test system --system-config docker/systems.yaml\n",
+			expected: "    run: gh optivem test run --system-config docker/systems.yaml\n",
 		},
 		{
 			name:     "monolith-typescript --system-config",
-			in:       "    run: gh optivem test system --system-config docker/typescript/monolith/systems.yaml\n",
+			in:       "    run: gh optivem test run --system-config docker/typescript/monolith/systems.yaml\n",
 			pairs:    monolithContentReplacements("typescript", "typescript"),
-			expected: "    run: gh optivem test system --system-config docker/systems.yaml\n",
+			expected: "    run: gh optivem test run --system-config docker/systems.yaml\n",
 		},
 		{
 			name:     "multitier-dotnet --system-config",
-			in:       "    run: gh optivem test system --system-config docker/dotnet/multitier/systems.yaml --test-config system-test/dotnet/tests.yaml\n",
+			in:       "    run: gh optivem test run --system-config docker/dotnet/multitier/systems.yaml --test-config system-test/dotnet/tests.yaml\n",
 			pairs:    multitierContentReplacements("dotnet", "react", "dotnet"),
-			expected: "    run: gh optivem test system --system-config docker/systems.yaml --test-config system-test/tests.yaml\n",
+			expected: "    run: gh optivem test run --system-config docker/systems.yaml --test-config system-test/tests.yaml\n",
 		},
 		{
 			name:     "multitier-java --system-config",
-			in:       "    run: gh optivem test system --system-config docker/java/multitier/systems.yaml\n",
+			in:       "    run: gh optivem test run --system-config docker/java/multitier/systems.yaml\n",
 			pairs:    multitierContentReplacements("java", "react", "java"),
-			expected: "    run: gh optivem test system --system-config docker/systems.yaml\n",
+			expected: "    run: gh optivem test run --system-config docker/systems.yaml\n",
 		},
 		{
 			name:     "multitier-typescript --system-config",
-			in:       "    run: gh optivem test system --system-config docker/typescript/multitier/systems.yaml\n",
+			in:       "    run: gh optivem test run --system-config docker/typescript/multitier/systems.yaml\n",
 			pairs:    multitierContentReplacements("typescript", "react", "typescript"),
-			expected: "    run: gh optivem test system --system-config docker/systems.yaml\n",
+			expected: "    run: gh optivem test run --system-config docker/systems.yaml\n",
 		},
 	}
 

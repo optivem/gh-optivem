@@ -39,7 +39,7 @@ What the orchestrator produces afterward (not the agent's job): the targeted com
 
 - Backend and frontend ship in **one** commit at the parent `at_green_system` flow level — there is no per-channel commit.
 - When fixing failing acceptance tests, change only the system implementation — never tests, DSL, or Drivers.
-- Suite selection (`<acceptance-api>` / `<acceptance-ui>`) and commit-message format: see [at-cycle-conventions.md](at-cycle-conventions.md). The orchestrator reads the suite from context and runs tests; the agent does not invoke `gh optivem test system`.
+- Suite selection (`<acceptance-api>` / `<acceptance-ui>`) and commit-message format: see [at-cycle-conventions.md](at-cycle-conventions.md). The orchestrator reads the suite from context and runs tests; the agent does not invoke `gh optivem test run`.
 
 ## Example
 

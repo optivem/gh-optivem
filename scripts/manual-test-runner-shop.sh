@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # End-to-end test for the runner subcommands against the real shop repo's
 # TypeScript / monolith layout. Exercises the implicit-build/start path that
-# `gh optivem test system` provides (inspired by `dotnet test` / `gradle
+# `gh optivem test run` provides (inspired by `dotnet test` / `gradle
 # test`) by starting from a stopped state.
 #
 # Steps:
 #   1. Rebuild the gh-optivem binary from this repo.
 #   2. From shop/ root, using --config / -c to select the TypeScript /
 #      monolith variant of gh-optivem.yaml:
-#        gh-optivem -c gh-optivem.shop-ts-monolith.yaml         stop system   (best effort, cold start)
-#        gh-optivem -c gh-optivem.shop-ts-monolith.yaml         test system   (cold — implicit build + start, tests-latest)
-#        gh-optivem -c gh-optivem.shop-ts-monolith-legacy.yaml  test system   (warm — fast re-run path, tests-legacy)
-#        gh-optivem -c gh-optivem.shop-ts-monolith.yaml         stop system
+#        gh-optivem -c gh-optivem.shop-ts-monolith.yaml         system stop   (best effort, cold start)
+#        gh-optivem -c gh-optivem.shop-ts-monolith.yaml         test run      (cold — implicit build + start, tests-latest)
+#        gh-optivem -c gh-optivem.shop-ts-monolith-legacy.yaml  test run      (warm — fast re-run path, tests-legacy)
+#        gh-optivem -c gh-optivem.shop-ts-monolith.yaml         system stop
 #   3. Print a per-phase pass/fail summary.
 #
 # Requires: docker, node 22+, the optivem academy workspace cloned alongside
@@ -49,22 +49,22 @@ for cfg in "$CFG_LATEST" "$CFG_LEGACY"; do
 done
 
 echo
-echo "=== Step 2/5: stop system (ensure cold start) ==="
-( cd "$SHOP_DIR" && "$BIN" -c "$CFG_LATEST" stop system ) || echo "warn: stop system failed (continuing — system may already be down)"
+echo "=== Step 2/5: system stop (ensure cold start) ==="
+( cd "$SHOP_DIR" && "$BIN" -c "$CFG_LATEST" system stop ) || echo "warn: system stop failed (continuing — system may already be down)"
 
 echo
-echo "=== Step 3/5: test system — Latest (cold: implicit build + start + tests) ==="
+echo "=== Step 3/5: test run — Latest (cold: implicit build + start + tests) ==="
 LATEST_RC=0
-( cd "$SHOP_DIR" && "$BIN" -c "$CFG_LATEST" test system ) || LATEST_RC=$?
+( cd "$SHOP_DIR" && "$BIN" -c "$CFG_LATEST" test run ) || LATEST_RC=$?
 
 echo
-echo "=== Step 4/5: test system — Legacy (warm: system already up, fast re-run) ==="
+echo "=== Step 4/5: test run — Legacy (warm: system already up, fast re-run) ==="
 LEGACY_RC=0
-( cd "$SHOP_DIR" && "$BIN" -c "$CFG_LEGACY" test system ) || LEGACY_RC=$?
+( cd "$SHOP_DIR" && "$BIN" -c "$CFG_LEGACY" test run ) || LEGACY_RC=$?
 
 echo
-echo "=== Step 5/5: stop system (cleanup) ==="
-( cd "$SHOP_DIR" && "$BIN" -c "$CFG_LATEST" stop system ) || echo "warn: stop system failed (continuing)"
+echo "=== Step 5/5: system stop (cleanup) ==="
+( cd "$SHOP_DIR" && "$BIN" -c "$CFG_LATEST" system stop ) || echo "warn: system stop failed (continuing)"
 
 echo
 echo "=== Summary ==="

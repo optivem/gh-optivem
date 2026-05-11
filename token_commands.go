@@ -1,11 +1,12 @@
-// verify_commands.go wires the `gh optivem verify …` subcommands into the
-// root Cobra command. The `verify` namespace owns preflight checks that
-// validate the environment is ready to run a CLI operation, without
-// performing any mutation.
+// token_commands.go wires the `gh optivem token <verb>` subtree. The `token`
+// noun owns operations on the real-world credentials gh-optivem consumes
+// from the environment. Today the only verb is `verify`; future verbs (e.g.
+// `token list` to show which credential env vars are configured) would slot
+// in as siblings.
 //
-//	gh optivem verify tokens — live auth-check every credential the CLI
-//	                           consumes from the environment, returning
-//	                           non-zero on any missing or rejected token.
+//	gh optivem token verify — live auth-check every credential the CLI
+//	                          consumes from the environment, returning
+//	                          non-zero on any missing or rejected token.
 //
 // Designed to be invoked from a CI preflight job so a single broken token
 // surfaces once, before a scaffolding matrix fans out and burns runner
@@ -22,30 +23,31 @@ import (
 	"github.com/optivem/gh-optivem/internal/log"
 )
 
-// newVerifyCmd builds the `gh optivem verify` parent. The parent has no Run,
+// newTokenCmd builds the `gh optivem token` parent. The parent has no Run,
 // so invoking it without a subcommand prints help (Cobra default).
-func newVerifyCmd() *cobra.Command {
+func newTokenCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "verify",
-		Short: "Preflight checks for the gh-acceptance pipeline",
-		Long: `Preflight checks for the gh-acceptance pipeline. These subcommands run
-read-only validation against the current environment and exit non-zero on
-any failure. No repos, secrets, or releases are mutated.`,
+		Use:   "token",
+		Short: "Operate on the credentials gh-optivem consumes from the environment",
+		Long: `Operate on the real-world credentials gh-optivem consumes from the
+environment. Subcommands run read-only validation against the current
+environment and exit non-zero on any failure. No repos, secrets, or releases
+are mutated.`,
 	}
 	cmd.AddCommand(
-		newVerifyTokensCmd(),
+		newTokenVerifyCmd(),
 	)
 	return cmd
 }
 
-// newVerifyTokensCmd implements `gh optivem verify tokens`. Reads every
+// newTokenVerifyCmd implements `gh optivem token verify`. Reads every
 // credential the gh-acceptance pipeline uses from the environment, checks
 // presence, and runs a live auth call against each provider in parallel.
 // Exits 0 on full success; exits 1 with an aggregated error listing every
 // missing or rejected token.
-func newVerifyTokensCmd() *cobra.Command {
+func newTokenVerifyCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "tokens",
+		Use:   "verify",
 		Short: "Verify every gh-acceptance pipeline token is valid",
 		Long: `Verify every credential the gh-optivem CLI consumes from the environment
 is present and accepted by its provider:
@@ -60,7 +62,8 @@ is present and accepted by its provider:
 All checks run in parallel; on any failure the command prints every broken
 credential and exits non-zero, so the user fixes them in one pass instead
 of fix-one-retry-discover-next.`,
-		Args: cobra.NoArgs,
+		Example: `  gh optivem token verify`,
+		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			// Initialize logging with sane defaults so the auth-check helpers'
 			// log.Info / log.Successf calls produce output. No log file — this

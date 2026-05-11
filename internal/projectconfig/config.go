@@ -170,7 +170,7 @@ type System struct {
 	Architecture string `yaml:"architecture,omitempty"`
 
 	// Config is the repo-relative path to systems.yaml (or legacy systems.json)
-	// for `gh optivem run|build|test|stop|clean`. Optional; when empty, runner
+	// for `gh optivem system <verb>` and `gh optivem test run`. Optional; when empty, runner
 	// commands fall back to ./systems.yaml or the explicit --system-config flag.
 	// Free-form path (no enum/shape check) — file existence is verified at
 	// load-time, not validate-time, matching the convention for the other
@@ -493,13 +493,16 @@ func (c *Config) Validate() error {
 			c.Deploy, DeployDocker, DeployCloudRun)
 	}
 
-	// Rules 17/18/19: SonarCloud presence + consistency. The block is
-	// optional when no architecture is set (a partial config — project
-	// URL + repo_strategy only — has no Sonar identities to express).
-	// Once architecture is set, gh-optivem.yaml is expected to carry the
-	// canonical org + per-code-tier project keys produced by
-	// DeriveSonarProjects, so `gh optivem init` can create the
-	// SonarCloud projects without re-deriving from `cfg.Owner`/`cfg.Repo`.
+	// Rules 17/18: SonarCloud presence. The block is optional when no
+	// architecture is set (a partial config — project URL + repo_strategy
+	// only — has no Sonar identities to express). Once architecture is
+	// set, gh-optivem.yaml must carry the org + per-code-tier project
+	// keys so runtime consumers (run-sonar, finalize) can resolve them
+	// from the YAML without re-deriving. The YAML is the source of truth
+	// for these keys — `gh optivem init` seeds them via
+	// DeriveSonarProjects but the values may be hand-edited afterwards
+	// (e.g. multi-stack reference repos that need per-variant SonarCloud
+	// projects the single-stack deriver cannot express).
 	if c.System.Architecture != "" {
 		if err := c.validateSonar(); err != nil {
 			return err
@@ -509,10 +512,8 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// validateSonar enforces Rules 17/18/19. Split out to keep Validate's body
-// linear and to give the Sonar block one cohesive failure point — when any
-// one of the three rules fails, the error message points to the YAML field
-// that disagrees with the canonical derivation.
+// validateSonar enforces Rules 17/18. Split out to keep Validate's body
+// linear and to give the Sonar block one cohesive failure point.
 func (c *Config) validateSonar() error {
 	// Rule 17: sonar.organization required when architecture is set.
 	if c.Sonar.Organization == "" {
@@ -551,70 +552,7 @@ func (c *Config) validateSonar() error {
 	if c.SystemTest.SonarProject == "" {
 		return fmt.Errorf("config: system.architecture is set; system_test.sonar_project is required")
 	}
-
-	// Rule 19: consistency with canonical derivation. owner + base repo are
-	// recovered from system_test.repo — the YAML emitter places it on the
-	// canonical-base or component-suffixed slug depending on strategy, so
-	// the multirepo case strips the well-known component suffix to recover
-	// the base repo. A stale hand-edit to any of the Sonar fields then
-	// fails this check rather than silently shipping a key that points at
-	// a project the runtime never creates.
-	owner, baseRepo, err := c.parseOwnerBaseRepoForSonar()
-	if err != nil {
-		return err
-	}
-	expected := DeriveSonarProjects(owner, baseRepo, c.System.Architecture, c.RepoStrategy)
-	if wantOrg := strings.ToLower(owner); c.Sonar.Organization != wantOrg {
-		return fmt.Errorf("config: sonar.organization %q does not match canonical derivation %q (lowercased owner from system_test.repo)",
-			c.Sonar.Organization, wantOrg)
-	}
-	switch c.System.Architecture {
-	case ArchMonolith:
-		if c.System.SonarProject != expected.System {
-			return fmt.Errorf("config: system.sonar_project %q does not match canonical derivation %q",
-				c.System.SonarProject, expected.System)
-		}
-	case ArchMultitier:
-		if c.System.Backend.SonarProject != expected.Backend {
-			return fmt.Errorf("config: system.backend.sonar_project %q does not match canonical derivation %q",
-				c.System.Backend.SonarProject, expected.Backend)
-		}
-		if c.System.Frontend.SonarProject != expected.Frontend {
-			return fmt.Errorf("config: system.frontend.sonar_project %q does not match canonical derivation %q",
-				c.System.Frontend.SonarProject, expected.Frontend)
-		}
-	}
-	if c.SystemTest.SonarProject != expected.SystemTest {
-		return fmt.Errorf("config: system_test.sonar_project %q does not match canonical derivation %q",
-			c.SystemTest.SonarProject, expected.SystemTest)
-	}
 	return nil
-}
-
-// parseOwnerBaseRepoForSonar extracts owner and base repo name from
-// system_test.repo for the Rule 19 consistency check. The slug is
-// guaranteed non-empty here (Rule 6 already required system_test
-// completeness before validateSonar runs). For multirepo strategies the
-// scaffolder emits the component-suffixed slug (`<owner>/<repo>-system`
-// or `<owner>/<repo>-backend`); strip those suffixes to recover the
-// canonical base repo passed into DeriveSonarProjects.
-func (c *Config) parseOwnerBaseRepoForSonar() (owner, baseRepo string, err error) {
-	slug := c.SystemTest.Repo
-	parts := strings.SplitN(slug, "/", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("config: system_test.repo %q must be <owner>/<repo>", slug)
-	}
-	owner = parts[0]
-	repo := parts[1]
-	if c.RepoStrategy == RepoStrategyMultiRepo {
-		switch c.System.Architecture {
-		case ArchMonolith:
-			repo = strings.TrimSuffix(repo, "-system")
-		case ArchMultitier:
-			repo = strings.TrimSuffix(repo, "-backend")
-		}
-	}
-	return owner, repo, nil
 }
 
 // sortedKeys returns the keys of m in lexicographic order. Used by

@@ -102,7 +102,7 @@ What the orchestrator produces afterward (not the agent's job): the targeted com
 
 - File scope: only files under `driver-port/` and `driver-adapter/` paths under `shop/` (e.g. `shop/api`, `shop/ui`). Do NOT touch `external/` — that is the Contract Test sub-process.
 - Do NOT read or search backend/frontend source code. Model new Driver methods on existing Driver methods in the same file.
-- Suite selection (`<acceptance-api>` / `<acceptance-ui>`): see [at-cycle-conventions.md](at-cycle-conventions.md). The orchestrator reads the suite from context and runs tests; the agent does not invoke `gh optivem test system`.
+- Suite selection (`<acceptance-api>` / `<acceptance-ui>`): see [at-cycle-conventions.md](at-cycle-conventions.md). The orchestrator reads the suite from context and runs tests; the agent does not invoke `gh optivem test run`.
 - `"TODO: Driver"` prototype syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
 - Definition of System Driver vs External System Driver: see [glossary.md](glossary.md).
 

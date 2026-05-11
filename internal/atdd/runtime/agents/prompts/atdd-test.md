@@ -97,7 +97,7 @@ What the orchestrator produces afterward (not the agent's job): the targeted com
 ## Conventions
 
 - Unit of work: the **ticket**. All scenarios for the ticket are written together as a batch — there is no per-scenario inner loop.
-- Suite selection (`<acceptance-api>` / `<acceptance-ui>`): see [at-cycle-conventions.md](at-cycle-conventions.md). The orchestrator reads the suite from context and runs tests; the agent does not invoke `gh optivem test system`.
+- Suite selection (`<acceptance-api>` / `<acceptance-ui>`): see [at-cycle-conventions.md](at-cycle-conventions.md). The orchestrator reads the suite from context and runs tests; the agent does not invoke `gh optivem test run`.
 - "TODO: DSL" prototype syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
 - Test layout context: see [test.md](../architecture/test.md) and [dsl-core.md](../architecture/dsl-core.md).
 
@@ -179,7 +179,7 @@ What the orchestrator produces afterward (not the agent's job): the targeted com
 ## Conventions
 
 - Unit of work: the **ticket**. All scenarios for the ticket are written together as a batch — there is no per-scenario inner loop.
-- Suite selection (`<suite-contract-real>` / `<suite-contract-stub>`): see [ct-cycle-conventions.md](ct-cycle-conventions.md). The orchestrator reads the suites from context/params and invokes the runner; the agent does not invoke `gh optivem test system`.
+- Suite selection (`<suite-contract-real>` / `<suite-contract-stub>`): see [ct-cycle-conventions.md](ct-cycle-conventions.md). The orchestrator reads the suites from context/params and invokes the runner; the agent does not invoke `gh optivem test run`.
 - Onboarding pre-condition (Driver + Test Instance must exist): see [ct-cycle-conventions.md](ct-cycle-conventions.md).
 - "TODO: DSL" prototype syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
 

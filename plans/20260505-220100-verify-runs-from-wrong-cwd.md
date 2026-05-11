@@ -1,5 +1,9 @@
 # `verify_run_tests_after_driver` runs `gh optivem test system` from the wrong cwd
 
+> **2026-05-11:** This plan's command examples use the pre-rename
+> verb-first forms. See `20260511-2000-noun-first-cli-rename.md`
+> for the noun-first equivalents (build system → system build, etc.).
+
 ## Symptom
 
 Choosing `[t]racer` (or `[r]` / `[f]`) at the verify prompt produces:

@@ -1,16 +1,21 @@
-// compile_commands.go wires the `compile`, `compile system`, and
-// `compile system-tests` Cobra subcommands.
+// compile_commands.go wires the bare `gh optivem compile` verb and the
+// tier-level helpers (compileSystem, compileSystemTests, monolithTier,
+// loadProjectConfigOrExit) shared with the noun-scoped forms
+// (`gh optivem system compile` in system_commands.go and `gh optivem test
+// compile` in test_commands.go).
 //
 // Naming: `compile` is source-level build (dotnet build / gradlew compileJava
-// / npx tsc). `build` is reserved for `docker compose build` (runner_commands.go).
-// The two are distinct enough to coexist; they must not be conflated.
+// / npx tsc). `build` is reserved for `docker compose build` (system_commands.go,
+// under the `system` noun). The two are distinct enough to coexist; they
+// must not be conflated.
 //
-// Bare `gh optivem compile` runs `system` then `system-tests` sequentially,
-// halting on first failure. This shortcut is the dominant use case (the
-// structural-cycle compile_all action shells out to it as a single
-// command), and is a deliberate departure from build/run/test/stop/clean
-// which all require an explicit subcommand. The explicit subcommands stay
-// available for scoped local use.
+// `compile` stays a bare verb (no parent noun) because it spans tiers — the
+// bare form runs `system compile` then `test compile` in sequence, halting on
+// first failure. This shortcut is the dominant use case (the structural-cycle
+// compile_all action shells out to it as a single command). Same category as
+// `gh browse` / `gh status` in gh's own surface: cross-resource, no single
+// noun to slot under. The noun-scoped forms stay available for scoped local
+// use.
 package main
 
 import (
@@ -24,30 +29,35 @@ import (
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
-// newCompileCmd builds the `compile` parent. Unlike build/run/test, the
-// parent itself runs (system + system-tests in sequence) so the structural
-// cycle can shell out to a single command.
+// newCompileCmd builds the bare `compile` verb. Unlike most top-level
+// commands, the bare form has a Run that walks the tiers (system then
+// system-tests, halting on first failure) so the structural cycle can shell
+// out to a single command. The noun-scoped forms — `gh optivem system
+// compile` and `gh optivem test compile` — are sibling commands registered
+// under their respective parents, not children of this verb.
 func newCompileCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "compile",
-		Short: "Compile a scaffolded project's source code (system + system-tests)",
+		Short: "Compile a scaffolded project's source code (system + test tiers)",
 		Long: `Compile the in-scope source code for a scaffolded project.
+
+Runs "system compile" then "test compile" in sequence, halting on first
+failure. Distinct from "gh optivem system build", which runs "docker compose
+build" against the system's container images.
 
 Per-language commands are dispatched from gh-optivem.yaml:
   dotnet     -> dotnet build
   java       -> .\gradlew.bat compileJava
   typescript -> npm ci && npx tsc --noEmit
 
-Distinct from "gh optivem build", which runs "docker compose build" against
-the system's container images.
-
-Bare "gh optivem compile" runs "system" then "system-tests" in sequence,
-halting on first failure. Use the explicit subcommands to scope to one tier.`,
-		Example: `  gh optivem compile               # compile system + system-tests
-  gh optivem compile system        # compile only the system tier(s)
-  gh optivem compile system-tests  # compile only the system-tests tier`,
+Use the noun-scoped forms to narrow to one tier:
+  gh optivem system compile   # system tier only
+  gh optivem test compile     # test tier only`,
+		Example: `  gh optivem compile               # compile both tiers
+  gh optivem system compile        # narrow to system tier
+  gh optivem test compile          # narrow to test tier`,
 		Args: cobra.NoArgs,
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(c *cobra.Command, args []string) {
 			cfg := loadProjectConfigOrExit()
 			sum := newCompileSummary()
 
@@ -63,41 +73,13 @@ halting on first failure. Use the explicit subcommands to scope to one tier.`,
 			exitOnError(err)
 		},
 	}
-	cmd.AddCommand(newCompileSystemCmd(), newCompileSystemTestsCmd())
+	// Hidden verb-first aliases under the bare `compile` parent.
+	// Drop in v1.6 per plans/20260511-2010-drop-verb-first-aliases.md.
+	cmd.AddCommand(
+		newDeprecatedCompileSystemCmd(),
+		newDeprecatedCompileSystemTestsCmd(),
+	)
 	return cmd
-}
-
-func newCompileSystemCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:     "system",
-		Short:   "Compile the system tier(s)",
-		Long:    `Compile the system source. Monolith projects compile the single system tier; multitier projects compile backend then frontend in sequence, halting on first failure.`,
-		Example: `  gh optivem compile system`,
-		Args:    cobra.NoArgs,
-		Run: func(cmd *cobra.Command, args []string) {
-			sum := newCompileSummary()
-			log.PhaseHeader(1, 1, "Compile system")
-			err := compileSystem(loadProjectConfigOrExit(), sum)
-			sum.Print()
-			exitOnError(err)
-		},
-	}
-}
-
-func newCompileSystemTestsCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:     "system-tests",
-		Short:   "Compile the system-tests tier",
-		Example: `  gh optivem compile system-tests`,
-		Args:    cobra.NoArgs,
-		Run: func(cmd *cobra.Command, args []string) {
-			sum := newCompileSummary()
-			log.PhaseHeader(1, 1, "Compile system-tests")
-			err := compileSystemTests(loadProjectConfigOrExit(), sum)
-			sum.Print()
-			exitOnError(err)
-		},
-	}
 }
 
 // loadProjectConfigOrExit resolves the project config path via the

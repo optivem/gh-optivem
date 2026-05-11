@@ -129,47 +129,47 @@ Only `--deploy docker` is currently supported (the default). `--deploy cloud-run
 
 ### Running tests against a scaffolded project
 
-`gh optivem` also provides runner subcommands for working with the system tests in a scaffolded project. Each lifecycle phase is its own verb (mirrors `docker compose`, `systemctl`, `kubectl`, `terraform`): the typical sequence is `test setup` (prepare the test harness — `npm ci`, compile test sources, etc.) → `run system` (bring the SUT up) → `test system` (run suites) → `stop system`.
+`gh optivem` also provides runner subcommands for working with the system tests in a scaffolded project. Each lifecycle phase is its own verb (mirrors `docker compose`, `systemctl`, `kubectl`, `terraform`): the typical sequence is `test setup` (prepare the test harness — `npm ci`, compile test sources, etc.) → `system start` (bring the SUT up) → `test run` (run suites) → `system stop`.
 
 ```bash
-gh optivem test setup                        # run setupCommands from tests.yaml (npm ci, restore, compile test sources, ...)
+gh optivem test setup                     # run setupCommands from tests.yaml (npm ci, restore, compile test sources, ...)
 
-gh optivem test system                       # run every suite against the already-running system
-gh optivem test system --suite smoke         # run only the suite with this id
-gh optivem test system --suite acceptance-api --suite acceptance-ui   # multiple suites, repeatable
-gh optivem test system --suite acceptance-api,acceptance-ui           # ...or comma-separated
-gh optivem test system --test "MyTest"       # narrow execution to one test name (substituted into the suite's testFilter)
-gh optivem test system --test T1 --test T2   # multiple names, repeatable
-gh optivem test system --test T1,T2          # ...or comma-separated
-gh optivem test system --sample              # use each suite's sampleTest field as the test name
-gh optivem test system --list                # print suite ids from tests.yaml and exit
+gh optivem test run                       # run every suite against the already-running system
+gh optivem test run --suite smoke         # run only the suite with this id
+gh optivem test run --suite acceptance-api --suite acceptance-ui   # multiple suites, repeatable
+gh optivem test run --suite acceptance-api,acceptance-ui           # ...or comma-separated
+gh optivem test run --test "MyTest"       # narrow execution to one test name (substituted into the suite's testFilter)
+gh optivem test run --test T1 --test T2   # multiple names, repeatable
+gh optivem test run --test T1,T2          # ...or comma-separated
+gh optivem test run --sample              # use each suite's sampleTest field as the test name
+gh optivem test run --list                # print suite ids from tests.yaml and exit
 
-gh optivem build system                      # docker compose build for every entry in systems.yaml
-gh optivem build system --rebuild            # force full rebuild (no layer cache reuse)
+gh optivem system build                   # docker compose build for every entry in systems.yaml
+gh optivem system build --rebuild         # force full rebuild (no layer cache reuse)
 
-gh optivem run system                        # docker compose up + wait for health
-gh optivem run system --restart              # force tear-down + restart
-gh optivem run system --log-lines 200        # lines of compose logs to dump on health-probe failure (default 50)
+gh optivem system start                   # docker compose up + wait for health
+gh optivem system start --restart         # force tear-down + restart
+gh optivem system start --log-lines 200   # lines of compose logs to dump on health-probe failure (default 50)
 
-gh optivem stop system                       # docker compose down + container cleanup
-gh optivem clean system                      # docker compose down -v --rmi local (delete volumes + locally-built images)
+gh optivem system stop                    # docker compose down + container cleanup
+gh optivem system clean                   # docker compose down -v --rmi local (delete volumes + locally-built images)
 ```
 
-`test system` health-probes every entry in `systems.yaml` first; if any aren't up, it errors out with "start it first with `gh optivem run system`" rather than silently starting them. Chain the verbs explicitly:
+`test run` health-probes every entry in `systems.yaml` first; if any aren't up, it errors out with "start it first with `gh optivem system start`" rather than silently starting them. Chain the verbs explicitly:
 
 ```bash
 gh optivem test setup
-gh optivem run system
-gh optivem test system --suite smoke
-gh optivem test system --suite acceptance-api
-gh optivem stop system
+gh optivem system start
+gh optivem test run --suite smoke
+gh optivem test run --suite acceptance-api
+gh optivem system stop
 ```
 
 The paths to `systems.yaml` / `tests.yaml` are resolved through two knobs in ascending order of permanence — `gh-optivem.yaml`'s `system_config:` / `test_config:` field → built-in default (`./systems.yaml` / `./tests.yaml`). Projects with non-default layouts (e.g. `docker/java/monolith/systems.yaml`) set the YAML field once and forget; to pick an alternate variant ad hoc, select a different `gh-optivem.yaml` via the persistent `-c` / `--config` flag. See [Pointing at non-default configs](#pointing-at-non-default-configs) below.
 
 Multi-test semantics depend on the suite's `testFilter` in `tests.yaml`. The runner combines multiple `--test` values per `testFilterJoin`: `"or"` (default) joins names with `|` and substitutes once — works for dotnet (`&DisplayName~T1|T2`) and playwright/jest (`--grep 'T1|T2'`); `"repeat"` substitutes the whole `testFilter` once per name and concatenates — required for gradle (`--tests T1 --tests T2`). Practical ceiling on Windows is ~600 typical test names per invocation (the OS caps each command line at 32K characters).
 
-`clean system` is the analog of `dotnet clean` / `./gradlew clean` — it deletes build outputs (containers, named volumes, locally-built images) without touching the dependency cache (registry-pulled images are kept). Chain it explicitly for a fresh start: `gh optivem clean system && gh optivem test system`.
+`system clean` is the analog of `dotnet clean` / `./gradlew clean` — it deletes build outputs (containers, named volumes, locally-built images) without touching the dependency cache (registry-pulled images are kept). Chain it explicitly for a fresh start: `gh optivem system clean && gh optivem test run`.
 
 ## Troubleshooting
 
@@ -203,11 +203,11 @@ Three knobs decide which `gh-optivem.yaml` the tool reads (and from there which 
 
 ```bash
 # 1. One-shot flag (highest precedence) — selects which gh-optivem.yaml to read
-gh optivem -c ./gh-optivem.shop-monolith.yaml test system
+gh optivem -c ./gh-optivem.shop-monolith.yaml test run
 
 # 2. Shell-session env var (same role as --config)
 export GH_OPTIVEM_CONFIG=./gh-optivem.shop-monolith.yaml
-gh optivem test system
+gh optivem test run
 
 # 3. Per-project default baked into gh-optivem.yaml (lowest precedence)
 system_config: docker/systems.yaml

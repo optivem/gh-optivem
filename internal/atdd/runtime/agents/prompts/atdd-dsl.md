@@ -105,7 +105,7 @@ What the orchestrator produces afterward (not the agent's job): the targeted com
 ## Conventions
 
 - Unit of work: the **ticket**. All scenarios for the ticket are written together as a batch — there is no per-scenario inner loop.
-- Suite selection (`<acceptance-api>` / `<acceptance-ui>`): see [at-cycle-conventions.md](at-cycle-conventions.md). The orchestrator reads the suite from context and runs tests; the agent does not invoke `gh optivem test system`.
+- Suite selection (`<acceptance-api>` / `<acceptance-ui>`): see [at-cycle-conventions.md](at-cycle-conventions.md). The orchestrator reads the suite from context and runs tests; the agent does not invoke `gh optivem test run`.
 - `"TODO: Driver"` prototype syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
 - Definition of an "interface change" (DSL Interface, External System Driver, System Driver): see [glossary.md](glossary.md).
 - DSL layout context: see [dsl-core.md](../architecture/dsl-core.md).

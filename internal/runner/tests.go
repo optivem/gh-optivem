@@ -45,7 +45,7 @@ type SuiteResult struct {
 //
 //  1. If sys is non-nil, probes every entry in sys.Systems and errors out
 //     if any isn't responding to its health probe (caller must have already
-//     started the system via `gh optivem run system`).
+//     started the system via `gh optivem system start`).
 //  2. Filters suites per opts.Suite (a set; empty means all). Errors out
 //     with the available ids if any requested id doesn't match.
 //  3. Runs each remaining suite. After the last suite (or first failure),
@@ -66,7 +66,7 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 	if sys != nil {
 		for _, s := range sys.Systems {
 			if !IsAnyURLUp(s, opts.Health) {
-				return fmt.Errorf("system %s is not running — start it first with `gh optivem run system`", s.Label)
+				return fmt.Errorf("system %s is not running — start it first with `gh optivem system start`", s.Label)
 			}
 		}
 	}

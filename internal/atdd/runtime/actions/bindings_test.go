@@ -141,12 +141,12 @@ func TestCompileTierActions_ShellOutAndWriteCompileOK(t *testing.T) {
 		{
 			name:    "compile_system",
 			invoke:  func(a actions, c *statemachine.Context) statemachine.Outcome { return a.compileSystem(c) },
-			wantCmd: "gh optivem compile system",
+			wantCmd: "gh optivem system compile",
 		},
 		{
 			name:    "compile_system_tests",
 			invoke:  func(a actions, c *statemachine.Context) statemachine.Outcome { return a.compileSystemTests(c) },
-			wantCmd: "gh optivem compile system-tests",
+			wantCmd: "gh optivem test compile",
 		},
 	}
 	for _, tier := range tiers {
@@ -999,7 +999,7 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 // runTests — tiered prompt
 //
 // Top-level menu: a/s/p/n/x. For s and p the action shells out to
-// `gh optivem test system --list` to fetch the suite catalogue, then asks
+// `gh optivem test run --list` to fetch the suite catalogue, then asks
 // the operator which numbered suites (and, for p, which test names) to run.
 // On a green run the loop offers another picker pass; on red it exits so
 // the structural-cycle gateway can dispatch the fix agent.
@@ -1066,7 +1066,7 @@ func TestVerifyRunTestsAfterDriver_ARunsAllSystemTests(t *testing.T) {
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
-	wantCall := "gh optivem test system"
+	wantCall := "gh optivem test run"
 	if len(sh.calls) != 1 || sh.calls[0] != wantCall {
 		t.Fatalf("expected single `%s` call, got %v", wantCall, sh.calls)
 	}
@@ -1092,9 +1092,9 @@ func TestVerifyRunTestsAfterDriver_SRunsPickedSuites(t *testing.T) {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
 	wantCalls := []string{
-		"gh optivem test system --list",
-		"gh optivem test system --suite acceptance-api",
-		"gh optivem test system --suite acceptance-ui",
+		"gh optivem test run --list",
+		"gh optivem test run --suite acceptance-api",
+		"gh optivem test run --suite acceptance-ui",
 	}
 	if len(sh.calls) != len(wantCalls) {
 		t.Fatalf("calls: got %v, want %v", sh.calls, wantCalls)
@@ -1122,8 +1122,8 @@ func TestVerifyRunTestsAfterDriver_PRunsSpecificTests(t *testing.T) {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
 	wantCalls := []string{
-		"gh optivem test system --list",
-		"gh optivem test system --suite acceptance-ui --test T1 --test T2",
+		"gh optivem test run --list",
+		"gh optivem test run --suite acceptance-ui --test T1 --test T2",
 	}
 	if len(sh.calls) != len(wantCalls) {
 		t.Fatalf("calls: got %v, want %v", sh.calls, wantCalls)
@@ -1282,7 +1282,7 @@ func TestVerifyRunTestsAfterDriver_StampsRedOnTestFailure(t *testing.T) {
 	}
 	resultsText := ctx.GetString("verify_results_text")
 	for _, want := range []string{
-		"gh optivem test system",
+		"gh optivem test run",
 		"--- FAIL: TestThing",
 		"Classification: red",
 	} {
@@ -1334,7 +1334,7 @@ func TestVerifyRunTestsAfterDriver_HaltsOnInfraWithDiagnostic(t *testing.T) {
 		"runner failed before any test ran",
 		"missing executable",
 		"executable file not found",
-		"gh optivem test system",
+		"gh optivem test run",
 		"Cwd:    " + root,
 	} {
 		if !strings.Contains(se, want) {
@@ -1362,7 +1362,7 @@ func TestVerifyRunTestsAfterDriver_HaltsOnInfraWhenStderrIsInError(t *testing.T)
 			// path rather than retracing the path-resolution case
 			// (which is covered by HaltsOnUnresolvablePaths above).
 			out: nil,
-			err: errors.New(`shell "gh optivem test system": exit status 1 (stderr: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?)`),
+			err: errors.New(`shell "gh optivem test run": exit status 1 (stderr: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?)`),
 		},
 	}}
 	p := &fakePrompter{answers: []string{"a"}}
@@ -1502,8 +1502,8 @@ func TestRunTargetedTests_AllRuntimeFailuresWritesTrue(t *testing.T) {
 		t.Fatalf("tests_failed_runtime: got %v, want true", got)
 	}
 	want := []string{
-		"gh optivem test system --suite '<acceptance-api>' --test shouldFooSucceed",
-		"gh optivem test system --suite '<acceptance-api>' --test shouldBarSucceed",
+		"gh optivem test run --suite '<acceptance-api>' --test shouldFooSucceed",
+		"gh optivem test run --suite '<acceptance-api>' --test shouldBarSucceed",
 	}
 	if len(sh.calls) != len(want) {
 		t.Fatalf("got %d calls, want %d: %v", len(sh.calls), len(want), sh.calls)
@@ -1868,9 +1868,9 @@ func TestRunTargetedTests_RebuildParamHoistsBuildAndRun(t *testing.T) {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
 	wantCalls := []string{
-		"gh optivem build system --rebuild",
-		"gh optivem run system --restart",
-		"gh optivem test system --suite '<acceptance-api>' --test x",
+		"gh optivem system build --rebuild",
+		"gh optivem system start --restart",
+		"gh optivem test run --suite '<acceptance-api>' --test x",
 	}
 	if !reflect.DeepEqual(sh.calls, wantCalls) {
 		t.Fatalf("got %v, want %v", sh.calls, wantCalls)
@@ -1893,7 +1893,7 @@ func TestRunTargetedTests_NoRebuildParamSkipsBuildAndRun(t *testing.T) {
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
-	want := "gh optivem test system --suite '<acceptance-api>' --test x"
+	want := "gh optivem test run --suite '<acceptance-api>' --test x"
 	if len(sh.calls) != 1 || sh.calls[0] != want {
 		t.Fatalf("got %v, want %q", sh.calls, want)
 	}
@@ -1975,8 +1975,8 @@ func TestVerifyRealSuitePasses_AllPassWritesTrue(t *testing.T) {
 		t.Fatalf("verify_real_pass: got %v, want true", got)
 	}
 	want := []string{
-		"gh optivem test system --suite '<suite-contract-real>' --test shouldFooSucceed",
-		"gh optivem test system --suite '<suite-contract-real>' --test shouldBarSucceed",
+		"gh optivem test run --suite '<suite-contract-real>' --test shouldFooSucceed",
+		"gh optivem test run --suite '<suite-contract-real>' --test shouldBarSucceed",
 	}
 	if len(sh.calls) != len(want) {
 		t.Fatalf("got %d calls, want %d: %v", len(sh.calls), len(want), sh.calls)

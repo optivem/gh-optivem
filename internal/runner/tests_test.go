@@ -202,8 +202,8 @@ func TestRunTestsProbesWhenSystemDown(t *testing.T) {
 	if !strings.Contains(err.Error(), "test-stack") {
 		t.Errorf("want error to name the system label, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "gh optivem run system") {
-		t.Errorf("want error to suggest `gh optivem run system`, got: %v", err)
+	if !strings.Contains(err.Error(), "gh optivem system start") {
+		t.Errorf("want error to suggest `gh optivem system start`, got: %v", err)
 	}
 }
 

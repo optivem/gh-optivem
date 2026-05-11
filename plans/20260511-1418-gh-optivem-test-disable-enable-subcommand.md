@@ -4,6 +4,10 @@
 > This plan is a draft. Do not execute any step until the author signs off on
 > the overall shape (and the open questions in the final section).
 
+> **2026-05-11:** Some of this plan's command examples may use the pre-rename
+> verb-first forms. See `20260511-2000-noun-first-cli-rename.md` for the
+> noun-first equivalents (build system → system build, etc.).
+
 ## Context
 
 The state machine currently shells out to scripts that live in each target

@@ -63,7 +63,7 @@ It mirrors the role of the AT per-phase docs (`at-red-test.md`, `at-red-dsl.md`,
 - **Commit message format.** See [at-cycle-conventions.md](at-cycle-conventions.md). Every commit follows `<Ticket> | <Phase>`, optionally prefixed with `#<issue-number> | `. The phase suffix is the phase *prefix only* (e.g. `SYSTEM API REDESIGN`) — never append `- WRITE`, `- REVIEW`, `- TEST`, or `- COMMIT`.
 - **Commit confirmation.** See [shared-commit-confirmation.md](shared-commit-confirmation.md). Every COMMIT step asks "Can I commit?" with the proposed message and staged file list, and waits for explicit user approval before running `git commit`.
 - **Phase progression.** See [shared-phase-progression.md](shared-phase-progression.md). Phases ending in STOP block on explicit user approval.
-- **TEST gate (full | compile | skip).** The entire TEST phase is gated upfront with a single user prompt — nothing inside TEST runs until the user chooses, and the gate covers compile checks (`./compile-all.sh`, `./gradlew build`, `npx tsc --noEmit`, `dotnet build`) and the sample suite (`gh optivem test system --sample`) alike. Never self-initiate any of those commands, even compile-only ones.
+- **TEST gate (full | compile | skip).** The entire TEST phase is gated upfront with a single user prompt — nothing inside TEST runs until the user chooses, and the gate covers compile checks (`./compile-all.sh`, `./gradlew build`, `npx tsc --noEmit`, `dotnet build`) and the sample suite (`gh optivem test run --sample`) alike. Never self-initiate any of those commands, even compile-only ones.
 
 ---
 
@@ -75,7 +75,7 @@ Every structural-cycle TEST runs after REVIEW (which itself runs after WRITE). G
 
    ```
    About to run TEST for <in-scope test languages>. Choose one:
-     - full      → compile in-scope projects, then run sample suite (`gh optivem test system --sample`). Sample run takes a few minutes per language.
+     - full      → compile in-scope projects, then run sample suite (`gh optivem test run --sample`). Sample run takes a few minutes per language.
      - compile   → compile in-scope projects only, no sample suite.
      - skip      → skip TEST entirely, go straight to COMMIT (you accept the risk that compile or sample may fail in CI).
    Choice?
@@ -87,7 +87,7 @@ Every structural-cycle TEST runs after REVIEW (which itself runs after WRITE). G
 
 3. **If `compile` or `full`:** confirm in-scope components compile (per `CLAUDE.md`: `./compile-all.sh` from the repo root, or a single-project command like `./gradlew build` / `npx tsc --noEmit` / `dotnet build` for narrow changes). On compile failure, STOP and report — do not attempt the sample suite.
 
-4. **If `full` and compile passed:** run the sample suite for each in-scope Test Lang (`gh optivem test system --sample`) and verify it passes.
+4. **If `full` and compile passed:** run the sample suite for each in-scope Test Lang (`gh optivem test run --sample`) and verify it passes.
 
 5. Print a **drift warning** naming any out-of-scope implementations that were deliberately left untouched, e.g.:
 

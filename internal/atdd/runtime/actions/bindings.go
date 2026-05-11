@@ -144,7 +144,7 @@ const (
 	CtxKeySuite = "suite"
 
 	// CtxKeyTestNames is the []string of test method names run_targeted_tests
-	// dispatches against the suite, one per `gh optivem test system --test`
+	// dispatches against the suite, one per `gh optivem test run --test`
 	// invocation.
 	CtxKeyTestNames = "test_names"
 
@@ -638,7 +638,7 @@ func (a actions) printClassifiedSections(ctx *statemachine.Context, issueNum int
 
 // runSmokeTest prompts the user to run the smoke test and report the result.
 // v1 ships with a prompt rather than a real docker invocation because the
-// stack-up command is repo-specific (`gh optivem run system`). The Outcome's
+// stack-up command is repo-specific (`gh optivem system start`). The Outcome's
 // Bool is also recorded under `smoke_test_passes` so the downstream gateway
 // reads it back through the standard wrapGateway path.
 func (a actions) runSmokeTest(ctx *statemachine.Context) statemachine.Outcome {
@@ -712,11 +712,11 @@ func (a actions) compileAll(ctx *statemachine.Context) statemachine.Outcome {
 }
 
 func (a actions) compileSystem(ctx *statemachine.Context) statemachine.Outcome {
-	return a.runCompile(ctx, "compile_system", "gh optivem compile system")
+	return a.runCompile(ctx, "compile_system", "gh optivem system compile")
 }
 
 func (a actions) compileSystemTests(ctx *statemachine.Context) statemachine.Outcome {
-	return a.runCompile(ctx, "compile_system_tests", "gh optivem compile system-tests")
+	return a.runCompile(ctx, "compile_system_tests", "gh optivem test compile")
 }
 
 func (a actions) runCompile(ctx *statemachine.Context, name, cmdLine string) statemachine.Outcome {
@@ -739,7 +739,7 @@ func (a actions) runCompile(ctx *statemachine.Context, name, cmdLine string) sta
 // Reads:
 //   - CtxKeySuite (string)        — required; e.g. "<acceptance-api>".
 //   - CtxKeyTestNames ([]string)  — required; method names dispatched one
-//     per `gh optivem test system --suite <suite> --test <name>` shell-out.
+//     per `gh optivem test run --suite <suite> --test <name>` shell-out.
 //
 // Writes:
 //   - CtxKeyTestsFailedRuntime (bool) — true iff at least one test failed
@@ -770,14 +770,15 @@ func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcom
 	}
 
 	// rebuild_before_run hoists a clean rebuild + restart of the SUT out of
-	// the per-test loop. `build system --rebuild` (no-cache nuke) and `run
-	// system --restart` are issued once for the whole batch — the per-test
-	// `test system` shell-outs then run against the fresh image. Today's
-	// behavior was per-test, which mainstream CLIs don't do; per-batch is
-	// what callers actually want (rebuild between iterations of the WRITE
-	// loop, not between every individual test name in one iteration).
+	// the per-test loop. `system build --rebuild` (no-cache nuke) and
+	// `system start --restart` are issued once for the whole batch — the
+	// per-test `test run` shell-outs then run against the fresh image.
+	// Today's behavior was per-test, which mainstream CLIs don't do;
+	// per-batch is what callers actually want (rebuild between iterations
+	// of the WRITE loop, not between every individual test name in one
+	// iteration).
 	if strings.EqualFold(strings.TrimSpace(ctx.Params["rebuild_before_run"]), "true") {
-		buildCmd := "gh optivem build system --rebuild"
+		buildCmd := "gh optivem system build --rebuild"
 		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", buildCmd)
 		if out, err := a.deps.Shell.Run(context.Background(), buildCmd); err != nil {
 			if len(out) > 0 {
@@ -785,7 +786,7 @@ func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcom
 			}
 			return statemachine.Outcome{Err: fmt.Errorf("run_targeted_tests: build failed: %w", err)}
 		}
-		runCmd := "gh optivem run system --restart"
+		runCmd := "gh optivem system start --restart"
 		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", runCmd)
 		if out, err := a.deps.Shell.Run(context.Background(), runCmd); err != nil {
 			if len(out) > 0 {
@@ -799,7 +800,7 @@ func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcom
 	compileFailures := 0
 	passed := 0
 	for _, name := range names {
-		cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s",
+		cmd := fmt.Sprintf("gh optivem test run --suite %s --test %s",
 			shellEscape(suite), shellEscape(name))
 		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
 		out, err := a.deps.Shell.Run(context.Background(), cmd)
@@ -959,7 +960,7 @@ func (a actions) enableChangeDriven(ctx *statemachine.Context) statemachine.Outc
 //   - ctx.Params["verify_real_suite"] (string) — required; the suite
 //     placeholder, e.g. "<suite-contract-real>".
 //   - CtxKeyTestNames ([]string) — required; method names dispatched one
-//     per `gh optivem test system --suite <suite> --test <name>` shell-out.
+//     per `gh optivem test run --suite <suite> --test <name>` shell-out.
 //
 // Writes:
 //   - CtxKeyVerifyRealPass (bool) — true iff every test passed; read by
@@ -986,7 +987,7 @@ func (a actions) verifyRealSuitePasses(ctx *statemachine.Context) statemachine.O
 	}
 	allPass := true
 	for _, name := range names {
-		cmd := fmt.Sprintf("gh optivem test system --suite %s --test %s",
+		cmd := fmt.Sprintf("gh optivem test run --suite %s --test %s",
 			shellEscape(suite), shellEscape(name))
 		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
 		out, err := a.deps.Shell.Run(context.Background(), cmd)
@@ -1045,13 +1046,13 @@ func (a actions) selectTests(ctx *statemachine.Context) statemachine.Outcome {
 //
 // Top-level menu (inline path):
 //
-//   [a] all system tests           — `gh optivem test system`
+//   [a] all system tests           — `gh optivem test run`
 //   [s] some suites                — pick suite ids, run each whole
 //   [p] specific tests in a suite  — pick a suite, type test names
 //   [n] no tests (approve)         — record nothing, advance
 //   [x] reject                     — halt the run
 //
-// Suite ids come from `gh optivem test system --list`, so the menu is
+// Suite ids come from `gh optivem test run --list`, so the menu is
 // always whatever tests.json declares for the project.
 func (a actions) runTests(ctx *statemachine.Context) statemachine.Outcome {
 	if preset, ok := ctx.Get(ctxKeySelectedTestCommands).([]string); ok {
@@ -1106,7 +1107,7 @@ func (a actions) gatherTestCommands(ctx *statemachine.Context) ([]string, statem
 			fmt.Fprintln(a.deps.Stdout, "Skipping system tests for this cycle.")
 			return nil, statemachine.Outcome{}
 		case "a":
-			return []string{"gh optivem test system"}, statemachine.Outcome{}
+			return []string{"gh optivem test run"}, statemachine.Outcome{}
 		case "s":
 			cmds, err := a.promptSomeSuites()
 			if err != nil {
@@ -1150,12 +1151,12 @@ func (a actions) executeAndFinalize(ctx *statemachine.Context, cmds []string) st
 	return a.finalizeVerify(ctx, statemachine.Outcome{}, results)
 }
 
-// listSystemSuites shells out to `gh optivem test system --list` and
+// listSystemSuites shells out to `gh optivem test run --list` and
 // returns one suite id per non-empty output line. The action calls this
 // at prompt time so the menu always reflects whatever tests.json
 // declares — no separate catalog to keep in sync.
 func (a actions) listSystemSuites() ([]string, error) {
-	out, err := a.deps.Shell.Run(context.Background(), "gh optivem test system --list")
+	out, err := a.deps.Shell.Run(context.Background(), "gh optivem test run --list")
 	if err != nil {
 		return nil, fmt.Errorf("list suites failed: %w (output: %s)", err, strings.TrimSpace(string(out)))
 	}
@@ -1209,7 +1210,7 @@ func (a actions) promptSuiteMenu(multi bool) ([]string, error) {
 }
 
 // promptSomeSuites asks the user which suites to run whole and returns
-// one `gh optivem test system --suite <id>` command per pick.
+// one `gh optivem test run --suite <id>` command per pick.
 func (a actions) promptSomeSuites() ([]string, error) {
 	picked, err := a.promptSuiteMenu(true)
 	if err != nil {
@@ -1217,13 +1218,13 @@ func (a actions) promptSomeSuites() ([]string, error) {
 	}
 	cmds := make([]string, 0, len(picked))
 	for _, id := range picked {
-		cmds = append(cmds, fmt.Sprintf("gh optivem test system --suite %s", shellEscape(id)))
+		cmds = append(cmds, fmt.Sprintf("gh optivem test run --suite %s", shellEscape(id)))
 	}
 	return cmds, nil
 }
 
 // promptSpecificTests asks the user to pick one suite and then type the
-// test names to run within it. Returns a single `gh optivem test system
+// test names to run within it. Returns a single `gh optivem test run
 // --suite <id> --test <n1> --test <n2>` command, or "" if the user
 // declined to name any tests.
 func (a actions) promptSpecificTests() (string, error) {
@@ -1250,7 +1251,7 @@ func (a actions) promptSpecificTests() (string, error) {
 		return "", nil
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "gh optivem test system --suite %s", shellEscape(suite))
+	fmt.Fprintf(&b, "gh optivem test run --suite %s", shellEscape(suite))
 	for _, n := range names {
 		fmt.Fprintf(&b, " --test %s", shellEscape(n))
 	}

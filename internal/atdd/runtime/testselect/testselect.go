@@ -7,7 +7,7 @@
 // DSL methods that call it, transitively across DSL helpers, and forward
 // to the test methods that exercise those DSL methods. Output is grouped
 // by suite (acceptance-api / acceptance-ui / contract-stub / contract-real)
-// so the orchestrator can invoke `gh optivem test system --suite <s>
+// so the orchestrator can invoke `gh optivem test run --suite <s>
 // --test <t>` for each.
 //
 // The package is pure file-system reads + regex; it does not shell out for

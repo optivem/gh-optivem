@@ -42,7 +42,7 @@ const (
 // System.Config / SystemTest.Config are auto-populated to the paths that
 // copySystemTests just produced (`docker/systems.yaml`,
 // `system-test/tests.yaml`). Without this, a freshly-scaffolded repo
-// wouldn't work with `gh optivem run|test system` from repo root — the runner
+// wouldn't work with `gh optivem system start` / `gh optivem test run` from repo root — the runner
 // defaults are `./systems.yaml` / `./tests.yaml` in the working directory,
 // which don't resolve from the scaffolded repo root.
 func WriteOptivemYAML(cfg *config.Config) {
@@ -209,8 +209,8 @@ func mapRepoStrategy(s string) string {
 // and Frontend. Paths come from cfg verbatim — the resolution responsibility
 // lives at the call site (resolveScaffoldPaths for `init`, --*-path flags
 // for `config init`). sonar_project values come from the pre-computed
-// DerivedSonar so the per-tier key matches projectconfig.Validate's
-// Rule 19 derivation.
+// DerivedSonar — the scaffolder seeds the default per-tier keys here;
+// downstream consumers read them straight from the emitted YAML.
 func buildSystem(cfg *config.Config, derived projectconfig.DerivedSonar) projectconfig.System {
 	s := projectconfig.System{Architecture: cfg.Arch}
 	switch cfg.Arch {
