@@ -979,7 +979,7 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 	// definition of "valid environment". Aborts before we touch gh / GitHub /
 	// SonarCloud for existence checks since this is the most common failure
 	// mode.
-	if err := VerifyTokens(); err != nil {
+	if err := VerifyEnvironment(); err != nil {
 		log.FatalExit(err.Error())
 	}
 	if err := CheckOwnerExists(f.Owner); err != nil {

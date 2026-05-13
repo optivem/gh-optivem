@@ -72,6 +72,16 @@ gh optivem init ... --yes
 
 Only `--deploy docker` is currently supported (the default). `--deploy cloud-run` is in development and may be available in a future release.
 
+### Auto-filed bug report (opt-in)
+
+If you want the failure auto-filed to `optivem/gh-optivem` as an issue — including scaffold config — opt in with `--report-bug`:
+
+```bash
+gh optivem init ... --report-bug
+```
+
+Off by default. Filing a quick issue yourself is usually clearer and keeps the scaffold config private unless you decide to share it.
+
 ## Install from source
 
 ```bash
@@ -251,7 +261,11 @@ gh optivem --version
 gh optivem config init --owner valentinajemuovic --repo page-turner \
     --system-name "Page Turner" --arch multitier --repo-strategy multirepo \
     --backend-lang dotnet --frontend-lang typescript --test-lang typescript \
-    --project-url https://github.com/orgs/valentinajemuovic/projects/N
+    --project-url https://github.com/orgs/valentinajemuovic/projects/N \
+    --backend-path backend --frontend-path frontend \
+    --system-test-path system-test \
+    --stubs-path external-systems/stubs \
+    --simulators-path external-systems/simulators
 
 # Step 4 — scaffold a fresh project (no --shop-ref → uses the baked-in SHA)
 gh optivem init

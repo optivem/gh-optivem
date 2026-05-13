@@ -25,8 +25,8 @@ func validMonolithYAML() *projectconfig.Config {
 		},
 		SystemTest: projectconfig.TierSpec{Path: "system-test", Repo: "acme/page-turner", Lang: projectconfig.LangJava},
 		ExternalSystems: projectconfig.ExternalSystems{
-			Stubs:      projectconfig.ExternalSpec{Path: "external-stub", Repo: "acme/page-turner"},
-			Simulators: projectconfig.ExternalSpec{Path: "external-real-sim", Repo: "acme/page-turner"},
+			Stubs:      projectconfig.ExternalSpec{Path: "stubs", Repo: "acme/page-turner"},
+			Simulators: projectconfig.ExternalSpec{Path: "simulators", Repo: "acme/page-turner"},
 		},
 	}
 }
@@ -45,8 +45,8 @@ func validMultitierMultirepoYAML() *projectconfig.Config {
 		},
 		SystemTest: projectconfig.TierSpec{Path: "system-test", Repo: "acme/page-turner-backend", Lang: projectconfig.LangTypescript},
 		ExternalSystems: projectconfig.ExternalSystems{
-			Stubs:      projectconfig.ExternalSpec{Path: "external-stub", Repo: "acme/page-turner-backend"},
-			Simulators: projectconfig.ExternalSpec{Path: "external-real-sim", Repo: "acme/page-turner-backend"},
+			Stubs:      projectconfig.ExternalSpec{Path: "stubs", Repo: "acme/page-turner-backend"},
+			Simulators: projectconfig.ExternalSpec{Path: "simulators", Repo: "acme/page-turner-backend"},
 		},
 	}
 }

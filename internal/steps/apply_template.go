@@ -31,8 +31,8 @@ const (
 	wdPrefixYAML            = "working-directory: "
 	dirSystemTest           = "system-test"
 	dirDocker               = "docker"
-	dirExternalRealSim         = "external-real-sim"
-	dirExternalStub            = "external-stub"
+	dirSimulators              = "simulators"
+	dirStubs                   = "stubs"
 	shopSystemPrefix           = "../../../system/"
 	shopExternalSystemsPrefix  = "../../../external-systems/"
 	systemMonolithDir       = "system/monolith/"
@@ -45,7 +45,7 @@ const (
 	infoCopyingDocs        = "Copying docs..."
 )
 
-var externalSimDirs = []string{dirExternalRealSim, dirExternalStub}
+var externalDirs = []string{dirSimulators, dirStubs}
 
 // cloudRunSuffix returns "-cloud" for cloud-run deploy, empty string otherwise.
 func cloudRunSuffix(deploy string) string {
@@ -63,12 +63,12 @@ func appendCloudReplacement(r [][2]string, deploy string) [][2]string {
 	return r
 }
 
-// copyExternals copies external system simulator directories from shop to
-// repo, preserving shop's external-systems/ parent. Source and destination
-// both live at <root>/external-systems/<dir>; gh-optivem.yaml's
+// copyExternals copies the external-system directories (simulators/, stubs/)
+// from shop to repo, preserving shop's external-systems/ parent. Source and
+// destination both live at <root>/external-systems/<dir>; gh-optivem.yaml's
 // external_systems.{stubs,simulators}.path values match this layout.
 func copyExternals(shop, repoDir string) {
-	for _, dir := range externalSimDirs {
+	for _, dir := range externalDirs {
 		src := filepath.Join(shop, "external-systems", dir)
 		if _, err := os.Stat(src); err == nil {
 			files.CopyDir(src, filepath.Join(repoDir, "external-systems", dir))

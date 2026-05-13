@@ -83,24 +83,13 @@ To live-check each token is also accepted by its provider before running `init`:
 gh optivem environment verify
 ```
 
+Reads `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` / `SONAR_TOKEN` / `GHCR_TOKEN` / `WORKFLOW_TOKEN` / `REPO_TOKEN` from the environment, runs a live auth call against each provider in parallel, and exits non-zero with an aggregated list of every missing or rejected value. `DOCKERHUB_USERNAME` is an account name rather than a token — not all environment variables are tokens, which is why the command is `environment verify` not `token verify`. Read-only — no repos, secrets, or releases are mutated. Run this once up front before kicking off a CI matrix that fans out to every architecture × language combination.
+
 ## Configuration
 
 Scaffolding is **two-phase**. First write `gh-optivem.yaml` — the file that carries every project-stable value (owner, repo, arch, langs, system name, license, deploy target, tier paths, project URL). Then run `gh optivem init` to create the GitHub repo(s) and apply the template.
 
-```bash
-gh optivem config init --owner acme --repo page-turner --system-name "Page Turner" \
-    --arch monolith --repo-strategy monorepo --monolith-lang java \
-    --project-url https://github.com/orgs/acme/projects/1
-```
-
-Multitier:
-
-```bash
-gh optivem config init --owner acme --repo page-turner --system-name "Page Turner" \
-    --arch multitier --repo-strategy multirepo \
-    --backend-lang java --frontend-lang typescript \
-    --project-url https://github.com/orgs/acme/projects/1
-```
+For freshly scaffolded repos, `gh optivem init` writes the YAML for you — skip ahead to [Scaffolding](#scaffolding). The `gh optivem config init` flow below is for hand-rolled repos adopting `gh-optivem` after the fact; see [CONTRIBUTING.md](CONTRIBUTING.md#install-from-source) for full flag examples.
 
 Tier paths default to the flat scaffold layout (`system` / `backend` / `frontend` / `system-test` / `external-systems/external-stub` / `external-systems/external-real-sim`) — the same layout `gh optivem init` itself produces. Override with `--system-path`, `--backend-path`, `--frontend-path`, `--system-test-path`, `--stubs-path`, `--simulators-path` only when writing the YAML for a non-flat existing repo.
 
@@ -252,5 +241,4 @@ gh optivem atdd show diagram                            # print the canonical Me
 gh optivem atdd show diagram > docs/process-diagram.md  # regenerate the committed diagram
 ```
 -->
-
 

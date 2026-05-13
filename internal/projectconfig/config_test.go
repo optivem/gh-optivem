@@ -41,10 +41,10 @@ system_test:
 
 external_systems:
   stubs:
-    path: external-stub
+    path: stubs
     repo: optivem/shop
   simulators:
-    path: external-real-sim
+    path: simulators
     repo: optivem/shop
 `
 
@@ -77,10 +77,10 @@ system_test:
 
 external_systems:
   stubs:
-    path: external-stub
+    path: stubs
     repo: optivem/shop
   simulators:
-    path: external-real-sim
+    path: simulators
     repo: optivem/shop
 `
 
@@ -107,10 +107,10 @@ system_test:
 
 external_systems:
   stubs:
-    path: external-stub
+    path: stubs
     repo: optivem/shop
   simulators:
-    path: external-real-sim
+    path: simulators
     repo: optivem/shop
 `
 
@@ -143,10 +143,10 @@ system_test:
 
 external_systems:
   stubs:
-    path: external-stub
+    path: stubs
     repo: optivem/shop-main
   simulators:
-    path: external-real-sim
+    path: simulators
     repo: optivem/shop-main
 `
 
@@ -865,14 +865,14 @@ func TestValidate_AcceptsOnlyStubsOrOnlySimulators(t *testing.T) {
 
 	// Only stubs.
 	c := base()
-	c.ExternalSystems.Stubs = ExternalSpec{Path: "external-stub", Repo: "x/y"}
+	c.ExternalSystems.Stubs = ExternalSpec{Path: "stubs", Repo: "x/y"}
 	if err := c.Validate(); err != nil {
 		t.Errorf("only stubs should validate, got: %v", err)
 	}
 
 	// Only simulators.
 	c = base()
-	c.ExternalSystems.Simulators = ExternalSpec{Path: "external-real-sim", Repo: "x/y"}
+	c.ExternalSystems.Simulators = ExternalSpec{Path: "simulators", Repo: "x/y"}
 	if err := c.Validate(); err != nil {
 		t.Errorf("only simulators should validate, got: %v", err)
 	}
@@ -886,7 +886,7 @@ func TestValidate_RejectsExternalWithMissingRepo(t *testing.T) {
 			Path:         "p", Repo: "x/y", Lang: LangJava,
 		},
 		SystemTest:      TierSpec{Path: "t", Repo: "x/y", Lang: LangJava},
-		ExternalSystems: ExternalSystems{Stubs: ExternalSpec{Path: "external-stub" /* repo missing */}},
+		ExternalSystems: ExternalSystems{Stubs: ExternalSpec{Path: "stubs" /* repo missing */}},
 	}
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected error for external stubs missing repo, got nil")
@@ -909,8 +909,8 @@ func TestValidate_AcceptsExternalRepoNotInOtherTiers(t *testing.T) {
 		},
 		SystemTest: TierSpec{Path: "t", Repo: "x/main", Lang: LangJava, SonarProject: "x_main-system-test"},
 		ExternalSystems: ExternalSystems{
-			Stubs:      ExternalSpec{Path: "external-stub", Repo: "x/externals" /* unique slug */},
-			Simulators: ExternalSpec{Path: "external-real-sim", Repo: "x/externals"},
+			Stubs:      ExternalSpec{Path: "stubs", Repo: "x/externals" /* unique slug */},
+			Simulators: ExternalSpec{Path: "simulators", Repo: "x/externals"},
 		},
 	}
 	if err := cfg.Validate(); err != nil {

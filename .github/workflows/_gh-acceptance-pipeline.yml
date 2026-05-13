@@ -148,7 +148,7 @@ jobs:
           go-version-file: go.mod
           cache: false
 
-      - name: Verify acceptance pipeline tokens
+      - name: Verify acceptance pipeline environment
         env:
           DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

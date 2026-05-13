@@ -128,8 +128,8 @@ the URL back into gh-optivem.yaml.`,
       --repo page-turner --arch monolith --repo-strategy monorepo \
       --monolith-lang java --project-url https://github.com/orgs/acme/projects/1 \
       --system-path system --system-test-path system-test \
-      --stubs-path external-systems/external-stub \
-      --simulators-path external-systems/external-real-sim
+      --stubs-path external-systems/stubs \
+      --simulators-path external-systems/simulators
 
   # 2) review gh-optivem.yaml, then scaffold
   gh optivem init`,

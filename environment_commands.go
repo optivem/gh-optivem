@@ -1,18 +1,19 @@
 // environment_commands.go wires the `gh optivem environment` subtree. The
 // `environment` noun owns read-only operations on the local shell environment
-// the gh-optivem CLI reads from — currently the six credential env vars the
-// scaffolded pipeline needs as Actions variables/secrets.
+// the gh-optivem CLI reads from — credentials and other inputs alike (e.g.
+// DOCKERHUB_USERNAME is an account name, not a token, but is still required
+// from the environment).
 //
-//	gh optivem environment show   — print each credential env var, with token
-//	                                 values masked, so you can confirm what
-//	                                 your shell is exporting without leaking
-//	                                 the secret to terminal scrollback.
+//	gh optivem environment show   — print each env var, with token values
+//	                                 masked, so you can confirm what your
+//	                                 shell is exporting without leaking the
+//	                                 secret to terminal scrollback.
 //	gh optivem environment verify — live auth-check every credential against
 //	                                 its provider, returning non-zero on any
-//	                                 missing or rejected token.
+//	                                 missing or rejected value.
 //
 // `verify` is designed to be invoked from a CI preflight job so a single
-// broken token surfaces once, before a scaffolding matrix fans out and burns
+// broken input surfaces once, before a scaffolding matrix fans out and burns
 // runner minutes failing the same way N times. `show` is the local
 // counterpart — judgment-free output for humans debugging their setup.
 package main
@@ -69,16 +70,16 @@ accepted by its provider.`,
 }
 
 // newEnvironmentVerifyCmd implements `gh optivem environment verify`. Reads
-// every credential the gh-acceptance pipeline uses from the environment,
-// checks presence, and runs a live auth call against each provider in
-// parallel. Exits 0 on full success; exits 1 with an aggregated error
-// listing every missing or rejected token.
+// every input the gh-acceptance pipeline uses from the environment, checks
+// presence, and runs a live auth call against each provider in parallel.
+// Exits 0 on full success; exits 1 with an aggregated error listing every
+// missing or rejected value.
 func newEnvironmentVerifyCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "verify",
-		Short: "Verify every gh-acceptance pipeline credential is valid",
-		Long: `Verify every credential the gh-optivem CLI consumes from the environment
-is present and accepted by its provider:
+		Short: "Verify every gh-acceptance pipeline environment variable is valid",
+		Long: `Verify every environment variable the gh-optivem CLI consumes is present
+and (for credentials) accepted by its provider:
 
   DOCKERHUB_USERNAME  — read from env, used for the Docker Hub login call
   DOCKERHUB_TOKEN     — POST hub.docker.com/v2/users/login
@@ -88,8 +89,8 @@ is present and accepted by its provider:
   REPO_TOKEN          — GET api.github.com/user (and repo scope)
 
 All checks run in parallel; on any failure the command prints every broken
-credential and exits non-zero, so the user fixes them in one pass instead
-of fix-one-retry-discover-next.`,
+variable and exits non-zero, so the user fixes them in one pass instead of
+fix-one-retry-discover-next.`,
 		Example: `  gh optivem environment verify`,
 		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -102,11 +103,11 @@ of fix-one-retry-discover-next.`,
 			}
 			defer log.Close()
 
-			if err := config.VerifyTokens(); err != nil {
+			if err := config.VerifyEnvironment(); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
-			log.Successf("All tokens valid.")
+			log.Successf("All environment variables valid.")
 		},
 	}
 }

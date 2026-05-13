@@ -71,8 +71,8 @@ var Names = struct {
 	ShopDocsArchDir             string
 	ShopDocsSharedDir           string
 	ShopVersionFile             string
-	ShopExternalRealSimDir      string
-	ShopExternalStubDir         string
+	ShopSimulatorsDir           string
+	ShopStubsDir                string
 
 	// ── Target repo directory names ──────────────────────────────────────
 
@@ -123,8 +123,8 @@ var Names = struct {
 	ShopDocsArchDir:             "docs/design/${arch}",
 	ShopDocsSharedDir:           "docs/design/shared",
 	ShopVersionFile:             "system/${arch}/${lang}/VERSION",
-	ShopExternalRealSimDir:      "external-systems/external-real-sim",
-	ShopExternalStubDir:         "external-systems/external-stub",
+	ShopSimulatorsDir:           "external-systems/simulators",
+	ShopStubsDir:                "external-systems/stubs",
 
 	TargetSystemDir:     "system",
 	TargetBackendDir:    "backend",
