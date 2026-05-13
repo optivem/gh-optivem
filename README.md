@@ -92,6 +92,8 @@ Create these environment variables on your local machine. After setting them, re
 - `WORKFLOW_TOKEN` — GitHub PAT (classic) with `repo` + `workflow` scopes. Create at https://github.com/settings/tokens.
 - `REPO_TOKEN` — GitHub PAT with `repo` scope (classic) or `Contents: Read` on each component repo (fine-grained). Create at https://github.com/settings/tokens or https://github.com/settings/personal-access-tokens.
 
+These are read from your local environment at scaffold time and then propagated as variables and secrets onto the GitHub repos that `gh optivem init` creates, so the pipelines it generates can pull base images from Docker Hub under the authenticated rate limit (rather than the much lower anonymous one), publish and pull pipeline images to/from GHCR, send analysis to SonarCloud, and dispatch cross-repo workflows — all without you having to set each secret in the GitHub UI afterwards.
+
 To confirm what your shell is actually exporting (token values masked):
 
 ```bash
