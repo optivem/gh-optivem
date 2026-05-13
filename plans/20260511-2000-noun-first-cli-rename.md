@@ -6,21 +6,15 @@
 
 ## Remaining work
 
-- [ ] **Step 10 — Shop template (separate repo).** ⏳ Deferred: requires this
-  PR to merge and a tagged gh-optivem release to ship first. The
-  deprecation aliases keep the old forms working in the shop until then.
-  Sequence:
-  1. Merge this PR (new noun-first tree + hidden verb-first aliases).
-  2. Cut a gh-optivem release that students can `gh extension upgrade
+- [ ] **Step 10 — Shop release.** ⏳ Deferred: callsite migration was applied
+  early (across all shop workflows, docs, plans, and helper scripts) but
+  the published release steps still need a human:
+  1. Cut a gh-optivem release that students can `gh extension upgrade
      optivem` to.
-  3. Open a separate shop PR updating every callsite to the new forms
-     (workflows, README, helper scripts). Find them with
-     `grep -rEn 'gh optivem (build|run|stop|clean) system\b|gh optivem (test|compile) (system|system-tests)\b|gh optivem verify tokens\b'`
-     in the shop checkout.
-  4. Tag a new `meta-v*` release pinning the new shop SHA (see shop's
-     `CONTRIBUTING.md`).
+  2. Once the shop callsite PR is merged, tag a new `meta-v*` release
+     pinning the new shop SHA (see shop's `CONTRIBUTING.md`).
 
-## Rename mapping (reference for Step 10)
+## Rename mapping (reference)
 
 | Old form | New form |
 |---|---|
