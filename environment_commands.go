@@ -8,9 +8,10 @@
 //	                                 masked, so you can confirm what your
 //	                                 shell is exporting without leaking the
 //	                                 secret to terminal scrollback.
-//	gh optivem environment verify — live auth-check every credential against
-//	                                 its provider, returning non-zero on any
-//	                                 missing or rejected value.
+//	gh optivem environment verify — check every credential and required
+//	                                 local tool (gh CLI auth, actionlint),
+//	                                 returning non-zero on any missing or
+//	                                 rejected value.
 //
 // `verify` is designed to be invoked from a CI preflight job so a single
 // broken input surfaces once, before a scaffolding matrix fans out and burns
@@ -77,10 +78,13 @@ accepted by its provider.`,
 func newEnvironmentVerifyCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "verify",
-		Short: "Verify every gh-acceptance pipeline environment variable is valid",
-		Long: `Verify every environment variable the gh-optivem CLI consumes is present
-and (for credentials) accepted by its provider:
+		Short: "Verify the local environment is ready to run the gh-acceptance pipeline",
+		Long: `Verify the local environment is ready to run the gh-acceptance pipeline:
+required local tools are installed and authenticated, and every credential
+the CLI consumes is present and accepted by its provider.
 
+  gh CLI auth         — gh CLI installed and ` + "`gh auth status`" + ` succeeds
+  actionlint          — actionlint binary on PATH
   DOCKERHUB_USERNAME  — read from env, used for the Docker Hub login call
   DOCKERHUB_TOKEN     — POST hub.docker.com/v2/users/login
   SONAR_TOKEN         — GET sonarcloud.io/api/authentication/validate
@@ -89,7 +93,7 @@ and (for credentials) accepted by its provider:
   REPO_TOKEN          — GET api.github.com/user (and repo scope)
 
 All checks run in parallel; on any failure the command prints every broken
-variable and exits non-zero, so the user fixes them in one pass instead of
+check and exits non-zero, so the user fixes them in one pass instead of
 fix-one-retry-discover-next.`,
 		Example: `  gh optivem environment verify`,
 		Args:    cobra.NoArgs,
