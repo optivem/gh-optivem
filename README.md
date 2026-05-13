@@ -12,18 +12,50 @@ A GitHub CLI extension for scaffolding pipeline projects.
 
 ### GitHub CLI
 
-[GitHub CLI](https://cli.github.com/) (`gh auth login`) is required to install this extension.
+[GitHub CLI](https://cli.github.com/) is required to install this extension.
 
-- Check your version: `gh --version`
+Check your version:
+
+```bash
+gh --version
+```
+
+If the command isn't found or the version is too old, install or upgrade:
+
 - Install: `winget install GitHub.cli` (Windows), `brew install gh` (macOS), or `sudo apt install gh` / your distro's package manager (Linux)
 - Upgrade: `winget upgrade GitHub.cli` (Windows), `brew upgrade gh` (macOS), or `sudo apt upgrade gh` / your distro's package manager (Linux)
+
+### GitHub CLI authentication
+
+You must be logged in to GitHub via the CLI before installing this extension.
+
+Verify you're logged in:
+
+```bash
+gh auth status
+```
+
+If the command reports you're not logged in, log in:
+
+```bash
+gh auth login
+```
 
 ### actionlint
 
 [`actionlint`](https://github.com/rhysd/actionlint) — used by the `Verify scaffolded workflows` step.
 
-- Check your version: `actionlint -version`
-- Install or upgrade to the latest v1 release: `go install github.com/rhysd/actionlint/cmd/actionlint@v1`
+Check your version:
+
+```bash
+actionlint -version
+```
+
+If the command isn't found or the version is too old, install or upgrade to the latest v1 release:
+
+```bash
+go install github.com/rhysd/actionlint/cmd/actionlint@v1
+```
 
 ## Installation
 
@@ -51,25 +83,14 @@ gh extension remove optivem
 
 ## Environment Variables
 
-After installing the extension, configure these once before running `gh optivem init` for the first time.
+Create these environment variables on your local machine. After setting them, restart your IDE / terminal for the changes to take effect.
 
-`gh optivem init` reads six variables from your local shell environment and writes them as Actions variables/secrets on the scaffolded repo (and on each component repo in multirepo). The scaffolded pipeline can't run without them, so the tool fails fast if any are missing.
-
-- `DOCKERHUB_USERNAME` — your Docker Hub username. The scaffolded pipeline authenticates pulls of base images from Docker Hub so they don't hit the anonymous rate limit (shared CI runner IPs burn through it quickly).
-- `DOCKERHUB_TOKEN` — a Docker Hub Personal Access Token paired with the username above. Same reason: authenticated pulls. Create at https://app.docker.com/settings/personal-access-tokens (read-only scope is enough since we only pull).
-- `SONAR_TOKEN` — a SonarCloud token. Consumed by the local SonarCloud scan step (`--verify-level local`+) and by the commit stage's CI scan.
-- `GHCR_TOKEN` — a GitHub Personal Access Token (classic) with `write:packages` + `read:packages`. The acceptance and prod stages tag images in GHCR. Create at https://github.com/settings/tokens.
-- `WORKFLOW_TOKEN` — a GitHub PAT (classic) with `repo` + `workflow` scopes. The acceptance/QA/prod stages push release tags; the default `GITHUB_TOKEN` cannot push tags whose commits diff workflow files, which is why a separate PAT is needed. Create at https://github.com/settings/tokens.
-- `REPO_TOKEN` — a GitHub PAT used by the system-level prod stage in multitier+multirepo scaffolds to read each component repo's `VERSION` file via the GitHub API (cross-repo Contents read). Currently required for all scaffolds even though only multitier+multirepo consumes it. Create at https://github.com/settings/tokens (classic PAT with `repo` scope) or https://github.com/settings/personal-access-tokens (fine-grained PAT with `Contents: Read` on every component repo of the scaffolded system).
-
-```bash
-export DOCKERHUB_USERNAME=...
-export DOCKERHUB_TOKEN=...
-export SONAR_TOKEN=...
-export GHCR_TOKEN=...
-export WORKFLOW_TOKEN=...
-export REPO_TOKEN=...
-```
+- `DOCKERHUB_USERNAME` — your Docker Hub username.
+- `DOCKERHUB_TOKEN` — Docker Hub Personal Access Token (read-only scope is enough). Create at https://app.docker.com/settings/personal-access-tokens.
+- `SONAR_TOKEN` — SonarCloud token. Create at https://sonarcloud.io/account/security.
+- `GHCR_TOKEN` — GitHub PAT (classic) with `write:packages` + `read:packages`. Create at https://github.com/settings/tokens.
+- `WORKFLOW_TOKEN` — GitHub PAT (classic) with `repo` + `workflow` scopes. Create at https://github.com/settings/tokens.
+- `REPO_TOKEN` — GitHub PAT with `repo` scope (classic) or `Contents: Read` on each component repo (fine-grained). Create at https://github.com/settings/tokens or https://github.com/settings/personal-access-tokens.
 
 To confirm what your shell is actually exporting (token values masked):
 
@@ -77,13 +98,11 @@ To confirm what your shell is actually exporting (token values masked):
 gh optivem environment show
 ```
 
-To live-check each token is also accepted by its provider before running `init`:
+To live-check each token is also accepted by its provider before scaffolding:
 
 ```bash
 gh optivem environment verify
 ```
-
-Reads `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` / `SONAR_TOKEN` / `GHCR_TOKEN` / `WORKFLOW_TOKEN` / `REPO_TOKEN` from the environment, runs a live auth call against each provider in parallel, and exits non-zero with an aggregated list of every missing or rejected value. `DOCKERHUB_USERNAME` is an account name rather than a token — not all environment variables are tokens, which is why the command is `environment verify` not `token verify`. Read-only — no repos, secrets, or releases are mutated. Run this once up front before kicking off a CI matrix that fans out to every architecture × language combination.
 
 ## Scaffolding
 
@@ -91,19 +110,29 @@ Reads `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` / `SONAR_TOKEN` / `GHCR_TOKEN` / 
 gh optivem init
 ```
 
-No flags needed for the interactive flow. On the first run, `gh optivem init` prompts for the project-stable values (owner, repo, system-name, arch, repo-strategy, lang, project-url) and writes them to `gh-optivem.yaml` before scaffolding the GitHub repo(s) and applying the template. Subsequent runs read the same file and skip the prompt.
+Project-stable values — prompted on first run and written to `gh-optivem.yaml` (or passed as flags for non-interactive runs):
 
-For non-interactive runs (CI, scripted setups) pass the same project-stable values as flags — `init` writes `gh-optivem.yaml` from them on first run, then proceeds:
+- `--owner` — GitHub owner (user or org) for the scaffolded repo(s).
+- `--repo` — repo name (or monorepo root name for multi-repo layouts).
+- `--system-name` — human-readable system name (e.g. `"Page Turner"`).
+- `--arch` — system architecture (e.g. `monolith`).
+- `--repo-strategy` — `monorepo` or `multirepo`.
+- `--monolith-lang` / `--lang` — implementation language for the system tier.
+- `--project-url` — URL of the GitHub Project board to attach.
 
-```bash
-gh optivem init --owner acme --repo page-turner --system-name "Page Turner" \
-    --arch monolith --repo-strategy monorepo --monolith-lang java \
-    --project-url https://github.com/orgs/acme/projects/1
-```
+Per-invocation flags (layered on top in both interactive and flag-driven modes):
 
-The full per-invocation flag set (`--verify-level`, `--no-*`, `--workdir`, `--shop-ref`, `--log-file`, `--keep-local`, `--yes`, …) is layered on top in both modes.
+- `--verify-level` — depth of post-scaffold verification.
+- `--no-*` — skip specific scaffolding steps.
+- `--workdir` — override the working directory.
+- `--shop-ref` — pin the `shop` template ref.
+- `--log-file` — override the log file path (default: `$TEMP/gh-optivem-<timestamp>.log`).
+- `--keep-local` — keep the local clone after scaffolding.
+- `--yes` — accept all confirmation prompts.
+- `--verbose` / `-v` — debug output (retry/wait chatter, diagnostics).
+- `--quiet` / `-q` — suppress info-level output (warnings + errors still shown).
 
-Once the file exists, hand-edit if needed and run `gh optivem config validate` to confirm. After the sibling repos are cloned (multi-repo layouts), run `gh optivem config preflight` for the stronger "I'm about to run this for real" check — same schema validation plus an on-disk layout check that every declared repo and tier path resolves to a real directory. `preflight` is the same check `atdd implement-ticket` runs at startup.
+Once `gh-optivem.yaml` exists, hand-edit if needed and run `gh optivem config validate` to confirm. After the sibling repos are cloned (multi-repo layouts), run `gh optivem config preflight` for the stronger "I'm about to run this for real" check — same schema validation plus an on-disk layout check that every declared repo and tier path resolves to a real directory. `preflight` is the same check `atdd implement-ticket` runs at startup.
 
 <!--
 TODO: document the standalone `gh optivem config init` retrofit flow
@@ -111,17 +140,6 @@ TODO: document the standalone `gh optivem config init` retrofit flow
 the full set of --system-path / --backend-path / ... tier-path overrides)
 once the UX is validated.
 -->
-
-
-### Logging flags
-
-Available on `init`:
-
-```bash
-gh optivem init ... --verbose          # -v; debug output (retry/wait chatter, diagnostics)
-gh optivem init ... --quiet            # -q; suppress info-level output (warnings + errors still shown)
-gh optivem init ... --log-file run.log # override the log file path (default: $TEMP/gh-optivem-<timestamp>.log)
-```
 
 ## Usage
 

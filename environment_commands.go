@@ -89,7 +89,7 @@ the CLI consumes is present and accepted by its provider.
   DOCKERHUB_TOKEN     — POST hub.docker.com/v2/users/login
   SONAR_TOKEN         — GET sonarcloud.io/api/authentication/validate
   GHCR_TOKEN          — GET api.github.com/user (and read:packages scope)
-  WORKFLOW_TOKEN      — GET api.github.com/user (and repo scope)
+  WORKFLOW_TOKEN      — GET api.github.com/user (and repo + workflow scopes)
   REPO_TOKEN          — GET api.github.com/user (and repo scope)
 
 All checks run in parallel; on any failure the command prints every broken

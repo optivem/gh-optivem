@@ -151,10 +151,12 @@ func githubUserAuthCheck(client *http.Client, token string) (*http.Response, err
 	return resp, nil
 }
 
-// verifyGitHubToken calls GitHub's /user endpoint. Also checks the token
-// carries 'repo' scope via the X-OAuth-Scopes response header — workflow
-// pushes and tag creation both require it.
-func verifyGitHubToken(client *http.Client, token, name string) error {
+// verifyGitHubToken calls GitHub's /user endpoint and checks the token
+// carries every scope in requiredScopes via the X-OAuth-Scopes response
+// header. Fine-grained tokens don't set that header — accept them as-is,
+// since later steps will surface a clearer error if a specific permission
+// is missing.
+func verifyGitHubToken(client *http.Client, token, name string, requiredScopes []string) error {
 	resp, err := githubUserAuthCheck(client, token)
 	if err != nil {
 		return err
@@ -170,13 +172,21 @@ func verifyGitHubToken(client *http.Client, token, name string) error {
 		return fmt.Errorf("unexpected HTTP %d from GitHub", resp.StatusCode)
 	}
 
-	// X-OAuth-Scopes is "repo, workflow" (comma-separated) for classic PATs.
-	// Fine-grained tokens don't set this header — accept them as-is, since
-	// later steps will surface a clearer error if a specific permission is missing.
+	// X-OAuth-Scopes is comma-separated for classic PATs (e.g. "repo, workflow").
 	scopes := resp.Header.Get("X-OAuth-Scopes")
-	if scopes != "" && !scopeContains(scopes, "repo") {
-		return fmt.Errorf("%s is missing required 'repo' scope (current scopes: %s).\n    "+
-			"Regenerate the token with repo + workflow scopes at https://github.com/settings/tokens", name, scopes)
+	if scopes == "" {
+		return nil
+	}
+	var missingScopes []string
+	for _, s := range requiredScopes {
+		if !scopeContains(scopes, s) {
+			missingScopes = append(missingScopes, s)
+		}
+	}
+	if len(missingScopes) > 0 {
+		return fmt.Errorf("%s is missing required scope(s) %s (current scopes: %s).\n    "+
+			"Regenerate the token with %s scopes at https://github.com/settings/tokens",
+			name, strings.Join(missingScopes, " + "), scopes, strings.Join(requiredScopes, " + "))
 	}
 	return nil
 }
@@ -279,8 +289,12 @@ func VerifyEnvironment() error {
 			check{"DOCKERHUB_TOKEN", func() error { return verifyDockerHubAuth(client, e.dockerHubUsername, e.dockerHubToken) }},
 			check{"SONAR_TOKEN", func() error { return verifySonarToken(client, e.sonarToken) }},
 			check{"GHCR_TOKEN", func() error { return verifyGHCRToken(client, e.dockerHubUsername, e.ghcrToken) }},
-			check{"WORKFLOW_TOKEN", func() error { return verifyGitHubToken(client, e.workflowToken, "WORKFLOW_TOKEN") }},
-			check{"REPO_TOKEN", func() error { return verifyGitHubToken(client, e.repoToken, "REPO_TOKEN") }},
+			check{"WORKFLOW_TOKEN", func() error {
+				return verifyGitHubToken(client, e.workflowToken, "WORKFLOW_TOKEN", []string{"repo", "workflow"})
+			}},
+			check{"REPO_TOKEN", func() error {
+				return verifyGitHubToken(client, e.repoToken, "REPO_TOKEN", []string{"repo"})
+			}},
 		)
 	}
 
