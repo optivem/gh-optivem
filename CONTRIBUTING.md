@@ -1,5 +1,30 @@
 # Contributing
 
+## Most-used commands
+
+Rebuild + link `gh optivem` after editing CLI source (see [Install from source](#install-from-source)):
+
+```bash
+bash scripts/install.sh   # rebuilds gh-optivem.exe and links it as `gh optivem`
+```
+
+End-to-end manual test (see [Quick smoke test](#quick-smoke-test-no-install) for details):
+
+```bash
+bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner" \
+    --arch multitier --repo-strategy multirepo \
+    --backend-lang dotnet --frontend-lang typescript --test-lang typescript \
+    --shop-ref main
+```
+
+Dev-loop ATDD rehearsal (see [Part 1](#part-1--dev-loop-local-gh-optivem-against-existing-shop) for details):
+
+```bash
+cd ../shop
+
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 61 --config gh-optivem-monolith-typescript.yaml
+```
+
 ## Contents
 
 - [Prerequisites](#prerequisites)
