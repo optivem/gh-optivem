@@ -2,9 +2,7 @@
 
 > 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-13T11:25:43Z`
 
-> ⚠️ **Needs explicit human approval before implementation. Discuss first.**
-> This plan is a draft. Do not execute any step until the author signs off
-> on the overall shape (and the open questions in the final section).
+> ✅ **All open questions resolved 2026-05-13.** Ready for execution.
 
 > **Relationship to the existing noun-first CLI convention:** The broader
 > noun-first rename already shipped (`0360402 rename: gh optivem CLI to
@@ -151,12 +149,13 @@ Ready item from the project board.`,
 
 Implementation notes:
 - The `Run` body is the union of today's two `Run` bodies. When
-  `issueArg == ""`, skip `parseIssueArg` and `runImplementTicketPreflight`'s
-  workspace check (today, `manage-project` does *not* run the workspace
-  preflight; verify whether the new unified command should always run
-  it — see Open Questions #2).
+  `issueArg == ""`, skip `parseIssueArg` but **still run
+  `runImplementTicketPreflight`** (per Q2 resolution — preflight always
+  runs; today's `manage-project` skip was historical, not deliberate).
 - Both `driver.Run` paths already accept `driver.Options{IssueNum: 0, …}`
   for the picker path, so the dispatch logic is one shared call.
+- No `-i` shorthand for `--issue` (per Q5 resolution); declare with
+  `StringVar`, not `StringVarP`.
 
 ### Step 2 — Add `process show` command
 
@@ -287,25 +286,20 @@ the body, rewrite those examples to noun-first while we're in there
    hidden aliases, no deprecation warnings. Step 5's call-site sweep
    becomes mandatory (anything still referencing `gh optivem atdd …`
    after the rip will fail loudly).
-2. **Workspace preflight on `manage-project` path.** Today
-   `implement-ticket` runs `runImplementTicketPreflight` (workspace +
-   on-disk layout) but `manage-project` does not (see
-   `atdd_commands.go:217+` vs `:117+`). After the merge into one
-   `implement` command, should preflight always run, or only when
-   `--issue` is provided? Recommendation: always run — picking the top
-   Ready item still needs the workspace to exist.
+2. **Workspace preflight on `manage-project` path.** ✅ **Resolved
+   2026-05-13: always run.** In the new unified `implement` command,
+   `runImplementTicketPreflight` runs whether or not `--issue` was
+   passed. The no-issue path still needs the workspace to exist;
+   today's skip is historical, not deliberate.
 3. **~~Relationship to `20260511-2000-noun-first-cli-rename.md`.~~**
    ✅ **Resolved 2026-05-13: moot.** The broader noun-first rename
    already shipped (see intro). This plan finishes the last holdout;
    no coordination needed. Step 7 cleans up stale references in two
    older plans.
-4. **`process` as a top-level noun.** Does `process` read naturally
-   alongside the other top-level groups (`system`, `test`, `compile`,
-   `config`, `environment`, `init`, `upgrade`)? Or is something like
-   `pipeline` clearer? The state-machine YAML is literally
-   `process-flow.yaml`, so `process` has source-of-truth alignment going
-   for it.
-5. **Short flag for `--issue`.** Worth adding `-i` for muscle memory,
-   or keep the long form only to avoid clashing with future flags? (No
-   current `-i` shorthand exists at the root level — `init -v` is the
-   only documented short-flag collision concern, per `main.go:88–91`.)
+4. **`process` as a top-level noun.** ✅ **Resolved 2026-05-13: keep
+   `process`.** Source-of-truth alignment with `process-flow.yaml` wins.
+   `pipeline` was the only real alternative but would create a CLI ↔
+   on-disk vocabulary split.
+5. **Short flag for `--issue`.** ✅ **Resolved 2026-05-13: long form
+   only.** No `-i` shorthand. Reserves `-i` for future flags and
+   matches today's behavior (today's `--issue` also has no short form).
