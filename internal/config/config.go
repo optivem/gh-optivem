@@ -3,9 +3,11 @@ package config
 
 import (
 	"fmt"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -88,7 +90,6 @@ type Config struct {
 	// round-trip that drops comments.
 	SourceProjectURLWasEmpty bool
 
-	DryRun       bool
 	VerifyLevel    string // "none", "local", "commit", "acceptance", "qa", "release"
 	NoLegacy       bool   // exclude legacy from local tests and acceptance stage
 	NoLocalTests   bool   // skip the "Verify local testing" step (runner package over system-test/)
@@ -404,6 +405,57 @@ func ValidateSystemName(name string) string {
 	return projectconfig.ValidateSystemName(name)
 }
 
+// ValidateArch checks --arch / interactive arch input.
+// Returns an error message or empty string if valid.
+func ValidateArch(arch string) string {
+	if arch != "monolith" && arch != "multitier" {
+		return "must be 'monolith' or 'multitier'"
+	}
+	return ""
+}
+
+// ValidateRepoStrategy checks --repo-strategy / interactive repo-strategy input.
+// Returns an error message or empty string if valid.
+func ValidateRepoStrategy(rs string) string {
+	if rs != "monorepo" && rs != "multirepo" {
+		return "must be 'monorepo' or 'multirepo'"
+	}
+	return ""
+}
+
+// ValidateBackendLang checks the backend / monolith language input.
+// Returns an error message or empty string if valid.
+//
+// One validator covers both --monolith-lang and --backend-lang (the
+// interactive prompt asks one or the other depending on arch); the
+// frontend lang is a separate validator because its allowed set is
+// narrower today.
+func ValidateBackendLang(lang string) string {
+	if lang != "java" && lang != "dotnet" && lang != "typescript" {
+		return "must be 'java', 'dotnet', or 'typescript'"
+	}
+	return ""
+}
+
+// ValidateProjectURLFormat checks --project-url / interactive project-url
+// input for canonical https://github.com/{orgs,users}/<owner>/projects/<n>
+// shape. Empty is treated as valid: the flag path documents empty as
+// "let `gh optivem init` Path A auto-create a board", and the interactive
+// prompt mirrors that. Existence is a separate concern — see
+// CheckProjectExists.
+func ValidateProjectURLFormat(url string) string {
+	if url == "" {
+		return ""
+	}
+	if !strings.HasPrefix(url, "https://github.com/") {
+		return "must be a https://github.com/... URL (e.g. https://github.com/orgs/acme/projects/1)"
+	}
+	if _, _, err := parseProjectURL(url); err != nil {
+		return "must match https://github.com/orgs/<org>/projects/<n> or https://github.com/users/<user>/projects/<n>"
+	}
+	return ""
+}
+
 // RawFlags holds the unparsed CLI flag values for `init`. Flags bind directly
 // to these fields on the Cobra command via BindInitFlags; ParseAndValidate then
 // consumes the populated struct after Cobra has parsed the command line.
@@ -430,7 +482,6 @@ type RawFlags struct {
 	FrontendPath      string
 	StubsPath         string
 	SimulatorsPath    string
-	DryRun            bool
 	KeepLocal         bool
 	NoLegacy          bool
 	NoLocalTests      bool
@@ -465,15 +516,15 @@ func bindYAMLAffectingFlags(fs *pflag.FlagSet, f *RawFlags) {
 	fs.StringVar(&f.License, "license", "mit", "License: mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense")
 	fs.StringVar(&f.Deploy, "deploy", "docker", "Deployment target: docker or cloud-run")
 	fs.StringVar(&f.ProjectURL, "project-url", "", "GitHub Project URL to bake into gh-optivem.yaml (required; e.g. https://github.com/orgs/<org>/projects/<n>)")
-	// Tier paths: required on 'config init' when --arch is set; on 'init'
-	// they are optional and default to the flat layout the scaffolder
-	// produces.
-	fs.StringVar(&f.SystemPath, "system-path", "", "Repo-relative path to system code (monolith only; required on 'config init')")
-	fs.StringVar(&f.SystemTestPath, "system-test-path", "", "Repo-relative path to system tests (required on 'config init' when --arch is set)")
-	fs.StringVar(&f.BackendPath, "backend-path", "", "Repo-relative path to backend code (multitier only; required on 'config init')")
-	fs.StringVar(&f.FrontendPath, "frontend-path", "", "Repo-relative path to frontend code (multitier only; required on 'config init')")
-	fs.StringVar(&f.StubsPath, "stubs-path", "", "Repo-relative path to external-system stubs (required on 'config init' when --arch is set)")
-	fs.StringVar(&f.SimulatorsPath, "simulators-path", "", "Repo-relative path to external-system simulators (required on 'config init' when --arch is set)")
+	// Tier paths default to the flat scaffold layout — the same layout
+	// `gh optivem init` itself produces. Pass these flags only to point
+	// the YAML at a non-flat existing repo.
+	fs.StringVar(&f.SystemPath, "system-path", "", "Repo-relative path to system code (monolith only; default: "+DefaultSystemPath+")")
+	fs.StringVar(&f.SystemTestPath, "system-test-path", "", "Repo-relative path to system tests (default: "+DefaultSystemTestPath+")")
+	fs.StringVar(&f.BackendPath, "backend-path", "", "Repo-relative path to backend code (multitier only; default: "+DefaultBackendPath+")")
+	fs.StringVar(&f.FrontendPath, "frontend-path", "", "Repo-relative path to frontend code (multitier only; default: "+DefaultFrontendPath+")")
+	fs.StringVar(&f.StubsPath, "stubs-path", "", "Repo-relative path to external-system stubs (default: "+DefaultStubsPath+")")
+	fs.StringVar(&f.SimulatorsPath, "simulators-path", "", "Repo-relative path to external-system simulators (default: "+DefaultSimulatorsPath+")")
 }
 
 // BindInitFlags binds every `gh optivem init` CLI flag to the corresponding
@@ -487,7 +538,6 @@ func bindYAMLAffectingFlags(fs *pflag.FlagSet, f *RawFlags) {
 // help page reflects what the operator can actually steer per run.
 func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs := cmd.Flags()
-	fs.BoolVar(&f.DryRun, "dry-run", false, "Print actions without executing")
 	fs.BoolVar(&f.KeepLocal, "keep-local", false, "Keep the local scaffolded clone dir instead of deleting it on success")
 	fs.StringVar(&f.VerifyLevel, "verify-level", "release", "Verification level: none, local, commit, acceptance, qa, release")
 	fs.BoolVar(&f.NoLegacy, "no-legacy", false, "Exclude legacy from local tests and acceptance stage")
@@ -500,7 +550,7 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs.StringVar(&f.ShopRef, "shop-ref", "", "Pin optivem/shop to this ref (tag, SHA, or branch — e.g. meta-v1.2.3, main, a1b2c3d). Overrides build-time pin. Default: latest meta-v* release.")
 	fs.BoolVarP(&f.Verbose, "verbose", "v", false, "Enable debug output (retry/wait chatter, diagnostics)")
 	fs.BoolVarP(&f.Quiet, "quiet", "q", false, "Suppress info-level output (warnings and errors still shown)")
-	fs.StringVar(&f.LogFile, "log-file", "", "Also write plain-text log output to this file (no ANSI colors, all levels)")
+	fs.StringVar(&f.LogFile, "log-file", "", "Override path for the plain-text log mirror (default: $TEMP/gh-optivem-<timestamp>.log; always written so failures can be attached to bug reports)")
 	fs.BoolVarP(&f.AssumeYes, "yes", "y", false, "Skip all interactive confirmations (existing-repo prompt, --report-bug confirmation, project-board status-ensure on supplied --project-url). Expected pattern for CI/unattended runs.")
 }
 
@@ -533,11 +583,11 @@ func validateCommonFlags(deploy, arch, repoStrategy string) {
 	if deploy == "cloud-run" {
 		log.FatalExit("--deploy cloud-run is in development and may be available in a future release. Use --deploy docker for now.")
 	}
-	if arch != "monolith" && arch != "multitier" {
-		log.FatalExit("--arch must be 'monolith' or 'multitier'")
+	if msg := ValidateArch(arch); msg != "" {
+		log.FatalExit("--arch " + msg)
 	}
-	if repoStrategy != "monorepo" && repoStrategy != "multirepo" {
-		log.FatalExit("--repo-strategy must be 'monorepo' or 'multirepo'")
+	if msg := ValidateRepoStrategy(repoStrategy); msg != "" {
+		log.FatalExit("--repo-strategy " + msg)
 	}
 }
 
@@ -583,39 +633,18 @@ func resolveLangs(f *RawFlags) langChoice {
 	return c
 }
 
-// resolveScaffoldPaths fills in any tier-path flags the user did not pass on
-// `gh optivem init` with the flat layout the scaffolder actually produces.
-// Mutates f in place. Anything the user did supply is preserved (so an
-// advanced user can override the flat default per-tier without losing the
-// other defaults).
-//
-// `gh optivem config init` does NOT call this — there the YAML is being
-// written for an existing layout the tool did not produce, so the caller
-// must specify the paths explicitly (validatePathFlagsForYAML enforces).
-func resolveScaffoldPaths(f *RawFlags) {
-	if f.SystemTestPath == "" {
-		f.SystemTestPath = "system-test"
-	}
-	if f.StubsPath == "" {
-		f.StubsPath = "external-systems/external-stub"
-	}
-	if f.SimulatorsPath == "" {
-		f.SimulatorsPath = "external-systems/external-real-sim"
-	}
-	switch f.Arch {
-	case "monolith":
-		if f.SystemPath == "" {
-			f.SystemPath = "system"
-		}
-	case "multitier":
-		if f.BackendPath == "" {
-			f.BackendPath = "backend"
-		}
-		if f.FrontendPath == "" {
-			f.FrontendPath = "frontend"
-		}
-	}
-}
+// Default tier paths — the flat layout `gh optivem init` itself produces.
+// resolvePathFlagsForYAML fills empties with these so `gh optivem config
+// init` defaults to the same layout without the operator having to type
+// six flags whose values are already the obvious ones.
+const (
+	DefaultSystemPath     = "system"
+	DefaultSystemTestPath = "system-test"
+	DefaultBackendPath    = "backend"
+	DefaultFrontendPath   = "frontend"
+	DefaultStubsPath      = "external-systems/external-stub"
+	DefaultSimulatorsPath = "external-systems/external-real-sim"
+)
 
 type envTokens struct {
 	dockerHubUsername, dockerHubToken, sonarToken, ghcrToken, workflowToken, repoToken string
@@ -629,55 +658,6 @@ func readEnvTokens() envTokens {
 		ghcrToken:         os.Getenv("GHCR_TOKEN"),
 		workflowToken:     os.Getenv("WORKFLOW_TOKEN"),
 		repoToken:         os.Getenv("REPO_TOKEN"),
-	}
-}
-
-func validateEnvTokens(e envTokens) {
-	required := []struct{ name, val string }{
-		{"DOCKERHUB_USERNAME", e.dockerHubUsername},
-		{"DOCKERHUB_TOKEN", e.dockerHubToken},
-		{"SONAR_TOKEN", e.sonarToken},
-		{"WORKFLOW_TOKEN", e.workflowToken},
-		{"GHCR_TOKEN", e.ghcrToken},
-		{"REPO_TOKEN", e.repoToken},
-	}
-	for _, r := range required {
-		if r.val == "" {
-			failMissingEnv(r.name)
-		}
-	}
-}
-
-const (
-	envRequiredSuffix  = " environment variable is required.\n"
-	patSettingsURLLine = "  https://github.com/settings/tokens\n"
-)
-
-func failMissingEnv(name string) {
-	switch name {
-	case "GHCR_TOKEN":
-		log.FatalExit(name + envRequiredSuffix +
-			"  The scaffolded repo's acceptance/prod stages use it to tag images in GHCR.\n" +
-			"  Create a Personal Access Token (classic) with write:packages + read:packages scopes:\n" +
-			patSettingsURLLine +
-			"  Then: export GHCR_TOKEN=<your-token>")
-	case "WORKFLOW_TOKEN":
-		log.FatalExit(name + envRequiredSuffix +
-			"  The scaffolded repo's acceptance/QA/prod stages use it to push release tags\n" +
-			"  (default GITHUB_TOKEN cannot push tags whose commit diffs workflow files).\n" +
-			"  Create a Personal Access Token (classic) with repo + workflow scopes:\n" +
-			patSettingsURLLine +
-			"  Then: export WORKFLOW_TOKEN=<your-token>")
-	case "REPO_TOKEN":
-		log.FatalExit(name + envRequiredSuffix +
-			"  In multitier+multirepo scaffolds, the system-level prod-stage uses it to read\n" +
-			"  each component repo's VERSION file via the GitHub API (cross-repo Contents:read).\n" +
-			"  Create a Personal Access Token (classic) with repo scope, OR a fine-grained PAT\n" +
-			"  with Contents:Read on the component repos:\n" +
-			patSettingsURLLine +
-			"  Then: export REPO_TOKEN=<your-token>")
-	default:
-		log.Fatalf("%s environment variable is required", name)
 	}
 }
 
@@ -771,23 +751,104 @@ func computeOwnerPascal(owner string) string {
 // success. 4xx/5xx still produce non-zero exit codes, which is what we key on.
 const ghAPISilent = "--silent"
 
-// checkOwnerExists verifies the owner resolves as a GitHub user or organization.
-// Aborts via FatalExit if neither endpoint returns 200.
-func checkOwnerExists(owner string) {
-	// gh api returns non-zero on HTTP 4xx/5xx. Try user first (more common),
-	// then org. Stderr is suppressed so the 404 from the user lookup doesn't
-	// leak when we fall back to the org endpoint.
+// CheckOwnerExistsFn and CheckProjectExistsFn are the network-validation
+// seams shared by ValidateAndDeriveForYAML (flag-driven `gh optivem config
+// init` + `gh optivem init`) and configinit.Prompt (interactive recovery
+// + interactive `config init`). Tests override these to keep the unit
+// surface offline; production wires both to the real `gh` subshell
+// probes.
+//
+// Exported (vs. the unexported steps/project.go test seams) because
+// configinit is a sibling package — see interactive-validation-parity
+// feedback: prompts and flags must call the same validators.
+var (
+	CheckOwnerExistsFn   = realCheckOwnerExists
+	CheckProjectExistsFn = realCheckProjectExists
+)
+
+// CheckOwnerExists verifies the owner resolves as a GitHub user or
+// organization. Returns nil on success, an error describing the miss
+// otherwise. Empty owner returns nil (callers run format validation
+// first; empty is a different failure mode).
+func CheckOwnerExists(owner string) error {
+	if owner == "" {
+		return nil
+	}
+	return CheckOwnerExistsFn(owner)
+}
+
+// CheckProjectExists verifies the project URL resolves to a real GitHub
+// Project (v2) the operator can read. Returns nil on success or when url
+// is empty (empty is intentionally allowed — `gh optivem init` Path A
+// auto-creates a board on first run; see ValidateAndDeriveForYAML).
+// Returns an error describing the miss otherwise.
+func CheckProjectExists(url string) error {
+	if url == "" {
+		return nil
+	}
+	return CheckProjectExistsFn(url)
+}
+
+// realCheckOwnerExists is the production CheckOwnerExistsFn. Hits
+// `gh api users/<owner>` first (the more common case), falls back to
+// `gh api orgs/<owner>` on 404. Stderr is suppressed so the first 404
+// doesn't leak when we fall back.
+func realCheckOwnerExists(owner string) error {
 	userCmd := exec.Command("gh", "api", "users/"+owner, ghAPISilent)
 	userCmd.Stderr = nil
 	if err := userCmd.Run(); err == nil {
-		return
+		return nil
 	}
 	orgCmd := exec.Command("gh", "api", "orgs/"+owner, ghAPISilent)
 	orgCmd.Stderr = nil
 	if err := orgCmd.Run(); err == nil {
-		return
+		return nil
 	}
-	log.FatalExit(fmt.Sprintf("--owner %q: no GitHub user or organization with that name", owner))
+	return fmt.Errorf("no GitHub user or organization named %q", owner)
+}
+
+// realCheckProjectExists is the production CheckProjectExistsFn. Parses
+// the URL into (owner, number) and probes `gh project view <number>
+// --owner <login>`. A non-zero exit covers both "doesn't exist" and
+// "exists but caller can't read it" — same operator-visible failure
+// either way (`gh optivem init` will fail at the same step).
+func realCheckProjectExists(url string) error {
+	owner, number, err := parseProjectURL(url)
+	if err != nil {
+		return fmt.Errorf("project URL %q: %w", url, err)
+	}
+	cmd := exec.Command("gh", "project", "view", strconv.Itoa(number), "--owner", owner, "--format", "json")
+	cmd.Stderr = nil
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("project %s/%d not found or not accessible", owner, number)
+	}
+	return nil
+}
+
+// parseProjectURL splits a GitHub Project (v2) URL into owner login +
+// project number. Accepts both org and user variants — `gh project`
+// takes either as --owner.
+//
+// Duplicated from internal/steps/project.go and internal/atdd/runtime/board
+// rather than imported to keep internal/config dependency-free of the
+// runtime-side packages it underpins.
+func parseProjectURL(s string) (owner string, number int, err error) {
+	u, perr := neturl.Parse(s)
+	if perr != nil {
+		return "", 0, fmt.Errorf("malformed URL: %w", perr)
+	}
+	if u.Host != "github.com" {
+		return "", 0, fmt.Errorf("expected host github.com, got %q", u.Host)
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) != 4 || (parts[0] != "users" && parts[0] != "orgs") || parts[2] != "projects" {
+		return "", 0, fmt.Errorf("expected URL of form https://github.com/{users|orgs}/<owner>/projects/<n>")
+	}
+	n, cerr := strconv.Atoi(parts[3])
+	if cerr != nil || n <= 0 {
+		return "", 0, fmt.Errorf("project number must be a positive integer: %s", parts[3])
+	}
+	return parts[1], n, nil
 }
 
 // confirmReposExist probes every repo in fullRepos ("<owner>/<name>") and, if
@@ -900,22 +961,27 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 	resolvedLevel := resolveVerifyLevel(f.VerifyLevel)
 	validateCommonFlags(f.Deploy, f.Arch, f.RepoStrategy)
 	lc := resolveLangs(f)
-	resolveScaffoldPaths(f)
 
 	repoName := f.Repo
 
 	env := readEnvTokens()
-	if !f.DryRun {
-		validateEnvTokens(env)
-	}
 
 	mr := deriveMultirepoNames(f.RepoStrategy, f.Arch, f.Owner, repoName)
 
-	// === Phase 2: network auth checks (fail fast before any mutation) ===
-	// Token auth runs first because it's the most common failure mode and
-	// aborts before we touch gh / GitHub / SonarCloud for existence checks.
-	validateTokensAuth(env, f.DryRun)
-	checkOwnerExists(f.Owner)
+	// === Phase 2: token presence + provider auth (fail fast before any mutation) ===
+	// Same helper as `gh optivem environment verify`, so init shares one
+	// definition of "valid environment". Aborts before we touch gh / GitHub /
+	// SonarCloud for existence checks since this is the most common failure
+	// mode.
+	if err := VerifyTokens(); err != nil {
+		log.FatalExit(err.Error())
+	}
+	if err := CheckOwnerExists(f.Owner); err != nil {
+		log.FatalExit("--owner: " + err.Error())
+	}
+	if err := CheckProjectExists(f.ProjectURL); err != nil {
+		log.FatalExit("--project-url: " + err.Error())
+	}
 	preExisting := confirmReposExist([]string{
 		f.Owner + "/" + repoName,
 		mr.backendFullRepo,
@@ -971,7 +1037,6 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 		FrontendPath:   f.FrontendPath,
 		StubsPath:      f.StubsPath,
 		SimulatorsPath: f.SimulatorsPath,
-		DryRun:       f.DryRun,
 		VerifyLevel:    resolvedLevel,
 		NoLegacy:       f.NoLegacy,
 		NoLocalTests:   f.NoLocalTests,
@@ -1129,11 +1194,11 @@ func ValidateAndDeriveForYAML(f *RawFlags) (*Config, error) {
 	if msg := ValidateSystemName(f.SystemName); msg != "" {
 		return nil, fmt.Errorf("--system-name: %s", msg)
 	}
-	if f.Arch != "monolith" && f.Arch != "multitier" {
-		return nil, fmt.Errorf("--arch must be 'monolith' or 'multitier'")
+	if msg := ValidateArch(f.Arch); msg != "" {
+		return nil, fmt.Errorf("--arch %s", msg)
 	}
-	if f.RepoStrategy != "monorepo" && f.RepoStrategy != "multirepo" {
-		return nil, fmt.Errorf("--repo-strategy must be 'monorepo' or 'multirepo'")
+	if msg := ValidateRepoStrategy(f.RepoStrategy); msg != "" {
+		return nil, fmt.Errorf("--repo-strategy %s", msg)
 	}
 	// License/Deploy default to the same values bindYAMLAffectingFlags
 	// uses when the operator doesn't pass the flag. Defaulting here too
@@ -1151,11 +1216,14 @@ func ValidateAndDeriveForYAML(f *RawFlags) (*Config, error) {
 	if !projectconfig.IsValidDeploy(f.Deploy) {
 		return nil, fmt.Errorf("--deploy %q must be 'docker' or 'cloud-run'", f.Deploy)
 	}
+	if msg := ValidateProjectURLFormat(f.ProjectURL); msg != "" {
+		return nil, fmt.Errorf("--project-url %s", msg)
+	}
 	lc, err := resolveLangsForYAML(f)
 	if err != nil {
 		return nil, err
 	}
-	if err := validatePathFlagsForYAML(f); err != nil {
+	if err := resolvePathFlagsForYAML(f); err != nil {
 		return nil, err
 	}
 	// --project-url may be omitted: the resulting gh-optivem.yaml has
@@ -1165,6 +1233,17 @@ func ValidateAndDeriveForYAML(f *RawFlags) (*Config, error) {
 	// rewrites the yaml with the resulting URL. Pass --project-url
 	// explicitly to bind the scaffold to an existing board (Path B,
 	// status-set verification instead of creation).
+	//
+	// Existence checks: owner must resolve as a GitHub user/org; project
+	// URL (when supplied) must resolve to a real Project (v2) the operator
+	// can read. Both go through the package-level CheckOwnerExistsFn /
+	// CheckProjectExistsFn seams so test surfaces stay offline.
+	if err := CheckOwnerExists(f.Owner); err != nil {
+		return nil, fmt.Errorf("--owner: %s", err.Error())
+	}
+	if err := CheckProjectExists(f.ProjectURL); err != nil {
+		return nil, fmt.Errorf("--project-url: %s", err.Error())
+	}
 	mr := deriveMultirepoNames(f.RepoStrategy, f.Arch, f.Owner, f.Repo)
 	return &Config{
 		Owner:            f.Owner,
@@ -1195,33 +1274,36 @@ func ValidateAndDeriveForYAML(f *RawFlags) (*Config, error) {
 	}, nil
 }
 
-// validatePathFlagsForYAML enforces the explicit-paths contract for
-// `gh optivem config init`: when an architecture is set, every relevant tier
-// path flag must be non-empty. Architecture-independent flags (system-test,
-// stubs, simulators) are required for both architectures; system-path is
-// monolith-only; backend-path and frontend-path are multitier-only.
+// resolvePathFlagsForYAML fills any empty tier-path flag with the flat
+// scaffold layout — the same defaults `gh optivem init` itself produces
+// — so an operator running `gh optivem config init` for a freshly
+// scaffolded project doesn't have to retype values that match the
+// scaffolder's own output. Override individual paths only when the YAML
+// is being written for a non-flat existing repo.
 //
-// Mismatched flags (e.g. --system-path on multitier) are also rejected so a
-// typo in the rehearsal script doesn't silently land in the YAML.
-func validatePathFlagsForYAML(f *RawFlags) error {
-	var missing []string
-	require := func(name, val string) {
-		if val == "" {
-			missing = append(missing, name)
-		}
-	}
+// Mismatched flags (e.g. --system-path on multitier) are still rejected
+// so a typo doesn't silently land in the YAML.
+func resolvePathFlagsForYAML(f *RawFlags) error {
 	reject := func(name, val string) error {
 		if val != "" {
 			return fmt.Errorf("--%s is not valid for --arch %s", name, f.Arch)
 		}
 		return nil
 	}
-	require("system-test-path", f.SystemTestPath)
-	require("stubs-path", f.StubsPath)
-	require("simulators-path", f.SimulatorsPath)
+	if f.SystemTestPath == "" {
+		f.SystemTestPath = DefaultSystemTestPath
+	}
+	if f.StubsPath == "" {
+		f.StubsPath = DefaultStubsPath
+	}
+	if f.SimulatorsPath == "" {
+		f.SimulatorsPath = DefaultSimulatorsPath
+	}
 	switch f.Arch {
 	case "monolith":
-		require("system-path", f.SystemPath)
+		if f.SystemPath == "" {
+			f.SystemPath = DefaultSystemPath
+		}
 		if err := reject("backend-path", f.BackendPath); err != nil {
 			return err
 		}
@@ -1229,14 +1311,15 @@ func validatePathFlagsForYAML(f *RawFlags) error {
 			return err
 		}
 	case "multitier":
-		require("backend-path", f.BackendPath)
-		require("frontend-path", f.FrontendPath)
+		if f.BackendPath == "" {
+			f.BackendPath = DefaultBackendPath
+		}
+		if f.FrontendPath == "" {
+			f.FrontendPath = DefaultFrontendPath
+		}
 		if err := reject("system-path", f.SystemPath); err != nil {
 			return err
 		}
-	}
-	if len(missing) > 0 {
-		return fmt.Errorf("required path flags for --arch %s: --%s", f.Arch, strings.Join(missing, ", --"))
 	}
 	return nil
 }

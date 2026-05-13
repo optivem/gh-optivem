@@ -12,6 +12,18 @@ import (
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
+// init replaces the GitHub-side existence checks with pass-everything
+// stubs for the duration of the test binary. ValidateAndDeriveForYAML
+// — the path every configinit.Run test below reaches — calls
+// CheckOwnerExists + CheckProjectExists in production; without these
+// stubs every test would shell out to `gh` and fail offline. Tests that
+// want to exercise the failure path can re-override the Fn vars
+// per-test.
+func init() {
+	config.CheckOwnerExistsFn = func(string) error { return nil }
+	config.CheckProjectExistsFn = func(string) error { return nil }
+}
+
 // offlinePreflightOpts returns a preflight.Options factory that wires
 // only workspace + cwd — every remote-check field is left nil so the
 // test surface stays local-FS-only. Used by every runConfigPreflight
@@ -84,6 +96,83 @@ func TestRunConfigInit_MonolithRoundTrip(t *testing.T) {
 	}
 	if cfg.System.Repo != "acme/page-turner" {
 		t.Errorf("system.repo: got %q, want acme/page-turner", cfg.System.Repo)
+	}
+}
+
+// TestRunConfigInit_DefaultsFlatLayoutPaths pins the contract that
+// `gh optivem config init` materializes the flat-scaffold path defaults
+// into gh-optivem.yaml when the operator passes no path flags — the
+// same layout `gh optivem init` itself produces. Covers both arches in
+// one parametric pass.
+func TestRunConfigInit_DefaultsFlatLayoutPaths(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name              string
+		flags             *config.RawFlags
+		wantSystemPath    string // empty on multitier
+		wantBackendPath   string // empty on monolith
+		wantFrontendPath  string // empty on monolith
+		wantSystemTest    string
+		wantStubsPath     string
+		wantSimsPath      string
+	}{
+		{
+			name: "monolith flat defaults",
+			flags: &config.RawFlags{
+				Owner: "acme", Repo: "page-turner", SystemName: "Page Turner",
+				Arch: "monolith", RepoStrategy: "monorepo", Lang: "java",
+				ProjectURL: "https://github.com/orgs/acme/projects/1",
+			},
+			wantSystemPath: config.DefaultSystemPath,
+			wantSystemTest: config.DefaultSystemTestPath,
+			wantStubsPath:  config.DefaultStubsPath,
+			wantSimsPath:   config.DefaultSimulatorsPath,
+		},
+		{
+			name: "multitier flat defaults",
+			flags: &config.RawFlags{
+				Owner: "acme", Repo: "page-turner", SystemName: "Page Turner",
+				Arch: "multitier", RepoStrategy: "multirepo",
+				BackendLang: "java", FrontendLang: "typescript",
+				ProjectURL: "https://github.com/orgs/acme/projects/1",
+			},
+			wantBackendPath:  config.DefaultBackendPath,
+			wantFrontendPath: config.DefaultFrontendPath,
+			wantSystemTest:   config.DefaultSystemTestPath,
+			wantStubsPath:    config.DefaultStubsPath,
+			wantSimsPath:     config.DefaultSimulatorsPath,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			if _, err := configinit.Run(tc.flags, filepath.Join(dir, projectconfig.Path), false); err != nil {
+				t.Fatalf("configinit.Run: %v", err)
+			}
+			cfg, err := projectconfig.Load(dir)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if tc.wantSystemPath != "" && cfg.System.Path != tc.wantSystemPath {
+				t.Errorf("system.path: got %q, want %q", cfg.System.Path, tc.wantSystemPath)
+			}
+			if tc.wantBackendPath != "" && cfg.System.Backend.Path != tc.wantBackendPath {
+				t.Errorf("system.backend.path: got %q, want %q", cfg.System.Backend.Path, tc.wantBackendPath)
+			}
+			if tc.wantFrontendPath != "" && cfg.System.Frontend.Path != tc.wantFrontendPath {
+				t.Errorf("system.frontend.path: got %q, want %q", cfg.System.Frontend.Path, tc.wantFrontendPath)
+			}
+			if cfg.SystemTest.Path != tc.wantSystemTest {
+				t.Errorf("system_test.path: got %q, want %q", cfg.SystemTest.Path, tc.wantSystemTest)
+			}
+			if cfg.ExternalSystems.Stubs.Path != tc.wantStubsPath {
+				t.Errorf("external_systems.stubs.path: got %q, want %q", cfg.ExternalSystems.Stubs.Path, tc.wantStubsPath)
+			}
+			if cfg.ExternalSystems.Simulators.Path != tc.wantSimsPath {
+				t.Errorf("external_systems.simulators.path: got %q, want %q", cfg.ExternalSystems.Simulators.Path, tc.wantSimsPath)
+			}
+		})
 	}
 }
 
@@ -203,14 +292,6 @@ func TestRunConfigInit_RejectsBadFlags(t *testing.T) {
 				SimulatorsPath: "external-systems/external-real-sim",
 			},
 			"--backend-lang",
-		},
-		{
-			"missing path flags",
-			&config.RawFlags{
-				Owner: "acme", Repo: "sky-travel", SystemName: "Sky Travel",
-				Arch: "monolith", RepoStrategy: "monorepo", Lang: "java",
-			},
-			"--system-path",
 		},
 		{
 			"system-path on multitier",

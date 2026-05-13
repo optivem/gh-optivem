@@ -2,33 +2,43 @@ package configinit
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/optivem/gh-optivem/internal/config"
 )
 
-// stubInference replaces InferOwnerRepo's underlying git shell-out with
-// a deterministic value for the duration of one test. Returns a cleanup
-// closure registered via t.Cleanup so the original is restored even on
-// test failure.
-func stubInference(t *testing.T, raw string, ok bool) {
+// stubExistenceChecks replaces config.CheckOwnerExistsFn and
+// config.CheckProjectExistsFn with the supplied functions for the
+// duration of the test. Defaults that pass everything are used when nil
+// is passed. Returned restore func reverses the swap on t.Cleanup.
+func stubExistenceChecks(t *testing.T, owner func(string) error, project func(string) error) {
 	t.Helper()
-	orig := runGitRemote
-	t.Cleanup(func() { runGitRemote = orig })
-	runGitRemote = func(string) (string, error) {
-		if !ok {
-			return "", io.EOF // any non-nil error triggers the ok=false path
-		}
-		return raw, nil
+	prevOwner := config.CheckOwnerExistsFn
+	prevProject := config.CheckProjectExistsFn
+	if owner == nil {
+		owner = func(string) error { return nil }
 	}
+	if project == nil {
+		project = func(string) error { return nil }
+	}
+	config.CheckOwnerExistsFn = owner
+	config.CheckProjectExistsFn = project
+	t.Cleanup(func() {
+		config.CheckOwnerExistsFn = prevOwner
+		config.CheckProjectExistsFn = prevProject
+	})
 }
 
-// monolithAnswers returns the slim interactive script for a monolith run
-// when InferOwnerRepo succeeds (owner/repo do not prompt). The order
-// follows Prompt's question sequence: system-name → arch → repo-strategy
-// → lang → project-url → license.
+// monolithAnswers returns the slim interactive script for a monolith run.
+// The order follows Prompt's question sequence: owner → repo →
+// system-name → arch → repo-strategy → lang → project-url → license.
 func monolithAnswers() []string {
 	return []string{
+		"acme",                                    // owner
+		"page-turner",                             // repo
 		"Page Turner",                             // system-name
 		"monolith",                                // arch
 		"monorepo",                                // repo-strategy
@@ -40,6 +50,8 @@ func monolithAnswers() []string {
 
 func multitierAnswers() []string {
 	return []string{
+		"acme",                                    // owner
+		"page-turner",                             // repo
 		"Page Turner",                             // system-name
 		"multitier",                               // arch
 		"multirepo",                               // repo-strategy
@@ -49,15 +61,6 @@ func multitierAnswers() []string {
 	}
 }
 
-// noRemoteAnswers is the script when inference fails — the prompt asks
-// owner and repo before the rest.
-func noRemoteAnswers() []string {
-	return append([]string{
-		"acme",        // owner
-		"page-turner", // repo
-	}, monolithAnswers()...)
-}
-
 // script joins answers with "\n" and appends a trailing newline so the
 // bufio.Reader inside Prompt sees one line per answer.
 func script(lines []string) io.Reader {
@@ -65,34 +68,33 @@ func script(lines []string) io.Reader {
 }
 
 func TestPrompt_MonolithHappyPath(t *testing.T) {
-	stubInference(t, "https://github.com/acme/page-turner.git", true)
+	stubExistenceChecks(t, nil, nil)
 	var out bytes.Buffer
 	f, err := Prompt(script(monolithAnswers()), &out)
 	if err != nil {
 		t.Fatalf("Prompt: %v", err)
 	}
 	if f.Owner != "acme" || f.Repo != "page-turner" {
-		t.Errorf("owner/repo: got %q/%q; expected inferred acme/page-turner", f.Owner, f.Repo)
+		t.Errorf("owner/repo: got %q/%q; want acme/page-turner", f.Owner, f.Repo)
 	}
 	if f.Arch != "monolith" || f.Lang != "java" {
 		t.Errorf("arch/lang: got %q/%q", f.Arch, f.Lang)
 	}
-	if f.SystemPath != defaultSystemPath {
-		t.Errorf("SystemPath: got %q, want default %q", f.SystemPath, defaultSystemPath)
-	}
-	if f.SystemTestPath != defaultSystemTestPath || f.StubsPath != defaultStubsPath || f.SimulatorsPath != defaultSimulatorsPath {
-		t.Errorf("path defaults: got system-test=%q stubs=%q sims=%q", f.SystemTestPath, f.StubsPath, f.SimulatorsPath)
+	// Tier paths are intentionally left empty by Prompt — defaulting
+	// happens downstream in config.resolvePathFlagsForYAML so the
+	// flag-driven and interactive paths share one definition of "flat
+	// layout". End-to-end YAML output is covered by ensure_test.go.
+	if f.SystemPath != "" || f.SystemTestPath != "" || f.StubsPath != "" || f.SimulatorsPath != "" {
+		t.Errorf("path fields should be empty post-Prompt; got system=%q system-test=%q stubs=%q sims=%q",
+			f.SystemPath, f.SystemTestPath, f.StubsPath, f.SimulatorsPath)
 	}
 	if f.ProjectURL != "https://github.com/orgs/acme/projects/1" {
 		t.Errorf("ProjectURL: got %q", f.ProjectURL)
 	}
-	if !strings.Contains(out.String(), "Inferred owner=acme, repo=page-turner from git remote origin") {
-		t.Errorf("output should announce inferred values, got:\n%s", out.String())
-	}
 }
 
 func TestPrompt_MultitierHappyPath(t *testing.T) {
-	stubInference(t, "https://github.com/acme/page-turner.git", true)
+	stubExistenceChecks(t, nil, nil)
 	var out bytes.Buffer
 	f, err := Prompt(script(multitierAnswers()), &out)
 	if err != nil {
@@ -107,38 +109,23 @@ func TestPrompt_MultitierHappyPath(t *testing.T) {
 	if f.FrontendLang != "typescript" {
 		t.Errorf("FrontendLang should be hardcoded to typescript, got %q", f.FrontendLang)
 	}
-	if f.BackendPath != defaultBackendPath || f.FrontendPath != defaultFrontendPath {
-		t.Errorf("multitier path defaults: got backend=%q frontend=%q", f.BackendPath, f.FrontendPath)
+	// Tier paths are intentionally left empty by Prompt — defaulting
+	// happens in config.resolvePathFlagsForYAML.
+	if f.BackendPath != "" || f.FrontendPath != "" {
+		t.Errorf("multitier path fields should be empty post-Prompt; got backend=%q frontend=%q", f.BackendPath, f.FrontendPath)
 	}
 	if f.ProjectURL != "https://github.com/orgs/acme/projects/2" {
 		t.Errorf("ProjectURL: got %q", f.ProjectURL)
 	}
 }
 
-// TestPrompt_FallsBackToPromptWhenNoRemote — inference returns ok=false,
-// owner+repo are prompted using the existing validators.
-func TestPrompt_FallsBackToPromptWhenNoRemote(t *testing.T) {
-	stubInference(t, "", false)
-	var out bytes.Buffer
-	f, err := Prompt(script(noRemoteAnswers()), &out)
-	if err != nil {
-		t.Fatalf("Prompt: %v", err)
-	}
-	if f.Owner != "acme" || f.Repo != "page-turner" {
-		t.Errorf("owner/repo: got %q/%q; want prompted acme/page-turner", f.Owner, f.Repo)
-	}
-	if strings.Contains(out.String(), "Inferred owner") {
-		t.Errorf("output should NOT announce inferred values on no-remote path, got:\n%s", out.String())
-	}
-}
-
-// TestPrompt_ReAsksOnBadOwner — invalid owner format on the no-remote
-// fallback path is rejected and the prompt re-asks for that field.
+// TestPrompt_ReAsksOnBadOwner — invalid owner format is rejected and the
+// prompt re-asks for that field.
 func TestPrompt_ReAsksOnBadOwner(t *testing.T) {
-	stubInference(t, "", false)
+	stubExistenceChecks(t, nil, nil)
 	// Prepend "-bad" before the valid owner; everything else is the
-	// happy-path no-remote script.
-	lines := append([]string{"-bad"}, noRemoteAnswers()...)
+	// happy-path script.
+	lines := append([]string{"-bad"}, monolithAnswers()...)
 	var out bytes.Buffer
 	f, err := Prompt(script(lines), &out)
 	if err != nil {
@@ -152,16 +139,44 @@ func TestPrompt_ReAsksOnBadOwner(t *testing.T) {
 	}
 }
 
+// TestPrompt_ReAsksOnMissingOwner — owner passes format validation but
+// the GitHub existence check fails. Mirrors the user-reported "sdgsgd
+// went through" case; the prompt re-asks just the owner field instead
+// of letting the bad value land in the YAML.
+func TestPrompt_ReAsksOnMissingOwner(t *testing.T) {
+	stubExistenceChecks(t,
+		func(o string) error {
+			if o == "ghost" {
+				return fmt.Errorf("no GitHub user or organization named %q", o)
+			}
+			return nil
+		},
+		nil,
+	)
+	lines := append([]string{"ghost"}, monolithAnswers()...)
+	var out bytes.Buffer
+	f, err := Prompt(script(lines), &out)
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	if f.Owner != "acme" {
+		t.Errorf("Owner: got %q (should have re-asked past the missing owner)", f.Owner)
+	}
+	if !strings.Contains(out.String(), `no GitHub user or organization named "ghost"`) {
+		t.Errorf("output should surface the existence error, got:\n%s", out.String())
+	}
+}
+
 // TestPrompt_ReAsksOnBadArch — invalid arch value re-asks rather than
-// aborting; arch gates the lang branch downstream. Arch sits at index 1
-// in the script (after system-name).
+// aborting; arch gates the lang branch downstream. Arch sits at index 3
+// in the script (after owner, repo, system-name).
 func TestPrompt_ReAsksOnBadArch(t *testing.T) {
-	stubInference(t, "https://github.com/acme/page-turner.git", true)
+	stubExistenceChecks(t, nil, nil)
 	answers := monolithAnswers()
-	// Inject a bad arch between system-name (index 0) and the valid "monolith" (index 1).
-	lines := append([]string{}, answers[:1]...)
+	const archPos = 3
+	lines := append([]string{}, answers[:archPos]...)
 	lines = append(lines, "bogus")
-	lines = append(lines, answers[1:]...)
+	lines = append(lines, answers[archPos:]...)
 	var out bytes.Buffer
 	f, err := Prompt(script(lines), &out)
 	if err != nil {
@@ -175,17 +190,29 @@ func TestPrompt_ReAsksOnBadArch(t *testing.T) {
 	}
 }
 
-// TestPrompt_ReAsksOnBadProjectURL — empty input re-asks (URL is
-// mandatory), and a non-https://github.com URL is also rejected.
-// Mirrors the Validate rule in projectconfig: the pipeline cannot
-// operate without a project board. project-url sits at index 4 (after
-// system-name, arch, repo-strategy, lang); license follows at index 5.
+// TestPrompt_ReAsksOnBadProjectURL — a non-https://github.com URL is
+// rejected by ValidateProjectURLFormat; a syntactically-valid URL that
+// fails the existence check is rejected by CheckProjectExists; both
+// cases re-ask just the project-url field. project-url sits at index 6
+// (after owner, repo, system-name, arch, repo-strategy, lang); license
+// follows at index 7.
 func TestPrompt_ReAsksOnBadProjectURL(t *testing.T) {
-	stubInference(t, "https://github.com/acme/page-turner.git", true)
+	stubExistenceChecks(t,
+		nil,
+		func(u string) error {
+			if u == "https://github.com/orgs/acme/projects/999" {
+				return fmt.Errorf("project acme/999 not found or not accessible")
+			}
+			return nil
+		},
+	)
 	answers := monolithAnswers()
-	const urlPos = 4
+	const urlPos = 6
 	lines := append([]string{}, answers[:urlPos]...)
-	lines = append(lines, "", "https://gitlab.com/orgs/acme/projects/1")
+	lines = append(lines,
+		"https://gitlab.com/orgs/acme/projects/1",   // wrong host → format error
+		"https://github.com/orgs/acme/projects/999", // format OK, existence fails via stub
+	)
 	lines = append(lines, answers[urlPos:]...)
 	var out bytes.Buffer
 	f, err := Prompt(script(lines), &out)
@@ -196,11 +223,42 @@ func TestPrompt_ReAsksOnBadProjectURL(t *testing.T) {
 		t.Errorf("ProjectURL: got %q (should have re-asked past the bad values)", f.ProjectURL)
 	}
 	body := out.String()
-	if !strings.Contains(body, "value cannot be empty") {
-		t.Errorf("output should re-ask on empty URL, got:\n%s", body)
-	}
 	if !strings.Contains(body, "must be a https://github.com/") {
 		t.Errorf("output should reject non-github URL, got:\n%s", body)
+	}
+	if !strings.Contains(body, "project acme/999 not found") {
+		t.Errorf("output should reject non-existent project, got:\n%s", body)
+	}
+}
+
+// TestPrompt_AllowsEmptyProjectURL — empty project URL is accepted and
+// stored as empty in RawFlags; `gh optivem init` Path A will then
+// auto-create the project board on first run. Empty input does NOT
+// trigger CheckProjectExists.
+func TestPrompt_AllowsEmptyProjectURL(t *testing.T) {
+	checkProjectCalls := 0
+	stubExistenceChecks(t,
+		nil,
+		func(u string) error {
+			checkProjectCalls++
+			return fmt.Errorf("stub should not have been called: %q", u)
+		},
+	)
+	answers := monolithAnswers()
+	const urlPos = 6
+	lines := append([]string{}, answers[:urlPos]...)
+	lines = append(lines, "") // empty project URL
+	lines = append(lines, answers[urlPos+1:]...)
+	var out bytes.Buffer
+	f, err := Prompt(script(lines), &out)
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	if f.ProjectURL != "" {
+		t.Errorf("ProjectURL: got %q, want empty (auto-create path)", f.ProjectURL)
+	}
+	if checkProjectCalls != 0 {
+		t.Errorf("CheckProjectExists should not have been called on empty URL; got %d call(s)", checkProjectCalls)
 	}
 }
 
@@ -208,9 +266,9 @@ func TestPrompt_ReAsksOnBadProjectURL(t *testing.T) {
 // surfaces the EOF rather than spinning. EnsureExists's caller treats
 // this as "fall back to the terse error".
 func TestPrompt_EOFReturnsError(t *testing.T) {
-	stubInference(t, "https://github.com/acme/page-turner.git", true)
-	// Only a partial script: arch + repo-strategy, then EOF.
-	partial := strings.Join([]string{"monolith", "monorepo"}, "\n") + "\n"
+	stubExistenceChecks(t, nil, nil)
+	// Only a partial script: owner + repo, then EOF.
+	partial := strings.Join([]string{"acme", "page-turner"}, "\n") + "\n"
 	var out bytes.Buffer
 	_, err := Prompt(strings.NewReader(partial), &out)
 	if err == nil {

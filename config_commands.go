@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/preflight"
@@ -49,8 +50,15 @@ non-scaffolded repo, or re-validating after a hand edit).`,
 // newConfigInitCmd implements `gh optivem config init`. Writes a fresh
 // gh-optivem.yaml from CLI flags. Refuses to overwrite an existing file
 // unless --force is passed (the file may be hand-edited; silent overwrite
-// is a foot-gun). Pure local file write — no network, no GitHub, no
-// SonarCloud.
+// is a foot-gun).
+//
+// Validations run before the file is written, in two phases: (1) format
+// (owner naming rules, license key, arch/repo-strategy enums, project
+// URL shape) and (2) existence (owner resolves as a real GitHub user or
+// org; project URL — when supplied — resolves to a real Project v2 the
+// caller can read). The interactive prompt path shares the same
+// validators, so flag-driven and interactive `config init` produce the
+// same accept/reject decisions on every field.
 //
 // Target path precedence: persistent --config / -c (or $GH_OPTIVEM_CONFIG)
 // > --dir > current working directory. --config names an exact target
@@ -86,6 +94,18 @@ silent overwrite would be a foot-gun.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			yamlPath, err := configinit.ResolveTarget(projectConfigPath, dir)
 			exitOnError(err)
+			// No required YAML flags + TTY → drop into the same Prompt path
+			// EnsureExists uses for missing-file recovery. Non-TTY falls
+			// through to configinit.Run and surfaces the existing
+			// "required flags" error from ValidateAndDeriveForYAML.
+			if noRequiredConfigInitFlagsSet(f) && isatty.IsTerminal(os.Stdin.Fd()) {
+				prompted, perr := configinit.Prompt(os.Stdin, os.Stderr)
+				exitOnError(perr)
+				written, werr := configinit.RunWithBanner(prompted, yamlPath, force, configinit.Banner)
+				exitOnError(werr)
+				fmt.Printf("Wrote %s\n", written)
+				return
+			}
 			written, err := configinit.Run(f, yamlPath, force)
 			exitOnError(err)
 			fmt.Printf("Wrote %s\n", written)
@@ -130,6 +150,15 @@ the single-stack deriver cannot express).`,
 		},
 	}
 	return cmd
+}
+
+// noRequiredConfigInitFlagsSet reports whether the operator passed none of
+// the five required YAML-affecting flags. Trigger for `config init` to
+// drop into the interactive Prompt (on a TTY) instead of erroring with
+// "required flags: --owner, --repo, …". Mirrors the precondition in
+// config.ValidateAndDeriveForYAML.
+func noRequiredConfigInitFlagsSet(f *config.RawFlags) bool {
+	return f.Owner == "" && f.Repo == "" && f.SystemName == "" && f.Arch == "" && f.RepoStrategy == ""
 }
 
 // runConfigValidate is the testable core of `gh optivem config validate`. It

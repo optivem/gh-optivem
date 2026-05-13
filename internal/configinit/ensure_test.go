@@ -47,7 +47,7 @@ func TestEnsureExists_MissingNonTTY(t *testing.T) {
 // review-banner prepended) and runs the .gitignore side-effect that
 // comes with Run.
 func TestEnsureExists_MissingTTYValidPrompt(t *testing.T) {
-	stubInference(t, "https://github.com/acme/page-turner.git", true)
+	stubExistenceChecks(t, nil, nil)
 	dir := t.TempDir()
 	path := filepath.Join(dir, projectconfig.Path)
 	in := script(monolithAnswers())
