@@ -57,12 +57,12 @@ banner() {
   echo "${C_BOLD}${color}========================================================================${C_RESET}"
 }
 
-log "Building binary..."
+log "Building binary + installing as gh extension..."
 # Explicit check: the outer `{ ... } && exit 0` wrapper disables `set -e` inside
 # the braces (bash suppresses errexit on the left side of &&), so a bare
-# `go build` failure would not abort the script.
-if ! go build -o gh-optivem.exe .; then
-  log "Build failed — aborting before scaffold."
+# install.sh failure would not abort the script.
+if ! bash scripts/install.sh; then
+  log "Build/install failed — aborting before scaffold."
   exit 1
 fi
 
