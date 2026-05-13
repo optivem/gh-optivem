@@ -73,12 +73,6 @@ Use the noun-scoped forms to narrow to one tier:
 			exitOnError(err)
 		},
 	}
-	// Hidden verb-first aliases under the bare `compile` parent.
-	// Drop in v1.6 per plans/20260511-2010-drop-verb-first-aliases.md.
-	cmd.AddCommand(
-		newDeprecatedCompileSystemCmd(),
-		newDeprecatedCompileSystemTestsCmd(),
-	)
 	return cmd
 }
 

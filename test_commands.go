@@ -31,9 +31,6 @@ func newTestCmd() *cobra.Command {
 		newTestRunCmd(),
 		newTestSetupCmd(),
 		newTestCompileCmd(),
-		// Hidden verb-first alias of `test run`.
-		// Drop in v1.6 per plans/20260511-2010-drop-verb-first-aliases.md.
-		newDeprecatedTestSystemCmd(),
 	)
 	return cmd
 }

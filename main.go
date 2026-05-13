@@ -100,14 +100,6 @@ func newRootCmd() *cobra.Command {
 		newAtddCmd(),
 		newTokenCmd(),
 		newUpgradeCmd(),
-
-		// Hidden verb-first aliases for one release. Drop in v1.6 per
-		// plans/20260511-2010-drop-verb-first-aliases.md.
-		newDeprecatedBuildCmd(),
-		newDeprecatedRunCmd(),
-		newDeprecatedStopCmd(),
-		newDeprecatedCleanCmd(),
-		newDeprecatedVerifyCmd(),
 	)
 	return cmd
 }
