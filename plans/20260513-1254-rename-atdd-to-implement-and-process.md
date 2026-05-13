@@ -1,18 +1,22 @@
 # Rename `atdd` subcommands → `implement` (verb-first) and `process show` (noun-first)
 
-> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-13T11:19:11Z`
+> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-13T11:25:43Z`
 
 > ⚠️ **Needs explicit human approval before implementation. Discuss first.**
 > This plan is a draft. Do not execute any step until the author signs off
 > on the overall shape (and the open questions in the final section).
 
-> **Relationship to noun-first CLI rename:** Two existing plans reference a
-> future `20260511-2000-noun-first-cli-rename.md` (e.g. `build system` →
-> `system build`). That plan file does not yet exist. The rename in *this*
-> plan partially overlaps with that effort (`process show` is noun-first),
-> but keeps `optivem implement` top-level because the methodology landscape
-> is the variable part, not the verb. See Open Questions for how to
-> reconcile.
+> **Relationship to the existing noun-first CLI convention:** The broader
+> noun-first rename already shipped (`0360402 rename: gh optivem CLI to
+> noun-first` → `19e8fa5 drop verb-first deprecation aliases (v1.6.0)` →
+> `5d89fa6 plan: delete noun-first CLI rename plan (work done)`). Today
+> the noun groups `system` / `test` / `config` / `environment` are
+> established; the only verb-first / methodology-first holdout is
+> `atdd …`. This plan finishes that migration: `process show` continues
+> the existing noun-first convention, and `implement` is the deliberate
+> top-level verb exception (the methodology is config, not a noun).
+> Two older plans still contain dangling references to the deleted
+> `20260511-2000-noun-first-cli-rename.md`; Step 7 cleans those up.
 
 ## Context
 
@@ -88,9 +92,10 @@ gh optivem process show > docs/process-diagram.md
 
 - A `--methodology` flag on `implement` (composition: atdd, atdd+tdd,
   atdd+tdd+ddd). Author explicitly deferred 2026-05-13.
-- Migrating the *other* verb-first commands (`build system`, `test
-  system`, …) to noun-first. That's the separate-and-not-yet-written
-  `20260511-2000-noun-first-cli-rename.md` plan.
+- Migrating the *other* verb-first commands. Already done — the
+  broader noun-first rename shipped in v1.6.0 (commits 0360402 and
+  19e8fa5). `atdd` is the only remaining holdout, which is what this
+  plan finishes.
 - Deprecating the old `atdd …` names. See Open Questions #1 — author
   hasn't decided whether to keep them as hidden aliases.
 
@@ -197,7 +202,7 @@ cmd.AddCommand(
     newSystemCmd(),
     newTestCmd(),
     newCompileCmd(),
-    newAtddCmd(),       // see Step 4 — keep, hide, or delete
+    // newAtddCmd() removed — see Step 4
     newImplementCmd(),  // new
     newProcessCmd(),    // new
     newEnvironmentCmd(),
@@ -205,20 +210,24 @@ cmd.AddCommand(
 )
 ```
 
-### Step 4 — Decide fate of `atdd …` parent (see Open Questions #1)
+### Step 4 — Delete the `atdd …` parent (Option B, resolved 2026-05-13)
 
-Three options, listed in increasing breakage:
+Delete in this order:
 
-- **A. Keep as hidden aliases.** Add `Hidden: true` to `newAtddCmd()`
-  and leave the three subcommands as thin shims that call into the new
-  command paths. Both old and new forms work; help text only advertises
-  the new forms. Lowest friction.
-- **B. Delete outright.** Remove `newAtddCmd` and its three children;
-  rip the `atdd_commands.go` file. Any caller (scripts, CI, docs) using
-  the old form breaks loudly. Cleanest, most disruptive.
-- **C. Keep with a deprecation warning.** Old commands still work but
-  print `WARN: 'gh optivem atdd implement-ticket' is deprecated; use
-  'gh optivem implement --issue N'` to stderr before running.
+1. Remove the `newAtddCmd()` line from `main.go`'s `cmd.AddCommand(...)`
+   block (around `main.go:100`).
+2. Delete `atdd_commands.go` entirely.
+3. Delete `atdd_commands_test.go` entirely.
+4. Verify `go build ./...` and `go vet ./...` are clean — any remaining
+   in-package reference to `newAtddCmd` / `newAtddImplementTicketCmd` /
+   `newAtddManageProjectCmd` / `newAtddShowCmd` / `newAtddShowDiagramCmd`
+   will surface here.
+
+No hidden aliases, no deprecation warning. Any caller (this repo's
+scripts/docs/tests in Step 5/6, plus any sibling-repo CI calling
+`gh optivem atdd …`) breaks loudly until updated. This is the
+established repo convention for CLI renames — same as the prior
+`19e8fa5 drop verb-first deprecation aliases` flip.
 
 ### Step 5 — Update callers
 
@@ -255,19 +264,29 @@ Known call sites (from a search 2026-05-13):
 - End-to-end rehearsal: run `scripts/atdd-rehearsal.sh` after rewrite,
   confirm the new commands drive a full pipeline pass.
 
-### Step 7 — Update the forward-referencing plans
+### Step 7 — Clean up dangling references to the deleted noun-first plan
 
-The two existing plans that reference `20260511-2000-noun-first-cli-rename.md`
-should be updated to also point at *this* plan (or vice versa, depending
-on how Open Question #4 is resolved):
+Two existing plans still contain callouts referencing
+`20260511-2000-noun-first-cli-rename.md`, which was deleted in commit
+`5d89fa6` once its work shipped. The callouts are stale — they tell a
+reader "see this file for the noun-first equivalents" when the file no
+longer exists. The repo convention is to delete the plan when the work
+is done, so the right fix is to remove the callouts entirely:
 
 - `plans/20260505-220100-verify-runs-from-wrong-cwd.md:3–5`
 - `plans/20260511-1418-gh-optivem-test-disable-enable-subcommand.md:7–9`
 
+If those plans still contain pre-rename verb-first command examples in
+the body, rewrite those examples to noun-first while we're in there
+(the examples themselves are the only reason the callout existed).
+
 ## Open questions for discussion
 
-1. **Old-command fate.** Step 4 options A / B / C — keep hidden, delete
-   outright, or deprecate with warning? Author preference?
+1. **Old-command fate.** ✅ **Resolved 2026-05-13: Option B — delete
+   outright.** Rip `atdd_commands.go` and `atdd_commands_test.go`. No
+   hidden aliases, no deprecation warnings. Step 5's call-site sweep
+   becomes mandatory (anything still referencing `gh optivem atdd …`
+   after the rip will fail loudly).
 2. **Workspace preflight on `manage-project` path.** Today
    `implement-ticket` runs `runImplementTicketPreflight` (workspace +
    on-disk layout) but `manage-project` does not (see
@@ -275,16 +294,11 @@ on how Open Question #4 is resolved):
    `implement` command, should preflight always run, or only when
    `--issue` is provided? Recommendation: always run — picking the top
    Ready item still needs the workspace to exist.
-3. **Relationship to `20260511-2000-noun-first-cli-rename.md`.** Two
-   existing plans reference that file but it doesn't exist. Options:
-   - **Merge:** Fold this plan into the broader noun-first rename when
-     it's written, so all renames ship together.
-   - **Sequence:** Land this plan first (it's the only one with a clear
-     trigger — TDD landing soon), and let the broader rename pick it up
-     by reference later.
-   - **Independent:** Treat this as a one-off (verb-first for the
-     headline action, noun-first for introspection) and never write the
-     broader rename. The noun-first hint may be stale.
+3. **~~Relationship to `20260511-2000-noun-first-cli-rename.md`.~~**
+   ✅ **Resolved 2026-05-13: moot.** The broader noun-first rename
+   already shipped (see intro). This plan finishes the last holdout;
+   no coordination needed. Step 7 cleans up stale references in two
+   older plans.
 4. **`process` as a top-level noun.** Does `process` read naturally
    alongside the other top-level groups (`system`, `test`, `compile`,
    `config`, `environment`, `init`, `upgrade`)? Or is something like
