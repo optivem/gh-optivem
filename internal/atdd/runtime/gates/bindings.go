@@ -126,6 +126,11 @@ func RegisterAll(r *Registry, deps Deps) {
 	// action's halt-on-infra; reaching the gate with class=infra is a
 	// bug.
 	r.Register("structural_verify_outcome", b.structuralVerifyOutcome)
+	// tests_selected routes the post-CHOOSE_TESTS branch: true → run
+	// BUILD_SYSTEM → START_SYSTEM → RUN_TESTS, false → skip straight to
+	// COMMIT. Reads ctx.State["selected_test_commands"] (a []string) which
+	// select_tests writes — empty slice means the operator picked "no".
+	r.Register("tests_selected", b.testsSelected)
 }
 
 // bindings is a thin closure-receiver so each method has access to deps
@@ -455,6 +460,16 @@ func (b bindings) verifyRealPass(ctx *statemachine.Context) statemachine.Outcome
 	return b.boolGate(ctx,
 		"verify_real_pass",
 		"Real-suite verification passed?")
+}
+
+// testsSelected reports whether select_tests recorded any commands to run
+// in ctx[selected_test_commands]. The slice is the contract: a non-empty
+// []string means the operator picked all / some / specific; an empty (or
+// nil) slice means they picked "no". No prompt fallback — the gate runs
+// immediately after select_tests, so the value must be set.
+func (b bindings) testsSelected(ctx *statemachine.Context) statemachine.Outcome {
+	cmds, _ := ctx.Get("selected_test_commands").([]string)
+	return statemachine.Outcome{Bool: len(cmds) > 0}
 }
 
 // ---------------------------------------------------------------------------

@@ -40,12 +40,17 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 	ctx.Set("parse_ok", true)
 	ctx.Set("legacy_acceptance_criteria_section_present", false)
 	ctx.Set("compile_ok", true)
+	// GATE_TESTS_SELECTED routes the post-CHOOSE_TESTS branch: true → run
+	// BUILD_SYSTEM → START_SYSTEM → RUN_TESTS. The test's gate mock echoes
+	// whatever ctx[binding] is, so we seed the gateway's binding name
+	// directly. False would route past BUILD/START/RUN straight to COMMIT;
+	// the live binding reads ctx[selected_test_commands] (exercised in
+	// gates/bindings_test.go).
+	ctx.Set("tests_selected", true)
 	// Happy-path verify: GATE_STRUCT_VERIFY (post-RUN_TESTS) routes ok →
-	// COMMIT (call_activity into the shared commit sub-process). The test's
-	// gate mock echoes whatever ctx[binding] is, so we seed the gateway's
-	// binding name directly. Red would route to STOP_TEST_FAIL_REVIEW →
-	// FIX_TEST → RUN_TESTS; gate-specific routing (retry counter etc.) is
-	// exercised in gates/bindings_test.go.
+	// COMMIT (call_activity into the shared commit sub-process). Red would
+	// route to STOP_TEST_FAIL_REVIEW → FIX_TEST → BUILD_SYSTEM; gate-specific
+	// routing (retry counter etc.) is exercised in gates/bindings_test.go.
 	ctx.Set("structural_verify_outcome", "ok")
 
 	// ── ACT ─────────────────────────────────────────────────────────────
@@ -95,6 +100,9 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 		serviceTask("COMPILE", "compile_all").
 		gateway("GATE_COMPILE_OK", "compile_ok", true).
 		serviceTask("CHOOSE_TESTS", "select_tests").
+		gateway("GATE_TESTS_SELECTED", "tests_selected", true).
+		serviceTask("BUILD_SYSTEM", "build_system").
+		serviceTask("START_SYSTEM", "start_system").
 		serviceTask("RUN_TESTS", "run_tests").
 		gateway("GATE_STRUCT_VERIFY", "structural_verify_outcome", "ok").
 		callActivity("COMMIT", "commit", commitFromTemplateParams()).

@@ -118,6 +118,8 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("commit_phase", a.commitPhase)
 	r.Register("tick_checklist", a.tickChecklist)
 	r.Register("select_tests", a.selectTests)
+	r.Register("build_system", a.buildSystem)
+	r.Register("start_system", a.startSystem)
 	r.Register("run_tests", a.runTests)
 	// red_phase_cycle / green_phase_cycle infrastructure (per
 	// plans/20260505-230100-at-ct-cycle-creative-mechanical-split.md): the
@@ -1010,7 +1012,7 @@ func (a actions) verifyRealSuitePasses(ctx *statemachine.Context) statemachine.O
 const ctxKeySelectedTestCommands = "selected_test_commands"
 
 // selectTests is the BPMN-pure selection step paired with runTests:
-// shows the same operator menu runTests would otherwise show inline,
+// shows the same operator prompts runTests would otherwise show inline,
 // but only records the choice in ctx[selected_test_commands] without
 // executing anything. The structural cycle's CHOOSE_TESTS node binds
 // to this; AT/CT verify gates skip it and let runTests do menu+exec
@@ -1018,9 +1020,11 @@ const ctxKeySelectedTestCommands = "selected_test_commands"
 //
 // Outcomes:
 //   - Outcome{} on a successful selection (commands written) or skip
-//     [n] (empty selection written so runTests treats it as no-op).
-//   - Outcome{Err} on user reject [x], path-resolution failure, or
-//     unrecoverable input error.
+//     (empty selection written so the downstream tests_selected gate
+//     routes past BUILD/START/RUN to COMMIT).
+//   - Outcome{Err} on path-resolution failure or unrecoverable input
+//     error. Operator-driven halt is via Ctrl+C; there is no in-prompt
+//     reject option.
 func (a actions) selectTests(ctx *statemachine.Context) statemachine.Outcome {
 	cmds, out := a.gatherTestCommands(ctx)
 	if out.Err != nil {
@@ -1030,9 +1034,48 @@ func (a actions) selectTests(ctx *statemachine.Context) statemachine.Outcome {
 	return statemachine.Outcome{}
 }
 
+// buildSystem rebuilds the system under test from scratch via
+// `gh optivem system build --rebuild`. Hoisted out of run_tests so the
+// BPMN diagram shows the build phase as its own node, and gated by
+// GATE_TESTS_SELECTED so the rebuild cost is paid only when tests will
+// actually run. Halts the cycle on failure with Outcome{Err} — a broken
+// build is an infra-class problem, not something the fix-verify agent
+// could recover from at the test-RED gateway.
+func (a actions) buildSystem(ctx *statemachine.Context) statemachine.Outcome {
+	cmd := "gh optivem system build --rebuild"
+	fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
+	out, err := a.deps.Shell.Run(context.Background(), cmd)
+	if len(out) > 0 {
+		fmt.Fprintln(a.deps.Stdout, string(out))
+	}
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("build_system: %w", err)}
+	}
+	return statemachine.Outcome{}
+}
+
+// startSystem restarts the running system via
+// `gh optivem system start --restart`, which stops any prior container,
+// recreates it from the freshly-built image, and waits for readiness. Paired
+// with buildSystem ahead of run_tests so the in-container implementation
+// matches the source the operator just approved. Halts on failure for the
+// same reason as buildSystem.
+func (a actions) startSystem(ctx *statemachine.Context) statemachine.Outcome {
+	cmd := "gh optivem system start --restart"
+	fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
+	out, err := a.deps.Shell.Run(context.Background(), cmd)
+	if len(out) > 0 {
+		fmt.Fprintln(a.deps.Stdout, string(out))
+	}
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("start_system: %w", err)}
+	}
+	return statemachine.Outcome{}
+}
+
 // runTests is the human-driven system-test gate. If an upstream node
 // already populated ctx[selected_test_commands] (the BPMN-pure path —
-// structural_cycle's CHOOSE_TESTS → RUN_TESTS), runTests reads that
+// structural_cycle's CHOOSE_TESTS → ... → RUN_TESTS), runTests reads that
 // selection and executes it once. Otherwise it falls back to the
 // legacy menu+exec inline (AT/CT verify gates that haven't been
 // split): the operator picks scope, the action runs it, on green the
@@ -1040,14 +1083,17 @@ func (a actions) selectTests(ctx *statemachine.Context) statemachine.Outcome {
 // the cycle; on red the loop exits so the structural gateway can
 // dispatch the fix agent.
 //
-// Top-level menu (inline path):
+// Prompts (inline path):
 //
-//   [a] all system tests           — `gh optivem test run`
-//   [s] some suites                — pick suite ids, run each whole
-//   [p] specific tests in a suite  — pick a suite, type test names
-//   [n] no tests (approve)         — record nothing, advance
-//   [x] reject                     — halt the run
+//   1. "Run system tests?" (y/n via promptio)
+//        - n → record nothing, advance
+//        - y → fall through to scope prompt
+//   2. "Scope?" (one of):
+//        [a] all system tests           — `gh optivem test run`
+//        [s] some suites                — pick suite ids, run each whole
+//        [p] specific tests in a suite  — pick a suite, type test names
 //
+// Operator-driven halt is via Ctrl+C; there is no in-prompt reject option.
 // Suite ids come from `gh optivem test run --list`, so the menu is
 // always whatever tests.json declares for the project.
 func (a actions) runTests(ctx *statemachine.Context) statemachine.Outcome {
@@ -1081,27 +1127,40 @@ func (a actions) runTests(ctx *statemachine.Context) statemachine.Outcome {
 	}
 }
 
-// gatherTestCommands runs the interactive a/s/p/n/x menu and returns
-// the chosen command list. Empty cmds with Outcome{} means the operator
-// picked [n] / blank to skip; cmds with Outcome{} means [a]/[s]/[p]
-// chose a non-empty scope; nil with Outcome{Err} means [x] reject or
-// an input-read error. The re-prompt loop for unrecognised choices and
-// empty sub-selections is internal so callers see one outcome per
-// top-level choice.
+// gatherTestCommands prompts the operator in two stages and returns the
+// chosen command list. First a strict y/n ("Run system tests?") via
+// promptio so unrecognised input loops at the y/n step; on yes a scope
+// prompt offers [a]ll / [s]ome suites / [p]ick specific tests. Empty cmds
+// with Outcome{} means "no" (skip) — the structural cycle's
+// tests_selected gate routes that past BUILD/START/RUN to COMMIT. Cmds
+// with Outcome{} means the operator picked a non-empty scope. Operator-
+// driven halt is via Ctrl+C; there is no in-prompt reject option.
 func (a actions) gatherTestCommands(ctx *statemachine.Context) ([]string, statemachine.Outcome) {
+	yes, err := promptio.ConfirmYNVia(a.deps.Prompter, a.deps.Stdout, "Run system tests?")
+	if err != nil {
+		return nil, statemachine.Outcome{Err: fmt.Errorf("run_tests: %w", err)}
+	}
+	if !yes {
+		fmt.Fprintln(a.deps.Stdout, "Skipping system tests for this cycle.")
+		return nil, statemachine.Outcome{}
+	}
+	return a.gatherTestScope(ctx)
+}
+
+// gatherTestScope prompts the operator to pick the scope of the test run
+// once they've already said "yes" to running tests at all. Loops on
+// unrecognised input and on sub-pickers that return an empty selection
+// (e.g. the suite picker with no picks) so the caller sees one outcome
+// per scope decision.
+func (a actions) gatherTestScope(ctx *statemachine.Context) ([]string, statemachine.Outcome) {
 	for {
-		ans, err := a.deps.Prompter.Ask("Run system tests? [a]ll, [s]ome suites, [p]ick specific tests, [n]one (approve), e[x]it (reject): ")
+		ans, err := a.deps.Prompter.Ask("Scope? [a]ll, [s]ome suites, [p]ick specific tests: ")
 		if err != nil {
 			return nil, statemachine.Outcome{Err: fmt.Errorf("run_tests: %w", err)}
 		}
 		choice := strings.ToLower(strings.TrimSpace(ans))
 
 		switch choice {
-		case "x":
-			return nil, statemachine.Outcome{Err: errors.New("run_tests: user rejected and halted the run")}
-		case "n", "":
-			fmt.Fprintln(a.deps.Stdout, "Skipping system tests for this cycle.")
-			return nil, statemachine.Outcome{}
 		case "a":
 			return []string{"gh optivem test run"}, statemachine.Outcome{}
 		case "s":
@@ -1183,26 +1242,29 @@ func (a actions) promptSuiteMenu(multi bool) ([]string, error) {
 	for i, id := range suites {
 		fmt.Fprintf(a.deps.Stdout, "  [%d] %s\n", i+1, id)
 	}
-	prompt := "Pick one suite (number): "
+	prompt := "Pick one suite (number or name): "
 	if multi {
-		prompt = "Pick suites (comma-separated numbers, e.g. 1,3): "
+		prompt = "Pick suites (comma-separated, numbers or names): "
 	}
-	ans, err := a.deps.Prompter.Ask(prompt)
-	if err != nil {
-		return nil, err
+	for {
+		ans, err := a.deps.Prompter.Ask(prompt)
+		if err != nil {
+			return nil, err
+		}
+		picks, err := parsePicks(ans, suites)
+		if err != nil {
+			fmt.Fprintf(a.deps.Stderr, "%v — try again.\n", err)
+			continue
+		}
+		if !multi && len(picks) > 1 {
+			picks = picks[:1]
+		}
+		out := make([]string, 0, len(picks))
+		for _, idx := range picks {
+			out = append(out, suites[idx-1])
+		}
+		return out, nil
 	}
-	picks, err := parsePickNumbers(ans, len(suites))
-	if err != nil {
-		return nil, err
-	}
-	if !multi && len(picks) > 1 {
-		picks = picks[:1]
-	}
-	out := make([]string, 0, len(picks))
-	for _, idx := range picks {
-		out = append(out, suites[idx-1])
-	}
-	return out, nil
 }
 
 // promptSomeSuites asks the user which suites to run whole and returns
@@ -1254,15 +1316,19 @@ func (a actions) promptSpecificTests() (string, error) {
 	return b.String(), nil
 }
 
-// parsePickNumbers parses a comma-separated list of 1-based indices,
-// rejecting non-numeric tokens and out-of-range values. Duplicates
-// collapse to the first occurrence so the operator can paste a sloppy
-// list without surprise re-runs.
-func parsePickNumbers(s string, max int) ([]int, error) {
+// parsePicks parses a comma-separated list of suite selectors. Each
+// token is either a 1-based index (e.g. "3") or a suite id (e.g.
+// "acceptance-api"); names match case-insensitively. Returns the
+// resolved 1-based indices in pick order. Duplicates — including
+// number/name pairs that resolve to the same suite — collapse to the
+// first occurrence so the operator can paste a sloppy list without
+// surprise re-runs.
+func parsePicks(s string, suites []string) ([]int, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return nil, nil
 	}
+	max := len(suites)
 	var picks []int
 	seen := make(map[int]bool)
 	for _, tok := range strings.Split(s, ",") {
@@ -1270,16 +1336,27 @@ func parsePickNumbers(s string, max int) ([]int, error) {
 		if tok == "" {
 			continue
 		}
-		n, err := strconv.Atoi(tok)
-		if err != nil {
-			return nil, fmt.Errorf("invalid pick %q (expect a number)", tok)
+		var idx int
+		if n, err := strconv.Atoi(tok); err == nil {
+			if n < 1 || n > max {
+				return nil, fmt.Errorf("pick %d out of range (expect 1-%d)", n, max)
+			}
+			idx = n
+		} else {
+			lower := strings.ToLower(tok)
+			for i, id := range suites {
+				if strings.ToLower(id) == lower {
+					idx = i + 1
+					break
+				}
+			}
+			if idx == 0 {
+				return nil, fmt.Errorf("unknown suite %q (expect a number or suite name)", tok)
+			}
 		}
-		if n < 1 || n > max {
-			return nil, fmt.Errorf("pick %d out of range (expect 1-%d)", n, max)
-		}
-		if !seen[n] {
-			seen[n] = true
-			picks = append(picks, n)
+		if !seen[idx] {
+			seen[idx] = true
+			picks = append(picks, idx)
 		}
 	}
 	return picks, nil

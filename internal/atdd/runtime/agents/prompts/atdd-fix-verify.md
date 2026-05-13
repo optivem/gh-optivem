@@ -15,7 +15,7 @@ When the work is done, do not commit and do not summarise — exit cleanly. The 
 You are running because the structural cycle's verify step classified RED. `${failure_type}` says which step — `compile` if **COMPILE** failed, `test` if **RUN_TESTS** failed — and that switches what you read first and what `${verify_results}` carries:
 
 - **`failure_type=compile`** — the in-scope build failed. `${verify_results}` carries the compile log (stderr from `./compile-all.sh` / `./gradlew build` / `npx tsc --noEmit` / `dotnet build`, scoped to the in-scope projects). Read it, locate the offending file:line, fix the source. Do not touch tests. The orchestrator re-runs COMPILE after you exit.
-- **`failure_type=test`** — compile already passed; the operator-selected test commands ran red. `${verify_results}` carries one block per failed test (suite, test name, captured stderr/stdout). Read those first; the captured output is the signal. The orchestrator re-runs RUN_TESTS (re-using the previously selected commands) after you exit.
+- **`failure_type=test`** — compile already passed; the operator-selected test commands ran red. `${verify_results}` carries one block per failed test (suite, test name, captured stderr/stdout). Read those first; the captured output is the signal. The orchestrator re-runs the cycle from BUILD_SYSTEM (rebuilding the SUT image so your edits land in the running container, then re-using the previously selected test commands) after you exit.
 
 Structural cycles (`SYSTEM INTERFACE REDESIGN`, `SYSTEM IMPLEMENTATION CHANGE`) are **behaviour-preserving by definition** — RED is **not** expected here, so either a real test failure or a compile failure points at a regression introduced by the WRITE phase that just landed.
 
@@ -41,7 +41,7 @@ You get **one** retry. If verify is still red after your fix, the orchestrator h
 
 4. **Do not commit.** Do not run `git add`, `git commit`, or `gh issue close`. The orchestrator stages and commits the merged diff after re-verify confirms green.
 
-5. **Do not run the tests yourself.** The orchestrator re-enters CHOOSE_TESTS / RUN_TESTS after you exit, so the operator can re-pick scope and re-run against your edits.
+5. **Do not run the tests yourself.** The orchestrator re-enters BUILD_SYSTEM → START_SYSTEM → RUN_TESTS after you exit, rebuilding the SUT image and re-running the same selected commands against your edits.
 
 ## Anti-patterns
 

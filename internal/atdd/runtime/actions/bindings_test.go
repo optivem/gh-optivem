@@ -982,6 +982,8 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"commit_phase",
 		"tick_checklist",
 		"select_tests",
+		"build_system",
+		"start_system",
 		"run_tests",
 		"run_targeted_tests",
 		"disable_change_driven",
@@ -998,11 +1000,12 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 // ---------------------------------------------------------------------------
 // runTests — tiered prompt
 //
-// Top-level menu: a/s/p/n/x. For s and p the action shells out to
+// Two-stage prompt: a y/n via promptio ("Run system tests?") then a scope
+// picker [a]ll / [s]ome / [p]ick. For s and p the action shells out to
 // `gh optivem test run --list` to fetch the suite catalogue, then asks
 // the operator which numbered suites (and, for p, which test names) to run.
-// On a green run the loop offers another picker pass; on red it exits so
-// the structural-cycle gateway can dispatch the fix agent.
+// On a green run the loop offers another picker pass (also y/n via promptio);
+// on red it exits so the structural-cycle gateway can dispatch the fix agent.
 // ---------------------------------------------------------------------------
 
 const suiteListOut = "acceptance-api\nacceptance-ui\n"
@@ -1023,20 +1026,7 @@ func setupRepo(t *testing.T) string {
 	return t.TempDir()
 }
 
-func TestVerifyRunTestsAfterDriver_XRejects(t *testing.T) {
-	sh := &scriptedShell{t: t}
-	p := &fakePrompter{answers: []string{"x"}}
-	a := newActions(Deps{Shell: sh, Prompter: p})
-	out := a.runTests(statemachine.NewContext())
-	if out.Err == nil {
-		t.Fatalf("expected error on reject")
-	}
-	if len(sh.calls) != 0 {
-		t.Errorf("expected no shell calls on reject, got %v", sh.calls)
-	}
-}
-
-func TestVerifyRunTestsAfterDriver_NSkipsWithoutRunning(t *testing.T) {
+func TestVerifyRunTestsAfterDriver_NoSkipsWithoutRunning(t *testing.T) {
 	sh := &scriptedShell{t: t}
 	p := &fakePrompter{answers: []string{"n"}}
 	ctx := statemachine.NewContext()
@@ -1059,7 +1049,7 @@ func TestVerifyRunTestsAfterDriver_NSkipsWithoutRunning(t *testing.T) {
 func TestVerifyRunTestsAfterDriver_ARunsAllSystemTests(t *testing.T) {
 	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{{out: []byte("PASS")}}}
-	p := &fakePrompter{answers: []string{"a", "n"}} // [a]ll, then no-more-tests
+	p := &fakePrompter{answers: []string{"y", "a", "n"}} // run? yes, scope all, no-more
 	ctx := statemachine.NewContext()
 	a := newActions(Deps{Shell: sh, Prompter: p, RepoPath: root})
 	out := a.runTests(ctx)
@@ -1076,16 +1066,16 @@ func TestVerifyRunTestsAfterDriver_ARunsAllSystemTests(t *testing.T) {
 }
 
 func TestVerifyRunTestsAfterDriver_SRunsPickedSuites(t *testing.T) {
-	// [s]ome suites → --list yields two suites, the user picks 1,2 → two
-	// `--suite <id>` runs in pick order. Each shell-out gets the resolved
-	// `--system-config` / `--test-config` flags appended.
+	// run? yes → [s]ome suites → --list yields two suites, the user picks
+	// 1,2 → two `--suite <id>` runs in pick order. Each shell-out gets the
+	// resolved `--system-config` / `--test-config` flags appended.
 	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		makeListResponse(),
 		{out: []byte("PASS")},
 		{out: []byte("PASS")},
 	}}
-	p := &fakePrompter{answers: []string{"s", "1,2", "n"}}
+	p := &fakePrompter{answers: []string{"y", "s", "1,2", "n"}}
 	a := newActions(Deps{Shell: sh, Prompter: p, RepoPath: root})
 	out := a.runTests(statemachine.NewContext())
 	if out.Err != nil {
@@ -1107,15 +1097,15 @@ func TestVerifyRunTestsAfterDriver_SRunsPickedSuites(t *testing.T) {
 }
 
 func TestVerifyRunTestsAfterDriver_PRunsSpecificTests(t *testing.T) {
-	// [p]ick → --list, pick suite 2, type "T1, T2" → one combined run. The
-	// path flags suffix every shell-out (the runner needs them to find
-	// systems.json / tests.json under the resolved layout).
+	// run? yes → [p]ick → --list, pick suite 2, type "T1, T2" → one combined
+	// run. The path flags suffix every shell-out (the runner needs them to
+	// find systems.json / tests.json under the resolved layout).
 	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		makeListResponse(),
 		{out: []byte("PASS")},
 	}}
-	p := &fakePrompter{answers: []string{"p", "2", "T1, T2", "n"}}
+	p := &fakePrompter{answers: []string{"y", "p", "2", "T1, T2", "n"}}
 	a := newActions(Deps{Shell: sh, Prompter: p, RepoPath: root})
 	out := a.runTests(statemachine.NewContext())
 	if out.Err != nil {
@@ -1136,14 +1126,14 @@ func TestVerifyRunTestsAfterDriver_PRunsSpecificTests(t *testing.T) {
 }
 
 func TestVerifyRunTestsAfterDriver_LoopsOnGreen(t *testing.T) {
-	// First [a]ll → green → user says "y" to "Run more?" → second [a]ll →
-	// green → "n" exits. Two test-system calls observed.
+	// run? yes → [a]ll → green → "Run more?" yes → run? yes → [a]ll →
+	// green → "Run more?" no exits. Two test-system calls observed.
 	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		{out: []byte("PASS")},
 		{out: []byte("PASS")},
 	}}
-	p := &fakePrompter{answers: []string{"a", "y", "a", "n"}}
+	p := &fakePrompter{answers: []string{"y", "a", "y", "y", "a", "n"}}
 	a := newActions(Deps{Shell: sh, Prompter: p, RepoPath: root})
 	out := a.runTests(statemachine.NewContext())
 	if out.Err != nil {
@@ -1152,20 +1142,20 @@ func TestVerifyRunTestsAfterDriver_LoopsOnGreen(t *testing.T) {
 	if len(sh.calls) != 2 {
 		t.Fatalf("expected two test-system calls, got %d: %v", len(sh.calls), sh.calls)
 	}
-	// The second-prompt sequence: top-menu, more?, top-menu, more?.
-	if got := len(p.asked); got != 4 {
-		t.Errorf("prompt count: got %d, want 4 (top, more?, top, more?)", got)
+	// Prompt sequence: run? yes, scope a, more? yes, run? yes, scope a, more? no.
+	if got := len(p.asked); got != 6 {
+		t.Errorf("prompt count: got %d, want 6 (run?, scope, more?, run?, scope, more?)", got)
 	}
 }
 
 func TestVerifyRunTestsAfterDriver_ExitsLoopOnRed(t *testing.T) {
-	// [a]ll → red → action returns immediately, the "Run more?" prompt is
-	// never asked (gateway will dispatch fix agent after a human STOP).
+	// run? yes → [a]ll → red → action returns immediately, the "Run more?"
+	// prompt is never asked (gateway will dispatch fix agent after a human STOP).
 	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		{out: []byte("--- FAIL: TestThing\n"), err: errors.New("exit status 1")},
 	}}
-	p := &fakePrompter{answers: []string{"a"}}
+	p := &fakePrompter{answers: []string{"y", "a"}}
 	ctx := statemachine.NewContext()
 	a := newActions(Deps{Shell: sh, Prompter: p, RepoPath: root})
 	out := a.runTests(ctx)
@@ -1178,43 +1168,57 @@ func TestVerifyRunTestsAfterDriver_ExitsLoopOnRed(t *testing.T) {
 	if got := ctx.GetString("verify_class"); got != "red" {
 		t.Errorf("ctx verify_class: got %q, want red", got)
 	}
-	if len(p.asked) != 1 {
-		t.Errorf("expected exactly the top-level prompt; asked: %v", p.asked)
+	if len(p.asked) != 2 {
+		t.Errorf("expected exactly the y/n + scope prompts; asked: %v", p.asked)
 	}
 }
 
-func TestVerifyRunTestsAfterDriver_UnknownChoiceReprompts(t *testing.T) {
-	sh := &scriptedShell{t: t}
-	p := &fakePrompter{answers: []string{"q", "n"}}
-	a := newActions(Deps{Shell: sh, Prompter: p, Stderr: &bytes.Buffer{}})
+func TestVerifyRunTestsAfterDriver_UnknownScopeReprompts(t *testing.T) {
+	// run? yes → unknown "q" → reprompt scope → "n"? — scope has no n, so
+	// the test path is "y" then "q" (unrecognised, loops) then... actually
+	// to exit cleanly we need the operator to either pick a valid scope or
+	// the outer loop. Easiest: yes → q (reject) → eventually we need a
+	// valid path. Use yes → q (rejected) → repeat outer with no.
+	//
+	// Simulate: run? "y" → scope "q" (unknown, repromt) → scope "a" (works,
+	// runs one test) → more? "n".
+	root := setupRepo(t)
+	sh := &scriptedShell{t: t, scripted: []scriptedResponse{{out: []byte("PASS")}}}
+	p := &fakePrompter{answers: []string{"y", "q", "a", "n"}}
+	a := newActions(Deps{Shell: sh, Prompter: p, RepoPath: root, Stderr: &bytes.Buffer{}})
 	out := a.runTests(statemachine.NewContext())
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
-	if len(sh.calls) != 0 {
-		t.Errorf("expected no shell calls, got %v", sh.calls)
+	if len(sh.calls) != 1 {
+		t.Errorf("expected one shell call after reprompt, got %v", sh.calls)
 	}
 }
 
-func TestParsePickNumbers(t *testing.T) {
+func TestParsePicks(t *testing.T) {
+	suites := []string{"smoke-stub", "smoke-real", "acceptance-api"}
 	for _, tc := range []struct {
 		name string
 		in   string
-		max  int
 		want []int
 		err  bool
 	}{
-		{name: "single", in: "2", max: 3, want: []int{2}},
-		{name: "list", in: "1,3", max: 3, want: []int{1, 3}},
-		{name: "spaces", in: " 1 , 2 ", max: 3, want: []int{1, 2}},
-		{name: "dedupes", in: "1,2,2,1", max: 3, want: []int{1, 2}},
-		{name: "empty", in: "", max: 3, want: nil},
-		{name: "bad_token", in: "1,foo", max: 3, err: true},
-		{name: "out_of_range", in: "4", max: 3, err: true},
-		{name: "zero", in: "0", max: 3, err: true},
+		{name: "single_number", in: "2", want: []int{2}},
+		{name: "number_list", in: "1,3", want: []int{1, 3}},
+		{name: "spaces", in: " 1 , 2 ", want: []int{1, 2}},
+		{name: "dedupes", in: "1,2,2,1", want: []int{1, 2}},
+		{name: "empty", in: "", want: nil},
+		{name: "single_name", in: "acceptance-api", want: []int{3}},
+		{name: "name_list", in: "smoke-stub,acceptance-api", want: []int{1, 3}},
+		{name: "mixed_number_and_name", in: "1,acceptance-api", want: []int{1, 3}},
+		{name: "dedupes_across_forms", in: "3,acceptance-api", want: []int{3}},
+		{name: "case_insensitive_name", in: "ACCEPTANCE-API", want: []int{3}},
+		{name: "unknown_name", in: "ghosts", err: true},
+		{name: "out_of_range", in: "4", err: true},
+		{name: "zero", in: "0", err: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := parsePickNumbers(tc.in, tc.max)
+			got, err := parsePicks(tc.in, suites)
 			if tc.err {
 				if err == nil {
 					t.Fatalf("want error, got %v", got)
@@ -1242,7 +1246,7 @@ func TestParsePickNumbers(t *testing.T) {
 func TestVerifyRunTestsAfterDriver_StampsOKWhenAllSucceed(t *testing.T) {
 	root := setupRepo(t)
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{{out: []byte("ok")}}}
-	p := &fakePrompter{answers: []string{"a", "n"}}
+	p := &fakePrompter{answers: []string{"y", "a", "n"}}
 	ctx := statemachine.NewContext()
 	a := newActions(Deps{Shell: sh, Prompter: p, RepoPath: root})
 	out := a.runTests(ctx)
@@ -1267,7 +1271,7 @@ func TestVerifyRunTestsAfterDriver_StampsRedOnTestFailure(t *testing.T) {
 	sh := &scriptedShell{t: t, scripted: []scriptedResponse{
 		{out: []byte("--- FAIL: TestThing\n"), err: errors.New("exit status 1")},
 	}}
-	p := &fakePrompter{answers: []string{"a"}} // red exits the loop, no "more?"
+	p := &fakePrompter{answers: []string{"y", "a"}} // run? yes, scope all; red exits the loop, no "more?"
 	ctx := statemachine.NewContext()
 	a := newActions(Deps{Shell: sh, Prompter: p, RepoPath: root})
 	out := a.runTests(ctx)
@@ -1310,7 +1314,7 @@ func TestVerifyRunTestsAfterDriver_HaltsOnInfraWithDiagnostic(t *testing.T) {
 			err: errors.New("exit status 1"),
 		},
 	}}
-	p := &fakePrompter{answers: []string{"a"}}
+	p := &fakePrompter{answers: []string{"y", "a"}}
 	ctx := statemachine.NewContext()
 	var stderr bytes.Buffer
 	a := newActions(Deps{
@@ -1365,7 +1369,7 @@ func TestVerifyRunTestsAfterDriver_HaltsOnInfraWhenStderrIsInError(t *testing.T)
 			err: errors.New(`shell "gh optivem test run": exit status 1 (stderr: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?)`),
 		},
 	}}
-	p := &fakePrompter{answers: []string{"a"}}
+	p := &fakePrompter{answers: []string{"y", "a"}}
 	ctx := statemachine.NewContext()
 	var stderr bytes.Buffer
 	a := newActions(Deps{

@@ -269,6 +269,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     APPROVE_CHANGE[STOP - HUMAN REVIEW — approve implementation]
+    BUILD_SYSTEM[["Build system (gh optivem system build --rebuild)"]]
     CHOOSE_TESTS[["Operator picks scope (all / some suites / specific tests / skip)"]]
     COMMIT[COMMIT — see § Commit Sub-Process]
     COMPILE[[Compile in-scope projects]]
@@ -276,7 +277,9 @@ flowchart TD
     FIX_TEST[Dispatch fix agent on test RED — structural cycle expects green]
     GATE_COMPILE_OK{Compile passed?}
     GATE_STRUCT_VERIFY{"Test outcome? (ok | red — fix and retry)"}
+    GATE_TESTS_SELECTED{Operator selected tests to run?}
     RUN_TESTS[["Run selected tests; classify pass/fail for the verify gate"]]
+    START_SYSTEM[["Start system (gh optivem system start --restart)"]]
     STOP_COMPILE_FAIL_REVIEW[STOP - HUMAN REVIEW — compile RED, dispatch fix agent?]
     STOP_TEST_FAIL_REVIEW[STOP - HUMAN REVIEW — tests RED, dispatch fix agent?]
     STRUCT_END((End))
@@ -290,17 +293,21 @@ flowchart TD
     GATE_COMPILE_OK -- No --> STOP_COMPILE_FAIL_REVIEW
     STOP_COMPILE_FAIL_REVIEW --> FIX_COMPILE
     FIX_COMPILE --> COMPILE
-    CHOOSE_TESTS --> RUN_TESTS
+    CHOOSE_TESTS --> GATE_TESTS_SELECTED
+    GATE_TESTS_SELECTED -- Yes --> BUILD_SYSTEM
+    GATE_TESTS_SELECTED -- No --> COMMIT
+    BUILD_SYSTEM --> START_SYSTEM
+    START_SYSTEM --> RUN_TESTS
     RUN_TESTS --> GATE_STRUCT_VERIFY
     GATE_STRUCT_VERIFY -- ok --> COMMIT
     GATE_STRUCT_VERIFY -- red --> STOP_TEST_FAIL_REVIEW
     STOP_TEST_FAIL_REVIEW --> FIX_TEST
-    FIX_TEST --> RUN_TESTS
+    FIX_TEST --> BUILD_SYSTEM
     COMMIT --> TICK_CHECKLIST
     TICK_CHECKLIST --> STRUCT_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class CHOOSE_TESTS,COMPILE,RUN_TESTS,TICK_CHECKLIST serviceNode
+    class BUILD_SYSTEM,CHOOSE_TESTS,COMPILE,RUN_TESTS,START_SYSTEM,TICK_CHECKLIST serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
     class FIX_COMPILE,FIX_TEST,WRITE agentNode

@@ -10,8 +10,20 @@ A GitHub CLI extension for scaffolding pipeline projects.
 
 ## Prerequisites
 
-- [GitHub CLI](https://cli.github.com/) (`gh auth login`) — `gh-optivem` is developed against `gh` ≥ 2.92.0; older releases may work but are untested. Update with `winget upgrade GitHub.cli` (Windows), `brew upgrade gh` (macOS), or your distro's package manager.
-- [`actionlint`](https://github.com/rhysd/actionlint) — used by the `Verify scaffolded workflows` step. Install the latest v1 release: `go install github.com/rhysd/actionlint/cmd/actionlint@v1`.
+### GitHub CLI
+
+[GitHub CLI](https://cli.github.com/) (`gh auth login`).
+
+- Check your version: `gh --version`
+- Install: `winget install GitHub.cli` (Windows), `brew install gh` (macOS), or `sudo apt install gh` / your distro's package manager (Linux)
+- Upgrade: `winget upgrade GitHub.cli` (Windows), `brew upgrade gh` (macOS), or `sudo apt upgrade gh` / your distro's package manager (Linux)
+
+### actionlint
+
+[`actionlint`](https://github.com/rhysd/actionlint) — used by the `Verify scaffolded workflows` step.
+
+- Check your version: `actionlint -version`
+- Install or upgrade to the latest v1 release: `go install github.com/rhysd/actionlint/cmd/actionlint@v1`
 
 ### Required environment variables
 

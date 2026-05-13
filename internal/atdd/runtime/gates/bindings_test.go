@@ -515,11 +515,45 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"verify_real_required",
 		"verify_real_pass",
 		"structural_verify_outcome",
+		"tests_selected",
 	}
 	for _, name := range want {
 		if r.Lookup(name) == nil {
 			t.Errorf("binding %q not registered", name)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// tests_selected — GATE_TESTS_SELECTED routing
+// ---------------------------------------------------------------------------
+
+func TestTestsSelected_ReadsSelectedCommands(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		val  any
+		want bool
+	}{
+		{name: "non_empty_slice_true", val: []string{"gh optivem test run"}, want: true},
+		{name: "empty_slice_false", val: []string{}, want: false},
+		{name: "nil_slice_false", val: ([]string)(nil), want: false},
+		{name: "unset_key_false", val: nil, want: false},
+		{name: "wrong_type_false", val: "not a slice", want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := newBindings(t, Deps{})
+			ctx := statemachine.NewContext()
+			if tc.val != nil {
+				ctx.Set("selected_test_commands", tc.val)
+			}
+			out := b.testsSelected(ctx)
+			if out.Err != nil {
+				t.Fatalf("unexpected err: %v", out.Err)
+			}
+			if out.Bool != tc.want {
+				t.Errorf("Outcome.Bool: got %v, want %v", out.Bool, tc.want)
+			}
+		})
 	}
 }
 
