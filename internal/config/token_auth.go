@@ -1,19 +1,25 @@
-// Package config — token authentication checks.
+// Package config — environment verification: local-tool presence + token
+// authentication.
 //
-// VerifyTokens is the single entry point: it checks presence of every
-// credential env var the CLI reads, then calls each provider with a minimal
-// authenticated request so we fail fast before any repos or Sonar projects
-// get created. Presence-only proof is not enough — values may still be
-// expired, revoked, or wrong for the account.
+// VerifyEnvironment is the single entry point. It runs three classes of
+// check in one pass:
 //
-// All checks run in parallel and every failure is collected, so the user
-// sees every broken token in one pass instead of fix-one-see-the-next.
+//   - Local-tool presence (gh CLI auth, actionlint) — always runs, since
+//     these have no dependency on env-var values. See tool_checks.go.
+//   - Env-var presence — collects every missing required variable.
+//   - Live provider auth — POST/GET against Docker Hub, SonarCloud, and
+//     GitHub /user for each token, in parallel. Only runs when all env
+//     vars are present (each call needs its token value).
 //
-// Note: these checks run from the user's local IP, not the GitHub Actions
-// runner IP that will later execute the scaffolded workflows. A token valid
-// here can still be rate-limited from the runner side (Docker Hub free tier
-// in particular). This catches the common cases — expired/revoked PATs,
-// wrong username, missing scopes — not IP-based throttling.
+// All failures are collected and surfaced together, so the user fixes
+// everything in one pass instead of fix-one-rerun-discover-next.
+//
+// Note: provider checks run from the user's local IP, not the GitHub
+// Actions runner IP that will later execute the scaffolded workflows. A
+// token valid here can still be rate-limited from the runner side (Docker
+// Hub free tier in particular). This catches the common cases —
+// expired/revoked PATs, wrong username, missing scopes — not IP-based
+// throttling.
 package config
 
 import (
@@ -41,8 +47,8 @@ const (
 	errFmtNetwork      = "network error: %w"
 )
 
-type tokenAuthResult struct {
-	name string // e.g. "DOCKERHUB_TOKEN"
+type checkResult struct {
+	name string // e.g. "gh CLI auth", "DOCKERHUB_TOKEN"
 	err  error  // nil on success
 }
 
@@ -209,22 +215,32 @@ func verifyGHCRToken(client *http.Client, username, token string) error {
 	return nil
 }
 
-// VerifyEnvironment runs presence + live auth checks against every
-// environment variable the gh-optivem CLI consumes: DOCKERHUB_TOKEN,
-// SONAR_TOKEN, GHCR_TOKEN, WORKFLOW_TOKEN, REPO_TOKEN, plus DOCKERHUB_USERNAME
-// (an account name, not a token) used for the Docker Hub login call.
+// VerifyEnvironment runs every readiness check the gh-optivem CLI needs
+// before scaffolding can succeed:
+//
+//   - Local-tool presence (gh CLI auth, actionlint) — see tool_checks.go.
+//   - Required env-var presence: DOCKERHUB_TOKEN, SONAR_TOKEN, GHCR_TOKEN,
+//     WORKFLOW_TOKEN, REPO_TOKEN, plus DOCKERHUB_USERNAME (an account
+//     name, not a token).
+//   - Live provider auth for each token (parallel HTTP calls).
+//
+// Local-tool checks always run, since they have no env-var dependency.
+// Live HTTP checks only run when all required env vars are present — each
+// call needs its token value — but missing-var errors are aggregated
+// alongside any tool-check failures so the user sees everything broken in
+// one pass.
+//
 // Workflow-only inputs (e.g. VERIFY_TOKEN, used by the gh-acceptance
 // meta-test for `gh api` calls) are out of scope — those are validated by
 // the workflow's own preflight steps.
 //
 // Designed to be invoked from a CI preflight job — fails fast before the
-// scaffolding matrix fans out, so a single expired credential surfaces once
-// instead of once per matrix combo. All checks run regardless of earlier
-// failures so the user sees every broken variable in one pass.
+// scaffolding matrix fans out, so a single missing tool or expired
+// credential surfaces once instead of once per matrix combo.
 //
 // Returns nil on full success, otherwise an aggregated error listing every
-// failure (missing or rejected). On nil return, prints one success line per
-// variable via the log package (caller is responsible for log.Init).
+// failure. On nil return, prints one success line per check via the log
+// package (caller is responsible for log.Init).
 func VerifyEnvironment() error {
 	e := readEnvTokens()
 
@@ -242,44 +258,44 @@ func VerifyEnvironment() error {
 			missing = append(missing, r.name)
 		}
 	}
-	if len(missing) > 0 {
-		var b strings.Builder
-		fmt.Fprintf(&b, "Missing required environment variable(s): %s\n", strings.Join(missing, ", "))
-		for _, name := range missing {
-			b.WriteString("\n")
-			b.WriteString(missingEnvHint(name))
-		}
-		return errors.New(b.String())
-	}
 
-	log.Info("Verifying credentials with providers...")
-
-	client := &http.Client{Timeout: tokenAuthTimeout}
+	log.Info("Verifying environment...")
 
 	type check struct {
 		name string
 		fn   func() error
 	}
+	// Local-tool checks always run; they have no dependency on env-var values.
 	checks := []check{
-		{"DOCKERHUB_TOKEN", func() error { return verifyDockerHubAuth(client, e.dockerHubUsername, e.dockerHubToken) }},
-		{"SONAR_TOKEN", func() error { return verifySonarToken(client, e.sonarToken) }},
-		{"GHCR_TOKEN", func() error { return verifyGHCRToken(client, e.dockerHubUsername, e.ghcrToken) }},
-		{"WORKFLOW_TOKEN", func() error { return verifyGitHubToken(client, e.workflowToken, "WORKFLOW_TOKEN") }},
-		{"REPO_TOKEN", func() error { return verifyGitHubToken(client, e.repoToken, "REPO_TOKEN") }},
+		{"gh CLI auth", verifyGhAuth},
+		{"actionlint", verifyActionlint},
+	}
+	// Live HTTP checks only run when every required env var is present —
+	// each one needs its token value. Missing-var errors are reported
+	// separately in the aggregated error below.
+	if len(missing) == 0 {
+		client := &http.Client{Timeout: tokenAuthTimeout}
+		checks = append(checks,
+			check{"DOCKERHUB_TOKEN", func() error { return verifyDockerHubAuth(client, e.dockerHubUsername, e.dockerHubToken) }},
+			check{"SONAR_TOKEN", func() error { return verifySonarToken(client, e.sonarToken) }},
+			check{"GHCR_TOKEN", func() error { return verifyGHCRToken(client, e.dockerHubUsername, e.ghcrToken) }},
+			check{"WORKFLOW_TOKEN", func() error { return verifyGitHubToken(client, e.workflowToken, "WORKFLOW_TOKEN") }},
+			check{"REPO_TOKEN", func() error { return verifyGitHubToken(client, e.repoToken, "REPO_TOKEN") }},
+		)
 	}
 
-	results := make([]tokenAuthResult, len(checks))
+	results := make([]checkResult, len(checks))
 	var wg sync.WaitGroup
 	for i, c := range checks {
 		wg.Add(1)
 		go func(i int, c check) {
 			defer wg.Done()
-			results[i] = tokenAuthResult{name: c.name, err: c.fn()}
+			results[i] = checkResult{name: c.name, err: c.fn()}
 		}(i, c)
 	}
 	wg.Wait()
 
-	var failures []tokenAuthResult
+	var failures []checkResult
 	for _, r := range results {
 		if r.err == nil {
 			log.Successf("  %s: valid", r.name)
@@ -287,17 +303,30 @@ func VerifyEnvironment() error {
 		}
 		failures = append(failures, r)
 	}
-	if len(failures) == 0 {
+
+	if len(missing) == 0 && len(failures) == 0 {
 		return nil
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "Credential verification failed for %d token(s):\n", len(failures))
-	for _, f := range failures {
-		b.WriteString("\n  ")
-		b.WriteString(f.name)
-		b.WriteString(": ")
-		b.WriteString(f.err.Error())
+	if len(missing) > 0 {
+		fmt.Fprintf(&b, "Missing required environment variable(s): %s\n", strings.Join(missing, ", "))
+		for _, name := range missing {
+			b.WriteString("\n")
+			b.WriteString(missingEnvHint(name))
+		}
+	}
+	if len(failures) > 0 {
+		if len(missing) > 0 {
+			b.WriteString("\n\n")
+		}
+		fmt.Fprintf(&b, "Verification failed for %d check(s):\n", len(failures))
+		for _, f := range failures {
+			b.WriteString("\n  ")
+			b.WriteString(f.name)
+			b.WriteString(": ")
+			b.WriteString(f.err.Error())
+		}
 	}
 	return errors.New(b.String())
 }
