@@ -342,6 +342,11 @@ func runLocalTestsViaRunner(label, dockerDir, testDir, testsFile string) {
 	if err != nil {
 		fail(err)
 	}
+	// setupCommands aren't run by RunTests (separate verb in the CLI); invoke
+	// them here so a fresh runner gets `npx playwright install chromium` etc.
+	if err := runner.RunSetup(tests, testDir); err != nil {
+		fail(err)
+	}
 	if err := runner.Up(sys, dockerDir, runner.SystemOptions{}); err != nil {
 		fail(err)
 	}
