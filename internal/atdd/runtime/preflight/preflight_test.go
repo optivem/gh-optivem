@@ -1,6 +1,8 @@
 package preflight
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,7 +31,7 @@ func makeDir(t *testing.T, dir string) {
 
 func TestRun_NilCfgIsOK(t *testing.T) {
 	t.Parallel()
-	if err := Run(nil, "", ""); err != nil {
+	if err := Run(context.Background(), nil, Options{}); err != nil {
 		t.Errorf("nil cfg should pass preflight, got: %v", err)
 	}
 }
@@ -52,7 +54,7 @@ func TestRun_MonoRepoMonolithAllPresent(t *testing.T) {
 			Path: "system-test/java", Repo: "optivem/shop", Lang: projectconfig.LangJava,
 		},
 	}
-	if err := Run(cfg, "", root); err != nil {
+	if err := Run(context.Background(), cfg, Options{Cwd: root}); err != nil {
 		t.Errorf("expected nil, got: %v", err)
 	}
 }
@@ -75,7 +77,7 @@ func TestRun_MissingSystemPath(t *testing.T) {
 			Path: "system-test/java", Repo: "optivem/shop", Lang: projectconfig.LangJava,
 		},
 	}
-	err := Run(cfg, "", root)
+	err := Run(context.Background(), cfg, Options{Cwd: root})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -102,7 +104,7 @@ func TestRun_MissingSystemTestPath(t *testing.T) {
 			Path: "system-test/java", Repo: "optivem/shop", Lang: projectconfig.LangJava,
 		},
 	}
-	err := Run(cfg, "", root)
+	err := Run(context.Background(), cfg, Options{Cwd: root})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -133,7 +135,7 @@ func TestRun_MultitierMissingFrontend(t *testing.T) {
 			Path: "system-test/java", Repo: "optivem/shop", Lang: projectconfig.LangJava,
 		},
 	}
-	err := Run(cfg, "", root)
+	err := Run(context.Background(), cfg, Options{Cwd: root})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -158,7 +160,7 @@ func TestRun_MultiRepoSingleRepoNotCloned(t *testing.T) {
 			Path: "system-test", Repo: "optivem/shop", Lang: projectconfig.LangJava,
 		},
 	}
-	err := Run(cfg, wsRoot, t.TempDir())
+	err := Run(context.Background(), cfg, Options{Workspace: wsRoot, Cwd: t.TempDir()})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -196,7 +198,7 @@ func TestRun_MultiRepoNotAGitRepo(t *testing.T) {
 			Path: "system-test", Repo: "optivem/shop-main", Lang: projectconfig.LangJava,
 		},
 	}
-	err := Run(cfg, wsRoot, t.TempDir())
+	err := Run(context.Background(), cfg, Options{Workspace: wsRoot, Cwd: t.TempDir()})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -231,7 +233,7 @@ func TestRun_MultiRepoMultitierAllPresent(t *testing.T) {
 			Path: "system-test", Repo: "optivem/shop-main", Lang: projectconfig.LangJava,
 		},
 	}
-	if err := Run(cfg, wsRoot, t.TempDir()); err != nil {
+	if err := Run(context.Background(), cfg, Options{Workspace: wsRoot, Cwd: t.TempDir()}); err != nil {
 		t.Errorf("expected nil, got: %v", err)
 	}
 }
@@ -263,7 +265,7 @@ func TestRun_TierPathExistsUnderWrongRepo(t *testing.T) {
 			Path: "system-test", Repo: "optivem/shop-main", Lang: projectconfig.LangJava,
 		},
 	}
-	err := Run(cfg, wsRoot, t.TempDir())
+	err := Run(context.Background(), cfg, Options{Workspace: wsRoot, Cwd: t.TempDir()})
 	if err == nil {
 		t.Fatal("expected error — system-test exists under frontend repo, not main")
 	}
@@ -296,7 +298,7 @@ func TestRun_ExternalSystemsDeclaredAndPresent(t *testing.T) {
 			Simulators: projectconfig.ExternalSpec{Path: "external-real-sim", Repo: "optivem/shop"},
 		},
 	}
-	if err := Run(cfg, "", root); err != nil {
+	if err := Run(context.Background(), cfg, Options{Cwd: root}); err != nil {
 		t.Errorf("expected nil, got: %v", err)
 	}
 }
@@ -325,7 +327,7 @@ func TestRun_ExternalSystemsMissingPath(t *testing.T) {
 			Simulators: projectconfig.ExternalSpec{Path: "external-real-sim", Repo: "optivem/shop"},
 		},
 	}
-	err := Run(cfg, "", root)
+	err := Run(context.Background(), cfg, Options{Cwd: root})
 	if err == nil {
 		t.Fatal("expected error for missing simulators path")
 	}
@@ -353,7 +355,199 @@ func TestRun_ExternalSystemsOmittedDoesNotFail(t *testing.T) {
 		},
 		// ExternalSystems omitted entirely.
 	}
-	if err := Run(cfg, "", root); err != nil {
+	if err := Run(context.Background(), cfg, Options{Cwd: root}); err != nil {
 		t.Errorf("expected nil with no external_systems, got: %v", err)
+	}
+}
+
+// monolithCfg returns a populated *projectconfig.Config with one repo +
+// the four mandatory tier paths, sonar identities filled in, and a
+// project.url set. Used by remote-check tests below — each constructs
+// its own fake workspace and overrides the checker fields it cares
+// about while the rest of the layout stays uniform.
+func monolithCfg() *projectconfig.Config {
+	return &projectconfig.Config{
+		RepoStrategy: projectconfig.RepoStrategyMonoRepo,
+		Project:      projectconfig.Project{URL: "https://github.com/orgs/acme/projects/1"},
+		Sonar:        projectconfig.Sonar{Organization: "acme"},
+		System: projectconfig.System{
+			Architecture: projectconfig.ArchMonolith,
+			Path:         "system/monolith/java",
+			Repo:         "acme/page-turner",
+			Lang:         projectconfig.LangJava,
+			SonarProject: "acme_page-turner_system",
+		},
+		SystemTest: projectconfig.TierSpec{
+			Path:         "system-test/java",
+			Repo:         "acme/page-turner",
+			Lang:         projectconfig.LangJava,
+			SonarProject: "acme_page-turner_test",
+		},
+	}
+}
+
+// seedMonolithFS mirrors monolithCfg on disk: creates a fake clone at
+// <workspace>/page-turner with .git/, system/monolith/java, and
+// system-test/java populated so the local-FS pass is a clean pass.
+// Returns repoRoot so the test can pass it as Options.Cwd.
+func seedMonolithFS(t *testing.T, workspace string) string {
+	t.Helper()
+	root := makeFakeRepo(t, filepath.Join(workspace, "page-turner"))
+	makeDir(t, filepath.Join(root, "system", "monolith", "java"))
+	makeDir(t, filepath.Join(root, "system-test", "java"))
+	return root
+}
+
+func TestRun_RepoExistsFalse_FailsWithSlug(t *testing.T) {
+	t.Parallel()
+	ws := t.TempDir()
+	cwd := seedMonolithFS(t, ws)
+	cfg := monolithCfg()
+	opts := Options{
+		Workspace: ws,
+		Cwd:       cwd,
+		RepoExists: func(_ context.Context, _ string) (bool, error) {
+			return false, nil
+		},
+	}
+	err := Run(context.Background(), cfg, opts)
+	if err == nil {
+		t.Fatal("want failure when RepoExists returns false, got nil")
+	}
+	if !strings.Contains(err.Error(), "acme/page-turner") {
+		t.Errorf("error should name the missing slug, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "does not exist on GitHub") {
+		t.Errorf("error should call out GitHub, got: %v", err)
+	}
+}
+
+func TestRun_SonarOrgMissing_SkipsPerProjectChecks(t *testing.T) {
+	t.Parallel()
+	ws := t.TempDir()
+	cwd := seedMonolithFS(t, ws)
+	cfg := monolithCfg()
+	projectCalls := 0
+	opts := Options{
+		Workspace: ws,
+		Cwd:       cwd,
+		SonarOrgExists: func(_ context.Context, _ string) (bool, error) {
+			return false, nil
+		},
+		SonarProjectExists: func(_ context.Context, _ string) (bool, error) {
+			projectCalls++
+			return true, nil
+		},
+	}
+	err := Run(context.Background(), cfg, opts)
+	if err == nil {
+		t.Fatal("want failure when sonar org missing, got nil")
+	}
+	if !strings.Contains(err.Error(), "sonar.organization") {
+		t.Errorf("error should mention sonar.organization, got: %v", err)
+	}
+	if projectCalls != 0 {
+		t.Errorf("per-project checks should not run when org is missing; got %d call(s)", projectCalls)
+	}
+}
+
+func TestRun_SonarProjectMissing_NamesField(t *testing.T) {
+	t.Parallel()
+	ws := t.TempDir()
+	cwd := seedMonolithFS(t, ws)
+	cfg := monolithCfg()
+	opts := Options{
+		Workspace: ws,
+		Cwd:       cwd,
+		SonarOrgExists: func(_ context.Context, _ string) (bool, error) {
+			return true, nil
+		},
+		SonarProjectExists: func(_ context.Context, key string) (bool, error) {
+			// system_test project missing, others present.
+			return key != "acme_page-turner_test", nil
+		},
+	}
+	err := Run(context.Background(), cfg, opts)
+	if err == nil {
+		t.Fatal("want failure when a sonar project is missing, got nil")
+	}
+	if !strings.Contains(err.Error(), "system_test.sonar_project") {
+		t.Errorf("error should name the missing project field, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "acme_page-turner_test") {
+		t.Errorf("error should include the missing key, got: %v", err)
+	}
+}
+
+func TestRun_BoardURLOK_ErrorIsSurfaced(t *testing.T) {
+	t.Parallel()
+	ws := t.TempDir()
+	cwd := seedMonolithFS(t, ws)
+	cfg := monolithCfg()
+	opts := Options{
+		Workspace: ws,
+		Cwd:       cwd,
+		BoardURLOK: func(_ context.Context, url string) error {
+			return fmt.Errorf("project view: HTTP 404 (project not found)")
+		},
+	}
+	err := Run(context.Background(), cfg, opts)
+	if err == nil {
+		t.Fatal("want failure when BoardURLOK returns error, got nil")
+	}
+	if !strings.Contains(err.Error(), "project.url") {
+		t.Errorf("error should mention project.url, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "HTTP 404") {
+		t.Errorf("error should propagate the underlying message, got: %v", err)
+	}
+}
+
+func TestRun_BoardURLOK_SkippedWhenURLEmpty(t *testing.T) {
+	t.Parallel()
+	ws := t.TempDir()
+	cwd := seedMonolithFS(t, ws)
+	cfg := monolithCfg()
+	cfg.Project.URL = ""
+	called := false
+	opts := Options{
+		Workspace: ws,
+		Cwd:       cwd,
+		BoardURLOK: func(_ context.Context, _ string) error {
+			called = true
+			return nil
+		},
+	}
+	if err := Run(context.Background(), cfg, opts); err != nil {
+		t.Errorf("expected nil with empty project.url, got: %v", err)
+	}
+	if called {
+		t.Error("BoardURLOK should not be invoked when project.url is empty")
+	}
+}
+
+func TestRun_AllRemoteChecksPass(t *testing.T) {
+	t.Parallel()
+	ws := t.TempDir()
+	cwd := seedMonolithFS(t, ws)
+	cfg := monolithCfg()
+	opts := Options{
+		Workspace: ws,
+		Cwd:       cwd,
+		RepoExists: func(_ context.Context, _ string) (bool, error) {
+			return true, nil
+		},
+		SonarOrgExists: func(_ context.Context, _ string) (bool, error) {
+			return true, nil
+		},
+		SonarProjectExists: func(_ context.Context, _ string) (bool, error) {
+			return true, nil
+		},
+		BoardURLOK: func(_ context.Context, _ string) error {
+			return nil
+		},
+	}
+	if err := Run(context.Background(), cfg, opts); err != nil {
+		t.Errorf("expected nil with every remote check returning OK, got: %v", err)
 	}
 }

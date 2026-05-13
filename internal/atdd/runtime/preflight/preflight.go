@@ -1,22 +1,30 @@
 // Package preflight validates that the consumer's gh-optivem.yaml maps
-// onto a real on-disk layout before any ATDD agent or board work runs.
-// It is the runtime backstop for "did the operator's directories actually
-// match the schema?" — the answer must be yes before implement-ticket
-// dispatches anything.
+// onto a real on-disk layout and a real remote setup before any ATDD
+// agent or board work runs. It is the runtime backstop for "did the
+// operator's directories actually match the schema, and do the services
+// the schema names actually exist?" — the answer must be yes before
+// implement-ticket dispatches anything.
 //
-// Two classes of check:
+// Three classes of check:
 //
-//  1. Repo-level. Every slug in cfg.Repos() must resolve (via repolocator)
-//     to a path that exists, is a directory, and contains a `.git` entry.
-//  2. Tier-level. Every populated tier (system or backend+frontend, plus
-//     system_test, plus declared external_systems) must have its `path`
-//     join cleanly with its host repo's local clone.
+//  1. Repo-level local. Every slug in cfg.Repos() must resolve (via
+//     repolocator) to a path that exists, is a directory, and contains
+//     a `.git` entry.
+//  2. Tier-level local. Every populated tier (system or backend+frontend,
+//     plus system_test, plus declared external_systems) must have its
+//     `path` join cleanly with its host repo's local clone.
+//  3. Remote (optional). When the corresponding Options field is non-nil,
+//     also verify that every repo slug exists on GitHub, every declared
+//     sonar org + project key exists on SonarCloud, and the project board
+//     URL resolves. nil fields mean "skip that class" — tests inject
+//     fakes; production wires real clients in the cobra layer.
 //
-// Failures are aggregated — Preflight does not return on the first error.
+// Failures are aggregated — preflight does not return on the first error.
 // The operator gets one multi-line error block listing every missing item.
 package preflight
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -28,28 +36,64 @@ import (
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
-// Run validates that cfg's declared layout exists on disk. workspace is
-// the operator-supplied workspace root (from the --workspace flag);
-// when empty, the formula defaults to filepath.Dir(cwd). cwd is the
-// working directory used by the default branch; when empty, the process
-// CWD is used.
+// Options bundles the optional inputs to Run. All four remote-check
+// fields default to nil = skip; production wires them via the cobra
+// layer (see runImplementTicketPreflight, runConfigPreflight). Tests
+// inject fakes per scenario without dragging in real network clients.
 //
-// Returns nil when everything checks out. Otherwise returns a single
-// error whose Error() lists every failure on its own line, prefixed with
-// "  - ". Callers (the implement-ticket cobra command) print it directly
-// to stderr and exit non-zero.
-func Run(cfg *projectconfig.Config, workspace string, cwd string) error {
+// Function-typed fields beat single-method interfaces here because each
+// remote check is exactly one call — wrapping it in an interface adds
+// boilerplate without buying polymorphism.
+type Options struct {
+	// Workspace is the operator-supplied workspace root (from the
+	// --workspace flag). When empty, repolocator defaults to
+	// filepath.Dir(cwd).
+	Workspace string
+
+	// Cwd is the working directory used by the default branch of the
+	// resolver. When empty, the process CWD is used.
+	Cwd string
+
+	// RepoExists reports whether a GitHub repo slug (owner/name) is
+	// visible to the authenticated gh CLI. nil = skip the repo-existence
+	// remote check.
+	RepoExists func(ctx context.Context, slug string) (bool, error)
+
+	// SonarOrgExists reports whether a SonarCloud organization with the
+	// given key exists. nil = skip the org check (and per-tier project
+	// checks; without an org to anchor them they have no remote contract
+	// to verify).
+	SonarOrgExists func(ctx context.Context, key string) (bool, error)
+
+	// SonarProjectExists reports whether a SonarCloud project with the
+	// given key exists. nil = skip the project-existence remote check.
+	SonarProjectExists func(ctx context.Context, key string) (bool, error)
+
+	// BoardURLOK verifies that cfg.Project.URL resolves and is visible
+	// to the authenticated gh CLI. nil = skip the board-URL check.
+	BoardURLOK func(ctx context.Context, projectURL string) error
+}
+
+// Run validates cfg's declared layout (local FS) and optionally its
+// remote setup (GitHub repos, SonarCloud org + projects, project board
+// URL). Returns nil when everything checks out. Otherwise returns a
+// single error whose Error() lists every failure on its own line,
+// prefixed with "  - ". Callers print it directly to stderr and exit
+// non-zero.
+//
+// A nil cfg passes — there's nothing to check.
+func Run(ctx context.Context, cfg *projectconfig.Config, opts Options) error {
 	if cfg == nil {
 		return nil
 	}
-	res, err := repolocator.Resolve(cfg, workspace, cwd)
+	res, err := repolocator.Resolve(cfg, opts.Workspace, opts.Cwd)
 	if err != nil {
 		return fmt.Errorf("preflight: resolve repos: %w", err)
 	}
 
 	var failures []string
 
-	// Repo-level checks.
+	// Repo-level local checks.
 	slugs := cfg.Repos()
 	for _, slug := range slugs {
 		path, ok := res.Local[slug]
@@ -75,8 +119,8 @@ func Run(cfg *projectconfig.Config, workspace string, cwd string) error {
 		}
 	}
 
-	// Tier-level checks. Each tier has a (field-name, repo-slug, path)
-	// triple; we look up the host repo's local clone and join the
+	// Tier-level local checks. Each tier has a (field-name, repo-slug,
+	// path) triple; we look up the host repo's local clone and join the
 	// tier's path onto it.
 	tiers := collectTiers(cfg)
 	for _, tier := range tiers {
@@ -101,11 +145,94 @@ func Run(cfg *projectconfig.Config, workspace string, cwd string) error {
 		}
 	}
 
+	// Remote checks (optional; only run when the corresponding Options
+	// field is non-nil).
+	failures = append(failures, runRepoExistsChecks(ctx, slugs, opts.RepoExists)...)
+	failures = append(failures, runSonarChecks(ctx, cfg, opts)...)
+	failures = append(failures, runBoardURLCheck(ctx, cfg, opts.BoardURLOK)...)
+
 	if len(failures) == 0 {
 		return nil
 	}
 	sort.Strings(failures)
 	return fmt.Errorf("preflight failed:\n  - %s", strings.Join(failures, "\n  - "))
+}
+
+// runRepoExistsChecks calls RepoExists once per slug. A nil checker
+// means the operator opted out; the call is a no-op.
+func runRepoExistsChecks(ctx context.Context, slugs []string, check func(context.Context, string) (bool, error)) []string {
+	if check == nil {
+		return nil
+	}
+	var failures []string
+	for _, slug := range slugs {
+		ok, err := check(ctx, slug)
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("repo %s: remote check failed: %v", slug, err))
+			continue
+		}
+		if !ok {
+			failures = append(failures, fmt.Sprintf("repo %s: does not exist on GitHub (or not visible to your gh auth)", slug))
+		}
+	}
+	return failures
+}
+
+// runSonarChecks verifies the SonarCloud org + every declared per-tier
+// project key. Org check gates the per-tier checks: if the org isn't
+// there, the project keys can't exist either and the per-tier failures
+// would just be noise.
+func runSonarChecks(ctx context.Context, cfg *projectconfig.Config, opts Options) []string {
+	if opts.SonarOrgExists == nil && opts.SonarProjectExists == nil {
+		return nil
+	}
+	if cfg.Sonar.Organization == "" {
+		// Validate already rejects empty org when arch is set, so the
+		// only way to land here is a partial config where there's
+		// nothing meaningful to check remotely.
+		return nil
+	}
+	var failures []string
+	orgOK := true
+	if opts.SonarOrgExists != nil {
+		ok, err := opts.SonarOrgExists(ctx, cfg.Sonar.Organization)
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("sonar.organization %s: remote check failed: %v", cfg.Sonar.Organization, err))
+			orgOK = false
+		} else if !ok {
+			failures = append(failures, fmt.Sprintf("sonar.organization %s: does not exist on SonarCloud", cfg.Sonar.Organization))
+			orgOK = false
+		}
+	}
+	if !orgOK || opts.SonarProjectExists == nil {
+		return failures
+	}
+	for _, sp := range collectSonarProjects(cfg) {
+		ok, err := opts.SonarProjectExists(ctx, sp.key)
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("%s %s: remote check failed: %v", sp.field, sp.key, err))
+			continue
+		}
+		if !ok {
+			failures = append(failures, fmt.Sprintf("%s %s: does not exist on SonarCloud", sp.field, sp.key))
+		}
+	}
+	return failures
+}
+
+// runBoardURLCheck verifies cfg.Project.URL resolves via the gh CLI.
+// Empty project.url is accepted at validate-time (Rule 9 in
+// projectconfig.Validate) — preflight respects that: with no URL set,
+// there's nothing to verify here. The ATDD runtime still re-checks
+// presence at board-resolution time.
+func runBoardURLCheck(ctx context.Context, cfg *projectconfig.Config, check func(context.Context, string) error) []string {
+	if check == nil || cfg.Project.URL == "" {
+		return nil
+	}
+	if err := check(ctx, cfg.Project.URL); err != nil {
+		return []string{fmt.Sprintf("project.url %s: %v", cfg.Project.URL, err)}
+	}
+	return nil
 }
 
 // tierCheck packages one populated tier for the per-tier loop. Field is
@@ -167,6 +294,49 @@ func collectTiers(cfg *projectconfig.Config) []tierCheck {
 			field: "external_systems.simulators.path",
 			repo:  cfg.ExternalSystems.Simulators.Repo,
 			path:  cfg.ExternalSystems.Simulators.Path,
+		})
+	}
+	return out
+}
+
+// sonarProjectCheck pairs a YAML field-name with the sonar_project key
+// declared at that field. Field is used purely for error messages.
+type sonarProjectCheck struct {
+	field string
+	key   string
+}
+
+// collectSonarProjects returns every populated sonar_project entry in
+// cfg, in the same deterministic order collectTiers uses for the local
+// pass.
+func collectSonarProjects(cfg *projectconfig.Config) []sonarProjectCheck {
+	var out []sonarProjectCheck
+	switch cfg.System.Architecture {
+	case projectconfig.ArchMonolith:
+		if cfg.System.SonarProject != "" {
+			out = append(out, sonarProjectCheck{
+				field: "system.sonar_project",
+				key:   cfg.System.SonarProject,
+			})
+		}
+	case projectconfig.ArchMultitier:
+		if cfg.System.Backend.SonarProject != "" {
+			out = append(out, sonarProjectCheck{
+				field: "system.backend.sonar_project",
+				key:   cfg.System.Backend.SonarProject,
+			})
+		}
+		if cfg.System.Frontend.SonarProject != "" {
+			out = append(out, sonarProjectCheck{
+				field: "system.frontend.sonar_project",
+				key:   cfg.System.Frontend.SonarProject,
+			})
+		}
+	}
+	if cfg.SystemTest.SonarProject != "" {
+		out = append(out, sonarProjectCheck{
+			field: "system_test.sonar_project",
+			key:   cfg.SystemTest.SonarProject,
 		})
 	}
 	return out

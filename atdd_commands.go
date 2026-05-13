@@ -218,7 +218,11 @@ func runImplementTicketPreflight(configPath string, workspace string) (*projectc
 	if err != nil {
 		return nil, err
 	}
-	if err := preflight.Run(cfg, workspace, cwd); err != nil {
+	opts, err := defaultPreflightOptions(cfg, workspace, cwd)
+	if err != nil {
+		return nil, err
+	}
+	if err := preflight.Run(context.Background(), cfg, opts); err != nil {
 		return nil, err
 	}
 	return cfg, nil
