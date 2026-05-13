@@ -71,9 +71,16 @@ For invocations beyond `--version`, see the README for usage examples — once y
 End-to-end manual test (creates real GitHub repos + SonarCloud projects; cleaned up by `scripts/cleanup-orphans.sh` on success, kept on failure for debugging):
 
 ```bash
+# multitier + multirepo, .NET backend, TypeScript frontend + TypeScript system tests
 bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner" \
     --arch multitier --repo-strategy multirepo \
     --backend-lang dotnet --frontend-lang typescript --test-lang typescript \
+    --shop-ref main
+
+# multitier + multirepo, Java backend, TypeScript frontend + TypeScript system tests
+bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner" \
+    --arch multitier --repo-strategy multirepo \
+    --backend-lang java --frontend-lang typescript --test-lang typescript \
     --shop-ref main
 ```
 
