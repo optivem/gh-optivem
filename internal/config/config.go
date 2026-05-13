@@ -26,7 +26,7 @@ import (
 type RawInputs struct {
 	Repo            string // --repo as-passed
 	ShopRef         string // --shop-ref before resolving empty → baked-in SHA → latest meta-v*
-	TestLang        string // --test-lang before defaulting to --monolith-lang / --backend-lang
+	TestLang        string // --test-lang (required; the system-test tier's language is independent of the impl lang)
 	VerifyLevel     string // --verify-level as-passed (flag default: "release")
 	WorkDir         string // --workdir before defaulting to temp dir
 	KeepLocal       bool   // --keep-local flag as-passed
@@ -510,7 +510,7 @@ func bindYAMLAffectingFlags(fs *pflag.FlagSet, f *RawFlags) {
 	fs.StringVar(&f.Arch, "arch", "", "Architecture: monolith or multitier (required)")
 	fs.StringVar(&f.RepoStrategy, "repo-strategy", "", "Repo strategy: monorepo or multirepo (required)")
 	fs.StringVar(&f.Lang, "monolith-lang", "", "System language: java, dotnet, typescript (monolith)")
-	fs.StringVar(&f.TestLang, "test-lang", "", "Test language (defaults to --monolith-lang or --backend-lang)")
+	fs.StringVar(&f.TestLang, "test-lang", "", "System-test language: java, dotnet, typescript (required; independent of --monolith-lang / --backend-lang)")
 	fs.StringVar(&f.BackendLang, "backend-lang", "", "Backend language: java, dotnet, typescript (multitier)")
 	fs.StringVar(&f.FrontendLang, "frontend-lang", "", "Frontend language: typescript (multitier)")
 	fs.StringVar(&f.License, "license", "mit", "License: mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense")
@@ -606,10 +606,13 @@ func resolveLangs(f *RawFlags) langChoice {
 			log.FatalExit("--monolith-lang must be java, dotnet, or typescript")
 		}
 		c.lang = f.Lang
-		c.testLang = f.TestLang
-		if c.testLang == "" {
-			c.testLang = c.lang
+		if f.TestLang == "" {
+			log.FatalExit("--test-lang is required (the system-test tier's language is not derived from --monolith-lang)")
 		}
+		if !validLangs[f.TestLang] {
+			log.FatalExit("--test-lang must be java, dotnet, or typescript")
+		}
+		c.testLang = f.TestLang
 		return c
 	}
 	if f.BackendLang == "" {
@@ -626,10 +629,13 @@ func resolveLangs(f *RawFlags) langChoice {
 	}
 	c.backendLang = f.BackendLang
 	c.frontendLang = f.FrontendLang
-	c.testLang = f.TestLang
-	if c.testLang == "" {
-		c.testLang = c.backendLang
+	if f.TestLang == "" {
+		log.FatalExit("--test-lang is required (the system-test tier's language is not derived from --backend-lang)")
 	}
+	if !validLangs[f.TestLang] {
+		log.FatalExit("--test-lang must be java, dotnet, or typescript")
+	}
+	c.testLang = f.TestLang
 	return c
 }
 
@@ -1339,10 +1345,13 @@ func resolveLangsForYAML(f *RawFlags) (langChoice, error) {
 			return c, fmt.Errorf("--monolith-lang must be java, dotnet, or typescript")
 		}
 		c.lang = f.Lang
-		c.testLang = f.TestLang
-		if c.testLang == "" {
-			c.testLang = c.lang
+		if f.TestLang == "" {
+			return c, fmt.Errorf("--test-lang is required (the system-test tier's language is not derived from --monolith-lang)")
 		}
+		if !validLangs[f.TestLang] {
+			return c, fmt.Errorf("--test-lang must be java, dotnet, or typescript")
+		}
+		c.testLang = f.TestLang
 		return c, nil
 	}
 	if f.BackendLang == "" {
@@ -1359,9 +1368,12 @@ func resolveLangsForYAML(f *RawFlags) (langChoice, error) {
 	}
 	c.backendLang = f.BackendLang
 	c.frontendLang = f.FrontendLang
-	c.testLang = f.TestLang
-	if c.testLang == "" {
-		c.testLang = c.backendLang
+	if f.TestLang == "" {
+		return c, fmt.Errorf("--test-lang is required (the system-test tier's language is not derived from --backend-lang)")
 	}
+	if !validLangs[f.TestLang] {
+		return c, fmt.Errorf("--test-lang must be java, dotnet, or typescript")
+	}
+	c.testLang = f.TestLang
 	return c, nil
 }

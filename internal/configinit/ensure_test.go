@@ -36,7 +36,7 @@ func TestEnsureExists_MissingNonTTY(t *testing.T) {
 	if err == nil {
 		t.Fatal("want error for missing file on non-TTY, got nil")
 	}
-	want := "no gh-optivem.yaml at " + path + "; run `gh optivem config init` first"
+	want := projectconfig.MissingFileError(path).Error()
 	if err.Error() != want {
 		t.Errorf("error message mismatch:\n got:  %q\n want: %q", err.Error(), want)
 	}

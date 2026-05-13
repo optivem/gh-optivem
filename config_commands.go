@@ -99,6 +99,20 @@ silent overwrite would be a foot-gun.`,
 			// through to configinit.Run and surfaces the existing
 			// "required flags" error from ValidateAndDeriveForYAML.
 			if noRequiredConfigInitFlagsSet(f) && isatty.IsTerminal(os.Stdin.Fd()) {
+				// Fail fast before entering the prompt session: otherwise
+				// the operator fills in every field only for runWithBanner
+				// to refuse at the very end. Same error string the flag
+				// path produces — runWithBanner still re-checks under the
+				// covers so this isn't load-bearing for correctness, just
+				// UX.
+				if _, statErr := os.Stat(yamlPath); statErr == nil && !force {
+					exitOnError(fmt.Errorf("%s already exists; pass --force to overwrite", yamlPath))
+				}
+				if force {
+					fmt.Fprintf(os.Stderr, "Overwriting %s interactively (--force).\n", yamlPath)
+				} else {
+					fmt.Fprintf(os.Stderr, "Creating %s interactively.\n", yamlPath)
+				}
 				prompted, perr := configinit.Prompt(os.Stdin, os.Stderr)
 				exitOnError(perr)
 				written, werr := configinit.RunWithBanner(prompted, yamlPath, force, configinit.Banner)

@@ -92,7 +92,7 @@ func loadProjectConfigForRunner() (*projectconfig.Config, string, error) {
 	cfg, err := projectconfig.LoadFromPath(abs)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, "", fmt.Errorf("no gh-optivem.yaml at %s; run `gh optivem config init` to create one, or pass --config <path> to use an existing one", abs)
+			return nil, "", projectconfig.MissingFileError(abs)
 		}
 		return nil, "", err
 	}

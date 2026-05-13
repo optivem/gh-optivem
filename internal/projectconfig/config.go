@@ -45,6 +45,16 @@ const Path = "gh-optivem.yaml"
 // to its value (unless the flag is explicitly passed, which wins).
 const EnvVar = "GH_OPTIVEM_CONFIG"
 
+// MissingFileError returns the canonical "no gh-optivem.yaml at <path>"
+// error. Single-sourced so every entry point (`gh optivem init`, the
+// runner-tier commands, the configinit bridge used by `config validate`
+// / `compile` / `atdd implement-ticket`) produces identical wording.
+// The message names all three ways an operator can resolve a config:
+// create one (`config init`), pass --config, or set GH_OPTIVEM_CONFIG.
+func MissingFileError(path string) error {
+	return fmt.Errorf("no gh-optivem.yaml at %s; run `gh optivem config init` to create one, or pass --config <path> (or set %s) to point at an existing one", path, EnvVar)
+}
+
 // Repo strategy enum values, surfaced as YAML strings.
 const (
 	RepoStrategyMonoRepo  = "mono-repo"

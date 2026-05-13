@@ -34,17 +34,22 @@ func stubExistenceChecks(t *testing.T, owner func(string) error, project func(st
 
 // monolithAnswers returns the slim interactive script for a monolith run.
 // The order follows Prompt's question sequence: owner → repo →
-// system-name → arch → repo-strategy → lang → project-url → license.
+// system-name → arch → repo-strategy → lang → test-lang →
+// project-url-gate → project-url → license. Enum prompts use numeric
+// selections (askChoice presents a numbered menu); the project-url gate
+// is a promptio y/n.
 func monolithAnswers() []string {
 	return []string{
 		"acme",                                    // owner
 		"page-turner",                             // repo
 		"Page Turner",                             // system-name
-		"monolith",                                // arch
-		"monorepo",                                // repo-strategy
-		"java",                                    // monolith-lang
+		"1",                                       // arch → monolith
+		"1",                                       // repo-strategy → monorepo
+		"1",                                       // monolith-lang → java
+		"3",                                       // test-lang → typescript
+		"y",                                       // project-url gate → yes
 		"https://github.com/orgs/acme/projects/1", // project-url
-		"mit",                                     // license
+		"1",                                       // license → mit
 	}
 }
 
@@ -53,11 +58,13 @@ func multitierAnswers() []string {
 		"acme",                                    // owner
 		"page-turner",                             // repo
 		"Page Turner",                             // system-name
-		"multitier",                               // arch
-		"multirepo",                               // repo-strategy
-		"dotnet",                                  // backend-lang
+		"2",                                       // arch → multitier
+		"2",                                       // repo-strategy → multirepo
+		"2",                                       // backend-lang → dotnet
+		"1",                                       // test-lang → java
+		"y",                                       // project-url gate → yes
 		"https://github.com/orgs/acme/projects/2", // project-url
-		"mit",                                     // license
+		"1",                                       // license → mit
 	}
 }
 
@@ -79,6 +86,9 @@ func TestPrompt_MonolithHappyPath(t *testing.T) {
 	}
 	if f.Arch != "monolith" || f.Lang != "java" {
 		t.Errorf("arch/lang: got %q/%q", f.Arch, f.Lang)
+	}
+	if f.TestLang != "typescript" {
+		t.Errorf("TestLang: got %q (should reflect the explicit answer, not the impl lang)", f.TestLang)
 	}
 	// Tier paths are intentionally left empty by Prompt — defaulting
 	// happens downstream in config.resolvePathFlagsForYAML so the
@@ -108,6 +118,9 @@ func TestPrompt_MultitierHappyPath(t *testing.T) {
 	}
 	if f.FrontendLang != "typescript" {
 		t.Errorf("FrontendLang should be hardcoded to typescript, got %q", f.FrontendLang)
+	}
+	if f.TestLang != "java" {
+		t.Errorf("TestLang: got %q (should reflect the explicit answer, not the backend lang)", f.TestLang)
 	}
 	// Tier paths are intentionally left empty by Prompt — defaulting
 	// happens in config.resolvePathFlagsForYAML.
@@ -167,15 +180,16 @@ func TestPrompt_ReAsksOnMissingOwner(t *testing.T) {
 	}
 }
 
-// TestPrompt_ReAsksOnBadArch — invalid arch value re-asks rather than
-// aborting; arch gates the lang branch downstream. Arch sits at index 3
-// in the script (after owner, repo, system-name).
+// TestPrompt_ReAsksOnBadArch — invalid arch selection (non-numeric and
+// out-of-range) re-asks rather than aborting; arch gates the lang
+// branch downstream. Arch sits at index 3 in the script (after owner,
+// repo, system-name).
 func TestPrompt_ReAsksOnBadArch(t *testing.T) {
 	stubExistenceChecks(t, nil, nil)
 	answers := monolithAnswers()
 	const archPos = 3
 	lines := append([]string{}, answers[:archPos]...)
-	lines = append(lines, "bogus")
+	lines = append(lines, "bogus", "9") // non-numeric, then out-of-range
 	lines = append(lines, answers[archPos:]...)
 	var out bytes.Buffer
 	f, err := Prompt(script(lines), &out)
@@ -185,17 +199,18 @@ func TestPrompt_ReAsksOnBadArch(t *testing.T) {
 	if f.Arch != "monolith" {
 		t.Errorf("Arch: got %q", f.Arch)
 	}
-	if !strings.Contains(out.String(), "must be 'monolith' or 'multitier'") {
-		t.Errorf("output should surface the arch validator error, got:\n%s", out.String())
+	body := out.String()
+	if strings.Count(body, "please enter a number between 1 and 2") < 2 {
+		t.Errorf("output should surface the choice range error twice (non-numeric, out-of-range), got:\n%s", body)
 	}
 }
 
-// TestPrompt_ReAsksOnBadProjectURL — a non-https://github.com URL is
-// rejected by ValidateProjectURLFormat; a syntactically-valid URL that
-// fails the existence check is rejected by CheckProjectExists; both
-// cases re-ask just the project-url field. project-url sits at index 6
-// (after owner, repo, system-name, arch, repo-strategy, lang); license
-// follows at index 7.
+// TestPrompt_ReAsksOnBadProjectURL — after the y/n gate is answered
+// "yes", a non-https://github.com URL is rejected by
+// ValidateProjectURLFormat; a syntactically-valid URL that fails the
+// existence check is rejected by CheckProjectExists; both cases re-ask
+// just the project-url field. The URL sits at index 8 (after owner,
+// repo, system-name, arch, repo-strategy, lang, test-lang, gate).
 func TestPrompt_ReAsksOnBadProjectURL(t *testing.T) {
 	stubExistenceChecks(t,
 		nil,
@@ -207,7 +222,7 @@ func TestPrompt_ReAsksOnBadProjectURL(t *testing.T) {
 		},
 	)
 	answers := monolithAnswers()
-	const urlPos = 6
+	const urlPos = 8
 	lines := append([]string{}, answers[:urlPos]...)
 	lines = append(lines,
 		"https://gitlab.com/orgs/acme/projects/1",   // wrong host → format error
@@ -231,11 +246,10 @@ func TestPrompt_ReAsksOnBadProjectURL(t *testing.T) {
 	}
 }
 
-// TestPrompt_AllowsEmptyProjectURL — empty project URL is accepted and
-// stored as empty in RawFlags; `gh optivem init` Path A will then
-// auto-create the project board on first run. Empty input does NOT
-// trigger CheckProjectExists.
-func TestPrompt_AllowsEmptyProjectURL(t *testing.T) {
+// TestPrompt_SkipsURLOnNo — answering "no" to the project-URL gate
+// leaves ProjectURL empty in RawFlags, does NOT prompt for a URL, and
+// does NOT call CheckProjectExists.
+func TestPrompt_SkipsURLOnNo(t *testing.T) {
 	checkProjectCalls := 0
 	stubExistenceChecks(t,
 		nil,
@@ -245,20 +259,24 @@ func TestPrompt_AllowsEmptyProjectURL(t *testing.T) {
 		},
 	)
 	answers := monolithAnswers()
-	const urlPos = 6
-	lines := append([]string{}, answers[:urlPos]...)
-	lines = append(lines, "") // empty project URL
-	lines = append(lines, answers[urlPos+1:]...)
+	const gatePos = 7
+	const licensePos = 9
+	lines := append([]string{}, answers[:gatePos]...)
+	lines = append(lines, "n")                  // gate → no
+	lines = append(lines, answers[licensePos:]...) // skip URL, jump to license
 	var out bytes.Buffer
 	f, err := Prompt(script(lines), &out)
 	if err != nil {
 		t.Fatalf("Prompt: %v", err)
 	}
 	if f.ProjectURL != "" {
-		t.Errorf("ProjectURL: got %q, want empty (auto-create path)", f.ProjectURL)
+		t.Errorf("ProjectURL: got %q, want empty (gate=no path)", f.ProjectURL)
 	}
 	if checkProjectCalls != 0 {
-		t.Errorf("CheckProjectExists should not have been called on empty URL; got %d call(s)", checkProjectCalls)
+		t.Errorf("CheckProjectExists should not have been called when gate=no; got %d call(s)", checkProjectCalls)
+	}
+	if strings.Contains(out.String(), "GitHub Project URL,") {
+		t.Errorf("URL prompt should not appear when gate=no, got:\n%s", out.String())
 	}
 }
 

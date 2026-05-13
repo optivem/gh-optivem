@@ -15,6 +15,8 @@ import (
 	"os"
 
 	"github.com/mattn/go-isatty"
+
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
 // EnsureExists returns nil if a regular gh-optivem.yaml exists at path.
@@ -24,10 +26,11 @@ import (
 // error verbatim so callers don't change behaviour for the
 // non-interactive case.
 //
-// The terse-error wording is single-sourced here and matches what
-// `config validate` printed before this prompt existed (`no
-// gh-optivem.yaml at <path>; run `gh optivem config init` first`), so
-// CI logs and any operator muscle memory don't shift.
+// The terse-error wording is single-sourced via
+// projectconfig.MissingFileError so every entry point (`init`, the
+// runner-tier commands, this bridge) prints the same string — naming
+// `config init`, --config, and GH_OPTIVEM_CONFIG as the three ways to
+// resolve a missing file.
 func EnsureExists(path string) error {
 	return ensureExists(path, isatty.IsTerminal(os.Stdin.Fd()), os.Stdin, os.Stderr)
 }
@@ -55,9 +58,9 @@ func ensureExists(path string, isTTY bool, in io.Reader, out io.Writer) error {
 	return nil
 }
 
-// missingFileError formats the terse error verbatim — kept private so
-// every call site that wants the existing wording references one
-// constant instead of duplicating the format string.
+// missingFileError defers to projectconfig.MissingFileError so the
+// non-TTY error path here, the runner-tier loader, and `gh optivem
+// init`'s loader all print the same string.
 func missingFileError(path string) error {
-	return fmt.Errorf("no gh-optivem.yaml at %s; run `gh optivem config init` first", path)
+	return projectconfig.MissingFileError(path)
 }

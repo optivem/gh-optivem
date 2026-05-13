@@ -51,6 +51,7 @@ func monolithMonorepoFlags() *config.RawFlags {
 		Arch:           "monolith",
 		RepoStrategy:   "monorepo",
 		Lang:           "java",
+		TestLang:       "java",
 		SystemPath:     "system/monolith/java",
 		SystemTestPath: "system-test/java",
 		StubsPath:      "external-systems/external-stub",
@@ -121,6 +122,7 @@ func TestRunConfigInit_DefaultsFlatLayoutPaths(t *testing.T) {
 			flags: &config.RawFlags{
 				Owner: "acme", Repo: "page-turner", SystemName: "Page Turner",
 				Arch: "monolith", RepoStrategy: "monorepo", Lang: "java",
+				TestLang:   "java",
 				ProjectURL: "https://github.com/orgs/acme/projects/1",
 			},
 			wantSystemPath: config.DefaultSystemPath,
@@ -134,6 +136,7 @@ func TestRunConfigInit_DefaultsFlatLayoutPaths(t *testing.T) {
 				Owner: "acme", Repo: "page-turner", SystemName: "Page Turner",
 				Arch: "multitier", RepoStrategy: "multirepo",
 				BackendLang: "java", FrontendLang: "typescript",
+				TestLang:   "java",
 				ProjectURL: "https://github.com/orgs/acme/projects/1",
 			},
 			wantBackendPath:  config.DefaultBackendPath,
@@ -298,7 +301,7 @@ func TestRunConfigInit_RejectsBadFlags(t *testing.T) {
 			&config.RawFlags{
 				Owner: "acme", Repo: "sky-travel", SystemName: "Sky Travel",
 				Arch: "multitier", RepoStrategy: "multirepo",
-				BackendLang: "java", FrontendLang: "typescript",
+				BackendLang: "java", FrontendLang: "typescript", TestLang: "java",
 				SystemPath:     "system",
 				BackendPath:    "backend",
 				FrontendPath:   "frontend",

@@ -162,7 +162,7 @@ func loadProjectConfigForInit(flagPath string) (*projectconfig.Config, string, e
 	pc, err := projectconfig.LoadFromPath(abs)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, "", fmt.Errorf("no gh-optivem.yaml at %s; run `gh optivem config init` first", abs)
+			return nil, "", projectconfig.MissingFileError(abs)
 		}
 		return nil, "", err
 	}
