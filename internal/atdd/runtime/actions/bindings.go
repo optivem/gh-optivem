@@ -718,16 +718,24 @@ func (a actions) compileSystemTests(ctx *statemachine.Context) statemachine.Outc
 }
 
 func (a actions) runCompile(ctx *statemachine.Context, name, cmdLine string) statemachine.Outcome {
-	out, err := a.deps.Shell.Run(context.Background(), cmdLine)
-	if len(out) > 0 {
-		fmt.Fprintln(a.deps.Stdout, string(out))
-	}
+	_, err := a.deps.Shell.Run(context.Background(), cmdLine)
 	ok := err == nil
 	ctx.Set(CtxKeyCompileOK, ok)
 	if err != nil {
 		fmt.Fprintf(a.deps.Stderr, "%s: %v\n", name, err)
 	}
 	return statemachine.Outcome{Bool: ok}
+}
+
+// runShell prints the about-to-run command as a "$ <cmd>" banner so the
+// operator can see which gh-optivem invocation the orchestrator is firing,
+// then dispatches it. Centralizes the banner+run pair used by every
+// system-visible shell-out (build/start/run-tests/verify); compile tiers
+// and change-driven script loops skip the banner because their surrounding
+// output already names what's running.
+func (a actions) runShell(cmdLine string) ([]byte, error) {
+	fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmdLine)
+	return a.deps.Shell.Run(context.Background(), cmdLine)
 }
 
 // runTargetedTests runs each test method named in CtxKeyTestNames against
@@ -777,19 +785,11 @@ func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcom
 	// iteration).
 	if strings.EqualFold(strings.TrimSpace(ctx.Params["rebuild_before_run"]), "true") {
 		buildCmd := "gh optivem system build --rebuild"
-		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", buildCmd)
-		if out, err := a.deps.Shell.Run(context.Background(), buildCmd); err != nil {
-			if len(out) > 0 {
-				fmt.Fprintln(a.deps.Stdout, string(out))
-			}
+		if _, err := a.runShell(buildCmd); err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("run_targeted_tests: build failed: %w", err)}
 		}
 		runCmd := "gh optivem system start --restart"
-		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", runCmd)
-		if out, err := a.deps.Shell.Run(context.Background(), runCmd); err != nil {
-			if len(out) > 0 {
-				fmt.Fprintln(a.deps.Stdout, string(out))
-			}
+		if _, err := a.runShell(runCmd); err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("run_targeted_tests: restart failed: %w", err)}
 		}
 	}
@@ -800,11 +800,7 @@ func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcom
 	for _, name := range names {
 		cmd := fmt.Sprintf("gh optivem test run --suite %s --test %s",
 			shellEscape(suite), shellEscape(name))
-		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
-		out, err := a.deps.Shell.Run(context.Background(), cmd)
-		if len(out) > 0 {
-			fmt.Fprintln(a.deps.Stdout, string(out))
-		}
+		out, err := a.runShell(cmd)
 		if err == nil {
 			passed++
 			continue
@@ -885,11 +881,7 @@ func (a actions) disableChangeDriven(ctx *statemachine.Context) statemachine.Out
 	for _, target := range targets {
 		cmd := fmt.Sprintf("./disable-test.sh %s %s %s",
 			shellEscape(lang), shellEscape(reason), shellEscape(target))
-		out, err := a.deps.Shell.Run(context.Background(), cmd)
-		if len(out) > 0 {
-			fmt.Fprintln(a.deps.Stdout, string(out))
-		}
-		if err != nil {
+		if _, err := a.deps.Shell.Run(context.Background(), cmd); err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven (%s): %w", target, err)}
 		}
 	}
@@ -935,11 +927,7 @@ func (a actions) enableChangeDriven(ctx *statemachine.Context) statemachine.Outc
 	for _, target := range targets {
 		cmd := fmt.Sprintf("./enable-test.sh %s %s %s",
 			shellEscape(lang), shellEscape(reason), shellEscape(target))
-		out, err := a.deps.Shell.Run(context.Background(), cmd)
-		if len(out) > 0 {
-			fmt.Fprintln(a.deps.Stdout, string(out))
-		}
-		if err != nil {
+		if _, err := a.deps.Shell.Run(context.Background(), cmd); err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("enable_change_driven (%s): %w", target, err)}
 		}
 	}
@@ -987,12 +975,7 @@ func (a actions) verifyRealSuitePasses(ctx *statemachine.Context) statemachine.O
 	for _, name := range names {
 		cmd := fmt.Sprintf("gh optivem test run --suite %s --test %s",
 			shellEscape(suite), shellEscape(name))
-		fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
-		out, err := a.deps.Shell.Run(context.Background(), cmd)
-		if len(out) > 0 {
-			fmt.Fprintln(a.deps.Stdout, string(out))
-		}
-		if err != nil {
+		if _, err := a.runShell(cmd); err != nil {
 			allPass = false
 		}
 	}
@@ -1042,13 +1025,7 @@ func (a actions) selectTests(ctx *statemachine.Context) statemachine.Outcome {
 // build is an infra-class problem, not something the fix-verify agent
 // could recover from at the test-RED gateway.
 func (a actions) buildSystem(ctx *statemachine.Context) statemachine.Outcome {
-	cmd := "gh optivem system build --rebuild"
-	fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
-	out, err := a.deps.Shell.Run(context.Background(), cmd)
-	if len(out) > 0 {
-		fmt.Fprintln(a.deps.Stdout, string(out))
-	}
-	if err != nil {
+	if _, err := a.runShell("gh optivem system build --rebuild"); err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("build_system: %w", err)}
 	}
 	return statemachine.Outcome{}
@@ -1061,13 +1038,7 @@ func (a actions) buildSystem(ctx *statemachine.Context) statemachine.Outcome {
 // matches the source the operator just approved. Halts on failure for the
 // same reason as buildSystem.
 func (a actions) startSystem(ctx *statemachine.Context) statemachine.Outcome {
-	cmd := "gh optivem system start --restart"
-	fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
-	out, err := a.deps.Shell.Run(context.Background(), cmd)
-	if len(out) > 0 {
-		fmt.Fprintln(a.deps.Stdout, string(out))
-	}
-	if err != nil {
+	if _, err := a.runShell("gh optivem system start --restart"); err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("start_system: %w", err)}
 	}
 	return statemachine.Outcome{}
@@ -1532,11 +1503,7 @@ type verifyCommandResult struct {
 // the classification so a structural-cycle gateway can route on it without
 // re-parsing the printed line.
 func (a actions) runVerifyCommand(cmd string) verifyCommandResult {
-	fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmd)
-	out, err := a.deps.Shell.Run(context.Background(), cmd)
-	if len(out) > 0 {
-		fmt.Fprintln(a.deps.Stdout, string(out))
-	}
+	out, err := a.runShell(cmd)
 	// realShell.Run returns stdout in `out` and inlines stderr into err.Error()
 	// (as `(stderr: ...)`), so feeding only `string(out)` to the classifier
 	// blinds it to the runner's error output — every infra failure ends up
@@ -2106,18 +2073,25 @@ func (realShell) Run(ctx context.Context, commandLine string) ([]byte, error) {
 		shell = "bash"
 	}
 	cmd := exec.CommandContext(ctx, shell, "-c", commandLine)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	// Tee the child's stdio: stream live to the operator's terminal so
+	// long-running commands (docker compose build, gradle, etc.) show
+	// progress instead of looking hung, and capture into buffers so the
+	// returned []byte still carries stdout for callers that parse it
+	// (e.g. `gh optivem test run --list`) and stderr is still inlined
+	// into the error message on failure.
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
+	cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
+	err := cmd.Run()
 	if err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
-			return out, fmt.Errorf("shell %q: %w (stderr: %s)",
-				commandLine, err, strings.TrimSpace(stderr.String()))
+			return stdoutBuf.Bytes(), fmt.Errorf("shell %q: %w (stderr: %s)",
+				commandLine, err, strings.TrimSpace(stderrBuf.String()))
 		}
-		return out, fmt.Errorf("shell %q: %w", commandLine, err)
+		return stdoutBuf.Bytes(), fmt.Errorf("shell %q: %w", commandLine, err)
 	}
-	return out, nil
+	return stdoutBuf.Bytes(), nil
 }
 
 type stdinPrompter struct{}
