@@ -3,11 +3,12 @@
 // project's running containers (build, start, stop, clean) plus the
 // source-level system tier compile.
 //
-// Working-dir contract: every command runs against the user's cwd. Config
-// paths default to ./systems.yaml (legacy ./systems.json still resolves via
-// the loader's extension dispatch) and can be overridden via gh-optivem.yaml's
-// system.config: field, or by selecting an alternate gh-optivem.yaml via
-// --config / -c. Helpers live in runner_helpers.go.
+// Working-dir contract: every command runs against the user's cwd and
+// reads the systems config path from gh-optivem.yaml's system.config:
+// field (legacy `.json` files still resolve via the loader's extension
+// dispatch). An alternate gh-optivem.yaml can be selected via --config /
+// -c. Missing gh-optivem.yaml or empty system.config: are hard errors.
+// Helpers live in runner_helpers.go.
 package main
 
 import (
@@ -50,7 +51,7 @@ func newSystemBuildCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			resolved, err := resolveSystemPath()
 			exitOnError(err)
-			sys, err := loadSystem(resolved)
+			sys, err := runner.LoadSystem(resolved)
 			exitOnError(err)
 			exitOnError(runner.Build(sys, cwdForPath(resolved), runner.BuildOptions{Rebuild: rebuild}))
 		},
@@ -76,7 +77,7 @@ func newSystemStartCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			resolved, err := resolveSystemPath()
 			exitOnError(err)
-			sys, err := loadSystem(resolved)
+			sys, err := runner.LoadSystem(resolved)
 			exitOnError(err)
 			opts := runner.SystemOptions{LogLines: logLines, Restart: restart, UpTimeout: upTimeout}
 			exitOnError(runner.Up(sys, cwdForPath(resolved), opts))
@@ -98,7 +99,7 @@ func newSystemStopCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			resolved, err := resolveSystemPath()
 			exitOnError(err)
-			sys, err := loadSystem(resolved)
+			sys, err := runner.LoadSystem(resolved)
 			exitOnError(err)
 			exitOnError(runner.Down(sys, cwdForPath(resolved)))
 		},
@@ -118,7 +119,7 @@ func newSystemCleanCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			resolved, err := resolveSystemPath()
 			exitOnError(err)
-			sys, err := loadSystem(resolved)
+			sys, err := runner.LoadSystem(resolved)
 			exitOnError(err)
 			exitOnError(runner.Clean(sys, cwdForPath(resolved)))
 		},

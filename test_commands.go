@@ -3,11 +3,12 @@
 // system, `setup` for harness preparation, and `compile` for the test-tier
 // source build.
 //
-// Working-dir contract: every command runs against the user's cwd. Config
-// paths default to ./tests.yaml (legacy ./tests.json still resolves via the
-// loader's extension dispatch) and can be overridden via gh-optivem.yaml's
-// system_test.config: field, or by selecting an alternate gh-optivem.yaml via
-// --config / -c. Helpers live in runner_helpers.go.
+// Working-dir contract: every command runs against the user's cwd and
+// reads the tests config path from gh-optivem.yaml's system_test.config:
+// field (legacy `.json` files still resolve via the loader's extension
+// dispatch). An alternate gh-optivem.yaml can be selected via --config /
+// -c. Missing gh-optivem.yaml or empty system_test.config: are hard
+// errors. Helpers live in runner_helpers.go.
 package main
 
 import (
@@ -66,7 +67,7 @@ func newTestRunCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			resolvedTests, err := resolveTestsPath()
 			exitOnError(err)
-			tests, err := loadTests(resolvedTests)
+			tests, err := runner.LoadTests(resolvedTests)
 			exitOnError(err)
 			if list {
 				for _, id := range tests.SuiteIDs() {
@@ -77,7 +78,7 @@ func newTestRunCmd() *cobra.Command {
 			exitOnError(validateSuiteTestCombo(suites, test))
 			resolvedSystem, err := resolveSystemPath()
 			exitOnError(err)
-			sys, err := loadSystem(resolvedSystem)
+			sys, err := runner.LoadSystem(resolvedSystem)
 			exitOnError(err)
 			opts := runner.TestOptions{
 				Suite:  suites,
@@ -107,7 +108,7 @@ func newTestSetupCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			resolvedTests, err := resolveTestsPath()
 			exitOnError(err)
-			tests, err := loadTests(resolvedTests)
+			tests, err := runner.LoadTests(resolvedTests)
 			exitOnError(err)
 			exitOnError(runner.RunSetup(tests, cwdForPath(resolvedTests)))
 		},

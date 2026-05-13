@@ -85,15 +85,16 @@ runs:
         node-version: 22.x
 
     # Install actionlint for the scaffolder's "Verify scaffolded workflows"
-    # step (steps.VerifyScaffoldWorkflows). Pinned to v1.7.7 to match the
-    # optivem/actions repo's commit-stage. Use `go install` so the binary
-    # lands in $(go env GOPATH)/bin on both Linux and Windows runners — Go
-    # is already set up by the previous step, and GOPATH/bin is on PATH.
+    # step (steps.VerifyScaffoldWorkflows). Pinned to @v1 (latest v1.x.y) —
+    # same major-version float convention as our `uses: actions/*@vN` lines.
+    # Use `go install` so the binary lands in $(go env GOPATH)/bin on both
+    # Linux and Windows runners — Go is already set up by the previous
+    # step, and GOPATH/bin is on PATH.
     - name: Install actionlint
       shell: bash
       run: |
         set -euo pipefail
-        go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+        go install github.com/rhysd/actionlint/cmd/actionlint@v1
         actionlint --version
 
     # Cache package-registry downloads so repeated scaffolding runs survive

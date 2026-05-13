@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -72,11 +73,13 @@ type GhRunner interface {
 // Errors
 // ---------------------------------------------------------------------------
 
-// ErrNoProjectURL is returned when project URL resolution finds no
-// `project.url` set in the loaded config (or no config was loaded at
-// all). Project URL must be configured explicitly — there is no
-// discovery fallback.
-var ErrNoProjectURL = errors.New("board: project.url is not set in gh-optivem.yaml (the only configured source); set it or pass --config <path>")
+// ErrNoProjectURL is the sentinel returned (wrapped) when project URL
+// resolution finds no `project.url` set in the loaded config (or no config
+// was loaded at all). Project URL must be configured explicitly — there is
+// no discovery fallback. Callers wrap this with the actual config source
+// (path used, or "gh-optivem.yaml" default) so the operator sees which file
+// is missing the field; use errors.Is to detect it.
+var ErrNoProjectURL = errors.New("board: project.url not configured")
 
 // ErrEmptyReady is returned when PickTopReady runs successfully but the
 // Ready column has no items. This is a normal "nothing to do" outcome,
@@ -109,7 +112,7 @@ func ResolveProjectURL(repoPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("board: load config: %w", err)
 	}
-	return ResolveProjectURLFromConfig(cfg)
+	return ResolveProjectURLFromConfig(cfg, filepath.Join(repoPath, projectconfig.Path))
 }
 
 // VerifyProjectURL checks that a project URL parses and that `gh project
@@ -136,15 +139,23 @@ func VerifyProjectURL(ctx context.Context, projectURL string, gh GhRunner) error
 
 // ResolveProjectURLFromConfig is the explicit-config variant of
 // ResolveProjectURL. The caller passes a pre-loaded *Config (or nil for
-// "no config available"). Used by the driver when the operator passed
+// "no config available") and `source` — the path the config was loaded
+// from (the file passed via `--config <path>`, or the default
+// `gh-optivem.yaml` location). Used by the driver when the operator passed
 // `--config <path>` so the alternate config takes precedence over the
 // default `gh-optivem.yaml` lookup.
 //
-// A nil *Config or an empty `project.url` returns ErrNoProjectURL —
-// project URL must be configured explicitly.
-func ResolveProjectURLFromConfig(cfg *projectconfig.Config) (string, error) {
+// A nil *Config or an empty `project.url` returns an error wrapping
+// ErrNoProjectURL with the actual source path — so the operator who passed
+// `--config foo.yaml` sees `foo.yaml` named in the failure, not the
+// misleading "gh-optivem.yaml". Empty source falls back to the default
+// filename string. Project URL must be configured explicitly.
+func ResolveProjectURLFromConfig(cfg *projectconfig.Config, source string) (string, error) {
 	if cfg == nil || cfg.Project.URL == "" {
-		return "", ErrNoProjectURL
+		if source == "" {
+			source = projectconfig.Path
+		}
+		return "", fmt.Errorf("%w: project.url is not set in %s; set it or pass --config <path>", ErrNoProjectURL, source)
 	}
 	return cfg.Project.URL, nil
 }

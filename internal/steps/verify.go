@@ -101,7 +101,7 @@ func VerifyScaffoldWorkflows(cfg *config.Config) {
 		if os.Getenv("GITHUB_ACTIONS") == "true" {
 			log.Fatalf("actionlint not found on PATH but GITHUB_ACTIONS=true — install step missing from the runner")
 		}
-		log.Warnf("actionlint not found on PATH — skipping workflow lint. Install: bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7")
+		log.Warnf("actionlint not found on PATH — skipping workflow lint. Install: go install github.com/rhysd/actionlint/cmd/actionlint@v1")
 		return
 	}
 

@@ -109,9 +109,24 @@ func TestResolveProjectURL_ConfigPresentButURLEmpty(t *testing.T) {
 }
 
 func TestResolveProjectURLFromConfig_NilConfig(t *testing.T) {
-	_, err := ResolveProjectURLFromConfig(nil)
+	_, err := ResolveProjectURLFromConfig(nil, "")
 	if !errors.Is(err, ErrNoProjectURL) {
 		t.Errorf("expected ErrNoProjectURL, got %v", err)
+	}
+}
+
+// TestResolveProjectURLFromConfig_SourcePathInMessage — when --config <path>
+// was passed but project.url is missing, the wrapped error must name that
+// exact path so the operator isn't misled into editing the wrong file
+// (the original sentinel hard-coded "gh-optivem.yaml").
+func TestResolveProjectURLFromConfig_SourcePathInMessage(t *testing.T) {
+	const source = "/some/path/gh-optivem-monolith-typescript.yaml"
+	_, err := ResolveProjectURLFromConfig(nil, source)
+	if !errors.Is(err, ErrNoProjectURL) {
+		t.Fatalf("expected ErrNoProjectURL, got %v", err)
+	}
+	if !strings.Contains(err.Error(), source) {
+		t.Errorf("error message %q should mention source path %q", err.Error(), source)
 	}
 }
 

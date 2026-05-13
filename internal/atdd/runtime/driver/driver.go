@@ -197,12 +197,33 @@ func Run(ctx context.Context, opts Options) error {
 		return fmt.Errorf("driver: process %q not in YAML %q", opts.ProcessName, source)
 	}
 
+	repoPath, err := resolveRepoPath(opts.RepoPath)
+	if err != nil {
+		return fmt.Errorf("driver: %w", err)
+	}
+
+	// Load config up-front so its project.url can flow into action deps —
+	// without this, MOVE_TICKET_IN_PROGRESS and friends fall back to
+	// loading a hard-coded gh-optivem.yaml filename in repoPath and miss
+	// any `--config <other-name>.yaml` the operator passed.
+	cfg, err := loadDriverConfig(opts.ConfigPath, repoPath)
+	if err != nil {
+		return err
+	}
+
+	// opts.ProjectURL (set via --project-url) wins over cfg.Project.URL
+	// so an operator can override on the fly without editing config.
+	resolvedProjectURL := opts.ProjectURL
+	if resolvedProjectURL == "" && cfg != nil {
+		resolvedProjectURL = cfg.Project.URL
+	}
+
 	gateReg := gates.New()
 	gates.RegisterAll(gateReg, gates.Deps{})
 
 	actionReg := actions.New()
 	actions.RegisterAll(actionReg, actions.Deps{
-		ProjectURL: opts.ProjectURL,
+		ProjectURL: resolvedProjectURL,
 		RepoPath:   opts.RepoPath,
 		Autonomous: opts.Autonomous,
 	})
@@ -216,11 +237,6 @@ func Run(ctx context.Context, opts Options) error {
 
 	if err := eng.Bind(); err != nil {
 		return fmt.Errorf("driver: bind engine: %w", err)
-	}
-
-	repoPath, err := resolveRepoPath(opts.RepoPath)
-	if err != nil {
-		return fmt.Errorf("driver: %w", err)
 	}
 
 	// Per-run diagnostic state: timestamp + monotonic dispatch counter,
@@ -269,10 +285,6 @@ func Run(ctx context.Context, opts Options) error {
 		Out:      opts.Stdout,
 		RepoPath: repoPath,
 	})
-	cfg, err := loadDriverConfig(opts.ConfigPath, repoPath)
-	if err != nil {
-		return err
-	}
 	printConfig(opts.Stdout, opts, cfg, repoPath)
 
 	sCtx := statemachine.NewContext()
@@ -574,7 +586,7 @@ func (o Options) withDefaults() Options {
 func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Context, cfg *projectconfig.Config) error {
 	projectURL := opts.ProjectURL
 	if projectURL == "" {
-		resolved, err := board.ResolveProjectURLFromConfig(cfg)
+		resolved, err := board.ResolveProjectURLFromConfig(cfg, opts.ConfigPath)
 		if err != nil {
 			return fmt.Errorf("resolve project URL: %w", err)
 		}
