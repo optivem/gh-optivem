@@ -1,16 +1,12 @@
-# `verify_run_tests_after_driver` runs `gh optivem test system` from the wrong cwd
-
-> **2026-05-11:** This plan's command examples use the pre-rename
-> verb-first forms. See `20260511-2000-noun-first-cli-rename.md`
-> for the noun-first equivalents (build system → system build, etc.).
+# `verify_run_tests_after_driver` runs `gh optivem test run` from the wrong cwd
 
 ## Symptom
 
 Choosing `[t]racer` (or `[r]` / `[f]`) at the verify prompt produces:
 
 ```
-$ gh optivem test system --suite acceptance-api
-(test run failed: shell "gh optivem test system --suite acceptance-api":
+$ gh optivem test run --suite acceptance-api
+(test run failed: shell "gh optivem test run --suite acceptance-api":
   exit status 1
   (stderr: ERROR: read system config ./system.json: open ./system.json:
    The system cannot find the file specified.) — continuing)
@@ -27,7 +23,7 @@ shells out via `a.deps.Shell.Run`. The production `realShell.Run`
 so the command inherits the orchestrator's working directory — which is
 the repo root, not the directory holding `system.json`.
 
-`gh optivem test system` defaults to `--system-config ./system.json` and
+`gh optivem test run` defaults to `--system-config ./system.json` and
 `--test-config ./tests.json` (see `runner_commands.go:38`). For the shop
 template these files live at:
 
@@ -51,7 +47,7 @@ Build the command line with the paths the orchestrator already knows from
 the issue / intake (language, arch). The verify node would emit:
 
 ```
-gh optivem test system --suite <s> --test <t> \
+gh optivem test run --suite <s> --test <t> \
   --system-config <docker_dir>/system.json \
   --test-config <test_dir>/tests-<phase>.json
 ```
@@ -102,7 +98,7 @@ method) and have the verify node call `RunIn(systemTestDir, cmd)`.
 to point it at non-default config paths (see `README.md:146`). Using
 flags keeps the verify command line printable and reproducible — the
 user can copy what they see in the orchestrator output and run it in a
-shell to debug. With Option B, the printed `$ gh optivem test system ...`
+shell to debug. With Option B, the printed `$ gh optivem test run ...`
 line is misleading because the cwd context is invisible.
 
 Lean: ship Option A. If the path-inference helper grows hairy, fall back
@@ -174,7 +170,7 @@ per language present in `res.Changed`. Pass them into:
 - `runAffectedSetVerify` via the same struct.
 
 Both functions append `--system-config <path> --test-config <path>` to
-each `gh optivem test system ...` command they build. `shellEscape`
+each `gh optivem test run ...` command they build. `shellEscape`
 already handles spaces.
 
 ### 3. Surface a clear error when paths can't be resolved

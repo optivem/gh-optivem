@@ -8,8 +8,7 @@
 // install-time substitutions so the consumer's scaffold layout (monorepo,
 // multirepo monolith, multirepo multitier) gets correct repo references.
 //
-// Used by `gh optivem atdd install` (standalone) and by `gh optivem init`
-// at the end of the apply-template phase.
+// Used by `gh optivem init` at the end of the apply-template phase.
 package atdd
 
 import (

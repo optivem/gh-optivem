@@ -4,11 +4,11 @@ set -euo pipefail
 # Wrap body in `{ ... } && exit` so bash parses the entire script up-front.
 # Without this, bash maintains a file offset and re-reads from disk between
 # commands; if the file is edited during a long-running command (e.g. an
-# implement-ticket walk that takes 30+ minutes), bash's offset desyncs and
+# implement walk that takes 30+ minutes), bash's offset desyncs and
 # emits phantom syntax errors after the long command returns.
 {
 
-# Wraps `gh optivem atdd implement-ticket` in a throwaway git worktree on a
+# Wraps `gh optivem implement` in a throwaway git worktree on a
 # rehearsal branch. Personal dev workflow for the plan author — not a CLI
 # feature consumers need.
 #
@@ -16,7 +16,7 @@ set -euo pipefail
 #   bash atdd-rehearsal.sh <issue-num> [label] [--config <yaml>]
 #
 #   issue-num: GitHub issue number, or full issue URL — forwarded as-is to
-#              `gh optivem atdd implement-ticket --issue ...`.
+#              `gh optivem implement --issue ...`.
 #   label:     optional [A-Za-z0-9_-]+ tacked onto the worktree id for
 #              sortability (e.g. "ticket-61", "follow-up").
 #   --config:  path (relative to the consumer worktree) of the gh-optivem.yaml
@@ -34,7 +34,7 @@ set -euo pipefail
 #      --config yaml is already committed in shop, so it lands in the
 #      worktree automatically — no copy or init step needed.
 #   4. cd into it and run, with $GH_OPTIVEM_CONFIG pointing at the chosen yaml:
-#        <gh-optivem>/gh-optivem.exe atdd implement-ticket --issue <issue-num>
+#        <gh-optivem>/gh-optivem.exe implement --issue <issue-num>
 #   5. On exit (success, failure, or interrupt), prompt the user to delete
 #      the worktree + branch (default: yes).
 #
@@ -235,14 +235,14 @@ if [[ ! -f "$CONFIG_FULL" ]]; then
   exit 2
 fi
 
-log "Running implement-ticket --issue $ISSUE in $WORKTREE_PATH..."
+log "Running implement --issue $ISSUE in $WORKTREE_PATH..."
 RC=0
-( cd "$WORKTREE_PATH" && GH_OPTIVEM_CONFIG="$CONFIG_FULL" "$BIN" atdd implement-ticket --issue "$ISSUE" ) || RC=$?
+( cd "$WORKTREE_PATH" && GH_OPTIVEM_CONFIG="$CONFIG_FULL" "$BIN" implement --issue "$ISSUE" ) || RC=$?
 
 if [[ $RC -eq 0 ]]; then
-  log "implement-ticket succeeded."
+  log "implement succeeded."
 else
-  log "implement-ticket exited with rc=$RC."
+  log "implement exited with rc=$RC."
 fi
 
 exit $RC

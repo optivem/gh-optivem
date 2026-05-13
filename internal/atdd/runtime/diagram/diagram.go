@@ -89,7 +89,7 @@ func Render(eng *statemachine.Engine) string {
 
 func writeHeader(b *strings.Builder) {
 	b.WriteString("# ATDD Process Flow\n\n")
-	b.WriteString("> Generated from `internal/atdd/runtime/statemachine/process-flow.yaml` by `internal/atdd/runtime/diagram`. Do not edit by hand — edit the YAML and regenerate via `gh optivem atdd show diagram > docs/process-diagram.md`.\n\n")
+	b.WriteString("> Generated from `internal/atdd/runtime/statemachine/process-flow.yaml` by `internal/atdd/runtime/diagram`. Do not edit by hand — edit the YAML and regenerate via `gh optivem process show > docs/process-diagram.md`.\n\n")
 	b.WriteString("Each section corresponds to one named process in the YAML. `call_activity` nodes appear as boxes pointing at the linked sub-process's heading.\n\n")
 	writeLegend(b)
 }

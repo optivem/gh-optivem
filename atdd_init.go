@@ -1,9 +1,8 @@
 // atdd_init.go provides the thin wrapper that lets `runInit`'s buildSteps
-// call `atdd.Install` as a phase step. There is no standalone
-// `gh optivem atdd install` subcommand — ATDD assets are installed only as
-// part of `gh optivem init`. To refresh ATDD assets in an existing repo,
-// re-run `gh optivem init` (or copy the assets from a fresh shop checkout
-// by hand).
+// call `atdd.Install` as a phase step. There is no standalone install
+// subcommand — ATDD assets are installed only as part of `gh optivem init`.
+// To refresh ATDD assets in an existing repo, re-run `gh optivem init` (or
+// copy the assets from a fresh shop checkout by hand).
 package main
 
 import (

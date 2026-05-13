@@ -25,7 +25,7 @@ on:
       - internal/atdd/runtime/diagram/**
   # Manual escape hatch: lets us re-run after fixing rendering bugs that
   # don't otherwise touch a path-filtered file (e.g. a CLI behaviour change
-  # in `gh optivem atdd show diagram`).
+  # in `gh optivem process show`).
   workflow_dispatch:
 
 permissions:
@@ -57,7 +57,7 @@ jobs:
 
       - name: Render diagram markdown
         run: |
-          go run . atdd show diagram > docs/process-diagram.md
+          go run . process show > docs/process-diagram.md
 
       - name: Detect markdown changes
         id: diff
@@ -71,7 +71,7 @@ jobs:
       - name: Fail PR when diagram markdown is stale
         if: github.event_name == 'pull_request' && steps.diff.outputs.changed == 'true'
         run: |
-          echo "::error::docs/process-diagram.md is stale; run 'go run . atdd show diagram > docs/process-diagram.md' and commit."
+          echo "::error::docs/process-diagram.md is stale; run 'go run . process show > docs/process-diagram.md' and commit."
           git diff --stat -- docs/process-diagram.md
           exit 1
 

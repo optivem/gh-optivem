@@ -48,7 +48,7 @@ const EnvVar = "GH_OPTIVEM_CONFIG"
 // MissingFileError returns the canonical "no gh-optivem.yaml at <path>"
 // error. Single-sourced so every entry point (`gh optivem init`, the
 // runner-tier commands, the configinit bridge used by `config validate`
-// / `compile` / `atdd implement-ticket`) produces identical wording.
+// / `compile` / `implement`) produces identical wording.
 // The message names all three ways an operator can resolve a config:
 // create one (`config init`), pass --config, or set GH_OPTIVEM_CONFIG.
 func MissingFileError(path string) error {

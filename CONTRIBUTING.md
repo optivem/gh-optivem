@@ -88,7 +88,7 @@ Off by default. Filing a quick issue yourself is usually clearer and keeps the s
 bash scripts/install.sh   # rebuilds gh-optivem.exe and links it as `gh optivem`
 ```
 
-Run this any time you edit CLI source (e.g. `atdd_commands.go`, anything under `internal/atdd/runtime/diagram/`, etc.). Without rebuilding, `gh optivem …` keeps running the previously built binary and silently masks your changes — cobra falls through to help text for subcommands the old binary doesn't know about, and `>` redirects then clobber whatever file you piped into.
+Run this any time you edit CLI source (e.g. `implement_commands.go`, anything under `internal/atdd/runtime/diagram/`, etc.). Without rebuilding, `gh optivem …` keeps running the previously built binary and silently masks your changes — cobra falls through to help text for subcommands the old binary doesn't know about, and `>` redirects then clobber whatever file you piped into.
 
 `--shop-ref` resolution for local builds: explicit flag wins; otherwise the latest `meta-v*` release of `optivem/shop`. Released binaries (`gh extension install optivem/gh-optivem`) pin the shop SHA baked in at release time and do **not** auto-upgrade. Pass `--shop-ref main` to test against unreleased shop changes.
 
@@ -146,7 +146,7 @@ The script pins `@mermaid-js/mermaid-cli` to match the version the workflow uses
 Do not edit `docs/process-diagram.md` by hand — it is generated from the YAML. To regenerate it locally:
 
 ```bash
-gh optivem atdd show diagram > docs/process-diagram.md
+gh optivem process show > docs/process-diagram.md
 ```
 
 The `regenerate-diagram` workflow watches `internal/atdd/runtime/statemachine/process-flow.yaml` and `internal/atdd/runtime/diagram/**`, but it behaves differently depending on the event:
@@ -154,22 +154,22 @@ The `regenerate-diagram` workflow watches `internal/atdd/runtime/statemachine/pr
 - **Pull requests** — renders and **fails the PR** if the committed diagram is stale. It does *not* auto-fix the PR branch. So when you edit the YAML in a feature branch, run the command above and commit the result alongside your YAML change before opening the PR.
 - **Push to `main`** — regenerates and commits the updated diagram back to main as `github-actions[bot]`. Direct main pushes are the only path where you don't have to regenerate yourself.
 
-### implement-ticket — what it does
+### implement — what it does
 
-`gh optivem atdd implement-ticket --issue <n>` moves the issue to **In Progress**, then walks the embedded process-flow node-by-node, launching the matching Claude Code subagent in your terminal at each user-task node. When the subagent commits and exits, the engine advances.
+`gh optivem implement --issue <n>` moves the issue to **In Progress**, then walks the embedded process-flow node-by-node, launching the matching Claude Code subagent in your terminal at each user-task node. When the subagent commits and exits, the engine advances. Omit `--issue` and the driver picks the top Ready item from the project board instead, then walks the same pipeline from START.
 
 Useful flags:
 
 - `--autonomous` — headless agents (`claude -p`)
 - `--manual-agents` — v1 two-window dispatch (driver pauses, human launches the agent in a separate Claude Code session, presses Enter to advance). Right tool when bisecting "did v2 misroute?" vs. "did v1 see the commit?".
 
-Per-node prompt shaping (`extra` text, full `replace`, alternate `process_flow`, or `agent_prompts` swaps) is configured via fields in `gh-optivem.yaml`, not flags — see the [ATDD-specific overrides](README.md#atdd-specific-overrides) section in the README.
+Per-node prompt shaping (`extra` text, full `replace`, alternate `process_flow`, or `agent_prompts` swaps) is configured via fields in `gh-optivem.yaml`, not flags — see the [pipeline overrides](README.md#pipeline-overrides) section in the README.
 
 The two rehearsal flows below show how to actually invoke it.
 
 ### Two ways to rehearse the full flow
 
-Both end with `implement-ticket` walking a real GitHub issue. Pick based on what you're testing.
+Both end with `implement` walking a real GitHub issue. Pick based on what you're testing.
 
 #### Part 1 — dev loop: local gh-optivem against existing shop
 
@@ -177,7 +177,7 @@ Fast iteration on the driver. **Local working copy of gh-optivem** + **existing 
 
 ##### Quick path (no extra flags)
 
-`scripts/atdd-rehearsal.sh` does **everything** end-to-end: `go build`s `gh-optivem.exe` from your working copy, creates the worktree, runs `implement-ticket` inside it, prompts to delete the worktree + branch on exit.
+`scripts/atdd-rehearsal.sh` does **everything** end-to-end: `go build`s `gh-optivem.exe` from your working copy, creates the worktree, runs `implement` inside it, prompts to delete the worktree + branch on exit.
 
 ```bash
 # Step 1 — go to shop
@@ -195,7 +195,7 @@ The worktree lands at `../rehearsal-<id>` (sibling of shop).
 
 ##### Iterating on the same worktree
 
-The rehearsal script is one-shot — it runs `implement-ticket` once, then exits with the cleanup prompt. If you answered `n` to keep the worktree (e.g. the run failed and you want to retry with a fixed driver, or you want to extend the same branch), iterate by hand. The worktree path was logged at the start of the script; assume it's `../rehearsal-<id>`.
+The rehearsal script is one-shot — it runs `implement` once, then exits with the cleanup prompt. If you answered `n` to keep the worktree (e.g. the run failed and you want to retry with a fixed driver, or you want to extend the same branch), iterate by hand. The worktree path was logged at the start of the script; assume it's `../rehearsal-<id>`.
 
 ```bash
 # Step 1 — edit gh-optivem code in the gh-optivem repo (not in the worktree)
@@ -204,9 +204,9 @@ The rehearsal script is one-shot — it runs `implement-ticket` once, then exits
 cd ../shop
 go -C ../gh-optivem build -o gh-optivem.exe .
 
-# Step 3 — cd into the kept worktree and re-run implement-ticket
+# Step 3 — cd into the kept worktree and re-run implement
 cd ../rehearsal-<id>           # tab-complete <id> from the script's log line
-../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 61
+../gh-optivem/gh-optivem.exe implement --issue 61
 
 # Step 4 — when truly done, clean up from shop
 cd ../shop
@@ -232,12 +232,12 @@ TS=$(date +%Y%m%d-%H%M%S)
 git worktree add -b "rehearsal/${TS}" "../rehearsal-${TS}"
 cd "../rehearsal-${TS}"
 
-# Step 4 — run implement-ticket with whatever flags you need (pick one)
-../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 42
-../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 42 --autonomous
-../gh-optivem/gh-optivem.exe atdd implement-ticket --issue 42 --manual-agents
-../gh-optivem/gh-optivem.exe -c ./gh-optivem.experimental.yaml atdd implement-ticket --issue 42  # swap node_extras / agent_prompts / process_flow via an alternate config
-../gh-optivem/gh-optivem.exe atdd manage-project                                  # pick top Ready item from project board
+# Step 4 — run implement with whatever flags you need (pick one)
+../gh-optivem/gh-optivem.exe implement --issue 42
+../gh-optivem/gh-optivem.exe implement --issue 42 --autonomous
+../gh-optivem/gh-optivem.exe implement --issue 42 --manual-agents
+../gh-optivem/gh-optivem.exe -c ./gh-optivem.experimental.yaml implement --issue 42  # swap node_extras / agent_prompts / process_flow via an alternate config
+../gh-optivem/gh-optivem.exe implement                                            # pick top Ready item from project board
 
 # Step 5 — clean up the worktree + branch when done
 cd ../shop
@@ -272,7 +272,7 @@ gh optivem init
 
 # Step 5 — walk an issue on the new repo
 cd page-turner
-gh optivem atdd implement-ticket --issue 1
+gh optivem implement --issue 1
 
 # Step 5 — (optional) remove the extension
 gh extension remove optivem
@@ -305,7 +305,7 @@ Every scaffolded repo gets a `gh-optivem.yaml` at its root. The file declares fi
 - `system_test:` — the acceptance-test suite that drives the system. Top-level (not nested under `system:`) because tests aren't part of the system; they drive it.
 - `external_systems:` (optional) — vendored stand-ins for third-party dependencies. `stubs:` is the cycle-2 WireMock-style pattern; `simulators:` is the cycle-3 real-sim pattern.
 
-Every populated tier carries the same `path:` (repo-relative) and `repo:` (slug from the participating repos) pair; system-tier blocks additionally carry `lang:`. The runtime preflight on `gh optivem atdd implement-ticket` validates that every declared path exists on disk before any agent runs, so a config / layout mismatch fails fast with a readable error rather than mid-pipeline.
+Every populated tier carries the same `path:` (repo-relative) and `repo:` (slug from the participating repos) pair; system-tier blocks additionally carry `lang:`. The runtime preflight on `gh optivem implement` validates that every declared path exists on disk before any agent runs, so a config / layout mismatch fails fast with a readable error rather than mid-pipeline.
 
 For the canonical schema, see [`internal/projectconfig/config.go`](internal/projectconfig/config.go) — every YAML field is declared on the `Config` struct with its `yaml:` tag, and the `Validate` method spells out the cross-field rules (architecture exclusivity, repo-strategy consistency, per-tier completeness, SonarCloud presence).
 
@@ -340,9 +340,9 @@ Legacy `.json` files still work — the loader picks the parser from the file ex
 
 If no `gh-optivem.yaml` is found, the runner commands hard-error with a hint pointing at `gh optivem config init` (to create one in place) and at `--config <path>` (to use one that lives elsewhere). If `gh-optivem.yaml` is present but `system.config:` / `system_test.config:` is unset, the runner commands hard-error pointing at the missing field plus the same `--config` escape hatch.
 
-#### ATDD-specific overrides
+#### Pipeline overrides
 
-The ATDD pipeline (`gh optivem atdd implement-ticket` / `manage-project`) reads four optional override fields from the same `gh-optivem.yaml`:
+The implementation pipeline (`gh optivem implement`, with or without `--issue`) reads four optional override fields from the same `gh-optivem.yaml`:
 
 ```yaml
 process_flow: config/process-flow.yaml         # alternate process-flow YAML (default: embedded)

@@ -1,7 +1,7 @@
 // Package configinit owns the shared "write a fresh gh-optivem.yaml" code
 // path. The `gh optivem config init` command, `gh optivem init`, and the
 // missing-file recovery prompt invoked by `compile`, `config validate`,
-// and `atdd implement-ticket` all funnel through Run + ResolveTarget here
+// and `implement` all funnel through Run + ResolveTarget here
 // so the YAML emission and the gitignore side-effect stay single-sourced.
 //
 // Prompt + EnsureExists layer an interactive recovery on top: when one of

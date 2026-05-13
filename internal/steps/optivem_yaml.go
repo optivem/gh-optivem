@@ -32,8 +32,8 @@ const (
 // strategy, system architecture + per-component layout, system_test layout,
 // and external-system stand-in declarations).
 //
-// Multi-repo: writes the same file to every per-tier repo so `gh optivem atdd
-// implement-ticket` can be invoked from any of them.
+// Multi-repo: writes the same file to every per-tier repo so `gh optivem
+// implement` can be invoked from any of them.
 //
 // `cfg.RepoStrategy` arrives in the init flag's spelling (`monorepo` /
 // `multirepo`); this function translates to the schema's spelling (`mono-repo`

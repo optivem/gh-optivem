@@ -190,7 +190,7 @@ func renameDirs(root, old, new string, subtreeMarker *string) int {
 // CopyDir recursively copies a directory tree.
 // skipDirs are directories that should never be copied (build artifacts, caches).
 //
-// Note: `.claude/` is NOT skipped — `gh optivem atdd install` writes managed
+// Note: `.claude/` is NOT skipped — `gh optivem init` writes managed
 // agents/commands directly into the consumer's `.claude/`, and any
 // student-authored `.claude/` content the source happens to include is
 // preserved by passing through verbatim.

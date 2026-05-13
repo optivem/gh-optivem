@@ -58,8 +58,8 @@ import (
 // DefaultProcessName is the entry process loaded by every public CLI command.
 const DefaultProcessName = "main"
 
-// Options bundles every driver knob that callers (the `gh optivem atdd …`
-// commands and tests) might want to set. Zero values yield a usable
+// Options bundles every driver knob that callers (the `gh optivem implement`
+// command and tests) might want to set. Zero values yield a usable
 // configuration: load the embedded canonical YAML, enter DefaultProcessName,
 // no overrides, real shell-outs.
 type Options struct {
@@ -71,9 +71,9 @@ type Options struct {
 	// ProcessName is the entry process. Empty → DefaultProcessName.
 	ProcessName string
 
-	// IssueNum, when > 0, switches the driver into implement-ticket mode:
-	// the picker (PICK_TOP_READY) is bypassed and the driver pre-resolves
-	// the project item for the given issue.
+	// IssueNum, when > 0, makes `gh optivem implement` skip the picker
+	// (PICK_TOP_READY) and pre-resolve the project item for the given issue.
+	// Zero (the default) keeps the picker in the flow.
 	IssueNum int
 
 	// ProjectURL overrides config-based project resolution. Optional; when
@@ -112,7 +112,7 @@ type Options struct {
 	AgentPromptOverrides map[string]string
 
 	// ConfigPath is the resolved gh-optivem.yaml path. The caller (cobra
-	// layer in atdd_commands.go) populates it via projectconfig.ResolvePath
+	// layer in implement_commands.go) populates it via projectconfig.ResolvePath
 	// so flag > env > <cwd>/gh-optivem.yaml precedence is applied once and
 	// the driver sees a single, always-non-empty path. Missing-file is a
 	// hard error.
@@ -140,9 +140,9 @@ type Options struct {
 	KeepRuns int
 
 	// ShowPrompt threads through to clauderun.Options.ShowPrompt for every
-	// dispatch so `gh optivem atdd implement-ticket --show-prompt` dumps
-	// the full rendered prompt to stdout before each agent launches. Off
-	// by default — the prepared-prompt summary banner is always on.
+	// dispatch so `gh optivem implement --show-prompt` dumps the full
+	// rendered prompt to stdout before each agent launches. Off by default
+	// — the prepared-prompt summary banner is always on.
 	ShowPrompt bool
 
 	// ClaudeRunDeps lets tests inject fake `claude` and `git` runners

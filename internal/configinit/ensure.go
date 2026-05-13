@@ -1,5 +1,5 @@
 // ensure.go bridges the three "read gh-optivem.yaml" entry points
-// (config validate, compile, atdd implement-ticket) to the interactive
+// (config validate, compile, implement) to the interactive
 // Prompt. EnsureExists is the only function the entry points need to
 // call: it checks the file, returns nil if present, and on
 // fs.ErrNotExist + TTY stdin drives Prompt + Run to write a fresh file
