@@ -52,6 +52,11 @@ non-scaffolded repo, or re-validating after a hand edit).`,
 // unless --force is passed (the file may be hand-edited; silent overwrite
 // is a foot-gun).
 //
+// TODO: document the standalone retrofit flow (running `config init`
+// from inside a hand-rolled, non-scaffolded repo) in the README once
+// the UX is validated. For now the README leads with `gh optivem init`,
+// which folds in the same prompt via configinit.EnsureExists.
+//
 // Validations run before the file is written, in two phases: (1) format
 // (owner naming rules, license key, arch/repo-strategy enums, project
 // URL shape) and (2) existence (owner resolves as a real GitHub user or

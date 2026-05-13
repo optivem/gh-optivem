@@ -85,25 +85,23 @@ gh optivem environment verify
 
 Reads `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` / `SONAR_TOKEN` / `GHCR_TOKEN` / `WORKFLOW_TOKEN` / `REPO_TOKEN` from the environment, runs a live auth call against each provider in parallel, and exits non-zero with an aggregated list of every missing or rejected value. `DOCKERHUB_USERNAME` is an account name rather than a token — not all environment variables are tokens, which is why the command is `environment verify` not `token verify`. Read-only — no repos, secrets, or releases are mutated. Run this once up front before kicking off a CI matrix that fans out to every architecture × language combination.
 
-## Configuration
-
-Scaffolding is **two-phase**. First write `gh-optivem.yaml` — the file that carries every project-stable value (owner, repo, arch, langs, system name, license, deploy target, tier paths, project URL). Then run `gh optivem init` to create the GitHub repo(s) and apply the template.
-
-For freshly scaffolded repos, `gh optivem init` writes the YAML for you — skip ahead to [Scaffolding](#scaffolding). The `gh optivem config init` flow below is for hand-rolled repos adopting `gh-optivem` after the fact; see [CONTRIBUTING.md](CONTRIBUTING.md#install-from-source) for full flag examples.
-
-Tier paths default to the flat scaffold layout (`system` / `backend` / `frontend` / `system-test` / `external-systems/external-stub` / `external-systems/external-real-sim`) — the same layout `gh optivem init` itself produces. Override with `--system-path`, `--backend-path`, `--frontend-path`, `--system-test-path`, `--stubs-path`, `--simulators-path` only when writing the YAML for a non-flat existing repo.
-
-Or run `gh optivem config init` interactively when the file is missing — `gh-optivem` prompts for owner/repo (auto-inferred from `git remote get-url origin` when the current directory already has a github.com origin configured), system-name, arch, repo-strategy, lang, and project-url; everything else is defaulted.
-
-Review the generated `gh-optivem.yaml`, hand-edit if needed, then run `gh optivem config validate` to confirm. Once the sibling repos are cloned (multi-repo layouts) and the tier paths actually exist on disk, run `gh optivem config preflight` for the stronger "I'm about to run this for real" check — same schema validation plus an on-disk layout check that every declared repo and tier path resolves to a real directory. `preflight` is the same check `atdd implement-ticket` runs at startup.
-
 ## Scaffolding
 
 ```bash
 gh optivem init
 ```
 
-No flags needed — every project-stable value comes from `gh-optivem.yaml`. The `init` command accepts only per-invocation flags (workdir, verify-level, no-*, log-file, …).
+No flags needed. On the first run, `gh optivem init` prompts for the project-stable values (owner, repo, system-name, arch, repo-strategy, lang, project-url) and writes them to `gh-optivem.yaml` before scaffolding the GitHub repo(s) and applying the template. Subsequent runs read the same file and skip the prompt. The `init` command itself accepts only per-invocation flags (workdir, verify-level, no-*, log-file, …).
+
+Once the file exists, hand-edit if needed and run `gh optivem config validate` to confirm. After the sibling repos are cloned (multi-repo layouts), run `gh optivem config preflight` for the stronger "I'm about to run this for real" check — same schema validation plus an on-disk layout check that every declared repo and tier path resolves to a real directory. `preflight` is the same check `atdd implement-ticket` runs at startup.
+
+<!--
+TODO: document the standalone `gh optivem config init` retrofit flow
+(writing gh-optivem.yaml into a hand-rolled, non-scaffolded repo, with
+the full set of --system-path / --backend-path / ... tier-path overrides)
+once the UX is validated.
+-->
+
 
 ### Logging flags
 

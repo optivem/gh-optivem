@@ -25,6 +25,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/optivem/gh-optivem/internal/config"
+	"github.com/optivem/gh-optivem/internal/configinit"
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/promptio"
@@ -105,9 +106,10 @@ func newRootCmd() *cobra.Command {
 
 // newInitCmd builds the `init` subcommand. Project-stable values
 // (owner, repo, system-name, arch, repo-strategy, langs, paths,
-// project-url, license, deploy) come from gh-optivem.yaml — written by
-// `gh optivem config init`. The init command surface is per-invocation
-// flags only.
+// project-url, license, deploy) come from gh-optivem.yaml. When the file
+// is missing on a TTY, init drops into the same interactive prompt as
+// `gh optivem config init` and writes the file in place. The init
+// command surface itself is per-invocation flags only.
 func newInitCmd() *cobra.Command {
 	f := &config.RawFlags{}
 	cmd := &cobra.Command{
@@ -117,22 +119,15 @@ func newInitCmd() *cobra.Command {
 template with naming substitutions, wire up the SonarCloud project(s), and
 verify the pipeline up to the requested --verify-level.
 
-Project-stable values are read from gh-optivem.yaml (run ` + "`gh optivem config init`" + `
-first to produce one). The init command itself only takes per-invocation
-flags — verify-level, workdir, etc.
+Project-stable values are read from gh-optivem.yaml. On a TTY, a missing
+file drops into the same interactive prompt as ` + "`gh optivem config init`" + `
+(owner/repo, system-name, arch, repo-strategy, lang, project-url) and the
+file is written in place before scaffolding continues. The init command
+itself only takes per-invocation flags — verify-level, workdir, etc.
 
 If project.url is empty, init will auto-create the project board and write
 the URL back into gh-optivem.yaml.`,
-		Example: `  # 1) generate gh-optivem.yaml (once per project, interactively or via flags)
-  gh optivem config init --owner acme --system-name "Page Turner" \
-      --repo page-turner --arch monolith --repo-strategy monorepo \
-      --monolith-lang java --project-url https://github.com/orgs/acme/projects/1 \
-      --system-path system --system-test-path system-test \
-      --stubs-path external-systems/stubs \
-      --simulators-path external-systems/simulators
-
-  # 2) review gh-optivem.yaml, then scaffold
-  gh optivem init`,
+		Example: `  gh optivem init`,
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			runInit(cmd, f)
@@ -143,11 +138,13 @@ the URL back into gh-optivem.yaml.`,
 }
 
 // loadProjectConfigForInit resolves the gh-optivem.yaml path using the
-// shared flag > env > default cascade and reads the file. A missing file
-// is a hard error with a pointer to `gh optivem config init` so the
-// operator knows the single command that produces a complete yaml. The
-// runtime's "missing file = nil config" convention does not apply on
-// `init` — there is no fallback path.
+// shared flag > env > default cascade and reads the file. On a TTY,
+// configinit.EnsureExists owns the missing-file path: it prints a
+// banner, drops into the same Prompt used by `gh optivem config init`,
+// and writes the YAML in place — so the operator never has to run a
+// separate command before scaffolding. Non-TTY callers (CI, redirected
+// stdin) get the terse MissingFileError pointing back at `gh optivem
+// config init` so unattended runs fail fast with a stable message.
 //
 // Returns the resolved absolute path alongside the parsed config so callers
 // can record it on cfg.SourceConfigPath — the project board step writes
@@ -158,6 +155,9 @@ func loadProjectConfigForInit(flagPath string) (*projectconfig.Config, string, e
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve absolute path for %s: %w", path, err)
+	}
+	if err := configinit.EnsureExists(abs); err != nil {
+		return nil, "", err
 	}
 	pc, err := projectconfig.LoadFromPath(abs)
 	if err != nil {
