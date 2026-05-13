@@ -98,7 +98,7 @@ func newRootCmd() *cobra.Command {
 		newTestCmd(),
 		newCompileCmd(),
 		newAtddCmd(),
-		newTokenCmd(),
+		newEnvironmentCmd(),
 		newUpgradeCmd(),
 	)
 	return cmd

@@ -239,15 +239,15 @@ gh optivem atdd show diagram                            # print the canonical Me
 gh optivem atdd show diagram > docs/process-diagram.md  # regenerate the committed diagram
 ```
 
-### Verifying tokens
+### Verifying the environment
 
 Before kicking off a CI matrix that fans out to every architecture × language combination, run a single up-front auth check:
 
 ```bash
-gh optivem token verify
+gh optivem environment verify
 ```
 
-Reads `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` / `SONAR_TOKEN` / `GHCR_TOKEN` / `WORKFLOW_TOKEN` / `REPO_TOKEN` from the environment, runs a live auth call against each provider in parallel, and exits non-zero with an aggregated list of every missing or rejected credential. Read-only — no repos, secrets, or releases are mutated.
+Reads `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` / `SONAR_TOKEN` / `GHCR_TOKEN` / `WORKFLOW_TOKEN` / `REPO_TOKEN` from the environment, runs a live auth call against each provider in parallel, and exits non-zero with an aggregated list of every missing or rejected value. `DOCKERHUB_USERNAME` is an account name rather than a token — not all environment variables are tokens, which is why the command is `environment verify` not `token verify`. Read-only — no repos, secrets, or releases are mutated.
 
 ## Troubleshooting
 

@@ -264,22 +264,23 @@ func verifyGHCRToken(client *http.Client, username, token string) error {
 	return nil
 }
 
-// VerifyTokens runs presence + live auth checks against every credential the
-// gh-optivem CLI reads from environment: DOCKERHUB_TOKEN, SONAR_TOKEN,
-// GHCR_TOKEN, WORKFLOW_TOKEN, REPO_TOKEN, plus DOCKERHUB_USERNAME for the
-// Docker Hub login call. Workflow-only tokens (e.g. VERIFY_TOKEN, used by
-// the gh-acceptance meta-test for `gh api` calls) are out of scope — those
-// are validated by the workflow's own preflight steps.
+// VerifyEnvironment runs presence + live auth checks against every
+// environment variable the gh-optivem CLI consumes: DOCKERHUB_TOKEN,
+// SONAR_TOKEN, GHCR_TOKEN, WORKFLOW_TOKEN, REPO_TOKEN, plus DOCKERHUB_USERNAME
+// (an account name, not a token) used for the Docker Hub login call.
+// Workflow-only inputs (e.g. VERIFY_TOKEN, used by the gh-acceptance
+// meta-test for `gh api` calls) are out of scope — those are validated by
+// the workflow's own preflight steps.
 //
 // Designed to be invoked from a CI preflight job — fails fast before the
-// scaffolding matrix fans out, so a single expired token surfaces once
+// scaffolding matrix fans out, so a single expired credential surfaces once
 // instead of once per matrix combo. All checks run regardless of earlier
-// failures so the user sees every broken token in one pass.
+// failures so the user sees every broken variable in one pass.
 //
 // Returns nil on full success, otherwise an aggregated error listing every
 // failure (missing or rejected). On nil return, prints one success line per
-// token via the log package (caller is responsible for log.Init).
-func VerifyTokens() error {
+// variable via the log package (caller is responsible for log.Init).
+func VerifyEnvironment() error {
 	e := readEnvTokens()
 
 	required := []struct{ name, val string }{
