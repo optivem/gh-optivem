@@ -165,37 +165,6 @@ func stripInputSuffix(name string) string {
 	return name[:idx] + name[idx+len(marker):]
 }
 
-// TestRemoveDisabledMarkers_DryRun verifies that DryRun returns the
-// FileChange list without modifying the file on disk.
-func TestRemoveDisabledMarkers_DryRun(t *testing.T) {
-	tmp := t.TempDir()
-	inputBytes, err := os.ReadFile(filepath.Join("testdata", "java", "disabled-with-import-input.java"))
-	if err != nil {
-		t.Fatalf("read input: %v", err)
-	}
-	staged := filepath.Join(tmp, "disabled-with-import.java")
-	if err := os.WriteFile(staged, inputBytes, 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-	changes, err := RemoveDisabledMarkers(context.Background(), RemoveOptions{
-		Roots:  []string{tmp},
-		DryRun: true,
-	})
-	if err != nil {
-		t.Fatalf("RemoveDisabledMarkers: %v", err)
-	}
-	if len(changes.Files) != 1 {
-		t.Fatalf("expected 1 FileChange, got %d", len(changes.Files))
-	}
-	got, err := os.ReadFile(staged)
-	if err != nil {
-		t.Fatalf("read after dry run: %v", err)
-	}
-	if string(got) != string(inputBytes) {
-		t.Errorf("dry run modified the file; expected unchanged content")
-	}
-}
-
 // TestRemoveDisabledMarkers_MissingRoot asserts that a non-existent root is
 // silently skipped (per the soft-skip contract for callers passing all
 // three language roots unconditionally).

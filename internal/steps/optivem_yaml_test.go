@@ -8,9 +8,9 @@ import (
 )
 
 // monolithFlatPaths returns the path values the scaffolder injects into a
-// monolith Config (matching resolveScaffoldPaths in internal/config). Tests
-// that exercise buildOptivemYAML for the post-scaffold layout reuse these
-// instead of repeating the literal strings.
+// monolith Config (matching the Default*Path constants in internal/config).
+// Tests that exercise buildOptivemYAML for the post-scaffold layout reuse
+// these instead of repeating the literal strings.
 func monolithFlatPaths() (system, systemTest, stubs, simulators string) {
 	return "system", "system-test", "external-systems/external-stub", "external-systems/external-real-sim"
 }

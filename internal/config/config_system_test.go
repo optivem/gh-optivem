@@ -303,7 +303,6 @@ func TestInvalidConfigurations(t *testing.T) {
 				"--arch", "monolith",
 				"--repo-strategy", "monorepo",
 				"--monolith-lang", "java",
-				"--dry-run",
 			},
 		},
 		{
@@ -314,7 +313,6 @@ func TestInvalidConfigurations(t *testing.T) {
 				"--arch", "monolith",
 				"--repo-strategy", "monorepo",
 				"--monolith-lang", "java",
-				"--dry-run",
 			},
 		},
 		{
@@ -325,48 +323,47 @@ func TestInvalidConfigurations(t *testing.T) {
 				"--arch", "monolith",
 				"--repo-strategy", "monorepo",
 				"--monolith-lang", "java",
-				"--dry-run",
 			},
 		},
 		{
 			name: "missing arch",
-			args: append(withBase("--repo-strategy", "monorepo", "--monolith-lang", "java"), "--dry-run"),
+			args: withBase("--repo-strategy", "monorepo", "--monolith-lang", "java"),
 		},
 		{
 			name: "invalid arch",
-			args: append(withBase("--arch", "invalid", "--repo-strategy", "monorepo", "--monolith-lang", "java"), "--dry-run"),
+			args: withBase("--arch", "invalid", "--repo-strategy", "monorepo", "--monolith-lang", "java"),
 		},
 		{
 			name: "missing repo-strategy",
-			args: append(withBase("--arch", "monolith", "--monolith-lang", "java"), "--dry-run"),
+			args: withBase("--arch", "monolith", "--monolith-lang", "java"),
 		},
 		{
 			name: "invalid repo-strategy",
-			args: append(withBase("--arch", "monolith", "--repo-strategy", "invalid", "--monolith-lang", "java"), "--dry-run"),
+			args: withBase("--arch", "monolith", "--repo-strategy", "invalid", "--monolith-lang", "java"),
 		},
 		{
 			name: "monolith missing lang",
-			args: append(withBase("--arch", "monolith", "--repo-strategy", "monorepo"), "--dry-run"),
+			args: withBase("--arch", "monolith", "--repo-strategy", "monorepo"),
 		},
 		{
 			name: "monolith invalid lang",
-			args: append(withBase("--arch", "monolith", "--repo-strategy", "monorepo", "--monolith-lang", "python"), "--dry-run"),
+			args: withBase("--arch", "monolith", "--repo-strategy", "monorepo", "--monolith-lang", "python"),
 		},
 		{
 			name: "multitier missing backend-lang",
-			args: append(withBase("--arch", "multitier", "--repo-strategy", "multirepo", "--frontend-lang", "typescript"), "--dry-run"),
+			args: withBase("--arch", "multitier", "--repo-strategy", "multirepo", "--frontend-lang", "typescript"),
 		},
 		{
 			name: "multitier missing frontend-lang",
-			args: append(withBase("--arch", "multitier", "--repo-strategy", "multirepo", "--backend-lang", "java"), "--dry-run"),
+			args: withBase("--arch", "multitier", "--repo-strategy", "multirepo", "--backend-lang", "java"),
 		},
 		{
 			name: "multitier invalid frontend-lang",
-			args: append(withBase("--arch", "multitier", "--repo-strategy", "multirepo", "--backend-lang", "java", "--frontend-lang", "angular"), "--dry-run"),
+			args: withBase("--arch", "multitier", "--repo-strategy", "multirepo", "--backend-lang", "java", "--frontend-lang", "angular"),
 		},
 		{
 			name: "multitier invalid backend-lang",
-			args: append(withBase("--arch", "multitier", "--repo-strategy", "multirepo", "--backend-lang", "python", "--frontend-lang", "typescript"), "--dry-run"),
+			args: withBase("--arch", "multitier", "--repo-strategy", "multirepo", "--backend-lang", "python", "--frontend-lang", "typescript"),
 		},
 	}
 

@@ -24,15 +24,6 @@ func logCloned(fullRepo, localPath string) {
 func CreateRepos(cfg *config.Config, gh *shell.GitHub) {
 	log.Infof("Creating repository %s...", cfg.FullRepo)
 
-	if cfg.DryRun {
-		log.Infof("[DRY RUN] gh repo create %s --public", cfg.FullRepo)
-		if cfg.RepoStrategy == "multirepo" {
-			log.Infof("[DRY RUN] gh repo create %s --public", cfg.FrontendFullRepo)
-			log.Infof("[DRY RUN] gh repo create %s --public", cfg.BackendFullRepo)
-		}
-		return
-	}
-
 	gh.CreateRepo()
 	logCreated(cfg.FullRepo)
 
@@ -134,11 +125,6 @@ func setVariable(gh *shell.GitHub, name, value string) {
 // the destination dirs pre-computed during ParseAndValidate (cfg.RepoDir etc).
 func CloneRepos(cfg *config.Config, gh *shell.GitHub) {
 	log.Info("Cloning repo(s)...")
-
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would clone repo(s)")
-		return
-	}
 
 	gh.Clone(cfg.RepoDir)
 	logCloned(cfg.FullRepo, cfg.RepoDir)

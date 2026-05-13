@@ -1,9 +1,10 @@
 // Package config — token authentication checks.
 //
-// Presence checks in validateEnvTokens only prove the env vars are set; the
-// values may still be expired, revoked, or wrong for the account. These
-// checks call each provider with a minimal authenticated request so we fail
-// fast before any repos or Sonar projects get created.
+// VerifyTokens is the single entry point: it checks presence of every
+// credential env var the CLI reads, then calls each provider with a minimal
+// authenticated request so we fail fast before any repos or Sonar projects
+// get created. Presence-only proof is not enough — values may still be
+// expired, revoked, or wrong for the account.
 //
 // All checks run in parallel and every failure is collected, so the user
 // sees every broken token in one pass instead of fix-one-see-the-next.
@@ -45,62 +46,6 @@ type tokenAuthResult struct {
 	err  error  // nil on success
 }
 
-// validateTokensAuth runs live auth checks against each provider in parallel.
-// Aborts via FatalExit if any token fails so the user sees every broken one
-// at once instead of fix-one-retry-discover-next.
-func validateTokensAuth(e envTokens, dryRun bool) {
-	if dryRun {
-		return
-	}
-	log.Info("Verifying credentials with providers...")
-
-	client := &http.Client{Timeout: tokenAuthTimeout}
-
-	type check struct {
-		name string
-		fn   func() error
-	}
-	checks := []check{
-		{"DOCKERHUB_TOKEN", func() error { return verifyDockerHubAuth(client, e.dockerHubUsername, e.dockerHubToken) }},
-		{"SONAR_TOKEN", func() error { return verifySonarToken(client, e.sonarToken) }},
-		{"WORKFLOW_TOKEN", func() error { return verifyGitHubToken(client, e.workflowToken, "WORKFLOW_TOKEN") }},
-		{"GHCR_TOKEN", func() error { return verifyGHCRToken(client, e.dockerHubUsername, e.ghcrToken) }},
-	}
-
-	results := make([]tokenAuthResult, len(checks))
-	var wg sync.WaitGroup
-	for i, c := range checks {
-		wg.Add(1)
-		go func(i int, c check) {
-			defer wg.Done()
-			results[i] = tokenAuthResult{name: c.name, err: c.fn()}
-		}(i, c)
-	}
-	wg.Wait()
-
-	var failures []tokenAuthResult
-	for _, r := range results {
-		if r.err == nil {
-			log.Successf("  %s: valid", r.name)
-			continue
-		}
-		failures = append(failures, r)
-	}
-	if len(failures) == 0 {
-		return
-	}
-
-	// Aggregate all failures into one FatalExit so the user sees them together.
-	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Credential verification failed for %d token(s):\n", len(failures)))
-	for _, f := range failures {
-		b.WriteString("\n  ")
-		b.WriteString(f.name)
-		b.WriteString(": ")
-		b.WriteString(f.err.Error())
-	}
-	log.FatalExit(b.String())
-}
 
 // verifyDockerHubAuth posts username+token to Docker Hub's login endpoint.
 // A valid PAT returns 200 with a JWT; anything else is an auth failure.
@@ -297,7 +242,13 @@ func VerifyTokens() error {
 		}
 	}
 	if len(missing) > 0 {
-		return fmt.Errorf("missing required environment variable(s): %s", strings.Join(missing, ", "))
+		var b strings.Builder
+		fmt.Fprintf(&b, "Missing required environment variable(s): %s\n", strings.Join(missing, ", "))
+		for _, name := range missing {
+			b.WriteString("\n")
+			b.WriteString(missingEnvHint(name))
+		}
+		return errors.New(b.String())
 	}
 
 	log.Info("Verifying credentials with providers...")
@@ -364,4 +315,41 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+const (
+	envRequiredSuffix  = " environment variable is required.\n"
+	patSettingsURLLine = "  https://github.com/settings/tokens\n"
+)
+
+// missingEnvHint returns a multi-line hint explaining what the named env var
+// is used for and how to create it. Returns a string (no exit) so callers can
+// aggregate hints for several missing vars into one error and surface them
+// together — fix-all-at-once instead of fix-one-rerun-discover-next.
+func missingEnvHint(name string) string {
+	switch name {
+	case "GHCR_TOKEN":
+		return name + envRequiredSuffix +
+			"  The scaffolded repo's acceptance/prod stages use it to tag images in GHCR.\n" +
+			"  Create a Personal Access Token (classic) with write:packages + read:packages scopes:\n" +
+			patSettingsURLLine +
+			"  Then: export GHCR_TOKEN=<your-token>"
+	case "WORKFLOW_TOKEN":
+		return name + envRequiredSuffix +
+			"  The scaffolded repo's acceptance/QA/prod stages use it to push release tags\n" +
+			"  (default GITHUB_TOKEN cannot push tags whose commit diffs workflow files).\n" +
+			"  Create a Personal Access Token (classic) with repo + workflow scopes:\n" +
+			patSettingsURLLine +
+			"  Then: export WORKFLOW_TOKEN=<your-token>"
+	case "REPO_TOKEN":
+		return name + envRequiredSuffix +
+			"  In multitier+multirepo scaffolds, the system-level prod-stage uses it to read\n" +
+			"  each component repo's VERSION file via the GitHub API (cross-repo Contents:read).\n" +
+			"  Create a Personal Access Token (classic) with repo scope, OR a fine-grained PAT\n" +
+			"  with Contents:Read on the component repos:\n" +
+			patSettingsURLLine +
+			"  Then: export REPO_TOKEN=<your-token>"
+	default:
+		return fmt.Sprintf("%s environment variable is required", name)
+	}
 }

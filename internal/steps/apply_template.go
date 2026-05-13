@@ -142,11 +142,6 @@ func addLegacyWorkflow(wfMap map[string]string, srcTmpl string, vars map[string]
 func ApplyTemplate(cfg *config.Config) {
 	log.Info("Applying template files...")
 
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would apply template files")
-		return
-	}
-
 	EnsureWorkflowDir(cfg.RepoDir)
 
 	// Copy architecture-independent workflows
@@ -830,11 +825,6 @@ func copyCloudRunScripts(shop, repoDir string) {
 // troubleshooting).
 func ValidateNoLeftoverTemplateRefs(cfg *config.Config) {
 	log.Info("Validating no leftover template references...")
-
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would validate no leftover template references")
-		return
-	}
 
 	refs := forbiddenTemplateRefs(cfg)
 	for _, repoDir := range collectRepoDirs(cfg) {

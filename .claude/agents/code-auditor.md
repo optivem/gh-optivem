@@ -40,7 +40,7 @@ Why it matters: scaffolding is sequential and stateful. A silent `gh secret set`
 
 **Anti-patterns to also flag** when found alongside §1 matches:
 
-- `shell.Run(cmd, _, false, _)` (`check=false`) without a comment explaining why failures are acceptable — bypasses even the error-wrapping layer; intentional best-effort must be annotated.
+- `shell.Run(cmd, false, _)` (`check=false`) without a comment explaining why failures are acceptable — bypasses even the error-wrapping layer; intentional best-effort must be annotated.
 - A wrapper method on `*GitHub` that exists solely to call `Run` and discards its error (e.g. `WorkflowRun`). Prefer the `mustRun` sibling or a signature that returns the error.
 
 ## §2 — (reserved for future rules)

@@ -63,11 +63,11 @@ func (s *stubRunner) install() {
 		}
 		return "", fmt.Errorf("stub: unmatched RunCapture %q", cmd)
 	}
-	projectRunStdin = func(cmd, stdin string, _, _ bool, _ string) (string, error) {
+	projectRunStdin = func(cmd, stdin string, _ bool, _ string) (string, error) {
 		s.calls = append(s.calls, runRecord{cmd: cmd, stdin: stdin, via: "RunStdin"})
 		return "", nil
 	}
-	projectRun = func(cmd string, _, _ bool, _ string) (string, error) {
+	projectRun = func(cmd string, _ bool, _ string) (string, error) {
 		s.calls = append(s.calls, runRecord{cmd: cmd, via: "Run"})
 		for k, v := range s.runOutput {
 			if strings.Contains(cmd, k) {
@@ -459,53 +459,6 @@ func TestEnsureProjectBoard_PathB_AlreadyComplete(t *testing.T) {
 	}
 }
 
-// TestEnsureProjectBoard_DryRun_PathA: no shell calls, prints the planned
-// commands, leaves cfg.ProjectURL empty.
-func TestEnsureProjectBoard_DryRun_PathA(t *testing.T) {
-	stub := newStubRunner(t)
-	stub.install()
-
-	cfg := &config.Config{
-		Owner:        "acme",
-		FullRepo:     "acme/x",
-		SystemName:   "X",
-		RepoStrategy: "monorepo",
-		Arch:         "monolith",
-		DryRun:       true,
-	}
-	EnsureProjectBoard(cfg, nil)
-
-	if len(stub.calls) != 0 {
-		t.Errorf("dry run must not invoke shell; got %d calls", len(stub.calls))
-	}
-	if cfg.ProjectURL != "" {
-		t.Errorf("dry run must not mutate cfg.ProjectURL; got %q", cfg.ProjectURL)
-	}
-}
-
-// TestEnsureProjectBoard_DryRun_PathB: no shell calls; supplied URL
-// preserved.
-func TestEnsureProjectBoard_DryRun_PathB(t *testing.T) {
-	stub := newStubRunner(t)
-	stub.install()
-
-	cfg := &config.Config{
-		Owner:        "acme",
-		ProjectURL:   "https://github.com/users/acme/projects/9",
-		RepoStrategy: "monorepo",
-		Arch:         "monolith",
-		DryRun:       true,
-	}
-	EnsureProjectBoard(cfg, nil)
-
-	if len(stub.calls) != 0 {
-		t.Errorf("dry run must not invoke shell; got %d calls", len(stub.calls))
-	}
-	if cfg.ProjectURL != "https://github.com/users/acme/projects/9" {
-		t.Errorf("dry run must not mutate cfg.ProjectURL; got %q", cfg.ProjectURL)
-	}
-}
-
 // TestEnsureProjectBoard_NoProject: --no-project short-circuits both paths,
 // no shell calls regardless of cfg.ProjectURL.
 func TestEnsureProjectBoard_NoProject(t *testing.T) {
@@ -689,45 +642,6 @@ func TestEnsureProjectBoard_PathA_LeavesSourceUntouched_WhenURLAlreadyPresent(t 
 	}
 	if string(got) != string(originalBytes) {
 		t.Errorf("source yaml mutated when SourceProjectURLWasEmpty=false:\noriginal:\n%s\ngot:\n%s", originalBytes, got)
-	}
-}
-
-// TestEnsureProjectBoard_PathA_DryRunSkipsSourceWrite: dry-run logs the
-// would-write but leaves the source file untouched and the seam unused.
-func TestEnsureProjectBoard_PathA_DryRunSkipsSourceWrite(t *testing.T) {
-	dir := t.TempDir()
-	src := filepath.Join(dir, "gh-optivem.yaml")
-	originalBytes := writeSourceYAML(t, src, "")
-
-	stub := newStubRunner(t)
-	stub.install()
-	writeCalls := 0
-	projectWriteSourceConfig = func(_ string, _ *projectconfig.Config) error {
-		writeCalls++
-		return nil
-	}
-
-	cfg := &config.Config{
-		Owner:                    "acme",
-		FullRepo:                 "acme/page-turner",
-		SystemName:               "Page Turner",
-		RepoStrategy:             "monorepo",
-		Arch:                     "monolith",
-		DryRun:                   true,
-		SourceConfigPath:         src,
-		SourceProjectURLWasEmpty: true,
-	}
-	EnsureProjectBoard(cfg, nil)
-
-	if writeCalls != 0 {
-		t.Errorf("dry-run must not call write seam; got %d", writeCalls)
-	}
-	got, err := os.ReadFile(src)
-	if err != nil {
-		t.Fatalf("re-read source yaml: %v", err)
-	}
-	if string(got) != string(originalBytes) {
-		t.Errorf("dry-run must not rewrite source yaml")
 	}
 }
 

@@ -7,8 +7,6 @@
 package main
 
 import (
-	"path/filepath"
-
 	"github.com/optivem/gh-optivem/internal/atdd"
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
@@ -27,20 +25,7 @@ func installAtddDuringInit(cfg *config.Config) {
 		RepoStrategy: cfg.RepoStrategy,
 		// init writes into a fresh clone — no local edits to protect, and
 		// the pre-flight check would just be wasted I/O.
-		Force:  true,
-		DryRun: cfg.DryRun,
-	}
-	if cfg.DryRun {
-		log.Infof("[DRY RUN] Would install ATDD assets into %s", cfg.RepoDir)
-		specs, err := atdd.Plan(opts)
-		if err != nil {
-			log.Fatalf("ATDD plan: %v", err)
-		}
-		for _, s := range specs {
-			rel, _ := filepath.Rel(cfg.RepoDir, s.Dest)
-			log.Infof("[DRY RUN]   %s", rel)
-		}
-		return
+		Force: true,
 	}
 	if err := atdd.Install(opts); err != nil {
 		log.Fatalf("ATDD install: %v", err)

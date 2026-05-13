@@ -25,11 +25,6 @@ const dockerComposePrefix = "docker-compose"
 func ReplaceRepoReferences(cfg *config.Config) {
 	log.Info("Replacing repository references...")
 
-	if cfg.DryRun {
-		log.Infof("[DRY RUN] Would replace optivem/shop -> %s", cfg.FullRepo)
-		return
-	}
-
 	rewritePublisherRefs(cfg.RepoDir, cfg.Owner, cfg.FullRepo, cfg.OwnerLower)
 
 	if cfg.RepoStrategy == "multirepo" {
@@ -56,11 +51,6 @@ func ReplaceRepoReferences(cfg *config.Config) {
 func ReplaceNamespaces(cfg *config.Config) {
 	log.Info("Replacing company placeholders...")
 
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would replace company placeholders")
-		return
-	}
-
 	pairs := companyPlaceholderPairs(cfg.OwnerCasings)
 	applyToAllRepos(cfg, pairs, "Company")
 
@@ -72,11 +62,6 @@ func ReplaceNamespaces(cfg *config.Config) {
 // file content, filenames, and directory names.
 func ReplaceSystemName(cfg *config.Config) {
 	log.Info("Replacing system placeholders...")
-
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would replace system placeholders")
-		return
-	}
 
 	pairs := systemPlaceholderPairs(cfg.SysNameCasings)
 	applyToAllRepos(cfg, pairs, "System")

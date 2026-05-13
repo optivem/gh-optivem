@@ -12,8 +12,8 @@ import (
 // ParseAndValidate so the rest of the init pipeline keeps consuming
 // RawFlags exactly as it did under the old all-flags path.
 //
-// Per-invocation flags on f (--dry-run, --verify-level, --workdir, etc.)
-// are left untouched. The yaml carries no per-invocation values.
+// Per-invocation flags on f (--verify-level, --workdir, etc.) are left
+// untouched. The yaml carries no per-invocation values.
 //
 // Hard-errors when the yaml is missing fields init needs to scaffold
 // (system_name, architecture, project URL, langs, paths). The error

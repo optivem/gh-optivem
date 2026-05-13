@@ -19,11 +19,6 @@ import (
 func WriteLicense(cfg *config.Config) {
 	log.Info("Writing LICENSE...")
 
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would write LICENSE")
-		return
-	}
-
 	if cfg.License == "" {
 		log.Info("No license configured -- skipping LICENSE file")
 		return
@@ -72,11 +67,6 @@ func writeLicenseToDir(dir, body string) {
 func CreateSonarCloudProjects(cfg *config.Config, pc *projectconfig.Config, sc *shell.SonarCloud) {
 	log.Info("Creating SonarCloud projects...")
 
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would create SonarCloud org and project(s)")
-		return
-	}
-
 	sc.CreateOrg()
 	for _, key := range sonarProjectKeysFromConfig(pc) {
 		sc.CreateProject(key)
@@ -118,11 +108,6 @@ func sonarProjectKeysFromConfig(pc *projectconfig.Config) []string {
 func CommitAndPush(cfg *config.Config, failureNote string) {
 	log.Info("Committing and pushing...")
 
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would git add, commit, push")
-		return
-	}
-
 	commitMsg := "Apply pipeline template"
 	if failureNote != "" {
 		commitMsg = fmt.Sprintf("Apply pipeline template [PARTIAL: scaffold failed at %s]", failureNote)
@@ -142,7 +127,7 @@ func CommitAndPush(cfg *config.Config, failureNote string) {
 }
 
 func commitAndPushRepo(repoDir, fullRepo, commitMsg string, preExisted bool) {
-	if _, err := shell.Run("git add -A", false, true, repoDir); err != nil {
+	if _, err := shell.Run("git add -A", true, repoDir); err != nil {
 		log.Fatalf("git add failed in %s: %v", fullRepo, err)
 	}
 	// Fix executable permissions for shell scripts (Windows doesn't track the +x
@@ -164,7 +149,7 @@ func commitAndPushRepo(repoDir, fullRepo, commitMsg string, preExisted bool) {
 		}
 		log.Infof("No changes to commit in %s -- skipping commit (repo already existed with matching content)", fullRepo)
 	} else {
-		if _, err := shell.Run(fmt.Sprintf(`git commit -m %q`, commitMsg), false, true, repoDir); err != nil {
+		if _, err := shell.Run(fmt.Sprintf(`git commit -m %q`, commitMsg), true, repoDir); err != nil {
 			log.Fatalf("git commit failed in %s: %v", fullRepo, err)
 		}
 	}
@@ -175,7 +160,7 @@ func commitAndPushRepo(repoDir, fullRepo, commitMsg string, preExisted bool) {
 	// at push time -- by Phase 5 the repo has been touched by clone + several
 	// gh api calls, so every replica has caught up. Auth, permission, and
 	// branch-protection failures are permanent and should fail fast.
-	if out, err := shell.Run("git push -u origin main", false, true, repoDir); err != nil {
+	if out, err := shell.Run("git push -u origin main", true, repoDir); err != nil {
 		log.Fatalf("git push failed in %s: %v\n%s", fullRepo, err, out)
 	}
 	log.Successf("Pushed template to %s", fullRepo)
@@ -197,7 +182,7 @@ func fixExecBits(repoDir, fullRepo string) {
 			continue
 		}
 		if execNames[filepath.Base(path)] {
-			shell.MustRun(fmt.Sprintf(`git update-index --chmod=+x "%s"`, path), false, repoDir)
+			shell.MustRun(fmt.Sprintf(`git update-index --chmod=+x "%s"`, path), repoDir)
 		}
 	}
 }

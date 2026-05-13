@@ -156,7 +156,7 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
           REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
-        run: go run . verify tokens
+        run: go run . environment verify
 
       # Fail fast if VERIFY_TOKEN is already drained — every matrix combo uses it
       # to scaffold a test repo, set secrets/variables, and watch workflows. With

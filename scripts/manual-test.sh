@@ -16,9 +16,9 @@ set -euo pipefail
 # Two-phase scaffolding: writes gh-optivem.yaml via `config init` first,
 # then runs `init` against it. Project-stable flags (--system-name,
 # --arch, langs, paths, project-url, etc.) go to `config init`;
-# per-invocation flags (--keep-local, --report-bug, --dry-run, --verbose,
-# --quiet, --log-file, --workdir, --shop-ref, --verify-level, --yes, the
-# --no-* set) go to `init`. The split is hardcoded — passing an unknown
+# per-invocation flags (--keep-local, --report-bug, --verbose, --quiet,
+# --log-file, --workdir, --shop-ref, --verify-level, --yes, the --no-*
+# set) go to `init`. The split is hardcoded — passing an unknown
 # flag is an error.
 #
 # On failure: nothing is deleted, so the scaffold dir + remote repos
@@ -72,14 +72,6 @@ OWNER=""
 CONFIG_INIT_FLAGS=()
 # Flags routed to `init` (per-invocation only).
 INIT_FLAGS=()
-# Default tier paths matching the flat scaffold layout the binary itself
-# expects. Overridden if the caller passes their own --*-path flag.
-PATH_SYSTEM=""
-PATH_SYSTEM_TEST=""
-PATH_BACKEND=""
-PATH_FRONTEND=""
-PATH_STUBS=""
-PATH_SIMULATORS=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -93,14 +85,12 @@ while [[ $# -gt 0 ]]; do
     --monolith-lang|--backend-lang|--frontend-lang|--test-lang) CONFIG_INIT_FLAGS+=("$1" "$2"); shift 2 ;;
     --license|--deploy)  CONFIG_INIT_FLAGS+=("$1" "$2"); shift 2 ;;
     --project-url)       CONFIG_INIT_FLAGS+=("$1" "$2"); shift 2 ;;
-    --system-path)       PATH_SYSTEM="$2"; shift 2 ;;
-    --system-test-path)  PATH_SYSTEM_TEST="$2"; shift 2 ;;
-    --backend-path)      PATH_BACKEND="$2"; shift 2 ;;
-    --frontend-path)     PATH_FRONTEND="$2"; shift 2 ;;
-    --stubs-path)        PATH_STUBS="$2"; shift 2 ;;
-    --simulators-path)   PATH_SIMULATORS="$2"; shift 2 ;;
+    # Tier-path flags are forwarded as-passed; the binary defaults
+    # empty paths to the flat scaffold layout itself.
+    --system-path|--system-test-path|--backend-path|--frontend-path|--stubs-path|--simulators-path)
+                         CONFIG_INIT_FLAGS+=("$1" "$2"); shift 2 ;;
     # Per-invocation flags → init
-    --dry-run|--verbose|-v|--quiet|-q|--yes|-y|--no-legacy|--no-local-tests|--no-local-sonar|--no-atdd|--no-project|--report-bug|--keep-local)
+    --verbose|-v|--quiet|-q|--yes|-y|--no-legacy|--no-local-tests|--no-local-sonar|--no-atdd|--no-project|--report-bug|--keep-local)
                          INIT_FLAGS+=("$1"); shift ;;
     --verify-level|--workdir|--shop-ref|--log-file) INIT_FLAGS+=("$1" "$2"); shift 2 ;;
     *) echo "ERROR: unknown flag $1" >&2; exit 2 ;;
@@ -119,20 +109,11 @@ else
 fi
 REPO="manual-test-${SUFFIX}"
 
-# Inject --repo and tier-path defaults into the config-init flag set.
+# Inject --repo into the config-init flag set. Tier paths are no longer
+# defaulted here — the binary itself fills empties with the flat scaffold
+# layout, so any --*-path the caller passed is already in CONFIG_INIT_FLAGS
+# and any path they omitted will be defaulted downstream.
 CONFIG_INIT_FLAGS+=(--repo "$REPO")
-CONFIG_INIT_FLAGS+=(--system-test-path "${PATH_SYSTEM_TEST:-system-test}")
-CONFIG_INIT_FLAGS+=(--stubs-path "${PATH_STUBS:-external-systems/external-stub}")
-CONFIG_INIT_FLAGS+=(--simulators-path "${PATH_SIMULATORS:-external-systems/external-real-sim}")
-# Tier-specific defaults — the binary's path-flag validator rejects the
-# wrong-arch flag, so apply per arch. The caller must pass --arch.
-case " ${CONFIG_INIT_FLAGS[*]} " in
-  *" --arch monolith "*)
-    CONFIG_INIT_FLAGS+=(--system-path "${PATH_SYSTEM:-system}") ;;
-  *" --arch multitier "*)
-    CONFIG_INIT_FLAGS+=(--backend-path "${PATH_BACKEND:-backend}")
-    CONFIG_INIT_FLAGS+=(--frontend-path "${PATH_FRONTEND:-frontend}") ;;
-esac
 
 if [[ "$NO_CLEANUP" == "1" ]]; then
   INIT_FLAGS+=(--keep-local)

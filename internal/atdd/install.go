@@ -38,8 +38,6 @@ type Options struct {
 	// Force overwrites existing files even when their content diverges from
 	// the expected install (i.e. the student edited them in place).
 	Force bool
-	// DryRun logs what would be written without touching disk.
-	DryRun bool
 }
 
 // Validate checks Options for correctness.
@@ -335,13 +333,6 @@ func Install(opts Options) error {
 			return fmt.Errorf("%d managed file(s) have local edits — pass --force to overwrite:\n  %s",
 				len(diverged), strings.Join(diverged, "\n  "))
 		}
-	}
-	if opts.DryRun {
-		for _, s := range specs {
-			rel, _ := filepath.Rel(opts.DestDir, s.Dest)
-			fmt.Printf("[DRY RUN] write %s (%d bytes)\n", rel, len(s.Content))
-		}
-		return nil
 	}
 	if err := wipeManagedSets(opts.DestDir); err != nil {
 		return err

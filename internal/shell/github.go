@@ -33,16 +33,11 @@ type RateLimitExceeded struct {
 
 func (e *RateLimitExceeded) Error() string { return e.Msg }
 
-// Run executes a shell command. In dry-run mode, just prints it.
+// Run executes a shell command.
 // When check=false, non-rate-limit failures are logged (not swallowed silently)
 // but still return a nil error so callers can continue. Rate-limit errors are
 // always returned regardless of check so callers can back off.
-func Run(cmdStr string, dryRun, check bool, cwd string) (string, error) {
-	if dryRun {
-		log.Infof("[DRY RUN] %s", cmdStr)
-		return "", nil
-	}
-
+func Run(cmdStr string, check bool, cwd string) (string, error) {
 	parts, err := splitCommand(cmdStr)
 	if err != nil {
 		return "", fmt.Errorf(errMsgInvalidCommand, cmdStr, err)
@@ -77,12 +72,7 @@ func Run(cmdStr string, dryRun, check bool, cwd string) (string, error) {
 // logging, and process lists (argv is readable by other local users on most
 // systems, and any error surfaces the full cmdStr). cmdStr is the command
 // as it should appear in logs; it never includes the stdin value.
-func RunStdin(cmdStr, stdin string, dryRun, check bool, cwd string) (string, error) {
-	if dryRun {
-		log.Infof("[DRY RUN] %s (stdin: ***)", cmdStr)
-		return "", nil
-	}
-
+func RunStdin(cmdStr, stdin string, check bool, cwd string) (string, error) {
 	parts, err := splitCommand(cmdStr)
 	if err != nil {
 		return "", fmt.Errorf(errMsgInvalidCommand, cmdStr, err)
@@ -114,9 +104,9 @@ func RunStdin(cmdStr, stdin string, dryRun, check bool, cwd string) (string, err
 
 // MustRun executes an external command and aborts the program on failure.
 // Use for external system calls (gh, git, etc.) where partial failure must
-// not be silently swallowed. Honors dry-run semantics.
-func MustRun(cmdStr string, dryRun bool, cwd string) string {
-	out, err := Run(cmdStr, dryRun, true, cwd)
+// not be silently swallowed.
+func MustRun(cmdStr, cwd string) string {
+	out, err := Run(cmdStr, true, cwd)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -280,20 +270,19 @@ func waitForRateLimitReset(remaining int, waitSecs int64) {
 
 // GitHub wraps gh CLI calls for a specific repo.
 type GitHub struct {
-	Repo   string
-	DryRun bool
+	Repo string
 }
 
 func NewGitHub(cfg *config.Config) *GitHub {
-	return &GitHub{Repo: cfg.FullRepo, DryRun: cfg.DryRun}
+	return &GitHub{Repo: cfg.FullRepo}
 }
 
 func (g *GitHub) ForRepo(fullRepo string) *GitHub {
-	return &GitHub{Repo: fullRepo, DryRun: g.DryRun}
+	return &GitHub{Repo: fullRepo}
 }
 
 func (g *GitHub) run(cmd string) (string, error) {
-	return RunWithRetry(fmt.Sprintf("gh %s --repo %s", cmd, g.Repo), g.DryRun, true, "")
+	return RunWithRetry(fmt.Sprintf("gh %s --repo %s", cmd, g.Repo), true, "")
 }
 
 // mustRun is the GitHub-struct companion to MustRun. Auto-prepends `gh` and
@@ -328,7 +317,7 @@ func IsRepoNotFound(output string) bool {
 // (not duplicated in preflight) so there's a single source of truth for
 // the gh-repo existence check and its 404-vs-transient classification.
 func RepoExists(slug string) (bool, error) {
-	out, err := Run(fmt.Sprintf("gh repo view %s --json name", slug), false, true, "")
+	out, err := Run(fmt.Sprintf("gh repo view %s --json name", slug), true, "")
 	if err == nil {
 		return true, nil
 	}
@@ -343,10 +332,6 @@ func RepoExists(slug string) (bool, error) {
 }
 
 func (g *GitHub) CreateRepo() {
-	if g.DryRun {
-		log.Infof("[DRY RUN] Would check and create repo %s if missing", g.Repo)
-		return
-	}
 	exists, err := RepoExists(g.Repo)
 	if err != nil {
 		log.Fatalf("failed to check if repository %s exists: %v", g.Repo, err)
@@ -355,7 +340,7 @@ func (g *GitHub) CreateRepo() {
 		log.Warnf("Repository %s already exists -- skipping creation", g.Repo)
 		return
 	}
-	MustRunWithRetry("gh repo create "+g.Repo+" --public", false, "")
+	MustRunWithRetry("gh repo create "+g.Repo+" --public", "")
 	g.waitForRepoVisible()
 }
 
@@ -365,9 +350,6 @@ func (g *GitHub) CreateRepo() {
 // primary by a few seconds, causing clone to fail with "Could not resolve to
 // a Repository" for a repo that was just created successfully.
 func (g *GitHub) waitForRepoVisible() {
-	if g.DryRun {
-		return
-	}
 	const maxAttempts = 15
 	const pollDelay = 1 * time.Second
 	viewCmd := fmt.Sprintf("gh repo view %s --json name", g.Repo)
@@ -378,7 +360,7 @@ func (g *GitHub) waitForRepoVisible() {
 	var out string
 	var err error
 	for i := 1; i <= maxAttempts; i++ {
-		out, err = Run(viewCmd, false, true, "")
+		out, err = Run(viewCmd, true, "")
 		if err == nil {
 			return
 		}
@@ -396,7 +378,7 @@ func (g *GitHub) waitForRepoVisible() {
 }
 
 func (g *GitHub) CreateEnvironment(name string) {
-	MustRunWithRetry(fmt.Sprintf("gh api repos/%s/environments/%s -X PUT", g.Repo, name), g.DryRun, "")
+	MustRunWithRetry(fmt.Sprintf("gh api repos/%s/environments/%s -X PUT", g.Repo, name), "")
 }
 
 // LabelCreate creates (or updates) a repo label. `--force` makes the call
@@ -405,14 +387,10 @@ func (g *GitHub) CreateEnvironment(name string) {
 func (g *GitHub) LabelCreate(name, color, description string) {
 	cmd := fmt.Sprintf("gh label create %s --repo %s --color %s --description %q --force",
 		name, g.Repo, color, description)
-	MustRunWithRetry(cmd, g.DryRun, "")
+	MustRunWithRetry(cmd, "")
 }
 
 func (g *GitHub) SecretSet(name, value string) {
-	if g.DryRun {
-		log.Infof("[DRY RUN] gh secret set %s --repo %s (stdin: ***)", name, g.Repo)
-		return
-	}
 	// Pass the secret via stdin (gh reads stdin when --body is omitted) so it
 	// never appears in the command line — argv is readable by other local users
 	// on most systems, and any error from `gh secret set` would surface the full
@@ -420,19 +398,15 @@ func (g *GitHub) SecretSet(name, value string) {
 	// Note: `--body -` does NOT mean stdin — gh would store the literal "-".
 	MustRunStdinWithRetry(
 		fmt.Sprintf("gh secret set %s --repo %s", name, g.Repo),
-		value, false, "")
+		value, "")
 }
 
 func (g *GitHub) VariableSet(name, value string) {
-	if g.DryRun {
-		log.Infof("[DRY RUN] gh variable set %s --body \"%s\" --repo %s", name, value, g.Repo)
-		return
-	}
-	MustRunWithRetry(fmt.Sprintf("gh variable set %s --body %s --repo %s", name, value, g.Repo), false, "")
+	MustRunWithRetry(fmt.Sprintf("gh variable set %s --body %s --repo %s", name, value, g.Repo), "")
 }
 
 func (g *GitHub) Clone(dest string) {
-	MustRunWithRetry(fmt.Sprintf("gh repo clone %s %s", g.Repo, dest), false, "")
+	MustRunWithRetry(fmt.Sprintf("gh repo clone %s %s", g.Repo, dest), "")
 	if _, err := os.Stat(filepath.Join(dest, ".git")); err != nil {
 		log.Fatalf("clone of %s to %s produced no .git directory: %v", g.Repo, dest, err)
 	}
@@ -489,7 +463,7 @@ func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
 
 	runID := strings.TrimSpace(out)
 	log.Successf("Watching workflow run (polling every %ds): https://github.com/%s/actions/runs/%s", intervalSecs, g.Repo, runID)
-	_, err = Run(fmt.Sprintf("gh run watch %s --repo %s --exit-status --interval %d", runID, g.Repo, intervalSecs), false, true, "")
+	_, err = Run(fmt.Sprintf("gh run watch %s --repo %s --exit-status --interval %d", runID, g.Repo, intervalSecs), true, "")
 	if err == nil {
 		return nil
 	}
@@ -522,7 +496,7 @@ func (g *GitHub) pollRunUntilComplete(runID string) error {
 
 		CheckRateLimit()
 
-		statusOut, err := Run(viewCmd, false, true, "")
+		statusOut, err := Run(viewCmd, true, "")
 		if err != nil {
 			var rle *RateLimitExceeded
 			if errors.As(err, &rle) {
@@ -560,7 +534,7 @@ func (g *GitHub) pollRunUntilComplete(runID string) error {
 // Delete is best-effort cleanup; teardown happens after the main work has
 // either succeeded or already failed, so we log failures but don't abort.
 func (g *GitHub) Delete() {
-	out, err := Run(fmt.Sprintf("gh repo delete %s --yes", g.Repo), g.DryRun, true, "")
+	out, err := Run(fmt.Sprintf("gh repo delete %s --yes", g.Repo), true, "")
 	if err != nil {
 		log.Warnf("Delete of %s failed (best-effort, continuing): %v\n%s", g.Repo, err, out)
 	}

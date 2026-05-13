@@ -4,6 +4,10 @@
 
 - [Prerequisites](#prerequisites)
 - [Run locally](#run-locally)
+- [Init flags for development and CI](#init-flags-for-development-and-ci)
+  - [Local cleanup](#local-cleanup)
+  - [Unattended runs (CI)](#unattended-runs-ci)
+  - [Deployment target](#deployment-target)
 - [Install from source](#install-from-source)
 - [Tests](#tests)
   - [Windows: keep `go test ./...` fast](#windows-keep-go-test--fast)
@@ -16,6 +20,10 @@
     - [Part 2 — external-user flow: released extension + brand-new scaffolded repo](#part-2--external-user-flow-released-extension--brand-new-scaffolded-repo)
   - [Debug a single phase](#debug-a-single-phase)
   - [Running on CI](#running-on-ci)
+- [Project config (`gh-optivem.yaml`)](#project-config-gh-optivemyaml)
+  - [Pointing at non-default configs](#pointing-at-non-default-configs)
+    - [ATDD-specific overrides](#atdd-specific-overrides)
+- [How it works](#how-it-works)
 - [Releasing](#releasing)
 
 ## Prerequisites
@@ -45,6 +53,24 @@ bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner
 ```
 
 Skip slow steps with `--no-local-tests --no-local-sonar --no-legacy`. Keep the scaffold dir on success with `--no-cleanup` / `--keep-local`. See [README.md](README.md#usage) for the full flag set.
+
+## Init flags for development and CI
+
+### Local cleanup
+
+On a successful run the local scaffold dir is deleted — the end result is just the created GitHub repo(s) + SonarCloud project(s), which you can clone later. Pass `--keep-local` to keep the dir (e.g. for inspection). On failure the dir is always kept so the broken scaffold can be debugged.
+
+### Unattended runs (CI)
+
+Pass `--yes` (or `-y`) to skip all interactive confirmations — the existing-repo prompt and the `--report-bug` confirmation. This is the expected pattern for CI/automation:
+
+```bash
+gh optivem init ... --yes
+```
+
+### Deployment target
+
+Only `--deploy docker` is currently supported (the default). `--deploy cloud-run` is in development and may be available in a future release.
 
 ## Install from source
 
@@ -225,11 +251,7 @@ gh optivem --version
 gh optivem config init --owner valentinajemuovic --repo page-turner \
     --system-name "Page Turner" --arch multitier --repo-strategy multirepo \
     --backend-lang dotnet --frontend-lang typescript --test-lang typescript \
-    --project-url https://github.com/orgs/valentinajemuovic/projects/N \
-    --backend-path backend --frontend-path frontend \
-    --system-test-path system-test \
-    --stubs-path external-systems/external-stub \
-    --simulators-path external-systems/external-real-sim
+    --project-url https://github.com/orgs/valentinajemuovic/projects/N
 
 # Step 4 — scaffold a fresh project (no --shop-ref → uses the baked-in SHA)
 gh optivem init
@@ -243,20 +265,6 @@ gh extension remove optivem
 ```
 
 Use this to reproduce a user-reported issue against the same binary they're running, or to smoke-test what an external user gets right after a release.
-
-### Debug a single phase
-
-`gh optivem atdd debug …` exercises individual runtime packages standalone. Flag shapes here are not part of the stable API.
-
-```bash
-gh optivem atdd debug pick-top-ready                              # what would manage-project pick?
-gh optivem atdd debug classify --issue 42                         # deterministic fast path
-gh optivem atdd debug next-phase --node GATE_DSL --state dsl_interface_changed=true
-gh optivem atdd debug gate dsl_changed                            # one gateway binding
-gh optivem atdd debug release --issue 42 --dry-run                # release primitives
-```
-
-Run `gh optivem atdd debug --help` for the full list.
 
 ### Running on CI
 
@@ -272,6 +280,73 @@ The driver shells out to `claude`, which needs `~/.claude/credentials.json`. A p
 - **Fall back to `--manual-agents`** — driver pauses at each user-task; a human dispatches the agent and presses Enter to advance. Right choice when CI should walk the gates / actions but not the agent dispatches.
 
 Rate-limit failures surface as `rate limit hit on Claude subscription; weekly cap likely exhausted …`; mid-run credential expiry surfaces as `claude CLI is not authenticated — run \`claude /login\` …`. Both are detected from the runner's stderr signature.
+
+## Project config (`gh-optivem.yaml`)
+
+Every scaffolded repo gets a `gh-optivem.yaml` at its root. The file declares five top-level keys:
+
+- `project:` — the GitHub Projects board URL.
+- `repo_strategy:` — `mono-repo` or `multi-repo`.
+- `system:` — the system being built. Polymorphic by architecture: under `monolith`, `system:` carries flat `path:` / `repo:` / `lang:` directly; under `multitier`, it nests `backend:` and `frontend:` blocks (each with its own per-component language).
+- `system_test:` — the acceptance-test suite that drives the system. Top-level (not nested under `system:`) because tests aren't part of the system; they drive it.
+- `external_systems:` (optional) — vendored stand-ins for third-party dependencies. `stubs:` is the cycle-2 WireMock-style pattern; `simulators:` is the cycle-3 real-sim pattern.
+
+Every populated tier carries the same `path:` (repo-relative) and `repo:` (slug from the participating repos) pair; system-tier blocks additionally carry `lang:`. The runtime preflight on `gh optivem atdd implement-ticket` validates that every declared path exists on disk before any agent runs, so a config / layout mismatch fails fast with a readable error rather than mid-pipeline.
+
+For the canonical schema, see [`internal/projectconfig/config.go`](internal/projectconfig/config.go) — every YAML field is declared on the `Config` struct with its `yaml:` tag, and the `Validate` method spells out the cross-field rules (architecture exclusivity, repo-strategy consistency, per-tier completeness, SonarCloud presence).
+
+### Pointing at non-default configs
+
+`gh-optivem.yaml` is the single entry point for every `gh optivem` command — there is no default-name fallback for `systems.yaml` / `tests.yaml`. Three knobs decide *which* `gh-optivem.yaml` the tool reads, in ascending order of precedence — each overrides the one below:
+
+```bash
+# 1. One-shot flag (highest precedence) — selects which gh-optivem.yaml to read
+gh optivem -c ./gh-optivem.shop-monolith.yaml test run
+
+# 2. Shell-session env var (same role as --config)
+export GH_OPTIVEM_CONFIG=./gh-optivem.shop-monolith.yaml
+gh optivem test run
+
+# 3. Default location: ./gh-optivem.yaml in the current working directory
+gh optivem test run
+```
+
+Inside the selected `gh-optivem.yaml`, `system.config:` / `system_test.config:` point at the actual systems/tests config files:
+
+```yaml
+system:
+  config: docker/systems.yaml
+system_test:
+  config: system-test/tests.yaml
+```
+
+Legacy `.json` files still work — the loader picks the parser from the file extension, and any in-flight repo carrying `systems.json` / `tests.json` keeps loading without changes.
+
+`gh optivem init` auto-populates `system.config:` / `system_test.config:` to the paths it produces, so freshly scaffolded repos work without any flags. `gh optivem config init` (hand-rolled repos) leaves both fields empty — add them before invoking the runner commands.
+
+If no `gh-optivem.yaml` is found, the runner commands hard-error with a hint pointing at `gh optivem config init` (to create one in place) and at `--config <path>` (to use one that lives elsewhere). If `gh-optivem.yaml` is present but `system.config:` / `system_test.config:` is unset, the runner commands hard-error pointing at the missing field plus the same `--config` escape hatch.
+
+#### ATDD-specific overrides
+
+The ATDD pipeline (`gh optivem atdd implement-ticket` / `manage-project`) reads four optional override fields from the same `gh-optivem.yaml`:
+
+```yaml
+process_flow: config/process-flow.yaml         # alternate process-flow YAML (default: embedded)
+agent_prompts:                                  # swap one or more embedded agent prompts
+  atdd-test: config/prompts/atdd-test.md
+node_extras:                                    # appended to a node's prompt at dispatch
+  AT_RED_DSL_WRITE: prefer record types
+node_replacements:                              # replaces a node's prompt verbatim with this file body
+  AT_RED_TEST_WRITE: config/prompts/at-red-test-write.md
+```
+
+All four fields are optional; absent means "use the embedded default." To experiment without committing a change to the project's `gh-optivem.yaml`, copy it to a side file and pass `--config ./gh-optivem.experimental.yaml`. There is no per-invocation flag for any of these — they are project-stable values by design.
+
+## How it works
+
+See [docs/how-it-works.md](docs/how-it-works.md) for a detailed walkthrough of the `main.go` logic, setup steps, and verification levels.
+
+For the ATDD pipeline orchestration view, see the rendered [process diagram](docs/process-diagram.md). It is regenerated automatically whenever the canonical YAML at `internal/atdd/runtime/statemachine/process-flow.yaml` changes; do not edit the diagram by hand.
 
 ## Releasing
 

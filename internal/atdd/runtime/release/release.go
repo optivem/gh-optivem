@@ -46,10 +46,6 @@ type RemoveOptions struct {
 	// error) so callers can pass all three language roots unconditionally.
 	Roots []string
 
-	// DryRun, if true, returns the FileChange list without modifying any
-	// file on disk.
-	DryRun bool
-
 	// Patterns optionally overrides the built-in default patterns. Nil
 	// (the common case) uses DefaultPatterns(). Callers passing a custom
 	// slice replace the defaults entirely — there is no merge.
@@ -123,8 +119,7 @@ var ErrConfirmerRequired = errors.New("release: Commit requires a Confirmer (no 
 
 // RemoveDisabledMarkers walks each root, matches files against each
 // pattern's glob, and removes (or rewrites) marker lines per the pattern.
-// Returns a Changes slice describing every file that would change; if
-// opts.DryRun is true, no file is modified.
+// Returns a Changes slice describing every file modified.
 //
 // Ordering: roots are walked in the order given; within each root files
 // are visited in lexical order (the default of filepath.WalkDir). Patterns
@@ -165,7 +160,7 @@ func RemoveDisabledMarkers(ctx context.Context, opts RemoveOptions) (Changes, er
 				if !ok {
 					continue
 				}
-				change, err := applyPattern(path, p, opts.DryRun)
+				change, err := applyPattern(path, p)
 				if err != nil {
 					return err
 				}
@@ -183,10 +178,10 @@ func RemoveDisabledMarkers(ctx context.Context, opts RemoveOptions) (Changes, er
 	return out, nil
 }
 
-// applyPattern reads path, removes/rewrites marker lines per p, and either
-// writes the result back (DryRun=false and changes were made) or just
-// reports the diff. Returns nil when the file has no matches.
-func applyPattern(path string, p Pattern, dryRun bool) (*FileChange, error) {
+// applyPattern reads path, removes/rewrites marker lines per p, and writes
+// the result back when there are changes. Returns nil when the file has no
+// matches.
+func applyPattern(path string, p Pattern) (*FileChange, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("release: read %s: %w", path, err)
@@ -261,14 +256,12 @@ func applyPattern(path string, p Pattern, dryRun bool) (*FileChange, error) {
 		return nil, nil
 	}
 
-	if !dryRun {
-		joined := strings.Join(kept, "\n")
-		if hadTrailingNewline && len(kept) > 0 {
-			joined += "\n"
-		}
-		if err := os.WriteFile(path, []byte(joined), 0o644); err != nil {
-			return nil, fmt.Errorf("release: write %s: %w", path, err)
-		}
+	joined := strings.Join(kept, "\n")
+	if hadTrailingNewline && len(kept) > 0 {
+		joined += "\n"
+	}
+	if err := os.WriteFile(path, []byte(joined), 0o644); err != nil {
+		return nil, fmt.Errorf("release: write %s: %w", path, err)
 	}
 
 	return &FileChange{

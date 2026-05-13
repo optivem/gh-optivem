@@ -124,16 +124,6 @@ func EnsureProjectBoard(cfg *config.Config, gh *shell.GitHub) {
 // links the scaffolded repos.
 func ensureProjectBoardAutoCreate(cfg *config.Config) {
 	log.Infof("Ensuring project board for %s...", cfg.SystemName)
-	if cfg.DryRun {
-		log.Infof("[DRY RUN] gh project list --owner %s --format json", cfg.Owner)
-		log.Infof("[DRY RUN] gh project create --owner %s --title %q --format json", cfg.Owner, cfg.SystemName)
-		log.Infof("[DRY RUN] gh project field-list <number> --owner %s --format json", cfg.Owner)
-		log.Infof("[DRY RUN] gh api graphql --input - (set Status options to: %s)", strings.Join(canonicalStatusOptions, ", "))
-		for _, repo := range reposToLink(cfg) {
-			log.Infof("[DRY RUN] gh project link <number> --owner %s --repo %s", cfg.Owner, repo)
-		}
-		return
-	}
 
 	pr, created, err := findOrCreateProject(cfg.Owner, cfg.SystemName)
 	if err != nil {
@@ -168,10 +158,9 @@ func ensureProjectBoardAutoCreate(cfg *config.Config) {
 // persistProjectURLToSourceConfig writes cfg.ProjectURL back into the
 // gh-optivem.yaml file init read at startup (cfg.SourceConfigPath), so a
 // re-run sees the URL and the source file matches what was actually
-// provisioned on GitHub. No-ops in three cases: dry-run (just logs the
-// would-write), source already had a URL (reused-by-title runs leave
-// the file alone — no churn), and SourceConfigPath unset (defensive,
-// shouldn't happen via runInit).
+// provisioned on GitHub. No-ops in two cases: source already had a URL
+// (reused-by-title runs leave the file alone — no churn), and
+// SourceConfigPath unset (defensive, shouldn't happen via runInit).
 //
 // Marshalling is non-preserving: comments and key order in the source
 // file are dropped on rewrite. Acceptable tradeoff — the same yaml
@@ -180,10 +169,6 @@ func ensureProjectBoardAutoCreate(cfg *config.Config) {
 // cosmetic reformat. log.Fatalf on any load/write error aborts init
 // rather than leave the operator with a desynchronised source file.
 func persistProjectURLToSourceConfig(cfg *config.Config) {
-	if cfg.DryRun {
-		log.Infof("[DRY RUN] would write project.url=%s to %s", cfg.ProjectURL, cfg.SourceConfigPath)
-		return
-	}
 	if !cfg.SourceProjectURLWasEmpty {
 		return
 	}
@@ -209,13 +194,6 @@ func ensureProjectBoardSupplied(cfg *config.Config) {
 	owner, number, err := parseProjectURL(cfg.ProjectURL)
 	if err != nil {
 		log.Fatalf("--project-url %q: %v", cfg.ProjectURL, err)
-	}
-
-	if cfg.DryRun {
-		log.Infof("[DRY RUN] gh project field-list %d --owner %s --format json", number, owner)
-		log.Infof("[DRY RUN] (would diff Status options against required: %s)", strings.Join(atddRequiredStatusOptions, ", "))
-		log.Infof("[DRY RUN] If missing, would prompt; on confirm: gh api graphql --input - (additive merge)")
-		return
 	}
 
 	pr := &ghProject{Owner: owner, Number: number, URL: cfg.ProjectURL}
@@ -353,7 +331,7 @@ func setStatusOptions(fieldID string, names []string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build mutation: %w", err)
 	}
-	if _, err := projectRunStdin("gh api graphql --input -", body, false, true, ""); err != nil {
+	if _, err := projectRunStdin("gh api graphql --input -", body, true, ""); err != nil {
 		return nil, fmt.Errorf("graphql updateProjectV2Field: %w", err)
 	}
 	return names, nil
@@ -404,7 +382,7 @@ func buildSetStatusOptionsRequest(fieldID string, names []string) (string, error
 // not failures.
 func linkRepoToProject(pr *ghProject, fullRepo string) {
 	cmd := fmt.Sprintf("gh project link %d --owner %s --repo %s", pr.Number, pr.Owner, fullRepo)
-	out, err := projectRun(cmd, false, false, "")
+	out, err := projectRun(cmd, false, "")
 	if err != nil {
 		if isAlreadyLinkedOutput(out) {
 			log.Infof("Repo %s already linked to project %s — skipping", fullRepo, pr.URL)

@@ -9,9 +9,6 @@
 //	Multitier:
 //	  gh optivem init --owner acme --system-name "Page Turner" --repo page-turner \
 //	      --arch multitier --backend-lang java --frontend-lang typescript
-//
-//	Dry run:
-//	  gh optivem init ... --dry-run
 package main
 
 import (
@@ -64,6 +61,9 @@ type stepDef struct {
 }
 
 func main() {
+	// Show subcommands in registration order (workflow order), not alphabetical.
+	// e.g. `config` lists init → validate → preflight, the sequence a user runs.
+	cobra.EnableCommandSorting = false
 	if err := newRootCmd().Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -98,35 +98,9 @@ func newRootCmd() *cobra.Command {
 		newTestCmd(),
 		newCompileCmd(),
 		newAtddCmd(),
-		newTokenCmd(),
-		newUpgradeCmd(),
+		newEnvironmentCmd(),
 	)
 	return cmd
-}
-
-// newUpgradeCmd implements `gh optivem upgrade` — a thin wrapper around
-// `gh extension upgrade optivem` so users don't have to remember the longer
-// gh-extension form. Streams stdout/stderr through unchanged.
-func newUpgradeCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "upgrade",
-		Short: "Upgrade this extension to the latest release",
-		Long:  `Upgrade gh-optivem to the latest release. Equivalent to running "gh extension upgrade optivem".`,
-		Args:  cobra.NoArgs,
-		Run: func(cmd *cobra.Command, args []string) {
-			upgrade := exec.Command("gh", "extension", "upgrade", "optivem")
-			upgrade.Stdout = os.Stdout
-			upgrade.Stderr = os.Stderr
-			if err := upgrade.Run(); err != nil {
-				var exitErr *exec.ExitError
-				if errors.As(err, &exitErr) {
-					os.Exit(exitErr.ExitCode())
-				}
-				fmt.Fprintf(os.Stderr, "ERROR: gh extension upgrade optivem failed: %v\n", err)
-				os.Exit(1)
-			}
-		},
-	}
 }
 
 // newInitCmd builds the `init` subcommand. Project-stable values
@@ -145,7 +119,7 @@ verify the pipeline up to the requested --verify-level.
 
 Project-stable values are read from gh-optivem.yaml (run ` + "`gh optivem config init`" + `
 first to produce one). The init command itself only takes per-invocation
-flags — dry-run, verify-level, workdir, etc.
+flags — verify-level, workdir, etc.
 
 If project.url is empty, init will auto-create the project board and write
 the URL back into gh-optivem.yaml.`,
@@ -213,8 +187,7 @@ func runInit(cmd *cobra.Command, f *config.RawFlags) {
 	defer log.Close()
 
 	// Print update notice if a newer release is available. Notify-only — the
-	// user upgrades explicitly via `gh optivem upgrade` (or `gh extension
-	// upgrade optivem`).
+	// user upgrades explicitly via `gh extension upgrade optivem`.
 	checkForUpdate(cfg)
 
 	gh := shell.NewGitHub(cfg)
@@ -535,6 +508,7 @@ func printSummary(cfg *config.Config, errors int, totalDuration time.Duration) {
 	if cfg.ProjectURL != "" {
 		fmt.Printf("  Project:    %s\n", cfg.ProjectURL)
 	}
+	fmt.Printf("  Log file:   %s\n", cfg.LogFile)
 	if cfg.RepoStrategy == "multirepo" {
 		if cfg.Arch == "multitier" {
 			fmt.Printf("  Backend:    https://github.com/%s\n", cfg.BackendFullRepo)
@@ -681,7 +655,7 @@ func createBugReport(cfg *config.Config, errorCount int) {
 
 	out, err := shell.Run(
 		fmt.Sprintf(`gh issue create --repo optivem/gh-optivem --title %q --body-file %s`, title, bodyFile.Name()),
-		false, false, "")
+		false, "")
 	if err != nil {
 		log.Infof("WARN: Failed to create bug report: %v\n%s", err, out)
 	} else {
@@ -690,7 +664,7 @@ func createBugReport(cfg *config.Config, errorCount int) {
 }
 
 // checkForUpdate queries the latest release and, when the running binary is
-// outdated, prints a notice telling the user to run `gh optivem upgrade`.
+// outdated, prints a notice telling the user to run `gh extension upgrade optivem`.
 // Notify-only — never auto-upgrades; users decide when to upgrade.
 func checkForUpdate(cfg *config.Config) {
 	if version.Version == "dev" {
@@ -707,7 +681,7 @@ func checkForUpdate(cfg *config.Config) {
 		return
 	}
 
-	log.Warnf("Update available: %s → %s. Run `gh optivem upgrade` to upgrade.", version.Version, latest)
+	log.Warnf("Update available: %s → %s. Run `gh extension upgrade optivem` to upgrade.", version.Version, latest)
 }
 
 func printBanner(cfg *config.Config, pc *projectconfig.Config) {
@@ -746,7 +720,6 @@ func printBanner(cfg *config.Config, pc *projectconfig.Config) {
 	log.Infof("--no-local-sonar:    %v%s", cfg.NoLocalSonar, tag("no-local-sonar"))
 	log.Infof("--no-project:        %v%s", cfg.NoProject, tag("no-project"))
 	log.Infof("--shop-ref:        %s%s", cfg.Raw.ShopRef, tag("shop-ref"))
-	log.Infof("--dry-run:         %v%s", cfg.DryRun, tag("dry-run"))
 	log.Infof("--keep-local:      %v%s", cfg.Raw.KeepLocal, tag("keep-local"))
 	log.Infof("--report-bug:      %v%s", cfg.BugReport, tag("report-bug"))
 	log.Infof("--yes:             %v%s", cfg.AssumeYes, tag("yes"))

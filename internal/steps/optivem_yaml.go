@@ -48,11 +48,6 @@ const (
 func WriteOptivemYAML(cfg *config.Config) {
 	log.Info("Writing gh-optivem.yaml + gh-optivem.legacy.yaml...")
 
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would write gh-optivem.yaml + gh-optivem.legacy.yaml")
-		return
-	}
-
 	pc := buildOptivemYAML(cfg)
 	pc.System.Config = scaffoldedSystemConfigPath
 	pc.SystemTest.Config = scaffoldedTestConfigPath
@@ -165,10 +160,10 @@ func writeOptivemYAMLToDir(dir string, pc *projectconfig.Config) {
 //
 // Tier paths are read verbatim from cfg — buildOptivemYAML does no path
 // derivation. Each call site that produces a Config supplies the paths
-// matching its own on-disk layout (the scaffolder via resolveScaffoldPaths,
-// `config init` via explicit --*-path flags). This keeps the YAML emitter
-// agnostic to whether it is writing for a scaffolded repo, shop's worktree,
-// or a hand-rolled layout.
+// matching its own on-disk layout (the flat scaffold layout via
+// config.resolvePathFlagsForYAML's defaults, or explicit --*-path flag
+// overrides). This keeps the YAML emitter agnostic to whether it is
+// writing for a scaffolded repo, shop's worktree, or a hand-rolled layout.
 func buildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	pc := &projectconfig.Config{
 		Project:      projectconfig.Project{URL: cfg.ProjectURL},
@@ -206,11 +201,12 @@ func mapRepoStrategy(s string) string {
 
 // buildSystem populates the System block from cfg. Polymorphic by
 // architecture: monolith uses flat Path/Repo/Lang; multitier nests Backend
-// and Frontend. Paths come from cfg verbatim — the resolution responsibility
-// lives at the call site (resolveScaffoldPaths for `init`, --*-path flags
-// for `config init`). sonar_project values come from the pre-computed
-// DerivedSonar — the scaffolder seeds the default per-tier keys here;
-// downstream consumers read them straight from the emitted YAML.
+// and Frontend. Paths come from cfg verbatim — the resolution
+// responsibility lives upstream in config.resolvePathFlagsForYAML, which
+// fills empties with the flat scaffold defaults. sonar_project values
+// come from the pre-computed DerivedSonar — the scaffolder seeds the
+// default per-tier keys here; downstream consumers read them straight
+// from the emitted YAML.
 func buildSystem(cfg *config.Config, derived projectconfig.DerivedSonar) projectconfig.System {
 	s := projectconfig.System{Architecture: cfg.Arch}
 	switch cfg.Arch {

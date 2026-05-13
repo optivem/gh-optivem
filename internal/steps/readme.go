@@ -80,11 +80,6 @@ func writeBadges(b *strings.Builder, items [][2]string) {
 func UpdateReadme(cfg *config.Config) {
 	log.Info("Generating README...")
 
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would generate README.md")
-		return
-	}
-
 	if cfg.Arch == "monolith" {
 		if cfg.RepoStrategy == "monorepo" {
 			badges := generateBadges(cfg)

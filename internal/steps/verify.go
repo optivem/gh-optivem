@@ -31,11 +31,6 @@ const (
 func VerifyCompilation(cfg *config.Config) {
 	log.Info("Verifying local compilation...")
 
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would verify compilation of all components")
-		return
-	}
-
 	if cfg.Arch == "monolith" {
 		compileComponent("system source", cfg.Lang, systemDir(cfg))
 	} else {
@@ -89,11 +84,6 @@ func systemTestDir(cfg *config.Config) string {
 func VerifyScaffoldWorkflows(cfg *config.Config) {
 	log.Info("Linting scaffolded workflows with actionlint...")
 
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would run actionlint against scaffolded .github/workflows/")
-		return
-	}
-
 	if _, err := exec.LookPath("actionlint"); err != nil {
 		// CI must have actionlint (the gh-acceptance composite action installs
 		// it). On dev machines it's optional — warn and skip rather than
@@ -110,7 +100,7 @@ func VerifyScaffoldWorkflows(cfg *config.Config) {
 		if _, err := os.Stat(wfDir); errors.Is(err, os.ErrNotExist) {
 			continue
 		}
-		out, err := shell.Run("actionlint -color", false, true, repoDir)
+		out, err := shell.Run("actionlint -color", true, repoDir)
 		if err != nil {
 			log.Fatalf("actionlint failed in %s:\n%s", wfDir, out)
 		}
@@ -146,11 +136,6 @@ func scaffoldRepoDirs(cfg *config.Config) []string {
 func VerifyCommitStage(cfg *config.Config, gh *shell.GitHub) {
 	log.Info("Verifying commit stage workflow...")
 
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would wait for commit stage workflow")
-		return
-	}
-
 	time.Sleep(5 * time.Second)
 
 	if cfg.Arch == "monolith" {
@@ -183,11 +168,6 @@ func VerifyAcceptanceStages(cfg *config.Config, gh *shell.GitHub) {
 		log.Info("Triggering acceptance stage (latest + legacy in parallel)...")
 	} else {
 		log.Info("Triggering acceptance stage (latest)...")
-	}
-
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would trigger and wait for acceptance stage workflow(s)")
-		return
 	}
 
 	shell.CheckRateLimit()
@@ -260,11 +240,6 @@ func VerifyQA(cfg *config.Config, gh *shell.GitHub) {
 func VerifyQAStage(cfg *config.Config, gh *shell.GitHub) {
 	log.Info("Triggering and verifying QA stage...")
 
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would trigger and wait for QA stage workflow")
-		return
-	}
-
 	verifyWorkflow(gh, "QA stage", "qa-stage.yml", nil, 300)
 }
 
@@ -272,22 +247,12 @@ func VerifyQAStage(cfg *config.Config, gh *shell.GitHub) {
 func VerifyQASignoff(cfg *config.Config, gh *shell.GitHub) {
 	log.Info("Triggering and verifying QA signoff...")
 
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would trigger and wait for QA signoff workflow")
-		return
-	}
-
 	verifyWorkflow(gh, "QA signoff", "qa-signoff.yml", map[string]string{"result": "approved"}, 300)
 }
 
 // VerifyProdStage triggers and verifies production stage.
 func VerifyProdStage(cfg *config.Config, gh *shell.GitHub) {
 	log.Info("Triggering and verifying production stage...")
-
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would trigger and wait for production stage workflow")
-		return
-	}
 
 	verifyWorkflow(gh, "Production stage", "prod-stage.yml", nil, 300)
 }
@@ -303,11 +268,6 @@ func VerifyProdStage(cfg *config.Config, gh *shell.GitHub) {
 // permissions, so we still verify each.
 func VerifyCleanup(cfg *config.Config, gh *shell.GitHub) {
 	log.Info("Triggering and verifying cleanup workflow (dry-run)...")
-
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would trigger and wait for cleanup workflow")
-		return
-	}
 
 	verifyCleanupIn(gh, "Cleanup")
 
@@ -474,11 +434,6 @@ func isWindowsPrivilegeError(err error) bool {
 func VerifyLocalSonar(cfg *config.Config) {
 	log.Info("Running local SonarCloud scans...")
 
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would run local SonarCloud scans for all components")
-		return
-	}
-
 	if _, err := exec.LookPath("bash"); err != nil {
 		log.Fatalf("bash not found on PATH (required to run run-sonar.sh). Install Git Bash on Windows: https://git-scm.com/download/win")
 	}
@@ -493,7 +448,7 @@ func VerifyLocalSonar(cfg *config.Config) {
 }
 
 func sonarComponent(label, dir string) {
-	out, err := shell.Run("bash ./run-sonar.sh", false, true, dir)
+	out, err := shell.Run("bash ./run-sonar.sh", true, dir)
 	if err != nil {
 		log.Fatalf("SonarCloud scan failed for %s in %s: %v\n%s", label, dir, err, out)
 	}
@@ -505,11 +460,6 @@ func sonarComponent(label, dir string) {
 // Skipped entirely when --no-local-tests is set (the gate lives in main.go).
 func VerifyLocalTesting(cfg *config.Config) {
 	log.Info("Running local system tests...")
-
-	if cfg.DryRun {
-		log.Info("[DRY RUN] Would run local system tests")
-		return
-	}
 
 	dockerDir := filepath.Join(cfg.RepoDir, dockerDir_name)
 	testDir := filepath.Join(cfg.RepoDir, systemTestDir_name)

@@ -209,7 +209,6 @@ func (e *Engine) RunProcess(name string, ctx *Context) error {
 
 // NextEdge is the public counterpart to nextEdge: given a process name, source
 // node ID, and Context, return the node ID Run would advance to next.
-// Used by the `gh optivem atdd debug next-phase` diagnostic helper.
 //
 // Errors mirror nextEdge: an unknown process / node returns a descriptive
 // error; a node with no outgoing edges returns "" with nil error (terminal).
