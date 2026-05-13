@@ -13,6 +13,26 @@ A GitHub CLI extension for scaffolding pipeline projects.
 - [GitHub CLI](https://cli.github.com/) (`gh auth login`) — `gh-optivem` is tested against `gh` ≥ 2.92.0; older releases may work but are unsupported. `gh optivem init` and `gh optivem atdd …` will refuse to run on older versions and point you at the upgrade. Update with `winget upgrade GitHub.cli` (Windows), `brew upgrade gh` (macOS), or your distro's package manager.
 - [`actionlint`](https://github.com/rhysd/actionlint) v1.7.7 — used by the `Verify scaffolded workflows` step. Install: `go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7` or `bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7`
 
+### Required environment variables
+
+`gh optivem init` reads six variables from your shell and writes them as Actions variables/secrets on the scaffolded repo (and on each component repo in multirepo). The scaffolded pipeline can't run without them, so the tool fails fast if any are missing. Pass `--dry-run` to skip the check.
+
+- `DOCKERHUB_USERNAME` — your Docker Hub username. The scaffolded pipeline authenticates pulls of base images from Docker Hub so they don't hit the anonymous rate limit (shared CI runner IPs burn through it quickly).
+- `DOCKERHUB_TOKEN` — a Docker Hub Personal Access Token paired with the username above. Same reason: authenticated pulls. Create at https://app.docker.com/settings/personal-access-tokens (read-only scope is enough since we only pull).
+- `SONAR_TOKEN` — a SonarCloud token. Consumed by the local SonarCloud scan step (`--verify-level local`+) and by the commit stage's CI scan.
+- `GHCR_TOKEN` — a GitHub Personal Access Token (classic) with `write:packages` + `read:packages`. The acceptance and prod stages tag images in GHCR. Create at https://github.com/settings/tokens.
+- `WORKFLOW_TOKEN` — a GitHub PAT (classic) with `repo` + `workflow` scopes. The acceptance/QA/prod stages push release tags; the default `GITHUB_TOKEN` cannot push tags whose commits diff workflow files, which is why a separate PAT is needed.
+- `REPO_TOKEN` — a GitHub PAT with `repo` scope, or a fine-grained PAT with `Contents:Read` on the component repos. In multitier+multirepo scaffolds, the system-level prod stage uses it to read each component repo's `VERSION` file via the GitHub API (cross-repo Contents read). Currently required for all scaffolds even though only multitier+multirepo consumes it.
+
+```bash
+export DOCKERHUB_USERNAME=...
+export DOCKERHUB_TOKEN=...
+export SONAR_TOKEN=...
+export GHCR_TOKEN=...
+export WORKFLOW_TOKEN=...
+export REPO_TOKEN=...
+```
+
 ## Installation
 
 ```bash
