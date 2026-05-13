@@ -370,10 +370,13 @@ func VerifySetupTests(cfg *config.Config) {
 }
 
 // VerifyStartSystem brings up the docker stacks declared in systems.yaml and
-// waits for each to pass its health probe. Mirrors `gh optivem system start`.
+// waits for each to pass its health probe. Mirrors `gh optivem system start
+// --restart`: the verify/init flow always runs immediately after a fresh
+// image build, so any containers still running from a previous scaffold of
+// the same system must be recreated to pick up the new images.
 func VerifyStartSystem(cfg *config.Config) {
 	log.Info("Starting system...")
-	if err := runner.Up(loadSys(cfg), dockerDir(cfg), runner.SystemOptions{}); err != nil {
+	if err := runner.Up(loadSys(cfg), dockerDir(cfg), runner.SystemOptions{Restart: true}); err != nil {
 		log.Fatalf("Start system failed: %v", err)
 	}
 	log.Success("System started")
