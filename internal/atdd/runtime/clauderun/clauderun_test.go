@@ -254,6 +254,76 @@ func TestRenderPrompt_ReturnsErrorForUnknownAgent(t *testing.T) {
 	}
 }
 
+func TestFilterConditionals_KeepsMatchingBlock(t *testing.T) {
+	tpl := "before\n<!-- if:subtype=external-system-interface-redesign -->\nkept\n<!-- end-if -->\nafter\n"
+	got := filterConditionals(tpl, map[string]string{"subtype": "external-system-interface-redesign"})
+	want := "before\nkept\nafter\n"
+	if got != want {
+		t.Errorf("filterConditionals keep-path:\n got:  %q\n want: %q", got, want)
+	}
+}
+
+func TestFilterConditionals_StripsNonMatchingBlock(t *testing.T) {
+	tpl := "before\n<!-- if:subtype=external-system-interface-redesign -->\nstripped\n<!-- end-if -->\nafter\n"
+	got := filterConditionals(tpl, map[string]string{"subtype": "system-interface-redesign"})
+	want := "before\nafter\n"
+	if got != want {
+		t.Errorf("filterConditionals strip-path:\n got:  %q\n want: %q", got, want)
+	}
+}
+
+func TestFilterConditionals_HandlesMultipleBlocks(t *testing.T) {
+	// Two blocks separated by a heading. Realistic shape: each block ends
+	// with a markdown blank line before its closing marker, mirroring how
+	// the atdd-task template structures gated reference sections.
+	tpl := "intro\n\n<!-- if:subtype=ext -->\nA-body\n\n<!-- end-if -->\nmiddle\n\n<!-- if:subtype=sys -->\nB-body\n\n<!-- end-if -->\nouter\n"
+	got := filterConditionals(tpl, map[string]string{"subtype": "sys"})
+	want := "intro\n\nmiddle\n\nB-body\n\nouter\n"
+	if got != want {
+		t.Errorf("filterConditionals multi-block:\n got:  %q\n want: %q", got, want)
+	}
+}
+
+func TestRenderPrompt_TaskAgent_StripsExternalSectionForSystemSubtype(t *testing.T) {
+	// system-interface-redesign tickets should not see external-system
+	// driver doctrine (Real/Stub split, Ext* DTOs) inlined in the prompt.
+	opts := newOpts()
+	opts.Agent = "atdd-task"
+	opts.Subtype = "system-interface-redesign"
+
+	got, err := renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt: %v", err)
+	}
+	// "BaseXyzClient" appears once in the unconditional Process step as a
+	// one-line orientation hint for external paths the agent must NOT
+	// modify; we only gate the multi-paragraph doctrine sections, not the
+	// passing mention in step 1.
+	for _, banned := range []string{
+		"Real vs Stub Implementations",
+		"External DTOs",
+		"Both implementations share a `BaseXyzDriver`",
+	} {
+		if strings.Contains(got, banned) {
+			t.Errorf("system-interface-redesign prompt should not contain %q", banned)
+		}
+	}
+	mustContain(t, got, "Shop UI Driver")
+}
+
+func TestRenderPrompt_TaskAgent_KeepsExternalSectionForExternalSubtype(t *testing.T) {
+	opts := newOpts()
+	opts.Agent = "atdd-task"
+	opts.Subtype = "external-system-interface-redesign"
+
+	got, err := renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt: %v", err)
+	}
+	mustContain(t, got, "Real vs Stub Implementations")
+	mustContain(t, got, "External DTOs")
+}
+
 // ---------------------------------------------------------------------------
 // Dispatch — happy path
 // ---------------------------------------------------------------------------

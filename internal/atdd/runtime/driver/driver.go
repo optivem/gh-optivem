@@ -760,6 +760,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, rs *runState
 			ProjectTitle:    ctx.GetString("project_title"),
 			ProjectURL:      ctx.GetString("project_url"),
 			Architecture:    ctx.GetString("architecture"),
+			Subtype:         ctx.GetString("subtype"),
 			AllowedRoots:    ctx.GetString("allowed_roots"),
 			Checklist:       ctx.GetString("ticket_checklist"),
 			VerifyResults:   ctx.GetString("verify_results_text"),
