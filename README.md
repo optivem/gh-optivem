@@ -103,7 +103,7 @@ gh optivem init --owner acme --repo page-turner --system-name "Page Turner" \
 
 The full per-invocation flag set (`--verify-level`, `--no-*`, `--workdir`, `--shop-ref`, `--log-file`, `--keep-local`, `--yes`, …) is layered on top in both modes.
 
-Once the file exists, hand-edit if needed and run `gh optivem config validate` to confirm. After the sibling repos are cloned (multi-repo layouts), run `gh optivem config preflight` for the stronger "I'm about to run this for real" check — same schema validation plus an on-disk layout check that every declared repo and tier path resolves to a real directory. `preflight` is the same check `atdd implement-ticket` runs at startup.
+Once the file exists, hand-edit if needed and run `gh optivem config validate` to confirm. After the sibling repos are cloned (multi-repo layouts), run `gh optivem config preflight` for the stronger "I'm about to run this for real" check — same schema validation plus an on-disk layout check that every declared repo and tier path resolves to a real directory. `preflight` is the same check `implement` runs at startup.
 
 <!--
 TODO: document the standalone `gh optivem config init` retrofit flow
@@ -219,18 +219,18 @@ gh optivem test run --list                # print suite ids from tests.yaml and 
 
 Multi-test semantics depend on the suite's `testFilter` in `tests.yaml`. The runner combines multiple `--test` values per `testFilterJoin`: `"or"` (default) joins names with `|` and substitutes once — works for dotnet (`&DisplayName~T1|T2`) and playwright/jest (`--grep 'T1|T2'`); `"repeat"` substitutes the whole `testFilter` once per name and concatenates — required for gradle (`--tests T1 --tests T2`). Practical ceiling on Windows is ~600 typical test names per invocation (the OS caps each command line at 32K characters).
 
-<!-- TODO: revisit ATDD pipeline section — commented out for now
-## Running the ATDD pipeline
+<!-- TODO: revisit implementation pipeline section — commented out for now
+## Running the implementation pipeline
 
-Once a scaffolded project carries a valid `gh-optivem.yaml` and the sibling repos are cloned next to it, the ATDD subcommands walk the canonical process-flow state machine for one ticket:
+Once a scaffolded project carries a valid `gh-optivem.yaml` and the sibling repos are cloned next to it, the `implement` subcommand walks the configured process-flow state machine for one ticket:
 
 ```bash
-gh optivem atdd implement-ticket --issue 42                    # walk the pipeline for a specific issue
-gh optivem atdd implement-ticket --issue https://github.com/optivem/shop/issues/42
-gh optivem atdd manage-project                                 # pick the top Ready ticket and walk the pipeline
+gh optivem implement --issue 42                                # walk the pipeline for a specific issue
+gh optivem implement --issue https://github.com/optivem/shop/issues/42
+gh optivem implement                                           # pick the top Ready ticket and walk the pipeline
 ```
 
-Both commands accept the same per-invocation flags:
+`implement` accepts the same per-invocation flags whether or not `--issue` was passed:
 
 ```bash
 ... --autonomous          # skip human-approval STOPs and dispatch agents headless via `claude -p`
@@ -238,15 +238,16 @@ Both commands accept the same per-invocation flags:
 ... --log-file run.log    # mirror stdout/stderr to this file
 ... --keep-runs 10        # max prompt-log run dirs to keep under .gh-optivem/runs/ (0 = never prune; default 10)
 ... --show-prompt         # dump each agent's full rendered prompt before dispatch (default: summary banner only)
+... --workspace <path>    # override the default workspace root (parent directory of CWD; each clone dir must be named after the repo-name component of its slug)
 ```
 
-`implement-ticket` additionally takes `--workspace <path>` to override the default workspace root (parent directory of CWD; each clone dir must be named after the repo-name component of its slug). Project-stable overrides (process flow, agent prompts, per-node text) live in `gh-optivem.yaml` — see [ATDD-specific overrides](#atdd-specific-overrides).
+Project-stable overrides (process flow, agent prompts, per-node text) live in `gh-optivem.yaml` — see [pipeline overrides](#pipeline-overrides).
 
 To inspect the embedded process-flow diagram without running the pipeline:
 
 ```bash
-gh optivem atdd show diagram                            # print the canonical Mermaid markdown to stdout
-gh optivem atdd show diagram > docs/process-diagram.md  # regenerate the committed diagram
+gh optivem process show                            # print the canonical Mermaid markdown to stdout
+gh optivem process show > docs/process-diagram.md  # regenerate the committed diagram
 ```
 -->
 

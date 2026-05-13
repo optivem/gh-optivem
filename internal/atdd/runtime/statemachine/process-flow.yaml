@@ -72,8 +72,8 @@ processes:
 
   # ===========================================================================
   # main
-  # Ticket Lifecycle — entry process for `gh optivem atdd implement-ticket
-  # --issue N` and `gh optivem atdd manage-project`. Pulls the next ticket
+  # Ticket Lifecycle — entry process for `gh optivem implement` (with or
+  # without `--issue`). Pulls the next ticket
   # (board / specific_issue → in-progress), then runs intake, runs the
   # legacy acceptance criteria cycle (no-op when the ticket carries no Legacy Acceptance Criteria
   # section), runs the change cycle for the ticket's type, and ends at

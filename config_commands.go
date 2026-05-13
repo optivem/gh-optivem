@@ -1,7 +1,7 @@
 // config_commands.go wires the `gh optivem config …` subcommands into the
 // root Cobra command. The `config` namespace owns operations that read or
 // write gh-optivem.yaml — the central per-project config file produced by
-// `gh optivem init` and consumed by `gh optivem atdd implement-ticket`.
+// `gh optivem init` and consumed by `gh optivem implement`.
 //
 //	gh optivem config init      — write a fresh gh-optivem.yaml from CLI flags
 //	gh optivem config validate  — parse <CWD>/gh-optivem.yaml and validate it
@@ -199,7 +199,7 @@ func runConfigValidate(yamlPath string) (string, error) {
 // same schema validation as `config validate`, then the on-disk preflight
 // check (every declared repo and tier path actually exists in the
 // workspace). Surfaces the late "preflight failed" errors that otherwise
-// only fire deep inside `atdd implement-ticket`.
+// only fire deep inside `implement`.
 //
 // Schema-only validation stays on `config validate`: that command must keep
 // passing for the half-built state right after `gh optivem config init`,
@@ -213,7 +213,7 @@ func newConfigPreflightCmd() *cobra.Command {
 		Short: "Validate gh-optivem.yaml and check its declared paths exist on disk",
 		Long: `Run schema validation (same as ` + "`config validate`" + `) and additionally
 verify that every repo and tier path declared in gh-optivem.yaml resolves
-to a real directory on disk. This is the same check ` + "`atdd implement-ticket`" + `
+to a real directory on disk. This is the same check ` + "`implement`" + `
 runs at startup — run it standalone to catch missing clones or mistyped
 paths before kicking off a pipeline.
 

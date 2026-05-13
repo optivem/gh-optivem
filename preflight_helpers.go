@@ -1,6 +1,6 @@
 // preflight_helpers.go builds the wired-up preflight.Options the cobra
-// layer passes to preflight.Run. Both `gh optivem atdd implement-ticket`
-// and `gh optivem config preflight` go through this helper so the two
+// layer passes to preflight.Run. Both `gh optivem implement` and
+// `gh optivem config preflight` go through this helper so the two
 // surfaces share one definition of "what real remote checks does
 // preflight run" — adding or removing a remote check class touches one
 // place, not two.

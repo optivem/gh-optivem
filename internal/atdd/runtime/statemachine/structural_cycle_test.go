@@ -5,11 +5,11 @@ import (
 )
 
 // TestImplementTicket_SystemInterfaceRedesign mirrors the ATDD-shaped
-// scenario the driver runs for `gh optivem atdd implement-ticket --issue
-// N` against a Task ticket carrying the `subtype:system-interface-redesign`
-// label. Agents (claude shell-outs) and github-touching service tasks are
-// mocked out; the runner walks `main` from the implement-ticket entry
-// point (MOVE_TICKET_IN_PROGRESS); the spy captures every node — service
+// scenario the driver runs for `gh optivem implement --issue N` against
+// a Task ticket carrying the `subtype:system-interface-redesign` label.
+// Agents (claude shell-outs) and github-touching service tasks are
+// mocked out; the runner walks `main` from the --issue entry point
+// (MOVE_TICKET_IN_PROGRESS); the spy captures every node — service
 // tasks, user tasks, gateways, call_activities, and end_events — with its
 // resolved action / agent / outcome / call target and ctx.Params snapshot.
 //

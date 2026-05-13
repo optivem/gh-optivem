@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
@@ -210,4 +212,59 @@ func TestAgentPromptOverridesFromConfig_MissingPathErrors(t *testing.T) {
 	if !strings.Contains(err.Error(), "atdd-test") {
 		t.Errorf("error should name the agent, got: %v", err)
 	}
+}
+
+// TestNewImplementCmd_HasExpectedFlagsAndUse: thin wiring check — the
+// `implement` command must declare every flag callers rely on (issue,
+// autonomous, manual-agents, workspace, log-file, keep-runs, show-prompt)
+// and its Use line must be the bare verb so the noun-first surface keeps
+// `gh optivem implement` as a top-level command.
+func TestNewImplementCmd_HasExpectedFlagsAndUse(t *testing.T) {
+	t.Parallel()
+	cmd := newImplementCmd()
+	if cmd.Use != "implement" {
+		t.Errorf("Use: got %q, want %q", cmd.Use, "implement")
+	}
+	wantFlags := []string{"issue", "autonomous", "manual-agents", "workspace", "log-file", "keep-runs", "show-prompt"}
+	for _, name := range wantFlags {
+		if cmd.Flags().Lookup(name) == nil {
+			t.Errorf("missing flag --%s", name)
+		}
+	}
+	// --issue must NOT have a short form (-i is reserved for future flags).
+	if f := cmd.Flags().Lookup("issue"); f != nil && f.Shorthand != "" {
+		t.Errorf("--issue should have no short form, got -%s", f.Shorthand)
+	}
+}
+
+// TestNewProcessCmd_HasShowChild: `process` is a noun parent; its only
+// child today is `show`. Verifies the wiring stays at three levels
+// (`optivem process show`) and that `show` is the leaf with no diagram
+// child of its own.
+func TestNewProcessCmd_HasShowChild(t *testing.T) {
+	t.Parallel()
+	cmd := newProcessCmd()
+	if cmd.Use != "process" {
+		t.Errorf("parent Use: got %q, want %q", cmd.Use, "process")
+	}
+	var show *cobra.Command
+	for _, c := range cmd.Commands() {
+		if c.Use == "show" {
+			show = c
+		}
+	}
+	if show == nil {
+		t.Fatalf("process: missing `show` child; have %v", commandUses(cmd.Commands()))
+	}
+	if got := len(show.Commands()); got != 0 {
+		t.Errorf("process show: expected leaf (0 children), got %d", got)
+	}
+}
+
+func commandUses(cs []*cobra.Command) []string {
+	out := make([]string, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, c.Use)
+	}
+	return out
 }
