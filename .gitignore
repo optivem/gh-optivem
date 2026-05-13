@@ -23,3 +23,4 @@ Thumbs.db
 # Zig local build cache (created by mlugg/setup-zig in CI; would trip
 # goreleaser's dirty-tree check otherwise)
 .zig-cache/
+.gh-optivem/

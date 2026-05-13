@@ -589,7 +589,7 @@ jobs:
         with:
           repository: optivem/shop
           commit-sha: ${{ needs.check.outputs.shop-sha }}
-          pattern: '*'
+          pattern: 'meta-v*'
 
       - name: Record Shop Tag
         uses: optivem/actions/create-commit-status@v1
