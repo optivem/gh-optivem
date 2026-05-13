@@ -115,24 +115,14 @@ Project-stable values — prompted on first run and written to `gh-optivem.yaml`
 - `--owner` — GitHub owner (user or org) for the scaffolded repo(s).
 - `--repo` — repo name (or monorepo root name for multi-repo layouts).
 - `--system-name` — human-readable system name (e.g. `"Page Turner"`).
-- `--arch` — system architecture (e.g. `monolith`).
+- `--arch` — system architecture: `monolith` or `multitier`.
 - `--repo-strategy` — `monorepo` or `multirepo`.
-- `--monolith-lang` / `--lang` — implementation language for the system tier.
+- Implementation language — which flag applies depends on `--arch`:
+  - `--monolith-lang` — system language when `--arch monolith`: `java`, `dotnet`, or `typescript`.
+  - `--backend-lang` — backend language when `--arch multitier`: `java`, `dotnet`, or `typescript`.
+  - `--frontend-lang` — frontend language when `--arch multitier` (currently only `typescript`).
+- `--test-lang` — system-test language: `java`, `dotnet`, or `typescript`. Independent of the system language(s).
 - `--project-url` — URL of the GitHub Project board to attach.
-
-Per-invocation flags (layered on top in both interactive and flag-driven modes):
-
-- `--verify-level` — depth of post-scaffold verification.
-- `--no-*` — skip specific scaffolding steps.
-- `--workdir` — override the working directory.
-- `--shop-ref` — pin the `shop` template ref.
-- `--log-file` — override the log file path (default: `$TEMP/gh-optivem-<timestamp>.log`).
-- `--keep-local` — keep the local clone after scaffolding.
-- `--yes` — accept all confirmation prompts.
-- `--verbose` / `-v` — debug output (retry/wait chatter, diagnostics).
-- `--quiet` / `-q` — suppress info-level output (warnings + errors still shown).
-
-Once `gh-optivem.yaml` exists, hand-edit if needed and run `gh optivem config validate` to confirm. After the sibling repos are cloned (multi-repo layouts), run `gh optivem config preflight` for the stronger "I'm about to run this for real" check — same schema validation plus an on-disk layout check that every declared repo and tier path resolves to a real directory. `preflight` is the same check `atdd implement-ticket` runs at startup.
 
 <!--
 TODO: document the standalone `gh optivem config init` retrofit flow
@@ -143,20 +133,11 @@ once the UX is validated.
 
 ## Usage
 
-`gh optivem` provides runner subcommands for the system + tests lifecycle in a scaffolded project. Each phase is its own verb (mirrors `docker compose`, `systemctl`, `kubectl`, `terraform`): the typical sequence is `compile` (source-level sanity check) → `test setup` (prepare the test harness) → `system start` (bring the SUT up) → `test run` (run suites) → `system stop`.
+`gh optivem` provides runner subcommands to build the system, run the system, and run the tests.
 
-```bash
-gh optivem compile
-gh optivem test setup
-gh optivem system start
-gh optivem test run --suite smoke
-gh optivem test run --suite acceptance-api
-gh optivem system stop
-```
+### System
 
-The paths to `systems.yaml` / `tests.yaml` come from `gh-optivem.yaml`'s `system.config:` / `system_test.config:` fields — both are required by the runner commands (there is no built-in default-name fallback). Projects with non-default layouts (e.g. `docker/java/monolith/systems.yaml`) set the YAML fields once and forget; to pick an alternate variant ad hoc, select a different `gh-optivem.yaml` via the persistent `-c` / `--config` flag. See [Pointing at non-default configs](CONTRIBUTING.md#pointing-at-non-default-configs).
-
-### Compile system
+#### Compile system
 
 Source-level compile of the system tier (`dotnet build` / `./gradlew compileJava` / `npx tsc --noEmit`), dispatched per-tier by the `lang:` field in `gh-optivem.yaml`.
 
@@ -167,7 +148,7 @@ gh optivem compile                        # shortcut: system + test tiers (halts
 
 `compile` is the source-level build — distinct from `system build` (`docker compose build` / container image build). The two must not be conflated.
 
-### Build system
+#### Build system
 
 `docker compose build` for every entry in `systems.yaml`.
 
@@ -176,7 +157,7 @@ gh optivem system build
 gh optivem system build --rebuild         # force full rebuild (no layer cache reuse)
 ```
 
-### Start system
+#### Start system
 
 `docker compose up` + wait for health.
 
@@ -187,7 +168,7 @@ gh optivem system start --log-lines 200   # lines of compose logs to dump on hea
 gh optivem system start --up-timeout 10m  # per-attempt timeout for `docker compose up -d` (default 5m)
 ```
 
-### Stop system
+#### Stop system
 
 `docker compose down` + container cleanup.
 
@@ -195,7 +176,7 @@ gh optivem system start --up-timeout 10m  # per-attempt timeout for `docker comp
 gh optivem system stop
 ```
 
-### Clean system
+#### Clean system
 
 `docker compose down -v --rmi local` — delete volumes + locally-built images. Analog of `dotnet clean` / `./gradlew clean`: deletes build outputs without touching the dependency cache (registry-pulled images are kept). Chain it explicitly for a fresh start: `gh optivem system clean && gh optivem test run`.
 
@@ -203,7 +184,9 @@ gh optivem system stop
 gh optivem system clean
 ```
 
-### Setup tests
+### System tests
+
+#### Setup tests
 
 Run `setupCommands` from `tests.yaml` (`npm ci`, restore, compile test sources, ...).
 
@@ -211,7 +194,7 @@ Run `setupCommands` from `tests.yaml` (`npm ci`, restore, compile test sources, 
 gh optivem test setup
 ```
 
-### Compile tests
+#### Compile tests
 
 Source-level compile of the test tier only.
 
@@ -219,20 +202,33 @@ Source-level compile of the test tier only.
 gh optivem test compile
 ```
 
-### Run tests
+#### Run tests
 
-`test run` health-probes every entry in `systems.yaml` first; if any aren't up, it errors out with "start it first with `gh optivem system start`" rather than silently starting them.
+> [!WARNING]
+> The system must already be running (`gh optivem system start`). `test run` health-probes every entry in `systems.yaml` first; if any aren't up, it errors out with "start it first with `gh optivem system start`" rather than silently starting them.
+
+Run all tests:
 
 ```bash
 gh optivem test run                       # run every suite against the already-running system
+```
+
+Run specific suites:
+
+```bash
 gh optivem test run --suite smoke         # run only the suite with this id
 gh optivem test run --suite acceptance-api --suite acceptance-ui   # multiple suites, repeatable
 gh optivem test run --suite acceptance-api,acceptance-ui           # ...or comma-separated
+gh optivem test run --list                # print suite ids from tests.yaml and exit
+```
+
+Run specific tests:
+
+```bash
 gh optivem test run --test "MyTest"       # narrow execution to one test name (substituted into the suite's testFilter)
 gh optivem test run --test T1 --test T2   # multiple names, repeatable
 gh optivem test run --test T1,T2          # ...or comma-separated
 gh optivem test run --sample              # use each suite's sampleTest field as the test name
-gh optivem test run --list                # print suite ids from tests.yaml and exit
 ```
 
 Multi-test semantics depend on the suite's `testFilter` in `tests.yaml`. The runner combines multiple `--test` values per `testFilterJoin`: `"or"` (default) joins names with `|` and substitutes once — works for dotnet (`&DisplayName~T1|T2`) and playwright/jest (`--grep 'T1|T2'`); `"repeat"` substitutes the whole `testFilter` once per name and concatenates — required for gradle (`--tests T1 --tests T2`). Practical ceiling on Windows is ~600 typical test names per invocation (the OS caps each command line at 32K characters).

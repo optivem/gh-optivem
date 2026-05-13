@@ -171,6 +171,7 @@ func fixExecBits(repoDir, fullRepo string) {
 		"gradlew":         true,
 		"setup-gcp.sh":    true,
 		"teardown-gcp.sh": true,
+		"run-sonar.sh":    true,
 	}
 	out, err := shell.RunCapture("git ls-files", repoDir)
 	if err != nil {
