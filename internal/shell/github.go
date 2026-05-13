@@ -306,13 +306,40 @@ func (g *GitHub) mustRun(cmd string) string {
 	return out
 }
 
-// isRepoNotFound reports whether a gh repo view failure means the repo doesn't
-// exist (vs a transient failure like network / auth / rate limit).
-func isRepoNotFound(output string) bool {
+// IsRepoNotFound reports whether a gh repo view failure means the repo doesn't
+// exist (vs a transient failure like network / auth / rate limit). Exported
+// so the runtime preflight can share the same "is this 404 vs transient?"
+// rule without re-implementing string sniffing.
+func IsRepoNotFound(output string) bool {
 	lower := strings.ToLower(output)
 	return strings.Contains(lower, "could not resolve to a repository") ||
 		strings.Contains(lower, "not found") ||
 		strings.Contains(lower, "404")
+}
+
+// RepoExists reports whether a GitHub repo with the given slug
+// (owner/name) is visible to the authenticated `gh` CLI. Returns
+// (true, nil) on success, (false, nil) when gh reports the repo
+// doesn't exist, and (false, err) for transient failures (network,
+// auth, rate limit) so callers can distinguish "definitely missing"
+// from "couldn't tell."
+//
+// Shells out the same way init's CreateRepo does — kept in this package
+// (not duplicated in preflight) so there's a single source of truth for
+// the gh-repo existence check and its 404-vs-transient classification.
+func RepoExists(slug string) (bool, error) {
+	out, err := Run(fmt.Sprintf("gh repo view %s --json name", slug), false, true, "")
+	if err == nil {
+		return true, nil
+	}
+	var rle *RateLimitExceeded
+	if errors.As(err, &rle) {
+		return false, err
+	}
+	if IsRepoNotFound(out) {
+		return false, nil
+	}
+	return false, fmt.Errorf("gh repo view %s: %w\n%s", slug, err, out)
 }
 
 func (g *GitHub) CreateRepo() {
@@ -320,17 +347,13 @@ func (g *GitHub) CreateRepo() {
 		log.Infof("[DRY RUN] Would check and create repo %s if missing", g.Repo)
 		return
 	}
-	out, err := Run(fmt.Sprintf("gh repo view %s --json name", g.Repo), false, true, "")
-	if err == nil {
+	exists, err := RepoExists(g.Repo)
+	if err != nil {
+		log.Fatalf("failed to check if repository %s exists: %v", g.Repo, err)
+	}
+	if exists {
 		log.Warnf("Repository %s already exists -- skipping creation", g.Repo)
 		return
-	}
-	var rle *RateLimitExceeded
-	if errors.As(err, &rle) {
-		log.Fatalf("rate limit hit while checking if %s exists: %v", g.Repo, err)
-	}
-	if !isRepoNotFound(out) {
-		log.Fatalf("failed to check if repository %s exists: %v\n%s", g.Repo, err, out)
 	}
 	MustRunWithRetry("gh repo create "+g.Repo+" --public", false, "")
 	g.waitForRepoVisible()

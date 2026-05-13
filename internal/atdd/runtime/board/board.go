@@ -112,6 +112,28 @@ func ResolveProjectURL(repoPath string) (string, error) {
 	return ResolveProjectURLFromConfig(cfg)
 }
 
+// VerifyProjectURL checks that a project URL parses and that `gh project
+// view` against it succeeds. Returns nil when the project resolves and is
+// visible to the authenticated `gh` CLI; otherwise an error describing
+// the parse failure, the not-found result, or the transport failure.
+//
+// gh is the runner used for the lookup; nil falls back to the real `gh`
+// CLI via execGh. Surfaces "you declared a board URL that doesn't exist
+// or your gh auth can't see it" up-front, before any picker / move call.
+func VerifyProjectURL(ctx context.Context, projectURL string, gh GhRunner) error {
+	owner, number, err := parseProjectURL(projectURL)
+	if err != nil {
+		return err
+	}
+	if gh == nil {
+		gh = execGh{}
+	}
+	if _, err := gh.Run(ctx, "project", "view", strconv.Itoa(number), "--owner", owner, "--format", "json"); err != nil {
+		return fmt.Errorf("board: project %s/#%d not accessible: %w", owner, number, err)
+	}
+	return nil
+}
+
 // ResolveProjectURLFromConfig is the explicit-config variant of
 // ResolveProjectURL. The caller passes a pre-loaded *Config (or nil for
 // "no config available"). Used by the driver when the operator passed

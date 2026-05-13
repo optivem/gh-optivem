@@ -148,6 +148,51 @@ func (s *SonarCloud) CreateProject(key string) {
 	}
 }
 
+// OrgExists reports whether a SonarCloud organization with the given key
+// is visible to the authenticated client. Returns (true, nil) when the
+// org is found, (false, nil) when the search returns no matches, and
+// (false, err) on transport / authentication / unexpected-status failures.
+//
+// Used by the runtime preflight to surface "the SonarCloud org you
+// declared in gh-optivem.yaml doesn't exist" before any agent dispatch
+// touches a runner that requires it.
+func (s *SonarCloud) OrgExists(ctx context.Context, key string) (bool, error) {
+	endpoint := "/organizations/search?organizations=" + url.QueryEscape(key)
+	result, err := s.api(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return false, fmt.Errorf("sonarcloud: organizations/search %s: %w", key, err)
+	}
+	if e, ok := result["error"]; ok && e == true {
+		status, _ := result["status"].(float64)
+		msg, _ := result["message"].(string)
+		return false, fmt.Errorf("sonarcloud: organizations/search %s: HTTP %d: %s", key, int(status), msg)
+	}
+	orgs, _ := result["organizations"].([]interface{})
+	return len(orgs) > 0, nil
+}
+
+// ProjectExists reports whether a SonarCloud project with the given key
+// is visible to the authenticated client. Uses /components/show because
+// it returns a clean 404 for missing keys (no need to scan a search
+// result for the exact match). Returns (true, nil) on 200, (false, nil)
+// on 404, (false, err) on every other status or transport failure.
+func (s *SonarCloud) ProjectExists(ctx context.Context, key string) (bool, error) {
+	endpoint := "/components/show?component=" + url.QueryEscape(key)
+	result, err := s.api(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return false, fmt.Errorf("sonarcloud: components/show %s: %w", key, err)
+	}
+	if e, ok := result["error"]; ok && e == true {
+		status, _ := result["status"].(float64)
+		if int(status) == 404 {
+			return false, nil
+		}
+		msg, _ := result["message"].(string)
+		return false, fmt.Errorf("sonarcloud: components/show %s: HTTP %d: %s", key, int(status), msg)
+	}
+	return true, nil
+}
+
 func (s *SonarCloud) DeleteProject(key string) {
 	ctx := context.Background()
 	result, err := s.api(ctx, "POST", "/projects/delete", map[string]string{"project": key})
