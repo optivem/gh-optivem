@@ -139,46 +139,65 @@ the URL back into gh-optivem.yaml.`,
 }
 
 // loadProjectConfigForInit resolves the gh-optivem.yaml path using the
-// shared flag > env > default cascade and reads the file. Three missing-file
-// paths, picked in this order:
+// shared flag > env > default cascade and produces a *projectconfig.Config
+// for init to consume. The cascade has two halves keyed off
+// projectconfig.ResolvePath's explicit return:
 //
-//  1. CI / non-interactive with YAML-affecting flags supplied
-//     (--owner, --repo, --system-name, --arch, --repo-strategy all set on
-//     f) — write the YAML via configinit.Run, then load. Lets a pipeline
-//     scaffold in one `gh optivem init ...` call without a precursor
-//     `config init` step.
-//  2. TTY without flags — configinit.EnsureExists prints a banner and runs
-//     the same Prompt used by `gh optivem config init`, writing the YAML
-//     in place.
-//  3. Non-TTY without flags — EnsureExists returns the terse
-//     MissingFileError pointing at `config init` so unattended runs fail
-//     fast with a stable message.
+// Explicit path (operator passed --config / -c, or set GH_OPTIVEM_CONFIG):
+// honour today's behaviour — write the YAML at that path if missing +
+// YAML-affecting flags supplied; prompt-and-write at that path if missing
+// + TTY; terse MissingFileError otherwise. The operator chose the on-disk
+// location, so we always materialize there. Returns sourcePath = the
+// absolute path so the project-board step can write the auto-created URL
+// back into the same file.
 //
-// Returns the resolved absolute path alongside the parsed config so callers
-// can record it on cfg.SourceConfigPath — the project board step writes
-// the auto-created URL back into the same file, and re-resolving later
-// would risk a different answer if CWD or the env var changed.
+// Default path (CWD/gh-optivem.yaml, no flag, no env var): keep the
+// config in memory and let steps.WriteOptivemYAML be the sole on-disk
+// writer (inside the scaffold dir). Pre-existing CWD files are still
+// loaded and respected — operator-authored input is never silently
+// relocated. Returns sourcePath = "" for the in-memory cases so
+// downstream guards on SourceConfigPath == "" short-circuit correctly.
 func loadProjectConfigForInit(flagPath string, f *config.RawFlags) (*projectconfig.Config, string, error) {
-	path, _ := projectconfig.ResolvePath(flagPath)
+	path, explicit := projectconfig.ResolvePath(flagPath)
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve absolute path for %s: %w", path, err)
 	}
-	if _, statErr := os.Stat(abs); errors.Is(statErr, fs.ErrNotExist) && hasYAMLAffectingFlags(f) {
-		if _, err := configinit.Run(f, abs, false); err != nil {
+
+	if explicit {
+		if _, statErr := os.Stat(abs); errors.Is(statErr, fs.ErrNotExist) && hasYAMLAffectingFlags(f) {
+			if _, err := configinit.Run(f, abs, false); err != nil {
+				return nil, "", err
+			}
+		} else if err := configinit.EnsureExists(abs); err != nil {
 			return nil, "", err
 		}
-	} else if err := configinit.EnsureExists(abs); err != nil {
-		return nil, "", err
-	}
-	pc, err := projectconfig.LoadFromPath(abs)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, "", projectconfig.MissingFileError(abs)
+		pc, err := projectconfig.LoadFromPath(abs)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil, "", projectconfig.MissingFileError(abs)
+			}
+			return nil, "", err
 		}
-		return nil, "", err
+		return pc, abs, nil
 	}
-	return pc, abs, nil
+
+	// Default path: respect a pre-existing CWD file (operator-authored input).
+	if _, statErr := os.Stat(abs); statErr == nil {
+		pc, err := projectconfig.LoadFromPath(abs)
+		if err != nil {
+			return nil, "", err
+		}
+		return pc, abs, nil
+	} else if !errors.Is(statErr, fs.ErrNotExist) {
+		return nil, "", statErr
+	}
+	if hasYAMLAffectingFlags(f) {
+		pc, err := configinit.BuildConfig(f)
+		return pc, "", err
+	}
+	pc, _, err := configinit.EnsureExistsOrBuild(abs)
+	return pc, "", err
 }
 
 // hasYAMLAffectingFlags reports whether the operator supplied the minimum

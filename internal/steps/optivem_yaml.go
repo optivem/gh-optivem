@@ -48,11 +48,11 @@ const (
 func WriteOptivemYAML(cfg *config.Config) {
 	log.Info("Writing gh-optivem.yaml + gh-optivem.legacy.yaml...")
 
-	pc := buildOptivemYAML(cfg)
+	pc := BuildOptivemYAML(cfg)
 	pc.System.Config = scaffoldedSystemConfigPath
 	pc.SystemTest.Config = scaffoldedTestConfigPath
 
-	pcLegacy := buildOptivemYAML(cfg)
+	pcLegacy := BuildOptivemYAML(cfg)
 	pcLegacy.System.Config = scaffoldedSystemConfigPath
 	pcLegacy.SystemTest.Config = scaffoldedTestConfigPathLegacy
 
@@ -115,7 +115,7 @@ func writeOptivemYAMLToDirIfNotSource(cfg *config.Config, dir string, pc *projec
 // `gh optivem config init` where the caller knows exactly one directory to
 // write into (CWD or --dir), with no multirepo fan-out.
 func WriteOptivemYAMLToPath(cfg *config.Config, dir string) error {
-	pc := buildOptivemYAML(cfg)
+	pc := BuildOptivemYAML(cfg)
 	return projectconfig.Write(dir, pc)
 }
 
@@ -124,7 +124,7 @@ func WriteOptivemYAMLToPath(cfg *config.Config, dir string) error {
 // caller has chosen a non-default filename via the persistent --config flag
 // (e.g. `gh-optivem.monolith-java.yaml`).
 func WriteOptivemYAMLToFilePath(cfg *config.Config, yamlPath string) error {
-	pc := buildOptivemYAML(cfg)
+	pc := BuildOptivemYAML(cfg)
 	return projectconfig.WriteToPath(yamlPath, pc)
 }
 
@@ -136,7 +136,7 @@ func WriteOptivemYAMLToFilePath(cfg *config.Config, yamlPath string) error {
 // — operators running that one have supplied every flag and don't need
 // a review checklist.
 func WriteOptivemYAMLToFilePathWithBanner(cfg *config.Config, yamlPath, banner string) error {
-	pc := buildOptivemYAML(cfg)
+	pc := BuildOptivemYAML(cfg)
 	data, err := projectconfig.Marshal(pc)
 	if err != nil {
 		return err
@@ -154,17 +154,18 @@ func writeOptivemYAMLToDir(dir string, pc *projectconfig.Config) {
 	}
 }
 
-// buildOptivemYAML translates the init Config into the projectconfig schema.
+// BuildOptivemYAML translates the init Config into the projectconfig schema.
 // Kept as a pure function (no I/O) so tests can verify the translation
-// independently of file writing.
+// independently of file writing, and so configinit.BuildConfig can
+// reuse it without pulling in the disk-write tail of runWithBanner.
 //
-// Tier paths are read verbatim from cfg — buildOptivemYAML does no path
+// Tier paths are read verbatim from cfg — BuildOptivemYAML does no path
 // derivation. Each call site that produces a Config supplies the paths
 // matching its own on-disk layout (the flat scaffold layout via
 // config.resolvePathFlagsForYAML's defaults, or explicit --*-path flag
 // overrides). This keeps the YAML emitter agnostic to whether it is
 // writing for a scaffolded repo, shop's worktree, or a hand-rolled layout.
-func buildOptivemYAML(cfg *config.Config) *projectconfig.Config {
+func BuildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	pc := &projectconfig.Config{
 		Project:      projectconfig.Project{URL: cfg.ProjectURL},
 		RepoStrategy: mapRepoStrategy(cfg.RepoStrategy),

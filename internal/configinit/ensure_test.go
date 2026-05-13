@@ -42,6 +42,95 @@ func TestEnsureExists_MissingNonTTY(t *testing.T) {
 	}
 }
 
+// TestEnsureExistsOrBuild_ExistingFileLoads — when the file is present,
+// EnsureExistsOrBuild loads it from disk and returns the absolute path
+// as sourcePath. Mirrors the pre-existing-file branch of
+// loadProjectConfigForInit's default-path arm (operator-authored input
+// at CWD/gh-optivem.yaml is never silently relocated).
+func TestEnsureExistsOrBuild_ExistingFileLoads(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	seed := &projectconfig.Config{
+		Project: projectconfig.Project{URL: "https://github.com/orgs/acme/projects/1"},
+	}
+	if err := projectconfig.WriteToPath(path, seed); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	pc, src, err := ensureExistsOrBuild(path, false, nil, nil)
+	if err != nil {
+		t.Fatalf("EnsureExistsOrBuild on existing file: %v", err)
+	}
+	if pc == nil || pc.Project.URL != seed.Project.URL {
+		t.Errorf("loaded config mismatch: %+v", pc)
+	}
+	if src != path {
+		t.Errorf("sourcePath: got %q, want %q", src, path)
+	}
+}
+
+// TestEnsureExistsOrBuild_MissingNonTTY — non-TTY stdin reverts to the
+// existing terse error verbatim, and no file is written.
+func TestEnsureExistsOrBuild_MissingNonTTY(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	pc, src, err := ensureExistsOrBuild(path, false, nil, nil)
+	if err == nil {
+		t.Fatal("want error for missing file on non-TTY, got nil")
+	}
+	if pc != nil {
+		t.Errorf("want nil pc, got %+v", pc)
+	}
+	if src != "" {
+		t.Errorf("sourcePath: want empty, got %q", src)
+	}
+	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+		t.Errorf("file should not have been written, stat err: %v", statErr)
+	}
+	want := projectconfig.MissingFileError(path).Error()
+	if err.Error() != want {
+		t.Errorf("error message mismatch:\n got:  %q\n want: %q", err.Error(), want)
+	}
+}
+
+// TestEnsureExistsOrBuild_MissingTTYBuildsInMemory — when stdin is a
+// TTY and the prompt completes, EnsureExistsOrBuild returns an in-memory
+// *projectconfig.Config with sourcePath == "" and writes nothing to disk.
+// This is the seam that lets the scaffold dir become the sole on-disk
+// materialization for default-path init runs.
+func TestEnsureExistsOrBuild_MissingTTYBuildsInMemory(t *testing.T) {
+	stubExistenceChecks(t, nil, nil)
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	in := script(monolithAnswers())
+	var out bytes.Buffer
+	pc, src, err := ensureExistsOrBuild(path, true, in, &out)
+	if err != nil {
+		t.Fatalf("EnsureExistsOrBuild: %v", err)
+	}
+	if pc == nil {
+		t.Fatal("want non-nil pc")
+	}
+	if src != "" {
+		t.Errorf("sourcePath: want empty (in-memory case), got %q", src)
+	}
+	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+		t.Errorf("YAML file should not have been written at %s; stat err: %v", path, statErr)
+	}
+	// No .gitignore side-effect either — that belongs to operator-chosen
+	// on-disk paths (Run / RunWithBanner), not the in-memory default-path flow.
+	if _, statErr := os.Stat(filepath.Join(dir, ".gitignore")); !os.IsNotExist(statErr) {
+		t.Errorf(".gitignore should not have been written in the in-memory path")
+	}
+	if pc.SystemName != "Page Turner" || pc.System.Architecture != "monolith" {
+		t.Errorf("built pc mismatch: %+v", pc)
+	}
+	if !strings.Contains(out.String(), "creating one in memory") {
+		t.Errorf("output should mention in-memory creation, got:\n%s", out.String())
+	}
+}
+
 // TestEnsureExists_MissingTTYValidPrompt — when stdin is a TTY and the
 // prompt completes successfully, EnsureExists writes the YAML (with the
 // review-banner prepended) and runs the .gitignore side-effect that

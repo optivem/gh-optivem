@@ -1,13 +1,22 @@
-// Package configinit owns the shared "write a fresh gh-optivem.yaml" code
-// path. The `gh optivem config init` command, `gh optivem init`, and the
-// missing-file recovery prompt invoked by `compile`, `config validate`,
-// and `implement` all funnel through Run + ResolveTarget here
-// so the YAML emission and the gitignore side-effect stay single-sourced.
+// Package configinit owns the shared "produce a gh-optivem.yaml" code
+// path. Two flavours sit side by side, picked by whether the operator
+// has chosen a specific on-disk location:
 //
-// Prompt + EnsureExists layer an interactive recovery on top: when one of
-// the read sites can't find gh-optivem.yaml on a TTY, EnsureExists asks
-// the user for the required flags and writes the file in place rather
-// than returning the terse "run config init first" error.
+//  1. Explicit-path callers (`gh optivem config init`, and `gh optivem
+//     init` when --config / $GH_OPTIVEM_CONFIG names a path) funnel
+//     through Run + ResolveTarget, writing the YAML to disk at the
+//     chosen path and emitting the .gitignore side-effect.
+//  2. Default-path callers (`gh optivem init` with no flag and no env
+//     var) funnel through BuildConfig — same validation, no disk
+//     write. steps.WriteOptivemYAML then materializes the only on-disk
+//     copy inside the scaffold dir.
+//
+// Prompt + EnsureExists / EnsureExistsOrBuild layer an interactive
+// recovery on top. EnsureExists writes the YAML in place (for the
+// runner-tier read sites and the explicit-path init arm).
+// EnsureExistsOrBuild keeps the config in memory (for the default-path
+// init arm), returning the in-memory value plus an empty sourcePath so
+// downstream guards on SourceConfigPath == "" short-circuit correctly.
 package configinit
 
 import (
@@ -47,6 +56,21 @@ func ResolveTarget(flagVal, dir string) (string, error) {
 // foot-gun if accidentally committed. Returns yamlPath on success.
 func Run(f *config.RawFlags, yamlPath string, force bool) (string, error) {
 	return runWithBanner(f, yamlPath, force, "")
+}
+
+// BuildConfig validates the raw flags and returns an in-memory
+// *projectconfig.Config — the same content runWithBanner writes to disk,
+// minus the write. Used by callers that want to keep the config in memory
+// (default-path init, where there is no on-disk source file) and let
+// steps.WriteOptivemYAML be the sole disk writer. Does not touch the
+// filesystem and does not emit the .gitignore side-effect Run does —
+// both belong to operator-chosen on-disk paths.
+func BuildConfig(f *config.RawFlags) (*projectconfig.Config, error) {
+	cfg, err := config.ValidateAndDeriveForYAML(f)
+	if err != nil {
+		return nil, err
+	}
+	return steps.BuildOptivemYAML(cfg), nil
 }
 
 // RunWithBanner is Run plus a comment block prepended to the YAML. Used

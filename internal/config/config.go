@@ -76,11 +76,14 @@ type Config struct {
 	// has no discovery fallback).
 	ProjectURL string
 
-	// SourceConfigPath is the absolute path of the gh-optivem.yaml the
-	// operator pointed init at (resolved via the flag > env > default cascade
-	// in projectconfig.ResolvePath). Captured at load time so the project
-	// board step can write the auto-created URL back into the same file
-	// without re-resolving and risking a different answer.
+	// SourceConfigPath is the absolute path of an on-disk gh-optivem.yaml
+	// that init read or was asked to write to via --config / $GH_OPTIVEM_CONFIG
+	// (or a pre-existing file at the default CWD path). Empty when init ran
+	// with the default path and auto-generated the config in memory —
+	// steps.WriteOptivemYAML materializes the only on-disk copy inside the
+	// scaffold dir. Downstream guards on SourceConfigPath == "" rely on this
+	// contract: empty is not a defensive corner case but the expected state
+	// for default-path runs that didn't find a pre-existing file.
 	SourceConfigPath string
 
 	// SourceProjectURLWasEmpty records whether project.url in the source

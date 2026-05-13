@@ -9,7 +9,7 @@ import (
 
 // monolithFlatPaths returns the path values the scaffolder injects into a
 // monolith Config (matching the Default*Path constants in internal/config).
-// Tests that exercise buildOptivemYAML for the post-scaffold layout reuse
+// Tests that exercise BuildOptivemYAML for the post-scaffold layout reuse
 // these instead of repeating the literal strings.
 func monolithFlatPaths() (system, systemTest, stubs, simulators string) {
 	return "system", "system-test", "external-systems/stubs", "external-systems/simulators"
@@ -38,7 +38,7 @@ func TestBuildOptivemYAML_MonolithMonorepo(t *testing.T) {
 		StubsPath:      stubs,
 		SimulatorsPath: sims,
 	}
-	got := buildOptivemYAML(cfg)
+	got := BuildOptivemYAML(cfg)
 	if got.Project.URL != cfg.ProjectURL {
 		t.Errorf("URL: got %q, want %q", got.Project.URL, cfg.ProjectURL)
 	}
@@ -85,7 +85,7 @@ func TestBuildOptivemYAML_MultitierMultirepo(t *testing.T) {
 		StubsPath:        stubs,
 		SimulatorsPath:   sims,
 	}
-	got := buildOptivemYAML(cfg)
+	got := BuildOptivemYAML(cfg)
 	if got.RepoStrategy != projectconfig.RepoStrategyMultiRepo {
 		t.Errorf("RepoStrategy: got %q, want %q", got.RepoStrategy, projectconfig.RepoStrategyMultiRepo)
 	}
@@ -127,7 +127,7 @@ func TestBuildOptivemYAML_MonolithMultirepo(t *testing.T) {
 		StubsPath:      stubs,
 		SimulatorsPath: sims,
 	}
-	got := buildOptivemYAML(cfg)
+	got := BuildOptivemYAML(cfg)
 	if got.System.Path != "system" {
 		t.Errorf("System.Path: got %q", got.System.Path)
 	}
@@ -156,7 +156,7 @@ func TestBuildOptivemYAML_NonScaffoldPaths(t *testing.T) {
 		StubsPath:      "external-systems/stubs",
 		SimulatorsPath: "external-systems/simulators",
 	}
-	got := buildOptivemYAML(cfg)
+	got := BuildOptivemYAML(cfg)
 	if got.System.Path != "system/monolith/java" {
 		t.Errorf("System.Path: got %q, want shop-style path", got.System.Path)
 	}
@@ -184,7 +184,7 @@ func TestBuildOptivemYAML_OutputValidates(t *testing.T) {
 			BackendPath: multiBE, FrontendPath: multiFE, SystemTestPath: multiTest, StubsPath: multiStubs, SimulatorsPath: multiSims},
 	}
 	for i, cfg := range cases {
-		pc := buildOptivemYAML(cfg)
+		pc := BuildOptivemYAML(cfg)
 		if err := pc.Validate(); err != nil {
 			t.Errorf("case %d: generated config fails Validate: %v\n%+v", i, err, pc)
 		}
@@ -198,7 +198,7 @@ func TestBuildOptivemYAML_EmptyArchProducesPartialConfig(t *testing.T) {
 		RepoStrategy: "monorepo",
 		// Arch empty.
 	}
-	got := buildOptivemYAML(cfg)
+	got := BuildOptivemYAML(cfg)
 	if got.Project.URL == "" {
 		t.Error("URL should be carried through even when Arch is empty")
 	}

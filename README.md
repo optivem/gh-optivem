@@ -124,6 +124,12 @@ Project-stable values — prompted on first run and written to `gh-optivem.yaml`
 - `--test-lang` — system-test language: `java`, `dotnet`, or `typescript`. Independent of the system language(s).
 - `--project-url` — URL of the GitHub Project board to attach.
 
+### Where `gh-optivem.yaml` lands
+
+- **Default path** (no `--config`, no `$GH_OPTIVEM_CONFIG`): `gh optivem init` writes `gh-optivem.yaml` only inside the scaffolded repo on GitHub. Nothing is materialized in the current working directory.
+- **Explicit path** (`--config /some/path.yaml` or `$GH_OPTIVEM_CONFIG=/some/path.yaml`): `init` writes/updates the YAML at the path you named, and the scaffolded repo still gets its own copy (rendered with the auto-created Project URL).
+- **Pre-existing `<CWD>/gh-optivem.yaml`**: respected as operator-authored input. Loaded and used as-is; the scaffolded repo still gets its own rendered copy.
+
 <!--
 TODO: document the standalone `gh optivem config init` retrofit flow
 (writing gh-optivem.yaml into a hand-rolled, non-scaffolded repo, with

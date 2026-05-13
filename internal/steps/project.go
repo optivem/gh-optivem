@@ -160,7 +160,13 @@ func ensureProjectBoardAutoCreate(cfg *config.Config) {
 // re-run sees the URL and the source file matches what was actually
 // provisioned on GitHub. No-ops in two cases: source already had a URL
 // (reused-by-title runs leave the file alone — no churn), and
-// SourceConfigPath unset (defensive, shouldn't happen via runInit).
+// SourceConfigPath unset.
+//
+// SourceConfigPath == "" is the normal case for default-path init runs
+// (no CWD copy by design — see internal/config/config.go's
+// SourceConfigPath doc); the write-back here is a re-run convenience for
+// operators who chose --config / $GH_OPTIVEM_CONFIG or had a pre-existing
+// CWD file, not a load-bearing step.
 //
 // Marshalling is non-preserving: comments and key order in the source
 // file are dropped on rewrite. Acceptable tradeoff — the same yaml

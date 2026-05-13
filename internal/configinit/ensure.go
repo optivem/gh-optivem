@@ -19,6 +19,52 @@ import (
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
+// EnsureExistsOrBuild is the in-memory variant of EnsureExists for the
+// default-path init flow. Behavior matrix:
+//
+//   - file exists at path → load from disk, return (pc, path, nil).
+//   - !exists + TTY → prompt for the slim init flag set, build an
+//     in-memory *projectconfig.Config, return (pc, "", nil). No disk
+//     write — the scaffold-dir copy written later by steps.WriteOptivemYAML
+//     is the only on-disk materialization.
+//   - !exists + non-TTY → return MissingFileError verbatim.
+//
+// Returning sourcePath = "" in the in-memory case keeps cfg.SourceConfigPath
+// empty downstream so persistProjectURLToSourceConfig and
+// writeOptivemYAMLToDirIfNotSource short-circuit correctly — empty is now
+// the expected state for default-path init runs, not a defensive corner case.
+func EnsureExistsOrBuild(path string) (*projectconfig.Config, string, error) {
+	return ensureExistsOrBuild(path, isatty.IsTerminal(os.Stdin.Fd()), os.Stdin, os.Stderr)
+}
+
+// ensureExistsOrBuild is the testable core. The public EnsureExistsOrBuild
+// supplies the real TTY check + stdio; tests inject false/true and an
+// in-memory bufferpair so the prompt path can be exercised deterministically.
+func ensureExistsOrBuild(path string, isTTY bool, in io.Reader, out io.Writer) (*projectconfig.Config, string, error) {
+	if _, err := os.Stat(path); err == nil {
+		pc, lerr := projectconfig.LoadFromPath(path)
+		if lerr != nil {
+			return nil, "", lerr
+		}
+		return pc, path, nil
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return nil, "", err
+	}
+	if !isTTY {
+		return nil, "", missingFileError(path)
+	}
+	fmt.Fprintf(out, "no gh-optivem.yaml at %s; creating one in memory (the scaffolded repo gets the only on-disk copy)\n", path)
+	f, err := Prompt(in, out)
+	if err != nil {
+		return nil, "", missingFileError(path)
+	}
+	pc, err := BuildConfig(f)
+	if err != nil {
+		return nil, "", err
+	}
+	return pc, "", nil
+}
+
 // EnsureExists returns nil if a regular gh-optivem.yaml exists at path.
 // On fs.ErrNotExist + an interactive stdin (terminal), prints a banner,
 // runs Prompt against stdin/stderr, and writes the file via Run. On
