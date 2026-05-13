@@ -148,8 +148,18 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      # `environment verify` checks the same local-tool preconditions a user
+      # is expected to have before scaffolding: `actionlint` on PATH and a
+      # `gh auth status` that reports authenticated. Install actionlint here
+      # and pass GITHUB_TOKEN as GH_TOKEN to the verify step (gh recognises
+      # GH_TOKEN/GITHUB_TOKEN and reports "Logged in via env") so CI exercises
+      # the same command path a real user runs, not a CI-only shortcut.
+      - name: Install actionlint
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1
+
       - name: Verify acceptance pipeline environment
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
