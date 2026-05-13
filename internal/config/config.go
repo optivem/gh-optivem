@@ -2,7 +2,6 @@
 package config
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/promptio"
 	"github.com/optivem/gh-optivem/internal/version"
 )
 
@@ -839,17 +839,12 @@ func confirmReposExist(fullRepos []string, assumeYes bool) []string {
 		return existing
 	}
 
-	fmt.Fprint(os.Stderr, "Proceed? [y/N]: ")
-
-	reader := bufio.NewReader(os.Stdin)
-	resp, err := reader.ReadString('\n')
+	ok, err := promptio.ConfirmYN(os.Stdin, os.Stderr, "Proceed?")
 	if err != nil {
-		// EOF or non-interactive stdin — treat as "no" with an actionable message.
 		log.FatalExit(fmt.Sprintf("Aborted: %d repositor%s already exist and no confirmation was provided (pass --yes to proceed unattended)",
 			len(existing), pluralY(len(existing))))
 	}
-	resp = strings.TrimSpace(strings.ToLower(resp))
-	if resp != "y" && resp != "yes" {
+	if !ok {
 		log.FatalExit(fmt.Sprintf("Aborted: %d repositor%s already exist", len(existing), pluralY(len(existing))))
 	}
 	return existing

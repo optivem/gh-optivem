@@ -15,7 +15,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -31,6 +30,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/promptio"
 	"github.com/optivem/gh-optivem/internal/shell"
 	"github.com/optivem/gh-optivem/internal/steps"
 	"github.com/optivem/gh-optivem/internal/version"
@@ -573,15 +573,12 @@ func confirmBugReport(cfg *config.Config) bool {
 		return true
 	}
 
-	fmt.Print("  Proceed? [y/N]: ")
-	reader := bufio.NewReader(os.Stdin)
-	line, err := reader.ReadString('\n')
+	ok, err := promptio.ConfirmYN(os.Stdin, os.Stdout, "  Proceed?")
 	if err != nil {
 		log.Warnf("Could not read confirmation: %v. Skipping bug report.", err)
 		return false
 	}
-	resp := strings.ToLower(strings.TrimSpace(line))
-	return resp == "y" || resp == "yes"
+	return ok
 }
 
 // offerBugReport prompts the user (after a failure) whether they want to file
@@ -609,16 +606,12 @@ func offerBugReport(cfg *config.Config) bool {
 	fmt.Printf("  - Linking to your repo: https://github.com/%s\n", cfg.FullRepo)
 	fmt.Printf("  - Log file: %s\n", cfg.LogFile)
 	fmt.Println()
-	fmt.Print("  File a bug report? [y/N]: ")
-
-	reader := bufio.NewReader(os.Stdin)
-	line, err := reader.ReadString('\n')
+	ok, err := promptio.ConfirmYN(os.Stdin, os.Stdout, "  File a bug report?")
 	if err != nil {
 		log.Warnf("Could not read confirmation: %v. Skipping bug report.", err)
 		return false
 	}
-	resp := strings.ToLower(strings.TrimSpace(line))
-	return resp == "y" || resp == "yes"
+	return ok
 }
 
 func isInteractive() bool {

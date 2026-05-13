@@ -202,7 +202,7 @@ processes:
 		ManualAgents: true,
 		Stdout:       &discardWriter{},
 		Stderr:       &discardWriter{},
-		Stdin:        strings.NewReader("\n"), // press Enter at the human STOP
+		Stdin:        strings.NewReader("y\n"), // approve the human STOP
 	})
 	if err != nil {
 		t.Fatalf("Run failed in consumer-empty dir: %v", err)

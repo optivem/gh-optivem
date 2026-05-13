@@ -23,7 +23,6 @@
 package release
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -35,6 +34,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/optivem/gh-optivem/internal/promptio"
 )
 
 // RemoveOptions controls a RemoveDisabledMarkers run.
@@ -373,7 +374,7 @@ func Commit(ctx context.Context, opts CommitOptions) error {
 	}
 	fmt.Fprintf(stdout, "Commit message: %s\n", opts.Message)
 
-	ok, err := opts.Confirm("commit these changes? [y/N]: ")
+	ok, err := opts.Confirm("Commit these changes?")
 	if err != nil {
 		return fmt.Errorf("release: confirmer: %w", err)
 	}
@@ -407,10 +408,11 @@ func CloseIssue(ctx context.Context, issueNum int, gh GhRunner) error {
 // Confirmer helper
 // -------------------------------------------------------------------------
 
-// InteractiveConfirmer returns a Confirmer that writes the prompt to stdout
-// and reads one line from stdin. "y", "yes", "Y", "YES" → true; everything
-// else → false. EOF on stdin is treated as a decline (false, nil), matching
-// the "silence = no" rule in shared-commit-confirmation.md.
+// InteractiveConfirmer returns a Confirmer backed by the shared promptio
+// helper: the prompt is suffixed with " [y/n]: ", input is case-insensitive,
+// unrecognised answers (including bare Enter) re-prompt, EOF returns false.
+// See internal/promptio for the canonical semantics — every human y/n
+// decision in the CLI funnels through that package.
 func InteractiveConfirmer(stdin io.Reader, stdout io.Writer) Confirmer {
 	if stdin == nil {
 		stdin = os.Stdin
@@ -418,21 +420,8 @@ func InteractiveConfirmer(stdin io.Reader, stdout io.Writer) Confirmer {
 	if stdout == nil {
 		stdout = os.Stdout
 	}
-	reader := bufio.NewReader(stdin)
 	return func(prompt string) (bool, error) {
-		if _, err := fmt.Fprint(stdout, prompt); err != nil {
-			return false, err
-		}
-		line, err := reader.ReadString('\n')
-		if err != nil && err != io.EOF {
-			return false, err
-		}
-		switch strings.ToLower(strings.TrimSpace(line)) {
-		case "y", "yes":
-			return true, nil
-		default:
-			return false, nil
-		}
+		return promptio.ConfirmYN(stdin, stdout, prompt)
 	}
 }
 

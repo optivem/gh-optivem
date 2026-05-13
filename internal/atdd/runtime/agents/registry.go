@@ -11,12 +11,11 @@
 package agents
 
 import (
-	"bufio"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/promptio"
 )
 
 // Registry maps agent names from the YAML to NodeFn dispatchers.
@@ -46,16 +45,17 @@ func (r *Registry) Lookup(name string) statemachine.NodeFn {
 	return r.dispatchers[name]
 }
 
-// humanStop is the built-in dispatcher for `agent: human` nodes. It prints
-// the node description (or a generic message) and reads one line from
-// stdin. Any non-empty input is accepted; "abort" or "stop" returns an
-// error to halt the run.
+// humanStop is the built-in dispatcher for `agent: human` nodes. Routes the
+// y/n decision through promptio so every human prompt in the CLI shares the
+// same semantics: explicit y/n required, unrecognised input re-prompts, no
+// Enter shortcut.
 func humanStop(ctx *statemachine.Context) statemachine.Outcome {
-	fmt.Fprintln(os.Stderr, "STOP — press Enter to continue, or type `abort` to halt:")
-	r := bufio.NewReader(os.Stdin)
-	line, _ := r.ReadString('\n')
-	line = strings.ToLower(strings.TrimSpace(line))
-	if line == "abort" || line == "stop" {
+	fmt.Fprintln(os.Stderr, "STOP — human approval required.")
+	ok, err := promptio.ConfirmYN(os.Stdin, os.Stderr, "Approve?")
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("read STOP confirmation: %w", err)}
+	}
+	if !ok {
 		return statemachine.Outcome{Err: fmt.Errorf("user aborted at STOP")}
 	}
 	return statemachine.Outcome{}

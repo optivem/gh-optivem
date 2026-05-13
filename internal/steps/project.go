@@ -1,7 +1,6 @@
 package steps
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -12,6 +11,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/promptio"
 	"github.com/optivem/gh-optivem/internal/shell"
 )
 
@@ -460,14 +460,11 @@ func readProjectConfirmation(cfg *config.Config, missing []string) bool {
 		log.Info("Proceeding without confirmation (--yes).")
 		return true
 	}
-	fmt.Print("  Add missing statuses? [y/N]: ")
-	reader := bufio.NewReader(os.Stdin)
-	line, err := reader.ReadString('\n')
+	ok, err := promptio.ConfirmYN(os.Stdin, os.Stdout, "  Add missing statuses?")
 	if err != nil {
 		return false
 	}
-	resp := strings.ToLower(strings.TrimSpace(line))
-	return resp == "y" || resp == "yes"
+	return ok
 }
 
 func printMissingOptionsBanner(projectURL string, missing []string) {

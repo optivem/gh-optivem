@@ -58,6 +58,27 @@ fi
 PREFIX="${C_CYAN}[atdd-rehearsal]${C_RESET}"
 log() { echo "${PREFIX} $*"; }
 
+# prompt_yn <prompt>
+# Matches internal/promptio.ConfirmYN: explicit y/n required, no Enter
+# shortcut. Loops on unrecognized input (including bare Enter) so a stray
+# keystroke never silently accepts or declines. Case-insensitive. Returns 0
+# for yes, 1 for no (or on EOF, matching the "silence = no" terminator).
+prompt_yn() {
+  local prompt="$1"
+  local ans lc
+  while true; do
+    if ! read -r -p "${C_BOLD}${prompt} [y/n]:${C_RESET} " ans; then
+      return 1
+    fi
+    lc="$(printf '%s' "$ans" | tr '[:upper:]' '[:lower:]')"
+    case "$lc" in
+      y|yes) return 0 ;;
+      n|no)  return 1 ;;
+      *)     echo "Please answer y or n." >&2 ;;
+    esac
+  done
+}
+
 usage() {
   echo "Usage: $0 <issue-num> [label] [--config <yaml>]" >&2
 }
@@ -147,18 +168,13 @@ cleanup() {
     return $rc
   fi
   echo ""
-  local ans
-  read -r -p "${C_BOLD}Delete worktree $WORKTREE_PATH and branch $BRANCH? [Y/n]${C_RESET} " ans || ans="y"
-  case "${ans:-y}" in
-    [Nn]*)
-      log "Keeping $WORKTREE_PATH (branch $BRANCH)."
-      ;;
-    *)
-      git -C "$CONSUMER_ROOT" worktree remove --force "$WORKTREE_PATH" || true
-      git -C "$CONSUMER_ROOT" branch -D "$BRANCH" 2>/dev/null || true
-      log "Removed $WORKTREE_PATH (branch $BRANCH)."
-      ;;
-  esac
+  if prompt_yn "Delete worktree $WORKTREE_PATH and branch $BRANCH?"; then
+    git -C "$CONSUMER_ROOT" worktree remove --force "$WORKTREE_PATH" || true
+    git -C "$CONSUMER_ROOT" branch -D "$BRANCH" 2>/dev/null || true
+    log "Removed $WORKTREE_PATH (branch $BRANCH)."
+  else
+    log "Keeping $WORKTREE_PATH (branch $BRANCH)."
+  fi
   return $rc
 }
 

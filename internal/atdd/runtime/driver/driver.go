@@ -28,10 +28,8 @@
 package driver
 
 import (
-	"bufio"
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -54,6 +52,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/trace"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/verify"
 	"github.com/optivem/gh-optivem/internal/files"
+	"github.com/optivem/gh-optivem/internal/promptio"
 )
 
 // DefaultProcessName is the entry process loaded by every public CLI command.
@@ -669,9 +668,9 @@ func wrapAgentDispatchers(eng *statemachine.Engine, opts Options, rs *runState) 
 // newHumanStopDispatcher returns a NodeFn for `agent: human` STOP
 // nodes. It prints the node ID and the YAML description (with any
 // ${...} placeholders expanded against the live Context.Params) so
-// the operator can see what they're approving, then blocks on
-// opts.Stdin until they press Enter (continue) or type `abort` /
-// `stop` (halt).
+// the operator can see what they're approving, then routes the y/n
+// decision through promptio for consistent semantics with every
+// other human prompt: explicit y/n required, no Enter shortcut.
 //
 // This replaces the bare `humanStop` from agents/registry.go for any
 // process that's been wrapped by wrapAgentDispatchers — the registry
@@ -687,15 +686,11 @@ func newHumanStopDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 		} else {
 			fmt.Fprintf(opts.Stdout, "[%s] STOP\n", nodeID)
 		}
-		fmt.Fprintln(opts.Stdout, "  Press Enter to continue, or type `abort` to halt:")
-
-		r := bufio.NewReader(opts.Stdin)
-		line, err := r.ReadString('\n')
-		if err != nil && !errors.Is(err, io.EOF) {
+		ok, err := promptio.ConfirmYN(opts.Stdin, opts.Stdout, "  Approve?")
+		if err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("read STOP confirmation at %s: %w", nodeID, err)}
 		}
-		line = strings.ToLower(strings.TrimSpace(line))
-		if line == "abort" || line == "stop" {
+		if !ok {
 			return statemachine.Outcome{Err: fmt.Errorf("user aborted at %s", nodeID)}
 		}
 		return statemachine.Outcome{}
@@ -829,14 +824,13 @@ func promptForAgent(opts Options, raw statemachine.RawNode, params map[string]st
 		fmt.Fprintf(opts.Stdout, "  Phase doc: %s\n", phaseDoc)
 	}
 	fmt.Fprintf(opts.Stdout, "  Launch the %s agent now (e.g. via the Task tool in Claude Code).\n", agent)
-	fmt.Fprintln(opts.Stdout, "  When the agent's COMMIT lands on HEAD, press Enter to continue. Type 'abort' to halt.")
+	fmt.Fprintln(opts.Stdout, "  When the agent's COMMIT lands on HEAD, approve to continue.")
 
-	r := bufio.NewReader(opts.Stdin)
-	line, err := r.ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
+	ok, err := promptio.ConfirmYN(opts.Stdin, opts.Stdout, "  Approve?")
+	if err != nil {
 		return fmt.Errorf("read agent-dispatch confirmation: %w", err)
 	}
-	if strings.EqualFold(strings.TrimSpace(line), "abort") {
+	if !ok {
 		return fmt.Errorf("operator aborted at %s dispatch", agent)
 	}
 	return nil

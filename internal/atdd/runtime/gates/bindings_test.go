@@ -66,28 +66,29 @@ func newBindings(t *testing.T, deps Deps) bindings {
 // ---------------------------------------------------------------------------
 
 func TestDSLInterfaceChanged_Prompt(t *testing.T) {
+	// Cases with multiple `answers` exercise the promptio reprompt loop:
+	// the first answer is unrecognised so ConfirmYNVia loops and reads the
+	// second. Bare Enter and "maybe" both reprompt — there is no Enter-
+	// default any more, every gate needs an explicit y/n.
 	for _, tc := range []struct {
 		name    string
-		answer  string
+		answers []string
 		want    bool
-		wantErr bool
 	}{
-		{name: "yes_lower", answer: "y", want: true},
-		{name: "yes_word", answer: "yes\n", want: true},
-		{name: "no_lower", answer: "n", want: false},
-		{name: "empty_is_no", answer: "\n", want: false},
-		{name: "garbage", answer: "maybe", wantErr: true},
+		{name: "yes_lower", answers: []string{"y"}, want: true},
+		{name: "yes_word", answers: []string{"yes\n"}, want: true},
+		{name: "no_lower", answers: []string{"n"}, want: false},
+		{name: "no_word", answers: []string{"no\n"}, want: false},
+		{name: "empty_reprompts_then_resolves", answers: []string{"\n", "n"}, want: false},
+		{name: "garbage_reprompts_then_resolves", answers: []string{"maybe", "y"}, want: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p := &fakePrompter{answers: []string{tc.answer}}
+			p := &fakePrompter{answers: tc.answers}
 			b := newBindings(t, Deps{Prompter: p})
 			ctx := statemachine.NewContext()
 			out := b.dslInterfaceChanged(ctx)
-			if (out.Err != nil) != tc.wantErr {
-				t.Fatalf("err: got %v, wantErr=%v", out.Err, tc.wantErr)
-			}
 			if out.Err != nil {
-				return
+				t.Fatalf("unexpected err: %v", out.Err)
 			}
 			if out.Bool != tc.want {
 				t.Fatalf("Bool: got %v, want %v", out.Bool, tc.want)

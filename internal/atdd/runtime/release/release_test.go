@@ -17,6 +17,7 @@
 package release
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -408,16 +409,48 @@ func TestInteractiveConfirmer_YesAccepted(t *testing.T) {
 	}
 }
 
-func TestInteractiveConfirmer_NonYesRejected(t *testing.T) {
-	for _, in := range []string{"\n", "n\n", "no\n", "maybe\n", ""} {
+func TestInteractiveConfirmer_NoVariants(t *testing.T) {
+	for _, in := range []string{"n\n", "N\n", "no\n", "NO\n"} {
 		conf := InteractiveConfirmer(strings.NewReader(in), io.Discard)
-		ok, err := conf("commit? ")
+		ok, err := conf("commit?")
 		if err != nil {
 			t.Errorf("input %q: unexpected err %v", in, err)
 		}
 		if ok {
 			t.Errorf("input %q: expected false, got true", in)
 		}
+	}
+}
+
+func TestInteractiveConfirmer_BareEnterRepromptsThenResolves(t *testing.T) {
+	// Bare Enter is no longer a default-decline shortcut; the loop re-prompts
+	// until an explicit y/n arrives. This is the property that prevents the
+	// originating incident (a stray Enter silently aborting a 2m40s cycle).
+	var out bytes.Buffer
+	conf := InteractiveConfirmer(strings.NewReader("\n\ny\n"), &out)
+	ok, err := conf("commit?")
+	if err != nil {
+		t.Fatalf("unexpected err %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected true after reprompt, got false")
+	}
+	if got := strings.Count(out.String(), "commit? [y/n]: "); got != 3 {
+		t.Errorf("expected prompt reprinted 3 times, got %d: %q", got, out.String())
+	}
+}
+
+func TestInteractiveConfirmer_EOFReturnsFalse(t *testing.T) {
+	// EOF terminates the loop and declines — "silence = no" terminator for
+	// non-interactive callers; without it the loop would spin on a closed
+	// stdin. (Detailed coverage lives in promptio_test.go.)
+	conf := InteractiveConfirmer(strings.NewReader("maybe\n"), io.Discard)
+	ok, err := conf("commit?")
+	if err != nil {
+		t.Fatalf("unexpected err %v", err)
+	}
+	if ok {
+		t.Fatalf("expected false on EOF, got true")
 	}
 }
 

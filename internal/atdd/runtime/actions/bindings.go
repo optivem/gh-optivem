@@ -31,6 +31,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/intake"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/release"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/promptio"
 )
 
 // Deps bundles the side-effecting collaborators every action may need. All
@@ -496,20 +497,19 @@ func (a actions) parseTicketBody(ctx *statemachine.Context) statemachine.Outcome
 
 // confirmPreCheckedChecklist prompts the operator to disambiguate a
 // fully-pre-checked checklist: (a) work already done → skip; (b) stale
-// checkbox state → proceed. Default-N because the destructive direction is
-// proceeding when the work is already done; a skipped ticket can be
-// re-run, an over-eager edit costs a worktree-discard.
+// checkbox state → proceed. Routes through promptio so an explicit y/n is
+// required — bare Enter on this prompt would risk a worktree-discard when
+// the work was actually already done.
 func (a actions) confirmPreCheckedChecklist(issueNum, total int) (bool, error) {
 	fmt.Fprintf(a.deps.Stdout, "\nAll %d checklist items are already marked [x].\n", total)
 	fmt.Fprintf(a.deps.Stdout, "This usually means either:\n")
 	fmt.Fprintf(a.deps.Stdout, "  (a) the work was already done — run `gh issue close #%d` and skip this cycle.\n", issueNum)
 	fmt.Fprintf(a.deps.Stdout, "  (b) the checklist is stale — proceed and the agent will inspect the code.\n\n")
-	answer, err := a.deps.Prompter.Ask("Proceed with the cycle? [y/N]: ")
+	ok, err := promptio.ConfirmYNVia(a.deps.Prompter, a.deps.Stdout, "Proceed with the cycle?")
 	if err != nil {
 		return false, fmt.Errorf("confirmation prompt: %w", err)
 	}
-	yes, _ := parseYesNo(answer)
-	return yes, nil
+	return ok, nil
 }
 
 // deriveChangeType maps (ticket_type, subtype) to the single-axis
@@ -642,13 +642,9 @@ func (a actions) printClassifiedSections(ctx *statemachine.Context, issueNum int
 // Bool is also recorded under `smoke_test_passes` so the downstream gateway
 // reads it back through the standard wrapGateway path.
 func (a actions) runSmokeTest(ctx *statemachine.Context) statemachine.Outcome {
-	answer, err := a.deps.Prompter.Ask("Run the smoke test now and report the result: did it pass? [y/N]: ")
+	yes, err := promptio.ConfirmYNVia(a.deps.Prompter, a.deps.Stdout, "Run the smoke test now and report the result: did it pass?")
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("run_smoke_test: %w", err)}
-	}
-	yes, ok := parseYesNo(answer)
-	if !ok {
-		return statemachine.Outcome{Err: fmt.Errorf("run_smoke_test: unrecognised yes/no answer %q", strings.TrimSpace(answer))}
 	}
 	ctx.Set("smoke_test_passes", yes)
 	if yes {
@@ -1075,11 +1071,11 @@ func (a actions) runTests(ctx *statemachine.Context) statemachine.Outcome {
 			return out
 		}
 
-		more, err := a.deps.Prompter.Ask("Run more tests? [y/N]: ")
+		more, err := promptio.ConfirmYNVia(a.deps.Prompter, a.deps.Stdout, "Run more tests?")
 		if err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("run_tests: %w", err)}
 		}
-		if yes, _ := parseYesNo(more); !yes {
+		if !more {
 			return out
 		}
 	}
@@ -1589,29 +1585,10 @@ func (a actions) tickRemoteChecklist(ctx *statemachine.Context) error {
 // confirmer adapts the actions.Prompter into a release.Confirmer. The
 // release package owns the explicit "ask before every commit" gate and
 // requires a Confirmer at the type level; we route every commit through
-// the same prompter that owns the rest of the actions' I/O.
+// the same prompter (via promptio) that owns the rest of the actions' I/O.
 func (a actions) confirmer() release.Confirmer {
 	return func(prompt string) (bool, error) {
-		ans, err := a.deps.Prompter.Ask(prompt)
-		if err != nil {
-			return false, err
-		}
-		yes, _ := parseYesNo(ans)
-		return yes, nil
-	}
-}
-
-// parseYesNo is a tiny duplicate of the gates helper. We do not import gates
-// (would create a cycle of registries) — the cost of a five-line copy is
-// negligible.
-func parseYesNo(s string) (bool, bool) {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "y", "yes", "true", "1":
-		return true, true
-	case "n", "no", "false", "0", "":
-		return false, true
-	default:
-		return false, false
+		return promptio.ConfirmYNVia(a.deps.Prompter, a.deps.Stdout, prompt)
 	}
 }
 

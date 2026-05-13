@@ -290,7 +290,7 @@ func TestClaudeRunDispatch_ReplaceOverrideShortCircuitsTemplate(t *testing.T) {
 // Manual fallback
 // ---------------------------------------------------------------------------
 
-func TestManualAgents_PausesAndAdvancesOnEnter(t *testing.T) {
+func TestManualAgents_PausesAndAdvancesOnYes(t *testing.T) {
 	// In manual mode the dispatcher must NOT shell out to clauderun.
 	// We verify by giving it a fake that fails if called.
 	claudeFake := &fakeClaude{err: errors.New("clauderun must not run in manual mode")}
@@ -301,7 +301,7 @@ func TestManualAgents_PausesAndAdvancesOnEnter(t *testing.T) {
 		ClaudeRunDeps: clauderun.Deps{Claude: claudeFake, Git: gitFake},
 		Stdout:        io.Discard,
 		Stderr:        io.Discard,
-		Stdin:         strings.NewReader("\n"), // operator presses Enter
+		Stdin:         strings.NewReader("y\n"), // operator approves
 	}
 	fn := buildEngine(t, opts)
 
@@ -313,12 +313,15 @@ func TestManualAgents_PausesAndAdvancesOnEnter(t *testing.T) {
 	}
 }
 
-func TestManualAgents_AbortHaltsRun(t *testing.T) {
+func TestManualAgents_NoHaltsRun(t *testing.T) {
+	// Operator declines the dispatch prompt → driver returns "aborted" error.
+	// The legacy `abort` verb is gone; explicit `n` is the halt signal now,
+	// matching every other y/n prompt in the CLI.
 	opts := Options{
 		ManualAgents: true,
 		Stdout:       io.Discard,
 		Stderr:       io.Discard,
-		Stdin:        strings.NewReader("abort\n"),
+		Stdin:        strings.NewReader("n\n"),
 	}
 	fn := buildEngine(t, opts)
 
@@ -448,7 +451,7 @@ func TestManualAgents_BannerSubstitutesTemplatedFields(t *testing.T) {
 		ManualAgents: true,
 		Stdout:       &buf,
 		Stderr:       io.Discard,
-		Stdin:        strings.NewReader("\n"),
+		Stdin:        strings.NewReader("y\n"),
 	}
 	fn := buildEngineFrom(t, opts, templatedYAML, "WRITE")
 

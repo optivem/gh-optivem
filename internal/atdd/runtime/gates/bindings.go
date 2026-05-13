@@ -33,6 +33,7 @@ import (
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/promptio"
 )
 
 // Deps bundles the side-effecting collaborators every binding may need.
@@ -142,19 +143,19 @@ type bindings struct {
 func (b bindings) dslInterfaceChanged(ctx *statemachine.Context) statemachine.Outcome {
 	return b.boolGate(ctx,
 		"dsl_interface_changed",
-		"DSL interface changed in this phase? [y/N]: ")
+		"DSL interface changed in this phase?")
 }
 
 func (b bindings) externalSystemDriverInterfaceChanged(ctx *statemachine.Context) statemachine.Outcome {
 	return b.boolGate(ctx,
 		"external_system_driver_interface_changed",
-		"External System Driver interface changed? [y/N]: ")
+		"External System Driver interface changed?")
 }
 
 func (b bindings) systemDriverInterfaceChanged(ctx *statemachine.Context) statemachine.Outcome {
 	return b.boolGate(ctx,
 		"system_driver_interface_changed",
-		"System Driver interface changed? [y/N]: ")
+		"System Driver interface changed?")
 }
 
 // ---------------------------------------------------------------------------
@@ -321,7 +322,7 @@ func (b bindings) structuralTestMode(ctx *statemachine.Context) statemachine.Out
 func (b bindings) ticketTypeRecognized(ctx *statemachine.Context) statemachine.Outcome {
 	return b.boolGate(ctx,
 		"ticket_type_recognized",
-		"Ticket type recognized? [Y/n]: ")
+		"Ticket type recognized?")
 }
 
 // subtypeOK reads the flag set by the classify_subtype service task.
@@ -330,7 +331,7 @@ func (b bindings) ticketTypeRecognized(ctx *statemachine.Context) statemachine.O
 func (b bindings) subtypeOK(ctx *statemachine.Context) statemachine.Outcome {
 	return b.boolGate(ctx,
 		"subtype_ok",
-		"Subtype label detected? [Y/n]: ")
+		"Subtype label detected?")
 }
 
 // parseOK reads the parse-success flag set by the parse_ticket_body
@@ -339,7 +340,7 @@ func (b bindings) subtypeOK(ctx *statemachine.Context) statemachine.Outcome {
 func (b bindings) parseOK(ctx *statemachine.Context) statemachine.Outcome {
 	return b.boolGate(ctx,
 		"parse_ok",
-		"Ticket body parsed OK? [Y/n]: ")
+		"Ticket body parsed OK?")
 }
 
 // legacyAcceptanceCriteriaSectionPresent reads the issue body via `gh issue view` and
@@ -353,7 +354,7 @@ func (b bindings) legacyAcceptanceCriteriaSectionPresent(ctx *statemachine.Conte
 	if issueNum == "" {
 		return b.boolGate(ctx,
 			"legacy_acceptance_criteria_section_present",
-			"Legacy Acceptance Criteria section present in the issue? [y/N]: ")
+			"Legacy Acceptance Criteria section present in the issue?")
 	}
 	args := []string{"issue", "view", issueNum, "--json", "body"}
 	if repo := ctx.GetString("issue_repo"); repo != "" {
@@ -374,7 +375,7 @@ func (b bindings) legacyAcceptanceCriteriaSectionPresent(ctx *statemachine.Conte
 func (b bindings) externalSystemDriverExists(ctx *statemachine.Context) statemachine.Outcome {
 	return b.boolGate(ctx,
 		"external_system_driver_exists",
-		"External System Driver already exists in this repo? [y/N]: ")
+		"External System Driver already exists in this repo?")
 }
 
 // externalSystemTestInstanceAccessible is the second onboarding gate.
@@ -382,7 +383,7 @@ func (b bindings) externalSystemDriverExists(ctx *statemachine.Context) statemac
 func (b bindings) externalSystemTestInstanceAccessible(ctx *statemachine.Context) statemachine.Outcome {
 	return b.boolGate(ctx,
 		"external_system_test_instance_accessible",
-		"Test instance of the external system accessible? [y/N]: ")
+		"Test instance of the external system accessible?")
 }
 
 // smokeTestPasses is set by the run_smoke_test service task's Outcome.
@@ -392,7 +393,7 @@ func (b bindings) externalSystemTestInstanceAccessible(ctx *statemachine.Context
 func (b bindings) smokeTestPasses(ctx *statemachine.Context) statemachine.Outcome {
 	return b.boolGate(ctx,
 		"smoke_test_passes",
-		"Smoke test passed? [y/N]: ")
+		"Smoke test passed?")
 }
 
 // compileOK reads the `compile_ok` flag set by the active compile action
@@ -404,7 +405,7 @@ func (b bindings) smokeTestPasses(ctx *statemachine.Context) statemachine.Outcom
 func (b bindings) compileOK(ctx *statemachine.Context) statemachine.Outcome {
 	return b.boolGate(ctx,
 		"compile_ok",
-		"Compile passed? [Y/n]: ")
+		"Compile passed?")
 }
 
 // testsFailedRuntime reads the `tests_failed_runtime` flag set by the
@@ -416,7 +417,7 @@ func (b bindings) compileOK(ctx *statemachine.Context) statemachine.Outcome {
 func (b bindings) testsFailedRuntime(ctx *statemachine.Context) statemachine.Outcome {
 	return b.boolGate(ctx,
 		"tests_failed_runtime",
-		"Tests failed at runtime (not compile)? [Y/n]: ")
+		"Tests failed at runtime (not compile)?")
 }
 
 // testsPass reads the `tests_pass` flag set by run_targeted_tests. true →
@@ -427,7 +428,7 @@ func (b bindings) testsFailedRuntime(ctx *statemachine.Context) statemachine.Out
 func (b bindings) testsPass(ctx *statemachine.Context) statemachine.Outcome {
 	return b.boolGate(ctx,
 		"tests_pass",
-		"All tests passed? [Y/n]: ")
+		"All tests passed?")
 }
 
 // verifyRealRequired routes the optional "verify against real suite" branch
@@ -453,7 +454,7 @@ func (b bindings) verifyRealRequired(ctx *statemachine.Context) statemachine.Out
 func (b bindings) verifyRealPass(ctx *statemachine.Context) statemachine.Outcome {
 	return b.boolGate(ctx,
 		"verify_real_pass",
-		"Real-suite verification passed? [Y/n]: ")
+		"Real-suite verification passed?")
 }
 
 // ---------------------------------------------------------------------------
@@ -461,18 +462,16 @@ func (b bindings) verifyRealPass(ctx *statemachine.Context) statemachine.Outcome
 // ---------------------------------------------------------------------------
 
 // boolGate is the canonical Context-or-prompt shape: read an existing value,
-// otherwise ask the user a yes/no question and coerce the answer.
+// otherwise ask the user a yes/no question through promptio (which loops on
+// unrecognised input and appends the " [y/n]: " hint itself). Callers pass
+// the bare question text, no hint suffix.
 func (b bindings) boolGate(ctx *statemachine.Context, key, prompt string) statemachine.Outcome {
 	if v, ok := ctx.State[key]; ok {
 		return outcomeFromBoolish(v)
 	}
-	answer, err := b.deps.Prompter.Ask(prompt)
+	yes, err := promptio.ConfirmYNVia(b.deps.Prompter, os.Stderr, prompt)
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("%s: %w", key, err)}
-	}
-	yes, ok := parseYesNo(answer)
-	if !ok {
-		return statemachine.Outcome{Err: fmt.Errorf("%s: unrecognised yes/no answer %q", key, strings.TrimSpace(answer))}
 	}
 	return statemachine.Outcome{Bool: yes}
 }
@@ -486,7 +485,7 @@ func outcomeFromBoolish(v any) statemachine.Outcome {
 	case bool:
 		return statemachine.Outcome{Bool: t}
 	case string:
-		yes, ok := parseYesNo(t)
+		yes, ok := promptio.ParseYN(t)
 		if !ok {
 			// Treat the string as already-canonical; the engine writes
 			// whatever it was set to back to State, so unrecognised text
@@ -496,22 +495,6 @@ func outcomeFromBoolish(v any) statemachine.Outcome {
 		return statemachine.Outcome{Bool: yes}
 	default:
 		return statemachine.Outcome{Bool: false}
-	}
-}
-
-// parseYesNo accepts the yes/no shorthands the academy prompts use across
-// the rest of the toolchain: "y", "yes", "true", "1" → true; "n", "no",
-// "false", "0", "" → false. Unrecognised replies fail the second-return
-// flag so the caller can surface "unrecognised answer" instead of silently
-// counting them as `no`.
-func parseYesNo(s string) (bool, bool) {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "y", "yes", "true", "1":
-		return true, true
-	case "n", "no", "false", "0", "":
-		return false, true
-	default:
-		return false, false
 	}
 }
 
