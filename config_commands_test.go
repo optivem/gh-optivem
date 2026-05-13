@@ -6,10 +6,22 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/preflight"
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/configinit"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
+
+// offlinePreflightOpts returns a preflight.Options factory that wires
+// only workspace + cwd — every remote-check field is left nil so the
+// test surface stays local-FS-only. Used by every runConfigPreflight
+// test below; the cobra layer's real defaultPreflightOptions adds the
+// GitHub / SonarCloud / board-URL wiring.
+func offlinePreflightOpts(workspace, cwd string) func(*projectconfig.Config) (preflight.Options, error) {
+	return func(*projectconfig.Config) (preflight.Options, error) {
+		return preflight.Options{Workspace: workspace, Cwd: cwd}, nil
+	}
+}
 
 // configinit.Run/runConfigValidate are covered as a pair: round-tripping
 // what `config init` writes through `config validate` is the contract
@@ -300,6 +312,156 @@ func TestRunConfigValidate_NonDefaultFilename(t *testing.T) {
 	}
 	if path != yamlPath {
 		t.Errorf("path: got %q, want %q", path, yamlPath)
+	}
+}
+
+// TestRunConfigPreflight_Missing mirrors TestRunConfigValidate_Missing:
+// preflight's first gate is the same EnsureExists chain validate uses, so a
+// missing file surfaces the same hint pointing at `config init`.
+func TestRunConfigPreflight_Missing(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	_, err := runConfigPreflight(filepath.Join(dir, projectconfig.Path), offlinePreflightOpts("", dir))
+	if err == nil {
+		t.Fatal("want error for missing file, got nil")
+	}
+	if !strings.Contains(err.Error(), "no gh-optivem.yaml") {
+		t.Errorf("error should mention missing file, got: %v", err)
+	}
+}
+
+// TestRunConfigPreflight_AllPathsExist seeds a workspace whose layout matches
+// every directory declared in gh-optivem.yaml — preflight must pass.
+func TestRunConfigPreflight_AllPathsExist(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	repoDir := filepath.Join(workspace, "page-turner")
+	if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0o755); err != nil {
+		t.Fatalf("seed .git: %v", err)
+	}
+	for _, p := range []string{
+		"system/monolith/java",
+		"system-test/java",
+		"external-systems/external-stub",
+		"external-systems/external-real-sim",
+	} {
+		if err := os.MkdirAll(filepath.Join(repoDir, p), 0o755); err != nil {
+			t.Fatalf("seed dir %s: %v", p, err)
+		}
+	}
+	yamlPath := filepath.Join(repoDir, projectconfig.Path)
+	if _, err := configinit.Run(monolithMonorepoFlags(), yamlPath, false); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+	path, err := runConfigPreflight(yamlPath, offlinePreflightOpts(workspace, repoDir))
+	if err != nil {
+		t.Fatalf("preflight: %v", err)
+	}
+	if path != yamlPath {
+		t.Errorf("path: got %q, want %q", path, yamlPath)
+	}
+}
+
+// TestRunConfigPreflight_MissingTierPath drops the simulators directory
+// from the seeded workspace — the exact scenario behind the late "preflight
+// failed: external_systems.simulators.path: ... does not exist" error
+// `config preflight` is meant to catch up-front.
+func TestRunConfigPreflight_MissingTierPath(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	repoDir := filepath.Join(workspace, "page-turner")
+	if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0o755); err != nil {
+		t.Fatalf("seed .git: %v", err)
+	}
+	for _, p := range []string{
+		"system/monolith/java",
+		"system-test/java",
+		"external-systems/external-stub",
+		// external-systems/external-real-sim intentionally absent.
+	} {
+		if err := os.MkdirAll(filepath.Join(repoDir, p), 0o755); err != nil {
+			t.Fatalf("seed dir %s: %v", p, err)
+		}
+	}
+	yamlPath := filepath.Join(repoDir, projectconfig.Path)
+	if _, err := configinit.Run(monolithMonorepoFlags(), yamlPath, false); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+	_, err := runConfigPreflight(yamlPath, offlinePreflightOpts(workspace, repoDir))
+	if err == nil {
+		t.Fatal("want error for missing simulators path, got nil")
+	}
+	if !strings.Contains(err.Error(), "external_systems.simulators.path") {
+		t.Errorf("error should name the missing field, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "does not exist") {
+		t.Errorf("error should report missing dir, got: %v", err)
+	}
+}
+
+// TestDefaultPreflightOptions_SonarTokenMissing covers the strict
+// behavior: when cfg declares a SonarCloud org but $SONAR_TOKEN is unset,
+// the helper refuses to wire up Sonar checks (which would silently pass)
+// and instead surfaces a clean "set SONAR_TOKEN" error to the cobra layer.
+func TestDefaultPreflightOptions_SonarTokenMissing(t *testing.T) {
+	t.Setenv("SONAR_TOKEN", "")
+	cfg := &projectconfig.Config{
+		Sonar: projectconfig.Sonar{Organization: "acme"},
+	}
+	_, err := defaultPreflightOptions(cfg, "", "")
+	if err == nil {
+		t.Fatal("want error when SONAR_TOKEN missing and sonar.organization set, got nil")
+	}
+	if !strings.Contains(err.Error(), "SONAR_TOKEN") {
+		t.Errorf("error should name SONAR_TOKEN, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "acme") {
+		t.Errorf("error should name the declared org, got: %v", err)
+	}
+}
+
+// TestDefaultPreflightOptions_NoSonarConfig covers the offline-friendly
+// path: when cfg has no sonar.organization, $SONAR_TOKEN is not required
+// and the helper returns an Options with SonarOrgExists / SonarProjectExists
+// left nil (preflight skips that class).
+func TestDefaultPreflightOptions_NoSonarConfig(t *testing.T) {
+	t.Setenv("SONAR_TOKEN", "")
+	cfg := &projectconfig.Config{}
+	opts, err := defaultPreflightOptions(cfg, "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.SonarOrgExists != nil {
+		t.Error("SonarOrgExists should be nil when cfg has no sonar.organization")
+	}
+	if opts.SonarProjectExists != nil {
+		t.Error("SonarProjectExists should be nil when cfg has no sonar.organization")
+	}
+	if opts.RepoExists == nil {
+		t.Error("RepoExists should always be wired (GitHub check is unconditional)")
+	}
+	if opts.BoardURLOK == nil {
+		t.Error("BoardURLOK should always be wired")
+	}
+}
+
+// TestDefaultPreflightOptions_SonarTokenPresent covers the happy path:
+// $SONAR_TOKEN set + sonar.organization declared → both Sonar checkers
+// wired up.
+func TestDefaultPreflightOptions_SonarTokenPresent(t *testing.T) {
+	t.Setenv("SONAR_TOKEN", "fake-token")
+	cfg := &projectconfig.Config{
+		Sonar: projectconfig.Sonar{Organization: "acme"},
+	}
+	opts, err := defaultPreflightOptions(cfg, "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.SonarOrgExists == nil {
+		t.Error("SonarOrgExists should be wired when token + org are set")
+	}
+	if opts.SonarProjectExists == nil {
+		t.Error("SonarProjectExists should be wired when token + org are set")
 	}
 }
 

@@ -3,8 +3,9 @@
 // write gh-optivem.yaml — the central per-project config file produced by
 // `gh optivem init` and consumed by `gh optivem atdd implement-ticket`.
 //
-//	gh optivem config init     — write a fresh gh-optivem.yaml from CLI flags
-//	gh optivem config validate — parse <CWD>/gh-optivem.yaml and validate it
+//	gh optivem config init      — write a fresh gh-optivem.yaml from CLI flags
+//	gh optivem config validate  — parse <CWD>/gh-optivem.yaml and validate it
+//	gh optivem config preflight — validate + check on-disk layout exists
 //
 // `config init` reuses the same render path as `gh optivem init`
 // (steps.WriteOptivemYAMLToPath / config.ValidateAndDeriveForYAML) so a new
@@ -12,10 +13,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/preflight"
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/configinit"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
@@ -37,6 +41,7 @@ non-scaffolded repo, or re-validating after a hand edit).`,
 	cmd.AddCommand(
 		newConfigInitCmd(),
 		newConfigValidateCmd(),
+		newConfigPreflightCmd(),
 	)
 	return cmd
 }
@@ -110,19 +115,13 @@ The target file is resolved via the persistent --config / -c flag
 
 Coverage includes the SonarCloud block (when system.architecture is
 set): sonar.organization plus sonar_project on every code tier (system
-or backend+frontend, plus system_test). Both presence and consistency
-are checked — every key must match the canonical derivation from
-(owner, repo, arch, repo_strategy), so a stale hand-edit (e.g.
-overwriting system.backend.sonar_project to a value that points at a
-project ` + "`gh optivem init`" + ` never creates) fails fast at validate-time
-instead of leaving the runtime to fail later.`,
+or backend+frontend, plus system_test) must be present. The YAML is
+the source of truth for these keys — the scaffolder seeds defaults via
+DeriveSonarProjects but the values may be hand-edited afterwards (e.g.
+multi-stack reference repos that need per-variant SonarCloud projects
+the single-stack deriver cannot express).`,
 		Example: `  gh optivem config validate
-  gh optivem -c ./gh-optivem.shop-monolith.yaml config validate
-
-  # Catches drift: editing system.backend.sonar_project by hand to
-  # acme_other-backend fails immediately with a consistency error
-  # pointing at the disagreement.
-  gh optivem config validate`,
+  gh optivem -c ./gh-optivem.shop-monolith.yaml config validate`,
 		Run: func(cmd *cobra.Command, args []string) {
 			path, _ := projectconfig.ResolvePath(projectConfigPath)
 			validated, err := runConfigValidate(path)
@@ -143,6 +142,77 @@ func runConfigValidate(yamlPath string) (string, error) {
 		return "", err
 	}
 	if _, err := projectconfig.LoadFromPath(yamlPath); err != nil {
+		return "", err
+	}
+	return yamlPath, nil
+}
+
+// newConfigPreflightCmd implements `gh optivem config preflight`. Runs the
+// same schema validation as `config validate`, then the on-disk preflight
+// check (every declared repo and tier path actually exists in the
+// workspace). Surfaces the late "preflight failed" errors that otherwise
+// only fire deep inside `atdd implement-ticket`.
+//
+// Schema-only validation stays on `config validate`: that command must keep
+// passing for the half-built state right after `gh optivem config init`,
+// where the YAML is well-formed but the sibling repos haven't been cloned
+// yet. `preflight` is the stronger contract — "I'm about to actually use
+// this config" — and is expected to fail in that intermediate state.
+func newConfigPreflightCmd() *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "preflight",
+		Short: "Validate gh-optivem.yaml and check its declared paths exist on disk",
+		Long: `Run schema validation (same as ` + "`config validate`" + `) and additionally
+verify that every repo and tier path declared in gh-optivem.yaml resolves
+to a real directory on disk. This is the same check ` + "`atdd implement-ticket`" + `
+runs at startup — run it standalone to catch missing clones or mistyped
+paths before kicking off a pipeline.
+
+Exits 0 when both schema and on-disk layout check out, non-zero with one
+multi-line error block listing every failure otherwise.`,
+		Example: `  gh optivem config preflight
+  gh optivem config preflight --workspace /abs/path/to/workspace
+  gh optivem -c ./gh-optivem.shop-monolith.yaml config preflight`,
+		Run: func(cmd *cobra.Command, args []string) {
+			path, _ := projectconfig.ResolvePath(projectConfigPath)
+			cwd, err := os.Getwd()
+			exitOnError(err)
+			validated, err := runConfigPreflight(path, func(cfg *projectconfig.Config) (preflight.Options, error) {
+				return defaultPreflightOptions(cfg, workspace, cwd)
+			})
+			exitOnError(err)
+			fmt.Printf("%s passes preflight\n", validated)
+		},
+	}
+	cmd.Flags().StringVar(&workspace, "workspace", "", "Workspace root containing one clone per repo (default: parent directory of CWD). Each clone dir must be named after the repo-name component of its slug; symlink outliers into place.")
+	return cmd
+}
+
+// runConfigPreflight is the testable core of `gh optivem config preflight`.
+// Mirrors runConfigValidate's EnsureExists + LoadFromPath chain, then
+// delegates to preflight.Run for the on-disk + remote check.
+//
+// optsFor is a factory invoked once cfg has loaded successfully: the
+// cobra command path returns defaultPreflightOptions (real remote
+// clients + SONAR_TOKEN check); tests return a bare Options with just
+// Workspace/Cwd set, so the test surface stays offline. The factory
+// gets to see cfg so it can decide whether SonarCloud wiring applies
+// (cfg.Sonar.Organization set) and surface a clean SONAR_TOKEN-missing
+// error before any remote calls fire.
+func runConfigPreflight(yamlPath string, optsFor func(*projectconfig.Config) (preflight.Options, error)) (string, error) {
+	if err := configinit.EnsureExists(yamlPath); err != nil {
+		return "", err
+	}
+	cfg, err := projectconfig.LoadFromPath(yamlPath)
+	if err != nil {
+		return "", err
+	}
+	opts, err := optsFor(cfg)
+	if err != nil {
+		return "", err
+	}
+	if err := preflight.Run(context.Background(), cfg, opts); err != nil {
 		return "", err
 	}
 	return yamlPath, nil

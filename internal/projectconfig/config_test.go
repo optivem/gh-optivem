@@ -1290,7 +1290,7 @@ func TestRoundTrip_PreservesIdentityFields(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Sonar block (Rules 17/18/19)
+// Sonar block (Rules 17/18)
 // ---------------------------------------------------------------------------
 
 // TestValidate_RejectsMissingSonarOrganization pins Rule 17: once
@@ -1375,72 +1375,9 @@ func TestValidate_RejectsSonarKeyOnWrongArchitecture(t *testing.T) {
 	})
 }
 
-// TestValidate_RejectsStaleSonarOrganization pins Rule 19's org-side
-// consistency: the YAML's sonar.organization must equal the lowercased
-// owner parsed from system_test.repo. Hand-editing org without updating
-// the rest of the YAML should fail.
-func TestValidate_RejectsStaleSonarOrganization(t *testing.T) {
-	t.Parallel()
-	cfg := validMonolithBase()
-	cfg.Sonar.Organization = "different-org"
-	err := cfg.Validate()
-	if err == nil {
-		t.Fatal("Validate: want consistency error for stale org, got nil")
-	}
-	if !strings.Contains(err.Error(), "sonar.organization") ||
-		!strings.Contains(err.Error(), "canonical derivation") {
-		t.Errorf("error should mention sonar.organization + canonical derivation, got: %v", err)
-	}
-}
-
-// TestValidate_RejectsStaleSonarProjectKey pins Rule 19's key-side
-// consistency across each code tier: a hand-edited mismatch from the
-// canonical <owner>_<repo>-<tier> shape fails. Covers monolith,
-// backend, frontend, and system_test independently so a stale edit on
-// any one tier doesn't silently leak through.
-func TestValidate_RejectsStaleSonarProjectKey(t *testing.T) {
-	t.Parallel()
-
-	t.Run("monolith system", func(t *testing.T) {
-		cfg := validMonolithBase()
-		cfg.System.SonarProject = "acme_wrong-system"
-		if err := cfg.Validate(); err == nil ||
-			!strings.Contains(err.Error(), "system.sonar_project") {
-			t.Fatalf("want stale system.sonar_project error, got: %v", err)
-		}
-	})
-
-	t.Run("multitier backend", func(t *testing.T) {
-		cfg := validMultitierBase()
-		cfg.System.Backend.SonarProject = "acme_wrong-backend"
-		if err := cfg.Validate(); err == nil ||
-			!strings.Contains(err.Error(), "system.backend.sonar_project") {
-			t.Fatalf("want stale backend.sonar_project error, got: %v", err)
-		}
-	})
-
-	t.Run("multitier frontend", func(t *testing.T) {
-		cfg := validMultitierBase()
-		cfg.System.Frontend.SonarProject = "acme_wrong-frontend"
-		if err := cfg.Validate(); err == nil ||
-			!strings.Contains(err.Error(), "system.frontend.sonar_project") {
-			t.Fatalf("want stale frontend.sonar_project error, got: %v", err)
-		}
-	})
-
-	t.Run("system_test", func(t *testing.T) {
-		cfg := validMonolithBase()
-		cfg.SystemTest.SonarProject = "acme_wrong-system-test"
-		if err := cfg.Validate(); err == nil ||
-			!strings.Contains(err.Error(), "system_test.sonar_project") {
-			t.Fatalf("want stale system_test.sonar_project error, got: %v", err)
-		}
-	})
-}
-
 // TestValidate_AcceptsEmptySonarBlockWithoutArchitecture confirms the
 // schema accepts a partial Config: when system.architecture is unset,
-// the sonar block has nothing to express and Rules 17/18/19 stay
+// the sonar block has nothing to express and Rules 17/18 stay
 // dormant. Matches the pattern already used for repo_strategy /
 // system_test (architecture is the gate).
 func TestValidate_AcceptsEmptySonarBlockWithoutArchitecture(t *testing.T) {
