@@ -122,8 +122,8 @@ REPO="manual-test-${SUFFIX}"
 # Inject --repo and tier-path defaults into the config-init flag set.
 CONFIG_INIT_FLAGS+=(--repo "$REPO")
 CONFIG_INIT_FLAGS+=(--system-test-path "${PATH_SYSTEM_TEST:-system-test}")
-CONFIG_INIT_FLAGS+=(--stubs-path "${PATH_STUBS:-external-systems/external-stub}")
-CONFIG_INIT_FLAGS+=(--simulators-path "${PATH_SIMULATORS:-external-systems/external-real-sim}")
+CONFIG_INIT_FLAGS+=(--stubs-path "${PATH_STUBS:-external-systems/stubs}")
+CONFIG_INIT_FLAGS+=(--simulators-path "${PATH_SIMULATORS:-external-systems/simulators}")
 # Tier-specific defaults — the binary's path-flag validator rejects the
 # wrong-arch flag, so apply per arch. The caller must pass --arch.
 case " ${CONFIG_INIT_FLAGS[*]} " in

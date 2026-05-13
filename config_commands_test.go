@@ -41,8 +41,8 @@ func monolithMonorepoFlags() *config.RawFlags {
 		Lang:           "java",
 		SystemPath:     "system/monolith/java",
 		SystemTestPath: "system-test/java",
-		StubsPath:      "external-systems/external-stub",
-		SimulatorsPath: "external-systems/external-real-sim",
+		StubsPath:      "external-systems/stubs",
+		SimulatorsPath: "external-systems/simulators",
 		ProjectURL:     "https://github.com/orgs/acme/projects/1",
 	}
 }
@@ -102,8 +102,8 @@ func TestRunConfigInit_MultitierMultirepo(t *testing.T) {
 		BackendPath:    "system/multitier/backend-dotnet",
 		FrontendPath:   "system/multitier/frontend-react",
 		SystemTestPath: "system-test/typescript",
-		StubsPath:      "external-systems/external-stub",
-		SimulatorsPath: "external-systems/external-real-sim",
+		StubsPath:      "external-systems/stubs",
+		SimulatorsPath: "external-systems/simulators",
 		ProjectURL:     "https://github.com/orgs/acme/projects/2",
 	}
 	if _, err := configinit.Run(f, filepath.Join(dir, projectconfig.Path), false); err != nil {
@@ -199,8 +199,8 @@ func TestRunConfigInit_RejectsBadFlags(t *testing.T) {
 				Arch: "multitier", RepoStrategy: "multirepo", FrontendLang: "typescript",
 				FrontendPath:   "frontend",
 				SystemTestPath: "system-test",
-				StubsPath:      "external-systems/external-stub",
-				SimulatorsPath: "external-systems/external-real-sim",
+				StubsPath:      "external-systems/stubs",
+				SimulatorsPath: "external-systems/simulators",
 			},
 			"--backend-lang",
 		},
@@ -222,8 +222,8 @@ func TestRunConfigInit_RejectsBadFlags(t *testing.T) {
 				BackendPath:    "backend",
 				FrontendPath:   "frontend",
 				SystemTestPath: "system-test",
-				StubsPath:      "external-systems/external-stub",
-				SimulatorsPath: "external-systems/external-real-sim",
+				StubsPath:      "external-systems/stubs",
+				SimulatorsPath: "external-systems/simulators",
 			},
 			"--system-path is not valid for --arch multitier",
 		},
@@ -342,8 +342,8 @@ func TestRunConfigPreflight_AllPathsExist(t *testing.T) {
 	for _, p := range []string{
 		"system/monolith/java",
 		"system-test/java",
-		"external-systems/external-stub",
-		"external-systems/external-real-sim",
+		"external-systems/stubs",
+		"external-systems/simulators",
 	} {
 		if err := os.MkdirAll(filepath.Join(repoDir, p), 0o755); err != nil {
 			t.Fatalf("seed dir %s: %v", p, err)
@@ -376,8 +376,8 @@ func TestRunConfigPreflight_MissingTierPath(t *testing.T) {
 	for _, p := range []string{
 		"system/monolith/java",
 		"system-test/java",
-		"external-systems/external-stub",
-		// external-systems/external-real-sim intentionally absent.
+		"external-systems/stubs",
+		// external-systems/simulators intentionally absent.
 	} {
 		if err := os.MkdirAll(filepath.Join(repoDir, p), 0o755); err != nil {
 			t.Fatalf("seed dir %s: %v", p, err)

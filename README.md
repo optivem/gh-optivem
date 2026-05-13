@@ -70,8 +70,8 @@ gh optivem config init --owner acme --repo page-turner --system-name "Page Turne
     --arch monolith --repo-strategy monorepo --monolith-lang java \
     --project-url https://github.com/orgs/acme/projects/1 \
     --system-path system --system-test-path system-test \
-    --stubs-path external-systems/external-stub \
-    --simulators-path external-systems/external-real-sim
+    --stubs-path external-systems/stubs \
+    --simulators-path external-systems/simulators
 ```
 
 Multitier:
@@ -83,8 +83,8 @@ gh optivem config init --owner acme --repo page-turner --system-name "Page Turne
     --project-url https://github.com/orgs/acme/projects/1 \
     --backend-path backend --frontend-path frontend \
     --system-test-path system-test \
-    --stubs-path external-systems/external-stub \
-    --simulators-path external-systems/external-real-sim
+    --stubs-path external-systems/stubs \
+    --simulators-path external-systems/simulators
 ```
 
 Or run `gh optivem config init` interactively when the file is missing — `gh-optivem` prompts for owner/repo (auto-inferred from `git remote origin` when available), system-name, arch, repo-strategy, lang, and project-url; everything else is defaulted.

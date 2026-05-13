@@ -12,13 +12,13 @@ import (
 // that exercise buildOptivemYAML for the post-scaffold layout reuse these
 // instead of repeating the literal strings.
 func monolithFlatPaths() (system, systemTest, stubs, simulators string) {
-	return "system", "system-test", "external-systems/external-stub", "external-systems/external-real-sim"
+	return "system", "system-test", "external-systems/stubs", "external-systems/simulators"
 }
 
 // multitierFlatPaths returns the path values the scaffolder injects into a
 // multitier Config.
 func multitierFlatPaths() (backend, frontend, systemTest, stubs, simulators string) {
-	return "backend", "frontend", "system-test", "external-systems/external-stub", "external-systems/external-real-sim"
+	return "backend", "frontend", "system-test", "external-systems/stubs", "external-systems/simulators"
 }
 
 func TestBuildOptivemYAML_MonolithMonorepo(t *testing.T) {
@@ -60,10 +60,10 @@ func TestBuildOptivemYAML_MonolithMonorepo(t *testing.T) {
 	if got.SystemTest.Path != "system-test" || got.SystemTest.Repo != "x/shop" || got.SystemTest.Lang != "java" {
 		t.Errorf("SystemTest mismatch: %+v", got.SystemTest)
 	}
-	if got.ExternalSystems.Stubs.Path != "external-systems/external-stub" || got.ExternalSystems.Stubs.Repo != "x/shop" {
+	if got.ExternalSystems.Stubs.Path != "external-systems/stubs" || got.ExternalSystems.Stubs.Repo != "x/shop" {
 		t.Errorf("Stubs mismatch: %+v", got.ExternalSystems.Stubs)
 	}
-	if got.ExternalSystems.Simulators.Path != "external-systems/external-real-sim" || got.ExternalSystems.Simulators.Repo != "x/shop" {
+	if got.ExternalSystems.Simulators.Path != "external-systems/simulators" || got.ExternalSystems.Simulators.Repo != "x/shop" {
 		t.Errorf("Simulators mismatch: %+v", got.ExternalSystems.Simulators)
 	}
 }
@@ -153,8 +153,8 @@ func TestBuildOptivemYAML_NonScaffoldPaths(t *testing.T) {
 		TestLang:       "java",
 		SystemPath:     "system/monolith/java",
 		SystemTestPath: "system-test/java",
-		StubsPath:      "external-systems/external-stub",
-		SimulatorsPath: "external-systems/external-real-sim",
+		StubsPath:      "external-systems/stubs",
+		SimulatorsPath: "external-systems/simulators",
 	}
 	got := buildOptivemYAML(cfg)
 	if got.System.Path != "system/monolith/java" {

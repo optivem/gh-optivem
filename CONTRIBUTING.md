@@ -228,8 +228,8 @@ gh optivem config init --owner valentinajemuovic --repo page-turner \
     --project-url https://github.com/orgs/valentinajemuovic/projects/N \
     --backend-path backend --frontend-path frontend \
     --system-test-path system-test \
-    --stubs-path external-systems/external-stub \
-    --simulators-path external-systems/external-real-sim
+    --stubs-path external-systems/stubs \
+    --simulators-path external-systems/simulators
 
 # Step 4 — scaffold a fresh project (no --shop-ref → uses the baked-in SHA)
 gh optivem init

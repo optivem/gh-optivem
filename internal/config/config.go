@@ -597,10 +597,10 @@ func resolveScaffoldPaths(f *RawFlags) {
 		f.SystemTestPath = "system-test"
 	}
 	if f.StubsPath == "" {
-		f.StubsPath = "external-systems/external-stub"
+		f.StubsPath = "external-systems/stubs"
 	}
 	if f.SimulatorsPath == "" {
-		f.SimulatorsPath = "external-systems/external-real-sim"
+		f.SimulatorsPath = "external-systems/simulators"
 	}
 	switch f.Arch {
 	case "monolith":

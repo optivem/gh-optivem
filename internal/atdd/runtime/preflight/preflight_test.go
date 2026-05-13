@@ -279,8 +279,8 @@ func TestRun_ExternalSystemsDeclaredAndPresent(t *testing.T) {
 	root := makeFakeRepo(t, filepath.Join(t.TempDir(), "shop"))
 	makeDir(t, filepath.Join(root, "system", "monolith", "java"))
 	makeDir(t, filepath.Join(root, "system-test", "java"))
-	makeDir(t, filepath.Join(root, "external-stub"))
-	makeDir(t, filepath.Join(root, "external-real-sim"))
+	makeDir(t, filepath.Join(root, "stubs"))
+	makeDir(t, filepath.Join(root, "simulators"))
 
 	cfg := &projectconfig.Config{
 		RepoStrategy: projectconfig.RepoStrategyMonoRepo,
@@ -294,8 +294,8 @@ func TestRun_ExternalSystemsDeclaredAndPresent(t *testing.T) {
 			Path: "system-test/java", Repo: "optivem/shop", Lang: projectconfig.LangJava,
 		},
 		ExternalSystems: projectconfig.ExternalSystems{
-			Stubs:      projectconfig.ExternalSpec{Path: "external-stub", Repo: "optivem/shop"},
-			Simulators: projectconfig.ExternalSpec{Path: "external-real-sim", Repo: "optivem/shop"},
+			Stubs:      projectconfig.ExternalSpec{Path: "stubs", Repo: "optivem/shop"},
+			Simulators: projectconfig.ExternalSpec{Path: "simulators", Repo: "optivem/shop"},
 		},
 	}
 	if err := Run(context.Background(), cfg, Options{Cwd: root}); err != nil {
@@ -308,8 +308,8 @@ func TestRun_ExternalSystemsMissingPath(t *testing.T) {
 	root := makeFakeRepo(t, filepath.Join(t.TempDir(), "shop"))
 	makeDir(t, filepath.Join(root, "system", "monolith", "java"))
 	makeDir(t, filepath.Join(root, "system-test", "java"))
-	// external-stub created but external-real-sim NOT.
-	makeDir(t, filepath.Join(root, "external-stub"))
+	// stubs created but simulators NOT.
+	makeDir(t, filepath.Join(root, "stubs"))
 
 	cfg := &projectconfig.Config{
 		RepoStrategy: projectconfig.RepoStrategyMonoRepo,
@@ -323,8 +323,8 @@ func TestRun_ExternalSystemsMissingPath(t *testing.T) {
 			Path: "system-test/java", Repo: "optivem/shop", Lang: projectconfig.LangJava,
 		},
 		ExternalSystems: projectconfig.ExternalSystems{
-			Stubs:      projectconfig.ExternalSpec{Path: "external-stub", Repo: "optivem/shop"},
-			Simulators: projectconfig.ExternalSpec{Path: "external-real-sim", Repo: "optivem/shop"},
+			Stubs:      projectconfig.ExternalSpec{Path: "stubs", Repo: "optivem/shop"},
+			Simulators: projectconfig.ExternalSpec{Path: "simulators", Repo: "optivem/shop"},
 		},
 	}
 	err := Run(context.Background(), cfg, Options{Cwd: root})
