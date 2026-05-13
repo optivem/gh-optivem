@@ -531,12 +531,21 @@ func bindYAMLAffectingFlags(fs *pflag.FlagSet, f *RawFlags) {
 // field on f. Cobra parses on Execute(); ParseAndValidate then validates the
 // populated struct.
 //
-// Per-invocation flags only. Project-stable values (owner, repo, system-name,
-// arch, repo-strategy, langs, paths, project-url, license, deploy) live in
-// gh-optivem.yaml — read by runInit before ParseAndValidate and layered onto
-// f. The YAML-affecting flag set is intentionally absent here so the
-// help page reflects what the operator can actually steer per run.
+// Two flag groups land here:
+//   - YAML-affecting flags (--owner, --repo, --system-name, --arch,
+//     --repo-strategy, --monolith-lang / --backend-lang / --frontend-lang,
+//     --test-lang, --project-url, --license, --deploy, tier-path overrides)
+//     bound via bindYAMLAffectingFlags — same set lives on `config init`.
+//   - Per-invocation flags (--keep-local, --verify-level, --no-*, --workdir,
+//     --shop-ref, logging flags, --yes) bound directly below.
+//
+// The YAML-affecting flags live on `init` so non-interactive callers (CI,
+// `go test` smoke matrix) can scaffold in one command without a pre-existing
+// gh-optivem.yaml. When passed, runInit writes them to the YAML before
+// loading; when absent, runInit prompts on a TTY or returns
+// MissingFileError non-TTY.
 func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
+	bindYAMLAffectingFlags(cmd.Flags(), f)
 	fs := cmd.Flags()
 	fs.BoolVar(&f.KeepLocal, "keep-local", false, "Keep the local scaffolded clone dir instead of deleting it on success")
 	fs.StringVar(&f.VerifyLevel, "verify-level", "release", "Verification level: none, local, commit, acceptance, qa, release")

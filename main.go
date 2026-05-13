@@ -138,25 +138,36 @@ the URL back into gh-optivem.yaml.`,
 }
 
 // loadProjectConfigForInit resolves the gh-optivem.yaml path using the
-// shared flag > env > default cascade and reads the file. On a TTY,
-// configinit.EnsureExists owns the missing-file path: it prints a
-// banner, drops into the same Prompt used by `gh optivem config init`,
-// and writes the YAML in place — so the operator never has to run a
-// separate command before scaffolding. Non-TTY callers (CI, redirected
-// stdin) get the terse MissingFileError pointing back at `gh optivem
-// config init` so unattended runs fail fast with a stable message.
+// shared flag > env > default cascade and reads the file. Three missing-file
+// paths, picked in this order:
+//
+//  1. CI / non-interactive with YAML-affecting flags supplied
+//     (--owner, --repo, --system-name, --arch, --repo-strategy all set on
+//     f) — write the YAML via configinit.Run, then load. Lets a pipeline
+//     scaffold in one `gh optivem init ...` call without a precursor
+//     `config init` step.
+//  2. TTY without flags — configinit.EnsureExists prints a banner and runs
+//     the same Prompt used by `gh optivem config init`, writing the YAML
+//     in place.
+//  3. Non-TTY without flags — EnsureExists returns the terse
+//     MissingFileError pointing at `config init` so unattended runs fail
+//     fast with a stable message.
 //
 // Returns the resolved absolute path alongside the parsed config so callers
 // can record it on cfg.SourceConfigPath — the project board step writes
 // the auto-created URL back into the same file, and re-resolving later
 // would risk a different answer if CWD or the env var changed.
-func loadProjectConfigForInit(flagPath string) (*projectconfig.Config, string, error) {
+func loadProjectConfigForInit(flagPath string, f *config.RawFlags) (*projectconfig.Config, string, error) {
 	path, _ := projectconfig.ResolvePath(flagPath)
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve absolute path for %s: %w", path, err)
 	}
-	if err := configinit.EnsureExists(abs); err != nil {
+	if _, statErr := os.Stat(abs); errors.Is(statErr, fs.ErrNotExist) && hasYAMLAffectingFlags(f) {
+		if _, err := configinit.Run(f, abs, false); err != nil {
+			return nil, "", err
+		}
+	} else if err := configinit.EnsureExists(abs); err != nil {
 		return nil, "", err
 	}
 	pc, err := projectconfig.LoadFromPath(abs)
@@ -169,8 +180,22 @@ func loadProjectConfigForInit(flagPath string) (*projectconfig.Config, string, e
 	return pc, abs, nil
 }
 
+// hasYAMLAffectingFlags reports whether the operator supplied the minimum
+// set of YAML-affecting flags `configinit.Run` needs to write a fresh
+// gh-optivem.yaml. ValidateAndDeriveForYAML rejects anything less; checking
+// here lets the CI path skip the interactive prompt without false-positiving
+// when only a stray --license was passed.
+func hasYAMLAffectingFlags(f *config.RawFlags) bool {
+	return f != nil &&
+		f.Owner != "" &&
+		f.Repo != "" &&
+		f.SystemName != "" &&
+		f.Arch != "" &&
+		f.RepoStrategy != ""
+}
+
 func runInit(cmd *cobra.Command, f *config.RawFlags) {
-	pc, sourcePath, err := loadProjectConfigForInit(projectConfigPath)
+	pc, sourcePath, err := loadProjectConfigForInit(projectConfigPath, f)
 	if err != nil {
 		log.FatalExit(err.Error())
 	}

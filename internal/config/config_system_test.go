@@ -187,6 +187,11 @@ func runCLI(t *testing.T, args ...string) (string, int) {
 	// Prepend "init" subcommand
 	fullArgs := append([]string{"init"}, args...)
 	cmd := exec.Command(binaryPath, fullArgs...)
+	// Per-subtest cwd so the gh-optivem.yaml `init` writes on first run
+	// (from the YAML-affecting flags) lands in temp and gets cleaned by
+	// the test harness — without isolation every subtest would stomp
+	// the same file under internal/config/.
+	cmd.Dir = t.TempDir()
 
 	var buf bytes.Buffer
 	tee := io.MultiWriter(&buf, os.Stderr)

@@ -91,7 +91,17 @@ Reads `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` / `SONAR_TOKEN` / `GHCR_TOKEN` / 
 gh optivem init
 ```
 
-No flags needed. On the first run, `gh optivem init` prompts for the project-stable values (owner, repo, system-name, arch, repo-strategy, lang, project-url) and writes them to `gh-optivem.yaml` before scaffolding the GitHub repo(s) and applying the template. Subsequent runs read the same file and skip the prompt. The `init` command itself accepts only per-invocation flags (workdir, verify-level, no-*, log-file, …).
+No flags needed for the interactive flow. On the first run, `gh optivem init` prompts for the project-stable values (owner, repo, system-name, arch, repo-strategy, lang, project-url) and writes them to `gh-optivem.yaml` before scaffolding the GitHub repo(s) and applying the template. Subsequent runs read the same file and skip the prompt.
+
+For non-interactive runs (CI, scripted setups) pass the same project-stable values as flags — `init` writes `gh-optivem.yaml` from them on first run, then proceeds:
+
+```bash
+gh optivem init --owner acme --repo page-turner --system-name "Page Turner" \
+    --arch monolith --repo-strategy monorepo --monolith-lang java \
+    --project-url https://github.com/orgs/acme/projects/1
+```
+
+The full per-invocation flag set (`--verify-level`, `--no-*`, `--workdir`, `--shop-ref`, `--log-file`, `--keep-local`, `--yes`, …) is layered on top in both modes.
 
 Once the file exists, hand-edit if needed and run `gh optivem config validate` to confirm. After the sibling repos are cloned (multi-repo layouts), run `gh optivem config preflight` for the stronger "I'm about to run this for real" check — same schema validation plus an on-disk layout check that every declared repo and tier path resolves to a real directory. `preflight` is the same check `atdd implement-ticket` runs at startup.
 

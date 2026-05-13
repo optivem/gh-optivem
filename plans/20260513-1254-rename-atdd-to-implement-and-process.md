@@ -1,5 +1,7 @@
 # Rename `atdd` subcommands → `implement` (verb-first) and `process show` (noun-first)
 
+> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-13T11:19:11Z`
+
 > ⚠️ **Needs explicit human approval before implementation. Discuss first.**
 > This plan is a draft. Do not execute any step until the author signs off
 > on the overall shape (and the open questions in the final section).
