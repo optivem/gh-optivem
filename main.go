@@ -359,16 +359,32 @@ func buildVerifySteps(cfg *config.Config, gh *shell.GitHub) []stepDef {
 
 	var s []stepDef
 
-	// Step 1: Local compilation — runs at every level above none.
-	// (Workflow lint runs in phaseApplyTemplate before push, not here.)
+	// Step 1: Compile system + tests. Runs at every level above none; the
+	// workflow lint runs in phaseApplyTemplate before push, not here.
 	s = append(s,
-		stepDef{name: "Verify local compilation", phase: phaseVerifyLocal, fn: func() { steps.VerifyCompilation(cfg) }},
+		stepDef{name: "Compile system", phase: phaseVerifyLocal, fn: func() { steps.VerifyCompileSystem(cfg) }},
+		stepDef{name: "Compile tests", phase: phaseVerifyLocal, fn: func() { steps.VerifyCompileTests(cfg) }},
 	)
 
-	// Step 2: Local testing — runner package against system-test/ (latest + legacy).
+	// Step 2: Local system lifecycle — build → setup tests → start → run
+	// tests (latest, then legacy) → stop → clean. Mirrors the CLI verb order
+	// (gh optivem system build / test setup / system start / test run /
+	// system stop / system clean) so each phase line maps to one verb.
 	if !cfg.NoLocalTests {
 		s = append(s,
-			stepDef{name: "Verify local testing", phase: phaseVerifyLocal, fn: func() { steps.VerifyLocalTesting(cfg) }},
+			stepDef{name: "Build system", phase: phaseVerifyLocal, fn: func() { steps.VerifyBuildSystem(cfg) }},
+			stepDef{name: "Setup tests", phase: phaseVerifyLocal, fn: func() { steps.VerifySetupTests(cfg) }},
+			stepDef{name: "Start system", phase: phaseVerifyLocal, fn: func() { steps.VerifyStartSystem(cfg) }},
+			stepDef{name: "Run tests (latest)", phase: phaseVerifyLocal, fn: func() { steps.VerifyRunTests(cfg, "tests.yaml") }},
+		)
+		if !cfg.NoLegacy {
+			s = append(s,
+				stepDef{name: "Run tests (legacy)", phase: phaseVerifyLocal, fn: func() { steps.VerifyRunTests(cfg, "tests.legacy.yaml") }},
+			)
+		}
+		s = append(s,
+			stepDef{name: "Stop system", phase: phaseVerifyLocal, fn: func() { steps.VerifyStopSystem(cfg) }},
+			stepDef{name: "Clean system", phase: phaseVerifyLocal, fn: func() { steps.VerifyCleanSystem(cfg) }},
 		)
 	}
 

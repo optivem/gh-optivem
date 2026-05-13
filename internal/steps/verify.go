@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -26,17 +27,21 @@ const (
 	msgStageFailed = "%s failed!"
 )
 
-// VerifyCompilation compiles all source and test components locally to catch
-// broken imports, type errors, and case-sensitive path mismatches before pushing.
-func VerifyCompilation(cfg *config.Config) {
-	log.Info("Verifying local compilation...")
-
+// VerifyCompileSystem compiles the system tier(s) locally to catch broken
+// imports, type errors, and case-sensitive path mismatches before pushing.
+func VerifyCompileSystem(cfg *config.Config) {
+	log.Info("Compiling system...")
 	if cfg.Arch == "monolith" {
 		compileComponent("system source", cfg.Lang, systemDir(cfg))
 	} else {
 		compileComponent("backend", cfg.BackendLang, backendDir(cfg))
 		compileComponent("frontend", cfg.FrontendLang, frontendDir(cfg))
 	}
+}
+
+// VerifyCompileTests compiles the system-test/ tier in cfg.TestLang.
+func VerifyCompileTests(cfg *config.Config) {
+	log.Info("Compiling tests...")
 	compileComponent("system tests", cfg.TestLang, systemTestDir(cfg))
 }
 
@@ -320,40 +325,92 @@ func handleWorkflowResult(err error, label, repo string) {
 	log.Fatalf("%s workflow failed. Check: https://github.com/%s/actions", label, repo)
 }
 
-// runLocalTestsViaRunner brings up systems.yaml's stacks (no-op if already up),
-// then runs the given tests config against them. Fatals on any error.
-//
-// dockerDir holds systems.yaml + compose files (compose paths resolve against
-// it). testDir holds tests-*.yaml + the test-runner project (setupCommands
-// and suite.path resolve against it).
-func runLocalTestsViaRunner(label, dockerDir, testDir, testsFile string) {
-	log.Infof("Running: %s (system=%s/systems.yaml, tests=%s/%s)", label, dockerDir, testDir, testsFile)
+// dockerDir locates systems.yaml + compose files (always cfg.RepoDir/docker,
+// even in multirepo). Counterpart to systemTestDir.
+func dockerDir(cfg *config.Config) string {
+	return filepath.Join(cfg.RepoDir, dockerDir_name)
+}
 
-	fail := func(err error) {
+func loadSys(cfg *config.Config) *runner.SystemConfig {
+	sys, err := runner.LoadSystem(filepath.Join(dockerDir(cfg), "systems.yaml"))
+	if err != nil {
+		log.Fatalf("load systems.yaml: %v", err)
+	}
+	return sys
+}
+
+func loadTests(cfg *config.Config, testsFile string) *runner.TestsConfig {
+	tests, err := runner.LoadTests(filepath.Join(systemTestDir(cfg), testsFile))
+	if err != nil {
+		log.Fatalf("load %s: %v", testsFile, err)
+	}
+	return tests
+}
+
+// VerifyBuildSystem builds the docker images declared in systems.yaml.
+// In multirepo mode it first symlinks the component repos into the root repo
+// so that compose build contexts resolve.
+func VerifyBuildSystem(cfg *config.Config) {
+	log.Info("Building system...")
+	setupMultirepoSymlinks(cfg)
+	if err := runner.Build(loadSys(cfg), dockerDir(cfg), runner.BuildOptions{}); err != nil {
+		log.Fatalf("Build system failed: %v", err)
+	}
+	log.Success("System built")
+}
+
+// VerifySetupTests runs the setupCommands from tests.yaml (npm ci,
+// npx playwright install chromium, ...). Mirrors `gh optivem test setup`.
+func VerifySetupTests(cfg *config.Config) {
+	log.Info("Setting up tests...")
+	if err := runner.RunSetup(loadTests(cfg, "tests.yaml"), systemTestDir(cfg)); err != nil {
+		log.Fatalf("Setup tests failed: %v", err)
+	}
+	log.Success("Tests set up")
+}
+
+// VerifyStartSystem brings up the docker stacks declared in systems.yaml and
+// waits for each to pass its health probe. Mirrors `gh optivem system start`.
+func VerifyStartSystem(cfg *config.Config) {
+	log.Info("Starting system...")
+	if err := runner.Up(loadSys(cfg), dockerDir(cfg), runner.SystemOptions{}); err != nil {
+		log.Fatalf("Start system failed: %v", err)
+	}
+	log.Success("System started")
+}
+
+// VerifyRunTests runs the suites declared in testsFile against the already-
+// running system. Used twice in the pipeline: once with "tests.yaml" (latest)
+// and once with "tests.legacy.yaml" (legacy, when --no-legacy is unset).
+func VerifyRunTests(cfg *config.Config, testsFile string) {
+	label := "Run tests (" + strings.TrimSuffix(testsFile, ".yaml") + ")"
+	log.Infof("%s...", label)
+	sys := loadSys(cfg)
+	tests := loadTests(cfg, testsFile)
+	if err := runner.RunTests(sys, tests, dockerDir(cfg), systemTestDir(cfg), runner.TestOptions{}); err != nil {
 		log.Errorf("%s: %v", label, err)
 		log.Fatalf(msgStageFailed, label)
 	}
-
-	sys, err := runner.LoadSystem(filepath.Join(dockerDir, "systems.yaml"))
-	if err != nil {
-		fail(err)
-	}
-	tests, err := runner.LoadTests(filepath.Join(testDir, testsFile))
-	if err != nil {
-		fail(err)
-	}
-	// setupCommands aren't run by RunTests (separate verb in the CLI); invoke
-	// them here so a fresh runner gets `npx playwright install chromium` etc.
-	if err := runner.RunSetup(tests, testDir); err != nil {
-		fail(err)
-	}
-	if err := runner.Up(sys, dockerDir, runner.SystemOptions{}); err != nil {
-		fail(err)
-	}
-	if err := runner.RunTests(sys, tests, dockerDir, testDir, runner.TestOptions{}); err != nil {
-		fail(err)
-	}
 	log.Successf(msgStagePassed, label)
+}
+
+// VerifyStopSystem tears down the docker stacks. Mirrors `gh optivem system stop`.
+func VerifyStopSystem(cfg *config.Config) {
+	log.Info("Stopping system...")
+	if err := runner.Down(loadSys(cfg), dockerDir(cfg)); err != nil {
+		log.Fatalf("Stop system failed: %v", err)
+	}
+	log.Success("System stopped")
+}
+
+// VerifyCleanSystem removes the locally-built images + volumes from the stacks.
+// Mirrors `gh optivem system clean`.
+func VerifyCleanSystem(cfg *config.Config) {
+	log.Info("Cleaning system...")
+	if err := runner.Clean(loadSys(cfg), dockerDir(cfg)); err != nil {
+		log.Fatalf("Clean system failed: %v", err)
+	}
+	log.Success("System cleaned")
 }
 
 // setupMultirepoSymlinks creates symlinks inside the root repo so that Docker Compose
@@ -460,21 +517,4 @@ func sonarComponent(label, dir string) {
 	log.Successf("SonarCloud scanned %s", label)
 }
 
-// VerifyLocalTesting runs the runner package against the scaffolded project's
-// system-test/ directory — latest plus legacy (unless --no-legacy).
-// Skipped entirely when --no-local-tests is set (the gate lives in main.go).
-func VerifyLocalTesting(cfg *config.Config) {
-	log.Info("Running local system tests...")
-
-	dockerDir := filepath.Join(cfg.RepoDir, dockerDir_name)
-	testDir := filepath.Join(cfg.RepoDir, systemTestDir_name)
-
-	setupMultirepoSymlinks(cfg)
-
-	runLocalTestsViaRunner("Local system tests (latest)", dockerDir, testDir, "tests.yaml")
-
-	if !cfg.NoLegacy {
-		runLocalTestsViaRunner("Local system tests (legacy)", dockerDir, testDir, "tests.legacy.yaml")
-	}
-}
 

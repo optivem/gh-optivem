@@ -5,8 +5,9 @@
 // (compile_commands.go) and, indirectly, the structural-cycle compile_all
 // action — which shells out to `gh optivem compile`. CompileIn is the same
 // dispatch keyed only on (lang, cwd), for callers without a TierSpec — most
-// importantly internal/steps.VerifyCompilation, which `gh optivem init` calls
-// against a freshly-cloned shop variant before the YAML is in scope.
+// importantly internal/steps.VerifyCompileSystem / VerifyCompileTests, which
+// `gh optivem init` calls against a freshly-cloned shop variant before the
+// YAML is in scope.
 //
 // Per-language commands compile main source AND unit tests together so a
 // structural change cannot silently break test typechecking:
@@ -91,9 +92,9 @@ func checkTierLayout(lang, cwd string) error {
 
 // CompileIn runs the per-language compile sequence in cwd. Same dispatch
 // table as Compile, but for callers that already have an absolute cwd and
-// no TierSpec — i.e. internal/steps.VerifyCompilation, which compiles each
-// component of a freshly-cloned shop variant by absolute path before any
-// gh-optivem.yaml exists.
+// no TierSpec — i.e. internal/steps.VerifyCompileSystem / VerifyCompileTests,
+// which compile each component of a freshly-cloned shop variant by absolute
+// path before any gh-optivem.yaml exists.
 func CompileIn(lang, cwd string) error {
 	if err := checkTierLayout(lang, cwd); err != nil {
 		return err
