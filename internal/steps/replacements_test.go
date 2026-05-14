@@ -741,6 +741,69 @@ func TestMultitierPrefixDropAndContentReplacementsOrderingFixesPartialMatch(t *t
 	}
 }
 
+// TestMonolithDockerComposeReplacementsIncludesFlywayPath asserts that the
+// monolith compose replacement set rewrites shop's
+// ../../../system/db/migrations Flyway sidecar volume mount to the scaffold
+// layout's ../db/migrations. Regression guard for the meta-v1.0.89 Flyway
+// adoption: without this rule the db-migrate sidecar mounts a path that
+// overshoots two levels above the repo and reports "No migrations found".
+func TestMonolithDockerComposeReplacementsIncludesFlywayPath(t *testing.T) {
+	in := "      - ../../../system/db/migrations:/migrations:ro\n"
+	expected := "      - ../db/migrations:/migrations:ro\n"
+	got := in
+	for _, p := range monolithDockerComposeReplacements("java", "java") {
+		got = strings.ReplaceAll(got, p[0], p[1])
+	}
+	if got != expected {
+		t.Errorf("got  %q\nwant %q", got, expected)
+	}
+}
+
+// TestMultitierDockerComposeReplacementsIncludesFlywayPath is the multitier
+// counterpart of the above. Same shape, same target — db-migrate runs in every
+// compose variant regardless of language.
+func TestMultitierDockerComposeReplacementsIncludesFlywayPath(t *testing.T) {
+	in := "      - ../../../system/db/migrations:/migrations:ro\n"
+	expected := "      - ../db/migrations:/migrations:ro\n"
+	got := in
+	for _, p := range multitierDockerComposeReplacements("java", "react", "java") {
+		got = strings.ReplaceAll(got, p[0], p[1])
+	}
+	if got != expected {
+		t.Errorf("got  %q\nwant %q", got, expected)
+	}
+}
+
+// TestFlywayPathReplacementsRewritesAndIsIdempotent asserts that the Java
+// test-config Flyway location rewrites from the shop's two-levels-up form to
+// the scaffold's one-level-up form, and that a second pass over the already-
+// rewritten content is a no-op (idempotency — the rule must not match its
+// own output and double-shorten the path).
+func TestFlywayPathReplacementsRewritesAndIsIdempotent(t *testing.T) {
+	in := "  flyway:\n    locations: filesystem:../../db/migrations\n"
+	expected := "  flyway:\n    locations: filesystem:../db/migrations\n"
+
+	pairs := flywayPathReplacements()
+	got := in
+	for _, p := range pairs {
+		got = strings.ReplaceAll(got, p[0], p[1])
+	}
+	if got != expected {
+		t.Errorf("first pass got  %q\nwant %q", got, expected)
+	}
+
+	// Idempotency: applying the same replacements to the already-rewritten
+	// content must not change it. Catches a class of bug where the
+	// replacement's target is a substring of its source.
+	second := got
+	for _, p := range pairs {
+		second = strings.ReplaceAll(second, p[0], p[1])
+	}
+	if second != expected {
+		t.Errorf("second pass changed result\nfirst:  %q\nsecond: %q", got, second)
+	}
+}
+
 // TestMultirepoBackendAndFrontendReplacementsCollapseGitTagValue asserts
 // that the backendReplacements / frontendReplacements lists composed in
 // applyMultitierMultirepo (per-component repo path) collapse the 3-segment

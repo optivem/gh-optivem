@@ -39,10 +39,11 @@ const (
 	systemMultitierDir      = "system/multitier/"
 	systemMultitierBackend  = systemMultitierDir + "backend-"
 
-	infoCopyingExternals   = "Copying external simulators..."
-	infoCopyingSystemTests = "Copying system-tests..."
-	infoCopyingCloudRun    = "Copying Cloud Run scripts..."
-	infoCopyingDocs        = "Copying docs..."
+	infoCopyingExternals    = "Copying external simulators..."
+	infoCopyingDbMigrations = "Copying Flyway db migrations..."
+	infoCopyingSystemTests  = "Copying system-tests..."
+	infoCopyingCloudRun     = "Copying Cloud Run scripts..."
+	infoCopyingDocs         = "Copying docs..."
 )
 
 var externalDirs = []string{dirSimulators, dirStubs}
@@ -73,6 +74,19 @@ func copyExternals(shop, repoDir string) {
 		if _, err := os.Stat(src); err == nil {
 			files.CopyDir(src, filepath.Join(repoDir, "external-systems", dir))
 		}
+	}
+}
+
+// copyDbMigrations copies shop/system/db/migrations/ to <dst>/db/migrations/.
+// Called for every scaffolded repo that contains either a docker-compose
+// referencing the db-migrate Flyway sidecar or Java backend code that runs
+// Flyway+Testcontainers in its commit stage. The os.Stat guard keeps the
+// scaffolder compatible with pre-meta-v1.0.89 shop refs (system/db/migrations
+// did not exist then; the copy is just skipped).
+func copyDbMigrations(shop, dst string) {
+	src := filepath.Join(shop, "system", "db", "migrations")
+	if _, err := os.Stat(src); err == nil {
+		files.CopyDir(src, filepath.Join(dst, "db", "migrations"))
 	}
 }
 
@@ -199,6 +213,9 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	log.Info(infoCopyingExternals)
 	copyExternals(shop, repoDir)
 
+	log.Info(infoCopyingDbMigrations)
+	copyDbMigrations(shop, repoDir)
+
 	log.Info(infoCopyingSystemTests)
 	copySystemTests(shop, repoDir, testLang, "single", lang)
 
@@ -213,6 +230,11 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	log.Info("Fixing up SonarCloud keys...")
 	templates.FixupAllTextFiles(repoDir, monolithSonarKeyReplacements(lang))
 	templates.FixupAllTextFiles(repoDir, systemTestSonarKeyReplacements())
+
+	// Flyway: rewrite Java application-test.yml from shop's deeper layout
+	// (system/monolith/java → ../../db/migrations) to the flattened scaffold
+	// layout (system → ../db/migrations). No-op on .NET / TS.
+	templates.FixupAllTextFiles(repoDir, flywayPathReplacements())
 
 	if cfg.Deploy == deployCloudRun {
 		log.Info(infoCopyingCloudRun)
@@ -243,6 +265,11 @@ func applyMonolithMultirepo(cfg *config.Config) {
 
 	log.Info(infoCopyingExternals)
 	copyExternals(shop, repoDir)
+
+	// Flyway migrations land at root repo's db/migrations/ so the compose
+	// volume mount (../db/migrations) resolves from docker/.
+	log.Info(infoCopyingDbMigrations)
+	copyDbMigrations(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
 	copySystemTests(shop, repoDir, testLang, "single", lang)
@@ -288,6 +315,11 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	files.CopyDir(systemSrc, filepath.Join(sysDir, Names.TargetSystemDir))
 	templates.CopyVersion(shop, sysDir, "monolith", lang)
 
+	// Flyway migrations also land in the system repo so the Java
+	// application-test.yml's filesystem:../db/migrations resolves from system/.
+	log.Info(infoCopyingDbMigrations)
+	copyDbMigrations(shop, sysDir)
+
 	log.Info("Copying commit-stage and bump-patch-version workflows to system repo...")
 	systemWfMap := map[string]string{
 		Expand(Names.MonolithCommitStageWf, vars):      Names.DestCommitStageWf,
@@ -309,6 +341,7 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	templates.FixupWorkflowContent(sysDir, sysContentReplacements)
 	templates.FixupAllTextFiles(sysDir, monolithSonarKeyReplacements(lang))
 	templates.FixupAllTextFiles(sysDir, systemTestSonarKeyReplacements())
+	templates.FixupAllTextFiles(sysDir, flywayPathReplacements())
 	log.Success("Applied system repo template (monolith multirepo)")
 }
 
@@ -349,6 +382,9 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	log.Info(infoCopyingExternals)
 	copyExternals(shop, repoDir)
 
+	log.Info(infoCopyingDbMigrations)
+	copyDbMigrations(shop, repoDir)
+
 	log.Info(infoCopyingSystemTests)
 	copySystemTests(shop, repoDir, testLang, "multi", backendLang)
 
@@ -372,6 +408,9 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	log.Info("Fixing up SonarCloud keys...")
 	templates.FixupAllTextFiles(repoDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 	templates.FixupAllTextFiles(repoDir, systemTestSonarKeyReplacements())
+
+	// Flyway path rewrite for Java backend application-test.yml (no-op on TS).
+	templates.FixupAllTextFiles(repoDir, flywayPathReplacements())
 
 	if cfg.Deploy == deployCloudRun {
 		log.Info(infoCopyingCloudRun)
@@ -405,6 +444,11 @@ func applyMultitierMultirepo(cfg *config.Config) {
 
 	log.Info(infoCopyingExternals)
 	copyExternals(shop, repoDir)
+
+	// Flyway migrations land in the root repo so the compose volume mount
+	// (../db/migrations) resolves from docker/.
+	log.Info(infoCopyingDbMigrations)
+	copyDbMigrations(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
 	copySystemTests(shop, repoDir, testLang, "multi", backendLang)
@@ -461,6 +505,11 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	backendSrc := filepath.Join(shop, Expand(Names.ShopSystemMultitierBackend, vars))
 	files.CopyDir(backendSrc, filepath.Join(bDir, Names.TargetBackendDir))
 
+	// Flyway migrations also land in the backend repo so the Java
+	// application-test.yml's filesystem:../db/migrations resolves from backend/.
+	log.Info(infoCopyingDbMigrations)
+	copyDbMigrations(shop, bDir)
+
 	log.Info("Copying commit-stage and bump-patch-version workflows to backend repo...")
 	backendWfMap := map[string]string{
 		Expand(Names.MultitierBackendCommitStageWf, vars): Names.DestBackendCommitStageWf,
@@ -483,6 +532,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	templates.FixupWorkflowContent(bDir, backendReplacements)
 	templates.FixupAllTextFiles(bDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 	templates.FixupAllTextFiles(bDir, systemTestSonarKeyReplacements())
+	templates.FixupAllTextFiles(bDir, flywayPathReplacements())
 	log.Success("Applied backend repo template")
 
 	// Frontend repo: code + commit stage
@@ -646,6 +696,11 @@ func monolithDockerComposeReplacements(lang, testLang string) [][2]string {
 		// docker/<lang>/<arch>/, so it reaches external-systems/ via ../../../external-systems/.
 		// Scaffold flattens that to docker/, so it reaches external-systems/ via ../external-systems/.
 		{shopExternalSystemsPrefix, "../external-systems/"},
+		// Flyway db-migrate sidecar volume mount: shop's compose at docker/<lang>/<arch>/
+		// reaches system/db/migrations/ via ../../../system/db/migrations. Scaffold
+		// flattens compose to docker/ and lifts migrations to <repo>/db/migrations,
+		// so the mount becomes ../db/migrations.
+		{shopSystemPrefix + "db/migrations", "../db/migrations"},
 	}
 	if lang != testLang {
 		r = append(r, [2]string{shopSystemPrefix + "monolith/" + testLang, "../system"})
@@ -749,6 +804,11 @@ func multitierDockerComposeReplacements(backendLang, frontendLang, testLang stri
 		// docker/<lang>/<arch>/, so it reaches external-systems/ via ../../../external-systems/.
 		// Scaffold flattens that to docker/, so it reaches external-systems/ via ../external-systems/.
 		{shopExternalSystemsPrefix, "../external-systems/"},
+		// Flyway db-migrate sidecar volume mount; same shape as monolith: shop's
+		// compose at docker/<lang>/<arch>/ reaches system/db/migrations/ via
+		// ../../../system/db/migrations, scaffold flattens to docker/ and the
+		// mount becomes ../db/migrations.
+		{shopSystemPrefix + "db/migrations", "../db/migrations"},
 	}
 	// Docker build contexts always reference the test-lang backend and the frontend lang in the
 	// shop layout (e.g. backend-typescript, frontend-react). After scaffolding these become
@@ -758,6 +818,19 @@ func multitierDockerComposeReplacements(backendLang, frontendLang, testLang stri
 	r = append(r, [2]string{shopSystemPrefix + "multitier/frontend-" + frontendLang, "../frontend"})
 	r = append(r, [2]string{prefixMultitierFrontend + frontendLang, "frontend"})
 	return r
+}
+
+// flywayPathReplacements rewrites Spring's filesystem:../../db/migrations
+// (shop layout: system/monolith/java/ → up 2 → system/ → db/migrations) to
+// filesystem:../db/migrations (scaffold layout: system/ → up 1 → root →
+// db/migrations). Applied to all text files so the same call works for
+// monolith (system/) and multitier backend (backend/) — both Gradle roots sit
+// one directory above the scaffold's db/migrations/. No-op on .NET / TS,
+// which don't carry this literal today.
+func flywayPathReplacements() [][2]string {
+	return [][2]string{
+		{"filesystem:../../db/migrations", "filesystem:../db/migrations"},
+	}
 }
 
 // monolithSonarKeyReplacements returns SonarCloud key suffix replacements for monolith.
