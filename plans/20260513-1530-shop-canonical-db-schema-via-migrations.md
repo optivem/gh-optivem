@@ -1,5 +1,7 @@
 # Shop: canonical DB schema via a single migration set (Flyway)
 
+🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-14T08:52:49Z`
+
 > ✅ **Decisions locked 2026-05-14.** Tactical alignment of all 6 ORM DDLs landed 2026-05-13 — the six implementations now emit identical schema *by convention*. This plan replaces convention with enforcement: schema ownership moves out of the apps into a single ordered Flyway migration set applied by a sidecar service, per Dave Farley's CD model for DB migrations.
 >
 > **Tool choice:** Flyway Community (SQL-first, forward-only, polyglot-friendly). See "Decisions" section below for all locked answers.
