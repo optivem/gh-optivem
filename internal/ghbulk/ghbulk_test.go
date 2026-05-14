@@ -12,8 +12,8 @@ func TestParseSlug(t *testing.T) {
 		wantRep string
 		wantErr bool
 	}{
-		{"optivem/shop", "optivem", "shop", false},
-		{"valentinajemuovic/greeter-java", "valentinajemuovic", "greeter-java", false},
+		{"myorg/myrepo", "myorg", "myrepo", false},
+		{"acme/widget-svc", "acme", "widget-svc", false},
 		{"foo", "", "", true},
 		{"foo/bar/baz", "", "", true},
 		{"/bar", "", "", true},

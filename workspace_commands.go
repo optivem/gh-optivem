@@ -81,8 +81,8 @@ A commit message is required when any iterated repo has dirty changes.
 ` + "`--yes`" + ` also refuses to stage untracked files unless ` + "`--include-untracked`" + `
 is passed — the stray-file foot-gun is opt-in for scripted callers.`,
 		Example: `  gh optivem workspace commit "Update settings"
-  gh optivem workspace commit --repo shop "Fix bug"
-  gh optivem workspace commit --repo shop --paths "system/monolith/java" "fix(monolith-java)"
+  gh optivem workspace commit --repo myrepo "Fix bug"
+  gh optivem workspace commit --repo myrepo --paths "system/monolith/java" "fix(monolith-java)"
   gh optivem workspace commit --yes "Sync .claude settings"`,
 		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -267,7 +267,7 @@ func confirmCommit(repo string, opts commitOptions) (bool, error) {
 }
 
 func errMissingMsg() error {
-	return errors.New("commit message is required (no default).\n       Pass it as the last positional argument, e.g.:\n         gh optivem workspace commit \"<message>\"\n         gh optivem workspace commit --repo shop \"<message>\"")
+	return errors.New("commit message is required (no default).\n       Pass it as the last positional argument, e.g.:\n         gh optivem workspace commit \"<message>\"\n         gh optivem workspace commit --repo myrepo \"<message>\"")
 }
 
 func runGitCommit(repo, msg string) error {

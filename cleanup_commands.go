@@ -89,9 +89,9 @@ func newCleanupReleasesCmd() *cobra.Command {
 associated git tag. Each deletion = 2 mutating calls (release + tag), so the
 default 10s delay keeps you under GitHub's 80-mutating-calls/min secondary
 limit.`,
-		Example: `  gh optivem cleanup releases optivem/greeter-java --dry-run
-  gh optivem cleanup releases optivem/greeter-java optivem/greeter-dotnet
-  gh optivem cleanup releases optivem/shop --before-date 2026-01-01`,
+		Example: `  gh optivem cleanup releases myorg/myrepo --dry-run
+  gh optivem cleanup releases myorg/repo-a myorg/repo-b
+  gh optivem cleanup releases myorg/myrepo --before-date 2026-01-01`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opt, err := flags.toOptions()
@@ -153,9 +153,9 @@ func newCleanupPackagesCmd() *cobra.Command {
 docker, nuget, rubygems, container) and delete those whose repository
 matches. Public packages are skipped — they must be made private via the
 GitHub UI first, and the URL to do so is printed.`,
-		Example: `  gh optivem cleanup packages optivem/shop --dry-run
-  gh optivem cleanup packages optivem/shop optivem/eshop-tests
-  gh optivem cleanup packages optivem/shop --before-date 2026-01-01`,
+		Example: `  gh optivem cleanup packages myorg/myrepo --dry-run
+  gh optivem cleanup packages myorg/repo-a myorg/repo-b
+  gh optivem cleanup packages myorg/myrepo --before-date 2026-01-01`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opt, err := flags.toOptions()
@@ -234,7 +234,7 @@ func newCleanupReposCmd() *cobra.Command {
 		Long: `Delete repos owned by <owner>. At least one of --prefix or explicit names
 must be provided. --prefix matches the start of each repo name; explicit
 names are deleted unconditionally (no prefix check). Both can be combined.`,
-		Example: `  gh optivem cleanup repos valentinajemuovic --prefix course-tester- --dry-run
+		Example: `  gh optivem cleanup repos myorg --prefix course-tester- --dry-run
   gh optivem cleanup repos myorg repo-a repo-b
   gh optivem cleanup repos myorg --prefix temp- specific-repo`,
 		Args: cobra.MinimumNArgs(1),
