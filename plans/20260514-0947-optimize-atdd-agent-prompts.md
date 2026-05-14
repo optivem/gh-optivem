@@ -91,27 +91,39 @@ meaning would shrink each prompt by 10–20 %.
 The plan went through several iterations during 2026-05-14 discussion;
 the design below is the final shape.
 
-### D1. gh-optivem owns the canonical ATDD assets, fully embedded
+### D1. gh-optivem owns all canonical assets, in one embedded tree
 
-All ATDD assets live in the gh-optivem binary via `//go:embed`:
+All embedded assets (runtime prompts, methodology docs, Claude Code
+subagents, slash commands) live under a single `internal/assets/`
+package with one `//go:embed` declaration. Subdivision is by **consumer**
+(how the asset is delivered), with methodology as the leaf level so
+future TDD / DDD / HA content extends the tree without inventing new
+top-level directories.
 
 ```
-internal/atdd/assets/
-  docs/atdd/architecture/*.md
-  docs/atdd/process/*.md
-  docs/atdd/code/*.md
-  claude/agents/atdd/*.md     (Claude Code subagents — for interactive flow)
-  claude/commands/atdd/*.md   (Claude Code slash commands — for interactive flow)
+internal/assets/
+  runtime/                          ← fed to `claude -p` via argv (never on disk)
+    prompts/atdd/*.md               ← per-phase prompts (atdd-dsl-at.md, etc.)
+    shared/preamble.md              ← prepended bookend (D4)
+    shared/session-end.md           ← appended bookend
+  global/                           ← synced to user's home (D2 + D3)
+    docs/atdd/{architecture,process,code}/*.md
+    claude/agents/atdd/*.md         ← Claude Code interactive subagents
+    claude/commands/atdd/*.md       ← Claude Code slash commands
+  embed.go                          ← single //go:embed assets/...
 ```
+
+The existing runtime prompts at `internal/atdd/runtime/agents/prompts/*.md`
+**move** to `internal/assets/runtime/prompts/atdd/`. The
+`internal/atdd/runtime/agents/` package is refactored to a thin wrapper:
+its `Prompt()` function reads runtime prompts from
+`internal/assets` rather than from its own local `embed.FS`. Public API
+of `agents.Prompt()` is unchanged, so `clauderun` consumers are
+unaffected.
 
 These are the only authoritative copies. Shop's `docs/atdd/`,
-`.claude/agents/atdd/`, `.claude/commands/atdd/` are removed; shop becomes
-a regular consumer.
-
-The internal prompt files at `internal/atdd/runtime/agents/prompts/*.md`
-remain embedded as today via the existing `//go:embed prompts/*.md`.
-These are separate from the new assets bundle — they are content fed
-into `claude -p` directly, never written to disk.
+`.claude/agents/atdd/`, `.claude/commands/atdd/` are removed; shop
+becomes a regular consumer.
 
 ### D2. No copy to consumer repos; sync to per-user global paths
 
@@ -130,80 +142,100 @@ overwrite their contents wholesale. Anything outside (`~/.claude/agents/myteam/`
 
 ### D3. Auto-sync on first invocation after binary upgrade
 
-There is no `gh optivem atdd install` subcommand. Sync is automatic:
+There is no `gh optivem asset install` subcommand. Sync is automatic:
 
 ```
 Every `gh optivem <command>` invocation, at startup:
   Read ~/.gh-optivem/.version stamp.
   If missing OR != this binary's version:
-    Write embed.FS contents to ~/.gh-optivem/docs/atdd/,
-                                ~/.claude/agents/atdd/,
-                                ~/.claude/commands/atdd/.
+    Walk embed.FS `global/` subtree, write to:
+      ~/.gh-optivem/docs/        ← docs/atdd/... (future: docs/tdd/...)
+      ~/.claude/agents/atdd/      ← Claude Code subagents
+      ~/.claude/commands/atdd/    ← Claude Code slash commands
     Update stamp file.
-    Print one-line notice: "Synced ATDD assets to ~/.gh-optivem and ~/.claude (vX.Y.Z)."
+    Print one-line notice: "Synced gh-optivem assets to ~/.gh-optivem and ~/.claude (vX.Y.Z)."
   Else: no-op (single stat call).
 Then proceed with the user's actual command.
 ```
 
 Sync is blanket-on-every-command (not scoped to `implement` and friends)
 to avoid the "new ATDD command forgot to call the sync" failure mode.
-Cost when up-to-date is one file read.
+Cost when up-to-date is one file read. The `atdd/` (and future `tdd/`,
+`ddd/`, `ha/`) subdirectories under `~/.gh-optivem/docs/` and
+`~/.claude/{agents,commands}/` are entirely owned by gh-optivem —
+re-syncs overwrite their contents wholesale. Anything outside
+(`~/.claude/agents/myteam/`, `docs/myteam-notes/` in any repo) is
+untouched forever.
 
 **Escape hatch:** `GH_OPTIVEM_NO_AUTO_SYNC=1` (or `=true`) disables
 auto-sync. When set, ATDD-consuming commands (`implement` etc.) fail
-fast with `"ATDD assets out of date or missing. Run \`gh optivem atdd
-sync\` or unset GH_OPTIVEM_NO_AUTO_SYNC."` rather than silently running
-with stale assets. Non-ATDD commands proceed normally.
+fast with `"gh-optivem assets out of date or missing. Run \`gh optivem
+asset sync\` or unset GH_OPTIVEM_NO_AUTO_SYNC."` rather than silently
+running with stale assets. Non-ATDD commands proceed normally.
 
-**Manual sync:** `gh optivem atdd sync` triggers the sync explicitly.
-Used by users with the escape hatch set, or to force re-sync.
+**Manual sync:** `gh optivem asset sync` triggers the sync explicitly.
+Used by users with the escape hatch set, or to force re-sync. Naming
+follows the `gh` CLI convention of singular noun namespaces (`gh repo`,
+`gh pr`, `gh workspace`).
 
 **Optional helpers (lower priority, can defer):**
-- `gh optivem atdd status` — shows synced version vs binary version and
-  which target paths are populated. Useful for debugging.
-- `gh optivem atdd docs <slug>` / `gh optivem atdd docs --open` —
-  convenience for humans who want to read docs without browsing
-  `~/.gh-optivem/docs/atdd/` in their editor.
+- `gh optivem asset status` — shows synced version vs binary version
+  and which target paths are populated. Useful for debugging.
+- `gh optivem docs <slug>` / `gh optivem docs --open` — convenience for
+  humans who want to read docs without browsing `~/.gh-optivem/docs/`
+  in their editor.
 
-### D4. Minimize post-processing of prompt files
+### D4. Bounded post-processing: shared bookends, nothing else
 
-Per `feedback_minimize_prompt_post_processing.md`: avoid adding new
-transforms between the on-disk prompt and what `claude -p` receives.
-Each transform makes the source-of-truth ambiguous and hides what the
-agent actually sees.
+The on-disk prompt file plus a tightly-bounded set of named substitutions
+must equal what the agent receives. The only sanctioned transforms are
+named-placeholder expansion and **two shared bookends** (preamble at the
+top, session-end at the bottom) that frame every prompt symmetrically.
+Conditionals, smart includes, templating layers, and any other
+post-processing are out.
+
+The 8-line preamble currently duplicated near-verbatim across all nine
+prompt files (`ticket vars / one-shot dispatch / don't commit / don't
+summarise`) is extracted to `shared/preamble.md` and **prepended** by
+`agents.Prompt()`, mirroring how `shared/session-end.md` is appended.
 
 Transforms after this plan completes:
 
 | # | Transform | Status |
 |---|---|---|
-| 1 | `agents.Prompt()` appends `shared/session-end.md` | **Keep** (grandfathered) |
+| 0 | `agents.Prompt()` **prepends** `shared/preamble.md` | **Add** (mirror of session-end append) |
+| 1 | `agents.Prompt()` appends `shared/session-end.md` | **Keep** |
 | 2 | `filterConditionals` strips `<!-- if -->` blocks | **Delete** (no users after subtype-split) |
 | 3 | `ExpandParams` substitutes `${name}` placeholders | **Keep** (load-bearing) |
 | 4 | `OverrideText` append | **Keep** (only fires when caller provides one) |
 | 5 | `materializePrompt` tempfile spill above argv limit | **Keep** (delivery path; no content change) |
 
-Notably, a shared-header prepend (proposed earlier as S2) is **not**
-introduced. The "ticket vars / one-shot dispatch / don't commit / don't
-summarise" preamble stays inlined in each prompt file, accepting 9×
-duplication.
+Net: 5 transforms today → 5 after. `filterConditionals` swaps out;
+preamble prepend swaps in.
+
+Token impact per dispatch is roughly zero — today the preamble is shipped
+inline in each prompt; after the change it is shipped via the prepend.
+The win is maintainability: the preamble is edited once in
+`shared/preamble.md` instead of nine hand-synced copies.
 
 ### D5. Strip inlined references; prompts point at canonical paths
 
 Each `### Reference: ...` block in the prompt body becomes a one-line
-pointer using a `${atdd_docs_root}` placeholder substituted at render
-time:
+pointer using a `${docs_root}` placeholder substituted at render time:
 
 ```
-Apply Driver Port Rules — read `${atdd_docs_root}/architecture/driver-port.md`.
-Apply DSL Core Rules — read `${atdd_docs_root}/architecture/dsl-core.md`.
-Cycle conventions — read `${atdd_docs_root}/process/at-cycle-conventions.md`.
+Apply Driver Port Rules — read `${docs_root}/atdd/architecture/driver-port.md`.
+Apply DSL Core Rules — read `${docs_root}/atdd/architecture/dsl-core.md`.
+Cycle conventions — read `${docs_root}/atdd/process/at-cycle-conventions.md`.
 ```
 
-`${atdd_docs_root}` is added to the fixed-schema placeholders in
+`${docs_root}` is added to the fixed-schema placeholders in
 `renderPrompt` (`clauderun.go:432-448`), populated with the absolute
-path `~/.gh-optivem/docs/atdd/` at render time. The agent's `Read` tool
-resolves the absolute path against the filesystem; no working-directory
-dependency.
+path `~/.gh-optivem/docs/` at render time. The methodology (`atdd/`,
+future `tdd/`, `ddd/`, `ha/`) is part of the pointer that the prompt
+file writes — a single placeholder serves every methodology. The
+agent's `Read` tool resolves the absolute path against the filesystem;
+no working-directory dependency.
 
 ### D6. Keep "safety" rules inline; move only reference material
 
@@ -273,22 +305,76 @@ is the final shape.
 
 Expected ~15 % size drop on each surviving prompt.
 
+### D10. Per-language equivalents files
+
+`docs/atdd/code/language-equivalents.md` today is one combined doc
+covering every supported language. Each dispatch that consults it makes
+the agent ingest equivalents for languages the project does not use.
+
+Split into per-language files synced under
+`~/.gh-optivem/docs/atdd/code/language-equivalents/`:
+
+```
+language-equivalents/
+  go.md
+  java.md
+  python.md
+  typescript.md
+  csharp.md
+  ...
+  README.md           ← links to each language file (replaces the
+                        "all-in-one-view" the combined doc gave)
+```
+
+Add `${language}` to the fixed-schema placeholder map, populated from
+the project's stack at dispatch time (the same source `gh optivem` uses
+elsewhere). Prompt pointers parameterize:
+
+```
+Apply language equivalents — read `${docs_root}/atdd/code/language-equivalents/${language}.md`.
+```
+
+Polyglot projects are handled per-phase: backend phases dispatch with
+`${language}=go`, frontend phases with `${language}=typescript`. Each
+phase consults one language. A phase that genuinely needs both writes
+two pointer lines.
+
+Same family as D7 / D8 — axis-based file splits that ship only the
+slice this dispatch needs. Language is independent of cycle (D7) and
+subtype (D8), so this is its own decision rather than a sub-case.
+Placed after D9 numerically because it was added late in the design
+walk-through; logically it belongs alongside D7 and D8.
+
+If `${language}` is unset, render fails fast — load-bearing placeholder.
+A silent default would mask config bugs.
+
 ## Critical files
 
-**D1 + D2 — ownership move and embed expansion:**
-- `internal/atdd/assets/docs/atdd/{process,architecture,code}/*.md` —
+**D1 + D2 — single embedded asset tree, ownership move:**
+- `internal/assets/` — new package root for all embedded assets.
+- `internal/assets/embed.go` — single `//go:embed assets/...` covering
+  both `runtime/` and `global/` subtrees. Follows the
+  `internal/atdd/runtime/agents/embed.go:10-16` pattern.
+- `internal/assets/runtime/prompts/atdd/*.md` — moved from
+  `internal/atdd/runtime/agents/prompts/*.md`.
+- `internal/assets/runtime/shared/preamble.md` — new (extracts the
+  duplicated preamble per D4).
+- `internal/assets/runtime/shared/session-end.md` — moved from
+  `internal/atdd/runtime/agents/shared/session-end.md`.
+- `internal/assets/global/docs/atdd/{architecture,process,code}/*.md` —
   new (moved from `shop/docs/atdd/`).
-- `internal/atdd/assets/claude/agents/atdd/*.md` — new (moved from
+- `internal/assets/global/claude/agents/atdd/*.md` — new (moved from
   `shop/.claude/agents/atdd/`, including `meta/` subtree).
-- `internal/atdd/assets/claude/commands/atdd/*.md` — new (moved from
+- `internal/assets/global/claude/commands/atdd/*.md` — new (moved from
   `shop/.claude/commands/atdd/`).
-- `internal/atdd/assets/embed.go` — new; declares `//go:embed assets/...`
-  following the `internal/atdd/runtime/agents/embed.go:10-16` precedent.
+- `internal/atdd/runtime/agents/` — refactored to a thin wrapper that
+  reads from `internal/assets`. `agents.Prompt()` keeps its public API
+  (same callsites in `clauderun`), now prepends `runtime/shared/preamble.md`
+  and appends `runtime/shared/session-end.md`.
 - `internal/atdd/install.go` — rewrite or remove. The current
   shop-walk install (`install.go:88-114`) is replaced by the sync
   mechanism below; if the file's other responsibilities (system code
-  copy, workflows) survive, they stay; the ATDD-asset half is deleted
-  from here.
+  copy, workflows) survive, they stay; the ATDD-asset half is deleted.
 - `internal/atdd/install_test.go` — drop ATDD-asset fixtures.
 - shop repo (separate PR or coordinated commit): delete
   `shop/docs/atdd/`, `shop/.claude/agents/atdd/`,
@@ -296,59 +382,68 @@ Expected ~15 % size drop on each surviving prompt.
   stub pointing at gh-optivem.
 
 **D3 — auto-sync mechanism:**
-- `internal/atdd/sync/sync.go` — new package. Exports `EnsureSynced()`
-  which reads the stamp, compares, writes assets if needed, updates
-  the stamp. Atomic write via temp+rename. File lock for concurrent
-  invocations.
-- `internal/atdd/sync/sync_test.go` — coverage for stamp matching,
+- `internal/assets/sync/sync.go` — new package. Exports `EnsureSynced()`
+  which reads the stamp, compares, walks the `global/` subtree of the
+  embedded FS, writes to `~/.gh-optivem/docs/` and `~/.claude/`,
+  updates the stamp. Atomic write via temp+rename. File lock for
+  concurrent invocations.
+- `internal/assets/sync/sync_test.go` — coverage for stamp matching,
   cross-version sync, escape-hatch behavior, atomic-write under
   concurrent invocation.
 - `cmd/gh-optivem/main.go` (or wherever the root command lives) —
   invoke `sync.EnsureSynced()` at startup unless
   `GH_OPTIVEM_NO_AUTO_SYNC` is truthy.
-- `cmd/gh-optivem/atdd_sync.go` — new subcommand
-  `gh optivem atdd sync` for explicit sync.
+- `cmd/gh-optivem/asset_sync.go` — new subcommand
+  `gh optivem asset sync` for explicit sync.
 - ATDD-consuming commands (notably `gh optivem implement`) — when the
   escape hatch is set, check the stamp and fail fast with the
   documented error if stale.
 
-**D5 — placeholder substitution for doc paths:**
-- `internal/atdd/runtime/clauderun/clauderun.go:432-448` — add
-  `atdd_docs_root` to the fixed-schema placeholders, populated with
-  the absolute path of `~/.gh-optivem/docs/atdd/`.
+**D5 + D10 — placeholder substitution:**
+- `internal/atdd/runtime/clauderun/clauderun.go:432-448` — add two
+  placeholders to the fixed-schema map:
+  - `docs_root` — absolute path of `~/.gh-optivem/docs/`.
+  - `language` — current dispatch's target language (e.g. `go`,
+    `typescript`); load-bearing, render fails if unset.
 - `internal/atdd/runtime/clauderun/clauderun_test.go` — extend the
-  `TestRenderPrompt_*` cases with `${atdd_docs_root}` substitution
-  assertions.
+  `TestRenderPrompt_*` cases with `${docs_root}` and `${language}`
+  substitution assertions, plus the "unset `${language}` fails fast"
+  case.
 
-**D7 + D8 — prompt file splits:**
-- `internal/atdd/runtime/agents/prompts/atdd-dsl-at.md` — new
+**D7 + D8 + D10 — prompt file splits:**
+- `internal/assets/runtime/prompts/atdd/atdd-dsl-at.md` — new
   (AT-cycle half of `atdd-dsl.md`).
-- `internal/atdd/runtime/agents/prompts/atdd-dsl-ct.md` — new
+- `internal/assets/runtime/prompts/atdd/atdd-dsl-ct.md` — new
   (CT-cycle half of `atdd-dsl.md`).
-- `internal/atdd/runtime/agents/prompts/atdd-driver-at.md`,
+- `internal/assets/runtime/prompts/atdd/atdd-driver-at.md`,
   `atdd-driver-ct.md` — same pattern.
-- `internal/atdd/runtime/agents/prompts/atdd-test-at.md`,
+- `internal/assets/runtime/prompts/atdd/atdd-test-at.md`,
   `atdd-test-ct.md` — same pattern.
-- `internal/atdd/runtime/agents/prompts/atdd-task-system-interface-redesign.md` —
+- `internal/assets/runtime/prompts/atdd/atdd-task-system-interface-redesign.md` —
   new (atdd-task.md minus the gated block).
-- `internal/atdd/runtime/agents/prompts/atdd-task-external-system-interface-redesign.md` —
+- `internal/assets/runtime/prompts/atdd/atdd-task-external-system-interface-redesign.md` —
   new (atdd-task.md with gated block inlined).
 - Delete: `atdd-dsl.md`, `atdd-driver.md`, `atdd-test.md`,
   `atdd-task.md`.
-- Dispatcher — `internal/atdd/runtime/clauderun/clauderun.go` or
-  the agent resolution layer — extend the agent-name lookup to map
-  `(phase, cycle)` and `(task, subtype)` to the right file.
+- `internal/assets/global/docs/atdd/code/language-equivalents/{go,java,python,typescript,csharp,...}.md` —
+  per-language split of the prior combined `language-equivalents.md`.
+- `internal/assets/global/docs/atdd/code/language-equivalents/README.md` —
+  index linking to each language file.
+- Dispatcher — `internal/atdd/runtime/clauderun/clauderun.go` or the
+  agent resolution layer — extend the agent-name lookup to map
+  `(phase, cycle)` and `(task, subtype)` to the right file; pass
+  `${language}` through to render.
 
 **D5 + D6 — prompt body slimming:**
-- `internal/atdd/runtime/agents/prompts/atdd-dsl-{at,ct}.md` — strip
+- `internal/assets/runtime/prompts/atdd/atdd-dsl-{at,ct}.md` — strip
   inlined references, keep guardrails inline.
-- `internal/atdd/runtime/agents/prompts/atdd-driver-{at,ct}.md` — same.
-- `internal/atdd/runtime/agents/prompts/atdd-test-{at,ct}.md` — same.
-- `internal/atdd/runtime/agents/prompts/atdd-task-*.md` — strip inlined
+- `internal/assets/runtime/prompts/atdd/atdd-driver-{at,ct}.md` — same.
+- `internal/assets/runtime/prompts/atdd/atdd-test-{at,ct}.md` — same.
+- `internal/assets/runtime/prompts/atdd/atdd-task-*.md` — strip inlined
   `system.md`, `driver-port.md`, `driver-adapter.md` references.
-- `internal/atdd/runtime/agents/prompts/atdd-chore.md` — strip inlined
+- `internal/assets/runtime/prompts/atdd/atdd-chore.md` — strip inlined
   `task-and-chore-cycles.md`.
-- `internal/atdd/runtime/agents/prompts/atdd-backend.md`,
+- `internal/assets/runtime/prompts/atdd/atdd-backend.md`,
   `atdd-frontend.md`, `atdd-stubs.md`, `atdd-fix-verify.md` — strip
   any remaining inlines.
 
@@ -368,70 +463,92 @@ Expected ~15 % size drop on each surviving prompt.
 - `internal/atdd/runtime/agents/embed.go:32-39` — `agents.Prompt`
   pattern for appending `shared/session-end.md`; stays as-is.
 - `internal/atdd/runtime/clauderun/clauderun.go:432-448` — fixed-schema
-  placeholder map; `${atdd_docs_root}` joins this set.
+  placeholder map; `${docs_root}` and `${language}` join this set.
 - `internal/atdd/runtime/clauderun/clauderun.go:264-269` —
   `findUnfilledPlaceholders` already guards against typos; the new
-  `${atdd_docs_root}` doesn't break the guarantee.
+  placeholders don't break the guarantee.
 - `atdd-fix-verify.md:178` / `atdd-task.md:178` — precedent for
   "reference exists at a known path; read with the Read tool" —
   generalized by D5.
 
 ## Steps
 
-### Step 1 — D1 + D2 (ownership move + embed expansion)
+### Step 1 — D1 + D2 (single asset tree + ownership move)
 
 Land as one bundle (the move is non-atomic if split — every consumer
 would see a window where docs are gone). Sub-steps:
 
-1. Create `internal/atdd/assets/` with the three asset trees moved
-   from shop.
-2. Add `internal/atdd/assets/embed.go` with `//go:embed assets/...`.
-3. Update `internal/atdd/install.go` (or remove the ATDD-asset half).
-4. Update `internal/atdd/install_test.go` fixtures.
-5. Delete the original copies in shop; leave a pointer-README.
+1. Create `internal/assets/` with `runtime/` and `global/` subtrees.
+2. Move existing prompts from `internal/atdd/runtime/agents/prompts/*.md`
+   to `internal/assets/runtime/prompts/atdd/*.md`.
+3. Move `internal/atdd/runtime/agents/shared/session-end.md` to
+   `internal/assets/runtime/shared/session-end.md`. Create
+   `internal/assets/runtime/shared/preamble.md` (D4) by extracting the
+   duplicated 8-line preamble from one of the current prompt files.
+4. Move shop's asset trees into `internal/assets/global/`.
+5. Add `internal/assets/embed.go` with one `//go:embed assets/...`
+   covering both subtrees.
+6. Refactor `internal/atdd/runtime/agents/` to a thin wrapper reading
+   from `internal/assets`. `agents.Prompt()` keeps its public API;
+   internally it now prepends `runtime/shared/preamble.md` and appends
+   `runtime/shared/session-end.md`.
+7. Update `internal/atdd/install.go` (or remove the ATDD-asset half).
+8. Update `internal/atdd/install_test.go` fixtures.
+9. Delete the original copies in shop; leave a pointer-README.
 
 **Validation:**
-- Build succeeds; embed.FS contains every asset.
+- Build succeeds; single embed.FS contains every asset.
 - shop becomes equivalent to any other consumer after the change.
+- `claude -p` dispatches still resolve the right prompt file via the
+  refactored `agents.Prompt()`.
 
 ### Step 2 — D3 (auto-sync mechanism)
 
-1. Create `internal/atdd/sync/sync.go` with `EnsureSynced()` and
-   atomic-write + lock support.
+1. Create `internal/assets/sync/sync.go` with `EnsureSynced()` and
+   atomic-write + lock support, walking the embedded `global/` subtree.
 2. Wire `sync.EnsureSynced()` into `cmd/gh-optivem/main.go` startup,
    gated by `GH_OPTIVEM_NO_AUTO_SYNC`.
-3. Add `gh optivem atdd sync` subcommand.
+3. Add `gh optivem asset sync` subcommand.
 4. Add the staleness-error in ATDD-consuming commands for the
    escape-hatch path.
 
 **Validation:**
-- First invocation after install writes the three target trees and
-  the stamp file.
+- First invocation after install writes the target trees and the
+  stamp file.
 - Subsequent invocation is a no-op (stamp matches).
 - Simulated version bump triggers re-sync.
 - Concurrent invocation under file-lock test: no torn writes.
 - `GH_OPTIVEM_NO_AUTO_SYNC=1` skips sync; `implement` then fails
   with the documented error when stale.
 
-### Step 3 — D5 (`${atdd_docs_root}` placeholder)
+### Step 3 — D5 + D10 (placeholders for paths and language)
 
-Add the placeholder to `renderPrompt`'s fixed-schema map, populate
-with `~/.gh-optivem/docs/atdd/`. Add `TestRenderPrompt_*` case.
+Add `${docs_root}` (populated with `~/.gh-optivem/docs/`) and
+`${language}` (populated from the dispatch's target stack) to
+`renderPrompt`'s fixed-schema map. `${language}` is load-bearing — if
+unset, render fails fast. Add `TestRenderPrompt_*` cases for both.
 
 **Validation:**
 - Rendered prompts contain absolute paths.
-- `findUnfilledPlaceholders` returns empty.
+- Rendered prompts substitute `${language}` correctly per dispatch.
+- Unset `${language}` produces a clear render-time error.
+- `findUnfilledPlaceholders` returns empty for well-formed dispatches.
 
-### Step 4 — D7 + D8 (file splits)
+### Step 4 — D7 + D8 + D10 (file splits)
 
 Split `atdd-dsl`, `atdd-driver`, `atdd-test` into per-cycle files.
-Split `atdd-task` into per-subtype files. Update the dispatcher's
-agent-name lookup to map phase/cycle/subtype to filename.
+Split `atdd-task` into per-subtype files. Split
+`docs/atdd/code/language-equivalents.md` into per-language files
+under `language-equivalents/<language>.md` (plus a README index).
+Update the dispatcher's agent-name lookup to map phase/cycle/subtype
+to filename; pass `${language}` through to render.
 
 **Validation:**
 - Each new prompt file reads top-to-bottom without conditionals.
 - AT-cycle dispatch picks the `-at.md` file; CT-cycle picks `-ct.md`.
 - Task dispatch picks the right subtype file.
+- Rendered language-equivalents pointer resolves to the correct
+  per-language file via `${language}`.
 - `TestRenderPrompt_*` updated to cover each variant.
 
 ### Step 5 — filterConditionals deletion
@@ -443,14 +560,14 @@ conditional-gating tests.
 **Validation:**
 - Build succeeds.
 - No `<!-- if -->` markers remain in any prompt file
-  (`rg 'if:[a-z_]+=' internal/atdd/runtime/agents/prompts/` returns
-  empty).
+  (`rg 'if:[a-z_]+=' internal/assets/runtime/prompts/` returns empty).
 
 ### Step 6 — D6 + D9 (strip inlined references + prose copyedit)
 
 Per-prompt copyedit:
 - Replace each `### Reference: ...` block with a one-line
-  `${atdd_docs_root}/...` pointer.
+  `${docs_root}/atdd/...` pointer (use `${language}` where the
+  reference is language-equivalents).
 - Keep guardrails inline; budget ~500 bytes total per prompt.
 - Two-pass copyedit on surviving prose; remove duplicated guard rails.
 
@@ -491,5 +608,5 @@ time drops proportionally.
 - The non-ATDD portions of `gh optivem init` (system code copy,
   workflow installation, externals). D1's scope is the ATDD asset
   subset only.
-- `gh optivem atdd docs <slug>` / `--open` helpers and
-  `gh optivem atdd status`. Nice-to-have, can land in a follow-up.
+- `gh optivem docs <slug>` / `--open` helpers and
+  `gh optivem asset status`. Nice-to-have, can land in a follow-up.
