@@ -1,8 +1,64 @@
 # Plan: end-to-end retry mechanism — consolidate, harden, audit, close gaps
 
+> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-14T19:31:10Z`
+
 Single source of truth for retry-related work in this workspace. Supersedes
 the four standalone plans listed below by folding their goals, file lists,
 and verification steps into one phased program.
+
+## Outcome — what will be true when all 6 phases complete
+
+**One canonical retry policy across the workspace.** Adding a new transient
+pattern (HTTP 5xx, DNS hiccup, GOAWAY, etc.) becomes a *single* edit to one
+canonical file plus one `sync-shared.sh` run, instead of mirroring across
+five copies (`actions/shared/gh-retry.sh`, `shop/.github/workflows/scripts/gh-retry.sh`,
+`gh-optivem/.github/scripts/gh-retry.sh`, `gh-optivem/internal/shell/ghretry.go`,
+and a future `sonar-retry.sh`). The "lockstep edit" pain documented in the
+superseded 1830 and 1850 plans is eliminated.
+
+**Two recent incidents resolved.**
+- SonarCloud 504 from acceptance run 25865827466 → sonar uploads now retry
+  with bounded backoff and hard-fail pass-through on 4xx.
+- GitHub GraphQL transient from acceptance run 25877369208 → `gh project ...`
+  calls now retry; the misleading secondary "Commit and push" panic that
+  followed it is also suppressed.
+
+**Auditable retry coverage everywhere.** Every external-I/O call in
+`gh-optivem`'s Go code and shop's 88 workflow files is either retrying via
+the shared engine or explicitly documented as not needing retry. Two audit
+reports plus two follow-up fix plans land alongside the infrastructure.
+
+### Workspace files at end-state
+
+| Location | What |
+|---|---|
+| `optivem/actions/shared/` | `retry-core.sh` (~80 LOC generic engine), `gh-retry.sh` / `docker-retry.sh` / `sonar-retry.sh` (~15 LOC wrappers each, declare regex + delegate), plus matching `_test-*.sh` files |
+| `optivem/actions/scripts/sync-shared.sh` | Idempotent script that vendors the 4 helpers into shop and gh-optivem on demand |
+| `optivem/shop/.github/workflows/scripts/` | 4 vendored helpers (`retry-core` + `gh-retry` + `docker-retry` + `sonar-retry`), each with a generated-from-SHA banner |
+| `optivem/shop/.github/workflows/{monolith-dotnet,multitier-backend-dotnet,monolith-java,multitier-backend-java}-commit-stage.yml` | Source `sonar-retry.sh` and wrap the analysis-upload call in `sonar_retry ...` |
+| `optivem/gh-optivem/internal/shell/retrycore.go` | New — generic `RetryWithPolicy(transient, hardFail, prefix, fn)`. Mirrors the bash factoring |
+| `optivem/gh-optivem/internal/shell/ghretry.go` | Refactored to ~30 LOC against `RetryWithPolicy`; adds `RunCaptureWithRetry`; `ghRetryTransient` regex covers GitHub GraphQL wording |
+| `optivem/gh-optivem/internal/steps/project.go` | Three `projectRunCapture` call sites routed through `RunCaptureWithRetry` via the existing test seam |
+| `optivem/gh-optivem/internal/steps/finalize.go` | `commitAndPushRepo` skips cleanly when local dir is absent (no more misleading `chdir ... no such file or directory` panic) |
+| `optivem/gh-optivem/.github/scripts/` | 4 vendored helpers, identical to shop's |
+| `optivem/gh-optivem/.claude/agents/workflow-auditor.md` | New §N rubric section covering external-I/O retry coverage (N-A / N-B / N-C / R-OK categories + anti-pattern list) |
+| `optivem/gh-optivem/audits/<date>-external-call-retry-coverage.md` | New audit report — every Go external-call site classified |
+| `optivem/gh-optivem/audits/<date>-shop-workflow-retry-coverage.md` | New audit report — every shop workflow external-I/O step classified |
+| `optivem/gh-optivem/plans/<date>-fix-gh-optivem-retry-gaps.md` | Follow-up plan listing R-MISSING Go fixes (executed in Phase 6) |
+| `optivem/gh-optivem/plans/<date>-fix-shop-workflow-retry-gaps.md` | Follow-up plan listing R-MISSING shop workflow fixes (executed in Phase 6) |
+
+### Maintenance after this plan lands
+
+- **New transient pattern observed in CI logs** → one edit to canonical
+  `retry-core.sh` (or a `<tool>-retry.sh` if tool-specific) + run
+  `sync-shared.sh` + commit per affected repo via `/commit`. No mirror edits.
+- **New external tool needs retry** → drop in a ~15-line
+  `<tool>-retry.sh` wrapping `retry_with_policy` with the tool's regex,
+  re-run `sync-shared.sh`. For Go callers, add a thin function passing the
+  tool's regex to `RetryWithPolicy`.
+- **Sync drift detection** → vendored files carry a generated-from-SHA
+  banner that flags mismatch on visual inspection; a CI lint enforcing
+  this is logged as out-of-scope follow-up but easy to add later.
 
 ## Supersedes
 
@@ -413,29 +469,71 @@ before the step exits 1. Do not commit the injection.
   emits an overflow file-count note and the follow-up plan calls for a
   second audit pass against the remainder.
 
-## Out of scope (logged as follow-ups, not blockers)
+## Deferred / follow-up topics
 
-- **TS commit-stage workflows.** They use `SonarSource/sonarqube-scan-action@v7`
-  (a `uses:` step). Inline `sonar_retry` doesn't fit. Defer unless a TS
-  combo observably 504s. If so, options are (a) replace the action with
-  `npx sonar-scanner` + `sonar_retry`, or (b) wrap with `Wandalen/wretry.action@v3`
-  — note that adopting wretry would re-introduce the multi-mechanism split
-  this plan eliminates, so prefer option (a).
-- **`shop/system/.../run-sonar.sh` local helpers.** Manual-only; not invoked
-  by CI. Low value to retrofit.
-- **TypeScript port of `retry-core` for any future TS/JS code in shop.**
-  Open if/when needed.
-- **CI lint enforcing sync-banner SHA matches canonical.** Useful once the
-  pattern is established and proven; reduces sync-drift risk.
+Intentionally not in this plan, but worth tracking and likely to be picked
+up later as separate plan files. Each entry includes a trigger that should
+prompt revisiting it.
+
+- **TS commit-stage workflows.** Three workflows
+  (`monolith-typescript-commit-stage.yml`,
+  `multitier-backend-typescript-commit-stage.yml`,
+  `multitier-frontend-react-commit-stage.yml`) use
+  `SonarSource/sonarqube-scan-action@v7` — a `uses:` step that inline
+  `sonar_retry` can't wrap. **Trigger to revisit:** a TS combo observably
+  504s in CI. **Options when picked up:** (a) replace the action with
+  `npx sonar-scanner` + `sonar_retry` (preferred — consistent with the
+  bash pattern), or (b) wrap with `Wandalen/wretry.action@v3` (would
+  re-introduce the multi-mechanism split this plan eliminates, so avoid).
+- **CI lint enforcing sync-banner SHA matches canonical.** Each vendored
+  helper carries a `generated-from-X-at-SHA` banner; today verification
+  is visual. A small lint workflow could compare each vendored copy's
+  banner SHA against the canonical file's current SHA and fail the build
+  on mismatch. **Trigger to revisit:** any observed instance of a vendored
+  copy drifting from canonical, or the first time `sync-shared.sh` is
+  forgotten and the regex update only lands in some repos.
+- **`shop/system/.../run-sonar.sh` local helpers.** Local-dev-only;
+  not invoked by CI. **Trigger to revisit:** a developer reports a
+  transient 504 hitting them locally and asks for retry parity. Low
+  priority either way.
+- **TypeScript port of `retry-core` for future TS/JS code in shop.**
+  Today shop's TS code shells via npm/npx which has its own retry
+  contract. **Trigger to revisit:** new TS code in any consumer repo
+  starts shelling to `gh`, `docker`, or a registry directly and observes
+  transients.
+- **Retry audits for repos other than `shop`** (e.g. `optivem/optivem-testing`,
+  `optivem/courses`, `optivem/hub`). **Trigger to revisit:** smoke-test
+  failures attributable to retry gaps in those repos. Method would
+  parallel Phase 5.
 - **5xx-only retry predicate vs. current regex-based classification.**
-  Premature; the regex approach has been working.
-- **Workflows in repos other than `shop` (optivem-testing etc.).** Phase 5
-  scopes shop only. Handle in a follow-up audit if smoke data justifies it.
-- **Adding retry to local git / docker-build / build-tool calls.** Out by
-  policy — retry on local operations is rarely correct and usually masks
-  bugs.
-- **Changing the backoff schedule or attempt count.** Out by policy —
-  4×{5,15,45} is the workspace convention.
+  Today both bash and Go classifiers grep stderr for keyword patterns
+  (`HTTP 5\d\d|timeout|EOF|...`). A more precise approach could parse
+  exit codes or HTTP status from structured output. **Trigger to revisit:**
+  a misclassification observed in production (a non-retryable error
+  triggering retries, or vice versa). Premature otherwise.
+
+## Out by policy (not expected to change)
+
+Decisions, not deferrals — these will not be revisited unless the policy
+itself is reconsidered (in which case, separate plan).
+
+- **No retry on local-only operations** — `git add`, `git commit`,
+  `docker build`, `dotnet build`, `mvn package`, `gradle assemble`,
+  filesystem ops, etc. Retry on local operations is rarely correct and
+  usually masks bugs (compilation errors don't get better the second
+  time you try). The audit phases (4 and 5) classify these as R-DOC-OK,
+  not R-MISSING.
+- **Backoff schedule fixed at 4 attempts, 5s → 15s → 45s.** The current
+  schedule has been stable across `gh-retry.sh`, `docker-retry.sh`, and
+  the Go port. Changing it without empirical justification fragments the
+  observation pattern in CI logs ("how many retries are normal?") and
+  invalidates the existing test fixtures.
+- **No retry mechanism other than the shared in-house engine.** Adopting
+  `Wandalen/wretry.action@v3`, `nick-fields/retry@v3`, or similar
+  alongside the in-house engine would re-create the multi-mechanism
+  split this plan exists to eliminate. If a future requirement genuinely
+  doesn't fit the engine, the right response is to extend the engine,
+  not bypass it.
 
 ## Notes on shape decisions (for reviewers)
 
