@@ -453,7 +453,7 @@ func ValidateProjectURLFormat(url string) string {
 	if !strings.HasPrefix(url, "https://github.com/") {
 		return "must be a https://github.com/... URL (e.g. https://github.com/orgs/acme/projects/1)"
 	}
-	if _, _, err := parseProjectURL(url); err != nil {
+	if _, _, _, err := parseProjectURL(url); err != nil {
 		return "must match https://github.com/orgs/<org>/projects/<n> or https://github.com/users/<user>/projects/<n>"
 	}
 	return ""
@@ -852,17 +852,34 @@ func realCheckOwnerExists(owner string) error {
 	return fmt.Errorf("no GitHub user or organization named %q", owner)
 }
 
+// projectExistsQuery is the minimal GraphQL query for project existence.
+// Replaces `gh project view`, whose internal query expands every projectV2
+// field-value-type variant and has been hitting upstream resolver bugs on
+// the projectV2 path. We only need to know that the project resolves — we
+// ask for the smallest possible scalar (id). %s dispatches to "organization"
+// or "user" based on parseProjectURL's ownerKind: querying both branches
+// in one request produces a partial NOT_FOUND for the wrong type that gh
+// treats as fatal.
+//
+// Duplicated from internal/atdd/runtime/board's projectMetaQuery rather
+// than imported, for the same reason parseProjectURL is duplicated below.
+const projectExistsQuery = `query($login:String!,$number:Int!){%s(login:$login){projectV2(number:$number){id}}}`
+
 // realCheckProjectExists is the production CheckProjectExistsFn. Parses
-// the URL into (owner, number) and probes `gh project view <number>
-// --owner <login>`. A non-zero exit covers both "doesn't exist" and
+// the URL into (ownerKind, owner, number) and probes the project via a
+// minimal GraphQL query. A non-zero exit covers both "doesn't exist" and
 // "exists but caller can't read it" — same operator-visible failure
 // either way (`gh optivem init` will fail at the same step).
 func realCheckProjectExists(url string) error {
-	owner, number, err := parseProjectURL(url)
+	ownerKind, owner, number, err := parseProjectURL(url)
 	if err != nil {
 		return fmt.Errorf("project URL %q: %w", url, err)
 	}
-	cmd := exec.Command("gh", "project", "view", strconv.Itoa(number), "--owner", owner, "--format", "json")
+	query := fmt.Sprintf(projectExistsQuery, ownerKind)
+	cmd := exec.Command("gh", "api", "graphql",
+		"-F", "login="+owner,
+		"-F", "number="+strconv.Itoa(number),
+		"-f", "query="+query)
 	cmd.Stderr = nil
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("project %s/%d not found or not accessible", owner, number)
@@ -870,30 +887,36 @@ func realCheckProjectExists(url string) error {
 	return nil
 }
 
-// parseProjectURL splits a GitHub Project (v2) URL into owner login +
-// project number. Accepts both org and user variants — `gh project`
-// takes either as --owner.
+// parseProjectURL splits a GitHub Project (v2) URL into ownerKind
+// ("organization" | "user"), owner login, and project number. ownerKind
+// is used by realCheckProjectExists to issue a targeted GraphQL query
+// (querying both branches in a single request produces a partial
+// NOT_FOUND for the wrong type, which gh treats as fatal).
 //
 // Duplicated from internal/steps/project.go and internal/atdd/runtime/board
 // rather than imported to keep internal/config dependency-free of the
 // runtime-side packages it underpins.
-func parseProjectURL(s string) (owner string, number int, err error) {
+func parseProjectURL(s string) (ownerKind, owner string, number int, err error) {
 	u, perr := neturl.Parse(s)
 	if perr != nil {
-		return "", 0, fmt.Errorf("malformed URL: %w", perr)
+		return "", "", 0, fmt.Errorf("malformed URL: %w", perr)
 	}
 	if u.Host != "github.com" {
-		return "", 0, fmt.Errorf("expected host github.com, got %q", u.Host)
+		return "", "", 0, fmt.Errorf("expected host github.com, got %q", u.Host)
 	}
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 	if len(parts) != 4 || (parts[0] != "users" && parts[0] != "orgs") || parts[2] != "projects" {
-		return "", 0, fmt.Errorf("expected URL of form https://github.com/{users|orgs}/<owner>/projects/<n>")
+		return "", "", 0, fmt.Errorf("expected URL of form https://github.com/{users|orgs}/<owner>/projects/<n>")
 	}
 	n, cerr := strconv.Atoi(parts[3])
 	if cerr != nil || n <= 0 {
-		return "", 0, fmt.Errorf("project number must be a positive integer: %s", parts[3])
+		return "", "", 0, fmt.Errorf("project number must be a positive integer: %s", parts[3])
 	}
-	return parts[1], n, nil
+	kind := "organization"
+	if parts[0] == "users" {
+		kind = "user"
+	}
+	return kind, parts[1], n, nil
 }
 
 // confirmReposExist probes every repo in fullRepos ("<owner>/<name>") and, if
