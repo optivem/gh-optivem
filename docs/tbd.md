@@ -209,6 +209,25 @@ The discipline you build with plain TBD or Scaled TBD (small commits, `pull --re
 
 The merge-vs-rebase debate is often framed as a matter of taste. It isn't — at least not when you've already picked a branching model. **The choice between merge and rebase is downstream of the choice between trunk-based and feature-branching.** Pick a branching model first, and the integration strategy follows.
 
+### Plain-English version: why feature branching uses merge
+
+Imagine a team where Alice spends a week building user profiles, Bob spends a week building the shopping cart, and Carol spends a week building checkout. They each get their own private copy of the codebase (a *branch*) to work on without stepping on each other. After a week, all three pieces come together into the main project.
+
+This is genuinely parallel work over time. Three real people, three real weeks, three real tracks of development that existed simultaneously.
+
+A **merge commit** is git's way of saying: *"On Friday, Alice's week-of-work joined the main project. Here's the exact moment that happened. Her commits are preserved as-is — same dates, same author, same content — and now they're part of the trunk alongside Bob's and Carol's."* The history reads like a documentary of what actually happened: three streams of work existed in parallel and joined the trunk at three distinct points.
+
+**Rebase** would rewrite Alice's, Bob's, and Carol's commits to *look like* they happened in a single sequence, one after the other, even though they didn't. The history now says: "First Alice did her work, then Bob, then Carol." That's false. They worked in parallel for a week. The history is lying about how the project actually unfolded.
+
+For a quick local cleanup — rebasing two commits you wrote ten minutes ago, before pushing — the "lie" is harmless. No one was watching, the parallel work was trivial. For a week-long feature branch with three people watching, the lie destroys information you might actually need later:
+
+- **"When did Alice's feature land?"** With a merge commit, there's a literal date on it. With rebase, her commits get new timestamps when replayed.
+- **"Was the bug introduced in Alice's branch or Bob's?"** With merge commits, you can isolate each branch's commits. With rebase, all three streams are interleaved and indistinguishable.
+- **"Can I revert just Alice's whole feature?"** With a merge commit, `git revert -m 1 <merge-sha>` undoes the entire branch in one move. With rebase, you have to find every one of her commits scattered through the timeline.
+- **Collaboration on the branch is safe.** If Alice and a colleague both push to her feature branch, no one's commits get rewritten under them. Rebase on a shared branch would silently break the colleague's local copy.
+
+TBD eliminates parallel work in the first place — small commits, short-lived branches, integrate constantly. So there's no parallel-work fact to preserve, and a linear history is more useful than an accurate one. Feature branching is honest about parallel work; merge commits record that honesty. It's not that merge is "worse" than rebase or vice versa — each tells a different *kind* of truth, and you should use the one that matches the kind of truth your branching model actually has.
+
 ### What each does, mechanically
 
 **Merge:**
