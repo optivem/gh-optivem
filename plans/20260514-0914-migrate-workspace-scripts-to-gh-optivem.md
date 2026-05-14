@@ -1,5 +1,7 @@
 # Plan: migrate `github-utils/scripts/*` into `gh-optivem` as native subcommands
 
+> **Status: DEFERRED.** This is a larger change than fits the current cycle — postponed pending dedicated time. Do not start execution without re-confirming scope with the user.
+
 ## Context
 
 `academy/github-utils/scripts/` hosts bash scripts the user runs daily:
