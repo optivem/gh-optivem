@@ -2,9 +2,11 @@
 package shell
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -141,7 +143,11 @@ func RunCapture(cmdStr, cwd string) (string, error) {
 	return stdoutStr, nil
 }
 
-// RunPassthrough runs a command with stdout/stderr passed through to the terminal.
+// RunPassthrough runs a command with stdout/stderr passed through to the
+// terminal. Output is also captured in-memory and folded into the returned
+// error on failure so the caller's FATAL line is self-contained — the live
+// stream may have scrolled off or been redirected to a log file the user
+// does not look at.
 func RunPassthrough(cmdStr, cwd string) error {
 	parts, err := splitCommand(cmdStr)
 	if err != nil {
@@ -154,9 +160,13 @@ func RunPassthrough(cmdStr, cwd string) error {
 	if cwd != "" {
 		cmd.Dir = cwd
 	}
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	var buf bytes.Buffer
+	cmd.Stdout = io.MultiWriter(os.Stdout, &buf)
+	cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s: %w\noutput:\n%s", cmdStr, err, buf.String())
+	}
+	return nil
 }
 
 // splitCommand splits a command string into parts, respecting quotes.

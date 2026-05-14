@@ -180,3 +180,19 @@ Items M2-M3, M5-M6, and L1-L8 are documented as intentional; no action recommend
 - Medium-severity findings: **6** (2 actionable, 4 defensible)
 - Low-severity findings: **8** (all defensible / documented)
 - **Total findings: 19** (well under the 20-cap; no overflow tail).
+
+---
+
+## 2026-05-14: H1–H5 fixed
+
+Per `plans/20260514-0850-build-system-stderr-visibility.md`:
+
+- **H1** `runCompose` (`internal/runner/system.go`) — tees stdio to a 16 KB `tailWriter`, folds tail into returned error.
+- **H2** `runDocker` (same file) — same fix.
+- **H3** `runShell` (`internal/runner/tests.go`) — same fix.
+- **H4** `RunPassthrough` (`internal/shell/github.go`) — tees stdio to a `bytes.Buffer`, folds output into returned error.
+- **H5** bug-report `bodyFile` write/close (`main.go` `createBugReport`) — write/close errors now log and abort the `gh issue create` call instead of posting a truncated body.
+
+Regression: `TestRunComposeError_SurfacesStderr` in `internal/runner/system_test.go`.
+
+Medium and Low findings remain out of scope.

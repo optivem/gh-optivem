@@ -253,14 +253,22 @@ func downOne(s SystemEntry, cwd string) error {
 }
 
 // runCompose executes `docker compose <args...>` from cwd. stdout+stderr are
-// streamed to os.Stdout/os.Stderr so the user sees live progress.
+// streamed to os.Stdout/os.Stderr so the user sees live progress; the last
+// 16 KB are also mirrored into the returned error message so a failure's
+// FATAL line is self-contained — the live stream may have scrolled off or
+// been redirected to a log file the user does not look at.
 func runCompose(cwd string, args ...string) error {
 	full := append([]string{"compose"}, args...)
 	cmd := exec.Command("docker", full...)
 	cmd.Dir = cwd
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	tail := &tailWriter{cap: 16 * 1024}
+	cmd.Stdout = io.MultiWriter(os.Stdout, tail)
+	cmd.Stderr = io.MultiWriter(os.Stderr, tail)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("docker compose %s: %w\nstderr tail:\n%s",
+			strings.Join(args, " "), err, tail.String())
+	}
+	return nil
 }
 
 // runComposeCtx is runCompose with a hard deadline. If the deadline elapses,
@@ -290,13 +298,19 @@ func runComposeCtx(cwd string, timeout time.Duration, args ...string) error {
 	return nil
 }
 
-// runDocker executes `docker <args...>` with output streamed to the user.
+// runDocker executes `docker <args...>` with output streamed to the user
+// and the last 16 KB mirrored into the returned error.
 func runDocker(cwd string, args ...string) error {
 	cmd := exec.Command("docker", args...)
 	cmd.Dir = cwd
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	tail := &tailWriter{cap: 16 * 1024}
+	cmd.Stdout = io.MultiWriter(os.Stdout, tail)
+	cmd.Stderr = io.MultiWriter(os.Stderr, tail)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("docker %s: %w\nstderr tail:\n%s",
+			strings.Join(args, " "), err, tail.String())
+	}
+	return nil
 }
 
 // dockerCapture runs `docker <args...>` and returns its stdout. Used for

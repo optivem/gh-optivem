@@ -1,6 +1,44 @@
 package runner
 
-import "testing"
+import (
+	"os/exec"
+	"strings"
+	"testing"
+)
+
+// TestRunComposeError_SurfacesStderr is the canary regression for H1
+// (audits/20260514-silent-external-call-failures.md): runCompose must fold a
+// failing child's stderr into its returned error so the caller's FATAL line
+// is self-contained, not just "exit status N".
+//
+// Skipped when docker is not on PATH. One positive case is sufficient — H2/H3/H4
+// share the same code shape and do not each need their own end-to-end test.
+func TestRunComposeError_SurfacesStderr(t *testing.T) {
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker not on PATH")
+	}
+
+	// Deliberately failing invocation: a compose file path that does not exist.
+	// docker compose's stderr will mention the missing file; we assert that
+	// mention reaches the returned error.
+	err := runCompose("", "--file", "/this/path/does/not/exist.yml", "config")
+	if err == nil {
+		t.Fatal("expected runCompose to fail on a nonexistent compose file, got nil")
+	}
+
+	msg := err.Error()
+	if !strings.Contains(msg, "docker compose") {
+		t.Errorf("error missing %q prefix from runCompose wrap: %s", "docker compose", msg)
+	}
+	if !strings.Contains(msg, "stderr tail:") {
+		t.Errorf("error missing %q section from runCompose wrap: %s", "stderr tail:", msg)
+	}
+	// The exact stderr varies across docker versions and platforms, but every
+	// docker-compose flavour mentions the path it could not open.
+	if !strings.Contains(msg, "exist") && !strings.Contains(msg, "nonexistent") && !strings.Contains(msg, "no such file") {
+		t.Errorf("error did not surface child stderr referencing the missing file: %s", msg)
+	}
+}
 
 func TestTransientNetRE(t *testing.T) {
 	cases := []struct {

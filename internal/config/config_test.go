@@ -541,6 +541,70 @@ func TestValidateRepoFormat(t *testing.T) {
 	}
 }
 
+func TestCollectLangs(t *testing.T) {
+	tests := []struct {
+		name string
+		lc   langChoice
+		want []string
+	}{
+		{
+			name: "monolith typescript",
+			lc:   langChoice{lang: "typescript", testLang: "typescript"},
+			want: []string{"typescript", "typescript"},
+		},
+		{
+			name: "multitier dotnet backend + typescript frontend + typescript test",
+			lc:   langChoice{backendLang: "dotnet", frontendLang: "typescript", testLang: "typescript"},
+			want: []string{"dotnet", "typescript", "typescript"},
+		},
+		{
+			name: "empty langChoice yields nil",
+			lc:   langChoice{},
+			want: nil,
+		},
+		{
+			name: "only monolith lang set",
+			lc:   langChoice{lang: "java"},
+			want: []string{"java"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := collectLangs(tt.lc)
+			if len(got) != len(tt.want) {
+				t.Fatalf("collectLangs(%+v) = %v, want %v", tt.lc, got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("collectLangs(%+v)[%d] = %q, want %q", tt.lc, i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestIsValidLang(t *testing.T) {
+	tests := []struct {
+		in   string
+		want bool
+	}{
+		{"java", true},
+		{"dotnet", true},
+		{"typescript", true},
+		{"", false},
+		{"rust", false},
+		{"JAVA", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			if got := IsValidLang(tt.in); got != tt.want {
+				t.Errorf("IsValidLang(%q) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 // helpers for test logic
 func contains(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
