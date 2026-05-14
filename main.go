@@ -711,8 +711,14 @@ func createBugReport(cfg *config.Config, errorCount int) {
 		return
 	}
 	defer os.Remove(bodyFile.Name())
-	bodyFile.WriteString(body)
-	bodyFile.Close()
+	if _, err := bodyFile.WriteString(body); err != nil {
+		log.Warnf("Failed to write bug-report body to %s: %v — skipping issue creation.", bodyFile.Name(), err)
+		return
+	}
+	if err := bodyFile.Close(); err != nil {
+		log.Warnf("Failed to close bug-report body file %s: %v — skipping issue creation.", bodyFile.Name(), err)
+		return
+	}
 
 	out, err := shell.Run(
 		fmt.Sprintf(`gh issue create --repo optivem/gh-optivem --title %q --body-file %s`, title, bodyFile.Name()),

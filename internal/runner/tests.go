@@ -3,6 +3,7 @@ package runner
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -227,9 +228,11 @@ func appendTestFilter(command, filterExpression string) string {
 }
 
 // runShell executes a command string with optional env overlay. Output is
-// streamed to the user's terminal. The command is parsed via the same quote-
-// aware splitter used elsewhere in this codebase to avoid `sh -c` and the
-// platform-specific shell quoting it brings.
+// streamed to the user's terminal and the last 16 KB are mirrored into the
+// returned error so a failure's wrap is self-contained (the live stream may
+// have scrolled off or been redirected to a log file). The command is parsed
+// via the same quote-aware splitter used elsewhere in this codebase to avoid
+// `sh -c` and the platform-specific shell quoting it brings.
 func runShell(command, cwd string, env map[string]string) error {
 	parts, err := splitCommand(command)
 	if err != nil {
@@ -240,12 +243,16 @@ func runShell(command, cwd string, env map[string]string) error {
 	}
 	cmd := exec.Command(pathx.NormalizeExe(parts[0]), parts[1:]...)
 	cmd.Dir = cwd
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	tail := &tailWriter{cap: 16 * 1024}
+	cmd.Stdout = io.MultiWriter(os.Stdout, tail)
+	cmd.Stderr = io.MultiWriter(os.Stderr, tail)
 	if len(env) > 0 {
 		cmd.Env = mergeEnv(os.Environ(), env)
 	}
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s: %w\nstderr tail:\n%s", command, err, tail.String())
+	}
+	return nil
 }
 
 // mergeEnv returns base with any matching keys in overlay overwritten, and

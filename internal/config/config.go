@@ -434,7 +434,7 @@ func ValidateRepoStrategy(rs string) string {
 // frontend lang is a separate validator because its allowed set is
 // narrower today.
 func ValidateBackendLang(lang string) string {
-	if lang != "java" && lang != "dotnet" && lang != "typescript" {
+	if !IsValidLang(lang) {
 		return "must be 'java', 'dotnet', or 'typescript'"
 	}
 	return ""
@@ -605,6 +605,33 @@ func validateCommonFlags(deploy, arch, repoStrategy string) {
 
 type langChoice struct {
 	lang, backendLang, frontendLang, testLang string
+}
+
+// IsValidLang reports whether s is one of the languages gh-optivem knows how
+// to scaffold and compile. The set is shared between resolveLangs (the
+// init-time validator) and the `environment verify --lang` flag validator,
+// per feedback_interactive_validation_parity.md — one source of truth.
+func IsValidLang(s string) bool {
+	switch s {
+	case "java", "dotnet", "typescript":
+		return true
+	}
+	return false
+}
+
+// collectLangs flattens a langChoice into the unique non-empty languages the
+// scaffold will compile. The slice is the input to compilerChecksFor —
+// order doesn't matter (the dispatcher dedupes internally). resolveLangs
+// runs upstream of every caller, so each non-empty entry is already one of
+// the IsValidLang set.
+func collectLangs(lc langChoice) []string {
+	var out []string
+	for _, l := range []string{lc.lang, lc.backendLang, lc.frontendLang, lc.testLang} {
+		if l != "" {
+			out = append(out, l)
+		}
+	}
+	return out
 }
 
 func resolveLangs(f *RawFlags) langChoice {
@@ -991,7 +1018,7 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 	// definition of "valid environment". Aborts before we touch gh / GitHub /
 	// SonarCloud for existence checks since this is the most common failure
 	// mode.
-	if err := VerifyEnvironment(); err != nil {
+	if err := VerifyEnvironment(collectLangs(lc)); err != nil {
 		log.FatalExit(err.Error())
 	}
 	if err := CheckOwnerExists(f.Owner); err != nil {

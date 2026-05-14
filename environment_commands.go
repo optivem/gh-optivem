@@ -75,8 +75,15 @@ accepted by its provider.`,
 // presence, and runs a live auth call against each provider in parallel.
 // Exits 0 on full success; exits 1 with an aggregated error listing every
 // missing or rejected value.
+//
+// The --lang flag opts in to per-language compiler-presence checks
+// (npm / dotnet / java). It's opt-in (not auto-detected from gh-optivem.yaml)
+// so a CI preflight job can pin one matrix combo without coupling this
+// command to the project-config schema or cwd state. Without --lang, only
+// the language-agnostic tools (gh, actionlint) and tokens are checked.
 func newEnvironmentVerifyCmd() *cobra.Command {
-	return &cobra.Command{
+	var langs []string
+	cmd := &cobra.Command{
 		Use:   "verify",
 		Short: "Verify the local environment is ready to run the gh-acceptance pipeline",
 		Long: `Verify the local environment is ready to run the gh-acceptance pipeline:
@@ -91,12 +98,20 @@ the CLI consumes is present and accepted by its provider.
   GHCR_TOKEN          — GET api.github.com/user (and read:packages scope)
   WORKFLOW_TOKEN      — GET api.github.com/user (and repo + workflow scopes)
   REPO_TOKEN          — GET api.github.com/user (and repo scope)
+  npm                 — required when --lang includes typescript
+  dotnet              — required when --lang includes dotnet
+  java                — required when --lang includes java
 
 All checks run in parallel; on any failure the command prints every broken
 check and exits non-zero, so the user fixes them in one pass instead of
-fix-one-retry-discover-next.`,
-		Example: `  gh optivem environment verify`,
-		Args:    cobra.NoArgs,
+fix-one-retry-discover-next.
+
+The npm / dotnet / java compiler checks only run when --lang is passed —
+omit the flag to check just the language-agnostic tools and tokens.`,
+		Example: `  gh optivem environment verify
+  gh optivem environment verify --lang typescript
+  gh optivem environment verify --lang typescript,dotnet,java`,
+		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			// Initialize logging with sane defaults so the auth-check helpers'
 			// log.Info / log.Successf calls produce output. No log file — this
@@ -107,11 +122,31 @@ fix-one-retry-discover-next.`,
 			}
 			defer log.Close()
 
-			if err := config.VerifyEnvironment(); err != nil {
+			// Validate --lang values up front against the same set used by
+			// resolveLangs / ValidateBackendLang (per
+			// feedback_interactive_validation_parity.md). Aggregate every
+			// bad value so a typo in a long comma-separated list surfaces
+			// with all offenders, not just the first.
+			var bad []string
+			for _, l := range langs {
+				if !config.IsValidLang(l) {
+					bad = append(bad, l)
+				}
+			}
+			if len(bad) > 0 {
+				fmt.Fprintf(os.Stderr, "--lang: unsupported value(s) %v; must be one of 'java', 'dotnet', 'typescript'\n", bad)
+				os.Exit(1)
+			}
+
+			if err := config.VerifyEnvironment(langs); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
 			log.Successf("All environment variables valid.")
 		},
 	}
+	cmd.Flags().StringSliceVar(&langs, "lang", nil,
+		"Languages to check compilers for: java, dotnet, typescript "+
+			"(comma-separated or repeated). Omit to check only language-agnostic tools.")
+	return cmd
 }

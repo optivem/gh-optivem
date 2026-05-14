@@ -103,173 +103,19 @@ not user-visible during a normal scaffold run).
 
 ## Steps
 
-### 1. Fix H1: `runCompose` (the seed bug)
+### 7. Verify end-to-end — ⏳ Deferred
 
-In `internal/runner/system.go:257-264`, replace the body with the
-`runComposeCtx`-shaped equivalent (line 273 is the template):
+Requires intentionally breaking docker on the test machine (uninstall,
+rename binary out of PATH, or stop the docker daemon — whichever is
+convenient on the user's platform) and re-running `scripts/manual-test.sh`
+to confirm the new FATAL line carries the docker-compose stderr instead
+of the bare "exit status 125". Then restoring docker and re-running to
+confirm the success path still streams stdio live.
 
-```go
-// runCompose executes `docker compose <args...>` from cwd. stdout+stderr are
-// streamed to os.Stdout/os.Stderr so the user sees live progress; the last
-// 16KB are also mirrored into the returned error message so a failure's
-// FATAL line is self-contained (the live stream may have scrolled off or
-// been redirected to a log file the user does not look at).
-func runCompose(cwd string, args ...string) error {
-    full := append([]string{"compose"}, args...)
-    cmd := exec.Command("docker", full...)
-    cmd.Dir = cwd
-    tail := &tailWriter{cap: 16 * 1024}
-    cmd.Stdout = io.MultiWriter(os.Stdout, tail)
-    cmd.Stderr = io.MultiWriter(os.Stderr, tail)
-    if err := cmd.Run(); err != nil {
-        return fmt.Errorf("docker compose %s: %w\nstderr tail:\n%s",
-            strings.Join(args, " "), err, tail.String())
-    }
-    return nil
-}
-```
-
-Confirm `io`, `strings` imports are already present in the file (they are —
-`runComposeCtx` uses both).
-
-### 2. Fix H2: `runDocker`
-
-In `internal/runner/system.go:294-300`, apply the same shape:
-
-```go
-// runDocker executes `docker <args...>` with output streamed to the user
-// and the last 16KB mirrored into the returned error.
-func runDocker(cwd string, args ...string) error {
-    cmd := exec.Command("docker", args...)
-    cmd.Dir = cwd
-    tail := &tailWriter{cap: 16 * 1024}
-    cmd.Stdout = io.MultiWriter(os.Stdout, tail)
-    cmd.Stderr = io.MultiWriter(os.Stderr, tail)
-    if err := cmd.Run(); err != nil {
-        return fmt.Errorf("docker %s: %w\nstderr tail:\n%s",
-            strings.Join(args, " "), err, tail.String())
-    }
-    return nil
-}
-```
-
-Note: `downOne` (line 251) calls `runDocker` as `_ = runDocker(...)` — a
-deliberate best-effort discard for the force-remove cleanup. The fix
-still applies; the discarder just continues to discard. The audit M4
-finding asks for a `log.Warnf` there but it is **out of scope** for
-this plan (see Out of scope).
-
-### 3. Fix H3: `runShell`
-
-In `internal/runner/tests.go:233-249`, apply the same shape. `runShell`
-is the workhorse for the entire test lifecycle (setup, install, suite
-run), so this single change covers three caller wraps at lines 98, 111,
-153.
-
-```go
-func runShell(cwd, label string, line string) error {
-    cmd := exec.Command("bash", "-lc", line)
-    cmd.Dir = cwd
-    tail := &tailWriter{cap: 16 * 1024}
-    cmd.Stdout = io.MultiWriter(os.Stdout, tail)
-    cmd.Stderr = io.MultiWriter(os.Stderr, tail)
-    if err := cmd.Run(); err != nil {
-        return fmt.Errorf("%s: %w\nstderr tail:\n%s", label, err, tail.String())
-    }
-    return nil
-}
-```
-
-(Adjust signature to match the existing one — the audit gave line 233
-but the exact body should be read fresh during implementation. Keep the
-existing label/cwd/cmd semantics; only the stdio+error path changes.)
-
-If `tailWriter` is not exported from `internal/runner/system.go`, it is
-already in the same package — `runShell` in `tests.go` can reference it
-directly. Confirm by reading the file before editing.
-
-### 4. Fix H4: `RunPassthrough`
-
-In `internal/shell/github.go:145-160`, apply the same shape. `tailWriter`
-is in `internal/runner`, not `internal/shell`, so this site uses
-`bytes.Buffer` (the `realShell.Run` template, audit:152). Output from a
-single `npm ci` is bounded enough that an unbounded buffer is acceptable
-and matches the existing template; switching to `tailWriter` would
-require either exporting it or duplicating the type, neither of which
-buys anything here.
-
-```go
-func RunPassthrough(commandLine, cwd string) error {
-    parts := strings.Fields(commandLine)
-    if len(parts) == 0 {
-        return fmt.Errorf("empty command line")
-    }
-    bin := pathx.NormalizeExe(parts[0])
-    cmd := exec.Command(bin, parts[1:]...)
-    cmd.Dir = cwd
-    var buf bytes.Buffer
-    cmd.Stdout = io.MultiWriter(os.Stdout, &buf)
-    cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
-    if err := cmd.Run(); err != nil {
-        return fmt.Errorf("%s: %w\noutput:\n%s", commandLine, err, buf.String())
-    }
-    return nil
-}
-```
-
-(As with Step 3, read the existing body fresh before editing to preserve
-any imports, normalisation, or signature details the audit summary
-glosses over.)
-
-### 5. Fix H5: bug-report file write
-
-In `main.go:707-715`, capture both errors and skip the `gh issue create`
-on failure rather than posting a truncated body:
-
-```go
-if _, err := bodyFile.WriteString(body); err != nil {
-    log.Warnf("Failed to write bug-report body to %s: %v — skipping issue creation.", bodyFile.Name(), err)
-    return
-}
-if err := bodyFile.Close(); err != nil {
-    log.Warnf("Failed to close bug-report body file %s: %v — skipping issue creation.", bodyFile.Name(), err)
-    return
-}
-```
-
-(Adapt the early-return path to match the surrounding control flow —
-read the function before editing. If the call site is not in a
-function with a clean return, log the warning and skip the
-`gh issue create --body-file` call specifically.)
-
-### 6. Regression test for H1
-
-Add a test under `internal/runner/` that runs `runCompose` (or, if the
-function is unexported and not callable cross-file, a thin
-package-internal test) against a deliberately-failing invocation —
-e.g. `docker compose --file /nonexistent.yml config`. Assert:
-
-- `err != nil`
-- `err.Error()` contains a substring of the child's stderr (e.g.
-  `"open /nonexistent.yml"` or `"no such file"`).
-- `err.Error()` contains the `"docker compose"` prefix from the wrap.
-
-Skip the test if `docker` is not on PATH (use `t.Skip` after
-`exec.LookPath`). Keep the test small — one positive case (real stderr
-surfaces) is enough; do not test the tailWriter's 16 KB cap (that
-belongs to `tailWriter`'s own tests if it has them).
-
-This test is the canary for H1; H2/H3/H4 are the same change and do not
-need their own end-to-end tests — adding one for each would be
-boilerplate. Optionally add a unit test that injects a fake `cmd.Run`
-via a small `exec.Command` seam if `internal/runner` has one; if not,
-skip — the H1 integration test suffices.
-
-### 7. Verify end-to-end
-
-From `gh-optivem/`, intentionally break docker on the test machine
-(uninstall, rename binary out of PATH, or stop the docker daemon —
-whichever is convenient on the user's platform) and re-run:
+Deferred because it is platform-side manual verification — the regression
+test (`TestRunComposeError_SurfacesStderr`) already proves the
+runCompose-wrap path on the happy path. Whoever runs the next live
+scaffold against this branch finishes verification.
 
 ```bash
 bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner" \
@@ -278,33 +124,13 @@ bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner
     --shop-ref main
 ```
 
-Expected FATAL line (compared with the pre-fix one):
+Expected (post-fix):
 
-**Before:**
-```
-FATAL: Build system failed: build real: exit status 125
-```
-
-**After:**
 ```
 FATAL: Build system failed: docker compose build: exit status 125
 stderr tail:
 docker-compose: command not found
 ```
-
-(Exact stderr depends on the docker setup — Docker Desktop missing,
-Compose v1 missing, daemon stopped, etc. The point is that whatever
-docker said is now in the FATAL line itself.)
-
-Then restore docker and run the same command to confirm the success
-path still streams stdio live to the terminal (the tail is only
-folded into the error on failure).
-
-### 8. (Optional) Update CONTRIBUTING.md or the audit file
-
-If the audit file is going to live on as a reference, append a
-`## 2026-05-14: H1–H5 fixed in <PR#>` line at the bottom so a future
-reader knows which findings are stale.
 
 ## Verification
 
