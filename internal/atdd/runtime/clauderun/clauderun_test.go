@@ -123,6 +123,9 @@ func newOpts() Options {
 		IssueRepo:       "optivem/shop",
 		ProjectTitle:    "Shop ATDD",
 		ProjectURL:      "https://github.com/orgs/optivem/projects/1",
+		// The stripped prompts reference ${language} in the language-
+		// equivalents pointer; seed a default so tests don't have to.
+		Language: "java",
 		// Discard banners so test output stays clean.
 		Stdout: io.Discard,
 		Stderr: io.Discard,
@@ -258,45 +261,17 @@ func TestRenderPrompt_ReturnsErrorForUnknownAgent(t *testing.T) {
 	}
 }
 
-// After Step 4 split, atdd-task is replaced by two subtype-specific
-// files. The system-interface-redesign variant must NOT include the
-// external-system doctrine (Real/Stub split, Ext* DTOs); the
-// external-system-interface-redesign variant MUST include it. The old
-// filterConditionals + Subtype-gating tests are deleted along with
-// filterConditionals itself in Step 5 — file selection now happens at
-// dispatch time via the agent name, not at render time via conditional
-// blocks.
-func TestRenderPrompt_TaskAgent_SystemSubtypeFileExcludesExternalDoctrine(t *testing.T) {
-	opts := newOpts()
-	opts.Agent = "atdd-task-system-interface-redesign"
-
-	got, err := renderPrompt(opts)
-	if err != nil {
-		t.Fatalf("renderPrompt: %v", err)
-	}
-	for _, banned := range []string{
-		"Real vs Stub Implementations",
-		"External DTOs",
-		"Both implementations share a `BaseXyzDriver`",
-	} {
-		if strings.Contains(got, banned) {
-			t.Errorf("system-interface-redesign prompt should not contain %q", banned)
-		}
-	}
-	mustContain(t, got, "Shop UI Driver")
-}
-
-func TestRenderPrompt_TaskAgent_ExternalSubtypeFileIncludesExternalDoctrine(t *testing.T) {
-	opts := newOpts()
-	opts.Agent = "atdd-task-external-system-interface-redesign"
-
-	got, err := renderPrompt(opts)
-	if err != nil {
-		t.Fatalf("renderPrompt: %v", err)
-	}
-	mustContain(t, got, "Real vs Stub Implementations")
-	mustContain(t, got, "External DTOs")
-}
+// Step 6/D6 stripped the inlined `### Reference: ...` blocks from every
+// prompt body. The external-system doctrine that previously distinguished
+// the two atdd-task subtype prompts was inlined from
+// docs/atdd/architecture/driver-adapter.md; after the strip, both
+// subtype files point at that doc via ${docs_root} instead of inlining
+// it, so the bodies are now identical except for routing. The previous
+// "external subtype includes doctrine inline / system subtype excludes
+// it" assertions are obsolete — the doctrine is read on-demand from
+// the synced ~/.gh-optivem/docs/atdd/architecture/driver-adapter.md by
+// both variants. Subtype routing still works via the agent-name lookup
+// in process-flow.yaml.
 
 // TestRenderPrompt_DocsRootSubstitutes covers the D5 placeholder that
 // lets prompt bodies reference the per-user synced docs root via
@@ -356,6 +331,7 @@ func TestRenderPrompt_UnsetLanguageFailsFast(t *testing.T) {
 		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
 	}
 	opts := newOpts()
+	opts.Language = "" // override the test default to exercise the load-bearing path
 	// Use a node_replacements-style PromptOverride that references
 	// ${language} without setting Language. Dispatch's
 	// findUnfilledPlaceholders catches the leftover.

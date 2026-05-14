@@ -483,8 +483,41 @@ func seedScopeState(sCtx *statemachine.Context, cfg *projectconfig.Config) {
 	if cfg.System.Architecture != "" {
 		sCtx.Set("architecture", cfg.System.Architecture)
 	}
+	if lang := primaryLanguage(cfg); lang != "" {
+		sCtx.Set("language", lang)
+	}
 	if rendered := renderAllowedRoots(cfg); rendered != "" {
 		sCtx.Set("allowed_roots", rendered)
+	}
+}
+
+// primaryLanguage picks the language seeded into ctx.State["language"] for
+// every dispatch in this run. Prompts that reference per-language docs via
+// `${docs_root}/atdd/code/language-equivalents/${language}.md` resolve to
+// the right slice on this value.
+//
+//   - Monolith → cfg.System.Lang.
+//   - Multitier → cfg.System.Backend.Lang. The current ATDD prompts that
+//     reference ${language} (test, dsl, driver, task) are backend-aligned;
+//     the channel-specific agents (atdd-backend, atdd-frontend) no longer
+//     reference ${language} in their stripped bodies, so a single seed
+//     suffices. If frontend-specific language refs are introduced later,
+//     the dispatcher can override per-agent without changing the schema.
+//
+// Returns "" when cfg has no architecture or the relevant Lang is unset;
+// findUnfilledPlaceholders will then report ${language} as a leftover for
+// any prompt that references it (the load-bearing semantics in D10).
+func primaryLanguage(cfg *projectconfig.Config) string {
+	if cfg == nil {
+		return ""
+	}
+	switch cfg.System.Architecture {
+	case projectconfig.ArchMonolith:
+		return cfg.System.Lang
+	case projectconfig.ArchMultitier:
+		return cfg.System.Backend.Lang
+	default:
+		return ""
 	}
 }
 
@@ -761,6 +794,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, rs *runState
 			ProjectURL:      ctx.GetString("project_url"),
 			Architecture:    ctx.GetString("architecture"),
 			Subtype:         ctx.GetString("subtype"),
+			Language:        ctx.GetString("language"),
 			AllowedRoots:    ctx.GetString("allowed_roots"),
 			Checklist:       ctx.GetString("ticket_checklist"),
 			VerifyResults:   ctx.GetString("verify_results_text"),

@@ -162,6 +162,11 @@ func newCtxWithIssue() *statemachine.Context {
 	c.Set("issue_repo", "optivem/shop")
 	c.Set("project_title", "Shop ATDD")
 	c.Set("project_url", "https://github.com/orgs/optivem/projects/1")
+	// Tests using atdd-{test,dsl,driver}-{at,ct} reference ${language} in
+	// the language-equivalents pointer; seedScopeState would set it from
+	// cfg in production. Seed a default here so test fixtures don't have
+	// to thread the config through.
+	c.Set("language", "java")
 	return c
 }
 

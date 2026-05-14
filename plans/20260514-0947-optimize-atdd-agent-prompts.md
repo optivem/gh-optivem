@@ -475,40 +475,19 @@ A silent default would mask config bugs.
 
 ## Steps
 
-### Step 4 (residual) — D10 only: split language-equivalents.md per language
+### Step 6 (residual) — D9 only: prose copyedit
 
-D7 (AT/CT cycle splits) and D8 (atdd-task subtype splits) have shipped.
-What remains in this step is the per-language file split: read
-`internal/assets/global/docs/atdd/code/language-equivalents.md` and
-produce per-language files under
-`internal/assets/global/docs/atdd/code/language-equivalents/<language>.md`,
-plus a `README.md` index. Bundle with Step 6 since the prompt bodies
-that reference `${language}` are rewritten there.
+D6 (strip inlined references → `${docs_root}` pointers) shipped.
+D10's language-equivalents per-language split also shipped, and the
+driver wires `${language}` from the project's primary language at
+dispatch time (monolith → System.Lang; multitier → System.Backend.Lang).
 
-**Validation:**
-- Per-language file content matches the corresponding section of the
-  combined doc (verbatim, no edits).
-- README.md indexes every language file.
-- Rendered language-equivalents pointer (in a Step 6-rewritten prompt)
-  resolves to the correct file via `${language}`.
+What remains in Step 6 is the prose copyedit pass (D9): two-pass
+copyedit on the surviving prompt bodies to remove restatements of
+guard rails. Likely a small further drop (10–20%) on each prompt.
 
-### Step 6 — D6 + D9 (strip inlined references + prose copyedit)
-
-Per-prompt copyedit:
-- Replace each `### Reference: ...` block with a one-line
-  `${docs_root}/atdd/...` pointer (use `${language}` where the
-  reference is language-equivalents).
-- Keep guardrails inline; budget ~500 bytes total per prompt.
-- Two-pass copyedit on surviving prose; remove duplicated guard rails.
-
-Land as one PR per prompt (or one big PR — operator choice) so a
-regression in one prompt doesn't taint the others.
-
-**Validation:**
-- `wc -c` on the three heavy prompts drops to ~6 KB each.
-- A smoke `gh optivem implement` run on a known ticket completes
-  without the agent reporting "missing context."
-- `findUnfilledPlaceholders` still returns empty.
+After D6 the prompts dropped from 115.9 KB to 23.7 KB total (-80%).
+Further drops via D9 would refine — not transform — that result.
 
 ### Step 7 — measure
 
@@ -517,9 +496,12 @@ Capture per-dispatch token usage before / after from the
 The banner already prints `… token in / … token out, $…` when the
 `claude -p --output-format json` envelope decodes.
 
-**Validation:** input tokens drop by the predicted ~40–70 % on the
-three heavy prompts; output tokens unchanged or slightly lower; wall
-time drops proportionally.
+Requires running `gh optivem implement` on a real ticket — can't be
+automated end-to-end. Treat as a manual validation step.
+
+**Expected validation:** input tokens drop substantially on the three
+heavy prompts (the on-disk size dropped 93%); output tokens unchanged
+or slightly lower; wall time drops proportionally.
 
 ## Out of scope
 
