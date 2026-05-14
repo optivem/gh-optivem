@@ -1,6 +1,8 @@
 # Build TBD discipline into `gh optivem workspace`
 
 > ✅ **STATUS: LAYER 1 SHIPPED.** Layer 1 (config-independent `--rebase`, push-retry loop, pre-commit pull with auto-stash, `gh optivem doctor`) has shipped. Layers 2–4 remain. All open decisions have been resolved — see "Decisions resolved" at the bottom.
+>
+> ⏳ **Layer 2 deferred (2026-05-14):** Checked for operator-behaviour signal at 22:13 — Layer 1 shipped at 22:03, 10 min earlier, with zero `workspace commit`/`sync` invocations since. The plan's "re-evaluate Layer 2 against operator behaviour" gate cannot be satisfied yet. Resume when there's enough real Layer 1 use to know whether the mode banner earns its noise and whether the force-push guard / pre-push hook are solving a felt problem. No commitment to a specific date — let usage drive it.
 
 ## Context
 

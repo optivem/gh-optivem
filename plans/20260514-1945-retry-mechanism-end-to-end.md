@@ -184,24 +184,6 @@ Total: ~10-12 commits across 3 repos plus 2 audit reports plus follow-up
 fix plans. Push order across phases: **actions → gh-optivem → shop**,
 preserving cross-repo reference validity.
 
-### Phase 2 — Immediate sonar-504 fix (`optivem/shop`)
-
-Closes the original incident from acceptance run 25865827466.
-
-5. **`2a`** Revert the 4 inline retry loops added earlier this session in:
-   - `monolith-dotnet-commit-stage.yml`
-   - `multitier-backend-dotnet-commit-stage.yml`
-   - `monolith-java-commit-stage.yml`
-   - `multitier-backend-java-commit-stage.yml`
-6. **`2b`** Replace each with `source "$GITHUB_WORKSPACE/.github/workflows/scripts/sonar-retry.sh"`
-   + `sonar_retry <scanner command>`. For java workflows, also split
-   `./gradlew build sonar --info` into separate `build` then retry-wrapped
-   `sonar` calls.
-7. **`2c`** Delete `shop/plans/20260514-1900-sonar-retry-on-504.md` (the
-   inline-loop plan, superseded).
-8. Commit/push `optivem/shop` via `/commit`. Synced bash helpers from
-   Phase 1c land in the same commit.
-
 ### Phase 4 — Audit gh-optivem Go for retry-coverage gaps
 
 Read-only sweep. From superseded plan 1845.

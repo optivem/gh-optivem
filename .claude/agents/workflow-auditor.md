@@ -103,7 +103,46 @@ There are three acceptable mechanisms, in order of preference for the common cas
 
 **False-positive handling.** Inline bash that looks domain-y but is actually workflow-specific (e.g. reads `${{ needs.X.outputs.Y }}` in non-obvious ways, branches on `${{ github.event_name }}`) should be rejected, not flagged. The de-prioritize heuristics cover the obvious cases; iterate based on first report.
 
-## §4 — (reserved for future rules)
+## §4 — External-I/O retry coverage
+
+**Rule.** Any workflow step that performs an external-I/O call (a network or third-party-service request whose failure mode includes transient errors — HTTP 5xx, TLS handshake, GOAWAY, DNS hiccup, timeout) must either retry through the shared engine or be explicitly classified as not needing retry. Ad-hoc inline retry loops fragment the policy and silently drift from the canonical 4×{5s, 15s, 45s} schedule.
+
+The shared engine lives in `optivem/actions/shared/{retry-core,gh-retry,docker-retry,sonar-retry}.sh` and is vendored into each consumer repo under `.github/workflows/scripts/`. Wrappers are invoked as `gh_retry <gh args>`, `docker_retry <docker args>`, `sonar_retry <scanner args>`; non-canonical commands can call `retry_with_policy <transient_re> <hard_fail_re> <prefix> -- <cmd...>` directly.
+
+**Classification of every external-I/O call site:**
+
+- **R-OK** — Call already retries via the shared engine (sources `<tool>-retry.sh` and uses the matching `<tool>_retry` wrapper), OR via a `uses:` step whose internal retry semantics are documented (e.g. `docker/build-push-action`, marketplace retry actions used with explicit `attempt_limit`/`max_attempts`). Healthy pattern — record but do not flag.
+- **R-DOC-OK** — Call is to a local-only operation (`git add`, `git commit`, `docker build`, `dotnet build`, `mvn package`, `gradle assemble`, filesystem ops) or is a probe designed to fail fast (idempotency check, existence test). Retry is not appropriate and would mask bugs. Record but do not flag.
+
+**Categories of finding** (use these exact labels in the report):
+
+- **N-A — `gh` call without retry.** Workflow invokes the `gh` CLI in a network-bound capacity (`gh api`, `gh release`, `gh workflow`, `gh project`, `gh pr`, etc.) without sourcing `gh-retry.sh` and without an external retry wrapper. Recommendation: source `$GITHUB_WORKSPACE/.github/workflows/scripts/gh-retry.sh` from the `run:` step and switch to `gh_retry gh <subcommand> ...`. Excludes `gh` calls that are clearly local-only or that are themselves probes (rc-as-truth-value).
+- **N-B — Other network call without retry.** A non-`gh` external-I/O call without retry — `curl`, `wget`, `docker pull`, `docker push`, `docker login`, `npm install`, `npm publish`, `mvn deploy`, `mvn dependency:resolve`, `dotnet restore`, `dotnet nuget push`, sonarscanner uploads, direct API requests to `sonarcloud.io`, package-registry fetches. Recommendation: switch to the matching `<tool>_retry` wrapper from the shared engine (`docker_retry`, `sonar_retry`); for tools without a canonical wrapper, either add a thin wrapper to `optivem/actions/shared/` or wrap with `nick-fields/retry@v4` configured to the engine's 4×{5,15,45} schedule.
+- **N-C — Retry present but misconfigured.** A retry mechanism is in place but diverges from the shared engine's policy — examples: aggressive schedule (sub-second backoff, >5 attempts), masks 4xx by retrying on any failure (no hard-fail pass-through), wraps a hard-fail probe whose rc is consumed as truth, retries a non-idempotent write without a guard. Recommendation: replace with the shared engine; if a non-engine retry is genuinely required, document the rationale at the call site so a future audit pass can record it as R-DOC-OK.
+
+**Anti-patterns to also flag** when found alongside §4 matches:
+
+- **`continue-on-error: true` used as a retry substitute.** Hides a real failure from the job result instead of recovering from it. Recommendation: switch to a retry wrapper for transients; if the step is genuinely allowed to fail, name what's allowed and why in a comment.
+- **`if: failure()` blocks that re-run non-idempotent work.** A second invocation of a tag-creating, release-publishing, or registry-push step on the same logical operation can leave partial state behind. Recommendation: use the retry wrapper around the original step instead — the engine retries idempotently within one attempt.
+- **Inline `while`/`for attempt` retry loops with hard-coded schedules** (e.g. `for attempt in 1 2 3; do ... sleep $((attempt * 15)); done`). Drifts from the canonical schedule the moment the canonical regex is updated. Recommendation: replace with the matching `<tool>_retry` wrapper, or with `retry_with_policy ...` for non-canonical commands.
+- **Long-running commands wrapped in retry with no per-attempt timeout.** A stuck process consumes the whole job budget without surfacing the transient. Recommendation: combine the wrapper with an explicit `timeout` cap (`timeout 5m sonar_retry ./gradlew sonar ...`) on commands known to occasionally hang.
+
+**How to check.**
+
+1. For each workflow file (and `action.yml` composite), enumerate every step. A step is a "candidate" if its `run:` body or `uses:` reference performs network I/O. Common signals:
+   - `run:` contains `gh `, `curl`, `wget`, `docker push`, `docker pull`, `docker login`, `npm install`, `npm publish`, `mvn deploy`, `dotnet restore`, `dotnet nuget`, `sonarscanner`, `./gradlew sonar`, `./mvnw sonar`, or a direct HTTP call (`curl https://`, `wget https://`).
+   - `uses:` targets a marketplace action whose primary operation is network-bound (`docker/login-action`, `docker/build-push-action`, `actions/setup-*` cache-fetch path, `actions/upload-artifact`, `actions/download-artifact`, `gradle/actions/setup-gradle`).
+2. For each candidate, determine its retry posture by reading the surrounding step:
+   - Does the same `run:` block source `gh-retry.sh` / `docker-retry.sh` / `sonar-retry.sh` and invoke the matching `<tool>_retry` wrapper for the call? → R-OK.
+   - Is the candidate a `uses:` step whose action documents retry semantics, configured with explicit attempt/delay knobs? → R-OK.
+   - Is the call local-only (no remote endpoint) or a fail-fast probe? → R-DOC-OK.
+   - Otherwise: classify as N-A (`gh` call), N-B (any other network call), or N-C (retry present but diverges from the shared engine's policy).
+3. Apply the anti-pattern checks against every candidate, regardless of category.
+4. Count every external-I/O candidate in the report header, broken down by category, so no finding is "unclassified".
+
+**False-positive handling.** A `gh` call used purely as a probe whose return code is consumed as truth (e.g. `gh release view <tag> >/dev/null 2>&1`) is R-DOC-OK, not N-A — retrying it would mask the probe's signal. Likewise for `git ls-remote` used to detect a missing tag. Note these in the examined-and-rejected section.
+
+## §5 — (reserved for future rules)
 
 Extend this file as new classes of workflow issue are identified. Suggested next candidates: `permissions:` block hygiene, pinned action SHAs vs tag refs, `GITHUB_TOKEN` vs PAT selection, job-level `timeout-minutes` caps, reusable-workflow vs `gh workflow run` decision.
 
@@ -119,6 +158,8 @@ Extend this file as new classes of workflow issue are identified. Suggested next
 8. **Enumerate `run:` blocks for §3.** Walk every workflow / `action.yml` file already enumerated in step 1. For each `run:` value, record: file, step id or label, start line, line count, raw bash content, and domain-command set (per §3 "How to check" item 1). Skip blocks that match the §3 out-of-scope heuristics.
 9. **Index existing composites for §3 category I.** Glob `optivem/actions/*/action.yml`; from each, read `name:` and `description:`. Build a keyword index (lowercased, stop-words removed) for description-overlap matching. Cache for the duration of the audit.
 10. **Classify each `run:` block** against §3 categories G, H, I via the rules in §3 "How to check". A block can hit multiple categories; list every match. Apply §3 anti-pattern checks.
+11. **Enumerate external-I/O call sites for §4.** Walk every step (both `run:` and `uses:`) recorded in step 1. Filter to those whose body or action target indicates network I/O (per §4 "How to check" item 1). For each candidate, record: file, step id or label, line number, the kind of call (`gh` / `docker` / `sonar` / `curl` / `npm` / `mvn` / `dotnet` / `marketplace-action` / `other`), and whether the shared engine is sourced + used in the same `run:` block.
+12. **Classify each external-I/O call site** against §4 categories N-A / N-B / N-C, plus R-OK / R-DOC-OK for healthy / non-applicable cases. Apply §4 anti-pattern checks against every candidate regardless of category.
 
 # Output
 
@@ -141,6 +182,7 @@ Generated by `workflow-auditor`. Scope: <list of repos scanned>.
 - §1 findings — A: <a> · B: <b> · C: <c>
 - §2 findings — D: <d> · E: <e> · F: <f> · Distinct upstream repos queried: <Q>
 - §3 findings — G: <g> · H: <h> · I: <i> · Run-blocks scanned: <R>
+- §4 findings — N-A: <na> · N-B: <nb> · N-C: <nc> · R-OK: <rok> · R-DOC-OK: <rdoc> · External-I/O sites scanned: <X>
 
 ## §1 findings
 
@@ -215,6 +257,35 @@ Generated by `workflow-auditor`. Scope: <list of repos scanned>.
 
 (If none, write `None.`)
 
+## §4 findings
+
+### Category N-A — `gh` call without retry
+- **`<repo>/<path>.yml` :: `<job-name>` :: step `<id>`** — line <L>: `gh <subcommand> ...`. No `gh-retry.sh` sourced in this `run:` block. Recommendation: source `$GITHUB_WORKSPACE/.github/workflows/scripts/gh-retry.sh` and switch to `gh_retry gh <subcommand> ...`.
+
+(If none, write `None.`)
+
+### Category N-B — Other network call without retry
+- **`<repo>/<path>.yml` :: `<job-name>` :: step `<id>`** — line <L>: `<command summary>` (kind: `<docker | sonar | curl | npm | mvn | dotnet | other>`). Recommendation: <`docker_retry ...` | `sonar_retry ...` | wrap with `nick-fields/retry@v4` at 4×{5,15,45} | add a `<tool>-retry.sh` wrapper to `optivem/actions/shared/`>.
+
+(If none, write `None.`)
+
+### Category N-C — Retry present but misconfigured
+- **`<repo>/<path>.yml` :: `<job-name>` :: step `<id>`** — line <L>: `<command summary>`. Divergence from shared engine: <e.g. "5 attempts at 1s/2s/4s/8s/16s — too aggressive, masks throttling" | "retries on any non-zero rc — no 4xx pass-through" | "wraps a probe whose rc is consumed as truth">. Recommendation: replace with the matching `<tool>_retry` wrapper, or document the rationale at the call site if non-engine retry is required.
+
+(If none, write `None.`)
+
+### §4 anti-patterns
+- **`continue-on-error: true` as retry substitute.** `<repo>/<path>.yml:<line>`. Recommendation: switch to a retry wrapper for transients.
+- **`if: failure()` re-running non-idempotent work.** `<repo>/<path>.yml:<line>`. Recommendation: wrap the original step with the retry engine instead.
+- **Inline retry loop with hard-coded schedule.** `<repo>/<path>.yml:<line>`. Recommendation: switch to the matching `<tool>_retry` wrapper.
+- **Long-running command wrapped without per-attempt timeout.** `<repo>/<path>.yml:<line>`. Recommendation: combine the wrapper with a `timeout` cap.
+
+(If none, write `None.`)
+
+### §4 healthy patterns (R-OK / R-DOC-OK)
+
+Brief breakdown for cross-check. Do not list every line — list one example per `<tool>_retry` wrapper observed in scope, plus the total count of R-DOC-OK sites by kind (local build, fail-fast probe).
+
 ## Examined-and-rejected
 Jobs that might look like a finding but were deliberately not flagged. Lists intentional cross-repo `--repo` flags, etc. Makes the curation visible.
 ```
@@ -224,8 +295,8 @@ Jobs that might look like a finding but were deliberately not flagged. Lists int
 Brief summary (not the full report):
 
 - Path of the written file.
-- Counts per category — §1 (A/B/C), §2 (D/E/F + anti-patterns), §3 (G/H/I + anti-patterns).
-- Top items by severity, in this order: Category C (will-fail-at-runtime), Category F (deprecated upstream — functional risk), Category I (near-duplicate of existing action — safest extraction, mechanical swap), Category G (duplicated bash — highest consolidation value, multiple call sites), Category D on actions with the most call sites, Category A with high call-site jobs, Category H, Category E, Category B.
+- Counts per category — §1 (A/B/C), §2 (D/E/F + anti-patterns), §3 (G/H/I + anti-patterns), §4 (N-A/N-B/N-C + anti-patterns; plus R-OK / R-DOC-OK totals).
+- Top items by severity, in this order: Category C (will-fail-at-runtime), Category F (deprecated upstream — functional risk), Category N-B on the SonarCloud / docker-push / publish paths (incident-driven), Category N-A on `gh` calls with project/release writes, Category I (near-duplicate of existing action — safest extraction, mechanical swap), Category G (duplicated bash — highest consolidation value, multiple call sites), Category N-C (misconfigured retry), Category D on actions with the most call sites, Category A with high call-site jobs, Category H, Category E, Category B.
 
 Do NOT paste full file contents into chat.
 
@@ -244,3 +315,5 @@ The Category A/B/C rule originates from a production failure in `optivem/gh-opti
 The Category D/E/F rule originates from a workspace-wide audit on 2026-04-23: ~170 `actions/checkout@v5` refs were still in use after upstream shipped `@v6.0.0` (2025-11-20), and `google-github-actions/*@v2`, `docker/build-push-action@v6`, `gradle/actions/*@v4`, `softprops/action-gh-release@v2`, and `actions/create-release@v1` (archived) were all behind latest. See the rubric §1.9 "Marketplace-action version currency" dimension for the shared rationale applied by both this agent and `actions-auditor`.
 
 The Category G/H/I rule originates from the 2026-04-23 extraction of `validate-version-unreleased` to `optivem/actions/`. Release-stage needed a fail-fast check ahead of GoReleaser to avoid ~60s of wasted artifact-build work when the target version was already published. At the time of extraction, an inline copy of the same `gh release view` check still lived in `gh-acceptance-stage.yml` — a Case I the auditor should have flagged but couldn't, because §3 didn't exist yet. The acceptance-stage workflow has since been refactored (the inline copy was removed when the file was split into `gh-acceptance-stage.yml` + `_gh-acceptance-pipeline.yml`), but the *recurrence pattern* — inline `gh release view <tag>` and similar `gh`/`git` domain checks proliferating in workflows after the canonical composite is published — is the steady-state risk this rule catches.
+
+The Category N-A/N-B/N-C rule originates from two incident pairs on 2026-05-14: SonarCloud 504 on `analysis/analyses` (acceptance run 25865827466) caused 4 of 4 dotnet matrix combos to fail; a GitHub GraphQL transient on `gh project ...` (acceptance run 25877369208) caused all 4 smoke jobs to fail at `Ensure project board`. Both call sites lacked retry wrappers. The fixes landed alongside the shared retry engine extracted at `optivem/actions/shared/{retry-core,gh-retry,docker-retry,sonar-retry}.sh`; this §4 rule exists so future audits surface uncovered external-I/O sites before they fail in CI.
