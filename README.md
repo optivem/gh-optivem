@@ -245,11 +245,11 @@ Multi-test semantics depend on the suite's `testFilter` in `tests.yaml`. The run
 
 ## Workspace operations
 
-`gh optivem workspace <verb>` iterates every repo declared in the academy `*.code-workspace` file. It locates the workspace via, in order: the `--workspace <dir>` flag, the `$GH_OPTIVEM_WORKSPACE` env var, or by walking up from the current directory.
+`gh optivem workspace <verb>` iterates every repo declared in the resolved `*.code-workspace` file. It locates the workspace via, in order: the `--workspace <dir>` flag, the `$GH_OPTIVEM_WORKSPACE` env var, or by walking up from the current directory.
 
 ```bash
 gh optivem workspace commit "Update settings"             # stage, commit, pull, push every dirty repo
-gh optivem workspace commit --repo shop "Fix bug"         # only operate on the named repo
+gh optivem workspace commit --repo myrepo "Fix bug"       # only operate on the named repo
 gh optivem workspace commit --yes "Sync .claude"          # skip the y/N confirmation (required without a TTY)
 gh optivem workspace sync                                 # pull + push every repo (no commit)
 gh optivem workspace check-actions                        # latest run of every workflow in every workspace repo
@@ -265,7 +265,7 @@ gh optivem workspace rate-limit                           # current GitHub API r
 ```bash
 gh optivem cleanup releases optivem/greeter-java --dry-run
 gh optivem cleanup releases optivem/greeter-java optivem/greeter-dotnet
-gh optivem cleanup packages optivem/shop --before-date 2026-01-01
+gh optivem cleanup packages myorg/myrepo --before-date 2026-01-01
 gh optivem cleanup repos valentinajemuovic --prefix course-tester- --dry-run
 gh optivem cleanup sonar-projects myorg --prefix myorg_course-tester- --dry-run
 ```
@@ -279,7 +279,7 @@ Once a scaffolded project carries a valid `gh-optivem.yaml` and the sibling repo
 
 ```bash
 gh optivem implement --issue 42                                # walk the pipeline for a specific issue
-gh optivem implement --issue https://github.com/optivem/shop/issues/42
+gh optivem implement --issue https://github.com/myorg/myrepo/issues/42
 gh optivem implement                                           # pick the top Ready ticket and walk the pipeline
 ```
 

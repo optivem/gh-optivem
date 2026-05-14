@@ -71,7 +71,7 @@ type GitRunner interface {
 }
 
 // ShellRunner runs an arbitrary command. We use a bash-style CommandLine
-// (no argv split) because the academy's compile-all.sh / test-all.sh wrap
+// (no argv split) because the pipeline's compile-all.sh / test-all.sh wrap
 // multi-stage shell pipelines and the most testable contract is "give the
 // fake the exact string you would type at a prompt".
 type ShellRunner interface {
@@ -1754,106 +1754,28 @@ func tickAllCheckboxes(body string) string {
 	return strings.Join(lines, "\n")
 }
 
-// lookupStatusOption is a smaller, action-local cousin of board's
-// lookupStatusField — it accepts an arbitrary option name (e.g. "In
-// acceptance") instead of being hard-coded to "In progress". Returns the
-// Status field ID and the requested option ID.
+// lookupStatusOption looks up the (statusFieldID, optionID) pair for the
+// named status option on the project resolved from Context. Delegates to
+// board.LookupStatusOption — the GraphQL query and its decoder live there
+// to keep a single source of truth for the projectV2 minimal-query path
+// (gh's `project field-list` subcommand sends a heavy expansion query
+// that has been hitting upstream resolver bugs).
 func lookupStatusOption(ctx context.Context, gh GhRunner, sCtx *statemachine.Context, optionName string) (fieldID, optionID string, err error) {
-	owner, number, err := projectOwnerAndNumber(sCtx)
+	ownerKind, owner, number, err := projectOwnerAndNumber(sCtx)
 	if err != nil {
 		return "", "", err
 	}
-	out, err := gh.Run(ctx, "project", "field-list", strconv.Itoa(number), "--owner", owner, "--format", "json")
-	if err != nil {
-		return "", "", fmt.Errorf("gh project field-list: %w", err)
-	}
-	field, optionID, err := findStatusOption(out, optionName)
-	if err != nil {
-		return "", "", err
-	}
-	return field, optionID, nil
+	return board.LookupStatusOption(ctx, gh, ownerKind, owner, number, optionName)
 }
 
-// findStatusOption parses field-list JSON and returns (statusFieldID,
-// matching optionID). Hand-decoded to avoid importing encoding/json into
-// every action — keeps the file small. The shape is well-known.
-func findStatusOption(raw []byte, optionName string) (string, string, error) {
-	// Find the Status field object.
-	statusBlock, ok := findFieldBlock(raw, "Status")
-	if !ok {
-		return "", "", fmt.Errorf("project has no Status field")
-	}
-	id, ok := jsonFieldString(statusBlock, "id")
-	if !ok {
-		return "", "", fmt.Errorf("Status field is missing id")
-	}
-	// Walk the options array within the Status block.
-	options, ok := jsonFieldRaw(statusBlock, "options")
-	if !ok {
-		return "", "", fmt.Errorf("Status field has no options array")
-	}
-	target := strings.ToLower(strings.TrimSpace(optionName))
-	for _, opt := range splitJSONArray(options) {
-		name, _ := jsonFieldString(opt, "name")
-		if strings.ToLower(strings.TrimSpace(name)) == target {
-			optID, _ := jsonFieldString(opt, "id")
-			return id, optID, nil
-		}
-	}
-	return "", "", fmt.Errorf("Status field has no %q option", optionName)
-}
-
-// projectOwnerAndNumber resolves the project owner + number from Context.
-// Prefers an explicit project_url; otherwise reconstructs from issue_repo
-// when it follows the canonical owner/repo form (delegating to gh project
-// list via the board package would be cleaner — Session 3 wires that up).
-func projectOwnerAndNumber(ctx *statemachine.Context) (string, int, error) {
+// projectOwnerAndNumber resolves the project ownerKind + owner + number
+// from Context. ownerKind is "organization" or "user" — needed by the
+// minimal-GraphQL path to dispatch to the right top-level field.
+func projectOwnerAndNumber(ctx *statemachine.Context) (ownerKind, owner string, number int, err error) {
 	if u := ctx.GetString("project_url"); u != "" {
-		return parseProjectURL(u)
+		return board.ParseProjectURL(u)
 	}
-	return "", 0, fmt.Errorf("project_url not in Context")
-}
-
-func parseProjectURL(url string) (string, int, error) {
-	const orgPrefix = "https://github.com/orgs/"
-	const userPrefix = "https://github.com/users/"
-	var rest string
-	switch {
-	case strings.HasPrefix(url, orgPrefix):
-		rest = url[len(orgPrefix):]
-	case strings.HasPrefix(url, userPrefix):
-		rest = url[len(userPrefix):]
-	default:
-		return "", 0, fmt.Errorf("not a canonical project URL: %q", url)
-	}
-	parts := strings.Split(rest, "/")
-	if len(parts) < 3 || parts[1] != "projects" {
-		return "", 0, fmt.Errorf("not a canonical project URL: %q", url)
-	}
-	n, err := strconv.Atoi(parts[2])
-	if err != nil {
-		return "", 0, fmt.Errorf("project number: %w", err)
-	}
-	return parts[0], n, nil
-}
-
-// findFieldBlock returns the JSON object slice for the field with the given
-// name. It performs a permissive scan — splits the top-level "fields"
-// array, then matches each object's "name". Sufficient for the well-known
-// `gh project field-list` shape.
-func findFieldBlock(raw []byte, fieldName string) ([]byte, bool) {
-	fields, ok := jsonFieldRaw(raw, "fields")
-	if !ok {
-		return nil, false
-	}
-	target := strings.ToLower(strings.TrimSpace(fieldName))
-	for _, obj := range splitJSONArray(fields) {
-		name, _ := jsonFieldString(obj, "name")
-		if strings.ToLower(strings.TrimSpace(name)) == target {
-			return obj, true
-		}
-	}
-	return nil, false
+	return "", "", 0, fmt.Errorf("project_url not in Context")
 }
 
 // jsonFieldRaw returns the raw bytes of a top-level JSON field's value.

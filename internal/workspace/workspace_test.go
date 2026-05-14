@@ -44,14 +44,14 @@ func workspaceJSON(paths ...string) string {
 	return sb.String()
 }
 
-// setupAcademy builds a tempdir laid out like the real academy workspace:
+// setupWorkspace builds a tempdir laid out like a real workspace tree:
 //
 //	<root>/
-//	  academy.code-workspace
+//	  myworkspace.code-workspace
 //	  repoA/.git/
 //	  repoB/.git/
 //	  notAGit/
-func setupAcademy(t *testing.T) (root string, wsPath string) {
+func setupWorkspace(t *testing.T) (root string, wsPath string) {
 	t.Helper()
 	root = t.TempDir()
 	makeGitRepo(t, filepath.Join(root, "repoA"))
@@ -59,13 +59,13 @@ func setupAcademy(t *testing.T) (root string, wsPath string) {
 	if err := os.MkdirAll(filepath.Join(root, "notAGit"), 0o755); err != nil {
 		t.Fatalf("mkdir notAGit: %v", err)
 	}
-	wsPath = writeWorkspace(t, root, "academy.code-workspace",
+	wsPath = writeWorkspace(t, root, "myworkspace.code-workspace",
 		workspaceJSON("repoA", "repoB", "notAGit", "missingDir"))
 	return root, wsPath
 }
 
 func TestResolve_ExplicitFlag(t *testing.T) {
-	root, _ := setupAcademy(t)
+	root, _ := setupWorkspace(t)
 
 	gotRoot, folders, err := resolveFrom(root, "", filepath.Join(root, "unrelated"))
 	if err != nil {
@@ -85,7 +85,7 @@ func TestResolve_ExplicitFlag(t *testing.T) {
 }
 
 func TestResolve_EnvVar(t *testing.T) {
-	root, _ := setupAcademy(t)
+	root, _ := setupWorkspace(t)
 
 	// CWD points somewhere that has no workspace file. The env var should win.
 	cwd := t.TempDir()
@@ -99,8 +99,8 @@ func TestResolve_EnvVar(t *testing.T) {
 }
 
 func TestResolve_FlagBeatsEnv(t *testing.T) {
-	flagRoot, _ := setupAcademy(t)
-	envRoot, _ := setupAcademy(t) // a different academy; we never expect to pick from this one
+	flagRoot, _ := setupWorkspace(t)
+	envRoot, _ := setupWorkspace(t) // a different workspace; we never expect to pick from this one
 
 	gotRoot, _, err := resolveFrom(flagRoot, envRoot, t.TempDir())
 	if err != nil {
@@ -113,7 +113,7 @@ func TestResolve_FlagBeatsEnv(t *testing.T) {
 }
 
 func TestResolve_WalkUpHitsParent(t *testing.T) {
-	root, _ := setupAcademy(t)
+	root, _ := setupWorkspace(t)
 	makeGitRepo(t, filepath.Join(root, "repoA")) // already exists; reuse path
 
 	// CWD is one directory below root — the workspace file lives in the parent.
@@ -131,7 +131,7 @@ func TestResolve_WalkUpHitsParent(t *testing.T) {
 }
 
 func TestResolve_WalkUpHitsGrandparent(t *testing.T) {
-	root, _ := setupAcademy(t)
+	root, _ := setupWorkspace(t)
 	deep := filepath.Join(root, "repoA", "internal", "subpkg")
 	if err := os.MkdirAll(deep, 0o755); err != nil {
 		t.Fatalf("mkdir deep: %v", err)
@@ -166,7 +166,7 @@ func TestResolve_WalkUpMiss(t *testing.T) {
 
 func TestResolve_MalformedJSON(t *testing.T) {
 	root := t.TempDir()
-	writeWorkspace(t, root, "academy.code-workspace", "not-json-at-all")
+	writeWorkspace(t, root, "myworkspace.code-workspace", "not-json-at-all")
 
 	_, _, err := resolveFrom(root, "", "")
 	if err == nil {
@@ -179,7 +179,7 @@ func TestResolve_MalformedJSON(t *testing.T) {
 
 func TestResolve_MissingFoldersKey(t *testing.T) {
 	root := t.TempDir()
-	writeWorkspace(t, root, "academy.code-workspace", `{}`)
+	writeWorkspace(t, root, "myworkspace.code-workspace", `{}`)
 
 	_, _, err := resolveFrom(root, "", "")
 	if err == nil {
@@ -192,7 +192,7 @@ func TestResolve_MissingFoldersKey(t *testing.T) {
 
 func TestResolve_EmptyFoldersArray(t *testing.T) {
 	root := t.TempDir()
-	writeWorkspace(t, root, "academy.code-workspace", `{"folders":[]}`)
+	writeWorkspace(t, root, "myworkspace.code-workspace", `{"folders":[]}`)
 
 	_, _, err := resolveFrom(root, "", "")
 	if err == nil {
@@ -206,7 +206,7 @@ func TestResolve_NonGitFolderFiltered(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "fake"), 0o755); err != nil {
 		t.Fatalf("mkdir fake: %v", err)
 	}
-	writeWorkspace(t, root, "academy.code-workspace", workspaceJSON("real", "fake"))
+	writeWorkspace(t, root, "myworkspace.code-workspace", workspaceJSON("real", "fake"))
 
 	_, folders, err := resolveFrom(root, "", "")
 	if err != nil {
@@ -222,7 +222,7 @@ func TestResolve_NonGitFolderFiltered(t *testing.T) {
 func TestResolve_MissingPathFiltered(t *testing.T) {
 	root := t.TempDir()
 	makeGitRepo(t, filepath.Join(root, "real"))
-	writeWorkspace(t, root, "academy.code-workspace", workspaceJSON("real", "doesNotExist"))
+	writeWorkspace(t, root, "myworkspace.code-workspace", workspaceJSON("real", "doesNotExist"))
 
 	_, folders, err := resolveFrom(root, "", "")
 	if err != nil {
@@ -268,7 +268,7 @@ func TestResolve_FlagDirDoesNotExist(t *testing.T) {
 func TestResolve_EmptyPathEntrySkipped(t *testing.T) {
 	root := t.TempDir()
 	makeGitRepo(t, filepath.Join(root, "real"))
-	writeWorkspace(t, root, "academy.code-workspace",
+	writeWorkspace(t, root, "myworkspace.code-workspace",
 		`{"folders":[{"path":""},{"path":"real"}]}`)
 
 	_, folders, err := resolveFrom(root, "", "")

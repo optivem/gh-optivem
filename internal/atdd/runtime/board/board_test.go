@@ -345,7 +345,7 @@ func TestPickTopReady_BadProjectURL(t *testing.T) {
 // MoveToInProgress
 // ---------------------------------------------------------------------------
 
-// projectFieldsArgs mirrors what lookupStatusField sends to gh.Run, so
+// projectFieldsArgs mirrors what LookupStatusOption sends to gh.Run, so
 // the test argv stays pinned to projectFieldsQuery (the production
 // constant). Mirror of projectMetaArgs / projectItemsArgs.
 func projectFieldsArgs(ownerKind, owner string, number int) []string {
@@ -539,7 +539,7 @@ func TestParseProjectURL(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.in, func(t *testing.T) {
-			ownerKind, owner, number, err := parseProjectURL(tc.in)
+			ownerKind, owner, number, err := ParseProjectURL(tc.in)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("expected error")

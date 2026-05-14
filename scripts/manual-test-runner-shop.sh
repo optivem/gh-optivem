@@ -14,8 +14,8 @@
 #        gh-optivem -c gh-optivem.shop-ts-monolith.yaml         system stop
 #   3. Print a per-phase pass/fail summary.
 #
-# Requires: docker, node 22+, the optivem academy workspace cloned alongside
-# this repo (so shop/ is at ../shop relative to gh-optivem/), and shop
+# Requires: docker, node 22+, the optivem workspace cloned alongside this
+# repo (so shop/ is at ../shop relative to gh-optivem/), and shop
 # carrying two variant gh-optivem yaml files — one pointing at
 # system-test/typescript/tests-latest.json, one at tests-legacy.json — both
 # with system_config: docker/typescript/monolith/systems.json. The

@@ -91,7 +91,7 @@ silent overwrite would be a foot-gun.`,
       --arch monolith --repo-strategy monorepo --monolith-lang java \
       --project-url https://github.com/orgs/acme/projects/1
 
-  # Write to a non-default filename (shop's multi-combination matrix)
+  # Write to a non-default filename (for repos with a multi-combination matrix)
   gh optivem -c ./gh-optivem.monolith-java.yaml config init --owner acme ...
 
   # Overwrite an existing file
@@ -160,7 +160,7 @@ DeriveSonarProjects but the values may be hand-edited afterwards (e.g.
 multi-stack reference repos that need per-variant SonarCloud projects
 the single-stack deriver cannot express).`,
 		Example: `  gh optivem config validate
-  gh optivem -c ./gh-optivem.shop-monolith.yaml config validate`,
+  gh optivem -c ./gh-optivem.myrepo-monolith.yaml config validate`,
 		Run: func(cmd *cobra.Command, args []string) {
 			path, _ := projectconfig.ResolvePath(projectConfigPath)
 			validated, err := runConfigValidate(path)
@@ -221,7 +221,7 @@ Exits 0 when both schema and on-disk layout check out, non-zero with one
 multi-line error block listing every failure otherwise.`,
 		Example: `  gh optivem config preflight
   gh optivem config preflight --workspace /abs/path/to/workspace
-  gh optivem -c ./gh-optivem.shop-monolith.yaml config preflight`,
+  gh optivem -c ./gh-optivem.myrepo-monolith.yaml config preflight`,
 		Run: func(cmd *cobra.Command, args []string) {
 			path, _ := projectconfig.ResolvePath(projectConfigPath)
 			cwd, err := os.Getwd()

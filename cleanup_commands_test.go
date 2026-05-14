@@ -12,13 +12,13 @@ func TestParseSlugsRejectsBadShape(t *testing.T) {
 		args    []string
 		wantErr bool
 	}{
-		{"single ok", []string{"optivem/shop"}, false},
-		{"multiple ok", []string{"optivem/shop", "optivem/eshop-tests"}, false},
-		{"bare repo", []string{"shop"}, true},
-		{"extra segment", []string{"optivem/shop/extra"}, true},
-		{"mix with bad", []string{"optivem/shop", "shop"}, true},
-		{"empty owner", []string{"/shop"}, true},
-		{"empty repo", []string{"optivem/"}, true},
+		{"single ok", []string{"myorg/myrepo"}, false},
+		{"multiple ok", []string{"myorg/myrepo", "myorg/myrepo2"}, false},
+		{"bare repo", []string{"myrepo"}, true},
+		{"extra segment", []string{"myorg/myrepo/extra"}, true},
+		{"mix with bad", []string{"myorg/myrepo", "myrepo"}, true},
+		{"empty owner", []string{"/myrepo"}, true},
+		{"empty repo", []string{"myorg/"}, true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

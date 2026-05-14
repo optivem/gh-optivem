@@ -910,52 +910,6 @@ func TestTickAllCheckboxes(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// findStatusOption
-// ---------------------------------------------------------------------------
-
-func TestFindStatusOption(t *testing.T) {
-	raw := []byte(`{
-		"fields": [
-			{"id":"FID-status","name":"Status","options":[
-				{"id":"OPT-ready","name":"Ready"},
-				{"id":"OPT-inprog","name":"In progress"},
-				{"id":"OPT-inacc","name":"In acceptance"}
-			]}
-		]
-	}`)
-	cases := []struct {
-		want string
-		opt  string
-	}{
-		{want: "OPT-inacc", opt: "In acceptance"},
-		{want: "OPT-inprog", opt: "in progress"},
-		{want: "OPT-ready", opt: "Ready"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.opt, func(t *testing.T) {
-			fid, oid, err := findStatusOption(raw, tc.opt)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if fid != "FID-status" {
-				t.Fatalf("fieldID: got %q, want FID-status", fid)
-			}
-			if oid != tc.want {
-				t.Fatalf("optID: got %q, want %q", oid, tc.want)
-			}
-		})
-	}
-}
-
-func TestFindStatusOption_Missing(t *testing.T) {
-	raw := []byte(`{"fields":[{"id":"X","name":"Status","options":[{"id":"OPT","name":"Ready"}]}]}`)
-	_, _, err := findStatusOption(raw, "Done")
-	if err == nil {
-		t.Fatalf("expected error for missing option")
-	}
-}
-
-// ---------------------------------------------------------------------------
 // RegisterAll wiring
 // ---------------------------------------------------------------------------
 

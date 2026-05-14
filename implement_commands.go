@@ -71,7 +71,7 @@ it picks the top Ready item from the project board and walks the same
 pipeline from START.`,
 		Example: `  gh optivem implement                                  # top Ready
   gh optivem implement --issue 42
-  gh optivem implement --issue https://github.com/optivem/shop/issues/42
+  gh optivem implement --issue https://github.com/myorg/myrepo/issues/42
   gh optivem -c ./optivem-multitier.yaml implement --issue 42
   gh optivem implement --issue 42 --workspace /abs/path/to/workspace
   gh optivem implement --issue 42 --log-file run.log

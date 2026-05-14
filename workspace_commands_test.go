@@ -146,10 +146,10 @@ func TestCommitOneRepo_DirtyWithoutMessage_Errors(t *testing.T) {
 
 func TestRepoBaseName(t *testing.T) {
 	cases := map[string]string{
-		`/a/b/shop`:      "shop",
+		`/a/b/myrepo`:    "myrepo",
 		`C:\foo\bar\baz`: "baz",
-		`shop`:           "shop",
-		`/a/b/shop/`:     "shop",
+		`myrepo`:         "myrepo",
+		`/a/b/myrepo/`:   "myrepo",
 		`C:\foo\baz\`:    "baz",
 	}
 	for in, want := range cases {

@@ -1,6 +1,6 @@
 // Package sonar wraps the SonarCloud REST endpoints the cleanup command
 // uses (api/projects/search, api/projects/delete). It ports the curl-based
-// helpers in academy/github-utils/scripts/delete-sonar-projects.sh.
+// helpers in github-utils/scripts/delete-sonar-projects.sh.
 //
 // Auth: every call sends `Authorization: Bearer <token>`. Callers obtain
 // the token from $SONAR_TOKEN — same env var the scaffolder reads.

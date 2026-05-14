@@ -341,7 +341,7 @@ func callersOfWithFiles(
 //   - method-name prefix `when*` / `given*` / `then*` (case-insensitive)
 //   - file basename prefix `When*` / `Given*` / `Then*`
 //
-// All three signal channels are present in the academy's existing fixtures
+// All three signal channels are present in the pipeline's existing fixtures
 // (Java `WhenPlaceOrder.java`, TypeScript `whenPlacingOrder()` — different
 // languages, different conventions, same intent).
 func stageOfDSLPath(file, method string) string {

@@ -130,7 +130,7 @@ func ResolveProjectURL(repoPath string) (string, error) {
 // and every field-value-type fragment, which has triggered upstream
 // resolver bugs on the projectV2 complex-query path. See [fetchProjectMetadata].
 func VerifyProjectURL(ctx context.Context, projectURL string, gh GhRunner) error {
-	ownerKind, owner, number, err := parseProjectURL(projectURL)
+	ownerKind, owner, number, err := ParseProjectURL(projectURL)
 	if err != nil {
 		return err
 	}
@@ -176,7 +176,7 @@ func PickTopReady(ctx context.Context, opts Options) (Pick, error) {
 	if err != nil {
 		return Pick{}, err
 	}
-	ownerKind, owner, number, err := parseProjectURL(projectURL)
+	ownerKind, owner, number, err := ParseProjectURL(projectURL)
 	if err != nil {
 		return Pick{}, err
 	}
@@ -236,7 +236,7 @@ func FindIssue(ctx context.Context, issueNum int, opts Options) (Pick, error) {
 	if err != nil {
 		return Pick{}, err
 	}
-	ownerKind, owner, number, err := parseProjectURL(projectURL)
+	ownerKind, owner, number, err := ParseProjectURL(projectURL)
 	if err != nil {
 		return Pick{}, err
 	}
@@ -296,7 +296,7 @@ func MoveToInProgress(ctx context.Context, projectID, itemID string, opts Option
 	if err != nil {
 		return err
 	}
-	ownerKind, owner, number, err := parseProjectURL(projectURL)
+	ownerKind, owner, number, err := ParseProjectURL(projectURL)
 	if err != nil {
 		return err
 	}
@@ -305,7 +305,7 @@ func MoveToInProgress(ctx context.Context, projectID, itemID string, opts Option
 		gh = execGh{}
 	}
 
-	statusFieldID, inProgressOptionID, err := lookupStatusField(ctx, gh, ownerKind, owner, number)
+	statusFieldID, inProgressOptionID, err := LookupStatusOption(ctx, gh, ownerKind, owner, number, "In progress")
 	if err != nil {
 		return err
 	}
@@ -330,12 +330,12 @@ func MoveToInProgress(ctx context.Context, projectID, itemID string, opts Option
 // Capture 1: "orgs"|"users"; capture 2: owner login; capture 3: project number.
 var projectURLPattern = regexp.MustCompile(`https://github\.com/(orgs|users)/([A-Za-z0-9][A-Za-z0-9-]*)/projects/(\d+)`)
 
-// parseProjectURL splits a canonical project URL into ownerKind
+// ParseProjectURL splits a canonical project URL into ownerKind
 // ("organization" | "user"), owner login, and number. ownerKind is used
 // by fetchProjectMetadata to issue a targeted GraphQL query (querying
 // both branches with a single query produces a partial NOT_FOUND error
 // for the wrong type, which gh treats as fatal).
-func parseProjectURL(url string) (ownerKind, owner string, number int, err error) {
+func ParseProjectURL(url string) (ownerKind, owner string, number int, err error) {
 	m := projectURLPattern.FindStringSubmatch(url)
 	if m == nil {
 		return "", "", 0, fmt.Errorf("board: invalid project URL %q (want https://github.com/orgs/<org>/projects/<n>)", url)
@@ -408,7 +408,7 @@ type projectItemContent struct {
 
 // projectMetaQuery is a minimal GraphQL query that fetches the two
 // scalars callers actually need. The `%s` placeholder is filled with
-// "organization" or "user" based on parseProjectURL's ownerKind.
+// "organization" or "user" based on ParseProjectURL's ownerKind.
 //
 // Replaces `gh project view --format json`, whose internal query
 // expands ~50 field definitions and every projectV2 field-value-type
@@ -431,7 +431,7 @@ const projectMetaQuery = `query($login:String!,$number:Int!){%s(login:$login){pr
 //     union (Issue / PullRequest / DraftIssue) with the four scalars
 //     callers read (number, url, title, repository.nameWithOwner).
 //
-// %s is filled with "organization" or "user" from parseProjectURL.
+// %s is filled with "organization" or "user" from ParseProjectURL.
 const projectItemsQuery = `query($login:String!,$number:Int!,$first:Int!,$after:String){%s(login:$login){projectV2(number:$number){items(first:$first,after:$after){pageInfo{hasNextPage endCursor} nodes{id fieldValues(first:20){nodes{__typename ... on ProjectV2ItemFieldSingleSelectValue{name field{... on ProjectV2SingleSelectField{name}}}}} content{__typename ... on Issue{number url title repository{nameWithOwner}} ... on PullRequest{number url title repository{nameWithOwner}} ... on DraftIssue{title}}}}}}}`
 
 // projectItemsPageSize is the page size used by fetchProjectItems.
@@ -442,7 +442,7 @@ const projectItemsPageSize = 100
 // fetchProjectItems issues projectItemsQuery paginated against the
 // given project and returns up to `limit` items. Pagination follows
 // pageInfo.endCursor; stops early when hasNextPage is false. ownerKind
-// dispatches to organization vs user (see parseProjectURL).
+// dispatches to organization vs user (see ParseProjectURL).
 func fetchProjectItems(ctx context.Context, gh GhRunner, ownerKind, owner string, number, limit int) ([]projectItem, error) {
 	query := fmt.Sprintf(projectItemsQuery, ownerKind)
 	var items []projectItem
@@ -557,7 +557,7 @@ func extractStatusFieldValue(nodes []struct {
 
 // fetchProjectMetadata issues projectMetaQuery against the given owner
 // and returns the project's node ID and title. ownerKind is
-// "organization" or "user" (see parseProjectURL); it controls which
+// "organization" or "user" (see ParseProjectURL); it controls which
 // top-level field is queried. Querying both in a single call produces a
 // partial NOT_FOUND error from GitHub's GraphQL for the wrong type,
 // which `gh api graphql` treats as fatal.
@@ -590,15 +590,17 @@ func fetchProjectMetadata(ctx context.Context, gh GhRunner, ownerKind, owner str
 // every field-type variant (Field, IterationField, SingleSelectField,
 // repeating field properties under each fragment) — same heavy-query
 // class that has triggered upstream resolver bugs on the projectV2
-// path. The minimal query asks only for what lookupStatusField needs:
+// path. The minimal query asks only for what LookupStatusOption needs:
 // the SingleSelect field's id + name, plus its options' id + name. %s
-// dispatches to organization vs user (parseProjectURL ownerKind).
+// dispatches to organization vs user (ParseProjectURL ownerKind).
 const projectFieldsQuery = `query($login:String!,$number:Int!){%s(login:$login){projectV2(number:$number){fields(first:100){nodes{__typename ... on ProjectV2FieldCommon{id name} ... on ProjectV2SingleSelectField{options{id name}}}}}}}`
 
-// lookupStatusField fetches the project's field list and returns the
-// Status field ID and the "In progress" option ID. Errors out with
-// ErrStatusFieldMissing if either is absent.
-func lookupStatusField(ctx context.Context, gh GhRunner, ownerKind, owner string, number int) (fieldID, inProgressOptionID string, err error) {
+// LookupStatusOption fetches the project's field list and returns the
+// Status field ID and the option ID matching optionName (case-insensitive,
+// whitespace-trimmed). Errors out with ErrStatusFieldMissing if either
+// the Status field or the requested option is absent. ownerKind is
+// "organization" or "user" (see ParseProjectURL).
+func LookupStatusOption(ctx context.Context, gh GhRunner, ownerKind, owner string, number int, optionName string) (fieldID, optionID string, err error) {
 	query := fmt.Sprintf(projectFieldsQuery, ownerKind)
 	out, err := gh.Run(ctx, "api", "graphql",
 		"-F", "login="+owner,
@@ -638,11 +640,11 @@ func lookupStatusField(ctx context.Context, gh GhRunner, ownerKind, owner string
 			continue
 		}
 		for _, o := range f.Options {
-			if equalStatus(o.Name, "In progress") {
+			if equalStatus(o.Name, optionName) {
 				return f.ID, o.ID, nil
 			}
 		}
-		return "", "", fmt.Errorf("%w: Status field present but no 'In progress' option", ErrStatusFieldMissing)
+		return "", "", fmt.Errorf("%w: Status field present but no %q option", ErrStatusFieldMissing, optionName)
 	}
 	return "", "", fmt.Errorf("%w: no Status field on project %s/%d", ErrStatusFieldMissing, owner, number)
 }
