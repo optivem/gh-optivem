@@ -24,6 +24,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	assetsync "github.com/optivem/gh-optivem/internal/assets/sync"
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/configinit"
 	"github.com/optivem/gh-optivem/internal/log"
@@ -65,6 +66,18 @@ func main() {
 	// Show subcommands in registration order (workflow order), not alphabetical.
 	// e.g. `config` lists init → validate → preflight, the sequence a user runs.
 	cobra.EnableCommandSorting = false
+
+	// Sync the embedded global asset tree to per-user paths
+	// (~/.gh-optivem/docs/, ~/.claude/{agents,commands}/atdd/) so
+	// methodology docs and Claude Code subagents are reachable on the
+	// user's filesystem. No-op after the first run when the stamp
+	// matches the binary version. Disabled by GH_OPTIVEM_NO_AUTO_SYNC.
+	if res, err := assetsync.EnsureSynced(version.Version); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to sync gh-optivem assets: %v\n", err)
+	} else if res.Synced {
+		fmt.Fprintln(os.Stderr, res.Notice)
+	}
+
 	if err := newRootCmd().Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -103,6 +116,7 @@ func newRootCmd() *cobra.Command {
 		newEnvironmentCmd(),
 		newWorkspaceCmd(),
 		newCleanupCmd(),
+		newAssetCmd(),
 	)
 	return cmd
 }

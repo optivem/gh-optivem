@@ -475,25 +475,6 @@ A silent default would mask config bugs.
 
 ## Steps
 
-### Step 2 — D3 (auto-sync mechanism)
-
-1. Create `internal/assets/sync/sync.go` with `EnsureSynced()` and
-   atomic-write + lock support, walking the embedded `global/` subtree.
-2. Wire `sync.EnsureSynced()` into `cmd/gh-optivem/main.go` startup,
-   gated by `GH_OPTIVEM_NO_AUTO_SYNC`.
-3. Add `gh optivem asset sync` subcommand.
-4. Add the staleness-error in ATDD-consuming commands for the
-   escape-hatch path.
-
-**Validation:**
-- First invocation after install writes the target trees and the
-  stamp file.
-- Subsequent invocation is a no-op (stamp matches).
-- Simulated version bump triggers re-sync.
-- Concurrent invocation under file-lock test: no torn writes.
-- `GH_OPTIVEM_NO_AUTO_SYNC=1` skips sync; `implement` then fails
-  with the documented error when stale.
-
 ### Step 3 — D5 + D10 (placeholders for paths and language)
 
 Add `${docs_root}` (populated with `~/.gh-optivem/docs/`) and

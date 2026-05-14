@@ -21,6 +21,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -29,11 +30,13 @@ import (
 
 	"github.com/spf13/cobra"
 
+	assetsync "github.com/optivem/gh-optivem/internal/assets/sync"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/driver"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/preflight"
 	"github.com/optivem/gh-optivem/internal/configinit"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/version"
 )
 
 // newImplementCmd implements `gh optivem implement [--issue N|URL]`. Without
@@ -75,6 +78,13 @@ pipeline from START.`,
   gh optivem implement --issue 42 --show-prompt
   gh optivem implement --issue 42 --keep-runs 0   # never prune`,
 		Run: func(cmd *cobra.Command, args []string) {
+			// ATDD-consuming command: when the auto-sync escape hatch is
+			// set, the pipeline needs assets at ~/.gh-optivem/docs/atdd/
+			// that the startup auto-sync would normally provide. Fail
+			// fast rather than dispatch agents whose prompts reference
+			// files that may be missing or out of date.
+			exitOnError(requireFreshAssetsWhenEscapeHatchSet())
+
 			var issue int
 			if strings.TrimSpace(issueArg) != "" {
 				parsed, err := parseIssueArg(issueArg)
@@ -112,6 +122,25 @@ pipeline from START.`,
 	cmd.Flags().IntVar(&keepRuns, "keep-runs", 10, "Max prompt-log run directories to keep under .gh-optivem/runs/ at startup (0 = never prune)")
 	cmd.Flags().BoolVar(&showPrompt, "show-prompt", false, "Dump each agent's full rendered prompt to stdout before dispatch (default: summary banner only)")
 	return cmd
+}
+
+// requireFreshAssetsWhenEscapeHatchSet returns the documented staleness
+// error when GH_OPTIVEM_NO_AUTO_SYNC disables the startup auto-sync AND
+// the stamp on disk does not match the binary version. With the escape
+// hatch unset the startup hook has already synced (or attempted to), so
+// this check is a no-op.
+func requireFreshAssetsWhenEscapeHatchSet() error {
+	if !assetsync.IsEscapeHatchSet() {
+		return nil
+	}
+	stale, err := assetsync.Stale(version.Version)
+	if err != nil {
+		return err
+	}
+	if stale {
+		return errors.New(assetsync.EscapeHatchHint)
+	}
+	return nil
 }
 
 // validateKeepRuns surfaces the documented "negative values are rejected"
