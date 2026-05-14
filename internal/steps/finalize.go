@@ -127,6 +127,16 @@ func CommitAndPush(cfg *config.Config, failureNote string) {
 }
 
 func commitAndPushRepo(repoDir, fullRepo, commitMsg string, preExisted bool) {
+	// Skip cleanly when the local clone never landed (earlier scaffold step
+	// failed before clone). Without this guard, `git add -A` cd's into a
+	// non-existent dir and surfaces a misleading "chdir ... no such file or
+	// directory" panic that drowns out the actual upstream failure — see the
+	// acceptance run 25877369208 "Commit and push" noise.
+	if _, err := os.Stat(repoDir); os.IsNotExist(err) {
+		log.Infof("Skipping commit/push for %s: local dir %s not created (earlier step failed before clone)",
+			fullRepo, repoDir)
+		return
+	}
 	if _, err := shell.Run("git add -A", true, repoDir); err != nil {
 		log.Fatalf("git add failed in %s: %v", fullRepo, err)
 	}

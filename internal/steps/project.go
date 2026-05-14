@@ -45,7 +45,7 @@ var statusOptionColors = map[string]string{
 // them to capture invocations and return canned responses without spawning
 // processes or reaching GitHub.
 var (
-	projectRunCapture        = shell.RunCapture
+	projectRunCapture        = shell.RunCaptureWithRetry
 	projectRunStdin          = shell.RunStdin
 	projectRun               = shell.Run
 	projectConfirmFn         = readProjectConfirmation

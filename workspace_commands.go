@@ -139,6 +139,14 @@ func runWorkspaceCommit(msg string, opts commitOptions) error {
 		fmt.Println()
 		fmt.Printf("--- %s ---\n", relOrSelf(repo))
 
+		// Pull onto current trunk *before* staging/committing so the new commit
+		// lands on top of origin/main, not a stale local main. Working tree is
+		// dirty by definition here — stash unstaged + staged changes, rebase,
+		// then pop. Emulates `rebase.autoStash` regardless of operator config.
+		if err := pullWithAutoStash(repo); err != nil {
+			return fmt.Errorf("pre-commit git pull --rebase in %s: %w", repo, err)
+		}
+
 		didCommit, err := commitOneRepo(repo, msg, opts)
 		if err != nil {
 			return err
@@ -147,11 +155,8 @@ func runWorkspaceCommit(msg string, opts commitOptions) error {
 			committed++
 		}
 
-		if err := runGit(repo, "pull"); err != nil {
-			return fmt.Errorf("git pull in %s: %w", repo, err)
-		}
-		if err := runGit(repo, "push"); err != nil {
-			return fmt.Errorf("git push in %s: %w", repo, err)
+		if err := pushWithRebaseRetry(repo); err != nil {
+			return err
 		}
 		synced++
 		fmt.Println("  ✓ Pulled and pushed")
@@ -307,11 +312,11 @@ func runWorkspaceSync() error {
 		}
 		fmt.Println()
 		fmt.Printf("--- %s ---\n", relOrSelf(repo))
-		if err := runGit(repo, "pull"); err != nil {
-			return fmt.Errorf("git pull in %s: %w", repo, err)
+		if err := runGit(repo, "pull", "--rebase"); err != nil {
+			return fmt.Errorf("git pull --rebase in %s: %w", repo, err)
 		}
-		if err := runGit(repo, "push"); err != nil {
-			return fmt.Errorf("git push in %s: %w", repo, err)
+		if err := pushWithRebaseRetry(repo); err != nil {
+			return err
 		}
 		synced++
 		fmt.Println("  ✓ Pulled and pushed")
@@ -536,6 +541,81 @@ func runGit(repo string, args ...string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// runGitTeeStderr runs `git -C <repo> <args...>`, streams stderr to the
+// operator AND returns it as a string so the caller can pattern-match on
+// rejection messages. Used by pushWithRebaseRetry to detect non-fast-forward
+// rejection without losing the operator's view of what git said.
+func runGitTeeStderr(repo string, args ...string) (string, error) {
+	full := append([]string{"-C", repo}, args...)
+	cmd := exec.Command("git", full...)
+	cmd.Stdout = os.Stdout
+	var captured strings.Builder
+	cmd.Stderr = io.MultiWriter(os.Stderr, &captured)
+	err := cmd.Run()
+	return captured.String(), err
+}
+
+// pullWithAutoStash runs `git pull --rebase` in repo, stashing any
+// uncommitted tracked changes first and popping the stash afterwards. Mirrors
+// `rebase.autoStash=true` regardless of the operator's git config, so the
+// pre-commit pull inside `workspace commit` works on a dirty working tree.
+// Untracked files are left alone — `git pull --rebase` does not touch them
+// unless an incoming change creates a file with the same name (rare, and the
+// operator should resolve that explicitly).
+func pullWithAutoStash(repo string) error {
+	dirty := exec.Command("git", "-C", repo, "diff-index", "--quiet", "HEAD").Run() != nil
+	if dirty {
+		if err := runGit(repo, "stash", "push", "--quiet", "-m", "gh optivem pre-commit auto-stash"); err != nil {
+			return fmt.Errorf("git stash in %s: %w", repo, err)
+		}
+	}
+	pullErr := runGit(repo, "pull", "--rebase")
+	if dirty {
+		if popErr := runGit(repo, "stash", "pop", "--quiet"); popErr != nil {
+			if pullErr != nil {
+				return fmt.Errorf("git pull --rebase failed (%w) and stash pop failed (%v); inspect `git stash list` in %s", pullErr, popErr, repo)
+			}
+			return fmt.Errorf("git stash pop in %s: %w; inspect `git stash list`", repo, popErr)
+		}
+	}
+	return pullErr
+}
+
+// pushWithRebaseRetry runs `git push` in repo, with up to maxPushAttempts
+// attempts when the push is rejected for being non-fast-forward (e.g. the bot
+// landed `Bump VERSION ...` on main between our pull and push — see
+// docs/tbd.md:151-169). On rejection, runs `git pull --rebase` and retries.
+// Non-rejection errors (auth, network, etc.) are not retried — another pull
+// won't fix them.
+func pushWithRebaseRetry(repo string) error {
+	const maxPushAttempts = 3
+	for attempt := 1; attempt <= maxPushAttempts; attempt++ {
+		stderr, err := runGitTeeStderr(repo, "push")
+		if err == nil {
+			return nil
+		}
+		if !isNonFastForwardRejection(stderr) || attempt == maxPushAttempts {
+			return fmt.Errorf("git push in %s: %w", repo, err)
+		}
+		fmt.Printf("  ↻ racing origin/main, retrying (%d/%d)…\n", attempt, maxPushAttempts-1)
+		if err := pullWithAutoStash(repo); err != nil {
+			return fmt.Errorf("git pull --rebase in %s during push retry: %w", repo, err)
+		}
+	}
+	return nil
+}
+
+// isNonFastForwardRejection reports whether stderr from `git push` shows the
+// "someone else pushed first" pattern that a `pull --rebase + push` cycle
+// resolves. Conservative — any other failure (auth, network, hook reject) is
+// surfaced verbatim so the operator sees the real cause.
+func isNonFastForwardRejection(stderr string) bool {
+	return strings.Contains(stderr, "[rejected]") ||
+		strings.Contains(stderr, "non-fast-forward") ||
+		strings.Contains(stderr, "fetch first") ||
+		strings.Contains(stderr, "Updates were rejected")
 }
 
 // captureGit returns the stdout of `git -C <repo> <args...>`. Used for

@@ -1,5 +1,7 @@
 # Build TBD discipline into `gh optivem workspace`
 
+> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-14T19:55:37Z`
+
 > ✅ **STATUS: READY TO EXECUTE.** This plan captures the gap between `docs/tbd.md` and the current behaviour of `gh optivem workspace commit` / `sync`, and proposes a layered set of changes. All open decisions have been resolved — see "Decisions resolved" at the bottom.
 
 ## Context

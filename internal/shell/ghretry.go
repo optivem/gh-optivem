@@ -3,7 +3,6 @@ package shell
 import (
 	"errors"
 	"regexp"
-	"time"
 
 	"github.com/optivem/gh-optivem/internal/log"
 )
@@ -12,15 +11,17 @@ import (
 // in optivem/actions/shared/gh-retry.sh: 4 attempts, 5s → 15s → 45s backoff,
 // retries 5xx/network/TLS/DNS transients, passes through 4xx (incl. rate limit)
 // immediately so CheckRateLimit / callers can make their own decision.
+//
+// Engine (runWithRetryLoop / sleepFn / classifyFn) lives in retrycore.go. This
+// file only owns gh-specific knobs and the typed-error-aware classifier.
 var (
-	ghRetryAttempts = 4
-	ghRetryDelays   = []time.Duration{
-		5 * time.Second,
-		15 * time.Second,
-		45 * time.Second,
-	}
+	ghRetryAttempts = defaultRetryAttempts
+	ghRetryDelays   = defaultRetryDelays
 
-	// Patterns that indicate a transient failure worth retrying.
+	// Patterns that indicate a transient failure worth retrying. The
+	// "Something went wrong while executing your query" alternative covers
+	// GitHub's GraphQL internal-error wording that surfaced in acceptance
+	// run 25877369208's "Ensure project board" step.
 	ghRetryTransient = regexp.MustCompile(
 		`(?i)` +
 			`HTTP 5\d\d|` +
@@ -29,58 +30,13 @@ var (
 			`\bEOF\b|was closed|broken pipe|` +
 			`TLS handshake|tls:.*handshake|` +
 			`temporary failure in name resolution|no such host|` +
-			`Bad Gateway|Service Unavailable|Gateway Timeout|server error`)
+			`Bad Gateway|Service Unavailable|Gateway Timeout|server error|` +
+			`Something went wrong while executing your query`)
 
 	// Patterns that must NOT be retried — would burn quota or mask a real bug.
 	ghRetryHardFail = regexp.MustCompile(
 		`(?i)HTTP 4\d\d|HTTP 403.*rate limit`)
 )
-
-// sleepFn is package-level so tests can replace it with a no-op.
-var sleepFn = time.Sleep
-
-// attemptFn runs one attempt and returns (combined output, error).
-type attemptFn func() (string, error)
-
-// classifyFn inspects a failed attempt's output+error and decides whether
-// another attempt is worthwhile. Returning false means hard-fail — return the
-// error to the caller immediately.
-type classifyFn func(out string, err error) bool
-
-// runWithRetryLoop runs attempt() up to maxAttempts times. Between attempts,
-// sleeps for delays[i] (capped at len(delays)-1 for tail attempts). Stops early
-// on success or when classify returns false (hard-fail pass-through). Returns
-// the final attempt's output and error.
-//
-// This is the one retry loop in the package; higher-level wrappers parameterise
-// it rather than rolling their own.
-func runWithRetryLoop(
-	attempt attemptFn,
-	classify classifyFn,
-	maxAttempts int,
-	delays []time.Duration,
-) (string, error) {
-	var out string
-	var err error
-	for i := 1; i <= maxAttempts; i++ {
-		out, err = attempt()
-		if err == nil {
-			return out, nil
-		}
-		if !classify(out, err) {
-			return out, err
-		}
-		if i < maxAttempts {
-			delay := delays[len(delays)-1]
-			if idx := i - 1; idx < len(delays) {
-				delay = delays[idx]
-			}
-			log.Warnf("[gh-retry] attempt %d/%d failed, retrying in %s", i, maxAttempts, delay)
-			sleepFn(delay)
-		}
-	}
-	return out, err
-}
 
 // classifyGHError returns true if the failure matches a known transient pattern
 // AND does not match a hard-fail pattern. Rate-limit (403) is hard-fail on
@@ -108,6 +64,7 @@ func RunWithRetry(cmdStr string, check bool, cwd string) (string, error) {
 		classifyGHError,
 		ghRetryAttempts,
 		ghRetryDelays,
+		"gh-retry",
 	)
 }
 
@@ -144,6 +101,7 @@ func MustRunPostCreate(cmdStr, cwd string) string {
 		},
 		ghRetryAttempts,
 		ghRetryDelays,
+		"gh-retry",
 	)
 	if err != nil {
 		log.Fatalf("%v", err)
@@ -160,9 +118,33 @@ func MustRunStdinWithRetry(cmdStr, stdin, cwd string) string {
 		classifyGHError,
 		ghRetryAttempts,
 		ghRetryDelays,
+		"gh-retry",
 	)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
 	return out
+}
+
+// RunCaptureWithRetry is the retry-wrapped sibling of RunCapture. Use for
+// `gh` CLI calls whose stdout is parsed (e.g. JSON capture from
+// `gh project list --format json`). Classification still inspects the
+// returned error string, which RunCapture builds from stderr.
+func RunCaptureWithRetry(cmdStr, cwd string) (string, error) {
+	return runWithRetryLoop(
+		func() (string, error) {
+			out, err := RunCapture(cmdStr, cwd)
+			if err != nil {
+				// classifyGHError matches against the combined message —
+				// surface err.Error() (which RunCapture builds from stderr)
+				// so the regex sees the same string a bash caller would.
+				return err.Error(), err
+			}
+			return out, nil
+		},
+		classifyGHError,
+		ghRetryAttempts,
+		ghRetryDelays,
+		"gh-retry",
+	)
 }

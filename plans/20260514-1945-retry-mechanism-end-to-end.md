@@ -1,7 +1,5 @@
 # Plan: end-to-end retry mechanism — consolidate, harden, audit, close gaps
 
-> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-14T19:31:10Z`
-
 Single source of truth for retry-related work in this workspace. Supersedes
 the four standalone plans listed below by folding their goals, file lists,
 and verification steps into one phased program.
@@ -184,21 +182,6 @@ Total: ~10-12 commits across 3 repos plus 2 audit reports plus follow-up
 fix plans. Push order across phases: **actions → gh-optivem → shop**,
 preserving cross-repo reference validity.
 
-### Phase 1 — Build shared retry infrastructure (`optivem/actions`)
-
-Foundation. Everything downstream depends on it.
-
-1. **`1a`** Add `actions/shared/retry-core.sh`. Refactor `gh-retry.sh` and
-   `docker-retry.sh` to delegate to `retry_with_policy`. Run
-   `_test-gh-retry.sh` and `_test-docker-retry.sh` locally — they must pass
-   unchanged. Add `_test-retry-core.sh`.
-2. **`1b`** Add `actions/shared/sonar-retry.sh` + `_test-sonar-retry.sh`.
-3. **`1c`** Add `actions/scripts/sync-shared.sh`. Run it locally to vendor
-   helpers into `../shop/.github/workflows/scripts/` and
-   `../gh-optivem/.github/scripts/`. Working trees in shop and gh-optivem
-   are now dirty (synced files appear) but not yet committed.
-4. Commit/push `optivem/actions` via `/commit`.
-
 ### Phase 2 — Immediate sonar-504 fix (`optivem/shop`)
 
 Closes the original incident from acceptance run 25865827466.
@@ -216,69 +199,6 @@ Closes the original incident from acceptance run 25865827466.
    inline-loop plan, superseded).
 8. Commit/push `optivem/shop` via `/commit`. Synced bash helpers from
    Phase 1c land in the same commit.
-
-### Phase 3 — Immediate GraphQL fix + Go-side consolidation (`optivem/gh-optivem`)
-
-Folds the three changes from superseded plan 1830 into the consolidated Go
-infrastructure. Closes the incident from acceptance run 25877369208.
-
-9. **`3a` — Engine extraction.** Add `internal/shell/retrycore.go` with
-   `RetryWithPolicy`. Refactor `ghretry.go` against it — body becomes ~30
-   lines. Existing exports `GhRetry`, `RunWithRetry`, `MustRunWithRetry`,
-   `MustRunStdinWithRetry`, `MustRunPostCreate` keep byte-identical
-   signatures. Run `go test ./internal/shell/...` — `ghretry_test.go` must
-   pass unchanged. Add `retrycore_test.go`.
-
-10. **`3b` — From 1830 (A): `RunCaptureWithRetry` + project.go seam.** In
-    `internal/shell/ghretry.go`, add:
-    ```go
-    func RunCaptureWithRetry(cmdStr, cwd string) (string, error) {
-        return runWithRetryLoop(
-            func() (string, error) { return RunCapture(cmdStr, cwd) },
-            classifyGHError,
-            ghRetryAttempts,
-            ghRetryDelays,
-        )
-    }
-    ```
-    In `internal/steps/project.go:48`, repoint the test seam:
-    ```go
-    projectRunCapture = shell.RunCaptureWithRetry
-    ```
-    The three call sites (lines 255, 272, 293) keep their syntax. The test
-    stub in `project_test.go:54-65` is unaffected (replaces
-    `projectRunCapture` wholesale).
-
-11. **`3c` — From 1830 (B): GraphQL transient wording.** In
-    `internal/shell/ghretry.go:24-32`, extend `ghRetryTransient` with the
-    alternative `Something went wrong while executing your query`. Add a
-    matching `TestClassifyGHError` case in `ghretry_test.go`.
-
-12. **`3d` — From 1830 (C): skip Commit-and-push cleanly.** In
-    `internal/steps/finalize.go`, add an early return at the top of
-    `commitAndPushRepo` (line 129):
-    ```go
-    if _, err := os.Stat(repoDir); os.IsNotExist(err) {
-        log.Infof("Skipping commit/push for %s: local dir %s not created (earlier step failed before clone)",
-            fullRepo, repoDir)
-        return
-    }
-    ```
-
-13. **`3e` — Bash regex parity.** Add `Something went wrong while executing
-    your query` to **canonical** `actions/shared/gh-retry.sh` (one edit, in
-    the actions repo). Run `actions/scripts/sync-shared.sh`. The synced copy
-    in `gh-optivem/.github/scripts/gh-retry.sh` updates automatically — no
-    manual mirror edit. (This is the consolidation paying back immediately.)
-
-14. **`3f` — Confirm synced bash helpers.** Vendored files from Phase 1c
-    plus the regex sync from 3e are now in `.github/scripts/`; confirm via
-    the generated-from banner SHA that they match canonical.
-
-15. Commit/push `optivem/gh-optivem` via `/commit`. Logical commits:
-    (i) engine extraction (3a),
-    (ii) GraphQL transient + project.go seam + finalize skip (3b+3c+3d),
-    (iii) synced bash helpers (3e+3f — could roll into i or ii).
 
 ### Phase 4 — Audit gh-optivem Go for retry-coverage gaps
 
@@ -356,13 +276,6 @@ Read-only sweep. From superseded plan 1850.
 
 ## Validation
 
-### Phase 1 (actions infrastructure)
-
-- `actions/shared/_test-gh-retry.sh`, `_test-docker-retry.sh`,
-  `_test-retry-core.sh`, `_test-sonar-retry.sh` all pass locally.
-- Refactored `gh-retry.sh` and `docker-retry.sh` preserve exact behaviour
-  of the originals — the existing test files are the safety net.
-
 ### Phase 2 (sonar fix)
 
 - Trigger `gh-acceptance-stage` against the shop PR branch:
@@ -372,25 +285,6 @@ Read-only sweep. From superseded plan 1850.
   Expect all 8 dotnet/java matrix combos to pass (or pass first try with
   no retries logged if Sonar is healthy — no negative test possible without
   an outage).
-
-### Phase 3 (Go consolidation + GraphQL fix)
-
-- `go build ./...` and `go test ./...` pass clean from repo root.
-- `go test ./internal/shell/...` verifies the new classifier case and that
-  `RunCaptureWithRetry` compiles and threads through.
-- `go test ./internal/steps/...` verifies the project.go seam swap is
-  invisible to existing tests.
-- Re-dispatch the failed `gh-acceptance-stage` run (or run
-  `gh optivem init` against a throwaway repo). If the GraphQL blip recurs,
-  expect a `[gh-retry] attempt N/4 failed, retrying in 5s` warning followed
-  by success.
-- To exercise (3d) deterministically: temporarily make `EnsureProjectBoard`
-  fail (e.g. set `cfg.Owner` to a non-existent user via local edit). The
-  summary should report exactly one error — `Ensure project board` — and no
-  `git add failed: chdir ... no such file or directory` line.
-- **Bash sync check**: grep `_GH_RETRY_RETRYABLE` in
-  `.github/scripts/gh-retry.sh` against `ghRetryTransient` in
-  `internal/shell/ghretry.go` — the alternative lists must match.
 
 ### Phase 4 (gh-optivem audit)
 

@@ -23,6 +23,7 @@ func TestClassifyGHError(t *testing.T) {
 		{"tls handshake lowercase", "tls: handshake failure", err, true},
 		{"no such host", "dial tcp: lookup api.github.com: no such host", err, true},
 		{"bad gateway text", "Bad Gateway", err, true},
+		{"graphql internal error", "Something went wrong while executing your query", err, true},
 
 		{"HTTP 404", "HTTP 404: Not Found", err, false},
 		{"HTTP 403 rate limit", "HTTP 403: API rate limit exceeded", err, false},
@@ -57,7 +58,7 @@ func TestRunWithRetryLoop_ImmediateSuccess(t *testing.T) {
 		attempts++
 		return "ok", nil
 	}
-	out, err := runWithRetryLoop(attempt, classifyGHError, 4, ghRetryDelays)
+	out, err := runWithRetryLoop(attempt, classifyGHError, 4, ghRetryDelays, "gh-retry")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -85,7 +86,7 @@ func TestRunWithRetryLoop_TransientThenSuccess(t *testing.T) {
 		}
 		return "ok", nil
 	}
-	out, err := runWithRetryLoop(attempt, classifyGHError, 4, ghRetryDelays)
+	out, err := runWithRetryLoop(attempt, classifyGHError, 4, ghRetryDelays, "gh-retry")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -113,7 +114,7 @@ func TestRunWithRetryLoop_TransientExhausted(t *testing.T) {
 		attempts++
 		return "HTTP 500 Internal Server Error", transient
 	}
-	out, err := runWithRetryLoop(attempt, classifyGHError, 4, ghRetryDelays)
+	out, err := runWithRetryLoop(attempt, classifyGHError, 4, ghRetryDelays, "gh-retry")
 	if err == nil {
 		t.Fatalf("expected error after exhausting retries, got nil")
 	}
@@ -139,7 +140,7 @@ func TestRunWithRetryLoop_HardFailPassthrough(t *testing.T) {
 		attempts++
 		return "HTTP 404: Not Found", hardFail
 	}
-	out, err := runWithRetryLoop(attempt, classifyGHError, 4, ghRetryDelays)
+	out, err := runWithRetryLoop(attempt, classifyGHError, 4, ghRetryDelays, "gh-retry")
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -176,7 +177,7 @@ func TestRunWithRetryLoop_PermissiveClassifier(t *testing.T) {
 			}
 			return "ok", nil
 		}
-		out, err := runWithRetryLoop(attempt, permissive, 4, ghRetryDelays)
+		out, err := runWithRetryLoop(attempt, permissive, 4, ghRetryDelays, "gh-retry")
 		if err != nil || out != "ok" || attempts != 3 {
 			t.Fatalf("got attempts=%d out=%q err=%v, want attempts=3 out=ok err=nil", attempts, out, err)
 		}
@@ -189,7 +190,7 @@ func TestRunWithRetryLoop_PermissiveClassifier(t *testing.T) {
 			attempts++
 			return "", rlErr
 		}
-		_, err := runWithRetryLoop(attempt, permissive, 4, ghRetryDelays)
+		_, err := runWithRetryLoop(attempt, permissive, 4, ghRetryDelays, "gh-retry")
 		if attempts != 1 || err != rlErr {
 			t.Fatalf("got attempts=%d err=%v, want attempts=1 err=rlErr", attempts, err)
 		}
@@ -206,7 +207,7 @@ func TestRunWithRetryLoop_RateLimitPassthrough(t *testing.T) {
 		attempts++
 		return "", rlErr
 	}
-	out, err := runWithRetryLoop(attempt, classifyGHError, 4, ghRetryDelays)
+	out, err := runWithRetryLoop(attempt, classifyGHError, 4, ghRetryDelays, "gh-retry")
 	if attempts != 1 {
 		t.Fatalf("attempts = %d, want 1 — rate-limit must not retry", attempts)
 	}

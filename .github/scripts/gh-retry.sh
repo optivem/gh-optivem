@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# GENERATED — DO NOT EDIT.
+# Source: optivem/actions/shared/gh-retry.sh @ 8de8f0f85c9adf2e8a2222a9a3c42536fa6ca353
+# Sync via: bash optivem/actions/scripts/sync-shared.sh
 # gh-retry.sh — retry wrapper for `gh` CLI invocations.
 #
 # Source this file from any action.yml composite step that calls `gh`, then
@@ -22,11 +25,14 @@
 #
 # Set `GH_RETRY_DISABLE=1` to bypass the retry loop.
 
+# shellcheck source=./retry-core.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/retry-core.sh"
+
 _GH_RETRY_ATTEMPTS=4
 _GH_RETRY_DELAYS=(5 15 45)
 
 # shellcheck disable=SC2034  # referenced via grep -E
-_GH_RETRY_RETRYABLE='HTTP 5[0-9][0-9]|timeout|timed out|i/o timeout|connection reset|connection refused|\bEOF\b|was closed|TLS handshake|tls:.*handshake|temporary failure in name resolution|no such host|Bad Gateway|Service Unavailable|Gateway Timeout|server error'
+_GH_RETRY_RETRYABLE='HTTP 5[0-9][0-9]|timeout|timed out|i/o timeout|connection reset|connection refused|\bEOF\b|was closed|TLS handshake|tls:.*handshake|temporary failure in name resolution|no such host|Bad Gateway|Service Unavailable|Gateway Timeout|server error|Something went wrong while executing your query'
 # shellcheck disable=SC2034
 _GH_RETRY_HARD_FAIL='HTTP 4[0-9][0-9]|HTTP 403.*rate limit'
 
@@ -35,67 +41,7 @@ gh_retry() {
         gh "$@"
         return $?
     fi
-
-    local attempt=1
-    local code=0
-    local stdout_file stderr_file
-    stdout_file=$(mktemp -t gh-retry-out.XXXXXX)
-    stderr_file=$(mktemp -t gh-retry-err.XXXXXX)
-
-    while (( attempt <= _GH_RETRY_ATTEMPTS )); do
-        : >"$stdout_file"
-        : >"$stderr_file"
-        gh "$@" >"$stdout_file" 2>"$stderr_file"
-        code=$?
-
-        if (( code == 0 )); then
-            cat "$stdout_file"
-            [[ -s "$stderr_file" ]] && cat "$stderr_file" >&2
-            rm -f "$stdout_file" "$stderr_file"
-            return 0
-        fi
-
-        local stderr_content
-        stderr_content=$(cat "$stderr_file")
-
-        # Hard-fail pass-through (4xx, rate-limit). Never retry — would only burn quota.
-        if grep -Eqi "$_GH_RETRY_HARD_FAIL" <<<"$stderr_content"; then
-            cat "$stdout_file"
-            cat "$stderr_file" >&2
-            rm -f "$stdout_file" "$stderr_file"
-            return "$code"
-        fi
-
-        # Not a known transient pattern → pass through (e.g. 404 existence probe).
-        if ! grep -Eqi "$_GH_RETRY_RETRYABLE" <<<"$stderr_content"; then
-            cat "$stdout_file"
-            cat "$stderr_file" >&2
-            rm -f "$stdout_file" "$stderr_file"
-            return "$code"
-        fi
-
-        local snippet
-        snippet=$(head -n1 "$stderr_file" | tr -d '\r')
-
-        if (( attempt < _GH_RETRY_ATTEMPTS )); then
-            local delay_idx=$(( attempt - 1 ))
-            if (( delay_idx >= ${#_GH_RETRY_DELAYS[@]} )); then
-                delay_idx=$(( ${#_GH_RETRY_DELAYS[@]} - 1 ))
-            fi
-            local sleep_s=${_GH_RETRY_DELAYS[$delay_idx]}
-            echo "::notice::[gh-retry] attempt $attempt failed (exit $code): $snippet -- retrying in ${sleep_s}s" >&2
-            sleep "$sleep_s"
-        else
-            echo "::warning::[gh-retry] exhausted $_GH_RETRY_ATTEMPTS attempts (exit $code): $snippet" >&2
-            cat "$stdout_file"
-            cat "$stderr_file" >&2
-            rm -f "$stdout_file" "$stderr_file"
-            return "$code"
-        fi
-
-        (( attempt++ ))
-    done
-
-    rm -f "$stdout_file" "$stderr_file"
-    return "$code"
+    _RETRY_CORE_ATTEMPTS="$_GH_RETRY_ATTEMPTS"
+    _RETRY_CORE_DELAYS=("${_GH_RETRY_DELAYS[@]}")
+    retry_with_policy "$_GH_RETRY_RETRYABLE" "$_GH_RETRY_HARD_FAIL" gh-retry -- gh "$@"
 }
