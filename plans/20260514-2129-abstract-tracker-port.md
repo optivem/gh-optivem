@@ -29,8 +29,14 @@ Settled in conversation and baked into the rest of the plan:
 | ID field name | `IssueID` | "issue" is shared GitHub + Jira vocabulary; "ID" is generic where "Num" is GitHub-specific and "Key" is Jira-specific. |
 | Struct name | `Issue` (not `Ticket`) | GitHub and Jira both say "issue." See memory: `feedback_naming_github_jira_first`. |
 | CLI flag | `--issue` accepts ID *or* URL | Both backends have URL-addressable issues; adapter detects the shape. |
-| Backend selection | Discriminated by `project.url` shape | `https://github.com/...` → github; filesystem path → markdown; future `https://*.atlassian.net/...` → jira. No separate `tracker:` config field. |
+| Backend selection | Explicit required `project.provider` field (`github` \| `markdown`) | Self-documenting; trivial dispatch in `tracker.Open`; loud config-mismatch errors; forward-compatible for `jira`. |
+| Older configs missing `provider` | Hard error + `gh optivem config migrate` auto-fix | Error message names the exact fix; the migrate command infers provider from URL shape and idempotently adds the field. |
+| `Issue.Repo` field | Dropped from the interface entirely | Control-flow uses (`gh issue view --repo …`) migrate to `Tracker.Classify` / `ReadSections` / `MarkChecklistComplete`; subagent preamble drops the `(repo)` suffix. One fewer leak. |
+| Markdown `IssueID` source | Full filename sans `.md` | One source of truth; rename = change ID. Lets `SHOP-7.md` mirror a Jira key. |
+| Markdown `Title` source | First H1 in file; filename fallback | Closest to GitHub model. |
 | Markdown layout | `board/<status>/<id>.md` | Folder per status; `git mv` performs the status change; ordering by filename ascending. |
+| Markdown `MarkChecklistComplete` | Auto-commit after rewrite | `git add` + `git commit` so the working tree stays clean after the call. |
+| Mixed-URL `--issue` handling | Active adapter rejects with clear error | No CLI-level adapter routing — predictable that `--issue` is interpreted by the configured backend. |
 | Naming principle | GitHub + Jira first, not markdown | Markdown is the escape hatch; vocabulary follows the real backends. |
 
 ## The interface
@@ -42,7 +48,6 @@ type Issue struct {
     ID     string // "42" (GitHub), "SHOP-7" (Jira), "001-add-cart" (markdown)
     Title  string
     URL    string // GitHub/Jira always populate; markdown empty (unless we generate file:// links)
-    Repo   string // GitHub-only: owner/repo. Jira/markdown leave empty.
     Handle string // opaque per-backend payload; github encodes "projectID:itemID"
 }
 
@@ -56,17 +61,16 @@ type Tracker interface {
     MarkChecklistComplete(ctx context.Context, i Issue) error
 }
 
-// Open inspects projectURL and returns the matching adapter.
-//   https://github.com/(orgs|users)/<x>/projects/<n>  → github adapter
-//   <existing filesystem path>                        → markdown adapter
-//   anything else                                     → error naming both expected shapes
-func Open(ctx context.Context, projectURL string) (Tracker, error)
+// Open dispatches on cfg.Provider, validates cfg.URL against the chosen
+// adapter's expected shape, and returns the adapter. Unknown provider
+// values, or provider/URL mismatches, return an error naming both fields.
+func Open(ctx context.Context, cfg projectconfig.Project) (Tracker, error)
 ```
 
 Notes:
 - `SetStatus` replaces `MoveToInProgress` and `MoveToInAcceptance`. One verb covers every status change; the adapter maps `"In progress"` / `"In acceptance"` / `"Done"` to backend mechanics.
 - `Handle` is the only adapter-internal escape hatch the driver carries. The state machine `Context` shuttles a single `issue_handle` string instead of today's `project_id` + `item_id` + `project_url` triple.
-- `Issue.Repo` keeps the GitHub-shaped name; Jira/markdown leave it empty. We do not invent a markdown-fitting alternative — per the naming rule.
+- `Issue.Repo` is **not** on the struct. The github adapter's internal repo state lives in `Handle`; the seven `gh issue view --repo …` call sites in `actions`/`gates`/`classify` migrate to `Tracker.Classify` / `Tracker.ReadSections` / `Tracker.MarkChecklistComplete`. The agent preamble template drops the `(repo)` suffix — subagents have the issue URL, which is enough.
 
 ## Adapter map per method
 
@@ -78,7 +82,7 @@ Notes:
 | `Verify` | Minimal projectV2 GraphQL lookup (id, title). | Stat `<project.url>/ready/`, `/in-progress/`, `/done/`. |
 | `Classify` | Projects v2 `Type` field + label-token table. | Frontmatter `type:` field; fall back to filename heuristic if absent. |
 | `ReadSections` | Parse H2/H3 from issue body (current Issue Forms behavior). | Same parser, against the local file body — markdown content model is shared. |
-| `MarkChecklistComplete` | Rewrite `- [ ]` → `- [x]` in issue body via `gh issue edit`. | Same rewrite in the file; `git add` + `git commit` the change. |
+| `MarkChecklistComplete` | Rewrite `- [ ]` → `- [x]` in issue body via `gh issue edit`. | Same rewrite in the file, then `git add <file> && git commit -m "checklist: tick item N for <id>"`. Working tree stays clean. |
 
 ## Package layout
 
@@ -111,11 +115,14 @@ Each step is a single commit (or small commit pair) with passing tests. The gith
 5. **Migrate `intake/sections.go`.** Replace the hardcoded Issue Forms heading walker with `Tracker.ReadSections(issue, headings)`. The github adapter's `ReadSections` does today's body parse; markdown adapter's reuses the shared `tracker/internal/parse`.
 6. **Migrate `gates/bindings.go`.** Same pattern — `gh` calls replaced with `Tracker.ReadSections` / `Tracker.Classify`.
 7. **Build markdown adapter.** Implement all seven `Tracker` methods in `tracker/markdown/`. See the adapter-map table above for behavior per method.
-8. **Adapter selection factory.** `tracker.Open(ctx, projectURL)` inspects the URL/path and returns the right adapter; unknown shapes error with both expected forms named.
-9. **Drop `project_id` / `item_id` / `project_url` from `Context`.** Replaced by `issue_handle` (opaque string). The github adapter encodes its triple into `Issue.Handle` internally.
-10. **Delete `internal/atdd/runtime/board/`.** All consumers migrated.
-11. **Update preflight.** `preflight_helpers.go`'s `BoardURLOK` calls `tracker.Open` + `Verify`. New failure mode for markdown: "directory not found at <path>."
-12. **CLI accepts `--issue <URL>`.** Update `implement_commands.go` parser (currently rejects non-numeric `--issue` values per lines 261-277). The github adapter parses both shapes; markdown adapter parses ID or file path.
+8. **Config schema: add required `project.provider`.** Extend `internal/projectconfig` so `project.Provider` is a string (`github` | `markdown`) with `Validate()` rejecting empty values. Update fixtures, scaffolded `gh-optivem.yaml` templates, and any test configs to include the field.
+9. **Adapter selection factory.** `tracker.Open(ctx, cfg projectconfig.Project)` dispatches on `cfg.Provider` and validates `cfg.URL` against that adapter's expected shape. Provider/URL mismatches error with both fields named.
+10. **`gh optivem config migrate` command.** New subcommand under `config`: loads `gh-optivem.yaml`, no-ops if `provider` already set, otherwise infers from `url` shape (github URL → `github`; existing directory → `markdown`), writes the field via yaml.v3 round-trip (reuses the comment-preserving write logic from `internal/configinit/`). Idempotent. The `provider`-required error message in step 8 hints at this command.
+11. **Drop `project_id` / `item_id` / `project_url` from `Context`.** Replaced by `issue_handle` (opaque string). The github adapter encodes its triple into `Issue.Handle` internally.
+12. **Drop `Issue.Repo` / `issue_repo` from runtime.** Remove the field from the seven `gh issue view --repo …` call sites (subsumed by `Tracker` methods), from `clauderun.Options.IssueRepo`, from the agent preamble template (`internal/assets/runtime/shared/preamble.md`), and from `Context` (`issue_repo` key).
+13. **Delete `internal/atdd/runtime/board/`.** All consumers migrated.
+14. **Update preflight.** `preflight_helpers.go`'s `BoardURLOK` calls `tracker.Open` + `Verify`. New failure mode for markdown: "directory not found at <path>."
+15. **CLI accepts `--issue <URL>`.** Update `implement_commands.go` parser (currently rejects non-numeric `--issue` values per lines 261-277). The github adapter parses both shapes; markdown adapter parses ID or file path.
 
 ## Tests
 
@@ -128,21 +135,10 @@ Each step is a single commit (or small commit pair) with passing tests. The gith
 
 ## Backwards compatibility
 
-- Existing `gh-optivem.yaml` with `project.url: https://github.com/orgs/X/projects/N` keeps working — routes to the github adapter via `tracker.Open`.
-- CLI `--issue 42` keeps working — github adapter accepts numeric strings.
-- CLI `--issue https://github.com/.../issues/42` is now valid (currently a parse error in `implement_commands.go`).
-- No config schema changes required for github users. Markdown users set `project.url: ./board` (or absolute path).
-
-## Decisions still needed
-
-Not nailed down in the design conversation — call before execution:
-
-1. **Markdown `IssueID` source.** Full filename sans `.md` (e.g. `001-add-cart`), or optional frontmatter `id:` with filename fallback? Frontmatter lets human-friendly filenames coexist with stable external IDs (e.g. mirror a Jira key); filename-only is simpler.
-2. **Markdown `Title` source.** First H1 in the file, frontmatter `title:`, or filename slug? First-H1 matches the GitHub model most closely.
-3. **Mixed-shape URL handling.** When `project.url` is `https://github.com/...` and the user passes `--issue https://example.atlassian.net/browse/SHOP-7`, the github adapter rejects with "not a GitHub URL." Confirm this vs. CLI-level routing.
-4. **Project URL config field name.** Keep `project.url` (slight legacy when value is a folder path) or rename to `project.board` with a deprecation alias? Cleanest is rename, but breaks existing configs.
-5. **`Issue.Repo` for markdown.** Empty (current proposal), or populate with the git remote of the repo containing `board/`?
-6. **`MarkChecklistComplete` for markdown.** Auto-commit the rewrite (`git add` + `git commit`), or just rewrite the file and leave staging to the user? Auto-commit matches GitHub's atomic mutation; user-staged is friendlier in local-iteration mode.
+- **Required new field.** `project.provider` is mandatory after this plan lands. Existing configs without it fail to load with a clear error pointing at `gh optivem config migrate`.
+- **Migrate path** (one-shot): `gh optivem config migrate` reads `gh-optivem.yaml`, infers `provider` from the existing `url` shape (https github URL → `github`; resolvable directory → `markdown`), and writes the field back idempotently. Existing comments and ordering preserved.
+- **CLI continuity.** `--issue 42` keeps working — github adapter accepts numeric strings. `--issue https://github.com/.../issues/42` is now valid (was a parse error in `implement_commands.go` lines 261-277).
+- **Markdown setup.** Markdown users set `project.provider: markdown` + `project.url: ./board` (or absolute path), and create `board/{ready,in-progress,done}/` directories.
 
 ## Out of scope
 
@@ -152,8 +148,9 @@ Not nailed down in the design conversation — call before execution:
 
 ## Estimated effort
 
-- Steps 1–6 + 9–12: 2–3 days (mechanical extraction; matches the prior deferred-plan estimate).
-- Step 7 (markdown adapter): 1–2 days.
+- Steps 1–6 + 11–15: ~2–3 days (mechanical extraction; matches the prior deferred-plan estimate).
+- Step 7 (markdown adapter): ~1–2 days.
+- Steps 8–10 (config field + migrate command): ~half a day.
 - Steps 1 and 7 are independent enough to run in parallel by different sessions if desired.
 
 ## Touchpoints catalog (from the original deferred analysis)
