@@ -1,8 +1,8 @@
 // workspace_commands.go wires the `gh optivem workspace <verb>` subtree.
 // The workspace noun spans operations that iterate every repo declared in
-// the academy *.code-workspace file. The Go ports replace the bash scripts
-// in academy/github-utils/scripts/ — see plans/20260514-0914-migrate-
-// workspace-scripts-to-gh-optivem.md.
+// the resolved *.code-workspace file. The Go ports replace the bash scripts
+// in github-utils/scripts/ — see plans/20260514-0914-migrate-workspace-
+// scripts-to-gh-optivem.md.
 //
 // Cascade for locating the workspace: --workspace > $GH_OPTIVEM_WORKSPACE >
 // walk up from CWD. Resolution lives in internal/workspace.
@@ -42,7 +42,7 @@ const workspaceSeparator = "============================================"
 func newWorkspaceCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "workspace",
-		Short: "Operate on every repo in the academy workspace",
+		Short: "Operate on every repo declared in the resolved *.code-workspace file",
 	}
 	cmd.PersistentFlags().StringVar(&workspaceFlagValue, "workspace", "",
 		"Path to a directory containing a *.code-workspace file (default: $"+workspace.EnvVar+" or walk up from CWD)")
