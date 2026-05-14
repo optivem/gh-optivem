@@ -306,8 +306,6 @@ gh optivem process show > docs/process-diagram.md  # regenerate the committed di
 
 ## Further reading
 
-- [Trunk-based development](docs/tbd.md) — how to work with `main` in this repo (and the repos it scaffolds), the role of `pull --rebase`, when to use short-lived PRs, and why the version-bump bot is just another committer.
-- [How it works](docs/how-it-works.md) — what `gh optivem init` does end-to-end: setup steps, verification steps, and the pipeline shape.
-- [Acceptance stage monitoring process](docs/gh-monitoring-process.md) — how to trigger, watch, and recover the `gh-acceptance-stage` workflow.
+- [Trunk Based Development (TBD)](docs/tbd.md) — how to work with `main` in this repo (and the repos it scaffolds), the role of `pull --rebase`, when to use short-lived PRs, and why the version-bump bot is just another committer.
 - [Process diagram](docs/process-diagram.md) — committed Mermaid diagram of the scaffolding pipeline.
 
