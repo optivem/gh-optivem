@@ -1,5 +1,7 @@
 # Plan: optimize ATDD agent prompts and centralize ATDD ownership in gh-optivem
 
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-14T09:45:52Z`
+
 ## Context
 
 `gh optivem implement` dispatches one of nine embedded agent prompts under
@@ -472,35 +474,6 @@ A silent default would mask config bugs.
   generalized by D5.
 
 ## Steps
-
-### Step 1 — D1 + D2 (single asset tree + ownership move)
-
-Land as one bundle (the move is non-atomic if split — every consumer
-would see a window where docs are gone). Sub-steps:
-
-1. Create `internal/assets/` with `runtime/` and `global/` subtrees.
-2. Move existing prompts from `internal/atdd/runtime/agents/prompts/*.md`
-   to `internal/assets/runtime/prompts/atdd/*.md`.
-3. Move `internal/atdd/runtime/agents/shared/session-end.md` to
-   `internal/assets/runtime/shared/session-end.md`. Create
-   `internal/assets/runtime/shared/preamble.md` (D4) by extracting the
-   duplicated 8-line preamble from one of the current prompt files.
-4. Move shop's asset trees into `internal/assets/global/`.
-5. Add `internal/assets/embed.go` with one `//go:embed assets/...`
-   covering both subtrees.
-6. Refactor `internal/atdd/runtime/agents/` to a thin wrapper reading
-   from `internal/assets`. `agents.Prompt()` keeps its public API;
-   internally it now prepends `runtime/shared/preamble.md` and appends
-   `runtime/shared/session-end.md`.
-7. Update `internal/atdd/install.go` (or remove the ATDD-asset half).
-8. Update `internal/atdd/install_test.go` fixtures.
-9. Delete the original copies in shop; leave a pointer-README.
-
-**Validation:**
-- Build succeeds; single embed.FS contains every asset.
-- shop becomes equivalent to any other consumer after the change.
-- `claude -p` dispatches still resolve the right prompt file via the
-  refactored `agents.Prompt()`.
 
 ### Step 2 — D3 (auto-sync mechanism)
 

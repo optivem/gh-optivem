@@ -313,16 +313,12 @@ func buildSteps(cfg *config.Config, pc *projectconfig.Config, gh *shell.GitHub, 
 		// {name: "Validate no leftover template references", phase: phaseApplyTemplate, fn: func() { steps.ValidateNoLeftoverTemplateRefs(cfg) }},
 	}
 
-	// ATDD assets (agents, commands, prompts) get installed before Commit and
-	// push so they end up in the initial scaffold commit, just like the
-	// system code, workflows, and externals. Skipped when --no-atdd is set.
-	if !cfg.NoAtdd {
-		allSteps = append(allSteps, stepDef{
-			name:  "Install ATDD assets",
-			phase: phaseApplyTemplate,
-			fn:    func() { installAtddDuringInit(cfg) },
-		})
-	}
+	// ATDD assets no longer install per-repo — they live in gh-optivem's
+	// embedded asset tree and sync to per-user global paths (~/.gh-optivem/,
+	// ~/.claude/) on every gh-optivem invocation. Consumer repos hold zero
+	// ATDD assets on disk. The --no-atdd flag is retained for backward
+	// compatibility but is now a no-op at init time; the per-user sync
+	// escape hatch is the GH_OPTIVEM_NO_AUTO_SYNC env var.
 
 	allSteps = append(allSteps, stepDef{
 		name:      "Commit and push",
