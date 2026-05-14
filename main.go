@@ -101,6 +101,7 @@ func newRootCmd() *cobra.Command {
 		newImplementCmd(),
 		newProcessCmd(),
 		newEnvironmentCmd(),
+		newWorkspaceCmd(),
 	)
 	return cmd
 }

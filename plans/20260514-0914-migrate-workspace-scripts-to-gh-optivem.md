@@ -1,8 +1,6 @@
 # Plan: migrate `github-utils/scripts/*` into `gh-optivem` as native subcommands
 
-> **Status: DEFERRED.** This is a larger change than fits the current cycle — postponed pending dedicated time. Do not start execution without re-confirming scope with the user.
->
-> Step 1 (`internal/workspace/` package + tests) was carved out and landed on 2026-05-14 (see `internal/workspace/`). Steps 2–13 remain deferred.
+> **Status: PARTIAL.** Step 1 (`internal/workspace/`) landed on 2026-05-14. Steps 2, 3, 4, 5b (`rate-limit`), and the workspace half of Step 8 landed on 2026-05-14 — see `workspace_commands.go`, `workspace_commands_test.go`, and `main.go`'s root-command wiring. Step 5a (`test-pipeline-templates`) is deferred — the script is 327 lines with parallel orchestration, not "<50 lines" as the original plan estimated, and warrants a dedicated session. The cleanup group (Steps 6, 7, cleanup half of 8), slash-command rewriting (Step 9), and tombstoning (Step 10) remain deferred pending follow-up sessions.
 
 ## Context
 
@@ -104,71 +102,7 @@ This plan does not add capabilities the scripts don't already have — see [[fee
 
 ## Steps
 
-### 2. Add `gh optivem workspace commit`
-
-Create `workspace_commands.go`:
-
-```go
-func newWorkspaceCmd() *cobra.Command {
-    cmd := &cobra.Command{
-        Use:   "workspace",
-        Short: "Operate on every repo in the academy workspace",
-    }
-    cmd.AddCommand(
-        newWorkspaceCommitCmd(),
-        newWorkspaceSyncCmd(),
-        newWorkspaceCheckActionsCmd(),
-        newWorkspaceTestPipelineTemplatesCmd(),
-        newWorkspaceRateLimitCmd(),
-    )
-    cmd.PersistentFlags().String("workspace", "", "Path to a directory containing a *.code-workspace file (default: $GH_OPTIVEM_WORKSPACE or walk up from CWD)")
-    return cmd
-}
-```
-
-`newWorkspaceCommitCmd` ports `commit.sh` 1:1. Flags:
-
-- `--repo <name>` (single-repo scope)
-- `--paths "<paths>"` (requires `--repo`)
-- `--yes` (skip confirmation; refuses untracked unless `--include-untracked`)
-- `--include-untracked` (no-op without `--yes`)
-- Positional: commit message (required when any iterated repo is dirty)
-
-Logic:
-
-1. `workspace.Resolve` for folders.
-2. For each folder with `.git/`, check `git status --short`. If dirty:
-   - Print status.
-   - If `--yes`, gate untracked-file refusal (port `commit.sh:227-236`).
-   - Otherwise call `promptio.ConfirmYN(...)`. On a non-TTY without `--yes`, error out with the same "stdin is not a TTY" message as the bash version.
-   - If confirmed: `git add` (`-A` or `-- <paths>`), `git commit -m "<msg>\n\nCo-Authored-By: ..."`, increment `committed`.
-   - If declined and `--paths` was used: `git reset -- <paths>` to restore staging (port `commit.sh:213-216`).
-3. Always run `git pull && git push` per repo (mirrors `commit.sh:250-253`).
-4. Print the same `committed / synced / skipped` summary line.
-
-**Co-author trailer**: keep the existing `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>` trailer for now (parity); flagging it for review in a follow-up since gh-optivem itself isn't a Claude session.
-
-Regression test: a `workspace_commands_test.go` that drives `runWorkspaceCommit` against a temp dir with two fake git repos (one dirty, one clean) and asserts the dirty repo got a commit with the supplied message and the clean repo did not.
-
-### 3. Add `gh optivem workspace sync`
-
-Direct port of `sync.sh` (47 lines, no flags). Walks folders, runs `git pull && git push` on each repo with a remote tracking branch, prints `synced / skipped` summary. No tests beyond a smoke test — too thin to be worth more.
-
-### 4. Add `gh optivem workspace check-actions`
-
-Port `check-actions-all.sh`. Inputs: workspace folders. For each repo:
-
-- `gh workflow list --all` (routed through `internal/shell/ghretry`).
-- For each workflow, `gh run list --workflow <id> --limit 1`.
-- For failures, `gh run view --log-failed` and grep for `##[error]`.
-
-Same emoji-prefixed output (✅ / ❌ / ⏭). Pre-existing `internal/shell/github.go` already wraps the `gh` shell-out; this command just orchestrates calls.
-
-Add a small unit test for the parsing layer (TSV record → struct) but skip an end-to-end test that hits the real `gh` CLI — too brittle for CI, manual verification covers it.
-
-### 5. Add `gh optivem workspace test-pipeline-templates` and `rate-limit`
-
-Port `test-pipeline-templates.sh` and `check-rate-limits.sh` as straightforward shell-outs through `internal/shell`. Both are simple — fewer than ~50 lines of bash each. No tests; smoke-verify in step 11.
+- [ ] **Step 5a: Add `gh optivem workspace test-pipeline-templates`** — ⏳ Deferred (2026-05-14). The script is 327 lines with parallel orchestration (commit-stage fan-out → wait → acceptance/QA/signoff/prod per-repo fan-out), not "<50 lines" as the original plan estimated. Needs a dedicated session with goroutines + sync.WaitGroup. Inputs: workspace folders + hard-coded greeter repo list + workflow names. Reuse: `internal/shell.RunWithRetry`, `shell.CheckRateLimit`.
 
 ### 6. Add `internal/ghbulk/` for paginated bulk operations
 
@@ -222,22 +156,7 @@ Regression tests: table tests for the argument parser (`owner/repo` validation, 
 
 ### 8. Wire the new groups into the root command
 
-In `main.go:95`, extend `cmd.AddCommand(...)`:
-
-```go
-cmd.AddCommand(
-    newInitCmd(),
-    newConfigCmd(),
-    newSystemCmd(),
-    newTestCmd(),
-    newCompileCmd(),
-    newImplementCmd(),
-    newProcessCmd(),
-    newEnvironmentCmd(),
-    newWorkspaceCmd(),   // new
-    newCleanupCmd(),     // new
-)
-```
+`newWorkspaceCmd()` is already wired in `main.go`. Remaining: append `newCleanupCmd()` to the same `cmd.AddCommand(...)` block once Step 7 lands.
 
 ### 9. Rewrite the slash-command wrappers
 
