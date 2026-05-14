@@ -356,33 +356,6 @@ var nowFn = time.Now
 // correct behaviour because it isn't a placeholder.
 var unfilledPlaceholderRE = regexp.MustCompile(`\$\{[a-zA-Z_][a-zA-Z0-9_]*\}`)
 
-// conditionalRE matches a `<!-- if:NAME=VALUE -->...<!-- end-if -->`
-// block in a prompt template. NAME is a placeholder identifier (same
-// shape as ${name}); VALUE matches subtype-style hyphenated labels
-// (`system-interface-redesign`) without requiring quotes. The body is
-// non-greedy so adjacent blocks don't merge into one match, and the
-// trailing newline after `-->` is consumed when present so a kept
-// block doesn't leave a blank line behind and a stripped block doesn't
-// leave a stranded gap.
-//
-// Non-nested by design: an inner `<!-- end-if -->` would close the
-// outer block. The current template needs only flat gating.
-var conditionalRE = regexp.MustCompile(`(?s)<!--\s*if:([a-zA-Z_][a-zA-Z0-9_]*)=([a-zA-Z0-9_-]+)\s*-->\n?(.*?)<!--\s*end-if\s*-->\n?`)
-
-// filterConditionals processes `<!-- if:NAME=VALUE -->...<!-- end-if -->`
-// blocks: keeps the inner content (markers stripped) when params[NAME]
-// equals VALUE, otherwise removes the whole block. Lines outside any
-// conditional pass through unchanged. Runs before ExpandParams so the
-// kept content's `${...}` placeholders still get substituted.
-func filterConditionals(template string, params map[string]string) string {
-	return conditionalRE.ReplaceAllStringFunc(template, func(match string) string {
-		m := conditionalRE.FindStringSubmatch(match)
-		if params[m[1]] == m[2] {
-			return m[3]
-		}
-		return ""
-	})
-}
 
 // findUnfilledPlaceholders returns each distinct `${name}` token still
 // present in the rendered prompt, preserving first-seen order. Empty
@@ -470,10 +443,6 @@ func renderPrompt(opts Options) (string, error) {
 	if opts.Language != "" {
 		params["language"] = opts.Language
 	}
-	// Conditional blocks run before placeholder substitution so subtype-
-	// gated reference material (and any future per-variable gating) is
-	// stripped against the same values we hand to ExpandParams.
-	body = filterConditionals(body, params)
 	rendered := statemachine.ExpandParams(body, params)
 	if opts.OverrideText != "" {
 		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + opts.OverrideText + "\n"

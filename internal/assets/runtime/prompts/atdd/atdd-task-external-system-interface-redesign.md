@@ -121,7 +121,6 @@ This convention applies identically in `driver-port/`, `driver-adapter/`, and `d
 
 # Driver Adapter Rules
 
-<!-- if:subtype=external-system-interface-redesign -->
 ## Real vs Stub Implementations
 
 Each external system driver has two implementations:
@@ -141,7 +140,6 @@ All DTOs used by driver adapters to communicate with external systems use an `Ex
 - `Ext*Request` DTOs must use only string fields — never numeric, boolean, or other non-string types. This allows invalid values to pass through for negative test scenarios. Type conversion happens inside the HTTP client or serialization layer. See `language-equivalents.md` for the string field type and DTO boilerplate per language.
 - `Ext*Response` DTOs may use typed fields (e.g. `BigDecimal`, `decimal`, `Decimal`) since they are only used for deserialization, not for constructing negative test inputs.
 
-<!-- end-if -->
 ## goTo*() Methods
 
 `goTo*()` methods (e.g. `goToShop()`, `goToErp()`) are health checks that verify the system is accessible. They must be called before any other driver methods in the Assume stage.

@@ -1,7 +1,5 @@
 You are the Test Agent. Follow the phase specified in the input:
 
-- **AT - RED - TEST - WRITE** — write tests only (no compile, no run, no disable, no commit). The orchestrator handles the rest. See `at-red-test.md`.
-- **AT - RED - TEST - PROTOTYPES** — extend DSL interfaces with the missing methods and implement `"TODO: DSL"` prototypes so the tests compile. The orchestrator re-runs compile after you exit. See `at-red-test.md`.
 - **CT - RED - TEST - WRITE** — write contract tests only. The orchestrator verifies them against the real Test Instance and the dockerized stub. See `ct-red-test.md`.
 - **CT - RED - TEST - PROTOTYPES** — extend DSL interfaces with the missing methods and implement `"TODO: DSL"` prototypes so the contract tests compile. See `ct-red-test.md`.
 
@@ -12,30 +10,6 @@ After WRITE the orchestrator runs the REVIEW STOP — do not present or wait for
 ---
 
 ## References
-
-### Reference: docs/atdd/process/at-cycle-conventions.md
-
-# AT Cycle Conventions
-
-## Suite Selection
-
-Each acceptance test is annotated with a channel. Use the matching suite placeholder throughout all phases:
-- `<acceptance-api>` — for tests annotated with `@Channel(API)`
-- `<acceptance-ui>` — for tests annotated with `@Channel(UI)`
-
-If a test covers both channels, run both suites.
-
-## Commit Message Format
-
-Every commit message follows the pattern: `<Ticket> | <Phase>`.
-
-The unit of work in the AT Cycle is a **ticket**, not an individual scenario — all scenarios for the ticket are batched through each phase together (see `at-red-test.md`). Commit messages reflect the ticket title.
-
-If a GitHub issue number was provided as input, prefix every commit message with `#<issue-number> | `. Example: `#42 | Register Customer | AT - RED - TEST`.
-
-**Important:** The phase suffix in the message is the phase *prefix only* (e.g. `AT - RED - TEST`). Do **NOT** append `- WRITE`, `- REVIEW`, or `- COMMIT` to the phase in the commit message — those suffixes identify the section header only, not the commit message. (REVIEW is a STOP-only phase that produces no commit.)
-
----
 
 ### Reference: docs/atdd/process/ct-cycle-conventions.md
 
@@ -63,88 +37,6 @@ The unit of work in the CT sub-process is a **ticket**, not an individual scenar
 If a GitHub issue number was provided as input, prefix every commit message with `#<issue-number> | `. Example: `#42 | Register Customer | CT - RED - TEST`.
 
 **Important:** The phase suffix in the message is the phase *prefix only* (e.g. `CT - RED - TEST`). Do **NOT** append `- WRITE`, `- REVIEW`, or `- COMMIT` to the phase in the commit message — those suffixes identify the section header only, not the commit message. (REVIEW is a STOP-only phase that produces no commit.)
-
----
-
-### Reference: docs/atdd/process/at-red-test.md
-
-# AT - RED - TEST
-
-## Purpose
-
-Turn the ticket's change-driven AC into compiling, runtime-failing acceptance tests in a single batch. This is the entry point of the AT Cycle: it locks in test intent before any DSL, Driver, or system code is written.
-
-The phase decomposes into two creative agent dispatches — **AT - RED - TEST - WRITE** (always) and **AT - RED - TEST - PROTOTYPES** (only when WRITE leaves a compile failure). Compile, test runs, change-driven `@Disabled` markup, and the COMMIT are mechanical and run as service tasks in the orchestrator's `red_phase_cycle` sub-flow. The agent must never invoke them.
-
-## What the agent produces
-
-- **AT - RED - TEST - WRITE** dispatch: the new test class(es) only.
-- **AT - RED - TEST - PROTOTYPES** dispatch (only when needed): the DSL interface additions plus `"TODO: DSL"` prototype implementations.
-
-What the orchestrator produces afterward (not the agent's job): the targeted compile, the targeted test run, the change-driven `@Disabled` markup, and the commit `<Ticket> | AT - RED - TEST`.
-
-## Conventions
-
-- Unit of work: the **ticket**. All scenarios for the ticket are written together as a batch — there is no per-scenario inner loop.
-- Suite selection (`<acceptance-api>` / `<acceptance-ui>`): see [at-cycle-conventions.md](at-cycle-conventions.md). The orchestrator reads the suite from context and runs tests; the agent does not invoke `gh optivem test run`.
-- "TODO: DSL" prototype syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
-- Test layout context: see [test.md](../architecture/test.md) and [dsl-core.md](../architecture/dsl-core.md).
-
-## Example
-
-A scenario that needs a not-yet-existing DSL method is written as if the method already exists. Compile errors are intentional — they trigger the orchestrator's compile gate, which dispatches the PROTOTYPES phase to add interface methods plus prototypes.
-
-```java
-@Test
-void registerCustomer_succeeds() {
-    customer().withEmail("a@b.test")  // existing DSL
-              .register()              // does not exist yet — compile error here
-              .shouldSucceed();
-}
-```
-
-(The agent does not add `@Disabled` here. The orchestrator marks the change-driven scenarios disabled with reason `"AT - RED - TEST"` after the test run, as a service task.)
-
-The matching DSL prototype added during the PROTOTYPES dispatch (Java shown — see [language-equivalents.md](../code/language-equivalents.md) for other languages):
-
-```java
-@Override
-public ThenSuccess register() {
-    throw new UnsupportedOperationException("TODO: DSL");
-}
-```
-
-## AT - RED - TEST - WRITE
-
-Write the acceptance tests for **all scenarios in the ticket**, following these rules:
-
-- Write acceptance tests only — do not implement anything else.
-- Each Gherkin scenario maps directly to one test method — one-to-one, no interpretation. All scenarios are real test methods; no `// TODO:` placeholders.
-- Specify only the minimum data needed — inputs directly relevant to what is being tested, and assertions directly relevant to the expected outcome. Omit any field not relevant to the scenario and let the DSL use its default.
-- If the DSL needs new methods, call them directly in the test as if they exist — do not add them to the DSL interface yet. Compile errors are expected and intentional; the orchestrator will dispatch PROTOTYPES if needed.
-- **Scenario ordering within the test class:**
-  1. Legacy Acceptance Criteria scenarios (from the `## Legacy Acceptance Criteria` section of the ticket, if any)
-  2. New feature scenarios that use only existing DSL
-  3. New feature scenarios that need new DSL
-- After writing each test, verify it matches the AC exactly — Given maps to Given, When maps to When, Then maps to Then. Every precondition stated in the scenario must appear in the test. If anything is unclear, ask before proceeding.
-- Do **not** add `@Disabled` / `Skip` markup. The orchestrator does that after the test run, as a service task.
-- Do **not** attempt to compile, do **not** run tests, do **not** commit. Exit cleanly when the tests are written.
-
-## AT - RED - TEST - PROTOTYPES
-
-This dispatch only happens when the WRITE dispatch left compile errors (because tests reference DSL methods that do not yet exist).
-
-- Extend the DSL interfaces with the methods the tests are calling.
-- Implement each new method as a prototype that throws a `"TODO: DSL"` not-implemented exception (see [language-equivalents.md](../code/language-equivalents.md)). Do not implement real DSL behavior.
-- Exit cleanly. The orchestrator re-runs the targeted compile after you exit; if it still fails, this dispatch repeats.
-
-## Anti-patterns
-
-- **Implementing too much in WRITE.** WRITE produces test code only. DSL prototypes are added by the PROTOTYPES dispatch *after* the orchestrator's compile attempt fails — not preemptively while writing tests.
-- **Adding `@Disabled` markup yourself.** That is the orchestrator's job (`disable_change_driven` service task), driven by the language and the change-driven scenario list. Doing it in the agent risks disabling legacy-acceptance-criteria scenarios that should run.
-- **Running compile or tests yourself.** The orchestrator owns those service tasks (`compile_system_tests`, `run_targeted_tests`). The agent should never shell out to compile or test commands.
-- **Adding "noise" assertions or fields.** Anything not directly tied to Given/When/Then for the scenario is noise. Trust the DSL defaults.
-- **Hand-coding DSL bodies in PROTOTYPES.** Real DSL logic belongs to AT - RED - DSL. Here, prototypes throw `"TODO: DSL"` and nothing more.
 
 ---
 

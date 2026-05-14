@@ -115,7 +115,7 @@ func (f *fakeGit) hasGitArg(prefix ...string) bool {
 
 func newOpts() Options {
 	return Options{
-		Agent:           "atdd-test",
+		Agent:           "atdd-test-at",
 		PhaseDoc:        "docs/atdd/process/at-red-test.md",
 		NodeDescription: "Write the AT-RED scenario",
 		IssueNum:        42,
@@ -166,9 +166,13 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 	// test every embedded prompt to make sure no agent leaks the marker
 	// or the pre-rollout preamble.
 	for _, name := range []string{
-		"atdd-backend", "atdd-chore", "atdd-driver", "atdd-dsl",
+		"atdd-backend", "atdd-chore",
+		"atdd-driver-at", "atdd-driver-ct",
+		"atdd-dsl-at", "atdd-dsl-ct",
 		"atdd-frontend", "atdd-stubs",
-		"atdd-task", "atdd-test",
+		"atdd-task-system-interface-redesign",
+		"atdd-task-external-system-interface-redesign",
+		"atdd-test-at", "atdd-test-ct",
 	} {
 		opts := newOpts()
 		opts.Agent = name
@@ -191,7 +195,7 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 
 func TestRenderPrompt_TaskAgentArchitectureAndAllowedRoots_ExplicitValues(t *testing.T) {
 	opts := newOpts()
-	opts.Agent = "atdd-task"
+	opts.Agent = "atdd-task-system-interface-redesign"
 	opts.Architecture = "monolith"
 	opts.AllowedRoots = "- System: system/monolith/java (lang: java)\n- System tests: system-test/java (lang: java)\n"
 
@@ -210,7 +214,7 @@ func TestRenderPrompt_TaskAgentArchitectureAndAllowedRoots_ExplicitValues(t *tes
 
 func TestRenderPrompt_TaskAgentChecklistInjected(t *testing.T) {
 	opts := newOpts()
-	opts.Agent = "atdd-task"
+	opts.Agent = "atdd-task-system-interface-redesign"
 	opts.Checklist = "- [x] Rename \"New Order\" to \"Place Order\"\n- [x] Rename SKU aria-label"
 
 	got, err := renderPrompt(opts)
@@ -219,7 +223,7 @@ func TestRenderPrompt_TaskAgentChecklistInjected(t *testing.T) {
 	}
 	mustContain(t, got, opts.Checklist)
 	if strings.Contains(got, "Fetch the issue with `gh`") {
-		t.Errorf("atdd-task prompt should no longer instruct the agent to fetch the issue: %s", got)
+		t.Errorf("atdd-task-system-interface-redesign prompt should no longer instruct the agent to fetch the issue: %s", got)
 	}
 	if strings.Contains(got, "${checklist}") {
 		t.Errorf("${checklist} placeholder leaked into rendered prompt")
@@ -254,51 +258,22 @@ func TestRenderPrompt_ReturnsErrorForUnknownAgent(t *testing.T) {
 	}
 }
 
-func TestFilterConditionals_KeepsMatchingBlock(t *testing.T) {
-	tpl := "before\n<!-- if:subtype=external-system-interface-redesign -->\nkept\n<!-- end-if -->\nafter\n"
-	got := filterConditionals(tpl, map[string]string{"subtype": "external-system-interface-redesign"})
-	want := "before\nkept\nafter\n"
-	if got != want {
-		t.Errorf("filterConditionals keep-path:\n got:  %q\n want: %q", got, want)
-	}
-}
-
-func TestFilterConditionals_StripsNonMatchingBlock(t *testing.T) {
-	tpl := "before\n<!-- if:subtype=external-system-interface-redesign -->\nstripped\n<!-- end-if -->\nafter\n"
-	got := filterConditionals(tpl, map[string]string{"subtype": "system-interface-redesign"})
-	want := "before\nafter\n"
-	if got != want {
-		t.Errorf("filterConditionals strip-path:\n got:  %q\n want: %q", got, want)
-	}
-}
-
-func TestFilterConditionals_HandlesMultipleBlocks(t *testing.T) {
-	// Two blocks separated by a heading. Realistic shape: each block ends
-	// with a markdown blank line before its closing marker, mirroring how
-	// the atdd-task template structures gated reference sections.
-	tpl := "intro\n\n<!-- if:subtype=ext -->\nA-body\n\n<!-- end-if -->\nmiddle\n\n<!-- if:subtype=sys -->\nB-body\n\n<!-- end-if -->\nouter\n"
-	got := filterConditionals(tpl, map[string]string{"subtype": "sys"})
-	want := "intro\n\nmiddle\n\nB-body\n\nouter\n"
-	if got != want {
-		t.Errorf("filterConditionals multi-block:\n got:  %q\n want: %q", got, want)
-	}
-}
-
-func TestRenderPrompt_TaskAgent_StripsExternalSectionForSystemSubtype(t *testing.T) {
-	// system-interface-redesign tickets should not see external-system
-	// driver doctrine (Real/Stub split, Ext* DTOs) inlined in the prompt.
+// After Step 4 split, atdd-task is replaced by two subtype-specific
+// files. The system-interface-redesign variant must NOT include the
+// external-system doctrine (Real/Stub split, Ext* DTOs); the
+// external-system-interface-redesign variant MUST include it. The old
+// filterConditionals + Subtype-gating tests are deleted along with
+// filterConditionals itself in Step 5 — file selection now happens at
+// dispatch time via the agent name, not at render time via conditional
+// blocks.
+func TestRenderPrompt_TaskAgent_SystemSubtypeFileExcludesExternalDoctrine(t *testing.T) {
 	opts := newOpts()
-	opts.Agent = "atdd-task"
-	opts.Subtype = "system-interface-redesign"
+	opts.Agent = "atdd-task-system-interface-redesign"
 
 	got, err := renderPrompt(opts)
 	if err != nil {
 		t.Fatalf("renderPrompt: %v", err)
 	}
-	// "BaseXyzClient" appears once in the unconditional Process step as a
-	// one-line orientation hint for external paths the agent must NOT
-	// modify; we only gate the multi-paragraph doctrine sections, not the
-	// passing mention in step 1.
 	for _, banned := range []string{
 		"Real vs Stub Implementations",
 		"External DTOs",
@@ -311,10 +286,9 @@ func TestRenderPrompt_TaskAgent_StripsExternalSectionForSystemSubtype(t *testing
 	mustContain(t, got, "Shop UI Driver")
 }
 
-func TestRenderPrompt_TaskAgent_KeepsExternalSectionForExternalSubtype(t *testing.T) {
+func TestRenderPrompt_TaskAgent_ExternalSubtypeFileIncludesExternalDoctrine(t *testing.T) {
 	opts := newOpts()
-	opts.Agent = "atdd-task"
-	opts.Subtype = "external-system-interface-redesign"
+	opts.Agent = "atdd-task-external-system-interface-redesign"
 
 	got, err := renderPrompt(opts)
 	if err != nil {
@@ -524,7 +498,7 @@ func TestDispatch_WritesEnterAndExitBanners(t *testing.T) {
 	}
 	got := buf.String()
 	mustContain(t, got, "ENTERING AGENT")
-	mustContain(t, got, "atdd-test")
+	mustContain(t, got, "atdd-test-at")
 	mustContain(t, got, "EXITED AGENT")
 	mustContain(t, got, "1 file(s) changed")
 }
@@ -1047,17 +1021,17 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	claudeFake := &fakeClaude{}
 	opts := newOpts()
 	opts.Stdout = &buf
-	opts.Agent = "atdd-task"
+	opts.Agent = "atdd-task-system-interface-redesign"
 	opts.Architecture = "monolith"
 	opts.AllowedRoots = "- System: system/monolith/typescript (lang: typescript)\n- System tests: system-test/typescript (lang: typescript)\n"
 	opts.Checklist = "- [x] One done\n- [ ] Two pending"
-	opts.PromptLogPath = "/tmp/runs/001-atdd-task.prompt.md"
+	opts.PromptLogPath = "/tmp/runs/001-atdd-task-system-interface-redesign.prompt.md"
 
 	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	got := buf.String()
-	mustContain(t, got, "PREPARED PROMPT for atdd-task")
+	mustContain(t, got, "PREPARED PROMPT for atdd-task-system-interface-redesign")
 	mustContain(t, got, "architecture:")
 	mustContain(t, got, "monolith")
 	mustContain(t, got, "allowed roots:")
@@ -1068,7 +1042,7 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	mustContain(t, got, "2 item(s) (1 already [x])")
 	mustContain(t, got, "- [x] One done")
 	mustContain(t, got, "- [ ] Two pending")
-	mustContain(t, got, "/tmp/runs/001-atdd-task.prompt.md")
+	mustContain(t, got, "/tmp/runs/001-atdd-task-system-interface-redesign.prompt.md")
 }
 
 func TestDispatch_PreparedPromptBannerUsesPlaceholdersForEmpties(t *testing.T) {

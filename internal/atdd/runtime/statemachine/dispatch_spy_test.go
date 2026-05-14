@@ -190,7 +190,7 @@ func commitFromTemplateParams() map[string]string {
 // red_phase_cycle dispatched from at_cycle.AT_RED_TEST.
 func atRedTestParams() map[string]string {
 	return map[string]string{
-		"agent":          "atdd-test",
+		"agent":          "atdd-test-at",
 		"phase_doc":      "docs/atdd/process/at-red-test.md",
 		"phase_label":    "AT - RED - TEST",
 		"change_type":    "AT - RED - TEST",
@@ -201,7 +201,7 @@ func atRedTestParams() map[string]string {
 // red_phase_cycle dispatched from at_cycle.AT_RED_DSL.
 func atRedDslParams() map[string]string {
 	return map[string]string{
-		"agent":          "atdd-dsl",
+		"agent":          "atdd-dsl-at",
 		"phase_doc":      "docs/atdd/process/at-red-dsl.md",
 		"phase_label":    "AT - RED - DSL",
 		"change_type":    "AT - RED - DSL",
@@ -213,7 +213,7 @@ func atRedDslParams() map[string]string {
 // the only red_phase_cycle call site that pushes verify_real_suite.
 func ctRedTestParams() map[string]string {
 	return map[string]string{
-		"agent":             "atdd-test",
+		"agent":             "atdd-test-ct",
 		"phase_doc":         "docs/atdd/process/ct-red-test.md",
 		"phase_label":       "CT - RED - TEST",
 		"change_type":       "CT - RED - TEST",
@@ -225,7 +225,7 @@ func ctRedTestParams() map[string]string {
 // red_phase_cycle dispatched from ct_subprocess.CT_RED_DSL.
 func ctRedDslParams() map[string]string {
 	return map[string]string{
-		"agent":          "atdd-dsl",
+		"agent":          "atdd-dsl-ct",
 		"phase_doc":      "docs/atdd/process/ct-red-dsl.md",
 		"phase_label":    "CT - RED - DSL",
 		"change_type":    "CT - RED - DSL",
@@ -236,7 +236,7 @@ func ctRedDslParams() map[string]string {
 // red_phase_cycle dispatched from ct_subprocess.CT_RED_EXTERNAL_DRIVER.
 func ctRedExternalDriverParams() map[string]string {
 	return map[string]string{
-		"agent":          "atdd-driver",
+		"agent":          "atdd-driver-ct",
 		"phase_doc":      "docs/atdd/process/ct-red-external-driver.md",
 		"phase_label":    "CT - RED - EXTERNAL DRIVER",
 		"change_type":    "CT - RED - EXTERNAL DRIVER",
@@ -278,7 +278,7 @@ func atGreenCommitParams() map[string]string {
 func systemInterfaceRedesignParams() map[string]string {
 	return map[string]string{
 		"change_type": "SYSTEM INTERFACE REDESIGN",
-		"agent":       "atdd-task",
+		"agent":       "atdd-task-system-interface-redesign",
 		"phase_doc":   "docs/atdd/process/system-interface-redesign.md",
 		"subtype":     "system-interface-redesign",
 	}

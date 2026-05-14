@@ -84,7 +84,7 @@ processes:
         type: start_event
       - id: AT_RED_TEST
         type: user_task
-        agent: atdd-test
+        agent: atdd-test-at
         documentation: Write the AT-RED scenario
         phase_doc: docs/atdd/process/at-red-test.md
       - id: END
@@ -415,7 +415,7 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 
 	ctx := newCtxWithIssue()
 	ctx.Params = map[string]string{
-		"agent":       "atdd-task",
+		"agent":       "atdd-task-system-interface-redesign",
 		"change_type": "SYSTEM UI REDESIGN",
 		"phase_doc":   "docs/atdd/process/sysui-redesign.md",
 	}
@@ -432,7 +432,7 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 		t.Errorf("prompt still contains ${...} placeholder")
 	}
 	if !strings.Contains(prompt, "You are the Task Agent") {
-		t.Errorf("prompt missing expanded agent identity line (atdd-task → Task Agent)")
+		t.Errorf("prompt missing expanded agent identity line (atdd-task-system-interface-redesign → Task Agent)")
 	}
 	if !strings.Contains(prompt, "docs/atdd/process/sysui-redesign.md") {
 		t.Errorf("prompt missing expanded phase_doc")
@@ -457,7 +457,7 @@ func TestManualAgents_BannerSubstitutesTemplatedFields(t *testing.T) {
 
 	ctx := newCtxWithIssue()
 	ctx.Params = map[string]string{
-		"agent":       "atdd-task",
+		"agent":       "atdd-task-system-interface-redesign",
 		"change_type": "SYSTEM UI REDESIGN",
 		"phase_doc":   "docs/atdd/process/sysui-redesign.md",
 	}
@@ -469,10 +469,10 @@ func TestManualAgents_BannerSubstitutesTemplatedFields(t *testing.T) {
 	if strings.Contains(got, "${") {
 		t.Errorf("banner still contains ${...} placeholder:\n%s", got)
 	}
-	if !strings.Contains(got, "DISPATCH: atdd-task") {
+	if !strings.Contains(got, "DISPATCH: atdd-task-system-interface-redesign") {
 		t.Errorf("banner missing expanded DISPATCH line:\n%s", got)
 	}
-	if !strings.Contains(got, "Launch the atdd-task agent") {
+	if !strings.Contains(got, "Launch the atdd-task-system-interface-redesign agent") {
 		t.Errorf("banner missing expanded launch line:\n%s", got)
 	}
 	if !strings.Contains(got, "docs/atdd/process/sysui-redesign.md") {
@@ -615,12 +615,13 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 	opts := newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake})
 	opts.RepoPath = tmpRepo
 
-	// minimalYAML's user_task uses agent: atdd-test, but the prompt-
-	// substitution failure mode is most visible on agents whose
-	// prompt body references ${architecture} / ${allowed_roots}
-	// (atdd-task / atdd-chore). Use a YAML variant with agent: atdd-task
-	// so wrapAgentDispatchers picks the right closure on first walk.
-	yamlSrc := strings.Replace(minimalYAML, "agent: atdd-test", "agent: atdd-task", 1)
+	// minimalYAML's user_task uses agent: atdd-test-at, but the prompt-
+	// substitution failure mode is most visible on agents whose prompt
+	// body references ${architecture} / ${allowed_roots}
+	// (atdd-task-* / atdd-chore). Use a YAML variant with the system
+	// task agent so wrapAgentDispatchers picks the right closure on
+	// first walk.
+	yamlSrc := strings.Replace(minimalYAML, "agent: atdd-test-at", "agent: atdd-task-system-interface-redesign", 1)
 
 	eng, err := statemachine.LoadBytes([]byte(yamlSrc))
 	if err != nil {
@@ -661,7 +662,7 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 	// runState. Read it back and compare byte-for-byte against the
 	// captured prompt — this pins down item 2 (PromptLogPath plumbing)
 	// alongside item 1 (the substitution fix).
-	logPath := filepath.Join(tmpRepo, ".gh-optivem", "runs", "20260505-150000", "001-atdd-task.prompt.md")
+	logPath := filepath.Join(tmpRepo, ".gh-optivem", "runs", "20260505-150000", "001-atdd-task-system-interface-redesign.prompt.md")
 	body, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatalf("read prompt log: %v", err)

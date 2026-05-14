@@ -475,33 +475,22 @@ A silent default would mask config bugs.
 
 ## Steps
 
-### Step 4 — D7 + D8 + D10 (file splits)
+### Step 4 (residual) — D10 only: split language-equivalents.md per language
 
-Split `atdd-dsl`, `atdd-driver`, `atdd-test` into per-cycle files.
-Split `atdd-task` into per-subtype files. Split
-`docs/atdd/code/language-equivalents.md` into per-language files
-under `language-equivalents/<language>.md` (plus a README index).
-Update the dispatcher's agent-name lookup to map phase/cycle/subtype
-to filename; pass `${language}` through to render.
-
-**Validation:**
-- Each new prompt file reads top-to-bottom without conditionals.
-- AT-cycle dispatch picks the `-at.md` file; CT-cycle picks `-ct.md`.
-- Task dispatch picks the right subtype file.
-- Rendered language-equivalents pointer resolves to the correct
-  per-language file via `${language}`.
-- `TestRenderPrompt_*` updated to cover each variant.
-
-### Step 5 — filterConditionals deletion
-
-Delete `conditionalRE`, `filterConditionals`, the
-`body = filterConditionals(...)` call in `renderPrompt`, and the
-conditional-gating tests.
+D7 (AT/CT cycle splits) and D8 (atdd-task subtype splits) have shipped.
+What remains in this step is the per-language file split: read
+`internal/assets/global/docs/atdd/code/language-equivalents.md` and
+produce per-language files under
+`internal/assets/global/docs/atdd/code/language-equivalents/<language>.md`,
+plus a `README.md` index. Bundle with Step 6 since the prompt bodies
+that reference `${language}` are rewritten there.
 
 **Validation:**
-- Build succeeds.
-- No `<!-- if -->` markers remain in any prompt file
-  (`rg 'if:[a-z_]+=' internal/assets/runtime/prompts/` returns empty).
+- Per-language file content matches the corresponding section of the
+  combined doc (verbatim, no edits).
+- README.md indexes every language file.
+- Rendered language-equivalents pointer (in a Step 6-rewritten prompt)
+  resolves to the correct file via `${language}`.
 
 ### Step 6 — D6 + D9 (strip inlined references + prose copyedit)
 
