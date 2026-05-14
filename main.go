@@ -108,7 +108,7 @@ func main() {
 func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "optivem",
-		Short:   "Scaffold and operate Optivem academy pipeline projects",
+		Short:   "Scaffold and operate Optivem pipeline projects",
 		Version: version.Full(),
 		// Subcommands print their own usage on validation errors via log.FatalExit;
 		// avoid double-printing usage when Cobra returns an error.

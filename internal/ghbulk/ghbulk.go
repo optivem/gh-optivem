@@ -1,5 +1,5 @@
 // Package ghbulk ports the paginated bulk-delete helpers from
-// academy/github-utils/scripts/{delete-releases,delete-packages,delete-repos}.sh.
+// github-utils/scripts/{delete-releases,delete-packages,delete-repos}.sh.
 // It exposes thin iterators over the GitHub REST API plus matching delete
 // helpers; rate-limit guarding and gh retry happen via internal/shell.
 //

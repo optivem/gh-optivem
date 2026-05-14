@@ -328,7 +328,7 @@ func matchGlob(glob, path string) (bool, error) {
 // approves via the supplied Confirmer.
 //
 // The "ask before every commit" gate is firm user policy across the
-// academy; nil Confirm returns ErrConfirmerRequired so a forgetful caller
+// pipeline; nil Confirm returns ErrConfirmerRequired so a forgetful caller
 // can't accidentally bypass it.
 func Commit(ctx context.Context, opts CommitOptions) error {
 	if opts.Confirm == nil {
@@ -347,7 +347,7 @@ func Commit(ctx context.Context, opts CommitOptions) error {
 	}
 
 	// Stage everything. We deliberately use `git add -A` (full working-tree
-	// stage) — the academy convention forbids slicing commits with --paths,
+	// stage) — the pipeline convention forbids slicing commits with --paths,
 	// see CLAUDE.md / the "no --paths flag on commit script" memory.
 	if _, err := runner.Run(ctx, "add", "-A"); err != nil {
 		return fmt.Errorf("release: git add -A: %w", err)

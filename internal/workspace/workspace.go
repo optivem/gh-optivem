@@ -1,8 +1,7 @@
-// Package workspace resolves the academy workspace root and enumerates the
-// repo folders declared in its *.code-workspace file. It is the Go port of
-// the bash load_workspace_folders helper in
-// academy/github-utils/scripts/common.sh, but uses encoding/json directly
-// rather than shelling out to node.
+// Package workspace resolves the workspace root and enumerates the repo
+// folders declared in its *.code-workspace file. It is the Go port of the
+// bash load_workspace_folders helper in github-utils/scripts/common.sh,
+// but uses encoding/json directly rather than shelling out to node.
 package workspace
 
 import (
@@ -119,7 +118,7 @@ func walkUp(start string) (string, error) {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", fmt.Errorf("workspace: no *.code-workspace file found by walking up from %s; set --workspace, $%s, or cd into the academy tree", start, EnvVar)
+			return "", fmt.Errorf("workspace: no *.code-workspace file found by walking up from %s; set --workspace, $%s, or cd into a directory below a *.code-workspace file", start, EnvVar)
 		}
 		dir = parent
 	}
