@@ -473,33 +473,7 @@ A silent default would mask config bugs.
 
 ## Steps
 
-### Step 6 (residual) — D9 only: prose copyedit
-
-D6 (strip inlined references → `${docs_root}` pointers) shipped.
-D10's language-equivalents per-language split also shipped, and the
-driver wires `${language}` from the project's primary language at
-dispatch time (monolith → System.Lang; multitier → System.Backend.Lang).
-
-What remains in Step 6 is the prose copyedit pass (D9): two-pass
-copyedit on the surviving prompt bodies to remove restatements of
-guard rails. Likely a small further drop (10–20%) on each prompt.
-
-After D6 the prompts dropped from 115.9 KB to 23.7 KB total (-80%).
-Further drops via D9 would refine — not transform — that result.
-
-### Step 7 — measure
-
-Capture per-dispatch token usage before / after from the
-`writeExitBanner` output (`clauderun.go:844`) on the same ticket.
-The banner already prints `… token in / … token out, $…` when the
-`claude -p --output-format json` envelope decodes.
-
-Requires running `gh optivem implement` on a real ticket — can't be
-automated end-to-end. Treat as a manual validation step.
-
-**Expected validation:** input tokens drop substantially on the three
-heavy prompts (the on-disk size dropped 93%); output tokens unchanged
-or slightly lower; wall time drops proportionally.
+- [ ] Step 7 — measure — ⏳ Deferred: manual validation step. Capture per-dispatch token usage before / after from `writeExitBanner` (`clauderun.go:844`) on the same ticket; the banner prints `… token in / … token out, $…` when the `claude -p --output-format json` envelope decodes. Requires running `gh optivem implement` on a real ticket — can't be automated end-to-end. Expected: input tokens drop substantially on the three heavy prompts (on-disk size dropped 93% via D6, plus ~12% on atdd-fix-verify and ~3% on atdd-task-* via D9); output tokens unchanged or slightly lower; wall time drops proportionally.
 
 ## Out of scope
 

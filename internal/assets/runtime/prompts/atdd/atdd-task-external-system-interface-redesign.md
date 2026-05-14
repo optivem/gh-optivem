@@ -18,7 +18,7 @@ Implement the change and adapt the relevant driver **implementation** so existin
 
 ## Scope
 
-Edit ONLY files under the "Allowed write roots" listed at the top of this prompt. Treat any other path as out-of-scope and do not modify it, even if a sibling implementation appears related to the ticket. The `lang:` annotation on each system root tells you which file types belong there (e.g. `.java` under a Java root, `.tsx` under a TypeScript+React frontend). External-system roots, when listed, are write-eligible only when the ticket explicitly calls for stub or simulator changes — otherwise treat them as read-only context.
+Edit ONLY files under the "Allowed write roots" listed at the top of this prompt. The `lang:` annotation on each system root tells you which file types belong there (e.g. `.java` under a Java root, `.tsx` under a TypeScript+React frontend). External-system roots, when listed, are write-eligible only when the ticket explicitly calls for stub or simulator changes — otherwise read-only context.
 
 ## Process
 
