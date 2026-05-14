@@ -834,6 +834,46 @@ func TestMaterializePrompt_AboveLimitSpillsToFile(t *testing.T) {
 	}
 }
 
+// Multi-line prompts must spill to a tempfile even when their byte count
+// is under promptArgvLimit. Windows' `.cmd` shim for the `claude` CLI
+// truncates argv at the first newline, so handing a small multi-line
+// prompt to exec.Command would deliver only the first line to the agent.
+func TestMaterializePrompt_MultiLineBelowLimitSpillsToFile(t *testing.T) {
+	dir := t.TempDir()
+	prompt := "first line\nsecond line\nthird line\n"
+	if len(prompt) > promptArgvLimit {
+		t.Fatalf("test precondition: prompt %d bytes should be under limit %d", len(prompt), promptArgvLimit)
+	}
+
+	arg, cleanup, err := materializePrompt(dir, prompt)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer cleanup()
+
+	if arg == prompt {
+		t.Fatal("multi-line prompt must not be returned verbatim — Windows cmd.exe would truncate at first newline")
+	}
+	if !strings.Contains(arg, ".atdd-prompt-") || !strings.Contains(arg, ".tmp.md") {
+		t.Errorf("bootstrap arg missing tempfile reference: %q", arg)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read tempdir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected exactly 1 tempfile; got %d", len(entries))
+	}
+	body, err := os.ReadFile(filepath.Join(dir, entries[0].Name()))
+	if err != nil {
+		t.Fatalf("read tempfile: %v", err)
+	}
+	if string(body) != prompt {
+		t.Errorf("tempfile content mismatch: got %q, want %q", string(body), prompt)
+	}
+}
+
 func TestMaterializePrompt_CleanupRemovesTempfile(t *testing.T) {
 	dir := t.TempDir()
 	prompt := strings.Repeat("z", promptArgvLimit+1)

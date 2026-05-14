@@ -911,18 +911,25 @@ const elapsedRound = time.Second
 const promptArgvLimit = 8000
 
 // materializePrompt returns the argv argument to hand to `claude` and a
-// cleanup func. For prompts under promptArgvLimit it returns the prompt
-// verbatim with a no-op cleanup — the historical fast path. Above the
-// limit it writes the prompt to a tempfile in dir and returns a short
+// cleanup func. For single-line prompts under promptArgvLimit it returns
+// the prompt verbatim with a no-op cleanup — the historical fast path.
+// Otherwise it writes the prompt to a tempfile in dir and returns a short
 // bootstrap message instructing the agent to read and delete the file
 // (the only viable path on Windows, where the OS argv limit is too low
 // for large prompts and the `claude` CLI exposes no --prompt-file flag).
+//
+// Multi-line prompts are forced through the tempfile path regardless of
+// size: on Windows `claude` is a `.cmd` shim, and Go's exec runs `.cmd`
+// files via cmd.exe, which truncates argv at the first newline. That bug
+// surfaced after the May 2026 ATDD prompt-optimization commits shrank the
+// rendered WRITE prompt below promptArgvLimit — the agent then received
+// only the first line of a multi-line prompt and reported "no task".
 //
 // The cleanup func is always safe to call. It removes the tempfile if
 // one was created — defensive against the agent forgetting to delete it
 // itself, or the run failing before reaching the deletion instruction.
 func materializePrompt(dir, prompt string) (string, func(), error) {
-	if len(prompt) <= promptArgvLimit {
+	if len(prompt) <= promptArgvLimit && !strings.ContainsRune(prompt, '\n') {
 		return prompt, func() {}, nil
 	}
 	if dir == "" {
