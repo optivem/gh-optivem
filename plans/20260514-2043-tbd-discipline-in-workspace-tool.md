@@ -1,6 +1,6 @@
 # Build TBD discipline into `gh optivem workspace`
 
-> ⚠️ **STATUS: NEEDS HUMAN DECISIONS.** This plan does not execute anything. It captures the gap between `docs/tbd.md` and the current behaviour of `gh optivem workspace commit` / `sync`, proposes a layered set of changes, and lists the questions a human must answer before any execution begins. Do not start work without explicit go-ahead per item.
+> ✅ **STATUS: READY TO EXECUTE.** This plan captures the gap between `docs/tbd.md` and the current behaviour of `gh optivem workspace commit` / `sync`, and proposes a layered set of changes. All open decisions have been resolved — see "Decisions resolved" at the bottom.
 
 ## Context
 
@@ -33,9 +33,9 @@ Layered so each layer is shippable on its own. Don't pre-commit to layers 2 and 
 The shortest path to making the tool's behaviour match the doc regardless of how the operator's machine is configured.
 
 1. **Explicit `--rebase` on every `pull`.** Change `runGit(repo, "pull")` to `runGit(repo, "pull", "--rebase")` in both `runWorkspaceCommit` (`:150`) and `runWorkspaceSync` (`:310`). Two-line change.
-2. **Push-rejected retry loop.** Wrap the push: on non-fast-forward rejection → `git pull --rebase` → retry (cap 3 attempts). Log "racing against origin/main, retrying…" so the operator sees what is happening. This is the literal loop on `tbd.md:46` and the bot-race resolution at `:160-165`.
-3. **Pre-commit pull.** Insert `git pull --rebase` *before* `commitOneRepo` so commits land on current trunk. Matches the "pull → edit → commit → pull → push" shape in `tbd.md:38-44`. Avoids the "fresh commit then conflicting rebase" foot-gun.
-4. **`gh optivem doctor`.** Verify `pull.rebase=true`, `rebase.autoStash=true`, `rerere.enabled=true`; `--fix` to set them. Replaces "copy these three commands out of the doc" with "run one command." New top-level command.
+2. **Push-rejected retry loop.** Wrap the push: on non-fast-forward rejection → `git pull --rebase` → retry (cap 3 attempts). Log a generic "racing origin/main, retrying…" so the operator sees what is happening. This is the literal loop on `tbd.md:46` and resolves the bot-race at `:160-165`. Message stays generic — no pattern-match on the bot's commit format, since the bot is one of several possible race sources (other operators, future bots).
+3. **Pre-commit pull.** Insert `git pull --rebase` *before* `commitOneRepo` so commits land on current trunk. Matches the "pull → edit → commit → pull → push" shape in `tbd.md:38-44`. Avoids the "fresh commit then conflicting rebase" foot-gun. Because the working tree is dirty by definition at this point (operator has unstaged work), the tool explicitly stashes unstaged changes, rebases, then `stash pop` — emulating `rebase.autoStash` regardless of the operator's config.
+4. **`gh optivem doctor`.** Verify `pull.rebase=true`, `rebase.autoStash=true`, `rerere.enabled=true`; `--fix` to set them. Replaces "copy these three commands out of the doc" with "run one command." New top-level command. Narrow scope: config only. Broader repo-health checks are out of scope here.
 
 ### Layer 2 — Make TBD visible in the UX
 
@@ -57,8 +57,8 @@ Today the tool knows nothing about feature branches. If `docs/tbd.md`'s Scaled-T
 
 Catch the case where the doc and the repo have drifted apart.
 
-11. **`gh optivem workspace lint-history`** — for each repo, `git log --merges --first-parent main` over the last N commits; flag any hits. Runnable locally; candidate for daily CI.
-12. **Stale-branch report** — list branches older than ~24h (per `tbd.md:62`); helps Scaled-TBD teams notice when "hours, not days" has slipped.
+11. **`gh optivem workspace lint-history`** — for each repo, `git log --merges --first-parent main` over the last N commits; flag any hits. Ships with a paired GitHub Actions workflow that fails on any new merge commit on `main`. Both shipped together — local for ad-hoc, CI for guarantee.
+12. **`gh optivem workspace stale-branches`** — list branches in each workspace repo older than ~24h (per `tbd.md:62`); helps Scaled-TBD teams notice when "hours, not days" has slipped.
 
 ## Affected commands
 
@@ -90,31 +90,25 @@ Encapsulates the Scaled-TBD "main moved while my PR was open" ritual: `git fetch
 Wrapper over `gh pr merge` that defaults to `--squash` or `--rebase` and outright rejects `--merge`. Stops "Create a merge commit" merges from sneaking onto `main`, which would break the linear-trunk invariant the rest of the tooling depends on.
 
 **`gh optivem workspace lint-history`** — layer 4.11
-Reports, for each repo in the workspace, any merge commit on `main` over the last N commits (`git log --merges --first-parent main`). A drift detector — catches the case where the doc says "linear trunk" but the actual history disagrees. Local command; decision 6 asks whether to also wire it into a workflow that fails CI on a new merge commit landing.
+Reports, for each repo in the workspace, any merge commit on `main` over the last N commits (`git log --merges --first-parent main`). A drift detector — catches the case where the doc says "linear trunk" but the actual history disagrees. Ships with a paired GitHub Actions workflow that fails on any new merge commit on `main`, so drift is caught at PR time rather than discovered later.
 
-### Unnamed (in plan)
+**`gh optivem workspace stale-branches`** — layer 4.12
+Lists branches in each workspace repo that have lived longer than ~24h, per `docs/tbd.md:62`'s "hours, not days" rule. Helps Scaled-TBD teams notice when a branch has drifted from the TBD discipline.
 
-**Stale-branch report** — layer 4.12
-Lists branches in each workspace repo that have lived longer than ~24h, per `docs/tbd.md:62`'s "hours, not days" rule. Helps Scaled-TBD teams notice when a branch has drifted from the TBD discipline. The plan describes the behaviour but doesn't pin a command name — `gh optivem workspace stale-branches` is the natural fit. **Decision 8 (new):** lock the name in, or defer until implementation.
+## Suggested sequencing
 
-## Suggested sequencing (subject to decisions)
+Layer 1 ships as a single PR (all four items per decision 1), then re-evaluate before opening anything else. Layers 2–4 are each their own PRs and are additive. Layer 3 is in scope (decision 5: Scaled TBD is in use).
 
-If the answer to most of the decisions below is "yes, do this," I would ship layer 1 as a single PR, then re-evaluate before opening anything else. Layers 2–4 are each their own PRs and are additive.
+## Decisions resolved
 
-If the answer is "we don't use Scaled TBD here," skip layer 3 entirely and the plan ends at layer 4.
-
-## Decisions needed (human)
-
-Each one is genuinely open — do not pick a default.
-
-1. **Layer 1 scope.** All four items as one PR, or just (1) + (2) (the two-line `--rebase` + retry loop) as the smallest possible shipment, with `doctor` and pre-commit-pull as separate follow-ups?
-2. **Pre-commit pull behaviour.** If `git pull --rebase` *before* commit hits a conflict on an otherwise dirty working tree, do we want the tool to abort with a clear message, or attempt `rebase.autoStash`-style behaviour explicitly? (The doc assumes the config sets `autoStash`; layer 1 is supposed to be config-independent.)
-3. **`doctor` reach.** Does `doctor` only check config, or also check that `docs/tbd.md` exists in scaffolded repos, that `.github/workflows/gh-bump-patch-version.yml` is wired up correctly, etc.? Keeping it narrow is faster; broadening it makes it the natural "is this repo healthy?" command.
-4. **Force-push guard placement.** Guard inside the tool only (item 6), inside a `pre-push` hook only (item 7), or both? Hook is stronger but requires the operator to opt in by running `hooks install`.
-5. **Is Scaled TBD actually in use?** If the academy workflow is plain TBD across the board, layer 3 has no audience and should be dropped. If some repos use short-lived branches, layer 3 is high-leverage.
-6. **`lint-history` enforcement.** Local-only command, or wire it into a workflow that fails on any new merge commit landing on `main`? The latter is the only thing that actually prevents drift over time.
-7. **Bot-race log line.** When the retry loop catches a `Bump VERSION` race specifically (pattern-match the rejection cause), should we say so ("racing the version bot, retrying"), or keep the message generic? Specific is more teaching-friendly; generic is less brittle if the bot's commit format ever changes.
-8. **Stale-branch command name.** Layer 4.12 doesn't pin a command name. Lock it in as `gh optivem workspace stale-branches`, or defer naming until implementation?
+1. **Layer 1 scope.** All four items (1.1–1.4) as one PR.
+2. **Pre-commit pull behaviour.** Explicit autoStash: tool stashes unstaged changes, rebases, then `stash pop`. Config-independent — does not assume `rebase.autoStash` is set.
+3. **`doctor` reach.** Narrow: config only (`pull.rebase`, `rebase.autoStash`, `rerere.enabled`). Broader repo-health checks are out of scope.
+4. **Force-push guard placement.** Both: in-tool guard (item 6) *and* pre-push hook (item 7). Independent failure modes (tool flow vs. raw `git push --force`); blast radius of force-pushing `main` justifies belt-and-suspenders.
+5. **Scaled TBD in use.** Yes — Layer 3 stays in scope.
+6. **`lint-history` enforcement.** Both: local command + paired CI workflow that fails on any new merge commit on `main`. Shipped together — CI is the only thing that prevents drift over time; the local form is for ad-hoc checks.
+7. **Bot-race log line.** Generic only: "racing origin/main, retrying". No pattern-match on the bot's commit format — the bot is one of several possible race sources, and coupling the retry loop to its message format creates hidden coupling someone touching the workflow would have to remember.
+8. **Stale-branch command name.** Lock in as `gh optivem workspace stale-branches`.
 
 ## Out of scope
 
