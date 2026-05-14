@@ -4,17 +4,15 @@
 
 `gh optivem implement` dispatches one of nine embedded agent prompts under
 `internal/atdd/runtime/agents/prompts/*.md` per phase via `claude -p` (see
-`internal/atdd/runtime/clauderun/clauderun.go:984`). The user reports
-the Claude steps feel slow even on simple work and suspects they burn
-more tokens than necessary. Static analysis of the embedded prompts
-confirms the suspicion: the prompt bodies are large and heavily duplicated.
+`internal/atdd/runtime/clauderun/clauderun.go:984`). The user reports the
+Claude steps feel slow even on simple work and suspects they burn more
+tokens than necessary. Static analysis of the embedded prompts confirms the
+suspicion: the prompt bodies are large and heavily duplicated.
 
-A second motivation surfaced during planning: the user wants
-**gh-optivem to be the canonical owner of the ATDD process**, so that any
-repo — not just ones scaffolded from `shop` — can run `gh optivem implement`.
-That reshapes the fix from "shrink the embedded prompts" into "make the
-prompts thin pointers into a single canonical source-of-truth that
-gh-optivem itself owns."
+A second motivation is structural: the user wants **gh-optivem to be the
+canonical owner of the ATDD process**, fully controlled from a single
+location, with updates propagating automatically when the gh-optivem
+binary upgrades — without any per-consumer-repo install ceremony.
 
 ### Size baseline (today)
 
@@ -35,13 +33,12 @@ total                 1664 lines  115.9 KB
 
 Each `claude -p` invocation gets the **full prompt as system input every
 time** (`runAutonomous` at `clauderun.go:1009-1043` passes the rendered
-string via argv with no caching layer in between). Three of the nine
-prompts are over 20 KB.
+string via argv). Three of the nine prompts are over 20 KB.
 
 ### Problem inventory
 
 **P0. Three-way duplication of the ATDD source-of-truth.**
-The ATDD process docs and Claude assets exist in three places today:
+ATDD process docs and Claude assets exist in three places today:
 
 | Where | What | Role |
 |---|---|---|
@@ -49,379 +46,416 @@ The ATDD process docs and Claude assets exist in three places today:
 | `gh-optivem/internal/atdd/runtime/agents/prompts/*.md` | Embedded prompts | Copy-pasted with shop's docs inlined, used by `claude -p` |
 | Every scaffolded repo (page-turner, etc.) | Installed copy | Output of `gh optivem init` |
 
-`internal/atdd/install.go:5-9` explicitly states the design intent:
-"Source-of-truth: the shop checkout… This package never embeds
-templates." But the prompts package broke that rule by embedding
-shop's docs into the prompt bodies (see P1 below). Worse, anyone who
-wants to run `gh optivem implement` on a repo that wasn't scaffolded
-from shop has no path to install the docs — shop is a hard
-prerequisite for the install step.
-
-The audit of `academy/` confirms the blast radius is small:
-`hub/checklists/atdd/` is unrelated (student checklists, different
-content); `rehearsal-*/docs/atdd/` is scaffold output not source;
-nothing in `courses/`, `optivem-testing/`, `github-utils/`, `actions/`,
-or `claude/` references `docs/atdd`. Within shop, references come
-from `.claude/agents/atdd/meta/*.md` (which move together with the
-docs under the fix) and intra-doc cross-links.
+This duplication is the structural root cause of the prompt bloat — fix
+the duplication, the prompts can confidently reference canonical paths
+without inlining content.
 
 **P1. Inlined reference docs are the bulk of the payload (highest impact).**
 Every prompt body ends with a `## References` section that pastes the
-contents of multiple `docs/atdd/process/*.md` and `docs/atdd/architecture/*.md`
-files verbatim. Examples:
+contents of multiple `docs/atdd/process/*.md` and
+`docs/atdd/architecture/*.md` files verbatim. Examples:
 
 - `atdd-dsl.md` inlines six full reference files
   (`shared-phase-progression.md`, `at-cycle-conventions.md`,
   `ct-cycle-conventions.md`, `at-red-dsl.md`, `ct-red-dsl.md`,
   `dsl-core.md`, `driver-port.md`, `language-equivalents.md`).
   About **85 %** of the file is references.
-- `atdd-driver.md` inlines `at-cycle-conventions.md`,
-  `ct-cycle-conventions.md`, `at-red-system-driver.md`,
-  `ct-red-external-driver.md`, `driver-port.md`,
-  `language-equivalents.md`. About **85 %** is references.
+- `atdd-driver.md` inlines a similar bundle. About **85 %** is references.
 - `atdd-test.md` (313 lines) follows the same pattern.
 
-But the consumer-repo working tree already contains those files
-(`docs/atdd/process/*.md`, `docs/atdd/architecture/*.md`,
-`docs/atdd/code/language-equivalents.md`) — `atdd-fix-verify.md:178`
-and `atdd-task.md:178` even acknowledge this with
-"omitted at WRITE time — both files exist in the consumer repo… Read them
-with the Read tool if a step asks you to consult them." The agent has
-`Read`. There is no need to ship the docs in the prompt.
+`atdd-fix-verify.md:178` and `atdd-task.md:178` already acknowledge the
+alternative ("read with the Read tool if a step asks you to consult
+them"). The agent has Read; there is no need to ship the docs in the
+prompt — provided the docs are reachable at a known path at dispatch
+time.
 
 **P2. Heavy cross-prompt duplication.**
-
-- The boilerplate header (lines 1–8: ticket vars, "one-shot dispatch", "don't
-  commit / don't summarise") is identical or near-identical across **all
-  nine prompts** — duplicated nine times in the embed instead of once in
-  `shared/`.
-- `driver-port.md`, `language-equivalents.md`, and the cycle-conventions
-  files are each inlined in 2–4 prompt files. Editing the canonical
-  `docs/atdd/...` copy now requires hand-syncing every embedded copy
-  (and a regression test, since none enforces it).
-- Subtype-gated sub-blocks via `<!-- if:subtype=... -->`
-  (`clauderun.go:358`) help only marginally — they trim conditional
-  paragraphs, not the bulk reference inlines.
+The boilerplate header (ticket vars, "one-shot dispatch", "don't commit /
+don't summarise") is near-identical across **all nine prompts**.
+`driver-port.md`, `language-equivalents.md`, and cycle-conventions files
+are each inlined in 2–4 prompt files. Editing the canonical copy requires
+hand-syncing every embedded copy.
 
 **P3. AT phase + CT phase fused into a single prompt.**
-`atdd-dsl.md`, `atdd-driver.md`, and `atdd-test.md` each describe
-both their AT-cycle and CT-cycle variants in the same file, then inline
-the reference docs for both cycles. On any given dispatch, half the
-prompt content (the other cycle's docs and anti-patterns) is irrelevant
-and just consumes tokens. The dispatcher already knows the phase
-(`${phase}`) — gating could prune the irrelevant half.
+`atdd-dsl.md`, `atdd-driver.md`, and `atdd-test.md` each describe both
+their AT-cycle and CT-cycle variants in the same file. On any dispatch,
+half the prompt content (the other cycle's content) is irrelevant.
 
 **P4. Verbose, repetitive prose inside the prompt-specific sections.**
-The "Anti-patterns" lists frequently restate guard rails that were
-already stated in "Conventions" and "WRITE / PROTOTYPES" steps a few
-lines above (e.g. "do not add @Disabled markup" is repeated 3× in
-`atdd-dsl.md`, 2× in `atdd-driver.md`). Tightening prose without
-removing meaning would shrink each prompt by 10–20 %.
+Anti-pattern lists frequently restate guard rails already stated in
+"Conventions" and "WRITE" steps above. Tightening prose without removing
+meaning would shrink each prompt by 10–20 %.
 
-**P5. `language-equivalents.md` is pasted in full when one row is needed.**
-Most prompts only ever need one column of the language-equivalents tables
-(the dispatch knows the in-scope Test Lang from `${architecture}` / scope
-context, but ships TODO Stubs, Test Disabling, String Field Types, DTO
-Boilerplate, Test File Naming, and Awaitable ShouldSucceed for **all three
-languages** every time). The orchestrator could either substitute only the
-relevant row or omit the table entirely and rely on the agent's Read tool.
+## Locked-in design
 
-### Why this matters for latency and cost
+The plan went through several iterations during 2026-05-14 discussion;
+the design below is the final shape.
 
-- Larger prompts = larger first-turn input = more time spent ingesting
-  tokens before the model emits anything.
-- `claude -p` has no `--prompt-cache` flag exposed today, so every
-  dispatch pays full input-token cost for the entire body (see
-  `runAutonomous` at `clauderun.go:1009` — only `--output-format json`
-  is set).
-- Anecdotally, three of the nine prompts (`atdd-dsl`, `atdd-driver`,
-  `atdd-test`) — the ones most often in the critical path of `implement`
-  — are also the largest at ~21 KB each.
+### D1. gh-optivem owns the canonical ATDD assets, fully embedded
 
-A conservative estimate: cutting reference-doc inlines reduces the three
-heavy prompts by ~70 % (from ~21 KB to ~6 KB) — roughly **45 KB shaved
-per implement run that touches DSL → Driver → Test**, which is the
-common AT-cycle path.
-
-## Proposed solutions
-
-The fixes form a stack. S0 is a prerequisite for S1 — once gh-optivem
-owns the canonical docs, the prompts can confidently point at known
-paths. The rest are independently shippable.
-
-### S0. Move ATDD source-of-truth into gh-optivem (decoupling step)
-
-Today `internal/atdd/install.go:88-114` walks the shop checkout
-(`Options.ShopPath`) and copies `docs/atdd/{process,architecture,code}/`
-plus `.claude/agents/atdd/` and `.claude/commands/atdd/` into the
-consumer repo. Under S0:
-
-1. Move the canonical copies of these trees from `shop/` into
-   `gh-optivem/internal/atdd/assets/` (or similar — directory name TBD):
-   - `assets/docs/atdd/process/*.md`
-   - `assets/docs/atdd/architecture/*.md`
-   - `assets/docs/atdd/code/*.md`
-   - `assets/claude/agents/atdd/*.md` (including the `meta/` subtree)
-   - `assets/claude/commands/atdd/*.md`
-2. Add a `//go:embed assets/...` declaration following the
-   `internal/atdd/runtime/agents/embed.go:10-16` precedent
-   (`promptFS embed.FS`).
-3. Rewrite `internal/atdd/install.go` so `Plan` (`install.go:90`)
-   walks the embed.FS instead of `filepath.Join(opts.ShopPath, …)`.
-   Drop the `ShopPath` field from `Options` (or keep it for the
-   non-ATDD parts of `gh optivem init` that still copy system code
-   from a shop checkout — TBD based on the rest of init's needs).
-4. Delete the copies in `shop/docs/atdd/`, `shop/.claude/agents/atdd/`,
-   `shop/.claude/commands/atdd/`. shop becomes a regular consumer:
-   after `gh optivem init` runs on the shop repo, the trees re-appear
-   in shop, identical in content to every other scaffolded repo.
-5. Update the `gh optivem init` flow so it works on any repo —
-   not just one that has a shop checkout adjacent.
-
-After S0:
-- One canonical source: `gh-optivem/internal/atdd/assets/...`.
-- Any repo can adopt ATDD via `gh optivem init` (or a dedicated
-  `gh optivem atdd install` subcommand if init's broader semantics
-  shouldn't fire).
-- The embedded prompts in `internal/atdd/runtime/agents/prompts/*.md`
-  can safely reference doc paths because gh-optivem installed them
-  in the consumer repo.
-
-**Risk:** shop loses its self-contained "open the repo, read the
-process docs" property. Mitigation: leave a `shop/docs/atdd/README.md`
-stub pointing at the gh-optivem source, and rely on the fact that
-running `gh optivem init` against shop restores the docs locally.
-
-**Expected savings:** none directly — S0 is structural. But it
-unblocks S1's "agent reads docs at runtime" pattern across every
-consumer repo, not just shop scaffolds.
-
-### S1. Replace inlined reference docs with file pointers (highest impact)
-
-Each `## References` section in the prompt body becomes a one-line
-pointer:
+All ATDD assets live in the gh-optivem binary via `//go:embed`:
 
 ```
-Apply Driver Port Rules — read `docs/atdd/architecture/driver-port.md`.
-Apply DSL Core Rules — read `docs/atdd/architecture/dsl-core.md`.
-Cycle conventions — read `docs/atdd/process/at-cycle-conventions.md`.
+internal/atdd/assets/
+  docs/atdd/architecture/*.md
+  docs/atdd/process/*.md
+  docs/atdd/code/*.md
+  claude/agents/atdd/*.md     (Claude Code subagents — for interactive flow)
+  claude/commands/atdd/*.md   (Claude Code slash commands — for interactive flow)
 ```
 
-The agent has the `Read` tool and the docs live in the consumer-repo
-working directory at known paths. This is the same trade-off
-`atdd-fix-verify.md` and `atdd-task.md` already made for `glossary.md`
-and `language-equivalents.md`.
+These are the only authoritative copies. Shop's `docs/atdd/`,
+`.claude/agents/atdd/`, `.claude/commands/atdd/` are removed; shop becomes
+a regular consumer.
 
-**Risk:** the agent forgets to read a doc it needs. Mitigation: keep one
-or two **must-read-first** docs inlined when they encode rules the
-agent cannot infer (e.g. the "do not commit" sentence in
-`shared-phase-progression.md`) — but inline them at the top, not as
-appendices, and only when they fit in <~500 bytes.
+The internal prompt files at `internal/atdd/runtime/agents/prompts/*.md`
+remain embedded as today via the existing `//go:embed prompts/*.md`.
+These are separate from the new assets bundle — they are content fed
+into `claude -p` directly, never written to disk.
 
-**Expected savings:** ~70 % on the three heavy prompts; ~40 % overall.
+### D2. No copy to consumer repos; sync to per-user global paths
 
-### S2. Extract the shared header into `shared/header.md` and prepend it like `session-end.md`
+Consumer repos contain **zero ATDD assets on disk**. Sync targets:
 
-The "one-shot dispatch / don't commit / don't summarise" preamble lives
-once. `embed.go:32` already wraps the prompt body between content and
-`shared/session-end.md`; extend the same pattern with a leading
-`shared/header.md` so the duplication disappears from each individual
-file.
+```
+~/.gh-optivem/docs/atdd/        ← docs (humans browse; agent reads here)
+~/.claude/agents/atdd/           ← subagents (Claude Code finds for /atdd-*)
+~/.claude/commands/atdd/         ← slash commands (same)
+~/.gh-optivem/.version           ← stamp file (binary version of last sync)
+```
 
-**Risk:** very low. Mechanical refactor.
+The `atdd/` subdirectories are entirely owned by gh-optivem — re-syncs
+overwrite their contents wholesale. Anything outside (`~/.claude/agents/myteam/`,
+`docs/myteam-notes/` in any repo) is untouched forever.
 
-**Expected savings:** ~250 bytes × 9 prompts = ~2 KB across all
-dispatches, plus a maintenance win.
+### D3. Auto-sync on first invocation after binary upgrade
 
-### S3. Split AT-cycle vs CT-cycle prompts (or gate them with `<!-- if:cycle=... -->`)
+There is no `gh optivem atdd install` subcommand. Sync is automatic:
 
-Either:
+```
+Every `gh optivem <command>` invocation, at startup:
+  Read ~/.gh-optivem/.version stamp.
+  If missing OR != this binary's version:
+    Write embed.FS contents to ~/.gh-optivem/docs/atdd/,
+                                ~/.claude/agents/atdd/,
+                                ~/.claude/commands/atdd/.
+    Update stamp file.
+    Print one-line notice: "Synced ATDD assets to ~/.gh-optivem and ~/.claude (vX.Y.Z)."
+  Else: no-op (single stat call).
+Then proceed with the user's actual command.
+```
 
-- (a) Split `atdd-dsl.md` → `atdd-dsl-at.md` + `atdd-dsl-ct.md` (same
-  for `atdd-driver` and `atdd-test`), and dispatch the right one based on
-  the phase prefix.
-- (b) Extend the existing conditional regex (`conditionalRE` at
-  `clauderun.go:358`) with a new `${cycle}` placeholder (`at` | `ct`)
-  and wrap each cycle-specific block in
-  `<!-- if:cycle=at -->...<!-- end-if -->`.
+Sync is blanket-on-every-command (not scoped to `implement` and friends)
+to avoid the "new ATDD command forgot to call the sync" failure mode.
+Cost when up-to-date is one file read.
 
-(b) is less code churn and keeps all the dispatch wiring untouched —
-just one new params key in `renderPrompt` (`clauderun.go:414`).
+**Escape hatch:** `GH_OPTIVEM_NO_AUTO_SYNC=1` (or `=true`) disables
+auto-sync. When set, ATDD-consuming commands (`implement` etc.) fail
+fast with `"ATDD assets out of date or missing. Run \`gh optivem atdd
+sync\` or unset GH_OPTIVEM_NO_AUTO_SYNC."` rather than silently running
+with stale assets. Non-ATDD commands proceed normally.
 
-**Risk:** misclassification (CT block runs on an AT phase). Already
-mitigated by the `findUnfilledPlaceholders` guard
-(`clauderun.go:264`) plus a small unit test asserting the rendered
-prompt only contains the in-scope cycle's words.
+**Manual sync:** `gh optivem atdd sync` triggers the sync explicitly.
+Used by users with the escape hatch set, or to force re-sync.
 
-**Expected savings:** another ~40 % on `atdd-dsl`, `atdd-driver`,
-`atdd-test`. Stacks with S1.
+**Optional helpers (lower priority, can defer):**
+- `gh optivem atdd status` — shows synced version vs binary version and
+  which target paths are populated. Useful for debugging.
+- `gh optivem atdd docs <slug>` / `gh optivem atdd docs --open` —
+  convenience for humans who want to read docs without browsing
+  `~/.gh-optivem/docs/atdd/` in their editor.
 
-### S4. Tighten prose — collapse "Anti-patterns" + "Conventions" + "WRITE steps"
+### D4. Minimize post-processing of prompt files
 
-Two-pass copyedit on each prompt body (post-S1, post-S3) — remove
-restatements, keep one canonical mention of each guard rail. No
-new mechanics needed. Best done after S1/S3 because the surviving
-prose is what is being copyedited, not the bulk references.
+Per `feedback_minimize_prompt_post_processing.md`: avoid adding new
+transforms between the on-disk prompt and what `claude -p` receives.
+Each transform makes the source-of-truth ambiguous and hides what the
+agent actually sees.
 
-**Risk:** accidental rule deletion. Mitigation: do it as a PR with the
-canonical `docs/atdd/...` references in the diff context so the
-reviewer can cross-check.
+Transforms after this plan completes:
 
-**Expected savings:** ~15 % on the surviving prompt size.
+| # | Transform | Status |
+|---|---|---|
+| 1 | `agents.Prompt()` appends `shared/session-end.md` | **Keep** (grandfathered) |
+| 2 | `filterConditionals` strips `<!-- if -->` blocks | **Delete** (no users after subtype-split) |
+| 3 | `ExpandParams` substitutes `${name}` placeholders | **Keep** (load-bearing) |
+| 4 | `OverrideText` append | **Keep** (only fires when caller provides one) |
+| 5 | `materializePrompt` tempfile spill above argv limit | **Keep** (delivery path; no content change) |
 
-### S5. Materialize prompts to disk only when they exceed a threshold the cache likes
+Notably, a shared-header prepend (proposed earlier as S2) is **not**
+introduced. The "ticket vars / one-shot dispatch / don't commit / don't
+summarise" preamble stays inlined in each prompt file, accepting 9×
+duplication.
 
-Today `materializePrompt` (`clauderun.go:931`) spills to a tempfile
-above `promptArgvLimit = 8000` to dodge Windows argv limits. After S1
-most prompts will be under the limit, restoring the fast inline path.
-This is a side-effect of the other work, not its own task.
+### D5. Strip inlined references; prompts point at canonical paths
 
-## Decisions taken (2026-05-14 discussion)
+Each `### Reference: ...` block in the prompt body becomes a one-line
+pointer using a `${atdd_docs_root}` placeholder substituted at render
+time:
 
-- **Ownership: Option B.** gh-optivem owns the ATDD source-of-truth.
-  Two reasons: (a) eliminates three-way duplication that drove the
-  prompt bloat in the first place, (b) lets any repo — not just shop
-  scaffolds — adopt ATDD via `gh optivem init` / a dedicated install
-  command.
-- **S0 is the prerequisite to S1.** Without S0 the prompt pointers
-  would only work in shop-scaffolded repos.
+```
+Apply Driver Port Rules — read `${atdd_docs_root}/architecture/driver-port.md`.
+Apply DSL Core Rules — read `${atdd_docs_root}/architecture/dsl-core.md`.
+Cycle conventions — read `${atdd_docs_root}/process/at-cycle-conventions.md`.
+```
 
-## Decision points still open
+`${atdd_docs_root}` is added to the fixed-schema placeholders in
+`renderPrompt` (`clauderun.go:432-448`), populated with the absolute
+path `~/.gh-optivem/docs/atdd/` at render time. The agent's `Read` tool
+resolves the absolute path against the filesystem; no working-directory
+dependency.
 
-1. **Split prompt files (S3a) or gate with conditionals (S3b)?**
-   S3a is one file per phase, mirroring `docs/atdd/process/*.md`.
-   S3b adds a `${cycle}` placeholder and uses the existing
-   `<!-- if:... -->` machinery — less file churn.
-2. **Keep any inlined "safety" snippets in the prompts after S1?**
-   The "do not commit" rule and a one-paragraph "what this phase
-   produces" summary could stay inline so the agent never has to
-   reach for a file to learn the most-load-bearing rules. The
-   reference docs themselves still move out.
-3. **Subcommand for the install step.** Is `gh optivem init` the
-   right home for installing ATDD assets into a non-shop repo, or
-   does that warrant a dedicated `gh optivem atdd install` so the
-   wider init flow (system code, workflows, externals) stays
-   shop-scoped? Affects `install.go`'s signature, not the move itself.
-4. **`--prompt-cache` (out of scope).** Worth a follow-up plan
-   if/when the Claude CLI exposes prompt caching.
+### D6. Keep "safety" rules inline; move only reference material
+
+Stays inline in each prompt:
+- The 8-line preamble (ticket vars, one-shot dispatch, don't commit,
+  don't summarise, don't push).
+- A 1–2 sentence "what this phase produces" anchor.
+- Cross-cutting "never X" guardrails specific to the prompt.
+
+Moves to `${atdd_docs_root}/...` Read-on-demand pointers:
+- Full `docs/atdd/architecture/*.md` content.
+- Full `docs/atdd/process/*.md` content.
+- `docs/atdd/code/language-equivalents.md` tables.
+- Cycle-conventions and DSL-rules docs.
+
+Budget: total inline guardrails per prompt under ~500 bytes. If a rule
+grows past that, it has probably crept into reference territory and
+should move out.
+
+Rationale: rules whose violation is high-cost (lost work, surprise
+commits) must be in the context window from turn 0 — agents skip Reads
+when they think they already know. Reference material can be Read-on-
+demand because skipping is recoverable.
+
+### D7. Split AT-cycle and CT-cycle prompts into separate files (S3a)
+
+`atdd-dsl.md`, `atdd-driver.md`, `atdd-test.md` each split into a
+per-cycle pair:
+
+```
+atdd-dsl-at.md      atdd-dsl-ct.md
+atdd-driver-at.md   atdd-driver-ct.md
+atdd-test-at.md     atdd-test-ct.md
+```
+
+Dispatcher picks the right file based on phase. Each file reads
+top-to-bottom with no conditionals.
+
+Token efficiency: identical to conditional gating (S3b). The
+maintainability win is what justifies S3a: readers don't have to
+mentally execute `<!-- if:cycle=... -->` blocks to see what each cycle
+actually receives.
+
+### D8. Split atdd-task.md by subtype; delete filterConditionals
+
+`atdd-task.md` line 134 uses `<!-- if:subtype=external-system-interface-redesign -->`
+for a ~20-line block. Two subtypes ever reach this prompt:
+`system-interface-redesign` and `external-system-interface-redesign`.
+
+Split into:
+```
+atdd-task-system-interface-redesign.md
+atdd-task-external-system-interface-redesign.md
+```
+
+Dispatcher picks based on subtype. Once split, `<!-- if -->` markers
+appear nowhere in the prompts package and `filterConditionals` +
+`conditionalRE` (`clauderun.go:358-373`) + the corresponding tests can
+be **deleted**. One fewer post-processing transform.
+
+### D9. Tighten prose
+
+Two-pass copyedit on the surviving prompt bodies. Remove restatements
+of guard rails already stated earlier in the same prompt. No new
+mechanics. Done after the structural moves above so the editing target
+is the final shape.
+
+Expected ~15 % size drop on each surviving prompt.
 
 ## Critical files
 
-Edited by this plan:
-
-**S0 — ownership move:**
+**D1 + D2 — ownership move and embed expansion:**
 - `internal/atdd/assets/docs/atdd/{process,architecture,code}/*.md` —
   new (moved from `shop/docs/atdd/`).
 - `internal/atdd/assets/claude/agents/atdd/*.md` — new (moved from
   `shop/.claude/agents/atdd/`, including `meta/` subtree).
 - `internal/atdd/assets/claude/commands/atdd/*.md` — new (moved from
   `shop/.claude/commands/atdd/`).
-- `internal/atdd/install.go` — switch `Plan` (`:90`) from
-  `Options.ShopPath` walks to an `embed.FS`. Decide whether to keep
-  `ShopPath` for non-ATDD init responsibilities.
-- `internal/atdd/install_test.go` — update fixtures that
-  currently hand-build a fake shop tree.
+- `internal/atdd/assets/embed.go` — new; declares `//go:embed assets/...`
+  following the `internal/atdd/runtime/agents/embed.go:10-16` precedent.
+- `internal/atdd/install.go` — rewrite or remove. The current
+  shop-walk install (`install.go:88-114`) is replaced by the sync
+  mechanism below; if the file's other responsibilities (system code
+  copy, workflows) survive, they stay; the ATDD-asset half is deleted
+  from here.
+- `internal/atdd/install_test.go` — drop ATDD-asset fixtures.
 - shop repo (separate PR or coordinated commit): delete
   `shop/docs/atdd/`, `shop/.claude/agents/atdd/`,
   `shop/.claude/commands/atdd/`. Leave a `shop/docs/atdd/README.md`
   stub pointing at gh-optivem.
 
-**S1–S4 — prompt slimming:**
-- `internal/atdd/runtime/agents/prompts/atdd-dsl.md` — strip inlined
-  references (S1), gate cycle blocks (S3), tighten prose (S4).
-- `internal/atdd/runtime/agents/prompts/atdd-driver.md` — same.
-- `internal/atdd/runtime/agents/prompts/atdd-test.md` — same.
-- `internal/atdd/runtime/agents/prompts/atdd-task.md` — strip
-  inlined `system.md`, `driver-port.md`, `driver-adapter.md`
-  references (S1).
-- `internal/atdd/runtime/agents/prompts/atdd-chore.md` — strip
-  inlined `task-and-chore-cycles.md` (S1).
+**D3 — auto-sync mechanism:**
+- `internal/atdd/sync/sync.go` — new package. Exports `EnsureSynced()`
+  which reads the stamp, compares, writes assets if needed, updates
+  the stamp. Atomic write via temp+rename. File lock for concurrent
+  invocations.
+- `internal/atdd/sync/sync_test.go` — coverage for stamp matching,
+  cross-version sync, escape-hatch behavior, atomic-write under
+  concurrent invocation.
+- `cmd/gh-optivem/main.go` (or wherever the root command lives) —
+  invoke `sync.EnsureSynced()` at startup unless
+  `GH_OPTIVEM_NO_AUTO_SYNC` is truthy.
+- `cmd/gh-optivem/atdd_sync.go` — new subcommand
+  `gh optivem atdd sync` for explicit sync.
+- ATDD-consuming commands (notably `gh optivem implement`) — when the
+  escape hatch is set, check the stamp and fail fast with the
+  documented error if stale.
+
+**D5 — placeholder substitution for doc paths:**
+- `internal/atdd/runtime/clauderun/clauderun.go:432-448` — add
+  `atdd_docs_root` to the fixed-schema placeholders, populated with
+  the absolute path of `~/.gh-optivem/docs/atdd/`.
+- `internal/atdd/runtime/clauderun/clauderun_test.go` — extend the
+  `TestRenderPrompt_*` cases with `${atdd_docs_root}` substitution
+  assertions.
+
+**D7 + D8 — prompt file splits:**
+- `internal/atdd/runtime/agents/prompts/atdd-dsl-at.md` — new
+  (AT-cycle half of `atdd-dsl.md`).
+- `internal/atdd/runtime/agents/prompts/atdd-dsl-ct.md` — new
+  (CT-cycle half of `atdd-dsl.md`).
+- `internal/atdd/runtime/agents/prompts/atdd-driver-at.md`,
+  `atdd-driver-ct.md` — same pattern.
+- `internal/atdd/runtime/agents/prompts/atdd-test-at.md`,
+  `atdd-test-ct.md` — same pattern.
+- `internal/atdd/runtime/agents/prompts/atdd-task-system-interface-redesign.md` —
+  new (atdd-task.md minus the gated block).
+- `internal/atdd/runtime/agents/prompts/atdd-task-external-system-interface-redesign.md` —
+  new (atdd-task.md with gated block inlined).
+- Delete: `atdd-dsl.md`, `atdd-driver.md`, `atdd-test.md`,
+  `atdd-task.md`.
+- Dispatcher — `internal/atdd/runtime/clauderun/clauderun.go` or
+  the agent resolution layer — extend the agent-name lookup to map
+  `(phase, cycle)` and `(task, subtype)` to the right file.
+
+**D5 + D6 — prompt body slimming:**
+- `internal/atdd/runtime/agents/prompts/atdd-dsl-{at,ct}.md` — strip
+  inlined references, keep guardrails inline.
+- `internal/atdd/runtime/agents/prompts/atdd-driver-{at,ct}.md` — same.
+- `internal/atdd/runtime/agents/prompts/atdd-test-{at,ct}.md` — same.
+- `internal/atdd/runtime/agents/prompts/atdd-task-*.md` — strip inlined
+  `system.md`, `driver-port.md`, `driver-adapter.md` references.
+- `internal/atdd/runtime/agents/prompts/atdd-chore.md` — strip inlined
+  `task-and-chore-cycles.md`.
 - `internal/atdd/runtime/agents/prompts/atdd-backend.md`,
   `atdd-frontend.md`, `atdd-stubs.md`, `atdd-fix-verify.md` — strip
-  any remaining inlines + apply the shared header (S2).
-- `internal/atdd/runtime/agents/shared/header.md` — new file (S2).
-- `internal/atdd/runtime/agents/embed.go` — prepend
-  `shared/header.md` the same way `shared/session-end.md` is appended
-  (S2).
-- `internal/atdd/runtime/clauderun/clauderun.go` — extend
-  `renderPrompt` (`:414`) to seed a `${cycle}` placeholder (S3) and
-  tighten `conditionalRE` (`:358`) if S3b is chosen.
+  any remaining inlines.
 
-Read-only references:
-
-- `internal/atdd/runtime/clauderun/clauderun_test.go` — `TestRenderPrompt_*`
-  is where the assertion-on-rendered-text regression tests live; new
-  cases land here.
-- `internal/atdd/runtime/agents/embed.go:10-16` — precedent for the
-  `embed.FS` pattern S0 generalizes.
+**filterConditionals removal:**
+- `internal/atdd/runtime/clauderun/clauderun.go:347-373` — delete
+  `conditionalRE` and `filterConditionals`.
+- `internal/atdd/runtime/clauderun/clauderun.go:449-453` — remove the
+  `body = filterConditionals(body, params)` call from `renderPrompt`.
+- `internal/atdd/runtime/clauderun/clauderun_test.go` — delete the
+  conditional-gating test cases.
 
 ## Reuse references
 
-- `internal/atdd/runtime/agents/embed.go:14-39` —
-  `sharedSessionEnd` precedent shows exactly how `shared/header.md`
-  should be wired (read at init, panic on missing, append with `\n---\n`).
-- `internal/atdd/runtime/clauderun/clauderun.go:358-373` —
-  `conditionalRE` + `filterConditionals` is the gating engine S3b
-  builds on.
+- `internal/atdd/runtime/agents/embed.go:10-16` — precedent for the
+  `//go:embed` + `embed.FS` pattern that the new
+  `internal/atdd/assets/embed.go` follows.
+- `internal/atdd/runtime/agents/embed.go:32-39` — `agents.Prompt`
+  pattern for appending `shared/session-end.md`; stays as-is.
+- `internal/atdd/runtime/clauderun/clauderun.go:432-448` — fixed-schema
+  placeholder map; `${atdd_docs_root}` joins this set.
 - `internal/atdd/runtime/clauderun/clauderun.go:264-269` —
-  `findUnfilledPlaceholders` already guards against typos; adding
-  `${cycle}` doesn't break the guarantee.
-- `atdd-fix-verify.md:178` / `atdd-task.md:178` —
-  precedent for "reference exists in consumer repo; read with the Read
-  tool" — S1 generalizes this rule.
+  `findUnfilledPlaceholders` already guards against typos; the new
+  `${atdd_docs_root}` doesn't break the guarantee.
+- `atdd-fix-verify.md:178` / `atdd-task.md:178` — precedent for
+  "reference exists at a known path; read with the Read tool" —
+  generalized by D5.
 
 ## Steps
 
-### Step 1 — resolve the open decision points
+### Step 1 — D1 + D2 (ownership move + embed expansion)
 
-Surface the four open decisions (split vs gate for S3; keep safety
-inlines yes/no; subcommand shape for the install; `--prompt-cache`
-out-of-scope confirmation). Stop here if the user wants a different
-shape.
+Land as one bundle (the move is non-atomic if split — every consumer
+would see a window where docs are gone). Sub-steps:
 
-**Validation:** user picks an option for each.
-
-### Step 1.5 — implement S0 (move ATDD ownership into gh-optivem)
-
-Land this as one bundle (the move is non-atomic if split — every
-consumer would see a window where the docs are gone). Sub-steps:
-
-1. Create `internal/atdd/assets/` with `//go:embed assets/...` in a
-   new sibling of `agents/embed.go`.
-2. Copy `shop/docs/atdd/`, `shop/.claude/agents/atdd/`,
-   `shop/.claude/commands/atdd/` into the new tree.
-3. Rewrite `internal/atdd/install.go` to walk the embed.FS.
+1. Create `internal/atdd/assets/` with the three asset trees moved
+   from shop.
+2. Add `internal/atdd/assets/embed.go` with `//go:embed assets/...`.
+3. Update `internal/atdd/install.go` (or remove the ATDD-asset half).
 4. Update `internal/atdd/install_test.go` fixtures.
-5. Delete the original copies in shop and replace with a
-   pointer-README.
-6. Verify `gh optivem init` on a freshly cloned shop produces the
-   same on-disk result as before.
+5. Delete the original copies in shop; leave a pointer-README.
 
 **Validation:**
-- `diff -r` between the pre-change shop install output and the
-  post-change shop install output is empty.
-- `gh optivem init` on a non-shop-scaffolded repo successfully
-  installs `docs/atdd/` and the `.claude/atdd` trees.
-- `internal/atdd/install_test.go` passes without a real shop
-  checkout on disk.
+- Build succeeds; embed.FS contains every asset.
+- shop becomes equivalent to any other consumer after the change.
 
-### Step 2 — implement S2 (shared header)
+### Step 2 — D3 (auto-sync mechanism)
 
-Create `shared/header.md`, prepend it in `embed.go`, delete the
-duplicated preamble lines 1–8 from every prompt. Land as one PR.
+1. Create `internal/atdd/sync/sync.go` with `EnsureSynced()` and
+   atomic-write + lock support.
+2. Wire `sync.EnsureSynced()` into `cmd/gh-optivem/main.go` startup,
+   gated by `GH_OPTIVEM_NO_AUTO_SYNC`.
+3. Add `gh optivem atdd sync` subcommand.
+4. Add the staleness-error in ATDD-consuming commands for the
+   escape-hatch path.
 
 **Validation:**
-- `TestRenderPrompt_*` still passes (rendered prompt shape unchanged
-  apart from header origin).
-- `wc -c internal/atdd/runtime/agents/prompts/*.md` drops by ~2 KB.
+- First invocation after install writes the three target trees and
+  the stamp file.
+- Subsequent invocation is a no-op (stamp matches).
+- Simulated version bump triggers re-sync.
+- Concurrent invocation under file-lock test: no torn writes.
+- `GH_OPTIVEM_NO_AUTO_SYNC=1` skips sync; `implement` then fails
+  with the documented error when stale.
 
-### Step 3 — implement S1 (strip inlined references)
+### Step 3 — D5 (`${atdd_docs_root}` placeholder)
 
-Per-prompt copyedit: replace each `### Reference: ...` block with a
-short pointer line. Keep at most one inline rule-snippet per prompt if
-the user opted for "keep safety inlines" in Step 1. Land as one PR per
-prompt (or one big PR — operator choice) so a regression in one prompt
-doesn't taint the others.
+Add the placeholder to `renderPrompt`'s fixed-schema map, populate
+with `~/.gh-optivem/docs/atdd/`. Add `TestRenderPrompt_*` case.
+
+**Validation:**
+- Rendered prompts contain absolute paths.
+- `findUnfilledPlaceholders` returns empty.
+
+### Step 4 — D7 + D8 (file splits)
+
+Split `atdd-dsl`, `atdd-driver`, `atdd-test` into per-cycle files.
+Split `atdd-task` into per-subtype files. Update the dispatcher's
+agent-name lookup to map phase/cycle/subtype to filename.
+
+**Validation:**
+- Each new prompt file reads top-to-bottom without conditionals.
+- AT-cycle dispatch picks the `-at.md` file; CT-cycle picks `-ct.md`.
+- Task dispatch picks the right subtype file.
+- `TestRenderPrompt_*` updated to cover each variant.
+
+### Step 5 — filterConditionals deletion
+
+Delete `conditionalRE`, `filterConditionals`, the
+`body = filterConditionals(...)` call in `renderPrompt`, and the
+conditional-gating tests.
+
+**Validation:**
+- Build succeeds.
+- No `<!-- if -->` markers remain in any prompt file
+  (`rg 'if:[a-z_]+=' internal/atdd/runtime/agents/prompts/` returns
+  empty).
+
+### Step 6 — D6 + D9 (strip inlined references + prose copyedit)
+
+Per-prompt copyedit:
+- Replace each `### Reference: ...` block with a one-line
+  `${atdd_docs_root}/...` pointer.
+- Keep guardrails inline; budget ~500 bytes total per prompt.
+- Two-pass copyedit on surviving prose; remove duplicated guard rails.
+
+Land as one PR per prompt (or one big PR — operator choice) so a
+regression in one prompt doesn't taint the others.
 
 **Validation:**
 - `wc -c` on the three heavy prompts drops to ~6 KB each.
@@ -429,36 +463,14 @@ doesn't taint the others.
   without the agent reporting "missing context."
 - `findUnfilledPlaceholders` still returns empty.
 
-### Step 4 — implement S3 (AT/CT split or gate)
-
-Pick (a) or (b) based on Step 1's choice. Wire `${cycle}` into
-`renderPrompt`. Update `TestRenderPrompt_*` with one new case per
-cycle direction.
-
-**Validation:**
-- Rendered AT prompt contains no `CT - RED - ...` strings (assertion).
-- Rendered CT prompt contains no `AT - RED - ...` strings.
-- A `gh optivem implement` run on a ticket that triggers both AT and
-  CT cycles completes both halves end-to-end.
-
-### Step 5 — implement S4 (prose copyedit)
-
-Two-pass review of each surviving prompt body. No mechanics. Diff
-review against the canonical `docs/atdd/...` files (which are
-authoritative).
-
-**Validation:** another ~15 % size drop; same smoke test still green.
-
-### Step 6 — measure
+### Step 7 — measure
 
 Capture per-dispatch token usage before / after from the
-`writeExitBanner` output (`clauderun.go:844`) on the same ticket. The
-banner already prints `… token in / … token out, $…` when the
-`claude -p --output-format json` envelope decodes. A single side-by-side
-run on a representative AT cycle is the empirical answer to "did this
-help?"
+`writeExitBanner` output (`clauderun.go:844`) on the same ticket.
+The banner already prints `… token in / … token out, $…` when the
+`claude -p --output-format json` envelope decodes.
 
-**Validation:** input tokens drop by the predicted ~40-70 % on the
+**Validation:** input tokens drop by the predicted ~40–70 % on the
 three heavy prompts; output tokens unchanged or slightly lower; wall
 time drops proportionally.
 
@@ -467,13 +479,17 @@ time drops proportionally.
 - Changing the Claude CLI invocation flags (e.g. enabling a hypothetical
   `--prompt-cache`). Worth a follow-up plan if/when the upstream CLI
   exposes one.
+- An MCP-server alternative to the temp-extract / global-sync model
+  (would eliminate the on-disk docs requirement entirely but is a
+  significant separate project — flagged during planning as Option 3,
+  not chosen).
 - Restructuring the agent set itself (merging `atdd-backend` +
-  `atdd-frontend` into `atdd-system`, etc.). That is a different
-  conversation about agent topology, not prompt size.
+  `atdd-frontend` into `atdd-system`, etc.). Agent topology is a
+  different conversation.
 - Re-shaping the `${allowed_roots}` / `${checklist}` substitution blocks
-  produced by the driver (`clauderun.go:769-820`). They are already
-  compact and per-call.
+  produced by the driver. They are already compact and per-call.
 - The non-ATDD portions of `gh optivem init` (system code copy,
-  workflow installation, externals). S0 only touches the ATDD asset
-  subset; whether the broader init flow should also stop needing a
-  shop checkout is a separate question.
+  workflow installation, externals). D1's scope is the ATDD asset
+  subset only.
+- `gh optivem atdd docs <slug>` / `--open` helpers and
+  `gh optivem atdd status`. Nice-to-have, can land in a follow-up.
