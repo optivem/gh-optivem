@@ -108,8 +108,8 @@ The existing `internal/atdd/runtime/board/` is decomposed:
 
 Each step is a single commit (or small commit pair) with passing tests. The github GraphQL migration currently in the working tree (`board.go` modifications) lands first as a self-contained github-adapter-internal change; step 2 picks it up wholesale.
 
-1. **Scaffolding.** Create `internal/atdd/runtime/tracker/` with `Issue`, `Tracker`, and a stub `Open()` that returns `ErrNotImplemented`. Tests assert the interface contract.
-2. **Move github adapter.** Port `internal/atdd/runtime/board/*` → `internal/atdd/runtime/tracker/github/`. Map: `PickTopReady` → `PickReady`; `MoveToInProgress` → `SetStatus("In progress")`; `FindIssue` → `FindIssue` (newly accepting URL form too); `VerifyProjectURL` → `Verify`. `Pick` becomes `Issue` with `IssueNum int` → `ID string`.
+> Steps 1 (scaffolding) and 2 (github adapter port) completed 2026-05-14. The new package lives at `internal/atdd/runtime/tracker/`; the github adapter satisfies the workflow methods (PickReady / FindIssue / SetStatus / Verify); Classify / ReadSections / MarkChecklistComplete are stubbed. The old `internal/atdd/runtime/board/` package is unchanged and still serves all existing consumers — step 13 deletes it once the migrations land.
+
 3. **Migrate `actions/bindings.go`.** Replace direct `board.*` calls with `Tracker` calls. The `pickTopReady`/`moveToInProgress`/`moveToInAcceptance` actions shrink to ~5 lines each. `Context` shuttles a single `issue_handle` string.
 4. **Migrate `classify/classify.go`.** GitHub-specific classification moves into `tracker/github/`. Runtime calls `Tracker.Classify(issue)`. Label-token table moves into the github adapter package.
 5. **Migrate `intake/sections.go`.** Replace the hardcoded Issue Forms heading walker with `Tracker.ReadSections(issue, headings)`. The github adapter's `ReadSections` does today's body parse; markdown adapter's reuses the shared `tracker/internal/parse`.
