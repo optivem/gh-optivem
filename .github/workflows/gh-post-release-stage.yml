@@ -31,9 +31,12 @@ jobs:
         run: |
           source .github/scripts/gh-retry.sh
           source .github/scripts/gh-rate-limit.sh
-          VERSION_OUTPUT=$(gh optivem --version | head -n 1)
+          RAW_OUTPUT=$(gh optivem --version)
+          VERSION_OUTPUT=$(printf '%s\n' "$RAW_OUTPUT" | head -n 1)
           wait_for_rate_limit
           LATEST_TAG=$(gh_retry api repos/optivem/gh-optivem/releases/latest --jq '.tag_name')
+          echo "Raw output:"
+          printf '%s\n' "$RAW_OUTPUT"
           echo "Installed version: $VERSION_OUTPUT"
           echo "Latest release tag: $LATEST_TAG"
 
@@ -117,9 +120,12 @@ jobs:
         if: steps.prev.outputs.skip != 'true'
         shell: bash
         run: |
-          VERSION_OUTPUT=$(gh optivem --version | head -n 1)
+          RAW_OUTPUT=$(gh optivem --version)
+          VERSION_OUTPUT=$(printf '%s\n' "$RAW_OUTPUT" | head -n 1)
           EXPECTED_TAG="${{ steps.prev.outputs.tag }}"
           EXPECTED="gh-optivem $EXPECTED_TAG"
+          echo "Raw output:"
+          printf '%s\n' "$RAW_OUTPUT"
           echo "Installed version: $VERSION_OUTPUT"
           echo "Expected: $EXPECTED"
 
@@ -179,9 +185,12 @@ jobs:
         if: steps.prev.outputs.skip != 'true'
         shell: bash
         run: |
-          VERSION_OUTPUT=$(gh optivem --version | head -n 1)
+          RAW_OUTPUT=$(gh optivem --version)
+          VERSION_OUTPUT=$(printf '%s\n' "$RAW_OUTPUT" | head -n 1)
           EXPECTED_TAG="${{ steps.prev.outputs.tag }}"
           EXPECTED="gh-optivem $EXPECTED_TAG"
+          echo "Raw output:"
+          printf '%s\n' "$RAW_OUTPUT"
           echo "Installed version: $VERSION_OUTPUT"
 
           if [[ "$VERSION_OUTPUT" != "$EXPECTED" ]]; then
@@ -204,10 +213,13 @@ jobs:
         run: |
           source .github/scripts/gh-retry.sh
           source .github/scripts/gh-rate-limit.sh
-          VERSION_OUTPUT=$(gh optivem --version | head -n 1)
+          RAW_OUTPUT=$(gh optivem --version)
+          VERSION_OUTPUT=$(printf '%s\n' "$RAW_OUTPUT" | head -n 1)
           wait_for_rate_limit
           LATEST_TAG=$(gh_retry api repos/optivem/gh-optivem/releases/latest --jq '.tag_name')
           EXPECTED="gh-optivem $LATEST_TAG"
+          echo "Raw output:"
+          printf '%s\n' "$RAW_OUTPUT"
           echo "Upgraded version: $VERSION_OUTPUT"
           echo "Expected: $EXPECTED"
 
