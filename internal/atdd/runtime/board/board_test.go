@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -134,39 +135,101 @@ func TestResolveProjectURLFromConfig_SourcePathInMessage(t *testing.T) {
 // PickTopReady
 // ---------------------------------------------------------------------------
 
-const projectViewJSON = `{"closed":false,"id":"PVT_xyz","number":20,"owner":{"login":"optivem","type":"Organization"},"title":"Shop Project","url":"https://github.com/orgs/optivem/projects/20"}`
+// projectMetaGraphQLJSON is the response shape fetchProjectMetadata
+// parses — the minimal GraphQL query response with id + title under
+// data.organization.projectV2 (or data.user.projectV2 for user-owned
+// projects).
+const projectMetaGraphQLJSON = `{"data":{"organization":{"projectV2":{"id":"PVT_xyz","title":"Shop Project"}}}}`
 
+// projectMetaArgs returns the exact argv that fetchProjectMetadata
+// passes to gh.Run. Tests use this to pin canned responses by argv —
+// keeping the test fixtures in lockstep with the production query
+// string declared in board.go (projectMetaQuery).
+func projectMetaArgs(ownerKind, owner string, number int) []string {
+	return []string{
+		"api", "graphql",
+		"-F", "login=" + owner,
+		"-F", "number=" + strconv.Itoa(number),
+		"-f", "query=" + fmt.Sprintf(projectMetaQuery, ownerKind),
+	}
+}
+
+// projectItemsArgs returns the argv that fetchProjectItems sends on its
+// first page (no cursor). Keeps the test argv pinned to the production
+// projectItemsQuery constant — query changes auto-propagate to tests.
+func projectItemsArgs(ownerKind, owner string, number, first int) []string {
+	return []string{
+		"api", "graphql",
+		"-F", "login=" + owner,
+		"-F", "number=" + strconv.Itoa(number),
+		"-F", "first=" + strconv.Itoa(first),
+		"-f", "query=" + fmt.Sprintf(projectItemsQuery, ownerKind),
+	}
+}
+
+// itemListJSON mirrors the previous gh-flat-JSON fixture but in the
+// GraphQL response shape that fetchProjectItems decodes. Status is
+// carried under fieldValues as a ProjectV2ItemFieldSingleSelectValue
+// for the Status field; content carries __typename so the picker can
+// distinguish Issue / PullRequest / DraftIssue.
 const itemListJSON = `{
-  "items": [
-    {"id":"item-A","status":"In progress","title":"already moving","content":{"number":36,"repository":"optivem/shop","title":"already moving","type":"Issue","url":"https://github.com/optivem/shop/issues/36"}},
-    {"id":"item-B","status":"Ready","title":"top ready","content":{"number":42,"repository":"optivem/shop","title":"top ready","type":"Issue","url":"https://github.com/optivem/shop/issues/42"}},
-    {"id":"item-C","status":"Ready","title":"second ready","content":{"number":43,"repository":"optivem/shop","title":"second ready","type":"Issue","url":"https://github.com/optivem/shop/issues/43"}},
-    {"id":"item-D","status":"Backlog","title":"backlog","content":{"number":44,"repository":"optivem/shop","title":"backlog","type":"Issue","url":"https://github.com/optivem/shop/issues/44"}}
-  ],
-  "totalCount": 4
+  "data": {
+    "organization": {
+      "projectV2": {
+        "items": {
+          "pageInfo": {"hasNextPage": false, "endCursor": null},
+          "nodes": [
+            {"id":"item-A","fieldValues":{"nodes":[{"__typename":"ProjectV2ItemFieldSingleSelectValue","name":"In progress","field":{"name":"Status"}}]},"content":{"__typename":"Issue","number":36,"url":"https://github.com/optivem/shop/issues/36","title":"already moving","repository":{"nameWithOwner":"optivem/shop"}}},
+            {"id":"item-B","fieldValues":{"nodes":[{"__typename":"ProjectV2ItemFieldSingleSelectValue","name":"Ready","field":{"name":"Status"}}]},"content":{"__typename":"Issue","number":42,"url":"https://github.com/optivem/shop/issues/42","title":"top ready","repository":{"nameWithOwner":"optivem/shop"}}},
+            {"id":"item-C","fieldValues":{"nodes":[{"__typename":"ProjectV2ItemFieldSingleSelectValue","name":"Ready","field":{"name":"Status"}}]},"content":{"__typename":"Issue","number":43,"url":"https://github.com/optivem/shop/issues/43","title":"second ready","repository":{"nameWithOwner":"optivem/shop"}}},
+            {"id":"item-D","fieldValues":{"nodes":[{"__typename":"ProjectV2ItemFieldSingleSelectValue","name":"Backlog","field":{"name":"Status"}}]},"content":{"__typename":"Issue","number":44,"url":"https://github.com/optivem/shop/issues/44","title":"backlog","repository":{"nameWithOwner":"optivem/shop"}}}
+          ]
+        }
+      }
+    }
+  }
 }`
 
 const itemListEmptyReadyJSON = `{
-  "items": [
-    {"id":"item-A","status":"Backlog","title":"backlog only","content":{"number":1,"repository":"optivem/shop","title":"backlog only","type":"Issue","url":"https://github.com/optivem/shop/issues/1"}},
-    {"id":"item-B","status":"In progress","title":"in flight","content":{"number":2,"repository":"optivem/shop","title":"in flight","type":"Issue","url":"https://github.com/optivem/shop/issues/2"}}
-  ],
-  "totalCount": 2
+  "data": {
+    "organization": {
+      "projectV2": {
+        "items": {
+          "pageInfo": {"hasNextPage": false, "endCursor": null},
+          "nodes": [
+            {"id":"item-A","fieldValues":{"nodes":[{"__typename":"ProjectV2ItemFieldSingleSelectValue","name":"Backlog","field":{"name":"Status"}}]},"content":{"__typename":"Issue","number":1,"url":"https://github.com/optivem/shop/issues/1","title":"backlog only","repository":{"nameWithOwner":"optivem/shop"}}},
+            {"id":"item-B","fieldValues":{"nodes":[{"__typename":"ProjectV2ItemFieldSingleSelectValue","name":"In progress","field":{"name":"Status"}}]},"content":{"__typename":"Issue","number":2,"url":"https://github.com/optivem/shop/issues/2","title":"in flight","repository":{"nameWithOwner":"optivem/shop"}}}
+          ]
+        }
+      }
+    }
+  }
 }`
 
+// itemListReadyDraftJSON has a Ready DraftIssue (no Number/URL/Repository
+// in the GraphQL response — drafts live in the project itself) followed
+// by a Ready Issue, to exercise the draft-skip path.
 const itemListReadyDraftJSON = `{
-  "items": [
-    {"id":"item-D","status":"Ready","title":"draft","content":{"title":"draft","type":"DraftIssue"}},
-    {"id":"item-E","status":"Ready","title":"real issue","content":{"number":99,"repository":"optivem/shop","title":"real issue","type":"Issue","url":"https://github.com/optivem/shop/issues/99"}}
-  ],
-  "totalCount": 2
+  "data": {
+    "organization": {
+      "projectV2": {
+        "items": {
+          "pageInfo": {"hasNextPage": false, "endCursor": null},
+          "nodes": [
+            {"id":"item-D","fieldValues":{"nodes":[{"__typename":"ProjectV2ItemFieldSingleSelectValue","name":"Ready","field":{"name":"Status"}}]},"content":{"__typename":"DraftIssue","title":"draft"}},
+            {"id":"item-E","fieldValues":{"nodes":[{"__typename":"ProjectV2ItemFieldSingleSelectValue","name":"Ready","field":{"name":"Status"}}]},"content":{"__typename":"Issue","number":99,"url":"https://github.com/optivem/shop/issues/99","title":"real issue","repository":{"nameWithOwner":"optivem/shop"}}}
+          ]
+        }
+      }
+    }
+  }
 }`
 
 func TestPickTopReady_PicksFirstReadyIssue(t *testing.T) {
 	gh := newFakeRunner(t, "gh")
-	gh.on([]string{"project", "view", "20", "--owner", "optivem", "--format", "json"},
-		[]byte(projectViewJSON), nil)
-	gh.on([]string{"project", "item-list", "20", "--owner", "optivem", "--format", "json", "--limit", "200"},
+	gh.on(projectMetaArgs("organization", "optivem", 20),
+		[]byte(projectMetaGraphQLJSON), nil)
+	gh.on(projectItemsArgs("organization", "optivem", 20, 100),
 		[]byte(itemListJSON), nil)
 
 	pick, err := PickTopReady(context.Background(), Options{
@@ -198,9 +261,9 @@ func TestPickTopReady_PicksFirstReadyIssue(t *testing.T) {
 
 func TestPickTopReady_EmptyReadyColumn(t *testing.T) {
 	gh := newFakeRunner(t, "gh")
-	gh.on([]string{"project", "view", "20", "--owner", "optivem", "--format", "json"},
-		[]byte(projectViewJSON), nil)
-	gh.on([]string{"project", "item-list", "20", "--owner", "optivem", "--format", "json", "--limit", "200"},
+	gh.on(projectMetaArgs("organization", "optivem", 20),
+		[]byte(projectMetaGraphQLJSON), nil)
+	gh.on(projectItemsArgs("organization", "optivem", 20, 100),
 		[]byte(itemListEmptyReadyJSON), nil)
 
 	_, err := PickTopReady(context.Background(), Options{
@@ -214,9 +277,9 @@ func TestPickTopReady_EmptyReadyColumn(t *testing.T) {
 
 func TestPickTopReady_SkipsDraftItems(t *testing.T) {
 	gh := newFakeRunner(t, "gh")
-	gh.on([]string{"project", "view", "20", "--owner", "optivem", "--format", "json"},
-		[]byte(projectViewJSON), nil)
-	gh.on([]string{"project", "item-list", "20", "--owner", "optivem", "--format", "json", "--limit", "200"},
+	gh.on(projectMetaArgs("organization", "optivem", 20),
+		[]byte(projectMetaGraphQLJSON), nil)
+	gh.on(projectItemsArgs("organization", "optivem", 20, 100),
 		[]byte(itemListReadyDraftJSON), nil)
 
 	pick, err := PickTopReady(context.Background(), Options{
@@ -233,14 +296,23 @@ func TestPickTopReady_SkipsDraftItems(t *testing.T) {
 
 func TestPickTopReady_StatusComparisonIsCaseInsensitive(t *testing.T) {
 	const wonkyCasing = `{
-  "items": [
-    {"id":"item-X","status":"READY","title":"shouty","content":{"number":7,"repository":"optivem/shop","title":"shouty","type":"Issue","url":"https://github.com/optivem/shop/issues/7"}}
-  ]
+  "data": {
+    "organization": {
+      "projectV2": {
+        "items": {
+          "pageInfo": {"hasNextPage": false, "endCursor": null},
+          "nodes": [
+            {"id":"item-X","fieldValues":{"nodes":[{"__typename":"ProjectV2ItemFieldSingleSelectValue","name":"READY","field":{"name":"Status"}}]},"content":{"__typename":"Issue","number":7,"url":"https://github.com/optivem/shop/issues/7","title":"shouty","repository":{"nameWithOwner":"optivem/shop"}}}
+          ]
+        }
+      }
+    }
+  }
 }`
 	gh := newFakeRunner(t, "gh")
-	gh.on([]string{"project", "view", "20", "--owner", "optivem", "--format", "json"},
-		[]byte(projectViewJSON), nil)
-	gh.on([]string{"project", "item-list", "20", "--owner", "optivem", "--format", "json", "--limit", "200"},
+	gh.on(projectMetaArgs("organization", "optivem", 20),
+		[]byte(projectMetaGraphQLJSON), nil)
+	gh.on(projectItemsArgs("organization", "optivem", 20, 100),
 		[]byte(wonkyCasing), nil)
 
 	pick, err := PickTopReady(context.Background(), Options{
@@ -273,37 +345,73 @@ func TestPickTopReady_BadProjectURL(t *testing.T) {
 // MoveToInProgress
 // ---------------------------------------------------------------------------
 
+// projectFieldsArgs mirrors what lookupStatusField sends to gh.Run, so
+// the test argv stays pinned to projectFieldsQuery (the production
+// constant). Mirror of projectMetaArgs / projectItemsArgs.
+func projectFieldsArgs(ownerKind, owner string, number int) []string {
+	return []string{
+		"api", "graphql",
+		"-F", "login=" + owner,
+		"-F", "number=" + strconv.Itoa(number),
+		"-f", "query=" + fmt.Sprintf(projectFieldsQuery, ownerKind),
+	}
+}
+
 const fieldListJSON = `{
-  "fields": [
-    {"id":"PVTF_title","name":"Title","type":"ProjectV2Field"},
-    {"id":"PVTSSF_status","name":"Status","options":[
-      {"id":"opt-backlog","name":"Backlog"},
-      {"id":"opt-ready","name":"Ready"},
-      {"id":"opt-inprogress","name":"In progress"},
-      {"id":"opt-done","name":"Done"}
-    ],"type":"ProjectV2SingleSelectField"}
-  ]
+  "data": {
+    "organization": {
+      "projectV2": {
+        "fields": {
+          "nodes": [
+            {"__typename":"ProjectV2Field","id":"PVTF_title","name":"Title"},
+            {"__typename":"ProjectV2SingleSelectField","id":"PVTSSF_status","name":"Status","options":[
+              {"id":"opt-backlog","name":"Backlog"},
+              {"id":"opt-ready","name":"Ready"},
+              {"id":"opt-inprogress","name":"In progress"},
+              {"id":"opt-done","name":"Done"}
+            ]}
+          ]
+        }
+      }
+    }
+  }
 }`
 
 const fieldListNoStatusJSON = `{
-  "fields": [
-    {"id":"PVTF_title","name":"Title","type":"ProjectV2Field"}
-  ]
+  "data": {
+    "organization": {
+      "projectV2": {
+        "fields": {
+          "nodes": [
+            {"__typename":"ProjectV2Field","id":"PVTF_title","name":"Title"}
+          ]
+        }
+      }
+    }
+  }
 }`
 
 const fieldListNoInProgressJSON = `{
-  "fields": [
-    {"id":"PVTSSF_status","name":"Status","options":[
-      {"id":"opt-backlog","name":"Backlog"},
-      {"id":"opt-ready","name":"Ready"},
-      {"id":"opt-done","name":"Done"}
-    ],"type":"ProjectV2SingleSelectField"}
-  ]
+  "data": {
+    "organization": {
+      "projectV2": {
+        "fields": {
+          "nodes": [
+            {"__typename":"ProjectV2SingleSelectField","id":"PVTSSF_status","name":"Status","options":[
+              {"id":"opt-backlog","name":"Backlog"},
+              {"id":"opt-ready","name":"Ready"},
+              {"id":"opt-done","name":"Done"}
+            ]}
+          ]
+        }
+      }
+    }
+  }
 }`
 
 func TestMoveToInProgress_PassesExpectedArgsToGh(t *testing.T) {
 	gh := newFakeRunner(t, "gh")
-	gh.on([]string{"project", "field-list", "20", "--owner", "optivem", "--format", "json"},
+	gh.on(projectFieldsArgs("organization", "optivem", 20),
 		[]byte(fieldListJSON), nil)
 	gh.on([]string{
 		"project", "item-edit",
@@ -374,7 +482,7 @@ func TestMoveToInProgress_StatusFieldMissing(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			gh := newFakeRunner(t, "gh")
-			gh.on([]string{"project", "field-list", "20", "--owner", "optivem", "--format", "json"},
+			gh.on(projectFieldsArgs("organization", "optivem", 20),
 				[]byte(tc.body), nil)
 
 			err := MoveToInProgress(context.Background(), "PVT_xyz", "item-B", Options{
@@ -390,7 +498,7 @@ func TestMoveToInProgress_StatusFieldMissing(t *testing.T) {
 
 func TestMoveToInProgress_GhItemEditError(t *testing.T) {
 	gh := newFakeRunner(t, "gh")
-	gh.on([]string{"project", "field-list", "20", "--owner", "optivem", "--format", "json"},
+	gh.on(projectFieldsArgs("organization", "optivem", 20),
 		[]byte(fieldListJSON), nil)
 	gh.on([]string{
 		"project", "item-edit",
@@ -418,19 +526,20 @@ func TestMoveToInProgress_GhItemEditError(t *testing.T) {
 
 func TestParseProjectURL(t *testing.T) {
 	cases := []struct {
-		in      string
-		owner   string
-		number  int
-		wantErr bool
+		in        string
+		ownerKind string
+		owner     string
+		number    int
+		wantErr   bool
 	}{
-		{"https://github.com/orgs/optivem/projects/20", "optivem", 20, false},
-		{"https://github.com/users/alice/projects/3", "alice", 3, false},
-		{"https://github.com/optivem/shop", "", 0, true},
-		{"", "", 0, true},
+		{"https://github.com/orgs/optivem/projects/20", "organization", "optivem", 20, false},
+		{"https://github.com/users/alice/projects/3", "user", "alice", 3, false},
+		{"https://github.com/optivem/shop", "", "", 0, true},
+		{"", "", "", 0, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.in, func(t *testing.T) {
-			owner, number, err := parseProjectURL(tc.in)
+			ownerKind, owner, number, err := parseProjectURL(tc.in)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("expected error")
@@ -440,8 +549,9 @@ func TestParseProjectURL(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if owner != tc.owner || number != tc.number {
-				t.Errorf("got (%q, %d), want (%q, %d)", owner, number, tc.owner, tc.number)
+			if ownerKind != tc.ownerKind || owner != tc.owner || number != tc.number {
+				t.Errorf("got (%q, %q, %d), want (%q, %q, %d)",
+					ownerKind, owner, number, tc.ownerKind, tc.owner, tc.number)
 			}
 		})
 	}
