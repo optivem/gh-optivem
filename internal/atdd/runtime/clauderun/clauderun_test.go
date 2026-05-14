@@ -324,6 +324,77 @@ func TestRenderPrompt_TaskAgent_KeepsExternalSectionForExternalSubtype(t *testin
 	mustContain(t, got, "External DTOs")
 }
 
+// TestRenderPrompt_DocsRootSubstitutes covers the D5 placeholder that
+// lets prompt bodies reference the per-user synced docs root via
+// ${docs_root}. The substituted value is an absolute path so the
+// agent's Read tool resolves it regardless of working directory.
+// Uses PromptOverride (which IS expanded, unlike OverrideText) to
+// inject a body that references the placeholder.
+func TestRenderPrompt_DocsRootSubstitutes(t *testing.T) {
+	opts := newOpts()
+	opts.PromptOverride = "Read ${docs_root}/atdd/architecture/dsl-core.md."
+
+	got, err := renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt: %v", err)
+	}
+	if strings.Contains(got, "${docs_root}") {
+		t.Errorf("expected ${docs_root} substituted; got: %q", got)
+	}
+	// docs_root substitutes to an OS-native path (Windows uses
+	// backslashes); the literal trailing "/atdd/..." in the template
+	// stays as-is. Assert the two halves independently so the test
+	// is platform-portable.
+	if !strings.Contains(got, filepath.Join(".gh-optivem", "docs")) {
+		t.Errorf("expected ${docs_root} resolved to ~/.gh-optivem/docs prefix; got: %q", got)
+	}
+	if !strings.Contains(got, "/atdd/architecture/dsl-core.md") {
+		t.Errorf("expected literal suffix preserved; got: %q", got)
+	}
+}
+
+// TestRenderPrompt_LanguageSubstitutes covers the D10 placeholder that
+// lets prompt bodies select a per-language reference doc slice via
+// ${language}. The driver picks the value per phase from project config.
+func TestRenderPrompt_LanguageSubstitutes(t *testing.T) {
+	opts := newOpts()
+	opts.Language = "go"
+	opts.PromptOverride = "Read ${docs_root}/atdd/code/language-equivalents/${language}.md."
+
+	got, err := renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt: %v", err)
+	}
+	if strings.Contains(got, "${language}") {
+		t.Errorf("expected ${language} substituted; got: %q", got)
+	}
+	if !strings.Contains(got, "language-equivalents/go.md") {
+		t.Errorf("expected ${language} resolved to 'go'; got: %q", got)
+	}
+}
+
+// TestRenderPrompt_UnsetLanguageFailsFast pins the D10 "load-bearing"
+// contract: a prompt that references ${language} with no Language set
+// produces a clear render-time error rather than silently substituting
+// an empty path that would resolve to a missing doc at agent run time.
+func TestRenderPrompt_UnsetLanguageFailsFast(t *testing.T) {
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	opts := newOpts()
+	// Use a node_replacements-style PromptOverride that references
+	// ${language} without setting Language. Dispatch's
+	// findUnfilledPlaceholders catches the leftover.
+	opts.PromptOverride = "You are the Test Agent. Read ${docs_root}/atdd/code/language-equivalents/${language}.md."
+	err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
+	if err == nil {
+		t.Fatalf("expected error for unset ${language}, got nil")
+	}
+	if !strings.Contains(err.Error(), "language") {
+		t.Errorf("expected error to name 'language'; got: %v", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Dispatch — happy path
 // ---------------------------------------------------------------------------

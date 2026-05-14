@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	assetsync "github.com/optivem/gh-optivem/internal/assets/sync"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 )
@@ -107,6 +108,17 @@ type Options struct {
 	// `git status`. Empty when the dispatcher couldn't shell out (e.g.
 	// tests with no Git seam).
 	ChangedFiles string
+
+	// Language is the target language for this dispatch (e.g. "go",
+	// "typescript"). Substituted into the prompt's ${language} placeholder
+	// so per-language reference docs (under ~/.gh-optivem/docs/atdd/code/
+	// language-equivalents/<lang>.md) resolve to the right slice. The
+	// driver chooses the value per phase — backend phases pass the
+	// backend lang, frontend phases the frontend lang. Load-bearing:
+	// when empty AND the prompt body references ${language},
+	// findUnfilledPlaceholders fails the dispatch fast rather than
+	// silently substituting an empty path.
+	Language string
 
 	// NodeParams carries the YAML node's `params:` block (already expanded
 	// against ctx.Params at dispatch time). Substituted into the prompt
@@ -429,6 +441,10 @@ func renderPrompt(opts Options) (string, error) {
 	// Fixed-schema placeholders win on key collision with NodeParams so a
 	// node author can't accidentally shadow ticket context by reusing a
 	// reserved name in YAML.
+	docsRoot, err := assetsync.DocsRoot()
+	if err != nil {
+		return "", fmt.Errorf("clauderun: resolve docs root: %w", err)
+	}
 	for k, v := range map[string]string{
 		"issue_num":      strconv.Itoa(opts.IssueNum),
 		"issue_title":    opts.IssueTitle,
@@ -443,8 +459,16 @@ func renderPrompt(opts Options) (string, error) {
 		"checklist":      opts.Checklist,
 		"verify_results": opts.VerifyResults,
 		"changed_files":  opts.ChangedFiles,
+		"docs_root":      docsRoot,
 	} {
 		params[k] = v
+	}
+	// Language is load-bearing — only registered when the driver supplied
+	// a value. An empty value would silently substitute, masking a config
+	// bug; instead we leave `${language}` unfilled so findUnfilledPlaceholders
+	// reports it after substitution.
+	if opts.Language != "" {
+		params["language"] = opts.Language
 	}
 	// Conditional blocks run before placeholder substitution so subtype-
 	// gated reference material (and any future per-variable gating) is

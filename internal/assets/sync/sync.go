@@ -127,6 +127,18 @@ func ForceSync(binaryVersion string) (Result, error) {
 	}, nil
 }
 
+// DocsRoot returns the absolute path of the synced docs root
+// (~/.gh-optivem/docs/). Rendered prompts substitute this into the
+// ${docs_root} placeholder so agent Read-tool calls resolve to the
+// per-user synced copy regardless of working directory.
+func DocsRoot() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("locate home dir: %w", err)
+	}
+	return filepath.Join(home, dirGhOptivem, "docs"), nil
+}
+
 // Stale reports whether the on-disk stamp matches the binary version.
 // True when the stamp file is missing or mismatched. Used by ATDD-
 // consuming commands under the escape hatch.

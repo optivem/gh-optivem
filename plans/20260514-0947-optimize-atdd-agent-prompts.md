@@ -475,19 +475,6 @@ A silent default would mask config bugs.
 
 ## Steps
 
-### Step 3 — D5 + D10 (placeholders for paths and language)
-
-Add `${docs_root}` (populated with `~/.gh-optivem/docs/`) and
-`${language}` (populated from the dispatch's target stack) to
-`renderPrompt`'s fixed-schema map. `${language}` is load-bearing — if
-unset, render fails fast. Add `TestRenderPrompt_*` cases for both.
-
-**Validation:**
-- Rendered prompts contain absolute paths.
-- Rendered prompts substitute `${language}` correctly per dispatch.
-- Unset `${language}` produces a clear render-time error.
-- `findUnfilledPlaceholders` returns empty for well-formed dispatches.
-
 ### Step 4 — D7 + D8 + D10 (file splits)
 
 Split `atdd-dsl`, `atdd-driver`, `atdd-test` into per-cycle files.
