@@ -1,8 +1,6 @@
 # Build TBD discipline into `gh optivem workspace`
 
-> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-14T19:55:37Z`
-
-> ✅ **STATUS: READY TO EXECUTE.** This plan captures the gap between `docs/tbd.md` and the current behaviour of `gh optivem workspace commit` / `sync`, and proposes a layered set of changes. All open decisions have been resolved — see "Decisions resolved" at the bottom.
+> ✅ **STATUS: LAYER 1 SHIPPED.** Layer 1 (config-independent `--rebase`, push-retry loop, pre-commit pull with auto-stash, `gh optivem doctor`) has shipped. Layers 2–4 remain. All open decisions have been resolved — see "Decisions resolved" at the bottom.
 
 ## Context
 
@@ -28,16 +26,7 @@ Per-repo loop in `workspace_commands.go:130-158` is `stage → confirm → commi
 
 ## Proposed work
 
-Layered so each layer is shippable on its own. Don't pre-commit to layers 2 and 3 — the value of doing them depends on whether layer 1 actually changes operator behaviour.
-
-### Layer 1 — Stop relying on operator config (small, near-zero risk)
-
-The shortest path to making the tool's behaviour match the doc regardless of how the operator's machine is configured.
-
-1. **Explicit `--rebase` on every `pull`.** Change `runGit(repo, "pull")` to `runGit(repo, "pull", "--rebase")` in both `runWorkspaceCommit` (`:150`) and `runWorkspaceSync` (`:310`). Two-line change.
-2. **Push-rejected retry loop.** Wrap the push: on non-fast-forward rejection → `git pull --rebase` → retry (cap 3 attempts). Log a generic "racing origin/main, retrying…" so the operator sees what is happening. This is the literal loop on `tbd.md:46` and resolves the bot-race at `:160-165`. Message stays generic — no pattern-match on the bot's commit format, since the bot is one of several possible race sources (other operators, future bots).
-3. **Pre-commit pull.** Insert `git pull --rebase` *before* `commitOneRepo` so commits land on current trunk. Matches the "pull → edit → commit → pull → push" shape in `tbd.md:38-44`. Avoids the "fresh commit then conflicting rebase" foot-gun. Because the working tree is dirty by definition at this point (operator has unstaged work), the tool explicitly stashes unstaged changes, rebases, then `stash pop` — emulating `rebase.autoStash` regardless of the operator's config.
-4. **`gh optivem doctor`.** Verify `pull.rebase=true`, `rebase.autoStash=true`, `rerere.enabled=true`; `--fix` to set them. Replaces "copy these three commands out of the doc" with "run one command." New top-level command. Narrow scope: config only. Broader repo-health checks are out of scope here.
+Layered so each layer is shippable on its own. Layer 1 has shipped (config-independent `--rebase`, push-retry loop, pre-commit pull with auto-stash, `gh optivem doctor`). Don't pre-commit to layers 2 and 3 — the value of doing them depends on whether layer 1 actually changes operator behaviour.
 
 ### Layer 2 — Make TBD visible in the UX
 
@@ -68,16 +57,13 @@ Single reference for every command this plan touches. Each entry says what the c
 
 ### Modified (existing)
 
-**`gh optivem workspace commit`** — layers 1.1, 1.2, 1.3, 2.5, 2.6
-Iterates every repo declared in the resolved `*.code-workspace` file, stages changes, prompts for confirmation, commits with a supplied message, then pulls and pushes. Today it does `git pull` (relying on the operator's global `pull.rebase`) followed by a one-shot `git push`. The plan tightens it: explicit `--rebase` on the pull, a retry loop when push is rejected, an additional pull *before* committing, a one-line "plain TBD / Scaled TBD" mode banner per repo, and an abort if the push would rewrite history on `main`.
+**`gh optivem workspace commit`** — layers 2.5, 2.6
+Iterates every repo declared in the resolved `*.code-workspace` file, stages changes, prompts for confirmation, commits with a supplied message, then pulls and pushes. After Layer 1 it already does explicit `--rebase` on the pull, a push-retry loop on non-fast-forward rejection, and a pre-commit pull with auto-stash. Remaining work: a one-line "plain TBD / Scaled TBD" mode banner per repo, and an abort if the push would rewrite history on `main`.
 
-**`gh optivem workspace sync`** — layers 1.1, 1.2, 2.5
-Same iterate-every-repo loop as `commit`, but without the staging step — just pull and push. Used to bring every repo declared in the resolved `*.code-workspace` file up to date with its remote. The plan applies the same fixes that aren't commit-specific: explicit `--rebase`, push-retry loop, mode banner.
+**`gh optivem workspace sync`** — layer 2.5
+Same iterate-every-repo loop as `commit`, but without the staging step — just pull and push. After Layer 1 it already uses explicit `--rebase` and the push-retry loop. Remaining work: the mode banner.
 
 ### New
-
-**`gh optivem doctor`** — layer 1.4
-A one-shot health check. Verifies the three git config keys that `docs/tbd.md` requires (`pull.rebase=true`, `rebase.autoStash=true`, `rerere.enabled=true`) and reports pass/fail. With `--fix`, sets the missing ones. Replaces "copy three commands out of the doc onto each new machine" with one command. Scope open per decision 3 (config-only, or broader repo-health checks?).
 
 **`gh optivem hooks install`** — layer 2.7
 Installs a `.git/hooks/pre-push` in the current repo that refuses `--force` / `--force-with-lease` against `main`. Belt-and-suspenders enforcement of the "never force-push main" rule. Unlike a global config setting, the operator can't bypass it accidentally. Idempotent; safe to re-run.
@@ -99,18 +85,16 @@ Lists branches in each workspace repo that have lived longer than ~24h, per `doc
 
 ## Suggested sequencing
 
-Layer 1 ships as a single PR (all four items per decision 1), then re-evaluate before opening anything else. Layers 2–4 are each their own PRs and are additive. Layer 3 is in scope (decision 5: Scaled TBD is in use).
+Layer 1 has shipped. Re-evaluate Layer 2 against operator behaviour before opening anything else. Layers 2–4 are each their own PRs and are additive. Layer 3 is in scope (decision 1: Scaled TBD is in use).
 
 ## Decisions resolved
 
-1. **Layer 1 scope.** All four items (1.1–1.4) as one PR.
-2. **Pre-commit pull behaviour.** Explicit autoStash: tool stashes unstaged changes, rebases, then `stash pop`. Config-independent — does not assume `rebase.autoStash` is set.
-3. **`doctor` reach.** Narrow: config only (`pull.rebase`, `rebase.autoStash`, `rerere.enabled`). Broader repo-health checks are out of scope.
-4. **Force-push guard placement.** Both: in-tool guard (item 6) *and* pre-push hook (item 7). Independent failure modes (tool flow vs. raw `git push --force`); blast radius of force-pushing `main` justifies belt-and-suspenders.
-5. **Scaled TBD in use.** Yes — Layer 3 stays in scope.
-6. **`lint-history` enforcement.** Both: local command + paired CI workflow that fails on any new merge commit on `main`. Shipped together — CI is the only thing that prevents drift over time; the local form is for ad-hoc checks.
-7. **Bot-race log line.** Generic only: "racing origin/main, retrying". No pattern-match on the bot's commit format — the bot is one of several possible race sources, and coupling the retry loop to its message format creates hidden coupling someone touching the workflow would have to remember.
-8. **Stale-branch command name.** Lock in as `gh optivem workspace stale-branches`.
+(Decisions originally numbered 1, 2, 3, 7 were applied to Layer 1 and have shipped; they remain as the committed shape if anything in that surface is later revisited.)
+
+1. **Force-push guard placement.** Both: in-tool guard (item 6) *and* pre-push hook (item 7). Independent failure modes (tool flow vs. raw `git push --force`); blast radius of force-pushing `main` justifies belt-and-suspenders.
+2. **Scaled TBD in use.** Yes — Layer 3 stays in scope.
+3. **`lint-history` enforcement.** Both: local command + paired CI workflow that fails on any new merge commit on `main`. Shipped together — CI is the only thing that prevents drift over time; the local form is for ad-hoc checks.
+4. **Stale-branch command name.** Lock in as `gh optivem workspace stale-branches`.
 
 ## Out of scope
 
