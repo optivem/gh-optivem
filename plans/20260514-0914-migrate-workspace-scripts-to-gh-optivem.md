@@ -1,6 +1,8 @@
 # Plan: migrate `github-utils/scripts/*` into `gh-optivem` as native subcommands
 
 > **Status: DEFERRED.** This is a larger change than fits the current cycle — postponed pending dedicated time. Do not start execution without re-confirming scope with the user.
+>
+> Step 1 (`internal/workspace/` package + tests) was carved out and landed on 2026-05-14 (see `internal/workspace/`). Steps 2–13 remain deferred.
 
 ## Context
 
@@ -101,36 +103,6 @@ This plan does not add capabilities the scripts don't already have — see [[fee
 - **Renaming `github-utils` the repo.** The repo stays as a tombstone with a deprecation README. Renaming or deleting the GitHub repo is a follow-up — the user may want a redirect period.
 
 ## Steps
-
-### 1. Add `internal/workspace/` package
-
-Create `internal/workspace/workspace.go` with:
-
-```go
-package workspace
-
-// Resolve returns the absolute path to the workspace root and the list of
-// folder paths declared in the *.code-workspace file. Cascade:
-//
-//   1. flagValue (if non-empty) — treated as the workspace ROOT, must contain
-//      exactly one *.code-workspace file.
-//   2. GH_OPTIVEM_WORKSPACE env var — same semantics as flagValue.
-//   3. Walk up from CWD looking for any directory containing a *.code-workspace
-//      file; the first hit wins.
-//
-// Returns an error if no workspace is discoverable. The error message must
-// name the cascade so the user knows their options ("set --workspace,
-// GH_OPTIVEM_WORKSPACE, or cd into the academy tree").
-func Resolve(flagValue string) (root string, folders []string, err error)
-```
-
-Internals:
-
-- `.code-workspace` is JSON-with-comments in some IDEs but plain JSON in VS Code's published format. Parse with `encoding/json`; if it fails, surface "could not parse %s as JSON: %w" — do not try to strip comments (out of scope).
-- Schema: top-level `{"folders": [{"path": "..."}, ...]}`. Each `path` is relative to the workspace file's dir. Resolve to absolute.
-- Skip folder entries where the resolved path does not exist or does not contain a `.git/` dir — same filter as `commit.sh:183` (`if [[ ! -d "$repo/.git" ]]`).
-
-Add a `workspace_test.go` with table tests: explicit flag, env var, walk-up hit at parent, walk-up hit at grandparent, walk-up miss (error path), malformed JSON, missing folders, folder pointing at a non-git dir.
 
 ### 2. Add `gh optivem workspace commit`
 
