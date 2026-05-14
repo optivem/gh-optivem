@@ -1,5 +1,7 @@
 # Plan: end-to-end retry mechanism — consolidate, harden, audit, close gaps
 
+🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-14T20:01:50Z`
+
 Single source of truth for retry-related work in this workspace. Supersedes
 the four standalone plans listed below by folding their goals, file lists,
 and verification steps into one phased program.
