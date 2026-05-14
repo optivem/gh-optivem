@@ -467,26 +467,6 @@ func TestLegacyAcceptanceCriteria_NoIssueNumPrompts(t *testing.T) {
 // extractIssueBody
 // ---------------------------------------------------------------------------
 
-func TestExtractIssueBody_Variants(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		raw  string
-		want string
-	}{
-		{name: "simple", raw: `{"body":"hello"}`, want: "hello"},
-		{name: "with_newline", raw: `{"body":"line1\nline2"}`, want: "line1\nline2"},
-		{name: "escaped_quote", raw: `{"body":"say \"hi\""}`, want: `say "hi"`},
-		{name: "no_body_key", raw: `{"title":"x"}`, want: ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got := extractIssueBody([]byte(tc.raw))
-			if got != tc.want {
-				t.Fatalf("got %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
 // ---------------------------------------------------------------------------
 // RegisterAll wiring
 // ---------------------------------------------------------------------------

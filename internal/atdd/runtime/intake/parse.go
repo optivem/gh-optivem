@@ -57,6 +57,18 @@ type Result struct {
 	LegacyAcceptanceCriteria Section
 }
 
+// CanonicalHeadings is the ordered list of section headings every ticket
+// type may declare. Callers that source sections via tracker.Tracker.ReadSections
+// pass this slice as the `headings` argument so the adapter returns every
+// canonical section in one call; ParseSections then validates the result.
+var CanonicalHeadings = []string{
+	SectionDescription,
+	SectionAcceptanceCriteria,
+	SectionStepsToReproduce,
+	SectionChecklist,
+	SectionLegacyAcceptanceCriteria,
+}
+
 // Parse extracts canonical sections from issue-body markdown for the given
 // ticket type. Returns an error listing every required section that is
 // missing or empty; callers surface that error as STOP_PARSE_ERROR with a
@@ -70,12 +82,43 @@ type Result struct {
 //
 // Description and Legacy Acceptance Criteria are optional for every type.
 func Parse(body, ticketType string) (*Result, error) {
+	sections := map[string]string{
+		SectionDescription:              ExtractSection(body, SectionDescription).Body,
+		SectionAcceptanceCriteria:       ExtractSection(body, SectionAcceptanceCriteria).Body,
+		SectionStepsToReproduce:         ExtractSection(body, SectionStepsToReproduce).Body,
+		SectionChecklist:                ExtractSection(body, SectionChecklist).Body,
+		SectionLegacyAcceptanceCriteria: ExtractSection(body, SectionLegacyAcceptanceCriteria).Body,
+	}
+	return ParseSections(sections, ticketType)
+}
+
+// ParseSections is the section-keyed counterpart to Parse. It takes the
+// already-resolved sections (typically produced by tracker.Tracker.ReadSections
+// against CanonicalHeadings) and runs the same per-ticket-type validation
+// Parse runs. Missing keys, empty values, and absent headings are
+// treated identically as "section not present" — the same as Parse's
+// body-input path, where an empty extracted body collapses to
+// Section.Found = false.
+func ParseSections(sections map[string]string, ticketType string) (*Result, error) {
+	section := func(name string) Section {
+		body := strings.Trim(sections[name], "\n")
+		return Section{Heading: name, Body: body, Found: body != ""}
+	}
+	checklistSec := section(SectionChecklist)
+	checklist := ChecklistResult{Section: checklistSec}
+	if checklistSec.Found {
+		for line := range strings.SplitSeq(checklistSec.Body, "\n") {
+			if it, ok := parseChecklistLine(line); ok {
+				checklist.Items = append(checklist.Items, it)
+			}
+		}
+	}
 	r := &Result{
-		Description:              ExtractSection(body, SectionDescription),
-		AcceptanceCriteria:       ExtractSection(body, SectionAcceptanceCriteria),
-		StepsToReproduce:         ExtractSection(body, SectionStepsToReproduce),
-		Checklist:                ExtractChecklist(body),
-		LegacyAcceptanceCriteria: ExtractSection(body, SectionLegacyAcceptanceCriteria),
+		Description:              section(SectionDescription),
+		AcceptanceCriteria:       section(SectionAcceptanceCriteria),
+		StepsToReproduce:         section(SectionStepsToReproduce),
+		Checklist:                checklist,
+		LegacyAcceptanceCriteria: section(SectionLegacyAcceptanceCriteria),
 	}
 
 	var missing []string

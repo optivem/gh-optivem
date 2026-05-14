@@ -24,13 +24,15 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/board"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/intake"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/release"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
+	trackergithub "github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/github"
 	"github.com/optivem/gh-optivem/internal/promptio"
 )
 
@@ -44,8 +46,15 @@ type Deps struct {
 	Prompter   Prompter
 	Stdout     io.Writer
 	Stderr     io.Writer
-	ProjectURL string // optional — explicit override for board operations
+	ProjectURL string // optional — explicit override for tracker operations
 	RepoPath   string // optional — defaults to current working directory
+	// Tracker is the seam every issue-tracker operation (PickReady,
+	// SetStatus, ReadSections, MarkChecklistComplete, Classify) goes
+	// through. Optional — withDefaults constructs a github adapter from
+	// ProjectURL + Gh when unset. Tests inject fakes either by setting
+	// ProjectURL + a fake Gh (the constructed github tracker then routes
+	// through the fake), or by setting Tracker directly for full control.
+	Tracker tracker.Tracker
 	// Autonomous mirrors driver.Opts.Autonomous: when true, actions that
 	// would prompt the operator instead emit a warning and proceed. Today
 	// only parseTicketBody's "all checklist items already [x]" guard reads
@@ -96,6 +105,22 @@ func (d Deps) withDefaults() Deps {
 	}
 	if d.Stderr == nil {
 		d.Stderr = os.Stderr
+	}
+	if d.Tracker == nil {
+		// Default to a github adapter wrapping the (possibly fake) Gh
+		// runner. Production callers set ProjectURL from gh-optivem.yaml
+		// (driver.go) so PickReady / SetStatus / Verify resolve against a
+		// real project; tests that don't exercise project ops can omit
+		// ProjectURL and the placeholder below keeps github.New from
+		// rejecting the call — issue-body ops (ReadSections /
+		// MarkChecklistComplete / Classify) only need Issue.URL anyway.
+		url := d.ProjectURL
+		if url == "" {
+			url = "https://github.com/orgs/placeholder/projects/0"
+		}
+		if t, err := trackergithub.New(url, ghAdapter{d.Gh}); err == nil {
+			d.Tracker = t
+		}
 	}
 	return d
 }
@@ -196,87 +221,56 @@ type actions struct {
 // Board-backed actions
 // ---------------------------------------------------------------------------
 
-// pickTopReady reads the project's Ready column and writes the picked issue
-// number, URL, repo, project ID, and item ID into Context state. Downstream
-// gates and actions read those keys; the engine itself does not interpret
-// them.
+// pickTopReady reads the project's Ready column via Tracker.PickReady and
+// writes the picked issue's number, URL, title, repo, and opaque handle
+// into Context state. Downstream gates and actions read those keys; the
+// engine itself does not interpret them.
 //
-// On an empty Ready column the action surfaces ErrEmptyReady as Outcome.Err
-// so the run halts with a "nothing to do" message. The caller (driver) can
-// catch that specific sentinel and exit zero rather than crashing.
+// On an empty Ready column Tracker.PickReady returns tracker.ErrEmptyReady,
+// which the action surfaces as Outcome.Err. The driver catches that
+// specific sentinel and exits zero rather than crashing — a normal
+// "nothing to do" outcome.
 func (a actions) pickTopReady(ctx *statemachine.Context) statemachine.Outcome {
-	pick, err := board.PickTopReady(context.Background(), board.Options{
-		ProjectURL: a.deps.ProjectURL,
-		RepoPath:   a.deps.RepoPath,
-		GhRunner:   ghAdapter{a.deps.Gh},
-	})
+	issue, err := a.deps.Tracker.PickReady(context.Background())
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("pick_top_ready: %w", err)}
 	}
-	ctx.Set("issue_num", strconv.Itoa(pick.IssueNum))
-	ctx.Set("issue_url", pick.IssueURL)
-	ctx.Set("issue_title", pick.Title)
-	ctx.Set("issue_repo", pick.Repo)
-	ctx.Set("project_id", pick.ProjectID)
-	ctx.Set("item_id", pick.ItemID)
-	fmt.Fprintf(a.deps.Stdout, "Picked top Ready: #%d %s (%s)\n", pick.IssueNum, pick.Title, pick.IssueURL)
+	writeIssueToContext(ctx, issue)
+	fmt.Fprintf(a.deps.Stdout, "Picked top Ready: #%s %s (%s)\n", issue.ID, issue.Title, issue.URL)
 	return statemachine.Outcome{}
 }
 
-// moveToInProgress changes the project item status to "In progress". Reads
-// project_id and item_id from Context — populated by pick_top_ready in
-// board mode, or seeded by the caller in specific-issue mode.
+// moveToInProgress sets the picked issue's status to "In progress" via
+// Tracker.SetStatus. Reads issue_handle from Context — populated by
+// pick_top_ready (board mode) or by the driver's issue-lookup path
+// (specific-issue mode).
 func (a actions) moveToInProgress(ctx *statemachine.Context) statemachine.Outcome {
-	projectID := ctx.GetString("project_id")
-	itemID := ctx.GetString("item_id")
-	if projectID == "" || itemID == "" {
-		// In specific-issue mode the caller may not have populated the
-		// board IDs yet — try to resolve them lazily.
-		issueNum, err := strconv.Atoi(ctx.GetString("issue_num"))
-		if err != nil || issueNum <= 0 {
-			return statemachine.Outcome{Err: fmt.Errorf("move_to_in_progress: project_id/item_id not set and issue_num is not a positive integer (%q)", ctx.GetString("issue_num"))}
-		}
-		// v1 surfaces the gap rather than guessing; the driver wires up
-		// resolve-by-issue once Session 3 adds it. For now fail clearly.
-		return statemachine.Outcome{Err: fmt.Errorf("move_to_in_progress: project_id/item_id not in Context (specific-issue mode requires explicit pre-resolution)")}
+	handle := ctx.GetString("issue_handle")
+	if handle == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("move_to_in_progress: issue_handle not in Context (specific-issue mode requires explicit pre-resolution)")}
 	}
-	err := board.MoveToInProgress(context.Background(), projectID, itemID, board.Options{
-		ProjectURL: a.deps.ProjectURL,
-		RepoPath:   a.deps.RepoPath,
-		GhRunner:   ghAdapter{a.deps.Gh},
-	})
-	if err != nil {
+	if err := a.deps.Tracker.SetStatus(context.Background(), handle, "In progress"); err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("move_to_in_progress: %w", err)}
 	}
 	fmt.Fprintln(a.deps.Stdout, "Moved card to In progress.")
 	return statemachine.Outcome{}
 }
 
-// moveToInAcceptance ticks every issue checklist box and changes the project
-// item status to "In acceptance". Both halves are best-effort: we report
-// each step, and a missing column / field is a hard fail (the column is
-// part of the documented kanban shape).
+// moveToInAcceptance ticks every issue checklist box via
+// Tracker.MarkChecklistComplete and sets the item status to "In
+// acceptance" via Tracker.SetStatus. Both halves error out hard on
+// failure — a missing Status option or a permission failure on edit is
+// a misconfiguration the operator must fix before re-running.
 func (a actions) moveToInAcceptance(ctx *statemachine.Context) statemachine.Outcome {
-	if err := a.tickRemoteChecklist(ctx); err != nil {
+	if err := a.markChecklistComplete(ctx); err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("move_to_in_acceptance: tick checklist: %w", err)}
 	}
-	projectID := ctx.GetString("project_id")
-	itemID := ctx.GetString("item_id")
-	if projectID == "" || itemID == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("move_to_in_acceptance: project_id/item_id not in Context")}
+	handle := ctx.GetString("issue_handle")
+	if handle == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("move_to_in_acceptance: issue_handle not in Context")}
 	}
-	statusFieldID, optionID, err := lookupStatusOption(context.Background(), a.deps.Gh, ctx, "In acceptance")
-	if err != nil {
+	if err := a.deps.Tracker.SetStatus(context.Background(), handle, "In acceptance"); err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("move_to_in_acceptance: %w", err)}
-	}
-	if _, err := a.deps.Gh.Run(context.Background(),
-		"project", "item-edit",
-		"--id", itemID,
-		"--field-id", statusFieldID,
-		"--project-id", projectID,
-		"--single-select-option-id", optionID,
-	); err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("move_to_in_acceptance: gh project item-edit: %w", err)}
 	}
 	fmt.Fprintln(a.deps.Stdout, "Moved card to In acceptance.")
 	return statemachine.Outcome{}
@@ -286,22 +280,15 @@ func (a actions) moveToInAcceptance(ctx *statemachine.Context) statemachine.Outc
 // Classification
 // ---------------------------------------------------------------------------
 
-// classifyIssueTypeQuery fetches the native issue type via GraphQL.
-// Used in place of `gh issue view --json issueType` because that JSON field
-// is not exposed by any released gh CLI as of 2026-05; the GraphQL schema
-// has carried `issueType` for some time, so the GraphQL path is the only
-// portable way to read it from the CLI today.
-const classifyIssueTypeQuery = `query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { issue(number: $number) { issueType { name } } } }`
-
 // supportedTicketTypes is the set of native GitHub issue types this pipeline
 // knows how to drive. Anything outside it routes to STOP_CLASSIFY_CONFLICT
 // — the operator must change the type in GitHub before re-running.
 var supportedTicketTypes = map[string]bool{"story": true, "bug": true, "task": true}
 
-// readTicketType reads the issue's native GitHub issue type (Story /
-// Bug / Task) and writes the lowercased name to `ticket_type`. The native
-// type is authoritative — it's set by the Issue Form's `type:` field at
-// filing time and cannot drift from a label-based heuristic.
+// readTicketType resolves the issue's native type via Tracker.Classify
+// and writes the lowercased name to `ticket_type`. The native type is
+// authoritative — it's set by the Issue Form's `type:` field at filing
+// time and cannot drift from a label-based heuristic.
 //
 // ticket_type_recognized is set to false (routing to STOP_CLASSIFY_CONFLICT)
 // in two cases: the issue has no native type set, or the type is not one of
@@ -312,60 +299,33 @@ func (a actions) readTicketType(ctx *statemachine.Context) statemachine.Outcome 
 	if err != nil || issueNum <= 0 {
 		return statemachine.Outcome{Err: fmt.Errorf("read_ticket_type: issue_num not set or not a positive integer (%q)", ctx.GetString("issue_num"))}
 	}
-	repo := ctx.GetString("issue_repo")
-	owner, name, ok := strings.Cut(repo, "/")
-	if !ok || owner == "" || name == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("read_ticket_type: issue_repo must be set as owner/name (got %q)", repo)}
-	}
-	args := []string{
-		"api", "graphql",
-		"-f", "owner=" + owner,
-		"-f", "name=" + name,
-		"-F", "number=" + strconv.Itoa(issueNum),
-		"-f", "query=" + classifyIssueTypeQuery,
-	}
-	out, err := a.deps.Gh.Run(context.Background(), args...)
+	issue, err := issueFromContext(ctx)
 	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("read_ticket_type: gh api graphql: %w", err)}
+		return statemachine.Outcome{Err: fmt.Errorf("read_ticket_type: %w", err)}
 	}
-	issueType := extractIssueType(out)
-	if issueType == "" {
+	kind, confident, err := a.deps.Tracker.Classify(context.Background(), issue)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("read_ticket_type: %w", err)}
+	}
+	if !confident || kind == "" {
 		ctx.Set("ticket_type_recognized", false)
 		fmt.Fprintf(a.deps.Stderr,
 			"read_ticket_type: issue #%d has no native issue type — set Story / Bug / Task in the GitHub UI and re-run.\n",
 			issueNum)
 		return statemachine.Outcome{}
 	}
-	ticketType := strings.ToLower(issueType)
-	if !supportedTicketTypes[ticketType] {
+	if !supportedTicketTypes[kind] {
 		ctx.Set("ticket_type_recognized", false)
 		fmt.Fprintf(a.deps.Stderr,
 			"read_ticket_type: issue #%d has unsupported issue type %q — set Story / Bug / Task in the GitHub UI and re-run.\n",
-			issueNum, issueType)
+			issueNum, kind)
 		return statemachine.Outcome{}
 	}
-	ctx.Set("ticket_type", ticketType)
+	ctx.Set("ticket_type", kind)
 	ctx.Set("ticket_type_recognized", true)
-	fmt.Fprintf(a.deps.Stdout, "Read ticket type for #%d: %s.\n", issueNum, ticketType)
+	fmt.Fprintf(a.deps.Stdout, "Read ticket type for #%d: %s.\n", issueNum, kind)
 	a.printClassifiedSections(ctx, issueNum)
 	return statemachine.Outcome{}
-}
-
-// extractIssueType pulls .issueType.name out of the GraphQL response (or any
-// JSON containing an "issueType" key — jsonFieldRaw byte-searches, so it
-// works on the nested .data.repository.issue.issueType envelope too).
-// Returns the raw type name as GitHub stores it (e.g. "Story", "Bug", "Task")
-// or empty when the issue has no type set.
-func extractIssueType(raw []byte) string {
-	block, ok := jsonFieldRaw(raw, "issueType")
-	if !ok {
-		return ""
-	}
-	if len(block) >= 4 && string(block[:4]) == "null" {
-		return ""
-	}
-	name, _ := jsonFieldString(block, "name")
-	return name
 }
 
 // readSubtype reads `subtype:*` labels on the ticket and writes the
@@ -456,16 +416,15 @@ func (a actions) parseTicketBody(ctx *statemachine.Context) statemachine.Outcome
 	if ticketType == "" {
 		return statemachine.Outcome{Err: fmt.Errorf("parse_ticket_body: ticket_type not set — classify_ticket_type must run first")}
 	}
-	args := []string{"issue", "view", strconv.Itoa(issueNum), "--json", "body"}
-	if repo := ctx.GetString("issue_repo"); repo != "" {
-		args = append(args, "--repo", repo)
-	}
-	out, err := a.deps.Gh.Run(context.Background(), args...)
+	issue, err := issueFromContext(ctx)
 	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("parse_ticket_body: gh issue view: %w", err)}
+		return statemachine.Outcome{Err: fmt.Errorf("parse_ticket_body: %w", err)}
 	}
-	body := extractIssueBody(out)
-	result, parseErr := intake.Parse(body, ticketType)
+	sections, err := a.deps.Tracker.ReadSections(context.Background(), issue, intake.CanonicalHeadings)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("parse_ticket_body: %w", err)}
+	}
+	result, parseErr := intake.ParseSections(sections, ticketType)
 	if parseErr != nil {
 		ctx.Set("parse_ok", false)
 		fmt.Fprintf(a.deps.Stderr, "parse_ticket_body: %v — fix the ticket body and re-run.\n", parseErr)
@@ -610,27 +569,26 @@ func printChecklistSummary(w io.Writer, c intake.ChecklistResult) {
 	}
 }
 
-// printClassifiedSections fetches the issue body and prints the three
-// canonical sections users want to see after classification: Legacy
-// Acceptance Criteria, Acceptance Criteria, and Checklist. Best-effort —
-// fetch failures and missing sections are silent. Each section is printed
-// only when present in the body.
+// printClassifiedSections fetches three canonical sections via
+// Tracker.ReadSections and prints whichever are non-empty: Legacy
+// Acceptance Criteria, Acceptance Criteria, and Checklist. Best-effort
+// — fetch failures and missing sections are silent.
 func (a actions) printClassifiedSections(ctx *statemachine.Context, issueNum int) {
-	args := []string{"issue", "view", strconv.Itoa(issueNum), "--json", "body"}
-	if repo := ctx.GetString("issue_repo"); repo != "" {
-		args = append(args, "--repo", repo)
-	}
-	out, err := a.deps.Gh.Run(context.Background(), args...)
+	issue, err := issueFromContext(ctx)
 	if err != nil {
 		return
 	}
-	body := extractIssueBody(out)
-	for _, heading := range []string{"Legacy Acceptance Criteria", "Acceptance Criteria", "Checklist"} {
-		section, ok := extractIssueSection(body, heading)
-		if !ok {
+	headings := []string{"Legacy Acceptance Criteria", "Acceptance Criteria", "Checklist"}
+	sections, err := a.deps.Tracker.ReadSections(context.Background(), issue, headings)
+	if err != nil {
+		return
+	}
+	for _, heading := range headings {
+		body := sections[heading]
+		if body == "" {
 			continue
 		}
-		fmt.Fprintf(a.deps.Stdout, "\n## %s\n\n%s\n", heading, section)
+		fmt.Fprintf(a.deps.Stdout, "\n## %s\n\n%s\n", heading, body)
 	}
 }
 
@@ -1578,48 +1536,30 @@ func shellEscape(s string) string {
 // Checklist
 // ---------------------------------------------------------------------------
 
-// tickChecklist updates the GitHub issue body to mark every `- [ ]` item as
-// `- [x]`. It is a soft action: a missing issue body or a no-op body is
-// fine. Errors from `gh issue edit` halt the run because they indicate a
-// permission or auth problem.
+// tickChecklist marks every `- [ ]` item in the issue body as `- [x]`
+// via Tracker.MarkChecklistComplete. Idempotent — a body with no
+// unchecked items is left untouched and no API call is made.
 func (a actions) tickChecklist(ctx *statemachine.Context) statemachine.Outcome {
-	if err := a.tickRemoteChecklist(ctx); err != nil {
+	if err := a.markChecklistComplete(ctx); err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("tick_checklist: %w", err)}
 	}
 	return statemachine.Outcome{}
 }
 
-// tickRemoteChecklist is the shared helper used by both tick_checklist and
-// move_to_in_acceptance — both want every checkbox ticked when the cycle
-// completes. Splitting it out lets move_to_in_acceptance call it inline
-// without dispatching the action twice.
-func (a actions) tickRemoteChecklist(ctx *statemachine.Context) error {
-	issueNum, err := strconv.Atoi(ctx.GetString("issue_num"))
-	if err != nil || issueNum <= 0 {
-		// Nothing to tick — happens in transitions tests and in dry-runs.
+// markChecklistComplete is the shared helper used by both tick_checklist
+// and move_to_in_acceptance — both want every checkbox ticked when the
+// cycle completes. Splitting it out lets move_to_in_acceptance call it
+// inline without dispatching the action twice. A missing or non-positive
+// issue_num is silently skipped (transitions tests and dry-runs).
+func (a actions) markChecklistComplete(ctx *statemachine.Context) error {
+	if issueNum, err := strconv.Atoi(ctx.GetString("issue_num")); err != nil || issueNum <= 0 {
 		return nil
 	}
-	args := []string{"issue", "view", strconv.Itoa(issueNum), "--json", "body"}
-	if repo := ctx.GetString("issue_repo"); repo != "" {
-		args = append(args, "--repo", repo)
-	}
-	out, err := a.deps.Gh.Run(context.Background(), args...)
+	issue, err := issueFromContext(ctx)
 	if err != nil {
-		return fmt.Errorf("gh issue view: %w", err)
+		return err
 	}
-	body := extractIssueBody(out)
-	updated := tickAllCheckboxes(body)
-	if updated == body {
-		return nil // no `- [ ]` items, nothing to do
-	}
-	editArgs := []string{"issue", "edit", strconv.Itoa(issueNum), "--body", updated}
-	if repo := ctx.GetString("issue_repo"); repo != "" {
-		editArgs = append(editArgs, "--repo", repo)
-	}
-	if _, err := a.deps.Gh.Run(context.Background(), editArgs...); err != nil {
-		return fmt.Errorf("gh issue edit: %w", err)
-	}
-	return nil
+	return a.deps.Tracker.MarkChecklistComplete(context.Background(), issue)
 }
 
 // ---------------------------------------------------------------------------
@@ -1636,147 +1576,66 @@ func (a actions) confirmer() release.Confirmer {
 	}
 }
 
-// extractIssueSection finds an H2-or-deeper markdown heading whose text
-// matches `heading` (case-insensitive, exact match after dropping leading
-// hashes). Returns the section's contents — every line after the heading
-// up to (but not including) the next heading at the same depth or
-// shallower, with surrounding blank lines trimmed. Returns ok=false when
-// the heading is absent.
-func extractIssueSection(body, heading string) (string, bool) {
-	lines := strings.Split(body, "\n")
-	startIdx := -1
-	startDepth := 0
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if !strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		depth := 0
-		for depth < len(trimmed) && trimmed[depth] == '#' {
-			depth++
-		}
-		if depth < 2 {
-			continue
-		}
-		text := strings.TrimSpace(trimmed[depth:])
-		if strings.EqualFold(text, heading) {
-			startIdx = i + 1
-			startDepth = depth
-			break
+// issueFromContext builds a tracker.Issue from the conventional Context
+// keys pickTopReady writes (issue_num, issue_url, issue_title,
+// issue_handle). When issue_url is empty but issue_num + issue_repo are
+// set, the URL is synthesised — preserves the pre-Tracker test pattern
+// where callers seeded ctx with issue_num + issue_repo and the action
+// constructed a `gh issue view --repo` argv on the fly. Step 12 drops
+// issue_repo entirely once every caller writes issue_url.
+func issueFromContext(ctx *statemachine.Context) (tracker.Issue, error) {
+	url := ctx.GetString("issue_url")
+	if url == "" {
+		num := ctx.GetString("issue_num")
+		repo := ctx.GetString("issue_repo")
+		if num != "" && repo != "" {
+			url = fmt.Sprintf("https://github.com/%s/issues/%s", repo, num)
 		}
 	}
-	if startIdx < 0 {
-		return "", false
+	if url == "" {
+		return tracker.Issue{}, fmt.Errorf("issue_url not in Context (and issue_num/issue_repo insufficient to synthesise one)")
 	}
-	endIdx := len(lines)
-	for i := startIdx; i < len(lines); i++ {
-		trimmed := strings.TrimSpace(lines[i])
-		if !strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		depth := 0
-		for depth < len(trimmed) && trimmed[depth] == '#' {
-			depth++
-		}
-		if depth <= startDepth {
-			endIdx = i
-			break
-		}
-	}
-	section := strings.Trim(strings.Join(lines[startIdx:endIdx], "\n"), "\n")
-	if section == "" {
-		return "", false
-	}
-	return section, true
+	return tracker.Issue{
+		ID:     ctx.GetString("issue_num"),
+		Title:  ctx.GetString("issue_title"),
+		URL:    url,
+		Handle: ctx.GetString("issue_handle"),
+	}, nil
 }
 
-// extractIssueBody pulls .body out of `gh issue view --json body`. Same
-// minimal parser as gates.extractIssueBody — duplicated to keep the
-// packages independent.
-func extractIssueBody(raw []byte) string {
-	const key = `"body"`
-	idx := bytes.Index(raw, []byte(key))
-	if idx < 0 {
+// writeIssueToContext mirrors the Tracker.PickReady result into the
+// conventional Context keys downstream actions read. issue_repo is
+// derived from the issue URL for back-compat with consumers that still
+// read the owner/repo pair (readSubtype, plus driver wiring for
+// specific-issue mode); step 12 drops that line once every consumer
+// switches to issueFromContext.
+func writeIssueToContext(ctx *statemachine.Context, issue tracker.Issue) {
+	ctx.Set("issue_num", issue.ID)
+	ctx.Set("issue_url", issue.URL)
+	ctx.Set("issue_title", issue.Title)
+	ctx.Set("issue_handle", issue.Handle)
+	if repo := repoFromIssueURL(issue.URL); repo != "" {
+		ctx.Set("issue_repo", repo)
+	}
+}
+
+// repoFromIssueURL extracts the `owner/repo` portion of a canonical
+// github issue URL. Returns "" on any URL shape the regex doesn't match
+// — callers treat the missing repo as "leave issue_repo unset" which
+// keeps the engine running for backends (markdown) where the concept
+// doesn't apply.
+func repoFromIssueURL(url string) string {
+	if url == "" {
 		return ""
 	}
-	rest := raw[idx+len(key):]
-	colon := bytes.IndexByte(rest, ':')
-	if colon < 0 {
+	m := issueURLRepoPattern.FindStringSubmatch(url)
+	if m == nil {
 		return ""
 	}
-	rest = bytes.TrimLeft(rest[colon+1:], " \t\r\n")
-	if len(rest) == 0 || rest[0] != '"' {
-		return ""
-	}
-	rest = rest[1:]
-	var sb strings.Builder
-	for i := 0; i < len(rest); i++ {
-		c := rest[i]
-		if c == '\\' && i+1 < len(rest) {
-			next := rest[i+1]
-			switch next {
-			case 'n':
-				sb.WriteByte('\n')
-			case 'r':
-				sb.WriteByte('\r')
-			case 't':
-				sb.WriteByte('\t')
-			default:
-				sb.WriteByte(next)
-			}
-			i++
-			continue
-		}
-		if c == '"' {
-			return sb.String()
-		}
-		sb.WriteByte(c)
-	}
-	return sb.String()
+	return m[1] + "/" + m[2]
 }
 
-// tickAllCheckboxes returns a copy of body with every `- [ ]` rewritten as
-// `- [x]`. Casing of the bracket content is preserved: only an empty box
-// (or a box with a single space) is considered unchecked. Already-ticked
-// items pass through untouched so the operation is idempotent.
-func tickAllCheckboxes(body string) string {
-	lines := strings.Split(body, "\n")
-	for i, line := range lines {
-		trimmed := strings.TrimLeft(line, " \t")
-		indent := line[:len(line)-len(trimmed)]
-		if !strings.HasPrefix(trimmed, "- [ ]") && !strings.HasPrefix(trimmed, "* [ ]") {
-			continue
-		}
-		// Replace the first `[ ]` with `[x]`, keeping marker and indent.
-		updated := strings.Replace(trimmed, "[ ]", "[x]", 1)
-		lines[i] = indent + updated
-	}
-	return strings.Join(lines, "\n")
-}
-
-// lookupStatusOption looks up the (statusFieldID, optionID) pair for the
-// named status option on the project resolved from Context. Delegates to
-// board.LookupStatusOption — the GraphQL query and its decoder live there
-// to keep a single source of truth for the projectV2 minimal-query path
-// (gh's `project field-list` subcommand sends a heavy expansion query
-// that has been hitting upstream resolver bugs).
-func lookupStatusOption(ctx context.Context, gh GhRunner, sCtx *statemachine.Context, optionName string) (fieldID, optionID string, err error) {
-	ownerKind, owner, number, err := projectOwnerAndNumber(sCtx)
-	if err != nil {
-		return "", "", err
-	}
-	return board.LookupStatusOption(ctx, gh, ownerKind, owner, number, optionName)
-}
-
-// projectOwnerAndNumber resolves the project ownerKind + owner + number
-// from Context. ownerKind is "organization" or "user" — needed by the
-// minimal-GraphQL path to dispatch to the right top-level field.
-func projectOwnerAndNumber(ctx *statemachine.Context) (ownerKind, owner string, number int, err error) {
-	if u := ctx.GetString("project_url"); u != "" {
-		return board.ParseProjectURL(u)
-	}
-	return "", "", 0, fmt.Errorf("project_url not in Context")
-}
+var issueURLRepoPattern = regexp.MustCompile(`https://github\.com/([A-Za-z0-9][A-Za-z0-9-]*)/([A-Za-z0-9._-]+)/issues/\d+`)
 
 // jsonFieldRaw returns the raw bytes of a top-level JSON field's value.
 // Handles strings, objects, and arrays via brace/bracket counting. Stops

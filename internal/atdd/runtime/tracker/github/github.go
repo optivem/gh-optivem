@@ -13,12 +13,11 @@
 // projectItemsQuery / projectFieldsQuery comments for the per-call
 // rationale.
 //
-// Status: workflow methods (PickReady / FindIssue / SetStatus / Verify)
-// are ported from the prior board package and exercised by tests.
-// Inspection / mutation methods (Classify / ReadSections /
-// MarkChecklistComplete) are stubbed and return tracker.ErrNotImplemented;
-// they get their bodies in subsequent migration steps when the
-// classify/intake/gates packages are migrated onto the Tracker seam.
+// All seven Tracker methods are implemented against the projectV2 path
+// (workflow methods) and against the issue-body REST path (inspection /
+// mutation). Section parsing is a minimal H2/H3 walker inlined here for
+// now; chunk B (markdown adapter) extracts it into a shared
+// tracker/internal/parse package consumed by both adapters.
 package github
 
 import (
@@ -214,35 +213,227 @@ func (t *Tracker) Verify(ctx context.Context) error {
 }
 
 // ---------------------------------------------------------------------------
-// Tracker interface — inspection / mutation (stubbed)
+// Tracker interface — inspection / mutation
 // ---------------------------------------------------------------------------
+
+// Classify resolves the issue's native GitHub issue type
+// (repository.issue.issueType.name) and returns the lowercased value.
+// confident is true when the native type is set; false when the issue
+// has no type (a state the operator must fix in the GitHub UI before
+// the orchestrator can proceed).
 //
-// These three methods are stubbed in step 2 and get their bodies in
-// the subsequent migration steps that move the classify, intake, and
-// gates GitHub-shaped logic onto this adapter. The signatures match
-// the interface so call sites can compile against the seam today.
-
-// Classify is unimplemented in step 2. The body lands in the step that
-// migrates internal/atdd/runtime/classify onto the Tracker seam — it
-// will issue a projectV2 Type-field GraphQL query and combine the
-// answer with the github-specific label-token table.
-func (t *Tracker) Classify(_ context.Context, _ tracker.Issue) (string, bool, error) {
-	return "", false, tracker.ErrNotImplemented
+// Uses `gh api graphql` against repository.issue.issueType.name rather
+// than `gh issue view --json issueType` because that JSON field is not
+// exposed by any released gh CLI as of 2026-05; the GraphQL schema has
+// carried `issueType` for some time and is the only portable way to
+// read it from the CLI today.
+func (t *Tracker) Classify(ctx context.Context, i tracker.Issue) (string, bool, error) {
+	owner, repo, num, err := parseIssueURL(i.URL)
+	if err != nil {
+		return "", false, err
+	}
+	out, err := t.gh.Run(ctx, "api", "graphql",
+		"-f", "owner="+owner,
+		"-f", "name="+repo,
+		"-F", "number="+strconv.Itoa(num),
+		"-f", "query="+issueTypeQuery,
+	)
+	if err != nil {
+		return "", false, fmt.Errorf("github: gh api graphql issueType: %w", err)
+	}
+	var resp struct {
+		Data struct {
+			Repository struct {
+				Issue struct {
+					IssueType *struct {
+						Name string `json:"name"`
+					} `json:"issueType"`
+				} `json:"issue"`
+			} `json:"repository"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return "", false, fmt.Errorf("github: parse issueType response: %w", err)
+	}
+	it := resp.Data.Repository.Issue.IssueType
+	if it == nil || it.Name == "" {
+		return "", false, nil
+	}
+	return strings.ToLower(it.Name), true, nil
 }
 
-// ReadSections is unimplemented in step 2. The body lands in the step
-// that migrates internal/atdd/runtime/intake onto the Tracker seam —
-// it will fetch the issue body via gh and feed it through the shared
-// markdown H2/H3 parser.
-func (t *Tracker) ReadSections(_ context.Context, _ tracker.Issue, _ []string) (map[string]string, error) {
-	return nil, tracker.ErrNotImplemented
+// ReadSections fetches the issue body and returns the named H2/H3
+// sections as a map. Every requested heading appears in the result —
+// absent or empty sections map to "" so callers see a stable key set.
+// Heading matching is case-insensitive on the trimmed heading text.
+func (t *Tracker) ReadSections(ctx context.Context, i tracker.Issue, headings []string) (map[string]string, error) {
+	owner, repo, num, err := parseIssueURL(i.URL)
+	if err != nil {
+		return nil, err
+	}
+	body, err := t.fetchIssueBody(ctx, owner, repo, num)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(headings))
+	for _, h := range headings {
+		out[h] = extractMarkdownSection(body, h)
+	}
+	return out, nil
 }
 
-// MarkChecklistComplete is unimplemented in step 2. The body lands
-// alongside the gates migration — it will rewrite `- [ ]` → `- [x]`
-// in the issue body and push via gh issue edit.
-func (t *Tracker) MarkChecklistComplete(_ context.Context, _ tracker.Issue) error {
-	return tracker.ErrNotImplemented
+// MarkChecklistComplete rewrites every `- [ ]` (and `* [ ]`) line in
+// the issue body to `- [x]` / `* [x]` and pushes the updated body via
+// gh issue edit. Idempotent: a body with no unchecked items is left
+// untouched and no API call is made.
+func (t *Tracker) MarkChecklistComplete(ctx context.Context, i tracker.Issue) error {
+	owner, repo, num, err := parseIssueURL(i.URL)
+	if err != nil {
+		return err
+	}
+	body, err := t.fetchIssueBody(ctx, owner, repo, num)
+	if err != nil {
+		return err
+	}
+	updated := tickAllCheckboxes(body)
+	if updated == body {
+		return nil
+	}
+	if _, err := t.gh.Run(ctx, "issue", "edit", strconv.Itoa(num),
+		"--repo", owner+"/"+repo,
+		"--body", updated,
+	); err != nil {
+		return fmt.Errorf("github: gh issue edit: %w", err)
+	}
+	return nil
+}
+
+// fetchIssueBody runs `gh issue view <num> --json body --repo <owner>/<repo>`
+// and returns the decoded body string. Argv order matches the pre-Tracker
+// call sites in actions/bindings.go and gates/bindings.go so their tests'
+// canned-response fakes match without churn.
+func (t *Tracker) fetchIssueBody(ctx context.Context, owner, repo string, num int) (string, error) {
+	out, err := t.gh.Run(ctx, "issue", "view", strconv.Itoa(num),
+		"--json", "body",
+		"--repo", owner+"/"+repo,
+	)
+	if err != nil {
+		return "", fmt.Errorf("github: gh issue view: %w", err)
+	}
+	var resp struct {
+		Body string `json:"body"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return "", fmt.Errorf("github: parse issue body: %w", err)
+	}
+	return resp.Body, nil
+}
+
+// issueTypeQuery fetches the native issue type — set by the Issue Form's
+// `type:` field at filing time and authoritative because it cannot drift
+// from a label-based heuristic. The classify package this replaced used
+// projectV2 Type field + label tokens; native issueType is a simpler
+// single source.
+//
+// Whitespace matches the verbatim string the pre-Tracker actions package
+// shipped — argv-keyed test fakes hash on the exact `query=` payload, so
+// preserving the formatting keeps existing tests passing across the
+// migration.
+const issueTypeQuery = `query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { issue(number: $number) { issueType { name } } } }`
+
+// ---------------------------------------------------------------------------
+// Markdown helpers — H2/H3 section walker + checklist rewrite
+// ---------------------------------------------------------------------------
+
+// extractMarkdownSection scans body for an H2-or-deeper markdown heading
+// whose text matches name (case-insensitive, exact after dropping
+// leading hashes and surrounding whitespace), and returns the section
+// body — every line from the next line to (but not including) the next
+// heading at the same or shallower depth, with surrounding blank lines
+// trimmed. Returns "" when the heading is absent or its body is empty.
+func extractMarkdownSection(body, name string) string {
+	lines := strings.Split(body, "\n")
+	startIdx, startDepth := -1, 0
+	for i, line := range lines {
+		depth, text, ok := mdHeading(line)
+		if !ok || depth < 2 {
+			continue
+		}
+		if strings.EqualFold(text, name) {
+			startIdx, startDepth = i+1, depth
+			break
+		}
+	}
+	if startIdx < 0 {
+		return ""
+	}
+	endIdx := len(lines)
+	for i := startIdx; i < len(lines); i++ {
+		depth, _, ok := mdHeading(lines[i])
+		if !ok {
+			continue
+		}
+		if depth <= startDepth {
+			endIdx = i
+			break
+		}
+	}
+	return strings.Trim(strings.Join(lines[startIdx:endIdx], "\n"), "\n")
+}
+
+// mdHeading parses one markdown heading line — leading `#`s + whitespace
+// + text. Returns depth (count of leading `#`s), trimmed text, and
+// ok=true on a heading line; ok=false on non-heading lines.
+func mdHeading(line string) (int, string, bool) {
+	t := strings.TrimSpace(line)
+	if !strings.HasPrefix(t, "#") {
+		return 0, "", false
+	}
+	d := 0
+	for d < len(t) && t[d] == '#' {
+		d++
+	}
+	return d, strings.TrimSpace(t[d:]), true
+}
+
+// tickAllCheckboxes rewrites every `- [ ]` / `* [ ]` to its checked
+// equivalent. Indentation and marker character are preserved; already-
+// ticked items pass through so the operation is idempotent.
+func tickAllCheckboxes(body string) string {
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimLeft(line, " \t")
+		indent := line[:len(line)-len(trimmed)]
+		if !strings.HasPrefix(trimmed, "- [ ]") && !strings.HasPrefix(trimmed, "* [ ]") {
+			continue
+		}
+		lines[i] = indent + strings.Replace(trimmed, "[ ]", "[x]", 1)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// ---------------------------------------------------------------------------
+// Issue URL parsing
+// ---------------------------------------------------------------------------
+
+// parseIssueURL splits a canonical github issue URL into (owner, repo,
+// number). Used by Classify / ReadSections / MarkChecklistComplete to
+// address the issue without carrying repo on tracker.Issue. Returns a
+// clear error on an empty URL so callers see "tracker.Issue.URL is
+// required" rather than a downstream gh failure.
+func parseIssueURL(s string) (owner, repo string, num int, err error) {
+	if s == "" {
+		return "", "", 0, fmt.Errorf("github: tracker.Issue.URL is required for body operations")
+	}
+	m := issueURLPattern.FindStringSubmatch(s)
+	if m == nil {
+		return "", "", 0, fmt.Errorf("github: %q is not a github issue URL", s)
+	}
+	n, err := strconv.Atoi(m[3])
+	if err != nil {
+		return "", "", 0, fmt.Errorf("github: invalid issue number in %q: %w", s, err)
+	}
+	return m[1], m[2], n, nil
 }
 
 // ---------------------------------------------------------------------------

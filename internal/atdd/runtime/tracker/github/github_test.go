@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -545,35 +546,116 @@ func TestVerify_GraphQLNotFound(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Stubbed methods (return tracker.ErrNotImplemented in step 2)
+// Classify / ReadSections / MarkChecklistComplete
 // ---------------------------------------------------------------------------
 
-func TestStubbedMethodsReturnErrNotImplemented(t *testing.T) {
+func TestClassify_NativeIssueType(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		responseJSON string
+		wantKind     string
+		wantOK       bool
+	}{
+		{name: "story", responseJSON: `{"data":{"repository":{"issue":{"issueType":{"name":"Story"}}}}}`, wantKind: "story", wantOK: true},
+		{name: "bug", responseJSON: `{"data":{"repository":{"issue":{"issueType":{"name":"Bug"}}}}}`, wantKind: "bug", wantOK: true},
+		{name: "task_uppercase", responseJSON: `{"data":{"repository":{"issue":{"issueType":{"name":"TASK"}}}}}`, wantKind: "task", wantOK: true},
+		{name: "no_type", responseJSON: `{"data":{"repository":{"issue":{"issueType":null}}}}`, wantKind: "", wantOK: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gh := newFakeRunner(t)
+			gh.on(
+				[]string{
+					"api", "graphql",
+					"-f", "owner=optivem",
+					"-f", "name=shop",
+					"-F", "number=42",
+					"-f", "query=" + issueTypeQuery,
+				},
+				[]byte(tc.responseJSON),
+				nil,
+			)
+			tr := mustNew(t, "https://github.com/orgs/optivem/projects/20", gh)
+			issue := tracker.Issue{ID: "42", URL: "https://github.com/optivem/shop/issues/42"}
+			kind, ok, err := tr.Classify(context.Background(), issue)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if kind != tc.wantKind || ok != tc.wantOK {
+				t.Errorf("got (%q, %v), want (%q, %v)", kind, ok, tc.wantKind, tc.wantOK)
+			}
+		})
+	}
+}
+
+func TestReadSections_ReturnsRequestedHeadings(t *testing.T) {
+	body := "## Description\n\nIntro paragraph.\n\n" +
+		"## Acceptance Criteria\n\n- AC1\n- AC2\n\n" +
+		"## Checklist\n\n- [ ] Step\n"
+	bodyJSON, _ := json.Marshal(body)
 	gh := newFakeRunner(t)
+	gh.on(
+		[]string{"issue", "view", "42", "--json", "body", "--repo", "optivem/shop"},
+		[]byte(`{"body":` + string(bodyJSON) + `}`),
+		nil,
+	)
 	tr := mustNew(t, "https://github.com/orgs/optivem/projects/20", gh)
 	issue := tracker.Issue{ID: "42", URL: "https://github.com/optivem/shop/issues/42"}
+	sections, err := tr.ReadSections(context.Background(), issue, []string{"Acceptance Criteria", "Checklist", "Missing"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, want := sections["Acceptance Criteria"], "- AC1\n- AC2"; got != want {
+		t.Errorf("Acceptance Criteria: got %q, want %q", got, want)
+	}
+	if got, want := sections["Checklist"], "- [ ] Step"; got != want {
+		t.Errorf("Checklist: got %q, want %q", got, want)
+	}
+	if got := sections["Missing"]; got != "" {
+		t.Errorf("Missing: got %q, want empty string", got)
+	}
+}
 
-	t.Run("Classify", func(t *testing.T) {
-		_, _, err := tr.Classify(context.Background(), issue)
-		if !errors.Is(err, tracker.ErrNotImplemented) {
-			t.Errorf("expected ErrNotImplemented, got %v", err)
-		}
-	})
-	t.Run("ReadSections", func(t *testing.T) {
-		_, err := tr.ReadSections(context.Background(), issue, []string{"Acceptance criteria"})
-		if !errors.Is(err, tracker.ErrNotImplemented) {
-			t.Errorf("expected ErrNotImplemented, got %v", err)
-		}
-	})
-	t.Run("MarkChecklistComplete", func(t *testing.T) {
-		err := tr.MarkChecklistComplete(context.Background(), issue)
-		if !errors.Is(err, tracker.ErrNotImplemented) {
-			t.Errorf("expected ErrNotImplemented, got %v", err)
-		}
-	})
+func TestMarkChecklistComplete_RewriteAndEdit(t *testing.T) {
+	body := "## Checklist\n\n- [ ] One\n- [x] Two\n- [ ] Three\n"
+	bodyJSON, _ := json.Marshal(body)
+	gh := newFakeRunner(t)
+	gh.on(
+		[]string{"issue", "view", "42", "--json", "body", "--repo", "optivem/shop"},
+		[]byte(`{"body":` + string(bodyJSON) + `}`),
+		nil,
+	)
+	wantUpdated := "## Checklist\n\n- [x] One\n- [x] Two\n- [x] Three\n"
+	gh.on(
+		[]string{"issue", "edit", "42", "--repo", "optivem/shop", "--body", wantUpdated},
+		[]byte(""),
+		nil,
+	)
+	tr := mustNew(t, "https://github.com/orgs/optivem/projects/20", gh)
+	issue := tracker.Issue{ID: "42", URL: "https://github.com/optivem/shop/issues/42"}
+	if err := tr.MarkChecklistComplete(context.Background(), issue); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(gh.calls) != 2 {
+		t.Errorf("expected 2 gh calls (view + edit), got %d: %v", len(gh.calls), gh.calls)
+	}
+}
 
-	if len(gh.calls) > 0 {
-		t.Errorf("stubbed methods must not call gh; got %v", gh.calls)
+func TestMarkChecklistComplete_NoUncheckedItemsSkipsEdit(t *testing.T) {
+	body := "## Checklist\n\n- [x] Done one\n- [x] Done two\n"
+	bodyJSON, _ := json.Marshal(body)
+	gh := newFakeRunner(t)
+	gh.on(
+		[]string{"issue", "view", "42", "--json", "body", "--repo", "optivem/shop"},
+		[]byte(`{"body":` + string(bodyJSON) + `}`),
+		nil,
+	)
+	tr := mustNew(t, "https://github.com/orgs/optivem/projects/20", gh)
+	issue := tracker.Issue{ID: "42", URL: "https://github.com/optivem/shop/issues/42"}
+	if err := tr.MarkChecklistComplete(context.Background(), issue); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(gh.calls) != 1 {
+		t.Errorf("expected 1 gh call (view only — no unchecked items), got %d: %v", len(gh.calls), gh.calls)
 	}
 }
 

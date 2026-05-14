@@ -262,7 +262,7 @@ func TestClassifyTicketType_NativeIssueType(t *testing.T) {
 					"-f", "owner=optivem",
 					"-f", "name=shop",
 					"-F", "number=42",
-					"-f", "query=" + classifyIssueTypeQuery,
+					"-f", "query=" + `query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { issue(number: $number) { issueType { name } } } }`,
 				},
 				[]byte(fmt.Sprintf(`{"data":{"repository":{"issue":{"issueType":%s}}}}`, tc.issueTypeJSON)),
 				nil,
@@ -301,7 +301,7 @@ func TestClassifyTicketType_PrintsNamedSections(t *testing.T) {
 			"-f", "owner=optivem",
 			"-f", "name=shop",
 			"-F", "number=7",
-			"-f", "query=" + classifyIssueTypeQuery,
+			"-f", "query=" + `query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { issue(number: $number) { issueType { name } } } }`,
 		},
 		[]byte(`{"data":{"repository":{"issue":{"issueType":{"name":"Story"}}}}}`),
 		nil,
@@ -583,7 +583,7 @@ func TestParseTicketBody_TaskAllUncheckedPrintsZeroChecked(t *testing.T) {
 	rawBody, _ := json.Marshal(body)
 	gh := newFakeRunner(t, "gh")
 	gh.on(
-		[]string{"issue", "view", "100", "--json", "body"},
+		[]string{"issue", "view", "100", "--json", "body", "--repo", "optivem/shop"},
 		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
 		nil,
 	)
@@ -592,6 +592,7 @@ func TestParseTicketBody_TaskAllUncheckedPrintsZeroChecked(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "100")
+	ctx.Set("issue_repo", "optivem/shop")
 	if out := a.parseTicketBody(ctx); out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
@@ -608,7 +609,7 @@ func TestParseTicketBody_TaskMixedPrintsAlreadyDoneSuffix(t *testing.T) {
 	rawBody, _ := json.Marshal(body)
 	gh := newFakeRunner(t, "gh")
 	gh.on(
-		[]string{"issue", "view", "101", "--json", "body"},
+		[]string{"issue", "view", "101", "--json", "body", "--repo", "optivem/shop"},
 		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
 		nil,
 	)
@@ -617,6 +618,7 @@ func TestParseTicketBody_TaskMixedPrintsAlreadyDoneSuffix(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "101")
+	ctx.Set("issue_repo", "optivem/shop")
 	if out := a.parseTicketBody(ctx); out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
@@ -638,7 +640,7 @@ func TestParseTicketBody_AllCheckedInteractiveYesProceeds(t *testing.T) {
 	rawBody, _ := json.Marshal(body)
 	gh := newFakeRunner(t, "gh")
 	gh.on(
-		[]string{"issue", "view", "61", "--json", "body"},
+		[]string{"issue", "view", "61", "--json", "body", "--repo", "optivem/shop"},
 		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
 		nil,
 	)
@@ -648,6 +650,7 @@ func TestParseTicketBody_AllCheckedInteractiveYesProceeds(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "61")
+	ctx.Set("issue_repo", "optivem/shop")
 	if out := a.parseTicketBody(ctx); out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
@@ -670,7 +673,7 @@ func TestParseTicketBody_AllCheckedInteractiveDefaultNoSkips(t *testing.T) {
 	rawBody, _ := json.Marshal(body)
 	gh := newFakeRunner(t, "gh")
 	gh.on(
-		[]string{"issue", "view", "61", "--json", "body"},
+		[]string{"issue", "view", "61", "--json", "body", "--repo", "optivem/shop"},
 		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
 		nil,
 	)
@@ -681,6 +684,7 @@ func TestParseTicketBody_AllCheckedInteractiveDefaultNoSkips(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "61")
+	ctx.Set("issue_repo", "optivem/shop")
 	out := a.parseTicketBody(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected hard error: %v", out.Err)
@@ -698,7 +702,7 @@ func TestParseTicketBody_AllCheckedAutonomousWarnsAndProceeds(t *testing.T) {
 	rawBody, _ := json.Marshal(body)
 	gh := newFakeRunner(t, "gh")
 	gh.on(
-		[]string{"issue", "view", "61", "--json", "body"},
+		[]string{"issue", "view", "61", "--json", "body", "--repo", "optivem/shop"},
 		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
 		nil,
 	)
@@ -708,6 +712,7 @@ func TestParseTicketBody_AllCheckedAutonomousWarnsAndProceeds(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "61")
+	ctx.Set("issue_repo", "optivem/shop")
 	if out := a.parseTicketBody(ctx); out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
@@ -727,7 +732,7 @@ func TestParseTicketBody_PartiallyCheckedDoesNotPrompt(t *testing.T) {
 	rawBody, _ := json.Marshal(body)
 	gh := newFakeRunner(t, "gh")
 	gh.on(
-		[]string{"issue", "view", "61", "--json", "body"},
+		[]string{"issue", "view", "61", "--json", "body", "--repo", "optivem/shop"},
 		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
 		nil,
 	)
@@ -737,6 +742,7 @@ func TestParseTicketBody_PartiallyCheckedDoesNotPrompt(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "61")
+	ctx.Set("issue_repo", "optivem/shop")
 	if out := a.parseTicketBody(ctx); out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
@@ -753,7 +759,7 @@ func TestParseTicketBody_StoryHasNoChecklistSummary(t *testing.T) {
 	rawBody, _ := json.Marshal(body)
 	gh := newFakeRunner(t, "gh")
 	gh.on(
-		[]string{"issue", "view", "1", "--json", "body"},
+		[]string{"issue", "view", "1", "--json", "body", "--repo", "optivem/shop"},
 		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
 		nil,
 	)
@@ -762,6 +768,7 @@ func TestParseTicketBody_StoryHasNoChecklistSummary(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "story")
 	ctx.Set("issue_num", "1")
+	ctx.Set("issue_repo", "optivem/shop")
 	if out := a.parseTicketBody(ctx); out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
@@ -775,7 +782,7 @@ func TestParseTicketBody_TaskMissingChecklistSetsParseOkFalse(t *testing.T) {
 	rawBody, _ := json.Marshal(body)
 	gh := newFakeRunner(t, "gh")
 	gh.on(
-		[]string{"issue", "view", "7", "--json", "body"},
+		[]string{"issue", "view", "7", "--json", "body", "--repo", "optivem/shop"},
 		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
 		nil,
 	)
@@ -784,6 +791,7 @@ func TestParseTicketBody_TaskMissingChecklistSetsParseOkFalse(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "7")
+	ctx.Set("issue_repo", "optivem/shop")
 	out := a.parseTicketBody(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected hard error: %v", out.Err)
@@ -801,7 +809,7 @@ func TestParseTicketBody_StoryWithoutLegacyACSetsLegacyFalse(t *testing.T) {
 	rawBody, _ := json.Marshal(body)
 	gh := newFakeRunner(t, "gh")
 	gh.on(
-		[]string{"issue", "view", "1", "--json", "body"},
+		[]string{"issue", "view", "1", "--json", "body", "--repo", "optivem/shop"},
 		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
 		nil,
 	)
@@ -809,6 +817,7 @@ func TestParseTicketBody_StoryWithoutLegacyACSetsLegacyFalse(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "story")
 	ctx.Set("issue_num", "1")
+	ctx.Set("issue_repo", "optivem/shop")
 	out := a.parseTicketBody(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
@@ -825,87 +834,10 @@ func TestParseTicketBody_EmptyTicketTypeFailsHard(t *testing.T) {
 	a := newActions(Deps{Gh: newFakeRunner(t, "gh"), Prompter: &fakePrompter{}})
 	ctx := statemachine.NewContext()
 	ctx.Set("issue_num", "1")
+	ctx.Set("issue_repo", "optivem/shop")
 	out := a.parseTicketBody(ctx)
 	if out.Err == nil {
 		t.Fatalf("expected hard error for empty ticket_type")
-	}
-}
-
-func TestExtractIssueType(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		raw  string
-		want string
-	}{
-		{name: "story", raw: `{"issueType":{"name":"Story"}}`, want: "Story"},
-		{name: "bug_with_extra_fields", raw: `{"issueType":{"id":"abc","name":"Bug","description":"x"}}`, want: "Bug"},
-		{name: "null_type", raw: `{"issueType":null}`, want: ""},
-		{name: "missing_field", raw: `{"title":"x"}`, want: ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got := extractIssueType([]byte(tc.raw))
-			if got != tc.want {
-				t.Fatalf("got %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
-// ---------------------------------------------------------------------------
-// extractIssueSection (helper)
-// ---------------------------------------------------------------------------
-
-func TestExtractIssueSection(t *testing.T) {
-	body := "Intro.\n\n" +
-		"## Acceptance Criteria\n\n- AC1\n- AC2\n\n" +
-		"### Sub heading\n\nnested content\n\n" +
-		"## Checklist\n\n- [ ] step\n"
-	for _, tc := range []struct {
-		name    string
-		heading string
-		want    string
-		ok      bool
-	}{
-		{name: "ac_with_nested", heading: "Acceptance Criteria", want: "- AC1\n- AC2\n\n### Sub heading\n\nnested content", ok: true},
-		{name: "checklist", heading: "Checklist", want: "- [ ] step", ok: true},
-		{name: "case_insensitive", heading: "checklist", want: "- [ ] step", ok: true},
-		{name: "absent", heading: "Legacy Acceptance Criteria", ok: false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got, ok := extractIssueSection(body, tc.heading)
-			if ok != tc.ok {
-				t.Fatalf("ok: got %v, want %v", ok, tc.ok)
-			}
-			if got != tc.want {
-				t.Fatalf("got %q\nwant %q", got, tc.want)
-			}
-		})
-	}
-}
-
-// ---------------------------------------------------------------------------
-// tickAllCheckboxes (helper)
-// ---------------------------------------------------------------------------
-
-func TestTickAllCheckboxes(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		in   string
-		want string
-	}{
-		{name: "single_unchecked", in: "- [ ] Foo", want: "- [x] Foo"},
-		{name: "already_checked_passthrough", in: "- [x] Bar", want: "- [x] Bar"},
-		{name: "mixed", in: "- [ ] One\n- [x] Two\n- [ ] Three", want: "- [x] One\n- [x] Two\n- [x] Three"},
-		{name: "indented", in: "  - [ ] Indent", want: "  - [x] Indent"},
-		{name: "asterisk_form", in: "* [ ] Star", want: "* [x] Star"},
-		{name: "no_checkboxes", in: "Plain prose.", want: "Plain prose."},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got := tickAllCheckboxes(tc.in)
-			if got != tc.want {
-				t.Fatalf("got %q, want %q", got, tc.want)
-			}
-		})
 	}
 }
 

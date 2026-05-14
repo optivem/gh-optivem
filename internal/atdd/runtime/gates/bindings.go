@@ -32,7 +32,10 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/intake"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
+	trackergithub "github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/github"
 	"github.com/optivem/gh-optivem/internal/promptio"
 )
 
@@ -40,9 +43,16 @@ import (
 // All fields are optional — a zero-value Deps falls back to real shell-outs
 // and the OS stdin/stdout. Tests pass non-nil fakes for hermeticity.
 type Deps struct {
-	Gh       GhRunner
-	Git      GitRunner
-	Prompter Prompter
+	Gh         GhRunner
+	Git        GitRunner
+	Prompter   Prompter
+	ProjectURL string // optional — explicit override for tracker construction
+	// Tracker is the seam tracker-shaped gate logic goes through (today
+	// just legacyAcceptanceCriteriaSectionPresent's body fetch).
+	// Optional — withDefaults constructs a github adapter from ProjectURL
+	// + Gh when unset. Tests inject fakes the same way as actions: set Gh
+	// to a canned-response runner, leave Tracker nil.
+	Tracker tracker.Tracker
 }
 
 // Prompter asks the user one yes/no/value question and returns the trimmed
@@ -76,7 +86,29 @@ func (d Deps) withDefaults() Deps {
 	if d.Prompter == nil {
 		d.Prompter = stdinPrompter{}
 	}
+	if d.Tracker == nil {
+		url := d.ProjectURL
+		if url == "" {
+			// Placeholder — body ops only need Issue.URL, so any valid
+			// project URL keeps github.New from rejecting the call. Matches
+			// the actions package fallback so test wiring is symmetric.
+			url = "https://github.com/orgs/placeholder/projects/0"
+		}
+		if t, err := trackergithub.New(url, ghAdapter{d.Gh}); err == nil {
+			d.Tracker = t
+		}
+	}
 	return d
+}
+
+// ghAdapter shims gates.GhRunner into trackergithub.GhRunner. Both
+// interfaces have the same shape; the adapter exists because Go's
+// structural typing collapses the conversion at a single point rather
+// than scattering it.
+type ghAdapter struct{ inner GhRunner }
+
+func (g ghAdapter) Run(ctx context.Context, args ...string) ([]byte, error) {
+	return g.inner.Run(ctx, args...)
 }
 
 // RegisterAll wires every YAML binding name to its Go implementation under
@@ -348,29 +380,55 @@ func (b bindings) parseOK(ctx *statemachine.Context) statemachine.Outcome {
 		"Ticket body parsed OK?")
 }
 
-// legacyAcceptanceCriteriaSectionPresent reads the issue body via `gh issue view` and
-// scans for an H2 heading named `Legacy Acceptance Criteria`. Falls back to a prompt
-// when no issue number is in the Context (off-board mode).
+// legacyAcceptanceCriteriaSectionPresent asks Tracker.ReadSections for
+// the `Legacy Acceptance Criteria` section and routes on whether the
+// returned body is non-empty. Falls back to a prompt when no issue
+// number is in the Context (off-board mode).
 func (b bindings) legacyAcceptanceCriteriaSectionPresent(ctx *statemachine.Context) statemachine.Outcome {
 	if v := ctx.Get("legacy_acceptance_criteria_section_present"); v != nil {
 		return outcomeFromBoolish(v)
 	}
-	issueNum := ctx.GetString("issue_num")
-	if issueNum == "" {
+	if ctx.GetString("issue_num") == "" {
 		return b.boolGate(ctx,
 			"legacy_acceptance_criteria_section_present",
 			"Legacy Acceptance Criteria section present in the issue?")
 	}
-	args := []string{"issue", "view", issueNum, "--json", "body"}
-	if repo := ctx.GetString("issue_repo"); repo != "" {
-		args = append(args, "--repo", repo)
-	}
-	out, err := b.deps.Gh.Run(context.Background(), args...)
+	issue, err := issueFromContext(ctx)
 	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("legacy_acceptance_criteria_section_present: gh issue view: %w", err)}
+		return statemachine.Outcome{Err: fmt.Errorf("legacy_acceptance_criteria_section_present: %w", err)}
 	}
-	body := extractIssueBody(out)
-	return statemachine.Outcome{Bool: containsLegacyAcceptanceCriteriaHeading(body)}
+	sections, err := b.deps.Tracker.ReadSections(context.Background(), issue, []string{intake.SectionLegacyAcceptanceCriteria})
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("legacy_acceptance_criteria_section_present: %w", err)}
+	}
+	return statemachine.Outcome{Bool: sections[intake.SectionLegacyAcceptanceCriteria] != ""}
+}
+
+// issueFromContext builds a tracker.Issue from the conventional Context
+// keys actions.pickTopReady writes (issue_num, issue_url, issue_title,
+// issue_handle). Synthesises a URL from issue_num + issue_repo when
+// issue_url is empty — preserves the pre-Tracker test pattern where
+// callers seeded ctx with issue_num + issue_repo and the gate
+// constructed a `gh issue view --repo` argv on the fly. Step 12 drops
+// issue_repo entirely once every caller writes issue_url.
+func issueFromContext(ctx *statemachine.Context) (tracker.Issue, error) {
+	url := ctx.GetString("issue_url")
+	if url == "" {
+		num := ctx.GetString("issue_num")
+		repo := ctx.GetString("issue_repo")
+		if num != "" && repo != "" {
+			url = fmt.Sprintf("https://github.com/%s/issues/%s", repo, num)
+		}
+	}
+	if url == "" {
+		return tracker.Issue{}, fmt.Errorf("issue_url not in Context (and issue_num/issue_repo insufficient to synthesise one)")
+	}
+	return tracker.Issue{
+		ID:     ctx.GetString("issue_num"),
+		Title:  ctx.GetString("issue_title"),
+		URL:    url,
+		Handle: ctx.GetString("issue_handle"),
+	}, nil
 }
 
 // externalSystemDriverExists is asked once at the top of the onboarding
@@ -513,70 +571,6 @@ func outcomeFromBoolish(v any) statemachine.Outcome {
 	}
 }
 
-// extractIssueBody pulls .body out of a `gh issue view --json body` payload
-// without dragging encoding/json into the gate body — keeps the dependency
-// surface small. The format is well-defined: a JSON object with a string
-// "body" field. We do a minimal hand-parse to find the body value.
-func extractIssueBody(raw []byte) string {
-	const key = `"body"`
-	idx := bytes.Index(raw, []byte(key))
-	if idx < 0 {
-		return ""
-	}
-	rest := raw[idx+len(key):]
-	colon := bytes.IndexByte(rest, ':')
-	if colon < 0 {
-		return ""
-	}
-	rest = bytes.TrimLeft(rest[colon+1:], " \t\r\n")
-	if len(rest) == 0 || rest[0] != '"' {
-		return ""
-	}
-	rest = rest[1:]
-	// Walk until the matching closing quote, honouring \\ escapes and \" escapes.
-	var sb strings.Builder
-	for i := 0; i < len(rest); i++ {
-		c := rest[i]
-		if c == '\\' && i+1 < len(rest) {
-			next := rest[i+1]
-			switch next {
-			case 'n':
-				sb.WriteByte('\n')
-			case 'r':
-				sb.WriteByte('\r')
-			case 't':
-				sb.WriteByte('\t')
-			default:
-				sb.WriteByte(next)
-			}
-			i++
-			continue
-		}
-		if c == '"' {
-			return sb.String()
-		}
-		sb.WriteByte(c)
-	}
-	return sb.String()
-}
-
-// containsLegacyAcceptanceCriteriaHeading scans an issue body for an H2 (or deeper)
-// markdown heading whose text matches "Legacy Acceptance Criteria" case-insensitively.
-// Per cycles.md, the section is conventionally `## Legacy Acceptance Criteria`.
-func containsLegacyAcceptanceCriteriaHeading(body string) bool {
-	for _, line := range strings.Split(body, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if !strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		// Drop leading hashes and any single space separator.
-		text := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
-		if strings.EqualFold(text, "Legacy Acceptance Criteria") {
-			return true
-		}
-	}
-	return false
-}
 
 // ---------------------------------------------------------------------------
 // Default exec runners + stdin prompter
