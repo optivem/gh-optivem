@@ -1,6 +1,8 @@
 # Plan: migrate `github-utils/scripts/*` into `gh-optivem` as native subcommands
 
-> **Status: PARTIAL.** Step 1 (`internal/workspace/`) landed on 2026-05-14. Steps 2, 3, 4, 5b (`rate-limit`), and the workspace half of Step 8 landed on 2026-05-14 — see `workspace_commands.go`, `workspace_commands_test.go`, and `main.go`'s root-command wiring. Step 5a (`test-pipeline-templates`) is deferred — the script is 327 lines with parallel orchestration, not "<50 lines" as the original plan estimated, and warrants a dedicated session. The cleanup group (Steps 6, 7, cleanup half of 8), slash-command rewriting (Step 9), and tombstoning (Step 10) remain deferred pending follow-up sessions.
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-14T07:55:09Z`
+
+> **Status: PARTIAL.** Step 1 (`internal/workspace/`) landed on 2026-05-14. Steps 2, 3, 4, 5b (`rate-limit`), 6 (`internal/ghbulk`), 7 (`cleanup_commands.go` + `internal/sonar`), 8, and 12 (README) landed on 2026-05-14 — see `workspace_commands.go`, `cleanup_commands.go`, `internal/ghbulk/`, `internal/sonar/`, README "Workspace operations" + "Cleanup" sections, and `main.go`'s root-command wiring. Step 5a (`test-pipeline-templates`) is deferred — the script is 327 lines with parallel orchestration, not "<50 lines" as the original plan estimated, and warrants a dedicated session. The slash-command rewriting (Step 9), tombstoning (Step 10), end-to-end verification (Step 11), and MEMORY.md update (Step 13) remain pending follow-up sessions in their respective repos.
 
 ## Context
 
@@ -104,60 +106,6 @@ This plan does not add capabilities the scripts don't already have — see [[fee
 
 - [ ] **Step 5a: Add `gh optivem workspace test-pipeline-templates`** — ⏳ Deferred (2026-05-14). The script is 327 lines with parallel orchestration (commit-stage fan-out → wait → acceptance/QA/signoff/prod per-repo fan-out), not "<50 lines" as the original plan estimated. Needs a dedicated session with goroutines + sync.WaitGroup. Inputs: workspace folders + hard-coded greeter repo list + workflow names. Reuse: `internal/shell.RunWithRetry`, `shell.CheckRateLimit`.
 
-### 6. Add `internal/ghbulk/` for paginated bulk operations
-
-`ghbulk.go` exposes:
-
-```go
-type Options struct {
-    DryRun bool
-    PageSize int
-    RateLimitThreshold int  // default 50, env override GH_OPTIVEM_RATELIMIT_THRESHOLD
-}
-
-// ForEachRelease lists all releases for owner/repo (paginated) and invokes fn
-// for each. fn is invoked even when DryRun is true (so callers can log "would
-// delete <tag>"); the destructive op itself respects DryRun internally.
-func ForEachRelease(owner, repo string, opt Options, fn func(rel Release) error) error
-// ...likewise for Package, Repo
-```
-
-Internals use `gh api ... --paginate` via `internal/shell/github.go` (`gh_retry`-equivalent already integrated). A pre-flight `wait_for_rate_limit` mirrors `common.sh:49-65`: read `gh api rate_limit`, if remaining < threshold, sleep until reset.
-
-### 7. Add `gh optivem cleanup releases/packages/repos/sonar-projects`
-
-Create `cleanup_commands.go`:
-
-```go
-func newCleanupCmd() *cobra.Command {
-    cmd := &cobra.Command{
-        Use:   "cleanup",
-        Short: "Bulk-delete remote artifacts (releases, packages, repos, SonarCloud projects)",
-        Long:  "Destructive operations. Pass --dry-run first to preview.",
-    }
-    cmd.AddCommand(
-        newCleanupReleasesCmd(),
-        newCleanupPackagesCmd(),
-        newCleanupReposCmd(),
-        newCleanupSonarProjectsCmd(),
-    )
-    cmd.PersistentFlags().Bool("dry-run", false, "Print what would be deleted; do not delete")
-    return cmd
-}
-```
-
-Each subcommand takes positional `owner/repo` args (1+). Behaviour matches the matching bash script — page through, optionally make-private (packages only), delete, sleep between deletes (port `common.sh:21-23` `DELAY_BETWEEN_DELETES`).
-
-`--dry-run` is a flag, not an env var (DRY_RUN). The env var is the bash idiom; flags are the gh-optivem idiom. **Do not** support both — pick the flag, document the change in the deprecation README in step 10.
-
-SonarCloud: `internal/sonar/` wraps the SonarCloud `api/projects/delete` endpoint using `SONAR_TOKEN` from env (the same env var the existing scaffolder uses — keep parity). Auth header `Authorization: Bearer $SONAR_TOKEN`.
-
-Regression tests: table tests for the argument parser (`owner/repo` validation, rejects bare `repo`, rejects `owner/repo/extra`). Skip live-API tests; smoke-verify in step 11.
-
-### 8. Wire the new groups into the root command
-
-`newWorkspaceCmd()` is already wired in `main.go`. Remaining: append `newCleanupCmd()` to the same `cmd.AddCommand(...)` block once Step 7 lands.
-
 ### 9. Rewrite the slash-command wrappers
 
 For each of `~/.claude/commands/{commit, sync, check-actions, github-commit-push-all, github-sync-all, github-check-actions-all}.md`, replace the bash invocation:
@@ -219,10 +167,6 @@ Negative cases:
 - `commit` against a dirty repo with no message and `--yes`: error matches the bash version's wording.
 - `commit --yes` against an untracked file without `--include-untracked`: refuses with the stray-file warning.
 - `cleanup releases foo` (missing slash): rejected by argument parser, not by the API.
-
-### 12. Update gh-optivem README
-
-Add a short "Workspace operations" + "Cleanup" section to `README.md` after the existing command tables, with one example per verb.
 
 ### 13. (Optional) Update `MEMORY.md`
 
