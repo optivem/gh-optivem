@@ -1,7 +1,5 @@
 # Abstract a Tracker port so the intake/board layer is not GitHub-only
 
-> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-14T19:57:02Z`
-
 **Status: ACTIVE — decisions captured.** Undeferred 2026-05-14 (was deferred 2026-05-04). This plan now consolidates both the original deferred analysis and the 2026-05-14 design walkthrough into a single document.
 
 ## Why now (undeferral triggers)
