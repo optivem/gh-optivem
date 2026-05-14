@@ -243,6 +243,35 @@ gh optivem test run --sample              # use each suite's sampleTest field as
 
 Multi-test semantics depend on the suite's `testFilter` in `tests.yaml`. The runner combines multiple `--test` values per `testFilterJoin`: `"or"` (default) joins names with `|` and substitutes once — works for dotnet (`&DisplayName~T1|T2`) and playwright/jest (`--grep 'T1|T2'`); `"repeat"` substitutes the whole `testFilter` once per name and concatenates — required for gradle (`--tests T1 --tests T2`). Practical ceiling on Windows is ~600 typical test names per invocation (the OS caps each command line at 32K characters).
 
+## Workspace operations
+
+`gh optivem workspace <verb>` iterates every repo declared in the academy `*.code-workspace` file. It locates the workspace via, in order: the `--workspace <dir>` flag, the `$GH_OPTIVEM_WORKSPACE` env var, or by walking up from the current directory.
+
+```bash
+gh optivem workspace commit "Update settings"             # stage, commit, pull, push every dirty repo
+gh optivem workspace commit --repo shop "Fix bug"         # only operate on the named repo
+gh optivem workspace commit --yes "Sync .claude"          # skip the y/N confirmation (required without a TTY)
+gh optivem workspace sync                                 # pull + push every repo (no commit)
+gh optivem workspace check-actions                        # latest run of every workflow in every workspace repo
+gh optivem workspace rate-limit                           # current GitHub API rate limits and reset times
+```
+
+`commit --yes` refuses to stage untracked (`??`) files unless `--include-untracked` is also passed — the stray-file foot-gun is opt-in for scripted callers.
+
+## Cleanup
+
+`gh optivem cleanup <verb>` bulk-deletes remote artifacts. Each subcommand pre-flights `gh api rate_limit` before every destructive call and sleeps `--delay-seconds` (default 10) after each delete to stay under GitHub's 80-mutating-calls/minute secondary limit. Always pass `--dry-run` first to preview.
+
+```bash
+gh optivem cleanup releases optivem/greeter-java --dry-run
+gh optivem cleanup releases optivem/greeter-java optivem/greeter-dotnet
+gh optivem cleanup packages optivem/shop --before-date 2026-01-01
+gh optivem cleanup repos valentinajemuovic --prefix course-tester- --dry-run
+gh optivem cleanup sonar-projects myorg --prefix myorg_course-tester- --dry-run
+```
+
+`cleanup releases` and `cleanup packages` take one or more positional `owner/repo` slugs; `cleanup repos` and `cleanup sonar-projects` take a single positional `<owner>` (or `<organization>`) followed by either `--prefix <prefix>`, explicit names/keys, or both. `cleanup sonar-projects` requires `$SONAR_TOKEN` (the same token the scaffolder reads).
+
 <!-- TODO: revisit implementation pipeline section — commented out for now
 ## Running the implementation pipeline
 

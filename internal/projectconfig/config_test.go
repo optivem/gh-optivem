@@ -304,7 +304,7 @@ func TestRoundTrip_PreservesProcessFlowAndOverrides(t *testing.T) {
 		Project:     Project{URL: "https://github.com/orgs/acme/projects/1"},
 		ProcessFlow: "config/process-flow.yaml",
 		AgentPrompts: map[string]string{
-			"atdd-test": "config/prompts/atdd-test.md",
+			"atdd-test-at": "config/prompts/atdd-test-at.md",
 		},
 		NodeExtras: map[string]string{
 			"AT_RED_DSL_WRITE": "prefer record types",
@@ -323,9 +323,9 @@ func TestRoundTrip_PreservesProcessFlowAndOverrides(t *testing.T) {
 	if got.ProcessFlow != cfg.ProcessFlow {
 		t.Errorf("process_flow: got %q, want %q", got.ProcessFlow, cfg.ProcessFlow)
 	}
-	if got.AgentPrompts["atdd-test"] != cfg.AgentPrompts["atdd-test"] {
+	if got.AgentPrompts["atdd-test-at"] != cfg.AgentPrompts["atdd-test-at"] {
 		t.Errorf("agent_prompts[atdd-test]: got %q, want %q",
-			got.AgentPrompts["atdd-test"], cfg.AgentPrompts["atdd-test"])
+			got.AgentPrompts["atdd-test-at"], cfg.AgentPrompts["atdd-test-at"])
 	}
 	if got.NodeExtras["AT_RED_DSL_WRITE"] != cfg.NodeExtras["AT_RED_DSL_WRITE"] {
 		t.Errorf("node_extras: got %q", got.NodeExtras["AT_RED_DSL_WRITE"])
@@ -378,7 +378,7 @@ func TestValidate_AgentPrompts_RejectsAbsolutePath(t *testing.T) {
 	cfg := &Config{
 		Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
 		AgentPrompts: map[string]string{
-			"atdd-test": "/abs/prompts/atdd-test.md",
+			"atdd-test-at": "/abs/prompts/atdd-test-at.md",
 		},
 	}
 	if err := cfg.Validate(); err == nil {

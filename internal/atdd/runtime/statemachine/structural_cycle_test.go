@@ -95,7 +95,7 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 		callActivity("SYSTEM_INTERFACE_REDESIGN_CYCLE", "structural_cycle", siParams).
 		then().
 		process("structural_cycle", siParams).
-		userTask("WRITE", "atdd-task").
+		userTask("WRITE", "atdd-task-system-interface-redesign").
 		userTask("APPROVE_CHANGE", "human").
 		serviceTask("COMPILE", "compile_all").
 		gateway("GATE_COMPILE_OK", "compile_ok", true).

@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	assetsync "github.com/optivem/gh-optivem/internal/assets/sync"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 )
@@ -107,6 +108,17 @@ type Options struct {
 	// `git status`. Empty when the dispatcher couldn't shell out (e.g.
 	// tests with no Git seam).
 	ChangedFiles string
+
+	// Language is the target language for this dispatch (e.g. "go",
+	// "typescript"). Substituted into the prompt's ${language} placeholder
+	// so per-language reference docs (under ~/.gh-optivem/docs/atdd/code/
+	// language-equivalents/<lang>.md) resolve to the right slice. The
+	// driver chooses the value per phase — backend phases pass the
+	// backend lang, frontend phases the frontend lang. Load-bearing:
+	// when empty AND the prompt body references ${language},
+	// findUnfilledPlaceholders fails the dispatch fast rather than
+	// silently substituting an empty path.
+	Language string
 
 	// NodeParams carries the YAML node's `params:` block (already expanded
 	// against ctx.Params at dispatch time). Substituted into the prompt
@@ -344,33 +356,6 @@ var nowFn = time.Now
 // correct behaviour because it isn't a placeholder.
 var unfilledPlaceholderRE = regexp.MustCompile(`\$\{[a-zA-Z_][a-zA-Z0-9_]*\}`)
 
-// conditionalRE matches a `<!-- if:NAME=VALUE -->...<!-- end-if -->`
-// block in a prompt template. NAME is a placeholder identifier (same
-// shape as ${name}); VALUE matches subtype-style hyphenated labels
-// (`system-interface-redesign`) without requiring quotes. The body is
-// non-greedy so adjacent blocks don't merge into one match, and the
-// trailing newline after `-->` is consumed when present so a kept
-// block doesn't leave a blank line behind and a stripped block doesn't
-// leave a stranded gap.
-//
-// Non-nested by design: an inner `<!-- end-if -->` would close the
-// outer block. The current template needs only flat gating.
-var conditionalRE = regexp.MustCompile(`(?s)<!--\s*if:([a-zA-Z_][a-zA-Z0-9_]*)=([a-zA-Z0-9_-]+)\s*-->\n?(.*?)<!--\s*end-if\s*-->\n?`)
-
-// filterConditionals processes `<!-- if:NAME=VALUE -->...<!-- end-if -->`
-// blocks: keeps the inner content (markers stripped) when params[NAME]
-// equals VALUE, otherwise removes the whole block. Lines outside any
-// conditional pass through unchanged. Runs before ExpandParams so the
-// kept content's `${...}` placeholders still get substituted.
-func filterConditionals(template string, params map[string]string) string {
-	return conditionalRE.ReplaceAllStringFunc(template, func(match string) string {
-		m := conditionalRE.FindStringSubmatch(match)
-		if params[m[1]] == m[2] {
-			return m[3]
-		}
-		return ""
-	})
-}
 
 // findUnfilledPlaceholders returns each distinct `${name}` token still
 // present in the rendered prompt, preserving first-seen order. Empty
@@ -429,6 +414,10 @@ func renderPrompt(opts Options) (string, error) {
 	// Fixed-schema placeholders win on key collision with NodeParams so a
 	// node author can't accidentally shadow ticket context by reusing a
 	// reserved name in YAML.
+	docsRoot, err := assetsync.DocsRoot()
+	if err != nil {
+		return "", fmt.Errorf("clauderun: resolve docs root: %w", err)
+	}
 	for k, v := range map[string]string{
 		"issue_num":      strconv.Itoa(opts.IssueNum),
 		"issue_title":    opts.IssueTitle,
@@ -443,13 +432,17 @@ func renderPrompt(opts Options) (string, error) {
 		"checklist":      opts.Checklist,
 		"verify_results": opts.VerifyResults,
 		"changed_files":  opts.ChangedFiles,
+		"docs_root":      docsRoot,
 	} {
 		params[k] = v
 	}
-	// Conditional blocks run before placeholder substitution so subtype-
-	// gated reference material (and any future per-variable gating) is
-	// stripped against the same values we hand to ExpandParams.
-	body = filterConditionals(body, params)
+	// Language is load-bearing — only registered when the driver supplied
+	// a value. An empty value would silently substitute, masking a config
+	// bug; instead we leave `${language}` unfilled so findUnfilledPlaceholders
+	// reports it after substitution.
+	if opts.Language != "" {
+		params["language"] = opts.Language
+	}
 	rendered := statemachine.ExpandParams(body, params)
 	if opts.OverrideText != "" {
 		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + opts.OverrideText + "\n"

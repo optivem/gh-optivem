@@ -24,6 +24,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	assetsync "github.com/optivem/gh-optivem/internal/assets/sync"
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/configinit"
 	"github.com/optivem/gh-optivem/internal/log"
@@ -65,6 +66,18 @@ func main() {
 	// Show subcommands in registration order (workflow order), not alphabetical.
 	// e.g. `config` lists init → validate → preflight, the sequence a user runs.
 	cobra.EnableCommandSorting = false
+
+	// Sync the embedded global asset tree to per-user paths
+	// (~/.gh-optivem/docs/, ~/.claude/{agents,commands}/atdd/) so
+	// methodology docs and Claude Code subagents are reachable on the
+	// user's filesystem. No-op after the first run when the stamp
+	// matches the binary version. Disabled by GH_OPTIVEM_NO_AUTO_SYNC.
+	if res, err := assetsync.EnsureSynced(version.Version); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to sync gh-optivem assets: %v\n", err)
+	} else if res.Synced {
+		fmt.Fprintln(os.Stderr, res.Notice)
+	}
+
 	if err := newRootCmd().Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -101,6 +114,9 @@ func newRootCmd() *cobra.Command {
 		newImplementCmd(),
 		newProcessCmd(),
 		newEnvironmentCmd(),
+		newWorkspaceCmd(),
+		newCleanupCmd(),
+		newAssetCmd(),
 	)
 	return cmd
 }
@@ -311,16 +327,12 @@ func buildSteps(cfg *config.Config, pc *projectconfig.Config, gh *shell.GitHub, 
 		// {name: "Validate no leftover template references", phase: phaseApplyTemplate, fn: func() { steps.ValidateNoLeftoverTemplateRefs(cfg) }},
 	}
 
-	// ATDD assets (agents, commands, prompts) get installed before Commit and
-	// push so they end up in the initial scaffold commit, just like the
-	// system code, workflows, and externals. Skipped when --no-atdd is set.
-	if !cfg.NoAtdd {
-		allSteps = append(allSteps, stepDef{
-			name:  "Install ATDD assets",
-			phase: phaseApplyTemplate,
-			fn:    func() { installAtddDuringInit(cfg) },
-		})
-	}
+	// ATDD assets no longer install per-repo — they live in gh-optivem's
+	// embedded asset tree and sync to per-user global paths (~/.gh-optivem/,
+	// ~/.claude/) on every gh-optivem invocation. Consumer repos hold zero
+	// ATDD assets on disk. The --no-atdd flag is retained for backward
+	// compatibility but is now a no-op at init time; the per-user sync
+	// escape hatch is the GH_OPTIVEM_NO_AUTO_SYNC env var.
 
 	allSteps = append(allSteps, stepDef{
 		name:      "Commit and push",

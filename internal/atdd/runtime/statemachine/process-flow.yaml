@@ -320,7 +320,7 @@ processes:
         type: call_activity
         process: red_phase_cycle
         params:
-          agent: atdd-test
+          agent: atdd-test-at
           phase_doc: docs/atdd/process/at-red-test.md
           phase_label: "AT - RED - TEST"
           change_type: "AT - RED - TEST"
@@ -336,7 +336,7 @@ processes:
         type: call_activity
         process: red_phase_cycle
         params:
-          agent: atdd-dsl
+          agent: atdd-dsl-at
           phase_doc: docs/atdd/process/at-red-dsl.md
           phase_label: "AT - RED - DSL"
           change_type: "AT - RED - DSL"
@@ -361,7 +361,7 @@ processes:
         type: call_activity
         process: red_phase_cycle
         params:
-          agent: atdd-driver
+          agent: atdd-driver-at
           phase_doc: docs/atdd/process/at-red-system-driver.md
           phase_label: "AT - RED - SYSTEM DRIVER"
           change_type: "AT - RED - SYSTEM DRIVER"
@@ -479,7 +479,7 @@ processes:
         type: call_activity
         process: red_phase_cycle
         params:
-          agent: atdd-test
+          agent: atdd-test-ct
           phase_doc: docs/atdd/process/ct-red-test.md
           phase_label: "CT - RED - TEST"
           change_type: "CT - RED - TEST"
@@ -496,7 +496,7 @@ processes:
         type: call_activity
         process: red_phase_cycle
         params:
-          agent: atdd-dsl
+          agent: atdd-dsl-ct
           phase_doc: docs/atdd/process/ct-red-dsl.md
           phase_label: "CT - RED - DSL"
           change_type: "CT - RED - DSL"
@@ -512,7 +512,7 @@ processes:
         type: call_activity
         process: red_phase_cycle
         params:
-          agent: atdd-driver
+          agent: atdd-driver-ct
           phase_doc: docs/atdd/process/ct-red-external-driver.md
           phase_label: "CT - RED - EXTERNAL DRIVER"
           change_type: "CT - RED - EXTERNAL DRIVER"
@@ -1072,7 +1072,7 @@ processes:
         process: structural_cycle
         params:
           change_type: "SYSTEM INTERFACE REDESIGN"
-          agent: atdd-task
+          agent: atdd-task-system-interface-redesign
           phase_doc: docs/atdd/process/system-interface-redesign.md
           subtype: system-interface-redesign
 
@@ -1081,7 +1081,7 @@ processes:
         process: structural_cycle
         params:
           change_type: "EXTERNAL SYSTEM INTERFACE REDESIGN"
-          agent: atdd-task
+          agent: atdd-task-external-system-interface-redesign
           phase_doc: docs/atdd/process/external-system-interface-redesign.md
           subtype: external-system-interface-redesign
 

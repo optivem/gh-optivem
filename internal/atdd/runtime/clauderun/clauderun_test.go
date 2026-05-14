@@ -115,7 +115,7 @@ func (f *fakeGit) hasGitArg(prefix ...string) bool {
 
 func newOpts() Options {
 	return Options{
-		Agent:           "atdd-test",
+		Agent:           "atdd-test-at",
 		PhaseDoc:        "docs/atdd/process/at-red-test.md",
 		NodeDescription: "Write the AT-RED scenario",
 		IssueNum:        42,
@@ -123,6 +123,9 @@ func newOpts() Options {
 		IssueRepo:       "optivem/shop",
 		ProjectTitle:    "Shop ATDD",
 		ProjectURL:      "https://github.com/orgs/optivem/projects/1",
+		// The stripped prompts reference ${language} in the language-
+		// equivalents pointer; seed a default so tests don't have to.
+		Language: "java",
 		// Discard banners so test output stays clean.
 		Stdout: io.Discard,
 		Stderr: io.Discard,
@@ -166,9 +169,13 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 	// test every embedded prompt to make sure no agent leaks the marker
 	// or the pre-rollout preamble.
 	for _, name := range []string{
-		"atdd-backend", "atdd-chore", "atdd-driver", "atdd-dsl",
+		"atdd-backend", "atdd-chore",
+		"atdd-driver-at", "atdd-driver-ct",
+		"atdd-dsl-at", "atdd-dsl-ct",
 		"atdd-frontend", "atdd-stubs",
-		"atdd-task", "atdd-test",
+		"atdd-task-system-interface-redesign",
+		"atdd-task-external-system-interface-redesign",
+		"atdd-test-at", "atdd-test-ct",
 	} {
 		opts := newOpts()
 		opts.Agent = name
@@ -191,7 +198,7 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 
 func TestRenderPrompt_TaskAgentArchitectureAndAllowedRoots_ExplicitValues(t *testing.T) {
 	opts := newOpts()
-	opts.Agent = "atdd-task"
+	opts.Agent = "atdd-task-system-interface-redesign"
 	opts.Architecture = "monolith"
 	opts.AllowedRoots = "- System: system/monolith/java (lang: java)\n- System tests: system-test/java (lang: java)\n"
 
@@ -210,7 +217,7 @@ func TestRenderPrompt_TaskAgentArchitectureAndAllowedRoots_ExplicitValues(t *tes
 
 func TestRenderPrompt_TaskAgentChecklistInjected(t *testing.T) {
 	opts := newOpts()
-	opts.Agent = "atdd-task"
+	opts.Agent = "atdd-task-system-interface-redesign"
 	opts.Checklist = "- [x] Rename \"New Order\" to \"Place Order\"\n- [x] Rename SKU aria-label"
 
 	got, err := renderPrompt(opts)
@@ -219,7 +226,7 @@ func TestRenderPrompt_TaskAgentChecklistInjected(t *testing.T) {
 	}
 	mustContain(t, got, opts.Checklist)
 	if strings.Contains(got, "Fetch the issue with `gh`") {
-		t.Errorf("atdd-task prompt should no longer instruct the agent to fetch the issue: %s", got)
+		t.Errorf("atdd-task-system-interface-redesign prompt should no longer instruct the agent to fetch the issue: %s", got)
 	}
 	if strings.Contains(got, "${checklist}") {
 		t.Errorf("${checklist} placeholder leaked into rendered prompt")
@@ -254,74 +261,88 @@ func TestRenderPrompt_ReturnsErrorForUnknownAgent(t *testing.T) {
 	}
 }
 
-func TestFilterConditionals_KeepsMatchingBlock(t *testing.T) {
-	tpl := "before\n<!-- if:subtype=external-system-interface-redesign -->\nkept\n<!-- end-if -->\nafter\n"
-	got := filterConditionals(tpl, map[string]string{"subtype": "external-system-interface-redesign"})
-	want := "before\nkept\nafter\n"
-	if got != want {
-		t.Errorf("filterConditionals keep-path:\n got:  %q\n want: %q", got, want)
-	}
-}
+// Step 6/D6 stripped the inlined `### Reference: ...` blocks from every
+// prompt body. The external-system doctrine that previously distinguished
+// the two atdd-task subtype prompts was inlined from
+// docs/atdd/architecture/driver-adapter.md; after the strip, both
+// subtype files point at that doc via ${docs_root} instead of inlining
+// it, so the bodies are now identical except for routing. The previous
+// "external subtype includes doctrine inline / system subtype excludes
+// it" assertions are obsolete — the doctrine is read on-demand from
+// the synced ~/.gh-optivem/docs/atdd/architecture/driver-adapter.md by
+// both variants. Subtype routing still works via the agent-name lookup
+// in process-flow.yaml.
 
-func TestFilterConditionals_StripsNonMatchingBlock(t *testing.T) {
-	tpl := "before\n<!-- if:subtype=external-system-interface-redesign -->\nstripped\n<!-- end-if -->\nafter\n"
-	got := filterConditionals(tpl, map[string]string{"subtype": "system-interface-redesign"})
-	want := "before\nafter\n"
-	if got != want {
-		t.Errorf("filterConditionals strip-path:\n got:  %q\n want: %q", got, want)
-	}
-}
-
-func TestFilterConditionals_HandlesMultipleBlocks(t *testing.T) {
-	// Two blocks separated by a heading. Realistic shape: each block ends
-	// with a markdown blank line before its closing marker, mirroring how
-	// the atdd-task template structures gated reference sections.
-	tpl := "intro\n\n<!-- if:subtype=ext -->\nA-body\n\n<!-- end-if -->\nmiddle\n\n<!-- if:subtype=sys -->\nB-body\n\n<!-- end-if -->\nouter\n"
-	got := filterConditionals(tpl, map[string]string{"subtype": "sys"})
-	want := "intro\n\nmiddle\n\nB-body\n\nouter\n"
-	if got != want {
-		t.Errorf("filterConditionals multi-block:\n got:  %q\n want: %q", got, want)
-	}
-}
-
-func TestRenderPrompt_TaskAgent_StripsExternalSectionForSystemSubtype(t *testing.T) {
-	// system-interface-redesign tickets should not see external-system
-	// driver doctrine (Real/Stub split, Ext* DTOs) inlined in the prompt.
+// TestRenderPrompt_DocsRootSubstitutes covers the D5 placeholder that
+// lets prompt bodies reference the per-user synced docs root via
+// ${docs_root}. The substituted value is an absolute path so the
+// agent's Read tool resolves it regardless of working directory.
+// Uses PromptOverride (which IS expanded, unlike OverrideText) to
+// inject a body that references the placeholder.
+func TestRenderPrompt_DocsRootSubstitutes(t *testing.T) {
 	opts := newOpts()
-	opts.Agent = "atdd-task"
-	opts.Subtype = "system-interface-redesign"
+	opts.PromptOverride = "Read ${docs_root}/atdd/architecture/dsl-core.md."
 
 	got, err := renderPrompt(opts)
 	if err != nil {
 		t.Fatalf("renderPrompt: %v", err)
 	}
-	// "BaseXyzClient" appears once in the unconditional Process step as a
-	// one-line orientation hint for external paths the agent must NOT
-	// modify; we only gate the multi-paragraph doctrine sections, not the
-	// passing mention in step 1.
-	for _, banned := range []string{
-		"Real vs Stub Implementations",
-		"External DTOs",
-		"Both implementations share a `BaseXyzDriver`",
-	} {
-		if strings.Contains(got, banned) {
-			t.Errorf("system-interface-redesign prompt should not contain %q", banned)
-		}
+	if strings.Contains(got, "${docs_root}") {
+		t.Errorf("expected ${docs_root} substituted; got: %q", got)
 	}
-	mustContain(t, got, "Shop UI Driver")
+	// docs_root substitutes to an OS-native path (Windows uses
+	// backslashes); the literal trailing "/atdd/..." in the template
+	// stays as-is. Assert the two halves independently so the test
+	// is platform-portable.
+	if !strings.Contains(got, filepath.Join(".gh-optivem", "docs")) {
+		t.Errorf("expected ${docs_root} resolved to ~/.gh-optivem/docs prefix; got: %q", got)
+	}
+	if !strings.Contains(got, "/atdd/architecture/dsl-core.md") {
+		t.Errorf("expected literal suffix preserved; got: %q", got)
+	}
 }
 
-func TestRenderPrompt_TaskAgent_KeepsExternalSectionForExternalSubtype(t *testing.T) {
+// TestRenderPrompt_LanguageSubstitutes covers the D10 placeholder that
+// lets prompt bodies select a per-language reference doc slice via
+// ${language}. The driver picks the value per phase from project config.
+func TestRenderPrompt_LanguageSubstitutes(t *testing.T) {
 	opts := newOpts()
-	opts.Agent = "atdd-task"
-	opts.Subtype = "external-system-interface-redesign"
+	opts.Language = "go"
+	opts.PromptOverride = "Read ${docs_root}/atdd/code/language-equivalents/${language}.md."
 
 	got, err := renderPrompt(opts)
 	if err != nil {
 		t.Fatalf("renderPrompt: %v", err)
 	}
-	mustContain(t, got, "Real vs Stub Implementations")
-	mustContain(t, got, "External DTOs")
+	if strings.Contains(got, "${language}") {
+		t.Errorf("expected ${language} substituted; got: %q", got)
+	}
+	if !strings.Contains(got, "language-equivalents/go.md") {
+		t.Errorf("expected ${language} resolved to 'go'; got: %q", got)
+	}
+}
+
+// TestRenderPrompt_UnsetLanguageFailsFast pins the D10 "load-bearing"
+// contract: a prompt that references ${language} with no Language set
+// produces a clear render-time error rather than silently substituting
+// an empty path that would resolve to a missing doc at agent run time.
+func TestRenderPrompt_UnsetLanguageFailsFast(t *testing.T) {
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	opts := newOpts()
+	opts.Language = "" // override the test default to exercise the load-bearing path
+	// Use a node_replacements-style PromptOverride that references
+	// ${language} without setting Language. Dispatch's
+	// findUnfilledPlaceholders catches the leftover.
+	opts.PromptOverride = "You are the Test Agent. Read ${docs_root}/atdd/code/language-equivalents/${language}.md."
+	err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
+	if err == nil {
+		t.Fatalf("expected error for unset ${language}, got nil")
+	}
+	if !strings.Contains(err.Error(), "language") {
+		t.Errorf("expected error to name 'language'; got: %v", err)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -453,7 +474,7 @@ func TestDispatch_WritesEnterAndExitBanners(t *testing.T) {
 	}
 	got := buf.String()
 	mustContain(t, got, "ENTERING AGENT")
-	mustContain(t, got, "atdd-test")
+	mustContain(t, got, "atdd-test-at")
 	mustContain(t, got, "EXITED AGENT")
 	mustContain(t, got, "1 file(s) changed")
 }
@@ -976,17 +997,17 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	claudeFake := &fakeClaude{}
 	opts := newOpts()
 	opts.Stdout = &buf
-	opts.Agent = "atdd-task"
+	opts.Agent = "atdd-task-system-interface-redesign"
 	opts.Architecture = "monolith"
 	opts.AllowedRoots = "- System: system/monolith/typescript (lang: typescript)\n- System tests: system-test/typescript (lang: typescript)\n"
 	opts.Checklist = "- [x] One done\n- [ ] Two pending"
-	opts.PromptLogPath = "/tmp/runs/001-atdd-task.prompt.md"
+	opts.PromptLogPath = "/tmp/runs/001-atdd-task-system-interface-redesign.prompt.md"
 
 	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	got := buf.String()
-	mustContain(t, got, "PREPARED PROMPT for atdd-task")
+	mustContain(t, got, "PREPARED PROMPT for atdd-task-system-interface-redesign")
 	mustContain(t, got, "architecture:")
 	mustContain(t, got, "monolith")
 	mustContain(t, got, "allowed roots:")
@@ -997,7 +1018,7 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	mustContain(t, got, "2 item(s) (1 already [x])")
 	mustContain(t, got, "- [x] One done")
 	mustContain(t, got, "- [ ] Two pending")
-	mustContain(t, got, "/tmp/runs/001-atdd-task.prompt.md")
+	mustContain(t, got, "/tmp/runs/001-atdd-task-system-interface-redesign.prompt.md")
 }
 
 func TestDispatch_PreparedPromptBannerUsesPlaceholdersForEmpties(t *testing.T) {
