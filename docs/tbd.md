@@ -188,17 +188,22 @@ git rebase --abort
 
 If a rebase leaves you in a weird state, **stop and read `git status`**. Don't run more commands to "fix" it blindly. `git rebase --abort` always gets you back to where you started.
 
-## TBD at scale
+## Beyond Scaled TBD — tooling for very large engineering orgs
 
-The protocol above is the **small-repo flavor** of TBD. At scale, the philosophy is the same but the tooling is heavier:
+Plain TBD and Scaled TBD cover almost every project this repo will produce. Once an organization grows to hundreds or thousands of committers on one trunk, the same philosophy holds but additional tooling is needed on top:
 
-- **Merge queues** (GitHub Merge Queue, Bors, Aviator) serialize merges so naive `pull --rebase` races don't lose every commit.
+- **Merge queues** (GitHub Merge Queue, Bors, Aviator) serialize merges. They solve two problems naive `pull --rebase` + `push` cannot solve at very high contention:
+
+  1. *You lose every race.* `pull --rebase` doesn't lose commits — your work stays on your local branch the whole time — but with many committers, the loop "fetch → rebase → push → rejected → repeat" can fail to converge. Someone else always lands between your fetch and your push.
+  2. *Stale-base CI.* You rebased onto `origin/main` at time T1, CI went green at T2, but by T2 `origin/main` has moved on. Your code lands on a `main` that CI never tested. Result: green PR, broken trunk.
+
+  Merge queues fix both by serializing merges and re-running CI against the actual merge order, only landing if CI passes against the final base.
 - **Feature flags** become non-optional — incomplete work merges to trunk behind a flag, then gets flipped later.
 - **Pre-merge CI gates** are mandatory.
 - **Revert-first culture** — if your commit broke main, someone reverts immediately; you re-land with the fix.
 - **Affected-test / build-graph tooling** (Bazel, Nx, Turborepo) bounds CI cost.
 
-The discipline you build here (small commits, `pull --rebase`, never force-push trunk, linear history) is the foundation that scales.
+The discipline you build with plain TBD or Scaled TBD (small commits, `pull --rebase`, never force-push trunk, linear history) is the foundation that carries over. Nothing in this list contradicts what's above — it adds layers on top.
 
 ## The rule that doesn't change
 
