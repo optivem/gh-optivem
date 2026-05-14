@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -63,6 +64,21 @@ type stepDef struct {
 }
 
 func main() {
+	// Handle --version before Cobra and asset-sync. One Write so a
+	// downstream `| head -n 1` can't trigger SIGPIPE mid-template (Cobra's
+	// text/template emits the value and the trailing newline as separate
+	// syscalls; the second one races with head's exit). Also keeps
+	// --version side-effect-free — no filesystem sync, no stderr notice.
+	for _, a := range os.Args[1:] {
+		if a == "--" {
+			break
+		}
+		if a == "--version" {
+			io.WriteString(os.Stdout, version.Full()+"\n")
+			return
+		}
+	}
+
 	// Show subcommands in registration order (workflow order), not alphabetical.
 	// e.g. `config` lists init → validate → preflight, the sequence a user runs.
 	cobra.EnableCommandSorting = false
