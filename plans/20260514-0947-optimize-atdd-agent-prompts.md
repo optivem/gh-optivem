@@ -1,7 +1,5 @@
 # Plan: optimize ATDD agent prompts and centralize ATDD ownership in gh-optivem
 
-> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-14T09:45:52Z`
-
 ## Context
 
 `gh optivem implement` dispatches one of nine embedded agent prompts under
