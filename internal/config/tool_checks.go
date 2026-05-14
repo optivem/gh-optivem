@@ -121,3 +121,33 @@ func compilerChecksFor(langs []string) []check {
 	}
 	return out
 }
+
+// verifyDocker checks that the docker binary is on PATH. Required for every
+// scaffold using --deploy docker (the default) — the local-verify lifecycle
+// (Build / Up / Run tests / Down / Clean in internal/runner) shells out to
+// `docker compose`. Compose v2 is a docker sub-command, so the `docker`
+// binary alone is sufficient; legacy Compose v1 (`docker-compose`) installs
+// are not checked separately.
+func verifyDocker() error {
+	if _, err := exec.LookPath("docker"); err != nil {
+		return errors.New("docker not found on PATH.\n    " +
+			"Install Docker Desktop (macOS/Windows): https://www.docker.com/products/docker-desktop\n    " +
+			"Install Docker Engine (Linux): https://docs.docker.com/engine/install/")
+	}
+	return nil
+}
+
+// deployChecksFor returns the local-tool checks required for the given
+// deploy target. Empty deploy string returns nil — callers that don't
+// know the deploy target skip the deploy-conditional check (same idiom
+// as compilerChecksFor with an empty langs slice). Unknown deploy values
+// also return nil for the same programmer-error reason given in
+// compilerChecksFor — the deploy-flag validator (projectconfig.IsValidDeploy)
+// runs upstream.
+func deployChecksFor(deploy string) []check {
+	switch deploy {
+	case projectconfig.DeployDocker:
+		return []check{{"docker", verifyDocker}}
+	}
+	return nil
+}

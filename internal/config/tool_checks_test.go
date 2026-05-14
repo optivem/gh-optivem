@@ -68,3 +68,55 @@ func namesOf(cs []check) []string {
 	}
 	return out
 }
+
+// TestDeployChecksFor mirrors TestCompilerChecksFor: the dispatcher is the
+// single source of truth for "what tools does deploy X need", so adding
+// cloud-run later (currently gated as in-development at
+// projectconfig.IsValidDeploy) means adding one case to the switch and one
+// row to this table — nothing else.
+func TestDeployChecksFor(t *testing.T) {
+	tests := []struct {
+		name      string
+		deploy    string
+		wantNames []string
+	}{
+		{
+			name:      "empty deploy yields no checks",
+			deploy:    "",
+			wantNames: nil,
+		},
+		{
+			name:      "docker yields one check",
+			deploy:    projectconfig.DeployDocker,
+			wantNames: []string{"docker"},
+		},
+		{
+			name:      "cloud-run yields no checks today",
+			deploy:    projectconfig.DeployCloudRun,
+			wantNames: nil,
+		},
+		{
+			name:      "unknown deploy is silently skipped",
+			deploy:    "fargate",
+			wantNames: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := deployChecksFor(tt.deploy)
+			if len(got) != len(tt.wantNames) {
+				t.Fatalf("deployChecksFor(%q) returned %d checks, want %d (names: %v)",
+					tt.deploy, len(got), len(tt.wantNames), namesOf(got))
+			}
+			for i, want := range tt.wantNames {
+				if got[i].name != want {
+					t.Errorf("check[%d].name = %q, want %q", i, got[i].name, want)
+				}
+				if got[i].fn == nil {
+					t.Errorf("check[%d].fn is nil", i)
+				}
+			}
+		})
+	}
+}

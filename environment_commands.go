@@ -27,6 +27,7 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
 // newEnvironmentCmd builds the `gh optivem environment` parent. The parent
@@ -81,8 +82,14 @@ accepted by its provider.`,
 // so a CI preflight job can pin one matrix combo without coupling this
 // command to the project-config schema or cwd state. Without --lang, only
 // the language-agnostic tools (gh, actionlint) and tokens are checked.
+//
+// The --deploy flag opts in to deploy-target-conditional tool checks (docker
+// today; gcloud/equivalent when --deploy cloud-run ships). Same opt-in
+// rationale as --lang: explicit-args-only so CI preflight jobs don't have
+// to know the project-config schema.
 func newEnvironmentVerifyCmd() *cobra.Command {
 	var langs []string
+	var deploy string
 	cmd := &cobra.Command{
 		Use:   "verify",
 		Short: "Verify the local environment is ready to run the gh-acceptance pipeline",
@@ -101,16 +108,20 @@ the CLI consumes is present and accepted by its provider.
   npm                 — required when --lang includes typescript
   dotnet              — required when --lang includes dotnet
   java                — required when --lang includes java
+  docker              — required when --deploy is docker
 
 All checks run in parallel; on any failure the command prints every broken
 check and exits non-zero, so the user fixes them in one pass instead of
 fix-one-retry-discover-next.
 
-The npm / dotnet / java compiler checks only run when --lang is passed —
-omit the flag to check just the language-agnostic tools and tokens.`,
+The npm / dotnet / java compiler checks only run when --lang is passed; the
+docker check only runs when --deploy is passed. Omit both flags to check
+just the language-agnostic tools and tokens.`,
 		Example: `  gh optivem environment verify
   gh optivem environment verify --lang typescript
-  gh optivem environment verify --lang typescript,dotnet,java`,
+  gh optivem environment verify --lang typescript,dotnet,java
+  gh optivem environment verify --deploy docker
+  gh optivem environment verify --lang typescript --deploy docker`,
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			// Initialize logging with sane defaults so the auth-check helpers'
@@ -138,7 +149,17 @@ omit the flag to check just the language-agnostic tools and tokens.`,
 				os.Exit(1)
 			}
 
-			if err := config.VerifyEnvironment(langs); err != nil {
+			// Validate --deploy against the same set as
+			// validateCommonFlags / projectconfig.IsValidDeploy. Empty is
+			// allowed (skips the docker check); any other non-enum value
+			// is rejected with a clear hint.
+			if deploy != "" && !projectconfig.IsValidDeploy(deploy) {
+				fmt.Fprintf(os.Stderr, "--deploy: unsupported value %q; must be one of %q, %q\n",
+					deploy, projectconfig.DeployDocker, projectconfig.DeployCloudRun)
+				os.Exit(1)
+			}
+
+			if err := config.VerifyEnvironment(langs, deploy); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
@@ -148,5 +169,8 @@ omit the flag to check just the language-agnostic tools and tokens.`,
 	cmd.Flags().StringSliceVar(&langs, "lang", nil,
 		"Languages to check compilers for: java, dotnet, typescript "+
 			"(comma-separated or repeated). Omit to check only language-agnostic tools.")
+	cmd.Flags().StringVar(&deploy, "deploy", "",
+		"Deploy target to check tools for: docker. "+
+			"Omit to skip the deploy-conditional check.")
 	return cmd
 }

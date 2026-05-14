@@ -234,6 +234,10 @@ func verifyGHCRToken(client *http.Client, username, token string) error {
 //     `gh optivem environment verify` (no --lang) behaviour. With `langs`
 //     populated, each unique entry adds one presence check that runs in
 //     the same parallel fan-out as the rest.
+//   - Deploy-conditional tool presence (docker) — gated on `deploy`;
+//     empty `deploy` skips this class entirely, mirroring the `langs`
+//     idiom. With `deploy="docker"`, the local-verify lifecycle's
+//     `docker compose` dependency is checked alongside the rest.
 //   - Required env-var presence: DOCKERHUB_TOKEN, SONAR_TOKEN, GHCR_TOKEN,
 //     WORKFLOW_TOKEN, REPO_TOKEN, plus DOCKERHUB_USERNAME (an account
 //     name, not a token).
@@ -256,7 +260,7 @@ func verifyGHCRToken(client *http.Client, username, token string) error {
 // Returns nil on full success, otherwise an aggregated error listing every
 // failure. On nil return, prints one success line per check via the log
 // package (caller is responsible for log.Init).
-func VerifyEnvironment(langs []string) error {
+func VerifyEnvironment(langs []string, deploy string) error {
 	e := readEnvTokens()
 
 	required := []struct{ name, val string }{
@@ -287,6 +291,10 @@ func VerifyEnvironment(langs []string) error {
 	// Nil/empty langs => no compiler checks (the standalone
 	// `environment verify` surface with no --lang flag).
 	checks = append(checks, compilerChecksFor(langs)...)
+	// Deploy-conditional tool presence, gated on the caller-supplied deploy
+	// target. Empty deploy => no deploy-conditional check (the standalone
+	// `environment verify` surface with no --deploy flag).
+	checks = append(checks, deployChecksFor(deploy)...)
 	// Live HTTP checks only run when every required env var is present —
 	// each one needs its token value. Missing-var errors are reported
 	// separately in the aggregated error below.
