@@ -1,7 +1,5 @@
 # Plan: end-to-end retry mechanism — consolidate, harden, audit, close gaps
 
-🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-14T20:01:50Z`
-
 Single source of truth for retry-related work in this workspace. Supersedes
 the four standalone plans listed below by folding their goals, file lists,
 and verification steps into one phased program.
@@ -184,69 +182,6 @@ Total: ~10-12 commits across 3 repos plus 2 audit reports plus follow-up
 fix plans. Push order across phases: **actions → gh-optivem → shop**,
 preserving cross-repo reference validity.
 
-### Phase 4 — Audit gh-optivem Go for retry-coverage gaps
-
-Read-only sweep. From superseded plan 1845.
-
-16. Use the `code-auditor` agent (scoped to `internal/**` and `main.go`).
-    Brief it on the retry-coverage pitfall pattern (it has prior experience
-    with the silent-stderr sweep that produced
-    `audits/20260514-silent-external-call-failures.md`).
-
-17. Audit method per call site:
-    - **Identify** invocations of `shell.Run`, `MustRun`, `RunCapture`,
-      `RunStdin`, `RunPassthrough` (and `Must*` variants); direct
-      `exec.Command(...)` outside the `shell` package; `net/http` calls.
-    - **Classify by command kind**: GH API / Git remote / SonarCloud HTTP
-      (all "must retry on transient") vs. Local git / Local tools / Probes
-      designed to fail (all "no retry").
-    - **Classify retry state**: R-OK (already retrying) / R-MISSING
-      (external without retry) / R-DOC-OK (local or probe, no retry needed).
-    - For each R-MISSING site, recommend the smallest correct wrapper swap.
-
-18. **Deliverable**: audit report at
-    `audits/<date>-external-call-retry-coverage.md`, structured like
-    `audits/20260514-silent-external-call-failures.md`:
-    TL;DR / Findings table (High/Medium/Low) / Healthy patterns /
-    Recommended order of fixes / Counts (≤20). Plus a follow-up plan file
-    `plans/<date>-fix-gh-optivem-retry-gaps.md` listing each R-MISSING
-    site as a discrete edit.
-
-19. **Highest-priority candidate** to flag (per 1845): `internal/shell/sonarcloud.go`
-    — direct `net/http` calls to `sonarcloud.io/api/*`, not currently
-    wrapped in any retry. After consolidation, these can adopt
-    `RetryWithPolicy` using a generic regex.
-
-### Phase 5 — Audit shop workflows for retry-coverage gaps
-
-Read-only sweep. From superseded plan 1850.
-
-20. **Update the rubric first.** Add a new §N section to
-    `.claude/agents/workflow-auditor.md` covering external-I/O retry
-    coverage. Categories:
-    - **N-A** — `gh` call without retry. Recommendation: source
-      `gh-retry.sh` and switch to `gh_retry ...`.
-    - **N-B** — Other network call without retry (`curl`, `wget`,
-      `docker pull/push`, `npm install`, `mvn deploy`, `dotnet restore`,
-      SonarCloud scan upload). Recommendation: switch to the matching
-      `<tool>_retry` wrapper from the shared engine, or wrap with
-      `nick-fields/retry@v3` for non-standard tools.
-    - **N-C** — Retry present but misconfigured (aggressive schedule, masks
-      4xx, wraps a hard-fail probe). Recommendation: align with the shared
-      engine's 4×{5,15,45} schedule and hard-fail pass-through.
-    - **Anti-patterns**: `continue-on-error: true` as retry substitute;
-      `if: failure()` blocks that re-run non-idempotent work; long-running
-      commands wrapped in retry with no timeout.
-
-21. **Run the audit** via the `workflow-auditor` agent (scoped to
-    `../shop/.github/workflows/` plus the composite actions under
-    `../actions/**/action.yml`).
-
-22. **Deliverable**: audit report at
-    `audits/<date>-shop-workflow-retry-coverage.md`, structured like
-    `20260514-silent-external-call-failures.md`. Plus a follow-up plan file
-    `plans/<date>-fix-shop-workflow-retry-gaps.md`.
-
 ### Phase 6 — Execute fix plans from Phases 4 and 5
 
 23. Open the two follow-up plan files produced by Phases 4 and 5. Each
@@ -259,33 +194,6 @@ Read-only sweep. From superseded plan 1850.
     leaf-workflow fixes (they cascade).
 
 ## Validation
-
-### Phase 2 (sonar fix)
-
-- Trigger `gh-acceptance-stage` against the shop PR branch:
-  ```
-  gh workflow run gh-acceptance-stage -f shop-ref=<branch> -R optivem/gh-optivem
-  ```
-  Expect all 8 dotnet/java matrix combos to pass (or pass first try with
-  no retries logged if Sonar is healthy — no negative test possible without
-  an outage).
-
-### Phase 4 (gh-optivem audit)
-
-- `go build ./...` and `go test ./...` remain green (audit is read-only).
-- The audit's R-OK and R-MISSING lists together cover every external-call
-  site grep finds — no "unclassified" residue.
-- Spot-check 3 R-DOC-OK sites to confirm classification.
-
-### Phase 5 (shop audit)
-
-- Audit report classifies every external-I/O step found — no
-  "unclassified" residue.
-- Cross-check against the shared engine: every R-OK site sources one of the
-  `<tool>-retry.sh` helpers (or uses a Marketplace action with documented
-  internal retry).
-- Spot-check 3 N-A findings by reading the workflow + composite to confirm
-  no upstream wrapper exists.
 
 ### Phase 6 (fix execution)
 
