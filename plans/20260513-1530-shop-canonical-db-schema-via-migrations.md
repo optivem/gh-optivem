@@ -5,8 +5,14 @@
 > deletions (TS `ensureSchema`, TS `synchronize`, Java `ddl-auto: validate`,
 > .NET `EnsureCreatedAsync` removal), the Testcontainers + Flyway wiring for
 > the Java test profiles, the `compose-drift` CI check, the `drift` (monolith
-> + multitier Java→TS schema-interop) jobs, and `docs/operations/schema-changes.md`
-> are all in shop's `main`.
+> + multitier Java→TS schema-interop) jobs **integrated into
+> `_meta-prerelease-pipeline.yml` as a sibling of `cross-lang` (gates
+> `tag-meta-rc` via the `!failure()` aggregate)**, and
+> `docs/operations/schema-changes.md` are all in shop's `main`.
+>
+> Verified end-to-end by meta-prerelease run `25854297005` on 2026-05-14:
+> all 7 commit stages + 6 pipelines + 12 cross-lang + 2 drift jobs green,
+> meta-rc tag `meta-v1.0.89-rc.321` minted.
 >
 > What remains is the cross-repo coordination after shop's PR ships and Phase 5,
 > deferred per decision in the original plan.
@@ -14,7 +20,8 @@
 ## Cross-repo coordination (post-merge of shop)
 
 Triggered after the shop changes are merged and shop's CI is green (per-stack
-acceptance + `compose-drift` + `drift`).
+acceptance + `compose-drift` + `drift` — the latter now a pipeline-level gate
+on `tag-meta-rc`).
 
 1. **Manual-test against shop main.** In gh-optivem, run
    `bash scripts/manual-test.sh --shop-ref main` for each of the six stack/arch
