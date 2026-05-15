@@ -1,11 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // initTestRepo creates a fresh git repo in dir with one initial commit so
@@ -379,6 +381,203 @@ func TestMainForcePushGuard_OnFeatureBranch_NoOp(t *testing.T) {
 
 	if err := mainForcePushGuard(clone); err != nil {
 		t.Errorf("guard fired on non-main branch: %v", err)
+	}
+}
+
+func TestMainLintRef_PrefersOriginMain(t *testing.T) {
+	_, clone := initBareAndClone(t)
+	if got := mainLintRef(clone); got != "origin/main" {
+		t.Errorf("ref = %q, want origin/main", got)
+	}
+}
+
+func TestMainLintRef_FallsBackToLocalMain(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "local-only")
+	initTestRepo(t, repo)
+	if got := mainLintRef(repo); got != "main" {
+		t.Errorf("ref = %q, want main", got)
+	}
+}
+
+func TestMainLintRef_ReturnsEmptyWhenNeither(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "no-main")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	mustGit(t, repo, "init", "-q", "-b", "trunk")
+	mustGit(t, repo, "config", "user.email", "test@example.com")
+	mustGit(t, repo, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(repo, "seed.txt"), []byte("seed\n"), 0o644); err != nil {
+		t.Fatalf("write seed: %v", err)
+	}
+	mustGit(t, repo, "add", ".")
+	mustGit(t, repo, "commit", "-q", "-m", "seed")
+	if got := mainLintRef(repo); got != "" {
+		t.Errorf("ref = %q, want empty (neither origin/main nor main present)", got)
+	}
+}
+
+func TestLintHistoryOneRepo_LinearHistory_ReturnsNoMerges(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "linear")
+	initTestRepo(t, repo)
+	for i := 0; i < 3; i++ {
+		path := filepath.Join(repo, fmt.Sprintf("f%d.txt", i))
+		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+			t.Fatalf("write f%d: %v", i, err)
+		}
+		mustGit(t, repo, "add", ".")
+		mustGit(t, repo, "commit", "-q", "-m", fmt.Sprintf("c%d", i))
+	}
+
+	merges, err := lintHistoryOneRepo(repo, "main", 100)
+	if err != nil {
+		t.Fatalf("lintHistoryOneRepo: %v", err)
+	}
+	if len(merges) != 0 {
+		t.Errorf("expected no merges on linear history, got %v", merges)
+	}
+}
+
+func TestLintHistoryOneRepo_MergeCommitOnMain_FlagsIt(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "with-merge")
+	initTestRepo(t, repo)
+
+	mustGit(t, repo, "checkout", "-q", "-b", "feature")
+	if err := os.WriteFile(filepath.Join(repo, "feat.txt"), []byte("f"), 0o644); err != nil {
+		t.Fatalf("write feat: %v", err)
+	}
+	mustGit(t, repo, "add", ".")
+	mustGit(t, repo, "commit", "-q", "-m", "feat commit")
+
+	mustGit(t, repo, "checkout", "-q", "main")
+	if err := os.WriteFile(filepath.Join(repo, "mainfile.txt"), []byte("m"), 0o644); err != nil {
+		t.Fatalf("write mainfile: %v", err)
+	}
+	mustGit(t, repo, "add", ".")
+	mustGit(t, repo, "commit", "-q", "-m", "main commit")
+	mustGit(t, repo, "merge", "--no-ff", "-m", "merge feature", "feature")
+
+	merges, err := lintHistoryOneRepo(repo, "main", 100)
+	if err != nil {
+		t.Fatalf("lintHistoryOneRepo: %v", err)
+	}
+	if len(merges) != 1 {
+		t.Fatalf("expected 1 merge commit, got %d: %v", len(merges), merges)
+	}
+	if !strings.Contains(merges[0], "merge feature") {
+		t.Errorf("merge line missing expected subject: %q", merges[0])
+	}
+}
+
+func TestStaleBranchesOneRepo_MainOnly_ReturnsEmpty(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "main-only")
+	initTestRepo(t, repo)
+	stale, err := staleBranchesOneRepo(repo, time.Now())
+	if err != nil {
+		t.Fatalf("staleBranchesOneRepo: %v", err)
+	}
+	if len(stale) != 0 {
+		t.Errorf("expected no stale branches, got %v", stale)
+	}
+}
+
+func TestStaleBranchesOneRepo_FreshBranch_NotFlagged(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "fresh")
+	initTestRepo(t, repo)
+	mustGit(t, repo, "checkout", "-q", "-b", "feature/fresh")
+	if err := os.WriteFile(filepath.Join(repo, "fresh.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write fresh: %v", err)
+	}
+	mustGit(t, repo, "add", ".")
+	mustGit(t, repo, "commit", "-q", "-m", "fresh commit")
+
+	stale, err := staleBranchesOneRepo(repo, time.Now().Add(-24*time.Hour))
+	if err != nil {
+		t.Fatalf("staleBranchesOneRepo: %v", err)
+	}
+	if len(stale) != 0 {
+		t.Errorf("fresh branch flagged as stale: %v", stale)
+	}
+}
+
+func TestStaleBranchesOneRepo_OldBranch_Flagged(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "stale")
+	initTestRepo(t, repo)
+	mustGit(t, repo, "checkout", "-q", "-b", "feature/old")
+	// Force tip's committer-date 72h in the past via env-overrides on commit.
+	oldUnix := fmt.Sprintf("%d -0000", time.Now().Add(-72*time.Hour).Unix())
+	cmd := exec.Command("git", "-C", repo, "commit", "-q", "--allow-empty", "-m", "old work")
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_DATE="+oldUnix,
+		"GIT_COMMITTER_DATE="+oldUnix,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit with old date: %v\n%s", err, out)
+	}
+
+	stale, err := staleBranchesOneRepo(repo, time.Now().Add(-24*time.Hour))
+	if err != nil {
+		t.Fatalf("staleBranchesOneRepo: %v", err)
+	}
+	if len(stale) != 1 {
+		t.Fatalf("expected 1 stale branch, got %d: %v", len(stale), stale)
+	}
+	if stale[0].Name != "feature/old" {
+		t.Errorf("stale branch name = %q, want feature/old", stale[0].Name)
+	}
+}
+
+func TestStaleBranchesOneRepo_SortsOldestFirst(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "multi-stale")
+	initTestRepo(t, repo)
+
+	makeStaleBranch := func(name string, hoursAgo int) {
+		t.Helper()
+		mustGit(t, repo, "checkout", "-q", "main")
+		mustGit(t, repo, "checkout", "-q", "-b", name)
+		oldUnix := fmt.Sprintf("%d -0000", time.Now().Add(-time.Duration(hoursAgo)*time.Hour).Unix())
+		cmd := exec.Command("git", "-C", repo, "commit", "-q", "--allow-empty", "-m", name)
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_DATE="+oldUnix,
+			"GIT_COMMITTER_DATE="+oldUnix,
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git commit on %s: %v\n%s", name, err, out)
+		}
+	}
+	makeStaleBranch("feature/younger", 48)
+	makeStaleBranch("feature/older", 200)
+
+	stale, err := staleBranchesOneRepo(repo, time.Now().Add(-24*time.Hour))
+	if err != nil {
+		t.Fatalf("staleBranchesOneRepo: %v", err)
+	}
+	if len(stale) != 2 {
+		t.Fatalf("expected 2 stale branches, got %v", stale)
+	}
+	if stale[0].Name != "feature/older" || stale[1].Name != "feature/younger" {
+		t.Errorf("not sorted oldest-first: got %v, %v", stale[0].Name, stale[1].Name)
+	}
+}
+
+func TestFormatBranchAge(t *testing.T) {
+	cases := []struct {
+		in   time.Duration
+		want string
+	}{
+		{30 * time.Minute, "<1h"},
+		{time.Hour, "1h"},
+		{2 * time.Hour, "2h"},
+		{23 * time.Hour, "23h"},
+		{24 * time.Hour, "1d"},
+		{25 * time.Hour, "1d 1h"},
+		{72 * time.Hour, "3d"},
+		{77 * time.Hour, "3d 5h"},
+	}
+	for _, c := range cases {
+		if got := formatBranchAge(c.in); got != c.want {
+			t.Errorf("formatBranchAge(%v) = %q, want %q", c.in, got, c.want)
+		}
 	}
 }
 

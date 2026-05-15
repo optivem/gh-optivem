@@ -1,0 +1,39 @@
+name: gh-lint-history
+
+# Linear-trunk drift detector. docs/tbd.md mandates that main has no merge
+# commits (Squash and Rebase-and-merge are required PR merge modes — never
+# "Create a merge commit"). This workflow fires on every push to main and
+# fails if the newly-pushed HEAD is a merge commit, so wrong-mode PR merges
+# get flagged at PR time instead of being absorbed into history.
+#
+# Paired with the local `gh optivem workspace lint-history` command, which
+# scans the recent history window for ad-hoc checks across every workspace
+# repo. CI is the only thing that prevents drift over time; the local form is
+# for catching pre-existing drift.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint-history:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Reject merge commit at HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "$(git rev-list --no-walk --merges HEAD)" ]; then
+            sha=$(git rev-parse HEAD)
+            subject=$(git log -1 --pretty=%s HEAD)
+            echo "::error::HEAD ($sha) is a merge commit — docs/tbd.md requires linear trunk on main."
+            echo "::error::Subject: $subject"
+            echo "::error::Use Squash or Rebase-and-merge for PRs, never Create a merge commit."
+            exit 1
+          fi
+          echo "HEAD is a single-parent commit — linear trunk preserved."

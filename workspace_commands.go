@@ -16,7 +16,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -51,6 +54,8 @@ func newWorkspaceCmd() *cobra.Command {
 		newWorkspaceSyncCmd(),
 		newWorkspaceCheckActionsCmd(),
 		newWorkspaceRateLimitCmd(),
+		newWorkspaceLintHistoryCmd(),
+		newWorkspaceStaleBranchesCmd(),
 	)
 	return cmd
 }
@@ -529,6 +534,252 @@ func runWorkspaceRateLimit() error {
 	}
 	fmt.Println(out)
 	return nil
+}
+
+// ── lint-history ────────────────────────────────────────────────────────
+
+// lintHistoryOptions captures the per-invocation flags for `workspace lint-history`.
+type lintHistoryOptions struct {
+	Limit int
+}
+
+func newWorkspaceLintHistoryCmd() *cobra.Command {
+	opts := lintHistoryOptions{}
+	cmd := &cobra.Command{
+		Use:   "lint-history [--limit N]",
+		Short: "Flag merge commits on main in every workspace repo (docs/tbd.md drift detector)",
+		Long: `For each repo in the workspace, scan the last N first-parent commits of main
+for merge commits and flag any hits. docs/tbd.md mandates a linear trunk —
+any merge commit on main is drift. Exits non-zero when drift is found.
+
+Inspected ref is origin/main when present, falling back to local main. Repos
+with neither are skipped. Run ` + "`gh optivem workspace sync`" + ` first if you want
+the freshest remote state — lint-history does not fetch.`,
+		Example: `  gh optivem workspace lint-history
+  gh optivem workspace lint-history --limit 500`,
+		Args: cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			exitOnError(runWorkspaceLintHistory(opts))
+		},
+	}
+	cmd.Flags().IntVar(&opts.Limit, "limit", 100, "Number of first-parent commits on main to scan per repo")
+	return cmd
+}
+
+func runWorkspaceLintHistory(opts lintHistoryOptions) error {
+	if opts.Limit <= 0 {
+		return fmt.Errorf("--limit must be a positive integer, got %d", opts.Limit)
+	}
+	_, folders, err := workspace.Resolve(workspaceFlagValue)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(workspaceSeparator)
+	fmt.Printf("  Lint history — last %d commits on main per repo\n", opts.Limit)
+	fmt.Println(workspaceSeparator)
+
+	cleanRepos, dirtyRepos, skippedRepos := 0, 0, 0
+	for _, repo := range folders {
+		fmt.Println()
+		fmt.Printf("--- %s ---\n", relOrSelf(repo))
+		ref := mainLintRef(repo)
+		if ref == "" {
+			fmt.Println("  ⏭  no main / origin/main — skipped")
+			skippedRepos++
+			continue
+		}
+		merges, err := lintHistoryOneRepo(repo, ref, opts.Limit)
+		if err != nil {
+			return fmt.Errorf("git log in %s: %w", repo, err)
+		}
+		if len(merges) == 0 {
+			fmt.Printf("  ✓ linear (%s)\n", ref)
+			cleanRepos++
+			continue
+		}
+		fmt.Printf("  ✗ %d merge commit(s) on %s:\n", len(merges), ref)
+		for _, line := range merges {
+			fmt.Printf("    %s\n", line)
+		}
+		dirtyRepos++
+	}
+
+	fmt.Println()
+	fmt.Println(workspaceSeparator)
+	fmt.Printf("  Done. %d linear, %d with merge commits, %d skipped.\n", cleanRepos, dirtyRepos, skippedRepos)
+	fmt.Println(workspaceSeparator)
+	if dirtyRepos > 0 {
+		return fmt.Errorf("lint-history: %d repo(s) have merge commits on main (docs/tbd.md requires linear trunk)", dirtyRepos)
+	}
+	return nil
+}
+
+// lintHistoryOneRepo returns the merge commits in the last `limit` first-parent
+// commits of `ref` in repo. Each line is "<short-sha> <subject>". Returns
+// (nil, nil) for a clean linear window.
+func lintHistoryOneRepo(repo, ref string, limit int) ([]string, error) {
+	out, err := captureGit(repo, "log", "--merges", "--first-parent", ref,
+		fmt.Sprintf("-%d", limit), "--pretty=format:%h %s")
+	if err != nil {
+		return nil, err
+	}
+	trimmed := strings.TrimRight(out, "\n")
+	if trimmed == "" {
+		return nil, nil
+	}
+	return strings.Split(trimmed, "\n"), nil
+}
+
+// mainLintRef returns "origin/main" when that ref exists, falling back to
+// "main" when only the local branch is present, or "" when neither is. The
+// remote-tracking ref is preferred so lint-history reports against the
+// authoritative trunk, not a stale local branch.
+func mainLintRef(repo string) string {
+	if exec.Command("git", "-C", repo, "rev-parse", "--verify", "--quiet", "origin/main").Run() == nil {
+		return "origin/main"
+	}
+	if exec.Command("git", "-C", repo, "rev-parse", "--verify", "--quiet", "main").Run() == nil {
+		return "main"
+	}
+	return ""
+}
+
+// ── stale-branches ──────────────────────────────────────────────────────
+
+// staleBranchesOptions captures the per-invocation flags for
+// `workspace stale-branches`.
+type staleBranchesOptions struct {
+	Age time.Duration
+}
+
+// staleBranch is one local branch that's older than the threshold, with the
+// committer-date of its tip.
+type staleBranch struct {
+	Name string
+	Tip  time.Time
+}
+
+func newWorkspaceStaleBranchesCmd() *cobra.Command {
+	opts := staleBranchesOptions{Age: 24 * time.Hour}
+	cmd := &cobra.Command{
+		Use:   "stale-branches [--age <duration>]",
+		Short: "List local branches in each workspace repo whose tip is older than the threshold",
+		Long: `For each repo in the workspace, list local branches (excluding main) whose
+tip commit was authored more than --age ago. docs/tbd.md:62 sets the
+"hours, not days" expectation for Scaled-TBD branch lifetime; this command
+helps Scaled-TBD teams notice when a branch has drifted from that discipline.
+
+Reports the branch name and the age of the tip commit. Exits zero whether or
+not stale branches were found — the output is informational, not enforcement.`,
+		Example: `  gh optivem workspace stale-branches
+  gh optivem workspace stale-branches --age 4h
+  gh optivem workspace stale-branches --age 72h`,
+		Args: cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			exitOnError(runWorkspaceStaleBranches(opts))
+		},
+	}
+	cmd.Flags().DurationVar(&opts.Age, "age", 24*time.Hour,
+		"Flag branches whose tip is older than this duration (Go syntax: 4h, 72h, 1h30m)")
+	return cmd
+}
+
+func runWorkspaceStaleBranches(opts staleBranchesOptions) error {
+	if opts.Age <= 0 {
+		return fmt.Errorf("--age must be a positive duration, got %v", opts.Age)
+	}
+	_, folders, err := workspace.Resolve(workspaceFlagValue)
+	if err != nil {
+		return err
+	}
+
+	cutoff := time.Now().Add(-opts.Age)
+
+	fmt.Println(workspaceSeparator)
+	fmt.Printf("  Stale branches — tip older than %s per repo\n", opts.Age)
+	fmt.Println(workspaceSeparator)
+
+	cleanRepos, staleRepoCount, staleBranchTotal := 0, 0, 0
+	for _, repo := range folders {
+		fmt.Println()
+		fmt.Printf("--- %s ---\n", relOrSelf(repo))
+		stale, err := staleBranchesOneRepo(repo, cutoff)
+		if err != nil {
+			return fmt.Errorf("stale-branches in %s: %w", repo, err)
+		}
+		if len(stale) == 0 {
+			fmt.Println("  ✓ no stale branches")
+			cleanRepos++
+			continue
+		}
+		staleRepoCount++
+		for _, b := range stale {
+			fmt.Printf("  ⚠ %s — last commit %s ago\n", b.Name, formatBranchAge(time.Since(b.Tip)))
+			staleBranchTotal++
+		}
+	}
+
+	fmt.Println()
+	fmt.Println(workspaceSeparator)
+	fmt.Printf("  Done. %d clean, %d with stale branches (%d total, threshold %s).\n",
+		cleanRepos, staleRepoCount, staleBranchTotal, opts.Age)
+	fmt.Println(workspaceSeparator)
+	return nil
+}
+
+// staleBranchesOneRepo returns local branches (excluding main) whose tip
+// committer-date is at or before cutoff. Sorted oldest-first so the worst
+// offender appears first in the report.
+func staleBranchesOneRepo(repo string, cutoff time.Time) ([]staleBranch, error) {
+	out, err := captureGit(repo, "for-each-ref",
+		"--format=%(refname:short)|%(committerdate:unix)",
+		"refs/heads")
+	if err != nil {
+		return nil, fmt.Errorf("git for-each-ref: %w", err)
+	}
+	var stale []staleBranch
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		name, tsStr, ok := strings.Cut(line, "|")
+		if !ok {
+			continue
+		}
+		if name == "main" {
+			continue
+		}
+		ts, err := strconv.ParseInt(strings.TrimSpace(tsStr), 10, 64)
+		if err != nil {
+			continue
+		}
+		tip := time.Unix(ts, 0)
+		if !tip.After(cutoff) {
+			stale = append(stale, staleBranch{Name: name, Tip: tip})
+		}
+	}
+	sort.Slice(stale, func(i, j int) bool { return stale[i].Tip.Before(stale[j].Tip) })
+	return stale, nil
+}
+
+// formatBranchAge renders d as "<1h", "Nh", "Nd", or "Nd Mh" — coarse
+// resolution suitable for a stale-branch report. Sub-hour ages are not useful
+// here so they round down to "<1h".
+func formatBranchAge(d time.Duration) string {
+	if d < time.Hour {
+		return "<1h"
+	}
+	hours := int(d.Hours())
+	if hours < 24 {
+		return fmt.Sprintf("%dh", hours)
+	}
+	days := hours / 24
+	rem := hours % 24
+	if rem == 0 {
+		return fmt.Sprintf("%dd", days)
+	}
+	return fmt.Sprintf("%dd %dh", days, rem)
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────
