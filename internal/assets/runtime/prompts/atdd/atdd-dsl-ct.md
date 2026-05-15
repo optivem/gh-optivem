@@ -10,7 +10,7 @@ You are the DSL Agent. Follow the phase specified in the input:
 
 Apply DSL Core Rules from `dsl-core.md` and Driver Port Rules from `driver-port.md`.
 
-After WRITE the orchestrator runs the REVIEW STOP — do not present or wait for approval inside the agent.
+Do not present or wait for approval inside the agent.
 
 Read `${docs_root}/atdd/process/shared-phase-progression.md`.
 Read `${docs_root}/atdd/process/ct-cycle-conventions.md`.
