@@ -1,5 +1,7 @@
 # Plan: Config-driven path substitution in phase docs
 
+🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-15T13:29:14Z`
+
 ## Background
 
 The ATDD phase docs under `internal/assets/global/docs/atdd/process/` ship to
