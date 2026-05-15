@@ -1,6 +1,6 @@
 # Build TBD discipline into `gh optivem workspace`
 
-> ✅ **STATUS: LAYERS 1 + 2 SHIPPED.** Layer 1 (config-independent `--rebase`, push-retry loop, pre-commit pull with auto-stash, `gh optivem doctor`) and Layer 2 (mode banner, in-tool main force-push guard, `gh optivem hooks install`) have shipped. Layers 3–4 remain. All open decisions have been resolved — see "Decisions resolved" at the bottom.
+> ✅ **STATUS: LAYERS 1 + 2 + 3 SHIPPED.** Layer 1 (config-independent `--rebase`, push-retry loop, pre-commit pull with auto-stash, `gh optivem doctor`), Layer 2 (mode banner, in-tool main force-push guard, `gh optivem hooks install`), and Layer 3 (`gh optivem branch start`, `gh optivem branch refresh`, `gh optivem pr merge`) have shipped. Layer 4 remains. All open decisions have been resolved — see "Decisions resolved" at the bottom.
 
 ## Context
 
@@ -26,15 +26,7 @@ Per-repo loop in `workspace_commands.go:130-158` is `stage → confirm → commi
 
 ## Proposed work
 
-Layered so each layer is shippable on its own. Layers 1 and 2 have shipped. Layers 3 and 4 are each their own PRs and are additive.
-
-### Layer 3 — Scaled-TBD primitives
-
-Today the tool knows nothing about feature branches. If `docs/tbd.md`'s Scaled-TBD section is actually used in practice (open question — see decisions below), these encapsulate the rituals:
-
-8. **`gh optivem branch start <name>`** = `git checkout main && git pull --rebase && git checkout -b <name>`.
-9. **`gh optivem branch refresh`** = `git fetch origin && git rebase origin/main && git push --force-with-lease` — the ritual on `tbd.md:75-81`. Hardcodes `--force-with-lease`; plain `--force` is not an option.
-10. **`gh optivem pr merge`** defaults to `--squash` or `--rebase`; rejects `--merge`. Wrapper over `gh pr merge`.
+Layered so each layer is shippable on its own. Layers 1, 2, and 3 have shipped. Layer 4 is its own PR and is additive.
 
 ### Layer 4 — Drift detection
 
@@ -45,18 +37,9 @@ Catch the case where the doc and the repo have drifted apart.
 
 ## Affected commands
 
-Single reference for every new command this plan still proposes. Layers 1 and 2 surfaces (workspace commit, workspace sync, doctor, hooks install) have shipped and are documented in the code itself.
+Single reference for every new command this plan still proposes. Layers 1, 2, and 3 surfaces (workspace commit, workspace sync, doctor, hooks install, branch start, branch refresh, pr merge) have shipped and are documented in the code itself.
 
 ### New
-
-**`gh optivem branch start <name>`** — layer 3.8
-Encapsulates the Scaled-TBD branch-start ritual: `git checkout main && git pull --rebase && git checkout -b <name>`. Prevents the common foot-gun of branching off a stale local `main`. One command instead of three.
-
-**`gh optivem branch refresh`** — layer 3.9
-Encapsulates the Scaled-TBD "main moved while my PR was open" ritual: `git fetch origin && git rebase origin/main && git push --force-with-lease`. The exact sequence in `docs/tbd.md:75-81`. Hardcodes `--force-with-lease`; plain `--force` is not exposed, so the operator can't pick the dangerous variant.
-
-**`gh optivem pr merge`** — layer 3.10
-Wrapper over `gh pr merge` that defaults to `--squash` or `--rebase` and outright rejects `--merge`. Stops "Create a merge commit" merges from sneaking onto `main`, which would break the linear-trunk invariant the rest of the tooling depends on.
 
 **`gh optivem workspace lint-history`** — layer 4.11
 Reports, for each repo in the workspace, any merge commit on `main` over the last N commits (`git log --merges --first-parent main`). A drift detector — catches the case where the doc says "linear trunk" but the actual history disagrees. Ships with a paired GitHub Actions workflow that fails on any new merge commit on `main`, so drift is caught at PR time rather than discovered later.
@@ -66,7 +49,7 @@ Lists branches in each workspace repo that have lived longer than ~24h, per `doc
 
 ## Suggested sequencing
 
-Layers 1 and 2 have shipped. Layers 3 and 4 are each their own PRs and are additive. Layer 3 is in scope (decision 1: Scaled TBD is in use).
+Layers 1, 2, and 3 have shipped. Layer 4 is its own PR and is additive.
 
 ## Decisions resolved
 
