@@ -11,81 +11,6 @@ Status: queued — items are discrete fix sites the audit found, one per N-A / N
 
 These resolve multiple consumer-workflow findings at one source-of-truth change. Land them first.
 
-### Item 1 — Build `optivem/actions/shared/git-retry.sh`
-
-The seed dependency for items 2–5. Mirror the shape of `gh-retry.sh` / `docker-retry.sh` / `sonar-retry.sh`:
-
-- Source `retry-core.sh`.
-- `_GIT_RETRY_ATTEMPTS=4`, `_GIT_RETRY_DELAYS=(5 15 45)`.
-- Retryable regex (network/transient): `Could not resolve host|Connection reset by peer|RPC failed.*HTTP 5\d\d|Operation timed out|unable to access|\bEOF\b|TLS handshake|tls:.*handshake|temporary failure in name resolution|no such host|HTTP 502|HTTP 503|HTTP 504|server certificate verification failed`.
-- Hard-fail regex (auth / policy / permission): `Permission denied|HTTP 401|HTTP 403|! \[remote rejected\]|pre-receive hook declined|repository .* not found|fatal: protocol|fatal: bad refspec`.
-- Wrappers: `git_push_retry "$@"` → `retry_with_policy "$_GIT_RETRY_RETRYABLE" "$_GIT_RETRY_HARD_FAIL" git-push -- git push "$@"`; `git_fetch_retry "$@"` → same shape against `git fetch "$@"`.
-- Add a `_test-git-retry.sh` alongside the existing `_test-*-retry.sh` shells.
-- Vendor into `shop/.github/workflows/scripts/` via the existing `actions/scripts/sync-shared.sh` flow.
-
-After this lands, items 2–5 are mechanical wrapper-swaps.
-
-### Item 2 — `actions/publish-tag/tag.sh :: tag-job :: line 36`
-
-Replace `if git push "$push_target" "$TAG"; then ...` with `if git_push_retry "$push_target" "$TAG"; then ...`. Source `$GITHUB_ACTION_PATH/../shared/git-retry.sh` at the top of `tag.sh`. Preserve the post-failure concurrent-push-race recovery at lines 41-46 unchanged — the retry wrapper handles transients, the existing recovery handles the legitimate "another runner won the race" case. (N-B.1)
-
-### Item 3 — `actions/check-sha-on-branch/check.sh :: check-step :: line 14`
-
-Source `$GITHUB_ACTION_PATH/../shared/git-retry.sh` and replace `git fetch origin "$BASE_BRANCH" --quiet` with `git_fetch_retry origin "$BASE_BRANCH" --quiet`. Note the wrapper will need to handle `--quiet` redirecting stderr — confirm the regex still matches on the buffered stderr from the wrapper, not on what `--quiet` suppresses. (N-B.2)
-
-### Item 4 — `actions/cleanup-prereleases/action.yml :: "Fetch all tags" :: line 43`
-
-Step body `git fetch --tags --force`. Replace with an inline `run: bash` that sources `$GITHUB_ACTION_PATH/shared/git-retry.sh` (or rebases the step into the underlying `cleanup-prereleases.sh` script which already sources `gh-retry.sh`). Either way, end with `git_fetch_retry --tags --force`. (N-B.3)
-
-### Item 5 — `shop/.github/workflows/meta-prerelease-stage.yml :: tag-meta-rc :: step "Tag meta-rc" line 234`
-
-Add `source "$GITHUB_WORKSPACE/.github/workflows/scripts/git-retry.sh"` near the top of the `run:` body. Replace `git push origin "$TAG"` with `git_push_retry origin "$TAG"`. (N-B.4)
-
-### Item 6 — `shop/.github/workflows/meta-release-stage.yml :: tag-meta-release :: step "Create meta release tag and GitHub release" line 334`
-
-Currently calls `git_push_retry origin "$RELEASE_TAG"` with no source providing the function. Add `source "$GITHUB_WORKSPACE/.github/workflows/scripts/git-retry.sh"` alongside the existing `gh-retry.sh` source on line 329. After Item 1 lands, this becomes a one-line addition — and resolves the latent "command not found" failure that would otherwise fire on the next meta-release execution. **Priority within Tier 1: highest** — currently broken. (N-B.5)
-
-### Item 7 — `shop/.github/workflows/monolith-dotnet-acceptance-stage.yml :: sonar :: step "Run Sonar Analysis" line 388`
-
-Replace:
-
-```yaml
-- name: Run Sonar Analysis
-  uses: Wandalen/wretry.action@v3
-  with:
-    attempt_limit: 3
-    attempt_delay: 30000
-    command: cd system-test/dotnet && ./run-sonar.sh
-  env:
-    SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-```
-
-with:
-
-```yaml
-- name: Run Sonar Analysis
-  shell: bash
-  env:
-    SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-  run: |
-    set -euo pipefail
-    source "$GITHUB_WORKSPACE/.github/workflows/scripts/sonar-retry.sh"
-    cd system-test/dotnet
-    sonar_retry bash ./run-sonar.sh
-```
-
-Note: if `run-sonar.sh` itself only invokes one sonarscanner command, the cleaner fix is to source `sonar-retry.sh` inside `run-sonar.sh` and `sonar_retry`-wrap the scanner call there. Either works; the inline approach above is the smallest correct swap. (N-C.2, incident-driven from acceptance run 25865827466.)
-
-### Item 8 — Apply Item 7's pattern to the 5 sibling acceptance-stage workflows
-
-- `shop/.github/workflows/monolith-java-acceptance-stage.yml :: sonar :: step "Run Sonar Analysis"`
-- `shop/.github/workflows/monolith-typescript-acceptance-stage.yml :: sonar :: step "Run Sonar Analysis"`
-- `shop/.github/workflows/multitier-dotnet-acceptance-stage.yml :: sonar :: step "Run Sonar Analysis"`
-- `shop/.github/workflows/multitier-java-acceptance-stage.yml :: sonar :: step "Run Sonar Analysis"`
-- `shop/.github/workflows/multitier-typescript-acceptance-stage.yml :: sonar :: step "Run Sonar Analysis"`
-
-Same swap as Item 7 in each — file-by-file. Line numbers within ~10 of 388 in each (mechanical to locate). (N-C.2, completion of incident fix.)
-
 ### Item 9 — `shop/.github/workflows/monolith-typescript-commit-stage.yml :: run :: step "Run Code Analysis" line 130`
 
 Replace the `SonarSource/sonarqube-scan-action@v7` step with an inline `run:` that sources `sonar-retry.sh` and invokes the scanner. **Precondition:** decide first whether `sonarqube-scan-action@v7` already has internal retry semantics — check upstream changelog. If yes, mark R-DOC-OK with a comment at the call site and **skip Item 9** (and Items 10, 11). If no, proceed with:
@@ -253,16 +178,6 @@ The `npm ci` / `./gradlew build` (which transitively triggers dependency resolut
 ## Dependencies between items
 
 ```
-Item 1 (git-retry.sh)
-  → Item 2 (publish-tag/tag.sh)
-  → Item 3 (check-sha-on-branch/check.sh)
-  → Item 4 (cleanup-prereleases/action.yml)
-  → Item 5 (meta-prerelease-stage.yml)
-  → Item 6 (meta-release-stage.yml — fixes latent runtime bug)
-
-Item 7 (one acceptance-stage Sonar) — independent; sonar-retry.sh already exists
-  → Item 8 (5 sibling acceptance-stages — same swap)
-
 Items 9, 10, 11 (typescript Sonar) — gated on upstream-retry verification of `sonarqube-scan-action@v7`
 
 Item 12 (docker-login@v1 composite)
@@ -274,7 +189,7 @@ Item 14 (one commit-stage docker pull loop) — independent; docker-retry.sh exi
 Items 16, 17, 18 — independent leaf-workflow fixes; can land in parallel
 ```
 
-Items 1, 7, 12, 14, 16, 17, 18 can begin in parallel. Items 2-6 are sequential after Item 1. Items 8 and 15 are mechanical follow-ups to 7 and 14 respectively. Item 13 is gated on Item 12. Items 9-11 are gated on upstream verification.
+Items 12, 14, 16, 17, 18 can begin in parallel. Item 15 is a mechanical follow-up to 14. Item 13 is gated on Item 12. Items 9-11 are gated on upstream verification.
 
 ---
 
