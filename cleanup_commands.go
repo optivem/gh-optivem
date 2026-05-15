@@ -31,8 +31,9 @@ func newCleanupCmd() *cobra.Command {
 		Use:   "cleanup",
 		Short: "Bulk-delete remote artifacts (releases, packages, repos, SonarCloud projects)",
 		Long: `Destructive operations against remote systems. Pass --dry-run first to
-preview what would be deleted. Each subcommand pre-flights the GitHub or
-SonarCloud rate limit before each destructive call.`,
+preview what would be deleted. GitHub-side subcommands pre-flight the
+GitHub rate limit before each destructive call; the SonarCloud subcommand
+applies the --delay-seconds throttle between deletes.`,
 	}
 	cmd.AddCommand(
 		newCleanupReleasesCmd(),

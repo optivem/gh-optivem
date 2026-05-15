@@ -47,7 +47,7 @@ build" against the system's container images.
 
 Per-language commands are dispatched from gh-optivem.yaml:
   dotnet     -> dotnet build
-  java       -> .\gradlew.bat compileJava
+  java       -> .\gradlew.bat compileJava compileTestJava
   typescript -> npm ci && npx tsc --noEmit
 
 Use the noun-scoped forms to narrow to one tier:

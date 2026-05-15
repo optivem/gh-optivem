@@ -80,7 +80,7 @@ type commitOptions struct {
 func newCommitCmd() *cobra.Command {
 	opts := commitOptions{}
 	cmd := &cobra.Command{
-		Use:   `commit [--repo <name>] [--paths "<paths>"] [--yes] [--include-untracked] "<message>"`,
+		Use:   `commit [--repo <name>] [--paths "<paths>"] [--yes] [--include-untracked] ["<message>"]`,
 		Short: "Commit, pull, and push every dirty repo in scope",
 		Long: `Iterate every repo in scope (workspace folders, or the cwd repo when no
 *.code-workspace is reachable — see "Mode: …" banner). For each dirty repo,

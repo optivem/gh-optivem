@@ -285,7 +285,13 @@ Multi-test semantics depend on the suite's `testFilter` in `tests.yaml`. The run
 
 ## Cross-repo operations
 
-`gh optivem commit`, `sync`, and `actions status` infer scope from the environment: if a `*.code-workspace` file is in scope (via the `--workspace <dir>` flag, the `$GH_OPTIVEM_WORKSPACE` env var, or a walk-up from the current directory), the verb iterates every workspace folder; otherwise it acts on the cwd repo only. `rate-limit` is a single API call with no scope.
+`gh optivem commit`, `sync`, and `actions status` infer scope from the environment. The cascade resolves to one of three modes:
+
+- **Workspace** — a `*.code-workspace` file is reachable (via the `--workspace <dir>` flag, the `$GH_OPTIVEM_WORKSPACE` env var, or a walk-up from the current directory); the verb iterates every folder in the workspace file.
+- **Project** — no workspace file is reachable, but CWD walks up to a `gh-optivem.yaml` with a non-empty `repos:` list; the verb iterates every listed local repo (used for multitier projects whose tiers live in sibling clones).
+- **Single repo** — neither of the above; the verb acts on the cwd repo only.
+
+`rate-limit` is a single API call with no scope.
 
 ```bash
 gh optivem commit "Update settings"                                     # stage, commit, pull, push every dirty repo in scope
@@ -297,7 +303,7 @@ gh optivem actions status                                               # latest
 gh optivem rate-limit                                                   # current GitHub API rate limits and reset times
 ```
 
-Each run prints a `Mode:` banner showing the resolved scope — `Mode: workspace (5 repos from page-turner.code-workspace)` or `Mode: single repo (shop)`.
+Each run prints a `Mode:` banner showing the resolved scope — `Mode: workspace (5 repos from page-turner.code-workspace)`, `Mode: project (3 repos from gh-optivem.yaml)`, or `Mode: single repo (shop)`.
 
 `commit --yes` refuses to stage untracked (`??`) files unless `--include-untracked` is also passed — the stray-file foot-gun is opt-in for scripted callers.
 
@@ -355,7 +361,7 @@ gh optivem process show > docs/process-diagram.md  # regenerate the committed di
 gh optivem doctor                              # verify the three global git config keys docs/tbd.md mandates
 gh optivem doctor --fix                        # set any missing or wrong keys to the required values
 gh optivem branch start feature/payments       # checkout main, pull --rebase, checkout -b <name> off latest origin/main
-gh optivem branch refresh                      # rebase the current branch onto latest origin/main
+gh optivem branch refresh                      # fetch origin, rebase current branch onto origin/main, push --force-with-lease (refuses on main)
 gh optivem pr merge                            # squash-merge a PR via `gh pr merge` (TBD-safe: never a merge commit)
 gh optivem pr merge 123 --rebase               # rebase-merge instead
 gh optivem pr merge --auto --squash --delete-branch
