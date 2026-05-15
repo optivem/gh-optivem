@@ -1,5 +1,7 @@
 # Plan: Shrink token waste in the AT - RED - TEST dispatch
 
+🤖 **Picked up by agent** — `VALENTINA_DESK` at `2026-05-15T13:28:51Z` — working through items in order. Item 1 complete (committed in `f3fb2fb`); Item 2 next.
+
 ## Background
 
 Diagnosed live from a `rehearsal-20260515-132502` run on issue #65 ("View
