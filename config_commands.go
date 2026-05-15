@@ -244,11 +244,17 @@ multi-line error block listing every failure otherwise.`,
 }
 
 // newConfigMigrateCmd implements `gh optivem config migrate`. Idempotently
-// back-fills required fields onto a pre-schema-bump gh-optivem.yaml — today
-// just project.provider, inferred from the existing project.url shape
-// (https://github.com/... → github; everything else → markdown). When
-// project.provider is already set, the file is untouched and the command
-// reports a no-op. Designed to be safe to run repeatedly.
+// back-fills required fields onto a pre-schema-bump gh-optivem.yaml:
+//
+//   - project.provider, inferred from the existing project.url shape
+//     (https://github.com/... → github; everything else → markdown).
+//   - repos:, the project-internal repo path list consumed by the
+//     workspace scope cascade. Inferred from the tier repo slugs for
+//     multi-repo projects; mono-repo projects are left untouched
+//     (single-repo behavior already covers them).
+//
+// When neither field needs back-filling the file is left untouched and
+// the command reports a no-op. Designed to be safe to run repeatedly.
 //
 // Comment preservation: the file is rewritten via yaml.v3's Node API so
 // existing comments and key ordering survive — operators who hand-edited
@@ -262,8 +268,13 @@ func newConfigMigrateCmd() *cobra.Command {
   • Adds project.provider (` + "`github`" + ` or ` + "`markdown`" + `), inferred from the existing
     project.url shape — https://github.com/... → github; everything else
     → markdown.
+  • Adds repos:, the project-internal repo path list consumed by the
+    workspace scope cascade. Inferred from the tier repo slugs for
+    multi-repo projects (one ../<repo-name> entry per distinct tier
+    slug). Mono-repo projects keep their existing single-repo behavior
+    and the field is left absent.
 
-The command is idempotent: when project.provider is already set, the
+The command is idempotent: when neither field needs back-filling the
 file is left untouched and the command reports "no migration needed".
 
 Existing comments and key ordering are preserved so hand-edited files
@@ -285,9 +296,14 @@ keep their context.`,
 }
 
 // runConfigMigrate is the testable core of `gh optivem config migrate`. It
-// reads <path> via yaml.v3 Node round-trip (so comments survive), back-fills
-// project.provider when absent, and writes the file back. Returns
-// (changed, err): changed=false means "no-op, file untouched."
+// reads <path> via yaml.v3 Node round-trip (so comments survive),
+// back-fills the supported migration targets (project.provider, repos:),
+// and writes the file back when anything changed. Returns (changed,
+// err): changed=false means "no-op, file untouched."
+//
+// Each back-fill step is independent — provider and repos may be added
+// in the same run (a config older than both bumps) or in separate runs
+// (a config that already has provider but predates repos:).
 func runConfigMigrate(path string) (bool, error) {
 	if path == "" {
 		return false, fmt.Errorf("config migrate: path is required")
@@ -311,12 +327,32 @@ func runConfigMigrate(path string) (bool, error) {
 	if projectNode == nil || projectNode.Kind != yaml.MappingNode {
 		return false, fmt.Errorf("config migrate: %s: missing project block (run `gh optivem config init` to seed it)", path)
 	}
-	if mappingValue(projectNode, "provider") != nil {
+
+	changed := false
+
+	// Back-fill project.provider when absent.
+	if mappingValue(projectNode, "provider") == nil {
+		url := scalarValue(mappingValue(projectNode, "url"))
+		provider := inferProvider(url)
+		prependMappingEntry(projectNode, "provider", provider)
+		changed = true
+	}
+
+	// Back-fill repos: when absent on a multi-repo project. inferRepos
+	// returns nil for configs the field shouldn't touch (mono-repo,
+	// missing architecture, no tier slugs) so this branch is a no-op for
+	// every layout that doesn't need iteration.
+	if mappingValue(doc, "repos") == nil {
+		paths := inferRepos(doc)
+		if len(paths) > 0 {
+			appendReposEntry(doc, paths)
+			changed = true
+		}
+	}
+
+	if !changed {
 		return false, nil
 	}
-	url := scalarValue(mappingValue(projectNode, "url"))
-	provider := inferProvider(url)
-	prependMappingEntry(projectNode, "provider", provider)
 	out, err := yaml.Marshal(&root)
 	if err != nil {
 		return false, fmt.Errorf("config migrate: marshal: %w", err)
@@ -325,6 +361,97 @@ func runConfigMigrate(path string) (bool, error) {
 		return false, fmt.Errorf("config migrate: write %s: %w", path, err)
 	}
 	return true, nil
+}
+
+// inferRepos reads the document mapping and returns the project-internal
+// repo paths to write into a back-filled repos: field. Returns nil for
+// configs where repos: should remain absent: mono-repo (single-repo
+// behavior already covers them), absent or unknown repo_strategy, or no
+// tier slug pairs to enumerate.
+//
+// The inference is structural — it reads only existing fields from the
+// node tree, no file I/O. For each non-empty tier repo slug (system,
+// system.backend, system.frontend, system_test, plus external_systems'
+// stubs/simulators) the function adds one entry per *distinct* slug as
+// ../<repo-name(slug)> — matching repolocator's sibling-folder
+// convention. Entries are deduplicated and returned in the order the
+// tiers appear in the schema so the resulting repos: list is stable.
+func inferRepos(doc *yaml.Node) []string {
+	strategy := scalarValue(mappingValue(doc, "repo_strategy"))
+	if strategy != projectconfig.RepoStrategyMultiRepo {
+		return nil
+	}
+
+	systemNode := mappingValue(doc, "system")
+	testNode := mappingValue(doc, "system_test")
+	externalNode := mappingValue(doc, "external_systems")
+
+	var slugs []string
+	collect := func(s string) {
+		if s != "" {
+			slugs = append(slugs, s)
+		}
+	}
+	if systemNode != nil && systemNode.Kind == yaml.MappingNode {
+		collect(scalarValue(mappingValue(systemNode, "repo")))
+		if backend := mappingValue(systemNode, "backend"); backend != nil {
+			collect(scalarValue(mappingValue(backend, "repo")))
+		}
+		if frontend := mappingValue(systemNode, "frontend"); frontend != nil {
+			collect(scalarValue(mappingValue(frontend, "repo")))
+		}
+	}
+	if testNode != nil && testNode.Kind == yaml.MappingNode {
+		collect(scalarValue(mappingValue(testNode, "repo")))
+	}
+	if externalNode != nil && externalNode.Kind == yaml.MappingNode {
+		if stubs := mappingValue(externalNode, "stubs"); stubs != nil {
+			collect(scalarValue(mappingValue(stubs, "repo")))
+		}
+		if sims := mappingValue(externalNode, "simulators"); sims != nil {
+			collect(scalarValue(mappingValue(sims, "repo")))
+		}
+	}
+
+	seen := map[string]struct{}{}
+	var paths []string
+	for _, slug := range slugs {
+		name := slug
+		if idx := strings.LastIndex(slug, "/"); idx >= 0 && idx < len(slug)-1 {
+			name = slug[idx+1:]
+		}
+		p := "../" + name
+		if _, dup := seen[p]; dup {
+			continue
+		}
+		seen[p] = struct{}{}
+		paths = append(paths, p)
+	}
+	return paths
+}
+
+// appendReposEntry inserts a `repos:` key at the end of the document
+// mapping so back-filled multi-repo configs end with the new list
+// rather than burying it among existing keys. Each path becomes a
+// {path: <value>} block-style mapping inside the sequence so the
+// emitted YAML matches the hand-written shape:
+//
+//	repos:
+//	  - path: ../page-turner-backend
+//	  - path: ../page-turner-frontend
+//	  - path: ../page-turner-tests
+func appendReposEntry(doc *yaml.Node, paths []string) {
+	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "repos"}
+	seq := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Style: 0}
+	for _, p := range paths {
+		entry := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Style: 0}
+		entry.Content = []*yaml.Node{
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "path"},
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: p},
+		}
+		seq.Content = append(seq.Content, entry)
+	}
+	doc.Content = append(doc.Content, keyNode, seq)
 }
 
 // inferProvider picks the provider that matches the existing project.url.

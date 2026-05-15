@@ -1425,3 +1425,170 @@ func validMultitierBase() *Config {
 		},
 	}
 }
+
+// ---------------------------------------------------------------------------
+// LocalRepos (repos: field) — schema acceptance and rejection
+// ---------------------------------------------------------------------------
+
+// TestValidate_AcceptsAbsentReposField pins the backwards-compat
+// contract: a config produced before the repos: field was introduced
+// must still load and validate cleanly. The four canonical samples
+// already cover this transitively (none has repos:), but pinning it
+// directly makes the contract findable in one place.
+func TestValidate_AcceptsAbsentReposField(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	if cfg.LocalRepos != nil {
+		t.Fatalf("validMonolithBase should not set LocalRepos; got %+v", cfg.LocalRepos)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("absent repos: should validate, got: %v", err)
+	}
+}
+
+func TestValidate_AcceptsValidRepoPaths(t *testing.T) {
+	t.Parallel()
+	cfg := validMultitierBase()
+	cfg.LocalRepos = []RepoEntry{
+		{Path: "../page-turner-backend"},
+		{Path: "../page-turner-frontend"},
+		{Path: "system-tests"},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("well-formed repos: should validate, got: %v", err)
+	}
+}
+
+func TestValidate_RejectsRepoEntryWithEmptyPath(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	cfg.LocalRepos = []RepoEntry{{Path: ""}}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for empty repos[0].path, got nil")
+	}
+	if !strings.Contains(err.Error(), "repos[0].path") {
+		t.Errorf("error should name repos[0].path, got: %v", err)
+	}
+}
+
+func TestValidate_RejectsAbsoluteRepoPath(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	cfg.LocalRepos = []RepoEntry{{Path: "/abs/page-turner-backend"}}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for absolute repos path, got nil")
+	}
+	if !strings.Contains(err.Error(), "repo-relative") {
+		t.Errorf("error should explain repo-relative requirement, got: %v", err)
+	}
+}
+
+// TestValidate_AcceptsRepoPathWithParentSegmentInside pins that
+// embedded `..` (e.g. `system/../escape`) is accepted in repos[].
+// validateRepoPath is intentionally more permissive than validatePath
+// — repos[] declares clone locations, and any path expression that
+// resolves to a sensible directory is the operator's call. Duplicate
+// detection runs filepath.Clean so this form collapses to `escape`
+// and would be rejected if another entry already pointed there.
+func TestValidate_AcceptsRepoPathWithParentSegmentInside(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	cfg.LocalRepos = []RepoEntry{{Path: "system/../escape"}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("embedded `..` should validate for repos[], got: %v", err)
+	}
+}
+
+// TestValidate_AcceptsRepoPathStartingWithDotDot pins the sibling-folder
+// pattern used by every multi-repo project (`../page-turner-backend`
+// reaches a sibling clone of the gh-optivem.yaml directory).
+func TestValidate_AcceptsRepoPathStartingWithDotDot(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	cfg.LocalRepos = []RepoEntry{{Path: "../sibling"}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("`../sibling` should validate for repos[], got: %v", err)
+	}
+}
+
+func TestValidate_RejectsDuplicateRepoPaths(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	cfg.LocalRepos = []RepoEntry{
+		{Path: "system-tests"},
+		{Path: "system-tests"},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for duplicate paths, got nil")
+	}
+	if !strings.Contains(err.Error(), "more than once") {
+		t.Errorf("error should mention duplication, got: %v", err)
+	}
+}
+
+// TestValidate_RepoPathDuplicationAfterNormalization confirms that
+// `./foo` and `foo` (which filepath.Clean reduces to the same value)
+// are detected as duplicates. Operators sometimes hand-edit one form
+// and re-run init which writes the other; the validator should reject
+// the conflict rather than silently iterate the same folder twice.
+func TestValidate_RepoPathDuplicationAfterNormalization(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	cfg.LocalRepos = []RepoEntry{
+		{Path: "./system-tests"},
+		{Path: "system-tests"},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected duplication error after normalization, got nil")
+	}
+}
+
+func TestLoad_AcceptsReposFieldInYAML(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeConfig(t, dir, sampleMonoRepoMonolith+`
+repos:
+  - path: system-frontend
+  - path: system-backend
+  - path: system-tests
+`)
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.LocalRepos) != 3 {
+		t.Fatalf("got %d entries, want 3: %+v", len(cfg.LocalRepos), cfg.LocalRepos)
+	}
+	want := []string{"system-frontend", "system-backend", "system-tests"}
+	for i, p := range want {
+		if cfg.LocalRepos[i].Path != p {
+			t.Errorf("repos[%d].path = %q, want %q", i, cfg.LocalRepos[i].Path, p)
+		}
+	}
+}
+
+func TestWrite_RoundTripsReposField(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	cfg.LocalRepos = []RepoEntry{
+		{Path: "system-frontend"},
+		{Path: "system-backend"},
+	}
+	dir := t.TempDir()
+	if err := Write(dir, cfg); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	got, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(got.LocalRepos) != 2 ||
+		got.LocalRepos[0].Path != "system-frontend" ||
+		got.LocalRepos[1].Path != "system-backend" {
+		t.Errorf("round-trip mismatch: got %+v", got.LocalRepos)
+	}
+}

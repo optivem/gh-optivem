@@ -359,3 +359,196 @@ func equalStrings(a, b []string) bool {
 	}
 	return true
 }
+
+// writeProjectConfig writes a gh-optivem.yaml at <dir>/gh-optivem.yaml
+// with the given YAML body. Used by the project-iteration cascade tests
+// below.
+func writeProjectConfig(t *testing.T, dir, body string) string {
+	t.Helper()
+	p := filepath.Join(dir, "gh-optivem.yaml")
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		t.Fatalf("write gh-optivem.yaml %s: %v", p, err)
+	}
+	return p
+}
+
+// projectConfigYAML renders a minimal gh-optivem.yaml body with the
+// supplied repo paths. The project.provider line satisfies Validate's
+// Rule 19; no architecture is set so the rest of the schema stays
+// dormant — keeps the fixture small while exercising the LocalRepos
+// path the cascade reads.
+func projectConfigYAML(paths ...string) string {
+	var sb strings.Builder
+	sb.WriteString("project:\n  provider: github\n")
+	if len(paths) > 0 {
+		sb.WriteString("repos:\n")
+		for _, p := range paths {
+			sb.WriteString("  - path: ")
+			sb.WriteString(p)
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
+}
+
+// TestResolve_ProjectModeFromWalkUp pins the new project-iteration row:
+// a gh-optivem.yaml above CWD with a non-empty repos: list resolves to
+// ModeProject and enumerates those repos.
+func TestResolve_ProjectModeFromWalkUp(t *testing.T) {
+	root := t.TempDir()
+	makeGitRepo(t, filepath.Join(root, "backend"))
+	makeGitRepo(t, filepath.Join(root, "frontend"))
+	writeProjectConfig(t, root, projectConfigYAML("backend", "frontend"))
+
+	// CWD is somewhere unrelated so the walk-up has to find the file.
+	scope, err := resolveFrom("", "", root)
+	if err != nil {
+		t.Fatalf("resolveFrom: %v", err)
+	}
+	if scope.Mode != ModeProject {
+		t.Fatalf("mode = %v, want ModeProject", scope.Mode)
+	}
+	wantRoot, _ := filepath.Abs(root)
+	if scope.Root != wantRoot {
+		t.Errorf("root = %q, want %q", scope.Root, wantRoot)
+	}
+	want := []string{
+		filepath.Join(wantRoot, "backend"),
+		filepath.Join(wantRoot, "frontend"),
+	}
+	if !equalStrings(scope.Folders, want) {
+		t.Errorf("folders = %v, want %v", scope.Folders, want)
+	}
+	if scope.SourceFile == "" {
+		t.Errorf("SourceFile must be populated in project mode (got empty)")
+	}
+}
+
+// TestResolve_ProjectModeWalksUpFromSubdirectory pins that the cascade
+// can find gh-optivem.yaml from a nested CWD — symmetric with the
+// workspace-file walk-up.
+func TestResolve_ProjectModeWalksUpFromSubdirectory(t *testing.T) {
+	root := t.TempDir()
+	makeGitRepo(t, filepath.Join(root, "backend"))
+	makeGitRepo(t, filepath.Join(root, "frontend"))
+	writeProjectConfig(t, root, projectConfigYAML("backend", "frontend"))
+
+	deep := filepath.Join(root, "backend", "internal", "pkg")
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatalf("mkdir deep: %v", err)
+	}
+
+	scope, err := resolveFrom("", "", deep)
+	if err != nil {
+		t.Fatalf("resolveFrom: %v", err)
+	}
+	if scope.Mode != ModeProject {
+		t.Fatalf("mode = %v, want ModeProject (project walk-up should beat single-repo)", scope.Mode)
+	}
+	if len(scope.Folders) != 2 {
+		t.Errorf("folders = %v, want 2 entries", scope.Folders)
+	}
+}
+
+// TestResolve_WorkspaceFileBeatsProjectConfig pins the cascade order:
+// a *.code-workspace file at the same level wins over gh-optivem.yaml.
+// Reflects the plan's intent that the workspace file is the broadest
+// scope; the project row is a fallback when no workspace file is
+// reachable.
+func TestResolve_WorkspaceFileBeatsProjectConfig(t *testing.T) {
+	root, _ := setupWorkspace(t)
+	// Place a gh-optivem.yaml alongside the workspace file. With repos:
+	// pointing at a real git repo so the project row would be
+	// well-formed if it were ever consulted.
+	makeGitRepo(t, filepath.Join(root, "projectOnly"))
+	writeProjectConfig(t, root, projectConfigYAML("projectOnly"))
+
+	scope, err := resolveFrom("", "", filepath.Join(root, "repoA"))
+	if err != nil {
+		t.Fatalf("resolveFrom: %v", err)
+	}
+	if scope.Mode != ModeWorkspace {
+		t.Errorf("mode = %v, want ModeWorkspace (workspace file should win)", scope.Mode)
+	}
+}
+
+// TestResolve_ProjectConfigWithEmptyReposFallsThrough pins the
+// monolith / not-yet-multitier behavior: a gh-optivem.yaml exists but
+// has no repos: list, so the cascade falls through to the single-repo
+// row (the cwd repo).
+func TestResolve_ProjectConfigWithEmptyReposFallsThrough(t *testing.T) {
+	root := t.TempDir()
+	makeGitRepo(t, root)
+	writeProjectConfig(t, root, projectConfigYAML())
+
+	scope, err := resolveFrom("", "", root)
+	if err != nil {
+		t.Fatalf("resolveFrom: %v", err)
+	}
+	if scope.Mode != ModeSingleRepo {
+		t.Errorf("mode = %v, want ModeSingleRepo (empty repos: should fall through)", scope.Mode)
+	}
+	wantRoot, _ := filepath.Abs(root)
+	if scope.Root != wantRoot {
+		t.Errorf("root = %q, want %q", scope.Root, wantRoot)
+	}
+}
+
+// TestResolve_ProjectModeFiltersMissingPaths matches parseWorkspaceFolders'
+// silent-filter behavior — a repos[] entry pointing at a non-existent
+// folder (or one without .git/) is skipped, not surfaced as an error.
+// Lets a half-scaffolded multitier project still iterate the tiers
+// that are present.
+func TestResolve_ProjectModeFiltersMissingPaths(t *testing.T) {
+	root := t.TempDir()
+	makeGitRepo(t, filepath.Join(root, "real"))
+	if err := os.MkdirAll(filepath.Join(root, "notAGit"), 0o755); err != nil {
+		t.Fatalf("mkdir notAGit: %v", err)
+	}
+	writeProjectConfig(t, root, projectConfigYAML("real", "notAGit", "doesNotExist"))
+
+	scope, err := resolveFrom("", "", root)
+	if err != nil {
+		t.Fatalf("resolveFrom: %v", err)
+	}
+	if scope.Mode != ModeProject {
+		t.Fatalf("mode = %v, want ModeProject", scope.Mode)
+	}
+	wantRoot, _ := filepath.Abs(root)
+	want := []string{filepath.Join(wantRoot, "real")}
+	if !equalStrings(scope.Folders, want) {
+		t.Errorf("folders = %v, want %v", scope.Folders, want)
+	}
+}
+
+// TestResolve_ProjectModeAllReposMissingFallsThrough pins that a
+// gh-optivem.yaml with repos: where every entry filters out (no .git,
+// missing on disk) falls through to the single-repo row rather than
+// erroring. The cwd repo is the next-best scope.
+func TestResolve_ProjectModeAllReposMissingFallsThrough(t *testing.T) {
+	root := t.TempDir()
+	makeGitRepo(t, root)
+	writeProjectConfig(t, root, projectConfigYAML("ghost-a", "ghost-b"))
+
+	scope, err := resolveFrom("", "", root)
+	if err != nil {
+		t.Fatalf("resolveFrom: %v", err)
+	}
+	if scope.Mode != ModeSingleRepo {
+		t.Errorf("mode = %v, want ModeSingleRepo (all repos missing -> fall through)", scope.Mode)
+	}
+}
+
+// TestResolve_MalformedProjectConfigErrors pins that a gh-optivem.yaml
+// the operator broke by hand is surfaced — silent fall-through would
+// hide the bug. Errors out instead of falling back to single-repo.
+func TestResolve_MalformedProjectConfigErrors(t *testing.T) {
+	root := t.TempDir()
+	makeGitRepo(t, root)
+	writeProjectConfig(t, root, "project: [this, is, not, a, map\n")
+
+	_, err := resolveFrom("", "", root)
+	if err == nil {
+		t.Fatal("expected error for malformed gh-optivem.yaml, got nil")
+	}
+}

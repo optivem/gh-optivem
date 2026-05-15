@@ -602,17 +602,20 @@ func (c *Config) Validate() error {
 	}
 
 	// Rule 21: repos[] path shape. Each entry's path must be set and
-	// repo-relative (validatePath rejects absolute paths and `..`
-	// segments). Empty repos: is accepted — that's "single-repo
-	// project, the scope cascade will fall back to the cwd repo".
-	// Duplicate paths are rejected so the scope cascade can't iterate
-	// the same folder twice.
+	// repo-relative — validateRepoPath rejects absolute paths but
+	// (unlike validatePath, which polices intra-repo tier paths)
+	// permits `..` segments because the sibling-folder layout is the
+	// normal multi-repo convention (`../page-turner-backend` reaches a
+	// sibling clone of the gh-optivem.yaml directory). Empty repos: is
+	// accepted — the scope cascade falls back to the cwd repo.
+	// Duplicate paths (after filepath.Clean) are rejected so the
+	// cascade can't iterate the same folder twice.
 	seenRepoPaths := map[string]struct{}{}
 	for i, r := range c.LocalRepos {
 		if r.Path == "" {
 			return fmt.Errorf("config: repos[%d].path is required", i)
 		}
-		if err := validatePath(fmt.Sprintf("repos[%d].path", i), r.Path); err != nil {
+		if err := validateRepoPath(fmt.Sprintf("repos[%d].path", i), r.Path); err != nil {
 			return err
 		}
 		normalized := filepath.ToSlash(filepath.Clean(r.Path))
@@ -777,6 +780,29 @@ func validatePath(field, value string) error {
 func looksLikeWindowsDriveAbsolute(v string) bool {
 	return len(v) >= 2 && v[1] == ':' &&
 		((v[0] >= 'a' && v[0] <= 'z') || (v[0] >= 'A' && v[0] <= 'Z'))
+}
+
+// validateRepoPath enforces the path shape for entries in repos[]. Like
+// validatePath it rejects absolute paths (host-rule plus explicit
+// leading-slash and Windows-drive checks) so a path that's relative on
+// one OS but absolute on another never slips into a committed file.
+// Unlike validatePath it permits `..` segments — repos[] declares the
+// project's own clones, and the sibling-folder layout used by
+// multi-repo projects (`../page-turner-backend`) is a legitimate
+// expression of that. FS existence is not checked here; the workspace
+// cascade silently filters non-existent / non-git entries at runtime.
+func validateRepoPath(field, value string) error {
+	if value == "" {
+		return nil
+	}
+	if filepath.IsAbs(value) ||
+		strings.HasPrefix(value, "/") ||
+		strings.HasPrefix(value, "\\") ||
+		looksLikeWindowsDriveAbsolute(value) {
+		return fmt.Errorf("config: %s %q must be repo-relative, not absolute",
+			field, value)
+	}
+	return nil
 }
 
 // ResolvePath produces the gh-optivem.yaml path every command should

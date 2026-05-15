@@ -1,7 +1,5 @@
 # Promote `workspace` verbs to root, retire the `workspace` noun
 
-> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-15T08:34:28Z`
-
 > 📜 **History note:** this file went through several discarded designs
 > before landing here. See "Rejected alternatives" below — that section
 > exists so we don't re-litigate. The current shape: promote the
@@ -197,33 +195,13 @@ re-investigating.
 
 ### Phase 3 — Local repo paths in `gh-optivem.yaml` + migration
 
-Goal: a multitier project declares its constituent local repos in its
-own `gh-optivem.yaml`. The scope cascade gains a project-aware layer
-between "workspace file" and "cwd repo only". `gh optivem config
-migrate` back-fills the field for existing projects.
-
-**Why now:** without this, a multitier project (frontend + backend +
-test repos) requires a `*.code-workspace` file to commit across its
-own tiers via one command. That's redundant — the project's own
-config should know about its own repos. With this, `gh optivem
-commit` inside a multitier project commits the project's repos
-without needing a separate workspace file.
-
-13. **`gh optivem config migrate`** — idempotent back-fill of `repos:`:
-    - Monolith projects: writes `repos: []` (or omits — they don't need it; cwd repo behavior already works).
-    - Multitier projects: infers from `system.config` and `system_test.config` — reads each, extracts repo paths, writes them to `repos:`. If inference fails (config malformed, paths ambiguous), errors with a clear pointer to "edit `repos:` by hand".
-    - Preserves comments and key ordering (existing config_migrate already does this via yaml.v3 node-level edits).
-
-14. **Tests:**
-    - Cascade picks the right scope for each config combination.
-    - Migrate is idempotent (running twice = no-op).
-    - Migrate correctly infers from real multitier sample configs.
-    - Backwards-compat: existing configs without `repos:` still load
-      and produce single-repo or workspace-mode behavior.
-
-**Acceptance:** new schema field accepted; cascade behaves per table;
-`gh optivem config migrate` adds the field idempotently for older
-configs; existing tests still pass.
+*(Completed in code — items deleted. `gh-optivem.yaml` accepts an
+optional `repos:` list; the workspace scope cascade ships a
+`ModeProject` row between workspace-file and cwd-repo iteration;
+`gh optivem config migrate` idempotently back-fills `repos:` for
+multi-repo projects; mono-repo projects keep their existing
+single-repo behavior. Tests cover schema acceptance + rejection,
+cascade priority + fall-through, and migrate idempotency.)*
 
 ## Affected commands
 

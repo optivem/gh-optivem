@@ -679,3 +679,289 @@ func TestRunConfigMigrate_RoundTripsThroughLoad(t *testing.T) {
 		t.Errorf("loaded provider: got %q, want %q", cfg.Project.Provider, projectconfig.ProviderGitHub)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// runConfigMigrate — repos: back-fill (Phase 3 item 13)
+// ---------------------------------------------------------------------------
+
+// multiRepoMonolithBody is a pre-repos:-field config of the canonical
+// multi-repo monolith shape: the system code and the system_test code
+// live in two separate repos. Used to seed migrate tests that exercise
+// the repos: back-fill on a config without that field.
+const multiRepoMonolithBody = `project:
+  provider: github
+  url: https://github.com/orgs/optivem/projects/20
+
+repo_strategy: multi-repo
+
+sonar:
+  organization: optivem
+
+system:
+  architecture: monolith
+  path: .
+  repo: optivem/shop-system
+  lang: java
+  sonar_project: optivem_shop-system
+
+system_test:
+  path: system-test
+  repo: optivem/shop-tests
+  lang: java
+  sonar_project: optivem_shop-system-test
+`
+
+// multiRepoMultitierBody is a pre-repos:-field config of the canonical
+// multi-repo multitier shape: three independent repos (backend,
+// frontend, system_test). Mirrors the sample in projectconfig tests
+// minus the repos: field.
+const multiRepoMultitierBody = `project:
+  provider: github
+  url: https://github.com/orgs/optivem/projects/20
+
+repo_strategy: multi-repo
+
+sonar:
+  organization: optivem
+
+system:
+  architecture: multitier
+  backend:
+    path: .
+    repo: optivem/shop-backend
+    lang: java
+    sonar_project: optivem_shop-backend
+  frontend:
+    path: .
+    repo: optivem/shop-frontend
+    lang: typescript
+    sonar_project: optivem_shop-frontend
+
+system_test:
+  path: system-test
+  repo: optivem/shop-tests
+  lang: java
+  sonar_project: optivem_shop-system-test
+`
+
+// monoRepoMonolithBody is the canonical mono-repo monolith config —
+// repos: should NOT be back-filled because the single-repo cascade row
+// already covers it.
+const monoRepoMonolithBody = `project:
+  provider: github
+  url: https://github.com/orgs/optivem/projects/20
+
+repo_strategy: mono-repo
+
+sonar:
+  organization: optivem
+
+system:
+  architecture: monolith
+  path: system/monolith/java
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system
+
+system_test:
+  path: system-test/java
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system-test
+`
+
+// TestRunConfigMigrate_BackfillsReposForMultiRepoMonolith pins the
+// monolith side of the new back-fill: two ../<name> entries, one per
+// tier slug.
+func TestRunConfigMigrate_BackfillsReposForMultiRepoMonolith(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	if err := os.WriteFile(path, []byte(multiRepoMonolithBody), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	changed, err := runConfigMigrate(path)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if !changed {
+		t.Fatal("migrate: want changed=true (repos: should be back-filled)")
+	}
+	cfg, err := projectconfig.LoadFromPath(path)
+	if err != nil {
+		t.Fatalf("load after migrate: %v", err)
+	}
+	want := []string{"../shop-system", "../shop-tests"}
+	got := make([]string, 0, len(cfg.LocalRepos))
+	for _, r := range cfg.LocalRepos {
+		got = append(got, r.Path)
+	}
+	if !equalSliceUnordered(got, want) {
+		t.Errorf("repos paths: got %v, want %v (any order)", got, want)
+	}
+}
+
+// TestRunConfigMigrate_BackfillsReposForMultiRepoMultitier pins the
+// multitier side: backend + frontend + system_test → three entries.
+func TestRunConfigMigrate_BackfillsReposForMultiRepoMultitier(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	if err := os.WriteFile(path, []byte(multiRepoMultitierBody), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := runConfigMigrate(path); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	cfg, err := projectconfig.LoadFromPath(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	want := []string{"../shop-backend", "../shop-frontend", "../shop-tests"}
+	got := make([]string, 0, len(cfg.LocalRepos))
+	for _, r := range cfg.LocalRepos {
+		got = append(got, r.Path)
+	}
+	if !equalSliceUnordered(got, want) {
+		t.Errorf("repos paths: got %v, want %v (any order)", got, want)
+	}
+}
+
+// TestRunConfigMigrate_SkipsReposForMonoRepo pins that mono-repo
+// configs are left untouched on the repos: front — they already work
+// via the single-repo cascade row. The function still reports
+// changed=false (no other field needed back-filling either).
+func TestRunConfigMigrate_SkipsReposForMonoRepo(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	if err := os.WriteFile(path, []byte(monoRepoMonolithBody), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	before, _ := os.ReadFile(path)
+	changed, err := runConfigMigrate(path)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if changed {
+		t.Error("migrate: want changed=false on mono-repo config (repos: not needed)")
+	}
+	after, _ := os.ReadFile(path)
+	if string(before) != string(after) {
+		t.Errorf("file mutated despite no-op migrate")
+	}
+}
+
+// TestRunConfigMigrate_ReposIsIdempotent pins running migrate twice on
+// a multi-repo config is a no-op the second time — the back-filled
+// repos: list survives unchanged.
+func TestRunConfigMigrate_ReposIsIdempotent(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	if err := os.WriteFile(path, []byte(multiRepoMultitierBody), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := runConfigMigrate(path); err != nil {
+		t.Fatalf("first migrate: %v", err)
+	}
+	firstPass, _ := os.ReadFile(path)
+	changed, err := runConfigMigrate(path)
+	if err != nil {
+		t.Fatalf("second migrate: %v", err)
+	}
+	if changed {
+		t.Error("second migrate: want changed=false, got true")
+	}
+	secondPass, _ := os.ReadFile(path)
+	if string(firstPass) != string(secondPass) {
+		t.Errorf("file changed on second migrate:\nbefore:\n%s\nafter:\n%s", firstPass, secondPass)
+	}
+}
+
+// TestRunConfigMigrate_BackfillsBothProviderAndRepos pins the combined
+// migration: a config older than both schema bumps gets provider AND
+// repos: in one run. Models the realistic upgrade path for a project
+// that has been dormant since before the provider field was added.
+func TestRunConfigMigrate_BackfillsBothProviderAndRepos(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	// Pre-provider, pre-repos body — only url is set on the project
+	// block. Mirrors the shape of a really-old config.
+	body := strings.Replace(multiRepoMultitierBody,
+		"  provider: github\n", "", 1)
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := runConfigMigrate(path); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	cfg, err := projectconfig.LoadFromPath(path)
+	if err != nil {
+		t.Fatalf("load after migrate: %v", err)
+	}
+	if cfg.Project.Provider != projectconfig.ProviderGitHub {
+		t.Errorf("provider: got %q, want github", cfg.Project.Provider)
+	}
+	if len(cfg.LocalRepos) != 3 {
+		t.Errorf("repos: got %d entries, want 3 (backend + frontend + tests)", len(cfg.LocalRepos))
+	}
+}
+
+// TestRunConfigMigrate_RespectsExistingRepos pins that an
+// already-populated repos: list survives migration — operators may
+// have hand-edited the paths to match an outlier on-disk layout, and
+// migrate must not clobber that work.
+func TestRunConfigMigrate_RespectsExistingRepos(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	body := multiRepoMultitierBody + `
+repos:
+  - path: ./custom-backend
+  - path: ./custom-frontend
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	changed, err := runConfigMigrate(path)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if changed {
+		t.Error("migrate: want changed=false when repos: already present")
+	}
+	cfg, err := projectconfig.LoadFromPath(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(cfg.LocalRepos) != 2 ||
+		cfg.LocalRepos[0].Path != "./custom-backend" ||
+		cfg.LocalRepos[1].Path != "./custom-frontend" {
+		t.Errorf("hand-edited repos: clobbered, got %+v", cfg.LocalRepos)
+	}
+}
+
+// equalSliceUnordered compares two []string for set equality (order
+// independent). Migrate's repos[] insertion order is structural — it
+// follows the tier traversal — but tests pin only the membership so
+// future tier reorderings don't break them.
+func equalSliceUnordered(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := map[string]int{}
+	for _, s := range a {
+		seen[s]++
+	}
+	for _, s := range b {
+		seen[s]--
+	}
+	for _, n := range seen {
+		if n != 0 {
+			return false
+		}
+	}
+	return true
+}
