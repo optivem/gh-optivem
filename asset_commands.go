@@ -35,7 +35,8 @@ func newAssetSyncCmd() *cobra.Command {
 Auto-sync runs on every gh-optivem invocation when the per-user stamp does not
 match the binary's version. ` + "`gh optivem asset sync`" + ` is the explicit form
 for users with the auto-sync escape hatch set (` + assetsync.EscapeHatchEnv + `).`,
-		Args: cobra.NoArgs,
+		Example: `  gh optivem asset sync`,
+		Args:    cobra.NoArgs,
 		Run: func(_ *cobra.Command, _ []string) {
 			res, err := assetsync.ForceSync(version.Version)
 			if err != nil {
