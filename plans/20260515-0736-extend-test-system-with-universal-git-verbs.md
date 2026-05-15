@@ -1,34 +1,79 @@
 # Promote `workspace` verbs to root, retire the `workspace` noun
 
 > ⚠️ **Draft — needs explicit human approval before implementation.**
-> The shape is settled; phase ordering and the "retire vs alias" question
-> in the open questions section gate the start. Do not execute until the
-> author signs off.
+> The shape is settled; sub-decisions in the open questions section gate
+> the start. Do not execute until the author signs off.
 
-> 📜 **History note:** this file previously held a plan titled
-> "Extend `test` and `system` with universal git verbs". That direction
-> was discarded after we established that (a) git is repo-scoped and
-> tiers cross-cut repos, and (b) the ATDD pipeline already enforces
-> whole-repo commits via `git add -A` at
-> [release.go:350-352](../internal/atdd/runtime/release/release.go#L350).
-> See "Rejected alternatives" below for the full audit.
+> 📜 **History note:** this file went through several discarded designs
+> before landing here. See "Rejected alternatives" below — that section
+> exists so we don't re-litigate. The current shape: promote the
+> cross-repo verbs to root, make scope environment-derived, drop the
+> idea of a workspace-level `gh-optivem.yaml`.
+
+## Final state (what the plan produces)
+
+After all phases land, the CLI surface looks like this:
+
+```
+gh optivem commit                ← NEW (root). scope: workspace if *.code-workspace found, else cwd repo.
+gh optivem sync                  ← NEW (root). same scope rules.
+gh optivem actions status        ← NEW (noun-verb). renames `check-actions`. same scope rules.
+gh optivem rate-limit            ← NEW (root). no scope (single API call).
+
+gh optivem workspace …           ← REMOVED. hard rename, no alias.
+
+gh optivem compile               ← unchanged
+gh optivem test ...              ← unchanged
+gh optivem system ...            ← unchanged
+gh optivem init / doctor / config / ... ← unchanged
+```
+
+**Naming rationale:**
+- `commit`, `sync`, `rate-limit` — short, modifying or single-call ops → bare verbs at root.
+- `actions status` — query op (reads state, presents summary) → noun-verb pattern, matches `gh run list` / `gh workflow list` style. The `actions` noun can grow naturally (`actions list`, `actions rerun`) if useful later.
+- `workspace` noun — hard removed; you control all callers, no need to keep aliases.
+
+**Scope cascade** for `commit` / `sync` / `actions status`:
+
+| cwd is inside… | gh-optivem operates on |
+|---|---|
+| a workspace (`*.code-workspace` found via flag / env / walk-up) | all workspace folders |
+| a project with `repos:` in `gh-optivem.yaml` | the listed repos (project iteration) |
+| a project without `repos:` (or empty) | the cwd repo only |
+| any git repo (no project either) | the cwd repo only |
+| no git repo | error |
+
+The project-iteration row is added by **phase 3** (new `repos:` field
+in `gh-optivem.yaml` + `gh optivem config migrate` back-fill). Phases
+1–2 ship the rename with the two-row cascade; phase 3 inserts the
+project-iteration row.
+
+**Banner** prints the resolved scope on every run:
+- `Mode: workspace (5 repos from page-turner.code-workspace)`
+- `Mode: single repo (shop, no workspace file found)`
+
+**What does NOT change:**
+- Per-project `gh-optivem.yaml` semantics — still the one and only config for a scaffolded project.
+- No new config file, no new flag, no new verb.
+- TBD discipline (pull --rebase, push-retry, auto-stash, co-author trailer, hasUpstream skip) — applied identically in workspace and single-repo modes.
+- `test`, `system`, `compile`, `init`, `doctor`, `config` — untouched.
+- ATDD pipeline's `release.Commit` — untouched.
 
 ## Context
 
 `gh optivem` follows the same hybrid pattern `gh` itself uses: **bare
-verbs at root for cross-cutting operations, nouns for scoped operations**.
-This is established by the existing `compile` command
+verbs at root for cross-cutting operations, nouns for scoped
+operations**. This is established by the existing `compile` command
 ([compile_commands.go:32-58](../compile_commands.go#L32)):
 
 - `gh optivem compile` — cross-tier shortcut at root
 - `gh optivem system compile`, `gh optivem test compile` — scoped forms
 
 The `workspace` noun ([workspace_commands.go:42-56](../workspace_commands.go#L42))
-parks four verbs that are also cross-cutting (cross-repo, not cross-tier),
-but they live under a noun because they were ported wholesale from bash
-scripts (`commit.sh`, `sync.sh`, `check-actions-all.sh`,
-`gh-rate-limit.sh`). The noun was a convenient port destination, not a
-deliberate design choice. This creates an inconsistency:
+parks four cross-cutting verbs (commit / sync / check-actions /
+rate-limit), but only because they were ported wholesale from bash
+scripts. The noun was a convenient port destination, not a deliberate
+design choice. This creates an inconsistency:
 
 | Verb | Cross-cutting in nature | Lives at |
 |---|---|---|
@@ -36,195 +81,322 @@ deliberate design choice. This creates an inconsistency:
 | `commit` | spans repos | under `workspace` ✗ |
 | `sync` | spans repos | under `workspace` ✗ |
 | `check-actions` | spans repos | under `workspace` ✗ |
-| `rate-limit` | single API call (no scope) | under `workspace` ✗ |
+| `rate-limit` | single API call | under `workspace` ✗ |
+
+## Core model
+
+**A scaffolded project has exactly one config: its own
+`gh-optivem.yaml`. The workspace is optional infrastructure that only
+exists when there are multiple repos to coordinate ACROSS projects.**
+
+After phase 3, the project's `gh-optivem.yaml` can also declare its
+constituent local repos (for multitier projects with separate
+frontend/backend/test repos). Those repos are *project-internal* —
+not a workspace concept.
+
+Four apparent scopes, one tool:
+
+| cwd is inside… | gh-optivem operates on |
+|---|---|
+| a workspace (`*.code-workspace` found) | all workspace folders (broadest) |
+| a project with `repos:` listed in `gh-optivem.yaml` | the listed repos (project tiers) |
+| a project without `repos:` (or empty) | the cwd repo only |
+| any git repo (no project either) | the cwd repo only |
+| no git repo | error |
+
+This means `gh optivem commit` Just Does The Right Thing at each
+scope. No flag needed. No two-config-files. No workspace-level
+`gh-optivem.yaml`. The same TBD discipline (pull --rebase, push-retry,
+auto-stash, co-author trailer) applies in every case — only the *set*
+of repos iterated differs.
 
 ## Design decision
 
-**Promote the four workspace verbs to root. The data source stays the
-same (`*.code-workspace` file). The `workspace` noun retires (or becomes
-a deprecation alias — see open question #1).**
+**Promote the four cross-repo verbs to root, hard-remove the
+`workspace` noun (no aliases), rename `check-actions` to the
+noun-verb form `actions status`. Scope is environment-derived
+(cascade in the Core model section).**
 
 End state:
 
 ```
-gh optivem commit                ← was `workspace commit`
+gh optivem commit                ← was `workspace commit`; scope env-derived
 gh optivem sync                  ← was `workspace sync`
-gh optivem check-actions         ← was `workspace check-actions`
+gh optivem actions status        ← was `workspace check-actions`; noun-verb form
 gh optivem rate-limit            ← was `workspace rate-limit`
+gh optivem workspace …           ← REMOVED entirely (no alias)
 gh optivem compile               ← unchanged
 gh optivem test ...              ← unchanged
 gh optivem system ...            ← unchanged
-gh optivem doctor / init / config / ... ← unchanged
+gh optivem doctor / init / ...   ← unchanged
 ```
+
+**Naming pattern rule:** modifying / action verbs go bare at root
+(`commit`, `sync`, `compile`). Query verbs that read state and report
+use the noun-verb form (`actions status`). `rate-limit` is a single
+API call (neither iteration nor a query about your repos) — kept bare
+for brevity. This split matches `gh`'s own conventions (`gh pr create`
+modifying vs `gh run list` query).
 
 Two important non-changes:
 
-1. **`*.code-workspace` stays the source of truth** for "which repos do
-   the cross-repo verbs iterate". No new `gh-optivem.yaml`-driven
-   filtering. The verbs are *HOW-opinionated* (TBD discipline,
-   push-retry, auto-stash, co-author trailer, etc.) but *WHICH-generic*
-   (any folder in `*.code-workspace`). That mix is the right answer:
-   the discipline benefits every repo, including dotfiles and the
-   gh-optivem tool repo itself, so restricting WHICH would be a
-   downgrade.
-2. **No flag changes.** `--repo`, `--paths`, `--yes`,
-   `--include-untracked`, `--workspace`, `--component`, etc. stay
-   identical. This plan is a pure rename + retirement of one noun.
+1. **No new config file.** No workspace-level `gh-optivem.yaml`. The
+   existing per-project `gh-optivem.yaml` and the optional
+   `*.code-workspace` are sufficient; scope is determined by which one
+   the cascade finds.
+2. **No flag additions.** `--repo`, `--paths`, `--yes`,
+   `--include-untracked`, `--workspace` stay identical. The behavior
+   change is purely "scope is now inferred when no workspace is
+   present".
 
 ## Rejected alternatives
 
-So we don't re-litigate these in three months:
+So we don't re-litigate:
 
 | Alternative | Rejected because |
 |---|---|
-| Add `gh optivem test commit` / `gh optivem system commit` | Git is repo-scoped, tiers cross-cut repos. In a monolith, `test commit` and `system commit` would target the same repo, with the second no-oping. ATDD already enforces whole-repo (`release.go:350-352`). |
-| Add `gh optivem workspace commit --kind test --component frontend` | Makes `workspace` read `gh-optivem.yaml`, destroying its WHICH-generic stance. |
-| Add a `gh optivem repos` noun with `--kind`/`--component` | New noun whose only job is to host filters; would duplicate `workspace`-style iteration without buying functional capability (clean non-project repos no-op anyway). |
-| Force every verb under a noun (strict noun-first like AWS) | Would require inventing an awkward `all` / `every` / `project` noun. `compile` precedent already says cross-cutting verbs go at root. |
-| Leave the inconsistency alone | Fine if you can ignore it. We chose not to. |
+| Add `gh optivem test commit` / `gh optivem system commit` | Git is repo-scoped, tiers cross-cut repos. In a monolith, both would target the same repo with the second no-oping. ATDD already enforces whole-repo (`release.go:350-352`). |
+| Add `--kind` / `--component` filters to `workspace commit` | Makes `workspace` read `gh-optivem.yaml`, destroying its WHICH-generic stance. |
+| Introduce a `gh optivem repos` noun with filter flags | Adds a noun whose only job is to host filters; functional output unchanged because clean non-project repos no-op anyway. |
+| Workspace-level `gh-optivem.yaml` listing all repos | A scaffolded project already has its own `gh-optivem.yaml`; a second one at workspace level is redundant for the single-project case. Per-project standalone-ness is a property worth preserving. |
+| Sibling-folder scan when no workspace file | Filesystem layout becomes the source of truth; non-deterministic, includes random repos. |
+| Hard-error when no workspace file | Today's behavior; too rigid once the verb lives at root. Inferring scope from environment is friendlier without being magical. |
+| Force every verb under a noun (strict noun-first) | Would require inventing an awkward `all` / `every` noun. `compile` precedent already says cross-cutting goes at root. |
 
 ## Phases
 
-Each phase is shippable on its own. Do not pre-commit to phase 3 — its
-shape depends on whether real usage of the new names is uneventful.
+**Delivery: one PR landing all phases together.** Phases are labelled
+for organisational clarity (what work belongs to what concern), not as
+separate merge boundaries. Phase 1+2 are tightly coupled (no aliases
+means callers must update in lockstep); phase 3 is logically separable
+but bundled with the rest by author preference for a single migration
+moment over two staged ones.
 
-### Phase 1 — Register the new root-level commands (no behavior change)
+### Phase 1 — Register the new root-level commands + scope cascade + remove `workspace` noun
 
-Goal: `gh optivem commit / sync / check-actions / rate-limit` work at
-root; `gh optivem workspace <verb>` continues to work unchanged. Two
-surfaces, one implementation.
+Goal: the new CLI surface is live. `gh optivem commit`, `gh optivem
+sync`, `gh optivem actions status`, `gh optivem rate-limit` all work
+with environment-derived scope. `gh optivem workspace …` is removed
+entirely (no alias).
 
-1. **Refactor** `workspace_commands.go`. Each `newWorkspace*Cmd()`
-   constructor currently returns a `*cobra.Command` that knows its
-   parent's persistent `--workspace` flag. Split into:
-   - A package-level builder function per verb (e.g.,
-     `newCommitCmd()`) that constructs the command body — flags, args,
-     `Run`. No assumption about parent.
-   - The existing `newWorkspaceCmd()` keeps adding the verbs as
-     children, **and** registers them by alias under `workspace` (for
-     back-compat).
-   - `main.go` registers the same builders directly at root.
+1. **Refactor** `workspace_commands.go`:
+   - Split each `newWorkspace*Cmd()` into a verb-builder function
+     (e.g. `newCommitCmd()`) constructing the command body, no parent
+     assumption.
+   - `newCheckActionsCmd()` becomes `newActionsCmd()` with `status` as
+     a subcommand (cobra noun-verb pattern).
+   - Delete `newWorkspaceCmd()` entirely — no alias wiring.
+   - `main.go` registers the new verbs at root.
+   - Rename file from `workspace_commands.go` to something like
+     `commit_commands.go` / `sync_commands.go` / `actions_commands.go`
+     / `rate_limit_commands.go` (or one combined file — bikeshed in
+     review).
 
 2. **Move the `--workspace` flag** ([workspace_commands.go:47](../workspace_commands.go#L47))
-   from a `workspace`-noun persistent flag to a **root-level**
-   persistent flag (on the root cobra command). Every cross-repo verb
-   uses it identically.
+   from the (now-removed) `workspace`-noun persistent flag to a
+   root-level persistent flag. Every cross-repo verb uses it
+   identically.
 
-3. **Tests.** Add cobra-level smoke tests asserting both call paths
-   resolve to the same `Run`:
-   - `gh optivem commit "msg"` → handled
-   - `gh optivem workspace commit "msg"` → handled (alias)
-   - Same for sync / check-actions / rate-limit.
-   - All existing workspace-verb tests still pass unchanged.
+3. **Implement the scope cascade** in `internal/workspace` (or a new
+   `internal/scope` package). The current `workspace.Resolve()` errors
+   when no workspace file is found ([workspace.go:121](../internal/workspace/workspace.go#L121));
+   change to:
+   - `--workspace` flag → workspace iteration (as today)
+   - `$GH_OPTIVEM_WORKSPACE` → workspace iteration (as today)
+   - Walk up from cwd, find `*.code-workspace` → workspace iteration
+   - Walk up from cwd, find any git repo → single-repo mode (cwd repo)
+   - Nothing → error (truly no git repo nearby)
 
-4. **Help text.** The root `gh optivem --help` lists the new verbs
-   under a "Cross-repo operations" group (cobra supports command
-   grouping via `GroupID`). Keeps the help readable as the root surface
-   grows.
+4. **Loud scope announcement.** At banner time, print which scope
+   resolved:
+   - `Mode: workspace (5 repos from page-turner.code-workspace)`
+   - `Mode: single repo (shop, no workspace file found)`
 
-**Acceptance:** every call path works; no test regressions; both `gh
-optivem commit` and `gh optivem workspace commit` produce identical
-behavior.
+   The operator always sees what's about to happen.
 
-### Phase 2 — Migrate internal callers
+5. **Tests:**
+   - New call paths resolve correctly (`gh optivem commit`, `gh
+     optivem actions status`, etc.).
+   - Old call paths produce a clean "unknown command" error from
+     cobra — `gh optivem workspace commit` should fail with cobra's
+     standard message pointing at `gh optivem --help`, not silently
+     work.
+   - Scope cascade tests: workspace-found, project-found-no-workspace,
+     git-repo-no-project, no-git-repo-error.
+   - All existing workspace tests need updating to call the new names.
 
-Goal: every caller inside this repo uses the new names. The
-back-compat alias keeps anything we miss working.
+6. **Help text.** Group root verbs in `--help` (cobra `GroupID`).
+   Suggested groups: "Project ops" (compile, test, system, doctor,
+   config, init), "Cross-repo ops" (commit, sync, actions, rate-limit),
+   "Other".
 
-5. **Skills** (.claude/skills/ or wherever they live — locate first):
-   - `/commit` — currently runs `gh optivem workspace commit`
-   - `/sync` — currently runs `gh optivem workspace sync`
-   - `/github-commit-push-all` — same
-   - `/github-sync-all` — same
-   - `/check-actions` (if it exists) — same
-   - Update each to call the bare verb.
+**Acceptance:** new commands work; scope cascade behaves per table; no
+test regressions on the *new* surface; `gh optivem workspace commit`
+errors out cleanly.
 
-6. **Documentation:**
-   - `README.md` if it references workspace commands
-   - `CLAUDE.md` (project) — the "Always use commit/push/sync skills"
-     rule mentions `gh optivem workspace commit`; update.
-   - `docs/tbd.md` if it references workspace commands.
-   - Other plans in `plans/` that reference the old names — light
-     touch, don't churn historical plan files unless they're active.
+### Phase 2 — Migrate internal callers (must land with phase 1)
 
-7. **Agents** — grep `.claude/agents/` for `workspace commit` /
-   `workspace sync` and update active agents only.
+Goal: every caller inside this repo uses the new names. **This phase
+must ship in the same PR as phase 1** because there's no alias to
+catch missed callers — the old commands hard-error.
 
-**Acceptance:** `grep -r "workspace commit\|workspace sync\|workspace
-check-actions\|workspace rate-limit"` in this repo returns only
-historical references (plans/deferred, git history) — nothing in
-active code, skills, agents, or docs.
+7. **Skills** (locate first — likely under `.claude/`):
+   - `/commit` → `gh optivem commit`
+   - `/sync` → `gh optivem sync`
+   - `/github-commit-push-all` → `gh optivem commit` (still iterates
+     workspace because that's the calling context)
+   - `/github-sync-all` → `gh optivem sync`
+   - any skill calling `workspace check-actions` → `gh optivem actions status`
+   - any skill calling `workspace rate-limit` → `gh optivem rate-limit`
 
-### Phase 3 — Decide on the `workspace` noun's fate
+8. **Documentation:**
+   - `README.md` references (including the `workspace rate-limit` line
+     at README.md:256)
+   - `CLAUDE.md` "Always use commit/push/sync skills" rule
+   - `docs/tbd.md` references
+   - Active plans in `plans/` (light touch — don't churn history)
 
-Goal: resolve open question #1 once phase 2 has soaked.
+9. **Agents** — grep `.claude/agents/` for old names; update active
+   agents only.
 
-8. **If retire**: remove `newWorkspaceCmd()`, remove the alias
-   wiring. Print a tombstone error for any caller still using the old
-   form ("`gh optivem workspace commit` has been removed; use `gh
-   optivem commit`"). Update CHANGELOG.
+10. **CI workflow `.github/workflows/`** — only if any workflow shells
+    out to `gh optivem workspace …` (the `gh-rate-limit.sh` script
+    does *not* — it's self-contained bash, not a wrapper).
 
-9. **If alias permanently**: leave the alias wiring in place. Add a
-   single deprecation note in `--help` for the `workspace` noun
-   ("Deprecated alias for root-level cross-repo verbs. Will be removed
-   in a future major release.").
+**Acceptance:** `grep -rn "gh optivem workspace"` returns only
+historical references (deferred plans, git history, archived docs) —
+nothing in active code, skills, agents, docs, or workflows.
 
-**Acceptance:** decision recorded; CHANGELOG entry; CLAUDE.md updated
-if relevant.
+### Phase 2.5 — Confirm ATDD pipeline is already aligned (no work)
+
+The state machine has a single `COMMIT` activity
+([process-flow.yaml:1014-1037](../internal/atdd/runtime/statemachine/process-flow.yaml#L1014))
+shared by every cycle. The `commit_phase` action runs `git add -A`
+then commits (whole-repo, no path slicing) — confirmed at
+[release.go:350-352](../internal/atdd/runtime/release/release.go#L350).
+There is **no** `COMMIT_TEST` or `COMMIT_SYSTEM` state. The phase
+suffix that appears in commit messages (`AT - GREEN - SYSTEM`,
+`AT - RED - TEST`) is a *message convention*, not a state name, and
+stays as-is.
+
+**Acceptance:** explicit "no change needed" confirmed; this phase
+exists only so future readers don't ask the same question and end up
+re-investigating.
+
+### Phase 3 — Local repo paths in `gh-optivem.yaml` + migration
+
+Goal: a multitier project declares its constituent local repos in its
+own `gh-optivem.yaml`. The scope cascade gains a project-aware layer
+between "workspace file" and "cwd repo only". `gh optivem config
+migrate` back-fills the field for existing projects.
+
+**Why now:** without this, a multitier project (frontend + backend +
+test repos) requires a `*.code-workspace` file to commit across its
+own tiers via one command. That's redundant — the project's own
+config should know about its own repos. With this, `gh optivem
+commit` inside a multitier project commits the project's repos
+without needing a separate workspace file.
+
+11. **Schema** — add `repos:` to `gh-optivem.yaml`:
+
+    ```yaml
+    project:
+      name: page-turner
+      arch: multitier
+
+    # NEW: local repo paths for THIS project's tiers
+    repos:
+      - path: ./system-frontend
+      - path: ./system-backend
+      - path: ./system-tests
+    ```
+
+    Empty / missing `repos:` = single-repo project (cwd repo). No new
+    fields are mandatory; existing configs keep working.
+
+12. **Extend the scope cascade** (modifies phase 1 step 3):
+
+    | cwd context | scope |
+    |---|---|
+    | `*.code-workspace` found via flag/env/walk-up | workspace iteration (broadest) |
+    | `gh-optivem.yaml` with non-empty `repos:` found | project iteration (the listed repos) |
+    | `gh-optivem.yaml` with no/empty `repos:` found | cwd repo only |
+    | any git repo (no project) | cwd repo only |
+    | nothing | error |
+
+    Banner gains a third mode: `Mode: project (3 repos from gh-optivem.yaml)`.
+
+13. **`gh optivem config migrate`** — idempotent back-fill of `repos:`:
+    - Monolith projects: writes `repos: []` (or omits — they don't need it; cwd repo behavior already works).
+    - Multitier projects: infers from `system.config` and `system_test.config` — reads each, extracts repo paths, writes them to `repos:`. If inference fails (config malformed, paths ambiguous), errors with a clear pointer to "edit `repos:` by hand".
+    - Preserves comments and key ordering (existing config_migrate already does this via yaml.v3 node-level edits).
+
+14. **Tests:**
+    - Cascade picks the right scope for each config combination.
+    - Migrate is idempotent (running twice = no-op).
+    - Migrate correctly infers from real multitier sample configs.
+    - Backwards-compat: existing configs without `repos:` still load
+      and produce single-repo or workspace-mode behavior.
+
+**Acceptance:** new schema field accepted; cascade behaves per table;
+`gh optivem config migrate` adds the field idempotently for older
+configs; existing tests still pass.
 
 ## Affected commands
 
 | Command | Status | Phase |
 |---|---|---|
-| `gh optivem commit` | NEW (root-level) | 1 |
-| `gh optivem sync` | NEW (root-level) | 1 |
-| `gh optivem check-actions` | NEW (root-level) | 1 |
-| `gh optivem rate-limit` | NEW (root-level) | 1 |
-| `gh optivem workspace commit` | alias → `commit` | 1 |
-| `gh optivem workspace sync` | alias → `sync` | 1 |
-| `gh optivem workspace check-actions` | alias → `check-actions` | 1 |
-| `gh optivem workspace rate-limit` | alias → `rate-limit` | 1 |
-| `gh optivem workspace` (noun itself) | deprecated or retired | 3 |
+| `gh optivem commit` | NEW (root, env-derived scope) | 1 |
+| `gh optivem sync` | NEW (root, env-derived scope) | 1 |
+| `gh optivem actions status` | NEW (noun-verb, env-derived scope) | 1 |
+| `gh optivem rate-limit` | NEW (root, no scope) | 1 |
+| `gh optivem workspace commit` | REMOVED | 1 |
+| `gh optivem workspace sync` | REMOVED | 1 |
+| `gh optivem workspace check-actions` | REMOVED (also renamed verb) | 1 |
+| `gh optivem workspace rate-limit` | REMOVED | 1 |
+| `gh optivem workspace` (noun itself) | REMOVED | 1 |
+| `gh optivem config migrate` | extended (back-fills `repos:`) | 3 |
+| `gh-optivem.yaml` schema | new optional `repos:` field | 3 |
 | All other commands | unchanged | — |
 
 ## Open questions
 
-1. **Retire the `workspace` noun, or keep it as a permanent alias?**
-   Retiring is cleaner. Keeping is friendlier to muscle memory and to
-   any external script that might call the long form. **Recommended:
-   keep as alias permanently** — the maintenance cost is one line of
-   cobra wiring and a tiny help-text note. Cleaner CLI is not worth
-   breaking anyone's existing automation.
+1. **What's the single-repo-mode banner wording?** Need short, clear
+   text that telegraphs scope shrink. Draft: `Mode: single repo
+   (<basename>, no workspace file found)`. Bikeshed in review.
 
-2. **What about the existing `--workspace` flag?** Currently scoped to
-   the `workspace` noun. Phase 1 promotes it to a root-level persistent
-   flag (since multiple cross-repo verbs use it). Anything else that
-   needs that flag (e.g. future `check-actions` extensions) gets it
-   for free. **No question, just naming it.**
+2. **Should `gh optivem commit` in single-repo mode still require
+   `--yes` when non-interactive?** Today's `--yes` flag exists to make
+   the operator opt in to scripted commits. Same logic applies in
+   single-repo mode — keep the flag, keep the requirement. **Lean
+   yes.**
 
-3. **Help-text grouping?** With four new top-level verbs, the root
-   `--help` becomes denser. `cobra` supports command groups (`GroupID`).
-   Worth using — e.g., group as "Project ops" (init, compile, test,
-   system, doctor, config), "Cross-repo ops" (commit, sync,
-   check-actions, rate-limit), "Other" (browse, etc.). **Recommended:
-   yes, add groupings in phase 1.**
+3. **Does `rate-limit` need scope cascade?** No — it makes one API call
+   regardless. The promotion to root is purely a rename. **No change.**
 
-4. **Does `gh optivem compile` need any adjustments?** Today it's at
-   root with no parent noun, exactly the pattern we're migrating
-   toward. It's the *model*, not the thing being changed. **No
-   question, just confirming.**
+4. **Help-text grouping in cobra `GroupID`** — confirm phase 1 adds
+   groups (no real downside). **Recommended yes.**
 
 ## Non-goals
 
 - Adding new verbs or new flags.
-- Changing the `*.code-workspace` data source.
-- Adding `gh-optivem.yaml`-driven repo filtering.
-- Touching `test`, `system`, `compile`, `init`, `doctor`, `config`, or
-  any other tier-scoped or project-scoped tool.
+- Introducing a workspace-level `gh-optivem.yaml`.
+- Adding `gh-optivem.yaml`-driven repo filtering (`--kind` / `--component`).
+- Touching `test`, `system`, `compile`, `init`, `doctor`, `config`.
 - Touching the ATDD pipeline's `release.Commit` path.
+- Sibling-folder repo discovery.
 
 ## Decisions log
 
 Append decisions here as they're made.
 
-- (none yet — awaiting author input on phase 3 shape)
+- 2026-05-15: rename direction confirmed (`workspace` verbs → root).
+- 2026-05-15: scope cascade confirmed (workspace file → cwd repo → error).
+- 2026-05-15: no workspace-level `gh-optivem.yaml` — project's own config is sufficient; workspace file (when present) handles multi-repo enumeration.
+- 2026-05-15: **hard remove `workspace` noun** — no alias. Author controls all callers; aliases would just be two-ways-to-say-the-same-thing in `--help`. Phases 1 and 2 must ship together.
+- 2026-05-15: **`check-actions` → `actions status`** — noun-verb pattern for query ops; matches `gh run list` / `gh workflow list` convention; `actions` noun is extensible (`actions list`, `actions rerun` if useful later).
+- 2026-05-15: **`rate-limit` stays bare at root** — short, self-evident, no scope to cascade. Not placed under `api` noun because there's no other `api` verb planned right now.
+- 2026-05-15: script-integration enhancements (`--json`, `--wait` for `rate-limit`) deferred — additive, not blocking the rename. Track separately if pursued.
+- 2026-05-15: ATDD process flow is **already aligned** — no `COMMIT_TEST` / `COMMIT_SYSTEM` states exist; the single shared `COMMIT` activity + `commit_phase` action already does whole-repo (`git add -A`) commits. Commit-message phase suffixes (`AT - GREEN - SYSTEM`, etc.) stay; they're a message convention, not a state name.
+- 2026-05-15: **add `repos:` field to `gh-optivem.yaml`** (phase 3) — declares a project's own constituent local repos for multitier; back-filled by `gh optivem config migrate`. Inserts a "project iteration" row in the scope cascade between workspace and cwd-repo modes.
+- 2026-05-15: **one big PR for all phases** — phases 1, 2, 2.5, and 3 ship together. Single migration moment for the operator instead of two staged ones.
