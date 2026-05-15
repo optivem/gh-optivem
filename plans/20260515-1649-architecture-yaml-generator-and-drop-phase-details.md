@@ -1,6 +1,6 @@
 # Architecture YAML generator + drop diagram-phase-details
 
-Status: draft (open questions OQ1–OQ4 unresolved)
+Status: draft (OQ1 resolved 2026-05-15; OQ2–OQ4 unresolved)
 Author: claude (conversation 2026-05-15)
 
 ## Background

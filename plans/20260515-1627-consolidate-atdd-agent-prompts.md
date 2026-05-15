@@ -1,5 +1,7 @@
 # Plan: Thin ATDD agent prompts and align names with process docs
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-15T14:52:24Z`
+
 ## Background
 
 `internal/assets/runtime/prompts/atdd/` ships 13 agent prompt files. Two
