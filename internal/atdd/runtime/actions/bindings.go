@@ -285,6 +285,14 @@ func (a actions) moveToInAcceptance(ctx *statemachine.Context) statemachine.Outc
 // — the operator must change the type in GitHub before re-running.
 var supportedTicketTypes = map[string]bool{"story": true, "bug": true, "task": true}
 
+// ticketTypeAliases normalizes GitHub's current native-type names to the
+// internal vocabulary the rest of the pipeline (parse.go, deriveChangeType,
+// process-flow.yaml gates) speaks. GitHub renamed "Story" to "Feature" in
+// 2026; this map keeps the rest of the runtime unchanged while accepting
+// the new name. See plans/20260515-*-ticket-type-feature-rename-and-config.md
+// for the longer-term rename + configurability proposal.
+var ticketTypeAliases = map[string]string{"feature": "story"}
+
 // readTicketType resolves the issue's native type via Tracker.Classify
 // and writes the lowercased name to `ticket_type`. The native type is
 // authoritative — it's set by the Issue Form's `type:` field at filing
@@ -292,7 +300,8 @@ var supportedTicketTypes = map[string]bool{"story": true, "bug": true, "task": t
 //
 // ticket_type_recognized is set to false (routing to STOP_CLASSIFY_CONFLICT)
 // in two cases: the issue has no native type set, or the type is not one of
-// Story / Bug / Task. Both resolutions are "set a supported type in GitHub
+// Feature / Bug / Task (Feature is normalized to "story" internally via
+// ticketTypeAliases). Both resolutions are "set a supported type in GitHub
 // and re-run" — there is no LLM fallback.
 func (a actions) readTicketType(ctx *statemachine.Context) statemachine.Outcome {
 	issueNum, err := strconv.Atoi(ctx.GetString("issue_num"))
@@ -310,14 +319,17 @@ func (a actions) readTicketType(ctx *statemachine.Context) statemachine.Outcome 
 	if !confident || kind == "" {
 		ctx.Set("ticket_type_recognized", false)
 		fmt.Fprintf(a.deps.Stderr,
-			"read_ticket_type: issue #%d has no native issue type — set Story / Bug / Task in the GitHub UI and re-run.\n",
+			"read_ticket_type: issue #%d has no native issue type — set Feature / Bug / Task in the GitHub UI and re-run.\n",
 			issueNum)
 		return statemachine.Outcome{}
+	}
+	if alias, ok := ticketTypeAliases[kind]; ok {
+		kind = alias
 	}
 	if !supportedTicketTypes[kind] {
 		ctx.Set("ticket_type_recognized", false)
 		fmt.Fprintf(a.deps.Stderr,
-			"read_ticket_type: issue #%d has unsupported issue type %q — set Story / Bug / Task in the GitHub UI and re-run.\n",
+			"read_ticket_type: issue #%d has unsupported issue type %q — set Feature / Bug / Task in the GitHub UI and re-run.\n",
 			issueNum, kind)
 		return statemachine.Outcome{}
 	}

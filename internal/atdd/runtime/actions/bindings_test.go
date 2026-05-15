@@ -249,6 +249,7 @@ func TestClassifyTicketType_NativeIssueType(t *testing.T) {
 		wantConfident  bool
 	}{
 		{name: "story", issueTypeJSON: `{"name":"Story"}`, wantTicketType: "story", wantConfident: true},
+		{name: "feature_aliased_to_story", issueTypeJSON: `{"name":"Feature"}`, wantTicketType: "story", wantConfident: true},
 		{name: "bug", issueTypeJSON: `{"name":"Bug"}`, wantTicketType: "bug", wantConfident: true},
 		{name: "task", issueTypeJSON: `{"name":"Task"}`, wantTicketType: "task", wantConfident: true},
 		{name: "no_type_set", issueTypeJSON: `null`, wantTicketType: "", wantConfident: false},
