@@ -2,16 +2,16 @@
 
 ## Purpose
 
-Replace the System-Driver "TODO: Driver" prototypes from AT - RED - DSL with real Driver logic. This phase touches **System Drivers only** (under `shop/`); external-system Drivers are handled by the Contract Test sub-process. Tests stay red — they only go green once the system implementation lands in AT - GREEN - SYSTEM.
+Replace the System-Driver "TODO: Driver" prototypes from AT - RED - DSL with real Driver logic. This phase touches **System Drivers only** (under `system-test/<lang>/.../testkit/driver/{port,adapter}/shop/`); external-system Drivers are handled by the Contract Test sub-process. Tests stay red — they only go green once the system implementation lands in AT - GREEN - SYSTEM.
 
 ## What it produces
 
-- Commit `<Ticket> | AT - RED - SYSTEM DRIVER` containing real System Driver implementations under `shop/`.
+- Commit `<Ticket> | AT - RED - SYSTEM DRIVER` containing real System Driver implementations under `system-test/<lang>/.../testkit/driver/adapter/shop/`.
 - Tests in state: change-driven scenarios disabled with reason `"AT - RED - SYSTEM DRIVER"`; legacy-coverage scenarios still enabled and passing.
 
 ## Conventions
 
-- File scope: only files under `driver-port/` and `driver-adapter/` paths under `shop/` (e.g. `shop/api`, `shop/ui`). Do NOT touch `external/` — that is the Contract Test sub-process.
+- File scope: only files under `system-test/<lang>/.../testkit/driver/port/shop/` and `system-test/<lang>/.../testkit/driver/adapter/shop/<channel>` (e.g. `.../adapter/shop/api`, `.../adapter/shop/ui`). All driver code lives in the test tree, not in `system/`. Do NOT touch `external/` siblings — that is the Contract Test sub-process.
 - Do NOT read or search backend/frontend source code. Model new Driver methods on existing Driver methods in the same file.
 - Suite selection (`<acceptance-api>` / `<acceptance-ui>`) and commit-message format: see [at-cycle-conventions.md](at-cycle-conventions.md).
 - `@Disabled` / skip syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
@@ -43,7 +43,7 @@ public RegisterCustomerResponse register(RegisterCustomerRequest request) {
 ## AT - RED - SYSTEM DRIVER - WRITE
 
 1. Enable the tests marked disabled with reason `"AT - RED - DSL"`.
-2. Implement the System Drivers — replace each "TODO: Driver" prototype with actual logic. Stay within `driver-port/` and `driver-adapter/` under `shop/`. Model new methods on existing Driver methods in the same file.
+2. Implement the System Drivers — replace each "TODO: Driver" prototype with actual logic. Stay within `system-test/<lang>/.../testkit/driver/port/shop/` and `system-test/<lang>/.../testkit/driver/adapter/shop/`. Model new methods on existing Driver methods in the same file.
 3. Run the tests and verify they fail with a runtime error:
    ```bash
    gh optivem test run --suite <acceptance-api> --test <TestMethodName>
@@ -55,7 +55,7 @@ public RegisterCustomerResponse register(RegisterCustomerRequest request) {
 STOP. Present the Driver implementation to the user and ask for approval. Do NOT continue.
 
 **Review checklist:**
-- All edits live under `driver-port/` and `driver-adapter/` paths under `shop/`. Nothing under `external/`.
+- All edits live under `system-test/<lang>/.../testkit/driver/port/shop/` and `system-test/<lang>/.../testkit/driver/adapter/shop/`. Nothing under the sibling `external/` directories.
 - "TODO: Driver" is gone for every System Driver method affected by this ticket.
 - New methods follow the shape of existing methods in the same file — no novel patterns invented from backend/frontend source.
 - No test, DSL, system, or external-driver edits.

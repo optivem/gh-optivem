@@ -12,7 +12,7 @@ Replace the `"TODO: Driver"` prototypes left behind by CT - RED - DSL with real 
 
 ## Conventions
 
-- Scope is strictly limited to files under `external/` (e.g. `driver-port/.../external/...`, `driver-adapter/.../external/...`). Files under `shop/` are off-limits in this phase. See [glossary.md](glossary.md).
+- Scope is strictly limited to files under `system-test/<lang>/.../testkit/driver/port/external/` and `system-test/<lang>/.../testkit/driver/adapter/external/`. All driver code lives in the test tree, not in `system/`. Files under the sibling `shop/` directories are off-limits in this phase. See [glossary.md](glossary.md).
 - Suite selection (real vs stub): see [ct-cycle-conventions.md](ct-cycle-conventions.md). This phase exercises the stub side only.
 - Commit message format: see [ct-cycle-conventions.md](ct-cycle-conventions.md).
 - Commit handoff (the wrapping CLI commits, not the agent): see [cycles.md § Commit Handoff](cycles.md#commit-handoff).
@@ -40,7 +40,7 @@ Replace the `"TODO: Driver"` prototype with a real HTTP call to the external sys
 
 1. Enable the tests marked disabled with reason `"CT - RED - DSL"`.
 2. Implement the External System Drivers — replace each `"TODO: Driver"` prototype with actual logic.
-   - Only edit files under `external/` (driver-port and driver-adapter).
+   - Only edit files under `system-test/<lang>/.../testkit/driver/port/external/` and `system-test/<lang>/.../testkit/driver/adapter/external/`.
    - Do NOT read external-system source code to figure out behavior; rely on the contract tests and the published external API contract.
 3. Run the contract tests against the stub and verify they fail with a runtime error (the stub does not yet implement the new contract):
    ```bash
@@ -53,7 +53,7 @@ STOP. Present the Driver implementation to the user and ask for approval. Do NOT
 
 **Review checklist:**
 
-- All changes are confined to files under `external/` — nothing under `shop/` was touched.
+- All changes are confined to files under `testkit/driver/{port,adapter}/external/` — nothing under the sibling `shop/` directories was touched.
 - No `"TODO: Driver"` strings remain.
 - Tests fail with a runtime error against `<suite-contract-stub>` (still RED — that's expected).
 
@@ -65,7 +65,7 @@ STOP. Present the Driver implementation to the user and ask for approval. Do NOT
 
 ## Anti-patterns
 
-- Editing files under `shop/` — those belong to System Drivers and the AT cycle, not the External System Driver phase.
+- Editing files under the sibling `testkit/driver/{port,adapter}/shop/` directories — those belong to System Drivers and the AT cycle, not the External System Driver phase.
 - Reading external-system source code to figure out behavior — Drivers are written against the *contract* expressed by the contract tests and the published API, not against internal implementation details.
 - Expecting the contract tests to pass at the end of this phase — they should still fail. The stub becomes contract-compatible in CT - GREEN - STUBS.
 - Skipping the issue comment when an issue number was provided — it's the audit trail of the Driver change.
