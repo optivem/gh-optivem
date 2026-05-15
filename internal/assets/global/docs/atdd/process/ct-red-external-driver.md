@@ -6,16 +6,12 @@ Replace the `"TODO: Driver"` prototypes left behind by CT - RED - DSL with real 
 
 ## What it produces
 
-- Commit `<Ticket> | CT - RED - EXTERNAL DRIVER` containing real External System Driver implementations
+- After WRITE: real External System Driver implementations exist in the working tree.
 - Tests in state: contract tests disabled with reason `"CT - RED - EXTERNAL DRIVER"`
 
 ## Conventions
 
 - Scope is strictly limited to files under `system-test/<lang>/.../testkit/driver/port/external/` and `system-test/<lang>/.../testkit/driver/adapter/external/`. All driver code lives in the test tree, not in `system/`. Files under the sibling `shop/` directories are off-limits in this phase. See [glossary.md](glossary.md).
-- Suite selection (real vs stub): see [ct-cycle-conventions.md](ct-cycle-conventions.md). This phase exercises the stub side only.
-- Commit message format: see [ct-cycle-conventions.md](ct-cycle-conventions.md).
-- Commit handoff (the wrapping CLI commits, not the agent): see [cycles.md § Commit Handoff](cycles.md#commit-handoff).
-- Phase progression and STOP semantics: see [shared-phase-progression.md](shared-phase-progression.md).
 - `@Disabled` syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
 
 ## Example
@@ -41,10 +37,6 @@ Replace the `"TODO: Driver"` prototype with a real HTTP call to the external sys
 2. Implement the External System Drivers — replace each `"TODO: Driver"` prototype with actual logic.
    - Only edit files under `system-test/<lang>/.../testkit/driver/port/external/` and `system-test/<lang>/.../testkit/driver/adapter/external/`.
    - Do NOT read external-system source code to figure out behavior; rely on the contract tests and the published external API contract.
-3. Run the contract tests against the stub and verify they fail with a runtime error (the stub does not yet implement the new contract):
-   ```bash
-   gh optivem test run --suite <suite-contract-stub> --test <TestMethodName>
-   ```
 
 ## Anti-patterns
 

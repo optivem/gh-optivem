@@ -8,9 +8,9 @@ Note: a behavioral-change ticket may *also* include a Legacy Coverage section; t
 
 ## Structural Change
 
-All structural cycles are governed by the rule **existing AC must stay green** locally before the final ticket commit. The sample suite runs locally as part of the COMMIT step. CI's **Acceptance Stage** is the post-commit verifier but it is **human-watched, not agent-watched** — see [`shared-ticket-status-in-acceptance.md`](shared-ticket-status-in-acceptance.md). Agents are CI-unaware and never advance a ticket past **TICKET STATUS - IN ACCEPTANCE**.
+All structural cycles are governed by the rule **existing AC must stay green** locally before the final ticket commit. CI's **Acceptance Stage** is the post-commit verifier but it is **human-watched, not agent-watched**. Agents are CI-unaware and never advance a ticket past **TICKET STATUS - IN ACCEPTANCE**.
 
-A **structural change** is a change that produces **no change-driven acceptance criteria**. Task tickets carry one of three `subtype:*` labels — `subtype:system-interface-redesign`, `subtype:external-system-interface-redesign`, or `subtype:system-implementation-change` — each routing to a structural cycle. The structural change still flows through a cycle — `subtype:system-interface-redesign` and `subtype:external-system-interface-redesign` enter the **Driver Adapter Cycle** (`da_cycle`), and `subtype:system-implementation-change` enters the **System Under Test Cycle** (`sut_cycle`) — but each cycle has no RED/GREEN per scenario; instead it consists of implementation, STOP - HUMAN REVIEW, and COMMIT. All structural cycles end by ticking the ticket's checklist of structural change items and moving the issue to **TICKET STATUS - IN ACCEPTANCE**. The `subtype:external-system-interface-redesign` path has no standalone STOP/COMMIT — those happen inside the Contract Test Sub-Process it wraps.
+A **structural change** is a change that produces **no change-driven acceptance criteria**. Task tickets carry one of three `subtype:*` labels — `subtype:system-interface-redesign`, `subtype:external-system-interface-redesign`, or `subtype:system-implementation-change` — each routing to a structural cycle. The structural change still flows through a cycle — `subtype:system-interface-redesign` and `subtype:external-system-interface-redesign` enter the **Driver Adapter Cycle** (`da_cycle`), and `subtype:system-implementation-change` enters the **System Under Test Cycle** (`sut_cycle`) — but each cycle has no RED/GREEN per scenario. After the structural change is implemented, the BPMN orchestrator handles the rest. The `subtype:external-system-interface-redesign` path routes through the Contract Test Sub-Process.
 
 Note: a structural-change ticket may *also* include a Legacy Coverage section; that's orthogonal — see [Legacy Coverage](#legacy-coverage) below.
 
@@ -37,15 +37,15 @@ In the intake-classification sense, an **interface change** is specifically a ch
 **Why it matters for the ATDD pipeline:**
 - A DSL interface change → update DSL port and implementation
 - A Driver interface change → update driver port and adapters
-- An external system interface change (any change under `driver-port/.../external/`) → triggers the contract test subprocess (see `ct-cycle-conventions.md` and the `ct-*.md` per-phase docs)
-- A system-side interface change labelled `subtype:system-interface-redesign` → routes through the Driver Adapter Cycle's `structural_cycle` path: update the relevant System Driver(s); STOP - HUMAN REVIEW → TEST → COMMIT → TICKET STATUS - IN ACCEPTANCE.
-- An external-system interface change labelled `subtype:external-system-interface-redesign` → routes through the Driver Adapter Cycle's Contract Test Sub-Process path (per-phase RED/GREEN inside CT, four-commit sequence; the wrapper has no standalone STOP/COMMIT).
+- An external system interface change (any change under `driver-port/.../external/`) → triggers the contract test subprocess (see the `ct-*.md` per-phase docs)
+- A system-side interface change labelled `subtype:system-interface-redesign` → routes through the Driver Adapter Cycle's `structural_cycle` path: update the relevant System Driver(s); then the BPMN orchestrator handles the rest.
+- An external-system interface change labelled `subtype:external-system-interface-redesign` → routes through the Driver Adapter Cycle's Contract Test Sub-Process path (per-phase RED/GREEN inside CT).
 
 For both interface-change subtypes, driver bodies adapt to the new boundary interface (see [Structural Change](#structural-change) above for the existing-AC / Acceptance-Stage rule). If the ticket additionally carries a Legacy Coverage section, the Legacy Coverage Cycle runs first.
 
 ## Internal-only Change
 
-An **internal-only change** is a change inside the system that does not modify any boundary — no system-side channel change, no external-system API change. Examples: refactor a class, rename, dependency upgrade. Drivers are untouched. Internal-only changes are labelled `subtype:system-implementation-change`; they route to the **System Under Test Cycle** (`sut_cycle`): Implement → STOP - HUMAN REVIEW → TEST → COMMIT → TICKET STATUS - IN ACCEPTANCE. See [Structural Change](#structural-change) above for the existing-AC rule. If the ticket additionally carries a Legacy Coverage section, the Legacy Coverage Cycle runs first.
+An **internal-only change** is a change inside the system that does not modify any boundary — no system-side channel change, no external-system API change. Examples: refactor a class, rename, dependency upgrade. Drivers are untouched. Internal-only changes are labelled `subtype:system-implementation-change`; they route to the **System Under Test Cycle** (`sut_cycle`): implement the change, then the BPMN orchestrator handles the rest. See [Structural Change](#structural-change) above for the existing-AC rule. If the ticket additionally carries a Legacy Coverage section, the Legacy Coverage Cycle runs first.
 
 ## Legacy Coverage Cycle
 
@@ -55,7 +55,7 @@ Task tickets enter the matching structural cycle by `subtype:*` label — `subty
 
 ## Ticket Status - In Acceptance
 
-The maximum ticket status any agent ever sets. After the **final commit of a ticket** (whichever phase produces it, in any cycle), the agent ticks any checklist items completed by the work and moves the ticket to **IN ACCEPTANCE**. The agent is then done. Pipeline-watching, fix-loops on red CI, and the move from IN ACCEPTANCE to DONE are human responsibilities — agents are CI-unaware. See [`shared-ticket-status-in-acceptance.md`](shared-ticket-status-in-acceptance.md) for the canonical procedure.
+The maximum ticket status any agent ever sets. After the final commit of a ticket, the BPMN orchestrator ticks any checklist items completed and moves the ticket to **IN ACCEPTANCE**. The agent is then done. Pipeline-watching, fix-loops on red CI, and the move from IN ACCEPTANCE to DONE are human responsibilities — agents are CI-unaware.
 
 ## `shop/` Package vs `shop` Repository
 

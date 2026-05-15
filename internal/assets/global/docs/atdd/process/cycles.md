@@ -1,6 +1,6 @@
 # ATDD Cycles
 
-This document defines the decision flow for the ATDD pipeline. Each phase is defined in detail in its own per-phase file (`at-red-test.md`, `at-red-dsl.md`, `at-red-system-driver.md`, `at-green-system.md`, `ct-red-test.md`, `ct-red-dsl.md`, `ct-red-external-driver.md`, `ct-green-stubs.md`), with cycle-wide conventions in `at-cycle-conventions.md` / `ct-cycle-conventions.md` and the universal STOP rule in `shared-phase-progression.md` — this file controls **which phases run and in what order**.
+This document defines the decision flow for the ATDD pipeline. Each phase is defined in detail in its own per-phase file (`at-red-test.md`, `at-red-dsl.md`, `at-red-system-driver.md`, `at-green-system.md`, `ct-red-test.md`, `ct-red-dsl.md`, `ct-red-external-driver.md`, `ct-green-stubs.md`) — this file controls **which phases run and in what order**.
 
 > **Naming note**: The word *shop* appears in two distinct senses in ATDD content — `shop/` (with slash) is a package/folder convention inside the driver layer; `shop` (without slash) is the SUT repository name. See `glossary.md` for details.
 
@@ -33,7 +33,7 @@ After STOP, two **orthogonal gates** are evaluated per ticket:
 
 The full per-ticket flow is captured by the table below. The combinatorics are: **{Story / Bug / Task × (3 subtypes for Task)} × {Legacy Coverage section: yes/no}** — all of which collapse to the rule "Legacy Coverage Cycle first (if present), then the type/subtype-specific cycle, then **TICKET STATUS - IN ACCEPTANCE**."
 
-The structural cycles are all governed by the rule that **existing AC must stay green** locally before the final ticket commit. After that commit the ticket enters **TICKET STATUS - IN ACCEPTANCE** and the agent stops — see [`shared-ticket-status-in-acceptance.md`](shared-ticket-status-in-acceptance.md). Agents are CI-unaware.[^green]
+The structural cycles are all governed by the rule that **existing AC must stay green** locally before the final ticket commit. After that commit the ticket enters **TICKET STATUS - IN ACCEPTANCE** and the agent stops. Agents are CI-unaware.[^green]
 
 [^green]: "Existing AC must stay green" — verified locally via sample-suite runs before the final commit, per `CLAUDE.md`. CI's Acceptance Stage runs the full suite afterwards but is human-watched, not agent-watched. Referenced from each structural-cycle row in the table below as `[^green]`.
 
@@ -82,12 +82,12 @@ AT - RED - SYSTEM DRIVER
 AT - GREEN - SYSTEM
     │
     ▼
-TICKET STATUS - IN ACCEPTANCE (see shared-ticket-status-in-acceptance.md)
+TICKET STATUS - IN ACCEPTANCE
 ```
 
 ### Decision criteria
 
-- **DSL Interface Changed?** — Did AT - RED - TEST need to extend the DSL with new methods (and therefore add `"TODO: DSL"` prototypes)? Determined by compile failure during AT - RED - TEST - COMMIT. If no new DSL methods were needed, the answer is No.
+- **DSL Interface Changed?** — Determined by whether AT - RED - TEST needed to extend the DSL with new methods (i.e. added `"TODO: DSL"` prototypes). If no new DSL methods were needed, the answer is No.
 - **External System Driver Interface Changed?** — Did AT - RED - DSL add or modify any external-system Driver interface? See `glossary.md` for the definition of *interface change*. Set as an explicit flag at the end of AT - RED - DSL - WRITE.
 - **System Driver Interface Changed?** — Did AT - RED - DSL add or modify any system Driver interface? Set as an explicit flag at the end of AT - RED - DSL - WRITE.
 
@@ -175,10 +175,10 @@ TEST — compile + sample suite (entire phase gated upfront — ask user to choo
 COMMIT — <Ticket> | <PHASE> where PHASE ∈ {SYSTEM INTERFACE REDESIGN, CHORE}
     │
     ▼
-TICKET STATUS - IN ACCEPTANCE (see shared-ticket-status-in-acceptance.md)
+TICKET STATUS - IN ACCEPTANCE
 ```
 
-Both are governed by the rule that **existing AC must stay green** locally before the final ticket commit.[^green] There is no per-scenario RED/GREEN (no change-driven AC is produced); the sample suite runs locally during the TEST phase (after REVIEW, before COMMIT) to verify the change, gated by explicit user approval. The post-commit CI Acceptance Stage is human-watched, not agent-watched — see [`shared-ticket-status-in-acceptance.md`](shared-ticket-status-in-acceptance.md).
+Both are governed by the rule that **existing AC must stay green** locally before the final ticket commit.[^green] There is no per-scenario RED/GREEN (no change-driven AC is produced); the sample suite runs locally during the TEST phase (after REVIEW, before COMMIT) to verify the change, gated by explicit user approval. The post-commit CI Acceptance Stage is human-watched, not agent-watched.
 
 The `subtype:external-system-interface-redesign` path is structurally similar but routes through the Contract Test Sub-Process instead of a direct WRITE → REVIEW → TEST → COMMIT sequence; see "Driver Adapter Cycle — external-system path" below.
 
@@ -191,23 +191,23 @@ _Triggered when a Task ticket carries `subtype:system-interface-redesign` or `su
 The Driver Adapter Cycle (`da_cycle` in the runtime) splits on the `subtype:*` label:
 
 - **`subtype:system-interface-redesign`** — a system-side Driver Adapter we own (API, UI, mobile, CLI, admin, …). Routes through the **shared structural cycle** (WRITE → REVIEW → TEST → COMMIT). The WRITE agent reads the Checklist and the system tree to figure out which driver(s) to modify; the framework no longer pre-classifies the channel.
-- **`subtype:external-system-interface-redesign`** — an External System Driver Adapter (we are reacting to a third-party API change). Routes through the **Contract Test Sub-Process** (which itself wraps the **External System Onboarding Sub-Process** if no Driver yet exists). After CT completes its four-commit sequence, the ticket enters **TICKET STATUS - IN ACCEPTANCE** — see [`shared-ticket-status-in-acceptance.md`](shared-ticket-status-in-acceptance.md).
+- **`subtype:external-system-interface-redesign`** — an External System Driver Adapter (we are reacting to a third-party API change). Routes through the **Contract Test Sub-Process** (which itself wraps the **External System Onboarding Sub-Process** if no Driver yet exists). After CT completes its four-commit sequence, the ticket enters **TICKET STATUS - IN ACCEPTANCE**.
 
 ### Driver Adapter Cycle — system-side path
 
 A system-side interface change reshapes the System surface — API endpoints/DTOs/status codes, UI page structure/forms/copy/selectors, mobile screens, CLI commands, admin pages, or whatever channel the ticket targets. The relevant System Driver(s) are updated to match. Driver *interfaces* may grow or change; existing acceptance tests must keep passing through them. The cycle ends with a **single COMMIT** covering the driver update.
 
-WRITE / REVIEW mechanics live in [`system-interface-redesign.md`](system-interface-redesign.md). TEST and COMMIT use the shared structural-cycle procedures in [`task-and-chore-cycles.md`](task-and-chore-cycles.md) (commit suffix `SYSTEM INTERFACE REDESIGN`). Flow: see **Structural Cycle Flow (shared)** above.
+WRITE mechanics live in [`system-interface-redesign.md`](system-interface-redesign.md). Flow: see **Structural Cycle Flow (shared)** above.
 
-The Task ticket carries a **checklist of structural change items** in its body; the agent ticks them off as the work is done, and on the final ticket commit moves the issue to **IN ACCEPTANCE** (see [`shared-ticket-status-in-acceptance.md`](shared-ticket-status-in-acceptance.md)).
+The Task ticket carries a **checklist of structural change items** in its body.
 
 ### Driver Adapter Cycle — external-system path
 
 An external system updated its API — new version, breaking change, deprecated endpoint, or similar. We update the External System Driver to match the new external surface. The work routes through the **Contract Test Sub-Process** (which itself routes through the **External System Onboarding Sub-Process** if no Driver yet exists).
 
-This path has no standalone WRITE / COMMIT phases of its own — all WRITE and COMMIT mechanics live in the per-phase CT docs (`ct-red-test.md`, `ct-red-dsl.md`, `ct-red-external-driver.md`, `ct-green-stubs.md`) plus `ct-cycle-conventions.md`. See [`task-and-chore-cycles.md`](task-and-chore-cycles.md) for the cross-reference.
+This path has no standalone WRITE / COMMIT phases of its own — all WRITE mechanics live in the per-phase CT docs (`ct-red-test.md`, `ct-red-dsl.md`, `ct-red-external-driver.md`, `ct-green-stubs.md`). See [`task-and-chore-cycles.md`](task-and-chore-cycles.md) for the cross-reference.
 
-The Task ticket carries a **checklist of structural change items** in its body; the agent ticks them off as the work is done, and on the final ticket commit moves the issue to **IN ACCEPTANCE** (see [`shared-ticket-status-in-acceptance.md`](shared-ticket-status-in-acceptance.md)).
+The Task ticket carries a **checklist of structural change items** in its body.
 
 ```
 Triggered: Task ticket with subtype:external-system-interface-redesign
@@ -216,10 +216,10 @@ Triggered: Task ticket with subtype:external-system-interface-redesign
 Contract Test Sub-Process (see above)
     │
     ▼
-TICKET STATUS - IN ACCEPTANCE (see shared-ticket-status-in-acceptance.md)
+TICKET STATUS - IN ACCEPTANCE
 ```
 
-There is no standalone STOP - HUMAN REVIEW or COMMIT in this path — those happen inside the Contract Test Sub-Process (which has its own per-phase STOPs and four-commit sequence). The path is governed by the rule that **existing AC must stay green** locally; the sample suite runs locally as part of CT's COMMIT steps. The post-commit CI Acceptance Stage is human-watched, not agent-watched — see [`shared-ticket-status-in-acceptance.md`](shared-ticket-status-in-acceptance.md).
+There is no standalone STOP - HUMAN REVIEW or COMMIT in this path — those happen inside the Contract Test Sub-Process (which has its own per-phase STOPs and four-commit sequence). The path is governed by the rule that **existing AC must stay green** locally; the sample suite runs locally as part of CT's COMMIT steps. The post-commit CI Acceptance Stage is human-watched, not agent-watched.
 
 ---
 
@@ -229,9 +229,9 @@ _Triggered when a Task ticket carries `subtype:system-implementation-change` (in
 
 A `system-implementation-change` ticket changes nothing at the boundary — it's an internal refactor, rename, dependency upgrade, or similar. Drivers (interfaces and implementations) are untouched. The cycle (`sut_cycle` in the runtime) is therefore a single-step implementation followed by review, test, commit, and the move to **TICKET STATUS - IN ACCEPTANCE**.
 
-WRITE, TEST, and COMMIT mechanics (`CHORE - WRITE`, the shared structural-cycle TEST, and the shared structural-cycle COMMIT with phase suffix `CHORE`) live in [`task-and-chore-cycles.md`](task-and-chore-cycles.md). Flow: see **Structural Cycle Flow (shared)** above.
+WRITE mechanics (`CHORE - WRITE`) live in [`task-and-chore-cycles.md`](task-and-chore-cycles.md). Flow: see **Structural Cycle Flow (shared)** above.
 
-The Task ticket carries a **checklist of refactor / upgrade steps** in its body; the agent ticks them off as the work is done, and on the final ticket commit moves the issue to **IN ACCEPTANCE** (see [`shared-ticket-status-in-acceptance.md`](shared-ticket-status-in-acceptance.md)).
+The Task ticket carries a **checklist of refactor / upgrade steps** in its body.
 
 ---
 
@@ -244,20 +244,19 @@ The Task ticket carries a **checklist of refactor / upgrade steps** in its body;
 | Intake (Task, `subtype:system-interface-redesign`) | parser (no agent) | Structural. System-side interface change; no change-driven AC. Optional legacy-coverage AC if the ticket has a Legacy Coverage section. STOP for approval. Routes to Driver Adapter Cycle → `structural_cycle` (always); Legacy Coverage Cycle first if the ticket has a Legacy Coverage section.[^green] |
 | Intake (Task, `subtype:external-system-interface-redesign`) | parser (no agent) | Structural. External-system interface change; no change-driven AC. Optional legacy-coverage AC if the ticket has a Legacy Coverage section. STOP for approval. Routes to Driver Adapter Cycle → Contract Test Sub-Process (always); Legacy Coverage Cycle first if the ticket has a Legacy Coverage section.[^green] |
 | Intake (Task, `subtype:system-implementation-change`) | parser (no agent) | Structural. Internal-only change; no change-driven AC. Optional legacy-coverage AC if the ticket has a Legacy Coverage section. STOP for approval. Routes to System Under Test Cycle (always); Legacy Coverage Cycle first if the ticket has a Legacy Coverage section.[^green] |
-| AT - RED - TEST | `atdd-test` | All scenarios for the ticket batched. WRITE = write tests. REVIEW = STOP for human approval. COMMIT = compile, conditional DSL-prototype STOP, run, disable, commit. |
-| AT - RED - DSL | `atdd-dsl` | WRITE = implement DSL + Driver-interface-changed flags. REVIEW = STOP for human approval. COMMIT = conditional Driver-prototype impl, commit. |
-| AT - RED - SYSTEM DRIVER | `atdd-driver` | System Drivers only (`shop/`). WRITE = implement System Drivers, run tests. REVIEW = STOP. COMMIT = commit. |
+| AT - RED - TEST | `atdd-test` | All scenarios for the ticket batched. WRITE = write tests. |
+| AT - RED - DSL | `atdd-dsl` | WRITE = implement DSL + Driver-interface-changed flags. |
+| AT - RED - SYSTEM DRIVER | `atdd-driver` | System Drivers only (`shop/`). WRITE = implement System Drivers. |
 | AT - GREEN - SYSTEM - WRITE (backend) | `atdd-backend` | Implements backend changes for API channel; one slice of the WRITE phase. |
 | AT - GREEN - SYSTEM - WRITE (frontend) | `atdd-frontend` | Implements frontend changes for UI channel; the other slice of the WRITE phase. |
-| AT - GREEN - SYSTEM - REVIEW | _orchestrator_ | STOP for human approval after both backend and frontend slices of WRITE complete. No agent invoked; the orchestrator runs the gate directly. |
-| AT - GREEN - SYSTEM - COMMIT | `atdd-release` | Removes `@Disabled`, COMMITs the final GREEN, ticks AC checkboxes, moves the issue to **IN ACCEPTANCE** (see [`shared-ticket-status-in-acceptance.md`](shared-ticket-status-in-acceptance.md)). |
-| CT - RED - TEST | `atdd-test` | WRITE = write contract tests, run real (pass) + stub (fail), disable. REVIEW = STOP. COMMIT = commit + push. |
-| CT - RED - DSL | `atdd-dsl` | WRITE = implement DSL + flag. REVIEW = STOP. COMMIT = commit + push. |
-| CT - RED - EXTERNAL DRIVER | `atdd-driver` | External Drivers only (`external/`). WRITE = implement External Drivers, run tests. REVIEW = STOP. COMMIT = commit + push. |
-| CT - GREEN - STUBS | _no dedicated agent — see "Stubs ownership" needs-decision in the audit plan_ | WRITE = implement Stubs, run tests. REVIEW = STOP. COMMIT = commit. |
-| SYSTEM INTERFACE REDESIGN - WRITE / REVIEW / TEST / COMMIT | `atdd-task` (subtype `system-interface-redesign`) | WRITE = update the targeted System Driver(s) + adapter impl(s) (channel determined by Checklist). REVIEW = STOP for human approval. TEST = shared structural-cycle TEST (compile, ask-then-sample, STOP). COMMIT = shared structural-cycle COMMIT (commit + tick checklist + status move). See [`system-interface-redesign.md`](system-interface-redesign.md). |
-| (external-system path) | `atdd-task` (subtype `external-system-interface-redesign`) | No standalone WRITE / REVIEW / TEST / COMMIT — routes entirely through the Contract Test Sub-Process. |
-| CHORE - WRITE / REVIEW / TEST / COMMIT | `atdd-chore` (subtype `system-implementation-change`) | WRITE = implement the internal change. REVIEW = STOP. TEST = shared structural-cycle TEST. COMMIT = shared structural-cycle COMMIT (suffix `CHORE`). |
+| AT - GREEN - SYSTEM - COMMIT | `atdd-release` | WRITE = remove `@Disabled` from the disabled tests. |
+| CT - RED - TEST | `atdd-test` | WRITE = write contract tests. |
+| CT - RED - DSL | `atdd-dsl` | WRITE = implement DSL + flag. |
+| CT - RED - EXTERNAL DRIVER | `atdd-driver` | External Drivers only (`external/`). WRITE = implement External Drivers. |
+| CT - GREEN - STUBS | _no dedicated agent — see "Stubs ownership" needs-decision in the audit plan_ | WRITE = implement Stubs. |
+| SYSTEM INTERFACE REDESIGN | `atdd-task` (subtype `system-interface-redesign`) | WRITE = update the targeted System Driver(s) + adapter impl(s) (channel determined by Checklist). See [`system-interface-redesign.md`](system-interface-redesign.md). |
+| (external-system path) | `atdd-task` (subtype `external-system-interface-redesign`) | No standalone WRITE — routes entirely through the Contract Test Sub-Process. |
+| CHORE | `atdd-chore` (subtype `system-implementation-change`) | WRITE = implement the internal change. |
 
 ## Scope
 
@@ -265,33 +264,5 @@ Every pipeline run is bounded by a **Scope** declared in `gh-optivem.yaml` at th
 
 Each invocation targets one combination of values (the schema does not accept `both` or `all`). To run against a different combination, point the CLI at an alternate config with `--config <path>` (e.g. `gh optivem atdd implement-ticket --issue 42 --config gh-optivem-multitier.yaml`).
 
-Sub-agents — notably `atdd-task` and `atdd-chore` — restrict ALL file edits, residual-reference greps, compile checks, and sample-suite runs to in-scope paths. The shared structural-cycle TEST procedure (see `task-and-chore-cycles.md`) runs the sample suite only for the in-scope Test Lang and prints a drift warning naming any out-of-scope implementations that were deliberately left untouched.
+Sub-agents — notably `atdd-task` and `atdd-chore` — restrict ALL file edits and residual-reference greps to in-scope paths.
 
-## STOP Behaviour
-
-Every cycle separates the work step (**WRITE**) from the human-approval step (**REVIEW**). REVIEW is a STOP-only phase: the agent does no further work, just presents what WRITE produced and waits for explicit approval. The orchestrator does not auto-approve; phase progression always requires a human decision at every STOP.
-
-Structural cycles add a second STOP at the end of **TEST** (after the chosen checks complete, before COMMIT) so the user can review the test results before commit confirmation. **The entire TEST phase is gated upfront** — the agent asks the user to choose `full` (compile + sample), `compile` (compile only), or `skip` before running anything. Compile is not silent; even single-project compile commands like `./gradlew build` or `npx tsc --noEmit` require approval. See `task-and-chore-cycles.md` for the procedure. AT and CT cycles do not have a standalone TEST phase — test execution is folded into WRITE (the agent runs the tests as part of doing the work) and the relevant verification is repeated inside COMMIT.
-
-## Commit Handoff
-
-Agents never run `git commit`, `git add`, or `gh issue close`. When the work is done, the agent exits cleanly with the working-tree delta untouched. The wrapping CLI that invoked the dispatch then runs the post-dispatch human gates (the "Can I commit?" prompt and any phase-boundary STOPs) and owns the actual commit. This separation keeps the commit-approval moment outside the agent's transcript so the human reviews the staged delta with normal review tools rather than scrolling back through the agent's reasoning.
-
-Per-phase docs name the commit-message format (`<Ticket> | <Phase>`) — the wrapping CLI applies it. The agent's only commit-related responsibility is to leave the working tree in a state that produces the right commit when the wrapper stages and commits it.
-
-## Resume Detection
-
-Scan for `@Disabled` annotations to determine where to resume:
-
-| Marker | Resume at |
-|--------|-----------|
-| `AT - RED - TEST` | Check for `"TODO: DSL"` prototypes → if found, AT - RED - DSL; if not, AT - GREEN - SYSTEM |
-| `AT - RED - DSL` | Check the `External System Driver Interface Changed` and `System Driver Interface Changed` flags from the WRITE phase: if external = yes, enter the Contract Test Sub-Process; otherwise if system = yes, AT - RED - SYSTEM DRIVER; otherwise AT - GREEN - SYSTEM. If the flags were not preserved, fall back to checking for `"TODO: Driver"` prototypes — found in `external/` → CT sub-process; found in `shop/` → AT - RED - SYSTEM DRIVER; not found → AT - GREEN - SYSTEM. |
-| `AT - RED - SYSTEM DRIVER` | AT - GREEN - SYSTEM |
-| `CT - RED - TEST` | Check for `"TODO: DSL"` prototypes → if found, CT - RED - DSL; if not, CT - GREEN - STUBS |
-| `CT - RED - DSL` | Check for `"TODO: Driver"` prototypes in external drivers → if found, CT - RED - EXTERNAL DRIVER; if not, CT - GREEN - STUBS |
-| `CT - RED - EXTERNAL DRIVER` | CT - GREEN - STUBS |
-
-## Escalation
-
-If any agent reports it cannot proceed (stuck, unexpected pattern, test failure it cannot explain), STOP and present the blocker to the user.

@@ -2,7 +2,7 @@
 
 ## Positive vs Negative Test Classes
 
-Each use case has two test files (see `language-equivalents.md` for the file extension per language):
+Each use case has two test files (see [language-equivalents/](../code/language-equivalents/README.md) for the file extension per language):
 
 - **`<UseCase>PositiveTest`** — scenarios where `Then` asserts **success** (e.g. `shouldSucceed()`, resource is returned, state is correct).
 - **`<UseCase>NegativeTest`** — scenarios where `Then` asserts **failure** (e.g. `shouldFailWith(...)`, error message returned).

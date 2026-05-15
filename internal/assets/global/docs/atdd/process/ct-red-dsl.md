@@ -6,16 +6,12 @@ Replace the `"TODO: DSL"` prototypes left behind by CT - RED - TEST with real DS
 
 ## What it produces
 
-- Commit `<Ticket> | CT - RED - DSL` containing the real DSL implementation, any updated Driver interfaces, and `"TODO: Driver"` prototypes for new/changed Driver methods
+- After WRITE: the real DSL implementation, any updated Driver interfaces, and `"TODO: Driver"` prototypes for new/changed Driver methods exist in the working tree.
 - Flag set: `external_system_driver_interface_changed = yes|no`
 - Tests in state: contract tests disabled with reason `"CT - RED - DSL"`
 
 ## Conventions
 
-- Suite selection (real vs stub): see [ct-cycle-conventions.md](ct-cycle-conventions.md). This phase exercises the stub side only.
-- Commit message format: see [ct-cycle-conventions.md](ct-cycle-conventions.md).
-- Commit handoff (the wrapping CLI commits, not the agent): see [cycles.md § Commit Handoff](cycles.md#commit-handoff).
-- Phase progression and STOP semantics: see [shared-phase-progression.md](shared-phase-progression.md).
 - `"TODO: Driver"` exception string and `@Disabled` syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
 - Definitions of DSL Interface and External System Driver: see [glossary.md](glossary.md).
 
@@ -45,5 +41,5 @@ Replace the `"TODO: DSL"` prototype with real DSL logic. Driver methods stay as 
 ## Anti-patterns
 
 - Implementing External System Drivers here — Driver bodies belong in CT - RED - EXTERNAL DRIVER. Only Driver *prototypes* (`"TODO: Driver"`) are added in this phase.
-- Leaving `"TODO: DSL"` strings behind in the committed code — every prototype must be replaced with real logic.
+- Leaving `"TODO: DSL"` strings behind after WRITE — every prototype must be replaced with real logic.
 - Editing files outside `external/` to "fix" failing contract tests — the contract is between the system and the external boundary, not internal code.

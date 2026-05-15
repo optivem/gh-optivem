@@ -6,22 +6,19 @@ Replace the System-Driver "TODO: Driver" prototypes from AT - RED - DSL with rea
 
 ## What it produces
 
-- Commit `<Ticket> | AT - RED - SYSTEM DRIVER` containing real System Driver implementations under `system-test/<lang>/.../testkit/driver/adapter/shop/`.
+- After WRITE: real System Driver implementations exist under `system-test/<lang>/.../testkit/driver/adapter/shop/`.
 - Tests in state: change-driven scenarios disabled with reason `"AT - RED - SYSTEM DRIVER"`; legacy-coverage scenarios still enabled and passing.
 
 ## Conventions
 
 - File scope: only files under `system-test/<lang>/.../testkit/driver/port/shop/` and `system-test/<lang>/.../testkit/driver/adapter/shop/<channel>` (e.g. `.../adapter/shop/api`, `.../adapter/shop/ui`). All driver code lives in the test tree, not in `system/`. Do NOT touch `external/` siblings — that is the Contract Test sub-process.
 - Do NOT read or search backend/frontend source code. Model new Driver methods on existing Driver methods in the same file.
-- Suite selection (`<acceptance-api>` / `<acceptance-ui>`) and commit-message format: see [at-cycle-conventions.md](at-cycle-conventions.md).
 - `@Disabled` / skip syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
 - Definition of System Driver vs External System Driver: see [glossary.md](glossary.md).
-- Commit handoff (the wrapping CLI commits, not the agent): see [cycles.md § Commit Handoff](cycles.md#commit-handoff).
-- STOP semantics at REVIEW: see [shared-phase-progression.md](shared-phase-progression.md).
 
 ## Example
 
-Before — System Driver prototype committed in AT - RED - DSL:
+Before — System Driver prototype produced by AT - RED - DSL:
 
 ```java
 @Override
@@ -44,11 +41,6 @@ public RegisterCustomerResponse register(RegisterCustomerRequest request) {
 
 1. Enable the tests marked disabled with reason `"AT - RED - DSL"`.
 2. Implement the System Drivers — replace each "TODO: Driver" prototype with actual logic. Stay within `system-test/<lang>/.../testkit/driver/port/shop/` and `system-test/<lang>/.../testkit/driver/adapter/shop/`. Model new methods on existing Driver methods in the same file.
-3. Run the tests and verify they fail with a runtime error:
-   ```bash
-   gh optivem test run --suite <acceptance-api> --test <TestMethodName>
-   gh optivem test run --suite <acceptance-ui> --test <TestMethodName>
-   ```
 
 **Scope:** Only System Driver code. No test, DSL, system, or external-driver edits.
 

@@ -6,17 +6,14 @@ Turn the ticket's change-driven AC into compiling, runtime-failing acceptance te
 
 ## What it produces
 
-- Commit `<Ticket> | AT - RED - TEST` containing the new test class(es), any DSL interface additions, and the `"TODO: DSL"` prototype impls that go with them — all written together in WRITE so the result compiles.
+- After WRITE: the new test class(es), any DSL interface additions, and the `"TODO: DSL"` prototype impls that go with them exist in the working tree — all written together in WRITE so the result compiles.
 - Tests in state: change-driven scenarios disabled with reason `"AT - RED - TEST"`; legacy-coverage scenarios enabled and passing.
 
 ## Conventions
 
 - Unit of work: the **ticket**. All scenarios for the ticket are written together as a batch — there is no per-scenario inner loop.
-- Suite selection (`<acceptance-api>` / `<acceptance-ui>`) and commit-message format: see [at-cycle-conventions.md](at-cycle-conventions.md).
-- `@Disabled` / skip syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
-- "TODO: DSL" prototype syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
-- Commit handoff (the wrapping CLI commits, not the agent): see [cycles.md § Commit Handoff](cycles.md#commit-handoff).
-- STOP semantics at REVIEW: see [shared-phase-progression.md](shared-phase-progression.md).
+- `@Disabled` / skip syntax per language: see [language-equivalents/](../code/language-equivalents/README.md).
+- "TODO: DSL" prototype syntax per language: see [language-equivalents/](../code/language-equivalents/README.md).
 - Test layout context: see [test.md](../architecture/test.md) and [dsl-core.md](../architecture/dsl-core.md).
 
 ## Example
@@ -33,7 +30,7 @@ void registerCustomer_succeeds() {
 }
 ```
 
-The matching DSL prototype added in the same WRITE step (Java shown — see [language-equivalents.md](../code/language-equivalents.md) for other languages):
+The matching DSL prototype added in the same WRITE step (Java shown — see [language-equivalents/](../code/language-equivalents/README.md) for other languages):
 
 ```java
 @Override
@@ -56,7 +53,7 @@ public ThenSuccess register() {
    - After writing each test, verify it matches the AC exactly — Given maps to Given, When maps to When, Then maps to Then. Every precondition stated in the scenario must appear in the test. If anything is unclear, ask before proceeding.
 2. **Add the DSL stubs the tests reference.** For every new DSL method the tests call:
    - Add the method declaration to the DSL interface.
-   - Implement a `"TODO: DSL"` not-implemented prototype (see [language-equivalents.md](../code/language-equivalents.md)). Minimum signature only — no behaviour.
+   - Implement a `"TODO: DSL"` not-implemented prototype (see [language-equivalents/](../code/language-equivalents/README.md)). Minimum signature only — no behaviour.
    The result must compile. The RED state is proven later by runtime test failure, not by compile failure.
 
 ## Anti-patterns

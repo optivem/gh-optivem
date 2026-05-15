@@ -8,9 +8,7 @@ The `subtype:system-interface-redesign` label routes a Task ticket through this 
 
 ## What it produces
 
-- A single commit `<Ticket> | SYSTEM INTERFACE REDESIGN` containing only `system/` and `driver-adapter/` edits (and, exceptionally, approved `driver-port/` edits).
-- All in-scope parallel implementations updated (Java/.NET/TS × monolith/multitier — see [architecture/system.md](../architecture/system.md)).
-- The issue moved to **TICKET STATUS - IN ACCEPTANCE**.
+After WRITE: only `system/` and `driver-adapter/` edits (and, exceptionally, approved `driver-port/` edits). All in-scope parallel implementations updated (Java/.NET/TS × monolith/multitier — see [architecture/system.md](../architecture/system.md)).
 
 ## SYSTEM INTERFACE REDESIGN - WRITE
 
@@ -24,26 +22,6 @@ The `subtype:system-interface-redesign` label routes a Task ticket through this 
 3. Update the matching System Driver implementation(s) (`driver-adapter/.../shop/<channel>`) to absorb the change. Prefer adapter-only changes — keep behaviour observable through the **existing** driver interface.
 4. **Driver interface guardrail.** Do NOT modify any file under `driver-port/` casually. If an interface change is unavoidable, STOP separately at that boundary and present to the user: the method(s) you want to change, why the adapter alone cannot absorb the change, the proposed new signature(s). Wait for explicit user approval before editing any `driver-port/` file. (Such changes have no contract-test fallout because this is `shop/`, not `external/` — but they still touch the test surface and must be approved.)
 5. Do not modify acceptance tests, DSL, Gherkin, or any code outside the system layer + its driver. `system-test/<lang>/.../Legacy/` is read-only course-reference material — leave it untouched.
-
-## SYSTEM INTERFACE REDESIGN - REVIEW (STOP)
-
-STOP. Present the system + driver changes (system code, driver-adapter, any approved driver-port changes) to the user and ask for approval. Do NOT continue.
-
-**Review checklist:**
-- All in-scope parallel implementations updated symmetrically (Java/.NET/TS × monolith/multitier).
-- Driver-adapter URL / selector / channel-specific strings match the new system surface.
-- No residual references to the old URL / route / selector / channel-specific strings remain (grep the system tree).
-- No edits under `driver-port/` unless separately approved at the guardrail STOP.
-- No edits under `system-test/<lang>/.../Legacy/`.
-- DSL, Gherkin, and acceptance tests untouched.
-
-## SYSTEM INTERFACE REDESIGN - TEST
-
-The TEST phase is the shared structural-cycle TEST — see [task-and-chore-cycles.md § Shared structural-cycle TEST](task-and-chore-cycles.md#shared-structural-cycle-test). COMPILE always runs after REVIEW; the operator then picks sample-suite scope at the CHOOSE_TESTS menu (`[a]`ll / `[s]`ome / `[p]`ecific / `[n]`o tests / `[x]` reject). Compile or test RED routes through a human STOP and dispatches `atdd-fix-verify` with `failure_type=compile|test` for a single retry.
-
-## SYSTEM INTERFACE REDESIGN - COMMIT
-
-The COMMIT phase is the shared structural-cycle COMMIT with phase suffix `SYSTEM INTERFACE REDESIGN` — see [task-and-chore-cycles.md § Shared structural-cycle COMMIT](task-and-chore-cycles.md#shared-structural-cycle-commit). Commit message: `<Ticket> | SYSTEM INTERFACE REDESIGN`.
 
 ## Anti-patterns
 

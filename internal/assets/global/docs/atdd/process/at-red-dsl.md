@@ -6,23 +6,20 @@ Replace the "TODO: DSL" prototypes from AT - RED - TEST with real DSL logic, and
 
 ## What it produces
 
-- Commit `<Ticket> | AT - RED - DSL` containing real DSL implementations, any Driver interface changes, and Driver "TODO: Driver" prototypes for any Driver interface that changed.
+- After WRITE: real DSL implementations, any Driver interface changes, and Driver "TODO: Driver" prototypes for any Driver interface that changed exist in the working tree.
 - Flag set: `External System Driver Interface Changed = yes|no`.
 - Flag set: `System Driver Interface Changed = yes|no`.
 - Tests in state: change-driven scenarios disabled with reason `"AT - RED - DSL"`; legacy-coverage scenarios still enabled and passing.
 
 ## Conventions
 
-- Suite selection (`<acceptance-api>` / `<acceptance-ui>`) and commit-message format: see [at-cycle-conventions.md](at-cycle-conventions.md).
 - `@Disabled` / skip syntax and "TODO: Driver" prototype syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
 - Definition of an "interface change" (DSL Interface, External System Driver, System Driver): see [glossary.md](glossary.md).
-- Commit handoff (the wrapping CLI commits, not the agent): see [cycles.md § Commit Handoff](cycles.md#commit-handoff).
-- STOP semantics at REVIEW: see [shared-phase-progression.md](shared-phase-progression.md).
 - DSL layout context: see [dsl-core.md](../architecture/dsl-core.md).
 
 ## Example
 
-Before — DSL prototype committed in AT - RED - TEST:
+Before — DSL prototype produced by AT - RED - TEST:
 
 ```java
 @Override

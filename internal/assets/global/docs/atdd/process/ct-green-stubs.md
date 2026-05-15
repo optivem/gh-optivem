@@ -6,17 +6,13 @@ Bring the dockerized External System stub into contract-compatibility with the r
 
 ## What it produces
 
-- Commit `<Ticket> | CT - GREEN - STUBS` containing stub server changes (routes, fixtures) and the re-enabled contract tests
-- Tests in state: contract tests enabled and PASSING against `<suite-contract-stub>`
+- After WRITE: stub server changes (routes, fixtures) and the re-enabled contract tests exist in the working tree.
+- Tests in state: contract tests enabled and PASSING against the dockerized stub.
 
 ## Conventions
 
 - The dockerized stub follows the json-server pattern — see [`external-systems/simulators`](../../../external-systems/simulators) for the canonical reference (`mock-server.js`, `Dockerfile`).
 - Stub data must reflect the real Test Instance's contract — same shapes, same status codes, same error semantics. Drift between stub and real instance breaks the CT cycle.
-- Suite selection (real vs stub): see [ct-cycle-conventions.md](ct-cycle-conventions.md). This phase exercises the stub side only.
-- Commit message format: see [ct-cycle-conventions.md](ct-cycle-conventions.md).
-- Commit handoff (the wrapping CLI commits, not the agent): see [cycles.md § Commit Handoff](cycles.md#commit-handoff).
-- Phase progression and STOP semantics: see [shared-phase-progression.md](shared-phase-progression.md).
 - `@Disabled` removal syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
 
 ## Example
@@ -37,13 +33,6 @@ server.get('/erp/api/promotion', (req, res) => {
 
 1. Enable the tests marked disabled with reason `"CT - RED - EXTERNAL DRIVER"`.
 2. Implement the dockerized External System stub changes — add or update routes, fixtures, or middleware so the stub honors the new contract.
-3. Run the External System Contract Tests against the stub. Rebuild the stub image and restart the SUT so the new behavior is in the running container, then invoke the test:
-   ```bash
-   gh optivem system build --rebuild
-   gh optivem system start --restart
-   gh optivem test run --suite <suite-contract-stub> --test <TestMethodName>
-   ```
-4. Verify that the tests pass. If they fail, ask the user. STOP. Do NOT continue.
 
 ## Anti-patterns
 
