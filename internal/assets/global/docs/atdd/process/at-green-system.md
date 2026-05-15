@@ -20,14 +20,14 @@ Take all change-driven acceptance tests from RED to GREEN by implementing the sy
 A representative slice — backend handler and frontend page changed together for a single feature:
 
 ```diff
- // backend: shop/api/.../CustomerController.java
+ // backend: ${sut_namespace}/api/.../CustomerController.java
 +@PostMapping("/customers")
 +public ResponseEntity<RegisterCustomerResponse> register(@RequestBody RegisterCustomerRequest req) {
 +    var result = registerCustomer.handle(req);
 +    return ResponseEntity.ok(new RegisterCustomerResponse(result.id()));
 +}
 
- // frontend: shop/ui/.../register-customer.page.tsx
+ // frontend: ${sut_namespace}/ui/.../register-customer.page.tsx
 +export function RegisterCustomerPage() {
 +  const onSubmit = async (form) => {
 +    await api.post("/customers", form);

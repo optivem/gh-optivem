@@ -246,7 +246,7 @@ The Task ticket carries a **checklist of refactor / upgrade steps** in its body.
 | Intake (Task, `subtype:system-implementation-change`) | parser (no agent) | Structural. Internal-only change; no change-driven AC. Optional legacy-coverage AC if the ticket has a Legacy Coverage section. STOP for approval. Routes to System Under Test Cycle (always); Legacy Coverage Cycle first if the ticket has a Legacy Coverage section.[^green] |
 | AT - RED - TEST | `atdd-test` | All scenarios for the ticket batched. WRITE = write tests. |
 | AT - RED - DSL | `atdd-dsl` | WRITE = implement DSL + Driver-interface-changed flags. |
-| AT - RED - SYSTEM DRIVER | `atdd-driver` | System Drivers only (`shop/`). WRITE = implement System Drivers. |
+| AT - RED - SYSTEM DRIVER | `atdd-driver` | System Drivers only (`${sut_namespace}/`). WRITE = implement System Drivers. |
 | AT - GREEN - SYSTEM - WRITE (backend) | `atdd-backend` | Implements backend changes for API channel; one slice of the WRITE phase. |
 | AT - GREEN - SYSTEM - WRITE (frontend) | `atdd-frontend` | Implements frontend changes for UI channel; the other slice of the WRITE phase. |
 | AT - GREEN - SYSTEM - COMMIT | `atdd-release` | WRITE = remove `@Disabled` from the disabled tests. |

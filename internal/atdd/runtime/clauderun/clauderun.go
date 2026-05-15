@@ -28,7 +28,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -38,6 +37,7 @@ import (
 	assetsync "github.com/optivem/gh-optivem/internal/assets/sync"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/expand"
 )
 
 // Options bundles every input Dispatch needs to construct a prompt and run
@@ -377,36 +377,10 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) error {
 // output. Production points at time.Now.
 var nowFn = time.Now
 
-// unfilledPlaceholderRE matches a `${name}` token that survived
-// renderPrompt's substitution pass. Matches a leading `$`, an opening
-// brace, an identifier, and a closing brace — same shape ExpandParams
-// recognises on the way in. Anchoring is intentional: substring
-// like `\$amount{}` doesn't match (the `${` is split), and that is the
-// correct behaviour because it isn't a placeholder.
-var unfilledPlaceholderRE = regexp.MustCompile(`\$\{[a-zA-Z_][a-zA-Z0-9_]*\}`)
-
-// findUnfilledPlaceholders returns each distinct `${name}` token still
-// present in the rendered prompt, preserving first-seen order. Empty
-// slice means "no leftovers — every placeholder was substituted".
-//
-// This is the smallest correct guardrail against the wires-crossed
-// substitution bug class: any field the prompt template references but
-// the dispatcher never seeded into Context.State (or Options) shows up
-// here, and Dispatch refuses to launch. A per-field schema would be
-// more work and duplicate information already encoded in the template.
-func findUnfilledPlaceholders(s string) []string {
-	matches := unfilledPlaceholderRE.FindAllString(s, -1)
-	seen := map[string]bool{}
-	var out []string
-	for _, m := range matches {
-		if seen[m] {
-			continue
-		}
-		seen[m] = true
-		out = append(out, m)
-	}
-	return out
-}
+// findUnfilledPlaceholders is the package-local alias for expand.FindUnfilled.
+// Kept as an alias (rather than inlined at every call site) so the existing
+// test suite that calls it directly continues to compile.
+var findUnfilledPlaceholders = expand.FindUnfilled
 
 // writePromptLog writes the rendered prompt to path, creating parent
 // directories as needed. Used by Dispatch when Options.PromptLogPath is

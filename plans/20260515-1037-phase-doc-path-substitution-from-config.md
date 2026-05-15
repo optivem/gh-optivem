@@ -1,7 +1,5 @@
 # Plan: Config-driven path substitution in phase docs
 
-🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-15T13:29:14Z`
-
 ## Background
 
 The ATDD phase docs under `internal/assets/global/docs/atdd/process/` ship to
@@ -93,7 +91,12 @@ For ${language} projects, prefer the per-channel adapter pattern.
 Note `<channel>` stays in angle-brackets — it's free-form (`api`/`ui`/`cli`)
 and the reader picks. Only `${...}` get substituted.
 
-### Output — `~/.gh-optivem/docs/atdd/process/at-red-system-driver.md` after `gh optivem sync`
+### Output — `./.gh-optivem/docs/atdd/process/at-red-system-driver.md` after project-local materialize
+
+(Decision 2026-05-15: substituted docs go to a project-local `.gh-optivem/docs/`
+directory inside the project tree, not into the user-global `~/.gh-optivem/docs/`.
+The user-global location is shared across every project on the machine and must
+not carry per-project substitutions.)
 
 What an agent in the scaffolded repo Reads:
 
@@ -134,7 +137,7 @@ reflects the new layout. No doc edits needed.
 
 2. **Substitution happens at sync time, not at read time.** Agents Read the
    docs many times per run; per-Read substitution is wasted work. Sync the
-   already-substituted text once into `~/.gh-optivem/docs/` and the agents
+   already-substituted text once into `./.gh-optivem/docs/` and the agents
    Read concrete paths thereafter.
 
    Corollary: substitution is **inline in the body**, not declared in
@@ -260,96 +263,52 @@ Carried over from source plans (already settled before merge):
 
 ## Implementation steps
 
-### Step 1 — Schema additions to project config
-
-- New optional field `system.sut_namespace` in `gh-optivem.yaml` schema. When
-  absent, derive from the last path segment of `system.repo` (per D1).
-- New **required** top-level `paths:` map. Each key is a named location; each
-  value is a path relative to the repo root. The scaffolder writes a default
-  block (matching `glossary.md` doctrine) into every new project so the
-  block is never empty in practice (per D3).
-- Wire both through `projectconfig.Config` so the placeholder map flattens to
-  a single flat `name → value` lookup (per D2: Family A keys + Family B keys
-  in one namespace).
-- Sync-time error if a `paths.*` key shadows a Family A key.
-- Migration helper: `gh optivem config migrate` reads an existing
-  `gh-optivem.yaml` missing `paths:` and writes the default block in place
-  (so we don't break any pre-existing scaffold).
-
-### Step 2 — Extend sync to substitute
-
-- Refactor `internal/assets/sync/sync.go` so the docs-copy step takes the
-  flat placeholder map built from `projectconfig.Config`.
-- For each `.md` file under `internal/assets/global/docs/atdd/`, run
-  `statemachine.ExpandParams` (the existing helper, lifted to a shared
-  package if necessary) **inline against the body text** before writing to
-  the destination. Substitution is in the body itself, not a frontmatter
-  declaration the agent has to resolve at read time.
-- Prepend a small audit-trail frontmatter block to each substituted file:
-
-  ```yaml
-  ---
-  substituted:
-    language: typescript
-    sut_namespace: myShop
-    driver_port: system-test/typescript/src/testkit/driver/port
-  ---
-  ```
-
-  Only the keys that actually appeared in the body are listed (don't dump
-  the whole placeholder map). ~20 tokens for debuggability. Body remains the
-  source of truth.
-- Lift `findUnfilledPlaceholders` out of `clauderun.go` into a shared package
-  and use it at sync time. Error message reports the declared vocabulary
-  (`unknown placeholder ${driver_prt}; declared: driver_port, driver_adapter,
-  language, ...`).
-- Warning (not error) when a `paths.*` entry resolves to a directory that
-  doesn't exist on disk in the scaffolded repo.
-
-### Step 3 — Convert doc literals to `${name}` (single pass per doc)
-
-For each affected doc, replace in one edit:
-- `<lang>` → `${language}`
-- `shop/` (where it's the SUT driver namespace) → `${sut_namespace}/`
-- `testkit/driver/port` → `${driver_port}` (or appropriate fragment)
-- `testkit/driver/adapter` → `${driver_adapter}`
-- `testkit/external/port` → `${external_driver_port}`
-- `testkit/external/adapter` → `${external_driver_adapter}`
-
-Do NOT replace `<channel>` — that one is genuinely free-form (`api`/`ui`/
-`cli`).
-
-Special handling for `glossary.md`: keep the doctrinal `shop/` literal in
-the explanatory paragraph (it TEACHES the convention; substituting it in
-prose would be confusing). Add a sentence noting that the literal folder
-name in code paths comes from `${sut_namespace}` and driver layout
-fragments come from named-location placeholders under `paths:`.
-Substitute in PATHS, not in PROSE.
-
 ### Step 4 — Test against rehearsal
 
-- Run `gh optivem sync` against the TS rehearsal at
-  `C:/GitHub/optivem/academy/rehearsal-20260515-095931`.
-- Open `~/.gh-optivem/docs/atdd/process/at-red-system-driver.md` and confirm
-  `${language}` → `typescript`, `${sut_namespace}` → `myShop`,
-  `${driver_port}` → the concrete path declared in the rehearsal's config.
+- Run `gh optivem` against the TS rehearsal at
+  `C:/GitHub/optivem/academy/rehearsal-20260515-095931` (any command that
+  triggers project-local sync — e.g. an ATDD-running command).
+- Open `./.gh-optivem/docs/atdd/process/at-red-system-driver.md` inside the
+  rehearsal and confirm `${language}` → `typescript`, `${sut_namespace}` →
+  `myShop`, `${driver_port}` → the concrete path declared in the rehearsal's
+  `paths:` block. Note: location changed from the original
+  `~/.gh-optivem/docs/...` (Decision this session: user-global location
+  MUST NOT be substituted — it's shared across projects).
+- Confirm the per-file `substituted:` audit block lists only keys that
+  appeared in that file's body.
+- Confirm `./.gh-optivem/.materialized.yaml` sidecar exists and matches the
+  current placeholder map; touch `gh-optivem.yaml` with no semantic change
+  and re-run — verify materialization is skipped.
 - Re-run the AT-RED-TEST cycle and confirm the agent's reads of the doc
   return concrete paths.
-- Confirm the warning fires (not errors) when a `paths.*` entry resolves
-  to a directory that doesn't exist on disk yet.
+- Confirm a `paths.*` key that resolves to a non-existent directory does
+  NOT block (the plan's warning rule is deferred — currently the
+  substitution layer doesn't FS-check `paths.*` values, since
+  validatePath already rejects malformed values at config load).
 
-### Step 5 — Document the convention
+### Remaining sub-items deferred from this session
 
-- Add a section to `docs/atdd/architecture/` (or wherever doc/template
-  conventions live) capturing:
-  - Phase docs use `${name}` placeholders identical to agent prompts.
-  - Sync expands them inline; reads return concrete paths.
-  - Two placeholder families, one flat namespace: fixed-schema
-    (Family A — `${language}`, etc., lifted from top-level config fields)
-    and named locations (Family B — `${driver_port}` etc., under `paths:`).
-  - Users edit `paths:` (not the docs) when they reorganise their tree.
-- Cross-reference from `glossary.md` so the `shop/` doctrine paragraph and
-  the new placeholder-vocabulary note stay in sync.
+- ⏳ Migration helper: extend `runConfigMigrate` to back-fill the default
+  `paths:` block when missing. Today's scaffolder seeds it, but pre-existing
+  configs (and the rehearsal at `C:/GitHub/optivem/academy/rehearsal-20260515-095931`)
+  need the migrate path for Step 4 verification. Scaffolder default-block
+  authoring depends on this.
+- ⏳ Wire `MaterializeProject` into `clauderun.Dispatch`: today
+  `assetsync.MaterializeProject` exists and works, but `clauderun.renderPrompt`
+  still resolves `${docs_root}` via `assetsync.DocsRoot()` (the user-global
+  path). Wire-through:
+  1. `Dispatch` calls `MaterializeProject(opts.RepoPath, version,
+     cfg.PlaceholderMap())` before `renderPrompt`.
+  2. `renderPrompt` substitutes `${docs_root}` with `ProjectDocsRoot(opts.RepoPath)`
+     when `opts.RepoPath` is non-empty.
+  3. `Options` gains an explicit `ProjectConfig *projectconfig.Config`
+     field (or `Dispatch` accepts it as a separate argument) so the
+     placeholder map is at hand without re-loading.
+- ⏳ Scaffolder default `paths:` block. Decide per-language defaults
+  (TypeScript flat-src, Java Maven layout, .NET solution layout) and
+  thread them through `internal/configinit/configinit.go` so newly
+  scaffolded projects ship with a non-empty `paths:` block matching the
+  glossary doctrine for their layout.
 
 ## Non-goals
 

@@ -2,16 +2,16 @@
 
 ## Purpose
 
-Replace the System-Driver "TODO: Driver" prototypes from AT - RED - DSL with real Driver logic. This phase touches **System Drivers only** (under `system-test/<lang>/.../testkit/driver/{port,adapter}/shop/`); external-system Drivers are handled by the Contract Test sub-process. Tests stay red — they only go green once the system implementation lands in AT - GREEN - SYSTEM.
+Replace the System-Driver "TODO: Driver" prototypes from AT - RED - DSL with real Driver logic. This phase touches **System Drivers only** (under `${driver_port}/${sut_namespace}/` and `${driver_adapter}/${sut_namespace}/`); external-system Drivers are handled by the Contract Test sub-process. Tests stay red — they only go green once the system implementation lands in AT - GREEN - SYSTEM.
 
 ## What it produces
 
-- After WRITE: real System Driver implementations exist under `system-test/<lang>/.../testkit/driver/adapter/shop/`.
+- After WRITE: real System Driver implementations exist under `${driver_adapter}/${sut_namespace}/`.
 - Tests in state: change-driven scenarios disabled with reason `"AT - RED - SYSTEM DRIVER"`; legacy-coverage scenarios still enabled and passing.
 
 ## Conventions
 
-- File scope: only files under `system-test/<lang>/.../testkit/driver/port/shop/` and `system-test/<lang>/.../testkit/driver/adapter/shop/<channel>` (e.g. `.../adapter/shop/api`, `.../adapter/shop/ui`). All driver code lives in the test tree, not in `system/`. Do NOT touch `external/` siblings — that is the Contract Test sub-process.
+- File scope: only files under `${driver_port}/${sut_namespace}/` and `${driver_adapter}/${sut_namespace}/<channel>` (e.g. `${driver_adapter}/${sut_namespace}/api`, `${driver_adapter}/${sut_namespace}/ui`). All driver code lives in the test tree, not in `system/`. Do NOT touch `external/` siblings — that is the Contract Test sub-process.
 - Do NOT read or search backend/frontend source code. Model new Driver methods on existing Driver methods in the same file.
 - `@Disabled` / skip syntax per language: see [language-equivalents/](../code/language-equivalents/README.md).
 - Definition of System Driver vs External System Driver: see [glossary.md](glossary.md).
@@ -40,7 +40,7 @@ public RegisterCustomerResponse register(RegisterCustomerRequest request) {
 ## AT - RED - SYSTEM DRIVER - WRITE
 
 1. Enable the tests marked disabled with reason `"AT - RED - DSL"`.
-2. Implement the System Drivers — replace each "TODO: Driver" prototype with actual logic. Stay within `system-test/<lang>/.../testkit/driver/port/shop/` and `system-test/<lang>/.../testkit/driver/adapter/shop/`. Model new methods on existing Driver methods in the same file.
+2. Implement the System Drivers — replace each "TODO: Driver" prototype with actual logic. Stay within `${driver_port}/${sut_namespace}/` and `${driver_adapter}/${sut_namespace}/`. Model new methods on existing Driver methods in the same file.
 
 **Scope:** Only System Driver code. No test, DSL, system, or external-driver edits.
 

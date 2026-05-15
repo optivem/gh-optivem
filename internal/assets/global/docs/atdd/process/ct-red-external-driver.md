@@ -11,7 +11,7 @@ Replace the `"TODO: Driver"` prototypes left behind by CT - RED - DSL with real 
 
 ## Conventions
 
-- Scope is strictly limited to files under `system-test/<lang>/.../testkit/driver/port/external/` and `system-test/<lang>/.../testkit/driver/adapter/external/`. All driver code lives in the test tree, not in `system/`. Files under the sibling `shop/` directories are off-limits in this phase. See [glossary.md](glossary.md).
+- Scope is strictly limited to files under `${external_driver_port}/` and `${external_driver_adapter}/`. All driver code lives in the test tree, not in `system/`. Files under the sibling `${sut_namespace}/` directories are off-limits in this phase. See [glossary.md](glossary.md).
 - `@Disabled` syntax per language: see [language-equivalents/](../code/language-equivalents/README.md).
 
 ## Example
@@ -35,11 +35,11 @@ Replace the `"TODO: Driver"` prototype with a real HTTP call to the external sys
 
 1. Enable the tests marked disabled with reason `"CT - RED - DSL"`.
 2. Implement the External System Drivers — replace each `"TODO: Driver"` prototype with actual logic.
-   - Only edit files under `system-test/<lang>/.../testkit/driver/port/external/` and `system-test/<lang>/.../testkit/driver/adapter/external/`.
+   - Only edit files under `${external_driver_port}/` and `${external_driver_adapter}/`.
    - Do NOT read external-system source code to figure out behavior; rely on the contract tests and the published external API contract.
 
 ## Anti-patterns
 
-- Editing files under the sibling `testkit/driver/{port,adapter}/shop/` directories — those belong to System Drivers and the AT cycle, not the External System Driver phase.
+- Editing files under the sibling `${driver_port}/${sut_namespace}/` and `${driver_adapter}/${sut_namespace}/` directories — those belong to System Drivers and the AT cycle, not the External System Driver phase.
 - Reading external-system source code to figure out behavior — Drivers are written against the *contract* expressed by the contract tests and the published API, not against internal implementation details.
 - Expecting the contract tests to pass at the end of this phase — they should still fail. The stub becomes contract-compatible in CT - GREEN - STUBS.

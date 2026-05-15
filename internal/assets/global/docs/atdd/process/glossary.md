@@ -65,3 +65,5 @@ ATDD content uses the word **shop** in two distinct ways. They look similar but 
 - **`shop` (no slash, used in repo context)** — the repository name of the system under test.
 
 The two uses are kept textually distinct (slash vs. no-slash) so they can be reasoned about independently.
+
+In code paths the literal folder name (`shop/`, `myShop/`, etc.) comes from the `${sut_namespace}` placeholder, sourced from `system.sut_namespace` in `gh-optivem.yaml` (defaulting to the last path segment of `system.repo`). The driver layout fragments around it — `${driver_port}`, `${driver_adapter}`, `${external_driver_port}`, `${external_driver_adapter}` — come from named-location placeholders under the top-level `paths:` block in the same config file. Phase docs use these placeholders so the example paths in this glossary stay literal (they teach the convention) while every other phase doc renders concrete project paths at sync time.

@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -171,6 +172,18 @@ type Config struct {
 	// NodeReplacements is rejected — replacement strictly supersedes
 	// extras, so the combination signals operator confusion.
 	NodeReplacements map[string]string `yaml:"node_replacements,omitempty"`
+
+	// Paths is the user-owned map of named-location placeholders consumed
+	// by phase-doc substitution at sync time. Each key is a named location
+	// (e.g. "driver_port"); each value is a repo-relative path. The
+	// scaffolder writes a default block matching glossary.md doctrine into
+	// every new project; existing configs are back-filled by
+	// `gh optivem config migrate`.
+	//
+	// Reserved keys that would shadow fixed-schema Family A placeholders
+	// (language, architecture, system_path, system_test_path, sut_namespace)
+	// are rejected by Validate.
+	Paths map[string]string `yaml:"paths,omitempty"`
 }
 
 // Project carries the tracker backend identity: which Tracker adapter
@@ -229,6 +242,14 @@ type System struct {
 	Repo         string `yaml:"repo,omitempty"`
 	Lang         string `yaml:"lang,omitempty"`
 	SonarProject string `yaml:"sonar_project,omitempty"`
+
+	// SutNamespace overrides the auto-derived ${sut_namespace} placeholder
+	// value used by phase-doc substitution. When empty, the value is
+	// derived from the last path segment of System.Repo (e.g.
+	// "optivem/myShop" → "myShop"). Set explicitly when the desired
+	// namespace differs from the repo name — e.g. a Java project whose
+	// repo is "myShop" but whose package convention is "com.mycompany.myshop".
+	SutNamespace string `yaml:"sut_namespace,omitempty"`
 
 	// Multitier-only.
 	Backend  TierSpec `yaml:"backend,omitempty"`
@@ -313,6 +334,73 @@ func (c *Config) Repos() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// reservedPlaceholderKeys lists the Family A placeholder names that
+// Paths entries (Family B) must not shadow. Names that come from existing
+// top-level config fields belong here so a typo'd `paths.language: x`
+// can't quietly override the canonical system.lang value.
+var reservedPlaceholderKeys = map[string]struct{}{
+	"language":         {},
+	"architecture":     {},
+	"system_path":      {},
+	"system_test_path": {},
+	"sut_namespace":    {},
+}
+
+// SutNamespace returns the substitution value for ${sut_namespace}.
+// Explicit System.SutNamespace wins; otherwise the value is derived from
+// the last path segment of System.Repo (e.g. "optivem/myShop" → "myShop").
+// Returns "" when neither is set — sync-time unfilled-placeholder checks
+// surface the gap if a doc references the placeholder.
+func (c *Config) SutNamespace() string {
+	if c == nil {
+		return ""
+	}
+	if c.System.SutNamespace != "" {
+		return c.System.SutNamespace
+	}
+	return lastPathSegment(c.System.Repo)
+}
+
+// PlaceholderMap returns the flat name → value map consumed by phase-doc
+// substitution. Family A keys come from existing top-level config fields;
+// Family B keys come from the user-owned Paths map. Family A wins on
+// collision — Validate also rejects the collision at parse time, so the
+// in-memory precedence is defensive cover for callers that mutate a
+// Config without re-validating.
+//
+// `language` prefers System.Lang (monolith); when empty (multitier or a
+// partial config without a system tier), falls back to SystemTest.Lang
+// so a system-test-side doc reference resolves to the test suite's
+// language even when there's no single SUT lang to name.
+func (c *Config) PlaceholderMap() map[string]string {
+	if c == nil {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(c.Paths)+5)
+	// Family B first; Family A overwrites on collision.
+	maps.Copy(out, c.Paths)
+	out["architecture"] = c.System.Architecture
+	out["system_path"] = c.System.Path
+	out["system_test_path"] = c.SystemTest.Path
+	out["sut_namespace"] = c.SutNamespace()
+	if c.System.Lang != "" {
+		out["language"] = c.System.Lang
+	} else {
+		out["language"] = c.SystemTest.Lang
+	}
+	return out
+}
+
+// lastPathSegment returns the substring after the last "/" in s. Used by
+// SutNamespace to derive ${sut_namespace} from a "owner/repo" slug; an
+// absent slash returns s itself.
+func lastPathSegment(s string) string {
+	if i := strings.LastIndex(s, "/"); i >= 0 && i < len(s)-1 {
+		return s[i+1:]
+	}
+	return s
 }
 
 // Validate enforces the enum and cross-field rules. Empty values are
@@ -623,6 +711,22 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("config: repos[%d].path %q appears more than once", i, r.Path)
 		}
 		seenRepoPaths[normalized] = struct{}{}
+	}
+
+	// Rule 22: paths.* keys must not shadow reserved Family A placeholder
+	// names. A typo'd `paths.language: typescript` would otherwise quietly
+	// override the canonical system.lang value at substitution time, which
+	// is exactly the wires-crossed failure mode the dispatch-time
+	// findUnfilledPlaceholders guardrail was designed to catch.
+	// Sorted iteration so errors are deterministic when multiple keys
+	// could trip the rule.
+	for _, k := range sortedKeys(c.Paths) {
+		if _, reserved := reservedPlaceholderKeys[k]; reserved {
+			return fmt.Errorf("config: paths.%s shadows a reserved fixed-schema placeholder name; rename it", k)
+		}
+		if err := validatePath("paths."+k, c.Paths[k]); err != nil {
+			return err
+		}
 	}
 
 	return nil
