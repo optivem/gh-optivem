@@ -9,7 +9,6 @@ Replace the `"TODO: DSL"` prototypes left behind by CT - RED - TEST with real DS
 - Commit `<Ticket> | CT - RED - DSL` containing the real DSL implementation, any updated Driver interfaces, and `"TODO: Driver"` prototypes for new/changed Driver methods
 - Flag set: `external_system_driver_interface_changed = yes|no`
 - Tests in state: contract tests disabled with reason `"CT - RED - DSL"`
-- GitHub issue comment summarising DSL interface changes (if an issue number was provided as input)
 
 ## Conventions
 
@@ -43,29 +42,8 @@ Replace the `"TODO: DSL"` prototype with real DSL logic. Driver methods stay as 
    The result must compile.
 5. Determine whether any interface changes affect files under an `external/` package and set `external_system_driver_interface_changed = yes|no`.
 
-## CT - RED - DSL - REVIEW (STOP)
-
-STOP. Present the DSL implementation, Driver interface changes, and the `external_system_driver_interface_changed` flag to the user and ask for approval. Do NOT continue.
-
-**Review checklist:**
-
-- DSL methods now contain real logic — no `"TODO: DSL"` strings remain.
-- Driver interface changes (if any) are confined to files under `external/`.
-- The `external_system_driver_interface_changed` flag accurately reflects whether any Driver interface changed.
-
-## CT - RED - DSL - COMMIT
-
-1. Run the contract tests and verify they fail with a runtime error (compile was already enforced in WRITE):
-   ```bash
-   gh optivem test run --suite <suite-contract-stub> --test <TestMethodName>
-   ```
-2. Mark the tests as disabled with reason `"CT - RED - DSL"` (see [language-equivalents.md](../code/language-equivalents.md)).
-3. COMMIT with message `<Ticket> | CT - RED - DSL`.
-4. If a GitHub issue number was provided as input, post a comment on the issue summarising the DSL interface changes (new methods added, interfaces updated).
-
 ## Anti-patterns
 
 - Implementing External System Drivers here — Driver bodies belong in CT - RED - EXTERNAL DRIVER. Only Driver *prototypes* (`"TODO: Driver"`) are added in this phase.
-- Forgetting to post the GitHub-issue comment when an issue number was provided — it's the audit trail of the DSL interface change.
 - Leaving `"TODO: DSL"` strings behind in the committed code — every prototype must be replaced with real logic.
 - Editing files outside `external/` to "fix" failing contract tests — the contract is between the system and the external boundary, not internal code.

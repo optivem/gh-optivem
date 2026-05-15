@@ -50,21 +50,7 @@ public RegisterCustomerResponse register(RegisterCustomerRequest request) {
    gh optivem test run --suite <acceptance-ui> --test <TestMethodName>
    ```
 
-## AT - RED - SYSTEM DRIVER - REVIEW (STOP)
-
-STOP. Present the Driver implementation to the user and ask for approval. Do NOT continue.
-
-**Review checklist:**
-- All edits live under `system-test/<lang>/.../testkit/driver/port/shop/` and `system-test/<lang>/.../testkit/driver/adapter/shop/`. Nothing under the sibling `external/` directories.
-- "TODO: Driver" is gone for every System Driver method affected by this ticket.
-- New methods follow the shape of existing methods in the same file — no novel patterns invented from backend/frontend source.
-- No test, DSL, system, or external-driver edits.
-
-## AT - RED - SYSTEM DRIVER - COMMIT
-
-1. Mark the tests as disabled with reason `"AT - RED - SYSTEM DRIVER"` (see [language-equivalents.md](../code/language-equivalents.md)).
-2. Ensure no test files are (accidentally) in the list of changed files.
-3. COMMIT with message `<Ticket> | AT - RED - SYSTEM DRIVER`.
+**Scope:** Only System Driver code. No test, DSL, system, or external-driver edits.
 
 ## Anti-patterns
 

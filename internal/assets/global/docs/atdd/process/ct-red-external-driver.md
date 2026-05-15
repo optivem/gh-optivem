@@ -8,7 +8,6 @@ Replace the `"TODO: Driver"` prototypes left behind by CT - RED - DSL with real 
 
 - Commit `<Ticket> | CT - RED - EXTERNAL DRIVER` containing real External System Driver implementations
 - Tests in state: contract tests disabled with reason `"CT - RED - EXTERNAL DRIVER"`
-- GitHub issue comment summarising Driver interface changes (if an issue number was provided as input)
 
 ## Conventions
 
@@ -47,25 +46,8 @@ Replace the `"TODO: Driver"` prototype with a real HTTP call to the external sys
    gh optivem test run --suite <suite-contract-stub> --test <TestMethodName>
    ```
 
-## CT - RED - EXTERNAL DRIVER - REVIEW (STOP)
-
-STOP. Present the Driver implementation to the user and ask for approval. Do NOT continue.
-
-**Review checklist:**
-
-- All changes are confined to files under `testkit/driver/{port,adapter}/external/` — nothing under the sibling `shop/` directories was touched.
-- No `"TODO: Driver"` strings remain.
-- Tests fail with a runtime error against `<suite-contract-stub>` (still RED — that's expected).
-
-## CT - RED - EXTERNAL DRIVER - COMMIT
-
-1. Mark the tests as disabled with reason `"CT - RED - EXTERNAL DRIVER"` (see [language-equivalents.md](../code/language-equivalents.md)).
-2. COMMIT with message `<Ticket> | CT - RED - EXTERNAL DRIVER`.
-3. If a GitHub issue number was provided as input, post a comment on the issue summarising the Driver interface changes (new methods added, interfaces updated).
-
 ## Anti-patterns
 
 - Editing files under the sibling `testkit/driver/{port,adapter}/shop/` directories — those belong to System Drivers and the AT cycle, not the External System Driver phase.
 - Reading external-system source code to figure out behavior — Drivers are written against the *contract* expressed by the contract tests and the published API, not against internal implementation details.
 - Expecting the contract tests to pass at the end of this phase — they should still fail. The stub becomes contract-compatible in CT - GREEN - STUBS.
-- Skipping the issue comment when an issue number was provided — it's the audit trail of the Driver change.

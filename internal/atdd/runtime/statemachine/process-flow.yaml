@@ -503,6 +503,9 @@ processes:
           compile_action: compile_system_tests
         documentation: "CT - RED - DSL"
 
+      # TODO: BPMN-owned post_issue_comment service_task for DSL
+      # interface change summary — see follow-up plan for wiring.
+
       - id: GATE_EXT_CT
         type: gateway
         binding: external_system_driver_interface_changed
@@ -518,6 +521,9 @@ processes:
           change_type: "CT - RED - EXTERNAL DRIVER"
           compile_action: compile_system_tests
         documentation: "CT - RED - EXTERNAL DRIVER"
+
+      # TODO: BPMN-owned post_issue_comment service_task for Driver
+      # interface change summary — see follow-up plan for wiring.
 
       - id: VERIFY_CT_DRIVER
         type: service_task

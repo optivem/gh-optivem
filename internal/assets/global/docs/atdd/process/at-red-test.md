@@ -52,31 +52,12 @@ public ThenSuccess register() {
      1. Legacy Coverage scenarios (from the `## Legacy Coverage` section of the ticket, if any)
      2. New feature scenarios that use only existing DSL
      3. New feature scenarios that need new DSL
+   - Legacy-coverage scenarios (category 1) are **test-last** — they must pass when the runtime runs them. A failing legacy-coverage test signals a real bug, not expected RED, and the human reviewer will STOP for it; do not paper over with `@Disabled`.
    - After writing each test, verify it matches the AC exactly — Given maps to Given, When maps to When, Then maps to Then. Every precondition stated in the scenario must appear in the test. If anything is unclear, ask before proceeding.
 2. **Add the DSL stubs the tests reference.** For every new DSL method the tests call:
    - Add the method declaration to the DSL interface.
    - Implement a `"TODO: DSL"` not-implemented prototype (see [language-equivalents.md](../code/language-equivalents.md)). Minimum signature only — no behaviour.
    The result must compile. The RED state is proven later by runtime test failure, not by compile failure.
-
-## AT - RED - TEST - REVIEW (STOP)
-
-STOP. Present the tests to the user for review (the user may revise DSL usage). Do NOT continue.
-
-**Review checklist:**
-- One test method per scenario; the mapping is one-to-one.
-- Test ordering matches the rule above (legacy-coverage first, then existing-DSL, then needs-new-DSL).
-- No noise: no extra fields, no extra assertions, no speculative setup.
-- New DSL calls (if any) are used directly without being declared in the interface yet.
-
-## AT - RED - TEST - COMMIT
-
-1. Run the tests and verify they fail with a **runtime** error (not a compile error — WRITE was responsible for producing compiling code):
-   ```bash
-   gh optivem test run --suite <acceptance-api> --test <TestMethodName>
-   gh optivem test run --suite <acceptance-ui> --test <TestMethodName>
-   ```
-2. Mark the tests as disabled with reason `"AT - RED - TEST"` (see [language-equivalents.md](../code/language-equivalents.md)). Disable **only the change-driven scenarios** (categories 2 and 3 in the ordering above). Legacy-coverage scenarios (category 1) are test-last — they should pass on first run and must NOT be disabled. If a legacy-coverage test fails on first run, STOP and ask the user — that is a real bug, not an expected RED.
-3. COMMIT with message `<Ticket> | AT - RED - TEST`.
 
 ## Anti-patterns
 

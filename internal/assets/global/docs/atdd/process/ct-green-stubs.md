@@ -45,25 +45,6 @@ server.get('/erp/api/promotion', (req, res) => {
    ```
 4. Verify that the tests pass. If they fail, ask the user. STOP. Do NOT continue.
 
-## CT - GREEN - STUBS - REVIEW (STOP)
-
-STOP. Present the stub implementation and the passing test output to the user and ask for approval. Do NOT continue.
-
-**Review checklist:**
-
-- Stub routes/fixtures match the real Test Instance's contract — shapes, status codes, error semantics.
-- Tests pass against `<suite-contract-stub>`.
-- The `@Disabled` annotation with reason `"CT - RED - EXTERNAL DRIVER"` has been removed.
-
-## CT - GREEN - STUBS - COMMIT
-
-1. Confirm the `@Disabled` annotation (reason `"CT - RED - EXTERNAL DRIVER"`) has been removed from the tests.
-2. Run the contract tests one more time and verify they still pass:
-   ```bash
-   gh optivem test run --suite <suite-contract-stub> --test <TestMethodName>
-   ```
-3. COMMIT with message `<Ticket> | CT - GREEN - STUBS`.
-
 ## Anti-patterns
 
 - Forgetting to remove the `@Disabled` (reason `"CT - RED - EXTERNAL DRIVER"`) — the tests look passing locally but are silently skipped in CI.

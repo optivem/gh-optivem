@@ -42,13 +42,13 @@ public ThenSuccess register() {
 }
 ```
 
-If `customerDriver.register(...)` is a new method on the System Customer Driver port, the System Driver interface has changed — set the flag accordingly and add a Driver "TODO: Driver" prototype during COMMIT.
+If `customerDriver.register(...)` is a new method on the System Customer Driver port, the System Driver interface has changed — set the flag accordingly and add a Driver "TODO: Driver" prototype during WRITE.
 
 ## AT - RED - DSL - WRITE
 
 1. Enable the tests marked disabled with reason `"AT - RED - TEST"`.
 2. Implement the DSL for real — replace each "TODO: DSL" prototype with actual logic.
-3. Update the Driver interfaces as needed to support the new DSL behavior.
+3. Update the Driver interfaces as needed to support the new DSL behavior. Keep interface changes **minimal** — only what the new DSL actually calls.
 4. **Add the Driver stubs the new DSL references.** For every new or changed Driver method:
    - Update the Driver interface.
    - Implement a `"TODO: Driver"` not-implemented prototype (see [language-equivalents.md](../code/language-equivalents.md)). Minimum signature only — no behaviour.
@@ -56,30 +56,11 @@ If `customerDriver.register(...)` is a new method on the System Customer Driver 
 5. Check whether any interface changes (see [glossary.md](glossary.md)) affect external-system Drivers. Set the flag: **External System Driver Interface Changed = yes/no**.
 6. Check whether any interface changes affect system Drivers. Set the flag: **System Driver Interface Changed = yes/no**.
 
-## AT - RED - DSL - REVIEW (STOP)
-
-STOP. Present the DSL implementation, Driver interface changes, and both flags to the user and ask for approval. Do NOT continue.
-
-**Review checklist:**
-- "TODO: DSL" prototypes are gone — every change-driven DSL method has real logic.
-- Driver interface changes are minimal: only what the new DSL actually calls.
-- Both flags reflect reality: an external-driver port change means `External System Driver Interface Changed = yes`; a system-driver port change means `System Driver Interface Changed = yes`.
-- No system implementation, no test edits, no Driver bodies — only DSL code, Driver interfaces, and flag values.
-
-## AT - RED - DSL - COMMIT
-
-1. Run the tests and verify they fail with a runtime error (compile was already enforced in WRITE):
-   ```bash
-   gh optivem test run --suite <acceptance-api> --test <TestMethodName>
-   gh optivem test run --suite <acceptance-ui> --test <TestMethodName>
-   ```
-2. Mark the tests as disabled with reason `"AT - RED - DSL"` (see [language-equivalents.md](../code/language-equivalents.md)).
-3. Ensure that no test files are (accidentally) in the list of changed files.
-4. COMMIT with message `<Ticket> | AT - RED - DSL`.
+**Scope:** Only DSL code, Driver interfaces, `"TODO: Driver"` prototypes, and flag values. No system implementation, no test changes beyond the re-enable in step 1, no Driver bodies.
 
 ## Anti-patterns
 
 - **Implementing Driver bodies in this phase.** Drivers are prototyped here (`"TODO: Driver"`); real Driver code belongs to CT - RED - EXTERNAL DRIVER and/or AT - RED - SYSTEM DRIVER.
 - **Forgetting to set both flags.** Both `External System Driver Interface Changed` and `System Driver Interface Changed` must be set explicitly — an unset flag is a bug. They gate downstream phases.
 - **Leaving "TODO: DSL" behind.** If any DSL method still throws `"TODO: DSL"` after this phase, the phase is not done.
-- **Touching test files.** Re-enabling tests at WRITE and disabling them again at COMMIT is the only test-file activity here. Anything else (changing assertions, adding scenarios) means you're in the wrong phase.
+- **Touching test files.** Re-enabling tests at WRITE is the only test-file activity here. Anything else (changing assertions, adding scenarios) means you're in the wrong phase.

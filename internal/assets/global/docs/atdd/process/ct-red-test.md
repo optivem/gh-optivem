@@ -50,21 +50,6 @@ void promotion_endpoint_returns_default_no_promotion_state() {
    ```
 5. Mark the tests as disabled with reason `"CT - RED - TEST"` (see [language-equivalents.md](../code/language-equivalents.md)).
 
-## CT - RED - TEST - REVIEW (STOP)
-
-STOP. Present the contract tests, the real-instance pass output, and the stub fail output to the user and ask for approval. Do NOT continue.
-
-**Review checklist:**
-
-- Each test maps one-to-one to a contract behavior — no extra fields, no extra assertions.
-- Tests verifiably PASS against `<suite-contract-real>`.
-- Tests verifiably FAIL against `<suite-contract-stub>`.
-- Tests are disabled with reason `"CT - RED - TEST"`.
-
-## CT - RED - TEST - COMMIT
-
-1. COMMIT with message `<Ticket> | CT - RED - TEST`. (Compile, real-instance pass verification, stub fail verification, and disabling all happened in WRITE.)
-
 ## Anti-patterns
 
 - Skipping the real-instance verification "because the tests look right" — without `<suite-contract-real>` passing, you have no evidence the contract is real.

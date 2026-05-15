@@ -66,27 +66,10 @@ A representative slice — backend handler and frontend page changed together fo
       ```
    c. If tests fail, fix the frontend until the tests pass.
    d. If you cannot get the tests to pass, ask the user. Do NOT change tests, DSL, or Drivers to work around it.
-4. By now, all acceptance tests for the ticket are passing.
-
-## AT - GREEN - SYSTEM - REVIEW (STOP)
-
-STOP. Present the implementation to the user and ask for approval. Do NOT continue.
-
-**Review checklist:**
-- All change-driven acceptance tests are green.
-- All legacy-coverage tests remain green.
-- Only system code (backend + frontend) was changed — no test, DSL, or Driver edits in the diff.
-- The diff is the minimum needed to make the tests pass; no speculative refactors.
-
-## AT - GREEN - SYSTEM - COMMIT
-
-1. COMMIT all changes (backend, frontend, and the test re-enabling from WRITE step 1) in a single commit with message `<Ticket> | AT - GREEN - SYSTEM`.
-2. If a GitHub issue was provided as input, tick the checkbox for each acceptance criterion completed by this ticket (local action; not CI-gated).
-3. Move the issue to **TICKET STATUS - IN ACCEPTANCE** — see [shared-ticket-status-in-acceptance.md](shared-ticket-status-in-acceptance.md).
+4. By now, all change-driven acceptance tests for the ticket are passing, and all legacy-coverage tests remain green.
 
 ## Anti-patterns
 
 - **Changing tests, DSL, or Drivers to make tests pass.** Those layers are frozen by the time AT - GREEN - SYSTEM runs. If the system cannot satisfy the tests as written, the AC or the DSL is wrong — surface it to the user instead of patching around it.
 - **Splitting backend and frontend into separate commits.** Both ship together as `<Ticket> | AT - GREEN - SYSTEM`. The AT cycle's terminal commit is full-stack.
-- **Forgetting the checklist tick + IN ACCEPTANCE move.** The cycle is not done at the commit; it is done when the issue is in IN ACCEPTANCE with checklist items ticked.
 - **Skipping the WRITE re-enable step.** The change-driven tests must be re-enabled before the implementation work begins, otherwise the test-runs in WRITE are silently skipping the disabled scenarios.
