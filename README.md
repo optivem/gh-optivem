@@ -106,7 +106,11 @@ To live-check each token is also accepted by its provider before scaffolding:
 
 ```bash
 gh optivem environment verify
+gh optivem environment verify --lang typescript,dotnet,java  # also check compilers for the listed languages
+gh optivem environment verify --deploy docker                # also check the docker CLI is on PATH
 ```
+
+`--lang` (comma-separated or repeated; values: `java`, `dotnet`, `typescript`) opts in to per-language compiler-presence checks. `--deploy` (value: `docker`) opts in to the deploy-target-conditional tool check. Both are opt-in so a CI preflight job can pin one matrix combo without coupling this command to the project-config schema.
 
 ## Scaffolding
 
@@ -126,7 +130,27 @@ Project-stable values — prompted on first run and written to `gh-optivem.yaml`
   - `--backend-lang` — backend language when `--arch multitier`: `java`, `dotnet`, or `typescript`.
   - `--frontend-lang` — frontend language when `--arch multitier` (currently only `typescript`).
 - `--test-lang` — system-test language: `java`, `dotnet`, or `typescript`. Independent of the system language(s).
-- `--project-url` — URL of the GitHub Project board to attach.
+- `--project-url` — URL of the GitHub Project board to attach. When omitted, `init` auto-creates the board and writes the URL back into `gh-optivem.yaml`.
+- `--license` — SPDX-like license key: `mit` (default), `apache-2.0`, `gpl-3.0`, `bsd-2-clause`, `bsd-3-clause`, or `unlicense`. Drives the scaffolded `LICENSE` file and README badge.
+- `--deploy` — deployment target: `docker` (default). `cloud-run` is in development and not yet usable.
+- Tier paths — `--system-path`, `--system-test-path`, `--backend-path`, `--frontend-path`, `--stubs-path`, `--simulators-path`. Repo-relative paths to the corresponding tier. Pass these only to point the YAML at a non-flat existing repo; the flat scaffold layout `init` itself produces is the default.
+
+Per-invocation flags — not written to `gh-optivem.yaml`; pass them on each `init` run:
+
+- `--verify-level` — `none`, `local`, `commit`, `acceptance`, `qa`, or `release` (default `release`). Each level runs every step up to and including its named stage.
+- `--no-legacy` — exclude legacy from local tests and acceptance stage.
+- `--no-local-tests` — skip the local-test verification step.
+- `--no-local-sonar` — skip the local SonarCloud scan step.
+- `--no-project` — skip the `Ensure project board` step entirely (no auto-create, no status-ensure on a supplied `--project-url`).
+- `--no-atdd` — no-op retained for backward compatibility; ATDD assets are sourced from the per-user sync (see [Methodology assets](#methodology-assets)), not installed per-repo.
+- `--shop-ref` — pin `optivem/shop` to a specific ref (tag, SHA, or branch). Default: latest `meta-v*` release.
+- `--workdir` — working directory for local clones (default: temp dir).
+- `--keep-local` — keep the local scaffolded clone dir on success instead of deleting it.
+- `--report-bug` — on failure, auto-create a GitHub issue in `optivem/gh-optivem` with scaffold config. Off by default.
+- `--yes` / `-y` — skip all interactive confirmations (existing-repo prompt, bug-report confirmation). Expected for CI/unattended runs.
+- `--log-file` — override path for the plain-text log mirror (default: `$TEMP/gh-optivem-<timestamp>.log`; always written).
+- `--verbose` / `-v` — enable debug output (retry/wait chatter, diagnostics).
+- `--quiet` / `-q` — suppress info-level output (warnings and errors still shown).
 
 ### Where `gh-optivem.yaml` lands
 
@@ -134,12 +158,28 @@ Project-stable values — prompted on first run and written to `gh-optivem.yaml`
 - **Explicit path** (`--config /some/path.yaml` or `$GH_OPTIVEM_CONFIG=/some/path.yaml`): `init` writes/updates the YAML at the path you named, and the scaffolded repo still gets its own copy (rendered with the auto-created Project URL).
 - **Pre-existing `<CWD>/gh-optivem.yaml`**: respected as operator-authored input. Loaded and used as-is; the scaffolded repo still gets its own rendered copy.
 
-<!--
-TODO: document the standalone `gh optivem config init` retrofit flow
-(writing gh-optivem.yaml into a hand-rolled, non-scaffolded repo, with
-the full set of --system-path / --backend-path / ... tier-path overrides)
-once the UX is validated.
--->
+### Managing `gh-optivem.yaml` standalone
+
+`gh optivem config` reads or writes `gh-optivem.yaml` outside of a full `init` run — useful for retrofitting a hand-rolled repo, validating a hand-edited file, or migrating an older config to the current schema.
+
+```bash
+gh optivem config init       # write a fresh gh-optivem.yaml from CLI flags (or interactive prompt on a TTY)
+gh optivem config validate   # parse the YAML and validate it against the schema
+gh optivem config preflight  # validate + check every declared repo and tier path exists on disk
+gh optivem config migrate    # idempotently back-fill required fields (project.provider, repos:) on a pre-schema-bump file
+```
+
+`config init` accepts the same YAML-affecting flags as `gh optivem init` (`--owner`, `--repo`, `--system-name`, `--arch`, `--repo-strategy`, `--monolith-lang` / `--backend-lang` / `--frontend-lang`, `--test-lang`, `--project-url`, `--license`, `--deploy`, plus the `--system-path` / `--system-test-path` / `--backend-path` / `--frontend-path` / `--stubs-path` / `--simulators-path` tier-path overrides). On a TTY with no required flags set, it drops into the same interactive prompt the `init` command uses. Extra flags: `--force` (overwrite an existing file) and `--dir <dir>` (target directory; ignored when `--config` is set).
+
+`config preflight` accepts `--workspace <dir>` to point at a non-default workspace root (default: parent directory of CWD). `config validate` and `config migrate` take no flags beyond the root-level `--config`.
+
+```bash
+gh optivem config init --owner acme --repo page-turner \
+    --arch monolith --repo-strategy monorepo --monolith-lang java \
+    --test-lang java --project-url https://github.com/orgs/acme/projects/1
+gh optivem -c ./gh-optivem.myrepo.yaml config validate
+gh optivem config preflight --workspace /abs/path/to/workspace
+```
 
 ## Usage
 
@@ -248,12 +288,13 @@ Multi-test semantics depend on the suite's `testFilter` in `tests.yaml`. The run
 `gh optivem commit`, `sync`, and `actions status` infer scope from the environment: if a `*.code-workspace` file is in scope (via the `--workspace <dir>` flag, the `$GH_OPTIVEM_WORKSPACE` env var, or a walk-up from the current directory), the verb iterates every workspace folder; otherwise it acts on the cwd repo only. `rate-limit` is a single API call with no scope.
 
 ```bash
-gh optivem commit "Update settings"             # stage, commit, pull, push every dirty repo in scope
-gh optivem commit --repo myrepo "Fix bug"       # only operate on the named repo (workspace mode)
-gh optivem commit --yes "Sync .claude"          # skip the y/N confirmation (required without a TTY)
-gh optivem sync                                 # pull + push every repo in scope (no commit)
-gh optivem actions status                       # latest run of every workflow in every repo in scope
-gh optivem rate-limit                           # current GitHub API rate limits and reset times
+gh optivem commit "Update settings"                                     # stage, commit, pull, push every dirty repo in scope
+gh optivem commit --repo myrepo "Fix bug"                               # only operate on the named repo (workspace mode)
+gh optivem commit --repo myrepo --paths "system/monolith/java" "fix"    # stage only the listed space-separated paths (requires --repo)
+gh optivem commit --yes "Sync .claude"                                  # skip the y/N confirmation (required without a TTY)
+gh optivem sync                                                         # pull + push every repo in scope (no commit)
+gh optivem actions status                                               # latest run of every workflow in every repo in scope
+gh optivem rate-limit                                                   # current GitHub API rate limits and reset times
 ```
 
 Each run prints a `Mode:` banner showing the resolved scope — `Mode: workspace (5 repos from page-turner.code-workspace)` or `Mode: single repo (shop)`.
@@ -274,7 +315,6 @@ gh optivem cleanup sonar-projects myorg --prefix myorg_course-tester- --dry-run
 
 `cleanup releases` and `cleanup packages` take one or more positional `owner/repo` slugs; `cleanup repos` and `cleanup sonar-projects` take a single positional `<owner>` (or `<organization>`) followed by either `--prefix <prefix>`, explicit names/keys, or both. `cleanup sonar-projects` requires `$SONAR_TOKEN` (the same token the scaffolder reads).
 
-<!-- TODO: revisit implementation pipeline section — commented out for now
 ## Running the implementation pipeline
 
 Once a scaffolded project carries a valid `gh-optivem.yaml` and the sibling repos are cloned next to it, the `implement` subcommand walks the configured process-flow state machine for one ticket:
@@ -282,7 +322,7 @@ Once a scaffolded project carries a valid `gh-optivem.yaml` and the sibling repo
 ```bash
 gh optivem implement --issue 42                                # walk the pipeline for a specific issue
 gh optivem implement --issue https://github.com/myorg/myrepo/issues/42
-gh optivem implement                                           # pick the top Ready ticket and walk the pipeline
+gh optivem implement                                           # pick the top Ready ticket and walk the pipeline from START
 ```
 
 `implement` accepts the same per-invocation flags whether or not `--issue` was passed:
@@ -296,18 +336,44 @@ gh optivem implement                                           # pick the top Re
 ... --workspace <path>    # override the default workspace root (parent directory of CWD; each clone dir must be named after the repo-name component of its slug)
 ```
 
-Project-stable overrides (process flow, agent prompts, per-node text) live in `gh-optivem.yaml` — see [pipeline overrides](#pipeline-overrides).
+Project-stable overrides (`process_flow:`, `agent_prompts:`, `node_extras:`, `node_replacements:`) live in `gh-optivem.yaml` and are read at startup.
 
-To inspect the embedded process-flow diagram without running the pipeline:
+### Process diagram
+
+To inspect the configured process-flow Mermaid diagram without running the pipeline:
 
 ```bash
 gh optivem process show                            # print the canonical Mermaid markdown to stdout
 gh optivem process show > docs/process-diagram.md  # regenerate the committed diagram
 ```
--->
+
+## Trunk-based development helpers
+
+`gh optivem doctor`, `branch`, `pr`, and `hooks` encapsulate the trunk-based development rituals from [docs/tbd.md](docs/tbd.md) so the operator runs one command instead of three.
+
+```bash
+gh optivem doctor                              # verify the three global git config keys docs/tbd.md mandates
+gh optivem doctor --fix                        # set any missing or wrong keys to the required values
+gh optivem branch start feature/payments       # checkout main, pull --rebase, checkout -b <name> off latest origin/main
+gh optivem branch refresh                      # rebase the current branch onto latest origin/main
+gh optivem pr merge                            # squash-merge a PR via `gh pr merge` (TBD-safe: never a merge commit)
+gh optivem pr merge 123 --rebase               # rebase-merge instead
+gh optivem pr merge --auto --squash --delete-branch
+gh optivem hooks install                       # install a pre-push hook that refuses non-fast-forward pushes to main
+```
+
+`pr merge` defaults to `--squash`; `--rebase` is opt-in and the two are mutually exclusive. The `--merge` mode is intentionally not exposed because merge commits on `main` break the linear-trunk invariant. Pass any other `gh pr merge` flags directly to the underlying CLI.
+
+## Methodology assets
+
+`gh optivem` ships an embedded global asset tree (methodology docs) that auto-syncs to `~/.gh-optivem/docs/` on every invocation when the per-user stamp doesn't match the binary version. Auto-sync is disabled by `GH_OPTIVEM_NO_AUTO_SYNC`; the explicit form for users with that escape hatch set is:
+
+```bash
+gh optivem asset sync                          # force-sync embedded assets to ~/.gh-optivem/docs/
+```
 
 ## Further reading
 
 - [Trunk Based Development (TBD)](docs/tbd.md) — how to work with `main` in this repo (and the repos it scaffolds), the role of `pull --rebase`, when to use short-lived PRs, and why the version-bump bot is just another committer.
-- [Process diagram](docs/process-diagram.md) — committed Mermaid diagram of the scaffolding pipeline.
+- [Process diagram](docs/process-diagram.md) — committed Mermaid diagram of the configured implementation process flow (regenerate with `gh optivem process show`).
 
