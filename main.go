@@ -85,8 +85,7 @@ func main() {
 	cobra.EnableCommandSorting = false
 
 	// Sync the embedded global asset tree to per-user paths
-	// (~/.gh-optivem/docs/, ~/.claude/{agents,commands}/atdd/) so
-	// methodology docs and Claude Code subagents are reachable on the
+	// (~/.gh-optivem/docs/) so methodology docs are reachable on the
 	// user's filesystem. No-op after the first run when the stamp
 	// matches the binary version. Disabled by GH_OPTIVEM_NO_AUTO_SYNC.
 	if res, err := assetsync.EnsureSynced(version.Version); err != nil {
@@ -394,11 +393,11 @@ func buildSteps(cfg *config.Config, pc *projectconfig.Config, gh *shell.GitHub, 
 	}
 
 	// ATDD assets no longer install per-repo — they live in gh-optivem's
-	// embedded asset tree and sync to per-user global paths (~/.gh-optivem/,
-	// ~/.claude/) on every gh-optivem invocation. Consumer repos hold zero
-	// ATDD assets on disk. The --no-atdd flag is retained for backward
-	// compatibility but is now a no-op at init time; the per-user sync
-	// escape hatch is the GH_OPTIVEM_NO_AUTO_SYNC env var.
+	// embedded asset tree and sync to ~/.gh-optivem/ on every gh-optivem
+	// invocation. Consumer repos hold zero ATDD assets on disk. The
+	// --no-atdd flag is retained for backward compatibility but is now a
+	// no-op at init time; the per-user sync escape hatch is the
+	// GH_OPTIVEM_NO_AUTO_SYNC env var.
 
 	allSteps = append(allSteps, stepDef{
 		name:      "Commit and push",

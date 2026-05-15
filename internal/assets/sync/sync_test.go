@@ -35,12 +35,11 @@ func TestEnsureSynced_FirstRunWritesTreeAndStamp(t *testing.T) {
 		t.Errorf("stamp = %q, want v1.2.3", got)
 	}
 
-	// Spot-check that at least one known doc and one known agent landed
-	// at the expected mapped path. The exact file set comes from the
-	// embedded global/ subtree.
+	// Spot-check that at least one known doc landed at the expected
+	// mapped path. The exact file set comes from the embedded global/
+	// subtree.
 	for _, mustExist := range []string{
 		filepath.Join(home, ".gh-optivem", "docs", "atdd", "architecture", "system.md"),
-		filepath.Join(home, ".claude", "agents", "atdd", "meta", "process-audit.md"),
 	} {
 		if _, err := os.Stat(mustExist); err != nil {
 			t.Errorf("expected synced file %s: %v", mustExist, err)
@@ -99,9 +98,10 @@ func TestEnsureSynced_VersionBumpReSyncsAndWipesOwnedSubtree(t *testing.T) {
 		t.Fatalf("plant stray: %v", err)
 	}
 
-	// Plant a non-owned file outside the owned subtree. After re-sync it
-	// must STILL be there (we promise the user we don't touch this).
-	preserved := filepath.Join(home, ".claude", "agents", "myteam", "private.md")
+	// Plant a non-owned file outside the owned subtree but adjacent to it.
+	// After re-sync it must STILL be there (we promise the user we don't
+	// touch anything outside ~/.gh-optivem/docs/atdd/).
+	preserved := filepath.Join(home, ".gh-optivem", "notes", "private.md")
 	if err := os.MkdirAll(filepath.Dir(preserved), 0o755); err != nil {
 		t.Fatalf("mkdir preserved: %v", err)
 	}

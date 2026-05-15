@@ -1,6 +1,6 @@
 // Package sync writes the embedded global/ asset tree to per-user paths so
-// methodology docs and Claude Code subagents are reachable on the user's
-// filesystem without per-repo install ceremony.
+// methodology docs are reachable on the user's filesystem without
+// per-repo install ceremony.
 //
 // On every gh-optivem invocation, EnsureSynced reads a per-user stamp file
 // and compares it to the binary's version. On mismatch (first run after
@@ -8,13 +8,11 @@
 // to:
 //
 //   - global/docs/    → ~/.gh-optivem/docs/   (owned: docs/atdd/)
-//   - global/claude/  → ~/.claude/             (owned: agents/atdd/, commands/atdd/)
 //
-// The atdd/ subdirectories under those roots are entirely owned by
-// gh-optivem — sync wipes-and-replaces them so files removed in a new
-// release disappear from the user's disk. Anything outside the owned
-// subtrees (~/.claude/agents/myteam/, ~/.gh-optivem/docs/notes/) is
-// never touched.
+// The atdd/ subdirectory under that root is entirely owned by gh-optivem —
+// sync wipes-and-replaces it so files removed in a new release disappear
+// from the user's disk. Anything outside the owned subtree
+// (~/.gh-optivem/docs/notes/) is never touched.
 //
 // Concurrency: per-file atomic temp + rename means a killed sync never
 // leaves a half-written file in place. Concurrent gh-optivem invocations
@@ -61,9 +59,7 @@ const (
 	embeddedGlobalRoot = "global"
 
 	dirGhOptivem    = ".gh-optivem"
-	dirClaude       = ".claude"
 	embeddedDocsDir = "docs"
-	embeddedClaude  = "claude"
 )
 
 // ownedSubdirs lists the destination paths (relative to the user's home dir)
@@ -71,8 +67,6 @@ const (
 // outside these paths is preserved across syncs.
 var ownedSubdirs = []string{
 	filepath.Join(dirGhOptivem, "docs", "atdd"),
-	filepath.Join(dirClaude, "agents", "atdd"),
-	filepath.Join(dirClaude, "commands", "atdd"),
 }
 
 // Result reports what EnsureSynced did.
@@ -123,7 +117,7 @@ func ForceSync(binaryVersion string) (Result, error) {
 	return Result{
 		Synced:  true,
 		Version: binaryVersion,
-		Notice:  fmt.Sprintf("Synced gh-optivem assets to ~/.gh-optivem and ~/.claude (%s).", binaryVersion),
+		Notice:  fmt.Sprintf("Synced gh-optivem assets to ~/.gh-optivem (%s).", binaryVersion),
 	}, nil
 }
 
@@ -192,7 +186,7 @@ func ensureSyncedAt(home, binaryVersion string) (Result, error) {
 	return Result{
 		Synced:  true,
 		Version: binaryVersion,
-		Notice:  fmt.Sprintf("Synced gh-optivem assets to ~/.gh-optivem and ~/.claude (%s).", binaryVersion),
+		Notice:  fmt.Sprintf("Synced gh-optivem assets to ~/.gh-optivem (%s).", binaryVersion),
 	}, nil
 }
 
@@ -245,17 +239,15 @@ func syncAllAt(home, binaryVersion string) error {
 }
 
 // mapDest converts an embedded global/-relative path to its on-disk
-// destination under home. Returns an error for paths outside the two
-// known prefixes (docs/, claude/) — a guard against schema drift in the
-// embedded tree leaking files to unexpected locations.
+// destination under home. Returns an error for paths outside the known
+// prefix (docs/) — a guard against schema drift in the embedded tree
+// leaking files to unexpected locations.
 func mapDest(home, rel string) (string, error) {
 	switch {
 	case strings.HasPrefix(rel, embeddedDocsDir+"/"):
 		return filepath.Join(home, dirGhOptivem, rel), nil
-	case strings.HasPrefix(rel, embeddedClaude+"/"):
-		return filepath.Join(home, dirClaude, strings.TrimPrefix(rel, embeddedClaude+"/")), nil
 	default:
-		return "", fmt.Errorf("sync: unmapped embedded path %q (expected docs/* or claude/*)", rel)
+		return "", fmt.Errorf("sync: unmapped embedded path %q (expected docs/*)", rel)
 	}
 }
 
