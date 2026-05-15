@@ -3,6 +3,7 @@
 Date: 2026-05-14
 Driven by: [`audits/20260514-external-call-retry-coverage.md`](../audits/20260514-external-call-retry-coverage.md)
 Phase 6 input for: [`plans/20260514-1945-retry-mechanism-end-to-end.md`](20260514-1945-retry-mechanism-end-to-end.md)
+Coordination (Lane B): [`plans/20260515-0900-retry-parallel-coordination.md`](20260515-0900-retry-parallel-coordination.md) — read first, stamp pickup marker before Item 1.
 
 ## Status (2026-05-15)
 
