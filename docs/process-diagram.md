@@ -272,15 +272,12 @@ flowchart TD
     BUILD_SYSTEM[["Build system (gh optivem system build --rebuild)"]]
     CHOOSE_TESTS[["Operator picks scope (all / some suites / specific tests / skip)"]]
     COMMIT[COMMIT — see § Commit Sub-Process]
-    COMPILE[[Compile in-scope projects]]
-    FIX_COMPILE[Dispatch fix agent on compile RED — structural cycle expects green]
+    COMPILE["Compile in-scope projects (human-gated on fail) — see § compile"]
     FIX_TEST[Dispatch fix agent on test RED — structural cycle expects green]
-    GATE_COMPILE_OK{Compile passed?}
     GATE_STRUCT_VERIFY{"Test outcome? (ok | red — fix and retry)"}
     GATE_TESTS_SELECTED{Operator selected tests to run?}
     RUN_TESTS[["Run selected tests; classify pass/fail for the verify gate"]]
     START_SYSTEM[["Start system (gh optivem system start --restart)"]]
-    STOP_COMPILE_FAIL_REVIEW[STOP - HUMAN REVIEW — compile RED, dispatch fix agent?]
     STOP_TEST_FAIL_REVIEW[STOP - HUMAN REVIEW — tests RED, dispatch fix agent?]
     STRUCT_END((End))
     TICK_CHECKLIST[[Tick checklist items]]
@@ -288,11 +285,7 @@ flowchart TD
 
     WRITE --> APPROVE_CHANGE
     APPROVE_CHANGE --> COMPILE
-    COMPILE --> GATE_COMPILE_OK
-    GATE_COMPILE_OK -- Yes --> CHOOSE_TESTS
-    GATE_COMPILE_OK -- No --> STOP_COMPILE_FAIL_REVIEW
-    STOP_COMPILE_FAIL_REVIEW --> FIX_COMPILE
-    FIX_COMPILE --> COMPILE
+    COMPILE --> CHOOSE_TESTS
     CHOOSE_TESTS --> GATE_TESTS_SELECTED
     GATE_TESTS_SELECTED -- Yes --> BUILD_SYSTEM
     GATE_TESTS_SELECTED -- No --> COMMIT
@@ -307,13 +300,13 @@ flowchart TD
     TICK_CHECKLIST --> STRUCT_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class BUILD_SYSTEM,CHOOSE_TESTS,COMPILE,RUN_TESTS,START_SYSTEM,TICK_CHECKLIST serviceNode
+    class BUILD_SYSTEM,CHOOSE_TESTS,RUN_TESTS,START_SYSTEM,TICK_CHECKLIST serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
-    class FIX_COMPILE,FIX_TEST,WRITE agentNode
+    class FIX_TEST,WRITE agentNode
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class APPROVE_CHANGE,STOP_COMPILE_FAIL_REVIEW,STOP_TEST_FAIL_REVIEW humanNode
+    class APPROVE_CHANGE,STOP_TEST_FAIL_REVIEW humanNode
 ```
 
 ## Commit Sub-Process
@@ -347,6 +340,32 @@ flowchart TD
     class LEGACY_TBD humanNode
 ```
 
+## compile
+
+```mermaid
+flowchart TD
+    COMPILE[["Compile (${compile_action})"]]
+    COMPILE_END((End))
+    FIX_COMPILE[FIX compile errors]
+    GATE_COMPILE_OK{Compile passed?}
+    STOP_COMPILE_FAIL_REVIEW["STOP - HUMAN REVIEW — compile failed, dispatch ${fix_agent}?"]
+
+    COMPILE --> GATE_COMPILE_OK
+    GATE_COMPILE_OK -- Yes --> COMPILE_END
+    GATE_COMPILE_OK -- No --> STOP_COMPILE_FAIL_REVIEW
+    STOP_COMPILE_FAIL_REVIEW --> FIX_COMPILE
+    FIX_COMPILE --> COMPILE
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class COMPILE serviceNode
+
+    classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
+    class FIX_COMPILE agentNode
+
+    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
+    class STOP_COMPILE_FAIL_REVIEW humanNode
+```
+
 ## DA Cycle
 
 ```mermaid
@@ -366,33 +385,28 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    COMPILE[["Compile (${compile_action})"]]
-    GATE_COMPILE_OK{Compile passed?}
+    COMPILE["Compile ${phase_label} (human-gated on fail) — see § compile"]
     GATE_TESTS_PASS{All tests passed?}
     GREEN_END((End))
     RUN[["Run targeted tests against ${suite}"]]
-    STOP_GREEN_COMPILE_FAIL["STOP - HUMAN REVIEW — ${phase_label} compile failed"]
     STOP_GREEN_TEST_FAIL["STOP - HUMAN REVIEW — ${phase_label} tests failed"]
     WRITE["${phase_label} - WRITE"]
 
     WRITE --> COMPILE
-    COMPILE --> GATE_COMPILE_OK
-    GATE_COMPILE_OK -- No --> STOP_GREEN_COMPILE_FAIL
-    GATE_COMPILE_OK -- Yes --> RUN
-    STOP_GREEN_COMPILE_FAIL --> WRITE
+    COMPILE --> RUN
     RUN --> GATE_TESTS_PASS
     GATE_TESTS_PASS -- Yes --> GREEN_END
     GATE_TESTS_PASS -- No --> STOP_GREEN_TEST_FAIL
     STOP_GREEN_TEST_FAIL --> WRITE
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class COMPILE,RUN serviceNode
+    class RUN serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
     class WRITE agentNode
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class STOP_GREEN_COMPILE_FAIL,STOP_GREEN_TEST_FAIL humanNode
+    class STOP_GREEN_TEST_FAIL humanNode
 ```
 
 ## red_phase_cycle
@@ -400,29 +414,22 @@ flowchart TD
 ```mermaid
 flowchart TD
     COMMIT[COMMIT — see § Commit Sub-Process]
-    COMPILE[["Compile (${compile_action})"]]
+    COMPILE["Compile ${phase_label} (human-gated on fail) — see § compile"]
     DISABLE[[Disable change-driven scenarios]]
-    GATE_COMPILE_OK{Compile passed?}
     GATE_RUN_FAILED_RUNTIME{"Tests fail at runtime (not compile)?"}
     GATE_VERIFY_REAL_PASS{Real suite passes?}
     GATE_VERIFY_REAL_REQUIRED{Verify against real suite first?}
     RED_END((End))
     RUN[[Run targeted tests]]
-    STOP_PROTOTYPE_REVIEW["STOP - HUMAN REVIEW — ${phase_label} prototypes"]
     STOP_RED_NOT_RUNTIME_FAIL["STOP - HUMAN REVIEW — ${phase_label} tests not runtime-failing"]
-    STOP_RED_REVIEW["STOP - HUMAN REVIEW — ${phase_label} tests"]
+    STOP_RED_REVIEW["STOP - HUMAN REVIEW — ${phase_label} test + DSL stubs"]
     STOP_VERIFY_REAL_FAIL["STOP - HUMAN REVIEW — ${phase_label} real-suite contract problem"]
     VERIFY_REAL[["Verify ${verify_real_suite} passes"]]
     WRITE["${phase_label} - WRITE"]
-    WRITE_PROTOTYPES["${phase_label} - PROTOTYPES"]
 
     WRITE --> STOP_RED_REVIEW
     STOP_RED_REVIEW --> COMPILE
-    COMPILE --> GATE_COMPILE_OK
-    GATE_COMPILE_OK -- No --> WRITE_PROTOTYPES
-    GATE_COMPILE_OK -- Yes --> GATE_VERIFY_REAL_REQUIRED
-    WRITE_PROTOTYPES --> STOP_PROTOTYPE_REVIEW
-    STOP_PROTOTYPE_REVIEW --> COMPILE
+    COMPILE --> GATE_VERIFY_REAL_REQUIRED
     GATE_VERIFY_REAL_REQUIRED -- Yes --> VERIFY_REAL
     GATE_VERIFY_REAL_REQUIRED -- No --> RUN
     VERIFY_REAL --> GATE_VERIFY_REAL_PASS
@@ -437,13 +444,13 @@ flowchart TD
     COMMIT --> RED_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class COMPILE,DISABLE,RUN,VERIFY_REAL serviceNode
+    class DISABLE,RUN,VERIFY_REAL serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
-    class WRITE,WRITE_PROTOTYPES agentNode
+    class WRITE agentNode
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class STOP_PROTOTYPE_REVIEW,STOP_RED_NOT_RUNTIME_FAIL,STOP_RED_REVIEW,STOP_VERIFY_REAL_FAIL humanNode
+    class STOP_RED_NOT_RUNTIME_FAIL,STOP_RED_REVIEW,STOP_VERIFY_REAL_FAIL humanNode
 ```
 
 ## SUT Cycle
