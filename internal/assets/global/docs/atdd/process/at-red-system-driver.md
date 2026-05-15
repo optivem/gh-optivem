@@ -41,6 +41,9 @@ public RegisterCustomerResponse register(RegisterCustomerRequest request) {
 
 1. Enable the tests marked disabled with reason `"AT - RED - DSL"`.
 2. Implement the System Drivers — replace each "TODO: Driver" prototype with actual logic. Stay within `${driver_port}/${sut_namespace}/` and `${driver_adapter}/${sut_namespace}/`. Model new methods on existing Driver methods in the same file.
+3. If your impl references a System Driver method that doesn't yet have a prototype, add the `"TODO: Driver"` stub in the same step (rare at this phase — typically every method already has a prototype from AT - RED - DSL).
+
+The result must compile.
 
 **Scope:** Only System Driver code. No test, DSL, system, or external-driver edits.
 

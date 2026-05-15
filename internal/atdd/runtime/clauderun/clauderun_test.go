@@ -169,7 +169,7 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 	// or the pre-rollout preamble.
 	for _, name := range []string{
 		"atdd-backend", "atdd-chore",
-		"atdd-driver-at", "atdd-driver-ct",
+		"at-red-system-driver", "atdd-driver-ct",
 		"atdd-dsl-at", "atdd-dsl-ct",
 		"atdd-frontend", "atdd-stubs",
 		"atdd-task-system-interface-redesign",

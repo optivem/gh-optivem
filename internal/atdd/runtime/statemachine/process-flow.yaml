@@ -361,7 +361,7 @@ processes:
         type: call_activity
         process: red_phase_cycle
         params:
-          agent: atdd-driver-at
+          agent: at-red-system-driver
           phase_doc: docs/atdd/process/at-red-system-driver.md
           phase_label: "AT - RED - SYSTEM DRIVER"
           change_type: "AT - RED - SYSTEM DRIVER"

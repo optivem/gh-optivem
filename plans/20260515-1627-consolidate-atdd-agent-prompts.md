@@ -310,31 +310,23 @@ Per the table above. Drop the `atdd-` prefix universally.
 The thinning + rename are independent per prompt. Land one prompt per
 commit:
 
-1. **`at-red-system-driver.md`** (was `atdd-driver-at.md`) — smallest,
-   exercises the per-prompt thinning + rename + dispatcher-update
-   sequence end-to-end. If this works, the rest are mechanical.
-2. **`ct-red-external-driver.md`** (was `atdd-driver-ct.md`).
-3. **`at-red-dsl.md`**, **`ct-red-dsl.md`**.
-4. **`at-red-test.md`**, **`ct-red-test.md`** — extra care for the
+1. **`ct-red-external-driver.md`** (was `atdd-driver-ct.md`).
+2. **`at-red-dsl.md`**, **`ct-red-dsl.md`**.
+3. **`at-red-test.md`**, **`ct-red-test.md`** — extra care for the
    `${acceptance_criteria}` block; ensure the dispatcher still
    substitutes it for AT and leaves it alone (or substitutes empty)
    for CT, depending on current dispatcher behaviour.
-5. **`at-green-system-backend.md`**, **`at-green-system-frontend.md`**.
-6. **`ct-green-stubs.md`** (was `atdd-stubs.md`) — rename only; body
+4. **`at-green-system-backend.md`**, **`at-green-system-frontend.md`**.
+5. **`ct-green-stubs.md`** (was `atdd-stubs.md`) — rename only; body
    stays the TBD placeholder.
-7. **`chore.md`**.
-8. **`task-system-interface-redesign.md`**,
+6. **`chore.md`**.
+7. **`task-system-interface-redesign.md`**,
    **`task-external-system-interface-redesign.md`**.
-9. **`fix-verify.md`** — rename only.
+8. **`fix-verify.md`** — rename only.
 
 Each step is one commit. Per the `/commit` vs raw-git memory rule,
 these are agent-authored surgical commits — use raw `git`, not
 `/commit`.
-
-Per the "Offer /clear + /execute-plan after committing" memory: once
-this plan is committed and validated on the first slice (step 1),
-offer the operator a fresh-session `/clear` + `/execute-plan` handoff
-for steps 2–9.
 
 ## Follow-up plans (not this one)
 
