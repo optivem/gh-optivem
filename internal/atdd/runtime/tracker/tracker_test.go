@@ -23,6 +23,9 @@ func (fakeTracker) Verify(context.Context) error                    { return nil
 func (fakeTracker) Classify(context.Context, tracker.Issue) (string, bool, error) {
 	return "", false, nil
 }
+func (fakeTracker) Subtypes(context.Context, tracker.Issue) ([]string, error) {
+	return nil, nil
+}
 func (fakeTracker) ReadSections(context.Context, tracker.Issue, []string) (map[string]string, error) {
 	return nil, nil
 }

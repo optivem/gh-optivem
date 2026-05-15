@@ -43,7 +43,7 @@ import (
 // Options bundles every input Dispatch needs to construct a prompt and run
 // the subprocess. Zero values yield a usable configuration where it makes
 // sense (Stdout/Stderr/Stdin default to the OS streams). Required fields
-// (Agent, PhaseDoc, IssueNum, IssueTitle, IssueRepo, NodeDescription) are
+// (Agent, PhaseDoc, IssueNum, IssueTitle, NodeDescription) are
 // not zero-defaulted because missing them yields a meaningless prompt.
 type Options struct {
 	// Agent is the subagent name to launch (e.g. "atdd-test").
@@ -58,11 +58,8 @@ type Options struct {
 	NodeDescription string
 
 	// Ticket context — pulled from Context keys populated by preResolveIssue.
-	IssueNum     int
-	IssueTitle   string
-	IssueRepo    string
-	ProjectTitle string
-	ProjectURL   string
+	IssueNum   int
+	IssueTitle string
 
 	// Architecture is "monolith" or "multitier", surfaced to the agent
 	// prompt via ${architecture}. Empty when no system.architecture is
@@ -421,9 +418,6 @@ func renderPrompt(opts Options) (string, error) {
 	for k, v := range map[string]string{
 		"issue_num":      strconv.Itoa(opts.IssueNum),
 		"issue_title":    opts.IssueTitle,
-		"issue_repo":     opts.IssueRepo,
-		"project_title":  opts.ProjectTitle,
-		"project_url":    opts.ProjectURL,
 		"phase":          opts.NodeDescription,
 		"phase_doc":      opts.PhaseDoc,
 		"architecture":   opts.Architecture,
@@ -822,8 +816,8 @@ func writeEnterBanner(opts Options) {
 	}
 	fmt.Fprintln(w, cyan.Sprintf("🤖 ENTERING AGENT: %s  (%s)", opts.Agent, mode))
 	if opts.IssueNum > 0 || opts.IssueTitle != "" {
-		fmt.Fprintln(w, cyan.Sprintf("   Issue: #%d %q  Repo: %s",
-			opts.IssueNum, opts.IssueTitle, opts.IssueRepo))
+		fmt.Fprintln(w, cyan.Sprintf("   Issue: #%d %q",
+			opts.IssueNum, opts.IssueTitle))
 	}
 	fmt.Fprintln(w, cyan.Sprint(banner))
 }

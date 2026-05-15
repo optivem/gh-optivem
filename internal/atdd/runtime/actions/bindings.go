@@ -3,11 +3,12 @@
 //
 // Actions are the mechanical work of the pipeline: read the project board,
 // move cards, classify the ticket, run a smoke test, commit a phase, etc.
-// They wrap the existing helpers under runtime/board, runtime/classify, and
-// runtime/release where one already exists; everything else is implemented
-// directly in this file using the same shell-out + dependency-injection
-// pattern (Deps with Gh / Git / Prompter / Stdout, all defaulting to real
-// implementations when nil).
+// They route tracker-shaped work (PickReady, SetStatus, ReadSections,
+// MarkChecklistComplete, Classify, Subtypes) through the Tracker
+// interface and wrap runtime/release for commit work; everything else
+// is implemented directly in this file using the same shell-out +
+// dependency-injection pattern (Deps with Gh / Git / Prompter / Stdout,
+// all defaulting to real implementations when nil).
 //
 // Every action returns `statemachine.Outcome` with Err set on hard failures.
 // User-driven aborts (e.g. answering "no" to "Can I commit?") also surface
@@ -24,7 +25,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -339,55 +339,33 @@ func (a actions) readTicketType(ctx *statemachine.Context) statemachine.Outcome 
 // re-run — same shape as read_ticket_type → STOP_CLASSIFY_CONFLICT and
 // parse_ticket_body → STOP_PARSE_ERROR.
 func (a actions) readSubtype(ctx *statemachine.Context) statemachine.Outcome {
-	issueNum, err := strconv.Atoi(ctx.GetString("issue_num"))
-	if err != nil || issueNum <= 0 {
-		return statemachine.Outcome{Err: fmt.Errorf("read_subtype: issue_num not set or not a positive integer (%q)", ctx.GetString("issue_num"))}
-	}
-	args := []string{"issue", "view", strconv.Itoa(issueNum), "--json", "labels"}
-	if repo := ctx.GetString("issue_repo"); repo != "" {
-		args = append(args, "--repo", repo)
-	}
-	out, err := a.deps.Gh.Run(context.Background(), args...)
+	issue, err := issueFromContext(ctx)
 	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("read_subtype: gh issue view: %w", err)}
+		return statemachine.Outcome{Err: fmt.Errorf("read_subtype: %w", err)}
 	}
-	subs := extractSubtypeLabels(out)
+	subs, err := a.deps.Tracker.Subtypes(context.Background(), issue)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("read_subtype: %w", err)}
+	}
 	switch len(subs) {
 	case 0:
 		ctx.Set("subtype_ok", false)
 		fmt.Fprintf(a.deps.Stderr,
-			"read_subtype: issue #%d has no subtype:* label — apply exactly one of subtype:system-interface-redesign / subtype:external-system-interface-redesign / subtype:system-implementation-change and re-run.\n",
-			issueNum)
+			"read_subtype: issue #%s has no subtype:* label — apply exactly one of subtype:system-interface-redesign / subtype:external-system-interface-redesign / subtype:system-implementation-change and re-run.\n",
+			issue.ID)
 		return statemachine.Outcome{}
 	case 1:
 		ctx.Set("subtype", subs[0])
 		ctx.Set("subtype_ok", true)
-		fmt.Fprintf(a.deps.Stdout, "Subtype for #%d: %s.\n", issueNum, subs[0])
+		fmt.Fprintf(a.deps.Stdout, "Subtype for #%s: %s.\n", issue.ID, subs[0])
 		return statemachine.Outcome{}
 	default:
 		ctx.Set("subtype_ok", false)
 		fmt.Fprintf(a.deps.Stderr,
-			"read_subtype: issue #%d has multiple subtype:* labels (%v) — apply exactly one and re-run.\n",
-			issueNum, subs)
+			"read_subtype: issue #%s has multiple subtype:* labels (%v) — apply exactly one and re-run.\n",
+			issue.ID, subs)
 		return statemachine.Outcome{}
 	}
-}
-
-// extractSubtypeLabels pulls every `subtype:*` label from `gh issue view
-// --json labels`, returning each value with the prefix stripped.
-func extractSubtypeLabels(raw []byte) []string {
-	arr, ok := jsonFieldRaw(raw, "labels")
-	if !ok {
-		return nil
-	}
-	var subs []string
-	for _, obj := range splitJSONArray(arr) {
-		name, _ := jsonFieldString(obj, "name")
-		if strings.HasPrefix(name, "subtype:") {
-			subs = append(subs, strings.TrimPrefix(name, "subtype:"))
-		}
-	}
-	return subs
 }
 
 // parseTicketBody is the deterministic markdown parser that replaces the
@@ -1578,22 +1556,13 @@ func (a actions) confirmer() release.Confirmer {
 
 // issueFromContext builds a tracker.Issue from the conventional Context
 // keys pickTopReady writes (issue_num, issue_url, issue_title,
-// issue_handle). When issue_url is empty but issue_num + issue_repo are
-// set, the URL is synthesised — preserves the pre-Tracker test pattern
-// where callers seeded ctx with issue_num + issue_repo and the action
-// constructed a `gh issue view --repo` argv on the fly. Step 12 drops
-// issue_repo entirely once every caller writes issue_url.
+// issue_handle). issue_url is the addressable form every Tracker call
+// site needs; callers that don't seed it get a clear error rather than
+// a downstream parse failure.
 func issueFromContext(ctx *statemachine.Context) (tracker.Issue, error) {
 	url := ctx.GetString("issue_url")
 	if url == "" {
-		num := ctx.GetString("issue_num")
-		repo := ctx.GetString("issue_repo")
-		if num != "" && repo != "" {
-			url = fmt.Sprintf("https://github.com/%s/issues/%s", repo, num)
-		}
-	}
-	if url == "" {
-		return tracker.Issue{}, fmt.Errorf("issue_url not in Context (and issue_num/issue_repo insufficient to synthesise one)")
+		return tracker.Issue{}, fmt.Errorf("issue_url not in Context")
 	}
 	return tracker.Issue{
 		ID:     ctx.GetString("issue_num"),
@@ -1604,181 +1573,12 @@ func issueFromContext(ctx *statemachine.Context) (tracker.Issue, error) {
 }
 
 // writeIssueToContext mirrors the Tracker.PickReady result into the
-// conventional Context keys downstream actions read. issue_repo is
-// derived from the issue URL for back-compat with consumers that still
-// read the owner/repo pair (readSubtype, plus driver wiring for
-// specific-issue mode); step 12 drops that line once every consumer
-// switches to issueFromContext.
+// conventional Context keys downstream actions read.
 func writeIssueToContext(ctx *statemachine.Context, issue tracker.Issue) {
 	ctx.Set("issue_num", issue.ID)
 	ctx.Set("issue_url", issue.URL)
 	ctx.Set("issue_title", issue.Title)
 	ctx.Set("issue_handle", issue.Handle)
-	if repo := repoFromIssueURL(issue.URL); repo != "" {
-		ctx.Set("issue_repo", repo)
-	}
-}
-
-// repoFromIssueURL extracts the `owner/repo` portion of a canonical
-// github issue URL. Returns "" on any URL shape the regex doesn't match
-// — callers treat the missing repo as "leave issue_repo unset" which
-// keeps the engine running for backends (markdown) where the concept
-// doesn't apply.
-func repoFromIssueURL(url string) string {
-	if url == "" {
-		return ""
-	}
-	m := issueURLRepoPattern.FindStringSubmatch(url)
-	if m == nil {
-		return ""
-	}
-	return m[1] + "/" + m[2]
-}
-
-var issueURLRepoPattern = regexp.MustCompile(`https://github\.com/([A-Za-z0-9][A-Za-z0-9-]*)/([A-Za-z0-9._-]+)/issues/\d+`)
-
-// jsonFieldRaw returns the raw bytes of a top-level JSON field's value.
-// Handles strings, objects, and arrays via brace/bracket counting. Stops
-// short of full JSON parsing — sufficient for our two-level use.
-func jsonFieldRaw(raw []byte, key string) ([]byte, bool) {
-	needle := []byte(`"` + key + `"`)
-	idx := bytes.Index(raw, needle)
-	if idx < 0 {
-		return nil, false
-	}
-	rest := raw[idx+len(needle):]
-	colon := bytes.IndexByte(rest, ':')
-	if colon < 0 {
-		return nil, false
-	}
-	rest = bytes.TrimLeft(rest[colon+1:], " \t\r\n")
-	if len(rest) == 0 {
-		return nil, false
-	}
-	switch rest[0] {
-	case '"':
-		// Skip the value; not-an-object-or-array but useful to recognise.
-		end := matchString(rest)
-		if end < 0 {
-			return nil, false
-		}
-		return rest[:end+1], true
-	case '{':
-		end := matchBraced(rest, '{', '}')
-		if end < 0 {
-			return nil, false
-		}
-		return rest[:end+1], true
-	case '[':
-		end := matchBraced(rest, '[', ']')
-		if end < 0 {
-			return nil, false
-		}
-		return rest[:end+1], true
-	default:
-		// Bare token (number, true, false, null) — read until comma/brace.
-		end := bytes.IndexAny(rest, ",}]")
-		if end < 0 {
-			return rest, true
-		}
-		return rest[:end], true
-	}
-}
-
-func jsonFieldString(raw []byte, key string) (string, bool) {
-	val, ok := jsonFieldRaw(raw, key)
-	if !ok {
-		return "", false
-	}
-	if len(val) < 2 || val[0] != '"' || val[len(val)-1] != '"' {
-		return "", false
-	}
-	return string(val[1 : len(val)-1]), true
-}
-
-func matchString(s []byte) int {
-	for i := 1; i < len(s); i++ {
-		if s[i] == '\\' && i+1 < len(s) {
-			i++
-			continue
-		}
-		if s[i] == '"' {
-			return i
-		}
-	}
-	return -1
-}
-
-func matchBraced(s []byte, open, close byte) int {
-	depth := 0
-	inStr := false
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if inStr {
-			if c == '\\' && i+1 < len(s) {
-				i++
-				continue
-			}
-			if c == '"' {
-				inStr = false
-			}
-			continue
-		}
-		switch c {
-		case '"':
-			inStr = true
-		case open:
-			depth++
-		case close:
-			depth--
-			if depth == 0 {
-				return i
-			}
-		}
-	}
-	return -1
-}
-
-func splitJSONArray(arr []byte) [][]byte {
-	if len(arr) < 2 || arr[0] != '[' || arr[len(arr)-1] != ']' {
-		return nil
-	}
-	body := arr[1 : len(arr)-1]
-	var out [][]byte
-	depth := 0
-	inStr := false
-	start := 0
-	for i := 0; i < len(body); i++ {
-		c := body[i]
-		if inStr {
-			if c == '\\' && i+1 < len(body) {
-				i++
-				continue
-			}
-			if c == '"' {
-				inStr = false
-			}
-			continue
-		}
-		switch c {
-		case '"':
-			inStr = true
-		case '{', '[':
-			depth++
-		case '}', ']':
-			depth--
-		case ',':
-			if depth == 0 {
-				out = append(out, bytes.TrimSpace(body[start:i]))
-				start = i + 1
-			}
-		}
-	}
-	tail := bytes.TrimSpace(body[start:])
-	if len(tail) > 0 {
-		out = append(out, tail)
-	}
-	return out
 }
 
 // ---------------------------------------------------------------------------

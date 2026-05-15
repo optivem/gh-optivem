@@ -50,12 +50,12 @@ type Issue struct {
 	Handle string
 }
 
-// Tracker is the seven-method interface every backend implements. The
+// Tracker is the eight-method interface every backend implements. The
 // methods divide into three groups:
 //
-//   - Workflow:  PickReady, FindIssue, SetStatus, Verify
-//   - Inspection: Classify, ReadSections
-//   - Mutation:  MarkChecklistComplete
+//   - Workflow:   PickReady, FindIssue, SetStatus, Verify
+//   - Inspection: Classify, Subtypes, ReadSections
+//   - Mutation:   MarkChecklistComplete
 //
 // Adapters are constructed via Open (or directly via package
 // constructors in tests). All methods accept a context.Context and
@@ -92,6 +92,15 @@ type Tracker interface {
 	// markdown adapter reads YAML frontmatter `type:` with a filename
 	// heuristic fallback.
 	Classify(ctx context.Context, i Issue) (kind string, confident bool, err error)
+
+	// Subtypes returns every subtype value declared on the issue, in
+	// declaration order. Used by the intake flow's subtype gate, which
+	// treats count==1 as "unambiguous", 0 as "operator must declare",
+	// and 2+ as "operator must reconcile". The github adapter reads
+	// `subtype:<value>` labels and strips the prefix; the markdown
+	// adapter reads a `subtype:` field from the file's YAML
+	// frontmatter (single-element slice or empty).
+	Subtypes(ctx context.Context, i Issue) ([]string, error)
 
 	// ReadSections parses the issue body and returns the named
 	// sections (H2/H3 headings → body text). Section names that are

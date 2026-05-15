@@ -861,8 +861,8 @@ func realCheckOwnerExists(owner string) error {
 // in one request produces a partial NOT_FOUND for the wrong type that gh
 // treats as fatal.
 //
-// Duplicated from internal/atdd/runtime/board's projectMetaQuery rather
-// than imported, for the same reason parseProjectURL is duplicated below.
+// Duplicated from internal/atdd/runtime/tracker/github's projectMetaQuery
+// rather than imported, for the same reason parseProjectURL is duplicated below.
 const projectExistsQuery = `query($login:String!,$number:Int!){%s(login:$login){projectV2(number:$number){id}}}`
 
 // realCheckProjectExists is the production CheckProjectExistsFn. Parses
@@ -893,7 +893,7 @@ func realCheckProjectExists(url string) error {
 // (querying both branches in a single request produces a partial
 // NOT_FOUND for the wrong type, which gh treats as fatal).
 //
-// Duplicated from internal/steps/project.go and internal/atdd/runtime/board
+// Duplicated from internal/steps/project.go and internal/atdd/runtime/tracker/github
 // rather than imported to keep internal/config dependency-free of the
 // runtime-side packages it underpins.
 func parseProjectURL(s string) (ownerKind, owner string, number int, err error) {

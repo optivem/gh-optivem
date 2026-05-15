@@ -406,22 +406,13 @@ func (b bindings) legacyAcceptanceCriteriaSectionPresent(ctx *statemachine.Conte
 
 // issueFromContext builds a tracker.Issue from the conventional Context
 // keys actions.pickTopReady writes (issue_num, issue_url, issue_title,
-// issue_handle). Synthesises a URL from issue_num + issue_repo when
-// issue_url is empty — preserves the pre-Tracker test pattern where
-// callers seeded ctx with issue_num + issue_repo and the gate
-// constructed a `gh issue view --repo` argv on the fly. Step 12 drops
-// issue_repo entirely once every caller writes issue_url.
+// issue_handle). issue_url is the addressable form every Tracker call
+// site needs; callers that don't seed it get a clear error rather than
+// a downstream parse failure.
 func issueFromContext(ctx *statemachine.Context) (tracker.Issue, error) {
 	url := ctx.GetString("issue_url")
 	if url == "" {
-		num := ctx.GetString("issue_num")
-		repo := ctx.GetString("issue_repo")
-		if num != "" && repo != "" {
-			url = fmt.Sprintf("https://github.com/%s/issues/%s", repo, num)
-		}
-	}
-	if url == "" {
-		return tracker.Issue{}, fmt.Errorf("issue_url not in Context (and issue_num/issue_repo insufficient to synthesise one)")
+		return tracker.Issue{}, fmt.Errorf("issue_url not in Context")
 	}
 	return tracker.Issue{
 		ID:     ctx.GetString("issue_num"),

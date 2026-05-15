@@ -587,6 +587,53 @@ func TestClassify_NativeIssueType(t *testing.T) {
 	}
 }
 
+func TestSubtypes(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		responseJSON string
+		want         []string
+	}{
+		{
+			name:         "single",
+			responseJSON: `{"labels":[{"name":"area:billing"},{"name":"subtype:system-interface-redesign"}]}`,
+			want:         []string{"system-interface-redesign"},
+		},
+		{
+			name:         "multiple",
+			responseJSON: `{"labels":[{"name":"subtype:system-interface-redesign"},{"name":"subtype:system-implementation-change"}]}`,
+			want:         []string{"system-interface-redesign", "system-implementation-change"},
+		},
+		{
+			name:         "none",
+			responseJSON: `{"labels":[{"name":"area:billing"}]}`,
+			want:         nil,
+		},
+		{
+			name:         "empty_labels",
+			responseJSON: `{"labels":[]}`,
+			want:         nil,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gh := newFakeRunner(t)
+			gh.on(
+				[]string{"issue", "view", "42", "--json", "labels", "--repo", "optivem/shop"},
+				[]byte(tc.responseJSON),
+				nil,
+			)
+			tr := mustNew(t, "https://github.com/orgs/optivem/projects/20", gh)
+			issue := tracker.Issue{ID: "42", URL: "https://github.com/optivem/shop/issues/42"}
+			got, err := tr.Subtypes(context.Background(), issue)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if fmt.Sprintf("%v", got) != fmt.Sprintf("%v", tc.want) {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestReadSections_ReturnsRequestedHeadings(t *testing.T) {
 	body := "## Description\n\nIntro paragraph.\n\n" +
 		"## Acceptance Criteria\n\n- AC1\n- AC2\n\n" +

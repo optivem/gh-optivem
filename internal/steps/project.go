@@ -471,8 +471,8 @@ func printMissingOptionsBanner(projectURL string, missing []string) {
 // declines the Path B prompt. Differentiates by which option(s) were
 // declined so the operator knows whether the missing column is
 // runtime-critical (Ready/In Progress/In Acceptance — read/written by
-// internal/atdd/runtime/board) or workflow-critical (In QA — needed for
-// the QA hand-off lane but not by the runtime today).
+// internal/atdd/runtime/tracker) or workflow-critical (In QA — needed
+// for the QA hand-off lane but not by the runtime today).
 func projectAddDeclinedMessage(missing []string) string {
 	var atddRuntime, qaOnly []string
 	for _, m := range missing {

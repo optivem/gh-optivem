@@ -120,9 +120,6 @@ func newOpts() Options {
 		NodeDescription: "Write the AT-RED scenario",
 		IssueNum:        42,
 		IssueTitle:      "Add PUT /carts/{id}/items endpoint",
-		IssueRepo:       "optivem/shop",
-		ProjectTitle:    "Shop ATDD",
-		ProjectURL:      "https://github.com/orgs/optivem/projects/1",
 		// The stripped prompts reference ${language} in the language-
 		// equivalents pointer; seed a default so tests don't have to.
 		Language: "java",
@@ -150,8 +147,6 @@ func TestRenderPrompt_IncludesAllFields(t *testing.T) {
 	// substituted; the parent-claude "Launch the X subagent" wrapper is gone.
 	mustContain(t, got, "You are the Test Agent")
 	mustContain(t, got, `#42 "Add PUT /carts/{id}/items endpoint"`)
-	mustContain(t, got, "(optivem/shop)")
-	mustContain(t, got, "Shop ATDD (https://github.com/orgs/optivem/projects/1)")
 	mustContain(t, got, "Phase: Write the AT-RED scenario")
 	mustContain(t, got, "Phase doc: docs/atdd/process/at-red-test.md")
 	mustContain(t, got, "prefer record types")

@@ -439,6 +439,46 @@ func TestClassify_FilenameHeuristic(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Subtypes
+// ---------------------------------------------------------------------------
+
+func TestSubtypes_FrontmatterPresent(t *testing.T) {
+	root := newBoard(t, map[string]string{
+		"ready/x.md": "---\ntype: task\nsubtype: system-interface-redesign\n---\n\n# Title\n",
+	})
+	tr, _ := New(root, newFakeGit(t, root))
+	issue, err := tr.FindIssue(context.Background(), "x")
+	if err != nil {
+		t.Fatalf("FindIssue: %v", err)
+	}
+	subs, err := tr.Subtypes(context.Background(), issue)
+	if err != nil {
+		t.Fatalf("Subtypes: %v", err)
+	}
+	if len(subs) != 1 || subs[0] != "system-interface-redesign" {
+		t.Errorf("got %v, want [system-interface-redesign]", subs)
+	}
+}
+
+func TestSubtypes_FrontmatterAbsent(t *testing.T) {
+	root := newBoard(t, map[string]string{
+		"ready/x.md": "---\ntype: task\n---\n\n# Title\n",
+	})
+	tr, _ := New(root, newFakeGit(t, root))
+	issue, err := tr.FindIssue(context.Background(), "x")
+	if err != nil {
+		t.Fatalf("FindIssue: %v", err)
+	}
+	subs, err := tr.Subtypes(context.Background(), issue)
+	if err != nil {
+		t.Fatalf("Subtypes: %v", err)
+	}
+	if subs != nil {
+		t.Errorf("got %v, want nil (no subtype declared)", subs)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // ReadSections
 // ---------------------------------------------------------------------------
 

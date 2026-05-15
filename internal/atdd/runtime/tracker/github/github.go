@@ -264,6 +264,41 @@ func (t *Tracker) Classify(ctx context.Context, i tracker.Issue) (string, bool, 
 	return strings.ToLower(it.Name), true, nil
 }
 
+// Subtypes returns every `subtype:<value>` label declared on the
+// issue, in the order GitHub returns them, with the `subtype:` prefix
+// stripped. Reads via `gh issue view <num> --json labels --repo
+// <owner>/<repo>`. The runtime's intake gate treats count==1 as
+// "unambiguous", 0 as "operator must declare", and 2+ as "operator
+// must reconcile".
+func (t *Tracker) Subtypes(ctx context.Context, i tracker.Issue) ([]string, error) {
+	owner, repo, num, err := parseIssueURL(i.URL)
+	if err != nil {
+		return nil, err
+	}
+	out, err := t.gh.Run(ctx, "issue", "view", strconv.Itoa(num),
+		"--json", "labels",
+		"--repo", owner+"/"+repo,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("github: gh issue view labels: %w", err)
+	}
+	var resp struct {
+		Labels []struct {
+			Name string `json:"name"`
+		} `json:"labels"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return nil, fmt.Errorf("github: parse labels response: %w", err)
+	}
+	var subs []string
+	for _, l := range resp.Labels {
+		if strings.HasPrefix(l.Name, "subtype:") {
+			subs = append(subs, strings.TrimPrefix(l.Name, "subtype:"))
+		}
+	}
+	return subs, nil
+}
+
 // ReadSections fetches the issue body and returns the named H2/H3
 // sections as a map. Every requested heading appears in the result —
 // absent or empty sections map to "" so callers see a stable key set.

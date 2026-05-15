@@ -57,6 +57,7 @@ type Tracker interface {
     SetStatus(ctx context.Context, handle, status string) error
     Verify(ctx context.Context) error
     Classify(ctx context.Context, i Issue) (kind string, confident bool, err error)
+    Subtypes(ctx context.Context, i Issue) ([]string, error)
     ReadSections(ctx context.Context, i Issue, headings []string) (map[string]string, error)
     MarkChecklistComplete(ctx context.Context, i Issue) error
 }
@@ -81,8 +82,18 @@ Notes:
 | `SetStatus` | `gh project item-edit --field-id … --single-select-option-id …` | `git mv <project.url>/<from>/<id>.md <project.url>/<to>/<id>.md` (mkdir target if missing). |
 | `Verify` | Minimal projectV2 GraphQL lookup (id, title). | Stat `<project.url>/ready/`, `/in-progress/`, `/done/`. |
 | `Classify` | Projects v2 `Type` field + label-token table. | Frontmatter `type:` field; fall back to filename heuristic if absent. |
+| `Subtypes` | `gh issue view --json labels`; filter for `subtype:*` and strip prefix. | Frontmatter `subtype:` field; single-element slice or empty. |
 | `ReadSections` | Parse H2/H3 from issue body (current Issue Forms behavior). | Same parser, against the local file body — markdown content model is shared. |
 | `MarkChecklistComplete` | Rewrite `- [ ]` → `- [x]` in issue body via `gh issue edit`. | Same rewrite in the file, then `git add <file> && git commit -m "checklist: tick item N for <id>"`. Working tree stays clean. |
+
+> **Interface widened to 8 methods on 2026-05-15** — `Subtypes` added during
+> Step 12 execution. The original 7-method shape didn't cover the one
+> remaining `gh issue view --repo` callsite (`actions.readSubtype`, which
+> reads `subtype:*` labels for task-kind tickets). Per-ticket subtype
+> metadata is a real cross-backend concept (github = labels; markdown =
+> YAML frontmatter `subtype:` field; future Jira = label or custom field),
+> so the abstraction belongs on the interface rather than as a github-
+> specific shell-out inside actions/bindings.go.
 
 ## Package layout
 
@@ -112,9 +123,7 @@ Each step is a single commit (or small commit pair) with passing tests. The gith
 
 > Steps 8, 9, 10, 14 completed 2026-05-15. `project.provider` is now a required field on `projectconfig.Project` (Validate Rule 19 + 20: presence + provider/url shape consistency). Adapter dispatch lives in a sibling package `internal/atdd/runtime/tracker/factory` (the planned `tracker.Open` location would have created an import cycle — both adapters import `tracker` for the interface + sentinel types). `gh optivem config migrate` idempotently back-fills `provider` from URL shape via yaml.v3 Node round-trip (preserves comments + key ordering). `preflight_helpers.go` now opens via `factory.Open` + `Tracker.Verify` instead of `board.VerifyProjectURL`. Step 15 was already done in earlier work — `parseIssueArg` in `implement_commands.go:260` accepts both numeric and URL forms.
 
-11. **Drop `project_id` / `item_id` / `project_url` from `Context`.** Replaced by `issue_handle` (opaque string). The github adapter encodes its triple into `Issue.Handle` internally.
-12. **Drop `Issue.Repo` / `issue_repo` from runtime.** Remove the field from the seven `gh issue view --repo …` call sites (subsumed by `Tracker` methods), from `clauderun.Options.IssueRepo`, from the agent preamble template (`internal/assets/runtime/shared/preamble.md`), and from `Context` (`issue_repo` key).
-13. **Delete `internal/atdd/runtime/board/`.** All consumers migrated.
+> Steps 11, 12, 13 completed 2026-05-15. Context now shuttles a single `issue_handle` opaque string in place of the `project_id` + `item_id` + `project_url` triple; the github adapter encodes its triple internally. `project_title` was dropped alongside (no Tracker method exposed it; cleanest match for the GH+Jira-first naming principle). `IssueRepo` / `issue_repo` are gone from `clauderun.Options`, the preamble template (`Ticket: #${issue_num} "${issue_title}"`), the action/gate `issueFromContext` helpers, and every test fixture. The last `gh issue view --repo` callsite (`actions.readSubtype`) was migrated by widening the Tracker interface to 8 methods with `Subtypes(ctx, issue) ([]string, error)` — github reads labels with the `subtype:` prefix, markdown reads YAML frontmatter `subtype:` (next to `type:`). `internal/atdd/runtime/board/` deleted.
 
 ## Tests
 

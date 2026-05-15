@@ -277,7 +277,7 @@ func TestClassifyTicketType_NativeIssueType(t *testing.T) {
 			a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}})
 			ctx := statemachine.NewContext()
 			ctx.Set("issue_num", "42")
-			ctx.Set("issue_repo", "optivem/shop")
+			ctx.Set("issue_url", "https://github.com/optivem/shop/issues/42")
 
 			out := a.readTicketType(ctx)
 			if out.Err != nil {
@@ -320,7 +320,7 @@ func TestClassifyTicketType_PrintsNamedSections(t *testing.T) {
 	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}, Stdout: &stdout})
 	ctx := statemachine.NewContext()
 	ctx.Set("issue_num", "7")
-	ctx.Set("issue_repo", "optivem/shop")
+	ctx.Set("issue_url", "https://github.com/optivem/shop/issues/7")
 
 	out := a.readTicketType(ctx)
 	if out.Err != nil {
@@ -420,7 +420,7 @@ func TestClassifySubtype_TaskWithSingleLabel(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "42")
-	ctx.Set("issue_repo", "optivem/shop")
+	ctx.Set("issue_url", "https://github.com/optivem/shop/issues/42")
 	out := a.readSubtype(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
@@ -436,7 +436,7 @@ func TestClassifySubtype_TaskWithSingleLabel(t *testing.T) {
 func TestClassifySubtype_MissingLabel_RoutesToStop(t *testing.T) {
 	gh := newFakeRunner(t, "gh")
 	gh.on(
-		[]string{"issue", "view", "7", "--json", "labels"},
+		[]string{"issue", "view", "7", "--json", "labels", "--repo", "optivem/shop"},
 		[]byte(`{"labels":[{"name":"area:billing"}]}`),
 		nil,
 	)
@@ -445,6 +445,7 @@ func TestClassifySubtype_MissingLabel_RoutesToStop(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "7")
+	ctx.Set("issue_url", "https://github.com/optivem/shop/issues/7")
 	out := a.readSubtype(ctx)
 	if out.Err != nil {
 		t.Fatalf("expected clean Outcome (STOP, not hard error), got: %v", out.Err)
@@ -460,7 +461,7 @@ func TestClassifySubtype_MissingLabel_RoutesToStop(t *testing.T) {
 func TestClassifySubtype_MultipleLabels_RoutesToStop(t *testing.T) {
 	gh := newFakeRunner(t, "gh")
 	gh.on(
-		[]string{"issue", "view", "7", "--json", "labels"},
+		[]string{"issue", "view", "7", "--json", "labels", "--repo", "optivem/shop"},
 		[]byte(`{"labels":[{"name":"subtype:system-interface-redesign"},{"name":"subtype:system-implementation-change"}]}`),
 		nil,
 	)
@@ -469,6 +470,7 @@ func TestClassifySubtype_MultipleLabels_RoutesToStop(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "7")
+	ctx.Set("issue_url", "https://github.com/optivem/shop/issues/7")
 	out := a.readSubtype(ctx)
 	if out.Err != nil {
 		t.Fatalf("expected clean Outcome (STOP, not hard error), got: %v", out.Err)
@@ -478,28 +480,6 @@ func TestClassifySubtype_MultipleLabels_RoutesToStop(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "multiple subtype:*") {
 		t.Fatalf("expected stderr message about multiple subtypes, got: %q", stderr.String())
-	}
-}
-
-func TestExtractSubtypeLabels(t *testing.T) {
-	cases := []struct {
-		name string
-		raw  string
-		want []string
-	}{
-		{name: "single", raw: `{"labels":[{"name":"subtype:foo"}]}`, want: []string{"foo"}},
-		{name: "many_with_other_labels", raw: `{"labels":[{"name":"area:x"},{"name":"subtype:bar"},{"name":"subtype:baz"}]}`, want: []string{"bar", "baz"}},
-		{name: "none", raw: `{"labels":[{"name":"area:x"}]}`, want: nil},
-		{name: "empty_array", raw: `{"labels":[]}`, want: nil},
-		{name: "no_labels_key", raw: `{"title":"x"}`, want: nil},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := extractSubtypeLabels([]byte(tc.raw))
-			if fmt.Sprintf("%v", got) != fmt.Sprintf("%v", tc.want) {
-				t.Fatalf("got %v, want %v", got, tc.want)
-			}
-		})
 	}
 }
 
@@ -520,7 +500,7 @@ func TestParseTicketBody_StorySuccess(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "story")
 	ctx.Set("issue_num", "42")
-	ctx.Set("issue_repo", "optivem/shop")
+	ctx.Set("issue_url", "https://github.com/optivem/shop/issues/42")
 	out := a.parseTicketBody(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
@@ -554,7 +534,7 @@ func TestParseTicketBody_TaskSuccessPopulatesChecklist(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "61")
-	ctx.Set("issue_repo", "optivem/shop")
+	ctx.Set("issue_url", "https://github.com/optivem/shop/issues/61")
 	out := a.parseTicketBody(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
@@ -592,7 +572,7 @@ func TestParseTicketBody_TaskAllUncheckedPrintsZeroChecked(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "100")
-	ctx.Set("issue_repo", "optivem/shop")
+	ctx.Set("issue_url", "https://github.com/optivem/shop/issues/100")
 	if out := a.parseTicketBody(ctx); out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
@@ -618,7 +598,7 @@ func TestParseTicketBody_TaskMixedPrintsAlreadyDoneSuffix(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "101")
-	ctx.Set("issue_repo", "optivem/shop")
+	ctx.Set("issue_url", "https://github.com/optivem/shop/issues/101")
 	if out := a.parseTicketBody(ctx); out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
@@ -650,7 +630,7 @@ func TestParseTicketBody_AllCheckedInteractiveYesProceeds(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "61")
-	ctx.Set("issue_repo", "optivem/shop")
+	ctx.Set("issue_url", "https://github.com/optivem/shop/issues/61")
 	if out := a.parseTicketBody(ctx); out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
@@ -684,7 +664,7 @@ func TestParseTicketBody_AllCheckedInteractiveDefaultNoSkips(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "61")
-	ctx.Set("issue_repo", "optivem/shop")
+	ctx.Set("issue_url", "https://github.com/optivem/shop/issues/61")
 	out := a.parseTicketBody(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected hard error: %v", out.Err)
@@ -712,7 +692,7 @@ func TestParseTicketBody_AllCheckedAutonomousWarnsAndProceeds(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "61")
-	ctx.Set("issue_repo", "optivem/shop")
+	ctx.Set("issue_url", "https://github.com/optivem/shop/issues/61")
 	if out := a.parseTicketBody(ctx); out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
@@ -742,7 +722,7 @@ func TestParseTicketBody_PartiallyCheckedDoesNotPrompt(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "61")
-	ctx.Set("issue_repo", "optivem/shop")
+	ctx.Set("issue_url", "https://github.com/optivem/shop/issues/61")
 	if out := a.parseTicketBody(ctx); out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
@@ -768,7 +748,7 @@ func TestParseTicketBody_StoryHasNoChecklistSummary(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "story")
 	ctx.Set("issue_num", "1")
-	ctx.Set("issue_repo", "optivem/shop")
+	ctx.Set("issue_url", "https://github.com/optivem/shop/issues/1")
 	if out := a.parseTicketBody(ctx); out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
@@ -791,7 +771,7 @@ func TestParseTicketBody_TaskMissingChecklistSetsParseOkFalse(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "task")
 	ctx.Set("issue_num", "7")
-	ctx.Set("issue_repo", "optivem/shop")
+	ctx.Set("issue_url", "https://github.com/optivem/shop/issues/7")
 	out := a.parseTicketBody(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected hard error: %v", out.Err)
@@ -817,7 +797,7 @@ func TestParseTicketBody_StoryWithoutLegacyACSetsLegacyFalse(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Set("ticket_type", "story")
 	ctx.Set("issue_num", "1")
-	ctx.Set("issue_repo", "optivem/shop")
+	ctx.Set("issue_url", "https://github.com/optivem/shop/issues/1")
 	out := a.parseTicketBody(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
@@ -834,7 +814,7 @@ func TestParseTicketBody_EmptyTicketTypeFailsHard(t *testing.T) {
 	a := newActions(Deps{Gh: newFakeRunner(t, "gh"), Prompter: &fakePrompter{}})
 	ctx := statemachine.NewContext()
 	ctx.Set("issue_num", "1")
-	ctx.Set("issue_repo", "optivem/shop")
+	ctx.Set("issue_url", "https://github.com/optivem/shop/issues/1")
 	out := a.parseTicketBody(ctx)
 	if out.Err == nil {
 		t.Fatalf("expected hard error for empty ticket_type")

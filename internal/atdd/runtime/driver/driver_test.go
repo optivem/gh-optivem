@@ -158,10 +158,8 @@ func newDriverOpts(deps clauderun.Deps) Options {
 func newCtxWithIssue() *statemachine.Context {
 	c := statemachine.NewContext()
 	c.Set("issue_num", "42")
+	c.Set("issue_url", "https://github.com/optivem/shop/issues/42")
 	c.Set("issue_title", "Add PUT /carts/{id}/items endpoint")
-	c.Set("issue_repo", "optivem/shop")
-	c.Set("project_title", "Shop ATDD")
-	c.Set("project_url", "https://github.com/orgs/optivem/projects/1")
 	// Tests using atdd-{test,dsl,driver}-{at,ct} reference ${language} in
 	// the language-equivalents pointer; seedScopeState would set it from
 	// cfg in production. Seed a default here so test fixtures don't have
@@ -199,7 +197,7 @@ func TestClaudeRunDispatch_AdvancesOnCleanExit(t *testing.T) {
 	if !strings.Contains(got, "You are the Test Agent") {
 		t.Errorf("prompt missing agent identity line")
 	}
-	if !strings.Contains(got, "#42") || !strings.Contains(got, "optivem/shop") {
+	if !strings.Contains(got, "#42") || !strings.Contains(got, "Add PUT") {
 		t.Errorf("prompt missing ticket context")
 	}
 	if !strings.Contains(got, "docs/atdd/process/at-red-test.md") {

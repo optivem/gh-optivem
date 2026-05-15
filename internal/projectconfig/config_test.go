@@ -594,8 +594,8 @@ func TestValidate_RejectsConfigOnBackendOrFrontend(t *testing.T) {
 // project.url is valid at YAML-load time: `gh optivem init` Path A
 // auto-creates the board on first run and rewrites the file with the
 // URL. project.provider is still required — only the URL is allowed
-// empty. The ATDD runtime (internal/atdd/runtime/board) still enforces
-// non-empty at use time.
+// empty. The ATDD runtime (via internal/atdd/runtime/tracker/factory)
+// still enforces non-empty at use time.
 func TestValidate_AcceptsEmptyProjectURL(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{Project: Project{Provider: ProviderGitHub}}

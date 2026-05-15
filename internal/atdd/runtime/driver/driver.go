@@ -3,8 +3,8 @@
 // verify decorators, and walks the named process end to end.
 //
 // The driver is deliberately thin — the heavy lifting lives in the runtime
-// sub-packages (statemachine, gates, actions, verify, override, board,
-// classify, release, clauderun). This file's job is to compose them and
+// sub-packages (statemachine, gates, actions, verify, override, tracker,
+// release, clauderun). This file's job is to compose them and
 // expose two run modes:
 //
 //   - Run with Options.IssueNum > 0 → implement-ticket mode: pre-resolve the
@@ -43,13 +43,14 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/actions"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/board"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/clauderun"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/gates"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/trace"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/factory"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/verify"
 	"github.com/optivem/gh-optivem/internal/files"
 	"github.com/optivem/gh-optivem/internal/promptio"
@@ -77,8 +78,9 @@ type Options struct {
 	IssueNum int
 
 	// ProjectURL overrides config-based project resolution. Optional; when
-	// empty, board.ResolveProjectURL loads RepoPath/gh-optivem.yaml (or the
-	// file passed via ConfigPath, if set) and reads `project.url`.
+	// empty, the driver uses cfg.Project.URL from the loaded gh-optivem.yaml
+	// (or the file passed via ConfigPath, if set). Threaded into the tracker
+	// adapter constructor via factory.Open.
 	ProjectURL string
 
 	// RepoPath overrides the working directory used for project resolution
@@ -289,9 +291,6 @@ func Run(ctx context.Context, opts Options) error {
 
 	sCtx := statemachine.NewContext()
 	seedScopeState(sCtx, cfg)
-	if opts.ProjectURL != "" {
-		sCtx.Set("project_url", opts.ProjectURL)
-	}
 
 	if opts.IssueNum > 0 {
 		if err := preResolveIssue(ctx, opts, sCtx, cfg); err != nil {
@@ -467,9 +466,9 @@ func orPlaceholder(s, placeholder string) string {
 //
 // State (not Params) is the right destination: these four facts are
 // project-scoped and stable for the entire run, alongside issue_title /
-// project_title / ticket_checklist (also written via Set). The
-// dispatcher reads them back via ctx.GetString, which is a State lookup
-// — writing to Params would silently expand to "" at substitution time.
+// ticket_checklist (also written via Set). The dispatcher reads them
+// back via ctx.GetString, which is a State lookup — writing to Params
+// would silently expand to "" at substitution time.
 func seedScopeState(sCtx *statemachine.Context, cfg *projectconfig.Config) {
 	if cfg == nil {
 		return
@@ -611,46 +610,44 @@ func (o Options) withDefaults() Options {
 }
 
 // preResolveIssue populates Context with everything PICK_TOP_READY would
-// have set, reading from `gh project view` + `gh project item-list` (via
-// board.FindIssue). Called once at driver startup in implement-ticket mode.
+// have set, by opening a tracker via factory.Open and calling
+// Tracker.FindIssue. Called once at driver startup in implement-ticket mode.
 // cfg is the pre-loaded project config (may be nil if no gh-optivem.yaml and
 // no --config); supplied by Run so the load happens once per driver
-// invocation.
+// invocation. opts.ProjectURL, when non-empty, overrides cfg.Project.URL
+// for this run so the operator can point at a different board without
+// editing config.
 func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Context, cfg *projectconfig.Config) error {
-	projectURL := opts.ProjectURL
-	if projectURL == "" {
-		resolved, err := board.ResolveProjectURLFromConfig(cfg, opts.ConfigPath)
-		if err != nil {
-			return fmt.Errorf("resolve project URL: %w", err)
-		}
-		projectURL = resolved
+	if cfg == nil {
+		return fmt.Errorf("resolve issue #%d: gh-optivem.yaml is required for issue resolution", opts.IssueNum)
 	}
-	sCtx.Set("project_url", projectURL)
-
-	pick, err := board.FindIssue(ctx, opts.IssueNum, board.Options{
-		ProjectURL: projectURL,
-		RepoPath:   opts.RepoPath,
-	})
+	project := cfg.Project
+	if opts.ProjectURL != "" {
+		project.URL = opts.ProjectURL
+	}
+	tr, err := factory.Open(ctx, project)
 	if err != nil {
-		return err
+		return fmt.Errorf("resolve issue #%d: %w", opts.IssueNum, err)
 	}
-	projectName := pick.ProjectTitle
-
-	sCtx.Set("issue_num", strconv.Itoa(pick.IssueNum))
-	sCtx.Set("issue_url", pick.IssueURL)
-	sCtx.Set("issue_title", pick.Title)
-	sCtx.Set("issue_repo", pick.Repo)
-	sCtx.Set("project_id", pick.ProjectID)
-	sCtx.Set("project_title", projectName)
-	sCtx.Set("item_id", pick.ItemID)
-
-	projectLabel := projectURL
-	if projectName != "" {
-		projectLabel = fmt.Sprintf("%s (%s)", projectName, projectURL)
+	issue, err := tr.FindIssue(ctx, strconv.Itoa(opts.IssueNum))
+	if err != nil {
+		return fmt.Errorf("resolve issue #%d: %w", opts.IssueNum, err)
 	}
-	fmt.Fprintf(opts.Stdout, "Resolved issue #%d %q (%s) on project %s.\n",
-		pick.IssueNum, pick.Title, pick.Repo, projectLabel)
+
+	writeResolvedIssue(sCtx, issue)
+	fmt.Fprintf(opts.Stdout, "Resolved issue %s %q (%s).\n", issue.ID, issue.Title, issue.URL)
 	return nil
+}
+
+// writeResolvedIssue mirrors a tracker.Issue into the conventional Context
+// keys downstream actions read. The runtime uses Issue.Handle as the
+// opaque project-membership payload SetStatus consumes, and Issue.URL as
+// the addressable form callers serialize to backend-native arguments.
+func writeResolvedIssue(sCtx *statemachine.Context, issue tracker.Issue) {
+	sCtx.Set("issue_num", issue.ID)
+	sCtx.Set("issue_url", issue.URL)
+	sCtx.Set("issue_title", issue.Title)
+	sCtx.Set("issue_handle", issue.Handle)
 }
 
 // registerAgentDispatchers registers a no-op base dispatcher for every
@@ -789,9 +786,6 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, rs *runState
 			NodeDescription: statemachine.ExpandParams(raw.Documentation, ctx.Params),
 			IssueNum:        issueNum,
 			IssueTitle:      ctx.GetString("issue_title"),
-			IssueRepo:       ctx.GetString("issue_repo"),
-			ProjectTitle:    ctx.GetString("project_title"),
-			ProjectURL:      ctx.GetString("project_url"),
 			Architecture:    ctx.GetString("architecture"),
 			Subtype:         ctx.GetString("subtype"),
 			Language:        ctx.GetString("language"),

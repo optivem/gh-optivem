@@ -435,7 +435,7 @@ func TestLegacyAcceptanceCriteria_FromGhIssueBody(t *testing.T) {
 			b := newBindings(t, Deps{Gh: gh, Prompter: &fakePrompter{}})
 			ctx := statemachine.NewContext()
 			ctx.Set("issue_num", "42")
-			ctx.Set("issue_repo", "optivem/shop")
+			ctx.Set("issue_url", "https://github.com/optivem/shop/issues/42")
 			out := b.legacyAcceptanceCriteriaSectionPresent(ctx)
 			if out.Err != nil {
 				t.Fatalf("unexpected error: %v", out.Err)

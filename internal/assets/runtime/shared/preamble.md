@@ -1,7 +1,6 @@
 This is a one-shot dispatch. Investigate, do the work, and exit.
 
-Ticket: #${issue_num} "${issue_title}" (${issue_repo})
-Project: ${project_title} (${project_url})
+Ticket: #${issue_num} "${issue_title}"
 Phase: ${phase}
 Phase doc: ${phase_doc}
 

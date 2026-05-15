@@ -282,6 +282,24 @@ func (t *Tracker) Classify(_ context.Context, i tracker.Issue) (string, bool, er
 	return "", false, nil
 }
 
+// Subtypes reads the YAML frontmatter `subtype:` field at the top of
+// the file and returns its value as a single-element slice (or empty
+// when no frontmatter or no `subtype:` line). Markdown files declare
+// at most one subtype, so the slice never has 2+ elements — the
+// returned shape matches the github adapter's contract anyway so
+// callers don't branch on backend.
+func (t *Tracker) Subtypes(_ context.Context, i tracker.Issue) ([]string, error) {
+	body, err := os.ReadFile(i.Handle)
+	if err != nil {
+		return nil, fmt.Errorf("markdown: read %q: %w", i.Handle, err)
+	}
+	v := frontmatterSubtype(string(body))
+	if v == "" {
+		return nil, nil
+	}
+	return []string{v}, nil
+}
+
 // ReadSections reads the file at i.Handle and returns its H2/H3
 // sections matching headings, via the shared parse.ExtractSection
 // walker. Absent headings map to "" so callers see a stable key set.
@@ -373,16 +391,31 @@ func filterVisible(paths []string) []string {
 // the document doesn't fool Classify.
 var frontmatterTypePattern = regexp.MustCompile(`(?s)\A---\s*\n(.*?)\n---\s*\n`)
 var frontmatterTypeLine = regexp.MustCompile(`(?m)^type:\s*(\S+)\s*$`)
+var frontmatterSubtypeLine = regexp.MustCompile(`(?m)^subtype:\s*(\S+)\s*$`)
 
 // frontmatterType extracts the value of a `type:` field from a YAML
 // frontmatter block at the top of body. Returns "" when no
 // frontmatter block is present or no `type:` line is inside it.
 func frontmatterType(body string) string {
+	return frontmatterField(body, frontmatterTypeLine)
+}
+
+// frontmatterSubtype extracts the value of a `subtype:` field from a
+// YAML frontmatter block at the top of body. Returns "" when no
+// frontmatter block is present or no `subtype:` line is inside it.
+func frontmatterSubtype(body string) string {
+	return frontmatterField(body, frontmatterSubtypeLine)
+}
+
+// frontmatterField extracts a single field value from a YAML
+// frontmatter block at the top of body, matching the given
+// per-line pattern (which must capture the value in group 1).
+func frontmatterField(body string, line *regexp.Regexp) string {
 	fm := frontmatterTypePattern.FindStringSubmatch(body)
 	if fm == nil {
 		return ""
 	}
-	m := frontmatterTypeLine.FindStringSubmatch(fm[1])
+	m := line.FindStringSubmatch(fm[1])
 	if m == nil {
 		return ""
 	}
