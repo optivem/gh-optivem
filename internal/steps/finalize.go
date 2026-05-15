@@ -24,7 +24,7 @@ func WriteLicense(cfg *config.Config) {
 		return
 	}
 
-	body, err := shell.RunCapture(fmt.Sprintf("gh api licenses/%s --jq .body", cfg.License), "")
+	body, err := shell.RunCaptureWithRetry(fmt.Sprintf("gh api licenses/%s --jq .body", cfg.License), "")
 	switch {
 	case err != nil:
 		log.Warnf("Could not fetch license template %q: %v -- skipping LICENSE file", cfg.License, err)

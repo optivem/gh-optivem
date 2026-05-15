@@ -6,7 +6,11 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/optivem/gh-optivem/internal/shell"
 )
 
 func TestNewClientDefaults(t *testing.T) {
@@ -119,6 +123,110 @@ func TestDoSurfacesErrorBody(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "forbidden") {
 		t.Errorf("error missing body snippet: %v", err)
+	}
+}
+
+// TestDoRetriesOn5xxThenSucceeds pins the retry contract for Client.do: a
+// SearchProjects call that observes 504 twice then 200 must hit the transport
+// three times. Sleep is stubbed via shell.SetSleepFnForTest so the test
+// finishes immediately instead of waiting 5s+15s between attempts.
+func TestDoRetriesOn5xxThenSucceeds(t *testing.T) {
+	var sleeps []time.Duration
+	restore := shell.SetSleepFnForTest(func(d time.Duration) { sleeps = append(sleeps, d) })
+	defer restore()
+
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		n := atomic.AddInt32(&calls, 1)
+		switch n {
+		case 1, 2:
+			w.WriteHeader(504)
+			io.WriteString(w, "Gateway Timeout")
+		default:
+			w.WriteHeader(200)
+			io.WriteString(w, `{"components":[],"paging":{"pageIndex":1,"pageSize":100,"total":0}}`)
+		}
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "tok")
+	page, err := c.SearchProjects("myorg", 1, 100)
+	if err != nil {
+		t.Fatalf("SearchProjects: unexpected error after retry: %v", err)
+	}
+	if page == nil {
+		t.Fatal("SearchProjects returned nil page after retry success")
+	}
+	if got := atomic.LoadInt32(&calls); got != 3 {
+		t.Fatalf("transport calls = %d, want 3 (504, 504, 200)", got)
+	}
+	if len(sleeps) != 2 {
+		t.Fatalf("sleeps = %d, want 2 backoffs", len(sleeps))
+	}
+}
+
+// TestDoHardFailOn4xxNoRetry pins the hard-fail contract: a 401 must surface
+// immediately, with no retries.
+func TestDoHardFailOn4xxNoRetry(t *testing.T) {
+	var sleeps []time.Duration
+	restore := shell.SetSleepFnForTest(func(d time.Duration) { sleeps = append(sleeps, d) })
+	defer restore()
+
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		w.WriteHeader(401)
+		io.WriteString(w, "Unauthorized")
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "tok")
+	_, err := c.SearchProjects("myorg", 1, 100)
+	if err == nil {
+		t.Fatal("SearchProjects: expected error on 401, got nil")
+	}
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Fatalf("transport calls = %d, want 1 (no retry on 4xx)", got)
+	}
+	if len(sleeps) != 0 {
+		t.Fatalf("sleeps = %d, want 0 — hard-fail must not sleep", len(sleeps))
+	}
+	if !strings.Contains(err.Error(), "HTTP 401") {
+		t.Errorf("error missing HTTP 401: %v", err)
+	}
+}
+
+// TestDeleteProjectBodyResentOnRetry confirms the form body is rebuilt each
+// retry attempt — without the buffer-once-then-rebuild logic in do(), the
+// second attempt would send an empty body.
+func TestDeleteProjectBodyResentOnRetry(t *testing.T) {
+	var sleeps []time.Duration
+	restore := shell.SetSleepFnForTest(func(d time.Duration) { sleeps = append(sleeps, d) })
+	defer restore()
+
+	var bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		buf, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(buf))
+		if len(bodies) == 1 {
+			w.WriteHeader(503)
+			return
+		}
+		w.WriteHeader(204)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "tok")
+	if err := c.DeleteProject("myorg_repo"); err != nil {
+		t.Fatalf("DeleteProject: %v", err)
+	}
+	if len(bodies) != 2 {
+		t.Fatalf("got %d bodies, want 2", len(bodies))
+	}
+	for i, b := range bodies {
+		if !strings.Contains(b, "project=myorg_repo") {
+			t.Errorf("attempt %d body missing project=myorg_repo: %q", i+1, b)
+		}
 	}
 }
 

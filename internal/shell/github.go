@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/pathx"
 	"github.com/optivem/gh-optivem/internal/spinner"
@@ -232,7 +231,7 @@ func tryEscape(s string, i int, inQuote bool, quoteChar byte, out *strings.Build
 
 // CheckRateLimit checks the GitHub API rate limit and waits if low.
 func CheckRateLimit() {
-	out, err := RunCapture("gh api rate_limit --jq .resources.core", "")
+	out, err := RunCaptureWithRetry("gh api rate_limit --jq .resources.core", "")
 	if err != nil {
 		log.Warnf("rate limit check failed (continuing without wait): %v", err)
 		return
@@ -283,8 +282,8 @@ type GitHub struct {
 	Repo string
 }
 
-func NewGitHub(cfg *config.Config) *GitHub {
-	return &GitHub{Repo: cfg.FullRepo}
+func NewGitHub(fullRepo string) *GitHub {
+	return &GitHub{Repo: fullRepo}
 }
 
 func (g *GitHub) ForRepo(fullRepo string) *GitHub {
@@ -327,7 +326,7 @@ func IsRepoNotFound(output string) bool {
 // (not duplicated in preflight) so there's a single source of truth for
 // the gh-repo existence check and its 404-vs-transient classification.
 func RepoExists(slug string) (bool, error) {
-	out, err := Run(fmt.Sprintf("gh repo view %s --json name", slug), true, "")
+	out, err := RunWithRetry(fmt.Sprintf("gh repo view %s --json name", slug), true, "")
 	if err == nil {
 		return true, nil
 	}
@@ -370,7 +369,7 @@ func (g *GitHub) waitForRepoVisible() {
 	var out string
 	var err error
 	for i := 1; i <= maxAttempts; i++ {
-		out, err = Run(viewCmd, true, "")
+		out, err = RunWithRetry(viewCmd, true, "")
 		if err == nil {
 			return
 		}
@@ -457,7 +456,7 @@ func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
 	var out string
 	var err error
 	for attempt := 1; attempt <= appearAttempts; attempt++ {
-		out, err = RunCapture(listCmd, "")
+		out, err = RunCaptureWithRetry(listCmd, "")
 		if err == nil && strings.TrimSpace(out) != "" {
 			break
 		}
@@ -506,7 +505,7 @@ func (g *GitHub) pollRunUntilComplete(runID string) error {
 
 		CheckRateLimit()
 
-		statusOut, err := Run(viewCmd, true, "")
+		statusOut, err := RunWithRetry(viewCmd, true, "")
 		if err != nil {
 			var rle *RateLimitExceeded
 			if errors.As(err, &rle) {
@@ -544,7 +543,7 @@ func (g *GitHub) pollRunUntilComplete(runID string) error {
 // Delete is best-effort cleanup; teardown happens after the main work has
 // either succeeded or already failed, so we log failures but don't abort.
 func (g *GitHub) Delete() {
-	out, err := Run(fmt.Sprintf("gh repo delete %s --yes", g.Repo), true, "")
+	out, err := RunWithRetry(fmt.Sprintf("gh repo delete %s --yes", g.Repo), true, "")
 	if err != nil {
 		log.Warnf("Delete of %s failed (best-effort, continuing): %v\n%s", g.Repo, err, out)
 	}

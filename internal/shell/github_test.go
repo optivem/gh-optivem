@@ -1,8 +1,12 @@
 package shell
 
 import (
+	"errors"
 	"reflect"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestSplitCommand(t *testing.T) {
@@ -64,5 +68,156 @@ func TestSplitCommand(t *testing.T) {
 			}
 		})
 	}
+}
+
+// withFakeRunFn swaps runFn to return the (output, err) the script function
+// dictates per call number. Restores on cleanup.
+func withFakeRunFn(t *testing.T, script func(callNum int) (string, error)) {
+	t.Helper()
+	var calls int32
+	orig := runFn
+	runFn = func(_ string, _ bool, _ string) (string, error) {
+		n := atomic.AddInt32(&calls, 1)
+		out, err := script(int(n))
+		if err != nil {
+			// Mirror the wrapping Run does so the engine's classifier sees
+			// a string shape comparable to a real failure ("...: <output>").
+			return out, errors.New(out)
+		}
+		return out, nil
+	}
+	t.Cleanup(func() { runFn = orig })
+}
+
+// TestRepoExists_Retries504sThen404Returns covers Item 4 from the retry-gaps
+// plan: with RepoExists wrapping Run via RunWithRetry, a transient 504 must
+// retry and an eventual 404 must surface as the "not found" outcome
+// (false, nil) — not a fatal error.
+func TestRepoExists_Retries504sThen404Returns(t *testing.T) {
+	var sleeps []time.Duration
+	withFakeSleep(t, &sleeps)
+
+	script := func(n int) (string, error) {
+		switch n {
+		case 1, 2:
+			return "HTTP 504: Gateway Timeout", errors.New("exit 1")
+		default:
+			return "HTTP 404: Not Found\nGraphQL: Could not resolve to a Repository", errors.New("exit 1")
+		}
+	}
+	withFakeRunFn(t, script)
+
+	exists, err := RepoExists("myorg/myrepo")
+	if err != nil {
+		t.Fatalf("RepoExists: unexpected error after 504→504→404: %v", err)
+	}
+	if exists {
+		t.Fatal("RepoExists returned true on 404")
+	}
+	if len(sleeps) != 2 {
+		t.Fatalf("sleeps = %d, want 2 backoffs (3 attempts)", len(sleeps))
+	}
+}
+
+// TestRepoExists_HardFail4xxNotARepoNotFoundStillErrors confirms the
+// classifier still passes through 4xx as hard-fail without retrying.
+// Forbidden (403) is not "not found", so the function returns an error.
+func TestRepoExists_HardFail4xxNotARepoNotFoundStillErrors(t *testing.T) {
+	var sleeps []time.Duration
+	withFakeSleep(t, &sleeps)
+
+	withFakeRunFn(t, func(int) (string, error) {
+		return "HTTP 403: Forbidden", errors.New("exit 1")
+	})
+
+	_, err := RepoExists("myorg/myrepo")
+	if err == nil {
+		t.Fatal("expected error on 403, got nil")
+	}
+	if len(sleeps) != 0 {
+		t.Fatalf("sleeps = %d, want 0 (hard-fail must not retry)", len(sleeps))
+	}
+}
+
+// TestRunWatchWorkflow_AppearPollRetries504OnFirstAttempt covers Item 5: the
+// inner appear-poll RunCapture must retry on a transient before giving up.
+// We don't assert on the eventual RunWatchWorkflow return — gh run watch is
+// invoked via direct Run (not RunWithRetry, intentionally; it streams) so
+// it isn't stubbed and will fail. The test's assertion is "was the appear-
+// poll retry-aware?", which is verified by the runCaptureFn call count.
+func TestRunWatchWorkflow_AppearPollRetries504OnFirstAttempt(t *testing.T) {
+	var sleeps []time.Duration
+	withFakeSleep(t, &sleeps)
+
+	var captureCalls int32
+	orig := runCaptureFn
+	runCaptureFn = func(_ string, _ string) (string, error) {
+		n := atomic.AddInt32(&captureCalls, 1)
+		if n == 1 {
+			return "", errors.New("HTTP 504: Gateway Timeout")
+		}
+		return "12345", nil
+	}
+	t.Cleanup(func() { runCaptureFn = orig })
+
+	gh := &GitHub{Repo: "myorg/myrepo"}
+	_ = gh.RunWatchWorkflow("ci.yml", 1) // outer outcome irrelevant; see comment above.
+	if got := atomic.LoadInt32(&captureCalls); got < 2 {
+		t.Fatalf("runCaptureFn calls = %d, want >= 2 (proves RunCaptureWithRetry retried after 504)", got)
+	}
+	if len(sleeps) < 1 {
+		t.Fatalf("sleeps = %d, want at least 1 (retry between 504 and success)", len(sleeps))
+	}
+}
+
+// TestPollRunUntilComplete_GhRunViewRetries504 covers Item 6: the per-iter
+// gh run view call must retry on a transient and then surface the parsed
+// status. We make the first call 504 and the second return "completed,success".
+func TestPollRunUntilComplete_GhRunViewRetries504(t *testing.T) {
+	var sleeps []time.Duration
+	withFakeSleep(t, &sleeps)
+
+	withFakeRunFn(t, func(n int) (string, error) {
+		if n == 1 {
+			return "HTTP 504 Gateway Timeout", errors.New("exit 1")
+		}
+		return "completed,success", nil
+	})
+
+	gh := &GitHub{Repo: "myorg/myrepo"}
+	if err := gh.pollRunUntilComplete("12345"); err != nil {
+		t.Fatalf("pollRunUntilComplete: %v", err)
+	}
+	if len(sleeps) < 1 {
+		t.Fatalf("sleeps = %d, want at least 1 (gh run view retried once)", len(sleeps))
+	}
+}
+
+// TestWaitForRepoVisible_RetriesTransient covers Item 7: a 504 mid-poll must
+// not be treated as fatal — the inner Run is now retry-aware so the
+// surrounding 15-attempt visibility loop still gets a chance to succeed.
+func TestWaitForRepoVisible_RetriesTransient(t *testing.T) {
+	var sleeps []time.Duration
+	withFakeSleep(t, &sleeps)
+
+	withFakeRunFn(t, func(n int) (string, error) {
+		// First attempt: transient 504. Subsequent attempts: success.
+		if n == 1 {
+			return "HTTP 504 Gateway Timeout", errors.New("exit 1")
+		}
+		return `{"name":"myrepo"}`, nil
+	})
+
+	// log.Fatalf would call os.Exit(1) if waitForRepoVisible decides the
+	// retry exhausted. The test passing without panic-or-exit means it
+	// got through. We don't assert sleep count here because the visibility
+	// loop also has its own pollDelay sleep that goes through sleepFn.
+	gh := &GitHub{Repo: "myorg/myrepo"}
+	gh.waitForRepoVisible()
+	if len(sleeps) < 1 {
+		t.Fatalf("sleeps = %d, want at least 1 (504 retried)", len(sleeps))
+	}
+	// Avoid unused-var warning for strings — kept for future test extension.
+	_ = strings.TrimSpace
 }
 

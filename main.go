@@ -271,7 +271,7 @@ func runInit(cmd *cobra.Command, f *config.RawFlags) {
 	// user upgrades explicitly via `gh extension upgrade optivem`.
 	checkForUpdate(cfg)
 
-	gh := shell.NewGitHub(cfg)
+	gh := shell.NewGitHub(cfg.FullRepo)
 	sc := shell.NewSonarCloud(cfg.SonarToken, pc.Sonar.Organization)
 
 	printBanner(cfg, pc)
@@ -752,7 +752,7 @@ func createBugReport(cfg *config.Config, errorCount int) {
 		return
 	}
 
-	out, err := shell.Run(
+	out, err := shell.RunWithRetry(
 		fmt.Sprintf(`gh issue create --repo optivem/gh-optivem --title %q --body-file %s`, title, bodyFile.Name()),
 		false, "")
 	if err != nil {

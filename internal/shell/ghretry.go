@@ -55,12 +55,20 @@ func classifyGHError(out string, err error) bool {
 	return ghRetryTransient.MatchString(out)
 }
 
+// runFn and runCaptureFn are package-level seams so cross-package tests can
+// exercise the retry wrappers (RunWithRetry / RunCaptureWithRetry) without
+// shelling out to a real `gh` binary. Production code never reassigns them.
+var (
+	runFn        = Run
+	runCaptureFn = RunCapture
+)
+
 // RunWithRetry is the retry-wrapped sibling of Run. Use for `gh` CLI calls
 // that talk to the GitHub API. Git calls and other local commands should use
 // plain Run — retrying a local git operation rarely helps and can mask bugs.
 func RunWithRetry(cmdStr string, check bool, cwd string) (string, error) {
 	return runWithRetryLoop(
-		func() (string, error) { return Run(cmdStr, check, cwd) },
+		func() (string, error) { return runFn(cmdStr, check, cwd) },
 		classifyGHError,
 		ghRetryAttempts,
 		ghRetryDelays,
@@ -133,7 +141,7 @@ func MustRunStdinWithRetry(cmdStr, stdin, cwd string) string {
 func RunCaptureWithRetry(cmdStr, cwd string) (string, error) {
 	return runWithRetryLoop(
 		func() (string, error) {
-			out, err := RunCapture(cmdStr, cwd)
+			out, err := runCaptureFn(cmdStr, cwd)
 			if err != nil {
 				// classifyGHError matches against the combined message —
 				// surface err.Error() (which RunCapture builds from stderr)

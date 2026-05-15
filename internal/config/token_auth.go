@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/shell"
 )
 
 // tokenAuthTimeout is the per-request cap. Providers usually answer in
@@ -55,20 +56,42 @@ type checkResult struct {
 
 // verifyDockerHubAuth posts username+token to Docker Hub's login endpoint.
 // A valid PAT returns 200 with a JWT; anything else is an auth failure.
+//
+// Wrapped in shell.RetryWithPolicy so a transient 5xx / network blip from
+// hub.docker.com doesn't kill the verify pass — same regex/backoff bash
+// gh-retry / sonar-retry use. 4xx (incl. 401) is hard-fail and surfaces
+// immediately as today.
 func verifyDockerHubAuth(client *http.Client, username, token string) error {
 	body, _ := json.Marshal(map[string]string{"username": username, "password": token})
-	req, err := http.NewRequest("POST", "https://hub.docker.com/v2/users/login", strings.NewReader(string(body)))
-	if err != nil {
-		return fmt.Errorf(errFmtBuildRequest, err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf(errFmtNetwork, err)
-	}
-	defer resp.Body.Close()
 
-	switch resp.StatusCode {
+	var statusCode int
+	var respBody []byte
+	_, retryErr := shell.RetryWithPolicy(
+		shell.SonarRetryTransient(), shell.SonarRetryHardFail(), "dockerhub-retry",
+		func() (string, error) {
+			req, err := http.NewRequest("POST", "https://hub.docker.com/v2/users/login", strings.NewReader(string(body)))
+			if err != nil {
+				return "", fmt.Errorf(errFmtBuildRequest, err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := client.Do(req)
+			if err != nil {
+				return err.Error(), fmt.Errorf(errFmtNetwork, err)
+			}
+			defer resp.Body.Close()
+			statusCode = resp.StatusCode
+			respBody, _ = io.ReadAll(resp.Body)
+			summary := fmt.Sprintf("HTTP %d\n%s", statusCode, string(respBody))
+			if statusCode >= 500 {
+				return summary, fmt.Errorf("HTTP %d from Docker Hub", statusCode)
+			}
+			return summary, nil
+		})
+	if retryErr != nil && statusCode == 0 {
+		return retryErr
+	}
+
+	switch statusCode {
 	case http.StatusOK:
 		return nil
 	case http.StatusUnauthorized:
@@ -76,33 +99,51 @@ func verifyDockerHubAuth(client *http.Client, username, token string) error {
 			"Check DOCKERHUB_USERNAME (%q) matches the owner of DOCKERHUB_TOKEN,\n    "+
 			"and that the PAT is Active at https://app.docker.com/settings/personal-access-tokens", username)
 	default:
-		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("unexpected HTTP %d from Docker Hub: %s", resp.StatusCode, truncate(string(b), 200))
+		return fmt.Errorf("unexpected HTTP %d from Docker Hub: %s", statusCode, truncate(string(respBody), 200))
 	}
 }
 
 // verifySonarToken calls SonarCloud's token validation endpoint.
 // A revoked/wrong token returns {"valid":false} with HTTP 200, not an error
 // status, so we need to parse the body.
+//
+// Wrapped in shell.RetryWithPolicy so a transient 5xx / network blip from
+// sonarcloud.io doesn't kill the verify pass.
 func verifySonarToken(client *http.Client, token string) error {
-	req, err := http.NewRequest("GET", "https://sonarcloud.io/api/authentication/validate", nil)
-	if err != nil {
-		return fmt.Errorf(errFmtBuildRequest, err)
+	var statusCode int
+	var respBody []byte
+	_, retryErr := shell.RetryWithPolicy(
+		shell.SonarRetryTransient(), shell.SonarRetryHardFail(), "sonar-retry",
+		func() (string, error) {
+			req, err := http.NewRequest("GET", "https://sonarcloud.io/api/authentication/validate", nil)
+			if err != nil {
+				return "", fmt.Errorf(errFmtBuildRequest, err)
+			}
+			req.SetBasicAuth(token, "")
+			resp, err := client.Do(req)
+			if err != nil {
+				return err.Error(), fmt.Errorf(errFmtNetwork, err)
+			}
+			defer resp.Body.Close()
+			statusCode = resp.StatusCode
+			respBody, _ = io.ReadAll(resp.Body)
+			summary := fmt.Sprintf("HTTP %d\n%s", statusCode, string(respBody))
+			if statusCode >= 500 {
+				return summary, fmt.Errorf("HTTP %d from SonarCloud", statusCode)
+			}
+			return summary, nil
+		})
+	if retryErr != nil && statusCode == 0 {
+		return retryErr
 	}
-	req.SetBasicAuth(token, "")
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf(errFmtNetwork, err)
-	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected HTTP %d from SonarCloud", resp.StatusCode)
+	if statusCode != http.StatusOK {
+		return fmt.Errorf("unexpected HTTP %d from SonarCloud", statusCode)
 	}
 	var v struct {
 		Valid bool `json:"valid"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
+	if err := json.Unmarshal(respBody, &v); err != nil {
 		return fmt.Errorf("parse response: %w", err)
 	}
 	if !v.Valid {
@@ -114,27 +155,61 @@ func verifySonarToken(client *http.Client, token string) error {
 }
 
 // githubUserAuthCheck calls GitHub's /user endpoint with the given Bearer
-// token. Retries once on HTTP 401 after a short jittered sleep: when
-// concurrent matrix jobs hit api.github.com with the same PAT, GitHub's
-// per-token throttling can return a transient 401 (rather than 429/403)
-// even though the token is valid. Without retry, a single transient miss
-// kills the whole acceptance job; one retry makes that vanishingly rare.
+// token. Two retry layers compose:
+//
+//   - Inner (shell.RetryWithPolicy): retries 5xx / network transients with the
+//     standard 4-attempt 5s/15s/45s backoff. A successful 401 still returns to
+//     the outer layer for the per-token-throttle 401-retry below.
+//   - Outer (one-shot 401-retry): when concurrent matrix jobs hit
+//     api.github.com with the same PAT, GitHub's per-token throttling can
+//     return a transient 401 (rather than 429/403) even though the token is
+//     valid. Without this, a single transient miss kills the whole acceptance
+//     job; one retry makes that vanishingly rare.
 //
 // Caller is responsible for closing the returned response body.
 func githubUserAuthCheck(client *http.Client, token string) (*http.Response, error) {
 	do := func() (*http.Response, error) {
-		req, err := http.NewRequest("GET", "https://api.github.com/user", nil)
-		if err != nil {
-			return nil, fmt.Errorf(errFmtBuildRequest, err)
+		var statusCode int
+		var hdrs http.Header
+		var respBody []byte
+		_, retryErr := shell.RetryWithPolicy(
+			shell.SonarRetryTransient(), shell.SonarRetryHardFail(), "github-auth-retry",
+			func() (string, error) {
+				req, err := http.NewRequest("GET", "https://api.github.com/user", nil)
+				if err != nil {
+					return "", fmt.Errorf(errFmtBuildRequest, err)
+				}
+				req.Header.Set("Authorization", "Bearer "+token)
+				req.Header.Set("Accept", "application/vnd.github+json")
+				resp, err := client.Do(req)
+				if err != nil {
+					return err.Error(), fmt.Errorf(errFmtNetwork, err)
+				}
+				defer resp.Body.Close()
+				statusCode = resp.StatusCode
+				hdrs = resp.Header
+				respBody, _ = io.ReadAll(resp.Body)
+				summary := fmt.Sprintf("HTTP %d\n%s", statusCode, string(respBody))
+				if statusCode >= 500 {
+					return summary, fmt.Errorf("HTTP %d from GitHub", statusCode)
+				}
+				return summary, nil
+			})
+		if retryErr != nil && statusCode == 0 {
+			return nil, retryErr
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("Accept", "application/vnd.github+json")
-		return client.Do(req)
+		// Reconstruct a response so the outer caller can keep using
+		// resp.Header.Get / resp.Body.Close / resp.StatusCode unchanged.
+		return &http.Response{
+			StatusCode: statusCode,
+			Header:     hdrs,
+			Body:       io.NopCloser(strings.NewReader(string(respBody))),
+		}, nil
 	}
 
 	resp, err := do()
 	if err != nil {
-		return nil, fmt.Errorf(errFmtNetwork, err)
+		return nil, err
 	}
 	if resp.StatusCode != http.StatusUnauthorized {
 		return resp, nil
@@ -144,11 +219,7 @@ func githubUserAuthCheck(client *http.Client, token string) (*http.Response, err
 	// 2-5s jittered backoff so concurrent retriers don't re-collide.
 	time.Sleep(2*time.Second + time.Duration(rand.IntN(3001))*time.Millisecond)
 
-	resp, err = do()
-	if err != nil {
-		return nil, fmt.Errorf(errFmtNetwork, err)
-	}
-	return resp, nil
+	return do()
 }
 
 // verifyGitHubToken calls GitHub's /user endpoint and checks the token

@@ -1,5 +1,7 @@
 # Plan: fix gh-optivem Go retry-coverage gaps
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-15T06:28:11Z`
+
 Date: 2026-05-14
 Driven by: [`audits/20260514-external-call-retry-coverage.md`](../audits/20260514-external-call-retry-coverage.md)
 Phase 6 input for: [`plans/20260514-1945-retry-mechanism-end-to-end.md`](20260514-1945-retry-mechanism-end-to-end.md)
@@ -7,9 +9,7 @@ Coordination (Lane B): [`plans/20260515-0900-retry-parallel-coordination.md`](20
 
 ## Status (2026-05-15)
 
-**Not started — 0 / 10 items done.** No pickup marker. Verified by checking that `internal/shell/sonarretry.go` (created by Item 1) does not exist and that no commits since the plan was authored touch the affected files in the way the items prescribe.
-
-All 10 items below are still pending.
+**Items 1-8 shipped.** Item 9 paused on the open `MustRunStdinWithRetry` vs new-`RunStdinWithRetry` decision. Item 10 stays deferred per its own "Lowest priority" footer.
 
 ## Goal
 
@@ -41,171 +41,6 @@ No new retry engine is introduced — every item routes through the existing
 ---
 
 ## Items
-
-### 1. Wrap `SonarCloud.api` in `RetryWithPolicy` — `internal/shell/sonarcloud.go`
-
-**Audit ref:** H1.
-**Function:** `SonarCloud.api` (lines 34-87).
-**Callers (auto-benefit):** `CreateOrg`, `CreateProject` (2× — create + branch
-rename), `DeleteProject`, `OrgExists`, `ProjectExists`. 6 call sites with one
-fix.
-
-**Change shape:** introduce a new file `internal/shell/sonarretry.go`
-exposing:
-
-```go
-var sonarRetryTransient = regexp.MustCompile(
-    `(?i)HTTP 5\d\d|Bad Gateway|Service Unavailable|Gateway Timeout|` +
-        `i/o timeout|timeout|connection reset|connection refused|` +
-        `TLS handshake|temporary failure in name resolution|no such host|` +
-        `EOF|broken pipe`)
-
-var sonarRetryHardFail = regexp.MustCompile(`(?i)HTTP 4\d\d`)
-```
-
-In `SonarCloud.api`, after `creds`/headers are set on the request, wrap the
-`s.client.Do(req)` + `io.ReadAll(resp.Body)` block in
-`shell.RetryWithPolicy(sonarRetryTransient, sonarRetryHardFail, "sonar-retry", fn)`,
-where `fn` returns a string-summary of `(resp.StatusCode, body)` so the regex
-sees a string comparable to what bash's `sonar-retry.sh` matches against
-(e.g. `"HTTP 504\n<body>"`). On success, return the parsed map as today; on
-hard-fail / exhausted retries, return the same `error` shape as today so
-callers see no behaviour change for non-transient failures.
-
-**Tests:**
-- New `internal/shell/sonarcloud_test.go` (or extend an existing one) with
-  a `httptest.NewServer` returning 504 twice then 200; assert one logical
-  call observed three HTTP requests.
-- Same shape with 401 → assert no retry, error returned immediately.
-
----
-
-### 2. Wrap `internal/sonar/sonar.go` `Client.do` in `RetryWithPolicy`
-
-**Audit ref:** H2.
-**Function:** `Client.do` (lines 104-124).
-**Callers (auto-benefit):** `SearchProjects`, `DeleteProject`. 2 call sites,
-both invoked by `cleanup_commands.go:runCleanupSonarProjects`.
-
-**Change shape:** import `shell` (or move the regex into a shared location;
-`internal/shell` is already a dependency-free target). Wrap the
-`c.HTTP.Do(req)` + `io.ReadAll(resp.Body)` + status-code check in
-`shell.RetryWithPolicy(sonarRetryTransient, sonarRetryHardFail, "sonar-retry", fn)`
-using the same regex pair defined in item 1.
-
-**Tests:** same shape as item 1, against the existing `internal/sonar`
-tests' fake transport.
-
----
-
-### 3. Wrap the three `client.Do` calls in `internal/config/token_auth.go`
-
-**Audit ref:** H3, H4, H5.
-**Functions:** `verifyDockerHubAuth` (line 58), `verifySonarToken` (line 87),
-`githubUserAuthCheck`'s inner `do()` closure (lines 125-133).
-
-**Change shape:** for each function, wrap the `client.Do(req)` call (and the
-subsequent body-read where present) in `shell.RetryWithPolicy` with the
-generic transient regex from item 1. For `githubUserAuthCheck`, keep the
-existing one-shot 401-retry (lines 142-148) **outside** the new retry layer
-— it targets a different failure mode (per-token throttle returning 401, not
-5xx) and the two retry layers compose correctly: the outer layer retries 5xx
-within one logical attempt; if the layered attempt returns a successful 401,
-the existing one-shot 401-retry path takes over.
-
-**Why three separate items in the audit but one fix item here:** all three
-share the same regex, the same wrapping shape, and the same test fixture
-pattern (`httptest.NewServer` with status-code script). One PR / commit.
-
-**Tests:** add three table-driven test cases (one per function) using
-`httptest.NewServer` that returns 504 twice then 200; assert the success
-path observes 3 HTTP requests. Add a 4xx → no-retry case for parity with
-the gh-retry test pattern.
-
----
-
-### 4. Swap `shell.RepoExists` from `Run` to `RunWithRetry`
-
-**Audit ref:** M1.
-**Function:** `RepoExists` in `internal/shell/github.go:329-342`.
-
-**Change shape:** one-line swap — `Run(...)` → `RunWithRetry(...)`. The
-existing `IsRepoNotFound(out)` classifier already distinguishes 404 from
-transient, so wrapping only retries the transient case; the 404 fast path
-is preserved.
-
-**Tests:** extend `internal/shell/github_test.go` with a fake `Run` that
-returns a 504-shaped error twice then a 404; assert `RepoExists` returns
-`(false, nil)` (the 404-not-found outcome) after the retry loop.
-
----
-
-### 5. Swap `RunWatchWorkflow`'s appear-poll `RunCapture` to `RunCaptureWithRetry`
-
-**Audit ref:** M3.
-**Function:** `RunWatchWorkflow` in `internal/shell/github.go:446-489`,
-specifically the `RunCapture(listCmd, "")` call at line 460.
-
-**Change shape:** one-line swap — `RunCapture(...)` → `RunCaptureWithRetry(...)`.
-The outer 6-attempt loop still bounds total wait time.
-
-**Tests:** add a case to the existing `github_test.go` that simulates a
-transient `gh run list` failure on the first poll attempt and success on
-the second.
-
----
-
-### 6. Swap `pollRunUntilComplete`'s `gh run view` to `RunWithRetry`
-
-**Audit ref:** M4.
-**Function:** `pollRunUntilComplete` in `internal/shell/github.go:495-542`,
-specifically the `Run(viewCmd, true, "")` at line 509. **Do not** touch the
-`gh run watch` call at line 476 — that's a streaming command, retry semantics
-don't compose with a stream.
-
-**Change shape:** swap line 509 from `Run(...)` → `RunWithRetry(...)`. The
-existing rate-limit handling (`errors.As(err, &rle)` + sleep) stays — gh-retry
-already passes rate-limit through as hard-fail.
-
-**Tests:** extend the existing polling tests (if any) with a transient on
-the per-iteration `gh run view`.
-
----
-
-### 7. Swap `waitForRepoVisible`'s inner `Run` to `RunWithRetry`
-
-**Audit ref:** M2.
-**Function:** `waitForRepoVisible` in `internal/shell/github.go:362-388`,
-specifically the `Run(viewCmd, true, "")` at line 373.
-
-**Change shape:** one-line swap. Lower priority than M1/M3/M4 because the
-post-create visibility window is narrow and the loop bound is short, but
-removes a fatal-on-5xx edge in the create→clone race.
-
-**Tests:** simulate a 504 during one of the 15 poll attempts; assert
-`waitForRepoVisible` does not call `log.Fatalf`.
-
----
-
-### 8. Batch swap four low-priority gh sites to retry-capable wrappers
-
-**Audit ref:** L1, L6, L7, L10.
-
-| File:Line | Current | After |
-|---|---|---|
-| `internal/steps/finalize.go:27` | `shell.RunCapture("gh api licenses/...", "")` | `shell.RunCaptureWithRetry("gh api licenses/...", "")` |
-| `internal/shell/github.go:235` | `RunCapture("gh api rate_limit ...", "")` | `RunCaptureWithRetry("gh api rate_limit ...", "")` |
-| `internal/shell/github.go:547` | `Run("gh repo delete ... --yes", true, "")` | `RunWithRetry("gh repo delete ... --yes", true, "")` |
-| `main.go:752` | `shell.Run("gh issue create ...", false, "")` | `shell.RunWithRetry("gh issue create ...", false, "")` |
-
-Each is a one-line swap with no semantic change beyond resilience. Ship as
-one PR for consistency.
-
-**Tests:** existing tests for each call path keep passing (retry wrappers
-are drop-in compatible signature-wise). No new test required unless we want
-to assert the retry behaviour explicitly per site.
-
----
 
 ### 9. Swap `internal/steps/project.go`'s `projectRunStdin` and `projectRun` seams
 
