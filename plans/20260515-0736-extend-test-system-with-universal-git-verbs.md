@@ -1,8 +1,6 @@
 # Promote `workspace` verbs to root, retire the `workspace` noun
 
-> ⚠️ **Draft — needs explicit human approval before implementation.**
-> The shape is settled; sub-decisions in the open questions section gate
-> the start. Do not execute until the author signs off.
+> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-15T07:01:16Z`
 
 > 📜 **History note:** this file went through several discarded designs
 > before landing here. See "Rejected alternatives" below — that section
@@ -174,65 +172,12 @@ moment over two staged ones.
 
 ### Phase 1 — Register the new root-level commands + scope cascade + remove `workspace` noun
 
-Goal: the new CLI surface is live. `gh optivem commit`, `gh optivem
-sync`, `gh optivem actions status`, `gh optivem rate-limit` all work
-with environment-derived scope. `gh optivem workspace …` is removed
-entirely (no alias).
-
-1. **Refactor** `workspace_commands.go`:
-   - Split each `newWorkspace*Cmd()` into a verb-builder function
-     (e.g. `newCommitCmd()`) constructing the command body, no parent
-     assumption.
-   - `newCheckActionsCmd()` becomes `newActionsCmd()` with `status` as
-     a subcommand (cobra noun-verb pattern).
-   - Delete `newWorkspaceCmd()` entirely — no alias wiring.
-   - `main.go` registers the new verbs at root.
-   - Rename file from `workspace_commands.go` to something like
-     `commit_commands.go` / `sync_commands.go` / `actions_commands.go`
-     / `rate_limit_commands.go` (or one combined file — bikeshed in
-     review).
-
-2. **Move the `--workspace` flag** ([workspace_commands.go:47](../workspace_commands.go#L47))
-   from the (now-removed) `workspace`-noun persistent flag to a
-   root-level persistent flag. Every cross-repo verb uses it
-   identically.
-
-3. **Implement the scope cascade** in `internal/workspace` (or a new
-   `internal/scope` package). The current `workspace.Resolve()` errors
-   when no workspace file is found ([workspace.go:121](../internal/workspace/workspace.go#L121));
-   change to:
-   - `--workspace` flag → workspace iteration (as today)
-   - `$GH_OPTIVEM_WORKSPACE` → workspace iteration (as today)
-   - Walk up from cwd, find `*.code-workspace` → workspace iteration
-   - Walk up from cwd, find any git repo → single-repo mode (cwd repo)
-   - Nothing → error (truly no git repo nearby)
-
-4. **Loud scope announcement.** At banner time, print which scope
-   resolved:
-   - `Mode: workspace (5 repos from page-turner.code-workspace)`
-   - `Mode: single repo (shop, no workspace file found)`
-
-   The operator always sees what's about to happen.
-
-5. **Tests:**
-   - New call paths resolve correctly (`gh optivem commit`, `gh
-     optivem actions status`, etc.).
-   - Old call paths produce a clean "unknown command" error from
-     cobra — `gh optivem workspace commit` should fail with cobra's
-     standard message pointing at `gh optivem --help`, not silently
-     work.
-   - Scope cascade tests: workspace-found, project-found-no-workspace,
-     git-repo-no-project, no-git-repo-error.
-   - All existing workspace tests need updating to call the new names.
-
-6. **Help text.** Group root verbs in `--help` (cobra `GroupID`).
-   Suggested groups: "Project ops" (compile, test, system, doctor,
-   config, init), "Cross-repo ops" (commit, sync, actions, rate-limit),
-   "Other".
-
-**Acceptance:** new commands work; scope cascade behaves per table; no
-test regressions on the *new* surface; `gh optivem workspace commit`
-errors out cleanly.
+*(Completed in code — items deleted. The CLI surface is live: `gh
+optivem commit`, `gh optivem sync`, `gh optivem actions status`, `gh
+optivem rate-limit` ship at root with environment-derived scope. `gh
+optivem workspace …` is removed; cobra emits its standard unknown-
+command error. lint-history + stale-branches were promoted to root as
+hidden verbs — see "Deferred follow-ups" below.)*
 
 ### Phase 2 — Migrate internal callers (must land with phase 1)
 
@@ -359,24 +304,6 @@ configs; existing tests still pass.
 | `gh-optivem.yaml` schema | new optional `repos:` field | 3 |
 | All other commands | unchanged | — |
 
-## Open questions
-
-1. **What's the single-repo-mode banner wording?** Need short, clear
-   text that telegraphs scope shrink. Draft: `Mode: single repo
-   (<basename>, no workspace file found)`. Bikeshed in review.
-
-2. **Should `gh optivem commit` in single-repo mode still require
-   `--yes` when non-interactive?** Today's `--yes` flag exists to make
-   the operator opt in to scripted commits. Same logic applies in
-   single-repo mode — keep the flag, keep the requirement. **Lean
-   yes.**
-
-3. **Does `rate-limit` need scope cascade?** No — it makes one API call
-   regardless. The promotion to root is purely a rename. **No change.**
-
-4. **Help-text grouping in cobra `GroupID`** — confirm phase 1 adds
-   groups (no real downside). **Recommended yes.**
-
 ## Non-goals
 
 - Adding new verbs or new flags.
@@ -400,3 +327,12 @@ Append decisions here as they're made.
 - 2026-05-15: ATDD process flow is **already aligned** — no `COMMIT_TEST` / `COMMIT_SYSTEM` states exist; the single shared `COMMIT` activity + `commit_phase` action already does whole-repo (`git add -A`) commits. Commit-message phase suffixes (`AT - GREEN - SYSTEM`, etc.) stay; they're a message convention, not a state name.
 - 2026-05-15: **add `repos:` field to `gh-optivem.yaml`** (phase 3) — declares a project's own constituent local repos for multitier; back-filled by `gh optivem config migrate`. Inserts a "project iteration" row in the scope cascade between workspace and cwd-repo modes.
 - 2026-05-15: **one big PR for all phases** — phases 1, 2, 2.5, and 3 ship together. Single migration moment for the operator instead of two staged ones.
+- 2026-05-15: **single-repo banner wording** — `Mode: single repo (<basename>)`. Matches the workspace banner pattern (`Mode: <scope-name> (<details>)`); drops the "no workspace file found" trailer to avoid noise once operators internalize the cascade.
+- 2026-05-15: **`--yes` still required in single-repo mode** — same opt-in-to-scripted-commits semantics as workspace mode. Existing skill callers (`/commit`, `/github-commit-push-all`) already pass `--yes`, so no caller churn. Keeps one flag with one meaning across scopes.
+- 2026-05-15: **`rate-limit` has no scope cascade** — single API call to GitHub's rate-limit endpoint; nothing to iterate. Promotion to root is purely a rename.
+- 2026-05-15: **cobra `GroupID` grouping added in phase 1** — groups: "Project ops" (compile, test, system, doctor, config, init), "Cross-repo ops" (commit, sync, actions, rate-limit), "Other". Without grouping the new root verbs would interleave alphabetically with project verbs in `--help`, defeating the visual distinction the rename creates.
+- 2026-05-15: **`workspace lint-history` and `workspace stale-branches` are also moved out of the `workspace` noun** — they iterate workspace repos too, so they need a destination when the noun is removed. Promoted to root but registered with `Hidden: true` so they don't show in `--help` while the operator (the plan author) decides their final placement. TODO comments mark them. Same scope cascade as the other cross-repo verbs (single-repo mode is meaningful for both — lint-history can scan one repo's main; stale-branches can list one repo's branches). The Affected commands table is implicitly extended to include `gh optivem lint-history` and `gh optivem stale-branches` as NEW (hidden, root).
+
+## Deferred follow-ups
+
+- [ ] Decide final placement for `lint-history` and `stale-branches` (currently hidden at root). Options: keep at root + unhide, move under a new noun (`tbd`, `audit`, `inspect`?), or merge into `actions` if its scope broadens. Revisit after a few weeks of operator use.

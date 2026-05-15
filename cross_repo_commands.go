@@ -1,11 +1,16 @@
-// workspace_commands.go wires the `gh optivem workspace <verb>` subtree.
-// The workspace noun spans operations that iterate every repo declared in
-// the resolved *.code-workspace file. The Go ports replace the bash scripts
-// in github-utils/scripts/ — see plans/20260514-0914-migrate-workspace-
-// scripts-to-gh-optivem.md.
+// cross_repo_commands.go wires the cross-repo verbs that live at the root
+// of `gh optivem` — commit, sync, actions status, rate-limit, and the
+// hidden TBD-discipline reports (lint-history, stale-branches).
 //
-// Cascade for locating the workspace: --workspace > $GH_OPTIVEM_WORKSPACE >
-// walk up from CWD. Resolution lives in internal/workspace.
+// The verbs share the same scope-resolution cascade (workspace.Resolve in
+// internal/workspace): when a *.code-workspace file is reachable, every
+// declared folder is iterated; otherwise the scope shrinks to the CWD's
+// git repo. The resolved scope is announced on every invocation via the
+// "Mode: …" banner so the operator always sees what's about to happen.
+//
+// The --workspace flag is registered at root (main.go); its value lands in
+// workspaceFlagValue below and is passed to workspace.Resolve as the
+// highest-priority cascade input.
 package main
 
 import (
@@ -28,41 +33,39 @@ import (
 	"github.com/optivem/gh-optivem/internal/workspace"
 )
 
-// workspaceFlagValue holds the --workspace persistent flag value. Read by
-// every workspace subcommand and passed to workspace.Resolve as the
-// highest-priority cascade input.
+// workspaceFlagValue holds the --workspace persistent flag value. Bound
+// at root in main.go (newRootCmd); read by every cross-repo verb and
+// passed to workspace.Resolve as the highest-priority cascade input.
 var workspaceFlagValue string
 
-// commitCoAuthor is the trailer appended to every workspace-commit message.
-// Kept verbatim from commit.sh for parity; flagged for review in a follow-up
+// commitCoAuthor is the trailer appended to every commit message. Kept
+// verbatim from commit.sh for parity; flagged for review in a follow-up
 // because gh-optivem itself is not a Claude session.
 const commitCoAuthor = "Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 
 const workspaceSeparator = "============================================"
 
-// newWorkspaceCmd builds the `gh optivem workspace` parent. The parent has
-// no Run, so invoking it without a subcommand prints help.
-func newWorkspaceCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "workspace",
-		Short: "Operate on every repo declared in the resolved *.code-workspace file",
+// scopeBannerLine returns the one-line "Mode: …" announcement printed at
+// the top of every cross-repo verb's banner block. The line names what
+// scope resolved so the operator can confirm at a glance whether the
+// invocation will touch the whole workspace or just the cwd repo.
+//
+// Wording is fixed by the plan's decisions log (2026-05-15): workspace
+// mode names the count + source file; single-repo mode names just the
+// repo basename, no "no workspace file found" trailer.
+func scopeBannerLine(scope workspace.Scope) string {
+	switch scope.Mode {
+	case workspace.ModeWorkspace:
+		return fmt.Sprintf("Mode: workspace (%d repos from %s)", len(scope.Folders), filepath.Base(scope.SourceFile))
+	case workspace.ModeSingleRepo:
+		return fmt.Sprintf("Mode: single repo (%s)", filepath.Base(scope.Root))
 	}
-	cmd.PersistentFlags().StringVar(&workspaceFlagValue, "workspace", "",
-		"Path to a directory containing a *.code-workspace file (default: $"+workspace.EnvVar+" or walk up from CWD)")
-	cmd.AddCommand(
-		newWorkspaceCommitCmd(),
-		newWorkspaceSyncCmd(),
-		newWorkspaceCheckActionsCmd(),
-		newWorkspaceRateLimitCmd(),
-		newWorkspaceLintHistoryCmd(),
-		newWorkspaceStaleBranchesCmd(),
-	)
-	return cmd
+	return "Mode: unknown"
 }
 
 // ── commit ──────────────────────────────────────────────────────────────
 
-// commitOptions captures the per-invocation flags for `workspace commit`.
+// commitOptions captures the per-invocation flags for `commit`.
 type commitOptions struct {
 	Repo             string
 	Paths            string
@@ -70,25 +73,26 @@ type commitOptions struct {
 	IncludeUntracked bool
 }
 
-func newWorkspaceCommitCmd() *cobra.Command {
+func newCommitCmd() *cobra.Command {
 	opts := commitOptions{}
 	cmd := &cobra.Command{
 		Use:   `commit [--repo <name>] [--paths "<paths>"] [--yes] [--include-untracked] "<message>"`,
-		Short: "Commit, pull, and push every dirty repo in the workspace",
-		Long: `Iterate every repo in the workspace. For each dirty repo, stage changes,
-prompt for confirmation (y/N), and commit with the supplied message. After
-the commit (or for already-clean repos), pull then push. Repos without a
-remote tracking branch are skipped.
+		Short: "Commit, pull, and push every dirty repo in scope",
+		Long: `Iterate every repo in scope (workspace folders, or the cwd repo when no
+*.code-workspace is reachable — see "Mode: …" banner). For each dirty repo,
+stage changes, prompt for confirmation (y/N), and commit with the supplied
+message. After the commit (or for already-clean repos), pull then push. Repos
+without a remote tracking branch are skipped.
 
 A commit message is required when any iterated repo has dirty changes.
 
 ` + "`--yes`" + ` skips the per-repo confirmation; required when stdin is not a TTY.
 ` + "`--yes`" + ` also refuses to stage untracked files unless ` + "`--include-untracked`" + `
 is passed — the stray-file foot-gun is opt-in for scripted callers.`,
-		Example: `  gh optivem workspace commit "Update settings"
-  gh optivem workspace commit --repo myrepo "Fix bug"
-  gh optivem workspace commit --repo myrepo --paths "system/monolith/java" "fix(monolith-java)"
-  gh optivem workspace commit --yes "Sync .claude settings"`,
+		Example: `  gh optivem commit "Update settings"
+  gh optivem commit --repo myrepo "Fix bug"
+  gh optivem commit --repo myrepo --paths "system/monolith/java" "fix(monolith-java)"
+  gh optivem commit --yes "Sync .claude settings"`,
 		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			msg := ""
@@ -98,7 +102,7 @@ is passed — the stray-file foot-gun is opt-in for scripted callers.`,
 			if opts.Paths != "" && opts.Repo == "" {
 				exitOnError(errors.New("--paths requires --repo (path semantics are repo-scoped)"))
 			}
-			exitOnError(runWorkspaceCommit(msg, opts))
+			exitOnError(runCommit(msg, opts))
 		},
 	}
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Only operate on the named repo")
@@ -109,13 +113,14 @@ is passed — the stray-file foot-gun is opt-in for scripted callers.`,
 	return cmd
 }
 
-func runWorkspaceCommit(msg string, opts commitOptions) error {
-	_, folders, err := workspace.Resolve(workspaceFlagValue)
+func runCommit(msg string, opts commitOptions) error {
+	scope, err := workspace.Resolve(workspaceFlagValue)
 	if err != nil {
 		return err
 	}
 
 	fmt.Println(workspaceSeparator)
+	fmt.Printf("  %s\n", scopeBannerLine(scope))
 	if opts.Repo != "" {
 		fmt.Printf("  Commit Repo: %s\n", opts.Repo)
 		if opts.Paths != "" {
@@ -132,7 +137,7 @@ func runWorkspaceCommit(msg string, opts commitOptions) error {
 	fmt.Println(workspaceSeparator)
 
 	committed, synced, skipped := 0, 0, 0
-	for _, repo := range folders {
+	for _, repo := range scope.Folders {
 		if opts.Repo != "" && repoBaseName(repo) != opts.Repo {
 			continue
 		}
@@ -278,7 +283,7 @@ func confirmCommit(repo string, opts commitOptions) (bool, error) {
 }
 
 func errMissingMsg() error {
-	return errors.New("commit message is required (no default).\n       Pass it as the last positional argument, e.g.:\n         gh optivem workspace commit \"<message>\"\n         gh optivem workspace commit --repo myrepo \"<message>\"")
+	return errors.New("commit message is required (no default).\n       Pass it as the last positional argument, e.g.:\n         gh optivem commit \"<message>\"\n         gh optivem commit --repo myrepo \"<message>\"")
 }
 
 func runGitCommit(repo, msg string) error {
@@ -288,30 +293,31 @@ func runGitCommit(repo, msg string) error {
 
 // ── sync ────────────────────────────────────────────────────────────────
 
-func newWorkspaceSyncCmd() *cobra.Command {
+func newSyncCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "sync",
-		Short:   "Pull and push every repo in the workspace (no commit)",
-		Example: `  gh optivem workspace sync`,
+		Short:   "Pull and push every repo in scope (no commit)",
+		Example: `  gh optivem sync`,
 		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			exitOnError(runWorkspaceSync())
+			exitOnError(runSync())
 		},
 	}
 }
 
-func runWorkspaceSync() error {
-	_, folders, err := workspace.Resolve(workspaceFlagValue)
+func runSync() error {
+	scope, err := workspace.Resolve(workspaceFlagValue)
 	if err != nil {
 		return err
 	}
 
 	fmt.Println(workspaceSeparator)
+	fmt.Printf("  %s\n", scopeBannerLine(scope))
 	fmt.Println("  Sync All Repos")
 	fmt.Println(workspaceSeparator)
 
 	synced, skipped := 0, 0
-	for _, repo := range folders {
+	for _, repo := range scope.Folders {
 		if !hasUpstream(repo) {
 			skipped++
 			continue
@@ -336,16 +342,29 @@ func runWorkspaceSync() error {
 	return nil
 }
 
-// ── check-actions ───────────────────────────────────────────────────────
+// ── actions (noun-verb) ─────────────────────────────────────────────────
 
-func newWorkspaceCheckActionsCmd() *cobra.Command {
+// newActionsCmd builds the `actions` noun parent. Query verbs that read
+// CI state and present a summary live under it (matches `gh run list` /
+// `gh workflow list` conventions). The noun is extensible — `actions
+// list`, `actions rerun` could grow here later.
+func newActionsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "actions",
+		Short: "Inspect GitHub Actions across repos in scope",
+	}
+	cmd.AddCommand(newActionsStatusCmd())
+	return cmd
+}
+
+func newActionsStatusCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:     "check-actions",
-		Short:   "Report the latest GitHub Actions run for every workflow in every workspace repo",
-		Example: `  gh optivem workspace check-actions`,
+		Use:     "status",
+		Short:   "Report the latest GitHub Actions run for every workflow in every repo in scope",
+		Example: `  gh optivem actions status`,
 		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			exitOnError(runWorkspaceCheckActions())
+			exitOnError(runActionsStatus())
 		},
 	}
 }
@@ -361,20 +380,21 @@ type workflowFailure struct {
 	Errors   string
 }
 
-func runWorkspaceCheckActions() error {
-	_, folders, err := workspace.Resolve(workspaceFlagValue)
+func runActionsStatus() error {
+	scope, err := workspace.Resolve(workspaceFlagValue)
 	if err != nil {
 		return err
 	}
 
 	fmt.Println(workspaceSeparator)
+	fmt.Printf("  %s\n", scopeBannerLine(scope))
 	fmt.Println("  GitHub Actions Status Check")
 	fmt.Println(workspaceSeparator)
 
 	totalPassing, totalFailing, noWorkflows := 0, 0, 0
 	var failures []workflowFailure
 
-	for _, repo := range folders {
+	for _, repo := range scope.Folders {
 		shell.CheckRateLimit()
 
 		workflows, err := shell.RunWithRetry(`gh workflow list --all`, true, repo)
@@ -510,19 +530,23 @@ func failureSnippet(repo, runID string) string {
 
 // ── rate-limit ──────────────────────────────────────────────────────────
 
-func newWorkspaceRateLimitCmd() *cobra.Command {
+// newRateLimitCmd builds the bare `rate-limit` verb. Single GitHub API
+// call — no scope cascade is needed (the rate limit is per-token, not
+// per-repo), so this command does not call workspace.Resolve and does
+// not print the scope banner.
+func newRateLimitCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "rate-limit",
 		Short:   "Show current GitHub API rate limits and reset times",
-		Example: `  gh optivem workspace rate-limit`,
+		Example: `  gh optivem rate-limit`,
 		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			exitOnError(runWorkspaceRateLimit())
+			exitOnError(runRateLimit())
 		},
 	}
 }
 
-func runWorkspaceRateLimit() error {
+func runRateLimit() error {
 	fmt.Println("==========================================")
 	fmt.Println("  GitHub API Rate Limits")
 	fmt.Println("==========================================")
@@ -536,51 +560,66 @@ func runWorkspaceRateLimit() error {
 	return nil
 }
 
-// ── lint-history ────────────────────────────────────────────────────────
+// ── lint-history (TBD-discipline drift detector) ────────────────────────
 
-// lintHistoryOptions captures the per-invocation flags for `workspace lint-history`.
+// NOTE: lint-history and stale-branches were added to enforce TBD
+// discipline (docs/tbd.md) — they catch when someone has fallen off the
+// rails. lint-history flags merge commits on main, which violate the
+// "linear trunk" rule (#4). stale-branches flags local branches older
+// than --age, which violate the "hours, not days" rule (#3 / line 61).
+// Both are periodic-audit tools, not daily-workflow tools.
+//
+// TODO(placement): they're currently Hidden at root while the operator
+// decides where they belong long-term. Options: keep at root + unhide,
+// move under a new `tbd` / `audit` noun, or merge into `actions` if its
+// scope broadens. Revisit per plans/20260515-0736-extend-test-system-
+// with-universal-git-verbs.md "Deferred follow-ups".
+
+// lintHistoryOptions captures the per-invocation flags for `lint-history`.
 type lintHistoryOptions struct {
 	Limit int
 }
 
-func newWorkspaceLintHistoryCmd() *cobra.Command {
+func newLintHistoryCmd() *cobra.Command {
 	opts := lintHistoryOptions{}
 	cmd := &cobra.Command{
-		Use:   "lint-history [--limit N]",
-		Short: "Flag merge commits on main in every workspace repo (docs/tbd.md drift detector)",
-		Long: `For each repo in the workspace, scan the last N first-parent commits of main
-for merge commits and flag any hits. docs/tbd.md mandates a linear trunk —
-any merge commit on main is drift. Exits non-zero when drift is found.
+		Use:    "lint-history [--limit N]",
+		Short:  "Flag merge commits on main in every repo in scope (docs/tbd.md drift detector)",
+		Hidden: true,
+		Long: `For each repo in scope, scan the last N first-parent commits of main for
+merge commits and flag any hits. docs/tbd.md mandates a linear trunk — any
+merge commit on main is drift. Exits non-zero when drift is found.
 
 Inspected ref is origin/main when present, falling back to local main. Repos
-with neither are skipped. Run ` + "`gh optivem workspace sync`" + ` first if you want
-the freshest remote state — lint-history does not fetch.`,
-		Example: `  gh optivem workspace lint-history
-  gh optivem workspace lint-history --limit 500`,
+with neither are skipped. Run ` + "`gh optivem sync`" + ` first if you want the
+freshest remote state — lint-history does not fetch.`,
+		Example: `  gh optivem lint-history
+  gh optivem lint-history --limit 500`,
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			exitOnError(runWorkspaceLintHistory(opts))
+			exitOnError(runLintHistory(opts))
 		},
 	}
 	cmd.Flags().IntVar(&opts.Limit, "limit", 100, "Number of first-parent commits on main to scan per repo")
 	return cmd
 }
 
-func runWorkspaceLintHistory(opts lintHistoryOptions) error {
+func runLintHistory(opts lintHistoryOptions) error {
 	if opts.Limit <= 0 {
 		return fmt.Errorf("--limit must be a positive integer, got %d", opts.Limit)
 	}
-	_, folders, err := workspace.Resolve(workspaceFlagValue)
+	scope, err := workspace.Resolve(workspaceFlagValue)
 	if err != nil {
 		return err
 	}
 
 	fmt.Println(workspaceSeparator)
+	fmt.Printf("  %s\n", scopeBannerLine(scope))
 	fmt.Printf("  Lint history — last %d commits on main per repo\n", opts.Limit)
 	fmt.Println(workspaceSeparator)
 
 	cleanRepos, dirtyRepos, skippedRepos := 0, 0, 0
-	for _, repo := range folders {
+	for _, repo := range scope.Folders {
 		fmt.Println()
 		fmt.Printf("--- %s ---\n", relOrSelf(repo))
 		ref := mainLintRef(repo)
@@ -645,10 +684,13 @@ func mainLintRef(repo string) string {
 	return ""
 }
 
-// ── stale-branches ──────────────────────────────────────────────────────
+// ── stale-branches (TBD-discipline drift detector) ──────────────────────
+//
+// See the NOTE above lint-history. stale-branches enforces the same
+// docs/tbd.md discipline from a different angle: branches that have
+// drifted past the Scaled-TBD "hours, not days" threshold.
 
-// staleBranchesOptions captures the per-invocation flags for
-// `workspace stale-branches`.
+// staleBranchesOptions captures the per-invocation flags for `stale-branches`.
 type staleBranchesOptions struct {
 	Age time.Duration
 }
@@ -660,24 +702,25 @@ type staleBranch struct {
 	Tip  time.Time
 }
 
-func newWorkspaceStaleBranchesCmd() *cobra.Command {
+func newStaleBranchesCmd() *cobra.Command {
 	opts := staleBranchesOptions{Age: 24 * time.Hour}
 	cmd := &cobra.Command{
-		Use:   "stale-branches [--age <duration>]",
-		Short: "List local branches in each workspace repo whose tip is older than the threshold",
-		Long: `For each repo in the workspace, list local branches (excluding main) whose
-tip commit was authored more than --age ago. docs/tbd.md:62 sets the
-"hours, not days" expectation for Scaled-TBD branch lifetime; this command
-helps Scaled-TBD teams notice when a branch has drifted from that discipline.
+		Use:    "stale-branches [--age <duration>]",
+		Short:  "List local branches in each repo in scope whose tip is older than the threshold",
+		Hidden: true,
+		Long: `For each repo in scope, list local branches (excluding main) whose tip
+commit was authored more than --age ago. docs/tbd.md:62 sets the "hours, not
+days" expectation for Scaled-TBD branch lifetime; this command helps
+Scaled-TBD teams notice when a branch has drifted from that discipline.
 
 Reports the branch name and the age of the tip commit. Exits zero whether or
 not stale branches were found — the output is informational, not enforcement.`,
-		Example: `  gh optivem workspace stale-branches
-  gh optivem workspace stale-branches --age 4h
-  gh optivem workspace stale-branches --age 72h`,
+		Example: `  gh optivem stale-branches
+  gh optivem stale-branches --age 4h
+  gh optivem stale-branches --age 72h`,
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			exitOnError(runWorkspaceStaleBranches(opts))
+			exitOnError(runStaleBranches(opts))
 		},
 	}
 	cmd.Flags().DurationVar(&opts.Age, "age", 24*time.Hour,
@@ -685,11 +728,11 @@ not stale branches were found — the output is informational, not enforcement.`
 	return cmd
 }
 
-func runWorkspaceStaleBranches(opts staleBranchesOptions) error {
+func runStaleBranches(opts staleBranchesOptions) error {
 	if opts.Age <= 0 {
 		return fmt.Errorf("--age must be a positive duration, got %v", opts.Age)
 	}
-	_, folders, err := workspace.Resolve(workspaceFlagValue)
+	scope, err := workspace.Resolve(workspaceFlagValue)
 	if err != nil {
 		return err
 	}
@@ -697,11 +740,12 @@ func runWorkspaceStaleBranches(opts staleBranchesOptions) error {
 	cutoff := time.Now().Add(-opts.Age)
 
 	fmt.Println(workspaceSeparator)
+	fmt.Printf("  %s\n", scopeBannerLine(scope))
 	fmt.Printf("  Stale branches — tip older than %s per repo\n", opts.Age)
 	fmt.Println(workspaceSeparator)
 
 	cleanRepos, staleRepoCount, staleBranchTotal := 0, 0, 0
-	for _, repo := range folders {
+	for _, repo := range scope.Folders {
 		fmt.Println()
 		fmt.Printf("--- %s ---\n", relOrSelf(repo))
 		stale, err := staleBranchesOneRepo(repo, cutoff)
@@ -813,10 +857,10 @@ func runGitTeeStderr(repo string, args ...string) (string, error) {
 // pullWithAutoStash runs `git pull --rebase` in repo, stashing any
 // uncommitted tracked changes first and popping the stash afterwards. Mirrors
 // `rebase.autoStash=true` regardless of the operator's git config, so the
-// pre-commit pull inside `workspace commit` works on a dirty working tree.
-// Untracked files are left alone — `git pull --rebase` does not touch them
-// unless an incoming change creates a file with the same name (rare, and the
-// operator should resolve that explicitly).
+// pre-commit pull inside `commit` works on a dirty working tree. Untracked
+// files are left alone — `git pull --rebase` does not touch them unless an
+// incoming change creates a file with the same name (rare, and the operator
+// should resolve that explicitly).
 func pullWithAutoStash(repo string) error {
 	dirty := exec.Command("git", "-C", repo, "diff-index", "--quiet", "HEAD").Run() != nil
 	if dirty {
@@ -874,7 +918,7 @@ func currentBranch(repo string) string {
 }
 
 // upstreamRef returns the short upstream tracking ref for the current branch
-// (e.g. "origin/main"). Empty when the branch has no upstream — workspace
+// (e.g. "origin/main"). Empty when the branch has no upstream — cross-repo
 // loops already skip such repos via hasUpstream.
 func upstreamRef(repo string) string {
 	out, err := captureGit(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
@@ -916,7 +960,7 @@ func mainForcePushGuard(repo string) error {
 	}
 	out, err := captureGit(repo, "rev-list", "--left-right", "--count", "HEAD...@{u}")
 	if err != nil {
-		// No upstream / unknown error — workspace loops already filter
+		// No upstream / unknown error — cross-repo loops already filter
 		// no-upstream repos; surface other errors verbatim from the push.
 		return nil
 	}

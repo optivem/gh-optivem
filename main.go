@@ -34,6 +34,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/shell"
 	"github.com/optivem/gh-optivem/internal/steps"
 	"github.com/optivem/gh-optivem/internal/version"
+	"github.com/optivem/gh-optivem/internal/workspace"
 )
 
 // bugReportLogMaxBytes is the inline log budget for a filed issue body.
@@ -121,22 +122,67 @@ func newRootCmd() *cobra.Command {
 	cmd.Flags().Bool("version", false, "Print version and exit")
 	cmd.PersistentFlags().StringVarP(&projectConfigPath, "config", "c", "",
 		"Path to gh-optivem.yaml (default: $GH_OPTIVEM_CONFIG or ./gh-optivem.yaml)")
+	// --workspace is persistent at root because the cross-repo verbs
+	// (commit / sync / actions / lint-history / stale-branches) all
+	// consume it identically via workspace.Resolve. The flag is keyed off
+	// the var in cross_repo_commands.go so the verbs read the same value
+	// regardless of where in the command tree they were invoked from.
+	cmd.PersistentFlags().StringVar(&workspaceFlagValue, "workspace", "",
+		"Path to a directory containing a *.code-workspace file (default: $"+workspace.EnvVar+", walk-up from CWD, or single-repo fallback)")
+
+	// Help-text grouping. Without these, the new root verbs would
+	// interleave alphabetically with the project verbs and the visual
+	// distinction the rename creates would be lost. See plan decisions
+	// log (2026-05-15) for the group choices.
+	const (
+		groupProjectOps   = "project"
+		groupCrossRepoOps = "cross-repo"
+		groupOther        = "other"
+	)
+	cmd.AddGroup(
+		&cobra.Group{ID: groupProjectOps, Title: "Project ops (operate on the scaffolded project rooted at gh-optivem.yaml):"},
+		&cobra.Group{ID: groupCrossRepoOps, Title: "Cross-repo ops (operate on every repo in the resolved scope — see --workspace):"},
+		&cobra.Group{ID: groupOther, Title: "Other:"},
+	)
+
+	// withGroup attaches a GroupID to a command before AddCommand sees it.
+	// Tiny helper to keep the AddCommand block readable.
+	withGroup := func(c *cobra.Command, group string) *cobra.Command {
+		c.GroupID = group
+		return c
+	}
+
 	cmd.AddCommand(
-		newInitCmd(),
-		newConfigCmd(),
-		newSystemCmd(),
-		newTestCmd(),
-		newCompileCmd(),
-		newImplementCmd(),
-		newProcessCmd(),
-		newEnvironmentCmd(),
-		newWorkspaceCmd(),
-		newBranchCmd(),
-		newPrCmd(),
-		newDoctorCmd(),
-		newHooksCmd(),
-		newCleanupCmd(),
-		newAssetCmd(),
+		// Project ops — operate on the scaffolded project (one
+		// gh-optivem.yaml, one repo or multitier-bundle).
+		withGroup(newInitCmd(), groupProjectOps),
+		withGroup(newConfigCmd(), groupProjectOps),
+		withGroup(newSystemCmd(), groupProjectOps),
+		withGroup(newTestCmd(), groupProjectOps),
+		withGroup(newCompileCmd(), groupProjectOps),
+		withGroup(newDoctorCmd(), groupProjectOps),
+
+		// Cross-repo ops — env-derived scope (workspace folders or the
+		// cwd repo). See cross_repo_commands.go for the cascade.
+		withGroup(newCommitCmd(), groupCrossRepoOps),
+		withGroup(newSyncCmd(), groupCrossRepoOps),
+		withGroup(newActionsCmd(), groupCrossRepoOps),
+		withGroup(newRateLimitCmd(), groupCrossRepoOps),
+		// Hidden TBD-discipline reports — same scope cascade, but Hidden
+		// at the root surface until their placement is decided. See
+		// plan "Deferred follow-ups".
+		withGroup(newLintHistoryCmd(), groupCrossRepoOps),
+		withGroup(newStaleBranchesCmd(), groupCrossRepoOps),
+
+		// Other — verbs that don't fit the above two buckets cleanly.
+		withGroup(newImplementCmd(), groupOther),
+		withGroup(newProcessCmd(), groupOther),
+		withGroup(newEnvironmentCmd(), groupOther),
+		withGroup(newBranchCmd(), groupOther),
+		withGroup(newPrCmd(), groupOther),
+		withGroup(newHooksCmd(), groupOther),
+		withGroup(newCleanupCmd(), groupOther),
+		withGroup(newAssetCmd(), groupOther),
 	)
 	return cmd
 }
