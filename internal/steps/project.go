@@ -44,10 +44,19 @@ var statusOptionColors = map[string]string{
 // Test seams — production wires these to real shell helpers. Tests replace
 // them to capture invocations and return canned responses without spawning
 // processes or reaching GitHub.
+//
+// projectRunStdin uses MustRunStdinWithRetry (abort-on-fail). The single call
+// site (setStatusOptions for the GraphQL updateProjectV2Field mutation) is
+// already followed by log.Fatalf in EnsureProjectBoardAutoCreate, so the
+// abort semantics are preserved one layer deeper.
+//
+// projectRun uses RunWithRetry so the gh project link call is transient-
+// resilient. RunWithRetry shares Run's signature, so the seam swap is a
+// one-line change with no caller updates.
 var (
 	projectRunCapture        = shell.RunCaptureWithRetry
-	projectRunStdin          = shell.RunStdin
-	projectRun               = shell.Run
+	projectRunStdin          = shell.MustRunStdinWithRetry
+	projectRun               = shell.RunWithRetry
 	projectConfirmFn         = readProjectConfirmation
 	projectLoadSourceConfig  = projectconfig.LoadFromPath
 	projectWriteSourceConfig = projectconfig.WriteToPath
@@ -337,9 +346,13 @@ func setStatusOptions(fieldID string, names []string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build mutation: %w", err)
 	}
-	if _, err := projectRunStdin("gh api graphql --input -", body, true, ""); err != nil {
-		return nil, fmt.Errorf("graphql updateProjectV2Field: %w", err)
-	}
+	// projectRunStdin = shell.MustRunStdinWithRetry: aborts on hard-fail or
+	// after retries are exhausted. The setStatusOptions caller already does
+	// log.Fatalf on error returned from this function, so the abort semantics
+	// are preserved (the wrapper just moves them one layer deeper). The
+	// returned error path remains for buildSetStatusOptionsRequest failures
+	// upstream.
+	projectRunStdin("gh api graphql --input -", body, "")
 	return names, nil
 }
 

@@ -9,7 +9,7 @@ Coordination (Lane B): [`plans/20260515-0900-retry-parallel-coordination.md`](20
 
 ## Status (2026-05-15)
 
-**Items 1-8 shipped.** Item 9 paused on the open `MustRunStdinWithRetry` vs new-`RunStdinWithRetry` decision. Item 10 stays deferred per its own "Lowest priority" footer.
+**Items 1-9 shipped.** Item 10 stays deferred per its own "Lowest priority" footer.
 
 ## Goal
 
@@ -41,26 +41,6 @@ No new retry engine is introduced — every item routes through the existing
 ---
 
 ## Items
-
-### 9. Swap `internal/steps/project.go`'s `projectRunStdin` and `projectRun` seams
-
-**Audit ref:** L4, L5.
-
-- **L5 (`projectRun` for `gh project link`):** rename and rewire to
-  `shell.RunWithRetry`. The seam at `internal/steps/project.go:50` is
-  test-only — the change is a one-line edit in the seam plus updates to
-  any test that asserts the exact wrapper used.
-- **L4 (`projectRunStdin` for the GraphQL `updateProjectV2Field` mutation):**
-  swap to `shell.MustRunStdinWithRetry` if abort-on-fail is acceptable
-  semantically (current site is followed by `log.Fatalf` on error anyway),
-  OR add a new non-`Must` `shell.RunStdinWithRetry` if we want the error
-  to propagate to the caller. **Decision needed before execution.**
-
-**Tests:** the existing `internal/steps/project_test.go` table tests will
-need their seam replacements updated; the failure-mode tests (transient →
-retry → success) can be added once.
-
----
 
 ### 10. Add retry to `internal/config/config.go`'s direct `exec.Command` probes
 

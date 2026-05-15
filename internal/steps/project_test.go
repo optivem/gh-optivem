@@ -63,9 +63,9 @@ func (s *stubRunner) install() {
 		}
 		return "", fmt.Errorf("stub: unmatched RunCapture %q", cmd)
 	}
-	projectRunStdin = func(cmd, stdin string, _ bool, _ string) (string, error) {
+	projectRunStdin = func(cmd, stdin, _ string) string {
 		s.calls = append(s.calls, runRecord{cmd: cmd, stdin: stdin, via: "RunStdin"})
-		return "", nil
+		return ""
 	}
 	projectRun = func(cmd string, _ bool, _ string) (string, error) {
 		s.calls = append(s.calls, runRecord{cmd: cmd, via: "Run"})
