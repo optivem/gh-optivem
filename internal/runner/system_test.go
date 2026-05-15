@@ -6,13 +6,13 @@ import (
 	"testing"
 )
 
-// TestRunComposeError_SurfacesStderr is the canary regression for H1
-// (audits/20260514-silent-external-call-failures.md): runCompose must fold a
-// failing child's stderr into its returned error so the caller's FATAL line
-// is self-contained, not just "exit status N".
+// TestRunComposeError_SurfacesStderr is the canary regression: runCompose
+// must fold a failing child's stderr into its returned error so the caller's
+// FATAL line is self-contained, not just "exit status N".
 //
-// Skipped when docker is not on PATH. One positive case is sufficient — H2/H3/H4
-// share the same code shape and do not each need their own end-to-end test.
+// Skipped when docker is not on PATH. One positive case is sufficient — the
+// sibling helpers (runDocker, runShell, RunPassthrough) share the same code
+// shape and do not each need their own end-to-end test.
 func TestRunComposeError_SurfacesStderr(t *testing.T) {
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("docker not on PATH")

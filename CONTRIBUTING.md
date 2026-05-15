@@ -19,10 +19,20 @@ bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner
 
 Dev-loop ATDD rehearsal (see [Part 1](#part-1--dev-loop-local-gh-optivem-against-existing-shop) for details):
 
+For structural change - UI Redesign
+
 ```bash
 cd ../shop
 
 bash ../gh-optivem/scripts/atdd-rehearsal.sh 61 --config gh-optivem-monolith-typescript.yaml
+```
+
+For behavioral change - user story
+
+```bash
+cd ../shop
+
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 65 --config gh-optivem-monolith-typescript.yaml
 ```
 
 ## Contents
