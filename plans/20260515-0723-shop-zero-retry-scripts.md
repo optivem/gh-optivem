@@ -1,9 +1,5 @@
 # Plan: shop has zero retry-policy scripts — retry consumed via `uses:`
 
-> ⚠️ **Architecture decided in principle (2026-05-15).** Execution still
-> requires two small verifications (see §"Open verifications") before any
-> file is moved or renamed.
-
 > **Supersedes the A/B/C/D options in
 > [`deferred/20260514-2200-retry-helpers-canonical-home.md`](deferred/20260514-2200-retry-helpers-canonical-home.md).**
 > That plan asked "where should canonical bash live?" and missed that
@@ -330,47 +326,10 @@ Four tool-specific helpers collapse into one unified helper.
 gh-optivem's `.github/scripts/` keeps its vendored copies for now —
 internal tool, not student-facing, separate concern.
 
-## Open verifications
-
-These are small and should run before execution starts. If either turns
-up a surprise, this plan adjusts before any file is moved.
-
-### V1 — Regex unification across gh and git helpers
-
-Done: docker vs sonar diffed; differences are **additive** (Go-runtime
-phrasings vs sonarcloud-specific phrasings, with no cross-tool
-collisions in either transient or hard-fail patterns).
-
-Still to do: diff `gh-retry.sh` and `git-retry.sh` against the same
-standard. Strong prior is that they'll show the same shape (universal
-network/HTTP basics + tool-specific additions, all additive). 15
-minutes of reading.
-
-### V2 — Scaffolding gap
-
-`internal/steps/apply_template.go` does not copy
-`.github/workflows/scripts/` to scaffolded student repos. But per-language
-workflows in shop today reference `.github/workflows/scripts/*-retry.sh`
-via `source`. Either:
-
-- Scaffolded student repos have **latent broken workflows** today (would
-  fail when the workflow first runs)
-- The scaffolder has rewrite logic I haven't found
-- The scripts are copied via a code path I haven't read
-
-Resolution: verify current scaffolded-repo behavior. If it's already
-broken, Option E's migration is *also* the fix. If there's rewrite logic,
-we need to update or remove it as part of the migration.
-
 ## Execution plan
 
 **Approach:** Q3b — incremental per workflow. Don't attempt all 24
 workflows at once.
-
-### Step 0 — Verifications (15–30 min)
-
-Run V1 and V2 above. If either surfaces a blocker, pause and update the
-plan before continuing.
 
 ### Step 1 — Add `optivem/actions/retry@main`
 
@@ -478,4 +437,3 @@ becomes available. Not in scope here.
 - Q4 (teaching visibility): moot — retry never appears as a named concept
   in workflows; just `uses: optivem/actions/retry@main`
 - Wandalen split: keep for `uses:` retry, remove for `run:` retry
-- Open: V1 + V2 verifications before execution
