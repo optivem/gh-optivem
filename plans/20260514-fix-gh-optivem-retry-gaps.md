@@ -4,6 +4,12 @@ Date: 2026-05-14
 Driven by: [`audits/20260514-external-call-retry-coverage.md`](../audits/20260514-external-call-retry-coverage.md)
 Phase 6 input for: [`plans/20260514-1945-retry-mechanism-end-to-end.md`](20260514-1945-retry-mechanism-end-to-end.md)
 
+## Status (2026-05-15)
+
+**Not started — 0 / 10 items done.** No pickup marker. Verified by checking that `internal/shell/sonarretry.go` (created by Item 1) does not exist and that no commits since the plan was authored touch the affected files in the way the items prescribe.
+
+All 10 items below are still pending.
+
 ## Goal
 
 Eliminate every `R-MISSING` finding from the retry-coverage audit. After this

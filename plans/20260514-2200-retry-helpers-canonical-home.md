@@ -1,5 +1,10 @@
 # Plan: evaluate moving the canonical retry helpers into `gh-optivem`
 
+> ⚠️ **Status (2026-05-15): decision still open — no work executed.**
+> Recommendation in §"Recommendation" is **Option A (status quo, no work)**.
+> This plan has not been actioned and should not be picked up by an agent
+> without explicit human approval of one of the four options.
+
 > ⚠️ **Requires human decision before any execution.** This plan does not
 > pick a direction on its own. It lays out four options (A/B/C/D), gives a
 > recommendation with reasoning, and lists the triggers that should flip the
@@ -9,7 +14,7 @@
 > before any files are moved. Do not let an agent execute this plan
 > autonomously.
 
-> **Status: proposal / evaluation.** This plan asks a question — *where should
+> **Type: proposal / evaluation.** This plan asks a question — *where should
 > `retry-core.sh`, `gh-retry.sh`, `docker-retry.sh`, `sonar-retry.sh` live?* —
 > and lays out the options with tradeoffs and a recommendation. It does **not**
 > commit to executing the move. If accepted, it would amend the sync direction
