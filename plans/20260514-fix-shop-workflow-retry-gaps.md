@@ -163,12 +163,12 @@ Same swap, same image list pattern, in each sibling. (N-C.3)
 
 ### Item 15 — Apply Item 14's pattern to the 6 sibling commit-stage workflows
 
-- `shop/.github/workflows/monolith-java-commit-stage.yml :: build-push :: step "Pre-pull base images" line 185-195`
-- `shop/.github/workflows/monolith-typescript-commit-stage.yml :: build-push :: step "Pre-pull base images" line 183-193`
-- `shop/.github/workflows/multitier-backend-dotnet-commit-stage.yml :: build-push :: step "Pre-pull base images" line 176-186`
-- `shop/.github/workflows/multitier-backend-java-commit-stage.yml :: build-push :: step "Pre-pull base images" line 185-195`
-- `shop/.github/workflows/multitier-backend-typescript-commit-stage.yml :: build-push :: step "Pre-pull base images" line 183-193`
-- `shop/.github/workflows/multitier-frontend-react-commit-stage.yml :: build-push :: step "Pre-pull base images" line 184-194`
+- `shop/.github/workflows/monolith-java-commit-stage.yml :: build-push :: step "Pre-pull base images" line 179-189`
+- `shop/.github/workflows/monolith-typescript-commit-stage.yml :: build-push :: step "Pre-pull base images" line 177-187`
+- `shop/.github/workflows/multitier-backend-dotnet-commit-stage.yml :: build-push :: step "Pre-pull base images" line 170-180`
+- `shop/.github/workflows/multitier-backend-java-commit-stage.yml :: build-push :: step "Pre-pull base images" line 179-189`
+- `shop/.github/workflows/multitier-backend-typescript-commit-stage.yml :: build-push :: step "Pre-pull base images" line 177-187`
+- `shop/.github/workflows/multitier-frontend-react-commit-stage.yml :: build-push :: step "Pre-pull base images" line 178-188`
 
 (N-C.3, completion.)
 
@@ -242,7 +242,7 @@ The 4×{5,15,45} schedule isn't directly expressible in `nick-fields/retry@v4` (
 
 ### Item 19 — Verify `google-github-actions/*@v3` internal retry semantics
 
-Composite. Check the upstream changelog for `google-github-actions/auth@v3`, `google-github-actions/setup-gcloud@v3`, `google-github-actions/deploy-cloudrun@v3`. If they document internal retry, leave the existing call sites and add a one-line comment at one representative call site marking R-DOC-OK so the next audit pass records that decision. If they do not, open a new fix item to wrap with `nick-fields/retry@v4`. Sites are in the 12 `*-stage-cloud.yml` files. (Examined-and-rejected → R-OK with documentation, or future fix.)
+Composite. Check the upstream changelog for `google-github-actions/auth@v3`, `google-github-actions/setup-gcloud@v3`, `google-github-actions/deploy-cloudrun@v3`. If they document internal retry, leave the existing call sites and add a one-line comment at one representative call site marking R-DOC-OK so the next audit pass records that decision. If they do not, open a new fix item to wrap with `nick-fields/retry@v4`. Sites are in the 18 `*-stage-cloud.yml` files. (Examined-and-rejected → R-OK with documentation, or future fix.)
 
 ### Item 20 — Defer `npm ci` / `./gradlew build` / `dotnet restore` registry-fetch retry to a follow-up §4 pass
 
