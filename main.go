@@ -132,6 +132,7 @@ func newRootCmd() *cobra.Command {
 		newEnvironmentCmd(),
 		newWorkspaceCmd(),
 		newDoctorCmd(),
+		newHooksCmd(),
 		newCleanupCmd(),
 		newAssetCmd(),
 	)

@@ -138,6 +138,7 @@ func runWorkspaceCommit(msg string, opts commitOptions) error {
 
 		fmt.Println()
 		fmt.Printf("--- %s ---\n", relOrSelf(repo))
+		fmt.Printf("  %s\n", tbdModeBanner(repo))
 
 		// Pull onto current trunk *before* staging/committing so the new commit
 		// lands on top of origin/main, not a stale local main. Working tree is
@@ -312,6 +313,7 @@ func runWorkspaceSync() error {
 		}
 		fmt.Println()
 		fmt.Printf("--- %s ---\n", relOrSelf(repo))
+		fmt.Printf("  %s\n", tbdModeBanner(repo))
 		if err := runGit(repo, "pull", "--rebase"); err != nil {
 			return fmt.Errorf("git pull --rebase in %s: %w", repo, err)
 		}
@@ -590,6 +592,9 @@ func pullWithAutoStash(repo string) error {
 // Non-rejection errors (auth, network, etc.) are not retried — another pull
 // won't fix them.
 func pushWithRebaseRetry(repo string) error {
+	if err := mainForcePushGuard(repo); err != nil {
+		return err
+	}
 	const maxPushAttempts = 3
 	for attempt := 1; attempt <= maxPushAttempts; attempt++ {
 		stderr, err := runGitTeeStderr(repo, "push")
@@ -603,6 +608,74 @@ func pushWithRebaseRetry(repo string) error {
 		if err := pullWithAutoStash(repo); err != nil {
 			return fmt.Errorf("git pull --rebase in %s during push retry: %w", repo, err)
 		}
+	}
+	return nil
+}
+
+// currentBranch returns the short ref name of HEAD in repo (e.g. "main" or
+// "feature/x"). Empty on detached HEAD or error.
+func currentBranch(repo string) string {
+	out, err := captureGit(repo, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+// upstreamRef returns the short upstream tracking ref for the current branch
+// (e.g. "origin/main"). Empty when the branch has no upstream — workspace
+// loops already skip such repos via hasUpstream.
+func upstreamRef(repo string) string {
+	out, err := captureGit(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+// tbdModeBanner returns the one-line "plain TBD" / "Scaled TBD" banner
+// printed at the top of each repo's commit/sync iteration. Names the
+// docs/tbd.md framing where the operator is actually doing work so the
+// model is visible, not just documented.
+func tbdModeBanner(repo string) string {
+	branch := currentBranch(repo)
+	if branch == "" || branch == "HEAD" {
+		return "TBD mode: unknown (detached HEAD)"
+	}
+	if branch == "main" {
+		return "plain TBD (on `main`)"
+	}
+	up := upstreamRef(repo)
+	if up == "" {
+		return fmt.Sprintf("Scaled TBD (on `%s`)", branch)
+	}
+	return fmt.Sprintf("Scaled TBD (on `%s`, upstream `%s`)", branch, up)
+}
+
+// mainForcePushGuard refuses to push when the current branch is `main` and
+// local has diverged from the upstream in a way that would require a
+// force-push (commits on both sides of HEAD...@{u}). Defense-in-depth for
+// docs/tbd.md's "never force-push main" rule — the retry loop in
+// pushWithRebaseRetry brings origin into local on a normal non-fast-forward
+// rejection, so this guard only fires for the actually-dangerous case
+// (e.g. an accidental `git reset` of an already-pushed main).
+func mainForcePushGuard(repo string) error {
+	if currentBranch(repo) != "main" {
+		return nil
+	}
+	out, err := captureGit(repo, "rev-list", "--left-right", "--count", "HEAD...@{u}")
+	if err != nil {
+		// No upstream / unknown error — workspace loops already filter
+		// no-upstream repos; surface other errors verbatim from the push.
+		return nil
+	}
+	fields := strings.Fields(strings.TrimSpace(out))
+	if len(fields) != 2 {
+		return nil
+	}
+	if fields[0] != "0" && fields[1] != "0" {
+		return fmt.Errorf("refusing to push `%s`: local main has diverged from upstream (ahead %s, behind %s).\n       Pushing would require --force, which is forbidden on main (docs/tbd.md).\n       Inspect:  git -C %s log --oneline --left-right HEAD...@{u}",
+			repo, fields[0], fields[1], repo)
 	}
 	return nil
 }

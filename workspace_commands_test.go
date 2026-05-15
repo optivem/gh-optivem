@@ -275,6 +275,113 @@ func TestPushWithRebaseRetry_LosesRace_RecoversAndPushes(t *testing.T) {
 	}
 }
 
+func TestTbdModeBanner_OnMain_ReportsPlain(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "main-branch")
+	initTestRepo(t, repo)
+
+	got := tbdModeBanner(repo)
+	want := "plain TBD (on `main`)"
+	if got != want {
+		t.Errorf("banner on main = %q, want %q", got, want)
+	}
+}
+
+func TestTbdModeBanner_OnFeatureBranch_ReportsScaledWithUpstream(t *testing.T) {
+	origin, clone := initBareAndClone(t)
+	_ = origin
+
+	mustGit(t, clone, "checkout", "-q", "-b", "feature/x")
+	if err := os.WriteFile(filepath.Join(clone, "x.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatalf("write x: %v", err)
+	}
+	mustGit(t, clone, "add", ".")
+	mustGit(t, clone, "commit", "-q", "-m", "x")
+	mustGit(t, clone, "push", "-q", "-u", "origin", "feature/x")
+
+	got := tbdModeBanner(clone)
+	want := "Scaled TBD (on `feature/x`, upstream `origin/feature/x`)"
+	if got != want {
+		t.Errorf("banner on feature branch = %q, want %q", got, want)
+	}
+}
+
+func TestTbdModeBanner_OnFeatureBranchNoUpstream_ReportsScaledNoUpstream(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "feature-no-up")
+	initTestRepo(t, repo)
+	mustGit(t, repo, "checkout", "-q", "-b", "feature/y")
+
+	got := tbdModeBanner(repo)
+	want := "Scaled TBD (on `feature/y`)"
+	if got != want {
+		t.Errorf("banner on local-only branch = %q, want %q", got, want)
+	}
+}
+
+func TestMainForcePushGuard_FastForwardOnMain_Allows(t *testing.T) {
+	_, clone := initBareAndClone(t)
+	// New local commit beyond origin/main — fast-forward push is fine.
+	if err := os.WriteFile(filepath.Join(clone, "ahead.txt"), []byte("a\n"), 0o644); err != nil {
+		t.Fatalf("write ahead: %v", err)
+	}
+	mustGit(t, clone, "add", ".")
+	mustGit(t, clone, "commit", "-q", "-m", "ahead")
+
+	if err := mainForcePushGuard(clone); err != nil {
+		t.Errorf("guard fired on fast-forward main: %v", err)
+	}
+}
+
+func TestMainForcePushGuard_DivergedMain_Refuses(t *testing.T) {
+	origin, a := initBareAndClone(t)
+
+	// Land a commit on origin via a second clone.
+	rootB := t.TempDir()
+	b := filepath.Join(rootB, "b")
+	mustGit(t, rootB, "clone", "-q", origin, b)
+	mustGit(t, b, "config", "user.email", "test@example.com")
+	mustGit(t, b, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(b, "from-b.txt"), []byte("b\n"), 0o644); err != nil {
+		t.Fatalf("write from-b: %v", err)
+	}
+	mustGit(t, b, "add", ".")
+	mustGit(t, b, "commit", "-q", "-m", "from b")
+	mustGit(t, b, "push", "-q", "origin", "main")
+
+	// `a` makes its own commit (now ahead 1) and then fetches so @{u}
+	// advances to b's commit — local and remote diverge.
+	if err := os.WriteFile(filepath.Join(a, "from-a.txt"), []byte("a\n"), 0o644); err != nil {
+		t.Fatalf("write from-a: %v", err)
+	}
+	mustGit(t, a, "add", ".")
+	mustGit(t, a, "commit", "-q", "-m", "from a")
+	mustGit(t, a, "fetch", "-q", "origin")
+
+	err := mainForcePushGuard(a)
+	if err == nil {
+		t.Fatalf("expected guard to refuse divergent main, got nil")
+	}
+	if !strings.Contains(err.Error(), "diverged") {
+		t.Errorf("guard error missing 'diverged': %v", err)
+	}
+}
+
+func TestMainForcePushGuard_OnFeatureBranch_NoOp(t *testing.T) {
+	origin, clone := initBareAndClone(t)
+	_ = origin
+
+	mustGit(t, clone, "checkout", "-q", "-b", "feature/x")
+	// Even with a rewrite, a non-main branch is the guard's no-business case.
+	if err := os.WriteFile(filepath.Join(clone, "x.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatalf("write x: %v", err)
+	}
+	mustGit(t, clone, "add", ".")
+	mustGit(t, clone, "commit", "-q", "-m", "x")
+
+	if err := mainForcePushGuard(clone); err != nil {
+		t.Errorf("guard fired on non-main branch: %v", err)
+	}
+}
+
 func TestRepoBaseName(t *testing.T) {
 	cases := map[string]string{
 		`/a/b/myrepo`:    "myrepo",

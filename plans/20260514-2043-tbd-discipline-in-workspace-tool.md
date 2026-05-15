@@ -1,8 +1,6 @@
 # Build TBD discipline into `gh optivem workspace`
 
-> ✅ **STATUS: LAYER 1 SHIPPED.** Layer 1 (config-independent `--rebase`, push-retry loop, pre-commit pull with auto-stash, `gh optivem doctor`) has shipped. Layers 2–4 remain. All open decisions have been resolved — see "Decisions resolved" at the bottom.
->
-> ⏳ **Layer 2 deferred (2026-05-14):** Checked for operator-behaviour signal at 22:13 — Layer 1 shipped at 22:03, 10 min earlier, with zero `workspace commit`/`sync` invocations since. The plan's "re-evaluate Layer 2 against operator behaviour" gate cannot be satisfied yet. Resume when there's enough real Layer 1 use to know whether the mode banner earns its noise and whether the force-push guard / pre-push hook are solving a felt problem. No commitment to a specific date — let usage drive it.
+> ✅ **STATUS: LAYERS 1 + 2 SHIPPED.** Layer 1 (config-independent `--rebase`, push-retry loop, pre-commit pull with auto-stash, `gh optivem doctor`) and Layer 2 (mode banner, in-tool main force-push guard, `gh optivem hooks install`) have shipped. Layers 3–4 remain. All open decisions have been resolved — see "Decisions resolved" at the bottom.
 
 ## Context
 
@@ -28,15 +26,7 @@ Per-repo loop in `workspace_commands.go:130-158` is `stage → confirm → commi
 
 ## Proposed work
 
-Layered so each layer is shippable on its own. Layer 1 has shipped (config-independent `--rebase`, push-retry loop, pre-commit pull with auto-stash, `gh optivem doctor`). Don't pre-commit to layers 2 and 3 — the value of doing them depends on whether layer 1 actually changes operator behaviour.
-
-### Layer 2 — Make TBD visible in the UX
-
-Operators learn the model by seeing the tool name it.
-
-5. **Mode banner.** At the top of `commit` and `sync`, for each repo print "plain TBD (on `main`)" or "Scaled TBD (on `<branch>`, upstream `origin/<branch>`)". One line per repo. Costs nothing, surfaces the doc's framing where work happens.
-6. **`main` force-push guard.** Before `push`, compare `HEAD` with `@{u}` via `git rev-list --left-right`; if local has rewritten history *and* current branch is `main`, abort with a pointer to `docs/tbd.md`. Defense-in-depth against the one rule that doesn't bend.
-7. **Pre-push hook installer** (`gh optivem hooks install`). Drops a `.git/hooks/pre-push` that blocks `--force*` on `main`. Belt-and-suspenders the operator can't bypass with a global config tweak.
+Layered so each layer is shippable on its own. Layers 1 and 2 have shipped. Layers 3 and 4 are each their own PRs and are additive.
 
 ### Layer 3 — Scaled-TBD primitives
 
@@ -55,20 +45,9 @@ Catch the case where the doc and the repo have drifted apart.
 
 ## Affected commands
 
-Single reference for every command this plan touches. Each entry says what the command is, whether it's existing or new, and which layer items modify it.
-
-### Modified (existing)
-
-**`gh optivem workspace commit`** — layers 2.5, 2.6
-Iterates every repo declared in the resolved `*.code-workspace` file, stages changes, prompts for confirmation, commits with a supplied message, then pulls and pushes. After Layer 1 it already does explicit `--rebase` on the pull, a push-retry loop on non-fast-forward rejection, and a pre-commit pull with auto-stash. Remaining work: a one-line "plain TBD / Scaled TBD" mode banner per repo, and an abort if the push would rewrite history on `main`.
-
-**`gh optivem workspace sync`** — layer 2.5
-Same iterate-every-repo loop as `commit`, but without the staging step — just pull and push. After Layer 1 it already uses explicit `--rebase` and the push-retry loop. Remaining work: the mode banner.
+Single reference for every new command this plan still proposes. Layers 1 and 2 surfaces (workspace commit, workspace sync, doctor, hooks install) have shipped and are documented in the code itself.
 
 ### New
-
-**`gh optivem hooks install`** — layer 2.7
-Installs a `.git/hooks/pre-push` in the current repo that refuses `--force` / `--force-with-lease` against `main`. Belt-and-suspenders enforcement of the "never force-push main" rule. Unlike a global config setting, the operator can't bypass it accidentally. Idempotent; safe to re-run.
 
 **`gh optivem branch start <name>`** — layer 3.8
 Encapsulates the Scaled-TBD branch-start ritual: `git checkout main && git pull --rebase && git checkout -b <name>`. Prevents the common foot-gun of branching off a stale local `main`. One command instead of three.
@@ -87,16 +66,15 @@ Lists branches in each workspace repo that have lived longer than ~24h, per `doc
 
 ## Suggested sequencing
 
-Layer 1 has shipped. Re-evaluate Layer 2 against operator behaviour before opening anything else. Layers 2–4 are each their own PRs and are additive. Layer 3 is in scope (decision 1: Scaled TBD is in use).
+Layers 1 and 2 have shipped. Layers 3 and 4 are each their own PRs and are additive. Layer 3 is in scope (decision 1: Scaled TBD is in use).
 
 ## Decisions resolved
 
-(Decisions originally numbered 1, 2, 3, 7 were applied to Layer 1 and have shipped; they remain as the committed shape if anything in that surface is later revisited.)
+(Decisions originally numbered 1, 2, 3, 7 were applied to Layer 1 and have shipped; the Layer 2 force-push placement decision has also shipped. They remain as the committed shape if anything in that surface is later revisited.)
 
-1. **Force-push guard placement.** Both: in-tool guard (item 6) *and* pre-push hook (item 7). Independent failure modes (tool flow vs. raw `git push --force`); blast radius of force-pushing `main` justifies belt-and-suspenders.
-2. **Scaled TBD in use.** Yes — Layer 3 stays in scope.
-3. **`lint-history` enforcement.** Both: local command + paired CI workflow that fails on any new merge commit on `main`. Shipped together — CI is the only thing that prevents drift over time; the local form is for ad-hoc checks.
-4. **Stale-branch command name.** Lock in as `gh optivem workspace stale-branches`.
+1. **Scaled TBD in use.** Yes — Layer 3 stays in scope.
+2. **`lint-history` enforcement.** Both: local command + paired CI workflow that fails on any new merge commit on `main`. Ship together — CI is the only thing that prevents drift over time; the local form is for ad-hoc checks.
+3. **Stale-branch command name.** Lock in as `gh optivem workspace stale-branches`.
 
 ## Out of scope
 
