@@ -1,7 +1,5 @@
 # Plan: fix gh-optivem Go retry-coverage gaps
 
-🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-15T06:28:11Z`
-
 Date: 2026-05-14
 Driven by: [`audits/20260514-external-call-retry-coverage.md`](../audits/20260514-external-call-retry-coverage.md)
 Phase 6 input for: [`plans/20260514-1945-retry-mechanism-end-to-end.md`](20260514-1945-retry-mechanism-end-to-end.md)
