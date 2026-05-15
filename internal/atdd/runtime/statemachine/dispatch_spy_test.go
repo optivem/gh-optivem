@@ -180,6 +180,55 @@ func commitFromTemplateParams() map[string]string {
 	return map[string]string{"change_type": "${change_type}"}
 }
 
+// compileFromStructTemplateParams is the literal raw.Params declared at
+// structural_cycle.COMPILE — `{compile_action: compile_all, fix_agent:
+// atdd-fix-verify, phase_doc: ${phase_doc}}` (unexpanded). STRUCT
+// hardcodes the compile tier and the fix agent because there is no
+// parent cycle context to forward.
+func compileFromStructTemplateParams() map[string]string {
+	return map[string]string{
+		"compile_action": "compile_all",
+		"fix_agent":      "atdd-fix-verify",
+		"phase_doc":      "${phase_doc}",
+	}
+}
+
+// compileFromCycleTemplateParams is the literal raw.Params declared at
+// red_phase_cycle.COMPILE and green_phase_cycle.COMPILE — both forward
+// the parent cycle's compile_action and agent verbatim via `${...}`.
+func compileFromCycleTemplateParams() map[string]string {
+	return map[string]string{
+		"compile_action": "${compile_action}",
+		"fix_agent":      "${agent}",
+		"phase_doc":      "${phase_doc}",
+	}
+}
+
+// compileFromStruct returns the params snapshot seen *inside* the shared
+// compile sub-process when STRUCT invokes it. STRUCT's parent scope does
+// not carry compile_action or fix_agent, so the call_activity introduces
+// them as new keys (compile_all + atdd-fix-verify). phase_doc rebinds to
+// itself (no-op).
+func compileFromStruct(parent map[string]string) map[string]string {
+	out := cloneParams(parent)
+	out["compile_action"] = "compile_all"
+	out["fix_agent"] = "atdd-fix-verify"
+	return out
+}
+
+// compileFromCycle returns the params snapshot seen *inside* the shared
+// compile sub-process when red_phase_cycle / green_phase_cycle invokes
+// it. Both forward compile_action and phase_doc verbatim (no-op rebind
+// since parent already has the same keys/values) and introduce fix_agent
+// = parent's `agent` (the cycle's WRITE agent doubles as the fix agent
+// because compile-fail in RED/GREEN is a re-dispatch of the same
+// creative step).
+func compileFromCycle(parent map[string]string) map[string]string {
+	out := cloneParams(parent)
+	out["fix_agent"] = parent["agent"]
+	return out
+}
+
 // Per-call-site param baselines — one helper per distinct call_activity
 // `params:` block in the YAML. Each represents the ctx.Params snapshot
 // observed at the *first* dispatch inside the called sub-process — and,

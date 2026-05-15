@@ -74,7 +74,8 @@ func (e *expectDispatch) behavioralTail() *expectDispatch {
 
 // redCycle asserts one red_phase_cycle dispatch on the shared happy path:
 // the call_activity entry in the caller's scope, then WRITE → STOP_RED_REVIEW
-// → COMPILE → GATE_COMPILE_OK(true) → GATE_VERIFY_REAL_REQUIRED(false) →
+// → COMPILE (call_activity into shared `compile` sub-process,
+// compile_ok=true returns cleanly) → GATE_VERIFY_REAL_REQUIRED(false) →
 // RUN → GATE_RUN_FAILED_RUNTIME(true) → DISABLE → inner commit, then the
 // red end event. params is the raw.Params declared at the call site (also
 // the merged scope inside, since callers run with a noParams parent for
@@ -87,8 +88,12 @@ func (e *expectDispatch) redCycle(callerNodeID string, params map[string]string)
 		process("red_phase_cycle", params).
 		userTask("WRITE", params["agent"]).
 		userTask("STOP_RED_REVIEW", "human").
+		callActivity("COMPILE", "compile", compileFromCycleTemplateParams()).
+		process("compile", compileFromCycle(params)).
 		serviceTask("COMPILE", params["compile_action"]).
 		gateway("GATE_COMPILE_OK", "compile_ok", true).
+		endEvent("COMPILE_END").
+		process("red_phase_cycle", params).
 		gateway("GATE_VERIFY_REAL_REQUIRED", "verify_real_required", false).
 		serviceTask("RUN", "run_targeted_tests").
 		gateway("GATE_RUN_FAILED_RUNTIME", "tests_failed_runtime", true).
@@ -104,17 +109,22 @@ func (e *expectDispatch) redCycle(callerNodeID string, params map[string]string)
 }
 
 // greenCycle asserts one green_phase_cycle dispatch on the shared happy
-// path: WRITE → COMPILE → GATE_COMPILE_OK(true) → RUN → GATE_TESTS_PASS
-// (true) → GREEN_END. Commit is owned by the parent (at_green_system commits
-// backend + frontend together), so the sub-process ends here. Restores the
-// caller's scope on exit.
+// path: WRITE → COMPILE (call_activity into shared `compile` sub-process,
+// compile_ok=true returns cleanly) → RUN → GATE_TESTS_PASS(true) →
+// GREEN_END. Commit is owned by the parent (at_green_system commits
+// backend + frontend together), so the sub-process ends here. Restores
+// the caller's scope on exit.
 func (e *expectDispatch) greenCycle(callerNodeID string, params map[string]string) *expectDispatch {
 	parentProc, parentParams := e.proc, e.params
 	return e.callActivity(callerNodeID, "green_phase_cycle", params).
 		process("green_phase_cycle", params).
 		userTask("WRITE", params["agent"]).
+		callActivity("COMPILE", "compile", compileFromCycleTemplateParams()).
+		process("compile", compileFromCycle(params)).
 		serviceTask("COMPILE", params["compile_action"]).
 		gateway("GATE_COMPILE_OK", "compile_ok", true).
+		endEvent("COMPILE_END").
+		process("green_phase_cycle", params).
 		serviceTask("RUN", "run_targeted_tests").
 		gateway("GATE_TESTS_PASS", "tests_pass", true).
 		endEvent("GREEN_END").

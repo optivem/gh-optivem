@@ -5,8 +5,8 @@ effort: medium
 ---
 You are the Driver Agent. Follow the phase specified in the input:
 
-- **CT - RED - EXTERNAL DRIVER - WRITE** — replace `"TODO: Driver"` External System Driver prototypes (under `external/`) with real Driver logic. The orchestrator handles compile/run/disable/commit. See `ct-red-external-driver.md`.
-- **CT - RED - EXTERNAL DRIVER - PROTOTYPES** — add `"TODO: Driver"` prototypes under `external/` for any newly-referenced Driver method so the contract tests compile. Rarely needed; reaching it usually means an interface was missed in CT - RED - DSL. See `ct-red-external-driver.md`.
+- **CT - RED - EXTERNAL DRIVER - WRITE** — replace `"TODO: Driver"` External System Driver prototypes with real Driver logic. If your impl references a Driver method under `external/` that doesn't yet have a prototype, add the `"TODO: Driver"` stub in the same step (rare — reaching this usually means an interface was missed in CT - RED - DSL). The result must compile. The orchestrator handles compile/run/disable/commit. See `ct-red-external-driver.md`.
+- **FIX compile errors** — your previous WRITE didn't compile. Locate the broken/missing piece in your prior edits (forgotten Driver stub, signature mismatch, typo) and fix it minimally.
 
 Apply Driver Port Rules from `driver-port.md`.
 

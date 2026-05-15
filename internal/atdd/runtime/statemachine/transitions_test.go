@@ -51,6 +51,7 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"structural_cycle",
 		"red_phase_cycle",
 		"green_phase_cycle",
+		"compile",
 		"commit",
 		"legacy_acceptance_criteria",
 	}
@@ -261,11 +262,7 @@ var transitionTable = []transitionCase{
 	// the "operator skipped tests" path past BUILD/START/RUN to COMMIT.
 	{process: "structural_cycle", from: "WRITE", wantTo: "APPROVE_CHANGE"},
 	{process: "structural_cycle", from: "APPROVE_CHANGE", wantTo: "COMPILE"},
-	{process: "structural_cycle", from: "COMPILE", wantTo: "GATE_COMPILE_OK"},
-	{process: "structural_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": true}, wantTo: "CHOOSE_TESTS", desc: "compile pass enters the test sub-loop"},
-	{process: "structural_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": false}, wantTo: "STOP_COMPILE_FAIL_REVIEW", desc: "compile fail halts at a human review STOP before fix-agent dispatch"},
-	{process: "structural_cycle", from: "STOP_COMPILE_FAIL_REVIEW", wantTo: "FIX_COMPILE", desc: "human approves the dispatch and the fix-verify agent runs in compile mode"},
-	{process: "structural_cycle", from: "FIX_COMPILE", wantTo: "COMPILE", desc: "fix agent loops back to COMPILE for re-verify"},
+	{process: "structural_cycle", from: "COMPILE", wantTo: "CHOOSE_TESTS", desc: "COMPILE is a call_activity to the shared `compile` sub-process; it returns only on compile_ok, so the parent edge is unconditional"},
 	{process: "structural_cycle", from: "CHOOSE_TESTS", wantTo: "GATE_TESTS_SELECTED"},
 	{process: "structural_cycle", from: "GATE_TESTS_SELECTED", state: map[string]any{"tests_selected": true}, wantTo: "BUILD_SYSTEM", desc: "selected → rebuild SUT before run"},
 	{process: "structural_cycle", from: "GATE_TESTS_SELECTED", state: map[string]any{"tests_selected": false}, wantTo: "COMMIT", desc: "no tests selected → skip build/start/run, advance to commit"},
@@ -286,11 +283,7 @@ var transitionTable = []transitionCase{
 	// branch by setting the same-named param.
 	{process: "red_phase_cycle", from: "WRITE", wantTo: "STOP_RED_REVIEW"},
 	{process: "red_phase_cycle", from: "STOP_RED_REVIEW", wantTo: "COMPILE"},
-	{process: "red_phase_cycle", from: "COMPILE", wantTo: "GATE_COMPILE_OK"},
-	{process: "red_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": false}, wantTo: "WRITE_PROTOTYPES", desc: "compile fail loops through prototype WRITE"},
-	{process: "red_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": true}, wantTo: "GATE_VERIFY_REAL_REQUIRED", desc: "compile pass enters the optional verify-real branch"},
-	{process: "red_phase_cycle", from: "WRITE_PROTOTYPES", wantTo: "STOP_PROTOTYPE_REVIEW"},
-	{process: "red_phase_cycle", from: "STOP_PROTOTYPE_REVIEW", wantTo: "COMPILE", desc: "prototype loop returns to COMPILE"},
+	{process: "red_phase_cycle", from: "COMPILE", wantTo: "GATE_VERIFY_REAL_REQUIRED", desc: "COMPILE is a call_activity to the shared `compile` sub-process; compile_ok is enforced inside it, so the parent edge is unconditional. WRITE_PROTOTYPES is gone — the WRITE agent now produces a compiling failing test (test + DSL stubs together)."},
 	{process: "red_phase_cycle", from: "GATE_VERIFY_REAL_REQUIRED", state: map[string]any{"verify_real_required": true}, wantTo: "VERIFY_REAL", desc: "CT_RED_TEST sets verify_real_suite → run real-suite check"},
 	{process: "red_phase_cycle", from: "GATE_VERIFY_REAL_REQUIRED", state: map[string]any{"verify_real_required": false}, wantTo: "RUN", desc: "AT phases skip the verify-real branch"},
 	{process: "red_phase_cycle", from: "VERIFY_REAL", wantTo: "GATE_VERIFY_REAL_PASS"},
@@ -311,14 +304,24 @@ var transitionTable = []transitionCase{
 	// is no DISABLE/COMMIT inside — at_green_system commits backend and
 	// frontend together at the parent level after both call_activities end.
 	{process: "green_phase_cycle", from: "WRITE", wantTo: "COMPILE"},
-	{process: "green_phase_cycle", from: "COMPILE", wantTo: "GATE_COMPILE_OK"},
-	{process: "green_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": false}, wantTo: "STOP_GREEN_COMPILE_FAIL", desc: "compile fail → human STOP"},
-	{process: "green_phase_cycle", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": true}, wantTo: "RUN", desc: "compile ok → run tests"},
-	{process: "green_phase_cycle", from: "STOP_GREEN_COMPILE_FAIL", wantTo: "WRITE", desc: "after STOP, retry from WRITE"},
+	{process: "green_phase_cycle", from: "COMPILE", wantTo: "RUN", desc: "COMPILE is a call_activity to the shared `compile` sub-process; it returns only on compile_ok, so the parent edge is unconditional"},
 	{process: "green_phase_cycle", from: "RUN", wantTo: "GATE_TESTS_PASS"},
 	{process: "green_phase_cycle", from: "GATE_TESTS_PASS", state: map[string]any{"tests_pass": true}, wantTo: "GREEN_END", desc: "all tests pass → end"},
 	{process: "green_phase_cycle", from: "GATE_TESTS_PASS", state: map[string]any{"tests_pass": false}, wantTo: "STOP_GREEN_TEST_FAIL", desc: "any test fails → human STOP"},
 	{process: "green_phase_cycle", from: "STOP_GREEN_TEST_FAIL", wantTo: "WRITE", desc: "after STOP, retry from WRITE"},
+
+	// ---- compile (shared sub-process: pairs COMPILE with GATE + human-gated FIX) ----
+	// Every compile in the orchestration is dispatched through this sub-process;
+	// extracting it makes "compile failure is human-gated before a fixer is
+	// dispatched" a structural invariant rather than a pattern any caller could
+	// quietly break. Same construct as `commit` — callers reference the
+	// sub-process, not the underlying mechanical task. Resolves only when
+	// compile_ok; compile-fail trips STOP → FIX_COMPILE → COMPILE retry loop.
+	{process: "compile", from: "COMPILE", wantTo: "GATE_COMPILE_OK"},
+	{process: "compile", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": true}, wantTo: "COMPILE_END", desc: "compile ok → resolve the sub-process"},
+	{process: "compile", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": false}, wantTo: "STOP_COMPILE_FAIL_REVIEW", desc: "compile fail halts at a human review STOP before fix-agent dispatch"},
+	{process: "compile", from: "STOP_COMPILE_FAIL_REVIEW", wantTo: "FIX_COMPILE", desc: "human approves the dispatch and the fix agent runs (atdd-fix-verify in STRUCT; the cycle's WRITE agent in RED/GREEN)"},
+	{process: "compile", from: "FIX_COMPILE", wantTo: "COMPILE", desc: "fix agent loops back to COMPILE for re-verify"},
 
 	// ---- commit (shared sub-process: pairs APPROVE_COMMIT with EXECUTE_COMMIT) ----
 	// Every commit in the orchestration is dispatched through this sub-process;

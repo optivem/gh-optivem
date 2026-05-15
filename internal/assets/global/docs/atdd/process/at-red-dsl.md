@@ -49,8 +49,12 @@ If `customerDriver.register(...)` is a new method on the System Customer Driver 
 1. Enable the tests marked disabled with reason `"AT - RED - TEST"`.
 2. Implement the DSL for real — replace each "TODO: DSL" prototype with actual logic.
 3. Update the Driver interfaces as needed to support the new DSL behavior.
-4. Check whether any interface changes (see [glossary.md](glossary.md)) affect external-system Drivers. Set the flag: **External System Driver Interface Changed = yes/no**.
-5. Check whether any interface changes affect system Drivers. Set the flag: **System Driver Interface Changed = yes/no**.
+4. **Add the Driver stubs the new DSL references.** For every new or changed Driver method:
+   - Update the Driver interface.
+   - Implement a `"TODO: Driver"` not-implemented prototype (see [language-equivalents.md](../code/language-equivalents.md)). Minimum signature only — no behaviour.
+   The result must compile.
+5. Check whether any interface changes (see [glossary.md](glossary.md)) affect external-system Drivers. Set the flag: **External System Driver Interface Changed = yes/no**.
+6. Check whether any interface changes affect system Drivers. Set the flag: **System Driver Interface Changed = yes/no**.
 
 ## AT - RED - DSL - REVIEW (STOP)
 
@@ -64,16 +68,14 @@ STOP. Present the DSL implementation, Driver interface changes, and both flags t
 
 ## AT - RED - DSL - COMMIT
 
-1. **If any Driver interface changed** (either flag is `yes`):
-   a. Implement Driver **prototypes** for the new/changed Driver methods — throw a `"TODO: Driver"` not-implemented exception in each (see [language-equivalents.md](../code/language-equivalents.md)).
-2. Run the tests and verify they fail with a runtime error:
+1. Run the tests and verify they fail with a runtime error (compile was already enforced in WRITE):
    ```bash
    gh optivem test run --suite <acceptance-api> --test <TestMethodName>
    gh optivem test run --suite <acceptance-ui> --test <TestMethodName>
    ```
-3. Mark the tests as disabled with reason `"AT - RED - DSL"` (see [language-equivalents.md](../code/language-equivalents.md)).
-4. Ensure that no test files are (accidentally) in the list of changed files.
-5. COMMIT with message `<Ticket> | AT - RED - DSL`.
+2. Mark the tests as disabled with reason `"AT - RED - DSL"` (see [language-equivalents.md](../code/language-equivalents.md)).
+3. Ensure that no test files are (accidentally) in the list of changed files.
+4. COMMIT with message `<Ticket> | AT - RED - DSL`.
 
 ## Anti-patterns
 

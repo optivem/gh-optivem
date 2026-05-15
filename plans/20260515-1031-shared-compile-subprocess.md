@@ -1,5 +1,7 @@
 # Plan: Shared `compile` sub-process + collapse RED two-step write
 
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-15T08:50:33Z`
+
 ## Background
 
 The COMPILE → GATE_COMPILE_OK pattern is inlined three times in

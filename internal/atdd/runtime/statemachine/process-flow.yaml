@@ -667,28 +667,13 @@ processes:
         documentation: "STOP - HUMAN REVIEW — approve implementation"
 
       - id: COMPILE
-        type: service_task
-        action: compile_all
-        documentation: "Compile in-scope projects"
-
-      - id: GATE_COMPILE_OK
-        type: gateway
-        binding: compile_ok
-        documentation: "Compile passed?"
-
-      - id: STOP_COMPILE_FAIL_REVIEW
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — compile RED, dispatch fix agent?"
-
-      - id: FIX_COMPILE
-        type: user_task
-        agent: atdd-fix-verify
-        phase_doc: ${phase_doc}
+        type: call_activity
+        process: compile
         params:
-          failure_type: compile
-        documentation: "Dispatch fix agent on compile RED — structural cycle expects green"
+          compile_action: compile_all
+          fix_agent: atdd-fix-verify
+          phase_doc: ${phase_doc}
+        documentation: "Compile in-scope projects (human-gated on fail)"
 
       - id: CHOOSE_TESTS
         type: service_task
@@ -751,11 +736,7 @@ processes:
     sequence_flows:
       - {from: WRITE,                     to: APPROVE_CHANGE}
       - {from: APPROVE_CHANGE,            to: COMPILE}
-      - {from: COMPILE,                   to: GATE_COMPILE_OK}
-      - {from: GATE_COMPILE_OK,           to: CHOOSE_TESTS,             when: "compile_ok == true"}
-      - {from: GATE_COMPILE_OK,           to: STOP_COMPILE_FAIL_REVIEW, when: "compile_ok == false"}
-      - {from: STOP_COMPILE_FAIL_REVIEW,  to: FIX_COMPILE}
-      - {from: FIX_COMPILE,               to: COMPILE}
+      - {from: COMPILE,                   to: CHOOSE_TESTS}
       - {from: CHOOSE_TESTS,              to: GATE_TESTS_SELECTED}
       - {from: GATE_TESTS_SELECTED,       to: BUILD_SYSTEM,             when: "tests_selected == true"}
       - {from: GATE_TESTS_SELECTED,       to: COMMIT,                   when: "tests_selected == false"}
@@ -802,23 +783,28 @@ processes:
   #                         from `ct-red-test.md`. AT phases leave it unset;
   #                         the gate routes straight through to RUN.
   #
-  # The PROTOTYPES dispatch reuses the same `${agent}` and `${phase_doc}`
-  # — distinguishing the two dispatches happens via the node description
-  # (`${phase_label} - WRITE` vs `${phase_label} - PROTOTYPES`), which
-  # the agent reads as `${phase}` from its prompt template. The PROTOTYPES
-  # dispatch covers any TODO-throwing prototype the phase needs to make
-  # compile pass — `"TODO: DSL"` for AT_RED_TEST, `"TODO: Driver"` for
-  # AT_RED_DSL, etc.
+  # WRITE produces a **compiling** failing test: the agent writes both the
+  # acceptance test itself and any DSL prototype stubs the test references
+  # that don't yet exist (minimum signature only — no behaviour). The RED
+  # state is proven by the runtime test failure (`tests_failed_runtime`),
+  # not by compile failure. Compile is therefore *expected* to pass; a
+  # compile-fail in RED is now an unexpected agent bug and trips the shared
+  # `compile` sub-process's human-gated FIX_COMPILE loop — same as STRUCT
+  # and GREEN. The earlier two-step shape (WRITE + WRITE_PROTOTYPES with
+  # planned compile-fail between them) is gone; reviewers see the test plus
+  # its DSL delta as one unit at STOP_RED_REVIEW.
   #
-  # The `tests_failed_runtime == false` branch covers two unexpected states
-  # (tests pass, or compile errors leaked through). The plan defers the
-  # final shape — for now route to a human STOP that loops back to WRITE.
+  # The `tests_failed_runtime == false` branch covers the unexpected state
+  # where tests pass — for now route to a human STOP that loops back to
+  # WRITE. (Compile-leak is no longer one of the modes — the shared
+  # `compile` sub-process catches that explicitly.)
   #
   # Context plumbing TODO: `run_targeted_tests` reads `suite` and
   # `test_names`, and `disable_change_driven` reads `language`,
   # `disable_reason`, `disable_targets`. Today nothing populates these — see
   # the AT/CT split plan's "context plumbing" follow-up. Compile no longer
-  # reads from context: tier choice is encoded in the `compile_action` param.
+  # reads from context: tier choice is encoded in the `compile_action` param
+  # forwarded to the shared `compile` sub-process.
   # ===========================================================================
   red_phase_cycle:
     start: WRITE
@@ -833,29 +819,16 @@ processes:
         type: user_task
         agent: human
         role: review
-        documentation: "STOP - HUMAN REVIEW — ${phase_label} tests"
+        documentation: "STOP - HUMAN REVIEW — ${phase_label} test + DSL stubs"
 
       - id: COMPILE
-        type: service_task
-        action: ${compile_action}
-        documentation: "Compile (${compile_action})"
-
-      - id: GATE_COMPILE_OK
-        type: gateway
-        binding: compile_ok
-        documentation: "Compile passed?"
-
-      - id: WRITE_PROTOTYPES
-        type: user_task
-        agent: ${agent}
-        phase_doc: ${phase_doc}
-        documentation: "${phase_label} - PROTOTYPES"
-
-      - id: STOP_PROTOTYPE_REVIEW
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — ${phase_label} prototypes"
+        type: call_activity
+        process: compile
+        params:
+          compile_action: ${compile_action}
+          fix_agent: ${agent}
+          phase_doc: ${phase_doc}
+        documentation: "Compile ${phase_label} (human-gated on fail)"
 
       - id: GATE_VERIFY_REAL_REQUIRED
         type: gateway
@@ -911,11 +884,7 @@ processes:
     sequence_flows:
       - {from: WRITE,                     to: STOP_RED_REVIEW}
       - {from: STOP_RED_REVIEW,           to: COMPILE}
-      - {from: COMPILE,                   to: GATE_COMPILE_OK}
-      - {from: GATE_COMPILE_OK,           to: WRITE_PROTOTYPES,          when: "compile_ok == false"}
-      - {from: GATE_COMPILE_OK,           to: GATE_VERIFY_REAL_REQUIRED, when: "compile_ok == true"}
-      - {from: WRITE_PROTOTYPES,          to: STOP_PROTOTYPE_REVIEW}
-      - {from: STOP_PROTOTYPE_REVIEW,     to: COMPILE}
+      - {from: COMPILE,                   to: GATE_VERIFY_REAL_REQUIRED}
       - {from: GATE_VERIFY_REAL_REQUIRED, to: VERIFY_REAL,               when: "verify_real_required == true"}
       - {from: GATE_VERIFY_REAL_REQUIRED, to: RUN,                       when: "verify_real_required == false"}
       - {from: VERIFY_REAL,               to: GATE_VERIFY_REAL_PASS}
@@ -968,20 +937,13 @@ processes:
         documentation: "${phase_label} - WRITE"
 
       - id: COMPILE
-        type: service_task
-        action: ${compile_action}
-        documentation: "Compile (${compile_action})"
-
-      - id: GATE_COMPILE_OK
-        type: gateway
-        binding: compile_ok
-        documentation: "Compile passed?"
-
-      - id: STOP_GREEN_COMPILE_FAIL
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — ${phase_label} compile failed"
+        type: call_activity
+        process: compile
+        params:
+          compile_action: ${compile_action}
+          fix_agent: ${agent}
+          phase_doc: ${phase_doc}
+        documentation: "Compile ${phase_label} (human-gated on fail)"
 
       - id: RUN
         type: service_task
@@ -1004,14 +966,66 @@ processes:
 
     sequence_flows:
       - {from: WRITE,                    to: COMPILE}
-      - {from: COMPILE,                  to: GATE_COMPILE_OK}
-      - {from: GATE_COMPILE_OK,          to: STOP_GREEN_COMPILE_FAIL, when: "compile_ok == false"}
-      - {from: GATE_COMPILE_OK,          to: RUN,                    when: "compile_ok == true"}
-      - {from: STOP_GREEN_COMPILE_FAIL,  to: WRITE}
+      - {from: COMPILE,                  to: RUN}
       - {from: RUN,                      to: GATE_TESTS_PASS}
       - {from: GATE_TESTS_PASS,          to: GREEN_END,              when: "tests_pass == true"}
       - {from: GATE_TESTS_PASS,          to: STOP_GREEN_TEST_FAIL,   when: "tests_pass == false"}
       - {from: STOP_GREEN_TEST_FAIL,     to: WRITE}
+
+  # ===========================================================================
+  # compile
+  # Shared sub-process called wherever code is compiled. Pairs the mechanical
+  # COMPILE service task with the GATE + human-review-on-fail by construction —
+  # callers cannot run compile without the fail-loop, so every compile failure
+  # is human-gated before a fixer is dispatched. Returns only when compile_ok.
+  #
+  # Callers supply via `params:`:
+  #   - compile_action — which compile_* action to invoke (compile_all,
+  #                      compile_system, compile_system_tests).
+  #   - fix_agent      — agent dispatched when compile fails. Structural
+  #                      callers pass atdd-fix-verify (branches on
+  #                      `failure_type=compile`); RED and GREEN callers pass
+  #                      the cycle's own WRITE agent (${agent}), which simply
+  #                      retries the write with corrections.
+  #   - phase_doc      — phase doc passed to fix_agent so it knows what to
+  #                      read first.
+  # ===========================================================================
+  compile:
+    start: COMPILE
+    nodes:
+      - id: COMPILE
+        type: service_task
+        action: ${compile_action}
+        documentation: "Compile (${compile_action})"
+
+      - id: GATE_COMPILE_OK
+        type: gateway
+        binding: compile_ok
+        documentation: "Compile passed?"
+
+      - id: STOP_COMPILE_FAIL_REVIEW
+        type: user_task
+        agent: human
+        role: review
+        documentation: "STOP - HUMAN REVIEW — compile failed, dispatch ${fix_agent}?"
+
+      - id: FIX_COMPILE
+        type: user_task
+        agent: ${fix_agent}
+        phase_doc: ${phase_doc}
+        params:
+          failure_type: compile
+        documentation: "FIX compile errors"
+
+      - id: COMPILE_END
+        type: end_event
+
+    sequence_flows:
+      - {from: COMPILE,                  to: GATE_COMPILE_OK}
+      - {from: GATE_COMPILE_OK,          to: COMPILE_END,              when: "compile_ok == true"}
+      - {from: GATE_COMPILE_OK,          to: STOP_COMPILE_FAIL_REVIEW, when: "compile_ok == false"}
+      - {from: STOP_COMPILE_FAIL_REVIEW, to: FIX_COMPILE}
+      - {from: FIX_COMPILE,              to: COMPILE}
 
   # ===========================================================================
   # commit

@@ -5,8 +5,8 @@ effort: medium
 ---
 You are the DSL Agent. Follow the phase specified in the input:
 
-- **CT - RED - DSL - WRITE** — replace `"TODO: DSL"` prototypes with real DSL logic for the external system, update External System Driver interfaces, set the `external_system_driver_interface_changed` flag. See `ct-red-dsl.md`.
-- **CT - RED - DSL - PROTOTYPES** — add `"TODO: Driver"` prototypes under `external/` for any new/changed Driver methods so the contract tests compile. See `ct-red-dsl.md`.
+- **CT - RED - DSL - WRITE** — replace `"TODO: DSL"` prototypes with real DSL logic for the external system, update External System Driver interfaces, set the `external_system_driver_interface_changed` flag, **and** add `"TODO: Driver"` prototype stubs (minimum signature, no behaviour) under `external/` for any new/changed Driver methods the DSL now references so the contract tests compile. The result must compile. See `ct-red-dsl.md`.
+- **FIX compile errors** — your previous WRITE didn't compile. Locate the broken/missing piece in your prior edits (forgotten external Driver stub, signature mismatch, typo) and fix it minimally. Do not change DSL semantics.
 
 Apply DSL Core Rules from `dsl-core.md` and Driver Port Rules from `driver-port.md`.
 

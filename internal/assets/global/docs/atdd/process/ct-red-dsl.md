@@ -37,7 +37,11 @@ Replace the `"TODO: DSL"` prototype with real DSL logic. Driver methods stay as 
 1. Enable the tests marked disabled with reason `"CT - RED - TEST"`.
 2. Implement the DSL for real — replace each `"TODO: DSL"` prototype with actual logic.
 3. Update the External System Driver interfaces as needed.
-4. Determine whether any interface changes affect files under an `external/` package and set `external_system_driver_interface_changed = yes|no`.
+4. **Add the Driver stubs the new DSL references.** For every new or changed External System Driver method:
+   - Update the Driver interface under `external/`.
+   - Implement a `"TODO: Driver"` not-implemented prototype (see [language-equivalents.md](../code/language-equivalents.md)). Minimum signature only — no behaviour.
+   The result must compile.
+5. Determine whether any interface changes affect files under an `external/` package and set `external_system_driver_interface_changed = yes|no`.
 
 ## CT - RED - DSL - REVIEW (STOP)
 
@@ -51,14 +55,13 @@ STOP. Present the DSL implementation, Driver interface changes, and the `externa
 
 ## CT - RED - DSL - COMMIT
 
-1. For any new or changed External System Driver methods, add `"TODO: Driver"` prototypes that throw a not-implemented exception (see [language-equivalents.md](../code/language-equivalents.md)).
-2. Run the contract tests and verify they fail with a runtime error:
+1. Run the contract tests and verify they fail with a runtime error (compile was already enforced in WRITE):
    ```bash
    gh optivem test run --suite <suite-contract-stub> --test <TestMethodName>
    ```
-3. Mark the tests as disabled with reason `"CT - RED - DSL"` (see [language-equivalents.md](../code/language-equivalents.md)).
-4. COMMIT with message `<Ticket> | CT - RED - DSL`.
-5. If a GitHub issue number was provided as input, post a comment on the issue summarising the DSL interface changes (new methods added, interfaces updated).
+2. Mark the tests as disabled with reason `"CT - RED - DSL"` (see [language-equivalents.md](../code/language-equivalents.md)).
+3. COMMIT with message `<Ticket> | CT - RED - DSL`.
+4. If a GitHub issue number was provided as input, post a comment on the issue summarising the DSL interface changes (new methods added, interfaces updated).
 
 ## Anti-patterns
 
