@@ -1,7 +1,5 @@
 # Plan: Shared `compile` sub-process + collapse RED two-step write
 
-> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-15T08:50:33Z`
-
 ## Background
 
 The COMPILE → GATE_COMPILE_OK pattern is inlined three times in
@@ -232,74 +230,14 @@ the false/true compile_ok branching.
 
 ## Implementation steps
 
-### Step 1 — Add the `compile` sub-process
+Steps 1–6 were executed in session 2026-05-15. The design/narrative sections
+above remain as context for the deferred steps below; everything described
+in Design and Call-site migrations is now in `process-flow.yaml`, the test
+suite is updated to match, and the 6 RED agent prompts + 4 RED phase docs
+(test × 2, dsl × 2) reflect the single-WRITE contract. The 2 driver phase
+docs already required compile-passing WRITE and did not need editing.
 
-Add the `compile:` block to
-`internal/atdd/runtime/statemachine/process-flow.yaml`, placed near the
-existing `commit:` block (line 1026) so the two shared
-"construct-enforced human gate" sub-processes sit together.
-
-### Step 2 — Migrate `structural_cycle` (line 654)
-
-Replace inlined `COMPILE / GATE_COMPILE_OK / STOP_COMPILE_FAIL_REVIEW /
-FIX_COMPILE` nodes with one `call_activity` to `compile`. Remove the four
-corresponding sequence_flows; keep `{from: COMPILE, to: CHOOSE_TESTS}` since
-the call_activity exits successfully only when compile passes.
-
-### Step 3 — Collapse RED two-step write & migrate `red_phase_cycle` (line 820)
-
-Two changes together:
-- Replace inlined `COMPILE / GATE_COMPILE_OK` with `call_activity` to
-  `compile`.
-- **Remove** `WRITE_PROTOTYPES` and `STOP_PROTOTYPE_REVIEW` nodes entirely.
-- Remove the four sequence_flows that connected them.
-- Add `{from: COMPILE, to: GATE_VERIFY_REAL_REQUIRED}` (direct, no
-  conditional).
-
-### Step 4 — Migrate `green_phase_cycle` (line 958)
-
-Replace inlined `COMPILE / GATE_COMPILE_OK / STOP_GREEN_COMPILE_FAIL` with
-`call_activity` to `compile`. Remove the corresponding sequence_flows;
-`{from: COMPILE, to: RUN}` is direct.
-
-### Step 5 — Update RED-phase WRITE agent contracts
-
-The `${agent}` parameter for `red_phase_cycle` is supplied by each caller
-that embeds it. Enumerate callers:
-
-```
-grep -n "process: red_phase_cycle" internal/atdd/runtime/statemachine/process-flow.yaml
-```
-
-For each caller (likely `at_cycle`, possibly others), find the corresponding
-agent prompt/definition under `.claude/agents/` (or wherever ATDD agent
-definitions live in this repo) and update its contract to require:
-
-- Writing the acceptance test.
-- Writing any DSL prototype stubs the test references that don't yet exist
-  (minimum signature, no behaviour).
-- Ensuring the result compiles.
-
-Update the corresponding phase_doc (path supplied as `phase_doc` param) to
-match.
-
-### Step 6 — Update state-machine tests
-
-Touched test files (per `grep GATE_COMPILE_OK`):
-- `internal/atdd/runtime/statemachine/structural_cycle_test.go`
-- `internal/atdd/runtime/statemachine/behavioral_cycle_test.go`
-- `internal/atdd/runtime/statemachine/transitions_test.go`
-- `internal/atdd/runtime/statemachine/dispatch_expect_test.go`
-
-Update expected node lists and transitions to reflect:
-- The call_activity factoring (all three phases).
-- The removal of `WRITE_PROTOTYPES` and `STOP_PROTOTYPE_REVIEW` from
-  `red_phase_cycle`.
-
-Add a new test asserting the `compile` sub-process's structure (start, nodes,
-flows) — analogous to whatever exercises the `commit` sub-process today.
-
-### Step 7 — Update process diagram
+### Step 7 — Update process diagram — ⏳ Deferred
 
 Regenerate `docs/process-diagram.md` and the per-phase SVGs:
 - `docs/images/process-diagram-10-structural-cycle-shared.svg`
@@ -312,7 +250,7 @@ Verify the diagram:
 - No longer shows `WRITE_PROTOTYPES` or `STOP_PROTOTYPE_REVIEW` in the RED
   cycle diagram.
 
-### Step 8 — Verify with rehearsal
+### Step 8 — Verify with rehearsal — ⏳ Deferred
 
 Re-run a rehearsal flow analogous to the one that triggered this work
 (rehearsal-20260515-095931, TypeScript view-product-list, two missing DSL
@@ -344,4 +282,5 @@ methods). Confirm:
 - Design: agreed on 2026-05-15
   - Shared `compile` sub-process: confirmed
   - WRITE_TEST writes stubs (collapse two-step RED write): confirmed
-- Ready for execution
+- Execution (session 2026-05-15): Steps 1–6 shipped
+- Remaining: Steps 7 (diagram regen), 8 (rehearsal verification) — deferred to follow-up
