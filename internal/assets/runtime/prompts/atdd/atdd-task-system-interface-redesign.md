@@ -43,7 +43,6 @@ Edit ONLY files under the "Allowed write roots" listed at the top of this prompt
 5. After WRITE, STOP. Present the system + driver changes for human approval. Do NOT continue.
 
 6. Report back:
-   - Files changed (grouped by layer: system code, driver adapter, driver port if approved), restricted to the in-scope architecture(s) and system language(s).
    - Any driver interface change that was approved, with the reason.
    - Out-of-scope implementations deliberately left untouched.
 
