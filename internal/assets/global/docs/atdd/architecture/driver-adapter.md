@@ -16,7 +16,7 @@ Both implementations share a `BaseXyzDriver` that delegates to a `BaseXyzClient`
 
 All DTOs used by driver adapters to communicate with external systems use an `Ext*` prefix (e.g. `ExtCreateProductRequest`, `ExtProductDetailsResponse`, `ExtErpErrorResponse`).
 
-- `Ext*Request` DTOs must use only string fields — never numeric, boolean, or other non-string types. This allows invalid values to pass through for negative test scenarios. Type conversion happens inside the HTTP client or serialization layer. See `language-equivalents.md` for the string field type and DTO boilerplate per language.
+- `Ext*Request` DTOs must use only string fields — never numeric, boolean, or other non-string types. This allows invalid values to pass through for negative test scenarios. Type conversion happens inside the HTTP client or serialization layer. See [language-equivalents/](../code/language-equivalents/README.md) for the string field type and DTO boilerplate per language.
 - `Ext*Response` DTOs may use typed fields (e.g. `BigDecimal`, `decimal`, `Decimal`) since they are only used for deserialization, not for constructing negative test inputs.
 
 ## goTo*() Methods

@@ -12,7 +12,7 @@ Replace the `"TODO: Driver"` prototypes left behind by CT - RED - DSL with real 
 ## Conventions
 
 - Scope is strictly limited to files under `system-test/<lang>/.../testkit/driver/port/external/` and `system-test/<lang>/.../testkit/driver/adapter/external/`. All driver code lives in the test tree, not in `system/`. Files under the sibling `shop/` directories are off-limits in this phase. See [glossary.md](glossary.md).
-- `@Disabled` syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
+- `@Disabled` syntax per language: see [language-equivalents/](../code/language-equivalents/README.md).
 
 ## Example
 

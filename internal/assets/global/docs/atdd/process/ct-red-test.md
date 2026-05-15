@@ -11,7 +11,7 @@ Express the contract between the system and the real external system as executab
 
 ## Conventions
 
-- `@Disabled` / skip syntax and "TODO: DSL" exception strings per language: see [language-equivalents.md](../code/language-equivalents.md).
+- `@Disabled` / skip syntax and "TODO: DSL" exception strings per language: see [language-equivalents/](../code/language-equivalents/README.md).
 
 ## Example
 
@@ -32,9 +32,9 @@ void promotion_endpoint_returns_default_no_promotion_state() {
    - If new DSL methods are needed, call them in the test as if they exist.
 2. **Add the DSL stubs the tests reference.** For every new DSL method the tests call:
    - Add the method declaration to the DSL interface.
-   - Implement a `"TODO: DSL"` not-implemented prototype (see [language-equivalents.md](../code/language-equivalents.md)). Minimum signature only — no behaviour.
+   - Implement a `"TODO: DSL"` not-implemented prototype (see [language-equivalents/](../code/language-equivalents/README.md)). Minimum signature only — no behaviour.
    The result must compile. The RED state is proven later by runtime test failure, not by compile failure.
-3. Mark the tests as disabled with reason `"CT - RED - TEST"` (see [language-equivalents.md](../code/language-equivalents.md)).
+3. Mark the tests as disabled with reason `"CT - RED - TEST"` (see [language-equivalents/](../code/language-equivalents/README.md)).
 
 ## Anti-patterns
 

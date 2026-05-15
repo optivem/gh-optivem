@@ -13,7 +13,7 @@ Replace the System-Driver "TODO: Driver" prototypes from AT - RED - DSL with rea
 
 - File scope: only files under `system-test/<lang>/.../testkit/driver/port/shop/` and `system-test/<lang>/.../testkit/driver/adapter/shop/<channel>` (e.g. `.../adapter/shop/api`, `.../adapter/shop/ui`). All driver code lives in the test tree, not in `system/`. Do NOT touch `external/` siblings — that is the Contract Test sub-process.
 - Do NOT read or search backend/frontend source code. Model new Driver methods on existing Driver methods in the same file.
-- `@Disabled` / skip syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
+- `@Disabled` / skip syntax per language: see [language-equivalents/](../code/language-equivalents/README.md).
 - Definition of System Driver vs External System Driver: see [glossary.md](glossary.md).
 
 ## Example

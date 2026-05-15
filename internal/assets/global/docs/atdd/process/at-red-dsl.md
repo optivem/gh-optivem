@@ -13,7 +13,7 @@ Replace the "TODO: DSL" prototypes from AT - RED - TEST with real DSL logic, and
 
 ## Conventions
 
-- `@Disabled` / skip syntax and "TODO: Driver" prototype syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
+- `@Disabled` / skip syntax and "TODO: Driver" prototype syntax per language: see [language-equivalents/](../code/language-equivalents/README.md).
 - Definition of an "interface change" (DSL Interface, External System Driver, System Driver): see [glossary.md](glossary.md).
 - DSL layout context: see [dsl-core.md](../architecture/dsl-core.md).
 
@@ -48,7 +48,7 @@ If `customerDriver.register(...)` is a new method on the System Customer Driver 
 3. Update the Driver interfaces as needed to support the new DSL behavior. Keep interface changes **minimal** — only what the new DSL actually calls.
 4. **Add the Driver stubs the new DSL references.** For every new or changed Driver method:
    - Update the Driver interface.
-   - Implement a `"TODO: Driver"` not-implemented prototype (see [language-equivalents.md](../code/language-equivalents.md)). Minimum signature only — no behaviour.
+   - Implement a `"TODO: Driver"` not-implemented prototype (see [language-equivalents/](../code/language-equivalents/README.md)). Minimum signature only — no behaviour.
    The result must compile.
 5. Check whether any interface changes (see [glossary.md](glossary.md)) affect external-system Drivers. Set the flag: **External System Driver Interface Changed = yes/no**.
 6. Check whether any interface changes affect system Drivers. Set the flag: **System Driver Interface Changed = yes/no**.

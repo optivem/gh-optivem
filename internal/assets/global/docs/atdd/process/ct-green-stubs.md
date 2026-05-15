@@ -13,7 +13,7 @@ Bring the dockerized External System stub into contract-compatibility with the r
 
 - The dockerized stub follows the json-server pattern — see [`external-systems/simulators`](../../../external-systems/simulators) for the canonical reference (`mock-server.js`, `Dockerfile`).
 - Stub data must reflect the real Test Instance's contract — same shapes, same status codes, same error semantics. Drift between stub and real instance breaks the CT cycle.
-- `@Disabled` removal syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
+- `@Disabled` removal syntax per language: see [language-equivalents/](../code/language-equivalents/README.md).
 
 ## Example
 

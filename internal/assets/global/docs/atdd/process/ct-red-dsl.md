@@ -12,7 +12,7 @@ Replace the `"TODO: DSL"` prototypes left behind by CT - RED - TEST with real DS
 
 ## Conventions
 
-- `"TODO: Driver"` exception string and `@Disabled` syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
+- `"TODO: Driver"` exception string and `@Disabled` syntax per language: see [language-equivalents/](../code/language-equivalents/README.md).
 - Definitions of DSL Interface and External System Driver: see [glossary.md](glossary.md).
 
 ## Example
@@ -34,7 +34,7 @@ Replace the `"TODO: DSL"` prototype with real DSL logic. Driver methods stay as 
 3. Update the External System Driver interfaces as needed.
 4. **Add the Driver stubs the new DSL references.** For every new or changed External System Driver method:
    - Update the Driver interface under `external/`.
-   - Implement a `"TODO: Driver"` not-implemented prototype (see [language-equivalents.md](../code/language-equivalents.md)). Minimum signature only — no behaviour.
+   - Implement a `"TODO: Driver"` not-implemented prototype (see [language-equivalents/](../code/language-equivalents/README.md)). Minimum signature only — no behaviour.
    The result must compile.
 5. Determine whether any interface changes affect files under an `external/` package and set `external_system_driver_interface_changed = yes|no`.
 

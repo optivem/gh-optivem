@@ -13,7 +13,7 @@ Take all change-driven acceptance tests from RED to GREEN by implementing the sy
 
 - When fixing failing acceptance tests, change only the system implementation — never tests, DSL, or Drivers.
 - Legacy-coverage tests live alongside change-driven tests in the same test class (per the ordering rule in [at-red-test.md](at-red-test.md)). Once the cycle is green there is no special handling — they are just tests that pass.
-- `@Disabled` / skip syntax per language: see [language-equivalents.md](../code/language-equivalents.md).
+- `@Disabled` / skip syntax per language: see [language-equivalents/](../code/language-equivalents/README.md).
 
 ## Example
 
