@@ -780,6 +780,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, rs *runState
 				nodeParams[k] = statemachine.ExpandParams(v, ctx.Params)
 			}
 		}
+		tuning, _ := agents.LoadTuning(agentName)
 		cOpts := clauderun.Options{
 			Agent:           agentName,
 			PhaseDoc:        statemachine.ExpandParams(raw.PhaseDoc, ctx.Params),
@@ -798,6 +799,8 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, rs *runState
 			RawPrompt:       replaceText,
 			PromptOverride:  opts.AgentPromptOverrides[agentName],
 			Autonomous:      opts.Autonomous,
+			Model:           tuning.Model,
+			Effort:          tuning.Effort,
 			ShowPrompt:      opts.ShowPrompt,
 			PromptLogPath:   rs.promptLogPath(agentName),
 			RepoPath:        opts.RepoPath,

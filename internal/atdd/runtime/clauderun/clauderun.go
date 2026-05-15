@@ -151,6 +151,21 @@ type Options struct {
 	// When false, run interactively so the operator can observe / interject.
 	Autonomous bool
 
+	// Model, when non-empty, becomes the `--model` flag on the claude
+	// invocation (e.g. "sonnet", "haiku", "opus", or a full model id like
+	// "claude-sonnet-4-6"). Empty → no flag, claude inherits the user's
+	// session default. Per-agent tuning lets mechanical-scaffolding agents
+	// (e.g. atdd-test-at PROTOTYPES) skip the Opus tax that creative agents
+	// (e.g. atdd-fix-verify) actually need.
+	Model string
+
+	// Effort, when non-empty, becomes the `--effort` flag on the claude
+	// invocation (low / medium / high / xhigh / max). Empty → no flag.
+	// Lowering effort caps the per-turn thinking budget — the right knob
+	// for agents that produce many small sequential tool calls, where the
+	// per-call thinking is the dominant token cost.
+	Effort string
+
 	// PromptLogPath, when non-empty, is the file path Dispatch writes the
 	// rendered prompt to (creating parent dirs as needed) before invoking
 	// the runner. The driver computes a per-run-and-dispatch path so the
@@ -192,6 +207,8 @@ type ClaudeRunner interface {
 type RunOpts struct {
 	Prompt     string
 	Autonomous bool
+	Model      string
+	Effort     string
 	Dir        string
 	Stdin      io.Reader
 	Stdout     io.Writer
@@ -306,6 +323,8 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) error {
 	runResult, runErr := deps.Claude.Run(ctx, RunOpts{
 		Prompt:     prompt,
 		Autonomous: opts.Autonomous,
+		Model:      opts.Model,
+		Effort:     opts.Effort,
 		Dir:        opts.RepoPath,
 		Stdin:      opts.Stdin,
 		Stdout:     opts.Stdout,
@@ -908,9 +927,9 @@ const promptArgvLimit = 8000
 // cleanup func. For single-line prompts under promptArgvLimit it returns
 // the prompt verbatim with a no-op cleanup — the historical fast path.
 // Otherwise it writes the prompt to a tempfile in dir and returns a short
-// bootstrap message instructing the agent to read and delete the file
-// (the only viable path on Windows, where the OS argv limit is too low
-// for large prompts and the `claude` CLI exposes no --prompt-file flag).
+// bootstrap message instructing the agent to read the file (the only
+// viable path on Windows, where the OS argv limit is too low for large
+// prompts and the `claude` CLI exposes no --prompt-file flag).
 //
 // Multi-line prompts are forced through the tempfile path regardless of
 // size: on Windows `claude` is a `.cmd` shim, and Go's exec runs `.cmd`
@@ -919,9 +938,9 @@ const promptArgvLimit = 8000
 // rendered WRITE prompt below promptArgvLimit — the agent then received
 // only the first line of a multi-line prompt and reported "no task".
 //
-// The cleanup func is always safe to call. It removes the tempfile if
-// one was created — defensive against the agent forgetting to delete it
-// itself, or the run failing before reaching the deletion instruction.
+// The cleanup func is always safe to call and removes the tempfile if one
+// was created. The dispatcher fires it via `defer`, so the agent does not
+// need to know the tempfile exists past its first Read.
 func materializePrompt(dir, prompt string) (string, func(), error) {
 	if len(prompt) <= promptArgvLimit && !strings.ContainsRune(prompt, '\n') {
 		return prompt, func() {}, nil
@@ -947,10 +966,7 @@ func materializePrompt(dir, prompt string) (string, func(), error) {
 		return "", func() {}, fmt.Errorf("materializePrompt: close tempfile: %w", err)
 	}
 	base := filepath.Base(f.Name())
-	bootstrap := fmt.Sprintf(
-		"Your full instructions are in `%s` in the working directory. As your very first action, read that file with the Read tool and carry out the instructions exactly. Delete `%s` when you finish.",
-		base, base,
-	)
+	bootstrap := fmt.Sprintf("Read `%s` and follow its instructions.", base)
 	cleanup := func() { os.Remove(f.Name()) }
 	return bootstrap, cleanup, nil
 }
@@ -990,7 +1006,9 @@ func runInteractive(ctx context.Context, opts RunOpts) (RunResult, error) {
 		return RunResult{}, err
 	}
 	defer cleanup()
-	cmd := exec.CommandContext(ctx, "claude", arg)
+	args := claudeTuningArgs(opts)
+	args = append(args, arg)
+	cmd := exec.CommandContext(ctx, "claude", args...)
 	if opts.Dir != "" {
 		cmd.Dir = opts.Dir
 	}
@@ -1000,16 +1018,32 @@ func runInteractive(ctx context.Context, opts RunOpts) (RunResult, error) {
 	return RunResult{}, cmd.Run()
 }
 
+// claudeTuningArgs returns the leading per-dispatch tuning flags
+// (`--model`, `--effort`) for the claude CLI. Empty fields are skipped
+// so the CLI inherits the user's session defaults — matching the
+// behaviour before per-agent tuning was added.
+func claudeTuningArgs(opts RunOpts) []string {
+	var args []string
+	if opts.Model != "" {
+		args = append(args, "--model", opts.Model)
+	}
+	if opts.Effort != "" {
+		args = append(args, "--effort", opts.Effort)
+	}
+	return args
+}
+
 func runAutonomous(ctx context.Context, opts RunOpts) (RunResult, error) {
 	arg, cleanup, err := materializePrompt(opts.Dir, opts.Prompt)
 	if err != nil {
 		return RunResult{}, err
 	}
 	defer cleanup()
-	args := []string{
+	args := claudeTuningArgs(opts)
+	args = append(args,
 		"-p", arg,
 		"--output-format", "json",
-	}
+	)
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	if opts.Dir != "" {
 		cmd.Dir = opts.Dir
