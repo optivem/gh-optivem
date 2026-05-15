@@ -67,7 +67,7 @@ func verifyDockerHubAuth(client *http.Client, username, token string) error {
 	var statusCode int
 	var respBody []byte
 	_, retryErr := shell.RetryWithPolicy(
-		shell.SonarRetryTransient(), shell.SonarRetryHardFail(), "dockerhub-retry",
+		shell.RetryTransient(), shell.RetryHardFail(), "dockerhub-retry",
 		func() (string, error) {
 			req, err := http.NewRequest("POST", "https://hub.docker.com/v2/users/login", strings.NewReader(string(body)))
 			if err != nil {
@@ -113,7 +113,7 @@ func verifySonarToken(client *http.Client, token string) error {
 	var statusCode int
 	var respBody []byte
 	_, retryErr := shell.RetryWithPolicy(
-		shell.SonarRetryTransient(), shell.SonarRetryHardFail(), "sonar-retry",
+		shell.RetryTransient(), shell.RetryHardFail(), "sonar-retry",
 		func() (string, error) {
 			req, err := http.NewRequest("GET", "https://sonarcloud.io/api/authentication/validate", nil)
 			if err != nil {
@@ -173,7 +173,7 @@ func githubUserAuthCheck(client *http.Client, token string) (*http.Response, err
 		var hdrs http.Header
 		var respBody []byte
 		_, retryErr := shell.RetryWithPolicy(
-			shell.SonarRetryTransient(), shell.SonarRetryHardFail(), "github-auth-retry",
+			shell.RetryTransient(), shell.RetryHardFail(), "github-auth-retry",
 			func() (string, error) {
 				req, err := http.NewRequest("GET", "https://api.github.com/user", nil)
 				if err != nil {

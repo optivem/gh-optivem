@@ -7,11 +7,11 @@ import (
 	"time"
 )
 
-// TestRetryWithPolicy exercises the regex-driven public engine that
-// tool-specific Go wrappers (future sonar / docker callers) plug into.
-// The gh path uses runWithRetryLoop + classifyGHError directly because rate-
-// limit pass-through needs typed-error inspection, so this test file
-// focuses on the pure regex shape.
+// TestRetryWithPolicy exercises the regex-driven public engine that callers
+// in sibling packages (internal/sonar, internal/config) plug into. The gh
+// path uses runWithRetryLoop + classifyError directly because rate-limit
+// pass-through needs typed-error inspection, so this test file focuses on
+// the pure regex shape.
 func TestRetryWithPolicy(t *testing.T) {
 	transient := regexp.MustCompile(`(?i)Error 5[0-9][0-9]|timeout`)
 	hardFail := regexp.MustCompile(`(?i)Error 4[0-9][0-9]|unauthorized`)
