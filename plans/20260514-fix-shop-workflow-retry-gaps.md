@@ -13,6 +13,8 @@ These resolve multiple consumer-workflow findings at one source-of-truth change.
 
 ### Item 9 — `shop/.github/workflows/monolith-typescript-commit-stage.yml :: run :: step "Run Code Analysis" line 130`
 
+⏳ **Deferred (2026-05-15)**: upstream-retry check done — `sonarqube-scan-action@v7` has no documented retry. But the plan's prescription calls `sonar-scanner` directly, and the binary is not installed on the runner (the upstream action ships and runs it internally). Need a decision on how to install/invoke it: (a) `npx sonarqube-scanner`, (b) download the sonar-scanner-cli tarball + add to PATH, (c) add a per-project `run-sonar.sh` like the acceptance-stage uses, or (d) wrap the existing `SonarSource/sonarqube-scan-action@v7` step with `nick-fields/retry@v4` (mirrors Item 18's pattern; loses sonar-retry.sh's transient-vs-hard-fail policy but no install needed). Re-attempt after the user picks one.
+
 Replace the `SonarSource/sonarqube-scan-action@v7` step with an inline `run:` that sources `sonar-retry.sh` and invokes the scanner. **Precondition:** decide first whether `sonarqube-scan-action@v7` already has internal retry semantics — check upstream changelog. If yes, mark R-DOC-OK with a comment at the call site and **skip Item 9** (and Items 10, 11). If no, proceed with:
 
 ```yaml
@@ -36,9 +38,13 @@ Replace the `SonarSource/sonarqube-scan-action@v7` step with an inline `run:` th
 
 ### Item 10 — `shop/.github/workflows/multitier-backend-typescript-commit-stage.yml :: run :: step "Run Code Analysis" line 130`
 
+⏳ **Deferred (2026-05-15)**: blocked by Item 9 decision.
+
 Same swap as Item 9, projectKey `optivem_shop-multitier-backend-typescript`. (N-C.4)
 
 ### Item 11 — `shop/.github/workflows/multitier-frontend-react-commit-stage.yml :: run :: step "Run Code Analysis" line 131`
+
+⏳ **Deferred (2026-05-15)**: blocked by Item 9 decision.
 
 Same swap as Item 9, projectKey `optivem_shop-multitier-frontend-react`. (N-C.4)
 
@@ -99,70 +105,6 @@ Same swap, same image list pattern, in each sibling. (N-C.3)
 
 ---
 
-## Tier 3 — leaf workflow fixes
-
-Discrete single-line swaps. Lowest blast radius per fix, but each is genuinely missing retry coverage.
-
-### Item 16 — Bulk-replace `gh extension install optivem/gh-optivem` (16 sites)
-
-Replace each unwrapped invocation with an inline `run: bash` block that sources `gh-retry.sh` and invokes `gh_retry extension install optivem/gh-optivem`. Sites:
-
-- `shop/.github/workflows/_prerelease-pipeline.yml :: smoke :: step "Install gh-optivem CLI extension" line 194`
-- `shop/.github/workflows/cross-lang-system-verification.yml :: cross-lang :: step "Install gh-optivem CLI extension" line 144`
-- `shop/.github/workflows/drift.yml :: drift / drift-typescript :: steps "Install gh-optivem CLI extension" lines 108, 295`
-- `shop/.github/workflows/monolith-dotnet-acceptance-stage.yml :: run :: step "Install gh-optivem CLI extension" line 280`
-- `shop/.github/workflows/monolith-dotnet-acceptance-stage-legacy.yml :: run :: step "Install gh-optivem CLI extension" line 244`
-- `shop/.github/workflows/monolith-java-acceptance-stage.yml :: run :: step "Install gh-optivem CLI extension" line 277`
-- `shop/.github/workflows/monolith-java-acceptance-stage-legacy.yml :: run :: step "Install gh-optivem CLI extension" line 244`
-- `shop/.github/workflows/monolith-typescript-acceptance-stage.yml :: run :: step "Install gh-optivem CLI extension" line 266`
-- `shop/.github/workflows/monolith-typescript-acceptance-stage-legacy.yml :: run :: step "Install gh-optivem CLI extension" line 235`
-- `shop/.github/workflows/multitier-dotnet-acceptance-stage.yml :: run :: step "Install gh-optivem CLI extension" line 285`
-- `shop/.github/workflows/multitier-dotnet-acceptance-stage-legacy.yml :: run :: step "Install gh-optivem CLI extension" line 250`
-- `shop/.github/workflows/multitier-java-acceptance-stage.yml :: run :: step "Install gh-optivem CLI extension" line 282`
-- `shop/.github/workflows/multitier-java-acceptance-stage-legacy.yml :: run :: step "Install gh-optivem CLI extension" line 250`
-- `shop/.github/workflows/multitier-typescript-acceptance-stage.yml :: run :: step "Install gh-optivem CLI extension" line 271`
-- `shop/.github/workflows/multitier-typescript-acceptance-stage-legacy.yml :: run :: step "Install gh-optivem CLI extension" line 241`
-
-Replacement shape (per site):
-
-```yaml
-- name: Install gh-optivem CLI extension
-  shell: bash
-  env:
-    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  run: |
-    set -euo pipefail
-    source "$GITHUB_WORKSPACE/.github/workflows/scripts/gh-retry.sh"
-    gh_retry extension install optivem/gh-optivem
-```
-
-Sufficiently mechanical that a single PR with `sed`-driven changes is reasonable. (N-A.1)
-
-### Item 17 — `shop/.github/workflows/bump-patch-version-multirepo.yml :: dispatch :: step "Dispatch sibling bumpers" line 43`
-
-Replace `gh workflow run bump-patch-version.yml --repo "$repo"` (inside the `for repo in $siblings; do ... done` loop) with `gh_retry workflow run bump-patch-version.yml --repo "$repo"`. Source `gh-retry.sh` at the top of the `run:` body. The intentional cross-repo `--repo` flag stays (it's not a §1-B finding — the dispatch is per-sibling-repo, not against `${{ github.repository }}`). (N-A.2)
-
-### Item 18 — `shop/.github/workflows/lint-workflows.yml :: actionlint :: step "Install actionlint" line 28-32`
-
-Wrap the `curl` install in a retry. The smallest correct change is to switch to `nick-fields/retry@v4`:
-
-```yaml
-- name: Install actionlint
-  uses: nick-fields/retry@v4
-  with:
-    max_attempts: 4
-    timeout_minutes: 1
-    retry_wait_seconds: 5
-    polling_interval_seconds: 0
-    command: |
-      bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
-      ./actionlint --version
-```
-
-The 4×{5,15,45} schedule isn't directly expressible in `nick-fields/retry@v4` (it uses constant `retry_wait_seconds`), so a flat 5s × 4 is the closest practical match — acceptable for a non-release-path step. Long-term, see if a future `optivem/actions/curl-retry@v1` is worth introducing. (N-B.6)
-
----
-
 ## Tier 4 — deferred / verify-only
 
 ### Item 19 — Verify `google-github-actions/*@v3` internal retry semantics
@@ -178,18 +120,16 @@ The `npm ci` / `./gradlew build` (which transitively triggers dependency resolut
 ## Dependencies between items
 
 ```
-Items 9, 10, 11 (typescript Sonar) — gated on upstream-retry verification of `sonarqube-scan-action@v7`
+Items 9, 10, 11 (typescript Sonar) — ⏳ deferred on install-step decision (see Item 9)
 
 Item 12 (docker-login@v1 composite)
   → Item 13 (51 workflow files migrated)
 
 Item 14 (one commit-stage docker pull loop) — independent; docker-retry.sh exists
   → Item 15 (6 sibling commit-stages — same swap)
-
-Items 16, 17, 18 — independent leaf-workflow fixes; can land in parallel
 ```
 
-Items 12, 14, 16, 17, 18 can begin in parallel. Item 15 is a mechanical follow-up to 14. Item 13 is gated on Item 12. Items 9-11 are gated on upstream verification.
+Items 12 and 14 can begin in parallel. Item 15 is a mechanical follow-up to 14. Item 13 is gated on Item 12. Items 9-11 are deferred pending an Item 9 install-step decision.
 
 ---
 
