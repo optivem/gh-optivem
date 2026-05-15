@@ -44,7 +44,6 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/actions"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/clauderun"
-	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/gates"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
@@ -53,6 +52,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/factory"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/verify"
 	"github.com/optivem/gh-optivem/internal/files"
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/promptio"
 )
 
@@ -466,9 +466,10 @@ func orPlaceholder(s, placeholder string) string {
 //
 // State (not Params) is the right destination: these four facts are
 // project-scoped and stable for the entire run, alongside issue_title /
-// ticket_checklist (also written via Set). The dispatcher reads them
-// back via ctx.GetString, which is a State lookup — writing to Params
-// would silently expand to "" at substitution time.
+// ticket_checklist / ticket_acceptance_criteria (also written via Set).
+// The dispatcher reads them back via ctx.GetString, which is a State
+// lookup — writing to Params would silently expand to "" at substitution
+// time.
 func seedScopeState(sCtx *statemachine.Context, cfg *projectconfig.Config) {
 	if cfg == nil {
 		return
@@ -785,31 +786,32 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, rs *runState
 			return statemachine.Outcome{Err: fmt.Errorf("dispatcher: load tuning for %q: %w", agentName, err)}
 		}
 		cOpts := clauderun.Options{
-			Agent:           agentName,
-			PhaseDoc:        statemachine.ExpandParams(raw.PhaseDoc, ctx.Params),
-			NodeDescription: statemachine.ExpandParams(raw.Documentation, ctx.Params),
-			IssueNum:        issueNum,
-			IssueTitle:      ctx.GetString("issue_title"),
-			Architecture:    ctx.GetString("architecture"),
-			Subtype:         ctx.GetString("subtype"),
-			Language:        ctx.GetString("language"),
-			AllowedRoots:    ctx.GetString("allowed_roots"),
-			Checklist:       ctx.GetString("ticket_checklist"),
-			VerifyResults:   ctx.GetString("verify_results_text"),
-			ChangedFiles:    fixVerifyChangedFiles(agentName, opts.RepoPath),
-			NodeParams:      nodeParams,
-			OverrideText:    extraText,
-			RawPrompt:       replaceText,
-			PromptOverride:  opts.AgentPromptOverrides[agentName],
-			Autonomous:      opts.Autonomous,
-			Model:           tuning.Model,
-			Effort:          tuning.Effort,
-			ShowPrompt:      opts.ShowPrompt,
-			PromptLogPath:   rs.promptLogPath(agentName),
-			RepoPath:        opts.RepoPath,
-			Stdout:          opts.Stdout,
-			Stderr:          opts.Stderr,
-			Stdin:           opts.Stdin,
+			Agent:              agentName,
+			PhaseDoc:           statemachine.ExpandParams(raw.PhaseDoc, ctx.Params),
+			NodeDescription:    statemachine.ExpandParams(raw.Documentation, ctx.Params),
+			IssueNum:           issueNum,
+			IssueTitle:         ctx.GetString("issue_title"),
+			Architecture:       ctx.GetString("architecture"),
+			Subtype:            ctx.GetString("subtype"),
+			Language:           ctx.GetString("language"),
+			AllowedRoots:       ctx.GetString("allowed_roots"),
+			Checklist:          ctx.GetString("ticket_checklist"),
+			AcceptanceCriteria: ctx.GetString("ticket_acceptance_criteria"),
+			VerifyResults:      ctx.GetString("verify_results_text"),
+			ChangedFiles:       fixVerifyChangedFiles(agentName, opts.RepoPath),
+			NodeParams:         nodeParams,
+			OverrideText:       extraText,
+			RawPrompt:          replaceText,
+			PromptOverride:     opts.AgentPromptOverrides[agentName],
+			Autonomous:         opts.Autonomous,
+			Model:              tuning.Model,
+			Effort:             tuning.Effort,
+			ShowPrompt:         opts.ShowPrompt,
+			PromptLogPath:      rs.promptLogPath(agentName),
+			RepoPath:           opts.RepoPath,
+			Stdout:             opts.Stdout,
+			Stderr:             opts.Stderr,
+			Stdin:              opts.Stdin,
 		}
 
 		if err := clauderun.Dispatch(context.Background(), opts.ClaudeRunDeps, cOpts); err != nil {

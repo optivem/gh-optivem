@@ -123,6 +123,10 @@ func newOpts() Options {
 		// The stripped prompts reference ${language} in the language-
 		// equivalents pointer; seed a default so tests don't have to.
 		Language: "java",
+		// atdd-test-at.md references ${acceptance_criteria}; seed a
+		// default so dispatch tests using this scaffold render cleanly.
+		// Tests that exercise the unset/load-bearing path override this.
+		AcceptanceCriteria: "Scenario: placeholder\n  Given x\n  When y\n  Then z",
 		// Discard banners so test output stays clean.
 		Stdout: io.Discard,
 		Stderr: io.Discard,
@@ -314,6 +318,48 @@ func TestRenderPrompt_LanguageSubstitutes(t *testing.T) {
 	}
 	if !strings.Contains(got, "language-equivalents/go.md") {
 		t.Errorf("expected ${language} resolved to 'go'; got: %q", got)
+	}
+}
+
+// TestRenderPrompt_AcceptanceCriteriaSubstitutes covers the
+// ${acceptance_criteria} placeholder that lets atdd-test-at consume the
+// scenarios intake parsed from the ticket body without re-fetching the
+// issue via `gh issue view`.
+func TestRenderPrompt_AcceptanceCriteriaSubstitutes(t *testing.T) {
+	opts := newOpts()
+	opts.AcceptanceCriteria = "Scenario: View product list\n  Given the catalog has products\n  When I open the product list page\n  Then I see them"
+	opts.PromptOverride = "Scenarios:\n${acceptance_criteria}"
+
+	got, err := renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt: %v", err)
+	}
+	if strings.Contains(got, "${acceptance_criteria}") {
+		t.Errorf("expected ${acceptance_criteria} substituted; got: %q", got)
+	}
+	if !strings.Contains(got, "View product list") {
+		t.Errorf("expected scenario body in rendered prompt; got: %q", got)
+	}
+}
+
+// TestRenderPrompt_UnsetAcceptanceCriteriaFailsFast pins the load-bearing
+// contract: a prompt that references ${acceptance_criteria} with no value
+// set produces a clear render-time error rather than silently substituting
+// an empty block. AT - RED - TEST is contractually scoped to implementing
+// AC, so an absent value is a wiring bug, not a valid state.
+func TestRenderPrompt_UnsetAcceptanceCriteriaFailsFast(t *testing.T) {
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	opts := newOpts()
+	opts.AcceptanceCriteria = "" // override the test default
+	opts.PromptOverride = "You are the Test Agent. Scenarios:\n${acceptance_criteria}"
+	err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
+	if err == nil {
+		t.Fatalf("expected error for unset ${acceptance_criteria}, got nil")
+	}
+	if !strings.Contains(err.Error(), "acceptance_criteria") {
+		t.Errorf("expected error to name 'acceptance_criteria'; got: %v", err)
 	}
 }
 

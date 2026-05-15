@@ -386,13 +386,17 @@ func (a actions) readSubtype(ctx *statemachine.Context) statemachine.Outcome {
 // Issue-Form-enforced headings, and validates the required-section set
 // for the ticket's type.
 //
-// Sets three Context fields the downstream flow consumes:
+// Sets four Context fields the downstream flow consumes:
 //   - parse_ok: boolean, drives GATE_PARSE_OK.
 //   - legacy_acceptance_criteria_section_present: boolean, drives the
 //     existing run_legacy_cycle gate.
 //   - ticket_checklist: string, the parsed Checklist body — handed to the
 //     task agent via clauderun.Options.Checklist so it doesn't have to
 //     re-fetch the issue.
+//   - ticket_acceptance_criteria: string, the parsed Acceptance Criteria
+//     body — handed to atdd-test-at via clauderun.Options.AcceptanceCriteria
+//     so the AT - RED - TEST agent doesn't have to shell out to
+//     `gh issue view` to read scenarios intake already extracted.
 //
 // On parse failure (missing required section), parse_ok is set to false
 // and the gateway routes to STOP_PARSE_ERROR. Resolution is "fix the
@@ -423,6 +427,7 @@ func (a actions) parseTicketBody(ctx *statemachine.Context) statemachine.Outcome
 	ctx.Set("parse_ok", true)
 	ctx.Set("legacy_acceptance_criteria_section_present", result.LegacyAcceptanceCriteria.Found)
 	ctx.Set("ticket_checklist", result.Checklist.Body)
+	ctx.Set("ticket_acceptance_criteria", result.AcceptanceCriteria.Body)
 	ctx.Set("parsed_section_names", parsedSectionNames(result))
 	if ct := deriveChangeType(ticketType, ctx.GetString("subtype")); ct != "" {
 		ctx.Set("change_type", ct)
@@ -776,8 +781,8 @@ func isCompileFailureOutput(out []byte) bool {
 		"compilation failed",
 		"compile error",
 		"cannot find symbol",
-		"error cs",     // C# compiler error code prefix (e.g. "error CS0103")
-		"error ts",     // TS compiler error code prefix (e.g. "error TS2304")
+		"error cs", // C# compiler error code prefix (e.g. "error CS0103")
+		"error ts", // TS compiler error code prefix (e.g. "error TS2304")
 		"syntax error",
 	} {
 		if strings.Contains(s, marker) {
@@ -802,7 +807,7 @@ func isCompileFailureOutput(out []byte) bool {
 //
 // Each target produces:
 //
-//   ./disable-test.sh <language> "<reason>" <file>:<method>
+//	./disable-test.sh <language> "<reason>" <file>:<method>
 //
 // First failure halts the action with Outcome.Err — committing a partially
 // disabled test set would leave the repo in an inconsistent state.
@@ -1004,13 +1009,13 @@ func (a actions) startSystem(ctx *statemachine.Context) statemachine.Outcome {
 //
 // Prompts (inline path):
 //
-//   1. "Run system tests?" (y/n via promptio)
-//        - n → record nothing, advance
-//        - y → fall through to scope prompt
-//   2. "Scope?" (one of):
-//        [a] all system tests           — `gh optivem test run`
-//        [s] some suites                — pick suite ids, run each whole
-//        [p] specific tests in a suite  — pick a suite, type test names
+//  1. "Run system tests?" (y/n via promptio)
+//     - n → record nothing, advance
+//     - y → fall through to scope prompt
+//  2. "Scope?" (one of):
+//     [a] all system tests           — `gh optivem test run`
+//     [s] some suites                — pick suite ids, run each whole
+//     [p] specific tests in a suite  — pick a suite, type test names
 //
 // Operator-driven halt is via Ctrl+C; there is no in-prompt reject option.
 // Suite ids come from `gh optivem test run --list`, so the menu is

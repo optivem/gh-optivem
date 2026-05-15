@@ -165,6 +165,11 @@ func newCtxWithIssue() *statemachine.Context {
 	// cfg in production. Seed a default here so test fixtures don't have
 	// to thread the config through.
 	c.Set("language", "java")
+	// atdd-test-at references ${acceptance_criteria}; parseTicketBody would
+	// set it from intake.Result.AcceptanceCriteria.Body in production. Seed
+	// a default here so dispatch fixtures don't have to thread a parsed
+	// ticket body through.
+	c.Set("ticket_acceptance_criteria", "Scenario: placeholder\n  Given x\n  When y\n  Then z")
 	return c
 }
 

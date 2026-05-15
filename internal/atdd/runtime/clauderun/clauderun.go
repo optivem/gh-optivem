@@ -89,6 +89,19 @@ type Options struct {
 	// Checklist (e.g. story / bug intake).
 	Checklist string
 
+	// AcceptanceCriteria is the body of the ticket's Acceptance Criteria
+	// section as parsed by intake.Parse. Surfaced to the agent prompt via
+	// the ${acceptance_criteria} placeholder so atdd-test-at can read the
+	// scenarios intake already extracted instead of shelling out to
+	// `gh issue view`. Load-bearing: when empty AND the prompt body
+	// references ${acceptance_criteria}, findUnfilledPlaceholders fails
+	// the dispatch fast — AT - RED - TEST is contractually scoped to
+	// implementing AC, so an absent value is a wiring bug, not a valid
+	// state. Mirrors the ${language} pattern: only registered when
+	// non-empty so the unfilled-placeholder check is the single
+	// enforcement point.
+	AcceptanceCriteria string
+
 	// VerifyResults is the formatted block describing every red-class
 	// verifyCommandResult the most recent RUN_TESTS produced.
 	// Substituted into atdd-fix-verify's ${verify_results} placeholder so
@@ -372,7 +385,6 @@ var nowFn = time.Now
 // correct behaviour because it isn't a placeholder.
 var unfilledPlaceholderRE = regexp.MustCompile(`\$\{[a-zA-Z_][a-zA-Z0-9_]*\}`)
 
-
 // findUnfilledPlaceholders returns each distinct `${name}` token still
 // present in the rendered prompt, preserving first-seen order. Empty
 // slice means "no leftovers — every placeholder was substituted".
@@ -455,6 +467,12 @@ func renderPrompt(opts Options) (string, error) {
 	// reports it after substitution.
 	if opts.Language != "" {
 		params["language"] = opts.Language
+	}
+	// AcceptanceCriteria is load-bearing for atdd-test-at — same rationale
+	// as Language. Only registered when non-empty so an absent value
+	// surfaces via findUnfilledPlaceholders rather than substituting "".
+	if opts.AcceptanceCriteria != "" {
+		params["acceptance_criteria"] = opts.AcceptanceCriteria
 	}
 	rendered := statemachine.ExpandParams(body, params)
 	if opts.OverrideText != "" {

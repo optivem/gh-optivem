@@ -515,6 +515,10 @@ func TestParseTicketBody_StorySuccess(t *testing.T) {
 	if got := ctx.GetString("ticket_checklist"); got != "" {
 		t.Fatalf("ticket_checklist: got %q, want empty (story has no Checklist section)", got)
 	}
+	wantAC := "Scenario: ok\n  Given x\n  When y\n  Then z"
+	if got := ctx.GetString("ticket_acceptance_criteria"); got != wantAC {
+		t.Fatalf("ticket_acceptance_criteria: got %q, want %q", got, wantAC)
+	}
 }
 
 func TestParseTicketBody_TaskSuccessPopulatesChecklist(t *testing.T) {
@@ -545,6 +549,9 @@ func TestParseTicketBody_TaskSuccessPopulatesChecklist(t *testing.T) {
 	}
 	if got := ctx.GetString("ticket_checklist"); got != checklist {
 		t.Fatalf("ticket_checklist: got %q, want %q", got, checklist)
+	}
+	if got := ctx.GetString("ticket_acceptance_criteria"); got != "" {
+		t.Fatalf("ticket_acceptance_criteria: got %q, want empty (task has no AC section)", got)
 	}
 	wantLines := []string{
 		"Parsed #61 (task): all required sections present.",
@@ -1458,9 +1465,9 @@ func TestRunTargetedTests_MixedRuntimeAndCompileWritesFalse(t *testing.T) {
 
 func TestDisableChangeDriven_RequiresAllInputs(t *testing.T) {
 	for _, tc := range []struct {
-		name        string
-		setup       func(*statemachine.Context)
-		wantSubstr  string
+		name       string
+		setup      func(*statemachine.Context)
+		wantSubstr string
 	}{
 		{
 			name:       "no_language",
@@ -1887,4 +1894,3 @@ func TestVerifyRealSuitePasses_AnyFailWritesFalse(t *testing.T) {
 		t.Fatalf("got %d calls, want 2 (action runs every test even after a failure): %v", len(sh.calls), sh.calls)
 	}
 }
-
