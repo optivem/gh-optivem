@@ -1,6 +1,6 @@
 # Architecture YAML generator + drop diagram-phase-details
 
-Status: draft (OQ1 resolved 2026-05-15; OQ2–OQ4 unresolved)
+Status: ready (all open questions resolved 2026-05-15)
 Author: claude (conversation 2026-05-15)
 
 ## Background
@@ -29,70 +29,47 @@ Separately, gh-optivem already has a YAML-driven code generator for its own runt
 
 ## Open questions (resolve before coding)
 
-### OQ1. Output path for the rendered architecture diagram
+### OQ1. Output path for the rendered architecture diagram — RESOLVED
 
-The current file lives at `internal/assets/global/docs/atdd/architecture/diagram-architecture.md` (scaffold tree — copied into each student repo). The conversation that produced this plan used the phrase `docs/architecture-diagram.md`, which would put it in gh-optivem's own `docs/`. But the diagram describes the **student repo's** ATDD architecture (DSL Port stages, Driver Adapter shop/external split, System backends), not gh-optivem's own runtime.
+**Decision: option (B).** Output lives at `docs/architecture-diagram.md` in gh-optivem's own docs, alongside `docs/process-diagram.md`. Both generated diagrams describe what gh-optivem owns (the runtime orchestration; the architecture pattern its scaffolded repos follow). Symmetric source-of-truth location.
 
-Options:
+Follow-on consequences:
+- The existing `internal/assets/global/docs/atdd/architecture/diagram-architecture.md` is **deleted** from the scaffold tree as part of this plan. Otherwise students would carry a stale frozen copy.
+- The per-layer prose docs (`driver-adapter.md`, `dsl-port.md`, `dsl-core.md`, `driver-port.md`, `system.md`, `test.md`) **stay** in the scaffold tree — students need them locally to follow the cycle.
+- The scaffold-tree `architecture/README.md` (if one exists) or the student-repo top-level README should link to the gh-optivem diagram on github.com. Mirrors how cycle-level orchestration is referenced today.
 
-- **(A) Keep in scaffold tree only.** Output stays at `internal/assets/global/docs/atdd/architecture/diagram-architecture.md`. Students see it in their repo; gh-optivem's own docs do not duplicate it.
-- **(B) Move to gh-optivem docs.** Output at `docs/architecture-diagram.md`. Remove from scaffold tree. Students follow a link to gh-optivem to see the diagram (mirrors how cycle-level orchestration is handled today).
-- **(C) Both.** Render once into gh-optivem's `docs/`, then copy/symlink/regenerate into the scaffold tree. Two writes per regeneration.
+### OQ2. Where does `architecture.yaml` live? — RESOLVED
 
-Recommendation: **(A)** — the diagram is student-facing content describing the student's own repo; keeping it in the scaffold tree matches what's there today and avoids the cross-repo link.
+**Decision: option (A).** A new sibling package `internal/atdd/runtime/architecture/` carrying:
+- `architecture.yaml` (canonical input, `go:embed`-ed)
+- `architecture.go` (renderer)
+- `architecture_test.go` (golden test)
 
-### OQ2. Where does `architecture.yaml` live?
+Mirrors `internal/atdd/runtime/statemachine/` + `internal/atdd/runtime/diagram/` 1:1. Keeps the architecture concern out of the existing `diagram/` package, which is tightly bound to the statemachine package.
 
-Options:
+### OQ3. YAML schema — RESOLVED
 
-- **(A) `internal/atdd/runtime/architecture/architecture.yaml`** — mirrors `internal/atdd/runtime/statemachine/process-flow.yaml`. gh-optivem owns it as canonical input; the renderer reads it via `go:embed` like the statemachine does.
-- **(B) `internal/assets/global/docs/atdd/architecture/architecture.yaml`** — lives next to its output. But then it's also scaffolded into student repos as a YAML file with no consumer there, which is confusing.
-- **(C) `internal/atdd/runtime/diagram/architecture.yaml`** — co-located with the renderer.
-
-Recommendation: **(A)**, for symmetry with `process-flow.yaml`.
-
-### OQ3. YAML schema
-
-The current file has 7 sub-diagrams that share a common shape: heading + node list + edge list, with three edge styles:
-
-- directional: `A --> B`
-- undirected: `A --- B`
-- labeled directional: `A -->|label| B`
-
-Some nodes are cross-section references (`DSL Port — see § DSL Port`). Some labels contain arbitrary text (`withFieldName method`, `ShopApiClient`).
-
-Proposed schema:
+**Decision: proposed schema as shown.** Sections carry `name`, `direction` (default `TD`), `nodes`, `edges`. Three edge styles: directional (`-->`), undirected (`---`), labeled-directional (`-->|label|`). Labeled-undirected is not needed (the current file uses none). Nodes carry `id` + `label` + optional `ref` (cross-section link). Section / node / edge declaration order is render order — deterministic. No node typing, no groups, no inheritance.
 
 ```yaml
 sections:
-  - name: overview              # heading "Overview" / "Test" / "DSL Port" / ...
-    direction: TD               # mermaid flowchart direction (default TD)
+  - name: overview
+    direction: TD
     nodes:
       - id: TEST
         label: Test Files
       - id: DSL_PORT
         label: DSL Port
-        ref: dsl_port           # marks as cross-section ref; renders as "DSL Port — see § DSL Port"
+        ref: dsl_port           # renders as "DSL Port — see § DSL Port"
     edges:
-      - {from: TEST, to: DSL_PORT}                            # directional
-      - {from: GIVEN_STAGE, to: WITH_STRING, style: undirected}
-      - {from: GIVEN_STAGE, to: WHEN_STAGE, label: when}      # labeled directional
+      - {from: TEST, to: DSL_PORT}                          # -->
+      - {from: GIVEN_STAGE, to: WITH_STRING, style: undirected}  # ---
+      - {from: GIVEN_STAGE, to: WHEN_STAGE, label: when}    # -->|when|
 ```
 
-Order of `sections:`, `nodes:`, `edges:` is the render order — deterministic.
+### OQ4. CLI surface — RESOLVED
 
-Recommendation: above schema. Keep it boring; no inheritance, no node-typing (architecture diagrams don't need BPMN-style executor coloring), no groups.
-
-### OQ4. CLI surface
-
-Existing pattern: `gh optivem process show > docs/process-diagram.md` (defined in `process_commands.go`).
-
-Options:
-
-- **(A) `gh optivem architecture show`** — new top-level command, parallels `process show`.
-- **(B) `gh optivem diagram show <name>`** — generalized; would also subsume the existing process diagram.
-
-Recommendation: **(A)** for now — symmetry with the existing command, no breaking change to `process show`. A future generalization is cheap if we add a third diagram.
+**Decision: `gh optivem architecture show`.** New top-level subcommand parallel to `gh optivem process show`. No breaking change. Workflow line: `go run . architecture show > docs/architecture-diagram.md`. A future generalization to `gh optivem diagram show <name>` is cheap if a third diagram appears.
 
 ## Plan
 
@@ -100,7 +77,7 @@ Each step is independently committable. Validation column states how to verify b
 
 | # | Step | Validation |
 |---|------|------------|
-| 1 | Resolve OQ1–OQ4 (user decision). | Plan updated; this section marked Resolved. |
+| 1 | ~~Resolve OQ1–OQ4 (user decision).~~ **Done 2026-05-15.** | Plan updated; OQ sections marked Resolved. |
 | 2 | Translate the current `diagram-architecture.md` into `architecture.yaml` by hand. Keep node IDs, labels, and edge styles verbatim. | YAML parses; node and edge counts match the current file section-by-section (eyeball diff). |
 | 3 | Add a golden test: parse `architecture.yaml`, render Mermaid, compare against the existing committed `diagram-architecture.md`. | Test passes on the first run. If it doesn't, the schema (OQ3) is wrong — iterate before writing the renderer. |
 | 4 | Implement the renderer at `internal/atdd/runtime/architecture/architecture.go` (or wherever OQ2 lands). Mirror `internal/atdd/runtime/diagram/diagram.go` — per-section writers, deterministic ordering, helpers for the three edge styles. | Golden test still passes. `go test ./...` clean (use `-p 2` per memory rule). |
@@ -120,16 +97,20 @@ New:
 - `.github/workflows/regenerate-architecture-diagram.yml`
 - `architecture_commands.go` (CLI wiring) — or extension of an existing commands file
 
+New (output):
+- `docs/architecture-diagram.md` — generated, alongside `docs/process-diagram.md`
+
 Modified:
-- `internal/assets/global/docs/atdd/architecture/diagram-architecture.md` — header updated to reference the new generator (likely otherwise byte-identical)
 - `.claude/agents/atdd/meta/diagram-content-editor.md`
 - `.claude/agents/atdd/meta/diagram-tweaker.md`
 - `.claude/agents/atdd/meta/token-usage-audit.md`
 - `.claude/agents/atdd/meta/process-audit.md`
 - `.claude/agents/atdd/meta/architecture-sync.md`
+- A scaffold-tree README or student-repo top-level README link (per OQ1 follow-on) — TBD which file
 
 Deleted:
 - `internal/assets/global/docs/atdd/process/diagram-phase-details.md`
+- `internal/assets/global/docs/atdd/architecture/diagram-architecture.md` (per OQ1 — moved to gh-optivem's docs)
 
 ## Risks
 
