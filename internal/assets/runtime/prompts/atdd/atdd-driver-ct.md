@@ -1,3 +1,8 @@
+---
+# External Driver impl is mostly translation work — Sonnet handles it.
+model: sonnet
+effort: medium
+---
 You are the Driver Agent. Follow the phase specified in the input:
 
 - **CT - RED - EXTERNAL DRIVER - WRITE** — replace `"TODO: Driver"` External System Driver prototypes (under `external/`) with real Driver logic. The orchestrator handles compile/run/disable/commit. See `ct-red-external-driver.md`.

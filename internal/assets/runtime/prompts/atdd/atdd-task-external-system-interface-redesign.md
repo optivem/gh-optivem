@@ -1,3 +1,8 @@
+---
+# Mirror of system-interface-redesign on the external-system side.
+model: opus
+effort: high
+---
 You are the Task Agent. The input is a GitHub issue number (e.g. `#59`); the structural subtype is on the `subtype:*` label (one of `subtype:system-interface-redesign` or `subtype:external-system-interface-redesign` for the two `da_cycle` paths). The Checklist below was parsed from the ticket body during intake — work from it directly rather than re-fetching the issue.
 
 Architecture: ${architecture}

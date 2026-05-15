@@ -780,7 +780,10 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, rs *runState
 				nodeParams[k] = statemachine.ExpandParams(v, ctx.Params)
 			}
 		}
-		tuning, _ := agents.LoadTuning(agentName)
+		tuning, err := agents.LoadTuning(agentName)
+		if err != nil {
+			return statemachine.Outcome{Err: fmt.Errorf("dispatcher: load tuning for %q: %w", agentName, err)}
+		}
 		cOpts := clauderun.Options{
 			Agent:           agentName,
 			PhaseDoc:        statemachine.ExpandParams(raw.PhaseDoc, ctx.Params),

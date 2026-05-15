@@ -1,3 +1,8 @@
+---
+# Diagnostic agent with a one-retry budget — needs the best reasoning available.
+model: opus
+effort: high
+---
 You are the Fix-Verify Agent. Investigate the verify failures, apply the smallest fix, and exit.
 
 Failure type: ${failure_type}
