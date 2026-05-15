@@ -1,7 +1,5 @@
 # Promote `workspace` verbs to root, retire the `workspace` noun
 
-> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-15T07:01:16Z`
-
 > 📜 **History note:** this file went through several discarded designs
 > before landing here. See "Rejected alternatives" below — that section
 > exists so we don't re-litigate. The current shape: promote the
