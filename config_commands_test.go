@@ -831,11 +831,22 @@ func TestRunConfigMigrate_BackfillsReposForMultiRepoMultitier(t *testing.T) {
 // configs are left untouched on the repos: front — they already work
 // via the single-repo cascade row. The function still reports
 // changed=false (no other field needed back-filling either).
+//
+// Body extends monoRepoMonolithBody with a fully-populated paths:
+// block so the unrelated paths back-fill (Family B Item 3) doesn't
+// pollute this test's signal — the assertion is repos-specific.
 func TestRunConfigMigrate_SkipsReposForMonoRepo(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, projectconfig.Path)
-	if err := os.WriteFile(path, []byte(monoRepoMonolithBody), 0o644); err != nil {
+	body := monoRepoMonolithBody + `
+paths:
+  driver_port: system-test/java/src/main/java/testkit/driver/port
+  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
+  external_driver_port: system-test/java/src/main/java/testkit/external/port
+  external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	before, _ := os.ReadFile(path)
@@ -917,10 +928,19 @@ func TestRunConfigMigrate_RespectsExistingRepos(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, projectconfig.Path)
+	// Adds a fully-populated paths: block alongside the custom repos
+	// list so the Family B back-fill (Item 3) doesn't pollute the
+	// no-op assertion — this test is scoped to the repos: front.
 	body := multiRepoMultitierBody + `
 repos:
   - path: ./custom-backend
   - path: ./custom-frontend
+
+paths:
+  driver_port: system-test/java/src/main/java/testkit/driver/port
+  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
+  external_driver_port: system-test/java/src/main/java/testkit/external/port
+  external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
