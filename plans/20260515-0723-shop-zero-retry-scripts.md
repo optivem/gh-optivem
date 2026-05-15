@@ -1,6 +1,6 @@
 # Plan: shop has zero retry-policy scripts — retry consumed via `uses:`
 
-> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-15T09:06:44Z`
+> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-15T09:21:40Z`
 
 > **Supersedes the A/B/C/D options in
 > [`deferred/20260514-2200-retry-helpers-canonical-home.md`](deferred/20260514-2200-retry-helpers-canonical-home.md).**
@@ -332,16 +332,6 @@ internal tool, not student-facing, separate concern.
 
 **Approach:** Q3b — incremental per workflow. Don't attempt all 24
 workflows at once.
-
-### Step 2 — Migrate per-language workflows (one at a time)
-
-For each of the ~18 per-language workflows in shop:
-
-1. Replace each `source ... /*-retry.sh` + `*_retry CMD` pattern with
-   `uses: optivem/actions/retry@main` + `with: { command: CMD }`.
-2. Commit per workflow.
-3. After all per-language workflows migrate, verify a scaffolded student
-   repo has no broken references.
 
 ### Step 3 — Migrate meta workflows (preferred, not mandatory)
 
