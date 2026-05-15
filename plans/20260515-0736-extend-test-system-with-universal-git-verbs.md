@@ -209,18 +209,6 @@ config should know about its own repos. With this, `gh optivem
 commit` inside a multitier project commits the project's repos
 without needing a separate workspace file.
 
-12. **Extend the scope cascade** (modifies phase 1 step 3):
-
-    | cwd context | scope |
-    |---|---|
-    | `*.code-workspace` found via flag/env/walk-up | workspace iteration (broadest) |
-    | `gh-optivem.yaml` with non-empty `repos:` found | project iteration (the listed repos) |
-    | `gh-optivem.yaml` with no/empty `repos:` found | cwd repo only |
-    | any git repo (no project) | cwd repo only |
-    | nothing | error |
-
-    Banner gains a third mode: `Mode: project (3 repos from gh-optivem.yaml)`.
-
 13. **`gh optivem config migrate`** — idempotent back-fill of `repos:`:
     - Monolith projects: writes `repos: []` (or omits — they don't need it; cwd repo behavior already works).
     - Multitier projects: infers from `system.config` and `system_test.config` — reads each, extracts repo paths, writes them to `repos:`. If inference fails (config malformed, paths ambiguous), errors with a clear pointer to "edit `repos:` by hand".

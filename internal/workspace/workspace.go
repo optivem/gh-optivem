@@ -4,14 +4,18 @@
 //   - When a *.code-workspace file is reachable (via flag, env, or walking
 //     up from CWD), the scope is the workspace and the folders enumerated
 //     from its folders[] array.
-//   - When no workspace file is reachable but CWD is inside a git repo,
+//   - When no workspace file is reachable but CWD is inside a project
+//     whose gh-optivem.yaml declares a non-empty repos:, the scope is
+//     the project — the listed local repos are iterated.
+//   - When neither of the above resolves but CWD is inside a git repo,
 //     the scope shrinks to that single repo.
-//   - When neither is true, the call errors.
+//   - When none of the above is true, the call errors.
 //
-// The single-repo fallback lets the cross-repo verbs (commit, sync, …)
-// Just Do The Right Thing whether the operator is inside a multi-repo
-// workspace or a standalone clone. The mode is surfaced to callers via
-// Scope.Mode so the banner can announce which scope resolved.
+// The project / single-repo fallbacks let the cross-repo verbs (commit,
+// sync, …) Just Do The Right Thing whether the operator is inside a
+// multi-repo workspace, a multitier project, or a standalone clone. The
+// mode is surfaced to callers via Scope.Mode so the banner can announce
+// which scope resolved.
 package workspace
 
 import (
@@ -22,21 +26,29 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
 // EnvVar names the environment variable that pins the workspace root when
 // the operator does not pass --workspace.
 const EnvVar = "GH_OPTIVEM_WORKSPACE"
 
-// Mode discriminates the two possible resolved scopes.
+// Mode discriminates the three possible resolved scopes.
 type Mode int
 
 const (
 	// ModeWorkspace means Folders enumerates every repo declared in the
 	// resolved *.code-workspace file.
 	ModeWorkspace Mode = iota
+	// ModeProject means Folders enumerates every repo declared in the
+	// resolved gh-optivem.yaml's repos: field — a multitier project's
+	// constituent local repos. Only reached by walk-up; the flag and
+	// env-var cascade entries still target workspace files.
+	ModeProject
 	// ModeSingleRepo means Folders contains exactly one entry — the git
-	// repo the operator is inside. No workspace file was reachable.
+	// repo the operator is inside. Neither a workspace file nor a
+	// project config with non-empty repos: was reachable.
 	ModeSingleRepo
 )
 
@@ -49,8 +61,9 @@ type Scope struct {
 	// Folders is every targeted repo. In ModeSingleRepo it has exactly
 	// one entry equal to Root.
 	Folders []string
-	// SourceFile is the absolute path to the resolved *.code-workspace
-	// file in ModeWorkspace, or "" in ModeSingleRepo.
+	// SourceFile is the absolute path to the file the scope was derived
+	// from — the resolved *.code-workspace in ModeWorkspace, the
+	// resolved gh-optivem.yaml in ModeProject, or "" in ModeSingleRepo.
 	SourceFile string
 }
 
@@ -60,14 +73,25 @@ type Scope struct {
 //     *.code-workspace file → ModeWorkspace.
 //  2. $GH_OPTIVEM_WORKSPACE — same semantics as flagValue.
 //  3. Walk up from CWD for a *.code-workspace file → ModeWorkspace.
-//  4. Walk up from CWD for a .git/ entry → ModeSingleRepo with Folders =
+//  4. Walk up from CWD for a gh-optivem.yaml with non-empty repos: →
+//     ModeProject with Folders = resolved repos: paths that exist and
+//     contain .git/.
+//  5. Walk up from CWD for a .git/ entry → ModeSingleRepo with Folders =
 //     []string{<repo root>}.
-//  5. Nothing → error.
+//  6. Nothing → error.
 //
 // Within ModeWorkspace, repos declared in folders[] but missing on disk
 // or without a .git/ subdir are silently filtered out (matches the
 // commit.sh:183 behavior). Malformed JSON, missing/empty folders[], and
 // flag/env paths that do not exist are errors.
+//
+// Within ModeProject, the same filter applies to repos: entries —
+// non-existent paths and non-git folders are skipped. If gh-optivem.yaml
+// has no repos: field, an empty repos:, or every entry filters out, the
+// cascade falls through to the .git walk-up rather than erroring (the
+// project simply has no cross-repo scope to express). A malformed or
+// schema-invalid gh-optivem.yaml is surfaced — the operator hand-edited
+// it into a broken state and silent fall-through would mask the bug.
 func Resolve(flagValue string) (Scope, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -114,7 +138,29 @@ func resolveFrom(flagValue, envValue, cwd string) (Scope, error) {
 		}, nil
 	}
 
-	// No workspace file found by walk-up. Try single-repo fallback.
+	// No workspace file found by walk-up. Try project-iteration: a
+	// gh-optivem.yaml above CWD with a non-empty repos: list.
+	cfgFile, _ := walkUpForProjectConfig(cwd)
+	if cfgFile != "" {
+		cfgRoot := filepath.Dir(cfgFile)
+		folders, err := parseProjectRepos(cfgFile, cfgRoot)
+		if err != nil {
+			return Scope{}, err
+		}
+		if len(folders) > 0 {
+			return Scope{
+				Mode:       ModeProject,
+				Root:       cfgRoot,
+				Folders:    folders,
+				SourceFile: cfgFile,
+			}, nil
+		}
+		// gh-optivem.yaml exists but has no usable repos: — fall through
+		// to single-repo, which is the documented behavior for monolith
+		// projects.
+	}
+
+	// Final fallback: cwd is inside a git repo.
 	repoRoot, err := walkUpForGitRepo(cwd)
 	if err != nil {
 		return Scope{}, fmt.Errorf("workspace: no *.code-workspace file or git repo found by walking up from %s; set --workspace, $%s, or cd into a git repo (or a directory below a *.code-workspace file)", cwd, EnvVar)
@@ -181,6 +227,31 @@ func walkUpForWorkspace(start string) (string, error) {
 	}
 }
 
+// walkUpForProjectConfig searches start and each parent directory for a
+// gh-optivem.yaml file, returning the absolute path of the first match.
+// Mirrors walkUpForWorkspace's contract: returns ("", error) when no
+// file is found on the way to the filesystem root. The error is
+// informational — callers fall through to the single-repo cascade row
+// rather than surfacing it.
+func walkUpForProjectConfig(start string) (string, error) {
+	dir, err := filepath.Abs(start)
+	if err != nil {
+		return "", err
+	}
+	for {
+		candidate := filepath.Join(dir, projectconfig.Path)
+		info, statErr := os.Stat(candidate)
+		if statErr == nil && !info.IsDir() {
+			return candidate, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("no %s found above %s", projectconfig.Path, start)
+		}
+		dir = parent
+	}
+}
+
 // walkUpForGitRepo searches start and each parent for a .git entry
 // (directory or file — git worktrees and submodules use .git as a file),
 // returning the absolute path of the containing directory.
@@ -200,6 +271,43 @@ func walkUpForGitRepo(start string) (string, error) {
 		}
 		dir = parent
 	}
+}
+
+// parseProjectRepos reads cfgPath (a gh-optivem.yaml) and returns the
+// absolute paths of every repos: entry that exists and contains .git/.
+// Each entry's Path is resolved against root, which is the directory
+// holding cfgPath. Non-existent paths and non-git folders are silently
+// filtered — parity with parseWorkspaceFolders for *.code-workspace
+// entries — so a half-scaffolded multitier project (one tier cloned,
+// the others not yet) still iterates the tier that's present.
+//
+// An empty / missing repos: returns (nil, nil) so the caller can fall
+// through to the single-repo row. A parse or schema-validation error on
+// the YAML file is surfaced — the file exists but is broken, and the
+// operator wants to know rather than silently scoping to one repo.
+func parseProjectRepos(cfgPath, root string) ([]string, error) {
+	cfg, err := projectconfig.LoadFromPath(cfgPath)
+	if err != nil {
+		return nil, fmt.Errorf("workspace: %w", err)
+	}
+	if cfg == nil || len(cfg.LocalRepos) == 0 {
+		return nil, nil
+	}
+	var folders []string
+	for _, r := range cfg.LocalRepos {
+		abs := r.Path
+		if !filepath.IsAbs(abs) {
+			abs = filepath.Join(root, r.Path)
+		}
+		abs = filepath.Clean(abs)
+		gitDir := filepath.Join(abs, ".git")
+		info, statErr := os.Stat(gitDir)
+		if statErr != nil || !info.IsDir() {
+			continue
+		}
+		folders = append(folders, abs)
+	}
+	return folders, nil
 }
 
 // parseWorkspaceFolders reads wsFile, decodes its folders[] array, and

@@ -48,15 +48,19 @@ const workspaceSeparator = "============================================"
 // scopeBannerLine returns the one-line "Mode: …" announcement printed at
 // the top of every cross-repo verb's banner block. The line names what
 // scope resolved so the operator can confirm at a glance whether the
-// invocation will touch the whole workspace or just the cwd repo.
+// invocation will touch the whole workspace, the project's own repos,
+// or just the cwd repo.
 //
 // Wording is fixed by the plan's decisions log (2026-05-15): workspace
-// mode names the count + source file; single-repo mode names just the
+// mode names the count + source file; project mode names the count and
+// names gh-optivem.yaml as the source; single-repo mode names just the
 // repo basename, no "no workspace file found" trailer.
 func scopeBannerLine(scope workspace.Scope) string {
 	switch scope.Mode {
 	case workspace.ModeWorkspace:
 		return fmt.Sprintf("Mode: workspace (%d repos from %s)", len(scope.Folders), filepath.Base(scope.SourceFile))
+	case workspace.ModeProject:
+		return fmt.Sprintf("Mode: project (%d repos from %s)", len(scope.Folders), filepath.Base(scope.SourceFile))
 	case workspace.ModeSingleRepo:
 		return fmt.Sprintf("Mode: single repo (%s)", filepath.Base(scope.Root))
 	}
