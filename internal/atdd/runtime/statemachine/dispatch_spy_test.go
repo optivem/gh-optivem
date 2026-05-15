@@ -205,7 +205,7 @@ func atRedDslParams() map[string]string {
 		"phase_doc":      "docs/atdd/process/at-red-dsl.md",
 		"phase_label":    "AT - RED - DSL",
 		"change_type":    "AT - RED - DSL",
-		"compile_action": "compile_system",
+		"compile_action": "compile_system_tests",
 	}
 }
 
@@ -229,7 +229,7 @@ func ctRedDslParams() map[string]string {
 		"phase_doc":      "docs/atdd/process/ct-red-dsl.md",
 		"phase_label":    "CT - RED - DSL",
 		"change_type":    "CT - RED - DSL",
-		"compile_action": "compile_system",
+		"compile_action": "compile_system_tests",
 	}
 }
 
@@ -240,7 +240,7 @@ func ctRedExternalDriverParams() map[string]string {
 		"phase_doc":      "docs/atdd/process/ct-red-external-driver.md",
 		"phase_label":    "CT - RED - EXTERNAL DRIVER",
 		"change_type":    "CT - RED - EXTERNAL DRIVER",
-		"compile_action": "compile_system",
+		"compile_action": "compile_system_tests",
 	}
 }
 

@@ -340,7 +340,7 @@ processes:
           phase_doc: docs/atdd/process/at-red-dsl.md
           phase_label: "AT - RED - DSL"
           change_type: "AT - RED - DSL"
-          compile_action: compile_system
+          compile_action: compile_system_tests
         documentation: "AT - RED - DSL"
 
       - id: GATE_EXT_AT
@@ -365,7 +365,7 @@ processes:
           phase_doc: docs/atdd/process/at-red-system-driver.md
           phase_label: "AT - RED - SYSTEM DRIVER"
           change_type: "AT - RED - SYSTEM DRIVER"
-          compile_action: compile_system
+          compile_action: compile_system_tests
         documentation: "AT - RED - SYSTEM DRIVER"
 
       - id: VERIFY_AT_DRIVER
@@ -500,7 +500,7 @@ processes:
           phase_doc: docs/atdd/process/ct-red-dsl.md
           phase_label: "CT - RED - DSL"
           change_type: "CT - RED - DSL"
-          compile_action: compile_system
+          compile_action: compile_system_tests
         documentation: "CT - RED - DSL"
 
       - id: GATE_EXT_CT
@@ -516,7 +516,7 @@ processes:
           phase_doc: docs/atdd/process/ct-red-external-driver.md
           phase_label: "CT - RED - EXTERNAL DRIVER"
           change_type: "CT - RED - EXTERNAL DRIVER"
-          compile_action: compile_system
+          compile_action: compile_system_tests
         documentation: "CT - RED - EXTERNAL DRIVER"
 
       - id: VERIFY_CT_DRIVER
@@ -771,10 +771,13 @@ processes:
 
   # ===========================================================================
   # The cycle picks its compile tier from the `compile_action` call-activity
-  # param: AT_RED_TEST / CT_RED_TEST → compile_system_tests; AT_RED_DSL,
-  # AT_RED_SYSTEM_DRIVER, CT_RED_DSL, CT_RED_EXTERNAL_DRIVER, and the
-  # green_phase_cycle callers → compile_system. Resolved at dispatch via
-  # ${compile_action} on the COMPILE service_task.
+  # param: every red_phase_cycle caller (AT_RED_TEST, AT_RED_DSL,
+  # AT_RED_SYSTEM_DRIVER, CT_RED_TEST, CT_RED_DSL, CT_RED_EXTERNAL_DRIVER) →
+  # compile_system_tests, because all RED-phase edits land under
+  # system-test/<lang>/ (tests, DSL, and Drivers live in the test tree).
+  # green_phase_cycle callers → compile_system, because GREEN edits the
+  # production system code. Resolved at dispatch via ${compile_action} on
+  # the COMPILE service_task.
   # ===========================================================================
   # red_phase_cycle
   # Shared sub-process for every RED-phase node that splits creative WRITE work
