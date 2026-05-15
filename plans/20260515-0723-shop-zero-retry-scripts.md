@@ -1,6 +1,6 @@
 # Plan: shop has zero retry-policy scripts — retry consumed via `uses:`
 
-> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-15T09:21:40Z`
+> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-15T09:54:13Z`
 
 > **Supersedes the A/B/C/D options in
 > [`deferred/20260514-2200-retry-helpers-canonical-home.md`](deferred/20260514-2200-retry-helpers-canonical-home.md).**
@@ -332,35 +332,6 @@ internal tool, not student-facing, separate concern.
 
 **Approach:** Q3b — incremental per workflow. Don't attempt all 24
 workflows at once.
-
-### Step 3 — Migrate meta workflows (preferred, not mandatory)
-
-For each of the ~6 meta workflows:
-
-1. Same pattern as Step 2 for simple one-liners.
-2. For substantive operations (find-flavor-rcs, etc.), extract to
-   `shop/.github/actions/<op>/` and call Layer 1 from inside.
-
-### Step 4 — Delete shop's vendored helpers
-
-Once no shop workflow references `.github/workflows/scripts/*-retry.sh`,
-delete:
-- `shop/.github/workflows/scripts/retry-core.sh`
-- `shop/.github/workflows/scripts/gh-retry.sh`
-- `shop/.github/workflows/scripts/docker-retry.sh`
-- `shop/.github/workflows/scripts/sonar-retry.sh`
-- `shop/.github/workflows/scripts/git-retry.sh`
-
-Verify with `grep -r "workflows/scripts/.*-retry" shop/` returning zero
-matches.
-
-### Step 5 — Update sync direction
-
-`optivem/actions/scripts/sync-shared.sh`:
-- Remove `shop/.github/workflows/scripts` from TARGETS list
-- Replace the four `*-retry.sh` entries with one `retry.sh`
-
-Keep gh-optivem in TARGETS (internal tool, separate concern).
 
 ### Step 6 — Collapse `actions/shared/` helpers
 
