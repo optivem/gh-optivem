@@ -284,7 +284,7 @@ func (b bindings) subtype(ctx *statemachine.Context) statemachine.Outcome {
 //   - "ok"       — green (or no commands ran). Continue to APPROVE_COMMIT.
 //   - "red"      — first red of this cycle. Increments verify_retries and
 //                  returns "red" so the gateway routes to FIX_STRUCT_VERIFY,
-//                  which dispatches atdd-fix-verify and loops back to
+//                  which dispatches fix-verify and loops back to
 //                  CHOOSE_TESTS so the operator can re-pick scope.
 //
 // Halt paths return Outcome.Err directly (no routing token):

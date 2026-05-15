@@ -46,7 +46,7 @@ import (
 // (Agent, PhaseDoc, IssueNum, IssueTitle, NodeDescription) are
 // not zero-defaulted because missing them yields a meaningless prompt.
 type Options struct {
-	// Agent is the subagent name to launch (e.g. "atdd-test").
+	// Agent is the subagent name to launch (e.g. "at-red-test").
 	Agent string
 
 	// PhaseDoc is the relative path to the phase's process document
@@ -91,7 +91,7 @@ type Options struct {
 
 	// AcceptanceCriteria is the body of the ticket's Acceptance Criteria
 	// section as parsed by intake.Parse. Surfaced to the agent prompt via
-	// the ${acceptance_criteria} placeholder so atdd-test-at can read the
+	// the ${acceptance_criteria} placeholder so at-red-test can read the
 	// scenarios intake already extracted instead of shelling out to
 	// `gh issue view`. Load-bearing: when empty AND the prompt body
 	// references ${acceptance_criteria}, findUnfilledPlaceholders fails
@@ -104,7 +104,7 @@ type Options struct {
 
 	// VerifyResults is the formatted block describing every red-class
 	// verifyCommandResult the most recent RUN_TESTS produced.
-	// Substituted into atdd-fix-verify's ${verify_results} placeholder so
+	// Substituted into fix-verify's ${verify_results} placeholder so
 	// the fix agent reads the same captured runner output the operator
 	// saw inline. Empty for every other agent — the rendered prompt
 	// just leaves the placeholder verbatim, which is harmless because
@@ -112,7 +112,7 @@ type Options struct {
 	VerifyResults string
 
 	// ChangedFiles is the working-tree diff (as `git status --porcelain`)
-	// at the moment of dispatch. Substituted into atdd-fix-verify's
+	// at the moment of dispatch. Substituted into fix-verify's
 	// ${changed_files} placeholder so the fix agent can scope its
 	// reasoning to "what the WRITE phase just edited" without re-running
 	// `git status`. Empty when the dispatcher couldn't shell out (e.g.
@@ -168,8 +168,8 @@ type Options struct {
 	// invocation (e.g. "sonnet", "haiku", "opus", or a full model id like
 	// "claude-sonnet-4-6"). Empty → no flag, claude inherits the user's
 	// session default. Per-agent tuning lets mechanical-scaffolding agents
-	// (e.g. atdd-test-at PROTOTYPES) skip the Opus tax that creative agents
-	// (e.g. atdd-fix-verify) actually need.
+	// (e.g. at-red-test PROTOTYPES) skip the Opus tax that creative agents
+	// (e.g. fix-verify) actually need.
 	Model string
 
 	// Effort, when non-empty, becomes the `--effort` flag on the claude
@@ -442,7 +442,7 @@ func renderPrompt(opts Options) (string, error) {
 	if opts.Language != "" {
 		params["language"] = opts.Language
 	}
-	// AcceptanceCriteria is load-bearing for atdd-test-at — same rationale
+	// AcceptanceCriteria is load-bearing for at-red-test — same rationale
 	// as Language. Only registered when non-empty so an absent value
 	// surfaces via findUnfilledPlaceholders rather than substituting "".
 	if opts.AcceptanceCriteria != "" {

@@ -244,19 +244,19 @@ The Task ticket carries a **checklist of refactor / upgrade steps** in its body.
 | Intake (Task, `subtype:system-interface-redesign`) | parser (no agent) | Structural. System-side interface change; no change-driven AC. Optional legacy-coverage AC if the ticket has a Legacy Coverage section. STOP for approval. Routes to Driver Adapter Cycle → `structural_cycle` (always); Legacy Coverage Cycle first if the ticket has a Legacy Coverage section.[^green] |
 | Intake (Task, `subtype:external-system-interface-redesign`) | parser (no agent) | Structural. External-system interface change; no change-driven AC. Optional legacy-coverage AC if the ticket has a Legacy Coverage section. STOP for approval. Routes to Driver Adapter Cycle → Contract Test Sub-Process (always); Legacy Coverage Cycle first if the ticket has a Legacy Coverage section.[^green] |
 | Intake (Task, `subtype:system-implementation-change`) | parser (no agent) | Structural. Internal-only change; no change-driven AC. Optional legacy-coverage AC if the ticket has a Legacy Coverage section. STOP for approval. Routes to System Under Test Cycle (always); Legacy Coverage Cycle first if the ticket has a Legacy Coverage section.[^green] |
-| AT - RED - TEST | `atdd-test` | All scenarios for the ticket batched. WRITE = write tests. |
-| AT - RED - DSL | `atdd-dsl` | WRITE = implement DSL + Driver-interface-changed flags. |
-| AT - RED - SYSTEM DRIVER | `atdd-driver` | System Drivers only (`${sut_namespace}/`). WRITE = implement System Drivers. |
-| AT - GREEN - SYSTEM - WRITE (backend) | `atdd-backend` | Implements backend changes for API channel; one slice of the WRITE phase. |
-| AT - GREEN - SYSTEM - WRITE (frontend) | `atdd-frontend` | Implements frontend changes for UI channel; the other slice of the WRITE phase. |
+| AT - RED - TEST | `at-red-test` | All scenarios for the ticket batched. WRITE = write tests. |
+| AT - RED - DSL | `at-red-dsl` | WRITE = implement DSL + Driver-interface-changed flags. |
+| AT - RED - SYSTEM DRIVER | `at-red-system-driver` | System Drivers only (`${sut_namespace}/`). WRITE = implement System Drivers. |
+| AT - GREEN - SYSTEM - WRITE (backend) | `at-green-system-backend` | Implements backend changes for API channel; one slice of the WRITE phase. |
+| AT - GREEN - SYSTEM - WRITE (frontend) | `at-green-system-frontend` | Implements frontend changes for UI channel; the other slice of the WRITE phase. |
 | AT - GREEN - SYSTEM - COMMIT | `atdd-release` | WRITE = remove `@Disabled` from the disabled tests. |
-| CT - RED - TEST | `atdd-test` | WRITE = write contract tests. |
-| CT - RED - DSL | `atdd-dsl` | WRITE = implement DSL + flag. |
-| CT - RED - EXTERNAL DRIVER | `atdd-driver` | External Drivers only (`external/`). WRITE = implement External Drivers. |
-| CT - GREEN - STUBS | _no dedicated agent — see "Stubs ownership" needs-decision in the audit plan_ | WRITE = implement Stubs. |
-| SYSTEM INTERFACE REDESIGN | `atdd-task` (subtype `system-interface-redesign`) | WRITE = update the targeted System Driver(s) + adapter impl(s) (channel determined by Checklist). See [`system-interface-redesign.md`](system-interface-redesign.md). |
-| (external-system path) | `atdd-task` (subtype `external-system-interface-redesign`) | No standalone WRITE — routes entirely through the Contract Test Sub-Process. |
-| CHORE | `atdd-chore` (subtype `system-implementation-change`) | WRITE = implement the internal change. |
+| CT - RED - TEST | `ct-red-test` | WRITE = write contract tests. |
+| CT - RED - DSL | `ct-red-dsl` | WRITE = implement DSL + flag. |
+| CT - RED - EXTERNAL DRIVER | `ct-red-external-driver` | External Drivers only (`external/`). WRITE = implement External Drivers. |
+| CT - GREEN - STUBS | `ct-green-stubs` (TBD — see "Stubs ownership" needs-decision in the audit plan) | WRITE = implement Stubs. |
+| SYSTEM INTERFACE REDESIGN | `task-system-interface-redesign` | WRITE = update the targeted System Driver(s) + adapter impl(s) (channel determined by Checklist). See [`system-interface-redesign.md`](system-interface-redesign.md). |
+| (external-system path) | `task-external-system-interface-redesign` | No standalone WRITE — routes entirely through the Contract Test Sub-Process. |
+| CHORE | `chore` (subtype `system-implementation-change`) | WRITE = implement the internal change. |
 
 ## Scope
 
@@ -264,5 +264,5 @@ Every pipeline run is bounded by a **Scope** declared in `gh-optivem.yaml` at th
 
 Each invocation targets one combination of values (the schema does not accept `both` or `all`). To run against a different combination, point the CLI at an alternate config with `--config <path>` (e.g. `gh optivem atdd implement-ticket --issue 42 --config gh-optivem-multitier.yaml`).
 
-Sub-agents — notably `atdd-task` and `atdd-chore` — restrict ALL file edits and residual-reference greps to in-scope paths.
+Sub-agents — notably `task-system-interface-redesign`, `task-external-system-interface-redesign`, and `chore` — restrict ALL file edits and residual-reference greps to in-scope paths.
 

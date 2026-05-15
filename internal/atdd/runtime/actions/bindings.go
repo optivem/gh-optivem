@@ -381,8 +381,8 @@ func (a actions) readSubtype(ctx *statemachine.Context) statemachine.Outcome {
 }
 
 // parseTicketBody is the deterministic markdown parser that replaces the
-// four LLM-driven intake agents (atdd-story / atdd-bug / atdd-task /
-// atdd-chore). Reads the issue body, extracts canonical sections by their
+// four LLM-driven intake agents (atdd-story / atdd-bug / task / chore).
+// Reads the issue body, extracts canonical sections by their
 // Issue-Form-enforced headings, and validates the required-section set
 // for the ticket's type.
 //
@@ -394,7 +394,7 @@ func (a actions) readSubtype(ctx *statemachine.Context) statemachine.Outcome {
 //     task agent via clauderun.Options.Checklist so it doesn't have to
 //     re-fetch the issue.
 //   - ticket_acceptance_criteria: string, the parsed Acceptance Criteria
-//     body — handed to atdd-test-at via clauderun.Options.AcceptanceCriteria
+//     body — handed to at-red-test via clauderun.Options.AcceptanceCriteria
 //     so the AT - RED - TEST agent doesn't have to shell out to
 //     `gh issue view` to read scenarios intake already extracted.
 //
@@ -1335,7 +1335,7 @@ func (a actions) finalizeVerify(ctx *statemachine.Context, out statemachine.Outc
 
 // formatVerifyResultsText renders the failed verifyCommandResults as a
 // markdown-style block suitable for substitution into the
-// atdd-fix-verify prompt's ${verify_results} placeholder. Each failed
+// fix-verify prompt's ${verify_results} placeholder. Each failed
 // command becomes one block with the command line, the classification
 // label (when present), and the captured stdout/stderr the runner
 // produced. Successful commands are omitted — they are not what the

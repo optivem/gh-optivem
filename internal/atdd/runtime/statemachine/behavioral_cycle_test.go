@@ -288,7 +288,7 @@ func TestImplementTicket_Behavioral_TestAndDSLAndExternal(t *testing.T) {
 		gateway("GATE_EXT_CT", "external_system_driver_interface_changed", true).
 		redCycle("CT_RED_EXTERNAL_DRIVER", ctRedExternalDriverParams()).
 		serviceTask("VERIFY_CT_DRIVER", "run_tests").
-		userTask("CT_GREEN_STUBS", "atdd-stubs").
+		userTask("CT_GREEN_STUBS", "ct-green-stubs").
 		endEvent("CT_END").
 		process("at_cycle", noParams()).
 		gateway("GATE_SYS_AT", "system_driver_interface_changed", false).

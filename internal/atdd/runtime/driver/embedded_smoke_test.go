@@ -91,7 +91,7 @@ func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 // user_task (FIX_TEST in the embedded `structural_cycle` flow) against
 // the fake clauderun + git pair, with RepoPath set to a temp dir that
 // contains no consumer-side scaffolding. Asserts the dispatch completes
-// and the rendered prompt is the embedded atdd-fix-verify body — proves
+// and the rendered prompt is the embedded fix-verify body — proves
 // the dispatcher reaches the embedded prompt without any consumer-file
 // dependency.
 //
@@ -101,7 +101,7 @@ func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 // nodes are now call_activities into green_phase_cycle. The remaining
 // statically-bound user_tasks live inside structural_cycle (and the
 // deferred CT stubs node), so FIX_TEST is used here (one of the two
-// atdd-fix-verify dispatch sites — FIX_COMPILE is its compile-RED twin).
+// fix-verify dispatch sites — FIX_COMPILE is its compile-RED twin).
 // Any embedded user_task with a static (non-templated) agent will do.
 func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 	tempDir := t.TempDir()

@@ -115,7 +115,7 @@ func (f *fakeGit) hasGitArg(prefix ...string) bool {
 
 func newOpts() Options {
 	return Options{
-		Agent:           "atdd-test-at",
+		Agent:           "at-red-test",
 		PhaseDoc:        "docs/atdd/process/at-red-test.md",
 		NodeDescription: "Write the AT-RED scenario",
 		IssueNum:        42,
@@ -123,7 +123,7 @@ func newOpts() Options {
 		// The stripped prompts reference ${language} in the language-
 		// equivalents pointer; seed a default so tests don't have to.
 		Language: "java",
-		// atdd-test-at.md references ${acceptance_criteria}; seed a
+		// at-red-test.md references ${acceptance_criteria}; seed a
 		// default so dispatch tests using this scaffold render cleanly.
 		// Tests that exercise the unset/load-bearing path override this.
 		AcceptanceCriteria: "Scenario: placeholder\n  Given x\n  When y\n  Then z",
@@ -168,13 +168,13 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 	// test every embedded prompt to make sure no agent leaks the marker
 	// or the pre-rollout preamble.
 	for _, name := range []string{
-		"atdd-backend", "atdd-chore",
-		"at-red-system-driver", "atdd-driver-ct",
-		"atdd-dsl-at", "atdd-dsl-ct",
-		"atdd-frontend", "atdd-stubs",
-		"atdd-task-system-interface-redesign",
-		"atdd-task-external-system-interface-redesign",
-		"atdd-test-at", "atdd-test-ct",
+		"at-green-system-backend", "chore",
+		"at-red-system-driver", "ct-red-external-driver",
+		"at-red-dsl", "ct-red-dsl",
+		"at-green-system-frontend", "ct-green-stubs",
+		"task-system-interface-redesign",
+		"task-external-system-interface-redesign",
+		"at-red-test", "ct-red-test",
 	} {
 		opts := newOpts()
 		opts.Agent = name
@@ -197,7 +197,7 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 
 func TestRenderPrompt_TaskAgentArchitectureAndAllowedRoots_ExplicitValues(t *testing.T) {
 	opts := newOpts()
-	opts.Agent = "atdd-task-system-interface-redesign"
+	opts.Agent = "task-system-interface-redesign"
 	opts.Architecture = "monolith"
 	opts.AllowedRoots = "- System: system/monolith/java (lang: java)\n- System tests: system-test/java (lang: java)\n"
 
@@ -216,7 +216,7 @@ func TestRenderPrompt_TaskAgentArchitectureAndAllowedRoots_ExplicitValues(t *tes
 
 func TestRenderPrompt_TaskAgentChecklistInjected(t *testing.T) {
 	opts := newOpts()
-	opts.Agent = "atdd-task-system-interface-redesign"
+	opts.Agent = "task-system-interface-redesign"
 	opts.Checklist = "- [x] Rename \"New Order\" to \"Place Order\"\n- [x] Rename SKU aria-label"
 
 	got, err := renderPrompt(opts)
@@ -225,7 +225,7 @@ func TestRenderPrompt_TaskAgentChecklistInjected(t *testing.T) {
 	}
 	mustContain(t, got, opts.Checklist)
 	if strings.Contains(got, "Fetch the issue with `gh`") {
-		t.Errorf("atdd-task-system-interface-redesign prompt should no longer instruct the agent to fetch the issue: %s", got)
+		t.Errorf("task-system-interface-redesign prompt should no longer instruct the agent to fetch the issue: %s", got)
 	}
 	if strings.Contains(got, "${checklist}") {
 		t.Errorf("${checklist} placeholder leaked into rendered prompt")
@@ -239,7 +239,7 @@ func TestRenderPrompt_ChoreAgent_EmptyArchitectureAndRootsRender(t *testing.T) {
 	// "broadest defaults" fallback; per-component lang has replaced
 	// `Architecture=both`/`Lang=all` semantics.
 	opts := newOpts()
-	opts.Agent = "atdd-chore"
+	opts.Agent = "chore"
 
 	got, err := renderPrompt(opts)
 	if err != nil {
@@ -262,7 +262,7 @@ func TestRenderPrompt_ReturnsErrorForUnknownAgent(t *testing.T) {
 
 // Step 6/D6 stripped the inlined `### Reference: ...` blocks from every
 // prompt body. The external-system doctrine that previously distinguished
-// the two atdd-task subtype prompts was inlined from
+// the two task subtype prompts was inlined from
 // docs/atdd/architecture/driver-adapter.md; after the strip, both
 // subtype files point at that doc via ${docs_root} instead of inlining
 // it, so the bodies are now identical except for routing. The previous
@@ -322,7 +322,7 @@ func TestRenderPrompt_LanguageSubstitutes(t *testing.T) {
 }
 
 // TestRenderPrompt_AcceptanceCriteriaSubstitutes covers the
-// ${acceptance_criteria} placeholder that lets atdd-test-at consume the
+// ${acceptance_criteria} placeholder that lets at-red-test consume the
 // scenarios intake parsed from the ticket body without re-fetching the
 // issue via `gh issue view`.
 func TestRenderPrompt_AcceptanceCriteriaSubstitutes(t *testing.T) {
@@ -515,7 +515,7 @@ func TestDispatch_WritesEnterAndExitBanners(t *testing.T) {
 	}
 	got := buf.String()
 	mustContain(t, got, "ENTERING AGENT")
-	mustContain(t, got, "atdd-test-at")
+	mustContain(t, got, "at-red-test")
 	mustContain(t, got, "EXITED AGENT")
 	mustContain(t, got, "1 file(s) changed")
 }
@@ -1011,7 +1011,7 @@ func TestFindUnfilledPlaceholders_NoMatchesReturnsNil(t *testing.T) {
 
 func TestDispatch_WritesPromptLogWhenPathSet(t *testing.T) {
 	dir := t.TempDir()
-	logPath := filepath.Join(dir, "runs", "001-atdd-test.prompt.md")
+	logPath := filepath.Join(dir, "runs", "001-at-red-test.prompt.md")
 
 	gitFake := &fakeGit{
 		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
@@ -1078,17 +1078,17 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	claudeFake := &fakeClaude{}
 	opts := newOpts()
 	opts.Stdout = &buf
-	opts.Agent = "atdd-task-system-interface-redesign"
+	opts.Agent = "task-system-interface-redesign"
 	opts.Architecture = "monolith"
 	opts.AllowedRoots = "- System: system/monolith/typescript (lang: typescript)\n- System tests: system-test/typescript (lang: typescript)\n"
 	opts.Checklist = "- [x] One done\n- [ ] Two pending"
-	opts.PromptLogPath = "/tmp/runs/001-atdd-task-system-interface-redesign.prompt.md"
+	opts.PromptLogPath = "/tmp/runs/001-task-system-interface-redesign.prompt.md"
 
 	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	got := buf.String()
-	mustContain(t, got, "PREPARED PROMPT for atdd-task-system-interface-redesign")
+	mustContain(t, got, "PREPARED PROMPT for task-system-interface-redesign")
 	mustContain(t, got, "architecture:")
 	mustContain(t, got, "monolith")
 	mustContain(t, got, "allowed roots:")
@@ -1099,7 +1099,7 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	mustContain(t, got, "2 item(s) (1 already [x])")
 	mustContain(t, got, "- [x] One done")
 	mustContain(t, got, "- [ ] Two pending")
-	mustContain(t, got, "/tmp/runs/001-atdd-task-system-interface-redesign.prompt.md")
+	mustContain(t, got, "/tmp/runs/001-task-system-interface-redesign.prompt.md")
 }
 
 func TestDispatch_PreparedPromptBannerUsesPlaceholdersForEmpties(t *testing.T) {

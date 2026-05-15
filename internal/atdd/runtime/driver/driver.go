@@ -106,7 +106,7 @@ type Options struct {
 	Override *override.Hooks
 
 	// AgentPromptOverrides is a map from embedded-agent name (e.g.
-	// "atdd-test") to a prompt body that replaces the canonical embedded
+	// "at-red-test") to a prompt body that replaces the canonical embedded
 	// prompt for that agent. Sourced from gh-optivem.yaml's agent_prompts:
 	// map by the cobra layer; the values are the file contents, not the
 	// file paths (the CLI reads at startup so missing-file failures surface
@@ -499,7 +499,7 @@ func seedScopeState(sCtx *statemachine.Context, cfg *projectconfig.Config) {
 //   - Monolith → cfg.System.Lang.
 //   - Multitier → cfg.System.Backend.Lang. The current ATDD prompts that
 //     reference ${language} (test, dsl, driver, task) are backend-aligned;
-//     the channel-specific agents (atdd-backend, atdd-frontend) no longer
+//     the channel-specific agents (at-green-system-backend, at-green-system-frontend) no longer
 //     reference ${language} in their stripped bodies, so a single seed
 //     suffices. If frontend-specific language refs are introduced later,
 //     the dispatcher can override per-agent without changing the schema.
@@ -522,7 +522,7 @@ func primaryLanguage(cfg *projectconfig.Config) string {
 }
 
 // renderAllowedRoots produces the multi-line "Allowed write roots" block
-// the atdd-task / atdd-chore prompts substitute via ${allowed_roots}.
+// the task / chore prompts substitute via ${allowed_roots}.
 // The block lists every tier the agent is allowed to edit, plus a
 // separate external-systems section when those are declared.
 //
@@ -822,7 +822,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, rs *runState
 }
 
 // fixVerifyChangedFiles returns the working-tree dirty-file listing
-// (one path per line) the dispatcher passes into atdd-fix-verify's
+// (one path per line) the dispatcher passes into fix-verify's
 // ${changed_files} placeholder. We only shell out for that one agent
 // because it is the only one whose prompt template references the
 // substitution — every other dispatch leaves the placeholder out of
@@ -834,7 +834,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, rs *runState
 // "Changed files" block; the agent can re-run `git status` itself if
 // it needs the listing. The dispatch is feedback, not load-bearing.
 func fixVerifyChangedFiles(agent, repoPath string) string {
-	if agent != "atdd-fix-verify" {
+	if agent != "fix-verify" {
 		return ""
 	}
 	cmd := exec.Command("git", "status", "--porcelain")

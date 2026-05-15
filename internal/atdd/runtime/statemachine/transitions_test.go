@@ -255,7 +255,7 @@ var transitionTable = []transitionCase{
 	// ---- structural_cycle (shared by SYSAPI / SYSUI / CHORE via params) ----
 	// COMPILE always runs after APPROVE_CHANGE. Compile or test RED routes
 	// through a human STOP (Enter = dispatch fix-agent, abort = halt) and
-	// then FIX_COMPILE / FIX_TEST — one shared atdd-fix-verify agent
+	// then FIX_COMPILE / FIX_TEST — one shared fix-verify agent
 	// branching on failure_type. Compile retries from COMPILE; test retries
 	// from BUILD_SYSTEM so the fix-agent's edits land in a rebuilt image
 	// before the same selected commands re-run. GATE_TESTS_SELECTED routes
@@ -320,7 +320,7 @@ var transitionTable = []transitionCase{
 	{process: "compile", from: "COMPILE", wantTo: "GATE_COMPILE_OK"},
 	{process: "compile", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": true}, wantTo: "COMPILE_END", desc: "compile ok → resolve the sub-process"},
 	{process: "compile", from: "GATE_COMPILE_OK", state: map[string]any{"compile_ok": false}, wantTo: "STOP_COMPILE_FAIL_REVIEW", desc: "compile fail halts at a human review STOP before fix-agent dispatch"},
-	{process: "compile", from: "STOP_COMPILE_FAIL_REVIEW", wantTo: "FIX_COMPILE", desc: "human approves the dispatch and the fix agent runs (atdd-fix-verify in STRUCT; the cycle's WRITE agent in RED/GREEN)"},
+	{process: "compile", from: "STOP_COMPILE_FAIL_REVIEW", wantTo: "FIX_COMPILE", desc: "human approves the dispatch and the fix agent runs (fix-verify in STRUCT; the cycle's WRITE agent in RED/GREEN)"},
 	{process: "compile", from: "FIX_COMPILE", wantTo: "COMPILE", desc: "fix agent loops back to COMPILE for re-verify"},
 
 	// ---- commit (shared sub-process: pairs APPROVE_COMMIT with EXECUTE_COMMIT) ----
@@ -465,13 +465,13 @@ func TestGapDecision_RunCycleRoutesByChangeType(t *testing.T) {
 
 func TestGapDecision_StubsOwnershipPlaceholder(t *testing.T) {
 	// Stubs ownership is a recorded TBD — the YAML currently uses
-	// `agent: atdd-stubs` as a placeholder. Lock that here so a future edit
+	// `agent: ct-green-stubs` as a placeholder. Lock that here so a future edit
 	// that resolves the gap will fail this test, prompting an explicit
 	// update + decision record.
 	eng := loadSnapshot(t)
 	stubs := eng.Processes["ct_subprocess"].Nodes["CT_GREEN_STUBS"]
-	if stubs.Raw.Agent != "atdd-stubs" {
-		t.Errorf("CT_GREEN_STUBS agent: got %q, want %q (placeholder pending stubs-ownership decision)", stubs.Raw.Agent, "atdd-stubs")
+	if stubs.Raw.Agent != "ct-green-stubs" {
+		t.Errorf("CT_GREEN_STUBS agent: got %q, want %q (placeholder pending stubs-ownership decision)", stubs.Raw.Agent, "ct-green-stubs")
 	}
 }
 

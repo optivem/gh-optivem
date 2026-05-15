@@ -37,6 +37,9 @@ Replace the `"TODO: Driver"` prototype with a real HTTP call to the external sys
 2. Implement the External System Drivers — replace each `"TODO: Driver"` prototype with actual logic.
    - Only edit files under `${external_driver_port}/` and `${external_driver_adapter}/`.
    - Do NOT read external-system source code to figure out behavior; rely on the contract tests and the published external API contract.
+3. If your impl references a Driver method under `external/` that doesn't yet have a prototype, add the `"TODO: Driver"` stub in the same step (rare — reaching this usually means an interface was missed in CT - RED - DSL).
+
+The result must compile.
 
 ## Anti-patterns
 

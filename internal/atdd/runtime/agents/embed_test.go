@@ -67,11 +67,11 @@ func TestSplitFrontmatter(t *testing.T) {
 }
 
 func TestLoadTuning_AtddTestAt(t *testing.T) {
-	// Pins the atdd-test-at frontmatter so a careless edit doesn't
+	// Pins the at-red-test frontmatter so a careless edit doesn't
 	// silently drop the per-agent tuning back to session defaults
 	// (Opus + max effort) — which would re-introduce the cost spike
 	// the frontmatter was added to fix.
-	got, err := LoadTuning("atdd-test-at")
+	got, err := LoadTuning("at-red-test")
 	if err != nil {
 		t.Fatalf("LoadTuning: %v", err)
 	}

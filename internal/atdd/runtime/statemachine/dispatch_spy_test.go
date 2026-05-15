@@ -182,13 +182,13 @@ func commitFromTemplateParams() map[string]string {
 
 // compileFromStructTemplateParams is the literal raw.Params declared at
 // structural_cycle.COMPILE — `{compile_action: compile_all, fix_agent:
-// atdd-fix-verify, phase_doc: ${phase_doc}}` (unexpanded). STRUCT
+// fix-verify, phase_doc: ${phase_doc}}` (unexpanded). STRUCT
 // hardcodes the compile tier and the fix agent because there is no
 // parent cycle context to forward.
 func compileFromStructTemplateParams() map[string]string {
 	return map[string]string{
 		"compile_action": "compile_all",
-		"fix_agent":      "atdd-fix-verify",
+		"fix_agent":      "fix-verify",
 		"phase_doc":      "${phase_doc}",
 	}
 }
@@ -207,12 +207,12 @@ func compileFromCycleTemplateParams() map[string]string {
 // compileFromStruct returns the params snapshot seen *inside* the shared
 // compile sub-process when STRUCT invokes it. STRUCT's parent scope does
 // not carry compile_action or fix_agent, so the call_activity introduces
-// them as new keys (compile_all + atdd-fix-verify). phase_doc rebinds to
+// them as new keys (compile_all + fix-verify). phase_doc rebinds to
 // itself (no-op).
 func compileFromStruct(parent map[string]string) map[string]string {
 	out := cloneParams(parent)
 	out["compile_action"] = "compile_all"
-	out["fix_agent"] = "atdd-fix-verify"
+	out["fix_agent"] = "fix-verify"
 	return out
 }
 
@@ -239,7 +239,7 @@ func compileFromCycle(parent map[string]string) map[string]string {
 // red_phase_cycle dispatched from at_cycle.AT_RED_TEST.
 func atRedTestParams() map[string]string {
 	return map[string]string{
-		"agent":          "atdd-test-at",
+		"agent":          "at-red-test",
 		"phase_doc":      "docs/atdd/process/at-red-test.md",
 		"phase_label":    "AT - RED - TEST",
 		"change_type":    "AT - RED - TEST",
@@ -250,7 +250,7 @@ func atRedTestParams() map[string]string {
 // red_phase_cycle dispatched from at_cycle.AT_RED_DSL.
 func atRedDslParams() map[string]string {
 	return map[string]string{
-		"agent":          "atdd-dsl-at",
+		"agent":          "at-red-dsl",
 		"phase_doc":      "docs/atdd/process/at-red-dsl.md",
 		"phase_label":    "AT - RED - DSL",
 		"change_type":    "AT - RED - DSL",
@@ -262,7 +262,7 @@ func atRedDslParams() map[string]string {
 // the only red_phase_cycle call site that pushes verify_real_suite.
 func ctRedTestParams() map[string]string {
 	return map[string]string{
-		"agent":             "atdd-test-ct",
+		"agent":             "ct-red-test",
 		"phase_doc":         "docs/atdd/process/ct-red-test.md",
 		"phase_label":       "CT - RED - TEST",
 		"change_type":       "CT - RED - TEST",
@@ -274,7 +274,7 @@ func ctRedTestParams() map[string]string {
 // red_phase_cycle dispatched from ct_subprocess.CT_RED_DSL.
 func ctRedDslParams() map[string]string {
 	return map[string]string{
-		"agent":          "atdd-dsl-ct",
+		"agent":          "ct-red-dsl",
 		"phase_doc":      "docs/atdd/process/ct-red-dsl.md",
 		"phase_label":    "CT - RED - DSL",
 		"change_type":    "CT - RED - DSL",
@@ -285,7 +285,7 @@ func ctRedDslParams() map[string]string {
 // red_phase_cycle dispatched from ct_subprocess.CT_RED_EXTERNAL_DRIVER.
 func ctRedExternalDriverParams() map[string]string {
 	return map[string]string{
-		"agent":          "atdd-driver-ct",
+		"agent":          "ct-red-external-driver",
 		"phase_doc":      "docs/atdd/process/ct-red-external-driver.md",
 		"phase_label":    "CT - RED - EXTERNAL DRIVER",
 		"change_type":    "CT - RED - EXTERNAL DRIVER",
@@ -296,7 +296,7 @@ func ctRedExternalDriverParams() map[string]string {
 // green_phase_cycle dispatched from at_green_system.AT_GREEN_BACKEND.
 func atGreenBackendParams() map[string]string {
 	return map[string]string{
-		"agent":              "atdd-backend",
+		"agent":              "at-green-system-backend",
 		"phase_doc":          "docs/atdd/process/at-green-system.md",
 		"phase_label":        "AT - GREEN - SYSTEM (backend)",
 		"suite":              "<acceptance-api>",
@@ -308,7 +308,7 @@ func atGreenBackendParams() map[string]string {
 // green_phase_cycle dispatched from at_green_system.AT_GREEN_FRONTEND.
 func atGreenFrontendParams() map[string]string {
 	return map[string]string{
-		"agent":              "atdd-frontend",
+		"agent":              "at-green-system-frontend",
 		"phase_doc":          "docs/atdd/process/at-green-system.md",
 		"phase_label":        "AT - GREEN - SYSTEM (frontend)",
 		"suite":              "<acceptance-ui>",
@@ -327,7 +327,7 @@ func atGreenCommitParams() map[string]string {
 func systemInterfaceRedesignParams() map[string]string {
 	return map[string]string{
 		"change_type": "SYSTEM INTERFACE REDESIGN",
-		"agent":       "atdd-task-system-interface-redesign",
+		"agent":       "task-system-interface-redesign",
 		"phase_doc":   "docs/atdd/process/system-interface-redesign.md",
 		"subtype":     "system-interface-redesign",
 	}

@@ -1,6 +1,6 @@
 // Package intake holds the deterministic markdown parser that replaces the
-// four LLM-driven intake agents (atdd-story / atdd-bug / atdd-task /
-// atdd-chore). Issue Forms (.github/ISSUE_TEMPLATE/*.yml) enforce the
+// four LLM-driven intake agents (atdd-story / atdd-bug / task / chore).
+// Issue Forms (.github/ISSUE_TEMPLATE/*.yml) enforce the
 // canonical heading shape, so the runtime can extract sections without an
 // LLM. The constants in this file are the single source of truth for those
 // headings; both the form labels and the parser key off them.
