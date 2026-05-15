@@ -1,5 +1,7 @@
 # Promote `workspace` verbs to root, retire the `workspace` noun
 
+🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-15T07:30:02Z`
+
 > 📜 **History note:** this file went through several discarded designs
 > before landing here. See "Rejected alternatives" below — that section
 > exists so we don't re-litigate. The current shape: promote the
@@ -176,39 +178,6 @@ optivem rate-limit` ship at root with environment-derived scope. `gh
 optivem workspace …` is removed; cobra emits its standard unknown-
 command error. lint-history + stale-branches were promoted to root as
 hidden verbs — see "Deferred follow-ups" below.)*
-
-### Phase 2 — Migrate internal callers (must land with phase 1)
-
-Goal: every caller inside this repo uses the new names. **This phase
-must ship in the same PR as phase 1** because there's no alias to
-catch missed callers — the old commands hard-error.
-
-7. **Skills** (locate first — likely under `.claude/`):
-   - `/commit` → `gh optivem commit`
-   - `/sync` → `gh optivem sync`
-   - `/github-commit-push-all` → `gh optivem commit` (still iterates
-     workspace because that's the calling context)
-   - `/github-sync-all` → `gh optivem sync`
-   - any skill calling `workspace check-actions` → `gh optivem actions status`
-   - any skill calling `workspace rate-limit` → `gh optivem rate-limit`
-
-8. **Documentation:**
-   - `README.md` references (including the `workspace rate-limit` line
-     at README.md:256)
-   - `CLAUDE.md` "Always use commit/push/sync skills" rule
-   - `docs/tbd.md` references
-   - Active plans in `plans/` (light touch — don't churn history)
-
-9. **Agents** — grep `.claude/agents/` for old names; update active
-   agents only.
-
-10. **CI workflow `.github/workflows/`** — only if any workflow shells
-    out to `gh optivem workspace …` (the `gh-rate-limit.sh` script
-    does *not* — it's self-contained bash, not a wrapper).
-
-**Acceptance:** `grep -rn "gh optivem workspace"` returns only
-historical references (deferred plans, git history, archived docs) —
-nothing in active code, skills, agents, docs, or workflows.
 
 ### Phase 2.5 — Confirm ATDD pipeline is already aligned (no work)
 

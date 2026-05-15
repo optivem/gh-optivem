@@ -243,18 +243,20 @@ gh optivem test run --sample              # use each suite's sampleTest field as
 
 Multi-test semantics depend on the suite's `testFilter` in `tests.yaml`. The runner combines multiple `--test` values per `testFilterJoin`: `"or"` (default) joins names with `|` and substitutes once — works for dotnet (`&DisplayName~T1|T2`) and playwright/jest (`--grep 'T1|T2'`); `"repeat"` substitutes the whole `testFilter` once per name and concatenates — required for gradle (`--tests T1 --tests T2`). Practical ceiling on Windows is ~600 typical test names per invocation (the OS caps each command line at 32K characters).
 
-## Workspace operations
+## Cross-repo operations
 
-`gh optivem workspace <verb>` iterates every repo declared in the resolved `*.code-workspace` file. It locates the workspace via, in order: the `--workspace <dir>` flag, the `$GH_OPTIVEM_WORKSPACE` env var, or by walking up from the current directory.
+`gh optivem commit`, `sync`, and `actions status` infer scope from the environment: if a `*.code-workspace` file is in scope (via the `--workspace <dir>` flag, the `$GH_OPTIVEM_WORKSPACE` env var, or a walk-up from the current directory), the verb iterates every workspace folder; otherwise it acts on the cwd repo only. `rate-limit` is a single API call with no scope.
 
 ```bash
-gh optivem workspace commit "Update settings"             # stage, commit, pull, push every dirty repo
-gh optivem workspace commit --repo myrepo "Fix bug"       # only operate on the named repo
-gh optivem workspace commit --yes "Sync .claude"          # skip the y/N confirmation (required without a TTY)
-gh optivem workspace sync                                 # pull + push every repo (no commit)
-gh optivem workspace check-actions                        # latest run of every workflow in every workspace repo
-gh optivem workspace rate-limit                           # current GitHub API rate limits and reset times
+gh optivem commit "Update settings"             # stage, commit, pull, push every dirty repo in scope
+gh optivem commit --repo myrepo "Fix bug"       # only operate on the named repo (workspace mode)
+gh optivem commit --yes "Sync .claude"          # skip the y/N confirmation (required without a TTY)
+gh optivem sync                                 # pull + push every repo in scope (no commit)
+gh optivem actions status                       # latest run of every workflow in every repo in scope
+gh optivem rate-limit                           # current GitHub API rate limits and reset times
 ```
+
+Each run prints a `Mode:` banner showing the resolved scope — `Mode: workspace (5 repos from page-turner.code-workspace)` or `Mode: single repo (shop)`.
 
 `commit --yes` refuses to stage untracked (`??`) files unless `--include-untracked` is also passed — the stray-file foot-gun is opt-in for scripted callers.
 
