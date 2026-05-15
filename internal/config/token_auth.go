@@ -67,7 +67,7 @@ func verifyDockerHubAuth(client *http.Client, username, token string) error {
 	var statusCode int
 	var respBody []byte
 	_, retryErr := shell.RetryWithPolicy(
-		shell.SonarRetryTransient(), shell.SonarRetryHardFail(), "dockerhub-retry",
+		shell.RetryTransient(), shell.RetryHardFail(), "dockerhub-retry",
 		func() (string, error) {
 			req, err := http.NewRequest("POST", "https://hub.docker.com/v2/users/login", strings.NewReader(string(body)))
 			if err != nil {
@@ -113,7 +113,7 @@ func verifySonarToken(client *http.Client, token string) error {
 	var statusCode int
 	var respBody []byte
 	_, retryErr := shell.RetryWithPolicy(
-		shell.SonarRetryTransient(), shell.SonarRetryHardFail(), "sonar-retry",
+		shell.RetryTransient(), shell.RetryHardFail(), "sonar-retry",
 		func() (string, error) {
 			req, err := http.NewRequest("GET", "https://sonarcloud.io/api/authentication/validate", nil)
 			if err != nil {
@@ -173,7 +173,7 @@ func githubUserAuthCheck(client *http.Client, token string) (*http.Response, err
 		var hdrs http.Header
 		var respBody []byte
 		_, retryErr := shell.RetryWithPolicy(
-			shell.SonarRetryTransient(), shell.SonarRetryHardFail(), "github-auth-retry",
+			shell.RetryTransient(), shell.RetryHardFail(), "github-auth-retry",
 			func() (string, error) {
 				req, err := http.NewRequest("GET", "https://api.github.com/user", nil)
 				if err != nil {
@@ -332,6 +332,16 @@ func verifyGHCRToken(client *http.Client, username, token string) error {
 // failure. On nil return, prints one success line per check via the log
 // package (caller is responsible for log.Init).
 func VerifyEnvironment(langs []string, deploy string) error {
+	return verifyEnvironmentWithClient(langs, deploy, &http.Client{Timeout: tokenAuthTimeout})
+}
+
+// verifyEnvironmentWithClient is the testable form of VerifyEnvironment: the
+// caller supplies the *http.Client used for every live provider auth call.
+// Tests substitute a fakeRoundTripper (see token_auth_test.go) so the
+// aggregated-failure surface can be exercised without real network. The
+// public VerifyEnvironment is a one-line wrapper that injects the default
+// timeout-bounded client.
+func verifyEnvironmentWithClient(langs []string, deploy string, client *http.Client) error {
 	e := readEnvTokens()
 
 	required := []struct{ name, val string }{
@@ -370,7 +380,6 @@ func VerifyEnvironment(langs []string, deploy string) error {
 	// each one needs its token value. Missing-var errors are reported
 	// separately in the aggregated error below.
 	if len(missing) == 0 {
-		client := &http.Client{Timeout: tokenAuthTimeout}
 		checks = append(checks,
 			check{"DOCKERHUB_TOKEN", func() error { return verifyDockerHubAuth(client, e.dockerHubUsername, e.dockerHubToken) }},
 			check{"SONAR_TOKEN", func() error { return verifySonarToken(client, e.sonarToken) }},

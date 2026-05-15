@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func TestClassifyGHError(t *testing.T) {
+func TestClassifyError(t *testing.T) {
 	err := errors.New("exit 1")
 	cases := []struct {
 		name string
@@ -14,6 +14,7 @@ func TestClassifyGHError(t *testing.T) {
 		err  error
 		want bool
 	}{
+		// 5xx + GitHub-flavoured transients
 		{"HTTP 500", "HTTP 500 Internal Server Error", err, true},
 		{"HTTP 502", "Bad Gateway (HTTP 502)", err, true},
 		{"HTTP 503", "Service Unavailable\nHTTP 503", err, true},
@@ -24,18 +25,32 @@ func TestClassifyGHError(t *testing.T) {
 		{"no such host", "dial tcp: lookup api.github.com: no such host", err, true},
 		{"bad gateway text", "Bad Gateway", err, true},
 		{"graphql internal error", "Something went wrong while executing your query", err, true},
+		// Docker / sonarcloud / git transients picked up by the union
+		{"sonar 5xx wording", "Error 504 on https://sonarcloud.io/api/...", err, true},
+		{"sonar endpoint timeout", "Endpoint request timed out", err, true},
+		{"docker context deadline", "context deadline exceeded", err, true},
+		{"git RPC 5xx", "RPC failed; HTTP 502 curl 22", err, true},
+		{"git could not resolve host", "fatal: unable to access 'https://...': Could not resolve host: github.com", err, true},
+		{"http2 GOAWAY", "http2: server sent GOAWAY and closed the connection", err, true},
 
+		// Hard-fail
 		{"HTTP 404", "HTTP 404: Not Found", err, false},
 		{"HTTP 403 rate limit", "HTTP 403: API rate limit exceeded", err, false},
 		{"HTTP 422", "HTTP 422 Unprocessable Entity", err, false},
+		{"docker manifest unknown", "manifest unknown: manifest unknown", err, false},
+		{"docker name unknown", "name unknown: repository name not known to registry", err, false},
+		{"sonar project not found", "Project key acme:foo does not exist", err, false},
+		{"git remote rejected", "! [remote rejected] main -> main (pre-receive hook declined)", err, false},
+		{"git fatal protocol", "fatal: protocol error: bad pack header", err, false},
+		{"unauthorized", "unauthorized: authentication required", err, false},
 		{"RateLimitExceeded typed", "", &RateLimitExceeded{Msg: "rl"}, false},
 		{"unknown error", "some unrelated failure", err, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := classifyGHError(tc.out, tc.err)
+			got := classifyError(tc.out, tc.err)
 			if got != tc.want {
-				t.Fatalf("classifyGHError(%q) = %v, want %v", tc.out, got, tc.want)
+				t.Fatalf("classifyError(%q) = %v, want %v", tc.out, got, tc.want)
 			}
 		})
 	}
@@ -58,7 +73,7 @@ func TestRunWithRetryLoop_ImmediateSuccess(t *testing.T) {
 		attempts++
 		return "ok", nil
 	}
-	out, err := runWithRetryLoop(attempt, classifyGHError, 4, ghRetryDelays, "gh-retry")
+	out, err := runWithRetryLoop(attempt, classifyError, 4, defaultRetryDelays, "retry")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -86,7 +101,7 @@ func TestRunWithRetryLoop_TransientThenSuccess(t *testing.T) {
 		}
 		return "ok", nil
 	}
-	out, err := runWithRetryLoop(attempt, classifyGHError, 4, ghRetryDelays, "gh-retry")
+	out, err := runWithRetryLoop(attempt, classifyError, 4, defaultRetryDelays, "retry")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -114,7 +129,7 @@ func TestRunWithRetryLoop_TransientExhausted(t *testing.T) {
 		attempts++
 		return "HTTP 500 Internal Server Error", transient
 	}
-	out, err := runWithRetryLoop(attempt, classifyGHError, 4, ghRetryDelays, "gh-retry")
+	out, err := runWithRetryLoop(attempt, classifyError, 4, defaultRetryDelays, "retry")
 	if err == nil {
 		t.Fatalf("expected error after exhausting retries, got nil")
 	}
@@ -140,7 +155,7 @@ func TestRunWithRetryLoop_HardFailPassthrough(t *testing.T) {
 		attempts++
 		return "HTTP 404: Not Found", hardFail
 	}
-	out, err := runWithRetryLoop(attempt, classifyGHError, 4, ghRetryDelays, "gh-retry")
+	out, err := runWithRetryLoop(attempt, classifyError, 4, defaultRetryDelays, "retry")
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -177,7 +192,7 @@ func TestRunWithRetryLoop_PermissiveClassifier(t *testing.T) {
 			}
 			return "ok", nil
 		}
-		out, err := runWithRetryLoop(attempt, permissive, 4, ghRetryDelays, "gh-retry")
+		out, err := runWithRetryLoop(attempt, permissive, 4, defaultRetryDelays, "retry")
 		if err != nil || out != "ok" || attempts != 3 {
 			t.Fatalf("got attempts=%d out=%q err=%v, want attempts=3 out=ok err=nil", attempts, out, err)
 		}
@@ -190,7 +205,7 @@ func TestRunWithRetryLoop_PermissiveClassifier(t *testing.T) {
 			attempts++
 			return "", rlErr
 		}
-		_, err := runWithRetryLoop(attempt, permissive, 4, ghRetryDelays, "gh-retry")
+		_, err := runWithRetryLoop(attempt, permissive, 4, defaultRetryDelays, "retry")
 		if attempts != 1 || err != rlErr {
 			t.Fatalf("got attempts=%d err=%v, want attempts=1 err=rlErr", attempts, err)
 		}
@@ -207,7 +222,7 @@ func TestRunWithRetryLoop_RateLimitPassthrough(t *testing.T) {
 		attempts++
 		return "", rlErr
 	}
-	out, err := runWithRetryLoop(attempt, classifyGHError, 4, ghRetryDelays, "gh-retry")
+	out, err := runWithRetryLoop(attempt, classifyError, 4, defaultRetryDelays, "retry")
 	if attempts != 1 {
 		t.Fatalf("attempts = %d, want 1 — rate-limit must not retry", attempts)
 	}

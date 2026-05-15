@@ -125,7 +125,7 @@ func (c *Client) do(method, endpoint string, body io.Reader) ([]byte, error) {
 	var statusCode int
 
 	_, retryErr := shell.RetryWithPolicy(
-		shell.SonarRetryTransient(), shell.SonarRetryHardFail(), "sonar-retry",
+		shell.RetryTransient(), shell.RetryHardFail(), "sonar-retry",
 		func() (string, error) {
 			var bodyReader io.Reader
 			if bodyBytes != nil {

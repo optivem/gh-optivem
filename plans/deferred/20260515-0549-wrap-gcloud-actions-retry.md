@@ -5,6 +5,9 @@ Source: follow-up from Item 19 of `plans/20260514-fix-shop-workflow-retry-gaps.m
 Scope: 18 `*-stage-cloud.yml` files in `shop/.github/workflows/`, 153 `google-github-actions/*@v3` call sites total.
 Status: design — needs decisions before implementation.
 
+> **Premise revised by [`plans/20260515-0723-shop-zero-retry-scripts.md`](../20260515-0723-shop-zero-retry-scripts.md).**
+> That plan kept `Wandalen/wretry.action@v3` for `uses:`-style action wrapping (only the `run:`-shell retry path got replaced by `optivem/actions/retry@main`). The text below still references "Item 13 removes Wandalen entirely" — that's no longer true. Wandalen is **retained for `uses:` retry** because composite actions can't dynamically dispatch on `uses:`. Re-evaluate the design options below with that in mind: Option A is no longer a contradiction, just a reuse of the already-retained Wandalen dependency.
+
 ---
 
 ## Why a separate plan

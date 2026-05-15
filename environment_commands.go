@@ -27,7 +27,6 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
-	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
 // newEnvironmentCmd builds the `gh optivem environment` parent. The parent
@@ -133,29 +132,13 @@ just the language-agnostic tools and tokens.`,
 			}
 			defer log.Close()
 
-			// Validate --lang values up front against the same set used by
-			// resolveLangs / ValidateBackendLang (per
-			// feedback_interactive_validation_parity.md). Aggregate every
-			// bad value so a typo in a long comma-separated list surfaces
-			// with all offenders, not just the first.
-			var bad []string
-			for _, l := range langs {
-				if !config.IsValidLang(l) {
-					bad = append(bad, l)
-				}
-			}
-			if len(bad) > 0 {
-				fmt.Fprintf(os.Stderr, "--lang: unsupported value(s) %v; must be one of 'java', 'dotnet', 'typescript'\n", bad)
-				os.Exit(1)
-			}
-
-			// Validate --deploy against the same set as
-			// validateCommonFlags / projectconfig.IsValidDeploy. Empty is
-			// allowed (skips the docker check); any other non-enum value
-			// is rejected with a clear hint.
-			if deploy != "" && !projectconfig.IsValidDeploy(deploy) {
-				fmt.Fprintf(os.Stderr, "--deploy: unsupported value %q; must be one of %q, %q\n",
-					deploy, projectconfig.DeployDocker, projectconfig.DeployCloudRun)
+			// Validate --lang and --deploy up front. Aggregated rejection
+			// (every bad value surfaced at once) lives in
+			// config.ValidateVerifyFlags so the rejection paths can be
+			// exercised by unit tests; this surface stays responsible only
+			// for printing + exit.
+			if err := config.ValidateVerifyFlags(langs, deploy); err != nil {
+				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
 

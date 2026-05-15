@@ -116,16 +116,16 @@ The shared engine lives in `optivem/actions/shared/{retry-core,gh-retry,docker-r
 
 **Categories of finding** (use these exact labels in the report):
 
-- **N-A — `gh` call without retry.** Workflow invokes the `gh` CLI in a network-bound capacity (`gh api`, `gh release`, `gh workflow`, `gh project`, `gh pr`, etc.) without sourcing `gh-retry.sh` and without an external retry wrapper. Recommendation: source `$GITHUB_WORKSPACE/.github/workflows/scripts/gh-retry.sh` from the `run:` step and switch to `gh_retry gh <subcommand> ...`. Excludes `gh` calls that are clearly local-only or that are themselves probes (rc-as-truth-value).
-- **N-B — Other network call without retry.** A non-`gh` external-I/O call without retry — `curl`, `wget`, `docker pull`, `docker push`, `docker login`, `npm install`, `npm publish`, `mvn deploy`, `mvn dependency:resolve`, `dotnet restore`, `dotnet nuget push`, sonarscanner uploads, direct API requests to `sonarcloud.io`, package-registry fetches. Recommendation: switch to the matching `<tool>_retry` wrapper from the shared engine (`docker_retry`, `sonar_retry`); for tools without a canonical wrapper, either add a thin wrapper to `optivem/actions/shared/` or wrap with `nick-fields/retry@v4` configured to the engine's 4×{5,15,45} schedule.
+- **N-A — `gh` call without retry.** Workflow invokes the `gh` CLI in a network-bound capacity (`gh api`, `gh release`, `gh workflow`, `gh project`, `gh pr`, etc.) without going through the retry wrapper. Recommendation: use `uses: optivem/actions/retry@main` with `command: gh <subcommand> ...`, or in a sourced script, `source optivem/actions/shared/retry.sh` and call `retry_run gh <subcommand> ...`. Excludes `gh` calls that are clearly local-only or that are themselves probes (rc-as-truth-value).
+- **N-B — Other network call without retry.** A non-`gh` external-I/O call without retry — `curl`, `wget`, `docker pull`, `docker push`, `docker login`, `npm install`, `npm publish`, `mvn deploy`, `mvn dependency:resolve`, `dotnet restore`, `dotnet nuget push`, sonarscanner uploads, direct API requests to `sonarcloud.io`, package-registry fetches. Recommendation: use `uses: optivem/actions/retry@main` with `command: <tool> <subcommand> ...`, or `retry_run <tool> ...` from a sourced script. The unified `retry_run` covers gh, docker, sonar, git, and any other shell command at 4×{5,15,45}.
 - **N-C — Retry present but misconfigured.** A retry mechanism is in place but diverges from the shared engine's policy — examples: aggressive schedule (sub-second backoff, >5 attempts), masks 4xx by retrying on any failure (no hard-fail pass-through), wraps a hard-fail probe whose rc is consumed as truth, retries a non-idempotent write without a guard. Recommendation: replace with the shared engine; if a non-engine retry is genuinely required, document the rationale at the call site so a future audit pass can record it as R-DOC-OK.
 
 **Anti-patterns to also flag** when found alongside §4 matches:
 
 - **`continue-on-error: true` used as a retry substitute.** Hides a real failure from the job result instead of recovering from it. Recommendation: switch to a retry wrapper for transients; if the step is genuinely allowed to fail, name what's allowed and why in a comment.
 - **`if: failure()` blocks that re-run non-idempotent work.** A second invocation of a tag-creating, release-publishing, or registry-push step on the same logical operation can leave partial state behind. Recommendation: use the retry wrapper around the original step instead — the engine retries idempotently within one attempt.
-- **Inline `while`/`for attempt` retry loops with hard-coded schedules** (e.g. `for attempt in 1 2 3; do ... sleep $((attempt * 15)); done`). Drifts from the canonical schedule the moment the canonical regex is updated. Recommendation: replace with the matching `<tool>_retry` wrapper, or with `retry_with_policy ...` for non-canonical commands.
-- **Long-running commands wrapped in retry with no per-attempt timeout.** A stuck process consumes the whole job budget without surfacing the transient. Recommendation: combine the wrapper with an explicit `timeout` cap (`timeout 5m sonar_retry ./gradlew sonar ...`) on commands known to occasionally hang.
+- **Inline `while`/`for attempt` retry loops with hard-coded schedules** (e.g. `for attempt in 1 2 3; do ... sleep $((attempt * 15)); done`). Drifts from the canonical schedule the moment the canonical regex is updated. Recommendation: replace with `uses: optivem/actions/retry@main` or, from sourced bash, `retry_run <cmd>`.
+- **Long-running commands wrapped in retry with no per-attempt timeout.** A stuck process consumes the whole job budget without surfacing the transient. Recommendation: combine the wrapper with an explicit `timeout` cap (`timeout 5m retry_run ./gradlew sonar ...`) on commands known to occasionally hang.
 
 **How to check.**
 
@@ -133,7 +133,7 @@ The shared engine lives in `optivem/actions/shared/{retry-core,gh-retry,docker-r
    - `run:` contains `gh `, `curl`, `wget`, `docker push`, `docker pull`, `docker login`, `npm install`, `npm publish`, `mvn deploy`, `dotnet restore`, `dotnet nuget`, `sonarscanner`, `./gradlew sonar`, `./mvnw sonar`, or a direct HTTP call (`curl https://`, `wget https://`).
    - `uses:` targets a marketplace action whose primary operation is network-bound (`docker/login-action`, `docker/build-push-action`, `actions/setup-*` cache-fetch path, `actions/upload-artifact`, `actions/download-artifact`, `gradle/actions/setup-gradle`).
 2. For each candidate, determine its retry posture by reading the surrounding step:
-   - Does the same `run:` block source `gh-retry.sh` / `docker-retry.sh` / `sonar-retry.sh` and invoke the matching `<tool>_retry` wrapper for the call? → R-OK.
+   - Does the step use `uses: optivem/actions/retry@main`, or does the `run:` block source `optivem/actions/shared/retry.sh` and invoke `retry_run <cmd> ...` for the call? → R-OK.
    - Is the candidate a `uses:` step whose action documents retry semantics, configured with explicit attempt/delay knobs? → R-OK.
    - Is the call local-only (no remote endpoint) or a fail-fast probe? → R-DOC-OK.
    - Otherwise: classify as N-A (`gh` call), N-B (any other network call), or N-C (retry present but diverges from the shared engine's policy).
@@ -260,12 +260,12 @@ Generated by `workflow-auditor`. Scope: <list of repos scanned>.
 ## §4 findings
 
 ### Category N-A — `gh` call without retry
-- **`<repo>/<path>.yml` :: `<job-name>` :: step `<id>`** — line <L>: `gh <subcommand> ...`. No `gh-retry.sh` sourced in this `run:` block. Recommendation: source `$GITHUB_WORKSPACE/.github/workflows/scripts/gh-retry.sh` and switch to `gh_retry gh <subcommand> ...`.
+- **`<repo>/<path>.yml` :: `<job-name>` :: step `<id>`** — line <L>: `gh <subcommand> ...`. No retry wrapper. Recommendation: use `uses: optivem/actions/retry@main` with `command: gh <subcommand> ...`, or `retry_run gh <subcommand> ...` from a sourced script.
 
 (If none, write `None.`)
 
 ### Category N-B — Other network call without retry
-- **`<repo>/<path>.yml` :: `<job-name>` :: step `<id>`** — line <L>: `<command summary>` (kind: `<docker | sonar | curl | npm | mvn | dotnet | other>`). Recommendation: <`docker_retry ...` | `sonar_retry ...` | wrap with `nick-fields/retry@v4` at 4×{5,15,45} | add a `<tool>-retry.sh` wrapper to `optivem/actions/shared/`>.
+- **`<repo>/<path>.yml` :: `<job-name>` :: step `<id>`** — line <L>: `<command summary>` (kind: `<docker | sonar | curl | npm | mvn | dotnet | other>`). Recommendation: `uses: optivem/actions/retry@main` with `command: <tool> ...`, or `retry_run <tool> ...` from a sourced script.
 
 (If none, write `None.`)
 

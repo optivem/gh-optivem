@@ -44,7 +44,7 @@ func (s *SonarCloud) api(ctx context.Context, method, endpoint string, data map[
 	// so retries don't read from an exhausted reader. 4xx is hard-fail —
 	// callers handle "already exists" / 404 via the result map below, exactly
 	// as before.
-	_, retryErr := RetryWithPolicy(sonarRetryTransient, sonarRetryHardFail, "sonar-retry", func() (string, error) {
+	_, retryErr := RetryWithPolicy(retryTransient, retryHardFail, "sonar-retry", func() (string, error) {
 		var body io.Reader
 		if method == "POST" && data != nil {
 			vals := url.Values{}
