@@ -22,121 +22,10 @@ landed:
 - Doc edits — the embedded `internal/assets/global/docs/atdd/process/*.md`
   files now use `${name}` placeholders.
 
-What is missing for the feature to actually work end-to-end:
-
-1. **No caller of `MaterializeProject`.** A `grep` across the repo finds
-   zero production callers — `clauderun.Dispatch` (the agent-launch path)
-   still renders prompts via `renderPrompt`, which resolves `${docs_root}`
-   against the user-global `assetsync.DocsRoot()`. Nothing triggers
-   project-local materialization.
-
-2. **No `paths:` defaults shipped by the scaffolder.** A freshly
-   scaffolded project has no `paths:` block, so `PlaceholderMap()`
-   returns a map without Family B keys, and any doc referencing
-   `${driver_port}` fails substitution (`substituteDoc` errors on
-   unfilled placeholders).
-
-3. **No migration for pre-existing configs.** `runConfigMigrate`
-   (`internal/cmd/.../config_commands.go:307`) handles other back-fills
-   (e.g. repos for multi-repo monoliths, GitHub provider, markdown
-   provider) but does not add `paths:`.
-
-4. **No end-to-end verification yet.** The original plan's Step 4 was
-   deferred because items 1–3 above had to land first.
-
-This plan covers all four.
+Items 1, 2, 3 have landed in commits on this branch — see Audit findings
+below for the embedded-docs blocker surfaced during Item 1 testing.
 
 ## Scope
-
-### Item 1 — Wire `MaterializeProject` into `clauderun.Dispatch`
-
-**Files**: `internal/atdd/runtime/clauderun/clauderun.go`, plus its tests.
-
-**Spec** (carried forward from the design plan):
-
-1. `Options` (line 48) gains a `ProjectConfig *projectconfig.Config`
-   field so the placeholder map is at hand without re-loading. Discuss
-   during execution whether to also keep `RepoPath` separate (already
-   exists?) or derive it from `ProjectConfig` — read the struct first
-   and minimize churn.
-2. `Dispatch` (line 292), before invoking `renderPrompt`, calls
-   `assetsync.MaterializeProject(opts.RepoPath, version, opts.ProjectConfig.PlaceholderMap())`
-   when `opts.RepoPath` and `opts.ProjectConfig` are both non-empty.
-   Surfaces the returned `projectDocsRoot` to `renderPrompt`.
-3. `renderPrompt` (line 401) substitutes `${docs_root}` with the
-   project-local `projectDocsRoot` when present, falling back to the
-   user-global `assetsync.DocsRoot()` for callers that don't supply a
-   `ProjectConfig` (CLI utilities, scaffold flows).
-
-**Acceptance signal**:
-
-- Unit test: a `Dispatch` invocation with a populated `Options.ProjectConfig`
-  and a temp-dir `RepoPath` materializes docs into `<RepoPath>/.gh-optivem/docs/`
-  and the rendered prompt references that path.
-- Unit test: a `Dispatch` invocation without `ProjectConfig` falls back
-  to the user-global docs path (regression guard for non-ATDD callers).
-
-### Item 2 — Per-language scaffolder default `paths:` block
-
-**Files**: `internal/configinit/configinit.go` (and any sibling file that
-owns the YAML template assembly — read first), plus tests.
-
-**Spec**:
-
-- For each `(language, architecture)` pair the scaffolder supports
-  (`typescript-monolith`, `java-monolith`, `dotnet-monolith`, plus any
-  multitier variants present), produce a default `paths:` map matching
-  `internal/assets/global/docs/atdd/process/glossary.md` doctrine. Read
-  the glossary first so the keys align — the plan-closeout commit's
-  parent (`git log -- internal/assets/global/docs/atdd/process/glossary.md`)
-  may have updated vocabulary.
-- Initial keys per the design plan: `driver_port`, `driver_adapter`,
-  `external_driver_port`, `external_driver_adapter`, `system_test_root`,
-  `sut_root`. Confirm against `glossary.md`.
-- Per-language path stems (suggested defaults to confirm against the
-  glossary):
-  - TypeScript flat-src: `system-test/typescript/src/testkit/driver/port`
-    etc., `system/monolith/typescript/src/<sut_namespace>` for the SUT.
-  - Java Maven: `system-test/java/src/main/java/.../testkit/driver/port`
-    etc.
-  - .NET solution: `system-test/dotnet/<solution>/Testkit.Driver.Port/`
-    etc.
-- The defaults are written into `gh-optivem.yaml` at scaffold time. They
-  should not be regenerated on every command — once on initial scaffold,
-  the user owns subsequent edits.
-
-**Acceptance signal**:
-
-- Unit test per language: scaffolding emits a `gh-optivem.yaml` whose
-  `paths:` block is non-empty and contains the documented keys.
-- Smoke check (manual or fixture-driven): the defaults make
-  `MaterializeProject` succeed against a `gh-optivem.yaml` shipped from
-  the scaffolder with no further user edits.
-
-### Item 3 — Migration helper back-fills `paths:`
-
-**Files**: `internal/cmd/.../config_commands.go` (around
-`runConfigMigrate`, line 307), plus tests in `config_commands_test.go`.
-
-**Spec**:
-
-- Extend `runConfigMigrate` to detect a missing or empty `paths:` block
-  and back-fill it with the per-language defaults from Item 2 (factor
-  the defaults into a single shared helper so the scaffolder and the
-  migrator agree by construction).
-- Idempotent: re-running `gh optivem config migrate` after a back-fill
-  is a no-op (`changed == false`).
-- Existing partial `paths:` blocks: leave user keys alone, fill in only
-  missing canonical keys. Document the merge rule in a code comment.
-
-**Acceptance signal**:
-
-- `TestRunConfigMigrate_BackfillsPathsForMonolith` (parallel to the
-  existing `TestRunConfigMigrate_BackfillsReposForMultiRepoMonolith`)
-  asserts the block is added with correct per-language defaults.
-- `TestRunConfigMigrate_IsIdempotent` (existing) continues to pass.
-- New: idempotence specifically for `paths:` — a second migrate run
-  after a back-fill returns `changed == false`.
 
 ### Item 4 — End-to-end verification against a fresh rehearsal
 
@@ -177,22 +66,57 @@ owns the YAML template assembly — read first), plus tests.
 a follow-up commit message) confirming each numbered point above passes
 or, where it fails, capturing the failure mode for a follow-up plan.
 
-## Execution ordering
+**Known blocker from Items 1–3** (see Audit findings below) — Item 4
+verification will hit the embedded-docs `${...}` meta-references the
+first time `MaterializeProject` walks the full tree. Expect points 1–6
+above to fail until the audit follow-up plan lands; that's the
+intended outcome of Item 4 (capture failure mode for a follow-up).
 
-Items must land in this order:
+## Audit findings — surfaced during Items 1–3
 
-1. **Item 2 first.** Without per-language `paths:` defaults, Item 1's
-   tests can't run end-to-end (docs referencing `${driver_port}` will
-   fail substitution).
-2. **Item 1 second.** Now there's a caller for `MaterializeProject`.
-3. **Item 3 third.** Pre-existing configs get the back-fill.
-4. **Item 4 last.** Verification ties it together against a fresh
-   rehearsal and a migrated config.
+During Item 1's wiring tests, `MaterializeProject` against the full
+embedded `docs/atdd/` tree errors out with:
 
-Items 2 and 3 can technically be parallelized (different files, shared
-defaults helper), but the shared helper is small enough that doing them
-sequentially in one focused session is cheaper than coordinating two
-subagents.
+> `materialize: docs/atdd/process/cycles.md references unfilled
+> placeholders ${system_lang}, ${test_lang}; declared: architecture,
+> driver_adapter, driver_port, …`
+
+Two distinct classes of issues:
+
+1. **Undeclared "real" placeholders.** `cycles.md` line 263 references
+   `${system_lang}` and `${test_lang}` as substitution targets, but
+   `projectconfig.PlaceholderMap()` only emits `${language}` (with the
+   monolith→multitier fallback). Either:
+   - Add `system_lang` (sourced from `system.lang`) and `test_lang`
+     (sourced from `system_test.lang`) to `PlaceholderMap`, OR
+   - Edit cycles.md to use `${language}` and drop the system/test
+     distinction in the prose (the schema doesn't carry the
+     distinction at substitution time today).
+
+2. **Teaching meta-references.** `placeholders.md` uses `${name}`,
+   `${key}`, `${typo}` in code spans to TEACH the placeholder syntax
+   (e.g. *"the docs use `${name}` placeholders"*). The current
+   substitution layer can't distinguish teaching prose from real
+   placeholders. Options:
+   - Add an escape syntax (`$${name}` → literal `${name}`) to
+     `internal/expand/expand.go` and edit the teaching docs.
+   - Skip substitution inside markdown code spans (requires a basic
+     markdown-aware walker in `materialize.go`).
+   - Exclude `placeholders.md` (and any other doc that's pure teaching
+     material) from the substitution pass via an opt-out frontmatter
+     directive.
+
+Both classes block running `MaterializeProject` against the embedded
+tree end-to-end. A follow-up plan should pick a design and land the
+fix; Item 4 then runs the rehearsal verification.
+
+**Item 1's tests bypass this gap** by pre-writing a value-equal sidecar
+so `MaterializeProject`'s staleness check short-circuits before the
+walk. That tests the wiring (Dispatch → MaterializeProject →
+projectDocsRoot → renderPrompt) but does not exercise the walker
+against the real embedded corpus. Production callers WILL hit the gap
+on first dispatch in a fresh project — hence the need for the
+follow-up before Item 4 can pass.
 
 ## Non-goals
 
@@ -219,12 +143,10 @@ subagents.
 - Substitution mechanism: `internal/assets/sync/materialize.go`.
 - Placeholder map source: `internal/projectconfig/config.go` —
   `PlaceholderMap()` at line 377; `Paths map` at line 186.
-- Existing migration pattern to mirror: `runConfigMigrate` at
-  `internal/.../config_commands.go:307`, tests around
-  `TestRunConfigMigrate_BackfillsReposForMultiRepoMonolith` in
-  `config_commands_test.go:776`.
-- Agent prompt pipeline: `clauderun.Dispatch` (line 292),
-  `clauderun.renderPrompt` (line 401), `clauderun.Options` (line 48) in
-  `internal/atdd/runtime/clauderun/clauderun.go`.
+- Per-language defaults helper landed this session:
+  `internal/projectconfig/paths_defaults.go`.
 - Glossary doctrine for `paths:` keys:
   `internal/assets/global/docs/atdd/process/glossary.md`.
+- Placeholder doctrine + audit-finding source:
+  `internal/assets/global/docs/atdd/process/placeholders.md` and
+  `cycles.md:263`.
