@@ -1,5 +1,7 @@
 # Plan: shop has zero retry-policy scripts — retry consumed via `uses:`
 
+> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-15T09:06:44Z`
+
 > **Supersedes the A/B/C/D options in
 > [`deferred/20260514-2200-retry-helpers-canonical-home.md`](deferred/20260514-2200-retry-helpers-canonical-home.md).**
 > That plan asked "where should canonical bash live?" and missed that
@@ -330,13 +332,6 @@ internal tool, not student-facing, separate concern.
 
 **Approach:** Q3b — incremental per workflow. Don't attempt all 24
 workflows at once.
-
-### Step 1 — Add `optivem/actions/retry@main`
-
-1. Create `optivem/actions/retry/action.yml` (composite, shape above).
-2. Create `optivem/actions/shared/retry.sh` (unified helper, regex from
-   union of the four current helpers).
-3. Smoke-test against a known-transient mock and a known-hard-fail mock.
 
 ### Step 2 — Migrate per-language workflows (one at a time)
 
