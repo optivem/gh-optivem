@@ -1,5 +1,7 @@
 # Plan: Wire MaterializeProject into Dispatch + scaffolder `paths:` defaults
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-15T15:23:32Z`
+
 ## Background
 
 The phase-doc substitution feature is half-shipped. Earlier work (closed

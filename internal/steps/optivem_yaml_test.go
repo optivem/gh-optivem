@@ -191,6 +191,83 @@ func TestBuildOptivemYAML_OutputValidates(t *testing.T) {
 	}
 }
 
+// TestBuildOptivemYAML_PathsBlockSeededPerLanguage — the scaffolder emits
+// a non-empty `paths:` Family B block whose keys match the placeholder
+// doctrine. Without this block a freshly-scaffolded project would fail
+// MaterializeProject on first dispatch (any phase doc referencing
+// ${driver_port} / ${driver_adapter} / ${external_driver_*} would
+// surface as an unfilled placeholder).
+func TestBuildOptivemYAML_PathsBlockSeededPerLanguage(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		testLang string
+		wantKey  string
+		wantPath string
+	}{
+		{"typescript", projectconfig.LangTypescript, "driver_port", "system-test/src/testkit/driver/port"},
+		{"java", projectconfig.LangJava, "driver_port", "system-test/src/main/java/testkit/driver/port"},
+		{"dotnet", projectconfig.LangDotnet, "driver_port", "system-test/Testkit.Driver.Port"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Arch:           "monolith",
+				RepoStrategy:   "monorepo",
+				FullRepo:       "x/y",
+				Lang:           tc.testLang,
+				TestLang:       tc.testLang,
+				SystemPath:     "system",
+				SystemTestPath: "system-test",
+				StubsPath:      "external-systems/stubs",
+				SimulatorsPath: "external-systems/simulators",
+			}
+			got := BuildOptivemYAML(cfg)
+			if len(got.Paths) == 0 {
+				t.Fatal("paths: block should be seeded by the scaffolder")
+			}
+			for _, k := range []string{"driver_port", "driver_adapter", "external_driver_port", "external_driver_adapter"} {
+				if _, ok := got.Paths[k]; !ok {
+					t.Errorf("paths.%s missing", k)
+				}
+			}
+			if got.Paths[tc.wantKey] != tc.wantPath {
+				t.Errorf("paths.%s: got %q, want %q", tc.wantKey, got.Paths[tc.wantKey], tc.wantPath)
+			}
+		})
+	}
+}
+
+// TestBuildOptivemYAML_PathsBlockMaterializeOK — the scaffolded
+// `paths:` block plus the schema's Family A values must yield a
+// placeholder map that satisfies every ${name} reference in the
+// embedded phase docs. Smoke-test by validating the emitted config.
+func TestBuildOptivemYAML_PathsBlockMaterializeOK(t *testing.T) {
+	t.Parallel()
+	cfg := &config.Config{
+		Arch:           "monolith",
+		RepoStrategy:   "monorepo",
+		Owner:          "x",
+		FullRepo:       "x/y",
+		Lang:           projectconfig.LangTypescript,
+		TestLang:       projectconfig.LangTypescript,
+		ProjectURL:     "https://github.com/orgs/x/projects/1",
+		SystemPath:     "system",
+		SystemTestPath: "system-test",
+		StubsPath:      "external-systems/stubs",
+		SimulatorsPath: "external-systems/simulators",
+	}
+	pc := BuildOptivemYAML(cfg)
+	if err := pc.Validate(); err != nil {
+		t.Fatalf("scaffolded config fails Validate: %v", err)
+	}
+	pm := pc.PlaceholderMap()
+	for _, key := range []string{"driver_port", "driver_adapter", "external_driver_port", "external_driver_adapter"} {
+		if pm[key] == "" {
+			t.Errorf("placeholder map missing %q after scaffold", key)
+		}
+	}
+}
+
 func TestBuildOptivemYAML_EmptyArchProducesPartialConfig(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{

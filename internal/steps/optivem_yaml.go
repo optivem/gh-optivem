@@ -184,6 +184,12 @@ func BuildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	pc.System = buildSystem(cfg, derived)
 	pc.SystemTest = buildSystemTest(cfg, derived)
 	pc.ExternalSystems = buildExternals(cfg)
+	// paths: Family B defaults — phase-doc substitution needs these so a
+	// freshly-scaffolded project's docs can materialize on first dispatch
+	// without operator edits. Nil for unknown test langs / empty paths;
+	// `gh optivem config migrate` back-fills the same defaults on configs
+	// that predate this step.
+	pc.Paths = projectconfig.DefaultPaths(cfg.TestLang, cfg.SystemTestPath)
 	return pc
 }
 

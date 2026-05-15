@@ -17,6 +17,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
 // ---------------------------------------------------------------------------
@@ -298,6 +300,119 @@ func TestRenderPrompt_DocsRootSubstitutes(t *testing.T) {
 	}
 	if !strings.Contains(got, "/atdd/architecture/dsl-core.md") {
 		t.Errorf("expected literal suffix preserved; got: %q", got)
+	}
+}
+
+// TestDispatch_MaterializesProjectDocsWhenProjectConfigSet covers the
+// project-local-docs wiring: when Options.ProjectConfig and RepoPath are
+// both set, Dispatch calls MaterializeProject before render and the
+// rendered prompt's ${docs_root} resolves to <RepoPath>/.gh-optivem/docs
+// instead of the user-global home path.
+//
+// To keep the test independent of the current state of the embedded
+// `docs/atdd/process/*.md` corpus (some teaching docs intentionally
+// contain ${name}-shaped meta-references that the substituter can't
+// distinguish from real placeholders — handled by Item 4's audit
+// follow-up), the test pre-writes a sidecar that matches the
+// PlaceholderMap exactly. MaterializeProject's value-based staleness
+// check returns "not stale" and short-circuits without walking the
+// embedded tree — exercising the wiring path that matters here:
+// Dispatch → MaterializeProject → projectDocsRoot → renderPrompt.
+func TestDispatch_MaterializesProjectDocsWhenProjectConfigSet(t *testing.T) {
+	repoPath := t.TempDir()
+	cfg := &projectconfig.Config{
+		System: projectconfig.System{
+			Architecture: "monolith",
+			Path:         "system",
+			Repo:         "x/y",
+			Lang:         "typescript",
+		},
+		SystemTest: projectconfig.TierSpec{
+			Path: "system-test",
+			Repo: "x/y",
+			Lang: "typescript",
+		},
+		Paths: projectconfig.DefaultPaths(projectconfig.LangTypescript, "system-test"),
+	}
+	preWriteFreshSidecar(t, repoPath, cfg.PlaceholderMap())
+
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	claudeFake := &fakeClaude{}
+
+	opts := newOpts()
+	opts.RepoPath = repoPath
+	opts.ProjectConfig = cfg
+	opts.PromptOverride = "Read ${docs_root}/atdd/process/glossary.md."
+
+	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if len(claudeFake.calls) != 1 {
+		t.Fatalf("expected 1 claude call, got %d", len(claudeFake.calls))
+	}
+	prompt := claudeFake.calls[0].Prompt
+	wantPrefix := filepath.Join(repoPath, ".gh-optivem", "docs")
+	if !strings.Contains(prompt, wantPrefix) {
+		t.Errorf("expected ${docs_root} resolved to %q in prompt; got: %q", wantPrefix, prompt)
+	}
+}
+
+// preWriteFreshSidecar writes a materialize sidecar that matches
+// `placeholders` so the next MaterializeProject call against repoPath
+// short-circuits via projectStale=false. Used to test the Dispatch →
+// materialize wiring without exercising the embedded-doc walk.
+func preWriteFreshSidecar(t *testing.T, repoPath string, placeholders map[string]string) {
+	t.Helper()
+	sidecarDir := filepath.Join(repoPath, ".gh-optivem")
+	if err := os.MkdirAll(sidecarDir, 0o755); err != nil {
+		t.Fatalf("mkdir sidecar dir: %v", err)
+	}
+	var b strings.Builder
+	b.WriteString("binary_version: \"\"\nplaceholders:\n")
+	for k, v := range placeholders {
+		b.WriteString("  ")
+		b.WriteString(k)
+		b.WriteString(": ")
+		b.WriteString(v)
+		b.WriteString("\n")
+	}
+	if err := os.WriteFile(filepath.Join(sidecarDir, ".materialized.yaml"), []byte(b.String()), 0o644); err != nil {
+		t.Fatalf("write sidecar: %v", err)
+	}
+}
+
+// TestDispatch_FallsBackToUserGlobalDocsRootWhenProjectConfigNil covers
+// the legacy / scaffold-flow path: callers without a ProjectConfig get
+// ${docs_root} resolved against assetsync.DocsRoot() and no project-local
+// materialization happens. Regression guard so a future "always
+// materialize" change doesn't break CLI utilities and tests that
+// legitimately have no project context.
+func TestDispatch_FallsBackToUserGlobalDocsRootWhenProjectConfigNil(t *testing.T) {
+	repoPath := t.TempDir()
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	claudeFake := &fakeClaude{}
+
+	opts := newOpts()
+	opts.RepoPath = repoPath
+	// ProjectConfig left nil — should fall back to the user-global root.
+	opts.PromptOverride = "Read ${docs_root}/atdd/process/glossary.md."
+
+	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	prompt := claudeFake.calls[0].Prompt
+	// The user-global root never lives under the test's tempdir.
+	projectLocal := filepath.Join(repoPath, ".gh-optivem", "docs")
+	if strings.Contains(prompt, projectLocal) {
+		t.Errorf("expected NOT to substitute project-local docs root; got: %q", prompt)
+	}
+	// The sidecar must NOT exist — materialize should not have fired.
+	if _, err := os.Stat(filepath.Join(repoPath, ".gh-optivem", ".materialized.yaml")); err == nil {
+		t.Errorf("expected no sidecar when ProjectConfig is nil")
 	}
 }
 

@@ -38,6 +38,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/expand"
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
 // Options bundles every input Dispatch needs to construct a prompt and run
@@ -197,6 +198,23 @@ type Options struct {
 	// directory git rev-parse / git log query). Empty → current cwd.
 	RepoPath string
 
+	// ProjectConfig, when non-nil, triggers per-project phase-doc
+	// materialization ahead of prompt rendering. Dispatch calls
+	// assetsync.MaterializeProject against ProjectConfig.PlaceholderMap()
+	// so the agent reads docs with concrete project paths instead of
+	// `${name}` placeholders, and ${docs_root} in the rendered prompt
+	// resolves to <RepoPath>/.gh-optivem/docs rather than the
+	// user-global ~/.gh-optivem/docs. Required alongside RepoPath —
+	// when either is missing, Dispatch falls back to the user-global
+	// docs root for backward compat with CLI utilities and scaffold
+	// flows that legitimately have no project context.
+	ProjectConfig *projectconfig.Config
+
+	// BinaryVersion is the gh-optivem binary version stamped into the
+	// per-project materialization sidecar so a tool upgrade triggers
+	// a re-materialize. Empty matches any sidecar value (used by tests).
+	BinaryVersion string
+
 	// Stdout / Stderr targets for the dispatch banners and (in autonomous
 	// mode) the streamed subprocess output. nil → os.Stdout / os.Stderr.
 	Stdout io.Writer
@@ -293,10 +311,28 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) error {
 	deps = deps.withDefaults()
 	opts = opts.withDefaults()
 
+	// When a ProjectConfig is in hand and we have a project root to write
+	// into, materialize the embedded phase docs against the project's
+	// placeholder map so the agent reads docs with concrete paths. The
+	// returned root is forwarded to renderPrompt so ${docs_root} resolves
+	// to the project-local copy. When either field is missing we leave
+	// projectDocsRoot empty and the user-global docs root applies — the
+	// fallback path covers CLI utilities, scaffold flows, and tests that
+	// legitimately have no project context.
+	var projectDocsRoot string
+	if opts.ProjectConfig != nil && opts.RepoPath != "" {
+		var err error
+		projectDocsRoot, err = assetsync.MaterializeProject(
+			opts.RepoPath, opts.BinaryVersion, opts.ProjectConfig.PlaceholderMap())
+		if err != nil {
+			return fmt.Errorf("clauderun: materialize project docs: %w", err)
+		}
+	}
+
 	prompt := opts.RawPrompt
 	if prompt == "" {
 		var err error
-		prompt, err = renderPrompt(opts)
+		prompt, err = renderPromptWithDocsRoot(opts, projectDocsRoot)
 		if err != nil {
 			return fmt.Errorf("clauderun: render prompt: %w", err)
 		}
@@ -397,8 +433,20 @@ func writePromptLog(path, prompt string) error {
 // renderPrompt reads the embedded prompt for opts.Agent (or opts.PromptOverride
 // when non-empty), expands ${name} placeholders against the ticket context,
 // and appends opts.OverrideText (if any) as a trailing block. Public-ish for
-// the test file; not exported.
+// the test file; not exported. ${docs_root} resolves to the user-global
+// ~/.gh-optivem/docs — callers wanting the project-local materialized copy
+// route through Dispatch (which calls renderPromptWithDocsRoot with a
+// non-empty root).
 func renderPrompt(opts Options) (string, error) {
+	return renderPromptWithDocsRoot(opts, "")
+}
+
+// renderPromptWithDocsRoot is the worker behind renderPrompt. projectDocsRoot,
+// when non-empty, wins for the ${docs_root} substitution — Dispatch passes
+// the result of MaterializeProject so the agent reads the project-local
+// docs copy. Empty falls back to assetsync.DocsRoot() (the user-global
+// path), which is what tests and CLI utilities use.
+func renderPromptWithDocsRoot(opts Options, projectDocsRoot string) (string, error) {
 	var body string
 	if opts.PromptOverride != "" {
 		body = opts.PromptOverride
@@ -416,9 +464,13 @@ func renderPrompt(opts Options) (string, error) {
 	// Fixed-schema placeholders win on key collision with NodeParams so a
 	// node author can't accidentally shadow ticket context by reusing a
 	// reserved name in YAML.
-	docsRoot, err := assetsync.DocsRoot()
-	if err != nil {
-		return "", fmt.Errorf("clauderun: resolve docs root: %w", err)
+	docsRoot := projectDocsRoot
+	if docsRoot == "" {
+		var err error
+		docsRoot, err = assetsync.DocsRoot()
+		if err != nil {
+			return "", fmt.Errorf("clauderun: resolve docs root: %w", err)
+		}
 	}
 	for k, v := range map[string]string{
 		"issue_num":      strconv.Itoa(opts.IssueNum),

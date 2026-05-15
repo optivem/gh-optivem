@@ -133,7 +133,7 @@ func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 	if err := eng.Bind(); err != nil {
 		t.Fatalf("Bind: %v", err)
 	}
-	wrapAgentDispatchers(eng, opts, nil)
+	wrapAgentDispatchers(eng, opts, nil, nil)
 
 	process, ok := eng.Processes["structural_cycle"]
 	if !ok {

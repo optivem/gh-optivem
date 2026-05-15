@@ -54,6 +54,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/files"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/promptio"
+	"github.com/optivem/gh-optivem/internal/version"
 )
 
 // DefaultProcessName is the entry process loaded by every public CLI command.
@@ -261,7 +262,7 @@ func Run(ctx context.Context, opts Options) error {
 	//   4. Apply the trace decorator last so its entry/exit lines bracket
 	//      every other decorator's behaviour. The operator sees the
 	//      composed call as one node fire.
-	wrapAgentDispatchers(eng, opts, runState)
+	wrapAgentDispatchers(eng, opts, cfg, runState)
 	verify.WrapAll(eng, verify.Deps{})
 	wrapOverride(eng, opts.Override)
 
@@ -684,7 +685,7 @@ func registerAgentDispatchers(r *agents.Registry) {
 // PromptLogPath without coordinating across nodes. nil is fine for
 // tests that don't care about the run-log path; the closure falls back
 // to an empty PromptLogPath which clauderun treats as "skip log".
-func wrapAgentDispatchers(eng *statemachine.Engine, opts Options, rs *runState) {
+func wrapAgentDispatchers(eng *statemachine.Engine, opts Options, cfg *projectconfig.Config, rs *runState) {
 	for _, process := range eng.Processes {
 		for id, node := range process.Nodes {
 			if node.Kind != statemachine.UserTask {
@@ -701,7 +702,7 @@ func wrapAgentDispatchers(eng *statemachine.Engine, opts Options, rs *runState) 
 			case opts.ManualAgents:
 				node.Fn = newManualAgentDispatcher(opts, raw, inner)
 			default:
-				node.Fn = newClaudeRunDispatcher(opts, raw, rs, inner)
+				node.Fn = newClaudeRunDispatcher(opts, raw, cfg, rs, inner)
 			}
 			process.Nodes[id] = node
 		}
@@ -762,7 +763,7 @@ func newManualAgentDispatcher(opts Options, raw statemachine.RawNode, inner stat
 // rs supplies the per-dispatch PromptLogPath. nil rs (only happens in
 // tests today) skips the log — clauderun treats empty PromptLogPath as
 // "no diagnostics file".
-func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, rs *runState, inner statemachine.NodeFn) statemachine.NodeFn {
+func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *projectconfig.Config, rs *runState, inner statemachine.NodeFn) statemachine.NodeFn {
 	return func(ctx *statemachine.Context) statemachine.Outcome {
 		extraText := ctx.GetString(override.KeyExtra)
 		replaceText := ctx.GetString(override.KeyReplace)
@@ -809,6 +810,8 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, rs *runState
 			ShowPrompt:         opts.ShowPrompt,
 			PromptLogPath:      rs.promptLogPath(agentName),
 			RepoPath:           opts.RepoPath,
+			ProjectConfig:      cfg,
+			BinaryVersion:      version.Version,
 			Stdout:             opts.Stdout,
 			Stderr:             opts.Stderr,
 			Stdin:              opts.Stdin,

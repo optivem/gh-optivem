@@ -142,7 +142,7 @@ func buildEngineFrom(t *testing.T, opts Options, yamlSrc, nodeID string) statema
 	if err := eng.Bind(); err != nil {
 		t.Fatalf("Bind: %v", err)
 	}
-	wrapAgentDispatchers(eng, opts, nil)
+	wrapAgentDispatchers(eng, opts, nil, nil)
 	return eng.Processes["main"].Nodes[nodeID].Fn
 }
 
@@ -641,7 +641,7 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 	if err := eng.Bind(); err != nil {
 		t.Fatalf("Bind: %v", err)
 	}
-	wrapAgentDispatchers(eng, opts, rs)
+	wrapAgentDispatchers(eng, opts, nil, rs)
 	fn := eng.Processes["main"].Nodes["AT_RED_TEST"].Fn
 
 	out := fn(sCtx)
