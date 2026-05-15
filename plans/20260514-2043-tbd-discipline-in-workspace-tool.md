@@ -1,5 +1,7 @@
 # Build TBD discipline into `gh optivem workspace`
 
+> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-15T06:23:54Z`
+
 > ✅ **STATUS: LAYERS 1 + 2 + 3 SHIPPED.** Layer 1 (config-independent `--rebase`, push-retry loop, pre-commit pull with auto-stash, `gh optivem doctor`), Layer 2 (mode banner, in-tool main force-push guard, `gh optivem hooks install`), and Layer 3 (`gh optivem branch start`, `gh optivem branch refresh`, `gh optivem pr merge`) have shipped. Layer 4 remains. All open decisions have been resolved — see "Decisions resolved" at the bottom.
 
 ## Context
