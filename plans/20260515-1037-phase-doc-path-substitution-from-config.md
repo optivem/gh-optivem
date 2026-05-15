@@ -261,42 +261,13 @@ Carried over from source plans (already settled before merge):
 - **`${sut_namespace}` for pre-AT-RED-DSL repos** → moot; scaffolder writes
   the value before any cycle runs. Verify during Step 4.
 
-## Implementation steps
+## Remaining sub-items deferred from this session
 
-### Step 4 — Test against rehearsal
-
-- Run `gh optivem` against the TS rehearsal at
-  `C:/GitHub/optivem/academy/rehearsal-20260515-095931` (any command that
-  triggers project-local sync — e.g. an ATDD-running command).
-- Open `./.gh-optivem/docs/atdd/process/at-red-system-driver.md` inside the
-  rehearsal and confirm `${language}` → `typescript`, `${sut_namespace}` →
-  `myShop`, `${driver_port}` → the concrete path declared in the rehearsal's
-  `paths:` block. Note: location changed from the original
-  `~/.gh-optivem/docs/...` (Decision this session: user-global location
-  MUST NOT be substituted — it's shared across projects).
-- Confirm the per-file `substituted:` audit block lists only keys that
-  appeared in that file's body.
-- Confirm `./.gh-optivem/.materialized.yaml` sidecar exists and matches the
-  current placeholder map; touch `gh-optivem.yaml` with no semantic change
-  and re-run — verify materialization is skipped.
-- Re-run the AT-RED-TEST cycle and confirm the agent's reads of the doc
-  return concrete paths.
-- Confirm a `paths.*` key that resolves to a non-existent directory does
-  NOT block (the plan's warning rule is deferred — currently the
-  substitution layer doesn't FS-check `paths.*` values, since
-  validatePath already rejects malformed values at config load).
-
-### Remaining sub-items deferred from this session
-
-- ⏳ Migration helper: extend `runConfigMigrate` to back-fill the default
-  `paths:` block when missing. Today's scaffolder seeds it, but pre-existing
-  configs (and the rehearsal at `C:/GitHub/optivem/academy/rehearsal-20260515-095931`)
-  need the migrate path for Step 4 verification. Scaffolder default-block
-  authoring depends on this.
 - ⏳ Wire `MaterializeProject` into `clauderun.Dispatch`: today
   `assetsync.MaterializeProject` exists and works, but `clauderun.renderPrompt`
   still resolves `${docs_root}` via `assetsync.DocsRoot()` (the user-global
-  path). Wire-through:
+  path). Until this lands, no `gh optivem` command path actually triggers
+  project-local materialization. Wire-through:
   1. `Dispatch` calls `MaterializeProject(opts.RepoPath, version,
      cfg.PlaceholderMap())` before `renderPrompt`.
   2. `renderPrompt` substitutes `${docs_root}` with `ProjectDocsRoot(opts.RepoPath)`
@@ -304,11 +275,40 @@ Carried over from source plans (already settled before merge):
   3. `Options` gains an explicit `ProjectConfig *projectconfig.Config`
      field (or `Dispatch` accepts it as a separate argument) so the
      placeholder map is at hand without re-loading.
+- ⏳ Migration helper: extend `runConfigMigrate` to back-fill the default
+  `paths:` block when missing. Today's scaffolder seeds it, but pre-existing
+  configs need the migrate path before Step 4 verification can be exercised
+  against them. Scaffolder default-block authoring depends on this.
 - ⏳ Scaffolder default `paths:` block. Decide per-language defaults
   (TypeScript flat-src, Java Maven layout, .NET solution layout) and
   thread them through `internal/configinit/configinit.go` so newly
   scaffolded projects ship with a non-empty `paths:` block matching the
   glossary doctrine for their layout.
+- ⏳ Step 4 — End-to-end verification against a rehearsal. Deferred:
+  blocked on the three items above (no caller wired in, no migration
+  helper, no scaffolder defaults). The originally-named rehearsal at
+  `C:/GitHub/optivem/academy/rehearsal-20260515-095931` no longer exists;
+  the next agent should scaffold a fresh TS rehearsal once the wire-up
+  lands. Verification list once unblocked:
+  - Run `gh optivem` against a TS rehearsal (any command that triggers
+    project-local sync — e.g. an ATDD-running command).
+  - Open `./.gh-optivem/docs/atdd/process/at-red-system-driver.md` inside
+    the rehearsal and confirm `${language}` → `typescript`,
+    `${sut_namespace}` → `myShop`, `${driver_port}` → the concrete path
+    declared in the rehearsal's `paths:` block. (Note: location changed
+    from the original `~/.gh-optivem/docs/...` — user-global location
+    MUST NOT be substituted because it's shared across projects.)
+  - Confirm the per-file `substituted:` audit block lists only keys that
+    appeared in that file's body.
+  - Confirm `./.gh-optivem/.materialized.yaml` sidecar exists and matches
+    the current placeholder map; touch `gh-optivem.yaml` with no semantic
+    change and re-run — verify materialization is skipped.
+  - Re-run the AT-RED-TEST cycle and confirm the agent's reads of the doc
+    return concrete paths.
+  - Confirm a `paths.*` key that resolves to a non-existent directory
+    does NOT block (the plan's warning rule is deferred — currently the
+    substitution layer doesn't FS-check `paths.*` values, since
+    validatePath already rejects malformed values at config load).
 
 ## Non-goals
 
