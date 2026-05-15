@@ -15,9 +15,10 @@
 //
 // All seven Tracker methods are implemented against the projectV2 path
 // (workflow methods) and against the issue-body REST path (inspection /
-// mutation). Section parsing is a minimal H2/H3 walker inlined here for
-// now; chunk B (markdown adapter) extracts it into a shared
-// tracker/internal/parse package consumed by both adapters.
+// mutation). Section parsing and checklist rewriting delegate to the
+// shared tracker/internal/parse package consumed by both the github
+// and markdown adapters — body content model is identical, so there
+// is one walker, one rewriter, one source of truth.
 package github
 
 import (
@@ -31,6 +32,7 @@ import (
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/internal/parse"
 )
 
 // ---------------------------------------------------------------------------
@@ -277,7 +279,7 @@ func (t *Tracker) ReadSections(ctx context.Context, i tracker.Issue, headings []
 	}
 	out := make(map[string]string, len(headings))
 	for _, h := range headings {
-		out[h] = extractMarkdownSection(body, h)
+		out[h] = parse.ExtractSection(body, h)
 	}
 	return out, nil
 }
@@ -295,10 +297,10 @@ func (t *Tracker) MarkChecklistComplete(ctx context.Context, i tracker.Issue) er
 	if err != nil {
 		return err
 	}
-	updated := tickAllCheckboxes(body)
-	if updated == body {
+	if !parse.HasUnchecked(body) {
 		return nil
 	}
+	updated := parse.TickCheckboxes(body)
 	if _, err := t.gh.Run(ctx, "issue", "edit", strconv.Itoa(num),
 		"--repo", owner+"/"+repo,
 		"--body", updated,
@@ -340,77 +342,6 @@ func (t *Tracker) fetchIssueBody(ctx context.Context, owner, repo string, num in
 // preserving the formatting keeps existing tests passing across the
 // migration.
 const issueTypeQuery = `query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { issue(number: $number) { issueType { name } } } }`
-
-// ---------------------------------------------------------------------------
-// Markdown helpers — H2/H3 section walker + checklist rewrite
-// ---------------------------------------------------------------------------
-
-// extractMarkdownSection scans body for an H2-or-deeper markdown heading
-// whose text matches name (case-insensitive, exact after dropping
-// leading hashes and surrounding whitespace), and returns the section
-// body — every line from the next line to (but not including) the next
-// heading at the same or shallower depth, with surrounding blank lines
-// trimmed. Returns "" when the heading is absent or its body is empty.
-func extractMarkdownSection(body, name string) string {
-	lines := strings.Split(body, "\n")
-	startIdx, startDepth := -1, 0
-	for i, line := range lines {
-		depth, text, ok := mdHeading(line)
-		if !ok || depth < 2 {
-			continue
-		}
-		if strings.EqualFold(text, name) {
-			startIdx, startDepth = i+1, depth
-			break
-		}
-	}
-	if startIdx < 0 {
-		return ""
-	}
-	endIdx := len(lines)
-	for i := startIdx; i < len(lines); i++ {
-		depth, _, ok := mdHeading(lines[i])
-		if !ok {
-			continue
-		}
-		if depth <= startDepth {
-			endIdx = i
-			break
-		}
-	}
-	return strings.Trim(strings.Join(lines[startIdx:endIdx], "\n"), "\n")
-}
-
-// mdHeading parses one markdown heading line — leading `#`s + whitespace
-// + text. Returns depth (count of leading `#`s), trimmed text, and
-// ok=true on a heading line; ok=false on non-heading lines.
-func mdHeading(line string) (int, string, bool) {
-	t := strings.TrimSpace(line)
-	if !strings.HasPrefix(t, "#") {
-		return 0, "", false
-	}
-	d := 0
-	for d < len(t) && t[d] == '#' {
-		d++
-	}
-	return d, strings.TrimSpace(t[d:]), true
-}
-
-// tickAllCheckboxes rewrites every `- [ ]` / `* [ ]` to its checked
-// equivalent. Indentation and marker character are preserved; already-
-// ticked items pass through so the operation is idempotent.
-func tickAllCheckboxes(body string) string {
-	lines := strings.Split(body, "\n")
-	for i, line := range lines {
-		trimmed := strings.TrimLeft(line, " \t")
-		indent := line[:len(line)-len(trimmed)]
-		if !strings.HasPrefix(trimmed, "- [ ]") && !strings.HasPrefix(trimmed, "* [ ]") {
-			continue
-		}
-		lines[i] = indent + strings.Replace(trimmed, "[ ]", "[x]", 1)
-	}
-	return strings.Join(lines, "\n")
-}
 
 // ---------------------------------------------------------------------------
 // Issue URL parsing
