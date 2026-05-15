@@ -31,6 +31,70 @@ pipeline so the docs land in scaffolded repos with concrete paths, while
 the source-repo template uses `${name}` placeholders identical to the agent-
 prompt convention.
 
+## End-result example
+
+To make the shape concrete: here's what the inputs and outputs look like
+end-to-end for a TypeScript monolith scaffold (matching the rehearsal at
+`C:/GitHub/optivem/academy/rehearsal-20260515-095931`).
+
+### Input — `gh-optivem.yaml` in the scaffolded repo
+
+```yaml
+system:
+  lang: typescript
+  architecture: monolith
+  path: system/monolith/typescript
+  sut_namespace: myShop          # NEW field this plan adds; default "shop"
+system_test:
+  lang: typescript
+  path: system-test/typescript
+```
+
+### Source-repo template — `internal/assets/global/docs/atdd/process/at-red-system-driver.md`
+
+Lives in this repo, uses `${name}` placeholders identical to agent-prompt
+convention:
+
+```markdown
+The system-test driver port lives at:
+  ${system_test_path}/.../testkit/driver/port/
+
+The SUT-side driver implementation lives at:
+  ${system_path}/.../${sut_namespace}/<channel>/
+
+For ${language} projects, prefer the per-channel adapter pattern.
+```
+
+Note `<channel>` stays in angle-brackets — it's free-form (`api` / `ui` /
+`cli`) and the reader picks. Only `${...}` get substituted.
+
+### Output — `~/.gh-optivem/docs/atdd/process/at-red-system-driver.md` after `gh optivem sync`
+
+What an agent in the scaffolded repo Reads:
+
+```markdown
+---
+substituted:
+  language: typescript
+  sut_namespace: myShop
+  system_path: system/monolith/typescript
+  system_test_path: system-test/typescript
+---
+
+The system-test driver port lives at:
+  system-test/typescript/.../testkit/driver/port/
+
+The SUT-side driver implementation lives at:
+  system/monolith/typescript/.../myShop/<channel>/
+
+For typescript projects, prefer the per-channel adapter pattern.
+```
+
+The agent reads concrete paths and references `myShop/` directly — no
+mental substitution, no risk of emitting `${language}` into a tool call.
+The frontmatter `substituted:` block is a ~20-token audit trail; the body
+is the source of truth.
+
 ## Principles
 
 1. **One placeholder vocabulary across prompts and docs.** Agent prompts
@@ -43,6 +107,17 @@ prompt convention.
    docs many times per run; per-Read substitution is wasted work. Sync the
    already-substituted text once into `~/.gh-optivem/docs/` and the agents
    Read concrete paths thereafter.
+
+   Corollary: substitution is **inline in the body**, not declared in
+   frontmatter and resolved on read. A frontmatter-only scheme (e.g.
+   `language: typescript` declared once, body keeps `${language}`) does not
+   shrink the body — it just adds an overhead block on top — and forces every
+   Read to spend reasoning tokens on lookup, with the bonus failure mode of
+   the agent emitting `${language}` verbatim into tool calls. Inline
+   substitution pays the cost once at sync time and is read-cheap thereafter.
+
+   A *tiny* frontmatter `substituted:` audit block IS worth adding (see
+   Step 2) — but as a debuggability aid, not as the substitution mechanism.
 
 3. **Source-repo docs use `${name}`, never `<name>`.** The 2026-05-15 fix
    added `<lang>` literals — those are stop-gap and will become `${language}`
@@ -97,8 +172,25 @@ Any phase doc that mentions a path. Concrete starting list (Grep
 - Refactor `internal/assets/sync/sync.go` so the docs-copy step optionally
   takes a placeholder map (built from `projectconfig.Config`).
 - For each `.md` file under `internal/assets/global/docs/atdd/`, run
-  `statemachine.ExpandParams` (the existing helper) before writing to the
-  destination.
+  `statemachine.ExpandParams` (the existing helper) **inline against the
+  body text** before writing to the destination. Substitution is in the
+  body itself, not a frontmatter declaration the agent has to resolve at
+  read time.
+- Prepend a small audit-trail frontmatter block to each substituted file:
+
+  ```yaml
+  ---
+  substituted:
+    language: typescript
+    sut_namespace: myShop
+    architecture: monolith
+  ---
+  ```
+
+  Only the keys that actually appeared in the body are listed (don't dump
+  the whole placeholder map). This block is for human/agent debugging — "why
+  did the doc say `myShop`?" — and costs ~20 tokens. The body remains the
+  source of truth for paths.
 - Verify `findUnfilledPlaceholders` (lifted out of `clauderun.go` to a
   shared package, or duplicated for now) catches typo'd placeholders at
   sync time, the same way it catches them at agent dispatch time.
@@ -137,14 +229,15 @@ reader picks from `api` / `ui` / `cli` / etc.
   `optivem/shop` → `shop`) when not explicitly set? Default-from-repo
   reduces config bloat but couples two concerns.
 
-- **Q2.** Is sync-time substitution the right layer, or should `assets/sync`
-  stay a pure file-copy and the substitution live in a new
-  `assets/render` step? Today the agent prompts substitute at *dispatch*
-  time, not sync time — a docs render would be the asymmetric one. Trade-off:
-  sync-time is simpler and works for the common case (docs are static once
-  the project is scaffolded); dispatch-time is more flexible if a doc
-  placeholder ever needs per-run context (unlikely for paths, but worth
-  noting).
+- **Q2.** ~~Is sync-time substitution the right layer, or should the
+  substitution live in a new `assets/render` step or at dispatch time?~~
+  **Resolved (2026-05-15): sync-time, inline body substitution.** Reads are
+  hot (every cycle re-reads the relevant phase doc multiple times); a
+  dispatch-time or read-time scheme would re-pay substitution cost on every
+  Read and risks the agent emitting `${language}` literally. Sync-time is
+  read-cheap and produces concrete paths in the artifact. A small
+  frontmatter `substituted:` audit block (Step 2) gives debuggability
+  without moving the substitution mechanism.
 
 - **Q3.** Where does `${sut_namespace}` come from for repos that have no
   driver code yet (e.g. brand-new scaffolds before AT-RED-DSL has ever run)?
