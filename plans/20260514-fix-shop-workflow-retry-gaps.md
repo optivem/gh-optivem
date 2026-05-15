@@ -50,66 +50,7 @@ Same swap as Item 9, projectKey `optivem_shop-multitier-frontend-react`. (N-C.4)
 
 ---
 
-## Tier 2 — workflow-level batch swaps
-
-These are bulk changes against duplicated patterns. After Tier 1 the engine has full coverage; Tier 2 migrates the long tail of inline / 3rd-party wrappers to the canonical engine.
-
-### Item 12 — Create `optivem/actions/docker-login@v1` composite
-
-Wraps `docker/login-action@v4` in a `run:` that sources `docker-retry.sh` and invokes the login via `docker_retry login` — or, if cleaner, wraps the `docker/login-action@v4` step itself in a `nick-fields/retry@v4` configured at `max_attempts: 4, retry_wait_seconds: 5, polling_interval_seconds: 0` with the engine's exponential schedule. Inputs: `registry`, `username`, `password`. The composite's existence is the prerequisite for Item 13.
-
-### Item 13 — Bulk-replace `Wandalen/wretry.action@v3 + docker/login-action@v4` (167 sites)
-
-Across 51 shop workflow files, replace each occurrence with `uses: optivem/actions/docker-login@v1` (from Item 12). One PR per workflow archetype (commit-stage / acceptance-stage / acceptance-stage-cloud / qa-stage / qa-stage-cloud / prod-stage / prod-stage-cloud / acceptance-stage-legacy) keeps blast radius reviewable. (N-C.1)
-
-Representative starting points (others identical in shape):
-
-- `shop/.github/workflows/monolith-dotnet-commit-stage.yml :: build-push :: line 80, 92`
-- `shop/.github/workflows/monolith-dotnet-acceptance-stage.yml :: check / run :: lines 93, 103, 176, 186`
-- `shop/.github/workflows/monolith-dotnet-acceptance-stage-cloud.yml :: check / deploy-app / deploy-external-real / deploy-external-stub :: lines 77, 87, 148, 197, 242`
-- `shop/.github/workflows/monolith-dotnet-prod-stage.yml :: run :: lines 125, 135`
-- `shop/.github/workflows/monolith-dotnet-prod-stage-cloud.yml :: promote / deploy :: lines 107, 134, 197`
-- `shop/.github/workflows/drift.yml :: drift :: lines 111, 121`
-- `shop/.github/workflows/cross-lang-system-verification.yml :: cross-lang :: lines 147, 157`
-
-(Full 51-file list reproducible by `rg -nU '^\s+uses: Wandalen/wretry\.action@v3$' shop/.github/workflows`.)
-
-### Item 14 — `monolith-dotnet-commit-stage.yml :: build-push :: step "Pre-pull base images" line 173-190`
-
-Replace the inline `for attempt in 1 2 3; do if docker pull "$image"; then break; fi; ... sleep $((attempt * 15)); done` retry loop with:
-
-```yaml
-- name: Pre-pull base images
-  if: steps.verify-main.outputs.on-branch == 'true'
-  shell: bash
-  run: |
-    set -euo pipefail
-    source "$GITHUB_WORKSPACE/.github/workflows/scripts/docker-retry.sh"
-    for image in mcr.microsoft.com/dotnet/sdk:8.0 mcr.microsoft.com/dotnet/aspnet:8.0; do
-      docker_retry pull "$image"
-    done
-```
-
-Same swap, same image list pattern, in each sibling. (N-C.3)
-
-### Item 15 — Apply Item 14's pattern to the 6 sibling commit-stage workflows
-
-- `shop/.github/workflows/monolith-java-commit-stage.yml :: build-push :: step "Pre-pull base images" line 179-189`
-- `shop/.github/workflows/monolith-typescript-commit-stage.yml :: build-push :: step "Pre-pull base images" line 177-187`
-- `shop/.github/workflows/multitier-backend-dotnet-commit-stage.yml :: build-push :: step "Pre-pull base images" line 170-180`
-- `shop/.github/workflows/multitier-backend-java-commit-stage.yml :: build-push :: step "Pre-pull base images" line 179-189`
-- `shop/.github/workflows/multitier-backend-typescript-commit-stage.yml :: build-push :: step "Pre-pull base images" line 177-187`
-- `shop/.github/workflows/multitier-frontend-react-commit-stage.yml :: build-push :: step "Pre-pull base images" line 178-188`
-
-(N-C.3, completion.)
-
----
-
 ## Tier 4 — deferred / verify-only
-
-### Item 19 — Verify `google-github-actions/*@v3` internal retry semantics
-
-Composite. Check the upstream changelog for `google-github-actions/auth@v3`, `google-github-actions/setup-gcloud@v3`, `google-github-actions/deploy-cloudrun@v3`. If they document internal retry, leave the existing call sites and add a one-line comment at one representative call site marking R-DOC-OK so the next audit pass records that decision. If they do not, open a new fix item to wrap with `nick-fields/retry@v4`. Sites are in the 18 `*-stage-cloud.yml` files. (Examined-and-rejected → R-OK with documentation, or future fix.)
 
 ### Item 20 — Defer `npm ci` / `./gradlew build` / `dotnet restore` registry-fetch retry to a follow-up §4 pass
 
@@ -119,17 +60,8 @@ The `npm ci` / `./gradlew build` (which transitively triggers dependency resolut
 
 ## Dependencies between items
 
-```
-Items 9, 10, 11 (typescript Sonar) — ⏳ deferred on install-step decision (see Item 9)
-
-Item 12 (docker-login@v1 composite)
-  → Item 13 (51 workflow files migrated)
-
-Item 14 (one commit-stage docker pull loop) — independent; docker-retry.sh exists
-  → Item 15 (6 sibling commit-stages — same swap)
-```
-
-Items 12 and 14 can begin in parallel. Item 15 is a mechanical follow-up to 14. Item 13 is gated on Item 12. Items 9-11 are deferred pending an Item 9 install-step decision.
+Items 9, 10, 11 (typescript Sonar) — ⏳ deferred on install-step decision (see Item 9).
+Item 20 — ⏳ deferred to follow-up §4 pass.
 
 ---
 
