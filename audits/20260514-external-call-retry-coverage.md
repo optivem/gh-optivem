@@ -196,3 +196,24 @@ Audit cap: 20. This report lands at 16 R-MISSING findings — within the cap.
 - Phase 4 of [`plans/20260514-1945-retry-mechanism-end-to-end.md`](../plans/20260514-1945-retry-mechanism-end-to-end.md) authorises this audit as the Go-side input.
 - The follow-up fix plan lives at [`plans/20260514-fix-gh-optivem-retry-gaps.md`](../plans/20260514-fix-gh-optivem-retry-gaps.md) — one discrete item per R-MISSING site, ordered by the priority list above.
 - The silent-external-call-failures audit ([`audits/20260514-silent-external-call-failures.md`](20260514-silent-external-call-failures.md)) is the sibling rubric (does the error get surfaced); this one is "does the error get retried when it's transient". Both must pass before a Go external-call site is considered done.
+
+---
+
+## 2026-05-15: H1–H5, M1–M4, L1/L4/L5/L6/L7/L10 fixed
+
+Per `plans/20260514-fix-gh-optivem-retry-gaps.md` Items 1-9:
+
+- **H1** `SonarCloud.api` (`internal/shell/sonarcloud.go`) — wrapped in `shell.RetryWithPolicy` with the shared SonarCloud transient regex from new `internal/shell/sonarretry.go`.
+- **H2** `Client.do` (`internal/sonar/sonar.go`) — same wrap, reuses `sonarretry` regex.
+- **H3 / H4 / H5** `verifyDockerHubAuth`, `verifySonarToken`, `githubUserAuthCheck` (`internal/config/token_auth.go`) — each `client.Do` wrapped in `RetryWithPolicy`. The existing 401 one-shot in `githubUserAuthCheck` stays in place.
+- **M1** `RepoExists` (`internal/shell/github.go`) — `Run` → `RunWithRetry`. `IsRepoNotFound` classifier preserves 404 fast-path.
+- **M2** `waitForRepoVisible` — inner `Run` → `RunWithRetry`.
+- **M3** `RunWatchWorkflow` — `RunCapture` → `RunCaptureWithRetry`.
+- **M4** `pollRunUntilComplete` — per-iteration `gh run view` `Run` → `RunWithRetry`. The streaming `gh run watch` is intentionally left alone.
+- **L1, L6, L7, L10** — batched as Item 8: `WriteLicense` (`internal/steps/finalize.go`), `CheckRateLimit` + `GitHub.Delete` (`internal/shell/github.go`), `createBugReport` (`main.go`) all swapped to `RunCaptureWithRetry` / `RunWithRetry`.
+- **L4** `projectRunStdin` (`internal/steps/project.go`) — `RunStdin` → `MustRunStdinWithRetry` (no new non-`Must` sibling added; abort-on-fail semantics preserved because the only caller already routes failures through `log.Fatalf`).
+- **L5** `projectRun` (same file) — `Run` → `RunWithRetry`.
+
+Regression coverage: existing table-driven tests in `internal/shell/github_test.go`, plus updated `internal/steps/project_test.go` seam tests.
+
+**L8, L9 deferred** to Item 10 in the gh-optivem plan. The `internal/config/config.go` `exec.Command` probes need a behaviour-change commit (stderr always lands in the returned error, so callers must match on the IS-NOT-FOUND wording instead of exit-code) — not a one-line swap. Defer until after the failure log has surfaced real init-time 5xx incidents.
