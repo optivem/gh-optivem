@@ -102,6 +102,24 @@ type Config struct {
 	SystemTest      TierSpec        `yaml:"system_test"`
 	ExternalSystems ExternalSystems `yaml:"external_systems,omitempty"`
 
+	// LocalRepos declares the project's own constituent local repos —
+	// multitier projects whose frontend, backend, and system_test live in
+	// separate folders. The workspace scope cascade reads it as the
+	// project-iteration row that sits between "workspace file reachable"
+	// and "cwd repo only": when gh-optivem.yaml has a non-empty repos:,
+	// `gh optivem commit` and the other cross-repo verbs iterate the
+	// listed folders instead of falling back to the cwd repo.
+	//
+	// Each entry's Path is project-relative — resolved against the
+	// directory containing gh-optivem.yaml. Empty or absent means
+	// "single-repo project; use the cwd repo". Back-filled by
+	// `gh optivem config migrate` for existing multitier configs.
+	//
+	// The Go field is named LocalRepos to avoid colliding with the
+	// pre-existing (*Config).Repos() method that returns tier repo
+	// slugs.
+	LocalRepos []RepoEntry `yaml:"repos,omitempty"`
+
 	// SystemName is the human-readable system label (e.g. "Page Turner")
 	// that drives template substitution at `gh optivem init` — Java package
 	// names, .NET namespaces, TypeScript package names, README headings.
@@ -255,6 +273,19 @@ type ExternalSystems struct {
 type ExternalSpec struct {
 	Path string `yaml:"path,omitempty"`
 	Repo string `yaml:"repo,omitempty"`
+}
+
+// RepoEntry is one entry in Config.LocalRepos — a single local repo path
+// the project iterates over for cross-repo verbs. Path is project-relative
+// (resolved against the directory containing gh-optivem.yaml), validated
+// against the same shape rules as every other path in this schema
+// (no absolute paths, no `..` segments).
+//
+// The struct exists (rather than a plain []string) so future per-repo
+// metadata — kind, optional, lint exclusions — can be added without a
+// breaking schema change. Today only Path is set.
+type RepoEntry struct {
+	Path string `yaml:"path,omitempty"`
 }
 
 // Repos returns the union of every tier's Repo field, sorted. Used by
@@ -568,6 +599,27 @@ func (c *Config) Validate() error {
 					c.Project.Provider, c.Project.URL)
 			}
 		}
+	}
+
+	// Rule 21: repos[] path shape. Each entry's path must be set and
+	// repo-relative (validatePath rejects absolute paths and `..`
+	// segments). Empty repos: is accepted — that's "single-repo
+	// project, the scope cascade will fall back to the cwd repo".
+	// Duplicate paths are rejected so the scope cascade can't iterate
+	// the same folder twice.
+	seenRepoPaths := map[string]struct{}{}
+	for i, r := range c.LocalRepos {
+		if r.Path == "" {
+			return fmt.Errorf("config: repos[%d].path is required", i)
+		}
+		if err := validatePath(fmt.Sprintf("repos[%d].path", i), r.Path); err != nil {
+			return err
+		}
+		normalized := filepath.ToSlash(filepath.Clean(r.Path))
+		if _, dup := seenRepoPaths[normalized]; dup {
+			return fmt.Errorf("config: repos[%d].path %q appears more than once", i, r.Path)
+		}
+		seenRepoPaths[normalized] = struct{}{}
 	}
 
 	return nil

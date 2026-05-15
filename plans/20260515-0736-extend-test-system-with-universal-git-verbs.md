@@ -1,5 +1,7 @@
 # Promote `workspace` verbs to root, retire the `workspace` noun
 
+> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-15T08:34:28Z`
+
 > 📜 **History note:** this file went through several discarded designs
 > before landing here. See "Rejected alternatives" below — that section
 > exists so we don't re-litigate. The current shape: promote the
@@ -206,23 +208,6 @@ own tiers via one command. That's redundant — the project's own
 config should know about its own repos. With this, `gh optivem
 commit` inside a multitier project commits the project's repos
 without needing a separate workspace file.
-
-11. **Schema** — add `repos:` to `gh-optivem.yaml`:
-
-    ```yaml
-    project:
-      name: page-turner
-      arch: multitier
-
-    # NEW: local repo paths for THIS project's tiers
-    repos:
-      - path: ./system-frontend
-      - path: ./system-backend
-      - path: ./system-tests
-    ```
-
-    Empty / missing `repos:` = single-repo project (cwd repo). No new
-    fields are mandatory; existing configs keep working.
 
 12. **Extend the scope cascade** (modifies phase 1 step 3):
 
