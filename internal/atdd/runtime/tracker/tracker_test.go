@@ -2,11 +2,9 @@ package tracker_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
-	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
 // fakeTracker is a no-op implementation that the compiler validates
@@ -35,13 +33,4 @@ func (fakeTracker) MarkChecklistComplete(context.Context, tracker.Issue) error {
 // exercises the value; the assignment alone does the check.
 func TestTrackerInterfaceContract(t *testing.T) {
 	var _ tracker.Tracker = fakeTracker{}
-}
-
-func TestOpen_StubReturnsErrNotImplemented(t *testing.T) {
-	_, err := tracker.Open(context.Background(), projectconfig.Project{
-		URL: "https://github.com/orgs/optivem/projects/20",
-	})
-	if !errors.Is(err, tracker.ErrNotImplemented) {
-		t.Errorf("expected tracker.ErrNotImplemented, got %v", err)
-	}
 }

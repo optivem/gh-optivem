@@ -74,6 +74,16 @@ const (
 	LangTypescript = "typescript"
 )
 
+// Provider enum values for project.provider. Names the tracker backend
+// the runtime opens against project.url. The set is intentionally small
+// — github is the production path; markdown is the network-free escape
+// hatch used for offline workshops or during GitHub outages. A future
+// jira value would slot in alongside.
+const (
+	ProviderGitHub   = "github"
+	ProviderMarkdown = "markdown"
+)
+
 // Config mirrors the YAML schema. Top-level keys:
 //   - project:         GitHub identity (currently just board URL).
 //   - repo_strategy:   mono-repo | multi-repo (top-level scalar, not a
@@ -145,15 +155,22 @@ type Config struct {
 	NodeReplacements map[string]string `yaml:"node_replacements,omitempty"`
 }
 
-// Project carries the GitHub Projects board URL. Repo organization
-// (mono-repo vs multi-repo) lives at top level, not here, because it
-// affects every tier's repo: field across system: and system_test:.
+// Project carries the tracker backend identity: which Tracker adapter
+// runs the pipeline (Provider) and where its board lives (URL). Repo
+// organization (mono-repo vs multi-repo) lives at top level, not here,
+// because it affects every tier's repo: field across system: and
+// system_test:.
 //
-// URL is mandatory — Validate rejects an empty value. Kept as `omitempty`
-// at the YAML layer so a freshly-marshaled invalid Config doesn't print a
-// distracting `url: ""` line, but every value Load returns has it set.
+// Provider is mandatory — Validate rejects empty and unknown values
+// and routes operators at `gh optivem config migrate` to add it
+// idempotently from an existing url. URL may be empty at validate-time
+// (`gh optivem init` Path A populates it on first run); when set, its
+// shape is checked against Provider so a github URL paired with
+// `provider: markdown` (or vice versa) errors loudly with both fields
+// named.
 type Project struct {
-	URL string `yaml:"url,omitempty"`
+	Provider string `yaml:"provider,omitempty"`
+	URL      string `yaml:"url,omitempty"`
 }
 
 // Sonar carries SonarCloud account identity. Singleton at the root because
@@ -516,6 +533,40 @@ func (c *Config) Validate() error {
 	if c.System.Architecture != "" {
 		if err := c.validateSonar(); err != nil {
 			return err
+		}
+	}
+
+	// Rule 19: project.provider is mandatory and must name a known
+	// tracker backend. The empty case names the migrate command so an
+	// operator with a pre-provider config has a one-shot fix path.
+	switch c.Project.Provider {
+	case ProviderGitHub, ProviderMarkdown:
+		// ok
+	case "":
+		return fmt.Errorf("config: project.provider is required (one of %q, %q); run `gh optivem config migrate` to add it from an existing project.url",
+			ProviderGitHub, ProviderMarkdown)
+	default:
+		return fmt.Errorf("config: project.provider %q must be one of %q, %q",
+			c.Project.Provider, ProviderGitHub, ProviderMarkdown)
+	}
+
+	// Rule 20: provider/url shape consistency. A github provider paired
+	// with a non-github URL (or a markdown provider paired with an
+	// HTTP URL) is operator confusion — name both fields so the fix is
+	// unambiguous. Empty URL is accepted (init Path A populates it on
+	// first run; runtime re-checks at board-resolution time).
+	if c.Project.URL != "" {
+		switch c.Project.Provider {
+		case ProviderGitHub:
+			if !strings.HasPrefix(c.Project.URL, "https://github.com/") {
+				return fmt.Errorf("config: project.provider=%q but project.url=%q is not a github URL",
+					c.Project.Provider, c.Project.URL)
+			}
+		case ProviderMarkdown:
+			if strings.HasPrefix(c.Project.URL, "http://") || strings.HasPrefix(c.Project.URL, "https://") {
+				return fmt.Errorf("config: project.provider=%q but project.url=%q is an HTTP URL, not a directory path",
+					c.Project.Provider, c.Project.URL)
+			}
 		}
 	}
 

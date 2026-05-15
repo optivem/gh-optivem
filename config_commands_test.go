@@ -574,3 +574,108 @@ func TestResolveConfigInitTarget_Precedence(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// runConfigMigrate
+// ---------------------------------------------------------------------------
+
+// TestRunConfigMigrate_AddsGitHubProvider — a pre-provider config with a
+// github URL is rewritten with provider: github prepended inside the
+// project block. The original URL and surrounding fields are preserved
+// so an operator's hand edits don't get lost.
+func TestRunConfigMigrate_AddsGitHubProvider(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	body := "project:\n  url: https://github.com/orgs/acme/projects/1\nrepo_strategy: mono-repo\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	changed, err := runConfigMigrate(path)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if !changed {
+		t.Fatal("migrate: want changed=true on first run, got false")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if !strings.Contains(string(got), "provider: github") {
+		t.Errorf("migrated file missing provider: github; got:\n%s", got)
+	}
+	if !strings.Contains(string(got), "url: https://github.com/orgs/acme/projects/1") {
+		t.Errorf("migrated file lost project.url; got:\n%s", got)
+	}
+	if !strings.Contains(string(got), "repo_strategy: mono-repo") {
+		t.Errorf("migrated file lost repo_strategy; got:\n%s", got)
+	}
+}
+
+// TestRunConfigMigrate_AddsMarkdownProviderForNonGitHubURL — a config
+// whose project.url is a directory path (or any non-github URL) gets
+// provider: markdown so the markdown adapter takes over.
+func TestRunConfigMigrate_AddsMarkdownProviderForNonGitHubURL(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	body := "project:\n  url: ./board\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := runConfigMigrate(path); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	got, _ := os.ReadFile(path)
+	if !strings.Contains(string(got), "provider: markdown") {
+		t.Errorf("migrated file missing provider: markdown; got:\n%s", got)
+	}
+}
+
+// TestRunConfigMigrate_IsIdempotent — running migrate a second time on
+// an already-migrated file is a no-op (changed=false, file untouched).
+func TestRunConfigMigrate_IsIdempotent(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	body := "project:\n  provider: github\n  url: https://github.com/orgs/acme/projects/1\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	before, _ := os.ReadFile(path)
+	changed, err := runConfigMigrate(path)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if changed {
+		t.Error("migrate: want changed=false on already-migrated file, got true")
+	}
+	after, _ := os.ReadFile(path)
+	if string(before) != string(after) {
+		t.Errorf("file mutated despite no-op migrate;\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+}
+
+// TestRunConfigMigrate_RoundTripsThroughLoad — what migrate writes must
+// pass projectconfig.Load. Catches schema drift between the migrated
+// shape and what Validate accepts.
+func TestRunConfigMigrate_RoundTripsThroughLoad(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	body := "project:\n  url: https://github.com/orgs/acme/projects/1\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := runConfigMigrate(path); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	cfg, err := projectconfig.LoadFromPath(path)
+	if err != nil {
+		t.Fatalf("load after migrate: %v", err)
+	}
+	if cfg.Project.Provider != projectconfig.ProviderGitHub {
+		t.Errorf("loaded provider: got %q, want %q", cfg.Project.Provider, projectconfig.ProviderGitHub)
+	}
+}

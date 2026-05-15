@@ -555,7 +555,7 @@ func TestReposToLink(t *testing.T) {
 // compare them later for "untouched" assertions.
 func writeSourceYAML(t *testing.T, path, projectURL string) []byte {
 	t.Helper()
-	pc := &projectconfig.Config{Project: projectconfig.Project{URL: projectURL}}
+	pc := &projectconfig.Config{Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: projectURL}}
 	if err := projectconfig.WriteToPath(path, pc); err != nil {
 		t.Fatalf("seed source yaml: %v", err)
 	}

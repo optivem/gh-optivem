@@ -68,7 +68,7 @@ func TestLoadProjectConfigForInit_DefaultPathPreExistingFileLoaded(t *testing.T)
 
 	path := filepath.Join(dir, projectconfig.Path)
 	seed := &projectconfig.Config{
-		Project: projectconfig.Project{URL: "https://github.com/orgs/acme/projects/9"},
+		Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/acme/projects/9"},
 	}
 	if err := projectconfig.WriteToPath(path, seed); err != nil {
 		t.Fatalf("seed: %v", err)

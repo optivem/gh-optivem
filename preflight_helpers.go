@@ -18,22 +18,30 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/board"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/preflight"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/factory"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/shell"
 )
 
 // defaultPreflightOptions returns preflight.Options wired to the real
 // remote clients: shell.RepoExists for GitHub repo lookups, a SonarCloud
-// client for org + project checks, and board.VerifyProjectURL for the
-// project board URL.
+// client for org + project checks, and tracker.Verify for the project
+// board URL — opened via the factory so the github/markdown dispatch
+// happens in one place. The closure captures cfg.Project so it can
+// pass both provider and url to factory.Open; preflight.Options's
+// BoardURLOK signature still receives the URL but it's the same value
+// already inside cfg.Project, so the captured copy stays authoritative.
 //
 // Returns an error when cfg declares a SonarCloud setup (sonar.organization
 // non-empty) but $SONAR_TOKEN is not in the environment — strict on
 // purpose, so preflight cannot pass while silently skipping the Sonar
 // remote contract.
 func defaultPreflightOptions(cfg *projectconfig.Config, workspace, cwd string) (preflight.Options, error) {
+	var project projectconfig.Project
+	if cfg != nil {
+		project = cfg.Project
+	}
 	opts := preflight.Options{
 		Workspace: workspace,
 		Cwd:       cwd,
@@ -43,8 +51,12 @@ func defaultPreflightOptions(cfg *projectconfig.Config, workspace, cwd string) (
 			// internal/shell to accept a context.Context everywhere.
 			return shell.RepoExists(slug)
 		},
-		BoardURLOK: func(ctx context.Context, projectURL string) error {
-			return board.VerifyProjectURL(ctx, projectURL, nil)
+		BoardURLOK: func(ctx context.Context, _ string) error {
+			tr, err := factory.Open(ctx, project)
+			if err != nil {
+				return err
+			}
+			return tr.Verify(ctx)
 		},
 	}
 	if cfg == nil || cfg.Sonar.Organization == "" {

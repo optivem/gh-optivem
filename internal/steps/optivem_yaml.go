@@ -167,7 +167,7 @@ func writeOptivemYAMLToDir(dir string, pc *projectconfig.Config) {
 // writing for a scaffolded repo, shop's worktree, or a hand-rolled layout.
 func BuildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	pc := &projectconfig.Config{
-		Project:      projectconfig.Project{URL: cfg.ProjectURL},
+		Project:      projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: cfg.ProjectURL},
 		RepoStrategy: mapRepoStrategy(cfg.RepoStrategy),
 		SystemName:   cfg.SystemName,
 		License:      cfg.License,

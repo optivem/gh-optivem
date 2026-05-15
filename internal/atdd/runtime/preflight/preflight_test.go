@@ -368,7 +368,7 @@ func TestRun_ExternalSystemsOmittedDoesNotFail(t *testing.T) {
 func monolithCfg() *projectconfig.Config {
 	return &projectconfig.Config{
 		RepoStrategy: projectconfig.RepoStrategyMonoRepo,
-		Project:      projectconfig.Project{URL: "https://github.com/orgs/acme/projects/1"},
+		Project:      projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		Sonar:        projectconfig.Sonar{Organization: "acme"},
 		System: projectconfig.System{
 			Architecture: projectconfig.ArchMonolith,

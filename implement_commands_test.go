@@ -63,7 +63,7 @@ func TestOverrideHooksFromConfig_NilAndEmpty(t *testing.T) {
 		t.Errorf("nil cfg: expected nil hooks, got %+v", hooks)
 	}
 
-	cfg := &projectconfig.Config{Project: projectconfig.Project{URL: "https://github.com/orgs/x/projects/1"}}
+	cfg := &projectconfig.Config{Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/x/projects/1"}}
 	hooks, err = overrideHooksFromConfig(cfg)
 	if err != nil {
 		t.Fatalf("empty maps: unexpected error %v", err)
@@ -78,7 +78,7 @@ func TestOverrideHooksFromConfig_NilAndEmpty(t *testing.T) {
 func TestOverrideHooksFromConfig_NodeExtrasPassedThrough(t *testing.T) {
 	t.Parallel()
 	cfg := &projectconfig.Config{
-		Project: projectconfig.Project{URL: "https://github.com/orgs/x/projects/1"},
+		Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/x/projects/1"},
 		NodeExtras: map[string]string{
 			"AT_RED_DSL_WRITE": "prefer record types",
 		},
@@ -110,7 +110,7 @@ func TestOverrideHooksFromConfig_NodeReplacementsReadFiles(t *testing.T) {
 		t.Fatalf("write fixture: %v", err)
 	}
 	cfg := &projectconfig.Config{
-		Project: projectconfig.Project{URL: "https://github.com/orgs/x/projects/1"},
+		Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/x/projects/1"},
 		NodeReplacements: map[string]string{
 			"AT_RED_TEST_WRITE": path,
 		},
@@ -133,7 +133,7 @@ func TestOverrideHooksFromConfig_NodeReplacementsReadFiles(t *testing.T) {
 func TestOverrideHooksFromConfig_MissingReplacementPathErrors(t *testing.T) {
 	t.Parallel()
 	cfg := &projectconfig.Config{
-		Project: projectconfig.Project{URL: "https://github.com/orgs/x/projects/1"},
+		Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/x/projects/1"},
 		NodeReplacements: map[string]string{
 			"AT_RED_TEST_WRITE": filepath.Join(t.TempDir(), "no-such.md"),
 		},
@@ -158,7 +158,7 @@ func TestAgentPromptOverridesFromConfig_ReadsFiles(t *testing.T) {
 		t.Fatalf("write fixture: %v", err)
 	}
 	cfg := &projectconfig.Config{
-		Project: projectconfig.Project{URL: "https://github.com/orgs/x/projects/1"},
+		Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/x/projects/1"},
 		AgentPrompts: map[string]string{
 			"atdd-test": path,
 		},
@@ -184,7 +184,7 @@ func TestAgentPromptOverridesFromConfig_NilAndEmpty(t *testing.T) {
 		t.Errorf("nil cfg: expected nil map, got %+v", out)
 	}
 
-	cfg := &projectconfig.Config{Project: projectconfig.Project{URL: "https://github.com/orgs/x/projects/1"}}
+	cfg := &projectconfig.Config{Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/x/projects/1"}}
 	out, err = agentPromptOverridesFromConfig(cfg)
 	if err != nil {
 		t.Fatalf("empty cfg: unexpected error %v", err)
@@ -200,7 +200,7 @@ func TestAgentPromptOverridesFromConfig_NilAndEmpty(t *testing.T) {
 func TestAgentPromptOverridesFromConfig_MissingPathErrors(t *testing.T) {
 	t.Parallel()
 	cfg := &projectconfig.Config{
-		Project: projectconfig.Project{URL: "https://github.com/orgs/x/projects/1"},
+		Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/x/projects/1"},
 		AgentPrompts: map[string]string{
 			"atdd-test": filepath.Join(t.TempDir(), "no-such.md"),
 		},

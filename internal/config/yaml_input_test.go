@@ -12,7 +12,7 @@ import (
 // Tests mutate a copy to drive FillRawFlagsFromYAML through its branches.
 func validMonolithYAML() *projectconfig.Config {
 	return &projectconfig.Config{
-		Project:      projectconfig.Project{URL: "https://github.com/orgs/acme/projects/1"},
+		Project:      projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		RepoStrategy: projectconfig.RepoStrategyMonoRepo,
 		SystemName:   "Page Turner",
 		License:      projectconfig.LicenseMIT,
@@ -33,7 +33,7 @@ func validMonolithYAML() *projectconfig.Config {
 
 func validMultitierMultirepoYAML() *projectconfig.Config {
 	return &projectconfig.Config{
-		Project:      projectconfig.Project{URL: "https://github.com/orgs/acme/projects/2"},
+		Project:      projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/acme/projects/2"},
 		RepoStrategy: projectconfig.RepoStrategyMultiRepo,
 		SystemName:   "Page Turner",
 		License:      projectconfig.LicenseApache2,

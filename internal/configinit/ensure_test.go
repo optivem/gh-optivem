@@ -52,7 +52,7 @@ func TestEnsureExistsOrBuild_ExistingFileLoads(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, projectconfig.Path)
 	seed := &projectconfig.Config{
-		Project: projectconfig.Project{URL: "https://github.com/orgs/acme/projects/1"},
+		Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 	}
 	if err := projectconfig.WriteToPath(path, seed); err != nil {
 		t.Fatalf("seed: %v", err)

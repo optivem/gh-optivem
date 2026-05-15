@@ -6,6 +6,7 @@
 //	gh optivem config init      — write a fresh gh-optivem.yaml from CLI flags
 //	gh optivem config validate  — parse <CWD>/gh-optivem.yaml and validate it
 //	gh optivem config preflight — validate + check on-disk layout exists
+//	gh optivem config migrate   — back-fill required fields onto a pre-schema-bump config
 //
 // `config init` reuses the same render path as `gh optivem init`
 // (steps.WriteOptivemYAMLToPath / config.ValidateAndDeriveForYAML) so a new
@@ -14,11 +15,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"strings"
 
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/preflight"
 	"github.com/optivem/gh-optivem/internal/config"
@@ -43,6 +48,7 @@ non-scaffolded repo, or re-validating after a hand edit).`,
 		newConfigInitCmd(),
 		newConfigValidateCmd(),
 		newConfigPreflightCmd(),
+		newConfigMigrateCmd(),
 	)
 	return cmd
 }
@@ -235,6 +241,150 @@ multi-line error block listing every failure otherwise.`,
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "", "Workspace root containing one clone per repo (default: parent directory of CWD). Each clone dir must be named after the repo-name component of its slug; symlink outliers into place.")
 	return cmd
+}
+
+// newConfigMigrateCmd implements `gh optivem config migrate`. Idempotently
+// back-fills required fields onto a pre-schema-bump gh-optivem.yaml — today
+// just project.provider, inferred from the existing project.url shape
+// (https://github.com/... → github; everything else → markdown). When
+// project.provider is already set, the file is untouched and the command
+// reports a no-op. Designed to be safe to run repeatedly.
+//
+// Comment preservation: the file is rewritten via yaml.v3's Node API so
+// existing comments and key ordering survive — operators who hand-edited
+// their gh-optivem.yaml don't lose context on re-run.
+func newConfigMigrateCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "migrate",
+		Short: "Back-fill required fields onto an existing gh-optivem.yaml",
+		Long: `Migrate gh-optivem.yaml to the current schema. Today:
+
+  • Adds project.provider (` + "`github`" + ` or ` + "`markdown`" + `), inferred from the existing
+    project.url shape — https://github.com/... → github; everything else
+    → markdown.
+
+The command is idempotent: when project.provider is already set, the
+file is left untouched and the command reports "no migration needed".
+
+Existing comments and key ordering are preserved so hand-edited files
+keep their context.`,
+		Example: `  gh optivem config migrate
+  gh optivem -c ./gh-optivem.myrepo.yaml config migrate`,
+		Run: func(cmd *cobra.Command, args []string) {
+			path, _ := projectconfig.ResolvePath(projectConfigPath)
+			changed, err := runConfigMigrate(path)
+			exitOnError(err)
+			if changed {
+				fmt.Printf("%s migrated\n", path)
+			} else {
+				fmt.Printf("%s already up to date\n", path)
+			}
+		},
+	}
+	return cmd
+}
+
+// runConfigMigrate is the testable core of `gh optivem config migrate`. It
+// reads <path> via yaml.v3 Node round-trip (so comments survive), back-fills
+// project.provider when absent, and writes the file back. Returns
+// (changed, err): changed=false means "no-op, file untouched."
+func runConfigMigrate(path string) (bool, error) {
+	if path == "" {
+		return false, fmt.Errorf("config migrate: path is required")
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return false, projectconfig.MissingFileError(path)
+		}
+		return false, fmt.Errorf("config migrate: read %s: %w", path, err)
+	}
+	var root yaml.Node
+	if err := yaml.Unmarshal(raw, &root); err != nil {
+		return false, fmt.Errorf("config migrate: parse %s: %w", path, err)
+	}
+	doc := documentMappingNode(&root)
+	if doc == nil {
+		return false, fmt.Errorf("config migrate: %s: top-level document is not a mapping", path)
+	}
+	projectNode := mappingValue(doc, "project")
+	if projectNode == nil || projectNode.Kind != yaml.MappingNode {
+		return false, fmt.Errorf("config migrate: %s: missing project block (run `gh optivem config init` to seed it)", path)
+	}
+	if mappingValue(projectNode, "provider") != nil {
+		return false, nil
+	}
+	url := scalarValue(mappingValue(projectNode, "url"))
+	provider := inferProvider(url)
+	prependMappingEntry(projectNode, "provider", provider)
+	out, err := yaml.Marshal(&root)
+	if err != nil {
+		return false, fmt.Errorf("config migrate: marshal: %w", err)
+	}
+	if err := os.WriteFile(path, out, 0o644); err != nil {
+		return false, fmt.Errorf("config migrate: write %s: %w", path, err)
+	}
+	return true, nil
+}
+
+// inferProvider picks the provider that matches the existing project.url.
+// HTTPS github URLs route to github; an empty url, a relative path, or
+// any non-github URL routes to markdown (the escape-hatch backend).
+func inferProvider(url string) string {
+	if strings.HasPrefix(url, "https://github.com/") || strings.HasPrefix(url, "http://github.com/") {
+		return projectconfig.ProviderGitHub
+	}
+	return projectconfig.ProviderMarkdown
+}
+
+// documentMappingNode returns the top-level mapping inside a yaml.Node
+// returned from yaml.Unmarshal. Unmarshal wraps the document in a
+// DocumentNode whose first content child is the actual root mapping.
+func documentMappingNode(root *yaml.Node) *yaml.Node {
+	if root == nil {
+		return nil
+	}
+	if root.Kind == yaml.DocumentNode && len(root.Content) > 0 {
+		root = root.Content[0]
+	}
+	if root.Kind != yaml.MappingNode {
+		return nil
+	}
+	return root
+}
+
+// mappingValue returns the value node paired with key inside m, or nil
+// when key is absent. Mapping nodes store keys and values as adjacent
+// pairs in Content (key0, value0, key1, value1, …).
+func mappingValue(m *yaml.Node, key string) *yaml.Node {
+	if m == nil || m.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if m.Content[i].Value == key {
+			return m.Content[i+1]
+		}
+	}
+	return nil
+}
+
+// scalarValue returns n.Value when n is a non-nil scalar, else "".
+func scalarValue(n *yaml.Node) string {
+	if n == nil || n.Kind != yaml.ScalarNode {
+		return ""
+	}
+	return n.Value
+}
+
+// prependMappingEntry inserts a (key, value) pair at the start of m's
+// Content so the new field appears before any existing keys. Used so a
+// back-filled `provider:` lands above `url:` in the rewritten file —
+// operators reading the diff see the new field at the top of the
+// project block, not buried at the end.
+func prependMappingEntry(m *yaml.Node, key, value string) {
+	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}
+	valNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value}
+	m.Content = append([]*yaml.Node{keyNode, valNode}, m.Content...)
 }
 
 // runConfigPreflight is the testable core of `gh optivem config preflight`.

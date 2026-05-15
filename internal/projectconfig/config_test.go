@@ -19,6 +19,7 @@ func writeConfig(t *testing.T, dir, body string) {
 // ---------------------------------------------------------------------------
 
 const sampleMonoRepoMonolith = `project:
+  provider: github
   url: https://github.com/orgs/optivem/projects/20
 
 repo_strategy: mono-repo
@@ -49,6 +50,7 @@ external_systems:
 `
 
 const sampleMonoRepoMultitier = `project:
+  provider: github
   url: https://github.com/orgs/optivem/projects/20
 
 repo_strategy: mono-repo
@@ -85,6 +87,7 @@ external_systems:
 `
 
 const sampleMultiRepoMonolith = `project:
+  provider: github
   url: https://github.com/orgs/optivem/projects/20
 
 repo_strategy: multi-repo
@@ -115,6 +118,7 @@ external_systems:
 `
 
 const sampleMultiRepoMultitier = `project:
+  provider: github
   url: https://github.com/orgs/optivem/projects/20
 
 repo_strategy: multi-repo
@@ -170,6 +174,7 @@ func TestLoad_ParsesProjectURL(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	writeConfig(t, dir, `project:
+  provider: github
   url: https://github.com/orgs/optivem/projects/20
 `)
 	cfg, err := Load(dir)
@@ -184,25 +189,26 @@ func TestLoad_ParsesProjectURL(t *testing.T) {
 	}
 }
 
-// TestLoad_EmptyFileLoads pins the contract that an empty gh-optivem.yaml
-// loads to a zero-value config without error: Validate accepts empty
-// values across the board, and project.url is no longer a hard
-// requirement at validate-time (auto-create happens in `gh optivem init`
-// Path A). Specific consumers (FillRawFlagsFromYAML, ATDD runtime) still
-// enforce the fields they actually need.
-func TestLoad_EmptyFileLoads(t *testing.T) {
+// TestLoad_EmptyFileRejectsMissingProvider pins the contract that an
+// empty gh-optivem.yaml fails to load because project.provider is
+// mandatory. The error names the migrate command so an operator with a
+// pre-provider config has a one-shot fix path. Pre-provider configs
+// previously loaded as a zero-value Config; that contract was retired
+// when the Tracker abstraction shipped (a config without a provider
+// can't pick a Tracker adapter).
+func TestLoad_EmptyFileRejectsMissingProvider(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	writeConfig(t, dir, "")
-	cfg, err := Load(dir)
-	if err != nil {
-		t.Fatalf("empty file should load to a zero-value config, got: %v", err)
+	_, err := Load(dir)
+	if err == nil {
+		t.Fatal("expected error on empty config (missing project.provider), got nil")
 	}
-	if cfg == nil {
-		t.Fatal("expected non-nil config for empty file")
+	if !strings.Contains(err.Error(), "project.provider is required") {
+		t.Errorf("error should mention project.provider, got: %v", err)
 	}
-	if cfg.Project.URL != "" {
-		t.Errorf("project.url on empty config: want empty, got %q", cfg.Project.URL)
+	if !strings.Contains(err.Error(), "config migrate") {
+		t.Errorf("error should hint at `config migrate`, got: %v", err)
 	}
 }
 
@@ -301,7 +307,7 @@ func TestRoundTrip_PreservesProcessFlowAndOverrides(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	cfg := &Config{
-		Project:     Project{URL: "https://github.com/orgs/acme/projects/1"},
+		Project:     Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		ProcessFlow: "config/process-flow.yaml",
 		AgentPrompts: map[string]string{
 			"atdd-test-at": "config/prompts/atdd-test-at.md",
@@ -340,7 +346,7 @@ func TestRoundTrip_PreservesProcessFlowAndOverrides(t *testing.T) {
 func TestValidate_ProcessFlow_RejectsAbsolutePath(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
-		Project:     Project{URL: "https://github.com/orgs/acme/projects/1"},
+		Project:     Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		ProcessFlow: "/abs/process-flow.yaml",
 	}
 	err := cfg.Validate()
@@ -357,7 +363,7 @@ func TestValidate_ProcessFlow_RejectsAbsolutePath(t *testing.T) {
 func TestValidate_AgentPrompts_RejectsUnknownAgent(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
-		Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
+		Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		AgentPrompts: map[string]string{
 			"atdd-not-a-real-agent": "config/prompts/x.md",
 		},
@@ -376,7 +382,7 @@ func TestValidate_AgentPrompts_RejectsUnknownAgent(t *testing.T) {
 func TestValidate_AgentPrompts_RejectsAbsolutePath(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
-		Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
+		Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		AgentPrompts: map[string]string{
 			"atdd-test-at": "/abs/prompts/atdd-test-at.md",
 		},
@@ -391,7 +397,7 @@ func TestValidate_AgentPrompts_RejectsAbsolutePath(t *testing.T) {
 func TestValidate_NodeReplacements_RejectsAbsolutePath(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
-		Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
+		Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		NodeReplacements: map[string]string{
 			"AT_RED_TEST_WRITE": "/abs/prompts/x.md",
 		},
@@ -407,7 +413,7 @@ func TestValidate_NodeReplacements_RejectsAbsolutePath(t *testing.T) {
 func TestValidate_RejectsSameKeyInExtrasAndReplacements(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
-		Project:          Project{URL: "https://github.com/orgs/acme/projects/1"},
+		Project:          Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		NodeExtras:       map[string]string{"AT_RED_DSL_WRITE": "prefer records"},
 		NodeReplacements: map[string]string{"AT_RED_DSL_WRITE": "config/prompts/x.md"},
 	}
@@ -424,7 +430,7 @@ func TestValidate_RejectsSameKeyInExtrasAndReplacements(t *testing.T) {
 // override fields nil/empty validates cleanly (the common case).
 func TestValidate_AcceptsEmptyOverrideMaps(t *testing.T) {
 	t.Parallel()
-	cfg := &Config{Project: Project{URL: "https://github.com/orgs/acme/projects/1"}}
+	cfg := &Config{Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"}}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("empty override maps should validate, got: %v", err)
 	}
@@ -440,7 +446,7 @@ func TestRoundTrip_PreservesSystemAndTestConfig(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
 		cfg := &Config{
-			Project:    Project{URL: "https://github.com/orgs/acme/projects/1"},
+			Project:    Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 			System:     System{Config: "docker/systems.json"},
 			SystemTest: TierSpec{Config: "system-test/tests.json"},
 		}
@@ -462,7 +468,7 @@ func TestRoundTrip_PreservesSystemAndTestConfig(t *testing.T) {
 	t.Run("unset omits the keys", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
-		cfg := &Config{Project: Project{URL: "https://github.com/orgs/acme/projects/1"}}
+		cfg := &Config{Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"}}
 		if err := Write(dir, cfg); err != nil {
 			t.Fatalf("Write: %v", err)
 		}
@@ -498,6 +504,7 @@ func TestValidate_RejectsLegacyTopLevelConfigKeys(t *testing.T) {
 		{
 			name: "legacy system_config",
 			body: `project:
+  provider: github
   url: https://github.com/orgs/acme/projects/1
 system_config: docker/systems.json
 `,
@@ -506,6 +513,7 @@ system_config: docker/systems.json
 		{
 			name: "legacy test_config",
 			body: `project:
+  provider: github
   url: https://github.com/orgs/acme/projects/1
 test_config: system-test/tests.json
 `,
@@ -545,7 +553,7 @@ func TestValidate_RejectsConfigOnBackendOrFrontend(t *testing.T) {
 		{
 			name: "backend.config",
 			cfg: &Config{
-				Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
+				Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 				System: System{
 					Backend: TierSpec{Path: "x", Repo: "r", Lang: LangJava, Config: "nope"},
 				},
@@ -555,7 +563,7 @@ func TestValidate_RejectsConfigOnBackendOrFrontend(t *testing.T) {
 		{
 			name: "frontend.config",
 			cfg: &Config{
-				Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
+				Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 				System: System{
 					Frontend: TierSpec{Path: "x", Repo: "r", Lang: LangTypescript, Config: "nope"},
 				},
@@ -585,13 +593,14 @@ func TestValidate_RejectsConfigOnBackendOrFrontend(t *testing.T) {
 // TestValidate_AcceptsEmptyProjectURL pins the contract that an empty
 // project.url is valid at YAML-load time: `gh optivem init` Path A
 // auto-creates the board on first run and rewrites the file with the
-// URL. The ATDD runtime (internal/atdd/runtime/board) still enforces
+// URL. project.provider is still required — only the URL is allowed
+// empty. The ATDD runtime (internal/atdd/runtime/board) still enforces
 // non-empty at use time.
 func TestValidate_AcceptsEmptyProjectURL(t *testing.T) {
 	t.Parallel()
-	cfg := &Config{}
+	cfg := &Config{Project: Project{Provider: ProviderGitHub}}
 	if err := cfg.Validate(); err != nil {
-		t.Fatalf("zero-value config (empty project.url) should validate now that Path A auto-creates; got: %v", err)
+		t.Fatalf("provider-only config (empty project.url) should validate now that Path A auto-creates; got: %v", err)
 	}
 }
 
@@ -608,7 +617,7 @@ func TestValidate_NilReceiverIsOK(t *testing.T) {
 // "partial config written before architecture is chosen" flow.
 func TestValidate_OnlyProjectURLIsOK(t *testing.T) {
 	t.Parallel()
-	cfg := &Config{Project: Project{URL: "https://github.com/orgs/acme/projects/1"}}
+	cfg := &Config{Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"}}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("project-url-only config should validate, got: %v", err)
 	}
@@ -834,7 +843,7 @@ func TestValidate_MultiRepoRejectsAllEmptyRepos(t *testing.T) {
 func TestValidate_AcceptsExternalSystemsOmitted(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
-		Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
+		Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		Sonar:   Sonar{Organization: "x"},
 		System: System{
 			Architecture: ArchMonolith,
@@ -852,7 +861,7 @@ func TestValidate_AcceptsOnlyStubsOrOnlySimulators(t *testing.T) {
 	t.Parallel()
 	base := func() *Config {
 		return &Config{
-			Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
+			Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 			Sonar:   Sonar{Organization: "x"},
 			System: System{
 				Architecture: ArchMonolith,
@@ -899,7 +908,7 @@ func TestValidate_AcceptsExternalRepoNotInOtherTiers(t *testing.T) {
 	// system_test.repo carries the canonical base ("x/main"), so the Sonar
 	// keys use base="main" — independent of where each component lives.
 	cfg := &Config{
-		Project:      Project{URL: "https://github.com/orgs/acme/projects/1"},
+		Project:      Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		RepoStrategy: RepoStrategyMultiRepo,
 		Sonar:        Sonar{Organization: "x"},
 		System: System{
@@ -990,7 +999,7 @@ func TestWrite_OmitsEmptyOptionalFields(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	cfg := &Config{
-		Project: Project{URL: "https://github.com/orgs/acme/projects/1"},
+		Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		Sonar:   Sonar{Organization: "x"},
 		System: System{
 			Architecture: ArchMonolith,
@@ -1095,7 +1104,7 @@ func TestWriteToPath_NonCanonicalFilename(t *testing.T) {
 	dir := t.TempDir()
 	yamlPath := filepath.Join(dir, "gh-optivem.alt.yaml")
 	in := &Config{
-		Project:      Project{URL: "https://github.com/orgs/acme/projects/7"},
+		Project:      Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/7"},
 		RepoStrategy: RepoStrategyMonoRepo,
 		Sonar:        Sonar{Organization: "acme"},
 		System: System{
@@ -1142,7 +1151,7 @@ func TestWriteToPath_EmptyPathErrors(t *testing.T) {
 // architecture set. Each system_name/license/deploy test mutates a copy.
 func validMonolithBase() *Config {
 	return &Config{
-		Project:      Project{URL: "https://github.com/orgs/acme/projects/1"},
+		Project:      Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		RepoStrategy: RepoStrategyMonoRepo,
 		Sonar:        Sonar{Organization: "acme"},
 		System: System{
@@ -1383,7 +1392,7 @@ func TestValidate_RejectsSonarKeyOnWrongArchitecture(t *testing.T) {
 func TestValidate_AcceptsEmptySonarBlockWithoutArchitecture(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
-		Project:      Project{URL: "https://github.com/orgs/acme/projects/1"},
+		Project:      Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		RepoStrategy: RepoStrategyMonoRepo,
 		// Arch empty; no Sonar block.
 	}
@@ -1396,7 +1405,7 @@ func TestValidate_AcceptsEmptySonarBlockWithoutArchitecture(t *testing.T) {
 // the smallest Config with architecture=multitier that Validate accepts.
 func validMultitierBase() *Config {
 	return &Config{
-		Project:      Project{URL: "https://github.com/orgs/acme/projects/1"},
+		Project:      Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		RepoStrategy: RepoStrategyMonoRepo,
 		Sonar:        Sonar{Organization: "acme"},
 		System: System{

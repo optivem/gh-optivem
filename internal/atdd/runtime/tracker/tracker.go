@@ -8,24 +8,23 @@
 // content, ticking checklists. Each backend implements the same seven
 // methods; the runtime never branches on backend type.
 //
-// Open is the factory: it dispatches on projectconfig.Project.Provider
-// ("github" | "markdown") and validates that the configured URL fits the
-// chosen adapter's expected shape. Both fields are surfaced in the error
-// when the dispatch fails so the operator sees exactly which line of
-// gh-optivem.yaml to fix.
+// Construction goes through the sibling factory package
+// (internal/atdd/runtime/tracker/factory): factory.Open dispatches on
+// projectconfig.Project.Provider ("github" | "markdown"), validates
+// the configured URL against the adapter's expected shape, and
+// returns the adapter. The factory lives in a sibling package because
+// the github and markdown adapters both import this one for the
+// Issue / Tracker / sentinel types — declaring Open here would
+// re-import the adapters and create a build cycle.
 //
-// Status: scaffold. Open() returns ErrNotImplemented today; the github
-// and markdown adapters are wired in subsequent migration steps. The
-// interface itself is stable — the per-method semantics are documented
-// inline and a fake implementation in tracker_test.go exercises the
-// contract at compile time.
+// Tests can construct adapters directly via the per-package New
+// constructors with an injected runner; this package exposes only the
+// interface and shared types, so it has no runtime behavior to mock.
 package tracker
 
 import (
 	"context"
 	"errors"
-
-	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
 // Issue is the backend-agnostic representation of a tracker item. Every
@@ -117,28 +116,3 @@ type Tracker interface {
 // items. A normal "nothing to do" outcome — callers usually report it
 // and stop, not retry.
 var ErrEmptyReady = errors.New("tracker: Ready column is empty")
-
-// ErrNotImplemented is returned by stubbed methods and by the Open
-// factory until the per-adapter wiring lands. Distinct from "not
-// supported by this backend" — that case returns a more specific
-// error naming the operation and the backend.
-var ErrNotImplemented = errors.New("tracker: not implemented")
-
-// ---------------------------------------------------------------------------
-// Factory
-// ---------------------------------------------------------------------------
-
-// Open constructs the Tracker matching cfg.Provider. Currently a stub
-// that returns ErrNotImplemented for every call; the github and
-// markdown adapters are wired in later migration steps. The signature
-// is stable so consumers can adopt it before the dispatch lands.
-//
-// Contract once wired:
-//   - cfg.Provider == "github":   github URL required, returns *github.Tracker
-//   - cfg.Provider == "markdown": directory path required, returns *markdown.Tracker
-//   - cfg.Provider == "":          error pointing at `gh optivem config migrate`
-//   - cfg.Provider unknown:       error naming both the value and the field
-//   - provider/url shape mismatch: error naming both fields
-func Open(_ context.Context, _ projectconfig.Project) (Tracker, error) {
-	return nil, ErrNotImplemented
-}

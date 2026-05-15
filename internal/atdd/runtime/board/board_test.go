@@ -69,7 +69,7 @@ func joinArgs(args []string) string {
 func TestResolveProjectURL_FromOptivemYAML(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "gh-optivem.yaml"),
-		[]byte("project:\n  url: https://github.com/orgs/optivem/projects/20\n"), 0o644); err != nil {
+		[]byte("project:\n  provider: github\n  url: https://github.com/orgs/optivem/projects/20\n"), 0o644); err != nil {
 		t.Fatalf("write gh-optivem.yaml: %v", err)
 	}
 
@@ -96,10 +96,13 @@ func TestResolveProjectURL_NoConfigFile(t *testing.T) {
 // longer rejects empty project.url at Load time (auto-create in `gh
 // optivem init` Path A is now the canonical way to populate it), so the
 // sentinel case covers both "no config file" and "config without URL".
+// project.provider must still be present — Validate rejects an empty
+// provider — so the fixture sets provider: github and only leaves url
+// blank.
 func TestResolveProjectURL_ConfigPresentButURLEmpty(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "gh-optivem.yaml"),
-		[]byte("project:\n  name: Shop Project\n"), 0o644); err != nil {
+		[]byte("project:\n  provider: github\n  name: Shop Project\n"), 0o644); err != nil {
 		t.Fatalf("write gh-optivem.yaml: %v", err)
 	}
 
