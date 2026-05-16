@@ -20,11 +20,21 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
 if [[ -t 1 ]]; then
-  C_CYAN=$'\033[36m'; C_RESET=$'\033[0m'
+  C_CYAN=$'\033[36m'; C_RED=$'\033[31m'; C_RESET=$'\033[0m'
 else
-  C_CYAN=''; C_RESET=''
+  C_CYAN=''; C_RED=''; C_RESET=''
 fi
 log() { echo "${C_CYAN}[install]${C_RESET} $*"; }
+die() { echo "${C_RED}[install] ERROR:${C_RESET} $*" >&2; exit 1; }
+
+# Without this, `set -e` aborts silently when a step fails — e.g. `gh extension
+# install` failing on an unauthenticated machine leaves the user staring at
+# gh's "please run gh auth login" hint with no indication the script bailed.
+trap 'rc=$?; die "aborted at line $LINENO (exit $rc). See output above."' ERR
+
+command -v go >/dev/null 2>&1 || die "go not found on PATH."
+command -v gh >/dev/null 2>&1 || die "gh CLI not found on PATH."
+gh auth status >/dev/null 2>&1 || die "gh is not authenticated. Run 'gh auth login' (or set GH_TOKEN) and re-run."
 
 log "go build -o gh-optivem.exe ."
 go build -o gh-optivem.exe .
