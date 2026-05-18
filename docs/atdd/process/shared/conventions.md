@@ -31,6 +31,8 @@ startsWith("<CURRENT-TICKET-ID> - AT - RED - <PREV-PHASE>")
 
 Never strip annotations whose prefix belongs to a different ticket.
 
+**Phase agents must not annotate or strip `@Disabled` themselves.** This bookkeeping is handled outside the phase agent by the runtime's `disable_change_driven` / `enable_change_driven` actions, which run between phases.
+
 ## Phase-output flags
 
 After RED-DSL, the work-agent MUST set both flags below. They are read by the post-RED-DSL gateway to branch onto the right next phase; the gateway treats *unset* as an error (no implicit default).

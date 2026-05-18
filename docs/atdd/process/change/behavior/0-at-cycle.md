@@ -10,8 +10,6 @@ See **[Acceptance Criteria Analysis](../../analysis/acceptance-criteria-analysis
 
 ## RED
 
-Between RED sub-phases, change-driven tests are disabled (and re-enabled at the start of the next phase) per [§Conventions → Disable-reason convention](../../shared/conventions.md#disable-reason-convention). This bookkeeping is handled outside the phase agent — phase agents must not annotate or strip `@Disabled` themselves.
-
 The RED loop runs three sequential phases — see each per-phase doc for instructions:
 
 1. **[AT - RED - TEST](at-red-test.md)**
