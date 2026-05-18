@@ -1,8 +1,10 @@
 # ACCEPTANCE TEST CYCLE
 
+> 🚧 **Work in progress.** This doc (and its sibling [`atdd-ct-cycle.md`](atdd-ct-cycle.md)) is being built up to become the canonical AT-cycle process spec, to be referenced by the per-phase agent prompts under `internal/assets/runtime/prompts/atdd/`. The goal is to make those prompts significantly leaner — each prompt should reference the relevant section of this doc rather than restating the cycle rules inline. Once this doc reaches parity with the global process pages (`internal/assets/global/docs/atdd/process/at-*.md`), those four global pages will be deleted and the runtime prompts will be slimmed to a thin pointer + per-phase operational notes.
+
 RED - GREEN - REFACTOR
 
-Every phase agent operates within a declared allowed-path scope; see [§Conventions → Phase scope policy](#phase-scope-policy) for the per-phase table, and the BPMN process diagram for how it is enforced.
+Every phase agent operates within a declared allowed-path scope; see [§Conventions → Phase scope policy](#phase-scope-policy) for the per-phase table and how violations are handled.
 
 Inside each of these steps:
 
@@ -13,7 +15,7 @@ Inside each of these steps:
 
 ## RED
 
-Between RED sub-phases, change-driven tests are disabled (and re-enabled at the start of the next phase) per [§Conventions → Disable-reason convention](#disable-reason-convention). This is BPMN orchestration plumbing — a separate scripted step around the commit, not the phase agent's responsibility. See the BPMN process diagram.
+Between RED sub-phases, change-driven tests are disabled (and re-enabled at the start of the next phase) per [§Conventions → Disable-reason convention](#disable-reason-convention). This bookkeeping is handled outside the phase agent — phase agents must not annotate or strip `@Disabled` themselves.
 
 ### RED: Test
 1. For every Acceptance Criterion, write a corresponding Acceptance Test. This should be a mechanicla 1:1 translation.
@@ -26,7 +28,7 @@ Between RED sub-phases, change-driven tests are disabled (and re-enabled at the 
 2. If you need add additional Driver interface methods:
    (a) In the System Driver Interface: implement prototype methods by throwing `"TODO: System Driver"` exception
    (b) In the External System Driver Interface: implement prototype methods by throwing `"TODO: External System Driver"` exception
-3. Set both flags defined in [§Conventions → Phase-output flags](#phase-output-flags). Both **MUST** be set before completing the phase — unset is a bug, not a default `no`. The BPMN gateway downstream validates both flags are set and branches on their values; see the BPMN process diagram.
+3. Set both flags defined in [§Conventions → Phase-output flags](#phase-output-flags). Both **MUST** be set before completing the phase — unset is a bug, not a default `no`. The next phase is chosen downstream based on the flag values.
    (a) Set flag: `System Driver Interface Changed: yes|no`
    (b) Set flag: `External System Driver Interface Changed: yes|no`
 
@@ -68,7 +70,7 @@ Examples:
 - `@Disabled("OPV-123 - AT - RED - DSL")`
 - `@Disabled("OPV-123 - AT - RED - SYSTEM DRIVER")`
 
-Re-enable filter (used by the BPMN re-enable step at the start of the next phase):
+Re-enable filter (used by the re-enable step at the start of the next phase):
 
 ```
 startsWith("<CURRENT-TICKET-ID> - AT - RED - <PREV-PHASE>")
@@ -78,12 +80,12 @@ Never strip annotations whose prefix belongs to a different ticket.
 
 ### Phase-output flags
 
-After RED-DSL, the work-agent MUST set both flags below. They are read by the BPMN gateway downstream of RED-DSL to branch onto the right next phase; the gateway treats *unset* as an error (no implicit default).
+After RED-DSL, the work-agent MUST set both flags below. They are read by the post-RED-DSL gateway to branch onto the right next phase; the gateway treats *unset* as an error (no implicit default).
 
-| Flag name | Domain | Read by | Meaning when `yes` |
-|---|---|---|---|
-| `System Driver Interface Changed` | `yes` \| `no` | BPMN gateway after RED-DSL | RED-SYSTEM-DRIVER phase must run (new System Driver methods need real impls) |
-| `External System Driver Interface Changed` | `yes` \| `no` | BPMN gateway after RED-DSL | Hand off to the CT cycle (external driver belongs to the CT sub-process) |
+| Flag name | Domain | Meaning when `yes` |
+|---|---|---|
+| `System Driver Interface Changed` | `yes` \| `no` | RED-SYSTEM-DRIVER phase must run (new System Driver methods need real impls) |
+| `External System Driver Interface Changed` | `yes` \| `no` | Hand off to the CT cycle (external driver belongs to the CT sub-process) |
 
 ### Phase scope policy
 
@@ -91,10 +93,10 @@ After RED-DSL, the work-agent MUST set both flags below. They are read by the BP
 
 Two layers enforce the policy; both converge on the same user-facing prompt — they differ only in who noticed the out-of-scope edit first.
 
-- **Layer 1 — agent-triggered (in-agent recognition, BPMN-handled prompt):** the work-agent's prompt names the allowed paths for its phase. When the agent recognises it needs to edit out of scope, it does **not** wait inline for approval. Instead, it exits with a structured *scope-exception-requested* signal naming the intended out-of-scope file(s) and the reason. BPMN sees the signal and runs the same human-task prompt as Layer 2.
-- **Layer 2 — BPMN post-phase scope check (catches what Layer 1 missed):** after each phase agent finishes normally, BPMN runs a scripted step that diffs the modified files (`git diff --name-only` vs the pre-phase ref) against the allowed-path policy. On violation, BPMN halts and runs the same human-task prompt.
+- **Layer 1 — agent-triggered:** the work-agent's prompt names the allowed paths for its phase. When the agent recognises it needs to edit out of scope, it does **not** wait inline for approval. Instead, it exits with a structured *scope-exception-requested* signal naming the intended out-of-scope file(s) and the reason. The signal triggers the same human-task prompt as Layer 2.
+- **Layer 2 — post-phase scope check (catches what Layer 1 missed):** after each phase agent finishes normally, a scripted check diffs the modified files (`git diff --name-only` vs the pre-phase ref) against the allowed-path policy. On violation, the cycle halts and runs the same human-task prompt.
 
-In both cases, BPMN never auto-allows and never auto-reverts — the user always decides. Options:
+In both cases, the cycle never auto-allows and never auto-reverts — the user always decides. Options:
 
 - **Accept (continue from current phase)** — the agent's out-of-scope change is judged correct (e.g. RED-SYSTEM-DRIVER discovered the DSL or driver-port interface was wrong; GREEN discovered the test was wrong). Record the exception and continue from the current phase.
 - **Rewind to upstream phase** — accept the out-of-scope change, then restart the cycle from the phase whose output was wrong (e.g. accept a DSL edit made during RED-SYSTEM-DRIVER, then rerun RED-DSL to re-validate the corrected DSL, then continue). This is the most principled response when the violation reveals an upstream bug — it preserves the per-phase RED guarantee instead of carrying an unvalidated upstream change forward.
@@ -111,4 +113,4 @@ Allowed-path policy by phase:
 | GREEN | production system code only; tests/DSL/drivers are frozen (see GREEN section) |
 | CT-RED-TEST / CT-RED-DSL / CT-RED-EXTERNAL-DRIVER / CT-GREEN-STUBS | `external/**` only |
 
-This table is the source of truth for the policy schema; the BPMN scope-check step loads it at runtime.
+This table is the source of truth for the policy schema; the post-phase scope-check step loads it at runtime.
