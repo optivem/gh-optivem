@@ -10,7 +10,7 @@
 
 **Sibling plans referenced:**
 - [Predecessor — AT-side Phase-scope placeholders substrate (20260518-1500)](20260518-1500-atdd-phase-scope-placeholders.md) — adds the AT-side Family B keys (`at_test`, `dsl_port`, `dsl_core`) this plan's `phase-scopes.yaml` references.
-- [CT-side Family B vocabulary (20260518-1742)](20260518-1742-ct-family-b-vocabulary.md) — adds the CT-side Family B keys (`ct_test`, and any siblings) this plan's `phase-scopes.yaml` references. Filed during this plan's refinement (2026-05-18) per `[[feedback_new_plan_not_extend]]`.
+- [CT-side Family B vocabulary (20260518-1742)](20260518-1742-family-b-stems-and-ct-vocab.md) — adds the CT-side Family B keys (`ct_test`, and any siblings) this plan's `phase-scopes.yaml` references. Filed during this plan's refinement (2026-05-18) per `[[feedback_new_plan_not_extend]]`.
 - [BPMN orchestration plan (20260518-1144)](20260518-1144-atdd-bpmn-orchestration.md) — consumer. Snapshot A retires (item 8 of this plan); `check_phase_scope` (BPMN item 5) gets rewired (item 8 of this plan). Header sibling-plans entry added (the predecessor's item 7a covers this).
 - [BPMN plan §Conventions snapshot (20260518-1144)](20260518-1144-atdd-bpmn-orchestration.md#%C2%A7conventions-snapshot-inlined-to-survive-the-upcoming-split) — the canonical Snapshot A this plan retires.
 - [Deferred — Multitier GREEN scope (plans/deferred/)](deferred/20260518-1530-multitier-green-scope.md) — picks up `AT_GREEN_BACKEND` / `AT_GREEN_FRONTEND` scope (left on item 11's allowlist by this plan).
@@ -67,9 +67,9 @@ phases:
 - Phase keys match `id:` values of `user_task` nodes in `internal/atdd/runtime/statemachine/process-flow.yaml` (verified at build time per item 11). `process-flow.yaml` has three GREEN nodes (`AT_GREEN_SYSTEM` for monolith, `AT_GREEN_BACKEND` + `AT_GREEN_FRONTEND` for multitier); this plan encodes only `AT_GREEN_SYSTEM`. Item 11's cross-validator carries an explicit allowlist for the two unmapped multitier-GREEN phases pointing to the deferred plan.
 - Layer names must be in `canonicalPathKeys()` from `internal/projectconfig/paths_defaults.go` (Family B) OR equal to `system_path` (the only Family A path-shaped key in scope vocabulary — γ resolved 2026-05-18). `system_test_path` is deliberately **not** a valid layer: it's the parent of every Family B testkit key, and admitting it would let any phase escape the layer partition.
 
-> **Refined 2026-05-18:** (1) Location η resolved — standalone `internal/atdd/phase-scopes.yaml`. **Why:** keeps BPMN runtime ("what dispatches next") separate from policy doctrine ("what paths an agent may touch"); peer pattern already exists; foreign-key drift is cheaply guarded by item 11's build-time test. (2) Phase keys renamed from kebab (`AT-RED-TEST`) to SCREAMING_SNAKE (`AT_RED_TEST`). **Why:** must match the actual `user_task` node ids in `process-flow.yaml` — refinement surfaced that the draft schema used the wrong casing. (3) AT-GREEN handling — single `AT_GREEN_SYSTEM` row only, multitier GREEN deferred. **Why:** `process-flow.yaml` has three GREEN nodes (`AT_GREEN_SYSTEM` for monolith, `AT_GREEN_BACKEND` + `AT_GREEN_FRONTEND` for multitier). Encoding `[system_path]` for all three would be factually wrong for multitier (which has no `system_path` — it has `system.backend.path` / `system.frontend.path`). Deciding the multitier-GREEN layer-key vocabulary (e.g. `system_backend_path`?) is its own design problem touching Family A schema; it's out of this plan's scope. Stub plan filed at `plans/deferred/20260518-1530-multitier-green-scope.md`. Item 11's cross-validator gets an explicit allowlist for the two unmapped phases. (4) γ extension resolved — `system_path` is the only Family A path-shaped key valid as a phase-scope layer; `system_test_path` is rejected because it's the parent of every Family B testkit key and admitting it would let any phase escape the layer partition. (5) **Surfaced gap** — refinement revealed that `smoke_test` is a real layer under `system_test/` that's missing from the canonical Family B key list. Filed as `plans/deferred/20260518-1530-smoke-test-family-b-key.md`; not absorbed into this plan. (6) `ct_test` key placement resolved — fresh dedicated CT-vocabulary plan filed at `plans/20260518-1742-ct-family-b-vocabulary.md`, per `[[feedback_new_plan_not_extend]]` (scope broadening uses a fresh plan, not in-place amendment of the AT predecessor).
+> **Refined 2026-05-18:** (1) Location η resolved — standalone `internal/atdd/phase-scopes.yaml`. **Why:** keeps BPMN runtime ("what dispatches next") separate from policy doctrine ("what paths an agent may touch"); peer pattern already exists; foreign-key drift is cheaply guarded by item 11's build-time test. (2) Phase keys renamed from kebab (`AT-RED-TEST`) to SCREAMING_SNAKE (`AT_RED_TEST`). **Why:** must match the actual `user_task` node ids in `process-flow.yaml` — refinement surfaced that the draft schema used the wrong casing. (3) AT-GREEN handling — single `AT_GREEN_SYSTEM` row only, multitier GREEN deferred. **Why:** `process-flow.yaml` has three GREEN nodes (`AT_GREEN_SYSTEM` for monolith, `AT_GREEN_BACKEND` + `AT_GREEN_FRONTEND` for multitier). Encoding `[system_path]` for all three would be factually wrong for multitier (which has no `system_path` — it has `system.backend.path` / `system.frontend.path`). Deciding the multitier-GREEN layer-key vocabulary (e.g. `system_backend_path`?) is its own design problem touching Family A schema; it's out of this plan's scope. Stub plan filed at `plans/deferred/20260518-1530-multitier-green-scope.md`. Item 11's cross-validator gets an explicit allowlist for the two unmapped phases. (4) γ extension resolved — `system_path` is the only Family A path-shaped key valid as a phase-scope layer; `system_test_path` is rejected because it's the parent of every Family B testkit key and admitting it would let any phase escape the layer partition. (5) **Surfaced gap** — refinement revealed that `smoke_test` is a real layer under `system_test/` that's missing from the canonical Family B key list. Filed as `plans/deferred/20260518-1530-smoke-test-family-b-key.md`; not absorbed into this plan. (6) `ct_test` key placement resolved — fresh dedicated CT-vocabulary plan filed at `plans/20260518-1742-family-b-stems-and-ct-vocab.md`, per `[[feedback_new_plan_not_extend]]` (scope broadening uses a fresh plan, not in-place amendment of the AT predecessor).
 
-**`ct_test` key — resolved (2026-05-18).** A fresh dedicated plan defines the CT-side Family B vocabulary additions (`ct_test` and any siblings): [`plans/20260518-1742-ct-family-b-vocabulary.md`](20260518-1742-ct-family-b-vocabulary.md). This SSoT plan references `ct_test` in the schema above; the CT-vocabulary plan must land alongside or before this plan does (added to Hand-off dependencies).
+**`ct_test` key — resolved (2026-05-18).** A fresh dedicated plan defines the CT-side Family B vocabulary additions (`ct_test` and any siblings): [`plans/20260518-1742-family-b-stems-and-ct-vocab.md`](20260518-1742-family-b-stems-and-ct-vocab.md). This SSoT plan references `ct_test` in the schema above; the CT-vocabulary plan must land alongside or before this plan does (added to Hand-off dependencies).
 
 ### 2. Create `docs/atdd/process/shared/scope.md`
 
@@ -116,12 +116,16 @@ Edit the scaffolder so that at scaffold time it produces fully-resolved `gh-opti
 What the scaffolder must do:
 
 1. Reads the scaffold-time inputs (language, architecture, system.repo for sut_namespace default, etc.).
-2. Generates `gh-optivem.yaml` with `paths:` values **fully resolved**, sut_namespace already joined in. Example for a TS shop project:
+2. Generates `gh-optivem.yaml` with `paths:` values **fully resolved**, per the per-key rule encoded in `pathStems()` (testkit keys take `+sutNamespace` at the end; test-file keys structurally incorporate sutNamespace per language — for TS/dotnet that means *no* sutNamespace component, for Java it sits as a package segment). Example for a TS shop project (default `sutNamespace = shop`):
    ```yaml
    paths:
      driver_port:    system-test/typescript/src/testkit/driver/port/shop
      driver_adapter: system-test/typescript/src/testkit/driver/adapter/shop
-     # ...
+     at_test:        system-test/typescript/tests/latest/acceptance
+     ct_test:        system-test/typescript/tests/latest/contract
+     # ... other testkit keys (external_*, dsl_*) take `+sutNamespace` suffix like driver_*;
+     #     test-file keys (at_test, ct_test) are sutNamespace-free for TS/dotnet per
+     #     plans/20260518-1742-family-b-stems-and-ct-vocab.md items 3a/3b.
    ```
 3. Writes `system.path` fully resolved (`src/main/java/shop`, not `src/main/java`).
 4. **Does NOT write `system.sut_namespace`** — the field is retired.
@@ -417,14 +421,14 @@ These catch drift between the architecture, the BPMN process flow, and the scope
 - ~~**(λ) Path-match semantics in `check_phase_scope`.**~~ — resolved 2026-05-18: no trailing slashes in `paths:` values; matcher does directory-aware prefix matching (item 8 implements per the contract in item 3).
 - **(θ) Multi-SUT projects.** If a project has multiple SUTs (unusual today but possible), how do they map? Single `sut_namespace`-per-project remains the model unless a real use case surfaces.
 - ~~**Agent-to-phase mapping.**~~ — resolved 2026-05-18: consumer surface is `internal/assets/runtime/prompts/atdd/*.md` (runtime prompts), and the mapping already exists via BPMN's `user_task.agent:` field in `process-flow.yaml`. No new mapping schema needed.
-- ~~**`ct_test` key.**~~ — resolved 2026-05-18: fresh dedicated plan at `plans/20260518-1742-ct-family-b-vocabulary.md`.
+- ~~**`ct_test` key.**~~ — resolved 2026-05-18: fresh dedicated plan at `plans/20260518-1742-family-b-stems-and-ct-vocab.md`.
 - ~~**placeholders.md scope.**~~ — resolved 2026-05-18: material rewrite + rename to `path-keys.md` (item 9). Substitution premise is post-SSoT obsolete; surgical edits would leave the doc misleading.
 
 ## Hand-off
 
 **Hard dependencies:**
 - Predecessor plan ([20260518-1500](20260518-1500-atdd-phase-scope-placeholders.md)) items 1–3 must land before this plan executes. The Family B keys `at_test`, `dsl_port`, `dsl_core` must exist in `canonicalPathKeys()` for `phase-scopes.yaml` (item 1) to reference them safely.
-- CT-vocabulary plan ([20260518-1742](20260518-1742-ct-family-b-vocabulary.md)) must land before or alongside this plan. The Family B key `ct_test` (referenced by `CT_RED_TEST` in `phase-scopes.yaml`) is defined there.
+- CT-vocabulary plan ([20260518-1742](20260518-1742-family-b-stems-and-ct-vocab.md)) must land before or alongside this plan. The Family B key `ct_test` (referenced by `CT_RED_TEST` in `phase-scopes.yaml`) is defined there.
 
 **Execute order (refined 2026-05-18):**
 
@@ -437,6 +441,6 @@ These catch drift between the architecture, the BPMN process flow, and the scope
 7. Item 7 (phase doc §Scope sweep — 9 files, 5 AT + 4 CT). Structure-cycle docs deferred per the new sibling plan.
 8. Item 9 (rename `placeholders.md` → `path-keys.md` + material rewrite). Last — doc consistency catches up to the now-true runtime story.
 
-**Pre-execute check:** grep `plans/*.md` and `plans/deferred/*.md` for any concurrent agent pickup markers on the files touched here — the BPMN plan, `paths_defaults.go`, `config_commands.go`, `config.go`, `optivem_yaml.go`, `path-keys.md` (currently `placeholders.md`), runtime-prompt templates under `internal/assets/runtime/prompts/atdd/`, and the new `internal/atdd/phase-scopes.yaml` location — before adding this plan's marker, per `[[feedback_check_concurrent_agents]]`. As of refinement, the CT-vocabulary plan ([20260518-1742](20260518-1742-ct-family-b-vocabulary.md)) is being refined by a parallel agent; coordinate before this plan's execute starts.
+**Pre-execute check:** grep `plans/*.md` and `plans/deferred/*.md` for any concurrent agent pickup markers on the files touched here — the BPMN plan, `paths_defaults.go`, `config_commands.go`, `config.go`, `optivem_yaml.go`, `path-keys.md` (currently `placeholders.md`), runtime-prompt templates under `internal/assets/runtime/prompts/atdd/`, and the new `internal/atdd/phase-scopes.yaml` location — before adding this plan's marker, per `[[feedback_check_concurrent_agents]]`. As of refinement, the CT-vocabulary plan ([20260518-1742](20260518-1742-family-b-stems-and-ct-vocab.md)) is being refined by a parallel agent; coordinate before this plan's execute starts.
 
 **Post-execute:** rerun `gh optivem sync` in any active scaffolded repo to refresh the runtime-prompt `scope:` frontmatter from the new `phase-scopes.yaml`. Existing scaffolded projects also pick up the renamed `path-keys.md` (replaces `placeholders.md`) automatically via sync.
