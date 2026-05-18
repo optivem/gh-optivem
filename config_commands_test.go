@@ -845,6 +845,9 @@ paths:
   driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
   external_driver_port: system-test/java/src/main/java/testkit/external/port
   external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
+  at_test: system-test/java/src/test/java
+  dsl_port: system-test/java/src/main/java/testkit/dsl/port
+  dsl_core: system-test/java/src/main/java/testkit/dsl/core
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -941,6 +944,9 @@ paths:
   driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
   external_driver_port: system-test/java/src/main/java/testkit/external/port
   external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
+  at_test: system-test/java/src/test/java
+  dsl_port: system-test/java/src/main/java/testkit/dsl/port
+  dsl_core: system-test/java/src/main/java/testkit/dsl/core
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
