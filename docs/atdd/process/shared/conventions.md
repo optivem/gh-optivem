@@ -4,44 +4,6 @@ Normative schemas that apply to **every cycle and sub-cycle** (AT, CT, Legacy, S
 
 Every phase agent operates within a declared allowed-path scope; see [Phase scope policy](#phase-scope-policy) for the per-phase table and how violations are handled.
 
-## Disable-reason convention
-
-Change-driven tests are disabled between RED sub-phases with the following annotation reason:
-
-```
-@Disabled("<TICKET-ID> - AT - <LOOP> - <PHASE>")
-```
-
-- **Separator:** ` - ` (space-hyphen-space) between every segment.
-- **`<TICKET-ID>`:** verbatim from the tracker (e.g. `OPV-123`, `#42`, `SHOP-7`). Leads so the re-enable step can filter `startsWith("<TICKET-ID> - ")` and ignore tests belonging to other tickets.
-- **`AT`:** the cycle (Acceptance Test). Reserves the slot for `CT` (Contract Test) under the same convention later.
-- **`<LOOP>`:** `RED` | `GREEN`. Currently only `RED` uses disable; the slot is reserved for schema regularity.
-- **`<PHASE>`:** `TEST` | `DSL` | `SYSTEM DRIVER` (uppercase; internal space allowed).
-
-Examples:
-- `@Disabled("OPV-123 - AT - RED - TEST")`
-- `@Disabled("OPV-123 - AT - RED - DSL")`
-- `@Disabled("OPV-123 - AT - RED - SYSTEM DRIVER")`
-
-Re-enable filter (used by the re-enable step at the start of the next phase):
-
-```
-startsWith("<CURRENT-TICKET-ID> - AT - RED - <PREV-PHASE>")
-```
-
-Never strip annotations whose prefix belongs to a different ticket.
-
-**Phase agents must not annotate or strip `@Disabled` themselves.** This bookkeeping is handled outside the phase agent by the runtime's `disable_change_driven` / `enable_change_driven` actions, which run between phases.
-
-## Phase-output flags
-
-After RED-DSL, the work-agent MUST set both flags below. They are read by the post-RED-DSL gateway to branch onto the right next phase; the gateway treats *unset* as an error (no implicit default).
-
-| Flag name | Domain | Meaning when `yes` |
-|---|---|---|
-| `System Driver Interface Changed` | `yes` \| `no` | RED-SYSTEM-DRIVER phase must run (new System Driver methods need real impls) |
-| `External System Driver Interface Changed` | `yes` \| `no` | Hand off to the CT cycle (external driver belongs to the CT sub-process) |
-
 ## Phase scope policy
 
 **Every phase agent operates within a declared scope — no exceptions.** The table below is the complete source of truth: every phase has a row, and every agent's prompt is constructed with its row's allowed paths injected automatically. An agent without a declared scope is a configuration bug, not a default-allow.

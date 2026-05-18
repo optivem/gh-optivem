@@ -65,6 +65,22 @@ Consumed by item 4. **Two flags** emitted by `at-red-dsl`; the post-RED-DSL gate
 
 Note: `dsl_interface_changed` is **not** a RED-DSL phase-output flag — it's emitted by RED-TEST and gates entry to RED-DSL (see `at_cycle` `GATE_DSL_AT` line 384). Item 4's validation gateway covers only the two flags above.
 
+### Snapshot D — Two-layer enforcement mechanics + STOP options
+
+Consumed by items 2 (STOP_SCOPE_VIOLATION definition), 5 (Layer 2 action), 6 (Layer 1 signal). Moved here from `conventions.md` on 2026-05-18 — these are BPMN-implementation specifics, not policy doctrine. The principle ("every phase agent operates within a declared scope") and the per-phase allowed-paths table remain the doctrine half in §Conventions.
+
+**Two layers enforce the policy; both converge on the same human-task prompt — they differ only in who noticed the out-of-scope edit first.**
+
+- **Layer 1 — agent-triggered** (implemented by item 6): the work-agent's prompt names the allowed paths for its phase. When the agent recognises it needs to edit out of scope, it does **not** wait inline for approval. Instead, it exits with a structured *scope-exception-requested* signal naming the intended out-of-scope file(s) and the reason. The signal triggers the same human-task prompt as Layer 2.
+- **Layer 2 — post-phase scope check** (catches what Layer 1 missed; implemented by item 5): after each phase agent finishes normally, a scripted check diffs the modified files (`git diff --name-only` vs the pre-phase ref) against the allowed-path policy. On violation, the cycle halts and runs the same human-task prompt.
+
+In both cases, the cycle never auto-allows and never auto-reverts — the user always decides. `STOP_SCOPE_VIOLATION` options (item 2):
+
+- **Accept (continue from current phase)** — the agent's out-of-scope change is judged correct (e.g. RED-SYSTEM-DRIVER discovered the DSL or driver-port interface was wrong; GREEN discovered the test was wrong). Record the exception and continue from the current phase.
+- **Rewind to upstream phase** — accept the out-of-scope change, then restart the cycle from the phase whose output was wrong (e.g. accept a DSL edit made during RED-SYSTEM-DRIVER, then rerun RED-DSL to re-validate the corrected DSL, then continue). The most principled response when the violation reveals an upstream bug — preserves the per-phase RED guarantee instead of carrying an unvalidated upstream change forward.
+- **Revert + rerun** — discard the out-of-scope changes and rerun the current phase agent.
+- **Abort** — stop the cycle, escalate to human review.
+
 ## Items
 
 > **Refined 2026-05-18 (applies to items 2–9):** All items below extend the existing Go BPMN runtime — new nodes in `internal/atdd/runtime/statemachine/process-flow.yaml`, new bindings in `internal/atdd/runtime/gates/` / `actions/` / `agents/`, rendered via the existing `internal/atdd/runtime/diagram/`. No new orchestration tool, no new artefact form.
