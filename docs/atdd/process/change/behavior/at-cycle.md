@@ -25,7 +25,7 @@ The RED loop runs three sequential phases — see each per-phase doc for instruc
 
 ### RED: External System Driver
 
-1. Go to the ATDD - CT Cycle ([`ct-cycle.md`](ct-cycle.md)).
+1. Go to the ATDD - CT Cycle ([`ct/ct-cycle.md`](ct/ct-cycle.md)).
 
 ## GREEN
 
