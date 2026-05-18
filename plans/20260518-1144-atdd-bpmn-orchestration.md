@@ -24,6 +24,47 @@ Residual questions — answered per item during the walk, not pre-resolved:
    - How does the agent report the two phase-output flags from RED-DSL (same channel as the scope-exception signal? separate?).
 2. **Where do the human-task prompts live?** Each escalation prompt (scope violation, failing legacy, flag-unset, GREEN-can't-pass-without-touching-frozen-layer) needs a concrete UX — re-uses the existing `user_task: agent: human` STOP mechanism in the state machine, but the prompt content + option set still need defining.
 
+## §Conventions snapshot (inlined to survive the upcoming split)
+
+These are the §Conventions excerpts this plan depends on, snapshotted from `docs/atdd/process/shared/conventions.md` as of 2026-05-18. The user has flagged that `conventions.md` will be split; the snapshot below is the data items 3, 4, 5, 8, 9 consume — the plan is no longer load-bearing on the upstream file path.
+
+**The executor's first task is to reconcile this snapshot with whatever §Conventions looks like at execute time.** Drift between snapshot and upstream is a normal first-execute-phase finding, not a blocker — adjust the snapshot, re-confirm, then proceed.
+
+### Snapshot A — Phase scope policy (allowed-path table)
+
+Consumed by items 5, 8, 9. The `<channel>` removal called out in Hand-off is **already applied to this snapshot** for the RED-SYSTEM-DRIVER row.
+
+| Phase | Allowed paths |
+|---|---|
+| RED-TEST | acceptance test files; DSL prototype stubs (interface + `"TODO: DSL"` throw) |
+| RED-DSL | DSL Core impls; driver-port interface declarations |
+| RED-SYSTEM-DRIVER | `${driver_port}/${sut_namespace}/` and `${driver_adapter}/${sut_namespace}/` |
+| GREEN | production system code only; tests/DSL/drivers are frozen |
+| CT-RED-TEST / CT-RED-DSL / CT-RED-EXTERNAL-DRIVER / CT-GREEN-STUBS | `external/**` only |
+
+### Snapshot B — Disable-reason convention
+
+Consumed by item 3. Annotation format (cycle slot hard-coded `AT` today; `CT` slot reserved for symmetry but not in use):
+
+```
+@Disabled("<TICKET-ID> - AT - <LOOP> - <PHASE>")
+```
+
+- `<LOOP>` ∈ {RED, GREEN}. Only RED uses disable today.
+- `<PHASE>` ∈ {TEST, DSL, SYSTEM DRIVER} (uppercase; internal space allowed).
+- Re-enable filter: `startsWith("<CURRENT-TICKET-ID> - AT - RED - <PREV-PHASE>")`. Never strip annotations whose prefix belongs to a different ticket.
+
+### Snapshot C — Phase-output flags (RED-DSL only)
+
+Consumed by item 4. **Two flags** emitted by `at-red-dsl`; the post-RED-DSL gateway treats unset as an error.
+
+| Flag name | Domain | Meaning when `yes` |
+|---|---|---|
+| `System Driver Interface Changed` | yes \| no | RED-SYSTEM-DRIVER must run |
+| `External System Driver Interface Changed` | yes \| no | Hand off to CT cycle |
+
+Note: `dsl_interface_changed` is **not** a RED-DSL phase-output flag — it's emitted by RED-TEST and gates entry to RED-DSL (see `at_cycle` `GATE_DSL_AT` line 384). Item 4's validation gateway covers only the two flags above.
+
 ## Items
 
 > **Refined 2026-05-18 (applies to items 2–9):** All items below extend the existing Go BPMN runtime — new nodes in `internal/atdd/runtime/statemachine/process-flow.yaml`, new bindings in `internal/atdd/runtime/gates/` / `actions/` / `agents/`, rendered via the existing `internal/atdd/runtime/diagram/`. No new orchestration tool, no new artefact form.
@@ -59,8 +100,8 @@ d. **Pre-COMMIT failing-legacy check** — new `service_task` right before `COMM
 
 Both nodes already exist in `process-flow.yaml`: `DISABLE` (line 876 inside `red_phase_cycle`, `action: disable_change_driven`) and `ENABLE_TESTS` (line 409 inside `at_green_system`, `action: enable_change_driven`). This item updates the **action implementations** under `internal/atdd/runtime/actions/` — no new nodes in `process-flow.yaml`.
 
-- **`disable_change_driven`** (runs at end of phase, before COMMIT — already wired): grep the project for test files, annotate change-driven tests with `@Disabled("<TICKET-ID> - <CYCLE> - <LOOP> - <PHASE>")` per [§Conventions → Disable-reason convention](../docs/atdd-at-cycle.md#disable-reason-convention). **Precondition:** RED proof has been observed (test ran, failed at runtime). Skip legacy tests entirely (per the legacy-coverage plan's domain restriction).
-- **`enable_change_driven`** (runs at start of next phase — already wired): grep for `@Disabled` annotations whose reason matches `startsWith("<CURRENT-TICKET-ID> - <CYCLE> - <LOOP> - <PREV-PHASE>")` and remove them. Never strip annotations for other tickets; never strip legacy markers.
+- **`disable_change_driven`** (runs at end of phase, before COMMIT — already wired): grep the project for test files, annotate change-driven tests per **Snapshot B** (above). Cycle slot is hard-coded `AT` today; `<LOOP>` ∈ {RED, GREEN}; `<PHASE>` ∈ {TEST, DSL, SYSTEM DRIVER}. **Precondition:** RED proof has been observed (test ran, failed at runtime). Skip legacy tests entirely (per the legacy-coverage plan's domain restriction).
+- **`enable_change_driven`** (runs at start of next phase — already wired): grep for `@Disabled` annotations matching the **Snapshot B** re-enable filter (`startsWith("<CURRENT-TICKET-ID> - AT - RED - <PREV-PHASE>")`) and remove them. Never strip annotations for other tickets; never strip legacy markers.
 
 Inputs (ticket ID, cycle, loop, phase) come from the action's context — extend the action signatures / context if not all four are currently threaded through.
 
@@ -74,10 +115,12 @@ The branching this item describes is **already wired** in `at_cycle` (line 316):
 
 This item **adds the missing validation**:
 
-- New `gateway` node `GATE_DSL_FLAGS_PRESENT` placed between `AT_RED_DSL` (the `red_phase_cycle` call_activity) and the existing `GATE_DSL_AT` in `at_cycle`.
-- New binding `dsl_flags_present` in `internal/atdd/runtime/gates/` that reads the [§Conventions → Phase-output flags](../docs/atdd-at-cycle.md#phase-output-flags) emitted by `at-red-dsl` and returns `true` only if all three flags (`dsl_interface_changed`, `external_system_driver_interface_changed`, `system_driver_interface_changed`) are explicitly set.
+- New `gateway` node `GATE_DSL_FLAGS_PRESENT` placed between `AT_RED_DSL` (the `red_phase_cycle` call_activity) and the existing `GATE_EXT_AT` in `at_cycle`.
+- New binding `dsl_flags_present` in `internal/atdd/runtime/gates/` that reads the **two** RED-DSL phase-output flags per **Snapshot C** (`System Driver Interface Changed`, `External System Driver Interface Changed`) and returns `true` only if both are explicitly set.
 - New `user_task: agent: human` STOP `STOP_FLAG_UNSET` — "STOP - HUMAN REVIEW — AT - RED - DSL phase-output flags missing; re-run with reminder". Loopback to `AT_RED_DSL`.
-- Sequence_flows: `AT_RED_DSL → GATE_DSL_FLAGS_PRESENT`; `GATE_DSL_FLAGS_PRESENT → GATE_DSL_AT when present == true`; `GATE_DSL_FLAGS_PRESENT → STOP_FLAG_UNSET when present == false`; `STOP_FLAG_UNSET → AT_RED_DSL`.
+- Sequence_flows: `AT_RED_DSL → GATE_DSL_FLAGS_PRESENT`; `GATE_DSL_FLAGS_PRESENT → GATE_EXT_AT when present == true`; `GATE_DSL_FLAGS_PRESENT → STOP_FLAG_UNSET when present == false`; `STOP_FLAG_UNSET → AT_RED_DSL`.
+
+> **Corrected 2026-05-18:** Earlier draft of this item said the validation checks "all three flags including `dsl_interface_changed`". **Why wrong:** `dsl_interface_changed` is emitted by RED-TEST (it gates entry to RED-DSL via the existing `GATE_DSL_AT` line 384), not by RED-DSL. Per Snapshot C, RED-DSL emits two flags, not three. The validation gateway sits between `AT_RED_DSL` and `GATE_EXT_AT` (not `GATE_DSL_AT`).
 
 One validation gateway covers all three flags (they're emitted together by the same RED-DSL phase). The existing `GATE_DSL_AT` / `GATE_EXT_AT` / `GATE_SYS_AT` then consume validated values without change.
 
@@ -87,25 +130,27 @@ One validation gateway covers all three flags (they're emitted together by the s
 
 Concrete implementation of item 2's bullet (c). Pure scripted (no LLM). Lives as:
 
-- **Action** `check_phase_scope` in `internal/atdd/runtime/actions/` — reads `allowed_paths` from the node's `params:` (threaded from item 2 bullet (a)), runs `git diff --name-only <pre-phase-ref> HEAD` (and `git status --porcelain` for un-staged modifications), and writes a structured result to context.
+- **Action** `check_phase_scope` in `internal/atdd/runtime/actions/` — reads `allowed_paths` from the node's `params:` (threaded from item 2 bullet (a); values come from **Snapshot A**, per-phase rows), runs `git diff --name-only <pre-phase-ref> HEAD` (and `git status --porcelain` for un-staged modifications), and writes a structured result to context.
 - **Gate binding** `phase_scope_clean` in `internal/atdd/runtime/gates/` — reads the structured result; returns `true` if all modified paths fall within the allowed set, else `false`.
 - **Wired position** (already pinned in item 2): between `DISABLE` and `COMMIT` in `red_phase_cycle`; before the parent's COMMIT in green flows.
 
-**Path-variable resolution:**
+**Path-variable resolution:** the `check_phase_scope` action resolves placeholders via the existing `Config.PlaceholderMap()` (`internal/projectconfig/config.go:377`) — no new substitution mechanism needed. The map already exposes every placeholder this item needs:
 
-- `${driver_port}`, `${driver_adapter}`, `${external_driver_port}`, `${external_driver_adapter}` resolve against `projectconfig.Config.Paths` (already populated by `internal/projectconfig/paths_defaults.go:DefaultPaths()`; docs in `internal/assets/global/docs/atdd/process/placeholders.md`).
-- `${sut_namespace}` — **unresolved sub-question.** Appears in the §Conventions RED-SYSTEM-DRIVER row (`docs/atdd/process/at-cycle.md:100`) but is not yet sourced. Candidate: a new canonical key in `projectconfig.Paths` (or a sibling map). **Must be decided before `/execute-plan`** — pin the source, extend `placeholders.md`, and update `paths_defaults.go` if a new canonical key is added.
-- `<channel>` — **dropped 2026-05-18.** No longer in the allowed-paths row (see Hand-off cross-cutting note for the Part 1 edit to `at-cycle.md:100`). Channel boundary is enforced by ticket scope + the human review STOP, not by path regex.
+- `${driver_port}`, `${driver_adapter}`, `${external_driver_port}`, `${external_driver_adapter}` — Family B, from `Config.Paths` (populated by `paths_defaults.go:DefaultPaths()`).
+- `${sut_namespace}` — Family A, from `Config.SutNamespace()` (`config.go:356`): explicit `System.SutNamespace` wins, else the last path segment of `System.Repo`. Already in `PlaceholderMap()` at line 387, already reserved in `reservedPlaceholderKeys`.
+- `<channel>` — **dropped 2026-05-18.** No longer in the allowed-paths row (see Hand-off cross-cutting note for the Part 1 edit to `shared/conventions.md:65`). Channel boundary is enforced by ticket scope + the human review STOP, not by path regex.
 
 **Pre-phase ref:** captured by a small upstream service_task at WRITE-time (or read from the most recent COMMIT baseline) — pick one before execute; the choice affects whether the check sees the working-tree state alone or the full set of changes since the phase started.
 
 STOP options (Accept / Rewind / Revert + rerun / Abort) live on `STOP_SCOPE_VIOLATION` (defined in item 2), not duplicated here.
 
-> **Refined 2026-05-18:** Reframed from "post-phase scope check" → "implement the action + gate binding behind item 2 bullet (c)". **Why:** Item 2 already pins placement and STOP; this item is the action-body detail. Surfaced an unresolved sub-question (`${sut_namespace}` / `<channel>` source) that the original draft glossed as "get resolved from project config" — they're not in the project config schema yet.
+> **Refined 2026-05-18:** Reframed from "post-phase scope check" → "implement the action + gate binding behind item 2 bullet (c)". **Why:** Item 2 already pins placement and STOP; this item is the action-body detail.
+>
+> **Re-refined 2026-05-18:** Earlier draft flagged `${sut_namespace}` as an unresolved sub-question. **Correction:** it's already fully wired in `projectconfig.Config.PlaceholderMap()` alongside `${driver_port}` etc. — no schema work needed. Original miss was checking only `paths_defaults.go` (Family B) without the Family-A resolution layer in `config.go`. `<channel>` separately dropped (see Hand-off).
 
 ### 6. Implement the Layer 1 scope-exception signal contract
 
-Concrete implementation of item 2's bullet (b) — the agent-side escape hatch per [§Conventions → Phase scope policy](../docs/atdd/process/at-cycle.md#phase-scope-policy) Layer 1.
+Concrete implementation of item 2's bullet (b) — the agent-side escape hatch per §Conventions → Phase scope policy Layer 1 (see **Snapshot A** above for the per-phase allowed paths; §Conventions itself currently lives at `docs/atdd/process/shared/conventions.md` pending the upcoming split).
 
 **Signal channel:** reuse the existing agent→runtime channel. Phase agents already emit a structured COMMIT output that the state machine consumes (per `process-flow.yaml` header: "what dispatches next, gated by which flag"). The Layer 1 signal becomes a structured field in that output payload:
 
@@ -151,13 +196,13 @@ Every AT phase already invokes the shared wrapper via `call_activity`: `at_cycle
 
 | call_activity | Add to `params:` |
 |---|---|
-| `AT_RED_TEST`           | `allowed_paths: <§Conventions row for AT - RED - TEST>` |
-| `AT_RED_DSL`            | `allowed_paths: <§Conventions row for AT - RED - DSL>` |
-| `AT_RED_SYSTEM_DRIVER`  | `allowed_paths: <§Conventions row for AT - RED - SYSTEM DRIVER>` |
-| `AT_GREEN_BACKEND`      | `allowed_paths: <§Conventions row for AT - GREEN - SYSTEM (backend)>` |
-| `AT_GREEN_FRONTEND`     | `allowed_paths: <§Conventions row for AT - GREEN - SYSTEM (frontend)>` |
+| `AT_RED_TEST`           | `allowed_paths: "<Snapshot A row: RED-TEST>"` |
+| `AT_RED_DSL`            | `allowed_paths: "<Snapshot A row: RED-DSL>"` |
+| `AT_RED_SYSTEM_DRIVER`  | `allowed_paths: "<Snapshot A row: RED-SYSTEM-DRIVER>"` |
+| `AT_GREEN_BACKEND`      | `allowed_paths: "<Snapshot A row: GREEN>"` |
+| `AT_GREEN_FRONTEND`     | `allowed_paths: "<Snapshot A row: GREEN>"` |
 
-The string values come from the §Conventions Phase scope policy table (`docs/atdd/process/at-cycle.md`). Placeholder resolution (`${driver_port}` etc.) happens in the `check_phase_scope` action (item 5), not at YAML-load time.
+The string values come from **Snapshot A** (above). Placeholder resolution (`${driver_port}` etc.) happens in the `check_phase_scope` action (item 5) via `Config.PlaceholderMap()`, not at YAML-load time.
 
 > **Refined 2026-05-18:** Reframed from "rewrite the AT cycle's BPMN diagram so every phase agent goes through the call activity" → "thread `allowed_paths` param into the already-existing call_activity invocations". **Why:** the call_activity wiring already exists (the original wording implied it didn't). Also dropped the REFACTOR parenthetical — refactoring isn't part of the AT cycle in the current process-flow; it lives in `structural_cycle` (line 660), which is out of scope for this plan.
 
@@ -167,9 +212,9 @@ The string values come from the §Conventions Phase scope policy table (`docs/at
 
 | call_activity | Add to `params:` |
 |---|---|
-| `CT_RED_TEST`              | `allowed_paths: <§Conventions row for CT - RED - TEST>` |
-| `CT_RED_DSL`               | `allowed_paths: <§Conventions row for CT - RED - DSL>` |
-| `CT_RED_EXTERNAL_DRIVER`   | `allowed_paths: <§Conventions row for CT - RED - EXTERNAL DRIVER>` |
+| `CT_RED_TEST`              | `allowed_paths: "<Snapshot A row: CT phases — external/** only>"` |
+| `CT_RED_DSL`               | `allowed_paths: "<Snapshot A row: CT phases — external/** only>"` |
+| `CT_RED_EXTERNAL_DRIVER`   | `allowed_paths: "<Snapshot A row: CT phases — external/** only>"` |
 
 These three already go through `red_phase_cycle` (see `ct_subprocess` line 471). Threading `allowed_paths` is identical to item 8's pattern.
 
@@ -195,8 +240,9 @@ These three already go through `red_phase_cycle` (see `ct_subprocess` line 471).
 
 ## Hand-off
 
-Before executing this plan, the residual Open Questions (Q1 contract details — agent output `scope_exception` channel is settled in item 6; Q2 human-task UX reuses the existing `user_task: agent: human` STOP pattern) must be answered as they're walked. The artefact + runtime choice is settled (extends the existing Go BPMN runtime — see header).
+Before executing this plan, the residual Open Questions (Q1 contract details — agent output `scope_exception` channel is settled in item 6; Q2 human-task UX reuses the existing `user_task: agent: human` STOP pattern) must be answered as they're walked. The artefact + runtime choice is settled (extends the existing Go BPMN runtime — see header). Placeholder resolution is settled (`Config.PlaceholderMap()` already covers every placeholder this plan needs — see item 5).
 
 **Cross-cutting Part 1 edit required** (refined 2026-05-18, walked under item 5/6):
 
-- `docs/atdd/process/at-cycle.md:100` — remove `<channel>` from the §Conventions RED-SYSTEM-DRIVER allowed-paths row. New row reads `${driver_port}/${sut_namespace}/` and `${driver_adapter}/${sut_namespace}/`. **Why:** the channel boundary is better enforced by ticket scope + the existing human review STOP than by a per-call path regex, and dropping `<channel>` eliminates a placeholder that has no source in `projectconfig` or in `params:`. Item 5's path-variable resolution sub-question shrinks to just `${sut_namespace}`.
+- **§Conventions → Phase scope policy → RED-SYSTEM-DRIVER row:** remove `<channel>` from the allowed paths. Pre-edit row reads `${driver_port}/${sut_namespace}/` and `${driver_adapter}/${sut_namespace}/<channel>`; post-edit reads `${driver_port}/${sut_namespace}/` and `${driver_adapter}/${sut_namespace}/`. **Why:** the channel boundary is better enforced by ticket scope + the existing human review STOP than by a per-call path regex, and `<channel>` has no source in `projectconfig.PlaceholderMap()` or in node `params:`.
+- **Location:** as of 2026-05-18 the row lives at `docs/atdd/process/shared/conventions.md:65`. The user has flagged that `conventions.md` will be split — find the row wherever §Conventions ends up. **Snapshot A in this plan already reflects the post-edit row** (so the executor's `allowed_paths` values are correct regardless of when the §Conventions edit lands).
