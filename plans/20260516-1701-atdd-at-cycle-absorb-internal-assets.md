@@ -1,7 +1,7 @@
-# Plan: bring `docs/atdd-at-cycle.md` to parity with internal/assets — Part 1: Cycle architecture & §Conventions
+# Plan: bring `docs/atdd/at-cycle.md` to parity with internal/assets — Part 1: Cycle architecture & §Conventions
 
 **Date:** 2026-05-16 (split into Part 1 / Part 2 / Legacy on 2026-05-18 during refinement)
-**Context:** The goal is to eventually delete `internal/assets/`. `docs/atdd-at-cycle.md` is intended to become the canonical home for the AT cycle process spec, replacing the four global process pages under `internal/assets/global/docs/atdd/process/at-{red,green}-*.md`.
+**Context:** The goal is to eventually delete `internal/assets/`. `docs/atdd/at-cycle.md` is intended to become the canonical home for the AT cycle process spec, replacing the four global process pages under `internal/assets/global/docs/atdd/process/at-{red,green}-*.md`.
 
 This is **Part 1** of three sibling plans created during refinement on 2026-05-18:
 
@@ -31,7 +31,7 @@ This is **Part 1** of three sibling plans created during refinement on 2026-05-1
 
   > **Refined 2026-05-18:** New bundle. **Why:** the AT cycle is one of N top-level cycles, not the only one. The router dispatches by acceptance-criteria type (change-driven → AT, legacy → Legacy, refactor → Structural; CT remains a sub-cycle of AT, invoked from AT-RED-EXTERNAL-SYSTEM-DRIVER). Each sibling cycle deserves its own plan; signposting them here prevents their existence from being forgotten as we focus on AT.
 
-- **CT-cycle parity work** (sub-cycle of AT, invoked from AT-RED-EXTERNAL-SYSTEM-DRIVER): `atdd-ct-cycle.md` likely has the same gaps vs its four internal CT pages (ct-red-test, ct-red-dsl, ct-red-external-driver, ct-green-stubs). Worth a parallel gap analysis.
+- **CT-cycle parity work** (sub-cycle of AT, invoked from AT-RED-EXTERNAL-SYSTEM-DRIVER): `docs/atdd/ct-cycle.md` likely has the same gaps vs its four internal CT pages (ct-red-test, ct-red-dsl, ct-red-external-driver, ct-green-stubs). Worth a parallel gap analysis.
 
 - **Runtime prompt content** (compile-fix retry policy, batch-edits hint, "no approval inside agent", model/effort): these are agent-operational, not process-spec. They belong in the prompt files. The prompt files themselves are a separate migration concern — if `internal/assets/runtime/` is going away, those need a new generation mechanism, not relocation into `docs/`.
 

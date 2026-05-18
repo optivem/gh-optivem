@@ -1,12 +1,12 @@
 # ATDD AT-Cycle Gap Analysis
 
-Comparison of `docs/atdd-at-cycle.md` against the internal/assets pages for AT-RED and AT-GREEN, in both `global/` and `runtime/` trees.
+Comparison of `docs/atdd/at-cycle.md` against the internal/assets pages for AT-RED and AT-GREEN, in both `global/` and `runtime/` trees.
 
 **Date:** 2026-05-16
 
 ## Sources compared
 
-- `docs/atdd-at-cycle.md` (the compact spec)
+- `docs/atdd/at-cycle.md` (the compact spec)
 - `internal/assets/global/docs/atdd/process/at-red-test.md`
 - `internal/assets/global/docs/atdd/process/at-red-dsl.md`
 - `internal/assets/global/docs/atdd/process/at-red-system-driver.md`

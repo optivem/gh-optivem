@@ -1,7 +1,5 @@
 # ACCEPTANCE TEST CYCLE
 
-> 🚧 **Work in progress.** This doc (and its sibling [`atdd-ct-cycle.md`](atdd-ct-cycle.md)) is being built up to become the canonical AT-cycle process spec, to be referenced by the per-phase agent prompts under `internal/assets/runtime/prompts/atdd/`. The goal is to make those prompts significantly leaner — each prompt should reference the relevant section of this doc rather than restating the cycle rules inline. Once this doc reaches parity with the global process pages (`internal/assets/global/docs/atdd/process/at-*.md`), those four global pages will be deleted and the runtime prompts will be slimmed to a thin pointer + per-phase operational notes.
-
 RED - GREEN - REFACTOR
 
 Every phase agent operates within a declared allowed-path scope; see [§Conventions → Phase scope policy](#phase-scope-policy) for the per-phase table and how violations are handled.
