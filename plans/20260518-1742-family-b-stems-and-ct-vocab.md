@@ -1,6 +1,6 @@
 # Plan: Family B stem correction + CT vocabulary additions
 
-> ✅ **REFINED** — walked 2026-05-18 with `/refine-plan`. Scope expanded materially during refinement: from "add CT vocab" → "correct predecessor's `at_test` stems deterministically against shop-`latest`, thread `sutNamespace` through `pathStems()`/`DefaultPaths()`, and add `ct_test` as sibling of corrected `at_test`". File renamed during refine: was `20260518-1742-ct-family-b-vocabulary.md`. Ready for `/execute-plan`.
+> ✅ **REFINED** — walked 2026-05-18 with `/refine-plan`; trimmed 2026-05-18 (later, same day) after SSoT plan (20260518-1530) finished its own refine pass. Scope: correct predecessor's `at_test` stems deterministically against shop-`latest` + add `ct_test` as sibling. The `sutNamespace` signature-threading work (originally item 3a here) was **dropped** — SSoT plan's item 3 owns the `DefaultPaths` signature change; this plan inherits it. File renamed during refine: was `20260518-1742-ct-family-b-vocabulary.md`. Ready for `/execute-plan`, **after SSoT lands**.
 
 **Date:** 2026-05-18
 
@@ -31,13 +31,15 @@ Inherited from predecessor:
 - New keys append at the **end** of the `canonicalPathKeys()` slice — preserving the existing ordering-by-position invariant.
 - The migrate path back-fills any absent canonical key automatically — no opt-in needed for existing projects.
 
-Derived during this plan's 2026-05-18 refine walk:
+Derived during this plan's 2026-05-18 refine walk (and trimmed after SSoT plan's parallel refine settled — see note at end):
 
 - **Deterministic stem construction.** Per-language stems in `pathStems()` are pinned against the shop template's `latest/` form (the canonical, non-legacy layout). No guess-by-analogy. Adding new keys without a pinnable shop layout is blocked (use [[feedback_paths_deterministic_no_guessing]]).
-- **`<sutNamespace>` only threads through Java stems.** TypeScript and dotnet stems are `sut_namespace`-free (their test folder trees aren't structured by namespace the way JVM packages are). The new `sutNamespace` parameter on `pathStems()`/`DefaultPaths()` is ignored by TS/dotnet branches.
+- **`<sutNamespace>` only structures Java stems.** TypeScript and dotnet stems are `sut_namespace`-free (their test folder trees aren't structured by namespace the way JVM packages are). The `sutNamespace` parameter on `pathStems()`/`DefaultPaths()` (introduced by **SSoT plan item 3**, not this plan) is ignored by the TS/dotnet branches.
 - **`latest`/`Latest` is doctrine literal**, not project-customizable. The arch-version layer is part of the standard scaffold layout the tool writes. Projects with non-`latest`-only layouts (e.g. shop's `legacy/modNN`) extend via their own `paths:` block overrides; they don't drive default-stem doctrine.
 - **AT and CT are siblings under a per-language parent**: `tests/latest/` (TS), `src/test/java/<sutNamespace>/latest/` (Java), `SystemTests/Latest/` (dotnet). Their stems are disjoint (no prefix overlap), so `check_phase_scope` (SSoT plan item 8) can use straight prefix matching once both are fully-resolved.
 - **Dotnet contract test naming is asymmetric** vs other test types: `ExternalSystemContractTests` (not `ContractTests`). Encoded as a literal in `pathStems()`, not as a transformation rule.
+
+> **Trim note 2026-05-18 (post-SSoT-refine):** the original second bullet attributed `pathStems()`/`DefaultPaths()` signature introduction to *this* plan. After SSoT plan's parallel refine settled, SSoT plan item 3 explicitly took ownership of that signature change; this plan no longer introduces it, only consumes it. The bullet's content (Java-only structuring) still holds; only the attribution changed.
 
 ## Items
 
@@ -74,11 +76,11 @@ return []string{
 
 #### 2b. Docstring rewrite
 
-Rewrite the `DefaultPaths` docstring (lines 5–24) to reflect both the new key set (2a) **and** the new per-language stems (items 3a/b/c). Three places to update:
+Rewrite the `DefaultPaths` docstring (lines 5–24) to reflect both the new key set (2a) **and** the new per-language stems (items 3a/b). Three places to update:
 
 1. **Key-list paragraph** (lines 6–9): bump count "seven" → "eight" and add `, ct_test` to the comma-separated list.
 
-2. **Per-language tree block** (lines 17–23): rewrite to match items 3a/b/c's deterministic stems. Proposed final shape (executor: pin exact values against items 3a/b/c when editing):
+2. **Per-language tree block** (lines 17–23): rewrite to match items 3a/b's deterministic stems. Proposed final shape (executor: pin exact values against items 3a/b when editing):
 
    ```
    //   - typescript: <root>/src/testkit/{driver|external|dsl}/{port|adapter|core},
@@ -89,31 +91,21 @@ Rewrite the `DefaultPaths` docstring (lines 5–24) to reflect both the new key 
    //     <root>/SystemTests/Latest/{AcceptanceTests|ExternalSystemContractTests}
    ```
 
-3. **Signature note** (lines 5–14 prose): mention the new `sutNamespace` parameter on `DefaultPaths` and that Java stems interpolate it (TS/dotnet ignore it). State that `latest`/`Latest` is doctrine literal, not project-customizable.
+3. **Signature note** (lines 5–14 prose): the `sutNamespace` parameter on `DefaultPaths` is introduced by **SSoT plan item 3**, not this plan. By the time this plan executes, the signature already exists. The docstring update here just needs to confirm Java stems interpolate `sutNamespace` (TS/dotnet ignore it). State that `latest`/`Latest` is doctrine literal, not project-customizable.
 
-> **Refined 2026-05-18:** Item 2 split into 2a (slice change) + 2b (docstring rewrite). **Why:** the original item 2 assumed the docstring update was a small append on top of unchanged at_test stems, but items 3a/b/c now change the at_test stems and add ct_test stems with `<sutNamespace>` threading. The docstring per-language tree block needs full rewriting, not appending. Splitting makes the surface area explicit for the executor and keeps 2a as a trivial one-line confirmable change. Earlier (pre-scope-expansion) note that the executor should pull stems from item 3 still applies — sub-item 2b explicitly references items 3a/b/c.
+> **Refined 2026-05-18 (initial walk):** Item 2 split into 2a (slice change) + 2b (docstring rewrite). **Why:** the original item 2 assumed the docstring update was a small append on top of unchanged at_test stems, but items 3a/b now change the at_test stems and add ct_test stems. The docstring per-language tree block needs full rewriting, not appending. Splitting makes the surface area explicit for the executor and keeps 2a as a trivial one-line confirmable change.
 
-### 3. Thread `sut_namespace` + fix at_test stems + add ct_test stems — deterministic against shop-`latest`
+> **Trimmed 2026-05-18 (post-SSoT-refine):** Sub-item 2b's signature note updated to acknowledge SSoT plan item 3 owns the `sutNamespace` parameter introduction — this plan no longer claims it. References to "items 3a/b/c" updated to "items 3a/b" after item 3's sub-items were renumbered (3a dropped, 3b→3a, 3c→3b).
+
+### 3. Fix at_test stems + add ct_test stems — deterministic against shop-`latest`
 
 The existing `at_test` stems committed by the predecessor (`src/test` for TS, `src/test/java` for Java, `Tests` for dotnet) do **not** match the shop template tree, where AT tests actually live at `tests/latest/acceptance` (TS), `src/test/java/<package>/latest/acceptance` (Java), and `SystemTests/Latest/AcceptanceTests` (dotnet). Predecessor's stems were guessed by analogy and predate the shop-`latest` doctrine being load-bearing.
 
-This plan corrects them deterministically against shop-`latest` reality **and** adds `ct_test` stems as siblings, in a single atomic edit to `internal/projectconfig/paths_defaults.go`. Three sub-items, executed together.
+This plan corrects them deterministically against shop-`latest` reality **and** adds `ct_test` stems as siblings, in a single atomic edit to `internal/projectconfig/paths_defaults.go`. Two sub-items, executed together.
 
-#### 3a. Thread `sutNamespace` through `pathStems()` / `DefaultPaths()` signatures
+**Inherited substrate (NOT owned here).** The `DefaultPaths` / `pathStems` signature change to accept `sutNamespace string` is owned by **SSoT plan ([20260518-1530](20260518-1530-atdd-phase-scope-ssot.md)) item 3**. By the time this plan executes (post-SSoT, per the revised execute order in Hand-off), `pathStems(testLang, sutNamespace string)` and `DefaultPaths(testLang, systemTestPath, sutNamespace string)` already exist with sutNamespace plumbed through. This plan only fills the stem **values**.
 
-Java stems include `<sut_namespace>` as a folder segment (e.g. default `src/test/java/shop/latest/acceptance`). TS and dotnet stems are `sut_namespace`-free (the namespace doesn't structure their test folder trees the way JVM packages do).
-
-Signature changes in `internal/projectconfig/paths_defaults.go`:
-
-- `func canonicalPathKeys() []string` — **unchanged**.
-- `func pathStems(testLang string) ([]string, bool)` → `func pathStems(testLang, sutNamespace string) ([]string, bool)`. TS/dotnet ignore the parameter; Java interpolates it into the relevant stems.
-- `func DefaultPaths(testLang, systemTestRoot string) map[string]string` → `func DefaultPaths(testLang, systemTestRoot, sutNamespace string) map[string]string`.
-
-Caller updates: every call site of `DefaultPaths` must pass `sutNamespace`. The scaffolder is the main caller; it already knows sut_namespace at scaffold time (computed from `system.sut_namespace`, defaulting to the last path segment of `system.repo`).
-
-**Overlap with SSoT plan item 3:** the SSoT plan's item 3 ("Scaffolder change — write fully-resolved paths at scaffold") also wires `sut_namespace` at scaffold time, but via a different route (retires `system.sut_namespace` as a `gh-optivem.yaml` field and bakes it into the values written to `paths:`). This plan's signature threading is the **substrate**: `pathStems()` produces per-language stems with `<sutNamespace>` already substituted. SSoT plan's scaffolder consumes the result. Cross-link both directions.
-
-#### 3b. Fix at_test stems to shop-`latest` deterministic shape
+#### 3a. Fix at_test stems to shop-`latest` deterministic shape
 
 Update `pathStems()` so `at_test` returns:
 
@@ -125,7 +117,9 @@ Update `pathStems()` so `at_test` returns:
 
 `latest` / `Latest` is **doctrine literal** (always present, not project-customizable). Shop's customization of `<sutNamespace>` to a fully-qualified Java package prefix (`com/mycompany/myshop/systemtest`) is a project-level override of `system.sut_namespace`, **not** a doctrine variation. Default scaffold writes `src/test/java/shop/latest/acceptance`; shop's `paths:` block overrides with the fully-qualified value.
 
-#### 3c. Add ct_test stems as siblings of at_test
+**SSoT plan item 3's example also needs updating** to reflect these corrected at_test stems (the example currently inherits predecessor's wrong stems with `+sut_namespace` appended). See Hand-off deferred follow-ups.
+
+#### 3b. Add ct_test stems as siblings of at_test
 
 Add `ct_test` to `pathStems()`:
 
@@ -137,7 +131,9 @@ Add `ct_test` to `pathStems()`:
 
 **Dotnet naming asymmetry note.** acceptance/e2e/smoke use `<TestType>Tests` (e.g. `AcceptanceTests`), but contract uses `ExternalSystemContractTests` (longer, distinguishes the external-system contract notion from in-process contract notions). This is pinned against the shop tree, not a stem-rule simple swap — encode it as a literal in `pathStems()`, not as a transformation.
 
-> **Refined 2026-05-18:** Item 3 grew from "add ct_test stems by analogy" into a 3-sub-item correction of predecessor's at_test stems **plus** deterministic ct_test stems, all in one atomic file edit. **Why:** evidence from the shop template (`tests/latest/acceptance`, `src/test/java/<package>/latest/acceptance`, `SystemTests/Latest/AcceptanceTests`) shows predecessor's at_test stems were guessed by analogy and don't match where tests actually live. The user's [[feedback_paths_deterministic_no_guessing]] rule (stamped during this refine) makes guess-by-analogy unacceptable. Since fixing at_test + adding ct_test touches the same file/function atomically, scope grew rather than splitting into a separate plan. `<sutNamespace>` threading was forced by Java's package-path convention; TS and dotnet stay sut_namespace-free. `latest` is doctrine literal, not config. Overlaps SSoT plan item 3 (which also threads sut_namespace at scaffold time); cross-link both plans in Hand-off.
+> **Refined 2026-05-18 (initial walk):** Item 3 grew from "add ct_test stems by analogy" into a multi-sub-item correction of predecessor's at_test stems **plus** deterministic ct_test stems, all in one atomic file edit. **Why:** evidence from the shop template (`tests/latest/acceptance`, `src/test/java/<package>/latest/acceptance`, `SystemTests/Latest/AcceptanceTests`) shows predecessor's at_test stems were guessed by analogy and don't match where tests actually live. The user's [[feedback_paths_deterministic_no_guessing]] rule (stamped during this refine) makes guess-by-analogy unacceptable. Since fixing at_test + adding ct_test touches the same file/function atomically, scope grew rather than splitting into a separate plan. `latest` is doctrine literal, not config.
+
+> **Trimmed 2026-05-18 (post-SSoT-refine):** Original sub-item 3a (`pathStems`/`DefaultPaths` signature threading for `sutNamespace`) was **dropped**. **Why:** the parallel SSoT-plan refine pass (which finished after this plan's initial walk) explicitly took ownership of that signature change in its own item 3 (`internal/projectconfig/paths_defaults.go:DefaultPaths(testLang, systemTestPath, sutNamespace)`). Duplicating the signature change in both plans would create execute-time merge friction with no benefit. Sub-items renumbered 3b→3a, 3c→3b. Item now inherits the signature from SSoT and fills the stem **values** only. Execute order revised: this plan lands **after** SSoT, not before (was: before).
 
 ### 4. Update `placeholders.md` Family B example block
 
@@ -177,24 +173,23 @@ The example stays TypeScript-focused (matches the existing block); Java's `<sutN
 
 ## Hand-off
 
-**Execute order:** items 1 (already resolved) → 2a → 2b → 3a → 3b → 3c → 4. Items 2a/2b/3a/3b/3c all touch `internal/projectconfig/paths_defaults.go` and land as a single atomic edit; item 4 is a separate edit to `internal/assets/global/docs/atdd/process/placeholders.md`.
+**Execute order:** items 1 (already resolved) → 2a → 2b → 3a → 3b → 4. Items 2a/2b/3a/3b all touch `internal/projectconfig/paths_defaults.go` and land as a single atomic edit; item 4 is a separate edit to `internal/assets/global/docs/atdd/process/placeholders.md` (or `path-keys.md` per SSoT plan item 9, depending on whether SSoT's rename has landed by then — see item 4 note).
 
-**Pre-requisites:**
-- Predecessor AT-vocabulary plan ([20260518-1500](20260518-1500-atdd-phase-scope-placeholders.md)) items 1–3 must have landed (already true as of commits `8322c38`/`d7ec876`). This plan corrects predecessor's `at_test` stems and extends the same `canonicalPathKeys()` slice.
+**Pre-requisites (hard, in execute order):**
+1. Predecessor AT-vocabulary plan ([20260518-1500](20260518-1500-atdd-phase-scope-placeholders.md)) items 1–3 — landed (commits `8322c38`/`d7ec876`). Provides the base `canonicalPathKeys()` slice this plan extends.
+2. **SSoT plan ([20260518-1530](20260518-1530-atdd-phase-scope-ssot.md)) item 3 — must land BEFORE this plan.** SSoT item 3 introduces the `DefaultPaths(testLang, systemTestPath, sutNamespace)` signature change. This plan inherits that signature and fills stem **values** only. *(Execute order reversed during 2026-05-18 trim — the original framing had this plan landing first to introduce the signature; SSoT plan's parallel refine took ownership of the signature change, so this plan now lands after.)*
 
-**Consumer + overlap:** the SSoT phase-scope plan ([20260518-1530](20260518-1530-atdd-phase-scope-ssot.md)):
-- **Consumes** `ct_test` in its `phase-scopes.yaml` (SSoT plan item 1).
-- **Overlaps** with this plan's item 3a (sutNamespace signature threading) — SSoT plan's item 3 has its own scaffolder fully-resolved-paths work that builds on top of this plan's signature changes.
-- This plan **must land before SSoT**, not alongside or after, so SSoT's scaffolder item 3 can consume the new `DefaultPaths(testLang, systemTestRoot, sutNamespace)` signature.
+**Consumer:** the SSoT phase-scope plan still references this plan as a hard dependency in its own Hand-off — it needs `ct_test` in `canonicalPathKeys()` for `phase-scopes.yaml`. That dependency direction is unchanged: SSoT consumes the `ct_test` *vocabulary* from this plan. The signature direction is the reverse (this plan consumes SSoT's signature). The two plans must therefore land in a co-ordinated pair, in this order:
+1. SSoT item 1 + 2 + 11 + 3 (signature change live).
+2. *This plan executes here* — adds `ct_test` to `canonicalPathKeys()` + corrects at_test stems + adds ct_test stems, using SSoT's new signature.
+3. SSoT items 4-10 continue (sync projection, validator, migrate, etc.).
 
-**Callers of `DefaultPaths` to update** (signature grows by one parameter — `sutNamespace`):
-- The scaffolder (location: `grep -r 'DefaultPaths(' internal/` at execute time to enumerate).
-- Any tests that call `DefaultPaths` directly. The known test fixture file `internal/projectconfig/config_commands_test.go` (commit `d7ec876`) extends no-op paths fixtures; verify whether it constructs default paths via `DefaultPaths` and update accordingly.
-- The migrate-path back-fill caller, if it invokes `DefaultPaths` to derive missing canonical-key values.
+A pragmatic alternative: SSoT and this plan execute in the same atomic session by a single executor, so the two file edits land in one commit. This avoids the inter-plan staging dance.
 
 **Pre-execute checks:**
-- Grep `plans/*.md` for concurrent agent pickup markers on `paths_defaults.go` / `placeholders.md` before adding this plan's execute marker, per [[feedback_check_concurrent_agents]].
+- Grep `plans/*.md` and `plans/deferred/*.md` for concurrent agent pickup markers on `paths_defaults.go` / `placeholders.md` / `path-keys.md` before adding this plan's execute marker, per [[feedback_check_concurrent_agents]].
 - Inspect `git status` for uncommitted changes on those files from prior sessions.
+- Verify SSoT plan item 3 has executed (the `DefaultPaths(testLang, systemTestPath, sutNamespace)` signature is live).
 - Re-verify shop-`latest` stems against `academy/shop/system-test/` tree before pinning — the tree may have evolved since this plan's 2026-05-18 refine.
 
 **Test guardrails to add** (during execution):
@@ -203,10 +198,11 @@ The example stays TypeScript-focused (matches the existing block); Java's `<sutN
 - A regression assertion that all canonical keys are present in the returned map (catches future stem-shape drift).
 
 **Post-execute:**
-- Run the migrate path against shop's 12 `gh-optivem-*.yaml` files to back-fill `paths:` blocks deterministically with the corrected stems. Spot-check the resulting values against `academy/shop/system-test/` directories. (The migrate path is the canonical mechanism; do NOT manually hand-edit shop's yaml files.)
+- Run `gh optivem config migrate` against shop's 12 `gh-optivem-*.yaml` files (per SSoT plan item 6) to back-fill `paths:` blocks deterministically with the corrected stems. Spot-check the resulting values against `academy/shop/system-test/` directories.
 - Run `gh optivem config validate` on each shop yaml to confirm no validation errors.
 
 **Deferred follow-ups (cross-link work on sibling plans — not executed here):**
+- **Edit SSoT plan ([20260518-1530](20260518-1530-atdd-phase-scope-ssot.md)) item 3's example** to use the **corrected** at_test stem values (`tests/latest/acceptance`, `src/test/java/<sutNamespace>/latest/acceptance`, `SystemTests/Latest/AcceptanceTests`) instead of the predecessor-inherited stems (`src/test`, `src/test/java`, `Tests`). The example currently shows `driver_port: system-test/typescript/src/testkit/driver/port/shop` etc.; at_test specifically needs updating to reflect this plan's item 3a. Driver_port/driver_adapter/dsl_port/dsl_core stems are unaffected.
+- **Edit SSoT plan's §Sibling plans + item 1 ct_test resolution note + Hand-off hard dependencies** — all three currently reference the pre-rename filename `20260518-1742-ct-family-b-vocabulary.md`. Update to the new slug `20260518-1742-family-b-stems-and-ct-vocab.md`. (~3 spots in SSoT plan file.)
 - **Edit predecessor plan ([20260518-1500](20260518-1500-atdd-phase-scope-placeholders.md))** to add a "corrective successor" note pointing at this plan: "at_test stems committed by item 3 were guessed by analogy and have been corrected deterministically by [plans/20260518-1742-family-b-stems-and-ct-vocab.md] (refined 2026-05-18)".
-- **Edit SSoT plan ([20260518-1530](20260518-1530-atdd-phase-scope-ssot.md))** item 3 to reference this plan's signature changes as the substrate; update the resolution-note for `ct_test` (which currently points at `20260518-1742-ct-family-b-vocabulary.md` — the pre-rename filename) and add the at_test correction to the "Hard dependencies" section.
-- **Both edits SHOULD be run in a separate `/refine-plan` or direct-edit session**, after verifying the pickup-marker state on each target plan (per [[feedback_concurrent_agent_collision]]).
+- **All three edits SHOULD be run in a separate `/refine-plan` or direct-edit session**, after verifying the pickup-marker state on each target plan (per [[feedback_concurrent_agent_collision]]).
