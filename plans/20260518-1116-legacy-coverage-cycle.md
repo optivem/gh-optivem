@@ -1,5 +1,7 @@
 # Plan: legacy coverage cycle
 
+> 🤖 **Picked up by agent (refine)** — `Valentina_Desk` at `2026-05-18T11:25:19Z`
+
 > ⚠️ **NOT YET REFINED** — this plan was promoted out of [Part 1's item 5 discussion](20260516-1701-atdd-at-cycle-absorb-internal-assets.md) without per-item refinement. Run `/refine-plan` on this file before `/execute-plan`.
 
 **Date:** 2026-05-18 (split from the AT-cycle Part 1 plan during refinement)
@@ -11,11 +13,15 @@
 
 ## Scope
 
-1. **Define `docs/legacy-coverage-cycle.md`** — canonical home for the legacy cycle process spec:
+1. **Define `docs/legacy-coverage-cycle.md`** — canonical prose home for the legacy cycle process spec, parallel to `atdd-at-cycle.md` and `atdd-ct-cycle.md`:
    - Cycle shape (test → expect pass; if fails, revise test).
    - Phases (or absence of fail-first RED).
    - Behavioural expectations and escalation rules.
    - Relationship to AT and CT cycles (sibling at the top level; AT-RED-TEST encounters legacy tests but does not author them).
+
+   **BPMN counterpart (must land in parallel with the doc).** The `LEGACY_CYCLE` sub-process already exists in `internal/atdd/runtime/statemachine/process-flow.yaml` (rendered to `docs/process-diagram.md` § *Legacy Acceptance Criteria Cycle*) but is currently a **STOP — HUMAN REVIEW** TBD stub. As part of this plan, that stub must be fleshed out in `process-flow.yaml` to match the prose spec, the same way AT and CT have parallel BPMN + prose surfaces. Tracked as a Phase 7 BPMN dependency — see item 4.
+
+   > **Refined 2026-05-18:** Reframed from "create a doc" → "create a prose doc *parallel* to atdd-at-cycle.md/atdd-ct-cycle.md, AND flesh out the BPMN `LEGACY_CYCLE` sub-process in parallel". **Why:** the user clarified that the legacy cycle should follow the established pattern — every cycle has both a BPMN representation in `process-flow.yaml` and a prose doc; legacy already has a BPMN stub but no flesh, and was missing the prose doc entirely. The BPMN side was previously invisible in this plan (item 4 covers only the failing-legacy *detector*, not fleshing out the cycle body), so it gets surfaced here and tracked as a Phase 7 BPMN dependency.
 
 2. **§Conventions tightening** (extends Part 1):
    - **Disable-reason convention** — explicit domain restriction: "applies only to change-driven scenarios; **never** to legacy. The re-enable filter must not match legacy markers."

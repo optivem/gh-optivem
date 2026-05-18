@@ -1,9 +1,7 @@
 # Plan: per-node implementer (human or agent), configurable in the BPMN + `gh-optivem.yaml`
 
-> 🤖 **Picked up by agent (refine)** — `Valentina_Desk` at `2026-05-18T11:20:54Z`
-
 **Date:** 2026-05-16
-**Status:** Draft — open questions below need answers before code lands.
+**Status:** ⏳ Deferred 2026-05-18 — moved to `plans/deferred/` without walking. Resume by moving the file back to `plans/` and running `/refine-plan`.
 
 ## Goal
 
