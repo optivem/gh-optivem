@@ -2,12 +2,12 @@
 
 ## Status
 
-**Deferred — pick up only after the TypeScript slice has been verified
-in a real shop WRITE cycle and approved.** TS verification is tracked
-in `plans/20260505-230000-tree-sitter-typescript-migration.md` (steps 1
-and 2 of its `## Order of operations`). Once that gate passes, move
-this plan back to `plans/`. Java and C# slices can land in either
-order after the TS gate passes; they are independent.
+**Deferred — pick up when someone needs C# tree-sitter parity for
+a real shape the regex misses.** The TypeScript slice has been on
+`main` since 2026-05-05 without regression, so it's no longer the
+gating concern; the binding decision and extension points are
+established. Java and C# slices are independent — either order works.
+Move this plan back to `plans/` when picked up.
 
 ## Goal
 
