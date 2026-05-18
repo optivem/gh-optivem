@@ -1,11 +1,11 @@
-# Plan: bring `docs/atdd/at-cycle.md` to parity with internal/assets — Part 2: per-phase content
+# Plan: bring `docs/atdd/process/at-cycle.md` to parity with internal/assets — Part 2: per-phase content
 
 > 🛑 **REQUIRES HUMAN DISCUSSION — DO NOT AUTO-EXECUTE.** Every item in this plan must be walked through interactively with the human author (via `/refine-plan`) before any `/execute-plan` run. Items were promoted out of [Part 1](20260516-1701-atdd-at-cycle-absorb-internal-assets.md) without per-item refinement and several depend on architectural decisions that are still under discussion (e.g. item 7's interaction with the Legacy Coverage Cycle, item 17's supporting-docs migration targets, the open questions at the bottom). An agent executing this plan literally would entrench wrong assumptions.
 
 > ⚠️ **NOT YET REFINED** — these phases were promoted out of [Part 1](20260516-1701-atdd-at-cycle-absorb-internal-assets.md) without per-item refinement. Run `/refine-plan` on this file before `/execute-plan`. Items may need restructuring once they are discussed in the context of the cycle architecture and §Conventions established in Part 1.
 
 **Date:** 2026-05-18 (split from Part 1 during refinement)
-**Context:** Phases 2–6 of the original "bring `docs/atdd/at-cycle.md` to parity with internal/assets" plan. Part 1 ([20260516-1701-atdd-at-cycle-absorb-internal-assets.md](20260516-1701-atdd-at-cycle-absorb-internal-assets.md)) covers the cycle architecture and §Conventions (disable-reason, phase-output flags, phase scope policy). This Part 2 covers the per-phase content of `atdd-at-cycle.md`. Independent of Part 1 — can run in parallel or after.
+**Context:** Phases 2–6 of the original "bring `docs/atdd/process/at-cycle.md` to parity with internal/assets" plan. Part 1 ([20260516-1701-atdd-at-cycle-absorb-internal-assets.md](20260516-1701-atdd-at-cycle-absorb-internal-assets.md)) covers the cycle architecture and §Conventions (disable-reason, phase-output flags, phase scope policy). This Part 2 covers the per-phase content of `atdd-at-cycle.md`. Independent of Part 1 — can run in parallel or after.
 **Source:** Gap analysis in [reports/atdd-at-cycle-gap-analysis.md](../reports/atdd-at-cycle-gap-analysis.md).
 
 ## Phase 2 — Per-phase rules (prevent common mistakes)
@@ -40,7 +40,7 @@ The internal pages link to `glossary.md`, `language-equivalents/`, `architecture
 
 18. Line 33: `## RED: External System Driver` → `### RED: External System Driver`.
 19. Line 15: "mechanicla" → "mechanical".
-20. "ATDD - CT Cycle" → link to `docs/atdd/ct-cycle.md` (consistent with internal page terminology "Contract Test sub-process" / "CT - RED - EXTERNAL DRIVER").
+20. "ATDD - CT Cycle" → link to `docs/atdd/process/ct-cycle.md` (consistent with internal page terminology "Contract Test sub-process" / "CT - RED - EXTERNAL DRIVER").
 
 ## Recommendation on doc shape
 
