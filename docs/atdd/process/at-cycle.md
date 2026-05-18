@@ -1,5 +1,7 @@
 # ACCEPTANCE TEST CYCLE
 
+## Overview
+
 RED - GREEN - REFACTOR
 
 Every phase agent operates within a declared allowed-path scope; see [§Conventions → Phase scope policy](#phase-scope-policy) for the per-phase table and how violations are handled.
@@ -15,34 +17,22 @@ Inside each of these steps:
 
 Between RED sub-phases, change-driven tests are disabled (and re-enabled at the start of the next phase) per [§Conventions → Disable-reason convention](#disable-reason-convention). This bookkeeping is handled outside the phase agent — phase agents must not annotate or strip `@Disabled` themselves.
 
-### RED: Test
-1. For every Acceptance Criterion, write a corresponding Acceptance Test. This should be a mechanicla 1:1 translation.
-2. If you need to add methods to DSL interface, then implement the DSL Core by implementing method prototypes by throwing a runtime exception  `"TODO: DSL"`, so that compilation works.
-3. Set flag: `DSL Interface Changed: yes|no`
+The RED loop runs three sequential phases — see each per-phase doc for instructions:
 
+1. **[AT - RED - TEST](at-red-test.md)** — write acceptance tests; add `"TODO: DSL"` prototypes so the result compiles.
+2. **[AT - RED - DSL](at-red-dsl.md)** — implement the DSL Core for real; set the two driver-interface-changed flags.
+3. **[AT - RED - SYSTEM DRIVER](at-red-system-driver.md)** — implement the System Driver adapters (only if `System Driver Interface Changed = yes`).
 
-### RED: DSL
-1. Implement the DSL Core for real — replace each "TODO: DSL" prototype with actual logic.
-2. If you need add additional Driver interface methods:
-   (a) In the System Driver Interface: implement prototype methods by throwing `"TODO: System Driver"` exception
-   (b) In the External System Driver Interface: implement prototype methods by throwing `"TODO: External System Driver"` exception
-3. Set both flags defined in [§Conventions → Phase-output flags](#phase-output-flags). Both **MUST** be set before completing the phase — unset is a bug, not a default `no`. The next phase is chosen downstream based on the flag values.
-   (a) Set flag: `System Driver Interface Changed: yes|no`
-   (b) Set flag: `External System Driver Interface Changed: yes|no`
+### RED: External System Driver
 
-### RED: System Driver
-1. Implement the System Driver Adapters for real - replace each "TODO: System Driver" prototype with actual logic.
-
-
-## RED: External System Driver
-1. Go to the ATDD - CT Cycle
+1. Go to the ATDD - CT Cycle ([`ct-cycle.md`](ct-cycle.md)).
 
 ## GREEN
-1. Implement the System - do the simplest implementation possible with the goal of making the Acceptance Tests pass.
-2. **Tests, DSL, and Drivers are frozen during GREEN.** Do not modify acceptance test files, DSL Core, DSL interfaces, System Driver interfaces, or System Driver adapters to make GREEN pass. Production system code only.
-3. **Escalation:** if you cannot make the tests pass without touching tests/DSL/Drivers, **stop and ask the user** — do not patch around it. Needing to touch a frozen layer signals that an earlier RED phase was wrong; the user decides whether to rewind to that phase (see [§Conventions → Phase scope policy](#phase-scope-policy) escalation options).
+
+See **[AT - GREEN - SYSTEM](at-green-system.md)** — implement the system to take all change-driven acceptance tests from RED to GREEN. Tests, DSL, and Drivers are frozen during GREEN.
 
 ## REFACTOR
+
 1. Refactor the System (if any improvements are seen) - propose first, then implement
 
 ## Conventions

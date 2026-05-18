@@ -1,0 +1,9 @@
+# AT - RED - DSL
+
+1. Implement the DSL Core for real — replace each "TODO: DSL" prototype with actual logic.
+2. If you need add additional Driver interface methods:
+   (a) In the System Driver Interface: implement prototype methods by throwing `"TODO: System Driver"` exception
+   (b) In the External System Driver Interface: implement prototype methods by throwing `"TODO: External System Driver"` exception
+3. Set both flags defined in [§Conventions → Phase-output flags](at-cycle.md#phase-output-flags). Both **MUST** be set before completing the phase — unset is a bug, not a default `no`. The next phase is chosen downstream based on the flag values.
+   (a) Set flag: `System Driver Interface Changed: yes|no`
+   (b) Set flag: `External System Driver Interface Changed: yes|no`
