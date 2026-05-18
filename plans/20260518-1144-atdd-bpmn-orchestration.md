@@ -70,52 +70,80 @@ Language-specific syntax for `@Disabled` (Java) / `@pytest.mark.skip` (Python) /
 
 > **Refined 2026-05-18:** Reframed from "add disable/enable steps" → "update existing actions". **Why:** the nodes are already in the YAML and wired into the wrappers — only the action bodies need to follow the new §Conventions disable-reason format and the legacy-skip rule.
 
-### 4. Post-RED-DSL gateway (flag validation + branching)
+### 4. Add post-RED-DSL flag-presence validation gateway
 
-A scripted gateway step that runs immediately after the RED-DSL phase agent completes (inside the shared envelope from item 2, between steps 5 and 7, or as a separate post-envelope step — refinement decision).
+The branching this item describes is **already wired** in `at_cycle` (line 316): `GATE_DSL_AT` (binding `dsl_interface_changed`), `GATE_EXT_AT` (binding `external_system_driver_interface_changed`), `GATE_SYS_AT` (binding `system_driver_interface_changed`) with sequence_flows wiring exactly the three branches (route to RED-SYSTEM-DRIVER / CT_SUBPROCESS / AT_GREEN_SYSTEM). The current gateways consume flag *values* but do not verify the agent emitted them.
 
-- **Inputs:** the two phase-output flags emitted by the RED-DSL agent per [§Conventions → Phase-output flags](../docs/atdd-at-cycle.md#phase-output-flags).
-- **Validation:** both flags MUST be present. If either is unset, halt and route to the **flag-unset human task** (escalation: rerun the RED-DSL agent with a "you forgot to set the flags" reminder, or accept whatever the user marks).
-- **Branching:**
-  - `System Driver Interface Changed = yes` → enqueue RED-SYSTEM-DRIVER as the next phase.
-  - `External System Driver Interface Changed = yes` → enqueue the CT sub-cycle (CT-RED-TEST onwards) as the next phase (sequential or parallel with RED-SYSTEM-DRIVER — refinement decision).
-  - both `no` → skip directly to GREEN.
+This item **adds the missing validation**:
 
-### 5. Post-phase scope check (the Layer 2 enforcement step in item 2)
+- New `gateway` node `GATE_DSL_FLAGS_PRESENT` placed between `AT_RED_DSL` (the `red_phase_cycle` call_activity) and the existing `GATE_DSL_AT` in `at_cycle`.
+- New binding `dsl_flags_present` in `internal/atdd/runtime/gates/` that reads the [§Conventions → Phase-output flags](../docs/atdd-at-cycle.md#phase-output-flags) emitted by `at-red-dsl` and returns `true` only if all three flags (`dsl_interface_changed`, `external_system_driver_interface_changed`, `system_driver_interface_changed`) are explicitly set.
+- New `user_task: agent: human` STOP `STOP_FLAG_UNSET` — "STOP - HUMAN REVIEW — AT - RED - DSL phase-output flags missing; re-run with reminder". Loopback to `AT_RED_DSL`.
+- Sequence_flows: `AT_RED_DSL → GATE_DSL_FLAGS_PRESENT`; `GATE_DSL_FLAGS_PRESENT → GATE_DSL_AT when present == true`; `GATE_DSL_FLAGS_PRESENT → STOP_FLAG_UNSET when present == false`; `STOP_FLAG_UNSET → AT_RED_DSL`.
 
-Pure scripted (no LLM). Inputs: phase name, pre-phase git ref.
+One validation gateway covers all three flags (they're emitted together by the same RED-DSL phase). The existing `GATE_DSL_AT` / `GATE_EXT_AT` / `GATE_SYS_AT` then consume validated values without change.
 
-1. Run `git diff --name-only <pre-phase-ref> HEAD` to list modified files (and `git status --porcelain` to catch un-staged modifications, depending on where in the phase pipeline the check fires — refinement decision).
-2. For each modified path, check it matches the phase's allowed-paths row from §Conventions → Phase scope policy. Variables like `${driver_port}`, `${sut_namespace}`, `<channel>` get resolved from project config.
-3. On any path outside the allowed set, halt and route to the **scope-violation human task** with: the violating paths, the allowed paths for the phase, and the four options:
-   - Accept (continue from current phase)
-   - Rewind to upstream phase (which phase)
-   - Revert + rerun (current phase)
-   - Abort
+> **Refined 2026-05-18:** Reframed from "add a post-RED-DSL gateway (validation + branching)" → "add only the flag-presence-validation gateway". **Why:** The three branching gateways are already in `at_cycle`; only the flag-presence check is new. Sequential-vs-parallel between RED-SYSTEM-DRIVER and CT sub-cycle was already settled in the existing wiring (`CT_SUBPROCESS` runs first, then `GATE_SYS_AT`, then `AT_RED_SYSTEM_DRIVER`) — that's a pre-existing decision, not something this plan re-litigates.
 
-The human task is BPMN's standard human-task pattern — drop into the chosen runtime UX (Open Question 4).
+### 5. Implement the post-phase scope check action
 
-### 6. Layer 1 scope-exception signal handling
+Concrete implementation of item 2's bullet (c). Pure scripted (no LLM). Lives as:
 
-The agent-side escape hatch (per [§Conventions → Phase scope policy](../docs/atdd-at-cycle.md#phase-scope-policy) Layer 1). Defines:
+- **Action** `check_phase_scope` in `internal/atdd/runtime/actions/` — reads `allowed_paths` from the node's `params:` (threaded from item 2 bullet (a)), runs `git diff --name-only <pre-phase-ref> HEAD` (and `git status --porcelain` for un-staged modifications), and writes a structured result to context.
+- **Gate binding** `phase_scope_clean` in `internal/atdd/runtime/gates/` — reads the structured result; returns `true` if all modified paths fall within the allowed set, else `false`.
+- **Wired position** (already pinned in item 2): between `DISABLE` and `COMMIT` in `red_phase_cycle`; before the parent's COMMIT in green flows.
 
-- The signal format (Open Question 3) — exit code, marker file, or structured JSON to stdout.
-- The envelope's branch (item 2, step 4): when the signal is detected, *skip the post-phase scope check* (item 5) and route directly to the same scope-violation human task with the agent's stated out-of-scope files and reason as context.
-- Behavioural rule: the agent must **not** wait inline for approval. It either edits within scope and completes normally, or it emits the signal and exits. No in-agent human interaction (matches the runtime-prompt rule "no approval inside the agent").
+**Path-variable resolution:**
 
-### 7. Failing-legacy detector
+- `${driver_port}`, `${driver_adapter}`, `${external_driver_port}`, `${external_driver_adapter}` resolve against `projectconfig.Config.Paths` (already populated by `internal/projectconfig/paths_defaults.go:DefaultPaths()`; docs in `internal/assets/global/docs/atdd/process/placeholders.md`).
+- `${sut_namespace}` — **unresolved sub-question.** Appears in the §Conventions RED-SYSTEM-DRIVER row (`docs/atdd/process/at-cycle.md:100`) but is not yet sourced. Candidate: a new canonical key in `projectconfig.Paths` (or a sibling map). **Must be decided before `/execute-plan`** — pin the source, extend `placeholders.md`, and update `paths_defaults.go` if a new canonical key is added.
+- `<channel>` — **dropped 2026-05-18.** No longer in the allowed-paths row (see Hand-off cross-cutting note for the Part 1 edit to `at-cycle.md:100`). Channel boundary is enforced by ticket scope + the human review STOP, not by path regex.
 
-Cross-plan reference: legacy marker convention is defined in the [legacy-coverage-cycle plan](20260518-1116-legacy-coverage-cycle.md) (still to be designed — annotation / naming / directory; that plan's Open Questions).
+**Pre-phase ref:** captured by a small upstream service_task at WRITE-time (or read from the most recent COMMIT baseline) — pick one before execute; the choice affects whether the check sees the working-tree state alone or the full set of changes since the phase started.
 
-Once the marker convention is fixed:
+STOP options (Accept / Rewind / Revert + rerun / Abort) live on `STOP_SCOPE_VIOLATION` (defined in item 2), not duplicated here.
 
-1. After each phase (item 2, step 6), run all tests filtered by the legacy marker.
-2. On any legacy test failure, halt and route to the **failing-legacy human task** with: the failing legacy test name, the failure output, and options:
-   - Treat as real regression (rewind to the phase that introduced it; investigate)
-   - Mark the legacy test as needing revision (escalate to a legacy-cycle re-run on that test)
-   - Abort
+> **Refined 2026-05-18:** Reframed from "post-phase scope check" → "implement the action + gate binding behind item 2 bullet (c)". **Why:** Item 2 already pins placement and STOP; this item is the action-body detail. Surfaced an unresolved sub-question (`${sut_namespace}` / `<channel>` source) that the original draft glossed as "get resolved from project config" — they're not in the project config schema yet.
 
-**Never `@Disabled` a failing legacy test** — that's the AT-side guardrail also in the legacy-coverage-cycle plan.
+### 6. Implement the Layer 1 scope-exception signal contract
+
+Concrete implementation of item 2's bullet (b) — the agent-side escape hatch per [§Conventions → Phase scope policy](../docs/atdd/process/at-cycle.md#phase-scope-policy) Layer 1.
+
+**Signal channel:** reuse the existing agent→runtime channel. Phase agents already emit a structured COMMIT output that the state machine consumes (per `process-flow.yaml` header: "what dispatches next, gated by which flag"). The Layer 1 signal becomes a structured field in that output payload:
+
+```
+scope_exception:
+  files: [path/to/out-of-scope.go, ...]
+  reason: "<one-line rationale>"
+```
+
+When absent, the phase ran within scope. No new IPC mechanism (no exit codes, marker files, or extra stdout channels).
+
+**Gate binding:** new `scope_exception_requested` in `internal/atdd/runtime/gates/` reads the agent's output and returns `true` if `scope_exception` is non-empty.
+
+**Wiring (already pinned in item 2 bullet (b)):** the new gateway sits immediately after `WRITE`; on `true`, branch to `STOP_SCOPE_VIOLATION` (skipping the post-phase scope check from item 5 and bypassing `DISABLE` / `COMMIT`); on `false`, continue down the normal path.
+
+**Agent prompt template update:** the per-phase agent prompts (currently under `internal/assets/runtime/prompts/atdd/` or wherever they end up after the Part 1 Phase 7 prompt-slimming work) need a section instructing the agent to:
+1. Edit only within `allowed_paths`.
+2. If unavoidably blocked, emit the `scope_exception` field and exit.
+3. **Never** ask inline for approval. Matches the runtime-prompt rule "no approval inside the agent".
+
+> **Refined 2026-05-18:** Reframed from "define the signal format + envelope branch + behavioural rule" → "implement the channel + binding + prompt instruction". **Why:** The wiring is now in item 2 (b); this item is the contract detail. Open Q3 closed: signal channel = structured field in existing agent output (not a new IPC mechanism).
+
+### 7. Implement the failing-legacy detector action
+
+Concrete implementation of item 2's bullet (d). Lives as:
+
+- **Action** `detect_failing_legacy` in `internal/atdd/runtime/actions/` — runs the test suite filtered by the legacy marker, writes structured result to context.
+- **Gate binding** `failing_legacy_present` in `internal/atdd/runtime/gates/` — `true` if any legacy test failed.
+- **Wired position** (already pinned in item 2 bullet (d)): right before COMMIT in both wrappers.
+- **STOP options** (Treat as real regression / Mark for revision / Abort) live on `STOP_LEGACY_FAILED` (defined in item 2).
+
+**Hard dependency (execute blocker):** the legacy marker convention — what "legacy marker" concretely means in the test suite — is owned by the [legacy-coverage-cycle plan](20260518-1116-legacy-coverage-cycle.md) (its §Conventions tightening + its Open Question on annotation/naming/directory). The action body cannot be written until that plan settles the marker. This plan consumes the marker as a typed dependency — it does not co-own the design.
+
+**Behavioural guardrail (already enforced elsewhere):** "never `@Disabled` a failing legacy test" is enforced by (i) the `disable_change_driven` action's legacy-skip rule (item 3) and (ii) `STOP_LEGACY_FAILED`'s option set deliberately omitting `@Disabled`. Not restated here.
+
+> **Refined 2026-05-18:** Reframed from "cross-plan reference + marker design alternatives" → "thin consumer of the legacy plan's marker convention". **Why:** user clarified the marker convention is fully owned by the legacy-coverage-cycle plan; this item just consumes it. Dropped the "annotation/naming/directory" restatement so the design call lives in one place.
 
 ### 8. Wire each AT phase through the envelope
 
@@ -138,4 +166,8 @@ Symmetric to item 8 for the CT sub-cycle: CT-RED-TEST, CT-RED-DSL, CT-RED-EXTERN
 
 ## Hand-off
 
-Before executing this plan, the open questions must be answered (item 1 essentially does that, but the choice should be discussed with the user during `/refine-plan` rather than executed cold). Items 2 onwards are concrete once item 1 is settled.
+Before executing this plan, the residual Open Questions (Q1 contract details — agent output `scope_exception` channel is settled in item 6; Q2 human-task UX reuses the existing `user_task: agent: human` STOP pattern) must be answered as they're walked. The artefact + runtime choice is settled (extends the existing Go BPMN runtime — see header).
+
+**Cross-cutting Part 1 edit required** (refined 2026-05-18, walked under item 5/6):
+
+- `docs/atdd/process/at-cycle.md:100` — remove `<channel>` from the §Conventions RED-SYSTEM-DRIVER allowed-paths row. New row reads `${driver_port}/${sut_namespace}/` and `${driver_adapter}/${sut_namespace}/`. **Why:** the channel boundary is better enforced by ticket scope + the existing human review STOP than by a per-call path regex, and dropping `<channel>` eliminates a placeholder that has no source in `projectconfig` or in `params:`. Item 5's path-variable resolution sub-question shrinks to just `${sut_namespace}`.
