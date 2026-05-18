@@ -64,7 +64,7 @@ Allowed-path policy by phase:
 |---|---|
 | RED-TEST | acceptance test files; DSL prototype stubs (interface + `"TODO: DSL"` throw) |
 | RED-DSL | DSL Core impls; driver-port interface declarations |
-| RED-SYSTEM-DRIVER | `${driver_port}/${sut_namespace}/` and `${driver_adapter}/${sut_namespace}/<channel>` |
+| RED-SYSTEM-DRIVER | `${driver_port}/${sut_namespace}/` and `${driver_adapter}/${sut_namespace}/` |
 | GREEN | production system code only; tests/DSL/drivers are frozen (see GREEN section) |
 | CT-RED-TEST / CT-RED-DSL / CT-RED-EXTERNAL-DRIVER / CT-GREEN-STUBS | `external/**` only |
 
