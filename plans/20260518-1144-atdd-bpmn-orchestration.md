@@ -1,8 +1,6 @@
 # Plan: ATDD BPMN orchestration
 
-> 🤖 **Picked up by agent (refine)** — `Valentina_Desk` at `2026-05-18T11:50:44Z`
-
-> ⚠️ **PARTIALLY REFINED** — this plan was drafted from the Phase 7 BPMN bullets in [Part 1](20260516-1701-atdd-at-cycle-absorb-internal-assets.md) and the cross-reference in the [legacy-coverage-cycle plan](20260518-1116-legacy-coverage-cycle.md). The structural reframe has been applied (items 1 + 10 + Open Q1/Q2 removed — see Refined 2026-05-18 annotations); items 2–9 still need a per-item walk to pin down concrete node/binding names and the residual contract questions (Q3/Q4).
+> ✅ **REFINED 2026-05-18** — every item walked one-by-one; the plan now extends the existing Go BPMN runtime (`internal/atdd/runtime/statemachine/process-flow.yaml` + `gates/` / `actions/` / `agents/`) rather than introducing a new orchestration tool. Items 1 and 10 are strikethrough stubs (deleted with rationale); item 9 Part B (CT_GREEN_STUBS) is ⏳ Deferred pending stubs-ownership. Two pre-execute sub-questions remain: `${sut_namespace}` source (item 5) and the cross-cutting Part 1 edit to remove `<channel>` from `at-cycle.md:100` (Hand-off).
 
 **Date:** 2026-05-18
 **Context:** The BPMN-side orchestration work that the AT-cycle doc reframes (Part 1 items 1, 2, 4b) assume exists. Those doc items reference "the BPMN process diagram", a "post-RED-DSL gateway", a "post-phase scope check", and a "shared call activity". The BPMN orchestration **itself already exists** in this repo as a Go runtime: `internal/atdd/runtime/statemachine/process-flow.yaml` (BPMN-shaped spec with start_event / end_event / service_task / user_task / gateway / call_activity nodes + sequence_flows + predicates), executed by the Go state machine in `internal/atdd/runtime/statemachine/` with pluggable `gates/`, `actions/`, `agents/` registries, rendered as Mermaid by `internal/atdd/runtime/diagram/` (per [`docs/process-diagram.md`](../docs/process-diagram.md)). **This plan extends that existing runtime** with the missing gates, actions, and call_activity wiring — it does not introduce a new orchestration tool or artefact form.
@@ -145,13 +143,44 @@ Concrete implementation of item 2's bullet (d). Lives as:
 
 > **Refined 2026-05-18:** Reframed from "cross-plan reference + marker design alternatives" → "thin consumer of the legacy plan's marker convention". **Why:** user clarified the marker convention is fully owned by the legacy-coverage-cycle plan; this item just consumes it. Dropped the "annotation/naming/directory" restatement so the design call lives in one place.
 
-### 8. Wire each AT phase through the envelope
+### 8. Thread `allowed_paths` param into every AT-phase invocation
 
-Once items 2–6 exist, rewrite the AT cycle's BPMN diagram (item 1's artifact) so every phase agent is invoked via the shared "Run Phase Agent" call activity from item 2. Phases: RED-TEST, RED-DSL, RED-SYSTEM-DRIVER, GREEN. (REFACTOR is a propose-first step with different shape — refinement decision whether it goes through the envelope or has a lighter wrapper.)
+Every AT phase already invokes the shared wrapper via `call_activity`: `at_cycle` (line 316) wires `AT_RED_TEST`, `AT_RED_DSL`, `AT_RED_SYSTEM_DRIVER` as `call_activity → red_phase_cycle`, and `at_green_system` (line 406) wires `AT_GREEN_BACKEND` + `AT_GREEN_FRONTEND` as `call_activity → green_phase_cycle`. The envelope wiring itself is **already done**; this item adds the new `allowed_paths` param (item 2 (a)) to each invocation.
 
-### 9. Wire each CT phase through the envelope
+**Edits to `process-flow.yaml`:**
 
-Symmetric to item 8 for the CT sub-cycle: CT-RED-TEST, CT-RED-DSL, CT-RED-EXTERNAL-DRIVER, CT-GREEN-STUBS. Same envelope, different per-phase allowed-paths rows from §Conventions.
+| call_activity | Add to `params:` |
+|---|---|
+| `AT_RED_TEST`           | `allowed_paths: <§Conventions row for AT - RED - TEST>` |
+| `AT_RED_DSL`            | `allowed_paths: <§Conventions row for AT - RED - DSL>` |
+| `AT_RED_SYSTEM_DRIVER`  | `allowed_paths: <§Conventions row for AT - RED - SYSTEM DRIVER>` |
+| `AT_GREEN_BACKEND`      | `allowed_paths: <§Conventions row for AT - GREEN - SYSTEM (backend)>` |
+| `AT_GREEN_FRONTEND`     | `allowed_paths: <§Conventions row for AT - GREEN - SYSTEM (frontend)>` |
+
+The string values come from the §Conventions Phase scope policy table (`docs/atdd/process/at-cycle.md`). Placeholder resolution (`${driver_port}` etc.) happens in the `check_phase_scope` action (item 5), not at YAML-load time.
+
+> **Refined 2026-05-18:** Reframed from "rewrite the AT cycle's BPMN diagram so every phase agent goes through the call activity" → "thread `allowed_paths` param into the already-existing call_activity invocations". **Why:** the call_activity wiring already exists (the original wording implied it didn't). Also dropped the REFACTOR parenthetical — refactoring isn't part of the AT cycle in the current process-flow; it lives in `structural_cycle` (line 660), which is out of scope for this plan.
+
+### 9. Thread `allowed_paths` into CT phases — split A (RED phases) + B (CT_GREEN_STUBS deferred)
+
+**Part A — mechanical, parallel to item 8:**
+
+| call_activity | Add to `params:` |
+|---|---|
+| `CT_RED_TEST`              | `allowed_paths: <§Conventions row for CT - RED - TEST>` |
+| `CT_RED_DSL`               | `allowed_paths: <§Conventions row for CT - RED - DSL>` |
+| `CT_RED_EXTERNAL_DRIVER`   | `allowed_paths: <§Conventions row for CT - RED - EXTERNAL DRIVER>` |
+
+These three already go through `red_phase_cycle` (see `ct_subprocess` line 471). Threading `allowed_paths` is identical to item 8's pattern.
+
+**Part B — `CT_GREEN_STUBS`: ⏳ Deferred.** Two pre-existing issues block this from being a mechanical edit:
+
+1. **Not currently wrapped.** `CT_GREEN_STUBS` (line 533) is a bare `user_task` directly with `agent: ct-green-stubs`, NOT a `call_activity → green_phase_cycle`. Adding `allowed_paths` here gives no enforcement without first rewiring through the wrapper.
+2. **Ownership TBD.** The node carries the comment "Ownership TBD per process-audit gap on stubs ownership. Placeholder agent name; resolve before the Go runtime ships."
+
+**Deferred until the stubs-ownership decision lands.** When it does, `CT_GREEN_STUBS` should be rewired as a `call_activity → green_phase_cycle` with `params: {agent, phase_doc, phase_label, suite, compile_action, allowed_paths}` — same shape as `AT_GREEN_BACKEND` / `AT_GREEN_FRONTEND`. Tracked here as a known gap; Part A is independent of it and can proceed.
+
+> **Refined 2026-05-18:** Reframed from "symmetric to item 8 across four CT phases" → "Part A mechanical (three RED phases) + Part B deferred (CT_GREEN_STUBS pending stubs-ownership)". **Why:** the original wording assumed CT_GREEN_STUBS is a `call_activity → green_phase_cycle` like the AT GREEN phases; it isn't, and the ownership gap is upstream of this plan. Surfaced as Deferred so Part A can ship without waiting on B.
 
 ### ~~10. Document the orchestration~~ — removed
 
