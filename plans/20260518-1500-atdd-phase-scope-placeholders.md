@@ -1,5 +1,7 @@
 # Plan: ATDD phase-scope placeholders consolidation
 
+> 🤖 **Picked up by agent (refine)** — `Valentina_Desk` at `2026-05-18T13:05:59Z`
+
 **Date:** 2026-05-18
 
 **Context:** Phase scope is declared in three places today, in two different shapes:
