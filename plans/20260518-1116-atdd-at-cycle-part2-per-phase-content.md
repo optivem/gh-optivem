@@ -1,5 +1,7 @@
 # Plan: bring `docs/atdd-at-cycle.md` to parity with internal/assets — Part 2: per-phase content
 
+> 🛑 **REQUIRES HUMAN DISCUSSION — DO NOT AUTO-EXECUTE.** Every item in this plan must be walked through interactively with the human author (via `/refine-plan`) before any `/execute-plan` run. Items were promoted out of [Part 1](20260516-1701-atdd-at-cycle-absorb-internal-assets.md) without per-item refinement and several depend on architectural decisions that are still under discussion (e.g. item 7's interaction with the Legacy Coverage Cycle, item 17's supporting-docs migration targets, the open questions at the bottom). An agent executing this plan literally would entrench wrong assumptions.
+
 > ⚠️ **NOT YET REFINED** — these phases were promoted out of [Part 1](20260516-1701-atdd-at-cycle-absorb-internal-assets.md) without per-item refinement. Run `/refine-plan` on this file before `/execute-plan`. Items may need restructuring once they are discussed in the context of the cycle architecture and §Conventions established in Part 1.
 
 **Date:** 2026-05-18 (split from Part 1 during refinement)
@@ -8,7 +10,9 @@
 
 ## Phase 2 — Per-phase rules (prevent common mistakes)
 
-6. **RED-TEST: Unit of work = the ticket.** All scenarios written as a batch, no per-scenario inner loop.
+6. **RED-TEST: Unit of work = the ticket.** All AT scenarios for the ticket are written in a single WRITE; no per-scenario inner RED loop.
+
+   > **Refined 2026-05-18:** Edited wording. **Why:** the original said "written as a batch" without naming what "batch" means; tightened to "single WRITE" so the rule is unambiguous and ties cleanly into item 10 (WRITE must compile). Dropped the parenthetical cross-ref to item 10 to keep the rule self-contained — readers can find the WRITE-compile rule on its own.
 7. **RED-TEST: Scenario ordering in the test class** — Legacy → existing-DSL → new-DSL. <!-- VJ-2026-05-18 refine note: legacy tests in the class are pre-authored by prior legacy-cycle runs (see [legacy-coverage-cycle plan](20260518-1116-legacy-coverage-cycle.md)), not written by AT-RED-TEST. Wording should reflect that the AT-RED-TEST agent orders new change-driven tests after pre-existing legacy ones. -->
 8. **RED-TEST: One-to-one Gherkin→test mapping.** Every precondition appears in the test; no interpretation.
 9. **RED-TEST: Minimum-data rule.** Only inputs/assertions tied to Given/When/Then. Trust DSL defaults.
