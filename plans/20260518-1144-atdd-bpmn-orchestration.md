@@ -9,6 +9,7 @@
 - [Part 1 — AT-cycle architecture & §Conventions](20260516-1701-atdd-at-cycle-absorb-internal-assets.md) — defines the §Conventions schemas this plan implements gates and steps against.
 - [Part 2 — `atdd-at-cycle.md` per-phase content](20260518-1116-atdd-at-cycle-part2-per-phase-content.md) — independent doc-content work; no orchestration dependency.
 - [Legacy coverage cycle](20260518-1116-legacy-coverage-cycle.md) — supplies the legacy marker convention needed by the failing-legacy detector below.
+- [Phase-scope placeholders substrate (20260518-1500)](20260518-1500-atdd-phase-scope-placeholders.md) — defines the `at_test`, `dsl_port`, `dsl_core` Family B keys. Substrate prerequisite for the SSoT successor plan (which retires Snapshot A and rewires `check_phase_scope`).
 
 **Source:** Phase 7 of Part 1 (the four BPMN bullets), plus the cross-plan reference in the legacy-coverage plan.
 

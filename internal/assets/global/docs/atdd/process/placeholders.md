@@ -30,6 +30,9 @@ paths:
   driver_adapter: system-test/typescript/src/testkit/driver/adapter
   external_driver_port: system-test/typescript/src/testkit/external/port
   external_driver_adapter: system-test/typescript/src/testkit/external/adapter
+  at_test: system-test/typescript/src/test
+  dsl_port: system-test/typescript/src/testkit/dsl/port
+  dsl_core: system-test/typescript/src/testkit/dsl/core
 ```
 
 When a team reorganises its tree (e.g. renames `testkit` to `support`), they update `paths:` once and re-run any `gh optivem` command — phase docs re-materialize with the new layout. **No doc edits needed.**

@@ -13,6 +13,9 @@ func TestDefaultPaths_TypescriptFlatScaffold(t *testing.T) {
 		"driver_adapter":          "system-test/src/testkit/driver/adapter",
 		"external_driver_port":    "system-test/src/testkit/external/port",
 		"external_driver_adapter": "system-test/src/testkit/external/adapter",
+		"at_test":                 "system-test/src/test",
+		"dsl_port":                "system-test/src/testkit/dsl/port",
+		"dsl_core":                "system-test/src/testkit/dsl/core",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("typescript: got %v, want %v", got, want)
@@ -27,6 +30,9 @@ func TestDefaultPaths_JavaFlatScaffold(t *testing.T) {
 		"driver_adapter":          "system-test/src/main/java/testkit/driver/adapter",
 		"external_driver_port":    "system-test/src/main/java/testkit/external/port",
 		"external_driver_adapter": "system-test/src/main/java/testkit/external/adapter",
+		"at_test":                 "system-test/src/test/java",
+		"dsl_port":                "system-test/src/main/java/testkit/dsl/port",
+		"dsl_core":                "system-test/src/main/java/testkit/dsl/core",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("java: got %v, want %v", got, want)
@@ -41,6 +47,9 @@ func TestDefaultPaths_DotnetFlatScaffold(t *testing.T) {
 		"driver_adapter":          "system-test/Testkit.Driver.Adapter",
 		"external_driver_port":    "system-test/Testkit.External.Port",
 		"external_driver_adapter": "system-test/Testkit.External.Adapter",
+		"at_test":                 "system-test/Tests",
+		"dsl_port":                "system-test/Testkit.Dsl.Port",
+		"dsl_core":                "system-test/Testkit.Dsl.Core",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("dotnet: got %v, want %v", got, want)
@@ -93,6 +102,9 @@ func TestDefaultPaths_KeysMatchPlaceholderDoctrine(t *testing.T) {
 		"driver_adapter",
 		"external_driver_port",
 		"external_driver_adapter",
+		"at_test",
+		"dsl_port",
+		"dsl_core",
 	}
 	for _, key := range want {
 		if _, ok := got[key]; !ok {

@@ -358,10 +358,11 @@ func runConfigMigrate(path string) (bool, error) {
 	//
 	// Merge rule: existing user keys are preserved untouched; only the
 	// canonical keys (driver_port, driver_adapter, external_driver_port,
-	// external_driver_adapter) that the user has NOT already set are
-	// filled in. Operator-customised values therefore survive every
-	// migrate pass — including the case where the user has renamed only
-	// some of the four canonical entries to match a non-standard layout.
+	// external_driver_adapter, at_test, dsl_port, dsl_core) that the user
+	// has NOT already set are filled in. Operator-customised values
+	// therefore survive every migrate pass — including the case where the
+	// user has renamed only some of the seven canonical entries to match
+	// a non-standard layout.
 	if defaults := inferPathDefaults(doc); len(defaults) > 0 {
 		if mergePathsEntry(doc, defaults) {
 			changed = true

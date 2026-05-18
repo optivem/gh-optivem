@@ -3,9 +3,10 @@ package projectconfig
 import "path"
 
 // DefaultPaths returns the canonical Family B `paths:` entries for the
-// given system-test language and root. The four keys match the doctrine
+// given system-test language and root. The seven keys match the doctrine
 // in `internal/assets/global/docs/atdd/process/placeholders.md`:
-// driver_port, driver_adapter, external_driver_port, external_driver_adapter.
+// driver_port, driver_adapter, external_driver_port, external_driver_adapter,
+// at_test, dsl_port, dsl_core.
 //
 // Returns nil when testLang is unsupported or systemTestRoot is empty —
 // the scaffolder leaves `paths:` absent for partial configs (no
@@ -14,13 +15,16 @@ import "path"
 // Per-language path stems mirror the post-scaffold tree (the
 // `system-test/{lang}/` subdir is flattened by `copySystemTests`):
 //
-//   - typescript: <root>/src/testkit/{driver|external}/{port|adapter}
-//   - java:       <root>/src/main/java/testkit/{driver|external}/{port|adapter}
-//   - dotnet:     <root>/Testkit.{Driver|External}.{Port|Adapter}
+//   - typescript: <root>/src/testkit/{driver|external|dsl}/{port|adapter|core},
+//     <root>/src/test
+//   - java:       <root>/src/main/java/testkit/{driver|external|dsl}/{port|adapter|core},
+//     <root>/src/test/java
+//   - dotnet:     <root>/Testkit.{Driver|External|Dsl}.{Port|Adapter|Core},
+//     <root>/Tests
 //
 // Users own subsequent edits — the scaffolder writes these defaults
 // once and the migrate path back-fills only canonical keys that are
-// absent. Anything beyond the canonical four set by the user is
+// absent. Anything beyond the canonical seven set by the user is
 // preserved across migrations.
 func DefaultPaths(testLang, systemTestRoot string) map[string]string {
 	if systemTestRoot == "" {
@@ -47,6 +51,9 @@ func canonicalPathKeys() []string {
 		"driver_adapter",
 		"external_driver_port",
 		"external_driver_adapter",
+		"at_test",
+		"dsl_port",
+		"dsl_core",
 	}
 }
 
@@ -62,6 +69,9 @@ func pathStems(testLang string) ([]string, bool) {
 			"src/testkit/driver/adapter",
 			"src/testkit/external/port",
 			"src/testkit/external/adapter",
+			"src/test",
+			"src/testkit/dsl/port",
+			"src/testkit/dsl/core",
 		}, true
 	case LangJava:
 		return []string{
@@ -69,6 +79,9 @@ func pathStems(testLang string) ([]string, bool) {
 			"src/main/java/testkit/driver/adapter",
 			"src/main/java/testkit/external/port",
 			"src/main/java/testkit/external/adapter",
+			"src/test/java",
+			"src/main/java/testkit/dsl/port",
+			"src/main/java/testkit/dsl/core",
 		}, true
 	case LangDotnet:
 		return []string{
@@ -76,6 +89,9 @@ func pathStems(testLang string) ([]string, bool) {
 			"Testkit.Driver.Adapter",
 			"Testkit.External.Port",
 			"Testkit.External.Adapter",
+			"Tests",
+			"Testkit.Dsl.Port",
+			"Testkit.Dsl.Core",
 		}, true
 	default:
 		return nil, false
