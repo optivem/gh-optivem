@@ -1,0 +1,90 @@
+name: regenerate-architecture-diagram
+
+# Regenerates docs/architecture-diagram.md whenever the canonical
+# architecture YAML (or the renderer itself) changes on main, and
+# commits the diff back to main if anything changed. The diagram is
+# author-side ground truth for the layered ATDD architecture — committing
+# it keeps github.com's Mermaid rendering in sync without the contributor
+# having to remember to run the renderer.
+#
+# Pull-request runs render the diagram and fail the job if the
+# committed file is stale, surfacing "you edited the YAML but didn't
+# regenerate the diagram" before merge.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - internal/atdd/runtime/architecture/**
+      - .github/workflows/regenerate-architecture-diagram.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - internal/atdd/runtime/architecture/**
+  # Manual escape hatch: lets us re-run after fixing rendering bugs that
+  # don't otherwise touch a path-filtered file (e.g. a CLI behaviour change
+  # in `gh optivem architecture show`).
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Serialize runs so two pushes to main can't produce racing auto-commits
+# that fight over the diagram artefacts.
+concurrency:
+  group: regenerate-architecture-diagram-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  regenerate:
+    name: Regenerate architecture diagram
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # Use a token that can push back to the branch on main; the
+          # default GITHUB_TOKEN works because contents:write is set above.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Render diagram markdown
+        run: |
+          go run . architecture show > docs/architecture-diagram.md
+
+      - name: Detect markdown changes
+        id: diff
+        run: |
+          if git diff --quiet -- docs/architecture-diagram.md; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fail PR when diagram markdown is stale
+        if: github.event_name == 'pull_request' && steps.diff.outputs.changed == 'true'
+        run: |
+          echo "::error::docs/architecture-diagram.md is stale; run 'go run . architecture show > docs/architecture-diagram.md' and commit."
+          git diff --stat -- docs/architecture-diagram.md
+          exit 1
+
+      - name: Commit and push regenerated diagram
+        if: github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/architecture-diagram.md
+          if git diff --cached --quiet; then
+            echo "No diagram changes to commit."
+            exit 0
+          fi
+          git commit -m "atdd: regenerate architecture diagram"
+          # Rebase onto any commits that landed on main while we were
+          # rendering, so the push isn't rejected by an unrelated push race.
+          git pull --rebase origin main
+          git push

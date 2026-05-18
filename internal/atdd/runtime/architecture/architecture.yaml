@@ -1,0 +1,235 @@
+# Canonical input for the ATDD architecture diagram. Each section
+# becomes one `## <heading>` block in the rendered Markdown with one
+# Mermaid `flowchart` inside.
+#
+# Schema:
+#   sections[].name      slug, used by `ref:` on nodes to target this section
+#   sections[].heading   rendered as `## <heading>` and after `see § ` on refs
+#   sections[].direction Mermaid flowchart direction; defaults to TD
+#   sections[].nodes[]   list of node entries (id, label, optional ref)
+#     id      Mermaid node identifier (uppercase by convention)
+#     label   text inside the node's brackets; passed through verbatim
+#     ref     optional section slug — renderer appends " — see § <heading>"
+#             to the node's label, pointing the reader at that section.
+#             Drop the field for plain labels.
+#   sections[].edges[]   list of edges in render order
+#     from, to      node ids
+#     style         optional; "undirected" emits `---` instead of `-->`
+#     label         optional; emits `-->|label|` or `--- |label|` for
+#                   undirected edges (undirected+label is not used today
+#                   but the renderer accepts it)
+#
+# Node and edge order is preserved verbatim. Keep edits surgical so the
+# golden test diff stays scoped.
+
+sections:
+  - name: overview
+    heading: Overview
+    direction: TD
+    nodes:
+      - {id: TEST, label: Test Files}
+      - {id: DSL_PORT, label: DSL Port, ref: dsl_port}
+      - {id: DSL_CORE, label: DSL Core, ref: dsl_core}
+      - {id: DRIVER_PORT, label: Driver Port, ref: driver_port}
+      - {id: DRIVER_ADAPTER, label: "Driver Adapter — see § Driver Adapter"}
+      - {id: SYSTEM, label: System, ref: system}
+      - {id: EXTERNAL, label: External Systems}
+    edges:
+      - {from: TEST, to: DSL_PORT}
+      - {from: DSL_PORT, to: DSL_CORE}
+      - {from: DSL_CORE, to: DRIVER_PORT}
+      - {from: DRIVER_PORT, to: DRIVER_ADAPTER}
+      - {from: DRIVER_ADAPTER, to: SYSTEM}
+      - {from: DRIVER_ADAPTER, to: EXTERNAL}
+
+  - name: test
+    heading: Test
+    direction: TD
+    nodes:
+      - {id: POSITIVE, label: UseCasePositiveTest}
+      - {id: NEGATIVE, label: UseCaseNegativeTest}
+      - {id: SHOULD_SUCCEED, label: shouldSucceed assertion}
+      - {id: SHOULD_FAIL, label: shouldFailWith assertion}
+      - {id: DSL_PORT, label: DSL Port, ref: dsl_port}
+    edges:
+      - {from: POSITIVE, to: SHOULD_SUCCEED}
+      - {from: NEGATIVE, to: SHOULD_FAIL}
+      - {from: POSITIVE, to: DSL_PORT}
+      - {from: NEGATIVE, to: DSL_PORT}
+
+  - name: dsl_port
+    heading: DSL Port
+    direction: TD
+    nodes:
+      - {id: GIVEN_STAGE, label: GivenStage}
+      - {id: WHEN_STAGE, label: WhenStage}
+      - {id: THEN_STAGE, label: ThenStage}
+      - {id: THEN_RESULT, label: ThenResultStage}
+      - {id: THEN_STEP, label: ThenStep TThen}
+      - {id: THEN_SUCCESS, label: ThenSuccess}
+      - {id: THEN_FAILURE, label: ThenFailure}
+      - {id: WITH_STRING, label: withFieldName String}
+      - {id: WITH_TYPED, label: withFieldName T typed}
+      - {id: AND, label: and}
+      - {id: WHEN, label: when}
+      - {id: THEN, label: then}
+    edges:
+      - {from: GIVEN_STAGE, to: WHEN_STAGE, label: when}
+      - {from: GIVEN_STAGE, to: THEN_STAGE, label: then}
+      - {from: WHEN_STAGE, to: THEN_STAGE, label: then}
+      - {from: THEN_RESULT, to: THEN_STAGE}
+      - {from: THEN_RESULT, to: THEN_SUCCESS, label: shouldSucceed}
+      - {from: THEN_RESULT, to: THEN_FAILURE, label: shouldFail}
+      - {from: THEN_STEP, to: THEN_SUCCESS}
+      - {from: THEN_STEP, to: THEN_FAILURE}
+      - {from: GIVEN_STAGE, to: WITH_STRING, style: undirected}
+      - {from: GIVEN_STAGE, to: WITH_TYPED, style: undirected}
+      - {from: GIVEN_STAGE, to: AND, style: undirected}
+      - {from: GIVEN_STAGE, to: WHEN, style: undirected}
+      - {from: GIVEN_STAGE, to: THEN, style: undirected}
+
+  - name: dsl_core
+    heading: DSL Core
+    direction: TD
+    nodes:
+      - {id: GIVEN_IMPL, label: Given Step Class}
+      - {id: WHEN_IMPL, label: When Step Class}
+      - {id: THEN_IMPL, label: Then Step Class}
+      - {id: VERIFICATION, label: Verification Class}
+      - {id: WITH_METHOD, label: withFieldName method}
+      - {id: ALIAS_FIELD, label: Alias Field}
+      - {id: USECASE, label: Use Case Class}
+      - {id: DSL_PORT, label: DSL Port, ref: dsl_port}
+      - {id: DRIVER_PORT, label: Driver Port, ref: driver_port}
+    edges:
+      - {from: DSL_PORT, to: GIVEN_IMPL}
+      - {from: DSL_PORT, to: WHEN_IMPL}
+      - {from: DSL_PORT, to: THEN_IMPL}
+      - {from: GIVEN_IMPL, to: WITH_METHOD}
+      - {from: WHEN_IMPL, to: WITH_METHOD}
+      - {from: WHEN_IMPL, to: ALIAS_FIELD}
+      - {from: GIVEN_IMPL, to: USECASE}
+      - {from: WHEN_IMPL, to: USECASE}
+      - {from: THEN_IMPL, to: VERIFICATION}
+      - {from: USECASE, to: DRIVER_PORT}
+
+  - name: driver_port
+    heading: Driver Port
+    direction: TD
+    nodes:
+      - {id: SHOP_PKG, label: shop package}
+      - {id: EXTERNAL_PKG, label: external package}
+      - {id: SHOP_API_IFACE, label: Shop API Driver Interface}
+      - {id: SHOP_UI_IFACE, label: Shop UI Driver Interface}
+      - {id: EXT_CLOCK_IFACE, label: external/clock Interface}
+      - {id: EXT_ERP_IFACE, label: external/erp Interface}
+      - {id: EXT_TAX_IFACE, label: external/tax Interface}
+      - {id: REQUEST_DTO, label: Request DTO}
+      - {id: RESPONSE_DTO, label: Response DTO}
+      - {id: DRIVER_ADAPTER, label: "Driver Adapter — see § Driver Adapter"}
+    edges:
+      - {from: SHOP_PKG, to: SHOP_API_IFACE}
+      - {from: SHOP_PKG, to: SHOP_UI_IFACE}
+      - {from: EXTERNAL_PKG, to: EXT_CLOCK_IFACE}
+      - {from: EXTERNAL_PKG, to: EXT_ERP_IFACE}
+      - {from: EXTERNAL_PKG, to: EXT_TAX_IFACE}
+      - {from: SHOP_API_IFACE, to: REQUEST_DTO}
+      - {from: SHOP_API_IFACE, to: RESPONSE_DTO}
+      - {from: EXT_ERP_IFACE, to: REQUEST_DTO}
+      - {from: EXT_ERP_IFACE, to: RESPONSE_DTO}
+      - {from: SHOP_API_IFACE, to: DRIVER_ADAPTER}
+      - {from: SHOP_UI_IFACE, to: DRIVER_ADAPTER}
+      - {from: EXT_CLOCK_IFACE, to: DRIVER_ADAPTER}
+      - {from: EXT_ERP_IFACE, to: DRIVER_ADAPTER}
+      - {from: EXT_TAX_IFACE, to: DRIVER_ADAPTER}
+
+  - name: driver_adapter_shop
+    heading: Driver Adapter — Shop Drivers
+    direction: TD
+    nodes:
+      - {id: SHOP_API_DRIVER, label: Shop API Driver}
+      - {id: SHOP_UI_DRIVER, label: Shop UI Driver}
+      - {id: SHOP_API_CLIENT, label: ShopApiClient}
+      - {id: ORDER_CTRL, label: OrderController}
+      - {id: COUPON_CTRL, label: CouponController}
+      - {id: PRODUCT_CTRL, label: ProductController}
+      - {id: URL_CONST, label: Endpoint URL Constant}
+      - {id: PROBLEM_DETAIL, label: ProblemDetailResponse}
+      - {id: ERROR_MAPPER, label: SystemErrorMapper}
+      - {id: PAGE_OBJECT, label: Page Object aria-label}
+      - {id: GO_TO, label: goToShop health check}
+      - {id: DRIVER_PORT, label: Driver Port, ref: driver_port}
+      - {id: SYSTEM, label: System, ref: system}
+    edges:
+      - {from: DRIVER_PORT, to: SHOP_API_DRIVER}
+      - {from: DRIVER_PORT, to: SHOP_UI_DRIVER}
+      - {from: SHOP_API_DRIVER, to: SHOP_API_CLIENT}
+      - {from: SHOP_API_CLIENT, to: ORDER_CTRL}
+      - {from: SHOP_API_CLIENT, to: COUPON_CTRL}
+      - {from: SHOP_API_CLIENT, to: PRODUCT_CTRL}
+      - {from: ORDER_CTRL, to: URL_CONST}
+      - {from: PROBLEM_DETAIL, to: ERROR_MAPPER}
+      - {from: SHOP_API_DRIVER, to: GO_TO}
+      - {from: SHOP_UI_DRIVER, to: PAGE_OBJECT}
+      - {from: URL_CONST, to: SYSTEM}
+      - {from: PAGE_OBJECT, to: SYSTEM}
+
+  - name: driver_adapter_external
+    heading: Driver Adapter — External Drivers
+    direction: TD
+    nodes:
+      - {id: EXT_REAL, label: XyzRealDriver}
+      - {id: EXT_STUB, label: XyzStubDriver}
+      - {id: BASE_DRIVER, label: BaseXyzDriver}
+      - {id: BASE_CLIENT, label: BaseXyzClient}
+      - {id: REAL_CLIENT, label: XyzRealClient}
+      - {id: STUB_CLIENT, label: XyzStubClient}
+      - {id: EXT_REQUEST, label: Ext*Request}
+      - {id: EXT_RESPONSE, label: Ext*Response}
+      - {id: GO_TO, label: goToErp health check}
+      - {id: DRIVER_PORT, label: Driver Port, ref: driver_port}
+      - {id: EXTERNAL, label: External Systems}
+    edges:
+      - {from: DRIVER_PORT, to: EXT_REAL}
+      - {from: DRIVER_PORT, to: EXT_STUB}
+      - {from: EXT_REAL, to: BASE_DRIVER}
+      - {from: EXT_STUB, to: BASE_DRIVER}
+      - {from: BASE_DRIVER, to: BASE_CLIENT}
+      - {from: REAL_CLIENT, to: BASE_CLIENT}
+      - {from: STUB_CLIENT, to: BASE_CLIENT}
+      - {from: EXT_REAL, to: EXT_REQUEST}
+      - {from: EXT_REAL, to: EXT_RESPONSE}
+      - {from: EXT_STUB, to: EXT_REQUEST}
+      - {from: EXT_STUB, to: EXT_RESPONSE}
+      - {from: EXT_REAL, to: GO_TO}
+      - {from: REAL_CLIENT, to: EXTERNAL}
+      - {from: STUB_CLIENT, to: EXTERNAL}
+
+  - name: system
+    heading: System
+    direction: TD
+    nodes:
+      - {id: MONO_JAVA, label: system/monolith/java}
+      - {id: MONO_DOTNET, label: system/monolith/dotnet}
+      - {id: MONO_TS, label: system/monolith/typescript}
+      - {id: MULTI_BACK_JAVA, label: system/multitier/backend-java}
+      - {id: MULTI_BACK_DOTNET, label: system/multitier/backend-dotnet}
+      - {id: MULTI_BACK_TS, label: system/multitier/backend-typescript}
+      - {id: MULTI_FRONT, label: system/multitier/frontend-react}
+      - {id: BACKEND_ROUTE, label: Backend Route}
+      - {id: UI_FETCH, label: UI Fetch Site}
+      - {id: DRIVER_CONST, label: Driver Adapter URL Constant}
+      - {id: LEGACY, label: system-test Legacy read-only}
+    edges:
+      - {from: MONO_JAVA, to: BACKEND_ROUTE}
+      - {from: MONO_DOTNET, to: BACKEND_ROUTE}
+      - {from: MONO_TS, to: BACKEND_ROUTE}
+      - {from: MULTI_BACK_JAVA, to: BACKEND_ROUTE}
+      - {from: MULTI_BACK_DOTNET, to: BACKEND_ROUTE}
+      - {from: MULTI_BACK_TS, to: BACKEND_ROUTE}
+      - {from: MONO_JAVA, to: UI_FETCH}
+      - {from: MONO_DOTNET, to: UI_FETCH}
+      - {from: MONO_TS, to: UI_FETCH}
+      - {from: MULTI_FRONT, to: UI_FETCH}
+      - {from: BACKEND_ROUTE, to: DRIVER_CONST, style: undirected}
+      - {from: UI_FETCH, to: DRIVER_CONST, style: undirected}
