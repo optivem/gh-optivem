@@ -163,6 +163,20 @@ func RegisterAll(r *Registry, deps Deps) {
 	// COMMIT. Reads ctx.State["selected_test_commands"] (a []string) which
 	// select_tests writes — empty slice means the operator picked "no".
 	r.Register("tests_selected", b.testsSelected)
+	// Phase-scope enforcement (per plan 20260518-1144 items 5, 6):
+	//   - Layer 1: scope_exception_requested reads the agent's structured
+	//     COMMIT output for a scope_exception block; true → STOP_SCOPE_VIOLATION.
+	//   - Layer 2: phase_scope_clean runs after the agent commits; reads the
+	//     check_phase_scope action's structured result; false → STOP_SCOPE_VIOLATION.
+	r.Register("scope_exception_requested", b.scopeExceptionRequested)
+	r.Register("phase_scope_clean", b.phaseScopeClean)
+	// Post-RED-DSL flag-presence validation (per plan 20260518-1144 item 4):
+	// the two RED-DSL phase-output flags (system_driver_interface_changed,
+	// external_system_driver_interface_changed) MUST be explicitly emitted
+	// by the agent's COMMIT output. Treats unset as an error — the
+	// downstream GATE_EXT_AT / GATE_SYS_AT gates rely on a real yes|no,
+	// not a default no.
+	r.Register("dsl_flags_present", b.dslFlagsPresent)
 }
 
 // bindings is a thin closure-receiver so each method has access to deps
@@ -519,6 +533,64 @@ func (b bindings) verifyRealPass(ctx *statemachine.Context) statemachine.Outcome
 func (b bindings) testsSelected(ctx *statemachine.Context) statemachine.Outcome {
 	cmds, _ := ctx.Get("selected_test_commands").([]string)
 	return statemachine.Outcome{Bool: len(cmds) > 0}
+}
+
+// scopeExceptionRequested is Layer 1 of phase-scope enforcement (per plan
+// 20260518-1144 item 6): the agent-triggered escape hatch. The agent emits
+// a structured `scope_exception` block in its COMMIT output when it
+// recognises it cannot complete the phase within `scope:`; a COMMIT-output
+// parsing layer populates ctx[scope_exception_files] ([]string) and
+// ctx[scope_exception_reason] (string). This binding returns true when
+// scope_exception_files is non-empty, routing the cycle to
+// STOP_SCOPE_VIOLATION (skipping DISABLE / Layer 2 / COMMIT).
+//
+// No prompt fallback: the gate fires immediately after the agent's WRITE
+// node; an absent value means "no exception was signalled" and routes to
+// the normal continuation. The shape contract (yaml emitted by the agent,
+// flattened into two context keys by the parser) lives in
+// docs/atdd/process/shared/scope.md.
+func (b bindings) scopeExceptionRequested(ctx *statemachine.Context) statemachine.Outcome {
+	files, _ := ctx.Get("scope_exception_files").([]string)
+	return statemachine.Outcome{Bool: len(files) > 0}
+}
+
+// dslFlagsPresent is the flag-presence-validation gateway sitting
+// between AT_RED_DSL and the existing GATE_EXT_AT in at_cycle (plan
+// 20260518-1144 item 4). RED-DSL must emit BOTH phase-output flags per
+// at-red-dsl.md — "unset is a bug, not a default no". This gate returns
+// true only when BOTH state keys are explicitly present; otherwise the
+// cycle routes to STOP_FLAG_UNSET and loops back to AT_RED_DSL for the
+// agent to set them.
+//
+// No prompt fallback: a missing value is the bug this gate exists to
+// catch, so coercing it to "no" via prompt would silently route the
+// cycle past the regression. Presence is checked directly against
+// ctx.State, not via boolGate (which would conflate "unset" with
+// "answered no at the prompt").
+func (b bindings) dslFlagsPresent(ctx *statemachine.Context) statemachine.Outcome {
+	_, sys := ctx.State["system_driver_interface_changed"]
+	_, ext := ctx.State["external_system_driver_interface_changed"]
+	return statemachine.Outcome{Bool: sys && ext}
+}
+
+// phaseScopeClean is Layer 2 of phase-scope enforcement (per plan
+// 20260518-1144 item 5): the post-phase scripted check. The
+// check_phase_scope action diffs the working tree against the phase's
+// allowed-paths (from internal/atdd/phase-scopes.yaml + gh-optivem.yaml
+// paths:) and writes the boolean result to ctx[phase_scope_clean] plus
+// the violating paths to ctx[phase_scope_violating_paths] for the
+// STOP_SCOPE_VIOLATION payload. This binding returns the boolean
+// verbatim; true → continue to COMMIT, false → STOP_SCOPE_VIOLATION.
+//
+// No prompt fallback: the gate fires after the action that stamps the
+// flag, so the value must be set; reaching the gate with an unset value
+// is a bug, not a hand-debugging affordance.
+func (b bindings) phaseScopeClean(ctx *statemachine.Context) statemachine.Outcome {
+	v, ok := ctx.State["phase_scope_clean"]
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("phase_scope_clean: not set in Context — check_phase_scope action did not run")}
+	}
+	return outcomeFromBoolish(v)
 }
 
 // ---------------------------------------------------------------------------

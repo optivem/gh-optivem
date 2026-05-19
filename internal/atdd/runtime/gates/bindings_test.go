@@ -496,6 +496,9 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"verify_real_pass",
 		"structural_verify_outcome",
 		"tests_selected",
+		"scope_exception_requested",
+		"phase_scope_clean",
+		"dsl_flags_present",
 	}
 	for _, name := range want {
 		if r.Lookup(name) == nil {
@@ -725,5 +728,149 @@ func TestVerifyRealPass_PromptFallback(t *testing.T) {
 	}
 	if len(p.asked) != 1 {
 		t.Fatalf("Ask was called %d times, expected 1", len(p.asked))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// dsl_flags_present — GATE_DSL_FLAGS_PRESENT (plan 20260518-1144 item 4)
+// ---------------------------------------------------------------------------
+
+func TestDSLFlagsPresent_BothSetTrue(t *testing.T) {
+	p := &fakePrompter{}
+	b := newBindings(t, Deps{Prompter: p})
+	ctx := statemachine.NewContext()
+	ctx.Set("system_driver_interface_changed", false)
+	ctx.Set("external_system_driver_interface_changed", true)
+	out := b.dslFlagsPresent(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if !out.Bool {
+		t.Fatalf("Bool: got false, want true (both flags set)")
+	}
+	if len(p.asked) != 0 {
+		t.Fatalf("Ask was called %d times, expected 0 (no prompt fallback)", len(p.asked))
+	}
+}
+
+func TestDSLFlagsPresent_MissingSystemFalse(t *testing.T) {
+	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+	ctx := statemachine.NewContext()
+	ctx.Set("external_system_driver_interface_changed", false)
+	out := b.dslFlagsPresent(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if out.Bool {
+		t.Fatalf("Bool: got true, want false (system flag unset)")
+	}
+}
+
+func TestDSLFlagsPresent_MissingExternalFalse(t *testing.T) {
+	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+	ctx := statemachine.NewContext()
+	ctx.Set("system_driver_interface_changed", false)
+	out := b.dslFlagsPresent(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if out.Bool {
+		t.Fatalf("Bool: got true, want false (external flag unset)")
+	}
+}
+
+func TestDSLFlagsPresent_BothUnsetFalse(t *testing.T) {
+	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+	out := b.dslFlagsPresent(statemachine.NewContext())
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if out.Bool {
+		t.Fatalf("Bool: got true, want false (both flags unset)")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// scope_exception_requested — Layer 1 (plan 20260518-1144 item 6)
+// ---------------------------------------------------------------------------
+
+func TestScopeExceptionRequested_NonEmptyFilesTrue(t *testing.T) {
+	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+	ctx := statemachine.NewContext()
+	ctx.Set("scope_exception_files", []string{"src/out-of-scope.go"})
+	out := b.scopeExceptionRequested(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if !out.Bool {
+		t.Fatalf("Bool: got false, want true")
+	}
+}
+
+func TestScopeExceptionRequested_EmptyFalse(t *testing.T) {
+	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+	cases := []struct {
+		name string
+		val  any
+	}{
+		{name: "nil_slice", val: ([]string)(nil)},
+		{name: "empty_slice", val: []string{}},
+		{name: "unset", val: nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := statemachine.NewContext()
+			if tc.val != nil {
+				ctx.Set("scope_exception_files", tc.val)
+			}
+			out := b.scopeExceptionRequested(ctx)
+			if out.Err != nil {
+				t.Fatalf("unexpected error: %v", out.Err)
+			}
+			if out.Bool {
+				t.Fatalf("Bool: got true, want false")
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// phase_scope_clean — Layer 2 (plan 20260518-1144 item 5)
+// ---------------------------------------------------------------------------
+
+func TestPhaseScopeClean_TrueRoutesContinue(t *testing.T) {
+	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+	ctx := statemachine.NewContext()
+	ctx.Set("phase_scope_clean", true)
+	out := b.phaseScopeClean(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if !out.Bool {
+		t.Fatalf("Bool: got false, want true")
+	}
+}
+
+func TestPhaseScopeClean_FalseRoutesStop(t *testing.T) {
+	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+	ctx := statemachine.NewContext()
+	ctx.Set("phase_scope_clean", false)
+	out := b.phaseScopeClean(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if out.Bool {
+		t.Fatalf("Bool: got true, want false")
+	}
+}
+
+func TestPhaseScopeClean_UnsetErrors(t *testing.T) {
+	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+	out := b.phaseScopeClean(statemachine.NewContext())
+	if out.Err == nil {
+		t.Fatalf("expected error for unset phase_scope_clean, got nil")
+	}
+	if !strings.Contains(out.Err.Error(), "not set in Context") {
+		t.Fatalf("error %q does not mention 'not set in Context'", out.Err)
 	}
 }

@@ -164,6 +164,18 @@ func (e *Engine) wrapCallActivity(raw RawNode) NodeFn {
 	}
 }
 
+// maxDispatchesPerProcess caps how many node dispatches RunProcess will
+// perform in a single invocation before failing fast. Loopback edges in
+// process-flow.yaml (e.g. STOP_FLAG_UNSET → AT_RED_DSL, STOP_SCOPE_VIOLATION
+// → WRITE) are legitimate, but a gate whose deciding state isn't reset
+// between iterations turns the loop infinite. Without a cap, the test
+// harness's per-dispatch event slice grows unbounded and consumes 20 GB+ of
+// RAM before being killed; production agents would just hang. 10000 is
+// orders of magnitude above any legitimate single-process trail (the
+// longest current cycle dispatches a few dozen nodes), so a breach is
+// definitively an authoring bug rather than a deep-but-valid trail.
+const maxDispatchesPerProcess = 10000
+
 // RunProcess walks one process from its start node to an end node. It uses
 // nextEdge to pick the outgoing edge whose predicate matches the current
 // state, and stops on the first node with no outgoing edges (treating that
@@ -174,13 +186,21 @@ func (e *Engine) wrapCallActivity(raw RawNode) NodeFn {
 // The NodeFn itself is bound at load time and does not see the substitutions
 // directly — actions/gates/agents that need params read them via the live
 // Context.Params map.
+//
+// RunProcess fails fast on suspected dispatch loops via maxDispatchesPerProcess
+// — see that constant for the rationale.
 func (e *Engine) RunProcess(name string, ctx *Context) error {
 	process, ok := e.Processes[name]
 	if !ok {
 		return fmt.Errorf("unknown process %q", name)
 	}
 	cur := process.Start
+	dispatches := 0
 	for cur != "" {
+		if dispatches >= maxDispatchesPerProcess {
+			return fmt.Errorf("process %q: exceeded %d dispatches (suspected loopback with unchanging gate state; last node %q)", name, maxDispatchesPerProcess, cur)
+		}
+		dispatches++
 		node, ok := process.Nodes[cur]
 		if !ok {
 			return fmt.Errorf("process %q: dangling reference to node %q", name, cur)

@@ -9,4 +9,5 @@ You are the Backend Agent. Implement only the backend changes that move the tick
 
 Do not present or wait for approval inside the agent.
 
+Read `${docs_root}/atdd/process/shared/scope.md`.
 Read `${docs_root}/atdd/process/change/behavior/at-green-system.md`.

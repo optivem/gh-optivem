@@ -16,10 +16,35 @@ wrong, the test scope is wrong, or a refactor is needed first.
 
 ## How the rule is enforced
 
-The agent does not self-police via the frontmatter. Scope is enforced at
-WRITE-time by the `check_phase_scope` action in the BPMN runtime: after
-the agent commits, the action diffs the working tree against the
-phase's allowed paths and fails the run if anything fell outside.
+Two layers, in order:
+
+**Layer 1 — agent-signalled.** If the agent recognises mid-phase that it
+cannot finish without editing files outside `scope:`, it does **not**
+proceed silently and does **not** ask the user inline. It emits a
+structured `scope_exception` block in its final output and exits — the
+runtime presents the exception to the user, who decides whether to
+accept the out-of-scope change, rewind to an upstream phase, revert and
+rerun, or abort.
+
+The `scope_exception` block shape (consumed by the runtime's
+`scope_exception_requested` gate):
+
+```
+scope_exception:
+  files:
+    - path/to/out-of-scope.go
+  reason: <one-line rationale>
+```
+
+When the block is absent, the phase ran within scope. No new IPC
+mechanism — the block is one structured field of the existing
+agent→runtime COMMIT-output channel.
+
+**Layer 2 — post-phase scripted check.** Catches what Layer 1 missed.
+After the agent commits, the `check_phase_scope` action in the BPMN
+runtime diffs the working tree against the phase's allowed paths and
+fails the run if anything fell outside; the cycle routes to the same
+human-task page as Layer 1.
 
 ## Where the per-phase scope comes from
 

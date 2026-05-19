@@ -1,5 +1,7 @@
 # Plan: ATDD BPMN orchestration
 
+> ✅ **EXECUTED 2026-05-19** — items 2, 3, 4, 5, 6 landed (Layer 1 + Layer 2 phase-scope enforcement, post-RED-DSL flag-presence gateway, disable-reason composition refactor, scope-exception agent contract). Items 3, 5, 6 dropped from the plan body once implemented per [[feedback_drop_dont_relocate]]. Only **item 7 (failing-legacy detector)** remains, blocked on the legacy-coverage-cycle plan settling the marker convention. Statemachine engine now has a `maxDispatchesPerProcess` cap to fail fast on future loopback-authoring bugs (was needed to diagnose this very execution — see commit message).
+>
 > ✅ **REFINED 2026-05-18** — every item walked one-by-one; the plan now extends the existing Go BPMN runtime (`internal/atdd/runtime/statemachine/process-flow.yaml` + `gates/` / `actions/` / `agents/`) rather than introducing a new orchestration tool. Items 1 and 10 are strikethrough stubs (deleted with rationale); item 9 Part B (CT_GREEN_STUBS) is ⏳ Deferred pending stubs-ownership. No pre-execute blockers remain — the cross-cutting §Conventions `<channel>` edit landed in commit `82bb983`.
 
 **Date:** 2026-05-18
@@ -107,19 +109,6 @@ d. **Pre-COMMIT failing-legacy check** — new `service_task` right before `COMM
 
 > **Refined 2026-05-18:** Reframed from "define a new envelope" → "extend the two existing wrappers". **Why:** `red_phase_cycle` + `green_phase_cycle` already are the shared envelope; this item adds the missing scope/legacy enforcement to them. The original "Refined later" note on disable/enable placement is also dropped — the existing code already settles it: `DISABLE` lives inside `red_phase_cycle` (line 876); `ENABLE_TESTS` lives in the parent (`at_green_system` line 409) between phases.
 
-### 3. Update `disable_change_driven` + `enable_change_driven` actions to §Conventions disable-reason format
-
-Both nodes already exist in `process-flow.yaml`: `DISABLE` (line 876 inside `red_phase_cycle`, `action: disable_change_driven`) and `ENABLE_TESTS` (line 409 inside `at_green_system`, `action: enable_change_driven`). This item updates the **action implementations** under `internal/atdd/runtime/actions/` — no new nodes in `process-flow.yaml`.
-
-- **`disable_change_driven`** (runs at end of phase, before COMMIT — already wired): grep the project for test files, annotate change-driven tests per **Snapshot B** (above). Cycle slot is hard-coded `AT` today; `<LOOP>` ∈ {RED, GREEN}; `<PHASE>` ∈ {TEST, DSL, SYSTEM DRIVER}. **Precondition:** RED proof has been observed (test ran, failed at runtime). Skip legacy tests entirely (per the legacy-coverage plan's domain restriction).
-- **`enable_change_driven`** (runs at start of next phase — already wired): grep for `@Disabled` annotations matching the **Snapshot B** re-enable filter (`startsWith("<CURRENT-TICKET-ID> - AT - RED - <PREV-PHASE>")`) and remove them. Never strip annotations for other tickets; never strip legacy markers.
-
-Inputs (ticket ID, cycle, loop, phase) come from the action's context — extend the action signatures / context if not all four are currently threaded through.
-
-Language-specific syntax for `@Disabled` (Java) / `@pytest.mark.skip` (Python) / `[Ignore]` (.NET) / etc. is delegated to the existing `language-equivalents/` material.
-
-> **Refined 2026-05-18:** Reframed from "add disable/enable steps" → "update existing actions". **Why:** the nodes are already in the YAML and wired into the wrappers — only the action bodies need to follow the new §Conventions disable-reason format and the legacy-skip rule.
-
 ### 4. Add post-RED-DSL flag-presence validation gateway
 
 The branching this item describes is **already wired** in `at_cycle` (line 316): `GATE_DSL_AT` (binding `dsl_interface_changed`), `GATE_EXT_AT` (binding `external_system_driver_interface_changed`), `GATE_SYS_AT` (binding `system_driver_interface_changed`) with sequence_flows wiring exactly the three branches (route to RED-SYSTEM-DRIVER / CT_SUBPROCESS / AT_GREEN_SYSTEM). The current gateways consume flag *values* but do not verify the agent emitted them.
@@ -136,60 +125,6 @@ This item **adds the missing validation**:
 One validation gateway covers all three flags (they're emitted together by the same RED-DSL phase). The existing `GATE_DSL_AT` / `GATE_EXT_AT` / `GATE_SYS_AT` then consume validated values without change.
 
 > **Refined 2026-05-18:** Reframed from "add a post-RED-DSL gateway (validation + branching)" → "add only the flag-presence-validation gateway". **Why:** The three branching gateways are already in `at_cycle`; only the flag-presence check is new. Sequential-vs-parallel between RED-SYSTEM-DRIVER and CT sub-cycle was already settled in the existing wiring (`CT_SUBPROCESS` runs first, then `GATE_SYS_AT`, then `AT_RED_SYSTEM_DRIVER`) — that's a pre-existing decision, not something this plan re-litigates.
-
-### 5. Implement the post-phase scope check action
-
-Concrete implementation of item 2's bullet (c). Pure scripted (no LLM). Lives as:
-
-- **Action** `check_phase_scope` in `internal/atdd/runtime/actions/` — reads `internal/atdd/phase-scopes.yaml` (embedded in the binary via the loader at `internal/atdd/phase_scopes.go:LoadPhaseScopes`) for the per-phase layer list, keyed by the current BPMN node's `id:` (e.g. `AT_RED_TEST`). Resolves layer names against `gh-optivem.yaml paths:` (in the user's project) — literal values, no `${...}` substitution (substitution retired per SSoT plan locked δ). Runs `git diff --name-only <pre-phase-ref> HEAD` and `git status --porcelain` for un-staged modifications. Writes a structured result to context.
-- **Gate binding** `phase_scope_clean` in `internal/atdd/runtime/gates/` — reads the structured result; returns `true` if all modified paths fall within the allowed set, else `false`.
-- **Wired position** (already pinned in item 2): between `DISABLE` and `COMMIT` in `red_phase_cycle`; before the parent's COMMIT in green flows.
-
-**Path-match semantics — directory-aware prefix.** A diff path matches an allowed path `P` iff `diffPath == P || strings.HasPrefix(diffPath, P+"/")`. Raw `strings.HasPrefix(diffPath, P)` is wrong — it would let `.../shop` match `.../shop2/...`. This contract is shared with the `gh optivem process scope` CLI projection and is the resolution of open question λ (SSoT plan, resolved 2026-05-18).
-
-**Layer-name → resolved-path join.** The action looks up the current node's layer list in `phase-scopes.yaml`, then resolves each layer against the loaded `*projectconfig.Config`:
-
-- Family B layers (e.g. `driver_port`, `at_test`, `ct_test`) → `cfg.Paths[layer]`.
-- Family A path-shaped layers — only `system_path` today — → `cfg.System.Path` (per `FamilyAPathKeysInScope` in `internal/atdd/phase_scopes.go`).
-
-Both surfaces are fully resolved at scaffold/migrate time (per SSoT plan item 3), so the action's join is a lookup, not a substitution.
-
-**Pre-phase ref:** captured by a small upstream service_task at WRITE-time (or read from the most recent COMMIT baseline) — pick one before execute; the choice affects whether the check sees the working-tree state alone or the full set of changes since the phase started.
-
-**Allowlist phases (no-op + log).** Phases on the deferred allowlist in `internal/atdd/phase_scopes.go:PhasesDeferredByPlan` (`AT_GREEN_BACKEND`, `AT_GREEN_FRONTEND`, the three structural-cycle entries) currently have no `phase-scopes.yaml` entry pending their respective follow-up plans. For these the action returns success without checking, and logs a single line citing the deferred plan — the absence of enforcement is intentional and visible. The action panics on a missing-key for any phase that is neither in `phase-scopes.yaml` nor on the allowlist (build-time test `TestPhaseScopes_ReverseFK_WritingAgentsScopedOrAllowlisted` makes that condition unreachable in practice).
-
-STOP options (Accept / Rewind / Revert + rerun / Abort) live on `STOP_SCOPE_VIOLATION` (defined in item 2), not duplicated here.
-
-On out-of-scope diff the error message points readers at `internal/assets/global/docs/atdd/process/shared/scope.md` (the user-facing scope rule, owned by SSoT plan item 2).
-
-> **Refined 2026-05-18:** Reframed from "post-phase scope check" → "implement the action + gate binding behind item 2 bullet (c)". **Why:** Item 2 already pins placement and STOP; this item is the action-body detail.
->
-> **Re-refined 2026-05-19 (SSoT plan item 8):** Action's read surface rewired: it now reads `internal/atdd/phase-scopes.yaml` directly by node id, not `allowed_paths` from per-node `params:`. **Why:** under SSoT, `phase-scopes.yaml` is the single doctrinal source of per-phase scope (plan 20260518-1530 item 1); threading `allowed_paths` strings through `process-flow.yaml` is redundant. `Config.PlaceholderMap()`-based substitution retired (SSoT locked δ); the action does layer-name → resolved-path lookup, not `${...}` substitution. `<channel>` separately dropped 2026-05-18.
-
-### 6. Implement the Layer 1 scope-exception signal contract
-
-Concrete implementation of item 2's bullet (b) — the agent-side escape hatch per §Conventions → Phase scope policy Layer 1 (see **Snapshot A** above for the per-phase allowed paths; §Conventions itself currently lives at `docs/atdd/process/shared/conventions.md` pending the upcoming split).
-
-**Signal channel:** reuse the existing agent→runtime channel. Phase agents already emit a structured COMMIT output that the state machine consumes (per `process-flow.yaml` header: "what dispatches next, gated by which flag"). The Layer 1 signal becomes a structured field in that output payload:
-
-```
-scope_exception:
-  files: [path/to/out-of-scope.go, ...]
-  reason: "<one-line rationale>"
-```
-
-When absent, the phase ran within scope. No new IPC mechanism (no exit codes, marker files, or extra stdout channels).
-
-**Gate binding:** new `scope_exception_requested` in `internal/atdd/runtime/gates/` reads the agent's output and returns `true` if `scope_exception` is non-empty.
-
-**Wiring (already pinned in item 2 bullet (b)):** the new gateway sits immediately after `WRITE`; on `true`, branch to `STOP_SCOPE_VIOLATION` (skipping the post-phase scope check from item 5 and bypassing `DISABLE` / `COMMIT`); on `false`, continue down the normal path.
-
-**Agent prompt template update:** the per-phase agent prompts (currently under `internal/assets/runtime/prompts/atdd/` or wherever they end up after the Part 1 Phase 7 prompt-slimming work) need a section instructing the agent to:
-1. Edit only within `allowed_paths`.
-2. If unavoidably blocked, emit the `scope_exception` field and exit.
-3. **Never** ask inline for approval. Matches the runtime-prompt rule "no approval inside the agent".
-
-> **Refined 2026-05-18:** Reframed from "define the signal format + envelope branch + behavioural rule" → "implement the channel + binding + prompt instruction". **Why:** The wiring is now in item 2 (b); this item is the contract detail. Open Q3 closed: signal channel = structured field in existing agent output (not a new IPC mechanism).
 
 ### 7. Implement the failing-legacy detector action
 

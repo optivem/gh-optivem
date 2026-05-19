@@ -17,6 +17,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -1475,17 +1477,39 @@ func TestDisableChangeDriven_RequiresAllInputs(t *testing.T) {
 			wantSubstr: "language",
 		},
 		{
-			name: "no_reason",
+			name: "no_ticket_id",
 			setup: func(ctx *statemachine.Context) {
 				ctx.Set("language", "java")
 			},
-			wantSubstr: "disable_reason",
+			wantSubstr: "ticket_id",
+		},
+		{
+			name: "loop_not_in_domain",
+			setup: func(ctx *statemachine.Context) {
+				ctx.Set("language", "java")
+				ctx.Set("ticket_id", "OPV-123")
+				ctx.Set("loop", "AMBER")
+				ctx.Set("phase", "TEST")
+			},
+			wantSubstr: "loop",
+		},
+		{
+			name: "phase_not_in_domain",
+			setup: func(ctx *statemachine.Context) {
+				ctx.Set("language", "java")
+				ctx.Set("ticket_id", "OPV-123")
+				ctx.Set("loop", "RED")
+				ctx.Set("phase", "FOO")
+			},
+			wantSubstr: "phase",
 		},
 		{
 			name: "no_targets",
 			setup: func(ctx *statemachine.Context) {
 				ctx.Set("language", "java")
-				ctx.Set("disable_reason", "AT - RED - TEST")
+				ctx.Set("ticket_id", "OPV-123")
+				ctx.Set("loop", "RED")
+				ctx.Set("phase", "TEST")
 			},
 			wantSubstr: "disable_targets",
 		},
@@ -1493,7 +1517,9 @@ func TestDisableChangeDriven_RequiresAllInputs(t *testing.T) {
 			name: "targets_wrong_type",
 			setup: func(ctx *statemachine.Context) {
 				ctx.Set("language", "java")
-				ctx.Set("disable_reason", "AT - RED - TEST")
+				ctx.Set("ticket_id", "OPV-123")
+				ctx.Set("loop", "RED")
+				ctx.Set("phase", "TEST")
 				ctx.State["disable_targets"] = "not-a-slice"
 			},
 			wantSubstr: "[]string",
@@ -1502,7 +1528,9 @@ func TestDisableChangeDriven_RequiresAllInputs(t *testing.T) {
 			name: "targets_empty",
 			setup: func(ctx *statemachine.Context) {
 				ctx.Set("language", "java")
-				ctx.Set("disable_reason", "AT - RED - TEST")
+				ctx.Set("ticket_id", "OPV-123")
+				ctx.Set("loop", "RED")
+				ctx.Set("phase", "TEST")
 				ctx.State["disable_targets"] = []string{}
 			},
 			wantSubstr: "empty",
@@ -1531,7 +1559,9 @@ func TestDisableChangeDriven_ShellsOncePerTarget(t *testing.T) {
 	a := newActions(Deps{Shell: sh})
 	ctx := statemachine.NewContext()
 	ctx.Set("language", "java")
-	ctx.Set("disable_reason", "AT - RED - TEST")
+	ctx.Set("ticket_id", "OPV-123")
+	ctx.Set("loop", "RED")
+	ctx.Set("phase", "TEST")
 	ctx.State["disable_targets"] = []string{
 		"src/test/java/A.java:shouldFooSucceed",
 		"src/test/java/B.java:shouldBarSucceed",
@@ -1541,8 +1571,8 @@ func TestDisableChangeDriven_ShellsOncePerTarget(t *testing.T) {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
 	want := []string{
-		"./disable-test.sh java 'AT - RED - TEST' src/test/java/A.java:shouldFooSucceed",
-		"./disable-test.sh java 'AT - RED - TEST' src/test/java/B.java:shouldBarSucceed",
+		"./disable-test.sh java 'OPV-123 - AT - RED - TEST' src/test/java/A.java:shouldFooSucceed",
+		"./disable-test.sh java 'OPV-123 - AT - RED - TEST' src/test/java/B.java:shouldBarSucceed",
 	}
 	if len(sh.calls) != len(want) {
 		t.Fatalf("got %d calls, want %d: %v", len(sh.calls), len(want), sh.calls)
@@ -1561,7 +1591,9 @@ func TestDisableChangeDriven_FirstFailureHaltsRun(t *testing.T) {
 	a := newActions(Deps{Shell: sh})
 	ctx := statemachine.NewContext()
 	ctx.Set("language", "csharp")
-	ctx.Set("disable_reason", "CT - RED - TEST")
+	ctx.Set("ticket_id", "SHOP-7")
+	ctx.Set("loop", "RED")
+	ctx.Set("phase", "TEST")
 	ctx.State["disable_targets"] = []string{
 		"Tests/A.cs:Should_Fail_When",
 		"Tests/B.cs:Should_Other_Fail",
@@ -1590,21 +1622,29 @@ func TestEnableChangeDriven_RequiresAllInputs(t *testing.T) {
 		wantSubstr string
 	}{
 		{name: "no_language", setup: func(ctx *statemachine.Context) {}, wantSubstr: "language"},
-		{name: "no_reason", setup: func(ctx *statemachine.Context) {
+		{name: "no_ticket_id", setup: func(ctx *statemachine.Context) {
 			ctx.Set("language", "java")
-		}, wantSubstr: "disable_reason"},
+		}, wantSubstr: "ticket_id"},
+		{name: "prev_phase_not_in_domain", setup: func(ctx *statemachine.Context) {
+			ctx.Set("language", "java")
+			ctx.Set("ticket_id", "OPV-123")
+			ctx.Set("prev_phase", "FOO")
+		}, wantSubstr: "prev_phase"},
 		{name: "no_targets", setup: func(ctx *statemachine.Context) {
 			ctx.Set("language", "java")
-			ctx.Set("disable_reason", "AT - RED - SYSTEM DRIVER")
+			ctx.Set("ticket_id", "OPV-123")
+			ctx.Set("prev_phase", "SYSTEM DRIVER")
 		}, wantSubstr: "disable_targets"},
 		{name: "targets_wrong_type", setup: func(ctx *statemachine.Context) {
 			ctx.Set("language", "java")
-			ctx.Set("disable_reason", "AT - RED - SYSTEM DRIVER")
+			ctx.Set("ticket_id", "OPV-123")
+			ctx.Set("prev_phase", "SYSTEM DRIVER")
 			ctx.State["disable_targets"] = "not-a-slice"
 		}, wantSubstr: "[]string"},
 		{name: "targets_empty", setup: func(ctx *statemachine.Context) {
 			ctx.Set("language", "java")
-			ctx.Set("disable_reason", "AT - RED - SYSTEM DRIVER")
+			ctx.Set("ticket_id", "OPV-123")
+			ctx.Set("prev_phase", "SYSTEM DRIVER")
 			ctx.State["disable_targets"] = []string{}
 		}, wantSubstr: "empty"},
 	} {
@@ -1631,7 +1671,8 @@ func TestEnableChangeDriven_ShellsOncePerTarget(t *testing.T) {
 	a := newActions(Deps{Shell: sh})
 	ctx := statemachine.NewContext()
 	ctx.Set("language", "java")
-	ctx.Set("disable_reason", "AT - RED - SYSTEM DRIVER")
+	ctx.Set("ticket_id", "OPV-123")
+	ctx.Set("prev_phase", "SYSTEM DRIVER")
 	ctx.State["disable_targets"] = []string{
 		"src/test/java/A.java:shouldFooSucceed",
 		"src/test/java/B.java:shouldBarSucceed",
@@ -1641,8 +1682,8 @@ func TestEnableChangeDriven_ShellsOncePerTarget(t *testing.T) {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
 	want := []string{
-		"./enable-test.sh java 'AT - RED - SYSTEM DRIVER' src/test/java/A.java:shouldFooSucceed",
-		"./enable-test.sh java 'AT - RED - SYSTEM DRIVER' src/test/java/B.java:shouldBarSucceed",
+		"./enable-test.sh java 'OPV-123 - AT - RED - SYSTEM DRIVER' src/test/java/A.java:shouldFooSucceed",
+		"./enable-test.sh java 'OPV-123 - AT - RED - SYSTEM DRIVER' src/test/java/B.java:shouldBarSucceed",
 	}
 	if len(sh.calls) != len(want) {
 		t.Fatalf("got %d calls, want %d: %v", len(sh.calls), len(want), sh.calls)
@@ -1661,7 +1702,8 @@ func TestEnableChangeDriven_FirstFailureHaltsRun(t *testing.T) {
 	a := newActions(Deps{Shell: sh})
 	ctx := statemachine.NewContext()
 	ctx.Set("language", "typescript")
-	ctx.Set("disable_reason", "AT - RED - SYSTEM DRIVER")
+	ctx.Set("ticket_id", "OPV-123")
+	ctx.Set("prev_phase", "SYSTEM DRIVER")
 	ctx.State["disable_targets"] = []string{
 		"system-test/typescript/A.spec.ts:should_foo",
 		"system-test/typescript/B.spec.ts:should_bar",
@@ -1892,5 +1934,201 @@ func TestVerifyRealSuitePasses_AnyFailWritesFalse(t *testing.T) {
 	}
 	if len(sh.calls) != 2 {
 		t.Fatalf("got %d calls, want 2 (action runs every test even after a failure): %v", len(sh.calls), sh.calls)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// checkPhaseScope — Layer 2 phase-scope enforcement
+// ---------------------------------------------------------------------------
+
+func TestPathInScope(t *testing.T) {
+	allowed := []string{"system-test/typescript/tests/latest/acceptance", "dsl/typescript/src"}
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"system-test/typescript/tests/latest/acceptance/foo.spec.ts", true},
+		{"system-test/typescript/tests/latest/acceptance", true},  // exact match
+		{"dsl/typescript/src/Driver.ts", true},
+		{"dsl/typescript/srcOther/Driver.ts", false}, // directory-aware: no false-prefix match
+		{"system-test/typescript/tests/latest/acceptanceX", false},
+		{"system/monolith/typescript/src/Server.ts", false},
+	}
+	for _, tc := range cases {
+		if got := pathInScope(tc.path, allowed); got != tc.want {
+			t.Errorf("pathInScope(%q): got %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
+// writePhaseScopeTestConfig writes a minimal gh-optivem.yaml containing
+// the system.path + Family B `paths:` entries phase-scopes.yaml's
+// AT_RED_TEST and AT_GREEN_SYSTEM rows reference. Used by the integration
+// tests below to exercise the layer-name → resolved-path join without
+// shelling out to `gh optivem config init`.
+func writePhaseScopeTestConfig(t *testing.T, repoPath string) {
+	t.Helper()
+	body := `project:
+  provider: github
+  url: https://github.com/orgs/acme/projects/1
+
+repo_strategy: mono-repo
+
+sonar:
+  organization: acme
+
+system:
+  architecture: monolith
+  path: system/monolith/typescript
+  repo: acme/shop
+  lang: typescript
+  sonar_project: acme_shop-system
+
+system_test:
+  path: system-test/typescript
+  repo: acme/shop
+  lang: typescript
+  sonar_project: acme_shop-system-test
+
+paths:
+  at_test: system-test/typescript/tests/latest/acceptance
+  dsl_port: dsl/typescript/src/port
+  dsl_core: dsl/typescript/src/core
+  driver_port: driver/typescript/src/port
+  driver_adapter: driver/typescript/src/adapter
+  ct_test: system-test/typescript/tests/latest/contract
+  external_system_driver_port: driver/typescript/src/external-port
+  external_system_driver_adapter: driver/typescript/src/external-adapter
+`
+	if err := os.WriteFile(filepath.Join(repoPath, "gh-optivem.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write gh-optivem.yaml: %v", err)
+	}
+}
+
+func TestCheckPhaseScope_RequiresPhaseID(t *testing.T) {
+	a := newActions(Deps{})
+	ctx := statemachine.NewContext()
+	out := a.checkPhaseScope(ctx)
+	if out.Err == nil || !strings.Contains(out.Err.Error(), "phase_id") {
+		t.Fatalf("expected phase_id error, got %v", out.Err)
+	}
+}
+
+func TestCheckPhaseScope_AllowlistedPhaseIsNoop(t *testing.T) {
+	var stderr bytes.Buffer
+	a := newActions(Deps{Stderr: &stderr})
+	ctx := statemachine.NewContext()
+	ctx.Params["phase_id"] = "AT_GREEN_BACKEND" // in PhasesDeferredByPlan
+	out := a.checkPhaseScope(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get(CtxKeyPhaseScopeClean); got != true {
+		t.Fatalf("phase_scope_clean: got %v, want true (allowlisted phases are no-op)", got)
+	}
+	if !strings.Contains(stderr.String(), "deferred per") {
+		t.Errorf("expected deferred-plan citation in stderr, got %q", stderr.String())
+	}
+}
+
+func TestCheckPhaseScope_UnknownPhaseIsHardError(t *testing.T) {
+	a := newActions(Deps{})
+	ctx := statemachine.NewContext()
+	ctx.Params["phase_id"] = "NONEXISTENT_PHASE"
+	out := a.checkPhaseScope(ctx)
+	if out.Err == nil {
+		t.Fatalf("expected error on unknown phase, got nil")
+	}
+	if !strings.Contains(out.Err.Error(), "NONEXISTENT_PHASE") {
+		t.Errorf("error should name the phase: %v", out.Err)
+	}
+}
+
+func TestCheckPhaseScope_CleanWhenAllModificationsInScope(t *testing.T) {
+	repoPath := t.TempDir()
+	writePhaseScopeTestConfig(t, repoPath)
+	git := newFakeRunner(t, "git")
+	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
+		[]byte("system-test/typescript/tests/latest/acceptance/foo.spec.ts\ndsl/typescript/src/core/Logic.ts\n"), nil)
+	git.on([]string{"-C", repoPath, "status", "--porcelain"},
+		[]byte(" M system-test/typescript/tests/latest/acceptance/foo.spec.ts\n"), nil)
+	a := newActions(Deps{Git: git, RepoPath: repoPath})
+	ctx := statemachine.NewContext()
+	ctx.Params["phase_id"] = "AT_RED_TEST"
+	out := a.checkPhaseScope(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get(CtxKeyPhaseScopeClean); got != true {
+		t.Fatalf("phase_scope_clean: got %v, want true", got)
+	}
+	if v := ctx.Get(CtxKeyPhaseScopeViolatingPaths); v != nil {
+		t.Errorf("violating_paths: got %v, want nil", v)
+	}
+}
+
+func TestCheckPhaseScope_ViolationPopulatesContext(t *testing.T) {
+	repoPath := t.TempDir()
+	writePhaseScopeTestConfig(t, repoPath)
+	git := newFakeRunner(t, "git")
+	// AT_RED_TEST scope: at_test, dsl_port, dsl_core. The driver_port edit
+	// is outside scope.
+	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
+		[]byte("driver/typescript/src/port/Driver.ts\nsystem-test/typescript/tests/latest/acceptance/foo.spec.ts\n"), nil)
+	git.on([]string{"-C", repoPath, "status", "--porcelain"},
+		[]byte(""), nil)
+	var stderr bytes.Buffer
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Stderr: &stderr})
+	ctx := statemachine.NewContext()
+	ctx.Params["phase_id"] = "AT_RED_TEST"
+	out := a.checkPhaseScope(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get(CtxKeyPhaseScopeClean); got != false {
+		t.Fatalf("phase_scope_clean: got %v, want false", got)
+	}
+	violating, ok := ctx.State[CtxKeyPhaseScopeViolatingPaths].([]string)
+	if !ok {
+		t.Fatalf("violating_paths: not set or wrong type")
+	}
+	if len(violating) != 1 || violating[0] != "driver/typescript/src/port/Driver.ts" {
+		t.Fatalf("violating: got %v, want [driver/typescript/src/port/Driver.ts]", violating)
+	}
+	if !strings.Contains(stderr.String(), "scope violation") {
+		t.Errorf("expected scope-violation banner in stderr, got %q", stderr.String())
+	}
+}
+
+func TestCheckPhaseScope_RenameTracksBothEndpoints(t *testing.T) {
+	repoPath := t.TempDir()
+	writePhaseScopeTestConfig(t, repoPath)
+	git := newFakeRunner(t, "git")
+	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
+		[]byte("dsl/typescript/src/core/Old.ts\nsomewhere/else/New.ts\n"), nil)
+	// Rename row: porcelain shape "R  old -> new". "somewhere/else/New.ts"
+	// is outside scope; the action must surface it.
+	git.on([]string{"-C", repoPath, "status", "--porcelain"},
+		[]byte("R  dsl/typescript/src/core/Old.ts -> somewhere/else/New.ts\n"), nil)
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	ctx.Params["phase_id"] = "AT_RED_DSL" // scope: dsl_core, driver_port
+	out := a.checkPhaseScope(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get(CtxKeyPhaseScopeClean); got != false {
+		t.Fatalf("phase_scope_clean: got %v, want false (rename target is outside scope)", got)
+	}
+	violating, _ := ctx.State[CtxKeyPhaseScopeViolatingPaths].([]string)
+	found := false
+	for _, v := range violating {
+		if v == "somewhere/else/New.ts" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("violating slice missing rename target: %v", violating)
 	}
 }

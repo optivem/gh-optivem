@@ -25,14 +25,17 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/optivem/gh-optivem/internal/atdd"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/intake"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/release"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 	trackergithub "github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/github"
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/promptio"
 )
 
@@ -159,6 +162,13 @@ func RegisterAll(r *Registry, deps Deps) {
 	// just-written tests and asserts every one passes. Driven by the
 	// `verify_real_required` gate, which is no-op for AT phases.
 	r.Register("verify_real_suite_passes", a.verifyRealSuitePasses)
+	// Phase-scope enforcement Layer 2 (per plan 20260518-1144 item 5): runs
+	// after the agent commits, diffs the working tree against the phase's
+	// allowed paths joined from internal/atdd/phase-scopes.yaml +
+	// gh-optivem.yaml paths:, and writes phase_scope_clean +
+	// phase_scope_violating_paths to context. The downstream
+	// phase_scope_clean gate consumes the boolean.
+	r.Register("check_phase_scope", a.checkPhaseScope)
 }
 
 // Context keys consumed by the red_phase_cycle actions. Centralised so the
@@ -182,10 +192,27 @@ const (
 	// edit syntax.
 	CtxKeyLanguage = "language"
 
-	// CtxKeyDisableReason is the reason string written into the disable
-	// markup — e.g. "AT - RED - TEST", "CT - RED - TEST". Mirrors the
-	// language-equivalents.md contract.
-	CtxKeyDisableReason = "disable_reason"
+	// CtxKeyTicketID is the tracker-verbatim ticket identifier
+	// (e.g. "OPV-123", "#42", "SHOP-7"). disable_change_driven and
+	// enable_change_driven combine it with cycle (hard-coded "AT"),
+	// loop, and phase to produce the §Conventions disable-reason
+	// "<TICKET-ID> - AT - <LOOP> - <PHASE>" per
+	// docs/atdd/process/change/behavior/disable-tests.md.
+	CtxKeyTicketID = "ticket_id"
+
+	// CtxKeyLoop is the loop slot of the §Conventions disable-reason:
+	// RED | GREEN. Only RED uses disable today (GREEN never disables),
+	// but the schema reserves both for symmetry.
+	CtxKeyLoop = "loop"
+
+	// CtxKeyPhase is the phase slot of the §Conventions disable-reason:
+	// TEST | DSL | SYSTEM DRIVER (uppercase; internal space allowed).
+	CtxKeyPhase = "phase"
+
+	// CtxKeyPrevPhase is the phase whose @Disabled annotations
+	// enable_change_driven strips. Same domain as CtxKeyPhase. Loop is
+	// implicitly RED (the only loop that disables).
+	CtxKeyPrevPhase = "prev_phase"
 
 	// CtxKeyDisableTargets is the []string of "<file>:<method>" pairs
 	// disable_change_driven applies the disable markup to.
@@ -211,6 +238,18 @@ const (
 	// `verify_real_suite` call_activity param. Read by the verify_real_pass
 	// gate.
 	CtxKeyVerifyRealPass = "verify_real_pass"
+
+	// CtxKeyPhaseScopeClean is the bool check_phase_scope writes to record
+	// whether every modified path in the phase fell within the allowed-paths
+	// join (phase-scopes.yaml ∘ gh-optivem.yaml paths:). Read by the
+	// phase_scope_clean gate.
+	CtxKeyPhaseScopeClean = "phase_scope_clean"
+
+	// CtxKeyPhaseScopeViolatingPaths is the []string of modified paths
+	// check_phase_scope found outside scope. Populated only on violations;
+	// consumed by the STOP_SCOPE_VIOLATION user_task to render the
+	// human-review payload.
+	CtxKeyPhaseScopeViolatingPaths = "phase_scope_violating_paths"
 )
 
 type actions struct {
@@ -792,16 +831,52 @@ func isCompileFailureOutput(out []byte) bool {
 	return false
 }
 
+// allowedDisableLoops is the loop slot domain per §Conventions disable-reason:
+// docs/atdd/process/change/behavior/disable-tests.md.
+var allowedDisableLoops = map[string]bool{"RED": true, "GREEN": true}
+
+// allowedDisablePhases is the phase slot domain per §Conventions
+// disable-reason: docs/atdd/process/change/behavior/disable-tests.md.
+var allowedDisablePhases = map[string]bool{"TEST": true, "DSL": true, "SYSTEM DRIVER": true}
+
+// assembleDisableReason builds the §Conventions disable-reason string
+//
+//	"<TICKET-ID> - AT - <LOOP> - <PHASE>"
+//
+// from constituents read from context. Cycle is hard-coded "AT" (CT slot
+// reserved for symmetry, not yet used). Validates loop and phase against
+// the published domains so the action fails fast on a malformed input
+// rather than producing an un-strippable annotation downstream.
+func assembleDisableReason(actionName, ticketID, loop, phase string) (string, error) {
+	if ticketID == "" {
+		return "", fmt.Errorf("%s: %s not set in Context", actionName, CtxKeyTicketID)
+	}
+	if !allowedDisableLoops[loop] {
+		return "", fmt.Errorf("%s: %s %q not in {RED, GREEN}", actionName, CtxKeyLoop, loop)
+	}
+	if !allowedDisablePhases[phase] {
+		return "", fmt.Errorf("%s: %s %q not in {TEST, DSL, SYSTEM DRIVER}", actionName, CtxKeyPhase, phase)
+	}
+	return fmt.Sprintf("%s - AT - %s - %s", ticketID, loop, phase), nil
+}
+
 // disableChangeDriven applies per-language disable markup
 // (`@Disabled("reason")` / `[Fact(Skip = "reason")]` / `test.skip(true, "reason")`)
 // to the change-driven test methods identified at WRITE. v1 shells out to
 // ./disable-test.sh once per target — the script owns the language-specific
 // edit syntax (the language-equivalents.md table).
 //
+// The reason string is assembled in-action from constituents per the
+// §Conventions schema "<TICKET-ID> - AT - <LOOP> - <PHASE>"
+// (see docs/atdd/process/change/behavior/disable-tests.md). This keeps the
+// format-of-record next to the action that emits it; callers populate the
+// four inputs separately rather than pre-formatting a brittle string.
+//
 // Reads:
-//   - CtxKeyLanguage (string)        — required; java | csharp | typescript
-//   - CtxKeyDisableReason (string)   — required; the reason written into
-//     the markup (e.g. "AT - RED - TEST")
+//   - CtxKeyLanguage (string)         — required; java | csharp | typescript
+//   - CtxKeyTicketID (string)         — required; tracker-verbatim id
+//   - CtxKeyLoop (string)             — required; RED | GREEN
+//   - CtxKeyPhase (string)            — required; TEST | DSL | SYSTEM DRIVER
 //   - CtxKeyDisableTargets ([]string) — required; one entry per test,
 //     formatted "<file>:<method>"
 //
@@ -811,14 +886,22 @@ func isCompileFailureOutput(out []byte) bool {
 //
 // First failure halts the action with Outcome.Err — committing a partially
 // disabled test set would leave the repo in an inconsistent state.
+//
+// Legacy-skip rule: the disable convention applies only to change-driven
+// scenarios; legacy tests must never be annotated. The skip is owned by
+// the caller (which selects disable_targets), since the legacy marker
+// convention itself is designed by the legacy-coverage-cycle plan
+// (plans/20260518-1116-legacy-coverage-cycle.md). This action assumes
+// targets are pre-filtered.
 func (a actions) disableChangeDriven(ctx *statemachine.Context) statemachine.Outcome {
 	lang := ctx.GetString(CtxKeyLanguage)
 	if lang == "" {
 		return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven: %s not set in Context", CtxKeyLanguage)}
 	}
-	reason := ctx.GetString(CtxKeyDisableReason)
-	if reason == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven: %s not set in Context", CtxKeyDisableReason)}
+	reason, err := assembleDisableReason("disable_change_driven",
+		ctx.GetString(CtxKeyTicketID), ctx.GetString(CtxKeyLoop), ctx.GetString(CtxKeyPhase))
+	if err != nil {
+		return statemachine.Outcome{Err: err}
 	}
 	rawTargets, ok := ctx.State[CtxKeyDisableTargets]
 	if !ok {
@@ -841,17 +924,26 @@ func (a actions) disableChangeDriven(ctx *statemachine.Context) statemachine.Out
 	return statemachine.Outcome{}
 }
 
-// enableChangeDriven inverts disableChangeDriven: it removes the
-// per-language disable markup matching `reason` from the same change-driven
-// test methods. v1 shells out to ./enable-test.sh once per target — the
-// script owns the per-language edit syntax (mirroring disable-test.sh).
-// Used at the start of green_phase_cycle's parent flow (at_green_system) to
-// re-enable tests that the prior RED phase disabled.
+// enableChangeDriven inverts disableChangeDriven: it strips the per-language
+// disable markup whose reason starts with the §Conventions re-enable filter
+//
+//	"<CURRENT-TICKET-ID> - AT - RED - <PREV-PHASE>"
+//
+// from the named test methods. v1 shells out to ./enable-test.sh once per
+// target — the script owns the per-language edit syntax and the
+// startsWith match (mirroring disable-test.sh). Used at the start of
+// at_green_system to re-enable tests the prior RED phase disabled.
+//
+// Loop is implicit RED — GREEN never disables, so re-enable always strips
+// the prior RED annotation. The action passes the filter prefix to the
+// shell script; the script must never strip annotations whose ticket
+// prefix belongs to a different ticket, and must never strip legacy
+// markers.
 //
 // Reads:
-//   - CtxKeyLanguage (string)        — required; java | csharp | typescript
-//   - CtxKeyDisableReason (string)   — required; the reason whose markers
-//     this run is removing (e.g. "AT - RED - SYSTEM DRIVER")
+//   - CtxKeyLanguage (string)         — required; java | csharp | typescript
+//   - CtxKeyTicketID (string)         — required; tracker-verbatim id
+//   - CtxKeyPrevPhase (string)        — required; TEST | DSL | SYSTEM DRIVER
 //   - CtxKeyDisableTargets ([]string) — required; one entry per test,
 //     formatted "<file>:<method>"
 //
@@ -862,9 +954,12 @@ func (a actions) enableChangeDriven(ctx *statemachine.Context) statemachine.Outc
 	if lang == "" {
 		return statemachine.Outcome{Err: fmt.Errorf("enable_change_driven: %s not set in Context", CtxKeyLanguage)}
 	}
-	reason := ctx.GetString(CtxKeyDisableReason)
-	if reason == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("enable_change_driven: %s not set in Context", CtxKeyDisableReason)}
+	filterPrefix, err := assembleDisableReason("enable_change_driven",
+		ctx.GetString(CtxKeyTicketID), "RED", ctx.GetString(CtxKeyPrevPhase))
+	if err != nil {
+		// assembleDisableReason emits "phase" in its error for the phase slot;
+		// enable's slot is conventionally prev_phase, so rewrite for clarity.
+		return statemachine.Outcome{Err: fmt.Errorf("%s", strings.Replace(err.Error(), CtxKeyPhase, CtxKeyPrevPhase, 1))}
 	}
 	rawTargets, ok := ctx.State[CtxKeyDisableTargets]
 	if !ok {
@@ -879,7 +974,7 @@ func (a actions) enableChangeDriven(ctx *statemachine.Context) statemachine.Outc
 	}
 	for _, target := range targets {
 		cmd := fmt.Sprintf("./enable-test.sh %s %s %s",
-			shellEscape(lang), shellEscape(reason), shellEscape(target))
+			shellEscape(lang), shellEscape(filterPrefix), shellEscape(target))
 		if _, err := a.deps.Shell.Run(context.Background(), cmd); err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("enable_change_driven (%s): %w", target, err)}
 		}
@@ -934,6 +1029,202 @@ func (a actions) verifyRealSuitePasses(ctx *statemachine.Context) statemachine.O
 	}
 	ctx.Set(CtxKeyVerifyRealPass, allPass)
 	return statemachine.Outcome{Bool: allPass}
+}
+
+// ---------------------------------------------------------------------------
+// Phase-scope enforcement Layer 2 (post-phase scripted check)
+// ---------------------------------------------------------------------------
+
+// checkPhaseScope is Layer 2 of phase-scope enforcement (plan
+// 20260518-1144 item 5). After the agent commits, the action joins:
+//
+//   - internal/atdd/phase-scopes.yaml (SSoT: BPMN phase id → layer list)
+//   - the project's gh-optivem.yaml paths: (layer name → resolved path)
+//     plus Family A path-shaped keys in FamilyAPathKeysInScope (system_path
+//     today).
+//
+// It then enumerates the working-tree changes via `git diff --name-only HEAD`
+// + `git status --porcelain` (union covers staged, unstaged, and untracked
+// paths since the last commit baseline) and checks each modified path
+// against the allowed set with directory-aware prefix matching:
+// diffPath ∈ scope iff diffPath == P || diffPath.startsWith(P + "/").
+//
+// Phase id source: the call_activity invoking red_phase_cycle /
+// green_phase_cycle passes phase_id: <NODE_ID> in its params; this action
+// reads ctx.Params["phase_id"]. Phases listed in
+// atdd.PhasesDeferredByPlan are no-op (clean = true) with a single log
+// line citing the deferred plan.
+//
+// Writes:
+//   - CtxKeyPhaseScopeClean (bool)            — false on violation
+//   - CtxKeyPhaseScopeViolatingPaths ([]string) — populated on violation
+//
+// The phase_scope_clean gate reads the boolean; the STOP_SCOPE_VIOLATION
+// user_task reads the slice to render the human-review payload.
+func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome {
+	phaseID := ctx.Params["phase_id"]
+	if phaseID == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: phase_id not set in Params — the call_activity invoking red_phase_cycle / green_phase_cycle must pass phase_id")}
+	}
+
+	if plan, deferred := atdd.PhasesDeferredByPlan[phaseID]; deferred {
+		fmt.Fprintf(a.deps.Stderr, "check_phase_scope: %s scope check skipped — deferred per %s\n", phaseID, plan)
+		ctx.Set(CtxKeyPhaseScopeClean, true)
+		return statemachine.Outcome{}
+	}
+
+	scopes, err := atdd.LoadPhaseScopes()
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: %w", err)}
+	}
+	layers, ok := scopes.Phases[phaseID]
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf(
+			"check_phase_scope: phase id %q not in internal/atdd/phase-scopes.yaml and not in PhasesDeferredByPlan — add an entry or allowlist", phaseID)}
+	}
+
+	cfg, err := projectconfig.Load(a.deps.RepoPath)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: load gh-optivem.yaml: %w", err)}
+	}
+	if cfg == nil {
+		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: gh-optivem.yaml not found under %s", a.deps.RepoPath)}
+	}
+
+	allowed, err := resolveLayerPaths(layers, cfg)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope (%s): %w", phaseID, err)}
+	}
+
+	modified, err := a.modifiedPathsSinceHead(context.Background())
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: %w", err)}
+	}
+
+	var violating []string
+	for _, m := range modified {
+		if !pathInScope(m, allowed) {
+			violating = append(violating, m)
+		}
+	}
+	if len(violating) > 0 {
+		ctx.Set(CtxKeyPhaseScopeClean, false)
+		ctx.State[CtxKeyPhaseScopeViolatingPaths] = violating
+		fmt.Fprintf(a.deps.Stderr,
+			"check_phase_scope: %s scope violation — %d path(s) outside scope. See docs/atdd/process/shared/scope.md.\n",
+			phaseID, len(violating))
+		for _, v := range violating {
+			fmt.Fprintf(a.deps.Stderr, "  out-of-scope: %s\n", v)
+		}
+		return statemachine.Outcome{Bool: false}
+	}
+	ctx.Set(CtxKeyPhaseScopeClean, true)
+	return statemachine.Outcome{Bool: true}
+}
+
+// resolveLayerPaths joins a phase's layer list against the project's
+// configured paths: Family A path-shaped keys go through their dedicated
+// Config accessor (system_path → cfg.System.Path); everything else is a
+// Family B key in cfg.Paths. Missing values surface as errors rather than
+// silently shrinking the allowed set.
+func resolveLayerPaths(layers []string, cfg *projectconfig.Config) ([]string, error) {
+	out := make([]string, 0, len(layers))
+	for _, layer := range layers {
+		if atdd.FamilyAPathKeysInScope[layer] {
+			switch layer {
+			case "system_path":
+				if cfg.System.Path == "" {
+					return nil, fmt.Errorf("layer %q resolves to empty system.path in gh-optivem.yaml", layer)
+				}
+				out = append(out, cfg.System.Path)
+			default:
+				return nil, fmt.Errorf("layer %q is in FamilyAPathKeysInScope but has no Config accessor", layer)
+			}
+			continue
+		}
+		v, ok := cfg.Paths[layer]
+		if !ok || v == "" {
+			return nil, fmt.Errorf("layer %q not present in gh-optivem.yaml paths:", layer)
+		}
+		out = append(out, v)
+	}
+	return out, nil
+}
+
+// pathInScope returns true if diffPath is within any allowed path P
+// with directory-aware prefix matching: diffPath == P, or diffPath
+// starts with P + "/". Raw HasPrefix(P) is wrong — it would let
+// ".../shop2/..." match ".../shop". This contract is shared with the
+// `gh optivem process scope` CLI projection.
+func pathInScope(diffPath string, allowed []string) bool {
+	for _, p := range allowed {
+		if diffPath == p || strings.HasPrefix(diffPath, p+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// modifiedPathsSinceHead enumerates working-tree paths touched in the
+// current phase by unioning `git diff --name-only HEAD` (tracked,
+// staged + unstaged) with `git status --porcelain` (also covers untracked
+// `??` and rename `R  old -> new` endpoints). Returns a sorted,
+// de-duplicated slice so violating-paths reads deterministically.
+func (a actions) modifiedPathsSinceHead(ctx context.Context) ([]string, error) {
+	seen := map[string]bool{}
+	gitArgs := func(extra ...string) []string {
+		if a.deps.RepoPath == "" {
+			return extra
+		}
+		return append([]string{"-C", a.deps.RepoPath}, extra...)
+	}
+
+	diff, err := a.deps.Git.Run(ctx, gitArgs("diff", "--name-only", "HEAD")...)
+	if err != nil {
+		return nil, fmt.Errorf("git diff --name-only HEAD: %w", err)
+	}
+	for _, line := range strings.Split(string(diff), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			seen[line] = true
+		}
+	}
+
+	status, err := a.deps.Git.Run(ctx, gitArgs("status", "--porcelain")...)
+	if err != nil {
+		return nil, fmt.Errorf("git status --porcelain: %w", err)
+	}
+	for _, line := range strings.Split(string(status), "\n") {
+		// porcelain v1 format: "XY path" or "XY old -> new"; X is the
+		// staged status, Y the unstaged. Two status chars + one space
+		// before the path.
+		if len(line) < 4 {
+			continue
+		}
+		rest := line[3:]
+		if i := strings.Index(rest, " -> "); i >= 0 {
+			oldPath := strings.TrimSpace(rest[:i])
+			newPath := strings.TrimSpace(rest[i+4:])
+			if oldPath != "" {
+				seen[oldPath] = true
+			}
+			if newPath != "" {
+				seen[newPath] = true
+			}
+			continue
+		}
+		path := strings.TrimSpace(rest)
+		if path != "" {
+			seen[path] = true
+		}
+	}
+
+	paths := make([]string, 0, len(seen))
+	for p := range seen {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	return paths, nil
 }
 
 // ---------------------------------------------------------------------------

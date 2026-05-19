@@ -324,6 +324,7 @@ processes:
           agent: at-red-test
           phase_doc: docs/atdd/process/change/behavior/at-red-test.md
           phase_label: "AT - RED - TEST"
+          phase_id: AT_RED_TEST
           change_type: "AT - RED - TEST"
           compile_action: compile_system_tests
         documentation: "AT - RED - TEST"
@@ -340,9 +341,21 @@ processes:
           agent: at-red-dsl
           phase_doc: docs/atdd/process/change/behavior/at-red-dsl.md
           phase_label: "AT - RED - DSL"
+          phase_id: AT_RED_DSL
           change_type: "AT - RED - DSL"
           compile_action: compile_system_tests
         documentation: "AT - RED - DSL"
+
+      - id: GATE_DSL_FLAGS_PRESENT
+        type: gateway
+        binding: dsl_flags_present
+        documentation: "RED-DSL phase-output flags emitted?"
+
+      - id: STOP_FLAG_UNSET
+        type: user_task
+        agent: human
+        role: review
+        documentation: "STOP - HUMAN REVIEW — AT - RED - DSL phase-output flags missing; re-run with reminder"
 
       - id: GATE_EXT_AT
         type: gateway
@@ -365,6 +378,7 @@ processes:
           agent: at-red-system-driver
           phase_doc: docs/atdd/process/change/behavior/at-red-system-driver.md
           phase_label: "AT - RED - SYSTEM DRIVER"
+          phase_id: AT_RED_SYSTEM_DRIVER
           change_type: "AT - RED - SYSTEM DRIVER"
           compile_action: compile_system_tests
         documentation: "AT - RED - SYSTEM DRIVER"
@@ -385,7 +399,10 @@ processes:
       - {from: AT_RED_TEST,          to: GATE_DSL_AT}
       - {from: GATE_DSL_AT,          to: AT_GREEN_SYSTEM,        when: "dsl_interface_changed == false"}
       - {from: GATE_DSL_AT,          to: AT_RED_DSL,             when: "dsl_interface_changed == true"}
-      - {from: AT_RED_DSL,           to: GATE_EXT_AT}
+      - {from: AT_RED_DSL,           to: GATE_DSL_FLAGS_PRESENT}
+      - {from: GATE_DSL_FLAGS_PRESENT, to: GATE_EXT_AT,           when: "dsl_flags_present == true"}
+      - {from: GATE_DSL_FLAGS_PRESENT, to: STOP_FLAG_UNSET,       when: "dsl_flags_present == false"}
+      - {from: STOP_FLAG_UNSET,      to: AT_RED_DSL}
       - {from: GATE_EXT_AT,          to: CT_SUBPROCESS,          when: "external_system_driver_interface_changed == true"}
       - {from: GATE_EXT_AT,          to: GATE_SYS_AT,            when: "external_system_driver_interface_changed == false"}
       - {from: CT_SUBPROCESS,        to: GATE_SYS_AT}
@@ -419,6 +436,7 @@ processes:
           agent: at-green-system-backend
           phase_doc: docs/atdd/process/change/behavior/at-green-system.md
           phase_label: "AT - GREEN - SYSTEM (backend)"
+          phase_id: AT_GREEN_BACKEND
           suite: "<acceptance-api>"
           rebuild_before_run: "true"
           compile_action: compile_system
@@ -431,6 +449,7 @@ processes:
           agent: at-green-system-frontend
           phase_doc: docs/atdd/process/change/behavior/at-green-system.md
           phase_label: "AT - GREEN - SYSTEM (frontend)"
+          phase_id: AT_GREEN_FRONTEND
           suite: "<acceptance-ui>"
           rebuild_before_run: "true"
           compile_action: compile_system
@@ -483,6 +502,7 @@ processes:
           agent: ct-red-test
           phase_doc: docs/atdd/process/change/behavior/ct-red-test.md
           phase_label: "CT - RED - TEST"
+          phase_id: CT_RED_TEST
           change_type: "CT - RED - TEST"
           verify_real_suite: "<suite-contract-real>"
           compile_action: compile_system_tests
@@ -500,6 +520,7 @@ processes:
           agent: ct-red-dsl
           phase_doc: docs/atdd/process/change/behavior/ct-red-dsl.md
           phase_label: "CT - RED - DSL"
+          phase_id: CT_RED_DSL
           change_type: "CT - RED - DSL"
           compile_action: compile_system_tests
         documentation: "CT - RED - DSL"
@@ -519,6 +540,7 @@ processes:
           agent: ct-red-external-system-driver
           phase_doc: docs/atdd/process/change/behavior/ct-red-external-system-driver.md
           phase_label: "CT - RED - EXTERNAL SYSTEM DRIVER"
+          phase_id: CT_RED_EXTERNAL_SYSTEM_DRIVER
           change_type: "CT - RED - EXTERNAL SYSTEM DRIVER"
           compile_action: compile_system_tests
         documentation: "CT - RED - EXTERNAL SYSTEM DRIVER"
@@ -822,6 +844,26 @@ processes:
         phase_doc: ${phase_doc}
         documentation: "${phase_label} - WRITE"
 
+      # ---- Layer 1: agent-triggered scope exception (plan 20260518-1144 item 6) ----
+      # Reads scope_exception_files / scope_exception_reason emitted by the
+      # agent's COMMIT output. When the agent signals it cannot stay within
+      # `scope:`, route to STOP_SCOPE_VIOLATION before any review / compile /
+      # run / disable / commit work happens.
+      - id: GATE_SCOPE_EXCEPTION
+        type: gateway
+        binding: scope_exception_requested
+        documentation: "Agent signalled scope exception?"
+
+      - id: STOP_SCOPE_VIOLATION
+        type: user_task
+        agent: human
+        role: review
+        # TODO(plan 20260518-1144 item 2): the plan defines four options here —
+        # Accept / Rewind to upstream phase / Revert + rerun / Abort. For now
+        # the single outflow models "Revert + rerun" (the safe default); a
+        # GATE_SCOPE_DECISION binding + branches is a follow-up.
+        documentation: "STOP - HUMAN REVIEW — ${phase_label} scope violation (Layer 1 agent-signalled or Layer 2 post-phase diff)"
+
       - id: STOP_RED_REVIEW
         type: user_task
         agent: human
@@ -879,6 +921,21 @@ processes:
         action: disable_change_driven
         documentation: "Disable change-driven scenarios"
 
+      # ---- Layer 2: post-phase scripted scope check (plan 20260518-1144 item 5) ----
+      # check_phase_scope diffs the working tree against the phase's
+      # allowed-paths (phase-scopes.yaml ∘ gh-optivem.yaml paths:) and stamps
+      # phase_scope_clean + phase_scope_violating_paths on the Context. Reads
+      # phase_id from ctx.Params (set by the call_activity in the parent).
+      - id: CHECK_PHASE_SCOPE
+        type: service_task
+        action: check_phase_scope
+        documentation: "Check ${phase_label} scope vs allowed paths"
+
+      - id: GATE_PHASE_SCOPE_CLEAN
+        type: gateway
+        binding: phase_scope_clean
+        documentation: "Phase scope clean?"
+
       - id: COMMIT
         type: call_activity
         process: commit
@@ -889,7 +946,10 @@ processes:
         type: end_event
 
     sequence_flows:
-      - {from: WRITE,                     to: STOP_RED_REVIEW}
+      - {from: WRITE,                     to: GATE_SCOPE_EXCEPTION}
+      - {from: GATE_SCOPE_EXCEPTION,      to: STOP_SCOPE_VIOLATION,      when: "scope_exception_requested == true"}
+      - {from: GATE_SCOPE_EXCEPTION,      to: STOP_RED_REVIEW,           when: "scope_exception_requested == false"}
+      - {from: STOP_SCOPE_VIOLATION,      to: WRITE}
       - {from: STOP_RED_REVIEW,           to: COMPILE}
       - {from: COMPILE,                   to: GATE_VERIFY_REAL_REQUIRED}
       - {from: GATE_VERIFY_REAL_REQUIRED, to: VERIFY_REAL,               when: "verify_real_required == true"}
@@ -902,7 +962,10 @@ processes:
       - {from: GATE_RUN_FAILED_RUNTIME,   to: DISABLE,                   when: "tests_failed_runtime == true"}
       - {from: GATE_RUN_FAILED_RUNTIME,   to: STOP_RED_NOT_RUNTIME_FAIL, when: "tests_failed_runtime == false"}
       - {from: STOP_RED_NOT_RUNTIME_FAIL, to: WRITE}
-      - {from: DISABLE,                   to: COMMIT}
+      - {from: DISABLE,                   to: CHECK_PHASE_SCOPE}
+      - {from: CHECK_PHASE_SCOPE,         to: GATE_PHASE_SCOPE_CLEAN}
+      - {from: GATE_PHASE_SCOPE_CLEAN,    to: COMMIT,                    when: "phase_scope_clean == true"}
+      - {from: GATE_PHASE_SCOPE_CLEAN,    to: STOP_SCOPE_VIOLATION,      when: "phase_scope_clean == false"}
       - {from: COMMIT,                    to: RED_END}
 
   # ===========================================================================
@@ -943,6 +1006,23 @@ processes:
         phase_doc: ${phase_doc}
         documentation: "${phase_label} - WRITE"
 
+      # ---- Layer 1: agent-triggered scope exception (plan 20260518-1144 item 6) ----
+      # Mirror of the red wrapper: route to STOP_SCOPE_VIOLATION before any
+      # compile / run work when the agent signals it cannot stay within scope.
+      - id: GATE_SCOPE_EXCEPTION
+        type: gateway
+        binding: scope_exception_requested
+        documentation: "Agent signalled scope exception?"
+
+      - id: STOP_SCOPE_VIOLATION
+        type: user_task
+        agent: human
+        role: review
+        # TODO(plan 20260518-1144 item 2): four-option decision gate
+        # (Accept / Rewind / Revert+rerun / Abort) deferred; current single
+        # outflow to WRITE models "Revert + rerun" (the safe default).
+        documentation: "STOP - HUMAN REVIEW — ${phase_label} scope violation (Layer 1 agent-signalled or Layer 2 post-phase diff)"
+
       - id: COMPILE
         type: call_activity
         process: compile
@@ -968,16 +1048,35 @@ processes:
         role: review
         documentation: "STOP - HUMAN REVIEW — ${phase_label} tests failed"
 
+      # ---- Layer 2: post-phase scripted scope check (plan 20260518-1144 item 5) ----
+      # Fires after tests pass, before GREEN_END returns control to the parent
+      # (which owns COMMIT for the full-stack-as-one-commit convention).
+      - id: CHECK_PHASE_SCOPE
+        type: service_task
+        action: check_phase_scope
+        documentation: "Check ${phase_label} scope vs allowed paths"
+
+      - id: GATE_PHASE_SCOPE_CLEAN
+        type: gateway
+        binding: phase_scope_clean
+        documentation: "Phase scope clean?"
+
       - id: GREEN_END
         type: end_event
 
     sequence_flows:
-      - {from: WRITE,                    to: COMPILE}
+      - {from: WRITE,                    to: GATE_SCOPE_EXCEPTION}
+      - {from: GATE_SCOPE_EXCEPTION,     to: STOP_SCOPE_VIOLATION,   when: "scope_exception_requested == true"}
+      - {from: GATE_SCOPE_EXCEPTION,     to: COMPILE,                when: "scope_exception_requested == false"}
+      - {from: STOP_SCOPE_VIOLATION,     to: WRITE}
       - {from: COMPILE,                  to: RUN}
       - {from: RUN,                      to: GATE_TESTS_PASS}
-      - {from: GATE_TESTS_PASS,          to: GREEN_END,              when: "tests_pass == true"}
+      - {from: GATE_TESTS_PASS,          to: CHECK_PHASE_SCOPE,      when: "tests_pass == true"}
       - {from: GATE_TESTS_PASS,          to: STOP_GREEN_TEST_FAIL,   when: "tests_pass == false"}
       - {from: STOP_GREEN_TEST_FAIL,     to: WRITE}
+      - {from: CHECK_PHASE_SCOPE,        to: GATE_PHASE_SCOPE_CLEAN}
+      - {from: GATE_PHASE_SCOPE_CLEAN,   to: GREEN_END,              when: "phase_scope_clean == true"}
+      - {from: GATE_PHASE_SCOPE_CLEAN,   to: STOP_SCOPE_VIOLATION,   when: "phase_scope_clean == false"}
 
   # ===========================================================================
   # compile

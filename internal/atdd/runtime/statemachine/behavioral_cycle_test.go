@@ -27,6 +27,24 @@ func seedBehavioralIntake(ctx *Context) {
 	// dispatches): tests_pass=true ends each happy path at GREEN_END.
 	// compile_ok is already set above and is reused by both phases.
 	ctx.Set("tests_pass", true)
+	// Phase-scope enforcement gates (red_phase_cycle + green_phase_cycle,
+	// per plan 20260518-1144 items 5 + 6):
+	//   - scope_exception_requested defaults to false (no scope_exception
+	//     signal from the agent) → spy's Get returns nil → Outcome{} →
+	//     routes through the happy path without needing an explicit seed,
+	//     but pinned here so the gate's contract is visible at the seed
+	//     site.
+	//   - phase_scope_clean MUST be set true; the spy GateFn reads
+	//     ctx[binding] directly, so an unset value coerces to false and
+	//     routes to STOP_SCOPE_VIOLATION → WRITE, deadlocking the cycle
+	//     under the iteration cap.
+	ctx.Set("scope_exception_requested", false)
+	ctx.Set("phase_scope_clean", true)
+	// Post-RED-DSL flag-presence validation gateway (at_cycle, plan
+	// 20260518-1144 item 4). Same fixture rule as phase_scope_clean:
+	// unset coerces to false and routes to STOP_FLAG_UNSET → AT_RED_DSL,
+	// deadlocking any test that walks dsl_interface_changed=true.
+	ctx.Set("dsl_flags_present", true)
 }
 
 // behavioralIntake walks the implement-ticket entry through github_intake,
@@ -73,20 +91,22 @@ func (e *expectDispatch) behavioralTail() *expectDispatch {
 }
 
 // redCycle asserts one red_phase_cycle dispatch on the shared happy path:
-// the call_activity entry in the caller's scope, then WRITE → STOP_RED_REVIEW
-// → COMPILE (call_activity into shared `compile` sub-process,
-// compile_ok=true returns cleanly) → GATE_VERIFY_REAL_REQUIRED(false) →
-// RUN → GATE_RUN_FAILED_RUNTIME(true) → DISABLE → inner commit, then the
-// red end event. params is the raw.Params declared at the call site (also
-// the merged scope inside, since callers run with a noParams parent for
-// red_phase_cycle dispatches today). callerNodeID is the call_activity ID
-// in the parent process. The helper restores the caller's scope on exit so
-// the chain continues cleanly.
+// the call_activity entry in the caller's scope, then WRITE → Layer 1
+// scope-exception gateway (no signal → STOP_RED_REVIEW) → COMPILE
+// (call_activity into shared `compile` sub-process, compile_ok=true returns
+// cleanly) → GATE_VERIFY_REAL_REQUIRED(false) → RUN →
+// GATE_RUN_FAILED_RUNTIME(true) → DISABLE → Layer 2 scope check (clean →
+// continue) → inner commit, then the red end event. params is the raw.Params
+// declared at the call site (also the merged scope inside, since callers run
+// with a noParams parent for red_phase_cycle dispatches today). callerNodeID
+// is the call_activity ID in the parent process. The helper restores the
+// caller's scope on exit so the chain continues cleanly.
 func (e *expectDispatch) redCycle(callerNodeID string, params map[string]string) *expectDispatch {
 	parentProc, parentParams := e.proc, e.params
 	return e.callActivity(callerNodeID, "red_phase_cycle", params).
 		process("red_phase_cycle", params).
 		userTask("WRITE", params["agent"]).
+		gateway("GATE_SCOPE_EXCEPTION", "scope_exception_requested", false).
 		userTask("STOP_RED_REVIEW", "human").
 		callActivity("COMPILE", "compile", compileFromCycleTemplateParams()).
 		process("compile", compileFromCycle(params)).
@@ -98,6 +118,8 @@ func (e *expectDispatch) redCycle(callerNodeID string, params map[string]string)
 		serviceTask("RUN", "run_targeted_tests").
 		gateway("GATE_RUN_FAILED_RUNTIME", "tests_failed_runtime", true).
 		serviceTask("DISABLE", "disable_change_driven").
+		serviceTask("CHECK_PHASE_SCOPE", "check_phase_scope").
+		gateway("GATE_PHASE_SCOPE_CLEAN", "phase_scope_clean", true).
 		callActivity("COMMIT", "commit", commitFromTemplateParams()).
 		process("commit", commitFrom(params)).
 		userTask("APPROVE_COMMIT", "human").
@@ -109,16 +131,18 @@ func (e *expectDispatch) redCycle(callerNodeID string, params map[string]string)
 }
 
 // greenCycle asserts one green_phase_cycle dispatch on the shared happy
-// path: WRITE → COMPILE (call_activity into shared `compile` sub-process,
-// compile_ok=true returns cleanly) → RUN → GATE_TESTS_PASS(true) →
-// GREEN_END. Commit is owned by the parent (at_green_system commits
-// backend + frontend together), so the sub-process ends here. Restores
-// the caller's scope on exit.
+// path: WRITE → Layer 1 scope-exception gateway (no signal → COMPILE) →
+// COMPILE (call_activity into shared `compile` sub-process, compile_ok=true
+// returns cleanly) → RUN → GATE_TESTS_PASS(true) → Layer 2 scope check
+// (clean → GREEN_END). Commit is owned by the parent (at_green_system
+// commits backend + frontend together), so the sub-process ends here.
+// Restores the caller's scope on exit.
 func (e *expectDispatch) greenCycle(callerNodeID string, params map[string]string) *expectDispatch {
 	parentProc, parentParams := e.proc, e.params
 	return e.callActivity(callerNodeID, "green_phase_cycle", params).
 		process("green_phase_cycle", params).
 		userTask("WRITE", params["agent"]).
+		gateway("GATE_SCOPE_EXCEPTION", "scope_exception_requested", false).
 		callActivity("COMPILE", "compile", compileFromCycleTemplateParams()).
 		process("compile", compileFromCycle(params)).
 		serviceTask("COMPILE", params["compile_action"]).
@@ -127,6 +151,8 @@ func (e *expectDispatch) greenCycle(callerNodeID string, params map[string]strin
 		process("green_phase_cycle", params).
 		serviceTask("RUN", "run_targeted_tests").
 		gateway("GATE_TESTS_PASS", "tests_pass", true).
+		serviceTask("CHECK_PHASE_SCOPE", "check_phase_scope").
+		gateway("GATE_PHASE_SCOPE_CLEAN", "phase_scope_clean", true).
 		endEvent("GREEN_END").
 		process(parentProc, parentParams)
 }
@@ -219,6 +245,7 @@ func TestImplementTicket_Behavioral_TestAndDSL(t *testing.T) {
 		redCycle("AT_RED_TEST", atRedTestParams()).
 		gateway("GATE_DSL_AT", "dsl_interface_changed", true).
 		redCycle("AT_RED_DSL", atRedDslParams()).
+		gateway("GATE_DSL_FLAGS_PRESENT", "dsl_flags_present", true).
 		gateway("GATE_EXT_AT", "external_system_driver_interface_changed", false).
 		gateway("GATE_SYS_AT", "system_driver_interface_changed", false).
 		atGreenSystem().
@@ -274,6 +301,7 @@ func TestImplementTicket_Behavioral_TestAndDSLAndExternal(t *testing.T) {
 		redCycle("AT_RED_TEST", atRedTestParams()).
 		gateway("GATE_DSL_AT", "dsl_interface_changed", true).
 		redCycle("AT_RED_DSL", atRedDslParams()).
+		gateway("GATE_DSL_FLAGS_PRESENT", "dsl_flags_present", true).
 		gateway("GATE_EXT_AT", "external_system_driver_interface_changed", true).
 		callActivity("CT_SUBPROCESS", "ct_subprocess", noParams()).
 		process("ct_subprocess", noParams()).

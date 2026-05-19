@@ -198,7 +198,14 @@ var transitionTable = []transitionCase{
 	{process: "at_cycle", from: "AT_RED_TEST", wantTo: "GATE_DSL_AT"},
 	{process: "at_cycle", from: "GATE_DSL_AT", state: map[string]any{"dsl_interface_changed": false}, wantTo: "AT_GREEN_SYSTEM"},
 	{process: "at_cycle", from: "GATE_DSL_AT", state: map[string]any{"dsl_interface_changed": true}, wantTo: "AT_RED_DSL"},
-	{process: "at_cycle", from: "AT_RED_DSL", wantTo: "GATE_EXT_AT"},
+	{process: "at_cycle", from: "AT_RED_DSL", wantTo: "GATE_DSL_FLAGS_PRESENT"},
+	// Post-RED-DSL flag-presence validation gateway (plan 20260518-1144 item 4):
+	// the two RED-DSL phase-output flags MUST be explicitly emitted; unset is
+	// an authoring bug, not a default no. STOP_FLAG_UNSET routes back to
+	// AT_RED_DSL for a re-dispatch with the reminder.
+	{process: "at_cycle", from: "GATE_DSL_FLAGS_PRESENT", state: map[string]any{"dsl_flags_present": true}, wantTo: "GATE_EXT_AT", desc: "both RED-DSL flags emitted → continue to existing branch gates"},
+	{process: "at_cycle", from: "GATE_DSL_FLAGS_PRESENT", state: map[string]any{"dsl_flags_present": false}, wantTo: "STOP_FLAG_UNSET", desc: "either flag unset → human STOP, then re-run RED-DSL"},
+	{process: "at_cycle", from: "STOP_FLAG_UNSET", wantTo: "AT_RED_DSL", desc: "after STOP, re-dispatch RED-DSL so the agent emits both flags"},
 	{process: "at_cycle", from: "GATE_EXT_AT", state: map[string]any{"external_system_driver_interface_changed": true}, wantTo: "CT_SUBPROCESS"},
 	{process: "at_cycle", from: "GATE_EXT_AT", state: map[string]any{"external_system_driver_interface_changed": false}, wantTo: "GATE_SYS_AT"},
 	// CT exit re-evaluation: process-audit gap resolved — CT_SUBPROCESS returns
@@ -281,7 +288,15 @@ var transitionTable = []transitionCase{
 	// All three AT RED phases and all three CT RED phases call into this
 	// process; CT_RED_TEST additionally enables the optional verify_real_suite
 	// branch by setting the same-named param.
-	{process: "red_phase_cycle", from: "WRITE", wantTo: "STOP_RED_REVIEW"},
+	{process: "red_phase_cycle", from: "WRITE", wantTo: "GATE_SCOPE_EXCEPTION"},
+	// Layer 1 phase-scope enforcement (plan 20260518-1144 item 6): the
+	// agent-triggered escape hatch fires immediately after WRITE. On
+	// signal, the cycle routes to a shared STOP and loops back to WRITE
+	// (current single-outflow models "Revert + rerun"; a four-option
+	// decision gate is a noted follow-up).
+	{process: "red_phase_cycle", from: "GATE_SCOPE_EXCEPTION", state: map[string]any{"scope_exception_requested": true}, wantTo: "STOP_SCOPE_VIOLATION", desc: "agent signalled scope exception → human STOP"},
+	{process: "red_phase_cycle", from: "GATE_SCOPE_EXCEPTION", state: map[string]any{"scope_exception_requested": false}, wantTo: "STOP_RED_REVIEW", desc: "no exception signal → normal review path"},
+	{process: "red_phase_cycle", from: "STOP_SCOPE_VIOLATION", wantTo: "WRITE", desc: "after STOP, revert + rerun from WRITE"},
 	{process: "red_phase_cycle", from: "STOP_RED_REVIEW", wantTo: "COMPILE"},
 	{process: "red_phase_cycle", from: "COMPILE", wantTo: "GATE_VERIFY_REAL_REQUIRED", desc: "COMPILE is a call_activity to the shared `compile` sub-process; compile_ok is enforced inside it, so the parent edge is unconditional. WRITE_PROTOTYPES is gone — the WRITE agent now produces a compiling failing test (test + DSL stubs together)."},
 	{process: "red_phase_cycle", from: "GATE_VERIFY_REAL_REQUIRED", state: map[string]any{"verify_real_required": true}, wantTo: "VERIFY_REAL", desc: "CT_RED_TEST sets verify_real_suite → run real-suite check"},
@@ -294,7 +309,14 @@ var transitionTable = []transitionCase{
 	{process: "red_phase_cycle", from: "GATE_RUN_FAILED_RUNTIME", state: map[string]any{"tests_failed_runtime": true}, wantTo: "DISABLE"},
 	{process: "red_phase_cycle", from: "GATE_RUN_FAILED_RUNTIME", state: map[string]any{"tests_failed_runtime": false}, wantTo: "STOP_RED_NOT_RUNTIME_FAIL", desc: "tests not runtime-failing → human STOP"},
 	{process: "red_phase_cycle", from: "STOP_RED_NOT_RUNTIME_FAIL", wantTo: "WRITE", desc: "after STOP, retry from WRITE"},
-	{process: "red_phase_cycle", from: "DISABLE", wantTo: "COMMIT"},
+	{process: "red_phase_cycle", from: "DISABLE", wantTo: "CHECK_PHASE_SCOPE"},
+	// Layer 2 phase-scope enforcement (plan 20260518-1144 item 5): the
+	// post-phase scripted diff fires after DISABLE, before COMMIT. The
+	// check_phase_scope action stamps phase_scope_clean +
+	// phase_scope_violating_paths; the gate consumes the boolean.
+	{process: "red_phase_cycle", from: "CHECK_PHASE_SCOPE", wantTo: "GATE_PHASE_SCOPE_CLEAN"},
+	{process: "red_phase_cycle", from: "GATE_PHASE_SCOPE_CLEAN", state: map[string]any{"phase_scope_clean": true}, wantTo: "COMMIT", desc: "scope clean → commit"},
+	{process: "red_phase_cycle", from: "GATE_PHASE_SCOPE_CLEAN", state: map[string]any{"phase_scope_clean": false}, wantTo: "STOP_SCOPE_VIOLATION", desc: "scope violated → same STOP as Layer 1"},
 	{process: "red_phase_cycle", from: "COMMIT", wantTo: "RED_END"},
 
 	// ---- green_phase_cycle (shared by AT GREEN backend/frontend WRITEs) ----
@@ -303,12 +325,24 @@ var transitionTable = []transitionCase{
 	// WRITE so the agent re-dispatches with fresh failure context. There
 	// is no DISABLE/COMMIT inside — at_green_system commits backend and
 	// frontend together at the parent level after both call_activities end.
-	{process: "green_phase_cycle", from: "WRITE", wantTo: "COMPILE"},
+	{process: "green_phase_cycle", from: "WRITE", wantTo: "GATE_SCOPE_EXCEPTION"},
+	// Layer 1 phase-scope enforcement, green side (plan 20260518-1144 item
+	// 6): symmetrical with the red side, but the no-signal branch routes
+	// to COMPILE rather than STOP_RED_REVIEW (green has no review STOP).
+	{process: "green_phase_cycle", from: "GATE_SCOPE_EXCEPTION", state: map[string]any{"scope_exception_requested": true}, wantTo: "STOP_SCOPE_VIOLATION", desc: "agent signalled scope exception → human STOP"},
+	{process: "green_phase_cycle", from: "GATE_SCOPE_EXCEPTION", state: map[string]any{"scope_exception_requested": false}, wantTo: "COMPILE", desc: "no exception signal → continue to compile"},
+	{process: "green_phase_cycle", from: "STOP_SCOPE_VIOLATION", wantTo: "WRITE", desc: "after STOP, revert + rerun from WRITE"},
 	{process: "green_phase_cycle", from: "COMPILE", wantTo: "RUN", desc: "COMPILE is a call_activity to the shared `compile` sub-process; it returns only on compile_ok, so the parent edge is unconditional"},
 	{process: "green_phase_cycle", from: "RUN", wantTo: "GATE_TESTS_PASS"},
-	{process: "green_phase_cycle", from: "GATE_TESTS_PASS", state: map[string]any{"tests_pass": true}, wantTo: "GREEN_END", desc: "all tests pass → end"},
+	{process: "green_phase_cycle", from: "GATE_TESTS_PASS", state: map[string]any{"tests_pass": true}, wantTo: "CHECK_PHASE_SCOPE", desc: "all tests pass → Layer 2 scope check before parent's COMMIT"},
 	{process: "green_phase_cycle", from: "GATE_TESTS_PASS", state: map[string]any{"tests_pass": false}, wantTo: "STOP_GREEN_TEST_FAIL", desc: "any test fails → human STOP"},
 	{process: "green_phase_cycle", from: "STOP_GREEN_TEST_FAIL", wantTo: "WRITE", desc: "after STOP, retry from WRITE"},
+	// Layer 2 phase-scope enforcement, green side (plan 20260518-1144 item
+	// 5): fires after tests pass, before GREEN_END returns control to the
+	// parent (which owns COMMIT for the full-stack-as-one-commit convention).
+	{process: "green_phase_cycle", from: "CHECK_PHASE_SCOPE", wantTo: "GATE_PHASE_SCOPE_CLEAN"},
+	{process: "green_phase_cycle", from: "GATE_PHASE_SCOPE_CLEAN", state: map[string]any{"phase_scope_clean": true}, wantTo: "GREEN_END", desc: "scope clean → end"},
+	{process: "green_phase_cycle", from: "GATE_PHASE_SCOPE_CLEAN", state: map[string]any{"phase_scope_clean": false}, wantTo: "STOP_SCOPE_VIOLATION", desc: "scope violated → same STOP as Layer 1"},
 
 	// ---- compile (shared sub-process: pairs COMPILE with GATE + human-gated FIX) ----
 	// Every compile in the orchestration is dispatched through this sub-process;

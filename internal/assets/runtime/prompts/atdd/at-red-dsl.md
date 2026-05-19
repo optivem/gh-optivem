@@ -11,6 +11,7 @@ If your previous WRITE didn't compile, instead fix the broken/missing piece in y
 
 Do not present or wait for approval inside the agent.
 
+Read `${docs_root}/atdd/process/shared/scope.md`.
 Read `${docs_root}/atdd/process/change/behavior/at-red-dsl.md`.
 Read `${docs_root}/atdd/architecture/dsl-core.md`.
 Read `${docs_root}/atdd/architecture/driver-port.md`.

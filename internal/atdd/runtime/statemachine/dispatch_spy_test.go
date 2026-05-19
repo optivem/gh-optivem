@@ -242,6 +242,7 @@ func atRedTestParams() map[string]string {
 		"agent":          "at-red-test",
 		"phase_doc":      "docs/atdd/process/change/behavior/at-red-test.md",
 		"phase_label":    "AT - RED - TEST",
+		"phase_id":       "AT_RED_TEST",
 		"change_type":    "AT - RED - TEST",
 		"compile_action": "compile_system_tests",
 	}
@@ -253,6 +254,7 @@ func atRedDslParams() map[string]string {
 		"agent":          "at-red-dsl",
 		"phase_doc":      "docs/atdd/process/change/behavior/at-red-dsl.md",
 		"phase_label":    "AT - RED - DSL",
+		"phase_id":       "AT_RED_DSL",
 		"change_type":    "AT - RED - DSL",
 		"compile_action": "compile_system_tests",
 	}
@@ -265,6 +267,7 @@ func ctRedTestParams() map[string]string {
 		"agent":             "ct-red-test",
 		"phase_doc":         "docs/atdd/process/change/behavior/ct-red-test.md",
 		"phase_label":       "CT - RED - TEST",
+		"phase_id":          "CT_RED_TEST",
 		"change_type":       "CT - RED - TEST",
 		"verify_real_suite": "<suite-contract-real>",
 		"compile_action":    "compile_system_tests",
@@ -277,6 +280,7 @@ func ctRedDslParams() map[string]string {
 		"agent":          "ct-red-dsl",
 		"phase_doc":      "docs/atdd/process/change/behavior/ct-red-dsl.md",
 		"phase_label":    "CT - RED - DSL",
+		"phase_id":       "CT_RED_DSL",
 		"change_type":    "CT - RED - DSL",
 		"compile_action": "compile_system_tests",
 	}
@@ -288,6 +292,7 @@ func ctRedExternalDriverParams() map[string]string {
 		"agent":          "ct-red-external-system-driver",
 		"phase_doc":      "docs/atdd/process/change/behavior/ct-red-external-system-driver.md",
 		"phase_label":    "CT - RED - EXTERNAL SYSTEM DRIVER",
+		"phase_id":       "CT_RED_EXTERNAL_SYSTEM_DRIVER",
 		"change_type":    "CT - RED - EXTERNAL SYSTEM DRIVER",
 		"compile_action": "compile_system_tests",
 	}
@@ -299,6 +304,7 @@ func atGreenBackendParams() map[string]string {
 		"agent":              "at-green-system-backend",
 		"phase_doc":          "docs/atdd/process/change/behavior/at-green-system.md",
 		"phase_label":        "AT - GREEN - SYSTEM (backend)",
+		"phase_id":           "AT_GREEN_BACKEND",
 		"suite":              "<acceptance-api>",
 		"rebuild_before_run": "true",
 		"compile_action":     "compile_system",
@@ -311,6 +317,7 @@ func atGreenFrontendParams() map[string]string {
 		"agent":              "at-green-system-frontend",
 		"phase_doc":          "docs/atdd/process/change/behavior/at-green-system.md",
 		"phase_label":        "AT - GREEN - SYSTEM (frontend)",
+		"phase_id":           "AT_GREEN_FRONTEND",
 		"suite":              "<acceptance-ui>",
 		"rebuild_before_run": "true",
 		"compile_action":     "compile_system",
