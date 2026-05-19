@@ -2,7 +2,7 @@
 # External Driver impl is mostly translation work — Sonnet handles it.
 model: sonnet
 effort: medium
-scope: {}   # query resolved scope: `gh optivem process scope CT_RED_EXTERNAL_DRIVER`
+scope: {}   # query resolved scope: `gh optivem process scope CT_RED_EXTERNAL_SYSTEM_DRIVER`
 ---
 You are the Driver Agent. Follow the phase referenced below.
 
@@ -10,6 +10,6 @@ If your previous WRITE didn't compile, instead fix the broken/missing piece in y
 
 Do not present or wait for approval inside the agent.
 
-Read `${docs_root}/atdd/process/change/behavior/ct-red-external-driver.md`.
+Read `${docs_root}/atdd/process/change/behavior/ct-red-external-system-driver.md`.
 Read `${docs_root}/atdd/architecture/driver-port.md`.
 Read `${docs_root}/atdd/code/language-equivalents/${language}.md`.
