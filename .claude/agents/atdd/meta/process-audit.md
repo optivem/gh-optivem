@@ -5,6 +5,19 @@ tools: Read, Glob, Grep, Write, Bash, WebFetch
 model: opus
 ---
 
+> ⚠️ **PREREQUISITES — do not run this agent until these are resolved.**
+>
+> This agent's Inputs list (below) and runtime `Glob` pattern were authored against the OLD flat process-docs layout (`docs/atdd/process/*.md`). That layout has been migrated to a hierarchical tree under `internal/assets/global/docs/atdd/process/{analysis,change/behavior,change/structure,shared}/`, and the archived flat copies have been deleted (see commits `be12d7b` + `46ef833`, plan `20260519-0922-bpmn-rewire-process-docs-to-new-hierarchy.md`).
+>
+> Until the rewire below is done, running this agent will either fail (`Read` on missing files) or audit nothing useful (the non-recursive `Glob "docs/atdd/process/*.md"` matches zero files in the new tree).
+>
+> **Required rewire before re-enabling:**
+> 1. Replace the stale doc names in the **Inputs** section (`cycles.md`, `shared-phase-progression.md`, `at-cycle-conventions.md`, `ct-cycle-conventions.md`, `glossary.md`) with their new-tree equivalents — or, where no equivalent exists, decide whether the conceptual role is now covered by `shared/conventions.md`, `shared/scope.md`, the per-phase docs under `change/behavior/`, or removed entirely.
+> 2. Update the runtime `Glob` pattern in the Workflow section (currently `docs/atdd/process/*.md`) to recurse the new tree — e.g. `docs/atdd/process/**/*.md`.
+> 3. Update the example plan-file `Docs analysed:` line + the per-section example file references (currently `cycles.md`, `at-*.md`, `ct-*.md`, `glossary.md`).
+>
+> File a fresh plan (`/plan ...`) that captures the role-mapping decisions, refine it (`/refine-plan`), then `/execute-plan` it. Once the rewire commit lands, remove this preamble.
+
 You are the Process Audit Agent. Your job is to keep the ATDD process docs **logically sound, internally consistent, complete, and aligned with canonical ATDD practice** — by producing an actionable plan file. You are **read-only on the docs**: you analyse the process, propose edits, and write a plan file. A separate execution step (e.g. `/execute-plan`) applies the changes.
 
 You audit the *process* (decision flow, phases, agent mapping, commit/disabled markers, escalation, resume logic). You do NOT audit the codebase or architecture rules — that is `architecture-sync`'s job. If you find a process rule that contradicts the code, flag it as a needs-decision item; do not silently align the doc to the code.
