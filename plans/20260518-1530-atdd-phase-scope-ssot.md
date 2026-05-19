@@ -1,6 +1,6 @@
 # Plan: ATDD phase-scope single source of truth (SSoT)
 
-> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-18T20:47:17Z` (executing items 1, 2, 11 only — items 3–10 deferred to a session after CT-vocabulary plan 20260518-1742 lands)
+> ✅ **Partial execute 2026-05-18 / 2026-05-19** — items 1, 2 landed in commit `a171da4` (parallel agent: `phase-scopes.yaml`, `scope.md`, `CanonicalPathKeys` export). Item 11 landed this session (`internal/atdd/phase_scopes_test.go` + CT_RED_TEST defer in `phase-scopes.yaml`). Items 3–10 await CT-vocabulary plan ([20260518-1742](20260518-1742-family-b-stems-and-ct-vocab.md)) landing first. Note: `docs/atdd/process/shared/scope.md` was relocated to `internal/assets/global/docs/atdd/process/shared/scope.md` by commit `2ae72bd` (docs-into-assets reorganization). Also filed: [BPMN external-system naming consistency plan (20260519-0704)](20260519-0704-bpmn-external-system-naming-consistency.md) capturing CT_RED_EXTERNAL_DRIVER / CT_GREEN_STUBS phase-id renames + Family B `external_driver_*` key renames + the matching `config migrate` rename pass.
 
 > ✅ **Refined 2026-05-18** — walked item-by-item with the user; every original OPEN QUESTION resolved (η, μ, λ, ζ, γ extension, ct_test, agent-to-phase mapping, placeholders.md scope). Locked decision ε revised in lockstep (manual-only → deterministic via existing `gh optivem config migrate`). Ready for `/execute-plan` once the listed hard dependencies land.
 
@@ -335,22 +335,6 @@ The sync layer skips frontmatter writes for allowlist phases (it leaves `scope: 
 
 > **Refined 2026-05-18:** (a) Template location pinned to `internal/assets/runtime/prompts/atdd/*.md`, consistent with item 4's consumer-surface resolution. **Why:** original wording (`internal/assets/.../agents/atdd/`) presupposed Claude Code subagent files that don't exist; runtime-prompt templates are the actual asset surface. Allowlist phases get a placeholder comment citing the deferred plan, so a future audit grep finds them. (b) File list enumerated (9 in-scope + 4 not-in-scope with reasons). **Why:** mirrors item 7's enumeration — prevents execute-plan from re-deciding which files are phase-aligned. The 4 non-phase prompts (3 structural-cycle agents + 1 retry helper) are explicitly listed so they don't get accidentally swept; structural-cycle agents share the same deferred plan as item 7's structure-cycle docs.
 
-### 11. Tests + schema validation for `phase-scopes.yaml`
-
-Add Go tests at **`internal/atdd/phase_scopes_test.go`** (ζ resolved 2026-05-18 — co-located with `internal/atdd/phase-scopes.yaml` for editor discoverability; standard Go `<file>_test.go` convention; test imports `internal/atdd/runtime/statemachine` to read parsed `process-flow.yaml` phase ids — normal test-side dependency, no import cycle).
-
-The tests assert at build time that:
-
-- Every phase name in `phase-scopes.yaml` matches a real BPMN process-flow phase identifier (cross-reference against `process-flow.yaml`).
-- Every `user_task` phase id in `process-flow.yaml` is *either* present in `phase-scopes.yaml` *or* on an explicit allowlist of knowingly-unmapped phases. The allowlist must be a small named map in the test file (e.g. `phasesDeferredByPlan`), each entry carrying a one-line comment pointing at the follow-up plan (e.g. `// deferred per plans/deferred/20260518-1530-multitier-green-scope.md`). This makes "we knowingly haven't scoped this yet" a self-documenting state instead of a silent gap. Current allowlist entries: `AT_GREEN_BACKEND`, `AT_GREEN_FRONTEND` (multitier GREEN — see deferred plan).
-- Every layer name referenced is in `canonicalPathKeys()` OR is a known Family A path-shaped key (`system_path`).
-- No duplicate layer references within a phase's list.
-- All values are non-empty arrays.
-
-These catch drift between the architecture, the BPMN process flow, and the scope doctrine at CI time.
-
-> **Refined 2026-05-18:** Added the allowlist mechanism for knowingly-unmapped phases. **Why:** the AT-GREEN handling decision in item 1 leaves `AT_GREEN_BACKEND` and `AT_GREEN_FRONTEND` unmapped until the deferred multitier-GREEN plan lands. Without an allowlist, the cross-validator would either fail-closed (blocking this plan from landing) or fail-open (silent gap). A named allowlist with per-entry deferred-plan citations is self-documenting and survives the eventual plan-pickup.
-
 ## Out of scope
 
 - **Family B substrate vocabulary additions** — owned by the [predecessor plan (20260518-1500)](20260518-1500-atdd-phase-scope-placeholders.md) items 1–3.
@@ -376,16 +360,18 @@ These catch drift between the architecture, the BPMN process flow, and the scope
 - Predecessor plan ([20260518-1500](20260518-1500-atdd-phase-scope-placeholders.md)) items 1–3 must land before this plan executes. The Family B keys `at_test`, `dsl_port`, `dsl_core` must exist in `canonicalPathKeys()` for `phase-scopes.yaml` (item 1) to reference them safely.
 - CT-vocabulary plan ([20260518-1742](20260518-1742-family-b-stems-and-ct-vocab.md)) must land before or alongside this plan. The Family B key `ct_test` (referenced by `CT_RED_TEST` in `phase-scopes.yaml`) is defined there.
 
-**Execute order (refined 2026-05-18):**
+**Execute order (refined 2026-05-18; updated 2026-05-19 post-partial-execute):**
 
-1. Items 1, 2 (`phase-scopes.yaml` + `scope.md`) — pure new files, no runtime impact yet.
-2. Item 11 (tests at `internal/atdd/phase_scopes_test.go`) — guards item 1's correctness before downstream items consume it. Allowlist mechanism active for `AT_GREEN_BACKEND` / `AT_GREEN_FRONTEND` per the deferred multitier plan.
-3. Items 3, 10 (scaffolder + runtime-prompt template `scope: {}` marker) — together. Item 3 changes the `DefaultPaths(testLang, systemTestPath, sutNamespace)` signature and pins resolved paths; item 10 prepares the runtime-prompt templates so item 4's sync has somewhere to project into.
+1. ~~Items 1, 2~~ — ✅ landed 2026-05-18.
+2. ~~Item 11~~ — ✅ landed 2026-05-18 with broadened FK rule (every node dispatching a concrete writing agent — `user_task` or `call_activity` — must be in `phase-scopes.yaml` or on `phasesDeferredByPlan`). Allowlist active for `AT_GREEN_BACKEND`, `AT_GREEN_FRONTEND` (multitier plan), `SYSTEM_INTERFACE_REDESIGN_CYCLE`, `EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE`, `CHORE_CYCLE` (structure-cycle plan).
+3. Items 3, 10 (scaffolder + runtime-prompt template `scope: {}` marker) — together. Item 3 changes the `DefaultPaths(testLang, systemTestPath, sutNamespace)` signature and pins resolved paths; item 10 prepares the runtime-prompt templates so item 4's sync has somewhere to project into. **Note:** `canonicalPathKeys()` was exported to `CanonicalPathKeys()` during item 11's execution (test cross-package access); item 3 can rely on it.
 4. Item 4 (sync projection into runtime-prompt frontmatter) — wires existing scaffolds to refresh `scope:` on next `gh optivem sync`. Mapping comes from BPMN `user_task.agent:` — no new schema.
 5. Items 5 + 6 (validator + extended `config migrate`) — together: item 6 implements the SSoT join in `runConfigMigrate`, item 5's hard error points users at it. Both depend on item 3's new `DefaultPaths` signature.
 6. Item 8 (BPMN plan edits + `check_phase_scope` runtime rewire) — depends on `phase-scopes.yaml` being live; deletes Snapshot A; drops obsolete param-threading (BPMN plan lines 218–236); allowlist phases get no-op + log.
 7. Item 7 (phase doc §Scope sweep — 9 files, 5 AT + 4 CT). Structure-cycle docs deferred per the new sibling plan.
 8. Item 9 (rename `placeholders.md` → `path-keys.md` + material rewrite). Last — doc consistency catches up to the now-true runtime story.
+
+**Coordinate with rename plan ([20260519-0704](20260519-0704-bpmn-external-system-naming-consistency.md)):** the rename plan also touches `paths_defaults.go`, `process-flow.yaml`, CT prompt files, and the `phase-scopes.yaml` CT rows. Whichever lands first, the other must be re-walked for conflicts.
 
 **Pre-execute check:** grep `plans/*.md` and `plans/deferred/*.md` for any concurrent agent pickup markers on the files touched here — the BPMN plan, `paths_defaults.go`, `config_commands.go`, `config.go`, `optivem_yaml.go`, `path-keys.md` (currently `placeholders.md`), runtime-prompt templates under `internal/assets/runtime/prompts/atdd/`, and the new `internal/atdd/phase-scopes.yaml` location — before adding this plan's marker, per `[[feedback_check_concurrent_agents]]`. As of refinement, the CT-vocabulary plan ([20260518-1742](20260518-1742-family-b-stems-and-ct-vocab.md)) is being refined by a parallel agent; coordinate before this plan's execute starts.
 
