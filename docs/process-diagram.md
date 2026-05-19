@@ -201,9 +201,9 @@ flowchart TD
 ```mermaid
 flowchart TD
     CT_END((End))
-    CT_GREEN_STUBS[CT - GREEN - STUBS]
+    CT_GREEN_EXTERNAL_SYSTEM_STUB[CT - GREEN - STUBS]
     CT_RED_DSL[CT - RED - DSL — see § red_phase_cycle]
-    CT_RED_EXTERNAL_DRIVER[CT - RED - EXTERNAL DRIVER — see § red_phase_cycle]
+    CT_RED_EXTERNAL_SYSTEM_DRIVER[CT - RED - EXTERNAL SYSTEM DRIVER — see § red_phase_cycle]
     CT_RED_TEST[CT - RED - TEST — see § red_phase_cycle]
     GATE_DSL_CT{DSL Interface Changed?}
     GATE_EXT_CT{External System Driver Interface Changed?}
@@ -212,20 +212,20 @@ flowchart TD
 
     ONBOARDING --> CT_RED_TEST
     CT_RED_TEST --> GATE_DSL_CT
-    GATE_DSL_CT -- No --> CT_GREEN_STUBS
+    GATE_DSL_CT -- No --> CT_GREEN_EXTERNAL_SYSTEM_STUB
     GATE_DSL_CT -- Yes --> CT_RED_DSL
     CT_RED_DSL --> GATE_EXT_CT
-    GATE_EXT_CT -- No --> CT_GREEN_STUBS
-    GATE_EXT_CT -- Yes --> CT_RED_EXTERNAL_DRIVER
-    CT_RED_EXTERNAL_DRIVER --> VERIFY_CT_DRIVER
-    VERIFY_CT_DRIVER --> CT_GREEN_STUBS
-    CT_GREEN_STUBS --> CT_END
+    GATE_EXT_CT -- No --> CT_GREEN_EXTERNAL_SYSTEM_STUB
+    GATE_EXT_CT -- Yes --> CT_RED_EXTERNAL_SYSTEM_DRIVER
+    CT_RED_EXTERNAL_SYSTEM_DRIVER --> VERIFY_CT_DRIVER
+    VERIFY_CT_DRIVER --> CT_GREEN_EXTERNAL_SYSTEM_STUB
+    CT_GREEN_EXTERNAL_SYSTEM_STUB --> CT_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
     class VERIFY_CT_DRIVER serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
-    class CT_GREEN_STUBS agentNode
+    class CT_GREEN_EXTERNAL_SYSTEM_STUB agentNode
 ```
 
 ## External System Onboarding Sub-Process

@@ -4,7 +4,7 @@ Implement the DSL Core for real; set the external-driver-interface-changed flag.
 
 ## Scope
 
-This phase touches the `dsl_core`, `external_driver_port` layers (bare
+This phase touches the `dsl_core`, `external_system_driver_port` layers (bare
 layer names; resolved physical paths live in `gh-optivem.yaml paths:`
 — inspect with `gh optivem process scope CT_RED_DSL`).
 

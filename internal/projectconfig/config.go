@@ -762,6 +762,20 @@ beyond the canonical layout`)
 		if _, reserved := reservedPlaceholderKeys[k]; reserved {
 			return fmt.Errorf("config: paths.%s shadows a reserved fixed-schema placeholder name; rename it", k)
 		}
+		// Rule 22b: the pre-rename "external_driver_*" keys were renamed
+		// to "external_system_driver_*" per plan 20260519-0704. Detect
+		// the old names and direct the user at `gh optivem config
+		// migrate`, which renames the entries in place preserving values
+		// and comments. Same pattern as the pre-SSoT detection in Rule
+		// 0c above.
+		if newKey, isOldExternalDriverKey := ExternalDriverKeyRenames[k]; isOldExternalDriverKey {
+			return fmt.Errorf(`config: paths.%s is the pre-rename key (renamed to paths.%s per plan 20260519-0704).
+
+Run:  gh optivem config migrate
+
+The migrate command renames the entry in place, preserving the value
+and any inline comments. Re-run validate after migrate to confirm`, k, newKey)
+		}
 		if _, ok := canonical[k]; !ok {
 			return fmt.Errorf("config: paths.%s is not a canonical Family B key; see internal/assets/global/docs/atdd/process/path-keys.md for the supported set", k)
 		}

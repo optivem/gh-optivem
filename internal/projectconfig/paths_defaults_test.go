@@ -9,14 +9,14 @@ func TestDefaultPaths_TypescriptFlatScaffold(t *testing.T) {
 	t.Parallel()
 	got := DefaultPaths(LangTypescript, "system-test", "shop")
 	want := map[string]string{
-		"driver_port":             "system-test/src/testkit/driver/port/shop",
-		"driver_adapter":          "system-test/src/testkit/driver/adapter/shop",
-		"external_driver_port":    "system-test/src/testkit/external/port/shop",
-		"external_driver_adapter": "system-test/src/testkit/external/adapter/shop",
-		"at_test":                 "system-test/tests/latest/acceptance",
-		"dsl_port":                "system-test/src/testkit/dsl/port/shop",
-		"dsl_core":                "system-test/src/testkit/dsl/core/shop",
-		"ct_test":                 "system-test/tests/latest/contract",
+		"driver_port":                    "system-test/src/testkit/driver/port/shop",
+		"driver_adapter":                 "system-test/src/testkit/driver/adapter/shop",
+		"external_system_driver_port":    "system-test/src/testkit/external/port/shop",
+		"external_system_driver_adapter": "system-test/src/testkit/external/adapter/shop",
+		"at_test":                        "system-test/tests/latest/acceptance",
+		"dsl_port":                       "system-test/src/testkit/dsl/port/shop",
+		"dsl_core":                       "system-test/src/testkit/dsl/core/shop",
+		"ct_test":                        "system-test/tests/latest/contract",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("typescript: got %v, want %v", got, want)
@@ -27,14 +27,14 @@ func TestDefaultPaths_JavaFlatScaffold(t *testing.T) {
 	t.Parallel()
 	got := DefaultPaths(LangJava, "system-test", "shop")
 	want := map[string]string{
-		"driver_port":             "system-test/src/main/java/testkit/driver/port/shop",
-		"driver_adapter":          "system-test/src/main/java/testkit/driver/adapter/shop",
-		"external_driver_port":    "system-test/src/main/java/testkit/external/port/shop",
-		"external_driver_adapter": "system-test/src/main/java/testkit/external/adapter/shop",
-		"at_test":                 "system-test/src/test/java/shop/latest/acceptance",
-		"dsl_port":                "system-test/src/main/java/testkit/dsl/port/shop",
-		"dsl_core":                "system-test/src/main/java/testkit/dsl/core/shop",
-		"ct_test":                 "system-test/src/test/java/shop/latest/contract",
+		"driver_port":                    "system-test/src/main/java/testkit/driver/port/shop",
+		"driver_adapter":                 "system-test/src/main/java/testkit/driver/adapter/shop",
+		"external_system_driver_port":    "system-test/src/main/java/testkit/external/port/shop",
+		"external_system_driver_adapter": "system-test/src/main/java/testkit/external/adapter/shop",
+		"at_test":                        "system-test/src/test/java/shop/latest/acceptance",
+		"dsl_port":                       "system-test/src/main/java/testkit/dsl/port/shop",
+		"dsl_core":                       "system-test/src/main/java/testkit/dsl/core/shop",
+		"ct_test":                        "system-test/src/test/java/shop/latest/contract",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("java: got %v, want %v", got, want)
@@ -45,14 +45,14 @@ func TestDefaultPaths_DotnetFlatScaffold(t *testing.T) {
 	t.Parallel()
 	got := DefaultPaths(LangDotnet, "system-test", "shop")
 	want := map[string]string{
-		"driver_port":             "system-test/Testkit.Driver.Port/shop",
-		"driver_adapter":          "system-test/Testkit.Driver.Adapter/shop",
-		"external_driver_port":    "system-test/Testkit.External.Port/shop",
-		"external_driver_adapter": "system-test/Testkit.External.Adapter/shop",
-		"at_test":                 "system-test/SystemTests/Latest/AcceptanceTests",
-		"dsl_port":                "system-test/Testkit.Dsl.Port/shop",
-		"dsl_core":                "system-test/Testkit.Dsl.Core/shop",
-		"ct_test":                 "system-test/SystemTests/Latest/ExternalSystemContractTests",
+		"driver_port":                    "system-test/Testkit.Driver.Port/shop",
+		"driver_adapter":                 "system-test/Testkit.Driver.Adapter/shop",
+		"external_system_driver_port":    "system-test/Testkit.External.Port/shop",
+		"external_system_driver_adapter": "system-test/Testkit.External.Adapter/shop",
+		"at_test":                        "system-test/SystemTests/Latest/AcceptanceTests",
+		"dsl_port":                       "system-test/Testkit.Dsl.Port/shop",
+		"dsl_core":                       "system-test/Testkit.Dsl.Core/shop",
+		"ct_test":                        "system-test/SystemTests/Latest/ExternalSystemContractTests",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("dotnet: got %v, want %v", got, want)
@@ -139,8 +139,8 @@ func TestDefaultPaths_KeysMatchPlaceholderDoctrine(t *testing.T) {
 	want := []string{
 		"driver_port",
 		"driver_adapter",
-		"external_driver_port",
-		"external_driver_adapter",
+		"external_system_driver_port",
+		"external_system_driver_adapter",
 		"at_test",
 		"dsl_port",
 		"dsl_core",

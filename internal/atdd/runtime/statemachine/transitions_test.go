@@ -227,14 +227,14 @@ var transitionTable = []transitionCase{
 	// ---- ct_subprocess ----
 	{process: "ct_subprocess", from: "ONBOARDING", wantTo: "CT_RED_TEST"},
 	{process: "ct_subprocess", from: "CT_RED_TEST", wantTo: "GATE_DSL_CT"},
-	{process: "ct_subprocess", from: "GATE_DSL_CT", state: map[string]any{"dsl_interface_changed": false}, wantTo: "CT_GREEN_STUBS"},
+	{process: "ct_subprocess", from: "GATE_DSL_CT", state: map[string]any{"dsl_interface_changed": false}, wantTo: "CT_GREEN_EXTERNAL_SYSTEM_STUB"},
 	{process: "ct_subprocess", from: "GATE_DSL_CT", state: map[string]any{"dsl_interface_changed": true}, wantTo: "CT_RED_DSL"},
 	{process: "ct_subprocess", from: "CT_RED_DSL", wantTo: "GATE_EXT_CT"},
-	{process: "ct_subprocess", from: "GATE_EXT_CT", state: map[string]any{"external_system_driver_interface_changed": false}, wantTo: "CT_GREEN_STUBS"},
-	{process: "ct_subprocess", from: "GATE_EXT_CT", state: map[string]any{"external_system_driver_interface_changed": true}, wantTo: "CT_RED_EXTERNAL_DRIVER"},
-	{process: "ct_subprocess", from: "CT_RED_EXTERNAL_DRIVER", wantTo: "VERIFY_CT_DRIVER"},
-	{process: "ct_subprocess", from: "VERIFY_CT_DRIVER", wantTo: "CT_GREEN_STUBS"},
-	{process: "ct_subprocess", from: "CT_GREEN_STUBS", wantTo: "CT_END"},
+	{process: "ct_subprocess", from: "GATE_EXT_CT", state: map[string]any{"external_system_driver_interface_changed": false}, wantTo: "CT_GREEN_EXTERNAL_SYSTEM_STUB"},
+	{process: "ct_subprocess", from: "GATE_EXT_CT", state: map[string]any{"external_system_driver_interface_changed": true}, wantTo: "CT_RED_EXTERNAL_SYSTEM_DRIVER"},
+	{process: "ct_subprocess", from: "CT_RED_EXTERNAL_SYSTEM_DRIVER", wantTo: "VERIFY_CT_DRIVER"},
+	{process: "ct_subprocess", from: "VERIFY_CT_DRIVER", wantTo: "CT_GREEN_EXTERNAL_SYSTEM_STUB"},
+	{process: "ct_subprocess", from: "CT_GREEN_EXTERNAL_SYSTEM_STUB", wantTo: "CT_END"},
 
 	// ---- external_system_onboarding ----
 	// Smoke-test resume path: process-audit gap resolved — when the smoke
@@ -465,13 +465,13 @@ func TestGapDecision_RunCycleRoutesByChangeType(t *testing.T) {
 
 func TestGapDecision_StubsOwnershipPlaceholder(t *testing.T) {
 	// Stubs ownership is a recorded TBD — the YAML currently uses
-	// `agent: ct-green-stubs` as a placeholder. Lock that here so a future edit
-	// that resolves the gap will fail this test, prompting an explicit
-	// update + decision record.
+	// `agent: ct-green-external-system-stub` as a placeholder. Lock that here so
+	// a future edit that resolves the gap will fail this test, prompting an
+	// explicit update + decision record.
 	eng := loadSnapshot(t)
-	stubs := eng.Processes["ct_subprocess"].Nodes["CT_GREEN_STUBS"]
-	if stubs.Raw.Agent != "ct-green-stubs" {
-		t.Errorf("CT_GREEN_STUBS agent: got %q, want %q (placeholder pending stubs-ownership decision)", stubs.Raw.Agent, "ct-green-stubs")
+	stubs := eng.Processes["ct_subprocess"].Nodes["CT_GREEN_EXTERNAL_SYSTEM_STUB"]
+	if stubs.Raw.Agent != "ct-green-external-system-stub" {
+		t.Errorf("CT_GREEN_EXTERNAL_SYSTEM_STUB agent: got %q, want %q (placeholder pending stubs-ownership decision)", stubs.Raw.Agent, "ct-green-external-system-stub")
 	}
 }
 

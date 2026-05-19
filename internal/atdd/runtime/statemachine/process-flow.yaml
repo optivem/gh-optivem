@@ -65,8 +65,9 @@
 # Open gaps preserved as TBDs (do not silently resolve):
 #   - legacy_acceptance_criteria process: single TBD node; full mechanics deferred per
 #     glossary.md ("The Legacy Acceptance Criteria Cycle's own internal phases are TBD").
-#   - ct_green_stubs node: agent set to `ct-green-stubs`; ownership is TBD per the
-#     process-audit gap on stubs ownership (see plans/20260429-100633-process-audit.md).
+#   - ct_green_external_system_stub node: agent set to `ct-green-external-system-stub`;
+#     ownership is TBD per the process-audit gap on stubs ownership
+#     (see plans/20260429-100633-process-audit.md).
 
 processes:
 
@@ -511,16 +512,16 @@ processes:
         binding: external_system_driver_interface_changed
         documentation: "External System Driver Interface Changed?"
 
-      - id: CT_RED_EXTERNAL_DRIVER
+      - id: CT_RED_EXTERNAL_SYSTEM_DRIVER
         type: call_activity
         process: red_phase_cycle
         params:
-          agent: ct-red-external-driver
-          phase_doc: docs/atdd/process/change/behavior/ct-red-external-driver.md
-          phase_label: "CT - RED - EXTERNAL DRIVER"
-          change_type: "CT - RED - EXTERNAL DRIVER"
+          agent: ct-red-external-system-driver
+          phase_doc: docs/atdd/process/change/behavior/ct-red-external-system-driver.md
+          phase_label: "CT - RED - EXTERNAL SYSTEM DRIVER"
+          change_type: "CT - RED - EXTERNAL SYSTEM DRIVER"
           compile_action: compile_system_tests
-        documentation: "CT - RED - EXTERNAL DRIVER"
+        documentation: "CT - RED - EXTERNAL SYSTEM DRIVER"
 
       # TODO: BPMN-owned post_issue_comment service_task for Driver
       # interface change summary — see follow-up plan for wiring.
@@ -530,28 +531,28 @@ processes:
         action: run_tests
         documentation: "Verify: run targeted contract tests after external driver-adapter change"
 
-      - id: CT_GREEN_STUBS
+      - id: CT_GREEN_EXTERNAL_SYSTEM_STUB
         # Ownership TBD per process-audit gap on stubs ownership.
         # Placeholder agent name; resolve before the Go runtime ships.
         type: user_task
-        agent: ct-green-stubs
-        phase_doc: docs/atdd/process/change/behavior/ct-green-stubs.md
+        agent: ct-green-external-system-stub
+        phase_doc: docs/atdd/process/change/behavior/ct-green-external-system-stub.md
         documentation: "CT - GREEN - STUBS"
 
       - id: CT_END
         type: end_event
 
     sequence_flows:
-      - {from: ONBOARDING,             to: CT_RED_TEST}
-      - {from: CT_RED_TEST,            to: GATE_DSL_CT}
-      - {from: GATE_DSL_CT,            to: CT_GREEN_STUBS,         when: "dsl_interface_changed == false"}
-      - {from: GATE_DSL_CT,            to: CT_RED_DSL,             when: "dsl_interface_changed == true"}
-      - {from: CT_RED_DSL,             to: GATE_EXT_CT}
-      - {from: GATE_EXT_CT,            to: CT_GREEN_STUBS,         when: "external_system_driver_interface_changed == false"}
-      - {from: GATE_EXT_CT,            to: CT_RED_EXTERNAL_DRIVER, when: "external_system_driver_interface_changed == true"}
-      - {from: CT_RED_EXTERNAL_DRIVER, to: VERIFY_CT_DRIVER}
-      - {from: VERIFY_CT_DRIVER,       to: CT_GREEN_STUBS}
-      - {from: CT_GREEN_STUBS,         to: CT_END}
+      - {from: ONBOARDING,                    to: CT_RED_TEST}
+      - {from: CT_RED_TEST,                   to: GATE_DSL_CT}
+      - {from: GATE_DSL_CT,                   to: CT_GREEN_EXTERNAL_SYSTEM_STUB, when: "dsl_interface_changed == false"}
+      - {from: GATE_DSL_CT,                   to: CT_RED_DSL,                    when: "dsl_interface_changed == true"}
+      - {from: CT_RED_DSL,                    to: GATE_EXT_CT}
+      - {from: GATE_EXT_CT,                   to: CT_GREEN_EXTERNAL_SYSTEM_STUB, when: "external_system_driver_interface_changed == false"}
+      - {from: GATE_EXT_CT,                   to: CT_RED_EXTERNAL_SYSTEM_DRIVER, when: "external_system_driver_interface_changed == true"}
+      - {from: CT_RED_EXTERNAL_SYSTEM_DRIVER, to: VERIFY_CT_DRIVER}
+      - {from: VERIFY_CT_DRIVER,              to: CT_GREEN_EXTERNAL_SYSTEM_STUB}
+      - {from: CT_GREEN_EXTERNAL_SYSTEM_STUB, to: CT_END}
 
   # ===========================================================================
   # external_system_onboarding
@@ -759,7 +760,7 @@ processes:
   # ===========================================================================
   # The cycle picks its compile tier from the `compile_action` call-activity
   # param: every red_phase_cycle caller (AT_RED_TEST, AT_RED_DSL,
-  # AT_RED_SYSTEM_DRIVER, CT_RED_TEST, CT_RED_DSL, CT_RED_EXTERNAL_DRIVER) →
+  # AT_RED_SYSTEM_DRIVER, CT_RED_TEST, CT_RED_DSL, CT_RED_EXTERNAL_SYSTEM_DRIVER) →
   # compile_system_tests, because all RED-phase edits land under
   # system-test/<lang>/ (tests, DSL, and Drivers live in the test tree).
   # green_phase_cycle callers → compile_system, because GREEN edits the

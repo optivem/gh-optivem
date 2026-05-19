@@ -27,7 +27,7 @@ You audit the *process* (decision flow, phases, agent mapping, commit/disabled m
 - `docs/atdd/process/cycles.md` — the master decision flow.
 - `docs/atdd/process/shared-phase-progression.md` — the universal STOP / wait-for-approval rule.
 - `docs/atdd/process/at-cycle-conventions.md` and `docs/atdd/process/at-*.md` (`at-red-test.md`, `at-red-dsl.md`, `at-red-system-driver.md`, `at-green-system.md`) — per-phase rules for the AT cycle.
-- `docs/atdd/process/ct-cycle-conventions.md` and `docs/atdd/process/ct-*.md` (`ct-red-test.md`, `ct-red-dsl.md`, `ct-red-external-driver.md`, `ct-green-stubs.md`) — per-phase rules for the CT sub-process.
+- `docs/atdd/process/ct-cycle-conventions.md` and `docs/atdd/process/ct-*.md` (`ct-red-test.md`, `ct-red-dsl.md`, `ct-red-external-system-driver.md`, `ct-green-external-system-stub.md`) — per-phase rules for the CT sub-process.
 - `docs/atdd/process/glossary.md` — shared definitions.
 
 You MUST read every file before producing findings. Never conclude "no findings" from a quick read — per the project consistency-check rule, enumerate concretely first.
@@ -79,7 +79,7 @@ When the docs deviate from canon, the question is *intentional design choice* vs
 
 For every finding, place it in exactly one section of the plan:
 
-1. **Process rule changes** — concrete, well-understood edits the user is likely to want applied as-is (e.g. "phase name `AT-RED-TEST` should be `AT - RED - TEST` per the rest of the doc", "resume table is missing a row for `CT - RED - EXTERNAL DRIVER`"). Each item names the file, section, and exact wording.
+1. **Process rule changes** — concrete, well-understood edits the user is likely to want applied as-is (e.g. "phase name `AT-RED-TEST` should be `AT - RED - TEST` per the rest of the doc", "resume table is missing a row for `CT - RED - EXTERNAL SYSTEM DRIVER`"). Each item names the file, section, and exact wording.
 2. **Missing branches / gaps** — places where a decision is incomplete or a phase is undefined. Don't invent the answer; describe the gap and propose the question the user must answer to fill it.
 3. **Needs-decision** — design-choice questions where there isn't a clearly-correct answer (alignment with canon, intentional deviation, ambiguity in failure handling, unit-TDD positioning, etc.).
 4. **Stale / contradictory wording** — text that still appears but contradicts another doc or the orchestrator. Never propose silent deletion; surface it under stale wording with explicit user approval required.

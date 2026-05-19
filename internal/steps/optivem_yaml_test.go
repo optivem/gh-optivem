@@ -204,7 +204,7 @@ func TestBuildOptivemYAML_OutputValidates(t *testing.T) {
 // a non-empty `paths:` Family B block whose keys match the placeholder
 // doctrine. Without this block a freshly-scaffolded project would fail
 // MaterializeProject on first dispatch (any phase doc referencing
-// ${driver_port} / ${driver_adapter} / ${external_driver_*} would
+// ${driver_port} / ${driver_adapter} / ${external_system_driver_*} would
 // surface as an unfilled placeholder).
 func TestBuildOptivemYAML_PathsBlockSeededPerLanguage(t *testing.T) {
 	t.Parallel()
@@ -236,7 +236,7 @@ func TestBuildOptivemYAML_PathsBlockSeededPerLanguage(t *testing.T) {
 			if len(got.Paths) == 0 {
 				t.Fatal("paths: block should be seeded by the scaffolder")
 			}
-			for _, k := range []string{"driver_port", "driver_adapter", "external_driver_port", "external_driver_adapter"} {
+			for _, k := range []string{"driver_port", "driver_adapter", "external_system_driver_port", "external_system_driver_adapter"} {
 				if _, ok := got.Paths[k]; !ok {
 					t.Errorf("paths.%s missing", k)
 				}
@@ -272,7 +272,7 @@ func TestBuildOptivemYAML_PathsBlockMaterializeOK(t *testing.T) {
 		t.Fatalf("scaffolded config fails Validate: %v", err)
 	}
 	pm := pc.PlaceholderMap()
-	for _, key := range []string{"driver_port", "driver_adapter", "external_driver_port", "external_driver_adapter"} {
+	for _, key := range []string{"driver_port", "driver_adapter", "external_system_driver_port", "external_system_driver_adapter"} {
 		if pm[key] == "" {
 			t.Errorf("placeholder map missing %q after scaffold", key)
 		}

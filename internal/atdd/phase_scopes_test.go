@@ -94,7 +94,7 @@ func TestPhaseScopes_ForwardFK_PhasesExistInBPMN(t *testing.T) {
 // every node that dispatches a writing agent has scope declared — either
 // in phase-scopes.yaml or with an explicit deferred-plan citation on
 // the allowlist. Filtering by writing-agent (rather than e.g.
-// user_task-only) means CT_GREEN_STUBS (currently a bare user_task) and
+// user_task-only) means CT_GREEN_EXTERNAL_SYSTEM_STUB (currently a bare user_task) and
 // the templated call_activities (AT_RED_*, CT_RED_*, structure-cycle
 // agents) are all caught by one rule.
 func TestPhaseScopes_ReverseFK_WritingAgentsScopedOrAllowlisted(t *testing.T) {

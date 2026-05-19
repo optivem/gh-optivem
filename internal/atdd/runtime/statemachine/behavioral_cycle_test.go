@@ -262,13 +262,13 @@ func TestImplementTicket_Behavioral_TestAndDSLAndExternal(t *testing.T) {
 
 	// ── ASSERT ──────────────────────────────────────────────────────────
 	// CT_SUBPROCESS dispatches red_phase_cycle three times (TEST, DSL,
-	// EXTERNAL DRIVER) on top of the two AT - RED - * dispatches, so
+	// EXTERNAL SYSTEM DRIVER) on top of the two AT - RED - * dispatches, so
 	// red_phase_cycle's WRITE/STOP/COMPILE/RUN/DISABLE/COMMIT trail repeats
 	// five times in this run. CT_RED_TEST is the only red_phase_cycle call
 	// site that pushes verify_real_suite — the rest match the AT shape.
 	// CT_SUBPROCESS — ONBOARDING short-circuits (driver exists), no node
 	// fires beyond GATE_DRIVER_EXISTS → ONBOARD_END; CT_RED_TEST → CT_RED_DSL
-	// → CT_RED_EXTERNAL_DRIVER each dispatch red_phase_cycle once.
+	// → CT_RED_EXTERNAL_SYSTEM_DRIVER each dispatch red_phase_cycle once.
 	expect(events).
 		behavioralIntake().
 		redCycle("AT_RED_TEST", atRedTestParams()).
@@ -286,9 +286,9 @@ func TestImplementTicket_Behavioral_TestAndDSLAndExternal(t *testing.T) {
 		gateway("GATE_DSL_CT", "dsl_interface_changed", true).
 		redCycle("CT_RED_DSL", ctRedDslParams()).
 		gateway("GATE_EXT_CT", "external_system_driver_interface_changed", true).
-		redCycle("CT_RED_EXTERNAL_DRIVER", ctRedExternalDriverParams()).
+		redCycle("CT_RED_EXTERNAL_SYSTEM_DRIVER", ctRedExternalDriverParams()).
 		serviceTask("VERIFY_CT_DRIVER", "run_tests").
-		userTask("CT_GREEN_STUBS", "ct-green-stubs").
+		userTask("CT_GREEN_EXTERNAL_SYSTEM_STUB", "ct-green-external-system-stub").
 		endEvent("CT_END").
 		process("at_cycle", noParams()).
 		gateway("GATE_SYS_AT", "system_driver_interface_changed", false).

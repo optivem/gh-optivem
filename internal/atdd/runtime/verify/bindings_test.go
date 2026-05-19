@@ -181,7 +181,7 @@ func TestWrapAll_LeavesUntargetedNodesUntouched(t *testing.T) {
 
 func TestBindings_TableContents(t *testing.T) {
 	bs := Bindings(Deps{Git: fakeGit{}})
-	want := []string{"AT_RED_DSL", "CT_RED_DSL", "CT_RED_EXTERNAL_DRIVER"}
+	want := []string{"AT_RED_DSL", "CT_RED_DSL", "CT_RED_EXTERNAL_SYSTEM_DRIVER"}
 	for _, id := range want {
 		b, ok := bs[id]
 		if !ok {

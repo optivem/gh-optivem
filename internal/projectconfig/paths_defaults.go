@@ -5,15 +5,15 @@ import "path"
 // DefaultPaths returns the canonical Family B `paths:` entries for the
 // given system-test language, root, and sut_namespace. The eight keys
 // match the doctrine in `internal/atdd/phase-scopes.yaml`'s referenced
-// vocabulary: driver_port, driver_adapter, external_driver_port,
-// external_driver_adapter, at_test, dsl_port, dsl_core, ct_test.
+// vocabulary: driver_port, driver_adapter, external_system_driver_port,
+// external_system_driver_adapter, at_test, dsl_port, dsl_core, ct_test.
 //
 // Returns nil when testLang is unsupported or systemTestRoot is empty —
 // the scaffolder leaves `paths:` absent for partial configs (no
 // architecture chosen yet) and `Validate` accepts that shape.
 //
 // Per-SSoT (plan 20260518-1530 item 3), the returned values are fully
-// resolved: testkit keys (driver_*, external_driver_*, dsl_*) take
+// resolved: testkit keys (driver_*, external_system_driver_*, dsl_*) take
 // `sutNamespace` as a trailing directory segment. at_test and ct_test
 // are sut_namespace-free at the DefaultPaths trailing-append layer —
 // Java's stems already incorporate sutNamespace as a middle (package)
@@ -79,6 +79,17 @@ func DefaultPaths(testLang, systemTestRoot, sutNamespace string) map[string]stri
 	return out
 }
 
+// ExternalDriverKeyRenames is the old-key → new-key map for the
+// external-system-driver renames in plan 20260519-0704. The validator
+// uses it to detect a pre-rename config and direct the user at
+// `gh optivem config migrate`; the migrate command consumes the same
+// map to rewrite each old key to its new name in place. Single map so
+// the two surfaces cannot drift.
+var ExternalDriverKeyRenames = map[string]string{
+	"external_driver_port":    "external_system_driver_port",
+	"external_driver_adapter": "external_system_driver_adapter",
+}
+
 // CanonicalPathKeys is the Family B key set in fixed order so DefaultPaths,
 // the migrate back-fill, and any tests over either can iterate in the
 // same order.
@@ -90,8 +101,8 @@ func CanonicalPathKeys() []string {
 	return []string{
 		"driver_port",
 		"driver_adapter",
-		"external_driver_port",
-		"external_driver_adapter",
+		"external_system_driver_port",
+		"external_system_driver_adapter",
 		"at_test",
 		"dsl_port",
 		"dsl_core",

@@ -253,6 +253,9 @@ multi-line error block listing every failure otherwise.`,
 //     workspace scope cascade. Inferred from the tier repo slugs for
 //     multi-repo projects; mono-repo projects are left untouched
 //     (single-repo behavior already covers them).
+//   - external-driver key rename (plan 20260519-0704): renames the
+//     pre-rename keys under paths: to their post-rename forms. Hard
+//     errors when both old and new keys are present.
 //   - SSoT path model: joins system.sut_namespace into each paths:<key>
 //     value and into system.path, then deletes system.sut_namespace.
 //     Applied when system.sut_namespace is present.
@@ -277,6 +280,11 @@ func newConfigMigrateCmd() *cobra.Command {
     multi-repo projects (one ../<repo-name> entry per distinct tier
     slug). Mono-repo projects keep their existing single-repo behavior
     and the field is left absent.
+  • Renames the pre-rename external-driver keys under paths: to their
+    post-rename forms (` + "`external_driver_port`" + ` → ` + "`external_system_driver_port`" + `,
+    ` + "`external_driver_adapter`" + ` → ` + "`external_system_driver_adapter`" + `). Hard
+    errors when both old and new keys are present — the operator must
+    resolve the ambiguity manually.
   • Migrates to the SSoT path model: joins system.sut_namespace into each
     paths:<key> value and into system.path, then deletes system.sut_namespace.
     Applied when system.sut_namespace is present in the file.
@@ -311,6 +319,12 @@ keep their context.`,
 // Each back-fill step is independent — provider and repos may be added
 // in the same run (a config older than both bumps) or in separate runs
 // (a config that already has provider but predates repos:).
+//
+// Ordering: the external-driver key-rename pass runs FIRST so the
+// downstream gap-fill and SSoT join see the post-rename names — this
+// way a pre-rename pre-SSoT config can land both rename and SSoT join
+// in one migrate pass without the SSoT join treating the renamed entry
+// as "missing" and re-back-filling it as a duplicate.
 func runConfigMigrate(path string) (bool, error) {
 	if path == "" {
 		return false, fmt.Errorf("config migrate: path is required")
@@ -357,14 +371,29 @@ func runConfigMigrate(path string) (bool, error) {
 		}
 	}
 
+	// Rename the pre-rename external-driver keys per plan 20260519-0704
+	// (`external_driver_port` → `external_system_driver_port`,
+	// `external_driver_adapter` → `external_system_driver_adapter`).
+	// Runs before the gap-fill so the back-fill sees the post-rename
+	// names and does not re-add the renamed entry as a duplicate.
+	// Errors if both old and new keys are present — that's an
+	// ambiguous migration state that needs human resolution.
+	renamed, err := renameExternalDriverKeys(doc)
+	if err != nil {
+		return false, fmt.Errorf("config migrate: %s: %w", path, err)
+	}
+	if renamed {
+		changed = true
+	}
+
 	// Back-fill paths: when absent or missing canonical Family B keys.
 	// inferPathDefaults returns nil for configs the back-fill shouldn't
 	// touch (no test lang resolvable, no system_test.path) so partial
 	// configs leave the block absent — matching the scaffolder.
 	//
 	// Merge rule: existing user keys are preserved untouched; only the
-	// canonical keys (driver_port, driver_adapter, external_driver_port,
-	// external_driver_adapter, at_test, dsl_port, dsl_core, ct_test)
+	// canonical keys (driver_port, driver_adapter, external_system_driver_port,
+	// external_system_driver_adapter, at_test, dsl_port, dsl_core, ct_test)
 	// that the user has NOT already set are filled in. Operator-
 	// customised values therefore survive every migrate pass — including
 	// the case where the user has renamed only some of the canonical
@@ -660,6 +689,65 @@ func readTestLangAndPath(doc *yaml.Node) (string, string) {
 		}
 	}
 	return testLang, systemTestPath
+}
+
+// renameExternalDriverKeys renames the pre-rename external-driver keys
+// (`external_driver_port`, `external_driver_adapter`) in the `paths:`
+// block to their post-rename forms (`external_system_driver_port`,
+// `external_system_driver_adapter`) per plan 20260519-0704. Returns
+// true when any key was renamed.
+//
+// Rules per pair {old, new}:
+//   - old present, new absent → rename the key node in place, preserving
+//     the value, any inline comments, and the position within the
+//     mapping. This is the canonical migration path.
+//   - both present → hard error: the config is in an ambiguous state
+//     and cannot be migrated deterministically. The operator must pick
+//     a winner manually.
+//   - only new present → no-op (already migrated).
+//   - neither present → no-op.
+//
+// Comment preservation: editing only the Key node's Value (leaving the
+// adjacent value node and the surrounding mapping structure untouched)
+// keeps yaml.v3's HeadComment / LineComment / FootComment fields in
+// place across the rewrite.
+func renameExternalDriverKeys(doc *yaml.Node) (bool, error) {
+	pathsNode := mappingValue(doc, "paths")
+	if pathsNode == nil || pathsNode.Kind != yaml.MappingNode {
+		return false, nil
+	}
+	changed := false
+	for oldKey, newKey := range projectconfig.ExternalDriverKeyRenames {
+		oldNode := mappingKeyNode(pathsNode, oldKey)
+		newNode := mappingKeyNode(pathsNode, newKey)
+		switch {
+		case oldNode != nil && newNode != nil:
+			return false, fmt.Errorf(
+				"paths.%s and paths.%s both present — ambiguous migration state. "+
+					"Remove one entry (keep the one with your intended value) and re-run migrate",
+				oldKey, newKey)
+		case oldNode != nil:
+			oldNode.Value = newKey
+			changed = true
+		}
+	}
+	return changed, nil
+}
+
+// mappingKeyNode returns the key node paired with `key` inside m (the
+// key node itself, not its value), or nil when key is absent. Mirrors
+// mappingValue but returns the other half of the pair so callers that
+// need to edit the key in place (e.g. renames) get a handle to it.
+func mappingKeyNode(m *yaml.Node, key string) *yaml.Node {
+	if m == nil || m.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if m.Content[i].Value == key {
+			return m.Content[i]
+		}
+	}
+	return nil
 }
 
 // removeMappingEntry deletes the (key, value) pair from m's Content

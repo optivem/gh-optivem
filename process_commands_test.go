@@ -166,13 +166,13 @@ func minimalMonolithConfig(t *testing.T) *projectconfig.Config {
 			Lang: "typescript",
 		},
 		Paths: map[string]string{
-			"at_test":                 "system-test/src/atdd/shop",
-			"dsl_port":                "system-test/src/testkit/dsl/port/shop",
-			"dsl_core":                "system-test/src/testkit/dsl/core/shop",
-			"driver_port":             "system-test/src/testkit/driver/port/shop",
-			"driver_adapter":          "system-test/src/testkit/driver/adapter/shop",
-			"external_driver_port":    "system-test/src/testkit/external/driver/port/shop",
-			"external_driver_adapter": "system-test/src/testkit/external/driver/adapter/shop",
+			"at_test":                        "system-test/src/atdd/shop",
+			"dsl_port":                       "system-test/src/testkit/dsl/port/shop",
+			"dsl_core":                       "system-test/src/testkit/dsl/core/shop",
+			"driver_port":                    "system-test/src/testkit/driver/port/shop",
+			"driver_adapter":                 "system-test/src/testkit/driver/adapter/shop",
+			"external_system_driver_port":    "system-test/src/testkit/external/driver/port/shop",
+			"external_system_driver_adapter": "system-test/src/testkit/external/driver/adapter/shop",
 		},
 	}
 }

@@ -43,8 +43,8 @@ under `paths:` in `gh-optivem.yaml` is a canonical Family B key from
 |---|---|
 | `driver_port` | system-test driver port (interface) |
 | `driver_adapter` | system-test driver adapter (implementation) |
-| `external_driver_port` | external-system driver port (interface) |
-| `external_driver_adapter` | external-system driver adapter (implementation) |
+| `external_system_driver_port` | external-system driver port (interface) |
+| `external_system_driver_adapter` | external-system driver adapter (implementation) |
 | `at_test` | acceptance test files |
 | `dsl_port` | DSL port (interface) |
 | `dsl_core` | DSL core (implementation) |
@@ -67,8 +67,8 @@ with `system_test.path: system-test/typescript` and
 paths:
   driver_port: system-test/typescript/src/testkit/driver/port/shop
   driver_adapter: system-test/typescript/src/testkit/driver/adapter/shop
-  external_driver_port: system-test/typescript/src/testkit/external/port/shop
-  external_driver_adapter: system-test/typescript/src/testkit/external/adapter/shop
+  external_system_driver_port: system-test/typescript/src/testkit/external/port/shop
+  external_system_driver_adapter: system-test/typescript/src/testkit/external/adapter/shop
   at_test: system-test/typescript/tests/latest/acceptance
   dsl_port: system-test/typescript/src/testkit/dsl/port/shop
   dsl_core: system-test/typescript/src/testkit/dsl/core/shop

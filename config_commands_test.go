@@ -854,8 +854,8 @@ func TestRunConfigMigrate_SkipsReposForMonoRepo(t *testing.T) {
 paths:
   driver_port: system-test/java/src/main/java/testkit/driver/port
   driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
-  external_driver_port: system-test/java/src/main/java/testkit/external/port
-  external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
+  external_system_driver_port: system-test/java/src/main/java/testkit/external/port
+  external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
   at_test: system-test/java/src/test/java/latest/acceptance
   dsl_port: system-test/java/src/main/java/testkit/dsl/port
   dsl_core: system-test/java/src/main/java/testkit/dsl/core
@@ -954,8 +954,8 @@ repos:
 paths:
   driver_port: system-test/src/main/java/testkit/driver/port
   driver_adapter: system-test/src/main/java/testkit/driver/adapter
-  external_driver_port: system-test/src/main/java/testkit/external/port
-  external_driver_adapter: system-test/src/main/java/testkit/external/adapter
+  external_system_driver_port: system-test/src/main/java/testkit/external/port
+  external_system_driver_adapter: system-test/src/main/java/testkit/external/adapter
   at_test: system-test/src/test/java/latest/acceptance
   dsl_port: system-test/src/main/java/testkit/dsl/port
   dsl_core: system-test/src/main/java/testkit/dsl/core
@@ -1008,7 +1008,7 @@ func TestRunConfigMigrate_BackfillsPathsForMonolith(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load after migrate: %v", err)
 	}
-	for _, k := range []string{"driver_port", "driver_adapter", "external_driver_port", "external_driver_adapter"} {
+	for _, k := range []string{"driver_port", "driver_adapter", "external_system_driver_port", "external_system_driver_adapter"} {
 		if cfg.Paths[k] == "" {
 			t.Errorf("paths.%s missing after back-fill (got: %v)", k, cfg.Paths)
 		}
@@ -1076,7 +1076,7 @@ paths:
 	if got := cfg.Paths["driver_port"]; got != "custom/path/to/port" {
 		t.Errorf("driver_port: user value %q clobbered (got %q)", "custom/path/to/port", got)
 	}
-	for _, k := range []string{"driver_adapter", "external_driver_port", "external_driver_adapter"} {
+	for _, k := range []string{"driver_adapter", "external_system_driver_port", "external_system_driver_adapter"} {
 		if cfg.Paths[k] == "" {
 			t.Errorf("paths.%s missing after partial-merge back-fill", k)
 		}
@@ -1145,8 +1145,8 @@ system_test:
 paths:
   driver_port: system-test/java/src/main/java/testkit/driver/port
   driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
-  external_driver_port: system-test/java/src/main/java/testkit/external/port
-  external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
+  external_system_driver_port: system-test/java/src/main/java/testkit/external/port
+  external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
   at_test: system-test/java/src/test/java/latest/acceptance
   dsl_port: system-test/java/src/main/java/testkit/dsl/port
   dsl_core: system-test/java/src/main/java/testkit/dsl/core
@@ -1230,8 +1230,8 @@ system_test:
 paths:
   driver_port: system-test/java/src/main/java/testkit/driver/port/shop
   driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
-  external_driver_port: system-test/java/src/main/java/testkit/external/port/shop
-  external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
+  external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop
+  external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
   at_test: system-test/java/src/test/java/shop/latest/acceptance
   dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
   dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
@@ -1291,8 +1291,8 @@ system_test:
 paths:
   driver_port: custom/path/to/port
   driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
-  external_driver_port: system-test/java/src/main/java/testkit/external/port
-  external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
+  external_system_driver_port: system-test/java/src/main/java/testkit/external/port
+  external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
   at_test: completely/custom/at/path
   dsl_port: system-test/java/src/main/java/testkit/dsl/port
   dsl_core: system-test/java/src/main/java/testkit/dsl/core
@@ -1352,8 +1352,8 @@ system_test:
 paths:
   driver_port: system-test/typescript/src/testkit/driver/port
   driver_adapter: system-test/typescript/src/testkit/driver/adapter
-  external_driver_port: system-test/typescript/src/testkit/external/port
-  external_driver_adapter: system-test/typescript/src/testkit/external/adapter
+  external_system_driver_port: system-test/typescript/src/testkit/external/port
+  external_system_driver_adapter: system-test/typescript/src/testkit/external/adapter
   at_test: system-test/typescript/tests/latest/acceptance
   dsl_port: system-test/typescript/src/testkit/dsl/port
   dsl_core: system-test/typescript/src/testkit/dsl/core
@@ -1425,6 +1425,312 @@ paths:
 	got, _ := os.ReadFile(path)
 	if !strings.Contains(string(got), "# my custom comment") {
 		t.Errorf("custom comment lost after SSoT migrate:\n%s", got)
+	}
+}
+
+// TestRunConfigMigrate_ExternalDriverRename_RenamesInPlace pins the
+// canonical rename path per plan 20260519-0704: a post-SSoT config that
+// still uses the pre-rename `external_driver_*` keys gets its keys
+// renamed to `external_system_driver_*` in place; values and ordering
+// survive.
+func TestRunConfigMigrate_ExternalDriverRename_RenamesInPlace(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	body := `project:
+  provider: github
+  url: https://github.com/orgs/optivem/projects/20
+
+repo_strategy: mono-repo
+
+sonar:
+  organization: optivem
+
+system:
+  architecture: monolith
+  path: system/monolith/java/shop
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system
+
+system_test:
+  path: system-test/java
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system-test
+
+paths:
+  driver_port: system-test/java/src/main/java/testkit/driver/port/shop
+  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
+  external_driver_port: system-test/java/src/main/java/testkit/external/port/shop
+  external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
+  at_test: system-test/java/src/test/java/shop/latest/acceptance
+  dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
+  dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
+  ct_test: system-test/java/src/test/java/shop/latest/contract
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	changed, err := runConfigMigrate(path)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if !changed {
+		t.Fatal("migrate: want changed=true (rename pass should fire)")
+	}
+	got, _ := os.ReadFile(path)
+	gotStr := string(got)
+	if strings.Contains(gotStr, "external_driver_port:") {
+		t.Errorf("pre-rename key external_driver_port survived:\n%s", gotStr)
+	}
+	if strings.Contains(gotStr, "external_driver_adapter:") {
+		t.Errorf("pre-rename key external_driver_adapter survived:\n%s", gotStr)
+	}
+	if !strings.Contains(gotStr, "external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop") {
+		t.Errorf("post-rename external_system_driver_port missing or value clobbered:\n%s", gotStr)
+	}
+	if !strings.Contains(gotStr, "external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop") {
+		t.Errorf("post-rename external_system_driver_adapter missing or value clobbered:\n%s", gotStr)
+	}
+}
+
+// TestRunConfigMigrate_ExternalDriverRename_IsNoOpWhenAlreadyRenamed
+// pins idempotence: a config already using the post-rename keys sees
+// no rename activity.
+func TestRunConfigMigrate_ExternalDriverRename_IsNoOpWhenAlreadyRenamed(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	body := `project:
+  provider: github
+  url: https://github.com/orgs/optivem/projects/20
+
+repo_strategy: mono-repo
+
+sonar:
+  organization: optivem
+
+system:
+  architecture: monolith
+  path: system/monolith/java/shop
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system
+
+system_test:
+  path: system-test/java
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system-test
+
+paths:
+  driver_port: system-test/java/src/main/java/testkit/driver/port/shop
+  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
+  external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop
+  external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
+  at_test: system-test/java/src/test/java/shop/latest/acceptance
+  dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
+  dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
+  ct_test: system-test/java/src/test/java/shop/latest/contract
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	before, _ := os.ReadFile(path)
+	changed, err := runConfigMigrate(path)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if changed {
+		t.Error("migrate: want changed=false on already-renamed config, got true")
+	}
+	after, _ := os.ReadFile(path)
+	if string(before) != string(after) {
+		t.Errorf("file mutated despite no-op rename migrate:\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+}
+
+// TestRunConfigMigrate_ExternalDriverRename_HardErrorOnBothPresent
+// pins the ambiguous-state guard: when both pre-rename and post-rename
+// keys are present, migrate refuses to choose a winner and surfaces a
+// clean error directing the operator at manual resolution.
+func TestRunConfigMigrate_ExternalDriverRename_HardErrorOnBothPresent(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	body := `project:
+  provider: github
+  url: https://github.com/orgs/optivem/projects/20
+
+repo_strategy: mono-repo
+
+sonar:
+  organization: optivem
+
+system:
+  architecture: monolith
+  path: system/monolith/java/shop
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system
+
+system_test:
+  path: system-test/java
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system-test
+
+paths:
+  driver_port: system-test/java/src/main/java/testkit/driver/port/shop
+  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
+  external_driver_port: system-test/java/src/main/java/testkit/external/port/shop
+  external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop
+  external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
+  external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
+  at_test: system-test/java/src/test/java/shop/latest/acceptance
+  dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
+  dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
+  ct_test: system-test/java/src/test/java/shop/latest/contract
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	_, err := runConfigMigrate(path)
+	if err == nil {
+		t.Fatal("migrate: want hard error when both old and new keys present, got nil")
+	}
+	if !strings.Contains(err.Error(), "ambiguous migration state") {
+		t.Errorf("migrate error: want 'ambiguous migration state', got %v", err)
+	}
+}
+
+// TestRunConfigMigrate_ExternalDriverRename_PreservesComments pins the
+// contract that an inline comment on a renamed key survives the
+// rename. yaml.v3's HeadComment / LineComment / FootComment live on
+// the key node; editing only the node's Value preserves them.
+func TestRunConfigMigrate_ExternalDriverRename_PreservesComments(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	body := `project:
+  provider: github
+  url: https://github.com/orgs/optivem/projects/20
+
+repo_strategy: mono-repo
+
+sonar:
+  organization: optivem
+
+system:
+  architecture: monolith
+  path: system/monolith/java/shop
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system
+
+system_test:
+  path: system-test/java
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system-test
+
+paths:
+  driver_port: system-test/java/src/main/java/testkit/driver/port/shop
+  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
+  # hand-edited: custom external driver layout
+  external_driver_port: custom/external/port/shop
+  external_driver_adapter: custom/external/adapter/shop
+  at_test: system-test/java/src/test/java/shop/latest/acceptance
+  dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
+  dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
+  ct_test: system-test/java/src/test/java/shop/latest/contract
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := runConfigMigrate(path); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	got, _ := os.ReadFile(path)
+	gotStr := string(got)
+	if !strings.Contains(gotStr, "# hand-edited: custom external driver layout") {
+		t.Errorf("inline comment lost across rename:\n%s", gotStr)
+	}
+	// User-customised value survives the rename.
+	if !strings.Contains(gotStr, "external_system_driver_port: custom/external/port/shop") {
+		t.Errorf("user-customised value clobbered across rename:\n%s", gotStr)
+	}
+}
+
+// TestRunConfigMigrate_ExternalDriverRename_RunsAlongsideSSoTJoin pins
+// the combined migration: a pre-SSoT config that ALSO uses the
+// pre-rename keys gets both rename and SSoT join applied in one pass.
+// Rename runs first so the SSoT join sees the post-rename keys and
+// does not re-back-fill the renamed entry as a missing one.
+func TestRunConfigMigrate_ExternalDriverRename_RunsAlongsideSSoTJoin(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	// Pre-SSoT (sut_namespace set, paths: in pre-SSoT shape) AND
+	// pre-rename (uses external_driver_* keys). What a real-world
+	// pre-this-plan config looks like.
+	body := `project:
+  provider: github
+  url: https://github.com/orgs/optivem/projects/20
+
+repo_strategy: mono-repo
+
+sonar:
+  organization: optivem
+
+system:
+  architecture: monolith
+  path: system/monolith/java
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system
+  sut_namespace: shop
+
+system_test:
+  path: system-test/java
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system-test
+
+paths:
+  driver_port: system-test/java/src/main/java/testkit/driver/port
+  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
+  external_driver_port: system-test/java/src/main/java/testkit/external/port
+  external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
+  at_test: system-test/java/src/test/java/latest/acceptance
+  dsl_port: system-test/java/src/main/java/testkit/dsl/port
+  dsl_core: system-test/java/src/main/java/testkit/dsl/core
+  ct_test: system-test/java/src/test/java/latest/contract
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := runConfigMigrate(path); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	got, _ := os.ReadFile(path)
+	gotStr := string(got)
+	// Pre-rename keys gone.
+	if strings.Contains(gotStr, "external_driver_port:") {
+		t.Errorf("pre-rename key survived combined migrate:\n%s", gotStr)
+	}
+	// Post-rename keys present with SSoT-joined values (trailing
+	// /shop appended via default-match branch).
+	if !strings.Contains(gotStr, "external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop") {
+		t.Errorf("post-rename external_system_driver_port missing SSoT join:\n%s", gotStr)
+	}
+	if !strings.Contains(gotStr, "external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop") {
+		t.Errorf("post-rename external_system_driver_adapter missing SSoT join:\n%s", gotStr)
+	}
+	// sut_namespace dropped.
+	if strings.Contains(gotStr, "sut_namespace:") {
+		t.Errorf("sut_namespace not dropped in combined migrate:\n%s", gotStr)
 	}
 }
 

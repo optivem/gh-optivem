@@ -282,13 +282,13 @@ func ctRedDslParams() map[string]string {
 	}
 }
 
-// red_phase_cycle dispatched from ct_subprocess.CT_RED_EXTERNAL_DRIVER.
+// red_phase_cycle dispatched from ct_subprocess.CT_RED_EXTERNAL_SYSTEM_DRIVER.
 func ctRedExternalDriverParams() map[string]string {
 	return map[string]string{
-		"agent":          "ct-red-external-driver",
-		"phase_doc":      "docs/atdd/process/change/behavior/ct-red-external-driver.md",
-		"phase_label":    "CT - RED - EXTERNAL DRIVER",
-		"change_type":    "CT - RED - EXTERNAL DRIVER",
+		"agent":          "ct-red-external-system-driver",
+		"phase_doc":      "docs/atdd/process/change/behavior/ct-red-external-system-driver.md",
+		"phase_label":    "CT - RED - EXTERNAL SYSTEM DRIVER",
+		"change_type":    "CT - RED - EXTERNAL SYSTEM DRIVER",
 		"compile_action": "compile_system_tests",
 	}
 }
