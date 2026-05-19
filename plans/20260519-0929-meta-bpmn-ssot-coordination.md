@@ -156,29 +156,22 @@ The wave plan below operates on these units, not on raw plan files.
 | U1 | `20260518-1530` (items 3–10) + `20260518-1742` (items 2a–4) | atomic-single-session | `paths_defaults.go`, `optivem_yaml.go`, `config.go`, `config_commands.go`, `phase-scopes.yaml` (extends), `process-flow.yaml` (item 8 cleanup only), 9 phase docs in `change/behavior/`, 9 runtime prompts (frontmatter), `placeholders.md` → `path-keys.md` (rename + rewrite + Family B example) |
 | U2 | `20260519-0704` (items 1–3, item 4 per refinement) | standalone, serial-after-U1 | `paths_defaults.go` (key rename), `config_commands.go` (rename pass), `config.go` (validator), `process-flow.yaml` (phase id renames), 2 runtime prompt renames, 4 phase-doc renames, `architecture.yaml`, `phase-scopes.yaml` + `phase_scopes_test.go` (key updates) |
 | U3 | `20260518-1144` (items 2–9) | standalone, serial-after-U2 | `process-flow.yaml` (new nodes, gateways, sequence_flows), `runtime/gates/*` (new bindings), `runtime/actions/*` (new actions), runtime prompts (scope_exception content addition) |
-| U4-DEFERRED | `20260518-2236` | needs-decision (see §1) | not scheduled |
+| ~~U4~~ | ~~`20260518-2236`~~ | **DROPPED** per Needs-decision §1 (resolved 2026-05-19) — owned by out-of-scope plan `20260519-0922` | n/a |
 
 ## Needs-decision (genuine ambiguity only)
 
-### 1. Is `20260518-2236` in scope at all, given that `20260519-0922` supersedes it?
+### 1. ✅ RESOLVED 2026-05-19 — `20260518-2236` deferred permanently in favour of `20260519-0922`
 
-- **Background:** the out-of-scope plan `20260519-0922-bpmn-rewire-process-docs-to-new-hierarchy.md` (refined-in-progress per its pickup marker) states verbatim: *"Superseded in two ways by this plan: (a) the actual new files have no numeric prefixes; (b) the move has already happened and the old files are in `_ARCHIVED_PENDING_DELETE/` rather than deleted, so the 'delete old files' step is already done up to a final rm. This plan replaces the reference-rewrite portion (its Items 4–7) with the correct destination filenames."*
-- **Implications:** 2236's File-mapping table (numbered-prefix filenames like `1.1-at-red-test.md`) does not match the actual filesystem (filenames have no numbered prefixes). 2236's item 3 cut-paste is partially already done in a different shape. 2236's items 4–7 (reference rewrites) are being re-owned by 0922 with corrected destinations. 2236's Open Q1 (SSoT reconciliation) is also still open.
-- **Question for user:** pick one —
-  - **(a) Defer 2236 permanently** in favour of 0922 (which is unrefined but at least addresses post-archive reality). **Conservative recommended default** — 2236 cannot be executed as written.
-  - **(b) Refine 2236 first against current filesystem reality**, then re-coordinate. This duplicates 0922's authoring; not recommended unless there is intent to retire 0922.
-  - **(c) Treat 2236 as the canonical plan and edit 0922 instead.** Inverse of (a); only sensible if 0922's pickup is being abandoned.
-- **Why this is in Needs-decision (not Consolidation):** the choice changes whether 2236 appears in any future wave at all, not just where it sits in the order. The coordinator cannot pick (a)/(b)/(c) because the decision crosses out of the in-scope plan set into 0922's intent (out-of-scope).
+- **Decision (user, 2026-05-19):** option (a) — defer 2236 permanently. 0922 owns the post-archive reference-rewrite work with correct destination filenames; 2236 cannot be executed as written.
+- **Consequence:** U4 is dropped from this coordination set. Wave 4 is removed. 2236's reference-rewrite scope is owned by 0922 going forward.
+- **Background (for archival reference):** the out-of-scope plan `20260519-0922-bpmn-rewire-process-docs-to-new-hierarchy.md` states verbatim: *"Superseded in two ways by this plan: (a) the actual new files have no numeric prefixes; (b) the move has already happened and the old files are in `_ARCHIVED_PENDING_DELETE/` rather than deleted, so the 'delete old files' step is already done up to a final rm. This plan replaces the reference-rewrite portion (its Items 4–7) with the correct destination filenames."* 2236's File-mapping table (numbered-prefix filenames like `1.1-at-red-test.md`) does not match the actual filesystem; 2236's item 3 cut-paste is partially already done in a different shape; 2236's items 4–7 are re-owned by 0922.
 
-### 2. Are 1144's items 8 and 9 (allowed_paths param threading) obsoleted by 1530 item 8?
+### 2. ✅ RESOLVED 2026-05-19 — U1's executor strikes 1144 items 8 and 9 from the 1144 plan file
 
-- **Background:** 1530 item 8 (c) explicitly says: *"Per-node `allowed_paths` params are no longer needed; `check_phase_scope` reads its phase's scope from `internal/atdd/phase-scopes.yaml` directly by node id."* This deletes the param-threading mechanism in `process-flow.yaml` (lines 218–236 per 1530 item 8 (c)). But 1144 items 8 and 9 *add* those exact `allowed_paths` params to every `call_activity` invocation.
-- **Implication for U3 (1144):** if U1 (1530 item 8) lands first, U3's items 8 and 9 become no-ops (the params are obsolete before they're added). U3's item 5 (`check_phase_scope` implementation) is already rewritten by 1530 item 8's plan-file edits to read `phase-scopes.yaml` instead — so the executor of U3 will read a 1144 plan file whose item 5 already reflects the post-SSoT shape, and whose items 8 and 9 *should also* be marked obsolete.
-- **Conservative interpretation:** when U1 lands, the U1 executor should additionally update 1144's plan file (items 8 and 9) to mark them obsolete and pin the reason — but this is a plan-file edit outside U1's stated scope. The alternative is for U3's executor to read 1144 items 8 and 9 as written, notice they are obsolete against the post-U1 state, and skip them.
-- **Question for user:** pick one —
-  - **(a) U1's executor extends 1530 item 8's plan-file edits to also strike 1144 items 8 and 9** (already striking item 5 prose + Snapshot A + §Node params tables in 1144). Cleanest plan-file state; small scope creep beyond the literal item 8 description. **Recommended.**
-  - **(b) Leave 1144 items 8 and 9 standing**; U3's executor decides at execute time. Risks U3 executing the obsolete items mechanically against a post-SSoT `process-flow.yaml`.
-- **Why this is in Needs-decision (not Consolidation):** answering (a)/(b) changes U1's executor's surface area (which files they edit), and that needs a user nod before execute.
+- **Decision (user, 2026-05-19):** option (a) — U1's executor extends 1530 item 8's existing plan-file edits on `20260518-1144` to also mark items 8 and 9 obsolete, with reason: *"superseded by 1530 item 8 (c) — per-node `allowed_paths` params removed; `check_phase_scope` reads `phase-scopes.yaml` by node id."*
+- **Consequence for U1:** Files owned by U1 now explicitly includes editing `plans/20260518-1144-atdd-bpmn-orchestration.md` (Snapshot A removal + item 5 prose rewrite + §Node params tables removal + items 8 and 9 marked obsolete).
+- **Consequence for U3:** items 8 and 9 in the 1144 plan file will already be marked obsolete when U3's executor reads it; the executor skips them with no judgment call needed.
+- **Background (for archival reference):** 1530 item 8 (c) deletes the per-node `allowed_paths` param-threading mechanism in `process-flow.yaml`; 1144 items 8 and 9 add those exact params. Without this resolution, U3's executor would need to spot the obsolescence at execute time.
 
 ## Execution waves
 
@@ -189,10 +182,10 @@ The wave plan below operates on these units, not on raw plan files.
 - **Unit U1** — `20260518-1530` items 3–10 + `20260518-1742` items 2a–4. Single executor, single session.
   - Files owned: `internal/projectconfig/paths_defaults.go`, `internal/projectconfig/optivem_yaml.go`, `internal/projectconfig/config.go`, `internal/projectconfig/config_commands.go`, `internal/atdd/phase-scopes.yaml` (extends already-landed file), 9 phase docs under `docs/atdd/process/change/behavior/` (and `ct/`), 9 runtime prompts under `internal/assets/runtime/prompts/atdd/` (frontmatter `scope:` placeholder), `internal/assets/global/docs/atdd/process/placeholders.md` (rename to `path-keys.md` + rewrite + Family B example fix), `internal/atdd/runtime/statemachine/process-flow.yaml` (item 8 cleanup only — Snapshot A removal + §Node params tables removal in the BPMN *plan file*; runtime YAML itself sees no node additions in this unit).
   - Estimated session count: 1.
+  - Plan-file edits in `plans/20260518-1144-atdd-bpmn-orchestration.md` (per 1530 item 8 + Needs-decision §2 resolved 2026-05-19): delete Snapshot A; rewrite item 5 prose to read `phase-scopes.yaml` by node id; delete §Node params tables (lines 218–236); **mark items 8 and 9 obsolete** with reason "superseded by 1530 item 8 (c) — per-node `allowed_paths` params removed."
   - Pre-execute commands (per 1530 Hand-off + `[[feedback_check_concurrent_agents]]`):
     - `git -C C:/GitHub/optivem/academy/gh-optivem status` — confirm clean working tree on the files above.
     - `Grep` `plans/*.md` and `plans/deferred/*.md` for active pickup markers on `paths_defaults.go`, `config_commands.go`, `config.go`, `optivem_yaml.go`, `placeholders.md`/`path-keys.md`, runtime prompts, and `internal/atdd/phase-scopes.yaml`. Coordinate before adding U1's marker.
-    - Verify `Needs-decision §2` answered (so the U1 executor knows whether to strike 1144 items 8 and 9 in the plan file).
   - Post-execute: rerun `gh optivem sync` in any active scaffolded repo to refresh the runtime-prompt `scope:` frontmatter.
 
 (Wave 1 has no parallel-safe second batch — 0704 and 1144 both touch files U1 rewrites; they must serialise into Wave 2 and Wave 3.)
@@ -223,9 +216,9 @@ The wave plan below operates on these units, not on raw plan files.
     - Confirm Waves 1 and 2 landed (phase ids are post-rename; `check_phase_scope` reads `phase-scopes.yaml` by node id; prompt frontmatter has `scope:` populated).
     - Verify legacy-coverage-cycle marker convention status (item 7 only).
 
-### Wave 4 — conditional, after Needs-decision §1 resolved
+### ~~Wave 4~~ — DROPPED 2026-05-19
 
-- **Unit U4 (deferred)** — `20260518-2236`. Currently not scheduled. If the user resolves Needs-decision §1 with option (b) (refine 2236 against current filesystem reality), 2236 enters a future wave that depends on Waves 1 + 2 having landed (because the SSoT and rename pieces are 2236's Open Q1 reconciliation surface). If the user picks option (a), 2236 is dropped from this coordination set entirely.
+Per Needs-decision §1 (resolved): U4 / `20260518-2236` is deferred permanently in favour of `20260519-0922-bpmn-rewire-process-docs-to-new-hierarchy.md`, which runs **in parallel** to this coordination set (out of scope here; owns the new file-mapping work against post-archive filesystem reality). No wave for 2236.
 
 ## Pre-execute checks (apply before any wave starts)
 
