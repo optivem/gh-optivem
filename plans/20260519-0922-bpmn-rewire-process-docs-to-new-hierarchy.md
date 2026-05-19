@@ -1,8 +1,6 @@
 # Plan: rewire BPMN runtime + agent prompts to the new `process/` hierarchy
 
-> 🤖 **Picked up by agent (refine)** — `Valentina_Desk` at `2026-05-19T07:38:25Z`
-
-> ⚠️ **NOT YET REFINED** — run `/refine-plan` on this file before `/execute-plan`. Five orphan / dangling-reference rows (see **Open questions**) need decisions before any edits land.
+> ✅ **REFINED 2026-05-19** — all 5 open questions resolved; mapping tables pinned; Items 2–7 ready for mechanical execution. **Coordinate with sibling plan [20260519-0911](20260519-0911-author-esir-write-phase-doc.md)** — land 0911 at or before this plan's execute so the ESIR sibling doc exists before runtime references resolve to it.
 
 **Date:** 2026-05-19
 
@@ -78,6 +76,8 @@ These references point at files that **were never present** under the OLD flat l
 
 Walk through each at `/refine-plan` time and pin a destination per row. The mapping tables above are updated in place to remove the "candidate / see Open question N" footnotes, after which the **Items** below can execute mechanically.
 
+> **Refined 2026-05-19:** All 5 sub-decisions resolved during `/refine-plan`. Mapping tables (Sections A/B/C) and Items 2–5 row destinations are now pinned to concrete paths. **`/execute-plan` should treat Item 1 as a no-op** — its work was the refinement walk itself; Items 2–7 now contain mechanical edits. Summary of resolutions: Q1 → sibling plan [20260519-0911](20260519-0911-author-esir-write-phase-doc.md) authors `change/structure/external-system-interface-redesign.md`; Q2 → `change/structure/system-implementation-change.md`; Q3 → `change/structure/system-implementation-change.md`; Q4 → both test fixtures point at `shared/conventions.md`; Q5 → comment cites `internal/atdd/phase-scopes.yaml`.
+
 ### 2. Rewrite `phase_doc:` entries in `process-flow.yaml`
 
 `internal/atdd/runtime/statemachine/process-flow.yaml` — 12 lines to rewrite (per **Mapping A** + Open questions 1–2 outcomes):
@@ -118,25 +118,31 @@ Walk through each at `/refine-plan` time and pin a destination per row. The mapp
 
 ### 4. Update test fixtures carrying old paths as string literals
 
+> **Refined 2026-05-19:** `sysui-redesign.md` sub-bullet firmed up — no change to driver_test.go:428,445,470,486. **Why:** the test is a deliberate synthetic; both old and new path shapes are non-existent, so there's no real consistency value in rewriting. Other 5 bullets execute mechanically per the existing destinations.
+
 - `internal/atdd/runtime/statemachine/dispatch_spy_test.go:243,254,266,278,289,300,312,331` — 8 `phase_doc` literals; rewrite each per Item 2's mapping.
 - `internal/atdd/runtime/clauderun/clauderun_test.go:121,157` — `at-red-test.md` references; rewrite to `change/behavior/at-red-test.md`.
 - `internal/atdd/runtime/clauderun/clauderun_test.go:347,402` — `glossary.md` references; rewrite both `PromptOverride` strings to `"Read ${docs_root}/atdd/process/shared/conventions.md."` (per Q4 resolution).
 - `internal/atdd/runtime/driver/driver_test.go:89,208` — `at-red-test.md` references; rewrite to `change/behavior/at-red-test.md`.
 - `internal/atdd/runtime/driver/embedded_smoke_test.go:152` — `system-interface-redesign.md` reference; rewrite to `change/structure/system-interface-redesign.md`.
-- `internal/atdd/runtime/driver/driver_test.go:428,445,470,486` — `sysui-redesign.md` (already a synthetic string, not a real doc); verify whether it should be touched. Likely **no change** since this looks like a deliberate synthetic fixture, but flag for confirmation.
+- `internal/atdd/runtime/driver/driver_test.go:428,445,470,486` — `sysui-redesign.md` paired with synthetic `change_type: "SYSTEM UI REDESIGN"` (not a real BPMN phase). **No change.** The test is a deliberate synthetic for templating-substitution behavior; the file's non-existence is by design. Both old and new tree shapes would be equally fake paths — no consistency value in rewriting.
 
 ### 5. Update code comments referencing old paths
 
-- `internal/atdd/runtime/gates/bindings.go:2` — `docs/atdd/process/process-flow.yaml` → this is an *internal* yaml path (`internal/atdd/runtime/statemachine/process-flow.yaml`), not a process doc. **Confirm whether to leave alone or correct in passing.**
-- `internal/atdd/runtime/actions/bindings.go:2` — same as above.
+> **Refined 2026-05-19:** Two open sub-bullets pinned. (1) `bindings.go` (gates + actions) comments cite a path that never existed (`docs/atdd/process/process-flow.yaml`); fix in passing to `internal/atdd/runtime/statemachine/process-flow.yaml`. (2) `embedded_smoke_test.go:3,33` — leave alone; the comment references a *consumer-side* v1 scaffolding path the test asserts isn't read, not a mis-cited engine path. **Why:** distinguishing engine-internal paths from consumer-side path assertions; the embedded_smoke_test.go reference is historically accurate context for what the assertion is guarding against.
+
+- `internal/atdd/runtime/gates/bindings.go:2` — comment cites `docs/atdd/process/process-flow.yaml`, but that path never existed; the file is at `internal/atdd/runtime/statemachine/process-flow.yaml`. **Fix in passing**: rewrite to the real path.
+- `internal/atdd/runtime/actions/bindings.go:2` — same fix as above (same wrong path in the comment).
 - `internal/atdd/runtime/clauderun/clauderun.go:54` — example `"docs/atdd/process/at-red-test.md"` → update to `"docs/atdd/process/change/behavior/at-red-test.md"`.
-- `internal/atdd/runtime/driver/embedded_smoke_test.go:3,33` — comments that name `docs/atdd/process/process-flow.yaml`; same yaml-vs-doc confusion as `bindings.go` above.
+- `internal/atdd/runtime/driver/embedded_smoke_test.go:3,33` — comments that name `docs/atdd/process/process-flow.yaml`. **Leave alone.** These are not the same yaml-vs-doc confusion as `bindings.go`: the smoke test asserts the engine doesn't fall back to a *consumer-side* `<repoPath>/docs/atdd/process/process-flow.yaml` (a v1 scaffolding path). The comment's reference is historically accurate context for the assertion, not a mis-cited engine-internal path.
 - `internal/atdd/runtime/clauderun/clauderun_test.go:313` — comment "docs/atdd/process/*.md corpus"; update glob to reflect new tree shape.
 - `internal/projectconfig/paths_defaults.go:7` — `placeholders.md` reference; rewrite the comment to cite `internal/atdd/phase-scopes.yaml` as the canonical-keys doctrine source (per Q5 resolution). Inline list of seven keys stays.
 
 ### 6. Final sweep + delete the archive
 
-After Items 2–5 land and tests pass, search the repo for any remaining `docs/atdd/process/<old-flat-name>.md` references and burn them down. Then `git rm -r internal/assets/global/docs/atdd/process/_ARCHIVED_PENDING_DELETE/` in the same PR (or a follow-up — user's call at refine time).
+After Items 2–5 land and tests pass, search the repo for any remaining `docs/atdd/process/<old-flat-name>.md` references and burn them down. Then `git rm -r internal/assets/global/docs/atdd/process/_ARCHIVED_PENDING_DELETE/` **in the same PR** — atomic migration, no transient old+new state. Coordinate ordering with sibling plan [20260519-0911](20260519-0911-author-esir-write-phase-doc.md): 0911 should land first (or simultaneously) so the ESIR sibling doc exists before this plan's archive deletion removes the last historical copy of the relevant ESIR prose.
+
+> **Refined 2026-05-19:** Resolved to "same PR" (was "same PR or follow-up — user's call"). **Why:** atomic migration is cleaner; the path rewrites in Items 2–5 and the archive deletion are two sides of the same change. Coordinating with 0911 handles the only meaningful soak concern.
 
 ### 7. Verify build + tests
 
