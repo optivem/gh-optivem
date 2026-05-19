@@ -425,7 +425,7 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	ctx.Params = map[string]string{
 		"agent":       "task-system-interface-redesign",
 		"change_type": "SYSTEM UI REDESIGN",
-		"phase_doc":   "docs/atdd/process/sysui-redesign.md",
+		"phase_doc":   "docs/atdd/process/change/structure/sysui-redesign.md",
 	}
 
 	out := fn(ctx)
@@ -442,7 +442,7 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	if !strings.Contains(prompt, "You are the Task Agent") {
 		t.Errorf("prompt missing expanded agent identity line (task-system-interface-redesign → Task Agent)")
 	}
-	if !strings.Contains(prompt, "docs/atdd/process/sysui-redesign.md") {
+	if !strings.Contains(prompt, "docs/atdd/process/change/structure/sysui-redesign.md") {
 		t.Errorf("prompt missing expanded phase_doc")
 	}
 	if !strings.Contains(prompt, "SYSTEM UI REDESIGN - WRITE") {
@@ -467,7 +467,7 @@ func TestManualAgents_BannerSubstitutesTemplatedFields(t *testing.T) {
 	ctx.Params = map[string]string{
 		"agent":       "task-system-interface-redesign",
 		"change_type": "SYSTEM UI REDESIGN",
-		"phase_doc":   "docs/atdd/process/sysui-redesign.md",
+		"phase_doc":   "docs/atdd/process/change/structure/sysui-redesign.md",
 	}
 
 	if out := fn(ctx); out.Err != nil {
@@ -483,7 +483,7 @@ func TestManualAgents_BannerSubstitutesTemplatedFields(t *testing.T) {
 	if !strings.Contains(got, "Launch the task-system-interface-redesign agent") {
 		t.Errorf("banner missing expanded launch line:\n%s", got)
 	}
-	if !strings.Contains(got, "docs/atdd/process/sysui-redesign.md") {
+	if !strings.Contains(got, "docs/atdd/process/change/structure/sysui-redesign.md") {
 		t.Errorf("banner missing expanded phase doc:\n%s", got)
 	}
 }

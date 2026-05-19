@@ -8,4 +8,4 @@ You are the Frontend Agent. Implement only the frontend changes that move the ti
 
 Do not present or wait for approval inside the agent.
 
-Read `${docs_root}/atdd/process/at-green-system.md`.
+Read `${docs_root}/atdd/process/change/behavior/at-green-system.md`.

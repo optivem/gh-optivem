@@ -18,4 +18,4 @@ Edit ONLY files under the "Allowed write roots" listed at the top of this prompt
 
 The Checklist above lists the concrete refactor / upgrade steps; implement those.
 
-Read `${docs_root}/atdd/process/task-and-chore-cycles.md`.
+Read `${docs_root}/atdd/process/change/structure/system-implementation-change.md`.
