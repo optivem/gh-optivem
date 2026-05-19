@@ -483,7 +483,14 @@ func inferPathDefaults(doc *yaml.Node) map[string]string {
 			testLang = scalarValue(mappingValue(systemNode, "lang"))
 		}
 	}
-	return projectconfig.DefaultPaths(testLang, systemTestPath)
+	// sutNamespace = "" produces the pre-SSoT shape (no trailing
+	// sut_namespace suffix on testkit keys). The SSoT join — joining
+	// sut_namespace into each `paths:` value and dropping
+	// `system.sut_namespace` — is owned by plan 20260518-1530 item 6
+	// (the dedicated SSoT back-fill in `runConfigMigrate`); this
+	// gap-fill helper stays at the pre-SSoT shape so existing
+	// back-fill behaviour is unchanged until that step lands.
+	return projectconfig.DefaultPaths(testLang, systemTestPath, "")
 }
 
 // mergePathsEntry back-fills missing canonical keys into the document's

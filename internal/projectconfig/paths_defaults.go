@@ -3,41 +3,58 @@ package projectconfig
 import "path"
 
 // DefaultPaths returns the canonical Family B `paths:` entries for the
-// given system-test language and root. The seven keys match the doctrine
-// in `internal/assets/global/docs/atdd/process/placeholders.md`:
-// driver_port, driver_adapter, external_driver_port, external_driver_adapter,
-// at_test, dsl_port, dsl_core.
+// given system-test language, root, and sut_namespace. The seven keys
+// match the doctrine in `internal/atdd/phase-scopes.yaml`'s referenced
+// vocabulary: driver_port, driver_adapter, external_driver_port,
+// external_driver_adapter, at_test, dsl_port, dsl_core.
 //
 // Returns nil when testLang is unsupported or systemTestRoot is empty —
 // the scaffolder leaves `paths:` absent for partial configs (no
 // architecture chosen yet) and `Validate` accepts that shape.
 //
+// Per-SSoT (plan 20260518-1530 item 3), the returned values are fully
+// resolved: testkit keys (driver_*, external_driver_*, dsl_*) take
+// `sutNamespace` as a trailing directory segment; at_test is
+// sut_namespace-free at the DefaultPaths layer (any language-specific
+// structural sut_namespace usage lives in `pathStems`). A non-empty
+// `sutNamespace` is the SSoT shape; `sutNamespace == ""` reproduces the
+// pre-SSoT shape (no suffix) and is what `runConfigMigrate`'s
+// back-fill uses until the SSoT join step (plan item 6) lands.
+//
 // Per-language path stems mirror the post-scaffold tree (the
 // `system-test/{lang}/` subdir is flattened by `copySystemTests`):
 //
-//   - typescript: <root>/src/testkit/{driver|external|dsl}/{port|adapter|core},
+//   - typescript: <root>/src/testkit/{driver|external|dsl}/{port|adapter|core}[/sutNamespace],
 //     <root>/src/test
-//   - java:       <root>/src/main/java/testkit/{driver|external|dsl}/{port|adapter|core},
+//   - java:       <root>/src/main/java/testkit/{driver|external|dsl}/{port|adapter|core}[/sutNamespace],
 //     <root>/src/test/java
-//   - dotnet:     <root>/Testkit.{Driver|External|Dsl}.{Port|Adapter|Core},
+//   - dotnet:     <root>/Testkit.{Driver|External|Dsl}.{Port|Adapter|Core}[/sutNamespace],
 //     <root>/Tests
 //
 // Users own subsequent edits — the scaffolder writes these defaults
 // once and the migrate path back-fills only canonical keys that are
 // absent. Anything beyond the canonical seven set by the user is
 // preserved across migrations.
-func DefaultPaths(testLang, systemTestRoot string) map[string]string {
+func DefaultPaths(testLang, systemTestRoot, sutNamespace string) map[string]string {
 	if systemTestRoot == "" {
 		return nil
 	}
 	keys := CanonicalPathKeys()
-	stems, ok := pathStems(testLang)
+	stems, ok := pathStems(testLang, sutNamespace)
 	if !ok {
 		return nil
 	}
 	out := make(map[string]string, len(keys))
 	for i, key := range keys {
-		out[key] = path.Join(systemTestRoot, stems[i])
+		stem := stems[i]
+		// Testkit keys (everything except at_test) get sutNamespace as a
+		// trailing directory segment when present. at_test's
+		// sut_namespace handling is per-language and structural — owned
+		// by pathStems (plan 20260518-1742 items 3a/3b).
+		if key != "at_test" && sutNamespace != "" {
+			stem = path.Join(stem, sutNamespace)
+		}
+		out[key] = path.Join(systemTestRoot, stem)
 	}
 	return out
 }
@@ -61,7 +78,14 @@ func CanonicalPathKeys() []string {
 // order) that DefaultPaths joins under systemTestRoot. Returns ok=false
 // for unsupported languages so the caller can omit `paths:` rather than
 // write a partial map.
-func pathStems(testLang string) ([]string, bool) {
+//
+// The sutNamespace parameter is reserved for per-language structural
+// incorporation of sut_namespace (e.g. Java's at_test stem will embed
+// `<sutNamespace>` as a package segment per plan 20260518-1742 item 3a).
+// Today every branch ignores it; DefaultPaths handles the testkit-key
+// trailing-segment append uniformly.
+func pathStems(testLang, sutNamespace string) ([]string, bool) {
+	_ = sutNamespace
 	switch testLang {
 	case LangTypescript:
 		return []string{

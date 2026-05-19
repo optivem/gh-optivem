@@ -1,6 +1,6 @@
 # Plan: ATDD phase-scope single source of truth (SSoT)
 
-> ✅ **Partial execute 2026-05-18 / 2026-05-19** — items 1, 2 landed in commit `a171da4` (parallel agent: `phase-scopes.yaml`, `scope.md`, `CanonicalPathKeys` export). Item 11 landed this session (`internal/atdd/phase_scopes_test.go` + CT_RED_TEST defer in `phase-scopes.yaml`). Items 3–10 await CT-vocabulary plan ([20260518-1742](20260518-1742-family-b-stems-and-ct-vocab.md)) landing first. Note: `docs/atdd/process/shared/scope.md` was relocated to `internal/assets/global/docs/atdd/process/shared/scope.md` by commit `2ae72bd` (docs-into-assets reorganization). Also filed: [BPMN external-system naming consistency plan (20260519-0704)](20260519-0704-bpmn-external-system-naming-consistency.md) capturing CT_RED_EXTERNAL_DRIVER / CT_GREEN_STUBS phase-id renames + Family B `external_driver_*` key renames + the matching `config migrate` rename pass.
+> ✅ **Partial execute 2026-05-18 / 2026-05-19** — items 1, 2 landed in commit `a171da4` (parallel agent: `phase-scopes.yaml`, `scope.md`, `CanonicalPathKeys` export). Item 11 landed in commit `feab2b1` (`internal/atdd/phase_scopes_test.go` + CT_RED_TEST defer in `phase-scopes.yaml`). Items 3 + 10 landed this session: `DefaultPaths(testLang, systemTestPath, sutNamespace)` signature change (`paths_defaults.go`), scaffolder rewires (`optivem_yaml.go:BuildOptivemYAML` + `buildSystem`) producing fully-resolved `System.Path` and `paths:` testkit values, `SutNamespace` field dropped from `projectconfig.System` (accessor still derives from `System.Repo`), and `scope: {}` placeholder added to 7 runtime prompts (allowlist-shape for the 2 multitier GREEN prompts). Items 4–9 remain. Note: `docs/atdd/process/shared/scope.md` was relocated to `internal/assets/global/docs/atdd/process/shared/scope.md` by commit `2ae72bd` (docs-into-assets reorganization). Also filed: [BPMN external-system naming consistency plan (20260519-0704)](20260519-0704-bpmn-external-system-naming-consistency.md) capturing CT_RED_EXTERNAL_DRIVER / CT_GREEN_STUBS phase-id renames + Family B `external_driver_*` key renames + the matching `config migrate` rename pass.
 
 > ✅ **Refined 2026-05-18** — walked item-by-item with the user; every original OPEN QUESTION resolved (η, μ, λ, ζ, γ extension, ct_test, agent-to-phase mapping, placeholders.md scope). Locked decision ε revised in lockstep (manual-only → deterministic via existing `gh optivem config migrate`). Ready for `/execute-plan` once the listed hard dependencies land.
 
@@ -47,48 +47,6 @@ Recorded here so the items below are unambiguous. All decided during the refinem
 - The runtime-prompt `scope:` frontmatter is not separately injected into the model context (runtime prompts are passed to Claude as text). It exists for humans inspecting the prompt file and IDE tooling — it does not enforce. Enforcement lives in `check_phase_scope`.
 
 ## Items
-
-### 3. Scaffolder change — write fully-resolved paths at scaffold
-
-Edit the scaffolder so that at scaffold time it produces fully-resolved `gh-optivem.yaml` `paths:` values and a fully-resolved `system.path`, with `sut_namespace` baked in and the `system.sut_namespace` field omitted.
-
-**Concrete locations** (pinned during refinement):
-
-- `internal/projectconfig/paths_defaults.go:DefaultPaths(testLang, systemTestPath string) ProjectPaths` — extend signature to accept `sutNamespace string` and emit paths with `sut_namespace` appended. Single canonical home for the join rule.
-- `internal/steps/optivem_yaml.go:BuildOptivemYAML()` (line 168) — pass `cfg.SutNamespace` (or the derived value) to the new `DefaultPaths` call (currently line 192).
-- `internal/steps/optivem_yaml.go:buildSystem()` (line 217) — fully-resolve `System.Path` by appending the `sut_namespace`.
-- `internal/projectconfig/config.go:252` — drop the `SutNamespace string` field from the `System` struct (item 5's validator rejects it on read; item 5's migration error tells users to delete it).
-
-What the scaffolder must do:
-
-1. Reads the scaffold-time inputs (language, architecture, system.repo for sut_namespace default, etc.).
-2. Generates `gh-optivem.yaml` with `paths:` values **fully resolved**, per the per-key rule encoded in `pathStems()` (testkit keys take `+sutNamespace` at the end; test-file keys structurally incorporate sutNamespace per language — for TS/dotnet that means *no* sutNamespace component, for Java it sits as a package segment). Example for a TS shop project (default `sutNamespace = shop`):
-   ```yaml
-   paths:
-     driver_port:    system-test/typescript/src/testkit/driver/port/shop
-     driver_adapter: system-test/typescript/src/testkit/driver/adapter/shop
-     at_test:        system-test/typescript/tests/latest/acceptance
-     ct_test:        system-test/typescript/tests/latest/contract
-     # ... other testkit keys (external_*, dsl_*) take `+sutNamespace` suffix like driver_*;
-     #     test-file keys (at_test, ct_test) are sutNamespace-free for TS/dotnet per
-     #     plans/20260518-1742-family-b-stems-and-ct-vocab.md items 3a/3b.
-   ```
-3. Writes `system.path` fully resolved (`src/main/java/shop`, not `src/main/java`).
-4. **Does NOT write `system.sut_namespace`** — the field is retired.
-5. Resolved paths are emitted **without trailing slashes** (λ resolved 2026-05-18). The prefix-match-vs-sibling-directory risk (e.g. `shop` falsely matching `shop2`) is handled in the matcher by item 8, not by encoding slashes in the data.
-
-**Matching contract (handed off to item 8).** `check_phase_scope` must implement directory-aware prefix matching, not raw string-prefix matching. Approximate shape:
-
-```go
-func isUnderAllowed(diffPath, allowed string) bool {
-    if diffPath == allowed { return true }
-    return strings.HasPrefix(diffPath, allowed+"/")
-}
-```
-
-This guarantees that `allowed: system-test/.../port/shop` does NOT match a diff under `system-test/.../port/shop2/...`.
-
-> **Refined 2026-05-18:** (1) Location TBD resolved — pinned to `internal/projectconfig/paths_defaults.go:DefaultPaths`, `internal/steps/optivem_yaml.go:BuildOptivemYAML` + `buildSystem`, and `internal/projectconfig/config.go:252` (`System.SutNamespace` field drop). **Why:** scaffolder location was unspecified; grounding in actual file paths prevents execute-plan from guessing and lets the validator's pre-SSoT error message in item 5 reuse the same `DefaultPaths` join rule. (2) λ resolved — no trailing slashes; directory-aware matching handed off to item 8. **Why:** trailing-slash workarounds are fragile (editors/serializers trim) and inconsistent with `system.path`'s no-slash convention. The matcher is the right layer to encode "this is a directory prefix", not user-edited config.
 
 ### 4. Scaffolder/sync change — project `scope:` into runtime-prompt frontmatter
 
@@ -287,54 +245,6 @@ Material rewrite + rename (fate resolved 2026-05-18). The current `internal/asse
 
 > **Refined 2026-05-18:** Item rewritten from "edit placeholders.md to note substitution retired + remove sut_namespace" to "rename to path-keys.md + material rewrite". **Why:** the doc's central story (sync-time `${name}` substitution into phase docs) is **gone** post-SSoT; the file's framing was load-bearing only when substitution was alive. Surgical edits would leave the doc actively misleading. Renaming keeps the doc valuable (canonical-key vocabulary IS worth documenting in one place) while making the filename match the content. Blast radius confirmed tiny — only 2 Go files reference the current name, no phase docs link to it.
 
-### 10. Runtime-prompt template `scope:` placeholder marker
-
-Add a `scope:` placeholder to the frontmatter of each phase-aligned runtime-prompt template under `internal/assets/runtime/prompts/atdd/`. The sync layer (item 4) populates the field on first run; the template ships with empty `scope: {}`.
-
-**Files in scope (9, enumerated at refinement 2026-05-18 — match the user_task agents in `process-flow.yaml`):**
-
-AT-cycle (5):
-- `at-red-test.md`
-- `at-red-dsl.md`
-- `at-red-system-driver.md`
-- `at-green-system-backend.md` *(allowlist — deferred-citation comment, see below)*
-- `at-green-system-frontend.md` *(allowlist — deferred-citation comment, see below)*
-
-CT-cycle (4):
-- `ct-red-test.md`
-- `ct-red-dsl.md`
-- `ct-red-external-driver.md`
-- `ct-green-stubs.md`
-
-**Standard template shape:**
-
-```yaml
----
-model: sonnet
-effort: medium
-scope: {}   # populated by `gh optivem sync` from gh-optivem.yaml ⋈ phase-scopes.yaml ⋈ process-flow.yaml
----
-```
-
-**Allowlist-phase shape** (for `at-green-system-backend.md`, `at-green-system-frontend.md`):
-
-```yaml
----
-model: sonnet
-effort: medium
-scope: {}   # multitier GREEN scope deferred — see plans/deferred/20260518-1530-multitier-green-scope.md
----
-```
-
-The sync layer skips frontmatter writes for allowlist phases (it leaves `scope: {}` in place), and item 8's `check_phase_scope` action no-ops + logs for these phases. So the placeholder comment is the only enforcement signal — and it's grep-findable.
-
-**Files NOT in scope (4, with reasons matching item 7's structure-cycle deferral):**
-
-- `chore.md`, `task-system-interface-redesign.md`, `task-external-system-interface-redesign.md` — structural-cycle agents (called via `call_activity` in BPMN parameterized by `agent:`, not as `user_task.agent:`). Same deferral as item 7: see [plans/deferred/20260518-1530-structure-cycle-ssot-alignment.md](deferred/20260518-1530-structure-cycle-ssot-alignment.md).
-- `fix-verify.md` — retry helper, not a phase agent. Referenced as `fix_agent:` in BPMN (not `agent:`); has no per-phase scope concept. Out of scope permanently, not deferred.
-
-> **Refined 2026-05-18:** (a) Template location pinned to `internal/assets/runtime/prompts/atdd/*.md`, consistent with item 4's consumer-surface resolution. **Why:** original wording (`internal/assets/.../agents/atdd/`) presupposed Claude Code subagent files that don't exist; runtime-prompt templates are the actual asset surface. Allowlist phases get a placeholder comment citing the deferred plan, so a future audit grep finds them. (b) File list enumerated (9 in-scope + 4 not-in-scope with reasons). **Why:** mirrors item 7's enumeration — prevents execute-plan from re-deciding which files are phase-aligned. The 4 non-phase prompts (3 structural-cycle agents + 1 retry helper) are explicitly listed so they don't get accidentally swept; structural-cycle agents share the same deferred plan as item 7's structure-cycle docs.
-
 ## Out of scope
 
 - **Family B substrate vocabulary additions** — owned by the [predecessor plan (20260518-1500)](20260518-1500-atdd-phase-scope-placeholders.md) items 1–3.
@@ -364,7 +274,7 @@ The sync layer skips frontmatter writes for allowlist phases (it leaves `scope: 
 
 1. ~~Items 1, 2~~ — ✅ landed 2026-05-18.
 2. ~~Item 11~~ — ✅ landed 2026-05-18 with broadened FK rule (every node dispatching a concrete writing agent — `user_task` or `call_activity` — must be in `phase-scopes.yaml` or on `phasesDeferredByPlan`). Allowlist active for `AT_GREEN_BACKEND`, `AT_GREEN_FRONTEND` (multitier plan), `SYSTEM_INTERFACE_REDESIGN_CYCLE`, `EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE`, `CHORE_CYCLE` (structure-cycle plan).
-3. Items 3, 10 (scaffolder + runtime-prompt template `scope: {}` marker) — together. Item 3 changes the `DefaultPaths(testLang, systemTestPath, sutNamespace)` signature and pins resolved paths; item 10 prepares the runtime-prompt templates so item 4's sync has somewhere to project into. **Note:** `canonicalPathKeys()` was exported to `CanonicalPathKeys()` during item 11's execution (test cross-package access); item 3 can rely on it.
+3. ~~Items 3, 10~~ — ✅ landed 2026-05-19. `DefaultPaths(testLang, systemTestPath, sutNamespace)` signature live; scaffolder bakes sutNamespace into `System.Path` (monolith) and `paths:` testkit values; `System.SutNamespace` field dropped; `c.SutNamespace()` accessor now derives purely from `System.Repo`. Migrate (`config_commands.go:inferPathDefaults`) passes `""` for sutNamespace pending item 6's SSoT join step. Runtime prompts carry `scope: {}` placeholder (7 standard + 2 allowlist citing the deferred multitier plan).
 4. Item 4 (sync projection into runtime-prompt frontmatter) — wires existing scaffolds to refresh `scope:` on next `gh optivem sync`. Mapping comes from BPMN `user_task.agent:` — no new schema.
 5. Items 5 + 6 (validator + extended `config migrate`) — together: item 6 implements the SSoT join in `runConfigMigrate`, item 5's hard error points users at it. Both depend on item 3's new `DefaultPaths` signature.
 6. Item 8 (BPMN plan edits + `check_phase_scope` runtime rewire) — depends on `phase-scopes.yaml` being live; deletes Snapshot A; drops obsolete param-threading (BPMN plan lines 218–236); allowlist phases get no-op + log.

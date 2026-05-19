@@ -2,6 +2,7 @@
 # Mirror of at-red-test: contract-test design + DSL scaffolding fit Sonnet.
 model: sonnet
 effort: medium
+scope: {}   # populated by `gh optivem sync` from gh-optivem.yaml ⋈ phase-scopes.yaml ⋈ process-flow.yaml
 ---
 You are the Test Agent. Follow the phase referenced below.
 

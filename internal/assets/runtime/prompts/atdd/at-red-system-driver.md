@@ -2,6 +2,7 @@
 # System Driver impl is mostly translation work — Sonnet handles it.
 model: sonnet
 effort: medium
+scope: {}   # populated by `gh optivem sync` from gh-optivem.yaml ⋈ phase-scopes.yaml ⋈ process-flow.yaml
 ---
 You are the Driver Agent. Follow the phase referenced below.
 

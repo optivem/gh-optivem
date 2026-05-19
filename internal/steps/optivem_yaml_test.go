@@ -48,8 +48,11 @@ func TestBuildOptivemYAML_MonolithMonorepo(t *testing.T) {
 	if got.System.Architecture != "monolith" {
 		t.Errorf("System.Architecture: got %q", got.System.Architecture)
 	}
-	if got.System.Path != "system" {
-		t.Errorf("System.Path: got %q", got.System.Path)
+	// SSoT (plan 20260518-1530 item 3): System.Path is fully resolved
+	// at scaffold time — `cfg.SystemPath` joined with the derived
+	// sutNamespace (last segment of `cfg.FullRepo` = "x/shop" → "shop").
+	if got.System.Path != "system/shop" {
+		t.Errorf("System.Path: got %q, want system/shop (SSoT)", got.System.Path)
 	}
 	if got.System.Repo != "x/shop" {
 		t.Errorf("System.Repo: got %q", got.System.Repo)
@@ -128,8 +131,11 @@ func TestBuildOptivemYAML_MonolithMultirepo(t *testing.T) {
 		SimulatorsPath: sims,
 	}
 	got := BuildOptivemYAML(cfg)
-	if got.System.Path != "system" {
-		t.Errorf("System.Path: got %q", got.System.Path)
+	// SSoT (plan 20260518-1530 item 3): System.Path baked with
+	// sutNamespace derived from cfg.SystemFullRepo's last segment
+	// (multirepo monolith uses SystemFullRepo, not FullRepo).
+	if got.System.Path != "system/shop-system" {
+		t.Errorf("System.Path: got %q, want system/shop-system (SSoT)", got.System.Path)
 	}
 	if got.System.Repo != "acme/shop-system" {
 		t.Errorf("System.Repo: got %q", got.System.Repo)
@@ -157,8 +163,11 @@ func TestBuildOptivemYAML_NonScaffoldPaths(t *testing.T) {
 		SimulatorsPath: "external-systems/simulators",
 	}
 	got := BuildOptivemYAML(cfg)
-	if got.System.Path != "system/monolith/java" {
-		t.Errorf("System.Path: got %q, want shop-style path", got.System.Path)
+	// SSoT: even non-scaffold (shop-worktree-style) callers get
+	// sutNamespace baked into System.Path. FullRepo=optivem/shop →
+	// sutNamespace=shop → cfg.SystemPath joined to it.
+	if got.System.Path != "system/monolith/java/shop" {
+		t.Errorf("System.Path: got %q, want shop-style path with sut_namespace", got.System.Path)
 	}
 	if got.SystemTest.Path != "system-test/java" {
 		t.Errorf("SystemTest.Path: got %q, want shop-style path", got.SystemTest.Path)
@@ -205,9 +214,11 @@ func TestBuildOptivemYAML_PathsBlockSeededPerLanguage(t *testing.T) {
 		wantKey  string
 		wantPath string
 	}{
-		{"typescript", projectconfig.LangTypescript, "driver_port", "system-test/src/testkit/driver/port"},
-		{"java", projectconfig.LangJava, "driver_port", "system-test/src/main/java/testkit/driver/port"},
-		{"dotnet", projectconfig.LangDotnet, "driver_port", "system-test/Testkit.Driver.Port"},
+		// SSoT: driver_port (testkit key) gets sutNamespace appended.
+		// FullRepo="x/y" → sutNamespace="y".
+		{"typescript", projectconfig.LangTypescript, "driver_port", "system-test/src/testkit/driver/port/y"},
+		{"java", projectconfig.LangJava, "driver_port", "system-test/src/main/java/testkit/driver/port/y"},
+		{"dotnet", projectconfig.LangDotnet, "driver_port", "system-test/Testkit.Driver.Port/y"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &config.Config{

@@ -92,8 +92,12 @@ func TestRunConfigInit_MonolithRoundTrip(t *testing.T) {
 	if cfg.SystemTest.Lang != "java" {
 		t.Errorf("system_test.lang: got %q, want java", cfg.SystemTest.Lang)
 	}
-	if cfg.System.Path != "system/monolith/java" {
-		t.Errorf("system.path: got %q (should round-trip the --system-path flag)", cfg.System.Path)
+	// SSoT (plan 20260518-1530 item 3): `--system-path` is no longer
+	// round-tripped verbatim — sutNamespace (derived from the system
+	// repo slug's last segment) is baked in at scaffold time. The flag
+	// value is the *base* path; the persisted value is fully resolved.
+	if cfg.System.Path != "system/monolith/java/page-turner" {
+		t.Errorf("system.path: got %q, want SSoT-resolved path", cfg.System.Path)
 	}
 	if cfg.System.Repo != "acme/page-turner" {
 		t.Errorf("system.repo: got %q, want acme/page-turner", cfg.System.Repo)
@@ -125,7 +129,9 @@ func TestRunConfigInit_DefaultsFlatLayoutPaths(t *testing.T) {
 				TestLang:   "java",
 				ProjectURL: "https://github.com/orgs/acme/projects/1",
 			},
-			wantSystemPath: config.DefaultSystemPath,
+			// SSoT: DefaultSystemPath + "/<sutNamespace>" (here:
+			// repo "page-turner" → "system/page-turner").
+			wantSystemPath: config.DefaultSystemPath + "/page-turner",
 			wantSystemTest: config.DefaultSystemTestPath,
 			wantStubsPath:  config.DefaultStubsPath,
 			wantSimsPath:   config.DefaultSimulatorsPath,
@@ -424,7 +430,11 @@ func TestRunConfigPreflight_AllPathsExist(t *testing.T) {
 		t.Fatalf("seed .git: %v", err)
 	}
 	for _, p := range []string{
-		"system/monolith/java",
+		// SSoT (plan 20260518-1530 item 3): system.path is fully
+		// resolved (cfg.SystemPath + "/<sutNamespace>"); preflight
+		// checks the resolved value, so the seeded layout must
+		// include the sut_namespace segment ("page-turner").
+		"system/monolith/java/page-turner",
 		"system-test/java",
 		"external-systems/stubs",
 		"external-systems/simulators",
@@ -458,7 +468,8 @@ func TestRunConfigPreflight_MissingTierPath(t *testing.T) {
 		t.Fatalf("seed .git: %v", err)
 	}
 	for _, p := range []string{
-		"system/monolith/java",
+		// SSoT-resolved system path (includes sutNamespace segment).
+		"system/monolith/java/page-turner",
 		"system-test/java",
 		"external-systems/stubs",
 		// external-systems/simulators intentionally absent.

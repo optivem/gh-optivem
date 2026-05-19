@@ -243,14 +243,6 @@ type System struct {
 	Lang         string `yaml:"lang,omitempty"`
 	SonarProject string `yaml:"sonar_project,omitempty"`
 
-	// SutNamespace overrides the auto-derived ${sut_namespace} placeholder
-	// value used by phase-doc substitution. When empty, the value is
-	// derived from the last path segment of System.Repo (e.g.
-	// "optivem/myShop" → "myShop"). Set explicitly when the desired
-	// namespace differs from the repo name — e.g. a Java project whose
-	// repo is "myShop" but whose package convention is "com.mycompany.myshop".
-	SutNamespace string `yaml:"sut_namespace,omitempty"`
-
 	// Multitier-only.
 	Backend  TierSpec `yaml:"backend,omitempty"`
 	Frontend TierSpec `yaml:"frontend,omitempty"`
@@ -349,16 +341,19 @@ var reservedPlaceholderKeys = map[string]struct{}{
 }
 
 // SutNamespace returns the substitution value for ${sut_namespace}.
-// Explicit System.SutNamespace wins; otherwise the value is derived from
-// the last path segment of System.Repo (e.g. "optivem/myShop" → "myShop").
-// Returns "" when neither is set — sync-time unfilled-placeholder checks
-// surface the gap if a doc references the placeholder.
+// Derived from the last path segment of System.Repo (e.g.
+// "optivem/myShop" → "myShop"). Returns "" when System.Repo is empty —
+// sync-time unfilled-placeholder checks surface the gap if a doc
+// references the placeholder.
+//
+// Per SSoT (plan 20260518-1530 item 3), `system.sut_namespace` is no
+// longer a persisted field — scaffold-time sut_namespace is baked into
+// `System.Path` and the `paths:` values, and runtime lookups derive
+// from `System.Repo` only. The pre-SSoT explicit-override branch was
+// retired with the field.
 func (c *Config) SutNamespace() string {
 	if c == nil {
 		return ""
-	}
-	if c.System.SutNamespace != "" {
-		return c.System.SutNamespace
 	}
 	return lastPathSegment(c.System.Repo)
 }

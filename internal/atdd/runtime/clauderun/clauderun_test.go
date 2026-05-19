@@ -332,7 +332,7 @@ func TestDispatch_MaterializesProjectDocsWhenProjectConfigSet(t *testing.T) {
 			Repo: "x/y",
 			Lang: "typescript",
 		},
-		Paths: projectconfig.DefaultPaths(projectconfig.LangTypescript, "system-test"),
+		Paths: projectconfig.DefaultPaths(projectconfig.LangTypescript, "system-test", "y"),
 	}
 	preWriteFreshSidecar(t, repoPath, cfg.PlaceholderMap())
 
