@@ -1,74 +1,21 @@
-// Package atdd hosts ATDD doctrinal data files that sit outside the
-// runtime subtree (phase-scopes.yaml as a peer of
-// internal/atdd/runtime/architecture/architecture.yaml and
-// internal/atdd/runtime/statemachine/process-flow.yaml).
-//
-// Today this package contains only build-time tests guarding
-// phase-scopes.yaml against drift; the production loader is added later
-// when item 8 of plans/20260518-1530-atdd-phase-scope-ssot.md rewires
-// check_phase_scope.
+// Drift guards for phase-scopes.yaml. The production loader lives in
+// phase_scopes.go; this file consumes it (one definition, no duplicate
+// embedded byte slice, no duplicate allowlist).
 package atdd
 
 import (
-	_ "embed"
 	"strings"
 	"testing"
-
-	"gopkg.in/yaml.v3"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
-//go:embed phase-scopes.yaml
-var phaseScopesYAML []byte
-
-// phaseScopes is the parsed shape of phase-scopes.yaml.
-type phaseScopes struct {
-	Phases map[string][]string `yaml:"phases"`
-}
-
-// phasesDeferredByPlan lists writing-agent phase ids in process-flow.yaml
-// that knowingly have no phase-scopes.yaml entry yet. Each entry cites
-// the deferred plan that picks up the scope work, so a future audit grep
-// finds the gap with its follow-up.
-var phasesDeferredByPlan = map[string]string{
-	"AT_GREEN_BACKEND":                         "plans/deferred/20260518-1530-multitier-green-scope.md",
-	"AT_GREEN_FRONTEND":                        "plans/deferred/20260518-1530-multitier-green-scope.md",
-	"SYSTEM_INTERFACE_REDESIGN_CYCLE":          "plans/deferred/20260518-1530-structure-cycle-ssot-alignment.md",
-	"EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE": "plans/deferred/20260518-1530-structure-cycle-ssot-alignment.md",
-	"CHORE_CYCLE":                              "plans/deferred/20260518-1530-structure-cycle-ssot-alignment.md",
-	// CT_RED_TEST's doctrinal scope is [ct_test, dsl_port, dsl_core] but
-	// `ct_test` is added to canonicalPathKeys() by the CT-vocabulary plan
-	// below. Restore as a phase-scopes.yaml entry once that plan lands.
-	"CT_RED_TEST": "plans/20260518-1742-family-b-stems-and-ct-vocab.md",
-}
-
-// nonWritingAgents are agent names that do not need a phase-scopes
-// entry. `human` is the trusted-actor case; `fix-verify` is a retry
-// helper that inherits scope from the failing phase's context.
-var nonWritingAgents = map[string]bool{
-	"human":      true,
-	"fix-verify": true,
-}
-
-// familyAPathKeysInScope lists Family A path-shaped keys that are valid
-// as phase-scope layers. `system_path` is the only one today;
-// `system_test_path` is deliberately excluded because it is the parent
-// of every Family B testkit key and admitting it would let any phase
-// escape the layer partition.
-var familyAPathKeysInScope = map[string]bool{
-	"system_path": true,
-}
-
-func loadPhaseScopes(t *testing.T) phaseScopes {
+func loadPhaseScopes(t *testing.T) PhaseScopes {
 	t.Helper()
-	var ps phaseScopes
-	if err := yaml.Unmarshal(phaseScopesYAML, &ps); err != nil {
-		t.Fatalf("parse phase-scopes.yaml: %v", err)
-	}
-	if len(ps.Phases) == 0 {
-		t.Fatalf("phase-scopes.yaml parsed to empty phases map")
+	ps, err := LoadPhaseScopes()
+	if err != nil {
+		t.Fatalf("load phase-scopes.yaml: %v", err)
 	}
 	return ps
 }
@@ -97,7 +44,7 @@ func concreteAgent(node statemachine.Node) string {
 	default:
 		return ""
 	}
-	if agent == "" || nonWritingAgents[agent] || strings.HasPrefix(agent, "${") {
+	if agent == "" || NonWritingAgents[agent] || strings.HasPrefix(agent, "${") {
 		return ""
 	}
 	return agent
@@ -154,10 +101,10 @@ func TestPhaseScopes_ReverseFK_WritingAgentsScopedOrAllowlisted(t *testing.T) {
 	ps := loadPhaseScopes(t)
 	for nodeID := range writingAgentNodeIDs(loadEngine(t)) {
 		_, inScopes := ps.Phases[nodeID]
-		_, inAllowlist := phasesDeferredByPlan[nodeID]
+		_, inAllowlist := PhasesDeferredByPlan[nodeID]
 		switch {
 		case !inScopes && !inAllowlist:
-			t.Errorf("writing-agent node %q is neither in phase-scopes.yaml nor in phasesDeferredByPlan; add scope or document the deferral", nodeID)
+			t.Errorf("writing-agent node %q is neither in phase-scopes.yaml nor in PhasesDeferredByPlan; add scope or document the deferral", nodeID)
 		case inScopes && inAllowlist:
 			t.Errorf("writing-agent node %q is in BOTH phase-scopes.yaml AND the deferred allowlist; remove from allowlist", nodeID)
 		}
@@ -170,7 +117,7 @@ func TestPhaseScopes_ReverseFK_WritingAgentsScopedOrAllowlisted(t *testing.T) {
 // a BPMN rename or removal.
 func TestPhaseScopes_AllowlistEntriesStillExistInBPMN(t *testing.T) {
 	nodeIDs := allNodeIDs(loadEngine(t))
-	for phaseID, plan := range phasesDeferredByPlan {
+	for phaseID, plan := range PhasesDeferredByPlan {
 		if !nodeIDs[phaseID] {
 			t.Errorf("allowlist entry %q (deferred to %s) has no matching node id in process-flow.yaml; remove the stale allowlist entry", phaseID, plan)
 		}
@@ -189,7 +136,7 @@ func TestPhaseScopes_LayersAreCanonical(t *testing.T) {
 	}
 	for phaseID, layers := range ps.Phases {
 		for _, layer := range layers {
-			if canonical[layer] || familyAPathKeysInScope[layer] {
+			if canonical[layer] || FamilyAPathKeysInScope[layer] {
 				continue
 			}
 			t.Errorf("phase %q references layer %q not in canonicalPathKeys() or {system_path}", phaseID, layer)

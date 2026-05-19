@@ -1,6 +1,6 @@
 # Plan: ATDD phase-scope single source of truth (SSoT)
 
-> ✅ **Partial execute 2026-05-18 / 2026-05-19** — items 1, 2 landed in commit `a171da4` (parallel agent: `phase-scopes.yaml`, `scope.md`, `CanonicalPathKeys` export). Item 11 landed in commit `feab2b1` (`internal/atdd/phase_scopes_test.go` + CT_RED_TEST defer in `phase-scopes.yaml`). Items 3 + 10 landed this session: `DefaultPaths(testLang, systemTestPath, sutNamespace)` signature change (`paths_defaults.go`), scaffolder rewires (`optivem_yaml.go:BuildOptivemYAML` + `buildSystem`) producing fully-resolved `System.Path` and `paths:` testkit values, `SutNamespace` field dropped from `projectconfig.System` (accessor still derives from `System.Repo`), and `scope: {}` placeholder added to 7 runtime prompts (allowlist-shape for the 2 multitier GREEN prompts). Items 4–9 remain. Note: `docs/atdd/process/shared/scope.md` was relocated to `internal/assets/global/docs/atdd/process/shared/scope.md` by commit `2ae72bd` (docs-into-assets reorganization). Also filed: [BPMN external-system naming consistency plan (20260519-0704)](20260519-0704-bpmn-external-system-naming-consistency.md) capturing CT_RED_EXTERNAL_DRIVER / CT_GREEN_STUBS phase-id renames + Family B `external_driver_*` key renames + the matching `config migrate` rename pass.
+> ✅ **Partial execute 2026-05-18 / 2026-05-19** — items 1, 2 landed in commit `a171da4` (parallel agent: `phase-scopes.yaml`, `scope.md`, `CanonicalPathKeys` export). Item 11 landed in commit `feab2b1` (`internal/atdd/phase_scopes_test.go` + CT_RED_TEST defer in `phase-scopes.yaml`). Items 3 + 10 landed in commit `e491ee6`: `DefaultPaths(testLang, systemTestPath, sutNamespace)` signature change, scaffolder rewires producing fully-resolved `System.Path` and `paths:` testkit values, `SutNamespace` field dropped from `projectconfig.System`, and `scope: {}` placeholder added to 7 runtime prompts (allowlist-shape for the 2 multitier GREEN prompts). Item 4 landed this session as `gh optivem process scope` CLI query (refined away from the original sync-projection design — see item 4's Refined 2026-05-19 note): new production loader `internal/atdd/phase_scopes.go` (promoted from the test file), new `newProcessScopeCmd` sibling under `process` noun, 7 runtime-prompt `scope: {}` comments rewritten to point at the CLI query. Items 5–9 remain. Note: `docs/atdd/process/shared/scope.md` was relocated to `internal/assets/global/docs/atdd/process/shared/scope.md` by commit `2ae72bd` (docs-into-assets reorganization). Also filed: [BPMN external-system naming consistency plan (20260519-0704)](20260519-0704-bpmn-external-system-naming-consistency.md) capturing CT_RED_EXTERNAL_DRIVER / CT_GREEN_STUBS phase-id renames + Family B `external_driver_*` key renames + the matching `config migrate` rename pass.
 
 > ✅ **Refined 2026-05-18** — walked item-by-item with the user; every original OPEN QUESTION resolved (η, μ, λ, ζ, γ extension, ct_test, agent-to-phase mapping, placeholders.md scope). Locked decision ε revised in lockstep (manual-only → deterministic via existing `gh optivem config migrate`). Ready for `/execute-plan` once the listed hard dependencies land.
 
@@ -38,47 +38,17 @@ Recorded here so the items below are unambiguous. All decided during the refinem
 
 **Scaffolded project:**
 - `gh-optivem.yaml paths:` — layer name → fully-resolved physical path. **The only place users edit paths.**
-- `internal/assets/runtime/prompts/atdd/*.md` frontmatter `scope:` *(new field)* — projected `{layer_name: resolved_path}` map (in the user's scaffolded project, post-sync — the asset templates ship with `scope: {}`). Marked "do not hand-edit — run `gh optivem sync` to refresh". Regenerated from `gh-optivem.yaml paths:` ⋈ `phase-scopes.yaml` ⋈ `process-flow.yaml` (`user_task.agent:` for the phase→file mapping). **Purpose: documentation/IDE inspection, not runtime enforcement.**
 - `docs/atdd/process/shared/scope.md` *(new)* — the **rule** ("only modify paths listed in your `scope:`; if you need more, alert the user"). Single place. Phase docs link here.
 - `docs/atdd/process/**.md` — phase docs. Reference layer NAMES by bare name (e.g. "RED-TEST writes to `driver_port`, `dsl_core`"). No `${...}` syntax, no path values.
 
+**Inspection surface:**
+- `gh optivem process scope [<phase>]` *(new — item 4)* — CLI query joining `phase-scopes.yaml` × `gh-optivem.yaml paths:` × `process-flow.yaml` agent mapping. Prints layer names (and resolved paths when run inside a project). Replaces the originally-planned `scope:` frontmatter projection — see item 4's "Refined 2026-05-19" note for the rationale.
+- `internal/assets/runtime/prompts/atdd/*.md` ship with an inert `scope: {}` placeholder that points readers at `gh optivem process scope`. The `Tuning` loader ignores the field; it's purely a static breadcrumb.
+
 **Runtime:**
 - `check_phase_scope` (item 8) is the load-bearing enforcement. It reads `internal/atdd/phase-scopes.yaml` (embedded) for the per-phase layer list + `gh-optivem.yaml paths:` (in the user's project) for resolution + `git diff --name-only` for actual changes. Matches resolved paths as **directory-aware** prefixes against the diff (item 3 λ resolution).
-- The runtime-prompt `scope:` frontmatter is not separately injected into the model context (runtime prompts are passed to Claude as text). It exists for humans inspecting the prompt file and IDE tooling — it does not enforce. Enforcement lives in `check_phase_scope`.
 
 ## Items
-
-### 4. Scaffolder/sync change — project `scope:` into runtime-prompt frontmatter
-
-Edit the scaffolder/sync layer so that on scaffold AND on `gh optivem sync` it projects per-phase scope into the **runtime prompt files** under `internal/assets/runtime/prompts/atdd/*.md` (these are the actual per-phase agent surfaces consumed by clauderun — verified during refinement; `.claude/agents/atdd/` today contains only meta agents and is not the consumer).
-
-**Phase → file mapping (already exists, no new schema).** `internal/atdd/runtime/statemachine/process-flow.yaml` maps phase node ids to agent names via the `agent:` field on `user_task` nodes (e.g. `AT_RED_TEST` → `agent: at-red-test` → file `internal/assets/runtime/prompts/atdd/at-red-test.md`). The projection step reuses this; it does NOT add a new `phase:` frontmatter field or rely on filename-vs-phase-id case conversion.
-
-What the projection does:
-
-1. Reads `internal/atdd/phase-scopes.yaml` (embedded in the binary).
-2. Reads the project's `gh-optivem.yaml paths:`.
-3. Reads `internal/atdd/runtime/statemachine/process-flow.yaml` (embedded) to walk every `user_task` node and resolve its `agent:` → prompt filename.
-4. For each `(phase_id, agent_name)` pair: look up the phase's layer list in `phase-scopes.yaml`, join with `paths:` to produce `{layer_name: resolved_path}`, and write this as the `scope:` field in `internal/assets/runtime/prompts/atdd/<agent_name>.md`'s frontmatter (in the user's project, *after* the scaffold/sync copies the prompts into place).
-5. Adds a `# do not hand-edit — run \`gh optivem sync\` to refresh` comment alongside.
-6. Phases on item 11's allowlist (`AT_GREEN_BACKEND`, `AT_GREEN_FRONTEND`) have their projected file's `scope:` written as `{}` plus a comment citing the deferred multitier plan — so the file shape is still consistent.
-
-Example output in `internal/assets/runtime/prompts/atdd/at-red-system-driver.md` (post-sync):
-
-```yaml
----
-model: sonnet
-effort: medium
-scope:
-  driver_port:    system-test/typescript/src/testkit/driver/port/shop
-  driver_adapter: system-test/typescript/src/testkit/driver/adapter/shop
-# do not hand-edit — projected from gh-optivem.yaml ⋈ phase-scopes.yaml ⋈ process-flow.yaml; run `gh optivem sync` to refresh
----
-```
-
-**Purpose of the projected `scope:` field.** Documentation/IDE/grep — not load-bearing for runtime enforcement. Runtime scope enforcement is `check_phase_scope` (item 8), which independently reads `phase-scopes.yaml` + `gh-optivem.yaml`. The projection makes the per-phase scope visible to humans inspecting the prompt file (and to any IDE tooling that parses frontmatter) without forcing them to cross-reference two yaml files mentally.
-
-> **Refined 2026-05-18:** (1) Consumer surface resolved — runtime prompts (`internal/assets/runtime/prompts/atdd/*.md`), not new `.claude/agents/atdd/` subagents. **Why:** the runtime prompts are the existing per-phase agent surface; creating ~10 new Claude Code subagent files just to host a projected `scope:` field would be significant scope creep with no current consumer for the `Agent`-tool dispatch path. (2) Agent-to-phase mapping OPEN QUESTION dropped — BPMN's `user_task.agent:` field already provides the mapping; no filename-convention or `phase:`-frontmatter decision needed. **Why:** refinement surfaced that the mapping schema already exists in `process-flow.yaml`; reusing it keeps the BPMN surface as the single source of truth for "which agent runs in phase X". (3) Purpose of the projected `scope:` field clarified as documentation, not runtime enforcement. **Why:** the target-architecture preamble's "Agents read their own frontmatter `scope:`. Self-contained." claim was load-bearing only when the consumer was Claude Code subagents with frontmatter-aware dispatch; with runtime prompts (which are passed to Claude as text), the frontmatter isn't separately injected. The plan still delivers the feature — enforcement just lives in `check_phase_scope` (item 8), which was always its proper home anyway.
 
 ### 5. Validation rules in `gh optivem config validate`
 
@@ -275,7 +245,7 @@ Material rewrite + rename (fate resolved 2026-05-18). The current `internal/asse
 1. ~~Items 1, 2~~ — ✅ landed 2026-05-18.
 2. ~~Item 11~~ — ✅ landed 2026-05-18 with broadened FK rule (every node dispatching a concrete writing agent — `user_task` or `call_activity` — must be in `phase-scopes.yaml` or on `phasesDeferredByPlan`). Allowlist active for `AT_GREEN_BACKEND`, `AT_GREEN_FRONTEND` (multitier plan), `SYSTEM_INTERFACE_REDESIGN_CYCLE`, `EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE`, `CHORE_CYCLE` (structure-cycle plan).
 3. ~~Items 3, 10~~ — ✅ landed 2026-05-19. `DefaultPaths(testLang, systemTestPath, sutNamespace)` signature live; scaffolder bakes sutNamespace into `System.Path` (monolith) and `paths:` testkit values; `System.SutNamespace` field dropped; `c.SutNamespace()` accessor now derives purely from `System.Repo`. Migrate (`config_commands.go:inferPathDefaults`) passes `""` for sutNamespace pending item 6's SSoT join step. Runtime prompts carry `scope: {}` placeholder (7 standard + 2 allowlist citing the deferred multitier plan).
-4. Item 4 (sync projection into runtime-prompt frontmatter) — wires existing scaffolds to refresh `scope:` on next `gh optivem sync`. Mapping comes from BPMN `user_task.agent:` — no new schema.
+4. ~~Item 4~~ — ✅ landed 2026-05-19 as `gh optivem process scope` CLI query (see partial-execute note above).
 5. Items 5 + 6 (validator + extended `config migrate`) — together: item 6 implements the SSoT join in `runConfigMigrate`, item 5's hard error points users at it. Both depend on item 3's new `DefaultPaths` signature.
 6. Item 8 (BPMN plan edits + `check_phase_scope` runtime rewire) — depends on `phase-scopes.yaml` being live; deletes Snapshot A; drops obsolete param-threading (BPMN plan lines 218–236); allowlist phases get no-op + log.
 7. Item 7 (phase doc §Scope sweep — 9 files, 5 AT + 4 CT). Structure-cycle docs deferred per the new sibling plan.

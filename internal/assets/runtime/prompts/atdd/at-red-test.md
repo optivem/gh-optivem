@@ -2,7 +2,7 @@
 # WRITE designs tests, PROTOTYPES wires DSL stubs — both fit in Sonnet.
 model: sonnet
 effort: medium
-scope: {}   # populated by `gh optivem sync` from gh-optivem.yaml ⋈ phase-scopes.yaml ⋈ process-flow.yaml
+scope: {}   # query resolved scope: `gh optivem process scope AT_RED_TEST`
 ---
 You are the Test Agent. The Acceptance Criteria below were parsed from the ticket body during intake — write tests for them directly.
 

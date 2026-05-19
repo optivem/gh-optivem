@@ -3,7 +3,7 @@
 # because the scope per dispatch is bounded to one DSL surface.
 model: opus
 effort: medium
-scope: {}   # populated by `gh optivem sync` from gh-optivem.yaml ⋈ phase-scopes.yaml ⋈ process-flow.yaml
+scope: {}   # query resolved scope: `gh optivem process scope AT_RED_DSL`
 ---
 You are the DSL Agent. Follow the phase referenced below.
 
