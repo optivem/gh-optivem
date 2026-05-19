@@ -19,63 +19,9 @@ The archived `cycles.md` (in `_ARCHIVED_PENDING_DELETE/`) carries an error claim
 
 ## Items
 
-### 1. Draft `internal/assets/global/docs/atdd/process/change/structure/external-system-interface-redesign.md`
+- [ ] **Item 2: Verify the path placeholders are wired** — ⏳ Deferred: requires a scaffolded test project with external driver paths configured to run `gh optivem sync` against. Placeholder vocabulary (`${external_driver_adapter}`, `${external_driver_port}`) is confirmed present in `internal/atdd/phase-scopes.yaml` (lines 34–36), but end-to-end substitution into materialized output is out of scope for this session. Pick up once a scaffolded ESIR-bearing fixture project is available.
 
-Mirror the structure of the live `change/structure/system-interface-redesign.md` but retarget at the external boundary.
-
-**Header & scope:**
-
-```
-# EXTERNAL SYSTEM INTERFACE REDESIGN - WRITE
-
-Reshape the external-system driver layer to match the new external API.
-The Real driver + Stub driver(s) + Ext* DTOs absorb the change so DSL,
-Gherkin, and tests stay untouched.
-
-## Scope
-
-`${external_driver_adapter}/<external-system>/...` (exceptionally
-`${external_driver_port}/<external-system>/...` with approval).
-```
-
-**Steps (mirror SIR's 5-step structure):**
-
-1. Identify the external system from the ticket Checklist; locate its driver components: `XyzRealDriver`, `XyzStubDriver` (one per stub variant), `BaseXyzClient`, `Ext*` DTOs.
-2. Update `Ext*` DTOs to match the new external surface.
-3. Update the Real driver impl (`${external_driver_adapter}/.../XyzRealDriver`) to consume the new surface. Apply across **all parallel implementations** (Java/.NET/TS × monolith/multitier — see [architecture/external-driver-adapter.md](../../../architecture/external-driver-adapter.md)).
-4. Update the Stub driver impl(s) to mirror the new surface so stubs stay consistent with reality.
-5. **External driver port guardrail.** Do NOT modify `${external_driver_port}/` casually. If an interface change is unavoidable, STOP and present to the user: the method(s) you want to change, why the Real/Stub adapters alone cannot absorb the change, the proposed new signature(s), and the explicit warning that this WILL require contract-test updates (CT sub-process gets invoked for affected scenarios). Wait for explicit user approval before editing any `${external_driver_port}/` file.
-6. Do not modify acceptance tests, DSL, Gherkin, or any code outside the external-system layer + its driver. `${system_test_path}/.../Legacy/` is read-only.
-
-**Verify against:**
-
-- Live `change/structure/system-interface-redesign.md` — quality bar + step shape.
-- Live `task-external-system-interface-redesign.md` prompt — terminology (XyzRealDriver, XyzStubDriver, BaseXyzClient, Ext* DTOs).
-- `internal/assets/global/docs/atdd/architecture/external-driver-adapter.md` — boundary terminology (confirm path exists before linking).
-
-### 2. Verify the path placeholders are wired
-
-`${external_driver_adapter}` and `${external_driver_port}` are two of the seven Family B keys (per `internal/atdd/phase-scopes.yaml` + `CanonicalPathKeys`). Confirm both substitute correctly in materialized output by:
-
-- Running `gh optivem sync` against a scaffolded test project that has external driver paths configured.
-- Inspecting `./.gh-optivem/docs/atdd/process/change/structure/external-system-interface-redesign.md` for substituted values.
-
-### 3. (Optional) Cross-link from SIR doc
-
-If the SIR doc's step 4 parenthetical (*"...this is `${sut_namespace}/`, not `external/`..."*) would benefit from a `→ see external-system-interface-redesign.md` link, add it. Skip if the parenthetical reads fine standalone.
-
-### 4. Verify the BPMN + prompt reference resolves
-
-After the file exists and after plan 20260519-0922 lands:
-
-- `process-flow.yaml:1108` should read `docs/atdd/process/change/structure/external-system-interface-redesign.md`.
-- `task-external-system-interface-redesign.md:21` should read `${docs_root}/atdd/process/change/structure/external-system-interface-redesign.md`.
-- Run a phase-render smoke (one of the test fixtures in `internal/atdd/runtime/clauderun/clauderun_test.go`) targeted at the ESIR phase and confirm the materialized prompt references an existing file.
-
-### 5. Run build + tests
-
-- `go build ./...`
-- `go test ./internal/atdd/... ./internal/assets/... -p 2` (per `[[feedback_go_test_windows]]`)
+- [ ] **Item 4: Verify the BPMN + prompt reference resolves** — ⏳ Deferred: explicitly conditional on plan [20260519-0922](20260519-0922-bpmn-rewire-process-docs-to-new-hierarchy.md) landing. 0922 is still in `plans/` (not executed); until its Items 2/3 land, `process-flow.yaml:1108` and `task-external-system-interface-redesign.md:21` still point at the old flat path. Pick up immediately after 0922's execute completes — the file authored in Item 1 above is now in place, so the references will resolve cleanly the moment 0922 rewrites them.
 
 ## Hand-off dependencies
 
