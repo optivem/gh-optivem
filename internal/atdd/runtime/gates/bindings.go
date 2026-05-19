@@ -1,5 +1,5 @@
 // Bindings — Go implementations of every gateway `binding:` referenced in
-// docs/atdd/process/process-flow.yaml.
+// internal/atdd/runtime/statemachine/process-flow.yaml.
 //
 // Each binding is a `statemachine.NodeFn` that:
 //

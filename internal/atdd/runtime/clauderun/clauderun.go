@@ -51,7 +51,7 @@ type Options struct {
 	Agent string
 
 	// PhaseDoc is the relative path to the phase's process document
-	// (e.g. "docs/atdd/process/at-red-test.md").
+	// (e.g. "docs/atdd/process/change/behavior/at-red-test.md").
 	PhaseDoc string
 
 	// NodeDescription is the YAML node's `documentation:` — surfaced in the

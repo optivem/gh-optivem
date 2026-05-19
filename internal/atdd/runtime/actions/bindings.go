@@ -1,5 +1,5 @@
 // Bindings — Go implementations of every service-task `action:` referenced
-// in docs/atdd/process/process-flow.yaml.
+// in internal/atdd/runtime/statemachine/process-flow.yaml.
 //
 // Actions are the mechanical work of the pipeline: read the project board,
 // move cards, classify the ticket, run a smoke test, commit a phase, etc.

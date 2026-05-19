@@ -118,7 +118,7 @@ func (f *fakeGit) hasGitArg(prefix ...string) bool {
 func newOpts() Options {
 	return Options{
 		Agent:           "at-red-test",
-		PhaseDoc:        "docs/atdd/process/at-red-test.md",
+		PhaseDoc:        "docs/atdd/process/change/behavior/at-red-test.md",
 		NodeDescription: "Write the AT-RED scenario",
 		IssueNum:        42,
 		IssueTitle:      "Add PUT /carts/{id}/items endpoint",
@@ -154,7 +154,7 @@ func TestRenderPrompt_IncludesAllFields(t *testing.T) {
 	mustContain(t, got, "You are the Test Agent")
 	mustContain(t, got, `#42 "Add PUT /carts/{id}/items endpoint"`)
 	mustContain(t, got, "Phase: Write the AT-RED scenario")
-	mustContain(t, got, "Phase doc: docs/atdd/process/at-red-test.md")
+	mustContain(t, got, "Phase doc: docs/atdd/process/change/behavior/at-red-test.md")
 	mustContain(t, got, "prefer record types")
 	mustContain(t, got, "do not summarise")
 	mustContain(t, got, "the agent must never run `git commit`")
@@ -310,7 +310,7 @@ func TestRenderPrompt_DocsRootSubstitutes(t *testing.T) {
 // instead of the user-global home path.
 //
 // To keep the test independent of the current state of the embedded
-// `docs/atdd/process/*.md` corpus (some teaching docs intentionally
+// `docs/atdd/process/**/*.md` corpus (some teaching docs intentionally
 // contain ${name}-shaped meta-references that the substituter can't
 // distinguish from real placeholders — handled by Item 4's audit
 // follow-up), the test pre-writes a sidecar that matches the
@@ -344,7 +344,7 @@ func TestDispatch_MaterializesProjectDocsWhenProjectConfigSet(t *testing.T) {
 	opts := newOpts()
 	opts.RepoPath = repoPath
 	opts.ProjectConfig = cfg
-	opts.PromptOverride = "Read ${docs_root}/atdd/process/glossary.md."
+	opts.PromptOverride = "Read ${docs_root}/atdd/process/shared/conventions.md."
 
 	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
@@ -399,7 +399,7 @@ func TestDispatch_FallsBackToUserGlobalDocsRootWhenProjectConfigNil(t *testing.T
 	opts := newOpts()
 	opts.RepoPath = repoPath
 	// ProjectConfig left nil — should fall back to the user-global root.
-	opts.PromptOverride = "Read ${docs_root}/atdd/process/glossary.md."
+	opts.PromptOverride = "Read ${docs_root}/atdd/process/shared/conventions.md."
 
 	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)

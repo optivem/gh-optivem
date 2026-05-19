@@ -240,7 +240,7 @@ func compileFromCycle(parent map[string]string) map[string]string {
 func atRedTestParams() map[string]string {
 	return map[string]string{
 		"agent":          "at-red-test",
-		"phase_doc":      "docs/atdd/process/at-red-test.md",
+		"phase_doc":      "docs/atdd/process/change/behavior/at-red-test.md",
 		"phase_label":    "AT - RED - TEST",
 		"change_type":    "AT - RED - TEST",
 		"compile_action": "compile_system_tests",
@@ -251,7 +251,7 @@ func atRedTestParams() map[string]string {
 func atRedDslParams() map[string]string {
 	return map[string]string{
 		"agent":          "at-red-dsl",
-		"phase_doc":      "docs/atdd/process/at-red-dsl.md",
+		"phase_doc":      "docs/atdd/process/change/behavior/at-red-dsl.md",
 		"phase_label":    "AT - RED - DSL",
 		"change_type":    "AT - RED - DSL",
 		"compile_action": "compile_system_tests",
@@ -263,7 +263,7 @@ func atRedDslParams() map[string]string {
 func ctRedTestParams() map[string]string {
 	return map[string]string{
 		"agent":             "ct-red-test",
-		"phase_doc":         "docs/atdd/process/ct-red-test.md",
+		"phase_doc":         "docs/atdd/process/change/behavior/ct-red-test.md",
 		"phase_label":       "CT - RED - TEST",
 		"change_type":       "CT - RED - TEST",
 		"verify_real_suite": "<suite-contract-real>",
@@ -275,7 +275,7 @@ func ctRedTestParams() map[string]string {
 func ctRedDslParams() map[string]string {
 	return map[string]string{
 		"agent":          "ct-red-dsl",
-		"phase_doc":      "docs/atdd/process/ct-red-dsl.md",
+		"phase_doc":      "docs/atdd/process/change/behavior/ct-red-dsl.md",
 		"phase_label":    "CT - RED - DSL",
 		"change_type":    "CT - RED - DSL",
 		"compile_action": "compile_system_tests",
@@ -286,7 +286,7 @@ func ctRedDslParams() map[string]string {
 func ctRedExternalDriverParams() map[string]string {
 	return map[string]string{
 		"agent":          "ct-red-external-driver",
-		"phase_doc":      "docs/atdd/process/ct-red-external-driver.md",
+		"phase_doc":      "docs/atdd/process/change/behavior/ct-red-external-driver.md",
 		"phase_label":    "CT - RED - EXTERNAL DRIVER",
 		"change_type":    "CT - RED - EXTERNAL DRIVER",
 		"compile_action": "compile_system_tests",
@@ -297,7 +297,7 @@ func ctRedExternalDriverParams() map[string]string {
 func atGreenBackendParams() map[string]string {
 	return map[string]string{
 		"agent":              "at-green-system-backend",
-		"phase_doc":          "docs/atdd/process/at-green-system.md",
+		"phase_doc":          "docs/atdd/process/change/behavior/at-green-system.md",
 		"phase_label":        "AT - GREEN - SYSTEM (backend)",
 		"suite":              "<acceptance-api>",
 		"rebuild_before_run": "true",
@@ -309,7 +309,7 @@ func atGreenBackendParams() map[string]string {
 func atGreenFrontendParams() map[string]string {
 	return map[string]string{
 		"agent":              "at-green-system-frontend",
-		"phase_doc":          "docs/atdd/process/at-green-system.md",
+		"phase_doc":          "docs/atdd/process/change/behavior/at-green-system.md",
 		"phase_label":        "AT - GREEN - SYSTEM (frontend)",
 		"suite":              "<acceptance-ui>",
 		"rebuild_before_run": "true",
@@ -328,7 +328,7 @@ func systemInterfaceRedesignParams() map[string]string {
 	return map[string]string{
 		"change_type": "SYSTEM INTERFACE REDESIGN",
 		"agent":       "task-system-interface-redesign",
-		"phase_doc":   "docs/atdd/process/system-interface-redesign.md",
+		"phase_doc":   "docs/atdd/process/change/structure/system-interface-redesign.md",
 		"subtype":     "system-interface-redesign",
 	}
 }

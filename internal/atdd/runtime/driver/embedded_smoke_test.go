@@ -149,7 +149,7 @@ func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 	// it directly here since this test invokes node.Fn outside the
 	// call_activity dispatch path.
 	ctx := newCtxWithIssue()
-	ctx.Params["phase_doc"] = "docs/atdd/process/system-interface-redesign.md"
+	ctx.Params["phase_doc"] = "docs/atdd/process/change/structure/system-interface-redesign.md"
 
 	out := node.Fn(ctx)
 	if out.Err != nil {

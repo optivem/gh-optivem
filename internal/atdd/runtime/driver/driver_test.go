@@ -86,7 +86,7 @@ processes:
         type: user_task
         agent: at-red-test
         documentation: Write the AT-RED scenario
-        phase_doc: docs/atdd/process/at-red-test.md
+        phase_doc: docs/atdd/process/change/behavior/at-red-test.md
       - id: END
         type: end_event
     sequence_flows:
@@ -205,7 +205,7 @@ func TestClaudeRunDispatch_AdvancesOnCleanExit(t *testing.T) {
 	if !strings.Contains(got, "#42") || !strings.Contains(got, "Add PUT") {
 		t.Errorf("prompt missing ticket context")
 	}
-	if !strings.Contains(got, "docs/atdd/process/at-red-test.md") {
+	if !strings.Contains(got, "docs/atdd/process/change/behavior/at-red-test.md") {
 		t.Errorf("prompt missing phase doc")
 	}
 	if strings.Contains(got, "${") {

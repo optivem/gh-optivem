@@ -321,7 +321,7 @@ processes:
         process: red_phase_cycle
         params:
           agent: at-red-test
-          phase_doc: docs/atdd/process/at-red-test.md
+          phase_doc: docs/atdd/process/change/behavior/at-red-test.md
           phase_label: "AT - RED - TEST"
           change_type: "AT - RED - TEST"
           compile_action: compile_system_tests
@@ -337,7 +337,7 @@ processes:
         process: red_phase_cycle
         params:
           agent: at-red-dsl
-          phase_doc: docs/atdd/process/at-red-dsl.md
+          phase_doc: docs/atdd/process/change/behavior/at-red-dsl.md
           phase_label: "AT - RED - DSL"
           change_type: "AT - RED - DSL"
           compile_action: compile_system_tests
@@ -362,7 +362,7 @@ processes:
         process: red_phase_cycle
         params:
           agent: at-red-system-driver
-          phase_doc: docs/atdd/process/at-red-system-driver.md
+          phase_doc: docs/atdd/process/change/behavior/at-red-system-driver.md
           phase_label: "AT - RED - SYSTEM DRIVER"
           change_type: "AT - RED - SYSTEM DRIVER"
           compile_action: compile_system_tests
@@ -416,7 +416,7 @@ processes:
         process: green_phase_cycle
         params:
           agent: at-green-system-backend
-          phase_doc: docs/atdd/process/at-green-system.md
+          phase_doc: docs/atdd/process/change/behavior/at-green-system.md
           phase_label: "AT - GREEN - SYSTEM (backend)"
           suite: "<acceptance-api>"
           rebuild_before_run: "true"
@@ -428,7 +428,7 @@ processes:
         process: green_phase_cycle
         params:
           agent: at-green-system-frontend
-          phase_doc: docs/atdd/process/at-green-system.md
+          phase_doc: docs/atdd/process/change/behavior/at-green-system.md
           phase_label: "AT - GREEN - SYSTEM (frontend)"
           suite: "<acceptance-ui>"
           rebuild_before_run: "true"
@@ -480,7 +480,7 @@ processes:
         process: red_phase_cycle
         params:
           agent: ct-red-test
-          phase_doc: docs/atdd/process/ct-red-test.md
+          phase_doc: docs/atdd/process/change/behavior/ct-red-test.md
           phase_label: "CT - RED - TEST"
           change_type: "CT - RED - TEST"
           verify_real_suite: "<suite-contract-real>"
@@ -497,7 +497,7 @@ processes:
         process: red_phase_cycle
         params:
           agent: ct-red-dsl
-          phase_doc: docs/atdd/process/ct-red-dsl.md
+          phase_doc: docs/atdd/process/change/behavior/ct-red-dsl.md
           phase_label: "CT - RED - DSL"
           change_type: "CT - RED - DSL"
           compile_action: compile_system_tests
@@ -516,7 +516,7 @@ processes:
         process: red_phase_cycle
         params:
           agent: ct-red-external-driver
-          phase_doc: docs/atdd/process/ct-red-external-driver.md
+          phase_doc: docs/atdd/process/change/behavior/ct-red-external-driver.md
           phase_label: "CT - RED - EXTERNAL DRIVER"
           change_type: "CT - RED - EXTERNAL DRIVER"
           compile_action: compile_system_tests
@@ -535,7 +535,7 @@ processes:
         # Placeholder agent name; resolve before the Go runtime ships.
         type: user_task
         agent: ct-green-stubs
-        phase_doc: docs/atdd/process/ct-green-stubs.md
+        phase_doc: docs/atdd/process/change/behavior/ct-green-stubs.md
         documentation: "CT - GREEN - STUBS"
 
       - id: CT_END
@@ -1096,7 +1096,7 @@ processes:
         params:
           change_type: "SYSTEM INTERFACE REDESIGN"
           agent: task-system-interface-redesign
-          phase_doc: docs/atdd/process/system-interface-redesign.md
+          phase_doc: docs/atdd/process/change/structure/system-interface-redesign.md
           subtype: system-interface-redesign
 
       - id: EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE
@@ -1105,7 +1105,7 @@ processes:
         params:
           change_type: "EXTERNAL SYSTEM INTERFACE REDESIGN"
           agent: task-external-system-interface-redesign
-          phase_doc: docs/atdd/process/external-system-interface-redesign.md
+          phase_doc: docs/atdd/process/change/structure/external-system-interface-redesign.md
           subtype: external-system-interface-redesign
 
       - id: DA_END
@@ -1132,7 +1132,7 @@ processes:
         params:
           change_type: CHORE
           agent: chore
-          phase_doc: docs/atdd/process/chore.md
+          phase_doc: docs/atdd/process/change/structure/system-implementation-change.md
 
       - id: SUT_END
         type: end_event
