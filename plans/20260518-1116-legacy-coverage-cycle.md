@@ -1,7 +1,5 @@
 # Plan: legacy coverage cycle
 
-> 🤖 **Picked up by agent (refine)** — `Valentina_Desk` at `2026-05-18T11:25:19Z`
-
 > ⚠️ **NOT YET REFINED** — this plan was promoted out of [Part 1's item 5 discussion](20260516-1701-atdd-at-cycle-absorb-internal-assets.md) without per-item refinement. Run `/refine-plan` on this file before `/execute-plan`.
 
 **Date:** 2026-05-18 (split from the AT-cycle Part 1 plan during refinement)
