@@ -4,7 +4,13 @@ Implement the dockerized External System stub changes to take all change-driven 
 
 ## Scope
 
-dockerized External System stub (routes, fixtures, middleware) only; tests/DSL/drivers are frozen
+This phase touches the `external_driver_adapter` layer (bare layer
+name; resolved physical path lives in `gh-optivem.yaml paths:` —
+inspect with `gh optivem process scope CT_GREEN_STUBS`). Dockerized
+External System stub (routes, fixtures, middleware) only;
+tests/DSL/drivers are frozen.
+
+See [the scope rule](../../shared/scope.md).
 
 ## Steps
 

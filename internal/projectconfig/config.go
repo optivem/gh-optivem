@@ -22,6 +22,7 @@
 package projectconfig
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -246,6 +247,16 @@ type System struct {
 	// Multitier-only.
 	Backend  TierSpec `yaml:"backend,omitempty"`
 	Frontend TierSpec `yaml:"frontend,omitempty"`
+
+	// LegacySutNamespace is the pre-SSoT spelling of the sut_namespace
+	// field. Per SSoT (plan 20260518-1530 item 3), the field has been
+	// retired — scaffold-time sut_namespace is now baked into System.Path
+	// and `paths:` values, and runtime lookups derive from System.Repo.
+	// Kept on the struct so Validate can surface a clear migration error
+	// when a pre-SSoT config is loaded; never written out
+	// (omitempty + Validate rejects any non-empty value before Write
+	// reaches the marshaller).
+	LegacySutNamespace string `yaml:"sut_namespace,omitempty"`
 }
 
 // TierSpec describes one body of code: where it lives, in which repo,
@@ -424,6 +435,28 @@ func (c *Config) Validate() error {
 	if c.LegacyTestConfig != "" {
 		return fmt.Errorf("config: top-level test_config: %q is no longer supported — move it to system_test.config:",
 			c.LegacyTestConfig)
+	}
+
+	// Rule 0c: pre-SSoT detection. Per SSoT (plan 20260518-1530 item 3 + 5),
+	// system.sut_namespace was retired — scaffold-time sut_namespace is
+	// baked into System.Path and paths: values. A non-empty value means
+	// the file predates the SSoT migration; `gh optivem config migrate`
+	// folds the value into paths/system.path and deletes the field in a
+	// single deterministic pass (plan item 6).
+	if c.System.LegacySutNamespace != "" {
+		return fmt.Errorf(`config: gh-optivem.yaml uses the pre-SSoT ATDD scope model (system.sut_namespace is set; paths: values are not fully resolved).
+
+Run:  gh optivem config migrate
+
+The migrate command will:
+  - join sut_namespace into each paths:<key> value, deterministically;
+  - join sut_namespace into system.path;
+  - delete the system.sut_namespace field.
+
+Existing comments and key ordering are preserved. The command is
+idempotent and safe to re-run. Review the diff before committing,
+especially if your project flattened or added channel sub-dirs
+beyond the canonical layout`)
 	}
 
 	// Rule 0b: Config on backend/frontend tiers is meaningless — the runner
@@ -708,16 +741,32 @@ func (c *Config) Validate() error {
 		seenRepoPaths[normalized] = struct{}{}
 	}
 
-	// Rule 22: paths.* keys must not shadow reserved Family A placeholder
-	// names. A typo'd `paths.language: typescript` would otherwise quietly
-	// override the canonical system.lang value at substitution time, which
-	// is exactly the wires-crossed failure mode the dispatch-time
-	// findUnfilledPlaceholders guardrail was designed to catch.
+	// Rule 22: paths.* keys must (a) not shadow reserved Family A
+	// placeholder names, (b) be in the canonical Family B key set
+	// (CanonicalPathKeys — eight names today), and (c) carry fully-
+	// resolved values with no `${...}` substitution markers. (a) is the
+	// historical wires-crossed guard (a typo'd `paths.language:
+	// typescript` would otherwise quietly override system.lang). (b) is
+	// the SSoT typo / stale-key catch (plan 20260518-1530 item 5) — see
+	// internal/assets/global/docs/atdd/process/path-keys.md for the
+	// canonical-key vocabulary. (c) is the SSoT no-substitution rule —
+	// values must be fully resolved at scaffold time (plan item 5);
+	// runtime substitution is retired (locked δ).
+	canonical := map[string]struct{}{}
+	for _, k := range CanonicalPathKeys() {
+		canonical[k] = struct{}{}
+	}
 	// Sorted iteration so errors are deterministic when multiple keys
 	// could trip the rule.
 	for _, k := range sortedKeys(c.Paths) {
 		if _, reserved := reservedPlaceholderKeys[k]; reserved {
 			return fmt.Errorf("config: paths.%s shadows a reserved fixed-schema placeholder name; rename it", k)
+		}
+		if _, ok := canonical[k]; !ok {
+			return fmt.Errorf("config: paths.%s is not a canonical Family B key; see internal/assets/global/docs/atdd/process/path-keys.md for the supported set", k)
+		}
+		if strings.Contains(c.Paths[k], "${") {
+			return fmt.Errorf("config: paths.%s %q contains a ${...} marker; under SSoT, paths must be fully resolved (substitution is scaffold-time-only)", k, c.Paths[k])
 		}
 		if err := validatePath("paths."+k, c.Paths[k]); err != nil {
 			return err
@@ -961,8 +1010,19 @@ func LoadFromPath(path string) (*Config, error) {
 
 func parse(data []byte, source string) (*Config, error) {
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("config: parse %s: %w", source, err)
+	if len(bytes.TrimSpace(data)) > 0 {
+		dec := yaml.NewDecoder(bytes.NewReader(data))
+		// KnownFields(true) rejects any field not declared on the target
+		// struct at every nesting level — uniform strictness so a typo like
+		// `system.namepsace` errors with the same hard-fail as a root typo
+		// (per plan 20260518-1530 item 5). Skipped for empty/whitespace-only
+		// input because the decoder returns io.EOF in that case; Validate
+		// produces the canonical "project.provider is required" error
+		// against the zero-value Config below.
+		dec.KnownFields(true)
+		if err := dec.Decode(&cfg); err != nil {
+			return nil, fmt.Errorf("config: parse %s: %w", source, err)
+		}
 	}
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("config: %s: %w", source, err)

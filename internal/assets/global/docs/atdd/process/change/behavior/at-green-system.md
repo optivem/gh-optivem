@@ -4,7 +4,12 @@ Implement the system to take all change-driven acceptance tests from RED to GREE
 
 ## Scope
 
-production system code only; tests/DSL/drivers are frozen
+This phase touches the `system_path` layer (bare layer name; resolved
+physical path lives in `gh-optivem.yaml system.path` — inspect with
+`gh optivem process scope AT_GREEN_SYSTEM`). Tests/DSL/drivers are
+frozen.
+
+See [the scope rule](../../shared/scope.md).
 
 ## Steps
 

@@ -13,9 +13,10 @@ func TestDefaultPaths_TypescriptFlatScaffold(t *testing.T) {
 		"driver_adapter":          "system-test/src/testkit/driver/adapter/shop",
 		"external_driver_port":    "system-test/src/testkit/external/port/shop",
 		"external_driver_adapter": "system-test/src/testkit/external/adapter/shop",
-		"at_test":                 "system-test/src/test",
+		"at_test":                 "system-test/tests/latest/acceptance",
 		"dsl_port":                "system-test/src/testkit/dsl/port/shop",
 		"dsl_core":                "system-test/src/testkit/dsl/core/shop",
+		"ct_test":                 "system-test/tests/latest/contract",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("typescript: got %v, want %v", got, want)
@@ -30,9 +31,10 @@ func TestDefaultPaths_JavaFlatScaffold(t *testing.T) {
 		"driver_adapter":          "system-test/src/main/java/testkit/driver/adapter/shop",
 		"external_driver_port":    "system-test/src/main/java/testkit/external/port/shop",
 		"external_driver_adapter": "system-test/src/main/java/testkit/external/adapter/shop",
-		"at_test":                 "system-test/src/test/java",
+		"at_test":                 "system-test/src/test/java/shop/latest/acceptance",
 		"dsl_port":                "system-test/src/main/java/testkit/dsl/port/shop",
 		"dsl_core":                "system-test/src/main/java/testkit/dsl/core/shop",
+		"ct_test":                 "system-test/src/test/java/shop/latest/contract",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("java: got %v, want %v", got, want)
@@ -47,9 +49,10 @@ func TestDefaultPaths_DotnetFlatScaffold(t *testing.T) {
 		"driver_adapter":          "system-test/Testkit.Driver.Adapter/shop",
 		"external_driver_port":    "system-test/Testkit.External.Port/shop",
 		"external_driver_adapter": "system-test/Testkit.External.Adapter/shop",
-		"at_test":                 "system-test/Tests",
+		"at_test":                 "system-test/SystemTests/Latest/AcceptanceTests",
 		"dsl_port":                "system-test/Testkit.Dsl.Port/shop",
 		"dsl_core":                "system-test/Testkit.Dsl.Core/shop",
+		"ct_test":                 "system-test/SystemTests/Latest/ExternalSystemContractTests",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("dotnet: got %v, want %v", got, want)
@@ -57,17 +60,32 @@ func TestDefaultPaths_DotnetFlatScaffold(t *testing.T) {
 }
 
 // TestDefaultPaths_EmptySutNamespace — the pre-SSoT shape (no suffix) is
-// what `runConfigMigrate`'s back-fill uses for legacy configs until the
-// SSoT join step (plan 20260518-1530 item 6) lands. Tests at_test (which
-// is sut_namespace-free even under SSoT) and a testkit key.
+// what `runConfigMigrate`'s gap-fill back-fill uses for legacy configs
+// until the SSoT join step (plan 20260518-1530 item 6) runs. Tests both
+// a testkit key (sut_namespace-free trailing append) and at_test (Java
+// stem with the package segment collapsed) plus ct_test.
 func TestDefaultPaths_EmptySutNamespace(t *testing.T) {
 	t.Parallel()
 	got := DefaultPaths(LangTypescript, "system-test", "")
 	if got["driver_port"] != "system-test/src/testkit/driver/port" {
-		t.Errorf("driver_port with empty sutNamespace: got %q, want pre-SSoT shape", got["driver_port"])
+		t.Errorf("ts driver_port with empty sutNamespace: got %q, want pre-SSoT shape", got["driver_port"])
 	}
-	if got["at_test"] != "system-test/src/test" {
-		t.Errorf("at_test with empty sutNamespace: got %q", got["at_test"])
+	if got["at_test"] != "system-test/tests/latest/acceptance" {
+		t.Errorf("ts at_test with empty sutNamespace: got %q", got["at_test"])
+	}
+	if got["ct_test"] != "system-test/tests/latest/contract" {
+		t.Errorf("ts ct_test with empty sutNamespace: got %q", got["ct_test"])
+	}
+
+	// Java with empty sutNamespace collapses the package segment so the
+	// pre-SSoT shape stays a valid path. SSoT-aware callers pass the
+	// real sutNamespace; this test pins the gap-fill fallback shape.
+	gotJava := DefaultPaths(LangJava, "system-test", "")
+	if gotJava["at_test"] != "system-test/src/test/java/latest/acceptance" {
+		t.Errorf("java at_test with empty sutNamespace: got %q (want collapsed-package shape)", gotJava["at_test"])
+	}
+	if gotJava["ct_test"] != "system-test/src/test/java/latest/contract" {
+		t.Errorf("java ct_test with empty sutNamespace: got %q", gotJava["ct_test"])
 	}
 }
 
@@ -78,6 +96,9 @@ func TestDefaultPaths_CustomSystemTestRoot(t *testing.T) {
 	got := DefaultPaths(LangTypescript, "tests", "shop")
 	if got["driver_port"] != "tests/src/testkit/driver/port/shop" {
 		t.Errorf("driver_port: got %q, want under custom root", got["driver_port"])
+	}
+	if got["at_test"] != "tests/tests/latest/acceptance" {
+		t.Errorf("at_test: got %q, want under custom root", got["at_test"])
 	}
 }
 
@@ -109,6 +130,9 @@ func TestDefaultPaths_EmptyForUnknownLanguage(t *testing.T) {
 // mean newly-scaffolded projects ship a paths: block that references
 // unknown keys (or omits keys the phase docs reference), and
 // MaterializeProject would error on first run.
+//
+// See `internal/assets/global/docs/atdd/process/path-keys.md` for the
+// canonical-key vocabulary doc.
 func TestDefaultPaths_KeysMatchPlaceholderDoctrine(t *testing.T) {
 	t.Parallel()
 	got := DefaultPaths(LangTypescript, "system-test", "shop")
@@ -120,6 +144,7 @@ func TestDefaultPaths_KeysMatchPlaceholderDoctrine(t *testing.T) {
 		"at_test",
 		"dsl_port",
 		"dsl_core",
+		"ct_test",
 	}
 	for _, key := range want {
 		if _, ok := got[key]; !ok {

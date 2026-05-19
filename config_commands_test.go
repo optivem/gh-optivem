@@ -856,9 +856,10 @@ paths:
   driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
   external_driver_port: system-test/java/src/main/java/testkit/external/port
   external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
-  at_test: system-test/java/src/test/java
+  at_test: system-test/java/src/test/java/latest/acceptance
   dsl_port: system-test/java/src/main/java/testkit/dsl/port
   dsl_core: system-test/java/src/main/java/testkit/dsl/core
+  ct_test: system-test/java/src/test/java/latest/contract
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -951,13 +952,14 @@ repos:
   - path: ./custom-frontend
 
 paths:
-  driver_port: system-test/java/src/main/java/testkit/driver/port
-  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
-  external_driver_port: system-test/java/src/main/java/testkit/external/port
-  external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
-  at_test: system-test/java/src/test/java
-  dsl_port: system-test/java/src/main/java/testkit/dsl/port
-  dsl_core: system-test/java/src/main/java/testkit/dsl/core
+  driver_port: system-test/src/main/java/testkit/driver/port
+  driver_adapter: system-test/src/main/java/testkit/driver/adapter
+  external_driver_port: system-test/src/main/java/testkit/external/port
+  external_driver_adapter: system-test/src/main/java/testkit/external/adapter
+  at_test: system-test/src/test/java/latest/acceptance
+  dsl_port: system-test/src/main/java/testkit/dsl/port
+  dsl_core: system-test/src/main/java/testkit/dsl/core
+  ct_test: system-test/src/test/java/latest/contract
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1106,6 +1108,323 @@ func TestRunConfigMigrate_SkipsPathsForPartialConfig(t *testing.T) {
 	got, _ := os.ReadFile(path)
 	if strings.Contains(string(got), "paths:") {
 		t.Errorf("partial config grew a paths: block:\n%s", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// runConfigMigrate — SSoT join (plan 20260518-1530 item 6)
+// ---------------------------------------------------------------------------
+
+// preSSoTMonolithBody is a pre-SSoT monolith config: system.sut_namespace
+// is set, and paths: values are the pre-SSoT (sut_namespace-free) shape
+// that the gap-fill back-fill would write. Used to seed migrate tests
+// that exercise the SSoT join.
+const preSSoTMonolithBody = `project:
+  provider: github
+  url: https://github.com/orgs/optivem/projects/20
+
+repo_strategy: mono-repo
+
+sonar:
+  organization: optivem
+
+system:
+  architecture: monolith
+  path: system/monolith/java
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system
+  sut_namespace: shop
+
+system_test:
+  path: system-test/java
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system-test
+
+paths:
+  driver_port: system-test/java/src/main/java/testkit/driver/port
+  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
+  external_driver_port: system-test/java/src/main/java/testkit/external/port
+  external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
+  at_test: system-test/java/src/test/java/latest/acceptance
+  dsl_port: system-test/java/src/main/java/testkit/dsl/port
+  dsl_core: system-test/java/src/main/java/testkit/dsl/core
+  ct_test: system-test/java/src/test/java/latest/contract
+`
+
+// TestRunConfigMigrate_SSoTJoin_FoldsSutNamespace pins the canonical
+// SSoT join: a pre-SSoT config (sut_namespace set, paths: pre-SSoT shape)
+// migrates to fully-resolved paths with system.sut_namespace dropped.
+func TestRunConfigMigrate_SSoTJoin_FoldsSutNamespace(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	if err := os.WriteFile(path, []byte(preSSoTMonolithBody), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	changed, err := runConfigMigrate(path)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if !changed {
+		t.Fatal("migrate: want changed=true (SSoT join applies)")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	gotStr := string(got)
+	if strings.Contains(gotStr, "sut_namespace:") {
+		t.Errorf("system.sut_namespace not dropped:\n%s", gotStr)
+	}
+	// system.path joined.
+	if !strings.Contains(gotStr, "path: system/monolith/java/shop\n") {
+		t.Errorf("system.path: want joined value, got file:\n%s", gotStr)
+	}
+	// Testkit value joined via trailing append.
+	if !strings.Contains(gotStr, "driver_port: system-test/java/src/main/java/testkit/driver/port/shop") {
+		t.Errorf("paths.driver_port: want trailing-append, got file:\n%s", gotStr)
+	}
+	// Java at_test joined via default-match → middle package segment.
+	if !strings.Contains(gotStr, "at_test: system-test/java/src/test/java/shop/latest/acceptance") {
+		t.Errorf("paths.at_test: want middle-package join, got file:\n%s", gotStr)
+	}
+	// Java ct_test joined the same way.
+	if !strings.Contains(gotStr, "ct_test: system-test/java/src/test/java/shop/latest/contract") {
+		t.Errorf("paths.ct_test: want middle-package join, got file:\n%s", gotStr)
+	}
+}
+
+// TestRunConfigMigrate_SSoTJoin_IsNoOpOnPostSSoTConfig pins the
+// idempotence half: a config without system.sut_namespace (already
+// migrated, or scaffolded post-SSoT) sees no join activity.
+func TestRunConfigMigrate_SSoTJoin_IsNoOpOnPostSSoTConfig(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	// Same as preSSoTMonolithBody, but with sut_namespace dropped and
+	// paths/system.path joined — what running migrate once produces.
+	body := `project:
+  provider: github
+  url: https://github.com/orgs/optivem/projects/20
+
+repo_strategy: mono-repo
+
+sonar:
+  organization: optivem
+
+system:
+  architecture: monolith
+  path: system/monolith/java/shop
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system
+
+system_test:
+  path: system-test/java
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system-test
+
+paths:
+  driver_port: system-test/java/src/main/java/testkit/driver/port/shop
+  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
+  external_driver_port: system-test/java/src/main/java/testkit/external/port/shop
+  external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
+  at_test: system-test/java/src/test/java/shop/latest/acceptance
+  dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
+  dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
+  ct_test: system-test/java/src/test/java/shop/latest/contract
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	before, _ := os.ReadFile(path)
+	changed, err := runConfigMigrate(path)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if changed {
+		t.Error("migrate: want changed=false on post-SSoT config, got true")
+	}
+	after, _ := os.ReadFile(path)
+	if string(before) != string(after) {
+		t.Errorf("file mutated despite no-op SSoT migrate;\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+}
+
+// TestRunConfigMigrate_SSoTJoin_PreservesCustomizedPaths pins the
+// preservation contract: an operator who has customised a paths: value
+// (added a channel sub-dir, renamed for a non-standard layout) sees
+// their value carry the sut_namespace append on top of the
+// customisation — the customisation isn't clobbered. at_test/ct_test
+// customisations are left untouched because the package decision is
+// the operator's once they've diverged.
+func TestRunConfigMigrate_SSoTJoin_PreservesCustomizedPaths(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	body := `project:
+  provider: github
+  url: https://github.com/orgs/optivem/projects/20
+
+repo_strategy: mono-repo
+
+sonar:
+  organization: optivem
+
+system:
+  architecture: monolith
+  path: system/monolith/java
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system
+  sut_namespace: shop
+
+system_test:
+  path: system-test/java
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system-test
+
+paths:
+  driver_port: custom/path/to/port
+  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
+  external_driver_port: system-test/java/src/main/java/testkit/external/port
+  external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
+  at_test: completely/custom/at/path
+  dsl_port: system-test/java/src/main/java/testkit/dsl/port
+  dsl_core: system-test/java/src/main/java/testkit/dsl/core
+  ct_test: system-test/java/src/test/java/latest/contract
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := runConfigMigrate(path); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	got, _ := os.ReadFile(path)
+	gotStr := string(got)
+	// Customised testkit value gets trailing append.
+	if !strings.Contains(gotStr, "driver_port: custom/path/to/port/shop") {
+		t.Errorf("customised driver_port should get trailing append, got file:\n%s", gotStr)
+	}
+	// at_test customisation left untouched (operator owns package decision).
+	if !strings.Contains(gotStr, "at_test: completely/custom/at/path\n") {
+		t.Errorf("customised at_test should be untouched, got file:\n%s", gotStr)
+	}
+	// ct_test matches pre-SSoT default → middle-package join.
+	if !strings.Contains(gotStr, "ct_test: system-test/java/src/test/java/shop/latest/contract") {
+		t.Errorf("default ct_test should middle-package-join, got file:\n%s", gotStr)
+	}
+}
+
+// TestRunConfigMigrate_SSoTJoin_RunsAlongsideProviderBackfill pins the
+// combined back-fill: a pre-SSoT config that also lacks project.provider
+// gets both fields fixed in one migrate pass.
+func TestRunConfigMigrate_SSoTJoin_RunsAlongsideProviderBackfill(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	body := `project:
+  url: https://github.com/orgs/optivem/projects/20
+
+repo_strategy: mono-repo
+
+sonar:
+  organization: optivem
+
+system:
+  architecture: monolith
+  path: system/monolith/typescript
+  repo: optivem/shop
+  lang: typescript
+  sonar_project: optivem_shop-system
+  sut_namespace: shop
+
+system_test:
+  path: system-test/typescript
+  repo: optivem/shop
+  lang: typescript
+  sonar_project: optivem_shop-system-test
+
+paths:
+  driver_port: system-test/typescript/src/testkit/driver/port
+  driver_adapter: system-test/typescript/src/testkit/driver/adapter
+  external_driver_port: system-test/typescript/src/testkit/external/port
+  external_driver_adapter: system-test/typescript/src/testkit/external/adapter
+  at_test: system-test/typescript/tests/latest/acceptance
+  dsl_port: system-test/typescript/src/testkit/dsl/port
+  dsl_core: system-test/typescript/src/testkit/dsl/core
+  ct_test: system-test/typescript/tests/latest/contract
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := runConfigMigrate(path); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	got, _ := os.ReadFile(path)
+	gotStr := string(got)
+	if !strings.Contains(gotStr, "provider: github") {
+		t.Errorf("provider not back-filled, got file:\n%s", gotStr)
+	}
+	if strings.Contains(gotStr, "sut_namespace:") {
+		t.Errorf("sut_namespace not dropped, got file:\n%s", gotStr)
+	}
+	if !strings.Contains(gotStr, "driver_port: system-test/typescript/src/testkit/driver/port/shop") {
+		t.Errorf("paths.driver_port: want SSoT-joined, got file:\n%s", gotStr)
+	}
+	// TS at_test is sut_namespace-free in both pre and post defaults —
+	// default-match branch produces the same value (no change).
+	if !strings.Contains(gotStr, "at_test: system-test/typescript/tests/latest/acceptance\n") {
+		t.Errorf("paths.at_test: want sut_namespace-free TS shape, got file:\n%s", gotStr)
+	}
+}
+
+// TestRunConfigMigrate_SSoTJoin_PreservesComments pins the contract
+// that comments and key ordering on paths: survive the SSoT rewrite.
+func TestRunConfigMigrate_SSoTJoin_PreservesComments(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	body := `project:
+  provider: github
+  url: https://github.com/orgs/optivem/projects/20
+
+repo_strategy: mono-repo
+
+sonar:
+  organization: optivem
+
+system:
+  architecture: monolith
+  path: system/monolith/java
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system
+  sut_namespace: shop
+
+system_test:
+  path: system-test/java
+  repo: optivem/shop
+  lang: java
+  sonar_project: optivem_shop-system-test
+
+# my custom comment
+paths:
+  driver_port: system-test/java/src/main/java/testkit/driver/port
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := runConfigMigrate(path); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	got, _ := os.ReadFile(path)
+	if !strings.Contains(string(got), "# my custom comment") {
+		t.Errorf("custom comment lost after SSoT migrate:\n%s", got)
 	}
 }
 

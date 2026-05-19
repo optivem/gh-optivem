@@ -4,7 +4,11 @@ Implement the DSL Core for real; set the two driver-interface-changed flags.
 
 ## Scope
 
-DSL Core impls; driver-port interface declarations
+This phase touches the `dsl_core`, `driver_port` layers (bare layer
+names; resolved physical paths live in `gh-optivem.yaml paths:` —
+inspect with `gh optivem process scope AT_RED_DSL`).
+
+See [the scope rule](../../shared/scope.md).
 
 ## Steps
 

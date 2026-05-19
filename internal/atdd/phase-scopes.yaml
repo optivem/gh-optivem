@@ -27,10 +27,7 @@ phases:
   AT_GREEN_SYSTEM:        [system_path]                         # monolith GREEN; AT_GREEN_BACKEND / AT_GREEN_FRONTEND allowlisted per plans/deferred/20260518-1530-multitier-green-scope.md
 
   # ---- CT (Contract Test) cycle --------------------------------------
-  # CT_RED_TEST is temporarily on the deferred allowlist in the
-  # phase_scopes_test until CT-vocabulary plan 20260518-1742 lands the
-  # `ct_test` Family B key. After that plan lands, restore here as:
-  #   CT_RED_TEST:          [ct_test, dsl_port, dsl_core]
+  CT_RED_TEST:            [ct_test, dsl_port, dsl_core]
   CT_RED_DSL:             [dsl_core, external_driver_port]
   CT_RED_EXTERNAL_DRIVER: [external_driver_port, external_driver_adapter]
   CT_GREEN_STUBS:         [external_driver_adapter]             # bare user_task today; rewires per plans/20260518-1144-atdd-bpmn-orchestration.md item 9 Part B

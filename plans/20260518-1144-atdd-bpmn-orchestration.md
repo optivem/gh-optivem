@@ -31,17 +31,9 @@ These are the §Conventions excerpts this plan depends on, snapshotted from `doc
 
 **The executor's first task is to reconcile this snapshot with whatever §Conventions looks like at execute time.** Drift between snapshot and upstream is a normal first-execute-phase finding, not a blocker — adjust the snapshot, re-confirm, then proceed.
 
-### Snapshot A — Phase scope policy (allowed-path table)
+### Snapshot A — Phase scope policy (allowed-path table) — RETIRED
 
-Consumed by items 5, 8, 9. The `<channel>` removal called out in Hand-off is **already applied to this snapshot** for the RED-SYSTEM-DRIVER row.
-
-| Phase | Allowed paths |
-|---|---|
-| RED-TEST | acceptance test files; DSL prototype stubs (interface + `"TODO: DSL"` throw) |
-| RED-DSL | DSL Core impls; driver-port interface declarations |
-| RED-SYSTEM-DRIVER | `${driver_port}/${sut_namespace}/` and `${driver_adapter}/${sut_namespace}/` |
-| GREEN | production system code only; tests/DSL/drivers are frozen |
-| CT-RED-TEST / CT-RED-DSL / CT-RED-EXTERNAL-DRIVER / CT-GREEN-STUBS | `external/**` only |
+> Per-phase allowed-paths assignment is defined in `internal/atdd/phase-scopes.yaml` (per the SSoT phase-scope plan, [20260518-1530](20260518-1530-atdd-phase-scope-ssot.md)). This plan no longer owns that assignment. `check_phase_scope` (item 5 below) reads it directly from the embedded yaml at runtime, keyed by BPMN node id. Git history preserves the prior shape of this snapshot.
 
 ### Snapshot B — Disable-reason convention
 
@@ -149,23 +141,30 @@ One validation gateway covers all three flags (they're emitted together by the s
 
 Concrete implementation of item 2's bullet (c). Pure scripted (no LLM). Lives as:
 
-- **Action** `check_phase_scope` in `internal/atdd/runtime/actions/` — reads `allowed_paths` from the node's `params:` (threaded from item 2 bullet (a); values come from **Snapshot A**, per-phase rows), runs `git diff --name-only <pre-phase-ref> HEAD` (and `git status --porcelain` for un-staged modifications), and writes a structured result to context.
+- **Action** `check_phase_scope` in `internal/atdd/runtime/actions/` — reads `internal/atdd/phase-scopes.yaml` (embedded in the binary via the loader at `internal/atdd/phase_scopes.go:LoadPhaseScopes`) for the per-phase layer list, keyed by the current BPMN node's `id:` (e.g. `AT_RED_TEST`). Resolves layer names against `gh-optivem.yaml paths:` (in the user's project) — literal values, no `${...}` substitution (substitution retired per SSoT plan locked δ). Runs `git diff --name-only <pre-phase-ref> HEAD` and `git status --porcelain` for un-staged modifications. Writes a structured result to context.
 - **Gate binding** `phase_scope_clean` in `internal/atdd/runtime/gates/` — reads the structured result; returns `true` if all modified paths fall within the allowed set, else `false`.
 - **Wired position** (already pinned in item 2): between `DISABLE` and `COMMIT` in `red_phase_cycle`; before the parent's COMMIT in green flows.
 
-**Path-variable resolution:** the `check_phase_scope` action resolves placeholders via the existing `Config.PlaceholderMap()` (`internal/projectconfig/config.go:377`) — no new substitution mechanism needed. The map already exposes every placeholder this item needs:
+**Path-match semantics — directory-aware prefix.** A diff path matches an allowed path `P` iff `diffPath == P || strings.HasPrefix(diffPath, P+"/")`. Raw `strings.HasPrefix(diffPath, P)` is wrong — it would let `.../shop` match `.../shop2/...`. This contract is shared with the `gh optivem process scope` CLI projection and is the resolution of open question λ (SSoT plan, resolved 2026-05-18).
 
-- `${driver_port}`, `${driver_adapter}`, `${external_driver_port}`, `${external_driver_adapter}` — Family B, from `Config.Paths` (populated by `paths_defaults.go:DefaultPaths()`).
-- `${sut_namespace}` — Family A, from `Config.SutNamespace()` (`config.go:356`): explicit `System.SutNamespace` wins, else the last path segment of `System.Repo`. Already in `PlaceholderMap()` at line 387, already reserved in `reservedPlaceholderKeys`.
-- `<channel>` — **dropped 2026-05-18.** No longer in the allowed-paths row (see Hand-off cross-cutting note for the Part 1 edit to `shared/conventions.md:65`). Channel boundary is enforced by ticket scope + the human review STOP, not by path regex.
+**Layer-name → resolved-path join.** The action looks up the current node's layer list in `phase-scopes.yaml`, then resolves each layer against the loaded `*projectconfig.Config`:
+
+- Family B layers (e.g. `driver_port`, `at_test`, `ct_test`) → `cfg.Paths[layer]`.
+- Family A path-shaped layers — only `system_path` today — → `cfg.System.Path` (per `FamilyAPathKeysInScope` in `internal/atdd/phase_scopes.go`).
+
+Both surfaces are fully resolved at scaffold/migrate time (per SSoT plan item 3), so the action's join is a lookup, not a substitution.
 
 **Pre-phase ref:** captured by a small upstream service_task at WRITE-time (or read from the most recent COMMIT baseline) — pick one before execute; the choice affects whether the check sees the working-tree state alone or the full set of changes since the phase started.
 
+**Allowlist phases (no-op + log).** Phases on the deferred allowlist in `internal/atdd/phase_scopes.go:PhasesDeferredByPlan` (`AT_GREEN_BACKEND`, `AT_GREEN_FRONTEND`, the three structural-cycle entries) currently have no `phase-scopes.yaml` entry pending their respective follow-up plans. For these the action returns success without checking, and logs a single line citing the deferred plan — the absence of enforcement is intentional and visible. The action panics on a missing-key for any phase that is neither in `phase-scopes.yaml` nor on the allowlist (build-time test `TestPhaseScopes_ReverseFK_WritingAgentsScopedOrAllowlisted` makes that condition unreachable in practice).
+
 STOP options (Accept / Rewind / Revert + rerun / Abort) live on `STOP_SCOPE_VIOLATION` (defined in item 2), not duplicated here.
+
+On out-of-scope diff the error message points readers at `internal/assets/global/docs/atdd/process/shared/scope.md` (the user-facing scope rule, owned by SSoT plan item 2).
 
 > **Refined 2026-05-18:** Reframed from "post-phase scope check" → "implement the action + gate binding behind item 2 bullet (c)". **Why:** Item 2 already pins placement and STOP; this item is the action-body detail.
 >
-> **Re-refined 2026-05-18:** Earlier draft flagged `${sut_namespace}` as an unresolved sub-question. **Correction:** it's already fully wired in `projectconfig.Config.PlaceholderMap()` alongside `${driver_port}` etc. — no schema work needed. Original miss was checking only `paths_defaults.go` (Family B) without the Family-A resolution layer in `config.go`. `<channel>` separately dropped (see Hand-off).
+> **Re-refined 2026-05-19 (SSoT plan item 8):** Action's read surface rewired: it now reads `internal/atdd/phase-scopes.yaml` directly by node id, not `allowed_paths` from per-node `params:`. **Why:** under SSoT, `phase-scopes.yaml` is the single doctrinal source of per-phase scope (plan 20260518-1530 item 1); threading `allowed_paths` strings through `process-flow.yaml` is redundant. `Config.PlaceholderMap()`-based substitution retired (SSoT locked δ); the action does layer-name → resolved-path lookup, not `${...}` substitution. `<channel>` separately dropped 2026-05-18.
 
 ### 6. Implement the Layer 1 scope-exception signal contract
 
@@ -207,44 +206,15 @@ Concrete implementation of item 2's bullet (d). Lives as:
 
 > **Refined 2026-05-18:** Reframed from "cross-plan reference + marker design alternatives" → "thin consumer of the legacy plan's marker convention". **Why:** user clarified the marker convention is fully owned by the legacy-coverage-cycle plan; this item just consumes it. Dropped the "annotation/naming/directory" restatement so the design call lives in one place.
 
-### 8. Thread `allowed_paths` param into every AT-phase invocation
+### ~~8. Thread `allowed_paths` param into every AT-phase invocation~~ — OBSOLETE
 
-Every AT phase already invokes the shared wrapper via `call_activity`: `at_cycle` (line 316) wires `AT_RED_TEST`, `AT_RED_DSL`, `AT_RED_SYSTEM_DRIVER` as `call_activity → red_phase_cycle`, and `at_green_system` (line 406) wires `AT_GREEN_BACKEND` + `AT_GREEN_FRONTEND` as `call_activity → green_phase_cycle`. The envelope wiring itself is **already done**; this item adds the new `allowed_paths` param (item 2 (a)) to each invocation.
+> **Obsolete 2026-05-19** — superseded by SSoT plan ([20260518-1530](20260518-1530-atdd-phase-scope-ssot.md)) item 8 (c): per-node `allowed_paths` params removed from `process-flow.yaml`; `check_phase_scope` (item 5 above) now reads `internal/atdd/phase-scopes.yaml` directly by node id. No `params:` threading needed in this plan. Skip this item.
 
-**Edits to `process-flow.yaml`:**
+### ~~9. Thread `allowed_paths` into CT phases — split A (RED phases) + B (CT_GREEN_STUBS deferred)~~ — OBSOLETE
 
-| call_activity | Add to `params:` |
-|---|---|
-| `AT_RED_TEST`           | `allowed_paths: "<Snapshot A row: RED-TEST>"` |
-| `AT_RED_DSL`            | `allowed_paths: "<Snapshot A row: RED-DSL>"` |
-| `AT_RED_SYSTEM_DRIVER`  | `allowed_paths: "<Snapshot A row: RED-SYSTEM-DRIVER>"` |
-| `AT_GREEN_BACKEND`      | `allowed_paths: "<Snapshot A row: GREEN>"` |
-| `AT_GREEN_FRONTEND`     | `allowed_paths: "<Snapshot A row: GREEN>"` |
-
-The string values come from **Snapshot A** (above). Placeholder resolution (`${driver_port}` etc.) happens in the `check_phase_scope` action (item 5) via `Config.PlaceholderMap()`, not at YAML-load time.
-
-> **Refined 2026-05-18:** Reframed from "rewrite the AT cycle's BPMN diagram so every phase agent goes through the call activity" → "thread `allowed_paths` param into the already-existing call_activity invocations". **Why:** the call_activity wiring already exists (the original wording implied it didn't). Also dropped the REFACTOR parenthetical — refactoring isn't part of the AT cycle in the current process-flow; it lives in `structural_cycle` (line 660), which is out of scope for this plan.
-
-### 9. Thread `allowed_paths` into CT phases — split A (RED phases) + B (CT_GREEN_STUBS deferred)
-
-**Part A — mechanical, parallel to item 8:**
-
-| call_activity | Add to `params:` |
-|---|---|
-| `CT_RED_TEST`              | `allowed_paths: "<Snapshot A row: CT phases — external/** only>"` |
-| `CT_RED_DSL`               | `allowed_paths: "<Snapshot A row: CT phases — external/** only>"` |
-| `CT_RED_EXTERNAL_DRIVER`   | `allowed_paths: "<Snapshot A row: CT phases — external/** only>"` |
-
-These three already go through `red_phase_cycle` (see `ct_subprocess` line 471). Threading `allowed_paths` is identical to item 8's pattern.
-
-**Part B — `CT_GREEN_STUBS`: ⏳ Deferred.** Two pre-existing issues block this from being a mechanical edit:
-
-1. **Not currently wrapped.** `CT_GREEN_STUBS` (line 533) is a bare `user_task` directly with `agent: ct-green-stubs`, NOT a `call_activity → green_phase_cycle`. Adding `allowed_paths` here gives no enforcement without first rewiring through the wrapper.
-2. **Ownership TBD.** The node carries the comment "Ownership TBD per process-audit gap on stubs ownership. Placeholder agent name; resolve before the Go runtime ships."
-
-**Deferred until the stubs-ownership decision lands.** When it does, `CT_GREEN_STUBS` should be rewired as a `call_activity → green_phase_cycle` with `params: {agent, phase_doc, phase_label, suite, compile_action, allowed_paths}` — same shape as `AT_GREEN_BACKEND` / `AT_GREEN_FRONTEND`. Tracked here as a known gap; Part A is independent of it and can proceed.
-
-> **Refined 2026-05-18:** Reframed from "symmetric to item 8 across four CT phases" → "Part A mechanical (three RED phases) + Part B deferred (CT_GREEN_STUBS pending stubs-ownership)". **Why:** the original wording assumed CT_GREEN_STUBS is a `call_activity → green_phase_cycle` like the AT GREEN phases; it isn't, and the ownership gap is upstream of this plan. Surfaced as Deferred so Part A can ship without waiting on B.
+> **Obsolete 2026-05-19** — superseded by SSoT plan ([20260518-1530](20260518-1530-atdd-phase-scope-ssot.md)) item 8 (c): per-node `allowed_paths` params removed from `process-flow.yaml`; `check_phase_scope` (item 5 above) now reads `internal/atdd/phase-scopes.yaml` directly by node id. Part A is therefore obsolete in the same way as item 8.
+>
+> Part B's `CT_GREEN_STUBS` rewiring concern (bare `user_task` vs `call_activity → green_phase_cycle`) remains a real follow-up and is tracked separately in `plans/deferred/20260518-1530-multitier-green-scope.md` / the CT_GREEN_STUBS allowlist entry in `internal/atdd/phase_scopes.go:PhasesDeferredByPlan`. Skip this item.
 
 ### ~~10. Document the orchestration~~ — removed
 

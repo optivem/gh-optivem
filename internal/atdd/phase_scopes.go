@@ -40,10 +40,6 @@ var PhasesDeferredByPlan = map[string]string{
 	"SYSTEM_INTERFACE_REDESIGN_CYCLE":          "plans/deferred/20260518-1530-structure-cycle-ssot-alignment.md",
 	"EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE": "plans/deferred/20260518-1530-structure-cycle-ssot-alignment.md",
 	"CHORE_CYCLE":                              "plans/deferred/20260518-1530-structure-cycle-ssot-alignment.md",
-	// CT_RED_TEST's doctrinal scope is [ct_test, dsl_port, dsl_core] but
-	// `ct_test` is added to canonicalPathKeys() by the CT-vocabulary plan
-	// below. Restore as a phase-scopes.yaml entry once that plan lands.
-	"CT_RED_TEST": "plans/20260518-1742-family-b-stems-and-ct-vocab.md",
 }
 
 // NonWritingAgents are agent names that do not need a phase-scopes

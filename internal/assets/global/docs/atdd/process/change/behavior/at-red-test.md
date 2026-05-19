@@ -4,7 +4,11 @@ Write acceptance tests; add `"TODO: DSL"` prototypes so the result compiles.
 
 ## Scope
 
-acceptance test files; DSL prototype stubs (interface + `"TODO: DSL"` throw)
+This phase touches the `at_test`, `dsl_port`, `dsl_core` layers (bare
+layer names; resolved physical paths live in `gh-optivem.yaml paths:`
+— inspect with `gh optivem process scope AT_RED_TEST`).
+
+See [the scope rule](../../shared/scope.md).
 
 ## Steps
 

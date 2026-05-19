@@ -4,7 +4,11 @@ Write External System Contract Tests against the existing DSL surface; add `"TOD
 
 ## Scope
 
-contract test files; DSL prototype stubs (interface + `"TODO: DSL"` throw)
+This phase touches the `ct_test`, `dsl_port`, `dsl_core` layers (bare
+layer names; resolved physical paths live in `gh-optivem.yaml paths:`
+— inspect with `gh optivem process scope CT_RED_TEST`).
+
+See [the scope rule](../../shared/scope.md).
 
 ## Steps
 

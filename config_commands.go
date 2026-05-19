@@ -253,9 +253,12 @@ multi-line error block listing every failure otherwise.`,
 //     workspace scope cascade. Inferred from the tier repo slugs for
 //     multi-repo projects; mono-repo projects are left untouched
 //     (single-repo behavior already covers them).
+//   - SSoT path model: joins system.sut_namespace into each paths:<key>
+//     value and into system.path, then deletes system.sut_namespace.
+//     Applied when system.sut_namespace is present.
 //
-// When neither field needs back-filling the file is left untouched and
-// the command reports a no-op. Designed to be safe to run repeatedly.
+// When no back-fill applies the file is left untouched and the command
+// reports a no-op. Designed to be safe to run repeatedly.
 //
 // Comment preservation: the file is rewritten via yaml.v3's Node API so
 // existing comments and key ordering survive — operators who hand-edited
@@ -274,9 +277,12 @@ func newConfigMigrateCmd() *cobra.Command {
     multi-repo projects (one ../<repo-name> entry per distinct tier
     slug). Mono-repo projects keep their existing single-repo behavior
     and the field is left absent.
+  • Migrates to the SSoT path model: joins system.sut_namespace into each
+    paths:<key> value and into system.path, then deletes system.sut_namespace.
+    Applied when system.sut_namespace is present in the file.
 
-The command is idempotent: when neither field needs back-filling the
-file is left untouched and the command reports "no migration needed".
+The command is idempotent: when no back-fill applies the file is left
+untouched and the command reports "no migration needed".
 
 Existing comments and key ordering are preserved so hand-edited files
 keep their context.`,
@@ -358,15 +364,39 @@ func runConfigMigrate(path string) (bool, error) {
 	//
 	// Merge rule: existing user keys are preserved untouched; only the
 	// canonical keys (driver_port, driver_adapter, external_driver_port,
-	// external_driver_adapter, at_test, dsl_port, dsl_core) that the user
-	// has NOT already set are filled in. Operator-customised values
-	// therefore survive every migrate pass — including the case where the
-	// user has renamed only some of the seven canonical entries to match
-	// a non-standard layout.
+	// external_driver_adapter, at_test, dsl_port, dsl_core, ct_test)
+	// that the user has NOT already set are filled in. Operator-
+	// customised values therefore survive every migrate pass — including
+	// the case where the user has renamed only some of the canonical
+	// entries to match a non-standard layout.
+	//
+	// The gap-fill runs BEFORE the SSoT join below: it produces the
+	// pre-SSoT shape (sutNamespace == ""), and the SSoT join then folds
+	// sutNamespace into both the newly-filled and the pre-existing
+	// entries in a single deterministic pass.
 	if defaults := inferPathDefaults(doc); len(defaults) > 0 {
 		if mergePathsEntry(doc, defaults) {
 			changed = true
 		}
+	}
+
+	// SSoT join (per plan 20260518-1530 item 6). Applies iff
+	// system.sut_namespace is present:
+	//
+	//   - For each entry in paths:, fold sut_namespace into the value.
+	//     Entries matching the pre-SSoT default are rewritten to the
+	//     post-SSoT default (so Java's at_test/ct_test get the package
+	//     segment baked into the right position); other testkit entries
+	//     get sut_namespace appended; at_test/ct_test customized values
+	//     are left untouched (the operator owns the package-structure
+	//     decision).
+	//   - system.path gets sut_namespace appended.
+	//   - The system.sut_namespace field is removed.
+	//
+	// Idempotent — once system.sut_namespace is absent, this branch is
+	// a no-op.
+	if joinSSoTPaths(doc) {
+		changed = true
 	}
 
 	if !changed {
@@ -537,6 +567,115 @@ func mergePathsEntry(doc *yaml.Node, defaults map[string]string) bool {
 		added = true
 	}
 	return added
+}
+
+// joinSSoTPaths folds the legacy `system.sut_namespace` value into the
+// SSoT path shape and removes the field, per plan 20260518-1530 item 6.
+// Returns true when anything changed (the caller flips changed=true and
+// re-marshals).
+//
+// When system.sut_namespace is absent the function is a no-op — making
+// it idempotent and safe to run on a post-SSoT config. Behaviour:
+//
+//  1. For each entry in paths:, fold sut_namespace into the value:
+//     entries matching DefaultPaths(testLang, systemTestPath, "") (the
+//     pre-SSoT shape) are rewritten to DefaultPaths(testLang,
+//     systemTestPath, ns) (the post-SSoT shape — this is the only
+//     branch that produces a correct Java at_test/ct_test, where ns is
+//     a middle package segment rather than a trailing append). Other
+//     testkit entries get `/ns` appended on top of the customisation.
+//     at_test/ct_test customised values are left untouched — the
+//     operator owns the package-structure decision once they've
+//     diverged from the default.
+//  2. system.path is rewritten to <current> + "/" + ns.
+//  3. system.sut_namespace is removed.
+func joinSSoTPaths(doc *yaml.Node) bool {
+	systemNode := mappingValue(doc, "system")
+	if systemNode == nil || systemNode.Kind != yaml.MappingNode {
+		return false
+	}
+	ns := scalarValue(mappingValue(systemNode, "sut_namespace"))
+	if ns == "" {
+		return false
+	}
+
+	// Pre/post defaults for the default-match branch. We re-derive
+	// (testLang, systemTestPath) from the doc rather than from a
+	// loaded Config — node-level access is what every other migrate
+	// step uses and keeps this function offline from projectconfig.Load.
+	testLang, systemTestPath := readTestLangAndPath(doc)
+	preDefaults := projectconfig.DefaultPaths(testLang, systemTestPath, "")
+	postDefaults := projectconfig.DefaultPaths(testLang, systemTestPath, ns)
+
+	if pathsNode := mappingValue(doc, "paths"); pathsNode != nil && pathsNode.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(pathsNode.Content); i += 2 {
+			keyNode := pathsNode.Content[i]
+			valNode := pathsNode.Content[i+1]
+			if valNode.Kind != yaml.ScalarNode {
+				continue
+			}
+			key := keyNode.Value
+			cur := valNode.Value
+			// Default-match branch — works for all eight canonical keys
+			// and is the only branch that produces a correct Java
+			// at_test/ct_test (middle-segment package).
+			if preDefaults != nil && postDefaults != nil && cur == preDefaults[key] {
+				valNode.Value = postDefaults[key]
+				continue
+			}
+			// at_test/ct_test customised values are left untouched.
+			// They're sut_namespace-free on TS/dotnet doctrine, and on
+			// Java the operator's customisation already encodes the
+			// package decision; naive `+/ns` would corrupt the path.
+			if key == "at_test" || key == "ct_test" {
+				continue
+			}
+			valNode.Value = cur + "/" + ns
+		}
+	}
+
+	if pathValueNode := mappingValue(systemNode, "path"); pathValueNode != nil && pathValueNode.Kind == yaml.ScalarNode && pathValueNode.Value != "" {
+		pathValueNode.Value = pathValueNode.Value + "/" + ns
+	}
+
+	removeMappingEntry(systemNode, "sut_namespace")
+	return true
+}
+
+// readTestLangAndPath returns the (testLang, systemTestPath) pair the
+// SSoT join uses to look up DefaultPaths. Mirrors inferPathDefaults's
+// resolution (system_test.lang with fallback to system.lang for
+// monolith) — refactored to a sibling helper rather than reused to
+// keep the gap-fill and SSoT-join helpers independent.
+func readTestLangAndPath(doc *yaml.Node) (string, string) {
+	systemTestNode := mappingValue(doc, "system_test")
+	if systemTestNode == nil || systemTestNode.Kind != yaml.MappingNode {
+		return "", ""
+	}
+	systemTestPath := scalarValue(mappingValue(systemTestNode, "path"))
+	testLang := scalarValue(mappingValue(systemTestNode, "lang"))
+	if testLang == "" {
+		if systemNode := mappingValue(doc, "system"); systemNode != nil {
+			testLang = scalarValue(mappingValue(systemNode, "lang"))
+		}
+	}
+	return testLang, systemTestPath
+}
+
+// removeMappingEntry deletes the (key, value) pair from m's Content
+// where the key node's Value matches key. No-op if absent. Used by the
+// SSoT join to retire system.sut_namespace once it has been folded
+// into the per-key paths and system.path.
+func removeMappingEntry(m *yaml.Node, key string) {
+	if m == nil || m.Kind != yaml.MappingNode {
+		return
+	}
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if m.Content[i].Value == key {
+			m.Content = append(m.Content[:i], m.Content[i+2:]...)
+			return
+		}
+	}
 }
 
 // sortedDefaultsKeys returns the keys of m in lexicographic order so
