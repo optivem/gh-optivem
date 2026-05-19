@@ -1,5 +1,7 @@
 # Plan: ATDD phase-scope single source of truth (SSoT)
 
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-18T20:47:17Z` (executing items 1, 2, 11 only — items 3–10 deferred to a session after CT-vocabulary plan 20260518-1742 lands)
+
 > ✅ **Refined 2026-05-18** — walked item-by-item with the user; every original OPEN QUESTION resolved (η, μ, λ, ζ, γ extension, ct_test, agent-to-phase mapping, placeholders.md scope). Locked decision ε revised in lockstep (manual-only → deterministic via existing `gh optivem config migrate`). Ready for `/execute-plan` once the listed hard dependencies land.
 
 **Date:** 2026-05-18
@@ -45,62 +47,6 @@ Recorded here so the items below are unambiguous. All decided during the refinem
 - The runtime-prompt `scope:` frontmatter is not separately injected into the model context (runtime prompts are passed to Claude as text). It exists for humans inspecting the prompt file and IDE tooling — it does not enforce. Enforcement lives in `check_phase_scope`.
 
 ## Items
-
-### 1. Create `internal/atdd/phase-scopes.yaml`
-
-Add a new yaml file at **`internal/atdd/phase-scopes.yaml`** (location η resolved 2026-05-18 — standalone peer of `internal/atdd/runtime/architecture/architecture.yaml` and `internal/atdd/runtime/statemachine/process-flow.yaml`; not folded into process-flow.yaml).
-
-Schema (phase keys use SCREAMING_SNAKE_CASE to match the `user_task` node `id:` values in `internal/atdd/runtime/statemachine/process-flow.yaml`):
-
-```yaml
-phases:
-  AT_RED_TEST:           [at_test, dsl_port, dsl_core]
-  AT_RED_DSL:            [dsl_core, driver_port]
-  AT_RED_SYSTEM_DRIVER:  [driver_port, driver_adapter]
-  AT_GREEN_SYSTEM:       [system_path]                            # monolith GREEN only — AT_GREEN_BACKEND / AT_GREEN_FRONTEND deferred (see plans/deferred/)
-  CT_RED_TEST:           [ct_test, dsl_port, dsl_core]            # OPEN QUESTION — exact CT layer set
-  CT_RED_DSL:            [dsl_core, external_driver_port]         # OPEN QUESTION
-  CT_RED_EXTERNAL_DRIVER: [external_driver_port, external_driver_adapter]
-  CT_GREEN_STUBS:        [external_driver_adapter]                # OPEN QUESTION
-```
-
-- Phase keys match `id:` values of `user_task` nodes in `internal/atdd/runtime/statemachine/process-flow.yaml` (verified at build time per item 11). `process-flow.yaml` has three GREEN nodes (`AT_GREEN_SYSTEM` for monolith, `AT_GREEN_BACKEND` + `AT_GREEN_FRONTEND` for multitier); this plan encodes only `AT_GREEN_SYSTEM`. Item 11's cross-validator carries an explicit allowlist for the two unmapped multitier-GREEN phases pointing to the deferred plan.
-- Layer names must be in `canonicalPathKeys()` from `internal/projectconfig/paths_defaults.go` (Family B) OR equal to `system_path` (the only Family A path-shaped key in scope vocabulary — γ resolved 2026-05-18). `system_test_path` is deliberately **not** a valid layer: it's the parent of every Family B testkit key, and admitting it would let any phase escape the layer partition.
-
-> **Refined 2026-05-18:** (1) Location η resolved — standalone `internal/atdd/phase-scopes.yaml`. **Why:** keeps BPMN runtime ("what dispatches next") separate from policy doctrine ("what paths an agent may touch"); peer pattern already exists; foreign-key drift is cheaply guarded by item 11's build-time test. (2) Phase keys renamed from kebab (`AT-RED-TEST`) to SCREAMING_SNAKE (`AT_RED_TEST`). **Why:** must match the actual `user_task` node ids in `process-flow.yaml` — refinement surfaced that the draft schema used the wrong casing. (3) AT-GREEN handling — single `AT_GREEN_SYSTEM` row only, multitier GREEN deferred. **Why:** `process-flow.yaml` has three GREEN nodes (`AT_GREEN_SYSTEM` for monolith, `AT_GREEN_BACKEND` + `AT_GREEN_FRONTEND` for multitier). Encoding `[system_path]` for all three would be factually wrong for multitier (which has no `system_path` — it has `system.backend.path` / `system.frontend.path`). Deciding the multitier-GREEN layer-key vocabulary (e.g. `system_backend_path`?) is its own design problem touching Family A schema; it's out of this plan's scope. Stub plan filed at `plans/deferred/20260518-1530-multitier-green-scope.md`. Item 11's cross-validator gets an explicit allowlist for the two unmapped phases. (4) γ extension resolved — `system_path` is the only Family A path-shaped key valid as a phase-scope layer; `system_test_path` is rejected because it's the parent of every Family B testkit key and admitting it would let any phase escape the layer partition. (5) **Surfaced gap** — refinement revealed that `smoke_test` is a real layer under `system_test/` that's missing from the canonical Family B key list. Filed as `plans/deferred/20260518-1530-smoke-test-family-b-key.md`; not absorbed into this plan. (6) `ct_test` key placement resolved — fresh dedicated CT-vocabulary plan filed at `plans/20260518-1742-family-b-stems-and-ct-vocab.md`, per `[[feedback_new_plan_not_extend]]` (scope broadening uses a fresh plan, not in-place amendment of the AT predecessor).
-
-**`ct_test` key — resolved (2026-05-18).** A fresh dedicated plan defines the CT-side Family B vocabulary additions (`ct_test` and any siblings): [`plans/20260518-1742-family-b-stems-and-ct-vocab.md`](20260518-1742-family-b-stems-and-ct-vocab.md). This SSoT plan references `ct_test` in the schema above; the CT-vocabulary plan must land alongside or before this plan does (added to Hand-off dependencies).
-
-### 2. Create `docs/atdd/process/shared/scope.md`
-
-Author a new shared doc at `docs/atdd/process/shared/scope.md`. (Directory `docs/atdd/process/shared/` confirmed to exist at refinement time — it already contains `conventions.md`.)
-
-**Late-binding note (item 4 dependency, partially resolved 2026-05-18).** The sketch below says *"Your agent's `scope:` frontmatter lists those paths"*. Item 4 has since resolved that the consumer surface is `internal/assets/runtime/prompts/atdd/*.md` (the existing runtime prompts), so the doc can say so directly. **However**, runtime-prompt frontmatter is not separately injected into the model context — it's documentation, not something the agent literally "reads". The honest version of the sentence is something like: *"Your phase's runtime-prompt file (under `internal/assets/runtime/prompts/atdd/`) carries a `scope:` frontmatter listing the allowed paths. The rule is enforced at WRITE-time by the `check_phase_scope` action, not by the agent self-policing."* Finalize the wording at execute time using that framing.
-
-Content (sketch — refine for tone during /refine-plan):
-
-```markdown
-# Scope rule
-
-Every ATDD phase has a **scope**: the set of paths the agent for that
-phase is allowed to modify. Your agent's `scope:` frontmatter lists
-those paths, fully resolved.
-
-**Rule:** in a given phase, only modify files under paths listed in
-your `scope:`. If the task appears to require touching paths outside
-scope, **stop and alert the user** rather than expanding scope
-silently — scope creep is usually a sign that the phase boundary is
-wrong, the test scope is wrong, or a refactor is needed first.
-
-(The per-phase layer assignment that produced your `scope:` is
-defined doctrinally in `internal/atdd/phase-scopes.yaml` within
-gh-optivem; the resolved paths come from `gh-optivem.yaml paths:` in
-this project.)
-```
-
-Phase docs and the `check_phase_scope` runtime point users here when scope is breached.
-
-> **Refined 2026-05-18:** (1) η sub-question dropped — `docs/atdd/process/shared/` confirmed to exist (contains `conventions.md`); the path is fine as-is. (2) Added a late-binding note tying the "Your agent's `scope:` frontmatter" sentence to item 4's outcome. **Why:** the agent-to-phase mapping (and even whether the consumer is `internal/assets/runtime/prompts/atdd/*.md` or `.claude/agents/atdd/*.md`) is undecided in item 4; the rule itself is shape-stable and shouldn't wait, but the one sentence that references the frontmatter field should be finalized once item 4 lands. No reordering, no split — just a one-line note.
 
 ### 3. Scaffolder change — write fully-resolved paths at scaffold
 

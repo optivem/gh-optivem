@@ -30,7 +30,7 @@ func DefaultPaths(testLang, systemTestRoot string) map[string]string {
 	if systemTestRoot == "" {
 		return nil
 	}
-	keys := canonicalPathKeys()
+	keys := CanonicalPathKeys()
 	stems, ok := pathStems(testLang)
 	if !ok {
 		return nil
@@ -42,10 +42,10 @@ func DefaultPaths(testLang, systemTestRoot string) map[string]string {
 	return out
 }
 
-// canonicalPathKeys is the Family B key set in fixed order so DefaultPaths,
+// CanonicalPathKeys is the Family B key set in fixed order so DefaultPaths,
 // the migrate back-fill, and any tests over either can iterate in the
 // same order.
-func canonicalPathKeys() []string {
+func CanonicalPathKeys() []string {
 	return []string{
 		"driver_port",
 		"driver_adapter",
@@ -57,7 +57,7 @@ func canonicalPathKeys() []string {
 	}
 }
 
-// pathStems returns the per-language path tails (in canonicalPathKeys
+// pathStems returns the per-language path tails (in CanonicalPathKeys
 // order) that DefaultPaths joins under systemTestRoot. Returns ok=false
 // for unsupported languages so the caller can omit `paths:` rather than
 // write a partial map.
