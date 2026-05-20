@@ -84,6 +84,40 @@ func Prompt(name string) (string, error) {
 		sharedSessionEnd + "\n", nil
 }
 
+// HasNoneScope reports whether the named agent's prompt frontmatter
+// declares `scope: none`. A `none` declaration is a doctrinal exemption
+// from `internal/atdd/phase-scopes.yaml` — the agent mutates only
+// inter-phase artifacts or external systems, never the repo working
+// tree (see runtime/shared/scope.md "scope: none" section). The
+// frontmatter is the SSoT for the exemption; no sibling Go allowlist.
+//
+// The frontmatter's `scope:` value is a small sum-type: scalar `"none"`
+// for the exemption, or a map (today always empty `{}`) for layer-pinned
+// phases whose real scope lives in phase-scopes.yaml. We decode into
+// yaml.Node so both shapes parse without errors, then discriminate by
+// kind/value.
+//
+// Returns an error if the prompt is missing or the frontmatter fails to
+// parse — never silently false on parse error, since the reverse-FK
+// drift guard depends on this answer being authoritative.
+func HasNoneScope(name string) (bool, error) {
+	data, err := assets.FS.ReadFile(promptsDir + "/" + name + ".md")
+	if err != nil {
+		return false, fmt.Errorf("agents: no embedded prompt for %q", name)
+	}
+	fm, _ := splitFrontmatter(string(data))
+	if fm == "" {
+		return false, nil
+	}
+	var probe struct {
+		Scope yaml.Node `yaml:"scope"`
+	}
+	if err := yaml.Unmarshal([]byte(fm), &probe); err != nil {
+		return false, fmt.Errorf("agents: %q: parse scope frontmatter: %w", name, err)
+	}
+	return probe.Scope.Kind == yaml.ScalarNode && probe.Scope.Value == "none", nil
+}
+
 // LoadTuning returns the model/effort tuning declared in the named
 // agent's prompt frontmatter. Every error path is fatal to dispatch:
 //

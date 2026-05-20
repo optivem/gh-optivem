@@ -25,6 +25,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/optivem/gh-optivem/internal/atdd"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/diagram"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
@@ -110,12 +111,12 @@ func runProcessScope(out io.Writer, phaseArg, configPath string) error {
 	// with it, layers resolve to physical paths.
 	cfg := loadConfigIfPresent(configPath)
 
-	agents := agentByPhase(eng)
+	phaseAgents := agentByPhase(eng)
 
 	if phaseArg != "" {
-		return printOnePhase(out, phaseArg, scopes, agents, cfg)
+		return printOnePhase(out, phaseArg, scopes, phaseAgents, cfg)
 	}
-	return printAllPhases(out, scopes, agents, cfg)
+	return printAllPhases(out, scopes, phaseAgents, cfg)
 }
 
 // loadConfigIfPresent resolves the gh-optivem.yaml path and loads it,
@@ -156,8 +157,12 @@ func agentByPhase(eng *statemachine.Engine) map[string]string {
 	return out
 }
 
-// printAllPhases renders every phase in phase-scopes.yaml (sorted).
-func printAllPhases(out io.Writer, scopes atdd.PhaseScopes, agents map[string]string, cfg *projectconfig.Config) error {
+// printAllPhases renders every phase in phase-scopes.yaml (sorted),
+// followed by every writing-agent phase whose prompt frontmatter
+// declares `scope: none` (the artifact-only doctrinal exemption — see
+// runtime/shared/scope.md). The second group has no layers to resolve
+// but still belongs in the operator's overview.
+func printAllPhases(out io.Writer, scopes atdd.PhaseScopes, phaseAgents map[string]string, cfg *projectconfig.Config) error {
 	phaseIDs := make([]string, 0, len(scopes.Phases))
 	for id := range scopes.Phases {
 		phaseIDs = append(phaseIDs, id)
@@ -165,22 +170,74 @@ func printAllPhases(out io.Writer, scopes atdd.PhaseScopes, agents map[string]st
 	sort.Strings(phaseIDs)
 
 	for _, id := range phaseIDs {
-		writePhaseBlock(out, id, scopes.Phases[id], agents[id], cfg)
+		writePhaseBlock(out, id, scopes.Phases[id], phaseAgents[id], cfg)
+		fmt.Fprintln(out)
+	}
+
+	noneIDs, err := noneScopedPhaseIDs(scopes, phaseAgents)
+	if err != nil {
+		return err
+	}
+	for _, id := range noneIDs {
+		writeNoneScopeBlock(out, id, phaseAgents[id])
 		fmt.Fprintln(out)
 	}
 	return nil
 }
 
 // printOnePhase renders a single phase. Routes through the same block
-// renderer as printAllPhases. Unknown phases (not in phase-scopes.yaml)
-// are a hard error so a typo'd phase id fails loudly instead of silently
-// emitting nothing.
-func printOnePhase(out io.Writer, phaseID string, scopes atdd.PhaseScopes, agents map[string]string, cfg *projectconfig.Config) error {
+// renderer as printAllPhases. A phase id not in phase-scopes.yaml is
+// only accepted if it corresponds to a writing-agent node in
+// process-flow.yaml whose prompt frontmatter declares `scope: none`;
+// otherwise a typo'd or unscoped phase id fails loudly.
+func printOnePhase(out io.Writer, phaseID string, scopes atdd.PhaseScopes, phaseAgents map[string]string, cfg *projectconfig.Config) error {
 	if layers, ok := scopes.Phases[phaseID]; ok {
-		writePhaseBlock(out, phaseID, layers, agents[phaseID], cfg)
+		writePhaseBlock(out, phaseID, layers, phaseAgents[phaseID], cfg)
 		return nil
 	}
+	if agent, ok := phaseAgents[phaseID]; ok {
+		none, err := agents.HasNoneScope(agent)
+		if err != nil {
+			return fmt.Errorf("process scope: %w", err)
+		}
+		if none {
+			writeNoneScopeBlock(out, phaseID, agent)
+			return nil
+		}
+	}
 	return fmt.Errorf("phase %q not in phase-scopes.yaml; run `gh optivem process scope` to list known phases", phaseID)
+}
+
+// noneScopedPhaseIDs returns the sorted set of writing-agent phase ids
+// not in phase-scopes.yaml whose prompt frontmatter declares
+// `scope: none`. Surfaced from printAllPhases so the doctrinal
+// exemption is visible in the operator's overview, not hidden.
+func noneScopedPhaseIDs(scopes atdd.PhaseScopes, phaseAgents map[string]string) ([]string, error) {
+	var out []string
+	for id, agent := range phaseAgents {
+		if _, inScopes := scopes.Phases[id]; inScopes {
+			continue
+		}
+		none, err := agents.HasNoneScope(agent)
+		if err != nil {
+			return nil, fmt.Errorf("process scope: %w", err)
+		}
+		if none {
+			out = append(out, id)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// writeNoneScopeBlock renders the `scope: none` sentinel for an
+// artifact-only / external-system-only writing-agent phase. No layers,
+// no resolved paths — the contract is "no working-tree writes" full
+// stop, so the block intentionally lacks the Layers: section.
+func writeNoneScopeBlock(out io.Writer, phaseID, agent string) {
+	fmt.Fprintf(out, "Phase:  %s\n", phaseID)
+	fmt.Fprintf(out, "Agent:  %s\n", agent)
+	fmt.Fprintln(out, "Scope:  none (artifact-only — no working-tree writes)")
 }
 
 // writePhaseBlock renders one phase's header (phase + agent) and its

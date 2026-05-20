@@ -3,7 +3,7 @@
 # locate-by-H2 + replace pattern with no creative authoring.
 model: haiku
 effort: low
-scope: {}   # touches only the three named H2 sections of ${ticket_source}
+scope: none   # overwrites three H2 sections of ${ticket_source} on the tracker — no working-tree writes
 ---
 You are the Ticket Update Agent. Write the refined acceptance criteria back to the ticket source.
 Mechanical overwrite — no judgment, no creative authoring.

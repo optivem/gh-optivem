@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
@@ -50,15 +51,16 @@ func concreteAgent(node statemachine.Node) string {
 	return agent
 }
 
-// writingAgentNodeIDs returns the set of node ids across every process
-// that dispatch a concrete writing agent — i.e. the set of phase ids
-// that must be either in phase-scopes.yaml or on the deferred allowlist.
-func writingAgentNodeIDs(eng *statemachine.Engine) map[string]bool {
-	out := map[string]bool{}
+// writingAgentNodeIDs returns the node id → agent name map across every
+// process for nodes that dispatch a concrete writing agent — i.e. the
+// set of phase ids that must be either in phase-scopes.yaml or declared
+// `scope: none` in the agent's prompt frontmatter.
+func writingAgentNodeIDs(eng *statemachine.Engine) map[string]string {
+	out := map[string]string{}
 	for _, proc := range eng.Processes {
 		for _, node := range proc.Nodes {
-			if concreteAgent(node) != "" {
-				out[node.ID] = true
+			if agent := concreteAgent(node); agent != "" {
+				out[node.ID] = agent
 			}
 		}
 	}
@@ -91,17 +93,32 @@ func TestPhaseScopes_ForwardFK_PhasesExistInBPMN(t *testing.T) {
 }
 
 // TestPhaseScopes_ReverseFK_WritingAgentsScoped asserts every node that
-// dispatches a writing agent has scope declared in phase-scopes.yaml.
+// dispatches a writing agent has scope declared in phase-scopes.yaml,
+// unless the agent's prompt frontmatter declares `scope: none` (the
+// artifact-only / external-system-only doctrinal exemption — see
+// runtime/shared/scope.md).
+//
 // Filtering by writing-agent (rather than e.g. user_task-only) means
 // CT_GREEN_EXTERNAL_SYSTEM_STUB (currently a bare user_task) and the
 // templated call_activities (AT_RED_*, CT_RED_*, structure-cycle agents)
-// are all caught by one rule.
+// are all caught by one rule. The SSoT for the `scope: none` exemption
+// is the prompt frontmatter itself, read here via agents.HasNoneScope —
+// no sibling Go allowlist.
 func TestPhaseScopes_ReverseFK_WritingAgentsScoped(t *testing.T) {
 	ps := loadPhaseScopes(t)
-	for nodeID := range writingAgentNodeIDs(loadEngine(t)) {
-		if _, inScopes := ps.Phases[nodeID]; !inScopes {
-			t.Errorf("writing-agent node %q is not in phase-scopes.yaml; add scope", nodeID)
+	for nodeID, agent := range writingAgentNodeIDs(loadEngine(t)) {
+		if _, inScopes := ps.Phases[nodeID]; inScopes {
+			continue
 		}
+		none, err := agents.HasNoneScope(agent)
+		if err != nil {
+			t.Errorf("writing-agent node %q (agent %q): probe scope frontmatter: %v", nodeID, agent, err)
+			continue
+		}
+		if none {
+			continue
+		}
+		t.Errorf("writing-agent node %q (agent %q) is not in phase-scopes.yaml and prompt frontmatter does not declare `scope: none`; either add a phase-scopes.yaml entry or declare `scope: none`", nodeID, agent)
 	}
 }
 

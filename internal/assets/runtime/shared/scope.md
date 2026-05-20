@@ -60,3 +60,33 @@ Two doctrinal inputs are joined to produce each phase's `scope:`:
 
 The runtime prompt's `scope:` frontmatter is the join of these two,
 projected at scaffold and `gh optivem sync` time.
+
+## `scope: none` — artifact-only agents
+
+Some writing agents mutate **only** inter-phase artifacts (e.g. the
+parsed-concepts scratch object passed between BPMN nodes) or external
+systems (e.g. the GitHub / Jira tracker), not any file in the repo
+working tree. These
+agents declare `scope: none` in their prompt frontmatter and are
+deliberately absent from `phase-scopes.yaml` — `none` is a doctrinal
+category, not a "TBD later" placeholder.
+
+**The `scope: none` contract:** under the canonical GitHub / Jira
+issue-tracker backends, the agent modifies NO file in the repo working
+tree — not under any canonical layer path, not anywhere else (no
+config, no docs, no scripts). Mutations target inter-phase artifacts
+or the external tracker only.
+
+Markdown / file adapters are treated as escape hatches (per the
+naming-by-primary-backend principle); their repo writes are
+out-of-doctrine and do not invalidate a `scope: none` declaration. A
+`scope: none` agent that writes to a working-tree file *outside* an
+escape-hatch adapter is a contract violation, full stop.
+
+Distinct from `scope: {}` (the documentation-only frontmatter shape
+used by layer-pinned phases, where the real scope lives in
+`phase-scopes.yaml`): `scope: none` is the *only* frontmatter shape
+that asserts a doctrinal exemption from `phase-scopes.yaml`. The
+SSoT for the exemption is the prompt frontmatter itself; the
+reverse-FK drift guard reads the frontmatter to decide whether to
+require an entry.

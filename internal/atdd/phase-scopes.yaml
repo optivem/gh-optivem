@@ -11,8 +11,9 @@
 # Build-time tests in internal/atdd/phase_scopes_test.go validate:
 #   - every phase id here exists as a node in process-flow.yaml
 #   - every writing-agent phase id in process-flow.yaml is either listed
-#     here OR explicitly allowlisted in the test (with deferred-plan
-#     citation)
+#     here OR declares `scope: none` in its prompt frontmatter (the
+#     doctrinal exemption for agents that mutate only inter-phase
+#     artifacts or external systems — see runtime/shared/scope.md)
 #   - every layer name is in canonicalPathKeys() or equals system_path
 #   - no duplicate layer references within a phase, all values non-empty
 #
@@ -26,6 +27,15 @@ phases:
   AT_RED_SYSTEM_DRIVER:   [driver_port, driver_adapter]
   AT_GREEN:               [system_path]
   AT_REFACTOR:            [system_path]
+  # DISABLE / ENABLE_TESTS edit per-language disable markers (@Disabled,
+  # [Fact(Skip=…)], test.skip(…)) on change-driven test methods. Today
+  # the agents' reason-format hardcodes `AT`, so only at_test files are
+  # touched; the [at_test, ct_test] pin is forward-looking for when the
+  # CT-side disable/enable lands. Kept symmetric so the shared
+  # ${disable_targets} flow can't be scoped inconsistently between the
+  # two halves.
+  DISABLE:                [at_test, ct_test]
+  ENABLE_TESTS:           [at_test, ct_test]
 
   # ---- CT (Contract Test) cycle --------------------------------------
   CT_RED_TEST:                   [ct_test, dsl_port, dsl_core]

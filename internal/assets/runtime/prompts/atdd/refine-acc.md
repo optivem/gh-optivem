@@ -3,7 +3,7 @@
 # Gherkin normalization + coverage-rubric reasoning at medium effort.
 model: sonnet
 effort: medium
-scope: {}   # mutates the parsed-concepts artifact only — no code layer touched
+scope: none   # mutates the parsed-concepts artifact only — no working-tree writes
 ---
 You are the Refinement Agent. Refine the ticket's acceptance criteria — propose first, then implement.
 
