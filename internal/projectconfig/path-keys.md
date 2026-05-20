@@ -1,10 +1,10 @@
 # Path-key vocabulary
 
 This doc describes the canonical **path-key vocabulary** consumed by
-`gh-optivem.yaml paths:` (per-project, user-owned values) and
-`internal/atdd/phase-scopes.yaml` (per-phase scope assignment, doctrine
-owned by gh-optivem). It is the single place to look up which keys
-exist, what they mean, and what's reserved.
+`gh-optivem.yaml system_test.paths:` (per-project, user-owned values)
+and `internal/atdd/phase-scopes.yaml` (per-phase scope assignment,
+doctrine owned by gh-optivem). It is the single place to look up which
+keys exist, what they mean, and what's reserved.
 
 Layer names are part of canonical ATDD vocabulary: the same key set in
 every gh-optivem project. **Users own VALUES** (physical paths in their
@@ -32,11 +32,11 @@ parent of every Family B testkit key and admitting it would let any
 phase escape the layer partition (see `FamilyAPathKeysInScope` in
 `internal/atdd/phase_scopes.go`).
 
-### Family B — named locations (under `paths:`)
+### Family B — named locations (under `system_test.paths:`)
 
 User-owned values for a fixed, gh-optivem-owned key set. Every key
-under `paths:` in `gh-optivem.yaml` is a canonical Family B key from
-`CanonicalPathKeys()` in
+under `system_test.paths:` in `gh-optivem.yaml` is a canonical Family B
+key from `CanonicalPathKeys()` in
 `internal/projectconfig/paths_defaults.go`. The current set:
 
 | Key | Layer it names |
@@ -57,22 +57,28 @@ the values are project-relative and may be hand-edited afterwards.
 
 ## Default values (TypeScript example)
 
-The scaffolder writes a fully-resolved `paths:` block based on the
-project's `system_test.path`, `system_test.lang`, and `sut_namespace`
-(derived from `system.repo`'s last segment). For a TypeScript project
-with `system_test.path: system-test/typescript` and
-`sut_namespace: shop`, the default block is:
+The scaffolder writes a fully-resolved `paths:` block nested under
+`system_test:`, based on the project's `system_test.path`,
+`system_test.lang`, and `sut_namespace` (derived from `system.repo`'s
+last segment). For a TypeScript project with
+`system_test.path: system-test/typescript` and `sut_namespace: shop`,
+the emitted YAML is:
 
 ```yaml
-paths:
-  driver_port: system-test/typescript/src/testkit/driver/port/shop
-  driver_adapter: system-test/typescript/src/testkit/driver/adapter/shop
-  external_system_driver_port: system-test/typescript/src/testkit/external/port/shop
-  external_system_driver_adapter: system-test/typescript/src/testkit/external/adapter/shop
-  at_test: system-test/typescript/tests/latest/acceptance
-  dsl_port: system-test/typescript/src/testkit/dsl/port/shop
-  dsl_core: system-test/typescript/src/testkit/dsl/core/shop
-  ct_test: system-test/typescript/tests/latest/contract
+system_test:
+  path: system-test/typescript
+  repo: optivem/shop
+  lang: typescript
+  sonar_project: optivem_shop-system-test
+  paths:
+    driver_port: system-test/typescript/src/testkit/driver/port/shop
+    driver_adapter: system-test/typescript/src/testkit/driver/adapter/shop
+    external_system_driver_port: system-test/typescript/src/testkit/external/port/shop
+    external_system_driver_adapter: system-test/typescript/src/testkit/external/adapter/shop
+    at_test: system-test/typescript/tests/latest/acceptance
+    dsl_port: system-test/typescript/src/testkit/dsl/port/shop
+    dsl_core: system-test/typescript/src/testkit/dsl/core/shop
+    ct_test: system-test/typescript/tests/latest/contract
 ```
 
 Java and dotnet defaults differ in stem shape (Java structures tests
@@ -86,16 +92,21 @@ present, not project-customizable.
 ## Validation rules
 
 - **Family B keys that shadow Family A names are rejected.** A typo'd
-  `paths.language: typescript` would otherwise quietly override the
-  canonical `system.lang` value. Rejected names today: `language`,
-  `architecture`, `system_path`, `system_test_path`, `sut_namespace`.
-- **Non-canonical `paths.<name>` keys are rejected** (per plan
-  20260518-1530 item 5). The validator enumerates `paths:` keys against
-  `CanonicalPathKeys()` and hard-errors on any unknown name. Catches
-  typos and stale keys.
-- **`${...}` markers in `paths:` values are rejected** (per plan
-  20260518-1530 item 5). Under SSoT, paths must be fully resolved at
-  scaffold time; runtime substitution is retired.
+  `system_test.paths.language: typescript` would otherwise quietly
+  override the canonical `system.lang` value. Rejected names today:
+  `language`, `architecture`, `system_path`, `system_test_path`,
+  `sut_namespace`.
+- **Non-canonical `system_test.paths.<name>` keys are rejected** (per
+  plan 20260518-1530 item 5). The validator enumerates
+  `system_test.paths:` keys against `CanonicalPathKeys()` and
+  hard-errors on any unknown name. Catches typos and stale keys.
+- **`${...}` markers in `system_test.paths:` values are rejected** (per
+  plan 20260518-1530 item 5). Under SSoT, paths must be fully resolved
+  at scaffold time; runtime substitution is retired.
+- **`paths:` on non-system_test tiers is rejected.** The block is
+  meaningful only on `system_test`, mirroring how `TierSpec.Config` is
+  also system_test-only. A typo'd `system.backend.paths:` would parse
+  as a no-op without this rule.
 
 See `internal/atdd/phase_scopes.go` (`CanonicalPathKeys` consumer +
 `FamilyAPathKeysInScope`) and the `Validate()` method in
@@ -106,10 +117,10 @@ implementations.
 
 The vocabulary here is consumed by `internal/atdd/phase-scopes.yaml`,
 which maps each BPMN phase id to the layer names that phase's agent
-may modify. Layer names are joined with `gh-optivem.yaml paths:`
-values at runtime — by the `check_phase_scope` action (BPMN
-runtime) or the `gh optivem process scope` CLI query — to produce
-the per-phase resolved-path set.
+may modify. Layer names are joined with `gh-optivem.yaml
+system_test.paths:` values at runtime — by the `check_phase_scope`
+action (BPMN runtime) or the `gh optivem process scope` CLI query —
+to produce the per-phase resolved-path set.
 
 For the scope rule itself ("only modify paths listed in the phase's
 scope; otherwise stop and alert the user"), see
@@ -127,3 +138,17 @@ values are fully resolved at scaffold time. Pre-SSoT projects migrate
 via `gh optivem config migrate`, which joins `sut_namespace` into each
 `paths:` value, joins it into `system.path`, and deletes
 `system.sut_namespace` from the file in one deterministic pass.
+
+## Historical note: top-level `paths:` block
+
+Before plan 20260520-1900, the Family B block sat at the top level of
+`gh-optivem.yaml` (`paths:` directly under the document root). The
+keys all describe the system_test tier's layered layout, so the block
+was relocated under `system_test:` alongside `path`, `repo`, `lang`,
+`config`, and `sonar_project` — every other field that describes the
+system_test tier. The key set, validation rules, and `PlaceholderMap`
+output (still flat — `driver_port`, `at_test`, etc. emit at the top of
+the placeholder namespace) are unchanged; only the YAML location moved.
+The migrate command continues to operate on the post-move location:
+the external-driver key-rename and SSoT-join passes both walk
+`system_test.paths:` directly.

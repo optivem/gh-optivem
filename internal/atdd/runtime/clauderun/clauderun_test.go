@@ -350,11 +350,11 @@ func TestDispatch_MaterializesProjectReferencesWhenProjectConfigSet(t *testing.T
 			Lang:         "typescript",
 		},
 		SystemTest: projectconfig.TierSpec{
-			Path: "system-test",
-			Repo: "x/y",
-			Lang: "typescript",
+			Path:  "system-test",
+			Repo:  "x/y",
+			Lang:  "typescript",
+			Paths: projectconfig.DefaultPaths(projectconfig.LangTypescript, "system-test", "y"),
 		},
-		Paths: projectconfig.DefaultPaths(projectconfig.LangTypescript, "system-test", "y"),
 	}
 	preWriteFreshSidecar(t, repoPath, cfg.PlaceholderMap())
 
@@ -368,7 +368,7 @@ func TestDispatch_MaterializesProjectReferencesWhenProjectConfigSet(t *testing.T
 	opts.ProjectConfig = cfg
 	opts.PromptOverride = "Read ${references_root}/atdd/architecture/system.md."
 
-	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	if len(claudeFake.calls) != 1 {
@@ -423,7 +423,7 @@ func TestDispatch_FallsBackToUserGlobalReferencesRootWhenProjectConfigNil(t *tes
 	// ProjectConfig left nil — should fall back to the user-global root.
 	opts.PromptOverride = "Read ${references_root}/atdd/architecture/system.md."
 
-	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	prompt := claudeFake.calls[0].Prompt
@@ -491,7 +491,7 @@ func TestRenderPrompt_UnsetAcceptanceCriteriaFailsFast(t *testing.T) {
 	opts := newOpts()
 	opts.AcceptanceCriteria = "" // override the test default
 	opts.PromptOverride = "You are the Test Agent. Scenarios:\n${acceptance_criteria}"
-	err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
+	_, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
 	if err == nil {
 		t.Fatalf("expected error for unset ${acceptance_criteria}, got nil")
 	}
@@ -514,7 +514,7 @@ func TestRenderPrompt_UnsetLanguageFailsFast(t *testing.T) {
 	// ${language} without setting Language. Dispatch's
 	// findUnfilledPlaceholders catches the leftover.
 	opts.PromptOverride = "You are the Test Agent. Read ${references_root}/code/language-equivalents/${language}.md."
-	err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
+	_, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
 	if err == nil {
 		t.Fatalf("expected error for unset ${language}, got nil")
 	}
@@ -541,7 +541,7 @@ func TestDispatch_SuccessReturnsNilOnCleanExit(t *testing.T) {
 	}
 	claudeFake := &fakeClaude{}
 
-	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts()); err != nil {
+	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts()); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	if len(claudeFake.calls) != 1 {
@@ -566,7 +566,7 @@ func TestDispatch_NoChangesIsNotAnError(t *testing.T) {
 	}
 	claudeFake := &fakeClaude{}
 
-	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts()); err != nil {
+	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts()); err != nil {
 		t.Fatalf("expected no error on clean no-op, got %v", err)
 	}
 }
@@ -580,7 +580,7 @@ func TestDispatch_AutonomousFlagPropagates(t *testing.T) {
 	opts := newOpts()
 	opts.Autonomous = true
 
-	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	got := claudeFake.calls[0]
@@ -601,7 +601,7 @@ func TestDispatch_FailsWhenSubprocessExitsNonZero(t *testing.T) {
 	}
 	claudeFake := &fakeClaude{err: errors.New("exit status 1")}
 
-	err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
+	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -618,7 +618,7 @@ func TestDispatch_PropagatesGitFailureBeforeRun(t *testing.T) {
 	gitFake := &fakeGit{err: errors.New("not a git repo")}
 	claudeFake := &fakeClaude{}
 
-	err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
+	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -647,7 +647,7 @@ func TestDispatch_WritesEnterAndExitBanners(t *testing.T) {
 	opts := newOpts()
 	opts.Stdout = &buf
 
-	if err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	got := buf.String()
@@ -665,7 +665,7 @@ func TestDispatch_BannerSaysNoChangesOnCleanExit(t *testing.T) {
 	opts := newOpts()
 	opts.Stdout = &buf
 
-	if err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	got := buf.String()
@@ -811,7 +811,7 @@ func TestDispatch_ClassifiesRateLimitInStderr(t *testing.T) {
 		stderr: []byte("Error: rate_limit_error: weekly limit reached.\n"),
 	}
 
-	err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
+	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -830,7 +830,7 @@ func TestDispatch_ClassifiesAuthErrorInStderr(t *testing.T) {
 		stderr: []byte("Error: not authenticated. Run /login.\n"),
 	}
 
-	err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
+	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -846,7 +846,7 @@ func TestDispatch_FallsThroughToGenericOnUnknownStderr(t *testing.T) {
 		stderr: []byte("panic: nil pointer dereference\n"),
 	}
 
-	err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
+	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -901,7 +901,7 @@ func TestDispatch_HaltsOnBranchSwitch(t *testing.T) {
 	}
 	claudeFake := &fakeClaude{}
 
-	err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
+	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -926,7 +926,7 @@ func TestDispatch_WarnsOnStrandedUntracked(t *testing.T) {
 	opts := newOpts()
 	opts.Stdout = &buf
 
-	if err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch should succeed (warning is non-fatal): %v", err)
 	}
 	output := buf.String()
@@ -948,7 +948,7 @@ func TestDispatch_DoesNotWarnWhenNoNewUntracked(t *testing.T) {
 	opts := newOpts()
 	opts.Stdout = &buf
 
-	if err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	if strings.Contains(buf.String(), "untracked file") {
@@ -1085,7 +1085,7 @@ func TestDispatch_HaltsOnUnfilledPlaceholder(t *testing.T) {
 	opts := newOpts()
 	opts.PromptOverride = "Imagine: ${unmapped_field}\nDo the thing."
 
-	err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts)
+	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts)
 	if err == nil {
 		t.Fatalf("expected error when ${unmapped_field} is unfilled, got nil")
 	}
@@ -1111,7 +1111,7 @@ func TestDispatch_RawPromptSkipsPlaceholderCheck(t *testing.T) {
 	opts := newOpts()
 	opts.RawPrompt = "Literal ${unfilled} text — RawPrompt mode."
 
-	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch with RawPrompt: %v", err)
 	}
 	if len(claudeFake.calls) != 1 {
@@ -1157,7 +1157,7 @@ func TestDispatch_WritesPromptLogWhenPathSet(t *testing.T) {
 	opts := newOpts()
 	opts.PromptLogPath = logPath
 
-	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	body, err := os.ReadFile(logPath)
@@ -1183,7 +1183,7 @@ func TestDispatch_PromptLogFailureIsNonFatal(t *testing.T) {
 	opts.Stderr = &stderr
 	opts.PromptLogPath = dir // path is a directory → WriteFile fails
 
-	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("expected log failure to be non-fatal, got %v", err)
 	}
 	if !strings.Contains(stderr.String(), "failed to write prompt log") {
@@ -1198,7 +1198,7 @@ func TestDispatch_NoLogWhenPathEmpty(t *testing.T) {
 	claudeFake := &fakeClaude{}
 	opts := newOpts() // PromptLogPath is "" by default
 
-	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 }
@@ -1232,7 +1232,7 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 		"driver_adapter":   "system-test/src/testkit/driver/adapter/shop",
 	}
 
-	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	got := buf.String()
@@ -1263,7 +1263,7 @@ func TestDispatch_PreparedPromptBannerUsesPlaceholdersForEmpties(t *testing.T) {
 	opts.Stdout = &buf
 	// Architecture and AllowedRoots default to "".
 
-	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	got := buf.String()
@@ -1281,7 +1281,7 @@ func TestDispatch_PreparedPromptBanner_RawPromptShowsOverrideMode(t *testing.T) 
 	opts.Stdout = &buf
 	opts.RawPrompt = "operator-supplied prompt"
 
-	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	got := buf.String()
@@ -1301,7 +1301,7 @@ func TestDispatch_ShowPromptDumpsFullPrompt(t *testing.T) {
 	opts.Stdout = &buf
 	opts.ShowPrompt = true
 
-	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	got := buf.String()
@@ -1317,7 +1317,7 @@ func TestDispatch_ShowPromptOffByDefault(t *testing.T) {
 	opts := newOpts()
 	opts.Stdout = &buf
 
-	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	if strings.Contains(buf.String(), "You are the Test Agent") {

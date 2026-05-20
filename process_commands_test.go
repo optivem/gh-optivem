@@ -92,9 +92,9 @@ func TestProcessScope_ResolvesAgainstProjectPaths(t *testing.T) {
 		"at_test",
 		"dsl_port",
 		"dsl_core",
-		cfg.Paths["at_test"],
-		cfg.Paths["dsl_port"],
-		cfg.Paths["dsl_core"],
+		cfg.SystemTest.Paths["at_test"],
+		cfg.SystemTest.Paths["dsl_port"],
+		cfg.SystemTest.Paths["dsl_core"],
 	}
 	for _, sub := range wantSubs {
 		if !strings.Contains(out, sub) {
@@ -138,15 +138,15 @@ func minimalMonolithConfig(t *testing.T) *projectconfig.Config {
 			Path: "system-test",
 			Repo: "myorg/shop",
 			Lang: "typescript",
-		},
-		Paths: map[string]string{
-			"at_test":                        "system-test/src/atdd/shop",
-			"dsl_port":                       "system-test/src/testkit/dsl/port/shop",
-			"dsl_core":                       "system-test/src/testkit/dsl/core/shop",
-			"driver_port":                    "system-test/src/testkit/driver/port/shop",
-			"driver_adapter":                 "system-test/src/testkit/driver/adapter/shop",
-			"external_system_driver_port":    "system-test/src/testkit/external/driver/port/shop",
-			"external_system_driver_adapter": "system-test/src/testkit/external/driver/adapter/shop",
+			Paths: map[string]string{
+				"at_test":                        "system-test/src/atdd/shop",
+				"dsl_port":                       "system-test/src/testkit/dsl/port/shop",
+				"dsl_core":                       "system-test/src/testkit/dsl/core/shop",
+				"driver_port":                    "system-test/src/testkit/driver/port/shop",
+				"driver_adapter":                 "system-test/src/testkit/driver/adapter/shop",
+				"external_system_driver_port":    "system-test/src/testkit/external/driver/port/shop",
+				"external_system_driver_adapter": "system-test/src/testkit/external/driver/adapter/shop",
+			},
 		},
 	}
 }

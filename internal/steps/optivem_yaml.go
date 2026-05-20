@@ -192,7 +192,7 @@ func BuildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	pc.System = buildSystem(cfg, derived, sutNamespace)
 	pc.SystemTest = buildSystemTest(cfg, derived)
 	pc.ExternalSystems = buildExternals(cfg)
-	pc.Paths = projectconfig.DefaultPaths(cfg.TestLang, cfg.SystemTestPath, sutNamespace)
+	pc.SystemTest.Paths = projectconfig.DefaultPaths(cfg.TestLang, cfg.SystemTestPath, sutNamespace)
 	return pc
 }
 

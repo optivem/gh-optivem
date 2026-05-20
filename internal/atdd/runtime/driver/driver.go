@@ -833,8 +833,24 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 			Stdin:              opts.Stdin,
 		}
 
-		if err := clauderun.Dispatch(context.Background(), opts.ClaudeRunDeps, cOpts); err != nil {
+		runResult, err := clauderun.Dispatch(context.Background(), opts.ClaudeRunDeps, cOpts)
+		if err != nil {
 			return statemachine.Outcome{Err: err}
+		}
+		// Parse the agent's structured `outputs:` / `scope_exception:`
+		// YAML block (per internal/assets/runtime/shared/scope.md and the
+		// per-agent prompt amendments) and flatten it into ctx.State so
+		// downstream actions and gates can read the values. Missing block
+		// returns an empty map — no-op for agents that have nothing to
+		// emit. Malformed YAML is a loud failure: the cycle stops with a
+		// clear "parse outputs" message rather than silently zeroing
+		// state.
+		parsed, err := clauderun.ParseOutputs(runResult.ResultText)
+		if err != nil {
+			return statemachine.Outcome{Err: fmt.Errorf("dispatcher: %s: %w", agentName, err)}
+		}
+		for k, v := range parsed {
+			ctx.Set(k, v)
 		}
 		return inner(ctx)
 	}

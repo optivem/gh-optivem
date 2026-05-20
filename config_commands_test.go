@@ -720,16 +720,15 @@ system_test:
   repo: optivem/shop-tests
   lang: java
   sonar_project: optivem_shop-system-test
-
-paths:
-  driver_port: system-test/src/main/java/testkit/driver/port/shop-tests
-  driver_adapter: system-test/src/main/java/testkit/driver/adapter/shop-tests
-  external_system_driver_port: system-test/src/main/java/testkit/external/port/shop-tests
-  external_system_driver_adapter: system-test/src/main/java/testkit/external/adapter/shop-tests
-  at_test: system-test/src/test/java/shop-tests/latest/acceptance
-  dsl_port: system-test/src/main/java/testkit/dsl/port/shop-tests
-  dsl_core: system-test/src/main/java/testkit/dsl/core/shop-tests
-  ct_test: system-test/src/test/java/shop-tests/latest/contract
+  paths:
+    driver_port: system-test/src/main/java/testkit/driver/port/shop-tests
+    driver_adapter: system-test/src/main/java/testkit/driver/adapter/shop-tests
+    external_system_driver_port: system-test/src/main/java/testkit/external/port/shop-tests
+    external_system_driver_adapter: system-test/src/main/java/testkit/external/adapter/shop-tests
+    at_test: system-test/src/test/java/shop-tests/latest/acceptance
+    dsl_port: system-test/src/main/java/testkit/dsl/port/shop-tests
+    dsl_core: system-test/src/main/java/testkit/dsl/core/shop-tests
+    ct_test: system-test/src/test/java/shop-tests/latest/contract
 `
 
 // multiRepoMultitierBody is a pre-repos:-field config of the canonical
@@ -763,16 +762,15 @@ system_test:
   repo: optivem/shop-tests
   lang: java
   sonar_project: optivem_shop-system-test
-
-paths:
-  driver_port: system-test/src/main/java/testkit/driver/port/shop-tests
-  driver_adapter: system-test/src/main/java/testkit/driver/adapter/shop-tests
-  external_system_driver_port: system-test/src/main/java/testkit/external/port/shop-tests
-  external_system_driver_adapter: system-test/src/main/java/testkit/external/adapter/shop-tests
-  at_test: system-test/src/test/java/shop-tests/latest/acceptance
-  dsl_port: system-test/src/main/java/testkit/dsl/port/shop-tests
-  dsl_core: system-test/src/main/java/testkit/dsl/core/shop-tests
-  ct_test: system-test/src/test/java/shop-tests/latest/contract
+  paths:
+    driver_port: system-test/src/main/java/testkit/driver/port/shop-tests
+    driver_adapter: system-test/src/main/java/testkit/driver/adapter/shop-tests
+    external_system_driver_port: system-test/src/main/java/testkit/external/port/shop-tests
+    external_system_driver_adapter: system-test/src/main/java/testkit/external/adapter/shop-tests
+    at_test: system-test/src/test/java/shop-tests/latest/acceptance
+    dsl_port: system-test/src/main/java/testkit/dsl/port/shop-tests
+    dsl_core: system-test/src/main/java/testkit/dsl/core/shop-tests
+    ct_test: system-test/src/test/java/shop-tests/latest/contract
 `
 
 // monoRepoMonolithBody is the canonical mono-repo monolith config —
@@ -870,16 +868,18 @@ func TestRunConfigMigrate_SkipsReposForMonoRepo(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, projectconfig.Path)
-	body := monoRepoMonolithBody + `
-paths:
-  driver_port: system-test/java/src/main/java/testkit/driver/port
-  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
-  external_system_driver_port: system-test/java/src/main/java/testkit/external/port
-  external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
-  at_test: system-test/java/src/test/java/latest/acceptance
-  dsl_port: system-test/java/src/main/java/testkit/dsl/port
-  dsl_core: system-test/java/src/main/java/testkit/dsl/core
-  ct_test: system-test/java/src/test/java/latest/contract
+	// Append the paths: block nested under system_test:. monoRepoMonolithBody
+	// ends with the system_test: tier (no trailing repos: / paths:), so we
+	// can extend it with indented entries directly.
+	body := monoRepoMonolithBody + `  paths:
+    driver_port: system-test/java/src/main/java/testkit/driver/port
+    driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
+    external_system_driver_port: system-test/java/src/main/java/testkit/external/port
+    external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
+    at_test: system-test/java/src/test/java/latest/acceptance
+    dsl_port: system-test/java/src/main/java/testkit/dsl/port
+    dsl_core: system-test/java/src/main/java/testkit/dsl/core
+    ct_test: system-test/java/src/test/java/latest/contract
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1050,16 +1050,15 @@ system_test:
   repo: optivem/shop
   lang: java
   sonar_project: optivem_shop-system-test
-
-paths:
-  driver_port: system-test/java/src/main/java/testkit/driver/port
-  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
-  external_system_driver_port: system-test/java/src/main/java/testkit/external/port
-  external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
-  at_test: system-test/java/src/test/java/latest/acceptance
-  dsl_port: system-test/java/src/main/java/testkit/dsl/port
-  dsl_core: system-test/java/src/main/java/testkit/dsl/core
-  ct_test: system-test/java/src/test/java/latest/contract
+  paths:
+    driver_port: system-test/java/src/main/java/testkit/driver/port
+    driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
+    external_system_driver_port: system-test/java/src/main/java/testkit/external/port
+    external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
+    at_test: system-test/java/src/test/java/latest/acceptance
+    dsl_port: system-test/java/src/main/java/testkit/dsl/port
+    dsl_core: system-test/java/src/main/java/testkit/dsl/core
+    ct_test: system-test/java/src/test/java/latest/contract
 `
 
 // TestRunConfigMigrate_SSoTJoin_FoldsSutNamespace pins the canonical
@@ -1135,16 +1134,15 @@ system_test:
   repo: optivem/shop
   lang: java
   sonar_project: optivem_shop-system-test
-
-paths:
-  driver_port: system-test/java/src/main/java/testkit/driver/port/shop
-  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
-  external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop
-  external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
-  at_test: system-test/java/src/test/java/shop/latest/acceptance
-  dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
-  dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
-  ct_test: system-test/java/src/test/java/shop/latest/contract
+  paths:
+    driver_port: system-test/java/src/main/java/testkit/driver/port/shop
+    driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
+    external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop
+    external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
+    at_test: system-test/java/src/test/java/shop/latest/acceptance
+    dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
+    dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
+    ct_test: system-test/java/src/test/java/shop/latest/contract
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1196,16 +1194,15 @@ system_test:
   repo: optivem/shop
   lang: java
   sonar_project: optivem_shop-system-test
-
-paths:
-  driver_port: custom/path/to/port
-  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
-  external_system_driver_port: system-test/java/src/main/java/testkit/external/port
-  external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
-  at_test: completely/custom/at/path
-  dsl_port: system-test/java/src/main/java/testkit/dsl/port
-  dsl_core: system-test/java/src/main/java/testkit/dsl/core
-  ct_test: system-test/java/src/test/java/latest/contract
+  paths:
+    driver_port: custom/path/to/port
+    driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
+    external_system_driver_port: system-test/java/src/main/java/testkit/external/port
+    external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
+    at_test: completely/custom/at/path
+    dsl_port: system-test/java/src/main/java/testkit/dsl/port
+    dsl_core: system-test/java/src/main/java/testkit/dsl/core
+    ct_test: system-test/java/src/test/java/latest/contract
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1257,16 +1254,15 @@ system_test:
   repo: optivem/shop
   lang: typescript
   sonar_project: optivem_shop-system-test
-
-paths:
-  driver_port: system-test/typescript/src/testkit/driver/port
-  driver_adapter: system-test/typescript/src/testkit/driver/adapter
-  external_system_driver_port: system-test/typescript/src/testkit/external/port
-  external_system_driver_adapter: system-test/typescript/src/testkit/external/adapter
-  at_test: system-test/typescript/tests/latest/acceptance
-  dsl_port: system-test/typescript/src/testkit/dsl/port
-  dsl_core: system-test/typescript/src/testkit/dsl/core
-  ct_test: system-test/typescript/tests/latest/contract
+  paths:
+    driver_port: system-test/typescript/src/testkit/driver/port
+    driver_adapter: system-test/typescript/src/testkit/driver/adapter
+    external_system_driver_port: system-test/typescript/src/testkit/external/port
+    external_system_driver_adapter: system-test/typescript/src/testkit/external/adapter
+    at_test: system-test/typescript/tests/latest/acceptance
+    dsl_port: system-test/typescript/src/testkit/dsl/port
+    dsl_core: system-test/typescript/src/testkit/dsl/core
+    ct_test: system-test/typescript/tests/latest/contract
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1320,10 +1316,9 @@ system_test:
   repo: optivem/shop
   lang: java
   sonar_project: optivem_shop-system-test
-
-# my custom comment
-paths:
-  driver_port: system-test/java/src/main/java/testkit/driver/port
+  # my custom comment
+  paths:
+    driver_port: system-test/java/src/main/java/testkit/driver/port
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1367,16 +1362,15 @@ system_test:
   repo: optivem/shop
   lang: java
   sonar_project: optivem_shop-system-test
-
-paths:
-  driver_port: system-test/java/src/main/java/testkit/driver/port/shop
-  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
-  external_driver_port: system-test/java/src/main/java/testkit/external/port/shop
-  external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
-  at_test: system-test/java/src/test/java/shop/latest/acceptance
-  dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
-  dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
-  ct_test: system-test/java/src/test/java/shop/latest/contract
+  paths:
+    driver_port: system-test/java/src/main/java/testkit/driver/port/shop
+    driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
+    external_driver_port: system-test/java/src/main/java/testkit/external/port/shop
+    external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
+    at_test: system-test/java/src/test/java/shop/latest/acceptance
+    dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
+    dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
+    ct_test: system-test/java/src/test/java/shop/latest/contract
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1432,16 +1426,15 @@ system_test:
   repo: optivem/shop
   lang: java
   sonar_project: optivem_shop-system-test
-
-paths:
-  driver_port: system-test/java/src/main/java/testkit/driver/port/shop
-  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
-  external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop
-  external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
-  at_test: system-test/java/src/test/java/shop/latest/acceptance
-  dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
-  dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
-  ct_test: system-test/java/src/test/java/shop/latest/contract
+  paths:
+    driver_port: system-test/java/src/main/java/testkit/driver/port/shop
+    driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
+    external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop
+    external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
+    at_test: system-test/java/src/test/java/shop/latest/acceptance
+    dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
+    dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
+    ct_test: system-test/java/src/test/java/shop/latest/contract
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1489,18 +1482,17 @@ system_test:
   repo: optivem/shop
   lang: java
   sonar_project: optivem_shop-system-test
-
-paths:
-  driver_port: system-test/java/src/main/java/testkit/driver/port/shop
-  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
-  external_driver_port: system-test/java/src/main/java/testkit/external/port/shop
-  external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop
-  external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
-  external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
-  at_test: system-test/java/src/test/java/shop/latest/acceptance
-  dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
-  dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
-  ct_test: system-test/java/src/test/java/shop/latest/contract
+  paths:
+    driver_port: system-test/java/src/main/java/testkit/driver/port/shop
+    driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
+    external_driver_port: system-test/java/src/main/java/testkit/external/port/shop
+    external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop
+    external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
+    external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
+    at_test: system-test/java/src/test/java/shop/latest/acceptance
+    dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
+    dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
+    ct_test: system-test/java/src/test/java/shop/latest/contract
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1543,17 +1535,16 @@ system_test:
   repo: optivem/shop
   lang: java
   sonar_project: optivem_shop-system-test
-
-paths:
-  driver_port: system-test/java/src/main/java/testkit/driver/port/shop
-  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
-  # hand-edited: custom external driver layout
-  external_driver_port: custom/external/port/shop
-  external_driver_adapter: custom/external/adapter/shop
-  at_test: system-test/java/src/test/java/shop/latest/acceptance
-  dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
-  dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
-  ct_test: system-test/java/src/test/java/shop/latest/contract
+  paths:
+    driver_port: system-test/java/src/main/java/testkit/driver/port/shop
+    driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
+    # hand-edited: custom external driver layout
+    external_driver_port: custom/external/port/shop
+    external_driver_adapter: custom/external/adapter/shop
+    at_test: system-test/java/src/test/java/shop/latest/acceptance
+    dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
+    dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
+    ct_test: system-test/java/src/test/java/shop/latest/contract
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1606,16 +1597,15 @@ system_test:
   repo: optivem/shop
   lang: java
   sonar_project: optivem_shop-system-test
-
-paths:
-  driver_port: system-test/java/src/main/java/testkit/driver/port
-  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
-  external_driver_port: system-test/java/src/main/java/testkit/external/port
-  external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
-  at_test: system-test/java/src/test/java/latest/acceptance
-  dsl_port: system-test/java/src/main/java/testkit/dsl/port
-  dsl_core: system-test/java/src/main/java/testkit/dsl/core
-  ct_test: system-test/java/src/test/java/latest/contract
+  paths:
+    driver_port: system-test/java/src/main/java/testkit/driver/port
+    driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
+    external_driver_port: system-test/java/src/main/java/testkit/external/port
+    external_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
+    at_test: system-test/java/src/test/java/latest/acceptance
+    dsl_port: system-test/java/src/main/java/testkit/dsl/port
+    dsl_core: system-test/java/src/main/java/testkit/dsl/core
+    ct_test: system-test/java/src/test/java/latest/contract
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)

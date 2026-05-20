@@ -1864,16 +1864,15 @@ system_test:
   repo: acme/shop
   lang: typescript
   sonar_project: acme_shop-system-test
-
-paths:
-  at_test: system-test/typescript/tests/latest/acceptance
-  dsl_port: dsl/typescript/src/port
-  dsl_core: dsl/typescript/src/core
-  driver_port: driver/typescript/src/port
-  driver_adapter: driver/typescript/src/adapter
-  ct_test: system-test/typescript/tests/latest/contract
-  external_system_driver_port: driver/typescript/src/external-port
-  external_system_driver_adapter: driver/typescript/src/external-adapter
+  paths:
+    at_test: system-test/typescript/tests/latest/acceptance
+    dsl_port: dsl/typescript/src/port
+    dsl_core: dsl/typescript/src/core
+    driver_port: driver/typescript/src/port
+    driver_adapter: driver/typescript/src/adapter
+    ct_test: system-test/typescript/tests/latest/contract
+    external_system_driver_port: driver/typescript/src/external-port
+    external_system_driver_adapter: driver/typescript/src/external-adapter
 `
 	if err := os.WriteFile(filepath.Join(repoPath, "gh-optivem.yaml"), []byte(body), 0o644); err != nil {
 		t.Fatalf("write gh-optivem.yaml: %v", err)

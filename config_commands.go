@@ -279,14 +279,15 @@ func newConfigMigrateCmd() *cobra.Command {
     multi-repo projects (one ../<repo-name> entry per distinct tier
     slug). Mono-repo projects keep their existing single-repo behavior
     and the field is left absent.
-  • Renames the pre-rename external-driver keys under paths: to their
-    post-rename forms (` + "`external_driver_port`" + ` → ` + "`external_system_driver_port`" + `,
-    ` + "`external_driver_adapter`" + ` → ` + "`external_system_driver_adapter`" + `). Hard
-    errors when both old and new keys are present — the operator must
-    resolve the ambiguity manually.
+  • Renames the pre-rename external-driver keys under system_test.paths:
+    to their post-rename forms (` + "`external_driver_port`" + ` →
+    ` + "`external_system_driver_port`" + `, ` + "`external_driver_adapter`" + ` →
+    ` + "`external_system_driver_adapter`" + `). Hard errors when both old and
+    new keys are present — the operator must resolve the ambiguity manually.
   • Migrates to the SSoT path model: joins system.sut_namespace into each
-    paths:<key> value and into system.path, then deletes system.sut_namespace.
-    Applied when system.sut_namespace is present in the file.
+    system_test.paths:<key> value and into system.path, then deletes
+    system.sut_namespace. Applied when system.sut_namespace is present in
+    the file.
 
 The command is idempotent: when no back-fill applies the file is left
 untouched and the command reports "no migration needed".
@@ -529,7 +530,7 @@ func joinSSoTPaths(doc *yaml.Node) bool {
 	preDefaults := projectconfig.DefaultPaths(testLang, systemTestPath, "")
 	postDefaults := projectconfig.DefaultPaths(testLang, systemTestPath, ns)
 
-	if pathsNode := mappingValue(doc, "paths"); pathsNode != nil && pathsNode.Kind == yaml.MappingNode {
+	if pathsNode := systemTestPathsNode(doc); pathsNode != nil {
 		for i := 0; i+1 < len(pathsNode.Content); i += 2 {
 			keyNode := pathsNode.Content[i]
 			valNode := pathsNode.Content[i+1]
@@ -605,8 +606,8 @@ func readTestLangAndPath(doc *yaml.Node) (string, string) {
 // keeps yaml.v3's HeadComment / LineComment / FootComment fields in
 // place across the rewrite.
 func renameExternalDriverKeys(doc *yaml.Node) (bool, error) {
-	pathsNode := mappingValue(doc, "paths")
-	if pathsNode == nil || pathsNode.Kind != yaml.MappingNode {
+	pathsNode := systemTestPathsNode(doc)
+	if pathsNode == nil {
 		return false, nil
 	}
 	changed := false
@@ -616,7 +617,7 @@ func renameExternalDriverKeys(doc *yaml.Node) (bool, error) {
 		switch {
 		case oldNode != nil && newNode != nil:
 			return false, fmt.Errorf(
-				"paths.%s and paths.%s both present — ambiguous migration state. "+
+				"system_test.paths.%s and system_test.paths.%s both present — ambiguous migration state. "+
 					"Remove one entry (keep the one with your intended value) and re-run migrate",
 				oldKey, newKey)
 		case oldNode != nil:
@@ -625,6 +626,23 @@ func renameExternalDriverKeys(doc *yaml.Node) (bool, error) {
 		}
 	}
 	return changed, nil
+}
+
+// systemTestPathsNode returns the `paths:` mapping nested under
+// `system_test:` in the document, or nil when either node is missing
+// or not a mapping. Single source for the two migrate-time passes that
+// edit `system_test.paths:` (rename + SSoT join) so neither encodes the
+// nesting path twice.
+func systemTestPathsNode(doc *yaml.Node) *yaml.Node {
+	systemTestNode := mappingValue(doc, "system_test")
+	if systemTestNode == nil || systemTestNode.Kind != yaml.MappingNode {
+		return nil
+	}
+	pathsNode := mappingValue(systemTestNode, "paths")
+	if pathsNode == nil || pathsNode.Kind != yaml.MappingNode {
+		return nil
+	}
+	return pathsNode
 }
 
 // mappingKeyNode returns the key node paired with `key` inside m (the

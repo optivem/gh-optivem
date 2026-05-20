@@ -168,7 +168,9 @@ func TestDefaultPaths_RoundTripsThroughValidate(t *testing.T) {
 			Provider: ProviderGitHub,
 			URL:      "https://github.com/orgs/x/projects/1",
 		},
-		Paths: DefaultPaths(LangTypescript, "system-test", "shop"),
+		SystemTest: TierSpec{
+			Paths: DefaultPaths(LangTypescript, "system-test", "shop"),
+		},
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("default paths fail Validate: %v", err)

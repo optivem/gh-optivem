@@ -1032,8 +1032,8 @@ func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome
 // resolveLayerPaths joins a phase's layer list against the project's
 // configured paths: Family A path-shaped keys go through their dedicated
 // Config accessor (system_path → cfg.System.Path); everything else is a
-// Family B key in cfg.Paths. Missing values surface as errors rather than
-// silently shrinking the allowed set.
+// Family B key in cfg.SystemTest.Paths. Missing values surface as errors
+// rather than silently shrinking the allowed set.
 func resolveLayerPaths(layers []string, cfg *projectconfig.Config) ([]string, error) {
 	out := make([]string, 0, len(layers))
 	for _, layer := range layers {
@@ -1049,9 +1049,9 @@ func resolveLayerPaths(layers []string, cfg *projectconfig.Config) ([]string, er
 			}
 			continue
 		}
-		v, ok := cfg.Paths[layer]
+		v, ok := cfg.SystemTest.Paths[layer]
 		if !ok || v == "" {
-			return nil, fmt.Errorf("layer %q not present in gh-optivem.yaml paths:", layer)
+			return nil, fmt.Errorf("layer %q not present in gh-optivem.yaml system_test.paths:", layer)
 		}
 		out = append(out, v)
 	}

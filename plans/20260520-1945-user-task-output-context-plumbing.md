@@ -94,43 +94,11 @@ Build the structured-output infrastructure end-to-end for the path that's curren
 
 ## Items
 
-1. - [ ] **Surface agent result text up to the dispatcher.** Extend `internal/atdd/runtime/clauderun/clauderun.go` `RunResult` with a `ResultText string` field (the value already parsed at clauderun.go:1143 — currently only printed to stdout, then dropped). Populate it in `runAutonomous`; leave it empty in `runInteractive` for now (interactive mode prints directly to the user's terminal and has no JSON envelope — interactive callers cannot emit structured output, which is fine: `--autonomous` is the production path).
-
-2. - [ ] **Add the YAML parser.** New file `internal/atdd/runtime/clauderun/outputs.go` (or `internal/atdd/runtime/agentoutput/parser.go` — bikeshed in implementation). Exposes one function:
-
-   ```go
-   // ParseOutputs scans the agent's final result text for a fenced YAML
-   // block whose top-level key is "outputs:" (and, separately, "scope_exception:"
-   // per scope.md), decodes it, and returns a map[string]any keyed by the
-   // inner keys. Missing block returns an empty map with nil error — agents
-   // that have nothing to emit are allowed to skip the block entirely.
-   // Malformed YAML returns a non-nil error so the dispatcher can route to
-   // a clear failure rather than silently zeroing state.
-   func ParseOutputs(resultText string) (map[string]any, error)
-   ```
-
-   Tests in `outputs_test.go` cover: happy path, missing block (returns empty map), malformed YAML, scope_exception block flattening, multiple separate blocks (one `outputs:` + one `scope_exception:`).
-
-3. - [ ] **Wire the parser into the user_task dispatcher.** In `internal/atdd/runtime/driver/driver.go newClaudeRunDispatcher` (around L836), after `clauderun.Dispatch` returns successfully:
-
-   - Call `ParseOutputs(runResult.ResultText)`.
-   - For each `(key, val)` in the parsed map: `ctx.Set(key, val)`.
-   - For the `scope_exception` block: flatten to `scope_exception_files` (`[]string`) and `scope_exception_reason` (`string`).
-   - On parser error: return `Outcome{Err: ...}` — the cycle stops with a clear "agent emitted malformed outputs block" message. This is loud-fail; do not silently coerce.
-
-4. - [ ] **Type coercion for `test_names`.** YAML's default decoder hands a slice as `[]interface{}`. `runTargetedTests` requires `[]string`. Either:
-   - Coerce in the parser (preferred; `test_names` is the only `[]string` key today and the type can be locked into the parser).
-   - Coerce in the action (less preferred; pushes type knowledge into every reader).
-
-   Lock the parser interface: declare a small known-keys table (`outputs.go`) listing each key's expected Go type, and coerce at parse time. Unknown keys pass through as `interface{}` (forward-compat for keys the parser hasn't been taught yet). This is the same shape used for the existing context-key constants in `bindings.go:187-220`.
-
 5. - [ ] **Amend the AT_RED_TEST WRITE prompt** (`prompts/atdd/at-red-test.md` or wherever the embedded prompt lives — search will find it) to instruct the agent to emit the `outputs:` block at the end of its final response, with `test_names` (the methods it just authored) and `suite` (the canonical suite name per the phase doc). The prompt language should mirror `scope.md`'s tone — short, explicit format, no per-language variation.
 
    Same amendment for `ct-red-test`, `at-red-dsl`, `at-red-system-driver`, `ct-red-dsl`, `ct-red-external-system-driver`. The seven RED writers all flow through `red_phase_cycle` and all need to emit the same shape. (Six prompts in scope: AT-RED has 3, CT-RED has 3; LEGACY variants out of scope.)
 
 6. - [ ] **Decide on `suite` value.** The canonical suites today are referenced as `<acceptance-api>`, `<acceptance-ui>`, `<suite-contract-real>` in `process-flow.yaml`. The agent should emit the literal token (e.g. `<acceptance-api>`) and the action / `testselect.AcceptanceSuites()` machinery resolves it — same indirection that already exists for `verify_real_suite`. Confirm during implementation that the placeholder is the right vocabulary (vs. a resolved physical suite name).
-
-7. - [ ] **Cycle-level test.** Add a test in `internal/atdd/runtime/statemachine/behavioral_cycle_test.go` (or a new file) that runs `red_phase_cycle` end-to-end with a fake agent whose dispatch result emits a known `outputs:` block, and asserts that RUN sees the populated `test_names` / `suite`. The fake agent is a small `agents.Registry` registration that returns a hard-coded `clauderun.RunResult{ResultText: "..."}` — the cleanest seam for the test is at the clauderun fake layer (Deps already supports test fakes).
 
 8. - [ ] **Re-run the rehearsal.** `gh optivem atdd-rehearsal implement` from the same starting state that produced the original failure. Expect AT_RED_TEST to reach DISABLE / COMMIT (not the next gap — that's a separate plan).
 

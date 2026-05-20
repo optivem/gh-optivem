@@ -233,16 +233,16 @@ func TestBuildOptivemYAML_PathsBlockSeededPerLanguage(t *testing.T) {
 				SimulatorsPath: "external-systems/simulators",
 			}
 			got := BuildOptivemYAML(cfg)
-			if len(got.Paths) == 0 {
-				t.Fatal("paths: block should be seeded by the scaffolder")
+			if len(got.SystemTest.Paths) == 0 {
+				t.Fatal("system_test.paths: block should be seeded by the scaffolder")
 			}
 			for _, k := range []string{"driver_port", "driver_adapter", "external_system_driver_port", "external_system_driver_adapter"} {
-				if _, ok := got.Paths[k]; !ok {
-					t.Errorf("paths.%s missing", k)
+				if _, ok := got.SystemTest.Paths[k]; !ok {
+					t.Errorf("system_test.paths.%s missing", k)
 				}
 			}
-			if got.Paths[tc.wantKey] != tc.wantPath {
-				t.Errorf("paths.%s: got %q, want %q", tc.wantKey, got.Paths[tc.wantKey], tc.wantPath)
+			if got.SystemTest.Paths[tc.wantKey] != tc.wantPath {
+				t.Errorf("system_test.paths.%s: got %q, want %q", tc.wantKey, got.SystemTest.Paths[tc.wantKey], tc.wantPath)
 			}
 		})
 	}

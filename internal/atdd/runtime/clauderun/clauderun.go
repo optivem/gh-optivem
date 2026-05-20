@@ -272,8 +272,17 @@ type RunOpts struct {
 // — populated only when the runner can parse a structured envelope (currently
 // autonomous mode via `claude -p --output-format json`). Interactive mode
 // leaves it nil and the banner falls back to elapsed-time-only.
+//
+// ResultText is the agent's final response body — the `result` field from
+// the `claude -p --output-format json` envelope. Populated only in
+// autonomous mode (interactive mode prints directly to the operator's TTY
+// and has no envelope to parse, so structured output is an autonomous-only
+// channel). The dispatcher feeds it to ParseOutputs to extract any
+// `outputs:` / `scope_exception:` YAML the agent emitted and write the
+// values into ctx.State.
 type RunResult struct {
-	Usage *TokenUsage
+	Usage      *TokenUsage
+	ResultText string
 }
 
 // TokenUsage is the cost/throughput summary surfaced in the exit banner.
@@ -313,8 +322,16 @@ func (d Deps) withDefaults() Deps {
 
 // Dispatch builds the prompt, runs the subprocess, and reports back. The
 // agent is told not to commit; staging and committing belongs to the
-// wrapping CLI, which fires after Dispatch returns. Errors are returned
-// for:
+// wrapping CLI, which fires after Dispatch returns.
+//
+// Returns the runner's RunResult — populated even on a non-nil error
+// when the runner ran at all, so callers that care about partial state
+// (e.g. token usage from a failed run, or the result text from a clean
+// run for downstream `outputs:` parsing) can read it. On errors that
+// fire before the runner is invoked (snapshot, render, materialize) the
+// returned RunResult is its zero value.
+//
+// Errors are returned for:
 //   - Subprocess exit status non-zero (stderr surfaced; a small classifier
 //     turns known rate-limit / auth signatures into actionable messages
 //     before falling through to the generic wrapper).
@@ -329,7 +346,7 @@ func (d Deps) withDefaults() Deps {
 // clauderun. Pre/post snapshots also surface stranded untracked files
 // (created by the agent but never `git add`ed) as a non-fatal warning
 // after the success banner.
-func Dispatch(ctx context.Context, deps Deps, opts Options) error {
+func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 	deps = deps.withDefaults()
 	opts = opts.withDefaults()
 
@@ -347,7 +364,7 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) error {
 		projectReferencesRoot, err = assetsync.MaterializeProject(
 			opts.RepoPath, opts.BinaryVersion, opts.ProjectConfig.PlaceholderMap())
 		if err != nil {
-			return fmt.Errorf("clauderun: materialize project references: %w", err)
+			return RunResult{}, fmt.Errorf("clauderun: materialize project references: %w", err)
 		}
 	}
 
@@ -356,10 +373,10 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) error {
 		var err error
 		prompt, err = renderPromptWithReferencesRoot(opts, projectReferencesRoot)
 		if err != nil {
-			return fmt.Errorf("clauderun: render prompt: %w", err)
+			return RunResult{}, fmt.Errorf("clauderun: render prompt: %w", err)
 		}
 		if leftovers := findUnfilledPlaceholders(prompt); len(leftovers) > 0 {
-			return fmt.Errorf(
+			return RunResult{}, fmt.Errorf(
 				"clauderun: prompt has unfilled placeholders after substitution: %s\n  this usually means the field was not seeded into Context.State before dispatch — check seedScopeState and preResolveIssue",
 				strings.Join(leftovers, ", "))
 		}
@@ -373,7 +390,7 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) error {
 
 	preState, err := snapshotRepo(ctx, deps.Git, opts.RepoPath)
 	if err != nil {
-		return fmt.Errorf("clauderun: snapshot before dispatch: %w", err)
+		return RunResult{}, fmt.Errorf("clauderun: snapshot before dispatch: %w", err)
 	}
 
 	writePreparedPromptBanner(opts, prompt)
@@ -404,22 +421,22 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) error {
 	if runErr != nil {
 		writeExitBanner(opts, 0, nowFn().Sub(startedAt), runResult.Usage, runErr)
 		if classified := classifyRunError(stderrCapture.Bytes()); classified != nil {
-			return fmt.Errorf("clauderun: %s: %w", opts.Agent, classified)
+			return runResult, fmt.Errorf("clauderun: %s: %w", opts.Agent, classified)
 		}
-		return fmt.Errorf("clauderun: %s exited non-zero: %w", opts.Agent, runErr)
+		return runResult, fmt.Errorf("clauderun: %s exited non-zero: %w", opts.Agent, runErr)
 	}
 
 	postState, err := snapshotRepo(ctx, deps.Git, opts.RepoPath)
 	if err != nil {
 		writeExitBanner(opts, 0, nowFn().Sub(startedAt), runResult.Usage, err)
-		return fmt.Errorf("clauderun: snapshot after dispatch: %w", err)
+		return runResult, fmt.Errorf("clauderun: snapshot after dispatch: %w", err)
 	}
 
 	if postState.branch != preState.branch {
 		switchErr := fmt.Errorf("agent switched branches mid-run (was %q, now %q) — original-branch HEAD unchanged at %s",
 			preState.branch, postState.branch, shortSHA(preState.head))
 		writeExitBanner(opts, 0, nowFn().Sub(startedAt), runResult.Usage, switchErr)
-		return fmt.Errorf("clauderun: %s: %w", opts.Agent, switchErr)
+		return runResult, fmt.Errorf("clauderun: %s: %w", opts.Agent, switchErr)
 	}
 
 	changed := diffDirty(preState.dirty, postState.dirty)
@@ -428,7 +445,7 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) error {
 	}
 
 	writeExitBanner(opts, len(changed), nowFn().Sub(startedAt), runResult.Usage, nil)
-	return nil
+	return runResult, nil
 }
 
 // nowFn is a package-level seam so tests can pin elapsed time in banner
@@ -1148,7 +1165,7 @@ func runAutonomous(ctx context.Context, opts RunOpts) (RunResult, error) {
 		// bytes so the operator sees whatever claude did print.
 		opts.Stdout.Write(captured.Bytes())
 	}
-	return RunResult{Usage: usage}, runErr
+	return RunResult{Usage: usage, ResultText: resultText}, runErr
 }
 
 // parseClaudeJSON decodes the `claude -p --output-format json` envelope.

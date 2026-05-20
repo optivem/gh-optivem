@@ -3,6 +3,7 @@ package projectconfig
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -46,6 +47,15 @@ system_test:
   repo: optivem/shop
   lang: java
   sonar_project: optivem_shop-system-test
+  paths:
+    driver_port: system-test/java/src/main/java/testkit/driver/port/shop
+    driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
+    external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop
+    external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
+    at_test: system-test/java/src/test/java/shop/latest/acceptance
+    dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
+    dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
+    ct_test: system-test/java/src/test/java/shop/latest/contract
 
 external_systems:
   stubs:
@@ -54,16 +64,6 @@ external_systems:
   simulators:
     path: simulators
     repo: optivem/shop
-
-paths:
-  driver_port: system-test/java/src/main/java/testkit/driver/port/shop
-  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
-  external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop
-  external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
-  at_test: system-test/java/src/test/java/shop/latest/acceptance
-  dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
-  dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
-  ct_test: system-test/java/src/test/java/shop/latest/contract
 `
 
 const sampleMonoRepoMultitier = `project:
@@ -93,6 +93,15 @@ system_test:
   repo: optivem/shop
   lang: java
   sonar_project: optivem_shop-system-test
+  paths:
+    driver_port: system-test/java/src/main/java/testkit/driver/port/shop
+    driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
+    external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop
+    external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
+    at_test: system-test/java/src/test/java/shop/latest/acceptance
+    dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
+    dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
+    ct_test: system-test/java/src/test/java/shop/latest/contract
 
 external_systems:
   stubs:
@@ -101,16 +110,6 @@ external_systems:
   simulators:
     path: simulators
     repo: optivem/shop
-
-paths:
-  driver_port: system-test/java/src/main/java/testkit/driver/port/shop
-  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
-  external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop
-  external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
-  at_test: system-test/java/src/test/java/shop/latest/acceptance
-  dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
-  dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
-  ct_test: system-test/java/src/test/java/shop/latest/contract
 `
 
 const sampleMultiRepoMonolith = `project:
@@ -134,6 +133,15 @@ system_test:
   repo: optivem/shop
   lang: java
   sonar_project: optivem_shop-system-test
+  paths:
+    driver_port: system-test/src/main/java/testkit/driver/port/shop
+    driver_adapter: system-test/src/main/java/testkit/driver/adapter/shop
+    external_system_driver_port: system-test/src/main/java/testkit/external/port/shop
+    external_system_driver_adapter: system-test/src/main/java/testkit/external/adapter/shop
+    at_test: system-test/src/test/java/shop/latest/acceptance
+    dsl_port: system-test/src/main/java/testkit/dsl/port/shop
+    dsl_core: system-test/src/main/java/testkit/dsl/core/shop
+    ct_test: system-test/src/test/java/shop/latest/contract
 
 external_systems:
   stubs:
@@ -142,16 +150,6 @@ external_systems:
   simulators:
     path: simulators
     repo: optivem/shop
-
-paths:
-  driver_port: system-test/src/main/java/testkit/driver/port/shop
-  driver_adapter: system-test/src/main/java/testkit/driver/adapter/shop
-  external_system_driver_port: system-test/src/main/java/testkit/external/port/shop
-  external_system_driver_adapter: system-test/src/main/java/testkit/external/adapter/shop
-  at_test: system-test/src/test/java/shop/latest/acceptance
-  dsl_port: system-test/src/main/java/testkit/dsl/port/shop
-  dsl_core: system-test/src/main/java/testkit/dsl/core/shop
-  ct_test: system-test/src/test/java/shop/latest/contract
 `
 
 const sampleMultiRepoMultitier = `project:
@@ -181,6 +179,15 @@ system_test:
   repo: optivem/shop-backend
   lang: java
   sonar_project: optivem_shop-system-test
+  paths:
+    driver_port: system-test/src/main/java/testkit/driver/port/shop-backend
+    driver_adapter: system-test/src/main/java/testkit/driver/adapter/shop-backend
+    external_system_driver_port: system-test/src/main/java/testkit/external/port/shop-backend
+    external_system_driver_adapter: system-test/src/main/java/testkit/external/adapter/shop-backend
+    at_test: system-test/src/test/java/shop-backend/latest/acceptance
+    dsl_port: system-test/src/main/java/testkit/dsl/port/shop-backend
+    dsl_core: system-test/src/main/java/testkit/dsl/core/shop-backend
+    ct_test: system-test/src/test/java/shop-backend/latest/contract
 
 external_systems:
   stubs:
@@ -189,16 +196,6 @@ external_systems:
   simulators:
     path: simulators
     repo: optivem/shop-main
-
-paths:
-  driver_port: system-test/src/main/java/testkit/driver/port/shop-backend
-  driver_adapter: system-test/src/main/java/testkit/driver/adapter/shop-backend
-  external_system_driver_port: system-test/src/main/java/testkit/external/port/shop-backend
-  external_system_driver_adapter: system-test/src/main/java/testkit/external/adapter/shop-backend
-  at_test: system-test/src/test/java/shop-backend/latest/acceptance
-  dsl_port: system-test/src/main/java/testkit/dsl/port/shop-backend
-  dsl_core: system-test/src/main/java/testkit/dsl/core/shop-backend
-  ct_test: system-test/src/test/java/shop-backend/latest/contract
 `
 
 // ---------------------------------------------------------------------------
@@ -337,9 +334,9 @@ func TestWrite_RoundTripPreservesAllFourSamples(t *testing.T) {
 				got.System.Path != cfg.System.Path ||
 				got.System.Repo != cfg.System.Repo ||
 				got.System.Lang != cfg.System.Lang ||
-				got.System.Backend != cfg.System.Backend ||
-				got.System.Frontend != cfg.System.Frontend ||
-				got.SystemTest != cfg.SystemTest ||
+				!reflect.DeepEqual(got.System.Backend, cfg.System.Backend) ||
+				!reflect.DeepEqual(got.System.Frontend, cfg.System.Frontend) ||
+				!reflect.DeepEqual(got.SystemTest, cfg.SystemTest) ||
 				got.ExternalSystems != cfg.ExternalSystems {
 				t.Fatalf("round-trip mismatch:\n got:  %+v\n want: %+v", got, cfg)
 			}
@@ -879,7 +876,7 @@ func TestValidate_RejectsMissingPathsBlockWhenArchitectureSet(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing paths block, got nil")
 	}
-	for _, want := range []string{"paths.driver_port", "paths.driver_adapter", "paths.at_test", "paths.ct_test"} {
+	for _, want := range []string{"system_test.paths.driver_port", "system_test.paths.driver_adapter", "system_test.paths.at_test", "system_test.paths.ct_test"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should name %s, got: %v", want, err)
 		}
@@ -902,17 +899,17 @@ func TestValidate_RejectsMissingCanonicalKey(t *testing.T) {
 		SystemTest: TierSpec{
 			Path: "system-test", Repo: "optivem/shop", Lang: LangJava,
 			SonarProject: "optivem_shop-system-test",
+			Paths:        full,
 		},
-		Paths: full,
 	}
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("expected error for missing driver_adapter, got nil")
 	}
-	if !strings.Contains(err.Error(), "paths.driver_adapter") {
+	if !strings.Contains(err.Error(), "system_test.paths.driver_adapter") {
 		t.Errorf("error should name the missing key, got: %v", err)
 	}
-	if strings.Contains(err.Error(), "paths.driver_port") {
+	if strings.Contains(err.Error(), "system_test.paths.driver_port") {
 		t.Errorf("error should not name keys that ARE present, got: %v", err)
 	}
 }
@@ -933,14 +930,14 @@ func TestValidate_RejectsEmptyCanonicalValue(t *testing.T) {
 		SystemTest: TierSpec{
 			Path: "system-test", Repo: "optivem/shop", Lang: LangJava,
 			SonarProject: "optivem_shop-system-test",
+			Paths:        full,
 		},
-		Paths: full,
 	}
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("expected error for empty dsl_core value, got nil")
 	}
-	if !strings.Contains(err.Error(), "paths.dsl_core") {
+	if !strings.Contains(err.Error(), "system_test.paths.dsl_core") {
 		t.Errorf("error should name the empty-value key, got: %v", err)
 	}
 }
@@ -1000,8 +997,10 @@ func TestValidate_AcceptsExternalSystemsOmitted(t *testing.T) {
 			Path:         "p", Repo: "x/y", Lang: LangJava,
 			SonarProject: "x_y-system",
 		},
-		SystemTest: TierSpec{Path: "t", Repo: "x/y", Lang: LangJava, SonarProject: "x_y-system-test"},
-		Paths:      javaPaths("t", "y"),
+		SystemTest: TierSpec{
+			Path: "t", Repo: "x/y", Lang: LangJava, SonarProject: "x_y-system-test",
+			Paths: javaPaths("t", "y"),
+		},
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("config without external_systems should validate, got: %v", err)
@@ -1019,8 +1018,10 @@ func TestValidate_AcceptsOnlyStubsOrOnlySimulators(t *testing.T) {
 				Path:         "p", Repo: "x/y", Lang: LangJava,
 				SonarProject: "x_y-system",
 			},
-			SystemTest: TierSpec{Path: "t", Repo: "x/y", Lang: LangJava, SonarProject: "x_y-system-test"},
-			Paths:      javaPaths("t", "y"),
+			SystemTest: TierSpec{
+				Path: "t", Repo: "x/y", Lang: LangJava, SonarProject: "x_y-system-test",
+				Paths: javaPaths("t", "y"),
+			},
 		}
 	}
 
@@ -1068,12 +1069,14 @@ func TestValidate_AcceptsExternalRepoNotInOtherTiers(t *testing.T) {
 			Backend:      TierSpec{Path: "be", Repo: "x/backend", Lang: LangJava, SonarProject: "x_main-backend"},
 			Frontend:     TierSpec{Path: "fe", Repo: "x/frontend", Lang: LangTypescript, SonarProject: "x_main-frontend"},
 		},
-		SystemTest: TierSpec{Path: "t", Repo: "x/main", Lang: LangJava, SonarProject: "x_main-system-test"},
+		SystemTest: TierSpec{
+			Path: "t", Repo: "x/main", Lang: LangJava, SonarProject: "x_main-system-test",
+			Paths: javaPaths("t", "main"),
+		},
 		ExternalSystems: ExternalSystems{
 			Stubs:      ExternalSpec{Path: "stubs", Repo: "x/externals" /* unique slug */},
 			Simulators: ExternalSpec{Path: "simulators", Repo: "x/externals"},
 		},
-		Paths: javaPaths("t", "main"),
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected validate-ok, got: %v", err)
@@ -1159,8 +1162,10 @@ func TestWrite_OmitsEmptyOptionalFields(t *testing.T) {
 			Path:         "p", Repo: "x/y", Lang: LangJava,
 			SonarProject: "x_y-system",
 		},
-		SystemTest: TierSpec{Path: "t", Repo: "x/y", Lang: LangJava, SonarProject: "x_y-system-test"},
-		Paths:      javaPaths("t", "y"),
+		SystemTest: TierSpec{
+			Path: "t", Repo: "x/y", Lang: LangJava, SonarProject: "x_y-system-test",
+			Paths: javaPaths("t", "y"),
+		},
 	}
 	if err := Write(dir, cfg); err != nil {
 		t.Fatalf("Write: %v", err)
@@ -1273,8 +1278,8 @@ func TestWriteToPath_NonCanonicalFilename(t *testing.T) {
 			Repo:         "acme/page-turner",
 			Lang:         LangJava,
 			SonarProject: "acme_page-turner-system-test",
+			Paths:        javaPaths("system-test/java", "page-turner"),
 		},
-		Paths: javaPaths("system-test/java", "page-turner"),
 	}
 	if err := WriteToPath(yamlPath, in); err != nil {
 		t.Fatalf("WriteToPath: %v", err)
@@ -1319,8 +1324,8 @@ func validMonolithBase() *Config {
 		SystemTest: TierSpec{
 			Path: "system-test", Repo: "acme/page-turner", Lang: LangJava,
 			SonarProject: "acme_page-turner-system-test",
+			Paths:        javaPaths("system-test", "page-turner"),
 		},
-		Paths: javaPaths("system-test", "page-turner"),
 	}
 }
 
@@ -1578,8 +1583,8 @@ func validMultitierBase() *Config {
 		SystemTest: TierSpec{
 			Path: "system-test", Repo: "acme/page-turner", Lang: LangJava,
 			SonarProject: "acme_page-turner-system-test",
+			Paths:        javaPaths("system-test", "page-turner"),
 		},
-		Paths: javaPaths("system-test", "page-turner"),
 	}
 }
 

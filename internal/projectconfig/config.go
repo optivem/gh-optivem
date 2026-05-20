@@ -173,18 +173,6 @@ type Config struct {
 	// NodeReplacements is rejected — replacement strictly supersedes
 	// extras, so the combination signals operator confusion.
 	NodeReplacements map[string]string `yaml:"node_replacements,omitempty"`
-
-	// Paths is the user-owned map of named-location placeholders consumed
-	// by phase-doc substitution at sync time. Each key is a named location
-	// (e.g. "driver_port"); each value is a repo-relative path. The
-	// scaffolder writes a default block matching glossary.md doctrine into
-	// every new project; existing configs are back-filled by
-	// `gh optivem config migrate`.
-	//
-	// Reserved keys that would shadow fixed-schema Family A placeholders
-	// (language, architecture, system_path, system_test_path, sut_namespace)
-	// are rejected by Validate.
-	Paths map[string]string `yaml:"paths,omitempty"`
 }
 
 // Project carries the tracker backend identity: which Tracker adapter
@@ -267,12 +255,24 @@ type System struct {
 // SonarProject carries the SonarCloud project key for the tier, required
 // when system.architecture is set (system_test, backend, frontend); see
 // Rules 18/19 in Validate.
+//
+// Paths is the user-owned map of named-location placeholders consumed by
+// phase-doc substitution at sync time — the canonical Family B keys
+// (driver_port, driver_adapter, at_test, …) describing the system_test
+// tier's layered layout. Each key is a named location; each value is a
+// repo-relative path. The scaffolder writes a default block matching
+// glossary.md doctrine into every new project. Reserved keys that would
+// shadow fixed-schema Family A placeholders (language, architecture,
+// system_path, system_test_path, sut_namespace) are rejected by Validate.
+// Meaningful only on system_test today — Validate rejects non-empty Paths
+// on backend/frontend tiers, mirroring how Config is restricted.
 type TierSpec struct {
-	Path         string `yaml:"path,omitempty"`
-	Repo         string `yaml:"repo,omitempty"`
-	Lang         string `yaml:"lang,omitempty"`
-	Config       string `yaml:"config,omitempty"`
-	SonarProject string `yaml:"sonar_project,omitempty"`
+	Path         string            `yaml:"path,omitempty"`
+	Repo         string            `yaml:"repo,omitempty"`
+	Lang         string            `yaml:"lang,omitempty"`
+	Config       string            `yaml:"config,omitempty"`
+	SonarProject string            `yaml:"sonar_project,omitempty"`
+	Paths        map[string]string `yaml:"paths,omitempty"`
 }
 
 // ExternalSystems declares vendored stand-ins for third-party dependencies
@@ -371,10 +371,11 @@ func (c *Config) SutNamespace() string {
 
 // PlaceholderMap returns the flat name → value map consumed by phase-doc
 // substitution. Family A keys come from existing top-level config fields;
-// Family B keys come from the user-owned Paths map. Family A wins on
-// collision — Validate also rejects the collision at parse time, so the
-// in-memory precedence is defensive cover for callers that mutate a
-// Config without re-validating.
+// Family B keys come from the user-owned SystemTest.Paths map. The output
+// namespace stays flat — Family B keys emit at the top level alongside
+// Family A. Family A wins on collision — Validate also rejects the
+// collision at parse time, so the in-memory precedence is defensive cover
+// for callers that mutate a Config without re-validating.
 //
 // `language` prefers System.Lang (monolith); when empty (multitier or a
 // partial config without a system tier), falls back to SystemTest.Lang
@@ -384,9 +385,9 @@ func (c *Config) PlaceholderMap() map[string]string {
 	if c == nil {
 		return map[string]string{}
 	}
-	out := make(map[string]string, len(c.Paths)+5)
+	out := make(map[string]string, len(c.SystemTest.Paths)+5)
 	// Family B first; Family A overwrites on collision.
-	maps.Copy(out, c.Paths)
+	maps.Copy(out, c.SystemTest.Paths)
 	out["architecture"] = c.System.Architecture
 	out["system_path"] = c.System.Path
 	out["system_test_path"] = c.SystemTest.Path
@@ -756,8 +757,8 @@ beyond the canonical layout`)
 	if c.System.Architecture != "" {
 		var missing []string
 		for _, k := range CanonicalPathKeys() {
-			if c.Paths[k] == "" {
-				missing = append(missing, "paths."+k)
+			if c.SystemTest.Paths[k] == "" {
+				missing = append(missing, "system_test.paths."+k)
 			}
 		}
 		if len(missing) > 0 {
@@ -783,9 +784,9 @@ beyond the canonical layout`)
 	}
 	// Sorted iteration so errors are deterministic when multiple keys
 	// could trip the rule.
-	for _, k := range sortedKeys(c.Paths) {
+	for _, k := range sortedKeys(c.SystemTest.Paths) {
 		if _, reserved := reservedPlaceholderKeys[k]; reserved {
-			return fmt.Errorf("config: paths.%s shadows a reserved fixed-schema placeholder name; rename it", k)
+			return fmt.Errorf("config: system_test.paths.%s shadows a reserved fixed-schema placeholder name; rename it", k)
 		}
 		// Rule 22b: the pre-rename "external_driver_*" keys were renamed
 		// to "external_system_driver_*" per plan 20260519-0704. Detect
@@ -794,7 +795,7 @@ beyond the canonical layout`)
 		// and comments. Same pattern as the pre-SSoT detection in Rule
 		// 0c above.
 		if newKey, isOldExternalDriverKey := ExternalDriverKeyRenames[k]; isOldExternalDriverKey {
-			return fmt.Errorf(`config: paths.%s is the pre-rename key (renamed to paths.%s per plan 20260519-0704).
+			return fmt.Errorf(`config: system_test.paths.%s is the pre-rename key (renamed to system_test.paths.%s per plan 20260519-0704).
 
 Run:  gh optivem config migrate
 
@@ -802,14 +803,26 @@ The migrate command renames the entry in place, preserving the value
 and any inline comments. Re-run validate after migrate to confirm`, k, newKey)
 		}
 		if _, ok := canonical[k]; !ok {
-			return fmt.Errorf("config: paths.%s is not a canonical Family B key; see internal/projectconfig/path-keys.md for the supported set", k)
+			return fmt.Errorf("config: system_test.paths.%s is not a canonical Family B key; see internal/projectconfig/path-keys.md for the supported set", k)
 		}
-		if strings.Contains(c.Paths[k], "${") {
-			return fmt.Errorf("config: paths.%s %q contains a ${...} marker; under SSoT, paths must be fully resolved (substitution is scaffold-time-only)", k, c.Paths[k])
+		if strings.Contains(c.SystemTest.Paths[k], "${") {
+			return fmt.Errorf("config: system_test.paths.%s %q contains a ${...} marker; under SSoT, paths must be fully resolved (substitution is scaffold-time-only)", k, c.SystemTest.Paths[k])
 		}
-		if err := validatePath("paths."+k, c.Paths[k]); err != nil {
+		if err := validatePath("system_test.paths."+k, c.SystemTest.Paths[k]); err != nil {
 			return err
 		}
+	}
+
+	// Rule 22c: paths: is system_test-only today. Reject non-empty Paths on
+	// backend/frontend tiers — they have no canonical Family B vocabulary
+	// to anchor against, and silently accepting the field would let a typo
+	// like `system.backend.paths:` parse as a no-op. Same shape as Rule 0b
+	// for TierSpec.Config (also system_test-only).
+	if len(c.System.Backend.Paths) > 0 {
+		return fmt.Errorf("config: system.backend.paths is not a supported field (paths: is system_test-only; use system_test.paths)")
+	}
+	if len(c.System.Frontend.Paths) > 0 {
+		return fmt.Errorf("config: system.frontend.paths is not a supported field (paths: is system_test-only; use system_test.paths)")
 	}
 
 	return nil
