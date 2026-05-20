@@ -548,7 +548,7 @@ func (b bindings) testsSelected(ctx *statemachine.Context) statemachine.Outcome 
 // node; an absent value means "no exception was signalled" and routes to
 // the normal continuation. The shape contract (yaml emitted by the agent,
 // flattened into two context keys by the parser) lives in
-// docs/atdd/process/shared/scope.md.
+// internal/assets/runtime/shared/scope.md.
 func (b bindings) scopeExceptionRequested(ctx *statemachine.Context) statemachine.Outcome {
 	files, _ := ctx.Get("scope_exception_files").([]string)
 	return statemachine.Outcome{Bool: len(files) > 0}

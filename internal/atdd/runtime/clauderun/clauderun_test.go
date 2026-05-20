@@ -362,7 +362,7 @@ func TestDispatch_MaterializesProjectDocsWhenProjectConfigSet(t *testing.T) {
 	opts := newOpts()
 	opts.RepoPath = repoPath
 	opts.ProjectConfig = cfg
-	opts.PromptOverride = "Read ${docs_root}/atdd/process/shared/conventions.md."
+	opts.PromptOverride = "Read ${docs_root}/atdd/architecture/system.md."
 
 	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
@@ -417,7 +417,7 @@ func TestDispatch_FallsBackToUserGlobalDocsRootWhenProjectConfigNil(t *testing.T
 	opts := newOpts()
 	opts.RepoPath = repoPath
 	// ProjectConfig left nil — should fall back to the user-global root.
-	opts.PromptOverride = "Read ${docs_root}/atdd/process/shared/conventions.md."
+	opts.PromptOverride = "Read ${docs_root}/atdd/architecture/system.md."
 
 	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)

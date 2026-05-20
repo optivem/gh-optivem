@@ -12,15 +12,20 @@ import (
 const (
 	promptsDir     = "runtime/prompts/atdd"
 	preamblePath   = "runtime/shared/preamble.md"
+	scopePath      = "runtime/shared/scope.md"
 	sessionEndPath = "runtime/shared/session-end.md"
 )
 
 // sharedPreamble is the universal ticket-vars + don't-commit/summarise block
-// prepended to every agent prompt. sharedSessionEnd is the universal "end
-// your reply with /exit cue" rule appended. Both load once at init so a
+// prepended to every agent prompt. sharedScope is the universal phase-scope
+// doctrine inserted between preamble and body — every agent must honour the
+// scope-exception contract, so the rule belongs in argv rather than a Read
+// directive resolved per dispatch. sharedSessionEnd is the universal "end
+// your reply with /exit cue" rule appended. All three load once at init so a
 // missing asset fails the binary at startup rather than at first dispatch.
 var (
 	sharedPreamble   = mustReadAsset(preamblePath)
+	sharedScope      = mustReadAsset(scopePath)
 	sharedSessionEnd = mustReadAsset(sessionEndPath)
 )
 
@@ -73,7 +78,10 @@ func Prompt(name string) (string, error) {
 	}
 	_, body := splitFrontmatter(string(data))
 	body = strings.TrimRight(body, "\n")
-	return sharedPreamble + "\n\n" + body + "\n\n---\n\n" + sharedSessionEnd + "\n", nil
+	return sharedPreamble + "\n\n" +
+		sharedScope + "\n\n" +
+		body + "\n\n---\n\n" +
+		sharedSessionEnd + "\n", nil
 }
 
 // LoadTuning returns the model/effort tuning declared in the named

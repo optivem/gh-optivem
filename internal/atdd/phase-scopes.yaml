@@ -16,8 +16,8 @@
 #   - every layer name is in canonicalPathKeys() or equals system_path
 #   - no duplicate layer references within a phase, all values non-empty
 #
-# See docs/atdd/process/shared/scope.md for the scope rule consumers
-# must follow.
+# See internal/assets/runtime/shared/scope.md for the scope rule
+# consumers must follow.
 
 phases:
   # ---- AT (Acceptance Test) cycle ------------------------------------

@@ -933,7 +933,7 @@ func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome
 		ctx.Set(CtxKeyPhaseScopeClean, false)
 		ctx.State[CtxKeyPhaseScopeViolatingPaths] = violating
 		fmt.Fprintf(a.deps.Stderr,
-			"check_phase_scope: %s scope violation — %d path(s) outside scope. See docs/atdd/process/shared/scope.md.\n",
+			"check_phase_scope: %s scope violation — %d path(s) outside scope.\nResolve by: (1) accept the diff if intentional; (2) rewind to an upstream phase; (3) revert and rerun; (4) abort the cycle.\n",
 			phaseID, len(violating))
 		for _, v := range violating {
 			fmt.Fprintf(a.deps.Stderr, "  out-of-scope: %s\n", v)
