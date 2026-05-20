@@ -3,7 +3,7 @@
 # Single source of truth for cycle-level orchestration. Encodes the AT cycle,
 # the CT sub-process, the External System Onboarding sub-process, the shared
 # structural cycle (used by the system-interface-redesign and
-# system-implementation-change subtypes), the external-system-interface-redesign
+# system-implementation-refactoring subtypes), the external-system-interface-redesign
 # wrapper, and the (TBD) Legacy Acceptance Criteria cycle as named processes of
 # typed nodes connected by sequence flows.
 #
@@ -111,6 +111,10 @@ processes:
         type: call_activity
         process: run_legacy_cycle
 
+      - id: BACKLOG_REFINEMENT
+        type: call_activity
+        process: backlog_refinement
+
       - id: RUN_CYCLE
         type: call_activity
         process: run_cycle
@@ -129,7 +133,8 @@ processes:
       - {from: PICK_TOP_READY,       to: MOVE_TICKET_IN_PROGRESS}
       - {from: MOVE_TICKET_IN_PROGRESS,  to: INTAKE}
       - {from: INTAKE,               to: RUN_LEGACY_CYCLE}
-      - {from: RUN_LEGACY_CYCLE,     to: RUN_CYCLE}
+      - {from: RUN_LEGACY_CYCLE,     to: BACKLOG_REFINEMENT}
+      - {from: BACKLOG_REFINEMENT,   to: RUN_CYCLE}
       - {from: RUN_CYCLE,            to: MOVE_TICKET_IN_ACCEPTANCE}
       - {from: MOVE_TICKET_IN_ACCEPTANCE, to: END}
 
@@ -262,6 +267,55 @@ processes:
       - {from: LEGACY_CYCLE,        to: RUN_LEGACY_END}
 
   # ===========================================================================
+  # backlog_refinement
+  # Refines the ticket's acceptance criteria (legacy + newly-derived) into
+  # Gherkin GIVEN-WHEN-THEN form and covers any gaps per the AC-coverage
+  # rubric. The refiner is a rewriter (not a reviewer): it mutates the
+  # parsed-concepts artifact in place and emits a `refinement_changed`
+  # flag. The user confirms the result; if anything changed, an
+  # update-ticket step writes the refined sections back to the ticket
+  # source. When refinement was a no-op the sub-process discharges
+  # without writing.
+  #
+  # Slotted between run_legacy_cycle and run_cycle so the legacy backfill
+  # has already run, and the refined ACs feed directly into the execution
+  # cycle (at_cycle / da_cycle / sut_cycle) dispatched by run_cycle.
+  # ===========================================================================
+  backlog_refinement:
+    start: BACKLOG_REFINEMENT
+    nodes:
+      - id: BACKLOG_REFINEMENT
+        type: user_task
+        agent: refine-acc
+        documentation: "Refine acceptance criteria (Gherkin + coverage rubric)"
+
+      - id: CONFIRM_REFINEMENT
+        type: user_task
+        agent: human
+        role: review
+        documentation: "Confirm refined acceptance criteria"
+
+      - id: GATE_REFINEMENT_CHANGED
+        type: gateway
+        binding: refinement_changed
+        documentation: "Refinement Changed?"
+
+      - id: UPDATE_TICKET
+        type: user_task
+        agent: update-ticket
+        documentation: "Write refined ACs back to ticket source"
+
+      - id: BR_END
+        type: end_event
+
+    sequence_flows:
+      - {from: BACKLOG_REFINEMENT,      to: CONFIRM_REFINEMENT}
+      - {from: CONFIRM_REFINEMENT,      to: GATE_REFINEMENT_CHANGED}
+      - {from: GATE_REFINEMENT_CHANGED, to: UPDATE_TICKET, when: "refinement_changed == true"}
+      - {from: GATE_REFINEMENT_CHANGED, to: BR_END,        when: "refinement_changed == false"}
+      - {from: UPDATE_TICKET,           to: BR_END}
+
+  # ===========================================================================
   # run_cycle
   # Change cycle for the current ticket — dispatches on `change_type`, the
   # single-axis classification derived during intake from (ticket_type,
@@ -270,7 +324,7 @@ processes:
   #   - behavioral                          → at_cycle  (AT-layer change)
   #   - system-interface-redesign           → da_cycle  (Driver Adapter seam change, system-side)
   #   - external-system-interface-redesign  → da_cycle  (Driver Adapter seam change, external-side)
-  #   - system-implementation-change        → sut_cycle (System Under Test internal)
+  #   - system-implementation-refactoring   → sut_cycle (System Under Test internal)
   #
   # change_type derivation lives in the parse_ticket_body action. The value
   # is `behavioral` for story / bug tickets and equals the subtype label for
@@ -303,7 +357,7 @@ processes:
       - {from: GATE_CHANGE_TYPE, to: AT_CYCLE,  when: "change_type == behavioral"}
       - {from: GATE_CHANGE_TYPE, to: DA_CYCLE,  when: "change_type == system-interface-redesign"}
       - {from: GATE_CHANGE_TYPE, to: DA_CYCLE,  when: "change_type == external-system-interface-redesign"}
-      - {from: GATE_CHANGE_TYPE, to: SUT_CYCLE, when: "change_type == system-implementation-change"}
+      - {from: GATE_CHANGE_TYPE, to: SUT_CYCLE, when: "change_type == system-implementation-refactoring"}
       - {from: AT_CYCLE,  to: CYCLE_END}
       - {from: DA_CYCLE,  to: CYCLE_END}
       - {from: SUT_CYCLE, to: CYCLE_END}
@@ -664,7 +718,7 @@ processes:
 
   # ===========================================================================
   # structural_cycle
-  # Shared by system-api-task, system-ui-task, and chore via call_activity
+  # Shared by system-api-task, system-ui-task, and task-system-implementation-refactoring via call_activity
   # `params:`. The Go runtime substitutes ${change_type}, ${agent}, ${phase_doc}
   # at dispatch time. COMPILE always runs after APPROVE_CHANGE; TEST scope is
   # picked at CHOOSE_TESTS (y/n then a/s/p — "no" skips the test phase
@@ -1221,25 +1275,25 @@ processes:
   # ===========================================================================
   # sut_cycle
   # System Under Test cycle — structural change with no test-stack artifact
-  # changing (no AT, no DA). Routes through structural_cycle with the chore
-  # change_type / agent / phase_doc.
+  # changing (no AT, no DA). Routes through structural_cycle with the
+  # system-implementation-refactoring task change_type / agent / phase_doc.
   # ===========================================================================
   sut_cycle:
-    start: CHORE_CYCLE
+    start: SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE
     nodes:
-      - id: CHORE_CYCLE
+      - id: SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE
         type: call_activity
         process: structural_cycle
         params:
-          change_type: CHORE
-          agent: chore
-          phase_doc: docs/atdd/process/change/structure/system-implementation-change.md
+          change_type: system-implementation-refactoring
+          agent: task-system-implementation-refactoring
+          phase_doc: docs/atdd/process/change/structure/system-implementation-refactoring.md
 
       - id: SUT_END
         type: end_event
 
     sequence_flows:
-      - {from: CHORE_CYCLE, to: SUT_END}
+      - {from: SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE, to: SUT_END}
 
   # ===========================================================================
   # legacy_acceptance_criteria

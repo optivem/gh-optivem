@@ -1,5 +1,7 @@
 # 2026-05-20 11:45 UTC — Rename asset tree to `internal/assets/runtime/references/`
 
+> 🤖 **Picked up by agent (execute, batch-then-review)** — `Valentina_Desk` at `2026-05-20T10:55:30Z`
+
 **Status:** READY (refined; not yet picked up for execution)
 
 **Origin:** promoted from Items 2 + 3 of `plans/20260519-1537-post-meta-bpmn-topics.md` (DECIDED, ready for promotion). This plan captures only the rename mechanics; the *why* (architectural symmetry, three delivery mechanisms → three sibling trees under `runtime/`, `references/` accurately names the surviving content) lives in the source plan and is not duplicated here.

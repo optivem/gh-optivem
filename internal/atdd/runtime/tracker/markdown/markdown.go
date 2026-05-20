@@ -266,7 +266,7 @@ func (t *Tracker) Verify(_ context.Context) error {
 // field at the top of the file; the lowercased value is returned with
 // confident=true. When no frontmatter type is present, a filename
 // heuristic checks the prefix before the first `-` against a known
-// set (feature, bug, story, task, chore, techdebt) — matches return
+// set (feature, bug, story, task, techdebt) — matches return
 // (kind, false); non-matches return ("", false).
 func (t *Tracker) Classify(_ context.Context, i tracker.Issue) (string, bool, error) {
 	body, err := os.ReadFile(i.Handle)
@@ -430,7 +430,6 @@ var knownKinds = map[string]struct{}{
 	"bug":      {},
 	"story":    {},
 	"task":     {},
-	"chore":    {},
 	"techdebt": {},
 }
 

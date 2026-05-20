@@ -15,6 +15,10 @@ func seedBehavioralIntake(ctx *Context) {
 	ctx.Set("ticket_type_recognized", true)
 	ctx.Set("parse_ok", true)
 	ctx.Set("legacy_acceptance_criteria_section_present", false)
+	// backlog_refinement: refiner is a no-op (refinement_changed=false)
+	// so the sub-process discharges through GATE_REFINEMENT_CHANGED →
+	// BR_END without dispatching UPDATE_TICKET.
+	ctx.Set("refinement_changed", false)
 	// red_phase_cycle gates (shared by every AT - RED - * dispatch):
 	// compile passes; AT phases don't verify against a real suite
 	// (verify_real_required=false routes straight to RUN); the desired
@@ -69,6 +73,13 @@ func (e *expectDispatch) behavioralIntake() *expectDispatch {
 		process("run_legacy_cycle", noParams()).
 		gateway("GATE_LEGACY_PRESENT", "legacy_acceptance_criteria_section_present", false).
 		endEvent("RUN_LEGACY_END").
+		process("main", noParams()).
+		callActivity("BACKLOG_REFINEMENT", "backlog_refinement", noParams()).
+		process("backlog_refinement", noParams()).
+		userTask("BACKLOG_REFINEMENT", "refine-acc").
+		userTask("CONFIRM_REFINEMENT", "human").
+		gateway("GATE_REFINEMENT_CHANGED", "refinement_changed", false).
+		endEvent("BR_END").
 		process("main", noParams()).
 		callActivity("RUN_CYCLE", "run_cycle", noParams()).
 		process("run_cycle", noParams()).

@@ -93,30 +93,7 @@ Observations / open questions (to discuss):
    - Agent prompt sits at `internal/assets/runtime/prompts/atdd/`
      alongside `at-green-system.md` (filename TBD during execution —
      `at-refactor-system.md` is the obvious choice).
-6. Wire both phases into `process-flow.yaml`.
-
-   **6a. backlog-refinement wiring**
-   - New sub-process (e.g. `backlog_refinement`) slotted **after**
-     parse-ticket / concepts and **before** the first execution cycle
-     (at_red / at_green).
-   - States:
-     - `BACKLOG_REFINEMENT` — runs the refinement agent; mutates the
-       parsed-concepts artifact and sets a `refinement_changed` flag.
-     - `CONFIRM_REFINEMENT` — user-confirm gate (human approval).
-     - `UPDATE_TICKET` — runs only when `refinement_changed == true`;
-       overwrites the ticket's `Description`, `Legacy AC`, and `AC`
-       sections.
-   - Transitions:
-     - `BACKLOG_REFINEMENT` → `CONFIRM_REFINEMENT`
-     - `CONFIRM_REFINEMENT` → `UPDATE_TICKET` when
-       `refinement_changed == true`
-     - `CONFIRM_REFINEMENT` → `<execution-cycle-entry>` when
-       `refinement_changed == false` (no-op discharge skips
-       `UPDATE_TICKET`)
-     - `UPDATE_TICKET` → `<execution-cycle-entry>`
-   - Open: name of the execution-cycle entry state (likely
-     `AT_RED_TEST` based on existing flow at line 318 of
-     `process-flow.yaml`).
+6. Wire at-refactor into `process-flow.yaml`.
 
    **6b. at-refactor wiring**
    - New sub-process `at_refactor_system` mirroring `at_green_system`
@@ -135,12 +112,8 @@ Observations / open questions (to discuss):
      - `COMMIT` → `AT_END`
    - Slot the new sub-process after `at_green_system` completes, before
      the cycle exits.
-7. Inline the phase docs into their prompt readers, mirroring the
-   pattern from commit `4b44722` (the 11 phases already inlined).
-   Targets:
-   - `refine-acc.md` → `runtime/prompts/atdd/refine-acc.md`.
-   - `update-ticket.md` → `runtime/prompts/atdd/update-ticket.md`
-     (sibling writer doc — see item 2).
+7. Inline the at-refactor phase doc into its prompt reader, mirroring
+   the pattern from commit `4b44722`.
    - `at-refactor.md` → `runtime/prompts/atdd/at-refactor-system.md`
      (per item 5).
 8. Update `docs/atdd/code/language-equivalents.md` **only if at-refactor
@@ -152,10 +125,8 @@ Observations / open questions (to discuss):
    pattern). If the agent is generic enough that the same prompt works
    for all three languages without per-language guidance, skip this
    item.
-9. Drop the `(DRAFT)` suffix from the phase doc H1 titles once
-   items 1–8 land:
-   - `refine-acc.md`.
-   - `update-ticket.md`.
+9. Drop the `(DRAFT)` suffix from the at-refactor phase doc H1 title
+   once items 5–8 land:
    - `at-refactor.md`.
 
 ---
@@ -163,4 +134,7 @@ Observations / open questions (to discuss):
 ## Pickup
 
 Items 1–4 landed in session at 2026-05-20T10:13:47Z (see commit log).
-Items 5–9 deferred to fresh sessions.
+Slice B (item 6a + refine-acc/update-ticket parts of items 7 and 9)
+landed at 2026-05-20T10:49:48Z (see commit log).
+Items 5, 6b, 7 (at-refactor), 8, 9 (at-refactor) deferred to fresh
+sessions.

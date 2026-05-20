@@ -1,18 +1,19 @@
-// Package sync writes the embedded global/ asset tree to per-user paths so
-// methodology docs are reachable on the user's filesystem without
-// per-repo install ceremony.
+// Package sync writes the embedded runtime/references/ asset tree to
+// per-user paths so reference docs are reachable on the user's filesystem
+// without per-repo install ceremony.
 //
 // On every gh-optivem invocation, EnsureSynced reads a per-user stamp file
 // and compares it to the binary's version. On mismatch (first run after
-// install or upgrade), the embedded global/ subtree is walked and written
-// to:
+// install or upgrade), the embedded runtime/references/ subtree is walked
+// and written to:
 //
-//   - global/docs/    → ~/.gh-optivem/docs/   (owned: docs/atdd/)
+//   - runtime/references/atdd/ → ~/.gh-optivem/references/atdd/
+//   - runtime/references/code/ → ~/.gh-optivem/references/code/
 //
-// The atdd/ subdirectory under that root is entirely owned by gh-optivem —
-// sync wipes-and-replaces it so files removed in a new release disappear
-// from the user's disk. Anything outside the owned subtree
-// (~/.gh-optivem/docs/notes/) is never touched.
+// Both subdirectories under that root are entirely owned by gh-optivem —
+// sync wipes-and-replaces them so files removed in a new release disappear
+// from the user's disk. Anything outside the owned subtrees
+// (~/.gh-optivem/references/notes/) is never touched.
 //
 // Concurrency: per-file atomic temp + rename means a killed sync never
 // leaves a half-written file in place. Concurrent gh-optivem invocations
@@ -55,18 +56,19 @@ const (
 	// commands that detect stale assets while the escape hatch is set.
 	EscapeHatchHint = "gh-optivem assets out of date or missing. Run `gh optivem asset sync` or unset GH_OPTIVEM_NO_AUTO_SYNC."
 
-	stampFileName      = ".version"
-	embeddedGlobalRoot = "global"
+	stampFileName          = ".version"
+	embeddedReferencesRoot = "runtime/references"
 
-	dirGhOptivem    = ".gh-optivem"
-	embeddedDocsDir = "docs"
+	dirGhOptivem          = ".gh-optivem"
+	userReferencesSubdir  = "references"
 )
 
 // ownedSubdirs lists the destination paths (relative to the user's home dir)
 // that gh-optivem owns wholesale and wipes on every re-sync. Anything
 // outside these paths is preserved across syncs.
 var ownedSubdirs = []string{
-	filepath.Join(dirGhOptivem, "docs", "atdd"),
+	filepath.Join(dirGhOptivem, userReferencesSubdir, "atdd"),
+	filepath.Join(dirGhOptivem, userReferencesSubdir, "code"),
 }
 
 // Result reports what EnsureSynced did.
@@ -87,7 +89,8 @@ type Result struct {
 // EnsureSynced is the entry point called at every gh-optivem invocation.
 // Returns Result.Synced == false when the stamp matches; Result.Skipped
 // == true when GH_OPTIVEM_NO_AUTO_SYNC is set; otherwise writes the
-// embedded global/ subtree to per-user paths and updates the stamp.
+// embedded runtime/references/ subtree to per-user paths and updates the
+// stamp.
 func EnsureSynced(binaryVersion string) (Result, error) {
 	if IsEscapeHatchSet() {
 		return Result{Skipped: true, Version: binaryVersion}, nil
@@ -99,8 +102,8 @@ func EnsureSynced(binaryVersion string) (Result, error) {
 	return ensureSyncedAt(home, binaryVersion)
 }
 
-// ForceSync writes the embedded global/ subtree to per-user paths
-// regardless of the stamp file and regardless of the escape hatch.
+// ForceSync writes the embedded runtime/references/ subtree to per-user
+// paths regardless of the stamp file and regardless of the escape hatch.
 // Used by `gh optivem asset sync` — the explicit-force form a user
 // invokes when the auto-sync gate has been bypassed or when they
 // want a clean re-write.
@@ -121,16 +124,16 @@ func ForceSync(binaryVersion string) (Result, error) {
 	}, nil
 }
 
-// DocsRoot returns the absolute path of the synced docs root
-// (~/.gh-optivem/docs/). Rendered prompts substitute this into the
-// ${docs_root} placeholder so agent Read-tool calls resolve to the
+// ReferencesRoot returns the absolute path of the synced references root
+// (~/.gh-optivem/references/). Rendered prompts substitute this into the
+// ${references_root} placeholder so agent Read-tool calls resolve to the
 // per-user synced copy regardless of working directory.
-func DocsRoot() (string, error) {
+func ReferencesRoot() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("locate home dir: %w", err)
 	}
-	return filepath.Join(home, dirGhOptivem, "docs"), nil
+	return filepath.Join(home, dirGhOptivem, userReferencesSubdir), nil
 }
 
 // Stale reports whether the on-disk stamp matches the binary version.
@@ -213,14 +216,14 @@ func syncAllAt(home, binaryVersion string) error {
 		}
 	}
 
-	walkErr := fs.WalkDir(assets.FS, embeddedGlobalRoot, func(path string, d fs.DirEntry, err error) error {
+	walkErr := fs.WalkDir(assets.FS, embeddedReferencesRoot, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
 			return nil
 		}
-		rel := strings.TrimPrefix(path, embeddedGlobalRoot+"/")
+		rel := strings.TrimPrefix(path, embeddedReferencesRoot+"/")
 		dest, err := mapDest(home, rel)
 		if err != nil {
 			return err
@@ -238,16 +241,16 @@ func syncAllAt(home, binaryVersion string) error {
 	return atomicWriteFile(stampPathAt(home), []byte(binaryVersion+"\n"))
 }
 
-// mapDest converts an embedded global/-relative path to its on-disk
-// destination under home. Returns an error for paths outside the known
-// prefix (docs/) — a guard against schema drift in the embedded tree
-// leaking files to unexpected locations.
+// mapDest converts an embedded runtime/references/-relative path to its
+// on-disk destination under home. Returns an error for paths outside the
+// known prefixes (atdd/, code/) — a guard against schema drift in the
+// embedded tree leaking files to unexpected locations.
 func mapDest(home, rel string) (string, error) {
 	switch {
-	case strings.HasPrefix(rel, embeddedDocsDir+"/"):
-		return filepath.Join(home, dirGhOptivem, rel), nil
+	case strings.HasPrefix(rel, "atdd/"), strings.HasPrefix(rel, "code/"):
+		return filepath.Join(home, dirGhOptivem, userReferencesSubdir, rel), nil
 	default:
-		return "", fmt.Errorf("sync: unmapped embedded path %q (expected docs/*)", rel)
+		return "", fmt.Errorf("sync: unmapped embedded path %q (expected atdd/* or code/*)", rel)
 	}
 }
 

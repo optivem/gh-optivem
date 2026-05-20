@@ -39,6 +39,10 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 	ctx.Set("subtype_ok", true)
 	ctx.Set("parse_ok", true)
 	ctx.Set("legacy_acceptance_criteria_section_present", false)
+	// backlog_refinement: refiner is a no-op (refinement_changed=false)
+	// so the sub-process discharges through GATE_REFINEMENT_CHANGED →
+	// BR_END without dispatching UPDATE_TICKET.
+	ctx.Set("refinement_changed", false)
 	ctx.Set("compile_ok", true)
 	// GATE_TESTS_SELECTED routes the post-CHOOSE_TESTS branch: true → run
 	// BUILD_SYSTEM → START_SYSTEM → RUN_TESTS. The test's gate mock echoes
@@ -82,6 +86,15 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 		process("run_legacy_cycle", noParams()).
 		gateway("GATE_LEGACY_PRESENT", "legacy_acceptance_criteria_section_present", false).
 		endEvent("RUN_LEGACY_END").
+		then().
+		process("main", noParams()).
+		callActivity("BACKLOG_REFINEMENT", "backlog_refinement", noParams()).
+		then().
+		process("backlog_refinement", noParams()).
+		userTask("BACKLOG_REFINEMENT", "refine-acc").
+		userTask("CONFIRM_REFINEMENT", "human").
+		gateway("GATE_REFINEMENT_CHANGED", "refinement_changed", false).
+		endEvent("BR_END").
 		then().
 		process("main", noParams()).
 		callActivity("RUN_CYCLE", "run_cycle", noParams()).

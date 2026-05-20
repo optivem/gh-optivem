@@ -1,6 +1,11 @@
-# REFINE ACC (DRAFT)
-
-Refine the ticket's acceptance criteria — propose first, then implement.
+---
+# Iterative rewrite over structured ACs — Sonnet handles the
+# Gherkin normalization + coverage-rubric reasoning at medium effort.
+model: sonnet
+effort: medium
+scope: {}   # mutates the parsed-concepts artifact only — no code layer touched
+---
+You are the Refinement Agent. Refine the ticket's acceptance criteria — propose first, then implement.
 
 ## Role in the flow
 
@@ -16,8 +21,8 @@ The refiner is a **rewriter, not a reviewer**:
 
 Once the refiner discharges, the **user confirms** the refined ACs (human
 gate). If refinement produced changes, a downstream `UPDATE_TICKET` step
-(separate phase doc) writes the refined content back to the ticket source.
-If no changes, `UPDATE_TICKET` is skipped.
+writes the refined content back to the ticket source. If no changes,
+`UPDATE_TICKET` is skipped.
 
 ## Inputs
 
@@ -33,12 +38,6 @@ If no changes, `UPDATE_TICKET` is skipped.
 - Sets flag: `Refinement Changed: yes|no` — `yes` if any edit or addition
   occurred; `no` if the AC set was already complete and Gherkin-correct.
   The downstream `UPDATE_TICKET` step runs only when `yes`.
-
-## Scope
-
-This phase mutates only the parsed-concepts artifact passed via the
-`${parsed_concepts}` input — no code layer is modified. The ticket
-source file, production system code, and tests are out of scope.
 
 ## Rubric for AC coverage
 
@@ -65,3 +64,5 @@ the "what new ACs should I add?" decision.
 3. Enforce Gherkin GIVEN-WHEN-THEN form on every scenario.
 4. Mutate `${parsed_concepts}` in place; set the `Refinement Changed`
    flag if any change occurred.
+
+Do not present or wait for approval inside the agent.

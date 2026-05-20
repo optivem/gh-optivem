@@ -1,5 +1,7 @@
 # 2026-05-20 11:45 UTC — Rename `chore` → `task-system-implementation-refactoring`
 
+> 🤖 **Picked up by agent (execute, batch-then-review)** — `Valentina_Desk` at `2026-05-20T10:54:31Z`
+
 **Status:** REFINED (small dated plan; ready to execute)
 
 **Origin:** promoted from Item 9 of `plans/20260519-1537-post-meta-bpmn-topics.md` (DECIDED, ready for promotion). Item 4 of the source plan proposed dropping the `task-` prefix from the two `task-*-redesign` prompts; that proposal was reversed during refinement of this plan in favor of *keeping* `task-` as a namespace for standalone work-item-type prompts (see Decision A). The *why* (refactoring-not-change framing, symmetry with `task-system-interface-redesign` / `task-external-system-interface-redesign`) lives in the source plan; this plan captures the mechanics only.

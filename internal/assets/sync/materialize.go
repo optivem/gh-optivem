@@ -1,15 +1,16 @@
-// File materialize.go implements per-project phase-doc substitution.
+// File materialize.go implements per-project reference-doc substitution.
 //
-// EnsureSynced writes the embedded global/docs/atdd tree to
-// ~/.gh-optivem/docs/ verbatim — that location is shared across every
-// project the user touches and MUST NOT carry per-project substitutions
-// (different projects' ${driver_port} values would clobber each other).
+// EnsureSynced writes the embedded runtime/references/ tree to
+// ~/.gh-optivem/references/ verbatim — that location is shared across
+// every project the user touches and MUST NOT carry per-project
+// substitutions (different projects' ${driver_port} values would clobber
+// each other).
 //
 // MaterializeProject is the project-aware counterpart. It reads the same
 // embedded sources, substitutes ${name} placeholders against the
 // project's projectconfig.Config-derived placeholder map, and writes
-// the substituted output under ./.gh-optivem/docs/ inside the project
-// tree. A sidecar at ./.gh-optivem/.materialized.yaml records the
+// the substituted output under ./.gh-optivem/references/ inside the
+// project tree. A sidecar at ./.gh-optivem/.materialized.yaml records the
 // placeholder values used so the next invocation skips re-materializing
 // when nothing has changed.
 //
@@ -36,22 +37,17 @@ import (
 )
 
 const (
-	// projectDocsSubdir is the path (relative to the project repo root)
-	// where MaterializeProject writes substituted phase docs. Mirrors
-	// dirGhOptivem at the project level — `.gh-optivem/docs/` sits in
-	// the project tree the same way `~/.gh-optivem/docs/` sits in the
-	// user home.
-	projectDocsSubdir = ".gh-optivem/docs"
+	// projectReferencesSubdir is the path (relative to the project repo
+	// root) where MaterializeProject writes substituted reference docs.
+	// Mirrors dirGhOptivem at the project level — `.gh-optivem/references/`
+	// sits in the project tree the same way `~/.gh-optivem/references/`
+	// sits in the user home.
+	projectReferencesSubdir = ".gh-optivem/references"
 
 	// projectSidecarPath is the project-relative path of the staleness
-	// sidecar. Sits alongside docs/ (not inside) so a wipe-then-write of
-	// the docs subtree doesn't disturb the sidecar accidentally.
+	// sidecar. Sits alongside references/ (not inside) so a wipe-then-write
+	// of the references subtree doesn't disturb the sidecar accidentally.
 	projectSidecarPath = ".gh-optivem/.materialized.yaml"
-
-	// embeddedDocsAtddDir is the subdirectory of global/ that holds the
-	// ATDD methodology docs. Only this subtree is substituted — other
-	// embedded docs (if any) stay out of the project tree.
-	embeddedDocsAtddDir = "docs/atdd"
 )
 
 // placeholderRE matches a single ${name} occurrence so MaterializeProject
@@ -69,16 +65,16 @@ type sidecar struct {
 	Placeholders  map[string]string `yaml:"placeholders"`
 }
 
-// MaterializeProject substitutes the embedded ATDD docs against the
-// project's placeholder map and writes them to ./.gh-optivem/docs/
+// MaterializeProject substitutes the embedded reference docs against the
+// project's placeholder map and writes them to ./.gh-optivem/references/
 // under repoPath. Idempotent — when the on-disk sidecar matches the
-// inputs, returns the project-docs root path without re-materializing.
+// inputs, returns the project-references root path without re-materializing.
 //
 // When binaryVersion is empty, treats the binary version as a wildcard
 // (matches any sidecar value); used by tests that don't pin a version.
 //
-// Returns the absolute path of the materialized project-docs root so
-// callers can substitute it for ${docs_root} in agent prompts.
+// Returns the absolute path of the materialized project-references root so
+// callers can substitute it for ${references_root} in agent prompts.
 func MaterializeProject(repoPath, binaryVersion string, placeholders map[string]string) (string, error) {
 	if repoPath == "" {
 		return "", fmt.Errorf("materialize: repoPath is required")
@@ -87,7 +83,7 @@ func MaterializeProject(repoPath, binaryVersion string, placeholders map[string]
 		placeholders = map[string]string{}
 	}
 
-	projectRoot := filepath.Join(repoPath, projectDocsSubdir)
+	projectRoot := filepath.Join(repoPath, projectReferencesSubdir)
 	sidecarPath := filepath.Join(repoPath, projectSidecarPath)
 
 	stale, err := projectStale(sidecarPath, binaryVersion, placeholders)
@@ -115,16 +111,15 @@ func MaterializeProject(repoPath, binaryVersion string, placeholders map[string]
 		return "", fmt.Errorf("materialize: wipe %s: %w", projectRoot, err)
 	}
 
-	embeddedRoot := embeddedGlobalRoot + "/" + embeddedDocsAtddDir
-	walkErr := fs.WalkDir(assets.FS, embeddedRoot, func(path string, d fs.DirEntry, err error) error {
+	walkErr := fs.WalkDir(assets.FS, embeddedReferencesRoot, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
 			return nil
 		}
-		rel := strings.TrimPrefix(path, embeddedGlobalRoot+"/")
-		dest := filepath.Join(repoPath, projectDocsSubdir, strings.TrimPrefix(rel, embeddedDocsDir+"/"))
+		rel := strings.TrimPrefix(path, embeddedReferencesRoot+"/")
+		dest := filepath.Join(repoPath, projectReferencesSubdir, rel)
 		data, err := assets.FS.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("materialize: read embedded %s: %w", path, err)
@@ -153,12 +148,12 @@ func MaterializeProject(repoPath, binaryVersion string, placeholders map[string]
 	return projectRoot, nil
 }
 
-// ProjectDocsRoot returns the absolute path of the materialized
-// project-docs root for repoPath — i.e. <repoPath>/.gh-optivem/docs.
+// ProjectReferencesRoot returns the absolute path of the materialized
+// project-references root for repoPath — i.e. <repoPath>/.gh-optivem/references.
 // Does NOT verify that the path exists or is current; callers that
 // need that should call MaterializeProject (which is idempotent).
-func ProjectDocsRoot(repoPath string) string {
-	return filepath.Join(repoPath, projectDocsSubdir)
+func ProjectReferencesRoot(repoPath string) string {
+	return filepath.Join(repoPath, projectReferencesSubdir)
 }
 
 // substituteDoc applies the placeholder map to body and prepends a YAML
@@ -286,4 +281,3 @@ func sortedKeys(m map[string]string) []string {
 	sort.Strings(out)
 	return out
 }
-

@@ -209,7 +209,7 @@ func TestSubtype_PromptValid(t *testing.T) {
 	for _, want := range []string{
 		"system-interface-redesign",
 		"external-system-interface-redesign",
-		"system-implementation-change",
+		"system-implementation-refactoring",
 	} {
 		t.Run(want, func(t *testing.T) {
 			p := &fakePrompter{answers: []string{want}}

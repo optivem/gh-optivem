@@ -409,7 +409,7 @@ func TestPreflightFailureSurfacesEarly(t *testing.T) {
 
 func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	// The structural_cycle reuses one set of YAML nodes across
-	// SYSTEM_INTERFACE_REDESIGN_CYCLE / CHORE_CYCLE by injecting
+	// SYSTEM_INTERFACE_REDESIGN_CYCLE / SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE by injecting
 	// ${agent} / ${change_type} / ${phase_doc} via
 	// call_activity params. The dispatcher must resolve raw.Agent before
 	// looking up the embedded prompt — otherwise it would try to load a
@@ -653,7 +653,7 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 	// minimalYAML's user_task uses agent: at-red-test, but the prompt-
 	// substitution failure mode is most visible on agents whose prompt
 	// body references ${architecture} / ${allowed_roots}
-	// (task-* / chore). Use a YAML variant with the system
+	// (task-*). Use a YAML variant with the system
 	// task agent so wrapAgentDispatchers picks the right closure on
 	// first walk.
 	yamlSrc := strings.Replace(minimalYAML, "agent: at-red-test", "agent: task-system-interface-redesign", 1)

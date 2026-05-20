@@ -39,7 +39,7 @@ var PhasesDeferredByPlan = map[string]string{
 	"AT_GREEN_FRONTEND":                        "plans/deferred/20260518-1530-multitier-green-scope.md",
 	"SYSTEM_INTERFACE_REDESIGN_CYCLE":          "plans/deferred/20260518-1530-structure-cycle-ssot-alignment.md",
 	"EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE": "plans/deferred/20260518-1530-structure-cycle-ssot-alignment.md",
-	"CHORE_CYCLE":                              "plans/deferred/20260518-1530-structure-cycle-ssot-alignment.md",
+	"SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE":  "plans/deferred/20260518-1530-structure-cycle-ssot-alignment.md",
 }
 
 // NonWritingAgents are agent names that do not need a phase-scopes

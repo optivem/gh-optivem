@@ -135,7 +135,7 @@ flowchart TD
     GATE_CHANGE_TYPE -- behavioral --> AT_CYCLE
     GATE_CHANGE_TYPE -- system-interface-redesign --> DA_CYCLE
     GATE_CHANGE_TYPE -- external-system-interface-redesign --> DA_CYCLE
-    GATE_CHANGE_TYPE -- system-implementation-change --> SUT_CYCLE
+    GATE_CHANGE_TYPE -- system-implementation-refactoring --> SUT_CYCLE
     AT_CYCLE --> CYCLE_END
     DA_CYCLE --> CYCLE_END
     SUT_CYCLE --> CYCLE_END
@@ -488,9 +488,9 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CHORE_CYCLE["CHORE_CYCLE — see § Structural Cycle (shared)"]
+    SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE["SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE — see § Structural Cycle (shared)"]
     SUT_END((End))
 
-    CHORE_CYCLE --> SUT_END
+    SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE --> SUT_END
 ```
 

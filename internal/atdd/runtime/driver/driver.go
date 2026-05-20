@@ -523,7 +523,7 @@ func primaryLanguage(cfg *projectconfig.Config) string {
 }
 
 // renderAllowedRoots produces the multi-line "Allowed write roots" block
-// the task / chore prompts substitute via ${allowed_roots}.
+// the task prompts substitute via ${allowed_roots}.
 // The block lists every tier the agent is allowed to edit, plus a
 // separate external-systems section when those are declared.
 //

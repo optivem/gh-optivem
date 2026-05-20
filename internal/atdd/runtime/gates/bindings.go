@@ -131,6 +131,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("subtype_ok", b.subtypeOK)
 	r.Register("parse_ok", b.parseOK)
 	r.Register("legacy_acceptance_criteria_section_present", b.legacyAcceptanceCriteriaSectionPresent)
+	r.Register("refinement_changed", b.refinementChanged)
 	r.Register("external_system_driver_exists", b.externalSystemDriverExists)
 	r.Register("external_system_test_instance_accessible", b.externalSystemTestInstanceAccessible)
 	r.Register("smoke_test_passes", b.smokeTestPasses)
@@ -209,6 +210,19 @@ func (b bindings) systemDriverInterfaceChanged(ctx *statemachine.Context) statem
 		"System Driver interface changed?")
 }
 
+// refinementChanged is the post-BACKLOG_REFINEMENT branch: routes the
+// backlog_refinement sub-process to UPDATE_TICKET when the refiner
+// mutated the parsed-concepts artifact, and skips to the sub-process
+// end_event when refinement was a no-op. Reads the `refinement_changed`
+// flag set by the refine-acc agent's COMMIT (`Refinement Changed:
+// yes|no`); falls back to a prompt for hand-debugging if the upstream
+// dispatch hasn't run.
+func (b bindings) refinementChanged(ctx *statemachine.Context) statemachine.Outcome {
+	return b.boolGate(ctx,
+		"refinement_changed",
+		"Refinement changed acceptance criteria?")
+}
+
 // ---------------------------------------------------------------------------
 // String / enum gates — backed by upstream actions, with prompt fallback
 // ---------------------------------------------------------------------------
@@ -238,7 +252,7 @@ func (b bindings) ticketType(ctx *statemachine.Context) statemachine.Outcome {
 // changeType reads the single-axis change-type derived during intake
 // from (ticket_type, subtype). Range: behavioral |
 // system-interface-redesign | external-system-interface-redesign |
-// system-implementation-change. Falls back to a prompt for
+// system-implementation-refactoring. Falls back to a prompt for
 // hand-debugging if the upstream derivation hasn't run.
 func (b bindings) changeType(ctx *statemachine.Context) statemachine.Outcome {
 	v := ctx.GetString("change_type")
@@ -246,7 +260,7 @@ func (b bindings) changeType(ctx *statemachine.Context) statemachine.Outcome {
 		return statemachine.Outcome{Value: v}
 	}
 	answer, err := b.deps.Prompter.Ask(
-		"Change type? (behavioral | system-interface-redesign | external-system-interface-redesign | system-implementation-change): ")
+		"Change type? (behavioral | system-interface-redesign | external-system-interface-redesign | system-implementation-refactoring): ")
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("change_type: %w", err)}
 	}
@@ -255,7 +269,7 @@ func (b bindings) changeType(ctx *statemachine.Context) statemachine.Outcome {
 	case "behavioral",
 		"system-interface-redesign",
 		"external-system-interface-redesign",
-		"system-implementation-change":
+		"system-implementation-refactoring":
 		return statemachine.Outcome{Value: answer}
 	default:
 		return statemachine.Outcome{Err: fmt.Errorf("change_type: unrecognised value %q", answer)}
@@ -272,7 +286,7 @@ func (b bindings) subtype(ctx *statemachine.Context) statemachine.Outcome {
 		return statemachine.Outcome{Value: v}
 	}
 	answer, err := b.deps.Prompter.Ask(
-		"Subtype? (system-interface-redesign | external-system-interface-redesign | system-implementation-change): ")
+		"Subtype? (system-interface-redesign | external-system-interface-redesign | system-implementation-refactoring): ")
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("subtype: %w", err)}
 	}
@@ -280,7 +294,7 @@ func (b bindings) subtype(ctx *statemachine.Context) statemachine.Outcome {
 	switch answer {
 	case "system-interface-redesign",
 		"external-system-interface-redesign",
-		"system-implementation-change":
+		"system-implementation-refactoring":
 		return statemachine.Outcome{Value: answer}
 	default:
 		return statemachine.Outcome{Err: fmt.Errorf("subtype: unrecognised value %q", answer)}

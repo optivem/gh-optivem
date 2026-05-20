@@ -170,7 +170,7 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 	// test every embedded prompt to make sure no agent leaks the marker
 	// or the pre-rollout preamble.
 	for _, name := range []string{
-		"at-green-system", "chore",
+		"at-green-system", "task-system-implementation-refactoring",
 		"at-red-system-driver", "ct-red-external-system-driver",
 		"at-red-dsl", "ct-red-dsl",
 		"ct-green-external-system-stub",
@@ -243,17 +243,18 @@ func TestRenderPrompt_TaskAgentChecklistInjected(t *testing.T) {
 	}
 }
 
-func TestRenderPrompt_ChoreAgent_EmptyArchitectureAndRootsRender(t *testing.T) {
+func TestRenderPrompt_TaskSystemImplementationRefactoringAgent_EmptyArchitectureAndRootsRender(t *testing.T) {
 	// When architecture and allowed_roots are empty (e.g. fresh config or
 	// pre-resolution), the placeholders expand to empty strings — the
 	// prompt still renders without leaking ${...}. There is no longer a
 	// "broadest defaults" fallback; per-component lang has replaced
 	// `Architecture=both`/`Lang=all` semantics.
 	opts := newOpts()
-	opts.Agent = "chore"
-	// The chore prompt now inlines phase-doc placeholders that the
-	// production dispatcher fills from cfg.PlaceholderMap(); supply them
-	// directly so the body renders without ${...} leftovers.
+	opts.Agent = "task-system-implementation-refactoring"
+	// The task-system-implementation-refactoring prompt inlines phase-doc
+	// placeholders that the production dispatcher fills from
+	// cfg.PlaceholderMap(); supply them directly so the body renders
+	// without ${...} leftovers.
 	opts.Placeholders = map[string]string{
 		"sut_namespace":    "shop",
 		"system_test_path": "system-test",

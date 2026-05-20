@@ -600,8 +600,8 @@ func TestSubtypes(t *testing.T) {
 		},
 		{
 			name:         "multiple",
-			responseJSON: `{"labels":[{"name":"subtype:system-interface-redesign"},{"name":"subtype:system-implementation-change"}]}`,
-			want:         []string{"system-interface-redesign", "system-implementation-change"},
+			responseJSON: `{"labels":[{"name":"subtype:system-interface-redesign"},{"name":"subtype:system-implementation-refactoring"}]}`,
+			want:         []string{"system-interface-redesign", "system-implementation-refactoring"},
 		},
 		{
 			name:         "none",

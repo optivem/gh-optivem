@@ -122,8 +122,9 @@ type Options struct {
 
 	// Language is the target language for this dispatch (e.g. "go",
 	// "typescript"). Substituted into the prompt's ${language} placeholder
-	// so per-language reference docs (under ~/.gh-optivem/docs/atdd/code/
-	// language-equivalents/<lang>.md) resolve to the right slice. The
+	// so per-language reference docs (under
+	// ~/.gh-optivem/references/code/language-equivalents/<lang>.md)
+	// resolve to the right slice. The
 	// driver chooses the value per phase — backend phases pass the
 	// backend lang, frontend phases the frontend lang. Load-bearing:
 	// when empty AND the prompt body references ${language},
@@ -210,16 +211,17 @@ type Options struct {
 	// directory git rev-parse / git log query). Empty → current cwd.
 	RepoPath string
 
-	// ProjectConfig, when non-nil, triggers per-project phase-doc
+	// ProjectConfig, when non-nil, triggers per-project reference-doc
 	// materialization ahead of prompt rendering. Dispatch calls
 	// assetsync.MaterializeProject against ProjectConfig.PlaceholderMap()
 	// so the agent reads docs with concrete project paths instead of
-	// `${name}` placeholders, and ${docs_root} in the rendered prompt
-	// resolves to <RepoPath>/.gh-optivem/docs rather than the
-	// user-global ~/.gh-optivem/docs. Required alongside RepoPath —
-	// when either is missing, Dispatch falls back to the user-global
-	// docs root for backward compat with CLI utilities and scaffold
-	// flows that legitimately have no project context.
+	// `${name}` placeholders, and ${references_root} in the rendered
+	// prompt resolves to <RepoPath>/.gh-optivem/references rather than
+	// the user-global ~/.gh-optivem/references. Required alongside
+	// RepoPath — when either is missing, Dispatch falls back to the
+	// user-global references root for backward compat with CLI
+	// utilities and scaffold flows that legitimately have no project
+	// context.
 	ProjectConfig *projectconfig.Config
 
 	// BinaryVersion is the gh-optivem binary version stamped into the

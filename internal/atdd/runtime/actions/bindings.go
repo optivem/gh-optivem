@@ -375,7 +375,7 @@ func (a actions) readSubtype(ctx *statemachine.Context) statemachine.Outcome {
 	case 0:
 		ctx.Set("subtype_ok", false)
 		fmt.Fprintf(a.deps.Stderr,
-			"read_subtype: issue #%s has no subtype:* label — apply exactly one of subtype:system-interface-redesign / subtype:external-system-interface-redesign / subtype:system-implementation-change and re-run.\n",
+			"read_subtype: issue #%s has no subtype:* label — apply exactly one of subtype:system-interface-redesign / subtype:external-system-interface-redesign / subtype:system-implementation-refactoring and re-run.\n",
 			issue.ID)
 		return statemachine.Outcome{}
 	case 1:
@@ -393,7 +393,7 @@ func (a actions) readSubtype(ctx *statemachine.Context) statemachine.Outcome {
 }
 
 // parseTicketBody is the deterministic markdown parser that replaces the
-// four LLM-driven intake agents (atdd-story / atdd-bug / task / chore).
+// three LLM-driven intake agents (atdd-story / atdd-bug / task).
 // Reads the issue body, extracts canonical sections by their
 // Issue-Form-enforced headings, and validates the required-section set
 // for the ticket's type.
@@ -493,7 +493,7 @@ func deriveChangeType(ticketType, subtype string) string {
 		switch subtype {
 		case "system-interface-redesign",
 			"external-system-interface-redesign",
-			"system-implementation-change":
+			"system-implementation-refactoring":
 			return subtype
 		}
 	}

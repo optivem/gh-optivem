@@ -1,12 +1,15 @@
 // Package assets exposes the single embedded asset tree for gh-optivem.
 //
-// The tree is organized by consumer (how the asset is delivered):
+// The tree is organized by delivery mechanism:
 //
-//   - runtime/  — fed to `claude -p` via argv, never written to disk in
-//     consumer repos. Holds per-phase prompts under runtime/prompts/atdd/
-//     and the shared preamble + session-end bookends under runtime/shared/.
-//   - global/   — synced to ~/.gh-optivem/docs/ by internal/assets/sync.
-//     Holds the methodology docs.
+//   - runtime/prompts/    — fed to `claude -p` via argv, never written to
+//     disk in consumer repos. Per-phase prompts under runtime/prompts/atdd/.
+//   - runtime/shared/     — argv-injected preamble + session-end bookends.
+//   - runtime/references/ — synced to ~/.gh-optivem/references/ and
+//     materialized per-project to <repo>/.gh-optivem/references/ by
+//     internal/assets/sync. Holds the architecture doctrine
+//     (references/atdd/) and the per-language equivalents + testkit
+//     reference docs (references/code/).
 //
 // gh-optivem is the canonical owner of every file in this tree. Consumer
 // repos hold zero ATDD assets on disk; updates propagate when the
@@ -15,5 +18,5 @@ package assets
 
 import "embed"
 
-//go:embed runtime global
+//go:embed runtime
 var FS embed.FS

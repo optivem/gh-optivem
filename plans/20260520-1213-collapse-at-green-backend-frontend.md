@@ -1,5 +1,7 @@
 # Plan: collapse `AT_GREEN_BACKEND` + `AT_GREEN_FRONTEND` into a single `AT_GREEN` node
 
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-20T11:02:33Z`
+
 **Date:** 2026-05-20 12:13 UTC
 **Promoted from:** `plans/20260519-1537-post-meta-bpmn-topics.md` Item 6 (immediate-collapse half). Folds in Item 11 (hardcoded backend/frontend node names) and Item 12 (`<acceptance-api>` / `<acceptance-ui>` suite labels).
 **Sibling plan (still inbound):** `plans/20260520-1109-ac-refinement-and-at-refactor-agent-steps.md` — orthogonal; touches different phases. No file conflicts expected.

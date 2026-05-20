@@ -77,7 +77,7 @@ var subtypeLabels = []struct {
 }{
 	{"subtype:system-interface-redesign", "1d76db", "Structural change to a system Driver Adapter"},
 	{"subtype:external-system-interface-redesign", "0e8a16", "Structural change to an External System Driver Adapter"},
-	{"subtype:system-implementation-change", "5319e7", "Structural change to system internals (no test-stack artifact)"},
+	{"subtype:system-implementation-refactoring", "5319e7", "Refactoring of system internals (no boundary or behavioral change)"},
 }
 
 // SetupVariablesAndSecrets sets GitHub Actions variables and secrets.

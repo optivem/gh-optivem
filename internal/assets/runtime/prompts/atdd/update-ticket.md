@@ -1,6 +1,11 @@
-# UPDATE TICKET (DRAFT)
-
-Write the refined acceptance criteria back to the ticket source.
+---
+# Mechanical overwrite of three named sections — Haiku handles the
+# locate-by-H2 + replace pattern with no creative authoring.
+model: haiku
+effort: low
+scope: {}   # touches only the three named H2 sections of ${ticket_source}
+---
+You are the Ticket Update Agent. Write the refined acceptance criteria back to the ticket source.
 Mechanical overwrite — no judgment, no creative authoring.
 
 ## Role in the flow
@@ -28,14 +33,6 @@ structural) proceed.
 - All other sections in the ticket source are left byte-for-byte
   unchanged.
 
-## Scope
-
-This phase modifies only `${ticket_source}`, and within it only the
-three named H2 sections (`Description`, `Legacy Acceptance Criteria`,
-`Acceptance Criteria`). All other sections of the ticket source, the
-parsed-concepts artifact (read-only here), production system code,
-and tests are out of scope.
-
 ## Steps
 
 1. Read the refined parsed-concepts artifact at `${parsed_concepts}`.
@@ -44,3 +41,5 @@ and tests are out of scope.
 3. Overwrite each section's body with the corresponding content derived
    from the parsed-concepts artifact.
 4. Leave every other section in the ticket source unchanged.
+
+Do not present or wait for approval inside the agent.

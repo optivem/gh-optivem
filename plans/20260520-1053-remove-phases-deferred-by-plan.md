@@ -1,5 +1,7 @@
 # Plan: remove the `PhasesDeferredByPlan` mechanism
 
+> 🤖 **Picked up by agent (refine)** — `Valentina_Desk` at `2026-05-20T11:00:02Z`
+
 **Date:** 2026-05-20 10:53 UTC
 **Cross-references:**
 - `plans/20260520-1213-collapse-at-green-backend-frontend.md` — upstream plan

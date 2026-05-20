@@ -465,7 +465,7 @@ func TestClassifySubtype_MultipleLabels_RoutesToStop(t *testing.T) {
 	gh := newFakeRunner(t, "gh")
 	gh.on(
 		[]string{"issue", "view", "7", "--json", "labels", "--repo", "optivem/shop"},
-		[]byte(`{"labels":[{"name":"subtype:system-interface-redesign"},{"name":"subtype:system-implementation-change"}]}`),
+		[]byte(`{"labels":[{"name":"subtype:system-interface-redesign"},{"name":"subtype:system-implementation-refactoring"}]}`),
 		nil,
 	)
 	var stderr bytes.Buffer

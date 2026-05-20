@@ -1,5 +1,7 @@
 # Plan: migrate process docs into the new hierarchy (replace `internal/assets/global/docs/atdd/process/` contents)
 
+> **Note (2026-05-20):** Superseded re: `chore` naming by `plans/20260520-1145-system-implementation-refactoring-rename.md`. References to `chore.md`, `subtype:system-implementation-change`, and `CHORE_CYCLE` below are stale; map them to `task-system-implementation-refactoring.md`, `subtype:system-implementation-refactoring`, and `SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE` (see that plan for Decisions A/B) when/if this plan is reactivated.
+
 > ⏳ **DEFERRED PERMANENTLY 2026-05-19** — superseded by `20260519-0922-bpmn-rewire-process-docs-to-new-hierarchy.md` (now fully landed: see commits `470c67a`, `be12d7b`, `46ef833`). 0922 owns the reference-rewrite work against the actual post-archive filesystem (no numeric prefixes; old files in `_ARCHIVED_PENDING_DELETE/` rather than to-be-deleted). Per Needs-decision §1 of `plans/20260519-0929-meta-bpmn-ssot-coordination.md` (resolved 2026-05-19, meta-plan since discharged). Kept here for archival reference only; do not execute.
 
 > ⚠️ **NOT YET REFINED** — run `/refine-plan` on this file before `/execute-plan`. Several items below have orphan-file decisions and an in-flight-plan reconciliation that must be walked through interactively.

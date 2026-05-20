@@ -41,6 +41,7 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"main",
 		"github_intake",
 		"run_legacy_cycle",
+		"backlog_refinement",
 		"run_cycle",
 		"at_cycle",
 		"at_green_system",
@@ -133,7 +134,8 @@ var transitionTable = []transitionCase{
 	{process: "main", from: "PICK_TOP_READY", wantTo: "MOVE_TICKET_IN_PROGRESS"},
 	{process: "main", from: "MOVE_TICKET_IN_PROGRESS", wantTo: "INTAKE"},
 	{process: "main", from: "INTAKE", wantTo: "RUN_LEGACY_CYCLE"},
-	{process: "main", from: "RUN_LEGACY_CYCLE", wantTo: "RUN_CYCLE"},
+	{process: "main", from: "RUN_LEGACY_CYCLE", wantTo: "BACKLOG_REFINEMENT"},
+	{process: "main", from: "BACKLOG_REFINEMENT", wantTo: "RUN_CYCLE"},
 	{process: "main", from: "RUN_CYCLE", wantTo: "MOVE_TICKET_IN_ACCEPTANCE"},
 	{process: "main", from: "MOVE_TICKET_IN_ACCEPTANCE", wantTo: "END"},
 
@@ -166,15 +168,26 @@ var transitionTable = []transitionCase{
 	{process: "run_legacy_cycle", from: "GATE_LEGACY_PRESENT", state: map[string]any{"legacy_acceptance_criteria_section_present": false}, wantTo: "RUN_LEGACY_END"},
 	{process: "run_legacy_cycle", from: "LEGACY_CYCLE", wantTo: "RUN_LEGACY_END"},
 
+	// ---- backlog_refinement ----
+	// Refines parsed acceptance criteria (Gherkin form + coverage rubric),
+	// human-confirms, then conditionally writes the refined sections back
+	// to the ticket source. A no-op refinement (refinement_changed == false)
+	// discharges without writing.
+	{process: "backlog_refinement", from: "BACKLOG_REFINEMENT", wantTo: "CONFIRM_REFINEMENT"},
+	{process: "backlog_refinement", from: "CONFIRM_REFINEMENT", wantTo: "GATE_REFINEMENT_CHANGED"},
+	{process: "backlog_refinement", from: "GATE_REFINEMENT_CHANGED", state: map[string]any{"refinement_changed": true}, wantTo: "UPDATE_TICKET"},
+	{process: "backlog_refinement", from: "GATE_REFINEMENT_CHANGED", state: map[string]any{"refinement_changed": false}, wantTo: "BR_END"},
+	{process: "backlog_refinement", from: "UPDATE_TICKET", wantTo: "BR_END"},
+
 	// ---- run_cycle ----
 	// Change cycle dispatch — single-axis gate on the derived `change_type`.
 	// Four branches: AT_CYCLE (behavioral), DA_CYCLE (system /
 	// external-system interface redesign), SUT_CYCLE
-	// (system-implementation-change).
+	// (system-implementation-refactoring).
 	{process: "run_cycle", from: "GATE_CHANGE_TYPE", state: map[string]any{"change_type": "behavioral"}, wantTo: "AT_CYCLE"},
 	{process: "run_cycle", from: "GATE_CHANGE_TYPE", state: map[string]any{"change_type": "system-interface-redesign"}, wantTo: "DA_CYCLE"},
 	{process: "run_cycle", from: "GATE_CHANGE_TYPE", state: map[string]any{"change_type": "external-system-interface-redesign"}, wantTo: "DA_CYCLE"},
-	{process: "run_cycle", from: "GATE_CHANGE_TYPE", state: map[string]any{"change_type": "system-implementation-change"}, wantTo: "SUT_CYCLE"},
+	{process: "run_cycle", from: "GATE_CHANGE_TYPE", state: map[string]any{"change_type": "system-implementation-refactoring"}, wantTo: "SUT_CYCLE"},
 	{process: "run_cycle", from: "AT_CYCLE", wantTo: "CYCLE_END"},
 	{process: "run_cycle", from: "DA_CYCLE", wantTo: "CYCLE_END"},
 	{process: "run_cycle", from: "SUT_CYCLE", wantTo: "CYCLE_END"},
@@ -191,8 +204,8 @@ var transitionTable = []transitionCase{
 
 	// ---- sut_cycle ----
 	// System Under Test cycle. Single node calling structural_cycle with
-	// chore-flavour params.
-	{process: "sut_cycle", from: "CHORE_CYCLE", wantTo: "SUT_END"},
+	// system-implementation-refactoring-flavour params.
+	{process: "sut_cycle", from: "SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE", wantTo: "SUT_END"},
 
 	// ---- at_cycle ----
 	{process: "at_cycle", from: "AT_RED_TEST", wantTo: "GATE_DSL_AT"},
@@ -259,7 +272,7 @@ var transitionTable = []transitionCase{
 	{process: "external_system_onboarding", from: "GATE_SMOKE_PASS", state: map[string]any{"smoke_test_passes": true}, wantTo: "COMMIT"},
 	{process: "external_system_onboarding", from: "COMMIT", wantTo: "ONBOARD_END"},
 
-	// ---- structural_cycle (shared by SYSAPI / SYSUI / CHORE via params) ----
+	// ---- structural_cycle (shared by SYSAPI / SYSUI / SYSTEM_IMPLEMENTATION_REFACTORING via params) ----
 	// COMPILE always runs after APPROVE_CHANGE. Compile or test RED routes
 	// through a human STOP (Enter = dispatch fix-agent, abort = halt) and
 	// then FIX_COMPILE / FIX_TEST — one shared fix-verify agent
@@ -473,7 +486,7 @@ func TestGapDecision_RunCycleRoutesByChangeType(t *testing.T) {
 	// subtype) shape is collapsed to one. The deleted change_subtype /
 	// change_scope / change_channel fields are gone; the only carried
 	// axis is change_type ∈ {behavioral, system-interface-redesign,
-	// external-system-interface-redesign, system-implementation-change}.
+	// external-system-interface-redesign, system-implementation-refactoring}.
 	eng := loadSnapshot(t)
 	process := eng.Processes["run_cycle"]
 	if process == nil {
