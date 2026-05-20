@@ -741,6 +741,31 @@ beyond the canonical layout`)
 		seenRepoPaths[normalized] = struct{}{}
 	}
 
+	// Rule 22a: when system.architecture is set, every canonical Family B
+	// key must be present in paths: with a non-empty value. The contract
+	// is "explicit only — no defaults anywhere": the scaffolder writes
+	// these at `gh optivem init` and the operator owns subsequent edits;
+	// runtime never falls back to derived values. A missing key here
+	// would otherwise reach the ATDD dispatcher as an unfilled
+	// ${driver_adapter} (etc.) placeholder, failing deep inside a
+	// per-ticket agent dispatch instead of at config load.
+	//
+	// Gating on architecture matches the scaffolder/migrate: partial
+	// configs (project URL + repo_strategy only, no system scope yet)
+	// legitimately have no paths: block.
+	if c.System.Architecture != "" {
+		var missing []string
+		for _, k := range CanonicalPathKeys() {
+			if c.Paths[k] == "" {
+				missing = append(missing, "paths."+k)
+			}
+		}
+		if len(missing) > 0 {
+			return fmt.Errorf("config: system.architecture is set; %s required (canonical Family B keys must be explicitly configured — see internal/projectconfig/path-keys.md for the supported set)",
+				strings.Join(missing, ", "))
+		}
+	}
+
 	// Rule 22: paths.* keys must (a) not shadow reserved Family A
 	// placeholder names, (b) be in the canonical Family B key set
 	// (CanonicalPathKeys — eight names today), and (c) carry fully-

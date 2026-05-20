@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"sort"
 	"strings"
 
 	"github.com/mattn/go-isatty"
@@ -386,28 +385,12 @@ func runConfigMigrate(path string) (bool, error) {
 		changed = true
 	}
 
-	// Back-fill paths: when absent or missing canonical Family B keys.
-	// inferPathDefaults returns nil for configs the back-fill shouldn't
-	// touch (no test lang resolvable, no system_test.path) so partial
-	// configs leave the block absent — matching the scaffolder.
-	//
-	// Merge rule: existing user keys are preserved untouched; only the
-	// canonical keys (driver_port, driver_adapter, external_system_driver_port,
-	// external_system_driver_adapter, at_test, dsl_port, dsl_core, ct_test)
-	// that the user has NOT already set are filled in. Operator-
-	// customised values therefore survive every migrate pass — including
-	// the case where the user has renamed only some of the canonical
-	// entries to match a non-standard layout.
-	//
-	// The gap-fill runs BEFORE the SSoT join below: it produces the
-	// pre-SSoT shape (sutNamespace == ""), and the SSoT join then folds
-	// sutNamespace into both the newly-filled and the pre-existing
-	// entries in a single deterministic pass.
-	if defaults := inferPathDefaults(doc); len(defaults) > 0 {
-		if mergePathsEntry(doc, defaults) {
-			changed = true
-		}
-	}
+	// Per doctrine, migrate does NOT back-fill missing canonical Family B
+	// keys with DefaultPaths values — `paths:` is explicit-only, the
+	// operator owns every value. A config that's missing canonical keys
+	// surfaces at the next `gh optivem` invocation through
+	// projectconfig.Validate Rule 22a, which names the gap and points at
+	// internal/projectconfig/path-keys.md for the supported set.
 
 	// SSoT join (per plan 20260518-1530 item 6). Applies iff
 	// system.sut_namespace is present:
@@ -506,96 +489,6 @@ func inferRepos(doc *yaml.Node) []string {
 		paths = append(paths, p)
 	}
 	return paths
-}
-
-// inferPathDefaults returns the per-language `paths:` defaults to back-fill
-// into a config that predates Family B placeholder substitution. Returns
-// nil when the back-fill should be a no-op:
-//
-//   - No system_test.path declared (partial configs / pre-arch shapes).
-//   - No resolvable test language (system_test.lang, with a fallback to
-//     system.lang for monolith configs where the test lang mirrors the
-//     SUT lang — the scaffolder enforces a non-empty system_test.lang
-//     when arch is set, but legacy hand-authored configs may omit it).
-//   - The test language is not in projectconfig.DefaultPaths's supported
-//     set — the scaffolder writes nil for unsupported langs and the
-//     migrator does the same so the two surfaces agree by construction.
-//
-// The helper is intentionally structural (reads only existing nodes; no
-// file I/O) so it mirrors inferRepos and remains easy to unit-test.
-func inferPathDefaults(doc *yaml.Node) map[string]string {
-	systemTestNode := mappingValue(doc, "system_test")
-	if systemTestNode == nil || systemTestNode.Kind != yaml.MappingNode {
-		return nil
-	}
-	systemTestPath := scalarValue(mappingValue(systemTestNode, "path"))
-	if systemTestPath == "" {
-		return nil
-	}
-	testLang := scalarValue(mappingValue(systemTestNode, "lang"))
-	if testLang == "" {
-		// Fallback: monolith configs may declare system.lang only and
-		// have an implicit "test lang mirrors SUT lang" expectation.
-		// The scaffolder always writes both; this fallback is for
-		// hand-authored legacy shapes.
-		if systemNode := mappingValue(doc, "system"); systemNode != nil {
-			testLang = scalarValue(mappingValue(systemNode, "lang"))
-		}
-	}
-	// sutNamespace = "" produces the pre-SSoT shape (no trailing
-	// sut_namespace suffix on testkit keys). The SSoT join — joining
-	// sut_namespace into each `paths:` value and dropping
-	// `system.sut_namespace` — is owned by plan 20260518-1530 item 6
-	// (the dedicated SSoT back-fill in `runConfigMigrate`); this
-	// gap-fill helper stays at the pre-SSoT shape so existing
-	// back-fill behaviour is unchanged until that step lands.
-	return projectconfig.DefaultPaths(testLang, systemTestPath, "")
-}
-
-// mergePathsEntry back-fills missing canonical keys into the document's
-// `paths:` block, creating the block when absent. Returns true when any
-// key was added (so runConfigMigrate flips changed=true and re-marshals).
-//
-// Preservation contract: a key already present in the document is left
-// untouched even if its value differs from the default. This is the
-// "operator owns subsequent edits" half of the scaffolder's contract —
-// migrate fills gaps; it never overwrites the user's choices.
-func mergePathsEntry(doc *yaml.Node, defaults map[string]string) bool {
-	pathsNode := mappingValue(doc, "paths")
-	if pathsNode == nil {
-		// Absent block: synthesize a fresh mapping with every default key.
-		// Iteration order follows projectconfig's canonical key ordering
-		// so emitted YAML stays stable across runs.
-		keyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "paths"}
-		mapping := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Style: 0}
-		for _, k := range sortedDefaultsKeys(defaults) {
-			mapping.Content = append(mapping.Content,
-				&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: k},
-				&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: defaults[k]},
-			)
-		}
-		doc.Content = append(doc.Content, keyNode, mapping)
-		return true
-	}
-	if pathsNode.Kind != yaml.MappingNode {
-		// Block exists but is malformed (scalar, sequence). Leave it
-		// alone — surfacing a clean error here would require touching
-		// runConfigMigrate's signature; the existing Validate pass on
-		// the loaded config catches the shape mismatch anyway.
-		return false
-	}
-	added := false
-	for _, k := range sortedDefaultsKeys(defaults) {
-		if mappingValue(pathsNode, k) != nil {
-			continue
-		}
-		pathsNode.Content = append(pathsNode.Content,
-			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: k},
-			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: defaults[k]},
-		)
-		added = true
-	}
-	return added
 }
 
 // joinSSoTPaths folds the legacy `system.sut_namespace` value into the
@@ -764,17 +657,6 @@ func removeMappingEntry(m *yaml.Node, key string) {
 			return
 		}
 	}
-}
-
-// sortedDefaultsKeys returns the keys of m in lexicographic order so
-// mergePathsEntry produces a stable on-disk shape across runs.
-func sortedDefaultsKeys(m map[string]string) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // appendReposEntry inserts a `repos:` key at the end of the document

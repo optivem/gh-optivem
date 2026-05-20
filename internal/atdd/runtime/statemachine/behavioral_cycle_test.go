@@ -15,9 +15,11 @@ func seedBehavioralIntake(ctx *Context) {
 	ctx.Set("ticket_type_recognized", true)
 	ctx.Set("parse_ok", true)
 	ctx.Set("legacy_acceptance_criteria_section_present", false)
-	// backlog_refinement: refiner is a no-op (refinement_changed=false)
-	// so the sub-process discharges through GATE_REFINEMENT_CHANGED →
-	// BR_END without dispatching UPDATE_TICKET.
+	// backlog_refinement: operator opts in to refine (refine_requested=true);
+	// the refiner is then a no-op (refinement_changed=false) so the
+	// sub-process discharges through GATE_REFINEMENT_CHANGED → BR_END
+	// without dispatching UPDATE_TICKET.
+	ctx.Set("refine_requested", true)
 	ctx.Set("refinement_changed", false)
 	// red_phase_cycle gates (shared by every AT - RED - * dispatch):
 	// compile passes; AT phases don't verify against a real suite
@@ -80,6 +82,7 @@ func (e *expectDispatch) behavioralIntake() *expectDispatch {
 		callActivity("BACKLOG_REFINEMENT", "backlog_refinement", noParams()).
 		process("backlog_refinement", noParams()).
 		serviceTask("MATERIALIZE_PARSED_CONCEPTS", "materialize_parsed_concepts").
+		gateway("GATE_REFINE_REQUESTED", "refine_requested", true).
 		userTask("BACKLOG_REFINEMENT", "refine-acc").
 		userTask("CONFIRM_REFINEMENT", "human").
 		gateway("GATE_REFINEMENT_CHANGED", "refinement_changed", false).

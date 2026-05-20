@@ -485,6 +485,7 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"subtype_ok",
 		"parse_ok",
 		"legacy_acceptance_criteria_section_present",
+		"refine_requested",
 		"external_system_driver_exists",
 		"external_system_test_instance_accessible",
 		"smoke_test_passes",

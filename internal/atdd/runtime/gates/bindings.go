@@ -145,6 +145,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	// to avoid the statemachine-test loop hazard).
 	r.Register("legacy_at_verify_outcome", b.legacyATVerifyOutcome)
 	r.Register("legacy_ct_verify_outcome", b.legacyCTVerifyOutcome)
+	r.Register("refine_requested", b.refineRequested)
 	r.Register("refinement_changed", b.refinementChanged)
 	r.Register("refactor_changed", b.refactorChanged)
 	r.Register("external_system_driver_exists", b.externalSystemDriverExists)
@@ -223,6 +224,19 @@ func (b bindings) systemDriverInterfaceChanged(ctx *statemachine.Context) statem
 	return b.boolGate(ctx,
 		"system_driver_interface_changed",
 		"System Driver interface changed?")
+}
+
+// refineRequested is the pre-BACKLOG_REFINEMENT branch: asks the operator
+// whether to invoke refine-acc at all for this ticket. true → run the full
+// refine pass (refine-acc → CONFIRM_REFINEMENT → optional UPDATE_TICKET);
+// false → skip straight to BR_END, leaving the materialized parsed-concepts
+// artifact unread. No upstream action pre-decides this — refine is per-ticket
+// operator intent — so the binding is always prompt-driven (boolGate still
+// reads any pre-set ctx value, which is what the cycle tests rely on).
+func (b bindings) refineRequested(ctx *statemachine.Context) statemachine.Outcome {
+	return b.boolGate(ctx,
+		"refine_requested",
+		"Refine acceptance criteria for this ticket?")
 }
 
 // refinementChanged is the post-BACKLOG_REFINEMENT branch: routes the

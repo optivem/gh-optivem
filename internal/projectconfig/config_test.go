@@ -14,6 +14,13 @@ func writeConfig(t *testing.T, dir, body string) {
 	}
 }
 
+// javaPaths returns a valid Family B paths map for a (system_test.path,
+// sut_namespace) pair under Java. Used by tests that need to satisfy
+// Rule 22a (canonical-key presence) without caring about path values.
+func javaPaths(systemTestPath, sutNamespace string) map[string]string {
+	return DefaultPaths(LangJava, systemTestPath, sutNamespace)
+}
+
 // ---------------------------------------------------------------------------
 // Sample configs (mirror the four canonical samples in the plan)
 // ---------------------------------------------------------------------------
@@ -47,6 +54,16 @@ external_systems:
   simulators:
     path: simulators
     repo: optivem/shop
+
+paths:
+  driver_port: system-test/java/src/main/java/testkit/driver/port/shop
+  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
+  external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop
+  external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
+  at_test: system-test/java/src/test/java/shop/latest/acceptance
+  dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
+  dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
+  ct_test: system-test/java/src/test/java/shop/latest/contract
 `
 
 const sampleMonoRepoMultitier = `project:
@@ -84,6 +101,16 @@ external_systems:
   simulators:
     path: simulators
     repo: optivem/shop
+
+paths:
+  driver_port: system-test/java/src/main/java/testkit/driver/port/shop
+  driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
+  external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop
+  external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
+  at_test: system-test/java/src/test/java/shop/latest/acceptance
+  dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
+  dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
+  ct_test: system-test/java/src/test/java/shop/latest/contract
 `
 
 const sampleMultiRepoMonolith = `project:
@@ -115,6 +142,16 @@ external_systems:
   simulators:
     path: simulators
     repo: optivem/shop
+
+paths:
+  driver_port: system-test/src/main/java/testkit/driver/port/shop
+  driver_adapter: system-test/src/main/java/testkit/driver/adapter/shop
+  external_system_driver_port: system-test/src/main/java/testkit/external/port/shop
+  external_system_driver_adapter: system-test/src/main/java/testkit/external/adapter/shop
+  at_test: system-test/src/test/java/shop/latest/acceptance
+  dsl_port: system-test/src/main/java/testkit/dsl/port/shop
+  dsl_core: system-test/src/main/java/testkit/dsl/core/shop
+  ct_test: system-test/src/test/java/shop/latest/contract
 `
 
 const sampleMultiRepoMultitier = `project:
@@ -152,6 +189,16 @@ external_systems:
   simulators:
     path: simulators
     repo: optivem/shop-main
+
+paths:
+  driver_port: system-test/src/main/java/testkit/driver/port/shop-backend
+  driver_adapter: system-test/src/main/java/testkit/driver/adapter/shop-backend
+  external_system_driver_port: system-test/src/main/java/testkit/external/port/shop-backend
+  external_system_driver_adapter: system-test/src/main/java/testkit/external/adapter/shop-backend
+  at_test: system-test/src/test/java/shop-backend/latest/acceptance
+  dsl_port: system-test/src/main/java/testkit/dsl/port/shop-backend
+  dsl_core: system-test/src/main/java/testkit/dsl/core/shop-backend
+  ct_test: system-test/src/test/java/shop-backend/latest/contract
 `
 
 // ---------------------------------------------------------------------------
@@ -806,6 +853,109 @@ func TestValidate_RequiresSystemTestWhenArchitectureSet(t *testing.T) {
 	}
 }
 
+// Rule 22a: paths block is required (with every canonical Family B key
+// populated) once system.architecture is set. The doctrine is
+// "explicit only — no defaults anywhere"; missing keys must surface at
+// config load, not deep inside a per-ticket agent dispatch.
+
+func TestValidate_RejectsMissingPathsBlockWhenArchitectureSet(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{
+		Project:      Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/optivem/projects/20"},
+		RepoStrategy: RepoStrategyMonoRepo,
+		Sonar:        Sonar{Organization: "optivem"},
+		System: System{
+			Architecture: ArchMonolith,
+			Path:         "system", Repo: "optivem/shop", Lang: LangJava,
+			SonarProject: "optivem_shop-system",
+		},
+		SystemTest: TierSpec{
+			Path: "system-test", Repo: "optivem/shop", Lang: LangJava,
+			SonarProject: "optivem_shop-system-test",
+		},
+		// Paths intentionally absent.
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for missing paths block, got nil")
+	}
+	for _, want := range []string{"paths.driver_port", "paths.driver_adapter", "paths.at_test", "paths.ct_test"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should name %s, got: %v", want, err)
+		}
+	}
+}
+
+func TestValidate_RejectsMissingCanonicalKey(t *testing.T) {
+	t.Parallel()
+	full := DefaultPaths(LangJava, "system-test", "shop")
+	delete(full, "driver_adapter")
+	cfg := &Config{
+		Project:      Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/optivem/projects/20"},
+		RepoStrategy: RepoStrategyMonoRepo,
+		Sonar:        Sonar{Organization: "optivem"},
+		System: System{
+			Architecture: ArchMonolith,
+			Path:         "system", Repo: "optivem/shop", Lang: LangJava,
+			SonarProject: "optivem_shop-system",
+		},
+		SystemTest: TierSpec{
+			Path: "system-test", Repo: "optivem/shop", Lang: LangJava,
+			SonarProject: "optivem_shop-system-test",
+		},
+		Paths: full,
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for missing driver_adapter, got nil")
+	}
+	if !strings.Contains(err.Error(), "paths.driver_adapter") {
+		t.Errorf("error should name the missing key, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "paths.driver_port") {
+		t.Errorf("error should not name keys that ARE present, got: %v", err)
+	}
+}
+
+func TestValidate_RejectsEmptyCanonicalValue(t *testing.T) {
+	t.Parallel()
+	full := DefaultPaths(LangJava, "system-test", "shop")
+	full["dsl_core"] = ""
+	cfg := &Config{
+		Project:      Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/optivem/projects/20"},
+		RepoStrategy: RepoStrategyMonoRepo,
+		Sonar:        Sonar{Organization: "optivem"},
+		System: System{
+			Architecture: ArchMonolith,
+			Path:         "system", Repo: "optivem/shop", Lang: LangJava,
+			SonarProject: "optivem_shop-system",
+		},
+		SystemTest: TierSpec{
+			Path: "system-test", Repo: "optivem/shop", Lang: LangJava,
+			SonarProject: "optivem_shop-system-test",
+		},
+		Paths: full,
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for empty dsl_core value, got nil")
+	}
+	if !strings.Contains(err.Error(), "paths.dsl_core") {
+		t.Errorf("error should name the empty-value key, got: %v", err)
+	}
+}
+
+func TestValidate_AcceptsAbsentPathsWhenArchitectureUnset(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{
+		Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/optivem/projects/20"},
+		// No architecture, no paths — partial config shape.
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("partial config without architecture should validate, got: %v", err)
+	}
+}
+
 // Repo-strategy consistency.
 
 func TestValidate_MonoRepoRejectsMultipleRepos(t *testing.T) {
@@ -851,6 +1001,7 @@ func TestValidate_AcceptsExternalSystemsOmitted(t *testing.T) {
 			SonarProject: "x_y-system",
 		},
 		SystemTest: TierSpec{Path: "t", Repo: "x/y", Lang: LangJava, SonarProject: "x_y-system-test"},
+		Paths:      javaPaths("t", "y"),
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("config without external_systems should validate, got: %v", err)
@@ -869,6 +1020,7 @@ func TestValidate_AcceptsOnlyStubsOrOnlySimulators(t *testing.T) {
 				SonarProject: "x_y-system",
 			},
 			SystemTest: TierSpec{Path: "t", Repo: "x/y", Lang: LangJava, SonarProject: "x_y-system-test"},
+			Paths:      javaPaths("t", "y"),
 		}
 	}
 
@@ -921,6 +1073,7 @@ func TestValidate_AcceptsExternalRepoNotInOtherTiers(t *testing.T) {
 			Stubs:      ExternalSpec{Path: "stubs", Repo: "x/externals" /* unique slug */},
 			Simulators: ExternalSpec{Path: "simulators", Repo: "x/externals"},
 		},
+		Paths: javaPaths("t", "main"),
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected validate-ok, got: %v", err)
@@ -1007,6 +1160,7 @@ func TestWrite_OmitsEmptyOptionalFields(t *testing.T) {
 			SonarProject: "x_y-system",
 		},
 		SystemTest: TierSpec{Path: "t", Repo: "x/y", Lang: LangJava, SonarProject: "x_y-system-test"},
+		Paths:      javaPaths("t", "y"),
 	}
 	if err := Write(dir, cfg); err != nil {
 		t.Fatalf("Write: %v", err)
@@ -1120,6 +1274,7 @@ func TestWriteToPath_NonCanonicalFilename(t *testing.T) {
 			Lang:         LangJava,
 			SonarProject: "acme_page-turner-system-test",
 		},
+		Paths: javaPaths("system-test/java", "page-turner"),
 	}
 	if err := WriteToPath(yamlPath, in); err != nil {
 		t.Fatalf("WriteToPath: %v", err)
@@ -1165,6 +1320,7 @@ func validMonolithBase() *Config {
 			Path: "system-test", Repo: "acme/page-turner", Lang: LangJava,
 			SonarProject: "acme_page-turner-system-test",
 		},
+		Paths: javaPaths("system-test", "page-turner"),
 	}
 }
 
@@ -1423,6 +1579,7 @@ func validMultitierBase() *Config {
 			Path: "system-test", Repo: "acme/page-turner", Lang: LangJava,
 			SonarProject: "acme_page-turner-system-test",
 		},
+		Paths: javaPaths("system-test", "page-turner"),
 	}
 }
 

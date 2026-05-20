@@ -275,6 +275,12 @@ processes:
   # source. When refinement was a no-op the sub-process discharges
   # without writing.
   #
+  # The whole refine pass is opt-in. After the parsed-concepts artifact is
+  # materialized, GATE_REFINE_REQUESTED asks the operator y/n whether to
+  # invoke refine-acc at all; "no" skips refine-acc, the human confirm
+  # step, and update-ticket. This is distinct from CONFIRM_REFINEMENT
+  # (which confirms the refiner's output once it has run).
+  #
   # Slotted between run_legacy_cycle and run_cycle so the legacy backfill
   # has already run, and the refined ACs feed directly into the execution
   # cycle (at_cycle / da_cycle / sut_cycle) dispatched by run_cycle.
@@ -286,6 +292,11 @@ processes:
         type: service_task
         action: materialize_parsed_concepts
         documentation: "Materialize parsed-concepts artifact for refine-acc / update-ticket"
+
+      - id: GATE_REFINE_REQUESTED
+        type: gateway
+        binding: refine_requested
+        documentation: "Refine acceptance criteria for this ticket?"
 
       - id: BACKLOG_REFINEMENT
         type: user_task
@@ -312,7 +323,9 @@ processes:
         type: end_event
 
     sequence_flows:
-      - {from: MATERIALIZE_PARSED_CONCEPTS, to: BACKLOG_REFINEMENT}
+      - {from: MATERIALIZE_PARSED_CONCEPTS, to: GATE_REFINE_REQUESTED}
+      - {from: GATE_REFINE_REQUESTED,   to: BACKLOG_REFINEMENT, when: "refine_requested == true"}
+      - {from: GATE_REFINE_REQUESTED,   to: BR_END,             when: "refine_requested == false"}
       - {from: BACKLOG_REFINEMENT,      to: CONFIRM_REFINEMENT}
       - {from: CONFIRM_REFINEMENT,      to: GATE_REFINEMENT_CHANGED}
       - {from: GATE_REFINEMENT_CHANGED, to: UPDATE_TICKET, when: "refinement_changed == true"}

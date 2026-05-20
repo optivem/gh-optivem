@@ -720,6 +720,16 @@ system_test:
   repo: optivem/shop-tests
   lang: java
   sonar_project: optivem_shop-system-test
+
+paths:
+  driver_port: system-test/src/main/java/testkit/driver/port/shop-tests
+  driver_adapter: system-test/src/main/java/testkit/driver/adapter/shop-tests
+  external_system_driver_port: system-test/src/main/java/testkit/external/port/shop-tests
+  external_system_driver_adapter: system-test/src/main/java/testkit/external/adapter/shop-tests
+  at_test: system-test/src/test/java/shop-tests/latest/acceptance
+  dsl_port: system-test/src/main/java/testkit/dsl/port/shop-tests
+  dsl_core: system-test/src/main/java/testkit/dsl/core/shop-tests
+  ct_test: system-test/src/test/java/shop-tests/latest/contract
 `
 
 // multiRepoMultitierBody is a pre-repos:-field config of the canonical
@@ -753,6 +763,16 @@ system_test:
   repo: optivem/shop-tests
   lang: java
   sonar_project: optivem_shop-system-test
+
+paths:
+  driver_port: system-test/src/main/java/testkit/driver/port/shop-tests
+  driver_adapter: system-test/src/main/java/testkit/driver/adapter/shop-tests
+  external_system_driver_port: system-test/src/main/java/testkit/external/port/shop-tests
+  external_system_driver_adapter: system-test/src/main/java/testkit/external/adapter/shop-tests
+  at_test: system-test/src/test/java/shop-tests/latest/acceptance
+  dsl_port: system-test/src/main/java/testkit/dsl/port/shop-tests
+  dsl_core: system-test/src/main/java/testkit/dsl/core/shop-tests
+  ct_test: system-test/src/test/java/shop-tests/latest/contract
 `
 
 // monoRepoMonolithBody is the canonical mono-repo monolith config —
@@ -943,23 +963,13 @@ func TestRunConfigMigrate_RespectsExistingRepos(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, projectconfig.Path)
-	// Adds a fully-populated paths: block alongside the custom repos
-	// list so the Family B back-fill (Item 3) doesn't pollute the
-	// no-op assertion — this test is scoped to the repos: front.
+	// multiRepoMultitierBody now carries a paths: block of its own (post
+	// Rule 22a — architecture set requires paths). Add only the custom
+	// repos list here; the test is scoped to the repos: front.
 	body := multiRepoMultitierBody + `
 repos:
   - path: ./custom-backend
   - path: ./custom-frontend
-
-paths:
-  driver_port: system-test/src/main/java/testkit/driver/port
-  driver_adapter: system-test/src/main/java/testkit/driver/adapter
-  external_system_driver_port: system-test/src/main/java/testkit/external/port
-  external_system_driver_adapter: system-test/src/main/java/testkit/external/adapter
-  at_test: system-test/src/test/java/latest/acceptance
-  dsl_port: system-test/src/main/java/testkit/dsl/port
-  dsl_core: system-test/src/main/java/testkit/dsl/core
-  ct_test: system-test/src/test/java/latest/contract
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -983,131 +993,30 @@ paths:
 }
 
 // ---------------------------------------------------------------------------
-// runConfigMigrate — paths: back-fill (Family B placeholders)
+// runConfigMigrate — paths: is operator-owned (no back-fill)
 // ---------------------------------------------------------------------------
 
-// TestRunConfigMigrate_BackfillsPathsForMonolith pins that a pre-paths:
-// monolith config picks up the canonical Family B keys on migrate.
-// Without this back-fill, MaterializeProject would error on phase docs
-// that reference ${driver_port} etc.
-func TestRunConfigMigrate_BackfillsPathsForMonolith(t *testing.T) {
+// TestRunConfigMigrate_DoesNotBackfillPaths pins the "no defaults" doctrine:
+// a config that's missing canonical Family B keys is left untouched by
+// migrate. The gap surfaces at the next `gh optivem` invocation through
+// projectconfig.Validate Rule 22a; the operator fills paths: by hand.
+func TestRunConfigMigrate_DoesNotBackfillPaths(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, projectconfig.Path)
 	if err := os.WriteFile(path, []byte(monoRepoMonolithBody), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	changed, err := runConfigMigrate(path)
-	if err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	if !changed {
-		t.Fatal("migrate: want changed=true (paths: should be back-filled)")
-	}
-	cfg, err := projectconfig.LoadFromPath(path)
-	if err != nil {
-		t.Fatalf("load after migrate: %v", err)
-	}
-	for _, k := range []string{"driver_port", "driver_adapter", "external_system_driver_port", "external_system_driver_adapter"} {
-		if cfg.Paths[k] == "" {
-			t.Errorf("paths.%s missing after back-fill (got: %v)", k, cfg.Paths)
-		}
-	}
-	// The monolithic seed uses lang=java with system_test.path=system-test/java,
-	// so the per-language tail "src/main/java/..." should appear.
-	if got := cfg.Paths["driver_port"]; got != "system-test/java/src/main/java/testkit/driver/port" {
-		t.Errorf("paths.driver_port: got %q, want java post-flatten layout", got)
-	}
-}
-
-// TestRunConfigMigrate_PathsIsIdempotent pins running migrate a second
-// time after the paths: back-fill is a no-op. Pairs with the existing
-// repos: idempotence test.
-func TestRunConfigMigrate_PathsIsIdempotent(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, projectconfig.Path)
-	if err := os.WriteFile(path, []byte(monoRepoMonolithBody), 0o644); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
+	before, _ := os.ReadFile(path)
 	if _, err := runConfigMigrate(path); err != nil {
-		t.Fatalf("first migrate: %v", err)
-	}
-	firstPass, _ := os.ReadFile(path)
-	changed, err := runConfigMigrate(path)
-	if err != nil {
-		t.Fatalf("second migrate: %v", err)
-	}
-	if changed {
-		t.Error("second migrate: want changed=false, got true")
-	}
-	secondPass, _ := os.ReadFile(path)
-	if string(firstPass) != string(secondPass) {
-		t.Errorf("file changed on second migrate:\nbefore:\n%s\nafter:\n%s", firstPass, secondPass)
-	}
-}
-
-// TestRunConfigMigrate_PreservesPartialPaths pins the merge rule:
-// existing user keys survive untouched; only missing canonical keys
-// are filled in. Models the operator who renamed `driver_port` to fit
-// a non-standard layout but never set the external_* keys.
-func TestRunConfigMigrate_PreservesPartialPaths(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, projectconfig.Path)
-	body := monoRepoMonolithBody + `
-paths:
-  driver_port: custom/path/to/port
-`
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	changed, err := runConfigMigrate(path)
-	if err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if !changed {
-		t.Fatal("migrate: want changed=true (missing canonical keys should be filled in)")
+	after, _ := os.ReadFile(path)
+	if strings.Contains(string(after), "paths:") {
+		t.Errorf("migrate should not synthesise a paths: block; got:\n%s", after)
 	}
-	cfg, err := projectconfig.LoadFromPath(path)
-	if err != nil {
-		t.Fatalf("load after migrate: %v", err)
-	}
-	if got := cfg.Paths["driver_port"]; got != "custom/path/to/port" {
-		t.Errorf("driver_port: user value %q clobbered (got %q)", "custom/path/to/port", got)
-	}
-	for _, k := range []string{"driver_adapter", "external_system_driver_port", "external_system_driver_adapter"} {
-		if cfg.Paths[k] == "" {
-			t.Errorf("paths.%s missing after partial-merge back-fill", k)
-		}
-	}
-}
-
-// TestRunConfigMigrate_SkipsPathsForPartialConfig pins the absence
-// branch: a config with no system_test.path (partial / pre-arch shape)
-// is left alone on the paths: front. Models the configs `config init`
-// emits before the operator has chosen an architecture.
-func TestRunConfigMigrate_SkipsPathsForPartialConfig(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, projectconfig.Path)
-	body := `project:
-  provider: github
-  url: https://github.com/orgs/x/projects/1
-`
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	changed, err := runConfigMigrate(path)
-	if err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	if changed {
-		t.Error("migrate: want changed=false on partial config (no paths: needed)")
-	}
-	got, _ := os.ReadFile(path)
-	if strings.Contains(string(got), "paths:") {
-		t.Errorf("partial config grew a paths: block:\n%s", got)
+	if !strings.Contains(string(before), "paths:") && strings.Contains(string(after), "paths:") {
+		t.Errorf("migrate grew a paths: block where there was none:\nbefore:\n%s\nafter:\n%s", before, after)
 	}
 }
 

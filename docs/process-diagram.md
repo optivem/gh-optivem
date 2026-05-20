@@ -381,10 +381,13 @@ flowchart TD
     BR_END((End))
     CONFIRM_REFINEMENT[Confirm refined acceptance criteria]
     GATE_REFINEMENT_CHANGED{Refinement Changed?}
+    GATE_REFINE_REQUESTED{Refine acceptance criteria for this ticket?}
     MATERIALIZE_PARSED_CONCEPTS[[Materialize parsed-concepts artifact for refine-acc / update-ticket]]
     UPDATE_TICKET[Write refined ACs back to ticket source]
 
-    MATERIALIZE_PARSED_CONCEPTS --> BACKLOG_REFINEMENT
+    MATERIALIZE_PARSED_CONCEPTS --> GATE_REFINE_REQUESTED
+    GATE_REFINE_REQUESTED -- Yes --> BACKLOG_REFINEMENT
+    GATE_REFINE_REQUESTED -- No --> BR_END
     BACKLOG_REFINEMENT --> CONFIRM_REFINEMENT
     CONFIRM_REFINEMENT --> GATE_REFINEMENT_CHANGED
     GATE_REFINEMENT_CHANGED -- Yes --> UPDATE_TICKET

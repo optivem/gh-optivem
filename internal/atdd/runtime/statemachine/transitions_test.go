@@ -171,12 +171,16 @@ var transitionTable = []transitionCase{
 	{process: "run_legacy_cycle", from: "LEGACY_CYCLE", wantTo: "RUN_LEGACY_END"},
 
 	// ---- backlog_refinement ----
-	// Materializes the parsed-concepts artifact for refine-acc / update-ticket,
+	// Materializes the parsed-concepts artifact, then asks the operator y/n
+	// whether to invoke refine-acc at all (GATE_REFINE_REQUESTED). On yes,
 	// refines parsed acceptance criteria (Gherkin form + coverage rubric),
 	// human-confirms, then conditionally writes the refined sections back
 	// to the ticket source. A no-op refinement (refinement_changed == false)
-	// discharges without writing.
-	{process: "backlog_refinement", from: "MATERIALIZE_PARSED_CONCEPTS", wantTo: "BACKLOG_REFINEMENT"},
+	// discharges without writing. On no, the sub-process skips the refine
+	// pass entirely and discharges at BR_END with the artifact unread.
+	{process: "backlog_refinement", from: "MATERIALIZE_PARSED_CONCEPTS", wantTo: "GATE_REFINE_REQUESTED"},
+	{process: "backlog_refinement", from: "GATE_REFINE_REQUESTED", state: map[string]any{"refine_requested": true}, wantTo: "BACKLOG_REFINEMENT"},
+	{process: "backlog_refinement", from: "GATE_REFINE_REQUESTED", state: map[string]any{"refine_requested": false}, wantTo: "BR_END"},
 	{process: "backlog_refinement", from: "BACKLOG_REFINEMENT", wantTo: "CONFIRM_REFINEMENT"},
 	{process: "backlog_refinement", from: "CONFIRM_REFINEMENT", wantTo: "GATE_REFINEMENT_CHANGED"},
 	{process: "backlog_refinement", from: "GATE_REFINEMENT_CHANGED", state: map[string]any{"refinement_changed": true}, wantTo: "UPDATE_TICKET"},
