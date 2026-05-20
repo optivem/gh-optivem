@@ -25,7 +25,6 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
-	"github.com/optivem/gh-optivem/internal/version"
 )
 
 // ---------------------------------------------------------------------------
@@ -156,36 +155,6 @@ func newDriverOpts(deps clauderun.Deps) Options {
 		Stdout:        io.Discard,
 		Stderr:        io.Discard,
 		Stdin:         strings.NewReader(""),
-	}
-}
-
-// writeFreshSidecar writes a materialize-staleness sidecar whose
-// placeholders exactly match the given map so a subsequent
-// MaterializeProject call against repoPath short-circuits without
-// walking the embedded docs. Mirrors clauderun_test.go's
-// preWriteFreshSidecar — kept as a local helper so the driver tests
-// don't depend on a clauderun-package test fixture.
-func writeFreshSidecar(t *testing.T, repoPath string, placeholders map[string]string) {
-	t.Helper()
-	sidecarDir := filepath.Join(repoPath, ".gh-optivem")
-	if err := os.MkdirAll(sidecarDir, 0o755); err != nil {
-		t.Fatalf("mkdir sidecar dir: %v", err)
-	}
-	var b strings.Builder
-	// Match version.Version so projectStale's binary_version check passes.
-	// (Production binds via newClaudeRunDispatcher → cOpts.BinaryVersion.)
-	b.WriteString("binary_version: ")
-	b.WriteString(version.Version)
-	b.WriteString("\nplaceholders:\n")
-	for k, v := range placeholders {
-		b.WriteString("  ")
-		b.WriteString(k)
-		b.WriteString(": ")
-		b.WriteString(v)
-		b.WriteString("\n")
-	}
-	if err := os.WriteFile(filepath.Join(sidecarDir, ".materialized.yaml"), []byte(b.String()), 0o644); err != nil {
-		t.Fatalf("write sidecar: %v", err)
 	}
 }
 
@@ -668,14 +637,6 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 
 	sCtx := newCtxWithIssue()
 	seedScopeState(sCtx, cfg)
-
-	// Pre-write the materialize sidecar so Dispatch's MaterializeProject
-	// call short-circuits — the assertions in this test target the prompt
-	// body substitution, not the doc-walk side. (Skipping the walk also
-	// avoids a separate pre-existing bug where path-keys.md's historical
-	// note contains literal ${name} text that the substituter treats as
-	// an unfilled placeholder; that bug is tracked as a follow-up.)
-	writeFreshSidecar(t, tmpRepo, cfg.PlaceholderMap())
 
 	rs := &runState{runTimestamp: "20260505-150000", repoPath: tmpRepo}
 

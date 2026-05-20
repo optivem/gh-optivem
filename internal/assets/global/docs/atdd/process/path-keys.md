@@ -51,7 +51,7 @@ under `paths:` in `gh-optivem.yaml` is a canonical Family B key from
 | `ct_test` | contract test files |
 
 Values are **fully-resolved physical paths** set at scaffold time
-(per plan 20260518-1530 item 3). No runtime `${name}` substitution.
+(per plan 20260518-1530 item 3). No runtime `${...}` substitution.
 The scaffolder writes a default block matching the project's layout;
 the values are project-relative and may be hand-edited afterwards.
 
@@ -115,11 +115,12 @@ For the scope rule itself ("only modify paths listed in the phase's
 scope; otherwise stop and alert the user"), see
 [`shared/scope.md`](shared/scope.md).
 
-## Historical note: pre-SSoT `${name}` substitution
+## Historical note: pre-SSoT `${...}` substitution
 
-Pre-SSoT, phase docs and agent prompts referenced `${name}`
-placeholders (e.g. `${driver_port}/${sut_namespace}/...`) that the
-sync-time tool resolved against a `PlaceholderMap`. That mechanism is
+Pre-SSoT, phase docs and agent prompts referenced `${...}`
+placeholders (e.g. a Family B path key joined with the
+sut_namespace key) that the sync-time tool resolved against a
+`PlaceholderMap`. That mechanism is
 retired (per plan 20260518-1530's locked decision δ). Phase docs now
 reference layer **names** only — no `${...}` syntax — and `paths:`
 values are fully resolved at scaffold time. Pre-SSoT projects migrate
