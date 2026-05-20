@@ -301,7 +301,7 @@ func ctRedExternalDriverParams() map[string]string {
 // green_phase_cycle dispatched from at_green_system.AT_GREEN_BACKEND.
 func atGreenBackendParams() map[string]string {
 	return map[string]string{
-		"agent":              "at-green-system-backend",
+		"agent":              "at-green-system",
 		"phase_doc":          "docs/atdd/process/change/behavior/at-green-system.md",
 		"phase_label":        "AT - GREEN - SYSTEM (backend)",
 		"phase_id":           "AT_GREEN_BACKEND",
@@ -314,7 +314,7 @@ func atGreenBackendParams() map[string]string {
 // green_phase_cycle dispatched from at_green_system.AT_GREEN_FRONTEND.
 func atGreenFrontendParams() map[string]string {
 	return map[string]string{
-		"agent":              "at-green-system-frontend",
+		"agent":              "at-green-system",
 		"phase_doc":          "docs/atdd/process/change/behavior/at-green-system.md",
 		"phase_label":        "AT - GREEN - SYSTEM (frontend)",
 		"phase_id":           "AT_GREEN_FRONTEND",

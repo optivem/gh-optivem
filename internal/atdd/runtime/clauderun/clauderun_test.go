@@ -170,10 +170,10 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 	// test every embedded prompt to make sure no agent leaks the marker
 	// or the pre-rollout preamble.
 	for _, name := range []string{
-		"at-green-system-backend", "chore",
+		"at-green-system", "chore",
 		"at-red-system-driver", "ct-red-external-system-driver",
 		"at-red-dsl", "ct-red-dsl",
-		"at-green-system-frontend", "ct-green-external-system-stub",
+		"ct-green-external-system-stub",
 		"task-system-interface-redesign",
 		"task-external-system-interface-redesign",
 		"at-red-test", "ct-red-test",

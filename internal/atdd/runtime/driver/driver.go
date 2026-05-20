@@ -500,10 +500,10 @@ func seedScopeState(sCtx *statemachine.Context, cfg *projectconfig.Config) {
 //   - Monolith → cfg.System.Lang.
 //   - Multitier → cfg.System.Backend.Lang. The current ATDD prompts that
 //     reference ${language} (test, dsl, driver, task) are backend-aligned;
-//     the channel-specific agents (at-green-system-backend, at-green-system-frontend) no longer
-//     reference ${language} in their stripped bodies, so a single seed
-//     suffices. If frontend-specific language refs are introduced later,
-//     the dispatcher can override per-agent without changing the schema.
+//     the merged at-green-system agent does not reference ${language} in
+//     its stripped body, so a single seed suffices. If frontend-specific
+//     language refs are introduced later, the dispatcher can override
+//     per-agent without changing the schema.
 //
 // Returns "" when cfg has no architecture or the relevant Lang is unset;
 // findUnfilledPlaceholders will then report ${language} as a leftover for

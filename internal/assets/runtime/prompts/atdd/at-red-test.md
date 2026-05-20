@@ -10,7 +10,11 @@ You are the Test Agent. The Acceptance Criteria below were parsed from the ticke
 
 ${acceptance_criteria}
 
-Follow the phase referenced below.
+## Steps
+
+1. For every Acceptance Criterion, write a corresponding Acceptance Test. This should be a mechanical 1:1 translation.
+2. If you need to add methods to DSL interface, then implement the DSL Core by implementing method prototypes by throwing a runtime exception  `"TODO: DSL"`, so that compilation works.
+3. Set flag: `DSL Interface Changed: yes|no`
 
 If your previous WRITE didn't compile, instead fix the broken/missing piece in your prior edits (forgotten DSL stub, typo, signature mismatch) and fix it minimally. Do not change test intent.
 
@@ -19,7 +23,6 @@ When you have multiple edits to the same file, make them in one Write or one Edi
 Do not present or wait for approval inside the agent.
 
 Read `${docs_root}/atdd/process/shared/scope.md`.
-Read `${docs_root}/atdd/process/change/behavior/at-red-test.md`.
 Read `${docs_root}/atdd/architecture/test.md`.
 Read `${docs_root}/atdd/architecture/dsl-core.md`.
 Read `${docs_root}/atdd/code/language-equivalents/${language}.md`.

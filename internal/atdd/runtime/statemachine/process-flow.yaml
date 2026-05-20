@@ -433,7 +433,7 @@ processes:
         type: call_activity
         process: green_phase_cycle
         params:
-          agent: at-green-system-backend
+          agent: at-green-system
           phase_doc: docs/atdd/process/change/behavior/at-green-system.md
           phase_label: "AT - GREEN - SYSTEM (backend)"
           phase_id: AT_GREEN_BACKEND
@@ -446,7 +446,7 @@ processes:
         type: call_activity
         process: green_phase_cycle
         params:
-          agent: at-green-system-frontend
+          agent: at-green-system
           phase_doc: docs/atdd/process/change/behavior/at-green-system.md
           phase_label: "AT - GREEN - SYSTEM (frontend)"
           phase_id: AT_GREEN_FRONTEND
@@ -978,7 +978,7 @@ processes:
   # failure context.
   #
   # Callers supply via `params:`:
-  #   - agent              — the WRITE agent (e.g. at-green-system-backend, at-green-system-frontend)
+  #   - agent              — the WRITE agent (e.g. at-green-system, at-red-test, ct-red-dsl)
   #   - phase_doc          — the per-phase doc the agent reads
   #   - phase_label        — human-readable phase tag, used in node
   #                          descriptions (e.g. "AT - GREEN - SYSTEM (backend)")
