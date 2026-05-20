@@ -1,6 +1,6 @@
 # Session End Rule
 
-A shared, low-level rule for every agent in the ATDD pipeline. The Claude CLI session does not terminate when the model finishes its turn — only the user's `/exit` (or the harness) closes it. Without an explicit cue, the operator cannot tell whether the agent is still thinking, waiting for input, or has nothing left to do.
+A shared rule for every ATDD agent. The Claude CLI session doesn't terminate when the model finishes its turn — only `/exit` (or the harness) closes it, so without an explicit cue the operator can't tell whether the agent is thinking, waiting, or done.
 
 ## Rule
 
@@ -18,8 +18,6 @@ This is the **common footer for every ATDD agent**. It applies to every terminat
 - The user has explicitly said "we're finished" / "don't continue" / "stop."
 - You cannot proceed and are reporting why.
 
-Do **not** paraphrase, shorten, expand, or reorder the block. Do **not** drop the bold labels. Do **not** replace it with a plain "Done" or "/exit" line. Do **not** add extra options. The wording is fixed because the operator (and any downstream tooling) keys off it to know the turn is over.
-
-Do **not** narrate "exiting" or "done" without the block — silence and "done" look identical from the operator's seat. The literal `/exit` mention inside Option 1 is what closes the loop.
+Do **not** paraphrase, reorder, drop the bold labels, replace with a plain "Done"/"/exit" line, or add extra options. The wording is fixed because the operator (and downstream tooling) keys off it. Don't narrate "exiting" or "done" without the block — silence and "done" look identical from the operator's seat; the literal `/exit` in Option 1 is what closes the loop.
 
 The footer is harmless when the agent is invoked via `claude -p` (the process is already terminating); in interactive mode it tells the operator the session is theirs to close or to continue with feedback.
