@@ -1,11 +1,27 @@
 # Meta-plan: sequence the ATDD AT-cycle + doctrine-vs-prompts cluster
 
-**Date:** 2026-05-19 21:36 UTC
+**Date:** 2026-05-19 21:36 UTC (status refreshed 2026-05-20)
 **Type:** Coordination meta-plan (audit + sequencing only). No new code or doc edits in this plan; it tells the user *which plans to refine/execute in what order*.
 
-## Why this exists
+## Status snapshot (2026-05-20)
 
-`/coordinate-plans` was invoked across the 6 plans currently in `plans/`. On audit, **only 3 of the 6 are real coordination input**; the others are stubs, closed, or scratchpads. More importantly, there is a **latent architectural conflict** between two of the plans that must be resolved before either side moves — refining downstream plans first would entrench an assumption that's about to be overturned.
+The architectural conflict this meta-plan was created to mediate has been resolved:
+
+- **1537 drained** — refined and removed; items promoted to `20260520-1145-runtime-references-tree-rename.md`, `20260520-1145-system-implementation-refactoring-rename.md`, `20260520-1213-collapse-at-green-backend-frontend.md`, `20260520-1109-ac-refinement-and-at-refactor-agent-steps.md` (commit `bf77476`).
+- **1701 (Part 1) deleted** — was a zombie stub.
+- **1116-part2 deleted** — premise obsoleted by inline-phase-docs sweep (`4b44722`); per-phase rules content recoverable from git if ever needed.
+- **1144 moved to `plans/deferred/`** — items 2-6 executed (`d680e74`); only item 7 (failing-legacy detector) remains, blocked on the legacy plan.
+- **0911 deleted** — Item 1 landed (`90f6fdc`); Items 2 + 4 obsoleted by the inline sweep (the standalone ESIR phase doc was inlined into its prompt, making the "verify references resolve" checks moot).
+
+**What's still live in this cluster:**
+
+- `plans/20260518-1116-legacy-coverage-cycle.md` — needs refinement, then settles the legacy-marker convention that unblocks 1144 item 7.
+
+Everything else cited below describes the historical sequencing decision that produced today's state. Kept for archival reference; not load-bearing for new work.
+
+## Why this existed
+
+`/coordinate-plans` was invoked across the 6 plans then in `plans/`. On audit, **only 3 of the 6 were real coordination input**; the others were stubs, closed, or scratchpads. More importantly, there was a **latent architectural conflict** between two of the plans that had to be resolved before either side moved — refining downstream plans first would have entrenched an assumption that was about to be overturned.
 
 ## In-scope plans (audit)
 
