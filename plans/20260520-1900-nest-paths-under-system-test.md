@@ -1,7 +1,5 @@
 # Nest top-level `paths:` under `system_test:`
 
-> 🤖 **Picked up by agent (refine)** — `Valentina_Desk` at `2026-05-20T16:47:33Z`
-
 **Cross-references**:
 
 - Sibling in-flight plan: [`20260520-1834-strip-init-paths-default-scaffolding.md`](20260520-1834-strip-init-paths-default-scaffolding.md)
@@ -11,9 +9,12 @@
   land in either order; see [Sequencing](#sequencing) below.
 - Doctrine precedent: the external-driver rename plan
   [`20260519-0704-...`](deferred/20260519-0704-rename-external-driver-keys.md) — same
-  shape of change (rename + migrate-command rewrite + legacy-detection
-  validation rule). The `ExternalDriverKeyRenames` map and Rule 22b in
-  `internal/projectconfig/config.go` are the template to mirror.
+  shape of change (rename inside `paths:` + migrate-command read-site
+  update). The `ExternalDriverKeyRenames` map and Rule 22b in
+  `internal/projectconfig/config.go` are the template for the
+  migrate-command pass and Rule 22b's error wording. Note: this plan
+  does **not** mirror the rename plan's legacy-detection validation
+  rule (Q1 decided against legacy-alias machinery for teaching repo).
 - Predecessor doctrine: the SSoT plan
   [`20260518-1530-...`](deferred/20260518-1530-ssot-path-model.md) — established
   that `paths:` values are fully resolved at scaffold time, with no
@@ -195,12 +196,6 @@ blocks are not migrated. The existing migrate passes that already touch
   in the historical section explaining the move and pointing at this
   plan + the migrate command.
 
-- **`CLAUDE.md`** (this repo) — already has a "No GitHub Pages" doctrine
-  block. Consider adding a one-liner under a new "Schema" section
-  warning future agents not to reintroduce top-level `paths:` — same
-  shape as the GitHub Pages warning. Optional; the validate-time legacy
-  alias is the real guard.
-
 ## Knock-on
 
 - **shop repo's 12 `gh-optivem-*.yaml` configs.** Per the sibling
@@ -227,11 +222,11 @@ both touch `optivem_yaml.go:195`, the migrate command, and the same
 test surface. They are otherwise orthogonal — *whether* to seed
 `paths:` and *where* `paths:` lives are independent decisions.
 
-**Recommended order**: land **this plan first** (mechanical schema
-move with full legacy-alias + migrate coverage), then the strip-init
-plan (a one-line removal in the new schema). Reverse is also fine; if
-strip-init lands first, the relocation work in this plan shrinks by
-one line (`optivem_yaml.go:195` is gone) and one test case.
+**Decided order** (Q4): land **this plan first** (mechanical schema
+move — no legacy-alias or migrate-relocation work per Q1), then the
+strip-init plan (a one-line removal in the new schema). Reverse is also
+viable; if strip-init lands first, this plan's `optivem_yaml.go:195`
+swap is a no-op and the matching test case drops out.
 
 If both land in parallel (one commit each), expect a small
 trivially-resolvable conflict at `optivem_yaml.go:195` and at the
@@ -261,13 +256,13 @@ trivially-resolvable conflict at `optivem_yaml.go:195` and at the
    fields, the natural refactor lifts `Config` *and* `Paths` (and any
    future siblings) onto a `SystemTestSpec` together — separate plan.
 
-3. **CLAUDE.md doctrine line — yes or no?** The validate-time legacy
-   alias is the real guard against regression. A CLAUDE.md line is a
-   belt-and-braces hint for agents proposing schema changes. Slight
-   preference for adding it (cheap; the GitHub Pages doctrine
-   precedent shows the shape works) but not blocking.
+3. ~~**CLAUDE.md doctrine line — yes or no?**~~ **Decided
+   (2026-05-20):** No. Memory (`feedback_teaching_repo_no_legacy.md`)
+   and this plan file are sufficient context; CLAUDE.md should not grow
+   for every schema decision.
 
-4. **Sequencing with the strip-init plan.** Recommend this-plan-first
-   for clean staging; the user may prefer the reverse if they want to
-   simplify this plan's scope by stripping the scaffolder seed before
-   the relocation. Decide before pickup.
+4. ~~**Sequencing with the strip-init plan.**~~ **Decided
+   (2026-05-20):** This plan first, then strip-init. The schema-move is
+   the structural change; strip-init then drops one line in the new
+   schema. See [Sequencing](#sequencing) above for the conflict shape
+   if both land in parallel.
