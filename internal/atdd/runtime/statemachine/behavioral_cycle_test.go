@@ -79,6 +79,7 @@ func (e *expectDispatch) behavioralIntake() *expectDispatch {
 		process("main", noParams()).
 		callActivity("BACKLOG_REFINEMENT", "backlog_refinement", noParams()).
 		process("backlog_refinement", noParams()).
+		serviceTask("MATERIALIZE_PARSED_CONCEPTS", "materialize_parsed_concepts").
 		userTask("BACKLOG_REFINEMENT", "refine-acc").
 		userTask("CONFIRM_REFINEMENT", "human").
 		gateway("GATE_REFINEMENT_CHANGED", "refinement_changed", false).

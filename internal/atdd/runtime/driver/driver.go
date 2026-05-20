@@ -292,6 +292,10 @@ func Run(ctx context.Context, opts Options) error {
 
 	sCtx := statemachine.NewContext()
 	seedScopeState(sCtx, cfg)
+	// Per-run artifact directory — used by service tasks that materialize
+	// inter-phase artifacts (e.g. materialize_parsed_concepts writing
+	// <run_dir>/parsed-concepts.md for refine-acc / update-ticket).
+	sCtx.Set("run_dir", filepath.Join(repoPath, ".gh-optivem", "runs", runState.runTimestamp))
 
 	if opts.IssueNum > 0 {
 		if err := preResolveIssue(ctx, opts, sCtx, cfg); err != nil {
@@ -808,6 +812,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 			AllowedRoots:       ctx.GetString("allowed_roots"),
 			Checklist:          ctx.GetString("ticket_checklist"),
 			AcceptanceCriteria: ctx.GetString("ticket_acceptance_criteria"),
+			ParsedConcepts:     ctx.GetString("parsed_concepts"),
 			VerifyResults:      ctx.GetString("verify_results_text"),
 			ChangedFiles:       fixVerifyChangedFiles(agentName, opts.RepoPath),
 			NodeParams:         nodeParams,

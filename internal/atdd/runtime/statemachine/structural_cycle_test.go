@@ -91,6 +91,7 @@ func TestImplementTicket_SystemInterfaceRedesign(t *testing.T) {
 		callActivity("BACKLOG_REFINEMENT", "backlog_refinement", noParams()).
 		then().
 		process("backlog_refinement", noParams()).
+		serviceTask("MATERIALIZE_PARSED_CONCEPTS", "materialize_parsed_concepts").
 		userTask("BACKLOG_REFINEMENT", "refine-acc").
 		userTask("CONFIRM_REFINEMENT", "human").
 		gateway("GATE_REFINEMENT_CHANGED", "refinement_changed", false).

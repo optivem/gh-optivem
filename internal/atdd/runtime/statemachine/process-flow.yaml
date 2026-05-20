@@ -280,8 +280,13 @@ processes:
   # cycle (at_cycle / da_cycle / sut_cycle) dispatched by run_cycle.
   # ===========================================================================
   backlog_refinement:
-    start: BACKLOG_REFINEMENT
+    start: MATERIALIZE_PARSED_CONCEPTS
     nodes:
+      - id: MATERIALIZE_PARSED_CONCEPTS
+        type: service_task
+        action: materialize_parsed_concepts
+        documentation: "Materialize parsed-concepts artifact for refine-acc / update-ticket"
+
       - id: BACKLOG_REFINEMENT
         type: user_task
         agent: refine-acc
@@ -307,6 +312,7 @@ processes:
         type: end_event
 
     sequence_flows:
+      - {from: MATERIALIZE_PARSED_CONCEPTS, to: BACKLOG_REFINEMENT}
       - {from: BACKLOG_REFINEMENT,      to: CONFIRM_REFINEMENT}
       - {from: CONFIRM_REFINEMENT,      to: GATE_REFINEMENT_CHANGED}
       - {from: GATE_REFINEMENT_CHANGED, to: UPDATE_TICKET, when: "refinement_changed == true"}

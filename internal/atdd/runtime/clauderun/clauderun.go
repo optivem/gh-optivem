@@ -99,6 +99,17 @@ type Options struct {
 	// enforcement point.
 	AcceptanceCriteria string
 
+	// ParsedConcepts is the absolute path to the parsed-concepts artifact
+	// materialize_parsed_concepts writes at the start of the
+	// backlog_refinement sub-process. Substituted into refine-acc's and
+	// update-ticket's ${parsed_concepts} placeholder so those agents
+	// share a stable file path for the parsed ACs across the
+	// CONFIRM_REFINEMENT human gate. Load-bearing: only registered when
+	// non-empty so an absent value surfaces via
+	// findUnfilledPlaceholders rather than silently substituting "" —
+	// same rationale as Language / AcceptanceCriteria.
+	ParsedConcepts string
+
 	// VerifyResults is the formatted block describing every red-class
 	// verifyCommandResult the most recent RUN_TESTS produced.
 	// Substituted into fix-verify's ${verify_results} placeholder so
@@ -519,6 +530,12 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	// surfaces via findUnfilledPlaceholders rather than substituting "".
 	if opts.AcceptanceCriteria != "" {
 		params["acceptance_criteria"] = opts.AcceptanceCriteria
+	}
+	// ParsedConcepts is load-bearing for refine-acc / update-ticket —
+	// same rationale as AcceptanceCriteria. Only registered when
+	// non-empty so an absent value surfaces via findUnfilledPlaceholders.
+	if opts.ParsedConcepts != "" {
+		params["parsed_concepts"] = opts.ParsedConcepts
 	}
 	rendered := statemachine.ExpandParams(body, params)
 	if opts.OverrideText != "" {

@@ -171,10 +171,12 @@ var transitionTable = []transitionCase{
 	{process: "run_legacy_cycle", from: "LEGACY_CYCLE", wantTo: "RUN_LEGACY_END"},
 
 	// ---- backlog_refinement ----
-	// Refines parsed acceptance criteria (Gherkin form + coverage rubric),
+	// Materializes the parsed-concepts artifact for refine-acc / update-ticket,
+	// refines parsed acceptance criteria (Gherkin form + coverage rubric),
 	// human-confirms, then conditionally writes the refined sections back
 	// to the ticket source. A no-op refinement (refinement_changed == false)
 	// discharges without writing.
+	{process: "backlog_refinement", from: "MATERIALIZE_PARSED_CONCEPTS", wantTo: "BACKLOG_REFINEMENT"},
 	{process: "backlog_refinement", from: "BACKLOG_REFINEMENT", wantTo: "CONFIRM_REFINEMENT"},
 	{process: "backlog_refinement", from: "CONFIRM_REFINEMENT", wantTo: "GATE_REFINEMENT_CHANGED"},
 	{process: "backlog_refinement", from: "GATE_REFINEMENT_CHANGED", state: map[string]any{"refinement_changed": true}, wantTo: "UPDATE_TICKET"},

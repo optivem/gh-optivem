@@ -831,6 +831,122 @@ func TestParseTicketBody_EmptyTicketTypeFailsHard(t *testing.T) {
 	}
 }
 
+// TestParseTicketBody_StashesDescriptionAndLegacyAC pins the contract that
+// parse_ticket_body seeds the Description and Legacy AC section bodies
+// into ctx.State alongside the AC + Checklist bodies. The
+// materialize_parsed_concepts action depends on these keys being set; a
+// silent regression here would surface much later as an empty
+// parsed-concepts artifact.
+func TestParseTicketBody_StashesDescriptionAndLegacyAC(t *testing.T) {
+	body := "## Description\n\nUser places an order from the home page.\n\n" +
+		"## Acceptance Criteria\n\nScenario: ok\n  Given x\n  When y\n  Then z\n\n" +
+		"## Legacy Acceptance Criteria\n\n- old behavior preserved\n"
+	rawBody, _ := json.Marshal(body)
+	gh := newFakeRunner(t, "gh")
+	gh.on(
+		[]string{"issue", "view", "42", "--json", "body", "--repo", "optivem/shop"},
+		[]byte(fmt.Sprintf(`{"body":%s}`, rawBody)),
+		nil,
+	)
+	a := newActions(Deps{Gh: gh, Prompter: &fakePrompter{}})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket_type", "story")
+	ctx.Set("issue_num", "42")
+	ctx.Set("issue_url", "https://github.com/optivem/shop/issues/42")
+	out := a.parseTicketBody(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if got, want := ctx.GetString("ticket_description"), "User places an order from the home page."; got != want {
+		t.Fatalf("ticket_description: got %q, want %q", got, want)
+	}
+	if got, want := ctx.GetString("ticket_legacy_acceptance_criteria"), "- old behavior preserved"; got != want {
+		t.Fatalf("ticket_legacy_acceptance_criteria: got %q, want %q", got, want)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// materialize_parsed_concepts
+// ---------------------------------------------------------------------------
+
+// TestMaterializeParsedConcepts_WritesArtifactAndStashesPath covers the
+// happy-path wiring the backlog_refinement sub-process depends on: read
+// the three section strings parse_ticket_body stashed, write them to
+// <run_dir>/parsed-concepts.md, set ctx.State["parsed_concepts"] to the
+// path so ${parsed_concepts} resolves in refine-acc / update-ticket.
+func TestMaterializeParsedConcepts_WritesArtifactAndStashesPath(t *testing.T) {
+	runDir := t.TempDir()
+	a := newActions(Deps{Prompter: &fakePrompter{}})
+	ctx := statemachine.NewContext()
+	ctx.Set("run_dir", runDir)
+	ctx.Set("ticket_description", "User places an order from the home page.")
+	ctx.Set("ticket_acceptance_criteria", "Scenario: ok\n  Given x\n  When y\n  Then z")
+	ctx.Set("ticket_legacy_acceptance_criteria", "- old behavior preserved")
+
+	out := a.materializeParsedConcepts(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	wantPath := filepath.Join(runDir, "parsed-concepts.md")
+	if got := ctx.GetString("parsed_concepts"); got != wantPath {
+		t.Fatalf("parsed_concepts: got %q, want %q", got, wantPath)
+	}
+	got, err := os.ReadFile(wantPath)
+	if err != nil {
+		t.Fatalf("read artifact: %v", err)
+	}
+	for _, want := range []string{
+		"## Description\n\nUser places an order from the home page.",
+		"## Legacy Acceptance Criteria\n\n- old behavior preserved",
+		"## Acceptance Criteria\n\nScenario: ok",
+	} {
+		if !strings.Contains(string(got), want) {
+			t.Fatalf("artifact missing %q\ngot:\n%s", want, got)
+		}
+	}
+}
+
+// TestMaterializeParsedConcepts_EmptySectionsStillWritesFile covers the
+// task-ticket path where intake parsed no Description / AC / Legacy AC
+// (only a Checklist). The action must still write the file and stash
+// the path so the downstream ${parsed_concepts} substitution resolves;
+// refine-acc then discharges as a no-op rather than the dispatch
+// failing on an unfilled placeholder.
+func TestMaterializeParsedConcepts_EmptySectionsStillWritesFile(t *testing.T) {
+	runDir := t.TempDir()
+	a := newActions(Deps{Prompter: &fakePrompter{}})
+	ctx := statemachine.NewContext()
+	ctx.Set("run_dir", runDir)
+	// Description / AC / Legacy AC all unset — task-ticket shape.
+
+	out := a.materializeParsedConcepts(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	wantPath := filepath.Join(runDir, "parsed-concepts.md")
+	if got := ctx.GetString("parsed_concepts"); got != wantPath {
+		t.Fatalf("parsed_concepts: got %q, want %q", got, wantPath)
+	}
+	if _, err := os.Stat(wantPath); err != nil {
+		t.Fatalf("artifact not written: %v", err)
+	}
+}
+
+// TestMaterializeParsedConcepts_MissingRunDirFailsHard covers the
+// driver-wiring contract: run_dir is seeded by the driver at startup;
+// if it's not there, the artifact path is undefined and the action
+// must fail loudly rather than silently writing to cwd.
+func TestMaterializeParsedConcepts_MissingRunDirFailsHard(t *testing.T) {
+	a := newActions(Deps{Prompter: &fakePrompter{}})
+	ctx := statemachine.NewContext()
+	// run_dir intentionally unset.
+
+	out := a.materializeParsedConcepts(ctx)
+	if out.Err == nil {
+		t.Fatalf("expected hard error when run_dir is unset")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // RegisterAll wiring
 // ---------------------------------------------------------------------------
@@ -849,6 +965,7 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"read_ticket_type",
 		"read_subtype",
 		"parse_ticket_body",
+		"materialize_parsed_concepts",
 		"report_intake_summary",
 		"move_to_in_acceptance",
 		"run_smoke_test",

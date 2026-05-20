@@ -25,6 +25,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -138,6 +139,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("read_ticket_type", a.readTicketType)
 	r.Register("read_subtype", a.readSubtype)
 	r.Register("parse_ticket_body", a.parseTicketBody)
+	r.Register("materialize_parsed_concepts", a.materializeParsedConcepts)
 	r.Register("report_intake_summary", a.reportIntakeSummary)
 	r.Register("move_to_in_acceptance", a.moveToInAcceptance)
 	r.Register("run_smoke_test", a.runSmokeTest)
@@ -399,7 +401,7 @@ func (a actions) readSubtype(ctx *statemachine.Context) statemachine.Outcome {
 // Issue-Form-enforced headings, and validates the required-section set
 // for the ticket's type.
 //
-// Sets four Context fields the downstream flow consumes:
+// Sets six Context fields the downstream flow consumes:
 //   - parse_ok: boolean, drives GATE_PARSE_OK.
 //   - legacy_acceptance_criteria_section_present: boolean, drives the
 //     existing run_legacy_cycle gate.
@@ -410,6 +412,13 @@ func (a actions) readSubtype(ctx *statemachine.Context) statemachine.Outcome {
 //     body — handed to at-red-test via clauderun.Options.AcceptanceCriteria
 //     so the AT - RED - TEST agent doesn't have to shell out to
 //     `gh issue view` to read scenarios intake already extracted.
+//   - ticket_description: string, the parsed Description body — read by
+//     materialize_parsed_concepts when composing the parsed-concepts
+//     artifact refine-acc reads.
+//   - ticket_legacy_acceptance_criteria: string, the parsed Legacy
+//     Acceptance Criteria body — same consumer as ticket_description.
+//     Distinct from legacy_acceptance_criteria_section_present, which
+//     is the boolean used by the run_legacy_cycle gate.
 //
 // On parse failure (missing required section), parse_ok is set to false
 // and the gateway routes to STOP_PARSE_ERROR. Resolution is "fix the
@@ -441,6 +450,8 @@ func (a actions) parseTicketBody(ctx *statemachine.Context) statemachine.Outcome
 	ctx.Set("legacy_acceptance_criteria_section_present", result.LegacyAcceptanceCriteria.Found)
 	ctx.Set("ticket_checklist", result.Checklist.Body)
 	ctx.Set("ticket_acceptance_criteria", result.AcceptanceCriteria.Body)
+	ctx.Set("ticket_description", result.Description.Body)
+	ctx.Set("ticket_legacy_acceptance_criteria", result.LegacyAcceptanceCriteria.Body)
 	ctx.Set("parsed_section_names", parsedSectionNames(result))
 	if ct := deriveChangeType(ticketType, ctx.GetString("subtype")); ct != "" {
 		ctx.Set("change_type", ct)
@@ -548,6 +559,77 @@ func (a actions) reportIntakeSummary(ctx *statemachine.Context) statemachine.Out
 		fmt.Fprintf(w, "  parsed sections: %s\n", strings.Join(names, ", "))
 	}
 	return statemachine.Outcome{}
+}
+
+// materializeParsedConcepts writes the parsed-concepts artifact refine-acc
+// reads (and update-ticket reads back after refinement) and stashes its
+// path into ctx.State["parsed_concepts"] for substitution into both
+// agents' ${parsed_concepts} placeholder.
+//
+// The artifact is a plain markdown file under <run_dir>/parsed-concepts.md
+// containing three named H2 sections — Description, Legacy Acceptance
+// Criteria, Acceptance Criteria — populated from the strings
+// parse_ticket_body already stashed in ctx.State. No structural
+// transformation: the artifact is the in-memory parsed sections dropped
+// to disk so the agents have a stable path to read and mutate across
+// the CONFIRM_REFINEMENT human gate. (A future "extract concepts"
+// upgrade could replace this body with a structured representation;
+// the path contract stays the same.)
+//
+// Always writes the file, even when every section is empty — refine-acc
+// then discharges as a no-op (Refinement Changed: no) and update-ticket
+// is gated past. An empty artifact is a valid state, not a wiring bug;
+// the alternative (skip materialize → ${parsed_concepts} unfilled →
+// dispatch error) would conflate "nothing to refine" with "broken
+// wiring".
+//
+// run_dir is seeded into ctx.State by the driver at startup
+// (<repoPath>/.gh-optivem/runs/<run-ts>). Missing run_dir is a
+// hard error — without it the artifact path is undefined.
+func (a actions) materializeParsedConcepts(ctx *statemachine.Context) statemachine.Outcome {
+	runDir := ctx.GetString("run_dir")
+	if runDir == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("materialize_parsed_concepts: run_dir not set in context — driver should have seeded it")}
+	}
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("materialize_parsed_concepts: create run dir: %w", err)}
+	}
+	path := filepath.Join(runDir, "parsed-concepts.md")
+	body := renderParsedConcepts(
+		ctx.GetString("ticket_description"),
+		ctx.GetString("ticket_legacy_acceptance_criteria"),
+		ctx.GetString("ticket_acceptance_criteria"),
+	)
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("materialize_parsed_concepts: write %s: %w", path, err)}
+	}
+	ctx.Set("parsed_concepts", path)
+	fmt.Fprintf(a.deps.Stdout, "Materialized parsed-concepts artifact at %s.\n", path)
+	return statemachine.Outcome{}
+}
+
+// renderParsedConcepts composes the artifact body from the three section
+// strings parse_ticket_body stashed in ctx.State. Empty sections are
+// emitted with their heading and a single blank line so refine-acc sees a
+// uniform shape regardless of which sections the ticket carried — easier
+// to diff across runs than a body whose section set varies by ticket type.
+func renderParsedConcepts(description, legacyAC, acceptanceCriteria string) string {
+	var b strings.Builder
+	for _, sec := range []struct {
+		heading string
+		body    string
+	}{
+		{intake.SectionDescription, description},
+		{intake.SectionLegacyAcceptanceCriteria, legacyAC},
+		{intake.SectionAcceptanceCriteria, acceptanceCriteria},
+	} {
+		fmt.Fprintf(&b, "## %s\n\n", sec.heading)
+		if sec.body != "" {
+			b.WriteString(strings.TrimRight(sec.body, "\n"))
+			b.WriteString("\n\n")
+		}
+	}
+	return b.String()
 }
 
 // printChecklistSummary writes a structured summary of the parsed checklist
