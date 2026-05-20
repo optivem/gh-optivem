@@ -1,10 +1,33 @@
 # 2026-05-19 15:37 UTC — Post-meta-bpmn discussion topics
 
-**Status:** PARKED — do not pick up until `20260519-0929-meta-bpmn-ssot-coordination.md` is fully landed.
+**Status:** REFINED + DRAINED (2026-05-20) — every item is now marked DISCHARGED, RESOLVED (folded into a sibling), DECIDED (ready for a small dated plan), or PROMOTED (already has a dated plan). This file is no longer a work queue; it is an index of decisions and pointers.
 
-**Purpose:** scratchpad for topics, remarks, and follow-up items the user wants to raise AFTER the meta-bpmn coordination plan finishes. Each item here is a discussion seed, not a refined plan — items get promoted to their own dated plan file once discussed.
+**Outcome summary (per item):**
 
-**Cross-reference:** this plan sits downstream of `20260519-0929-meta-bpmn-ssot-coordination.md`. That coordination plan covers the BPMN orchestration + SSoT + vocabulary cluster (plans `20260518-1144`, `20260518-1530`, `20260518-1742`, `20260518-2236`, `20260519-0704`). Nothing in here should preempt or duplicate items already tracked there.
+- **Item 1** (`## Scope` section duplicates frontmatter) — DISCHARGED. Item 5's inlining sweep absorbed both jobs (drop layer enumeration; keep behavioral framing as numbered steps inside GREEN prompts).
+- **Item 2** (`global/` vs `runtime/` split misleading) — DECIDED. Promote to a small dated plan that renames to `internal/assets/runtime/references/atdd/` + `runtime/references/code/`, and updates the sync target to `~/.gh-optivem/references/atdd/`.
+- **Item 3** (`doctrine/` vs `shared/` naming) — RESOLVED. Folded into Item 2's decision; canonical name `references/` chosen, both original candidates rejected.
+- **Item 4** (doctrine/prompt structure mismatch) — LARGELY DISCHARGED. `task-` prefix removal folded into Item 9's rename plan; CI consistency walk noted as a residual but not promoted.
+- **Item 5** (consolidation rule) — DECIDED + LARGELY DISCHARGED. The N=1/N≥2 rule was superseded by "inline everything, two mechanisms" (per-phase inlining + universal argv injection). Work is landed across commits `2df45d3`, `4b44722`, and plan `20260520-0907-runtime-shared-scope-injection.md`. Residual: `path-keys.md` classification.
+- **Item 6** (component-fanout) — PARTIALLY DISCHARGED. Prompt-level merge done; structural collapse pending (small near-term plan: collapse `AT_GREEN_BACKEND`+`AT_GREEN_FRONTEND` → single `AT_GREEN`); per-component fanout deferred to a future plan.
+- **Item 7** (`at-refactor.md` orphan) — PROMOTED to `plans/20260520-1109-ac-refinement-and-at-refactor-agent-steps.md`. Decision: wire up, not delete.
+- **Item 8** (`acceptance-criteria-refinement.md` + `analysis/` orphan) — PROMOTED to the same companion plan as Item 7.
+- **Item 9** (naming drift, four names for chore) — DECIDED. Canonical name `system-implementation-refactoring`. Ready for a small dated rename plan. The `task-` prefix removal from Item 4 piggybacks on this plan.
+- **Item 10** (disable-tests/enable-tests human-only docs) — DISCHARGED. Both are now real Haiku agent prompts (commit `b3b5952`); the "human-only docs" premise is obsolete.
+- **Item 11** (AT_GREEN_BACKEND/FRONTEND hardcoded) — RESOLVED. Folded into Item 6's immediate collapse plan.
+- **Item 12** (`<acceptance-api>` / `<acceptance-ui>` suite labels) — RESOLVED. Folded into Item 6's immediate collapse plan.
+
+**Plans spawned by this refinement:**
+
+- New small dated plan for Item 2 + Item 3 — asset-tree rename to `runtime/references/`.
+- New small dated plan for Item 9 + Item 4 — `chore` → `system-implementation-refactoring` rename, plus `task-`-prefix removal on the two structure prompts.
+- New small dated plan for Item 6's immediate collapse — `AT_GREEN_BACKEND`+`AT_GREEN_FRONTEND` → single `AT_GREEN`, suite reduction, `phase_doc:` drift cleanup.
+- Existing plan picks up Items 7 + 8: `plans/20260520-1109-ac-refinement-and-at-refactor-agent-steps.md` (still in its own refinement walk).
+- Deferred follow-up plan for per-component fanout (Item 6 stretch goal) — defer until concrete multi-component requirements arrive.
+
+**Purpose (original):** scratchpad for topics, remarks, and follow-up items the user wants to raise AFTER the meta-bpmn coordination plan finishes. Each item here is a discussion seed, not a refined plan — items get promoted to their own dated plan file once discussed.
+
+**Cross-reference:** this plan sits downstream of `20260519-0929-meta-bpmn-ssot-coordination.md` (discharged in commit `55dfb18`). That coordination plan covered the BPMN orchestration + SSoT + vocabulary cluster (plans `20260518-1144`, `20260518-1530`, `20260518-1742`, `20260518-2236`, `20260519-0704`). Nothing in here should preempt or duplicate items already tracked there.
 
 ---
 
@@ -23,210 +46,261 @@ Items 1–4 and 7–12 are mostly symptoms / drift that the two headlines resolv
 
 ## Topics to discuss
 
-### 1. `## Scope` section in phase docs duplicates frontmatter
+### 1. `## Scope` section in phase docs duplicates frontmatter — DISCHARGED
 
-**Status:** DECIDED — drop the layer enumeration, keep the behavioral framing.
+**Status:** DISCHARGED — Item 5's inlining sweep absorbed both jobs in this item without needing the rename.
 
-**Context:** phase docs like `at-green-system.md` and `at-red-test.md` have a `## Scope` prose section that re-states which layers the phase touches. Scope already lives in (a) prompt frontmatter `scope:`, (b) `phase-scopes.yaml`, (c) `gh optivem process scope <PHASE>`. The prose section is a fourth surface that drifts.
+**What happened:**
 
-**Decision:** the section has two jobs:
+- **Job 1 (drop layer enumeration):** executed. No inlined prompt under `internal/assets/runtime/prompts/atdd/` carries a `## Scope` prose section.
+- **Job 2 (keep behavioral framing):** executed where it applies. GREEN prompts (`at-green-system.md` steps 2+3, `ct-green-external-system-stub.md` steps 2+3) carry the "tests/DSL/drivers are frozen during GREEN" + escalation framing as numbered steps inside the prompt body. RED prompts (`at-red-test.md`) intentionally do not — frozen-layer rules don't apply when the agent is writing tests.
+- **Proposed rename `## Scope` → `## Frozen layers`:** never happened and didn't need to — the framing lives inline as prompt steps, not as a separate section.
 
-- Job 1 — restate allowed paths (pure duplication of `phase-scopes.yaml`). **Drop.**
-- Job 2 — behavioral framing ("Tests/DSL/drivers are frozen during GREEN; needing to touch a frozen layer signals an earlier RED phase was wrong; stop and ask"). **Keep**, because this is not derivable from frontmatter and changes how the agent reasons about scope violations.
-
-Rename `## Scope` → `## Frozen layers` (or similar) and let each phase's section say something genuinely useful instead of restating boilerplate.
-
-**Possible follow-up:** promote to a small plan that rewrites the `## Scope` section across all `change/behavior/*.md` and `change/structure/*.md` phase docs.
+**Residual (not a blocker):** behavioral framing is now distributed across N inlined prompts instead of pulled from one doctrine source. Drift between prompts (e.g. a GREEN phase forgetting the escalation step) becomes the new risk. A periodic consistency check across the GREEN prompts would catch it — not worth a dated plan today, but worth a check if a new GREEN-style phase gets added.
 
 ---
 
-### 2. `global/` vs `runtime/` split is by delivery mechanism, naming is misleading
+### 2. `global/` vs `runtime/` split is by delivery mechanism, naming is misleading — DECIDED, ready for promotion
 
-**Context:** the asset tree has two roots:
+**Status:** DECIDED — promote to a small dated plan that renames `internal/assets/global/docs/atdd/` + `internal/assets/code/` to `internal/assets/runtime/references/atdd/` (and `runtime/references/code/`).
 
-- `internal/assets/runtime/prompts/atdd/*.md` — passed to `claude -p` over argv. Never hits disk.
-- `internal/assets/global/docs/atdd/*.md` — synced to `~/.gh-optivem/docs/atdd/` because the prompt does `Read ${docs_root}/...`, which needs a real filesystem path.
+**Updated landscape (post-Item 5 + plan `20260520-0907`):** three delivery mechanisms = three asset trees, only two of which are under `runtime/` today:
 
-Both are agent-consumed. The split is **delivery mechanism** (argv vs disk-sync), not audience. The names `global/`, `docs/`, and the user-visible sync path `~/.gh-optivem/docs/` all evoke "human-facing documentation," which is misleading.
+1. `internal/assets/runtime/prompts/atdd/*.md` — argv-dispatched per phase (13 files).
+2. `internal/assets/runtime/shared/{preamble,scope,session-end}.md` — universally concatenated into every dispatched prompt at Go startup.
+3. `internal/assets/global/docs/atdd/` + `internal/assets/code/` — synced to disk, selectively read by phase-specific prompts via `Read ${docs_root}/...`. Surviving content is reference material, not prose doctrine:
+   - `global/docs/atdd/architecture/{driver-adapter,driver-port,dsl-core,dsl-port,system,test}.md` — per-phase architecture references.
+   - `code/language-equivalents/{java,csharp,typescript,README}.md` — per-language syntax tables.
+   - `code/testkit-{architecture-rules,language-exceptions}.md` — testkit references.
+   - `global/docs/atdd/process/path-keys.md` — referenced by Go code (not prompts).
+   - `global/docs/atdd/process/{analysis,change/behavior}/*.md` — orphans (Items 7/8) that get inlined into prompts and never end up in the renamed tree.
 
-**Remark:** this item partly collapses once Item 5's consolidation rule lands — what remains in the doctrine tree is just the genuinely-shared docs (`scope.md`, `conventions.md`, `path-keys.md`, `at-green-system.md` if it stays 1:N). The remaining name only has to cover "cross-cutting shared rules."
+**Decision:** rename to `runtime/references/atdd/` (and `runtime/references/code/`). Reasoning:
 
-**Naming proposals for the shared-only remnant:**
+- **Architectural symmetry.** Three delivery mechanisms map to three sibling trees under `runtime/`. Today's split is historical accident, not intent.
+- **`references/` fits the surviving content.** After Item 5's inlining, what's left is technical reference material (architecture descriptions, language tables) — read on demand by specific prompts. `doctrine/` (the original Item 2 author pick) no longer fits; the prose doctrine it referred to is gone.
+- **The user-visible sync path is misleading.** `~/.gh-optivem/docs/` evokes human-readable documentation, but the synced content is agent fuel. Rename to `~/.gh-optivem/references/atdd/` makes the purpose honest for students opening the directory.
 
-- (a) `runtime/doctrine/atdd/` — paired with `runtime/prompts/atdd/`. "Doctrine" is already in `scope.md` vocabulary. **Author's pick.**
-- (b) `runtime/shared/atdd/` — literal, neutral.
-- (c) `runtime/phase-docs/atdd/` — matches `phase_doc:` field in `process-flow.yaml`, but slightly inaccurate once shared cross-cutting docs land alongside.
+**Surfaces touched by the dated plan:**
 
-Sync target: drop `docs` from `~/.gh-optivem/docs/` too — e.g. `~/.gh-optivem/doctrine/atdd/`.
+- Source tree: move `internal/assets/global/docs/atdd/architecture/` → `internal/assets/runtime/references/atdd/architecture/`; move `internal/assets/code/` → `internal/assets/runtime/references/code/`.
+- `internal/assets/embed.go` — update embed roots.
+- `internal/assets/sync/sync.go`, `sync/materialize.go`, `sync/sync_test.go` — update source paths and target paths.
+- ~25 `Read ${docs_root}/atdd/architecture/...` and `Read ${docs_root}/atdd/code/language-equivalents/...` lines across 10 prompt files.
+- Sync target path: `~/.gh-optivem/docs/` → `~/.gh-optivem/references/atdd/` (or equivalent). Update any docs that mention the old path.
+- Scaffolded-repo and shop-template expectations of the sync target shape.
+- `path-keys.md` — decide in the dated plan whether it follows the rename (lives under `runtime/references/atdd/process/`?), gets a more honest home, or stays as-is.
 
-**Possible follow-up:** sequence after Item 5; rename touches `sync.go`, `embed.go`, every `Read ${docs_root}/...` line, scaffolded repo paths, and the shop template.
+**Sequencing:**
 
----
+- Items 7 and 8 do not block this plan — their inlining is orthogonal (they leave the tree, not move within it).
+- Plan `20260520-0907-runtime-shared-scope-injection.md` should land first so `scope.md` is firmly in `runtime/shared/` before this rename touches anything else.
 
-### 3. Naming proposal: `runtime/doctrine/` vs `runtime/shared/`
-
-**Context:** subsumed by Item 2. Tracked separately only because the naming choice is the actionable bit; the rest of Item 2 is rationale.
-
-**Remark:** pick a name before the rename plan is written so the executor isn't bikeshedding mid-flight.
-
-**Possible follow-up:** decision lives inside Item 2's promoted plan.
-
----
-
-### 4. Doctrine/prompt naming + structure mismatch
-
-**Context:** comparing `global/docs/atdd/process/` and `runtime/prompts/atdd/`, several mismatches exist:
-
-- **Directory shape:** doctrine is nested (`analysis/`, `change/behavior/`, `change/structure/`, `shared/`); prompts are flat. Hierarchy is dropped on the prompt side.
-- **1:N fanout:** `at-green-system.md` → `at-green-system-backend.md` + `at-green-system-frontend.md`. The `-backend`/`-frontend` suffix convention isn't documented anywhere.
-- **Doctrine without prompt:** `at-refactor.md`, `system-implementation-change.md`, `analysis/acceptance-criteria-refinement.md`. Are these human-only, planned-but-orphaned, or drift? (See also items 7, 8.)
-- **Prompt without doctrine:** `chore.md`, `fix-verify.md`. Utility prompts that don't fit the phase-doc model — but undocumented.
-- **Naming inconsistency:** behavior phases are bare (`at-red-test.md` ↔ `at-red-test.md`); structure phases get `task-` prefix on the prompt (`external-system-interface-redesign.md` → `task-external-system-interface-redesign.md`). Either both should have it or neither.
-
-**Remark:** root cause is no enforced 1:1 mapping or naming convention between the two trees. A small test walking both trees and asserting the relationship (allowing for documented fanout + utility exceptions) would surface drift mechanically.
-
-**Possible follow-up:** much of this dissolves once Items 5 (consolidation) and 6 (component-fanout) land. What remains: a structural-walk test for the surviving doctrine ↔ prompt pairs.
+**Possible follow-up:** one small dated plan covering the source-tree move + sync target rename + `Read` line updates.
 
 ---
 
-### 5. Consolidation rule: inline doctrine when N=1, keep separate when N≥2 — HEADLINE
+### 3. Naming proposal: `runtime/doctrine/` vs `runtime/shared/` — RESOLVED (folded into Item 2)
 
-**Context:** the "thin agent + reference doc" pattern has a cost (two files, scope duplication, naming drift, indirection) and a benefit (single source of truth across N readers). When N=1, you pay the cost without earning the benefit.
+**Status:** RESOLVED — folded into Item 2's decision. Canonical name is `runtime/references/atdd/` (with sibling `runtime/references/code/` for the language tables). Neither `doctrine/` nor `shared/` was picked:
 
-**Decision (preliminary, user-validated direction):** the rule writes itself — keep separate when N ≥ 2 readers; inline when N = 1.
+- `doctrine/` no longer fits because the prose doctrine it referred to is gone (inlined into prompts per Item 5).
+- `shared/` is already taken by `internal/assets/runtime/shared/` (universal argv-injected preamble + scope + session-end), which is a different delivery mechanism. Reusing the name would muddle the two trees.
 
-**Applied to current state:**
+`references/` accurately names the surviving content (architecture descriptions, language tables) by how it's consumed (read on demand by specific phases), and avoids collision.
 
-| Doc | Readers | Action |
-|---|---|---|
-| `shared/scope.md` | many | keep separate |
-| `shared/conventions.md` | many | keep separate |
-| `shared/path-keys.md` | many | keep separate |
-| `change/behavior/at-green-system.md` | backend + frontend (2) | keep separate (but see Item 6 — collapses to 1 reader under component-fanout) |
-| `change/behavior/at-red-test.md` | 1 prompt | inline |
-| `change/behavior/at-red-dsl.md` | 1 prompt | inline |
-| `change/behavior/at-red-system-driver.md` | 1 prompt | inline |
-| All `ct-*` behavior docs | 1 prompt each | inline |
-| `change/behavior/disable-tests.md`, `enable-tests.md` | 0 (verify) | see Item 10 |
-| `change/structure/*` (except `system-implementation-change.md`) | 1 prompt each | inline |
-| `change/behavior/at-refactor.md` | 0 | see Item 7 |
-| `change/structure/system-implementation-change.md` | 0 | see Item 9 |
-| `analysis/acceptance-criteria-refinement.md` | 0 | see Item 8 |
+---
 
-**Resulting shape (drops `global/` entirely):**
+### 4. Doctrine/prompt naming + structure mismatch — LARGELY DISCHARGED
+
+**Status:** LARGELY DISCHARGED. The framing premise is gone: there is barely any doctrine tree left to mismatch against (`process/` is down to `path-keys.md` + the two orphans). Sub-bullets resolved:
+
+- **Directory-shape mismatch (nested vs flat):** dissolved by Item 5's inlining sweep — no nested doctrine to compare.
+- **`-backend` / `-frontend` 1:N fanout:** dissolved by Item 6's prompt-level merge.
+- **Doctrine without prompt:** `at-refactor.md` and `acceptance-criteria-refinement.md` → tracked in Items 7/8 (promoted to companion plan). `system-implementation-change.md` is gone from the tree; naming-drift question handled by Item 9.
+- **Prompt without doctrine:** under Item 5's "inline everything, no doctrine tree" model, this is no longer a mismatch — every prompt is self-contained by design.
+
+**Residual 1 — `task-` prefix on two prompts:** folded into Item 9's rename plan. The only prompts carrying the `task-` prefix are `task-system-interface-redesign.md` and `task-external-system-interface-redesign.md`. All 12 other prompts (`at-*`, `ct-*`, `chore`, `fix-verify`, `disable-tests`, `enable-tests`) are bare. The Item 9 rename plan is already touching prompt filenames + agent names + `process-flow.yaml` agent references; adding the `task-` drops costs ~30 seconds of additional edits. Rename targets:
+
+- `task-system-interface-redesign.md` → `system-interface-redesign.md`
+- `task-external-system-interface-redesign.md` → `external-system-interface-redesign.md`
+- Update `agent: task-system-interface-redesign` → `agent: system-interface-redesign` at `process-flow.yaml:1199` and similarly at line 1208.
+
+**Residual 2 — CI consistency walk (noted, not promoted):** a small test that walks `process-flow.yaml`, asserts every `agent:` value resolves to an existing prompt file under `internal/assets/runtime/prompts/atdd/`, and every `phase_doc:` value resolves to an existing file. Would mechanically catch the dangling `phase_doc:` references flagged in Items 6, 9, and here (multiple lines in `process-flow.yaml` point to files that no longer exist post-Item-5). Worth doing eventually; not blocking anything; not worth a dedicated plan today. Pick up when someone hits another dangling-reference bug.
+
+---
+
+### 5. Inline everything; no separate doctrine tree — HEADLINE — DECIDED + LARGELY DISCHARGED
+
+**Status:** DECIDED — the N=1/N≥2 framing was superseded by a wholesale "inline everything" decision. Most of the work is already landed; what's left is residual cleanup tracked in other items.
+
+**Decision (actual):** the doctrine tree `internal/assets/global/docs/atdd/process/` dissolves entirely. There is **no separate doctrine tree** in the target state — every byte of doctrine flows through prompts. Two injection mechanisms cover the cases the old N=1/N≥2 rule tried to split:
+
+- **Per-phase inlining** — phase-specific content (was N=1) is inlined directly into the per-phase prompt file under `internal/assets/runtime/prompts/atdd/`. The prompt is self-contained; no `Read ${docs_root}/...` round-trip.
+- **Universal argv injection** — cross-cutting content (was N≥2) moves under `internal/assets/runtime/shared/` and is concatenated into every dispatched prompt at Go startup via the same mechanism `preamble.md` / `session-end.md` already use. One source of truth, but no runtime Read.
+
+Net result: both injection paths produce prompts whose body already contains the doctrine the agent needs. The doctrine tree is gone; the user-facing `~/.gh-optivem/docs/` sync path shrinks accordingly.
+
+**Discharge status:**
+
+- Per-phase inlining sweep: largely landed (commits `2df45d3`, `4b44722` — placeholder plumbing for inlined prompts; subsequent commits sweep individual phase docs).
+- `at-green-system-backend.md` + `at-green-system-frontend.md`: already merged into a single `at-green-system` phase (clears Item 6's dependency on this row).
+- Universal argv injection for `scope.md` + `conventions.md`: in flight as `plans/20260520-0907-runtime-shared-scope-injection.md`.
+
+**Residuals (still open after this item):**
+
+- `path-keys.md` — last file under `process/` that isn't an orphan. Decide whether it follows `scope.md` into `runtime/shared/` (universal injection) or gets inlined per-phase, or stays as-is until its consumers are known.
+- `at-refactor.md` — orphan, tracked in Item 7.
+- `analysis/acceptance-criteria-refinement.md` — orphan, tracked in Item 8.
+- `system-implementation-change.md` was an orphan and is gone from the tree; the naming-drift question survives in Item 9.
+- `disable-tests.md` / `enable-tests.md` — gone from the tree (Item 10 was about whether they should have existed there at all; mostly moot now).
+
+**Why this is the headline:** Items 1, 2, 3, 4 were all symptoms of treating thin-vs-fat as a project-wide convention. Under "inline everything," they collapse: Item 2's `runtime/doctrine/` rename never happens because no doctrine tree survives; Item 3's naming choice is moot; Item 4's structural-walk test reduces to "no doctrine docs should exist under `process/` except residuals."
+
+**Possible follow-up:** no new plan from Item 5 itself — the work is discharged across `2df45d3`, `4b44722`, and `20260520-0907-runtime-shared-scope-injection.md`. The `path-keys.md` residual may warrant a small dated plan once its consumers are confirmed.
+
+---
+
+### 6. Collapse backend/frontend now; per-component fanout as follow-up — HEADLINE
+
+**Status:** PARTIALLY DISCHARGED at the prompt level; structural collapse pending; per-component fanout deferred to a future plan.
+
+**What's already done (prompt level):**
+
+- `at-green-system-backend.md` and `at-green-system-frontend.md` are merged into a single `internal/assets/runtime/prompts/atdd/at-green-system.md`.
+- The merged prompt has `scope: {}` (empty) and a TODO frontmatter comment marking the future `at-green-system` + `at-green-component` split as deferred.
+- The body is generic (no backend/frontend mention).
+
+**What's still live (state-machine level):**
+
+- `process-flow.yaml:391-393` — top-level `AT_GREEN_SYSTEM` is a `call_activity` wrapping the `at_green_system` sub-process.
+- `at_green_system` sub-process (lines 424-483) still has two sequential `call_activity` nodes — `AT_GREEN_BACKEND` and `AT_GREEN_FRONTEND` — both invoking the (already-parameterised) shared `green_phase_cycle` with different params:
+  - backend: `suite: "<acceptance-api>"`, `phase_id: AT_GREEN_BACKEND`, `phase_label: "AT - GREEN - SYSTEM (backend)"`
+  - frontend: `suite: "<acceptance-ui>"`, `phase_id: AT_GREEN_FRONTEND`, `phase_label: "AT - GREEN - SYSTEM (frontend)"`
+- Both nodes run unconditionally — there is no architecture-conditional branching. Monolith projects still execute `AT_GREEN_FRONTEND` even when there is nothing to implement there.
+- Both nodes reference `phase_doc: docs/atdd/process/change/behavior/at-green-system.md`, which no longer exists in the asset tree — drift from Item 5's inlining sweep.
+
+**Immediate change (do now — small dated plan):**
+
+Collapse the duality at the state-machine level. Replace the AT_GREEN_BACKEND + AT_GREEN_FRONTEND duality with a single node:
 
 ```
-runtime/
-  prompts/atdd/    # self-contained per-phase prompts (frontmatter + content)
-  doctrine/atdd/   # scope.md, conventions.md, path-keys.md (+ at-green-system.md unless Item 6 absorbs it)
+ENABLE_TESTS → AT_GREEN → COMMIT → TICK → MOVE_TICKET_IN_ACCEPTANCE → END
 ```
 
-**Why this is the headline:** Items 1, 2, 3, 4 are all symptoms of treating thin-vs-fat as a project-wide convention instead of a per-doc judgment call. Resolve this and most of them dissolve.
+- One `call_activity` into `green_phase_cycle` with `agent: at-green-system`, no `<acceptance-api>` / `<acceptance-ui>` split (suite reduces to a single project-wide acceptance suite, or the suite param drops out — to be decided in the dated plan).
+- `phase_doc:` drift gets cleaned up in the same edit — either drop the field or repoint it once the post-Item-5 prompt sourcing is locked.
+- Always-runs-both bug disappears: the collapsed node runs once per AT cycle, regardless of architecture.
+- `green_phase_cycle` parameterisation stays as-is — it is already the correct shape for either today's single-call use or future fanout.
 
-**Possible follow-up:** promoted plan that (a) walks each phase doc and inlines into its prompt, (b) leaves the genuinely-shared docs in the renamed `doctrine/` tree, (c) updates the structural-walk test (Item 4) to assert the new contract.
+**Follow-up plan (defer — separate dated plan):**
 
----
+Per-component fanout — the original Item 6 architectural shift. Out of scope for the immediate collapse; promote when concrete multi-component requirements arrive.
 
-### 6. Component-based fanout instead of hardcoded backend/frontend — HEADLINE
+- `gh-optivem.yaml` schema: `system.path` (singular) → `system.components: [{name, path, language?}, …]`.
+- `process-flow.yaml`: turn the single `AT_GREEN` node into a parameterised loop over `system.components`. Requires the state-machine engine to support loop/fanout constructs (verify support before committing).
+- `phase-scopes.yaml`: per-component scope baking. Folds in the deferred plan `plans/deferred/20260518-1530-multitier-green-scope.md` (which is narrowly about scope-key naming for the existing backend/frontend duality and only makes sense once the per-component shape lands).
+- `suite:` labels: per-component naming.
+- Shop template migration story.
+- Per-phase applicability audit (rough cut): `at-green-system` yes; `at-red-test` no (shared DSL/test suite); `at-red-dsl` no; `at-red-system-driver` maybe; `at-refactor` maybe; `ct-*` almost certainly per-component.
 
-**Context:** `at-green-system-backend.md` + `at-green-system-frontend.md` bakes in a binary split that doesn't generalise (microservices, mobile + web + admin, multi-service systems all break it).
+**Consequences for sibling items in this scratchpad:**
 
-**Proposal:** replace with parameterised per-component phase.
+- Item 11 (`AT_GREEN_BACKEND` / `AT_GREEN_FRONTEND` hardcoded) — discharged by the immediate collapse, not by parameterisation.
+- Item 12 (`suite: "<acceptance-api>"` / `"<acceptance-ui>"` labels) — discharged by the immediate collapse (suite reduces to one).
+- `plans/deferred/20260518-1530-multitier-green-scope.md` — its premise (multitier projects have AT_GREEN_BACKEND + AT_GREEN_FRONTEND as separate nodes) goes away after the collapse. The scope-key naming question only re-emerges inside the per-component fanout follow-up, at which point this deferred plan folds into that follow-up.
 
-- `at-green-component.md` — per-component implementer prompt. Takes a `component:` parameter, resolves scope to that component's paths, does the work for that slice.
-- `at-green-system.md` — either the single-component case (when the project has no fanout) OR a meta-orchestrator that fans out N `at-green-component` invocations. The orchestrator (statemachine) likely owns the fanout, not the prompt.
-
-**Per-phase applicability (quick pass — needs proper audit):**
-
-- `at-green-system` — yes, system code lives in each component
-- `at-red-test` — usually one shared DSL/test suite → no
-- `at-red-dsl` — single DSL layer → no
-- `at-red-system-driver` — maybe (per-component if each has its own driver)
-- `at-refactor` — maybe needs both shapes (local vs structural)
-- `ct-*` (component tests) — almost certainly per-component (the name says so)
-
-**Downstream cost (non-trivial):**
-
-- `gh-optivem.yaml` schema: `system.path` (singular) → `system.components: [{name, path, language?}, ...]`
-- `phase-scopes.yaml` resolution: per-component scope baking
-- The whole SSoT plan (`20260518-1530`) which currently bakes a single `sut_namespace`
-- `process-flow.yaml`: replace `AT_GREEN_BACKEND` + `AT_GREEN_FRONTEND` static `call_activity` nodes (lines 415-437) with a parameterised loop over `system.components` (see Item 11)
-- `suite:` labels currently `<acceptance-api>` / `<acceptance-ui>` (lines 422 + 434) — need per-component naming (see Item 12)
-- Shop template (currently backend+frontend) — migration story for existing scaffolded repos
-
-**Remark:** this is an architectural shift, not a rename. Belongs strictly **after** meta-bpmn lands and SSoT shape stabilises — trying to layer it in now risks invalidating decisions still being made in `20260518-1530`.
-
-**Possible follow-up:** dedicated plan, sequenced after meta-bpmn + Item 5. Groups naturally with Items 11, 12 (its scope-expansion consequences).
+**Possible follow-up:** TWO dated plans — (a) the immediate collapse (cheap, can land now), (b) the per-component fanout (defer, sequence after concrete multi-component requirements + SSoT shape stabilisation).
 
 ---
 
-### 7. `at-refactor.md` is fully orphaned
+### 7. `at-refactor.md` is fully orphaned — PROMOTED
 
-**Context:** zero references in any `.go`, `.yaml`, or other `.md`. Only mention is in `plans/20260518-2236-migrate-process-docs-hierarchy.md` calling it "new addition." No state-machine binding, no prompt, no Go code reads it.
+**Status:** PROMOTED to `plans/20260520-1109-ac-refinement-and-at-refactor-agent-steps.md` — decision is "wire up," not "delete." Specifics (canonical framing, scope rules, prompt reader, state-machine wiring, inlining into the prompt) are tracked there.
 
-**Remark:** either dead, or planned-but-orphaned. Decide which before Item 5's consolidation pass touches it (otherwise the consolidation walker has nowhere to put it).
-
-**Possible follow-up:** quick investigation — was it staged for a future plan, or left over from a removed flow? Delete or wire up.
+**Original context:** zero references in any `.go`, `.yaml`, or other `.md`; the file was a DRAFT stub left over without agent wiring.
 
 ---
 
-### 8. `acceptance-criteria-refinement.md` + entire `analysis/` orphan
+### 8. `acceptance-criteria-refinement.md` + entire `analysis/` orphan — PROMOTED
 
-**Context:** same situation as Item 7 — zero references anywhere. The whole `analysis/` subdir under `global/docs/atdd/process/` is read by nothing.
+**Status:** PROMOTED to `plans/20260520-1109-ac-refinement-and-at-refactor-agent-steps.md` (same companion plan as Item 7). Decision is "wire up," not "delete."
 
-**Remark:** likely meta-agent or human-only doc that never got wired up. Same decision as Item 7.
-
-**Possible follow-up:** investigate, then delete or wire up. If the `analysis/` subdir is intended for meta-agent prompts (e.g. acceptance-criteria refinement before AT_RED phases), that's a separate scope-expansion item.
+**Original context:** zero references anywhere; the file is the only content under `process/analysis/`, so the subdir's fate follows this file's fate. Once wired up, the surviving location is the prompt tree under `internal/assets/runtime/prompts/atdd/` (per Item 5's inlining model) — the `analysis/` subdir under `process/` dissolves.
 
 ---
 
-### 9. `chore` vs `system-implementation-change` — four names for the same thing
+### 9. `chore` vs `system-implementation-change` — naming drift — DECIDED, ready for promotion
 
-**Context:** for one underlying concept the codebase uses four different names:
+**Status:** DECIDED — canonical name is `system-implementation-refactoring`. Ready to promote to a small dated rename plan.
 
-- The prompt is named `chore.md`
-- The doctrine doc is `system-implementation-change.md` (in `change/structure/`)
-- The state machine `change_type:` label is `CHORE` (`process-flow.yaml:1136`)
-- The user-facing label (`github_setup.go:80`) and gate prompts call it `subtype:system-implementation-change`
+**Why this name (not `system-implementation-change`):** the prompt body explicitly states "no boundary or behavioral impact" — that's refactoring, not just generic change. Picking `-refactoring` also creates a clean symmetry with the sibling `change/structure/` subtypes:
 
-The user types `subtype:system-implementation-change`, sees `CHORE` in commit messages, the prompt is `chore.md`, the doctrine is `system-implementation-change.md`.
+- `system-interface-redesign` — interface change, system-side
+- `external-system-interface-redesign` — interface change, external-side
+- `system-implementation-refactoring` — implementation change, system-side
 
-**Remark:** pick one canonical name and propagate. This is naming drift, not architecture — should be cheap to fix once the canonical pick is made.
+Each name now says **what** changed (interface vs implementation) and **what kind** of change (redesign vs refactoring). Generic `change` was uninformative.
 
-**Possible follow-up:** small dated plan to unify. Likely lands after Item 5 (which decides whether `system-implementation-change.md` survives at all — if it inlines into `chore.md` under N=1, the naming question reduces to "what do we call the resulting single prompt").
+**Surfaces to rename in the dated plan:**
 
----
+- `internal/assets/runtime/prompts/atdd/chore.md` → `system-implementation-refactoring.md`
+- Agent name inside `process-flow.yaml` (line 1235) and any other binding: `chore` → `system-implementation-refactoring`
+- Prompt body wording: "Chore Agent" → "Implementation Refactoring Agent"; "CHORE - WRITE" phase label → "SYSTEM - IMPLEMENTATION - REFACTORING - WRITE" (or chosen short form)
+- `change_type:` commit-prefix value at `process-flow.yaml:1234`: `CHORE` → `SYSTEM-IMPLEMENTATION-REFACTORING` (or chosen short form for commit messages)
+- Routing condition at `process-flow.yaml:306`: `change_type == system-implementation-change` → `change_type == system-implementation-refactoring`
+- Comment at `process-flow.yaml:273`: update mapping line
+- `internal/steps/github_setup.go:80`: `subtype:system-implementation-change` → `subtype:system-implementation-refactoring`; description "Structural change to system internals (no test-stack artifact)" → "Refactoring of system internals (no boundary or behavioral change)"
+- Documentation surfaces: `docs/process-diagram.md`, `docs/images/process-diagram-5-run-cycle.svg`, deferred plan `plans/deferred/20260518-2236-migrate-process-docs-hierarchy.md`, and any other references found by `grep -ri system-implementation-change`.
 
-### 10. `disable-tests.md` / `enable-tests.md` are human-only docs
+**Bonus drift cleaned up incidentally:**
 
-**Context:** the state machine uses `service_task` actions (`disable_change_driven` at line 879, `enable_change_driven` at line 412) — Go-coded actions, no agent invocation, no prompt. Both doctrine docs have no prompt and are not Read by anything else. Pure human reference for "what the disable/enable service tasks do."
+- `process-flow.yaml:1236` references `phase_doc: docs/atdd/process/change/structure/system-implementation-change.md` — that file is gone (Item 5 inlining). The rename plan drops or repoints this field.
+- `change_type:` is overloaded inside `process-flow.yaml` — at line 306 it carries the routing name, at line 1234 it carries the commit-prefix label. The rename plan should pick **one** convention (e.g., use the long kebab everywhere and let the commit step shorten if needed) rather than perpetuate the overload.
 
-**Remark:** directly contradicts the "docs are agent-only, not for humans" framing established earlier in this conversation. Two options:
+**Migration notes:**
 
-- (a) Accept they're exceptions — explicit "human reference" carve-out in whatever tree they live in.
-- (b) Move them — they don't belong in a runtime-asset tree at all; move to `docs/atdd/` (the actual human-facing tree) or delete if the service task code is self-documenting.
+- Existing GitHub issues labelled `subtype:system-implementation-change` need a label migration (or both labels recognised during a transition window). To be decided inside the dated plan.
 
-**Possible follow-up:** decision lives inside Item 5's plan, or as a tiny separate move once Item 5 picks the new tree shape.
-
----
-
-### 11. `AT_GREEN_BACKEND` / `AT_GREEN_FRONTEND` hardcoded in `process-flow.yaml`
-
-**Context:** the backend/frontend split isn't just in prompt filenames — `process-flow.yaml:415-437` declares two sequential `call_activity` nodes. So Item 6's "switch to per-component" touches the state machine structurally, not just prompts.
-
-**Remark:** roughly, turn the two static nodes into one parameterised loop over `system.components`. Requires the state-machine engine to support loop/fanout constructs, which may or may not exist today.
-
-**Possible follow-up:** scope-expansion of Item 6's plan. Investigate state-machine fanout support before committing to the component model.
+**Possible follow-up:** small dated plan to do the rename. Sequence whenever; no architectural dependencies.
 
 ---
 
-### 12. `suite: "<acceptance-api>"` / `"<acceptance-ui>"` labels also bake backend/frontend
+### 10. `disable-tests.md` / `enable-tests.md` are human-only docs — DISCHARGED
 
-**Context:** `process-flow.yaml` lines 422 + 434 use `suite: "<acceptance-api>"` for backend, `suite: "<acceptance-ui>"` for frontend. The angle-bracket placeholders evoke "project-resolved," but the names themselves assume the backend/frontend split.
+**Status:** DISCHARGED — the premise is obsolete. Both files are now real agent prompts, not human-only docs.
 
-**Remark:** per-component model needs per-component suite names. Symptom of Item 6, not an independent problem.
+**What happened:** commit `b3b5952` ("atdd/disable-enable-tests: switch from deterministic Go to Haiku agents") converted both phases from `service_task` Go actions to `user_task` agent dispatches. Current state:
 
-**Possible follow-up:** folded into Item 6's plan.
+- `internal/assets/runtime/prompts/atdd/disable-tests.md` and `enable-tests.md` exist as Haiku agent prompts (model: haiku, effort: low, scope: {} since the work is mechanical per-language).
+- Dispatched as agent nodes in `process-flow.yaml`: `agent: enable-tests` at line 429, `agent: disable-tests` at line 922.
+- The old doctrine stubs under `global/docs/atdd/process/change/behavior/` were swept by Item 5's inlining.
+
+Item 10's framing (carve-out vs move vs delete for "human-only docs") never had to be answered — a third option (make them agent-driven) landed instead.
+
+**Related (not Item 10):** `plans/deferred/20260520-0002-deterministic-disable-enable-fallback.md` parks the idea of a deterministic-Go alternative as a future fallback if the Haiku approach proves flaky. Orthogonal — does not reopen Item 10.
+
+---
+
+### 11. `AT_GREEN_BACKEND` / `AT_GREEN_FRONTEND` hardcoded in `process-flow.yaml` — RESOLVED (folded into Item 6)
+
+**Status:** RESOLVED — folded into Item 6's two-plan split.
+
+- **Immediate collapse plan** (Item 6) discharges Item 11: replaces the two sequential `call_activity` nodes (`AT_GREEN_BACKEND` + `AT_GREEN_FRONTEND` at `process-flow.yaml:432-456`) with a single `AT_GREEN` node calling `green_phase_cycle` once. No loop/fanout engine work required.
+- **Deferred per-component fanout plan** (Item 6 follow-up) is where the "parameterised loop over `system.components`" question lives, if/when concrete multi-component requirements arrive.
+
+No separate promotion needed for Item 11.
+
+---
+
+### 12. `suite: "<acceptance-api>"` / `"<acceptance-ui>"` labels also bake backend/frontend — RESOLVED (folded into Item 6)
+
+**Status:** RESOLVED — folded into Item 6's two-plan split.
+
+- **Immediate collapse plan** (Item 6) discharges Item 12: collapsing `AT_GREEN_BACKEND` + `AT_GREEN_FRONTEND` into a single `AT_GREEN` reduces the `suite:` param to one project-wide acceptance suite (or drops the param entirely — to be decided in the collapse plan based on what `run_targeted_tests` needs).
+- **Deferred per-component fanout plan** (Item 6 follow-up) handles per-component suite naming if the component model lands.
+
+No separate promotion needed for Item 12.
 
 ---
 
