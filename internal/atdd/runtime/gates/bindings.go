@@ -132,6 +132,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("parse_ok", b.parseOK)
 	r.Register("legacy_acceptance_criteria_section_present", b.legacyAcceptanceCriteriaSectionPresent)
 	r.Register("refinement_changed", b.refinementChanged)
+	r.Register("refactor_changed", b.refactorChanged)
 	r.Register("external_system_driver_exists", b.externalSystemDriverExists)
 	r.Register("external_system_test_instance_accessible", b.externalSystemTestInstanceAccessible)
 	r.Register("smoke_test_passes", b.smokeTestPasses)
@@ -221,6 +222,19 @@ func (b bindings) refinementChanged(ctx *statemachine.Context) statemachine.Outc
 	return b.boolGate(ctx,
 		"refinement_changed",
 		"Refinement changed acceptance criteria?")
+}
+
+// refactorChanged is the post-AT_REFACTOR branch: routes the
+// at_refactor_system sub-process to COMMIT when the refactor agent
+// touched production code, and skips to the sub-process end_event when
+// the refactor was a no-op (no improvement seen). Reads the
+// `refactor_changed` flag set by the at-refactor-system agent's COMMIT
+// (`Refactor Changed: yes|no`); falls back to a prompt for hand-debugging
+// if the upstream dispatch hasn't run.
+func (b bindings) refactorChanged(ctx *statemachine.Context) statemachine.Outcome {
+	return b.boolGate(ctx,
+		"refactor_changed",
+		"Refactor changed production code?")
 }
 
 // ---------------------------------------------------------------------------
