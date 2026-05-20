@@ -28,6 +28,14 @@ structural) proceed.
 - All other sections in the ticket source are left byte-for-byte
   unchanged.
 
+## Scope
+
+This phase modifies only `${ticket_source}`, and within it only the
+three named H2 sections (`Description`, `Legacy Acceptance Criteria`,
+`Acceptance Criteria`). All other sections of the ticket source, the
+parsed-concepts artifact (read-only here), production system code,
+and tests are out of scope.
+
 ## Steps
 
 1. Read the refined parsed-concepts artifact at `${parsed_concepts}`.

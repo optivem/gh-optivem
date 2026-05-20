@@ -34,6 +34,12 @@ If no changes, `UPDATE_TICKET` is skipped.
   occurred; `no` if the AC set was already complete and Gherkin-correct.
   The downstream `UPDATE_TICKET` step runs only when `yes`.
 
+## Scope
+
+This phase mutates only the parsed-concepts artifact passed via the
+`${parsed_concepts}` input — no code layer is modified. The ticket
+source file, production system code, and tests are out of scope.
+
 ## Steps
 
 1. Read `${parsed_concepts}`.

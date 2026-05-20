@@ -80,17 +80,6 @@ Observations / open questions (to discuss):
 > agent prompt file, gate wiring, inline phase doc, language-equivalents
 > update, etc. — once we've discussed it. Leaving as stubs deliberately.
 
-3. Add a `## Scope` block to **both** docs (different scopes per agent):
-   - `refine-acc.md` (refiner) — scopes to the **parsed-concepts
-     artifact** as the working store. Ticket source file, production
-     system code, and tests are out of scope.
-   - `update-ticket.md` (writer) — scopes to the **ticket source's
-     three named sections** (`Description`, `Legacy Acceptance Criteria`,
-     `Acceptance Criteria`). All other ticket sections, the
-     parsed-concepts artifact (read-only here), production system code,
-     and tests are out of scope.
-   Link to `shared/scope.md` for the cross-phase scope rule, same as
-   at-refactor.
 4. Embed a short, opinionated **rubric for AC coverage** inline in
    `refine-acc.md`. Self-contained — no external pointer. The
    rubric drives both the "is the existing AC set adequate?" check and
@@ -192,5 +181,5 @@ Observations / open questions (to discuss):
 
 ## Pickup
 
-Items 1–2 landed in session at 2026-05-20T10:13:47Z (see commit log).
-Items 3–4 next; items 5–9 deferred to fresh sessions.
+Items 1–3 landed in session at 2026-05-20T10:13:47Z (see commit log).
+Item 4 next; items 5–9 deferred to fresh sessions.
