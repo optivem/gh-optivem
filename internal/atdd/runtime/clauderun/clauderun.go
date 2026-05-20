@@ -44,15 +44,11 @@ import (
 // Options bundles every input Dispatch needs to construct a prompt and run
 // the subprocess. Zero values yield a usable configuration where it makes
 // sense (Stdout/Stderr/Stdin default to the OS streams). Required fields
-// (Agent, PhaseDoc, IssueNum, IssueTitle, NodeDescription) are
+// (Agent, IssueNum, IssueTitle, NodeDescription) are
 // not zero-defaulted because missing them yields a meaningless prompt.
 type Options struct {
 	// Agent is the subagent name to launch (e.g. "at-red-test").
 	Agent string
-
-	// PhaseDoc is the relative path to the phase's process document
-	// (e.g. "docs/atdd/process/change/behavior/at-red-test.md").
-	PhaseDoc string
 
 	// NodeDescription is the YAML node's `documentation:` — surfaced in the
 	// prompt so the agent has the same context the operator would have read.
@@ -138,7 +134,8 @@ type Options struct {
 	// node surfaces as ${failure_type} = "compile" in the rendered prompt.
 	// This is how per-call-site labels reach the agent body without an
 	// agent-specific Options field. Lower precedence than the fixed-schema
-	// placeholders (issue_num, phase_doc, …) — those win on key collision.
+	// placeholders (issue_num, issue_title, phase, …) — those win on key
+	// collision.
 	NodeParams map[string]string
 
 	// Placeholders carries the project-wide ${name} substitutions the
@@ -497,17 +494,16 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 		}
 	}
 	for k, v := range map[string]string{
-		"issue_num":        strconv.Itoa(opts.IssueNum),
-		"issue_title":      opts.IssueTitle,
-		"phase":            opts.NodeDescription,
-		"phase_doc":        opts.PhaseDoc,
+		"issue_num":       strconv.Itoa(opts.IssueNum),
+		"issue_title":     opts.IssueTitle,
+		"phase":           opts.NodeDescription,
 		"architecture":    opts.Architecture,
-		"subtype":          opts.Subtype,
-		"allowed_roots":    opts.AllowedRoots,
-		"checklist":        opts.Checklist,
-		"verify_results":   opts.VerifyResults,
-		"changed_files":    opts.ChangedFiles,
-		"references_root":  referencesRoot,
+		"subtype":         opts.Subtype,
+		"allowed_roots":   opts.AllowedRoots,
+		"checklist":       opts.Checklist,
+		"verify_results":  opts.VerifyResults,
+		"changed_files":   opts.ChangedFiles,
+		"references_root": referencesRoot,
 	} {
 		params[k] = v
 	}

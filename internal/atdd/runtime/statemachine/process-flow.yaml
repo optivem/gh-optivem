@@ -378,7 +378,6 @@ processes:
         process: red_phase_cycle
         params:
           agent: at-red-test
-          phase_doc: docs/atdd/process/change/behavior/at-red-test.md
           phase_label: "AT - RED - TEST"
           phase_id: AT_RED_TEST
           change_type: "AT - RED - TEST"
@@ -395,7 +394,6 @@ processes:
         process: red_phase_cycle
         params:
           agent: at-red-dsl
-          phase_doc: docs/atdd/process/change/behavior/at-red-dsl.md
           phase_label: "AT - RED - DSL"
           phase_id: AT_RED_DSL
           change_type: "AT - RED - DSL"
@@ -432,7 +430,6 @@ processes:
         process: red_phase_cycle
         params:
           agent: at-red-system-driver
-          phase_doc: docs/atdd/process/change/behavior/at-red-system-driver.md
           phase_label: "AT - RED - SYSTEM DRIVER"
           phase_id: AT_RED_SYSTEM_DRIVER
           change_type: "AT - RED - SYSTEM DRIVER"
@@ -495,7 +492,6 @@ processes:
         process: green_phase_cycle
         params:
           agent: at-green-system
-          phase_doc: ""
           phase_label: "AT - GREEN - SYSTEM"
           phase_id: AT_GREEN
           rebuild_before_run: "true"
@@ -546,7 +542,6 @@ processes:
         process: green_phase_cycle
         params:
           agent: at-refactor-system
-          phase_doc: ""
           phase_label: "AT - REFACTOR - SYSTEM"
           phase_id: AT_REFACTOR
           rebuild_before_run: "true"
@@ -591,7 +586,6 @@ processes:
         process: red_phase_cycle
         params:
           agent: ct-red-test
-          phase_doc: docs/atdd/process/change/behavior/ct-red-test.md
           phase_label: "CT - RED - TEST"
           phase_id: CT_RED_TEST
           change_type: "CT - RED - TEST"
@@ -609,7 +603,6 @@ processes:
         process: red_phase_cycle
         params:
           agent: ct-red-dsl
-          phase_doc: docs/atdd/process/change/behavior/ct-red-dsl.md
           phase_label: "CT - RED - DSL"
           phase_id: CT_RED_DSL
           change_type: "CT - RED - DSL"
@@ -629,7 +622,6 @@ processes:
         process: red_phase_cycle
         params:
           agent: ct-red-external-system-driver
-          phase_doc: docs/atdd/process/change/behavior/ct-red-external-system-driver.md
           phase_label: "CT - RED - EXTERNAL SYSTEM DRIVER"
           phase_id: CT_RED_EXTERNAL_SYSTEM_DRIVER
           change_type: "CT - RED - EXTERNAL SYSTEM DRIVER"
@@ -649,7 +641,6 @@ processes:
         # Placeholder agent name; resolve before the Go runtime ships.
         type: user_task
         agent: ct-green-external-system-stub
-        phase_doc: docs/atdd/process/change/behavior/ct-green-external-system-stub.md
         documentation: "CT - GREEN - STUBS"
 
       - id: CT_END
@@ -756,8 +747,8 @@ processes:
   # ===========================================================================
   # structural_cycle
   # Shared by system-api-task, system-ui-task, and task-system-implementation-refactoring via call_activity
-  # `params:`. The Go runtime substitutes ${change_type}, ${agent}, ${phase_doc}
-  # at dispatch time. COMPILE always runs after APPROVE_CHANGE; TEST scope is
+  # `params:`. The Go runtime substitutes ${change_type}, ${agent} at
+  # dispatch time. COMPILE always runs after APPROVE_CHANGE; TEST scope is
   # picked at CHOOSE_TESTS (y/n then a/s/p — "no" skips the test phase
   # entirely). When tests are selected the cycle hoists a BUILD_SYSTEM →
   # START_SYSTEM pair (gh optivem system build --rebuild + system start
@@ -777,7 +768,6 @@ processes:
       - id: WRITE
         type: user_task
         agent: ${agent}
-        phase_doc: ${phase_doc}
         documentation: "${change_type} - WRITE"
 
       - id: APPROVE_CHANGE
@@ -792,7 +782,6 @@ processes:
         params:
           compile_action: compile_all
           fix_agent: fix-verify
-          phase_doc: ${phase_doc}
         documentation: "Compile in-scope projects (human-gated on fail)"
 
       - id: CHOOSE_TESTS
@@ -834,7 +823,6 @@ processes:
       - id: FIX_TEST
         type: user_task
         agent: fix-verify
-        phase_doc: ${phase_doc}
         params:
           failure_type: test
         documentation: "Dispatch fix agent on test RED — structural cycle expects green"
@@ -888,7 +876,6 @@ processes:
   #
   # Callers supply via `params:`:
   #   - agent             — the WRITE agent (e.g. at-red-test, at-red-dsl, at-red-system-driver)
-  #   - phase_doc         — the per-phase doc the agent reads
   #   - phase_label       — the human-readable phase tag, used in node
   #                         descriptions (e.g. "AT - RED - TEST"). Substituted
   #                         into ${phase_label}.
@@ -933,7 +920,6 @@ processes:
       - id: WRITE
         type: user_task
         agent: ${agent}
-        phase_doc: ${phase_doc}
         documentation: "${phase_label} - WRITE"
 
       # ---- Layer 1: agent-triggered scope exception (plan 20260518-1144 item 6) ----
@@ -968,7 +954,6 @@ processes:
         params:
           compile_action: ${compile_action}
           fix_agent: ${agent}
-          phase_doc: ${phase_doc}
         documentation: "Compile ${phase_label} (human-gated on fail)"
 
       - id: GATE_VERIFY_REAL_REQUIRED
@@ -1071,7 +1056,6 @@ processes:
   #
   # Callers supply via `params:`:
   #   - agent              — the WRITE agent (e.g. at-green-system, at-red-test, ct-red-dsl)
-  #   - phase_doc          — the per-phase doc the agent reads
   #   - phase_label        — human-readable phase tag, used in node
   #                          descriptions (e.g. "AT - GREEN - SYSTEM (backend)")
   #   - suite              — the test suite passed to run_targeted_tests
@@ -1095,7 +1079,6 @@ processes:
       - id: WRITE
         type: user_task
         agent: ${agent}
-        phase_doc: ${phase_doc}
         documentation: "${phase_label} - WRITE"
 
       # ---- Layer 1: agent-triggered scope exception (plan 20260518-1144 item 6) ----
@@ -1121,7 +1104,6 @@ processes:
         params:
           compile_action: ${compile_action}
           fix_agent: ${agent}
-          phase_doc: ${phase_doc}
         documentation: "Compile ${phase_label} (human-gated on fail)"
 
       - id: RUN
@@ -1185,8 +1167,6 @@ processes:
   #                      `failure_type=compile`); RED and GREEN callers pass
   #                      the cycle's own WRITE agent (${agent}), which simply
   #                      retries the write with corrections.
-  #   - phase_doc      — phase doc passed to fix_agent so it knows what to
-  #                      read first.
   # ===========================================================================
   compile:
     start: COMPILE
@@ -1210,7 +1190,6 @@ processes:
       - id: FIX_COMPILE
         type: user_task
         agent: ${fix_agent}
-        phase_doc: ${phase_doc}
         params:
           failure_type: compile
         documentation: "FIX compile errors"
@@ -1288,7 +1267,6 @@ processes:
         params:
           change_type: "SYSTEM INTERFACE REDESIGN"
           agent: task-system-interface-redesign
-          phase_doc: docs/atdd/process/change/structure/system-interface-redesign.md
           subtype: system-interface-redesign
 
       - id: EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE
@@ -1297,7 +1275,6 @@ processes:
         params:
           change_type: "EXTERNAL SYSTEM INTERFACE REDESIGN"
           agent: task-external-system-interface-redesign
-          phase_doc: docs/atdd/process/change/structure/external-system-interface-redesign.md
           subtype: external-system-interface-redesign
 
       - id: DA_END
@@ -1313,7 +1290,7 @@ processes:
   # sut_cycle
   # System Under Test cycle — structural change with no test-stack artifact
   # changing (no AT, no DA). Routes through structural_cycle with the
-  # system-implementation-refactoring task change_type / agent / phase_doc.
+  # system-implementation-refactoring task change_type / agent.
   # ===========================================================================
   sut_cycle:
     start: SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE
@@ -1324,7 +1301,6 @@ processes:
         params:
           change_type: system-implementation-refactoring
           agent: task-system-implementation-refactoring
-          phase_doc: docs/atdd/process/change/structure/system-implementation-refactoring.md
 
       - id: SUT_END
         type: end_event

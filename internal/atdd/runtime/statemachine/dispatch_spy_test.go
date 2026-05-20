@@ -182,14 +182,12 @@ func commitFromTemplateParams() map[string]string {
 
 // compileFromStructTemplateParams is the literal raw.Params declared at
 // structural_cycle.COMPILE — `{compile_action: compile_all, fix_agent:
-// fix-verify, phase_doc: ${phase_doc}}` (unexpanded). STRUCT
-// hardcodes the compile tier and the fix agent because there is no
-// parent cycle context to forward.
+// fix-verify}` (unexpanded). STRUCT hardcodes the compile tier and the
+// fix agent because there is no parent cycle context to forward.
 func compileFromStructTemplateParams() map[string]string {
 	return map[string]string{
 		"compile_action": "compile_all",
 		"fix_agent":      "fix-verify",
-		"phase_doc":      "${phase_doc}",
 	}
 }
 
@@ -200,15 +198,13 @@ func compileFromCycleTemplateParams() map[string]string {
 	return map[string]string{
 		"compile_action": "${compile_action}",
 		"fix_agent":      "${agent}",
-		"phase_doc":      "${phase_doc}",
 	}
 }
 
 // compileFromStruct returns the params snapshot seen *inside* the shared
 // compile sub-process when STRUCT invokes it. STRUCT's parent scope does
 // not carry compile_action or fix_agent, so the call_activity introduces
-// them as new keys (compile_all + fix-verify). phase_doc rebinds to
-// itself (no-op).
+// them as new keys (compile_all + fix-verify).
 func compileFromStruct(parent map[string]string) map[string]string {
 	out := cloneParams(parent)
 	out["compile_action"] = "compile_all"
@@ -218,11 +214,10 @@ func compileFromStruct(parent map[string]string) map[string]string {
 
 // compileFromCycle returns the params snapshot seen *inside* the shared
 // compile sub-process when red_phase_cycle / green_phase_cycle invokes
-// it. Both forward compile_action and phase_doc verbatim (no-op rebind
-// since parent already has the same keys/values) and introduce fix_agent
-// = parent's `agent` (the cycle's WRITE agent doubles as the fix agent
-// because compile-fail in RED/GREEN is a re-dispatch of the same
-// creative step).
+// it. Both forward compile_action verbatim (no-op rebind since parent
+// already has the same key/value) and introduce fix_agent = parent's
+// `agent` (the cycle's WRITE agent doubles as the fix agent because
+// compile-fail in RED/GREEN is a re-dispatch of the same creative step).
 func compileFromCycle(parent map[string]string) map[string]string {
 	out := cloneParams(parent)
 	out["fix_agent"] = parent["agent"]
@@ -240,7 +235,6 @@ func compileFromCycle(parent map[string]string) map[string]string {
 func atRedTestParams() map[string]string {
 	return map[string]string{
 		"agent":          "at-red-test",
-		"phase_doc":      "docs/atdd/process/change/behavior/at-red-test.md",
 		"phase_label":    "AT - RED - TEST",
 		"phase_id":       "AT_RED_TEST",
 		"change_type":    "AT - RED - TEST",
@@ -252,7 +246,6 @@ func atRedTestParams() map[string]string {
 func atRedDslParams() map[string]string {
 	return map[string]string{
 		"agent":          "at-red-dsl",
-		"phase_doc":      "docs/atdd/process/change/behavior/at-red-dsl.md",
 		"phase_label":    "AT - RED - DSL",
 		"phase_id":       "AT_RED_DSL",
 		"change_type":    "AT - RED - DSL",
@@ -265,7 +258,6 @@ func atRedDslParams() map[string]string {
 func ctRedTestParams() map[string]string {
 	return map[string]string{
 		"agent":             "ct-red-test",
-		"phase_doc":         "docs/atdd/process/change/behavior/ct-red-test.md",
 		"phase_label":       "CT - RED - TEST",
 		"phase_id":          "CT_RED_TEST",
 		"change_type":       "CT - RED - TEST",
@@ -278,7 +270,6 @@ func ctRedTestParams() map[string]string {
 func ctRedDslParams() map[string]string {
 	return map[string]string{
 		"agent":          "ct-red-dsl",
-		"phase_doc":      "docs/atdd/process/change/behavior/ct-red-dsl.md",
 		"phase_label":    "CT - RED - DSL",
 		"phase_id":       "CT_RED_DSL",
 		"change_type":    "CT - RED - DSL",
@@ -290,7 +281,6 @@ func ctRedDslParams() map[string]string {
 func ctRedExternalDriverParams() map[string]string {
 	return map[string]string{
 		"agent":          "ct-red-external-system-driver",
-		"phase_doc":      "docs/atdd/process/change/behavior/ct-red-external-system-driver.md",
 		"phase_label":    "CT - RED - EXTERNAL SYSTEM DRIVER",
 		"phase_id":       "CT_RED_EXTERNAL_SYSTEM_DRIVER",
 		"change_type":    "CT - RED - EXTERNAL SYSTEM DRIVER",
@@ -301,12 +291,10 @@ func ctRedExternalDriverParams() map[string]string {
 // green_phase_cycle dispatched from at_green_system.AT_GREEN — the
 // channel-agnostic single dispatch that replaced the backend/frontend
 // duality. No `suite:` key (run_targeted_tests falls back to
-// testselect.AcceptanceSuites()); empty `phase_doc:` because the
-// merged at-green-system prompt is self-contained.
+// testselect.AcceptanceSuites()).
 func atGreenParams() map[string]string {
 	return map[string]string{
 		"agent":              "at-green-system",
-		"phase_doc":          "",
 		"phase_label":        "AT - GREEN - SYSTEM",
 		"phase_id":           "AT_GREEN",
 		"rebuild_before_run": "true",
@@ -326,7 +314,6 @@ func atGreenCommitParams() map[string]string {
 func atRefactorParams() map[string]string {
 	return map[string]string{
 		"agent":              "at-refactor-system",
-		"phase_doc":          "",
 		"phase_label":        "AT - REFACTOR - SYSTEM",
 		"phase_id":           "AT_REFACTOR",
 		"rebuild_before_run": "true",
@@ -345,7 +332,6 @@ func systemInterfaceRedesignParams() map[string]string {
 	return map[string]string{
 		"change_type": "SYSTEM INTERFACE REDESIGN",
 		"agent":       "task-system-interface-redesign",
-		"phase_doc":   "docs/atdd/process/change/structure/system-interface-redesign.md",
 		"subtype":     "system-interface-redesign",
 	}
 }

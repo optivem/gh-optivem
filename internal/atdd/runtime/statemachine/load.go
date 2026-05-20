@@ -17,7 +17,6 @@ type RawNode struct {
 	Agent         string            `yaml:"agent,omitempty"`
 	Binding       string            `yaml:"binding,omitempty"`
 	Process       string            `yaml:"process,omitempty"`
-	PhaseDoc      string            `yaml:"phase_doc,omitempty"`
 	Documentation string            `yaml:"documentation,omitempty"`
 	Role          string            `yaml:"role,omitempty"`
 	Group         string            `yaml:"group,omitempty"`

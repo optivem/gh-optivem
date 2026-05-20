@@ -86,7 +86,6 @@ processes:
         type: user_task
         agent: at-red-test
         documentation: Write the AT-RED scenario
-        phase_doc: docs/atdd/process/change/behavior/at-red-test.md
       - id: END
         type: end_event
     sequence_flows:
@@ -95,10 +94,9 @@ processes:
 `
 
 // templatedYAML mirrors the structural_cycle's parameterised user_task: the
-// agent / phase_doc / description fields all carry ${…} placeholders that
-// only resolve once Context.Params is populated by the calling
-// call_activity. The dispatcher must expand these before printing them or
-// passing them to clauderun.
+// agent / description fields carry ${…} placeholders that only resolve once
+// Context.Params is populated by the calling call_activity. The dispatcher
+// must expand these before printing them or passing them to clauderun.
 const templatedYAML = `
 processes:
   main:
@@ -110,7 +108,6 @@ processes:
         type: user_task
         agent: ${agent}
         documentation: ${change_type} - WRITE
-        phase_doc: ${phase_doc}
       - id: END
         type: end_event
     sequence_flows:
@@ -208,8 +205,8 @@ func TestClaudeRunDispatch_AdvancesOnCleanExit(t *testing.T) {
 	if !strings.Contains(got, "#42") || !strings.Contains(got, "Add PUT") {
 		t.Errorf("prompt missing ticket context")
 	}
-	if !strings.Contains(got, "docs/atdd/process/change/behavior/at-red-test.md") {
-		t.Errorf("prompt missing phase doc")
+	if strings.Contains(got, "Phase doc:") {
+		t.Errorf("prompt still carries a `Phase doc:` line; the field was dropped")
 	}
 	if strings.Contains(got, "${") {
 		t.Errorf("prompt still contains ${...} placeholder")
@@ -404,16 +401,16 @@ func TestPreflightFailureSurfacesEarly(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Templated dispatch — ${agent} / ${change_type} / ${phase_doc} expansion
+// Templated dispatch — ${agent} / ${change_type} expansion
 // ---------------------------------------------------------------------------
 
 func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	// The structural_cycle reuses one set of YAML nodes across
 	// SYSTEM_INTERFACE_REDESIGN_CYCLE / SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE by injecting
-	// ${agent} / ${change_type} / ${phase_doc} via
-	// call_activity params. The dispatcher must resolve raw.Agent before
-	// looking up the embedded prompt — otherwise it would try to load a
-	// prompt named "${agent}", which doesn't exist.
+	// ${agent} / ${change_type} via call_activity params. The dispatcher
+	// must resolve raw.Agent before looking up the embedded prompt —
+	// otherwise it would try to load a prompt named "${agent}", which
+	// doesn't exist.
 	gitFake := &fakeGit{
 		out: [][]byte{
 			[]byte("aaaaaaa1\n"),
@@ -446,7 +443,6 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	ctx.Params = map[string]string{
 		"agent":       "task-system-interface-redesign",
 		"change_type": "SYSTEM UI REDESIGN",
-		"phase_doc":   "docs/atdd/process/change/structure/sysui-redesign.md",
 	}
 
 	out := fn(ctx)
@@ -462,9 +458,6 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	}
 	if !strings.Contains(prompt, "You are the Task Agent") {
 		t.Errorf("prompt missing expanded agent identity line (task-system-interface-redesign → Task Agent)")
-	}
-	if !strings.Contains(prompt, "docs/atdd/process/change/structure/sysui-redesign.md") {
-		t.Errorf("prompt missing expanded phase_doc")
 	}
 	if !strings.Contains(prompt, "SYSTEM UI REDESIGN - WRITE") {
 		t.Errorf("prompt missing expanded phase description")
@@ -490,7 +483,6 @@ func TestManualAgents_BannerSubstitutesTemplatedFields(t *testing.T) {
 	ctx.Params = map[string]string{
 		"agent":       "task-system-interface-redesign",
 		"change_type": "SYSTEM UI REDESIGN",
-		"phase_doc":   "docs/atdd/process/change/structure/sysui-redesign.md",
 	}
 
 	if out := fn(ctx); out.Err != nil {
@@ -506,8 +498,8 @@ func TestManualAgents_BannerSubstitutesTemplatedFields(t *testing.T) {
 	if !strings.Contains(got, "Launch the task-system-interface-redesign agent") {
 		t.Errorf("banner missing expanded launch line:\n%s", got)
 	}
-	if !strings.Contains(got, "docs/atdd/process/change/structure/sysui-redesign.md") {
-		t.Errorf("banner missing expanded phase doc:\n%s", got)
+	if strings.Contains(got, "Phase doc:") {
+		t.Errorf("banner still carries a `Phase doc:` line; the field was dropped:\n%s", got)
 	}
 }
 

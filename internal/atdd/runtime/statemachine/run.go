@@ -182,7 +182,7 @@ const maxDispatchesPerProcess = 10000
 // as terminal — covers both end_event and any node placed as a process tail).
 //
 // Nodes are dispatched after expandParams substitutes ${name} occurrences in
-// the raw node fields the body may want to read (agent, phase_doc, etc.).
+// the raw node fields the body may want to read (agent, etc.).
 // The NodeFn itself is bound at load time and does not see the substitutions
 // directly — actions/gates/agents that need params read them via the live
 // Context.Params map.

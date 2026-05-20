@@ -656,7 +656,7 @@ func writeResolvedIssue(sCtx *statemachine.Context, issue tracker.Issue) {
 // agent that has an embedded prompt (filesystem walk via agents.Names).
 // The substantive prompt-and-pause behaviour is layered on after Bind by
 // wrapAgentDispatchers, which has access to per-node RawNode metadata
-// (description, phase_doc). Adding a new agent is now: drop a prompt
+// (description, agent). Adding a new agent is now: drop a prompt
 // under internal/atdd/runtime/agents/prompts/, recompile.
 func registerAgentDispatchers(r *agents.Registry) {
 	noop := func(ctx *statemachine.Context) statemachine.Outcome {
@@ -669,7 +669,7 @@ func registerAgentDispatchers(r *agents.Registry) {
 
 // wrapAgentDispatchers replaces every user_task NodeFn with a
 // per-node closure that has access to the YAML node's Raw metadata
-// (description, phase_doc, agent name) and the per-run Options:
+// (description, agent name) and the per-run Options:
 //
 //   - `agent: human` STOP nodes get a human-stop dispatcher that
 //     prints the node ID + description before blocking on stdin, so
@@ -799,7 +799,6 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 		}
 		cOpts := clauderun.Options{
 			Agent:              agentName,
-			PhaseDoc:           statemachine.ExpandParams(raw.PhaseDoc, ctx.Params),
 			NodeDescription:    statemachine.ExpandParams(raw.Documentation, ctx.Params),
 			IssueNum:           issueNum,
 			IssueTitle:         ctx.GetString("issue_title"),
@@ -867,12 +866,11 @@ func fixVerifyChangedFiles(agent, repoPath string) string {
 // until the operator types Enter (continue) or `abort` (halt). v1 / fallback path.
 //
 // params is the live Context.Params for the call_activity scope; templated
-// fields in raw (e.g. ${agent} / ${phase_doc} / ${change_type} inside the shared
+// fields in raw (e.g. ${agent} / ${change_type} inside the shared
 // structural_cycle) are expanded against it so the operator sees the
 // substituted name in the banner instead of the literal placeholder.
 func promptForAgent(opts Options, raw statemachine.RawNode, params map[string]string) error {
 	agent := statemachine.ExpandParams(raw.Agent, params)
-	phaseDoc := statemachine.ExpandParams(raw.PhaseDoc, params)
 	documentation := statemachine.ExpandParams(raw.Documentation, params)
 	step := raw.ID
 
@@ -883,9 +881,6 @@ func promptForAgent(opts Options, raw statemachine.RawNode, params map[string]st
 	}
 	if documentation != "" {
 		fmt.Fprintf(opts.Stdout, "  Phase: %s\n", documentation)
-	}
-	if phaseDoc != "" {
-		fmt.Fprintf(opts.Stdout, "  Phase doc: %s\n", phaseDoc)
 	}
 	fmt.Fprintf(opts.Stdout, "  Launch the %s agent now (e.g. via the Task tool in Claude Code).\n", agent)
 	fmt.Fprintln(opts.Stdout, "  When the agent's COMMIT lands on HEAD, approve to continue.")

@@ -10,8 +10,8 @@ import "fmt"
 //     the run progresses, so later predicates can read upstream results.
 //
 //   - Params: parameter substitutions for the current call_activity scope.
-//     The structural_cycle flow uses ${change_type}, ${agent}, ${phase_doc}
-//     which are resolved against this map at dispatch time (see ExpandParams).
+//     The structural_cycle flow uses ${change_type}, ${agent} which are
+//     resolved against this map at dispatch time (see ExpandParams).
 //
 // Context is mutable — service tasks and gateways can write to State, and
 // call_activity dispatch swaps Params on entry and restores it on return.

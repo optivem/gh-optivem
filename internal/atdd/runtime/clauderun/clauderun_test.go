@@ -118,7 +118,6 @@ func (f *fakeGit) hasGitArg(prefix ...string) bool {
 func newOpts() Options {
 	return Options{
 		Agent:           "at-red-test",
-		PhaseDoc:        "docs/atdd/process/change/behavior/at-red-test.md",
 		NodeDescription: "Write the AT-RED scenario",
 		IssueNum:        42,
 		IssueTitle:      "Add PUT /carts/{id}/items endpoint",
@@ -154,7 +153,12 @@ func TestRenderPrompt_IncludesAllFields(t *testing.T) {
 	mustContain(t, got, "You are the Test Agent")
 	mustContain(t, got, `#42 "Add PUT /carts/{id}/items endpoint"`)
 	mustContain(t, got, "Phase: Write the AT-RED scenario")
-	mustContain(t, got, "Phase doc: docs/atdd/process/change/behavior/at-red-test.md")
+	// Phase doc was dropped — every preamble agent now reads from its
+	// own embedded prompt body; assert the rendered preamble does NOT
+	// reintroduce the dangling line.
+	if strings.Contains(got, "Phase doc:") {
+		t.Errorf("rendered prompt still has a `Phase doc:` line:\n%s", got)
+	}
 	mustContain(t, got, "prefer record types")
 	mustContain(t, got, "do not summarise")
 	mustContain(t, got, "the agent must never run `git commit`")
