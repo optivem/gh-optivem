@@ -1,5 +1,7 @@
 # Plan: turn acceptance-criteria-refinement and at-refactor docs into agent steps
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-20T10:13:47Z` (items 1–4 only this session)
+
 ## Purpose
 
 Two ATDD phase docs are currently DRAFT stubs with bare prose steps and no
@@ -78,24 +80,6 @@ Observations / open questions (to discuss):
 > agent prompt file, gate wiring, inline phase doc, language-equivalents
 > update, etc. — once we've discussed it. Leaving as stubs deliberately.
 
-1. Rename `acceptance-criteria-refinement.md` → `backlog-refinement.md`
-   and reposition it as a **backlog-refinement cycle** that runs after
-   ticket-parse / concepts extraction and **before** the execution cycles
-   (behavioral / structural). Lifecycle:
-   1. Cycle iterates over **all** acceptance criteria for the ticket
-      (legacy + newly-derived).
-   2. Rewriter behavior (not reviewer): proposes edits to existing ACs,
-      adds new ACs when it sees additional scenarios that aren't covered,
-      enforces Gherkin GIVEN-WHEN-THEN format throughout.
-   3. **User confirms** the refined concepts/ACs (human gate).
-   4. If any changes occurred during refinement, the **`UPDATE_TICKET`**
-      step runs (writer defined in item 2). If refinement produced no
-      changes, `UPDATE_TICKET` is skipped (no-op discharge).
-   5. Only then do the execution cycles (AT behavioral / structural)
-      proceed.
-   Confirm placement in `process-flow.yaml` (covered in item 6) and the
-   final filename / dir (`process/analysis/` vs a new `process/backlog/`
-   location).
 2. Define inputs/outputs for the backlog-refinement cycle and its
    downstream `UPDATE_TICKET` step.
    - **Input (cycle):** the parsed-concepts artifact emitted by the
@@ -113,18 +97,23 @@ Observations / open questions (to discuss):
    - **Skip path:** if refinement produced no changes, `UPDATE_TICKET`
      does not run; the cycle discharges silently into the execution
      cycles.
-   - Open: where does `UPDATE_TICKET` live — its own phase doc / agent,
-     or a sub-step inside `backlog-refinement.md`? Decide alongside
-     item 6 (process-flow wiring).
-3. Add a `## Scope` block to `backlog-refinement.md`. Unlike at-refactor
-   (which scopes to a code layer), backlog-refinement scopes to the
-   **ticket source's three named sections** — `Description`,
-   `Legacy Acceptance Criteria`, `Acceptance Criteria` — plus the
-   **parsed-concepts artifact** as the working store. Production system
-   code and tests are explicitly out of scope. Link to `shared/scope.md`
-   for the cross-phase scope rule, same as at-refactor.
+   - **Location:** `UPDATE_TICKET` lives in its own phase doc
+     `process/analysis/update-ticket.md` and its own runtime prompt
+     `runtime/prompts/atdd/update-ticket.md` (Haiku agent — mechanical
+     write-back, no judgment). Sibling to `refine-acc.md`.
+3. Add a `## Scope` block to **both** docs (different scopes per agent):
+   - `refine-acc.md` (refiner) — scopes to the **parsed-concepts
+     artifact** as the working store. Ticket source file, production
+     system code, and tests are out of scope.
+   - `update-ticket.md` (writer) — scopes to the **ticket source's
+     three named sections** (`Description`, `Legacy Acceptance Criteria`,
+     `Acceptance Criteria`). All other ticket sections, the
+     parsed-concepts artifact (read-only here), production system code,
+     and tests are out of scope.
+   Link to `shared/scope.md` for the cross-phase scope rule, same as
+   at-refactor.
 4. Embed a short, opinionated **rubric for AC coverage** inline in
-   `backlog-refinement.md`. Self-contained — no external pointer. The
+   `refine-acc.md`. Self-contained — no external pointer. The
    rubric drives both the "is the existing AC set adequate?" check and
    the "what new ACs should I add?" decision. Initial rubric content (to
    be tightened during execution):
@@ -200,12 +189,11 @@ Observations / open questions (to discuss):
 7. Inline the phase docs into their prompt readers, mirroring the
    pattern from commit `4b44722` (the 11 phases already inlined).
    Targets:
-   - `backlog-refinement.md` (post-rename from
-     `acceptance-criteria-refinement.md` — see item 1).
-   - `at-refactor.md`.
-   - **Conditional:** if item 2's open question resolves to
-     `UPDATE_TICKET` getting its own phase doc (rather than a sub-step
-     inside `backlog-refinement.md`), inline that doc too.
+   - `refine-acc.md` → `runtime/prompts/atdd/refine-acc.md`.
+   - `update-ticket.md` → `runtime/prompts/atdd/update-ticket.md`
+     (sibling writer doc — see item 2).
+   - `at-refactor.md` → `runtime/prompts/atdd/at-refactor-system.md`
+     (per item 5).
 8. Update `docs/atdd/code/language-equivalents.md` **only if at-refactor
    introduces language-specific behavior**. backlog-refinement is
    language-agnostic (it operates on tickets + parsed-concepts artifact,
@@ -215,16 +203,15 @@ Observations / open questions (to discuss):
    pattern). If the agent is generic enough that the same prompt works
    for all three languages without per-language guidance, skip this
    item.
-9. Drop the `(DRAFT)` suffix from the two phase doc H1 titles once
+9. Drop the `(DRAFT)` suffix from the phase doc H1 titles once
    items 1–8 land:
-   - `backlog-refinement.md` (post-rename from
-     `acceptance-criteria-refinement.md` per item 1 — the rename and
-     the DRAFT-drop can happen in the same edit pass).
+   - `refine-acc.md`.
+   - `update-ticket.md`.
    - `at-refactor.md`.
 
 ---
 
 ## Pickup
 
-Not yet picked up. Discussion-first plan — items become concrete edits
-as we walk them.
+Item 1 landed in session at 2026-05-20T10:13:47Z (see commit log).
+Items 2–4 next; items 5–9 deferred to fresh sessions.
