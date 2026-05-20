@@ -50,7 +50,7 @@ import "path"
 // absent. Anything beyond the canonical eight set by the user is
 // preserved across migrations.
 //
-// See `internal/assets/global/docs/atdd/process/path-keys.md` for the
+// See `internal/projectconfig/path-keys.md` for the
 // canonical-key vocabulary doc consumed by `gh-optivem.yaml paths:`
 // and `internal/atdd/phase-scopes.yaml`.
 func DefaultPaths(testLang, systemTestRoot, sutNamespace string) map[string]string {
@@ -94,7 +94,7 @@ var ExternalDriverKeyRenames = map[string]string{
 // the migrate back-fill, and any tests over either can iterate in the
 // same order.
 //
-// See `internal/assets/global/docs/atdd/process/path-keys.md` for the
+// See `internal/projectconfig/path-keys.md` for the
 // vocabulary doc and `internal/atdd/phase-scopes.yaml` for the per-phase
 // scope assignment that consumes these keys.
 func CanonicalPathKeys() []string {

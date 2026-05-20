@@ -22,6 +22,6 @@ When you have multiple edits to the same file, make them in one Write or one Edi
 
 Do not present or wait for approval inside the agent.
 
-Read `${docs_root}/atdd/architecture/test.md`.
-Read `${docs_root}/atdd/architecture/dsl-core.md`.
-Read `${docs_root}/atdd/code/language-equivalents/${language}.md`.
+Read `${references_root}/atdd/architecture/test.md`.
+Read `${references_root}/atdd/architecture/dsl-core.md`.
+Read `${references_root}/code/language-equivalents/${language}.md`.

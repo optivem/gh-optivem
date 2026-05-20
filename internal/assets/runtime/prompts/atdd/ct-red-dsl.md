@@ -10,9 +10,9 @@ If your previous WRITE didn't compile, instead fix the broken/missing piece in y
 
 Do not present or wait for approval inside the agent.
 
-Read `${docs_root}/atdd/architecture/dsl-core.md`.
-Read `${docs_root}/atdd/architecture/driver-port.md`.
-Read `${docs_root}/atdd/code/language-equivalents/${language}.md`.
+Read `${references_root}/atdd/architecture/dsl-core.md`.
+Read `${references_root}/atdd/architecture/driver-port.md`.
+Read `${references_root}/code/language-equivalents/${language}.md`.
 
 This phase touches the `dsl_core`, `external_system_driver_port` layers (bare
 layer names; resolved physical paths live in `gh-optivem.yaml paths:`

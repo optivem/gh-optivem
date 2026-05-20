@@ -11,8 +11,8 @@ import (
 )
 
 // TestEnsureSynced_FirstRunWritesTreeAndStamp covers the happy path: a
-// freshly-installed binary with no stamp file syncs the full global/
-// embed and stamps the version.
+// freshly-installed binary with no stamp file syncs the full
+// runtime/references/ embed and stamps the version.
 func TestEnsureSynced_FirstRunWritesTreeAndStamp(t *testing.T) {
 	home := t.TempDir()
 
@@ -35,11 +35,12 @@ func TestEnsureSynced_FirstRunWritesTreeAndStamp(t *testing.T) {
 		t.Errorf("stamp = %q, want v1.2.3", got)
 	}
 
-	// Spot-check that at least one known doc landed at the expected
-	// mapped path. The exact file set comes from the embedded global/
-	// subtree.
+	// Spot-check that at least one known doc from each owned subtree
+	// landed at the expected mapped path. The exact file set comes from
+	// the embedded runtime/references/ subtree.
 	for _, mustExist := range []string{
-		filepath.Join(home, ".gh-optivem", "docs", "atdd", "architecture", "system.md"),
+		filepath.Join(home, ".gh-optivem", "references", "atdd", "architecture", "system.md"),
+		filepath.Join(home, ".gh-optivem", "references", "code", "language-equivalents", "java.md"),
 	} {
 		if _, err := os.Stat(mustExist); err != nil {
 			t.Errorf("expected synced file %s: %v", mustExist, err)
@@ -58,7 +59,7 @@ func TestEnsureSynced_StampMatchIsNoOp(t *testing.T) {
 	}
 
 	// Mutate one of the synced files. A no-op call must NOT restore it.
-	target := filepath.Join(home, ".gh-optivem", "docs", "atdd", "architecture", "system.md")
+	target := filepath.Join(home, ".gh-optivem", "references", "atdd", "architecture", "system.md")
 	if err := os.WriteFile(target, []byte("tampered"), 0o644); err != nil {
 		t.Fatalf("tamper: %v", err)
 	}
@@ -93,14 +94,14 @@ func TestEnsureSynced_VersionBumpReSyncsAndWipesOwnedSubtree(t *testing.T) {
 
 	// Plant a stray file inside an owned subtree. After re-sync it must
 	// be gone (gh-optivem owns the subtree wholesale).
-	stray := filepath.Join(home, ".gh-optivem", "docs", "atdd", "stray-file.md")
+	stray := filepath.Join(home, ".gh-optivem", "references", "atdd", "stray-file.md")
 	if err := os.WriteFile(stray, []byte("stale"), 0o644); err != nil {
 		t.Fatalf("plant stray: %v", err)
 	}
 
 	// Plant a non-owned file outside the owned subtree but adjacent to it.
 	// After re-sync it must STILL be there (we promise the user we don't
-	// touch anything outside ~/.gh-optivem/docs/atdd/).
+	// touch anything outside ~/.gh-optivem/references/{atdd,code}/).
 	preserved := filepath.Join(home, ".gh-optivem", "notes", "private.md")
 	if err := os.MkdirAll(filepath.Dir(preserved), 0o755); err != nil {
 		t.Fatalf("mkdir preserved: %v", err)
@@ -213,15 +214,15 @@ func TestEnsureSynced_ConcurrentInvocationsConverge(t *testing.T) {
 
 	// A known file must have ended up in place — proves at least one
 	// race winner completed the full write sequence.
-	if _, err := os.Stat(filepath.Join(home, ".gh-optivem", "docs", "atdd", "architecture", "system.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(home, ".gh-optivem", "references", "atdd", "architecture", "system.md")); err != nil {
 		t.Errorf("expected synced file after concurrent runs: %v", err)
 	}
 }
 
 // TestMapDest_UnknownPrefixErrors guards against silent schema drift:
-// any new top-level dir under embedded global/ that doesn't map to one
-// of the documented destinations must fail loudly rather than land in
-// an unexpected location on the user's disk.
+// any new top-level dir under embedded runtime/references/ that doesn't
+// map to one of the documented destinations must fail loudly rather than
+// land in an unexpected location on the user's disk.
 func TestMapDest_UnknownPrefixErrors(t *testing.T) {
 	home := t.TempDir()
 	if _, err := mapDest(home, "unmapped/foo.md"); err == nil {

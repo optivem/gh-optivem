@@ -79,7 +79,7 @@ pipeline from START.`,
   gh optivem implement --issue 42 --keep-runs 0   # never prune`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// ATDD-consuming command: when the auto-sync escape hatch is
-			// set, the pipeline needs assets at ~/.gh-optivem/docs/atdd/
+			// set, the pipeline needs assets at ~/.gh-optivem/references/
 			// that the startup auto-sync would normally provide. Fail
 			// fast rather than dispatch agents whose prompts reference
 			// files that may be missing or out of date.

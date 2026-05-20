@@ -15,6 +15,6 @@ If your previous WRITE didn't compile, instead fix the broken/missing piece in y
 
 Do not present or wait for approval inside the agent.
 
-Read `${docs_root}/atdd/architecture/test.md`.
-Read `${docs_root}/atdd/architecture/dsl-core.md`.
-Read `${docs_root}/atdd/code/language-equivalents/${language}.md`.
+Read `${references_root}/atdd/architecture/test.md`.
+Read `${references_root}/atdd/architecture/dsl-core.md`.
+Read `${references_root}/code/language-equivalents/${language}.md`.

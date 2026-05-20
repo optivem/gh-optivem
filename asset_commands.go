@@ -1,8 +1,9 @@
 // asset_commands.go wires the `gh optivem asset <verb>` subtree. Asset
-// commands manage the embedded global asset tree (methodology docs) that
-// gh-optivem syncs to ~/.gh-optivem/docs/. Auto-sync runs at startup on
-// every invocation; this subtree exists for the explicit-force form
-// needed when the auto-sync escape hatch is set.
+// commands manage the embedded references asset tree (architecture
+// doctrine + per-language equivalents) that gh-optivem syncs to
+// ~/.gh-optivem/references/. Auto-sync runs at startup on every
+// invocation; this subtree exists for the explicit-force form needed
+// when the auto-sync escape hatch is set.
 package main
 
 import (
@@ -19,7 +20,7 @@ import (
 func newAssetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "asset",
-		Short: "Manage gh-optivem embedded assets (methodology docs)",
+		Short: "Manage gh-optivem embedded assets (reference docs)",
 	}
 	cmd.AddCommand(newAssetSyncCmd())
 	return cmd
@@ -29,8 +30,9 @@ func newAssetSyncCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "sync",
 		Short: "Force-sync embedded assets to per-user paths",
-		Long: `Walk the binary's embedded global/ tree and write methodology docs to
-~/.gh-optivem/docs/.
+		Long: `Walk the binary's embedded runtime/references/ tree and write reference
+docs (architecture doctrine + per-language equivalents) to
+~/.gh-optivem/references/.
 
 Auto-sync runs on every gh-optivem invocation when the per-user stamp does not
 match the binary's version. ` + "`gh optivem asset sync`" + ` is the explicit form

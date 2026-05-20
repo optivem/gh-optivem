@@ -43,4 +43,4 @@ Examples (Java):
 
 Do not present or wait for approval inside the agent.
 
-Read `${docs_root}/atdd/code/language-equivalents/${language}.md`.
+Read `${references_root}/code/language-equivalents/${language}.md`.

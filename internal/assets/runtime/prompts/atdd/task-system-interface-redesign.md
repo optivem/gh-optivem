@@ -31,6 +31,6 @@ Reshape the system's surface; the driver adapter absorbs the change so DSL, Gher
 4. **Driver interface guardrail.** Do NOT modify any file under `${driver_port}/` casually. If an interface change is unavoidable, STOP and present to the user: the method(s) you want to change, why the adapter alone cannot absorb the change, the proposed new signature(s). Wait for explicit user approval before editing any `${driver_port}/` file.
 5. Do not modify acceptance tests, DSL, Gherkin, or any code outside the system layer + its driver. `${system_test_path}/.../Legacy/` is read-only.
 
-Read `${docs_root}/atdd/architecture/system.md`.
-Read `${docs_root}/atdd/architecture/driver-port.md`.
-Read `${docs_root}/atdd/architecture/driver-adapter.md`.
+Read `${references_root}/atdd/architecture/system.md`.
+Read `${references_root}/atdd/architecture/driver-port.md`.
+Read `${references_root}/atdd/architecture/driver-adapter.md`.

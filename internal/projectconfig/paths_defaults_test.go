@@ -131,7 +131,7 @@ func TestDefaultPaths_EmptyForUnknownLanguage(t *testing.T) {
 // unknown keys (or omits keys the phase docs reference), and
 // MaterializeProject would error on first run.
 //
-// See `internal/assets/global/docs/atdd/process/path-keys.md` for the
+// See `internal/projectconfig/path-keys.md` for the
 // canonical-key vocabulary doc.
 func TestDefaultPaths_KeysMatchPlaceholderDoctrine(t *testing.T) {
 	t.Parallel()

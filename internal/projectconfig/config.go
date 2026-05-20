@@ -748,7 +748,7 @@ beyond the canonical layout`)
 	// historical wires-crossed guard (a typo'd `paths.language:
 	// typescript` would otherwise quietly override system.lang). (b) is
 	// the SSoT typo / stale-key catch (plan 20260518-1530 item 5) — see
-	// internal/assets/global/docs/atdd/process/path-keys.md for the
+	// internal/projectconfig/path-keys.md for the
 	// canonical-key vocabulary. (c) is the SSoT no-substitution rule —
 	// values must be fully resolved at scaffold time (plan item 5);
 	// runtime substitution is retired (locked δ).
@@ -777,7 +777,7 @@ The migrate command renames the entry in place, preserving the value
 and any inline comments. Re-run validate after migrate to confirm`, k, newKey)
 		}
 		if _, ok := canonical[k]; !ok {
-			return fmt.Errorf("config: paths.%s is not a canonical Family B key; see internal/assets/global/docs/atdd/process/path-keys.md for the supported set", k)
+			return fmt.Errorf("config: paths.%s is not a canonical Family B key; see internal/projectconfig/path-keys.md for the supported set", k)
 		}
 		if strings.Contains(c.Paths[k], "${") {
 			return fmt.Errorf("config: paths.%s %q contains a ${...} marker; under SSoT, paths must be fully resolved (substitution is scaffold-time-only)", k, c.Paths[k])

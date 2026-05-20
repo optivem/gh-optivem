@@ -84,8 +84,8 @@ func main() {
 	// e.g. `config` lists init → validate → preflight, the sequence a user runs.
 	cobra.EnableCommandSorting = false
 
-	// Sync the embedded global asset tree to per-user paths
-	// (~/.gh-optivem/docs/) so methodology docs are reachable on the
+	// Sync the embedded references asset tree to per-user paths
+	// (~/.gh-optivem/references/) so reference docs are reachable on the
 	// user's filesystem. No-op after the first run when the stamp
 	// matches the binary version. Disabled by GH_OPTIVEM_NO_AUTO_SYNC.
 	if res, err := assetsync.EnsureSynced(version.Version); err != nil {

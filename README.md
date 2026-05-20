@@ -372,10 +372,10 @@ gh optivem hooks install                       # install a pre-push hook that re
 
 ## Methodology assets
 
-`gh optivem` ships an embedded global asset tree (methodology docs) that auto-syncs to `~/.gh-optivem/docs/` on every invocation when the per-user stamp doesn't match the binary version. Auto-sync is disabled by `GH_OPTIVEM_NO_AUTO_SYNC`; the explicit form for users with that escape hatch set is:
+`gh optivem` ships an embedded reference asset tree (architecture doctrine + per-language equivalents) that auto-syncs to `~/.gh-optivem/references/` on every invocation when the per-user stamp doesn't match the binary version. Auto-sync is disabled by `GH_OPTIVEM_NO_AUTO_SYNC`; the explicit form for users with that escape hatch set is:
 
 ```bash
-gh optivem asset sync                          # force-sync embedded assets to ~/.gh-optivem/docs/
+gh optivem asset sync                          # force-sync embedded assets to ~/.gh-optivem/references/
 ```
 
 ## Further reading

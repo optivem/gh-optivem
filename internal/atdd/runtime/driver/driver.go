@@ -494,7 +494,7 @@ func seedScopeState(sCtx *statemachine.Context, cfg *projectconfig.Config) {
 
 // primaryLanguage picks the language seeded into ctx.State["language"] for
 // every dispatch in this run. Prompts that reference per-language docs via
-// `${docs_root}/atdd/code/language-equivalents/${language}.md` resolve to
+// `${references_root}/code/language-equivalents/${language}.md` resolve to
 // the right slice on this value.
 //
 //   - Monolith → cfg.System.Lang.

@@ -326,27 +326,27 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) error {
 	opts = opts.withDefaults()
 
 	// When a ProjectConfig is in hand and we have a project root to write
-	// into, materialize the embedded phase docs against the project's
+	// into, materialize the embedded reference docs against the project's
 	// placeholder map so the agent reads docs with concrete paths. The
-	// returned root is forwarded to renderPrompt so ${docs_root} resolves
-	// to the project-local copy. When either field is missing we leave
-	// projectDocsRoot empty and the user-global docs root applies — the
-	// fallback path covers CLI utilities, scaffold flows, and tests that
-	// legitimately have no project context.
-	var projectDocsRoot string
+	// returned root is forwarded to renderPrompt so ${references_root}
+	// resolves to the project-local copy. When either field is missing
+	// we leave projectReferencesRoot empty and the user-global references
+	// root applies — the fallback path covers CLI utilities, scaffold
+	// flows, and tests that legitimately have no project context.
+	var projectReferencesRoot string
 	if opts.ProjectConfig != nil && opts.RepoPath != "" {
 		var err error
-		projectDocsRoot, err = assetsync.MaterializeProject(
+		projectReferencesRoot, err = assetsync.MaterializeProject(
 			opts.RepoPath, opts.BinaryVersion, opts.ProjectConfig.PlaceholderMap())
 		if err != nil {
-			return fmt.Errorf("clauderun: materialize project docs: %w", err)
+			return fmt.Errorf("clauderun: materialize project references: %w", err)
 		}
 	}
 
 	prompt := opts.RawPrompt
 	if prompt == "" {
 		var err error
-		prompt, err = renderPromptWithDocsRoot(opts, projectDocsRoot)
+		prompt, err = renderPromptWithReferencesRoot(opts, projectReferencesRoot)
 		if err != nil {
 			return fmt.Errorf("clauderun: render prompt: %w", err)
 		}
@@ -447,20 +447,21 @@ func writePromptLog(path, prompt string) error {
 // renderPrompt reads the embedded prompt for opts.Agent (or opts.PromptOverride
 // when non-empty), expands ${name} placeholders against the ticket context,
 // and appends opts.OverrideText (if any) as a trailing block. Public-ish for
-// the test file; not exported. ${docs_root} resolves to the user-global
-// ~/.gh-optivem/docs — callers wanting the project-local materialized copy
-// route through Dispatch (which calls renderPromptWithDocsRoot with a
-// non-empty root).
+// the test file; not exported. ${references_root} resolves to the user-global
+// ~/.gh-optivem/references — callers wanting the project-local materialized
+// copy route through Dispatch (which calls renderPromptWithReferencesRoot
+// with a non-empty root).
 func renderPrompt(opts Options) (string, error) {
-	return renderPromptWithDocsRoot(opts, "")
+	return renderPromptWithReferencesRoot(opts, "")
 }
 
-// renderPromptWithDocsRoot is the worker behind renderPrompt. projectDocsRoot,
-// when non-empty, wins for the ${docs_root} substitution — Dispatch passes
-// the result of MaterializeProject so the agent reads the project-local
-// docs copy. Empty falls back to assetsync.DocsRoot() (the user-global
-// path), which is what tests and CLI utilities use.
-func renderPromptWithDocsRoot(opts Options, projectDocsRoot string) (string, error) {
+// renderPromptWithReferencesRoot is the worker behind renderPrompt.
+// projectReferencesRoot, when non-empty, wins for the ${references_root}
+// substitution — Dispatch passes the result of MaterializeProject so the
+// agent reads the project-local references copy. Empty falls back to
+// assetsync.ReferencesRoot() (the user-global path), which is what tests
+// and CLI utilities use.
+func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) (string, error) {
 	var body string
 	if opts.PromptOverride != "" {
 		body = opts.PromptOverride
@@ -487,26 +488,26 @@ func renderPromptWithDocsRoot(opts Options, projectDocsRoot string) (string, err
 	// Fixed-schema placeholders win on key collision with NodeParams so a
 	// node author can't accidentally shadow ticket context by reusing a
 	// reserved name in YAML.
-	docsRoot := projectDocsRoot
-	if docsRoot == "" {
+	referencesRoot := projectReferencesRoot
+	if referencesRoot == "" {
 		var err error
-		docsRoot, err = assetsync.DocsRoot()
+		referencesRoot, err = assetsync.ReferencesRoot()
 		if err != nil {
-			return "", fmt.Errorf("clauderun: resolve docs root: %w", err)
+			return "", fmt.Errorf("clauderun: resolve references root: %w", err)
 		}
 	}
 	for k, v := range map[string]string{
-		"issue_num":      strconv.Itoa(opts.IssueNum),
-		"issue_title":    opts.IssueTitle,
-		"phase":          opts.NodeDescription,
-		"phase_doc":      opts.PhaseDoc,
-		"architecture":   opts.Architecture,
-		"subtype":        opts.Subtype,
-		"allowed_roots":  opts.AllowedRoots,
-		"checklist":      opts.Checklist,
-		"verify_results": opts.VerifyResults,
-		"changed_files":  opts.ChangedFiles,
-		"docs_root":      docsRoot,
+		"issue_num":        strconv.Itoa(opts.IssueNum),
+		"issue_title":      opts.IssueTitle,
+		"phase":            opts.NodeDescription,
+		"phase_doc":        opts.PhaseDoc,
+		"architecture":    opts.Architecture,
+		"subtype":          opts.Subtype,
+		"allowed_roots":    opts.AllowedRoots,
+		"checklist":        opts.Checklist,
+		"verify_results":   opts.VerifyResults,
+		"changed_files":    opts.ChangedFiles,
+		"references_root":  referencesRoot,
 	} {
 		params[k] = v
 	}
