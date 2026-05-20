@@ -152,14 +152,19 @@ flowchart TD
     AT_RED_TEST[AT - RED - TEST — see § red_phase_cycle]
     CT_SUBPROCESS[CT_SUBPROCESS — see § Contract Test Sub-Process]
     GATE_DSL_AT{DSL Interface Changed?}
+    GATE_DSL_FLAGS_PRESENT{RED-DSL phase-output flags emitted?}
     GATE_EXT_AT{External System Driver Interface Changed?}
     GATE_SYS_AT{System Driver Interface Changed?}
+    STOP_FLAG_UNSET["STOP - HUMAN REVIEW — AT - RED - DSL phase-output flags missing; re-run with reminder"]
     VERIFY_AT_DRIVER[[Verify: run targeted acceptance tests after driver-adapter change]]
 
     AT_RED_TEST --> GATE_DSL_AT
     GATE_DSL_AT -- No --> AT_GREEN_SYSTEM
     GATE_DSL_AT -- Yes --> AT_RED_DSL
-    AT_RED_DSL --> GATE_EXT_AT
+    AT_RED_DSL --> GATE_DSL_FLAGS_PRESENT
+    GATE_DSL_FLAGS_PRESENT -- Yes --> GATE_EXT_AT
+    GATE_DSL_FLAGS_PRESENT -- No --> STOP_FLAG_UNSET
+    STOP_FLAG_UNSET --> AT_RED_DSL
     GATE_EXT_AT -- Yes --> CT_SUBPROCESS
     GATE_EXT_AT -- No --> GATE_SYS_AT
     CT_SUBPROCESS --> GATE_SYS_AT
@@ -171,6 +176,9 @@ flowchart TD
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
     class VERIFY_AT_DRIVER serviceNode
+
+    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
+    class STOP_FLAG_UNSET humanNode
 ```
 
 ## AT - GREEN - SYSTEM
@@ -180,7 +188,7 @@ flowchart TD
     AT_GREEN_BACKEND["AT - GREEN - SYSTEM - WRITE (backend) — see § green_phase_cycle"]
     AT_GREEN_FRONTEND["AT - GREEN - SYSTEM - WRITE (frontend) — see § green_phase_cycle"]
     COMMIT[COMMIT — see § Commit Sub-Process]
-    ENABLE_TESTS[[Re-enable tests disabled in AT - RED - SYSTEM DRIVER]]
+    ENABLE_TESTS[Re-enable tests disabled in AT - RED - SYSTEM DRIVER]
     GS_END((End))
     MOVE_TICKET_IN_ACCEPTANCE[[Move ticket to TICKET STATUS - IN ACCEPTANCE]]
     TICK[[Tick acceptance-criteria checklist items]]
@@ -193,7 +201,10 @@ flowchart TD
     MOVE_TICKET_IN_ACCEPTANCE --> GS_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class ENABLE_TESTS,MOVE_TICKET_IN_ACCEPTANCE,TICK serviceNode
+    class MOVE_TICKET_IN_ACCEPTANCE,TICK serviceNode
+
+    classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
+    class ENABLE_TESTS agentNode
 ```
 
 ## Contract Test Sub-Process
@@ -385,49 +396,66 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    CHECK_PHASE_SCOPE[["Check ${phase_label} scope vs allowed paths"]]
     COMPILE["Compile ${phase_label} (human-gated on fail) — see § compile"]
+    GATE_PHASE_SCOPE_CLEAN{Phase scope clean?}
+    GATE_SCOPE_EXCEPTION{Agent signalled scope exception?}
     GATE_TESTS_PASS{All tests passed?}
     GREEN_END((End))
     RUN[["Run targeted tests against ${suite}"]]
     STOP_GREEN_TEST_FAIL["STOP - HUMAN REVIEW — ${phase_label} tests failed"]
+    STOP_SCOPE_VIOLATION["STOP - HUMAN REVIEW — ${phase_label} scope violation (Layer 1 agent-signalled or Layer 2 post-phase diff)"]
     WRITE["${phase_label} - WRITE"]
 
-    WRITE --> COMPILE
+    WRITE --> GATE_SCOPE_EXCEPTION
+    GATE_SCOPE_EXCEPTION -- Yes --> STOP_SCOPE_VIOLATION
+    GATE_SCOPE_EXCEPTION -- No --> COMPILE
+    STOP_SCOPE_VIOLATION --> WRITE
     COMPILE --> RUN
     RUN --> GATE_TESTS_PASS
-    GATE_TESTS_PASS -- Yes --> GREEN_END
+    GATE_TESTS_PASS -- Yes --> CHECK_PHASE_SCOPE
     GATE_TESTS_PASS -- No --> STOP_GREEN_TEST_FAIL
     STOP_GREEN_TEST_FAIL --> WRITE
+    CHECK_PHASE_SCOPE --> GATE_PHASE_SCOPE_CLEAN
+    GATE_PHASE_SCOPE_CLEAN -- Yes --> GREEN_END
+    GATE_PHASE_SCOPE_CLEAN -- No --> STOP_SCOPE_VIOLATION
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class RUN serviceNode
+    class CHECK_PHASE_SCOPE,RUN serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
     class WRITE agentNode
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class STOP_GREEN_TEST_FAIL humanNode
+    class STOP_GREEN_TEST_FAIL,STOP_SCOPE_VIOLATION humanNode
 ```
 
 ## red_phase_cycle
 
 ```mermaid
 flowchart TD
+    CHECK_PHASE_SCOPE[["Check ${phase_label} scope vs allowed paths"]]
     COMMIT[COMMIT — see § Commit Sub-Process]
     COMPILE["Compile ${phase_label} (human-gated on fail) — see § compile"]
-    DISABLE[[Disable change-driven scenarios]]
+    DISABLE[Disable change-driven scenarios]
+    GATE_PHASE_SCOPE_CLEAN{Phase scope clean?}
     GATE_RUN_FAILED_RUNTIME{"Tests fail at runtime (not compile)?"}
+    GATE_SCOPE_EXCEPTION{Agent signalled scope exception?}
     GATE_VERIFY_REAL_PASS{Real suite passes?}
     GATE_VERIFY_REAL_REQUIRED{Verify against real suite first?}
     RED_END((End))
     RUN[[Run targeted tests]]
     STOP_RED_NOT_RUNTIME_FAIL["STOP - HUMAN REVIEW — ${phase_label} tests not runtime-failing"]
     STOP_RED_REVIEW["STOP - HUMAN REVIEW — ${phase_label} test + DSL stubs"]
+    STOP_SCOPE_VIOLATION["STOP - HUMAN REVIEW — ${phase_label} scope violation (Layer 1 agent-signalled or Layer 2 post-phase diff)"]
     STOP_VERIFY_REAL_FAIL["STOP - HUMAN REVIEW — ${phase_label} real-suite contract problem"]
     VERIFY_REAL[["Verify ${verify_real_suite} passes"]]
     WRITE["${phase_label} - WRITE"]
 
-    WRITE --> STOP_RED_REVIEW
+    WRITE --> GATE_SCOPE_EXCEPTION
+    GATE_SCOPE_EXCEPTION -- Yes --> STOP_SCOPE_VIOLATION
+    GATE_SCOPE_EXCEPTION -- No --> STOP_RED_REVIEW
+    STOP_SCOPE_VIOLATION --> WRITE
     STOP_RED_REVIEW --> COMPILE
     COMPILE --> GATE_VERIFY_REAL_REQUIRED
     GATE_VERIFY_REAL_REQUIRED -- Yes --> VERIFY_REAL
@@ -440,17 +468,20 @@ flowchart TD
     GATE_RUN_FAILED_RUNTIME -- Yes --> DISABLE
     GATE_RUN_FAILED_RUNTIME -- No --> STOP_RED_NOT_RUNTIME_FAIL
     STOP_RED_NOT_RUNTIME_FAIL --> WRITE
-    DISABLE --> COMMIT
+    DISABLE --> CHECK_PHASE_SCOPE
+    CHECK_PHASE_SCOPE --> GATE_PHASE_SCOPE_CLEAN
+    GATE_PHASE_SCOPE_CLEAN -- Yes --> COMMIT
+    GATE_PHASE_SCOPE_CLEAN -- No --> STOP_SCOPE_VIOLATION
     COMMIT --> RED_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class DISABLE,RUN,VERIFY_REAL serviceNode
+    class CHECK_PHASE_SCOPE,RUN,VERIFY_REAL serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
-    class WRITE agentNode
+    class DISABLE,WRITE agentNode
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class STOP_RED_NOT_RUNTIME_FAIL,STOP_RED_REVIEW,STOP_VERIFY_REAL_FAIL humanNode
+    class STOP_RED_NOT_RUNTIME_FAIL,STOP_RED_REVIEW,STOP_SCOPE_VIOLATION,STOP_VERIFY_REAL_FAIL humanNode
 ```
 
 ## SUT Cycle
