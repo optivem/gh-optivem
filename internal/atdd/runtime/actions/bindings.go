@@ -155,8 +155,6 @@ func RegisterAll(r *Registry, deps Deps) {
 	// ${compile_action} resolving to one of compile_{all,system,system_tests}
 	// above; the cycle's COMPILE node looks up by templated name at runtime.
 	r.Register("run_targeted_tests", a.runTargetedTests)
-	r.Register("disable_change_driven", a.disableChangeDriven)
-	r.Register("enable_change_driven", a.enableChangeDriven)
 	// Optional CT real-vs-stub verification (per AT/CT split plan): runs the
 	// suite named in the `verify_real_suite` call_activity param against the
 	// just-written tests and asserts every one passes. Driven by the
@@ -174,8 +172,15 @@ func RegisterAll(r *Registry, deps Deps) {
 // Context keys consumed by the red_phase_cycle actions. Centralised so the
 // agent dispatcher (Step 2 of the AT/CT split) and tests have one place to
 // find the contract. The corresponding values are populated from the
-// ticket parse (Suite, Language) and the WRITE phase's output (TestNames,
-// DisableTargets, DisableReason).
+// ticket parse (Suite) and the WRITE phase's output (TestNames).
+//
+// Note: the `language`, `ticket_id`, `loop`, `phase`, `prev_phase`, and
+// `disable_targets` keys used to be consumed by the deterministic
+// disable_change_driven / enable_change_driven Go actions; those actions
+// were replaced on 2026-05-20 by the `disable-tests` / `enable-tests` agent
+// prompts (user_task in BPMN) and the corresponding keys are now consumed
+// by the agent template engine's ${var} substitution rather than by Go
+// code. See plans/20260520-0001-switch-disable-enable-tests-to-agents.md.
 const (
 	// CtxKeySuite is the test suite name handed to run_targeted_tests —
 	// e.g. "<acceptance-api>", "<suite-contract-real>".
@@ -185,38 +190,6 @@ const (
 	// dispatches against the suite, one per `gh optivem test run --test`
 	// invocation.
 	CtxKeyTestNames = "test_names"
-
-	// CtxKeyLanguage is the language disable_change_driven hands to
-	// ./disable-test.sh: java | csharp | typescript. The script owns the
-	// per-language `@Disabled` / `Skip = "..."` / `test.skip(true, "...")`
-	// edit syntax.
-	CtxKeyLanguage = "language"
-
-	// CtxKeyTicketID is the tracker-verbatim ticket identifier
-	// (e.g. "OPV-123", "#42", "SHOP-7"). disable_change_driven and
-	// enable_change_driven combine it with cycle (hard-coded "AT"),
-	// loop, and phase to produce the §Conventions disable-reason
-	// "<TICKET-ID> - AT - <LOOP> - <PHASE>" per
-	// docs/atdd/process/change/behavior/disable-tests.md.
-	CtxKeyTicketID = "ticket_id"
-
-	// CtxKeyLoop is the loop slot of the §Conventions disable-reason:
-	// RED | GREEN. Only RED uses disable today (GREEN never disables),
-	// but the schema reserves both for symmetry.
-	CtxKeyLoop = "loop"
-
-	// CtxKeyPhase is the phase slot of the §Conventions disable-reason:
-	// TEST | DSL | SYSTEM DRIVER (uppercase; internal space allowed).
-	CtxKeyPhase = "phase"
-
-	// CtxKeyPrevPhase is the phase whose @Disabled annotations
-	// enable_change_driven strips. Same domain as CtxKeyPhase. Loop is
-	// implicitly RED (the only loop that disables).
-	CtxKeyPrevPhase = "prev_phase"
-
-	// CtxKeyDisableTargets is the []string of "<file>:<method>" pairs
-	// disable_change_driven applies the disable markup to.
-	CtxKeyDisableTargets = "disable_targets"
 
 	// CtxKeyCompileOK is the bool the compile actions
 	// (compile_all / compile_system / compile_system_tests) write to record
@@ -829,157 +802,6 @@ func isCompileFailureOutput(out []byte) bool {
 		}
 	}
 	return false
-}
-
-// allowedDisableLoops is the loop slot domain per §Conventions disable-reason:
-// docs/atdd/process/change/behavior/disable-tests.md.
-var allowedDisableLoops = map[string]bool{"RED": true, "GREEN": true}
-
-// allowedDisablePhases is the phase slot domain per §Conventions
-// disable-reason: docs/atdd/process/change/behavior/disable-tests.md.
-var allowedDisablePhases = map[string]bool{"TEST": true, "DSL": true, "SYSTEM DRIVER": true}
-
-// assembleDisableReason builds the §Conventions disable-reason string
-//
-//	"<TICKET-ID> - AT - <LOOP> - <PHASE>"
-//
-// from constituents read from context. Cycle is hard-coded "AT" (CT slot
-// reserved for symmetry, not yet used). Validates loop and phase against
-// the published domains so the action fails fast on a malformed input
-// rather than producing an un-strippable annotation downstream.
-func assembleDisableReason(actionName, ticketID, loop, phase string) (string, error) {
-	if ticketID == "" {
-		return "", fmt.Errorf("%s: %s not set in Context", actionName, CtxKeyTicketID)
-	}
-	if !allowedDisableLoops[loop] {
-		return "", fmt.Errorf("%s: %s %q not in {RED, GREEN}", actionName, CtxKeyLoop, loop)
-	}
-	if !allowedDisablePhases[phase] {
-		return "", fmt.Errorf("%s: %s %q not in {TEST, DSL, SYSTEM DRIVER}", actionName, CtxKeyPhase, phase)
-	}
-	return fmt.Sprintf("%s - AT - %s - %s", ticketID, loop, phase), nil
-}
-
-// disableChangeDriven applies per-language disable markup
-// (`@Disabled("reason")` / `[Fact(Skip = "reason")]` / `test.skip(true, "reason")`)
-// to the change-driven test methods identified at WRITE. v1 shells out to
-// ./disable-test.sh once per target — the script owns the language-specific
-// edit syntax (the language-equivalents.md table).
-//
-// The reason string is assembled in-action from constituents per the
-// §Conventions schema "<TICKET-ID> - AT - <LOOP> - <PHASE>"
-// (see docs/atdd/process/change/behavior/disable-tests.md). This keeps the
-// format-of-record next to the action that emits it; callers populate the
-// four inputs separately rather than pre-formatting a brittle string.
-//
-// Reads:
-//   - CtxKeyLanguage (string)         — required; java | csharp | typescript
-//   - CtxKeyTicketID (string)         — required; tracker-verbatim id
-//   - CtxKeyLoop (string)             — required; RED | GREEN
-//   - CtxKeyPhase (string)            — required; TEST | DSL | SYSTEM DRIVER
-//   - CtxKeyDisableTargets ([]string) — required; one entry per test,
-//     formatted "<file>:<method>"
-//
-// Each target produces:
-//
-//	./disable-test.sh <language> "<reason>" <file>:<method>
-//
-// First failure halts the action with Outcome.Err — committing a partially
-// disabled test set would leave the repo in an inconsistent state.
-//
-// Legacy-skip rule: the disable convention applies only to change-driven
-// scenarios; legacy tests must never be annotated. The skip is owned by
-// the caller (which selects disable_targets), since the legacy marker
-// convention itself is designed by the legacy-coverage-cycle plan
-// (plans/20260518-1116-legacy-coverage-cycle.md). This action assumes
-// targets are pre-filtered.
-func (a actions) disableChangeDriven(ctx *statemachine.Context) statemachine.Outcome {
-	lang := ctx.GetString(CtxKeyLanguage)
-	if lang == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven: %s not set in Context", CtxKeyLanguage)}
-	}
-	reason, err := assembleDisableReason("disable_change_driven",
-		ctx.GetString(CtxKeyTicketID), ctx.GetString(CtxKeyLoop), ctx.GetString(CtxKeyPhase))
-	if err != nil {
-		return statemachine.Outcome{Err: err}
-	}
-	rawTargets, ok := ctx.State[CtxKeyDisableTargets]
-	if !ok {
-		return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven: %s not set in Context", CtxKeyDisableTargets)}
-	}
-	targets, ok := rawTargets.([]string)
-	if !ok {
-		return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven: %s is %T, want []string", CtxKeyDisableTargets, rawTargets)}
-	}
-	if len(targets) == 0 {
-		return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven: %s is empty", CtxKeyDisableTargets)}
-	}
-	for _, target := range targets {
-		cmd := fmt.Sprintf("./disable-test.sh %s %s %s",
-			shellEscape(lang), shellEscape(reason), shellEscape(target))
-		if _, err := a.deps.Shell.Run(context.Background(), cmd); err != nil {
-			return statemachine.Outcome{Err: fmt.Errorf("disable_change_driven (%s): %w", target, err)}
-		}
-	}
-	return statemachine.Outcome{}
-}
-
-// enableChangeDriven inverts disableChangeDriven: it strips the per-language
-// disable markup whose reason starts with the §Conventions re-enable filter
-//
-//	"<CURRENT-TICKET-ID> - AT - RED - <PREV-PHASE>"
-//
-// from the named test methods. v1 shells out to ./enable-test.sh once per
-// target — the script owns the per-language edit syntax and the
-// startsWith match (mirroring disable-test.sh). Used at the start of
-// at_green_system to re-enable tests the prior RED phase disabled.
-//
-// Loop is implicit RED — GREEN never disables, so re-enable always strips
-// the prior RED annotation. The action passes the filter prefix to the
-// shell script; the script must never strip annotations whose ticket
-// prefix belongs to a different ticket, and must never strip legacy
-// markers.
-//
-// Reads:
-//   - CtxKeyLanguage (string)         — required; java | csharp | typescript
-//   - CtxKeyTicketID (string)         — required; tracker-verbatim id
-//   - CtxKeyPrevPhase (string)        — required; TEST | DSL | SYSTEM DRIVER
-//   - CtxKeyDisableTargets ([]string) — required; one entry per test,
-//     formatted "<file>:<method>"
-//
-// First failure halts the action with Outcome.Err — committing a partially
-// re-enabled test set would leave the repo in an inconsistent state.
-func (a actions) enableChangeDriven(ctx *statemachine.Context) statemachine.Outcome {
-	lang := ctx.GetString(CtxKeyLanguage)
-	if lang == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("enable_change_driven: %s not set in Context", CtxKeyLanguage)}
-	}
-	filterPrefix, err := assembleDisableReason("enable_change_driven",
-		ctx.GetString(CtxKeyTicketID), "RED", ctx.GetString(CtxKeyPrevPhase))
-	if err != nil {
-		// assembleDisableReason emits "phase" in its error for the phase slot;
-		// enable's slot is conventionally prev_phase, so rewrite for clarity.
-		return statemachine.Outcome{Err: fmt.Errorf("%s", strings.Replace(err.Error(), CtxKeyPhase, CtxKeyPrevPhase, 1))}
-	}
-	rawTargets, ok := ctx.State[CtxKeyDisableTargets]
-	if !ok {
-		return statemachine.Outcome{Err: fmt.Errorf("enable_change_driven: %s not set in Context", CtxKeyDisableTargets)}
-	}
-	targets, ok := rawTargets.([]string)
-	if !ok {
-		return statemachine.Outcome{Err: fmt.Errorf("enable_change_driven: %s is %T, want []string", CtxKeyDisableTargets, rawTargets)}
-	}
-	if len(targets) == 0 {
-		return statemachine.Outcome{Err: fmt.Errorf("enable_change_driven: %s is empty", CtxKeyDisableTargets)}
-	}
-	for _, target := range targets {
-		cmd := fmt.Sprintf("./enable-test.sh %s %s %s",
-			shellEscape(lang), shellEscape(filterPrefix), shellEscape(target))
-		if _, err := a.deps.Shell.Run(context.Background(), cmd); err != nil {
-			return statemachine.Outcome{Err: fmt.Errorf("enable_change_driven (%s): %w", target, err)}
-		}
-	}
-	return statemachine.Outcome{}
 }
 
 // verifyRealSuitePasses runs the suite named in the `verify_real_suite`

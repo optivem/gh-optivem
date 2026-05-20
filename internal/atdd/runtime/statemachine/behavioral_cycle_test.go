@@ -117,7 +117,7 @@ func (e *expectDispatch) redCycle(callerNodeID string, params map[string]string)
 		gateway("GATE_VERIFY_REAL_REQUIRED", "verify_real_required", false).
 		serviceTask("RUN", "run_targeted_tests").
 		gateway("GATE_RUN_FAILED_RUNTIME", "tests_failed_runtime", true).
-		serviceTask("DISABLE", "disable_change_driven").
+		userTask("DISABLE", "disable-tests").
 		serviceTask("CHECK_PHASE_SCOPE", "check_phase_scope").
 		gateway("GATE_PHASE_SCOPE_CLEAN", "phase_scope_clean", true).
 		callActivity("COMMIT", "commit", commitFromTemplateParams()).
@@ -166,7 +166,7 @@ func (e *expectDispatch) atGreenSystem() *expectDispatch {
 	parentProc, parentParams := e.proc, e.params
 	return e.callActivity("AT_GREEN_SYSTEM", "at_green_system", noParams()).
 		process("at_green_system", noParams()).
-		serviceTask("ENABLE_TESTS", "enable_change_driven").
+		userTask("ENABLE_TESTS", "enable-tests").
 		greenCycle("AT_GREEN_BACKEND", atGreenBackendParams()).
 		greenCycle("AT_GREEN_FRONTEND", atGreenFrontendParams()).
 		callActivity("COMMIT", "commit", atGreenCommitParams()).

@@ -1,13 +1,6 @@
 // Tests for the release package.
 //
 // Strategy:
-//   - RemoveDisabledMarkers is exercised via golden-file fixtures under
-//     testdata/{java,dotnet,typescript}. Each input file has a paired
-//     -expected sibling; the test copies the input into a per-test temp
-//     dir, runs RemoveDisabledMarkers, and byte-compares the result
-//     against the expected file. This covers the "marker present",
-//     "multiple markers", "no marker" and "import cleanup" cases the
-//     contract requires.
 //   - Commit and CloseIssue are exercised against fake runners; we never
 //     actually invoke `git commit` or `gh issue close`.
 //   - The Confirmer policy is verified at the type level: a nil Confirmer
@@ -20,167 +13,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
-
-// -------------------------------------------------------------------------
-// Golden-file fixture tests
-// -------------------------------------------------------------------------
-
-// fixtureCase pairs an input file (under testdata/) with its expected
-// output. The Name is used as the t.Run subtest name.
-type fixtureCase struct {
-	Name     string
-	Input    string // path under testdata/
-	Expected string // path under testdata/
-}
-
-func TestRemoveDisabledMarkers_Java(t *testing.T) {
-	cases := []fixtureCase{
-		{
-			Name:     "single_disabled_with_import_cleanup",
-			Input:    "java/disabled-with-import-input.java",
-			Expected: "java/disabled-with-import-expected.java",
-		},
-		{
-			Name:     "multiple_disabled_markers",
-			Input:    "java/multi-disabled-input.java",
-			Expected: "java/multi-disabled-expected.java",
-		},
-		{
-			Name:     "no_marker_is_noop",
-			Input:    "java/no-marker-input.java",
-			Expected: "java/no-marker-expected.java",
-		},
-	}
-	runFixtureCases(t, cases)
-}
-
-func TestRemoveDisabledMarkers_DotNet(t *testing.T) {
-	cases := []fixtureCase{
-		{
-			Name:     "fact_theory_skip_param_drops_skip_keeps_attribute",
-			Input:    "dotnet/fact-skip-input.cs",
-			Expected: "dotnet/fact-skip-expected.cs",
-		},
-		{
-			Name:     "standalone_skip_attribute_removed",
-			Input:    "dotnet/skip-attribute-input.cs",
-			Expected: "dotnet/skip-attribute-expected.cs",
-		},
-		{
-			Name:     "no_marker_is_noop",
-			Input:    "dotnet/no-marker-input.cs",
-			Expected: "dotnet/no-marker-expected.cs",
-		},
-	}
-	runFixtureCases(t, cases)
-}
-
-func TestRemoveDisabledMarkers_TypeScript(t *testing.T) {
-	cases := []fixtureCase{
-		{
-			Name:     "single_test_skip",
-			Input:    "typescript/test-skip-input.spec.ts",
-			Expected: "typescript/test-skip-expected.spec.ts",
-		},
-		{
-			Name:     "multiple_test_skip",
-			Input:    "typescript/multi-skip-input.spec.ts",
-			Expected: "typescript/multi-skip-expected.spec.ts",
-		},
-		{
-			Name:     "no_marker_is_noop",
-			Input:    "typescript/no-marker-input.spec.ts",
-			Expected: "typescript/no-marker-expected.spec.ts",
-		},
-	}
-	runFixtureCases(t, cases)
-}
-
-func runFixtureCases(t *testing.T, cases []fixtureCase) {
-	t.Helper()
-	for _, tc := range cases {
-		t.Run(tc.Name, func(t *testing.T) {
-			tmp := t.TempDir()
-			// Stage the fixture under tmp/<basename> so the walker uses
-			// the same extension as production. We strip the "-input"
-			// suffix so the file looks like a real test file.
-			inputBytes, err := os.ReadFile(filepath.Join("testdata", tc.Input))
-			if err != nil {
-				t.Fatalf("read input: %v", err)
-			}
-			expectedBytes, err := os.ReadFile(filepath.Join("testdata", tc.Expected))
-			if err != nil {
-				t.Fatalf("read expected: %v", err)
-			}
-			stagedName := stripInputSuffix(filepath.Base(tc.Input))
-			stagedPath := filepath.Join(tmp, stagedName)
-			if err := os.WriteFile(stagedPath, inputBytes, 0o644); err != nil {
-				t.Fatalf("write staged: %v", err)
-			}
-
-			changes, err := RemoveDisabledMarkers(context.Background(), RemoveOptions{
-				Roots: []string{tmp},
-			})
-			if err != nil {
-				t.Fatalf("RemoveDisabledMarkers: %v", err)
-			}
-
-			gotBytes, err := os.ReadFile(stagedPath)
-			if err != nil {
-				t.Fatalf("read staged after run: %v", err)
-			}
-			if string(gotBytes) != string(expectedBytes) {
-				t.Errorf("output mismatch for %s\n--- got ---\n%s\n--- want ---\n%s",
-					tc.Input, string(gotBytes), string(expectedBytes))
-			}
-
-			// Sanity: a noop fixture (input == expected) must produce zero
-			// FileChange entries; everything else must produce exactly one.
-			isNoop := string(inputBytes) == string(expectedBytes)
-			if isNoop && len(changes.Files) != 0 {
-				t.Errorf("expected no FileChange for noop fixture, got %d", len(changes.Files))
-			}
-			if !isNoop && len(changes.Files) == 0 {
-				t.Errorf("expected at least one FileChange for non-noop fixture, got 0")
-			}
-		})
-	}
-}
-
-func stripInputSuffix(name string) string {
-	// "disabled-with-import-input.java" → "disabled-with-import.java"
-	// "multi-skip-input.spec.ts"        → "multi-skip.spec.ts"
-	const marker = "-input"
-	idx := strings.Index(name, marker)
-	if idx < 0 {
-		return name
-	}
-	return name[:idx] + name[idx+len(marker):]
-}
-
-// TestRemoveDisabledMarkers_MissingRoot asserts that a non-existent root is
-// silently skipped (per the soft-skip contract for callers passing all
-// three language roots unconditionally).
-func TestRemoveDisabledMarkers_MissingRoot(t *testing.T) {
-	tmp := t.TempDir()
-	missing := filepath.Join(tmp, "does-not-exist")
-	changes, err := RemoveDisabledMarkers(context.Background(), RemoveOptions{
-		Roots: []string{missing},
-	})
-	if err != nil {
-		t.Fatalf("RemoveDisabledMarkers on missing root: %v", err)
-	}
-	if len(changes.Files) != 0 {
-		t.Errorf("expected zero FileChanges for missing root, got %d", len(changes.Files))
-	}
-}
 
 // -------------------------------------------------------------------------
 // Commit tests
@@ -444,15 +280,3 @@ func equalCalls(got, want [][]string) bool {
 	return true
 }
 
-// debugDump is used during development to inspect a Changes value.
-// Kept in production tests because it documents the intended FileChange
-// shape and is cheap.
-func debugDump(c Changes) string {
-	var b strings.Builder
-	for _, f := range c.Files {
-		fmt.Fprintf(&b, "  %s: removed=%v edited=%v pattern=%s\n", f.Path, f.LinesRemoved, f.LinesEdited, f.PatternName)
-	}
-	return b.String()
-}
-
-var _ = debugDump // referenced in commented-out diagnostic code; keep available

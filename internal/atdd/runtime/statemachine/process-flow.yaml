@@ -425,8 +425,8 @@ processes:
     start: ENABLE_TESTS
     nodes:
       - id: ENABLE_TESTS
-        type: service_task
-        action: enable_change_driven
+        type: user_task
+        agent: enable-tests
         documentation: "Re-enable tests disabled in AT - RED - SYSTEM DRIVER"
 
       - id: AT_GREEN_BACKEND
@@ -829,11 +829,12 @@ processes:
   # `compile` sub-process catches that explicitly.)
   #
   # Context plumbing TODO: `run_targeted_tests` reads `suite` and
-  # `test_names`, and `disable_change_driven` reads `language`,
-  # `disable_reason`, `disable_targets`. Today nothing populates these — see
-  # the AT/CT split plan's "context plumbing" follow-up. Compile no longer
-  # reads from context: tier choice is encoded in the `compile_action` param
-  # forwarded to the shared `compile` sub-process.
+  # `test_names`; the `disable-tests` and `enable-tests` agents (user_task
+  # dispatch) read `language`, `ticket_id`, `loop`, `phase` / `prev_phase`,
+  # and `disable_targets` via template substitution. Today nothing populates
+  # these — see the AT/CT split plan's "context plumbing" follow-up.
+  # Compile no longer reads from context: tier choice is encoded in the
+  # `compile_action` param forwarded to the shared `compile` sub-process.
   # ===========================================================================
   red_phase_cycle:
     start: WRITE
@@ -917,8 +918,8 @@ processes:
         documentation: "STOP - HUMAN REVIEW — ${phase_label} tests not runtime-failing"
 
       - id: DISABLE
-        type: service_task
-        action: disable_change_driven
+        type: user_task
+        agent: disable-tests
         documentation: "Disable change-driven scenarios"
 
       # ---- Layer 2: post-phase scripted scope check (plan 20260518-1144 item 5) ----
