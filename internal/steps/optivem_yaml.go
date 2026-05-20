@@ -192,6 +192,15 @@ func BuildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	pc.System = buildSystem(cfg, derived, sutNamespace)
 	pc.SystemTest = buildSystemTest(cfg, derived)
 	pc.ExternalSystems = buildExternals(cfg)
+	// `init` writes `system_test.paths:` as the authoritative initial value
+	// matching the directory tree this same scaffolder just created — not a
+	// runtime default. The scaffolder owns both sides of the join (YAML +
+	// tree), so the values are correct by construction here. After init the
+	// paths block is operator-owned: Rule 22a in `projectconfig.Validate`
+	// rejects missing/unknown keys, and `gh optivem config migrate` no
+	// longer back-fills defaults. Do not generalise this `DefaultPaths`
+	// call into a "default at validate-time" or "default at migrate-time"
+	// helper — see `internal/projectconfig/path-keys.md` for the doctrine.
 	pc.SystemTest.Paths = projectconfig.DefaultPaths(cfg.TestLang, cfg.SystemTestPath, sutNamespace)
 	return pc
 }

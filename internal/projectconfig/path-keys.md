@@ -52,8 +52,33 @@ key from `CanonicalPathKeys()` in
 
 Values are **fully-resolved physical paths** set at scaffold time
 (per plan 20260518-1530 item 3). No runtime `${...}` substitution.
-The scaffolder writes a default block matching the project's layout;
-the values are project-relative and may be hand-edited afterwards.
+
+### Ownership: scaffold-authoritative at `init`, operator-owned afterwards
+
+`gh optivem init` writes the `system_test.paths:` block as the
+**authoritative initial value matching the directory tree the same
+scaffolder just created**. The scaffolder owns both sides of the join
+(YAML + tree), so the eight Family B values are correct by construction
+at that moment — they are not "defaults the operator never asked for".
+
+After `init`, the block is operator-owned at every other layer:
+
+- **Validate-time**: `Validate()` in `internal/projectconfig/config.go`
+  (Rule 22a) rejects a missing or non-canonical `system_test.paths:`
+  block. The binary does not synthesise defaults to keep validation
+  passing.
+- **Migrate-time**: `gh optivem config migrate` does not back-fill the
+  `paths:` block. Pre-SSoT configs without a `paths:` block must have
+  one added by the operator before the next `gh optivem` command.
+
+The asymmetry is intentional: only `init` can legitimately write a
+`paths:` block from a derived layout, because only `init` is also
+creating the tree that block describes. Future work that adds a
+"default paths" writer elsewhere in the binary — at validate-time, at
+migrate-time, or as a runtime fallback — is regressing the doctrine
+and should be rejected. The single derivation lives in
+`projectconfig.DefaultPaths` and is called from exactly one place:
+`internal/steps/optivem_yaml.go::BuildOptivemYAML`.
 
 ## Default values (TypeScript example)
 
