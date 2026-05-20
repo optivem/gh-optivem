@@ -31,49 +31,151 @@ Items are stubs — refine with `/refine-plan` before executing. Each item
 needs an explicit user scope-doctrine decision (which layer partition
 applies). The four phases are split into two natural pairs.
 
-### Item 1 — Pin scope for `BACKLOG_REFINEMENT`
+### Item 1 — Introduce `scope: none` category (covers `BACKLOG_REFINEMENT`)
 
-**Scope:** TBD — needs user decision.
+**Resolution:** introduce explicit `scope: none` as a doctrinal category,
+distinct from "scope omitted" or "empty layer list". Semantic
+(primary-backend reading, per refine-plan walk decision):
+> Under the canonical GitHub / Jira issue-tracker backends, the agent
+> modifies NO file in the repo working tree — not under any canonical
+> layer path, not anywhere else (no config, no docs, no scripts).
+> Mutations target inter-phase artifacts (`${parsed_concepts}`) or the
+> external tracker only.
+>
+> Markdown / file adapters are treated as escape hatches (per
+> `feedback_naming_github_jira_first`); their repo writes are
+> out-of-doctrine and do not invalidate the `scope: none` declaration.
+
+A `scope: none` agent that writes to a working-tree file *outside* an
+escape-hatch adapter is a contract violation, full stop — this is what
+makes `none` crisper than the ambiguous empty `{}`.
 
 Grounding: the BPMN node lives in the `backlog_refinement` sub-process
 (`process-flow.yaml:282-314`), invoked at top-level from the orchestrator
-(`process-flow.yaml:111-135`). Its agent (`refine-acc`) reshapes the
-ticket's acceptance criteria during intake. Find the prompt under
-`internal/assets/runtime/prompts/atdd/refine-acc.md` (or similar — sweep
-to confirm), enumerate which paths it may modify, then propose a scope.
+(`process-flow.yaml:111-135`). The agent (`refine-acc`) mutates the
+`${parsed_concepts}` artifact only — see
+`internal/assets/runtime/prompts/atdd/refine-acc.md` prompt body ("no
+code layer touched"). The parsed-concepts artifact is an inter-phase
+scratch object, not a code path under any Family B or Family A key.
 
-Likely candidates (not pre-decided): the ticket / requirements artifact
-itself — which may not yet have a Family B path key. If not, this item
-may require pinning a new path key in `gh-optivem.yaml` first.
+This is distinct from a plan-deferral allowlist (per
+`feedback_no_deferred_mechanism`) — it is a principled doctrinal category
+with a hard contract (no repo writes), not a "TBD later" hole.
 
-### Item 2 — Pin scope for `UPDATE_TICKET`
+**Scope of work:**
 
-**Scope:** TBD — needs user decision.
+1. Define `scope: none` as a valid prompt-frontmatter value, with the
+   contract above. Document it alongside the existing `scope:` doctrine
+   (likely in `internal/assets/runtime/shared/scope.md` per the
+   phase-scopes.yaml header reference — confirm at execute time).
+2. Replace `scope: {}` with `scope: none` in
+   `internal/assets/runtime/prompts/atdd/refine-acc.md` frontmatter (and
+   in `update-ticket.md` — see Item 2).
+3. Update `TestPhaseScopes_ReverseFK_WritingAgentsScoped`
+   (`phase_scopes_test.go:99`) so writing-agent nodes whose agent prompt
+   declares `scope: none` are skipped instead of demanded to appear in
+   `phase-scopes.yaml`. SSoT for the exemption is the prompt frontmatter,
+   not a sibling Go map.
+4. Do NOT add a `BACKLOG_REFINEMENT:` entry to `phase-scopes.yaml`.
+
+**Open questions (resolve at execute time):**
+
+- **Loader shape.** YAML parses `none` as a string, so the prompt
+  frontmatter loader needs a small sum-type discriminator (string
+  `"none"` vs. map of layer keys). Trivial but flagged so it doesn't
+  get blurred.
+- **Runtime projection.** What does the runtime scope-projection emit
+  for a `scope: none` agent? Today the projection joins per-phase layer
+  keys with `gh-optivem.yaml` paths to produce the agent's runtime
+  `scope:` block. For `none`, presumably emit a clear "no code paths —
+  artifact-only" sentinel rather than an empty list.
+
+### Item 2 — Apply `scope: none` to `UPDATE_TICKET`
+
+**Resolution:** `scope: none` — same category introduced in Item 1.
 
 Grounding: BPMN node `process-flow.yaml:301-308` (same sub-process as
-Item 1). Agent `update-ticket` runs when refinement changed the ticket
-contents. Likely scope mirrors Item 1.
+Item 1). Agent `update-ticket` overwrites three named H2 sections of
+`${ticket_source}` — see
+`internal/assets/runtime/prompts/atdd/update-ticket.md` ("touches only
+the three named H2 sections of `${ticket_source}`"). Under the canonical
+GitHub / Jira tracker backends, `${ticket_source}` is the tracker (not a
+repo file), so the agent makes zero working-tree writes. A markdown
+ticket-source adapter would write to the repo, but per
+`feedback_naming_github_jira_first` that path is an escape hatch and is
+out-of-doctrine for the `scope: none` contract.
+
+**Scope of work:**
+
+1. Replace `scope: {}` with `scope: none` in
+   `internal/assets/runtime/prompts/atdd/update-ticket.md` frontmatter.
+2. Do NOT add an `UPDATE_TICKET:` entry to `phase-scopes.yaml`. The
+   reverse-FK test update from Item 1 covers exemption.
+3. No new doctrine — items 1 and 2 share the same doctrinal change
+   (introduced in Item 1). Item 2 is a second consumer.
 
 ### Item 3 — Pin scope for `ENABLE_TESTS`
 
-**Scope:** TBD — needs user decision.
+**Scope:** `[at_test, ct_test]`
 
 Grounding: BPMN node `process-flow.yaml:483-485` in the `at_green_system`
-sub-process. Agent `enable-tests` re-enables tests that were disabled
-mid-cycle. Sweep the prompt under
-`internal/assets/runtime/prompts/atdd/enable-tests.md` to see which
-files it actually touches — likely test files (`at_test`?), but
-guardrails (e.g. "only re-enable, never edit assertions") may narrow.
+sub-process — top-level AT-only invocation today. Agent `enable-tests`
+(prompt: `internal/assets/runtime/prompts/atdd/enable-tests.md`) strips
+per-language disable markers from test methods in `${disable_targets}`.
+
+The agent edits real test source files (insert/remove `@Disabled` /
+`[Fact(Skip=…)]` / `test.skip(...)` markers + sometimes a now-unused
+import). So it does NOT fit `scope: none` (Item 1) — it modifies repo
+working-tree files.
+
+Today the prompt's reason-format hardcodes `AT` and accepts only AT
+phase labels, so concretely only `at_test` files are touched. The
+`[at_test, ct_test]` pin is forward-looking: when CT-side enable-tests
+lands the scope is already correct without re-pinning. Two-layer scope
+is doctrinally clean because both keys are canonical test-layer keys
+that this same agent will eventually span.
+
+**Scope of work:**
+
+1. Add `ENABLE_TESTS: [at_test, ct_test]` to
+   `internal/atdd/phase-scopes.yaml` under the AT cycle section.
+2. Update the prompt's frontmatter — replace `scope: {}` with whatever
+   shape the runtime projection expects for a real layer-pinned phase
+   (verify the projection mechanism at execute time; the frontmatter
+   may be wholly authored by the runtime today and need no manual
+   change).
+3. Verify `TestPhaseScopes_ReverseFK_WritingAgentsScoped` passes after
+   the entry is added.
 
 ### Item 4 — Pin scope for `DISABLE`
 
-**Scope:** TBD — needs user decision.
+**Scope:** `[at_test, ct_test]` — mirrors Item 3.
 
-Grounding: BPMN node `process-flow.yaml:994-996` in the AT-red cycle.
-Agent `disable-tests` disables tests that are red-but-not-runtime-failing
-to keep the red bar at a manageable size during authoring. Sweep the
-prompt under `internal/assets/runtime/prompts/atdd/disable-tests.md`;
-likely mirrors Item 3's scope.
+Grounding: BPMN node `process-flow.yaml:994-996` inside the shared
+`red_phase_cycle` sub-process. Agent `disable-tests` (prompt:
+`internal/assets/runtime/prompts/atdd/disable-tests.md`) annotates test
+methods listed in `${disable_targets}` with per-language disable
+markers (`@Disabled` / `[Fact(Skip=…)]` / `test.skip(…)`) so the runner
+skips them until `enable-tests` re-enables them.
+
+Symmetric counterpart of Item 3. Same target set (test methods from
+`${disable_targets}`), same hardcoded `AT` in the reason format today,
+same forward-looking case for `[at_test, ct_test]`. Keeps the
+disable/enable pair doctrinally consistent — the shared
+`${disable_targets}` flow can't be scoped inconsistently between the
+two halves.
+
+Does NOT fit `scope: none` (Item 1) for the same reason as Item 3 —
+modifies repo working-tree files.
+
+**Scope of work:**
+
+1. Add `DISABLE: [at_test, ct_test]` to
+   `internal/atdd/phase-scopes.yaml` under the AT cycle section.
+2. Update the prompt's frontmatter — same caveat as Item 3 (verify
+   projection mechanism; the frontmatter may need no manual change).
+3. Verify `TestPhaseScopes_ReverseFK_WritingAgentsScoped` passes after
+   the entry is added.
 
 ## Sequencing (vs other in-flight plans)
 
