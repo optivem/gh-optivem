@@ -1,5 +1,7 @@
 # user_task output → Context plumbing
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-20T19:41:45Z`
+
 **Date:** 2026-05-20
 **Trigger:** `gh optivem atdd-rehearsal implement` failed at AT_RED_TEST → RUN with `run_targeted_tests: test_names not set in Context`. The fast-fail in `internal/atdd/runtime/actions/bindings.go:822` is doing its job — no production code populates `test_names` or `suite` for the RED RUN, and no production code populates `scope_exception_files` for the RED GATE_SCOPE_EXCEPTION either. The whole "user_task emits structured output → engine flattens into Context.State" infrastructure is unbuilt.
 
