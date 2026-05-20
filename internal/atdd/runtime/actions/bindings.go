@@ -567,14 +567,18 @@ func (a actions) reportIntakeSummary(ctx *statemachine.Context) statemachine.Out
 // agents' ${parsed_concepts} placeholder.
 //
 // The artifact is a plain markdown file under <run_dir>/parsed-concepts.md
-// containing three named H2 sections — Description, Legacy Acceptance
-// Criteria, Acceptance Criteria — populated from the strings
-// parse_ticket_body already stashed in ctx.State. No structural
-// transformation: the artifact is the in-memory parsed sections dropped
-// to disk so the agents have a stable path to read and mutate across
-// the CONFIRM_REFINEMENT human gate. (A future "extract concepts"
-// upgrade could replace this body with a structured representation;
-// the path contract stays the same.)
+// containing two named H2 sections — Legacy Acceptance Criteria,
+// Acceptance Criteria — populated from the strings parse_ticket_body
+// already stashed in ctx.State. Description is parsed and stashed
+// upstream but deliberately excluded here: refine-acc's contract is
+// "rewrite acceptance criteria", not "rewrite prose context", and
+// carrying Description through the round-trip risks spurious
+// whitespace-normalization diffs back to the ticket source. No
+// structural transformation otherwise: the artifact is the in-memory
+// parsed sections dropped to disk so the agents have a stable path to
+// read and mutate across the CONFIRM_REFINEMENT human gate. (A future
+// "extract concepts" upgrade could replace this body with a structured
+// representation; the path contract stays the same.)
 //
 // Always writes the file, even when every section is empty — refine-acc
 // then discharges as a no-op (Refinement Changed: no) and update-ticket
@@ -596,7 +600,6 @@ func (a actions) materializeParsedConcepts(ctx *statemachine.Context) statemachi
 	}
 	path := filepath.Join(runDir, "parsed-concepts.md")
 	body := renderParsedConcepts(
-		ctx.GetString("ticket_description"),
 		ctx.GetString("ticket_legacy_acceptance_criteria"),
 		ctx.GetString("ticket_acceptance_criteria"),
 	)
@@ -608,18 +611,17 @@ func (a actions) materializeParsedConcepts(ctx *statemachine.Context) statemachi
 	return statemachine.Outcome{}
 }
 
-// renderParsedConcepts composes the artifact body from the three section
+// renderParsedConcepts composes the artifact body from the two section
 // strings parse_ticket_body stashed in ctx.State. Empty sections are
 // emitted with their heading and a single blank line so refine-acc sees a
 // uniform shape regardless of which sections the ticket carried — easier
 // to diff across runs than a body whose section set varies by ticket type.
-func renderParsedConcepts(description, legacyAC, acceptanceCriteria string) string {
+func renderParsedConcepts(legacyAC, acceptanceCriteria string) string {
 	var b strings.Builder
 	for _, sec := range []struct {
 		heading string
 		body    string
 	}{
-		{intake.SectionDescription, description},
 		{intake.SectionLegacyAcceptanceCriteria, legacyAC},
 		{intake.SectionAcceptanceCriteria, acceptanceCriteria},
 	} {

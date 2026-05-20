@@ -896,7 +896,6 @@ func TestMaterializeParsedConcepts_WritesArtifactAndStashesPath(t *testing.T) {
 		t.Fatalf("read artifact: %v", err)
 	}
 	for _, want := range []string{
-		"## Description\n\nUser places an order from the home page.",
 		"## Legacy Acceptance Criteria\n\n- old behavior preserved",
 		"## Acceptance Criteria\n\nScenario: ok",
 	} {

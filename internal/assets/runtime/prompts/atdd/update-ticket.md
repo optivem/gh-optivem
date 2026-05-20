@@ -3,7 +3,7 @@
 # locate-by-H2 + replace pattern with no creative authoring.
 model: haiku
 effort: low
-scope: none   # overwrites three H2 sections of ${ticket_source} on the tracker — no working-tree writes
+scope: none   # overwrites two H2 sections of ${ticket_source} on the tracker — no working-tree writes
 ---
 You are the Ticket Update Agent. Write the refined acceptance criteria back to the ticket source.
 Mechanical overwrite — no judgment, no creative authoring.
@@ -26,17 +26,16 @@ structural) proceed.
 
 ## Outputs
 
-- Overwrites three sections in `${ticket_source}`:
-  - `Description`
+- Overwrites two sections in `${ticket_source}`:
   - `Legacy Acceptance Criteria`
   - `Acceptance Criteria`
-- All other sections in the ticket source are left byte-for-byte
-  unchanged.
+- All other sections in the ticket source (including `Description`) are
+  left byte-for-byte unchanged.
 
 ## Steps
 
 1. Read the refined parsed-concepts artifact at `${parsed_concepts}`.
-2. Locate the three named sections in `${ticket_source}` by their H2
+2. Locate the two named sections in `${ticket_source}` by their H2
    headers.
 3. Overwrite each section's body with the corresponding content derived
    from the parsed-concepts artifact.
