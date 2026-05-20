@@ -156,8 +156,7 @@ func agentByPhase(eng *statemachine.Engine) map[string]string {
 	return out
 }
 
-// printAllPhases renders every phase in phase-scopes.yaml (sorted) and
-// every PhasesDeferredByPlan entry under a separate "Deferred" header.
+// printAllPhases renders every phase in phase-scopes.yaml (sorted).
 func printAllPhases(out io.Writer, scopes atdd.PhaseScopes, agents map[string]string, cfg *projectconfig.Config) error {
 	phaseIDs := make([]string, 0, len(scopes.Phases))
 	for id := range scopes.Phases {
@@ -169,39 +168,19 @@ func printAllPhases(out io.Writer, scopes atdd.PhaseScopes, agents map[string]st
 		writePhaseBlock(out, id, scopes.Phases[id], agents[id], cfg)
 		fmt.Fprintln(out)
 	}
-
-	deferredIDs := make([]string, 0, len(atdd.PhasesDeferredByPlan))
-	for id := range atdd.PhasesDeferredByPlan {
-		deferredIDs = append(deferredIDs, id)
-	}
-	sort.Strings(deferredIDs)
-
-	if len(deferredIDs) == 0 {
-		return nil
-	}
-	fmt.Fprintln(out, "Deferred — scope not yet declared (cited plan picks up the work):")
-	for _, id := range deferredIDs {
-		fmt.Fprintf(out, "  %-44s %s\n", id, atdd.PhasesDeferredByPlan[id])
-	}
 	return nil
 }
 
 // printOnePhase renders a single phase. Routes through the same block
-// renderer as printAllPhases. Unknown phases (not in phase-scopes.yaml,
-// not on the deferred allowlist) are a hard error so a typo'd phase id
-// fails loudly instead of silently emitting nothing.
+// renderer as printAllPhases. Unknown phases (not in phase-scopes.yaml)
+// are a hard error so a typo'd phase id fails loudly instead of silently
+// emitting nothing.
 func printOnePhase(out io.Writer, phaseID string, scopes atdd.PhaseScopes, agents map[string]string, cfg *projectconfig.Config) error {
 	if layers, ok := scopes.Phases[phaseID]; ok {
 		writePhaseBlock(out, phaseID, layers, agents[phaseID], cfg)
 		return nil
 	}
-	if plan, ok := atdd.PhasesDeferredByPlan[phaseID]; ok {
-		fmt.Fprintf(out, "Phase:  %s\n", phaseID)
-		fmt.Fprintf(out, "Status: deferred — scope not yet declared\n")
-		fmt.Fprintf(out, "Plan:   %s\n", plan)
-		return nil
-	}
-	return fmt.Errorf("phase %q not in phase-scopes.yaml or PhasesDeferredByPlan; run `gh optivem process scope` to list known phases", phaseID)
+	return fmt.Errorf("phase %q not in phase-scopes.yaml; run `gh optivem process scope` to list known phases", phaseID)
 }
 
 // writePhaseBlock renders one phase's header (phase + agent) and its

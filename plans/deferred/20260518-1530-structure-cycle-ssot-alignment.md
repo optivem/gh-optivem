@@ -1,5 +1,7 @@
 # Plan (deferred): Align structure-cycle docs with SSoT phase-scope architecture
 
+**RESOLVED-BY:** [plans/20260520-1053-remove-phases-deferred-by-plan.md](../20260520-1053-remove-phases-deferred-by-plan.md) — pinned scopes for the three formerly-deferred structural phases (`SYSTEM_INTERFACE_REDESIGN_CYCLE`, `EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE`, `SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE`) directly in `internal/atdd/phase-scopes.yaml` and removed the `PhasesDeferredByPlan` allowlist. The structure-cycle docs question (rewrite §Scope sections to reference bare layer names) is now moot at the `phase-scopes.yaml` layer — any remaining §Scope doc rewrites live with the structure-cycle doc authors, not behind a deferral allowlist.
+
 **Date filed:** 2026-05-18
 
 **Filed from:** [SSoT phase-scope plan (20260518-1530)](../20260518-1530-atdd-phase-scope-ssot.md), item 7's sweep-scope refinement.

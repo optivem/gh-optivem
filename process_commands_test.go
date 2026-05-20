@@ -14,10 +14,10 @@ import (
 )
 
 // TestProcessScope_AllPhases_NoProject asserts the no-arg listing
-// surfaces every phase in phase-scopes.yaml plus the deferred allowlist,
-// printing layer NAMES (no resolved paths) when no gh-optivem.yaml is
-// reachable. Uses a temp dir + explicit configPath so the test never
-// depends on the real cwd's project state.
+// surfaces every phase in phase-scopes.yaml, printing layer NAMES (no
+// resolved paths) when no gh-optivem.yaml is reachable. Uses a temp dir
+// + explicit configPath so the test never depends on the real cwd's
+// project state.
 func TestProcessScope_AllPhases_NoProject(t *testing.T) {
 	scopes, err := atdd.LoadPhaseScopes()
 	if err != nil {
@@ -35,14 +35,6 @@ func TestProcessScope_AllPhases_NoProject(t *testing.T) {
 		if !strings.Contains(out, "Phase:  "+phaseID) {
 			t.Errorf("expected phase %q in output, got:\n%s", phaseID, out)
 		}
-	}
-	for phaseID := range atdd.PhasesDeferredByPlan {
-		if !strings.Contains(out, phaseID) {
-			t.Errorf("expected deferred entry %q in output, got:\n%s", phaseID, out)
-		}
-	}
-	if !strings.Contains(out, "Deferred — scope not yet declared") {
-		t.Errorf("expected deferred section header in output, got:\n%s", out)
 	}
 }
 
@@ -65,24 +57,6 @@ func TestProcessScope_OnePhase_NoProject(t *testing.T) {
 	// Without a project, layers shouldn't carry trailing path values.
 	if strings.Contains(out, "system-test/") {
 		t.Errorf("did not expect resolved path in no-project output, got:\n%s", out)
-	}
-}
-
-// TestProcessScope_DeferredPhase asserts an allowlist phase prints its
-// deferred-plan citation instead of layer rows.
-func TestProcessScope_DeferredPhase(t *testing.T) {
-	tmp := t.TempDir()
-	var buf bytes.Buffer
-	if err := runProcessScope(&buf, "SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE", filepath.Join(tmp, "no-such-config.yaml")); err != nil {
-		t.Fatalf("runProcessScope: %v", err)
-	}
-	out := buf.String()
-
-	wantSubs := []string{"Phase:  SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE", "deferred", "plans/deferred/20260518-1530-structure-cycle-ssot-alignment.md"}
-	for _, sub := range wantSubs {
-		if !strings.Contains(out, sub) {
-			t.Errorf("expected %q in output, got:\n%s", sub, out)
-		}
 	}
 }
 

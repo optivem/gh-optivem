@@ -32,3 +32,8 @@ phases:
   CT_RED_DSL:                    [dsl_core, external_system_driver_port]
   CT_RED_EXTERNAL_SYSTEM_DRIVER: [external_system_driver_port, external_system_driver_adapter]
   CT_GREEN_EXTERNAL_SYSTEM_STUB: [external_system_driver_adapter]   # bare user_task today; rewires per plans/20260518-1144-atdd-bpmn-orchestration.md item 9 Part B
+
+  # ---- Structural cycles --------------------------------------------
+  SYSTEM_INTERFACE_REDESIGN_CYCLE:          [system_path, driver_adapter]
+  EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE: [external_system_driver_adapter]
+  SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE:  [system_path]

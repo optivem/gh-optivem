@@ -1773,23 +1773,6 @@ func TestCheckPhaseScope_RequiresPhaseID(t *testing.T) {
 	}
 }
 
-func TestCheckPhaseScope_AllowlistedPhaseIsNoop(t *testing.T) {
-	var stderr bytes.Buffer
-	a := newActions(Deps{Stderr: &stderr})
-	ctx := statemachine.NewContext()
-	ctx.Params["phase_id"] = "SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE" // arbitrary allowlisted phase; test exercises the allowlist mechanism, not the cycle itself. Test removed by plans/20260520-1053-remove-phases-deferred-by-plan.md.
-	out := a.checkPhaseScope(ctx)
-	if out.Err != nil {
-		t.Fatalf("unexpected err: %v", out.Err)
-	}
-	if got := ctx.Get(CtxKeyPhaseScopeClean); got != true {
-		t.Fatalf("phase_scope_clean: got %v, want true (allowlisted phases are no-op)", got)
-	}
-	if !strings.Contains(stderr.String(), "deferred per") {
-		t.Errorf("expected deferred-plan citation in stderr, got %q", stderr.String())
-	}
-}
-
 func TestCheckPhaseScope_UnknownPhaseIsHardError(t *testing.T) {
 	a := newActions(Deps{})
 	ctx := statemachine.NewContext()

@@ -882,9 +882,7 @@ func (a actions) verifyRealSuitePasses(ctx *statemachine.Context) statemachine.O
 //
 // Phase id source: the call_activity invoking red_phase_cycle /
 // green_phase_cycle passes phase_id: <NODE_ID> in its params; this action
-// reads ctx.Params["phase_id"]. Phases listed in
-// atdd.PhasesDeferredByPlan are no-op (clean = true) with a single log
-// line citing the deferred plan.
+// reads ctx.Params["phase_id"].
 //
 // Writes:
 //   - CtxKeyPhaseScopeClean (bool)            — false on violation
@@ -898,12 +896,6 @@ func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome
 		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: phase_id not set in Params — the call_activity invoking red_phase_cycle / green_phase_cycle must pass phase_id")}
 	}
 
-	if plan, deferred := atdd.PhasesDeferredByPlan[phaseID]; deferred {
-		fmt.Fprintf(a.deps.Stderr, "check_phase_scope: %s scope check skipped — deferred per %s\n", phaseID, plan)
-		ctx.Set(CtxKeyPhaseScopeClean, true)
-		return statemachine.Outcome{}
-	}
-
 	scopes, err := atdd.LoadPhaseScopes()
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: %w", err)}
@@ -911,7 +903,7 @@ func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome
 	layers, ok := scopes.Phases[phaseID]
 	if !ok {
 		return statemachine.Outcome{Err: fmt.Errorf(
-			"check_phase_scope: phase id %q not in internal/atdd/phase-scopes.yaml and not in PhasesDeferredByPlan — add an entry or allowlist", phaseID)}
+			"check_phase_scope: phase id %q not in internal/atdd/phase-scopes.yaml — add an entry", phaseID)}
 	}
 
 	cfg, err := projectconfig.Load(a.deps.RepoPath)

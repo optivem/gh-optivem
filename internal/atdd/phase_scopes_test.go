@@ -90,36 +90,17 @@ func TestPhaseScopes_ForwardFK_PhasesExistInBPMN(t *testing.T) {
 	}
 }
 
-// TestPhaseScopes_ReverseFK_WritingAgentsScopedOrAllowlisted asserts
-// every node that dispatches a writing agent has scope declared — either
-// in phase-scopes.yaml or with an explicit deferred-plan citation on
-// the allowlist. Filtering by writing-agent (rather than e.g.
-// user_task-only) means CT_GREEN_EXTERNAL_SYSTEM_STUB (currently a bare user_task) and
-// the templated call_activities (AT_RED_*, CT_RED_*, structure-cycle
-// agents) are all caught by one rule.
-func TestPhaseScopes_ReverseFK_WritingAgentsScopedOrAllowlisted(t *testing.T) {
+// TestPhaseScopes_ReverseFK_WritingAgentsScoped asserts every node that
+// dispatches a writing agent has scope declared in phase-scopes.yaml.
+// Filtering by writing-agent (rather than e.g. user_task-only) means
+// CT_GREEN_EXTERNAL_SYSTEM_STUB (currently a bare user_task) and the
+// templated call_activities (AT_RED_*, CT_RED_*, structure-cycle agents)
+// are all caught by one rule.
+func TestPhaseScopes_ReverseFK_WritingAgentsScoped(t *testing.T) {
 	ps := loadPhaseScopes(t)
 	for nodeID := range writingAgentNodeIDs(loadEngine(t)) {
-		_, inScopes := ps.Phases[nodeID]
-		_, inAllowlist := PhasesDeferredByPlan[nodeID]
-		switch {
-		case !inScopes && !inAllowlist:
-			t.Errorf("writing-agent node %q is neither in phase-scopes.yaml nor in PhasesDeferredByPlan; add scope or document the deferral", nodeID)
-		case inScopes && inAllowlist:
-			t.Errorf("writing-agent node %q is in BOTH phase-scopes.yaml AND the deferred allowlist; remove from allowlist", nodeID)
-		}
-	}
-}
-
-// TestPhaseScopes_AllowlistEntriesStillExistInBPMN asserts every entry
-// on the deferred allowlist still corresponds to a real node id in
-// process-flow.yaml. Catches stale allowlist entries left behind after
-// a BPMN rename or removal.
-func TestPhaseScopes_AllowlistEntriesStillExistInBPMN(t *testing.T) {
-	nodeIDs := allNodeIDs(loadEngine(t))
-	for phaseID, plan := range PhasesDeferredByPlan {
-		if !nodeIDs[phaseID] {
-			t.Errorf("allowlist entry %q (deferred to %s) has no matching node id in process-flow.yaml; remove the stale allowlist entry", phaseID, plan)
+		if _, inScopes := ps.Phases[nodeID]; !inScopes {
+			t.Errorf("writing-agent node %q is not in phase-scopes.yaml; add scope", nodeID)
 		}
 	}
 }

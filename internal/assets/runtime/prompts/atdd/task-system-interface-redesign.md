@@ -20,7 +20,7 @@ Reshape the system's surface; the driver adapter absorbs the change so DSL, Gher
 
 ## Steps
 
-1. Read the Checklist and the system tree to decide which driver(s) the ticket targets. Do NOT pre-classify the channel — let the Checklist + system layout pick it. Examples: `${sut_namespace}/api`, `${sut_namespace}/ui`, `${sut_namespace}/mobile`, `${sut_namespace}/cli`, `${sut_namespace}/admin`.
+1. Read the Checklist and the system tree to decide which driver(s) the ticket targets. Do NOT pre-classify the channel — let the Checklist + system layout pick it. Examples: `api`, `ui`, `mobile`, `cli`, `admin`.
 2. Update the system surface under `system/` to match the Checklist. Shape depends on the channel:
    - **API**: controllers, request/response DTOs, routes, status codes, error format.
    - **UI**: page structure, form fields, navigation, copy, selectors.

@@ -27,19 +27,6 @@ type PhaseScopes struct {
 	Phases map[string][]string `yaml:"phases"`
 }
 
-// PhasesDeferredByPlan lists writing-agent phase ids in process-flow.yaml
-// that knowingly have no phase-scopes.yaml entry yet. Each entry cites
-// the deferred plan that picks up the scope work, so a future audit grep
-// finds the gap with its follow-up.
-//
-// Map exposed (not a function) so callers can index by phase id directly
-// and the test file's reverse-FK check can range over the same data.
-var PhasesDeferredByPlan = map[string]string{
-	"SYSTEM_INTERFACE_REDESIGN_CYCLE":          "plans/deferred/20260518-1530-structure-cycle-ssot-alignment.md",
-	"EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE": "plans/deferred/20260518-1530-structure-cycle-ssot-alignment.md",
-	"SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE":  "plans/deferred/20260518-1530-structure-cycle-ssot-alignment.md",
-}
-
 // NonWritingAgents are agent names that do not need a phase-scopes
 // entry. `human` is the trusted-actor case; `fix-verify` is a retry
 // helper that inherits scope from the failing phase's context.
