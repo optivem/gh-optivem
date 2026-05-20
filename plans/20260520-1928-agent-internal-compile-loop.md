@@ -216,7 +216,7 @@ compile commands (`gh optivem compile --layer dsl_port` or
 equivalent) and is genuinely future work — but not blocking v1 and
 not part of this plan.
 
-### Q2. Reword `STOP_COMPILE_FAIL_REVIEW` for the divergence case?
+### Q2. Reword `STOP_COMPILE_FAIL_REVIEW` for the divergence case? — RESOLVED
 
 Today the message reads:
 > STOP - HUMAN REVIEW — compile failed, dispatch ${fix_agent}?
@@ -229,27 +229,42 @@ gave up and signalled done with broken code; investigating the
 environment is the right default *if* the agent's compile genuinely
 passed.
 
-Proposed wording (one line, keeps the same `[y/n]` dispatch shape):
+**Decision**: reword to the explicit-divergence form. Keeps the same
+`[y/n]` dispatch shape (no BPMN structural change, per the
+"BPMN — rewording only" section above):
+
 > STOP - HUMAN REVIEW — BPMN compile failed after ${agent} signalled done; re-dispatch ${fix_agent}? (n → investigate divergence)
 
-Confirm wording before editing.
+Edit applies to `process-flow.yaml:1205` (the
+`STOP_COMPILE_FAIL_REVIEW.documentation` string). The two template
+variables (`${agent}` and `${fix_agent}`) are both already in scope
+at the call sites — for RED and GREEN callers they're the same
+value (the cycle's own WRITE agent forwarded as `fix_agent` per
+`process-flow.yaml:1182–1186`), so the rendered message will name
+the same agent twice; for the structural cycle they differ
+(`${agent}` is e.g. `fix-verify`, `${fix_agent}` is also
+`fix-verify`). If `${agent}` is not actually in scope inside the
+`compile` sub-process, fall back to dropping the `after ${agent}
+signalled done` clause and using just "BPMN compile failed;
+re-dispatch ${fix_agent}? (n → investigate divergence)" — verify
+the scope during execution.
 
-### Q3. Where should the agent's compile output go?
+### Q3. Where should the agent's compile output go? — RESOLVED
 
-The agent's compile output (`tsc` errors, dotnet build diagnostics,
-…) currently *would* land in the agent's tool log only, which is
-ephemeral. The orchestrator captures nothing.
+**Decision**: ephemeral. The agent's compile output (`tsc` errors,
+`dotnet build` diagnostics, …) lives in the agent's tool log only.
+The orchestrator captures nothing. Trust the BPMN verification
+compile to surface any failure that escapes the agent's self-check.
 
-Options:
-- **Do nothing** — agent's output is ephemeral; trust the BPMN
-  verification compile to surface failures.
-- **Tee to a run log** — agent writes its compile output to
-  `.gh-optivem/runs/<run>/NNN-<agent>.compile.log` so post-mortem
-  debugging is possible. Mirrors the existing
-  `NNN-<agent>.prompt.md` convention seen in the 20260520 trace.
+No per-run `*.compile.log` file is written. No new run-artifact
+convention to maintain. If a divergence case actually shows up in
+practice and post-mortem debugging is hard, revisit then — adding
+the run log later is cheap.
 
-Recommendation: **do nothing for v1**. Add the run log if a
-divergence case actually shows up in practice. Cheap to add later.
+Practical implication for the agent prompt: no instruction to write
+or redirect output. The agent just runs `${compile_command}`; its
+stdout/stderr is whatever Claude Code's Bash tool captures into the
+tool log, which is sufficient for the agent's own iteration loop.
 
 ### Q4. What about agents that don't WRITE code?
 
