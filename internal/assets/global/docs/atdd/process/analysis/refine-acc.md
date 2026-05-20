@@ -19,11 +19,26 @@ gate). If refinement produced changes, a downstream `UPDATE_TICKET` step
 (separate phase doc) writes the refined content back to the ticket source.
 If no changes, `UPDATE_TICKET` is skipped.
 
+## Inputs
+
+- `${parsed_concepts}` — the parsed-concepts artifact emitted by the
+  upstream parse-ticket / concepts phase. Contains the structured ACs
+  (legacy + newly-derived) ready to refine. The raw ticket source is not
+  re-read.
+
+## Outputs
+
+- Mutates `${parsed_concepts}` in place — edits to existing ACs, new ACs
+  for additional scenarios, Gherkin normalization throughout.
+- Sets flag: `Refinement Changed: yes|no` — `yes` if any edit or addition
+  occurred; `no` if the AC set was already complete and Gherkin-correct.
+  The downstream `UPDATE_TICKET` step runs only when `yes`.
+
 ## Steps
 
-1. Read the parsed-concepts artifact.
+1. Read `${parsed_concepts}`.
 2. For each acceptance criterion, evaluate coverage and propose edits or
    new ACs as needed.
 3. Enforce Gherkin GIVEN-WHEN-THEN form on every scenario.
-4. Mutate the parsed-concepts artifact in place; set `refinement_changed`
-   if any change occurred.
+4. Mutate `${parsed_concepts}` in place; set the `Refinement Changed`
+   flag if any change occurred.

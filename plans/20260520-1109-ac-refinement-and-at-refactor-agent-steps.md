@@ -80,27 +80,6 @@ Observations / open questions (to discuss):
 > agent prompt file, gate wiring, inline phase doc, language-equivalents
 > update, etc. — once we've discussed it. Leaving as stubs deliberately.
 
-2. Define inputs/outputs for the backlog-refinement cycle and its
-   downstream `UPDATE_TICKET` step.
-   - **Input (cycle):** the parsed-concepts artifact emitted by the
-     upstream parse-ticket / concepts phase (structured ACs ready to
-     refine). Raw ticket is not re-read.
-   - **Working output (cycle):** mutates the parsed-concepts artifact
-     in place — edits to existing ACs, new ACs for additional scenarios,
-     Gherkin normalization. Tracks whether *any* change occurred (for
-     the conditional `UPDATE_TICKET` below).
-   - **`UPDATE_TICKET` step (new, downstream of the cycle):** runs only
-     if refinement produced changes. Overwrites three sections of the
-     ticket source: `Description`, `Legacy Acceptance Criteria`, and
-     `Acceptance Criteria` — populated from the refined parsed-concepts
-     artifact. Other ticket sections are left untouched.
-   - **Skip path:** if refinement produced no changes, `UPDATE_TICKET`
-     does not run; the cycle discharges silently into the execution
-     cycles.
-   - **Location:** `UPDATE_TICKET` lives in its own phase doc
-     `process/analysis/update-ticket.md` and its own runtime prompt
-     `runtime/prompts/atdd/update-ticket.md` (Haiku agent — mechanical
-     write-back, no judgment). Sibling to `refine-acc.md`.
 3. Add a `## Scope` block to **both** docs (different scopes per agent):
    - `refine-acc.md` (refiner) — scopes to the **parsed-concepts
      artifact** as the working store. Ticket source file, production
@@ -213,5 +192,5 @@ Observations / open questions (to discuss):
 
 ## Pickup
 
-Item 1 landed in session at 2026-05-20T10:13:47Z (see commit log).
-Items 2–4 next; items 5–9 deferred to fresh sessions.
+Items 1–2 landed in session at 2026-05-20T10:13:47Z (see commit log).
+Items 3–4 next; items 5–9 deferred to fresh sessions.
