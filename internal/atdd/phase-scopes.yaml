@@ -37,3 +37,16 @@ phases:
   SYSTEM_INTERFACE_REDESIGN_CYCLE:          [system_path, driver_adapter]
   EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE: [external_system_driver_adapter]
   SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE:  [system_path]
+
+  # ---- Legacy coverage cycle -----------------------------------------
+  # Test-side only — legacy phases never modify production code (no system_path entries).
+  # Each row reuses its change-cycle counterpart's canonical layer keys verbatim because
+  # legacy tests are authored into the same folders as change-cycle tests (per
+  # feedback_legacy_tests_no_marker.md). See plans/20260518-1116-legacy-coverage-cycle.md.
+  LEGACY_AT_TEST:                   [at_test, dsl_port, dsl_core]
+  LEGACY_AT_DSL:                    [dsl_core, driver_port]
+  LEGACY_AT_SYSTEM_DRIVER:          [driver_port, driver_adapter]
+  LEGACY_CT_TEST:                   [ct_test, dsl_port, dsl_core]
+  LEGACY_CT_DSL:                    [dsl_core, external_system_driver_port]
+  LEGACY_CT_EXTERNAL_SYSTEM_DRIVER: [external_system_driver_port, external_system_driver_adapter]
+  LEGACY_CT_EXTERNAL_SYSTEM_STUB:   [external_system_driver_adapter]

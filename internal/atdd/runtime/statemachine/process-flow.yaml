@@ -63,8 +63,6 @@
 #                  the shared structural_cycle).
 #
 # Open gaps preserved as TBDs (do not silently resolve):
-#   - legacy_acceptance_criteria process: single TBD node; full mechanics deferred per
-#     glossary.md ("The Legacy Acceptance Criteria Cycle's own internal phases are TBD").
 #   - ct_green_external_system_stub node: agent set to `ct-green-external-system-stub`;
 #     ownership is TBD per the process-audit gap on stubs ownership
 #     (see plans/20260429-100633-process-audit.md).
@@ -1310,23 +1308,189 @@ processes:
 
   # ===========================================================================
   # legacy_acceptance_criteria
-  # TBD per glossary.md ("The Legacy Acceptance Criteria Cycle's own internal phases are
-  # TBD") and process-audit gap on Legacy Acceptance Criteria Cycle interim spec.
-  # The placeholder is a single human-review STOP so the runtime can dispatch
-  # something sensible until the spec lands; replace once cycles.md fills the
-  # internal process.
+  # Dispatch wrapper for the legacy coverage cycle — called from
+  # run_legacy_cycle when a ticket carries any Legacy Acceptance Criteria.
+  # Branches on criterion type (AT vs CT) using two presence booleans so
+  # tickets that carry both kinds run both sub-cycles sequentially. The
+  # upstream `RUN_LEGACY_CYCLE` caller stays oblivious to the AT/CT split.
+  # See plans/20260518-1116-legacy-coverage-cycle.md item 1b.
   # ===========================================================================
   legacy_acceptance_criteria:
-    start: LEGACY_TBD
+    start: GATE_LEGACY_AT_PRESENT
     nodes:
-      - id: LEGACY_TBD
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — Legacy Acceptance Criteria Cycle TBD"
+      - id: GATE_LEGACY_AT_PRESENT
+        type: gateway
+        binding: legacy_at_acceptance_criteria_present
+        documentation: "Legacy AT-style acceptance criteria present?"
+
+      - id: LEGACY_AT_CYCLE
+        type: call_activity
+        process: legacy_at_cycle
+
+      - id: GATE_LEGACY_CT_PRESENT
+        type: gateway
+        binding: legacy_ct_acceptance_criteria_present
+        documentation: "Legacy CT-style acceptance criteria present?"
+
+      - id: LEGACY_CT_CYCLE
+        type: call_activity
+        process: legacy_ct_cycle
 
       - id: LEGACY_END
         type: end_event
 
     sequence_flows:
-      - {from: LEGACY_TBD, to: LEGACY_END}
+      - {from: GATE_LEGACY_AT_PRESENT, to: LEGACY_AT_CYCLE,        when: "legacy_at_acceptance_criteria_present == true"}
+      - {from: GATE_LEGACY_AT_PRESENT, to: GATE_LEGACY_CT_PRESENT, when: "legacy_at_acceptance_criteria_present == false"}
+      - {from: LEGACY_AT_CYCLE,        to: GATE_LEGACY_CT_PRESENT}
+      - {from: GATE_LEGACY_CT_PRESENT, to: LEGACY_CT_CYCLE,        when: "legacy_ct_acceptance_criteria_present == true"}
+      - {from: GATE_LEGACY_CT_PRESENT, to: LEGACY_END,             when: "legacy_ct_acceptance_criteria_present == false"}
+      - {from: LEGACY_CT_CYCLE,        to: LEGACY_END}
+
+  # ===========================================================================
+  # legacy_at_cycle
+  # Legacy AT coverage cycle — retroactively writes acceptance tests for
+  # behaviour that already exists in the SUT. Mirrors the AT change cycle's
+  # RED-side phase shape (test → DSL → system driver) with the existing
+  # interface-changed flags gating which layers run. Ends with an inverted-RED
+  # verify gate: the assembled test is expected to PASS on first run. On
+  # fail, route to STOP - HUMAN REVIEW (no loopback) — operator edits the
+  # offending layer and re-runs the legacy cycle from scratch.
+  # See plans/20260518-1116-legacy-coverage-cycle.md item 1b.
+  # ===========================================================================
+  legacy_at_cycle:
+    start: LEGACY_AT_TEST
+    nodes:
+      - id: LEGACY_AT_TEST
+        type: user_task
+        agent: legacy-at-test
+        documentation: "LEGACY - AT - TEST"
+
+      - id: GATE_DSL_LEGACY_AT
+        type: gateway
+        binding: dsl_interface_changed
+        documentation: "DSL Interface Changed?"
+
+      - id: LEGACY_AT_DSL
+        type: user_task
+        agent: legacy-at-dsl
+        documentation: "LEGACY - AT - DSL"
+
+      - id: GATE_SYS_LEGACY_AT
+        type: gateway
+        binding: system_driver_interface_changed
+        documentation: "System Driver Interface Changed?"
+
+      - id: LEGACY_AT_SYSTEM_DRIVER
+        type: user_task
+        agent: legacy-at-system-driver
+        documentation: "LEGACY - AT - SYSTEM DRIVER"
+
+      - id: VERIFY_LEGACY_AT
+        type: service_task
+        action: run_tests
+        documentation: "Verify: run assembled legacy AT tests — inverted-RED, expected to PASS on first run"
+
+      - id: GATE_VERIFY_LEGACY_AT
+        type: gateway
+        binding: legacy_at_verify_outcome
+        documentation: "Legacy AT verify outcome? (ok = passed on first run | red = test/DSL/driver wrong)"
+
+      - id: STOP_LEGACY_AT_VERIFY_FAILED
+        type: user_task
+        agent: human
+        role: review
+        documentation: "STOP - HUMAN REVIEW — legacy AT verify RED; the test/DSL/driver is suspect (SUT is never modified in a legacy cycle). Edit the offending layer and re-run the legacy cycle from scratch."
+
+      - id: LEGACY_AT_END
+        type: end_event
+
+    sequence_flows:
+      - {from: LEGACY_AT_TEST,            to: GATE_DSL_LEGACY_AT}
+      - {from: GATE_DSL_LEGACY_AT,        to: LEGACY_AT_DSL,                 when: "dsl_interface_changed == true"}
+      - {from: GATE_DSL_LEGACY_AT,        to: GATE_SYS_LEGACY_AT,            when: "dsl_interface_changed == false"}
+      - {from: LEGACY_AT_DSL,             to: GATE_SYS_LEGACY_AT}
+      - {from: GATE_SYS_LEGACY_AT,        to: LEGACY_AT_SYSTEM_DRIVER,       when: "system_driver_interface_changed == true"}
+      - {from: GATE_SYS_LEGACY_AT,        to: VERIFY_LEGACY_AT,              when: "system_driver_interface_changed == false"}
+      - {from: LEGACY_AT_SYSTEM_DRIVER,   to: VERIFY_LEGACY_AT}
+      - {from: VERIFY_LEGACY_AT,          to: GATE_VERIFY_LEGACY_AT}
+      - {from: GATE_VERIFY_LEGACY_AT,     to: LEGACY_AT_END,                 when: "legacy_at_verify_outcome == ok"}
+      - {from: GATE_VERIFY_LEGACY_AT,     to: STOP_LEGACY_AT_VERIFY_FAILED,  when: "legacy_at_verify_outcome == red"}
+      - {from: STOP_LEGACY_AT_VERIFY_FAILED, to: LEGACY_AT_END}
+
+  # ===========================================================================
+  # legacy_ct_cycle
+  # Legacy CT coverage cycle — retroactively writes external-system contract
+  # tests for integration behaviour that already exists. Mirrors the CT
+  # change cycle's RED-side phase shape (test → DSL → external driver) with
+  # the existing interface-changed flags gating which layers run; the
+  # external-system stub phase is always run (the stub is test infrastructure,
+  # not production code, so authoring it is consistent with legacy's
+  # test-side-only rule). Ends with an inverted-RED verify gate.
+  # See plans/20260518-1116-legacy-coverage-cycle.md item 1b.
+  # ===========================================================================
+  legacy_ct_cycle:
+    start: LEGACY_CT_TEST
+    nodes:
+      - id: LEGACY_CT_TEST
+        type: user_task
+        agent: legacy-ct-test
+        documentation: "LEGACY - CT - TEST"
+
+      - id: GATE_DSL_LEGACY_CT
+        type: gateway
+        binding: dsl_interface_changed
+        documentation: "DSL Interface Changed?"
+
+      - id: LEGACY_CT_DSL
+        type: user_task
+        agent: legacy-ct-dsl
+        documentation: "LEGACY - CT - DSL"
+
+      - id: GATE_EXT_LEGACY_CT
+        type: gateway
+        binding: external_system_driver_interface_changed
+        documentation: "External System Driver Interface Changed?"
+
+      - id: LEGACY_CT_EXTERNAL_SYSTEM_DRIVER
+        type: user_task
+        agent: legacy-ct-external-system-driver
+        documentation: "LEGACY - CT - EXTERNAL SYSTEM DRIVER"
+
+      - id: LEGACY_CT_EXTERNAL_SYSTEM_STUB
+        type: user_task
+        agent: legacy-ct-external-system-stub
+        documentation: "LEGACY - CT - EXTERNAL SYSTEM STUB"
+
+      - id: VERIFY_LEGACY_CT
+        type: service_task
+        action: run_tests
+        documentation: "Verify: run assembled legacy CT tests — inverted-RED, expected to PASS on first run"
+
+      - id: GATE_VERIFY_LEGACY_CT
+        type: gateway
+        binding: legacy_ct_verify_outcome
+        documentation: "Legacy CT verify outcome? (ok = passed on first run | red = test/DSL/driver/stub wrong)"
+
+      - id: STOP_LEGACY_CT_VERIFY_FAILED
+        type: user_task
+        agent: human
+        role: review
+        documentation: "STOP - HUMAN REVIEW — legacy CT verify RED; the test/DSL/driver/stub is suspect (SUT is never modified in a legacy cycle). Edit the offending layer and re-run the legacy cycle from scratch."
+
+      - id: LEGACY_CT_END
+        type: end_event
+
+    sequence_flows:
+      - {from: LEGACY_CT_TEST,                   to: GATE_DSL_LEGACY_CT}
+      - {from: GATE_DSL_LEGACY_CT,               to: LEGACY_CT_DSL,                       when: "dsl_interface_changed == true"}
+      - {from: GATE_DSL_LEGACY_CT,               to: LEGACY_CT_EXTERNAL_SYSTEM_STUB,      when: "dsl_interface_changed == false"}
+      - {from: LEGACY_CT_DSL,                    to: GATE_EXT_LEGACY_CT}
+      - {from: GATE_EXT_LEGACY_CT,               to: LEGACY_CT_EXTERNAL_SYSTEM_DRIVER,    when: "external_system_driver_interface_changed == true"}
+      - {from: GATE_EXT_LEGACY_CT,               to: LEGACY_CT_EXTERNAL_SYSTEM_STUB,      when: "external_system_driver_interface_changed == false"}
+      - {from: LEGACY_CT_EXTERNAL_SYSTEM_DRIVER, to: LEGACY_CT_EXTERNAL_SYSTEM_STUB}
+      - {from: LEGACY_CT_EXTERNAL_SYSTEM_STUB,   to: VERIFY_LEGACY_CT}
+      - {from: VERIFY_LEGACY_CT,                 to: GATE_VERIFY_LEGACY_CT}
+      - {from: GATE_VERIFY_LEGACY_CT,            to: LEGACY_CT_END,                       when: "legacy_ct_verify_outcome == ok"}
+      - {from: GATE_VERIFY_LEGACY_CT,            to: STOP_LEGACY_CT_VERIFY_FAILED,        when: "legacy_ct_verify_outcome == red"}
+      - {from: STOP_LEGACY_CT_VERIFY_FAILED,     to: LEGACY_CT_END}

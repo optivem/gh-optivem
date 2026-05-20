@@ -344,13 +344,18 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    GATE_LEGACY_AT_PRESENT{Legacy AT-style acceptance criteria present?}
+    GATE_LEGACY_CT_PRESENT{Legacy CT-style acceptance criteria present?}
+    LEGACY_AT_CYCLE[LEGACY_AT_CYCLE — see § legacy_at_cycle]
+    LEGACY_CT_CYCLE[LEGACY_CT_CYCLE — see § legacy_ct_cycle]
     LEGACY_END((End))
-    LEGACY_TBD[STOP - HUMAN REVIEW — Legacy Acceptance Criteria Cycle TBD]
 
-    LEGACY_TBD --> LEGACY_END
-
-    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class LEGACY_TBD humanNode
+    GATE_LEGACY_AT_PRESENT -- Yes --> LEGACY_AT_CYCLE
+    GATE_LEGACY_AT_PRESENT -- No --> GATE_LEGACY_CT_PRESENT
+    LEGACY_AT_CYCLE --> GATE_LEGACY_CT_PRESENT
+    GATE_LEGACY_CT_PRESENT -- Yes --> LEGACY_CT_CYCLE
+    GATE_LEGACY_CT_PRESENT -- No --> LEGACY_END
+    LEGACY_CT_CYCLE --> LEGACY_END
 ```
 
 ## at_refactor_system
@@ -468,6 +473,80 @@ flowchart TD
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
     class STOP_GREEN_TEST_FAIL,STOP_SCOPE_VIOLATION humanNode
+```
+
+## legacy_at_cycle
+
+```mermaid
+flowchart TD
+    GATE_DSL_LEGACY_AT{DSL Interface Changed?}
+    GATE_SYS_LEGACY_AT{System Driver Interface Changed?}
+    GATE_VERIFY_LEGACY_AT{"Legacy AT verify outcome? (ok = passed on first run | red = test/DSL/driver wrong)"}
+    LEGACY_AT_DSL[LEGACY - AT - DSL]
+    LEGACY_AT_END((End))
+    LEGACY_AT_SYSTEM_DRIVER[LEGACY - AT - SYSTEM DRIVER]
+    LEGACY_AT_TEST[LEGACY - AT - TEST]
+    STOP_LEGACY_AT_VERIFY_FAILED["STOP - HUMAN REVIEW — legacy AT verify RED; the test/DSL/driver is suspect (SUT is never modified in a legacy cycle). Edit the offending layer and re-run the legacy cycle from scratch."]
+    VERIFY_LEGACY_AT[[Verify: run assembled legacy AT tests — inverted-RED, expected to PASS on first run]]
+
+    LEGACY_AT_TEST --> GATE_DSL_LEGACY_AT
+    GATE_DSL_LEGACY_AT -- Yes --> LEGACY_AT_DSL
+    GATE_DSL_LEGACY_AT -- No --> GATE_SYS_LEGACY_AT
+    LEGACY_AT_DSL --> GATE_SYS_LEGACY_AT
+    GATE_SYS_LEGACY_AT -- Yes --> LEGACY_AT_SYSTEM_DRIVER
+    GATE_SYS_LEGACY_AT -- No --> VERIFY_LEGACY_AT
+    LEGACY_AT_SYSTEM_DRIVER --> VERIFY_LEGACY_AT
+    VERIFY_LEGACY_AT --> GATE_VERIFY_LEGACY_AT
+    GATE_VERIFY_LEGACY_AT -- ok --> LEGACY_AT_END
+    GATE_VERIFY_LEGACY_AT -- red --> STOP_LEGACY_AT_VERIFY_FAILED
+    STOP_LEGACY_AT_VERIFY_FAILED --> LEGACY_AT_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class VERIFY_LEGACY_AT serviceNode
+
+    classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
+    class LEGACY_AT_DSL,LEGACY_AT_SYSTEM_DRIVER,LEGACY_AT_TEST agentNode
+
+    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
+    class STOP_LEGACY_AT_VERIFY_FAILED humanNode
+```
+
+## legacy_ct_cycle
+
+```mermaid
+flowchart TD
+    GATE_DSL_LEGACY_CT{DSL Interface Changed?}
+    GATE_EXT_LEGACY_CT{External System Driver Interface Changed?}
+    GATE_VERIFY_LEGACY_CT{"Legacy CT verify outcome? (ok = passed on first run | red = test/DSL/driver/stub wrong)"}
+    LEGACY_CT_DSL[LEGACY - CT - DSL]
+    LEGACY_CT_END((End))
+    LEGACY_CT_EXTERNAL_SYSTEM_DRIVER[LEGACY - CT - EXTERNAL SYSTEM DRIVER]
+    LEGACY_CT_EXTERNAL_SYSTEM_STUB[LEGACY - CT - EXTERNAL SYSTEM STUB]
+    LEGACY_CT_TEST[LEGACY - CT - TEST]
+    STOP_LEGACY_CT_VERIFY_FAILED["STOP - HUMAN REVIEW — legacy CT verify RED; the test/DSL/driver/stub is suspect (SUT is never modified in a legacy cycle). Edit the offending layer and re-run the legacy cycle from scratch."]
+    VERIFY_LEGACY_CT[[Verify: run assembled legacy CT tests — inverted-RED, expected to PASS on first run]]
+
+    LEGACY_CT_TEST --> GATE_DSL_LEGACY_CT
+    GATE_DSL_LEGACY_CT -- Yes --> LEGACY_CT_DSL
+    GATE_DSL_LEGACY_CT -- No --> LEGACY_CT_EXTERNAL_SYSTEM_STUB
+    LEGACY_CT_DSL --> GATE_EXT_LEGACY_CT
+    GATE_EXT_LEGACY_CT -- Yes --> LEGACY_CT_EXTERNAL_SYSTEM_DRIVER
+    GATE_EXT_LEGACY_CT -- No --> LEGACY_CT_EXTERNAL_SYSTEM_STUB
+    LEGACY_CT_EXTERNAL_SYSTEM_DRIVER --> LEGACY_CT_EXTERNAL_SYSTEM_STUB
+    LEGACY_CT_EXTERNAL_SYSTEM_STUB --> VERIFY_LEGACY_CT
+    VERIFY_LEGACY_CT --> GATE_VERIFY_LEGACY_CT
+    GATE_VERIFY_LEGACY_CT -- ok --> LEGACY_CT_END
+    GATE_VERIFY_LEGACY_CT -- red --> STOP_LEGACY_CT_VERIFY_FAILED
+    STOP_LEGACY_CT_VERIFY_FAILED --> LEGACY_CT_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class VERIFY_LEGACY_CT serviceNode
+
+    classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
+    class LEGACY_CT_DSL,LEGACY_CT_EXTERNAL_SYSTEM_DRIVER,LEGACY_CT_EXTERNAL_SYSTEM_STUB,LEGACY_CT_TEST agentNode
+
+    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
+    class STOP_LEGACY_CT_VERIFY_FAILED humanNode
 ```
 
 ## red_phase_cycle

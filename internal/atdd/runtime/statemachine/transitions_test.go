@@ -55,6 +55,8 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"compile",
 		"commit",
 		"legacy_acceptance_criteria",
+		"legacy_at_cycle",
+		"legacy_ct_cycle",
 	}
 	for _, name := range wantProcesses {
 		if _, ok := eng.Processes[name]; !ok {
@@ -388,10 +390,53 @@ var transitionTable = []transitionCase{
 	{process: "commit", from: "EXECUTE_COMMIT", wantTo: "COMMIT_END"},
 
 	// ---- legacy_acceptance_criteria ----
-	// Legacy Acceptance Criteria Cycle interim spec: a single STOP node, per
-	// glossary.md TBD. Locked here so the placeholder cannot silently
-	// regress to "TBD" by accident.
-	{process: "legacy_acceptance_criteria", from: "LEGACY_TBD", wantTo: "LEGACY_END", desc: "interim spec: single human-review STOP"},
+	// Dispatch wrapper for the legacy coverage cycle. Two sequential presence
+	// gates branch into legacy_at_cycle / legacy_ct_cycle; tickets that carry
+	// both kinds of legacy criteria run both sub-cycles. See
+	// plans/20260518-1116-legacy-coverage-cycle.md item 1b.
+	{process: "legacy_acceptance_criteria", from: "GATE_LEGACY_AT_PRESENT", state: map[string]any{"legacy_at_acceptance_criteria_present": true}, wantTo: "LEGACY_AT_CYCLE"},
+	{process: "legacy_acceptance_criteria", from: "GATE_LEGACY_AT_PRESENT", state: map[string]any{"legacy_at_acceptance_criteria_present": false}, wantTo: "GATE_LEGACY_CT_PRESENT"},
+	{process: "legacy_acceptance_criteria", from: "LEGACY_AT_CYCLE", wantTo: "GATE_LEGACY_CT_PRESENT"},
+	{process: "legacy_acceptance_criteria", from: "GATE_LEGACY_CT_PRESENT", state: map[string]any{"legacy_ct_acceptance_criteria_present": true}, wantTo: "LEGACY_CT_CYCLE"},
+	{process: "legacy_acceptance_criteria", from: "GATE_LEGACY_CT_PRESENT", state: map[string]any{"legacy_ct_acceptance_criteria_present": false}, wantTo: "LEGACY_END"},
+	{process: "legacy_acceptance_criteria", from: "LEGACY_CT_CYCLE", wantTo: "LEGACY_END"},
+
+	// ---- legacy_at_cycle ----
+	// Legacy AT coverage cycle. Mirrors at_cycle's RED-side shape (test →
+	// DSL → system driver) with the existing interface-changed flags gating
+	// which layers run; ends with an inverted-RED verify gate. On red verify,
+	// route to STOP - HUMAN REVIEW (no loopback) — operator edits the
+	// offending layer and re-runs the legacy cycle from scratch.
+	{process: "legacy_at_cycle", from: "LEGACY_AT_TEST", wantTo: "GATE_DSL_LEGACY_AT"},
+	{process: "legacy_at_cycle", from: "GATE_DSL_LEGACY_AT", state: map[string]any{"dsl_interface_changed": true}, wantTo: "LEGACY_AT_DSL"},
+	{process: "legacy_at_cycle", from: "GATE_DSL_LEGACY_AT", state: map[string]any{"dsl_interface_changed": false}, wantTo: "GATE_SYS_LEGACY_AT"},
+	{process: "legacy_at_cycle", from: "LEGACY_AT_DSL", wantTo: "GATE_SYS_LEGACY_AT"},
+	{process: "legacy_at_cycle", from: "GATE_SYS_LEGACY_AT", state: map[string]any{"system_driver_interface_changed": true}, wantTo: "LEGACY_AT_SYSTEM_DRIVER"},
+	{process: "legacy_at_cycle", from: "GATE_SYS_LEGACY_AT", state: map[string]any{"system_driver_interface_changed": false}, wantTo: "VERIFY_LEGACY_AT"},
+	{process: "legacy_at_cycle", from: "LEGACY_AT_SYSTEM_DRIVER", wantTo: "VERIFY_LEGACY_AT"},
+	{process: "legacy_at_cycle", from: "VERIFY_LEGACY_AT", wantTo: "GATE_VERIFY_LEGACY_AT"},
+	{process: "legacy_at_cycle", from: "GATE_VERIFY_LEGACY_AT", state: map[string]any{"legacy_at_verify_outcome": "ok"}, wantTo: "LEGACY_AT_END", desc: "inverted-RED: assembled test passed on first run as expected"},
+	{process: "legacy_at_cycle", from: "GATE_VERIFY_LEGACY_AT", state: map[string]any{"legacy_at_verify_outcome": "red"}, wantTo: "STOP_LEGACY_AT_VERIFY_FAILED", desc: "inverted-RED fail: test/DSL/driver is suspect, SUT never modified"},
+	{process: "legacy_at_cycle", from: "STOP_LEGACY_AT_VERIFY_FAILED", wantTo: "LEGACY_AT_END"},
+
+	// ---- legacy_ct_cycle ----
+	// Legacy CT coverage cycle. Mirrors ct_subprocess's RED-side shape (test
+	// → DSL → external driver) with the existing interface-changed flags
+	// gating which layers run; the external-system stub phase is always run
+	// (stub is test infrastructure, not production code). Ends with an
+	// inverted-RED verify gate.
+	{process: "legacy_ct_cycle", from: "LEGACY_CT_TEST", wantTo: "GATE_DSL_LEGACY_CT"},
+	{process: "legacy_ct_cycle", from: "GATE_DSL_LEGACY_CT", state: map[string]any{"dsl_interface_changed": true}, wantTo: "LEGACY_CT_DSL"},
+	{process: "legacy_ct_cycle", from: "GATE_DSL_LEGACY_CT", state: map[string]any{"dsl_interface_changed": false}, wantTo: "LEGACY_CT_EXTERNAL_SYSTEM_STUB"},
+	{process: "legacy_ct_cycle", from: "LEGACY_CT_DSL", wantTo: "GATE_EXT_LEGACY_CT"},
+	{process: "legacy_ct_cycle", from: "GATE_EXT_LEGACY_CT", state: map[string]any{"external_system_driver_interface_changed": true}, wantTo: "LEGACY_CT_EXTERNAL_SYSTEM_DRIVER"},
+	{process: "legacy_ct_cycle", from: "GATE_EXT_LEGACY_CT", state: map[string]any{"external_system_driver_interface_changed": false}, wantTo: "LEGACY_CT_EXTERNAL_SYSTEM_STUB"},
+	{process: "legacy_ct_cycle", from: "LEGACY_CT_EXTERNAL_SYSTEM_DRIVER", wantTo: "LEGACY_CT_EXTERNAL_SYSTEM_STUB"},
+	{process: "legacy_ct_cycle", from: "LEGACY_CT_EXTERNAL_SYSTEM_STUB", wantTo: "VERIFY_LEGACY_CT"},
+	{process: "legacy_ct_cycle", from: "VERIFY_LEGACY_CT", wantTo: "GATE_VERIFY_LEGACY_CT"},
+	{process: "legacy_ct_cycle", from: "GATE_VERIFY_LEGACY_CT", state: map[string]any{"legacy_ct_verify_outcome": "ok"}, wantTo: "LEGACY_CT_END", desc: "inverted-RED: assembled test passed on first run as expected"},
+	{process: "legacy_ct_cycle", from: "GATE_VERIFY_LEGACY_CT", state: map[string]any{"legacy_ct_verify_outcome": "red"}, wantTo: "STOP_LEGACY_CT_VERIFY_FAILED", desc: "inverted-RED fail: test/DSL/driver/stub is suspect, SUT never modified"},
+	{process: "legacy_ct_cycle", from: "STOP_LEGACY_CT_VERIFY_FAILED", wantTo: "LEGACY_CT_END"},
 }
 
 func TestTransitions(t *testing.T) {
@@ -444,27 +489,6 @@ func TestTransitionTable_CoversEverySequenceFlow(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Process-audit gap decisions — explicit anchors so they cannot drift back
 // ---------------------------------------------------------------------------
-
-func TestGapDecision_LegacyAcceptanceCriteriaSingleStop(t *testing.T) {
-	eng := loadSnapshot(t)
-	process, ok := eng.Processes["legacy_acceptance_criteria"]
-	if !ok {
-		t.Fatalf("legacy_acceptance_criteria process missing")
-	}
-	if process.Start != "LEGACY_TBD" {
-		t.Errorf("legacy_acceptance_criteria start: got %q, want LEGACY_TBD", process.Start)
-	}
-	if got := len(process.Nodes); got != 2 {
-		t.Errorf("legacy_acceptance_criteria node count: got %d, want 2 (STOP + END)", got)
-	}
-	stop, ok := process.Nodes["LEGACY_TBD"]
-	if !ok {
-		t.Fatalf("LEGACY_TBD node missing")
-	}
-	if stop.Kind != UserTask || stop.Raw.Agent != "human" || stop.Raw.Role != "review" {
-		t.Errorf("LEGACY_TBD: got kind=%v agent=%q role=%q, want UserTask/human/review", stop.Kind, stop.Raw.Agent, stop.Raw.Role)
-	}
-}
 
 func TestGapDecision_CTExitReturnsToSystemDriverGate(t *testing.T) {
 	eng := loadSnapshot(t)

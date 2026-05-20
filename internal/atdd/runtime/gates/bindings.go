@@ -131,6 +131,20 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("subtype_ok", b.subtypeOK)
 	r.Register("parse_ok", b.parseOK)
 	r.Register("legacy_acceptance_criteria_section_present", b.legacyAcceptanceCriteriaSectionPresent)
+	// Legacy coverage cycle dispatch (per plans/20260518-1116-legacy-coverage-cycle.md
+	// item 1b): two presence sub-flags branch the `legacy_acceptance_criteria`
+	// wrapper into one or both of legacy_at_cycle / legacy_ct_cycle. v1 wires a
+	// prompt fallback; an intake-side parser that derives them from the issue
+	// body would replace the prompt with a Context-fed value.
+	r.Register("legacy_at_acceptance_criteria_present", b.legacyATAcceptanceCriteriaPresent)
+	r.Register("legacy_ct_acceptance_criteria_present", b.legacyCTAcceptanceCriteriaPresent)
+	// Inverted-RED verify gates terminating each legacy sub-cycle. Read
+	// ctx[verify_class] stamped by the cycle-final run_tests service_task.
+	// `ok` (or empty) → cycle ends green; `red` → STOP - HUMAN REVIEW with
+	// no loopback (per plan: no loopback edge from VERIFY back to TEST,
+	// to avoid the statemachine-test loop hazard).
+	r.Register("legacy_at_verify_outcome", b.legacyATVerifyOutcome)
+	r.Register("legacy_ct_verify_outcome", b.legacyCTVerifyOutcome)
 	r.Register("refinement_changed", b.refinementChanged)
 	r.Register("refactor_changed", b.refactorChanged)
 	r.Register("external_system_driver_exists", b.externalSystemDriverExists)
@@ -444,6 +458,73 @@ func (b bindings) legacyAcceptanceCriteriaSectionPresent(ctx *statemachine.Conte
 		return statemachine.Outcome{Err: fmt.Errorf("legacy_acceptance_criteria_section_present: %w", err)}
 	}
 	return statemachine.Outcome{Bool: sections[intake.SectionLegacyAcceptanceCriteria] != ""}
+}
+
+// legacyATAcceptanceCriteriaPresent routes the `legacy_acceptance_criteria`
+// wrapper's first branch — does the ticket carry any AT-style legacy
+// criteria (behavioural scenarios that need acceptance-test backfill)?
+// v1 falls back to a prompt; an intake-side parser that classifies
+// criteria by type would seed ctx ahead of time.
+func (b bindings) legacyATAcceptanceCriteriaPresent(ctx *statemachine.Context) statemachine.Outcome {
+	return b.boolGate(ctx,
+		"legacy_at_acceptance_criteria_present",
+		"Legacy AT-style acceptance criteria present in the issue?")
+}
+
+// legacyCTAcceptanceCriteriaPresent routes the wrapper's second branch —
+// CT-style legacy criteria (external-system contract scenarios that need
+// contract-test backfill).
+func (b bindings) legacyCTAcceptanceCriteriaPresent(ctx *statemachine.Context) statemachine.Outcome {
+	return b.boolGate(ctx,
+		"legacy_ct_acceptance_criteria_present",
+		"Legacy CT-style acceptance criteria present in the issue?")
+}
+
+// legacyATVerifyOutcome terminates the legacy AT sub-cycle's inverted-RED
+// verify gate. Reads ctx[verify_class] stamped by the cycle-final
+// run_tests service_task. Routing tokens:
+//
+//   - "ok"   — assembled legacy AT tests passed on first run as expected;
+//              cycle ends green.
+//   - "red"  — at least one test failed; route to STOP - HUMAN REVIEW.
+//              No retry, no loopback (per plan: the test / DSL / driver is
+//              suspect, never the SUT; operator edits the offending layer
+//              and re-runs the legacy cycle from scratch).
+//
+// Halt paths:
+//   - "infra"   — environment failure (e.g. docker stack down). Surface as
+//                 an error rather than misclassifying as a layer bug.
+//   - unknown   — action contract drift; halt loudly.
+//
+// Empty class is treated as "ok": no commands ran (defensive — every
+// legacy cycle should run tests, but matches structuralVerifyOutcome).
+func (b bindings) legacyATVerifyOutcome(ctx *statemachine.Context) statemachine.Outcome {
+	return legacyVerifyOutcome(ctx, "legacy_at_verify_outcome")
+}
+
+// legacyCTVerifyOutcome is the legacy CT sub-cycle's verify gate — same
+// shape as legacyATVerifyOutcome.
+func (b bindings) legacyCTVerifyOutcome(ctx *statemachine.Context) statemachine.Outcome {
+	return legacyVerifyOutcome(ctx, "legacy_ct_verify_outcome")
+}
+
+// legacyVerifyOutcome is the shared body of both legacy verify gates.
+// Free function (not a bindings method) because it carries no deps —
+// the gate is a pure read of ctx[verify_class].
+func legacyVerifyOutcome(ctx *statemachine.Context, gateName string) statemachine.Outcome {
+	class := ctx.GetString("verify_class")
+	switch class {
+	case "", "ok":
+		return statemachine.Outcome{Value: "ok"}
+	case "red":
+		return statemachine.Outcome{Value: "red"}
+	case "infra":
+		return statemachine.Outcome{Err: fmt.Errorf(
+			"%s: infra-class verify reached gateway — verify action's halt-on-infra was bypassed", gateName)}
+	default:
+		return statemachine.Outcome{Err: fmt.Errorf(
+			"%s: unrecognised verify_class %q (action stamped a value the gate does not handle)", gateName, class)}
+	}
 }
 
 // issueFromContext builds a tracker.Issue from the conventional Context
