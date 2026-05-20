@@ -25,6 +25,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/version"
 )
 
 // ---------------------------------------------------------------------------
@@ -124,13 +125,16 @@ processes:
 // their own tests; this fixture targets the agent-dispatch wiring alone.
 func buildEngine(t *testing.T, opts Options) statemachine.NodeFn {
 	t.Helper()
-	return buildEngineFrom(t, opts, minimalYAML, "AT_RED_TEST")
+	return buildEngineFrom(t, opts, minimalYAML, "AT_RED_TEST", nil)
 }
 
 // buildEngineFrom is the parameterisable form: it loads the supplied YAML
 // and returns the wrapped NodeFn for the named node. Used by the templated
 // regression cases that need a node whose agent: is a ${…} placeholder.
-func buildEngineFrom(t *testing.T, opts Options, yamlSrc, nodeID string) statemachine.NodeFn {
+// cfg, when non-nil, is threaded into wrapAgentDispatchers so the
+// clauderun dispatcher receives a real PlaceholderMap — required by tests
+// whose prompt body references Family B path placeholders.
+func buildEngineFrom(t *testing.T, opts Options, yamlSrc, nodeID string, cfg *projectconfig.Config) statemachine.NodeFn {
 	t.Helper()
 	eng, err := statemachine.LoadBytes([]byte(yamlSrc))
 	if err != nil {
@@ -142,7 +146,7 @@ func buildEngineFrom(t *testing.T, opts Options, yamlSrc, nodeID string) statema
 	if err := eng.Bind(); err != nil {
 		t.Fatalf("Bind: %v", err)
 	}
-	wrapAgentDispatchers(eng, opts, nil, nil)
+	wrapAgentDispatchers(eng, opts, cfg, nil)
 	return eng.Processes["main"].Nodes[nodeID].Fn
 }
 
@@ -152,6 +156,36 @@ func newDriverOpts(deps clauderun.Deps) Options {
 		Stdout:        io.Discard,
 		Stderr:        io.Discard,
 		Stdin:         strings.NewReader(""),
+	}
+}
+
+// writeFreshSidecar writes a materialize-staleness sidecar whose
+// placeholders exactly match the given map so a subsequent
+// MaterializeProject call against repoPath short-circuits without
+// walking the embedded docs. Mirrors clauderun_test.go's
+// preWriteFreshSidecar — kept as a local helper so the driver tests
+// don't depend on a clauderun-package test fixture.
+func writeFreshSidecar(t *testing.T, repoPath string, placeholders map[string]string) {
+	t.Helper()
+	sidecarDir := filepath.Join(repoPath, ".gh-optivem")
+	if err := os.MkdirAll(sidecarDir, 0o755); err != nil {
+		t.Fatalf("mkdir sidecar dir: %v", err)
+	}
+	var b strings.Builder
+	// Match version.Version so projectStale's binary_version check passes.
+	// (Production binds via newClaudeRunDispatcher → cOpts.BinaryVersion.)
+	b.WriteString("binary_version: ")
+	b.WriteString(version.Version)
+	b.WriteString("\nplaceholders:\n")
+	for k, v := range placeholders {
+		b.WriteString("  ")
+		b.WriteString(k)
+		b.WriteString(": ")
+		b.WriteString(v)
+		b.WriteString("\n")
+	}
+	if err := os.WriteFile(filepath.Join(sidecarDir, ".materialized.yaml"), []byte(b.String()), 0o644); err != nil {
+		t.Fatalf("write sidecar: %v", err)
 	}
 }
 
@@ -418,8 +452,26 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 		},
 	}
 	claudeFake := &fakeClaude{}
+	// task-system-interface-redesign's prompt now inlines phase-doc
+	// placeholders (${sut_namespace}, ${driver_adapter}, ${driver_port},
+	// ${system_test_path}); a cfg with populated Paths is required so
+	// the dispatcher's PlaceholderMap fills them.
+	cfg := &projectconfig.Config{
+		System: projectconfig.System{
+			Architecture: projectconfig.ArchMonolith,
+			Path:         "system/monolith/typescript",
+			Repo:         "optivem/shop",
+			Lang:         projectconfig.LangTypescript,
+		},
+		SystemTest: projectconfig.TierSpec{
+			Path: "system-test/typescript",
+			Repo: "optivem/shop",
+			Lang: projectconfig.LangTypescript,
+		},
+		Paths: projectconfig.DefaultPaths(projectconfig.LangTypescript, "system-test", "shop"),
+	}
 	fn := buildEngineFrom(t, newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake}),
-		templatedYAML, "WRITE")
+		templatedYAML, "WRITE", cfg)
 
 	ctx := newCtxWithIssue()
 	ctx.Params = map[string]string{
@@ -461,7 +513,9 @@ func TestManualAgents_BannerSubstitutesTemplatedFields(t *testing.T) {
 		Stderr:       io.Discard,
 		Stdin:        strings.NewReader("y\n"),
 	}
-	fn := buildEngineFrom(t, opts, templatedYAML, "WRITE")
+	// Manual mode short-circuits clauderun.Dispatch — no PlaceholderMap
+	// pull-through, so the cfg arg stays nil.
+	fn := buildEngineFrom(t, opts, templatedYAML, "WRITE", nil)
 
 	ctx := newCtxWithIssue()
 	ctx.Params = map[string]string{
@@ -606,10 +660,22 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 			Stubs:      projectconfig.ExternalSpec{Path: "external-systems/stubs", Repo: "optivem/shop"},
 			Simulators: projectconfig.ExternalSpec{Path: "external-systems/simulators", Repo: "optivem/shop"},
 		},
+		// Family B paths feed the dispatcher's PlaceholderMap so inlined
+		// phase-doc references in task-system-interface-redesign's body
+		// (${driver_port}, ${driver_adapter}, …) resolve at render time.
+		Paths: projectconfig.DefaultPaths(projectconfig.LangTypescript, "system-test", "shop"),
 	}
 
 	sCtx := newCtxWithIssue()
 	seedScopeState(sCtx, cfg)
+
+	// Pre-write the materialize sidecar so Dispatch's MaterializeProject
+	// call short-circuits — the assertions in this test target the prompt
+	// body substitution, not the doc-walk side. (Skipping the walk also
+	// avoids a separate pre-existing bug where path-keys.md's historical
+	// note contains literal ${name} text that the substituter treats as
+	// an unfilled placeholder; that bug is tracked as a follow-up.)
+	writeFreshSidecar(t, tmpRepo, cfg.PlaceholderMap())
 
 	rs := &runState{runTimestamp: "20260505-150000", repoPath: tmpRepo}
 
@@ -641,7 +707,7 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 	if err := eng.Bind(); err != nil {
 		t.Fatalf("Bind: %v", err)
 	}
-	wrapAgentDispatchers(eng, opts, nil, rs)
+	wrapAgentDispatchers(eng, opts, cfg, rs)
 	fn := eng.Processes["main"].Nodes["AT_RED_TEST"].Fn
 
 	out := fn(sCtx)

@@ -27,7 +27,7 @@ Reshape the system's surface; the driver adapter absorbs the change so DSL, Gher
    - **Other**: channel-specific equivalents (commands/flags for CLI, screens for mobile, admin pages, …).
 
    Apply across **all parallel implementations** (Java/.NET/TS × monolith/multitier — see [architecture/system.md](../../../architecture/system.md)). After editing the source of truth, grep the system tree for residual references (e.g. the old URL string) before moving on.
-3. Update the matching System Driver adapter(s) under `${driver_adapter}/${sut_namespace}/<channel>` to absorb the change. Prefer adapter-only changes — keep behaviour observable through the **existing** driver interface.
+3. Update the matching System Driver adapter(s) under `${driver_adapter}/<channel>` to absorb the change. Prefer adapter-only changes — keep behaviour observable through the **existing** driver interface.
 4. **Driver interface guardrail.** Do NOT modify any file under `${driver_port}/` casually. If an interface change is unavoidable, STOP and present to the user: the method(s) you want to change, why the adapter alone cannot absorb the change, the proposed new signature(s). Wait for explicit user approval before editing any `${driver_port}/` file.
 5. Do not modify acceptance tests, DSL, Gherkin, or any code outside the system layer + its driver. `${system_test_path}/.../Legacy/` is read-only.
 

@@ -786,6 +786,17 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 		if err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("dispatcher: load tuning for %q: %w", agentName, err)}
 		}
+		// Project-wide placeholders sourced from the loaded config. Carries
+		// Family B path keys (driver_port, driver_adapter, …) and derived
+		// Family A keys (sut_namespace, system_path, system_test_path, …)
+		// for inlined phase-doc references in the prompt body. nil cfg
+		// (CLI utility / test paths with no project context) leaves the
+		// map nil; findUnfilledPlaceholders surfaces any unsubstituted
+		// references at render time.
+		var placeholders map[string]string
+		if cfg != nil {
+			placeholders = cfg.PlaceholderMap()
+		}
 		cOpts := clauderun.Options{
 			Agent:              agentName,
 			PhaseDoc:           statemachine.ExpandParams(raw.PhaseDoc, ctx.Params),
@@ -801,6 +812,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 			VerifyResults:      ctx.GetString("verify_results_text"),
 			ChangedFiles:       fixVerifyChangedFiles(agentName, opts.RepoPath),
 			NodeParams:         nodeParams,
+			Placeholders:       placeholders,
 			OverrideText:       extraText,
 			RawPrompt:          replaceText,
 			PromptOverride:     opts.AgentPromptOverrides[agentName],

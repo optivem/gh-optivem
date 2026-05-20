@@ -140,6 +140,18 @@ type Options struct {
 	// placeholders (issue_num, phase_doc, …) — those win on key collision.
 	NodeParams map[string]string
 
+	// Placeholders carries the project-wide ${name} substitutions the
+	// dispatcher pulls from ProjectConfig.PlaceholderMap() — Family B
+	// path keys (driver_port, driver_adapter, at_test, …) plus the
+	// derived Family A keys (sut_namespace, system_path, system_test_path,
+	// architecture, language). Inlined phase-doc placeholders that used
+	// to be resolved at materialization time now live in the prompt body
+	// itself; this map is how the dispatcher gets them filled at render
+	// time. Lowest precedence — NodeParams and the fixed-schema set
+	// (architecture, language, allowed_roots, …) win on key collision so
+	// existing per-dispatch overrides keep their meaning.
+	Placeholders map[string]string
+
 	// OverrideText is the per-node extra text from override.Hooks.Extra
 	// (sourced from gh-optivem.yaml's node_extras:), interpolated into the
 	// prompt template. Empty string is fine.
@@ -458,6 +470,15 @@ func renderPromptWithDocsRoot(opts Options, projectDocsRoot string) (string, err
 		}
 	}
 	params := map[string]string{}
+	// Project-wide placeholders are seeded first so NodeParams and the
+	// fixed-schema set can both override them on key collision. Empty
+	// values are skipped — `findUnfilledPlaceholders` then catches a
+	// missing-but-referenced key rather than silently substituting "".
+	for k, v := range opts.Placeholders {
+		if v != "" {
+			params[k] = v
+		}
+	}
 	for k, v := range opts.NodeParams {
 		params[k] = v
 	}

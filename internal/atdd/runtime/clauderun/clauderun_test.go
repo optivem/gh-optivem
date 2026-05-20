@@ -202,6 +202,15 @@ func TestRenderPrompt_TaskAgentArchitectureAndAllowedRoots_ExplicitValues(t *tes
 	opts.Agent = "task-system-interface-redesign"
 	opts.Architecture = "monolith"
 	opts.AllowedRoots = "- System: system/monolith/java (lang: java)\n- System tests: system-test/java (lang: java)\n"
+	// task-system-interface-redesign now inlines phase-doc placeholders
+	// in its body; without these the no-leftover-${...} assertion below
+	// would catch the inlined Family B path references.
+	opts.Placeholders = map[string]string{
+		"sut_namespace":    "shop",
+		"system_test_path": "system-test/java",
+		"driver_port":      "system-test/src/testkit/driver/port/shop",
+		"driver_adapter":   "system-test/src/testkit/driver/adapter/shop",
+	}
 
 	got, err := renderPrompt(opts)
 	if err != nil {
@@ -242,6 +251,15 @@ func TestRenderPrompt_ChoreAgent_EmptyArchitectureAndRootsRender(t *testing.T) {
 	// `Architecture=both`/`Lang=all` semantics.
 	opts := newOpts()
 	opts.Agent = "chore"
+	// The chore prompt now inlines phase-doc placeholders that the
+	// production dispatcher fills from cfg.PlaceholderMap(); supply them
+	// directly so the body renders without ${...} leftovers.
+	opts.Placeholders = map[string]string{
+		"sut_namespace":    "shop",
+		"system_test_path": "system-test",
+		"driver_port":      "system-test/src/testkit/driver/port/shop",
+		"driver_adapter":   "system-test/src/testkit/driver/adapter/shop",
+	}
 
 	got, err := renderPrompt(opts)
 	if err != nil {
@@ -1198,6 +1216,17 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	opts.AllowedRoots = "- System: system/monolith/typescript (lang: typescript)\n- System tests: system-test/typescript (lang: typescript)\n"
 	opts.Checklist = "- [x] One done\n- [ ] Two pending"
 	opts.PromptLogPath = "/tmp/runs/001-task-system-interface-redesign.prompt.md"
+	// task-system-interface-redesign's inlined phase-doc body now references
+	// ${sut_namespace}, ${driver_adapter}, ${driver_port}, ${system_test_path};
+	// the production dispatcher fills these from cfg.PlaceholderMap(). With
+	// no ProjectConfig in this test, supply them directly so renderPrompt
+	// has values to substitute.
+	opts.Placeholders = map[string]string{
+		"sut_namespace":    "shop",
+		"system_test_path": "system-test/typescript",
+		"driver_port":      "system-test/src/testkit/driver/port/shop",
+		"driver_adapter":   "system-test/src/testkit/driver/adapter/shop",
+	}
 
 	if err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
