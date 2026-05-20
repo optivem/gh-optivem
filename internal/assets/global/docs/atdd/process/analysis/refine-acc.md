@@ -40,11 +40,28 @@ This phase mutates only the parsed-concepts artifact passed via the
 `${parsed_concepts}` input — no code layer is modified. The ticket
 source file, production system code, and tests are out of scope.
 
+## Rubric for AC coverage
+
+The rubric drives both the "is the existing AC set adequate?" check and
+the "what new ACs should I add?" decision.
+
+- At least one **positive** scenario per behavior described in the ticket.
+- At least one **negative** scenario per behavior where a failure mode is
+  plausible (invalid input, missing precondition, conflicting state).
+- Cover **boundary** cases (empty, max, off-by-one) when the behavior has
+  obvious boundaries.
+- Cover **error / exception** paths when the behavior can fail at a system
+  boundary (I/O, network, auth).
+- Cover **idempotency** / repeat-call behavior when the operation mutates
+  state.
+- Every scenario in Gherkin GIVEN-WHEN-THEN form.
+
 ## Steps
 
 1. Read `${parsed_concepts}`.
-2. For each acceptance criterion, evaluate coverage and propose edits or
-   new ACs as needed.
+2. For each acceptance criterion, evaluate coverage against the rubric
+   above; propose edits to existing ACs and add new ACs to cover any
+   gaps.
 3. Enforce Gherkin GIVEN-WHEN-THEN form on every scenario.
 4. Mutate `${parsed_concepts}` in place; set the `Refinement Changed`
    flag if any change occurred.

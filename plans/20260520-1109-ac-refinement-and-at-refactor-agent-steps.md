@@ -1,7 +1,5 @@
 # Plan: turn acceptance-criteria-refinement and at-refactor docs into agent steps
 
-🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-20T10:13:47Z` (items 1–4 only this session)
-
 ## Purpose
 
 Two ATDD phase docs are currently DRAFT stubs with bare prose steps and no
@@ -80,23 +78,6 @@ Observations / open questions (to discuss):
 > agent prompt file, gate wiring, inline phase doc, language-equivalents
 > update, etc. — once we've discussed it. Leaving as stubs deliberately.
 
-4. Embed a short, opinionated **rubric for AC coverage** inline in
-   `refine-acc.md`. Self-contained — no external pointer. The
-   rubric drives both the "is the existing AC set adequate?" check and
-   the "what new ACs should I add?" decision. Initial rubric content (to
-   be tightened during execution):
-   - At least one **positive** scenario per behavior described in the
-     ticket.
-   - At least one **negative** scenario per behavior where a failure mode
-     is plausible (invalid input, missing precondition, conflicting
-     state).
-   - Cover **boundary** cases (empty, max, off-by-one) when the behavior
-     has obvious boundaries.
-   - Cover **error / exception** paths when the behavior can fail at a
-     system boundary (I/O, network, auth).
-   - Cover **idempotency** / repeat-call behavior when the operation
-     mutates state.
-   - Every scenario in Gherkin GIVEN-WHEN-THEN form.
 5. **Reuse the existing phase-cycle template** used by `at-red` and
    `at-green` for `at-refactor`. The agent emits production-code changes
    only; the surrounding template handles run-tests + commit downstream
@@ -181,5 +162,5 @@ Observations / open questions (to discuss):
 
 ## Pickup
 
-Items 1–3 landed in session at 2026-05-20T10:13:47Z (see commit log).
-Item 4 next; items 5–9 deferred to fresh sessions.
+Items 1–4 landed in session at 2026-05-20T10:13:47Z (see commit log).
+Items 5–9 deferred to fresh sessions.
