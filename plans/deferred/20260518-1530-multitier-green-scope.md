@@ -1,5 +1,7 @@
 # Plan (deferred): Multitier GREEN scope in phase-scopes.yaml
 
+**Status:** RESOLVED-BY plans/20260520-1213-collapse-at-green-backend-frontend.md (the AT_GREEN_BACKEND / AT_GREEN_FRONTEND duality these scope rows were waiting on has been collapsed to a single AT_GREEN node).
+
 **Date filed:** 2026-05-18
 
 **Filed from:** [SSoT phase-scope plan (20260518-1530)](../20260518-1530-atdd-phase-scope-ssot.md), item 1's AT-GREEN handling refinement.

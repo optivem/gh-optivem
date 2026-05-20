@@ -1319,13 +1319,29 @@ func (s *scriptedShell) Run(_ context.Context, cmd string) ([]byte, error) {
 }
 
 func TestRunTargetedTests_RequiresSuiteAndTestNames(t *testing.T) {
-	t.Run("no_suite", func(t *testing.T) {
-		a := newActions(Deps{})
+	t.Run("no_suite_falls_back_to_acceptance_suites", func(t *testing.T) {
+		// Absent suite is the collapsed AT_GREEN dispatch shape: the
+		// orchestrator passes no `suite:` and the action fans out to
+		// every entry in testselect.AcceptanceSuites() — today that's
+		// acceptance-api + acceptance-ui, so one test name produces two
+		// shell invocations.
+		root := setupRepo(t)
+		sh := &scriptedShell{t: t, scripted: []scriptedResponse{
+			{out: []byte("OK"), err: nil},
+			{out: []byte("OK"), err: nil},
+		}}
+		a := newActions(Deps{Shell: sh, RepoPath: root})
 		ctx := statemachine.NewContext()
 		ctx.State["test_names"] = []string{"x"}
 		out := a.runTargetedTests(ctx)
-		if out.Err == nil || !strings.Contains(out.Err.Error(), "suite") {
-			t.Fatalf("expected suite error, got %v", out.Err)
+		if out.Err != nil {
+			t.Fatalf("unexpected error: %v", out.Err)
+		}
+		if got := ctx.Get("tests_pass"); got != true {
+			t.Fatalf("tests_pass: got %v, want true (both fallback suites passed)", got)
+		}
+		if len(sh.scripted) != 0 {
+			t.Fatalf("expected 2 invocations consumed (one per acceptance suite); %d scripted responses remained", len(sh.scripted))
 		}
 	})
 	t.Run("no_test_names", func(t *testing.T) {
@@ -1761,7 +1777,7 @@ func TestCheckPhaseScope_AllowlistedPhaseIsNoop(t *testing.T) {
 	var stderr bytes.Buffer
 	a := newActions(Deps{Stderr: &stderr})
 	ctx := statemachine.NewContext()
-	ctx.Params["phase_id"] = "AT_GREEN_BACKEND" // in PhasesDeferredByPlan
+	ctx.Params["phase_id"] = "SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE" // arbitrary allowlisted phase; test exercises the allowlist mechanism, not the cycle itself. Test removed by plans/20260520-1053-remove-phases-deferred-by-plan.md.
 	out := a.checkPhaseScope(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)

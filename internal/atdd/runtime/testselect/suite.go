@@ -56,3 +56,14 @@ func fallbackSuitesForLayer(layer string) []string {
 	}
 	return []string{"acceptance-api", "acceptance-ui"}
 }
+
+// AcceptanceSuites returns the canonical list of acceptance suites — the
+// dispatch fallback used by run_targeted_tests when its call_activity is
+// invoked without a specific `suite:` param (as is the case for the
+// collapsed AT_GREEN node, which writes once and verifies both channels).
+// A future channel-execution plan may introduce sentinel suites like
+// `<acceptance>` that union these explicitly; today, the absent-key case
+// resolves to this fixed list.
+func AcceptanceSuites() []string {
+	return []string{"acceptance-api", "acceptance-ui"}
+}

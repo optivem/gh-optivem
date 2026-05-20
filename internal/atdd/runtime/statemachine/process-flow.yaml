@@ -366,7 +366,9 @@ processes:
   # at_cycle
   # AT Cycle — driven by change-driven AC (story / bug).
   # Embeds the CT sub-process when External Driver interfaces change.
-  # Embeds at_green_system as its terminal sub-process.
+  # Embeds at_green_system, then at_refactor_system as the terminal
+  # sub-process (post-GREEN housekeeping refactor; no-op if no improvement
+  # is seen).
   # ===========================================================================
   at_cycle:
     start: AT_RED_TEST
@@ -446,6 +448,10 @@ processes:
         type: call_activity
         process: at_green_system
 
+      - id: AT_REFACTOR_SYSTEM
+        type: call_activity
+        process: at_refactor_system
+
       - id: AT_END
         type: end_event
 
@@ -464,15 +470,16 @@ processes:
       - {from: GATE_SYS_AT,          to: AT_GREEN_SYSTEM,        when: "system_driver_interface_changed == false"}
       - {from: AT_RED_SYSTEM_DRIVER, to: VERIFY_AT_DRIVER}
       - {from: VERIFY_AT_DRIVER,     to: AT_GREEN_SYSTEM}
-      - {from: AT_GREEN_SYSTEM,      to: AT_END}
+      - {from: AT_GREEN_SYSTEM,      to: AT_REFACTOR_SYSTEM}
+      - {from: AT_REFACTOR_SYSTEM,   to: AT_END}
 
   # ===========================================================================
   # at_green_system
-  # AT - GREEN - SYSTEM — re-enable disabled tests, then write backend +
-  # frontend implementation through the shared green_phase_cycle (one
-  # call_activity per channel), human review, and a fully mechanical
-  # COMMIT / TICK / MOVE-TO-IN-ACCEPTANCE tail. Per the AT/CT split plan,
-  # the legacy `atdd-release` agent is replaced by the existing service_task
+  # AT - GREEN - SYSTEM — re-enable disabled tests, then write the channel-
+  # agnostic implementation through the shared green_phase_cycle in a
+  # single call_activity, human review, and a fully mechanical COMMIT /
+  # TICK / MOVE-TO-IN-ACCEPTANCE tail. Per the AT/CT split plan, the
+  # legacy `atdd-release` agent is replaced by the existing service_task
   # actions commit_phase, tick_checklist, and move_to_in_acceptance.
   # ===========================================================================
   at_green_system:
@@ -483,31 +490,17 @@ processes:
         agent: enable-tests
         documentation: "Re-enable tests disabled in AT - RED - SYSTEM DRIVER"
 
-      - id: AT_GREEN_BACKEND
+      - id: AT_GREEN
         type: call_activity
         process: green_phase_cycle
         params:
           agent: at-green-system
-          phase_doc: docs/atdd/process/change/behavior/at-green-system.md
-          phase_label: "AT - GREEN - SYSTEM (backend)"
-          phase_id: AT_GREEN_BACKEND
-          suite: "<acceptance-api>"
+          phase_doc: ""
+          phase_label: "AT - GREEN - SYSTEM"
+          phase_id: AT_GREEN
           rebuild_before_run: "true"
           compile_action: compile_system
-        documentation: "AT - GREEN - SYSTEM - WRITE (backend)"
-
-      - id: AT_GREEN_FRONTEND
-        type: call_activity
-        process: green_phase_cycle
-        params:
-          agent: at-green-system
-          phase_doc: docs/atdd/process/change/behavior/at-green-system.md
-          phase_label: "AT - GREEN - SYSTEM (frontend)"
-          phase_id: AT_GREEN_FRONTEND
-          suite: "<acceptance-ui>"
-          rebuild_before_run: "true"
-          compile_action: compile_system
-        documentation: "AT - GREEN - SYSTEM - WRITE (frontend)"
+        documentation: "AT - GREEN - SYSTEM - WRITE"
 
       - id: COMMIT
         type: call_activity
@@ -529,12 +522,56 @@ processes:
         type: end_event
 
     sequence_flows:
-      - {from: ENABLE_TESTS,         to: AT_GREEN_BACKEND}
-      - {from: AT_GREEN_BACKEND,     to: AT_GREEN_FRONTEND}
-      - {from: AT_GREEN_FRONTEND,    to: COMMIT}
+      - {from: ENABLE_TESTS,         to: AT_GREEN}
+      - {from: AT_GREEN,             to: COMMIT}
       - {from: COMMIT,               to: TICK}
       - {from: TICK,                 to: MOVE_TICKET_IN_ACCEPTANCE}
       - {from: MOVE_TICKET_IN_ACCEPTANCE, to: GS_END}
+
+  # ===========================================================================
+  # at_refactor_system
+  # AT - REFACTOR - SYSTEM — post-GREEN housekeeping refactor on production
+  # code. Reuses green_phase_cycle for WRITE / compile / run / scope-check
+  # plumbing; the refactor agent emits a `refactor_changed` flag that gates
+  # the terminal COMMIT — no-op refactors discharge without a commit.
+  # Mirrors at_green_system minus the ENABLE_TESTS / TICK /
+  # MOVE_TICKET_IN_ACCEPTANCE wrapper (refactor runs with tests already
+  # enabled and is post-acceptance, so no ticket transition).
+  # ===========================================================================
+  at_refactor_system:
+    start: AT_REFACTOR
+    nodes:
+      - id: AT_REFACTOR
+        type: call_activity
+        process: green_phase_cycle
+        params:
+          agent: at-refactor-system
+          phase_doc: ""
+          phase_label: "AT - REFACTOR - SYSTEM"
+          phase_id: AT_REFACTOR
+          rebuild_before_run: "true"
+          compile_action: compile_system
+        documentation: "AT - REFACTOR - SYSTEM - WRITE"
+
+      - id: GATE_REFACTOR_CHANGED
+        type: gateway
+        binding: refactor_changed
+        documentation: "Refactor Changed?"
+
+      - id: COMMIT
+        type: call_activity
+        process: commit
+        params:
+          change_type: "AT - REFACTOR - SYSTEM"
+
+      - id: AR_END
+        type: end_event
+
+    sequence_flows:
+      - {from: AT_REFACTOR,           to: GATE_REFACTOR_CHANGED}
+      - {from: GATE_REFACTOR_CHANGED, to: COMMIT,  when: "refactor_changed == true"}
+      - {from: GATE_REFACTOR_CHANGED, to: AR_END,  when: "refactor_changed == false"}
+      - {from: COMMIT,                to: AR_END}
 
   # ===========================================================================
   # ct_subprocess

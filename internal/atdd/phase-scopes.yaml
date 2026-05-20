@@ -24,7 +24,8 @@ phases:
   AT_RED_TEST:            [at_test, dsl_port, dsl_core]
   AT_RED_DSL:             [dsl_core, driver_port]
   AT_RED_SYSTEM_DRIVER:   [driver_port, driver_adapter]
-  AT_GREEN_SYSTEM:        [system_path]                         # monolith GREEN; AT_GREEN_BACKEND / AT_GREEN_FRONTEND allowlisted per plans/deferred/20260518-1530-multitier-green-scope.md
+  AT_GREEN:               [system_path]
+  AT_REFACTOR:            [system_path]
 
   # ---- CT (Contract Test) cycle --------------------------------------
   CT_RED_TEST:                   [ct_test, dsl_port, dsl_core]

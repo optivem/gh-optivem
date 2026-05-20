@@ -41,6 +41,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
+    BACKLOG_REFINEMENT[BACKLOG_REFINEMENT — see § backlog_refinement]
     END((End))
     INTAKE[INTAKE — see § GitHub Intake]
     MOVE_TICKET_IN_ACCEPTANCE[[Tick checklist + move issue to IN ACCEPTANCE]]
@@ -55,7 +56,8 @@ flowchart TD
     PICK_TOP_READY --> MOVE_TICKET_IN_PROGRESS
     MOVE_TICKET_IN_PROGRESS --> INTAKE
     INTAKE --> RUN_LEGACY_CYCLE
-    RUN_LEGACY_CYCLE --> RUN_CYCLE
+    RUN_LEGACY_CYCLE --> BACKLOG_REFINEMENT
+    BACKLOG_REFINEMENT --> RUN_CYCLE
     RUN_CYCLE --> MOVE_TICKET_IN_ACCEPTANCE
     MOVE_TICKET_IN_ACCEPTANCE --> END
 
@@ -150,6 +152,7 @@ flowchart TD
     AT_RED_DSL[AT - RED - DSL — see § red_phase_cycle]
     AT_RED_SYSTEM_DRIVER[AT - RED - SYSTEM DRIVER — see § red_phase_cycle]
     AT_RED_TEST[AT - RED - TEST — see § red_phase_cycle]
+    AT_REFACTOR_SYSTEM[AT_REFACTOR_SYSTEM — see § at_refactor_system]
     CT_SUBPROCESS[CT_SUBPROCESS — see § Contract Test Sub-Process]
     GATE_DSL_AT{DSL Interface Changed?}
     GATE_DSL_FLAGS_PRESENT{RED-DSL phase-output flags emitted?}
@@ -172,7 +175,8 @@ flowchart TD
     GATE_SYS_AT -- No --> AT_GREEN_SYSTEM
     AT_RED_SYSTEM_DRIVER --> VERIFY_AT_DRIVER
     VERIFY_AT_DRIVER --> AT_GREEN_SYSTEM
-    AT_GREEN_SYSTEM --> AT_END
+    AT_GREEN_SYSTEM --> AT_REFACTOR_SYSTEM
+    AT_REFACTOR_SYSTEM --> AT_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
     class VERIFY_AT_DRIVER serviceNode
@@ -185,17 +189,15 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    AT_GREEN_BACKEND["AT - GREEN - SYSTEM - WRITE (backend) — see § green_phase_cycle"]
-    AT_GREEN_FRONTEND["AT - GREEN - SYSTEM - WRITE (frontend) — see § green_phase_cycle"]
+    AT_GREEN[AT - GREEN - SYSTEM - WRITE — see § green_phase_cycle]
     COMMIT[COMMIT — see § Commit Sub-Process]
     ENABLE_TESTS[Re-enable tests disabled in AT - RED - SYSTEM DRIVER]
     GS_END((End))
     MOVE_TICKET_IN_ACCEPTANCE[[Move ticket to TICKET STATUS - IN ACCEPTANCE]]
     TICK[[Tick acceptance-criteria checklist items]]
 
-    ENABLE_TESTS --> AT_GREEN_BACKEND
-    AT_GREEN_BACKEND --> AT_GREEN_FRONTEND
-    AT_GREEN_FRONTEND --> COMMIT
+    ENABLE_TESTS --> AT_GREEN
+    AT_GREEN --> COMMIT
     COMMIT --> TICK
     TICK --> MOVE_TICKET_IN_ACCEPTANCE
     MOVE_TICKET_IN_ACCEPTANCE --> GS_END
@@ -351,6 +353,44 @@ flowchart TD
     class LEGACY_TBD humanNode
 ```
 
+## at_refactor_system
+
+```mermaid
+flowchart TD
+    AR_END((End))
+    AT_REFACTOR[AT - REFACTOR - SYSTEM - WRITE — see § green_phase_cycle]
+    COMMIT[COMMIT — see § Commit Sub-Process]
+    GATE_REFACTOR_CHANGED{Refactor Changed?}
+
+    AT_REFACTOR --> GATE_REFACTOR_CHANGED
+    GATE_REFACTOR_CHANGED -- Yes --> COMMIT
+    GATE_REFACTOR_CHANGED -- No --> AR_END
+    COMMIT --> AR_END
+```
+
+## backlog_refinement
+
+```mermaid
+flowchart TD
+    BACKLOG_REFINEMENT["Refine acceptance criteria (Gherkin + coverage rubric)"]
+    BR_END((End))
+    CONFIRM_REFINEMENT[Confirm refined acceptance criteria]
+    GATE_REFINEMENT_CHANGED{Refinement Changed?}
+    UPDATE_TICKET[Write refined ACs back to ticket source]
+
+    BACKLOG_REFINEMENT --> CONFIRM_REFINEMENT
+    CONFIRM_REFINEMENT --> GATE_REFINEMENT_CHANGED
+    GATE_REFINEMENT_CHANGED -- Yes --> UPDATE_TICKET
+    GATE_REFINEMENT_CHANGED -- No --> BR_END
+    UPDATE_TICKET --> BR_END
+
+    classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
+    class BACKLOG_REFINEMENT,UPDATE_TICKET agentNode
+
+    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
+    class CONFIRM_REFINEMENT humanNode
+```
+
 ## compile
 
 ```mermaid
@@ -488,8 +528,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE["SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE — see § Structural Cycle (shared)"]
     SUT_END((End))
+    SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE["SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE — see § Structural Cycle (shared)"]
 
     SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE --> SUT_END
 ```

@@ -1,10 +1,9 @@
 ---
 # Multi-file impl — Sonnet with high effort for the cross-file reasoning.
 # Orchestrator re-dispatches via fix-verify on Opus if compile/tests stay red.
-# TODO: future split into at-green-system + at-green-component variants — deferred.
 model: sonnet
 effort: high
-scope: {}   # multitier GREEN scope deferred — see plans/deferred/20260518-1530-multitier-green-scope.md
+scope: {}
 ---
 You are the Implementation Agent. Implement only the changes that move the ticket's change-driven acceptance tests from RED to GREEN.
 

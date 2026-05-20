@@ -228,21 +228,31 @@ var transitionTable = []transitionCase{
 	{process: "at_cycle", from: "GATE_SYS_AT", state: map[string]any{"system_driver_interface_changed": false}, wantTo: "AT_GREEN_SYSTEM"},
 	{process: "at_cycle", from: "AT_RED_SYSTEM_DRIVER", wantTo: "VERIFY_AT_DRIVER"},
 	{process: "at_cycle", from: "VERIFY_AT_DRIVER", wantTo: "AT_GREEN_SYSTEM"},
-	{process: "at_cycle", from: "AT_GREEN_SYSTEM", wantTo: "AT_END"},
+	{process: "at_cycle", from: "AT_GREEN_SYSTEM", wantTo: "AT_REFACTOR_SYSTEM"},
+	{process: "at_cycle", from: "AT_REFACTOR_SYSTEM", wantTo: "AT_END"},
 
 	// ---- at_green_system ----
 	// Decomposed per the AT/CT split plan: ENABLE_TESTS (re-enable disabled
-	// tests) → AT_GREEN_BACKEND/AT_GREEN_FRONTEND (call_activity into the
-	// shared green_phase_cycle, one per channel) → COMMIT (call_activity
-	// into the shared commit sub-process) → TICK → MOVE_TICKET_IN_ACCEPTANCE.
-	// The legacy ATDD_RELEASE user_task is replaced by the existing
-	// service_task actions.
-	{process: "at_green_system", from: "ENABLE_TESTS", wantTo: "AT_GREEN_BACKEND"},
-	{process: "at_green_system", from: "AT_GREEN_BACKEND", wantTo: "AT_GREEN_FRONTEND"},
-	{process: "at_green_system", from: "AT_GREEN_FRONTEND", wantTo: "COMMIT"},
+	// tests) → AT_GREEN (single channel-agnostic call_activity into the
+	// shared green_phase_cycle) → COMMIT (call_activity into the shared
+	// commit sub-process) → TICK → MOVE_TICKET_IN_ACCEPTANCE. The legacy
+	// ATDD_RELEASE user_task is replaced by the existing service_task
+	// actions.
+	{process: "at_green_system", from: "ENABLE_TESTS", wantTo: "AT_GREEN"},
+	{process: "at_green_system", from: "AT_GREEN", wantTo: "COMMIT"},
 	{process: "at_green_system", from: "COMMIT", wantTo: "TICK"},
 	{process: "at_green_system", from: "TICK", wantTo: "MOVE_TICKET_IN_ACCEPTANCE"},
 	{process: "at_green_system", from: "MOVE_TICKET_IN_ACCEPTANCE", wantTo: "GS_END"},
+
+	// ---- at_refactor_system ----
+	// Post-GREEN housekeeping refactor on production code. Mirrors
+	// at_green_system minus the ENABLE_TESTS / TICK / MOVE_TICKET_IN_ACCEPTANCE
+	// wrapper. GATE_REFACTOR_CHANGED gates the terminal COMMIT — no-op
+	// refactors discharge directly to AR_END.
+	{process: "at_refactor_system", from: "AT_REFACTOR", wantTo: "GATE_REFACTOR_CHANGED"},
+	{process: "at_refactor_system", from: "GATE_REFACTOR_CHANGED", state: map[string]any{"refactor_changed": true}, wantTo: "COMMIT"},
+	{process: "at_refactor_system", from: "GATE_REFACTOR_CHANGED", state: map[string]any{"refactor_changed": false}, wantTo: "AR_END"},
+	{process: "at_refactor_system", from: "COMMIT", wantTo: "AR_END"},
 
 	// ---- ct_subprocess ----
 	{process: "ct_subprocess", from: "ONBOARDING", wantTo: "CT_RED_TEST"},

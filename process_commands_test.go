@@ -73,12 +73,12 @@ func TestProcessScope_OnePhase_NoProject(t *testing.T) {
 func TestProcessScope_DeferredPhase(t *testing.T) {
 	tmp := t.TempDir()
 	var buf bytes.Buffer
-	if err := runProcessScope(&buf, "AT_GREEN_BACKEND", filepath.Join(tmp, "no-such-config.yaml")); err != nil {
+	if err := runProcessScope(&buf, "SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE", filepath.Join(tmp, "no-such-config.yaml")); err != nil {
 		t.Fatalf("runProcessScope: %v", err)
 	}
 	out := buf.String()
 
-	wantSubs := []string{"Phase:  AT_GREEN_BACKEND", "deferred", "plans/deferred/20260518-1530-multitier-green-scope.md"}
+	wantSubs := []string{"Phase:  SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE", "deferred", "plans/deferred/20260518-1530-structure-cycle-ssot-alignment.md"}
 	for _, sub := range wantSubs {
 		if !strings.Contains(out, sub) {
 			t.Errorf("expected %q in output, got:\n%s", sub, out)
@@ -136,12 +136,12 @@ func TestProcessScope_SystemPathReadsFamilyA(t *testing.T) {
 	path := writeConfigToTempDir(t, cfg)
 
 	var buf bytes.Buffer
-	if err := runProcessScope(&buf, "AT_GREEN_SYSTEM", path); err != nil {
+	if err := runProcessScope(&buf, "AT_GREEN", path); err != nil {
 		t.Fatalf("runProcessScope: %v", err)
 	}
 	out := buf.String()
 	if !strings.Contains(out, cfg.System.Path) {
-		t.Errorf("expected system.path %q in AT_GREEN_SYSTEM output, got:\n%s", cfg.System.Path, out)
+		t.Errorf("expected system.path %q in AT_GREEN output, got:\n%s", cfg.System.Path, out)
 	}
 }
 

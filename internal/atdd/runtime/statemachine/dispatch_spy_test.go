@@ -298,27 +298,17 @@ func ctRedExternalDriverParams() map[string]string {
 	}
 }
 
-// green_phase_cycle dispatched from at_green_system.AT_GREEN_BACKEND.
-func atGreenBackendParams() map[string]string {
+// green_phase_cycle dispatched from at_green_system.AT_GREEN — the
+// channel-agnostic single dispatch that replaced the backend/frontend
+// duality. No `suite:` key (run_targeted_tests falls back to
+// testselect.AcceptanceSuites()); empty `phase_doc:` because the
+// merged at-green-system prompt is self-contained.
+func atGreenParams() map[string]string {
 	return map[string]string{
 		"agent":              "at-green-system",
-		"phase_doc":          "docs/atdd/process/change/behavior/at-green-system.md",
-		"phase_label":        "AT - GREEN - SYSTEM (backend)",
-		"phase_id":           "AT_GREEN_BACKEND",
-		"suite":              "<acceptance-api>",
-		"rebuild_before_run": "true",
-		"compile_action":     "compile_system",
-	}
-}
-
-// green_phase_cycle dispatched from at_green_system.AT_GREEN_FRONTEND.
-func atGreenFrontendParams() map[string]string {
-	return map[string]string{
-		"agent":              "at-green-system",
-		"phase_doc":          "docs/atdd/process/change/behavior/at-green-system.md",
-		"phase_label":        "AT - GREEN - SYSTEM (frontend)",
-		"phase_id":           "AT_GREEN_FRONTEND",
-		"suite":              "<acceptance-ui>",
+		"phase_doc":          "",
+		"phase_label":        "AT - GREEN - SYSTEM",
+		"phase_id":           "AT_GREEN",
 		"rebuild_before_run": "true",
 		"compile_action":     "compile_system",
 	}
@@ -328,6 +318,26 @@ func atGreenFrontendParams() map[string]string {
 // change_type, not a ${…} placeholder, so this is the *expanded* value.
 func atGreenCommitParams() map[string]string {
 	return map[string]string{"change_type": "AT - GREEN - SYSTEM"}
+}
+
+// green_phase_cycle dispatched from at_refactor_system.AT_REFACTOR — the
+// post-GREEN housekeeping refactor. Mirrors atGreenParams shape with the
+// refactor agent + phase id.
+func atRefactorParams() map[string]string {
+	return map[string]string{
+		"agent":              "at-refactor-system",
+		"phase_doc":          "",
+		"phase_label":        "AT - REFACTOR - SYSTEM",
+		"phase_id":           "AT_REFACTOR",
+		"rebuild_before_run": "true",
+		"compile_action":     "compile_system",
+	}
+}
+
+// commit dispatched from at_refactor_system.COMMIT — gated by
+// refactor_changed; only walked on the changed branch.
+func atRefactorCommitParams() map[string]string {
+	return map[string]string{"change_type": "AT - REFACTOR - SYSTEM"}
 }
 
 // structural_cycle dispatched from da_cycle.SYSTEM_INTERFACE_REDESIGN_CYCLE.

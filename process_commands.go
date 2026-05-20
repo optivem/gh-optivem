@@ -233,9 +233,8 @@ func writePhaseBlock(out io.Writer, phaseID string, layers []string, agent strin
 //
 // Multitier projects leave `system.path` empty — `system_path` returns
 // "" there, which the renderer surfaces as "(not set in gh-optivem.yaml)".
-// AT_GREEN_SYSTEM is monolith-only by construction; multitier's
-// AT_GREEN_BACKEND / AT_GREEN_FRONTEND live on the deferred allowlist
-// pending the multitier-green-scope plan.
+// AT_GREEN is monolith-only by construction; per-component fanout for
+// multitier projects is deferred to a future plan.
 func resolveLayer(cfg *projectconfig.Config, layer string) string {
 	if layer == "system_path" {
 		return cfg.System.Path

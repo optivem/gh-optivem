@@ -27,10 +27,13 @@ func seedBehavioralIntake(ctx *Context) {
 	ctx.Set("compile_ok", true)
 	ctx.Set("verify_real_required", false)
 	ctx.Set("tests_failed_runtime", true)
-	// green_phase_cycle gates (AT_GREEN_BACKEND + AT_GREEN_FRONTEND
-	// dispatches): tests_pass=true ends each happy path at GREEN_END.
-	// compile_ok is already set above and is reused by both phases.
+	// green_phase_cycle gates (collapsed AT_GREEN dispatch):
+	// tests_pass=true ends the happy path at GREEN_END.
+	// compile_ok is already set above and is reused.
 	ctx.Set("tests_pass", true)
+	// at_refactor_system GATE_REFACTOR_CHANGED: refactor agent emitted the
+	// `refactor_changed` flag; happy path walks through COMMIT.
+	ctx.Set("refactor_changed", true)
 	// Phase-scope enforcement gates (red_phase_cycle + green_phase_cycle,
 	// per plan 20260518-1144 items 5 + 6):
 	//   - scope_exception_requested defaults to false (no scope_exception
@@ -169,17 +172,17 @@ func (e *expectDispatch) greenCycle(callerNodeID string, params map[string]strin
 }
 
 // atGreenSystem asserts the at_green_system sub-process from the at_cycle
-// call site: the AT_GREEN_SYSTEM call_activity, ENABLE_TESTS prelude, both
-// green_phase_cycle dispatches, the parent-owned commit (literal change_type,
-// no ${…} placeholder), TICK + MOVE_TICKET_IN_ACCEPTANCE, then GS_END.
-// Restores the caller's scope on exit.
+// call site: the AT_GREEN_SYSTEM call_activity, ENABLE_TESTS prelude, the
+// single channel-agnostic green_phase_cycle dispatch (collapsed from the
+// former backend/frontend duality), the parent-owned commit (literal
+// change_type, no ${…} placeholder), TICK + MOVE_TICKET_IN_ACCEPTANCE,
+// then GS_END. Restores the caller's scope on exit.
 func (e *expectDispatch) atGreenSystem() *expectDispatch {
 	parentProc, parentParams := e.proc, e.params
 	return e.callActivity("AT_GREEN_SYSTEM", "at_green_system", noParams()).
 		process("at_green_system", noParams()).
 		userTask("ENABLE_TESTS", "enable-tests").
-		greenCycle("AT_GREEN_BACKEND", atGreenBackendParams()).
-		greenCycle("AT_GREEN_FRONTEND", atGreenFrontendParams()).
+		greenCycle("AT_GREEN", atGreenParams()).
 		callActivity("COMMIT", "commit", atGreenCommitParams()).
 		process("commit", atGreenCommitParams()).
 		userTask("APPROVE_COMMIT", "human").
@@ -189,6 +192,27 @@ func (e *expectDispatch) atGreenSystem() *expectDispatch {
 		serviceTask("TICK", "tick_checklist").
 		serviceTask("MOVE_TICKET_IN_ACCEPTANCE", "move_to_in_acceptance").
 		endEvent("GS_END").
+		process(parentProc, parentParams)
+}
+
+// atRefactorSystem asserts the at_refactor_system sub-process from the
+// at_cycle call site: the AT_REFACTOR_SYSTEM call_activity, the
+// green_phase_cycle dispatch with the refactor agent, the
+// refactor_changed gateway, and (on the changed=true branch) the
+// terminal COMMIT then AR_END. Restores the caller's scope on exit.
+func (e *expectDispatch) atRefactorSystem() *expectDispatch {
+	parentProc, parentParams := e.proc, e.params
+	return e.callActivity("AT_REFACTOR_SYSTEM", "at_refactor_system", noParams()).
+		process("at_refactor_system", noParams()).
+		greenCycle("AT_REFACTOR", atRefactorParams()).
+		gateway("GATE_REFACTOR_CHANGED", "refactor_changed", true).
+		callActivity("COMMIT", "commit", atRefactorCommitParams()).
+		process("commit", atRefactorCommitParams()).
+		userTask("APPROVE_COMMIT", "human").
+		serviceTask("EXECUTE_COMMIT", "commit_phase").
+		endEvent("COMMIT_END").
+		process("at_refactor_system", noParams()).
+		endEvent("AR_END").
 		process(parentProc, parentParams)
 }
 
@@ -221,6 +245,7 @@ func TestImplementTicket_Behavioral_TestOnly(t *testing.T) {
 		redCycle("AT_RED_TEST", atRedTestParams()).
 		gateway("GATE_DSL_AT", "dsl_interface_changed", false).
 		atGreenSystem().
+		atRefactorSystem().
 		behavioralTail().
 		assert(t)
 }
@@ -260,6 +285,7 @@ func TestImplementTicket_Behavioral_TestAndDSL(t *testing.T) {
 		gateway("GATE_EXT_AT", "external_system_driver_interface_changed", false).
 		gateway("GATE_SYS_AT", "system_driver_interface_changed", false).
 		atGreenSystem().
+		atRefactorSystem().
 		behavioralTail().
 		assert(t)
 }
@@ -332,6 +358,7 @@ func TestImplementTicket_Behavioral_TestAndDSLAndExternal(t *testing.T) {
 		process("at_cycle", noParams()).
 		gateway("GATE_SYS_AT", "system_driver_interface_changed", false).
 		atGreenSystem().
+		atRefactorSystem().
 		behavioralTail().
 		assert(t)
 }

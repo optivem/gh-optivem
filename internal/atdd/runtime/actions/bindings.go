@@ -33,6 +33,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/intake"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/release"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/testselect"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 	trackergithub "github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/github"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
@@ -708,9 +709,12 @@ func (a actions) runShell(cmdLine string) ([]byte, error) {
 // compile-vs-runtime, and writes CtxKeyTestsFailedRuntime for the gate.
 //
 // Reads:
-//   - CtxKeySuite (string)        — required; e.g. "<acceptance-api>".
+//   - CtxKeySuite (string)        — optional; e.g. "<acceptance-api>". When
+//     absent or empty, falls back to testselect.AcceptanceSuites() (the
+//     channel-agnostic dispatch path used by the collapsed AT_GREEN node).
 //   - CtxKeyTestNames ([]string)  — required; method names dispatched one
-//     per `gh optivem test run --suite <suite> --test <name>` shell-out.
+//     per `gh optivem test run --suite <suite> --test <name>` shell-out
+//     for each resolved suite.
 //
 // Writes:
 //   - CtxKeyTestsFailedRuntime (bool) — true iff at least one test failed
@@ -725,8 +729,9 @@ func (a actions) runShell(cmdLine string) ([]byte, error) {
 // "not yet runtime-failing".
 func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcome {
 	suite := ctx.GetString(CtxKeySuite)
+	suites := []string{suite}
 	if suite == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("run_targeted_tests: %s not set in Context", CtxKeySuite)}
+		suites = testselect.AcceptanceSuites()
 	}
 	rawNames, ok := ctx.State[CtxKeyTestNames]
 	if !ok {
@@ -762,24 +767,28 @@ func (a actions) runTargetedTests(ctx *statemachine.Context) statemachine.Outcom
 	runtimeFailures := 0
 	compileFailures := 0
 	passed := 0
-	for _, name := range names {
-		cmd := fmt.Sprintf("gh optivem test run --suite %s --test %s",
-			shellEscape(suite), shellEscape(name))
-		out, err := a.runShell(cmd)
-		if err == nil {
-			passed++
-			continue
+	totalInvocations := 0
+	for _, s := range suites {
+		for _, name := range names {
+			totalInvocations++
+			cmd := fmt.Sprintf("gh optivem test run --suite %s --test %s",
+				shellEscape(s), shellEscape(name))
+			out, err := a.runShell(cmd)
+			if err == nil {
+				passed++
+				continue
+			}
+			if isCompileFailureOutput(out) {
+				compileFailures++
+				continue
+			}
+			runtimeFailures++
 		}
-		if isCompileFailureOutput(out) {
-			compileFailures++
-			continue
-		}
-		runtimeFailures++
 	}
 
 	failedRuntime := compileFailures == 0 && runtimeFailures > 0
 	ctx.Set(CtxKeyTestsFailedRuntime, failedRuntime)
-	allPass := compileFailures == 0 && runtimeFailures == 0 && passed == len(names)
+	allPass := compileFailures == 0 && runtimeFailures == 0 && passed == totalInvocations
 	ctx.Set(CtxKeyTestsPass, allPass)
 	return statemachine.Outcome{Bool: failedRuntime}
 }

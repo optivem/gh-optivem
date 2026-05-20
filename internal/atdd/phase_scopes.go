@@ -35,8 +35,6 @@ type PhaseScopes struct {
 // Map exposed (not a function) so callers can index by phase id directly
 // and the test file's reverse-FK check can range over the same data.
 var PhasesDeferredByPlan = map[string]string{
-	"AT_GREEN_BACKEND":                         "plans/deferred/20260518-1530-multitier-green-scope.md",
-	"AT_GREEN_FRONTEND":                        "plans/deferred/20260518-1530-multitier-green-scope.md",
 	"SYSTEM_INTERFACE_REDESIGN_CYCLE":          "plans/deferred/20260518-1530-structure-cycle-ssot-alignment.md",
 	"EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE": "plans/deferred/20260518-1530-structure-cycle-ssot-alignment.md",
 	"SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE":  "plans/deferred/20260518-1530-structure-cycle-ssot-alignment.md",
