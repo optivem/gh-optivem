@@ -135,38 +135,37 @@ downstream of those decisions.
 
 ### Item 1 — Pick the new `suite:` value (or drop the param)
 
-**Question:** what does `suite:` reduce to on the new `AT_GREEN` node?
+**Decision (refined 2026-05-20):** **Drop `suite:` from `AT_GREEN`'s params entirely.**
 
-Three candidate options, each with consequences for `run_targeted_tests`:
+Rationale: agent prompts don't run tests; the BPMN orchestrator's
+`run_targeted_tests` action does. With one collapsed `AT_GREEN` node, there
+is no per-channel dispatch to parameterise, so the cleanest shape is no
+`suite:` key at all. Channel-based test execution (running only the
+api or ui suite for a given component) is a separate concern and gets a
+dedicated future plan.
 
-- **(a) Drop `suite:` from `AT_GREEN`'s params entirely.** `green_phase_cycle`
-  uses `${suite}` only inside the RUN node's documentation string (line 1039)
-  and via the runtime's `CtxKeySuite` (see `internal/atdd/runtime/actions/bindings.go:711,1358`).
-  Need to verify whether `run_targeted_tests` can run **all acceptance suites**
-  when the suite key is absent or empty; today every caller passes a value.
-- **(b) Single sentinel `<acceptance>`** (or `<acceptance-all>`) that resolves
-  at runtime to the union of `acceptance-api` + `acceptance-ui` (+ any future
-  acceptance-channel suite). Requires a one-line addition to the suite
-  classifier / `gh optivem test run --suite <acceptance>` plumbing.
-- **(c) Keep both today, run twice still.** No-op on test cost; defeats the
-  collapse rationale. Listed for completeness, not recommended.
+**Future plan (NOT this one):** channel-based execution of tests — when
+per-component fanout lands (or before), introduce a `suite:` key on the
+fanned-out nodes (e.g. `<acceptance-${component}>` or sentinel
+`<acceptance>` resolving to a channel-aware union). Today, with one
+unified `AT_GREEN`, the absent-key form is sufficient.
 
-**Recommendation seed:** option (b) — single sentinel — is the cleanest fit
-for the existing `<...>`-enclosed suite convention (`<acceptance-api>`,
-`<acceptance-ui>`, `<suite-contract-real>` are all sentinel-shaped). It also
-forward-compatible with per-component fanout (the future `<acceptance-${component}>`).
+**Inputs to verify in Item 8** (runtime support):
 
-**Inputs to verify before deciding:**
+- Read `run_targeted_tests` in `internal/atdd/runtime/actions/bindings.go`
+  (around line 711) — confirm absent/empty `suite:` is supported, or
+  add the minimal default-behavior support (run all acceptance suites
+  when the key is absent).
+- Read `internal/atdd/runtime/testselect/suite.go:32-57` to confirm
+  `AcceptanceSuites()` already represents the "all acceptance suites" set
+  the runtime would fall back to.
 
-- Read `run_targeted_tests` action in `internal/atdd/runtime/actions/bindings.go`
-  (around line 711) to confirm how the suite param flows through to `gh
-  optivem test run --suite <…>` and whether multi-suite or absent-suite is
-  already supported.
-- Read `internal/atdd/runtime/testselect/suite.go:32-57` to see what `AcceptanceSuites()`
-  returns — there is already a known "both acceptance suites" notion at the
-  testkit level.
+**Follow-on impact** (settled by this decision):
 
-**Decision sink:** pin in this item once walked; items 2, 5, 6, 7 follow.
+- Item 2's new `AT_GREEN` YAML block has no `suite:` line.
+- Item 8 narrows to: verify (or add) absent-suite support in
+  `run_targeted_tests`.
+- Items 5, 6, 7 are unaffected by this choice.
 
 ---
 
@@ -183,11 +182,19 @@ its sequence-flows (lines 478-480) with:
           agent: at-green-system
           phase_label: "AT - GREEN - SYSTEM"
           phase_id: AT_GREEN
-          suite: <decided in Item 1>
           rebuild_before_run: "true"
           compile_action: compile_system
         documentation: "AT - GREEN - SYSTEM - WRITE"
 ```
+
+Notes on the new params:
+
+- **No `suite:` key.** Per Item 1's decision, drop `suite:` entirely. The
+  runtime falls back to running all acceptance suites (Item 8 verifies /
+  backfills this default).
+- **No `phase_doc:` key.** The target file
+  (`docs/atdd/process/change/behavior/at-green-system.md`) was swept by the
+  earlier inlining sweep; the merged prompt is self-contained.
 
 Sequence-flows:
 
@@ -203,18 +210,19 @@ Update the comment block at lines 416-423 to drop the "backend + frontend
 implementation through the shared green_phase_cycle (one call_activity per
 channel)" wording.
 
-**Also:** drop `phase_doc:` from the new AT_GREEN node (the target file is
-gone; the merged prompt is self-contained). Verify that `${phase_doc}`
-substitution inside `green_phase_cycle` (lines 1007, 1033) tolerates an
-absent key — if it does not, either pin `phase_doc: ""` on the new node OR
-introduce a conditional in the cycle. Out-of-scope: the same dangling
-`phase_doc:` appears on `AT_RED_TEST`, `AT_RED_DSL`, `AT_RED_SYSTEM_DRIVER`,
-`CT_RED_*`, `CT_GREEN_EXTERNAL_SYSTEM_STUB`, `SYSTEM_INTERFACE_REDESIGN`,
-and `EXTERNAL_SYSTEM_INTERFACE_REDESIGN` — leave those alone.
+**Sub-task — `${phase_doc}` absent-key verification:** verify that
+`${phase_doc}` substitution inside `green_phase_cycle` (lines 1007, 1033)
+tolerates an absent key. If it does not, the fallback is to pin
+`phase_doc: ""` on the new AT_GREEN node (preferred; one-line fix) rather
+than introducing a conditional inside the cycle. Out of scope for this
+plan: the same dangling `phase_doc:` appears on `AT_RED_TEST`, `AT_RED_DSL`,
+`AT_RED_SYSTEM_DRIVER`, `CT_RED_*`, `CT_GREEN_EXTERNAL_SYSTEM_STUB`,
+`SYSTEM_INTERFACE_REDESIGN`, and `EXTERNAL_SYSTEM_INTERFACE_REDESIGN` —
+leave those alone (Item 4 residual of the parent plan).
 
 ---
 
-### Item 3 — Edit `phase-scopes.yaml`: drop the allowlist citation
+### Item 3 — Edit `phase-scopes.yaml`: swap AT_GREEN_SYSTEM row for AT_GREEN
 
 Line 27 today:
 
@@ -222,19 +230,46 @@ Line 27 today:
   AT_GREEN_SYSTEM:        [system_path]                         # monolith GREEN; AT_GREEN_BACKEND / AT_GREEN_FRONTEND allowlisted per plans/deferred/20260518-1530-multitier-green-scope.md
 ```
 
-After this plan: drop the trailing allowlist comment (no more
-AT_GREEN_BACKEND / AT_GREEN_FRONTEND to allowlist). The row itself
-becomes:
+**Grounding** (from `internal/atdd/phase_scopes_test.go:100-112` —
+`TestPhaseScopes_ReverseFK_WritingAgentsScopedOrAllowlisted`):
+
+- The scope file is validated against **writing-agent node ids** —
+  call_activity nodes count only when they carry `agent:` in their
+  `params:`.
+- Outer `AT_GREEN_SYSTEM` (line 391-393 of process-flow.yaml) is a bare
+  `call_activity` with `process: at_green_system` and NO `params:`. It is
+  NOT a writing-agent node; the current row passes only the forward-FK
+  existence check, never the reverse-FK scope check. Effectively dead
+  weight.
+- Inner `AT_GREEN_BACKEND` and `AT_GREEN_FRONTEND` ARE writing-agent
+  nodes (they have `agent: at-green-system` in `params:`); that's why
+  they sit on `PhasesDeferredByPlan` instead of in this file.
+
+**Decision (refined 2026-05-20):** the new inner writing-agent node is
+named `AT_GREEN` (decision: keep outer/inner separation; outer call_activity
+stays `AT_GREEN_SYSTEM`). Refactor the file as:
 
 ```yaml
-  AT_GREEN_SYSTEM:        [system_path]
+  AT_GREEN:               [system_path]
 ```
 
-Question to settle: does `AT_GREEN` (the new sub-process node) need a row
-in this file? Today the per-phase scope is keyed by **state-machine node
-id**, not BPMN sub-process name. `AT_GREEN_SYSTEM` (top-level call_activity)
-already exists in the file; `AT_GREEN` (new inner node) is a different
-identity. Inspect what `check_phase_scope` keys against before deciding.
+(drops both the trailing allowlist comment AND the now-dead
+`AT_GREEN_SYSTEM` row; replaces with a real `AT_GREEN` row for the new
+writing-agent node).
+
+**Executor verification step:** before editing, re-grep
+`phase_scopes_test.go` to confirm the reverse-FK check still uses
+`writingAgentNodeIDs(...)` keyed by `concreteAgent(node)`. If the
+validator has been changed to key against outer call_activity ids, fall
+back to the conservative option: keep the `AT_GREEN_SYSTEM: [system_path]`
+row AND add `AT_GREEN: [system_path]`.
+
+**Co-ordination with Item 4:** dropping the `AT_GREEN_BACKEND` /
+`AT_GREEN_FRONTEND` entries from `PhasesDeferredByPlan` (Item 4) MUST land
+together with this row swap. The reverse-FK test fails if the two inner
+phase ids are removed from the BPMN without their allowlist entries also
+being removed; equally, it fails if the allowlist entries are removed
+without the BPMN nodes being removed.
 
 ---
 
@@ -251,38 +286,58 @@ The three remaining entries (`SYSTEM_INTERFACE_REDESIGN_CYCLE`,
 `EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE`, `CHORE_CYCLE`) stay — they
 cite a different deferred plan.
 
-If Item 3 adds an `AT_GREEN` row to `phase-scopes.yaml`, no new
-`PhasesDeferredByPlan` entry is needed. If Item 3 doesn't, then
-`AT_GREEN` may need a new entry citing this plan as its "deferred by"
-reference (since `AT_GREEN` is a writing-agent phase id that needs to
-satisfy the build-time cross-validator). Settle in Item 3.
+No new `AT_GREEN` allowlist entry is needed — Item 3 adds a real
+`AT_GREEN: [system_path]` row to `phase-scopes.yaml`, which satisfies the
+reverse-FK validator on its own.
+
+**Co-ordination with Item 3:** this edit MUST land together with Item 3's
+row swap. The reverse-FK test fails if either side lands alone (BPMN
+nodes removed without allowlist entries removed → stale-allowlist test
+fails; allowlist entries removed without new phase-scopes row →
+reverse-FK test fails because the new `AT_GREEN` node has no scope).
 
 ---
 
-### Item 5 — Edit the prompt frontmatter comment
+### Item 5 — Drop the stale frontmatter comments
 
-`internal/assets/runtime/prompts/atdd/at-green-system.md` line 4 today:
+`internal/assets/runtime/prompts/atdd/at-green-system.md` carries two
+comments that the collapse + Item 9 closure make stale. Drop both rather
+than relocate (deferred-follow-up tracking belongs in the `plans/` tree,
+not in prompt frontmatter — per the user's standing preference, drop don't
+relocate).
+
+**Line 4 today:**
 
 ```
 # TODO: future split into at-green-system + at-green-component variants — deferred.
 ```
 
-Reword to reflect the new state — the state-machine collapse is done; the
-deferred shape is per-component fanout, not per-channel split:
+→ delete the line entirely. The deferred per-component fanout follow-up
+is already tracked in this plan's "Out of scope (deliberately)" section
+and will reappear in whichever future plan promotes it; the prompt
+frontmatter doesn't need to carry the cross-ref.
 
-```
-# Per-component fanout (system.components: [{name, path, language?}, …]) deferred — see <future plan ref>.
-```
-
-Also revisit the `scope: {}` line + its trailing comment (line 7):
+**Line 7 today:**
 
 ```yaml
 scope: {}   # multitier GREEN scope deferred — see plans/deferred/20260518-1530-multitier-green-scope.md
 ```
 
-Once that deferred plan is closed (Item 9), this comment dangles. Either
-drop it ("scope: {}" with no comment) or repoint it to the per-component
-fanout follow-up.
+→ drop the trailing comment, keep `scope: {}` bare:
+
+```yaml
+scope: {}
+```
+
+After Item 9 closes the deferred plan, the citation dangles regardless;
+drop it now.
+
+**Note on `scope: {}` itself:** the empty-map value stays. It is the
+correct shape under the universal `scope.md` injection (cf.
+`plans/20260520-0907-runtime-shared-scope-injection.md`) — the per-phase
+scope projection is computed from `phase-scopes.yaml` + project paths,
+not declared in the prompt frontmatter. Empty-map = "use the universal
+projection". No change needed here.
 
 ---
 
@@ -291,8 +346,25 @@ fanout follow-up.
 `internal/atdd/runtime/statemachine/dispatch_spy_test.go`:
 
 - Replace `atGreenBackendParams()` (lines 301-312) and `atGreenFrontendParams()`
-  (lines 314-325) with a single `atGreenParams()` returning the new shape
-  decided in Items 1 + 2.
+  (lines 314-325) with a single `atGreenParams()` that mirrors Item 2's
+  collapsed YAML shape exactly:
+
+  ```go
+  func atGreenParams() map[string]string {
+      return map[string]string{
+          "agent":              "at-green-system",
+          "phase_label":        "AT - GREEN - SYSTEM",
+          "phase_id":           "AT_GREEN",
+          "rebuild_before_run": "true",
+          "compile_action":     "compile_system",
+      }
+  }
+  ```
+
+  No `suite:` key (Item 1 decision: drop). No `phase_doc:` key (Item 2:
+  merged prompt is self-contained). If Item 2's sub-task settles on
+  `phase_doc: ""` as a fallback (cycle doesn't tolerate absent key), add
+  the matching `"phase_doc": ""` entry here.
 
 `internal/atdd/runtime/statemachine/behavioral_cycle_test.go`:
 
@@ -310,7 +382,7 @@ fanout follow-up.
 
 ---
 
-### Item 7 — Edit `bindings_test.go:1764` fixture
+### Item 7 — Substitute `bindings_test.go:1764` fixture (interim)
 
 `internal/atdd/runtime/actions/bindings_test.go:1764` today:
 
@@ -318,31 +390,68 @@ fanout follow-up.
 ctx.Params["phase_id"] = "AT_GREEN_BACKEND" // in PhasesDeferredByPlan
 ```
 
-After Item 4 removes the two AT_GREEN_* entries, this fixture's reference
-goes stale. Pick a surviving `PhasesDeferredByPlan` entry as substitute
-(e.g. `"CHORE_CYCLE"` or `"SYSTEM_INTERFACE_REDESIGN_CYCLE"`). Inspect the
-surrounding test to confirm the substitution is semantically OK (the test
-just needs *some* deferred-by-plan phase id; channel-specificity should
-not matter).
+After Item 4 removes the two AT_GREEN_* entries, this fixture's string
+dangles.
+
+**Doctrinal note:** the test
+(`TestCheckPhaseScope_AllowlistedPhaseIsNoop`) exercises the
+`PhasesDeferredByPlan` allowlist short-circuit — a mechanism the project
+is removing per `feedback-no-deferred-mechanism`. The full removal is
+scoped to `plans/20260520-1053-remove-phases-deferred-by-plan.md`
+(which deletes this test, the allowlist map, and the runtime
+short-circuit, after pinning real scopes for the three remaining
+formerly-allowlisted cycles).
+
+**This plan's action:** interim substitution only. Replace
+`"AT_GREEN_BACKEND"` with `"CHORE_CYCLE"` and update the trailing
+comment:
+
+```go
+ctx.Params["phase_id"] = "CHORE_CYCLE" // arbitrary allowlisted phase; test exercises the allowlist mechanism, not the cycle itself. Test removed by plans/20260520-1053-remove-phases-deferred-by-plan.md.
+```
+
+The choice of `CHORE_CYCLE` over the two other surviving entries
+(`SYSTEM_INTERFACE_REDESIGN_CYCLE`, `EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE`)
+is arbitrary — the test is mechanism-level and channel-agnostic. The
+comment makes that explicit so a future reader doesn't infer significance
+from the cycle id, and forward-refs the follow-up plan that retires the
+fixture entirely.
+
+If the follow-up plan lands first (or alongside), this item collapses to a
+no-op — no fixture to substitute because the test is deleted.
 
 ---
 
-### Item 8 — Verify `run_targeted_tests` behavior under the new `suite:` value
+### Item 8 — Verify `run_targeted_tests` handles absent `suite:`
 
-Decision from Item 1 may require runtime support that doesn't exist yet.
-Cases:
+Item 1 pinned the decision to **drop `suite:` from `AT_GREEN`'s params**.
+Narrowed scope: verify the runtime tolerates an absent/empty suite key, and
+backfill the default if it doesn't.
 
-- **If Item 1 = (a) drop:** verify `run_targeted_tests` does not assume a
-  non-empty suite. If it does, either backfill a default or change the
-  default behavior to "all acceptance suites when absent".
-- **If Item 1 = (b) sentinel:** verify the suite resolver (in
-  `bindings.go` around line 1358) accepts a sentinel like `<acceptance>`
-  and unions the underlying physical suites. If not, this plan adds the
-  minimal sentinel handling.
+**Steps:**
 
-Land the runtime-support change **first** in the same plan execution (or as
-a sub-item before Item 2 — Item 2's collapse must not land before the
-runtime supports whichever suite shape it dispatches).
+1. Read `run_targeted_tests` in `internal/atdd/runtime/actions/bindings.go`
+   (around line 711) — trace how `CtxKeySuite` is consumed when absent. Note
+   the line 1358 suite-resolver path too.
+2. Read `internal/atdd/runtime/testselect/suite.go:32-57` —
+   `AcceptanceSuites()` is the natural "all acceptance suites" set to fall
+   back to.
+3. **Decision branch:**
+   - **If absent/empty suite already runs all acceptance suites** → no code
+     change; just record the confirmation in the commit message.
+   - **If absent/empty suite errors or runs nothing** → add the minimal
+     default: when the orchestrator dispatches without `suite:`, resolve to
+     `AcceptanceSuites()`. Keep the change tight — no new flags, no opt-in;
+     this is the unconditional default for the absent-key case.
+
+**Gating:** this item **lands before Item 2**. Item 2's collapse drops the
+`suite:` key from the new `AT_GREEN` node, and that change must not ship
+before the runtime supports the absent-key case.
+
+**Out of scope (future channel-execution plan):** sentinel suites like
+`<acceptance>` / `<acceptance-${component}>` that union or scope channels
+explicitly. Today's collapse intentionally uses the absent-key default;
+sentinels arrive when per-component fanout does.
 
 ---
 
@@ -361,18 +470,39 @@ fanout lands, and that future plan can cross-reference back here.
 
 ---
 
-### Item 10 — Regenerate `docs/process-diagram.md` + the SVG
+### Item 10 — Regenerate `docs/process-diagram.md` + the SVGs
 
-`docs/process-diagram.md` lines 188-198:
+Both `docs/process-diagram.md` and `docs/images/process-diagram-*.svg`
+are deterministically generated from `process-flow.yaml`. Do NOT
+hand-edit the mermaid fences or the SVG; once Item 2's YAML change
+lands, run the two-step regen:
 
-- Drop the `AT_GREEN_BACKEND` and `AT_GREEN_FRONTEND` mermaid nodes.
-- Replace with a single `AT_GREEN["AT - GREEN - SYSTEM - WRITE — see § green_phase_cycle"]`.
-- Update edges: `ENABLE_TESTS --> AT_GREEN`, `AT_GREEN --> COMMIT`.
+```bash
+gh optivem process show > docs/process-diagram.md
+bash scripts/render-svgs.sh
+```
 
-`docs/images/process-diagram-7-at-green-system.svg` is generated — re-run
-whatever produces it (likely `gh optivem architecture show` or equivalent).
-If regeneration is non-trivial, defer the SVG refresh and call it out in
-the commit message.
+(The .md header at line 3 self-documents the first command; the SVG
+regen script renders every Mermaid fence under
+`docs/process-diagram.md` to `docs/images/process-diagram-*.svg`,
+pinning `@mermaid-js/mermaid-cli@11.14.0` to match the
+`.github/workflows/regenerate-diagram.yml` workflow.)
+
+**Verify after regen:**
+
+- `docs/process-diagram.md` no longer contains `AT_GREEN_BACKEND` or
+  `AT_GREEN_FRONTEND`.
+- `docs/process-diagram.md` contains a single `AT_GREEN` node with the
+  expected label.
+- `docs/images/process-diagram-7-at-green-system.svg` exists and is
+  visually consistent with the new mermaid source.
+
+**Note on the earlier hand-edit description:** the original Item 10 text
+referenced specific line numbers (188-198) and `gh optivem architecture
+show` — both wrong. `architecture show` renders the layered-architecture
+diagram, not the process flow; the process flow is generated by
+`process show`. Hand-editing line ranges is also wrong shape: regen is
+the entire change.
 
 ---
 
