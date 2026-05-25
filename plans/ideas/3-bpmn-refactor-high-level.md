@@ -1,28 +1,6 @@
 # BPMN - HIGH LEVEL
 
-## RESPECIFY SYSTEM (ATDD)
-
-1. Write Tests <Expected Test Result: Success>
-2. Write System
-
-## REDESIGN SYSTEM
-
-1. Write Driver Adapters
-2. Write System
-
-## REFACTOR SYSTEM
-
-1. Write System
-
-## COVER SYSTEM
-
-1. Write Tests <Expected Test Result: Success>
-
-## REFACTOR TESTS
-
-1. Refactor Tests
-
-# Commons
+===========================
 
 ## WRITE TESTS (BIG)
 
@@ -76,11 +54,15 @@
 6. Implement External System Stubs
 7. Verify Tests Pass <Contract Tests - Stub>
 
+===========================
+
 ## WRITE SYSTEM (BIG)
 
 1. Write System
 2. Verify Tests Pass <Tests>
 3. Commit
+
+===========================
 
 ## 《 SHARED 》IMPLEMENT TEST LAYER
 
