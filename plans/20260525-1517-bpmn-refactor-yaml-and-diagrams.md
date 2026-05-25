@@ -33,12 +33,16 @@ Single-line summaries. For options considered + rationale, read the archive plan
 
 ### LOW primitives
 - 4 primitives: `approve`, `execute-agent`, `execute-command`, **`fix`** (new — single attempt, PRE-approval only, no own validation; caller re-validates).
-- `approve` NO-branch: exit-only (caller owns NO). Add `TODO` comment in YAML for possible revisit (parameterized NO-action OR split into two primitives).
+- `approve` NO-branch: exit-only (caller owns NO). Add `TODO` comment in YAML for possible revisit (parameterized NO-action OR split into two primitives). **Confirmed during refine — not blocking; the TODO is a future-work marker, not a Phase-C dependency.**
 - `execute-command` is PRE-only (asymmetric with agent's PRE+POST — intentional, machine-checkable success).
 - Terminology: `calls` (BPMN call-activity).
 
 ### MID tasks
-- `run-tests` — single task with polymorphic filter (test-type tag | test-name list | no filter). Encoding shape (single-string-with-prefix vs structured discriminated union) decided during YAML encoding.
+- `run-tests` — single task with structured filter params (Q5.a resolved → structured discriminated union):
+    - `filter-type:` enum — `test-type` | `test-name`
+    - `filter-value:` — depends on `filter-type` (single tag string for `test-type`; list of strings for `test-name`)
+    - Both params absent ⇒ run all tests.
+    - Both params kebab-case per the plan's kebab-everywhere decision (Q15/Q27). Existing snake_case keys in `process-flow.yaml` (`phase_id`, `compile_action`, …) are a separate open question; do not retro-rename in this plan.
 - `write-contract-tests` added (symmetric with `write-acceptance-tests`).
 - Vocabulary unified: `-driver-adapters` (not `-drivers`).
 - Tasks added by Item 11's connectedness pass (already in brainstorms): `implement-system`, `implement-external-system-stubs`, `refactor-tests`, `refactor-system`, `refine-acceptance-criteria`, `update-ticket`, `build-system`, `start-system`.
@@ -54,7 +58,7 @@ Single-line summaries. For options considered + rationale, read the archive plan
 Seven cycles:
 
 - `change-system-behavior` — step 3 is loopable opportunistic refactor menu (calls existing CYCLEs in *no-checklist / opportunistic mode*; Q33).
-- `cover-system-behavior` — legacy-coverage cycle, expected=Success (Q16 = B, parameterized expectation instead of separate legacy cycles).
+- `cover-system-behavior` — legacy-coverage cycle, expected=Success (Q16 = B, parameterized expectation instead of separate legacy cycles). **Q31.a resolved → Option A (nested):** outer cycle is acceptance-driven (operator specifies acceptance criteria only); CT is a nested sub-process called when the AT layer needs a stub/driver to pass — structurally mirrors `change-system-behavior`. Gateway stays at one row: `task/cover-legacy` → `cover-system-behavior`. **Not** split into `task/cover-legacy-acceptance` + `task/cover-legacy-contract` (operator doesn't think in CT subtypes — CT is an implementation detail of making AT pass).
 - `redesign-system-structure` — step 1 splits into `1a implement-system-driver-adapters` + `1b implement-external-system-driver-adapters` (MID-direct, no umbrella; Q-new-2).
 - `refactor-system-structure` — step 1 calls HIGH `implement-and-verify-system`.
 - `refactor-test-structure` — step 1 calls HIGH `refactor-and-verify-tests`.
@@ -93,12 +97,11 @@ Already lives in `plans/ideas/5-bpmn-refactor-top-level.md`. Encode as the YAML 
 - All 15 standard absorption rows walked and confirmed (Item 6, parent plan).
 - Full inventory + rationale per row: archive plan's "Cross-check vs existing BPMN" section.
 
-### Deferred to Item 9 (during YAML encoding)
-- **Q5.a — `run-tests` filter encoding shape.** Single-string-with-prefix vs structured discriminated union. Pick during encoding.
-- **Q31.a — `cover-system-behavior` AT vs CT internal handling.** Three options (single CYCLE with nesting | invoked twice per ticket | two subtypes `task/cover-legacy-acceptance` + `task/cover-legacy-contract`). Pick during encoding.
+### Refined decisions (added during refine walk)
+- **Kebab-vs-snake scope.** Q15/Q27 (kebab everywhere) applies **only to new keys** added in this refactor (e.g. `filter-type`, `filter-value`, `scopes`, `outputs`). Existing snake_case keys in `process-flow.yaml` (`phase_id`, `compile_action`, `change_type`, …) **stay snake_case**. A retroactive rename is a separable cleanup, not part of Phase C — open a follow-up plan if/when consistency becomes worth the churn.
 
-### Exploration backlog (not blocking)
-- `spike` ticket type — currently no entry in the gateway table. Future: cycle? Or own TOP process?
+### Exploration backlog (not blocking; confirmed during refine — no Phase-C work)
+- `spike` ticket type — currently no entry in the gateway table. Future: cycle? Or own TOP process? Defer until a real `spike` workflow exists.
 - Multi-cycle ticket model — currently rejected (Q30.b = A); revisit if real workflow demands it.
 
 ---
@@ -124,15 +127,12 @@ Verify **`plans/20260525-1531-bpmn-ideas-contract-authoring.md`** has fully land
     - All MID `call_activity` definitions (including the 8 added by Item 11 connectedness pass).
     - LOW primitives (4: approve, execute-agent, execute-command, fix).
 
-    Resolve deferred questions during encoding:
-    - **Q5.a** — pick `run-tests` filter encoding shape.
-    - **Q31.a** — pick `cover-system-behavior` AT vs CT handling.
-
     Regenerate `docs/process-diagram.md`. Diff against `.pre-refactor` backup to confirm every retained behaviour appears. Resolve any gap (either by adding to YAML or by writing an explicit drop-rationale comment, cross-referencing the archive's cross-check inventory). Remove the `.pre-refactor` backup once verified. Commit.
-    **Done when:** TOP + all cycles + all HIGH + all MID + all LOW encoded; regenerated diagram covers everything in the archive's cross-check inventory; no intended-to-survive behaviour is missing; Q5.a + Q31.a recorded in this file.
+    **Done when:** TOP + all cycles + all HIGH + all MID + all LOW encoded; regenerated diagram covers everything in the archive's cross-check inventory; no intended-to-survive behaviour is missing.
 
 4. - [ ] **Item 4 — Phase D handoff: Write the downstream-alignment plan.** Create `plans/<YYYYMMDD-HHMM>-bpmn-refactor-downstream.md` covering:
-    - Writing-agent updates per Q1 (FIX as separate primitive), Q4 (terminology), Q5 (run-tests filter parameter shape).
+    - **Sanity-check Q-numbering first.** The Q1/Q4/Q5 references below were drafted against the design archive (`plans/20260525-1057-bpmn-refactor-design.md`). The archive's Q-numbering may have shifted since drafting. Open the archive, confirm each Q-number resolves to the topic named here (FIX primitive / terminology / run-tests filter), and re-anchor any references that drifted.
+    - Writing-agent updates per Q1 (FIX as separate primitive), Q4 (terminology), Q5 (run-tests filter parameter shape — encoding shape now resolved per Q5.a in this plan's Decisions ledger).
     - **Prompt file renames + deletions per the locked Q28 table in the archive plan**, including:
       - `agent-name:` field removal from `process-flow.yaml` (Q28.a) — runtime contract change.
       - `fix-verify.md` split into `fix-unexpected-passing-tests.md` + `fix-unexpected-failing-tests.md` (Q28.b).
