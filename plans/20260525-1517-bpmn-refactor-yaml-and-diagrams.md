@@ -109,7 +109,7 @@ Each item is sized for one `/execute-plan` invocation. Re-running `/execute-plan
 
 ### Prerequisite
 
-Verify the parent plan's Item 12 (Q-tag strip on `plans/ideas/*.md`) has landed before starting Item 1 — the brainstorms are this plan's authoritative input. If not yet stripped, run that item first (parent plan: `plans/20260525-1057-bpmn-refactor-design.md`).
+Verify **`plans/20260525-1531-bpmn-ideas-contract-authoring.md`** has fully landed before starting Item 1 — the brainstorms in `plans/ideas/*.md` are this plan's authoritative input, and that prerequisite plan authors the per-task `Inputs:` / `Scopes:` / `Outputs:` / `Steps:` contracts (absorbing the parent design plan's Item 12 Q-tag strip in the process). Without it, Phase C is not a mechanical YAML-encoding pass — every task's contract would have to be invented on the fly. (Parent design archive for *why* behind each decision: `plans/20260525-1057-bpmn-refactor-design.md`.)
 
 1. - [ ] **Item 1 — Phase C.1: Prototype `refactor-system-structure` in YAML.** Encode the simplest cycle (`refactor-system-structure`) in `internal/atdd/runtime/statemachine/process-flow.yaml`. Save the current `docs/process-diagram.md` as a backup first (`cp docs/process-diagram.md docs/process-diagram.md.pre-refactor`). Run `gh optivem process show > docs/process-diagram.md`. Inspect the regenerated output for the new cycle. Compare against the refined `plans/ideas/4-bpmn-refactor-cycle-level.md`. Commit (YAML + regenerated md).
     **Done when:** regenerated diagram for `refactor-system-structure` matches the refined brainstorm; backup file in place for Item 3's diff.

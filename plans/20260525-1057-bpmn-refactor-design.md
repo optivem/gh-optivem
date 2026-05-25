@@ -77,17 +77,13 @@ The five brainstorm files in `plans/ideas/` (file 5 added 2026-05-25 per Q26=A):
 ## Phases overview
 
 - ~~**Phase A** (Item 1) — Batch-resolve the open questions in this file.~~ ✓ **Completed 2026-05-25.** All 23 questions (Q1–Q23 + Q-ext) resolved. See Decisions section.
-- ~~**Phase B** (Items 2–6, 11) — Apply decisions to the five brainstorm docs + walk the cross-check inventory + cross-file connectedness pass.~~ ✓ **Completed 2026-05-25** (Items 2–6 via commits up to `0ad5548`; Item 11 via commit `fac98ea`). One brainstorm-cleanup item remains: **Item 12 (Q-tag strip).**
+- ~~**Phase B** (Items 2–6, 11, 12) — Apply decisions to the five brainstorm docs + walk the cross-check inventory + cross-file connectedness pass + Q-tag strip.~~ ✓ **Completed 2026-05-25** (Items 2–6 via commits up to `0ad5548`; Item 11 via commit `fac98ea`; Item 12 (Q-tag strip) absorbed and executed under `plans/20260525-1531-bpmn-ideas-contract-authoring.md`).
 - **Phase C** (was Items 7–9) — Encode the new structure in `process-flow.yaml`, regenerate `docs/process-diagram.md`. **Moved** to `plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md`.
 - **Phase D** (was Item 10) — Write the downstream-alignment plan (writing-agents, ATDD docs, retired SVGs). **Moved** to `plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md`.
 
 ## Items
 
-The only remaining execution item is Item 12 below. Items 1–6 and 11 are resolved (deleted per the `/execute-plan` rule); Items 7–10 were extracted to `plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md`. After Item 12 lands, this file becomes a pure design archive — `/execute-plan` should be invoked on the YAML-and-diagrams plan from then on.
-
-12. - [ ] **Phase B.7 — Strip Q-tags from brainstorm files; preserve design content.** Mechanical cleanup pass: remove inline Q-references (e.g., `(Q6.a)`, `(resolved 2026-05-25)`, `Q-new-1=A` doctrine headers, `(Q7=A)` markers) from the five `plans/ideas/*.md` files while preserving the actual design content they annotated. The warning banner added in Item 6's commit forward-prevents new Q-tags; this item cleans up the existing ones. **Done when:** the only meta-content in each brainstorm file is the warning banner; no Q-IDs, no "resolved YYYY-MM-DD" tags, no doctrine-decision markers remain. Commit.
-
-    **After this commits:** this plan transitions to design-archive status. Next session uses `/execute-plan plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md` for Phase C+D.
+No execution items remain. Items 1–6, 11, and 12 are resolved (deleted per the `/execute-plan` rule; Item 12's scope was absorbed into and executed under `plans/20260525-1531-bpmn-ideas-contract-authoring.md`). Items 7–10 were extracted to `plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md`. This file is now a pure design archive — `/execute-plan` should be invoked on the YAML-and-diagrams plan from here on.
 
 ---
 
@@ -557,10 +553,7 @@ Under Q28.a=DROP, the "Required filename" column is the source of truth — runt
 
 ## Re-running `/execute-plan`
 
-Only Item 12 is left on this plan. After Item 12 commits:
-
-- Continue Phase C + Phase D on **`plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md`** (where Items 7–10 have been re-numbered 1–4 with a compact Decisions ledger).
-- This file becomes a design archive — Q&A debate, Decisions section, cross-check inventory — referenced from the execution plan for *why* behind any decision. No further `/execute-plan` invocations on this file.
+No execution items remain on this plan. Phase C + Phase D continue on **`plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md`** (Items 7–10 re-numbered 1–4 there, with a compact Decisions ledger). This file is now a design archive — Q&A debate, Decisions section, cross-check inventory — referenced from the execution plan for *why* behind any decision. No further `/execute-plan` invocations on this file.
 
 ## Exploration backlog
 
