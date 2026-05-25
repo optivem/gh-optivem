@@ -70,17 +70,6 @@ If a task's `Inputs:` or `Outputs:` aren't determined by the design plan's Decis
 
 Per-file items run in dependency order (LOW → MID → HIGH → CYCLE → TOP); cross-link check at the end. Each item is one `/execute-plan` invocation.
 
-2. - [ ] **2-mid — editorial + author contracts.** Every agent task and every command task gets its own Inputs/Outputs/Steps block (no "show one, name the rest" pattern). Conventions:
-    - Agent task Steps: `1. execute-agent <task-name>`.
-    - Agent task Inputs: data the task consumes from its caller.
-    - Agent task Scopes: permitted file scope (separate `**Scopes:**` section per Doctrine § Uniform task template).
-    - Agent task Outputs: lists declared output variables (e.g., `dsl-port-changed: bool`).
-    - Command task Steps: `1. execute-command <command> <params>`.
-    - Command task Inputs: command params.
-    - Command task Outputs: `NONE` (success is exit-code based). No Scopes section.
-
-    Use the design plan's Q6 table for the known port-change outputs (`write-acceptance-tests` → `dsl-port-changed`; `implement-dsl` → `system-driver-ports-changed` + `external-driver-ports-changed`). For tasks where scopes/outputs aren't already decided: propose contract → confirm with user → write. If ambiguous beyond propose-then-confirm, surface as new Q-item in design plan and defer per Doctrine § Ambiguity handling. Commit.
-
 3. - [ ] **3-high — editorial + author contracts.** Most tasks already have `INPUT:` / `OUTPUT:` lines — convert to the template. Annotate intra-flow plumbing inline. Tasks: `write-and-verify-tests-fail`, `write-and-verify-tests-pass`, `write-and-verify-tests`, `write-and-verify-acceptance-tests`, `implement-and-verify-dsl`, `implement-and-verify-system-driver-adapters`, `implement-and-verify-external-system-driver-adapter-contract-tests`, `implement-and-verify-system`, `refactor-and-verify-tests`, plus three SHARED tasks (`implement-test-layer`, `verify-tests-pass`, `verify-tests-fail`). Commit.
 
 4. - [ ] **4-cycle — editorial + author contracts.** Each CYCLE's Inputs = ticket / ACs / nothing; Outputs = operator-visible artifact ("Modified system + tests" or similar). Cycles: `refine-backlog`, `onboard-external-system`, `change-system-behavior`, `cover-system-behavior`, `redesign-system-structure`, `refactor-system-structure`, `refactor-test-structure`. Commit.
