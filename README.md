@@ -342,7 +342,7 @@ gh optivem implement                                           # pick the top Re
 ... --workspace <path>    # override the default workspace root (parent directory of CWD; each clone dir must be named after the repo-name component of its slug)
 ```
 
-Project-stable overrides (`process_flow:`, `agent_prompts:`, `node_extras:`, `node_replacements:`) live in `gh-optivem.yaml` and are read at startup.
+Project-stable overrides (`process_flow:`, `task_prompts:`, `node_extras:`, `node_replacements:`) live in `gh-optivem.yaml` and are read at startup.
 
 ### Process diagram
 

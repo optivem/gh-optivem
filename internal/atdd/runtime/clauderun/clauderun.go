@@ -173,12 +173,12 @@ type Options struct {
 	// prompt-shaping field (NodeDescription, OverrideText, …) is ignored.
 	RawPrompt string
 
-	// PromptOverride, when non-empty, replaces the embedded agent prompt
+	// PromptOverride, when non-empty, replaces the embedded MID task prompt
 	// body (i.e. agents.Prompt(opts.Agent)) with this string. Unlike
 	// RawPrompt, the override still goes through ${name} expansion against
 	// the live ticket context and still has OverrideText appended. Sourced
-	// from gh-optivem.yaml's agent_prompts: map, where the operator wants
-	// to swap the canonical prompt for one named agent without touching
+	// from gh-optivem.yaml's task_prompts: map, where the operator wants
+	// to swap the canonical prompt for one named task without touching
 	// the surrounding render machinery.
 	PromptOverride string
 

@@ -14,7 +14,7 @@
 // Why "implement" as a top-level verb (not under a methodology noun): the
 // pipeline orchestrated here is the stable concept; *which* methodology runs
 // (ATDD today, TDD/DDD or compositions later) is configuration read from
-// `gh-optivem.yaml` (process_flow:, agent_prompts:, node_extras:,
+// `gh-optivem.yaml` (process_flow:, task_prompts:, node_extras:,
 // node_replacements:). Hoisting `implement` to the root keeps the muscle
 // memory ("implement an issue") even when a second methodology lands.
 package main
@@ -62,7 +62,7 @@ func newImplementCmd() *cobra.Command {
 		Long: `Run the implementation pipeline against a GitHub issue.
 
 The pipeline is configured per-project via gh-optivem.yaml (process_flow:,
-agent_prompts:, node_extras:, node_replacements:). Today the bundled flow
+task_prompts:, node_extras:, node_replacements:). Today the bundled flow
 is ATDD; future flows (TDD, DDD, or compositions) plug into the same
 command.
 
@@ -98,15 +98,15 @@ pipeline from START.`,
 			exitOnError(err)
 			hooks, err := overrideHooksFromConfig(cfg)
 			exitOnError(err)
-			promptOverrides, err := agentPromptOverridesFromConfig(cfg)
+			promptOverrides, err := taskPromptOverridesFromConfig(cfg)
 			exitOnError(err)
 			exitOnError(driver.Run(context.Background(), driver.Options{
-				IssueNum:             issue,
-				Autonomous:           autonomous,
-				ManualAgents:         manualAgents,
-				Override:             hooks,
-				YAMLPath:             cfg.ProcessFlow,
-				AgentPromptOverrides: promptOverrides,
+				IssueNum:            issue,
+				Autonomous:          autonomous,
+				ManualAgents:        manualAgents,
+				Override:            hooks,
+				YAMLPath:            cfg.ProcessFlow,
+				TaskPromptOverrides: promptOverrides,
 				ConfigPath:           resolvedConfigPath,
 				LogFile:              logFile,
 				KeepRuns:             keepRuns,
@@ -177,7 +177,7 @@ func exportConfigForShellOuts(resolvedConfigPath string) {
 // and exits non-zero — see preflight.Run.
 //
 // Returns the loaded cfg so the cobra layer can read process_flow:,
-// agent_prompts:, node_extras:, and node_replacements: without paying for a
+// task_prompts:, node_extras:, and node_replacements: without paying for a
 // second LoadFromPath. The driver still re-loads internally via
 // loadDriverConfig — the double load is deliberate and a config file is
 // small enough that the second read is free.
@@ -233,21 +233,21 @@ func overrideHooksFromConfig(cfg *projectconfig.Config) (*override.Hooks, error)
 	return hooks, nil
 }
 
-// agentPromptOverridesFromConfig reads cfg.AgentPrompts (agent-name → path)
-// and returns the agent-name → prompt-body map the driver passes through to
+// taskPromptOverridesFromConfig reads cfg.TaskPrompts (task-name → path)
+// and returns the task-name → prompt-body map the driver passes through to
 // the dispatcher. Files are read at startup so missing paths surface there,
-// not deep inside a pipeline run. Agent-name validity is enforced by
+// not deep inside a pipeline run. Task-name validity is enforced by
 // projectconfig.Validate (Rule 11) — this layer only reads the files.
-// Returns (nil, nil) when AgentPrompts is empty.
-func agentPromptOverridesFromConfig(cfg *projectconfig.Config) (map[string]string, error) {
-	if cfg == nil || len(cfg.AgentPrompts) == 0 {
+// Returns (nil, nil) when TaskPrompts is empty.
+func taskPromptOverridesFromConfig(cfg *projectconfig.Config) (map[string]string, error) {
+	if cfg == nil || len(cfg.TaskPrompts) == 0 {
 		return nil, nil
 	}
-	out := make(map[string]string, len(cfg.AgentPrompts))
-	for name, path := range cfg.AgentPrompts {
+	out := make(map[string]string, len(cfg.TaskPrompts))
+	for name, path := range cfg.TaskPrompts {
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return nil, fmt.Errorf("agent_prompts[%s]: read %s: %w", name, path, err)
+			return nil, fmt.Errorf("task_prompts[%s]: read %s: %w", name, path, err)
 		}
 		out[name] = string(data)
 	}

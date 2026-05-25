@@ -132,11 +132,12 @@ func loadConfigIfPresent(configPath string) *projectconfig.Config {
 	return cfg
 }
 
-// agentByPhase returns a phase-id → agent-name map derived from
-// process-flow.yaml. UserTask nodes carry the agent directly; templated
-// call_activity nodes carry the concrete agent in Params["agent"]. Skips
-// non-writing agents (human / fix-verify) and templated `${agent}`
-// references whose concrete value lives on the parent.
+// agentByPhase returns a phase-id → task-name map derived from
+// process-flow.yaml. UserTask nodes carry the task name on the `agent:`
+// field directly; templated call_activity nodes carry the concrete
+// task name in Params["agent"]. Skips non-writing agents (human /
+// fix-verify) and templated `${agent}` references whose concrete value
+// lives on the parent.
 func agentByPhase(eng *statemachine.Engine) map[string]string {
 	out := map[string]string{}
 	for _, proc := range eng.Processes {

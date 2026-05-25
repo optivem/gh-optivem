@@ -205,7 +205,7 @@ Useful flags:
 - `--autonomous` — headless agents (`claude -p`)
 - `--manual-agents` — v1 two-window dispatch (driver pauses, human launches the agent in a separate Claude Code session, presses Enter to advance). Right tool when bisecting "did v2 misroute?" vs. "did v1 see the commit?".
 
-Per-node prompt shaping (`extra` text, full `replace`, alternate `process_flow`, or `agent_prompts` swaps) is configured via fields in `gh-optivem.yaml`, not flags — see the [pipeline overrides](README.md#pipeline-overrides) section in the README.
+Per-node prompt shaping (`extra` text, full `replace`, alternate `process_flow`, or `task_prompts` swaps) is configured via fields in `gh-optivem.yaml`, not flags — see the [pipeline overrides](README.md#pipeline-overrides) section in the README.
 
 The two rehearsal flows below show how to actually invoke it.
 
@@ -278,7 +278,7 @@ cd "../rehearsal-${TS}"
 ../gh-optivem/gh-optivem.exe implement --issue 42
 ../gh-optivem/gh-optivem.exe implement --issue 42 --autonomous
 ../gh-optivem/gh-optivem.exe implement --issue 42 --manual-agents
-../gh-optivem/gh-optivem.exe -c ./gh-optivem.experimental.yaml implement --issue 42  # swap node_extras / agent_prompts / process_flow via an alternate config
+../gh-optivem/gh-optivem.exe -c ./gh-optivem.experimental.yaml implement --issue 42  # swap node_extras / task_prompts / process_flow via an alternate config
 ../gh-optivem/gh-optivem.exe implement                                            # pick top Ready item from project board
 
 # Step 5 — clean up the worktree + branch when done
@@ -388,8 +388,8 @@ The implementation pipeline (`gh optivem implement`, with or without `--issue`) 
 
 ```yaml
 process_flow: config/process-flow.yaml         # alternate process-flow YAML (default: embedded)
-agent_prompts:                                  # swap one or more embedded agent prompts
-  atdd-test: config/prompts/atdd-test.md
+task_prompts:                                   # swap one or more embedded MID task prompts
+  write-acceptance-tests: config/prompts/write-acceptance-tests.md
 node_extras:                                    # appended to a node's prompt at dispatch
   AT_RED_DSL_WRITE: prefer record types
 node_replacements:                              # replaces a node's prompt verbatim with this file body

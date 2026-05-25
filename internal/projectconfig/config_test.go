@@ -345,7 +345,7 @@ func TestWrite_RoundTripPreservesAllFourSamples(t *testing.T) {
 }
 
 // TestRoundTrip_PreservesProcessFlowAndOverrides verifies that the optional
-// process_flow: / agent_prompts: / node_extras: / node_replacements: fields
+// process_flow: / task_prompts: / node_extras: / node_replacements: fields
 // survive a Write→Load round-trip when set.
 func TestRoundTrip_PreservesProcessFlowAndOverrides(t *testing.T) {
 	t.Parallel()
@@ -353,8 +353,8 @@ func TestRoundTrip_PreservesProcessFlowAndOverrides(t *testing.T) {
 	cfg := &Config{
 		Project:     Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		ProcessFlow: "config/process-flow.yaml",
-		AgentPrompts: map[string]string{
-			"at-red-test": "config/prompts/at-red-test.md",
+		TaskPrompts: map[string]string{
+			"write-acceptance-tests": "config/prompts/write-acceptance-tests.md",
 		},
 		NodeExtras: map[string]string{
 			"AT_RED_DSL_WRITE": "prefer record types",
@@ -373,9 +373,9 @@ func TestRoundTrip_PreservesProcessFlowAndOverrides(t *testing.T) {
 	if got.ProcessFlow != cfg.ProcessFlow {
 		t.Errorf("process_flow: got %q, want %q", got.ProcessFlow, cfg.ProcessFlow)
 	}
-	if got.AgentPrompts["at-red-test"] != cfg.AgentPrompts["at-red-test"] {
-		t.Errorf("agent_prompts[at-red-test]: got %q, want %q",
-			got.AgentPrompts["at-red-test"], cfg.AgentPrompts["at-red-test"])
+	if got.TaskPrompts["write-acceptance-tests"] != cfg.TaskPrompts["write-acceptance-tests"] {
+		t.Errorf("task_prompts[write-acceptance-tests]: got %q, want %q",
+			got.TaskPrompts["write-acceptance-tests"], cfg.TaskPrompts["write-acceptance-tests"])
 	}
 	if got.NodeExtras["AT_RED_DSL_WRITE"] != cfg.NodeExtras["AT_RED_DSL_WRITE"] {
 		t.Errorf("node_extras: got %q", got.NodeExtras["AT_RED_DSL_WRITE"])
@@ -402,42 +402,42 @@ func TestValidate_ProcessFlow_RejectsAbsolutePath(t *testing.T) {
 	}
 }
 
-// TestValidate_AgentPrompts_RejectsUnknownAgent verifies typos in agent
-// names surface at config-load, not deep inside the pipeline.
-func TestValidate_AgentPrompts_RejectsUnknownAgent(t *testing.T) {
+// TestValidate_TaskPrompts_RejectsUnknownTask verifies typos in MID
+// task names surface at config-load, not deep inside the pipeline.
+func TestValidate_TaskPrompts_RejectsUnknownTask(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
 		Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
-		AgentPrompts: map[string]string{
-			"atdd-not-a-real-agent": "config/prompts/x.md",
+		TaskPrompts: map[string]string{
+			"not-a-real-task": "config/prompts/x.md",
 		},
 	}
 	err := cfg.Validate()
 	if err == nil {
-		t.Fatal("expected error for unknown agent name, got nil")
+		t.Fatal("expected error for unknown task name, got nil")
 	}
-	if !strings.Contains(err.Error(), "atdd-not-a-real-agent") {
-		t.Fatalf("error should name the bad agent, got: %v", err)
+	if !strings.Contains(err.Error(), "not-a-real-task") {
+		t.Fatalf("error should name the bad task, got: %v", err)
 	}
 }
 
-// TestValidate_AgentPrompts_RejectsAbsolutePath verifies values pass the
+// TestValidate_TaskPrompts_RejectsAbsolutePath verifies values pass the
 // same path-validation as system/system_test paths.
-func TestValidate_AgentPrompts_RejectsAbsolutePath(t *testing.T) {
+func TestValidate_TaskPrompts_RejectsAbsolutePath(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
 		Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
-		AgentPrompts: map[string]string{
-			"at-red-test": "/abs/prompts/at-red-test.md",
+		TaskPrompts: map[string]string{
+			"write-acceptance-tests": "/abs/prompts/write-acceptance-tests.md",
 		},
 	}
 	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected error for absolute agent_prompts path, got nil")
+		t.Fatal("expected error for absolute task_prompts path, got nil")
 	}
 }
 
 // TestValidate_NodeReplacements_RejectsAbsolutePath verifies values pass
-// the same path-validation as agent_prompts.
+// the same path-validation as task_prompts.
 func TestValidate_NodeReplacements_RejectsAbsolutePath(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{

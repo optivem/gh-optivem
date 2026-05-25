@@ -106,13 +106,14 @@ type Options struct {
 	// node_replacements: fields. nil leaves the dispatcher unmodified.
 	Override *override.Hooks
 
-	// AgentPromptOverrides is a map from embedded-agent name (e.g.
-	// "at-red-test") to a prompt body that replaces the canonical embedded
-	// prompt for that agent. Sourced from gh-optivem.yaml's agent_prompts:
-	// map by the cobra layer; the values are the file contents, not the
-	// file paths (the CLI reads at startup so missing-file failures surface
-	// there). Unrecognised agent names are rejected at projectconfig.Validate.
-	AgentPromptOverrides map[string]string
+	// TaskPromptOverrides is a map from embedded MID task-name (e.g.
+	// "write-acceptance-tests") to a prompt body that replaces the canonical
+	// embedded prompt for that task. Sourced from gh-optivem.yaml's
+	// task_prompts: map by the cobra layer; the values are the file
+	// contents, not the file paths (the CLI reads at startup so missing-file
+	// failures surface there). Unrecognised task names are rejected at
+	// projectconfig.Validate.
+	TaskPromptOverrides map[string]string
 
 	// ConfigPath is the resolved gh-optivem.yaml path. The caller (cobra
 	// layer in implement_commands.go) populates it via projectconfig.ResolvePath
@@ -819,7 +820,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 			Placeholders:       placeholders,
 			OverrideText:       extraText,
 			RawPrompt:          replaceText,
-			PromptOverride:     opts.AgentPromptOverrides[agentName],
+			PromptOverride:     opts.TaskPromptOverrides[agentName],
 			Autonomous:         opts.Autonomous,
 			Model:              tuning.Model,
 			Effort:             tuning.Effort,

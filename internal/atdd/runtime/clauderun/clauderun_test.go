@@ -294,7 +294,7 @@ func TestRenderPrompt_ReturnsErrorForUnknownAgent(t *testing.T) {
 // previous "external subtype includes doctrine inline / system subtype
 // excludes it" assertions are obsolete — the doctrine is read on-demand
 // from the synced ~/.gh-optivem/references/atdd/architecture/driver-adapter.md
-// by both variants. Subtype routing still works via the agent-name lookup
+// by both variants. Subtype routing still works via the task-name lookup
 // in process-flow.yaml.
 
 // TestRenderPrompt_ReferencesRootSubstitutes covers the placeholder that

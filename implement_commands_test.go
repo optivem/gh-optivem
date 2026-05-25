@@ -147,36 +147,36 @@ func TestOverrideHooksFromConfig_MissingReplacementPathErrors(t *testing.T) {
 	}
 }
 
-// TestAgentPromptOverridesFromConfig_ReadsFiles: cfg.AgentPrompts paths are
+// TestTaskPromptOverridesFromConfig_ReadsFiles: cfg.TaskPrompts paths are
 // read at startup and the returned map holds bodies, not paths.
-func TestAgentPromptOverridesFromConfig_ReadsFiles(t *testing.T) {
+func TestTaskPromptOverridesFromConfig_ReadsFiles(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	body := "You are the customized atdd-test agent.\n"
-	path := filepath.Join(dir, "atdd-test.md")
+	body := "You are the customized write-acceptance-tests task.\n"
+	path := filepath.Join(dir, "write-acceptance-tests.md")
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
 	cfg := &projectconfig.Config{
 		Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/x/projects/1"},
-		AgentPrompts: map[string]string{
-			"atdd-test": path,
+		TaskPrompts: map[string]string{
+			"write-acceptance-tests": path,
 		},
 	}
-	out, err := agentPromptOverridesFromConfig(cfg)
+	out, err := taskPromptOverridesFromConfig(cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := out["atdd-test"]; got != body {
-		t.Errorf("atdd-test: got %q, want %q (file body, not path)", got, body)
+	if got := out["write-acceptance-tests"]; got != body {
+		t.Errorf("write-acceptance-tests: got %q, want %q (file body, not path)", got, body)
 	}
 }
 
-// TestAgentPromptOverridesFromConfig_NilAndEmpty: nil cfg and empty
-// AgentPrompts both yield (nil, nil), so the driver sees a clean nil map.
-func TestAgentPromptOverridesFromConfig_NilAndEmpty(t *testing.T) {
+// TestTaskPromptOverridesFromConfig_NilAndEmpty: nil cfg and empty
+// TaskPrompts both yield (nil, nil), so the driver sees a clean nil map.
+func TestTaskPromptOverridesFromConfig_NilAndEmpty(t *testing.T) {
 	t.Parallel()
-	out, err := agentPromptOverridesFromConfig(nil)
+	out, err := taskPromptOverridesFromConfig(nil)
 	if err != nil {
 		t.Fatalf("nil cfg: unexpected error %v", err)
 	}
@@ -185,7 +185,7 @@ func TestAgentPromptOverridesFromConfig_NilAndEmpty(t *testing.T) {
 	}
 
 	cfg := &projectconfig.Config{Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/x/projects/1"}}
-	out, err = agentPromptOverridesFromConfig(cfg)
+	out, err = taskPromptOverridesFromConfig(cfg)
 	if err != nil {
 		t.Fatalf("empty cfg: unexpected error %v", err)
 	}
@@ -194,23 +194,23 @@ func TestAgentPromptOverridesFromConfig_NilAndEmpty(t *testing.T) {
 	}
 }
 
-// TestAgentPromptOverridesFromConfig_MissingPathErrors: a missing file
-// surfaces at startup naming the agent so the operator sees what's wrong
+// TestTaskPromptOverridesFromConfig_MissingPathErrors: a missing file
+// surfaces at startup naming the task so the operator sees what's wrong
 // before any pipeline node runs.
-func TestAgentPromptOverridesFromConfig_MissingPathErrors(t *testing.T) {
+func TestTaskPromptOverridesFromConfig_MissingPathErrors(t *testing.T) {
 	t.Parallel()
 	cfg := &projectconfig.Config{
 		Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/x/projects/1"},
-		AgentPrompts: map[string]string{
-			"atdd-test": filepath.Join(t.TempDir(), "no-such.md"),
+		TaskPrompts: map[string]string{
+			"write-acceptance-tests": filepath.Join(t.TempDir(), "no-such.md"),
 		},
 	}
-	_, err := agentPromptOverridesFromConfig(cfg)
+	_, err := taskPromptOverridesFromConfig(cfg)
 	if err == nil {
-		t.Fatal("expected error for missing agent_prompts path, got nil")
+		t.Fatal("expected error for missing task_prompts path, got nil")
 	}
-	if !strings.Contains(err.Error(), "atdd-test") {
-		t.Errorf("error should name the agent, got: %v", err)
+	if !strings.Contains(err.Error(), "write-acceptance-tests") {
+		t.Errorf("error should name the task, got: %v", err)
 	}
 }
 

@@ -154,11 +154,12 @@ type Config struct {
 	// load-time, not validate-time.
 	ProcessFlow string `yaml:"process_flow,omitempty"`
 
-	// AgentPrompts maps agent name → repo-relative path to a prompt body
-	// that replaces the embedded one. Partial overrides are allowed
-	// (an entry per agent the operator wants to customize). Validated:
-	// keys must be members of agents.Names(); values pass validatePath.
-	AgentPrompts map[string]string `yaml:"agent_prompts,omitempty"`
+	// TaskPrompts maps MID task-name → repo-relative path to a prompt
+	// body that replaces the embedded one. Partial overrides are allowed
+	// (an entry per task the operator wants to customize). Validated:
+	// keys must be members of agents.Names() (which enumerates the
+	// embedded MID task prompt files); values pass validatePath.
+	TaskPrompts map[string]string `yaml:"task_prompts,omitempty"`
 
 	// NodeExtras maps process-flow node ID → literal text appended to that
 	// node's prompt. Values are inline (project-stable advice such as
@@ -611,19 +612,19 @@ beyond the canonical layout`)
 		return err
 	}
 
-	// Rule 11: agent_prompts. Keys must be known embedded agents (typos
-	// surface at config-load, not deep inside the pipeline); values pass
-	// validatePath. Sorted iteration so errors are deterministic.
-	if len(c.AgentPrompts) > 0 {
+	// Rule 11: task_prompts. Keys must be known embedded MID task names
+	// (typos surface at config-load, not deep inside the pipeline); values
+	// pass validatePath. Sorted iteration so errors are deterministic.
+	if len(c.TaskPrompts) > 0 {
 		known := map[string]bool{}
 		for _, n := range agents.Names() {
 			known[n] = true
 		}
-		for _, name := range sortedKeys(c.AgentPrompts) {
+		for _, name := range sortedKeys(c.TaskPrompts) {
 			if !known[name] {
-				return fmt.Errorf("config: agent_prompts: %q is not a known embedded agent", name)
+				return fmt.Errorf("config: task_prompts: %q is not a known embedded MID task", name)
 			}
-			if err := validatePath("agent_prompts."+name, c.AgentPrompts[name]); err != nil {
+			if err := validatePath("task_prompts."+name, c.TaskPrompts[name]); err != nil {
 				return err
 			}
 		}
