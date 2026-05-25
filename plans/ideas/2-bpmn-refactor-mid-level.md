@@ -9,9 +9,9 @@
 - expected-test-result
 
 **Scopes:**
-- at_test
-- dsl_port
-- dsl_core
+- at-test
+- dsl-port
+- dsl-core
 
 **Outputs:**
 - dsl-port-changed: bool
@@ -25,9 +25,9 @@
 - expected-test-result
 
 **Scopes:**
-- ct_test
-- dsl_port
-- dsl_core
+- ct-test
+- dsl-port
+- dsl-core
 
 **Outputs:**
 - dsl-port-changed: bool
@@ -41,9 +41,9 @@
 - expected-test-result
 
 **Scopes:**
-- dsl_core
-- driver_port
-- external_system_driver_port
+- dsl-core
+- driver-port
+- external-system-driver-port
 
 **Outputs:**
 - system-driver-ports-changed: bool
@@ -57,7 +57,7 @@
 **Inputs:** NONE
 
 **Scopes:**
-- system_path
+- system-path
 
 **Outputs:** NONE
 
@@ -69,8 +69,8 @@
 **Inputs:** NONE
 
 **Scopes:**
-- driver_port
-- driver_adapter
+- driver-port
+- driver-adapter
 
 **Outputs:** NONE
 
@@ -82,8 +82,8 @@
 **Inputs:** NONE
 
 **Scopes:**
-- external_system_driver_port
-- external_system_driver_adapter
+- external-system-driver-port
+- external-system-driver-adapter
 
 **Outputs:** NONE
 
@@ -95,7 +95,7 @@
 **Inputs:** NONE
 
 **Scopes:**
-- external_system_driver_adapter
+- external-system-driver-adapter
 
 **Outputs:** NONE
 
@@ -108,8 +108,8 @@
 - tests
 
 **Scopes:**
-- at_test
-- ct_test
+- at-test
+- ct-test
 
 **Outputs:** NONE
 
@@ -122,8 +122,8 @@
 - tests
 
 **Scopes:**
-- at_test
-- ct_test
+- at-test
+- ct-test
 
 **Outputs:** NONE
 
@@ -135,15 +135,15 @@
 **Inputs:** NONE
 
 **Scopes:**
-- at_test
-- ct_test
-- dsl_port
-- dsl_core
-- driver_port
-- driver_adapter
-- external_system_driver_port
-- external_system_driver_adapter
-- system_path
+- at-test
+- ct-test
+- dsl-port
+- dsl-core
+- driver-port
+- driver-adapter
+- external-system-driver-port
+- external-system-driver-adapter
+- system-path
 
 **Outputs:** NONE
 
@@ -155,15 +155,15 @@
 **Inputs:** NONE
 
 **Scopes:**
-- at_test
-- ct_test
-- dsl_port
-- dsl_core
-- driver_port
-- driver_adapter
-- external_system_driver_port
-- external_system_driver_adapter
-- system_path
+- at-test
+- ct-test
+- dsl-port
+- dsl-core
+- driver-port
+- driver-adapter
+- external-system-driver-port
+- external-system-driver-adapter
+- system-path
 
 **Outputs:** NONE
 
@@ -175,14 +175,14 @@
 **Inputs:** NONE
 
 **Scopes:**
-- at_test
-- ct_test
-- dsl_port
-- dsl_core
-- driver_port
-- driver_adapter
-- external_system_driver_port
-- external_system_driver_adapter
+- at-test
+- ct-test
+- dsl-port
+- dsl-core
+- driver-port
+- driver-adapter
+- external-system-driver-port
+- external-system-driver-adapter
 
 **Outputs:** NONE
 
@@ -194,7 +194,7 @@
 **Inputs:** NONE
 
 **Scopes:**
-- system_path
+- system-path
 
 **Outputs:** NONE
 

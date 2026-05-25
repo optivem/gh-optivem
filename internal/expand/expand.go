@@ -24,12 +24,13 @@ func Apply(s string, params map[string]string) string {
 }
 
 // unfilledRE matches a syntactically valid ${name} placeholder. The name
-// must start with a letter or underscore and contain only word
-// characters thereafter, matching the convention Apply substitutes. The
+// must start with a letter or underscore and may contain word characters
+// or kebab dashes thereafter, matching the canonical Family B / Family A
+// scope-vocabulary keys (driver-port, dsl-core, system-path, …). The
 // anchoring is intentional: a substring like `\$amount{}` does not match
 // (the `${` is split), which is the correct behaviour because it isn't a
 // placeholder.
-var unfilledRE = regexp.MustCompile(`\$\{[a-zA-Z_][a-zA-Z0-9_]*\}`)
+var unfilledRE = regexp.MustCompile(`\$\{[a-zA-Z_][a-zA-Z0-9_-]*\}`)
 
 // FindUnfilled returns each distinct ${name} token still present in s,
 // preserving first-seen order. An empty slice means every placeholder

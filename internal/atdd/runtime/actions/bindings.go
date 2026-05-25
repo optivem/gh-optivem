@@ -955,7 +955,7 @@ func (a actions) verifyRealSuitePasses(ctx *statemachine.Context) statemachine.O
 //
 //   - internal/atdd/phase-scopes.yaml (SSoT: BPMN phase id → layer list)
 //   - the project's gh-optivem.yaml paths: (layer name → resolved path)
-//     plus Family A path-shaped keys in FamilyAPathKeysInScope (system_path
+//     plus Family A path-shaped keys in FamilyAPathKeysInScope (system-path
 //     today).
 //
 // It then enumerates the working-tree changes via `git diff --name-only HEAD`
@@ -1031,7 +1031,7 @@ func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome
 
 // resolveLayerPaths joins a phase's layer list against the project's
 // configured paths: Family A path-shaped keys go through their dedicated
-// Config accessor (system_path → cfg.System.Path); everything else is a
+// Config accessor (system-path → cfg.System.Path); everything else is a
 // Family B key in cfg.SystemTest.Paths. Missing values surface as errors
 // rather than silently shrinking the allowed set.
 func resolveLayerPaths(layers []string, cfg *projectconfig.Config) ([]string, error) {
@@ -1039,7 +1039,7 @@ func resolveLayerPaths(layers []string, cfg *projectconfig.Config) ([]string, er
 	for _, layer := range layers {
 		if atdd.FamilyAPathKeysInScope[layer] {
 			switch layer {
-			case "system_path":
+			case "system-path":
 				if cfg.System.Path == "" {
 					return nil, fmt.Errorf("layer %q resolves to empty system.path in gh-optivem.yaml", layer)
 				}

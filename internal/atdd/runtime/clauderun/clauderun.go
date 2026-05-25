@@ -151,8 +151,8 @@ type Options struct {
 
 	// Placeholders carries the project-wide ${name} substitutions the
 	// dispatcher pulls from ProjectConfig.PlaceholderMap() — Family B
-	// path keys (driver_port, driver_adapter, at_test, …) plus the
-	// derived Family A keys (sut_namespace, system_path, system_test_path,
+	// path keys (driver-port, driver-adapter, at-test, …) plus the
+	// derived Family A keys (sut_namespace, system-path, system_test_path,
 	// architecture, language). Inlined phase-doc placeholders that used
 	// to be resolved at materialization time now live in the prompt body
 	// itself; this map is how the dispatcher gets them filled at render

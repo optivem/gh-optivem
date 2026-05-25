@@ -10,6 +10,12 @@ Layer names are part of canonical ATDD vocabulary: the same key set in
 every gh-optivem project. **Users own VALUES** (physical paths in their
 repo); **gh-optivem owns NAMES** (the key set itself).
 
+Scope vocabulary uses **kebab-case** throughout (Q29 / Q40): YAML keys,
+doc headings, prompt placeholders, anchor slugs. The non-path-shaped
+Family A keys (`language`, `architecture`, `sut_namespace`,
+`system_test_path`) retain their original spellings — they are not scope
+vocabulary and are unrelated to the Q40 sweep.
+
 ## Two key families
 
 Every path key is one of two families, sharing a single flat namespace.
@@ -23,11 +29,11 @@ fixed; the value is the corresponding config field.
 |---|---|
 | `language` | `system.lang` (or `system_test.lang` when `system.lang` is empty — multitier) |
 | `architecture` | `system.architecture` |
-| `system_path` | `system.path` (fully resolved, sut_namespace baked in per SSoT) |
+| `system-path` | `system.path` (fully resolved, sut_namespace baked in per SSoT) |
 | `system_test_path` | `system_test.path` |
 
 **Path-shaped Family A keys eligible for `phase-scopes.yaml` scope:**
-`system_path`. `system_test_path` is **not** scope-eligible — it is the
+`system-path`. `system_test_path` is **not** scope-eligible — it is the
 parent of every Family B testkit key and admitting it would let any
 phase escape the layer partition (see `FamilyAPathKeysInScope` in
 `internal/atdd/phase_scopes.go`).
@@ -41,14 +47,14 @@ key from `CanonicalPathKeys()` in
 
 | Key | Layer it names |
 |---|---|
-| `driver_port` | system-test driver port (interface) |
-| `driver_adapter` | system-test driver adapter (implementation) |
-| `external_system_driver_port` | external-system driver port (interface) |
-| `external_system_driver_adapter` | external-system driver adapter (implementation) |
-| `at_test` | acceptance test files |
-| `dsl_port` | DSL port (interface) |
-| `dsl_core` | DSL core (implementation) |
-| `ct_test` | contract test files |
+| `driver-port` | system-test driver port (interface) |
+| `driver-adapter` | system-test driver adapter (implementation) |
+| `external-system-driver-port` | external-system driver port (interface) |
+| `external-system-driver-adapter` | external-system driver adapter (implementation) |
+| `at-test` | acceptance test files |
+| `dsl-port` | DSL port (interface) |
+| `dsl-core` | DSL core (implementation) |
+| `ct-test` | contract test files |
 
 Values are **fully-resolved physical paths** set at scaffold time
 (per plan 20260518-1530 item 3). No runtime `${...}` substitution.
@@ -96,14 +102,14 @@ system_test:
   lang: typescript
   sonar_project: optivem_shop-system-test
   paths:
-    driver_port: system-test/typescript/src/testkit/driver/port/shop
-    driver_adapter: system-test/typescript/src/testkit/driver/adapter/shop
-    external_system_driver_port: system-test/typescript/src/testkit/external/port/shop
-    external_system_driver_adapter: system-test/typescript/src/testkit/external/adapter/shop
-    at_test: system-test/typescript/tests/latest/acceptance
-    dsl_port: system-test/typescript/src/testkit/dsl/port/shop
-    dsl_core: system-test/typescript/src/testkit/dsl/core/shop
-    ct_test: system-test/typescript/tests/latest/contract
+    driver-port: system-test/typescript/src/testkit/driver/port/shop
+    driver-adapter: system-test/typescript/src/testkit/driver/adapter/shop
+    external-system-driver-port: system-test/typescript/src/testkit/external/port/shop
+    external-system-driver-adapter: system-test/typescript/src/testkit/external/adapter/shop
+    at-test: system-test/typescript/tests/latest/acceptance
+    dsl-port: system-test/typescript/src/testkit/dsl/port/shop
+    dsl-core: system-test/typescript/src/testkit/dsl/core/shop
+    ct-test: system-test/typescript/tests/latest/contract
 ```
 
 Java and dotnet defaults differ in stem shape (Java structures tests
@@ -119,7 +125,7 @@ present, not project-customizable.
 - **Family B keys that shadow Family A names are rejected.** A typo'd
   `system_test.paths.language: typescript` would otherwise quietly
   override the canonical `system.lang` value. Rejected names today:
-  `language`, `architecture`, `system_path`, `system_test_path`,
+  `language`, `architecture`, `system-path`, `system_test_path`,
   `sut_namespace`.
 - **Non-canonical `system_test.paths.<name>` keys are rejected** (per
   plan 20260518-1530 item 5). The validator enumerates
@@ -172,7 +178,7 @@ keys all describe the system_test tier's layered layout, so the block
 was relocated under `system_test:` alongside `path`, `repo`, `lang`,
 `config`, and `sonar_project` — every other field that describes the
 system_test tier. The key set, validation rules, and `PlaceholderMap`
-output (still flat — `driver_port`, `at_test`, etc. emit at the top of
+output (still flat — `driver-port`, `at-test`, etc. emit at the top of
 the placeholder namespace) are unchanged; only the YAML location moved.
 The migrate command continues to operate on the post-move location:
 the external-driver key-rename and SSoT-join passes both walk

@@ -721,14 +721,14 @@ system_test:
   lang: java
   sonar_project: optivem_shop-system-test
   paths:
-    driver_port: system-test/src/main/java/testkit/driver/port/shop-tests
-    driver_adapter: system-test/src/main/java/testkit/driver/adapter/shop-tests
-    external_system_driver_port: system-test/src/main/java/testkit/external/port/shop-tests
-    external_system_driver_adapter: system-test/src/main/java/testkit/external/adapter/shop-tests
-    at_test: system-test/src/test/java/shop-tests/latest/acceptance
-    dsl_port: system-test/src/main/java/testkit/dsl/port/shop-tests
-    dsl_core: system-test/src/main/java/testkit/dsl/core/shop-tests
-    ct_test: system-test/src/test/java/shop-tests/latest/contract
+    driver-port: system-test/src/main/java/testkit/driver/port/shop-tests
+    driver-adapter: system-test/src/main/java/testkit/driver/adapter/shop-tests
+    external-system-driver-port: system-test/src/main/java/testkit/external/port/shop-tests
+    external-system-driver-adapter: system-test/src/main/java/testkit/external/adapter/shop-tests
+    at-test: system-test/src/test/java/shop-tests/latest/acceptance
+    dsl-port: system-test/src/main/java/testkit/dsl/port/shop-tests
+    dsl-core: system-test/src/main/java/testkit/dsl/core/shop-tests
+    ct-test: system-test/src/test/java/shop-tests/latest/contract
 `
 
 // multiRepoMultitierBody is a pre-repos:-field config of the canonical
@@ -763,14 +763,14 @@ system_test:
   lang: java
   sonar_project: optivem_shop-system-test
   paths:
-    driver_port: system-test/src/main/java/testkit/driver/port/shop-tests
-    driver_adapter: system-test/src/main/java/testkit/driver/adapter/shop-tests
-    external_system_driver_port: system-test/src/main/java/testkit/external/port/shop-tests
-    external_system_driver_adapter: system-test/src/main/java/testkit/external/adapter/shop-tests
-    at_test: system-test/src/test/java/shop-tests/latest/acceptance
-    dsl_port: system-test/src/main/java/testkit/dsl/port/shop-tests
-    dsl_core: system-test/src/main/java/testkit/dsl/core/shop-tests
-    ct_test: system-test/src/test/java/shop-tests/latest/contract
+    driver-port: system-test/src/main/java/testkit/driver/port/shop-tests
+    driver-adapter: system-test/src/main/java/testkit/driver/adapter/shop-tests
+    external-system-driver-port: system-test/src/main/java/testkit/external/port/shop-tests
+    external-system-driver-adapter: system-test/src/main/java/testkit/external/adapter/shop-tests
+    at-test: system-test/src/test/java/shop-tests/latest/acceptance
+    dsl-port: system-test/src/main/java/testkit/dsl/port/shop-tests
+    dsl-core: system-test/src/main/java/testkit/dsl/core/shop-tests
+    ct-test: system-test/src/test/java/shop-tests/latest/contract
 `
 
 // monoRepoMonolithBody is the canonical mono-repo monolith config —
@@ -872,14 +872,14 @@ func TestRunConfigMigrate_SkipsReposForMonoRepo(t *testing.T) {
 	// ends with the system_test: tier (no trailing repos: / paths:), so we
 	// can extend it with indented entries directly.
 	body := monoRepoMonolithBody + `  paths:
-    driver_port: system-test/java/src/main/java/testkit/driver/port
-    driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
-    external_system_driver_port: system-test/java/src/main/java/testkit/external/port
-    external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
-    at_test: system-test/java/src/test/java/latest/acceptance
-    dsl_port: system-test/java/src/main/java/testkit/dsl/port
-    dsl_core: system-test/java/src/main/java/testkit/dsl/core
-    ct_test: system-test/java/src/test/java/latest/contract
+    driver-port: system-test/java/src/main/java/testkit/driver/port
+    driver-adapter: system-test/java/src/main/java/testkit/driver/adapter
+    external-system-driver-port: system-test/java/src/main/java/testkit/external/port
+    external-system-driver-adapter: system-test/java/src/main/java/testkit/external/adapter
+    at-test: system-test/java/src/test/java/latest/acceptance
+    dsl-port: system-test/java/src/main/java/testkit/dsl/port
+    dsl-core: system-test/java/src/main/java/testkit/dsl/core
+    ct-test: system-test/java/src/test/java/latest/contract
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1051,14 +1051,14 @@ system_test:
   lang: java
   sonar_project: optivem_shop-system-test
   paths:
-    driver_port: system-test/java/src/main/java/testkit/driver/port
-    driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
-    external_system_driver_port: system-test/java/src/main/java/testkit/external/port
-    external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
-    at_test: system-test/java/src/test/java/latest/acceptance
-    dsl_port: system-test/java/src/main/java/testkit/dsl/port
-    dsl_core: system-test/java/src/main/java/testkit/dsl/core
-    ct_test: system-test/java/src/test/java/latest/contract
+    driver-port: system-test/java/src/main/java/testkit/driver/port
+    driver-adapter: system-test/java/src/main/java/testkit/driver/adapter
+    external-system-driver-port: system-test/java/src/main/java/testkit/external/port
+    external-system-driver-adapter: system-test/java/src/main/java/testkit/external/adapter
+    at-test: system-test/java/src/test/java/latest/acceptance
+    dsl-port: system-test/java/src/main/java/testkit/dsl/port
+    dsl-core: system-test/java/src/main/java/testkit/dsl/core
+    ct-test: system-test/java/src/test/java/latest/contract
 `
 
 // TestRunConfigMigrate_SSoTJoin_FoldsSutNamespace pins the canonical
@@ -1091,16 +1091,16 @@ func TestRunConfigMigrate_SSoTJoin_FoldsSutNamespace(t *testing.T) {
 		t.Errorf("system.path: want joined value, got file:\n%s", gotStr)
 	}
 	// Testkit value joined via trailing append.
-	if !strings.Contains(gotStr, "driver_port: system-test/java/src/main/java/testkit/driver/port/shop") {
-		t.Errorf("paths.driver_port: want trailing-append, got file:\n%s", gotStr)
+	if !strings.Contains(gotStr, "driver-port: system-test/java/src/main/java/testkit/driver/port/shop") {
+		t.Errorf("paths.driver-port: want trailing-append, got file:\n%s", gotStr)
 	}
-	// Java at_test joined via default-match → middle package segment.
-	if !strings.Contains(gotStr, "at_test: system-test/java/src/test/java/shop/latest/acceptance") {
-		t.Errorf("paths.at_test: want middle-package join, got file:\n%s", gotStr)
+	// Java at-test joined via default-match → middle package segment.
+	if !strings.Contains(gotStr, "at-test: system-test/java/src/test/java/shop/latest/acceptance") {
+		t.Errorf("paths.at-test: want middle-package join, got file:\n%s", gotStr)
 	}
-	// Java ct_test joined the same way.
-	if !strings.Contains(gotStr, "ct_test: system-test/java/src/test/java/shop/latest/contract") {
-		t.Errorf("paths.ct_test: want middle-package join, got file:\n%s", gotStr)
+	// Java ct-test joined the same way.
+	if !strings.Contains(gotStr, "ct-test: system-test/java/src/test/java/shop/latest/contract") {
+		t.Errorf("paths.ct-test: want middle-package join, got file:\n%s", gotStr)
 	}
 }
 
@@ -1135,14 +1135,14 @@ system_test:
   lang: java
   sonar_project: optivem_shop-system-test
   paths:
-    driver_port: system-test/java/src/main/java/testkit/driver/port/shop
-    driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
-    external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop
-    external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
-    at_test: system-test/java/src/test/java/shop/latest/acceptance
-    dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
-    dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
-    ct_test: system-test/java/src/test/java/shop/latest/contract
+    driver-port: system-test/java/src/main/java/testkit/driver/port/shop
+    driver-adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
+    external-system-driver-port: system-test/java/src/main/java/testkit/external/port/shop
+    external-system-driver-adapter: system-test/java/src/main/java/testkit/external/adapter/shop
+    at-test: system-test/java/src/test/java/shop/latest/acceptance
+    dsl-port: system-test/java/src/main/java/testkit/dsl/port/shop
+    dsl-core: system-test/java/src/main/java/testkit/dsl/core/shop
+    ct-test: system-test/java/src/test/java/shop/latest/contract
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1165,7 +1165,7 @@ system_test:
 // preservation contract: an operator who has customised a paths: value
 // (added a channel sub-dir, renamed for a non-standard layout) sees
 // their value carry the sut_namespace append on top of the
-// customisation — the customisation isn't clobbered. at_test/ct_test
+// customisation — the customisation isn't clobbered. at-test/ct-test
 // customisations are left untouched because the package decision is
 // the operator's once they've diverged.
 func TestRunConfigMigrate_SSoTJoin_PreservesCustomizedPaths(t *testing.T) {
@@ -1195,14 +1195,14 @@ system_test:
   lang: java
   sonar_project: optivem_shop-system-test
   paths:
-    driver_port: custom/path/to/port
-    driver_adapter: system-test/java/src/main/java/testkit/driver/adapter
-    external_system_driver_port: system-test/java/src/main/java/testkit/external/port
-    external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter
-    at_test: completely/custom/at/path
-    dsl_port: system-test/java/src/main/java/testkit/dsl/port
-    dsl_core: system-test/java/src/main/java/testkit/dsl/core
-    ct_test: system-test/java/src/test/java/latest/contract
+    driver-port: custom/path/to/port
+    driver-adapter: system-test/java/src/main/java/testkit/driver/adapter
+    external-system-driver-port: system-test/java/src/main/java/testkit/external/port
+    external-system-driver-adapter: system-test/java/src/main/java/testkit/external/adapter
+    at-test: completely/custom/at/path
+    dsl-port: system-test/java/src/main/java/testkit/dsl/port
+    dsl-core: system-test/java/src/main/java/testkit/dsl/core
+    ct-test: system-test/java/src/test/java/latest/contract
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1213,16 +1213,16 @@ system_test:
 	got, _ := os.ReadFile(path)
 	gotStr := string(got)
 	// Customised testkit value gets trailing append.
-	if !strings.Contains(gotStr, "driver_port: custom/path/to/port/shop") {
-		t.Errorf("customised driver_port should get trailing append, got file:\n%s", gotStr)
+	if !strings.Contains(gotStr, "driver-port: custom/path/to/port/shop") {
+		t.Errorf("customised driver-port should get trailing append, got file:\n%s", gotStr)
 	}
-	// at_test customisation left untouched (operator owns package decision).
-	if !strings.Contains(gotStr, "at_test: completely/custom/at/path\n") {
-		t.Errorf("customised at_test should be untouched, got file:\n%s", gotStr)
+	// at-test customisation left untouched (operator owns package decision).
+	if !strings.Contains(gotStr, "at-test: completely/custom/at/path\n") {
+		t.Errorf("customised at-test should be untouched, got file:\n%s", gotStr)
 	}
-	// ct_test matches pre-SSoT default → middle-package join.
-	if !strings.Contains(gotStr, "ct_test: system-test/java/src/test/java/shop/latest/contract") {
-		t.Errorf("default ct_test should middle-package-join, got file:\n%s", gotStr)
+	// ct-test matches pre-SSoT default → middle-package join.
+	if !strings.Contains(gotStr, "ct-test: system-test/java/src/test/java/shop/latest/contract") {
+		t.Errorf("default ct-test should middle-package-join, got file:\n%s", gotStr)
 	}
 }
 
@@ -1255,14 +1255,14 @@ system_test:
   lang: typescript
   sonar_project: optivem_shop-system-test
   paths:
-    driver_port: system-test/typescript/src/testkit/driver/port
-    driver_adapter: system-test/typescript/src/testkit/driver/adapter
-    external_system_driver_port: system-test/typescript/src/testkit/external/port
-    external_system_driver_adapter: system-test/typescript/src/testkit/external/adapter
-    at_test: system-test/typescript/tests/latest/acceptance
-    dsl_port: system-test/typescript/src/testkit/dsl/port
-    dsl_core: system-test/typescript/src/testkit/dsl/core
-    ct_test: system-test/typescript/tests/latest/contract
+    driver-port: system-test/typescript/src/testkit/driver/port
+    driver-adapter: system-test/typescript/src/testkit/driver/adapter
+    external-system-driver-port: system-test/typescript/src/testkit/external/port
+    external-system-driver-adapter: system-test/typescript/src/testkit/external/adapter
+    at-test: system-test/typescript/tests/latest/acceptance
+    dsl-port: system-test/typescript/src/testkit/dsl/port
+    dsl-core: system-test/typescript/src/testkit/dsl/core
+    ct-test: system-test/typescript/tests/latest/contract
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1278,13 +1278,13 @@ system_test:
 	if strings.Contains(gotStr, "sut_namespace:") {
 		t.Errorf("sut_namespace not dropped, got file:\n%s", gotStr)
 	}
-	if !strings.Contains(gotStr, "driver_port: system-test/typescript/src/testkit/driver/port/shop") {
-		t.Errorf("paths.driver_port: want SSoT-joined, got file:\n%s", gotStr)
+	if !strings.Contains(gotStr, "driver-port: system-test/typescript/src/testkit/driver/port/shop") {
+		t.Errorf("paths.driver-port: want SSoT-joined, got file:\n%s", gotStr)
 	}
-	// TS at_test is sut_namespace-free in both pre and post defaults —
+	// TS at-test is sut_namespace-free in both pre and post defaults —
 	// default-match branch produces the same value (no change).
-	if !strings.Contains(gotStr, "at_test: system-test/typescript/tests/latest/acceptance\n") {
-		t.Errorf("paths.at_test: want sut_namespace-free TS shape, got file:\n%s", gotStr)
+	if !strings.Contains(gotStr, "at-test: system-test/typescript/tests/latest/acceptance\n") {
+		t.Errorf("paths.at-test: want sut_namespace-free TS shape, got file:\n%s", gotStr)
 	}
 }
 
@@ -1318,7 +1318,7 @@ system_test:
   sonar_project: optivem_shop-system-test
   # my custom comment
   paths:
-    driver_port: system-test/java/src/main/java/testkit/driver/port
+    driver-port: system-test/java/src/main/java/testkit/driver/port
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)

@@ -27,9 +27,9 @@ func TestRender_RefSuffixUsesTargetSectionHeading(t *testing.T) {
 		t.Fatalf("load default YAML: %v", err)
 	}
 	got := Render(doc)
-	// In Overview, DSL_PORT carries ref: dsl_port → label must include
+	// In Overview, DSL_PORT carries ref: dsl-port → label must include
 	// the resolved heading suffix "see § DSL Port", proving the slug
-	// lookup hit the dsl_port section's heading rather than the slug
+	// lookup hit the dsl-port section's heading rather than the slug
 	// itself.
 	want := "DSL_PORT[DSL Port — see § DSL Port]"
 	if !strings.Contains(got, want) {

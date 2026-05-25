@@ -125,7 +125,7 @@ func TestPhaseScopes_ReverseFK_WritingAgentsScoped(t *testing.T) {
 // TestPhaseScopes_LayersAreCanonical asserts every layer name referenced
 // in phase-scopes.yaml is either in canonicalPathKeys() (Family B) or
 // in the explicitly-allowed Family A path-shaped key set
-// (`system_path`).
+// (`system-path`).
 func TestPhaseScopes_LayersAreCanonical(t *testing.T) {
 	ps := loadPhaseScopes(t)
 	canonical := map[string]bool{}
@@ -137,7 +137,7 @@ func TestPhaseScopes_LayersAreCanonical(t *testing.T) {
 			if canonical[layer] || FamilyAPathKeysInScope[layer] {
 				continue
 			}
-			t.Errorf("phase %q references layer %q not in canonicalPathKeys() or {system_path}", phaseID, layer)
+			t.Errorf("phase %q references layer %q not in canonicalPathKeys() or {system-path}", phaseID, layer)
 		}
 	}
 }

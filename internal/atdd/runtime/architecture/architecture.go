@@ -83,7 +83,7 @@ func writeHeader(b *strings.Builder) {
 }
 
 // sectionHeadingIndex returns a slug → heading lookup used to resolve
-// `ref:` fields on nodes. A node with `ref: dsl_port` renders as
+// `ref:` fields on nodes. A node with `ref: dsl-port` renders as
 // "<label> — see § DSL Port" via this map.
 func sectionHeadingIndex(doc *Document) map[string]string {
 	out := make(map[string]string, len(doc.Sections))

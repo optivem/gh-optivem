@@ -28,9 +28,9 @@ sections:
     direction: TD
     nodes:
       - {id: TEST, label: Test Files}
-      - {id: DSL_PORT, label: DSL Port, ref: dsl_port}
-      - {id: DSL_CORE, label: DSL Core, ref: dsl_core}
-      - {id: DRIVER_PORT, label: Driver Port, ref: driver_port}
+      - {id: DSL_PORT, label: DSL Port, ref: dsl-port}
+      - {id: DSL_CORE, label: DSL Core, ref: dsl-core}
+      - {id: DRIVER_PORT, label: Driver Port, ref: driver-port}
       - {id: DRIVER_ADAPTER, label: "Driver Adapter — see § Driver Adapter"}
       - {id: SYSTEM, label: System, ref: system}
       - {id: EXTERNAL, label: External Systems}
@@ -50,14 +50,14 @@ sections:
       - {id: NEGATIVE, label: UseCaseNegativeTest}
       - {id: SHOULD_SUCCEED, label: shouldSucceed assertion}
       - {id: SHOULD_FAIL, label: shouldFailWith assertion}
-      - {id: DSL_PORT, label: DSL Port, ref: dsl_port}
+      - {id: DSL_PORT, label: DSL Port, ref: dsl-port}
     edges:
       - {from: POSITIVE, to: SHOULD_SUCCEED}
       - {from: NEGATIVE, to: SHOULD_FAIL}
       - {from: POSITIVE, to: DSL_PORT}
       - {from: NEGATIVE, to: DSL_PORT}
 
-  - name: dsl_port
+  - name: dsl-port
     heading: DSL Port
     direction: TD
     nodes:
@@ -88,7 +88,7 @@ sections:
       - {from: GIVEN_STAGE, to: WHEN, style: undirected}
       - {from: GIVEN_STAGE, to: THEN, style: undirected}
 
-  - name: dsl_core
+  - name: dsl-core
     heading: DSL Core
     direction: TD
     nodes:
@@ -99,8 +99,8 @@ sections:
       - {id: WITH_METHOD, label: withFieldName method}
       - {id: ALIAS_FIELD, label: Alias Field}
       - {id: USECASE, label: Use Case Class}
-      - {id: DSL_PORT, label: DSL Port, ref: dsl_port}
-      - {id: DRIVER_PORT, label: Driver Port, ref: driver_port}
+      - {id: DSL_PORT, label: DSL Port, ref: dsl-port}
+      - {id: DRIVER_PORT, label: Driver Port, ref: driver-port}
     edges:
       - {from: DSL_PORT, to: GIVEN_IMPL}
       - {from: DSL_PORT, to: WHEN_IMPL}
@@ -113,7 +113,7 @@ sections:
       - {from: THEN_IMPL, to: VERIFICATION}
       - {from: USECASE, to: DRIVER_PORT}
 
-  - name: driver_port
+  - name: driver-port
     heading: Driver Port
     direction: TD
     nodes:
@@ -143,7 +143,7 @@ sections:
       - {from: EXT_ERP_IFACE, to: DRIVER_ADAPTER}
       - {from: EXT_TAX_IFACE, to: DRIVER_ADAPTER}
 
-  - name: driver_adapter_shop
+  - name: driver-adapter-shop
     heading: Driver Adapter — Shop Drivers
     direction: TD
     nodes:
@@ -158,7 +158,7 @@ sections:
       - {id: ERROR_MAPPER, label: SystemErrorMapper}
       - {id: PAGE_OBJECT, label: Page Object aria-label}
       - {id: GO_TO, label: goToShop health check}
-      - {id: DRIVER_PORT, label: Driver Port, ref: driver_port}
+      - {id: DRIVER_PORT, label: Driver Port, ref: driver-port}
       - {id: SYSTEM, label: System, ref: system}
     edges:
       - {from: DRIVER_PORT, to: SHOP_API_DRIVER}
@@ -174,7 +174,7 @@ sections:
       - {from: URL_CONST, to: SYSTEM}
       - {from: PAGE_OBJECT, to: SYSTEM}
 
-  - name: driver_adapter_external
+  - name: driver-adapter-external
     heading: Driver Adapter — External Drivers
     direction: TD
     nodes:
@@ -187,7 +187,7 @@ sections:
       - {id: EXT_REQUEST, label: Ext*Request}
       - {id: EXT_RESPONSE, label: Ext*Response}
       - {id: GO_TO, label: goToErp health check}
-      - {id: DRIVER_PORT, label: Driver Port, ref: driver_port}
+      - {id: DRIVER_PORT, label: Driver Port, ref: driver-port}
       - {id: EXTERNAL, label: External Systems}
     edges:
       - {from: DRIVER_PORT, to: EXT_REAL}

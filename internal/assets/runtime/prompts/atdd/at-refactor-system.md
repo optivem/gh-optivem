@@ -19,14 +19,14 @@ discharges as a no-op and the downstream `COMMIT` is skipped.
 
 ## Scope
 
-This phase touches the `system_path` layer (bare layer name; resolved
+This phase touches the `system-path` layer (bare layer name; resolved
 physical path lives in `gh-optivem.yaml system.path`). Production system
 code only. Tests, DSL, Drivers, and Gherkin are frozen — refactor must
 not change behavior, so it must not touch any test or test-facing layer.
 
 ## Outputs
 
-- Mutates production code under `${system_path}` in place when an
+- Mutates production code under `${system-path}` in place when an
   improvement is seen.
 - Sets flag: `Refactor Changed: yes|no` — `yes` if any production code
   edit was made; `no` if no improvement was seen. The downstream

@@ -398,9 +398,9 @@ func runConfigMigrate(path string) (bool, error) {
 	//
 	//   - For each entry in paths:, fold sut_namespace into the value.
 	//     Entries matching the pre-SSoT default are rewritten to the
-	//     post-SSoT default (so Java's at_test/ct_test get the package
+	//     post-SSoT default (so Java's at-test/ct-test get the package
 	//     segment baked into the right position); other testkit entries
-	//     get sut_namespace appended; at_test/ct_test customized values
+	//     get sut_namespace appended; at-test/ct-test customized values
 	//     are left untouched (the operator owns the package-structure
 	//     decision).
 	//   - system.path gets sut_namespace appended.
@@ -504,10 +504,10 @@ func inferRepos(doc *yaml.Node) []string {
 //     entries matching DefaultPaths(testLang, systemTestPath, "") (the
 //     pre-SSoT shape) are rewritten to DefaultPaths(testLang,
 //     systemTestPath, ns) (the post-SSoT shape — this is the only
-//     branch that produces a correct Java at_test/ct_test, where ns is
+//     branch that produces a correct Java at-test/ct-test, where ns is
 //     a middle package segment rather than a trailing append). Other
 //     testkit entries get `/ns` appended on top of the customisation.
-//     at_test/ct_test customised values are left untouched — the
+//     at-test/ct-test customised values are left untouched — the
 //     operator owns the package-structure decision once they've
 //     diverged from the default.
 //  2. system.path is rewritten to <current> + "/" + ns.
@@ -541,16 +541,16 @@ func joinSSoTPaths(doc *yaml.Node) bool {
 			cur := valNode.Value
 			// Default-match branch — works for all eight canonical keys
 			// and is the only branch that produces a correct Java
-			// at_test/ct_test (middle-segment package).
+			// at-test/ct-test (middle-segment package).
 			if preDefaults != nil && postDefaults != nil && cur == preDefaults[key] {
 				valNode.Value = postDefaults[key]
 				continue
 			}
-			// at_test/ct_test customised values are left untouched.
+			// at-test/ct-test customised values are left untouched.
 			// They're sut_namespace-free on TS/dotnet doctrine, and on
 			// Java the operator's customisation already encodes the
 			// package decision; naive `+/ns` would corrupt the path.
-			if key == "at_test" || key == "ct_test" {
+			if key == "at-test" || key == "ct-test" {
 				continue
 			}
 			valNode.Value = cur + "/" + ns

@@ -264,15 +264,15 @@ func writePhaseBlock(out io.Writer, phaseID string, layers []string, agent strin
 }
 
 // resolveLayer maps a phase-scopes.yaml layer name to its physical path
-// in the project. Family A `system_path` reads from `system.path`
+// in the project. Family A `system-path` reads from `system.path`
 // (monolith). Everything else is a Family B key under `system_test.paths:`.
 //
-// Multitier projects leave `system.path` empty — `system_path` returns
+// Multitier projects leave `system.path` empty — `system-path` returns
 // "" there, which the renderer surfaces as "(not set in gh-optivem.yaml)".
 // AT_GREEN is monolith-only by construction; per-component fanout for
 // multitier projects is deferred to a future plan.
 func resolveLayer(cfg *projectconfig.Config, layer string) string {
-	if layer == "system_path" {
+	if layer == "system-path" {
 		return cfg.System.Path
 	}
 	return cfg.SystemTest.Paths[layer]

@@ -48,14 +48,14 @@ system_test:
   lang: java
   sonar_project: optivem_shop-system-test
   paths:
-    driver_port: system-test/java/src/main/java/testkit/driver/port/shop
-    driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
-    external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop
-    external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
-    at_test: system-test/java/src/test/java/shop/latest/acceptance
-    dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
-    dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
-    ct_test: system-test/java/src/test/java/shop/latest/contract
+    driver-port: system-test/java/src/main/java/testkit/driver/port/shop
+    driver-adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
+    external-system-driver-port: system-test/java/src/main/java/testkit/external/port/shop
+    external-system-driver-adapter: system-test/java/src/main/java/testkit/external/adapter/shop
+    at-test: system-test/java/src/test/java/shop/latest/acceptance
+    dsl-port: system-test/java/src/main/java/testkit/dsl/port/shop
+    dsl-core: system-test/java/src/main/java/testkit/dsl/core/shop
+    ct-test: system-test/java/src/test/java/shop/latest/contract
 
 external_systems:
   stubs:
@@ -94,14 +94,14 @@ system_test:
   lang: java
   sonar_project: optivem_shop-system-test
   paths:
-    driver_port: system-test/java/src/main/java/testkit/driver/port/shop
-    driver_adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
-    external_system_driver_port: system-test/java/src/main/java/testkit/external/port/shop
-    external_system_driver_adapter: system-test/java/src/main/java/testkit/external/adapter/shop
-    at_test: system-test/java/src/test/java/shop/latest/acceptance
-    dsl_port: system-test/java/src/main/java/testkit/dsl/port/shop
-    dsl_core: system-test/java/src/main/java/testkit/dsl/core/shop
-    ct_test: system-test/java/src/test/java/shop/latest/contract
+    driver-port: system-test/java/src/main/java/testkit/driver/port/shop
+    driver-adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
+    external-system-driver-port: system-test/java/src/main/java/testkit/external/port/shop
+    external-system-driver-adapter: system-test/java/src/main/java/testkit/external/adapter/shop
+    at-test: system-test/java/src/test/java/shop/latest/acceptance
+    dsl-port: system-test/java/src/main/java/testkit/dsl/port/shop
+    dsl-core: system-test/java/src/main/java/testkit/dsl/core/shop
+    ct-test: system-test/java/src/test/java/shop/latest/contract
 
 external_systems:
   stubs:
@@ -134,14 +134,14 @@ system_test:
   lang: java
   sonar_project: optivem_shop-system-test
   paths:
-    driver_port: system-test/src/main/java/testkit/driver/port/shop
-    driver_adapter: system-test/src/main/java/testkit/driver/adapter/shop
-    external_system_driver_port: system-test/src/main/java/testkit/external/port/shop
-    external_system_driver_adapter: system-test/src/main/java/testkit/external/adapter/shop
-    at_test: system-test/src/test/java/shop/latest/acceptance
-    dsl_port: system-test/src/main/java/testkit/dsl/port/shop
-    dsl_core: system-test/src/main/java/testkit/dsl/core/shop
-    ct_test: system-test/src/test/java/shop/latest/contract
+    driver-port: system-test/src/main/java/testkit/driver/port/shop
+    driver-adapter: system-test/src/main/java/testkit/driver/adapter/shop
+    external-system-driver-port: system-test/src/main/java/testkit/external/port/shop
+    external-system-driver-adapter: system-test/src/main/java/testkit/external/adapter/shop
+    at-test: system-test/src/test/java/shop/latest/acceptance
+    dsl-port: system-test/src/main/java/testkit/dsl/port/shop
+    dsl-core: system-test/src/main/java/testkit/dsl/core/shop
+    ct-test: system-test/src/test/java/shop/latest/contract
 
 external_systems:
   stubs:
@@ -180,14 +180,14 @@ system_test:
   lang: java
   sonar_project: optivem_shop-system-test
   paths:
-    driver_port: system-test/src/main/java/testkit/driver/port/shop-backend
-    driver_adapter: system-test/src/main/java/testkit/driver/adapter/shop-backend
-    external_system_driver_port: system-test/src/main/java/testkit/external/port/shop-backend
-    external_system_driver_adapter: system-test/src/main/java/testkit/external/adapter/shop-backend
-    at_test: system-test/src/test/java/shop-backend/latest/acceptance
-    dsl_port: system-test/src/main/java/testkit/dsl/port/shop-backend
-    dsl_core: system-test/src/main/java/testkit/dsl/core/shop-backend
-    ct_test: system-test/src/test/java/shop-backend/latest/contract
+    driver-port: system-test/src/main/java/testkit/driver/port/shop-backend
+    driver-adapter: system-test/src/main/java/testkit/driver/adapter/shop-backend
+    external-system-driver-port: system-test/src/main/java/testkit/external/port/shop-backend
+    external-system-driver-adapter: system-test/src/main/java/testkit/external/adapter/shop-backend
+    at-test: system-test/src/test/java/shop-backend/latest/acceptance
+    dsl-port: system-test/src/main/java/testkit/dsl/port/shop-backend
+    dsl-core: system-test/src/main/java/testkit/dsl/core/shop-backend
+    ct-test: system-test/src/test/java/shop-backend/latest/contract
 
 external_systems:
   stubs:
@@ -876,7 +876,7 @@ func TestValidate_RejectsMissingPathsBlockWhenArchitectureSet(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing paths block, got nil")
 	}
-	for _, want := range []string{"system_test.paths.driver_port", "system_test.paths.driver_adapter", "system_test.paths.at_test", "system_test.paths.ct_test"} {
+	for _, want := range []string{"system_test.paths.driver-port", "system_test.paths.driver-adapter", "system_test.paths.at-test", "system_test.paths.ct-test"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should name %s, got: %v", want, err)
 		}
@@ -886,7 +886,7 @@ func TestValidate_RejectsMissingPathsBlockWhenArchitectureSet(t *testing.T) {
 func TestValidate_RejectsMissingCanonicalKey(t *testing.T) {
 	t.Parallel()
 	full := DefaultPaths(LangJava, "system-test", "shop")
-	delete(full, "driver_adapter")
+	delete(full, "driver-adapter")
 	cfg := &Config{
 		Project:      Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/optivem/projects/20"},
 		RepoStrategy: RepoStrategyMonoRepo,
@@ -904,12 +904,12 @@ func TestValidate_RejectsMissingCanonicalKey(t *testing.T) {
 	}
 	err := cfg.Validate()
 	if err == nil {
-		t.Fatal("expected error for missing driver_adapter, got nil")
+		t.Fatal("expected error for missing driver-adapter, got nil")
 	}
-	if !strings.Contains(err.Error(), "system_test.paths.driver_adapter") {
+	if !strings.Contains(err.Error(), "system_test.paths.driver-adapter") {
 		t.Errorf("error should name the missing key, got: %v", err)
 	}
-	if strings.Contains(err.Error(), "system_test.paths.driver_port") {
+	if strings.Contains(err.Error(), "system_test.paths.driver-port") {
 		t.Errorf("error should not name keys that ARE present, got: %v", err)
 	}
 }
@@ -917,7 +917,7 @@ func TestValidate_RejectsMissingCanonicalKey(t *testing.T) {
 func TestValidate_RejectsEmptyCanonicalValue(t *testing.T) {
 	t.Parallel()
 	full := DefaultPaths(LangJava, "system-test", "shop")
-	full["dsl_core"] = ""
+	full["dsl-core"] = ""
 	cfg := &Config{
 		Project:      Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/optivem/projects/20"},
 		RepoStrategy: RepoStrategyMonoRepo,
@@ -935,9 +935,9 @@ func TestValidate_RejectsEmptyCanonicalValue(t *testing.T) {
 	}
 	err := cfg.Validate()
 	if err == nil {
-		t.Fatal("expected error for empty dsl_core value, got nil")
+		t.Fatal("expected error for empty dsl-core value, got nil")
 	}
-	if !strings.Contains(err.Error(), "system_test.paths.dsl_core") {
+	if !strings.Contains(err.Error(), "system_test.paths.dsl-core") {
 		t.Errorf("error should name the empty-value key, got: %v", err)
 	}
 }

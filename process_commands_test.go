@@ -48,7 +48,7 @@ func TestProcessScope_OnePhase_NoProject(t *testing.T) {
 	}
 	out := buf.String()
 
-	wantSubs := []string{"Phase:  AT_RED_TEST", "Agent:  at-red-test", "at_test", "dsl_port", "dsl_core"}
+	wantSubs := []string{"Phase:  AT_RED_TEST", "Agent:  at-red-test", "at-test", "dsl-port", "dsl-core"}
 	for _, sub := range wantSubs {
 		if !strings.Contains(out, sub) {
 			t.Errorf("expected %q in output, got:\n%s", sub, out)
@@ -76,7 +76,7 @@ func TestProcessScope_UnknownPhase(t *testing.T) {
 
 // TestProcessScope_ResolvesAgainstProjectPaths writes a minimal
 // gh-optivem.yaml to a temp dir, points the command at it, and asserts
-// Family A `system_path` resolves via system.path and Family B layers
+// Family A `system-path` resolves via system.path and Family B layers
 // resolve via paths:.
 func TestProcessScope_ResolvesAgainstProjectPaths(t *testing.T) {
 	cfg := minimalMonolithConfig(t)
@@ -89,12 +89,12 @@ func TestProcessScope_ResolvesAgainstProjectPaths(t *testing.T) {
 	out := buf.String()
 
 	wantSubs := []string{
-		"at_test",
-		"dsl_port",
-		"dsl_core",
-		cfg.SystemTest.Paths["at_test"],
-		cfg.SystemTest.Paths["dsl_port"],
-		cfg.SystemTest.Paths["dsl_core"],
+		"at-test",
+		"dsl-port",
+		"dsl-core",
+		cfg.SystemTest.Paths["at-test"],
+		cfg.SystemTest.Paths["dsl-port"],
+		cfg.SystemTest.Paths["dsl-core"],
 	}
 	for _, sub := range wantSubs {
 		if !strings.Contains(out, sub) {
@@ -104,7 +104,7 @@ func TestProcessScope_ResolvesAgainstProjectPaths(t *testing.T) {
 }
 
 // TestProcessScope_SystemPathReadsFamilyA asserts the Family A
-// `system_path` layer resolves via system.path, not paths:.
+// `system-path` layer resolves via system.path, not paths:.
 func TestProcessScope_SystemPathReadsFamilyA(t *testing.T) {
 	cfg := minimalMonolithConfig(t)
 	path := writeConfigToTempDir(t, cfg)
@@ -139,13 +139,13 @@ func minimalMonolithConfig(t *testing.T) *projectconfig.Config {
 			Repo: "myorg/shop",
 			Lang: "typescript",
 			Paths: map[string]string{
-				"at_test":                        "system-test/src/atdd/shop",
-				"dsl_port":                       "system-test/src/testkit/dsl/port/shop",
-				"dsl_core":                       "system-test/src/testkit/dsl/core/shop",
-				"driver_port":                    "system-test/src/testkit/driver/port/shop",
-				"driver_adapter":                 "system-test/src/testkit/driver/adapter/shop",
-				"external_system_driver_port":    "system-test/src/testkit/external/driver/port/shop",
-				"external_system_driver_adapter": "system-test/src/testkit/external/driver/adapter/shop",
+				"at-test":                        "system-test/src/atdd/shop",
+				"dsl-port":                       "system-test/src/testkit/dsl/port/shop",
+				"dsl-core":                       "system-test/src/testkit/dsl/core/shop",
+				"driver-port":                    "system-test/src/testkit/driver/port/shop",
+				"driver-adapter":                 "system-test/src/testkit/driver/adapter/shop",
+				"external-system-driver-port":    "system-test/src/testkit/external/driver/port/shop",
+				"external-system-driver-adapter": "system-test/src/testkit/external/driver/adapter/shop",
 			},
 		},
 	}

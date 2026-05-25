@@ -1865,14 +1865,14 @@ system_test:
   lang: typescript
   sonar_project: acme_shop-system-test
   paths:
-    at_test: system-test/typescript/tests/latest/acceptance
-    dsl_port: dsl/typescript/src/port
-    dsl_core: dsl/typescript/src/core
-    driver_port: driver/typescript/src/port
-    driver_adapter: driver/typescript/src/adapter
-    ct_test: system-test/typescript/tests/latest/contract
-    external_system_driver_port: driver/typescript/src/external-port
-    external_system_driver_adapter: driver/typescript/src/external-adapter
+    at-test: system-test/typescript/tests/latest/acceptance
+    dsl-port: dsl/typescript/src/port
+    dsl-core: dsl/typescript/src/core
+    driver-port: driver/typescript/src/port
+    driver-adapter: driver/typescript/src/adapter
+    ct-test: system-test/typescript/tests/latest/contract
+    external-system-driver-port: driver/typescript/src/external-port
+    external-system-driver-adapter: driver/typescript/src/external-adapter
 `
 	if err := os.WriteFile(filepath.Join(repoPath, "gh-optivem.yaml"), []byte(body), 0o644); err != nil {
 		t.Fatalf("write gh-optivem.yaml: %v", err)
@@ -1928,7 +1928,7 @@ func TestCheckPhaseScope_ViolationPopulatesContext(t *testing.T) {
 	repoPath := t.TempDir()
 	writePhaseScopeTestConfig(t, repoPath)
 	git := newFakeRunner(t, "git")
-	// AT_RED_TEST scope: at_test, dsl_port, dsl_core. The driver_port edit
+	// AT_RED_TEST scope: at-test, dsl-port, dsl-core. The driver-port edit
 	// is outside scope.
 	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
 		[]byte("driver/typescript/src/port/Driver.ts\nsystem-test/typescript/tests/latest/acceptance/foo.spec.ts\n"), nil)
@@ -1969,7 +1969,7 @@ func TestCheckPhaseScope_RenameTracksBothEndpoints(t *testing.T) {
 		[]byte("R  dsl/typescript/src/core/Old.ts -> somewhere/else/New.ts\n"), nil)
 	a := newActions(Deps{Git: git, RepoPath: repoPath, Stderr: &bytes.Buffer{}})
 	ctx := statemachine.NewContext()
-	ctx.Params["phase_id"] = "AT_RED_DSL" // scope: dsl_core, driver_port
+	ctx.Params["phase_id"] = "AT_RED_DSL" // scope: dsl-core, driver-port
 	out := a.checkPhaseScope(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)

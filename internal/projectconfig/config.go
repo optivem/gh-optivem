@@ -258,12 +258,12 @@ type System struct {
 //
 // Paths is the user-owned map of named-location placeholders consumed by
 // phase-doc substitution at sync time — the canonical Family B keys
-// (driver_port, driver_adapter, at_test, …) describing the system_test
+// (driver-port, driver-adapter, at-test, …) describing the system_test
 // tier's layered layout. Each key is a named location; each value is a
 // repo-relative path. The scaffolder writes a default block matching
 // glossary.md doctrine into every new project. Reserved keys that would
 // shadow fixed-schema Family A placeholders (language, architecture,
-// system_path, system_test_path, sut_namespace) are rejected by Validate.
+// system-path, system_test_path, sut_namespace) are rejected by Validate.
 // Meaningful only on system_test today — Validate rejects non-empty Paths
 // on backend/frontend tiers, mirroring how Config is restricted.
 type TierSpec struct {
@@ -343,10 +343,15 @@ func (c *Config) Repos() []string {
 // Paths entries (Family B) must not shadow. Names that come from existing
 // top-level config fields belong here so a typo'd `paths.language: x`
 // can't quietly override the canonical system.lang value.
+//
+// Path-shaped Family A keys are kebab (system-path, matching Q40 scope
+// vocabulary); the non-path-shaped Family A keys (language, architecture,
+// sut_namespace) and the parent-scope-excluded system_test_path retain
+// their original spellings — they are not scope vocabulary.
 var reservedPlaceholderKeys = map[string]struct{}{
 	"language":         {},
 	"architecture":     {},
-	"system_path":      {},
+	"system-path":      {},
 	"system_test_path": {},
 	"sut_namespace":    {},
 }
@@ -389,7 +394,7 @@ func (c *Config) PlaceholderMap() map[string]string {
 	// Family B first; Family A overwrites on collision.
 	maps.Copy(out, c.SystemTest.Paths)
 	out["architecture"] = c.System.Architecture
-	out["system_path"] = c.System.Path
+	out["system-path"] = c.System.Path
 	out["system_test_path"] = c.SystemTest.Path
 	out["sut_namespace"] = c.SutNamespace()
 	if c.System.Lang != "" {
@@ -748,7 +753,7 @@ beyond the canonical layout`)
 	// these at `gh optivem init` and the operator owns subsequent edits;
 	// runtime never falls back to derived values. A missing key here
 	// would otherwise reach the ATDD dispatcher as an unfilled
-	// ${driver_adapter} (etc.) placeholder, failing deep inside a
+	// ${driver-adapter} (etc.) placeholder, failing deep inside a
 	// per-ticket agent dispatch instead of at config load.
 	//
 	// Gating on architecture matches the scaffolder/migrate: partial

@@ -423,7 +423,7 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	}
 	claudeFake := &fakeClaude{}
 	// task-system-interface-redesign's prompt now inlines phase-doc
-	// placeholders (${sut_namespace}, ${driver_adapter}, ${driver_port},
+	// placeholders (${sut_namespace}, ${driver-adapter}, ${driver-port},
 	// ${system_test_path}); a cfg with populated Paths is required so
 	// the dispatcher's PlaceholderMap fills them.
 	cfg := &projectconfig.Config{
@@ -622,7 +622,7 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 			Lang: projectconfig.LangTypescript,
 			// Family B paths feed the dispatcher's PlaceholderMap so inlined
 			// phase-doc references in task-system-interface-redesign's body
-			// (${driver_port}, ${driver_adapter}, …) resolve at render time.
+			// (${driver-port}, ${driver-adapter}, …) resolve at render time.
 			Paths: projectconfig.DefaultPaths(projectconfig.LangTypescript, "system-test", "shop"),
 		},
 		ExternalSystems: projectconfig.ExternalSystems{

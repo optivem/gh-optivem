@@ -791,8 +791,8 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 			return statemachine.Outcome{Err: fmt.Errorf("dispatcher: load tuning for %q: %w", agentName, err)}
 		}
 		// Project-wide placeholders sourced from the loaded config. Carries
-		// Family B path keys (driver_port, driver_adapter, …) and derived
-		// Family A keys (sut_namespace, system_path, system_test_path, …)
+		// Family B path keys (driver-port, driver-adapter, …) and derived
+		// Family A keys (sut_namespace, system-path, system_test_path, …)
 		// for inlined phase-doc references in the prompt body. nil cfg
 		// (CLI utility / test paths with no project context) leaves the
 		// map nil; findUnfilledPlaceholders surfaces any unsubstituted

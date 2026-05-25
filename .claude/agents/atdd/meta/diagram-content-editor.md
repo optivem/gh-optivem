@@ -98,7 +98,7 @@ For each content change, identify exactly where in the prose the change should l
 
    ```
    YAML edit (internal/atdd/runtime/architecture/architecture.yaml):
-     - SHOP_API_DRIVER node removed from `driver_adapter_shop` section
+     - SHOP_API_DRIVER node removed from `driver-adapter-shop` section
      - DRIVER_PORT → SHOP_API_DRIVER edge removed
      (1 node, 1 edge)
 
@@ -113,7 +113,7 @@ For each content change, identify exactly where in the prose the change should l
 
    ```
    YAML edit (internal/atdd/runtime/architecture/architecture.yaml):
-     - added new node X to `dsl_core` section
+     - added new node X to `dsl-core` section
 
    Prose-sync SKIPPED — user said "YAML only".
    ⚠ Prose under docs/atdd/architecture/ was NOT updated; the per-layer docs are now drifted from the regenerated diagram. Run prose-sync (re-invoke this agent without "YAML only") before declaring the change shipped.

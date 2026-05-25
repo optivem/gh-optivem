@@ -3,7 +3,7 @@
 // EnsureSynced writes the embedded runtime/references/ tree to
 // ~/.gh-optivem/references/ verbatim — that location is shared across
 // every project the user touches and MUST NOT carry per-project
-// substitutions (different projects' ${driver_port} values would clobber
+// substitutions (different projects' ${driver-port} values would clobber
 // each other).
 //
 // MaterializeProject is the project-aware counterpart. It reads the same
@@ -54,7 +54,7 @@ const (
 // can build the per-file frontmatter audit block (which keys actually
 // appeared in this body). Same shape as expand.FindUnfilled's regex,
 // but unanchored — we want every match, not just deduplicated names.
-var placeholderRE = regexp.MustCompile(`\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}`)
+var placeholderRE = regexp.MustCompile(`\$\{([a-zA-Z_][a-zA-Z0-9_-]*)\}`)
 
 // sidecar is the on-disk shape of .gh-optivem/.materialized.yaml.
 // binary_version forces a re-materialize after a gh-optivem upgrade

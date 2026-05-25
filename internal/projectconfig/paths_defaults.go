@@ -5,16 +5,16 @@ import "path"
 // DefaultPaths returns the canonical Family B `paths:` entries for the
 // given system-test language, root, and sut_namespace. The eight keys
 // match the doctrine in `internal/atdd/phase-scopes.yaml`'s referenced
-// vocabulary: driver_port, driver_adapter, external_system_driver_port,
-// external_system_driver_adapter, at_test, dsl_port, dsl_core, ct_test.
+// vocabulary: driver-port, driver-adapter, external-system-driver-port,
+// external-system-driver-adapter, at-test, dsl-port, dsl-core, ct-test.
 //
 // Returns nil when testLang is unsupported or systemTestRoot is empty —
 // the scaffolder leaves `paths:` absent for partial configs (no
 // architecture chosen yet) and `Validate` accepts that shape.
 //
 // Per-SSoT (plan 20260518-1530 item 3), the returned values are fully
-// resolved: testkit keys (driver_*, external_system_driver_*, dsl_*) take
-// `sutNamespace` as a trailing directory segment. at_test and ct_test
+// resolved: testkit keys (driver-*, external-system-driver-*, dsl-*) take
+// `sutNamespace` as a trailing directory segment. at-test and ct-test
 // are sut_namespace-free at the DefaultPaths trailing-append layer —
 // Java's stems already incorporate sutNamespace as a middle (package)
 // segment per plan 20260518-1742 items 3a/3b; TypeScript and dotnet
@@ -66,12 +66,12 @@ func DefaultPaths(testLang, systemTestRoot, sutNamespace string) map[string]stri
 	for i, key := range keys {
 		stem := stems[i]
 		// Testkit keys (driver/external/dsl) get sutNamespace as a trailing
-		// directory segment when present. at_test and ct_test are
+		// directory segment when present. at-test and ct-test are
 		// sut_namespace-free at this layer — Java's stems already
 		// incorporate sutNamespace as a middle (package) segment via
 		// pathStems; TS and dotnet stems don't structure tests by
 		// namespace.
-		if key != "at_test" && key != "ct_test" && sutNamespace != "" {
+		if key != "at-test" && key != "ct-test" && sutNamespace != "" {
 			stem = path.Join(stem, sutNamespace)
 		}
 		out[key] = path.Join(systemTestRoot, stem)
@@ -85,6 +85,12 @@ func DefaultPaths(testLang, systemTestRoot, sutNamespace string) map[string]stri
 // `gh optivem config migrate`; the migrate command consumes the same
 // map to rewrite each old key to its new name in place. Single map so
 // the two surfaces cannot drift.
+//
+// The map preserves snake_case spellings because it concerns pre-rename
+// keys (snake) → mid-rename keys (also snake). The subsequent
+// snake → kebab pass (Q40) is teaching-repo-doctrine "regenerate, don't
+// migrate" per feedback_teaching_repo_no_legacy and so does not have an
+// equivalent map.
 var ExternalDriverKeyRenames = map[string]string{
 	"external_driver_port":    "external_system_driver_port",
 	"external_driver_adapter": "external_system_driver_adapter",
@@ -99,14 +105,14 @@ var ExternalDriverKeyRenames = map[string]string{
 // scope assignment that consumes these keys.
 func CanonicalPathKeys() []string {
 	return []string{
-		"driver_port",
-		"driver_adapter",
-		"external_system_driver_port",
-		"external_system_driver_adapter",
-		"at_test",
-		"dsl_port",
-		"dsl_core",
-		"ct_test",
+		"driver-port",
+		"driver-adapter",
+		"external-system-driver-port",
+		"external-system-driver-adapter",
+		"at-test",
+		"dsl-port",
+		"dsl-core",
+		"ct-test",
 	}
 }
 
@@ -116,8 +122,8 @@ func CanonicalPathKeys() []string {
 // write a partial map.
 //
 // The sutNamespace parameter is consumed by the Java branch to
-// interpolate the `<sutNamespace>` package segment in at_test and
-// ct_test stems (per plan 20260518-1742 items 3a/3b — Java structures
+// interpolate the `<sutNamespace>` package segment in at-test and
+// ct-test stems (per plan 20260518-1742 items 3a/3b — Java structures
 // tests by package, TS and dotnet don't). The TS and dotnet branches
 // ignore it; DefaultPaths handles the testkit-key trailing-segment
 // append uniformly for all three languages.

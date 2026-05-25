@@ -212,8 +212,8 @@ func TestRenderPrompt_TaskAgentArchitectureAndAllowedRoots_ExplicitValues(t *tes
 	opts.Placeholders = map[string]string{
 		"sut_namespace":    "shop",
 		"system_test_path": "system-test/java",
-		"driver_port":      "system-test/src/testkit/driver/port/shop",
-		"driver_adapter":   "system-test/src/testkit/driver/adapter/shop",
+		"driver-port":      "system-test/src/testkit/driver/port/shop",
+		"driver-adapter":   "system-test/src/testkit/driver/adapter/shop",
 	}
 
 	got, err := renderPrompt(opts)
@@ -262,8 +262,8 @@ func TestRenderPrompt_TaskSystemImplementationRefactoringAgent_EmptyArchitecture
 	opts.Placeholders = map[string]string{
 		"sut_namespace":    "shop",
 		"system_test_path": "system-test",
-		"driver_port":      "system-test/src/testkit/driver/port/shop",
-		"driver_adapter":   "system-test/src/testkit/driver/adapter/shop",
+		"driver-port":      "system-test/src/testkit/driver/port/shop",
+		"driver-adapter":   "system-test/src/testkit/driver/adapter/shop",
 	}
 
 	got, err := renderPrompt(opts)
@@ -1221,15 +1221,15 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	opts.Checklist = "- [x] One done\n- [ ] Two pending"
 	opts.PromptLogPath = "/tmp/runs/001-task-system-interface-redesign.prompt.md"
 	// task-system-interface-redesign's inlined phase-doc body now references
-	// ${sut_namespace}, ${driver_adapter}, ${driver_port}, ${system_test_path};
+	// ${sut_namespace}, ${driver-adapter}, ${driver-port}, ${system_test_path};
 	// the production dispatcher fills these from cfg.PlaceholderMap(). With
 	// no ProjectConfig in this test, supply them directly so renderPrompt
 	// has values to substitute.
 	opts.Placeholders = map[string]string{
 		"sut_namespace":    "shop",
 		"system_test_path": "system-test/typescript",
-		"driver_port":      "system-test/src/testkit/driver/port/shop",
-		"driver_adapter":   "system-test/src/testkit/driver/adapter/shop",
+		"driver-port":      "system-test/src/testkit/driver/port/shop",
+		"driver-adapter":   "system-test/src/testkit/driver/adapter/shop",
 	}
 
 	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
