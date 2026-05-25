@@ -2,7 +2,18 @@
 
 > **Naming convention (Q29).** All process-model identifiers use kebab-case lowercase across YAML, doc headings, prompt filenames, and in-prose references. Layer labels (TOP / CYCLE / HIGH / MID / LOW) remain organizational categories only and are not part of identifier names.
 
-Single top-level process invoked once per ticket. Marks ticket state at the start and end of work and classifies which cycle to call based on ticket type (Q26=A).
+Single top-level process invoked once per ticket. Marks ticket state at the start and end of work and classifies which cycle to call based on the ticket's **change type** (Q26=A; Q30).
+
+**Change-type → CYCLE mapping** (Q30 — see parent plan):
+
+| Change type | CYCLE |
+|---|---|
+| Feature | `change-system-behavior` |
+| Coverage gap | `cover-system-behavior` |
+| Driver-adapter redesign | `redesign-system-structure` |
+| System refactor | `refactor-system-structure` |
+| Test refactor | `refactor-test-structure` |
+| New external system | `onboard-external-system` |
 
 ## refine-ticket
 
@@ -14,19 +25,12 @@ INPUT: Ticket (any type) flagged as not-yet-ready.
 
 ## implement-ticket
 
-INPUT: Ticket in READY state (with metadata: type, acceptance criteria, etc.)
+INPUT: Ticket in READY state (with metadata: ticket type, change type, acceptance criteria, etc.)
 
 1. Mark Ticket IN PROGRESS
-2. Decide Cycle based on ticket type:
-    1. Feature → `change-system-behavior`
-    2. Coverage gap → `cover-system-behavior`
-    3. Driver-adapter ticket → `redesign-system-structure`
-    4. System refactor → `refactor-system-structure`
-    5. Test refactor → `refactor-test-structure`
-    6. New external system → `onboard-external-system`
-3. Call chosen cycle
-4. Mark Ticket IN ACCEPTANCE
+2. **Classify ticket into change type** (judgment step — Q30.a in parent plan decides whether this reads an explicit field or is inferred).
+3. **Look up CYCLE for change type** (mechanical 1:1 — see table above).
+4. Call chosen cycle.
+5. Mark Ticket IN ACCEPTANCE
 
-Note: cycle-selection sub-questions remain open and are resolved during the parent plan's Item 6 cross-check walk:
-- Is cycle-selection automatic (gateway on ticket field) or manual (human picks)?
-- Are there preconditions to entering a cycle (e.g., "ACs must be in approved state" before `change-system-behavior`)?
+Note: cycle-selection sub-questions remain open and are resolved in parent plan (Item 6 cross-check walk): Q30.a (classification mechanism), Q30.b (multi-cycle tickets), plus preconditions to entering a cycle (e.g., "ACs must be in approved state" before `change-system-behavior`).

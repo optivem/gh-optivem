@@ -1,5 +1,7 @@
 # BPMN five-level refactor — design plan
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-25T12:20:55Z`
+
 > **Working style: token-efficient.** Execute this plan in the cheapest form that still produces a quality result. If the user proposes a workflow that burns tokens unnecessarily (e.g., asking 8 questions individually via `AskUserQuestion` when 8 pre-drafted recommendations could be confirmed in one batch), **surface the cheaper alternative and let the user choose** — don't silently follow the costly path. The user has explicitly invited this pushback (memory: `feedback_flag_non_token_efficient`).
 
 End-state-first: lock the design **before** drawing diagrams; the existing diagram generator (`gh optivem process show`) handles the drawing, so this plan never hand-draws Mermaid.
@@ -453,6 +455,11 @@ Pinning the convention now avoids rework in Items 2–5 (every brainstorm doc ge
 - **Q6.a — `<Expected Test Result>` threading (Phase B.3 follow-up):** ✓ **hoist to outer signature, drop from leaves.** It's already declared as INPUT at the top of WRITE TESTS; the prior leaf-only placement was incomplete propagation. Cleanest.
 - **Q8.a — Add REFACTOR SYSTEM orchestration symmetric to REFACTOR TESTS? (Phase B.3 follow-up):** ✓ **A: no.** Q8 covers compile/verify inheritance for REFACTOR SYSTEM STRUCTURE via IMPLEMENT SYSTEM orchestration. A separate REFACTOR SYSTEM orchestration would duplicate.
 - **Q8.b — REFACTOR TESTS INPUT/OUTPUT contracts (Phase B.3 follow-up):** ✓ **A: none.** Matches IMPLEMENT SYSTEM lean style; tests as INPUT/OUTPUT would be redundant for a refactor (input == output by definition).
+
+### TOP
+- **Q30 — Ticket type vs change type:** ✓ **resolved 2026-05-25.** *Ticket type* is a tracker-level label (`Story`, `Bug`, `Task`, `Spike`, etc.) — describes *how work is tracked*, not *what work is done*. *Change type* is a process-level classification that maps 1:1 to a CYCLE. The mapping ticket-type → change-type is **not 1:1**: a `Story` can be a feature (→ `change-system-behavior`) or driver-adapter onboarding (→ `redesign-system-structure`); a `Task` can be a refactor or a coverage backfill. So TOP `implement-ticket` step 2 is **two sub-steps**: (1) classify ticket into change type (judgment), (2) look up CYCLE for change type (mechanical 1:1). Change-type → CYCLE table lives in `plans/ideas/5-bpmn-refactor-top-level.md`.
+- **Q30.a — Classification mechanism** *(open, for Item 6 cross-check walk).* Is change-type recorded as an explicit ticket field (gateway reads it mechanically) or inferred by the human/agent at gateway time? Trade-off: explicit field requires backlog grooming discipline; inferred classification adds judgment latency at gateway time.
+- **Q30.b — Multi-cycle tickets** *(open, for Item 6 cross-check walk).* Can one ticket carry multiple change types (e.g., a feature that requires a prior refactor)? If so, does `implement-ticket` call multiple cycles in sequence, or does the ticket get split before reaching this gateway?
 
 ### CYCLE
 - **Q7 — Ticket lifecycle placement:** ✓ **A: cycle-level wrapper** (marks IN PROGRESS → calls the chosen cycle → marks In Acceptance). AC/Checklists **not** ticked at this level. **Superseded 2026-05-25 by Q26=A** — the wrapper is now the body of the top-level `implement-ticket` process; the cycles below it are pure per-ticket sub-processes.
