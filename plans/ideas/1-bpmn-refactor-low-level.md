@@ -5,7 +5,7 @@
 ## approve
 
 **Inputs:**
-- Prompt for user
+- prompt
 
 **Outputs:** NONE
 
@@ -18,46 +18,46 @@
 ## execute-agent
 
 **Inputs:**
-- Task Name
-- Prompt
-- Scope
-- Output
+- task-name
+- prompt
+- scopes
+- outputs
 
 **Outputs:**
-- Agent output values (as declared by caller's Output input)
+- Agent output values (as declared by caller's `outputs` input)
 
 **Steps:**
-1. Approve (PRE): Do you approve task <Task Name> to run?
-2. Run agent for task <Task Name> <Prompt>
-3. Validate Output & Scope
-    1. Output: are the required output variables present?
-    2. Scope: were the scope constraints satisfied? (diff)
+1. `approve` (PRE): Do you approve task [task-name] to run?
+2. Run agent for task [task-name] [prompt]
+3. Validate outputs & scopes
+    1. Outputs: are the required output variables present?
+    2. Scopes: were the scope constraints satisfied? (diff)
 4. Valid?
-    1. NO: calls `fix` (input: failure context — failed validation, missing/invalid outputs, scope-diff violations)
-5. Approve (POST)
+    1. NO: calls `fix` (input: `failure-context` — failed validation, missing/invalid outputs, scope-diff violations)
+5. `approve` (POST)
 
 ## execute-command
 
 **Inputs:**
-- Command
-- Input Params
+- command
+- params
 
 **Outputs:** NONE
 
 **Steps:**
-1. Approve (PRE)
-2. Run Command <Command> <Input Params>
+1. `approve` (PRE)
+2. Run command [command] [params]
 3. Success?
-    1. NO: calls `fix` (input: failure context — command name, input params, stderr/exit code)
+    1. NO: calls `fix` (input: `failure-context` — command, params, stderr/exit code)
 
 ## fix
 
 **Inputs:**
-- Failure Context (what failed, why — e.g., validation errors, command stderr/exit code, scope-diff violations)
+- failure-context (what failed, why — e.g., validation errors, command stderr/exit code, scope-diff violations)
 
 **Outputs:** NONE
 
 **Steps:**
-1. Approve (PRE): Do you approve `fix` to attempt remediation for <failure summary>?
-2. Run Fix Agent <Failure Context>
+1. `approve` (PRE): Do you approve `fix` to attempt remediation for [failure-summary]?
+2. Run Fix Agent [failure-context]
 3. END (single attempt, no recursion — terminates regardless of outcome)
