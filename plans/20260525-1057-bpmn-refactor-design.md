@@ -392,7 +392,7 @@ Pinning the convention now avoids rework in Items 2–5 (every brainstorm doc ge
 - **Q11 — Commit cadence (git, for plan execution):** ✓ **A: one git commit per item.**
 - **Q12 — Q6 prompt shape:** ✓ **A: propose-then-confirm.**
 - **Q13 — Contract block format and location:** ✓ **A: contract blocks live in `process-flow.yaml` as `user_task` metadata** (`scopes:`, `outputs:`). Both consumers read from the same YAML: (1) the agent invocation uses `scopes:`/`outputs:` for prompt context + permitted file scope; (2) the post-execute BPMN verify step (currently EXECUTE AGENT step 3) reads the same `outputs:` to validate "required output variables present?" and `scopes:` to validate "scope constraints satisfied? (diff)". Single source of truth, no drift.
-- **Q13.a — Per-task contract blocks in brainstorm (Phase B.2 follow-up):** ✓ **A: one illustrative block + YAML-truth note.** Only `Write Acceptance Tests` shown inline as illustration; YAML is single source of truth for all tasks. Avoids two-place drift. Per-task inline sketches rejected for the same reason.
+- **Q13.a — Per-task contract blocks in brainstorm (Phase B.2 follow-up):** ✓ **A: one illustrative block + YAML-truth note.** Only `Write Acceptance Tests` shown inline as illustration; YAML is single source of truth for all tasks. Avoids two-place drift. Per-task inline sketches rejected for the same reason. **Superseded 2026-05-25 by Q-new-4** — every task gets its full `Inputs:` / `Scopes:` / `Outputs:` / `Steps:` contract authored in the brainstorm files (the cheap design surface) before YAML encoding. Two-place drift is avoided by the brainstorm files being transient (deleted post-Phase-D), not by leaving them under-specified.
 - **Q14 — `docs/process-diagram.md` structure:** ✓ **A: one file.**
 - **Q15 — "Write" vs "Implement" naming:** ✓ **A: Write for tests, Implement for code.** Cycle entries get renamed: `Write System` → `Implement System`; `Write Driver Adapters` → `Implement Driver Adapters`.
 - **Q15-HIGH extension (Phase B.3 follow-up):** ✓ **Yes — apply Q15 to HIGH orchestration names too.** `WRITE SYSTEM (BIG)` → `IMPLEMENT SYSTEM (BIG)`; step 1 `Write System` → `Implement System`. Tests stay as `Write`. Keeps vocabulary uniform across HIGH + CYCLE.
@@ -495,6 +495,48 @@ Pinning the convention now avoids rework in Items 2–5 (every brainstorm doc ge
 - **Q-new-1 — "RED" in `write-and-verify-red-tests` for the COVER cycle:** ✓ **A: drop "red"; single parameterized HIGH.** Rename `write-and-verify-red-tests` → `write-and-verify-tests`. Both `change-system-behavior` (Expected: Failure) and `cover-system-behavior` (Expected: Success) call the same HIGH with different `<Expected Test Result>`. Aligns with Q5/Q16=B doctrine that expectation is a parameter, not a structural fork. Cascades to inner HIGH orchestrations: `write-red-acceptance-tests`, `implement-red-dsl-core`, `implement-red-system-driver-adapters`, `implement-red-external-system-driver-adapters`, `implement-red-external-system-driver-adapters-contract-tests` all drop "red" — they all parameterize via the shared `implement-test-layer` (which already takes `<Expected Test Result>`), so "red" was always misleading. **Supersedes the "red" portion of Q27** — the silver-canonical rename keeps the `-and-verify-` spine, drops "red".
 - **Q-new-2 — `redesign-system-structure` step 1 "Implement Driver Adapters":** ✓ **A: two CYCLE sub-steps to existing MID tasks.** Step 1 splits into `1a implement-system-driver-adapters` + `1b implement-external-system-driver-adapters` (both MID-direct calls, modulo Q-new-3 rename). No new MID umbrella, no new HIGH wrapper. Rationale: the only consumer is REDESIGN; a one-off umbrella adds surface without reuse (per Q28.c "not recommended" note).
 - **Q-new-3 — "drivers" vs "driver-adapters" vocabulary:** ✓ **A: rename MID to `-driver-adapters`.** `implement-system-drivers` → `implement-system-driver-adapters`; `implement-external-system-drivers` → `implement-external-system-driver-adapters`. Matches HIGH+CYCLE+hexagonal-architecture vocabulary. **Supersedes the corresponding rows in the Q28 prompt rename table** (`at-red-system-driver.md` → `implement-system-driver-adapters.md`; `ct-red-external-system-driver.md` → `implement-external-system-driver-adapters.md`; same for the collapse rows).
+
+### Brainstorm-file representation (resolved 2026-05-25 — applied by deleted plan `plans/20260525-1531-bpmn-ideas-contract-authoring.md`)
+
+- **Q-new-4 — Uniform task template (Inputs/Scopes/Outputs/Steps):** ✓ **A: every task in the brainstorm files uses the same template** — LOW primitives, MID tasks, HIGH orchestrations, CYCLE per-ticket flows, TOP processes. **Supersedes Q13.a** ("one illustrative block + YAML-truth note") — every task now gets its full contract authored upfront in the cheap markdown surface so Phase C YAML encoding is mechanical translation. Template body:
+
+  ```
+  ## <task-name>
+
+  **Inputs:**
+  - ...
+
+  **Scopes:** (agent tasks only — permitted file scope)
+  - ...
+
+  **Outputs:**
+  - ...
+
+  **Steps:**
+  1. ...
+  ```
+
+  When a section is empty, collapse it to a single inline line instead of a one-item `- NONE` bullet:
+
+  ```
+  **Inputs:** NONE
+  ```
+
+  Rules:
+  - Three core sections always shown (Inputs, Outputs, Steps); collapse to inline `**X:** NONE` when empty.
+  - Agent tasks add a fourth `**Scopes:**` section listing permitted file scope. Non-agent tasks (commands, MID/HIGH/CYCLE/TOP orchestrations) omit it.
+  - `Outputs:` lists operator-visible outputs only — the task's contract with its caller.
+  - Intra-flow plumbing (e.g., `dsl-port-changed` consumed by a sibling step) is annotated inline on the producer/consumer steps (`(reads dsl-port-changed from step 1)`), not surfaced at the task level.
+
+- **Q-new-5 — Editorial rules for brainstorm files:** ✓ **A: strip decision-rationale, historical, and reverse-cross-reference annotations.** Brainstorm files describe the resulting process; rationale lives here in the design plan. Strip from all five `plans/ideas/*.md` files:
+  1. **Decision-rationale parentheticals** — `(per Q13=A)`, `(Q-new-3)`, `(per Q28.a)`, `(resolved 2026-05-25)`, etc.
+  2. **Historical refs** — `(was implement-system-drivers — renamed per Q-new-3)`, `(was at-red-test)`, etc.
+  3. **Reverse cross-references** — `(called by HIGH implement-and-verify-system step 2)`, `Called by cover-system-behavior.`, etc. IDs are searchable; reverse lookups don't belong inline.
+  4. **Top-of-file doctrine banners** — Q29 naming-convention banner, Q-new-1 doctrine resolved banner, Cross-file connectedness banner. Same category as #1.
+  5. **Standalone `Note (Q...):` paragraphs** — same category as #1.
+  6. **`TODO (Phase C revisit): ... (Q...)` lines** — same category as #1.
+
+  Keep: the "Design content only" admonition banner at the top of each file (editor's instruction, not rationale).
 
 ### Naming doctrine (resolved 2026-05-25 in child plan `plans/20260525-1130-bpmn-naming-doctrine.md`)
 
