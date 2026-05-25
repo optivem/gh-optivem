@@ -152,6 +152,7 @@ Invoke `/execute-plan plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md` re
 
 ## Standing constraints (from user memory)
 
+- **Reuse existing Go code — don't reinvent.** Before writing new Go (schema fields, generators, validators, runtime helpers), grep `internal/atdd/**` and `internal/projectconfig/**` for existing types/functions/parsers that already do the job. The repo already encodes a lot of the BPMN runtime (process loader, gateway dispatcher, agent runner, diagram emitter, scope validator, phase-scopes lookup, prompt-path resolver) — most of this plan's Items should be *re-wiring + YAML*, not *new code*. If you can't find an existing primitive for something you need, **stop and ask the user** — name what you searched for and what was missing — instead of writing a fresh implementation. (Memory: bias toward reuse; the user has frequently noted "we already have code for this.")
 - **Token-efficient by default** — flag any user-proposed workflow that burns tokens unnecessarily (`feedback_flag_non_token_efficient`).
 - **Session-handoff cadence: auto-commit, then surface `/clear` + `/execute-plan`.** End-of-item: auto-commit with a surgical message via raw `git` (no `/commit` per `feedback_use_commit_skill`); then surface the literal next-session commands in a Next-steps block (`feedback_offer_clear_then_execute_plan`, `feedback_execute_plan_always_next_steps`).
 - **Concurrent-agent collision risk** — re-inspect `git log` before staging if mid-session new commits appear (`feedback_concurrent_agent_collision`).
