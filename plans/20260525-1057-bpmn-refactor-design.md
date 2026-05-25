@@ -98,8 +98,6 @@ Items 2–5 each refine a different brainstorm file (LOW / MID / HIGH / PEAK) wi
 
 Items 6–10 stay sequential (Items 6 verifies B.1–B.4 output; Items 7–9 are Phase C YAML migration with each item depending on the previous; Item 10 is a single Phase D handoff). No parallelism opportunity there.
 
-3. - [ ] **Phase B.2 — Refine MID brainstorm.** Apply Q5 (Run Tests granularity), Q4 (rename "inherits" → "calls"), Q13 (contract format if it changes how MID describes tasks) to `plans/ideas/2-bpmn-refactor-mid-level.md`. Cross-check diagrams 5 (run-cycle), 11 (commit), 15 (compile). Commit.
-
 4. - [ ] **Phase B.3 — Refine HIGH brainstorm.** Apply Q6 (port-change wiring table) and any other HIGH-affecting decisions to `plans/ideas/3-bpmn-refactor-high-level.md`. Fix the file's mid-sentence cut-off at the end. Cross-check diagrams 6, 7, 8, 10, 17, 20, 21. Commit.
 
 5. - [ ] **Phase B.4 — Refine PEAK brainstorm.** Apply Q7 (ticket wrapper), Q8 (refactor compile/verify), Q9 (new REFINE BACKLOG peak entry), **Q15 (rename "Write System" / "Write Driver Adapters" → "Implement …" if convention A is chosen)** to `plans/ideas/4-bpmn-refactor-peak-level.md`. Cross-check diagrams 2, 3, 13, 14, 16. Commit.
@@ -425,12 +423,15 @@ Pinning the convention now avoids rework in Items 2–5 (every brainstorm doc ge
 - **Q11 — Commit cadence (git, for plan execution):** ✓ **A: one git commit per item.**
 - **Q12 — Q6 prompt shape:** ✓ **A: propose-then-confirm.**
 - **Q13 — Contract block format and location:** ✓ **A: contract blocks live in `process-flow.yaml` as `user_task` metadata** (`scopes:`, `outputs:`). Both consumers read from the same YAML: (1) the agent invocation uses `scopes:`/`outputs:` for prompt context + permitted file scope; (2) the post-execute BPMN verify step (currently EXECUTE AGENT step 3) reads the same `outputs:` to validate "required output variables present?" and `scopes:` to validate "scope constraints satisfied? (diff)". Single source of truth, no drift.
+- **Q13.a — Per-task contract blocks in brainstorm (Phase B.2 follow-up):** ✓ **A: one illustrative block + YAML-truth note.** Only `Write Acceptance Tests` shown inline as illustration; YAML is single source of truth for all tasks. Avoids two-place drift. Per-task inline sketches rejected for the same reason.
 - **Q14 — `docs/process-diagram.md` structure:** ✓ **A: one file.**
 - **Q15 — "Write" vs "Implement" naming:** ✓ **A: Write for tests, Implement for code.** Peak entries get renamed: `Write System` → `Implement System`; `Write Driver Adapters` → `Implement Driver Adapters`.
+- **Q15-HIGH extension (Phase B.3 follow-up):** ✓ **Yes — apply Q15 to HIGH orchestration names too.** `WRITE SYSTEM (BIG)` → `IMPLEMENT SYSTEM (BIG)`; step 1 `Write System` → `Implement System`. Tests stay as `Write`. Keeps vocabulary uniform across HIGH + PEAK.
 - **Q20 — Item decomposition (10-item shape):** ✓ **A: keep 10 items.**
 - **Q21 — Phase D as separate downstream plan:** ✓ **A: separate plan.**
 - **Q22 — Q6's table shape (producer/output/consumer):** ✓ **A: three-column table.**
 - **Q23 — Rendering pipeline (`gh optivem process show` stays):** ✓ **A: existing pipeline stays.**
+- **Q24 — Agent-naming doctrine (Phase B.2 follow-up):** ✓ **Verb-based, exact-match to MID task names.** Existing prompts under `internal/assets/runtime/prompts/atdd/` (noun-based cycle-phase identifiers like `at-red-test`, `at-red-dsl`, `ct-red-test`) get renamed to match MID task verbs (`write-acceptance-tests`, `implement-dsl`, `write-contract-tests`, etc.). The `agent-name:` YAML field likely renames to `task-name:` or `executor:` (decided in Phase D). Legacy `legacy-*` prompts collapse mechanically per Q16=B since task names are agnostic about expected test result. **Rename work deferred to Phase D's downstream-alignment plan (Item 10).** MID brainstorm carries a one-line breadcrumb.
 
 ### LOW
 - **Q1 — Fix-loop recursion bounds:** ✓ **A: FIX as separate primitive** (4th low-level primitive, single attempt, terminates regardless of outcome).
@@ -443,6 +444,8 @@ Pinning the convention now avoids rework in Items 2–5 (every brainstorm doc ge
 
 ### MID
 - **Q5 — Run Tests granularity:** ✓ **A (modified): single `Run Tests` task with polymorphic filter parameter.** Filter accepts: (1) a test-type tag — `acceptance` / `contract` / `acceptance-api` / `acceptance-ui` / `contract-stub` / `contract-real`; OR (2) a list of specific test names (used by CHANGE SYSTEM BEHAVIOR when ACs dictate exact tests); OR (3) no filter — runs all tests.
+- **Q5.a — Run Tests filter encoding (Phase B.2 follow-up):** ✓ **A: abstract** in brainstorm (three forms documented, no commitment to encoding). Single-string-with-prefix vs structured discriminated union deferred to Phase C YAML.
+- **Q25 — `Write Contract Tests` mid-level task (Phase B.2 follow-up):** ✓ **A: added to MID.** Symmetric with `Write Acceptance Tests`. Currently maps to `ct-red-test.md`; per Q24 renames to `write-contract-tests` in Phase D.
 
 ### HIGH
 - **Q6 — Port-change output→branch wiring:** ✓ **filled table.** Both `?` rows = **Implement DSL** (implementing the DSL may cause changes to driver ports — both system-driver and external-driver). Final table:
