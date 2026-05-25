@@ -108,27 +108,11 @@ Already lives in `plans/ideas/5-bpmn-refactor-top-level.md`. Encode as the YAML 
 
 ## Items
 
-Each item is sized for one `/execute-plan` invocation. Re-running `/execute-plan plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md` picks up the next unchecked item. Resolved items are deleted, not checked (per `/execute-plan` rule).
-
-4. - [ ] **Item 4 — Phase D handoff: Write the downstream-alignment plan.** Create `plans/<YYYYMMDD-HHMM>-bpmn-refactor-downstream.md` covering:
-    - **Sanity-check Q-numbering first.** The Q1/Q4/Q5 references below were drafted against the design archive (`plans/20260525-1057-bpmn-refactor-design.md`). The archive's Q-numbering may have shifted since drafting. Open the archive, confirm each Q-number resolves to the topic named here (FIX primitive / terminology / run-tests filter), and re-anchor any references that drifted.
-    - Writing-agent updates per Q1 (FIX as separate primitive), Q4 (terminology), Q5 (run-tests filter parameter shape — encoding shape now resolved per Q5.a in this plan's Decisions ledger).
-    - **Prompt file renames + deletions per the locked Q28 table in the archive plan**, including:
-      - `agent-name:` field removal from `process-flow.yaml` (Q28.a) — runtime contract change.
-      - `fix-verify.md` split into `fix-unexpected-passing-tests.md` + `fix-unexpected-failing-tests.md` (Q28.b).
-      - Q28.c resolutions: `refactor-system.md` canonical (from `task-system-implementation-refactoring.md`); `at-refactor-system.md` DELETE (Q32); `task-system-interface-redesign.md` + `task-external-system-interface-redesign.md` split per recommended resolution.
-      - Legacy `legacy-*.md` prompts DELETE per Q16 = B collapse.
-    - ATDD docs updates (`docs/atdd/process/*.md`, `docs/atdd/architecture/*.md`) for the new five-level vocabulary.
-    - Retired SVG cleanup under `docs/images/process-diagram-*.svg`.
-
-    Use the same `## Items` checklist shape so it's `/execute-plan`-able. Do **not** execute that plan here — the user invokes `/execute-plan` on it separately. Commit.
-    **Done when:** the downstream plan file exists with its own Items checklist; this plan's Items section is fully resolved.
-
----
+No execution items remain. Phase C is fully landed (Items 1–3 encoded the YAML); Phase D's downstream-alignment plan was written as **`plans/20260525-1841-bpmn-refactor-downstream.md`** (Item 4). Invoke `/execute-plan` on that file from here on.
 
 ## Re-running `/execute-plan`
 
-Invoke `/execute-plan plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md` repeatedly. Each invocation reads this file, finds the next unchecked Item, executes it, deletes the resolved item from this file, and commits. Default cadence is `/clear` between items — cached-prefix replay grows with every read/edit, so the natural seam is a `/clear`.
+No more invocations on this file. Continue with `/execute-plan plans/20260525-1841-bpmn-refactor-downstream.md`.
 
 ## Standing constraints (from user memory)
 
