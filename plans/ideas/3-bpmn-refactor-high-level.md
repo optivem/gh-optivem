@@ -34,7 +34,7 @@
 - tests
 
 **Steps:**
-1. `write-and-verify-acceptance-test-code` (acceptance-criteria: `<input>`, expected-test-result: `<input>`)
+1. `write-and-verify-acceptance-tests-code` (acceptance-criteria: `<input>`, expected-test-result: `<input>`)
 2. DSL port changed? (reads `dsl-port-changed` from step 1)
     1. YES: `implement-and-verify-dsl` (expected-test-result: `<input>`, tests: acceptance)
         1. External system driver ports changed? (reads `external-driver-ports-changed` from step 2.1)
@@ -42,7 +42,7 @@
         2. System driver ports changed? (reads `system-driver-ports-changed` from step 2.1)
             1. YES: `implement-and-verify-system-driver-adapters` (expected-test-result: `<input>`, tests: acceptance)
 
-## write-and-verify-acceptance-test-code
+## write-and-verify-acceptance-tests-code
 
 **Inputs:**
 - acceptance-criteria
@@ -53,7 +53,7 @@
 - dsl-port-changed: bool
 
 **Steps:**
-1. `write-acceptance-tests` (expected-test-result: `<input>`)
+1. `write-acceptance-tests` (acceptance-criteria: `<input>`, expected-test-result: `<input>`)
 2. `compile-tests`
 3. Based on expected-test-result:
     1. If success: `verify-tests-pass` (filter: acceptance)
@@ -97,7 +97,7 @@
 **Steps:**
 1. `implement-test-layer` (agent-action: implement-external-system-driver-adapters, expected-test-result: `<input>`, tests: `<input>`)
 
-## implement-and-verify-external-system-driver-adapter-contract-tests
+## implement-and-verify-external-system-driver-adapters-contract-tests
 
 **Inputs:** NONE
 

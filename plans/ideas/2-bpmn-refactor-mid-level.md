@@ -5,6 +5,7 @@
 ## write-acceptance-tests
 
 **Inputs:**
+- acceptance-criteria
 - expected-test-result
 
 **Scopes:**
