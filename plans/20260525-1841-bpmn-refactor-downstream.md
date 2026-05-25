@@ -26,27 +26,6 @@ Per memory `feedback_prefer_parallel_subagents`:
 
 Each item is sized for one `/execute-plan` invocation. Re-running `/execute-plan plans/20260525-1841-bpmn-refactor-downstream.md` picks up the next unchecked item. Resolved items are deleted, not checked.
 
-1. - [ ] **Item 1 — Prompt file renames.** `[autonomous]` `[sequential]`
-    Apply the renames from the Q28 table (archive's "Q28 prompt rename table") via `git mv`. Body content unchanged in this item (body alignment is Item 4).
-
-    ```
-    at-red-test.md                            → write-acceptance-tests.md
-    ct-red-test.md                            → write-contract-tests.md
-    at-red-system-driver.md                   → implement-system-driver-adapters.md
-    ct-red-external-system-driver.md          → implement-external-system-driver-adapters.md
-    at-green-system.md                        → implement-system.md
-    ct-green-external-system-stub.md          → implement-external-system-stubs.md
-    refine-acc.md                             → refine-acceptance-criteria.md
-    task-system-implementation-refactoring.md → refactor-system.md
-    ```
-
-    Special cases (NOT in this item):
-    - `at-red-dsl.md` + `ct-red-dsl.md` collapse to one `implement-dsl.md` — needs content merge, handled in Item 3.
-    - `disable-tests.md`, `enable-tests.md`, `update-ticket.md` — no rename per Q28 table.
-
-    All renames under `internal/assets/runtime/prompts/atdd/`. Commit message: `prompts/atdd: rename per Q28 table (BPMN downstream item 1)`.
-    **Done when:** all 8 `git mv` operations committed; `git status` clean; no body content changed.
-
 2. - [ ] **Item 2 — Prompt file deletes.** `[autonomous]` `[sequential]`
     Delete the 8 retired prompts:
 
