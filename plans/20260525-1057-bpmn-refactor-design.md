@@ -511,6 +511,32 @@ Pinning the convention now avoids rework in Items 2–5 (every brainstorm doc ge
 - **Q-new-1 — "RED" in `write-and-verify-red-tests` for the COVER cycle:** ✓ **A: drop "red"; single parameterized HIGH.** Rename `write-and-verify-red-tests` → `write-and-verify-tests`. Both `change-system-behavior` (Expected: Failure) and `cover-system-behavior` (Expected: Success) call the same HIGH with different `<Expected Test Result>`. Aligns with Q5/Q16=B doctrine that expectation is a parameter, not a structural fork. Cascades to inner HIGH orchestrations: `write-red-acceptance-tests`, `implement-red-dsl-core`, `implement-red-system-driver-adapters`, `implement-red-external-system-driver-adapters`, `implement-red-external-system-driver-adapters-contract-tests` all drop "red" — they all parameterize via the shared `implement-test-layer` (which already takes `<Expected Test Result>`), so "red" was always misleading. **Supersedes the "red" portion of Q27** — the silver-canonical rename keeps the `-and-verify-` spine, drops "red".
 - **Q-new-2 — `redesign-system-structure` step 1 "Implement Driver Adapters":** ✓ **A: two CYCLE sub-steps to existing MID tasks.** Step 1 splits into `1a implement-system-driver-adapters` + `1b implement-external-system-driver-adapters` (both MID-direct calls, modulo Q-new-3 rename). No new MID umbrella, no new HIGH wrapper. Rationale: the only consumer is REDESIGN; a one-off umbrella adds surface without reuse (per Q28.c "not recommended" note).
 - **Q-new-3 — "drivers" vs "driver-adapters" vocabulary:** ✓ **A: rename MID to `-driver-adapters`.** `implement-system-drivers` → `implement-system-driver-adapters`; `implement-external-system-drivers` → `implement-external-system-driver-adapters`. Matches HIGH+CYCLE+hexagonal-architecture vocabulary. **Supersedes the corresponding rows in the Q28 prompt rename table** (`at-red-system-driver.md` → `implement-system-driver-adapters.md`; `ct-red-external-system-driver.md` → `implement-external-system-driver-adapters.md`; same for the collapse rows).
+- **Q-new-6 — Acceptance-test HIGH naming: make scope visible in name (refines Q31 Option D):** ✓ **A: push specificity all the way down the 3-layer hierarchy.** The Q31 Option D shape (two thin wrappers over parameterized core, plus an inner test-code primitive) creates a duplication-feel because three HIGH tasks share a near-identical name stem (`write-and-verify-...`) while each layer carries a different scope. The asymmetry is **structurally earned** — acceptance is the only HIGH side that combines cycle-entry parameter hiding (outer) with a cascading DSL/adapter decision tree (middle); DSL/drivers stay flat siblings sharing `implement-test-layer`. But the naming hides the depth. Rename map:
+
+  | Layer | Before (current) | After (Q-new-6) | What it does |
+  |---|---|---|---|
+  | Outer (cycle entry) | `write-and-verify-tests-fail` / `write-and-verify-tests-pass` | `write-and-verify-acceptance-tests-fail` / `write-and-verify-acceptance-tests-pass` | Pins `<Expected Test Result>`; calls middle. |
+  | Middle (canonical full flow) | `write-and-verify-tests` | `write-and-verify-acceptance-tests` | Writes test code + cascading DSL/adapter impl if ports changed. |
+  | Inner (test-code primitive) | `write-and-verify-acceptance-tests` | `write-and-verify-acceptance-test-code` | Pure: write test files, compile, verify, commit. No production-side impl. |
+
+  Rationale:
+  1. **Outer ↔ Middle share the root.** Suffix encodes the only thing the outer adds (the pinned parameter). Outer is genuinely a thin wrapper — the name promises what the code does.
+  2. **Plural `tests` vs singular `test-code` carries semantic weight.** "Acceptance tests" (plural) = the full testing work including supporting DSL/adapters. "Acceptance test-code" (singular) = just the test source files themselves. A reader can guess the scope difference from the name alone.
+  3. **Removes the misleading overlap.** Today's `write-and-verify-acceptance-tests` (inner) reads as if it's the canonical full flow; it is actually the no-impl subset. Demoting it to `-test-code` fixes that.
+  4. **Doesn't propagate to DSL/drivers.** They have no 3-layer stack — single MID-level tasks (`implement-and-verify-dsl`, `implement-and-verify-system-driver-adapters`, `implement-and-verify-external-system-driver-adapters`) each call the SHARED `implement-test-layer`. No name-stem duplication to fix.
+
+  **Alternatives considered and rejected:**
+  - **Keep current names** (cheapest, asymmetric): preserves the duplication-feel; future readers will keep raising it.
+  - **Collapse middle into outer**: duplicates the cascading decision tree between `-fail` and `-pass` wrappers.
+  - **Drop the outer wrappers** (let CYCLE pass `<Expected Test Result>` directly): reverses Q31 Option D — reopens a settled doctrine question.
+
+  **Touch-points (executed by `plans/20260525-1659-bpmn-acceptance-test-rename.md`):**
+  - `plans/ideas/3-bpmn-refactor-high-level.md` — rename 3 task headings + internal call-site references.
+  - `plans/ideas/4-bpmn-refactor-cycle-level.md` — rename 2 invocation call sites (`change-system-behavior` step 1, `cover-system-behavior` step 1).
+  - `plans/20260525-1057-bpmn-refactor-design.md` (this file) — update Q31 / Q31.b / Q6.a wording + cross-check inventory rows for diagrams #6, #20.
+  - `plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md` — update "HIGH orchestrations (Q31 = D)" bullet wording.
+
+  **Supersedes** the naming-only portion of Q31 Option D. The structural shape from Q31 (thin wrappers + parameterized core + inner primitive) is **unchanged** — only the names change.
 
 ### Brainstorm-file representation (resolved 2026-05-25 — applied by deleted plan `plans/20260525-1531-bpmn-ideas-contract-authoring.md`)
 
