@@ -443,6 +443,9 @@ var transitionTable = []transitionCase{
 	{process: "legacy_ct_cycle", from: "GATE_VERIFY_LEGACY_CT", state: map[string]any{"legacy_ct_verify_outcome": "ok"}, wantTo: "LEGACY_CT_END", desc: "inverted-RED: assembled test passed on first run as expected"},
 	{process: "legacy_ct_cycle", from: "GATE_VERIFY_LEGACY_CT", state: map[string]any{"legacy_ct_verify_outcome": "red"}, wantTo: "STOP_LEGACY_CT_VERIFY_FAILED", desc: "inverted-RED fail: test/DSL/driver/stub is suspect, SUT never modified"},
 	{process: "legacy_ct_cycle", from: "STOP_LEGACY_CT_VERIFY_FAILED", wantTo: "LEGACY_CT_END"},
+
+	// refactor-system-structure (Phase C.1 prototype — five-level BPMN refactor)
+	{process: "refactor-system-structure", from: "IMPLEMENT_AND_VERIFY_SYSTEM", wantTo: "RSS_END"},
 }
 
 func TestTransitions(t *testing.T) {

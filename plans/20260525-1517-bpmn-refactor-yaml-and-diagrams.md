@@ -110,14 +110,14 @@ Already lives in `plans/ideas/5-bpmn-refactor-top-level.md`. Encode as the YAML 
 
 Each item is sized for one `/execute-plan` invocation. Re-running `/execute-plan plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md` picks up the next unchecked item. Resolved items are deleted, not checked (per `/execute-plan` rule).
 
-### Prerequisite
-
-Verify **`plans/20260525-1531-bpmn-ideas-contract-authoring.md`** has fully landed before starting Item 1 — the brainstorms in `plans/ideas/*.md` are this plan's authoritative input, and that prerequisite plan authors the per-task `Inputs:` / `Scopes:` / `Outputs:` / `Steps:` contracts (absorbing the parent design plan's Item 12 Q-tag strip in the process). Without it, Phase C is not a mechanical YAML-encoding pass — every task's contract would have to be invented on the fly. (Parent design archive for *why* behind each decision: `plans/20260525-1057-bpmn-refactor-design.md`.)
-
-1. - [ ] **Item 1 — Phase C.1: Prototype `refactor-system-structure` in YAML.** Encode the simplest cycle (`refactor-system-structure`) in `internal/atdd/runtime/statemachine/process-flow.yaml`. Save the current `docs/process-diagram.md` as a backup first (`cp docs/process-diagram.md docs/process-diagram.md.pre-refactor`). Run `gh optivem process show > docs/process-diagram.md`. Inspect the regenerated output for the new cycle. Compare against the refined `plans/ideas/4-bpmn-refactor-cycle-level.md`. Commit (YAML + regenerated md).
-    **Done when:** regenerated diagram for `refactor-system-structure` matches the refined brainstorm; backup file in place for Item 3's diff.
-
-2. - [ ] **Item 2 — Phase C.2: Schema/generator changes if needed.** Based on Item 1 findings, extend the YAML schema and generator if needed. Most likely candidate: adding `scopes:` / `outputs:` metadata to `user_task` for Q13 contract blocks. Also: handle `agent-name:` field removal per Q28.a — runtime derives prompt path from task name; error at startup if file missing. If no changes needed, mark this item done with a one-line "no schema/generator changes required" note in this file and skip the commit. Otherwise commit (generator + schema + tests).
+2. - [ ] **Item 2 — Phase C.2: Schema/generator changes if needed.** Based on Item 1 findings, extend the YAML schema and generator if needed.
+    - Likely candidates (originally drafted): `scopes:` / `outputs:` metadata on `user_task` for Q13 contract blocks; `agent-name:` field removal per Q28.a (runtime derives prompt path from task name; error at startup if file missing).
+    - **Surfaced by Item 1 prototype:**
+        - **Templated `process:` field.** The HIGH `implement-and-verify-system` step 1 is "Call `agent-action`" where `agent-action` is an input — i.e. the call_activity's `process:` field needs `${agent-action}` substitution at dispatch (currently only `agent:`, `documentation:`, and `params.*` text are templated). Either extend `process:` substitution, or restructure HIGH to a gateway-with-branches over the known agent set. Pick before Item 3 starts.
+        - **Transition-table coverage gate.** `internal/atdd/runtime/statemachine/transitions_test.go::TestTransitionTable_CoversEverySequenceFlow` requires one explicit `transitionTable` row per YAML edge. Item 3 must update that table in lockstep with the YAML — not an after-thought.
+        - **`inputs:` process-level metadata.** Brainstorms list "Inputs:" for every process; current schema has only `outputs:`. If it's purely documentation, no schema change. If the runtime needs to validate caller-supplied inputs, add `inputs:` to `rawProcess` mirroring `Outputs`.
+        - **LOW primitive encoding strategy.** `approve` / `execute-agent` / `execute-command` / `fix` are templates with PRE/POST approve gates. Most token-efficient encoding likely = small reusable YAML processes with `${task-name}` substitution, called via `call_activity` from MIDs. Same template-substitution question as above for `process:`.
+    - If no schema/generator changes are needed after all, mark this item done with a one-line "no schema/generator changes required" note in this file and skip the commit. Otherwise commit (generator + schema + tests).
     **Done when:** schema + generator support the metadata Item 3's YAML encoding will need.
 
 3. - [ ] **Item 3 — Phase C.3: Migrate rest of YAML.** Encode the full structure into `process-flow.yaml`:

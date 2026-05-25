@@ -1519,3 +1519,36 @@ processes:
       - {from: GATE_VERIFY_LEGACY_CT,            to: LEGACY_CT_END,                       when: "legacy_ct_verify_outcome == ok"}
       - {from: GATE_VERIFY_LEGACY_CT,            to: STOP_LEGACY_CT_VERIFY_FAILED,        when: "legacy_ct_verify_outcome == red"}
       - {from: STOP_LEGACY_CT_VERIFY_FAILED,     to: LEGACY_CT_END}
+
+  # ===========================================================================
+  # refactor-system-structure  (Phase C.1 prototype — five-level BPMN refactor)
+  #
+  # First cycle encoded under the new TOP / CYCLE / HIGH / MID / LOW structure
+  # (plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md Item 1). The
+  # downstream HIGH `implement-and-verify-system` is not yet encoded — Item 3
+  # encodes the full graph. Item 2 will read this prototype to decide what
+  # schema/generator changes are needed (likely candidates: `scopes:` /
+  # `outputs:` user_task metadata, templated `process:` for `${agent-action}`,
+  # `inputs:` process-level metadata).
+  #
+  # Brainstorm source: plans/ideas/4-bpmn-refactor-cycle-level.md.
+  #   Inputs:  refactor-checklist (optional — opportunistic mode supplies none)
+  #   Outputs: NONE
+  #   Steps:
+  #     1. implement-and-verify-system  (agent-action: refactor-system)
+  # ===========================================================================
+  refactor-system-structure:
+    start: IMPLEMENT_AND_VERIFY_SYSTEM
+    nodes:
+      - id: IMPLEMENT_AND_VERIFY_SYSTEM
+        type: call_activity
+        process: implement-and-verify-system
+        params:
+          agent-action: refactor-system
+        documentation: "agent-action: refactor-system"
+
+      - id: RSS_END
+        type: end_event
+
+    sequence_flows:
+      - {from: IMPLEMENT_AND_VERIFY_SYSTEM, to: RSS_END}

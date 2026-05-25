@@ -611,6 +611,16 @@ flowchart TD
     class STOP_RED_NOT_RUNTIME_FAIL,STOP_RED_REVIEW,STOP_SCOPE_VIOLATION,STOP_VERIFY_REAL_FAIL humanNode
 ```
 
+## refactor-system-structure
+
+```mermaid
+flowchart TD
+    IMPLEMENT_AND_VERIFY_SYSTEM[agent-action: refactor-system — see § implement-and-verify-system]
+    RSS_END((End))
+
+    IMPLEMENT_AND_VERIFY_SYSTEM --> RSS_END
+```
+
 ## SUT Cycle
 
 ```mermaid
