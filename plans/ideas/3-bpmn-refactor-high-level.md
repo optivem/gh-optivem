@@ -59,8 +59,10 @@
 ## WRITE SYSTEM (BIG)
 
 1. Write System
-2. Verify Tests Pass <Tests>
-3. Commit
+2. Build System
+3. Start System
+4. Verify Tests Pass <Tests>
+5. Commit
 
 ===========================
 
@@ -90,3 +92,8 @@
 2. Success?
     1. YES: Fix Unexpected Passing Tests
     2. NO: END
+
+
+===========================
+
+Note, an open question that remains from me is about runnign tests... sometimes runnign tests means 
