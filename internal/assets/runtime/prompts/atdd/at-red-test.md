@@ -25,3 +25,23 @@ Do not present or wait for approval inside the agent.
 Read `${references_root}/atdd/architecture/test.md`.
 Read `${references_root}/atdd/architecture/dsl-core.md`.
 Read `${references_root}/code/language-equivalents/${language}.md`.
+
+## Outputs
+
+At the end of your final response, emit a fenced YAML block listing the
+acceptance-test methods this ticket exercises:
+
+```
+outputs:
+  test_names:
+    - shouldRegisterCustomer
+    - shouldRejectDuplicateCustomer
+```
+
+`test_names` is every unqualified test method name the ticket iterates on
+— not only the one most-recently added. Re-emit the full set on every
+re-WRITE; downstream RED phases in the same cycle (AT-RED-DSL,
+AT-RED-SYSTEM-DRIVER) reuse this list and have no other way to learn it.
+
+The block may follow other prose. The parser keeps the last `outputs:`
+block in the response.

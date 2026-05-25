@@ -86,7 +86,17 @@ Decision: **fold `suite` into the structured-output infrastructure**, not into c
 
 ## Scope of this plan
 
-Build the structured-output infrastructure end-to-end for the path that's currently blocking the rehearsal: AT/CT/LEGACY RED phases (`red_phase_cycle`) — so `test_names`, `suite`, `scope_exception_files`, and `scope_exception_reason` are populated by the WRITE agent and consumed by RUN / GATE_SCOPE_EXCEPTION.
+**Narrowed 2026-05-20** (see "Carved out" below for why). This plan
+now lands only the AT-RED-TEST `test_names` slice:
+
+- `at-red-test` prompt emits `outputs: { test_names: [...] }` at the end of
+  its final response.
+- AT-RED-DSL and AT-RED-SYSTEM-DRIVER inherit the value via shared
+  ctx.State (the `wrapCallActivity` engine saves/restores Params but not
+  State, so sibling sub-process calls share `ctx.State` end-to-end). No
+  prompt amendment needed for those impl agents.
+- The TODO comment at `process-flow.yaml:926-930` is updated, not
+  removed — work is partial.
 
 **Explicitly out of scope** (separate plans, listed because we're touching adjacent code):
 
@@ -94,29 +104,76 @@ Build the structured-output infrastructure end-to-end for the path that's curren
 - Plumbing the `language`, `ticket_id`, `loop`, `phase`, `prev_phase`, `disable_targets` keys that `disable-tests` / `enable-tests` agents read via template substitution. Those are *consumed* (template substitution) not *emitted* — they need a separate plan about WHERE the upstream values are produced.
 - The `green_phase_cycle` `suite` plumbing. Same shape, same fix; defer until the RED path is proven.
 
+## Carved out — follow-up plans needed
+
+Originally in this plan's scope but deferred during execution
+(2026-05-20) because they require additional design work — primarily
+making suite vocabulary project-configurable — that doesn't belong
+under "context plumbing":
+
+- **ct-red-test prompt amendment** to emit `outputs: { test_names, suite }`.
+  Same shape as at-red-test, but blocked behind project-configurable
+  suite resolution: without it, the prompt would hardcode
+  `<suite-contract-stub>` (the WRITE-phase RUN target per
+  `testselect/suite.go:18-19`), which is exactly the kind of fixed
+  vocabulary the surrounding architecture is trying to shed.
+
+- **Project-configurable suite vocabulary.** Suite tokens
+  (`<acceptance-api>`, `<acceptance-ui>`, `<suite-contract-stub>`,
+  `<suite-contract-real>`) and the `testselect.AcceptanceSuites()`
+  hardcoded fallback (`["acceptance-api", "acceptance-ui"]`) assume
+  the shop project's channel naming. Non-shop projects with
+  `acceptance-mobile` or differently-named channels do not work today.
+  The fix replaces *both* this plan's would-be `suite:` emission from
+  ct-red-test AND the pre-existing hardcoded
+  `verify_real_suite: "<suite-contract-real>"` literal at CT_RED_TEST in
+  `process-flow.yaml`. Symmetric treatment in one plan.
+
+- **`disable-tests` / `enable-tests` template substitution keys**:
+  `language`, `ticket_id`, `loop`, `phase` / `prev_phase`,
+  `disable_targets`. These are *consumed* (substituted into prompts) not
+  *emitted* — they need a separate plan that identifies where each
+  upstream value is produced.
+
+- **4 impl agents** (`at-red-dsl`, `at-red-system-driver`, `ct-red-dsl`,
+  `ct-red-external-system-driver`) intentionally not amended — they
+  inherit `test_names` (and any future shared keys) from the upstream
+  RED-TEST agent in the same cycle via shared ctx.State. Documented
+  here so a future plan author doesn't redo the analysis.
+
 ## Items
 
-5. - [ ] **Amend the AT_RED_TEST WRITE prompt** (`prompts/atdd/at-red-test.md` or wherever the embedded prompt lives — search will find it) to instruct the agent to emit the `outputs:` block at the end of its final response, with `test_names` (the methods it just authored) and `suite` (the canonical suite name per the phase doc). The prompt language should mirror `scope.md`'s tone — short, explicit format, no per-language variation.
-
-   Same amendment for `ct-red-test`, `at-red-dsl`, `at-red-system-driver`, `ct-red-dsl`, `ct-red-external-system-driver`. The seven RED writers all flow through `red_phase_cycle` and all need to emit the same shape. (Six prompts in scope: AT-RED has 3, CT-RED has 3; LEGACY variants out of scope.)
-
-6. - [ ] **Decide on `suite` value.** The canonical suites today are referenced as `<acceptance-api>`, `<acceptance-ui>`, `<suite-contract-real>` in `process-flow.yaml`. The agent should emit the literal token (e.g. `<acceptance-api>`) and the action / `testselect.AcceptanceSuites()` machinery resolves it — same indirection that already exists for `verify_real_suite`. Confirm during implementation that the placeholder is the right vocabulary (vs. a resolved physical suite name).
-
-8. - [ ] **Re-run the rehearsal.** `gh optivem atdd-rehearsal implement` from the same starting state that produced the original failure. Expect AT_RED_TEST to reach DISABLE / COMMIT (not the next gap — that's a separate plan).
-
-9. - [ ] **Remove the TODO comment block** at `process-flow.yaml:926-930` once items 1-7 land. Replace with a one-line pointer to this plan's commit.
+8. - [ ] **Re-run the rehearsal.** `gh optivem atdd-rehearsal implement` from
+   the same starting state that produced the original failure. Expect
+   AT_RED_TEST to reach DISABLE / COMMIT. The next gap will surface either at
+   CT_RED_TEST → RUN (no `test_names` / no `suite` for CT — addressed by the
+   carved-out follow-up plans above) or at a `disable-tests` /
+   `enable-tests` template substitution (also carved out).
 
 ## Open questions
 
-1. **Q1: How loud should "agent didn't emit outputs:" be?** The parser returns empty map for missing block (item 2). The dispatcher then doesn't write anything. The downstream RUN fails with the *exact same error the user just saw*: `test_names not set in Context`. Should the dispatcher proactively fail with a more diagnostic "agent did not emit required outputs:" message? Cost: per-agent allowlist of required keys, which couples the dispatcher to phase semantics. **Lean: no, keep dispatcher generic. The downstream action's error is already specific enough ("test_names not set"); chasing "agent emitted nothing" → "test_names not set" is a one-step diagnostic for the operator.**
+(Q1 and Q2 resolved during implementation of items 1-4; recorded in the
+parser doc comment at `clauderun/outputs.go` for posterity. Q3 below is
+folded into the carved-out "project-configurable suite vocabulary"
+follow-up.)
 
-2. **Q2: Should the parser look for `outputs:` *anywhere* in the result text, or *only* at the end?** Agents may emit explanatory prose followed by the block. Loose match (find the last `outputs:` block in the text) is robust to surrounding prose. Strict match (require the block to be the final fenced YAML in the response) is brittle. **Lean: loose match. Last fenced YAML block whose top-level key is `outputs:` wins; same rule for `scope_exception:`. Document this in the parser doc comment so prompt authors know they can write prose before/after.**
-
-3. **Q3: When do we revisit "`suite` as call_activity param"?** Plan above defers `suite` to agent output. If in practice the per-prompt cost of teaching every agent to echo the suite is high (it's static per phase, after all), a future amendment can lift `suite` to call_activity params. **Lean: revisit after item 5 ships — if the 6 prompt amendments add identical boilerplate to every prompt for the suite alone, lift it to call_activity at that point. test_names stays in agent output regardless.**
+3. **Q3: How should `suite` be resolved per phase?** The original plan
+   proposed agent-emitted `suite` tokens. During execution we realized
+   suite vocabulary is project-configurable (channel naming varies:
+   `acceptance-mobile`, alternative conventions) and should not be baked
+   into prompts. The carved-out follow-up addresses this: replaces both
+   the to-be-added `suite:` emission and the pre-existing hardcoded
+   `verify_real_suite: <suite-contract-real>` literal with a single
+   project-config-driven resolution.
 
 ## Sequencing
 
-Items 1-4 are mechanical and land in one PR (`atdd/user-task-output-parsing: surface agent result text, add YAML outputs parser, wire into user_task dispatcher`). Items 5-6 are per-prompt amendments and can land as one PR or six smaller PRs — pick by review-cost preference. Item 7 lands with 5-6. Item 8 is a manual verification step. Item 9 is the bow-tie on the source comment.
+Items 1-4 (infrastructure: surface agent result text, add YAML outputs
+parser, wire into user_task dispatcher) landed pre-execution. This
+session lands the at-red-test prompt amendment + the
+process-flow.yaml comment update. Item 8 is a manual verification step
+the user runs when ready. Everything else moved to the carved-out
+follow-up plans listed above.
 
 ## Why this plan instead of expanding 20260505-230100
 

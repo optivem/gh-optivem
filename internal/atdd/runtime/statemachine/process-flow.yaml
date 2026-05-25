@@ -923,11 +923,17 @@ processes:
   # WRITE. (Compile-leak is no longer one of the modes — the shared
   # `compile` sub-process catches that explicitly.)
   #
-  # Context plumbing TODO: `run_targeted_tests` reads `suite` and
-  # `test_names`; the `disable-tests` and `enable-tests` agents (user_task
-  # dispatch) read `language`, `ticket_id`, `loop`, `phase` / `prev_phase`,
-  # and `disable_targets` via template substitution. Today nothing populates
-  # these — see the AT/CT split plan's "context plumbing" follow-up.
+  # Context plumbing — partial (plan 20260520-1945). AT `test_names`
+  # flows from at-red-test's `outputs:` block into ctx.State; AT-RED-DSL
+  # and AT-RED-SYSTEM-DRIVER inherit it through shared state (the
+  # call_activity wrapper saves/restores Params but not State).
+  # Still un-plumbed: CT `test_names` (ct-red-test prompt amendment),
+  # project-configurable `suite` resolution (replacing both the absent
+  # CT-RED-TEST RUN suite and the pre-existing hardcoded
+  # `verify_real_suite: <suite-contract-real>` literal), and the
+  # `disable-tests` / `enable-tests` template substitution keys
+  # (`language`, `ticket_id`, `loop`, `phase` / `prev_phase`,
+  # `disable_targets`). See plan 20260520-1945 "Carved out" section.
   # Compile no longer reads from context: tier choice is encoded in the
   # `compile_action` param forwarded to the shared `compile` sub-process.
   # ===========================================================================
