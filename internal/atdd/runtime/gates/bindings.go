@@ -227,8 +227,8 @@ func (b bindings) systemDriverInterfaceChanged(ctx *statemachine.Context) statem
 }
 
 // refineRequested is the pre-BACKLOG_REFINEMENT branch: asks the operator
-// whether to invoke refine-acc at all for this ticket. true → run the full
-// refine pass (refine-acc → CONFIRM_REFINEMENT → optional UPDATE_TICKET);
+// whether to invoke refine-acceptance-criteria at all for this ticket. true → run the full
+// refine pass (refine-acceptance-criteria → CONFIRM_REFINEMENT → optional UPDATE_TICKET);
 // false → skip straight to BR_END, leaving the materialized parsed-concepts
 // artifact unread. No upstream action pre-decides this — refine is per-ticket
 // operator intent — so the binding is always prompt-driven (boolGate still
@@ -243,7 +243,7 @@ func (b bindings) refineRequested(ctx *statemachine.Context) statemachine.Outcom
 // backlog_refinement sub-process to UPDATE_TICKET when the refiner
 // mutated the parsed-concepts artifact, and skips to the sub-process
 // end_event when refinement was a no-op. Reads the `refinement_changed`
-// flag set by the refine-acc agent's COMMIT (`Refinement Changed:
+// flag set by the refine-acceptance-criteria agent's COMMIT (`Refinement Changed:
 // yes|no`); falls back to a prompt for hand-debugging if the upstream
 // dispatch hasn't run.
 func (b bindings) refinementChanged(ctx *statemachine.Context) statemachine.Outcome {
@@ -256,7 +256,7 @@ func (b bindings) refinementChanged(ctx *statemachine.Context) statemachine.Outc
 // at_refactor_system sub-process to COMMIT when the refactor agent
 // touched production code, and skips to the sub-process end_event when
 // the refactor was a no-op (no improvement seen). Reads the
-// `refactor_changed` flag set by the at-refactor-system agent's COMMIT
+// `refactor_changed` flag set by the refactor-system agent's COMMIT
 // (`Refactor Changed: yes|no`); falls back to a prompt for hand-debugging
 // if the upstream dispatch hasn't run.
 func (b bindings) refactorChanged(ctx *statemachine.Context) statemachine.Outcome {
@@ -354,8 +354,10 @@ func (b bindings) subtype(ctx *statemachine.Context) statemachine.Outcome {
 //   - "ok"       — green (or no commands ran). Continue to APPROVE_COMMIT.
 //   - "red"      — first red of this cycle. Increments verify_retries and
 //                  returns "red" so the gateway routes to FIX_STRUCT_VERIFY,
-//                  which dispatches fix-verify and loops back to
-//                  CHOOSE_TESTS so the operator can re-pick scope.
+//                  which dispatches the appropriate fix-* diagnosis agent
+//                  (fix-unexpected-passing-tests / fix-unexpected-failing-tests)
+//                  and loops back to CHOOSE_TESTS so the operator can re-pick
+//                  scope.
 //
 // Halt paths return Outcome.Err directly (no routing token):
 //
@@ -678,12 +680,13 @@ func (b bindings) scopeExceptionRequested(ctx *statemachine.Context) statemachin
 }
 
 // dslFlagsPresent is the flag-presence-validation gateway sitting
-// between AT_RED_DSL and the existing GATE_EXT_AT in at_cycle (plan
-// 20260518-1144 item 4). RED-DSL must emit BOTH phase-output flags per
-// at-red-dsl.md — "unset is a bug, not a default no". This gate returns
-// true only when BOTH state keys are explicitly present; otherwise the
-// cycle routes to STOP_FLAG_UNSET and loops back to AT_RED_DSL for the
-// agent to set them.
+// between the parameterized implement-dsl phase and the existing
+// GATE_EXT_AT in at_cycle (plan 20260518-1144 item 4). implement-dsl
+// must emit BOTH phase-output flags per implement-dsl.md — "unset is a
+// bug, not a default no". This gate returns true only when BOTH state
+// keys are explicitly present; otherwise the cycle routes to
+// STOP_FLAG_UNSET and loops back to implement-dsl for the agent to set
+// them.
 //
 // No prompt fallback: a missing value is the bug this gate exists to
 // catch, so coercing it to "no" via prompt would silently route the

@@ -409,12 +409,12 @@ func (a actions) readSubtype(ctx *statemachine.Context) statemachine.Outcome {
 //     task agent via clauderun.Options.Checklist so it doesn't have to
 //     re-fetch the issue.
 //   - ticket_acceptance_criteria: string, the parsed Acceptance Criteria
-//     body — handed to at-red-test via clauderun.Options.AcceptanceCriteria
-//     so the AT - RED - TEST agent doesn't have to shell out to
+//     body — handed to write-acceptance-tests via clauderun.Options.AcceptanceCriteria
+//     so the write-acceptance-tests agent doesn't have to shell out to
 //     `gh issue view` to read scenarios intake already extracted.
 //   - ticket_description: string, the parsed Description body — read by
 //     materialize_parsed_concepts when composing the parsed-concepts
-//     artifact refine-acc reads.
+//     artifact refine-acceptance-criteria reads.
 //   - ticket_legacy_acceptance_criteria: string, the parsed Legacy
 //     Acceptance Criteria body — same consumer as ticket_description.
 //     Distinct from legacy_acceptance_criteria_section_present, which
@@ -561,7 +561,7 @@ func (a actions) reportIntakeSummary(ctx *statemachine.Context) statemachine.Out
 	return statemachine.Outcome{}
 }
 
-// materializeParsedConcepts writes the parsed-concepts artifact refine-acc
+// materializeParsedConcepts writes the parsed-concepts artifact refine-acceptance-criteria
 // reads (and update-ticket reads back after refinement) and stashes its
 // path into ctx.State["parsed_concepts"] for substitution into both
 // agents' ${parsed_concepts} placeholder.
@@ -570,7 +570,7 @@ func (a actions) reportIntakeSummary(ctx *statemachine.Context) statemachine.Out
 // containing two named H2 sections — Legacy Acceptance Criteria,
 // Acceptance Criteria — populated from the strings parse_ticket_body
 // already stashed in ctx.State. Description is parsed and stashed
-// upstream but deliberately excluded here: refine-acc's contract is
+// upstream but deliberately excluded here: refine-acceptance-criteria's contract is
 // "rewrite acceptance criteria", not "rewrite prose context", and
 // carrying Description through the round-trip risks spurious
 // whitespace-normalization diffs back to the ticket source. No
@@ -580,7 +580,7 @@ func (a actions) reportIntakeSummary(ctx *statemachine.Context) statemachine.Out
 // "extract concepts" upgrade could replace this body with a structured
 // representation; the path contract stays the same.)
 //
-// Always writes the file, even when every section is empty — refine-acc
+// Always writes the file, even when every section is empty — refine-acceptance-criteria
 // then discharges as a no-op (Refinement Changed: no) and update-ticket
 // is gated past. An empty artifact is a valid state, not a wiring bug;
 // the alternative (skip materialize → ${parsed_concepts} unfilled →
@@ -613,7 +613,7 @@ func (a actions) materializeParsedConcepts(ctx *statemachine.Context) statemachi
 
 // renderParsedConcepts composes the artifact body from the two section
 // strings parse_ticket_body stashed in ctx.State. Empty sections are
-// emitted with their heading and a single blank line so refine-acc sees a
+// emitted with their heading and a single blank line so refine-acceptance-criteria sees a
 // uniform shape regardless of which sections the ticket carried — easier
 // to diff across runs than a body whose section set varies by ticket type.
 func renderParsedConcepts(legacyAC, acceptanceCriteria string) string {
@@ -748,9 +748,9 @@ func (a actions) commitPhase(ctx *statemachine.Context) statemachine.Outcome {
 // WRITE_PROTOTYPES or proceed. The cycle's COMPILE node picks one via the
 // `${compile_action}` template param at the call site:
 //
-//   - AT_RED_TEST / CT_RED_TEST     → compile_system_tests
-//   - AT_RED_DSL / *_DRIVER / GREEN → compile_system
-//   - structural_cycle              → compile_all
+//   - WRITE_ACCEPTANCE_TESTS / WRITE_CONTRACT_TESTS → compile_system_tests
+//   - IMPLEMENT_DSL / *_DRIVER / IMPLEMENT_SYSTEM    → compile_system
+//   - structural_cycle                               → compile_all
 //
 // Compile failure is NOT surfaced as Outcome.Err — the cycle's compile-failed
 // loop is the intended consumer; routing the bool is the correct behaviour.
@@ -795,7 +795,7 @@ func (a actions) runShell(cmdLine string) ([]byte, error) {
 // Reads:
 //   - CtxKeySuite (string)        — optional; e.g. "<acceptance-api>". When
 //     absent or empty, falls back to testselect.AcceptanceSuites() (the
-//     channel-agnostic dispatch path used by the collapsed AT_GREEN node).
+//     channel-agnostic dispatch path used by the collapsed IMPLEMENT_SYSTEM node).
 //   - CtxKeyTestNames ([]string)  — required; method names dispatched one
 //     per `gh optivem test run --suite <suite> --test <name>` shell-out
 //     for each resolved suite.
@@ -899,7 +899,7 @@ func isCompileFailureOutput(out []byte) bool {
 
 // verifyRealSuitePasses runs the suite named in the `verify_real_suite`
 // call_activity param against the test methods in CtxKeyTestNames and
-// asserts every one passes. Used by CT_RED_TEST to prove the new contract
+// asserts every one passes. Used by WRITE_CONTRACT_TESTS to prove the new contract
 // tests describe behaviour that the real external system actually
 // honours, before the regular RUN exercises the dockerized stub. AT
 // phases leave the param unset; the surrounding `verify_real_required`
@@ -1173,8 +1173,8 @@ func (a actions) selectTests(ctx *statemachine.Context) statemachine.Outcome {
 // BPMN diagram shows the build phase as its own node, and gated by
 // GATE_TESTS_SELECTED so the rebuild cost is paid only when tests will
 // actually run. Halts the cycle on failure with Outcome{Err} — a broken
-// build is an infra-class problem, not something the fix-verify agent
-// could recover from at the test-RED gateway.
+// build is an infra-class problem, not something the fix-* diagnosis
+// agents could recover from at the test-RED gateway.
 func (a actions) buildSystem(ctx *statemachine.Context) statemachine.Outcome {
 	if _, err := a.runShell("gh optivem system build --rebuild"); err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("build_system: %w", err)}
@@ -1514,10 +1514,11 @@ func (a actions) finalizeVerify(ctx *statemachine.Context, out statemachine.Outc
 	ctx.Set("verify_class", class.String())
 	ctx.Set("verify_results", results)
 	// Pre-format the per-command failures into one human-readable block
-	// so the fix-verify agent's prompt template can substitute it in via
-	// ${verify_results} without the dispatcher needing to import this
-	// package's verifyCommandResult type. Skipped on ok/infra: ok needs
-	// no agent dispatch, and infra halts at the action level (below).
+	// so the fix-* diagnosis agents' prompt templates can substitute it
+	// in via ${verify_results} without the dispatcher needing to import
+	// this package's verifyCommandResult type. Skipped on ok/infra: ok
+	// needs no agent dispatch, and infra halts at the action level
+	// (below).
 	if class == classRed {
 		ctx.Set("verify_results_text", formatVerifyResultsText(results))
 	}
@@ -1532,12 +1533,13 @@ func (a actions) finalizeVerify(ctx *statemachine.Context, out statemachine.Outc
 }
 
 // formatVerifyResultsText renders the failed verifyCommandResults as a
-// markdown-style block suitable for substitution into the
-// fix-verify prompt's ${verify_results} placeholder. Each failed
-// command becomes one block with the command line, the classification
-// label (when present), and the captured stdout/stderr the runner
-// produced. Successful commands are omitted — they are not what the
-// fix agent needs to read.
+// markdown-style block suitable for substitution into the fix-* (both
+// fix-unexpected-passing-tests and fix-unexpected-failing-tests)
+// prompt's ${verify_results} placeholder. Each failed command becomes
+// one block with the command line, the classification label (when
+// present), and the captured stdout/stderr the runner produced.
+// Successful commands are omitted — they are not what the fix agent
+// needs to read.
 //
 // Output is plain text (no syntax highlighting) so the same string
 // renders the same way in any LLM's context window. Ordering follows

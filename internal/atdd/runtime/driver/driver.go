@@ -295,7 +295,7 @@ func Run(ctx context.Context, opts Options) error {
 	seedScopeState(sCtx, cfg)
 	// Per-run artifact directory — used by service tasks that materialize
 	// inter-phase artifacts (e.g. materialize_parsed_concepts writing
-	// <run_dir>/parsed-concepts.md for refine-acc / update-ticket).
+	// <run_dir>/parsed-concepts.md for refine-acceptance-criteria / update-ticket).
 	sCtx.Set("run_dir", filepath.Join(repoPath, ".gh-optivem", "runs", runState.runTimestamp))
 
 	if opts.IssueNum > 0 {
@@ -505,7 +505,7 @@ func seedScopeState(sCtx *statemachine.Context, cfg *projectconfig.Config) {
 //   - Monolith → cfg.System.Lang.
 //   - Multitier → cfg.System.Backend.Lang. The current ATDD prompts that
 //     reference ${language} (test, dsl, driver, task) are backend-aligned;
-//     the merged at-green-system agent does not reference ${language} in
+//     the merged implement-system agent does not reference ${language} in
 //     its stripped body, so a single seed suffices. If frontend-specific
 //     language refs are introduced later, the dispatcher can override
 //     per-agent without changing the schema.
@@ -815,7 +815,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 			AcceptanceCriteria: ctx.GetString("ticket_acceptance_criteria"),
 			ParsedConcepts:     ctx.GetString("parsed_concepts"),
 			VerifyResults:      ctx.GetString("verify_results_text"),
-			ChangedFiles:       fixVerifyChangedFiles(agentName, opts.RepoPath),
+			ChangedFiles:       fixChangedFiles(agentName, opts.RepoPath),
 			NodeParams:         nodeParams,
 			Placeholders:       placeholders,
 			OverrideText:       extraText,
@@ -857,20 +857,22 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 	}
 }
 
-// fixVerifyChangedFiles returns the working-tree dirty-file listing
-// (one path per line) the dispatcher passes into fix-verify's
-// ${changed_files} placeholder. We only shell out for that one agent
-// because it is the only one whose prompt template references the
-// substitution — every other dispatch leaves the placeholder out of
-// the template anyway, so paying for a `git status` on every node
-// would be wasted work.
+// fixChangedFiles returns the working-tree dirty-file listing (one
+// path per line) the dispatcher passes into the ${changed_files}
+// placeholder consumed by the fix-* failure-diagnosis prompts. We
+// only shell out for those agents because they are the only ones
+// whose prompt templates reference the substitution — every other
+// dispatch leaves the placeholder out of the template anyway, so
+// paying for a `git status` on every node would be wasted work.
 //
 // On any shell error (no git in PATH, not a repo, …) we return the
-// empty string. The fix-verify prompt simply renders an empty
-// "Changed files" block; the agent can re-run `git status` itself if
-// it needs the listing. The dispatch is feedback, not load-bearing.
-func fixVerifyChangedFiles(agent, repoPath string) string {
-	if agent != "fix-verify" {
+// empty string. The fix-* prompts simply render an empty "Changed
+// files" block; the agent can re-run `git status` itself if it needs
+// the listing. The dispatch is feedback, not load-bearing.
+func fixChangedFiles(agent, repoPath string) string {
+	switch agent {
+	case "fix-unexpected-passing-tests", "fix-unexpected-failing-tests":
+	default:
 		return ""
 	}
 	cmd := exec.Command("git", "status", "--porcelain")

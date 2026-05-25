@@ -88,7 +88,7 @@ processes:
         type: start_event
       - id: AT_RED_TEST
         type: user_task
-        agent: at-red-test
+        agent: write-acceptance-tests
         documentation: Write the AT-RED scenario
       - id: END
         type: end_event
@@ -169,7 +169,7 @@ func newCtxWithIssue() *statemachine.Context {
 	// cfg in production. Seed a default here so test fixtures don't have
 	// to thread the config through.
 	c.Set("language", "java")
-	// at-red-test references ${acceptance_criteria}; parseTicketBody would
+	// write-acceptance-tests references ${acceptance_criteria}; parseTicketBody would
 	// set it from intake.Result.AcceptanceCriteria.Body in production. Seed
 	// a default here so dispatch fixtures don't have to thread a parsed
 	// ticket body through.
@@ -203,8 +203,8 @@ func TestClaudeRunDispatch_AdvancesOnCleanExit(t *testing.T) {
 	got := claudeFake.calls[0].Prompt
 	// Prompt should be the embedded agent's body with ${name} placeholders
 	// substituted from ticket context; v2 has no parent-claude wrapper.
-	if !strings.Contains(got, "You are the Test Agent") {
-		t.Errorf("prompt missing agent identity line")
+	if !strings.Contains(got, "The Acceptance Criteria below were parsed") {
+		t.Errorf("prompt missing expected write-acceptance-tests body marker")
 	}
 	if !strings.Contains(got, "#42") || !strings.Contains(got, "Add PUT") {
 		t.Errorf("prompt missing ticket context")
@@ -422,7 +422,7 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 		},
 	}
 	claudeFake := &fakeClaude{}
-	// task-system-interface-redesign's prompt now inlines phase-doc
+	// implement-system's prompt now inlines phase-doc
 	// placeholders (${sut_namespace}, ${driver-adapter}, ${driver-port},
 	// ${system_test_path}); a cfg with populated Paths is required so
 	// the dispatcher's PlaceholderMap fills them.
@@ -445,7 +445,7 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 
 	ctx := newCtxWithIssue()
 	ctx.Params = map[string]string{
-		"agent":       "task-system-interface-redesign",
+		"agent":       "implement-system",
 		"change_type": "SYSTEM UI REDESIGN",
 	}
 
@@ -460,8 +460,8 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	if strings.Contains(prompt, "${") {
 		t.Errorf("prompt still contains ${...} placeholder")
 	}
-	if !strings.Contains(prompt, "You are the Task Agent") {
-		t.Errorf("prompt missing expanded agent identity line (task-system-interface-redesign → Task Agent)")
+	if !strings.Contains(prompt, "implement-system task makes the system's surface") {
+		t.Errorf("prompt missing expected implement-system body marker")
 	}
 	if !strings.Contains(prompt, "SYSTEM UI REDESIGN - WRITE") {
 		t.Errorf("prompt missing expanded phase description")
@@ -485,7 +485,7 @@ func TestManualAgents_BannerSubstitutesTemplatedFields(t *testing.T) {
 
 	ctx := newCtxWithIssue()
 	ctx.Params = map[string]string{
-		"agent":       "task-system-interface-redesign",
+		"agent":       "implement-system",
 		"change_type": "SYSTEM UI REDESIGN",
 	}
 
@@ -496,10 +496,10 @@ func TestManualAgents_BannerSubstitutesTemplatedFields(t *testing.T) {
 	if strings.Contains(got, "${") {
 		t.Errorf("banner still contains ${...} placeholder:\n%s", got)
 	}
-	if !strings.Contains(got, "DISPATCH: task-system-interface-redesign") {
+	if !strings.Contains(got, "DISPATCH: implement-system") {
 		t.Errorf("banner missing expanded DISPATCH line:\n%s", got)
 	}
-	if !strings.Contains(got, "Launch the task-system-interface-redesign agent") {
+	if !strings.Contains(got, "Launch the implement-system agent") {
 		t.Errorf("banner missing expanded launch line:\n%s", got)
 	}
 	if strings.Contains(got, "Phase doc:") {
@@ -621,7 +621,7 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 			Repo: "optivem/shop",
 			Lang: projectconfig.LangTypescript,
 			// Family B paths feed the dispatcher's PlaceholderMap so inlined
-			// phase-doc references in task-system-interface-redesign's body
+			// phase-doc references in implement-system's body
 			// (${driver-port}, ${driver-adapter}, …) resolve at render time.
 			Paths: projectconfig.DefaultPaths(projectconfig.LangTypescript, "system-test", "shop"),
 		},
@@ -646,13 +646,13 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 	opts := newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake})
 	opts.RepoPath = tmpRepo
 
-	// minimalYAML's user_task uses agent: at-red-test, but the prompt-
-	// substitution failure mode is most visible on agents whose prompt
-	// body references ${architecture} / ${allowed_roots}
-	// (task-*). Use a YAML variant with the system
-	// task agent so wrapAgentDispatchers picks the right closure on
+	// minimalYAML's user_task uses agent: write-acceptance-tests, but the
+	// prompt-substitution failure mode is most visible on agents whose
+	// prompt body references ${architecture} / ${allowed_roots}
+	// (implement-system). Use a YAML variant with the system implement
+	// agent so wrapAgentDispatchers picks the right closure on
 	// first walk.
-	yamlSrc := strings.Replace(minimalYAML, "agent: at-red-test", "agent: task-system-interface-redesign", 1)
+	yamlSrc := strings.Replace(minimalYAML, "agent: write-acceptance-tests", "agent: implement-system", 1)
 
 	eng, err := statemachine.LoadBytes([]byte(yamlSrc))
 	if err != nil {
@@ -693,7 +693,7 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 	// runState. Read it back and compare byte-for-byte against the
 	// captured prompt — this pins down item 2 (PromptLogPath plumbing)
 	// alongside item 1 (the substitution fix).
-	logPath := filepath.Join(tmpRepo, ".gh-optivem", "runs", "20260505-150000", "001-task-system-interface-redesign.prompt.md")
+	logPath := filepath.Join(tmpRepo, ".gh-optivem", "runs", "20260505-150000", "001-implement-system.prompt.md")
 	body, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatalf("read prompt log: %v", err)
@@ -779,12 +779,12 @@ func TestRunState_PromptLogPathSequencesPerDispatch(t *testing.T) {
 	rs := &runState{runTimestamp: "20260505-150000", repoPath: "/tmp/repo"}
 	got := []string{
 		rs.promptLogPath("task"),
-		rs.promptLogPath("at-red-test"),
+		rs.promptLogPath("write-acceptance-tests"),
 		rs.promptLogPath("task"),
 	}
 	want := []string{
 		filepath.Join("/tmp/repo", ".gh-optivem", "runs", "20260505-150000", "001-task.prompt.md"),
-		filepath.Join("/tmp/repo", ".gh-optivem", "runs", "20260505-150000", "002-at-red-test.prompt.md"),
+		filepath.Join("/tmp/repo", ".gh-optivem", "runs", "20260505-150000", "002-write-acceptance-tests.prompt.md"),
 		filepath.Join("/tmp/repo", ".gh-optivem", "runs", "20260505-150000", "003-task.prompt.md"),
 	}
 	for i, w := range want {

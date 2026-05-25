@@ -117,14 +117,14 @@ func (f *fakeGit) hasGitArg(prefix ...string) bool {
 
 func newOpts() Options {
 	return Options{
-		Agent:           "at-red-test",
+		Agent:           "write-acceptance-tests",
 		NodeDescription: "Write the AT-RED scenario",
 		IssueNum:        42,
 		IssueTitle:      "Add PUT /carts/{id}/items endpoint",
 		// The stripped prompts reference ${language} in the language-
 		// equivalents pointer; seed a default so tests don't have to.
 		Language: "java",
-		// at-red-test.md references ${acceptance_criteria}; seed a
+		// write-acceptance-tests.md references ${acceptance_criteria}; seed a
 		// default so dispatch tests using this scaffold render cleanly.
 		// Tests that exercise the unset/load-bearing path override this.
 		AcceptanceCriteria: "Scenario: placeholder\n  Given x\n  When y\n  Then z",
@@ -150,7 +150,7 @@ func TestRenderPrompt_IncludesAllFields(t *testing.T) {
 
 	// v2: prompt is the embedded agent body with ${name} placeholders
 	// substituted; the parent-claude "Launch the X subagent" wrapper is gone.
-	mustContain(t, got, "You are the Test Agent")
+	mustContain(t, got, "The Acceptance Criteria below were parsed")
 	mustContain(t, got, `#42 "Add PUT /carts/{id}/items endpoint"`)
 	mustContain(t, got, "Phase: Write the AT-RED scenario")
 	// Phase doc was dropped — every preamble agent now reads from its
@@ -174,13 +174,12 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 	// test every embedded prompt to make sure no agent leaks the marker
 	// or the pre-rollout preamble.
 	for _, name := range []string{
-		"at-green-system", "task-system-implementation-refactoring",
-		"at-red-system-driver", "ct-red-external-system-driver",
-		"at-red-dsl", "ct-red-dsl",
-		"ct-green-external-system-stub",
-		"task-system-interface-redesign",
-		"task-external-system-interface-redesign",
-		"at-red-test", "ct-red-test",
+		"implement-system", "refactor-system",
+		"implement-system-driver-adapters",
+		"implement-external-system-driver-adapters",
+		"implement-dsl",
+		"implement-external-system-stubs",
+		"write-acceptance-tests", "write-contract-tests",
 	} {
 		opts := newOpts()
 		opts.Agent = name
@@ -203,10 +202,10 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 
 func TestRenderPrompt_TaskAgentArchitectureAndAllowedRoots_ExplicitValues(t *testing.T) {
 	opts := newOpts()
-	opts.Agent = "task-system-interface-redesign"
+	opts.Agent = "implement-system"
 	opts.Architecture = "monolith"
 	opts.AllowedRoots = "- System: system/monolith/java (lang: java)\n- System tests: system-test/java (lang: java)\n"
-	// task-system-interface-redesign now inlines phase-doc placeholders
+	// implement-system now inlines phase-doc placeholders
 	// in its body; without these the no-leftover-${...} assertion below
 	// would catch the inlined Family B path references.
 	opts.Placeholders = map[string]string{
@@ -231,7 +230,7 @@ func TestRenderPrompt_TaskAgentArchitectureAndAllowedRoots_ExplicitValues(t *tes
 
 func TestRenderPrompt_TaskAgentChecklistInjected(t *testing.T) {
 	opts := newOpts()
-	opts.Agent = "task-system-interface-redesign"
+	opts.Agent = "implement-system"
 	opts.Checklist = "- [x] Rename \"New Order\" to \"Place Order\"\n- [x] Rename SKU aria-label"
 
 	got, err := renderPrompt(opts)
@@ -240,22 +239,22 @@ func TestRenderPrompt_TaskAgentChecklistInjected(t *testing.T) {
 	}
 	mustContain(t, got, opts.Checklist)
 	if strings.Contains(got, "Fetch the issue with `gh`") {
-		t.Errorf("task-system-interface-redesign prompt should no longer instruct the agent to fetch the issue: %s", got)
+		t.Errorf("implement-system prompt should no longer instruct the agent to fetch the issue: %s", got)
 	}
 	if strings.Contains(got, "${checklist}") {
 		t.Errorf("${checklist} placeholder leaked into rendered prompt")
 	}
 }
 
-func TestRenderPrompt_TaskSystemImplementationRefactoringAgent_EmptyArchitectureAndRootsRender(t *testing.T) {
+func TestRenderPrompt_RefactorSystemAgent_EmptyArchitectureAndRootsRender(t *testing.T) {
 	// When architecture and allowed_roots are empty (e.g. fresh config or
 	// pre-resolution), the placeholders expand to empty strings — the
 	// prompt still renders without leaking ${...}. There is no longer a
 	// "broadest defaults" fallback; per-component lang has replaced
 	// `Architecture=both`/`Lang=all` semantics.
 	opts := newOpts()
-	opts.Agent = "task-system-implementation-refactoring"
-	// The task-system-implementation-refactoring prompt inlines phase-doc
+	opts.Agent = "refactor-system"
+	// The refactor-system prompt inlines phase-doc
 	// placeholders that the production dispatcher fills from
 	// cfg.PlaceholderMap(); supply them directly so the body renders
 	// without ${...} leftovers.
@@ -459,8 +458,8 @@ func TestRenderPrompt_LanguageSubstitutes(t *testing.T) {
 }
 
 // TestRenderPrompt_AcceptanceCriteriaSubstitutes covers the
-// ${acceptance_criteria} placeholder that lets at-red-test consume the
-// scenarios intake parsed from the ticket body without re-fetching the
+// ${acceptance_criteria} placeholder that lets write-acceptance-tests consume
+// the scenarios intake parsed from the ticket body without re-fetching the
 // issue via `gh issue view`.
 func TestRenderPrompt_AcceptanceCriteriaSubstitutes(t *testing.T) {
 	opts := newOpts()
@@ -547,8 +546,8 @@ func TestDispatch_SuccessReturnsNilOnCleanExit(t *testing.T) {
 	if len(claudeFake.calls) != 1 {
 		t.Fatalf("expected 1 claude call, got %d", len(claudeFake.calls))
 	}
-	if !strings.Contains(claudeFake.calls[0].Prompt, "You are the Test Agent") {
-		t.Errorf("prompt missing agent identity line")
+	if !strings.Contains(claudeFake.calls[0].Prompt, "The Acceptance Criteria below were parsed") {
+		t.Errorf("prompt missing expected write-acceptance-tests body marker")
 	}
 	if gitFake.hasGitArg("add") || gitFake.hasGitArg("commit") {
 		t.Errorf("clauderun must not stage or commit: %v", gitFake.args)
@@ -652,7 +651,7 @@ func TestDispatch_WritesEnterAndExitBanners(t *testing.T) {
 	}
 	got := buf.String()
 	mustContain(t, got, "ENTERING AGENT")
-	mustContain(t, got, "at-red-test")
+	mustContain(t, got, "write-acceptance-tests")
 	mustContain(t, got, "EXITED AGENT")
 	mustContain(t, got, "1 file(s) changed")
 }
@@ -1148,7 +1147,7 @@ func TestFindUnfilledPlaceholders_NoMatchesReturnsNil(t *testing.T) {
 
 func TestDispatch_WritesPromptLogWhenPathSet(t *testing.T) {
 	dir := t.TempDir()
-	logPath := filepath.Join(dir, "runs", "001-at-red-test.prompt.md")
+	logPath := filepath.Join(dir, "runs", "001-write-acceptance-tests.prompt.md")
 
 	gitFake := &fakeGit{
 		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
@@ -1215,12 +1214,12 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	claudeFake := &fakeClaude{}
 	opts := newOpts()
 	opts.Stdout = &buf
-	opts.Agent = "task-system-interface-redesign"
+	opts.Agent = "implement-system"
 	opts.Architecture = "monolith"
 	opts.AllowedRoots = "- System: system/monolith/typescript (lang: typescript)\n- System tests: system-test/typescript (lang: typescript)\n"
 	opts.Checklist = "- [x] One done\n- [ ] Two pending"
-	opts.PromptLogPath = "/tmp/runs/001-task-system-interface-redesign.prompt.md"
-	// task-system-interface-redesign's inlined phase-doc body now references
+	opts.PromptLogPath = "/tmp/runs/001-implement-system.prompt.md"
+	// implement-system's inlined phase-doc body now references
 	// ${sut_namespace}, ${driver-adapter}, ${driver-port}, ${system_test_path};
 	// the production dispatcher fills these from cfg.PlaceholderMap(). With
 	// no ProjectConfig in this test, supply them directly so renderPrompt
@@ -1236,7 +1235,7 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	got := buf.String()
-	mustContain(t, got, "PREPARED PROMPT for task-system-interface-redesign")
+	mustContain(t, got, "PREPARED PROMPT for implement-system")
 	mustContain(t, got, "architecture:")
 	mustContain(t, got, "monolith")
 	mustContain(t, got, "allowed roots:")
@@ -1247,7 +1246,7 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	mustContain(t, got, "2 item(s) (1 already [x])")
 	mustContain(t, got, "- [x] One done")
 	mustContain(t, got, "- [ ] Two pending")
-	mustContain(t, got, "/tmp/runs/001-task-system-interface-redesign.prompt.md")
+	mustContain(t, got, "/tmp/runs/001-implement-system.prompt.md")
 }
 
 func TestDispatch_PreparedPromptBannerUsesPlaceholdersForEmpties(t *testing.T) {
@@ -1305,7 +1304,7 @@ func TestDispatch_ShowPromptDumpsFullPrompt(t *testing.T) {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	got := buf.String()
-	mustContain(t, got, "You are the Test Agent") // the embedded body is dumped
+	mustContain(t, got, "The Acceptance Criteria below were parsed") // the embedded body is dumped
 }
 
 func TestDispatch_ShowPromptOffByDefault(t *testing.T) {
@@ -1320,7 +1319,7 @@ func TestDispatch_ShowPromptOffByDefault(t *testing.T) {
 	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
-	if strings.Contains(buf.String(), "You are the Test Agent") {
+	if strings.Contains(buf.String(), "The Acceptance Criteria below were parsed") {
 		t.Errorf("--show-prompt off must not dump the prompt body:\n%s", buf.String())
 	}
 }

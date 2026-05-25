@@ -66,12 +66,12 @@ func TestSplitFrontmatter(t *testing.T) {
 	}
 }
 
-func TestLoadTuning_AtddTestAt(t *testing.T) {
-	// Pins the at-red-test frontmatter so a careless edit doesn't
-	// silently drop the per-agent tuning back to session defaults
-	// (Opus + max effort) — which would re-introduce the cost spike
-	// the frontmatter was added to fix.
-	got, err := LoadTuning("at-red-test")
+func TestLoadTuning_WriteAcceptanceTests(t *testing.T) {
+	// Pins the write-acceptance-tests frontmatter so a careless edit
+	// doesn't silently drop the per-agent tuning back to session
+	// defaults (Opus + max effort) — which would re-introduce the cost
+	// spike the frontmatter was added to fix.
+	got, err := LoadTuning("write-acceptance-tests")
 	if err != nil {
 		t.Fatalf("LoadTuning: %v", err)
 	}
@@ -139,6 +139,33 @@ func TestParseTuningFrontmatter_Accepts(t *testing.T) {
 	}
 	if got.Model != "sonnet" || got.Effort != "medium" {
 		t.Errorf("got %+v, want {sonnet medium}", got)
+	}
+}
+
+func TestFixKindPromptsExist(t *testing.T) {
+	// Pins the closed set of fix-* failure-kinds the YAML's
+	// `task-name: "fix-${failure-kind}"` placeholder (process-flow.yaml,
+	// `fix` MID) resolves against. Every kind here must have a matching
+	// prompt embedded under internal/assets/runtime/prompts/atdd/.
+	//
+	// Phase D will wire the binding that emits `failure-kind`; until
+	// then this test guards the convention end-to-end at the prompt
+	// level — adding a new kind requires adding a fix-<kind>.md, and a
+	// prompt rename will fail this test before runtime sees an unknown
+	// task-name.
+	wantKinds := []string{
+		"unexpected-passing-tests",
+		"unexpected-failing-tests",
+	}
+	names := map[string]bool{}
+	for _, n := range Names() {
+		names[n] = true
+	}
+	for _, kind := range wantKinds {
+		taskName := "fix-" + kind
+		if !names[taskName] {
+			t.Errorf("missing prompt for failure-kind %q (expected agents.Names() to include %q)", kind, taskName)
+		}
 	}
 }
 

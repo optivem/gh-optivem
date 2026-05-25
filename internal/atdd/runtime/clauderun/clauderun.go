@@ -47,7 +47,7 @@ import (
 // (Agent, IssueNum, IssueTitle, NodeDescription) are
 // not zero-defaulted because missing them yields a meaningless prompt.
 type Options struct {
-	// Agent is the subagent name to launch (e.g. "at-red-test").
+	// Agent is the subagent name to launch (e.g. "write-acceptance-tests").
 	Agent string
 
 	// NodeDescription is the YAML node's `documentation:` — surfaced in the
@@ -88,11 +88,11 @@ type Options struct {
 
 	// AcceptanceCriteria is the body of the ticket's Acceptance Criteria
 	// section as parsed by intake.Parse. Surfaced to the agent prompt via
-	// the ${acceptance_criteria} placeholder so at-red-test can read the
+	// the ${acceptance_criteria} placeholder so write-acceptance-tests can read the
 	// scenarios intake already extracted instead of shelling out to
 	// `gh issue view`. Load-bearing: when empty AND the prompt body
 	// references ${acceptance_criteria}, findUnfilledPlaceholders fails
-	// the dispatch fast — AT - RED - TEST is contractually scoped to
+	// the dispatch fast — WRITE-ACCEPTANCE-TESTS is contractually scoped to
 	// implementing AC, so an absent value is a wiring bug, not a valid
 	// state. Mirrors the ${language} pattern: only registered when
 	// non-empty so the unfilled-placeholder check is the single
@@ -101,7 +101,7 @@ type Options struct {
 
 	// ParsedConcepts is the absolute path to the parsed-concepts artifact
 	// materialize_parsed_concepts writes at the start of the
-	// backlog_refinement sub-process. Substituted into refine-acc's and
+	// backlog_refinement sub-process. Substituted into refine-acceptance-criteria's and
 	// update-ticket's ${parsed_concepts} placeholder so those agents
 	// share a stable file path for the parsed ACs across the
 	// CONFIRM_REFINEMENT human gate. Load-bearing: only registered when
@@ -112,7 +112,7 @@ type Options struct {
 
 	// VerifyResults is the formatted block describing every red-class
 	// verifyCommandResult the most recent RUN_TESTS produced.
-	// Substituted into fix-verify's ${verify_results} placeholder so
+	// Substituted into fix-unexpected-passing-tests' / fix-unexpected-failing-tests' ${verify_results} placeholder so
 	// the fix agent reads the same captured runner output the operator
 	// saw inline. Empty for every other agent — the rendered prompt
 	// just leaves the placeholder verbatim, which is harmless because
@@ -120,7 +120,7 @@ type Options struct {
 	VerifyResults string
 
 	// ChangedFiles is the working-tree diff (as `git status --porcelain`)
-	// at the moment of dispatch. Substituted into fix-verify's
+	// at the moment of dispatch. Substituted into fix-unexpected-passing-tests' / fix-unexpected-failing-tests'
 	// ${changed_files} placeholder so the fix agent can scope its
 	// reasoning to "what the WRITE phase just edited" without re-running
 	// `git status`. Empty when the dispatcher couldn't shell out (e.g.
@@ -190,8 +190,8 @@ type Options struct {
 	// invocation (e.g. "sonnet", "haiku", "opus", or a full model id like
 	// "claude-sonnet-4-6"). Empty → no flag, claude inherits the user's
 	// session default. Per-agent tuning lets mechanical-scaffolding agents
-	// (e.g. at-red-test PROTOTYPES) skip the Opus tax that creative agents
-	// (e.g. fix-verify) actually need.
+	// (e.g. write-acceptance-tests PROTOTYPES) skip the Opus tax that creative agents
+	// (e.g. fix-unexpected-failing-tests) actually need.
 	Model string
 
 	// Effort, when non-empty, becomes the `--effort` flag on the claude
@@ -542,13 +542,13 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	if opts.Language != "" {
 		params["language"] = opts.Language
 	}
-	// AcceptanceCriteria is load-bearing for at-red-test — same rationale
+	// AcceptanceCriteria is load-bearing for write-acceptance-tests — same rationale
 	// as Language. Only registered when non-empty so an absent value
 	// surfaces via findUnfilledPlaceholders rather than substituting "".
 	if opts.AcceptanceCriteria != "" {
 		params["acceptance_criteria"] = opts.AcceptanceCriteria
 	}
-	// ParsedConcepts is load-bearing for refine-acc / update-ticket —
+	// ParsedConcepts is load-bearing for refine-acceptance-criteria / update-ticket —
 	// same rationale as AcceptanceCriteria. Only registered when
 	// non-empty so an absent value surfaces via findUnfilledPlaceholders.
 	if opts.ParsedConcepts != "" {

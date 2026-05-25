@@ -28,11 +28,10 @@ type PhaseScopes struct {
 }
 
 // NonWritingAgents are agent names that do not need a phase-scopes
-// entry. `human` is the trusted-actor case; `fix-verify` is a retry
-// helper that inherits scope from the failing phase's context.
+// entry. `human` is the trusted-actor case — the operator is trusted
+// to scope their own edits.
 var NonWritingAgents = map[string]bool{
-	"human":      true,
-	"fix-verify": true,
+	"human": true,
 }
 
 // FamilyAPathKeysInScope lists Family A path-shaped keys that are valid

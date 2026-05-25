@@ -32,9 +32,9 @@ func loadEngine(t *testing.T) *statemachine.Engine {
 
 // concreteAgent returns the writing-agent name dispatched by a node, or
 // "" if the node has no dispatch, dispatches a non-writing agent
-// (`human`, `fix-verify`), or dispatches a templated agent (e.g.
-// `${agent}` — the concrete name lives on the parent call_activity, not
-// here, so checking the parent is sufficient).
+// (`human` — the sole non-writing agent), or dispatches a templated
+// agent (e.g. `${agent}` — the concrete name lives on the parent
+// call_activity, not here, so checking the parent is sufficient).
 func concreteAgent(node statemachine.Node) string {
 	var agent string
 	switch node.Kind {

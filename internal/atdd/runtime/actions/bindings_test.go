@@ -873,7 +873,7 @@ func TestParseTicketBody_StashesDescriptionAndLegacyAC(t *testing.T) {
 // happy-path wiring the backlog_refinement sub-process depends on: read
 // the three section strings parse_ticket_body stashed, write them to
 // <run_dir>/parsed-concepts.md, set ctx.State["parsed_concepts"] to the
-// path so ${parsed_concepts} resolves in refine-acc / update-ticket.
+// path so ${parsed_concepts} resolves in refine-acceptance-criteria / update-ticket.
 func TestMaterializeParsedConcepts_WritesArtifactAndStashesPath(t *testing.T) {
 	runDir := t.TempDir()
 	a := newActions(Deps{Prompter: &fakePrompter{}})
@@ -909,7 +909,7 @@ func TestMaterializeParsedConcepts_WritesArtifactAndStashesPath(t *testing.T) {
 // task-ticket path where intake parsed no Description / AC / Legacy AC
 // (only a Checklist). The action must still write the file and stash
 // the path so the downstream ${parsed_concepts} substitution resolves;
-// refine-acc then discharges as a no-op rather than the dispatch
+// refine-acceptance-criteria then discharges as a no-op rather than the dispatch
 // failing on an unfilled placeholder.
 func TestMaterializeParsedConcepts_EmptySectionsStillWritesFile(t *testing.T) {
 	runDir := t.TempDir()
