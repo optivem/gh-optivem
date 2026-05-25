@@ -1,3 +1,5 @@
+> 🤖 **Picked up by agent (refine)** — `Valentina_Desk` at `2026-05-25T20:15:56Z`
+
 > ⚠️ **DISCUSSION MODE ONLY — NOT READY FOR EXECUTION.**
 > This file is a thinking space, not a work plan. There are no checked items, no scope decisions, no agent assignments. Do **not** run `/execute-plan` against it. The point is to surface options and pick a direction *before* anything gets written as an actionable plan. When the direction is locked, a fresh dated plan supersedes this one (per `feedback_new_plan_not_extend`).
 
@@ -92,7 +94,34 @@ Option: a per-node opt-in (`StateAware: true`) that lets the spy run the *real* 
 
 ## Discussion notes
 
-> *(empty — to be filled in once we talk through the three directions)*
+### Direction A — DECIDED: ship it
+
+Locked in (2026-05-25 walk). A is worth doing on its own merits — lowest-risk, highest-leverage of the three. Rationale:
+
+- Reuses the existing `DispatchEvent` shape — no schema design needed.
+- Operator can `jq` over a real run for triage (parseable artefact, not just colored stream).
+- Enables fixture-based golden tests for full pipelines later.
+
+Settled sub-decisions:
+
+- **Supplement, not replace** the per-prompt `.prompt.md` files. They cover different forensic needs (prompt/response text vs. routing/state). JSONL does not subsume them.
+- **Single source of truth for event shape.** Either extract a shared "build event record" helper that both `trace.go` formatting and the JSONL serializer consume, or pick one as authoritative and derive the other. Decide which at plan-drafting time, not now.
+- File-growth pruning rides on the existing `--keep-runs` machinery.
+
+Carry-forward for the fresh plan: name the driver flag (`--trace-events <path>` is the sketched name), specify the JSON shape vs. the in-memory `DispatchEvent` struct, and decide the shared-emit-path refactor up front so we don't ship two divergent emitters.
+
+### Direction B — DECIDED: ship as plain helpers, not a DSL
+
+Locked in (2026-05-25 walk). Adopt the diagnosis (the "new call site forgot the upstream gate" failure mode is real and recurring) but reject the fluent-builder shape from the sketch.
+
+Settled sub-decisions:
+
+- **Plain Go helpers over `[]DispatchEvent`** — e.g. `assertCallPrecededByGate(events, "commit", "verify_class", "ok")`. No `EveryCallTo(...).IsPrecededBy(...)` chain syntax.
+- The "easy to over-engineer" con in the original sketch is the reason: a handful of helpers gets ~80% of the value with none of the chain-shape lock-in, and the third invariant that doesn't fit a builder shape always shows up.
+- B's helpers should be **callable from both spy-captured and JSONL-captured event slices** (same shape). This dovetails with Direction A — without A, helpers only ever run against spy fixtures and just restate what per-cycle expected-event lists already cover.
+- The "YAML lint pass" option was rejected as B's primary shape, but if specific invariants turn out to be purely structural (graph-level, not runtime-level), they can be added to the YAML loader separately — not as part of B.
+
+Carry-forward for the fresh plan: enumerate the 2-3 invariants we'd write helpers for first (concrete enough to stress-test the helper shape), and decide where they live (`internal/atdd/runtime/statemachine/invariants_test.go`? a non-test package so they're reusable from JSONL post-mortems?).
 
 ## Decision criteria (working list)
 
