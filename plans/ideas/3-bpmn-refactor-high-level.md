@@ -2,9 +2,11 @@
 
 > **Naming convention (Q29).** All process-model identifiers use kebab-case lowercase across YAML, doc headings, prompt filenames, and in-prose references. Layer labels (TOP / CYCLE / HIGH / MID / LOW) remain organizational categories only and are not part of identifier names.
 
+> **Q-new-1 doctrine (resolved 2026-05-25).** HIGH orchestrations are parameterized on `<Expected Test Result>`; the prior "red"-prefixed names were misleading because every orchestration ultimately routes through the shared `implement-test-layer` which already takes Expected Test Result as input. "red" has been dropped from every HIGH name. `change-system-behavior` invokes these with `<Expected: Failure>`; `cover-system-behavior` with `<Expected: Success>`.
+
 ===========================
 
-## write-and-verify-red-tests
+## write-and-verify-tests
 
 **INPUT: Acceptance Criteria** (scenario based Gherkin)
 
@@ -20,52 +22,57 @@
 | `implement-dsl` | `external-driver-ports-changed: bool` | Step 2.1.1 — "External System Driver Ports Changed?" |
 | `implement-dsl` | `system-driver-ports-changed: bool` | Step 2.1.2 — "System Driver Ports Changed?" |
 
-Note: the External/System driver port-change checks are nested *under* "YES: `implement-red-dsl-core`" because those port-change outputs only exist after DSL is implemented.
+Note: the External/System driver port-change checks are nested *under* "YES: `implement-and-verify-dsl`" because those port-change outputs only exist after DSL is implemented.
 
-Note: `<Expected Test Result>` (from INPUT above) is threaded to all nested `implement-red-*` calls — no need to repeat per leaf (Q6.a).
+Note: `<Expected Test Result>` (from INPUT above) is threaded to all nested orchestration calls — no need to repeat per leaf (Q6.a).
 
-1. `write-red-acceptance-tests`
+1. `write-and-verify-acceptance-tests`
 2. DSL Port Changed? (reads `dsl-port-changed` from step 1)
-    1. YES: `implement-red-dsl-core`
+    1. YES: `implement-and-verify-dsl`
         1. External System Driver Ports Changed? (reads `external-driver-ports-changed` from `implement-dsl`)
-            1. YES: `implement-red-external-system-driver-adapters`
+            1. YES: `implement-and-verify-external-system-driver-adapters`
         2. System Driver Ports Changed? (reads `system-driver-ports-changed` from `implement-dsl`)
-            1. YES: `implement-red-system-driver-adapters`
+            1. YES: `implement-and-verify-system-driver-adapters`
 
-## write-red-acceptance-tests
+## write-and-verify-acceptance-tests
 
 **INPUT: Acceptance Criteria** (scenario based Gherkin)
+
+**INPUT: Expected Test Result**
 
 **OUTPUT: Tests**
 
 1. `write-acceptance-tests` (AGENT)
 2. `compile-tests`
-3. `verify-tests-fail`
-4. `disable-tests` (AGENT)
-5. `commit`
+3. Based on `<Expected Test Result>`:
+    1. If expect success: `verify-tests-pass`
+    2. If expect failure:
+        1. `verify-tests-fail`
+        2. `disable-tests` (AGENT)
+4. `commit`
 
-## implement-red-dsl-core
+## implement-and-verify-dsl
 
 1. `implement-test-layer`
-    1. Agent Action: `implement-dsl-core`
+    1. Agent Action: `implement-dsl`
 
-## implement-red-system-driver-adapters
+## implement-and-verify-system-driver-adapters
 
 1. `implement-test-layer`
     1. Agent Action: `implement-system-driver-adapters`
 
-## implement-red-external-system-driver-adapters-contract-tests
+## implement-and-verify-external-system-driver-adapter-contract-tests
 
-1. Write RED Contract Test
+1. `write-contract-tests` (AGENT)
     1. Note: supposed to think about the External System Driver Ports
     2. Output: list of tests
 2. DSL Port Changed?
-    1. `implement-red-dsl`
+    1. YES: `implement-and-verify-dsl`
         1. Note: supposed to use the External System Driver Ports
-3. `implement-external-system-driver-adapters`
+3. `implement-external-system-driver-adapters` (AGENT)
 4. `verify-tests-pass` <Contract Tests - Real>
 5. `verify-tests-fail` <Contract Tests - Stub>
-6. `implement-external-system-stubs`
+6. `implement-external-system-stubs` (AGENT)
 7. `verify-tests-pass` <Contract Tests - Stub>
 
 ===========================

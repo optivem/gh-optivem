@@ -1,6 +1,6 @@
 # BPMN five-level refactor — design plan
 
-🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-25T12:20:55Z`
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-25T12:27:54Z`
 
 > **Working style: token-efficient.** Execute this plan in the cheapest form that still produces a quality result. If the user proposes a workflow that burns tokens unnecessarily (e.g., asking 8 questions individually via `AskUserQuestion` when 8 pre-drafted recommendations could be confirmed in one batch), **surface the cheaper alternative and let the user choose** — don't silently follow the costly path. The user has explicitly invited this pushback (memory: `feedback_flag_non_token_efficient`).
 
@@ -112,6 +112,46 @@ Items 6–10 stay sequential (Items 6 verifies B.1–B.4 output; Items 7–9 are
 
 10. - [ ] **Phase D handoff — Write the downstream-alignment plan.** Create `plans/<YYYYMMDD-HHMM>-bpmn-refactor-downstream.md` covering: writing-agent updates (per Q1, Q4, Q5 decisions); **prompt file renames + deletions per the locked Q28 table in the Decisions section ("Naming doctrine resolved 2026-05-25")**, including the `agent-name:` field removal from `process-flow.yaml` (Q28.a) and the `fix-verify.md` split (Q28.b) and the Q28.c resolutions (`refactor-system.md`, redesign prompts); ATDD docs updates (`docs/atdd/process/*.md`, `docs/atdd/architecture/*.md`); retired SVG cleanup. Use the same `## Items` checklist shape as this plan so it's `/execute-plan`-able. Do **not** execute that plan here — the user invokes `/execute-plan` on it separately. Commit.
     **Done when:** the downstream plan file exists with its own Items checklist; this plan's Items section is fully checked.
+
+11. - [ ] **Phase B.6 — Cross-file connectedness pass on the five brainstorm files.** Walk each brainstorm and verify every cross-file reference resolves to an exact kebab identifier that exists in the target file. Apply the fix list below in a single commit. Resolves Q-new-1 (drop "red" from HIGH names — parent + inner), Q-new-2 (CYCLE redesign step splits into two MID calls), and Q-new-3 (MID `-drivers` → `-driver-adapters` vocabulary unification).
+
+    **Fix list:**
+
+    **LOW (`1-bpmn-refactor-low-level.md`):**
+    - `execute-agent` INPUT: `Agent Name, Prompt, Scope, Output` → `Task Name, Prompt, Scope, Output` (Q28.a dropped `agent-name:`; runtime derives prompt from task name).
+    - `execute-agent` step 1: `Do you approve Agent <Agent Name>` → `Do you approve task <Task Name>`.
+    - `execute-agent` step 2: `Run Agent <Agent Name> <Prompt>` → `Run agent for task <Task Name> <Prompt>`.
+
+    **MID (`2-bpmn-refactor-mid-level.md`):**
+    - Rename `implement-system-drivers` → `implement-system-driver-adapters` (Q-new-3).
+    - Rename `implement-external-system-drivers` → `implement-external-system-driver-adapters` (Q-new-3).
+    - Add missing agent tasks: `implement-system`, `implement-external-system-stubs`, `refactor-tests`, `refactor-system`, `refine-acceptance-criteria`, `update-ticket`.
+    - Add missing command tasks: `build-system` (deployable artifact), `start-system` (launch running system) — both referenced by HIGH `implement-and-verify-system`.
+
+    **HIGH (`3-bpmn-refactor-high-level.md`):**
+    - Rename top wrapper `write-and-verify-red-tests` → `write-and-verify-tests` (Q-new-1=A).
+    - Rename inner `write-red-acceptance-tests` → `write-and-verify-acceptance-tests`; parameterize on `<Expected Test Result>` (was hardcoded RED). Steps become: write → compile → if-success verify-pass / if-failure verify-fail + disable → commit. Mirrors the shared `implement-test-layer` pattern.
+    - Rename inner `implement-red-dsl-core` → `implement-and-verify-dsl` (drop "red" — `implement-test-layer` already parameterizes; drop "-core" — no `-core` in MID `implement-dsl`).
+    - Rename inner `implement-red-system-driver-adapters` → `implement-and-verify-system-driver-adapters`.
+    - Rename inner `implement-red-external-system-driver-adapters` → `implement-and-verify-external-system-driver-adapters`.
+    - Rename `implement-red-external-system-driver-adapters-contract-tests` → `implement-and-verify-external-system-driver-adapter-contract-tests`.
+    - Fix internal calls in the renamed orchestrations to use the renamed names (parent ↓ inner refs).
+    - Inside `implement-and-verify-*`: rewrite "Agent Action: implement-dsl-core" → "Agent Action: `implement-dsl`" (MID name, no `-core`); other Agent Actions match MID after Q-new-3 rename.
+    - Inside contract-tests orchestration: step 1 prose "Write RED Contract Test" → call MID `write-contract-tests`; step 2.1 reference fixed to use the renamed inner name.
+
+    **CYCLE (`4-bpmn-refactor-cycle-level.md`):**
+    - `change-system-behavior`: step 1 → `write-and-verify-tests` `<Expected Test Result: Failure>`; step 2 → `implement-and-verify-system`.
+    - `cover-system-behavior`: step 1 → `write-and-verify-tests` `<Expected Test Result: Success>`.
+    - `redesign-system-structure`: step 1 splits into 1a `implement-system-driver-adapters` + 1b `implement-external-system-driver-adapters` (MID-direct, Q-new-2=A); step 2 → `implement-and-verify-system`.
+    - `refactor-system-structure`: step 1 → `implement-and-verify-system`; update the trailing note ("calls `implement-system`" → "calls `implement-and-verify-system`").
+    - `refactor-test-structure`: step 1 → `refactor-and-verify-tests`; update the trailing note.
+    - `refine-backlog`: step 4 prose → `refine-acceptance-criteria` (MID).
+
+    **TOP (`5-bpmn-refactor-top-level.md`):**
+    - `refine-ticket` steps 1 & 3 ("Mark Ticket IN REFINEMENT / READY") → call MID `update-ticket` with the target state.
+    - `implement-ticket` steps 1 & 5 ("Mark Ticket IN PROGRESS / IN ACCEPTANCE") → call MID `update-ticket`.
+
+    **Done when:** every cross-file reference in CYCLE/HIGH/TOP resolves to an exact kebab identifier defined in the target file; LOW's "Agent Name" terminology is gone; MID lists every task referenced from above; Q28 prompt rename table in this design plan is updated to reflect the new MID names. Commit (plan + 5 brainstorms in one commit).
 
 ---
 
@@ -472,6 +512,12 @@ Pinning the convention now avoids rework in Items 2–5 (every brainstorm doc ge
 ### Follow-ups (resolved)
 - **Q-ext — External system onboarding integration:** ✓ **(b): new cycle `onboard-external-system`.** Standalone cycle. Rationale: flexibility for onboard-only tickets (e.g., adding a logging provider with no structural redesign) AND for redesign-that-includes-onboarding (`redesign-system-structure` can call `onboard-external-system` as a sub-process). Coupling onboarding into REDESIGN would block modeling onboard-only tickets cleanly.
 
+### Cross-file connectedness (resolved 2026-05-25 — Item 11 applies these)
+
+- **Q-new-1 — "RED" in `write-and-verify-red-tests` for the COVER cycle:** ✓ **A: drop "red"; single parameterized HIGH.** Rename `write-and-verify-red-tests` → `write-and-verify-tests`. Both `change-system-behavior` (Expected: Failure) and `cover-system-behavior` (Expected: Success) call the same HIGH with different `<Expected Test Result>`. Aligns with Q5/Q16=B doctrine that expectation is a parameter, not a structural fork. Cascades to inner HIGH orchestrations: `write-red-acceptance-tests`, `implement-red-dsl-core`, `implement-red-system-driver-adapters`, `implement-red-external-system-driver-adapters`, `implement-red-external-system-driver-adapters-contract-tests` all drop "red" — they all parameterize via the shared `implement-test-layer` (which already takes `<Expected Test Result>`), so "red" was always misleading. **Supersedes the "red" portion of Q27** — the silver-canonical rename keeps the `-and-verify-` spine, drops "red".
+- **Q-new-2 — `redesign-system-structure` step 1 "Implement Driver Adapters":** ✓ **A: two CYCLE sub-steps to existing MID tasks.** Step 1 splits into `1a implement-system-driver-adapters` + `1b implement-external-system-driver-adapters` (both MID-direct calls, modulo Q-new-3 rename). No new MID umbrella, no new HIGH wrapper. Rationale: the only consumer is REDESIGN; a one-off umbrella adds surface without reuse (per Q28.c "not recommended" note).
+- **Q-new-3 — "drivers" vs "driver-adapters" vocabulary:** ✓ **A: rename MID to `-driver-adapters`.** `implement-system-drivers` → `implement-system-driver-adapters`; `implement-external-system-drivers` → `implement-external-system-driver-adapters`. Matches HIGH+CYCLE+hexagonal-architecture vocabulary. **Supersedes the corresponding rows in the Q28 prompt rename table** (`at-red-system-driver.md` → `implement-system-driver-adapters.md`; `ct-red-external-system-driver.md` → `implement-external-system-driver-adapters.md`; same for the collapse rows).
+
 ### Naming doctrine (resolved 2026-05-25 in child plan `plans/20260525-1130-bpmn-naming-doctrine.md`)
 
 The child plan locked four naming-doctrine decisions; full text + Discussion archive lives in that plan. Summary:
@@ -492,8 +538,8 @@ Under Q28.a=DROP, the "Required filename" column is the source of truth — runt
 | `at-red-test.md` | `write-acceptance-tests` | `write-acceptance-tests.md` |
 | `ct-red-test.md` | `write-contract-tests` (added Q25) | `write-contract-tests.md` |
 | `at-red-dsl.md` + `ct-red-dsl.md` | `implement-dsl` (parameterized) | `implement-dsl.md` (one file, two callers) |
-| `at-red-system-driver.md` | `implement-system-drivers` | `implement-system-drivers.md` |
-| `ct-red-external-system-driver.md` | `implement-external-system-drivers` | `implement-external-system-drivers.md` |
+| `at-red-system-driver.md` | `implement-system-driver-adapters` (Q-new-3) | `implement-system-driver-adapters.md` |
+| `ct-red-external-system-driver.md` | `implement-external-system-driver-adapters` (Q-new-3) | `implement-external-system-driver-adapters.md` |
 | `at-green-system.md` | `implement-system` (HIGH `write-system` step 1, per Q15) | `implement-system.md` |
 | `ct-green-external-system-stub.md` | `implement-external-system-stubs` | `implement-external-system-stubs.md` |
 | `disable-tests.md` | `disable-tests` | `disable-tests.md` (no rename) |
@@ -507,10 +553,10 @@ Under Q28.a=DROP, the "Required filename" column is the source of truth — runt
 | `task-system-implementation-refactoring.md` | `refactor-system` (CYCLE `refactor-system-structure`) | `refactor-system.md` |
 | `legacy-at-test.md` | (collapse → `write-acceptance-tests.md` per Q16=B) | **DELETE** |
 | `legacy-at-dsl.md` | (collapse → `implement-dsl.md`) | **DELETE** |
-| `legacy-at-system-driver.md` | (collapse → `implement-system-drivers.md`) | **DELETE** |
+| `legacy-at-system-driver.md` | (collapse → `implement-system-driver-adapters.md`) | **DELETE** |
 | `legacy-ct-test.md` | (collapse → `write-contract-tests.md`) | **DELETE** |
 | `legacy-ct-dsl.md` | (collapse → `implement-dsl.md`) | **DELETE** |
-| `legacy-ct-external-system-driver.md` | (collapse → `implement-external-system-drivers.md`) | **DELETE** |
+| `legacy-ct-external-system-driver.md` | (collapse → `implement-external-system-driver-adapters.md`) | **DELETE** |
 | `legacy-ct-external-system-stub.md` | (collapse → `implement-external-system-stubs.md`) | **DELETE** |
 
 #### Q28.c resolution (from reading prompt content)

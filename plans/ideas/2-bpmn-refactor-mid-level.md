@@ -20,12 +20,18 @@ Here's the list of the agent tasks (calling `execute-agent`):
 - `write-acceptance-tests`
 - `write-contract-tests`
 - `implement-dsl`
-- `implement-system-drivers`
-- `implement-external-system-drivers`
+- `implement-system` *(called by HIGH `implement-and-verify-system` step 1; prompt: `implement-system.md` per Q28 — was `at-green-system.md`)*
+- `implement-system-driver-adapters` *(was `implement-system-drivers` — renamed per Q-new-3 to match HIGH/CYCLE/hexagonal-architecture vocabulary)*
+- `implement-external-system-driver-adapters` *(was `implement-external-system-drivers` — Q-new-3)*
+- `implement-external-system-stubs` *(used by HIGH `implement-and-verify-external-system-driver-adapter-contract-tests` step 6; prompt: `implement-external-system-stubs.md` per Q28)*
 - `disable-tests`
 - `enable-tests`
 - `fix-unexpected-passing-tests`
 - `fix-unexpected-failing-tests`
+- `refactor-tests` *(called by HIGH `refactor-and-verify-tests` step 1; prompt deferred to Phase D)*
+- `refactor-system` *(called by CYCLE `refactor-system-structure` via HIGH `implement-and-verify-system`; prompt: `refactor-system.md` per Q28.c)*
+- `refine-acceptance-criteria` *(called by CYCLE `refine-backlog` step 4; prompt: `refine-acceptance-criteria.md` per Q28)*
+- `update-ticket` *(called by TOP `refine-ticket` and `implement-ticket` to mark lifecycle states; prompt: `update-ticket.md` per Q28)*
 
 ## Command Tasks
 
@@ -50,5 +56,7 @@ Full list:
 - `compile`
 - `compile-system`
 - `compile-tests`
+- `build-system` *(called by HIGH `implement-and-verify-system` step 2; produces a deployable system artifact — distinct from `compile-system` which only checks compilation)*
+- `start-system` *(called by HIGH `implement-and-verify-system` step 3; launches the running system so subsequent `verify-tests-pass` can exercise it)*
 - `commit`
 - `run-tests`

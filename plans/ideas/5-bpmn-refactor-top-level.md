@@ -19,18 +19,18 @@ Single top-level process invoked once per ticket. Marks ticket state at the star
 
 INPUT: Ticket (any type) flagged as not-yet-ready.
 
-1. Mark Ticket IN REFINEMENT
+1. `update-ticket` (MID) — target state: `IN REFINEMENT`
 2. Call `refine-backlog` cycle
-3. Mark Ticket READY
+3. `update-ticket` (MID) — target state: `READY`
 
 ## implement-ticket
 
 INPUT: Ticket in READY state (with metadata: ticket type, change type, acceptance criteria, etc.)
 
-1. Mark Ticket IN PROGRESS
+1. `update-ticket` (MID) — target state: `IN PROGRESS`
 2. **Classify ticket into change type** (judgment step — Q30.a in parent plan decides whether this reads an explicit field or is inferred).
 3. **Look up CYCLE for change type** (mechanical 1:1 — see table above).
 4. Call chosen cycle.
-5. Mark Ticket IN ACCEPTANCE
+5. `update-ticket` (MID) — target state: `IN ACCEPTANCE`
 
 Note: cycle-selection sub-questions remain open and are resolved in parent plan (Item 6 cross-check walk): Q30.a (classification mechanism), Q30.b (multi-cycle tickets), plus preconditions to entering a cycle (e.g., "ACs must be in approved state" before `change-system-behavior`).

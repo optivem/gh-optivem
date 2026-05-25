@@ -15,10 +15,12 @@ TODO (Phase C revisit): `approve` is currently exit-only on NO; callers own any 
 
 # execute-agent
 
-INPUT: Agent Name, Prompt, Scope, Output
+INPUT: Task Name, Prompt, Scope, Output
 
-1. Approve (PRE): Do you approve Agent <Agent Name> to run?
-2. Run Agent <Agent Name> <Prompt>
+Note: `Task Name` replaced the prior `Agent Name` per Q28.a (`agent-name:` YAML field dropped). Runtime derives the prompt path deterministically from `Task Name` (`prompt_path(task_name) = task_name + ".md"`).
+
+1. Approve (PRE): Do you approve task <Task Name> to run?
+2. Run agent for task <Task Name> <Prompt>
 3. Validate Output & Scope
     1. Output: are the required output variables present?
     2. Scope: were the scope constraints satisfied? (diff)
