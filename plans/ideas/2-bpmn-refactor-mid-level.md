@@ -8,8 +8,9 @@
 - expected-test-result
 
 **Scopes:**
-- acceptance-tests
-- dsl-ports
+- at_test
+- dsl_port
+- dsl_core
 
 **Outputs:**
 - dsl-port-changed: bool
@@ -23,8 +24,9 @@
 - expected-test-result
 
 **Scopes:**
-- contract-tests
-- dsl-ports
+- ct_test
+- dsl_port
+- dsl_core
 
 **Outputs:**
 - dsl-port-changed: bool
@@ -38,9 +40,9 @@
 - expected-test-result
 
 **Scopes:**
-- dsl
-- system-driver-ports
-- external-driver-ports
+- dsl_core
+- driver_port
+- external_system_driver_port
 
 **Outputs:**
 - system-driver-ports-changed: bool
@@ -54,7 +56,7 @@
 **Inputs:** NONE
 
 **Scopes:**
-- system
+- system_path
 
 **Outputs:** NONE
 
@@ -66,7 +68,8 @@
 **Inputs:** NONE
 
 **Scopes:**
-- system-driver-adapters
+- driver_port
+- driver_adapter
 
 **Outputs:** NONE
 
@@ -78,7 +81,8 @@
 **Inputs:** NONE
 
 **Scopes:**
-- external-system-driver-adapters
+- external_system_driver_port
+- external_system_driver_adapter
 
 **Outputs:** NONE
 
@@ -90,7 +94,7 @@
 **Inputs:** NONE
 
 **Scopes:**
-- external-system-stubs
+- external_system_driver_adapter
 
 **Outputs:** NONE
 
@@ -103,8 +107,8 @@
 - tests
 
 **Scopes:**
-- acceptance-tests
-- contract-tests
+- at_test
+- ct_test
 
 **Outputs:** NONE
 
@@ -117,8 +121,8 @@
 - tests
 
 **Scopes:**
-- acceptance-tests
-- contract-tests
+- at_test
+- ct_test
 
 **Outputs:** NONE
 
@@ -130,10 +134,15 @@
 **Inputs:** NONE
 
 **Scopes:**
-- acceptance-tests
-- contract-tests
-- dsl
-- system
+- at_test
+- ct_test
+- dsl_port
+- dsl_core
+- driver_port
+- driver_adapter
+- external_system_driver_port
+- external_system_driver_adapter
+- system_path
 
 **Outputs:** NONE
 
@@ -145,10 +154,15 @@
 **Inputs:** NONE
 
 **Scopes:**
-- acceptance-tests
-- contract-tests
-- dsl
-- system
+- at_test
+- ct_test
+- dsl_port
+- dsl_core
+- driver_port
+- driver_adapter
+- external_system_driver_port
+- external_system_driver_adapter
+- system_path
 
 **Outputs:** NONE
 
@@ -160,8 +174,8 @@
 **Inputs:** NONE
 
 **Scopes:**
-- acceptance-tests
-- contract-tests
+- at_test
+- ct_test
 
 **Outputs:** NONE
 
@@ -173,7 +187,7 @@
 **Inputs:** NONE
 
 **Scopes:**
-- system
+- system_path
 
 **Outputs:** NONE
 
