@@ -1,7 +1,5 @@
 # BPMN four-level refactor — design plan
 
-🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-25T10:17:05Z`
-
 > **Working style: token-efficient.** Execute this plan in the cheapest form that still produces a quality result. If the user proposes a workflow that burns tokens unnecessarily (e.g., asking 8 questions individually via `AskUserQuestion` when 8 pre-drafted recommendations could be confirmed in one batch), **surface the cheaper alternative and let the user choose** — don't silently follow the costly path. The user has explicitly invited this pushback (memory: `feedback_flag_non_token_efficient`).
 
 End-state-first: lock the design **before** drawing diagrams; the existing diagram generator (`gh optivem process show`) handles the drawing, so this plan never hand-draws Mermaid.
@@ -97,8 +95,6 @@ Items 2–5 each refine a different brainstorm file (LOW / MID / HIGH / PEAK) wi
 7. **Then surface `/clear` + `/execute-plan`** for Item 6 (the cross-check walk, which is a single-agent verification step after all four brainstorms are refined).
 
 Items 6–10 stay sequential (Items 6 verifies B.1–B.4 output; Items 7–9 are Phase C YAML migration with each item depending on the previous; Item 10 is a single Phase D handoff). No parallelism opportunity there.
-
-5. - [ ] **Phase B.4 — Refine PEAK brainstorm.** Apply Q7 (ticket wrapper), Q8 (refactor compile/verify), Q9 (new REFINE BACKLOG peak entry), **Q15 (rename "Write System" / "Write Driver Adapters" → "Implement …" if convention A is chosen)** to `plans/ideas/4-bpmn-refactor-peak-level.md`. Cross-check diagrams 2, 3, 13, 14, 16. Commit.
 
 6. - [ ] **Phase B.5 — Cross-check inventory walk.** Walk the cross-check tables in this plan's Scope section row by row. For each "Maps cleanly" diagram, confirm it actually fits the refined brainstorm. For each "Legacy" diagram, confirm the collapse target. Decide on **Q-ext** (external-system-onboarding) — promote to a real question or drop. Append any new follow-ups to the Decisions section. Commit.
     **Done when:** every existing diagram has a confirmed absorption target or explicit drop rationale.
@@ -459,11 +455,22 @@ Pinning the convention now avoids rework in Items 2–5 (every brainstorm doc ge
 
 ### PEAK
 - **Q7 — Ticket lifecycle placement:** ✓ **A: peak-level wrapper** (marks IN PROGRESS → calls the peak entry → marks In Acceptance). AC/Checklists **not** ticked at this level.
-- **Q8 — REFACTOR flows missing compile/verify:** ✓ **(i): add new `REFACTOR TESTS (BIG)` high-level orchestration** parallel to `WRITE SYSTEM (BIG)`. Steps: Refactor Tests → Compile Tests → Verify Tests Pass → Commit. Peak `REFACTOR TEST STRUCTURE` stays one-line ("Refactor Tests") and calls this orchestration. **`REFACTOR SYSTEM STRUCTURE` needs no change** — its "Write System" already calls `WRITE SYSTEM (BIG)` which includes compile + verify. Rationale: compile+verify discipline lives at high level, never at peak; mirrors `WRITE SYSTEM (BIG)` pattern.
+- **Q7.a — TICKET LIFECYCLE invocation model (Phase B.4 follow-up):** ✓ **A: standalone wrapper section** with `<call the chosen peak entry>` placeholder. Drawn once, applies to all. Not duplicated per peak entry, not implicit framework concern. (Q26 in child plan reframes this further — wrapper may actually be the top-level `IMPLEMENT TICKET` process.)
+- **Q8 — REFACTOR flows missing compile/verify:** ✓ **(i): add new `REFACTOR TESTS` high-level orchestration** parallel to `IMPLEMENT SYSTEM`. Steps: Refactor Tests → Compile Tests → Verify Tests Pass → Commit. Peak `REFACTOR TEST STRUCTURE` stays one-line ("Refactor Tests") and calls this orchestration. **`REFACTOR SYSTEM STRUCTURE` needs no change** — its "Implement System" already calls `IMPLEMENT SYSTEM` orchestration which includes compile + verify. Rationale: compile+verify discipline lives at high level, never at peak.
 - **Q9 — Backlog refinement integration:** ✓ **A: new peak entry REFINE BACKLOG** (sibling to the existing five).
+- **Q9.a — REFINE BACKLOG internal steps (Phase B.4 follow-up):** ✓ **A: accept tentative draft** (Read Backlog Items / Identify Gaps / Refine Ticket Descriptions / Refine Acceptance Criteria). Item 6 cross-check walk verifies against existing diagram 14.
+- **Q-ext.a — ONBOARD EXTERNAL SYSTEM internal steps (Phase B.4 follow-up):** ✓ **A: accept tentative draft** (Identify / Document Contract / Set Up Access / Verify Reachable). Item 6 verifies against existing diagram 9.
 
 ### Follow-ups (resolved)
 - **Q-ext — External system onboarding integration:** ✓ **(b): new peak entry `ONBOARD EXTERNAL SYSTEM`.** Standalone peak workflow. Rationale: flexibility for onboard-only tickets (e.g., adding a logging provider with no structural redesign) AND for redesign-that-includes-onboarding (REDESIGN SYSTEM STRUCTURE can call ONBOARD EXTERNAL SYSTEM as a sub-process). Coupling onboarding into REDESIGN would block modeling onboard-only tickets cleanly.
+
+### Deferred to child plan `plans/20260525-1130-bpmn-naming-doctrine.md`
+
+During Phase B.3 / B.4 (HIGH and PEAK fix-ups, 2026-05-25), three substantial doctrine questions surfaced that warrant their own /execute-plan session. Recorded here so the next session has the full backlog visible:
+
+- **Q26 — `IMPLEMENT TICKET` top-level reframe.** Insight surfaced 2026-05-25: what we've been calling "PEAK entries" are actually CYCLES — sub-processes invoked from a true top-level `IMPLEMENT TICKET` process that picks which cycle a ticket needs and wraps it with Mark IN PROGRESS / Mark IN ACCEPTANCE. Reframing implications: structure becomes 5 levels (TOP / CYCLE / HIGH / MID / LOW) or 4 with rename (PEAK → CYCLE + add TOP). Resolves Q7's TICKET LIFECYCLE wrapper question naturally — the wrapper IS `IMPLEMENT TICKET`.
+- **Q27 — Naming collision resolution at HIGH.** `(BIG)` suffix dropped in Phase B.3 with collision risk identified: HIGH `IMPLEMENT SYSTEM` ↔ MID `Implement System` (same snake_case key); same for HIGH `REFACTOR TESTS` ↔ MID `Refactor Tests`. Industry-pragmatic fix: `_workflow` suffix on entry-point HIGH orchestrations (matches existing `_cycle`/`_subprocess` runtime pattern). Silver-canonical fix: rename to specificity or switch to noun-phrase. Casing convention (ALL CAPS spaces vs Title Case vs snake_case) also in scope.
+- **Q28 — Verb-based exact-match prompt naming + `agent-name:` field rename.** Q24 (from main plan) decided the doctrine (verb-based, exact-match to MID task names; legacy prompts collapse mechanically per Q16=B). Child plan locks the renames concretely (`at-red-test` → `write-acceptance-tests`, etc.), the YAML field rename (`agent-name:` → `task-name:` or `executor:`), and the legacy-prompts disposition.
 
 ---
 
