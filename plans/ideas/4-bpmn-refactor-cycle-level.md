@@ -35,7 +35,7 @@ Per-ticket sub-processes selected by the classification gateway in `implement-ti
 **Outputs:** NONE
 
 **Steps:**
-1. `write-and-verify-tests-fail` (acceptance-criteria: `<input>`)
+1. `write-and-verify-acceptance-tests-fail` (acceptance-criteria: `<input>`)
 2. `implement-and-verify-system` (agent-action: implement-system)
 3. Refactor (loopable — after the chosen CYCLE returns, ask again):
     - `refactor-system-structure` → opportunistic mode (no checklist)
@@ -51,7 +51,7 @@ Per-ticket sub-processes selected by the classification gateway in `implement-ti
 **Outputs:** NONE
 
 **Steps:**
-1. `write-and-verify-tests-pass` (acceptance-criteria: `<input>`)
+1. `write-and-verify-acceptance-tests-pass` (acceptance-criteria: `<input>`)
 
 ## redesign-system-structure
 

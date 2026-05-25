@@ -2,7 +2,7 @@
 
 > **Design content only.** Open questions, doctrine choices, and decision rationale belong in the parent plan: `plans/20260525-1057-bpmn-refactor-design.md`. Do not record Q&A here. If you encounter a question while reading or editing this file, add it to the plan, not inline.
 
-## write-and-verify-tests-fail
+## write-and-verify-acceptance-tests-fail
 
 **Inputs:**
 - acceptance-criteria
@@ -11,9 +11,9 @@
 - tests
 
 **Steps:**
-1. `write-and-verify-tests` (acceptance-criteria: `<input>`, expected-test-result: failure)
+1. `write-and-verify-acceptance-tests` (acceptance-criteria: `<input>`, expected-test-result: failure)
 
-## write-and-verify-tests-pass
+## write-and-verify-acceptance-tests-pass
 
 **Inputs:**
 - acceptance-criteria
@@ -22,9 +22,9 @@
 - tests
 
 **Steps:**
-1. `write-and-verify-tests` (acceptance-criteria: `<input>`, expected-test-result: success)
+1. `write-and-verify-acceptance-tests` (acceptance-criteria: `<input>`, expected-test-result: success)
 
-## write-and-verify-tests
+## write-and-verify-acceptance-tests
 
 **Inputs:**
 - acceptance-criteria
@@ -34,7 +34,7 @@
 - tests
 
 **Steps:**
-1. `write-and-verify-acceptance-tests` (acceptance-criteria: `<input>`, expected-test-result: `<input>`)
+1. `write-and-verify-acceptance-test-code` (acceptance-criteria: `<input>`, expected-test-result: `<input>`)
 2. DSL port changed? (reads `dsl-port-changed` from step 1)
     1. YES: `implement-and-verify-dsl` (expected-test-result: `<input>`, tests: acceptance)
         1. External system driver ports changed? (reads `external-driver-ports-changed` from step 2.1)
@@ -42,7 +42,7 @@
         2. System driver ports changed? (reads `system-driver-ports-changed` from step 2.1)
             1. YES: `implement-and-verify-system-driver-adapters` (expected-test-result: `<input>`, tests: acceptance)
 
-## write-and-verify-acceptance-tests
+## write-and-verify-acceptance-test-code
 
 **Inputs:**
 - acceptance-criteria

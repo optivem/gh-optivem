@@ -29,7 +29,7 @@ Because the replacement is full, every concern the existing BPMN models must be 
 | 2 | ticket-lifecycle | TOP `implement-ticket` (Q26=A reframes Q7's peak-wrapper to the body of TOP) |
 | 3 | github-intake | TOP `implement-ticket` — tied to ticket lifecycle |
 | 5 | run-cycle | MID `run-tests` (Q5) |
-| 6 | at-cycle | HIGH `write-and-verify-tests-fail` ↔ `implement-and-verify-system` pairing |
+| 6 | at-cycle | HIGH `write-and-verify-acceptance-tests-fail` ↔ `implement-and-verify-system` pairing |
 | 7 | at-green-system | HIGH `implement-and-verify-system` |
 | 8 | contract-test-sub-process | HIGH `implement-red-external-system-driver-adapters-contract-tests` |
 | 10 | structural-cycle-shared | HIGH shared `implement-test-layer` |
@@ -38,7 +38,7 @@ Because the replacement is full, every concern the existing BPMN models must be 
 | 15 | compile | MID `compile` (calls `execute-command`) |
 | 16 | da-cycle | CYCLE `redesign-system-structure` (Implement Driver Adapters — renamed per Q15) |
 | 17 | green-phase-cycle | HIGH `implement-and-verify-system` |
-| 20 | red-phase-cycle | HIGH `write-and-verify-tests-fail` |
+| 20 | red-phase-cycle | HIGH `write-and-verify-acceptance-tests-fail` |
 | 21 | sut-cycle | HIGH `implement-and-verify-system` |
 
 **Legacy cycles** — *resolved 2026-05-25 via Q16=B (legacy cycles collapse). Three of the four absorb into `COVER SYSTEM BEHAVIOR`; #4 is dropped (no separate legacy-test-run operation exists):*
@@ -46,9 +46,9 @@ Because the replacement is full, every concern the existing BPMN models must be 
 | # | Diagram | Resolution | Rationale |
 |---|---|---|---|
 | 4 | run-legacy-cycle | **DROP** (no absorption) | No separate "run legacy tests" operation. The mid-level `Run Tests` task runs whatever's currently in the test suite; legacy-vs-latest distinction doesn't exist at run time per Q16=B + memory `feedback_legacy_tests_no_marker`. |
-| 12 | legacy-acceptance-criteria-cycle | **CYCLE `cover-system-behavior`** → HIGH `write-and-verify-tests-pass` (Q31 Option D wrapper over parameterized core). | Writing ACs for existing behavior = adding coverage = COVER. |
-| 18 | legacy-at-cycle | **CYCLE `cover-system-behavior`** → HIGH `write-and-verify-tests-pass`. | Writing legacy ATs for existing behavior = COVER. |
-| 19 | legacy-ct-cycle | **CYCLE `cover-system-behavior`** → HIGH `write-and-verify-tests-pass` (with internal CT handling per Q31.a deferred). | Writing legacy CTs for existing behavior = COVER. |
+| 12 | legacy-acceptance-criteria-cycle | **CYCLE `cover-system-behavior`** → HIGH `write-and-verify-acceptance-tests-pass` (Q31 Option D wrapper over parameterized core). | Writing ACs for existing behavior = adding coverage = COVER. |
+| 18 | legacy-at-cycle | **CYCLE `cover-system-behavior`** → HIGH `write-and-verify-acceptance-tests-pass`. | Writing legacy ATs for existing behavior = COVER. |
+| 19 | legacy-ct-cycle | **CYCLE `cover-system-behavior`** → HIGH `write-and-verify-acceptance-tests-pass` (with internal CT handling per Q31.a deferred). | Writing legacy CTs for existing behavior = COVER. |
 
 **Not currently mapped** — *both included; resolutions recorded 2026-05-25:*
 
@@ -440,19 +440,19 @@ Pinning the convention now avoids rework in Items 2–5 (every brainstorm doc ge
   | Write Acceptance Tests | `dsl-port-changed: bool` | WRITE TESTS step 2 |
   | Implement DSL | `system-driver-ports-changed: bool` | WRITE TESTS step 2.1.2 |
   | Implement DSL | `external-driver-ports-changed: bool` | WRITE TESTS step 2.1.1 |
-- **Q6.a — `<Expected Test Result>` threading (Phase B.3 follow-up):** ✓ **hoist to outer signature, drop from leaves.** It's already declared as INPUT at the top of WRITE TESTS; the prior leaf-only placement was incomplete propagation. Cleanest. **STILL VALID under Option D (Item 6, Q31)** — the parameterized core `write-and-verify-tests` threads `<Expected Test Result>` from outer to leaves; the two thin wrappers `write-and-verify-tests-fail` / `write-and-verify-tests-pass` pin the parameter at the call site so CYCLEs invoke parameter-free names.
+- **Q6.a — `<Expected Test Result>` threading (Phase B.3 follow-up):** ✓ **hoist to outer signature, drop from leaves.** It's already declared as INPUT at the top of WRITE TESTS; the prior leaf-only placement was incomplete propagation. Cleanest. **STILL VALID under Option D (Item 6, Q31)** — the parameterized core `write-and-verify-acceptance-tests` threads `<Expected Test Result>` from outer to leaves; the two thin wrappers `write-and-verify-acceptance-tests-fail` / `write-and-verify-acceptance-tests-pass` pin the parameter at the call site so CYCLEs invoke parameter-free names.
 - **Q8.a — Add REFACTOR SYSTEM orchestration symmetric to REFACTOR TESTS? (Phase B.3 follow-up):** ✓ **A: no.** Q8 covers compile/verify inheritance for REFACTOR SYSTEM STRUCTURE via IMPLEMENT SYSTEM orchestration. A separate REFACTOR SYSTEM orchestration would duplicate.
 - **Q8.b — REFACTOR TESTS INPUT/OUTPUT contracts (Phase B.3 follow-up):** ✓ **A: none.** Matches IMPLEMENT SYSTEM lean style; tests as INPUT/OUTPUT would be redundant for a refactor (input == output by definition).
 - **Q31 — Test-writing orchestration: thin wrappers over parameterized core (Option D):** ✓ **resolved 2026-05-25 (Item 6).** Reconciles the prior `write-and-verify-red-tests` inconsistency AND Q-new-1's parameterization decision (commit `fac98ea`). Final shape:
-  1. **Parameterized core `write-and-verify-tests`** — kept exactly as fac98ea wrote it (single orchestration, `<Expected Test Result>` parameter threaded through step 1 + `implement-test-layer`). Single source of truth for the logic.
+  1. **Parameterized core `write-and-verify-acceptance-tests`** — kept exactly as fac98ea wrote it (single orchestration, `<Expected Test Result>` parameter threaded through step 1 + `implement-test-layer`). Single source of truth for the logic.
   2. **Two thin wrappers** added at HIGH:
-     - `write-and-verify-tests-fail` → calls `write-and-verify-tests <Expected: Failure>`
-     - `write-and-verify-tests-pass` → calls `write-and-verify-tests <Expected: Success>`
-  3. **CYCLEs invoke the wrappers, not the core.** `change-system-behavior` step 1 calls `write-and-verify-tests-fail`; `cover-system-behavior` step 1 calls `write-and-verify-tests-pass`. CYCLE-level invocations are clean and self-documenting — no `<Expected Test Result>` parameter visible at the call site.
+     - `write-and-verify-acceptance-tests-fail` → calls `write-and-verify-acceptance-tests <Expected: Failure>`
+     - `write-and-verify-acceptance-tests-pass` → calls `write-and-verify-acceptance-tests <Expected: Success>`
+  3. **CYCLEs invoke the wrappers, not the core.** `change-system-behavior` step 1 calls `write-and-verify-acceptance-tests-fail`; `cover-system-behavior` step 1 calls `write-and-verify-acceptance-tests-pass`. CYCLE-level invocations are clean and self-documenting — no `<Expected Test Result>` parameter visible at the call site.
   
   Rationale: combines the best of "have both" (operator-facing names are explicit; mirror existing SHARED `verify-tests-pass` / `verify-tests-fail` naming) with the best of "parameterize" (single source of truth, no duplication). Inner orchestrations (`implement-and-verify-dsl`, etc.) stay parameterized via the existing core — they aren't called by CYCLEs, so wrappers there would add no value.
 - **Q31.a — `cover-system-behavior` AT vs CT internal handling (deferred to Item 9):** how does `cover-system-behavior` distinguish AT-coverage from CT-coverage tickets? Options: (i) single CYCLE with internal nesting (mirrors fail-side's AT-with-CT-nested shape), (ii) single CYCLE invoked twice per ticket, (iii) two subtypes (`task/cover-legacy-acceptance`, `task/cover-legacy-contract`). Resolve when encoding `cover-system-behavior` in `process-flow.yaml`.
-- **Q31.b — Side bug from fac98ea fixed:** `change-system-behavior` step 1 originally read `Write Tests <Expected Test Result: Success>` — Success was wrong (the change cycle writes failing tests). fac98ea already corrected this to `<Expected: Failure>`. With Option D wrappers, the CYCLE invocations no longer carry the parameter at all — the wrapper name (`write-and-verify-tests-fail` / `write-and-verify-tests-pass`) carries the expectation.
+- **Q31.b — Side bug from fac98ea fixed:** `change-system-behavior` step 1 originally read `Write Tests <Expected Test Result: Success>` — Success was wrong (the change cycle writes failing tests). fac98ea already corrected this to `<Expected: Failure>`. With Option D wrappers, the CYCLE invocations no longer carry the parameter at all — the wrapper name (`write-and-verify-acceptance-tests-fail` / `write-and-verify-acceptance-tests-pass`) carries the expectation.
 - **Q32 — Diagram #13 (at-refactor-system) absorption:** ✓ **resolved 2026-05-25 (Item 6).** The cross-check table previously mapped diagram #13 to CYCLE `refactor-system-structure`. That was wrong: diagram #13 depicts OPPORTUNISTIC post-GREEN refactor (per the `at-refactor-system.md` prompt content), not the ticket-driven cycle. New absorption target: **`change-system-behavior` step 3** (the loopable refactor menu from Q33). **Mechanism (a)** — step 3 calls existing CYCLEs in *opportunistic mode* (no checklist supplied; CYCLE degrades to "look at just-landed patch"). Reuses one CYCLE definition for both ticket-driven and opportunistic callers. The `at-refactor-system.md` prompt itself is **DROP** — folded into the CYCLE's opportunistic mode. **Q28.c "Phase D decides drop/retain for `at-refactor-system.md`" resolves to DROP.**
 
 ### TOP

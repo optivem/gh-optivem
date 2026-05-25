@@ -28,7 +28,7 @@ Single-line summaries. For options considered + rationale, read the archive plan
 ### Naming (Q15, Q27, Q28.a, Q29)
 - Kebab-case lowercase **everywhere** — YAML keys, doc headings, prompt filenames, in-prose refs, anchor slugs, Go struct tags.
 - Verb-based identifiers; "Write" for tests, "Implement" for code.
-- HIGH composites use full-scope names: `implement-and-verify-system`, `refactor-and-verify-tests`, `write-and-verify-tests`.
+- HIGH composites use full-scope names: `implement-and-verify-system`, `refactor-and-verify-tests`, `write-and-verify-acceptance-tests`.
 - **`agent-name:` field DROPPED from `process-flow.yaml`.** Runtime derives `prompt_path(task_name) = task_name + ".md"`; errors at startup if prompt file missing.
 
 ### LOW primitives
@@ -43,9 +43,9 @@ Single-line summaries. For options considered + rationale, read the archive plan
 - Vocabulary unified: `-driver-adapters` (not `-drivers`).
 - Tasks added by Item 11's connectedness pass (already in brainstorms): `implement-system`, `implement-external-system-stubs`, `refactor-tests`, `refactor-system`, `refine-acceptance-criteria`, `update-ticket`, `build-system`, `start-system`.
 
-### HIGH orchestrations (Q31 = D)
-- Parameterized core `write-and-verify-tests` (`<Expected Test Result>` threaded through step 1 + `implement-test-layer`).
-- Two thin wrappers: `write-and-verify-tests-fail` (Failure) + `write-and-verify-tests-pass` (Success).
+### HIGH orchestrations (Q31 = D; names refined per Q-new-6)
+- Parameterized core `write-and-verify-acceptance-tests` (`<Expected Test Result>` threaded through step 1 + `implement-test-layer`).
+- Two thin wrappers: `write-and-verify-acceptance-tests-fail` (Failure) + `write-and-verify-acceptance-tests-pass` (Success).
 - CYCLEs call **wrappers**, not the core — call sites are parameter-free and self-documenting.
 - No `(BIG)` suffix; no `red`/`green` in HIGH names — parameterized via `implement-test-layer` (Q-new-1).
 - `refactor-and-verify-tests` is a distinct HIGH (refactor-tests → compile-tests → verify-tests-pass → commit). `refactor-system-structure` reuses `implement-and-verify-system`.

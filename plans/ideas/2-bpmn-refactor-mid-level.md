@@ -176,6 +176,12 @@
 **Scopes:**
 - at_test
 - ct_test
+- dsl_port
+- dsl_core
+- driver_port
+- driver_adapter
+- external_system_driver_port
+- external_system_driver_adapter
 
 **Outputs:** NONE
 
@@ -199,8 +205,7 @@
 **Inputs:**
 - ticket
 
-**Scopes:**
-- ticket
+**Scopes:** NONE
 
 **Outputs:** NONE
 
@@ -213,8 +218,7 @@
 - ticket
 - target-state
 
-**Scopes:**
-- ticket
+**Scopes:** NONE
 
 **Outputs:** NONE
 
