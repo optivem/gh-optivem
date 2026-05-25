@@ -1,5 +1,7 @@
 # BPMN ideas contract authoring
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-25T13:47:25Z`
+
 > **Sequenced before `plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md`.** Authors per-task `Inputs:` / `Outputs:` / `Steps:` contracts directly in the five `plans/ideas/*.md` brainstorm files so Phase C+D becomes a mechanical YAML-encoding pass with no on-the-fly contract invention. Cross-references the design plan `plans/20260525-1057-bpmn-refactor-design.md` for *why* behind each decision; this plan only authors *what*.
 
 > **Absorbs Item 12 of the design plan** (Q-tag strip). Item 6 of this plan deletes Item 12 from the design plan upon completion.
@@ -67,8 +69,6 @@ If a task's `Inputs:` or `Outputs:` aren't determined by the design plan's Decis
 ## Items
 
 Per-file items run in dependency order (LOW → MID → HIGH → CYCLE → TOP); cross-link check at the end. Each item is one `/execute-plan` invocation.
-
-1. - [ ] **1-low — editorial + author contracts.** Tasks: `approve`, `execute-agent`, `execute-command`, `fix`. Notes: `execute-agent` Outputs = "Agent output values (as declared by caller's Output input)"; the others' Outputs = `NONE`. Inputs derived from existing brainstorm prose; if ambiguous, surface as Q-item per Doctrine § Ambiguity handling. Strip the `TODO (Phase C revisit)` line on `approve` and the `Intentional asymmetry vs execute-agent (Q2=C)` comment on `execute-command`. Commit.
 
 2. - [ ] **2-mid — editorial + author contracts.** Every agent task and every command task gets its own Inputs/Outputs/Steps block (no "show one, name the rest" pattern). Conventions:
     - Agent task Steps: `1. execute-agent <task-name>`.
