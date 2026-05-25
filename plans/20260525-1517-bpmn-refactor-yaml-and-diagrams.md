@@ -110,16 +110,6 @@ Already lives in `plans/ideas/5-bpmn-refactor-top-level.md`. Encode as the YAML 
 
 Each item is sized for one `/execute-plan` invocation. Re-running `/execute-plan plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md` picks up the next unchecked item. Resolved items are deleted, not checked (per `/execute-plan` rule).
 
-3. - [ ] **Item 3 — Phase C.3: Migrate rest of YAML.** Encode the full structure into `process-flow.yaml`:
-    - TOP: `refine-ticket`, `implement-ticket` (with mechanical-lookup gateway from the table above), `refactor` (ad-hoc).
-    - All 7 CYCLEs (`change-system-behavior`, `cover-system-behavior`, `redesign-system-structure`, `refactor-system-structure`, `refactor-test-structure`, `refine-backlog`, `onboard-external-system`).
-    - All HIGH orchestrations (parameterized core + wrappers + composites).
-    - All MID `call_activity` definitions (including the 8 added by Item 11 connectedness pass).
-    - LOW primitives (4: approve, execute-agent, execute-command, fix).
-
-    Regenerate `docs/process-diagram.md`. Diff against `.pre-refactor` backup to confirm every retained behaviour appears. Resolve any gap (either by adding to YAML or by writing an explicit drop-rationale comment, cross-referencing the archive's cross-check inventory). Remove the `.pre-refactor` backup once verified. Commit.
-    **Done when:** TOP + all cycles + all HIGH + all MID + all LOW encoded; regenerated diagram covers everything in the archive's cross-check inventory; no intended-to-survive behaviour is missing.
-
 4. - [ ] **Item 4 — Phase D handoff: Write the downstream-alignment plan.** Create `plans/<YYYYMMDD-HHMM>-bpmn-refactor-downstream.md` covering:
     - **Sanity-check Q-numbering first.** The Q1/Q4/Q5 references below were drafted against the design archive (`plans/20260525-1057-bpmn-refactor-design.md`). The archive's Q-numbering may have shifted since drafting. Open the archive, confirm each Q-number resolves to the topic named here (FIX primitive / terminology / run-tests filter), and re-anchor any references that drifted.
     - Writing-agent updates per Q1 (FIX as separate primitive), Q4 (terminology), Q5 (run-tests filter parameter shape — encoding shape now resolved per Q5.a in this plan's Decisions ledger).

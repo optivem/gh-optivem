@@ -29,20 +29,15 @@ import (
 // names. Flows not in the map render with the raw ID — that surfaces
 // "you added a process without giving it a heading alias" loudly when a
 // new process appears in the YAML.
+//
+// The five-level BPMN refactor (plans/20260525-1517-bpmn-refactor-yaml-and-
+// diagrams.md Item 3) replaced the prior AT-cycle / CT-subprocess /
+// structural-cycle / legacy-acceptance-criteria shape. The new process
+// names are kebab-case (Q29 doctrine) and self-describing enough that
+// almost no aliasing is needed — only the runtime-bootstrap `main`
+// process gets a heading alias to flag its non-domain role.
 var processAlias = map[string]string{
-	"main":                       "Ticket Lifecycle",
-	"github_intake":              "GitHub Intake",
-	"run_legacy_cycle":           "Run Legacy Cycle",
-	"run_cycle":                  "Run Cycle",
-	"at_cycle":                   "AT Cycle",
-	"at_green_system":            "AT - GREEN - SYSTEM",
-	"da_cycle":                   "DA Cycle",
-	"sut_cycle":                  "SUT Cycle",
-	"ct_subprocess":              "Contract Test Sub-Process",
-	"external_system_onboarding": "External System Onboarding Sub-Process",
-	"structural_cycle":           "Structural Cycle (shared)",
-	"commit":                     "Commit Sub-Process",
-	"legacy_acceptance_criteria": "Legacy Acceptance Criteria Cycle",
+	"main": "Runtime Bootstrap (legacy entry — collapses in Phase D)",
 }
 
 // groupAlias maps a node's `group:` annotation (a slash-delimited
@@ -60,19 +55,69 @@ var groupAlias = map[string]string{
 }
 
 // processOrder is the order flows are rendered in the output. Flows not
-// listed here come last in lexical order.
+// listed here come last in lexical order. The five-level BPMN refactor
+// fixes a reader-facing top-down walk: runtime bootstrap → TOP entry
+// points → per-ticket CYCLEs → composite HIGH orchestrations → atomic
+// MID tasks → LOW primitives. Within a level, related processes cluster
+// (e.g. the three `write-and-verify-acceptance-tests*` siblings).
 var processOrder = []string{
+	// runtime bootstrap
 	"main",
-	"github_intake",
-	"run_legacy_cycle",
-	"run_cycle",
-	"at_cycle",
-	"at_green_system",
-	"ct_subprocess",
-	"external_system_onboarding",
-	"structural_cycle",
+	// TOP
+	"refine-ticket",
+	"implement-ticket",
+	"refactor",
+	// CYCLE
+	"refine-backlog",
+	"onboard-external-system",
+	"change-system-behavior",
+	"cover-system-behavior",
+	"redesign-system-structure",
+	"refactor-system-structure",
+	"refactor-test-structure",
+	// HIGH
+	"write-and-verify-acceptance-tests-fail",
+	"write-and-verify-acceptance-tests-pass",
+	"write-and-verify-acceptance-tests",
+	"write-and-verify-acceptance-test-code",
+	"implement-and-verify-dsl",
+	"implement-and-verify-system-driver-adapters",
+	"implement-and-verify-external-system-driver-adapters",
+	"implement-and-verify-external-system-driver-adapters-contract-tests",
+	"implement-and-verify-system",
+	"refactor-and-verify-tests",
+	"implement-test-layer",
+	"verify-tests-pass",
+	"verify-tests-fail",
+	// MID — agent tasks
+	"write-acceptance-tests",
+	"write-contract-tests",
+	"implement-dsl",
+	"implement-system",
+	"implement-system-driver-adapters",
+	"implement-external-system-driver-adapters",
+	"implement-external-system-stubs",
+	"disable-tests",
+	"enable-tests",
+	"fix-unexpected-passing-tests",
+	"fix-unexpected-failing-tests",
+	"refactor-tests",
+	"refactor-system",
+	"refine-acceptance-criteria",
+	"update-ticket",
+	// MID — command tasks
+	"compile",
+	"compile-system",
+	"compile-tests",
+	"build-system",
+	"start-system",
 	"commit",
-	"legacy_acceptance_criteria",
+	"run-tests",
+	// LOW
+	"approve",
+	"execute-agent",
+	"execute-command",
+	"fix",
 }
 
 // Render returns the full Mermaid markdown body for eng's flows. The

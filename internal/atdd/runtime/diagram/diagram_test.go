@@ -37,10 +37,12 @@ func TestRender_CallActivityLinksToTargetProcess(t *testing.T) {
 	}
 	got := Render(eng)
 
-	// AT_CYCLE in main → call_activity → at_cycle. The label must include
-	// the aliased "see § AT Cycle" suffix so the link is followable when
-	// rendered on github.com.
-	want := "see § AT Cycle"
+	// implement-ticket calls change-system-behavior on the story/bug
+	// branch. Without a processAlias entry, the call_activity link
+	// suffix is the raw process name — the assertion locks in that
+	// the renderer still emits the "see § …" link form for un-aliased
+	// targets so cross-section navigation works on github.com.
+	want := "see § change-system-behavior"
 	if !strings.Contains(got, want) {
 		t.Errorf("expected call_activity link suffix %q in output", want)
 	}

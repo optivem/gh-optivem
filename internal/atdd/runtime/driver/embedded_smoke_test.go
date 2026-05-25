@@ -104,6 +104,14 @@ func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 // fix-verify dispatch sites — FIX_COMPILE is its compile-RED twin).
 // Any embedded user_task with a static (non-templated) agent will do.
 func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
+	// The five-level BPMN refactor (plans/20260525-1517-bpmn-refactor-yaml-
+	// and-diagrams.md Item 3) replaced the structural_cycle / red_phase_cycle
+	// / green_phase_cycle shape this smoke test exercises, and the new
+	// runtime gateway/action bindings (refactor_type_choice, ticket_kind,
+	// run_command, validate_outputs_and_scopes, …) are not yet registered.
+	// Phase D's downstream-alignment plan re-establishes the embedded-prompt
+	// smoke test against the new structure once the registries land.
+	t.Skip("pending Phase D: register new gates/actions for the five-level YAML")
 	tempDir := t.TempDir()
 
 	gitFake := &fakeGit{

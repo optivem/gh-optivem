@@ -1,89 +1,135 @@
-# ATDD Pipeline — Orchestration Process
+# ATDD Pipeline — Five-Level BPMN Orchestration
 #
-# Single source of truth for cycle-level orchestration. Encodes the AT cycle,
-# the CT sub-process, the External System Onboarding sub-process, the shared
-# structural cycle (used by the system-interface-redesign and
-# system-implementation-refactoring subtypes), the external-system-interface-redesign
-# wrapper, and the (TBD) Legacy Acceptance Criteria cycle as named processes of
-# typed nodes connected by sequence flows.
+# Single source of truth for the process flow under the TOP / CYCLE / HIGH /
+# MID / LOW structure introduced by the BPMN refactor (design archive:
+# plans/20260525-1057-bpmn-refactor-design.md; execution plan:
+# plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md). Replaces the
+# previous AT-cycle / CT-subprocess / structural-cycle / legacy-acceptance-
+# criteria shape wholesale per Q17 = A (full replacement).
 #
-# Per-phase WRITE/COMMIT mechanics (e.g. the inner compile/run/disable loop of
-# AT - RED - TEST) are *not* encoded here — they live in the per-phase docs
-# (at-red-test.md, at-red-dsl.md, ...) and stay agent-internal. The YAML
-# describes the orchestrator's view: what dispatches next, gated by which flag.
+# Level reading order:
 #
-# Document shape:
+#   TOP    — operator entry points. `refine-ticket` grooms backlog tickets,
+#            `implement-ticket` runs a READY ticket end-to-end via the
+#            ticket-kind gateway, `refactor` is ad-hoc refactor with no
+#            ticket overhead. The runtime currently still bootstraps into a
+#            thin `main` process that picks a ticket and delegates to
+#            `implement-ticket`; the picker collapses into Go code during
+#            Phase D (downstream-alignment plan).
+#
+#   CYCLE  — per-ticket sub-processes. One per ticket-kind row in the
+#            gateway lookup table. `change-system-behavior`,
+#            `cover-system-behavior`, `redesign-system-structure`,
+#            `refactor-system-structure`, `refactor-test-structure`,
+#            `refine-backlog`, `onboard-external-system`.
+#
+#   HIGH   — composite orchestrations. Author the cascading test/system
+#            verify shape (e.g. `write-and-verify-acceptance-tests` →
+#            `implement-and-verify-dsl` → driver-adapter fanout). Reused by
+#            multiple CYCLEs and call-back-into other HIGH via the shared
+#            `implement-test-layer` parameterised flow.
+#
+#   MID    — atomic agent or command tasks. Each wraps exactly one LOW
+#            primitive call with task-specific params: `write-acceptance-
+#            tests`, `implement-system`, `compile`, `commit`, `run-tests`,
+#            etc. The MID layer is the only place an agent name or command
+#            name appears literally (everything below is templated).
+#
+#   LOW    — primitives. Four total: `approve` (HUMAN gate), `execute-agent`
+#            (run a templated LLM agent with validation + optional fix
+#            recovery), `execute-command` (run a templated shell command),
+#            `fix` (single-attempt remediation that re-enters
+#            `execute-agent` with `fix-on-failure: false`).
+#
+# Encoding conventions:
+#
+#   - Process names match the canonical kebab-case task names from
+#     plans/ideas/{1..5}-bpmn-refactor-*-level.md. Cross-file connectedness
+#     (Q-new-3 vocabulary, Q-new-6 acceptance-test naming) is applied.
+#
+#   - `call_activity.process:` is the only invocation primitive. Templated
+#     `process: ${agent-action}` resolves at dispatch time against the
+#     caller's params (runtime support added by Item 2 of the execution
+#     plan).
+#
+#   - `call_activity.params:` carries call-site values down into the
+#     called sub-process. ExpandParams substitutes ${name} occurrences in
+#     param values against the parent's params before pushing the new
+#     scope (so `params: {expected-test-result: ${expected-test-result}}`
+#     forwards the parent's value).
+#
+#   - Gateway bindings (Q-new-1: parameterised expectation) read state set
+#     either by an upstream gateway's binding function or by a custom Go
+#     gate that promotes a relevant param into state. The Bind-time wiring
+#     for these new bindings is downstream-alignment scope (Phase D).
+#
+#   - LOW primitives are encoded as their own processes; MID tasks call
+#     them via `call_activity`. The double indirection looks heavier than
+#     the brainstorm's prose but is what makes the diagram show "agent X
+#     runs through LOW execute-agent" instead of inlining the validation /
+#     approval loop into every MID.
+#
+# Runtime contract gaps known and accepted in this Item (encoded as TODO
+# comments inline):
+#
+#   - `approve` NO-branch: Q3 = A (exit-only; caller owns NO) — currently
+#     encoded as two end_events plus a state binding `approval_outcome`
+#     the caller can re-read. Alternatives Q3-B (parameterised NO-action)
+#     and Q3-C (split into two primitives APPROVE-OR-EXIT / APPROVE-OR-
+#     RETRY) deferred to a future plan.
+#
+#   - `execute-agent` validation gateway (`outputs_and_scopes_valid`),
+#     scope-diff plumbing, and `fix-on-failure` flag dispatch: the
+#     YAML edges describe the shape; the gate/action bindings land with
+#     the writing-agent runtime rewire (Phase D).
+#
+#   - `run-tests` structured filter params (`filter-type` enum +
+#     `filter-value`, Q5.a resolved): encoded as call-site params on the
+#     `run-tests` MID; the underlying `execute-command` reads them at
+#     dispatch time via the command's own arg substitution. Param values
+#     are strings (the YAML schema does not support typed unions); a
+#     dedicated parser lives in the Go command layer (Phase D).
+#
+#   - `fix-*` agent inventory (Q-late-5 (β-convention) routing): each `fix`
+#     call dispatches `execute-agent` with `task-name = "fix-" +
+#     failure.kind`. The kind values are not enumerated here — the prompt
+#     files implementing them are authored / renamed in the Phase D
+#     downstream-alignment plan.
+#
+# Document shape (unchanged from prior YAML; see internal/atdd/runtime/
+# statemachine/load.go for the parser):
 #
 #   processes:
 #     <process_name>:
-#       start: <node_id>            # entry node — must appear in nodes:
-#       nodes:                      # ids unique per process (reuse across processes is fine)
+#       start: <node_id>
+#       outputs: [<name>, ...]        # optional BPMN-style data outputs
+#       nodes:
 #         - id: <node_id>
-#           type: <node_type>       # body fields depend on type:
-#                                   #   service_task  → action: <name>
-#                                   #   user_task     → agent: <name>   (or "human" for a STOP)
-#                                   #   gateway       → binding: <name>
-#                                   #   call_activity → process: <process_name>   [+ params: <map>]
-#                                   #   start_event / end_event → no body
+#           type: <node_type>         # one of: start_event, end_event,
+#                                     # service_task, user_task, gateway,
+#                                     # call_activity
+#           # body fields per type:
+#           # service_task  → action:
+#           # user_task     → agent:       (`human` for STOPs)
+#           # gateway       → binding:
+#           # call_activity → process: [+ params: <map>]
 #       sequence_flows:
-#         - {from: <id>, to: <id>}                        # unconditional edge
-#         - {from: <id>, to: <id>, when: "<predicate>"}   # gateway-guarded edge
-#
-# Node types (BPMN-shaped vocabulary):
-#   start_event    Process entry.
-#   end_event      Process terminus.
-#   service_task   Mechanical action; the Go runtime auto-executes
-#                  actions.<action> with no agent dispatch.
-#   user_task      Creative work; the Go runtime dispatches the named agent
-#                  and waits for its COMMIT output. A user_task with
-#                  `agent: human` is a STOP — no dispatch, just block on
-#                  human input.
-#   gateway        XOR decision; the Go runtime calls gates.<binding>(ctx)
-#                  and follows the outgoing edge whose `when:` predicate
-#                  matches the returned value.
-#   call_activity  Embedded sub-process; control returns to the parent process's
-#                  next sequence flow on completion.
-#
-# Sequence flows:
-#   {from: A, to: B}                       Unconditional.
-#   {from: A, to: B, when: "<predicate>"}  Outgoing edge from a gateway.
-#                                          Predicates are evaluated against
-#                                          the value returned by the gateway's
-#                                          `binding:` function.
-#
-# Optional fields:
-#   documentation: Free-text node label; rendered in the Mermaid diagram.
-#   role:          `review` or `implement` — annotation only. The Go runtime
-#                  doesn't consume it, and the diagram generator no longer
-#                  styles by role (it colors by executor: white = service_task,
-#                  yellow = user_task agent: human, dark blue = user_task with
-#                  any other agent). Kept on existing nodes for documentation.
-#   params:        Map of name→value substituted into the called process's nodes
-#                  at dispatch time (used by call_activity to parameterise
-#                  the shared structural_cycle).
-#
-# Open gaps preserved as TBDs (do not silently resolve):
-#   - ct_green_external_system_stub node: agent set to `ct-green-external-system-stub`;
-#     ownership is TBD per the process-audit gap on stubs ownership
-#     (see plans/20260429-100633-process-audit.md).
+#         - {from: <id>, to: <id>}                      # unconditional
+#         - {from: <id>, to: <id>, when: "<predicate>"} # gateway-guarded
 
 processes:
 
   # ===========================================================================
-  # main
-  # Ticket Lifecycle — entry process for `gh optivem implement` (with or
-  # without `--issue`). Pulls the next ticket
-  # (board / specific_issue → in-progress), then runs intake, runs the
-  # legacy acceptance criteria cycle (no-op when the ticket carries no Legacy Acceptance Criteria
-  # section), runs the change cycle for the ticket's type, and ends at
-  # TICKET STATUS - IN ACCEPTANCE.
+  # Runtime bootstrap
+  # ===========================================================================
   #
-  # Each sub-process encapsulates its own gates so main stays linear and
-  # gate-free. Splitting them lets each diagram answer one question:
-  # "main" shows the ticket's lifecycle, "github_intake" shows the
-  # type-specific intake fan-out, "run_legacy_cycle" shows the
-  # legacy-acceptance-criteria backfill, and "run_cycle" shows the
-  # behavioral-vs-structural change-cycle choice.
+  # `main` is the runtime entry point invoked by `gh optivem implement`. It
+  # picks a ticket (board mode) or treats the operator-supplied ticket as
+  # pre-picked (specific_issue mode), then delegates to the TOP
+  # `implement-ticket` process. No domain logic lives here — `main` is the
+  # bridge between the CLI invocation surface and the five-level BPMN
+  # structure. Phase D removes `main` from YAML by moving the picker into
+  # the Go driver.
   # ===========================================================================
   main:
     start: START
@@ -94,1448 +140,384 @@ processes:
       - id: PICK_TOP_READY
         type: service_task
         action: pick_top_ready
-        documentation: "Pick top Ready ticket"
+        documentation: "Pick top READY ticket"
 
-      - id: MOVE_TICKET_IN_PROGRESS
-        type: service_task
-        action: move_to_in_progress
-        documentation: "Move ticket to In Progress (bottom of lane)"
-
-      - id: INTAKE
+      - id: IMPLEMENT_TICKET
         type: call_activity
-        process: github_intake
-
-      - id: RUN_LEGACY_CYCLE
-        type: call_activity
-        process: run_legacy_cycle
-
-      - id: BACKLOG_REFINEMENT
-        type: call_activity
-        process: backlog_refinement
-
-      - id: RUN_CYCLE
-        type: call_activity
-        process: run_cycle
-
-      - id: MOVE_TICKET_IN_ACCEPTANCE
-        type: service_task
-        action: move_to_in_acceptance
-        documentation: "Tick checklist + move issue to IN ACCEPTANCE"
+        process: implement-ticket
 
       - id: END
         type: end_event
 
     sequence_flows:
-      - {from: START,                to: PICK_TOP_READY,      when: "mode == board"}
-      - {from: START,                to: MOVE_TICKET_IN_PROGRESS, when: "mode == specific_issue"}
-      - {from: PICK_TOP_READY,       to: MOVE_TICKET_IN_PROGRESS}
-      - {from: MOVE_TICKET_IN_PROGRESS,  to: INTAKE}
-      - {from: INTAKE,               to: RUN_LEGACY_CYCLE}
-      - {from: RUN_LEGACY_CYCLE,     to: BACKLOG_REFINEMENT}
-      - {from: BACKLOG_REFINEMENT,   to: RUN_CYCLE}
-      - {from: RUN_CYCLE,            to: MOVE_TICKET_IN_ACCEPTANCE}
-      - {from: MOVE_TICKET_IN_ACCEPTANCE, to: END}
+      - {from: START,            to: PICK_TOP_READY,   when: "mode == board"}
+      - {from: START,            to: IMPLEMENT_TICKET, when: "mode == specific_issue"}
+      - {from: PICK_TOP_READY,   to: IMPLEMENT_TICKET}
+      - {from: IMPLEMENT_TICKET, to: END}
 
   # ===========================================================================
-  # github_intake
-  # Owns the full "understand this GitHub ticket" responsibility: read the
-  # ticket type from GitHub's native issue type, surface unrecognised types
-  # for human resolution, read the structural subtype from the `subtype:*`
-  # label (task tickets only), and parse the body's canonical sections
-  # deterministically. No LLM is dispatched — Issue Forms enforce the schema
-  # upstream so the parser is unambiguous. Self-contained: main only sees
-  # INTAKE start and finish.
+  # TOP — refine-ticket
+  # ===========================================================================
   #
-  # Named `github_intake` (not just `intake`) because it is GitHub-coupled —
-  # it reads the issue's native type, labels, and body via `gh`. A
-  # source-agnostic wrapper is deferred until a second source exists.
+  # Backlog grooming entry. Marks the ticket IN REFINEMENT, runs the
+  # refine-backlog cycle to produce Gherkin acceptance criteria + classify
+  # the ticket-kind, then marks READY. The READY state is the precondition
+  # for `implement-ticket`.
   # ===========================================================================
-  github_intake:
-    start: CLASSIFY_TICKET_TYPE
-    outputs:
-      - ticket_type
-      - subtype (tasks)
-      - change_type
-      - parsed body sections
+  refine-ticket:
+    start: MARK_IN_REFINEMENT
     nodes:
-      - id: CLASSIFY_TICKET_TYPE
-        type: service_task
-        action: read_ticket_type
-        documentation: "Read ticket type"
-
-      - id: GATE_CLASSIFY_CONFIDENT
-        type: gateway
-        binding: ticket_type_recognized
-        documentation: "Ticket type recognized?"
-
-      - id: STOP_CLASSIFY_CONFLICT
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — set issue type / re-run"
-
-      - id: GATE_TICKET_TYPE_INTAKE
-        type: gateway
-        binding: ticket_type
-        documentation: "Ticket type?"
-
-      - id: CLASSIFY_TICKET_SUBTYPE
-        type: service_task
-        action: read_subtype
-        documentation: "Read ticket subtype"
-
-      - id: GATE_SUBTYPE_OK
-        type: gateway
-        binding: subtype_ok
-        documentation: "Subtype label detected?"
-
-      - id: STOP_SUBTYPE_MISSING
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — apply exactly one subtype:* label / re-run"
-
-      - id: READ_TICKET_BODY
-        type: service_task
-        action: parse_ticket_body
-        documentation: "Parse ticket body sections"
-
-      - id: GATE_PARSE_OK
-        type: gateway
-        binding: parse_ok
-        documentation: "Parsed OK?"
-
-      - id: STOP_PARSE_ERROR
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — fix ticket body / re-run"
-
-      - id: REPORT_TICKET_DETAILS
-        type: service_task
-        action: report_intake_summary
-        documentation: "Report intake summary"
-
-      - id: INTAKE_END
-        type: end_event
-
-    sequence_flows:
-      - {from: CLASSIFY_TICKET_TYPE,    to: GATE_CLASSIFY_CONFIDENT}
-      - {from: GATE_CLASSIFY_CONFIDENT, to: GATE_TICKET_TYPE_INTAKE, when: "ticket_type_recognized == true"}
-      - {from: GATE_CLASSIFY_CONFIDENT, to: STOP_CLASSIFY_CONFLICT,  when: "ticket_type_recognized == false"}
-      - {from: STOP_CLASSIFY_CONFLICT,  to: CLASSIFY_TICKET_TYPE}
-      - {from: GATE_TICKET_TYPE_INTAKE, to: READ_TICKET_BODY,              when: "ticket_type == story"}
-      - {from: GATE_TICKET_TYPE_INTAKE, to: READ_TICKET_BODY,              when: "ticket_type == bug"}
-      - {from: GATE_TICKET_TYPE_INTAKE, to: CLASSIFY_TICKET_SUBTYPE,        when: "ticket_type == task"}
-      - {from: CLASSIFY_TICKET_SUBTYPE,        to: GATE_SUBTYPE_OK}
-      - {from: GATE_SUBTYPE_OK,         to: READ_TICKET_BODY,              when: "subtype_ok == true"}
-      - {from: GATE_SUBTYPE_OK,         to: STOP_SUBTYPE_MISSING,    when: "subtype_ok == false"}
-      - {from: STOP_SUBTYPE_MISSING,    to: CLASSIFY_TICKET_SUBTYPE}
-      - {from: READ_TICKET_BODY,              to: GATE_PARSE_OK}
-      - {from: GATE_PARSE_OK,           to: REPORT_TICKET_DETAILS,   when: "parse_ok == true"}
-      - {from: GATE_PARSE_OK,           to: STOP_PARSE_ERROR,        when: "parse_ok == false"}
-      - {from: STOP_PARSE_ERROR,        to: READ_TICKET_BODY}
-      - {from: REPORT_TICKET_DETAILS,   to: INTAKE_END}
-
-  # ===========================================================================
-  # run_legacy_cycle
-  # Backfill cycle for tickets that carry a "Legacy Acceptance Criteria" section in
-  # their issue body — covers previously-untested behavior before the new
-  # change cycle runs. Self-contained: gates internally on presence and
-  # no-ops when absent, so main can call it unconditionally.
-  # ===========================================================================
-  run_legacy_cycle:
-    start: GATE_LEGACY_PRESENT
-    nodes:
-      - id: GATE_LEGACY_PRESENT
-        type: gateway
-        binding: legacy_acceptance_criteria_section_present
-        documentation: "Legacy Acceptance Criteria section present?"
-
-      - id: LEGACY_CYCLE
+      - id: MARK_IN_REFINEMENT
         type: call_activity
-        process: legacy_acceptance_criteria
+        process: update-ticket
+        params:
+          target-state: "IN REFINEMENT"
 
-      - id: RUN_LEGACY_END
+      - id: REFINE_BACKLOG
+        type: call_activity
+        process: refine-backlog
+
+      - id: MARK_READY
+        type: call_activity
+        process: update-ticket
+        params:
+          target-state: "READY"
+
+      - id: REFINE_TICKET_END
         type: end_event
 
     sequence_flows:
-      - {from: GATE_LEGACY_PRESENT, to: LEGACY_CYCLE,    when: "legacy_acceptance_criteria_section_present == true"}
-      - {from: GATE_LEGACY_PRESENT, to: RUN_LEGACY_END,  when: "legacy_acceptance_criteria_section_present == false"}
-      - {from: LEGACY_CYCLE,        to: RUN_LEGACY_END}
+      - {from: MARK_IN_REFINEMENT, to: REFINE_BACKLOG}
+      - {from: REFINE_BACKLOG,     to: MARK_READY}
+      - {from: MARK_READY,         to: REFINE_TICKET_END}
 
   # ===========================================================================
-  # backlog_refinement
-  # Refines the ticket's acceptance criteria (legacy + newly-derived) into
-  # Gherkin GIVEN-WHEN-THEN form and covers any gaps per the AC-coverage
-  # rubric. The refiner is a rewriter (not a reviewer): it mutates the
-  # parsed-concepts artifact in place and emits a `refinement_changed`
-  # flag. The user confirms the result; if anything changed, an
-  # update-ticket step writes the refined sections back to the ticket
-  # source. When refinement was a no-op the sub-process discharges
-  # without writing.
+  # TOP — implement-ticket
+  # ===========================================================================
   #
-  # The whole refine pass is opt-in. After the parsed-concepts artifact is
-  # materialized, GATE_REFINE_REQUESTED asks the operator y/n whether to
-  # invoke refine-acc at all; "no" skips refine-acc, the human confirm
-  # step, and update-ticket. This is distinct from CONFIRM_REFINEMENT
-  # (which confirms the refiner's output once it has run).
+  # Per-ticket execution. Marks IN PROGRESS, picks a CYCLE via the
+  # mechanical 1:1 ticket-kind gateway (Q30 = A; subtype validation hard-
+  # exits on unknown kinds), runs the chosen CYCLE, then marks IN
+  # ACCEPTANCE. Single-cycle tickets only (Q30.b = A) — multi-cycle work
+  # splits during refinement.
   #
-  # Slotted between run_legacy_cycle and run_cycle so the legacy backfill
-  # has already run, and the refined ACs feed directly into the execution
-  # cycle (at_cycle / da_cycle / sut_cycle) dispatched by run_cycle.
-  # ===========================================================================
-  backlog_refinement:
-    start: MATERIALIZE_PARSED_CONCEPTS
-    nodes:
-      - id: MATERIALIZE_PARSED_CONCEPTS
-        type: service_task
-        action: materialize_parsed_concepts
-        documentation: "Materialize parsed-concepts artifact for refine-acc / update-ticket"
-
-      - id: GATE_REFINE_REQUESTED
-        type: gateway
-        binding: refine_requested
-        documentation: "Refine acceptance criteria for this ticket?"
-
-      - id: BACKLOG_REFINEMENT
-        type: user_task
-        agent: refine-acc
-        documentation: "Refine acceptance criteria (Gherkin + coverage rubric)"
-
-      - id: CONFIRM_REFINEMENT
-        type: user_task
-        agent: human
-        role: review
-        documentation: "Confirm refined acceptance criteria"
-
-      - id: GATE_REFINEMENT_CHANGED
-        type: gateway
-        binding: refinement_changed
-        documentation: "Refinement Changed?"
-
-      - id: UPDATE_TICKET
-        type: user_task
-        agent: update-ticket
-        documentation: "Write refined ACs back to ticket source"
-
-      - id: BR_END
-        type: end_event
-
-    sequence_flows:
-      - {from: MATERIALIZE_PARSED_CONCEPTS, to: GATE_REFINE_REQUESTED}
-      - {from: GATE_REFINE_REQUESTED,   to: BACKLOG_REFINEMENT, when: "refine_requested == true"}
-      - {from: GATE_REFINE_REQUESTED,   to: BR_END,             when: "refine_requested == false"}
-      - {from: BACKLOG_REFINEMENT,      to: CONFIRM_REFINEMENT}
-      - {from: CONFIRM_REFINEMENT,      to: GATE_REFINEMENT_CHANGED}
-      - {from: GATE_REFINEMENT_CHANGED, to: UPDATE_TICKET, when: "refinement_changed == true"}
-      - {from: GATE_REFINEMENT_CHANGED, to: BR_END,        when: "refinement_changed == false"}
-      - {from: UPDATE_TICKET,           to: BR_END}
-
-  # ===========================================================================
-  # run_cycle
-  # Change cycle for the current ticket — dispatches on `change_type`, the
-  # single-axis classification derived during intake from (ticket_type,
-  # subtype). Three cycles cover the full space, named after the test-stack
-  # layer at which the change is visible:
-  #   - behavioral                          → at_cycle  (AT-layer change)
-  #   - system-interface-redesign           → da_cycle  (Driver Adapter seam change, system-side)
-  #   - external-system-interface-redesign  → da_cycle  (Driver Adapter seam change, external-side)
-  #   - system-implementation-refactoring   → sut_cycle (System Under Test internal)
+  # Absorbs the pre-refactor github_intake process (cross-check inventory
+  # diagram #3). The OLD intake's classification + body-parsing pipeline
+  # (`read_ticket_type` / `read_subtype` / `parse_ticket_body` service
+  # tasks plus three STOP nodes) collapses into the `ticket_kind` gateway
+  # binding: the binding's Go implementation does the read/parse/classify
+  # work and returns the discriminator value the gateway switches on.
+  # Operator-facing parse errors / unrecognised types surface through
+  # the runtime's no-edge-matched error path rather than dedicated STOP
+  # nodes. The gateway's binding function lands in Phase D (downstream-
+  # alignment plan) alongside the other new bindings.
   #
-  # change_type derivation lives in the parse_ticket_body action. The value
-  # is `behavioral` for story / bug tickets and equals the subtype label for
-  # task tickets.
-  # ===========================================================================
-  run_cycle:
-    start: GATE_CHANGE_TYPE
-    nodes:
-      - id: GATE_CHANGE_TYPE
-        type: gateway
-        binding: change_type
-        documentation: "Change type?"
-
-      - id: AT_CYCLE
-        type: call_activity
-        process: at_cycle
-
-      - id: DA_CYCLE
-        type: call_activity
-        process: da_cycle
-
-      - id: SUT_CYCLE
-        type: call_activity
-        process: sut_cycle
-
-      - id: CYCLE_END
-        type: end_event
-
-    sequence_flows:
-      - {from: GATE_CHANGE_TYPE, to: AT_CYCLE,  when: "change_type == behavioral"}
-      - {from: GATE_CHANGE_TYPE, to: DA_CYCLE,  when: "change_type == system-interface-redesign"}
-      - {from: GATE_CHANGE_TYPE, to: DA_CYCLE,  when: "change_type == external-system-interface-redesign"}
-      - {from: GATE_CHANGE_TYPE, to: SUT_CYCLE, when: "change_type == system-implementation-refactoring"}
-      - {from: AT_CYCLE,  to: CYCLE_END}
-      - {from: DA_CYCLE,  to: CYCLE_END}
-      - {from: SUT_CYCLE, to: CYCLE_END}
-
-  # ===========================================================================
-  # at_cycle
-  # AT Cycle — driven by change-driven AC (story / bug).
-  # Embeds the CT sub-process when External Driver interfaces change.
-  # Embeds at_green_system, then at_refactor_system as the terminal
-  # sub-process (post-GREEN housekeeping refactor; no-op if no improvement
-  # is seen).
-  # ===========================================================================
-  at_cycle:
-    start: AT_RED_TEST
-    nodes:
-      - id: AT_RED_TEST
-        type: call_activity
-        process: red_phase_cycle
-        params:
-          agent: at-red-test
-          phase_label: "AT - RED - TEST"
-          phase_id: AT_RED_TEST
-          change_type: "AT - RED - TEST"
-          compile_action: compile_system_tests
-        documentation: "AT - RED - TEST"
-
-      - id: GATE_DSL_AT
-        type: gateway
-        binding: dsl_interface_changed
-        documentation: "DSL Interface Changed?"
-
-      - id: AT_RED_DSL
-        type: call_activity
-        process: red_phase_cycle
-        params:
-          agent: at-red-dsl
-          phase_label: "AT - RED - DSL"
-          phase_id: AT_RED_DSL
-          change_type: "AT - RED - DSL"
-          compile_action: compile_system_tests
-        documentation: "AT - RED - DSL"
-
-      - id: GATE_DSL_FLAGS_PRESENT
-        type: gateway
-        binding: dsl_flags_present
-        documentation: "RED-DSL phase-output flags emitted?"
-
-      - id: STOP_FLAG_UNSET
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — AT - RED - DSL phase-output flags missing; re-run with reminder"
-
-      - id: GATE_EXT_AT
-        type: gateway
-        binding: external_system_driver_interface_changed
-        documentation: "External System Driver Interface Changed?"
-
-      - id: CT_SUBPROCESS
-        type: call_activity
-        process: ct_subprocess
-
-      - id: GATE_SYS_AT
-        type: gateway
-        binding: system_driver_interface_changed
-        documentation: "System Driver Interface Changed?"
-
-      - id: AT_RED_SYSTEM_DRIVER
-        type: call_activity
-        process: red_phase_cycle
-        params:
-          agent: at-red-system-driver
-          phase_label: "AT - RED - SYSTEM DRIVER"
-          phase_id: AT_RED_SYSTEM_DRIVER
-          change_type: "AT - RED - SYSTEM DRIVER"
-          compile_action: compile_system_tests
-        documentation: "AT - RED - SYSTEM DRIVER"
-
-      - id: VERIFY_AT_DRIVER
-        type: service_task
-        action: run_tests
-        documentation: "Verify: run targeted acceptance tests after driver-adapter change"
-
-      - id: AT_GREEN_SYSTEM
-        type: call_activity
-        process: at_green_system
-
-      - id: AT_REFACTOR_SYSTEM
-        type: call_activity
-        process: at_refactor_system
-
-      - id: AT_END
-        type: end_event
-
-    sequence_flows:
-      - {from: AT_RED_TEST,          to: GATE_DSL_AT}
-      - {from: GATE_DSL_AT,          to: AT_GREEN_SYSTEM,        when: "dsl_interface_changed == false"}
-      - {from: GATE_DSL_AT,          to: AT_RED_DSL,             when: "dsl_interface_changed == true"}
-      - {from: AT_RED_DSL,           to: GATE_DSL_FLAGS_PRESENT}
-      - {from: GATE_DSL_FLAGS_PRESENT, to: GATE_EXT_AT,           when: "dsl_flags_present == true"}
-      - {from: GATE_DSL_FLAGS_PRESENT, to: STOP_FLAG_UNSET,       when: "dsl_flags_present == false"}
-      - {from: STOP_FLAG_UNSET,      to: AT_RED_DSL}
-      - {from: GATE_EXT_AT,          to: CT_SUBPROCESS,          when: "external_system_driver_interface_changed == true"}
-      - {from: GATE_EXT_AT,          to: GATE_SYS_AT,            when: "external_system_driver_interface_changed == false"}
-      - {from: CT_SUBPROCESS,        to: GATE_SYS_AT}
-      - {from: GATE_SYS_AT,          to: AT_RED_SYSTEM_DRIVER,   when: "system_driver_interface_changed == true"}
-      - {from: GATE_SYS_AT,          to: AT_GREEN_SYSTEM,        when: "system_driver_interface_changed == false"}
-      - {from: AT_RED_SYSTEM_DRIVER, to: VERIFY_AT_DRIVER}
-      - {from: VERIFY_AT_DRIVER,     to: AT_GREEN_SYSTEM}
-      - {from: AT_GREEN_SYSTEM,      to: AT_REFACTOR_SYSTEM}
-      - {from: AT_REFACTOR_SYSTEM,   to: AT_END}
-
-  # ===========================================================================
-  # at_green_system
-  # AT - GREEN - SYSTEM — re-enable disabled tests, then write the channel-
-  # agnostic implementation through the shared green_phase_cycle in a
-  # single call_activity, human review, and a fully mechanical COMMIT /
-  # TICK / MOVE-TO-IN-ACCEPTANCE tail. Per the AT/CT split plan, the
-  # legacy `atdd-release` agent is replaced by the existing service_task
-  # actions commit_phase, tick_checklist, and move_to_in_acceptance.
-  # ===========================================================================
-  at_green_system:
-    start: ENABLE_TESTS
-    nodes:
-      - id: ENABLE_TESTS
-        type: user_task
-        agent: enable-tests
-        documentation: "Re-enable tests disabled in AT - RED - SYSTEM DRIVER"
-
-      - id: AT_GREEN
-        type: call_activity
-        process: green_phase_cycle
-        params:
-          agent: at-green-system
-          phase_label: "AT - GREEN - SYSTEM"
-          phase_id: AT_GREEN
-          rebuild_before_run: "true"
-          compile_action: compile_system
-        documentation: "AT - GREEN - SYSTEM - WRITE"
-
-      - id: COMMIT
-        type: call_activity
-        process: commit
-        params:
-          change_type: "AT - GREEN - SYSTEM"
-
-      - id: TICK
-        type: service_task
-        action: tick_checklist
-        documentation: "Tick acceptance-criteria checklist items"
-
-      - id: MOVE_TICKET_IN_ACCEPTANCE
-        type: service_task
-        action: move_to_in_acceptance
-        documentation: "Move ticket to TICKET STATUS - IN ACCEPTANCE"
-
-      - id: GS_END
-        type: end_event
-
-    sequence_flows:
-      - {from: ENABLE_TESTS,         to: AT_GREEN}
-      - {from: AT_GREEN,             to: COMMIT}
-      - {from: COMMIT,               to: TICK}
-      - {from: TICK,                 to: MOVE_TICKET_IN_ACCEPTANCE}
-      - {from: MOVE_TICKET_IN_ACCEPTANCE, to: GS_END}
-
-  # ===========================================================================
-  # at_refactor_system
-  # AT - REFACTOR - SYSTEM — post-GREEN housekeeping refactor on production
-  # code. Reuses green_phase_cycle for WRITE / compile / run / scope-check
-  # plumbing; the refactor agent emits a `refactor_changed` flag that gates
-  # the terminal COMMIT — no-op refactors discharge without a commit.
-  # Mirrors at_green_system minus the ENABLE_TESTS / TICK /
-  # MOVE_TICKET_IN_ACCEPTANCE wrapper (refactor runs with tests already
-  # enabled and is post-acceptance, so no ticket transition).
-  # ===========================================================================
-  at_refactor_system:
-    start: AT_REFACTOR
-    nodes:
-      - id: AT_REFACTOR
-        type: call_activity
-        process: green_phase_cycle
-        params:
-          agent: at-refactor-system
-          phase_label: "AT - REFACTOR - SYSTEM"
-          phase_id: AT_REFACTOR
-          rebuild_before_run: "true"
-          compile_action: compile_system
-        documentation: "AT - REFACTOR - SYSTEM - WRITE"
-
-      - id: GATE_REFACTOR_CHANGED
-        type: gateway
-        binding: refactor_changed
-        documentation: "Refactor Changed?"
-
-      - id: COMMIT
-        type: call_activity
-        process: commit
-        params:
-          change_type: "AT - REFACTOR - SYSTEM"
-
-      - id: AR_END
-        type: end_event
-
-    sequence_flows:
-      - {from: AT_REFACTOR,           to: GATE_REFACTOR_CHANGED}
-      - {from: GATE_REFACTOR_CHANGED, to: COMMIT,  when: "refactor_changed == true"}
-      - {from: GATE_REFACTOR_CHANGED, to: AR_END,  when: "refactor_changed == false"}
-      - {from: COMMIT,                to: AR_END}
-
-  # ===========================================================================
-  # ct_subprocess
-  # Contract Test Sub-Process — entered when External Driver interfaces
-  # change. Calls External System Onboarding first to ensure a Driver and
-  # Test Instance exist.
-  # ===========================================================================
-  ct_subprocess:
-    start: ONBOARDING
-    nodes:
-      - id: ONBOARDING
-        type: call_activity
-        process: external_system_onboarding
-
-      - id: CT_RED_TEST
-        type: call_activity
-        process: red_phase_cycle
-        params:
-          agent: ct-red-test
-          phase_label: "CT - RED - TEST"
-          phase_id: CT_RED_TEST
-          change_type: "CT - RED - TEST"
-          verify_real_suite: "<suite-contract-real>"
-          compile_action: compile_system_tests
-        documentation: "CT - RED - TEST"
-
-      - id: GATE_DSL_CT
-        type: gateway
-        binding: dsl_interface_changed
-        documentation: "DSL Interface Changed?"
-
-      - id: CT_RED_DSL
-        type: call_activity
-        process: red_phase_cycle
-        params:
-          agent: ct-red-dsl
-          phase_label: "CT - RED - DSL"
-          phase_id: CT_RED_DSL
-          change_type: "CT - RED - DSL"
-          compile_action: compile_system_tests
-        documentation: "CT - RED - DSL"
-
-      # TODO: BPMN-owned post_issue_comment service_task for DSL
-      # interface change summary — see follow-up plan for wiring.
-
-      - id: GATE_EXT_CT
-        type: gateway
-        binding: external_system_driver_interface_changed
-        documentation: "External System Driver Interface Changed?"
-
-      - id: CT_RED_EXTERNAL_SYSTEM_DRIVER
-        type: call_activity
-        process: red_phase_cycle
-        params:
-          agent: ct-red-external-system-driver
-          phase_label: "CT - RED - EXTERNAL SYSTEM DRIVER"
-          phase_id: CT_RED_EXTERNAL_SYSTEM_DRIVER
-          change_type: "CT - RED - EXTERNAL SYSTEM DRIVER"
-          compile_action: compile_system_tests
-        documentation: "CT - RED - EXTERNAL SYSTEM DRIVER"
-
-      # TODO: BPMN-owned post_issue_comment service_task for Driver
-      # interface change summary — see follow-up plan for wiring.
-
-      - id: VERIFY_CT_DRIVER
-        type: service_task
-        action: run_tests
-        documentation: "Verify: run targeted contract tests after external driver-adapter change"
-
-      - id: CT_GREEN_EXTERNAL_SYSTEM_STUB
-        # Ownership TBD per process-audit gap on stubs ownership.
-        # Placeholder agent name; resolve before the Go runtime ships.
-        type: user_task
-        agent: ct-green-external-system-stub
-        documentation: "CT - GREEN - STUBS"
-
-      - id: CT_END
-        type: end_event
-
-    sequence_flows:
-      - {from: ONBOARDING,                    to: CT_RED_TEST}
-      - {from: CT_RED_TEST,                   to: GATE_DSL_CT}
-      - {from: GATE_DSL_CT,                   to: CT_GREEN_EXTERNAL_SYSTEM_STUB, when: "dsl_interface_changed == false"}
-      - {from: GATE_DSL_CT,                   to: CT_RED_DSL,                    when: "dsl_interface_changed == true"}
-      - {from: CT_RED_DSL,                    to: GATE_EXT_CT}
-      - {from: GATE_EXT_CT,                   to: CT_GREEN_EXTERNAL_SYSTEM_STUB, when: "external_system_driver_interface_changed == false"}
-      - {from: GATE_EXT_CT,                   to: CT_RED_EXTERNAL_SYSTEM_DRIVER, when: "external_system_driver_interface_changed == true"}
-      - {from: CT_RED_EXTERNAL_SYSTEM_DRIVER, to: VERIFY_CT_DRIVER}
-      - {from: VERIFY_CT_DRIVER,              to: CT_GREEN_EXTERNAL_SYSTEM_STUB}
-      - {from: CT_GREEN_EXTERNAL_SYSTEM_STUB, to: CT_END}
-
-  # ===========================================================================
-  # external_system_onboarding
-  # One-time-per-external-system prerequisite to CT - RED - TEST. Resolves two
-  # orthogonal questions (does a Driver exist? is a Test Instance accessible?)
-  # before per-scenario contract testing starts. Returns immediately if the
-  # Driver already exists.
+  # Ticket-kind gateway lookup table (locked in Q30):
   #
-  # Implementation steps are currently agent-less (`agent: human`) — there is
-  # no dedicated atdd-onboarding agent today; replace once one exists.
+  #   ticket_kind                          | CYCLE
+  #   ---                                  | ---
+  #   story                                | change-system-behavior
+  #   bug                                  | change-system-behavior
+  #   task/cover-legacy                    | cover-system-behavior
+  #   task/redesign-system                 | redesign-system-structure
+  #   task/refactor-system                 | refactor-system-structure
+  #   task/refactor-tests                  | refactor-test-structure
+  #   task/onboard-external-system         | onboard-external-system
+  #
+  # Unknown ticket_kind (and `spike` per the exploration backlog) does not
+  # appear as a branch — the gateway is exhaustive over the known set and
+  # the runtime's no-edge-matched error fires when an unrecognised value
+  # arrives. The operator re-classifies via `refine-ticket` and re-runs.
   # ===========================================================================
-  external_system_onboarding:
-    start: GATE_DRIVER_EXISTS
+  implement-ticket:
+    start: MARK_IN_PROGRESS
     nodes:
-      - id: GATE_DRIVER_EXISTS
-        type: gateway
-        binding: external_system_driver_exists
-        documentation: "External System Driver exists?"
-
-      - id: GATE_INSTANCE_ACCESSIBLE
-        type: gateway
-        binding: external_system_test_instance_accessible
-        documentation: "Test Instance accessible?"
-
-      - id: PROVISION
-        type: user_task
-        agent: human
-        role: implement
-        documentation: "Provision dockerized stand-in"
-
-      - id: DEFINE_IFACE
-        type: user_task
-        agent: human
-        role: implement
-        documentation: "Define minimal Driver interface"
-
-      - id: IMPL_DRIVER
-        type: user_task
-        agent: human
-        role: implement
-        documentation: "Implement Driver impl for Smoke Test"
-
-      - id: WRITE_SMOKE
-        type: user_task
-        agent: human
-        role: implement
-        documentation: "Write single Smoke Test"
-
-      - id: RUN_SMOKE
-        type: service_task
-        action: run_smoke_test
-        documentation: "Run Smoke Test"
-
-      - id: GATE_SMOKE_PASS
-        type: gateway
-        binding: smoke_test_passes
-        documentation: "Smoke Test passes?"
-
-      - id: ASK_SUPPORT
-        type: user_task
-        agent: human
-        role: review
-        documentation: "Ask user for support and STOP"
-
-      - id: COMMIT
+      - id: MARK_IN_PROGRESS
         type: call_activity
-        process: commit
+        process: update-ticket
         params:
-          change_type: "External System Onboarding | <name>"
+          target-state: "IN PROGRESS"
+
+      - id: GATE_TICKET_KIND
+        type: gateway
+        binding: ticket_kind
+        documentation: "Ticket kind (type + optional task subtype)?"
+
+      - id: CALL_CHANGE_SYSTEM_BEHAVIOR
+        type: call_activity
+        process: change-system-behavior
+
+      - id: CALL_COVER_SYSTEM_BEHAVIOR
+        type: call_activity
+        process: cover-system-behavior
+
+      - id: CALL_REDESIGN_SYSTEM_STRUCTURE
+        type: call_activity
+        process: redesign-system-structure
+
+      - id: CALL_REFACTOR_SYSTEM_STRUCTURE
+        type: call_activity
+        process: refactor-system-structure
+
+      - id: CALL_REFACTOR_TEST_STRUCTURE
+        type: call_activity
+        process: refactor-test-structure
+
+      - id: CALL_ONBOARD_EXTERNAL_SYSTEM
+        type: call_activity
+        process: onboard-external-system
+
+      - id: MARK_IN_ACCEPTANCE
+        type: call_activity
+        process: update-ticket
+        params:
+          target-state: "IN ACCEPTANCE"
+
+      - id: IMPLEMENT_TICKET_END
+        type: end_event
+
+    sequence_flows:
+      - {from: MARK_IN_PROGRESS,                 to: GATE_TICKET_KIND}
+      - {from: GATE_TICKET_KIND, to: CALL_CHANGE_SYSTEM_BEHAVIOR,       when: "ticket_kind == story"}
+      - {from: GATE_TICKET_KIND, to: CALL_CHANGE_SYSTEM_BEHAVIOR,       when: "ticket_kind == bug"}
+      - {from: GATE_TICKET_KIND, to: CALL_COVER_SYSTEM_BEHAVIOR,        when: "ticket_kind == task/cover-legacy"}
+      - {from: GATE_TICKET_KIND, to: CALL_REDESIGN_SYSTEM_STRUCTURE,    when: "ticket_kind == task/redesign-system"}
+      - {from: GATE_TICKET_KIND, to: CALL_REFACTOR_SYSTEM_STRUCTURE,    when: "ticket_kind == task/refactor-system"}
+      - {from: GATE_TICKET_KIND, to: CALL_REFACTOR_TEST_STRUCTURE,      when: "ticket_kind == task/refactor-tests"}
+      - {from: GATE_TICKET_KIND, to: CALL_ONBOARD_EXTERNAL_SYSTEM,      when: "ticket_kind == task/onboard-external-system"}
+      - {from: CALL_CHANGE_SYSTEM_BEHAVIOR,      to: MARK_IN_ACCEPTANCE}
+      - {from: CALL_COVER_SYSTEM_BEHAVIOR,       to: MARK_IN_ACCEPTANCE}
+      - {from: CALL_REDESIGN_SYSTEM_STRUCTURE,   to: MARK_IN_ACCEPTANCE}
+      - {from: CALL_REFACTOR_SYSTEM_STRUCTURE,   to: MARK_IN_ACCEPTANCE}
+      - {from: CALL_REFACTOR_TEST_STRUCTURE,     to: MARK_IN_ACCEPTANCE}
+      - {from: CALL_ONBOARD_EXTERNAL_SYSTEM,     to: MARK_IN_ACCEPTANCE}
+      - {from: MARK_IN_ACCEPTANCE,               to: IMPLEMENT_TICKET_END}
+
+  # ===========================================================================
+  # TOP — refactor (Q34 — ad-hoc refactor entry; no ticket overhead)
+  # ===========================================================================
+  #
+  # Loopable refactor-type chooser. The operator picks a refactor CYCLE
+  # (opportunistic mode, no checklist) or exits. No Mark-Ticket bookends —
+  # there is no ticket. Coexists with two other refactor surfaces:
+  # (1) ticket-driven via `task/refactor-system` → `implement-ticket`
+  # gateway → CYCLE; (2) opportunistic-inside-change via the loopable
+  # step 3 in `change-system-behavior`. Three surfaces, three ceremony
+  # levels.
+  # ===========================================================================
+  refactor:
+    start: GATE_REFACTOR_TYPE_CHOICE
+    nodes:
+      - id: GATE_REFACTOR_TYPE_CHOICE
+        type: gateway
+        binding: refactor_type_choice
+        documentation: "Choose refactor type (loopable; none = exit)"
+
+      - id: CALL_REFACTOR_SYSTEM_STRUCTURE
+        type: call_activity
+        process: refactor-system-structure
+
+      - id: CALL_REFACTOR_TEST_STRUCTURE
+        type: call_activity
+        process: refactor-test-structure
+
+      - id: CALL_REDESIGN_SYSTEM_STRUCTURE
+        type: call_activity
+        process: redesign-system-structure
+
+      - id: REFACTOR_TOP_END
+        type: end_event
+
+    sequence_flows:
+      - {from: GATE_REFACTOR_TYPE_CHOICE, to: CALL_REFACTOR_SYSTEM_STRUCTURE, when: "refactor_type_choice == refactor-system-structure"}
+      - {from: GATE_REFACTOR_TYPE_CHOICE, to: CALL_REFACTOR_TEST_STRUCTURE,   when: "refactor_type_choice == refactor-test-structure"}
+      - {from: GATE_REFACTOR_TYPE_CHOICE, to: CALL_REDESIGN_SYSTEM_STRUCTURE, when: "refactor_type_choice == redesign-system-structure"}
+      - {from: GATE_REFACTOR_TYPE_CHOICE, to: REFACTOR_TOP_END,               when: "refactor_type_choice == none"}
+      - {from: CALL_REFACTOR_SYSTEM_STRUCTURE, to: GATE_REFACTOR_TYPE_CHOICE}
+      - {from: CALL_REFACTOR_TEST_STRUCTURE,   to: GATE_REFACTOR_TYPE_CHOICE}
+      - {from: CALL_REDESIGN_SYSTEM_STRUCTURE, to: GATE_REFACTOR_TYPE_CHOICE}
+
+  # ===========================================================================
+  # CYCLE — refine-backlog (Q9 = A, sibling cycle)
+  # ===========================================================================
+  refine-backlog:
+    start: REFINE_ACCEPTANCE_CRITERIA
+    nodes:
+      - id: REFINE_ACCEPTANCE_CRITERIA
+        type: call_activity
+        process: refine-acceptance-criteria
+
+      - id: REFINE_BACKLOG_END
+        type: end_event
+
+    sequence_flows:
+      - {from: REFINE_ACCEPTANCE_CRITERIA, to: REFINE_BACKLOG_END}
+
+  # ===========================================================================
+  # CYCLE — onboard-external-system (Q-ext = b, standalone cycle)
+  # ===========================================================================
+  #
+  # Per-system onboarding for an external system. The four steps are
+  # currently agent-less placeholders (`agent: human`) matching the
+  # brainstorm's tentative shape — Phase D may promote one or more steps
+  # to a dedicated onboarding agent.
+  # ===========================================================================
+  onboard-external-system:
+    start: IDENTIFY_EXTERNAL_SYSTEM
+    nodes:
+      - id: IDENTIFY_EXTERNAL_SYSTEM
+        type: user_task
+        agent: human
+        documentation: "Identify external system"
+
+      - id: DOCUMENT_EXTERNAL_SYSTEM_CONTRACT
+        type: user_task
+        agent: human
+        documentation: "Document external system contract"
+
+      - id: SETUP_EXTERNAL_SYSTEM_ACCESS
+        type: user_task
+        agent: human
+        documentation: "Set up external system access (credentials, endpoints, sandbox)"
+
+      - id: VERIFY_EXTERNAL_SYSTEM_REACHABLE
+        type: user_task
+        agent: human
+        documentation: "Verify external system reachable"
 
       - id: ONBOARD_END
         type: end_event
 
     sequence_flows:
-      - {from: GATE_DRIVER_EXISTS,      to: ONBOARD_END,             when: "external_system_driver_exists == true"}
-      - {from: GATE_DRIVER_EXISTS,      to: GATE_INSTANCE_ACCESSIBLE, when: "external_system_driver_exists == false"}
-      - {from: GATE_INSTANCE_ACCESSIBLE, to: DEFINE_IFACE,            when: "external_system_test_instance_accessible == true"}
-      - {from: GATE_INSTANCE_ACCESSIBLE, to: PROVISION,               when: "external_system_test_instance_accessible == false"}
-      - {from: PROVISION,               to: DEFINE_IFACE}
-      - {from: DEFINE_IFACE,            to: IMPL_DRIVER}
-      - {from: IMPL_DRIVER,             to: WRITE_SMOKE}
-      - {from: WRITE_SMOKE,             to: RUN_SMOKE}
-      - {from: RUN_SMOKE,               to: GATE_SMOKE_PASS}
-      - {from: GATE_SMOKE_PASS,         to: ASK_SUPPORT,             when: "smoke_test_passes == false"}
-      - {from: GATE_SMOKE_PASS,         to: COMMIT,                  when: "smoke_test_passes == true"}
-      - {from: COMMIT,                  to: ONBOARD_END}
+      - {from: IDENTIFY_EXTERNAL_SYSTEM,          to: DOCUMENT_EXTERNAL_SYSTEM_CONTRACT}
+      - {from: DOCUMENT_EXTERNAL_SYSTEM_CONTRACT, to: SETUP_EXTERNAL_SYSTEM_ACCESS}
+      - {from: SETUP_EXTERNAL_SYSTEM_ACCESS,      to: VERIFY_EXTERNAL_SYSTEM_REACHABLE}
+      - {from: VERIFY_EXTERNAL_SYSTEM_REACHABLE,  to: ONBOARD_END}
 
   # ===========================================================================
-  # structural_cycle
-  # Shared by system-api-task, system-ui-task, and task-system-implementation-refactoring via call_activity
-  # `params:`. The Go runtime substitutes ${change_type}, ${agent} at
-  # dispatch time. COMPILE always runs after APPROVE_CHANGE; TEST scope is
-  # picked at CHOOSE_TESTS (y/n then a/s/p — "no" skips the test phase
-  # entirely). When tests are selected the cycle hoists a BUILD_SYSTEM →
-  # START_SYSTEM pair (gh optivem system build --rebuild + system start
-  # --restart) ahead of RUN_TESTS so a fresh image is in the running container
-  # before any test command. GATE_TESTS_SELECTED routes the "operator picked
-  # skip" path straight to COMMIT, avoiding the rebuild cost when nothing
-  # will run anyway. Compile or test RED routes through a human STOP
-  # (Enter = dispatch fix-agent, abort = halt the run) and then FIX_COMPILE /
-  # FIX_TEST — one shared agent (fix-verify) branching on ${failure_type}.
-  # Compile retries from COMPILE; test retries from BUILD_SYSTEM so the
-  # fix-agent's edits land in the rebuilt image before the same selected
-  # commands re-run (commands persisted in ctx[selected_test_commands]).
+  # CYCLE — change-system-behavior
   # ===========================================================================
-  structural_cycle:
-    start: WRITE
+  #
+  # Classic red-green-REFACTOR triad (Q33). Step 3 is a loopable
+  # opportunistic-refactor menu that calls existing CYCLEs in opportunistic
+  # mode (no checklist supplied — the CYCLE degrades to "look at the just-
+  # landed patch / operator's mind"). One CYCLE definition serves both
+  # ticket-driven (via `implement-ticket` gateway) and opportunistic (here)
+  # callers.
+  # ===========================================================================
+  change-system-behavior:
+    start: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL
     nodes:
-      - id: WRITE
-        type: user_task
-        agent: ${agent}
-        documentation: "${change_type} - WRITE"
-
-      - id: APPROVE_CHANGE
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — approve implementation"
-
-      - id: COMPILE
+      - id: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL
         type: call_activity
-        process: compile
-        params:
-          compile_action: compile_all
-          fix_agent: fix-verify
-        documentation: "Compile in-scope projects (human-gated on fail)"
+        process: write-and-verify-acceptance-tests-fail
+        documentation: "RED — write failing acceptance tests"
 
-      - id: CHOOSE_TESTS
-        type: service_task
-        action: select_tests
-        documentation: "Operator picks scope (all / some suites / specific tests / skip)"
-
-      - id: GATE_TESTS_SELECTED
-        type: gateway
-        binding: tests_selected
-        documentation: "Operator selected tests to run?"
-
-      - id: BUILD_SYSTEM
-        type: service_task
-        action: build_system
-        documentation: "Build system (gh optivem system build --rebuild)"
-
-      - id: START_SYSTEM
-        type: service_task
-        action: start_system
-        documentation: "Start system (gh optivem system start --restart)"
-
-      - id: RUN_TESTS
-        type: service_task
-        action: run_tests
-        documentation: "Run selected tests; classify pass/fail for the verify gate"
-
-      - id: GATE_STRUCT_VERIFY
-        type: gateway
-        binding: structural_verify_outcome
-        documentation: "Test outcome? (ok | red — fix and retry)"
-
-      - id: STOP_TEST_FAIL_REVIEW
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — tests RED, dispatch fix agent?"
-
-      - id: FIX_TEST
-        type: user_task
-        agent: fix-verify
-        params:
-          failure_type: test
-        documentation: "Dispatch fix agent on test RED — structural cycle expects green"
-
-      - id: COMMIT
+      - id: IMPLEMENT_AND_VERIFY_SYSTEM
         type: call_activity
-        process: commit
+        process: implement-and-verify-system
         params:
-          change_type: ${change_type}
+          agent-action: implement-system
+        documentation: "GREEN — agent-action: implement-system"
 
-      - id: TICK_CHECKLIST
-        type: service_task
-        action: tick_checklist
-        documentation: "Tick checklist items"
+      - id: GATE_OPPORTUNISTIC_REFACTOR
+        type: gateway
+        binding: refactor_type_choice
+        documentation: "Opportunistic refactor? (loopable; none = end cycle)"
 
-      - id: STRUCT_END
+      - id: OPP_REFACTOR_SYSTEM_STRUCTURE
+        type: call_activity
+        process: refactor-system-structure
+
+      - id: OPP_REFACTOR_TEST_STRUCTURE
+        type: call_activity
+        process: refactor-test-structure
+
+      - id: OPP_REDESIGN_SYSTEM_STRUCTURE
+        type: call_activity
+        process: redesign-system-structure
+
+      - id: CHANGE_SYSTEM_BEHAVIOR_END
         type: end_event
 
     sequence_flows:
-      - {from: WRITE,                     to: APPROVE_CHANGE}
-      - {from: APPROVE_CHANGE,            to: COMPILE}
-      - {from: COMPILE,                   to: CHOOSE_TESTS}
-      - {from: CHOOSE_TESTS,              to: GATE_TESTS_SELECTED}
-      - {from: GATE_TESTS_SELECTED,       to: BUILD_SYSTEM,             when: "tests_selected == true"}
-      - {from: GATE_TESTS_SELECTED,       to: COMMIT,                   when: "tests_selected == false"}
-      - {from: BUILD_SYSTEM,              to: START_SYSTEM}
-      - {from: START_SYSTEM,              to: RUN_TESTS}
-      - {from: RUN_TESTS,                 to: GATE_STRUCT_VERIFY}
-      - {from: GATE_STRUCT_VERIFY,        to: COMMIT,                   when: "structural_verify_outcome == ok"}
-      - {from: GATE_STRUCT_VERIFY,        to: STOP_TEST_FAIL_REVIEW,    when: "structural_verify_outcome == red"}
-      - {from: STOP_TEST_FAIL_REVIEW,     to: FIX_TEST}
-      - {from: FIX_TEST,                  to: BUILD_SYSTEM}
-      - {from: COMMIT,                    to: TICK_CHECKLIST}
-      - {from: TICK_CHECKLIST,            to: STRUCT_END}
+      - {from: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL, to: IMPLEMENT_AND_VERIFY_SYSTEM}
+      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,            to: GATE_OPPORTUNISTIC_REFACTOR}
+      - {from: GATE_OPPORTUNISTIC_REFACTOR, to: OPP_REFACTOR_SYSTEM_STRUCTURE, when: "refactor_type_choice == refactor-system-structure"}
+      - {from: GATE_OPPORTUNISTIC_REFACTOR, to: OPP_REFACTOR_TEST_STRUCTURE,   when: "refactor_type_choice == refactor-test-structure"}
+      - {from: GATE_OPPORTUNISTIC_REFACTOR, to: OPP_REDESIGN_SYSTEM_STRUCTURE, when: "refactor_type_choice == redesign-system-structure"}
+      - {from: GATE_OPPORTUNISTIC_REFACTOR, to: CHANGE_SYSTEM_BEHAVIOR_END,    when: "refactor_type_choice == none"}
+      - {from: OPP_REFACTOR_SYSTEM_STRUCTURE, to: GATE_OPPORTUNISTIC_REFACTOR}
+      - {from: OPP_REFACTOR_TEST_STRUCTURE,   to: GATE_OPPORTUNISTIC_REFACTOR}
+      - {from: OPP_REDESIGN_SYSTEM_STRUCTURE,  to: GATE_OPPORTUNISTIC_REFACTOR}
 
   # ===========================================================================
-  # The cycle picks its compile tier from the `compile_action` call-activity
-  # param: every red_phase_cycle caller (AT_RED_TEST, AT_RED_DSL,
-  # AT_RED_SYSTEM_DRIVER, CT_RED_TEST, CT_RED_DSL, CT_RED_EXTERNAL_SYSTEM_DRIVER) →
-  # compile_system_tests, because all RED-phase edits land under
-  # system-test/<lang>/ (tests, DSL, and Drivers live in the test tree).
-  # green_phase_cycle callers → compile_system, because GREEN edits the
-  # production system code. Resolved at dispatch via ${compile_action} on
-  # the COMPILE service_task.
+  # CYCLE — cover-system-behavior (Q16 = B, legacy-coverage as parameterised expectation)
   # ===========================================================================
-  # red_phase_cycle
-  # Shared sub-process for every RED-phase node that splits creative WRITE work
-  # (LLM-required) from mechanical compile/run/disable/commit work
-  # (deterministic). Mirrors how `structural_cycle` factors creative
-  # `WRITE` from its mechanical surroundings.
   #
-  # Callers supply via `params:`:
-  #   - agent             — the WRITE agent (e.g. at-red-test, at-red-dsl, at-red-system-driver)
-  #   - phase_label       — the human-readable phase tag, used in node
-  #                         descriptions (e.g. "AT - RED - TEST"). Substituted
-  #                         into ${phase_label}.
-  #   - change_type       — the COMMIT-message suffix consumed by the existing
-  #                         `commit_phase` action (kept for backward
-  #                         compatibility with structural_cycle's params
-  #                         shape; typically equal to phase_label).
-  #   - verify_real_suite — optional. When set (CT_RED_TEST), the orchestrator
-  #                         runs the named suite *before* the regular RUN and
-  #                         requires every test to PASS — that is the
-  #                         "verify against the real external system" step
-  #                         from `ct-red-test.md`. AT phases leave it unset;
-  #                         the gate routes straight through to RUN.
-  #
-  # WRITE produces a **compiling** failing test: the agent writes both the
-  # acceptance test itself and any DSL prototype stubs the test references
-  # that don't yet exist (minimum signature only — no behaviour). The RED
-  # state is proven by the runtime test failure (`tests_failed_runtime`),
-  # not by compile failure. Compile is therefore *expected* to pass; a
-  # compile-fail in RED is now an unexpected agent bug and trips the shared
-  # `compile` sub-process's human-gated FIX_COMPILE loop — same as STRUCT
-  # and GREEN. The earlier two-step shape (WRITE + WRITE_PROTOTYPES with
-  # planned compile-fail between them) is gone; reviewers see the test plus
-  # its DSL delta as one unit at STOP_RED_REVIEW.
-  #
-  # The `tests_failed_runtime == false` branch covers the unexpected state
-  # where tests pass — for now route to a human STOP that loops back to
-  # WRITE. (Compile-leak is no longer one of the modes — the shared
-  # `compile` sub-process catches that explicitly.)
-  #
-  # Context plumbing — partial (plan 20260520-1945). AT `test_names`
-  # flows from at-red-test's `outputs:` block into ctx.State; AT-RED-DSL
-  # and AT-RED-SYSTEM-DRIVER inherit it through shared state (the
-  # call_activity wrapper saves/restores Params but not State).
-  # Still un-plumbed: CT `test_names` (ct-red-test prompt amendment),
-  # project-configurable `suite` resolution (replacing both the absent
-  # CT-RED-TEST RUN suite and the pre-existing hardcoded
-  # `verify_real_suite: <suite-contract-real>` literal), and the
-  # `disable-tests` / `enable-tests` template substitution keys
-  # (`language`, `ticket_id`, `loop`, `phase` / `prev_phase`,
-  # `disable_targets`). See plan 20260520-1945 "Carved out" section.
-  # Compile no longer reads from context: tier choice is encoded in the
-  # `compile_action` param forwarded to the shared `compile` sub-process.
+  # Legacy-coverage cycle. Operator specifies acceptance criteria only;
+  # CT is a nested sub-process when the AT layer needs a stub/driver to
+  # pass (Q31.a = Option A nested). Gateway is one row at TOP
+  # (`task/cover-legacy` → `cover-system-behavior`) — not split into
+  # cover-legacy-acceptance / cover-legacy-contract, because the operator
+  # does not think in CT subtypes (CT is an implementation detail of
+  # making AT pass).
   # ===========================================================================
-  red_phase_cycle:
-    start: WRITE
+  cover-system-behavior:
+    start: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS
     nodes:
-      - id: WRITE
-        type: user_task
-        agent: ${agent}
-        documentation: "${phase_label} - WRITE"
-
-      # ---- Layer 1: agent-triggered scope exception (plan 20260518-1144 item 6) ----
-      # Reads scope_exception_files / scope_exception_reason emitted by the
-      # agent's COMMIT output. When the agent signals it cannot stay within
-      # `scope:`, route to STOP_SCOPE_VIOLATION before any review / compile /
-      # run / disable / commit work happens.
-      - id: GATE_SCOPE_EXCEPTION
-        type: gateway
-        binding: scope_exception_requested
-        documentation: "Agent signalled scope exception?"
-
-      - id: STOP_SCOPE_VIOLATION
-        type: user_task
-        agent: human
-        role: review
-        # TODO(plan 20260518-1144 item 2): the plan defines four options here —
-        # Accept / Rewind to upstream phase / Revert + rerun / Abort. For now
-        # the single outflow models "Revert + rerun" (the safe default); a
-        # GATE_SCOPE_DECISION binding + branches is a follow-up.
-        documentation: "STOP - HUMAN REVIEW — ${phase_label} scope violation (Layer 1 agent-signalled or Layer 2 post-phase diff)"
-
-      - id: STOP_RED_REVIEW
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — ${phase_label} test + DSL stubs"
-
-      - id: COMPILE
+      - id: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS
         type: call_activity
-        process: compile
-        params:
-          compile_action: ${compile_action}
-          fix_agent: ${agent}
-        documentation: "Compile ${phase_label} (human-gated on fail)"
+        process: write-and-verify-acceptance-tests-pass
+        documentation: "Cover — write passing acceptance tests"
 
-      - id: GATE_VERIFY_REAL_REQUIRED
-        type: gateway
-        binding: verify_real_required
-        documentation: "Verify against real suite first?"
-
-      - id: VERIFY_REAL
-        type: service_task
-        action: verify_real_suite_passes
-        documentation: "Verify ${verify_real_suite} passes"
-
-      - id: GATE_VERIFY_REAL_PASS
-        type: gateway
-        binding: verify_real_pass
-        documentation: "Real suite passes?"
-
-      - id: STOP_VERIFY_REAL_FAIL
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — ${phase_label} real-suite contract problem"
-
-      - id: RUN
-        type: service_task
-        action: run_targeted_tests
-        documentation: "Run targeted tests"
-
-      - id: GATE_RUN_FAILED_RUNTIME
-        type: gateway
-        binding: tests_failed_runtime
-        documentation: "Tests fail at runtime (not compile)?"
-
-      - id: STOP_RED_NOT_RUNTIME_FAIL
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — ${phase_label} tests not runtime-failing"
-
-      - id: DISABLE
-        type: user_task
-        agent: disable-tests
-        documentation: "Disable change-driven scenarios"
-
-      # ---- Layer 2: post-phase scripted scope check (plan 20260518-1144 item 5) ----
-      # check_phase_scope diffs the working tree against the phase's
-      # allowed-paths (phase-scopes.yaml ∘ gh-optivem.yaml paths:) and stamps
-      # phase_scope_clean + phase_scope_violating_paths on the Context. Reads
-      # phase_id from ctx.Params (set by the call_activity in the parent).
-      - id: CHECK_PHASE_SCOPE
-        type: service_task
-        action: check_phase_scope
-        documentation: "Check ${phase_label} scope vs allowed paths"
-
-      - id: GATE_PHASE_SCOPE_CLEAN
-        type: gateway
-        binding: phase_scope_clean
-        documentation: "Phase scope clean?"
-
-      - id: COMMIT
-        type: call_activity
-        process: commit
-        params:
-          change_type: ${change_type}
-
-      - id: RED_END
+      - id: COVER_END
         type: end_event
 
     sequence_flows:
-      - {from: WRITE,                     to: GATE_SCOPE_EXCEPTION}
-      - {from: GATE_SCOPE_EXCEPTION,      to: STOP_SCOPE_VIOLATION,      when: "scope_exception_requested == true"}
-      - {from: GATE_SCOPE_EXCEPTION,      to: STOP_RED_REVIEW,           when: "scope_exception_requested == false"}
-      - {from: STOP_SCOPE_VIOLATION,      to: WRITE}
-      - {from: STOP_RED_REVIEW,           to: COMPILE}
-      - {from: COMPILE,                   to: GATE_VERIFY_REAL_REQUIRED}
-      - {from: GATE_VERIFY_REAL_REQUIRED, to: VERIFY_REAL,               when: "verify_real_required == true"}
-      - {from: GATE_VERIFY_REAL_REQUIRED, to: RUN,                       when: "verify_real_required == false"}
-      - {from: VERIFY_REAL,               to: GATE_VERIFY_REAL_PASS}
-      - {from: GATE_VERIFY_REAL_PASS,     to: RUN,                       when: "verify_real_pass == true"}
-      - {from: GATE_VERIFY_REAL_PASS,     to: STOP_VERIFY_REAL_FAIL,     when: "verify_real_pass == false"}
-      - {from: STOP_VERIFY_REAL_FAIL,     to: WRITE}
-      - {from: RUN,                       to: GATE_RUN_FAILED_RUNTIME}
-      - {from: GATE_RUN_FAILED_RUNTIME,   to: DISABLE,                   when: "tests_failed_runtime == true"}
-      - {from: GATE_RUN_FAILED_RUNTIME,   to: STOP_RED_NOT_RUNTIME_FAIL, when: "tests_failed_runtime == false"}
-      - {from: STOP_RED_NOT_RUNTIME_FAIL, to: WRITE}
-      - {from: DISABLE,                   to: CHECK_PHASE_SCOPE}
-      - {from: CHECK_PHASE_SCOPE,         to: GATE_PHASE_SCOPE_CLEAN}
-      - {from: GATE_PHASE_SCOPE_CLEAN,    to: COMMIT,                    when: "phase_scope_clean == true"}
-      - {from: GATE_PHASE_SCOPE_CLEAN,    to: STOP_SCOPE_VIOLATION,      when: "phase_scope_clean == false"}
-      - {from: COMMIT,                    to: RED_END}
+      - {from: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS, to: COVER_END}
 
   # ===========================================================================
-  # green_phase_cycle
-  # Shared sub-process for GREEN-phase WRITE work that splits creative WRITE
-  # (LLM-required) from mechanical compile / run-test verification
-  # (deterministic). Mirrors red_phase_cycle's shape but with success-pass
-  # semantics: each gate's "wrong" branch routes to a STOP for human review
-  # and then loops back to WRITE so the agent can re-dispatch with fresh
-  # failure context.
+  # CYCLE — redesign-system-structure (Q-new-2)
+  # ===========================================================================
   #
-  # Callers supply via `params:`:
-  #   - agent              — the WRITE agent (e.g. at-green-system, at-red-test, ct-red-dsl)
-  #   - phase_label        — human-readable phase tag, used in node
-  #                          descriptions (e.g. "AT - GREEN - SYSTEM (backend)")
-  #   - suite              — the test suite passed to run_targeted_tests
-  #                          (e.g. "<acceptance-api>", "<acceptance-ui>")
-  #   - rebuild_before_run — optional. When "true", run_targeted_tests hoists
-  #                          `gh optivem system build --rebuild` + `gh optivem
-  #                          system start --restart` out of the per-test loop so
-  #                          the freshly-rebuilt implementation under test is
-  #                          in the running container before any per-test
-  #                          invocation. AT GREEN callers set this; defaults to
-  #                          no rebuild.
+  # Step 1 splits into two MID-direct calls (`implement-system-driver-
+  # adapters` + `implement-external-system-driver-adapters`); no umbrella
+  # MID. Step 2 reuses HIGH `implement-and-verify-system`.
+  # ===========================================================================
+  redesign-system-structure:
+    start: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS
+    nodes:
+      - id: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS
+        type: call_activity
+        process: implement-system-driver-adapters
+
+      - id: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
+        type: call_activity
+        process: implement-external-system-driver-adapters
+
+      - id: IMPLEMENT_AND_VERIFY_SYSTEM
+        type: call_activity
+        process: implement-and-verify-system
+        params:
+          agent-action: implement-system
+        documentation: "agent-action: implement-system"
+
+      - id: REDESIGN_END
+        type: end_event
+
+    sequence_flows:
+      - {from: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS,          to: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS}
+      - {from: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, to: IMPLEMENT_AND_VERIFY_SYSTEM}
+      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,               to: REDESIGN_END}
+
+  # ===========================================================================
+  # CYCLE — refactor-system-structure (Phase C.1 prototype — first cycle encoded)
+  # ===========================================================================
   #
-  # COMMIT does NOT live in green_phase_cycle: AT_GREEN_SYSTEM commits both
-  # backend and frontend together at the parent level (the full-stack-as-one-
-  # commit convention). The sub-process ends after verifying tests pass; the
-  # parent process owns the commit.
-  # ===========================================================================
-  green_phase_cycle:
-    start: WRITE
-    nodes:
-      - id: WRITE
-        type: user_task
-        agent: ${agent}
-        documentation: "${phase_label} - WRITE"
-
-      # ---- Layer 1: agent-triggered scope exception (plan 20260518-1144 item 6) ----
-      # Mirror of the red wrapper: route to STOP_SCOPE_VIOLATION before any
-      # compile / run work when the agent signals it cannot stay within scope.
-      - id: GATE_SCOPE_EXCEPTION
-        type: gateway
-        binding: scope_exception_requested
-        documentation: "Agent signalled scope exception?"
-
-      - id: STOP_SCOPE_VIOLATION
-        type: user_task
-        agent: human
-        role: review
-        # TODO(plan 20260518-1144 item 2): four-option decision gate
-        # (Accept / Rewind / Revert+rerun / Abort) deferred; current single
-        # outflow to WRITE models "Revert + rerun" (the safe default).
-        documentation: "STOP - HUMAN REVIEW — ${phase_label} scope violation (Layer 1 agent-signalled or Layer 2 post-phase diff)"
-
-      - id: COMPILE
-        type: call_activity
-        process: compile
-        params:
-          compile_action: ${compile_action}
-          fix_agent: ${agent}
-        documentation: "Compile ${phase_label} (human-gated on fail)"
-
-      - id: RUN
-        type: service_task
-        action: run_targeted_tests
-        documentation: "Run targeted tests against ${suite}"
-
-      - id: GATE_TESTS_PASS
-        type: gateway
-        binding: tests_pass
-        documentation: "All tests passed?"
-
-      - id: STOP_GREEN_TEST_FAIL
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — ${phase_label} tests failed"
-
-      # ---- Layer 2: post-phase scripted scope check (plan 20260518-1144 item 5) ----
-      # Fires after tests pass, before GREEN_END returns control to the parent
-      # (which owns COMMIT for the full-stack-as-one-commit convention).
-      - id: CHECK_PHASE_SCOPE
-        type: service_task
-        action: check_phase_scope
-        documentation: "Check ${phase_label} scope vs allowed paths"
-
-      - id: GATE_PHASE_SCOPE_CLEAN
-        type: gateway
-        binding: phase_scope_clean
-        documentation: "Phase scope clean?"
-
-      - id: GREEN_END
-        type: end_event
-
-    sequence_flows:
-      - {from: WRITE,                    to: GATE_SCOPE_EXCEPTION}
-      - {from: GATE_SCOPE_EXCEPTION,     to: STOP_SCOPE_VIOLATION,   when: "scope_exception_requested == true"}
-      - {from: GATE_SCOPE_EXCEPTION,     to: COMPILE,                when: "scope_exception_requested == false"}
-      - {from: STOP_SCOPE_VIOLATION,     to: WRITE}
-      - {from: COMPILE,                  to: RUN}
-      - {from: RUN,                      to: GATE_TESTS_PASS}
-      - {from: GATE_TESTS_PASS,          to: CHECK_PHASE_SCOPE,      when: "tests_pass == true"}
-      - {from: GATE_TESTS_PASS,          to: STOP_GREEN_TEST_FAIL,   when: "tests_pass == false"}
-      - {from: STOP_GREEN_TEST_FAIL,     to: WRITE}
-      - {from: CHECK_PHASE_SCOPE,        to: GATE_PHASE_SCOPE_CLEAN}
-      - {from: GATE_PHASE_SCOPE_CLEAN,   to: GREEN_END,              when: "phase_scope_clean == true"}
-      - {from: GATE_PHASE_SCOPE_CLEAN,   to: STOP_SCOPE_VIOLATION,   when: "phase_scope_clean == false"}
-
-  # ===========================================================================
-  # compile
-  # Shared sub-process called wherever code is compiled. Pairs the mechanical
-  # COMPILE service task with the GATE + human-review-on-fail by construction —
-  # callers cannot run compile without the fail-loop, so every compile failure
-  # is human-gated before a fixer is dispatched. Returns only when compile_ok.
-  #
-  # Callers supply via `params:`:
-  #   - compile_action — which compile_* action to invoke (compile_all,
-  #                      compile_system, compile_system_tests).
-  #   - fix_agent      — agent dispatched when compile fails. Structural
-  #                      callers pass fix-verify (branches on
-  #                      `failure_type=compile`); RED and GREEN callers pass
-  #                      the cycle's own WRITE agent (${agent}), which simply
-  #                      retries the write with corrections.
-  # ===========================================================================
-  compile:
-    start: COMPILE
-    nodes:
-      - id: COMPILE
-        type: service_task
-        action: ${compile_action}
-        documentation: "Compile (${compile_action})"
-
-      - id: GATE_COMPILE_OK
-        type: gateway
-        binding: compile_ok
-        documentation: "Compile passed?"
-
-      - id: STOP_COMPILE_FAIL_REVIEW
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — compile failed, dispatch ${fix_agent}?"
-
-      - id: FIX_COMPILE
-        type: user_task
-        agent: ${fix_agent}
-        params:
-          failure_type: compile
-        documentation: "FIX compile errors"
-
-      - id: COMPILE_END
-        type: end_event
-
-    sequence_flows:
-      - {from: COMPILE,                  to: GATE_COMPILE_OK}
-      - {from: GATE_COMPILE_OK,          to: COMPILE_END,              when: "compile_ok == true"}
-      - {from: GATE_COMPILE_OK,          to: STOP_COMPILE_FAIL_REVIEW, when: "compile_ok == false"}
-      - {from: STOP_COMPILE_FAIL_REVIEW, to: FIX_COMPILE}
-      - {from: FIX_COMPILE,              to: COMPILE}
-
-  # ===========================================================================
-  # commit
-  # Shared sub-process called wherever a commit happens. Pairs the human
-  # APPROVE_COMMIT gate with the mechanical EXECUTE_COMMIT service task by
-  # construction — callers cannot skip approval because they cannot reference
-  # EXECUTE_COMMIT directly. Every commit in the orchestration is therefore
-  # human-approved.
-  #
-  # Callers supply via `params:`:
-  #   - change_type — the COMMIT-message suffix consumed by the existing
-  #                   `commit_phase` action. Mirrors structural_cycle /
-  #                   red_phase_cycle's existing param shape.
-  # ===========================================================================
-  commit:
-    start: APPROVE_COMMIT
-    nodes:
-      - id: APPROVE_COMMIT
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — approve commit?"
-
-      - id: EXECUTE_COMMIT
-        type: service_task
-        action: commit_phase
-        params:
-          change_type: ${change_type}
-        documentation: "COMMIT: <Ticket> | ${change_type}"
-
-      - id: COMMIT_END
-        type: end_event
-
-    sequence_flows:
-      - {from: APPROVE_COMMIT, to: EXECUTE_COMMIT}
-      - {from: EXECUTE_COMMIT, to: COMMIT_END}
-
-  # ===========================================================================
-  # da_cycle
-  # Driver Adapter cycle — entered when the change is a structural interface
-  # change. Splits on `subtype`, both branches routed through structural_cycle:
-  #   - system-interface-redesign: a Driver Adapter we own (API, UI, mobile,
-  #     CLI, ...). The WRITE agent reads the ticket body + system to figure
-  #     out which driver(s) to modify — the framework no longer pre-classifies
-  #     the channel.
-  #   - external-system-interface-redesign: an External System Driver Adapter.
-  #     Pure adapter rewrite (and its stub); CT and DSL are at higher
-  #     abstraction and stay untouched, so test-first contract machinery
-  #     (ct_subprocess) is not used here.
-  # ===========================================================================
-  da_cycle:
-    start: GATE_CHANGE_TYPE_DA
-    nodes:
-      - id: GATE_CHANGE_TYPE_DA
-        type: gateway
-        binding: change_type
-        documentation: "System or external-system interface?"
-
-      - id: SYSTEM_INTERFACE_REDESIGN_CYCLE
-        type: call_activity
-        process: structural_cycle
-        params:
-          change_type: "SYSTEM INTERFACE REDESIGN"
-          agent: task-system-interface-redesign
-          subtype: system-interface-redesign
-
-      - id: EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE
-        type: call_activity
-        process: structural_cycle
-        params:
-          change_type: "EXTERNAL SYSTEM INTERFACE REDESIGN"
-          agent: task-external-system-interface-redesign
-          subtype: external-system-interface-redesign
-
-      - id: DA_END
-        type: end_event
-
-    sequence_flows:
-      - {from: GATE_CHANGE_TYPE_DA,                to: SYSTEM_INTERFACE_REDESIGN_CYCLE,          when: "change_type == system-interface-redesign"}
-      - {from: GATE_CHANGE_TYPE_DA,                to: EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE, when: "change_type == external-system-interface-redesign"}
-      - {from: SYSTEM_INTERFACE_REDESIGN_CYCLE,    to: DA_END}
-      - {from: EXTERNAL_SYSTEM_INTERFACE_REDESIGN_CYCLE, to: DA_END}
-
-  # ===========================================================================
-  # sut_cycle
-  # System Under Test cycle — structural change with no test-stack artifact
-  # changing (no AT, no DA). Routes through structural_cycle with the
-  # system-implementation-refactoring task change_type / agent.
-  # ===========================================================================
-  sut_cycle:
-    start: SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE
-    nodes:
-      - id: SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE
-        type: call_activity
-        process: structural_cycle
-        params:
-          change_type: system-implementation-refactoring
-          agent: task-system-implementation-refactoring
-
-      - id: SUT_END
-        type: end_event
-
-    sequence_flows:
-      - {from: SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE, to: SUT_END}
-
-  # ===========================================================================
-  # legacy_acceptance_criteria
-  # Dispatch wrapper for the legacy coverage cycle — called from
-  # run_legacy_cycle when a ticket carries any Legacy Acceptance Criteria.
-  # Branches on criterion type (AT vs CT) using two presence booleans so
-  # tickets that carry both kinds run both sub-cycles sequentially. The
-  # upstream `RUN_LEGACY_CYCLE` caller stays oblivious to the AT/CT split.
-  # See plans/20260518-1116-legacy-coverage-cycle.md item 1b.
-  # ===========================================================================
-  legacy_acceptance_criteria:
-    start: GATE_LEGACY_AT_PRESENT
-    nodes:
-      - id: GATE_LEGACY_AT_PRESENT
-        type: gateway
-        binding: legacy_at_acceptance_criteria_present
-        documentation: "Legacy AT-style acceptance criteria present?"
-
-      - id: LEGACY_AT_CYCLE
-        type: call_activity
-        process: legacy_at_cycle
-
-      - id: GATE_LEGACY_CT_PRESENT
-        type: gateway
-        binding: legacy_ct_acceptance_criteria_present
-        documentation: "Legacy CT-style acceptance criteria present?"
-
-      - id: LEGACY_CT_CYCLE
-        type: call_activity
-        process: legacy_ct_cycle
-
-      - id: LEGACY_END
-        type: end_event
-
-    sequence_flows:
-      - {from: GATE_LEGACY_AT_PRESENT, to: LEGACY_AT_CYCLE,        when: "legacy_at_acceptance_criteria_present == true"}
-      - {from: GATE_LEGACY_AT_PRESENT, to: GATE_LEGACY_CT_PRESENT, when: "legacy_at_acceptance_criteria_present == false"}
-      - {from: LEGACY_AT_CYCLE,        to: GATE_LEGACY_CT_PRESENT}
-      - {from: GATE_LEGACY_CT_PRESENT, to: LEGACY_CT_CYCLE,        when: "legacy_ct_acceptance_criteria_present == true"}
-      - {from: GATE_LEGACY_CT_PRESENT, to: LEGACY_END,             when: "legacy_ct_acceptance_criteria_present == false"}
-      - {from: LEGACY_CT_CYCLE,        to: LEGACY_END}
-
-  # ===========================================================================
-  # legacy_at_cycle
-  # Legacy AT coverage cycle — retroactively writes acceptance tests for
-  # behaviour that already exists in the SUT. Mirrors the AT change cycle's
-  # RED-side phase shape (test → DSL → system driver) with the existing
-  # interface-changed flags gating which layers run. Ends with an inverted-RED
-  # verify gate: the assembled test is expected to PASS on first run. On
-  # fail, route to STOP - HUMAN REVIEW (no loopback) — operator edits the
-  # offending layer and re-runs the legacy cycle from scratch.
-  # See plans/20260518-1116-legacy-coverage-cycle.md item 1b.
-  # ===========================================================================
-  legacy_at_cycle:
-    start: LEGACY_AT_TEST
-    nodes:
-      - id: LEGACY_AT_TEST
-        type: user_task
-        agent: legacy-at-test
-        documentation: "LEGACY - AT - TEST"
-
-      - id: GATE_DSL_LEGACY_AT
-        type: gateway
-        binding: dsl_interface_changed
-        documentation: "DSL Interface Changed?"
-
-      - id: LEGACY_AT_DSL
-        type: user_task
-        agent: legacy-at-dsl
-        documentation: "LEGACY - AT - DSL"
-
-      - id: GATE_SYS_LEGACY_AT
-        type: gateway
-        binding: system_driver_interface_changed
-        documentation: "System Driver Interface Changed?"
-
-      - id: LEGACY_AT_SYSTEM_DRIVER
-        type: user_task
-        agent: legacy-at-system-driver
-        documentation: "LEGACY - AT - SYSTEM DRIVER"
-
-      - id: VERIFY_LEGACY_AT
-        type: service_task
-        action: run_tests
-        documentation: "Verify: run assembled legacy AT tests — inverted-RED, expected to PASS on first run"
-
-      - id: GATE_VERIFY_LEGACY_AT
-        type: gateway
-        binding: legacy_at_verify_outcome
-        documentation: "Legacy AT verify outcome? (ok = passed on first run | red = test/DSL/driver wrong)"
-
-      - id: STOP_LEGACY_AT_VERIFY_FAILED
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — legacy AT verify RED; the test/DSL/driver is suspect (SUT is never modified in a legacy cycle). Edit the offending layer and re-run the legacy cycle from scratch."
-
-      - id: LEGACY_AT_END
-        type: end_event
-
-    sequence_flows:
-      - {from: LEGACY_AT_TEST,            to: GATE_DSL_LEGACY_AT}
-      - {from: GATE_DSL_LEGACY_AT,        to: LEGACY_AT_DSL,                 when: "dsl_interface_changed == true"}
-      - {from: GATE_DSL_LEGACY_AT,        to: GATE_SYS_LEGACY_AT,            when: "dsl_interface_changed == false"}
-      - {from: LEGACY_AT_DSL,             to: GATE_SYS_LEGACY_AT}
-      - {from: GATE_SYS_LEGACY_AT,        to: LEGACY_AT_SYSTEM_DRIVER,       when: "system_driver_interface_changed == true"}
-      - {from: GATE_SYS_LEGACY_AT,        to: VERIFY_LEGACY_AT,              when: "system_driver_interface_changed == false"}
-      - {from: LEGACY_AT_SYSTEM_DRIVER,   to: VERIFY_LEGACY_AT}
-      - {from: VERIFY_LEGACY_AT,          to: GATE_VERIFY_LEGACY_AT}
-      - {from: GATE_VERIFY_LEGACY_AT,     to: LEGACY_AT_END,                 when: "legacy_at_verify_outcome == ok"}
-      - {from: GATE_VERIFY_LEGACY_AT,     to: STOP_LEGACY_AT_VERIFY_FAILED,  when: "legacy_at_verify_outcome == red"}
-      - {from: STOP_LEGACY_AT_VERIFY_FAILED, to: LEGACY_AT_END}
-
-  # ===========================================================================
-  # legacy_ct_cycle
-  # Legacy CT coverage cycle — retroactively writes external-system contract
-  # tests for integration behaviour that already exists. Mirrors the CT
-  # change cycle's RED-side phase shape (test → DSL → external driver) with
-  # the existing interface-changed flags gating which layers run; the
-  # external-system stub phase is always run (the stub is test infrastructure,
-  # not production code, so authoring it is consistent with legacy's
-  # test-side-only rule). Ends with an inverted-RED verify gate.
-  # See plans/20260518-1116-legacy-coverage-cycle.md item 1b.
-  # ===========================================================================
-  legacy_ct_cycle:
-    start: LEGACY_CT_TEST
-    nodes:
-      - id: LEGACY_CT_TEST
-        type: user_task
-        agent: legacy-ct-test
-        documentation: "LEGACY - CT - TEST"
-
-      - id: GATE_DSL_LEGACY_CT
-        type: gateway
-        binding: dsl_interface_changed
-        documentation: "DSL Interface Changed?"
-
-      - id: LEGACY_CT_DSL
-        type: user_task
-        agent: legacy-ct-dsl
-        documentation: "LEGACY - CT - DSL"
-
-      - id: GATE_EXT_LEGACY_CT
-        type: gateway
-        binding: external_system_driver_interface_changed
-        documentation: "External System Driver Interface Changed?"
-
-      - id: LEGACY_CT_EXTERNAL_SYSTEM_DRIVER
-        type: user_task
-        agent: legacy-ct-external-system-driver
-        documentation: "LEGACY - CT - EXTERNAL SYSTEM DRIVER"
-
-      - id: LEGACY_CT_EXTERNAL_SYSTEM_STUB
-        type: user_task
-        agent: legacy-ct-external-system-stub
-        documentation: "LEGACY - CT - EXTERNAL SYSTEM STUB"
-
-      - id: VERIFY_LEGACY_CT
-        type: service_task
-        action: run_tests
-        documentation: "Verify: run assembled legacy CT tests — inverted-RED, expected to PASS on first run"
-
-      - id: GATE_VERIFY_LEGACY_CT
-        type: gateway
-        binding: legacy_ct_verify_outcome
-        documentation: "Legacy CT verify outcome? (ok = passed on first run | red = test/DSL/driver/stub wrong)"
-
-      - id: STOP_LEGACY_CT_VERIFY_FAILED
-        type: user_task
-        agent: human
-        role: review
-        documentation: "STOP - HUMAN REVIEW — legacy CT verify RED; the test/DSL/driver/stub is suspect (SUT is never modified in a legacy cycle). Edit the offending layer and re-run the legacy cycle from scratch."
-
-      - id: LEGACY_CT_END
-        type: end_event
-
-    sequence_flows:
-      - {from: LEGACY_CT_TEST,                   to: GATE_DSL_LEGACY_CT}
-      - {from: GATE_DSL_LEGACY_CT,               to: LEGACY_CT_DSL,                       when: "dsl_interface_changed == true"}
-      - {from: GATE_DSL_LEGACY_CT,               to: LEGACY_CT_EXTERNAL_SYSTEM_STUB,      when: "dsl_interface_changed == false"}
-      - {from: LEGACY_CT_DSL,                    to: GATE_EXT_LEGACY_CT}
-      - {from: GATE_EXT_LEGACY_CT,               to: LEGACY_CT_EXTERNAL_SYSTEM_DRIVER,    when: "external_system_driver_interface_changed == true"}
-      - {from: GATE_EXT_LEGACY_CT,               to: LEGACY_CT_EXTERNAL_SYSTEM_STUB,      when: "external_system_driver_interface_changed == false"}
-      - {from: LEGACY_CT_EXTERNAL_SYSTEM_DRIVER, to: LEGACY_CT_EXTERNAL_SYSTEM_STUB}
-      - {from: LEGACY_CT_EXTERNAL_SYSTEM_STUB,   to: VERIFY_LEGACY_CT}
-      - {from: VERIFY_LEGACY_CT,                 to: GATE_VERIFY_LEGACY_CT}
-      - {from: GATE_VERIFY_LEGACY_CT,            to: LEGACY_CT_END,                       when: "legacy_ct_verify_outcome == ok"}
-      - {from: GATE_VERIFY_LEGACY_CT,            to: STOP_LEGACY_CT_VERIFY_FAILED,        when: "legacy_ct_verify_outcome == red"}
-      - {from: STOP_LEGACY_CT_VERIFY_FAILED,     to: LEGACY_CT_END}
-
-  # ===========================================================================
-  # refactor-system-structure  (Phase C.1 prototype — five-level BPMN refactor)
-  #
-  # First cycle encoded under the new TOP / CYCLE / HIGH / MID / LOW structure
-  # (plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md Item 1). The
-  # downstream HIGH `implement-and-verify-system` is not yet encoded — Item 3
-  # encodes the full graph. Item 2 will read this prototype to decide what
-  # schema/generator changes are needed (likely candidates: `scopes:` /
-  # `outputs:` user_task metadata, templated `process:` for `${agent-action}`,
-  # `inputs:` process-level metadata).
-  #
-  # Brainstorm source: plans/ideas/4-bpmn-refactor-cycle-level.md.
-  #   Inputs:  refactor-checklist (optional — opportunistic mode supplies none)
-  #   Outputs: NONE
-  #   Steps:
-  #     1. implement-and-verify-system  (agent-action: refactor-system)
+  # Step 1 calls HIGH `implement-and-verify-system` with
+  # `agent-action: refactor-system`. Was the prototype encoded in Item 1 of
+  # this plan; preserved unchanged.
   # ===========================================================================
   refactor-system-structure:
     start: IMPLEMENT_AND_VERIFY_SYSTEM
@@ -1547,8 +529,1203 @@ processes:
           agent-action: refactor-system
         documentation: "agent-action: refactor-system"
 
-      - id: RSS_END
+      - id: REFACTOR_SYSTEM_STRUCTURE_END
         type: end_event
 
     sequence_flows:
-      - {from: IMPLEMENT_AND_VERIFY_SYSTEM, to: RSS_END}
+      - {from: IMPLEMENT_AND_VERIFY_SYSTEM, to: REFACTOR_SYSTEM_STRUCTURE_END}
+
+  # ===========================================================================
+  # CYCLE — refactor-test-structure (Q8 — distinct HIGH for test refactor)
+  # ===========================================================================
+  refactor-test-structure:
+    start: REFACTOR_AND_VERIFY_TESTS
+    nodes:
+      - id: REFACTOR_AND_VERIFY_TESTS
+        type: call_activity
+        process: refactor-and-verify-tests
+
+      - id: REFACTOR_TEST_STRUCTURE_END
+        type: end_event
+
+    sequence_flows:
+      - {from: REFACTOR_AND_VERIFY_TESTS, to: REFACTOR_TEST_STRUCTURE_END}
+
+  # ===========================================================================
+  # HIGH — write-and-verify-acceptance-tests-fail (Q-new-6 outer wrapper)
+  # ===========================================================================
+  #
+  # Cycle-facing thin wrapper that pins `expected-test-result: failure`
+  # before calling the parameterised middle. Called by
+  # `change-system-behavior` step 1.
+  # ===========================================================================
+  write-and-verify-acceptance-tests-fail:
+    start: CALL_PARAMETERISED_CORE
+    nodes:
+      - id: CALL_PARAMETERISED_CORE
+        type: call_activity
+        process: write-and-verify-acceptance-tests
+        params:
+          expected-test-result: failure
+
+      - id: WAV_AT_FAIL_END
+        type: end_event
+
+    sequence_flows:
+      - {from: CALL_PARAMETERISED_CORE, to: WAV_AT_FAIL_END}
+
+  # ===========================================================================
+  # HIGH — write-and-verify-acceptance-tests-pass (Q-new-6 outer wrapper)
+  # ===========================================================================
+  #
+  # Cycle-facing thin wrapper that pins `expected-test-result: success`
+  # before calling the parameterised middle. Called by
+  # `cover-system-behavior` step 1.
+  # ===========================================================================
+  write-and-verify-acceptance-tests-pass:
+    start: CALL_PARAMETERISED_CORE
+    nodes:
+      - id: CALL_PARAMETERISED_CORE
+        type: call_activity
+        process: write-and-verify-acceptance-tests
+        params:
+          expected-test-result: success
+
+      - id: WAV_AT_PASS_END
+        type: end_event
+
+    sequence_flows:
+      - {from: CALL_PARAMETERISED_CORE, to: WAV_AT_PASS_END}
+
+  # ===========================================================================
+  # HIGH — write-and-verify-acceptance-tests (Q-new-6 middle, canonical full flow)
+  # ===========================================================================
+  #
+  # Writes the test code (inner primitive) then cascades into DSL +
+  # driver-adapter impl whenever ports changed. Reads `dsl-port-changed`
+  # from the inner call, then `system-driver-ports-changed` /
+  # `external-driver-ports-changed` from the DSL impl (Q6 port-change
+  # wiring table). Note that the GATE bindings are bound to Go gate
+  # functions that promote the relevant ctx.Params value into ctx.State
+  # for the predicate evaluator to read.
+  # ===========================================================================
+  write-and-verify-acceptance-tests:
+    start: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE
+    nodes:
+      - id: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE
+        type: call_activity
+        process: write-and-verify-acceptance-test-code
+        params:
+          acceptance-criteria: ${acceptance-criteria}
+          expected-test-result: ${expected-test-result}
+
+      - id: GATE_DSL_PORT_CHANGED
+        type: gateway
+        binding: dsl_port_changed
+        documentation: "DSL port changed?"
+
+      - id: IMPLEMENT_AND_VERIFY_DSL
+        type: call_activity
+        process: implement-and-verify-dsl
+        params:
+          expected-test-result: ${expected-test-result}
+          tests: acceptance
+
+      - id: GATE_EXTERNAL_DRIVER_PORTS_CHANGED
+        type: gateway
+        binding: external_driver_ports_changed
+        documentation: "External system driver ports changed?"
+
+      - id: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS
+        type: call_activity
+        process: implement-and-verify-external-system-driver-adapters
+        params:
+          expected-test-result: ${expected-test-result}
+          tests: acceptance
+
+      - id: GATE_SYSTEM_DRIVER_PORTS_CHANGED
+        type: gateway
+        binding: system_driver_ports_changed
+        documentation: "System driver ports changed?"
+
+      - id: IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS
+        type: call_activity
+        process: implement-and-verify-system-driver-adapters
+        params:
+          expected-test-result: ${expected-test-result}
+          tests: acceptance
+
+      - id: WAV_AT_END
+        type: end_event
+
+    sequence_flows:
+      - {from: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE, to: GATE_DSL_PORT_CHANGED}
+      - {from: GATE_DSL_PORT_CHANGED, to: IMPLEMENT_AND_VERIFY_DSL, when: "dsl_port_changed == true"}
+      - {from: GATE_DSL_PORT_CHANGED, to: WAV_AT_END,               when: "dsl_port_changed == false"}
+      - {from: IMPLEMENT_AND_VERIFY_DSL, to: GATE_EXTERNAL_DRIVER_PORTS_CHANGED}
+      - {from: GATE_EXTERNAL_DRIVER_PORTS_CHANGED, to: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS, when: "external_driver_ports_changed == true"}
+      - {from: GATE_EXTERNAL_DRIVER_PORTS_CHANGED, to: GATE_SYSTEM_DRIVER_PORTS_CHANGED,              when: "external_driver_ports_changed == false"}
+      - {from: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS, to: GATE_SYSTEM_DRIVER_PORTS_CHANGED}
+      - {from: GATE_SYSTEM_DRIVER_PORTS_CHANGED, to: IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS, when: "system_driver_ports_changed == true"}
+      - {from: GATE_SYSTEM_DRIVER_PORTS_CHANGED, to: WAV_AT_END,                                  when: "system_driver_ports_changed == false"}
+      - {from: IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS, to: WAV_AT_END}
+
+  # ===========================================================================
+  # HIGH — write-and-verify-acceptance-test-code (Q-new-6 inner primitive)
+  # ===========================================================================
+  #
+  # Pure test-code authoring: write tests, compile, verify, commit. No
+  # production-side impl. Branches on `expected-test-result` parameter
+  # (success → verify-tests-pass; failure → verify-tests-fail +
+  # disable-tests).
+  # ===========================================================================
+  write-and-verify-acceptance-test-code:
+    start: WRITE_ACCEPTANCE_TESTS
+    nodes:
+      - id: WRITE_ACCEPTANCE_TESTS
+        type: call_activity
+        process: write-acceptance-tests
+        params:
+          acceptance-criteria: ${acceptance-criteria}
+          expected-test-result: ${expected-test-result}
+
+      - id: COMPILE_TESTS
+        type: call_activity
+        process: compile-tests
+
+      - id: GATE_EXPECTED_TEST_RESULT
+        type: gateway
+        binding: expected_test_result
+        documentation: "Expected test result?"
+
+      - id: VERIFY_TESTS_PASS_ACCEPTANCE
+        type: call_activity
+        process: verify-tests-pass
+        params:
+          filter-type: test-type
+          filter-value: acceptance
+
+      - id: VERIFY_TESTS_FAIL_ACCEPTANCE
+        type: call_activity
+        process: verify-tests-fail
+        params:
+          filter-type: test-type
+          filter-value: acceptance
+
+      - id: DISABLE_ACCEPTANCE_TESTS
+        type: call_activity
+        process: disable-tests
+        params:
+          tests: acceptance
+
+      - id: COMMIT_TEST_CODE
+        type: call_activity
+        process: commit
+
+      - id: WAV_AT_CODE_END
+        type: end_event
+
+    sequence_flows:
+      - {from: WRITE_ACCEPTANCE_TESTS, to: COMPILE_TESTS}
+      - {from: COMPILE_TESTS,          to: GATE_EXPECTED_TEST_RESULT}
+      - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_PASS_ACCEPTANCE, when: "expected_test_result == success"}
+      - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_FAIL_ACCEPTANCE, when: "expected_test_result == failure"}
+      - {from: VERIFY_TESTS_PASS_ACCEPTANCE, to: COMMIT_TEST_CODE}
+      - {from: VERIFY_TESTS_FAIL_ACCEPTANCE, to: DISABLE_ACCEPTANCE_TESTS}
+      - {from: DISABLE_ACCEPTANCE_TESTS,     to: COMMIT_TEST_CODE}
+      - {from: COMMIT_TEST_CODE,             to: WAV_AT_CODE_END}
+
+  # ===========================================================================
+  # HIGH — implement-and-verify-dsl
+  # ===========================================================================
+  implement-and-verify-dsl:
+    start: IMPLEMENT_TEST_LAYER
+    nodes:
+      - id: IMPLEMENT_TEST_LAYER
+        type: call_activity
+        process: implement-test-layer
+        params:
+          agent-action: implement-dsl
+          expected-test-result: ${expected-test-result}
+          tests: ${tests}
+
+      - id: IMPL_DSL_END
+        type: end_event
+
+    sequence_flows:
+      - {from: IMPLEMENT_TEST_LAYER, to: IMPL_DSL_END}
+
+  # ===========================================================================
+  # HIGH — implement-and-verify-system-driver-adapters
+  # ===========================================================================
+  implement-and-verify-system-driver-adapters:
+    start: IMPLEMENT_TEST_LAYER
+    nodes:
+      - id: IMPLEMENT_TEST_LAYER
+        type: call_activity
+        process: implement-test-layer
+        params:
+          agent-action: implement-system-driver-adapters
+          expected-test-result: ${expected-test-result}
+          tests: ${tests}
+
+      - id: IMPL_SYS_DRIVER_END
+        type: end_event
+
+    sequence_flows:
+      - {from: IMPLEMENT_TEST_LAYER, to: IMPL_SYS_DRIVER_END}
+
+  # ===========================================================================
+  # HIGH — implement-and-verify-external-system-driver-adapters
+  # ===========================================================================
+  implement-and-verify-external-system-driver-adapters:
+    start: IMPLEMENT_TEST_LAYER
+    nodes:
+      - id: IMPLEMENT_TEST_LAYER
+        type: call_activity
+        process: implement-test-layer
+        params:
+          agent-action: implement-external-system-driver-adapters
+          expected-test-result: ${expected-test-result}
+          tests: ${tests}
+
+      - id: IMPL_EXT_DRIVER_END
+        type: end_event
+
+    sequence_flows:
+      - {from: IMPLEMENT_TEST_LAYER, to: IMPL_EXT_DRIVER_END}
+
+  # ===========================================================================
+  # HIGH — implement-and-verify-external-system-driver-adapters-contract-tests
+  # ===========================================================================
+  #
+  # Contract-test variant of the external driver-adapter impl. Mirrors the
+  # AT-side cascade but with `tests: contract` semantics and the
+  # contract-real / contract-stub verify split. Absorbs the pre-refactor
+  # diagram #8 (contract-test-sub-process); see design archive
+  # (plans/20260525-1057-bpmn-refactor-design.md Cross-check vs existing
+  # BPMN, diagram 8).
+  #
+  # **Orphan in the structural call graph (intentional — known gap).** No
+  # other process calls this HIGH today: the brainstorm files
+  # (plans/ideas/3-bpmn-refactor-high-level.md +
+  # plans/ideas/4-bpmn-refactor-cycle-level.md) define the cascade
+  # `change-system-behavior` → `write-and-verify-acceptance-tests` →
+  # `implement-and-verify-external-system-driver-adapters` for the AT
+  # side, but do **not** show a corresponding call into the CT-side HIGH.
+  # Per Q31.a (resolved Option A nested) the intended wiring is that CT
+  # runs as a nested sub-process called by the AT-side when the AT layer
+  # needs a stub/driver to pass; the exact call site (inside the AT-side
+  # adapter HIGH, or as a sibling step in `write-and-verify-acceptance-
+  # tests`) is unresolved in the brainstorm and left for Phase D.
+  # Encoding here so diagram #8's absorption is visible per the cross-
+  # check inventory; the call-site wiring lands in the downstream-
+  # alignment plan.
+  # ===========================================================================
+  implement-and-verify-external-system-driver-adapters-contract-tests:
+    start: WRITE_CONTRACT_TESTS
+    nodes:
+      - id: WRITE_CONTRACT_TESTS
+        type: call_activity
+        process: write-contract-tests
+        params:
+          expected-test-result: success
+
+      - id: GATE_DSL_PORT_CHANGED
+        type: gateway
+        binding: dsl_port_changed
+        documentation: "DSL port changed?"
+
+      - id: IMPLEMENT_AND_VERIFY_DSL
+        type: call_activity
+        process: implement-and-verify-dsl
+        params:
+          expected-test-result: success
+          tests: contract
+
+      - id: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
+        type: call_activity
+        process: implement-external-system-driver-adapters
+
+      - id: VERIFY_TESTS_PASS_CONTRACT_REAL
+        type: call_activity
+        process: verify-tests-pass
+        params:
+          filter-type: test-type
+          filter-value: contract-real
+
+      - id: VERIFY_TESTS_FAIL_CONTRACT_STUB
+        type: call_activity
+        process: verify-tests-fail
+        params:
+          filter-type: test-type
+          filter-value: contract-stub
+
+      - id: IMPLEMENT_EXTERNAL_SYSTEM_STUBS
+        type: call_activity
+        process: implement-external-system-stubs
+
+      - id: VERIFY_TESTS_PASS_CONTRACT_STUB
+        type: call_activity
+        process: verify-tests-pass
+        params:
+          filter-type: test-type
+          filter-value: contract-stub
+
+      - id: IMPL_EXT_DRIVER_CT_END
+        type: end_event
+
+    sequence_flows:
+      - {from: WRITE_CONTRACT_TESTS,    to: GATE_DSL_PORT_CHANGED}
+      - {from: GATE_DSL_PORT_CHANGED,   to: IMPLEMENT_AND_VERIFY_DSL,                     when: "dsl_port_changed == true"}
+      - {from: GATE_DSL_PORT_CHANGED,   to: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS,    when: "dsl_port_changed == false"}
+      - {from: IMPLEMENT_AND_VERIFY_DSL,                  to: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS}
+      - {from: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, to: VERIFY_TESTS_PASS_CONTRACT_REAL}
+      - {from: VERIFY_TESTS_PASS_CONTRACT_REAL,           to: VERIFY_TESTS_FAIL_CONTRACT_STUB}
+      - {from: VERIFY_TESTS_FAIL_CONTRACT_STUB,           to: IMPLEMENT_EXTERNAL_SYSTEM_STUBS}
+      - {from: IMPLEMENT_EXTERNAL_SYSTEM_STUBS,           to: VERIFY_TESTS_PASS_CONTRACT_STUB}
+      - {from: VERIFY_TESTS_PASS_CONTRACT_STUB,           to: IMPL_EXT_DRIVER_CT_END}
+
+  # ===========================================================================
+  # HIGH — implement-and-verify-system
+  # ===========================================================================
+  #
+  # Parameterised system impl: the caller picks the MID agent task by
+  # supplying `agent-action`. Two known callers today —
+  # `change-system-behavior` passes `implement-system`,
+  # `refactor-system-structure` passes `refactor-system`. The templated
+  # `process: ${agent-action}` resolves at dispatch time (runtime support
+  # added by Item 2 of this plan).
+  # ===========================================================================
+  implement-and-verify-system:
+    start: CALL_AGENT_ACTION
+    nodes:
+      - id: CALL_AGENT_ACTION
+        type: call_activity
+        process: ${agent-action}
+        documentation: "agent-action: ${agent-action}"
+
+      - id: BUILD_SYSTEM
+        type: call_activity
+        process: build-system
+
+      - id: START_SYSTEM
+        type: call_activity
+        process: start-system
+
+      - id: VERIFY_TESTS_PASS
+        type: call_activity
+        process: verify-tests-pass
+
+      - id: COMMIT_SYSTEM
+        type: call_activity
+        process: commit
+
+      - id: IMPL_AND_VERIFY_SYSTEM_END
+        type: end_event
+
+    sequence_flows:
+      - {from: CALL_AGENT_ACTION, to: BUILD_SYSTEM}
+      - {from: BUILD_SYSTEM,      to: START_SYSTEM}
+      - {from: START_SYSTEM,      to: VERIFY_TESTS_PASS}
+      - {from: VERIFY_TESTS_PASS, to: COMMIT_SYSTEM}
+      - {from: COMMIT_SYSTEM,     to: IMPL_AND_VERIFY_SYSTEM_END}
+
+  # ===========================================================================
+  # HIGH — refactor-and-verify-tests (Q8 — distinct from implement-and-verify-system)
+  # ===========================================================================
+  refactor-and-verify-tests:
+    start: REFACTOR_TESTS
+    nodes:
+      - id: REFACTOR_TESTS
+        type: call_activity
+        process: refactor-tests
+
+      - id: COMPILE_TESTS
+        type: call_activity
+        process: compile-tests
+
+      - id: VERIFY_TESTS_PASS
+        type: call_activity
+        process: verify-tests-pass
+
+      - id: COMMIT_TESTS
+        type: call_activity
+        process: commit
+
+      - id: REFACTOR_AND_VERIFY_TESTS_END
+        type: end_event
+
+    sequence_flows:
+      - {from: REFACTOR_TESTS,    to: COMPILE_TESTS}
+      - {from: COMPILE_TESTS,     to: VERIFY_TESTS_PASS}
+      - {from: VERIFY_TESTS_PASS, to: COMMIT_TESTS}
+      - {from: COMMIT_TESTS,      to: REFACTOR_AND_VERIFY_TESTS_END}
+
+  # ===========================================================================
+  # HIGH (SHARED) — implement-test-layer
+  # ===========================================================================
+  #
+  # Shared cascade for any test-layer impl that follows the "agent runs,
+  # then enable / compile / verify / commit" rhythm. Called by every
+  # `implement-and-verify-*-driver-adapters` and by `implement-and-verify-
+  # dsl`. Branches on `expected-test-result` (success → verify-tests-pass;
+  # failure → verify-tests-fail + disable-tests). Note that `commit` runs
+  # unconditionally — the gateway is on the verify shape, not on whether to
+  # commit.
+  # ===========================================================================
+  implement-test-layer:
+    start: CALL_AGENT_ACTION
+    nodes:
+      - id: CALL_AGENT_ACTION
+        type: call_activity
+        process: ${agent-action}
+        documentation: "agent-action: ${agent-action}"
+
+      - id: ENABLE_TESTS
+        type: call_activity
+        process: enable-tests
+        params:
+          tests: ${tests}
+
+      - id: COMPILE_TESTS
+        type: call_activity
+        process: compile-tests
+
+      - id: GATE_EXPECTED_TEST_RESULT
+        type: gateway
+        binding: expected_test_result
+        documentation: "Expected test result?"
+
+      - id: VERIFY_TESTS_PASS_FILTERED
+        type: call_activity
+        process: verify-tests-pass
+        params:
+          filter-type: test-type
+          filter-value: ${tests}
+
+      - id: VERIFY_TESTS_FAIL_FILTERED
+        type: call_activity
+        process: verify-tests-fail
+        params:
+          filter-type: test-type
+          filter-value: ${tests}
+
+      - id: DISABLE_TESTS
+        type: call_activity
+        process: disable-tests
+        params:
+          tests: ${tests}
+
+      - id: COMMIT_LAYER
+        type: call_activity
+        process: commit
+
+      - id: IMPLEMENT_TEST_LAYER_END
+        type: end_event
+
+    sequence_flows:
+      - {from: CALL_AGENT_ACTION, to: ENABLE_TESTS}
+      - {from: ENABLE_TESTS,      to: COMPILE_TESTS}
+      - {from: COMPILE_TESTS,     to: GATE_EXPECTED_TEST_RESULT}
+      - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_PASS_FILTERED, when: "expected_test_result == success"}
+      - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_FAIL_FILTERED, when: "expected_test_result == failure"}
+      - {from: VERIFY_TESTS_PASS_FILTERED, to: COMMIT_LAYER}
+      - {from: VERIFY_TESTS_FAIL_FILTERED, to: DISABLE_TESTS}
+      - {from: DISABLE_TESTS,              to: COMMIT_LAYER}
+      - {from: COMMIT_LAYER,               to: IMPLEMENT_TEST_LAYER_END}
+
+  # ===========================================================================
+  # HIGH (SHARED) — verify-tests-pass
+  # ===========================================================================
+  #
+  # Run tests under `filter-type` / `filter-value`; on FAIL, dispatch
+  # `fix-unexpected-failing-tests`. Caller passes filter params (or omits
+  # to run all tests).
+  # ===========================================================================
+  verify-tests-pass:
+    start: RUN_TESTS
+    nodes:
+      - id: RUN_TESTS
+        type: call_activity
+        process: run-tests
+        params:
+          filter-type: ${filter-type}
+          filter-value: ${filter-value}
+
+      - id: GATE_TESTS_OUTCOME
+        type: gateway
+        binding: test_outcome
+        documentation: "All tests passed?"
+
+      - id: FIX_UNEXPECTED_FAILING_TESTS
+        type: call_activity
+        process: fix-unexpected-failing-tests
+
+      - id: VERIFY_PASS_END
+        type: end_event
+
+    sequence_flows:
+      - {from: RUN_TESTS,          to: GATE_TESTS_OUTCOME}
+      - {from: GATE_TESTS_OUTCOME, to: VERIFY_PASS_END,              when: "test_outcome == pass"}
+      - {from: GATE_TESTS_OUTCOME, to: FIX_UNEXPECTED_FAILING_TESTS, when: "test_outcome == fail"}
+      - {from: FIX_UNEXPECTED_FAILING_TESTS, to: VERIFY_PASS_END}
+
+  # ===========================================================================
+  # HIGH (SHARED) — verify-tests-fail
+  # ===========================================================================
+  #
+  # Inverted: run tests under filter; on PASS, dispatch
+  # `fix-unexpected-passing-tests`.
+  # ===========================================================================
+  verify-tests-fail:
+    start: RUN_TESTS
+    nodes:
+      - id: RUN_TESTS
+        type: call_activity
+        process: run-tests
+        params:
+          filter-type: ${filter-type}
+          filter-value: ${filter-value}
+
+      - id: GATE_TESTS_OUTCOME
+        type: gateway
+        binding: test_outcome
+        documentation: "Any tests passed?"
+
+      - id: FIX_UNEXPECTED_PASSING_TESTS
+        type: call_activity
+        process: fix-unexpected-passing-tests
+
+      - id: VERIFY_FAIL_END
+        type: end_event
+
+    sequence_flows:
+      - {from: RUN_TESTS,          to: GATE_TESTS_OUTCOME}
+      - {from: GATE_TESTS_OUTCOME, to: FIX_UNEXPECTED_PASSING_TESTS, when: "test_outcome == pass"}
+      - {from: GATE_TESTS_OUTCOME, to: VERIFY_FAIL_END,              when: "test_outcome == fail"}
+      - {from: FIX_UNEXPECTED_PASSING_TESTS, to: VERIFY_FAIL_END}
+
+  # ===========================================================================
+  # MID — write-acceptance-tests
+  # ===========================================================================
+  #
+  # Scopes: at-test, dsl-port, dsl-core. Outputs: dsl-port-changed.
+  # ===========================================================================
+  write-acceptance-tests:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call_activity
+        process: execute-agent
+        params:
+          task-name: write-acceptance-tests
+          scopes: "at-test,dsl-port,dsl-core"
+          outputs: "dsl-port-changed"
+
+      - id: WAT_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_AGENT, to: WAT_END}
+
+  # ===========================================================================
+  # MID — write-contract-tests
+  # ===========================================================================
+  #
+  # Scopes: ct-test, dsl-port, dsl-core. Outputs: dsl-port-changed.
+  # ===========================================================================
+  write-contract-tests:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call_activity
+        process: execute-agent
+        params:
+          task-name: write-contract-tests
+          scopes: "ct-test,dsl-port,dsl-core"
+          outputs: "dsl-port-changed"
+
+      - id: WCT_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_AGENT, to: WCT_END}
+
+  # ===========================================================================
+  # MID — implement-dsl
+  # ===========================================================================
+  #
+  # Scopes: dsl-core, driver-port, external-system-driver-port.
+  # Outputs: system-driver-ports-changed, external-driver-ports-changed.
+  # ===========================================================================
+  implement-dsl:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call_activity
+        process: execute-agent
+        params:
+          task-name: implement-dsl
+          scopes: "dsl-core,driver-port,external-system-driver-port"
+          outputs: "system-driver-ports-changed,external-driver-ports-changed"
+
+      - id: IMPL_DSL_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_AGENT, to: IMPL_DSL_END}
+
+  # ===========================================================================
+  # MID — implement-system
+  # ===========================================================================
+  implement-system:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call_activity
+        process: execute-agent
+        params:
+          task-name: implement-system
+          scopes: "system-path"
+
+      - id: IMPL_SYS_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_AGENT, to: IMPL_SYS_END}
+
+  # ===========================================================================
+  # MID — implement-system-driver-adapters
+  # ===========================================================================
+  implement-system-driver-adapters:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call_activity
+        process: execute-agent
+        params:
+          task-name: implement-system-driver-adapters
+          scopes: "driver-port,driver-adapter"
+
+      - id: IMPL_SYS_DA_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_AGENT, to: IMPL_SYS_DA_END}
+
+  # ===========================================================================
+  # MID — implement-external-system-driver-adapters
+  # ===========================================================================
+  implement-external-system-driver-adapters:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call_activity
+        process: execute-agent
+        params:
+          task-name: implement-external-system-driver-adapters
+          scopes: "external-system-driver-port,external-system-driver-adapter"
+
+      - id: IMPL_EXT_DA_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_AGENT, to: IMPL_EXT_DA_END}
+
+  # ===========================================================================
+  # MID — implement-external-system-stubs
+  # ===========================================================================
+  implement-external-system-stubs:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call_activity
+        process: execute-agent
+        params:
+          task-name: implement-external-system-stubs
+          scopes: "external-system-driver-adapter"
+
+      - id: IMPL_STUBS_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_AGENT, to: IMPL_STUBS_END}
+
+  # ===========================================================================
+  # MID — disable-tests
+  # ===========================================================================
+  disable-tests:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call_activity
+        process: execute-agent
+        params:
+          task-name: disable-tests
+          scopes: "at-test,ct-test"
+
+      - id: DISABLE_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_AGENT, to: DISABLE_END}
+
+  # ===========================================================================
+  # MID — enable-tests
+  # ===========================================================================
+  enable-tests:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call_activity
+        process: execute-agent
+        params:
+          task-name: enable-tests
+          scopes: "at-test,ct-test"
+
+      - id: ENABLE_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_AGENT, to: ENABLE_END}
+
+  # ===========================================================================
+  # MID — fix-unexpected-passing-tests
+  # ===========================================================================
+  fix-unexpected-passing-tests:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call_activity
+        process: execute-agent
+        params:
+          task-name: fix-unexpected-passing-tests
+          scopes: "at-test,ct-test,dsl-port,dsl-core,driver-port,driver-adapter,external-system-driver-port,external-system-driver-adapter,system-path"
+
+      - id: FIX_PASS_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_AGENT, to: FIX_PASS_END}
+
+  # ===========================================================================
+  # MID — fix-unexpected-failing-tests
+  # ===========================================================================
+  fix-unexpected-failing-tests:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call_activity
+        process: execute-agent
+        params:
+          task-name: fix-unexpected-failing-tests
+          scopes: "at-test,ct-test,dsl-port,dsl-core,driver-port,driver-adapter,external-system-driver-port,external-system-driver-adapter,system-path"
+
+      - id: FIX_FAIL_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_AGENT, to: FIX_FAIL_END}
+
+  # ===========================================================================
+  # MID — refactor-tests
+  # ===========================================================================
+  refactor-tests:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call_activity
+        process: execute-agent
+        params:
+          task-name: refactor-tests
+          scopes: "at-test,ct-test,dsl-port,dsl-core,driver-port,driver-adapter,external-system-driver-port,external-system-driver-adapter"
+
+      - id: REFACTOR_TESTS_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_AGENT, to: REFACTOR_TESTS_END}
+
+  # ===========================================================================
+  # MID — refactor-system
+  # ===========================================================================
+  refactor-system:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call_activity
+        process: execute-agent
+        params:
+          task-name: refactor-system
+          scopes: "system-path"
+
+      - id: REFACTOR_SYS_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_AGENT, to: REFACTOR_SYS_END}
+
+  # ===========================================================================
+  # MID — refine-acceptance-criteria
+  # ===========================================================================
+  refine-acceptance-criteria:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call_activity
+        process: execute-agent
+        params:
+          task-name: refine-acceptance-criteria
+
+      - id: REFINE_AC_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_AGENT, to: REFINE_AC_END}
+
+  # ===========================================================================
+  # MID — update-ticket
+  # ===========================================================================
+  update-ticket:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call_activity
+        process: execute-agent
+        params:
+          task-name: update-ticket
+
+      - id: UPDATE_TICKET_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_AGENT, to: UPDATE_TICKET_END}
+
+  # ===========================================================================
+  # MID — compile (command)
+  # ===========================================================================
+  compile:
+    start: EXECUTE_COMMAND
+    nodes:
+      - id: EXECUTE_COMMAND
+        type: call_activity
+        process: execute-command
+        params:
+          command: "gh optivem compile"
+
+      - id: COMPILE_MID_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_COMMAND, to: COMPILE_MID_END}
+
+  # ===========================================================================
+  # MID — compile-system (command)
+  # ===========================================================================
+  compile-system:
+    start: EXECUTE_COMMAND
+    nodes:
+      - id: EXECUTE_COMMAND
+        type: call_activity
+        process: execute-command
+        params:
+          command: "gh optivem compile-system"
+
+      - id: COMPILE_SYS_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_COMMAND, to: COMPILE_SYS_END}
+
+  # ===========================================================================
+  # MID — compile-tests (command)
+  # ===========================================================================
+  compile-tests:
+    start: EXECUTE_COMMAND
+    nodes:
+      - id: EXECUTE_COMMAND
+        type: call_activity
+        process: execute-command
+        params:
+          command: "gh optivem compile-tests"
+
+      - id: COMPILE_TESTS_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_COMMAND, to: COMPILE_TESTS_END}
+
+  # ===========================================================================
+  # MID — build-system (command)
+  # ===========================================================================
+  build-system:
+    start: EXECUTE_COMMAND
+    nodes:
+      - id: EXECUTE_COMMAND
+        type: call_activity
+        process: execute-command
+        params:
+          command: "gh optivem build-system"
+
+      - id: BUILD_SYS_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_COMMAND, to: BUILD_SYS_END}
+
+  # ===========================================================================
+  # MID — start-system (command)
+  # ===========================================================================
+  start-system:
+    start: EXECUTE_COMMAND
+    nodes:
+      - id: EXECUTE_COMMAND
+        type: call_activity
+        process: execute-command
+        params:
+          command: "gh optivem start-system"
+
+      - id: START_SYS_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_COMMAND, to: START_SYS_END}
+
+  # ===========================================================================
+  # MID — commit (command)
+  # ===========================================================================
+  commit:
+    start: EXECUTE_COMMAND
+    nodes:
+      - id: EXECUTE_COMMAND
+        type: call_activity
+        process: execute-command
+        params:
+          command: "gh optivem commit"
+
+      - id: COMMIT_MID_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_COMMAND, to: COMMIT_MID_END}
+
+  # ===========================================================================
+  # MID — run-tests (command)
+  # ===========================================================================
+  #
+  # Q5.a structured filter params: `filter-type` enum (`test-type` or
+  # `test-name`); `filter-value` (single tag for test-type; list-as-string
+  # for test-name). Both absent ⇒ run all tests. The underlying
+  # `execute-command` forwards both params to the `gh optivem run-tests`
+  # CLI, which owns the filter parsing.
+  # ===========================================================================
+  run-tests:
+    start: EXECUTE_COMMAND
+    nodes:
+      - id: EXECUTE_COMMAND
+        type: call_activity
+        process: execute-command
+        params:
+          command: "gh optivem run-tests"
+          filter-type: ${filter-type}
+          filter-value: ${filter-value}
+
+      - id: RUN_TESTS_END
+        type: end_event
+
+    sequence_flows:
+      - {from: EXECUTE_COMMAND, to: RUN_TESTS_END}
+
+  # ===========================================================================
+  # LOW — approve (HUMAN gate primitive)
+  # ===========================================================================
+  #
+  # Confirms approval; writes outcome to `approval_outcome` state for the
+  # caller to read. Q3 = A (exit-only; caller owns NO branch). Currently
+  # encoded with two end_events; alternatives Q3-B (parameterised NO-action)
+  # and Q3-C (two primitives APPROVE-OR-EXIT / APPROVE-OR-RETRY) are open
+  # questions on the exploration backlog.
+  #
+  # TODO(Phase D / exploration backlog): the runtime today has no
+  # ERROR-end_event semantics — the YES/NO branches both end normally and
+  # the caller is responsible for re-reading `approval_outcome`. If
+  # Q-late-1's "END ERROR transitively kills the process" intent becomes a
+  # binding contract, add an `end_event_kind: error` field to RawNode +
+  # wire RunProcess to propagate it.
+  # ===========================================================================
+  approve:
+    start: ASK_HUMAN
+    nodes:
+      - id: ASK_HUMAN
+        type: user_task
+        agent: human
+        documentation: "${question}"
+
+      - id: GATE_APPROVED
+        type: gateway
+        binding: approval_outcome
+        documentation: "Approved?"
+
+      - id: APPROVE_OK_END
+        type: end_event
+
+      - id: APPROVE_REJECT_END
+        type: end_event
+
+    sequence_flows:
+      - {from: ASK_HUMAN,     to: GATE_APPROVED}
+      - {from: GATE_APPROVED, to: APPROVE_OK_END,     when: "approval_outcome == approved"}
+      - {from: GATE_APPROVED, to: APPROVE_REJECT_END, when: "approval_outcome == rejected"}
+
+  # ===========================================================================
+  # LOW — execute-agent (LLM agent dispatch primitive)
+  # ===========================================================================
+  #
+  # Wraps an agent run with approval + validation + optional fix recovery
+  # + post-approval. The agent name is the caller's `task-name` param,
+  # forwarded into the templated `agent: ${task-name}` on RUN_AGENT.
+  # Prompt path is derived from task-name per Q28.a (`task_name + ".md"`).
+  #
+  # Validation step asserts (1) all `outputs` named by the caller are
+  # present in agent COMMIT output, (2) `scopes` constraints are
+  # satisfied (working-tree diff is within allowed paths). When
+  # validation fails AND `fix-on-failure == true`, dispatch `fix` with
+  # the failure payload; on `fix-on-failure == false` (the recursive
+  # call site from `fix` itself) skip remediation and let POST approval
+  # see the broken state.
+  # ===========================================================================
+  execute-agent:
+    start: APPROVE_PRE
+    nodes:
+      - id: APPROVE_PRE
+        type: call_activity
+        process: approve
+        params:
+          question: "Do you approve task ${task-name} to run?"
+
+      - id: RUN_AGENT
+        type: user_task
+        agent: ${task-name}
+        documentation: "Run agent ${task-name}"
+
+      - id: VALIDATE_OUTPUTS_AND_SCOPES
+        type: service_task
+        action: validate_outputs_and_scopes
+        documentation: "Validate outputs (${outputs}) & scopes (${scopes})"
+
+      - id: GATE_OUTPUTS_AND_SCOPES_VALID
+        type: gateway
+        binding: outputs_and_scopes_valid
+        documentation: "Outputs & scopes valid?"
+
+      - id: GATE_FIX_ON_FAILURE
+        type: gateway
+        binding: fix_on_failure_enabled
+        documentation: "Fix on failure?"
+
+      - id: CALL_FIX
+        type: call_activity
+        process: fix
+
+      - id: APPROVE_POST
+        type: call_activity
+        process: approve
+        params:
+          question: "Approve agent output for task ${task-name}?"
+
+      - id: EXECUTE_AGENT_END
+        type: end_event
+
+    sequence_flows:
+      - {from: APPROVE_PRE,                  to: RUN_AGENT}
+      - {from: RUN_AGENT,                    to: VALIDATE_OUTPUTS_AND_SCOPES}
+      - {from: VALIDATE_OUTPUTS_AND_SCOPES,  to: GATE_OUTPUTS_AND_SCOPES_VALID}
+      - {from: GATE_OUTPUTS_AND_SCOPES_VALID, to: APPROVE_POST,        when: "outputs_and_scopes_valid == true"}
+      - {from: GATE_OUTPUTS_AND_SCOPES_VALID, to: GATE_FIX_ON_FAILURE, when: "outputs_and_scopes_valid == false"}
+      - {from: GATE_FIX_ON_FAILURE,           to: CALL_FIX,             when: "fix_on_failure_enabled == true"}
+      - {from: GATE_FIX_ON_FAILURE,           to: APPROVE_POST,         when: "fix_on_failure_enabled == false"}
+      - {from: CALL_FIX,                      to: APPROVE_POST}
+      - {from: APPROVE_POST,                  to: EXECUTE_AGENT_END}
+
+  # ===========================================================================
+  # LOW — execute-command (shell command dispatch primitive)
+  # ===========================================================================
+  #
+  # PRE approval only (Q2 = C asymmetric — commands have machine-checkable
+  # success). On command failure, dispatch `fix` (the `command-failed`
+  # kind) without passing `scopes`/`outputs` — commands don't have them.
+  # ===========================================================================
+  execute-command:
+    start: APPROVE_PRE
+    nodes:
+      - id: APPROVE_PRE
+        type: call_activity
+        process: approve
+        params:
+          question: "Do you approve running command ${command} ?"
+
+      - id: RUN_COMMAND
+        type: service_task
+        action: run_command
+        documentation: "Run command ${command}"
+
+      - id: GATE_COMMAND_SUCCEEDED
+        type: gateway
+        binding: command_succeeded
+        documentation: "Command succeeded?"
+
+      - id: CALL_FIX
+        type: call_activity
+        process: fix
+
+      - id: EXECUTE_COMMAND_END
+        type: end_event
+
+    sequence_flows:
+      - {from: APPROVE_PRE,            to: RUN_COMMAND}
+      - {from: RUN_COMMAND,            to: GATE_COMMAND_SUCCEEDED}
+      - {from: GATE_COMMAND_SUCCEEDED, to: EXECUTE_COMMAND_END, when: "command_succeeded == true"}
+      - {from: GATE_COMMAND_SUCCEEDED, to: CALL_FIX,            when: "command_succeeded == false"}
+      - {from: CALL_FIX,               to: EXECUTE_COMMAND_END}
+
+  # ===========================================================================
+  # LOW — fix (single-attempt remediation primitive)
+  # ===========================================================================
+  #
+  # Q-late-5 (β-convention) routing: the fix-* task-name is derived as
+  # `"fix-" + failure.kind` and passed into the inner `execute-agent`. No
+  # routing table here — the runtime constructs the task-name dispatch-
+  # time. The inner `execute-agent` receives `fix-on-failure: false` so
+  # validation failure in the fix attempt does NOT recurse into another
+  # fix (single attempt, terminates regardless of inner outcome).
+  # ===========================================================================
+  fix:
+    start: APPROVE_PRE
+    nodes:
+      - id: APPROVE_PRE
+        type: call_activity
+        process: approve
+        params:
+          question: "Do you approve fix to attempt remediation for ${failure} ?"
+
+      - id: EXECUTE_AGENT
+        type: call_activity
+        process: execute-agent
+        params:
+          # task-name derived from failure.kind by the binding plumbing
+          # (Q-late-5): the (β-convention) "fix-" + failure.kind formula
+          # resolves at dispatch time. Phase D wires the param-derivation
+          # gate so this becomes ${fix-task-name}; for now the literal
+          # template documents the convention.
+          task-name: "fix-${failure-kind}"
+          fix-on-failure: "false"
+          scopes: ${scopes}
+          outputs: ${outputs}
+
+      - id: FIX_END
+        type: end_event
+
+    sequence_flows:
+      - {from: APPROVE_PRE,  to: EXECUTE_AGENT}
+      - {from: EXECUTE_AGENT, to: FIX_END}
