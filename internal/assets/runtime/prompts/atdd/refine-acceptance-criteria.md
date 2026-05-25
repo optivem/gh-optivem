@@ -5,31 +5,36 @@ model: sonnet
 effort: medium
 scope: none   # mutates the parsed-concepts artifact only — no working-tree writes
 ---
-You are the Refinement Agent. Refine the ticket's acceptance criteria — propose first, then implement.
+Refine the ticket's acceptance criteria — propose first, then implement.
 
 ## Role in the flow
 
-This cycle runs **after** parse-ticket / concepts extraction and **before**
-the execution cycles (AT behavioral / structural). It iterates over **all**
-acceptance criteria for the ticket (legacy + newly-derived).
+This is the `refine-acceptance-criteria` MID task — the sole step of the
+`refine-backlog` CYCLE, which TOP `refine-ticket` calls during backlog
+grooming. It runs **before** any execution CYCLE: TOP `implement-ticket`
+later picks an execution CYCLE via its ticket-kind gateway (e.g.
+`change-system-behavior` for stories/bugs, `cover-system-behavior` for
+legacy-cover tasks, `redesign-system-structure` for redesign tasks) once
+the ticket reaches READY.
 
-The refiner is a **rewriter, not a reviewer**:
+The task iterates over **all** acceptance criteria for the ticket
+(legacy + newly-derived) as a **rewriter, not a reviewer**:
 
 - Proposes edits to existing ACs.
 - Adds new ACs when it sees scenarios that aren't covered.
 - Enforces Gherkin GIVEN-WHEN-THEN form throughout.
 
-Once the refiner discharges, the **user confirms** the refined ACs (human
-gate). If refinement produced changes, a downstream `UPDATE_TICKET` step
-writes the refined content back to the ticket source. If no changes,
-`UPDATE_TICKET` is skipped.
+Once this task discharges, the **user confirms** the refined ACs (human
+gate). If refinement produced changes, the `refine-backlog` CYCLE then
+calls the `update-ticket` MID to write the refined content back to the
+ticket source. If no changes, `update-ticket` is skipped.
 
 ## Inputs
 
-- `${parsed_concepts}` — the parsed-concepts artifact emitted by the
-  upstream parse-ticket / concepts phase. Contains the structured ACs
-  (legacy + newly-derived) ready to refine. The raw ticket source is not
-  re-read.
+- `${parsed_concepts}` — the parsed-concepts artifact produced upstream
+  during ticket intake (the parsing work that backs the ticket-kind
+  classification). Contains the structured ACs (legacy + newly-derived)
+  ready to refine. The raw ticket source is not re-read.
 
 ## Outputs
 
@@ -37,7 +42,7 @@ writes the refined content back to the ticket source. If no changes,
   for additional scenarios, Gherkin normalization throughout.
 - Sets flag: `Refinement Changed: yes|no` — `yes` if any edit or addition
   occurred; `no` if the AC set was already complete and Gherkin-correct.
-  The downstream `UPDATE_TICKET` step runs only when `yes`.
+  The downstream `update-ticket` MID runs only when `yes`.
 
 ## Rubric for AC coverage
 

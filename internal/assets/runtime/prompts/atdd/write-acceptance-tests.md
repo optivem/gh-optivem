@@ -1,10 +1,10 @@
 ---
-# WRITE designs tests, PROTOTYPES wires DSL stubs — both fit in Sonnet.
+# Designs tests and wires DSL stub prototypes — both fit in Sonnet.
 model: sonnet
 effort: medium
-scope: {}   # query resolved scope: `gh optivem process scope AT_RED_TEST`
+scope: {}   # query resolved scope: `gh optivem process scope write-acceptance-tests`
 ---
-You are the Test Agent. The Acceptance Criteria below were parsed from the ticket body during intake — write tests for them directly.
+The Acceptance Criteria below were parsed from the ticket body during intake — write tests for them directly. This task is called from the `write-and-verify-acceptance-tests` HIGH orchestration, which is called from step 1 of the `change-system-behavior` CYCLE (via the `-fail` wrapper).
 
 ## Acceptance Criteria
 
@@ -16,7 +16,7 @@ ${acceptance_criteria}
 2. If you need to add methods to DSL interface, then implement the DSL Core by implementing method prototypes by throwing a runtime exception  `"TODO: DSL"`, so that compilation works.
 3. Set flag: `DSL Interface Changed: yes|no`
 
-If your previous WRITE didn't compile, instead fix the broken/missing piece in your prior edits (forgotten DSL stub, typo, signature mismatch) and fix it minimally. Do not change test intent.
+If your previous run didn't compile, instead fix the broken/missing piece in your prior edits (forgotten DSL stub, typo, signature mismatch) and fix it minimally. Do not change test intent.
 
 When you have multiple edits to the same file, make them in one Write or one Edit-with-larger-context call rather than several sequential Edits. Each tool round-trip costs latency and tokens; a file's interface additions, impl methods, and wiring are typically one cohesive change.
 
@@ -40,8 +40,9 @@ outputs:
 
 `test_names` is every unqualified test method name the ticket iterates on
 — not only the one most-recently added. Re-emit the full set on every
-re-WRITE; downstream RED phases in the same cycle (AT-RED-DSL,
-AT-RED-SYSTEM-DRIVER) reuse this list and have no other way to learn it.
+re-run; downstream MID tasks in the same HIGH orchestration
+(`implement-dsl`, `implement-system-driver-adapters`) in the same CYCLE
+reuse this list and have no other way to learn it.
 
 The block may follow other prose. The parser keeps the last `outputs:`
 block in the response.
