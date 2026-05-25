@@ -8,6 +8,8 @@ End-state-first: lock the design **before** drawing diagrams; the existing diagr
 
 ### Intent: full replacement of the existing BPMN
 
+*(Q17 resolved 2026-05-25: full replacement — option A.)*
+
 The four-level structure (LOW / MID / HIGH / PEAK) is intended to **fully replace the existing BPMN**, not patch it. Concretely:
 
 - The canonical source today is `internal/atdd/runtime/statemachine/process-flow.yaml` (read by the statemachine), rendered into `docs/process-diagram.md` plus the 21 SVGs under `docs/images/process-diagram-*.svg`.
@@ -17,9 +19,9 @@ The four-level structure (LOW / MID / HIGH / PEAK) is intended to **fully replac
 
 Because the replacement is full, every concern the existing BPMN models must be either **absorbed** into the new four-level structure (with location) or **dropped** (with reason). Inventory of the 21 existing diagrams:
 
-**Maps cleanly into the four levels (presumed during Item 6; verify each):**
+**Maps cleanly into the four levels** — *all 15 absorption targets confirmed 2026-05-25:*
 
-| # | Diagram | Likely target |
+| # | Diagram | Absorption target |
 |---|---|---|
 | 1 | legend | doc artifact, regenerate |
 | 2 | ticket-lifecycle | PEAK wrapper (Q7) |
@@ -30,28 +32,28 @@ Because the replacement is full, every concern the existing BPMN models must be 
 | 8 | contract-test-sub-process | HIGH IMPLEMENT RED EXTERNAL SYSTEM DRIVER ADAPTERS — CONTRACT TESTS |
 | 10 | structural-cycle-shared | HIGH shared IMPLEMENT TEST LAYER |
 | 11 | commit-sub-process | MID Commit (calls EXECUTE COMMAND) |
-| 13 | at-refactor-system | PEAK REFACTOR SYSTEM STRUCTURE (Q8 adds compile/verify) |
+| 13 | at-refactor-system | PEAK REFACTOR SYSTEM STRUCTURE (verify inherited from `WRITE SYSTEM (BIG)`; see Q8) |
 | 15 | compile | MID Compile (calls EXECUTE COMMAND) |
-| 16 | da-cycle | PEAK REDESIGN SYSTEM STRUCTURE (Write Driver Adapters) |
+| 16 | da-cycle | PEAK REDESIGN SYSTEM STRUCTURE (Implement Driver Adapters — renamed per Q15) |
 | 17 | green-phase-cycle | HIGH WRITE SYSTEM BIG |
 | 20 | red-phase-cycle | HIGH WRITE TESTS BIG |
 | 21 | sut-cycle | HIGH WRITE SYSTEM BIG |
 
-**Legacy cycles — collapse into normal flows** (per memory `feedback_legacy_tests_no_marker`: legacy tests are indistinguishable from AT/CT tests, so dedicated legacy cycles disappear). **All entries below are my best guess — user must verify in Item 1; initial guesses likely wrong on the change-vs-cover split:**
+**Legacy cycles** — *resolved 2026-05-25 via Q16=B (legacy cycles collapse). Three of the four absorb into `COVER SYSTEM BEHAVIOR`; #4 is dropped (no separate legacy-test-run operation exists):*
 
-| # | Diagram | Likely target | Reasoning (verify) |
+| # | Diagram | Resolution | Rationale |
 |---|---|---|---|
-| 4 | run-legacy-cycle | shared sub-process called from both CHANGE and COVER | running existing legacy tests during either cycle |
-| 12 | legacy-acceptance-criteria-cycle | **COVER** (was CHANGE — likely wrong) | writing new ACs against existing legacy behavior = adding coverage, not changing behavior |
-| 18 | legacy-at-cycle | **COVER** (was CHANGE — likely wrong) | writing legacy ATs for existing behavior = adding coverage |
-| 19 | legacy-ct-cycle | COVER | writing legacy CTs for existing behavior = adding coverage |
+| 4 | run-legacy-cycle | **DROP** (no absorption) | No separate "run legacy tests" operation. The mid-level `Run Tests` task runs whatever's currently in the test suite; legacy-vs-latest distinction doesn't exist at run time per Q16=B + memory `feedback_legacy_tests_no_marker`. |
+| 12 | legacy-acceptance-criteria-cycle | **PEAK `COVER SYSTEM BEHAVIOR`** (with `Expected Test Result: Success`) | Writing ACs for existing behavior = adding coverage = COVER. |
+| 18 | legacy-at-cycle | **PEAK `COVER SYSTEM BEHAVIOR`** | Writing legacy ATs for existing behavior = COVER. |
+| 19 | legacy-ct-cycle | **PEAK `COVER SYSTEM BEHAVIOR`** | Writing legacy CTs for existing behavior = COVER. |
 
-**Not currently mapped — needs decision:**
+**Not currently mapped** — *both included; resolutions recorded 2026-05-25:*
 
-| # | Diagram | Gap |
+| # | Diagram | Resolution |
 |---|---|---|
-| 9 | external-system-onboarding | No equivalent in the four brainstorm files. **See Q-ext** (conditional). |
-| 14 | backlog-refinement | No equivalent in the four brainstorm files. User explicitly flagged in-scope. **See Q9.** |
+| 9 | external-system-onboarding | **PEAK new entry `ONBOARD EXTERNAL SYSTEM`** (Q-ext resolved to option b — standalone peak workflow; REDESIGN SYSTEM STRUCTURE can also call it as a sub-process). |
+| 14 | backlog-refinement | **PEAK new entry `REFINE BACKLOG`** (Q9 resolved to A — sibling to the existing five peak entries). |
 
 ### Already-confirmed scope inclusions
 
@@ -59,6 +61,8 @@ Because the replacement is full, every concern the existing BPMN models must be 
 - **Backlog refinement is in scope** (user flagged). Currently covered today by diagram 14; must be absorbed — see Q9.
 
 ## Inputs (brainstorm)
+
+*(Q18 resolved 2026-05-25: files are exhaustive + final inputs — option A. Items 2–5 only apply Q-decisions on top of them.)*
 
 The four files the user wrote, in `plans/ideas/`:
 
@@ -69,20 +73,14 @@ The four files the user wrote, in `plans/ideas/`:
 
 ## Phases overview
 
-- **Phase A** (Item 1) — Batch-resolve the 14 open questions in this file.
+- ~~**Phase A** (Item 1) — Batch-resolve the open questions in this file.~~ ✓ **Completed 2026-05-25.** All 23 questions (Q1–Q23 + Q-ext) resolved; cross-check inventory confirmed. See Decisions section.
 - **Phase B** (Items 2–6) — Apply decisions to the four brainstorm docs + walk the cross-check inventory.
 - **Phase C** (Items 7–9) — Update `process-flow.yaml`, regenerate `docs/process-diagram.md` via `gh optivem process show > docs/process-diagram.md`. **No hand-drawn Mermaid.** Schema/generator changes if needed.
 - **Phase D** (Item 10) — Write a separate plan for downstream alignment (writing-agents, ATDD docs, retired SVGs). That new plan is then executed independently.
 
 ## Items
 
-Each item is sized for one `/execute-plan` invocation. Re-running `/execute-plan plans/20260525-1057-bpmn-refactor-design.md` picks up the next unchecked item.
-
-1. - [ ] **Phase A — Resolve open questions + verify cross-check inventory (batch-confirm).** Read this plan, the four brainstorm inputs (`plans/ideas/1-4-*.md`), and skim the existing BPMN (`internal/atdd/runtime/statemachine/process-flow.yaml`, `docs/process-diagram.md`). In a single batched message to the user, present:
-    1. All **15 open questions** (Q1–Q14 + Q15) with their pre-drafted recommendations. User accepts all or lists edits.
-    2. The **cross-check inventory** from the Scope section (all three tables: maps-cleanly / legacy / not-mapped). For each row, ask the user to confirm the absorption target or correct it. **Pay special attention to the legacy mappings (#4, #12, #18, #19) — the absorption targets there are my best guess and likely contain errors.**
-    Update the **Decisions** section with the final answers (replace each `(pending — recommended X)` with the resolved answer). Update the Scope cross-check tables with any user corrections. Commit.
-    **Done when:** every Decisions entry has status ≠ pending; every cross-check row is user-confirmed; commit on `main`.
+Each item is sized for one `/execute-plan` invocation. Re-running `/execute-plan plans/20260525-1057-bpmn-refactor-design.md` picks up the next unchecked item. Item numbering is stable — Item 1 was completed 2026-05-25 and removed per the `/execute-plan` rule (resolved items are deleted, not checked); remaining items keep their original numbers so cross-references in this file stay correct.
 
 2. - [ ] **Phase B.1 — Refine LOW brainstorm.** Apply Q1 (FIX primitive), Q2 (post-approve symmetry), Q3 (APPROVE NO-branch), Q4 (terminology) to `plans/ideas/1-bpmn-refactor-low-level.md`. Cross-check against any LOW-affecting existing diagrams. Commit.
     **Done when:** the file reflects every LOW decision; no contradictions vs Decisions.
@@ -268,6 +266,116 @@ User to fill in the remaining producers during Item 1.
 
 **Recommendation: A.** Lowest cost; no generator change. Easy to revisit in Phase D if file becomes unwieldy.
 
+### Q17 — Full replacement vs additive vs partial replacement of the existing BPMN  *(DOCTRINE — pin before Item 1's cross-check confirmation; reshapes Scope > Intent)*
+
+**Context.** The plan's Scope > Intent section asserts the four-level structure *fully replaces* the existing 21-diagram BPMN — "nothing from the old shape survives by accident." This framing drives the entire Cross-check inventory (every existing diagram must be absorbed or dropped) and the artifact removal in Phase C. The brainstorm files are titled "BPMN - LOW/MID/HIGH/PEAK" — they describe a new structure but don't explicitly say "replace everything." Origin: my inference in commit `c20fd4a`, not a user statement.
+
+**Options.**
+- **(A) Full replacement.** As currently drafted. Four-level structure fully supersedes the existing 21 diagrams. Every existing diagram is absorbed (mapped into the new structure) or dropped (with explicit rationale).
+- **(B) Additive.** Four-level coexists with the existing BPMN. Some existing diagrams (e.g., legend, github-intake) stay as first-class artifacts alongside the new structure. Cross-check inventory becomes "which existing diagrams gain a four-level counterpart" rather than "absorb or drop."
+- **(C) Partial replacement.** Explicit list of which existing diagrams are replaced and which are retained. Requires a per-diagram retention decision on top of the absorption-target decision.
+
+**Recommendation: discuss before drafting.** Both (B) and (A) are defensible; (C) is the most flexible but adds per-diagram decision overhead. **No pre-drafted recommendation; user decides.**
+
+---
+
+### Q18 — Are the four brainstorm files exhaustive + final, or working drafts?  *(DOCTRINE — pin before Item 1's batch; reshapes Items 2–5)*
+
+**Context.** Items 2–5 "refine the LOW/MID/HIGH/PEAK brainstorm" by applying the resolved Q-decisions to `plans/ideas/1-4-*.md`. This assumes those four files are the complete + correct source material for the new structure. If they're working drafts you'd revise independently, or if you have more brainstorm material not yet captured, Items 2–5's scope changes.
+
+**Options.**
+- **(A) Files are exhaustive + final inputs.** Items 2–5 only apply Q-decisions on top of them; no new content added beyond what the decisions imply. Plan as currently drafted.
+- **(B) Files are working drafts; user adds/revises content during Items 2–5.** Items 2–5 expand to include "user adds missing content" before applying Q-decisions. Adds a user-input step inside each B-item.
+- **(C) Some files are final, some are drafts.** User specifies per-file.
+
+**Recommendation: discuss before drafting.** **No pre-drafted recommendation; user decides.**
+
+---
+
+### Q19 — Confirm "scope inclusions" attribution  *(SCOPE)*
+
+**Context.** Plan's Scope section says:
+- *"Ticket intake and updates are in scope (see Q7)"* — attributed to user via Q7.
+- *"Backlog refinement is in scope (user flagged)"* — attributed to user.
+
+These are stated as already-confirmed. Verifying the attribution now avoids building Items on a wrong premise.
+
+**Options.**
+- **(A) Both inclusions are confirmed.** No change.
+- **(B) Only one was actually flagged by you; the other is my inference.** User specifies which is which; for the inferred one, decide whether to keep as scope or drop.
+- **(C) Neither was flagged; both are my inference.** User decides per-inclusion whether to keep, drop, or convert to its own scope question.
+
+**Recommendation: A.** Both inclusions came up in the prior plan-shaping conversation (commit `c20fd4a` includes both). Confirming with you is a sanity check, not a real ambiguity. If you remember saying one but not both, edit.
+
+---
+
+### Q20 — Item decomposition (10 items, this order)  *(PROCESS)*
+
+**Context.** The Phase A→B→C→D shape and the 10-item granularity originated in commit `c20fd4a` ("reshape as /execute-plan checklist"). Worth confirming this matches your intended cadence before launching execution.
+
+**Options.**
+- **(A) Keep the 10-item shape.** Each item ~one `/execute-plan` invocation. Items 2–5 per-level (LOW/MID/HIGH/PEAK) to keep cross-check focus.
+- **(B) Merge Items 2–5 into one Phase-B item.** Fewer commits, broader chunks. Trade-off: harder to fan out as parallel subagents.
+- **(C) Split Item 9 (migrate-rest-of-YAML) by level.** Three sub-items: peak migration / high migration / mid migration.
+- **(D) Other restructure** — user specifies.
+
+**Recommendation: A.** Matches `/execute-plan` cadence; per-level B-items enable parallel subagent fan-out (memory: independent file edits → parallel subagents). Item 9 stays as one because the YAML migration needs to be diffed against the pre-refactor baseline as a single unit.
+
+---
+
+### Q21 — Phase D produces a separate downstream plan vs inlined items  *(PROCESS)*
+
+**Context.** Item 10 writes a separate plan for downstream work (writing-agent updates, ATDD docs, retired SVG cleanup) instead of folding it into this plan.
+
+**Options.**
+- **(A) Separate plan, as drafted.** Cleaner `/execute-plan` boundary; downstream work decoupled from BPMN structure work.
+- **(B) Inline downstream work as Items 11–N in this plan.** Single plan covers both; tighter coupling.
+
+**Recommendation: A.** Memory `feedback_new_plan_not_extend` says broaden scope via a fresh plan, not by extending. Downstream alignment touches three surfaces (writing-agents, ATDD docs, SVGs) — separate plan warranted.
+
+---
+
+### Q22 — Q6's table shape (port-change wiring)  *(HIGH / PROCESS)*
+
+**Context.** Q6 uses a three-column table (Producer / Output variable / Consumer). Other shapes exist.
+
+**Options.**
+- **(A) Three-column producer-output-consumer table.** Current draft.
+- **(B) Truth table.** Per port, what conditions trigger which branch.
+- **(C) Sequence-style.** Ordered list of "task X sets variable Y, branch Z reads it."
+
+**Recommendation: A.** Producer-output-consumer is BPMN-natural and maps cleanly to YAML metadata in Q13.
+
+---
+
+### Q23 — Rendering pipeline (`gh optivem process show` stays?)  *(PROCESS / Phase C)*
+
+**Context.** Phase C assumes the existing YAML + `gh optivem process show` rendering pipeline can express the four-level structure. If the new structure needs a richer output (per-level sub-diagrams, embedded contract blocks, etc.) that exceeds what the current generator emits, Item 8 expands.
+
+**Options.**
+- **(A) Existing pipeline stays.** Generator extensions in Item 8 stay scoped to YAML schema additions (e.g., `scopes:` / `outputs:` per Q13).
+- **(B) New pipeline or rendering tool.** Item 8 grows to include pipeline replacement.
+- **(C) Existing pipeline + parallel renderer.** E.g., per-level Mermaid sub-diagrams alongside the current single output.
+
+**Recommendation: A.** Cheapest; existing pipeline already produces the BPMN diagrams. Defer (B)/(C) until a concrete gap surfaces in Item 7's prototype.
+
+---
+
+### Q16 — Do legacy authoring cycles disappear, or stay as distinct cycles producing indistinguishable artifacts?  *(DOCTRINE — pin before Item 1's cross-check confirmation)*
+
+**Context.** Memory `feedback_legacy_tests_no_marker` says legacy *test artifacts* (files on disk) must be indistinguishable from change-cycle artifacts — no folder, no annotation, no filename suffix. The memory does **not** say the *authoring cycles* themselves disappear. In fact it explicitly preserves "the legacy cycle's own verify gate (`VERIFY_LEGACY_AT` / `VERIFY_LEGACY_CT`) ... applies at authoring time, inside the legacy cycle." This plan's earlier wording extrapolated artifacts → cycles, which is a doctrine call the user has not made. The user flagged this for discussion (2026-05-25).
+
+**Options.**
+- **(A) Cycles persist; artifacts are indistinguishable.** The four-level structure includes explicit legacy entry points — e.g., a peak entry `COVER LEGACY BEHAVIOR`, or a `legacy: true` flag on `COVER SYSTEM BEHAVIOR` that selects a different mid-level orchestration (one that uses the "inverted-RED expected-to-pass" verify gate). The legacy *cycle* is preserved as a first-class authoring shape; only the produced test files are uniform. This is what the memory literally says.
+- **(B) Cycles collapse; legacy reduces to a parameter on the normal flows.** What was a "legacy AT cycle" becomes `COVER SYSTEM BEHAVIOR` with `expected-test-result: success`. No first-class legacy concept at peak or high level — the "expected to pass" property is just the existing per-cycle parameter, with values `success` (legacy/cover) or `failure` (change/red). This is what the plan's Scope > Legacy table currently assumes.
+- **(C) Something else** — e.g., legacy is a wholly separate process tree, or only some legacy cycles collapse (e.g., diagram 19 collapses, diagrams 4/12/18 don't).
+
+**Cross-check.** Existing diagrams 4 (run-legacy-cycle), 12 (legacy-acceptance-criteria-cycle), 18 (legacy-at-cycle), 19 (legacy-ct-cycle). If (A) wins, the Scope > Legacy table is rewritten — those diagrams stay as distinct cycles, just minus any test-artifact marker — and Items 4 (HIGH) / 5 (PEAK) gain new entries. If (B) wins, the table's COVER absorption targets stand, subject to per-row confirmation.
+
+**Recommendation: discuss before drafting.** Both options are defensible. (A) is faithful to the memory but adds peak/high surface area. (B) is the leaner shape but reads more into the memory than it says. The choice is a doctrine call about how visible the legacy concept should be in the process model — not an obvious mechanical win. **No pre-drafted recommendation; user decides.**
+
+---
+
 ### Q15 — Naming convention: "Write" vs "Implement"  *(NAMING — pin early)*
 
 **Context.** The brainstorm files mix the two verbs inconsistently:
@@ -287,43 +395,55 @@ Pinning the convention now avoids rework in Items 2–5 (every brainstorm doc ge
 
 ---
 
-## Cross-check follow-up (only if confirmed needed)
-
-- **Q-ext — External system onboarding integration.** Existing diagram 9 (`process-diagram-9-external-system-onboarding-sub-process.svg`) is not currently mapped to anything in the four brainstorm files. Likely absorbs into REDESIGN SYSTEM STRUCTURE (since onboarding produces new driver adapters), but worth a discrete decision. Promoted to a real question only if Item 6's cross-check walk surfaces a real gap.
-
----
-
 ## Decisions
 
-*(Item 1 fills this in; subsequent items reference it.)*
+*(All resolved 2026-05-25 in Phase A / Item 1. Subsequent items reference these.)*
+
+### DOCTRINE
+- **Q16 — Legacy cycle fate (collapse vs persist):** ✓ **B: legacy cycles collapse.** No dedicated legacy peak entry. **`COVER SYSTEM BEHAVIOR` (with `Expected Test Result: Success`) IS the legacy-coverage peak entry** — the `expected-test-result` parameter is what distinguishes legacy/cover (success) from change/red (failure). Test artifacts indistinguishable per memory `feedback_legacy_tests_no_marker`. There is **no separate "run legacy tests" operation** — the mid-level `Run Tests` task runs whatever's currently in the test suite, including tests authored via the legacy/cover path.
+- **Q17 — Full replacement vs additive vs partial:** ✓ **A: full replacement.** Four-level structure fully supersedes the existing 21 diagrams; all existing diagrams will be deleted in Phase C (Item 9) once the new YAML is in place.
+- **Q18 — Brainstorm files exhaustive vs working drafts:** ✓ **A: exhaustive + final.** Items 2–5 only apply Q-decisions to `plans/ideas/1-4-*.md`; no new content added beyond what decisions imply.
+
+### SCOPE
+- **Q19 — Scope-inclusion attribution (ticket intake + backlog refinement):** ✓ **A: both confirmed.**
 
 ### PROCESS / NAMING
-- **Q10 — Per-phase acceptance criteria:** *(pending — recommended A: inline criteria per item, already implemented)*
-- **Q11 — Commit cadence:** *(pending — recommended A: per item)*
-- **Q12 — Q6 prompt shape:** *(pending — recommended A: propose-then-confirm)*
-- **Q13 — Contract block format and location:** *(pending — recommended A: in YAML as `user_task` metadata)*
-- **Q14 — `docs/process-diagram.md` structure:** *(pending — recommended A: keep one file)*
-- **Q15 — "Write" vs "Implement" naming:** *(pending — recommended A: Write for tests, Implement for code; rename peak entries accordingly)*
+- **Q10 — Per-phase acceptance criteria:** ✓ **A: inline criteria per item** (already implemented in Items section).
+- **Q11 — Commit cadence (git, for plan execution):** ✓ **A: one git commit per item.**
+- **Q12 — Q6 prompt shape:** ✓ **A: propose-then-confirm.**
+- **Q13 — Contract block format and location:** ✓ **A: contract blocks live in `process-flow.yaml` as `user_task` metadata** (`scopes:`, `outputs:`). Both consumers read from the same YAML: (1) the agent invocation uses `scopes:`/`outputs:` for prompt context + permitted file scope; (2) the post-execute BPMN verify step (currently EXECUTE AGENT step 3) reads the same `outputs:` to validate "required output variables present?" and `scopes:` to validate "scope constraints satisfied? (diff)". Single source of truth, no drift.
+- **Q14 — `docs/process-diagram.md` structure:** ✓ **A: one file.**
+- **Q15 — "Write" vs "Implement" naming:** ✓ **A: Write for tests, Implement for code.** Peak entries get renamed: `Write System` → `Implement System`; `Write Driver Adapters` → `Implement Driver Adapters`.
+- **Q20 — Item decomposition (10-item shape):** ✓ **A: keep 10 items.**
+- **Q21 — Phase D as separate downstream plan:** ✓ **A: separate plan.**
+- **Q22 — Q6's table shape (producer/output/consumer):** ✓ **A: three-column table.**
+- **Q23 — Rendering pipeline (`gh optivem process show` stays):** ✓ **A: existing pipeline stays.**
 
 ### LOW
-- **Q1 — Fix-loop recursion bounds:** *(pending — recommended A: FIX as separate primitive)*
-- **Q2 — EXECUTE COMMAND post-approve symmetry:** *(pending — recommended C: keep asymmetric)*
-- **Q3 — APPROVE NO-branch:** *(pending — recommended A: caller owns NO branch)*
-- **Q4 — Terminology:** *(pending — recommended A: "calls")*
+- **Q1 — Fix-loop recursion bounds:** ✓ **A: FIX as separate primitive** (4th low-level primitive, single attempt, terminates regardless of outcome).
+- **Q2 — EXECUTE COMMAND post-approve symmetry:** ✓ **C: keep asymmetric** (commands have machine-checkable success; agents produce content needing human review).
+- **Q3 — APPROVE NO-branch:** ✓ **A: APPROVE stays exit-only; caller owns NO branch.** **Action for Phase C:** when encoding APPROVE in `process-flow.yaml`, add a `TODO:` comment mentioning options B (parameterized NO-action) and C (two distinct primitives APPROVE-OR-EXIT, APPROVE-OR-RETRY) for possible revisit.
+- **Q4 — Terminology:** ✓ **A: "calls"** (matches BPMN call-activity semantics).
 
 ### MID
-- **Q5 — Run Tests granularity:** *(pending — recommended A: single task with type filter)*
+- **Q5 — Run Tests granularity:** ✓ **A (modified): single `Run Tests` task with polymorphic filter parameter.** Filter accepts: (1) a test-type tag — `acceptance` / `contract` / `acceptance-api` / `acceptance-ui` / `contract-stub` / `contract-real`; OR (2) a list of specific test names (used by CHANGE SYSTEM BEHAVIOR when ACs dictate exact tests); OR (3) no filter — runs all tests.
 
 ### HIGH
-- **Q6 — Port-change output→branch wiring:** *(pending — needs table; see Q12 for prompt shape)*
+- **Q6 — Port-change output→branch wiring:** ✓ **filled table.** Both `?` rows = **Implement DSL** (implementing the DSL may cause changes to driver ports — both system-driver and external-driver). Final table:
+
+  | Producer (mid-level task) | Output variable | Consumer (high-level branch) |
+  |---|---|---|
+  | Write Acceptance Tests | `dsl-port-changed: bool` | WRITE TESTS BIG step 2 |
+  | Implement DSL | `system-driver-ports-changed: bool` | WRITE TESTS BIG step 2.1.2 |
+  | Implement DSL | `external-driver-ports-changed: bool` | WRITE TESTS BIG step 2.1.1 |
 
 ### PEAK
-- **Q7 — Ticket lifecycle placement:** *(pending — recommended A: peak-level wrapper; AC/Checklists not ticked)*
-- **Q8 — REFACTOR flows missing compile/verify:** *(pending — recommended A: add explicit Compile + Verify-Tests-Pass)*
-- **Q9 — Backlog refinement integration:** *(pending — recommended A: new peak entry REFINE BACKLOG)*
+- **Q7 — Ticket lifecycle placement:** ✓ **A: peak-level wrapper** (marks IN PROGRESS → calls the peak entry → marks In Acceptance). AC/Checklists **not** ticked at this level.
+- **Q8 — REFACTOR flows missing compile/verify:** ✓ **(i): add new `REFACTOR TESTS (BIG)` high-level orchestration** parallel to `WRITE SYSTEM (BIG)`. Steps: Refactor Tests → Compile Tests → Verify Tests Pass → Commit. Peak `REFACTOR TEST STRUCTURE` stays one-line ("Refactor Tests") and calls this orchestration. **`REFACTOR SYSTEM STRUCTURE` needs no change** — its "Write System" already calls `WRITE SYSTEM (BIG)` which includes compile + verify. Rationale: compile+verify discipline lives at high level, never at peak; mirrors `WRITE SYSTEM (BIG)` pattern.
+- **Q9 — Backlog refinement integration:** ✓ **A: new peak entry REFINE BACKLOG** (sibling to the existing five).
 
-### Follow-ups (conditional)
-- **Q-ext — External system onboarding integration:** *(only if Item 6 reveals a real gap)*
+### Follow-ups (resolved)
+- **Q-ext — External system onboarding integration:** ✓ **(b): new peak entry `ONBOARD EXTERNAL SYSTEM`.** Standalone peak workflow. Rationale: flexibility for onboard-only tickets (e.g., adding a logging provider with no structural redesign) AND for redesign-that-includes-onboarding (REDESIGN SYSTEM STRUCTURE can call ONBOARD EXTERNAL SYSTEM as a sub-process). Coupling onboarding into REDESIGN would block modeling onboard-only tickets cleanly.
 
 ---
 
@@ -342,6 +462,10 @@ Items are independent enough that you can invoke `/execute-plan` once per item, 
 ## Standing constraints (from user memory)
 
 - **Token-efficient by default** — flag any user-proposed workflow that burns tokens unnecessarily and offer a cheaper alternative (`feedback_flag_non_token_efficient`).
+- **Session-handoff cadence: auto-commit, then surface `/clear` + `/execute-plan`.** Workflow for end-of-item handoff:
+    1. **Auto-commit first** — do not ask the user for permission to commit at end-of-item; pre-approval is given here, in this standing constraint. Commit the item's changes (plan-file deletion + code/doc edits) with a surgical message via raw `git`. Without this commit, the next session's fresh agent sees uncommitted changes in `git status` with no context — high risk of work loss or accidental overwrite.
+    2. **Then surface the literal next-session commands** (`/clear`, then `/execute-plan plans/20260525-1057-bpmn-refactor-design.md`) in a Next-steps block at the end of the response so the user knows the precise next step.
+  Default cadence is `/clear` between items, not inline continuation — cached-prefix replay grows with every read/edit, so the natural seam is a `/clear`. (`feedback_offer_clear_then_execute_plan`, `feedback_execute_plan_always_next_steps`.)
 - For agent-authored surgical commits with specific message + file list, use raw `git`, not `/commit` (`feedback_use_commit_skill`).
 - Concurrent-agent collision risk — re-inspect `git log` before staging if mid-session new commits appear (`feedback_concurrent_agent_collision`).
-- Legacy tests/diagrams collapse into AT/CT, not preserved as separate flows (`feedback_legacy_tests_no_marker`).
+- Legacy **test artifacts** (files on disk) are indistinguishable from AT/CT artifacts — no folder, no annotation, no filename suffix (`feedback_legacy_tests_no_marker`). Whether the legacy **authoring cycles** themselves collapse into the normal flows or persist as distinct cycles is a separate doctrine call — **see Q16**, not a standing constraint.
