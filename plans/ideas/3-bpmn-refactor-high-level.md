@@ -2,7 +2,7 @@
 
 ===========================
 
-## WRITE TESTS (BIG)
+## WRITE TESTS
 
 **INPUT: Acceptance Criteria** (scenario based Gherkin)
 
@@ -10,13 +10,25 @@
 
 **OUTPUT: Tests**
 
+**Port-change wiring** (Q6):
+
+| Producer (mid-level task) | Output variable | Consumer (branch below) |
+|---|---|---|
+| Write Acceptance Tests | `dsl-port-changed: bool` | Step 2 — "DSL Port Changed?" |
+| Implement DSL | `external-driver-ports-changed: bool` | Step 2.1.1 — "External System Driver Ports Changed?" |
+| Implement DSL | `system-driver-ports-changed: bool` | Step 2.1.2 — "System Driver Ports Changed?" |
+
+Note: the External/System driver port-change checks are nested *under* "YES: Implement RED DSL Core" because those port-change outputs only exist after DSL is implemented.
+
+Note: `<Expected Test Result>` (from INPUT above) is threaded to all nested `Implement RED *` calls — no need to repeat per leaf (Q6.a).
+
 1. Write RED Acceptance Tests
-2. DSL Port Changed?
+2. DSL Port Changed? (reads `dsl-port-changed` from step 1)
     1. YES: Implement RED DSL Core
-        1. External System Driver Ports Changed?
+        1. External System Driver Ports Changed? (reads `external-driver-ports-changed` from Implement DSL)
             1. YES: Implement RED External System Driver Adapters
-        2. System Driver Ports Changed?
-            1. YES: Implement RED System Driver Adapters <Expected Test Result>
+        2. System Driver Ports Changed? (reads `system-driver-ports-changed` from Implement DSL)
+            1. YES: Implement RED System Driver Adapters
 
 ## WRITE RED ACCEPTANCE TESTS
 
@@ -35,7 +47,7 @@
 1. Implement Test Layer
     1. Agent Action: Implement DSL Core
 
-## IMPLMEMENT RED SYSTEM DRIVER ADAPTERS
+## IMPLEMENT RED SYSTEM DRIVER ADAPTERS
 
 1. Implement Test Layer
     1. Agent Action: Implement System Driver Adapters
@@ -56,13 +68,22 @@
 
 ===========================
 
-## WRITE SYSTEM (BIG)
+## IMPLEMENT SYSTEM
 
-1. Write System
+1. Implement System
 2. Build System
 3. Start System
 4. Verify Tests Pass <Tests>
 5. Commit
+
+===========================
+
+## REFACTOR TESTS
+
+1. Refactor Tests
+2. Compile Tests
+3. Verify Tests Pass
+4. Commit
 
 ===========================
 
@@ -96,4 +117,4 @@
 
 ===========================
 
-Note, an open question that remains from me is about runnign tests... sometimes runnign tests means 
+Run Tests filter: see Q5/MID brainstorm — single `Run Tests` task with polymorphic filter accepting a test-type tag, a list of test names, or none.

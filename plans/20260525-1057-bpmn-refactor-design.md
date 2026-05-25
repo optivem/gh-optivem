@@ -98,8 +98,6 @@ Items 2–5 each refine a different brainstorm file (LOW / MID / HIGH / PEAK) wi
 
 Items 6–10 stay sequential (Items 6 verifies B.1–B.4 output; Items 7–9 are Phase C YAML migration with each item depending on the previous; Item 10 is a single Phase D handoff). No parallelism opportunity there.
 
-4. - [ ] **Phase B.3 — Refine HIGH brainstorm.** Apply Q6 (port-change wiring table) and any other HIGH-affecting decisions to `plans/ideas/3-bpmn-refactor-high-level.md`. Fix the file's mid-sentence cut-off at the end. Cross-check diagrams 6, 7, 8, 10, 17, 20, 21. Commit.
-
 5. - [ ] **Phase B.4 — Refine PEAK brainstorm.** Apply Q7 (ticket wrapper), Q8 (refactor compile/verify), Q9 (new REFINE BACKLOG peak entry), **Q15 (rename "Write System" / "Write Driver Adapters" → "Implement …" if convention A is chosen)** to `plans/ideas/4-bpmn-refactor-peak-level.md`. Cross-check diagrams 2, 3, 13, 14, 16. Commit.
 
 6. - [ ] **Phase B.5 — Cross-check inventory walk.** Walk the cross-check tables in this plan's Scope section row by row. For each "Maps cleanly" diagram, confirm it actually fits the refined brainstorm. For each "Legacy" diagram, confirm the collapse target. Decide on **Q-ext** (external-system-onboarding) — promote to a real question or drop. Append any new follow-ups to the Decisions section. Commit.
@@ -452,9 +450,12 @@ Pinning the convention now avoids rework in Items 2–5 (every brainstorm doc ge
 
   | Producer (mid-level task) | Output variable | Consumer (high-level branch) |
   |---|---|---|
-  | Write Acceptance Tests | `dsl-port-changed: bool` | WRITE TESTS BIG step 2 |
-  | Implement DSL | `system-driver-ports-changed: bool` | WRITE TESTS BIG step 2.1.2 |
-  | Implement DSL | `external-driver-ports-changed: bool` | WRITE TESTS BIG step 2.1.1 |
+  | Write Acceptance Tests | `dsl-port-changed: bool` | WRITE TESTS step 2 |
+  | Implement DSL | `system-driver-ports-changed: bool` | WRITE TESTS step 2.1.2 |
+  | Implement DSL | `external-driver-ports-changed: bool` | WRITE TESTS step 2.1.1 |
+- **Q6.a — `<Expected Test Result>` threading (Phase B.3 follow-up):** ✓ **hoist to outer signature, drop from leaves.** It's already declared as INPUT at the top of WRITE TESTS; the prior leaf-only placement was incomplete propagation. Cleanest.
+- **Q8.a — Add REFACTOR SYSTEM orchestration symmetric to REFACTOR TESTS? (Phase B.3 follow-up):** ✓ **A: no.** Q8 covers compile/verify inheritance for REFACTOR SYSTEM STRUCTURE via IMPLEMENT SYSTEM orchestration. A separate REFACTOR SYSTEM orchestration would duplicate.
+- **Q8.b — REFACTOR TESTS INPUT/OUTPUT contracts (Phase B.3 follow-up):** ✓ **A: none.** Matches IMPLEMENT SYSTEM lean style; tests as INPUT/OUTPUT would be redundant for a refactor (input == output by definition).
 
 ### PEAK
 - **Q7 — Ticket lifecycle placement:** ✓ **A: peak-level wrapper** (marks IN PROGRESS → calls the peak entry → marks In Acceptance). AC/Checklists **not** ticked at this level.
