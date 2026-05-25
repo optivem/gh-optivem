@@ -1,5 +1,7 @@
 # BPMN five-level refactor — design plan
 
+> **This plan now holds the design record only.** Phase C + Phase D execution has moved to `plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md` (encode YAML + regenerate diagrams + Phase D handoff). The only remaining execution item here is Item 12 (Q-tag strip from `plans/ideas/*.md`) — once that lands, this file becomes a pure design archive: Q&A debate (Q1–Q34 + Q-new + Q-ext), Decisions section, and cross-check inventory of the 21 existing diagrams. The execution plan references this archive for *why* behind any decision.
+
 > **Working style: token-efficient.** Execute this plan in the cheapest form that still produces a quality result. If the user proposes a workflow that burns tokens unnecessarily (e.g., asking 8 questions individually via `AskUserQuestion` when 8 pre-drafted recommendations could be confirmed in one batch), **surface the cheaper alternative and let the user choose** — don't silently follow the costly path. The user has explicitly invited this pushback (memory: `feedback_flag_non_token_efficient`).
 
 End-state-first: lock the design **before** drawing diagrams; the existing diagram generator (`gh optivem process show`) handles the drawing, so this plan never hand-draws Mermaid.
@@ -74,83 +76,18 @@ The five brainstorm files in `plans/ideas/` (file 5 added 2026-05-25 per Q26=A):
 
 ## Phases overview
 
-- ~~**Phase A** (Item 1) — Batch-resolve the open questions in this file.~~ ✓ **Completed 2026-05-25.** All 23 questions (Q1–Q23 + Q-ext) resolved; cross-check inventory confirmed. See Decisions section.
-- **Phase B** (Items 2–6) — Apply decisions to the four brainstorm docs + walk the cross-check inventory.
-- **Phase C** (Items 7–9) — Update `process-flow.yaml`, regenerate `docs/process-diagram.md` via `gh optivem process show > docs/process-diagram.md`. **No hand-drawn Mermaid.** Schema/generator changes if needed.
-- **Phase D** (Item 10) — Write a separate plan for downstream alignment (writing-agents, ATDD docs, retired SVGs). That new plan is then executed independently.
+- ~~**Phase A** (Item 1) — Batch-resolve the open questions in this file.~~ ✓ **Completed 2026-05-25.** All 23 questions (Q1–Q23 + Q-ext) resolved. See Decisions section.
+- ~~**Phase B** (Items 2–6, 11) — Apply decisions to the five brainstorm docs + walk the cross-check inventory + cross-file connectedness pass.~~ ✓ **Completed 2026-05-25** (Items 2–6 via commits up to `0ad5548`; Item 11 via commit `fac98ea`). One brainstorm-cleanup item remains: **Item 12 (Q-tag strip).**
+- **Phase C** (was Items 7–9) — Encode the new structure in `process-flow.yaml`, regenerate `docs/process-diagram.md`. **Moved** to `plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md`.
+- **Phase D** (was Item 10) — Write the downstream-alignment plan (writing-agents, ATDD docs, retired SVGs). **Moved** to `plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md`.
 
 ## Items
 
-Each item is sized for one `/execute-plan` invocation. Re-running `/execute-plan plans/20260525-1057-bpmn-refactor-design.md` picks up the next unchecked item. Item numbering is stable — Item 1 was completed 2026-05-25 and removed per the `/execute-plan` rule (resolved items are deleted, not checked); remaining items keep their original numbers so cross-references in this file stay correct.
-
-### Phase B execution pattern (Items 2–5) — parallel subagent dispatch, don't-block, batch-questions
-
-Items 2–5 each refine a different brainstorm file (LOW / MID / HIGH / CYCLE — and now also TOP, per Q26=A) with no cross-file dependencies. Per memory `feedback_prefer_parallel_subagents`, the next `/execute-plan` session for Item 2 should dispatch **all five items as parallel subagents in a single message**, rather than running them sequentially. Concretely:
-
-1. **Main session dispatches 4 subagents in parallel** (single message, 4 `Agent` tool-calls). Each subagent gets: (a) the Decisions section of this plan, (b) its target brainstorm file path, (c) the relevant Q-IDs for its file, (d) instruction to follow the "don't-block, log questions" rule below.
-2. **Subagents edit but do NOT commit.** They modify their brainstorm file in place. They do NOT run `git add` or `git commit` — main session owns commits (avoids parallel-git races). They return a summary: files modified, key changes, plus a **"questions surfaced"** list.
-3. **Subagents don't block on ambiguity.** When a decision isn't fully specified (e.g., Q1=A says "FIX as separate primitive" but doesn't specify FIX's input/output contract; the HIGH file ends mid-sentence; ONBOARD EXTERNAL SYSTEM's internal steps aren't defined), the subagent does **not** attempt to answer the question or ask the user — it logs the question in its "questions surfaced" return list and proceeds with whatever it can complete autonomously. Partial completion is preferred over blocking.
-4. **Main session aggregates the question lists** from all 4 subagents into a single batch. Compressed format, propose-then-confirm where possible (per Q12).
-5. **User answers the batch** (typically 3–6 questions across all 4 files; compressed reply welcome).
-6. **Fix-up pass.** Main session records new decisions in the Decisions section, then either applies the fix-ups inline (small) or dispatches a second parallel round of subagents (large). Per-item commits happen after fix-ups land — one commit per brainstorm file (per Q11).
-7. **Then surface `/clear` + `/execute-plan`** for Item 6 (the cross-check walk, which is a single-agent verification step after all four brainstorms are refined).
-
-Items 6–10 stay sequential (Items 6 verifies B.1–B.4 output; Items 7–9 are Phase C YAML migration with each item depending on the previous; Item 10 is a single Phase D handoff). No parallelism opportunity there.
-
-7. - [ ] **Phase C.1 — Prototype `refactor-system-structure` in YAML.** Encode the simplest cycle (`refactor-system-structure`) in `internal/atdd/runtime/statemachine/process-flow.yaml`. Save a copy of the current `docs/process-diagram.md` first (e.g., `cp docs/process-diagram.md docs/process-diagram.md.pre-refactor`). Run `gh optivem process show > docs/process-diagram.md`. Inspect the regenerated output for the new cycle. Compare against the refined `plans/ideas/4-bpmn-refactor-cycle-level.md`. Commit (YAML + regenerated md).
-    **Done when:** regenerated diagram for `refactor-system-structure` matches the refined brainstorm.
-
-8. - [ ] **Phase C.2 — Schema/generator changes if needed.** Based on Item 7 findings, extend the YAML schema and generator if needed. Most likely candidate: adding `scopes:` / `outputs:` metadata to `user_task` for contract blocks per Q13 (if Q13 resolved to option A). If no changes needed, mark this item done with a one-line "no schema/generator changes required" note in this file and skip the commit. Otherwise commit (generator + schema + tests).
-
-9. - [ ] **Phase C.3 — Migrate rest of YAML.** Encode TOP `implement-ticket` + all cycles + high orchestrations + mid `call_activity` definitions into `process-flow.yaml`. Regenerate `docs/process-diagram.md`. Diff against the pre-refactor copy from Item 7 to confirm every retained behaviour appears. Resolve any gap (either by adding to YAML or by writing an explicit drop-rationale comment). Remove the `.pre-refactor` backup once verified. Commit.
-    **Done when:** TOP + all cycles are encoded; regenerated diagram covers everything in the cross-check inventory; no intended-to-survive behaviour is missing.
-
-10. - [ ] **Phase D handoff — Write the downstream-alignment plan.** Create `plans/<YYYYMMDD-HHMM>-bpmn-refactor-downstream.md` covering: writing-agent updates (per Q1, Q4, Q5 decisions); **prompt file renames + deletions per the locked Q28 table in the Decisions section ("Naming doctrine resolved 2026-05-25")**, including the `agent-name:` field removal from `process-flow.yaml` (Q28.a) and the `fix-verify.md` split (Q28.b) and the Q28.c resolutions (`refactor-system.md`, redesign prompts); ATDD docs updates (`docs/atdd/process/*.md`, `docs/atdd/architecture/*.md`); retired SVG cleanup. Use the same `## Items` checklist shape as this plan so it's `/execute-plan`-able. Do **not** execute that plan here — the user invokes `/execute-plan` on it separately. Commit.
-    **Done when:** the downstream plan file exists with its own Items checklist; this plan's Items section is fully checked.
-
-11. - [ ] **Phase B.6 — Cross-file connectedness pass on the five brainstorm files.** Walk each brainstorm and verify every cross-file reference resolves to an exact kebab identifier that exists in the target file. Apply the fix list below in a single commit. Resolves Q-new-1 (drop "red" from HIGH names — parent + inner), Q-new-2 (CYCLE redesign step splits into two MID calls), and Q-new-3 (MID `-drivers` → `-driver-adapters` vocabulary unification).
-
-    **Fix list:**
-
-    **LOW (`1-bpmn-refactor-low-level.md`):**
-    - `execute-agent` INPUT: `Agent Name, Prompt, Scope, Output` → `Task Name, Prompt, Scope, Output` (Q28.a dropped `agent-name:`; runtime derives prompt from task name).
-    - `execute-agent` step 1: `Do you approve Agent <Agent Name>` → `Do you approve task <Task Name>`.
-    - `execute-agent` step 2: `Run Agent <Agent Name> <Prompt>` → `Run agent for task <Task Name> <Prompt>`.
-
-    **MID (`2-bpmn-refactor-mid-level.md`):**
-    - Rename `implement-system-drivers` → `implement-system-driver-adapters` (Q-new-3).
-    - Rename `implement-external-system-drivers` → `implement-external-system-driver-adapters` (Q-new-3).
-    - Add missing agent tasks: `implement-system`, `implement-external-system-stubs`, `refactor-tests`, `refactor-system`, `refine-acceptance-criteria`, `update-ticket`.
-    - Add missing command tasks: `build-system` (deployable artifact), `start-system` (launch running system) — both referenced by HIGH `implement-and-verify-system`.
-
-    **HIGH (`3-bpmn-refactor-high-level.md`):**
-    - Rename top wrapper `write-and-verify-red-tests` → `write-and-verify-tests` (Q-new-1=A).
-    - Rename inner `write-red-acceptance-tests` → `write-and-verify-acceptance-tests`; parameterize on `<Expected Test Result>` (was hardcoded RED). Steps become: write → compile → if-success verify-pass / if-failure verify-fail + disable → commit. Mirrors the shared `implement-test-layer` pattern.
-    - Rename inner `implement-red-dsl-core` → `implement-and-verify-dsl` (drop "red" — `implement-test-layer` already parameterizes; drop "-core" — no `-core` in MID `implement-dsl`).
-    - Rename inner `implement-red-system-driver-adapters` → `implement-and-verify-system-driver-adapters`.
-    - Rename inner `implement-red-external-system-driver-adapters` → `implement-and-verify-external-system-driver-adapters`.
-    - Rename `implement-red-external-system-driver-adapters-contract-tests` → `implement-and-verify-external-system-driver-adapter-contract-tests`.
-    - Fix internal calls in the renamed orchestrations to use the renamed names (parent ↓ inner refs).
-    - Inside `implement-and-verify-*`: rewrite "Agent Action: implement-dsl-core" → "Agent Action: `implement-dsl`" (MID name, no `-core`); other Agent Actions match MID after Q-new-3 rename.
-    - Inside contract-tests orchestration: step 1 prose "Write RED Contract Test" → call MID `write-contract-tests`; step 2.1 reference fixed to use the renamed inner name.
-
-    **CYCLE (`4-bpmn-refactor-cycle-level.md`):**
-    - `change-system-behavior`: step 1 → `write-and-verify-tests` `<Expected Test Result: Failure>`; step 2 → `implement-and-verify-system`.
-    - `cover-system-behavior`: step 1 → `write-and-verify-tests` `<Expected Test Result: Success>`.
-    - `redesign-system-structure`: step 1 splits into 1a `implement-system-driver-adapters` + 1b `implement-external-system-driver-adapters` (MID-direct, Q-new-2=A); step 2 → `implement-and-verify-system`.
-    - `refactor-system-structure`: step 1 → `implement-and-verify-system`; update the trailing note ("calls `implement-system`" → "calls `implement-and-verify-system`").
-    - `refactor-test-structure`: step 1 → `refactor-and-verify-tests`; update the trailing note.
-    - `refine-backlog`: step 4 prose → `refine-acceptance-criteria` (MID).
-
-    **TOP (`5-bpmn-refactor-top-level.md`):**
-    - `refine-ticket` steps 1 & 3 ("Mark Ticket IN REFINEMENT / READY") → call MID `update-ticket` with the target state.
-    - `implement-ticket` steps 1 & 5 ("Mark Ticket IN PROGRESS / IN ACCEPTANCE") → call MID `update-ticket`.
-
-    **Done when:** every cross-file reference in CYCLE/HIGH/TOP resolves to an exact kebab identifier defined in the target file; LOW's "Agent Name" terminology is gone; MID lists every task referenced from above; Q28 prompt rename table in this design plan is updated to reflect the new MID names. Commit (plan + 5 brainstorms in one commit).
-
-    **Note (Item 6, 2026-05-25):** the HIGH and CYCLE rename specs above are partially superseded by Q31's Option D (thin wrappers `write-and-verify-tests-fail` / `write-and-verify-tests-pass` over the parameterized core `write-and-verify-tests`). CYCLE step-1 invocations now use the wrapper names (no inline `<Expected Test Result>` parameter at the CYCLE level). See Decisions → HIGH → Q31 for the final structure.
+The only remaining execution item is Item 12 below. Items 1–6 and 11 are resolved (deleted per the `/execute-plan` rule); Items 7–10 were extracted to `plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md`. After Item 12 lands, this file becomes a pure design archive — `/execute-plan` should be invoked on the YAML-and-diagrams plan from then on.
 
 12. - [ ] **Phase B.7 — Strip Q-tags from brainstorm files; preserve design content.** Mechanical cleanup pass: remove inline Q-references (e.g., `(Q6.a)`, `(resolved 2026-05-25)`, `Q-new-1=A` doctrine headers, `(Q7=A)` markers) from the five `plans/ideas/*.md` files while preserving the actual design content they annotated. The warning banner added in Item 6's commit forward-prevents new Q-tags; this item cleans up the existing ones. **Done when:** the only meta-content in each brainstorm file is the warning banner; no Q-IDs, no "resolved YYYY-MM-DD" tags, no doctrine-decision markers remain. Commit.
+
+    **After this commits:** this plan transitions to design-archive status. Next session uses `/execute-plan plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md` for Phase C+D.
 
 ---
 
@@ -620,15 +557,10 @@ Under Q28.a=DROP, the "Required filename" column is the source of truth — runt
 
 ## Re-running `/execute-plan`
 
-Invoke `/execute-plan plans/20260525-1057-bpmn-refactor-design.md` repeatedly. Each invocation:
+Only Item 12 is left on this plan. After Item 12 commits:
 
-1. Reads this file and finds the next unchecked Item.
-2. Executes it (asking user for input when needed — Item 1 in particular requires user confirmation of decisions).
-3. Marks the Item checkbox `[x]` when done.
-4. Commits.
-5. Stops (per-item gating is the default).
-
-Items are independent enough that you can invoke `/execute-plan` once per item, or chain several. Items 6, 8, and the cross-check sweeps inside B-items may surface new questions — record them in the Decisions section as new follow-ups (no need to add new Items unless the work is non-trivial).
+- Continue Phase C + Phase D on **`plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md`** (where Items 7–10 have been re-numbered 1–4 with a compact Decisions ledger).
+- This file becomes a design archive — Q&A debate, Decisions section, cross-check inventory — referenced from the execution plan for *why* behind any decision. No further `/execute-plan` invocations on this file.
 
 ## Exploration backlog
 
