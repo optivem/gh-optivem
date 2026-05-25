@@ -178,3 +178,17 @@ follow-up plans listed above.
 ## Why this plan instead of expanding 20260505-230100
 
 Per [feedback_new_plan_not_extend](../../../../Users/valen_4rjvn9e/.claude/projects/C--GitHub-optivem-academy-gh-optivem/memory/feedback_new_plan_not_extend.md): broadening scope = fresh plan that cross-references the original. The 230100 plan was about decomposing AT/CT phases into creative/mechanical halves; that work is largely shipped. This plan picks up the explicit follow-up ("context plumbing") as its own scoped artifact rather than mutating the predecessor.
+
+---
+
+## Appendix: Coordination with BPMN refactor (added 2026-05-25)
+
+*Post-hoc note. If this plan turns out obsolete, this appendix can be deleted along with the plan.*
+
+This plan provides the **foundation** for the BPMN refactor's Q13 (contract blocks in `process-flow.yaml` as `user_task` metadata — `scopes:` / `outputs:` — single source of truth for prompt-prep + post-execute validation). See [`20260525-1057-bpmn-refactor-design.md`](20260525-1057-bpmn-refactor-design.md) Decisions / Q13.
+
+- **Items 1–4 already landed** (parser, dispatcher wiring, `at-red-test` emits `outputs:`). BPMN refactor Phase C Item 8 (schema/generator changes for `scopes:`/`outputs:` per `user_task`) assumes this parser is in place — keep, do not roll back.
+- **Item 8 (manual rehearsal) remains.** Run it before BPMN refactor Phase C Item 8 so the structured-output path is exercised end-to-end before the schema gets extended.
+- **Carved-out follow-ups** (project-configurable suite vocabulary, `disable-tests` / `enable-tests` template keys, additional impl-agent emissions) become natural inputs to the BPMN refactor's Phase D downstream-alignment plan (Item 10 in `20260525-1057-bpmn-refactor-design.md`). Either fold them in or list them as Phase D prerequisites.
+
+**Not superseded** by the BPMN refactor — this is the mechanism it depends on.
