@@ -20,6 +20,8 @@ Q-numbering continues from the parent design plan's Q-series (last Q was Q34 in 
 
 ### Q40 — Rename canonical scope keys from snake_case to kebab-case  *(DOCTRINE / NAMING)*
 
+**✅ Decided: A** — Rename all surfaces snake→kebab in one pass before Phase C YAML lock. Family A `system_path` → `system-path` included. Per Q29 "kebab-case everywhere" doctrine; per `feedback_teaching_repo_no_legacy`, no migrate-relocation pass needed (teachers regenerate gh-optivem.yaml).
+
 **Context.** Q29 in the parent plan locked kebab-case as the universal naming scheme ("kebab-case everywhere — YAML keys, doc headings, prompt filenames, in-prose references, anchor slugs, Go struct tags"). The canonical scope keys in `CanonicalPathKeys()` and `phase-scopes.yaml` are snake_case (`at_test`, `dsl_core`, …) — they predate Q29 and were not included in its sweep. The MID file's Scopes were just rewritten in snake_case to match the existing config; a follow-up rename would flip everything kebab.
 
 **Surfaces affected by the rename.**
@@ -50,6 +52,8 @@ Q-numbering continues from the parent design plan's Q-series (last Q was Q34 in 
 
 ### Q41 — `ticket` scope vocabulary  *(DOCTRINE — non-path scope)*
 
+**✅ Decided: A** — Drop `- ticket` on both MID tasks (`refine-acceptance-criteria`, `update-ticket`); declare `**Scopes:** NONE`. Uses existing external-systems exemption in `phase-scopes.yaml`. No new vocabulary. Per `feedback_drop_dont_relocate` — upstream mechanism already covers it.
+
 **Context.** Two MID tasks — `refine-acceptance-criteria` and `update-ticket` — declare `**Scopes:** - ticket`. `ticket` is **not** a path key in `phase-scopes.yaml`; that file's vocabulary is exclusively path-based (Family B + Family A). The ticket is a GitHub issue (or Jira ticket per memory `feedback_naming_github_jira_first`), not a file in the repo. The existing `phase-scopes.yaml` already notes the exemption: *"every writing-agent phase id in process-flow.yaml is either listed here OR declares `scope: none` in its prompt frontmatter (the doctrinal exemption for agents that mutate only inter-phase artifacts or external systems — see runtime/shared/scope.md)."*
 
 **Options.**
@@ -62,6 +66,8 @@ Q-numbering continues from the parent design plan's Q-series (last Q was Q34 in 
 ---
 
 ### Q42 — `implement-dsl` MID task collapses two phases — scope union vs split  *(MID)*
+
+**✅ Decided: A** — Keep collapsed `implement-dsl` task with union scope `[dsl_core, driver_port, external_system_driver_port]`. Envelope loose; prompt body reads `tests:` parameter and narrows actual mutation per-call. Respects Q28's deliberate collapse; avoids layer-coding in task names (option B) and avoids Phase C YAML mechanism expansion (option C).
 
 **Context.** Per Q28 prompt rename table in the parent plan, two existing prompts collapse into one MID task: `at-red-dsl.md` + `ct-red-dsl.md` → `implement-dsl.md`. The existing config keeps the phase scopes separate:
 - `AT_RED_DSL: [dsl_core, driver_port]`
@@ -80,6 +86,8 @@ The MID task's Scopes block declares the **union**: `dsl_core, driver_port, exte
 
 ### Q43 — `refactor-tests` MID task — confirm scope envelope  *(MID — net-new task)*
 
+**✅ Decided: C** — Widest: `at_test, ct_test, dsl_port, dsl_core, driver_port, driver_adapter, external_system_driver_port, external_system_driver_adapter` (all 8 test-side keys). `refactor-tests` owns the entire test stack, since MID has only two refactor tasks (`refactor-tests` + `refactor-system`); driver-adapter refactoring has no other home. Pairs cleanly with Q44: `refactor-tests` = test stack (8 layers), `fix-*` = test stack + `system_path` (9 layers). **Doctrine pin: this union is intentional. Do not narrow.** A future reviewer might see "8-layer envelope on a refactor task" and propose option A or B; the union owns the whole test stack by design.
+
 **Context.** MID task `refactor-tests` (used by HIGH `refactor-and-verify-tests`, called from CYCLE `refactor-test-structure`) is net-new — `phase-scopes.yaml` has no equivalent phase. Its Scopes were just set to `at_test, ct_test` (symmetric with `disable-tests` / `enable-tests`). But test refactoring might legitimately touch DSL (extracting test helpers into the DSL surface) or testkit files (driver-port helpers).
 
 **Options.**
@@ -92,6 +100,10 @@ The MID task's Scopes block declares the **union**: `dsl_core, driver_port, exte
 ---
 
 ### Q44 — `fix-*` scope envelope as pinned doctrine  *(MID — already decided, pin for permanence)*
+
+**✅ Decided: A** — Pin doctrine: `fix-*` scope = 9-layer union of all writable layers (`at_test, ct_test, dsl_port, dsl_core, driver_port, driver_adapter, external_system_driver_port, external_system_driver_adapter, system_path`). **Cannot narrow.** Document here + add comment in `phase-scopes.yaml` when fix phases land there. (B) ruled out by Q1 in parent plan (LOW `fix` is single-attempt, no recursion, no caller context). Pairs with Q43: `refactor-tests` = 8-layer test stack, `fix-*` = 9-layer (adds `system_path`).
+
+**Forward reference.** See **Q47** (invocation-context scope inheritance) for a proposal that could re-open this decision — but only if Q1's single-attempt lock is also reconsidered. Q44 = A is stable in any scenario where Q1 is also stable, so pinning A now costs nothing if Q47 later changes the model.
 
 **Context.** User confirmed during the review that `fix-unexpected-passing-tests` and `fix-unexpected-failing-tests` should declare the union of every writable layer ("EVERYTHING that is under tests, including system"). Scope is currently set to all 9 keys (`at_test`, `ct_test`, `dsl_port`, `dsl_core`, `driver_port`, `driver_adapter`, `external_system_driver_port`, `external_system_driver_adapter`, `system_path`).
 
@@ -108,6 +120,8 @@ This Q exists only to **pin the doctrine** so future reviewers don't propose nar
 
 ### Q45 — HIGH file Scopes audit needed?  *(HIGH)*
 
+**✅ Decided: A + C** — No HIGH Scopes audit (orchestrations have no scope; scope lives only on MID tasks). But add a follow-up item to audit MID/HIGH/CYCLE/TOP naming consistency (e.g., singular `adapter` vs plural `adapters`, Inputs/Outputs/Steps drift) — tracked as a **separate plan**, not in this scope-doctrine plan. **Action item:** when this plan is committed, author a fresh follow-up plan (`plans/YYYYMMDD-HHMM-bpmn-name-consistency-audit.md`) per `feedback_new_plan_not_extend`.
+
 **Context.** HIGH orchestrations (`write-and-verify-tests`, `implement-and-verify-dsl`, `implement-and-verify-system`, `refactor-and-verify-tests`, `implement-test-layer`, …) don't declare `**Scopes:**` blocks in `plans/ideas/3-bpmn-refactor-high-level.md` — they're orchestrations, not agent tasks. They call MID tasks (which carry the scope) and command tasks (which have no scope).
 
 Question: does the HIGH file need any audit equivalent to the MID one, or does scope flow purely through MID-task invocations?
@@ -123,6 +137,8 @@ Question: does the HIGH file need any audit equivalent to the MID one, or does s
 
 ### Q46 — CYCLE and TOP files — equivalent Scopes audit?  *(CYCLE / TOP)*
 
+**✅ Decided: B → no-op confirmed.** Ran `grep '**Scopes:**'` against both files during refinement (2026-05-25). **No matches.** CYCLE and TOP files contain no accidental Scopes blocks. No further action.
+
 **Context.** Same shape as Q45 but for CYCLE (`plans/ideas/4-bpmn-refactor-cycle-level.md`) and TOP (`plans/ideas/5-bpmn-refactor-top-level.md`). These are orchestrations, like HIGH — no agent tasks at this level (per Q-new-4 template, MID is the lowest agent-task layer).
 
 **Options.**
@@ -133,18 +149,51 @@ Question: does the HIGH file need any audit equivalent to the MID one, or does s
 
 ---
 
+### Q47 — Invocation-context scope inheritance for `fix-*` (and other MID tasks?)  *(DOCTRINE — mechanism, deferred)*
+
+**⏳ Deferred** — Captured during refinement of Q44. Resolving requires a parallel reconsideration of Q1 in the parent plan (LOW `fix` single-attempt, no recursion). Until Q1 is re-opened, Q44 = A holds.
+
+**Context.** Q44 pinned `fix-*` MID-task scope as the 9-layer union of all writable layers. During refinement, an alternative model was proposed: **`fix-*` scope is a function of how it was invoked**, not a hardcoded union. Specifically:
+
+- When `fix-*` is invoked via **`execute-agent`** (structured BPMN flow, called from a parent agent context): scope = inherit the parent's scope.
+- When `fix-*` is invoked via **`execute-command`** (ad-hoc, no parent agent context): scope = wide / all layers (current Q44 default).
+
+**Why this is appealing.**
+- Least-privilege envelope on the structured-flow path (most common case).
+- Recognizes `execute-command` invocations have no narrower context to inherit, so wide is correct there.
+- Avoids the "future reviewer narrows the union" risk Q44 is trying to prevent — no hardcoded union to narrow.
+
+**Why it doesn't dominate Q44 = A as-is.**
+1. **Cross-layer root-cause problem.** When fix is invoked from CT-RED-DSL-CORE (scope `[dsl_core, external_system_driver_port]`) but the actual bug is in `system_path`, inherited-narrow scope locks fix out of the layer it needs. The structured-flow path — the *common* case — becomes broken by construction.
+2. **Q1 is load-bearing.** Q1 locked single-attempt, no recursion. Under inherited-narrow scope, fix has no escalation path. Cross-layer bugs would just fail. Narrow inheritance is only viable if Q1 also admits escalation.
+3. **Mechanism cost.** Phase C YAML needs to express both scope-as-function-of-invocation AND dispatch on invocation primitive type (`execute-agent` vs `execute-command`). Per `feedback_no_deferred_mechanism`, scope is pinned per phase, not computed per invocation pattern.
+4. **`execute-command` rare.** Designing for the escape-hatch invocation pattern provides no win on the primary (structured-flow) path.
+
+**Required prerequisite if reopened.** A Q1 revisit: should LOW `fix` admit escalation (e.g., "tried with narrow scope, failed, re-invoke with wider scope")? If Q1 stays "single attempt, no recursion," Q47's narrow-inheritance proposal is structurally incoherent and Q44 = A is the only consistent choice.
+
+**Resolution.** Deferred until Q1 is re-examined. If/when Q1 admits escalation, Q47 becomes resolvable and may supersede Q44.
+
+---
+
 ## Resolution order
 
-Suggested order if Q40–Q46 are batch-resolved:
+Q40–Q46 resolved during refinement walk (2026-05-25). Q47 added and deferred. Execution order for the resulting items (when authored in a follow-up `/refine-plan` pass or directly in `/execute-plan`):
 
-1. **Q41** (ticket scope) — small, isolated, unblocks final MID edits.
-2. **Q42–Q44** (MID per-task confirmations) — small, isolated; current state is the recommended option for each.
-3. **Q45–Q46** (HIGH/CYCLE/TOP audit) — small, isolated; resolves to no-op or short follow-up.
-4. **Q40** (snake → kebab rename) — largest. Do last so MID/HIGH/CYCLE/TOP are Scope-stable before the global rename.
+1. **Q41** (drop `- ticket`) — 2 MID edits in `plans/ideas/2-bpmn-refactor-mid-level.md`. Smallest, isolated.
+2. **Q42** (keep `implement-dsl` union) — no edit; current state stands. Doctrine pin only.
+3. **Q43** (`refactor-tests` widest scope, pinned) — verify current MID Scopes block matches C; add doctrine pin comment.
+4. **Q44** (`fix-*` 9-layer union, pinned) — verify current MID Scopes block matches A; add doctrine pin comment.
+5. **Q45 C follow-up** — author a fresh plan (`plans/YYYYMMDD-HHMM-bpmn-name-consistency-audit.md`) covering MID/HIGH/CYCLE/TOP naming-consistency and Inputs/Outputs/Steps drift.
+6. **Q40** (snake → kebab rename) — largest. Do last so MID/HIGH/CYCLE/TOP Scopes blocks are stable before the global rename. Surfaces: `paths_defaults.go::CanonicalPathKeys()`, `phase-scopes.yaml`, `config.go` Rule 22a, `path-keys.md`, test fixtures, prompt frontmatter scope: keys, brainstorm Scopes blocks, Family A `system_path` → `system-path`.
 
 ## Items
 
-After Q40–Q46 are resolved, this plan grows execution items proportional to the chosen options (e.g., Q40=A → ~6 file-edit items + a fixture-test pass; Q41=A → 2 MID edits to drop `- ticket`). Item authoring is deferred until question batch resolves.
+Item authoring deferred to a follow-up `/refine-plan` walk or direct `/execute-plan` session. Estimated item shapes:
+
+- **Q41:** 2 edits to `plans/ideas/2-bpmn-refactor-mid-level.md` (drop `- ticket`, set `Scopes: NONE` on `refine-acceptance-criteria` and `update-ticket`).
+- **Q42–Q44:** doctrine-pin verifications; possible inline comment additions to MID file and (later) `phase-scopes.yaml`.
+- **Q45 C:** spawn separate plan; no edits in this surface.
+- **Q40:** ~6 file-edit items + a fixture-test pass; bounded find/replace once the rename map is locked.
 
 ## Cross-references
 
@@ -154,3 +203,6 @@ After Q40–Q46 are resolved, this plan grows execution items proportional to th
 - Memory `feedback_no_layer_coding_in_names` — Q42 option B mildly violates this.
 - Memory `feedback_naming_github_jira_first` — Q41 reasoning: tickets are GitHub/Jira, external-system territory.
 - Memory `feedback_teaching_repo_no_legacy` — Q40 doesn't need a migrate-relocation pass; teachers regenerate.
+- Memory `feedback_drop_dont_relocate` — Q41 reasoning: existing external-systems exemption already covers ticket-mutating agents.
+- Memory `feedback_new_plan_not_extend` — Q45 follow-up: name-consistency audit goes in a fresh plan, not appended here.
+- Memory `feedback_no_deferred_mechanism` — Q47 reasoning: scope is pinned per phase, not computed per invocation pattern.
