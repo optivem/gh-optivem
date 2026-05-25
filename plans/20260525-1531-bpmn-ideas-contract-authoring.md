@@ -21,18 +21,26 @@ Every task in the brainstorm files — LOW primitives, MID tasks, HIGH orchestra
 
 **Inputs:**
 - ...
-- NONE  (if no inputs)
+
+**Scopes:** (agent tasks only — permitted file scope)
+- ...
 
 **Outputs:**
 - ...
-- NONE  (if no outputs)
 
 **Steps:**
 1. ...
 ```
 
+When a section is empty, collapse it to a single inline line instead of a one-item `- NONE` bullet:
+
+```
+**Inputs:** NONE
+```
+
 Rules:
-- All three sections always shown, even if empty (write `- NONE`).
+- Three core sections always shown (Inputs, Outputs, Steps); collapse to inline `**X:** NONE` when empty.
+- Agent tasks add a fourth `**Scopes:**` section listing permitted file scope. Non-agent tasks (commands, MID/HIGH/CYCLE/TOP orchestrations) omit it.
 - `Outputs:` lists operator-visible outputs only — the task's contract with its caller.
 - Intra-flow plumbing (e.g., `dsl-port-changed` consumed by a sibling step) is annotated inline on the producer/consumer steps (`(reads dsl-port-changed from step 1)`), not surfaced at the task level.
 
@@ -60,15 +68,16 @@ If a task's `Inputs:` or `Outputs:` aren't determined by the design plan's Decis
 
 Per-file items run in dependency order (LOW → MID → HIGH → CYCLE → TOP); cross-link check at the end. Each item is one `/execute-plan` invocation.
 
-1. - [ ] **1-low — editorial + author contracts.** Tasks: `approve`, `execute-agent`, `execute-command`, `fix`. Notes: `execute-agent` Outputs = "Agent output values (as declared by caller's Output input)"; the others' Outputs = `NONE`. Strip the `TODO (Phase C revisit)` line on `approve` and the `Intentional asymmetry vs execute-agent (Q2=C)` comment on `execute-command`. Commit.
+1. - [ ] **1-low — editorial + author contracts.** Tasks: `approve`, `execute-agent`, `execute-command`, `fix`. Notes: `execute-agent` Outputs = "Agent output values (as declared by caller's Output input)"; the others' Outputs = `NONE`. Inputs derived from existing brainstorm prose; if ambiguous, surface as Q-item per Doctrine § Ambiguity handling. Strip the `TODO (Phase C revisit)` line on `approve` and the `Intentional asymmetry vs execute-agent (Q2=C)` comment on `execute-command`. Commit.
 
 2. - [ ] **2-mid — editorial + author contracts.** Every agent task and every command task gets its own Inputs/Outputs/Steps block (no "show one, name the rest" pattern). Conventions:
     - Agent task Steps: `1. execute-agent <task-name>`.
-    - Agent task Inputs: lists the task's `scopes` (permitted file scope).
+    - Agent task Inputs: data the task consumes from its caller.
+    - Agent task Scopes: permitted file scope (separate `**Scopes:**` section per Doctrine § Uniform task template).
     - Agent task Outputs: lists declared output variables (e.g., `dsl-port-changed: bool`).
     - Command task Steps: `1. execute-command <command> <params>`.
     - Command task Inputs: command params.
-    - Command task Outputs: `NONE` (success is exit-code based).
+    - Command task Outputs: `NONE` (success is exit-code based). No Scopes section.
 
     Use the design plan's Q6 table for the known port-change outputs (`write-acceptance-tests` → `dsl-port-changed`; `implement-dsl` → `system-driver-ports-changed` + `external-driver-ports-changed`). For tasks where scopes/outputs aren't already decided: propose contract → confirm with user → write. If ambiguous beyond propose-then-confirm, surface as new Q-item in design plan and defer per Doctrine § Ambiguity handling. Commit.
 
@@ -78,7 +87,7 @@ Per-file items run in dependency order (LOW → MID → HIGH → CYCLE → TOP);
 
 5. - [ ] **5-top — editorial + author contracts.** Processes: `refine-ticket`, `implement-ticket`, `refactor`. Inputs = Ticket (with required metadata listed inline) or `NONE` for `refactor`. Outputs operator-visible (e.g., ticket state transition for the ticket-driven processes; `NONE` for `refactor`). Commit.
 
-6. - [ ] **Cross-link check + design-plan handoff.** (a) Walk every `<reference-to-other-task>` across the five files; confirm the referenced task exists and its declared Outputs satisfy the referencing step's needs (catches contract drift between Items 1–5). (b) Delete Item 12 from `plans/20260525-1057-bpmn-refactor-design.md` (its scope absorbed here); add a one-line breadcrumb in the design plan's Phases overview noting the move. (c) Update the cross-ref in `plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md` to note this plan as a prerequisite. Commit.
+6. - [ ] **Cross-link check + design-plan handoff.** (a) Walk every `<reference-to-other-task>` across the five files; confirm the referenced task exists and its declared Outputs satisfy the referencing step's needs (catches contract drift between Items 1–5). If drift surfaces, fix the producer or consumer in place (no new items) before continuing. (b) Delete Item 12 from `plans/20260525-1057-bpmn-refactor-design.md` (its scope absorbed here); add a one-line breadcrumb in the design plan's Phases overview noting the move. (c) Update the cross-ref in `plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md` to note this plan as a prerequisite. Commit.
 
 ## Re-running `/execute-plan`
 
