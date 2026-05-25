@@ -1,8 +1,10 @@
 # BPMN - HIGH LEVEL
 
+> **Naming convention (Q29).** All process-model identifiers use kebab-case lowercase across YAML, doc headings, prompt filenames, and in-prose references. Layer labels (TOP / CYCLE / HIGH / MID / LOW) remain organizational categories only and are not part of identifier names.
+
 ===========================
 
-## WRITE TESTS
+## write-and-verify-red-tests
 
 **INPUT: Acceptance Criteria** (scenario based Gherkin)
 
@@ -14,107 +16,107 @@
 
 | Producer (mid-level task) | Output variable | Consumer (branch below) |
 |---|---|---|
-| Write Acceptance Tests | `dsl-port-changed: bool` | Step 2 — "DSL Port Changed?" |
-| Implement DSL | `external-driver-ports-changed: bool` | Step 2.1.1 — "External System Driver Ports Changed?" |
-| Implement DSL | `system-driver-ports-changed: bool` | Step 2.1.2 — "System Driver Ports Changed?" |
+| `write-acceptance-tests` | `dsl-port-changed: bool` | Step 2 — "DSL Port Changed?" |
+| `implement-dsl` | `external-driver-ports-changed: bool` | Step 2.1.1 — "External System Driver Ports Changed?" |
+| `implement-dsl` | `system-driver-ports-changed: bool` | Step 2.1.2 — "System Driver Ports Changed?" |
 
-Note: the External/System driver port-change checks are nested *under* "YES: Implement RED DSL Core" because those port-change outputs only exist after DSL is implemented.
+Note: the External/System driver port-change checks are nested *under* "YES: `implement-red-dsl-core`" because those port-change outputs only exist after DSL is implemented.
 
-Note: `<Expected Test Result>` (from INPUT above) is threaded to all nested `Implement RED *` calls — no need to repeat per leaf (Q6.a).
+Note: `<Expected Test Result>` (from INPUT above) is threaded to all nested `implement-red-*` calls — no need to repeat per leaf (Q6.a).
 
-1. Write RED Acceptance Tests
+1. `write-red-acceptance-tests`
 2. DSL Port Changed? (reads `dsl-port-changed` from step 1)
-    1. YES: Implement RED DSL Core
-        1. External System Driver Ports Changed? (reads `external-driver-ports-changed` from Implement DSL)
-            1. YES: Implement RED External System Driver Adapters
-        2. System Driver Ports Changed? (reads `system-driver-ports-changed` from Implement DSL)
-            1. YES: Implement RED System Driver Adapters
+    1. YES: `implement-red-dsl-core`
+        1. External System Driver Ports Changed? (reads `external-driver-ports-changed` from `implement-dsl`)
+            1. YES: `implement-red-external-system-driver-adapters`
+        2. System Driver Ports Changed? (reads `system-driver-ports-changed` from `implement-dsl`)
+            1. YES: `implement-red-system-driver-adapters`
 
-## WRITE RED ACCEPTANCE TESTS
+## write-red-acceptance-tests
 
 **INPUT: Acceptance Criteria** (scenario based Gherkin)
 
 **OUTPUT: Tests**
 
-1. Write Acceptance Tests (AGENT)
-2. Compile Tests
-3. Verify Tests Fail
-4. Disable Tests (AGENT)
-5. Commit
+1. `write-acceptance-tests` (AGENT)
+2. `compile-tests`
+3. `verify-tests-fail`
+4. `disable-tests` (AGENT)
+5. `commit`
 
-## IMPLEMENT RED DSL CORE
+## implement-red-dsl-core
 
-1. Implement Test Layer
-    1. Agent Action: Implement DSL Core
+1. `implement-test-layer`
+    1. Agent Action: `implement-dsl-core`
 
-## IMPLEMENT RED SYSTEM DRIVER ADAPTERS
+## implement-red-system-driver-adapters
 
-1. Implement Test Layer
-    1. Agent Action: Implement System Driver Adapters
+1. `implement-test-layer`
+    1. Agent Action: `implement-system-driver-adapters`
 
-## IMPLEMENT RED EXTERNAL SYSTEM DRIVER ADAPTERS - CONTRACT TESTS
+## implement-red-external-system-driver-adapters-contract-tests
 
 1. Write RED Contract Test
     1. Note: supposed to think about the External System Driver Ports
     2. Output: list of tests
 2. DSL Port Changed?
-    1. Implement RED DSL
+    1. `implement-red-dsl`
         1. Note: supposed to use the External System Driver Ports
-3. Implement External System Driver Adapters
-4. Verify Tests Pass <Contract Tests - Real>
-5. Verify Tests Fail <Contract Tests - Stub>
-6. Implement External System Stubs
-7. Verify Tests Pass <Contract Tests - Stub>
+3. `implement-external-system-driver-adapters`
+4. `verify-tests-pass` <Contract Tests - Real>
+5. `verify-tests-fail` <Contract Tests - Stub>
+6. `implement-external-system-stubs`
+7. `verify-tests-pass` <Contract Tests - Stub>
 
 ===========================
 
-## IMPLEMENT SYSTEM
+## implement-and-verify-system
 
-1. Implement System
-2. Build System
-3. Start System
-4. Verify Tests Pass <Tests>
-5. Commit
-
-===========================
-
-## REFACTOR TESTS
-
-1. Refactor Tests
-2. Compile Tests
-3. Verify Tests Pass
-4. Commit
+1. `implement-system`
+2. `build-system`
+3. `start-system`
+4. `verify-tests-pass` <Tests>
+5. `commit`
 
 ===========================
 
-## 《 SHARED 》IMPLEMENT TEST LAYER
+## refactor-and-verify-tests
+
+1. `refactor-tests`
+2. `compile-tests`
+3. `verify-tests-pass`
+4. `commit`
+
+===========================
+
+## 《 SHARED 》implement-test-layer
 
 1. Execute <Agent Action>
-2. Enable Tests <Tests>
-3. Compile Tests
+2. `enable-tests` <Tests>
+3. `compile-tests`
 4. Based on result we expect: <Expected Test Result>
     1. If expect success:
-        1. Verify Tests Pass
+        1. `verify-tests-pass`
     2. If expect failure:
-        1. Verify Tests Fail <Tests>
-        2. Disable Tests <Tests>
-5. Commit
+        1. `verify-tests-fail` <Tests>
+        2. `disable-tests` <Tests>
+5. `commit`
 
-## 《 SHARED 》VERIFY TESTS PASS
+## 《 SHARED 》verify-tests-pass
 
-1. Run Tests
+1. `run-tests`
 2. Success?
     1. YES: END
-    2. NO: Fix Unexpected Failing Tests
+    2. NO: `fix-unexpected-failing-tests`
 
-## 《 SHARED 》VERIFY TESTS FAIL
+## 《 SHARED 》verify-tests-fail
 
-1. Run Tests
+1. `run-tests`
 2. Success?
-    1. YES: Fix Unexpected Passing Tests
+    1. YES: `fix-unexpected-passing-tests`
     2. NO: END
 
 
 ===========================
 
-Run Tests filter: see Q5/MID brainstorm — single `Run Tests` task with polymorphic filter accepting a test-type tag, a list of test names, or none.
+Run Tests filter: see Q5/MID brainstorm — single `run-tests` task with polymorphic filter accepting a test-type tag, a list of test names, or none.

@@ -1,6 +1,8 @@
 # BPMN - LOW LEVEL
 
-# APPROVE
+> **Naming convention (Q29).** All process-model identifiers use kebab-case lowercase across YAML, doc headings, prompt filenames, and in-prose references. Layer labels (TOP / CYCLE / HIGH / MID / LOW) remain organizational categories only and are not part of identifier names.
+
+# approve
 
 INPUT: Prompt for user
 
@@ -9,9 +11,9 @@ INPUT: Prompt for user
     1. YES: END
     2. NO: HARD EXIT (print out EXIT because approval was not obtained)
 
-TODO (Phase C revisit): APPROVE is currently exit-only on NO; callers own any retry behaviour (Q3=A). Future options to reconsider: B) parameterized NO-action (`exit` | `retry-caller`), or C) split into two primitives `APPROVE-OR-EXIT` and `APPROVE-OR-RETRY`.
+TODO (Phase C revisit): `approve` is currently exit-only on NO; callers own any retry behaviour (Q3=A). Future options to reconsider: B) parameterized NO-action (`exit` | `retry-caller`), or C) split into two primitives `approve-or-exit` and `approve-or-retry`.
 
-# EXECUTE AGENT
+# execute-agent
 
 INPUT: Agent Name, Prompt, Scope, Output
 
@@ -21,22 +23,22 @@ INPUT: Agent Name, Prompt, Scope, Output
     1. Output: are the required output variables present?
     2. Scope: were the scope constraints satisfied? (diff)
 4. Valid?
-    1. NO: calls FIX (input: failure context — failed validation, missing/invalid outputs, scope-diff violations)
+    1. NO: calls `fix` (input: failure context — failed validation, missing/invalid outputs, scope-diff violations)
 5. Approve (POST)
 
-# EXECUTE COMMAND
+# execute-command
 
-<!-- Intentional asymmetry vs EXECUTE AGENT (Q2=C): no Approve (POST), because commands have machine-checkable success whereas agents produce content needing human review. -->
+<!-- Intentional asymmetry vs `execute-agent` (Q2=C): no Approve (POST), because commands have machine-checkable success whereas agents produce content needing human review. -->
 
 1. Approve (PRE)
 2. Run Command <Command> <Input Params>
 3. Success?
-    1. NO: calls FIX (input: failure context — command name, input params, stderr/exit code)
+    1. NO: calls `fix` (input: failure context — command name, input params, stderr/exit code)
 
-# FIX
+# fix
 
 INPUT: Failure Context (what failed, why — e.g., validation errors, command stderr/exit code, scope-diff violations)
 
-1. Approve (PRE): Do you approve FIX to attempt remediation for <failure summary>?
+1. Approve (PRE): Do you approve `fix` to attempt remediation for <failure summary>?
 2. Run Fix Agent <Failure Context>
 3. END (single attempt, no recursion — terminates regardless of outcome)

@@ -1,4 +1,4 @@
-# BPMN four-level refactor — design plan
+# BPMN five-level refactor — design plan
 
 > **Working style: token-efficient.** Execute this plan in the cheapest form that still produces a quality result. If the user proposes a workflow that burns tokens unnecessarily (e.g., asking 8 questions individually via `AskUserQuestion` when 8 pre-drafted recommendations could be confirmed in one batch), **surface the cheaper alternative and let the user choose** — don't silently follow the costly path. The user has explicitly invited this pushback (memory: `feedback_flag_non_token_efficient`).
 
@@ -10,31 +10,31 @@ End-state-first: lock the design **before** drawing diagrams; the existing diagr
 
 *(Q17 resolved 2026-05-25: full replacement — option A.)*
 
-The four-level structure (LOW / MID / HIGH / PEAK) is intended to **fully replace the existing BPMN**, not patch it. Concretely:
+The five-level structure (TOP / CYCLE / HIGH / MID / LOW — per Q26=A) is intended to **fully replace the existing BPMN**, not patch it. Concretely:
 
 - The canonical source today is `internal/atdd/runtime/statemachine/process-flow.yaml` (read by the statemachine), rendered into `docs/process-diagram.md` plus the 21 SVGs under `docs/images/process-diagram-*.svg`.
-- After this refactor lands, those artifacts are regenerated from — or removed in favour of — the new four-level structure. **Nothing from the old shape survives by accident.** Every retained behaviour is a deliberate decision recorded in this file.
+- After this refactor lands, those artifacts are regenerated from — or removed in favour of — the new five-level structure. **Nothing from the old shape survives by accident.** Every retained behaviour is a deliberate decision recorded in this file.
 
 ### Cross-check vs existing BPMN
 
-Because the replacement is full, every concern the existing BPMN models must be either **absorbed** into the new four-level structure (with location) or **dropped** (with reason). Inventory of the 21 existing diagrams:
+Because the replacement is full, every concern the existing BPMN models must be either **absorbed** into the new five-level structure (with location) or **dropped** (with reason). Inventory of the 21 existing diagrams:
 
 **Maps cleanly into the four levels** — *all 15 absorption targets confirmed 2026-05-25:*
 
 | # | Diagram | Absorption target |
 |---|---|---|
 | 1 | legend | doc artifact, regenerate |
-| 2 | ticket-lifecycle | PEAK wrapper (Q7) |
-| 3 | github-intake | PEAK wrapper (Q7) — tied to ticket lifecycle |
+| 2 | ticket-lifecycle | TOP `implement-ticket` (Q26=A reframes Q7's peak-wrapper to the body of TOP) |
+| 3 | github-intake | TOP `implement-ticket` — tied to ticket lifecycle |
 | 5 | run-cycle | MID Run Tests (Q5) |
 | 6 | at-cycle | HIGH WRITE TESTS BIG ↔ WRITE SYSTEM BIG pairing |
 | 7 | at-green-system | HIGH WRITE SYSTEM BIG |
 | 8 | contract-test-sub-process | HIGH IMPLEMENT RED EXTERNAL SYSTEM DRIVER ADAPTERS — CONTRACT TESTS |
 | 10 | structural-cycle-shared | HIGH shared IMPLEMENT TEST LAYER |
 | 11 | commit-sub-process | MID Commit (calls EXECUTE COMMAND) |
-| 13 | at-refactor-system | PEAK REFACTOR SYSTEM STRUCTURE (verify inherited from `WRITE SYSTEM (BIG)`; see Q8) |
+| 13 | at-refactor-system | CYCLE `refactor-system-structure` (verify inherited from HIGH `implement-system`; see Q8) |
 | 15 | compile | MID Compile (calls EXECUTE COMMAND) |
-| 16 | da-cycle | PEAK REDESIGN SYSTEM STRUCTURE (Implement Driver Adapters — renamed per Q15) |
+| 16 | da-cycle | CYCLE `redesign-system-structure` (Implement Driver Adapters — renamed per Q15) |
 | 17 | green-phase-cycle | HIGH WRITE SYSTEM BIG |
 | 20 | red-phase-cycle | HIGH WRITE TESTS BIG |
 | 21 | sut-cycle | HIGH WRITE SYSTEM BIG |
@@ -44,16 +44,16 @@ Because the replacement is full, every concern the existing BPMN models must be 
 | # | Diagram | Resolution | Rationale |
 |---|---|---|---|
 | 4 | run-legacy-cycle | **DROP** (no absorption) | No separate "run legacy tests" operation. The mid-level `Run Tests` task runs whatever's currently in the test suite; legacy-vs-latest distinction doesn't exist at run time per Q16=B + memory `feedback_legacy_tests_no_marker`. |
-| 12 | legacy-acceptance-criteria-cycle | **PEAK `COVER SYSTEM BEHAVIOR`** (with `Expected Test Result: Success`) | Writing ACs for existing behavior = adding coverage = COVER. |
-| 18 | legacy-at-cycle | **PEAK `COVER SYSTEM BEHAVIOR`** | Writing legacy ATs for existing behavior = COVER. |
-| 19 | legacy-ct-cycle | **PEAK `COVER SYSTEM BEHAVIOR`** | Writing legacy CTs for existing behavior = COVER. |
+| 12 | legacy-acceptance-criteria-cycle | **CYCLE `cover-system-behavior`** (with `Expected Test Result: Success`) | Writing ACs for existing behavior = adding coverage = COVER. |
+| 18 | legacy-at-cycle | **CYCLE `cover-system-behavior`** | Writing legacy ATs for existing behavior = COVER. |
+| 19 | legacy-ct-cycle | **CYCLE `cover-system-behavior`** | Writing legacy CTs for existing behavior = COVER. |
 
 **Not currently mapped** — *both included; resolutions recorded 2026-05-25:*
 
 | # | Diagram | Resolution |
 |---|---|---|
-| 9 | external-system-onboarding | **PEAK new entry `ONBOARD EXTERNAL SYSTEM`** (Q-ext resolved to option b — standalone peak workflow; REDESIGN SYSTEM STRUCTURE can also call it as a sub-process). |
-| 14 | backlog-refinement | **PEAK new entry `REFINE BACKLOG`** (Q9 resolved to A — sibling to the existing five peak entries). |
+| 9 | external-system-onboarding | **CYCLE `onboard-external-system`** (Q-ext resolved to option b — standalone cycle; `redesign-system-structure` can also call it as a sub-process). |
+| 14 | backlog-refinement | **CYCLE `refine-backlog`** (Q9 resolved to A — sibling to the existing five cycles). |
 
 ### Already-confirmed scope inclusions
 
@@ -64,12 +64,13 @@ Because the replacement is full, every concern the existing BPMN models must be 
 
 *(Q18 resolved 2026-05-25: files are exhaustive + final inputs — option A. Items 2–5 only apply Q-decisions on top of them.)*
 
-The four files the user wrote, in `plans/ideas/`:
+The five brainstorm files in `plans/ideas/` (file 5 added 2026-05-25 per Q26=A):
 
 - `plans/ideas/1-bpmn-refactor-low-level.md` — **LOW:** APPROVE / EXECUTE AGENT / EXECUTE COMMAND primitives.
 - `plans/ideas/2-bpmn-refactor-mid-level.md` — **MID:** parametrized agent tasks and command tasks that each `call` a low-level primitive (per Q4 recommendation).
 - `plans/ideas/3-bpmn-refactor-high-level.md` — **HIGH:** orchestrations (WRITE TESTS BIG, WRITE RED ACCEPTANCE TESTS, IMPLEMENT RED DSL CORE, …, shared IMPLEMENT TEST LAYER / VERIFY TESTS PASS / VERIFY TESTS FAIL).
-- `plans/ideas/4-bpmn-refactor-peak-level.md` — **PEAK:** workflow types (CHANGE SYSTEM BEHAVIOR, COVER SYSTEM BEHAVIOR, REDESIGN SYSTEM STRUCTURE, REFACTOR SYSTEM STRUCTURE, REFACTOR TEST STRUCTURE).
+- `plans/ideas/4-bpmn-refactor-cycle-level.md` — **CYCLE:** per-ticket sub-processes (`change-system-behavior`, `cover-system-behavior`, `redesign-system-structure`, `refactor-system-structure`, `refactor-test-structure`, `refine-backlog`, `onboard-external-system`).
+- `plans/ideas/5-bpmn-refactor-top-level.md` — **TOP:** the single top-level `implement-ticket` process (Mark IN PROGRESS → classification gateway → call chosen CYCLE → Mark IN ACCEPTANCE).
 
 ## Phases overview
 
@@ -84,7 +85,7 @@ Each item is sized for one `/execute-plan` invocation. Re-running `/execute-plan
 
 ### Phase B execution pattern (Items 2–5) — parallel subagent dispatch, don't-block, batch-questions
 
-Items 2–5 each refine a different brainstorm file (LOW / MID / HIGH / PEAK) with no cross-file dependencies. Per memory `feedback_prefer_parallel_subagents`, the next `/execute-plan` session for Item 2 should dispatch **all four items as parallel subagents in a single message**, rather than running them sequentially. Concretely:
+Items 2–5 each refine a different brainstorm file (LOW / MID / HIGH / CYCLE — and now also TOP, per Q26=A) with no cross-file dependencies. Per memory `feedback_prefer_parallel_subagents`, the next `/execute-plan` session for Item 2 should dispatch **all five items as parallel subagents in a single message**, rather than running them sequentially. Concretely:
 
 1. **Main session dispatches 4 subagents in parallel** (single message, 4 `Agent` tool-calls). Each subagent gets: (a) the Decisions section of this plan, (b) its target brainstorm file path, (c) the relevant Q-IDs for its file, (d) instruction to follow the "don't-block, log questions" rule below.
 2. **Subagents edit but do NOT commit.** They modify their brainstorm file in place. They do NOT run `git add` or `git commit` — main session owns commits (avoids parallel-git races). They return a summary: files modified, key changes, plus a **"questions surfaced"** list.
@@ -99,15 +100,15 @@ Items 6–10 stay sequential (Items 6 verifies B.1–B.4 output; Items 7–9 are
 6. - [ ] **Phase B.5 — Cross-check inventory walk.** Walk the cross-check tables in this plan's Scope section row by row. For each "Maps cleanly" diagram, confirm it actually fits the refined brainstorm. For each "Legacy" diagram, confirm the collapse target. Decide on **Q-ext** (external-system-onboarding) — promote to a real question or drop. Append any new follow-ups to the Decisions section. Commit.
     **Done when:** every existing diagram has a confirmed absorption target or explicit drop rationale.
 
-7. - [ ] **Phase C.1 — Prototype REFACTOR SYSTEM STRUCTURE in YAML.** Encode the simplest peak entry (REFACTOR SYSTEM STRUCTURE) in `internal/atdd/runtime/statemachine/process-flow.yaml`. Save a copy of the current `docs/process-diagram.md` first (e.g., `cp docs/process-diagram.md docs/process-diagram.md.pre-refactor`). Run `gh optivem process show > docs/process-diagram.md`. Inspect the regenerated output for the new peak entry. Compare against the refined `plans/ideas/4-bpmn-refactor-peak-level.md`. Commit (YAML + regenerated md).
-    **Done when:** regenerated diagram for REFACTOR SYSTEM STRUCTURE matches the refined brainstorm.
+7. - [ ] **Phase C.1 — Prototype `refactor-system-structure` in YAML.** Encode the simplest cycle (`refactor-system-structure`) in `internal/atdd/runtime/statemachine/process-flow.yaml`. Save a copy of the current `docs/process-diagram.md` first (e.g., `cp docs/process-diagram.md docs/process-diagram.md.pre-refactor`). Run `gh optivem process show > docs/process-diagram.md`. Inspect the regenerated output for the new cycle. Compare against the refined `plans/ideas/4-bpmn-refactor-cycle-level.md`. Commit (YAML + regenerated md).
+    **Done when:** regenerated diagram for `refactor-system-structure` matches the refined brainstorm.
 
 8. - [ ] **Phase C.2 — Schema/generator changes if needed.** Based on Item 7 findings, extend the YAML schema and generator if needed. Most likely candidate: adding `scopes:` / `outputs:` metadata to `user_task` for contract blocks per Q13 (if Q13 resolved to option A). If no changes needed, mark this item done with a one-line "no schema/generator changes required" note in this file and skip the commit. Otherwise commit (generator + schema + tests).
 
-9. - [ ] **Phase C.3 — Migrate rest of YAML.** Encode all remaining peak entries + high orchestrations + mid `call_activity` definitions into `process-flow.yaml`. Regenerate `docs/process-diagram.md`. Diff against the pre-refactor copy from Item 7 to confirm every retained behaviour appears. Resolve any gap (either by adding to YAML or by writing an explicit drop-rationale comment). Remove the `.pre-refactor` backup once verified. Commit.
-    **Done when:** all peak entries are encoded; regenerated diagram covers everything in the cross-check inventory; no intended-to-survive behaviour is missing.
+9. - [ ] **Phase C.3 — Migrate rest of YAML.** Encode TOP `implement-ticket` + all cycles + high orchestrations + mid `call_activity` definitions into `process-flow.yaml`. Regenerate `docs/process-diagram.md`. Diff against the pre-refactor copy from Item 7 to confirm every retained behaviour appears. Resolve any gap (either by adding to YAML or by writing an explicit drop-rationale comment). Remove the `.pre-refactor` backup once verified. Commit.
+    **Done when:** TOP + all cycles are encoded; regenerated diagram covers everything in the cross-check inventory; no intended-to-survive behaviour is missing.
 
-10. - [ ] **Phase D handoff — Write the downstream-alignment plan.** Create `plans/<YYYYMMDD-HHMM>-bpmn-refactor-downstream.md` covering: writing-agent updates (per Q1, Q4, Q5 decisions), ATDD docs updates (`docs/atdd/process/*.md`, `docs/atdd/architecture/*.md`), retired SVG cleanup. Use the same `## Items` checklist shape as this plan so it's `/execute-plan`-able. Do **not** execute that plan here — the user invokes `/execute-plan` on it separately. Commit.
+10. - [ ] **Phase D handoff — Write the downstream-alignment plan.** Create `plans/<YYYYMMDD-HHMM>-bpmn-refactor-downstream.md` covering: writing-agent updates (per Q1, Q4, Q5 decisions); **prompt file renames + deletions per the locked Q28 table in the Decisions section ("Naming doctrine resolved 2026-05-25")**, including the `agent-name:` field removal from `process-flow.yaml` (Q28.a) and the `fix-verify.md` split (Q28.b) and the Q28.c resolutions (`refactor-system.md`, redesign prompts); ATDD docs updates (`docs/atdd/process/*.md`, `docs/atdd/architecture/*.md`); retired SVG cleanup. Use the same `## Items` checklist shape as this plan so it's `/execute-plan`-able. Do **not** execute that plan here — the user invokes `/execute-plan` on it separately. Commit.
     **Done when:** the downstream plan file exists with its own Items checklist; this plan's Items section is fully checked.
 
 ---
@@ -419,8 +420,8 @@ Pinning the convention now avoids rework in Items 2–5 (every brainstorm doc ge
 - **Q13 — Contract block format and location:** ✓ **A: contract blocks live in `process-flow.yaml` as `user_task` metadata** (`scopes:`, `outputs:`). Both consumers read from the same YAML: (1) the agent invocation uses `scopes:`/`outputs:` for prompt context + permitted file scope; (2) the post-execute BPMN verify step (currently EXECUTE AGENT step 3) reads the same `outputs:` to validate "required output variables present?" and `scopes:` to validate "scope constraints satisfied? (diff)". Single source of truth, no drift.
 - **Q13.a — Per-task contract blocks in brainstorm (Phase B.2 follow-up):** ✓ **A: one illustrative block + YAML-truth note.** Only `Write Acceptance Tests` shown inline as illustration; YAML is single source of truth for all tasks. Avoids two-place drift. Per-task inline sketches rejected for the same reason.
 - **Q14 — `docs/process-diagram.md` structure:** ✓ **A: one file.**
-- **Q15 — "Write" vs "Implement" naming:** ✓ **A: Write for tests, Implement for code.** Peak entries get renamed: `Write System` → `Implement System`; `Write Driver Adapters` → `Implement Driver Adapters`.
-- **Q15-HIGH extension (Phase B.3 follow-up):** ✓ **Yes — apply Q15 to HIGH orchestration names too.** `WRITE SYSTEM (BIG)` → `IMPLEMENT SYSTEM (BIG)`; step 1 `Write System` → `Implement System`. Tests stay as `Write`. Keeps vocabulary uniform across HIGH + PEAK.
+- **Q15 — "Write" vs "Implement" naming:** ✓ **A: Write for tests, Implement for code.** Cycle entries get renamed: `Write System` → `Implement System`; `Write Driver Adapters` → `Implement Driver Adapters`.
+- **Q15-HIGH extension (Phase B.3 follow-up):** ✓ **Yes — apply Q15 to HIGH orchestration names too.** `WRITE SYSTEM (BIG)` → `IMPLEMENT SYSTEM (BIG)`; step 1 `Write System` → `Implement System`. Tests stay as `Write`. Keeps vocabulary uniform across HIGH + CYCLE.
 - **Q20 — Item decomposition (10-item shape):** ✓ **A: keep 10 items.**
 - **Q21 — Phase D as separate downstream plan:** ✓ **A: separate plan.**
 - **Q22 — Q6's table shape (producer/output/consumer):** ✓ **A: three-column table.**
@@ -453,24 +454,69 @@ Pinning the convention now avoids rework in Items 2–5 (every brainstorm doc ge
 - **Q8.a — Add REFACTOR SYSTEM orchestration symmetric to REFACTOR TESTS? (Phase B.3 follow-up):** ✓ **A: no.** Q8 covers compile/verify inheritance for REFACTOR SYSTEM STRUCTURE via IMPLEMENT SYSTEM orchestration. A separate REFACTOR SYSTEM orchestration would duplicate.
 - **Q8.b — REFACTOR TESTS INPUT/OUTPUT contracts (Phase B.3 follow-up):** ✓ **A: none.** Matches IMPLEMENT SYSTEM lean style; tests as INPUT/OUTPUT would be redundant for a refactor (input == output by definition).
 
-### PEAK
-- **Q7 — Ticket lifecycle placement:** ✓ **A: peak-level wrapper** (marks IN PROGRESS → calls the peak entry → marks In Acceptance). AC/Checklists **not** ticked at this level.
-- **Q7.a — TICKET LIFECYCLE invocation model (Phase B.4 follow-up):** ✓ **A: standalone wrapper section** with `<call the chosen peak entry>` placeholder. Drawn once, applies to all. Not duplicated per peak entry, not implicit framework concern. (Q26 in child plan reframes this further — wrapper may actually be the top-level `IMPLEMENT TICKET` process.)
-- **Q8 — REFACTOR flows missing compile/verify:** ✓ **(i): add new `REFACTOR TESTS` high-level orchestration** parallel to `IMPLEMENT SYSTEM`. Steps: Refactor Tests → Compile Tests → Verify Tests Pass → Commit. Peak `REFACTOR TEST STRUCTURE` stays one-line ("Refactor Tests") and calls this orchestration. **`REFACTOR SYSTEM STRUCTURE` needs no change** — its "Implement System" already calls `IMPLEMENT SYSTEM` orchestration which includes compile + verify. Rationale: compile+verify discipline lives at high level, never at peak.
-- **Q9 — Backlog refinement integration:** ✓ **A: new peak entry REFINE BACKLOG** (sibling to the existing five).
-- **Q9.a — REFINE BACKLOG internal steps (Phase B.4 follow-up):** ✓ **A: accept tentative draft** (Read Backlog Items / Identify Gaps / Refine Ticket Descriptions / Refine Acceptance Criteria). Item 6 cross-check walk verifies against existing diagram 14.
-- **Q-ext.a — ONBOARD EXTERNAL SYSTEM internal steps (Phase B.4 follow-up):** ✓ **A: accept tentative draft** (Identify / Document Contract / Set Up Access / Verify Reachable). Item 6 verifies against existing diagram 9.
+### CYCLE
+- **Q7 — Ticket lifecycle placement:** ✓ **A: cycle-level wrapper** (marks IN PROGRESS → calls the chosen cycle → marks In Acceptance). AC/Checklists **not** ticked at this level. **Superseded 2026-05-25 by Q26=A** — the wrapper is now the body of the top-level `implement-ticket` process; the cycles below it are pure per-ticket sub-processes.
+- **Q7.a — TICKET LIFECYCLE invocation model (Phase B.4 follow-up):** ✓ **A: standalone wrapper section** with `<call the chosen cycle>` placeholder. Drawn once, applies to all. Not duplicated per cycle, not implicit framework concern. **Superseded 2026-05-25 by Q26=A** — the wrapper now lives in `plans/ideas/5-bpmn-refactor-top-level.md` as the body of `implement-ticket`.
+- **Q8 — REFACTOR flows missing compile/verify:** ✓ **(i): add new `REFACTOR TESTS` high-level orchestration** parallel to `IMPLEMENT SYSTEM`. Steps: Refactor Tests → Compile Tests → Verify Tests Pass → Commit. Cycle `refactor-test-structure` stays one-line ("Refactor Tests") and calls this orchestration. **`refactor-system-structure` needs no change** — its "Implement System" already calls `IMPLEMENT SYSTEM` orchestration which includes compile + verify. Rationale: compile+verify discipline lives at high level, never at cycle level.
+- **Q9 — Backlog refinement integration:** ✓ **A: new cycle `refine-backlog`** (sibling to the existing five).
+- **Q9.a — `refine-backlog` internal steps (Phase B.4 follow-up):** ✓ **A: accept tentative draft** (Read Backlog Items / Identify Gaps / Refine Ticket Descriptions / Refine Acceptance Criteria). Item 6 cross-check walk verifies against existing diagram 14.
+- **Q-ext.a — `onboard-external-system` internal steps (Phase B.4 follow-up):** ✓ **A: accept tentative draft** (Identify / Document Contract / Set Up Access / Verify Reachable). Item 6 verifies against existing diagram 9.
 
 ### Follow-ups (resolved)
-- **Q-ext — External system onboarding integration:** ✓ **(b): new peak entry `ONBOARD EXTERNAL SYSTEM`.** Standalone peak workflow. Rationale: flexibility for onboard-only tickets (e.g., adding a logging provider with no structural redesign) AND for redesign-that-includes-onboarding (REDESIGN SYSTEM STRUCTURE can call ONBOARD EXTERNAL SYSTEM as a sub-process). Coupling onboarding into REDESIGN would block modeling onboard-only tickets cleanly.
+- **Q-ext — External system onboarding integration:** ✓ **(b): new cycle `onboard-external-system`.** Standalone cycle. Rationale: flexibility for onboard-only tickets (e.g., adding a logging provider with no structural redesign) AND for redesign-that-includes-onboarding (`redesign-system-structure` can call `onboard-external-system` as a sub-process). Coupling onboarding into REDESIGN would block modeling onboard-only tickets cleanly.
 
-### Deferred to child plan `plans/20260525-1130-bpmn-naming-doctrine.md`
+### Naming doctrine (resolved 2026-05-25 in child plan `plans/20260525-1130-bpmn-naming-doctrine.md`)
 
-During Phase B.3 / B.4 (HIGH and PEAK fix-ups, 2026-05-25), three substantial doctrine questions surfaced that warrant their own /execute-plan session. Recorded here so the next session has the full backlog visible:
+The child plan locked four naming-doctrine decisions; full text + Discussion archive lives in that plan. Summary:
 
-- **Q26 — `IMPLEMENT TICKET` top-level reframe.** Insight surfaced 2026-05-25: what we've been calling "PEAK entries" are actually CYCLES — sub-processes invoked from a true top-level `IMPLEMENT TICKET` process that picks which cycle a ticket needs and wraps it with Mark IN PROGRESS / Mark IN ACCEPTANCE. Reframing implications: structure becomes 5 levels (TOP / CYCLE / HIGH / MID / LOW) or 4 with rename (PEAK → CYCLE + add TOP). Resolves Q7's TICKET LIFECYCLE wrapper question naturally — the wrapper IS `IMPLEMENT TICKET`.
-- **Q27 — Naming collision resolution at HIGH.** `(BIG)` suffix dropped in Phase B.3 with collision risk identified: HIGH `IMPLEMENT SYSTEM` ↔ MID `Implement System` (same snake_case key); same for HIGH `REFACTOR TESTS` ↔ MID `Refactor Tests`. Industry-pragmatic fix: `_workflow` suffix on entry-point HIGH orchestrations (matches existing `_cycle`/`_subprocess` runtime pattern). Silver-canonical fix: rename to specificity or switch to noun-phrase. Casing convention (ALL CAPS spaces vs Title Case vs snake_case) also in scope.
-- **Q28 — Verb-based exact-match prompt naming + `agent-name:` field rename.** Q24 (from main plan) decided the doctrine (verb-based, exact-match to MID task names; legacy prompts collapse mechanically per Q16=B). Child plan locks the renames concretely (`at-red-test` → `write-acceptance-tests`, etc.), the YAML field rename (`agent-name:` → `task-name:` or `executor:`), and the legacy-prompts disposition.
+- **Q26 = (A) 5 levels with rename — TOP / CYCLE / HIGH / MID / LOW.** New TOP level holds the single `implement-ticket` process (Mark IN PROGRESS → classification gateway → call chosen CYCLE → Mark IN ACCEPTANCE). PEAK terminology dropped; brainstorm now lives in `plans/ideas/1-5-*.md`. Resolves Q7/Q7.a's TICKET LIFECYCLE wrapper — it IS the body of `implement-ticket`.
+- **Q27 = (B) Silver-canonical rename to specificity at HIGH.** Colliding HIGH orchestrations renamed to describe their full composite scope: `implement-system` → `implement-and-verify-system`; `refactor-tests` → `refactor-and-verify-tests`; `write-tests` → `write-and-verify-red-tests`. No `_workflow`/`_subprocess` suffix — names describe scope, not layer (Standing constraint: no layer-coding).
+- **Q28.a = (v) DROP the `agent-name:` field entirely.** Runtime contract change: `agent-name:` removed from `process-flow.yaml`. Runtime derives prompt path deterministically: `prompt_path(task_name) = task_name + ".md"` (task name already kebab-case per Q29, so the formula is identity). Errors at startup if file missing. Convention over configuration; eliminates double-data; eliminates layer-coding in YAML field names.
+- **Q28.b = (i) SPLIT `fix-verify.md`** into `fix-unexpected-passing-tests.md` + `fix-unexpected-failing-tests.md`. Token-efficient at invocation; doctrine consistency (verb-exact-match means distinct work = distinct prompt).
+- **Q28.c (task-* principles).** (1) Drop `task-` prefix everywhere. (2) No `-redesign` cycle-context suffix — cycle is determined upstream by the gateway in `implement-ticket`. (3) `refactor-system.md` collision resolved by reading content (see resolution below).
+- **Q29 = (C-kebab-unified) kebab-case everywhere.** Every process-model identifier uses kebab-case lowercase in YAML keys, doc headings, prompt filenames, in-prose references, anchor slugs, and Go struct tags. One rule, no two-layer split.
+
+#### Q28 prompt rename table (locked — executed in Item 10's downstream-alignment plan)
+
+Under Q28.a=DROP, the "Required filename" column is the source of truth — runtime derives it from the MID task name and errors at startup if the file is missing.
+
+| File today | Maps to MID task | Required filename |
+|---|---|---|
+| `at-red-test.md` | `write-acceptance-tests` | `write-acceptance-tests.md` |
+| `ct-red-test.md` | `write-contract-tests` (added Q25) | `write-contract-tests.md` |
+| `at-red-dsl.md` + `ct-red-dsl.md` | `implement-dsl` (parameterized) | `implement-dsl.md` (one file, two callers) |
+| `at-red-system-driver.md` | `implement-system-drivers` | `implement-system-drivers.md` |
+| `ct-red-external-system-driver.md` | `implement-external-system-drivers` | `implement-external-system-drivers.md` |
+| `at-green-system.md` | `implement-system` (HIGH `write-system` step 1, per Q15) | `implement-system.md` |
+| `ct-green-external-system-stub.md` | `implement-external-system-stubs` | `implement-external-system-stubs.md` |
+| `disable-tests.md` | `disable-tests` | `disable-tests.md` (no rename) |
+| `enable-tests.md` | `enable-tests` | `enable-tests.md` (no rename) |
+| `fix-verify.md` | `fix-unexpected-passing-tests` AND `fix-unexpected-failing-tests` | **SPLIT** (Q28.b): `fix-unexpected-passing-tests.md` + `fix-unexpected-failing-tests.md` |
+| `refine-acc.md` | `refine-acceptance-criteria` (CYCLE `refine-backlog` step 4) | `refine-acceptance-criteria.md` |
+| `update-ticket.md` | `update-ticket` (TOP `implement-ticket` — Mark IN PROGRESS / Mark IN ACCEPTANCE) | `update-ticket.md` (no rename) |
+| `at-refactor-system.md` | *opportunistic post-green refactor — see Q28.c resolution below* | *Phase D decides: drop or rename* |
+| `task-system-interface-redesign.md` | *Q28.c resolution below* | *Phase D resolves* |
+| `task-external-system-interface-redesign.md` | *Q28.c resolution below* | *Phase D resolves* |
+| `task-system-implementation-refactoring.md` | `refactor-system` (CYCLE `refactor-system-structure`) | `refactor-system.md` |
+| `legacy-at-test.md` | (collapse → `write-acceptance-tests.md` per Q16=B) | **DELETE** |
+| `legacy-at-dsl.md` | (collapse → `implement-dsl.md`) | **DELETE** |
+| `legacy-at-system-driver.md` | (collapse → `implement-system-drivers.md`) | **DELETE** |
+| `legacy-ct-test.md` | (collapse → `write-contract-tests.md`) | **DELETE** |
+| `legacy-ct-dsl.md` | (collapse → `implement-dsl.md`) | **DELETE** |
+| `legacy-ct-external-system-driver.md` | (collapse → `implement-external-system-drivers.md`) | **DELETE** |
+| `legacy-ct-external-system-stub.md` | (collapse → `implement-external-system-stubs.md`) | **DELETE** |
+
+#### Q28.c resolution (from reading prompt content)
+
+**`task-system-implementation-refactoring.md` ↔ `at-refactor-system.md` collision** — **different scope, not the same task.**
+- `task-system-implementation-refactoring.md` — ticket-driven internal refactor with checklist (REFACTOR SYSTEM STRUCTURE cycle). **Becomes canonical `refactor-system.md`.**
+- `at-refactor-system.md` — opportunistic refactor that runs after `AT_GREEN_SYSTEM` lands in the ATDD cycle, looking for improvements. **The new HIGH `implement-and-verify-system` orchestration has no explicit refactor step**, so opportunistic refactor is no longer modelled as a discrete MID task. Phase D decides: (a) **drop** `at-refactor-system.md` entirely (recommended — keeps the per-ticket cycle the canonical refactor surface; opportunistic improvements happen ad-hoc during ticket work), or (b) **retain** by adding an explicit "Refactor System" step to `implement-and-verify-system` and renaming the prompt to a non-cycle-coded name. The standing no-layer-coding rule rules out names like `refactor-system-after-green` or `refactor-system-opportunistically`; if retained, the prompt needs a scope-describing name (open).
+
+**`task-system-interface-redesign.md` + `task-external-system-interface-redesign.md`** — **brainstorm-vs-prompt mismatch flagged for Phase D.**
+- The CYCLE `redesign-system-structure` splits the work into two MID steps (`implement-driver-adapters`, `implement-system`), but the prompts handle the system change AND its driver-adapter absorption together (because the adapter must absorb the change to keep tests passing — splitting loses the coupling).
+- **Recommended resolution:** keep the brainstorm split atomic, replicate the absorption discipline via the cycle's orchestration spec (call adapter-implementation immediately after system-surface-change in the same task or with shared state). The system-surface part folds into `implement-system.md`; the driver-adapter absorption part folds into `implement-system-drivers.md` (system side) and `implement-external-system-drivers.md` (external side). The currently-composite prompts are split during Phase D.
+- **Alternative resolution:** collapse the brainstorm's two CYCLE steps into one composite MID task `reshape-system-surface-with-adapters` (or similar — scope-describing, not cycle-coded). The prompt stays composite. **Not recommended** — produces a one-off MID task only used by `redesign-system-structure`; the atomic split is reusable.
+- Phase D picks (a) or alternative based on Item 6 cross-check.
 
 ---
 
