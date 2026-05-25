@@ -1,12 +1,38 @@
 # BPMN - HIGH LEVEL
 
+> **Design content only.** Open questions, doctrine choices, and decision rationale belong in the parent plan: `plans/20260525-1057-bpmn-refactor-design.md`. Do not record Q&A here. If you encounter a question while reading or editing this file, add it to the plan, not inline.
+
 > **Naming convention (Q29).** All process-model identifiers use kebab-case lowercase across YAML, doc headings, prompt filenames, and in-prose references. Layer labels (TOP / CYCLE / HIGH / MID / LOW) remain organizational categories only and are not part of identifier names.
 
 > **Q-new-1 doctrine (resolved 2026-05-25).** HIGH orchestrations are parameterized on `<Expected Test Result>`; the prior "red"-prefixed names were misleading because every orchestration ultimately routes through the shared `implement-test-layer` which already takes Expected Test Result as input. "red" has been dropped from every HIGH name. `change-system-behavior` invokes these with `<Expected: Failure>`; `cover-system-behavior` with `<Expected: Success>`.
 
 ===========================
 
+## write-and-verify-tests-fail
+
+Thin wrapper — gives CYCLE callers a parameter-free, self-documenting name. Called by `change-system-behavior`.
+
+**INPUT: Acceptance Criteria** (scenario based Gherkin)
+
+**OUTPUT: Tests**
+
+1. `write-and-verify-tests` `<Expected Test Result: Failure>`
+
+## write-and-verify-tests-pass
+
+Thin wrapper — gives CYCLE callers a parameter-free, self-documenting name. Called by `cover-system-behavior`.
+
+**INPUT: Acceptance Criteria** (scenario based Gherkin)
+
+**OUTPUT: Tests**
+
+1. `write-and-verify-tests` `<Expected Test Result: Success>`
+
+===========================
+
 ## write-and-verify-tests
+
+Parameterized core — single source of truth for the test-writing orchestration. Operators don't call this directly; they invoke one of the two thin wrappers above (`write-and-verify-tests-fail` / `write-and-verify-tests-pass`). Inner orchestrations (`implement-and-verify-dsl`, etc.) also call this core internally and inherit the parameter.
 
 **INPUT: Acceptance Criteria** (scenario based Gherkin)
 

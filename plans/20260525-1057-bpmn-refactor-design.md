@@ -1,7 +1,5 @@
 # BPMN five-level refactor — design plan
 
-🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-25T12:27:54Z`
-
 > **Working style: token-efficient.** Execute this plan in the cheapest form that still produces a quality result. If the user proposes a workflow that burns tokens unnecessarily (e.g., asking 8 questions individually via `AskUserQuestion` when 8 pre-drafted recommendations could be confirmed in one batch), **surface the cheaper alternative and let the user choose** — don't silently follow the costly path. The user has explicitly invited this pushback (memory: `feedback_flag_non_token_efficient`).
 
 End-state-first: lock the design **before** drawing diagrams; the existing diagram generator (`gh optivem process show`) handles the drawing, so this plan never hand-draws Mermaid.
@@ -21,34 +19,34 @@ The five-level structure (TOP / CYCLE / HIGH / MID / LOW — per Q26=A) is inten
 
 Because the replacement is full, every concern the existing BPMN models must be either **absorbed** into the new five-level structure (with location) or **dropped** (with reason). Inventory of the 21 existing diagrams:
 
-**Maps cleanly into the four levels** — *all 15 absorption targets confirmed 2026-05-25:*
+**Maps cleanly into the five levels** — *all 15 absorption targets walked + confirmed 2026-05-25 (Item 6). Stale row wording updated to post-Q27 / post-Q32 names:*
 
 | # | Diagram | Absorption target |
 |---|---|---|
 | 1 | legend | doc artifact, regenerate |
 | 2 | ticket-lifecycle | TOP `implement-ticket` (Q26=A reframes Q7's peak-wrapper to the body of TOP) |
 | 3 | github-intake | TOP `implement-ticket` — tied to ticket lifecycle |
-| 5 | run-cycle | MID Run Tests (Q5) |
-| 6 | at-cycle | HIGH WRITE TESTS BIG ↔ WRITE SYSTEM BIG pairing |
-| 7 | at-green-system | HIGH WRITE SYSTEM BIG |
-| 8 | contract-test-sub-process | HIGH IMPLEMENT RED EXTERNAL SYSTEM DRIVER ADAPTERS — CONTRACT TESTS |
-| 10 | structural-cycle-shared | HIGH shared IMPLEMENT TEST LAYER |
-| 11 | commit-sub-process | MID Commit (calls EXECUTE COMMAND) |
-| 13 | at-refactor-system | CYCLE `refactor-system-structure` (verify inherited from HIGH `implement-system`; see Q8) |
-| 15 | compile | MID Compile (calls EXECUTE COMMAND) |
+| 5 | run-cycle | MID `run-tests` (Q5) |
+| 6 | at-cycle | HIGH `write-and-verify-tests-fail` ↔ `implement-and-verify-system` pairing |
+| 7 | at-green-system | HIGH `implement-and-verify-system` |
+| 8 | contract-test-sub-process | HIGH `implement-red-external-system-driver-adapters-contract-tests` |
+| 10 | structural-cycle-shared | HIGH shared `implement-test-layer` |
+| 11 | commit-sub-process | MID `commit` (calls `execute-command`) |
+| 13 | at-refactor-system | **CYCLE `change-system-behavior` step 3** (loopable opportunistic refactor menu — calls CYCLE `refactor-system-structure` in opportunistic mode; see Q32 + Q33 resolutions) |
+| 15 | compile | MID `compile` (calls `execute-command`) |
 | 16 | da-cycle | CYCLE `redesign-system-structure` (Implement Driver Adapters — renamed per Q15) |
-| 17 | green-phase-cycle | HIGH WRITE SYSTEM BIG |
-| 20 | red-phase-cycle | HIGH WRITE TESTS BIG |
-| 21 | sut-cycle | HIGH WRITE SYSTEM BIG |
+| 17 | green-phase-cycle | HIGH `implement-and-verify-system` |
+| 20 | red-phase-cycle | HIGH `write-and-verify-tests-fail` |
+| 21 | sut-cycle | HIGH `implement-and-verify-system` |
 
 **Legacy cycles** — *resolved 2026-05-25 via Q16=B (legacy cycles collapse). Three of the four absorb into `COVER SYSTEM BEHAVIOR`; #4 is dropped (no separate legacy-test-run operation exists):*
 
 | # | Diagram | Resolution | Rationale |
 |---|---|---|---|
 | 4 | run-legacy-cycle | **DROP** (no absorption) | No separate "run legacy tests" operation. The mid-level `Run Tests` task runs whatever's currently in the test suite; legacy-vs-latest distinction doesn't exist at run time per Q16=B + memory `feedback_legacy_tests_no_marker`. |
-| 12 | legacy-acceptance-criteria-cycle | **CYCLE `cover-system-behavior`** (with `Expected Test Result: Success`) | Writing ACs for existing behavior = adding coverage = COVER. |
-| 18 | legacy-at-cycle | **CYCLE `cover-system-behavior`** | Writing legacy ATs for existing behavior = COVER. |
-| 19 | legacy-ct-cycle | **CYCLE `cover-system-behavior`** | Writing legacy CTs for existing behavior = COVER. |
+| 12 | legacy-acceptance-criteria-cycle | **CYCLE `cover-system-behavior`** → HIGH `write-and-verify-tests-pass` (Q31 Option D wrapper over parameterized core). | Writing ACs for existing behavior = adding coverage = COVER. |
+| 18 | legacy-at-cycle | **CYCLE `cover-system-behavior`** → HIGH `write-and-verify-tests-pass`. | Writing legacy ATs for existing behavior = COVER. |
+| 19 | legacy-ct-cycle | **CYCLE `cover-system-behavior`** → HIGH `write-and-verify-tests-pass` (with internal CT handling per Q31.a deferred). | Writing legacy CTs for existing behavior = COVER. |
 
 **Not currently mapped** — *both included; resolutions recorded 2026-05-25:*
 
@@ -72,7 +70,7 @@ The five brainstorm files in `plans/ideas/` (file 5 added 2026-05-25 per Q26=A):
 - `plans/ideas/2-bpmn-refactor-mid-level.md` — **MID:** parametrized agent tasks and command tasks that each `call` a low-level primitive (per Q4 recommendation).
 - `plans/ideas/3-bpmn-refactor-high-level.md` — **HIGH:** orchestrations (WRITE TESTS BIG, WRITE RED ACCEPTANCE TESTS, IMPLEMENT RED DSL CORE, …, shared IMPLEMENT TEST LAYER / VERIFY TESTS PASS / VERIFY TESTS FAIL).
 - `plans/ideas/4-bpmn-refactor-cycle-level.md` — **CYCLE:** per-ticket sub-processes (`change-system-behavior`, `cover-system-behavior`, `redesign-system-structure`, `refactor-system-structure`, `refactor-test-structure`, `refine-backlog`, `onboard-external-system`).
-- `plans/ideas/5-bpmn-refactor-top-level.md` — **TOP:** the single top-level `implement-ticket` process (Mark IN PROGRESS → classification gateway → call chosen CYCLE → Mark IN ACCEPTANCE).
+- `plans/ideas/5-bpmn-refactor-top-level.md` — **TOP:** three top-level processes — `refine-ticket` (ticket refinement), `implement-ticket` (Mark IN PROGRESS → mechanical-lookup gateway by ticket-type+subtype → call chosen CYCLE → Mark IN ACCEPTANCE), and `refactor` (ad-hoc, no ticket — per Q34).
 
 ## Phases overview
 
@@ -98,9 +96,6 @@ Items 2–5 each refine a different brainstorm file (LOW / MID / HIGH / CYCLE �
 7. **Then surface `/clear` + `/execute-plan`** for Item 6 (the cross-check walk, which is a single-agent verification step after all four brainstorms are refined).
 
 Items 6–10 stay sequential (Items 6 verifies B.1–B.4 output; Items 7–9 are Phase C YAML migration with each item depending on the previous; Item 10 is a single Phase D handoff). No parallelism opportunity there.
-
-6. - [ ] **Phase B.5 — Cross-check inventory walk.** Walk the cross-check tables in this plan's Scope section row by row. For each "Maps cleanly" diagram, confirm it actually fits the refined brainstorm. For each "Legacy" diagram, confirm the collapse target. Decide on **Q-ext** (external-system-onboarding) — promote to a real question or drop. Append any new follow-ups to the Decisions section. Commit.
-    **Done when:** every existing diagram has a confirmed absorption target or explicit drop rationale.
 
 7. - [ ] **Phase C.1 — Prototype `refactor-system-structure` in YAML.** Encode the simplest cycle (`refactor-system-structure`) in `internal/atdd/runtime/statemachine/process-flow.yaml`. Save a copy of the current `docs/process-diagram.md` first (e.g., `cp docs/process-diagram.md docs/process-diagram.md.pre-refactor`). Run `gh optivem process show > docs/process-diagram.md`. Inspect the regenerated output for the new cycle. Compare against the refined `plans/ideas/4-bpmn-refactor-cycle-level.md`. Commit (YAML + regenerated md).
     **Done when:** regenerated diagram for `refactor-system-structure` matches the refined brainstorm.
@@ -152,6 +147,10 @@ Items 6–10 stay sequential (Items 6 verifies B.1–B.4 output; Items 7–9 are
     - `implement-ticket` steps 1 & 5 ("Mark Ticket IN PROGRESS / IN ACCEPTANCE") → call MID `update-ticket`.
 
     **Done when:** every cross-file reference in CYCLE/HIGH/TOP resolves to an exact kebab identifier defined in the target file; LOW's "Agent Name" terminology is gone; MID lists every task referenced from above; Q28 prompt rename table in this design plan is updated to reflect the new MID names. Commit (plan + 5 brainstorms in one commit).
+
+    **Note (Item 6, 2026-05-25):** the HIGH and CYCLE rename specs above are partially superseded by Q31's Option D (thin wrappers `write-and-verify-tests-fail` / `write-and-verify-tests-pass` over the parameterized core `write-and-verify-tests`). CYCLE step-1 invocations now use the wrapper names (no inline `<Expected Test Result>` parameter at the CYCLE level). See Decisions → HIGH → Q31 for the final structure.
+
+12. - [ ] **Phase B.7 — Strip Q-tags from brainstorm files; preserve design content.** Mechanical cleanup pass: remove inline Q-references (e.g., `(Q6.a)`, `(resolved 2026-05-25)`, `Q-new-1=A` doctrine headers, `(Q7=A)` markers) from the five `plans/ideas/*.md` files while preserving the actual design content they annotated. The warning banner added in Item 6's commit forward-prevents new Q-tags; this item cleans up the existing ones. **Done when:** the only meta-content in each brainstorm file is the warning banner; no Q-IDs, no "resolved YYYY-MM-DD" tags, no doctrine-decision markers remain. Commit.
 
 ---
 
@@ -492,14 +491,60 @@ Pinning the convention now avoids rework in Items 2–5 (every brainstorm doc ge
   | Write Acceptance Tests | `dsl-port-changed: bool` | WRITE TESTS step 2 |
   | Implement DSL | `system-driver-ports-changed: bool` | WRITE TESTS step 2.1.2 |
   | Implement DSL | `external-driver-ports-changed: bool` | WRITE TESTS step 2.1.1 |
-- **Q6.a — `<Expected Test Result>` threading (Phase B.3 follow-up):** ✓ **hoist to outer signature, drop from leaves.** It's already declared as INPUT at the top of WRITE TESTS; the prior leaf-only placement was incomplete propagation. Cleanest.
+- **Q6.a — `<Expected Test Result>` threading (Phase B.3 follow-up):** ✓ **hoist to outer signature, drop from leaves.** It's already declared as INPUT at the top of WRITE TESTS; the prior leaf-only placement was incomplete propagation. Cleanest. **STILL VALID under Option D (Item 6, Q31)** — the parameterized core `write-and-verify-tests` threads `<Expected Test Result>` from outer to leaves; the two thin wrappers `write-and-verify-tests-fail` / `write-and-verify-tests-pass` pin the parameter at the call site so CYCLEs invoke parameter-free names.
 - **Q8.a — Add REFACTOR SYSTEM orchestration symmetric to REFACTOR TESTS? (Phase B.3 follow-up):** ✓ **A: no.** Q8 covers compile/verify inheritance for REFACTOR SYSTEM STRUCTURE via IMPLEMENT SYSTEM orchestration. A separate REFACTOR SYSTEM orchestration would duplicate.
 - **Q8.b — REFACTOR TESTS INPUT/OUTPUT contracts (Phase B.3 follow-up):** ✓ **A: none.** Matches IMPLEMENT SYSTEM lean style; tests as INPUT/OUTPUT would be redundant for a refactor (input == output by definition).
+- **Q31 — Test-writing orchestration: thin wrappers over parameterized core (Option D):** ✓ **resolved 2026-05-25 (Item 6).** Reconciles the prior `write-and-verify-red-tests` inconsistency AND Q-new-1's parameterization decision (commit `fac98ea`). Final shape:
+  1. **Parameterized core `write-and-verify-tests`** — kept exactly as fac98ea wrote it (single orchestration, `<Expected Test Result>` parameter threaded through step 1 + `implement-test-layer`). Single source of truth for the logic.
+  2. **Two thin wrappers** added at HIGH:
+     - `write-and-verify-tests-fail` → calls `write-and-verify-tests <Expected: Failure>`
+     - `write-and-verify-tests-pass` → calls `write-and-verify-tests <Expected: Success>`
+  3. **CYCLEs invoke the wrappers, not the core.** `change-system-behavior` step 1 calls `write-and-verify-tests-fail`; `cover-system-behavior` step 1 calls `write-and-verify-tests-pass`. CYCLE-level invocations are clean and self-documenting — no `<Expected Test Result>` parameter visible at the call site.
+  
+  Rationale: combines the best of "have both" (operator-facing names are explicit; mirror existing SHARED `verify-tests-pass` / `verify-tests-fail` naming) with the best of "parameterize" (single source of truth, no duplication). Inner orchestrations (`implement-and-verify-dsl`, etc.) stay parameterized via the existing core — they aren't called by CYCLEs, so wrappers there would add no value.
+- **Q31.a — `cover-system-behavior` AT vs CT internal handling (deferred to Item 9):** how does `cover-system-behavior` distinguish AT-coverage from CT-coverage tickets? Options: (i) single CYCLE with internal nesting (mirrors fail-side's AT-with-CT-nested shape), (ii) single CYCLE invoked twice per ticket, (iii) two subtypes (`task/cover-legacy-acceptance`, `task/cover-legacy-contract`). Resolve when encoding `cover-system-behavior` in `process-flow.yaml`.
+- **Q31.b — Side bug from fac98ea fixed:** `change-system-behavior` step 1 originally read `Write Tests <Expected Test Result: Success>` — Success was wrong (the change cycle writes failing tests). fac98ea already corrected this to `<Expected: Failure>`. With Option D wrappers, the CYCLE invocations no longer carry the parameter at all — the wrapper name (`write-and-verify-tests-fail` / `write-and-verify-tests-pass`) carries the expectation.
+- **Q32 — Diagram #13 (at-refactor-system) absorption:** ✓ **resolved 2026-05-25 (Item 6).** The cross-check table previously mapped diagram #13 to CYCLE `refactor-system-structure`. That was wrong: diagram #13 depicts OPPORTUNISTIC post-GREEN refactor (per the `at-refactor-system.md` prompt content), not the ticket-driven cycle. New absorption target: **`change-system-behavior` step 3** (the loopable refactor menu from Q33). **Mechanism (a)** — step 3 calls existing CYCLEs in *opportunistic mode* (no checklist supplied; CYCLE degrades to "look at just-landed patch"). Reuses one CYCLE definition for both ticket-driven and opportunistic callers. The `at-refactor-system.md` prompt itself is **DROP** — folded into the CYCLE's opportunistic mode. **Q28.c "Phase D decides drop/retain for `at-refactor-system.md`" resolves to DROP.**
 
 ### TOP
-- **Q30 — Ticket type vs change type:** ✓ **resolved 2026-05-25.** *Ticket type* is a tracker-level label (`Story`, `Bug`, `Task`, `Spike`, etc.) — describes *how work is tracked*, not *what work is done*. *Change type* is a process-level classification that maps 1:1 to a CYCLE. The mapping ticket-type → change-type is **not 1:1**: a `Story` can be a feature (→ `change-system-behavior`) or driver-adapter onboarding (→ `redesign-system-structure`); a `Task` can be a refactor or a coverage backfill. So TOP `implement-ticket` step 2 is **two sub-steps**: (1) classify ticket into change type (judgment), (2) look up CYCLE for change type (mechanical 1:1). Change-type → CYCLE table lives in `plans/ideas/5-bpmn-refactor-top-level.md`.
-- **Q30.a — Classification mechanism** *(open, for Item 6 cross-check walk).* Is change-type recorded as an explicit ticket field (gateway reads it mechanically) or inferred by the human/agent at gateway time? Trade-off: explicit field requires backlog grooming discipline; inferred classification adds judgment latency at gateway time.
-- **Q30.b — Multi-cycle tickets** *(open, for Item 6 cross-check walk).* Can one ticket carry multiple change types (e.g., a feature that requires a prior refactor)? If so, does `implement-ticket` call multiple cycles in sequence, or does the ticket get split before reaching this gateway?
+- **Q30 — Ticket-type+subtype → CYCLE mapping:** ✓ **REVISED 2026-05-25 (Item 6).** Earlier framing said "ticket-type → change-type is not 1:1, classification is a judgment step." Superseded: ticket-type + optional `task` subtype label maps **1:1 to CYCLE via mechanical lookup**. No judgment at the gateway. Full table (lives in `plans/ideas/5-bpmn-refactor-top-level.md`):
+
+  | Ticket type / subtype | CYCLE |
+  |---|---|
+  | `story` | `change-system-behavior` |
+  | `bug` | `change-system-behavior` |
+  | `task/cover-legacy` | `cover-system-behavior` |
+  | `task/redesign-system` | `redesign-system-structure` |
+  | `task/refactor-system` | `refactor-system-structure` |
+  | `task/refactor-tests` | `refactor-test-structure` |
+  | `task/onboard-external-system` | `onboard-external-system` |
+
+  Subtype validation is required for `task`: unknown subtypes **hard-exit at the gateway** (the operator must re-classify or refine the ticket).
+
+- **Q30.a — Classification mechanism:** ✓ **A: explicit field.** The "field" is ticket-type + optional `task` subtype label (e.g., `story`, `task/refactor-system`). Gateway reads it mechanically — no human judgment at gateway time. Refinement (TOP `refine-ticket`) is where this metadata gets set during backlog grooming. Resolves the trade-off in favour of upfront discipline over judgment-at-gateway latency.
+
+- **Q30.b — Multi-cycle tickets:** ✓ **A: single-cycle tickets only.** Multi-cycle work splits into separate tickets during refinement (e.g., a feature that requires a prior refactor = one `task/refactor-system` ticket + one `story`). Gateway stays purely mechanical: one classification → one cycle. Multi-cycle complexity belongs at backlog-refinement, not at the gateway.
+
+- **Q33 — Refactor step in `change-system-behavior` (red-green-REFACTOR triad):** ✓ **resolved 2026-05-25 (Item 6).** Add a step 3 to `change-system-behavior`:
+  ```
+  3. Refactor (loopable):
+     - refactor-system-structure  → call CYCLE (opportunistic mode, no checklist)
+     - refactor-test-structure    → call CYCLE (opportunistic mode, no checklist)
+     - redesign-system-structure  → call CYCLE (opportunistic mode, no checklist)
+     - none                       → exit loop, continue to commit
+  ```
+  Classical TDD red-green-REFACTOR triad. Loopable matches reality (one refactor often suggests another). **Mechanism (a)** — step 3 calls existing CYCLEs as sub-processes in *opportunistic mode* (CYCLE accepts no-checklist invocation; degrades to "look at just-landed patch" semantics). Reuses one CYCLE definition for two callers (gateway + step 3). **Only `change-system-behavior` gets this step** — `cover` / `redesign-*` / `refactor-*` / `onboard` don't have a GREEN moment that triggers refactor. Not a Q30.b violation: refactor sub-step is INSIDE the change cycle's definition, not a separate gateway dispatch (ticket has one classification, cycle has internal structure).
+
+- **Q34 — Ad-hoc refactor TOP process:** ✓ **resolved 2026-05-25 (Item 6).** Add a third TOP process named `refactor` (no `start-` prefix, no `ad-hoc-` prefix — concise; the scope is "I want to refactor without ticket overhead"). Body:
+  ```
+  refactor:
+    1. Choose refactor type (loopable):
+       - refactor-system-structure  → call CYCLE (opportunistic mode)
+       - refactor-test-structure    → call CYCLE (opportunistic mode)
+       - redesign-system-structure  → call CYCLE (opportunistic mode)
+       - none                       → END
+  ```
+  No "mark ticket" bookends (no ticket exists). Coexists with **two other refactor surfaces**: (1) ticket-driven via `task/refactor-system` → `implement-ticket` gateway → CYCLE; (2) opportunistic-inside-change via Q33 step 3. Three surfaces, three ceremony levels. **Doesn't apply to `change` / `cover` / `onboard`** — each needs upfront ticket metadata (ACs / scope / target system).
 
 ### CYCLE
 - **Q7 — Ticket lifecycle placement:** ✓ **A: cycle-level wrapper** (marks IN PROGRESS → calls the chosen cycle → marks In Acceptance). AC/Checklists **not** ticked at this level. **Superseded 2026-05-25 by Q26=A** — the wrapper is now the body of the top-level `implement-ticket` process; the cycles below it are pure per-ticket sub-processes.
@@ -547,7 +592,7 @@ Under Q28.a=DROP, the "Required filename" column is the source of truth — runt
 | `fix-verify.md` | `fix-unexpected-passing-tests` AND `fix-unexpected-failing-tests` | **SPLIT** (Q28.b): `fix-unexpected-passing-tests.md` + `fix-unexpected-failing-tests.md` |
 | `refine-acc.md` | `refine-acceptance-criteria` (CYCLE `refine-backlog` step 4) | `refine-acceptance-criteria.md` |
 | `update-ticket.md` | `update-ticket` (TOP `implement-ticket` — Mark IN PROGRESS / Mark IN ACCEPTANCE) | `update-ticket.md` (no rename) |
-| `at-refactor-system.md` | *opportunistic post-green refactor — see Q28.c resolution below* | *Phase D decides: drop or rename* |
+| `at-refactor-system.md` | *opportunistic post-green refactor — folded into CYCLEs' opportunistic mode per Q32 resolution* | **DELETE** (Q32 resolves Q28.c (a) — folded into existing CYCLE invocations from `change-system-behavior` step 3 / TOP `refactor`) |
 | `task-system-interface-redesign.md` | *Q28.c resolution below* | *Phase D resolves* |
 | `task-external-system-interface-redesign.md` | *Q28.c resolution below* | *Phase D resolves* |
 | `task-system-implementation-refactoring.md` | `refactor-system` (CYCLE `refactor-system-structure`) | `refactor-system.md` |
@@ -561,9 +606,9 @@ Under Q28.a=DROP, the "Required filename" column is the source of truth — runt
 
 #### Q28.c resolution (from reading prompt content)
 
-**`task-system-implementation-refactoring.md` ↔ `at-refactor-system.md` collision** — **different scope, not the same task.**
+**`task-system-implementation-refactoring.md` ↔ `at-refactor-system.md` collision** — **different scope, but Q32 collapses them into one CYCLE.**
 - `task-system-implementation-refactoring.md` — ticket-driven internal refactor with checklist (REFACTOR SYSTEM STRUCTURE cycle). **Becomes canonical `refactor-system.md`.**
-- `at-refactor-system.md` — opportunistic refactor that runs after `AT_GREEN_SYSTEM` lands in the ATDD cycle, looking for improvements. **The new HIGH `implement-and-verify-system` orchestration has no explicit refactor step**, so opportunistic refactor is no longer modelled as a discrete MID task. Phase D decides: (a) **drop** `at-refactor-system.md` entirely (recommended — keeps the per-ticket cycle the canonical refactor surface; opportunistic improvements happen ad-hoc during ticket work), or (b) **retain** by adding an explicit "Refactor System" step to `implement-and-verify-system` and renaming the prompt to a non-cycle-coded name. The standing no-layer-coding rule rules out names like `refactor-system-after-green` or `refactor-system-opportunistically`; if retained, the prompt needs a scope-describing name (open).
+- `at-refactor-system.md` — opportunistic post-GREEN refactor that ran at end of the ATDD cycle. **RESOLVED 2026-05-25 via Q32 mechanism (a): DROP.** The CYCLE `refactor-system-structure` is invoked from two callers (ticket-driven via `implement-ticket` gateway, opportunistic via `change-system-behavior` step 3 / TOP `refactor`). In opportunistic mode the CYCLE accepts no-checklist invocation and degrades to "look at the just-landed patch / what's on the operator's mind" semantics. One CYCLE definition serves both ceremony levels; the opportunistic-only prompt is no longer needed.
 
 **`task-system-interface-redesign.md` + `task-external-system-interface-redesign.md`** — **brainstorm-vs-prompt mismatch flagged for Phase D.**
 - The CYCLE `redesign-system-structure` splits the work into two MID steps (`implement-driver-adapters`, `implement-system`), but the prompts handle the system change AND its driver-adapter absorption together (because the adapter must absorb the change to keep tests passing — splitting loses the coupling).
@@ -584,6 +629,13 @@ Invoke `/execute-plan plans/20260525-1057-bpmn-refactor-design.md` repeatedly. E
 5. Stops (per-item gating is the default).
 
 Items are independent enough that you can invoke `/execute-plan` once per item, or chain several. Items 6, 8, and the cross-check sweeps inside B-items may surface new questions — record them in the Decisions section as new follow-ups (no need to add new Items unless the work is non-trivial).
+
+## Exploration backlog
+
+Open ideas surfaced during this plan but explicitly deferred — not blocking any current Item. Each is a future-exploration prompt; promote to an Item only when ready to land.
+
+- **Spike ticket type.** The Q30 mapping table has no entry for `spike` — a ticket with that type would hard-exit at the `implement-ticket` gateway. Explore: is `spike` a recognized ticket type at all? Does it map to a cycle (e.g., a learning/research cycle that writes no production code)? Or does it sit outside `implement-ticket` entirely, perhaps as its own TOP process? *(Captured 2026-05-25 in Item 6 walk.)*
+- **Cover ticket subtype split (Q31.a).** Should `task/cover-legacy` split into `task/cover-legacy-acceptance` and `task/cover-legacy-contract` to make the test-layer choice explicit? Currently one subtype, with `cover-system-behavior` expected to handle both AT and CT internally — but the internal mechanism is unresolved (deferred to Item 9). *(Captured 2026-05-25 in Item 6 walk.)*
 
 ## Standing constraints (from user memory)
 

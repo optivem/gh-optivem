@@ -1,5 +1,7 @@
 # BPMN - CYCLE LEVEL
 
+> **Design content only.** Open questions, doctrine choices, and decision rationale belong in the parent plan: `plans/20260525-1057-bpmn-refactor-design.md`. Do not record Q&A here. If you encounter a question while reading or editing this file, add it to the plan, not inline.
+
 > **Naming convention (Q29).** All process-model identifiers use kebab-case lowercase across YAML, doc headings, prompt filenames, and in-prose references. Layer labels (TOP / CYCLE / HIGH / MID / LOW) remain organizational categories only and are not part of identifier names.
 
 > **Cross-file connectedness (Q-new-1/2/3, resolved 2026-05-25).** Every step below is an exact kebab reference to a HIGH orchestration or MID agent task defined elsewhere — not prose. HIGH names drop "red" (parameterized via `<Expected Test Result>`); MID uses `-driver-adapters` (was `-drivers`).
@@ -22,14 +24,23 @@ Per-ticket sub-processes selected by the classification gateway in `implement-ti
 
 ## change-system-behavior
 
-1. `write-and-verify-tests` (HIGH) `<Expected Test Result: Failure>`
+Classical TDD red-green-REFACTOR triad. Step 3's refactor menu is opportunistic (no ticket-supplied checklist) — the chosen CYCLE accepts no-checklist invocation and bounds itself to the just-landed patch.
+
+1. `write-and-verify-tests-fail` (HIGH) — thin wrapper, no inline parameter.
 2. `implement-and-verify-system` (HIGH)
+3. Refactor (loopable — after the chosen CYCLE returns, ask again):
+    - `refactor-system-structure`  → call CYCLE (opportunistic mode, no checklist)
+    - `refactor-test-structure`    → call CYCLE (opportunistic mode, no checklist)
+    - `redesign-system-structure`  → call CYCLE (opportunistic mode, no checklist)
+    - **none** → exit the loop; cycle ends.
+
+Only `change-system-behavior` gets the refactor step. Cover / redesign / refactor-* / onboard don't have a GREEN moment that triggers refactor. For ad-hoc refactor outside a change cycle, see TOP `refactor`.
 
 ## cover-system-behavior
 
-1. `write-and-verify-tests` (HIGH) `<Expected Test Result: Success>`
+1. `write-and-verify-tests-pass` (HIGH) — thin wrapper, no inline parameter.
 
-Note: COVER uses the same HIGH orchestration as CHANGE, parameterized by `<Expected Test Result>` (Q-new-1=A). Legacy-coverage authoring (Q16=B) is the success-branch of this HIGH; no separate "legacy" surface.
+Note: COVER uses the same parameterized core as CHANGE (`write-and-verify-tests`) but reached via a different wrapper. Legacy-coverage authoring is the success-branch of the core; no separate "legacy" surface.
 
 ## redesign-system-structure
 
