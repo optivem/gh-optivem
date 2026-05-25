@@ -82,6 +82,20 @@ The four files the user wrote, in `plans/ideas/`:
 
 Each item is sized for one `/execute-plan` invocation. Re-running `/execute-plan plans/20260525-1057-bpmn-refactor-design.md` picks up the next unchecked item. Item numbering is stable — Item 1 was completed 2026-05-25 and removed per the `/execute-plan` rule (resolved items are deleted, not checked); remaining items keep their original numbers so cross-references in this file stay correct.
 
+### Phase B execution pattern (Items 2–5) — parallel subagent dispatch, don't-block, batch-questions
+
+Items 2–5 each refine a different brainstorm file (LOW / MID / HIGH / PEAK) with no cross-file dependencies. Per memory `feedback_prefer_parallel_subagents`, the next `/execute-plan` session for Item 2 should dispatch **all four items as parallel subagents in a single message**, rather than running them sequentially. Concretely:
+
+1. **Main session dispatches 4 subagents in parallel** (single message, 4 `Agent` tool-calls). Each subagent gets: (a) the Decisions section of this plan, (b) its target brainstorm file path, (c) the relevant Q-IDs for its file, (d) instruction to follow the "don't-block, log questions" rule below.
+2. **Subagents edit but do NOT commit.** They modify their brainstorm file in place. They do NOT run `git add` or `git commit` — main session owns commits (avoids parallel-git races). They return a summary: files modified, key changes, plus a **"questions surfaced"** list.
+3. **Subagents don't block on ambiguity.** When a decision isn't fully specified (e.g., Q1=A says "FIX as separate primitive" but doesn't specify FIX's input/output contract; the HIGH file ends mid-sentence; ONBOARD EXTERNAL SYSTEM's internal steps aren't defined), the subagent does **not** attempt to answer the question or ask the user — it logs the question in its "questions surfaced" return list and proceeds with whatever it can complete autonomously. Partial completion is preferred over blocking.
+4. **Main session aggregates the question lists** from all 4 subagents into a single batch. Compressed format, propose-then-confirm where possible (per Q12).
+5. **User answers the batch** (typically 3–6 questions across all 4 files; compressed reply welcome).
+6. **Fix-up pass.** Main session records new decisions in the Decisions section, then either applies the fix-ups inline (small) or dispatches a second parallel round of subagents (large). Per-item commits happen after fix-ups land — one commit per brainstorm file (per Q11).
+7. **Then surface `/clear` + `/execute-plan`** for Item 6 (the cross-check walk, which is a single-agent verification step after all four brainstorms are refined).
+
+Items 6–10 stay sequential (Items 6 verifies B.1–B.4 output; Items 7–9 are Phase C YAML migration with each item depending on the previous; Item 10 is a single Phase D handoff). No parallelism opportunity there.
+
 2. - [ ] **Phase B.1 — Refine LOW brainstorm.** Apply Q1 (FIX primitive), Q2 (post-approve symmetry), Q3 (APPROVE NO-branch), Q4 (terminology) to `plans/ideas/1-bpmn-refactor-low-level.md`. Cross-check against any LOW-affecting existing diagrams. Commit.
     **Done when:** the file reflects every LOW decision; no contradictions vs Decisions.
 
