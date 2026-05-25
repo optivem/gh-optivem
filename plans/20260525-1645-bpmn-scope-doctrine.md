@@ -50,41 +50,48 @@ Q-numbering continues from the parent design plan's Q-series. Q40–Q46 resolved
 
 ---
 
-### Q47 — Invocation-context scope inheritance for `fix-*` (and other MID tasks?)  *(DOCTRINE — mechanism, deferred)*
-
-**⏳ Deferred** — Captured during refinement of Q44. Resolving requires a parallel reconsideration of Q1 in the parent plan (LOW `fix` single-attempt, no recursion). Until Q1 is re-opened, Q44 = A holds.
-
-**Context.** Q44 pinned `fix-*` MID-task scope as the 9-layer union of all writable layers. During refinement, an alternative model was proposed: **`fix-*` scope is a function of how it was invoked**, not a hardcoded union. Specifically:
-
-- When `fix-*` is invoked via **`execute-agent`** (structured BPMN flow, called from a parent agent context): scope = inherit the parent's scope.
-- When `fix-*` is invoked via **`execute-command`** (ad-hoc, no parent agent context): scope = wide / all layers (current Q44 default).
-
-**Why this is appealing.**
-- Least-privilege envelope on the structured-flow path (most common case).
-- Recognizes `execute-command` invocations have no narrower context to inherit, so wide is correct there.
-- Avoids the "future reviewer narrows the union" risk Q44 is trying to prevent — no hardcoded union to narrow.
-
-**Why it doesn't dominate Q44 = A as-is.**
-1. **Cross-layer root-cause problem.** When fix is invoked from CT-RED-DSL-CORE (scope `[dsl_core, external_system_driver_port]`) but the actual bug is in `system_path`, inherited-narrow scope locks fix out of the layer it needs. The structured-flow path — the *common* case — becomes broken by construction.
-2. **Q1 is load-bearing.** Q1 locked single-attempt, no recursion. Under inherited-narrow scope, fix has no escalation path. Cross-layer bugs would just fail. Narrow inheritance is only viable if Q1 also admits escalation.
-3. **Mechanism cost.** Phase C YAML needs to express both scope-as-function-of-invocation AND dispatch on invocation primitive type (`execute-agent` vs `execute-command`). Per `feedback_no_deferred_mechanism`, scope is pinned per phase, not computed per invocation pattern.
-4. **`execute-command` rare.** Designing for the escape-hatch invocation pattern provides no win on the primary (structured-flow) path.
-
-**Required prerequisite if reopened.** A Q1 revisit: should LOW `fix` admit escalation (e.g., "tried with narrow scope, failed, re-invoke with wider scope")? If Q1 stays "single attempt, no recursion," Q47's narrow-inheritance proposal is structurally incoherent and Q44 = A is the only consistent choice.
-
-**Resolution.** Deferred until Q1 is re-examined. If/when Q1 admits escalation, Q47 becomes resolvable and may supersede Q44.
-
----
-
 ## Resolution order
 
-Only Q40 remains actionable; Q47 is deferred indefinitely.
+Only Q40 remains actionable.
 
 1. **Q40** (snake → kebab rename) — bounded find/replace once the rename map is locked. Best done in a fresh `/clear`-ed session due to surface count (~6 file edits + test fixtures + prompt frontmatter + brainstorm Scopes blocks). Sequence after `plans/20260525-1659-bpmn-acceptance-test-rename.md` (Q-new-6) and `plans/20260525-1710-bpmn-name-consistency-audit.md` (Q45 C) — both leave Q40's surfaces unchanged but may rewrite adjacent text; doing Q40 last avoids re-baselining.
 
 ## Items
 
-- **Q40:** ~6 file-edit items + a fixture-test pass; bounded find/replace once the rename map is locked. Author the per-file items via `/refine-plan` at the start of the fresh session.
+**Rename map** (snake → kebab):
+
+| Old (snake) | New (kebab) | Family |
+|---|---|---|
+| `driver_port` | `driver-port` | B |
+| `driver_adapter` | `driver-adapter` | B |
+| `external_system_driver_port` | `external-system-driver-port` | B |
+| `external_system_driver_adapter` | `external-system-driver-adapter` | B |
+| `at_test` | `at-test` | B |
+| `dsl_port` | `dsl-port` | B |
+| `dsl_core` | `dsl-core` | B |
+| `ct_test` | `ct-test` | B |
+| `system_path` | `system-path` | A |
+
+**Per-surface edit items** (execute in order):
+
+1. **`internal/projectconfig/paths_defaults.go`** — rename the 8 Family B keys in `CanonicalPathKeys()` and the `system_path` constant in Family A. `pathStems()` has no string change but its iteration tests need fixture updates (handled in item 6). For `ExternalDriverKeyRenames`: leave the existing `external_driver_port` → `external_system_driver_port` map intact — it's a separate concern from Q40, and per `feedback_teaching_repo_no_legacy` no parallel snake→kebab migrate map is needed (teachers regenerate gh-optivem.yaml).
+
+2. **`internal/atdd/phase-scopes.yaml`** — rewrite all phase entries (22 phases × 2-3 keys). Mechanical find/replace using the rename map.
+
+3. **`internal/projectconfig/config.go`** — Rule 22a validator strings: error messages and canonical-key list reference. Mechanical find/replace.
+
+4. **`internal/projectconfig/path-keys.md`** — doctrine doc text rewrite. In-prose key references all snake → kebab.
+
+5. **Prompt frontmatter** — grep `internal/assets/runtime/prompts/atdd/*.md` for `scope:` blocks and any in-prose Family B references; rewrite. (May be zero hits if prompts use phase ids instead of layer keys directly — confirm during /execute-plan.)
+
+6. **Test fixtures** — update string fixtures in:
+   - `internal/projectconfig/config_test.go`
+   - `internal/projectconfig/paths_defaults_test.go`
+   - `internal/atdd/phase_scopes_test.go`
+
+7. **MID brainstorm** — `plans/ideas/2-bpmn-refactor-mid-level.md` Scopes blocks rewrite snake → kebab. LOW/HIGH/CYCLE/TOP brainstorms have no Scopes blocks; skip.
+
+8. **Full test sweep** — `scripts/test.sh` (or `go test -p 2 ./...`; per memory `feedback_go_test_windows` never run unbounded `go test ./...`). Verify nothing flips on the iteration-order shift in `pathStems()`.
 
 ## Cross-references
 
@@ -94,4 +101,3 @@ Only Q40 remains actionable; Q47 is deferred indefinitely.
 - Spawned by Q45 C: `plans/20260525-1710-bpmn-name-consistency-audit.md`
 - Memory `feedback_substitutable_paths_in_docs` — path scopes use Family B placeholders, never prose.
 - Memory `feedback_teaching_repo_no_legacy` — Q40 doesn't need a migrate-relocation pass; teachers regenerate.
-- Memory `feedback_no_deferred_mechanism` — Q47 reasoning: scope is pinned per phase, not computed per invocation pattern.
