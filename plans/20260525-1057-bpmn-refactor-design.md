@@ -1,5 +1,7 @@
 # BPMN four-level refactor — design plan
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-25T10:17:05Z`
+
 > **Working style: token-efficient.** Execute this plan in the cheapest form that still produces a quality result. If the user proposes a workflow that burns tokens unnecessarily (e.g., asking 8 questions individually via `AskUserQuestion` when 8 pre-drafted recommendations could be confirmed in one batch), **surface the cheaper alternative and let the user choose** — don't silently follow the costly path. The user has explicitly invited this pushback (memory: `feedback_flag_non_token_efficient`).
 
 End-state-first: lock the design **before** drawing diagrams; the existing diagram generator (`gh optivem process show`) handles the drawing, so this plan never hand-draws Mermaid.
@@ -95,9 +97,6 @@ Items 2–5 each refine a different brainstorm file (LOW / MID / HIGH / PEAK) wi
 7. **Then surface `/clear` + `/execute-plan`** for Item 6 (the cross-check walk, which is a single-agent verification step after all four brainstorms are refined).
 
 Items 6–10 stay sequential (Items 6 verifies B.1–B.4 output; Items 7–9 are Phase C YAML migration with each item depending on the previous; Item 10 is a single Phase D handoff). No parallelism opportunity there.
-
-2. - [ ] **Phase B.1 — Refine LOW brainstorm.** Apply Q1 (FIX primitive), Q2 (post-approve symmetry), Q3 (APPROVE NO-branch), Q4 (terminology) to `plans/ideas/1-bpmn-refactor-low-level.md`. Cross-check against any LOW-affecting existing diagrams. Commit.
-    **Done when:** the file reflects every LOW decision; no contradictions vs Decisions.
 
 3. - [ ] **Phase B.2 — Refine MID brainstorm.** Apply Q5 (Run Tests granularity), Q4 (rename "inherits" → "calls"), Q13 (contract format if it changes how MID describes tasks) to `plans/ideas/2-bpmn-refactor-mid-level.md`. Cross-check diagrams 5 (run-cycle), 11 (commit), 15 (compile). Commit.
 
@@ -435,6 +434,9 @@ Pinning the convention now avoids rework in Items 2–5 (every brainstorm doc ge
 
 ### LOW
 - **Q1 — Fix-loop recursion bounds:** ✓ **A: FIX as separate primitive** (4th low-level primitive, single attempt, terminates regardless of outcome).
+- **Q1.a — FIX INPUT shape (Phase B.1 follow-up):** ✓ **A: single `Failure Context` payload.** Callers (EXECUTE AGENT, EXECUTE COMMAND) populate primitive-appropriate data — validation errors, missing/invalid outputs, scope-diff violations (agent) or command name + input params + stderr/exit code (command). Encoding deferred to Phase C YAML.
+- **Q1.b — FIX approvals (Phase B.1 follow-up):** ✓ **A: PRE only.** POST is structurally meaningless — FIX is bounded to a single attempt and the caller's own validation re-runs after FIX returns; no FIX-POST loopback to gate. PRE is non-negotiable because FIX performs destructive ops (file edits, command runs).
+- **Q1.c — FIX validates own output (Phase B.1 follow-up):** ✓ **A: no.** Caller owns re-validation (EXECUTE AGENT step 4 re-runs Validate Output & Scope after FIX returns). DRY — duplicating validation in FIX would require the same `outputs:`/`scopes:` to live in two YAML places.
 - **Q2 — EXECUTE COMMAND post-approve symmetry:** ✓ **C: keep asymmetric** (commands have machine-checkable success; agents produce content needing human review).
 - **Q3 — APPROVE NO-branch:** ✓ **A: APPROVE stays exit-only; caller owns NO branch.** **Action for Phase C:** when encoding APPROVE in `process-flow.yaml`, add a `TODO:` comment mentioning options B (parameterized NO-action) and C (two distinct primitives APPROVE-OR-EXIT, APPROVE-OR-RETRY) for possible revisit.
 - **Q4 — Terminology:** ✓ **A: "calls"** (matches BPMN call-activity semantics).
