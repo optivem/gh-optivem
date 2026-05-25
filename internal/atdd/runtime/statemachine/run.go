@@ -137,11 +137,21 @@ func (e *Engine) wrapGateway(binding string, fn NodeFn) NodeFn {
 // `params: {change_type: ${change_type}}` propagates the parent's resolved
 // value rather than the literal placeholder. ExpandParams is idempotent on
 // strings without ${…} placeholders, so leaf values pass through unchanged.
+//
+// The `process:` field itself is also template-expanded against the caller's
+// scope, mirroring the pattern already used for `action:` / `agent:` (run.go
+// lines above) — so a call site like `process: ${agent-action}` resolves the
+// sub-process name at dispatch time from caller-supplied params. Static names
+// (the common case) pass through unchanged because ExpandParams is idempotent.
 func (e *Engine) wrapCallActivity(raw RawNode) NodeFn {
 	return func(ctx *Context) Outcome {
-		sub, ok := e.Processes[raw.Process]
+		processName := ExpandParams(raw.Process, ctx.Params)
+		sub, ok := e.Processes[processName]
 		if !ok {
-			return Outcome{Err: fmt.Errorf("call_activity references unknown process %q", raw.Process)}
+			if processName != raw.Process {
+				return Outcome{Err: fmt.Errorf("call_activity references unknown process %q (from template %q)", processName, raw.Process)}
+			}
+			return Outcome{Err: fmt.Errorf("call_activity references unknown process %q", processName)}
 		}
 		// Push params; restore on exit. Caller-scoped state is preserved so
 		// gateway results from outer processes remain visible to inner gateways

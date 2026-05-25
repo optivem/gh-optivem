@@ -1,6 +1,7 @@
 package statemachine
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -200,5 +201,146 @@ processes:
 	}
 	if called != "do_thing_b" {
 		t.Errorf("service_task action template resolved to %q, want %q", called, "do_thing_b")
+	}
+}
+
+// TestCallActivity_ResolvesProcessTemplate locks in dispatch-time process
+// lookup for templated `process: ${name}` fields on call_activity. The
+// five-level BPMN refactor (plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md
+// Item 2) needs this so a HIGH orchestration like `implement-and-verify-system`
+// can call a parameterised sub-process (`process: ${agent-action}`) and have
+// it resolve at dispatch time to the concrete cycle the caller picked.
+// Mirrors the existing ${action} / ${agent} template support on service_task /
+// user_task.
+//
+// The structure mirrors real usage: outer is a CYCLE that calls a HIGH with
+// `params: {agent_action: inner_b}`; the HIGH (`middle`) has a call_activity
+// whose `process: ${agent_action}` resolves at dispatch time using the param
+// the CYCLE pushed. (Templated `process:` cannot read params declared on the
+// same call_activity — those haven't been pushed yet at resolution time.)
+func TestCallActivity_ResolvesProcessTemplate(t *testing.T) {
+	const yaml = `
+processes:
+  outer:
+    start: CALL_MIDDLE
+    nodes:
+      - id: CALL_MIDDLE
+        type: call_activity
+        process: middle
+        params:
+          agent_action: inner_b
+      - id: OUTER_END
+        type: end_event
+    sequence_flows:
+      - {from: CALL_MIDDLE, to: OUTER_END}
+
+  middle:
+    start: CALL_CHOSEN
+    nodes:
+      - id: CALL_CHOSEN
+        type: call_activity
+        process: ${agent_action}
+      - id: MIDDLE_END
+        type: end_event
+    sequence_flows:
+      - {from: CALL_CHOSEN, to: MIDDLE_END}
+
+  inner_a:
+    start: ACT_A
+    nodes:
+      - id: ACT_A
+        type: service_task
+        action: mark_a
+      - id: A_END
+        type: end_event
+    sequence_flows:
+      - {from: ACT_A, to: A_END}
+
+  inner_b:
+    start: ACT_B
+    nodes:
+      - id: ACT_B
+        type: service_task
+        action: mark_b
+      - id: B_END
+        type: end_event
+    sequence_flows:
+      - {from: ACT_B, to: B_END}
+`
+	eng, err := LoadBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+
+	var visited string
+	eng.ActionFn = func(name string) NodeFn {
+		return func(ctx *Context) Outcome {
+			if name == "mark_a" || name == "mark_b" {
+				visited = name
+			}
+			return Outcome{}
+		}
+	}
+	eng.AgentFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	eng.GateFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+	if err := eng.RunProcess("outer", NewContext()); err != nil {
+		t.Fatalf("RunProcess outer: %v", err)
+	}
+	if visited != "mark_b" {
+		t.Errorf("call_activity process template resolved to wrong sub-process; saw %q action fire, want %q (i.e. inner_b)", visited, "mark_b")
+	}
+}
+
+// TestCallActivity_ProcessTemplate_UnknownTarget locks in the error path:
+// when a templated `process: ${name}` expands to a sub-process the engine
+// doesn't know about, the dispatch-time error names both the resolved value
+// and the original template so the YAML author can trace it back.
+func TestCallActivity_ProcessTemplate_UnknownTarget(t *testing.T) {
+	const yaml = `
+processes:
+  outer:
+    start: CALL_MIDDLE
+    nodes:
+      - id: CALL_MIDDLE
+        type: call_activity
+        process: middle
+        params:
+          agent_action: nonexistent
+      - id: OUTER_END
+        type: end_event
+    sequence_flows:
+      - {from: CALL_MIDDLE, to: OUTER_END}
+
+  middle:
+    start: CALL_CHOSEN
+    nodes:
+      - id: CALL_CHOSEN
+        type: call_activity
+        process: ${agent_action}
+      - id: MIDDLE_END
+        type: end_event
+    sequence_flows:
+      - {from: CALL_CHOSEN, to: MIDDLE_END}
+`
+	eng, err := LoadBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+	eng.ActionFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	eng.AgentFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	eng.GateFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+	err = eng.RunProcess("outer", NewContext())
+	if err == nil {
+		t.Fatalf("RunProcess succeeded; want unknown-process error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "nonexistent") || !strings.Contains(msg, "${agent_action}") {
+		t.Errorf("error %q should name both the resolved value %q and the original template %q", msg, "nonexistent", "${agent_action}")
 	}
 }
