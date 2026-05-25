@@ -9,8 +9,7 @@ Per-ticket sub-processes selected by the classification gateway in `implement-ti
 **Inputs:**
 - ticket
 
-**Outputs:**
-- refined-ticket (with acceptance criteria)
+**Outputs:** NONE
 
 **Steps:**
 1. `refine-acceptance-criteria` (ticket: `<input>`)
@@ -20,9 +19,7 @@ Per-ticket sub-processes selected by the classification gateway in `implement-ti
 **Inputs:**
 - external-system-description
 
-**Outputs:**
-- documented-external-system
-- reachable-external-system
+**Outputs:** NONE
 
 **Steps:**
 1. Identify external system
@@ -35,8 +32,7 @@ Per-ticket sub-processes selected by the classification gateway in `implement-ti
 **Inputs:**
 - acceptance-criteria
 
-**Outputs:**
-- modified-system-and-tests
+**Outputs:** NONE
 
 **Steps:**
 1. `write-and-verify-tests-fail` (acceptance-criteria: `<input>`)
@@ -52,8 +48,7 @@ Per-ticket sub-processes selected by the classification gateway in `implement-ti
 **Inputs:**
 - acceptance-criteria
 
-**Outputs:**
-- new-tests
+**Outputs:** NONE
 
 **Steps:**
 1. `write-and-verify-tests-pass` (acceptance-criteria: `<input>`)
@@ -63,8 +58,7 @@ Per-ticket sub-processes selected by the classification gateway in `implement-ti
 **Inputs:**
 - redesign-checklist (optional — opportunistic mode supplies none)
 
-**Outputs:**
-- restructured-system
+**Outputs:** NONE
 
 **Steps:**
 1. Implement driver adapters:
@@ -77,8 +71,7 @@ Per-ticket sub-processes selected by the classification gateway in `implement-ti
 **Inputs:**
 - refactor-checklist (optional — opportunistic mode supplies none)
 
-**Outputs:**
-- refactored-system
+**Outputs:** NONE
 
 **Steps:**
 1. `implement-and-verify-system` (agent-action: refactor-system)
@@ -88,8 +81,7 @@ Per-ticket sub-processes selected by the classification gateway in `implement-ti
 **Inputs:**
 - refactor-checklist (optional — opportunistic mode supplies none)
 
-**Outputs:**
-- refactored-tests
+**Outputs:** NONE
 
 **Steps:**
 1. `refactor-and-verify-tests`

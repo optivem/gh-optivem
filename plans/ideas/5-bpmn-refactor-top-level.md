@@ -7,8 +7,7 @@
 **Inputs:**
 - ticket — any type; flagged as not-yet-ready.
 
-**Outputs:**
-- ticket-state: `READY`
+**Outputs:** NONE
 
 **Steps:**
 1. `update-ticket` (ticket: `<input>`, target-state: `IN REFINEMENT`)
@@ -20,8 +19,7 @@
 **Inputs:**
 - ticket — `READY` state. Required metadata: ticket type (`story` / `bug` / `task`), and — for `task` only — a subtype label (e.g., `cover-legacy`, `refactor-system`, `redesign-system`, `refactor-tests`, `onboard-external-system`).
 
-**Outputs:**
-- ticket-state: `IN ACCEPTANCE`
+**Outputs:** NONE
 
 **Steps:**
 1. `update-ticket` (ticket: `<input>`, target-state: `IN PROGRESS`)
