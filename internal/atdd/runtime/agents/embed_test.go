@@ -142,11 +142,11 @@ func TestParseTuningFrontmatter_Accepts(t *testing.T) {
 	}
 }
 
-func TestFixKindPromptsExist(t *testing.T) {
+func TestFixKindAgentsExist(t *testing.T) {
 	// Pins the closed set of fix-* failure-kinds the YAML's
 	// `task-name: "fix-${failure-kind}"` placeholder (process-flow.yaml,
 	// `fix` MID) resolves against. Every kind here must have a matching
-	// prompt embedded under internal/assets/runtime/prompts/atdd/.
+	// agent definition embedded under internal/assets/runtime/agents/atdd/.
 	//
 	// The bindings that emit `failure-kind` are wired —
 	// `actions.runCommand` (command-failed) and

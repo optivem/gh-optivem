@@ -4,21 +4,14 @@
 //
 // The driver is deliberately thin — the heavy lifting lives in the runtime
 // sub-packages (statemachine, gates, actions, verify, override, tracker,
-// release, clauderun). This file's job is to compose them and
-// expose two run modes:
-//
-//   - Run with Options.IssueNum > 0 → implement-ticket mode: pre-resolve the
-//     project item for the given issue, seed Context, and skip the picker by
-//     starting the main process at IMPLEMENT_TICKET (the call-activity that
-//     dispatches to the implement-ticket sub-process).
-//   - Run with Options.IssueNum == 0 → manage-project mode: the YAML's main
-//     process runs from START, picking the top Ready ticket from the project
-//     board.
+// release, clauderun). This file's job is to compose them and run the
+// pipeline against a specific ticket: pre-resolve the project item for
+// Options.IssueNum, seed Context, then walk the main process from START.
 //
 // Agent dispatch (v2): every user-task whose `agent:` value is something
 // other than `human` shells out to the `claude` CLI via the clauderun
-// package. clauderun reads the embedded per-agent prompt (from
-// internal/atdd/runtime/agents/prompts/), substitutes ${name} placeholders
+// package. clauderun reads the embedded per-agent definition (from
+// internal/assets/runtime/agents/atdd/), substitutes ${name} placeholders
 // from the live Context, and hands the rendered string to `claude -p` as
 // the agent's full one-shot input — there is no parent-claude harness or
 // Task-tool indirection. Success is detected by HEAD diff (a fresh commit
@@ -74,9 +67,8 @@ type Options struct {
 	// ProcessName is the entry process. Empty → DefaultProcessName.
 	ProcessName string
 
-	// IssueNum, when > 0, makes `gh optivem implement` skip the picker
-	// (PICK_TOP_READY) and pre-resolve the project item for the given issue.
-	// Zero (the default) keeps the picker in the flow.
+	// IssueNum is the issue to implement. The driver pre-resolves the
+	// project item for this issue before walking the main process.
 	IssueNum int
 
 	// ProjectURL overrides config-based project resolution. Optional; when
@@ -193,8 +185,7 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 
-	process, ok := eng.Processes[opts.ProcessName]
-	if !ok {
+	if _, ok := eng.Processes[opts.ProcessName]; !ok {
 		source := opts.YAMLPath
 		if source == "" {
 			source = "embedded"
@@ -304,14 +295,6 @@ func Run(ctx context.Context, opts Options) error {
 	if opts.IssueNum > 0 {
 		if err := preResolveIssue(ctx, opts, sCtx, cfg); err != nil {
 			return fmt.Errorf("driver: pre-resolve issue #%d: %w", opts.IssueNum, err)
-		}
-		// Skip START → PICK_TOP_READY when running main. The pre-resolution
-		// has already populated everything PICK_TOP_READY would have set;
-		// IMPLEMENT_TICKET is the next node downstream — a call-activity
-		// that dispatches to the implement-ticket sub-process (which starts
-		// at MARK_IN_PROGRESS, matching the old behaviour).
-		if opts.ProcessName == DefaultProcessName {
-			process.Start = "IMPLEMENT_TICKET"
 		}
 	}
 
@@ -578,9 +561,10 @@ func (o Options) withDefaults() Options {
 	return o
 }
 
-// preResolveIssue populates Context with everything PICK_TOP_READY would
-// have set, by opening a tracker via factory.Open and calling
-// Tracker.FindIssue. Called once at driver startup in implement-ticket mode.
+// preResolveIssue populates Context with the issue-resolution keys
+// downstream actions consume (issue_num, issue_url, issue_title,
+// issue_handle), by opening a tracker via factory.Open and calling
+// Tracker.FindIssue. Called once at driver startup.
 // cfg is the pre-loaded project config (may be nil if no gh-optivem.yaml and
 // no --config); supplied by Run so the load happens once per driver
 // invocation. opts.ProjectURL, when non-empty, overrides cfg.Project.URL
@@ -623,8 +607,8 @@ func writeResolvedIssue(sCtx *statemachine.Context, issue tracker.Issue) {
 // agent that has an embedded prompt (filesystem walk via agents.Names).
 // The substantive prompt-and-pause behaviour is layered on after Bind by
 // wrapAgentDispatchers, which has access to per-node RawNode metadata
-// (description, agent). Adding a new agent is now: drop a prompt
-// under internal/atdd/runtime/agents/prompts/, recompile.
+// (description, agent). Adding a new agent is now: drop an agent
+// definition under internal/assets/runtime/agents/atdd/, recompile.
 func registerAgentDispatchers(r *agents.Registry) {
 	noop := func(ctx *statemachine.Context) statemachine.Outcome {
 		return statemachine.Outcome{}
@@ -769,8 +753,8 @@ func newManualAgentDispatcher(opts Options, raw statemachine.RawNode, inner stat
 
 // newClaudeRunDispatcher returns the v2 dispatcher. It reads the override
 // hints written to the Context state by override.Wrap, pulls the ticket
-// fields populated by preResolveIssue / PICK_TOP_READY, and hands the lot
-// to clauderun.Dispatch. The agent does not commit; the wrapping CLI
+// fields populated by preResolveIssue, and hands the lot to
+// clauderun.Dispatch. The agent does not commit; the wrapping CLI
 // stages and commits the working-tree delta after dispatch returns.
 //
 // rs supplies the per-dispatch PromptLogPath. nil rs (only happens in

@@ -12,7 +12,7 @@ ${scope_block}
 
 ### Parameters
 
-- `failing-task-name` — the writing-agent task whose diff violated scopes (e.g. `write-acceptance-tests`, `implement-system`). Its prompt lives at `internal/assets/runtime/prompts/atdd/<failing-task-name>.md` and the call-site's `scopes:` contract lives in `internal/atdd/runtime/statemachine/process-flow.yaml`. Read the prompt to confirm what the agent was supposed to touch.
+- `failing-task-name` — the writing-agent task whose diff violated scopes (e.g. `write-acceptance-tests`, `implement-system`). Its prompt lives at `internal/assets/runtime/agents/atdd/<failing-task-name>.md` and the call-site's `scopes:` contract lives in `internal/atdd/runtime/statemachine/process-flow.yaml`. Read the prompt to confirm what the agent was supposed to touch.
 
   ```
   ${failing-task-name}
@@ -34,7 +34,7 @@ Note: the `### Scope` block above carries the originating task's scope. The `${v
 
 ## Steps
 
-1. **Read the failing agent's prompt and the call-site's scopes.** Open `internal/assets/runtime/prompts/atdd/${failing-task-name}.md` and the call-activity in `process-flow.yaml` that dispatched it. Note which Family B layer tokens the call-site listed in `scopes:` and what each maps to in `gh-optivem.yaml`'s `paths:` block.
+1. **Read the failing agent's prompt and the call-site's scopes.** Open `internal/assets/runtime/agents/atdd/${failing-task-name}.md` and the call-activity in `process-flow.yaml` that dispatched it. Note which Family B layer tokens the call-site listed in `scopes:` and what each maps to in `gh-optivem.yaml`'s `paths:` block.
 
 2. **Classify each violating path.** For every entry in `${violating-paths}`, read the diff (`git diff <path>`) and decide:
    - **Legitimate edit, scopes too narrow** — the change is on the agent's contract path (e.g. an `implement-system` agent legitimately touched a layer the call-site forgot to list). The fix is to widen the call-site's `scopes:` in `process-flow.yaml`; the diff itself stands.

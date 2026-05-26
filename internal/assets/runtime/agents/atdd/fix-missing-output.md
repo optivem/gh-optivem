@@ -12,7 +12,7 @@ ${scope_block}
 
 ### Parameters
 
-- `failing-task-name` — the writing-agent task whose run produced incomplete outputs (e.g. `write-acceptance-tests`, `implement-dsl`). Its prompt lives at `internal/assets/runtime/prompts/atdd/<failing-task-name>.md` and its `outputs:` contract lives at the call-site in `internal/atdd/runtime/statemachine/process-flow.yaml`. Read the prompt to confirm what the agent was supposed to do and what shape the `outputs:` block was meant to take.
+- `failing-task-name` — the writing-agent task whose run produced incomplete outputs (e.g. `write-acceptance-tests`, `implement-dsl`). Its prompt lives at `internal/assets/runtime/agents/atdd/<failing-task-name>.md` and its `outputs:` contract lives at the call-site in `internal/atdd/runtime/statemachine/process-flow.yaml`. Read the prompt to confirm what the agent was supposed to do and what shape the `outputs:` block was meant to take.
 
   ```
   ${failing-task-name}
@@ -32,7 +32,7 @@ ${scope_block}
 
 ## Steps
 
-1. **Read the failing agent's prompt.** Open `internal/assets/runtime/prompts/atdd/${failing-task-name}.md` and locate the section that explains the `outputs:` block — agents are instructed to emit a tail YAML block with the call-site's declared keys. Confirm which keys the call-site expected (the `${missing-outputs}` list) and what each one was supposed to signal.
+1. **Read the failing agent's prompt.** Open `internal/assets/runtime/agents/atdd/${failing-task-name}.md` and locate the section that explains the `outputs:` block — agents are instructed to emit a tail YAML block with the call-site's declared keys. Confirm which keys the call-site expected (the `${missing-outputs}` list) and what each one was supposed to signal.
 
 2. **Inspect the diff.** Walk `${changed_files}` against the `### Scope` write set. For each missing key, decide whether the corresponding work landed in the diff:
    - **Work landed, YAML block missing or malformed** — the agent did the work but never wrote the structured tail block (or wrote it with the wrong key names, or wrote prose instead of YAML). The fix is to re-run the agent with a reminder to emit the tail YAML block; no source edit is needed.

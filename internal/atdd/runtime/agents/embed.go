@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	promptsDir     = "runtime/prompts/atdd"
+	agentsDir      = "runtime/agents/atdd"
 	preamblePath   = "runtime/shared/preamble.md"
 	scopePath      = "runtime/shared/scope.md"
 	sessionEndPath = "runtime/shared/session-end.md"
@@ -72,7 +72,7 @@ type Tuning struct {
 // the YAML's ExpandParams dialect — callers run statemachine.ExpandParams
 // against the live ticket context before passing the result to `claude -p`.
 func Prompt(name string) (string, error) {
-	data, err := assets.FS.ReadFile(promptsDir + "/" + name + ".md")
+	data, err := assets.FS.ReadFile(agentsDir + "/" + name + ".md")
 	if err != nil {
 		return "", fmt.Errorf("agents: no embedded prompt for %q", name)
 	}
@@ -98,7 +98,7 @@ func Prompt(name string) (string, error) {
 // on a mechanical-scaffolding agent is exactly the cost-spike class
 // this whole mechanism was added to prevent.
 func LoadTuning(name string) (Tuning, error) {
-	data, err := assets.FS.ReadFile(promptsDir + "/" + name + ".md")
+	data, err := assets.FS.ReadFile(agentsDir + "/" + name + ".md")
 	if err != nil {
 		return Tuning{}, fmt.Errorf("agents: no embedded prompt for %q", name)
 	}
@@ -191,15 +191,15 @@ func indexLine(s, target string) int {
 // Names returns every embedded agent name, sorted. The driver uses this to
 // register a dispatcher per embedded prompt at startup, replacing the v1
 // hand-maintained agentNames slice. Adding a new agent is now: drop the
-// prompt under internal/assets/runtime/prompts/atdd/, recompile.
+// agent definition under internal/assets/runtime/agents/atdd/, recompile.
 func Names() []string {
-	entries, err := assets.FS.ReadDir(promptsDir)
+	entries, err := assets.FS.ReadDir(agentsDir)
 	if err != nil {
 		// assets.FS is built from a //go:embed directive; ReadDir on a
 		// declared subtree cannot fail in a built binary. Panic surfaces a
 		// build/embed-config bug rather than letting an empty registry
 		// silently bind a YAML referencing valid agents.
-		panic("agents: read embedded " + promptsDir + ": " + err.Error())
+		panic("agents: read embedded " + agentsDir + ": " + err.Error())
 	}
 	names := make([]string, 0, len(entries))
 	for _, e := range entries {

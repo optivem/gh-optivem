@@ -97,8 +97,8 @@
 #     call-site passthrough param.
 #     Closed set of kinds:
 #       - `command-failed`           → fix-command-failed.md       (runCommand)
-#       - `missing-output`           → fix-missing-output.md       (validateOutputsAndScopes — prompt TBD, see plans/upcoming/)
-#       - `scope-diff`               → fix-scope-diff.md           (validateOutputsAndScopes — prompt TBD, see plans/upcoming/)
+#       - `missing-output`           → fix-missing-output.md       (validateOutputsAndScopes — agent TBD, see plans/upcoming/)
+#       - `scope-diff`               → fix-scope-diff.md           (validateOutputsAndScopes — agent TBD, see plans/upcoming/)
 #       - `unexpected-passing-tests` → fix-unexpected-passing-tests.md (legacy MID convention)
 #       - `unexpected-failing-tests` → fix-unexpected-failing-tests.md (legacy MID convention)
 #     The last two predate the β-convention — their MID-name carries the
@@ -131,12 +131,10 @@ processes:
   # Runtime bootstrap
   #
   # `main` is the runtime entry point invoked by `gh optivem implement`. It
-  # picks a ticket (board mode) or treats the operator-supplied ticket as
-  # pre-picked (specific-issue mode), then delegates to the TOP
-  # `implement-ticket` process. No domain logic lives here — `main` is the
-  # bridge between the CLI invocation surface and the five-level BPMN
-  # structure. Phase D removes `main` from YAML by moving the picker into
-  # the Go driver.
+  # treats the operator-supplied ticket as pre-picked and delegates to the
+  # TOP `implement-ticket` process. No domain logic lives here — `main` is
+  # the bridge between the CLI invocation surface and the five-level BPMN
+  # structure.
   main:
     name: "Main"
     start: START
@@ -144,11 +142,6 @@ processes:
       - id: START
         type: start-event
         name: "Ticket Ready"
-
-      - id: PICK_TOP_READY
-        type: service-task
-        action: pick-top-ready
-        name: "Pick top READY ticket"
 
       - id: IMPLEMENT_TICKET
         type: call-activity
@@ -160,9 +153,7 @@ processes:
         name: "Ticket In Acceptance"
 
     sequence-flows:
-      - {from: START,            to: PICK_TOP_READY,   when: "mode == board"}
-      - {from: START,            to: IMPLEMENT_TICKET, when: "mode == specific-issue"}
-      - {from: PICK_TOP_READY,   to: IMPLEMENT_TICKET}
+      - {from: START,            to: IMPLEMENT_TICKET}
       - {from: IMPLEMENT_TICKET, to: END}
 
   # Backlog grooming entry. Marks the ticket IN REFINEMENT, runs the
@@ -1743,7 +1734,7 @@ processes:
   # Wraps an agent run with approval + per-phase snapshot + validation +
   # optional fix recovery + post-approval. The agent name is the caller's
   # `task-name` param, forwarded into the templated `agent: ${task-name}`
-  # on RUN_AGENT. Prompt path is derived from task-name per Q28.a
+  # on RUN_AGENT. Agent definition path is derived from task-name per Q28.a
   # (`task-name + ".md"`).
   #
   # SNAPSHOT_WORKING_TREE runs between approval and dispatch so the

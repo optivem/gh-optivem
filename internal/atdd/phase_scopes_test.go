@@ -205,7 +205,7 @@ func TestPhaseScopes_NodeScopeFieldShape(t *testing.T) {
 }
 
 // TestPromptFrontmatter_NoScopeField rejects any `scope:` field in any
-// prompt's YAML frontmatter under internal/assets/runtime/prompts/atdd/.
+// prompt's YAML frontmatter under internal/assets/runtime/agents/atdd/.
 // The single SSoT for per-phase scope is the EXECUTE_AGENT node in
 // process-flow.yaml (plan 20260526-1448 Item 9); reintroducing
 // `scope:` on the prompt body would re-fork the SSoT.
@@ -332,7 +332,7 @@ func findPlaceholderRefs(body string) []string {
 // frontmatter). Fatals on a missing prompt.
 func readPromptBody(t *testing.T, name string) string {
 	t.Helper()
-	data, err := assets.FS.ReadFile("runtime/prompts/atdd/" + name + ".md")
+	data, err := assets.FS.ReadFile("runtime/agents/atdd/" + name + ".md")
 	if err != nil {
 		t.Fatalf("read embedded prompt %q: %v", name, err)
 	}
@@ -356,7 +356,7 @@ func readPromptBody(t *testing.T, name string) string {
 // expected prompt is unreadable.
 func readPromptFrontmatter(t *testing.T, name string) string {
 	t.Helper()
-	data, err := assets.FS.ReadFile("runtime/prompts/atdd/" + name + ".md")
+	data, err := assets.FS.ReadFile("runtime/agents/atdd/" + name + ".md")
 	if err != nil {
 		t.Fatalf("read embedded prompt %q: %v", name, err)
 	}

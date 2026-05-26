@@ -2,8 +2,8 @@
 //
 // The tree is organized by delivery mechanism:
 //
-//   - runtime/prompts/    — fed to `claude -p` via argv, never written to
-//     disk in consumer repos. Per-phase prompts under runtime/prompts/atdd/.
+//   - runtime/agents/     — fed to `claude -p` via argv, never written to
+//     disk in consumer repos. Per-phase agent definitions under runtime/agents/atdd/.
 //   - runtime/shared/     — argv-injected preamble + session-end bookends.
 //   - runtime/references/ — synced to ~/.gh-optivem/references/ and
 //     materialized per-project to <repo>/.gh-optivem/references/ by

@@ -1,6 +1,6 @@
 // Package agents holds the user-task agent-dispatch registry. Every YAML
 // node of type `user-task` carries an `agent:` string identifying which
-// `.claude/agents/atdd/<name>.md` agent to dispatch (or `human` for STOP
+// `internal/assets/runtime/agents/atdd/<name>.md` agent to dispatch (or `human` for STOP
 // nodes that block on stdin without dispatching anything).
 //
 // Real dispatch implementations are added in Session 3 of the rollout plan
