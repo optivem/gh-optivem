@@ -425,6 +425,7 @@ processes:
         type: call-activity
         process: implement-and-verify-system
         params:
+          task-name: implement-system
           action: implement-system
         name: "Implement System"
         tdd-stage: green
@@ -495,6 +496,7 @@ processes:
         type: call-activity
         process: implement-and-verify-system
         params:
+          task-name: update-system
           action: update-system
         name: "Update System"
         tdd-stage: green
@@ -532,6 +534,7 @@ processes:
         type: call-activity
         process: implement-and-verify-system
         params:
+          task-name: update-system
           action: update-system
         name: "Update System"
         tdd-stage: green
@@ -555,6 +558,7 @@ processes:
         type: call-activity
         process: implement-and-verify-system
         params:
+          task-name: refactor-system
           action: refactor-system
         name: "Refactor System"
         tdd-stage: refactor
@@ -575,6 +579,8 @@ processes:
         process: refactor-and-verify-tests
         name: "Refactor and Verify Tests"
         tdd-stage: refactor
+        params:
+          task-name: refactor-tests
 
       - id: REFACTOR_TEST_STRUCTURE_END
         type: end-event
@@ -641,6 +647,14 @@ processes:
         process: write-and-verify-acceptance-test-code
         name: "Write and Verify Acceptance Test Code"
         params:
+          # Declares the originating writing-agent MID for this wrapper so
+          # every command-runner child (compile/verify/disable/commit) and
+          # any FIX dispatched on command-failure inherits it via the
+          # params-merge in wrapCallActivity. Without it, fix-* recovery
+          # in execute-command would resolve ${task-name} to the literal
+          # "${task-name}" and Engine.Scope would return empty, leaving
+          # ${scope_block} unfilled in the diagnoser prompt.
+          task-name: write-acceptance-tests
           acceptance-criteria: ${acceptance-criteria}
           expected-test-result: ${expected-test-result}
 
@@ -654,6 +668,7 @@ processes:
         process: implement-and-verify-dsl
         name: "Implement and Verify DSL"
         params:
+          task-name: implement-dsl
           expected-test-result: ${expected-test-result}
           tests: acceptance
 
@@ -667,6 +682,7 @@ processes:
         process: implement-and-verify-external-system-driver-adapters
         name: "Implement and Verify External-System Driver Adapters"
         params:
+          task-name: implement-external-system-driver-adapters
           expected-test-result: ${expected-test-result}
           tests: acceptance
 
@@ -680,6 +696,7 @@ processes:
         process: implement-and-verify-system-driver-adapters
         name: "Implement and Verify System Driver Adapters"
         params:
+          task-name: implement-system-driver-adapters
           expected-test-result: ${expected-test-result}
           tests: acceptance
 
@@ -781,6 +798,7 @@ processes:
         process: implement-test-layer
         name: "Implement DSL Layer"
         params:
+          task-name: implement-dsl
           action: implement-dsl
           expected-test-result: ${expected-test-result}
           tests: ${tests}
@@ -801,6 +819,7 @@ processes:
         process: implement-test-layer
         name: "Implement System Driver Adapter Layer"
         params:
+          task-name: implement-system-driver-adapters
           action: implement-system-driver-adapters
           expected-test-result: ${expected-test-result}
           tests: ${tests}
@@ -821,6 +840,7 @@ processes:
         process: implement-test-layer
         name: "Implement External-System Driver Adapter Layer"
         params:
+          task-name: implement-external-system-driver-adapters
           action: implement-external-system-driver-adapters
           expected-test-result: ${expected-test-result}
           tests: ${tests}
@@ -871,6 +891,7 @@ processes:
         process: implement-and-verify-dsl
         name: "Implement and Verify DSL"
         params:
+          task-name: implement-dsl
           expected-test-result: success
           tests: contract
 
@@ -884,6 +905,7 @@ processes:
         process: verify-tests-pass
         name: "Verify Contract Tests Pass Against the Real System"
         params:
+          task-name: implement-external-system-driver-adapters
           suite: contract-real
           test-names: ${test_names}
 
@@ -892,6 +914,7 @@ processes:
         process: verify-tests-fail
         name: "Verify Contract Tests Fail Against the Stub"
         params:
+          task-name: implement-external-system-driver-adapters
           suite: contract-stub
           test-names: ${test_names}
 
@@ -905,6 +928,7 @@ processes:
         process: verify-tests-pass
         name: "Verify Contract Tests Pass Against the Stub"
         params:
+          task-name: implement-external-system-stubs
           suite: contract-stub
           test-names: ${test_names}
 
@@ -1169,6 +1193,24 @@ processes:
   write-acceptance-tests:
     name: "Write Acceptance Tests"
     start: EXECUTE_AGENT
+    # Output contract — declared on the MID so the dispatcher can derive
+    # both the GH_OPTIVEM_OUTPUT_KEYS env var (write-time CLI allow-list)
+    # and the validate-outputs-and-scopes presence-check from one source.
+    # Optional keys are absence-tolerated. scope-exception-* ride the
+    # same channel; the scope_exception_requested gate consumes them
+    # from ctx.State after the run.
+    outputs:
+      - key: dsl-port-changed
+        type: bool
+      - key: test-names
+        type: string-list
+        optional: true
+      - key: scope-exception-files
+        type: string-list
+        optional: true
+      - key: scope-exception-reason
+        type: string
+        optional: true
     nodes:
       - id: EXECUTE_AGENT
         type: call-activity
@@ -1177,7 +1219,6 @@ processes:
         params:
           task-name: write-acceptance-tests
           agent: acceptance-test-writer
-          outputs: "dsl-port-changed"
         read:  [at-test, dsl-port]
         write: [at-test, dsl-port, dsl-core]
 
@@ -1192,6 +1233,18 @@ processes:
   write-contract-tests:
     name: "Write Contract Tests"
     start: EXECUTE_AGENT
+    outputs:
+      - key: dsl-port-changed
+        type: bool
+      - key: test-names
+        type: string-list
+        optional: true
+      - key: scope-exception-files
+        type: string-list
+        optional: true
+      - key: scope-exception-reason
+        type: string
+        optional: true
     nodes:
       - id: EXECUTE_AGENT
         type: call-activity
@@ -1200,7 +1253,6 @@ processes:
         params:
           task-name: write-contract-tests
           agent: contract-test-writer
-          outputs: "dsl-port-changed"
         read:  [ct-test, dsl-port]
         write: [ct-test, dsl-port, dsl-core]
 
@@ -1214,6 +1266,17 @@ processes:
   implement-dsl:
     name: "Implement DSL"
     start: EXECUTE_AGENT
+    outputs:
+      - key: system-driver-ports-changed
+        type: bool
+      - key: external-driver-ports-changed
+        type: bool
+      - key: scope-exception-files
+        type: string-list
+        optional: true
+      - key: scope-exception-reason
+        type: string
+        optional: true
     nodes:
       - id: EXECUTE_AGENT
         type: call-activity
@@ -1222,7 +1285,6 @@ processes:
         params:
           task-name: implement-dsl
           agent: dsl-implementer
-          outputs: "system-driver-ports-changed,external-driver-ports-changed"
         read:  [dsl-core, driver-port, external-system-driver-port]
         write: [dsl-core, driver-port, external-system-driver-port]
 
@@ -1807,7 +1869,7 @@ processes:
       - id: VALIDATE_OUTPUTS_AND_SCOPES
         type: service-task
         action: validate-outputs-and-scopes
-        name: "Validate outputs (${outputs}) & scopes (${scopes})"
+        name: "Validate outputs & scopes"
 
       - id: GATE_OUTPUTS_AND_SCOPES_VALID
         type: gateway
@@ -1966,13 +2028,25 @@ processes:
           fix-on-failure: "false"
           # originating-task-name carries the OUTER MID's task-name (e.g.
           # "write-acceptance-tests") through the fix dispatch so the inner
-          # validate-outputs-and-scopes can look up scope via
-          # engine.Scope(originating-task-name) — fix-${failure-kind} has
-          # no MID node of its own and would miss otherwise. ${task-name}
-          # resolves against the parent (execute-agent) params before
-          # task-name is shadowed by the fix-* override on the line above.
+          # validate-outputs-and-scopes (and the dispatcher's ${scope_block}
+          # resolution) can look up scope + outputs via
+          # engine.Scope / engine.Outputs(originating-task-name) — the
+          # writing-agent MID's output contract lives on the MID itself,
+          # so the inner validator resolves it from the engine instead of
+          # a params passthrough. fix-${failure-kind} has no MID node of
+          # its own and would miss otherwise.
+          #
+          # ${task-name} resolves against the parent params chain. The
+          # immediate parent is either `execute-agent` (agent-output
+          # failure path) or `execute-command` (command-failure path); in
+          # both cases the writer-wrapper that owns the surrounding
+          # subprocess declares `task-name: <writer-MID>` at its
+          # call-site (see e.g. write-and-verify-acceptance-tests'
+          # children), and wrapCallActivity merges parent params into
+          # children, so the originating-MID identity is in Params when
+          # this line evaluates. The expansion happens before task-name
+          # is shadowed by the fix-* override on the line above.
           originating-task-name: ${task-name}
-          outputs: ${outputs}
 
       - id: FIX_END
         type: end-event
