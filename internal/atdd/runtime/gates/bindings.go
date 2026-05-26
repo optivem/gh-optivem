@@ -150,6 +150,13 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("approval-outcome", b.approvalOutcome)
 	r.Register("outputs-and-scopes-valid", b.outputsAndScopesValid)
 	r.Register("ticket-kind", b.ticketKind)
+	// task-subtype: Item-11 second-level gateway. Stub binding for now —
+	// reads ctx.State["task-subtype"] if preseeded, errors otherwise.
+	// Phase D wires the real implementation alongside the ticketKind
+	// split (the existing ticketKind binding still emits the composite
+	// `task/<subtype>` value; reconciling that with the new two-gateway
+	// YAML is Phase D's job — see plans/20260526-0832 Item 11 Q11.2).
+	r.Register("task-subtype", b.taskSubtype)
 	// Routes the GATE_CHECKLIST_PARTIALLY_DONE gateway at the start of
 	// each Checklist-using cycle. The check-checklist-progress action
 	// stamps `checklist-partially-done` after parse-ticket runs; this
@@ -484,6 +491,18 @@ func (b bindings) ticketKind(ctx *statemachine.Context) statemachine.Outcome {
 	default:
 		return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: unsupported ticket type %q (expected one of: story, bug, task)", kind)}
 	}
+}
+
+// taskSubtype is the Item-11 second-level gateway stub. Reads a
+// preseeded `task-subtype` from ctx.State if present, errors
+// otherwise. Phase D wires the real implementation that lifts the
+// subtype out of `Tracker.Subtypes` so task-kind tickets dispatch
+// end-to-end without manual preseed.
+func (b bindings) taskSubtype(ctx *statemachine.Context) statemachine.Outcome {
+	if v := ctx.GetString("task-subtype"); v != "" {
+		return statemachine.Outcome{Value: v}
+	}
+	return statemachine.Outcome{Err: fmt.Errorf("task-subtype: not preseeded in ctx.State and the real binding is Phase D scope (see plans/20260526-0832 Item 11 Q11.2)")}
 }
 
 // ticketKindAliases mirrors the older read_ticket_type behaviour

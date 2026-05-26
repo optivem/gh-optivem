@@ -205,45 +205,53 @@ processes:
   # TOP — implement-ticket
   # ===========================================================================
   #
-  # Per-ticket execution. Marks IN PROGRESS, picks a CYCLE via the
-  # mechanical 1:1 ticket-kind gateway (Q30 = A; subtype validation hard-
-  # exits on unknown kinds), runs the chosen CYCLE, then marks IN
-  # ACCEPTANCE. Single-cycle tickets only (Q30.b = A) — multi-cycle work
-  # splits during refinement.
+  # Per-ticket execution. Marks IN PROGRESS, picks a CYCLE via a
+  # hierarchical two-level gateway (type → subtype), runs the chosen
+  # CYCLE, then marks IN ACCEPTANCE. Single-cycle tickets only (Q30.b = A)
+  # — multi-cycle work splits during refinement.
   #
-  # Absorbs the pre-refactor github-intake process (cross-check inventory
-  # diagram #3). The OLD intake's classification + body-parsing pipeline
-  # (`read-ticket-type` / `read-subtype` / `parse-ticket-body` service
-  # tasks plus three STOP nodes) collapses into two nodes here: the
-  # PARSE_TICKET service-task (action: parse-ticket — Tracker.ReadSections
-  # → intake.ParseSections → ctx.State["ticket_*"]) handles body
-  # extraction with shape-level validation (AC XOR Checklist), and the
-  # GATE_TICKET_KIND gateway (binding: ticket-kind — Tracker.Classify +
-  # Tracker.Subtypes) handles type/subtype discrimination. Per-kind
-  # required-section enforcement lives downstream at dispatch time via
-  # the load-bearing placeholder check in clauderun.go.
-  # Operator-facing parse errors / unrecognised types surface through
-  # the `UNKNOWN_TICKET_KIND` error end-event below: the gateway's
-  # unguarded catch-all edge routes any unrecognised ticket-kind there,
-  # and the runtime terminates the process with the event's documentation
-  # text as the error message (see statemachine/run.go).
+  # Two-level gateway shape (Item 11):
   #
-  # Ticket-kind gateway lookup table (locked in Q30):
+  #   GATE_TICKET_KIND (binding: ticket-kind, values: story | bug | task)
+  #     story → change-system-behavior
+  #     bug   → change-system-behavior
+  #     task  → GATE_TASK_SUBTYPE
   #
-  #   ticket-kind                          | CYCLE
-  #   ---                                  | ---
-  #   story                                | change-system-behavior
-  #   bug                                  | change-system-behavior
-  #   task/legacy-coverage                 | cover-system-behavior
-  #   task/system-redesign                 | redesign-system-structure
-  #   task/system-refactor                 | refactor-system-structure
-  #   task/test-refactor                   | refactor-test-structure
-  #   task/external-system-onboarding      | onboard-external-system
+  #   GATE_TASK_SUBTYPE (binding: task-subtype, task-only second level)
+  #     legacy-coverage             → cover-system-behavior
+  #     system-redesign             → redesign-system-structure
+  #     system-refactor             → refactor-system-structure
+  #     test-refactor               → refactor-test-structure
+  #     external-system-onboarding  → onboard-external-system
   #
-  # Unknown ticket-kind (and `spike` per the exploration backlog) routes
-  # to the `UNKNOWN_TICKET_KIND` error end-event via the gateway's
-  # catch-all edge. The operator re-classifies via `refine-ticket` and
-  # re-runs.
+  # Matches how operators conceptually classify: "first, what is this —
+  # story, bug, or task? then, if task, what kind?" The slash-delimited
+  # vocabulary used by the older flat gateway (`task/legacy-coverage`)
+  # is split into a `ticket-kind` axis and a `task-subtype` axis at the
+  # binding layer. The binding-side split lands in Phase D; this plan
+  # ships the YAML structure plus a `task-subtype` stub binding (per
+  # Q11.2). End-to-end execution for task-kind tickets requires the
+  # Phase D wiring.
+  #
+  # Absorbs the pre-refactor github-intake process (cross-check
+  # inventory diagram #3). The OLD intake's classification + body-
+  # parsing pipeline (`read-ticket-type` / `read-subtype` / `parse-
+  # ticket-body` service tasks plus three STOP nodes) collapses into
+  # two nodes here: the PARSE_TICKET service-task (action: parse-ticket
+  # — Tracker.ReadSections → intake.ParseSections → ctx.State["ticket_*"])
+  # handles body extraction with shape-level validation (AC XOR
+  # Checklist), and the two-stage gateway handles type/subtype
+  # discrimination. Per-kind required-section enforcement lives
+  # downstream at dispatch time via the load-bearing placeholder check
+  # in clauderun.go.
+  #
+  # Operator-facing parse errors / unrecognised types or subtypes
+  # surface through error end-events: GATE_TICKET_KIND's unguarded
+  # catch-all routes unrecognised types to `UNKNOWN_TICKET_KIND`;
+  # GATE_TASK_SUBTYPE's catch-all routes unrecognised subtypes (or task
+  # tickets with no subtype label) to `UNKNOWN_TASK_SUBTYPE`. Both
+  # terminate the process with the event's documentation as the error
+  # message (see statemachine/run.go).
   # ===========================================================================
   implement-ticket:
     start: MARK_IN_PROGRESS
@@ -260,6 +268,11 @@ processes:
         type: gateway
         binding: ticket-kind
         documentation: "ticket-kind"
+
+      - id: GATE_TASK_SUBTYPE
+        type: gateway
+        binding: task-subtype
+        documentation: "task-subtype"
 
       - id: CHANGE_SYSTEM_BEHAVIOR
         type: call-activity
@@ -303,24 +316,30 @@ processes:
         type: error-end-event
         documentation: "Unknown Ticket Kind"
 
+      - id: UNKNOWN_TASK_SUBTYPE
+        type: error-end-event
+        documentation: "Unknown Task Subtype"
+
     sequence-flows:
-      - {from: MARK_IN_PROGRESS,                 to: PARSE_TICKET}
-      - {from: PARSE_TICKET,                     to: GATE_TICKET_KIND}
-      - {from: GATE_TICKET_KIND, to: CHANGE_SYSTEM_BEHAVIOR,       when: "ticket-kind == story"}
-      - {from: GATE_TICKET_KIND, to: CHANGE_SYSTEM_BEHAVIOR,       when: "ticket-kind == bug"}
-      - {from: GATE_TICKET_KIND, to: COVER_SYSTEM_BEHAVIOR,        when: "ticket-kind == task/legacy-coverage"}
-      - {from: GATE_TICKET_KIND, to: REDESIGN_SYSTEM_STRUCTURE,    when: "ticket-kind == task/system-redesign"}
-      - {from: GATE_TICKET_KIND, to: REFACTOR_SYSTEM_STRUCTURE,    when: "ticket-kind == task/system-refactor"}
-      - {from: GATE_TICKET_KIND, to: REFACTOR_TEST_STRUCTURE,      when: "ticket-kind == task/test-refactor"}
-      - {from: GATE_TICKET_KIND, to: ONBOARD_EXTERNAL_SYSTEM,      when: "ticket-kind == task/external-system-onboarding"}
+      - {from: MARK_IN_PROGRESS,            to: PARSE_TICKET}
+      - {from: PARSE_TICKET,                to: GATE_TICKET_KIND}
+      - {from: GATE_TICKET_KIND, to: CHANGE_SYSTEM_BEHAVIOR, when: "ticket-kind == story"}
+      - {from: GATE_TICKET_KIND, to: CHANGE_SYSTEM_BEHAVIOR, when: "ticket-kind == bug"}
+      - {from: GATE_TICKET_KIND, to: GATE_TASK_SUBTYPE,      when: "ticket-kind == task"}
       - {from: GATE_TICKET_KIND, to: UNKNOWN_TICKET_KIND}
-      - {from: CHANGE_SYSTEM_BEHAVIOR,      to: MARK_IN_ACCEPTANCE}
-      - {from: COVER_SYSTEM_BEHAVIOR,       to: MARK_IN_ACCEPTANCE}
-      - {from: REDESIGN_SYSTEM_STRUCTURE,   to: MARK_IN_ACCEPTANCE}
-      - {from: REFACTOR_SYSTEM_STRUCTURE,   to: MARK_IN_ACCEPTANCE}
-      - {from: REFACTOR_TEST_STRUCTURE,     to: MARK_IN_ACCEPTANCE}
-      - {from: ONBOARD_EXTERNAL_SYSTEM,     to: MARK_IN_ACCEPTANCE}
-      - {from: MARK_IN_ACCEPTANCE,               to: IMPLEMENT_TICKET_END}
+      - {from: GATE_TASK_SUBTYPE, to: COVER_SYSTEM_BEHAVIOR,     when: "task-subtype == legacy-coverage"}
+      - {from: GATE_TASK_SUBTYPE, to: REDESIGN_SYSTEM_STRUCTURE, when: "task-subtype == system-redesign"}
+      - {from: GATE_TASK_SUBTYPE, to: REFACTOR_SYSTEM_STRUCTURE, when: "task-subtype == system-refactor"}
+      - {from: GATE_TASK_SUBTYPE, to: REFACTOR_TEST_STRUCTURE,   when: "task-subtype == test-refactor"}
+      - {from: GATE_TASK_SUBTYPE, to: ONBOARD_EXTERNAL_SYSTEM,   when: "task-subtype == external-system-onboarding"}
+      - {from: GATE_TASK_SUBTYPE, to: UNKNOWN_TASK_SUBTYPE}
+      - {from: CHANGE_SYSTEM_BEHAVIOR,    to: MARK_IN_ACCEPTANCE}
+      - {from: COVER_SYSTEM_BEHAVIOR,     to: MARK_IN_ACCEPTANCE}
+      - {from: REDESIGN_SYSTEM_STRUCTURE, to: MARK_IN_ACCEPTANCE}
+      - {from: REFACTOR_SYSTEM_STRUCTURE, to: MARK_IN_ACCEPTANCE}
+      - {from: REFACTOR_TEST_STRUCTURE,   to: MARK_IN_ACCEPTANCE}
+      - {from: ONBOARD_EXTERNAL_SYSTEM,   to: MARK_IN_ACCEPTANCE}
+      - {from: MARK_IN_ACCEPTANCE,        to: IMPLEMENT_TICKET_END}
 
   # ===========================================================================
   # TOP — refactor (Q34 — ad-hoc refactor entry; no ticket overhead)
