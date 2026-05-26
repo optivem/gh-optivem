@@ -732,11 +732,28 @@ func lastNLines(s string, n int) string {
 //                              does not declare scopes).
 //
 // Writes:
-//   - ctx.State["outputs-and-scopes-valid"] — bool.
-//   - ctx.State["failure-kind"]             — set on false; one of
-//                                             missing-output | scope-diff
-//                                             (priority: missing-output
-//                                             wins when both fail).
+//   - ctx.State["outputs-and-scopes-valid"]   — bool.
+//   - ctx.State["failure-kind"]               — set on false; one of
+//                                               missing-output | scope-diff
+//                                               (priority: missing-output
+//                                               wins when both fail).
+//   - ctx.State["failing-task-name"]          — set on false; the OUTER
+//                                               execute-agent's task-name
+//                                               (e.g. "write-acceptance-tests")
+//                                               captured from ctx.Params
+//                                               before the inner `fix`
+//                                               call-activity shadows it.
+//                                               Consumed by the
+//                                               fix-missing-output /
+//                                               fix-scope-diff prompts.
+//   - ctx.State["missing-outputs"]            — set on missing-output;
+//                                               comma-separated list of
+//                                               unemitted output keys.
+//   - ctx.State["scope-violating-paths"]      — set on scope-diff;
+//                                               comma-separated list of
+//                                               working-tree paths
+//                                               outside the declared
+//                                               scopes.
 //
 // Does NOT surface as Outcome.Err — the gateway's false branch
 // dispatches `fix-${failure-kind}` per Q-late-5. Hard errors
@@ -753,6 +770,8 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	if len(missing) > 0 {
 		ctx.Set("outputs-and-scopes-valid", false)
 		ctx.Set("failure-kind", "missing-output")
+		ctx.Set("failing-task-name", ctx.Params["task-name"])
+		ctx.Set("missing-outputs", strings.Join(missing, ","))
 		fmt.Fprintf(a.deps.Stderr,
 			"validate-outputs-and-scopes: agent did not emit expected outputs: %s\n",
 			strings.Join(missing, ", "))
@@ -788,6 +807,8 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	if len(violating) > 0 {
 		ctx.Set("outputs-and-scopes-valid", false)
 		ctx.Set("failure-kind", "scope-diff")
+		ctx.Set("failing-task-name", ctx.Params["task-name"])
+		ctx.Set("scope-violating-paths", strings.Join(violating, ","))
 		fmt.Fprintf(a.deps.Stderr,
 			"validate-outputs-and-scopes: %d path(s) outside scope %v:\n",
 			len(violating), scopes)

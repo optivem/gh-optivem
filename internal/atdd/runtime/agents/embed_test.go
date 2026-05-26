@@ -156,15 +156,12 @@ func TestFixKindPromptsExist(t *testing.T) {
 	// guards the dispatch surface: adding a new kind requires adding a
 	// fix-<kind>.md, and a prompt rename fails this test before runtime
 	// sees an unknown task-name.
-	//
-	// `missing-output` and `scope-diff` are intentionally absent from
-	// the slice below — their prompts are out of scope for plan 1530
-	// and tracked separately (plans/upcoming/20260526-1600-fix-missing-output-and-scope-diff-prompts.md).
-	// Add them here when those prompts land.
 	wantKinds := []string{
 		"unexpected-passing-tests",
 		"unexpected-failing-tests",
 		"command-failed",
+		"missing-output",
+		"scope-diff",
 	}
 	names := map[string]bool{}
 	for _, n := range Names() {

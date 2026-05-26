@@ -162,6 +162,30 @@ type Options struct {
 	CommandExitCode    int
 	CommandStderrTail  string
 
+	// FailingTaskName / MissingOutputs / ViolatingPaths carry the
+	// diagnostic payload validateOutputsAndScopes stashes in ctx.State on
+	// validation failure (`failing-task-name`, `missing-outputs`,
+	// `scope-violating-paths`). The driver reads those keys and populates
+	// these fields ahead of every claude dispatch; on a non-failed run,
+	// ctx.State has nothing under those keys and the fields stay
+	// zero-valued.
+	//
+	// Load-bearing for fix-missing-output / fix-scope-diff: their prompt
+	// bodies reference ${failing-task-name} + (${missing-outputs} or
+	// ${violating-paths}). Each placeholder is registered in
+	// renderPrompt only when its source field is non-empty (mirroring
+	// CommandLine), so findUnfilledPlaceholders fails the dispatch fast
+	// when the recovery path tries to render either prompt with empty
+	// state — that means validateOutputsAndScopes silently skipped its
+	// stash, and the operator wants to know now rather than after the
+	// agent reads a blank prompt.
+	//
+	// Other prompts don't reference these placeholders, so populating
+	// the fields on every dispatch is a no-op outside the recovery path.
+	FailingTaskName     string
+	MissingOutputs      string
+	ViolatingPaths      string
+
 	// Language is the target language for this dispatch (e.g. "go",
 	// "typescript"). Substituted into the prompt's ${language} placeholder
 	// so per-language reference docs (under
@@ -606,6 +630,23 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 		params["command"] = opts.CommandLine
 		params["command_exit_code"] = strconv.Itoa(opts.CommandExitCode)
 		params["command_stderr_tail"] = opts.CommandStderrTail
+	}
+	// Validation-failure payload — load-bearing for fix-missing-output
+	// and fix-scope-diff. FailingTaskName is shared by both prompts and
+	// is registered whenever non-empty; MissingOutputs and
+	// ViolatingPaths are mutually exclusive (missing-output wins over
+	// scope-diff in validateOutputsAndScopes), so each is registered on
+	// its own. Kebab-cased placeholder names mirror the kebab state keys
+	// the action stashes (failing-task-name, missing-outputs,
+	// scope-violating-paths).
+	if opts.FailingTaskName != "" {
+		params["failing-task-name"] = opts.FailingTaskName
+	}
+	if opts.MissingOutputs != "" {
+		params["missing-outputs"] = opts.MissingOutputs
+	}
+	if opts.ViolatingPaths != "" {
+		params["violating-paths"] = opts.ViolatingPaths
 	}
 	rendered := statemachine.ExpandParams(body, params, nil)
 	if opts.OverrideText != "" {

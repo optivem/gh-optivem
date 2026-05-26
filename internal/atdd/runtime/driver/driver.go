@@ -860,6 +860,14 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 		// on every other dispatch they're absent and the fields stay
 		// zero-valued. fix-command-failed.md is the only prompt that
 		// references the matching ${command_*} placeholders.
+		//
+		// Validation-failure payload from upstream validateOutputsAndScopes.
+		// Same shape: state keys are populated only when the LOW
+		// execute-agent primitive's post-RUN validation failed and routed
+		// via the false branch → CALL_FIX. fix-missing-output.md and
+		// fix-scope-diff.md are the only prompts that reference the
+		// matching ${failing-task-name} / ${missing-outputs} /
+		// ${violating-paths} placeholders.
 		commandExitCode, _ := ctx.Get("command-exit-code").(int)
 		cOpts := clauderun.Options{
 			Agent:              agentName,
@@ -878,6 +886,9 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 			CommandLine:        ctx.GetString("command-line"),
 			CommandExitCode:    commandExitCode,
 			CommandStderrTail:  ctx.GetString("command-stderr-tail"),
+			FailingTaskName:    ctx.GetString("failing-task-name"),
+			MissingOutputs:     ctx.GetString("missing-outputs"),
+			ViolatingPaths:     ctx.GetString("scope-violating-paths"),
 			NodeParams:         nodeParams,
 			Placeholders:       placeholders,
 			OverrideText:       extraText,
@@ -933,7 +944,11 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 // the listing. The dispatch is feedback, not load-bearing.
 func fixChangedFiles(agent, repoPath string) string {
 	switch agent {
-	case "fix-unexpected-passing-tests", "fix-unexpected-failing-tests", "fix-command-failed":
+	case "fix-unexpected-passing-tests",
+		"fix-unexpected-failing-tests",
+		"fix-command-failed",
+		"fix-missing-output",
+		"fix-scope-diff":
 	default:
 		return ""
 	}
