@@ -145,6 +145,7 @@ processes:
     nodes:
       - id: START
         type: start-event
+        documentation: "Runtime Bootstrap"
 
       - id: PICK_TOP_READY
         type: service-task
@@ -157,6 +158,7 @@ processes:
 
       - id: END
         type: end-event
+        documentation: "Runtime Complete"
 
     sequence-flows:
       - {from: START,            to: PICK_TOP_READY,   when: "mode == board"}
@@ -190,6 +192,7 @@ processes:
 
       - id: REFINE_TICKET_END
         type: end-event
+        documentation: "Ticket Marked READY"
 
     sequence-flows:
       - {from: MARK_IN_REFINEMENT, to: REFINE_BACKLOG}
@@ -218,8 +221,10 @@ processes:
   # required-section enforcement lives downstream at dispatch time via
   # the load-bearing placeholder check in clauderun.go.
   # Operator-facing parse errors / unrecognised types surface through
-  # the runtime's no-edge-matched error path rather than dedicated STOP
-  # nodes.
+  # the `UNKNOWN_TICKET_KIND` error end-event below: the gateway's
+  # unguarded catch-all edge routes any unrecognised ticket-kind there,
+  # and the runtime terminates the process with the event's documentation
+  # text as the error message (see statemachine/run.go).
   #
   # Ticket-kind gateway lookup table (locked in Q30):
   #
@@ -233,10 +238,10 @@ processes:
   #   task/test-refactor                   | refactor-test-structure
   #   task/external-system-onboarding      | onboard-external-system
   #
-  # Unknown ticket-kind (and `spike` per the exploration backlog) does not
-  # appear as a branch — the gateway is exhaustive over the known set and
-  # the runtime's no-edge-matched error fires when an unrecognised value
-  # arrives. The operator re-classifies via `refine-ticket` and re-runs.
+  # Unknown ticket-kind (and `spike` per the exploration backlog) routes
+  # to the `UNKNOWN_TICKET_KIND` error end-event via the gateway's
+  # catch-all edge. The operator re-classifies via `refine-ticket` and
+  # re-runs.
   # ===========================================================================
   implement-ticket:
     start: MARK_IN_PROGRESS
@@ -284,6 +289,11 @@ processes:
 
       - id: IMPLEMENT_TICKET_END
         type: end-event
+        documentation: "Ticket Marked IN ACCEPTANCE"
+
+      - id: UNKNOWN_TICKET_KIND
+        type: error-end-event
+        documentation: "Unknown Ticket Kind"
 
     sequence-flows:
       - {from: MARK_IN_PROGRESS,                 to: PARSE_TICKET}
@@ -295,6 +305,7 @@ processes:
       - {from: GATE_TICKET_KIND, to: CALL_REFACTOR_SYSTEM_STRUCTURE,    when: "ticket-kind == task/system-refactor"}
       - {from: GATE_TICKET_KIND, to: CALL_REFACTOR_TEST_STRUCTURE,      when: "ticket-kind == task/test-refactor"}
       - {from: GATE_TICKET_KIND, to: CALL_ONBOARD_EXTERNAL_SYSTEM,      when: "ticket-kind == task/external-system-onboarding"}
+      - {from: GATE_TICKET_KIND, to: UNKNOWN_TICKET_KIND}
       - {from: CALL_CHANGE_SYSTEM_BEHAVIOR,      to: MARK_IN_ACCEPTANCE}
       - {from: CALL_COVER_SYSTEM_BEHAVIOR,       to: MARK_IN_ACCEPTANCE}
       - {from: CALL_REDESIGN_SYSTEM_STRUCTURE,   to: MARK_IN_ACCEPTANCE}
@@ -337,6 +348,7 @@ processes:
 
       - id: REFACTOR_TOP_END
         type: end-event
+        documentation: "Refactor Complete"
 
     sequence-flows:
       - {from: GATE_REFACTOR_TYPE_CHOICE, to: CALL_REFACTOR_SYSTEM_STRUCTURE, when: "refactor-type-choice == refactor-system-structure"}
@@ -359,6 +371,7 @@ processes:
 
       - id: REFINE_BACKLOG_END
         type: end-event
+        documentation: "Backlog Item Refined"
 
     sequence-flows:
       - {from: REFINE_ACCEPTANCE_CRITERIA, to: REFINE_BACKLOG_END}
@@ -411,6 +424,7 @@ processes:
 
       - id: ONBOARD_END
         type: end-event
+        documentation: "External System Onboarded"
 
     sequence-flows:
       - {from: CHECK_CHECKLIST_PROGRESS,          to: GATE_CHECKLIST_PARTIALLY_DONE}
@@ -440,6 +454,7 @@ processes:
         type: call-activity
         process: write-and-verify-acceptance-tests-fail
         documentation: "RED — write failing acceptance tests"
+        tdd-stage: red
 
       - id: IMPLEMENT_AND_VERIFY_SYSTEM
         type: call-activity
@@ -447,6 +462,7 @@ processes:
         params:
           agent-action: implement-system
         documentation: "GREEN — agent-action: implement-system"
+        tdd-stage: green
 
       - id: GATE_OPPORTUNISTIC_REFACTOR
         type: gateway
@@ -467,6 +483,7 @@ processes:
 
       - id: CHANGE_SYSTEM_BEHAVIOR_END
         type: end-event
+        documentation: "System Behavior Changed"
 
     sequence-flows:
       - {from: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL, to: IMPLEMENT_AND_VERIFY_SYSTEM}
@@ -498,9 +515,11 @@ processes:
         type: call-activity
         process: write-and-verify-acceptance-tests-pass
         documentation: "Cover — write passing acceptance tests"
+        tdd-stage: green
 
       - id: COVER_END
         type: end-event
+        documentation: "System Behavior Covered"
 
     sequence-flows:
       - {from: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS, to: COVER_END}
@@ -547,6 +566,7 @@ processes:
 
       - id: REDESIGN_END
         type: end-event
+        documentation: "System Structure Redesigned"
 
     sequence-flows:
       - {from: CHECK_CHECKLIST_PROGRESS,                  to: GATE_CHECKLIST_PARTIALLY_DONE}
@@ -588,9 +608,11 @@ processes:
         params:
           agent-action: refactor-system
         documentation: "agent-action: refactor-system"
+        tdd-stage: refactor
 
       - id: REFACTOR_SYSTEM_STRUCTURE_END
         type: end-event
+        documentation: "System Structure Refactored"
 
     sequence-flows:
       - {from: CHECK_CHECKLIST_PROGRESS,        to: GATE_CHECKLIST_PARTIALLY_DONE}
@@ -625,6 +647,7 @@ processes:
 
       - id: REFACTOR_TEST_STRUCTURE_END
         type: end-event
+        documentation: "Test Structure Refactored"
 
     sequence-flows:
       - {from: CHECK_CHECKLIST_PROGRESS,       to: GATE_CHECKLIST_PARTIALLY_DONE}
@@ -652,6 +675,7 @@ processes:
 
       - id: WAV_AT_FAIL_END
         type: end-event
+        documentation: "Failing Acceptance Tests Verified"
 
     sequence-flows:
       - {from: CALL_PARAMETERISED_CORE, to: WAV_AT_FAIL_END}
@@ -675,6 +699,7 @@ processes:
 
       - id: WAV_AT_PASS_END
         type: end-event
+        documentation: "Passing Acceptance Tests Verified"
 
     sequence-flows:
       - {from: CALL_PARAMETERISED_CORE, to: WAV_AT_PASS_END}
@@ -739,6 +764,7 @@ processes:
 
       - id: WAV_AT_END
         type: end-event
+        documentation: "Acceptance Tests Verified"
 
     sequence-flows:
       - {from: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE, to: GATE_DSL_PORT_CHANGED}
@@ -806,12 +832,18 @@ processes:
 
       - id: WAV_AT_CODE_END
         type: end-event
+        documentation: "Acceptance Test Code Verified"
+
+      - id: UNKNOWN_EXPECTED_TEST_RESULT
+        type: error-end-event
+        documentation: "Unknown Expected Test Result"
 
     sequence-flows:
       - {from: WRITE_ACCEPTANCE_TESTS, to: COMPILE_TESTS}
       - {from: COMPILE_TESTS,          to: GATE_EXPECTED_TEST_RESULT}
       - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_PASS_ACCEPTANCE, when: "expected-test-result == success"}
       - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_FAIL_ACCEPTANCE, when: "expected-test-result == failure"}
+      - {from: GATE_EXPECTED_TEST_RESULT, to: UNKNOWN_EXPECTED_TEST_RESULT}
       - {from: VERIFY_TESTS_PASS_ACCEPTANCE, to: COMMIT_TEST_CODE}
       - {from: VERIFY_TESTS_FAIL_ACCEPTANCE, to: DISABLE_ACCEPTANCE_TESTS}
       - {from: DISABLE_ACCEPTANCE_TESTS,     to: COMMIT_TEST_CODE}
@@ -833,6 +865,7 @@ processes:
 
       - id: IMPL_DSL_END
         type: end-event
+        documentation: "DSL Layer Verified"
 
     sequence-flows:
       - {from: IMPLEMENT_TEST_LAYER, to: IMPL_DSL_END}
@@ -853,6 +886,7 @@ processes:
 
       - id: IMPL_SYS_DRIVER_END
         type: end-event
+        documentation: "System Driver Adapter Layer Verified"
 
     sequence-flows:
       - {from: IMPLEMENT_TEST_LAYER, to: IMPL_SYS_DRIVER_END}
@@ -873,6 +907,7 @@ processes:
 
       - id: IMPL_EXT_DRIVER_END
         type: end-event
+        documentation: "External System Driver Adapter Layer Verified"
 
     sequence-flows:
       - {from: IMPLEMENT_TEST_LAYER, to: IMPL_EXT_DRIVER_END}
@@ -952,6 +987,7 @@ processes:
 
       - id: IMPL_EXT_DRIVER_CT_END
         type: end-event
+        documentation: "External System Driver Contract Tests Verified"
 
     sequence-flows:
       - {from: WRITE_CONTRACT_TESTS,    to: GATE_DSL_PORT_CHANGED}
@@ -1001,6 +1037,7 @@ processes:
 
       - id: IMPL_AND_VERIFY_SYSTEM_END
         type: end-event
+        documentation: "System Implemented and Verified"
 
     sequence-flows:
       - {from: CALL_AGENT_ACTION, to: BUILD_SYSTEM}
@@ -1033,6 +1070,7 @@ processes:
 
       - id: REFACTOR_AND_VERIFY_TESTS_END
         type: end-event
+        documentation: "Tests Refactored and Verified"
 
     sequence-flows:
       - {from: REFACTOR_TESTS,    to: COMPILE_TESTS}
@@ -1101,6 +1139,11 @@ processes:
 
       - id: IMPLEMENT_TEST_LAYER_END
         type: end-event
+        documentation: "Test Layer Implemented"
+
+      - id: UNKNOWN_EXPECTED_TEST_RESULT
+        type: error-end-event
+        documentation: "Unknown Expected Test Result"
 
     sequence-flows:
       - {from: CALL_AGENT_ACTION, to: ENABLE_TESTS}
@@ -1108,6 +1151,7 @@ processes:
       - {from: COMPILE_TESTS,     to: GATE_EXPECTED_TEST_RESULT}
       - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_PASS_FILTERED, when: "expected-test-result == success"}
       - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_FAIL_FILTERED, when: "expected-test-result == failure"}
+      - {from: GATE_EXPECTED_TEST_RESULT, to: UNKNOWN_EXPECTED_TEST_RESULT}
       - {from: VERIFY_TESTS_PASS_FILTERED, to: COMMIT_LAYER}
       - {from: VERIFY_TESTS_FAIL_FILTERED, to: DISABLE_TESTS}
       - {from: DISABLE_TESTS,              to: COMMIT_LAYER}
@@ -1142,11 +1186,17 @@ processes:
 
       - id: VERIFY_PASS_END
         type: end-event
+        documentation: "Tests Pass Verified"
+
+      - id: UNKNOWN_TESTS_OUTCOME
+        type: error-end-event
+        documentation: "Unknown Tests Outcome"
 
     sequence-flows:
       - {from: RUN_TESTS,          to: GATE_TESTS_OUTCOME}
       - {from: GATE_TESTS_OUTCOME, to: VERIFY_PASS_END,              when: "test-outcome == pass"}
       - {from: GATE_TESTS_OUTCOME, to: FIX_UNEXPECTED_FAILING_TESTS, when: "test-outcome == fail"}
+      - {from: GATE_TESTS_OUTCOME, to: UNKNOWN_TESTS_OUTCOME}
       - {from: FIX_UNEXPECTED_FAILING_TESTS, to: VERIFY_PASS_END}
 
   # ===========================================================================
@@ -1177,11 +1227,17 @@ processes:
 
       - id: VERIFY_FAIL_END
         type: end-event
+        documentation: "Tests Fail Verified"
+
+      - id: UNKNOWN_TESTS_OUTCOME
+        type: error-end-event
+        documentation: "Unknown Tests Outcome"
 
     sequence-flows:
       - {from: RUN_TESTS,          to: GATE_TESTS_OUTCOME}
       - {from: GATE_TESTS_OUTCOME, to: FIX_UNEXPECTED_PASSING_TESTS, when: "test-outcome == pass"}
       - {from: GATE_TESTS_OUTCOME, to: VERIFY_FAIL_END,              when: "test-outcome == fail"}
+      - {from: GATE_TESTS_OUTCOME, to: UNKNOWN_TESTS_OUTCOME}
       - {from: FIX_UNEXPECTED_PASSING_TESTS, to: VERIFY_FAIL_END}
 
   # ===========================================================================
@@ -1203,6 +1259,7 @@ processes:
 
       - id: WAT_END
         type: end-event
+        documentation: "Acceptance Tests Written"
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: WAT_END}
@@ -1226,6 +1283,7 @@ processes:
 
       - id: WCT_END
         type: end-event
+        documentation: "Contract Tests Written"
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: WCT_END}
@@ -1250,6 +1308,7 @@ processes:
 
       - id: IMPL_DSL_END
         type: end-event
+        documentation: "DSL Implemented"
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: IMPL_DSL_END}
@@ -1269,6 +1328,7 @@ processes:
 
       - id: IMPL_SYS_END
         type: end-event
+        documentation: "System Implemented"
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: IMPL_SYS_END}
@@ -1288,6 +1348,7 @@ processes:
 
       - id: IMPL_SYS_DA_END
         type: end-event
+        documentation: "System Driver Adapters Implemented"
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: IMPL_SYS_DA_END}
@@ -1307,6 +1368,7 @@ processes:
 
       - id: IMPL_EXT_DA_END
         type: end-event
+        documentation: "External System Driver Adapters Implemented"
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: IMPL_EXT_DA_END}
@@ -1326,6 +1388,7 @@ processes:
 
       - id: IMPL_STUBS_END
         type: end-event
+        documentation: "External System Stubs Implemented"
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: IMPL_STUBS_END}
@@ -1345,6 +1408,7 @@ processes:
 
       - id: DISABLE_END
         type: end-event
+        documentation: "Tests Disabled"
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: DISABLE_END}
@@ -1364,6 +1428,7 @@ processes:
 
       - id: ENABLE_END
         type: end-event
+        documentation: "Tests Enabled"
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: ENABLE_END}
@@ -1383,6 +1448,7 @@ processes:
 
       - id: FIX_PASS_END
         type: end-event
+        documentation: "Unexpected Passing Tests Fixed"
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: FIX_PASS_END}
@@ -1402,6 +1468,7 @@ processes:
 
       - id: FIX_FAIL_END
         type: end-event
+        documentation: "Unexpected Failing Tests Fixed"
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: FIX_FAIL_END}
@@ -1421,6 +1488,7 @@ processes:
 
       - id: REFACTOR_TESTS_END
         type: end-event
+        documentation: "Tests Refactored"
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: REFACTOR_TESTS_END}
@@ -1440,6 +1508,7 @@ processes:
 
       - id: REFACTOR_SYS_END
         type: end-event
+        documentation: "System Refactored"
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: REFACTOR_SYS_END}
@@ -1458,6 +1527,7 @@ processes:
 
       - id: REFINE_AC_END
         type: end-event
+        documentation: "Acceptance Criteria Refined"
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: REFINE_AC_END}
@@ -1476,6 +1546,7 @@ processes:
 
       - id: COMPILE_MID_END
         type: end-event
+        documentation: "Compile Complete"
 
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: COMPILE_MID_END}
@@ -1494,6 +1565,7 @@ processes:
 
       - id: COMPILE_SYS_END
         type: end-event
+        documentation: "System Compiled"
 
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: COMPILE_SYS_END}
@@ -1512,6 +1584,7 @@ processes:
 
       - id: COMPILE_TESTS_END
         type: end-event
+        documentation: "Tests Compiled"
 
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: COMPILE_TESTS_END}
@@ -1530,6 +1603,7 @@ processes:
 
       - id: BUILD_SYS_END
         type: end-event
+        documentation: "System Built"
 
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: BUILD_SYS_END}
@@ -1548,6 +1622,7 @@ processes:
 
       - id: START_SYS_END
         type: end-event
+        documentation: "System Started"
 
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: START_SYS_END}
@@ -1566,6 +1641,7 @@ processes:
 
       - id: COMMIT_MID_END
         type: end-event
+        documentation: "Commit Complete"
 
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: COMMIT_MID_END}
@@ -1593,6 +1669,7 @@ processes:
 
       - id: RUN_TESTS_END
         type: end-event
+        documentation: "Tests Run"
 
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: RUN_TESTS_END}
@@ -1602,17 +1679,23 @@ processes:
   # ===========================================================================
   #
   # Confirms approval; writes outcome to `approval-outcome` state for the
-  # caller to read. Q3 = A (exit-only; caller owns NO branch). Currently
-  # encoded with two end-events; alternatives Q3-B (parameterised NO-action)
-  # and Q3-C (two primitives APPROVE-OR-EXIT / APPROVE-OR-RETRY) are open
-  # questions on the exploration backlog.
+  # caller to read. Q3 = A (exit-only; caller owns NO branch).
   #
-  # TODO(Phase D / exploration backlog): the runtime today has no
-  # ERROR-end-event semantics — the YES/NO branches both end normally and
-  # the caller is responsible for re-reading `approval-outcome`. If
-  # Q-late-1's "END ERROR transitively kills the process" intent becomes a
-  # binding contract, add an `end-event-kind: error` field to RawNode +
-  # wire RunProcess to propagate it.
+  # Both branches terminate via plain `end-event` rather than
+  # `error-end-event` — the latter would propagate as a Go error all the
+  # way up through every parent process, which is too coarse for a
+  # human-driven NO ("I'd rather not run this fix") that the operator
+  # wants to surface as a graceful abort, not a stack-traced failure.
+  #
+  # `wrapCallActivity` (statemachine/run.go) push/pops Params but leaves
+  # State shared with the caller, so `approval-outcome` flows back to the
+  # caller's scope. Every caller (`fix`, `execute-agent`, `execute-command`)
+  # therefore follows its `APPROVE_PRE` call-activity with a
+  # `GATE_APPROVED_PRE` gateway on `approval-outcome` that routes the
+  # rejected branch to a dedicated `*_REJECTED_END` end-event. Without
+  # that caller-side gate the unconditional out-edge would silently fall
+  # through to the next node — the exact bug that motivated this
+  # arrangement (rejecting `fix` still ran the inner agent).
   # ===========================================================================
   approve:
     start: ASK_HUMAN
@@ -1629,9 +1712,11 @@ processes:
 
       - id: APPROVE_OK_END
         type: end-event
+        documentation: "Approved"
 
       - id: APPROVE_REJECT_END
         type: end-event
+        documentation: "Rejected"
 
     sequence-flows:
       - {from: ASK_HUMAN,     to: GATE_APPROVED}
@@ -1663,6 +1748,11 @@ processes:
         process: approve
         params:
           question: "Do you approve agent ${task-name} to run?"
+
+      - id: GATE_APPROVED_PRE
+        type: gateway
+        binding: approval-outcome
+        documentation: "Approved?"
 
       - id: RUN_AGENT
         type: user-task
@@ -1696,11 +1786,18 @@ processes:
 
       - id: EXECUTE_AGENT_END
         type: end-event
+        documentation: "Agent Dispatch Complete"
+
+      - id: EXECUTE_AGENT_REJECTED_END
+        type: end-event
+        documentation: "Agent Dispatch Rejected"
 
     sequence-flows:
-      - {from: APPROVE_PRE,                  to: RUN_AGENT}
-      - {from: RUN_AGENT,                    to: VALIDATE_OUTPUTS_AND_SCOPES}
-      - {from: VALIDATE_OUTPUTS_AND_SCOPES,  to: GATE_OUTPUTS_AND_SCOPES_VALID}
+      - {from: APPROVE_PRE,                   to: GATE_APPROVED_PRE}
+      - {from: GATE_APPROVED_PRE,             to: RUN_AGENT,                   when: "approval-outcome == approved"}
+      - {from: GATE_APPROVED_PRE,             to: EXECUTE_AGENT_REJECTED_END,  when: "approval-outcome == rejected"}
+      - {from: RUN_AGENT,                     to: VALIDATE_OUTPUTS_AND_SCOPES}
+      - {from: VALIDATE_OUTPUTS_AND_SCOPES,   to: GATE_OUTPUTS_AND_SCOPES_VALID}
       - {from: GATE_OUTPUTS_AND_SCOPES_VALID, to: APPROVE_POST,        when: "outputs-and-scopes-valid == true"}
       - {from: GATE_OUTPUTS_AND_SCOPES_VALID, to: GATE_FIX_ON_FAILURE, when: "outputs-and-scopes-valid == false"}
       - {from: GATE_FIX_ON_FAILURE,           to: CALL_FIX,             when: "fix-on-failure-enabled == true"}
@@ -1725,6 +1822,11 @@ processes:
         params:
           question: "Do you approve running command ${command} ?"
 
+      - id: GATE_APPROVED_PRE
+        type: gateway
+        binding: approval-outcome
+        documentation: "Approved?"
+
       - id: RUN_COMMAND
         type: service-task
         action: run-command
@@ -1741,9 +1843,16 @@ processes:
 
       - id: EXECUTE_COMMAND_END
         type: end-event
+        documentation: "Command Dispatch Complete"
+
+      - id: EXECUTE_COMMAND_REJECTED_END
+        type: end-event
+        documentation: "Command Dispatch Rejected"
 
     sequence-flows:
-      - {from: APPROVE_PRE,            to: RUN_COMMAND}
+      - {from: APPROVE_PRE,            to: GATE_APPROVED_PRE}
+      - {from: GATE_APPROVED_PRE,      to: RUN_COMMAND,                   when: "approval-outcome == approved"}
+      - {from: GATE_APPROVED_PRE,      to: EXECUTE_COMMAND_REJECTED_END,  when: "approval-outcome == rejected"}
       - {from: RUN_COMMAND,            to: GATE_COMMAND_SUCCEEDED}
       - {from: GATE_COMMAND_SUCCEEDED, to: EXECUTE_COMMAND_END, when: "command-succeeded == true"}
       - {from: GATE_COMMAND_SUCCEEDED, to: CALL_FIX,            when: "command-succeeded == false"}
@@ -1769,6 +1878,11 @@ processes:
         params:
           question: "Do you approve fix to attempt remediation for ${failure} ?"
 
+      - id: GATE_APPROVED_PRE
+        type: gateway
+        binding: approval-outcome
+        documentation: "Approved?"
+
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
@@ -1789,7 +1903,14 @@ processes:
 
       - id: FIX_END
         type: end-event
+        documentation: "Fix Complete"
+
+      - id: FIX_REJECTED_END
+        type: end-event
+        documentation: "Fix Rejected"
 
     sequence-flows:
-      - {from: APPROVE_PRE,  to: EXECUTE_AGENT}
-      - {from: EXECUTE_AGENT, to: FIX_END}
+      - {from: APPROVE_PRE,      to: GATE_APPROVED_PRE}
+      - {from: GATE_APPROVED_PRE, to: EXECUTE_AGENT,      when: "approval-outcome == approved"}
+      - {from: GATE_APPROVED_PRE, to: FIX_REJECTED_END,   when: "approval-outcome == rejected"}
+      - {from: EXECUTE_AGENT,    to: FIX_END}

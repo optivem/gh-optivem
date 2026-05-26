@@ -65,15 +65,21 @@ func TestWrap_ServiceTaskLogsEntryAndExit(t *testing.T) {
 	}
 
 	got := buf.String()
+	// State delta is hoisted into the OK line when Outcome is empty —
+	// `OK ... -> issue_num=42` replaces the misleading `OK ... -> (no result)`
+	// the writer would otherwise print. The standalone `state:` follow-on
+	// line is suppressed to avoid duplication.
 	wantSubs := []string{
 		"> PICK_TOP_READY  kind=service-task action=pick-top-ready",
-		"OK PICK_TOP_READY",
-		"state: issue_num=42",
+		"OK PICK_TOP_READY -> issue_num=42",
 	}
 	for _, s := range wantSubs {
 		if !strings.Contains(got, s) {
 			t.Errorf("trace output missing %q\nfull output:\n%s", s, got)
 		}
+	}
+	if strings.Contains(got, "state: issue_num=42") {
+		t.Errorf("state delta should be hoisted into OK line, not duplicated as follow-on; got:\n%s", got)
 	}
 }
 
@@ -293,6 +299,75 @@ func TestWrap_VerifyClassRendersAsBannerStatusWord(t *testing.T) {
 				t.Errorf("trace output should not include redundant `-> value=%s` suffix when status word already shows it; got:\n%s", tc.value, got)
 			}
 		})
+	}
+}
+
+func TestWrap_HoistsStateDeltaWhenOutcomeIsEmpty(t *testing.T) {
+	// Regression: when a `user-task agent: human` recorded approval rejection
+	// via ctx.Set("approval-outcome", "rejected") but returned an empty
+	// Outcome, the trace used to read `OK ASK_HUMAN -> (no result)` with
+	// the actual answer one line below in `state: approval-outcome=rejected`.
+	// Operators reading the banner couldn't tell from the OK line whether
+	// they'd hit y or n. The hoist puts the answer on the OK line itself.
+	prevNow := nowFn
+	nowFn = fixedClock
+	t.Cleanup(func() { nowFn = prevNow })
+
+	var buf bytes.Buffer
+	node := statemachine.Node{
+		ID:   "ASK_HUMAN",
+		Kind: statemachine.UserTask,
+		Raw:  statemachine.RawNode{Agent: "human"},
+		Fn: func(ctx *statemachine.Context) statemachine.Outcome {
+			ctx.Set("approval-outcome", "rejected")
+			return statemachine.Outcome{}
+		},
+	}
+	wrapped := wrap(node, Deps{Out: &buf, Git: &fakeGit{}}.withDefaults())
+
+	wrapped(statemachine.NewContext())
+
+	got := buf.String()
+	if !strings.Contains(got, "OK ASK_HUMAN -> approval-outcome=rejected") {
+		t.Errorf("expected state delta hoisted into OK line; got:\n%s", got)
+	}
+	if strings.Contains(got, "(no result)") {
+		t.Errorf("OK line should not read `(no result)` when state was written; got:\n%s", got)
+	}
+	if strings.Contains(got, "state: approval-outcome=rejected") {
+		t.Errorf("state delta should not be duplicated as follow-on line after hoist; got:\n%s", got)
+	}
+}
+
+func TestWrap_PopulatedOutcomeDoesNotHoistStateDelta(t *testing.T) {
+	// Inverse of the hoist regression: when the node returns a non-empty
+	// Outcome (e.g. a gateway whose binding evaluated to a string value),
+	// the state delta stays on its own follow-on line — the OK line already
+	// carries the outcome and replacing it would lose the gateway's value.
+	prevNow := nowFn
+	nowFn = fixedClock
+	t.Cleanup(func() { nowFn = prevNow })
+
+	var buf bytes.Buffer
+	node := statemachine.Node{
+		ID:   "GATE_TICKET_TYPE",
+		Kind: statemachine.Gateway,
+		Raw:  statemachine.RawNode{Binding: "ticket_type"},
+		Fn: func(ctx *statemachine.Context) statemachine.Outcome {
+			ctx.Set("ticket_type", "story")
+			return statemachine.Outcome{Value: "story"}
+		},
+	}
+	wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+
+	wrapped(statemachine.NewContext())
+
+	got := buf.String()
+	if !strings.Contains(got, "OK GATE_TICKET_TYPE -> value=story") {
+		t.Errorf("OK line should show the Outcome.Value; got:\n%s", got)
+	}
+	if !strings.Contains(got, "state: ticket_type=story") {
+		t.Errorf("state delta should remain on its own line when Outcome is populated; got:\n%s", got)
 	}
 }
 

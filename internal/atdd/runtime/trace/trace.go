@@ -186,6 +186,15 @@ func writeEnter(deps Deps, node statemachine.Node, ctx *statemachine.Context) {
 // thing in the trace; it directly contradicted the inline "(test run
 // failed: ... — continuing)" the same node had just printed.
 //
+// When the node returns an empty Outcome but did write to ctx.State
+// (e.g. a `user-task` `agent: human` that records `approval-outcome`,
+// or a gateway whose binding evaluated to a `Bool: false` that
+// formatOutcome can't distinguish from "no result"), the state delta is
+// hoisted into the banner — so the line reads `OK ASK_HUMAN ->
+// approval-outcome=rejected` rather than the misleading `OK ASK_HUMAN ->
+// (no result)` followed by a separate `state:` line. The follow-on
+// `state:` line is suppressed in that case to avoid duplication.
+//
 // On Outcome.Err the first line becomes:
 //
 //	[trace HH:MM:SS] FAIL NODE_ID -> <error>  (<elapsed>)
@@ -202,7 +211,13 @@ func writeExit(deps Deps, node statemachine.Node, out statemachine.Outcome, elap
 		return
 	}
 	label, attr := outcomeStatusLabel(out)
-	if detail := formatOutcome(out); detail != "" {
+	detail := formatOutcome(out)
+	delta := stateDelta(pre, post)
+	hoistedDelta := detail == "(no result)" && delta != ""
+	if hoistedDelta {
+		detail = delta
+	}
+	if detail != "" {
 		fmt.Fprintf(w, "%s %s %s -> %s  (%s)\n",
 			deps.tracePrefix(),
 			deps.paint(label, attr),
@@ -215,7 +230,7 @@ func writeExit(deps Deps, node statemachine.Node, out statemachine.Outcome, elap
 			deps.nodeIDPaint(node),
 			elapsed)
 	}
-	if delta := stateDelta(pre, post); delta != "" {
+	if delta != "" && !hoistedDelta {
 		fmt.Fprintf(w, "%s    %s %s\n", deps.tracePrefix(), deps.paint("state:", color.Faint), delta)
 	}
 	if node.Kind == statemachine.UserTask {

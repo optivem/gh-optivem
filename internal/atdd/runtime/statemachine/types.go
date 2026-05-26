@@ -14,10 +14,11 @@ type NodeKind int
 const (
 	StartEvent NodeKind = iota
 	EndEvent
-	ServiceTask  // mechanical action; auto-executed via the actions registry
-	UserTask     // creative work; dispatches an agent (or blocks on human input)
-	Gateway      // XOR decision; binding evaluated via the gates registry
-	CallActivity // embedded sub-process; runs to completion, returns to caller
+	ErrorEndEvent // exceptional exit; terminates the process with an error (BPMN error end event)
+	ServiceTask   // mechanical action; auto-executed via the actions registry
+	UserTask      // creative work; dispatches an agent (or blocks on human input)
+	Gateway       // XOR decision; binding evaluated via the gates registry
+	CallActivity  // embedded sub-process; runs to completion, returns to caller
 )
 
 // Outcome is what every NodeFn returns. The fields are union-style and only

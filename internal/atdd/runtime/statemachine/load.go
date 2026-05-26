@@ -20,6 +20,7 @@ type RawNode struct {
 	Documentation string            `yaml:"documentation,omitempty"`
 	Role          string            `yaml:"role,omitempty"`
 	Group         string            `yaml:"group,omitempty"`
+	TDDStage      string            `yaml:"tdd-stage,omitempty"`
 	Params        map[string]string `yaml:"params,omitempty"`
 }
 
@@ -107,6 +108,12 @@ func buildProcess(name string, rp rawProcess) (*Process, error) {
 		if err != nil {
 			return nil, fmt.Errorf("process %q node %q: %w", name, rn.ID, err)
 		}
+		if err := validateEventDocumentation(name, rn, kind); err != nil {
+			return nil, err
+		}
+		if err := validateTDDStage(name, rn); err != nil {
+			return nil, err
+		}
 		process.Nodes[rn.ID] = Node{ID: rn.ID, Kind: kind, Raw: rn}
 	}
 	if _, ok := process.Nodes[rp.Start]; !ok {
@@ -133,6 +140,8 @@ func parseKind(s string) (NodeKind, error) {
 		return StartEvent, nil
 	case "end-event":
 		return EndEvent, nil
+	case "error-end-event":
+		return ErrorEndEvent, nil
 	case "service-task":
 		return ServiceTask, nil
 	case "user-task":
@@ -143,5 +152,34 @@ func parseKind(s string) (NodeKind, error) {
 		return CallActivity, nil
 	default:
 		return 0, fmt.Errorf("unknown node type %q", s)
+	}
+}
+
+// validateEventDocumentation enforces the Item-22 / Item-17 schema rule:
+// every start-event, end-event, and error-end-event must carry a
+// `documentation:` string. The renderer uses that string as the visible
+// label on the BPMN circle, so an unlabelled event would render as an
+// anonymous "Start" / "End" with no trigger / outcome context.
+func validateEventDocumentation(processName string, rn RawNode, kind NodeKind) error {
+	switch kind {
+	case StartEvent, EndEvent, ErrorEndEvent:
+		if rn.Documentation == "" {
+			return fmt.Errorf("process %q node %q: %s requires `documentation:` (used as the BPMN event label)", processName, rn.ID, rn.Type)
+		}
+	}
+	return nil
+}
+
+// validateTDDStage enforces the Item-19 enum on the optional `tdd-stage:`
+// field. Absent → no styling (renderer leaves the node unstyled by TDD
+// stage). Present → must be one of red / green / refactor. The renderer
+// emits a coloured border per stage via classDef so an empty / unknown
+// value would silently misrender.
+func validateTDDStage(processName string, rn RawNode) error {
+	switch rn.TDDStage {
+	case "", "red", "green", "refactor":
+		return nil
+	default:
+		return fmt.Errorf("process %q node %q: tdd-stage %q is not one of red / green / refactor", processName, rn.ID, rn.TDDStage)
 	}
 }

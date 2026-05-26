@@ -42,7 +42,7 @@ func (e *Engine) Bind() error {
 // engine's registries.
 func (e *Engine) resolve(node Node) (NodeFn, error) {
 	switch node.Kind {
-	case StartEvent, EndEvent:
+	case StartEvent, EndEvent, ErrorEndEvent:
 		return func(ctx *Context) Outcome { return Outcome{} }, nil
 	case ServiceTask:
 		if e.ActionFn == nil {
@@ -224,6 +224,9 @@ func (e *Engine) RunProcess(name string, ctx *Context) error {
 		}
 		if node.Kind == EndEvent {
 			return nil
+		}
+		if node.Kind == ErrorEndEvent {
+			return fmt.Errorf("process %q reached error end event %q: %s", name, cur, node.Raw.Documentation)
 		}
 		next, err := e.nextEdge(process, cur, ctx)
 		if err != nil {
