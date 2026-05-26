@@ -224,7 +224,7 @@ func overrideHooksFromConfig(cfg *projectconfig.Config) (*override.Hooks, error)
 		for node, path := range cfg.NodeReplacements {
 			data, err := os.ReadFile(path)
 			if err != nil {
-				return nil, fmt.Errorf("node_replacements[%s]: read %s: %w", node, path, err)
+				return nil, fmt.Errorf("node-replacements[%s]: read %s: %w", node, path, err)
 			}
 			replace[node] = string(data)
 		}
@@ -247,7 +247,7 @@ func taskPromptOverridesFromConfig(cfg *projectconfig.Config) (map[string]string
 	for name, path := range cfg.TaskPrompts {
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return nil, fmt.Errorf("task_prompts[%s]: read %s: %w", name, path, err)
+			return nil, fmt.Errorf("task-prompts[%s]: read %s: %w", name, path, err)
 		}
 		out[name] = string(data)
 	}

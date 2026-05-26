@@ -25,7 +25,7 @@ func FillRawFlagsFromYAML(f *RawFlags, pc *projectconfig.Config) error {
 	}
 
 	if pc.SystemName == "" {
-		return missingYAMLField("system_name")
+		return missingYAMLField("system-name")
 	}
 	if pc.System.Architecture == "" {
 		return missingYAMLField("system.architecture")
@@ -35,7 +35,7 @@ func FillRawFlagsFromYAML(f *RawFlags, pc *projectconfig.Config) error {
 	// cfg.ProjectURL, and the later WriteOptivemYAML step bakes it back
 	// into gh-optivem.yaml.
 	if pc.RepoStrategy == "" {
-		return missingYAMLField("repo_strategy")
+		return missingYAMLField("repo-strategy")
 	}
 
 	f.SystemName = pc.SystemName
@@ -72,17 +72,17 @@ func FillRawFlagsFromYAML(f *RawFlags, pc *projectconfig.Config) error {
 	}
 
 	if pc.SystemTest.IsEmpty() {
-		return missingYAMLField("system_test")
+		return missingYAMLField("system-test")
 	}
 	f.SystemTestPath = pc.SystemTest.Path
 	f.TestLang = pc.SystemTest.Lang
 
 	if pc.ExternalSystems.Stubs.IsEmpty() {
-		return missingYAMLField("external_systems.stubs")
+		return missingYAMLField("external-systems.stubs")
 	}
 	f.StubsPath = pc.ExternalSystems.Stubs.Path
 	if pc.ExternalSystems.Simulators.IsEmpty() {
-		return missingYAMLField("external_systems.simulators")
+		return missingYAMLField("external-systems.simulators")
 	}
 	f.SimulatorsPath = pc.ExternalSystems.Simulators.Path
 

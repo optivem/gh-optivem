@@ -167,7 +167,7 @@ func TestBuildOptivemYAML_NonScaffoldPaths(t *testing.T) {
 	// sutNamespace baked into System.Path. FullRepo=optivem/shop →
 	// sutNamespace=shop → cfg.SystemPath joined to it.
 	if got.System.Path != "system/monolith/java/shop" {
-		t.Errorf("System.Path: got %q, want shop-style path with sut_namespace", got.System.Path)
+		t.Errorf("System.Path: got %q, want shop-style path with sut-namespace", got.System.Path)
 	}
 	if got.SystemTest.Path != "system-test/java" {
 		t.Errorf("SystemTest.Path: got %q, want shop-style path", got.SystemTest.Path)
@@ -234,15 +234,15 @@ func TestBuildOptivemYAML_PathsBlockSeededPerLanguage(t *testing.T) {
 			}
 			got := BuildOptivemYAML(cfg)
 			if len(got.SystemTest.Paths) == 0 {
-				t.Fatal("system_test.paths: block should be seeded by the scaffolder")
+				t.Fatal("system-test.paths: block should be seeded by the scaffolder")
 			}
 			for _, k := range []string{"driver-port", "driver-adapter", "external-system-driver-port", "external-system-driver-adapter"} {
 				if _, ok := got.SystemTest.Paths[k]; !ok {
-					t.Errorf("system_test.paths.%s missing", k)
+					t.Errorf("system-test.paths.%s missing", k)
 				}
 			}
 			if got.SystemTest.Paths[tc.wantKey] != tc.wantPath {
-				t.Errorf("system_test.paths.%s: got %q, want %q", tc.wantKey, got.SystemTest.Paths[tc.wantKey], tc.wantPath)
+				t.Errorf("system-test.paths.%s: got %q, want %q", tc.wantKey, got.SystemTest.Paths[tc.wantKey], tc.wantPath)
 			}
 		})
 	}

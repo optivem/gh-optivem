@@ -1847,7 +1847,7 @@ func writePhaseScopeTestConfig(t *testing.T, repoPath string) {
   provider: github
   url: https://github.com/orgs/acme/projects/1
 
-repo_strategy: mono-repo
+repo-strategy: mono-repo
 
 sonar:
   organization: acme
@@ -1857,13 +1857,13 @@ system:
   path: system/monolith/typescript
   repo: acme/shop
   lang: typescript
-  sonar_project: acme_shop-system
+  sonar-project: acme_shop-system
 
-system_test:
+system-test:
   path: system-test/typescript
   repo: acme/shop
   lang: typescript
-  sonar_project: acme_shop-system-test
+  sonar-project: acme_shop-system-test
   paths:
     at-test: system-test/typescript/tests/latest/acceptance
     dsl-port: dsl/typescript/src/port

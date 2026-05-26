@@ -4,10 +4,10 @@
 // source build.
 //
 // Working-dir contract: every command runs against the user's cwd and
-// reads the tests config path from gh-optivem.yaml's system_test.config:
+// reads the tests config path from gh-optivem.yaml's system-test.config:
 // field (legacy `.json` files still resolve via the loader's extension
 // dispatch). An alternate gh-optivem.yaml can be selected via --config /
-// -c. Missing gh-optivem.yaml or empty system_test.config: are hard
+// -c. Missing gh-optivem.yaml or empty system-test.config: are hard
 // errors. Helpers live in runner_helpers.go.
 package main
 

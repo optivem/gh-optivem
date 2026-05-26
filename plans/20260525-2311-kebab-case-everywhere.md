@@ -102,9 +102,6 @@ Order matters: schema → code → tests → fixtures → external configs → d
 If the schema changes flip first and the tests don't follow in the same
 commit, everything goes red.
 
-1. **Flip yaml tags in `projectconfig.Config` + `TierSpec` + `ExternalSystems` etc.** (single commit, narrow).
-2. **Update validation/migrate/init error & log strings** in lockstep (no migrate-rewrite logic — per Q1).
-3. **Bulk-rename embedded YAML in `internal/**/*_test.go` and `testdata/`.** Run `go test ./internal/projectconfig/... ./internal/steps/...` (with `-p 2` per memory rule `feedback_go_test_windows.md`).
 4. **Flip `process-flow.yaml` keys + statemachine-runtime yaml struct tags** (per Q2 expanded scope). Audit gate fixtures for loopback edges before running tests (memory: `feedback_statemachine_test_loop_hazard`).
 5. **Bulk-rename embedded YAML in statemachine tests + gate fixtures.** Run statemachine tests with memory ceiling watch.
 6. **Update CLAUDE.md + `path-keys.md` + scaffolder examples + any phase-doc / ATDD docs naming the old keys.**

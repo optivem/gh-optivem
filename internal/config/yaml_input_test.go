@@ -61,13 +61,13 @@ func TestFillRawFlagsFromYAML_MonolithMonorepo(t *testing.T) {
 		t.Errorf("owner/repo: got %q/%q, want acme/page-turner", f.Owner, f.Repo)
 	}
 	if f.SystemName != "Page Turner" {
-		t.Errorf("system_name: got %q", f.SystemName)
+		t.Errorf("system-name: got %q", f.SystemName)
 	}
 	if f.Arch != "monolith" {
 		t.Errorf("arch: got %q (must use init's spelling, not yaml's)", f.Arch)
 	}
 	if f.RepoStrategy != "monorepo" {
-		t.Errorf("repo_strategy: got %q (must use init's spelling, not yaml's)", f.RepoStrategy)
+		t.Errorf("repo-strategy: got %q (must use init's spelling, not yaml's)", f.RepoStrategy)
 	}
 	if f.Lang != "java" {
 		t.Errorf("lang: got %q", f.Lang)
@@ -156,9 +156,9 @@ func TestFillRawFlagsFromYAML_RejectsMissingRequired(t *testing.T) {
 		mutate   func(*projectconfig.Config)
 		wantSubs string
 	}{
-		{"system_name", func(pc *projectconfig.Config) { pc.SystemName = "" }, "system_name"},
+		{"system-name", func(pc *projectconfig.Config) { pc.SystemName = "" }, "system-name"},
 		{"architecture", func(pc *projectconfig.Config) { pc.System.Architecture = "" }, "system.architecture"},
-		{"repo_strategy", func(pc *projectconfig.Config) { pc.RepoStrategy = "" }, "repo_strategy"},
+		{"repo-strategy", func(pc *projectconfig.Config) { pc.RepoStrategy = "" }, "repo-strategy"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

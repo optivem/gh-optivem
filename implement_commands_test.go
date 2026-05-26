@@ -94,7 +94,7 @@ func TestOverrideHooksFromConfig_NodeExtrasPassedThrough(t *testing.T) {
 		t.Errorf("Extra[AT_RED_DSL_WRITE]: got %q, want %q", got, "prefer record types")
 	}
 	if len(hooks.Replace) != 0 {
-		t.Errorf("Replace should be empty when no node_replacements set, got %+v", hooks.Replace)
+		t.Errorf("Replace should be empty when no node-replacements set, got %+v", hooks.Replace)
 	}
 }
 
@@ -140,7 +140,7 @@ func TestOverrideHooksFromConfig_MissingReplacementPathErrors(t *testing.T) {
 	}
 	_, err := overrideHooksFromConfig(cfg)
 	if err == nil {
-		t.Fatal("expected error for missing node_replacements path, got nil")
+		t.Fatal("expected error for missing node-replacements path, got nil")
 	}
 	if !strings.Contains(err.Error(), "AT_RED_TEST_WRITE") {
 		t.Errorf("error should name the node ID, got: %v", err)
@@ -207,7 +207,7 @@ func TestTaskPromptOverridesFromConfig_MissingPathErrors(t *testing.T) {
 	}
 	_, err := taskPromptOverridesFromConfig(cfg)
 	if err == nil {
-		t.Fatal("expected error for missing task_prompts path, got nil")
+		t.Fatal("expected error for missing task-prompts path, got nil")
 	}
 	if !strings.Contains(err.Error(), "write-acceptance-tests") {
 		t.Errorf("error should name the task, got: %v", err)

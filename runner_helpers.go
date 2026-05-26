@@ -7,7 +7,7 @@
 //
 // Working-dir contract: each command operates against the user's current
 // working directory. A gh-optivem.yaml is required; its system.config: /
-// system_test.config: fields drive path resolution. An alternate
+// system-test.config: fields drive path resolution. An alternate
 // gh-optivem.yaml can be selected via --config / -c.
 package main
 
@@ -65,14 +65,14 @@ func resolveSystemPath() (string, error) {
 	return cfg.System.Config, nil
 }
 
-// resolveTestsPath mirrors resolveSystemPath for system_test.config:.
+// resolveTestsPath mirrors resolveSystemPath for system-test.config:.
 func resolveTestsPath() (string, error) {
 	cfg, path, err := loadProjectConfigForRunner()
 	if err != nil {
 		return "", err
 	}
 	if cfg.SystemTest.Config == "" {
-		return "", fmt.Errorf("%s: system_test.config: not set; add it (path to your tests.yaml/.json) or pass --config <path> to a gh-optivem.yaml that has it", path)
+		return "", fmt.Errorf("%s: system-test.config: not set; add it (path to your tests.yaml/.json) or pass --config <path> to a gh-optivem.yaml that has it", path)
 	}
 	return cfg.SystemTest.Config, nil
 }

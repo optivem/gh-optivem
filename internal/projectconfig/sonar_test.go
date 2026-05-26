@@ -3,7 +3,7 @@ package projectconfig
 import "testing"
 
 // TestDeriveSonarProjects pins the canonical SonarCloud project keys for
-// every architecture × repo_strategy quadrant. Mirrors the legacy
+// every architecture × repo-strategy quadrant. Mirrors the legacy
 // TestSonarProjectKeys in internal/config/config_test.go (which exercised
 // steps.GetSonarProjectKeys) and extends it to assert the always-present
 // SystemTest key the scaffold-time replacement now creates.

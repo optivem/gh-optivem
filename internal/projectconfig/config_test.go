@@ -15,8 +15,8 @@ func writeConfig(t *testing.T, dir, body string) {
 	}
 }
 
-// javaPaths returns a valid Family B paths map for a (system_test.path,
-// sut_namespace) pair under Java. Used by tests that need to satisfy
+// javaPaths returns a valid Family B paths map for a (system-test.path,
+// sut-namespace) pair under Java. Used by tests that need to satisfy
 // Rule 22a (canonical-key presence) without caring about path values.
 func javaPaths(systemTestPath, sutNamespace string) map[string]string {
 	return DefaultPaths(LangJava, systemTestPath, sutNamespace)
@@ -30,7 +30,7 @@ const sampleMonoRepoMonolith = `project:
   provider: github
   url: https://github.com/orgs/optivem/projects/20
 
-repo_strategy: mono-repo
+repo-strategy: mono-repo
 
 sonar:
   organization: optivem
@@ -40,13 +40,13 @@ system:
   path: system/monolith/java
   repo: optivem/shop
   lang: java
-  sonar_project: optivem_shop-system
+  sonar-project: optivem_shop-system
 
-system_test:
+system-test:
   path: system-test/java
   repo: optivem/shop
   lang: java
-  sonar_project: optivem_shop-system-test
+  sonar-project: optivem_shop-system-test
   paths:
     driver-port: system-test/java/src/main/java/testkit/driver/port/shop
     driver-adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
@@ -57,7 +57,7 @@ system_test:
     dsl-core: system-test/java/src/main/java/testkit/dsl/core/shop
     ct-test: system-test/java/src/test/java/shop/latest/contract
 
-external_systems:
+external-systems:
   stubs:
     path: stubs
     repo: optivem/shop
@@ -70,7 +70,7 @@ const sampleMonoRepoMultitier = `project:
   provider: github
   url: https://github.com/orgs/optivem/projects/20
 
-repo_strategy: mono-repo
+repo-strategy: mono-repo
 
 sonar:
   organization: optivem
@@ -81,18 +81,18 @@ system:
     path: system/multitier/backend-java
     repo: optivem/shop
     lang: java
-    sonar_project: optivem_shop-backend
+    sonar-project: optivem_shop-backend
   frontend:
     path: system/multitier/frontend-react
     repo: optivem/shop
     lang: typescript
-    sonar_project: optivem_shop-frontend
+    sonar-project: optivem_shop-frontend
 
-system_test:
+system-test:
   path: system-test/java
   repo: optivem/shop
   lang: java
-  sonar_project: optivem_shop-system-test
+  sonar-project: optivem_shop-system-test
   paths:
     driver-port: system-test/java/src/main/java/testkit/driver/port/shop
     driver-adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
@@ -103,7 +103,7 @@ system_test:
     dsl-core: system-test/java/src/main/java/testkit/dsl/core/shop
     ct-test: system-test/java/src/test/java/shop/latest/contract
 
-external_systems:
+external-systems:
   stubs:
     path: stubs
     repo: optivem/shop
@@ -116,7 +116,7 @@ const sampleMultiRepoMonolith = `project:
   provider: github
   url: https://github.com/orgs/optivem/projects/20
 
-repo_strategy: multi-repo
+repo-strategy: multi-repo
 
 sonar:
   organization: optivem
@@ -126,13 +126,13 @@ system:
   path: .
   repo: optivem/shop
   lang: java
-  sonar_project: optivem_shop-system
+  sonar-project: optivem_shop-system
 
-system_test:
+system-test:
   path: system-test
   repo: optivem/shop
   lang: java
-  sonar_project: optivem_shop-system-test
+  sonar-project: optivem_shop-system-test
   paths:
     driver-port: system-test/src/main/java/testkit/driver/port/shop
     driver-adapter: system-test/src/main/java/testkit/driver/adapter/shop
@@ -143,7 +143,7 @@ system_test:
     dsl-core: system-test/src/main/java/testkit/dsl/core/shop
     ct-test: system-test/src/test/java/shop/latest/contract
 
-external_systems:
+external-systems:
   stubs:
     path: stubs
     repo: optivem/shop
@@ -156,7 +156,7 @@ const sampleMultiRepoMultitier = `project:
   provider: github
   url: https://github.com/orgs/optivem/projects/20
 
-repo_strategy: multi-repo
+repo-strategy: multi-repo
 
 sonar:
   organization: optivem
@@ -167,18 +167,18 @@ system:
     path: .
     repo: optivem/shop-backend
     lang: java
-    sonar_project: optivem_shop-backend
+    sonar-project: optivem_shop-backend
   frontend:
     path: .
     repo: optivem/shop-frontend
     lang: typescript
-    sonar_project: optivem_shop-frontend
+    sonar-project: optivem_shop-frontend
 
-system_test:
+system-test:
   path: system-test
   repo: optivem/shop-backend
   lang: java
-  sonar_project: optivem_shop-system-test
+  sonar-project: optivem_shop-system-test
   paths:
     driver-port: system-test/src/main/java/testkit/driver/port/shop-backend
     driver-adapter: system-test/src/main/java/testkit/driver/adapter/shop-backend
@@ -189,7 +189,7 @@ system_test:
     dsl-core: system-test/src/main/java/testkit/dsl/core/shop-backend
     ct-test: system-test/src/test/java/shop-backend/latest/contract
 
-external_systems:
+external-systems:
   stubs:
     path: stubs
     repo: optivem/shop-main
@@ -345,7 +345,7 @@ func TestWrite_RoundTripPreservesAllFourSamples(t *testing.T) {
 }
 
 // TestRoundTrip_PreservesProcessFlowAndOverrides verifies that the optional
-// process_flow: / task_prompts: / node_extras: / node_replacements: fields
+// process-flow: / task-prompts: / node-extras: / node-replacements: fields
 // survive a Write→Load round-trip when set.
 func TestRoundTrip_PreservesProcessFlowAndOverrides(t *testing.T) {
 	t.Parallel()
@@ -371,22 +371,22 @@ func TestRoundTrip_PreservesProcessFlowAndOverrides(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 	if got.ProcessFlow != cfg.ProcessFlow {
-		t.Errorf("process_flow: got %q, want %q", got.ProcessFlow, cfg.ProcessFlow)
+		t.Errorf("process-flow: got %q, want %q", got.ProcessFlow, cfg.ProcessFlow)
 	}
 	if got.TaskPrompts["write-acceptance-tests"] != cfg.TaskPrompts["write-acceptance-tests"] {
-		t.Errorf("task_prompts[write-acceptance-tests]: got %q, want %q",
+		t.Errorf("task-prompts[write-acceptance-tests]: got %q, want %q",
 			got.TaskPrompts["write-acceptance-tests"], cfg.TaskPrompts["write-acceptance-tests"])
 	}
 	if got.NodeExtras["AT_RED_DSL_WRITE"] != cfg.NodeExtras["AT_RED_DSL_WRITE"] {
-		t.Errorf("node_extras: got %q", got.NodeExtras["AT_RED_DSL_WRITE"])
+		t.Errorf("node-extras: got %q", got.NodeExtras["AT_RED_DSL_WRITE"])
 	}
 	if got.NodeReplacements["AT_RED_TEST_WRITE"] != cfg.NodeReplacements["AT_RED_TEST_WRITE"] {
-		t.Errorf("node_replacements: got %q", got.NodeReplacements["AT_RED_TEST_WRITE"])
+		t.Errorf("node-replacements: got %q", got.NodeReplacements["AT_RED_TEST_WRITE"])
 	}
 }
 
 // TestValidate_ProcessFlow_RejectsAbsolutePath verifies path-validation
-// kicks in for the new process_flow: field.
+// kicks in for the new process-flow: field.
 func TestValidate_ProcessFlow_RejectsAbsolutePath(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
@@ -395,10 +395,10 @@ func TestValidate_ProcessFlow_RejectsAbsolutePath(t *testing.T) {
 	}
 	err := cfg.Validate()
 	if err == nil {
-		t.Fatal("expected error for absolute process_flow, got nil")
+		t.Fatal("expected error for absolute process-flow, got nil")
 	}
-	if !strings.Contains(err.Error(), "process_flow") {
-		t.Fatalf("error should mention process_flow, got: %v", err)
+	if !strings.Contains(err.Error(), "process-flow") {
+		t.Fatalf("error should mention process-flow, got: %v", err)
 	}
 }
 
@@ -422,7 +422,7 @@ func TestValidate_TaskPrompts_RejectsUnknownTask(t *testing.T) {
 }
 
 // TestValidate_TaskPrompts_RejectsAbsolutePath verifies values pass the
-// same path-validation as system/system_test paths.
+// same path-validation as system/system-test paths.
 func TestValidate_TaskPrompts_RejectsAbsolutePath(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
@@ -432,12 +432,12 @@ func TestValidate_TaskPrompts_RejectsAbsolutePath(t *testing.T) {
 		},
 	}
 	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected error for absolute task_prompts path, got nil")
+		t.Fatal("expected error for absolute task-prompts path, got nil")
 	}
 }
 
 // TestValidate_NodeReplacements_RejectsAbsolutePath verifies values pass
-// the same path-validation as task_prompts.
+// the same path-validation as task-prompts.
 func TestValidate_NodeReplacements_RejectsAbsolutePath(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
@@ -447,7 +447,7 @@ func TestValidate_NodeReplacements_RejectsAbsolutePath(t *testing.T) {
 		},
 	}
 	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected error for absolute node_replacements path, got nil")
+		t.Fatal("expected error for absolute node-replacements path, got nil")
 	}
 }
 
@@ -481,7 +481,7 @@ func TestValidate_AcceptsEmptyOverrideMaps(t *testing.T) {
 }
 
 // TestRoundTrip_PreservesSystemAndTestConfig verifies that the optional
-// system.config: / system_test.config: fields survive a Write→Load round-trip
+// system.config: / system-test.config: fields survive a Write→Load round-trip
 // when set, and stay empty (and absent from the written YAML) when unset.
 func TestRoundTrip_PreservesSystemAndTestConfig(t *testing.T) {
 	t.Parallel()
@@ -505,7 +505,7 @@ func TestRoundTrip_PreservesSystemAndTestConfig(t *testing.T) {
 			t.Errorf("system.config: got %q, want %q", got.System.Config, cfg.System.Config)
 		}
 		if got.SystemTest.Config != cfg.SystemTest.Config {
-			t.Errorf("system_test.config: got %q, want %q", got.SystemTest.Config, cfg.SystemTest.Config)
+			t.Errorf("system-test.config: got %q, want %q", got.SystemTest.Config, cfg.SystemTest.Config)
 		}
 	})
 
@@ -534,57 +534,9 @@ func TestRoundTrip_PreservesSystemAndTestConfig(t *testing.T) {
 	})
 }
 
-// TestValidate_RejectsLegacyTopLevelConfigKeys verifies the pre-2026-05
-// top-level system_config: / test_config: spellings produce a clear
-// migration error rather than silently falling through to default paths.
-func TestValidate_RejectsLegacyTopLevelConfigKeys(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name     string
-		body     string
-		wantHint string
-	}{
-		{
-			name: "legacy system_config",
-			body: `project:
-  provider: github
-  url: https://github.com/orgs/acme/projects/1
-system_config: docker/systems.json
-`,
-			wantHint: "system.config",
-		},
-		{
-			name: "legacy test_config",
-			body: `project:
-  provider: github
-  url: https://github.com/orgs/acme/projects/1
-test_config: system-test/tests.json
-`,
-			wantHint: "system_test.config",
-		},
-	}
-
-	for _, c := range cases {
-		c := c
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-			dir := t.TempDir()
-			writeConfig(t, dir, c.body)
-			_, err := Load(dir)
-			if err == nil {
-				t.Fatalf("expected migration error, got nil")
-			}
-			if !strings.Contains(err.Error(), c.wantHint) {
-				t.Errorf("error should hint at %q, got: %v", c.wantHint, err)
-			}
-		})
-	}
-}
-
 // TestValidate_RejectsConfigOnBackendOrFrontend verifies the Config field
 // is rejected on system.backend / system.frontend (it's only meaningful on
-// system_test). Catches typos like accidentally placing the tests.yaml path
+// system-test). Catches typos like accidentally placing the tests.yaml path
 // under a code tier.
 func TestValidate_RejectsConfigOnBackendOrFrontend(t *testing.T) {
 	t.Parallel()
@@ -671,7 +623,7 @@ func TestValidate_UnknownRepoStrategyErrors(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{RepoStrategy: "poly-repo"}
 	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected error for unknown repo_strategy, got nil")
+		t.Fatal("expected error for unknown repo-strategy, got nil")
 	}
 }
 
@@ -818,7 +770,7 @@ func TestValidate_RejectsTierWithMissingLang(t *testing.T) {
 		SystemTest: TierSpec{Path: "t", Repo: "x/y" /* lang missing */},
 	}
 	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected error for system_test missing lang, got nil")
+		t.Fatal("expected error for system-test missing lang, got nil")
 	}
 }
 
@@ -832,7 +784,7 @@ func TestValidate_RejectsTierWithMissingRepo(t *testing.T) {
 		SystemTest: TierSpec{Path: "t", Lang: LangJava /* repo missing */},
 	}
 	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected error for system_test missing repo, got nil")
+		t.Fatal("expected error for system-test missing repo, got nil")
 	}
 }
 
@@ -846,7 +798,7 @@ func TestValidate_RequiresSystemTestWhenArchitectureSet(t *testing.T) {
 		// SystemTest empty.
 	}
 	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected error for missing system_test, got nil")
+		t.Fatal("expected error for missing system-test, got nil")
 	}
 }
 
@@ -876,7 +828,7 @@ func TestValidate_RejectsMissingPathsBlockWhenArchitectureSet(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing paths block, got nil")
 	}
-	for _, want := range []string{"system_test.paths.driver-port", "system_test.paths.driver-adapter", "system_test.paths.at-test", "system_test.paths.ct-test"} {
+	for _, want := range []string{"system-test.paths.driver-port", "system-test.paths.driver-adapter", "system-test.paths.at-test", "system-test.paths.ct-test"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should name %s, got: %v", want, err)
 		}
@@ -906,10 +858,10 @@ func TestValidate_RejectsMissingCanonicalKey(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing driver-adapter, got nil")
 	}
-	if !strings.Contains(err.Error(), "system_test.paths.driver-adapter") {
+	if !strings.Contains(err.Error(), "system-test.paths.driver-adapter") {
 		t.Errorf("error should name the missing key, got: %v", err)
 	}
-	if strings.Contains(err.Error(), "system_test.paths.driver-port") {
+	if strings.Contains(err.Error(), "system-test.paths.driver-port") {
 		t.Errorf("error should not name keys that ARE present, got: %v", err)
 	}
 }
@@ -937,7 +889,7 @@ func TestValidate_RejectsEmptyCanonicalValue(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty dsl-core value, got nil")
 	}
-	if !strings.Contains(err.Error(), "system_test.paths.dsl-core") {
+	if !strings.Contains(err.Error(), "system-test.paths.dsl-core") {
 		t.Errorf("error should name the empty-value key, got: %v", err)
 	}
 }
@@ -1003,7 +955,7 @@ func TestValidate_AcceptsExternalSystemsOmitted(t *testing.T) {
 		},
 	}
 	if err := cfg.Validate(); err != nil {
-		t.Fatalf("config without external_systems should validate, got: %v", err)
+		t.Fatalf("config without external-systems should validate, got: %v", err)
 	}
 }
 
@@ -1058,7 +1010,7 @@ func TestValidate_RejectsExternalWithMissingRepo(t *testing.T) {
 func TestValidate_AcceptsExternalRepoNotInOtherTiers(t *testing.T) {
 	t.Parallel()
 	// External systems can live in their own repo (multi-repo case).
-	// system_test.repo carries the canonical base ("x/main"), so the Sonar
+	// system-test.repo carries the canonical base ("x/main"), so the Sonar
 	// keys use base="main" — independent of where each component lives.
 	cfg := &Config{
 		Project:      Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
@@ -1175,8 +1127,8 @@ func TestWrite_OmitsEmptyOptionalFields(t *testing.T) {
 		t.Fatalf("read: %v", err)
 	}
 	body := string(data)
-	if strings.Contains(body, "external_systems:") {
-		t.Errorf("expected external_systems to be omitted; got:\n%s", body)
+	if strings.Contains(body, "external-systems:") {
+		t.Errorf("expected external-systems to be omitted; got:\n%s", body)
 	}
 	if !strings.Contains(body, "architecture: monolith") {
 		t.Errorf("expected architecture line; got:\n%s", body)
@@ -1304,11 +1256,11 @@ func TestWriteToPath_EmptyPathErrors(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// system_name / license / deploy field validation
+// system-name / license / deploy field validation
 // ---------------------------------------------------------------------------
 
 // validMonolithBase is the smallest Config that Validate accepts with
-// architecture set. Each system_name/license/deploy test mutates a copy.
+// architecture set. Each system-name/license/deploy test mutates a copy.
 func validMonolithBase() *Config {
 	return &Config{
 		Project:      Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
@@ -1337,7 +1289,7 @@ func TestValidate_AcceptsValidSystemName(t *testing.T) {
 		cfg := validMonolithBase()
 		cfg.SystemName = name
 		if err := cfg.Validate(); err != nil {
-			t.Errorf("Validate(system_name=%q): %v", name, err)
+			t.Errorf("Validate(system-name=%q): %v", name, err)
 		}
 	}
 }
@@ -1350,11 +1302,11 @@ func TestValidate_RejectsReservedSystemName(t *testing.T) {
 		cfg.SystemName = name
 		err := cfg.Validate()
 		if err == nil {
-			t.Errorf("Validate(system_name=%q): want error, got nil", name)
+			t.Errorf("Validate(system-name=%q): want error, got nil", name)
 			continue
 		}
-		if !strings.Contains(err.Error(), "system_name") {
-			t.Errorf("Validate(system_name=%q): want error mentioning system_name, got: %v", name, err)
+		if !strings.Contains(err.Error(), "system-name") {
+			t.Errorf("Validate(system-name=%q): want error mentioning system-name, got: %v", name, err)
 		}
 	}
 }
@@ -1367,8 +1319,8 @@ func TestValidate_RejectsBadCharsInSystemName(t *testing.T) {
 	if err == nil {
 		t.Fatal("Validate: want error for hyphenated name, got nil")
 	}
-	if !strings.Contains(err.Error(), "system_name") {
-		t.Errorf("error should mention system_name, got: %v", err)
+	if !strings.Contains(err.Error(), "system-name") {
+		t.Errorf("error should mention system-name, got: %v", err)
 	}
 }
 
@@ -1422,7 +1374,7 @@ func TestValidate_RejectsUnknownDeploy(t *testing.T) {
 
 func TestValidate_AcceptsEmptyIdentityFields(t *testing.T) {
 	t.Parallel()
-	// system_name / license / deploy are all optional at the schema layer
+	// system-name / license / deploy are all optional at the schema layer
 	// (init re-checks presence). A config with architecture set and these
 	// fields absent must still validate.
 	cfg := validMonolithBase()
@@ -1430,7 +1382,7 @@ func TestValidate_AcceptsEmptyIdentityFields(t *testing.T) {
 	cfg.License = ""
 	cfg.Deploy = ""
 	if err := cfg.Validate(); err != nil {
-		t.Errorf("Validate: %v (empty system_name/license/deploy must be OK)", err)
+		t.Errorf("Validate: %v (empty system-name/license/deploy must be OK)", err)
 	}
 }
 
@@ -1449,7 +1401,7 @@ func TestRoundTrip_PreservesIdentityFields(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 	if out.SystemName != in.SystemName {
-		t.Errorf("system_name: got %q, want %q", out.SystemName, in.SystemName)
+		t.Errorf("system-name: got %q, want %q", out.SystemName, in.SystemName)
 	}
 	if out.License != in.License {
 		t.Errorf("license: got %q, want %q", out.License, in.License)
@@ -1479,67 +1431,67 @@ func TestValidate_RejectsMissingSonarOrganization(t *testing.T) {
 }
 
 // TestValidate_RejectsMissingPerTierSonarProject pins Rule 18: each
-// code tier that exists for the architecture must carry its sonar_project.
+// code tier that exists for the architecture must carry its sonar-project.
 func TestValidate_RejectsMissingPerTierSonarProject(t *testing.T) {
 	t.Parallel()
 
-	t.Run("monolith missing system.sonar_project", func(t *testing.T) {
+	t.Run("monolith missing system.sonar-project", func(t *testing.T) {
 		cfg := validMonolithBase()
 		cfg.System.SonarProject = ""
 		if err := cfg.Validate(); err == nil ||
-			!strings.Contains(err.Error(), "system.sonar_project") {
-			t.Fatalf("want system.sonar_project error, got: %v", err)
+			!strings.Contains(err.Error(), "system.sonar-project") {
+			t.Fatalf("want system.sonar-project error, got: %v", err)
 		}
 	})
 
-	t.Run("monolith missing system_test.sonar_project", func(t *testing.T) {
+	t.Run("monolith missing system-test.sonar-project", func(t *testing.T) {
 		cfg := validMonolithBase()
 		cfg.SystemTest.SonarProject = ""
 		if err := cfg.Validate(); err == nil ||
-			!strings.Contains(err.Error(), "system_test.sonar_project") {
-			t.Fatalf("want system_test.sonar_project error, got: %v", err)
+			!strings.Contains(err.Error(), "system-test.sonar-project") {
+			t.Fatalf("want system-test.sonar-project error, got: %v", err)
 		}
 	})
 
-	t.Run("multitier missing backend.sonar_project", func(t *testing.T) {
+	t.Run("multitier missing backend.sonar-project", func(t *testing.T) {
 		cfg := validMultitierBase()
 		cfg.System.Backend.SonarProject = ""
 		if err := cfg.Validate(); err == nil ||
-			!strings.Contains(err.Error(), "system.backend.sonar_project") {
-			t.Fatalf("want system.backend.sonar_project error, got: %v", err)
+			!strings.Contains(err.Error(), "system.backend.sonar-project") {
+			t.Fatalf("want system.backend.sonar-project error, got: %v", err)
 		}
 	})
 
-	t.Run("multitier missing frontend.sonar_project", func(t *testing.T) {
+	t.Run("multitier missing frontend.sonar-project", func(t *testing.T) {
 		cfg := validMultitierBase()
 		cfg.System.Frontend.SonarProject = ""
 		if err := cfg.Validate(); err == nil ||
-			!strings.Contains(err.Error(), "system.frontend.sonar_project") {
-			t.Fatalf("want system.frontend.sonar_project error, got: %v", err)
+			!strings.Contains(err.Error(), "system.frontend.sonar-project") {
+			t.Fatalf("want system.frontend.sonar-project error, got: %v", err)
 		}
 	})
 }
 
 // TestValidate_RejectsSonarKeyOnWrongArchitecture pins the cross-tier
-// exclusivity in Rule 18: system.sonar_project belongs only on monolith,
-// backend/frontend.sonar_project belong only on multitier.
+// exclusivity in Rule 18: system.sonar-project belongs only on monolith,
+// backend/frontend.sonar-project belong only on multitier.
 func TestValidate_RejectsSonarKeyOnWrongArchitecture(t *testing.T) {
 	t.Parallel()
 
-	t.Run("monolith with stray backend.sonar_project", func(t *testing.T) {
+	t.Run("monolith with stray backend.sonar-project", func(t *testing.T) {
 		cfg := validMonolithBase()
 		cfg.System.Backend.SonarProject = "acme_page-turner-backend"
 		if err := cfg.Validate(); err == nil ||
-			!strings.Contains(err.Error(), "system.backend.sonar_project") {
+			!strings.Contains(err.Error(), "system.backend.sonar-project") {
 			t.Fatalf("want exclusivity error, got: %v", err)
 		}
 	})
 
-	t.Run("multitier with stray system.sonar_project", func(t *testing.T) {
+	t.Run("multitier with stray system.sonar-project", func(t *testing.T) {
 		cfg := validMultitierBase()
 		cfg.System.SonarProject = "acme_page-turner-system"
 		if err := cfg.Validate(); err == nil ||
-			!strings.Contains(err.Error(), "system.sonar_project") {
+			!strings.Contains(err.Error(), "system.sonar-project") {
 			t.Fatalf("want exclusivity error, got: %v", err)
 		}
 	})
@@ -1548,8 +1500,8 @@ func TestValidate_RejectsSonarKeyOnWrongArchitecture(t *testing.T) {
 // TestValidate_AcceptsEmptySonarBlockWithoutArchitecture confirms the
 // schema accepts a partial Config: when system.architecture is unset,
 // the sonar block has nothing to express and Rules 17/18 stay
-// dormant. Matches the pattern already used for repo_strategy /
-// system_test (architecture is the gate).
+// dormant. Matches the pattern already used for repo-strategy /
+// system-test (architecture is the gate).
 func TestValidate_AcceptsEmptySonarBlockWithoutArchitecture(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{

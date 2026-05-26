@@ -415,7 +415,7 @@ func printConfig(w io.Writer, opts Options, cfg *projectconfig.Config, repoPath 
 				cfg.System.Frontend.Path, cfg.System.Frontend.Lang, cfg.System.Frontend.Repo)
 		}
 		if !cfg.SystemTest.IsEmpty() {
-			fmt.Fprintf(w, "  system_test:   %s (lang: %s, repo: %s)\n",
+			fmt.Fprintf(w, "  system-test:   %s (lang: %s, repo: %s)\n",
 				cfg.SystemTest.Path, cfg.SystemTest.Lang, cfg.SystemTest.Repo)
 		}
 		if !cfg.ExternalSystems.Stubs.IsEmpty() || !cfg.ExternalSystems.Simulators.IsEmpty() {
@@ -481,7 +481,7 @@ func seedScopeState(sCtx *statemachine.Context, cfg *projectconfig.Config) {
 		return
 	}
 	if cfg.RepoStrategy != "" {
-		sCtx.Set("repo_strategy", cfg.RepoStrategy)
+		sCtx.Set("repo-strategy", cfg.RepoStrategy)
 	}
 	if repos := cfg.Repos(); len(repos) > 0 {
 		sCtx.Set("repos", strings.Join(repos, ","))

@@ -108,8 +108,8 @@ func TestRun_MissingSystemTestPath(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "system_test.path") {
-		t.Errorf("error should mention system_test.path, got: %v", err)
+	if !strings.Contains(err.Error(), "system-test.path") {
+		t.Errorf("error should mention system-test.path, got: %v", err)
 	}
 }
 
@@ -242,7 +242,7 @@ func TestRun_TierPathExistsUnderWrongRepo(t *testing.T) {
 	wsRoot := t.TempDir()
 
 	// Set up two repos. Put a "system-test" dir under the FRONTEND repo
-	// instead of the main repo where system_test claims to live.
+	// instead of the main repo where system-test claims to live.
 	makeFakeRepo(t, filepath.Join(wsRoot, "shop-backend"))
 	feDir := makeFakeRepo(t, filepath.Join(wsRoot, "shop-frontend"))
 	mainDir := makeFakeRepo(t, filepath.Join(wsRoot, "shop-main"))
@@ -269,8 +269,8 @@ func TestRun_TierPathExistsUnderWrongRepo(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error — system-test exists under frontend repo, not main")
 	}
-	if !strings.Contains(err.Error(), "system_test.path") {
-		t.Errorf("error should mention system_test.path, got: %v", err)
+	if !strings.Contains(err.Error(), "system-test.path") {
+		t.Errorf("error should mention system-test.path, got: %v", err)
 	}
 }
 
@@ -331,7 +331,7 @@ func TestRun_ExternalSystemsMissingPath(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing simulators path")
 	}
-	if !strings.Contains(err.Error(), "external_systems.simulators.path") {
+	if !strings.Contains(err.Error(), "external-systems.simulators.path") {
 		t.Errorf("error should mention simulators.path, got: %v", err)
 	}
 }
@@ -356,7 +356,7 @@ func TestRun_ExternalSystemsOmittedDoesNotFail(t *testing.T) {
 		// ExternalSystems omitted entirely.
 	}
 	if err := Run(context.Background(), cfg, Options{Cwd: root}); err != nil {
-		t.Errorf("expected nil with no external_systems, got: %v", err)
+		t.Errorf("expected nil with no external-systems, got: %v", err)
 	}
 }
 
@@ -463,7 +463,7 @@ func TestRun_SonarProjectMissing_NamesField(t *testing.T) {
 			return true, nil
 		},
 		SonarProjectExists: func(_ context.Context, key string) (bool, error) {
-			// system_test project missing, others present.
+			// system-test project missing, others present.
 			return key != "acme_page-turner_test", nil
 		},
 	}
@@ -471,7 +471,7 @@ func TestRun_SonarProjectMissing_NamesField(t *testing.T) {
 	if err == nil {
 		t.Fatal("want failure when a sonar project is missing, got nil")
 	}
-	if !strings.Contains(err.Error(), "system_test.sonar_project") {
+	if !strings.Contains(err.Error(), "system-test.sonar-project") {
 		t.Errorf("error should name the missing project field, got: %v", err)
 	}
 	if !strings.Contains(err.Error(), "acme_page-turner_test") {

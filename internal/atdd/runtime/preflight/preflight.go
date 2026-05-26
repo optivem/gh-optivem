@@ -11,7 +11,7 @@
 //     repolocator) to a path that exists, is a directory, and contains
 //     a `.git` entry.
 //  2. Tier-level local. Every populated tier (system or backend+frontend,
-//     plus system_test, plus declared external_systems) must have its
+//     plus system-test, plus declared external-systems) must have its
 //     `path` join cleanly with its host repo's local clone.
 //  3. Remote (optional). When the corresponding Options field is non-nil,
 //     also verify that every repo slug exists on GitHub, every declared
@@ -276,7 +276,7 @@ func collectTiers(cfg *projectconfig.Config) []tierCheck {
 	}
 	if !cfg.SystemTest.IsEmpty() {
 		out = append(out, tierCheck{
-			field: "system_test.path",
+			field: "system-test.path",
 			repo:  cfg.SystemTest.Repo,
 			path:  cfg.SystemTest.Path,
 		})
@@ -284,14 +284,14 @@ func collectTiers(cfg *projectconfig.Config) []tierCheck {
 	// External systems — stubs first (cycle 2), simulators second (cycle 3).
 	if !cfg.ExternalSystems.Stubs.IsEmpty() {
 		out = append(out, tierCheck{
-			field: "external_systems.stubs.path",
+			field: "external-systems.stubs.path",
 			repo:  cfg.ExternalSystems.Stubs.Repo,
 			path:  cfg.ExternalSystems.Stubs.Path,
 		})
 	}
 	if !cfg.ExternalSystems.Simulators.IsEmpty() {
 		out = append(out, tierCheck{
-			field: "external_systems.simulators.path",
+			field: "external-systems.simulators.path",
 			repo:  cfg.ExternalSystems.Simulators.Repo,
 			path:  cfg.ExternalSystems.Simulators.Path,
 		})
@@ -299,14 +299,14 @@ func collectTiers(cfg *projectconfig.Config) []tierCheck {
 	return out
 }
 
-// sonarProjectCheck pairs a YAML field-name with the sonar_project key
+// sonarProjectCheck pairs a YAML field-name with the sonar-project key
 // declared at that field. Field is used purely for error messages.
 type sonarProjectCheck struct {
 	field string
 	key   string
 }
 
-// collectSonarProjects returns every populated sonar_project entry in
+// collectSonarProjects returns every populated sonar-project entry in
 // cfg, in the same deterministic order collectTiers uses for the local
 // pass.
 func collectSonarProjects(cfg *projectconfig.Config) []sonarProjectCheck {
@@ -315,27 +315,27 @@ func collectSonarProjects(cfg *projectconfig.Config) []sonarProjectCheck {
 	case projectconfig.ArchMonolith:
 		if cfg.System.SonarProject != "" {
 			out = append(out, sonarProjectCheck{
-				field: "system.sonar_project",
+				field: "system.sonar-project",
 				key:   cfg.System.SonarProject,
 			})
 		}
 	case projectconfig.ArchMultitier:
 		if cfg.System.Backend.SonarProject != "" {
 			out = append(out, sonarProjectCheck{
-				field: "system.backend.sonar_project",
+				field: "system.backend.sonar-project",
 				key:   cfg.System.Backend.SonarProject,
 			})
 		}
 		if cfg.System.Frontend.SonarProject != "" {
 			out = append(out, sonarProjectCheck{
-				field: "system.frontend.sonar_project",
+				field: "system.frontend.sonar-project",
 				key:   cfg.System.Frontend.SonarProject,
 			})
 		}
 	}
 	if cfg.SystemTest.SonarProject != "" {
 		out = append(out, sonarProjectCheck{
-			field: "system_test.sonar_project",
+			field: "system-test.sonar-project",
 			key:   cfg.SystemTest.SonarProject,
 		})
 	}

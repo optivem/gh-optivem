@@ -134,7 +134,7 @@ func monolithTier(cfg *projectconfig.Config) projectconfig.TierSpec {
 
 func compileSystemTests(cfg *projectconfig.Config, sum *compileSummary) error {
 	if cfg.SystemTest.IsEmpty() {
-		return fmt.Errorf("compile system-tests: %s has no system_test set", projectconfig.Path)
+		return fmt.Errorf("compile system-tests: %s has no system-test set", projectconfig.Path)
 	}
 	log.Infof("Compiling system-tests (%s) in %s", cfg.SystemTest.Lang, cfg.SystemTest.Path)
 	return recordCompile(sum, "Compile system-tests", "system-tests", cfg.SystemTest, func() error {

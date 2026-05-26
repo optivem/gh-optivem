@@ -62,7 +62,7 @@ func TestDefaultPaths_DotnetFlatScaffold(t *testing.T) {
 // TestDefaultPaths_EmptySutNamespace — the pre-SSoT shape (no suffix) is
 // what `runConfigMigrate`'s gap-fill back-fill uses for legacy configs
 // until the SSoT join step (plan 20260518-1530 item 6) runs. Tests both
-// a testkit key (sut_namespace-free trailing append) and at-test (Java
+// a testkit key (sut-namespace-free trailing append) and at-test (Java
 // stem with the package segment collapsed) plus ct-test.
 func TestDefaultPaths_EmptySutNamespace(t *testing.T) {
 	t.Parallel()

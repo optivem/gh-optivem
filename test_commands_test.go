@@ -127,7 +127,7 @@ func runnerResolveSetup(t *testing.T, tmpDir string) {
 
 // writeYAMLConfig persists pc to tmpDir/gh-optivem.yaml so the resolver under
 // test can pick it up via $GH_OPTIVEM_CONFIG. Skips Validate (the tests want
-// to exercise the bare system.config: / system_test.config: fields without
+// to exercise the bare system.config: / system-test.config: fields without
 // setting up a full architecture-shaped config).
 func writeYAMLConfig(t *testing.T, tmpDir string, systemConfig, testConfig string) {
 	t.Helper()
@@ -139,7 +139,7 @@ func writeYAMLConfig(t *testing.T, tmpDir string, systemConfig, testConfig strin
 		body += "system:\n  config: " + systemConfig + "\n"
 	}
 	if testConfig != "" {
-		body += "system_test:\n  config: " + testConfig + "\n"
+		body += "system-test:\n  config: " + testConfig + "\n"
 	}
 	if err := os.WriteFile(filepath.Join(tmpDir, projectconfig.Path), []byte(body), 0o644); err != nil {
 		t.Fatalf("seed gh-optivem.yaml: %v", err)
@@ -219,7 +219,7 @@ func TestResolveTestsPath_YAMLUsedWhenSet(t *testing.T) {
 }
 
 // TestResolveTestsPath_EmptyYAMLErrors mirrors the system case for
-// system_test.config:.
+// system-test.config:.
 func TestResolveTestsPath_EmptyYAMLErrors(t *testing.T) {
 	tmp := t.TempDir()
 	runnerResolveSetup(t, tmp)
@@ -229,7 +229,7 @@ func TestResolveTestsPath_EmptyYAMLErrors(t *testing.T) {
 	if err == nil {
 		t.Fatalf("resolveTestsPath: want error, got nil")
 	}
-	for _, want := range []string{"system_test.config", "--config"} {
+	for _, want := range []string{"system-test.config", "--config"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error missing %q hint: %v", want, err)
 		}

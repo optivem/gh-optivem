@@ -1051,7 +1051,7 @@ func resolveLayerPaths(layers []string, cfg *projectconfig.Config) ([]string, er
 		}
 		v, ok := cfg.SystemTest.Paths[layer]
 		if !ok || v == "" {
-			return nil, fmt.Errorf("layer %q not present in gh-optivem.yaml system_test.paths:", layer)
+			return nil, fmt.Errorf("layer %q not present in gh-optivem.yaml system-test.paths:", layer)
 		}
 		out = append(out, v)
 	}

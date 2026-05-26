@@ -209,8 +209,8 @@ func TestRenderPrompt_TaskAgentArchitectureAndAllowedRoots_ExplicitValues(t *tes
 	// in its body; without these the no-leftover-${...} assertion below
 	// would catch the inlined Family B path references.
 	opts.Placeholders = map[string]string{
-		"sut_namespace":    "shop",
-		"system_test_path": "system-test/java",
+		"sut-namespace":    "shop",
+		"system-test-path": "system-test/java",
 		"driver-port":      "system-test/src/testkit/driver/port/shop",
 		"driver-adapter":   "system-test/src/testkit/driver/adapter/shop",
 	}
@@ -259,8 +259,8 @@ func TestRenderPrompt_RefactorSystemAgent_EmptyArchitectureAndRootsRender(t *tes
 	// cfg.PlaceholderMap(); supply them directly so the body renders
 	// without ${...} leftovers.
 	opts.Placeholders = map[string]string{
-		"sut_namespace":    "shop",
-		"system_test_path": "system-test",
+		"sut-namespace":    "shop",
+		"system-test-path": "system-test",
 		"driver-port":      "system-test/src/testkit/driver/port/shop",
 		"driver-adapter":   "system-test/src/testkit/driver/adapter/shop",
 	}
@@ -1225,8 +1225,8 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	// no ProjectConfig in this test, supply them directly so renderPrompt
 	// has values to substitute.
 	opts.Placeholders = map[string]string{
-		"sut_namespace":    "shop",
-		"system_test_path": "system-test/typescript",
+		"sut-namespace":    "shop",
+		"system-test-path": "system-test/typescript",
 		"driver-port":      "system-test/src/testkit/driver/port/shop",
 		"driver-adapter":   "system-test/src/testkit/driver/adapter/shop",
 	}

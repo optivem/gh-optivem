@@ -33,7 +33,7 @@ Do not present or wait for approval inside the agent.
 3. Update the Real driver impl (`${external-system-driver-adapter}/<external-system>/XyzRealDriver`) to consume the new surface. Apply across all parallel implementations (Java/.NET/TS × monolith/multitier — see [architecture/driver-adapter.md](../../../architecture/driver-adapter.md)).
 4. Update the Stub driver impl(s) (`${external-system-driver-adapter}/<external-system>/XyzStubDriver`) to mirror the new surface so stubs stay consistent with reality.
 5. **External driver-port guardrail.** Do NOT modify any file under `${external-system-driver-port}/` casually. If an interface change is unavoidable, STOP and present to the user: the method(s) you want to change, why the Real/Stub adapters alone cannot absorb the change, the proposed new signature(s), and the explicit warning that this WILL require contract-test updates (the calling CYCLE invokes the contract-test-update flow for affected scenarios). Wait for explicit user approval before editing any `${external-system-driver-port}/` file.
-6. Do not modify acceptance tests, contract tests, DSL, Gherkin, or any code outside the external-system driver layer. `${system_test_path}/.../Legacy/` is read-only.
+6. Do not modify acceptance tests, contract tests, DSL, Gherkin, or any code outside the external-system driver layer. `${system-test-path}/.../Legacy/` is read-only.
 
 Read `${references_root}/atdd/architecture/system.md`.
 Read `${references_root}/atdd/architecture/driver-port.md`.
