@@ -100,7 +100,7 @@ flowchart TD
     CALL_REDESIGN_SYSTEM_STRUCTURE[CALL_REDESIGN_SYSTEM_STRUCTURE — see § redesign-system-structure]
     CALL_REFACTOR_SYSTEM_STRUCTURE[CALL_REFACTOR_SYSTEM_STRUCTURE — see § refactor-system-structure]
     CALL_REFACTOR_TEST_STRUCTURE[CALL_REFACTOR_TEST_STRUCTURE — see § refactor-test-structure]
-    GATE_TICKET_KIND{"Ticket kind (type + optional task subtype)?"}
+    GATE_TICKET_KIND{ticket-kind}
     IMPLEMENT_TICKET_END((Ticket Marked IN ACCEPTANCE))
     MARK_IN_ACCEPTANCE[[MARK_IN_ACCEPTANCE]]
     MARK_IN_PROGRESS[[MARK_IN_PROGRESS]]
@@ -167,7 +167,7 @@ flowchart TD
 flowchart TD
     CHECK_CHECKLIST_PROGRESS[[CHECK_CHECKLIST_PROGRESS]]
     DOCUMENT_EXTERNAL_SYSTEM_CONTRACT[Document external system contract]
-    GATE_CHECKLIST_PARTIALLY_DONE{Checklist already partially done?}
+    GATE_CHECKLIST_PARTIALLY_DONE{checklist-partially-done}
     IDENTIFY_EXTERNAL_SYSTEM[Identify external system]
     ONBOARD_END((External System Onboarded))
     SETUP_EXTERNAL_SYSTEM_ACCESS["Set up external system access (credentials, endpoints, sandbox)"]
@@ -195,7 +195,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     CHANGE_SYSTEM_BEHAVIOR_END((System Behavior Changed))
-    GATE_OPPORTUNISTIC_REFACTOR{"Opportunistic refactor? (loopable; none = end cycle)"}
+    GATE_OPPORTUNISTIC_REFACTOR{refactor-type-choice}
     IMPLEMENT_AND_VERIFY_SYSTEM[GREEN — agent-action: implement-system — see § implement-and-verify-system]
     OPP_REDESIGN_SYSTEM_STRUCTURE[OPP_REDESIGN_SYSTEM_STRUCTURE — see § redesign-system-structure]
     OPP_REFACTOR_SYSTEM_STRUCTURE[OPP_REFACTOR_SYSTEM_STRUCTURE — see § refactor-system-structure]
@@ -237,7 +237,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     CHECK_CHECKLIST_PROGRESS[[CHECK_CHECKLIST_PROGRESS]]
-    GATE_CHECKLIST_PARTIALLY_DONE{Checklist already partially done?}
+    GATE_CHECKLIST_PARTIALLY_DONE{checklist-partially-done}
     IMPLEMENT_AND_VERIFY_SYSTEM[agent-action: implement-system — see § implement-and-verify-system]
     IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS — see § implement-external-system-driver-adapters]
     IMPLEMENT_SYSTEM_DRIVER_ADAPTERS[IMPLEMENT_SYSTEM_DRIVER_ADAPTERS — see § implement-system-driver-adapters]
@@ -264,7 +264,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     CHECK_CHECKLIST_PROGRESS[[CHECK_CHECKLIST_PROGRESS]]
-    GATE_CHECKLIST_PARTIALLY_DONE{Checklist already partially done?}
+    GATE_CHECKLIST_PARTIALLY_DONE{checklist-partially-done}
     IMPLEMENT_AND_VERIFY_SYSTEM[agent-action: refactor-system — see § implement-and-verify-system]
     REFACTOR_SYSTEM_STRUCTURE_END((System Structure Refactored))
     STOP_CHECKLIST_PARTIALLY_DONE["${checklist_progress_summary} Approve re-running this cycle?"]
@@ -290,7 +290,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     CHECK_CHECKLIST_PROGRESS[[CHECK_CHECKLIST_PROGRESS]]
-    GATE_CHECKLIST_PARTIALLY_DONE{Checklist already partially done?}
+    GATE_CHECKLIST_PARTIALLY_DONE{checklist-partially-done}
     REFACTOR_AND_VERIFY_TESTS[REFACTOR_AND_VERIFY_TESTS — see § refactor-and-verify-tests]
     REFACTOR_TEST_STRUCTURE_END((Test Structure Refactored))
     STOP_CHECKLIST_PARTIALLY_DONE["${checklist_progress_summary} Approve re-running this cycle?"]
@@ -332,9 +332,9 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    GATE_DSL_PORT_CHANGED{DSL port changed?}
-    GATE_EXTERNAL_DRIVER_PORTS_CHANGED{External system driver ports changed?}
-    GATE_SYSTEM_DRIVER_PORTS_CHANGED{System driver ports changed?}
+    GATE_DSL_PORT_CHANGED{dsl-port-changed}
+    GATE_EXTERNAL_DRIVER_PORTS_CHANGED{external-driver-ports-changed}
+    GATE_SYSTEM_DRIVER_PORTS_CHANGED{system-driver-ports-changed}
     IMPLEMENT_AND_VERIFY_DSL[IMPLEMENT_AND_VERIFY_DSL — see § implement-and-verify-dsl]
     IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS[IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS — see § implement-and-verify-external-system-driver-adapters]
     IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS[IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS — see § implement-and-verify-system-driver-adapters]
@@ -360,7 +360,7 @@ flowchart TD
     COMMIT_TEST_CODE[COMMIT_TEST_CODE — see § commit]
     COMPILE_TESTS[COMPILE_TESTS — see § compile-tests]
     DISABLE_ACCEPTANCE_TESTS[DISABLE_ACCEPTANCE_TESTS — see § disable-tests]
-    GATE_EXPECTED_TEST_RESULT{Expected test result?}
+    GATE_EXPECTED_TEST_RESULT{expected-test-result}
     UNKNOWN_EXPECTED_TEST_RESULT((⚡ Unknown Expected Test Result))
     VERIFY_TESTS_FAIL_ACCEPTANCE[VERIFY_TESTS_FAIL_ACCEPTANCE — see § verify-tests-fail]
     VERIFY_TESTS_PASS_ACCEPTANCE[VERIFY_TESTS_PASS_ACCEPTANCE — see § verify-tests-pass]
@@ -415,7 +415,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    GATE_DSL_PORT_CHANGED{DSL port changed?}
+    GATE_DSL_PORT_CHANGED{dsl-port-changed}
     IMPLEMENT_AND_VERIFY_DSL[IMPLEMENT_AND_VERIFY_DSL — see § implement-and-verify-dsl]
     IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS — see § implement-external-system-driver-adapters]
     IMPLEMENT_EXTERNAL_SYSTEM_STUBS[IMPLEMENT_EXTERNAL_SYSTEM_STUBS — see § implement-external-system-stubs]
@@ -479,7 +479,7 @@ flowchart TD
     COMPILE_TESTS[COMPILE_TESTS — see § compile-tests]
     DISABLE_TESTS[DISABLE_TESTS — see § disable-tests]
     ENABLE_TESTS[ENABLE_TESTS — see § enable-tests]
-    GATE_EXPECTED_TEST_RESULT{Expected test result?}
+    GATE_EXPECTED_TEST_RESULT{expected-test-result}
     IMPLEMENT_TEST_LAYER_END((Test Layer Implemented))
     UNKNOWN_EXPECTED_TEST_RESULT((⚡ Unknown Expected Test Result))
     VERIFY_TESTS_FAIL_FILTERED[VERIFY_TESTS_FAIL_FILTERED — see § verify-tests-fail]
@@ -505,7 +505,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     FIX_UNEXPECTED_FAILING_TESTS[FIX_UNEXPECTED_FAILING_TESTS — see § fix-unexpected-failing-tests]
-    GATE_TESTS_OUTCOME{All tests passed?}
+    GATE_TESTS_OUTCOME{test-outcome}
     RUN_TESTS[RUN_TESTS — see § run-tests]
     UNKNOWN_TESTS_OUTCOME((⚡ Unknown Tests Outcome))
     VERIFY_PASS_END((Tests Pass Verified))
@@ -525,7 +525,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     FIX_UNEXPECTED_PASSING_TESTS[FIX_UNEXPECTED_PASSING_TESTS — see § fix-unexpected-passing-tests]
-    GATE_TESTS_OUTCOME{Any tests passed?}
+    GATE_TESTS_OUTCOME{test-outcome}
     RUN_TESTS[RUN_TESTS — see § run-tests]
     UNKNOWN_TESTS_OUTCOME((⚡ Unknown Tests Outcome))
     VERIFY_FAIL_END((Tests Fail Verified))
@@ -757,7 +757,7 @@ flowchart TD
     APPROVE_OK_END((Approved))
     APPROVE_REJECT_END((Rejected))
     ASK_HUMAN["${question}"]
-    GATE_APPROVED{Approved?}
+    GATE_APPROVED{approval-outcome}
 
     ASK_HUMAN --> GATE_APPROVED
     GATE_APPROVED -- Approved --> APPROVE_OK_END
@@ -776,9 +776,9 @@ flowchart TD
     CALL_FIX[CALL_FIX — see § fix]
     EXECUTE_AGENT_END((Agent Dispatch Complete))
     EXECUTE_AGENT_REJECTED_END((Agent Dispatch Rejected))
-    GATE_APPROVED_PRE{Approved?}
-    GATE_FIX_ON_FAILURE{Fix on failure?}
-    GATE_OUTPUTS_AND_SCOPES_VALID{"Outputs & scopes valid?"}
+    GATE_APPROVED_PRE{approval-outcome}
+    GATE_FIX_ON_FAILURE{fix-on-failure-enabled}
+    GATE_OUTPUTS_AND_SCOPES_VALID{outputs-and-scopes-valid}
     RUN_AGENT["Run agent ${task-name}"]
     VALIDATE_OUTPUTS_AND_SCOPES[["Validate outputs (${outputs}) & scopes (${scopes})"]]
 
@@ -809,8 +809,8 @@ flowchart TD
     CALL_FIX[CALL_FIX — see § fix]
     EXECUTE_COMMAND_END((Command Dispatch Complete))
     EXECUTE_COMMAND_REJECTED_END((Command Dispatch Rejected))
-    GATE_APPROVED_PRE{Approved?}
-    GATE_COMMAND_SUCCEEDED{Command succeeded?}
+    GATE_APPROVED_PRE{approval-outcome}
+    GATE_COMMAND_SUCCEEDED{command-succeeded}
     RUN_COMMAND[["Run command ${command}"]]
 
     APPROVE_PRE --> GATE_APPROVED_PRE
@@ -833,7 +833,7 @@ flowchart TD
     EXECUTE_AGENT[EXECUTE_AGENT — see § execute-agent]
     FIX_END((Fix Complete))
     FIX_REJECTED_END((Fix Rejected))
-    GATE_APPROVED_PRE{Approved?}
+    GATE_APPROVED_PRE{approval-outcome}
 
     APPROVE_PRE --> GATE_APPROVED_PRE
     GATE_APPROVED_PRE -- Approved --> EXECUTE_AGENT

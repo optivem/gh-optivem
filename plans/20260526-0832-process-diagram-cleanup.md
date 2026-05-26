@@ -790,47 +790,6 @@ renamed to `WRITE_AND_VERIFY_ACCEPTANCE_TESTS` as part of Item 12's
 `CALL_*` prefix-drop pass — same rule (1:1 wrapper → bare upper-snake
 form of the sub-process name), same YAML pass.
 
-## Item 16 — Remove question-form documentation from computed gateways
-
-**Observation**: Several gateways read pre-computed values but carry
-question-form `documentation:` that misleads readers into thinking a
-human chooses at that point. Examples:
-
-- `GATE_TICKET_KIND` (process-flow.yaml:241-244): `"Ticket kind (type +
-  optional task subtype)?"` — but `ticket-kind` is set during
-  refinement; the gateway just reads/parses.
-- Likely the same pattern on `GATE_*_CHANGED` and other computed
-  gateways — inventory at execution time.
-
-**BPMN convention**: a gateway's label, if any, should be a **predicate**
-or **routing condition** ("ticket-kind", "dsl-port-changed"), not a
-question. Questions imply elicitation, which belongs in an upstream
-user_task (per Item 13).
-
-**Direction (decided 2026-05-26)**: every computed gateway's
-`documentation:` rewrites to the **predicate form** (the binding name as
-the label). Example: `GATE_TICKET_KIND` → `documentation: "ticket-kind"`.
-
-Question-form documentation is reserved for the operator-input gateways
-that Item 13 splits; Item 13 strips that documentation when adding the
-upstream user_task. End state: **no gateway in the YAML carries
-question-form text**.
-
-The renderer parses the gateway documentation; the schema validator
-**hard-errors at parse time** on any gateway whose documentation ends
-with `?` (question-form). Forces the convention; consistent with Item 2's
-hard-error for missing call_activity docs.
-
-**Files**:
-- `internal/atdd/runtime/statemachine/process-flow.yaml` — audit and
-  rewrite or drop gateway documentation fields.
-
-**Open questions for /refine-plan**:
-
-- Q16.1 — *Decided 2026-05-26*: predicate-form (binding name as label).
-- Q16.2 — *Decided 2026-05-26*: hard-error at parse time on
-  question-form gateway documentation (anything ending in `?`).
-
 ## Item 18 — Add explicit loop-subprocess markers to looping flows — *dropped on 2026-05-26*
 
 The post-Item-13 `refactor` shape (`CHOOSE_REFACTOR_TYPE` → gateway →

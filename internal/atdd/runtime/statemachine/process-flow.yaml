@@ -257,7 +257,7 @@ processes:
       - id: GATE_TICKET_KIND
         type: gateway
         binding: ticket-kind
-        documentation: "Ticket kind (type + optional task subtype)?"
+        documentation: "ticket-kind"
 
       - id: CALL_CHANGE_SYSTEM_BEHAVIOR
         type: call-activity
@@ -395,7 +395,7 @@ processes:
       - id: GATE_CHECKLIST_PARTIALLY_DONE
         type: gateway
         binding: checklist-partially-done
-        documentation: "Checklist already partially done?"
+        documentation: "checklist-partially-done"
 
       - id: STOP_CHECKLIST_PARTIALLY_DONE
         type: user-task
@@ -467,7 +467,7 @@ processes:
       - id: GATE_OPPORTUNISTIC_REFACTOR
         type: gateway
         binding: refactor-type-choice
-        documentation: "Opportunistic refactor? (loopable; none = end cycle)"
+        documentation: "refactor-type-choice"
 
       - id: OPP_REFACTOR_SYSTEM_STRUCTURE
         type: call-activity
@@ -542,7 +542,7 @@ processes:
       - id: GATE_CHECKLIST_PARTIALLY_DONE
         type: gateway
         binding: checklist-partially-done
-        documentation: "Checklist already partially done?"
+        documentation: "checklist-partially-done"
 
       - id: STOP_CHECKLIST_PARTIALLY_DONE
         type: user-task
@@ -595,7 +595,7 @@ processes:
       - id: GATE_CHECKLIST_PARTIALLY_DONE
         type: gateway
         binding: checklist-partially-done
-        documentation: "Checklist already partially done?"
+        documentation: "checklist-partially-done"
 
       - id: STOP_CHECKLIST_PARTIALLY_DONE
         type: user-task
@@ -634,7 +634,7 @@ processes:
       - id: GATE_CHECKLIST_PARTIALLY_DONE
         type: gateway
         binding: checklist-partially-done
-        documentation: "Checklist already partially done?"
+        documentation: "checklist-partially-done"
 
       - id: STOP_CHECKLIST_PARTIALLY_DONE
         type: user-task
@@ -729,7 +729,7 @@ processes:
       - id: GATE_DSL_PORT_CHANGED
         type: gateway
         binding: dsl-port-changed
-        documentation: "DSL port changed?"
+        documentation: "dsl-port-changed"
 
       - id: IMPLEMENT_AND_VERIFY_DSL
         type: call-activity
@@ -741,7 +741,7 @@ processes:
       - id: GATE_EXTERNAL_DRIVER_PORTS_CHANGED
         type: gateway
         binding: external-driver-ports-changed
-        documentation: "External system driver ports changed?"
+        documentation: "external-driver-ports-changed"
 
       - id: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS
         type: call-activity
@@ -753,7 +753,7 @@ processes:
       - id: GATE_SYSTEM_DRIVER_PORTS_CHANGED
         type: gateway
         binding: system-driver-ports-changed
-        documentation: "System driver ports changed?"
+        documentation: "system-driver-ports-changed"
 
       - id: IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS
         type: call-activity
@@ -804,7 +804,7 @@ processes:
       - id: GATE_EXPECTED_TEST_RESULT
         type: gateway
         binding: expected-test-result
-        documentation: "Expected test result?"
+        documentation: "expected-test-result"
 
       - id: VERIFY_TESTS_PASS_ACCEPTANCE
         type: call-activity
@@ -947,7 +947,7 @@ processes:
       - id: GATE_DSL_PORT_CHANGED
         type: gateway
         binding: dsl-port-changed
-        documentation: "DSL port changed?"
+        documentation: "dsl-port-changed"
 
       - id: IMPLEMENT_AND_VERIFY_DSL
         type: call-activity
@@ -1111,7 +1111,7 @@ processes:
       - id: GATE_EXPECTED_TEST_RESULT
         type: gateway
         binding: expected-test-result
-        documentation: "Expected test result?"
+        documentation: "expected-test-result"
 
       - id: VERIFY_TESTS_PASS_FILTERED
         type: call-activity
@@ -1178,7 +1178,7 @@ processes:
       - id: GATE_TESTS_OUTCOME
         type: gateway
         binding: test-outcome
-        documentation: "All tests passed?"
+        documentation: "test-outcome"
 
       - id: FIX_UNEXPECTED_FAILING_TESTS
         type: call-activity
@@ -1219,7 +1219,7 @@ processes:
       - id: GATE_TESTS_OUTCOME
         type: gateway
         binding: test-outcome
-        documentation: "Any tests passed?"
+        documentation: "test-outcome"
 
       - id: FIX_UNEXPECTED_PASSING_TESTS
         type: call-activity
@@ -1708,7 +1708,7 @@ processes:
       - id: GATE_APPROVED
         type: gateway
         binding: approval-outcome
-        documentation: "Approved?"
+        documentation: "approval-outcome"
 
       - id: APPROVE_OK_END
         type: end-event
@@ -1752,7 +1752,7 @@ processes:
       - id: GATE_APPROVED_PRE
         type: gateway
         binding: approval-outcome
-        documentation: "Approved?"
+        documentation: "approval-outcome"
 
       - id: RUN_AGENT
         type: user-task
@@ -1767,12 +1767,12 @@ processes:
       - id: GATE_OUTPUTS_AND_SCOPES_VALID
         type: gateway
         binding: outputs-and-scopes-valid
-        documentation: "Outputs & scopes valid?"
+        documentation: "outputs-and-scopes-valid"
 
       - id: GATE_FIX_ON_FAILURE
         type: gateway
         binding: fix-on-failure-enabled
-        documentation: "Fix on failure?"
+        documentation: "fix-on-failure-enabled"
 
       - id: CALL_FIX
         type: call-activity
@@ -1825,7 +1825,7 @@ processes:
       - id: GATE_APPROVED_PRE
         type: gateway
         binding: approval-outcome
-        documentation: "Approved?"
+        documentation: "approval-outcome"
 
       - id: RUN_COMMAND
         type: service-task
@@ -1835,7 +1835,7 @@ processes:
       - id: GATE_COMMAND_SUCCEEDED
         type: gateway
         binding: command-succeeded
-        documentation: "Command succeeded?"
+        documentation: "command-succeeded"
 
       - id: CALL_FIX
         type: call-activity
@@ -1881,7 +1881,7 @@ processes:
       - id: GATE_APPROVED_PRE
         type: gateway
         binding: approval-outcome
-        documentation: "Approved?"
+        documentation: "approval-outcome"
 
       - id: EXECUTE_AGENT
         type: call-activity

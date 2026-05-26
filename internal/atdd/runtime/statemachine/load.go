@@ -3,6 +3,7 @@ package statemachine
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -111,6 +112,9 @@ func buildProcess(name string, rp rawProcess) (*Process, error) {
 		if err := validateEventDocumentation(name, rn, kind); err != nil {
 			return nil, err
 		}
+		if err := validateGatewayDocumentation(name, rn, kind); err != nil {
+			return nil, err
+		}
 		if err := validateTDDStage(name, rn); err != nil {
 			return nil, err
 		}
@@ -166,6 +170,23 @@ func validateEventDocumentation(processName string, rn RawNode, kind NodeKind) e
 		if rn.Documentation == "" {
 			return fmt.Errorf("process %q node %q: %s requires `documentation:` (used as the BPMN event label)", processName, rn.ID, rn.Type)
 		}
+	}
+	return nil
+}
+
+// validateGatewayDocumentation enforces the Item-16 schema rule: a gateway
+// is a pure routing construct that switches on a value some other node
+// already produced. Its label, if any, names the binding being read — never
+// a question. Question-form documentation implies elicitation, which is the
+// job of an upstream user_task. Any gateway documentation ending with `?`
+// hard-errors at parse time so the YAML can't silently relapse to the
+// pre-Item-16 mix of predicate and question labels.
+func validateGatewayDocumentation(processName string, rn RawNode, kind NodeKind) error {
+	if kind != Gateway {
+		return nil
+	}
+	if strings.HasSuffix(strings.TrimSpace(rn.Documentation), "?") {
+		return fmt.Errorf("process %q node %q: gateway documentation %q is question-form; rewrite to the predicate (binding name) or move the question into an upstream user_task", processName, rn.ID, rn.Documentation)
 	}
 	return nil
 }
