@@ -219,35 +219,6 @@ New / updated:
 
 ## Items
 
-**Landing order.** Items 2, 4, and 5 must land in a single atomic
-commit. Landing item 2 alone leaves the dispatcher reading params
-the BPMN doesn't send (`gh optivem test run` with no flags → all
-tests run). Landing item 5 alone leaves the BPMN sending params the
-dispatcher ignores. Landing item 4 alone leaves the disable/enable
-agents reading `${test_names}` that no call-site populates yet —
-same empty-list brokenness disable has today. Items 1, 3, 6 are
-individually safe and can land separately.
-
-5. **`process-flow.yaml`: swap call-activity params.** Update every
-   verify call-site listed in the table above to use `suite` /
-   `test-names` (with `${test_names}` pulled from ctx.State at
-   `verify-tests-pass` / `verify-tests-fail` invocations, and
-   `${test_names}` re-piped through the nested `RUN_TESTS` nodes).
-   Update the two doc-comment blocks (84-90 and 1671-1675).
-   `process-flow_test.go` does not exist; the BPMN-shape tests live
-   in `run_test.go`, and a grep confirms no current tests reference
-   `filter-type` / `filter-value` in the statemachine package, so no
-   shape-test edits are required.
-
-   Also update the disable/enable call-sites to pass
-   `test-names: ${test_names}`:
-   - `DISABLE_ACCEPTANCE_TESTS` (741-746): replace the dead
-     `tests: acceptance` param with `test-names: ${test_names}`.
-   - `DISABLE_TESTS` inside `verify-tests-filtered` (~1052-1054):
-     add `test-names: ${test_names}`.
-   - `ENABLE_TESTS` inside `verify-tests-filtered` (~1019-1021):
-     add `test-names: ${test_names}`.
-
 6. ⏳ Deferred pending 2118 landing. **Verify on real cycles (requires 2118).** Run end-to-end
    `write-and-verify-acceptance-tests` **and**
    `write-and-verify-contract-tests` cycles against rehearsal
