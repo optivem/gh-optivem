@@ -1,14 +1,21 @@
 # Process diagram cleanup — labels, layout, duplication, rendering budget
 
-> ⚠️ **Blocked on `plans/20260526-1220-fix-mark-ticket-state-transition-routing.md`.**
-> That plan eliminates the `update-ticket` wrapper subprocess and converts
-> MARK_* call_activities into direct service_tasks. Execute 1220 first
-> (and its own blocker, 0907 legacy-bindings-audit), then this plan.
-> Running in parallel risks merge conflicts in `process-flow.yaml` at the
-> MARK_* nodes (lines 172, 182, 237, 272) and around `implement-ticket`'s
-> gateway section (lines 232-294) which Items 2, 11, 17 touch.
+> ✅ **Refinement complete 2026-05-26 11:12Z** — all open questions
+> resolved (2 design + 7 inventory, see per-item *Decided* / *Inventoried*
+> notes). Plan is execution-ready once the parallel blocker (1300) lands.
 >
-> **Item 9 is superseded by 1220** — see Item 9 below for cross-reference.
+> ⚠️ **Blocked on `plans/20260526-1300-ticket-body-parser-wire-and-validate.md`.**
+> 1300 is in-flight (parallel agent picked it up at 11:02Z). It adds a
+> new `parse-ticket` service_task before `GATE_TICKET_KIND` and rewrites
+> the comment block at `process-flow.yaml:200-209` plus
+> `diagram.go:35` — the same surfaces Items 2, 11, 16, 17 touch in this
+> plan. Wait for 1300 to land; re-verify line numbers against post-1300
+> YAML before executing.
+>
+> **Previous blocker (1220) — already landed**: commits `4045693` +
+> `ed3096f` (2026-05-26). The `update-ticket` wrapper is eliminated;
+> MARK_* nodes are now service_tasks bound to four discrete state-
+> transition actions. **Item 9** in this plan is superseded.
 
 ## Origin / intent
 
@@ -210,17 +217,13 @@ reading the diagram should not see screaming-snake YAML node IDs anywhere.
 
 **Open questions for /refine-plan**:
 
-- Q2.1 — **Labelling convention**: verb-phrase, stage+role, or bare
-  sub-process name (or a mix — verb-phrase by default, stage+role where a
-  stage applies)? Settle this *before* the YAML mass edit so the wording is
-  uniform.
-- Q2.2 — **Schema validation**: hard-error at parse time on missing
-  `documentation:`, or warn-and-fallback (e.g. render as just
-  `[sub-process-name]`)? Hard-error is the only way to keep the invariant
-  alive once Phase D and other plans land new nodes.
-- Q2.3 — **Folding Item 4**: Item 4 (RED/GREEN/agent-action normalisation)
-  becomes a subset of Item 2. Confirm Item 4 collapses into Item 2 (one
-  YAML pass instead of two).
+- Q2.1 — *Decided 2026-05-26*: **BPMN-pure verb-phrase, Title Case**
+  (see "Labelling convention" block above and the worked-examples
+  table).
+- Q2.2 — *Decided 2026-05-26*: **hard-error at parse time** on missing
+  `documentation:` (codified in the renderer-change rule above).
+- Q2.3 — *Decided 2026-05-26*: Item 4 **collapses into Item 2** (one
+  YAML pass; see Item 4's "merged into Item 2" stub below).
 - Q2.4 — *Decided 2026-05-26*: **Option C — generic envelope label.**
   `CALL_AGENT_ACTION` inside `implement-and-verify-system` gets
   `documentation: "Run the Configured Agent"`. The `${agent-action}`
@@ -259,23 +262,21 @@ refactor menu reused from two callers (TOP entry + `change-system-behavior`).
 423-452 replaced; comment at 297-307 reworded; statemachine tests if they
 reference the removed node IDs).
 
-**Open questions for /refine-plan**:
+**Open questions resolved 2026-05-26**:
 
-- Q3.1 — `IMPLEMENT_AND_VERIFY_SYSTEM` (the GREEN step) currently flows
-  directly into `GATE_OPPORTUNISTIC_REFACTOR`. With Item 3, it flows into
-  `REFACTOR_OPPORTUNISTICALLY` (the call_activity). Confirm this is fine — no
-  param needs to thread through to the menu.
-- Q3.2 — `implement-ticket` (the other caller of `refactor`'s sibling
-  cycles) currently routes via `GATE_TICKET_KIND` directly to
-  `CALL_REFACTOR_SYSTEM_STRUCTURE` etc. (lines 281-294). It does NOT go
-  through the `refactor` menu — the kind is already known. After Item 3 we
-  have two patterns: ticket-driven routes directly to the chosen cycle;
-  opportunistic routes through the menu. Confirm this asymmetry is
-  intentional (it reflects different call semantics — the ticket carries the
-  kind, the opportunistic site doesn't).
-- Q3.3 — Are there tests that exercise the `OPP_*` node IDs that need
-  updating in lockstep? (Likely `internal/atdd/runtime/statemachine/*_test.go`
-  — check during execution.)
+- Q3.1 — *Decided*: no param threading. The refactor menu reads no
+  upstream state today; collapsing into a single call_activity is
+  semantics-preserving.
+- Q3.2 — *Decided*: asymmetry is correct and intentional. Two callers
+  carry different information at the call site: `implement-ticket` knows
+  the kind from the ticket (direct route via `GATE_TICKET_KIND`); the
+  opportunistic site is mid-cycle exploration with no ticket (menu via
+  the `refactor` TOP process). Both end at one of the three
+  `refactor-*-structure` cycles, just via different paths.
+- Q3.3 — *Inventoried 2026-05-26*: no `*_test.go` files reference
+  `OPP_*` IDs. References live only in `process-flow.yaml` (Item 3
+  rewrites), `docs/process-diagram.md` (regenerated), and
+  `docs/images/process-diagram-*.svg` (regenerated). Clean cut.
 
 ## Item 4 — RED vs GREEN label asymmetry — *merged into Item 2 on 2026-05-26*
 
@@ -492,10 +493,11 @@ Bullet description text (`diagram.go:147-172`) updates in lockstep:
 No YAML changes — the YAML uses `service_task` / `user_task` /
 `agent: human` already, which match the proposed legend vocabulary.
 
-**Remaining check at execution time**:
-
-- Q7.3 — Does the term "Go runtime" or "Agent task" appear in the ATDD
-  process docs (`docs/atdd/process/*.md`)? Grep and update in lockstep.
+**Q7.3 — *Inventoried 2026-05-26***: "Go runtime" and "Agent task"
+appear **only** in `docs/process-diagram.md` (regenerated artifact) and
+its companion SVG. `docs/atdd/process/` doesn't exist; README doesn't
+use these terms. Item 7's renderer change is the complete fix — no
+lockstep doc edits needed elsewhere.
 
 ## Item 8 — `main` process heading: "Runtime Bootstrap (legacy entry — collapses in Phase D)"
 
@@ -543,11 +545,12 @@ the level prefix gets added automatically.
   entries later) or be removed entirely if `main` is the only consumer —
   decide at execution time.
 
-**Remaining check at execution time**:
-
-- Q8.3 — Is Phase D documented elsewhere (e.g. an existing
-  `plans/*.md`) that should be cross-referenced from this plan? Quick
-  grep during execution.
+**Q8.3 — *Inventoried 2026-05-26***: Phase D is described in
+`plans/20260525-1057-bpmn-refactor-design.md:82` (moved to a
+downstream-alignment plan that has since been deleted as executed). No
+cross-reference needed in this plan — Item 8 drops the alias
+unconditionally, so the "collapses in Phase D" wording disappears along
+with it.
 
 ## Item 9 — `update-ticket` sub-process name is too generic — *superseded by 1220*
 
@@ -690,15 +693,22 @@ Trade-offs:
   binding; Phase D wires the real `task_subtype` binding alongside its
   other binding work. Cross-reference the Phase D plan from this plan's
   Item 11 execution notes.
-- Q11.3 — `refine-ticket` and any other upstream code that *writes*
-  `ticket_kind` needs to be located and updated. Inventory at execution
-  time. Most likely lands with Phase D too.
-- Q11.4 — Validation: how does the gateway handle "task" type with no
-  subtype set, or a subtype set when type is story/bug? Document the
-  invariant in the YAML comment block. Likely: the runtime's
-  no-edge-matched error fires (consistent with how unrecognised
-  ticket-kinds are handled today, per the comment at
-  process-flow.yaml:227-230).
+- Q11.3 — *Inventoried 2026-05-26*: the `ticket-kind` binding lives at
+  `internal/atdd/runtime/gates/bindings.go:450-487` (function
+  `bindings.ticketKind`). It computes the composite `story | bug |
+  task/<subtype>` from `Tracker.Classify` + `Tracker.Subtypes`. For
+  Item 11's split, either (a) the binding emits two values (type +
+  subtype) into separate gateway bindings, or (b) the gateway logic
+  parses the composite at gateway-time. **Decision**: (a) — clean split,
+  matches Item 11's two-gateway YAML structure. Phase D wires the
+  `task_subtype` binding alongside its other work; this plan ships YAML
+  structure + stub binding only (per Q11.2).
+- Q11.4 — *Decided 2026-05-26*: invariant lives entirely in Item 17's
+  `error_end_event` mechanism. Any unmatched gateway value (task type
+  with no subtype, subtype set when type is story/bug, unrecognised
+  type) routes to an `UNKNOWN_TICKET_KIND` or `UNKNOWN_TASK_SUBTYPE`
+  error end-event. No special YAML prose needed — the diagram shows
+  the failure path.
 
 ## Item 12 — Drop `CALL_*` prefix; establish role-based call_activity naming convention
 
@@ -850,10 +860,12 @@ into state. Likely lands with Phase D (same as Item 11's binding work).
 
 **Remaining checks at execution time**:
 
-- Q13.2 — Confirm during execution that `GATE_APPROVED`'s upstream
-  pairing is correct (the existing `APPROVE_PRE` user_task does the
-  elicitation — gateway is silent or carries a routing-style
-  documentation, not a prompt).
+- Q13.2 — *Inventoried 2026-05-26*: `GATE_APPROVED` pairing is already
+  correct. `process-flow.yaml:1593-1612` shows `ASK_HUMAN` (a user_task
+  with `documentation: "${question}"`) flowing into `GATE_APPROVED`.
+  Item 13's only target is `GATE_REFACTOR_TYPE_CHOICE`. (Item 16 strips
+  the question-form `documentation: "Approved?"` from `GATE_APPROVED`
+  in lockstep with the predicate-form rewrite.)
 - Q13.3 — Item 11 is **not** affected by 13A. Both `GATE_TICKET_KIND`
   and `GATE_TASK_SUBTYPE` read pre-computed values (ticket
   classification happens during refinement, not at the gateway). No
@@ -972,12 +984,19 @@ can blow up.
 **Direction (decided 2026-05-26)**: introduce a new node type
 `error_end_event` rendered as a **circle with red border + bolt icon
 (⚡)**. Add one to each gateway that can fire a no-edge-matched error.
-Concrete targets:
+Final scope (per Q17.3 inventory):
 
-- `GATE_TICKET_KIND` — unrecognised ticket kinds.
-- `GATE_TASK_SUBTYPE` (Item 11) — unrecognised subtypes.
-- Possibly other gateways where the binding could return an
-  unenumerated value (inventory at execution time — Q17.3).
+- `GATE_TICKET_KIND` → `UNKNOWN_TICKET_KIND`.
+- `GATE_TASK_SUBTYPE` (Item 11) → `UNKNOWN_TASK_SUBTYPE`.
+- `GATE_EXPECTED_TEST_RESULT` (×2 call sites) → `UNKNOWN_EXPECTED_TEST_RESULT`.
+- `GATE_TESTS_OUTCOME` (×2 call sites) → `UNKNOWN_TESTS_OUTCOME`.
+
+Boolean gateways (`GATE_*_CHANGED`, `GATE_APPROVED`,
+`GATE_OUTPUTS_AND_SCOPES_VALID`, `GATE_FIX_ON_FAILURE`,
+`GATE_COMMAND_SUCCEEDED`, `GATE_CHECKLIST_PARTIALLY_DONE`) have closed
+value sets — no error end-event needed. Operator-input gateways
+(`GATE_REFACTOR_TYPE_CHOICE`) validate at the upstream user_task — no
+error end-event needed.
 
 **Files**:
 - `internal/atdd/runtime/statemachine/load.go` — new YAML node type.
@@ -1002,10 +1021,21 @@ Concrete targets:
 - Q17.1 — *Decided 2026-05-26*: new node type `error_end_event`.
 - Q17.2 — *Decided 2026-05-26*: red border + bolt icon (⚡), BPMN
   standard.
-- Q17.3 — Audit which gateways can produce unenumerated values —
-  inventory at execution time. Likely candidates beyond the two above:
-  any `GATE_*_CHANGED` gateway, `GATE_OUTPUTS_AND_SCOPES_VALID`,
-  `GATE_COMMAND_SUCCEEDED`.
+- Q17.3 — *Inventoried 2026-05-26*: gateway-by-gateway audit settles
+  scope. **Boolean gateways** (closed value set, no unenumerated
+  case) — no error_end_event needed: `GATE_CHECKLIST_PARTIALLY_DONE`
+  (×3), `GATE_DSL_PORT_CHANGED` (×2), `GATE_EXTERNAL_DRIVER_PORTS_CHANGED`,
+  `GATE_SYSTEM_DRIVER_PORTS_CHANGED`, `GATE_OUTPUTS_AND_SCOPES_VALID`,
+  `GATE_FIX_ON_FAILURE`, `GATE_COMMAND_SUCCEEDED`, `GATE_APPROVED`
+  (approved/rejected — closed). **Operator-input gateways** — validation
+  lives at the upstream user_task; no error_end_event needed:
+  `GATE_REFACTOR_TYPE_CHOICE` (Item 13's `CHOOSE_REFACTOR_TYPE`
+  validates). **Enumerated value gateways** — error_end_event needed:
+  `GATE_TICKET_KIND` (story/bug/task — `UNKNOWN_TICKET_KIND`),
+  `GATE_TASK_SUBTYPE` (new from Item 11 — `UNKNOWN_TASK_SUBTYPE`),
+  `GATE_EXPECTED_TEST_RESULT` (×2 — `UNKNOWN_EXPECTED_TEST_RESULT`),
+  `GATE_TESTS_OUTCOME` (×2 — `UNKNOWN_TESTS_OUTCOME`). Final scope: 7
+  error end-events across 4 distinct gateway kinds.
 
 ## Item 18 — Add explicit loop-subprocess markers to looping flows — *dropped on 2026-05-26*
 
