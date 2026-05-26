@@ -1,5 +1,3 @@
-> 🤖 **Picked up by agent (refine)** — `Valentina_Desk` at `2026-05-25T20:15:56Z`
-
 > ⚠️ **DISCUSSION MODE ONLY — NOT READY FOR EXECUTION.**
 > This file is a thinking space, not a work plan. There are no checked items, no scope decisions, no agent assignments. Do **not** run `/execute-plan` against it. The point is to surface options and pick a direction *before* anything gets written as an actionable plan. When the direction is locked, a fresh dated plan supersedes this one (per `feedback_new_plan_not_extend`).
 
@@ -122,6 +120,31 @@ Settled sub-decisions:
 - The "YAML lint pass" option was rejected as B's primary shape, but if specific invariants turn out to be purely structural (graph-level, not runtime-level), they can be added to the YAML loader separately — not as part of B.
 
 Carry-forward for the fresh plan: enumerate the 2-3 invariants we'd write helpers for first (concrete enough to stress-test the helper shape), and decide where they live (`internal/atdd/runtime/statemachine/invariants_test.go`? a non-test package so they're reusable from JSONL post-mortems?).
+
+### Direction C — DECIDED: reject
+
+Locked in (2026-05-25 walk). The current orchestration/action test split is clean **because** it forbids state-mutation capture inside orchestration spies; weakening that forbiddance via a `StateAware: true` per-node knob invites exactly the slippery-slope the original cons section names ("once one node has it, the next reviewer asks why not this one").
+
+The use cases C tried to serve are already covered:
+
+- "Did this action mutate state correctly?" → action-level test calling the action directly with a seeded `ctx`. No spy, no orchestration glue.
+- "Did orchestration + action together produce the right end-state?" → end-to-end / driver-level tests, with Direction A's JSONL output as the parseable artefact.
+
+The open question in the original proposal ("is there even a current test that wants this?") is itself the answer: no concrete test was named, and the two cheaper alternatives above cover the named pros.
+
+No carry-forward — C does not appear in the fresh plan.
+
+---
+
+## Summary of decisions
+
+| Direction | Outcome | Shape |
+|-----------|---------|-------|
+| A — JSONL emit | **Ship** | `--trace-events` driver flag; supplements `.prompt.md`; shared event-record source between trace formatter and JSONL serializer |
+| B — Invariant checks | **Ship** | Plain Go helpers over `[]DispatchEvent`; no fluent DSL; reusable from A's JSONL captures |
+| C — Spy state capture | **Reject** | Load-bearing split; use action-level tests + A's JSONL instead |
+
+Next: write a fresh `plans/YYYYMMDD-HHMM-<slug>.md` that turns A and B into actionable items (per `feedback_new_plan_not_extend`). This file gets archived to `plans/deferred/` once the fresh plan is drafted.
 
 ## Decision criteria (working list)
 
