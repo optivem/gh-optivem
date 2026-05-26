@@ -16,9 +16,9 @@ import (
 // Compile-time interface assertion
 // ---------------------------------------------------------------------------
 
-// *Tracker must satisfy tracker.Tracker. The Classify / ReadSections /
-// MarkChecklistComplete methods are stubbed in this step but they are
-// present on the receiver, so the assignment compiles today.
+// *Tracker must satisfy tracker.Tracker. The Classify / ReadSections
+// methods are stubbed in this step but they are present on the
+// receiver, so the assignment compiles today.
 var _ tracker.Tracker = (*Tracker)(nil)
 
 // ---------------------------------------------------------------------------
@@ -546,7 +546,7 @@ func TestVerify_GraphQLNotFound(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Classify / ReadSections / MarkChecklistComplete
+// Classify / ReadSections
 // ---------------------------------------------------------------------------
 
 func TestClassify_NativeIssueType(t *testing.T) {
@@ -659,50 +659,6 @@ func TestReadSections_ReturnsRequestedHeadings(t *testing.T) {
 	}
 	if got := sections["Missing"]; got != "" {
 		t.Errorf("Missing: got %q, want empty string", got)
-	}
-}
-
-func TestMarkChecklistComplete_RewriteAndEdit(t *testing.T) {
-	body := "## Checklist\n\n- [ ] One\n- [x] Two\n- [ ] Three\n"
-	bodyJSON, _ := json.Marshal(body)
-	gh := newFakeRunner(t)
-	gh.on(
-		[]string{"issue", "view", "42", "--json", "body", "--repo", "optivem/shop"},
-		[]byte(`{"body":` + string(bodyJSON) + `}`),
-		nil,
-	)
-	wantUpdated := "## Checklist\n\n- [x] One\n- [x] Two\n- [x] Three\n"
-	gh.on(
-		[]string{"issue", "edit", "42", "--repo", "optivem/shop", "--body", wantUpdated},
-		[]byte(""),
-		nil,
-	)
-	tr := mustNew(t, "https://github.com/orgs/optivem/projects/20", gh)
-	issue := tracker.Issue{ID: "42", URL: "https://github.com/optivem/shop/issues/42"}
-	if err := tr.MarkChecklistComplete(context.Background(), issue); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(gh.calls) != 2 {
-		t.Errorf("expected 2 gh calls (view + edit), got %d: %v", len(gh.calls), gh.calls)
-	}
-}
-
-func TestMarkChecklistComplete_NoUncheckedItemsSkipsEdit(t *testing.T) {
-	body := "## Checklist\n\n- [x] Done one\n- [x] Done two\n"
-	bodyJSON, _ := json.Marshal(body)
-	gh := newFakeRunner(t)
-	gh.on(
-		[]string{"issue", "view", "42", "--json", "body", "--repo", "optivem/shop"},
-		[]byte(`{"body":` + string(bodyJSON) + `}`),
-		nil,
-	)
-	tr := mustNew(t, "https://github.com/orgs/optivem/projects/20", gh)
-	issue := tracker.Issue{ID: "42", URL: "https://github.com/optivem/shop/issues/42"}
-	if err := tr.MarkChecklistComplete(context.Background(), issue); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(gh.calls) != 1 {
-		t.Errorf("expected 1 gh call (view only — no unchecked items), got %d: %v", len(gh.calls), gh.calls)
 	}
 }
 

@@ -29,7 +29,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/atdd"
@@ -146,8 +145,8 @@ func (d Deps) withDefaults() Deps {
 		// (driver.go) so PickReady / SetStatus / Verify resolve against a
 		// real project; tests that don't exercise project ops can omit
 		// ProjectURL and the placeholder below keeps github.New from
-		// rejecting the call — issue-body ops (ReadSections /
-		// MarkChecklistComplete / Classify) only need Issue.URL anyway.
+		// rejecting the call — issue-body ops (ReadSections / Classify)
+		// only need Issue.URL anyway.
 		url := d.ProjectURL
 		if url == "" {
 			url = "https://github.com/orgs/placeholder/projects/0"
@@ -218,15 +217,6 @@ func RegisterAll(r *Registry, deps Deps) {
 	// section enforcement happens at dispatch time via the load-bearing
 	// placeholder check in clauderun.go.
 	r.Register("parse-ticket", a.parseTicket)
-	// CHECK_CHECKLIST_PROGRESS service task. Inspects ticket_checklist
-	// (populated by parse-ticket) and stamps `checklist-partially-done`
-	// + `checklist_progress_summary` so the GATE_CHECKLIST_PARTIALLY_DONE
-	// gateway can route, and the STOP_CHECKLIST_PARTIALLY_DONE prompt
-	// can show the operator how far along the previous run got. Wired
-	// at the start of the four Checklist-using cycles
-	// (redesign-system-structure, refactor-system-structure,
-	// refactor-test-structure, onboard-external-system).
-	r.Register("check-checklist-progress", a.checkChecklistProgress)
 }
 
 // Context keys consumed by the check-phase-scope action. Centralised so the
@@ -346,15 +336,11 @@ func (a actions) moveToInProgress(ctx *statemachine.Context) statemachine.Outcom
 	return statemachine.Outcome{}
 }
 
-// moveToInAcceptance ticks every issue checklist box via
-// Tracker.MarkChecklistComplete and sets the item status to "In
-// acceptance" via Tracker.SetStatus. Both halves error out hard on
-// failure — a missing Status option or a permission failure on edit is
-// a misconfiguration the operator must fix before re-running.
+// moveToInAcceptance sets the item status to "In acceptance" via
+// Tracker.SetStatus. Errors out hard on failure — a missing Status
+// option or a permission failure on edit is a misconfiguration the
+// operator must fix before re-running.
 func (a actions) moveToInAcceptance(ctx *statemachine.Context) statemachine.Outcome {
-	if err := a.markChecklistComplete(ctx); err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-acceptance: tick checklist: %w", err)}
-	}
 	handle := ctx.GetString("issue_handle")
 	if handle == "" {
 		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-acceptance: issue_handle not in Context")}
@@ -364,22 +350,6 @@ func (a actions) moveToInAcceptance(ctx *statemachine.Context) statemachine.Outc
 	}
 	fmt.Fprintln(a.deps.Stdout, "Moved card to In acceptance.")
 	return statemachine.Outcome{}
-}
-
-// markChecklistComplete is the shared helper used by move-to-in-acceptance
-// to tick every `- [ ]` checkbox in the issue body via
-// Tracker.MarkChecklistComplete. A missing or non-positive issue_num is
-// silently skipped (transitions tests and dry-runs that don't seed a real
-// issue still exercise the SetStatus half).
-func (a actions) markChecklistComplete(ctx *statemachine.Context) error {
-	if issueNum, err := strconv.Atoi(ctx.GetString("issue_num")); err != nil || issueNum <= 0 {
-		return nil
-	}
-	issue, err := issueFromContext(ctx)
-	if err != nil {
-		return err
-	}
-	return a.deps.Tracker.MarkChecklistComplete(context.Background(), issue)
 }
 
 // parseTicket runs the deterministic markdown parser against the picked
@@ -411,35 +381,6 @@ func (a actions) parseTicket(ctx *statemachine.Context) statemachine.Outcome {
 	ctx.Set("ticket_acceptance_criteria", r.AcceptanceCriteria.Body)
 	ctx.Set("ticket_steps_to_reproduce", r.StepsToReproduce.Body)
 	ctx.Set("ticket_checklist", r.Checklist.Body)
-	return statemachine.Outcome{}
-}
-
-// checkChecklistProgress inspects the parsed Checklist body (populated
-// by parseTicket in ctx.State["ticket_checklist"]) and stamps two values:
-//
-//   - ctx.State["checklist-partially-done"] (bool) — true when at least
-//     one `- [x]` item is present. The GATE_CHECKLIST_PARTIALLY_DONE
-//     gateway routes on this; true → STOP_CHECKLIST_PARTIALLY_DONE
-//     (operator approves re-run); false → cycle proceeds without
-//     interruption.
-//   - ctx.Params["checklist_progress_summary"] (string) — "N of M items
-//     already [x]" rendered into the STOP prompt via documentation
-//     placeholder expansion.
-//
-// Wired at the start of the four Checklist-using cycles only — story /
-// bug / legacy-coverage cycles never hit it.
-func (a actions) checkChecklistProgress(ctx *statemachine.Context) statemachine.Outcome {
-	body := ctx.GetString("ticket_checklist")
-	cl := intake.ExtractChecklist("## " + intake.SectionChecklist + "\n\n" + body)
-	checked := cl.CheckedCount()
-	total := len(cl.Items)
-	partiallyDone := checked > 0
-	ctx.Set("checklist-partially-done", partiallyDone)
-	if partiallyDone {
-		ctx.Params["checklist_progress_summary"] = fmt.Sprintf("Checklist has %d of %d items already [x] from a prior run.", checked, total)
-	} else {
-		ctx.Params["checklist_progress_summary"] = ""
-	}
 	return statemachine.Outcome{}
 }
 

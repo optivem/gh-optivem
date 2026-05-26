@@ -83,7 +83,6 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"approval-outcome",
 		"outputs-and-scopes-valid",
 		"ticket-kind",
-		"checklist-partially-done",
 	}
 	for _, name := range want {
 		if r.Lookup(name) == nil {
@@ -272,9 +271,6 @@ func (f fakeTracker) Subtypes(_ context.Context, _ tracker.Issue) ([]string, err
 }
 func (f fakeTracker) ReadSections(context.Context, tracker.Issue, []string) (map[string]string, error) {
 	panic("fakeTracker.ReadSections: not implemented")
-}
-func (f fakeTracker) MarkChecklistComplete(context.Context, tracker.Issue) error {
-	panic("fakeTracker.MarkChecklistComplete: not implemented")
 }
 
 // ---------------------------------------------------------------------------
@@ -676,7 +672,6 @@ func TestTicketKind_LookupTable(t *testing.T) {
 		{name: "task_external_system_redesign", kind: "task", subtypes: []string{"external-system-redesign"}, want: "task/external-system-redesign"},
 		{name: "task_system_refactor", kind: "task", subtypes: []string{"system-refactor"}, want: "task/system-refactor"},
 		{name: "task_test_refactor", kind: "task", subtypes: []string{"test-refactor"}, want: "task/test-refactor"},
-		{name: "task_external_system_onboarding", kind: "task", subtypes: []string{"external-system-onboarding"}, want: "task/external-system-onboarding"},
 		{name: "task_unrecognised_subtype_halts", kind: "task", subtypes: []string{"weird-subtype"}, expectErr: true},
 		{name: "task_no_subtype_halts", kind: "task", subtypes: nil, expectErr: true},
 		{name: "task_multiple_subtypes_halts", kind: "task", subtypes: []string{"legacy-coverage", "system-refactor"}, expectErr: true},
@@ -728,45 +723,3 @@ func TestTicketKind_NoIssueURL_Halts(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// checklist-partially-done — GATE_CHECKLIST_PARTIALLY_DONE
-// ---------------------------------------------------------------------------
-
-func TestChecklistPartiallyDone_TrueRoutes(t *testing.T) {
-	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
-	ctx := statemachine.NewContext()
-	ctx.Set("checklist-partially-done", true)
-	out := b.checklistPartiallyDone(ctx)
-	if out.Err != nil {
-		t.Fatalf("unexpected err: %v", out.Err)
-	}
-	if !out.Bool {
-		t.Errorf("Bool: got false, want true")
-	}
-}
-
-func TestChecklistPartiallyDone_FalseRoutes(t *testing.T) {
-	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
-	ctx := statemachine.NewContext()
-	ctx.Set("checklist-partially-done", false)
-	out := b.checklistPartiallyDone(ctx)
-	if out.Err != nil {
-		t.Fatalf("unexpected err: %v", out.Err)
-	}
-	if out.Bool {
-		t.Errorf("Bool: got true, want false")
-	}
-}
-
-func TestChecklistPartiallyDone_AbsentRoutesFalse(t *testing.T) {
-	// No ticket — story / bug / legacy-coverage paths land here without
-	// the gate caring; route false defensively rather than halting.
-	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
-	out := b.checklistPartiallyDone(statemachine.NewContext())
-	if out.Err != nil {
-		t.Fatalf("unexpected err: %v", out.Err)
-	}
-	if out.Bool {
-		t.Errorf("Bool: got true, want false")
-	}
-}

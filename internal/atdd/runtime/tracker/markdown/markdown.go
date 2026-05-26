@@ -21,12 +21,11 @@
 // first `# H1` heading with a filename fallback. Issue.URL is "" —
 // markdown items aren't URL-addressable from the public web; the
 // adapter routes everything through file paths. Issue.Handle is the
-// absolute file path, so SetStatus / Classify / ReadSections /
-// MarkChecklistComplete address the file directly.
+// absolute file path, so SetStatus / Classify / ReadSections address
+// the file directly.
 //
 // All git mutations go through a GitRunner — the default shells out to
-// the real `git` CLI; tests inject a fake. MarkChecklistComplete
-// auto-commits so the working tree stays clean after the call.
+// the real `git` CLI; tests inject a fake.
 package markdown
 
 import (
@@ -314,37 +313,6 @@ func (t *Tracker) ReadSections(_ context.Context, i tracker.Issue, headings []st
 		out[h] = parse.ExtractSection(s, h)
 	}
 	return out, nil
-}
-
-// MarkChecklistComplete rewrites every `- [ ]` / `* [ ]` line in the
-// file at i.Handle to its checked equivalent, then `git add` + `git
-// commit` the file. Idempotent: a file with no unchecked items leaves
-// the working tree untouched and skips the commit.
-func (t *Tracker) MarkChecklistComplete(ctx context.Context, i tracker.Issue) error {
-	body, err := os.ReadFile(i.Handle)
-	if err != nil {
-		return fmt.Errorf("markdown: read %q: %w", i.Handle, err)
-	}
-	s := string(body)
-	if !parse.HasUnchecked(s) {
-		return nil
-	}
-	updated := parse.TickCheckboxes(s)
-	if err := os.WriteFile(i.Handle, []byte(updated), 0o644); err != nil {
-		return fmt.Errorf("markdown: write %q: %w", i.Handle, err)
-	}
-	rel, err := filepath.Rel(t.boardDir, i.Handle)
-	if err != nil {
-		return fmt.Errorf("markdown: relpath %q: %w", i.Handle, err)
-	}
-	if _, err := t.git.Run(ctx, "add", rel); err != nil {
-		return fmt.Errorf("markdown: git add %s: %w", rel, err)
-	}
-	msg := fmt.Sprintf("checklist: tick remaining items for %s", i.ID)
-	if _, err := t.git.Run(ctx, "commit", "-m", msg, "--", rel); err != nil {
-		return fmt.Errorf("markdown: git commit %s: %w", rel, err)
-	}
-	return nil
 }
 
 // ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@
 // Import path is intentionally inside tracker/internal/ so only the
 // tracker subtree depends on it. Runtime code outside tracker/ never
 // parses issue bodies directly; it goes through Tracker.ReadSections
-// and Tracker.MarkChecklistComplete instead.
+// instead.
 package parse
 
 import "strings"

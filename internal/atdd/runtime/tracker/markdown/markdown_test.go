@@ -55,7 +55,7 @@ func (g *fakeGit) Run(_ context.Context, args ...string) ([]byte, error) {
 }
 
 // failGit returns an error for every Run call. Used to exercise the
-// error path of MarkChecklistComplete and SetStatus.
+// error path of SetStatus.
 type failGit struct{}
 
 func (failGit) Run(_ context.Context, args ...string) ([]byte, error) {
@@ -506,72 +506,6 @@ func TestReadSections_StableKeySet(t *testing.T) {
 	}
 	if got["Missing"] != "" {
 		t.Errorf("Missing = %q, want empty", got["Missing"])
-	}
-}
-
-// ---------------------------------------------------------------------------
-// MarkChecklistComplete
-// ---------------------------------------------------------------------------
-
-func TestMarkChecklistComplete_RewritesAndCommits(t *testing.T) {
-	body := "# T\n\n## Checklist\n\n- [ ] One\n- [x] Two\n- [ ] Three\n"
-	root := newBoard(t, map[string]string{"ready/x.md": body})
-	gg := newFakeGit(t, root)
-	tr, _ := New(root, gg)
-	issue, _ := tr.FindIssue(context.Background(), "x")
-	if err := tr.MarkChecklistComplete(context.Background(), issue); err != nil {
-		t.Fatalf("MarkChecklistComplete: %v", err)
-	}
-	// File rewritten in place.
-	got, err := os.ReadFile(issue.Handle)
-	if err != nil {
-		t.Fatalf("read back: %v", err)
-	}
-	want := "# T\n\n## Checklist\n\n- [x] One\n- [x] Two\n- [x] Three\n"
-	if string(got) != want {
-		t.Errorf("file body:\ngot:  %q\nwant: %q", got, want)
-	}
-	// Two git calls: add + commit -m … -- <rel>.
-	if len(gg.calls) != 2 {
-		t.Fatalf("expected 2 git calls (add, commit), got %d: %v", len(gg.calls), gg.calls)
-	}
-	if gg.calls[0][0] != "add" {
-		t.Errorf("first call: got %v, want add", gg.calls[0])
-	}
-	if gg.calls[1][0] != "commit" {
-		t.Errorf("second call: got %v, want commit", gg.calls[1])
-	}
-	// Commit message names the issue ID.
-	joined := strings.Join(gg.calls[1], " ")
-	if !strings.Contains(joined, "x") {
-		t.Errorf("commit message should name issue ID; got %q", joined)
-	}
-}
-
-func TestMarkChecklistComplete_NoUncheckedIsNoop(t *testing.T) {
-	body := "## Checklist\n\n- [x] Done one\n- [x] Done two\n"
-	root := newBoard(t, map[string]string{"ready/y.md": body})
-	gg := newFakeGit(t, root)
-	tr, _ := New(root, gg)
-	issue, _ := tr.FindIssue(context.Background(), "y")
-	if err := tr.MarkChecklistComplete(context.Background(), issue); err != nil {
-		t.Fatalf("MarkChecklistComplete: %v", err)
-	}
-	if len(gg.calls) != 0 {
-		t.Errorf("expected 0 git calls on no-op, got %d: %v", len(gg.calls), gg.calls)
-	}
-}
-
-func TestMarkChecklistComplete_GitFailureWraps(t *testing.T) {
-	body := "## Checklist\n\n- [ ] One\n"
-	root := newBoard(t, map[string]string{"ready/z.md": body})
-	tr, _ := New(root, failGit{})
-	issue := tracker.Issue{
-		ID:     "z",
-		Handle: filepath.Join(root, "ready", "z.md"),
-	}
-	if err := tr.MarkChecklistComplete(context.Background(), issue); err == nil {
-		t.Fatalf("expected wrapped git error")
 	}
 }
 

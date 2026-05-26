@@ -1,15 +1,15 @@
-# Remove checklist progress-tracking from BPMN (rebuild later)
+# Reintroduce checklist progress-tracking in BPMN
 
-Spinoff from `plans/20260526-1730-bpmn-process-review.md` item 8. The checklist progress-tracking machinery (pre-CYCLE resume gate + post-CYCLE auto-tick) is being removed from the BPMN because the agent works atomically — a CYCLE either completes the whole ticket or it doesn't, so tracking partial checklist progress at runtime doesn't earn its keep.
+Spinoff from `plans/20260526-1730-bpmn-process-review.md` item 8. The checklist progress-tracking machinery (pre-CYCLE resume gate + post-CYCLE auto-tick) was **removed** on 2026-05-26 because the agent works atomically — a CYCLE either completes the whole ticket or it doesn't, so tracking partial checklist progress at runtime didn't earn its keep.
 
-The **spec/input** role of the checklist stays: the agent still reads the `Checklist` section from the ticket body as the list of sub-items to do. Only the BPMN gating + post-step ticking is being cut.
+The **spec/input** role of the checklist still works: the agent still reads the `Checklist` section from the ticket body as the list of sub-items to do. Only the BPMN gating + post-step ticking was cut.
 
-This plan has two halves:
+This file is the **reintroduction spec** for the day atomicity stops holding. It captures:
 
-- **Verbatim capture** of what exists today (so it can be reinserted later if the atomicity assumption changes).
-- **Deletion step** for removing it from the existing BPMN now.
+- **Verbatim capture** of the machinery as it stood pre-removal (so it can be reinserted line-by-line if needed).
+- **Reintroduction questions** to answer before any rebuild — when, how, with what semantics.
 
-The proper reintroduction design — when, how, with what semantics — will be revisited later.
+The proper reintroduction design is deliberately deferred. Don't rebuild until atomicity actually breaks (e.g., a CYCLE that genuinely commits per-item and supports resume).
 
 ## Why removed (2026-05-26)
 
@@ -109,54 +109,6 @@ r.Register("check-checklist-progress", a.checkChecklistProgress)
 ```
 
 The `checkChecklistProgress` action itself lives at `bindings.go:431` (reads the parsed `Checklist` body and sets `ctx.State["checklist-partially-done"]` + `ctx.State["checklist_progress_summary"]`).
-
-## Deletion step — what to remove from the existing BPMN
-
-### `internal/atdd/runtime/statemachine/process-flow.yaml`
-
-For each of the four CYCLEs in scope (`redesign-system-structure`, `redesign-external-system-structure`, `refactor-system-structure`, `refactor-test-structure`):
-
-1. Remove the three triad nodes (`CHECK_CHECKLIST_PROGRESS`, `GATE_CHECKLIST_PARTIALLY_DONE`, `STOP_CHECKLIST_PARTIALLY_DONE`).
-2. Remove the four matching sequence-flow edges (the two from the gate, the one from the service-task to the gate, the one from the stop to `<X>`).
-3. Update the CYCLE's `start:` from `CHECK_CHECKLIST_PROGRESS` to its `<X>` (see table above).
-
-`onboard-external-system` (lines 416–460) is **not** touched by this plan — the sibling plan removes that CYCLE in full.
-
-### `internal/atdd/runtime/actions/bindings.go`
-
-1. Remove the `r.Register("check-checklist-progress", a.checkChecklistProgress)` registration (line 229).
-2. Remove the `checkChecklistProgress` function (line 431 onward).
-3. In `moveToInAcceptance`, drop the `a.markChecklistComplete(ctx)` call and its error-wrap; keep the `SetStatus` half.
-4. Remove the `markChecklistComplete` helper function entirely.
-5. Update the doc comment on `moveToInAcceptance` to describe only the `SetStatus` half.
-
-### `internal/atdd/runtime/gates/bindings.go`
-
-Remove the `checklist-partially-done` gate registration.
-
-### `internal/atdd/runtime/tracker/`
-
-1. `tracker.go`: remove the `MarkChecklistComplete(ctx, issue) error` method from the `Tracker` interface.
-2. `markdown/markdown.go`: remove the markdown-backed implementation.
-3. `github/github.go`: remove the GitHub-backed implementation.
-
-### Tests
-
-Remove or update:
-
-- `internal/atdd/runtime/actions/bindings_test.go` — `checkChecklistProgress` tests (around line 899) and any `markChecklistComplete` / `moveToInAcceptance` tick-half assertions.
-- `internal/atdd/runtime/gates/bindings_test.go` — `TestChecklistPartiallyDone_TrueRoutes` and its false-routes counterpart.
-- `internal/atdd/runtime/tracker/{markdown,github}/*_test.go` — `MarkChecklistComplete` tests on both backends.
-- `internal/atdd/runtime/statemachine/transitions_test.go` — any fixtures asserting the `checklist-partially-done == true`/`== false` routes through the four affected CYCLEs.
-- The `fakeTracker.MarkChecklistComplete` stub used by `bindings_test.go` (drop the method from the fake).
-
-### Diagrams
-
-Regenerate `docs/process-diagram.md` + the relevant SVGs under `docs/images/` after the YAML changes land (the prefix triad disappears from four CYCLE subdiagrams).
-
-### Final verification
-
-After the changes, grep should return zero hits for: `checklist-partially-done`, `MarkChecklistComplete`, `check-checklist-progress`, `checklist_progress_summary`, `CHECK_CHECKLIST_PROGRESS`, `GATE_CHECKLIST_PARTIALLY_DONE`, `STOP_CHECKLIST_PARTIALLY_DONE` (apart from the `onboard-external-system` block, which the sibling plan removes).
 
 ## Reintroduction — revisit later
 

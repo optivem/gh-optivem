@@ -319,32 +319,6 @@ func (t *Tracker) ReadSections(ctx context.Context, i tracker.Issue, headings []
 	return out, nil
 }
 
-// MarkChecklistComplete rewrites every `- [ ]` (and `* [ ]`) line in
-// the issue body to `- [x]` / `* [x]` and pushes the updated body via
-// gh issue edit. Idempotent: a body with no unchecked items is left
-// untouched and no API call is made.
-func (t *Tracker) MarkChecklistComplete(ctx context.Context, i tracker.Issue) error {
-	owner, repo, num, err := parseIssueURL(i.URL)
-	if err != nil {
-		return err
-	}
-	body, err := t.fetchIssueBody(ctx, owner, repo, num)
-	if err != nil {
-		return err
-	}
-	if !parse.HasUnchecked(body) {
-		return nil
-	}
-	updated := parse.TickCheckboxes(body)
-	if _, err := t.gh.Run(ctx, "issue", "edit", strconv.Itoa(num),
-		"--repo", owner+"/"+repo,
-		"--body", updated,
-	); err != nil {
-		return fmt.Errorf("github: gh issue edit: %w", err)
-	}
-	return nil
-}
-
 // fetchIssueBody runs `gh issue view <num> --json body --repo <owner>/<repo>`
 // and returns the decoded body string. Argv order matches the pre-Tracker
 // call sites in actions/bindings.go and gates/bindings.go so their tests'
@@ -383,10 +357,10 @@ const issueTypeQuery = `query($owner: String!, $name: String!, $number: Int!) { 
 // ---------------------------------------------------------------------------
 
 // parseIssueURL splits a canonical github issue URL into (owner, repo,
-// number). Used by Classify / ReadSections / MarkChecklistComplete to
-// address the issue without carrying repo on tracker.Issue. Returns a
-// clear error on an empty URL so callers see "tracker.Issue.URL is
-// required" rather than a downstream gh failure.
+// number). Used by Classify / ReadSections to address the issue
+// without carrying repo on tracker.Issue. Returns a clear error on an
+// empty URL so callers see "tracker.Issue.URL is required" rather than
+// a downstream gh failure.
 func parseIssueURL(s string) (owner, repo string, num int, err error) {
 	if s == "" {
 		return "", "", 0, fmt.Errorf("github: tracker.Issue.URL is required for body operations")

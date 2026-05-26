@@ -157,12 +157,6 @@ func RegisterAll(r *Registry, deps Deps) {
 	// `task/<subtype>` value; reconciling that with the new two-gateway
 	// YAML is Phase D's job — see plans/20260526-0832 Item 11 Q11.2).
 	r.Register("task-subtype", b.taskSubtype)
-	// Routes the GATE_CHECKLIST_PARTIALLY_DONE gateway at the start of
-	// each Checklist-using cycle. The check-checklist-progress action
-	// stamps `checklist-partially-done` after parse-ticket runs; this
-	// binding returns the bool verbatim. True → operator-approval STOP;
-	// false → cycle proceeds.
-	r.Register("checklist-partially-done", b.checklistPartiallyDone)
 }
 
 // bindings is a thin closure-receiver so each method has access to deps
@@ -350,20 +344,6 @@ func (b bindings) externalDriverPortsChanged(ctx *statemachine.Context) statemac
 	return boolStateGate(ctx, "external-driver-ports-changed")
 }
 
-// checklistPartiallyDone routes GATE_CHECKLIST_PARTIALLY_DONE on the
-// flag check-checklist-progress stamps after parse-ticket. Lenient on
-// absent — when the ticket has no Checklist (cycle entered through a
-// non-task code path, or the action was skipped in a test fixture),
-// route false rather than halting, because a missing-Checklist signal
-// is "nothing to approve" not a wiring bug.
-func (b bindings) checklistPartiallyDone(ctx *statemachine.Context) statemachine.Outcome {
-	v, ok := ctx.State["checklist-partially-done"]
-	if !ok {
-		return statemachine.Outcome{Bool: false}
-	}
-	return outcomeFromBoolish(v)
-}
-
 // boolStateGate is the shared body of the three driver-port-changed
 // gates. Strict — missing key halts (the agent's `outputs:` block MUST
 // emit the flag explicitly), value type-flexible (outcomeFromBoolish
@@ -448,7 +428,6 @@ func (b bindings) outputsAndScopesValid(ctx *statemachine.Context) statemachine.
 //	task        | external-system-redesign   | task/external-system-redesign
 //	task        | system-refactor            | task/system-refactor
 //	task        | test-refactor              | task/test-refactor
-//	task        | external-system-onboarding | task/external-system-onboarding
 //
 // Preseed via ctx.State["ticket-kind"] short-circuits the
 // classification (hand-debug / transitions tests). Tracker.Classify
@@ -525,7 +504,6 @@ var ticketKindTaskSubtypes = []string{
 	"external-system-redesign",
 	"system-refactor",
 	"test-refactor",
-	"external-system-onboarding",
 }
 
 // ticketKindTaskSubtypeSet is the O(1) membership view of

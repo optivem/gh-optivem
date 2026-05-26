@@ -41,8 +41,8 @@ import (
 //
 // Repo is intentionally NOT a field. The two flows that historically
 // needed an owner/name pair (gh issue view --repo …) are subsumed by
-// Tracker.Classify, Tracker.ReadSections, and Tracker.MarkChecklistComplete
-// — the adapter knows where the issue lives because it produced the Issue.
+// Tracker.Classify and Tracker.ReadSections — the adapter knows where
+// the issue lives because it produced the Issue.
 type Issue struct {
 	ID     string
 	Title  string
@@ -50,12 +50,11 @@ type Issue struct {
 	Handle string
 }
 
-// Tracker is the eight-method interface every backend implements. The
-// methods divide into three groups:
+// Tracker is the seven-method interface every backend implements. The
+// methods divide into two groups:
 //
 //   - Workflow:   PickReady, FindIssue, SetStatus, Verify
 //   - Inspection: Classify, Subtypes, ReadSections
-//   - Mutation:   MarkChecklistComplete
 //
 // Adapters are constructed via Open (or directly via package
 // constructors in tests). All methods accept a context.Context and
@@ -108,13 +107,6 @@ type Tracker interface {
 	// keys — callers can distinguish "missing" from "blank" only
 	// when they care to.
 	ReadSections(ctx context.Context, i Issue, headings []string) (map[string]string, error)
-
-	// MarkChecklistComplete rewrites every `- [ ]` line in the
-	// issue body to `- [x]`. The github adapter pushes the rewrite
-	// via gh issue edit; the markdown adapter rewrites the file in
-	// place AND auto-commits the change so the working tree stays
-	// clean afterwards.
-	MarkChecklistComplete(ctx context.Context, i Issue) error
 }
 
 // ---------------------------------------------------------------------------

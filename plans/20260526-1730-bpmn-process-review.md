@@ -9,7 +9,14 @@
 > `refactor-test-structure` (REFACTOR). `cover-system-behavior` audit
 > confirmed already-annotated. Diagram + SVGs regenerated.
 >
-> **Remaining:** Items 2, 4, 5, 8 — all touch runtime code.
+> ✅ **Item 5 landed (2026-05-26).** `onboard-external-system` CYCLE
+> removed from BPMN (subprocess block + call-activity + edges) and from
+> the process-order lists in `diagram.go` + `transitions_test.go`. Code-
+> side cleanup of `gates/bindings.go` subtypes slice + test case still
+> pending — deferred behind item 8's concurrent edits to the same file.
+> Rebuild scope captured in `plans/upcoming/20260526-1746-rebuild-onboard-external-system.md`.
+>
+> **Remaining:** Items 2, 4, 8 — all touch runtime code.
 
 Captures feedback from the user's review of the BPMN process (`internal/atdd/runtime/statemachine/process-flow.yaml` and adjacent state-machine wiring / agent prompts).
 
@@ -141,35 +148,6 @@ Affected labels (currently inconsistent):
 **Supersedes / absorbs.** Item 3 (External-System hyphen mismatch) — once the renderer compares two explicit `name:` strings instead of label-vs-auto-derived-heading, the hyphenated `External-System` label simply matches its process-level `name:` of the same spelling, suffix drops naturally. Item 3 can be deleted from the plan once this lands.
 
 **Depends on.** Independent of items 1 and 2. Items 1–2 should use the renamed `name:` field. Recommend executing item 4 **first** because everything else benefits from the renamed/cleaned schema.
-
----
-
----
-
-### 5. Remove `onboard-external-system` from BPMN (stash for later)
-
-**Observation.** The `onboard-external-system` subprocess is four `agent: human` placeholder steps from an earlier brainstorm. The shape hasn't been thought through (which steps should be agents, what outputs each produces, whether the CHECKLIST_PROGRESS prefix even fits a one-shot ceremony, etc.). Better to remove the placeholder and redesign cleanly later than carry it forward.
-
-**Action.** Delete from `process-flow.yaml`:
-1. The entire `onboard-external-system:` subprocess block (~lines 411-464).
-2. The `ONBOARD_EXTERNAL_SYSTEM` call-activity node under `implement-ticket.nodes`.
-3. The `GATE_TASK_SUBTYPE → ONBOARD_EXTERNAL_SYSTEM` edge (`when: "task-subtype == external-system-onboarding"`).
-4. The convergence edge `ONBOARD_EXTERNAL_SYSTEM → MARK_IN_ACCEPTANCE`.
-5. The `external-system-onboarding → onboard-external-system` row in the `implement-ticket` block-comment gateway-lookup table (~line 213).
-
-Also remove related code-side references (audit via grep `onboard-external-system|ONBOARD_EXTERNAL_SYSTEM|external-system-onboarding`):
-- `internal/atdd/runtime/actions/bindings.go`, `gates/bindings.go`, `gates/bindings_test.go`, `clauderun/clauderun.go`, `clauderun/clauderun_test.go`, `statemachine/transitions_test.go`.
-- Delete `docs/images/process-diagram-7-onboard-external-system.svg` (regenerated docs won't reference it).
-
-Regenerate `docs/process-diagram.md` + remaining SVGs.
-
-**Verify before deleting.** Run the statemachine test suite to confirm no fixture still expects the `external-system-onboarding` route — per `feedback_statemachine_test_loop_hazard.md`, audit fixtures first; deleting an edge without an explicit catch-all path on the gateway is fine here because `UNKNOWN_TASK_SUBTYPE` already absorbs unknown subtypes.
-
-**Files touched.** Same set as item 2 (Board-mode removal) — multi-package change across `internal/atdd/runtime/{statemachine,actions,gates,clauderun}/`, docs, SVGs. Full list to be enumerated at execute time.
-
-**Future rebuild scope.** Captured in `plans/20260526-1746-rebuild-onboard-external-system.md` — full YAML block, all call-site wiring, code touch-points, and open design questions for the redesign. Do not pick that plan up until the new design is ready.
-
-**Depends on.** Independent of items 1, 2, 4. Should execute on the schema produced by item 4 (use `name:` instead of `documentation:` when writing the spinoff document's example YAML — update the spinoff at execute time).
 
 ---
 

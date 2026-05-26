@@ -794,9 +794,6 @@ func (f *fakeTracker) ReadSections(_ context.Context, _ tracker.Issue, _ []strin
 	f.readCalled = true
 	return f.sections, f.readErr
 }
-func (f *fakeTracker) MarkChecklistComplete(context.Context, tracker.Issue) error {
-	panic("fakeTracker.MarkChecklistComplete: not implemented")
-}
 
 func seedIssue(ctx *statemachine.Context) {
 	ctx.Set("issue_num", "42")
@@ -892,57 +889,6 @@ func TestParseTicket_NoIssueURL_Fails(t *testing.T) {
 	out := a.parseTicket(ctx)
 	if out.Err == nil {
 		t.Fatalf("expected error for missing issue_url")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// checkChecklistProgress — partially-done detection + summary
-// ---------------------------------------------------------------------------
-
-func TestCheckChecklistProgress_AllUnchecked_NotPartial(t *testing.T) {
-	a := newActions(Deps{})
-	ctx := statemachine.NewContext()
-	ctx.Set("ticket_checklist", "- [ ] One\n- [ ] Two")
-
-	if out := a.checkChecklistProgress(ctx); out.Err != nil {
-		t.Fatalf("unexpected error: %v", out.Err)
-	}
-	if got, _ := ctx.State["checklist-partially-done"].(bool); got {
-		t.Errorf("checklist-partially-done: got true, want false")
-	}
-	if got := ctx.Params["checklist_progress_summary"]; got != "" {
-		t.Errorf("summary: got %q, want empty when nothing checked", got)
-	}
-}
-
-func TestCheckChecklistProgress_SomeChecked_IsPartial(t *testing.T) {
-	a := newActions(Deps{})
-	ctx := statemachine.NewContext()
-	ctx.Set("ticket_checklist", "- [x] Done\n- [ ] Pending")
-
-	if out := a.checkChecklistProgress(ctx); out.Err != nil {
-		t.Fatalf("unexpected error: %v", out.Err)
-	}
-	if got, _ := ctx.State["checklist-partially-done"].(bool); !got {
-		t.Errorf("checklist-partially-done: got false, want true")
-	}
-	got := ctx.Params["checklist_progress_summary"]
-	if !strings.Contains(got, "1 of 2") {
-		t.Errorf("summary should report 1 of 2: got %q", got)
-	}
-}
-
-func TestCheckChecklistProgress_EmptyChecklist_NotPartial(t *testing.T) {
-	a := newActions(Deps{})
-	ctx := statemachine.NewContext()
-	// No ticket_checklist set — story or bug or legacy-coverage path
-	// where the cycle is never reached, but defensive coverage.
-
-	if out := a.checkChecklistProgress(ctx); out.Err != nil {
-		t.Fatalf("unexpected error: %v", out.Err)
-	}
-	if got, _ := ctx.State["checklist-partially-done"].(bool); got {
-		t.Errorf("checklist-partially-done: got true, want false")
 	}
 }
 

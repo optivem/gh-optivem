@@ -29,7 +29,6 @@ func (fakeTracker) Subtypes(context.Context, tracker.Issue) ([]string, error) {
 func (fakeTracker) ReadSections(context.Context, tracker.Issue, []string) (map[string]string, error) {
 	return nil, nil
 }
-func (fakeTracker) MarkChecklistComplete(context.Context, tracker.Issue) error { return nil }
 
 // TestTrackerInterfaceContract is a compile-time assertion that
 // fakeTracker satisfies tracker.Tracker. The runtime body never
