@@ -467,40 +467,88 @@ func TestRunCommand_RunTestsStampsTestOutcome(t *testing.T) {
 	}
 }
 
-func TestRunCommand_FilterFlagsAppendedOnlyWhenSet(t *testing.T) {
-	sh := &fakeShell{out: []byte("OK")}
-	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
-	ctx := statemachine.NewContext()
-	ctx.Params["command"] = "gh optivem test run"
-	ctx.Params["filter-type"] = "test-type"
-	ctx.Params["filter-value"] = "at-test"
-	out := a.runCommand(ctx)
-	if out.Err != nil {
-		t.Fatalf("unexpected err: %v", out.Err)
+func TestRunCommand_SuiteAndTestFlagsAppendedOnlyWhenSet(t *testing.T) {
+	cases := []struct {
+		name      string
+		suite     string
+		testNames string
+		wantHas   []string
+		wantMiss  []string
+	}{
+		{
+			name:     "both unset",
+			wantMiss: []string{"--suite=", "--test="},
+		},
+		{
+			name:    "suite only",
+			suite:   "acceptance",
+			wantHas: []string{"--suite=acceptance"},
+			wantMiss: []string{"--test="},
+		},
+		{
+			name:      "test-names only",
+			testNames: "foo,bar",
+			wantHas:   []string{"--test=foo,bar"},
+			wantMiss:  []string{"--suite="},
+		},
+		{
+			name:      "both set",
+			suite:     "acceptance",
+			testNames: "foo,bar",
+			wantHas:   []string{"--suite=acceptance", "--test=foo,bar"},
+		},
+		{
+			name:      "test-name with whitespace is shell-quoted",
+			suite:     "acceptance",
+			testNames: "shouldHandle whitespace",
+			wantHas:   []string{"--suite=acceptance", "'shouldHandle whitespace'"},
+		},
 	}
-	if len(sh.calls) != 1 {
-		t.Fatalf("expected 1 shell call, got %d: %v", len(sh.calls), sh.calls)
-	}
-	if !strings.Contains(sh.calls[0], "--filter-type=test-type") {
-		t.Fatalf("shell call missing --filter-type=: %q", sh.calls[0])
-	}
-	if !strings.Contains(sh.calls[0], "--filter-value=at-test") {
-		t.Fatalf("shell call missing --filter-value=: %q", sh.calls[0])
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sh := &fakeShell{out: []byte("OK")}
+			a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
+			ctx := statemachine.NewContext()
+			ctx.Params["command"] = "gh optivem test run"
+			if tc.suite != "" {
+				ctx.Params["suite"] = tc.suite
+			}
+			if tc.testNames != "" {
+				ctx.Params["test-names"] = tc.testNames
+			}
+			out := a.runCommand(ctx)
+			if out.Err != nil {
+				t.Fatalf("unexpected err: %v", out.Err)
+			}
+			if len(sh.calls) != 1 {
+				t.Fatalf("expected 1 shell call, got %d: %v", len(sh.calls), sh.calls)
+			}
+			for _, want := range tc.wantHas {
+				if !strings.Contains(sh.calls[0], want) {
+					t.Errorf("shell call missing %q: %q", want, sh.calls[0])
+				}
+			}
+			for _, miss := range tc.wantMiss {
+				if strings.Contains(sh.calls[0], miss) {
+					t.Errorf("shell call should not contain %q: %q", miss, sh.calls[0])
+				}
+			}
+		})
 	}
 }
 
-func TestRunCommand_NoFilterFlagsWhenEmpty(t *testing.T) {
+func TestRunCommand_NoFilterFlagsForNonTestCommand(t *testing.T) {
 	sh := &fakeShell{out: []byte("OK")}
 	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
 	ctx := statemachine.NewContext()
 	ctx.Params["command"] = "gh optivem commit"
-	// filter-type / filter-value left empty
+	// suite / test-names left empty
 	out := a.runCommand(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
-	if strings.Contains(sh.calls[0], "--filter-") {
-		t.Fatalf("shell call should not carry filter flags: %q", sh.calls[0])
+	if strings.Contains(sh.calls[0], "--suite=") || strings.Contains(sh.calls[0], "--test=") {
+		t.Fatalf("shell call should not carry suite/test flags: %q", sh.calls[0])
 	}
 }
 

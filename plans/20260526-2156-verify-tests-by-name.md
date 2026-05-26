@@ -228,47 +228,6 @@ agents reading `${test_names}` that no call-site populates yet —
 same empty-list brokenness disable has today. Items 1, 3, 6 are
 individually safe and can land separately.
 
-1. **Engine: `[]string` coerces to comma-joined string.** Extend
-   `coerceStateValue` in `internal/atdd/runtime/statemachine/run.go`
-   to handle `[]string` via `strings.Join(t, ",")`. Unit-test in
-   `run_test.go`. This change is independent of 2118 — it can land
-   on its own and only kicks in when something writes a `[]string`
-   to `ctx.State`.
-
-2. **`bindings.go::runCommand`: swap flag vocabulary.** Replace the
-   `filter-type` / `filter-value` flag-appending block with
-   `suite` / `test-names`. Rewrite the doc-comment at 691-695.
-   Update / rename the corresponding flag-passthrough tests in
-   `bindings_test.go`.
-
-3. **`contract-test-writer.md`: emit `test_names`.** Mirror
-   `acceptance-test-writer.md`'s `test_names` output block
-   (`internal/assets/runtime/agents/atdd/acceptance-test-writer.md:23-49`)
-   in `internal/assets/runtime/agents/atdd/contract-test-writer.md`:
-   add `test_names` to the example `outputs:` block alongside the
-   existing `dsl-port-changed` flag, and add a paragraph mirroring the
-   AT-side prose ("every unqualified test method name added or
-   modified by this ticket — not every test in the file…"). Without
-   this, CT-side `${test_names}` expands to empty at runtime and
-   `bindings.go` omits `--test=`, leaving CT verify-tests on the same
-   category-scoping it has today. `test_names` is already declared in
-   `outputs.go::knownOutputKeys`, so no schema change is needed — only
-   the agent prompt.
-
-4. **`test-disabler.md` + `test-enabler.md`: consume `${test_names}`.**
-   Both agents today reference `${disable_targets}` (declared as a
-   `<file>:<method>` list) — but **nothing populates it**: no producer
-   exists in the codebase, no writer-agent emits it, no dispatcher
-   builds it. Today's disable/enable runs operate on an empty list.
-   Replace `${disable_targets}` with `${test_names}` in both prompts,
-   and reframe the parameter section + Steps to take bare method
-   names instead of `<file>:<method>` entries. The agents already
-   run with `read: [at-test, ct-test]` scope, so locating each name
-   within the scoped read-set is the right primitive — no new shape
-   needed. Reason-format strings (e.g. `<TICKET-ID> - AT - <LOOP> -
-   <PHASE>`) and the `startsWith` re-enable filter are unchanged;
-   only the input shape changes.
-
 5. **`process-flow.yaml`: swap call-activity params.** Update every
    verify call-site listed in the table above to use `suite` /
    `test-names` (with `${test_names}` pulled from ctx.State at
@@ -289,7 +248,7 @@ individually safe and can land separately.
    - `ENABLE_TESTS` inside `verify-tests-filtered` (~1019-1021):
      add `test-names: ${test_names}`.
 
-6. **Verify on real cycles (requires 2118).** Run end-to-end
+6. ⏳ Deferred pending 2118 landing. **Verify on real cycles (requires 2118).** Run end-to-end
    `write-and-verify-acceptance-tests` **and**
    `write-and-verify-contract-tests` cycles against rehearsal
    tickets in **both** interactive and autonomous modes. Confirm

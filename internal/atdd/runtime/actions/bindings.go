@@ -174,12 +174,12 @@ func RegisterAll(r *Registry, deps Deps) {
 	// boolean.
 	r.Register("check-phase-scope", a.checkPhaseScope)
 	// BPMN Phase D — LOW execute-command primitive. Reads ctx.Params["command"]
-	// (the templated bash line, post-ExpandParams), appends --filter-type=
-	// and --filter-value= flags only when those params are non-empty, shells
-	// out, and writes ctx.State["command-succeeded"]. For the
-	// `gh optivem test run` family it also stamps ctx.State["test-outcome"]
-	// (pass|fail) so the verify-tests-pass / verify-tests-fail gateways can
-	// route without a second shell-out.
+	// (the templated bash line, post-ExpandParams), appends --suite= and
+	// --test= flags only when ctx.Params["suite"] / ctx.Params["test-names"]
+	// are non-empty, shells out, and writes ctx.State["command-succeeded"].
+	// For the `gh optivem test run` family it also stamps
+	// ctx.State["test-outcome"] (pass|fail) so the verify-tests-pass /
+	// verify-tests-fail gateways can route without a second shell-out.
 	r.Register("run-command", a.runCommand)
 	// BPMN Phase D — LOW execute-agent primitive's post-RUN_AGENT
 	// validation step. Reads ctx.Params["outputs"] (comma-separated keys
@@ -688,10 +688,16 @@ func shellEscape(s string) string {
 // caller's `call-activity.params:` block is expanded against the parent
 // scope before dispatch, so by the time the action fires:
 //
-//   - ctx.Params["command"]      — the fully-resolved bash command line
-//                                   (e.g. "gh optivem test run")
-//   - ctx.Params["filter-type"]  — optional; appended as --filter-type=…
-//   - ctx.Params["filter-value"] — optional; appended as --filter-value=…
+//   - ctx.Params["command"]     — the fully-resolved bash command line
+//                                  (e.g. "gh optivem test run")
+//   - ctx.Params["suite"]       — optional; appended as --suite=…
+//                                  pins the test category (acceptance,
+//                                  contract-real, contract-stub)
+//   - ctx.Params["test-names"]  — optional; appended as --test=…
+//                                  comma-separated list of bare test
+//                                  method names (the writer-agent's
+//                                  emitted test_names, joined via
+//                                  coerceStateValue's []string case)
 //
 // Writes ctx.State["command-succeeded"] = (exit == 0). For the
 // `gh optivem test run` family it additionally stamps
@@ -713,11 +719,11 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 		return statemachine.Outcome{Err: fmt.Errorf("run-command: command param not set — call-activity must pass `command:`")}
 	}
 	isTestRun := strings.HasPrefix(cmd, "gh optivem test run")
-	if filterType := strings.TrimSpace(ctx.Params["filter-type"]); filterType != "" {
-		cmd += " --filter-type=" + shellEscape(filterType)
+	if suite := strings.TrimSpace(ctx.Params["suite"]); suite != "" {
+		cmd += " --suite=" + shellEscape(suite)
 	}
-	if filterValue := strings.TrimSpace(ctx.Params["filter-value"]); filterValue != "" {
-		cmd += " --filter-value=" + shellEscape(filterValue)
+	if testNames := strings.TrimSpace(ctx.Params["test-names"]); testNames != "" {
+		cmd += " --test=" + shellEscape(testNames)
 	}
 	result, err := a.runShell(cmd)
 	succeeded := err == nil

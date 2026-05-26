@@ -81,12 +81,15 @@
 #     YAML edges describe the shape; the gate/action bindings land with
 #     the writing-agent runtime rewire (Phase D).
 #
-#   - `run-tests` structured filter params (`filter-type` enum +
-#     `filter-value`, Q5.a resolved): encoded as call-site params on the
-#     `run-tests` MID; the underlying `execute-command` reads them at
-#     dispatch time via the command's own arg substitution. Param values
-#     are strings (the YAML schema does not support typed unions); a
-#     dedicated parser lives in the Go command layer (Phase D).
+#   - `run-tests` exact-name verify params (`suite` + `test-names`):
+#     encoded as call-site params on the `run-tests` MID; the underlying
+#     `execute-command` reads them at dispatch time and appends them as
+#     `--suite=…` / `--test=…` flags to `gh optivem test run`. `suite`
+#     pins the test category (acceptance / contract-real / contract-stub
+#     — a static property of the writing agent that fed the cycle).
+#     `test-names` is the comma-separated list of bare test method names
+#     emitted by the writing agent (`test_names` output, joined by
+#     `coerceStateValue`'s `[]string` case). Both absent ⇒ run all tests.
 #
 #   - `fix-*` agent inventory (Q-late-5 (β-convention) routing): each `fix`
 #     call dispatches `execute-agent` with `task-name: "fix-${failure-kind}"`.
@@ -727,23 +730,23 @@ processes:
         process: verify-tests-pass
         name: "Verify Acceptance Tests Pass"
         params:
-          filter-type: test-type
-          filter-value: acceptance
+          suite: acceptance
+          test-names: ${test_names}
 
       - id: VERIFY_TESTS_FAIL_ACCEPTANCE
         type: call-activity
         process: verify-tests-fail
         name: "Verify Acceptance Tests Fail"
         params:
-          filter-type: test-type
-          filter-value: acceptance
+          suite: acceptance
+          test-names: ${test_names}
 
       - id: DISABLE_ACCEPTANCE_TESTS
         type: call-activity
         process: disable-tests
         name: "Disable Acceptance Tests"
         params:
-          tests: acceptance
+          test-names: ${test_names}
 
       - id: COMMIT_TEST_CODE
         type: call-activity
@@ -881,16 +884,16 @@ processes:
         process: verify-tests-pass
         name: "Verify Contract Tests Pass Against the Real System"
         params:
-          filter-type: test-type
-          filter-value: contract-real
+          suite: contract-real
+          test-names: ${test_names}
 
       - id: VERIFY_TESTS_FAIL_CONTRACT_STUB
         type: call-activity
         process: verify-tests-fail
         name: "Verify Contract Tests Fail Against the Stub"
         params:
-          filter-type: test-type
-          filter-value: contract-stub
+          suite: contract-stub
+          test-names: ${test_names}
 
       - id: IMPLEMENT_EXTERNAL_SYSTEM_STUBS
         type: call-activity
@@ -902,8 +905,8 @@ processes:
         process: verify-tests-pass
         name: "Verify Contract Tests Pass Against the Stub"
         params:
-          filter-type: test-type
-          filter-value: contract-stub
+          suite: contract-stub
+          test-names: ${test_names}
 
       - id: IMPL_EXT_DRIVER_CT_END
         type: end-event
@@ -1021,7 +1024,7 @@ processes:
         process: enable-tests
         name: "Enable Tests"
         params:
-          tests: ${tests}
+          test-names: ${test_names}
 
       - id: COMPILE_TESTS
         type: call-activity
@@ -1038,23 +1041,23 @@ processes:
         process: verify-tests-pass
         name: "Verify Tests Pass"
         params:
-          filter-type: test-type
-          filter-value: ${tests}
+          suite: ${tests}
+          test-names: ${test_names}
 
       - id: VERIFY_TESTS_FAIL_FILTERED
         type: call-activity
         process: verify-tests-fail
         name: "Verify Tests Fail"
         params:
-          filter-type: test-type
-          filter-value: ${tests}
+          suite: ${tests}
+          test-names: ${test_names}
 
       - id: DISABLE_TESTS
         type: call-activity
         process: disable-tests
         name: "Disable Tests"
         params:
-          tests: ${tests}
+          test-names: ${test_names}
 
       - id: COMMIT_LAYER
         type: call-activity
@@ -1081,8 +1084,8 @@ processes:
       - {from: DISABLE_TESTS,              to: COMMIT_LAYER}
       - {from: COMMIT_LAYER,               to: IMPLEMENT_TEST_LAYER_END}
 
-  # Run tests under `filter-type` / `filter-value`; on FAIL, dispatch
-  # `fix-unexpected-failing-tests`. Caller passes filter params (or omits
+  # Run tests under `suite` / `test-names`; on FAIL, dispatch
+  # `fix-unexpected-failing-tests`. Caller passes both params (or omits
   # to run all tests).
   verify-tests-pass:
     name: "Verify Tests Pass"
@@ -1093,8 +1096,8 @@ processes:
         process: run-tests
         name: "Run Tests"
         params:
-          filter-type: ${filter-type}
-          filter-value: ${filter-value}
+          suite: ${suite}
+          test-names: ${test-names}
 
       - id: GATE_TESTS_OUTCOME
         type: gateway
@@ -1121,7 +1124,7 @@ processes:
       - {from: GATE_TESTS_OUTCOME, to: UNKNOWN_TESTS_OUTCOME}
       - {from: FIX_UNEXPECTED_FAILING_TESTS, to: VERIFY_PASS_END}
 
-  # Inverted: run tests under filter; on PASS, dispatch
+  # Inverted: run tests under suite/test-names; on PASS, dispatch
   # `fix-unexpected-passing-tests`.
   verify-tests-fail:
     name: "Verify Tests Fail"
@@ -1132,8 +1135,8 @@ processes:
         process: run-tests
         name: "Run Tests"
         params:
-          filter-type: ${filter-type}
-          filter-value: ${filter-value}
+          suite: ${suite}
+          test-names: ${test-names}
 
       - id: GATE_TESTS_OUTCOME
         type: gateway
@@ -1400,7 +1403,7 @@ processes:
 
   # The [at-test, ct-test] pin is forward-looking — today only at-test
   # files are touched because the reason-format hardcodes `AT`, but the
-  # symmetric scope keeps the shared ${disable_targets} flow from being
+  # symmetric scope keeps the shared ${test_names} flow from being
   # scoped inconsistently when the CT-side disable lands.
   disable-tests:
     name: "Disable Tests"
@@ -1668,11 +1671,13 @@ processes:
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: COMMIT_MID_END}
 
-  # Q5.a structured filter params: `filter-type` enum (`test-type` or
-  # `test-name`); `filter-value` (single tag for test-type; list-as-string
-  # for test-name). Both absent ⇒ run all tests. The underlying
-  # `execute-command` forwards both params to the `gh optivem test run`
-  # CLI, which owns the filter parsing.
+  # Exact-name verify params: `suite` pins the test category
+  # (`acceptance` / `contract-real` / `contract-stub`) and `test-names`
+  # carries the writer-agent's emitted bare method names, joined as a
+  # comma-separated string by `coerceStateValue`'s `[]string` case.
+  # Both absent ⇒ run all tests. The underlying `execute-command`
+  # appends `--suite=…` / `--test=…` flags to the `gh optivem test run`
+  # CLI, which owns the actual filter parsing.
   run-tests:
     name: "Run Tests"
     start: EXECUTE_COMMAND
@@ -1683,8 +1688,8 @@ processes:
         name: "Dispatch the Command"
         params:
           command: "gh optivem test run"
-          filter-type: ${filter-type}
-          filter-value: ${filter-value}
+          suite: ${suite}
+          test-names: ${test-names}
 
       - id: RUN_TESTS_END
         type: end-event

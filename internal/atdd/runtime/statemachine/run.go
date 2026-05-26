@@ -331,6 +331,13 @@ func ExpandParams(s string, params map[string]string, state map[string]any) stri
 // rules as Context.GetString. Lives next to ExpandParams so the
 // substitution layer and the predicate-evaluation layer agree on what
 // "value X under key Y" renders as.
+//
+// `[]string` joins on ',' so writer-agent outputs typed as string slices
+// (e.g. ctx.State["test_names"]) substitute as comma-separated values
+// that downstream CLI flags consuming repeatable / comma-list inputs
+// (e.g. `gh optivem test run --test=foo,bar`) accept directly. Without
+// this case, fmt.Sprint on a slice renders `[foo bar]` which no flag
+// parses.
 func coerceStateValue(v any) string {
 	switch t := v.(type) {
 	case string:
@@ -340,6 +347,8 @@ func coerceStateValue(v any) string {
 			return "true"
 		}
 		return "false"
+	case []string:
+		return strings.Join(t, ",")
 	default:
 		return fmt.Sprint(v)
 	}

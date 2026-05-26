@@ -369,6 +369,9 @@ func TestExpandParams_StateValueCoercion(t *testing.T) {
 		{name: "bool true", value: true, want: "true"},
 		{name: "bool false", value: false, want: "false"},
 		{name: "int", value: 42, want: "42"},
+		{name: "[]string single", value: []string{"foo"}, want: "foo"},
+		{name: "[]string multi", value: []string{"foo", "bar"}, want: "foo,bar"},
+		{name: "[]string empty", value: []string{}, want: ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
