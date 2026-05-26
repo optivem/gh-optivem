@@ -4,32 +4,21 @@
 > resolved (2 design + 7 inventory, see per-item *Decided* / *Inventoried*
 > notes).
 >
-> ⚠️ **Blocked on two in-flight plans (status 2026-05-26 ~17:00Z).**
->
-> - **`plans/20260526-1530-fix-recovery-wire-failure-kind.md`** — picked
->   up at 11:29Z by `Valentina_Desk`, uncommitted edits to
->   `actions/bindings.go`, `actions/bindings_test.go`,
->   `agents/embed_test.go`, **`statemachine/process-flow.yaml`** (8
->   lines), plus a new `fix-command-failed.md` prompt. Overlaps the
->   `process-flow.yaml` surface this plan rewrites in Items 2, 3, 10, 11,
->   12, 13, 16, 17, 22.
-> - **`plans/20260526-1700-archive-bpmn-refactor-design-plan.md`** —
->   picked up at 11:32Z by `Valentina_Desk`, uncommitted edits to
->   **`statemachine/process-flow.yaml`** (header citations, lines 5-6)
->   and a new `plans/archived/` subdirectory holding
->   `20260525-1057-bpmn-refactor-design.md`.
->
-> Working tree is dirty with both. Wait until 1530 + 1700 commit (or
-> shelve), then re-verify `process-flow.yaml` line numbers against the
-> post-commit state before executing.
->
 > **Previously resolved blockers (kept for history):**
 >
+> - **1700** — `plans/20260526-1700-archive-bpmn-refactor-design-plan.md`
+>   landed as commit `5879f4b` ("plans: archive BPMN refactor design plan
+>   + establish plans/archived/ convention").
+> - **1530** — `plans/20260526-1530-fix-recovery-wire-failure-kind.md`
+>   landed as commits `770b6ba` ("atdd/runtime: wire fix-command-failed
+>   recovery path end-to-end") and `85e92ea` ("atdd/runtime: author
+>   fix-missing-output + fix-scope-diff prompts and wire diagnostic
+>   state").
 > - **1300** — landed as commit `89eab54` ("wire ticket-body parser to
 >   runtime + already-[x] approval gate"). Adds a `parse-ticket`
 >   service_task before `GATE_TICKET_KIND`; rewrites the comment block
->   at `process-flow.yaml:200-209` and `diagram.go:35`. Items 2, 11, 16,
->   17 line numbers need re-verifying against the post-1300 YAML.
+>   at `process-flow.yaml:200-209` and `diagram.go:35`. Items 2, 11, 16
+>   line numbers need re-verifying against the post-1300 YAML.
 > - **1220** — landed as commits `4045693` + `ed3096f`. The
 >   `update-ticket` wrapper is eliminated; MARK_* nodes are now
 >   service_tasks bound to four discrete state-transition actions.
@@ -46,16 +35,17 @@ audit.
 
 The 2026-05-26 /refine-plan walk results:
 
-- **In scope (will ship in this plan)**: Items 2, 3, 10, 11, 12,
-  13, 16, 17, 19, 22.
+- **In scope (still to ship)**: Items 2, 3, 10, 11, 12, 13, 16.
 - **Shipped in renderer-only chunk (2026-05-26)**: Items 7, 8, 20, 21
+  — see commit history.
+- **Shipped in schema-foundations chunk (2026-05-26)**: Items 17, 19, 22
   — see commit history.
 - **Superseded by another plan**: Item 9 → `plans/20260526-1220-fix-mark-ticket-state-transition-routing.md`
   (eliminates the `update-ticket` wrapper entirely; no `mark-ticket` rename
   to perform).
 - **Deferred (revisit later)**: Items 1, 5, 6.
-- **Deferred to its own plan**: Item 14 (domain-semantics change — ticket
-  kind split for redesign).
+- **Moved to its own plan**: Item 14 → `plans/20260526-1431-split-redesign-system-and-external-system-cycles.md`
+  (domain-semantics change — ticket-kind split for redesign).
 - **Merged into other items**: 4 → 2 (RED/GREEN normalisation folded into
   the documentation: requirement); 15 → 12 (CALL_PARAMETERISED_CORE
   rename folded into the CALL_* prefix drop).
@@ -784,53 +774,14 @@ into state. Likely lands with Phase D (same as Item 11's binding work).
 
 ## Item 14 — Split `redesign-system-structure` into system-side and external-side
 
-> ⏳ **Deferred to a separate plan** (2026-05-26): the only domain-semantics
-> change in this plan; the ticket-kind split ripples through refinement,
-> agents, and docs. Better tackled in its own focused plan that owns the
-> end-to-end ticket-kind change. The brainstorm below remains useful as
-> the seed for that follow-up plan.
-
-**Observation**: `redesign-system-structure` (process-flow.yaml:488-512)
-runs three steps:
-
-1. `implement-system-driver-adapters` (system-side driver adapters)
-2. `implement-external-system-driver-adapters` (external-side driver adapters)
-3. `implement-and-verify-system` (re-implements + verifies the system)
-
-So one cycle covers **both** system-side and external-side redesign.
-An operator picking `task/redesign-system` gets both regardless.
-
-**Direction (proposed)** — split into two CYCLEs:
-
-- `redesign-system-structure` — `implement-system-driver-adapters` +
-  `implement-and-verify-system`.
-- `redesign-external-system-structure` —
-  `implement-external-system-driver-adapters` (+ `implement-and-verify-system`
-  if the system needs re-verification after the external-side change).
-
-This also requires splitting the ticket-kind:
-
-- `task/redesign-system` → routes to `redesign-system-structure`.
-- `task/redesign-external-system` → routes to
-  `redesign-external-system-structure` (new ticket kind).
-
-Update the `GATE_TASK_SUBTYPE` gateway from Item 11 to add the new
-branch.
-
-**Open questions for /refine-plan**:
-
-- Q14.1 — Confirm the split direction. Alternative: keep the unified
-  cycle but document the operator can skip one half (no YAML change).
-- Q14.2 — Does `implement-and-verify-system` need to fire in the
-  external-side cycle too? Depends on whether changing external-system
-  driver adapters can change system behaviour. (Likely yes — the
-  system's port interface to the external system may shift.)
-- Q14.3 — Naming for the new sibling: `redesign-external-system-structure`
-  (proposed) vs `redesign-external-system-driver-structure` (more
-  precise but verbose) vs other.
-- Q14.4 — Scope: ship in this plan or as a separate structural-redesign
-  plan? This is the only item that *changes domain semantics* (adds a
-  new ticket kind), not just naming/layout.
+> ✅ **Moved to its own plan** (2026-05-26):
+> `plans/20260526-1431-split-redesign-system-and-external-system-cycles.md`.
+> All four open questions (Q14.1–Q14.4) are resolved there:
+> two sibling CYCLEs, both ending with `implement-and-verify-system`,
+> named `redesign-system-structure` / `redesign-external-system-structure`
+> with ticket-kinds `task/system-redesign` / `task/external-system-redesign`.
+> The brainstorm and questions previously here have been absorbed into
+> the new plan's *Resolved questions* section.
 
 ## Item 15 — Rename `CALL_PARAMETERISED_CORE` — *merged into Item 12 on 2026-05-26*
 
@@ -880,74 +831,6 @@ hard-error for missing call_activity docs.
 - Q16.2 — *Decided 2026-05-26*: hard-error at parse time on
   question-form gateway documentation (anything ending in `?`).
 
-## Item 17 — Model error end-events for the no-edge-matched failure path
-
-**Observation**: process-flow.yaml:210-213 documents that "operator-facing
-parse errors / unrecognised types surface through the runtime's
-no-edge-matched error path rather than dedicated STOP nodes." This means
-exceptional exits — e.g. unrecognised ticket-kind — fire as a runtime
-panic, **invisible in the diagram**.
-
-**BPMN convention**: exceptional exits are modelled as **error
-end-events** (circle with a bolt icon). They show readers where things
-can blow up.
-
-**Direction (decided 2026-05-26)**: introduce a new node type
-`error_end_event` rendered as a **circle with red border + bolt icon
-(⚡)**. Add one to each gateway that can fire a no-edge-matched error.
-Final scope (per Q17.3 inventory):
-
-- `GATE_TICKET_KIND` → `UNKNOWN_TICKET_KIND`.
-- `GATE_TASK_SUBTYPE` (Item 11) → `UNKNOWN_TASK_SUBTYPE`.
-- `GATE_EXPECTED_TEST_RESULT` (×2 call sites) → `UNKNOWN_EXPECTED_TEST_RESULT`.
-- `GATE_TESTS_OUTCOME` (×2 call sites) → `UNKNOWN_TESTS_OUTCOME`.
-
-Boolean gateways (`GATE_*_CHANGED`, `GATE_APPROVED`,
-`GATE_OUTPUTS_AND_SCOPES_VALID`, `GATE_FIX_ON_FAILURE`,
-`GATE_COMMAND_SUCCEEDED`, `GATE_CHECKLIST_PARTIALLY_DONE`) have closed
-value sets — no error end-event needed. Operator-input gateways
-(`GATE_REFACTOR_TYPE_CHOICE`) validate at the upstream user_task — no
-error end-event needed.
-
-**Files**:
-- `internal/atdd/runtime/statemachine/load.go` — new YAML node type.
-- `internal/atdd/runtime/diagram/diagram.go` — new shape / classDef
-  (bolt-icon circle or coloured circle).
-- `internal/atdd/runtime/statemachine/process-flow.yaml` — add the
-  error end-events to relevant gateways.
-- Runtime code that currently raises the "no-edge-matched" panic —
-  may need to route to the new error end-event node so the trace
-  surfaces it as a proper transition.
-
-> **Post-1220 note**: Item 17 adds error end-events to `implement-ticket`'s
-> gateway block (around lines 232-294 pre-1220). 1220 also touches that
-> section (MARK_IN_PROGRESS line 237, MARK_IN_ACCEPTANCE line 272). The
-> two changes are logically independent (gateways vs MARK_* state
-> transitions), but text-level conflict was the original driver for the
-> 1220 → 0832 sequencing. Verify pre-1220 line numbers above against the
-> post-1220 YAML at execution time.
-
-**Open questions for /refine-plan**:
-
-- Q17.1 — *Decided 2026-05-26*: new node type `error_end_event`.
-- Q17.2 — *Decided 2026-05-26*: red border + bolt icon (⚡), BPMN
-  standard.
-- Q17.3 — *Inventoried 2026-05-26*: gateway-by-gateway audit settles
-  scope. **Boolean gateways** (closed value set, no unenumerated
-  case) — no error_end_event needed: `GATE_CHECKLIST_PARTIALLY_DONE`
-  (×3), `GATE_DSL_PORT_CHANGED` (×2), `GATE_EXTERNAL_DRIVER_PORTS_CHANGED`,
-  `GATE_SYSTEM_DRIVER_PORTS_CHANGED`, `GATE_OUTPUTS_AND_SCOPES_VALID`,
-  `GATE_FIX_ON_FAILURE`, `GATE_COMMAND_SUCCEEDED`, `GATE_APPROVED`
-  (approved/rejected — closed). **Operator-input gateways** — validation
-  lives at the upstream user_task; no error_end_event needed:
-  `GATE_REFACTOR_TYPE_CHOICE` (Item 13's `CHOOSE_REFACTOR_TYPE`
-  validates). **Enumerated value gateways** — error_end_event needed:
-  `GATE_TICKET_KIND` (story/bug/task — `UNKNOWN_TICKET_KIND`),
-  `GATE_TASK_SUBTYPE` (new from Item 11 — `UNKNOWN_TASK_SUBTYPE`),
-  `GATE_EXPECTED_TEST_RESULT` (×2 — `UNKNOWN_EXPECTED_TEST_RESULT`),
-  `GATE_TESTS_OUTCOME` (×2 — `UNKNOWN_TESTS_OUTCOME`). Final scope: 7
-  error end-events across 4 distinct gateway kinds.
-
 ## Item 18 — Add explicit loop-subprocess markers to looping flows — *dropped on 2026-05-26*
 
 The post-Item-13 `refactor` shape (`CHOOSE_REFACTOR_TYPE` → gateway →
@@ -958,179 +841,51 @@ multi-activity flow loops. Adding `⟳` here would be non-standard.
 
 Item 18 was built on a wrong premise. No action needed.
 
-## Item 19 — TDD-stage visual metadata (colored border on relevant nodes)
-
-**Observation**: Item 2 drops the RED/GREEN/Cover/REFACTOR stage prefixes
-from node labels to favour BPMN purity. But the TDD-stage vocabulary is
-pedagogically important in this teaching repo — a student reading
-`change-system-behavior` should be able to see RED → GREEN → REFACTOR
-adjacency.
-
-**Direction (decided 2026-05-26)**: separate the **what** (label, BPMN-pure
-verb-phrase from Item 2) from the **role** (TDD stage, visual marker).
-Add a `tdd-stage:` field to relevant YAML nodes; renderer applies a
-coloured border via classDef.
-
-**Schema**:
-
-```yaml
-- id: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL
-  type: call_activity
-  process: write-and-verify-acceptance-tests-fail
-  documentation: "Write Failing Acceptance Tests"
-  tdd-stage: red                            # ← new field
-```
-
-**Stage → colour mapping** (border colour, no fill conflict with executor
-colors). **3-stage enum** (per Q19.1 decision): Cover folds into Green
-(same outcome — test passes — and the cycle-name distinction lives in
-the YAML cycle structure rather than node coloring).
-
-| `tdd-stage:` | Border colour | Notes |
-|---|---|---|
-| `red`     | `#dc3545` (red)    | "RED" step — write a failing test |
-| `green`   | `#28a745` (green)  | "GREEN" step — test passes (after RED implementation, or as a Cover step against existing behaviour) |
-| `refactor` | `#007bff` (blue)  | "REFACTOR" step — improve without changing behaviour |
-
-**Files**:
-- `internal/atdd/runtime/statemachine/load.go` — accept `tdd-stage:` field
-  (validate against the four-value enum; absent → no styling).
-- `internal/atdd/runtime/diagram/diagram.go` — emit a new classDef per
-  stage, apply to nodes with `tdd-stage:` set. Add a legend bullet
-  explaining the colours.
-- `internal/atdd/runtime/statemachine/process-flow.yaml` — annotate the
-  four nodes that currently carry stage prefixes (and any others where a
-  stage applies, audited at execution time).
-
-**Open questions for /refine-plan**:
-
-- Q19.1 — *Decided 2026-05-26*: 3-stage enum (`red | green | refactor`).
-  Cover folds into Green (same outcome — test passes). The cycle-name
-  distinction between `change-system-behavior` and `cover-system-behavior`
-  carries the pedagogical signal; node coloring doesn't repeat it.
-- Q19.2 — *Decided 2026-05-26*: **narrow scope**. Only call-site nodes
-  that explicitly play a RED/GREEN/REFACTOR role at their call site.
-  Likely candidates: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL (RED),
-  WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS (GREEN), the two
-  IMPLEMENT_AND_VERIFY_SYSTEM call sites in change-system-behavior
-  (GREEN with `agent-action: implement-system`; REFACTOR with
-  `agent-action: refactor-system`). Inventory other candidates at
-  execution time; don't auto-propagate down into refactor-* /
-  redesign-* cycles.
-- Q19.3 — *Decided 2026-05-26*: **border-only**. Executor coloring uses
-  fill (white = Service Task, dark blue = User Task LLM Agent, yellow =
-  User Task Human); TDD-stage uses border (red/green/blue). Both
-  signals visible without conflict.
-
-## Item 22 — Start / End event labels
-
-**Observation**: Renderer hardcodes `((Start))` and `((End))` for every
-start_event and end_event (`writeNode` in diagram.go:374-378). BPMN
-convention: start events are labelled with the **trigger** that begins
-the process; end events are labelled with the **outcome**. E.g.:
-
-- `refine-ticket` start: "Operator Refines Ticket" (or: "Ticket Picked
-  for Refinement").
-- `refine-ticket` end (REFINE_TICKET_END): "Ticket Marked READY".
-- `implement-ticket` end (IMPLEMENT_TICKET_END): "Ticket Marked IN
-  ACCEPTANCE".
-- `change-system-behavior` end (CHANGE_SYSTEM_BEHAVIOR_END): "System
-  Behavior Changed".
-
-Currently the only signal a reader has is the node ID, which the
-renderer doesn't print for start/end events. So readers see anonymous
-"Start" / "End" circles.
-
-**Direction (proposed)**: add an optional `documentation:` field to
-`start_event` and `end_event` YAML nodes; renderer uses it if present,
-falls back to "Start" / "End" otherwise.
-
-Inventory (at execution time): every process's start and end events.
-Most ends look like `<process-name>_END` which gives the renderer a hint
-for an auto-derived fallback ("`REFINE_TICKET_END` → 'Refine Ticket
-Complete'"), but explicit `documentation:` is preferred.
-
-**Files**:
-- `internal/atdd/runtime/statemachine/load.go` — allow `documentation:`
-  on start_event / end_event (currently allowed but unused by the
-  renderer).
-- `internal/atdd/runtime/diagram/diagram.go::writeNode` — use the doc
-  if present for start/end events; else current hardcoded fallback.
-- `internal/atdd/runtime/statemachine/process-flow.yaml` — populate
-  `documentation:` on every start_event / end_event.
-
-**Open questions for /refine-plan**:
-
-- Q22.1 — *Decided 2026-05-26*: short noun-phrase. Examples:
-  - `REFINE_TICKET_END` → "Ticket Marked READY"
-  - `IMPLEMENT_TICKET_END` → "Ticket Marked IN ACCEPTANCE"
-  - `CHANGE_SYSTEM_BEHAVIOR_END` → "System Behavior Changed"
-  - `REFACTOR_TOP_END` → "Refactor Complete"
-- Q22.2 — *Decided 2026-05-26*: error end-events follow the same form.
-  Examples: "Unknown Ticket Kind", "Unknown Task Subtype", "Unknown
-  <Binding Name>".
-- Q22.3 — *Decided 2026-05-26*: **strict require**. Every start_event
-  and end_event must have a `documentation:` line. Parse error if
-  missing. Consistent with Item 2's call_activity rule.
-
 ## Execution order
 
 Items in execution order after the 2026-05-26 /refine-plan walk.
 
-**In scope** (settled): Items 2, 3, 10, 11, 12, 13, 16, 17, 19, 22.
-**Already shipped** (renderer-only chunk, 2026-05-26): Items 7, 8, 20, 21.
+**Still to ship**: Items 2, 3, 10, 11, 12, 13, 16.
+**Already shipped — renderer-only chunk** (2026-05-26): Items 7, 8, 20, 21.
+**Already shipped — schema-foundations chunk** (2026-05-26): Items 17,
+19, 22.
 **Out of scope**: Items 1, 5, 6 (deferred), 4 (merged into 2), 9
-(superseded by 1220), 14 (deferred to separate plan), 15 (merged into
-12), 18 (dropped).
+(superseded by 1220), 14 (moved to its own plan), 15 (merged into 12),
+18 (dropped).
 
-**Schema additions** (renderer + load.go):
+**YAML structural changes** (remaining):
 
-1. **Item 17** (error end-events) — new `error_end_event` node type
-   with red border + bolt icon (⚡); load.go accepts the type; renderer
-   gets a new shape branch. Bakes in early so Items 11, 16 can use it.
-2. **Item 19** (TDD-stage visual metadata) — new `tdd-stage:` field
-   accepted in load.go (enum: `red | green | refactor`); renderer
-   emits a classDef per stage; legend gets a new bullet section
-   explaining the colours.
-3. **Item 22** (start/end event labels) — strict-require
-   `documentation:` on every `start_event` and `end_event`; renderer
-   uses the doc for the label. Parse-time error if missing.
-
-**YAML structural changes**:
-
-4. **Item 16** (computed-gateway documentation cleanup) — every
+1. **Item 16** (computed-gateway documentation cleanup) — every
    gateway's `documentation:` rewritten to predicate form (binding
    name) or stripped; parse-time hard-error on question-form gateway
    documentation.
-5. **Item 13** (split operator-input gateways into user_task + gateway)
+2. **Item 13** (split operator-input gateways into user_task + gateway)
    — adds `CHOOSE_REFACTOR_TYPE` user_task to the `refactor` process;
    redirects loopback edges; strips question-form documentation from
    `GATE_REFACTOR_TYPE_CHOICE`.
-6. **Item 12** (drop `CALL_*` prefix; verb-first naming) — YAML pass:
+3. **Item 12** (drop `CALL_*` prefix; verb-first naming) — YAML pass:
    rename 9 `CALL_*` nodes per the two-rule convention. `CALL_AGENT_ACTION`
    → `RUN_ACTION` (with param `agent-action` renamed to `action` at
    every call site). Adjective-first `OPPORTUNISTIC_REFACTOR` (Item 3
    target) becomes `REFACTOR_OPPORTUNISTICALLY`. Subsumes Item 15.
-7. **Item 2** (require `documentation:` everywhere + apply convention)
+4. **Item 2** (require `documentation:` everywhere + apply convention)
    — mass YAML edit: ~81 call_activity nodes gain a `documentation:`
    line under the **BPMN-pure verb-phrase, Title Case** convention.
    Renderer drops the ID-fallback branch; load.go adds the schema-
    validation requirement.
-8. **Item 3** (de-duplicate opportunistic-refactor block) — YAML
+5. **Item 3** (de-duplicate opportunistic-refactor block) — YAML
    change: collapses 6 nodes + 7 edges into one `call_activity`
    (`REFACTOR_OPPORTUNISTICALLY`) → `refactor`. Updates statemachine
    tests that reference the removed `OPP_*` IDs.
-9. **~~Item 9~~ (superseded by 1220)** — no execution work in this plan;
-   the `update-ticket` wrapper is eliminated by 1220.
-10. **Item 10** (rename `refine-backlog` → `refine-backlog-item`) — YAML
-    rename: process def + call site + section comment + diagram.go
-    `processOrder` + `REFINE_BACKLOG_END` → `REFINE_BACKLOG_ITEM_END`.
-11. **Item 11** (split ticket-kind gateway) — YAML structural change:
-    `GATE_TICKET_KIND` value set shrinks to story/bug/task; new
-    `GATE_TASK_SUBTYPE` gateway routes the five task subtypes; both
-    gateways gain an `error_end_event` for unrecognised values (per
-    Item 17). Stub binding for `task_subtype`; real wiring lands with
-    Phase D.
+6. **Item 10** (rename `refine-backlog` → `refine-backlog-item`) — YAML
+   rename: process def + call site + section comment + diagram.go
+   `processOrder` + `REFINE_BACKLOG_END` → `REFINE_BACKLOG_ITEM_END`.
+7. **Item 11** (split ticket-kind gateway) — YAML structural change:
+   `GATE_TICKET_KIND` value set shrinks to story/bug/task; new
+   `GATE_TASK_SUBTYPE` gateway routes the five task subtypes; both
+   gateways gain an `error_end_event` for unrecognised values (per
+   Item 17). Stub binding for `task_subtype`; real wiring lands with
+   Phase D.
 
 Regenerate `docs/process-diagram*.md` after each item; commit per item.
 The GitHub render-budget bug (deferred Item 6) is unrelated — readers
