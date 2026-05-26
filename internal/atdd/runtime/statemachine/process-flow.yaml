@@ -1173,6 +1173,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: write-acceptance-tests
+          agent: acceptance-test-writer
           outputs: "dsl-port-changed"
         read:  [at-test, dsl-port]
         write: [at-test, dsl-port, dsl-core]
@@ -1195,6 +1196,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: write-contract-tests
+          agent: contract-test-writer
           outputs: "dsl-port-changed"
         read:  [ct-test, dsl-port]
         write: [ct-test, dsl-port, dsl-core]
@@ -1216,6 +1218,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: implement-dsl
+          agent: dsl-implementer
           outputs: "system-driver-ports-changed,external-driver-ports-changed"
         read:  [dsl-core, driver-port, external-system-driver-port]
         write: [dsl-core, driver-port, external-system-driver-port]
@@ -1237,6 +1240,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: implement-system
+          agent: system-implementer
         read:  [system-path]
         write: [system-path]
 
@@ -1264,6 +1268,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: update-system
+          agent: system-updater
         read:  [system-path, driver-adapter, driver-port]
         write: [system-path, driver-adapter]
 
@@ -1288,6 +1293,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: implement-system-driver-adapters
+          agent: system-driver-adapter-implementer
         read:  [driver-port, driver-adapter]
         write: [driver-adapter]
 
@@ -1312,6 +1318,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: update-system-driver-adapters
+          agent: system-driver-adapter-updater
         read:  [driver-port, driver-adapter]
         write: [driver-adapter]
 
@@ -1333,6 +1340,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: implement-external-system-driver-adapters
+          agent: external-system-driver-adapter-implementer
         read:  [external-system-driver-port, external-system-driver-adapter]
         write: [external-system-driver-adapter]
 
@@ -1358,6 +1366,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: update-external-system-driver-adapters
+          agent: external-system-driver-adapter-updater
         read:  [external-system-driver-port, external-system-driver-adapter]
         write: [external-system-driver-adapter]
 
@@ -1378,6 +1387,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: implement-external-system-stubs
+          agent: external-system-stub-implementer
         read:  [external-system-driver-adapter]
         write: [external-system-driver-adapter]
 
@@ -1402,6 +1412,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: disable-tests
+          agent: test-disabler
         read:  [at-test, ct-test]
         write: [at-test, ct-test]
 
@@ -1423,6 +1434,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: enable-tests
+          agent: test-enabler
         read:  [at-test, ct-test]
         write: [at-test, ct-test]
 
@@ -1446,6 +1458,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: fix-unexpected-passing-tests
+          agent: unexpected-passing-tests-diagnoser
         read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
         write: [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
 
@@ -1468,6 +1481,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: fix-unexpected-failing-tests
+          agent: unexpected-failing-tests-diagnoser
         read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
         write: [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
 
@@ -1489,6 +1503,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: refactor-tests
+          agent: test-refactorer
         read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter]
         write: [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter]
 
@@ -1509,6 +1524,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: refactor-system
+          agent: system-refactorer
         read:  [system-path]
         write: [system-path]
 
@@ -1534,6 +1550,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: refine-acceptance-criteria
+          agent: acceptance-criteria-refiner
         scope: none
 
       - id: REFINE_AC_END
@@ -1732,10 +1749,12 @@ processes:
       - {from: GATE_APPROVED, to: APPROVE_REJECT_END, when: "approval-outcome == rejected"}
 
   # Wraps an agent run with approval + per-phase snapshot + validation +
-  # optional fix recovery + post-approval. The agent name is the caller's
-  # `task-name` param, forwarded into the templated `agent: ${task-name}`
-  # on RUN_AGENT. Agent definition path is derived from task-name per Q28.a
-  # (`task-name + ".md"`).
+  # optional fix recovery + post-approval. Callers pass two fields:
+  #   - `task-name` (verb) — the unit of work; used for scope lookup,
+  #     originating-task-name fix-recovery plumbing, and trace output.
+  #   - `agent` (noun)     — the actor that performs the task; forwarded
+  #     into the templated `agent: ${agent}` on RUN_AGENT. Agent definition
+  #     path is `agent + ".md"` under runtime/agents/atdd/.
   #
   # SNAPSHOT_WORKING_TREE runs between approval and dispatch so the
   # post-RUN validator can attribute working-tree edits to *this* agent's
@@ -1777,8 +1796,8 @@ processes:
 
       - id: RUN_AGENT
         type: user-task
-        agent: ${task-name}
-        name: "Run agent ${task-name}"
+        agent: ${agent}
+        name: "Run agent ${agent} (task: ${task-name})"
 
       - id: VALIDATE_OUTPUTS_AND_SCOPES
         type: service-task
@@ -1938,6 +1957,7 @@ processes:
           # See the closed set of kinds documented in the
           # `fix-*` agent inventory note near the top of this file.
           task-name: "fix-${failure-kind}"
+          agent: "${failure-kind}-diagnoser"
           fix-on-failure: "false"
           # originating-task-name carries the OUTER MID's task-name (e.g.
           # "write-acceptance-tests") through the fix dispatch so the inner

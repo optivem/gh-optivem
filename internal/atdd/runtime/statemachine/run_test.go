@@ -528,29 +528,30 @@ processes:
 	}
 }
 
-// TestExecuteCommand_FailureDispatchesFixCommandFailedAgent is the
-// end-to-end verification for the recovery-path wiring (plan
-// 20260526-1530 Item 3). It loads the canonical embedded YAML and drives
-// `execute-command` with a stubbed `run-command` action that simulates a
-// shell failure (stamps `command-succeeded=false`, `failure-kind=command-failed`).
-// The expected trail is:
+// TestExecuteCommand_FailureDispatchesCommandFailedDiagnoserAgent is the
+// end-to-end verification for the recovery-path wiring (plans 20260526-1530
+// Item 3 + 20260526-1701 task-name/agent split). It loads the canonical
+// embedded YAML and drives `execute-command` with a stubbed `run-command`
+// action that simulates a shell failure (stamps `command-succeeded=false`,
+// `failure-kind=command-failed`). The expected trail is:
 //
 //	execute-command.RUN_COMMAND → GATE_COMMAND_SUCCEEDED=false → FIX
-//	  → fix.EXECUTE_AGENT (params task-name="fix-${failure-kind}")
-//	    → execute-agent.RUN_AGENT (agent: ${task-name})
+//	  → fix.EXECUTE_AGENT (params task-name="fix-${failure-kind}",
+//	                              agent="${failure-kind}-diagnoser")
+//	    → execute-agent.RUN_AGENT (agent: ${agent})
 //
-// At RUN_AGENT the engine resolves `${task-name}` against ctx.Params,
-// which in turn was expanded with `${failure-kind}` resolved via
-// ExpandParams's state fallback (Item 2). The recorded AgentFn dispatch
-// must be the literal `"fix-command-failed"` — if either Items 1, 2, or
-// the YAML wiring regresses, this test fails before runtime sees a
-// missing-prompt error.
+// At RUN_AGENT the engine resolves `${agent}` against ctx.Params, which
+// in turn was expanded with `${failure-kind}` resolved via ExpandParams's
+// state fallback. The recorded AgentFn dispatch must be the literal
+// `"command-failed-diagnoser"` — if Items 1, 2, the YAML wiring, or the
+// 1701 task-name/agent split regresses, this test fails before runtime
+// sees a missing-prompt error.
 //
 // Memory `feedback_statemachine_test_loop_hazard`: the four processes
 // walked here (execute-command, fix, execute-agent, approve) have no
 // loopback edges, so the test is bounded. `maxDispatchesPerProcess`
 // catches the failure mode anyway if a future YAML edit introduces one.
-func TestExecuteCommand_FailureDispatchesFixCommandFailedAgent(t *testing.T) {
+func TestExecuteCommand_FailureDispatchesCommandFailedDiagnoserAgent(t *testing.T) {
 	eng, err := LoadDefault()
 	if err != nil {
 		t.Fatalf("LoadDefault: %v", err)
@@ -625,11 +626,11 @@ func TestExecuteCommand_FailureDispatchesFixCommandFailedAgent(t *testing.T) {
 
 	// The approve sub-process dispatches the human user-task multiple
 	// times during the walk — we ignore those and look for the
-	// fix-command-failed dispatch.
-	foundFixCommandFailed := false
+	// command-failed-diagnoser dispatch.
+	foundDiagnoser := false
 	for _, name := range dispatchedAgents {
-		if name == "fix-command-failed" {
-			foundFixCommandFailed = true
+		if name == "command-failed-diagnoser" {
+			foundDiagnoser = true
 		}
 		// Guard against the original bug surface: an unresolved
 		// template leaking into AgentFn. Catches a regression where
@@ -638,17 +639,18 @@ func TestExecuteCommand_FailureDispatchesFixCommandFailedAgent(t *testing.T) {
 			t.Errorf("agent name with unresolved template leaked into dispatch: %q (full dispatch trail: %v)", name, dispatchedAgents)
 		}
 	}
-	if !foundFixCommandFailed {
-		t.Errorf("RUN_AGENT did not dispatch fix-command-failed; full dispatch trail: %v", dispatchedAgents)
+	if !foundDiagnoser {
+		t.Errorf("RUN_AGENT did not dispatch command-failed-diagnoser; full dispatch trail: %v", dispatchedAgents)
 	}
 }
 
-// TestExecuteAgent_ValidationFailureDispatchesFixForFailureKind is the
-// twin of TestExecuteCommand_FailureDispatchesFixCommandFailedAgent for
-// the `execute-agent` → `fix` → `execute-agent` recovery branch (plan
-// 20260526-1530 Item 4). `validateOutputsAndScopes` writes one of two
-// failure-kinds — `missing-output` or `scope-diff` — and the recovery
-// path must dispatch the matching `fix-<kind>` agent.
+// TestExecuteAgent_ValidationFailureDispatchesDiagnoserForFailureKind is
+// the twin of TestExecuteCommand_FailureDispatchesCommandFailedDiagnoserAgent
+// for the `execute-agent` → `fix` → `execute-agent` recovery branch (plan
+// 20260526-1530 Item 4 + 20260526-1701 task-name/agent split).
+// `validateOutputsAndScopes` writes one of two failure-kinds —
+// `missing-output` or `scope-diff` — and the recovery path must dispatch
+// the matching `<kind>-diagnoser` agent (noun form, post-1701 split).
 //
 // At the time this test was written the two `fix-missing-output` and
 // `fix-scope-diff` prompts did NOT yet exist (out of scope here; see
@@ -665,7 +667,7 @@ func TestExecuteCommand_FailureDispatchesFixCommandFailedAgent(t *testing.T) {
 // validate-outputs-and-scopes, but `fix-on-failure=false` on the inner
 // call-site routes its GATE_FIX_ON_FAILURE to APPROVE_POST — no
 // second-level recursion.
-func TestExecuteAgent_ValidationFailureDispatchesFixForFailureKind(t *testing.T) {
+func TestExecuteAgent_ValidationFailureDispatchesDiagnoserForFailureKind(t *testing.T) {
 	cases := []struct {
 		failureKind string
 		wantAgent   string
@@ -673,8 +675,8 @@ func TestExecuteAgent_ValidationFailureDispatchesFixForFailureKind(t *testing.T)
 		// validateOutputsAndScopes priority is missing-output wins
 		// over scope-diff (bindings.go), so each case here pins the
 		// observable kind after the action's own routing decision.
-		{failureKind: "missing-output", wantAgent: "fix-missing-output"},
-		{failureKind: "scope-diff", wantAgent: "fix-scope-diff"},
+		{failureKind: "missing-output", wantAgent: "missing-output-diagnoser"},
+		{failureKind: "scope-diff", wantAgent: "scope-diff-diagnoser"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.failureKind, func(t *testing.T) {
@@ -744,9 +746,13 @@ func TestExecuteAgent_ValidationFailureDispatchesFixForFailureKind(t *testing.T)
 
 			ctx := NewContext()
 			// Outer execute-agent call: a hypothetical writing-agent
-			// dispatch. The name doesn't matter — validate-outputs-and-
+			// dispatch. The names don't matter — validate-outputs-and-
 			// scopes is the action that decides the recovery branch.
+			// Both `task-name` (verb) and `agent` (noun) must be set
+			// post-1701 split — RUN_AGENT resolves `agent: ${agent}`
+			// and an empty value would leak `${agent}` into dispatch.
 			ctx.Params["task-name"] = "some-writing-agent"
+			ctx.Params["agent"] = "some-agent-noun"
 			if err := eng.RunProcess("execute-agent", ctx); err != nil {
 				t.Fatalf("RunProcess execute-agent: %v", err)
 			}
@@ -764,5 +770,81 @@ func TestExecuteAgent_ValidationFailureDispatchesFixForFailureKind(t *testing.T)
 				t.Errorf("RUN_AGENT did not dispatch %q; full dispatch trail: %v", tc.wantAgent, dispatchedAgents)
 			}
 		})
+	}
+}
+
+// TestWrapUserTask_AgentResolvesFromAgentParam pins the post-split wiring
+// (plan 20260526-1701): RUN_AGENT in the `execute-agent` sub-process now
+// templates `agent: ${agent}`, NOT `agent: ${task-name}`. Callers pass two
+// distinct fields — `task-name` (the verb, used for scope lookup and
+// trace) and `agent` (the noun, used for dispatcher routing). A future
+// refactor that silently reverts RUN_AGENT to `${task-name}` would still
+// resolve to *some* registered agent (the task verbs are also valid
+// strings), so a dedicated test is the only way to catch the regression.
+//
+// Pattern mirrors TestExecuteCommand_FailureDispatchesFixCommandFailedAgent:
+// build a small in-memory process with one MID node that passes both
+// fields into `execute-agent`; record the dispatched agent name via a
+// recording AgentFn; assert the recorded name is the noun, not the verb.
+func TestWrapUserTask_AgentResolvesFromAgentParam(t *testing.T) {
+	const yaml = `
+processes:
+  outer:
+    name: "Outer"
+    start: MID
+    nodes:
+      - id: MID
+        type: call-activity
+        process: execute-agent
+        name: "Synthetic MID"
+        params:
+          task-name: write-acceptance-tests
+          agent: acceptance-test-writer
+      - id: OUTER_END
+        type: end-event
+        name: "Outer end"
+    sequence-flows:
+      - {from: MID, to: OUTER_END}
+
+  execute-agent:
+    name: "Execute Agent"
+    start: RUN_AGENT
+    nodes:
+      - id: RUN_AGENT
+        type: user-task
+        agent: ${agent}
+        name: "Run agent ${agent} (task: ${task-name})"
+      - id: EXECUTE_AGENT_END
+        type: end-event
+        name: "Done"
+    sequence-flows:
+      - {from: RUN_AGENT, to: EXECUTE_AGENT_END}
+`
+	eng, err := LoadBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+
+	var dispatched string
+	eng.ActionFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	eng.AgentFn = func(name string) NodeFn {
+		return func(ctx *Context) Outcome {
+			dispatched = name
+			return Outcome{}
+		}
+	}
+	eng.GateFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+	if err := eng.RunProcess("outer", NewContext()); err != nil {
+		t.Fatalf("RunProcess outer: %v", err)
+	}
+
+	if dispatched != "acceptance-test-writer" {
+		t.Errorf("RUN_AGENT dispatched %q, want %q — the `agent:` param (noun) must drive dispatch, NOT `task-name:` (verb)", dispatched, "acceptance-test-writer")
+	}
+	if dispatched == "write-acceptance-tests" {
+		t.Errorf("RUN_AGENT resolved to the verb (task-name) instead of the noun (agent) — the 1701 split has regressed; RUN_AGENT.agent must template ${agent}, not ${task-name}")
 	}
 }

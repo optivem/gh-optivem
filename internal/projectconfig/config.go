@@ -34,7 +34,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 )
 
 // Path is the canonical relative location of the file inside a consumer
@@ -148,9 +148,12 @@ type Config struct {
 
 	// TaskPrompts maps MID task-name → repo-relative path to a prompt
 	// body that replaces the embedded one. Partial overrides are allowed
-	// (an entry per task the operator wants to customize). Validated:
-	// keys must be members of agents.Names() (which enumerates the
-	// embedded MID task prompt files); values pass validatePath.
+	// (an entry per task the operator wants to customize). Keys are the
+	// task-name verbs declared on each writing-agent MID's EXECUTE_AGENT
+	// call-activity in the embedded process-flow.yaml; values pass
+	// validatePath. The plan 20260526-1701 split separated task-name from
+	// agent — keys here remain the task-name verb (operator-facing schema
+	// is preserved), enumerated from the engine at Validate time.
 	TaskPrompts map[string]string `yaml:"task-prompts,omitempty"`
 
 	// NodeExtras maps process-flow node ID → literal text appended to that
@@ -552,10 +555,12 @@ func (c *Config) Validate() error {
 	// Rule 11: task-prompts. Keys must be known embedded MID task names
 	// (typos surface at config-load, not deep inside the pipeline); values
 	// pass validatePath. Sorted iteration so errors are deterministic.
+	// Post-1701 split: enumerate task-names from the embedded process-flow
+	// YAML rather than agents.Names() (which now returns agent nouns).
 	if len(c.TaskPrompts) > 0 {
-		known := map[string]bool{}
-		for _, n := range agents.Names() {
-			known[n] = true
+		known, err := knownTaskNames()
+		if err != nil {
+			return fmt.Errorf("config: task-prompts: enumerate MID task names: %w", err)
 		}
 		for _, name := range sortedKeys(c.TaskPrompts) {
 			if !known[name] {
@@ -798,6 +803,35 @@ func (c *Config) validateSonar() error {
 		return fmt.Errorf("config: system.architecture is set; system-test.sonar-project is required")
 	}
 	return nil
+}
+
+// knownTaskNames returns the set of MID task-name verbs declared on every
+// writing-agent EXECUTE_AGENT call-activity in the embedded process-flow
+// YAML. The validator for `task-prompts:` uses this to reject typo'd keys
+// at config-load. Post-plan-1701 split, task-names (verbs) and agent names
+// (nouns) diverged — the schema field is keyed by task-name, so this is
+// the right source. Templated task-names (e.g. "fix-${failure-kind}" on
+// the `fix` LOW process) are skipped: they resolve at runtime to a
+// concrete MID that already appears in this set via its own entry.
+func knownTaskNames() (map[string]bool, error) {
+	eng, err := statemachine.LoadDefault()
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	for _, proc := range eng.Processes {
+		for _, node := range proc.Nodes {
+			if node.Kind != statemachine.CallActivity || node.Raw.Process != "execute-agent" {
+				continue
+			}
+			name := node.Raw.Params["task-name"]
+			if name == "" || strings.Contains(name, "${") {
+				continue
+			}
+			out[name] = true
+		}
+	}
+	return out, nil
 }
 
 // sortedKeys returns the keys of m in lexicographic order. Used by

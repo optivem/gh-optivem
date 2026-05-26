@@ -130,7 +130,7 @@ func TestWrap_UserTaskLogsAgentAndFiles(t *testing.T) {
 	node := statemachine.Node{
 		ID:   "AT_RED_TEST_WRITE",
 		Kind: statemachine.UserTask,
-		Raw:  statemachine.RawNode{Agent: "write-acceptance-tests"},
+		Raw:  statemachine.RawNode{Agent: "acceptance-test-writer"},
 		Fn: func(ctx *statemachine.Context) statemachine.Outcome {
 			return statemachine.Outcome{}
 		},
@@ -142,7 +142,7 @@ func TestWrap_UserTaskLogsAgentAndFiles(t *testing.T) {
 
 	got := buf.String()
 	wantSubs := []string{
-		"> AT_RED_TEST_WRITE  kind=user-task agent=write-acceptance-tests",
+		"> AT_RED_TEST_WRITE  kind=user-task agent=acceptance-test-writer",
 		"OK AT_RED_TEST_WRITE",
 		"files: path/a.go, path/b.go",
 	}

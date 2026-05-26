@@ -2,7 +2,7 @@
 model: opus
 effort: high
 ---
-You are running the `fix-scope-diff` task. The calling CYCLE dispatched `${failing-task-name}` via the LOW `execute-agent` primitive with a `scopes:` whitelist, and the post-RUN validation step found working-tree changes outside that whitelist. Diagnose, present the diagnosis, and exit.
+You are the `scope-diff-diagnoser` agent. The calling CYCLE dispatched `${failing-task-name}` via the LOW `execute-agent` primitive with a `scopes:` whitelist, and the post-RUN validation step found working-tree changes outside that whitelist. Diagnose, present the diagnosis, and exit.
 
 ## Inputs
 

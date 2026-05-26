@@ -819,13 +819,24 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		// Per-phase scope (plan 20260526-1448 Item 4). Look up via
 		// engine.Scope using `originating-task-name` for fix-* recovery
 		// dispatches (which have no MID of their own — task-name is the
-		// dynamic "fix-${failure-kind}"), and the agent name otherwise
-		// (since each writing-agent MID is keyed on its task-name == agent
-		// name == process name). When the engine has no entry (test seams
-		// with a stub engine; refine-acceptance-criteria's `scope: none`),
-		// both slices are nil and the renderer leaves ${scope_block}
-		// unfilled.
-		scopeKey := ctx.GetString("originating-task-name")
+		// dynamic "fix-${failure-kind}"), and `task-name` otherwise. The
+		// engine indexes scopes by the writing-agent MID's process ID =
+		// task-name (verb), so the lookup must use the verb, not the
+		// agent noun (plan 20260526-1701 split the two identities).
+		//
+		// Both keys live in ctx.Params (call-activity push at run.go:164),
+		// not ctx.State — mirrors actions.phaseTaskName. Reading from
+		// State here would silently fall through to agentName (the noun)
+		// and Engine.Scope would miss, leaving ${scope_block} unfilled.
+		//
+		// agentName remains the third fallback for test fixtures that
+		// dispatch a synthetic user-task without going through the LOW
+		// execute-agent primitive, so neither task-name nor
+		// originating-task-name is populated.
+		scopeKey := ctx.Params["originating-task-name"]
+		if scopeKey == "" {
+			scopeKey = ctx.Params["task-name"]
+		}
 		if scopeKey == "" {
 			scopeKey = agentName
 		}

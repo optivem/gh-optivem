@@ -1,7 +1,7 @@
 ---
 # Designs tests and wires DSL stub prototypes — both fit in Sonnet.
 model: sonnet
-effort: medium
+effort: low
 ---
 The Acceptance Criteria below were parsed from the ticket body during intake — write tests for them directly.
 

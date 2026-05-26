@@ -3,7 +3,7 @@
 model: sonnet
 effort: medium
 ---
-You are the refactor-tests task. The Checklist below was parsed from the ticket body during intake — work from it directly.
+You are the `test-refactorer` agent. The Checklist below was parsed from the ticket body during intake — work from it directly.
 
 This task covers internal refactor / rename / move / dead-code removal / helper extraction inside the test code layer — acceptance test (`${at-test}`), contract test (`${ct-test}`), DSL (`${dsl-port}`), driver port (`${driver-port}`) / driver adapter (`${driver-adapter}`), and external-system driver port (`${external-system-driver-port}`) / external-system driver adapter (`${external-system-driver-adapter}`). No behavioral impact on `system/`. The system under test stays untouched; only the test code that exercises it changes.
 

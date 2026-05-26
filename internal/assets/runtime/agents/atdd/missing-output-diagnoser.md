@@ -2,7 +2,7 @@
 model: opus
 effort: high
 ---
-You are running the `fix-missing-output` task. The calling CYCLE dispatched `${failing-task-name}` via the LOW `execute-agent` primitive and asked the post-RUN validation step to assert that every key declared in the agent's `outputs:` block was emitted into Context state. One or more declared outputs are absent. Diagnose, present the diagnosis, and exit.
+You are the `missing-output-diagnoser` agent. The calling CYCLE dispatched `${failing-task-name}` via the LOW `execute-agent` primitive and asked the post-RUN validation step to assert that every key declared in the agent's `outputs:` block was emitted into Context state. One or more declared outputs are absent. Diagnose, present the diagnosis, and exit.
 
 ## Inputs
 

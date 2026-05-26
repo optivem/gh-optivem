@@ -132,20 +132,20 @@ func newOpts() Options {
 		},
 	}
 	return Options{
-		Agent:           "write-acceptance-tests",
+		Agent:           "acceptance-test-writer",
 		NodeDescription: "Write the AT-RED scenario",
 		IssueNum:        42,
 		IssueTitle:      "Add PUT /carts/{id}/items endpoint",
 		// The stripped prompts reference ${language} in the language-
 		// equivalents pointer; seed a default so tests don't have to.
 		Language: "java",
-		// write-acceptance-tests.md references ${acceptance_criteria}; seed a
-		// default so dispatch tests using this scaffold render cleanly.
+		// acceptance-test-writer.md references ${acceptance_criteria}; seed
+		// a default so dispatch tests using this scaffold render cleanly.
 		// Tests that exercise the unset/load-bearing path override this.
 		AcceptanceCriteria: "Scenario: placeholder\n  Given x\n  When y\n  Then z",
 		// Per-phase scope (plan 20260526-1448 Item 4). Every writing-agent
 		// prompt body now references ${scope_block} (load-bearing); seed a
-		// minimal write-acceptance-tests-shaped scope so dispatch tests
+		// minimal acceptance-test-writer-shaped scope so dispatch tests
 		// render cleanly. Tests exercising scope-specific behaviour override
 		// these.
 		ScopeRead:     []string{"at-test", "dsl-port"},
@@ -198,12 +198,12 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 	// test every embedded prompt to make sure no agent leaks the marker
 	// or the pre-rollout preamble.
 	for _, name := range []string{
-		"implement-system", "refactor-system",
-		"implement-system-driver-adapters",
-		"implement-external-system-driver-adapters",
-		"implement-dsl",
-		"implement-external-system-stubs",
-		"write-acceptance-tests", "write-contract-tests",
+		"system-implementer", "system-refactorer",
+		"system-driver-adapter-implementer",
+		"external-system-driver-adapter-implementer",
+		"dsl-implementer",
+		"external-system-stub-implementer",
+		"acceptance-test-writer", "contract-test-writer",
 	} {
 		opts := newOpts()
 		opts.Agent = name
@@ -226,7 +226,7 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 
 func TestRenderPrompt_TaskAgentArchitectureAndScopeBlock_ExplicitValues(t *testing.T) {
 	opts := newOpts()
-	opts.Agent = "implement-system"
+	opts.Agent = "system-implementer"
 	opts.Architecture = "monolith"
 	// Per-phase scope from the BPMN node's read:/write: lists (plan
 	// 20260526-1448 Item 4). Production fills these via engine.Scope at
@@ -282,7 +282,7 @@ func TestRenderPrompt_TaskAgentChecklistInjected(t *testing.T) {
 	// split). The translation-side implement-system no longer carries
 	// ${checklist} in its body.
 	opts := newOpts()
-	opts.Agent = "update-system"
+	opts.Agent = "system-updater"
 	opts.Checklist = "- [x] Rename \"New Order\" to \"Place Order\"\n- [x] Rename SKU aria-label"
 
 	got, err := renderPrompt(opts)
@@ -304,7 +304,7 @@ func TestRenderPrompt_RefactorSystemAgent_RendersScopeBlock(t *testing.T) {
 	// pre-Item-4 ${allowed_roots} mechanism; this test pins the scope_block
 	// shape for refactor-system.
 	opts := newOpts()
-	opts.Agent = "refactor-system"
+	opts.Agent = "system-refactorer"
 	opts.Architecture = "monolith"
 	opts.ScopeRead = []string{"system-path"}
 	opts.ScopeWrite = []string{"system-path"}
@@ -740,7 +740,7 @@ func TestDispatch_WritesEnterAndExitBanners(t *testing.T) {
 	}
 	got := buf.String()
 	mustContain(t, got, "ENTERING AGENT")
-	mustContain(t, got, "write-acceptance-tests")
+	mustContain(t, got, "acceptance-test-writer")
 	mustContain(t, got, "EXITED AGENT")
 	mustContain(t, got, "1 file(s) changed")
 }
@@ -1362,7 +1362,7 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	claudeFake := &fakeClaude{}
 	opts := newOpts()
 	opts.Stdout = &buf
-	opts.Agent = "implement-system"
+	opts.Agent = "system-implementer"
 	opts.Architecture = "monolith"
 	opts.ScopeRead = []string{"system-path"}
 	opts.ScopeWrite = []string{"system-path"}
@@ -1374,7 +1374,7 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 		},
 	}
 	opts.Checklist = "- [x] One done\n- [ ] Two pending"
-	opts.PromptLogPath = "/tmp/runs/001-implement-system.prompt.md"
+	opts.PromptLogPath = "/tmp/runs/001-system-implementer.prompt.md"
 	// implement-system's inlined phase-doc body now references
 	// ${sut-namespace}, ${driver-adapter}, ${driver-port}, ${system-test-path};
 	// the production dispatcher fills these from cfg.PlaceholderMap(). With
@@ -1392,7 +1392,7 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	got := buf.String()
-	mustContain(t, got, "PREPARED PROMPT for implement-system")
+	mustContain(t, got, "PREPARED PROMPT for system-implementer")
 	mustContain(t, got, "architecture:")
 	mustContain(t, got, "monolith")
 	mustContain(t, got, "scope:")
@@ -1401,7 +1401,7 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	mustContain(t, got, "2 item(s) (1 already [x])")
 	mustContain(t, got, "- [x] One done")
 	mustContain(t, got, "- [ ] Two pending")
-	mustContain(t, got, "/tmp/runs/001-implement-system.prompt.md")
+	mustContain(t, got, "/tmp/runs/001-system-implementer.prompt.md")
 }
 
 func TestDispatch_PreparedPromptBannerUsesPlaceholdersForEmpties(t *testing.T) {

@@ -79,6 +79,11 @@ func (f *fakeGit) Run(_ context.Context, _ string, args ...string) ([]byte, erro
 // minimalYAML is the smallest flow that exercises the agent-dispatch path:
 // START → user-task → END. Nothing in the engine cares about the surrounding
 // edges or descriptions, but they're spelled out so the YAML parses cleanly.
+//
+// Post-plan-1701 split: the user-task's agent is the noun
+// (acceptance-test-writer); the MID scope-defining process keeps the verb
+// (write-acceptance-tests) as its process ID since engine.Scope is indexed
+// by task-name.
 const minimalYAML = `
 processes:
   main:
@@ -90,7 +95,7 @@ processes:
         name: "Synthetic Test Event"
       - id: AT_RED_TEST
         type: user-task
-        agent: write-acceptance-tests
+        agent: acceptance-test-writer
         name: Write the AT-RED scenario
       - id: END
         type: end-event
@@ -101,11 +106,11 @@ processes:
 
   # MID-style scope-defining processes for the dispatcher's engine.Scope
   # lookup (plan 20260526-1448 Item 4 — the dispatcher keys off the
-  # agent name to find per-phase read:/write: lists). Mirrors the
+  # task-name to find per-phase read:/write: lists). Mirrors the
   # writing-agent MID convention from production process-flow.yaml. The
   # two below cover the two agents driver_test.go's fixtures dispatch
-  # (write-acceptance-tests via the as-shipped minimalYAML, and
-  # implement-system via the agent-replacement in TestEndToEnd_*).
+  # (acceptance-test-writer via the as-shipped minimalYAML, and
+  # system-implementer via the agent-replacement in TestEndToEnd_*).
   write-acceptance-tests:
     name: "Write Acceptance Tests"
     start: EXECUTE_AGENT
@@ -116,6 +121,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: write-acceptance-tests
+          agent: acceptance-test-writer
         read:  [at-test, dsl-port]
         write: [at-test, dsl-port, dsl-core]
       - id: END
@@ -134,6 +140,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: implement-system
+          agent: system-implementer
         read:  [system-path]
         write: [system-path]
       - id: END
@@ -168,9 +175,12 @@ processes:
       - { from: WRITE, to: END }
 
   # MID-style scope-defining process for implement-system, looked up by
-  # the dispatcher at runtime via engine.Scope(agent-name). Mirrors the
+  # the dispatcher at runtime via engine.Scope(task-name). Mirrors the
   # production writing-agent MID convention. Used by tests that set
-  # ctx.Params["agent"] = "implement-system" on the main user-task.
+  # ctx.Params["agent"]     = "system-implementer" (noun, dispatch identity)
+  # and ctx.Params["task-name"] = "implement-system" (verb, scope key) on
+  # the main user-task. The plan-1701 split separated the two; the MID
+  # process ID stays the task-name (verb) since that is what indexes Scope.
   implement-system:
     name: "Implement System"
     start: EXECUTE_AGENT
@@ -181,6 +191,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: implement-system
+          agent: system-implementer
         read:  [system-path]
         write: [system-path]
       - id: END
@@ -264,6 +275,13 @@ func newCtxWithIssue() *statemachine.Context {
 	c.Set("issue_num", "42")
 	c.Set("issue_url", "https://github.com/optivem/shop/issues/42")
 	c.Set("issue_title", "Add PUT /carts/{id}/items endpoint")
+	// Post-plan-1701 split: the dispatcher's scopeKey precedence is
+	// originating-task-name → task-name → agent. minimalYAML's user-task
+	// dispatches the acceptance-test-writer agent (noun) but the
+	// MID-scope process is keyed by write-acceptance-tests (verb).
+	// Seed task-name here so eng.Scope finds the read/write lists; tests
+	// dispatching a different agent override task-name in their own ctx.
+	c.Params["task-name"] = "write-acceptance-tests"
 	// Tests using atdd-{test,dsl,driver}-{at,ct} reference ${language} in
 	// the language-equivalents pointer; seedScopeState would set it from
 	// cfg in production. Seed a default here so test fixtures don't have
@@ -550,7 +568,8 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 
 	ctx := newCtxWithIssue()
 	ctx.Params = map[string]string{
-		"agent":       "implement-system",
+		"agent":       "system-implementer",
+		"task-name":   "implement-system",
 		"change_type": "SYSTEM UI REDESIGN",
 	}
 
@@ -590,7 +609,8 @@ func TestManualAgents_BannerSubstitutesTemplatedFields(t *testing.T) {
 
 	ctx := newCtxWithIssue()
 	ctx.Params = map[string]string{
-		"agent":       "implement-system",
+		"agent":       "system-implementer",
+		"task-name":   "implement-system",
 		"change_type": "SYSTEM UI REDESIGN",
 	}
 
@@ -601,10 +621,10 @@ func TestManualAgents_BannerSubstitutesTemplatedFields(t *testing.T) {
 	if strings.Contains(got, "${") {
 		t.Errorf("banner still contains ${...} placeholder:\n%s", got)
 	}
-	if !strings.Contains(got, "DISPATCH: implement-system") {
+	if !strings.Contains(got, "DISPATCH: system-implementer") {
 		t.Errorf("banner missing expanded DISPATCH line:\n%s", got)
 	}
-	if !strings.Contains(got, "Launch the implement-system agent") {
+	if !strings.Contains(got, "Launch the system-implementer agent") {
 		t.Errorf("banner missing expanded launch line:\n%s", got)
 	}
 	if strings.Contains(got, "Phase doc:") {
@@ -738,6 +758,11 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 	}
 
 	sCtx := newCtxWithIssue()
+	// Override the default newCtxWithIssue task-name (verb) to match the
+	// MID this test dispatches (implement-system, via the agent-replacement
+	// below). The dispatcher's scopeKey precedence resolves to task-name
+	// post-1701 split.
+	sCtx.Params["task-name"] = "implement-system"
 	seedScopeState(sCtx, cfg)
 
 	rs := &runState{runTimestamp: "20260505-150000", repoPath: tmpRepo}
@@ -752,13 +777,13 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 	opts := newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake})
 	opts.RepoPath = tmpRepo
 
-	// minimalYAML's user-task uses agent: write-acceptance-tests, but the
+	// minimalYAML's user-task uses agent: acceptance-test-writer, but the
 	// prompt-substitution failure mode is most visible on agents whose
 	// prompt body references ${architecture} / ${scope_block}
-	// (implement-system). Use a YAML variant with the system implement
+	// (system-implementer). Use a YAML variant with the system implement
 	// agent so wrapAgentDispatchers picks the right closure on
 	// first walk.
-	yamlSrc := strings.Replace(minimalYAML, "agent: write-acceptance-tests", "agent: implement-system", 1)
+	yamlSrc := strings.Replace(minimalYAML, "agent: acceptance-test-writer", "agent: system-implementer", 1)
 
 	eng, err := statemachine.LoadBytes([]byte(yamlSrc))
 	if err != nil {
@@ -803,7 +828,7 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 	// runState. Read it back and compare byte-for-byte against the
 	// captured prompt — this pins down item 2 (PromptLogPath plumbing)
 	// alongside item 1 (the substitution fix).
-	logPath := filepath.Join(tmpRepo, ".gh-optivem", "runs", "20260505-150000", "001-implement-system.prompt.md")
+	logPath := filepath.Join(tmpRepo, ".gh-optivem", "runs", "20260505-150000", "001-system-implementer.prompt.md")
 	body, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatalf("read prompt log: %v", err)
@@ -889,12 +914,12 @@ func TestRunState_PromptLogPathSequencesPerDispatch(t *testing.T) {
 	rs := &runState{runTimestamp: "20260505-150000", repoPath: "/tmp/repo"}
 	got := []string{
 		rs.promptLogPath("task"),
-		rs.promptLogPath("write-acceptance-tests"),
+		rs.promptLogPath("acceptance-test-writer"),
 		rs.promptLogPath("task"),
 	}
 	want := []string{
 		filepath.Join("/tmp/repo", ".gh-optivem", "runs", "20260505-150000", "001-task.prompt.md"),
-		filepath.Join("/tmp/repo", ".gh-optivem", "runs", "20260505-150000", "002-write-acceptance-tests.prompt.md"),
+		filepath.Join("/tmp/repo", ".gh-optivem", "runs", "20260505-150000", "002-acceptance-test-writer.prompt.md"),
 		filepath.Join("/tmp/repo", ".gh-optivem", "runs", "20260505-150000", "003-task.prompt.md"),
 	}
 	for i, w := range want {

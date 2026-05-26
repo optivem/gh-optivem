@@ -259,26 +259,31 @@ func TestPromptInlineScopeKeys_MatchPhaseScope(t *testing.T) {
 		layerKeys[k] = true
 	}
 
-	// Recovery prompts whose scope is inherited from originating-task-name —
-	// the body may legitimately reference any layer the caller's scope
-	// covers, so the per-prompt static check would over-fire here.
-	dynamicScopePrompts := map[string]bool{
-		"fix-command-failed": true,
-		"fix-missing-output": true,
-		"fix-scope-diff":     true,
-	}
-
-	for _, name := range agents.Names() {
-		if dynamicScopePrompts[name] {
+	// Iterate writing-agent MIDs (post-1701 split): the MID's process
+	// name is the task-name (verb, indexes engine.Scope), and its
+	// EXECUTE_AGENT `agent:` param names the agent (noun, indexes the
+	// embedded prompt file). Recovery agents (command-failed-diagnoser
+	// et al.) have no MID of their own — their scope is inherited from
+	// originating-task-name at runtime — so iterating MIDs naturally
+	// excludes them.
+	for processName := range writingAgentMIDs(eng) {
+		if eng.IsScopeNone(processName) {
 			continue
 		}
-		if eng.IsScopeNone(name) {
-			continue
-		}
-		read, write, ok := eng.Scope(name)
+		read, write, ok := eng.Scope(processName)
 		if !ok {
-			// Agent has no MID-node scope and isn't dynamically scoped —
-			// other tests in this file catch this; skip the cross-check.
+			continue
+		}
+		var agentName string
+		for _, node := range eng.Processes[processName].Nodes {
+			if node.Kind != statemachine.CallActivity || node.Raw.Process != "execute-agent" {
+				continue
+			}
+			agentName = node.Raw.Params["agent"]
+			break
+		}
+		if agentName == "" {
+			t.Errorf("MID %q EXECUTE_AGENT: missing `agent:` param — every writing-agent MID must name its agent post-1701 split", processName)
 			continue
 		}
 		scopedKeys := map[string]bool{}
@@ -288,7 +293,7 @@ func TestPromptInlineScopeKeys_MatchPhaseScope(t *testing.T) {
 		for _, k := range write {
 			scopedKeys[k] = true
 		}
-		body := readPromptBody(t, name)
+		body := readPromptBody(t, agentName)
 		// Find every ${key} reference; flag the ones that target a layer
 		// key not declared in the MID's scope.
 		for _, ref := range findPlaceholderRefs(body) {
@@ -298,7 +303,7 @@ func TestPromptInlineScopeKeys_MatchPhaseScope(t *testing.T) {
 			if scopedKeys[ref] {
 				continue
 			}
-			t.Errorf("prompt %q: inline ${%s} annotation references a layer not in the MID's read: or write: list", name, ref)
+			t.Errorf("prompt %q (MID %q): inline ${%s} annotation references a layer not in the MID's read: or write: list", agentName, processName, ref)
 		}
 	}
 }

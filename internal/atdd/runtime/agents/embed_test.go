@@ -66,20 +66,20 @@ func TestSplitFrontmatter(t *testing.T) {
 	}
 }
 
-func TestLoadTuning_WriteAcceptanceTests(t *testing.T) {
-	// Pins the write-acceptance-tests frontmatter so a careless edit
+func TestLoadTuning_AcceptanceTestWriter(t *testing.T) {
+	// Pins the acceptance-test-writer frontmatter so a careless edit
 	// doesn't silently drop the per-agent tuning back to session
 	// defaults (Opus + max effort) — which would re-introduce the cost
 	// spike the frontmatter was added to fix.
-	got, err := LoadTuning("write-acceptance-tests")
+	got, err := LoadTuning("acceptance-test-writer")
 	if err != nil {
 		t.Fatalf("LoadTuning: %v", err)
 	}
 	if got.Model != "sonnet" {
 		t.Errorf("Model = %q, want %q", got.Model, "sonnet")
 	}
-	if got.Effort != "medium" {
-		t.Errorf("Effort = %q, want %q", got.Effort, "medium")
+	if got.Effort != "low" {
+		t.Errorf("Effort = %q, want %q", got.Effort, "low")
 	}
 }
 
@@ -143,8 +143,8 @@ func TestParseTuningFrontmatter_Accepts(t *testing.T) {
 }
 
 func TestFixKindAgentsExist(t *testing.T) {
-	// Pins the closed set of fix-* failure-kinds the YAML's
-	// `task-name: "fix-${failure-kind}"` placeholder (process-flow.yaml,
+	// Pins the closed set of failure-kinds the YAML's
+	// `agent: "${failure-kind}-diagnoser"` template (process-flow.yaml,
 	// `fix` MID) resolves against. Every kind here must have a matching
 	// agent definition embedded under internal/assets/runtime/agents/atdd/.
 	//
@@ -154,8 +154,8 @@ func TestFixKindAgentsExist(t *testing.T) {
 	// and ExpandParams resolves `${failure-kind}` via its
 	// params-then-state scope chain (statemachine/run.go). This test
 	// guards the dispatch surface: adding a new kind requires adding a
-	// fix-<kind>.md, and a prompt rename fails this test before runtime
-	// sees an unknown task-name.
+	// <kind>-diagnoser.md, and a prompt rename fails this test before
+	// runtime sees an unknown agent name.
 	wantKinds := []string{
 		"unexpected-passing-tests",
 		"unexpected-failing-tests",
@@ -168,9 +168,9 @@ func TestFixKindAgentsExist(t *testing.T) {
 		names[n] = true
 	}
 	for _, kind := range wantKinds {
-		taskName := "fix-" + kind
-		if !names[taskName] {
-			t.Errorf("missing prompt for failure-kind %q (expected agents.Names() to include %q)", kind, taskName)
+		agentName := kind + "-diagnoser"
+		if !names[agentName] {
+			t.Errorf("missing agent %q for failure-kind %q", agentName, kind)
 		}
 	}
 }

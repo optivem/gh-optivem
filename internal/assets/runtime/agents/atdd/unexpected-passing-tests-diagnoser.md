@@ -2,7 +2,7 @@
 model: opus
 effort: high
 ---
-You are running the `fix-unexpected-passing-tests` task. A test that the upstream WRITE-phase asserted must FAIL has instead PASSED. Diagnose, present the diagnosis, and exit.
+You are the `unexpected-passing-tests-diagnoser` agent. A test that the upstream WRITE-phase asserted must FAIL has instead PASSED. Diagnose, present the diagnosis, and exit.
 
 ## Inputs
 
