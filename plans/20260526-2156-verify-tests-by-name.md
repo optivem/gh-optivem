@@ -56,7 +56,8 @@ carries the agent's emitted list, threaded through every hop as
 `${test_names}` so the data dependency is visible in
 `process-flow.yaml`.
 
-Call-sites to edit (`process-flow.yaml`):
+Verify-tests call-sites to edit (`process-flow.yaml`) — swap
+`filter-type`/`filter-value` → `suite`/`test-names`:
 - `VERIFY_TESTS_PASS_ACCEPTANCE` (725-731)
 - `VERIFY_TESTS_FAIL_ACCEPTANCE` (733-739)
 - `VERIFY_TESTS_PASS_CONTRACT_REAL` (~880-885)
@@ -69,10 +70,23 @@ Call-sites to edit (`process-flow.yaml`):
 - `run-tests` itself (1676-1694) — `params:` shape changes to
   `command + suite + test-names`
 
-`DISABLE_ACCEPTANCE_TESTS` (741-746) is **untouched**. It uses
-`tests: acceptance` (the category, not a name list) and dispatches the
-test-disabler agent, which still operates on a category. Disable is a
-separate process from run-tests and never used `filter-type`/`filter-value`.
+Disable/enable call-sites — pass `test-names: ${test_names}` so the
+test-disabler / test-enabler agents annotate only the writer's new
+tests, not the whole suite. The agents already use bare names (Item 4
+reshapes their prompts), so no `<file>:<method>` composition is
+needed.
+- `DISABLE_ACCEPTANCE_TESTS` (741-746): replace the dead
+  `tests: acceptance` param (the subprocess never consumed it) with
+  `test-names: ${test_names}`.
+- `DISABLE_TESTS` inside `verify-tests-filtered` (~1052-1054): add
+  `test-names: ${test_names}`.
+- `ENABLE_TESTS` inside `verify-tests-filtered` (~1019-1021): add
+  `test-names: ${test_names}`.
+
+The disable-tests / enable-tests subprocesses themselves
+(1405-1424, 1427-1446) don't need new params declared — the
+agents read `${test_names}` directly from ctx.State at prompt
+render time.
 
 ### Param substitution: `[]string` → comma-joined string
 
@@ -205,6 +219,15 @@ New / updated:
 
 ## Items
 
+**Landing order.** Items 2, 4, and 5 must land in a single atomic
+commit. Landing item 2 alone leaves the dispatcher reading params
+the BPMN doesn't send (`gh optivem test run` with no flags → all
+tests run). Landing item 5 alone leaves the BPMN sending params the
+dispatcher ignores. Landing item 4 alone leaves the disable/enable
+agents reading `${test_names}` that no call-site populates yet —
+same empty-list brokenness disable has today. Items 1, 3, 6 are
+individually safe and can land separately.
+
 1. **Engine: `[]string` coerces to comma-joined string.** Extend
    `coerceStateValue` in `internal/atdd/runtime/statemachine/run.go`
    to handle `[]string` via `strings.Join(t, ",")`. Unit-test in
@@ -218,27 +241,73 @@ New / updated:
    Update / rename the corresponding flag-passthrough tests in
    `bindings_test.go`.
 
-3. **`process-flow.yaml`: swap call-activity params.** Update every
-   call-site listed in the table above to use `suite` /
+3. **`contract-test-writer.md`: emit `test_names`.** Mirror
+   `acceptance-test-writer.md`'s `test_names` output block
+   (`internal/assets/runtime/agents/atdd/acceptance-test-writer.md:23-49`)
+   in `internal/assets/runtime/agents/atdd/contract-test-writer.md`:
+   add `test_names` to the example `outputs:` block alongside the
+   existing `dsl-port-changed` flag, and add a paragraph mirroring the
+   AT-side prose ("every unqualified test method name added or
+   modified by this ticket — not every test in the file…"). Without
+   this, CT-side `${test_names}` expands to empty at runtime and
+   `bindings.go` omits `--test=`, leaving CT verify-tests on the same
+   category-scoping it has today. `test_names` is already declared in
+   `outputs.go::knownOutputKeys`, so no schema change is needed — only
+   the agent prompt.
+
+4. **`test-disabler.md` + `test-enabler.md`: consume `${test_names}`.**
+   Both agents today reference `${disable_targets}` (declared as a
+   `<file>:<method>` list) — but **nothing populates it**: no producer
+   exists in the codebase, no writer-agent emits it, no dispatcher
+   builds it. Today's disable/enable runs operate on an empty list.
+   Replace `${disable_targets}` with `${test_names}` in both prompts,
+   and reframe the parameter section + Steps to take bare method
+   names instead of `<file>:<method>` entries. The agents already
+   run with `read: [at-test, ct-test]` scope, so locating each name
+   within the scoped read-set is the right primitive — no new shape
+   needed. Reason-format strings (e.g. `<TICKET-ID> - AT - <LOOP> -
+   <PHASE>`) and the `startsWith` re-enable filter are unchanged;
+   only the input shape changes.
+
+5. **`process-flow.yaml`: swap call-activity params.** Update every
+   verify call-site listed in the table above to use `suite` /
    `test-names` (with `${test_names}` pulled from ctx.State at
    `verify-tests-pass` / `verify-tests-fail` invocations, and
-   `${test-names}` re-piped through the nested `RUN_TESTS` nodes).
-   Update the two doc-comment blocks (84-90 and 1671-1675). Adjust
-   `process-flow_test.go` shape assertions if any reference the old
-   param keys.
+   `${test_names}` re-piped through the nested `RUN_TESTS` nodes).
+   Update the two doc-comment blocks (84-90 and 1671-1675).
+   `process-flow_test.go` does not exist; the BPMN-shape tests live
+   in `run_test.go`, and a grep confirms no current tests reference
+   `filter-type` / `filter-value` in the statemachine package, so no
+   shape-test edits are required.
 
-4. **Verify on a real cycle (requires 2118).** Run an end-to-end
-   write-and-verify-acceptance-tests cycle against a rehearsal
-   ticket in **both** interactive and autonomous modes. Confirm
-   from the trace:
-   - The dispatched command line includes `--suite=acceptance`
-     and `--test=<actual-names-the-agent-emitted>`.
+   Also update the disable/enable call-sites to pass
+   `test-names: ${test_names}`:
+   - `DISABLE_ACCEPTANCE_TESTS` (741-746): replace the dead
+     `tests: acceptance` param with `test-names: ${test_names}`.
+   - `DISABLE_TESTS` inside `verify-tests-filtered` (~1052-1054):
+     add `test-names: ${test_names}`.
+   - `ENABLE_TESTS` inside `verify-tests-filtered` (~1019-1021):
+     add `test-names: ${test_names}`.
+
+6. **Verify on real cycles (requires 2118).** Run end-to-end
+   `write-and-verify-acceptance-tests` **and**
+   `write-and-verify-contract-tests` cycles against rehearsal
+   tickets in **both** interactive and autonomous modes. Confirm
+   from each trace:
+   - The dispatched command line includes the right `--suite=…`
+     (`acceptance` / `contract-real` / `contract-stub`) and
+     `--test=<actual-names-the-agent-emitted>`.
    - `--filter-type` / `--filter-value` no longer appear anywhere
      in the trace.
    - The verify-fail path correctly reports only the new test(s)
-     failing, even if other acceptance tests are present in the
-     suite (set up a fixture with one pre-existing passing test
-     alongside the agent's new failing one).
+     failing, even if other tests in the same suite are present
+     (set up a fixture with one pre-existing passing test
+     alongside the agent's new failing one — on both AT and CT
+     sides).
+   - When the verify-fail path triggers `DISABLE_ACCEPTANCE_TESTS`,
+     only the new test(s) get the disable annotation — other
+     acceptance tests in the file remain un-annotated. Symmetric
+     check on the enable path in `verify-tests-filtered`.
 
 ## Out of scope
 
@@ -247,14 +316,11 @@ New / updated:
   via fenced YAML (today) or `gh optivem output write` (post-2118)
   is irrelevant here — this plan starts from
   `ctx.State["test_names"]` being populated.
-- **New writer-agent output keys.** `test_names` already exists in
-  `outputs.go::knownOutputKeys` and in
-  `acceptance-test-writer.md`'s prompt. Adding contract-side
-  emission (if `contract-test-writer.md` doesn't yet emit
-  `test_names`) is a parallel concern — gate it in Item 3 only as
-  far as confirming the CT-side `${test_names}` expansion would
-  resolve to a non-empty value at runtime; if not, raise it as a
-  follow-up rather than expanding this plan's scope.
+- **New writer-agent output keys.** No schema additions: `test_names`
+  is already declared in `outputs.go::knownOutputKeys`. CT-side
+  emission is covered by Item 3 (mirror the AT-side block in
+  `contract-test-writer.md`); no other writer-agent prompts gain new
+  outputs.
 - **Renaming `test_names` for cross-tier reuse.** The key stays
   `test_names` for both AT and CT cycles; the suite scoping
   (`acceptance` vs `contract-real` vs `contract-stub`) already
@@ -263,10 +329,13 @@ New / updated:
   (`--suite`/`--test`/`--sample`/`--list`) are unchanged. The
   dispatcher now uses two flags it ignored before; nothing about
   the binary needs to change.
-- **Disable-tests rewrite.** `DISABLE_ACCEPTANCE_TESTS` keeps
-  category-scoping (`tests: acceptance`). Whether it should
-  *also* narrow to names is a separate question — file it as a
-  follow-up if the answer turns out to be yes.
+- **CT-side disable.** The test-disabler reason format hardcodes
+  `AT` (`<TICKET-ID> - AT - <LOOP> - <PHASE>`), so today only AT
+  files actually get disable markers even though the call-activity
+  scope is forward-looking `[at-test, ct-test]`. Parameterising the
+  cycle (`AT` vs `CT`) and wiring CT-side disable call-sites is a
+  separate plan; this one only narrows the existing AT-side
+  disable/enable flow.
 
 ## Open questions
 
