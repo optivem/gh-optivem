@@ -9,7 +9,7 @@ import (
 // Returns an error message or empty string if valid.
 //
 // Lives in projectconfig (not internal/config) because the YAML field
-// `system_name` and the CLI flag `--system-name` share the same constraints
+// `system-name` and the CLI flag `--system-name` share the same constraints
 // — both feed the templating that generates Java packages, .NET
 // namespaces, and TypeScript package names. internal/config.ValidateSystemName
 // is a thin shim delegating here, so call sites that already used the

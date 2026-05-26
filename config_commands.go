@@ -159,8 +159,8 @@ The target file is resolved via the persistent --config / -c flag
 (or $GH_OPTIVEM_CONFIG, or ./gh-optivem.yaml).
 
 Coverage includes the SonarCloud block (when system.architecture is
-set): sonar.organization plus sonar_project on every code tier (system
-or backend+frontend, plus system_test) must be present. The YAML is
+set): sonar.organization plus sonar-project on every code tier (system
+or backend+frontend, plus system-test) must be present. The YAML is
 the source of truth for these keys — the scaffolder seeds defaults via
 DeriveSonarProjects but the values may be hand-edited afterwards (e.g.
 multi-stack reference repos that need per-variant SonarCloud projects
@@ -373,25 +373,25 @@ func runConfigMigrate(path string) (bool, error) {
 // inferRepos reads the document mapping and returns the project-internal
 // repo paths to write into a back-filled repos: field. Returns nil for
 // configs where repos: should remain absent: mono-repo (single-repo
-// behavior already covers them), absent or unknown repo_strategy, or no
+// behavior already covers them), absent or unknown repo-strategy, or no
 // tier slug pairs to enumerate.
 //
 // The inference is structural — it reads only existing fields from the
 // node tree, no file I/O. For each non-empty tier repo slug (system,
-// system.backend, system.frontend, system_test, plus external_systems'
+// system.backend, system.frontend, system-test, plus external-systems'
 // stubs/simulators) the function adds one entry per *distinct* slug as
 // ../<repo-name(slug)> — matching repolocator's sibling-folder
 // convention. Entries are deduplicated and returned in the order the
 // tiers appear in the schema so the resulting repos: list is stable.
 func inferRepos(doc *yaml.Node) []string {
-	strategy := scalarValue(mappingValue(doc, "repo_strategy"))
+	strategy := scalarValue(mappingValue(doc, "repo-strategy"))
 	if strategy != projectconfig.RepoStrategyMultiRepo {
 		return nil
 	}
 
 	systemNode := mappingValue(doc, "system")
-	testNode := mappingValue(doc, "system_test")
-	externalNode := mappingValue(doc, "external_systems")
+	testNode := mappingValue(doc, "system-test")
+	externalNode := mappingValue(doc, "external-systems")
 
 	var slugs []string
 	collect := func(s string) {

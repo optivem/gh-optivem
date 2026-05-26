@@ -105,7 +105,7 @@ type Config struct {
 	ExternalSystems ExternalSystems `yaml:"external-systems,omitempty"`
 
 	// LocalRepos declares the project's own constituent local repos —
-	// multitier projects whose frontend, backend, and system_test live in
+	// multitier projects whose frontend, backend, and system-test live in
 	// separate folders. The workspace scope cascade reads it as the
 	// project-iteration row that sits between "workspace file reachable"
 	// and "cwd repo only": when gh-optivem.yaml has a non-empty repos:,
@@ -172,7 +172,7 @@ type Config struct {
 // runs the pipeline (Provider) and where its board lives (URL). Repo
 // organization (mono-repo vs multi-repo) lives at top level, not here,
 // because it affects every tier's repo: field across system: and
-// system_test:.
+// system-test:.
 //
 // Provider is mandatory — Validate rejects empty and unknown values
 // and routes operators at `gh optivem config migrate` to add it
@@ -232,11 +232,11 @@ type System struct {
 
 // TierSpec describes one body of code: where it lives, in which repo,
 // and what language it is written in. Used for backend, frontend, and
-// system_test. Path/Repo/Lang are mandatory whenever the tier is set;
-// no defaults, no inference. Config is only meaningful on system_test
+// system-test. Path/Repo/Lang are mandatory whenever the tier is set;
+// no defaults, no inference. Config is only meaningful on system-test
 // (the tests.yaml path) — Validate rejects it on backend/frontend.
 // SonarProject carries the SonarCloud project key for the tier, required
-// when system.architecture is set (system_test, backend, frontend); see
+// when system.architecture is set (system-test, backend, frontend); see
 // Rules 18/19 in Validate.
 //
 // Paths is the user-owned map of named-location placeholders consumed by
@@ -418,7 +418,7 @@ func (c *Config) Validate() error {
 	switch c.RepoStrategy {
 	case "", RepoStrategyMonoRepo, RepoStrategyMultiRepo:
 	default:
-		return fmt.Errorf("config: repo_strategy %q must be one of %q, %q",
+		return fmt.Errorf("config: repo-strategy %q must be one of %q, %q",
 			c.RepoStrategy, RepoStrategyMonoRepo, RepoStrategyMultiRepo)
 	}
 
@@ -438,7 +438,7 @@ func (c *Config) Validate() error {
 		{"system.lang", c.System.Lang},
 		{"system.backend.lang", c.System.Backend.Lang},
 		{"system.frontend.lang", c.System.Frontend.Lang},
-		{"system_test.lang", c.SystemTest.Lang},
+		{"system-test.lang", c.SystemTest.Lang},
 	} {
 		if err := validateLang(tl.field, tl.val); err != nil {
 			return err
@@ -453,9 +453,9 @@ func (c *Config) Validate() error {
 		{"system.path", c.System.Path},
 		{"system.backend.path", c.System.Backend.Path},
 		{"system.frontend.path", c.System.Frontend.Path},
-		{"system_test.path", c.SystemTest.Path},
-		{"external_systems.stubs.path", c.ExternalSystems.Stubs.Path},
-		{"external_systems.simulators.path", c.ExternalSystems.Simulators.Path},
+		{"system-test.path", c.SystemTest.Path},
+		{"external-systems.stubs.path", c.ExternalSystems.Stubs.Path},
+		{"external-systems.simulators.path", c.ExternalSystems.Simulators.Path},
 	} {
 		if err := validatePath(tp.field, tp.val); err != nil {
 			return err
@@ -494,9 +494,9 @@ func (c *Config) Validate() error {
 
 	// Rule 6: tier completeness — within any non-empty TierSpec, all three
 	// fields must be set. (Architecture exclusivity above already enforces
-	// this for the system-tier shape; this rule covers system_test, backend,
+	// this for the system-tier shape; this rule covers system-test, backend,
 	// frontend, plus external-systems specs.)
-	if err := requireFullTier("system_test", c.SystemTest); err != nil {
+	if err := requireFullTier("system-test", c.SystemTest); err != nil {
 		return err
 	}
 	if err := requireFullTier("system.backend", c.System.Backend); err != nil {
@@ -505,16 +505,16 @@ func (c *Config) Validate() error {
 	if err := requireFullTier("system.frontend", c.System.Frontend); err != nil {
 		return err
 	}
-	if err := requireFullExternal("external_systems.stubs", c.ExternalSystems.Stubs); err != nil {
+	if err := requireFullExternal("external-systems.stubs", c.ExternalSystems.Stubs); err != nil {
 		return err
 	}
-	if err := requireFullExternal("external_systems.simulators", c.ExternalSystems.Simulators); err != nil {
+	if err := requireFullExternal("external-systems.simulators", c.ExternalSystems.Simulators); err != nil {
 		return err
 	}
 
-	// Rule 7: system_test presence when architecture is set.
+	// Rule 7: system-test presence when architecture is set.
 	if c.System.Architecture != "" && c.SystemTest.IsEmpty() {
-		return fmt.Errorf("config: system.architecture is set; system_test.{path,repo,lang} are required")
+		return fmt.Errorf("config: system.architecture is set; system-test.{path,repo,lang} are required")
 	}
 
 	// Rule 8: repo-strategy consistency.
@@ -523,16 +523,16 @@ func (c *Config) Validate() error {
 		switch c.RepoStrategy {
 		case RepoStrategyMonoRepo:
 			if len(repos) > 1 {
-				return fmt.Errorf("config: repo_strategy=%s but tiers point at multiple repos %v",
+				return fmt.Errorf("config: repo-strategy=%s but tiers point at multiple repos %v",
 					RepoStrategyMonoRepo, repos)
 			}
 			if c.System.Architecture != "" && len(repos) != 1 {
-				return fmt.Errorf("config: repo_strategy=%s with system.architecture set requires exactly one repo across all tiers (got %d)",
+				return fmt.Errorf("config: repo-strategy=%s with system.architecture set requires exactly one repo across all tiers (got %d)",
 					RepoStrategyMonoRepo, len(repos))
 			}
 		case RepoStrategyMultiRepo:
 			if c.System.Architecture != "" && len(repos) == 0 {
-				return fmt.Errorf("config: repo_strategy=%s with system.architecture set requires at least one tier with a non-empty repo:",
+				return fmt.Errorf("config: repo-strategy=%s with system.architecture set requires at least one tier with a non-empty repo:",
 					RepoStrategyMultiRepo)
 			}
 		}
@@ -544,12 +544,12 @@ func (c *Config) Validate() error {
 	// re-checks presence at board-resolution time, so an empty value here
 	// is not silently absorbed downstream.
 
-	// Rule 10: process_flow path validity (when set).
-	if err := validatePath("process_flow", c.ProcessFlow); err != nil {
+	// Rule 10: process-flow path validity (when set).
+	if err := validatePath("process-flow", c.ProcessFlow); err != nil {
 		return err
 	}
 
-	// Rule 11: task_prompts. Keys must be known embedded MID task names
+	// Rule 11: task-prompts. Keys must be known embedded MID task names
 	// (typos surface at config-load, not deep inside the pipeline); values
 	// pass validatePath. Sorted iteration so errors are deterministic.
 	if len(c.TaskPrompts) > 0 {
@@ -559,41 +559,41 @@ func (c *Config) Validate() error {
 		}
 		for _, name := range sortedKeys(c.TaskPrompts) {
 			if !known[name] {
-				return fmt.Errorf("config: task_prompts: %q is not a known embedded MID task", name)
+				return fmt.Errorf("config: task-prompts: %q is not a known embedded MID task", name)
 			}
-			if err := validatePath("task_prompts."+name, c.TaskPrompts[name]); err != nil {
+			if err := validatePath("task-prompts."+name, c.TaskPrompts[name]); err != nil {
 				return err
 			}
 		}
 	}
 
-	// Rule 12: node_replacements paths pass validatePath. Sorted
+	// Rule 12: node-replacements paths pass validatePath. Sorted
 	// iteration for deterministic errors.
 	for _, node := range sortedKeys(c.NodeReplacements) {
-		if err := validatePath("node_replacements."+node, c.NodeReplacements[node]); err != nil {
+		if err := validatePath("node-replacements."+node, c.NodeReplacements[node]); err != nil {
 			return err
 		}
 	}
 
-	// Rule 13: a node ID may not appear in both node_extras and
-	// node_replacements — replace strictly supersedes extras, so the
+	// Rule 13: a node ID may not appear in both node-extras and
+	// node-replacements — replace strictly supersedes extras, so the
 	// combination signals operator confusion. Node-ID validity against
 	// the resolved process flow is deferred to the driver (the process
 	// flow is itself configurable, so the node-ID set isn't known here).
 	for _, node := range sortedKeys(c.NodeExtras) {
 		if _, dup := c.NodeReplacements[node]; dup {
-			return fmt.Errorf("config: node %q appears in both node_extras and node_replacements (replace supersedes extras)", node)
+			return fmt.Errorf("config: node %q appears in both node-extras and node-replacements (replace supersedes extras)", node)
 		}
 	}
 
-	// Rule 14: system_name format. Empty is accepted at the schema layer
-	// so partial configs (project URL + repo_strategy only, no system
+	// Rule 14: system-name format. Empty is accepted at the schema layer
+	// so partial configs (project URL + repo-strategy only, no system
 	// scope yet) keep working; `gh optivem init` re-checks presence at
 	// invocation time. When set, the value must match the full naming
 	// rule used by the templating pipeline.
 	if c.SystemName != "" {
 		if msg := ValidateSystemName(c.SystemName); msg != "" {
-			return fmt.Errorf("config: system_name: %s", msg)
+			return fmt.Errorf("config: system-name: %s", msg)
 		}
 	}
 
@@ -612,7 +612,7 @@ func (c *Config) Validate() error {
 	}
 
 	// Rules 17/18: SonarCloud presence. The block is optional when no
-	// architecture is set (a partial config — project URL + repo_strategy
+	// architecture is set (a partial config — project URL + repo-strategy
 	// only — has no Sonar identities to express). Once architecture is
 	// set, gh-optivem.yaml must carry the org + per-code-tier project
 	// keys so runtime consumers (run-sonar, finalize) can resolve them
@@ -695,13 +695,13 @@ func (c *Config) Validate() error {
 	// per-ticket agent dispatch instead of at config load.
 	//
 	// Gating on architecture matches the scaffolder/migrate: partial
-	// configs (project URL + repo_strategy only, no system scope yet)
+	// configs (project URL + repo-strategy only, no system scope yet)
 	// legitimately have no paths: block.
 	if c.System.Architecture != "" {
 		var missing []string
 		for _, k := range CanonicalPathKeys() {
 			if c.SystemTest.Paths[k] == "" {
-				missing = append(missing, "system_test.paths."+k)
+				missing = append(missing, "system-test.paths."+k)
 			}
 		}
 		if len(missing) > 0 {
@@ -729,29 +729,29 @@ func (c *Config) Validate() error {
 	// could trip the rule.
 	for _, k := range sortedKeys(c.SystemTest.Paths) {
 		if _, reserved := reservedPlaceholderKeys[k]; reserved {
-			return fmt.Errorf("config: system_test.paths.%s shadows a reserved fixed-schema placeholder name; rename it", k)
+			return fmt.Errorf("config: system-test.paths.%s shadows a reserved fixed-schema placeholder name; rename it", k)
 		}
 		if _, ok := canonical[k]; !ok {
-			return fmt.Errorf("config: system_test.paths.%s is not a canonical Family B key; see internal/projectconfig/path-keys.md for the supported set", k)
+			return fmt.Errorf("config: system-test.paths.%s is not a canonical Family B key; see internal/projectconfig/path-keys.md for the supported set", k)
 		}
 		if strings.Contains(c.SystemTest.Paths[k], "${") {
-			return fmt.Errorf("config: system_test.paths.%s %q contains a ${...} marker; under SSoT, paths must be fully resolved (substitution is scaffold-time-only)", k, c.SystemTest.Paths[k])
+			return fmt.Errorf("config: system-test.paths.%s %q contains a ${...} marker; under SSoT, paths must be fully resolved (substitution is scaffold-time-only)", k, c.SystemTest.Paths[k])
 		}
-		if err := validatePath("system_test.paths."+k, c.SystemTest.Paths[k]); err != nil {
+		if err := validatePath("system-test.paths."+k, c.SystemTest.Paths[k]); err != nil {
 			return err
 		}
 	}
 
-	// Rule 22c: paths: is system_test-only today. Reject non-empty Paths on
+	// Rule 22c: paths: is system-test-only today. Reject non-empty Paths on
 	// backend/frontend tiers — they have no canonical Family B vocabulary
 	// to anchor against, and silently accepting the field would let a typo
 	// like `system.backend.paths:` parse as a no-op. Same shape as Rule 0b
-	// for TierSpec.Config (also system_test-only).
+	// for TierSpec.Config (also system-test-only).
 	if len(c.System.Backend.Paths) > 0 {
-		return fmt.Errorf("config: system.backend.paths is not a supported field (paths: is system_test-only; use system_test.paths)")
+		return fmt.Errorf("config: system.backend.paths is not a supported field (paths: is system-test-only; use system-test.paths)")
 	}
 	if len(c.System.Frontend.Paths) > 0 {
-		return fmt.Errorf("config: system.frontend.paths is not a supported field (paths: is system_test-only; use system_test.paths)")
+		return fmt.Errorf("config: system.frontend.paths is not a supported field (paths: is system-test-only; use system-test.paths)")
 	}
 
 	return nil
@@ -765,37 +765,37 @@ func (c *Config) validateSonar() error {
 		return fmt.Errorf("config: system.architecture is set; sonar.organization is required")
 	}
 
-	// Rule 18: per-code-tier sonar_project required.
+	// Rule 18: per-code-tier sonar-project required.
 	switch c.System.Architecture {
 	case ArchMonolith:
 		if c.System.SonarProject == "" {
-			return fmt.Errorf("config: system.architecture=%s requires system.sonar_project",
+			return fmt.Errorf("config: system.architecture=%s requires system.sonar-project",
 				ArchMonolith)
 		}
 		if c.System.Backend.SonarProject != "" {
-			return fmt.Errorf("config: system.architecture=%s incompatible with system.backend.sonar_project (multitier-only)",
+			return fmt.Errorf("config: system.architecture=%s incompatible with system.backend.sonar-project (multitier-only)",
 				ArchMonolith)
 		}
 		if c.System.Frontend.SonarProject != "" {
-			return fmt.Errorf("config: system.architecture=%s incompatible with system.frontend.sonar_project (multitier-only)",
+			return fmt.Errorf("config: system.architecture=%s incompatible with system.frontend.sonar-project (multitier-only)",
 				ArchMonolith)
 		}
 	case ArchMultitier:
 		if c.System.Backend.SonarProject == "" {
-			return fmt.Errorf("config: system.architecture=%s requires system.backend.sonar_project",
+			return fmt.Errorf("config: system.architecture=%s requires system.backend.sonar-project",
 				ArchMultitier)
 		}
 		if c.System.Frontend.SonarProject == "" {
-			return fmt.Errorf("config: system.architecture=%s requires system.frontend.sonar_project",
+			return fmt.Errorf("config: system.architecture=%s requires system.frontend.sonar-project",
 				ArchMultitier)
 		}
 		if c.System.SonarProject != "" {
-			return fmt.Errorf("config: system.architecture=%s incompatible with system.sonar_project (monolith-only)",
+			return fmt.Errorf("config: system.architecture=%s incompatible with system.sonar-project (monolith-only)",
 				ArchMultitier)
 		}
 	}
 	if c.SystemTest.SonarProject == "" {
-		return fmt.Errorf("config: system.architecture is set; system_test.sonar_project is required")
+		return fmt.Errorf("config: system.architecture is set; system-test.sonar-project is required")
 	}
 	return nil
 }
@@ -816,7 +816,7 @@ func sortedKeys(m map[string]string) []string {
 }
 
 // IsEmpty reports whether t has no tier identity set (Path/Repo/Lang all
-// empty). Config alone does not make a tier — `system_test: { config: x }`
+// empty). Config alone does not make a tier — `system-test: { config: x }`
 // is still IsEmpty so the architecture-presence rule fires the same way
 // it always did.
 func (t TierSpec) IsEmpty() bool {

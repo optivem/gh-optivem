@@ -20,7 +20,7 @@ type DerivedSonar struct {
 //	monolith               -> <owner>_<repo>-system
 //	multitier (backend)    -> <owner>_<repo>-backend
 //	multitier (frontend)   -> <owner>_<repo>-frontend
-//	system_test (always)   -> <owner>_<repo>-system-test
+//	system-test (always)   -> <owner>_<repo>-system-test
 //
 // Inputs are owner + base repo name + architecture + repo strategy. The
 // strategy parameter does not affect the result today (multirepo keys
@@ -28,7 +28,7 @@ type DerivedSonar struct {
 // produces the same string whether derived from prefix+suffix or from the
 // already-suffixed multirepo component name). It stays on the signature
 // so the validation rule that re-derives keys from (owner, repo, arch,
-// repo_strategy) can share one entry point.
+// repo-strategy) can share one entry point.
 func DeriveSonarProjects(owner, repo, arch, repoStrategy string) DerivedSonar {
 	_ = repoStrategy
 	prefix := owner + "_" + repo

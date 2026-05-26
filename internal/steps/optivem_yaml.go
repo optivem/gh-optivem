@@ -13,7 +13,7 @@ import (
 )
 
 // Auto-populated path defaults written into the scaffolded gh-optivem.yaml's
-// `system.config:` / `system_test.config:` fields. They mirror the layout that
+// `system.config:` / `system-test.config:` fields. They mirror the layout that
 // copySystemTests produces (docker/<arch>/<lang>/ collapses to docker/, and
 // system-test/<lang>/ collapses to system-test/ — see apply_template.go's
 // flattening rules). The scaffold writes a pair: gh-optivem.yaml points at
@@ -30,7 +30,7 @@ const (
 // WriteOptivemYAML writes <repoRoot>/gh-optivem.yaml in the scaffolded repo(s),
 // translating already-resolved init flags into the projectconfig.Config schema.
 // The file is consumed by the ATDD pipeline at runtime (project URL, repo
-// strategy, system architecture + per-component layout, system_test layout,
+// strategy, system architecture + per-component layout, system-test layout,
 // and external-system stand-in declarations).
 //
 // Multi-repo: writes the same file to every per-tier repo so `gh optivem
@@ -176,7 +176,7 @@ func BuildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	}
 	if cfg.Arch == "" {
 		// Partial config (no architecture chosen yet) — emit just the
-		// project + repo_strategy + identity keys; the rest stays empty
+		// project + repo-strategy + identity keys; the rest stays empty
 		// and Validate accepts that shape.
 		return pc
 	}
@@ -192,7 +192,7 @@ func BuildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	pc.System = buildSystem(cfg, derived, sutNamespace)
 	pc.SystemTest = buildSystemTest(cfg, derived)
 	pc.ExternalSystems = buildExternals(cfg)
-	// `init` writes `system_test.paths:` as the authoritative initial value
+	// `init` writes `system-test.paths:` as the authoritative initial value
 	// matching the directory tree this same scaffolder just created — not a
 	// runtime default. The scaffolder owns both sides of the join (YAML +
 	// tree), so the values are correct by construction here. After init the
@@ -233,7 +233,7 @@ func mapRepoStrategy(s string) string {
 // architecture: monolith uses flat Path/Repo/Lang; multitier nests Backend
 // and Frontend. Paths come from cfg verbatim — the resolution
 // responsibility lives upstream in config.resolvePathFlagsForYAML, which
-// fills empties with the flat scaffold defaults. sonar_project values
+// fills empties with the flat scaffold defaults. sonar-project values
 // come from the pre-computed DerivedSonar — the scaffolder seeds the
 // default per-tier keys here; downstream consumers read them straight
 // from the emitted YAML.
@@ -323,7 +323,7 @@ func frontendRepoSlug(cfg *config.Config) string {
 	return cfg.FullRepo
 }
 
-// systemTestRepoSlug returns the slug for system_test. Defaults to the
+// systemTestRepoSlug returns the slug for system-test. Defaults to the
 // system repo (mono-repo or multi-repo monolith) or the backend repo
 // (multi-repo multitier) — the operator can override post-scaffold.
 func systemTestRepoSlug(cfg *config.Config) string {

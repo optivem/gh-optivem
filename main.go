@@ -840,13 +840,13 @@ func printBanner(cfg *config.Config, pc *projectconfig.Config) {
 	fmt.Println()
 	log.Infof("owner:             %s", cfg.Owner)
 	log.Infof("repo:              %s", cfg.Repo)
-	log.Infof("system_name:       %s", cfg.SystemName)
+	log.Infof("system-name:       %s", cfg.SystemName)
 	log.Infof("system.architecture: %s", cfg.Arch)
-	log.Infof("repo_strategy:     %s", cfg.RepoStrategy)
+	log.Infof("repo-strategy:     %s", cfg.RepoStrategy)
 	log.Infof("system.lang:       %s", cfg.Lang)
 	log.Infof("system.backend.lang: %s", cfg.BackendLang)
 	log.Infof("system.frontend.lang: %s", cfg.FrontendLang)
-	log.Infof("system_test.lang:  %s", cfg.TestLang)
+	log.Infof("system-test.lang:  %s", cfg.TestLang)
 	log.Infof("license:           %s", cfg.License)
 	log.Infof("deploy:            %s", cfg.Deploy)
 
@@ -946,7 +946,7 @@ func willCreateSecrets(cfg *config.Config) []string {
 
 // collectBannerSonarKeys returns the per-code-tier SonarCloud project keys
 // in the order they appear in gh-optivem.yaml: system (monolith) or
-// backend+frontend (multitier), followed by system_test. The banner prints
+// backend+frontend (multitier), followed by system-test. The banner prints
 // each so the operator can see at a glance which SonarCloud projects the
 // scaffold will create.
 func collectBannerSonarKeys(pc *projectconfig.Config) []string {
