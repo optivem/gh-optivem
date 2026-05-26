@@ -2,7 +2,7 @@
 
 > Generated from `internal/atdd/runtime/statemachine/process-flow.yaml` by `internal/atdd/runtime/diagram`. Do not edit by hand — edit the YAML and regenerate via `gh optivem process show > docs/process-diagram.md`.
 
-Each section corresponds to one named process in the YAML. `call_activity` nodes appear as boxes pointing at the linked sub-process's heading.
+Each section corresponds to one named process in the YAML. `call-activity` nodes appear as boxes pointing at the linked sub-process's heading.
 
 ## Legend
 
@@ -11,7 +11,7 @@ Node **shape** encodes the BPMN type; **fill color** encodes the executor.
 - `((circle))` — start / end event
 - `{diamond}` — gateway (decision)
 - `[[subroutine]]` — service task — mechanical step run by the Go runtime (white)
-- `[rectangle]` — user task — LLM agent (dark blue) or human STOP (yellow); `call_activity` rectangles are unfilled and link to a sub-process heading
+- `[rectangle]` — user task — LLM agent (dark blue) or human STOP (yellow); `call-activity` rectangles are unfilled and link to a sub-process heading
 - `[/skewed/]` — published outputs of a process (dashed border)
 
 ```mermaid
@@ -47,7 +47,7 @@ flowchart TD
     START((Start))
 
     START -- board --> PICK_TOP_READY
-    START -- specific_issue --> IMPLEMENT_TICKET
+    START -- specific-issue --> IMPLEMENT_TICKET
     PICK_TOP_READY --> IMPLEMENT_TICKET
     IMPLEMENT_TICKET --> END
 
@@ -59,14 +59,17 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    MARK_IN_REFINEMENT[MARK_IN_REFINEMENT — see § update-ticket]
-    MARK_READY[MARK_READY — see § update-ticket]
+    MARK_IN_REFINEMENT[[MARK_IN_REFINEMENT]]
+    MARK_READY[[MARK_READY]]
     REFINE_BACKLOG[REFINE_BACKLOG — see § refine-backlog]
     REFINE_TICKET_END((End))
 
     MARK_IN_REFINEMENT --> REFINE_BACKLOG
     REFINE_BACKLOG --> MARK_READY
     MARK_READY --> REFINE_TICKET_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class MARK_IN_REFINEMENT,MARK_READY serviceNode
 ```
 
 ## implement-ticket
@@ -81,17 +84,17 @@ flowchart TD
     CALL_REFACTOR_TEST_STRUCTURE[CALL_REFACTOR_TEST_STRUCTURE — see § refactor-test-structure]
     GATE_TICKET_KIND{"Ticket kind (type + optional task subtype)?"}
     IMPLEMENT_TICKET_END((End))
-    MARK_IN_ACCEPTANCE[MARK_IN_ACCEPTANCE — see § update-ticket]
-    MARK_IN_PROGRESS[MARK_IN_PROGRESS — see § update-ticket]
+    MARK_IN_ACCEPTANCE[[MARK_IN_ACCEPTANCE]]
+    MARK_IN_PROGRESS[[MARK_IN_PROGRESS]]
 
     MARK_IN_PROGRESS --> GATE_TICKET_KIND
     GATE_TICKET_KIND -- story --> CALL_CHANGE_SYSTEM_BEHAVIOR
     GATE_TICKET_KIND -- bug --> CALL_CHANGE_SYSTEM_BEHAVIOR
-    GATE_TICKET_KIND -- task/cover-legacy --> CALL_COVER_SYSTEM_BEHAVIOR
-    GATE_TICKET_KIND -- task/redesign-system --> CALL_REDESIGN_SYSTEM_STRUCTURE
-    GATE_TICKET_KIND -- task/refactor-system --> CALL_REFACTOR_SYSTEM_STRUCTURE
-    GATE_TICKET_KIND -- task/refactor-tests --> CALL_REFACTOR_TEST_STRUCTURE
-    GATE_TICKET_KIND -- task/onboard-external-system --> CALL_ONBOARD_EXTERNAL_SYSTEM
+    GATE_TICKET_KIND -- task/legacy-coverage --> CALL_COVER_SYSTEM_BEHAVIOR
+    GATE_TICKET_KIND -- task/system-redesign --> CALL_REDESIGN_SYSTEM_STRUCTURE
+    GATE_TICKET_KIND -- task/system-refactor --> CALL_REFACTOR_SYSTEM_STRUCTURE
+    GATE_TICKET_KIND -- task/test-refactor --> CALL_REFACTOR_TEST_STRUCTURE
+    GATE_TICKET_KIND -- task/external-system-onboarding --> CALL_ONBOARD_EXTERNAL_SYSTEM
     CALL_CHANGE_SYSTEM_BEHAVIOR --> MARK_IN_ACCEPTANCE
     CALL_COVER_SYSTEM_BEHAVIOR --> MARK_IN_ACCEPTANCE
     CALL_REDESIGN_SYSTEM_STRUCTURE --> MARK_IN_ACCEPTANCE
@@ -99,6 +102,9 @@ flowchart TD
     CALL_REFACTOR_TEST_STRUCTURE --> MARK_IN_ACCEPTANCE
     CALL_ONBOARD_EXTERNAL_SYSTEM --> MARK_IN_ACCEPTANCE
     MARK_IN_ACCEPTANCE --> IMPLEMENT_TICKET_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class MARK_IN_ACCEPTANCE,MARK_IN_PROGRESS serviceNode
 ```
 
 ## refactor
@@ -566,16 +572,6 @@ flowchart TD
     REFINE_AC_END((End))
 
     EXECUTE_AGENT --> REFINE_AC_END
-```
-
-## update-ticket
-
-```mermaid
-flowchart TD
-    EXECUTE_AGENT[EXECUTE_AGENT — see § execute-agent]
-    UPDATE_TICKET_END((End))
-
-    EXECUTE_AGENT --> UPDATE_TICKET_END
 ```
 
 ## compile
