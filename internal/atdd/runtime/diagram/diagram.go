@@ -61,7 +61,7 @@ var processOrder = []string{
 	"implement-ticket",
 	"refactor",
 	// CYCLE
-	"refine-backlog",
+	"refine-backlog-item",
 	"onboard-external-system",
 	"change-system-behavior",
 	"cover-system-behavior",
@@ -357,28 +357,39 @@ func writeGroupSubgraph(b *strings.Builder, process *statemachine.Process, g *gr
 }
 
 // writeNode emits one Mermaid node line. Shape depends on the YAML
-// node type; label comes from the `documentation:` field (with the
-// node ID as a fallback for shapes the schema does not strict-require
-// it on). call-activity nodes get a "see § …" suffix pointing the
-// reader at the sub-process's heading.
+// node type; label comes from the `documentation:` field. service-task
+// and user-task fall back to the node ID when documentation is absent;
+// call-activity, start-event, end-event, and error-end-event all
+// require documentation: at the schema level (see load.go). call-
+// activity nodes append a "see § …" suffix pointing the reader at the
+// sub-process's heading, unless the label already matches the target
+// process's auto-Title-Case heading — in which case the suffix would
+// be redundant and is dropped.
 //
 // Shape mapping (BPMN-shaped vocabulary):
 //
 //	start-event / end-event → circle              `((label))`
 //	error-end-event         → circle              `((⚡ label))` (red border via classDef)
-//	gateway                 → diamond             `{label}`
+//	gateway                 → diamond             `{label}` (or `{ }` when silent — Item 13)
 //	service-task            → subroutine          `[[label]]`
 //	user-task               → plain rectangle     `[label]`
-//	call-activity           → plain rectangle     `[label]`  (with "see § …" suffix)
+//	call-activity           → plain rectangle     `[label]`  (with "see § …" suffix unless redundant)
 //
 // Shape conveys the BPMN node type; executor coloring (applied later
 // in writeExecutorStyling) conveys *who* runs each task: white =
 // service-task (Go runtime), dark blue = LLM agent, yellow = human.
 // TDD-stage border colours (red / green / blue) overlay the executor
 // fill so the two signals coexist without conflict.
+//
+// Silent gateways (Item 13): a gateway whose `documentation:` is empty
+// is rendered as a bare diamond `GW{ }`, never with the node ID as a
+// fallback label. The pattern arises when an upstream user_task owns
+// the elicitation (`CHOOSE_REFACTOR_TYPE → GATE_REFACTOR_TYPE_CHOICE`)
+// so the gateway itself has nothing to say; Hungarian-style `{GATE_…}`
+// in the diagram would just be noise.
 func writeNode(b *strings.Builder, n statemachine.Node) {
 	label := n.Raw.Documentation
-	if label == "" {
+	if label == "" && n.Kind != statemachine.Gateway && n.Kind != statemachine.CallActivity {
 		label = n.ID
 	}
 	switch n.Kind {
@@ -387,7 +398,11 @@ func writeNode(b *strings.Builder, n statemachine.Node) {
 	case statemachine.ErrorEndEvent:
 		fmt.Fprintf(b, "    %s((%s))\n", n.ID, mermaidLabel("⚡ "+label))
 	case statemachine.Gateway:
-		fmt.Fprintf(b, "    %s{%s}\n", n.ID, mermaidLabel(label))
+		if label == "" {
+			fmt.Fprintf(b, "    %s{ }\n", n.ID)
+		} else {
+			fmt.Fprintf(b, "    %s{%s}\n", n.ID, mermaidLabel(label))
+		}
 	case statemachine.ServiceTask:
 		fmt.Fprintf(b, "    %s[[%s]]\n", n.ID, mermaidLabel(label))
 	case statemachine.CallActivity:
@@ -396,7 +411,20 @@ func writeNode(b *strings.Builder, n statemachine.Node) {
 		if linkLabel == "" {
 			linkLabel = target
 		}
-		full := fmt.Sprintf("%s — see § %s", label, linkLabel)
+		// Drop the redundant "see § …" suffix when the documentation
+		// already matches the auto-Title-Case form of the target
+		// process heading. Aliased targets compare against the alias
+		// directly.
+		headingForm := processAlias[target]
+		if headingForm == "" {
+			headingForm = titleCaseFromKebab(target)
+		}
+		var full string
+		if label == headingForm {
+			full = label
+		} else {
+			full = fmt.Sprintf("%s — see § %s", label, linkLabel)
+		}
 		fmt.Fprintf(b, "    %s[%s]\n", n.ID, mermaidLabel(full))
 	default:
 		fmt.Fprintf(b, "    %s[%s]\n", n.ID, mermaidLabel(label))

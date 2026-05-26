@@ -673,6 +673,7 @@ func TestTicketKind_LookupTable(t *testing.T) {
 		{name: "feature_aliased_to_story", kind: "feature", want: "story"},
 		{name: "task_legacy_coverage", kind: "task", subtypes: []string{"legacy-coverage"}, want: "task/legacy-coverage"},
 		{name: "task_system_redesign", kind: "task", subtypes: []string{"system-redesign"}, want: "task/system-redesign"},
+		{name: "task_external_system_redesign", kind: "task", subtypes: []string{"external-system-redesign"}, want: "task/external-system-redesign"},
 		{name: "task_system_refactor", kind: "task", subtypes: []string{"system-refactor"}, want: "task/system-refactor"},
 		{name: "task_test_refactor", kind: "task", subtypes: []string{"test-refactor"}, want: "task/test-refactor"},
 		{name: "task_external_system_onboarding", kind: "task", subtypes: []string{"external-system-onboarding"}, want: "task/external-system-onboarding"},

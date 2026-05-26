@@ -23,6 +23,7 @@ processes:
       - id: CALL_MIDDLE
         type: call-activity
         process: middle
+        documentation: "Synthetic Test Call"
         params:
           change-type: "SYSTEM INTERFACE REDESIGN"
       - id: OUTER_END
@@ -37,6 +38,7 @@ processes:
       - id: CALL_INNER
         type: call-activity
         process: inner
+        documentation: "Synthetic Test Call"
         params:
           change-type: ${change-type}
       - id: MIDDLE_END
@@ -102,6 +104,7 @@ processes:
       - id: CALL_INNER
         type: call-activity
         process: inner
+        documentation: "Synthetic Test Call"
         params:
           change-type: "AT - GREEN - SYSTEM"
       - id: OUTER_END
@@ -166,6 +169,7 @@ processes:
       - id: CALL_CYCLE
         type: call-activity
         process: cycle
+        documentation: "Synthetic Test Call"
         params:
           chosen: do-thing-b
       - id: OUTER_END
@@ -215,14 +219,14 @@ processes:
 // lookup for templated `process: ${name}` fields on call-activity. The
 // five-level BPMN refactor (plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md
 // Item 2) needs this so a HIGH orchestration like `implement-and-verify-system`
-// can call a parameterised sub-process (`process: ${agent-action}`) and have
+// can call a parameterised sub-process (`process: ${action}`) and have
 // it resolve at dispatch time to the concrete cycle the caller picked.
 // Mirrors the existing ${action} / ${agent} template support on service-task /
 // user-task.
 //
 // The structure mirrors real usage: outer is a CYCLE that calls a HIGH with
-// `params: {agent-action: inner-b}`; the HIGH (`middle`) has a call-activity
-// whose `process: ${agent-action}` resolves at dispatch time using the param
+// `params: {action: inner-b}`; the HIGH (`middle`) has a call-activity
+// whose `process: ${action}` resolves at dispatch time using the param
 // the CYCLE pushed. (Templated `process:` cannot read params declared on the
 // same call-activity — those haven't been pushed yet at resolution time.)
 func TestCallActivity_ResolvesProcessTemplate(t *testing.T) {
@@ -234,8 +238,9 @@ processes:
       - id: CALL_MIDDLE
         type: call-activity
         process: middle
+        documentation: "Synthetic Test Call"
         params:
-          agent-action: inner-b
+          action: inner-b
       - id: OUTER_END
         type: end-event
         documentation: "Synthetic Test Event"
@@ -247,7 +252,8 @@ processes:
     nodes:
       - id: CALL_CHOSEN
         type: call-activity
-        process: ${agent-action}
+        process: ${action}
+        documentation: "Synthetic Test Call"
       - id: MIDDLE_END
         type: end-event
         documentation: "Synthetic Test Event"
@@ -385,17 +391,18 @@ processes:
       - id: WRITE_STATE
         type: service-task
         action: write-failure-kind
-      - id: CALL_FIX
+      - id: FIX
         type: call-activity
         process: fix
+        documentation: "Synthetic Test Call"
         params:
           task-name: "fix-${failure-kind}"
       - id: OUTER_END
         type: end-event
         documentation: "Synthetic Test Event"
     sequence-flows:
-      - {from: WRITE_STATE, to: CALL_FIX}
-      - {from: CALL_FIX,    to: OUTER_END}
+      - {from: WRITE_STATE, to: FIX}
+      - {from: FIX,         to: OUTER_END}
 
   fix:
     start: READ
@@ -457,8 +464,9 @@ processes:
       - id: CALL_MIDDLE
         type: call-activity
         process: middle
+        documentation: "Synthetic Test Call"
         params:
-          agent-action: nonexistent
+          action: nonexistent
       - id: OUTER_END
         type: end-event
         documentation: "Synthetic Test Event"
@@ -470,7 +478,8 @@ processes:
     nodes:
       - id: CALL_CHOSEN
         type: call-activity
-        process: ${agent-action}
+        process: ${action}
+        documentation: "Synthetic Test Call"
       - id: MIDDLE_END
         type: end-event
         documentation: "Synthetic Test Event"
@@ -492,8 +501,8 @@ processes:
 		t.Fatalf("RunProcess succeeded; want unknown-process error")
 	}
 	msg := err.Error()
-	if !strings.Contains(msg, "nonexistent") || !strings.Contains(msg, "${agent-action}") {
-		t.Errorf("error %q should name both the resolved value %q and the original template %q", msg, "nonexistent", "${agent-action}")
+	if !strings.Contains(msg, "nonexistent") || !strings.Contains(msg, "${action}") {
+		t.Errorf("error %q should name both the resolved value %q and the original template %q", msg, "nonexistent", "${action}")
 	}
 }
 
@@ -504,7 +513,7 @@ processes:
 // shell failure (stamps `command-succeeded=false`, `failure-kind=command-failed`).
 // The expected trail is:
 //
-//	execute-command.RUN_COMMAND → GATE_COMMAND_SUCCEEDED=false → CALL_FIX
+//	execute-command.RUN_COMMAND → GATE_COMMAND_SUCCEEDED=false → FIX
 //	  → fix.EXECUTE_AGENT (params task-name="fix-${failure-kind}")
 //	    → execute-agent.RUN_AGENT (agent: ${task-name})
 //

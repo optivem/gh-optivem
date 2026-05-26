@@ -511,11 +511,11 @@ func TestRenderPrompt_UnsetAcceptanceCriteriaFailsFast(t *testing.T) {
 // TestRenderPrompt_UnsetChecklistFailsFast pins the load-bearing
 // contract on ${checklist}: a prompt that references ${checklist} with
 // no value set produces a clear render-time error rather than silently
-// substituting an empty block. The four Checklist-using ticket-kinds
-// (system-redesign, system-refactor, test-refactor,
-// external-system-onboarding) all dispatch prompts that read
-// ${checklist}; an absent value means parse-ticket didn't populate or
-// the ticket-kind/body declaration drifted.
+// substituting an empty block. The five Checklist-using ticket-kinds
+// (system-redesign, external-system-redesign, system-refactor,
+// test-refactor, external-system-onboarding) all dispatch prompts that
+// read ${checklist}; an absent value means parse-ticket didn't populate
+// or the ticket-kind/body declaration drifted.
 func TestRenderPrompt_UnsetChecklistFailsFast(t *testing.T) {
 	gitFake := &fakeGit{
 		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},

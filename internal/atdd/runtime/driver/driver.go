@@ -857,7 +857,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 		}
 		// Command-failure payload from upstream runCommand. State keys are
 		// only populated when the LOW execute-command primitive's shell
-		// dispatch failed and routed via GATE_COMMAND_SUCCEEDED → CALL_FIX;
+		// dispatch failed and routed via GATE_COMMAND_SUCCEEDED → FIX;
 		// on every other dispatch they're absent and the fields stay
 		// zero-valued. fix-command-failed.md is the only prompt that
 		// references the matching ${command_*} placeholders.
@@ -865,7 +865,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 		// Validation-failure payload from upstream validateOutputsAndScopes.
 		// Same shape: state keys are populated only when the LOW
 		// execute-agent primitive's post-RUN validation failed and routed
-		// via the false branch → CALL_FIX. fix-missing-output.md and
+		// via the false branch → FIX. fix-missing-output.md and
 		// fix-scope-diff.md are the only prompts that reference the
 		// matching ${failing-task-name} / ${missing-outputs} /
 		// ${violating-paths} placeholders.
@@ -883,7 +883,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 			AcceptanceCriteria: ctx.GetString("ticket_acceptance_criteria"),
 			ParsedConcepts:     ctx.GetString("parsed_concepts"),
 			VerifyResults:      ctx.GetString("verify_results_text"),
-			ChangedFiles:       fixChangedFiles(agentName, opts.RepoPath),
+			ChangedFiles:       fixChangedFiles(ctx, agentName, opts.RepoPath),
 			CommandLine:        ctx.GetString("command-line"),
 			CommandExitCode:    commandExitCode,
 			CommandStderrTail:  ctx.GetString("command-stderr-tail"),
@@ -939,11 +939,19 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 // dispatch leaves the placeholder out of the template anyway, so
 // paying for a `git status` on every node would be wasted work.
 //
+// fix-scope-diff is special: validate-outputs-and-scopes already
+// stashed the per-phase snapshot delta at ctx.State["phase-changed-files"],
+// which is narrower (and correct) than `git status --porcelain` —
+// it excludes upstream-phase residue still uncommitted in the
+// working tree. Prefer the stashed value when present; fall back to
+// the shell-out only if the validator never ran (e.g. a re-wiring
+// that dispatches fix-scope-diff outside execute-agent).
+//
 // On any shell error (no git in PATH, not a repo, …) we return the
 // empty string. The fix-* prompts simply render an empty "Changed
 // files" block; the agent can re-run `git status` itself if it needs
 // the listing. The dispatch is feedback, not load-bearing.
-func fixChangedFiles(agent, repoPath string) string {
+func fixChangedFiles(ctx *statemachine.Context, agent, repoPath string) string {
 	switch agent {
 	case "fix-unexpected-passing-tests",
 		"fix-unexpected-failing-tests",
@@ -952,6 +960,11 @@ func fixChangedFiles(agent, repoPath string) string {
 		"fix-scope-diff":
 	default:
 		return ""
+	}
+	if agent == "fix-scope-diff" {
+		if v := ctx.GetString("phase-changed-files"); v != "" {
+			return v
+		}
 	}
 	cmd := exec.Command("git", "status", "--porcelain")
 	if repoPath != "" {

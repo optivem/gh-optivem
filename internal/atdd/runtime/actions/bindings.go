@@ -490,11 +490,20 @@ func (a actions) runShell(cmdLine string) (ShellResult, error) {
 //     plus Family A path-shaped keys in FamilyAPathKeysInScope (system-path
 //     today).
 //
-// It then enumerates the working-tree changes via `git diff --name-only HEAD`
-// + `git status --porcelain` (union covers staged, unstaged, and untracked
-// paths since the last commit baseline) and checks each modified path
-// against the allowed set with directory-aware prefix matching:
-// diffPath ∈ scope iff diffPath == P || diffPath.startsWith(P + "/").
+// It then enumerates the working-tree changes this phase produced and
+// checks each modified path against the allowed set with directory-aware
+// prefix matching: diffPath ∈ scope iff
+// diffPath == P || diffPath.startsWith(P + "/").
+//
+// Baseline: prefers the per-phase snapshot stashed in
+// ctx.State[CtxKeyPreAgentFingerprint] by an upstream snapshot-working-tree
+// step (the same baseline validate-outputs-and-scopes uses), so an
+// upstream phase's uncommitted edits are not re-attributed to whichever
+// phase is currently running. When the snapshot is absent — check-phase-scope
+// is dormant in process-flow.yaml today and may be re-wired in a context
+// where no per-phase snapshot exists — the action falls back to the full
+// dirty-tree set (`git status --porcelain`) and emits a debug line via
+// a.deps.Stderr so the re-wiring is loud.
 //
 // Phase id source: ctx.Params["phase_id"] — the writing-agent MID's name
 // (e.g. "write-acceptance-tests"). Resolved via Engine.Scope.
@@ -530,7 +539,18 @@ func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome
 		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope (%s): %w", phaseID, err)}
 	}
 
-	modified, err := a.modifiedPathsSinceHead(context.Background())
+	var modified []string
+	if snapshot, ok := ctx.State[CtxKeyPreAgentFingerprint].(WorkingTreeFingerprint); ok {
+		modified, err = a.modifiedPathsSinceFingerprint(context.Background(), snapshot)
+	} else {
+		// HEAD-equivalent fallback: this action is dormant in
+		// process-flow.yaml today and may be re-wired in a context
+		// without an upstream snapshot. Log loudly so the operator
+		// notices, then enumerate the full dirty tree.
+		fmt.Fprintln(a.deps.Stderr,
+			"check_phase_scope: no pre-agent-fingerprint in state — falling back to current dirty tree; re-wire with snapshot-working-tree upstream for per-phase semantics")
+		modified, err = a.dirtyTreePaths(context.Background())
+	}
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: %w", err)}
 	}
@@ -726,75 +746,6 @@ func (a actions) modifiedPathsSinceFingerprint(ctx context.Context, base Working
 	return out, nil
 }
 
-// modifiedPathsSinceHead enumerates working-tree paths touched in the
-// current phase by unioning `git diff --name-only HEAD` (tracked,
-// staged + unstaged) with `git status --porcelain` (also covers untracked
-// `??` and rename `R  old -> new` endpoints). Returns a sorted,
-// de-duplicated slice so violating-paths reads deterministically.
-//
-// Deprecated: HEAD-relative; cross-phase false positives — every
-// upstream phase's uncommitted edits show up here. Kept temporarily
-// because checkPhaseScope and validateOutputsAndScopes still call
-// into it; their per-phase rewire to modifiedPathsSinceFingerprint
-// happens in Item 3 of plan 20260526-1430, after which this helper
-// goes away.
-func (a actions) modifiedPathsSinceHead(ctx context.Context) ([]string, error) {
-	seen := map[string]bool{}
-	gitArgs := func(extra ...string) []string {
-		if a.deps.RepoPath == "" {
-			return extra
-		}
-		return append([]string{"-C", a.deps.RepoPath}, extra...)
-	}
-
-	diff, err := a.deps.Git.Run(ctx, gitArgs("diff", "--name-only", "HEAD")...)
-	if err != nil {
-		return nil, fmt.Errorf("git diff --name-only HEAD: %w", err)
-	}
-	for _, line := range strings.Split(string(diff), "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			seen[line] = true
-		}
-	}
-
-	status, err := a.deps.Git.Run(ctx, gitArgs("status", "--porcelain")...)
-	if err != nil {
-		return nil, fmt.Errorf("git status --porcelain: %w", err)
-	}
-	for _, line := range strings.Split(string(status), "\n") {
-		// porcelain v1 format: "XY path" or "XY old -> new"; X is the
-		// staged status, Y the unstaged. Two status chars + one space
-		// before the path.
-		if len(line) < 4 {
-			continue
-		}
-		rest := line[3:]
-		if i := strings.Index(rest, " -> "); i >= 0 {
-			oldPath := strings.TrimSpace(rest[:i])
-			newPath := strings.TrimSpace(rest[i+4:])
-			if oldPath != "" {
-				seen[oldPath] = true
-			}
-			if newPath != "" {
-				seen[newPath] = true
-			}
-			continue
-		}
-		path := strings.TrimSpace(rest)
-		if path != "" {
-			seen[path] = true
-		}
-	}
-
-	paths := make([]string, 0, len(seen))
-	for p := range seen {
-		paths = append(paths, p)
-	}
-	sort.Strings(paths)
-	return paths, nil
-}
-
 // ---------------------------------------------------------------------------
 // Shell-escape helper (used by the BPMN Phase D `run-command` primitive)
 // ---------------------------------------------------------------------------
@@ -899,11 +850,19 @@ func lastNLines(s string, n int) string {
 // agent's `outputs:` YAML block has already been flattened into
 // ctx.State by clauderun.ParseOutputs (driver.go); this action checks
 // (a) every key the caller declared in `outputs:` is present in
-// ctx.State, and (b) every working-tree change since HEAD falls
-// within at least one of the writing-agent MID's declared `write:`
-// scope (looked up via Engine.Scope, then joined against
+// ctx.State, and (b) every working-tree change *this phase produced*
+// falls within at least one of the writing-agent MID's declared
+// `write:` scope (looked up via Engine.Scope, then joined against
 // gh-optivem.yaml paths: via the same resolveLayerPaths the
 // checkPhaseScope action uses).
+//
+// Baseline: diffs against the per-phase snapshot stashed at
+// ctx.State[CtxKeyPreAgentFingerprint] by the upstream
+// snapshot-working-tree step (not against HEAD). This eliminates the
+// cross-phase false positives that arose when several phases ran
+// back-to-back without a commit — every phase after the first used to
+// see upstream phases' uncommitted edits in the diff baseline and
+// flag them against its own narrower scopes.
 //
 // Reads:
 //   - ctx.Params["outputs"]              — comma-separated list of expected
@@ -918,6 +877,12 @@ func lastNLines(s string, n int) string {
 //                                          recover the outer MID's scope
 //                                          after task-name is shadowed to
 //                                          fix-${failure-kind}.
+//   - ctx.State[CtxKeyPreAgentFingerprint] — WorkingTreeFingerprint
+//                                          captured by snapshot-working-tree.
+//                                          Required when the dispatching node
+//                                          has a write scope; missing key is
+//                                          a wiring bug and surfaces as
+//                                          Outcome.Err.
 //
 // Writes:
 //   - ctx.State["outputs-and-scopes-valid"]   — bool.
@@ -942,11 +907,23 @@ func lastNLines(s string, n int) string {
 //                                               working-tree paths
 //                                               outside the declared
 //                                               write scope.
+//   - ctx.State["phase-changed-files"]        — set whenever the scope
+//                                               check ran (success or
+//                                               failure); newline-joined
+//                                               sorted list of every path
+//                                               in the snapshot delta
+//                                               (in-scope + out-of-scope).
+//                                               The fix-scope-diff prompt
+//                                               reads this as ${changed_files}
+//                                               so the diagnosing agent sees
+//                                               only this phase's edits,
+//                                               not the full git status dump.
 //
 // Does NOT surface as Outcome.Err — the gateway's false branch
 // dispatches `fix-${failure-kind}` per Q-late-5. Hard errors
-// (gh-optivem.yaml missing, git unusable, engine not wired) DO surface
-// as Err since they indicate a wiring/infra problem, not an
+// (gh-optivem.yaml missing, git unusable, engine not wired, snapshot
+// key missing) DO surface as Err since they indicate a wiring/infra
+// problem, not an
 // agent-output problem.
 func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachine.Outcome {
 	// 1. Output presence check.
@@ -989,10 +966,19 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
 	}
-	modified, err := a.modifiedPathsSinceHead(context.Background())
+	snapshot, ok := ctx.State[CtxKeyPreAgentFingerprint].(WorkingTreeFingerprint)
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: pre-agent-fingerprint not set — execute-agent must run snapshot-working-tree before RUN_AGENT")}
+	}
+	modified, err := a.modifiedPathsSinceFingerprint(context.Background(), snapshot)
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
 	}
+	// Stash the full snapshot delta (in-scope + out-of-scope) so the
+	// fix-scope-diff prompt's ${changed_files} renders this phase's
+	// edits only — not the cross-phase `git status --porcelain` dump
+	// the dispatcher would otherwise capture.
+	ctx.Set("phase-changed-files", strings.Join(modified, "\n"))
 
 	var violating []string
 	for _, m := range modified {

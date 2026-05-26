@@ -240,11 +240,11 @@ func TestCheckPhaseScope_CleanWhenAllModificationsInScope(t *testing.T) {
 	repoPath := t.TempDir()
 	cfg := writePhaseScopeTestConfig(t, repoPath)
 	git := newFakeRunner(t, "git")
-	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
-		[]byte("system-test/typescript/tests/latest/acceptance/foo.spec.ts\ndsl/typescript/src/core/Logic.ts\n"), nil)
+	// HEAD-equivalent fallback path: no pre-agent-fingerprint in state,
+	// so checkPhaseScope enumerates the full dirty tree via `git status`.
 	git.on([]string{"-C", repoPath, "status", "--porcelain"},
 		[]byte(" M system-test/typescript/tests/latest/acceptance/foo.spec.ts\n"), nil)
-	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Engine: loadTestEngine(t)})
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	// write-acceptance-tests scope: at-test, dsl-port, dsl-core.
 	ctx.Params["phase_id"] = "write-acceptance-tests"
@@ -265,11 +265,11 @@ func TestCheckPhaseScope_ViolationPopulatesContext(t *testing.T) {
 	cfg := writePhaseScopeTestConfig(t, repoPath)
 	git := newFakeRunner(t, "git")
 	// write-acceptance-tests scope: at-test, dsl-port, dsl-core. The
-	// driver-port edit is outside scope.
-	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
-		[]byte("driver/typescript/src/port/Driver.ts\nsystem-test/typescript/tests/latest/acceptance/foo.spec.ts\n"), nil)
+	// driver-port edit is outside scope. HEAD-equivalent fallback (no
+	// snapshot pre-seeded), so checkPhaseScope enumerates the full dirty
+	// tree via `git status`.
 	git.on([]string{"-C", repoPath, "status", "--porcelain"},
-		[]byte(""), nil)
+		[]byte(" M driver/typescript/src/port/Driver.ts\n M system-test/typescript/tests/latest/acceptance/foo.spec.ts\n"), nil)
 	var stderr bytes.Buffer
 	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &stderr, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
@@ -297,10 +297,9 @@ func TestCheckPhaseScope_RenameTracksBothEndpoints(t *testing.T) {
 	repoPath := t.TempDir()
 	cfg := writePhaseScopeTestConfig(t, repoPath)
 	git := newFakeRunner(t, "git")
-	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
-		[]byte("dsl/typescript/src/core/Old.ts\nsomewhere/else/New.ts\n"), nil)
 	// Rename row: porcelain shape "R  old -> new". "somewhere/else/New.ts"
-	// is outside scope; the action must surface it.
+	// is outside scope; the action must surface it. HEAD-equivalent
+	// fallback (no snapshot pre-seeded).
 	git.on([]string{"-C", repoPath, "status", "--porcelain"},
 		[]byte("R  dsl/typescript/src/core/Old.ts -> somewhere/else/New.ts\n"), nil)
 	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
@@ -588,16 +587,18 @@ func TestValidateOutputsAndScopes_ScopeDiff_FlagsAndKind(t *testing.T) {
 	repoPath := t.TempDir()
 	cfg := writePhaseScopeTestConfig(t, repoPath)
 	git := newFakeRunner(t, "git")
-	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
-		[]byte("dsl/typescript/src/core/Logic.ts\nsomewhere/else/Stray.ts\n"), nil)
+	// Post-state dirty tree: two untracked paths the failing agent added.
+	// One in scope (dsl-core), one not (somewhere/else).
 	git.on([]string{"-C", repoPath, "status", "--porcelain"},
-		[]byte(""), nil)
+		[]byte("?? dsl/typescript/src/core/Logic.ts\n?? somewhere/else/Stray.ts\n"), nil)
 	var stderr bytes.Buffer
 	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &stderr, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	// implement-dsl scope (write list) covers dsl-core, driver-port,
 	// external-system-driver-port — but not "somewhere/else".
 	ctx.Params["task-name"] = "implement-dsl"
+	// Empty snapshot → every dirty path is "added by this phase".
+	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -611,19 +612,26 @@ func TestValidateOutputsAndScopes_ScopeDiff_FlagsAndKind(t *testing.T) {
 	if !strings.Contains(stderr.String(), "somewhere/else/Stray.ts") {
 		t.Fatalf("stderr should name the out-of-scope file: %q", stderr.String())
 	}
+	// phase-changed-files carries the FULL snapshot delta (both files),
+	// so fix-scope-diff's ${changed_files} sees what the agent did.
+	gotChanged := ctx.GetString("phase-changed-files")
+	wantChanged := "dsl/typescript/src/core/Logic.ts\nsomewhere/else/Stray.ts"
+	if gotChanged != wantChanged {
+		t.Errorf("phase-changed-files: got %q, want %q", gotChanged, wantChanged)
+	}
 }
 
 func TestValidateOutputsAndScopes_AllClean_IsValid(t *testing.T) {
 	repoPath := t.TempDir()
 	cfg := writePhaseScopeTestConfig(t, repoPath)
 	git := newFakeRunner(t, "git")
-	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
-		[]byte("dsl/typescript/src/core/Logic.ts\ndriver/typescript/src/port/Port.ts\n"), nil)
 	git.on([]string{"-C", repoPath, "status", "--porcelain"},
 		[]byte(""), nil)
 	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	ctx.Params["task-name"] = "implement-dsl"
+	// Empty snapshot + empty dirty tree → no delta, scope check passes.
+	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
 	ctx.Params["outputs"] = "dsl-port-changed"
 	ctx.Set("dsl-port-changed", true)
 	out := a.validateOutputsAndScopes(ctx)
@@ -639,16 +647,11 @@ func TestValidateOutputsAndScopes_MissingOutputWins_OverScopeDiff(t *testing.T) 
 	// Both failure conditions hold; missing-output is prioritised (the
 	// agent must first emit the flag — there is nothing to validate
 	// scope-wise if the agent didn't even claim to have done the work).
-	repoPath := t.TempDir()
-	cfg := writePhaseScopeTestConfig(t, repoPath)
-	git := newFakeRunner(t, "git")
-	// modifiedPathsSinceHead is not consulted on the missing-output path,
-	// but if it were, this would be a scope-diff candidate.
-	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
-		[]byte("somewhere/else/Stray.ts\n"), nil)
-	git.on([]string{"-C", repoPath, "status", "--porcelain"},
-		[]byte(""), nil)
-	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	// The snapshot baseline is not consulted on the missing-output path,
+	// so we deliberately leave pre-agent-fingerprint unset to confirm
+	// missing-output short-circuits before the snapshot lookup.
+	cfg := writePhaseScopeTestConfig(t, t.TempDir())
+	a := newActions(Deps{Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	ctx.Params["task-name"] = "implement-dsl"
 	ctx.Params["outputs"] = "dsl-port-changed"
@@ -669,15 +672,17 @@ func TestValidateOutputsAndScopes_FixPath_UsesOriginatingTaskName(t *testing.T) 
 	repoPath := t.TempDir()
 	cfg := writePhaseScopeTestConfig(t, repoPath)
 	git := newFakeRunner(t, "git")
-	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
-		[]byte("dsl/typescript/src/core/Logic.ts\nsomewhere/else/Stray.ts\n"), nil)
+	// Empty snapshot + dirty tree with one in-scope (dsl-core) and one
+	// out-of-scope path; the scope-diff branch must fire against
+	// implement-dsl's write list (looked up via originating-task-name).
 	git.on([]string{"-C", repoPath, "status", "--porcelain"},
-		[]byte(""), nil)
+		[]byte("?? dsl/typescript/src/core/Logic.ts\n?? somewhere/else/Stray.ts\n"), nil)
 	var stderr bytes.Buffer
 	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &stderr, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	ctx.Params["task-name"] = "fix-scope-diff"
 	ctx.Params["originating-task-name"] = "implement-dsl"
+	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -687,6 +692,70 @@ func TestValidateOutputsAndScopes_FixPath_UsesOriginatingTaskName(t *testing.T) 
 	}
 	if got := ctx.GetString("failure-kind"); got != "scope-diff" {
 		t.Fatalf("failure-kind: got %q, want %q", got, "scope-diff")
+	}
+	if got := ctx.GetString("failing-task-name"); got != "implement-dsl" {
+		t.Errorf("failing-task-name: got %q, want %q (originating MID name)", got, "implement-dsl")
+	}
+}
+
+func TestValidateOutputsAndScopes_MissingSnapshot_HardErrors(t *testing.T) {
+	// Scope check is required (task-name resolves to a writing-agent MID
+	// with a non-empty write scope, output is present), but the upstream
+	// snapshot-working-tree step never ran. This is a wiring bug:
+	// validate-outputs-and-scopes must surface it as Outcome.Err, not
+	// silently report "valid" or "no changes".
+	cfg := writePhaseScopeTestConfig(t, t.TempDir())
+	a := newActions(Deps{Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "implement-dsl"
+	ctx.Params["outputs"] = "dsl-port-changed"
+	ctx.Set("dsl-port-changed", true)
+	// Deliberately do NOT seed CtxKeyPreAgentFingerprint.
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err == nil {
+		t.Fatalf("expected hard error on missing pre-agent-fingerprint, got nil")
+	}
+	if !strings.Contains(out.Err.Error(), "pre-agent-fingerprint not set") {
+		t.Errorf("error should explain the missing snapshot: %v", out.Err)
+	}
+}
+
+func TestValidateOutputsAndScopes_UpstreamPhaseResidue_DoesNotViolate(t *testing.T) {
+	// Rehearsal-#61 shape: an upstream phase legitimately edited
+	// upstream-edit.ts before this validator ran. The pre-agent snapshot
+	// already records that file's bytes; the current dirty tree still
+	// shows it (no commit between phases). This phase's agent made no
+	// edits, so the delta against the snapshot is empty even though the
+	// raw `git status` would surface upstream-edit.ts. The validator
+	// must not flag it.
+	repoPath := t.TempDir()
+	cfg := writePhaseScopeTestConfig(t, repoPath)
+	writeRepoFile(t, repoPath, "system-test/typescript/upstream-edit.ts", "edited by upstream phase")
+	git := newFakeRunner(t, "git")
+	git.on([]string{"-C", repoPath, "status", "--porcelain"},
+		[]byte("?? system-test/typescript/upstream-edit.ts\n"), nil)
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	ctx := statemachine.NewContext()
+	// Snapshot captures the upstream path at its current hash — this
+	// phase therefore has zero delta against it.
+	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{
+		"system-test/typescript/upstream-edit.ts": a.hashRepoFile("system-test/typescript/upstream-edit.ts"),
+	}
+	// Current phase's scope (external-system-driver-port +
+	// external-system-driver-adapter) intentionally excludes the upstream
+	// system-test path. Pre-snapshot code would have reported it as a
+	// violation; the snapshot baseline correctly attributes it to the
+	// upstream phase.
+	ctx.Params["task-name"] = "implement-external-system-driver-adapters"
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get("outputs-and-scopes-valid"); got != true {
+		t.Fatalf("outputs-and-scopes-valid: got %v, want true (upstream residue must not count)", got)
+	}
+	if got := ctx.GetString("phase-changed-files"); got != "" {
+		t.Errorf("phase-changed-files: got %q, want empty (this phase made no edits)", got)
 	}
 }
 
@@ -1065,6 +1134,57 @@ func TestModifiedPathsSinceFingerprint_AddDeleteModifyNoOp(t *testing.T) {
 			t.Fatalf("delta order: got %v, want %v", got, want)
 		}
 	})
+}
+
+func TestExecuteAgentPipeline_PerPhaseBaseline_NoFalsePositiveOnUpstreamResidue(t *testing.T) {
+	// Action-bindings-level smoke for the execute-agent pipeline's
+	// per-phase baseline contract (plan 20260526-1430). Mirrors the
+	// rehearsal-#61 shape end-to-end across the two actions
+	// process-flow.yaml wires sequentially:
+	//   1. snapshot-working-tree (before RUN_AGENT)
+	//   2. validate-outputs-and-scopes (after RUN_AGENT)
+	// Phase 1 (different scope) legitimately edited upstream.ts; Phase 2
+	// runs immediately after with a narrower scope that excludes
+	// upstream.ts and its agent makes no edits. Pre-snapshot wiring
+	// flagged upstream.ts against Phase 2's scope; the snapshot baseline
+	// must report valid=true with no phase-changed-files.
+	repoPath := t.TempDir()
+	cfg := writePhaseScopeTestConfig(t, repoPath)
+	// Phase 1's residual edit: file exists on disk when Phase 2 starts.
+	writeRepoFile(t, repoPath, "system-test/typescript/upstream.ts", "edited by phase 1")
+	git := newFakeRunner(t, "git")
+	git.on([]string{"-C", repoPath, "status", "--porcelain"},
+		[]byte("?? system-test/typescript/upstream.ts\n"), nil)
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	ctx := statemachine.NewContext()
+
+	// Step 1: SNAPSHOT_WORKING_TREE before this phase's agent runs.
+	if out := a.snapshotWorkingTree(ctx); out.Err != nil {
+		t.Fatalf("snapshotWorkingTree: %v", out.Err)
+	}
+
+	// Step 2: agent runs and makes NO edits — working tree is unchanged
+	// between the snapshot and the post-RUN validator. The fake git
+	// stub returns the same `git status` response on the second poll.
+
+	// Step 3: VALIDATE_OUTPUTS_AND_SCOPES — task-name resolves to the
+	// MID whose write scope is external-system-driver-port +
+	// external-system-driver-adapter (excludes the upstream system-test
+	// path).
+	ctx.Params["task-name"] = "implement-external-system-driver-adapters"
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("validateOutputsAndScopes: %v", out.Err)
+	}
+	if got := ctx.Get("outputs-and-scopes-valid"); got != true {
+		t.Fatalf("outputs-and-scopes-valid: got %v, want true (upstream residue must not count)", got)
+	}
+	if got := ctx.GetString("phase-changed-files"); got != "" {
+		t.Errorf("phase-changed-files: got %q, want empty (no edits in this phase)", got)
+	}
+	if _, set := ctx.State["failure-kind"]; set {
+		t.Errorf("failure-kind set on a clean phase: %v", ctx.Get("failure-kind"))
+	}
 }
 
 func TestSnapshotWorkingTreeAction_StashesFingerprint(t *testing.T) {

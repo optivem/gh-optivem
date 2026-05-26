@@ -150,6 +150,13 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("approval-outcome", b.approvalOutcome)
 	r.Register("outputs-and-scopes-valid", b.outputsAndScopesValid)
 	r.Register("ticket-kind", b.ticketKind)
+	// task-subtype: Item-11 second-level gateway. Stub binding for now —
+	// reads ctx.State["task-subtype"] if preseeded, errors otherwise.
+	// Phase D wires the real implementation alongside the ticketKind
+	// split (the existing ticketKind binding still emits the composite
+	// `task/<subtype>` value; reconciling that with the new two-gateway
+	// YAML is Phase D's job — see plans/20260526-0832 Item 11 Q11.2).
+	r.Register("task-subtype", b.taskSubtype)
 	// Routes the GATE_CHECKLIST_PARTIALLY_DONE gateway at the start of
 	// each Checklist-using cycle. The check-checklist-progress action
 	// stamps `checklist-partially-done` after parse-ticket runs; this
@@ -304,7 +311,7 @@ func (b bindings) expectedTestResult(ctx *statemachine.Context) statemachine.Out
 }
 
 // fixOnFailureEnabled gates the LOW `execute-agent` primitive's
-// validation-failure → CALL_FIX edge. Reads the `fix-on-failure`
+// validation-failure → FIX edge. Reads the `fix-on-failure`
 // call-activity param: only the `fix` primitive's recursive
 // `execute-agent` call sets it to "false" (single-attempt
 // remediation), so the default (missing/empty) is true — every other
@@ -438,6 +445,7 @@ func (b bindings) outputsAndScopesValid(ctx *statemachine.Context) statemachine.
 //	bug         | (any/none)                 | bug
 //	task        | legacy-coverage            | task/legacy-coverage
 //	task        | system-redesign            | task/system-redesign
+//	task        | external-system-redesign   | task/external-system-redesign
 //	task        | system-refactor            | task/system-refactor
 //	task        | test-refactor              | task/test-refactor
 //	task        | external-system-onboarding | task/external-system-onboarding
@@ -488,6 +496,18 @@ func (b bindings) ticketKind(ctx *statemachine.Context) statemachine.Outcome {
 	}
 }
 
+// taskSubtype is the Item-11 second-level gateway stub. Reads a
+// preseeded `task-subtype` from ctx.State if present, errors
+// otherwise. Phase D wires the real implementation that lifts the
+// subtype out of `Tracker.Subtypes` so task-kind tickets dispatch
+// end-to-end without manual preseed.
+func (b bindings) taskSubtype(ctx *statemachine.Context) statemachine.Outcome {
+	if v := ctx.GetString("task-subtype"); v != "" {
+		return statemachine.Outcome{Value: v}
+	}
+	return statemachine.Outcome{Err: fmt.Errorf("task-subtype: not preseeded in ctx.State and the real binding is Phase D scope (see plans/20260526-0832 Item 11 Q11.2)")}
+}
+
 // ticketKindAliases mirrors the older read_ticket_type behaviour
 // (actions/bindings.go ticketTypeAliases): GitHub's "Feature" native
 // type is the new spelling of what the runtime calls "story".
@@ -502,6 +522,7 @@ var ticketKindAliases = map[string]string{"feature": "story"}
 var ticketKindTaskSubtypes = []string{
 	"legacy-coverage",
 	"system-redesign",
+	"external-system-redesign",
 	"system-refactor",
 	"test-refactor",
 	"external-system-onboarding",

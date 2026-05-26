@@ -10,7 +10,7 @@ Refine the ticket's acceptance criteria — propose first, then implement.
 ## Role in the flow
 
 This is the `refine-acceptance-criteria` MID task — the sole step of the
-`refine-backlog` CYCLE, which TOP `refine-ticket` calls during backlog
+`refine-backlog-item` CYCLE, which TOP `refine-ticket` calls during backlog
 grooming. It runs **before** any execution CYCLE: TOP `implement-ticket`
 later picks an execution CYCLE via its ticket-kind gateway (e.g.
 `change-system-behavior` for stories/bugs, `cover-system-behavior` for
