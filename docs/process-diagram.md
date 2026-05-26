@@ -101,7 +101,6 @@ flowchart TD
     IMPLEMENT_TICKET_END((Ticket Marked IN ACCEPTANCE))
     MARK_IN_ACCEPTANCE[[MARK_IN_ACCEPTANCE]]
     MARK_IN_PROGRESS[[MARK_IN_PROGRESS]]
-    ONBOARD_EXTERNAL_SYSTEM[Onboard External System]
     PARSE_TICKET[[PARSE_TICKET]]
     REDESIGN_EXTERNAL_SYSTEM_STRUCTURE[Redesign External-System Structure — see § redesign-external-system-structure]
     REDESIGN_SYSTEM_STRUCTURE[Redesign System Structure]
@@ -121,7 +120,6 @@ flowchart TD
     GATE_TASK_SUBTYPE -- External System Redesign --> REDESIGN_EXTERNAL_SYSTEM_STRUCTURE
     GATE_TASK_SUBTYPE -- System Refactor --> REFACTOR_SYSTEM_STRUCTURE
     GATE_TASK_SUBTYPE -- Test Refactor --> REFACTOR_TEST_STRUCTURE
-    GATE_TASK_SUBTYPE -- External System Onboarding --> ONBOARD_EXTERNAL_SYSTEM
     GATE_TASK_SUBTYPE --> UNKNOWN_TASK_SUBTYPE
     CHANGE_SYSTEM_BEHAVIOR --> MARK_IN_ACCEPTANCE
     COVER_SYSTEM_BEHAVIOR --> MARK_IN_ACCEPTANCE
@@ -129,7 +127,6 @@ flowchart TD
     REDESIGN_EXTERNAL_SYSTEM_STRUCTURE --> MARK_IN_ACCEPTANCE
     REFACTOR_SYSTEM_STRUCTURE --> MARK_IN_ACCEPTANCE
     REFACTOR_TEST_STRUCTURE --> MARK_IN_ACCEPTANCE
-    ONBOARD_EXTERNAL_SYSTEM --> MARK_IN_ACCEPTANCE
     MARK_IN_ACCEPTANCE --> IMPLEMENT_TICKET_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
@@ -176,35 +173,6 @@ flowchart TD
     REFINE_ACCEPTANCE_CRITERIA --> REFINE_BACKLOG_ITEM_END
 ```
 
-## Onboard External System
-
-```mermaid
-flowchart TD
-    CHECK_CHECKLIST_PROGRESS[[CHECK_CHECKLIST_PROGRESS]]
-    DOCUMENT_EXTERNAL_SYSTEM_CONTRACT[Document external system contract]
-    GATE_CHECKLIST_PARTIALLY_DONE{checklist-partially-done}
-    IDENTIFY_EXTERNAL_SYSTEM[Identify external system]
-    ONBOARD_END((External System Onboarded))
-    SETUP_EXTERNAL_SYSTEM_ACCESS["Set up external system access (credentials, endpoints, sandbox)"]
-    STOP_CHECKLIST_PARTIALLY_DONE["${checklist_progress_summary} Approve re-running this cycle?"]
-    VERIFY_EXTERNAL_SYSTEM_REACHABLE[Verify external system reachable]
-
-    CHECK_CHECKLIST_PROGRESS --> GATE_CHECKLIST_PARTIALLY_DONE
-    GATE_CHECKLIST_PARTIALLY_DONE -- Yes --> STOP_CHECKLIST_PARTIALLY_DONE
-    GATE_CHECKLIST_PARTIALLY_DONE -- No --> IDENTIFY_EXTERNAL_SYSTEM
-    STOP_CHECKLIST_PARTIALLY_DONE --> IDENTIFY_EXTERNAL_SYSTEM
-    IDENTIFY_EXTERNAL_SYSTEM --> DOCUMENT_EXTERNAL_SYSTEM_CONTRACT
-    DOCUMENT_EXTERNAL_SYSTEM_CONTRACT --> SETUP_EXTERNAL_SYSTEM_ACCESS
-    SETUP_EXTERNAL_SYSTEM_ACCESS --> VERIFY_EXTERNAL_SYSTEM_REACHABLE
-    VERIFY_EXTERNAL_SYSTEM_REACHABLE --> ONBOARD_END
-
-    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class CHECK_CHECKLIST_PROGRESS serviceNode
-
-    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class DOCUMENT_EXTERNAL_SYSTEM_CONTRACT,IDENTIFY_EXTERNAL_SYSTEM,SETUP_EXTERNAL_SYSTEM_ACCESS,STOP_CHECKLIST_PARTIALLY_DONE,VERIFY_EXTERNAL_SYSTEM_REACHABLE humanNode
-```
-
 ## Change System Behavior
 
 ```mermaid
@@ -245,25 +213,12 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CHECK_CHECKLIST_PROGRESS[[CHECK_CHECKLIST_PROGRESS]]
-    GATE_CHECKLIST_PARTIALLY_DONE{checklist-partially-done}
     IMPLEMENT_AND_VERIFY_SYSTEM[Update System — see § implement-and-verify-system]
     REDESIGN_END((System Structure Redesigned))
-    STOP_CHECKLIST_PARTIALLY_DONE["${checklist_progress_summary} Approve re-running this cycle?"]
     UPDATE_SYSTEM_DRIVER_ADAPTERS[Update System Driver Adapters]
 
-    CHECK_CHECKLIST_PROGRESS --> GATE_CHECKLIST_PARTIALLY_DONE
-    GATE_CHECKLIST_PARTIALLY_DONE -- Yes --> STOP_CHECKLIST_PARTIALLY_DONE
-    GATE_CHECKLIST_PARTIALLY_DONE -- No --> UPDATE_SYSTEM_DRIVER_ADAPTERS
-    STOP_CHECKLIST_PARTIALLY_DONE --> UPDATE_SYSTEM_DRIVER_ADAPTERS
     UPDATE_SYSTEM_DRIVER_ADAPTERS --> IMPLEMENT_AND_VERIFY_SYSTEM
     IMPLEMENT_AND_VERIFY_SYSTEM --> REDESIGN_END
-
-    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class CHECK_CHECKLIST_PROGRESS serviceNode
-
-    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class STOP_CHECKLIST_PARTIALLY_DONE humanNode
 
     classDef tddRedNode stroke:#dc3545,stroke-width:3px
     class UPDATE_SYSTEM_DRIVER_ADAPTERS tddRedNode
@@ -276,23 +231,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CHECK_CHECKLIST_PROGRESS[[CHECK_CHECKLIST_PROGRESS]]
-    GATE_CHECKLIST_PARTIALLY_DONE{checklist-partially-done}
     IMPLEMENT_AND_VERIFY_SYSTEM[Refactor System — see § implement-and-verify-system]
     REFACTOR_SYSTEM_STRUCTURE_END((System Structure Refactored))
-    STOP_CHECKLIST_PARTIALLY_DONE["${checklist_progress_summary} Approve re-running this cycle?"]
 
-    CHECK_CHECKLIST_PROGRESS --> GATE_CHECKLIST_PARTIALLY_DONE
-    GATE_CHECKLIST_PARTIALLY_DONE -- Yes --> STOP_CHECKLIST_PARTIALLY_DONE
-    GATE_CHECKLIST_PARTIALLY_DONE -- No --> IMPLEMENT_AND_VERIFY_SYSTEM
-    STOP_CHECKLIST_PARTIALLY_DONE --> IMPLEMENT_AND_VERIFY_SYSTEM
     IMPLEMENT_AND_VERIFY_SYSTEM --> REFACTOR_SYSTEM_STRUCTURE_END
-
-    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class CHECK_CHECKLIST_PROGRESS serviceNode
-
-    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class STOP_CHECKLIST_PARTIALLY_DONE humanNode
 
     classDef tddRefactorNode stroke:#007bff,stroke-width:3px
     class IMPLEMENT_AND_VERIFY_SYSTEM tddRefactorNode
@@ -302,23 +244,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CHECK_CHECKLIST_PROGRESS[[CHECK_CHECKLIST_PROGRESS]]
-    GATE_CHECKLIST_PARTIALLY_DONE{checklist-partially-done}
     REFACTOR_AND_VERIFY_TESTS[Refactor and Verify Tests]
     REFACTOR_TEST_STRUCTURE_END((Test Structure Refactored))
-    STOP_CHECKLIST_PARTIALLY_DONE["${checklist_progress_summary} Approve re-running this cycle?"]
 
-    CHECK_CHECKLIST_PROGRESS --> GATE_CHECKLIST_PARTIALLY_DONE
-    GATE_CHECKLIST_PARTIALLY_DONE -- Yes --> STOP_CHECKLIST_PARTIALLY_DONE
-    GATE_CHECKLIST_PARTIALLY_DONE -- No --> REFACTOR_AND_VERIFY_TESTS
-    STOP_CHECKLIST_PARTIALLY_DONE --> REFACTOR_AND_VERIFY_TESTS
     REFACTOR_AND_VERIFY_TESTS --> REFACTOR_TEST_STRUCTURE_END
-
-    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class CHECK_CHECKLIST_PROGRESS serviceNode
-
-    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class STOP_CHECKLIST_PARTIALLY_DONE humanNode
 
     classDef tddRefactorNode stroke:#007bff,stroke-width:3px
     class REFACTOR_AND_VERIFY_TESTS tddRefactorNode
@@ -863,25 +792,12 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CHECK_CHECKLIST_PROGRESS[[CHECK_CHECKLIST_PROGRESS]]
-    GATE_CHECKLIST_PARTIALLY_DONE{checklist-partially-done}
     IMPLEMENT_AND_VERIFY_SYSTEM[Update System — see § implement-and-verify-system]
     REDESIGN_EXTERNAL_END((External System Structure Redesigned))
-    STOP_CHECKLIST_PARTIALLY_DONE["${checklist_progress_summary} Approve re-running this cycle?"]
     UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Update External-System Driver Adapters — see § update-external-system-driver-adapters]
 
-    CHECK_CHECKLIST_PROGRESS --> GATE_CHECKLIST_PARTIALLY_DONE
-    GATE_CHECKLIST_PARTIALLY_DONE -- Yes --> STOP_CHECKLIST_PARTIALLY_DONE
-    GATE_CHECKLIST_PARTIALLY_DONE -- No --> UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
-    STOP_CHECKLIST_PARTIALLY_DONE --> UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
     UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS --> IMPLEMENT_AND_VERIFY_SYSTEM
     IMPLEMENT_AND_VERIFY_SYSTEM --> REDESIGN_EXTERNAL_END
-
-    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class CHECK_CHECKLIST_PROGRESS serviceNode
-
-    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    class STOP_CHECKLIST_PARTIALLY_DONE humanNode
 
     classDef tddRedNode stroke:#dc3545,stroke-width:3px
     class UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS tddRedNode
