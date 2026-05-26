@@ -819,7 +819,7 @@ func TestRunState_PromptLogPathNilIsEmpty(t *testing.T) {
 func TestClaudeRunDispatch_OutputsBlockPopulatesContext(t *testing.T) {
 	// Agent emits both test_names and suite under outputs:. The dispatcher
 	// must coerce test_names to []string and write both keys so the
-	// downstream RUN action's `ctx.State[CtxKeyTestNames].([]string)`
+	// downstream RUN action's `ctx.State["test_names"].([]string)`
 	// assertion succeeds.
 	gitFake := &fakeGit{
 		out: [][]byte{

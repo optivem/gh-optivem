@@ -116,9 +116,8 @@ func ParseOutputs(resultText string) (map[string]any, error) {
 // match. Locking the coercion at parse time means every reader gets the
 // right shape without each one repeating the cast.
 //
-// Mirrors the shape of the context-key constants in actions/bindings.go
-// (CtxKeyTestNames etc.) — the parser is the single seam where the
-// agent-side string/list values become typed Go values.
+// The parser is the single seam where the agent-side string/list values
+// become typed Go values.
 //
 // Unregistered keys pass through as `any` (typically string, bool, or
 // []interface{}). This is the forward-compat seam: a future prompt
