@@ -183,6 +183,12 @@ func newRootCmd() *cobra.Command {
 		withGroup(newHooksCmd(), groupOther),
 		withGroup(newCleanupCmd(), groupOther),
 		withGroup(newAssetCmd(), groupOther),
+		// `output` is the machine-facing ATDD agent output channel.
+		// Called by an agent from inside its dispatched subprocess; not
+		// useful to operators outside that context. Kept in groupOther
+		// for visibility (the `gh optivem output --help` text spells out
+		// the env-var dispatch contract for anyone who finds it).
+		withGroup(newOutputCmd(), groupOther),
 	)
 	return cmd
 }

@@ -382,24 +382,6 @@ New / extended unit tests:
    Downstream consumer updates (read sites that cast
    `ctx.State["test_names"]` etc.) are handled in Item 9's sweep.
 
-3. **Add `output write` subcommand.** New `output_commands.go` at
-   repo root (matching the `*_commands.go` convention) defining a
-   parent `outputCmd` and a `write` child. Implements env-var
-   resolution (`GH_OPTIVEM_OUTPUT_FILE`, `GH_OPTIVEM_OUTPUT_KEYS`
-   in `key:type,...` shape), key-against-allow-list validation,
-   per-key value-type coercion (string / bool / string-list with
-   comma-split), JSONL append, and generic non-zero exits with
-   clear stderr messages (no distinct exit codes — no consumer
-   needs the distinction). JSONL line shape: one
-   `{"key": value, ...}` object per call (a single invocation with
-   multiple `KEY=VAL` args writes one combined line, preserving
-   the agent's emit-intent). Coercion logic is **self-contained**
-   in this file — types come from the env var, not from a shared
-   Go table. The legacy `knownOutputKeys` table in `outputs.go`
-   stays untouched until Item 8 deletes the whole parser; there is
-   no shared dependency between the two during the transition.
-   Unit-tested in isolation. No driver changes yet.
-
 4. **Plumb `GH_OPTIVEM_OUTPUT_FILE` + `GH_OPTIVEM_OUTPUT_KEYS`.**
    Driver gains a new helper `outputFilePath(repoPath, runTS, seq,
    agentName)` that mirrors `promptLogPath` (same composition
