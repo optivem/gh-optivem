@@ -780,11 +780,13 @@ flowchart TD
     GATE_FIX_ON_FAILURE{fix-on-failure-enabled}
     GATE_OUTPUTS_AND_SCOPES_VALID{outputs-and-scopes-valid}
     RUN_AGENT["Run agent ${task-name}"]
+    SNAPSHOT_WORKING_TREE[["Snapshot working tree (per-phase baseline)"]]
     VALIDATE_OUTPUTS_AND_SCOPES[["Validate outputs (${outputs}) & scopes (${scopes})"]]
 
     APPROVE_PRE --> GATE_APPROVED_PRE
-    GATE_APPROVED_PRE -- Approved --> RUN_AGENT
+    GATE_APPROVED_PRE -- Approved --> SNAPSHOT_WORKING_TREE
     GATE_APPROVED_PRE -- Rejected --> EXECUTE_AGENT_REJECTED_END
+    SNAPSHOT_WORKING_TREE --> RUN_AGENT
     RUN_AGENT --> VALIDATE_OUTPUTS_AND_SCOPES
     VALIDATE_OUTPUTS_AND_SCOPES --> GATE_OUTPUTS_AND_SCOPES_VALID
     GATE_OUTPUTS_AND_SCOPES_VALID -- Yes --> APPROVE_POST
@@ -795,7 +797,7 @@ flowchart TD
     APPROVE_POST --> EXECUTE_AGENT_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class VALIDATE_OUTPUTS_AND_SCOPES serviceNode
+    class SNAPSHOT_WORKING_TREE,VALIDATE_OUTPUTS_AND_SCOPES serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
     class RUN_AGENT agentNode
