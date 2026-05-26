@@ -19,7 +19,7 @@
 #            gateway lookup table. `change-system-behavior`,
 #            `cover-system-behavior`, `redesign-system-structure`,
 #            `refactor-system-structure`, `refactor-test-structure`,
-#            `refine-backlog`, `onboard-external-system`.
+#            `refine-backlog-item`, `onboard-external-system`.
 #
 #   HIGH   — composite orchestrations. Author the cascading test/system
 #            verify shape (e.g. `write-and-verify-acceptance-tests` →
@@ -172,9 +172,9 @@ processes:
   # ===========================================================================
   #
   # Backlog grooming entry. Marks the ticket IN REFINEMENT, runs the
-  # refine-backlog cycle to produce Gherkin acceptance criteria + classify
-  # the ticket-kind, then marks READY. The READY state is the precondition
-  # for `implement-ticket`.
+  # refine-backlog-item cycle to produce Gherkin acceptance criteria +
+  # classify the ticket-kind, then marks READY. The READY state is the
+  # precondition for `implement-ticket`.
   # ===========================================================================
   refine-ticket:
     start: MARK_IN_REFINEMENT
@@ -183,10 +183,10 @@ processes:
         type: service-task
         action: move-to-in-refinement
 
-      - id: REFINE_BACKLOG
+      - id: REFINE_BACKLOG_ITEM
         type: call-activity
-        process: refine-backlog
-        documentation: "Refine Backlog"
+        process: refine-backlog-item
+        documentation: "Refine Backlog Item"
 
       - id: MARK_READY
         type: service-task
@@ -197,8 +197,8 @@ processes:
         documentation: "Ticket Marked READY"
 
     sequence-flows:
-      - {from: MARK_IN_REFINEMENT, to: REFINE_BACKLOG}
-      - {from: REFINE_BACKLOG,     to: MARK_READY}
+      - {from: MARK_IN_REFINEMENT, to: REFINE_BACKLOG_ITEM}
+      - {from: REFINE_BACKLOG_ITEM, to: MARK_READY}
       - {from: MARK_READY,         to: REFINE_TICKET_END}
 
   # ===========================================================================
@@ -378,9 +378,9 @@ processes:
       - {from: REDESIGN_SYSTEM_STRUCTURE, to: CHOOSE_REFACTOR_TYPE}
 
   # ===========================================================================
-  # CYCLE — refine-backlog (Q9 = A, sibling cycle)
+  # CYCLE — refine-backlog-item (Q9 = A, sibling cycle)
   # ===========================================================================
-  refine-backlog:
+  refine-backlog-item:
     start: REFINE_ACCEPTANCE_CRITERIA
     nodes:
       - id: REFINE_ACCEPTANCE_CRITERIA
@@ -388,12 +388,12 @@ processes:
         process: refine-acceptance-criteria
         documentation: "Refine Acceptance Criteria"
 
-      - id: REFINE_BACKLOG_END
+      - id: REFINE_BACKLOG_ITEM_END
         type: end-event
         documentation: "Backlog Item Refined"
 
     sequence-flows:
-      - {from: REFINE_ACCEPTANCE_CRITERIA, to: REFINE_BACKLOG_END}
+      - {from: REFINE_ACCEPTANCE_CRITERIA, to: REFINE_BACKLOG_ITEM_END}
 
   # ===========================================================================
   # CYCLE — onboard-external-system (Q-ext = b, standalone cycle)

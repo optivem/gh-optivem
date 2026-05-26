@@ -303,36 +303,6 @@ The audience for this repo is **mixed**: students learning ATDD top-down
 > "state transition", not "update") is preserved by 1220's discrete
 > action names.
 
-## Item 10 — `refine-backlog` sub-process: rename to `refine-backlog-item`
-
-**Observation**: The `refine-backlog` sub-process (process-flow.yaml:343-354)
-runs `refine-acceptance-criteria` against **one ticket**, not the whole
-backlog. Its only call site (`REFINE_BACKLOG` in `refine-ticket`, lines
-176-178) sits between `MARK_IN_REFINEMENT` and `MARK_READY` for that single
-ticket. The name is misleading — "refine the backlog" reads as a
-batch/grooming activity over the entire queue, when in fact it's refining
-one backlog item.
-
-**Direction (decided 2026-05-26)**: rename to **`refine-backlog-item`**
-(sub-process) and **`REFINE_BACKLOG_ITEM`** (call site).
-
-**Files**:
-- `internal/atdd/runtime/statemachine/process-flow.yaml`:
-  - Line 343: process definition rename.
-  - Line 341: YAML section comment.
-  - Line 176, 190, 191: call-site rename in `refine-ticket`.
-  - Line 350, 354: `REFINE_BACKLOG_END` → `REFINE_BACKLOG_ITEM_END` (for
-    consistency with the process rename).
-- `internal/atdd/runtime/diagram/diagram.go` — `processOrder` list (one
-  entry to rename).
-- Test fixtures referencing `refine-backlog` / `REFINE_BACKLOG`.
-
-**Open questions for /refine-plan**:
-
-- Q10.1 — *Decided 2026-05-26*: `refine-backlog-item`.
-- Q10.2 — *Decided 2026-05-26*: defer. Other CYCLE-level names get their
-  own naming pass in a separate plan (consistent with Q9.3 doctrine).
-
 ## Item 11 — `implement-ticket`: split flat ticket-kind gateway into hierarchical type → subtype
 
 **Observation**: `implement-ticket` (process-flow.yaml:232-294) has a single

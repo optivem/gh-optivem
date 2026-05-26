@@ -79,11 +79,11 @@ flowchart TD
 flowchart TD
     MARK_IN_REFINEMENT[[MARK_IN_REFINEMENT]]
     MARK_READY[[MARK_READY]]
-    REFINE_BACKLOG[Refine Backlog]
+    REFINE_BACKLOG_ITEM[Refine Backlog Item]
     REFINE_TICKET_END((Ticket Marked READY))
 
-    MARK_IN_REFINEMENT --> REFINE_BACKLOG
-    REFINE_BACKLOG --> MARK_READY
+    MARK_IN_REFINEMENT --> REFINE_BACKLOG_ITEM
+    REFINE_BACKLOG_ITEM --> MARK_READY
     MARK_READY --> REFINE_TICKET_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
@@ -156,14 +156,14 @@ flowchart TD
     class CHOOSE_REFACTOR_TYPE humanNode
 ```
 
-## Refine Backlog
+## Refine Backlog Item
 
 ```mermaid
 flowchart TD
     REFINE_ACCEPTANCE_CRITERIA[Refine Acceptance Criteria]
-    REFINE_BACKLOG_END((Backlog Item Refined))
+    REFINE_BACKLOG_ITEM_END((Backlog Item Refined))
 
-    REFINE_ACCEPTANCE_CRITERIA --> REFINE_BACKLOG_END
+    REFINE_ACCEPTANCE_CRITERIA --> REFINE_BACKLOG_ITEM_END
 ```
 
 ## Onboard External System

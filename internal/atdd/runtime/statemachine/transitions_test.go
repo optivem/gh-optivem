@@ -41,7 +41,7 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"implement-ticket",
 		"refactor",
 		// CYCLE
-		"refine-backlog",
+		"refine-backlog-item",
 		"onboard-external-system",
 		"change-system-behavior",
 		"cover-system-behavior",
