@@ -9,7 +9,8 @@
 //
 //   - Run with Options.IssueNum > 0 → implement-ticket mode: pre-resolve the
 //     project item for the given issue, seed Context, and skip the picker by
-//     starting the main process at MOVE_TICKET_IN_PROGRESS.
+//     starting the main process at IMPLEMENT_TICKET (the call-activity that
+//     dispatches to the implement-ticket sub-process).
 //   - Run with Options.IssueNum == 0 → manage-project mode: the YAML's main
 //     process runs from START, picking the top Ready ticket from the project
 //     board.
@@ -207,7 +208,7 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	// Load config up-front so its project.url can flow into action deps —
-	// without this, MOVE_TICKET_IN_PROGRESS and friends fall back to
+	// without this, IMPLEMENT_TICKET and friends fall back to
 	// loading a hard-coded gh-optivem.yaml filename in repoPath and miss
 	// any `--config <other-name>.yaml` the operator passed.
 	cfg, err := loadDriverConfig(opts.ConfigPath, repoPath)
@@ -304,9 +305,11 @@ func Run(ctx context.Context, opts Options) error {
 		}
 		// Skip START → PICK_TOP_READY when running main. The pre-resolution
 		// has already populated everything PICK_TOP_READY would have set;
-		// MOVE_TICKET_IN_PROGRESS is the next service task downstream.
+		// IMPLEMENT_TICKET is the next node downstream — a call-activity
+		// that dispatches to the implement-ticket sub-process (which starts
+		// at MARK_IN_PROGRESS, matching the old behaviour).
 		if opts.ProcessName == DefaultProcessName {
-			process.Start = "MOVE_TICKET_IN_PROGRESS"
+			process.Start = "IMPLEMENT_TICKET"
 		}
 	}
 

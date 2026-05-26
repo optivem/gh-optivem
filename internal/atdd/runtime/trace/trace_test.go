@@ -173,9 +173,9 @@ func TestWrap_ServiceTaskSkipsWorkingTreeSnapshot(t *testing.T) {
 	var buf bytes.Buffer
 	git := &fakeGit{}
 	node := statemachine.Node{
-		ID:   "MOVE_TICKET_IN_PROGRESS",
+		ID:   "PICK_TOP_READY",
 		Kind: statemachine.ServiceTask,
-		Raw:  statemachine.RawNode{Action: "move_to_in_progress"},
+		Raw:  statemachine.RawNode{Action: "pick-top-ready"},
 		Fn: func(ctx *statemachine.Context) statemachine.Outcome {
 			return statemachine.Outcome{}
 		},

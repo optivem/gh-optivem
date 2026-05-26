@@ -43,9 +43,9 @@ import (
 // --issue the driver picks the top Ready item from the project board and
 // walks the configured process from START (former `manage-project` path).
 // With --issue the driver pre-resolves the project item and walks from
-// MOVE_TICKET_IN_PROGRESS (former `implement-ticket` path). The on-disk
-// preflight runs in both cases — the no-issue path still needs the workspace
-// to exist.
+// IMPLEMENT_TICKET — the call-activity that dispatches to the
+// implement-ticket sub-process. The on-disk preflight runs in both cases —
+// the no-issue path still needs the workspace to exist.
 func newImplementCmd() *cobra.Command {
 	var (
 		issueArg     string
