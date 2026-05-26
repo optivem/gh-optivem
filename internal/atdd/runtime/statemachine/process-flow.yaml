@@ -19,7 +19,7 @@
 #            gateway lookup table. `change-system-behavior`,
 #            `cover-system-behavior`, `redesign-system-structure`,
 #            `refactor-system-structure`, `refactor-test-structure`,
-#            `refine-backlog-item`, `onboard-external-system`.
+#            `refine-backlog-item`.
 #
 #   HIGH   — composite orchestrations. Author the cascading test/system
 #            verify shape (e.g. `write-and-verify-acceptance-tests` →
@@ -211,7 +211,6 @@ processes:
   #     external-system-redesign    → redesign-external-system-structure
   #     system-refactor             → refactor-system-structure
   #     test-refactor               → refactor-test-structure
-  #     external-system-onboarding  → onboard-external-system
   #
   # Matches how operators conceptually classify: "first, what is this —
   # story, bug, or task? then, if task, what kind?" The slash-delimited
@@ -292,11 +291,6 @@ processes:
         process: refactor-test-structure
         documentation: "Refactor Test Structure"
 
-      - id: ONBOARD_EXTERNAL_SYSTEM
-        type: call-activity
-        process: onboard-external-system
-        documentation: "Onboard External System"
-
       - id: MARK_IN_ACCEPTANCE
         type: service-task
         action: move-to-in-acceptance
@@ -325,7 +319,6 @@ processes:
       - {from: GATE_TASK_SUBTYPE, to: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE, when: "task-subtype == external-system-redesign"}
       - {from: GATE_TASK_SUBTYPE, to: REFACTOR_SYSTEM_STRUCTURE,          when: "task-subtype == system-refactor"}
       - {from: GATE_TASK_SUBTYPE, to: REFACTOR_TEST_STRUCTURE,            when: "task-subtype == test-refactor"}
-      - {from: GATE_TASK_SUBTYPE, to: ONBOARD_EXTERNAL_SYSTEM,            when: "task-subtype == external-system-onboarding"}
       - {from: GATE_TASK_SUBTYPE, to: UNKNOWN_TASK_SUBTYPE}
       - {from: CHANGE_SYSTEM_BEHAVIOR,             to: MARK_IN_ACCEPTANCE}
       - {from: COVER_SYSTEM_BEHAVIOR,              to: MARK_IN_ACCEPTANCE}
@@ -333,7 +326,6 @@ processes:
       - {from: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE, to: MARK_IN_ACCEPTANCE}
       - {from: REFACTOR_SYSTEM_STRUCTURE,          to: MARK_IN_ACCEPTANCE}
       - {from: REFACTOR_TEST_STRUCTURE,            to: MARK_IN_ACCEPTANCE}
-      - {from: ONBOARD_EXTERNAL_SYSTEM,            to: MARK_IN_ACCEPTANCE}
       - {from: MARK_IN_ACCEPTANCE,        to: IMPLEMENT_TICKET_END}
 
   # Loopable refactor-type chooser. The operator picks a refactor CYCLE
@@ -407,61 +399,6 @@ processes:
 
     sequence-flows:
       - {from: REFINE_ACCEPTANCE_CRITERIA, to: REFINE_BACKLOG_ITEM_END}
-
-  # Per-system onboarding for an external system. The four steps are
-  # currently agent-less placeholders (`agent: human`) matching the
-  # brainstorm's tentative shape — Phase D may promote one or more steps
-  # to a dedicated onboarding agent.
-  onboard-external-system:
-    start: CHECK_CHECKLIST_PROGRESS
-    nodes:
-      - id: CHECK_CHECKLIST_PROGRESS
-        type: service-task
-        action: check-checklist-progress
-
-      - id: GATE_CHECKLIST_PARTIALLY_DONE
-        type: gateway
-        binding: checklist-partially-done
-        documentation: "checklist-partially-done"
-
-      - id: STOP_CHECKLIST_PARTIALLY_DONE
-        type: user-task
-        agent: human
-        documentation: "${checklist_progress_summary} Approve re-running this cycle?"
-
-      - id: IDENTIFY_EXTERNAL_SYSTEM
-        type: user-task
-        agent: human
-        documentation: "Identify external system"
-
-      - id: DOCUMENT_EXTERNAL_SYSTEM_CONTRACT
-        type: user-task
-        agent: human
-        documentation: "Document external system contract"
-
-      - id: SETUP_EXTERNAL_SYSTEM_ACCESS
-        type: user-task
-        agent: human
-        documentation: "Set up external system access (credentials, endpoints, sandbox)"
-
-      - id: VERIFY_EXTERNAL_SYSTEM_REACHABLE
-        type: user-task
-        agent: human
-        documentation: "Verify external system reachable"
-
-      - id: ONBOARD_END
-        type: end-event
-        documentation: "External System Onboarded"
-
-    sequence-flows:
-      - {from: CHECK_CHECKLIST_PROGRESS,          to: GATE_CHECKLIST_PARTIALLY_DONE}
-      - {from: GATE_CHECKLIST_PARTIALLY_DONE,     to: STOP_CHECKLIST_PARTIALLY_DONE, when: "checklist-partially-done == true"}
-      - {from: GATE_CHECKLIST_PARTIALLY_DONE,     to: IDENTIFY_EXTERNAL_SYSTEM,      when: "checklist-partially-done == false"}
-      - {from: STOP_CHECKLIST_PARTIALLY_DONE,     to: IDENTIFY_EXTERNAL_SYSTEM}
-      - {from: IDENTIFY_EXTERNAL_SYSTEM,          to: DOCUMENT_EXTERNAL_SYSTEM_CONTRACT}
-      - {from: DOCUMENT_EXTERNAL_SYSTEM_CONTRACT, to: SETUP_EXTERNAL_SYSTEM_ACCESS}
-      - {from: SETUP_EXTERNAL_SYSTEM_ACCESS,      to: VERIFY_EXTERNAL_SYSTEM_REACHABLE}
-      - {from: VERIFY_EXTERNAL_SYSTEM_REACHABLE,  to: ONBOARD_END}
 
   # Classic red-green-REFACTOR triad (Q33). Step 3 delegates to the
   # canonical `refactor` TOP process — same gateway, same three
@@ -539,22 +476,8 @@ processes:
   # `implement-*` variants (TODO-fill translation). Each variant is a
   # single-caller prompt with one algorithm and no Checklist branching.
   redesign-system-structure:
-    start: CHECK_CHECKLIST_PROGRESS
+    start: UPDATE_SYSTEM_DRIVER_ADAPTERS
     nodes:
-      - id: CHECK_CHECKLIST_PROGRESS
-        type: service-task
-        action: check-checklist-progress
-
-      - id: GATE_CHECKLIST_PARTIALLY_DONE
-        type: gateway
-        binding: checklist-partially-done
-        documentation: "checklist-partially-done"
-
-      - id: STOP_CHECKLIST_PARTIALLY_DONE
-        type: user-task
-        agent: human
-        documentation: "${checklist_progress_summary} Approve re-running this cycle?"
-
       - id: UPDATE_SYSTEM_DRIVER_ADAPTERS
         type: call-activity
         process: update-system-driver-adapters
@@ -574,10 +497,6 @@ processes:
         documentation: "System Structure Redesigned"
 
     sequence-flows:
-      - {from: CHECK_CHECKLIST_PROGRESS,       to: GATE_CHECKLIST_PARTIALLY_DONE}
-      - {from: GATE_CHECKLIST_PARTIALLY_DONE,  to: STOP_CHECKLIST_PARTIALLY_DONE,  when: "checklist-partially-done == true"}
-      - {from: GATE_CHECKLIST_PARTIALLY_DONE,  to: UPDATE_SYSTEM_DRIVER_ADAPTERS,  when: "checklist-partially-done == false"}
-      - {from: STOP_CHECKLIST_PARTIALLY_DONE,  to: UPDATE_SYSTEM_DRIVER_ADAPTERS}
       - {from: UPDATE_SYSTEM_DRIVER_ADAPTERS,  to: IMPLEMENT_AND_VERIFY_SYSTEM}
       - {from: IMPLEMENT_AND_VERIFY_SYSTEM,    to: REDESIGN_END}
 
@@ -593,22 +512,8 @@ processes:
   # Verb-split note (plan 20260526-1448 Item 10): the redesign call sites
   # dispatch `update-*` variants (Checklist-driven reshape).
   redesign-external-system-structure:
-    start: CHECK_CHECKLIST_PROGRESS
+    start: UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
     nodes:
-      - id: CHECK_CHECKLIST_PROGRESS
-        type: service-task
-        action: check-checklist-progress
-
-      - id: GATE_CHECKLIST_PARTIALLY_DONE
-        type: gateway
-        binding: checklist-partially-done
-        documentation: "checklist-partially-done"
-
-      - id: STOP_CHECKLIST_PARTIALLY_DONE
-        type: user-task
-        agent: human
-        documentation: "${checklist_progress_summary} Approve re-running this cycle?"
-
       - id: UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
         type: call-activity
         process: update-external-system-driver-adapters
@@ -628,10 +533,6 @@ processes:
         documentation: "External System Structure Redesigned"
 
     sequence-flows:
-      - {from: CHECK_CHECKLIST_PROGRESS,               to: GATE_CHECKLIST_PARTIALLY_DONE}
-      - {from: GATE_CHECKLIST_PARTIALLY_DONE,          to: STOP_CHECKLIST_PARTIALLY_DONE,          when: "checklist-partially-done == true"}
-      - {from: GATE_CHECKLIST_PARTIALLY_DONE,          to: UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, when: "checklist-partially-done == false"}
-      - {from: STOP_CHECKLIST_PARTIALLY_DONE,          to: UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS}
       - {from: UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, to: IMPLEMENT_AND_VERIFY_SYSTEM}
       - {from: IMPLEMENT_AND_VERIFY_SYSTEM,            to: REDESIGN_EXTERNAL_END}
 
@@ -639,22 +540,8 @@ processes:
   # `action: refactor-system`. Was the prototype encoded in Item 1 of
   # this plan; preserved unchanged.
   refactor-system-structure:
-    start: CHECK_CHECKLIST_PROGRESS
+    start: IMPLEMENT_AND_VERIFY_SYSTEM
     nodes:
-      - id: CHECK_CHECKLIST_PROGRESS
-        type: service-task
-        action: check-checklist-progress
-
-      - id: GATE_CHECKLIST_PARTIALLY_DONE
-        type: gateway
-        binding: checklist-partially-done
-        documentation: "checklist-partially-done"
-
-      - id: STOP_CHECKLIST_PARTIALLY_DONE
-        type: user-task
-        agent: human
-        documentation: "${checklist_progress_summary} Approve re-running this cycle?"
-
       - id: IMPLEMENT_AND_VERIFY_SYSTEM
         type: call-activity
         process: implement-and-verify-system
@@ -668,29 +555,11 @@ processes:
         documentation: "System Structure Refactored"
 
     sequence-flows:
-      - {from: CHECK_CHECKLIST_PROGRESS,        to: GATE_CHECKLIST_PARTIALLY_DONE}
-      - {from: GATE_CHECKLIST_PARTIALLY_DONE,   to: STOP_CHECKLIST_PARTIALLY_DONE, when: "checklist-partially-done == true"}
-      - {from: GATE_CHECKLIST_PARTIALLY_DONE,   to: IMPLEMENT_AND_VERIFY_SYSTEM,   when: "checklist-partially-done == false"}
-      - {from: STOP_CHECKLIST_PARTIALLY_DONE,   to: IMPLEMENT_AND_VERIFY_SYSTEM}
       - {from: IMPLEMENT_AND_VERIFY_SYSTEM,     to: REFACTOR_SYSTEM_STRUCTURE_END}
 
   refactor-test-structure:
-    start: CHECK_CHECKLIST_PROGRESS
+    start: REFACTOR_AND_VERIFY_TESTS
     nodes:
-      - id: CHECK_CHECKLIST_PROGRESS
-        type: service-task
-        action: check-checklist-progress
-
-      - id: GATE_CHECKLIST_PARTIALLY_DONE
-        type: gateway
-        binding: checklist-partially-done
-        documentation: "checklist-partially-done"
-
-      - id: STOP_CHECKLIST_PARTIALLY_DONE
-        type: user-task
-        agent: human
-        documentation: "${checklist_progress_summary} Approve re-running this cycle?"
-
       - id: REFACTOR_AND_VERIFY_TESTS
         type: call-activity
         process: refactor-and-verify-tests
@@ -702,10 +571,6 @@ processes:
         documentation: "Test Structure Refactored"
 
     sequence-flows:
-      - {from: CHECK_CHECKLIST_PROGRESS,       to: GATE_CHECKLIST_PARTIALLY_DONE}
-      - {from: GATE_CHECKLIST_PARTIALLY_DONE,  to: STOP_CHECKLIST_PARTIALLY_DONE, when: "checklist-partially-done == true"}
-      - {from: GATE_CHECKLIST_PARTIALLY_DONE,  to: REFACTOR_AND_VERIFY_TESTS,     when: "checklist-partially-done == false"}
-      - {from: STOP_CHECKLIST_PARTIALLY_DONE,  to: REFACTOR_AND_VERIFY_TESTS}
       - {from: REFACTOR_AND_VERIFY_TESTS,      to: REFACTOR_TEST_STRUCTURE_END}
 
   # Cycle-facing thin wrapper that pins `expected-test-result: failure`
