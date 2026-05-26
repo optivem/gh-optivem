@@ -170,6 +170,21 @@ func RegisterAll(r *Registry, deps Deps) {
 	// phase_scope_violating_paths to context. The downstream
 	// phase_scope_clean gate consumes the boolean.
 	r.Register("check_phase_scope", a.checkPhaseScope)
+	// BPMN Phase D — LOW execute-command primitive. Reads ctx.Params["command"]
+	// (the templated bash line, post-ExpandParams), appends --filter-type=
+	// and --filter-value= flags only when those params are non-empty, shells
+	// out, and writes ctx.State["command-succeeded"]. For the
+	// `gh optivem run-tests` family it also stamps ctx.State["test-outcome"]
+	// (pass|fail) so the verify-tests-pass / verify-tests-fail gateways can
+	// route without a second shell-out.
+	r.Register("run-command", a.runCommand)
+	// BPMN Phase D — LOW execute-agent primitive's post-RUN_AGENT
+	// validation step. Reads ctx.Params["outputs"] (comma-separated keys
+	// the agent's `outputs:` YAML block must populate) + ctx.Params["scopes"]
+	// (comma-separated Family B layer tokens defining the allowed
+	// working-tree paths), and writes ctx.State["outputs-and-scopes-valid"]
+	// + ctx.State["failure-kind"] (missing-output|scope-diff).
+	r.Register("validate-outputs-and-scopes", a.validateOutputsAndScopes)
 }
 
 // Context keys consumed by the red_phase_cycle actions. Centralised so the
@@ -1725,6 +1740,169 @@ func shellEscape(s string) string {
 		return s
 	}
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// ---------------------------------------------------------------------------
+// BPMN Phase D — LOW execute-command + execute-agent primitives
+// ---------------------------------------------------------------------------
+
+// runCommand is the body of the LOW `execute-command` primitive (per
+// plans/20260525-2348-bpmn-phase-d-bindings.md Item 1, Q-D5). The
+// caller's `call-activity.params:` block is expanded against the parent
+// scope before dispatch, so by the time the action fires:
+//
+//   - ctx.Params["command"]      — the fully-resolved bash command line
+//                                   (e.g. "gh optivem run-tests")
+//   - ctx.Params["filter-type"]  — optional; appended as --filter-type=…
+//   - ctx.Params["filter-value"] — optional; appended as --filter-value=…
+//
+// Writes ctx.State["command-succeeded"] = (exit == 0). For the
+// `gh optivem run-tests` family it additionally stamps
+// ctx.State["test-outcome"] = "pass"|"fail" so the verify-tests-pass /
+// verify-tests-fail gateways downstream of run-tests route without a
+// second shell-out.
+//
+// Does NOT surface command failure as Outcome.Err — the
+// execute-command primitive's GATE_COMMAND_SUCCEEDED is the intended
+// consumer of the false branch (it dispatches `fix` with
+// failure-kind = "command-failed"). Empty `command` is a wiring bug, so
+// surfaces as Err.
+func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
+	cmd := strings.TrimSpace(ctx.Params["command"])
+	if cmd == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("run-command: command param not set — call-activity must pass `command:`")}
+	}
+	isTestRun := strings.HasPrefix(cmd, "gh optivem run-tests")
+	if filterType := strings.TrimSpace(ctx.Params["filter-type"]); filterType != "" {
+		cmd += " --filter-type=" + shellEscape(filterType)
+	}
+	if filterValue := strings.TrimSpace(ctx.Params["filter-value"]); filterValue != "" {
+		cmd += " --filter-value=" + shellEscape(filterValue)
+	}
+	_, err := a.runShell(cmd)
+	succeeded := err == nil
+	ctx.Set("command-succeeded", succeeded)
+	if isTestRun {
+		if succeeded {
+			ctx.Set("test-outcome", "pass")
+		} else {
+			ctx.Set("test-outcome", "fail")
+		}
+	}
+	if err != nil {
+		fmt.Fprintf(a.deps.Stderr, "run-command: %v\n", err)
+	}
+	return statemachine.Outcome{}
+}
+
+// validateOutputsAndScopes is the LOW `execute-agent` primitive's
+// post-RUN_AGENT validation step (BPMN Phase D Item 7, Q-D6). The
+// agent's `outputs:` YAML block has already been flattened into
+// ctx.State by clauderun.ParseOutputs (driver.go); this action checks
+// (a) every key the caller declared in `outputs:` is present in
+// ctx.State, and (b) every working-tree change since HEAD falls
+// within at least one of the call-site's declared `scopes:` (joined
+// against gh-optivem.yaml paths: via the same resolveLayerPaths the
+// checkPhaseScope action uses).
+//
+// Reads:
+//   - ctx.Params["outputs"]  — comma-separated list of expected output
+//                              keys; empty → no output expectations.
+//   - ctx.Params["scopes"]   — comma-separated Family B scope tokens
+//                              (e.g. "at-test,dsl-port,dsl-core"); empty
+//                              → skip scope check (update-ticket /
+//                              refine-acceptance-criteria do not declare scopes).
+//
+// Writes:
+//   - ctx.State["outputs-and-scopes-valid"] — bool.
+//   - ctx.State["failure-kind"]             — set on false; one of
+//                                             missing-output | scope-diff
+//                                             (priority: missing-output
+//                                             wins when both fail).
+//
+// Does NOT surface as Outcome.Err — the gateway's false branch
+// dispatches `fix-${failure-kind}` per Q-late-5. Hard errors
+// (gh-optivem.yaml missing, git unusable) DO surface as Err since
+// they indicate a wiring/infra problem, not an agent-output problem.
+func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachine.Outcome {
+	// 1. Output presence check.
+	var missing []string
+	for _, key := range splitCSV(ctx.Params["outputs"]) {
+		if _, ok := ctx.State[key]; !ok {
+			missing = append(missing, key)
+		}
+	}
+	if len(missing) > 0 {
+		ctx.Set("outputs-and-scopes-valid", false)
+		ctx.Set("failure-kind", "missing-output")
+		fmt.Fprintf(a.deps.Stderr,
+			"validate-outputs-and-scopes: agent did not emit expected outputs: %s\n",
+			strings.Join(missing, ", "))
+		return statemachine.Outcome{}
+	}
+
+	// 2. Scope check (no-op when the caller did not declare scopes).
+	scopes := splitCSV(ctx.Params["scopes"])
+	if len(scopes) == 0 {
+		ctx.Set("outputs-and-scopes-valid", true)
+		return statemachine.Outcome{}
+	}
+
+	cfg, err := projectconfig.Load(a.deps.RepoPath)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: load gh-optivem.yaml: %w", err)}
+	}
+	if cfg == nil {
+		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: gh-optivem.yaml not found under %s", a.deps.RepoPath)}
+	}
+	allowed, err := resolveLayerPaths(scopes, cfg)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
+	}
+	modified, err := a.modifiedPathsSinceHead(context.Background())
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
+	}
+
+	var violating []string
+	for _, m := range modified {
+		if !pathInScope(m, allowed) {
+			violating = append(violating, m)
+		}
+	}
+	if len(violating) > 0 {
+		ctx.Set("outputs-and-scopes-valid", false)
+		ctx.Set("failure-kind", "scope-diff")
+		fmt.Fprintf(a.deps.Stderr,
+			"validate-outputs-and-scopes: %d path(s) outside scope %v:\n",
+			len(violating), scopes)
+		for _, v := range violating {
+			fmt.Fprintf(a.deps.Stderr, "  out-of-scope: %s\n", v)
+		}
+		return statemachine.Outcome{}
+	}
+
+	ctx.Set("outputs-and-scopes-valid", true)
+	return statemachine.Outcome{}
+}
+
+// splitCSV trims and splits a comma-separated param value; empty or
+// whitespace-only input returns nil so callers can use `len(...) == 0`
+// as the "skip this dimension" predicate.
+func splitCSV(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // ---------------------------------------------------------------------------

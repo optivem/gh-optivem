@@ -87,6 +87,34 @@ func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 	}
 }
 
+// TestEmbeddedYAML_BindsAfterPhaseD asserts the embedded process-flow.yaml
+// — which now exclusively references the five-level BPMN kebab-case
+// bindings and actions — binds cleanly with the actions/gates registries
+// produced by RegisterAll. This is the unit-level equivalent of the
+// plan's Item 9 smoke run: it locks in that every YAML `binding:` and
+// `action:` reference has a registry entry. If a future YAML change
+// introduces a new binding name, this test fails with a clear
+// "binding X not registered" message — the same error the rehearsal
+// worktree would surface, but caught in CI.
+func TestEmbeddedYAML_BindsAfterPhaseD(t *testing.T) {
+	eng, err := statemachine.LoadDefault()
+	if err != nil {
+		t.Fatalf("LoadDefault: %v", err)
+	}
+	gateReg := gates.New()
+	gates.RegisterAll(gateReg, gates.Deps{})
+	actionReg := actions.New()
+	actions.RegisterAll(actionReg, actions.Deps{})
+	agentReg := agents.New()
+	registerAgentDispatchers(agentReg)
+	eng.GateFn = gateReg.Lookup
+	eng.ActionFn = actionReg.Lookup
+	eng.AgentFn = agentReg.Lookup
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("embedded YAML failed to bind — Phase D registry wiring is incomplete: %v", err)
+	}
+}
+
 // TestEmbeddedDispatch_RunsInConsumerEmptyDir walks a real production
 // user-task (FIX_TEST in the embedded `structural_cycle` flow) against
 // the fake clauderun + git pair, with RepoPath set to a temp dir that

@@ -702,6 +702,15 @@ func wrapAgentDispatchers(eng *statemachine.Engine, opts Options, cfg *projectco
 			switch {
 			case raw.Agent == "":
 				continue
+			case process.Name == "approve" && raw.Agent == "human":
+				// LOW `approve` primitive (BPMN Phase D Item 6, Q-D2):
+				// the GATE_APPROVED gateway routes on the value the
+				// dispatcher writes to ctx.State["approval-outcome"], so
+				// reject must return gracefully (Outcome{}) instead of
+				// the hard halt newHumanStopDispatcher does for every
+				// other STOP site. Wired ahead of the generic human
+				// branch below so the lookup wins.
+				node.Fn = newApproveDispatcher(opts, raw, nodeID)
 			case raw.Agent == "human":
 				node.Fn = newHumanStopDispatcher(opts, raw, nodeID)
 			case opts.ManualAgents:
@@ -741,6 +750,43 @@ func newHumanStopDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 		}
 		if !ok {
 			return statemachine.Outcome{Err: fmt.Errorf("user aborted at %s", nodeID)}
+		}
+		return statemachine.Outcome{}
+	}
+}
+
+// newApproveDispatcher returns the NodeFn for the ASK_HUMAN user-task
+// inside the LOW `approve` primitive (BPMN Phase D Item 6, Q-D2).
+// Prints the expanded `${question}` from the YAML node description,
+// asks y/n through promptio (same explicit-y/n semantics as every
+// other operator prompt), writes ctx.State["approval-outcome"] =
+// "approved"|"rejected", and returns Outcome{} either way so the
+// downstream GATE_APPROVED gateway routes on the state value instead
+// of the engine halting at this node.
+//
+// This is sibling to newHumanStopDispatcher: that one hard-halts on
+// rejection because every other STOP site in the runtime treats "no"
+// as "abort the whole run". The `approve` primitive inverts that —
+// reject is a routable outcome the caller owns (Q3 = A; caller-owned
+// NO branch).
+func newApproveDispatcher(opts Options, raw statemachine.RawNode, nodeID string) statemachine.NodeFn {
+	return func(ctx *statemachine.Context) statemachine.Outcome {
+		question := statemachine.ExpandParams(raw.Documentation, ctx.Params)
+
+		fmt.Fprintln(opts.Stdout)
+		if question != "" {
+			fmt.Fprintf(opts.Stdout, "[%s] %s\n", nodeID, question)
+		} else {
+			fmt.Fprintf(opts.Stdout, "[%s] Approve?\n", nodeID)
+		}
+		ok, err := promptio.ConfirmYN(opts.Stdin, opts.Stdout, "  Approve?")
+		if err != nil {
+			return statemachine.Outcome{Err: fmt.Errorf("read approve confirmation at %s: %w", nodeID, err)}
+		}
+		if ok {
+			ctx.Set("approval-outcome", "approved")
+		} else {
+			ctx.Set("approval-outcome", "rejected")
 		}
 		return statemachine.Outcome{}
 	}

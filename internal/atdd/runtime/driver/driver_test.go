@@ -930,6 +930,114 @@ func TestClaudeRunDispatch_MalformedOutputsBlockFailsLoud(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// approve dispatcher (BPMN Phase D Item 6, Q-D2)
+// ---------------------------------------------------------------------------
+
+// approveYAML is a stripped-down `approve` process — just the
+// ASK_HUMAN user-task + an end event — used to verify
+// wrapAgentDispatchers installs the approve-specific dispatcher (not
+// the hard-halting human-stop one) for the ASK_HUMAN node. We omit
+// the gateway here because Bind() requires a GateFn registry, which
+// is out of scope for these tests — the dispatcher writes the state
+// key directly, and the gateway is exercised by the gates package
+// tests.
+const approveYAML = `
+processes:
+  approve:
+    start: ASK_HUMAN
+    nodes:
+      - id: ASK_HUMAN
+        type: user-task
+        agent: human
+        documentation: "Do you approve?"
+      - id: APPROVE_END
+        type: end-event
+    sequence-flows:
+      - {from: ASK_HUMAN, to: APPROVE_END}
+`
+
+func TestApproveDispatcher_YesWritesApproved(t *testing.T) {
+	opts := newDriverOpts(clauderun.Deps{})
+	opts.Stdin = strings.NewReader("y\n")
+	var stdout bytes.Buffer
+	opts.Stdout = &stdout
+	fn := buildEngineFromApprove(t, opts)
+
+	ctx := statemachine.NewContext()
+	out := fn(ctx)
+	if out.Err != nil {
+		t.Fatalf("approve YES should not surface err: %v", out.Err)
+	}
+	if got := ctx.GetString("approval-outcome"); got != "approved" {
+		t.Fatalf("approval-outcome: got %q, want %q", got, "approved")
+	}
+}
+
+func TestApproveDispatcher_NoWritesRejected_NoErr(t *testing.T) {
+	// CRITICAL: this is the asymmetry from newHumanStopDispatcher.
+	// approve's NO must NOT halt — the gateway routes the reject branch.
+	opts := newDriverOpts(clauderun.Deps{})
+	opts.Stdin = strings.NewReader("n\n")
+	opts.Stdout = &bytes.Buffer{}
+	fn := buildEngineFromApprove(t, opts)
+
+	ctx := statemachine.NewContext()
+	out := fn(ctx)
+	if out.Err != nil {
+		t.Fatalf("approve NO must route (not halt): %v", out.Err)
+	}
+	if got := ctx.GetString("approval-outcome"); got != "rejected" {
+		t.Fatalf("approval-outcome: got %q, want %q", got, "rejected")
+	}
+}
+
+func TestApproveDispatcher_QuestionExpandsParams(t *testing.T) {
+	// The YAML's ${task-name} placeholder in the documentation field
+	// must be resolved against ctx.Params before the prompt is printed.
+	opts := newDriverOpts(clauderun.Deps{})
+	opts.Stdin = strings.NewReader("y\n")
+	var stdout bytes.Buffer
+	opts.Stdout = &stdout
+	yaml := strings.Replace(approveYAML, `"Do you approve?"`, `"Do you approve task ${task-name} to run?"`, 1)
+	fn := buildEngineFromApproveYAML(t, opts, yaml)
+
+	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "write-acceptance-tests"
+	out := fn(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if !strings.Contains(stdout.String(), "task write-acceptance-tests") {
+		t.Fatalf("stdout missing expanded task-name: %q", stdout.String())
+	}
+}
+
+// buildEngineFromApprove loads approveYAML, binds, wraps dispatchers,
+// and returns the wrapped NodeFn for ASK_HUMAN — which must be the
+// approve dispatcher (not the human-stop one), per the case ordering
+// in wrapAgentDispatchers.
+func buildEngineFromApprove(t *testing.T, opts Options) statemachine.NodeFn {
+	t.Helper()
+	return buildEngineFromApproveYAML(t, opts, approveYAML)
+}
+
+func buildEngineFromApproveYAML(t *testing.T, opts Options, yamlSrc string) statemachine.NodeFn {
+	t.Helper()
+	eng, err := statemachine.LoadBytes([]byte(yamlSrc))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+	agentReg := agents.New()
+	registerAgentDispatchers(agentReg)
+	eng.AgentFn = agentReg.Lookup
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+	wrapAgentDispatchers(eng, opts, nil, nil)
+	return eng.Processes["approve"].Nodes["ASK_HUMAN"].Fn
+}
+
 func TestClaudeRunDispatch_MissingOutputsBlockIsNoOp(t *testing.T) {
 	// Agents that have nothing to emit (or pre-amendment prompts) leave
 	// the block out entirely. The dispatcher must NOT fail — the

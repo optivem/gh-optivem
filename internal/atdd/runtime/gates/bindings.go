@@ -194,6 +194,24 @@ func RegisterAll(r *Registry, deps Deps) {
 	// downstream GATE_EXT_AT / GATE_SYS_AT gates rely on a real yes|no,
 	// not a default no.
 	r.Register("dsl_flags_present", b.dslFlagsPresent)
+	// BPMN Phase D bindings (per
+	// plans/20260525-2348-bpmn-phase-d-bindings.md). Kebab-case here
+	// matches the YAML `binding:` references; the ctx state/params keys
+	// the bodies read are also kebab (agent-emitted outputs, call-site
+	// params). Old snake-case registrations above are tolerated by the
+	// registry and will be swept once the new YAML shape is proven on a
+	// full ticket.
+	r.Register("command-succeeded", b.commandSucceeded)
+	r.Register("test-outcome", b.testOutcome)
+	r.Register("expected-test-result", b.expectedTestResult)
+	r.Register("fix-on-failure-enabled", b.fixOnFailureEnabled)
+	r.Register("dsl-port-changed", b.dslPortChanged)
+	r.Register("system-driver-ports-changed", b.systemDriverPortsChanged)
+	r.Register("external-driver-ports-changed", b.externalDriverPortsChanged)
+	r.Register("refactor-type-choice", b.refactorTypeChoice)
+	r.Register("approval-outcome", b.approvalOutcome)
+	r.Register("outputs-and-scopes-valid", b.outputsAndScopesValid)
+	r.Register("ticket-kind", b.ticketKind)
 }
 
 // bindings is a thin closure-receiver so each method has access to deps
@@ -717,6 +735,256 @@ func (b bindings) phaseScopeClean(ctx *statemachine.Context) statemachine.Outcom
 		return statemachine.Outcome{Err: fmt.Errorf("phase_scope_clean: not set in Context — check_phase_scope action did not run")}
 	}
 	return outcomeFromBoolish(v)
+}
+
+// ---------------------------------------------------------------------------
+// BPMN Phase D bindings (plans/20260525-2348-bpmn-phase-d-bindings.md)
+// ---------------------------------------------------------------------------
+//
+// All keys read/written below are kebab-case to match the YAML
+// `binding:` references, the YAML `params:` block keys, and the
+// agent-emitted `outputs:` yaml keys flattened into ctx.State by
+// clauderun.ParseOutputs. Asymmetry vs. the snake-case keys used by
+// older bindings/actions above is accepted per Q-D1 — the kebab
+// vocabulary is the target shape; the old snake keys are tolerated
+// until the dead-binding sweep follow-up.
+
+// commandSucceeded is the LOW `execute-command` primitive's
+// GATE_COMMAND_SUCCEEDED. Reads the boolean run-command stamped into
+// ctx.State["command-succeeded"]; missing value is a wiring bug (the
+// action MUST have run upstream).
+func (b bindings) commandSucceeded(ctx *statemachine.Context) statemachine.Outcome {
+	v, ok := ctx.State["command-succeeded"]
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("command-succeeded: not set in Context — run-command action did not run")}
+	}
+	return outcomeFromBoolish(v)
+}
+
+// testOutcome routes verify-tests-pass / verify-tests-fail on the
+// per-suite pass|fail value run-command stamps after a
+// `gh optivem run-tests` invocation. Halt on unset (the gate fires
+// immediately after RUN_TESTS, so the action's stamp is required) and
+// halt on any value outside {pass, fail} so a future action contract
+// drift surfaces loudly instead of silently mis-routing.
+func (b bindings) testOutcome(ctx *statemachine.Context) statemachine.Outcome {
+	v, ok := ctx.State["test-outcome"]
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("test-outcome: not set in Context — run-command did not classify (only `gh optivem run-tests` stamps test-outcome)")}
+	}
+	s, ok := v.(string)
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("test-outcome: %T, want string", v)}
+	}
+	switch s {
+	case "pass", "fail":
+		return statemachine.Outcome{Value: s}
+	default:
+		return statemachine.Outcome{Err: fmt.Errorf("test-outcome: unrecognised value %q (action stamped a value the gate does not handle)", s)}
+	}
+}
+
+// expectedTestResult is the implement-test-layer fork gate. The
+// pinned-result wrapper passes `expected-test-result: success` or
+// `failure` via call-activity params (and parameterised callers forward
+// `${expected-test-result}`). Reads ctx.Params verbatim — this is
+// structural metadata of the call site, not a runtime decision the
+// operator re-makes — and halts on empty (the caller forgot to pin
+// the param). No prompt fallback.
+func (b bindings) expectedTestResult(ctx *statemachine.Context) statemachine.Outcome {
+	v := strings.TrimSpace(ctx.Params["expected-test-result"])
+	if v == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("expected-test-result: call-activity param not set — caller must pin `expected-test-result: success` or `failure`")}
+	}
+	return statemachine.Outcome{Value: v}
+}
+
+// fixOnFailureEnabled gates the LOW `execute-agent` primitive's
+// validation-failure → CALL_FIX edge. Reads the `fix-on-failure`
+// call-activity param: only the `fix` primitive's recursive
+// `execute-agent` call sets it to "false" (single-attempt
+// remediation), so the default (missing/empty) is true — every other
+// caller wants fix dispatch on validation failure. Coerces via
+// promptio.ParseYN so "true"/"false"/"yes"/"no" all round-trip.
+func (b bindings) fixOnFailureEnabled(ctx *statemachine.Context) statemachine.Outcome {
+	raw := strings.TrimSpace(ctx.Params["fix-on-failure"])
+	if raw == "" {
+		return statemachine.Outcome{Bool: true}
+	}
+	yes, ok := promptio.ParseYN(raw)
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("fix-on-failure-enabled: unrecognised value %q (expected true|false|yes|no)", raw)}
+	}
+	return statemachine.Outcome{Bool: yes}
+}
+
+// dslPortChanged, systemDriverPortsChanged, externalDriverPortsChanged
+// are the writing-agent output flags consumed by the per-test-layer
+// fanout in implement-and-verify-dsl. Each reads the kebab ctx key
+// the agent's `outputs:` YAML block emits (flattened verbatim by
+// clauderun.ParseOutputs into ctx.State). Missing/unset is a bug —
+// the writing-agent prompt MUST list the flag in `outputs:`, so unset
+// means the agent's COMMIT block was malformed, not "no" — and we
+// halt rather than mis-route (same doctrine as the older
+// dslFlagsPresent gate).
+func (b bindings) dslPortChanged(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "dsl-port-changed")
+}
+
+func (b bindings) systemDriverPortsChanged(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "system-driver-ports-changed")
+}
+
+func (b bindings) externalDriverPortsChanged(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "external-driver-ports-changed")
+}
+
+// boolStateGate is the shared body of the three driver-port-changed
+// gates. Strict — missing key halts (the agent's `outputs:` block MUST
+// emit the flag explicitly), value type-flexible (outcomeFromBoolish
+// accepts bool, "true"/"false", "yes"/"no").
+func boolStateGate(ctx *statemachine.Context, key string) statemachine.Outcome {
+	v, ok := ctx.State[key]
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("%s: not set in Context — the agent's `outputs:` block must emit %q (unset is a bug, not a default no)", key, key)}
+	}
+	return outcomeFromBoolish(v)
+}
+
+// refactorTypeChoice prompts the operator for the loopable refactor
+// menu (TOP `refactor` and the opportunistic-refactor branch inside
+// `change-system-behavior`). Empty reply → `none` (exit the loop).
+// Mirrors the structuralTestMode shape (this file, top of file):
+// preseed via ctx.State to short-circuit the prompt for hand-debug or
+// transitions tests; otherwise inline ask → trim/lower → switch on
+// the four enum values.
+func (b bindings) refactorTypeChoice(ctx *statemachine.Context) statemachine.Outcome {
+	if v := ctx.GetString("refactor-type-choice"); v != "" {
+		return statemachine.Outcome{Value: v}
+	}
+	answer, err := b.deps.Prompter.Ask("Refactor type? (refactor-system-structure | refactor-test-structure | redesign-system-structure | none) [none]: ")
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("refactor-type-choice: %w", err)}
+	}
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	if answer == "" {
+		answer = "none"
+	}
+	switch answer {
+	case "refactor-system-structure",
+		"refactor-test-structure",
+		"redesign-system-structure",
+		"none":
+		return statemachine.Outcome{Value: answer}
+	default:
+		return statemachine.Outcome{Err: fmt.Errorf("refactor-type-choice: unrecognised value %q", answer)}
+	}
+}
+
+// approvalOutcome reads the value newApproveDispatcher (driver.go)
+// writes when the operator answers ASK_HUMAN inside the LOW `approve`
+// primitive. Range: approved | rejected. The dispatcher writes one of
+// the two on every approve invocation, so missing is a wiring bug
+// (the dispatcher was not installed for this approve process) — halt
+// rather than route silently.
+func (b bindings) approvalOutcome(ctx *statemachine.Context) statemachine.Outcome {
+	v := ctx.GetString("approval-outcome")
+	switch v {
+	case "approved", "rejected":
+		return statemachine.Outcome{Value: v}
+	case "":
+		return statemachine.Outcome{Err: fmt.Errorf("approval-outcome: not set in Context — approve dispatcher must have run before the gate")}
+	default:
+		return statemachine.Outcome{Err: fmt.Errorf("approval-outcome: unrecognised value %q (dispatcher stamped a value the gate does not handle)", v)}
+	}
+}
+
+// outputsAndScopesValid reads the boolean validate-outputs-and-scopes
+// stamped after the LOW `execute-agent` primitive's RUN_AGENT. The
+// action MUST run before the gate, so unset is a wiring bug.
+func (b bindings) outputsAndScopesValid(ctx *statemachine.Context) statemachine.Outcome {
+	v, ok := ctx.State["outputs-and-scopes-valid"]
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("outputs-and-scopes-valid: not set in Context — validate-outputs-and-scopes action did not run")}
+	}
+	return outcomeFromBoolish(v)
+}
+
+// ticketKind composes the TOP `implement-ticket` dispatch
+// discriminator from (Tracker.Classify, Tracker.Subtypes). Lookup
+// table per Q-D3:
+//
+//	ticket-type | subtype                    | discriminator
+//	---         | ---                        | ---
+//	story       | (any/none)                 | story
+//	bug         | (any/none)                 | bug
+//	task        | cover-legacy               | task/cover-legacy
+//	task        | redesign-system            | task/redesign-system
+//	task        | refactor-system            | task/refactor-system
+//	task        | refactor-tests             | task/refactor-tests
+//	task        | onboard-external-system    | task/onboard-external-system
+//
+// Preseed via ctx.State["ticket-kind"] short-circuits the
+// classification (hand-debug / transitions tests). Tracker.Classify
+// returns the GitHub native issue type; ticketTypeAliases is the same
+// "feature → story" normalization the older read_ticket_type action
+// applies. Tracker.Subtypes returns the `subtype:*` label values for
+// task tickets; exactly one is expected (multiple labels or none on a
+// task is unrecognised composition).
+func (b bindings) ticketKind(ctx *statemachine.Context) statemachine.Outcome {
+	if v := ctx.GetString("ticket-kind"); v != "" {
+		return statemachine.Outcome{Value: v}
+	}
+	issue, err := issueFromContext(ctx)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: %w", err)}
+	}
+	kind, confident, err := b.deps.Tracker.Classify(context.Background(), issue)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: %w", err)}
+	}
+	if !confident || kind == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: issue %s has no native issue type — set Feature / Bug / Task and re-run", issue.ID)}
+	}
+	if alias, ok := ticketKindAliases[kind]; ok {
+		kind = alias
+	}
+	switch kind {
+	case "story", "bug":
+		return statemachine.Outcome{Value: kind}
+	case "task":
+		subs, err := b.deps.Tracker.Subtypes(context.Background(), issue)
+		if err != nil {
+			return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: %w", err)}
+		}
+		if len(subs) != 1 {
+			return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: task %s has %d subtype:* labels (want exactly one)", issue.ID, len(subs))}
+		}
+		sub := subs[0]
+		if !ticketKindTaskSubtypes[sub] {
+			return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: task %s has unrecognised subtype %q", issue.ID, sub)}
+		}
+		return statemachine.Outcome{Value: "task/" + sub}
+	default:
+		return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: unsupported ticket type %q (expected story | bug | task)", kind)}
+	}
+}
+
+// ticketKindAliases mirrors the older read_ticket_type behaviour
+// (actions/bindings.go ticketTypeAliases): GitHub's "Feature" native
+// type is the new spelling of what the runtime calls "story".
+var ticketKindAliases = map[string]string{"feature": "story"}
+
+// ticketKindTaskSubtypes is the closed set of `subtype:*` labels the
+// implement-ticket gateway dispatches on. Anything outside this set
+// surfaces as unrecognised — the operator re-labels the ticket and
+// re-runs.
+var ticketKindTaskSubtypes = map[string]bool{
+	"cover-legacy":             true,
+	"redesign-system":          true,
+	"refactor-system":          true,
+	"refactor-tests":           true,
+	"onboard-external-system":  true,
 }
 
 // ---------------------------------------------------------------------------

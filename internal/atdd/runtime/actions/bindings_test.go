@@ -1989,3 +1989,256 @@ func TestCheckPhaseScope_RenameTracksBothEndpoints(t *testing.T) {
 		t.Fatalf("violating slice missing rename target: %v", violating)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// run-command (BPMN Phase D Item 1, Q-D5)
+// ---------------------------------------------------------------------------
+
+func TestRunCommand_HappyPath(t *testing.T) {
+	sh := &fakeShell{out: []byte("OK")}
+	var stdout, stderr bytes.Buffer
+	a := newActions(Deps{Shell: sh, Stdout: &stdout, Stderr: &stderr})
+	ctx := statemachine.NewContext()
+	ctx.Params["command"] = "gh optivem compile"
+	out := a.runCommand(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get("command-succeeded"); got != true {
+		t.Fatalf("command-succeeded: got %v, want true", got)
+	}
+	if _, set := ctx.State["test-outcome"]; set {
+		t.Fatalf("test-outcome should NOT be set for non-run-tests commands: got %v", ctx.Get("test-outcome"))
+	}
+	if len(sh.calls) != 1 || sh.calls[0] != "gh optivem compile" {
+		t.Fatalf("shell calls: got %v, want [\"gh optivem compile\"]", sh.calls)
+	}
+}
+
+func TestRunCommand_FailureRoutes_NotErrors(t *testing.T) {
+	sh := &fakeShell{out: []byte("fail"), err: errors.New("exit 1")}
+	var stdout, stderr bytes.Buffer
+	a := newActions(Deps{Shell: sh, Stdout: &stdout, Stderr: &stderr})
+	ctx := statemachine.NewContext()
+	ctx.Params["command"] = "gh optivem commit"
+	out := a.runCommand(ctx)
+	// Failure must route, not halt — the cycle's GATE_COMMAND_SUCCEEDED
+	// dispatches `fix` on the false branch.
+	if out.Err != nil {
+		t.Fatalf("command failure should route, not halt: %v", out.Err)
+	}
+	if got := ctx.Get("command-succeeded"); got != false {
+		t.Fatalf("command-succeeded: got %v, want false", got)
+	}
+}
+
+func TestRunCommand_RunTestsStampsTestOutcome(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "pass", err: nil, want: "pass"},
+		{name: "fail", err: errors.New("exit 1"), want: "fail"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sh := &fakeShell{out: []byte(""), err: tc.err}
+			var stderr bytes.Buffer
+			a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &stderr})
+			ctx := statemachine.NewContext()
+			ctx.Params["command"] = "gh optivem run-tests"
+			out := a.runCommand(ctx)
+			if out.Err != nil {
+				t.Fatalf("unexpected err: %v", out.Err)
+			}
+			if got := ctx.GetString("test-outcome"); got != tc.want {
+				t.Fatalf("test-outcome: got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRunCommand_FilterFlagsAppendedOnlyWhenSet(t *testing.T) {
+	sh := &fakeShell{out: []byte("OK")}
+	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	ctx.Params["command"] = "gh optivem run-tests"
+	ctx.Params["filter-type"] = "test-type"
+	ctx.Params["filter-value"] = "at-test"
+	out := a.runCommand(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if len(sh.calls) != 1 {
+		t.Fatalf("expected 1 shell call, got %d: %v", len(sh.calls), sh.calls)
+	}
+	if !strings.Contains(sh.calls[0], "--filter-type=test-type") {
+		t.Fatalf("shell call missing --filter-type=: %q", sh.calls[0])
+	}
+	if !strings.Contains(sh.calls[0], "--filter-value=at-test") {
+		t.Fatalf("shell call missing --filter-value=: %q", sh.calls[0])
+	}
+}
+
+func TestRunCommand_NoFilterFlagsWhenEmpty(t *testing.T) {
+	sh := &fakeShell{out: []byte("OK")}
+	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	ctx.Params["command"] = "gh optivem commit"
+	// filter-type / filter-value left empty
+	out := a.runCommand(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if strings.Contains(sh.calls[0], "--filter-") {
+		t.Fatalf("shell call should not carry filter flags: %q", sh.calls[0])
+	}
+}
+
+func TestRunCommand_EmptyCommandHalts(t *testing.T) {
+	sh := &fakeShell{}
+	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	// no command param set
+	out := a.runCommand(ctx)
+	if out.Err == nil {
+		t.Fatalf("expected err for missing command param, got %+v", out)
+	}
+	if len(sh.calls) != 0 {
+		t.Fatalf("shell should not be called when command param is empty: %v", sh.calls)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// validate-outputs-and-scopes (BPMN Phase D Item 7, Q-D6)
+// ---------------------------------------------------------------------------
+
+func TestValidateOutputsAndScopes_NoOutputs_NoScopes_IsValid(t *testing.T) {
+	// update-ticket / refine-acceptance-criteria carry no outputs and no
+	// scopes — the validation must pass trivially.
+	a := newActions(Deps{Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get("outputs-and-scopes-valid"); got != true {
+		t.Fatalf("outputs-and-scopes-valid: got %v, want true", got)
+	}
+	if _, set := ctx.State["failure-kind"]; set {
+		t.Fatalf("failure-kind should not be set on success: got %v", ctx.Get("failure-kind"))
+	}
+}
+
+func TestValidateOutputsAndScopes_MissingOutput_FlagsAndKind(t *testing.T) {
+	var stderr bytes.Buffer
+	a := newActions(Deps{Stderr: &stderr})
+	ctx := statemachine.NewContext()
+	ctx.Params["outputs"] = "dsl-port-changed,system-driver-ports-changed"
+	// Only one of the two declared outputs is present in state.
+	ctx.Set("dsl-port-changed", true)
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get("outputs-and-scopes-valid"); got != false {
+		t.Fatalf("outputs-and-scopes-valid: got %v, want false", got)
+	}
+	if got := ctx.GetString("failure-kind"); got != "missing-output" {
+		t.Fatalf("failure-kind: got %q, want %q", got, "missing-output")
+	}
+	if !strings.Contains(stderr.String(), "system-driver-ports-changed") {
+		t.Fatalf("stderr missing output name: %q", stderr.String())
+	}
+}
+
+func TestValidateOutputsAndScopes_OutputsPresent_NoScopes_IsValid(t *testing.T) {
+	a := newActions(Deps{Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	ctx.Params["outputs"] = "dsl-port-changed"
+	ctx.Set("dsl-port-changed", true)
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get("outputs-and-scopes-valid"); got != true {
+		t.Fatalf("outputs-and-scopes-valid: got %v, want true", got)
+	}
+}
+
+func TestValidateOutputsAndScopes_ScopeDiff_FlagsAndKind(t *testing.T) {
+	repoPath := t.TempDir()
+	writePhaseScopeTestConfig(t, repoPath)
+	git := newFakeRunner(t, "git")
+	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
+		[]byte("dsl/typescript/src/core/Logic.ts\nsomewhere/else/Stray.ts\n"), nil)
+	git.on([]string{"-C", repoPath, "status", "--porcelain"},
+		[]byte(""), nil)
+	var stderr bytes.Buffer
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Stderr: &stderr})
+	ctx := statemachine.NewContext()
+	// declared scopes covers dsl-core but not "somewhere/else".
+	ctx.Params["scopes"] = "dsl-core,driver-port"
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get("outputs-and-scopes-valid"); got != false {
+		t.Fatalf("outputs-and-scopes-valid: got %v, want false", got)
+	}
+	if got := ctx.GetString("failure-kind"); got != "scope-diff" {
+		t.Fatalf("failure-kind: got %q, want %q", got, "scope-diff")
+	}
+	if !strings.Contains(stderr.String(), "somewhere/else/Stray.ts") {
+		t.Fatalf("stderr should name the out-of-scope file: %q", stderr.String())
+	}
+}
+
+func TestValidateOutputsAndScopes_AllClean_IsValid(t *testing.T) {
+	repoPath := t.TempDir()
+	writePhaseScopeTestConfig(t, repoPath)
+	git := newFakeRunner(t, "git")
+	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
+		[]byte("dsl/typescript/src/core/Logic.ts\ndriver/typescript/src/port/Port.ts\n"), nil)
+	git.on([]string{"-C", repoPath, "status", "--porcelain"},
+		[]byte(""), nil)
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	ctx.Params["outputs"] = "dsl-port-changed"
+	ctx.Params["scopes"] = "dsl-core,driver-port"
+	ctx.Set("dsl-port-changed", true)
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get("outputs-and-scopes-valid"); got != true {
+		t.Fatalf("outputs-and-scopes-valid: got %v, want true", got)
+	}
+}
+
+func TestValidateOutputsAndScopes_MissingOutputWins_OverScopeDiff(t *testing.T) {
+	// Both failure conditions hold; missing-output is prioritised (the
+	// agent must first emit the flag — there is nothing to validate
+	// scope-wise if the agent didn't even claim to have done the work).
+	repoPath := t.TempDir()
+	writePhaseScopeTestConfig(t, repoPath)
+	git := newFakeRunner(t, "git")
+	// modifiedPathsSinceHead is not consulted on the missing-output path,
+	// but if it were, this would be a scope-diff candidate.
+	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
+		[]byte("somewhere/else/Stray.ts\n"), nil)
+	git.on([]string{"-C", repoPath, "status", "--porcelain"},
+		[]byte(""), nil)
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	ctx.Params["outputs"] = "dsl-port-changed"
+	ctx.Params["scopes"] = "dsl-core"
+	// dsl-port-changed not set in state.
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.GetString("failure-kind"); got != "missing-output" {
+		t.Fatalf("failure-kind: got %q, want %q (missing-output must win)", got, "missing-output")
+	}
+}
