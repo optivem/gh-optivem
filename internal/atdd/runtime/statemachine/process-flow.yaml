@@ -1650,6 +1650,16 @@ processes:
   # that caller-side gate the unconditional out-edge would silently fall
   # through to the next node — the exact bug that motivated this
   # arrangement (rejecting `fix` still ran the inner agent).
+  #
+  # `execute-agent`'s APPROVE_POST is the one exception to the "rejection
+  # is a soft-skip" pattern: it gates on `approval-outcome` like every
+  # other approve site but routes the rejected branch to an
+  # `error-end-event` rather than a plain end-event, so the entire run
+  # halts. Rationale lives at the gate (search for
+  # `EXECUTE_AGENT_OUTPUT_REJECTED_END`): POST rejection means "the
+  # agent's output is broken, don't accept it," and letting the caller
+  # continue would propagate broken artifacts through every downstream
+  # phase.
   approve:
     start: ASK_HUMAN
     nodes:
@@ -1751,6 +1761,11 @@ processes:
         params:
           question: "Approve output from agent ${task-name}?"
 
+      - id: GATE_APPROVED_POST
+        type: gateway
+        binding: approval-outcome
+        documentation: "approval-outcome"
+
       - id: EXECUTE_AGENT_END
         type: end-event
         documentation: "Agent Dispatch Complete"
@@ -1758,6 +1773,20 @@ processes:
       - id: EXECUTE_AGENT_REJECTED_END
         type: end-event
         documentation: "Agent Dispatch Rejected"
+
+      # POST rejection is treated as a hard abort (error-end-event), not the
+      # soft-skip used for PRE rejection. Rationale: PRE rejection means "I
+      # don't want to run this agent right now" — no output was produced, so
+      # letting the caller continue is harmless (the downstream phase will
+      # fail naturally on the missing artifact). POST rejection means "the
+      # agent's output is broken, don't accept it" — letting the caller
+      # continue would propagate broken artifacts through every downstream
+      # phase. The "too coarse" reasoning in the `approve` doc-block above
+      # applies to fix-rejection (a recoverable choice), not to output-
+      # rejection (a workflow-halting verdict).
+      - id: EXECUTE_AGENT_OUTPUT_REJECTED_END
+        type: error-end-event
+        documentation: "Agent Output Rejected"
 
     sequence-flows:
       - {from: APPROVE_PRE,                   to: GATE_APPROVED_PRE}
@@ -1771,7 +1800,9 @@ processes:
       - {from: GATE_FIX_ON_FAILURE,           to: FIX,             when: "fix-on-failure-enabled == true"}
       - {from: GATE_FIX_ON_FAILURE,           to: APPROVE_POST,         when: "fix-on-failure-enabled == false"}
       - {from: FIX,                      to: APPROVE_POST}
-      - {from: APPROVE_POST,                  to: EXECUTE_AGENT_END}
+      - {from: APPROVE_POST,                  to: GATE_APPROVED_POST}
+      - {from: GATE_APPROVED_POST,            to: EXECUTE_AGENT_END,                  when: "approval-outcome == approved"}
+      - {from: GATE_APPROVED_POST,            to: EXECUTE_AGENT_OUTPUT_REJECTED_END,  when: "approval-outcome == rejected"}
 
   # PRE approval only (Q2 = C asymmetric — commands have machine-checkable
   # success). On command failure, dispatch `fix` (the `command-failed`
