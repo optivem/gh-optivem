@@ -21,6 +21,8 @@ Dev-loop ATDD rehearsal (see [Part 1](#part-1--dev-loop-local-gh-optivem-against
 
 For structural change - UI Redesign
 
+**Issue [#61 — Redesigning New Order UI](https://github.com/optivem/shop/issues/61)**:
+
 ```bash
 cd ../shop
 
@@ -29,10 +31,20 @@ bash ../gh-optivem/scripts/atdd-rehearsal.sh 61 --config gh-optivem-monolith-typ
 
 For behavioral change - user story
 
+**Issue [#65 — View product list](https://github.com/optivem/shop/issues/65)** (read-only flow):
+
 ```bash
 cd ../shop
 
 bash ../gh-optivem/scripts/atdd-rehearsal.sh 65 --config gh-optivem-monolith-typescript.yaml
+```
+
+**Issue [#68 — Apply automatic quantity discount on cart lines](https://github.com/optivem/shop/issues/68)** (write flow with calculation rule):
+
+```bash
+cd ../shop
+
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 68 --config gh-optivem-monolith-typescript.yaml
 ```
 
 ## Contents
