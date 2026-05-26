@@ -328,11 +328,13 @@ processes:
   #
   # Loopable refactor-type chooser. The operator picks a refactor CYCLE
   # (opportunistic mode, no checklist) or exits. No Mark-Ticket bookends —
-  # there is no ticket. Coexists with two other refactor surfaces:
+  # there is no ticket. Reused by `change-system-behavior` step 3 (via a
+  # single `REFACTOR_OPPORTUNISTICALLY` call-activity) so the
+  # opportunistic-inside-change surface shares this menu instead of
+  # duplicating the gateway. Three call surfaces, one definition:
   # (1) ticket-driven via `task/system-refactor` → `implement-ticket`
-  # gateway → CYCLE; (2) opportunistic-inside-change via the loopable
-  # step 3 in `change-system-behavior`. Three surfaces, three ceremony
-  # levels.
+  # gateway → CYCLE; (2) opportunistic-inside-change via the call into
+  # this TOP; (3) ad-hoc operator entry directly into this TOP.
   # ===========================================================================
   refactor:
     start: CHOOSE_REFACTOR_TYPE
@@ -457,12 +459,13 @@ processes:
   # CYCLE — change-system-behavior
   # ===========================================================================
   #
-  # Classic red-green-REFACTOR triad (Q33). Step 3 is a loopable
-  # opportunistic-refactor menu that calls existing CYCLEs in opportunistic
-  # mode (no checklist supplied — the CYCLE degrades to "look at the just-
-  # landed patch / operator's mind"). One CYCLE definition serves both
-  # ticket-driven (via `implement-ticket` gateway) and opportunistic (here)
-  # callers.
+  # Classic red-green-REFACTOR triad (Q33). Step 3 delegates to the
+  # canonical `refactor` TOP process — same gateway, same three
+  # refactor-cycle options, same `none` exit. Two surfaces, one
+  # definition: the ticket-driven path (`task/system-refactor` →
+  # `implement-ticket` gateway → CYCLE) and the opportunistic-in-place
+  # path (here, via the `refactor` call-activity) both land on the
+  # `refactor-*-structure` CYCLEs through one shared menu.
   # ===========================================================================
   change-system-behavior:
     start: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL
@@ -481,25 +484,10 @@ processes:
         documentation: "Implement System"
         tdd-stage: green
 
-      - id: GATE_OPPORTUNISTIC_REFACTOR
-        type: gateway
-        binding: refactor-type-choice
-        documentation: "refactor-type-choice"
-
-      - id: OPP_REFACTOR_SYSTEM_STRUCTURE
+      - id: REFACTOR_OPPORTUNISTICALLY
         type: call-activity
-        process: refactor-system-structure
-        documentation: "Refactor System Structure"
-
-      - id: OPP_REFACTOR_TEST_STRUCTURE
-        type: call-activity
-        process: refactor-test-structure
-        documentation: "Refactor Test Structure"
-
-      - id: OPP_REDESIGN_SYSTEM_STRUCTURE
-        type: call-activity
-        process: redesign-system-structure
-        documentation: "Redesign System Structure"
+        process: refactor
+        documentation: "Opportunistic Refactor (Loopable)"
 
       - id: CHANGE_SYSTEM_BEHAVIOR_END
         type: end-event
@@ -507,14 +495,8 @@ processes:
 
     sequence-flows:
       - {from: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL, to: IMPLEMENT_AND_VERIFY_SYSTEM}
-      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,            to: GATE_OPPORTUNISTIC_REFACTOR}
-      - {from: GATE_OPPORTUNISTIC_REFACTOR, to: OPP_REFACTOR_SYSTEM_STRUCTURE, when: "refactor-type-choice == refactor-system-structure"}
-      - {from: GATE_OPPORTUNISTIC_REFACTOR, to: OPP_REFACTOR_TEST_STRUCTURE,   when: "refactor-type-choice == refactor-test-structure"}
-      - {from: GATE_OPPORTUNISTIC_REFACTOR, to: OPP_REDESIGN_SYSTEM_STRUCTURE, when: "refactor-type-choice == redesign-system-structure"}
-      - {from: GATE_OPPORTUNISTIC_REFACTOR, to: CHANGE_SYSTEM_BEHAVIOR_END,    when: "refactor-type-choice == none"}
-      - {from: OPP_REFACTOR_SYSTEM_STRUCTURE, to: GATE_OPPORTUNISTIC_REFACTOR}
-      - {from: OPP_REFACTOR_TEST_STRUCTURE,   to: GATE_OPPORTUNISTIC_REFACTOR}
-      - {from: OPP_REDESIGN_SYSTEM_STRUCTURE,  to: GATE_OPPORTUNISTIC_REFACTOR}
+      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,            to: REFACTOR_OPPORTUNISTICALLY}
+      - {from: REFACTOR_OPPORTUNISTICALLY,             to: CHANGE_SYSTEM_BEHAVIOR_END}
 
   # ===========================================================================
   # CYCLE — cover-system-behavior (Q16 = B, legacy-coverage as parameterised expectation)

@@ -121,52 +121,6 @@ at line 213; the comment at line 204-208).
   the latter — the current renderer partitions ungrouped vs grouped after
   collecting; we keep that.)
 
-## Item 3 — Duplicate refactor menu in `change-system-behavior` step 3
-
-**Observation**: The "opportunistic refactor" block in `change-system-behavior`
-(lines 423-452) is structurally identical to the `refactor` TOP process
-(lines 308-338): same three CALL options (refactor-system-structure /
-refactor-test-structure / redesign-system-structure), same gateway binding
-(`refactor_type_choice`), same loopback, same `none` exit. Only differences
-are cosmetic (`CALL_` vs `OPP_` prefix, slightly different gateway wording)
-and the exit target (own end vs change-system-behavior's end). The inline
-comment at lines 297-307 claims "Three surfaces, three ceremony levels" but
-no actual ceremony difference exists in the YAML.
-
-**Direction (recommended)**: replace lines 423-452 with a single
-`call_activity` pointing at the `refactor` process:
-
-```yaml
-- id: REFACTOR_OPPORTUNISTICALLY
-  type: call_activity
-  process: refactor
-  documentation: "Opportunistic refactor (loopable; none = end cycle)"
-```
-
-Net: removes one gateway + three CALL nodes + their loopback edges; the
-"opportunistic" framing survives as a call-site label. One canonical
-refactor menu reused from two callers (TOP entry + `change-system-behavior`).
-
-**Files**: `internal/atdd/runtime/statemachine/process-flow.yaml` (lines
-423-452 replaced; comment at 297-307 reworded; statemachine tests if they
-reference the removed node IDs).
-
-**Open questions resolved 2026-05-26**:
-
-- Q3.1 — *Decided*: no param threading. The refactor menu reads no
-  upstream state today; collapsing into a single call_activity is
-  semantics-preserving.
-- Q3.2 — *Decided*: asymmetry is correct and intentional. Two callers
-  carry different information at the call site: `implement-ticket` knows
-  the kind from the ticket (direct route via `GATE_TICKET_KIND`); the
-  opportunistic site is mid-cycle exploration with no ticket (menu via
-  the `refactor` TOP process). Both end at one of the three
-  `refactor-*-structure` cycles, just via different paths.
-- Q3.3 — *Inventoried 2026-05-26*: no `*_test.go` files reference
-  `OPP_*` IDs. References live only in `process-flow.yaml` (Item 3
-  rewrites), `docs/process-diagram.md` (regenerated), and
-  `docs/images/process-diagram-*.svg` (regenerated). Clean cut.
-
 ## Item 4 — RED vs GREEN label asymmetry — *merged into Item 2 on 2026-05-26*
 
 The six pre-existing `documentation:` strings (RED, GREEN, Cover, two
