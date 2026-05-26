@@ -90,8 +90,8 @@ flowchart TD
 flowchart TD
     CHANGE_SYSTEM_BEHAVIOR[Change System Behavior]
     COVER_SYSTEM_BEHAVIOR[Cover System Behavior]
-    GATE_TASK_SUBTYPE{task-subtype}
-    GATE_TICKET_KIND{ticket-kind}
+    GATE_TASK_SUBTYPE{Task Subtype?}
+    GATE_TICKET_KIND{Ticket Kind?}
     IMPLEMENT_TICKET_END(( ))
     MARK_IN_ACCEPTANCE[[Mark IN ACCEPTANCE]]
     MARK_IN_PROGRESS[[Mark IN PROGRESS]]
@@ -135,7 +135,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     CHOOSE_REFACTOR_TYPE["Choose refactor type (loopable; none = exit)"]
-    GATE_REFACTOR_TYPE_CHOICE{ }
+    GATE_REFACTOR_TYPE_CHOICE{Refactor Type?}
     REDESIGN_EXTERNAL_SYSTEM_STRUCTURE[Redesign External-System Structure]
     REDESIGN_SYSTEM_STRUCTURE[Redesign System Structure]
     REFACTOR_SYSTEM_STRUCTURE[Refactor System Structure]
@@ -271,9 +271,9 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    GATE_DSL_PORT_CHANGED{dsl-port-changed}
-    GATE_EXTERNAL_DRIVER_PORTS_CHANGED{external-driver-ports-changed}
-    GATE_SYSTEM_DRIVER_PORTS_CHANGED{system-driver-ports-changed}
+    GATE_DSL_PORT_CHANGED{DSL Port Changed?}
+    GATE_EXTERNAL_DRIVER_PORTS_CHANGED{External Driver Ports Changed?}
+    GATE_SYSTEM_DRIVER_PORTS_CHANGED{System Driver Ports Changed?}
     IMPLEMENT_AND_VERIFY_DSL[Implement and Verify DSL]
     IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS[Implement and Verify External-System Driver Adapters]
     IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS[Implement and Verify System Driver Adapters]
@@ -299,7 +299,8 @@ flowchart TD
     COMMIT_TEST_CODE[Commit Test Code — see § commit]
     COMPILE_TESTS[Compile Tests]
     DISABLE_ACCEPTANCE_TESTS[Disable Acceptance Tests — see § disable-tests]
-    GATE_EXPECTED_TEST_RESULT{expected-test-result}
+    GATE_EXPECTED_TEST_RESULT{Expected Test Result?}
+    START_SYSTEM[Start System]
     UNKNOWN_EXPECTED_TEST_RESULT((⚡))
     VERIFY_TESTS_FAIL_ACCEPTANCE[Verify Acceptance Tests Fail — see § verify-tests-fail]
     VERIFY_TESTS_PASS_ACCEPTANCE[Verify Acceptance Tests Pass — see § verify-tests-pass]
@@ -307,7 +308,8 @@ flowchart TD
     WRITE_ACCEPTANCE_TESTS[Write Acceptance Tests]
 
     WRITE_ACCEPTANCE_TESTS --> COMPILE_TESTS
-    COMPILE_TESTS --> GATE_EXPECTED_TEST_RESULT
+    COMPILE_TESTS --> START_SYSTEM
+    START_SYSTEM --> GATE_EXPECTED_TEST_RESULT
     GATE_EXPECTED_TEST_RESULT -- Success --> VERIFY_TESTS_PASS_ACCEPTANCE
     GATE_EXPECTED_TEST_RESULT -- Failure --> VERIFY_TESTS_FAIL_ACCEPTANCE
     GATE_EXPECTED_TEST_RESULT --> UNKNOWN_EXPECTED_TEST_RESULT
@@ -354,11 +356,16 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    GATE_DSL_PORT_CHANGED{dsl-port-changed}
+    BUILD_SYSTEM_AFTER_DRIVER[Build System]
+    BUILD_SYSTEM_AFTER_STUBS[Build System]
+    GATE_DSL_PORT_CHANGED{DSL Port Changed?}
     IMPLEMENT_AND_VERIFY_DSL[Implement and Verify DSL]
     IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Implement External-System Driver Adapters]
     IMPLEMENT_EXTERNAL_SYSTEM_STUBS[Implement External-System Stubs]
     IMPL_EXT_DRIVER_CT_END(( ))
+    START_SYSTEM_AFTER_DRIVER[Start System]
+    START_SYSTEM_AFTER_STUBS[Start System]
+    START_SYSTEM_BEFORE_STUB_FAIL[Start System]
     VERIFY_TESTS_FAIL_CONTRACT_STUB[Verify Contract Tests Fail Against the Stub — see § verify-tests-fail]
     VERIFY_TESTS_PASS_CONTRACT_REAL[Verify Contract Tests Pass Against the Real System — see § verify-tests-pass]
     VERIFY_TESTS_PASS_CONTRACT_STUB[Verify Contract Tests Pass Against the Stub — see § verify-tests-pass]
@@ -368,10 +375,15 @@ flowchart TD
     GATE_DSL_PORT_CHANGED -- Yes --> IMPLEMENT_AND_VERIFY_DSL
     GATE_DSL_PORT_CHANGED -- No --> IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
     IMPLEMENT_AND_VERIFY_DSL --> IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
-    IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS --> VERIFY_TESTS_PASS_CONTRACT_REAL
-    VERIFY_TESTS_PASS_CONTRACT_REAL --> VERIFY_TESTS_FAIL_CONTRACT_STUB
+    IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS --> BUILD_SYSTEM_AFTER_DRIVER
+    BUILD_SYSTEM_AFTER_DRIVER --> START_SYSTEM_AFTER_DRIVER
+    START_SYSTEM_AFTER_DRIVER --> VERIFY_TESTS_PASS_CONTRACT_REAL
+    VERIFY_TESTS_PASS_CONTRACT_REAL --> START_SYSTEM_BEFORE_STUB_FAIL
+    START_SYSTEM_BEFORE_STUB_FAIL --> VERIFY_TESTS_FAIL_CONTRACT_STUB
     VERIFY_TESTS_FAIL_CONTRACT_STUB --> IMPLEMENT_EXTERNAL_SYSTEM_STUBS
-    IMPLEMENT_EXTERNAL_SYSTEM_STUBS --> VERIFY_TESTS_PASS_CONTRACT_STUB
+    IMPLEMENT_EXTERNAL_SYSTEM_STUBS --> BUILD_SYSTEM_AFTER_STUBS
+    BUILD_SYSTEM_AFTER_STUBS --> START_SYSTEM_AFTER_STUBS
+    START_SYSTEM_AFTER_STUBS --> VERIFY_TESTS_PASS_CONTRACT_STUB
     VERIFY_TESTS_PASS_CONTRACT_STUB --> IMPL_EXT_DRIVER_CT_END
 ```
 
@@ -401,10 +413,12 @@ flowchart TD
     COMPILE_TESTS[Compile Tests]
     REFACTOR_AND_VERIFY_TESTS_END(( ))
     REFACTOR_TESTS[Refactor Tests]
+    START_SYSTEM[Start System]
     VERIFY_TESTS_PASS[Verify Tests Pass]
 
     REFACTOR_TESTS --> COMPILE_TESTS
-    COMPILE_TESTS --> VERIFY_TESTS_PASS
+    COMPILE_TESTS --> START_SYSTEM
+    START_SYSTEM --> VERIFY_TESTS_PASS
     VERIFY_TESTS_PASS --> COMMIT_TESTS
     COMMIT_TESTS --> REFACTOR_AND_VERIFY_TESTS_END
 ```
@@ -417,16 +431,18 @@ flowchart TD
     COMPILE_TESTS[Compile Tests]
     DISABLE_TESTS[Disable Tests]
     ENABLE_TESTS[Enable Tests]
-    GATE_EXPECTED_TEST_RESULT{expected-test-result}
+    GATE_EXPECTED_TEST_RESULT{Expected Test Result?}
     IMPLEMENT_TEST_LAYER_END(( ))
     RUN_ACTION["Run the Configured Agent — see § ${action}"]
+    START_SYSTEM[Start System]
     UNKNOWN_EXPECTED_TEST_RESULT((⚡))
     VERIFY_TESTS_FAIL_FILTERED[Verify Tests Fail]
     VERIFY_TESTS_PASS_FILTERED[Verify Tests Pass]
 
     RUN_ACTION --> ENABLE_TESTS
     ENABLE_TESTS --> COMPILE_TESTS
-    COMPILE_TESTS --> GATE_EXPECTED_TEST_RESULT
+    COMPILE_TESTS --> START_SYSTEM
+    START_SYSTEM --> GATE_EXPECTED_TEST_RESULT
     GATE_EXPECTED_TEST_RESULT -- Success --> VERIFY_TESTS_PASS_FILTERED
     GATE_EXPECTED_TEST_RESULT -- Failure --> VERIFY_TESTS_FAIL_FILTERED
     GATE_EXPECTED_TEST_RESULT --> UNKNOWN_EXPECTED_TEST_RESULT
@@ -444,7 +460,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     FIX_UNEXPECTED_FAILING_TESTS[Fix Unexpected Test Failures — see § fix-unexpected-failing-tests]
-    GATE_TESTS_OUTCOME{test-outcome}
+    GATE_TESTS_OUTCOME{Test Outcome?}
     RUN_TESTS[Run Tests]
     UNKNOWN_TESTS_OUTCOME((⚡))
     VERIFY_PASS_END(( ))
@@ -464,7 +480,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     FIX_UNEXPECTED_PASSING_TESTS[Fix Unexpectedly Passing Tests — see § fix-unexpected-passing-tests]
-    GATE_TESTS_OUTCOME{test-outcome}
+    GATE_TESTS_OUTCOME{Test Outcome?}
     RUN_TESTS[Run Tests]
     UNKNOWN_TESTS_OUTCOME((⚡))
     VERIFY_FAIL_END(( ))
@@ -487,6 +503,11 @@ flowchart TD
     WAT_END(( ))
 
     EXECUTE_AGENT --> WAT_END
+    WRITE-ACCEPTANCE-TESTS_OUTPUTS[/dsl-port-changed: bool, test-names?: string-list, scope-exception-files?: string-list, scope-exception-reason?: string/]
+    WAT_END -. produces .-> WRITE-ACCEPTANCE-TESTS_OUTPUTS
+
+    classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
+    class WRITE-ACCEPTANCE-TESTS_OUTPUTS outputNode
 ```
 
 ## Write Contract Tests
@@ -497,6 +518,11 @@ flowchart TD
     WCT_END(( ))
 
     EXECUTE_AGENT --> WCT_END
+    WRITE-CONTRACT-TESTS_OUTPUTS[/dsl-port-changed: bool, test-names?: string-list, scope-exception-files?: string-list, scope-exception-reason?: string/]
+    WCT_END -. produces .-> WRITE-CONTRACT-TESTS_OUTPUTS
+
+    classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
+    class WRITE-CONTRACT-TESTS_OUTPUTS outputNode
 ```
 
 ## Implement DSL
@@ -507,6 +533,11 @@ flowchart TD
     IMPL_DSL_END(( ))
 
     EXECUTE_AGENT --> IMPL_DSL_END
+    IMPLEMENT-DSL_OUTPUTS[/system-driver-ports-changed: bool, external-driver-ports-changed: bool, scope-exception-files?: string-list, scope-exception-reason?: string/]
+    IMPL_DSL_END -. produces .-> IMPLEMENT-DSL_OUTPUTS
+
+    classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
+    class IMPLEMENT-DSL_OUTPUTS outputNode
 ```
 
 ## Implement System
@@ -696,7 +727,7 @@ flowchart TD
     APPROVE_OK_END(( ))
     APPROVE_REJECT_END(( ))
     ASK_HUMAN["${question}"]
-    GATE_APPROVED{approval-outcome}
+    GATE_APPROVED{Approval Outcome?}
 
     ASK_HUMAN --> GATE_APPROVED
     GATE_APPROVED -- Approved --> APPROVE_OK_END
@@ -716,13 +747,13 @@ flowchart TD
     EXECUTE_AGENT_OUTPUT_REJECTED_END((⚡))
     EXECUTE_AGENT_REJECTED_END(( ))
     FIX[Fix the Failure — see § fix]
-    GATE_APPROVED_POST{approval-outcome}
-    GATE_APPROVED_PRE{approval-outcome}
-    GATE_FIX_ON_FAILURE{fix-on-failure-enabled}
-    GATE_OUTPUTS_AND_SCOPES_VALID{outputs-and-scopes-valid}
-    RUN_AGENT["Run agent ${task-name}"]
+    GATE_APPROVED_POST{Approval Outcome?}
+    GATE_APPROVED_PRE{Approval Outcome?}
+    GATE_FIX_ON_FAILURE{Fix on Failure Enabled?}
+    GATE_OUTPUTS_AND_SCOPES_VALID{Outputs and Scopes Valid?}
+    RUN_AGENT["Run agent ${agent} (task: ${task-name})"]
     SNAPSHOT_WORKING_TREE[["Snapshot working tree (per-phase baseline)"]]
-    VALIDATE_OUTPUTS_AND_SCOPES[["Validate outputs (${outputs}) & scopes (${scopes})"]]
+    VALIDATE_OUTPUTS_AND_SCOPES[["Validate outputs & scopes"]]
 
     APPROVE_PRE --> GATE_APPROVED_PRE
     GATE_APPROVED_PRE -- Approved --> SNAPSHOT_WORKING_TREE
@@ -757,8 +788,8 @@ flowchart TD
     EXECUTE_COMMAND_END(( ))
     EXECUTE_COMMAND_REJECTED_END(( ))
     FIX[Fix the Failure — see § fix]
-    GATE_APPROVED_PRE{approval-outcome}
-    GATE_COMMAND_SUCCEEDED{command-succeeded}
+    GATE_APPROVED_PRE{Approval Outcome?}
+    GATE_COMMAND_SUCCEEDED{Command Succeeded?}
     RUN_COMMAND[["Run command ${command}"]]
 
     APPROVE_PRE --> GATE_APPROVED_PRE
@@ -781,7 +812,7 @@ flowchart TD
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
     FIX_END(( ))
     FIX_REJECTED_END(( ))
-    GATE_APPROVED_PRE{approval-outcome}
+    GATE_APPROVED_PRE{Approval Outcome?}
 
     APPROVE_PRE --> GATE_APPROVED_PRE
     GATE_APPROVED_PRE -- Approved --> EXECUTE_AGENT
