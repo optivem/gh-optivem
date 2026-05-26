@@ -1576,7 +1576,7 @@ processes:
         type: call-activity
         process: approve
         params:
-          question: "Do you approve task ${task-name} to run?"
+          question: "Do you approve agent ${task-name} to run?"
 
       - id: RUN_AGENT
         type: user-task
@@ -1606,7 +1606,7 @@ processes:
         type: call-activity
         process: approve
         params:
-          question: "Approve agent output for task ${task-name}?"
+          question: "Approve output from agent ${task-name}?"
 
       - id: EXECUTE_AGENT_END
         type: end-event
