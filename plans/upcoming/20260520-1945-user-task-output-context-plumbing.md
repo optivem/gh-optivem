@@ -1,5 +1,13 @@
 # user_task output → Context plumbing
 
+⚠️ **SUPERSEDED 2026-05-26** by `plans/20260526-2118-cli-emit-output-channel.md`.
+Items 1–4 (the prose-YAML parser + dispatcher wiring) are torn out by
+2118; the underlying infrastructure no longer exists. Item 8 (manual
+rehearsal) folds into 2118's Item 10. The "Not superseded" appendix
+below (added 2026-05-25) predates 2118's conception and is no longer
+accurate. This file is preserved as reference for the Q3 discussion
+and the carved-out follow-ups; no new execution work happens here.
+
 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-20T19:41:45Z`
 
 **Date:** 2026-05-20
