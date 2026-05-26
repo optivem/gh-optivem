@@ -29,13 +29,10 @@ set -euo pipefail
 #   1. Build gh-optivem.exe from this repo (so the rehearsal exercises
 #      uncommitted local changes, not the installed `gh optivem`).
 #   2. Resolve <id> = <ts>[-<label>], where <ts> = date +%Y%m%d-%H%M%S.
-#   3. From the consumer repo, create a worktree one level above the
-#      academy folder at ../../rehearsal-<id> on a new branch
-#      rehearsal/<id>. Placed outside the academy on purpose: a worktree
-#      inside the academy makes `gh optivem commit` resolve ModeWorkspace
-#      against academy.code-workspace and skip the worktree silently.
-#      The chosen --config yaml is already committed in shop, so it lands
-#      in the worktree automatically — no copy or init step needed.
+#   3. From the consumer repo (CWD), create a sibling worktree at
+#      ../rehearsal-<id> on a new branch rehearsal/<id>. The chosen
+#      --config yaml is already committed in shop, so it lands in the
+#      worktree automatically — no copy or init step needed.
 #   4. cd into it and run, with $GH_OPTIVEM_CONFIG pointing at the chosen yaml:
 #        <gh-optivem>/gh-optivem.exe implement --issue <issue-num>
 #   5. On exit (success, failure, or interrupt), prompt the user to delete
@@ -161,14 +158,7 @@ if [[ -n "$LABEL" ]]; then
 else
   ID="${TS}"
 fi
-# Worktree lives one level *above* the academy folder (sibling of academy),
-# not next to the consumer repo. Reason: when the worktree sits inside the
-# academy dir, `gh optivem commit` from inside it walks up to
-# academy.code-workspace and resolves ModeWorkspace, iterating the declared
-# academy repos and silently ignoring the worktree. Placing the worktree
-# outside the academy keeps walk-up from finding that workspace file, so
-# the resolver falls through to ModeSingleRepo on the worktree itself.
-WORKTREE_PATH="$(cd "$(dirname "$CONSUMER_ROOT")/.." && pwd)/rehearsal-${ID}"
+WORKTREE_PATH="$(cd "$(dirname "$CONSUMER_ROOT")" && pwd)/rehearsal-${ID}"
 BRANCH="rehearsal/${ID}"
 
 cleanup() {
