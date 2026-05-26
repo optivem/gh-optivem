@@ -366,7 +366,7 @@ func writeGroupSubgraph(b *strings.Builder, process *statemachine.Process, g *gr
 //
 //	start-event / end-event → circle              `((label))`
 //	error-end-event         → circle              `((⚡ label))` (red border via classDef)
-//	gateway                 → diamond             `{label}`
+//	gateway                 → diamond             `{label}` (or `{ }` when silent — Item 13)
 //	service-task            → subroutine          `[[label]]`
 //	user-task               → plain rectangle     `[label]`
 //	call-activity           → plain rectangle     `[label]`  (with "see § …" suffix)
@@ -376,9 +376,16 @@ func writeGroupSubgraph(b *strings.Builder, process *statemachine.Process, g *gr
 // service-task (Go runtime), dark blue = LLM agent, yellow = human.
 // TDD-stage border colours (red / green / blue) overlay the executor
 // fill so the two signals coexist without conflict.
+//
+// Silent gateways (Item 13): a gateway whose `documentation:` is empty
+// is rendered as a bare diamond `GW{ }`, never with the node ID as a
+// fallback label. The pattern arises when an upstream user_task owns
+// the elicitation (`CHOOSE_REFACTOR_TYPE → GATE_REFACTOR_TYPE_CHOICE`)
+// so the gateway itself has nothing to say; Hungarian-style `{GATE_…}`
+// in the diagram would just be noise.
 func writeNode(b *strings.Builder, n statemachine.Node) {
 	label := n.Raw.Documentation
-	if label == "" {
+	if label == "" && n.Kind != statemachine.Gateway {
 		label = n.ID
 	}
 	switch n.Kind {
@@ -387,7 +394,11 @@ func writeNode(b *strings.Builder, n statemachine.Node) {
 	case statemachine.ErrorEndEvent:
 		fmt.Fprintf(b, "    %s((%s))\n", n.ID, mermaidLabel("⚡ "+label))
 	case statemachine.Gateway:
-		fmt.Fprintf(b, "    %s{%s}\n", n.ID, mermaidLabel(label))
+		if label == "" {
+			fmt.Fprintf(b, "    %s{ }\n", n.ID)
+		} else {
+			fmt.Fprintf(b, "    %s{%s}\n", n.ID, mermaidLabel(label))
+		}
 	case statemachine.ServiceTask:
 		fmt.Fprintf(b, "    %s[[%s]]\n", n.ID, mermaidLabel(label))
 	case statemachine.CallActivity:
