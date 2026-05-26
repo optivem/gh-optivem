@@ -999,7 +999,7 @@ func TestApproveDispatcher_QuestionExpandsParams(t *testing.T) {
 	opts.Stdin = strings.NewReader("y\n")
 	var stdout bytes.Buffer
 	opts.Stdout = &stdout
-	yaml := strings.Replace(approveYAML, `"Do you approve?"`, `"Do you approve task ${task-name} to run?"`, 1)
+	yaml := strings.Replace(approveYAML, `"Do you approve?"`, `"Do you approve agent ${task-name} to run?"`, 1)
 	fn := buildEngineFromApproveYAML(t, opts, yaml)
 
 	ctx := statemachine.NewContext()
@@ -1008,7 +1008,7 @@ func TestApproveDispatcher_QuestionExpandsParams(t *testing.T) {
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
-	if !strings.Contains(stdout.String(), "task write-acceptance-tests") {
+	if !strings.Contains(stdout.String(), "agent write-acceptance-tests") {
 		t.Fatalf("stdout missing expanded task-name: %q", stdout.String())
 	}
 }
