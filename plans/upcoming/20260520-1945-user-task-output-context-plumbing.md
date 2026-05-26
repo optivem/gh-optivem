@@ -185,10 +185,10 @@ Per [feedback_new_plan_not_extend](../../../../Users/valen_4rjvn9e/.claude/proje
 
 *Post-hoc note. If this plan turns out obsolete, this appendix can be deleted along with the plan.*
 
-This plan provides the **foundation** for the BPMN refactor's Q13 (contract blocks in `process-flow.yaml` as `user_task` metadata — `scopes:` / `outputs:` — single source of truth for prompt-prep + post-execute validation). See [`20260525-1057-bpmn-refactor-design.md`](20260525-1057-bpmn-refactor-design.md) Decisions / Q13.
+This plan provides the **foundation** for the BPMN refactor's Q13 (contract blocks in `process-flow.yaml` as `user_task` metadata — `scopes:` / `outputs:` — single source of truth for prompt-prep + post-execute validation). See [`archived/20260525-1057-bpmn-refactor-design.md`](archived/20260525-1057-bpmn-refactor-design.md) Decisions / Q13.
 
 - **Items 1–4 already landed** (parser, dispatcher wiring, `at-red-test` emits `outputs:`). BPMN refactor Phase C Item 8 (schema/generator changes for `scopes:`/`outputs:` per `user_task`) assumes this parser is in place — keep, do not roll back.
 - **Item 8 (manual rehearsal) remains.** Run it before BPMN refactor Phase C Item 8 so the structured-output path is exercised end-to-end before the schema gets extended.
-- **Carved-out follow-ups** (project-configurable suite vocabulary, `disable-tests` / `enable-tests` template keys, additional impl-agent emissions) become natural inputs to the BPMN refactor's Phase D downstream-alignment plan (Item 10 in `20260525-1057-bpmn-refactor-design.md`). Either fold them in or list them as Phase D prerequisites.
+- **Carved-out follow-ups** (project-configurable suite vocabulary, `disable-tests` / `enable-tests` template keys, additional impl-agent emissions) become natural inputs to the BPMN refactor's Phase D downstream-alignment plan (Item 10 in `archived/20260525-1057-bpmn-refactor-design.md`). Either fold them in or list them as Phase D prerequisites.
 
 **Not superseded** by the BPMN refactor — this is the mechanism it depends on.

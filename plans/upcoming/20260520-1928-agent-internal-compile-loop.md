@@ -319,7 +319,7 @@ agent; the BPMN reword is one line. Tests should pass unchanged.
 
 *Post-hoc note. If this plan turns out obsolete (e.g., the BPMN refactor's Phase D fully subsumes the agent-prompt rework), this appendix can be deleted along with the plan.*
 
-This plan overlaps with [`20260525-1057-bpmn-refactor-design.md`](20260525-1057-bpmn-refactor-design.md) on three surfaces:
+This plan overlaps with [`archived/20260525-1057-bpmn-refactor-design.md`](archived/20260525-1057-bpmn-refactor-design.md) on three surfaces:
 
 - **Agent prompts.** The 17 WRITE-agent prompts edited here are slated for verb-based renames (Q24 in the BPMN refactor; locked concretely in the [naming-doctrine child plan](20260525-1130-bpmn-naming-doctrine.md), Q28). E.g. `at-red-test.md` → `write-acceptance-tests.md`. Both plans amend the same files.
 - **YAML reword.** The `STOP_COMPILE_FAIL_REVIEW.documentation` edit (Q2 above) lands in `process-flow.yaml`, which the BPMN refactor's Phase C fully rewrites (Q17=A: full replacement). The reword is moot if Phase C lands first; if this plan lands first, the new wording carries through.

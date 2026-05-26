@@ -1,9 +1,7 @@
 # ATDD Pipeline — Five-Level BPMN Orchestration
 #
 # Single source of truth for the process flow under the TOP / CYCLE / HIGH /
-# MID / LOW structure introduced by the BPMN refactor (design archive:
-# plans/20260525-1057-bpmn-refactor-design.md; execution plan:
-# plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md). Replaces the
+# MID / LOW structure introduced by the BPMN refactor. Replaces the
 # previous AT-cycle / CT-subprocess / structural-cycle / legacy-acceptance-
 # criteria shape wholesale per Q17 = A (full replacement).
 #
@@ -875,9 +873,7 @@ processes:
   # Contract-test variant of the external driver-adapter impl. Mirrors the
   # AT-side cascade but with `tests: contract` semantics and the
   # contract-real / contract-stub verify split. Absorbs the pre-refactor
-  # diagram #8 (contract-test-sub-process); see design archive
-  # (plans/20260525-1057-bpmn-refactor-design.md Cross-check vs existing
-  # BPMN, diagram 8).
+  # diagram #8 (contract-test-sub-process).
   #
   # **Orphan in the structural call graph (intentional — known gap).** No
   # other process calls this HIGH today: the cascade

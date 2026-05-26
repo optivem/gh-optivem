@@ -526,7 +526,7 @@ Pinning the convention now avoids rework in Items 2–5 (every brainstorm doc ge
   **Touch-points (executed by `plans/20260525-1659-bpmn-acceptance-test-rename.md`):**
   - HIGH brainstorm — rename 3 task headings + internal call-site references.
   - CYCLE brainstorm — rename 2 invocation call sites (`change-system-behavior` step 1, `cover-system-behavior` step 1).
-  - `plans/20260525-1057-bpmn-refactor-design.md` (this file) — update Q31 / Q31.b / Q6.a wording + cross-check inventory rows for diagrams #6, #20.
+  - `plans/archived/20260525-1057-bpmn-refactor-design.md` (this file) — update Q31 / Q31.b / Q6.a wording + cross-check inventory rows for diagrams #6, #20.
   - `plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md` — update "HIGH orchestrations (Q31 = D)" bullet wording.
 
   **Supersedes** the naming-only portion of Q31 Option D. The structural shape from Q31 (thin wrappers + parameterized core + inner primitive) is **unchanged** — only the names change.
@@ -645,7 +645,7 @@ Open ideas surfaced during this plan but explicitly deferred — not blocking an
 - **Token-efficient by default** — flag any user-proposed workflow that burns tokens unnecessarily and offer a cheaper alternative (`feedback_flag_non_token_efficient`).
 - **Session-handoff cadence: auto-commit, then surface `/clear` + `/execute-plan`.** Workflow for end-of-item handoff:
     1. **Auto-commit first** — do not ask the user for permission to commit at end-of-item; pre-approval is given here, in this standing constraint. Commit the item's changes (plan-file deletion + code/doc edits) with a surgical message via raw `git`. Without this commit, the next session's fresh agent sees uncommitted changes in `git status` with no context — high risk of work loss or accidental overwrite.
-    2. **Then surface the literal next-session commands** (`/clear`, then `/execute-plan plans/20260525-1057-bpmn-refactor-design.md`) in a Next-steps block at the end of the response so the user knows the precise next step.
+    2. **Then surface the literal next-session commands** (`/clear`, then `/execute-plan plans/archived/20260525-1057-bpmn-refactor-design.md`) in a Next-steps block at the end of the response so the user knows the precise next step.
   Default cadence is `/clear` between items, not inline continuation — cached-prefix replay grows with every read/edit, so the natural seam is a `/clear`. (`feedback_offer_clear_then_execute_plan`, `feedback_execute_plan_always_next_steps`.)
 - For agent-authored surgical commits with specific message + file list, use raw `git`, not `/commit` (`feedback_use_commit_skill`).
 - Concurrent-agent collision risk — re-inspect `git log` before staging if mid-session new commits appear (`feedback_concurrent_agent_collision`).

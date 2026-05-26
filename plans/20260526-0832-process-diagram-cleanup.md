@@ -546,7 +546,7 @@ the level prefix gets added automatically.
   decide at execution time.
 
 **Q8.3 — *Inventoried 2026-05-26***: Phase D is described in
-`plans/20260525-1057-bpmn-refactor-design.md:82` (moved to a
+`plans/archived/20260525-1057-bpmn-refactor-design.md:82` (moved to a
 downstream-alignment plan that has since been deleted as executed). No
 cross-reference needed in this plan — Item 8 drops the alias
 unconditionally, so the "collapses in Phase D" wording disappears along

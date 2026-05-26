@@ -21,7 +21,7 @@ The TOP `implement-ticket` gateway table currently has no row for `spike`. Possi
 
 ### 2. Multi-cycle ticket model
 
-The five-level refactor settled on **single-cycle tickets only** (Q30.b = A in `plans/20260525-1057-bpmn-refactor-design.md`): multi-cycle work must split during refinement into separate tickets. Revisit only if a real workflow demands a single ticket spanning multiple CYCLEs that can't reasonably be split.
+The five-level refactor settled on **single-cycle tickets only** (Q30.b = A in `plans/archived/20260525-1057-bpmn-refactor-design.md`): multi-cycle work must split during refinement into separate tickets. Revisit only if a real workflow demands a single ticket spanning multiple CYCLEs that can't reasonably be split.
 
 If it ever needs revisiting, options to consider:
 
