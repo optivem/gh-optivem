@@ -33,27 +33,27 @@ filenames). This plan then renames each file to its noun form.
 
 ## Coordination with in-flight plans
 
-**Cannot run in parallel with `plans/20260526-1448-agent-prompt-fixes.md`.**
-Plan 1448's own execution strategy declares cross-session parallel
-windows blocked by file ownership: "`process-flow.yaml`, prompt
-frontmatter+body in the same `.md` files, and the plan file itself
-are all shared surfaces." This plan touches both shared surfaces:
+Plan `20260526-1448-agent-prompt-fixes.md` has landed
+(commits `e4637ee`, `46e2b4f`, `bd19f2b`, `cda825e`); the plan file
+is gone. That prior blocker no longer applies.
 
-- All 17 brief `.md` files — renamed (verb → noun) in Item 3.
+Shared surfaces this plan touches:
+
+- All 20 brief `.md` files — renamed (verb → noun) in Item 3.
 - `process-flow.yaml` — `agent:` param added to every MID
   call-activity in Item 1, RUN_AGENT updated in Item 2.
 
 **Execution order (strict):**
 
-1. `plans/20260526-1448-agent-prompt-fixes.md` lands fully (all
-   sessions complete, pickup marker removed).
-2. `plans/20260526-1653-rename-prompts-folder-to-agents.md` lands
+1. `plans/20260526-1653-rename-prompts-folder-to-agents.md` lands
    (folder rename `prompts/atdd/` → `agents/atdd/`).
+2. Any concurrent agent editing `process-flow.yaml` (e.g. the
+   `20260526-1730-bpmn-process-review.md` work) has committed and
+   cleared its pickup marker.
 3. This plan executes against the post-1653 tree.
 
-Attempting parallel execution risks rename-vs-content conflicts on
-the same 17 files (1448 edits bodies; 1701 changes filenames) and
-overlapping edits on `process-flow.yaml`.
+Attempting parallel execution risks overlapping edits on
+`process-flow.yaml`.
 
 ## Observation
 
@@ -78,7 +78,7 @@ mapping is implicit in shared naming.
 
 ### Mapping mode: 1:1 task → agent
 
-Every task gets its own agent file. 17 tasks → 17 agents. Preserves
+Every task gets its own agent file. 20 tasks → 20 agents. Preserves
 the focused-brief / token-efficiency property. Collapsing where
 multiple tasks share behaviour stays available as a later
 optimisation; first pass is purely a naming/structural change with
@@ -95,6 +95,9 @@ no semantic change.
 | `implement-system-driver-adapters` | `system-driver-adapter-implementer` |
 | `implement-external-system-stubs` | `external-system-stub-implementer` |
 | `implement-external-system-driver-adapters` | `external-system-driver-adapter-implementer` |
+| `update-system` | `system-updater` |
+| `update-system-driver-adapters` | `system-driver-adapter-updater` |
+| `update-external-system-driver-adapters` | `external-system-driver-adapter-updater` |
 | `refactor-system` | `system-refactorer` |
 | `refactor-tests` | `test-refactorer` |
 | `disable-tests` | `test-disabler` |
@@ -160,7 +163,7 @@ the agent-resolution path changes.
 
 **File:** `internal/atdd/runtime/statemachine/process-flow.yaml`
 
-For each of the 17 MID nodes that call `execute-agent`, add an
+For each of the 20 MID nodes that call `execute-agent`, add an
 `agent:` param next to `task-name:`. Use the noun mapping above.
 
 There's also one indirect call-site to handle: the `fix`
@@ -214,7 +217,7 @@ documentation string to include both for trace clarity.
 Also update the explanatory comment block at lines 1711-1716 to
 describe the new two-field shape.
 
-### Item 3 — Rename the 17 brief files (mechanical move)
+### Item 3 — Rename the 20 brief files (mechanical move)
 
 After plan `20260526-1653` lands, the files live at
 `internal/assets/runtime/agents/atdd/<task-name>.md`. Rename via
@@ -223,7 +226,7 @@ After plan `20260526-1653` lands, the files live at
 ```
 git mv internal/assets/runtime/agents/atdd/write-acceptance-tests.md \
        internal/assets/runtime/agents/atdd/acceptance-test-writer.md
-# ... (17 total)
+# ... (20 total)
 ```
 
 **Scope: file move only.** No content changes in this item. Body
@@ -283,7 +286,7 @@ verb. The functions don't change shape — just the values their
 callers pass.
 
 Verify that `Names()` enumerates the renamed files correctly. The
-function should still return all 17 names; it's just the strings
+function should still return all 20 names; it's just the strings
 that change.
 
 ### Item 5 — Update the driver dispatch wiring + regression test
@@ -349,7 +352,7 @@ fails fast with a clear error rather than falling back to
 **Other tests that hard-code task or agent names.**
 
 Grep at refinement time surfaced **11 files** that reference one or
-more of the 17 verb identifiers:
+more of the 20 verb identifiers:
 
 ```
 internal/atdd/runtime/clauderun/clauderun_test.go
@@ -369,7 +372,7 @@ process_commands_test.go
 land first):
 
 ```
-grep -rnE '"(write-acceptance-tests|write-contract-tests|implement-dsl|implement-system|implement-system-driver-adapters|implement-external-system-stubs|implement-external-system-driver-adapters|refactor-system|refactor-tests|disable-tests|enable-tests|refine-acceptance-criteria|fix-command-failed|fix-missing-output|fix-scope-diff|fix-unexpected-failing-tests|fix-unexpected-passing-tests)"' --include='*_test.go'
+grep -rnE '"(write-acceptance-tests|write-contract-tests|implement-dsl|implement-system|implement-system-driver-adapters|implement-external-system-stubs|implement-external-system-driver-adapters|update-system|update-system-driver-adapters|update-external-system-driver-adapters|refactor-system|refactor-tests|disable-tests|enable-tests|refine-acceptance-criteria|fix-command-failed|fix-missing-output|fix-scope-diff|fix-unexpected-failing-tests|fix-unexpected-passing-tests)"' --include='*_test.go'
 ```
 
 **Per-file classification rule** (apply consistently):
@@ -444,7 +447,7 @@ rule as Item 6:
 docs since this refinement:
 
 ```
-grep -rnE '(write-acceptance-tests|write-contract-tests|implement-dsl|implement-system|implement-system-driver-adapters|implement-external-system-stubs|implement-external-system-driver-adapters|refactor-system|refactor-tests|disable-tests|enable-tests|refine-acceptance-criteria|fix-command-failed|fix-missing-output|fix-scope-diff|fix-unexpected-failing-tests|fix-unexpected-passing-tests)' docs/ CONTRIBUTING.md
+grep -rnE '(write-acceptance-tests|write-contract-tests|implement-dsl|implement-system|implement-system-driver-adapters|implement-external-system-stubs|implement-external-system-driver-adapters|update-system|update-system-driver-adapters|update-external-system-driver-adapters|refactor-system|refactor-tests|disable-tests|enable-tests|refine-acceptance-criteria|fix-command-failed|fix-missing-output|fix-scope-diff|fix-unexpected-failing-tests|fix-unexpected-passing-tests)' docs/ CONTRIBUTING.md
 ```
 
 If new hits appear in `docs/atdd/**` or `docs/how-it-works.md`,
