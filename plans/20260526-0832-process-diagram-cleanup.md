@@ -2,20 +2,38 @@
 
 > ✅ **Refinement complete 2026-05-26 11:12Z** — all open questions
 > resolved (2 design + 7 inventory, see per-item *Decided* / *Inventoried*
-> notes). Plan is execution-ready once the parallel blocker (1300) lands.
+> notes).
 >
-> ⚠️ **Blocked on `plans/20260526-1300-ticket-body-parser-wire-and-validate.md`.**
-> 1300 is in-flight (parallel agent picked it up at 11:02Z). It adds a
-> new `parse-ticket` service_task before `GATE_TICKET_KIND` and rewrites
-> the comment block at `process-flow.yaml:200-209` plus
-> `diagram.go:35` — the same surfaces Items 2, 11, 16, 17 touch in this
-> plan. Wait for 1300 to land; re-verify line numbers against post-1300
-> YAML before executing.
+> ⚠️ **Blocked on two in-flight plans (status 2026-05-26 ~17:00Z).**
 >
-> **Previous blocker (1220) — already landed**: commits `4045693` +
-> `ed3096f` (2026-05-26). The `update-ticket` wrapper is eliminated;
-> MARK_* nodes are now service_tasks bound to four discrete state-
-> transition actions. **Item 9** in this plan is superseded.
+> - **`plans/20260526-1530-fix-recovery-wire-failure-kind.md`** — picked
+>   up at 11:29Z by `Valentina_Desk`, uncommitted edits to
+>   `actions/bindings.go`, `actions/bindings_test.go`,
+>   `agents/embed_test.go`, **`statemachine/process-flow.yaml`** (8
+>   lines), plus a new `fix-command-failed.md` prompt. Overlaps the
+>   `process-flow.yaml` surface this plan rewrites in Items 2, 3, 10, 11,
+>   12, 13, 16, 17, 22.
+> - **`plans/20260526-1700-archive-bpmn-refactor-design-plan.md`** —
+>   picked up at 11:32Z by `Valentina_Desk`, uncommitted edits to
+>   **`statemachine/process-flow.yaml`** (header citations, lines 5-6)
+>   and a new `plans/archived/` subdirectory holding
+>   `20260525-1057-bpmn-refactor-design.md`.
+>
+> Working tree is dirty with both. Wait until 1530 + 1700 commit (or
+> shelve), then re-verify `process-flow.yaml` line numbers against the
+> post-commit state before executing.
+>
+> **Previously resolved blockers (kept for history):**
+>
+> - **1300** — landed as commit `89eab54` ("wire ticket-body parser to
+>   runtime + already-[x] approval gate"). Adds a `parse-ticket`
+>   service_task before `GATE_TICKET_KIND`; rewrites the comment block
+>   at `process-flow.yaml:200-209` and `diagram.go:35`. Items 2, 11, 16,
+>   17 line numbers need re-verifying against the post-1300 YAML.
+> - **1220** — landed as commits `4045693` + `ed3096f`. The
+>   `update-ticket` wrapper is eliminated; MARK_* nodes are now
+>   service_tasks bound to four discrete state-transition actions.
+>   **Item 9** in this plan is superseded.
 
 ## Origin / intent
 
