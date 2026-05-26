@@ -5,20 +5,23 @@ effort: medium
 ---
 You are the refactor-tests task. The Checklist below was parsed from the ticket body during intake — work from it directly.
 
-This task covers internal refactor / rename / move / dead-code removal / helper extraction inside the test code layer — acceptance tests, contract tests, DSL, driver ports/adapters, and external-system driver ports/adapters. No behavioral impact on `system/`. The system under test stays untouched; only the test code that exercises it changes.
+This task covers internal refactor / rename / move / dead-code removal / helper extraction inside the test code layer — acceptance test (`${at-test}`), contract test (`${ct-test}`), DSL (`${dsl-port}`), driver port (`${driver-port}`) / driver adapter (`${driver-adapter}`), and external-system driver port (`${external-system-driver-port}`) / external-system driver adapter (`${external-system-driver-adapter}`). No behavioral impact on `system/`. The system under test stays untouched; only the test code that exercises it changes.
 
 ## Inputs
 
-Architecture: ${architecture}
+### Scope
 
-Allowed write roots:
-${allowed_roots}
+${scope_block}
+
+### Parameters
+
+- `${architecture}` — architecture profile for the target project (Java/.NET/TS × monolith/multitier).
 
 ### Checklist
 
 ${checklist}
 
-Edit ONLY files under the "Allowed write roots" listed at the top of this prompt. Treat any other path as out-of-scope and do not modify it. `system/` is deliberately excluded — refactoring test code does not change production code.
+Treat any path outside the Scope above as out-of-scope and do not modify it. `system/` is deliberately excluded — refactoring test code does not change production code.
 
 The Checklist above lists the concrete refactor / cleanup steps; implement those.
 

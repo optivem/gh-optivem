@@ -7,14 +7,18 @@ The Acceptance Criteria below were parsed from the ticket body during intake —
 
 ## Inputs
 
+### Scope
+
+${scope_block}
+
 ### Acceptance Criteria
 
 ${acceptance_criteria}
 
 ## Steps
 
-1. For every Acceptance Criterion, write a corresponding Acceptance Test. This should be a mechanical 1:1 translation.
-2. If you need to add methods to DSL interface, then implement the DSL Core by implementing method prototypes by throwing a runtime exception  `"TODO: DSL"`, so that compilation works.
+1. For every Acceptance Criterion, write a corresponding Acceptance Test (`${at-test}`). This should be a mechanical 1:1 translation.
+2. If you need to add methods to the DSL Port (`${dsl-port}`), then implement the DSL Core (`${dsl-core}`) by implementing method prototypes by throwing a runtime exception  `"TODO: DSL"`, so that compilation works.
 3. Set flag: `DSL Interface Changed: yes|no`
 
 ## Outputs

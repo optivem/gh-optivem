@@ -6,6 +6,12 @@ You are running the `fix-missing-output` task. The calling CYCLE dispatched `${f
 
 ## Inputs
 
+### Scope
+
+${scope_block}
+
+### Parameters
+
 - `${failing-task-name}` — the writing-agent task whose run produced incomplete outputs (e.g. `write-acceptance-tests`, `implement-dsl`). Its prompt lives at `internal/assets/runtime/prompts/atdd/<failing-task-name>.md` and its `outputs:` contract lives at the call-site in `internal/atdd/runtime/statemachine/process-flow.yaml`. Read the prompt to confirm what the agent was supposed to do and what shape the `outputs:` block was meant to take.
 
   ```
@@ -24,17 +30,11 @@ You are running the `fix-missing-output` task. The calling CYCLE dispatched `${f
   ${changed_files}
   ```
 
-- `${allowed_roots}` — multi-line block restricting where you may read or propose edits.
-
-  ```
-  ${allowed_roots}
-  ```
-
 ## Steps
 
 1. **Read the failing agent's prompt.** Open `internal/assets/runtime/prompts/atdd/${failing-task-name}.md` and locate the section that explains the `outputs:` block — agents are instructed to emit a tail YAML block with the call-site's declared keys. Confirm which keys the call-site expected (the `${missing-outputs}` list) and what each one was supposed to signal.
 
-2. **Inspect the diff.** Walk `${changed_files}` against `${allowed_roots}`. For each missing key, decide whether the corresponding work landed in the diff:
+2. **Inspect the diff.** Walk `${changed_files}` against the `### Scope` write set. For each missing key, decide whether the corresponding work landed in the diff:
    - **Work landed, YAML block missing or malformed** — the agent did the work but never wrote the structured tail block (or wrote it with the wrong key names, or wrote prose instead of YAML). The fix is to re-run the agent with a reminder to emit the tail YAML block; no source edit is needed.
    - **Work did not land** — `${changed_files}` shows nothing relevant to the missing key. The agent skipped the work it was meant to do. The fix is a re-dispatch (operator decision) or escalation; the missing output is a true negative.
    - **Work partially landed** — some declared outputs are present, some are missing, and the diff covers only part of the contract. The agent did some of the work; the missing keys point at the unfinished portion.
@@ -51,7 +51,7 @@ This is one of the closed `fix-*` failure-kinds. Your job is **diagnosis**, not 
 
 - You get **one** attempt. You do not retry. You do not re-dispatch `${failing-task-name}` — the caller re-validates after you exit.
 - You present a one-paragraph diagnosis (or the smallest reasoned change proposal) to the human and exit cleanly. Approval gates upstream of you (the PRE step) decide whether the proposed change lands.
-- Stay inside `${allowed_roots}`. If the diagnosis points outside that scope (e.g. the agent prompt itself), say so in the diagnosis and stop.
+- Stay inside scope (see the `### Scope` block above). If the diagnosis points outside that scope (e.g. the agent prompt itself), say so in the diagnosis and stop.
 
 ### Exception to the anti-rediscovery rule
 

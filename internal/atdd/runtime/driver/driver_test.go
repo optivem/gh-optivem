@@ -97,6 +97,47 @@ processes:
     sequence-flows:
       - { from: START, to: AT_RED_TEST }
       - { from: AT_RED_TEST, to: END }
+
+  # MID-style scope-defining processes for the dispatcher's engine.Scope
+  # lookup (plan 20260526-1448 Item 4 — the dispatcher keys off the
+  # agent name to find per-phase read:/write: lists). Mirrors the
+  # writing-agent MID convention from production process-flow.yaml. The
+  # two below cover the two agents driver_test.go's fixtures dispatch
+  # (write-acceptance-tests via the as-shipped minimalYAML, and
+  # implement-system via the agent-replacement in TestEndToEnd_*).
+  write-acceptance-tests:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        documentation: "Dispatch the Agent"
+        params:
+          task-name: write-acceptance-tests
+        read:  [at-test, dsl-port]
+        write: [at-test, dsl-port, dsl-core]
+      - id: END
+        type: end-event
+        documentation: "Synthetic Test End"
+    sequence-flows:
+      - { from: EXECUTE_AGENT, to: END }
+
+  implement-system:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        documentation: "Dispatch the Agent"
+        params:
+          task-name: implement-system
+        read:  [system-path]
+        write: [system-path]
+      - id: END
+        type: end-event
+        documentation: "Synthetic Test End"
+    sequence-flows:
+      - { from: EXECUTE_AGENT, to: END }
 `
 
 // templatedYAML mirrors the structural_cycle's parameterised user-task: the
@@ -121,15 +162,65 @@ processes:
     sequence-flows:
       - { from: START, to: WRITE }
       - { from: WRITE, to: END }
+
+  # MID-style scope-defining process for implement-system, looked up by
+  # the dispatcher at runtime via engine.Scope(agent-name). Mirrors the
+  # production writing-agent MID convention. Used by tests that set
+  # ctx.Params["agent"] = "implement-system" on the main user-task.
+  implement-system:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        documentation: "Dispatch the Agent"
+        params:
+          task-name: implement-system
+        read:  [system-path]
+        write: [system-path]
+      - id: END
+        type: end-event
+        documentation: "Synthetic Test End"
+    sequence-flows:
+      - { from: EXECUTE_AGENT, to: END }
 `
 
 // buildEngine returns a freshly-bound engine + the wrapped NodeFn for
 // AT_RED_TEST. Callers supply fakes via opts.ClaudeRunDeps. Verification /
 // override decorators are intentionally NOT applied — those layers have
 // their own tests; this fixture targets the agent-dispatch wiring alone.
+//
+// A default monolith-java shop-shaped cfg is threaded through so
+// ${scope_block} and inlined Family B / system-path placeholders (added
+// to every prompt body by plan 20260526-1448 Item 4) resolve cleanly.
+// Tests that need to exercise the nil-cfg path call buildEngineFrom
+// directly with cfg=nil.
 func buildEngine(t *testing.T, opts Options) statemachine.NodeFn {
 	t.Helper()
-	return buildEngineFrom(t, opts, minimalYAML, "AT_RED_TEST", nil)
+	return buildEngineFrom(t, opts, minimalYAML, "AT_RED_TEST", defaultTestConfig())
+}
+
+// defaultTestConfig is the monolith-java shop-shaped projectconfig.Config
+// the driver tests use to populate cfg.PlaceholderMap() with Family B path
+// keys (at-test, dsl-port, …) + system-path. Production builds an
+// equivalent cfg from gh-optivem.yaml; here we synthesise it inline so
+// the test fixtures don't have to thread a real config through.
+func defaultTestConfig() *projectconfig.Config {
+	return &projectconfig.Config{
+		RepoStrategy: projectconfig.RepoStrategyMonoRepo,
+		System: projectconfig.System{
+			Architecture: projectconfig.ArchMonolith,
+			Path:         "system",
+			Repo:         "optivem/shop",
+			Lang:         projectconfig.LangJava,
+		},
+		SystemTest: projectconfig.TierSpec{
+			Path:  "system-test",
+			Repo:  "optivem/shop",
+			Lang:  projectconfig.LangJava,
+			Paths: projectconfig.DefaultPaths(projectconfig.LangJava, "system-test", "shop"),
+		},
+	}
 }
 
 // buildEngineFrom is the parameterisable form: it loads the supplied YAML
@@ -608,12 +699,13 @@ func TestInstallLogFileMirror_OpenFailureReturnsError(t *testing.T) {
 // TestEndToEnd_SubstitutionAndPromptLog drives a fake clauderun.Options
 // build through the same seedScopeState + newClaudeRunDispatcher path
 // production uses, with a fake runner that captures the prompt argument.
-// Asserts the captured prompt contains the substituted scope values
-// (Architecture, AllowedRoots system+test+external lines) and that the
-// per-dispatch prompt log file was written byte-for-byte. This pins down
-// the seedScopeParams → seedScopeState fix end-to-end: a regression that
-// re-introduced the wrong-map bug would here surface as an unsubstituted
-// `${architecture}` placeholder instead of the literal "monolith".
+// Asserts the captured prompt contains the substituted ${architecture}
+// value AND the rendered ${scope_block} from the BPMN node's read:/write:
+// lists (plan 20260526-1448 Item 4), and that the per-dispatch prompt log
+// file was written byte-for-byte. A regression that broke either piece
+// (the substitution fix or the engine.Scope lookup) would surface as an
+// unsubstituted `${architecture}` / `${scope_block}` placeholder instead
+// of the literal contents.
 func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 	tmpRepo := t.TempDir()
 
@@ -657,7 +749,7 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 
 	// minimalYAML's user-task uses agent: write-acceptance-tests, but the
 	// prompt-substitution failure mode is most visible on agents whose
-	// prompt body references ${architecture} / ${allowed_roots}
+	// prompt body references ${architecture} / ${scope_block}
 	// (implement-system). Use a YAML variant with the system implement
 	// agent so wrapAgentDispatchers picks the right closure on
 	// first walk.
@@ -688,12 +780,16 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 	// Substitution assertions — these would fail if scope params were
 	// being written to Context.Params (the original bug) instead of
 	// Context.State (the fix). Empty Architecture would render as
-	// "Architecture: " and the AllowedRoots block would be absent.
+	// "Architecture: " and the scope block would be absent.
 	mustContainHere(t, prompt, "Architecture: monolith")
-	mustContainHere(t, prompt, "- System: system/monolith/typescript (lang: typescript)")
-	mustContainHere(t, prompt, "- System tests: system-test/typescript (lang: typescript)")
-	mustContainHere(t, prompt, "- Stubs: external-systems/stubs")
-	mustContainHere(t, prompt, "- Simulators: external-systems/simulators")
+	// The ${scope_block} placeholder is rendered from minimalYAML's
+	// EXECUTE_AGENT read:/write: list (system-path on both sides — the
+	// implement-system MID node's scope). The renderer joins each key
+	// against cfg.PlaceholderMap(), so the resolved path appears.
+	mustContainHere(t, prompt, "You may **read** files under these paths:")
+	mustContainHere(t, prompt, "You may **modify** files under these paths:")
+	mustContainHere(t, prompt, "- `system-path`: system/monolith/typescript")
+	mustContainHere(t, prompt, "`scope_exception`")
 	if strings.Contains(prompt, "${") {
 		t.Errorf("prompt still contains ${...} placeholder:\n%s", prompt)
 	}

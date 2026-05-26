@@ -227,6 +227,129 @@ func TestPromptFrontmatter_NoScopeField(t *testing.T) {
 	}
 }
 
+// TestPromptInlineScopeKeys_MatchPhaseScope asserts every inline
+// `${key}` annotation in a prompt body (where key is a Family B path
+// key or `system-path`) is also listed in either `read:` or `write:`
+// for that prompt's writing-agent MID — the EXECUTE_AGENT node's
+// per-phase scope (plan 20260526-1448 Item 4 acceptance criterion).
+// Catches drift between in-body inline annotations and the BPMN
+// scope: e.g. removing `dsl-core` from `implement-dsl`'s write list
+// without also removing the `(\`${dsl-core}\`)` annotations from its
+// prose body.
+//
+// Skipped for fix-* recovery prompts whose scope is determined
+// dynamically from `originating-task-name` (fix-command-failed,
+// fix-missing-output, fix-scope-diff) — they have no MID of their own
+// and the scope union spans whichever caller dispatched them.
+//
+// Skipped for `scope: none` prompts (refine-acceptance-criteria) —
+// those bodies, by contract, cannot annotate any layer.
+func TestPromptInlineScopeKeys_MatchPhaseScope(t *testing.T) {
+	eng := loadEngine(t)
+
+	// Layer-key set the guard targets: Family B canonical + the Family A
+	// path-shaped keys in scope. Other ${...} placeholders (architecture,
+	// language, acceptance_criteria, scope_block, …) are not layer
+	// references and are skipped.
+	layerKeys := map[string]bool{}
+	for _, k := range projectconfig.CanonicalPathKeys() {
+		layerKeys[k] = true
+	}
+	for k := range FamilyAPathKeysInScope {
+		layerKeys[k] = true
+	}
+
+	// Recovery prompts whose scope is inherited from originating-task-name —
+	// the body may legitimately reference any layer the caller's scope
+	// covers, so the per-prompt static check would over-fire here.
+	dynamicScopePrompts := map[string]bool{
+		"fix-command-failed": true,
+		"fix-missing-output": true,
+		"fix-scope-diff":     true,
+	}
+
+	for _, name := range agents.Names() {
+		if dynamicScopePrompts[name] {
+			continue
+		}
+		if eng.IsScopeNone(name) {
+			continue
+		}
+		read, write, ok := eng.Scope(name)
+		if !ok {
+			// Agent has no MID-node scope and isn't dynamically scoped —
+			// other tests in this file catch this; skip the cross-check.
+			continue
+		}
+		scopedKeys := map[string]bool{}
+		for _, k := range read {
+			scopedKeys[k] = true
+		}
+		for _, k := range write {
+			scopedKeys[k] = true
+		}
+		body := readPromptBody(t, name)
+		// Find every ${key} reference; flag the ones that target a layer
+		// key not declared in the MID's scope.
+		for _, ref := range findPlaceholderRefs(body) {
+			if !layerKeys[ref] {
+				continue
+			}
+			if scopedKeys[ref] {
+				continue
+			}
+			t.Errorf("prompt %q: inline ${%s} annotation references a layer not in the MID's read: or write: list", name, ref)
+		}
+	}
+}
+
+// findPlaceholderRefs returns every distinct `${...}` key found in body
+// (the inner name only — no braces).
+func findPlaceholderRefs(body string) []string {
+	seen := map[string]bool{}
+	var out []string
+	i := 0
+	for {
+		j := strings.Index(body[i:], "${")
+		if j < 0 {
+			return out
+		}
+		start := i + j + 2
+		k := strings.Index(body[start:], "}")
+		if k < 0 {
+			return out
+		}
+		name := body[start : start+k]
+		if !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+		i = start + k + 1
+	}
+}
+
+// readPromptBody returns the prompt's markdown body (without the YAML
+// frontmatter). Fatals on a missing prompt.
+func readPromptBody(t *testing.T, name string) string {
+	t.Helper()
+	data, err := assets.FS.ReadFile("runtime/prompts/atdd/" + name + ".md")
+	if err != nil {
+		t.Fatalf("read embedded prompt %q: %v", name, err)
+	}
+	s := string(data)
+	const marker = "---"
+	first, rest, ok := strings.Cut(s, "\n")
+	if !ok || strings.TrimRight(first, "\r") != marker {
+		return s
+	}
+	end := strings.Index(rest, "\n"+marker)
+	if end < 0 {
+		return s
+	}
+	// Body is everything after the closing "---" line (+ its newline).
+	return rest[end+len("\n"+marker):]
+}
+
 // readPromptFrontmatter returns the YAML frontmatter block (without
 // fences) for the named prompt, or "" if the prompt has no frontmatter.
 // Fatals on a missing prompt — the test must not silently pass when an

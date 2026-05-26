@@ -7,6 +7,12 @@ You are the Test-Disabling Agent. Annotate the change-driven test methods listed
 
 ## Inputs
 
+### Scope
+
+${scope_block}
+
+### Parameters
+
 - `${language}` — `java` | `csharp` | `typescript` (extensible — read the language-equivalents row for the actual syntax).
 - `${ticket_id}` — tracker-verbatim id (e.g. `OPV-123`, `#42`, `SHOP-7`).
 - `${loop}` — `RED` | `GREEN`. (`GREEN` reserved for symmetry; today only RED disables.)

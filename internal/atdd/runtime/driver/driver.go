@@ -469,13 +469,15 @@ func orPlaceholder(s, placeholder string) string {
 
 // seedScopeState copies repo-strategy and architecture from a loaded
 // config into Context.State so agent prompts can substitute
-// ${repo_strategy}, ${repos}, ${architecture}, and ${allowed_roots}.
-// ${allowed_roots} is a pre-rendered multi-line block listing the paths
-// the agent is allowed to write into; the rendering happens here once
-// per run rather than at every dispatch site. Empty values are left
+// ${repo_strategy}, ${repos}, and ${architecture}. Empty values are left
 // absent. nil cfg is a no-op.
 //
-// State (not Params) is the right destination: these four facts are
+// Per-phase scope (read/write path keys) is NOT seeded here — that
+// information lives on the BPMN node, not the project config, and the
+// dispatcher reads it via engine.Scope at dispatch time (plan
+// 20260526-1448 Item 4).
+//
+// State (not Params) is the right destination: these facts are
 // project-scoped and stable for the entire run, alongside issue_title
 // (written by preResolveIssue) and the body-parsed ticket_description /
 // ticket_acceptance_criteria / ticket_steps_to_reproduce / ticket_checklist
@@ -498,9 +500,6 @@ func seedScopeState(sCtx *statemachine.Context, cfg *projectconfig.Config) {
 	}
 	if lang := primaryLanguage(cfg); lang != "" {
 		sCtx.Set("language", lang)
-	}
-	if rendered := renderAllowedRoots(cfg); rendered != "" {
-		sCtx.Set("allowed_roots", rendered)
 	}
 }
 
@@ -534,50 +533,6 @@ func primaryLanguage(cfg *projectconfig.Config) string {
 	}
 }
 
-// renderAllowedRoots produces the multi-line "Allowed write roots" block
-// the task prompts substitute via ${allowed_roots}.
-// The block lists every tier the agent is allowed to edit, plus a
-// separate external-systems section when those are declared.
-//
-// Returns "" when cfg has no architecture (the caller leaves the param
-// unset, and the template variable expands to "").
-func renderAllowedRoots(cfg *projectconfig.Config) string {
-	if cfg == nil || cfg.System.Architecture == "" {
-		return ""
-	}
-	var b strings.Builder
-
-	// System + tests block.
-	switch cfg.System.Architecture {
-	case projectconfig.ArchMonolith:
-		fmt.Fprintf(&b, "- System: %s (lang: %s)\n",
-			cfg.System.Path, cfg.System.Lang)
-	case projectconfig.ArchMultitier:
-		fmt.Fprintf(&b, "- Backend: %s (lang: %s)\n",
-			cfg.System.Backend.Path, cfg.System.Backend.Lang)
-		fmt.Fprintf(&b, "- Frontend: %s (lang: %s)\n",
-			cfg.System.Frontend.Path, cfg.System.Frontend.Lang)
-	}
-	if !cfg.SystemTest.IsEmpty() {
-		fmt.Fprintf(&b, "- System tests: %s (lang: %s)\n",
-			cfg.SystemTest.Path, cfg.SystemTest.Lang)
-	}
-
-	// External-systems block — only when declared. Stubs first (cycle 2),
-	// simulators second (cycle 3).
-	ext := cfg.ExternalSystems
-	if !ext.Stubs.IsEmpty() || !ext.Simulators.IsEmpty() {
-		b.WriteString("\nExternal-system roots (modify only when the ticket calls for stub/sim changes):\n")
-		if !ext.Stubs.IsEmpty() {
-			fmt.Fprintf(&b, "- Stubs: %s\n", ext.Stubs.Path)
-		}
-		if !ext.Simulators.IsEmpty() {
-			fmt.Fprintf(&b, "- Simulators: %s\n", ext.Simulators.Path)
-		}
-	}
-
-	return b.String()
-}
 
 // preflightFn is the per-Run function that verifies the `claude` CLI
 // is on PATH and authenticated. Production points at preflightClaude;
@@ -723,7 +678,7 @@ func wrapAgentDispatchers(eng *statemachine.Engine, opts Options, cfg *projectco
 			case opts.ManualAgents:
 				node.Fn = newManualAgentDispatcher(opts, raw, inner)
 			default:
-				node.Fn = newClaudeRunDispatcher(opts, raw, cfg, rs, inner)
+				node.Fn = newClaudeRunDispatcher(opts, raw, eng, cfg, rs, inner)
 			}
 			process.Nodes[id] = node
 		}
@@ -821,7 +776,14 @@ func newManualAgentDispatcher(opts Options, raw statemachine.RawNode, inner stat
 // rs supplies the per-dispatch PromptLogPath. nil rs (only happens in
 // tests today) skips the log — clauderun treats empty PromptLogPath as
 // "no diagnostics file".
-func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *projectconfig.Config, rs *runState, inner statemachine.NodeFn) statemachine.NodeFn {
+//
+// eng is the loaded statemachine.Engine; the dispatcher uses it to look
+// up per-phase scope (engine.Scope) for the current MID, surfaced to the
+// agent as ${scope_block} (plan 20260526-1448 Item 4). For fix-* recovery
+// dispatches that have no MID node of their own, the lookup keys off
+// ctx.State["originating-task-name"] so the recovery prompt inherits its
+// caller's scope.
+func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statemachine.Engine, cfg *projectconfig.Config, rs *runState, inner statemachine.NodeFn) statemachine.NodeFn {
 	return func(ctx *statemachine.Context) statemachine.Outcome {
 		extraText := ctx.GetString(override.KeyExtra)
 		replaceText := ctx.GetString(override.KeyReplace)
@@ -870,6 +832,25 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 		// matching ${failing-task-name} / ${missing-outputs} /
 		// ${violating-paths} placeholders.
 		commandExitCode, _ := ctx.Get("command-exit-code").(int)
+		// Per-phase scope (plan 20260526-1448 Item 4). Look up via
+		// engine.Scope using `originating-task-name` for fix-* recovery
+		// dispatches (which have no MID of their own — task-name is the
+		// dynamic "fix-${failure-kind}"), and the agent name otherwise
+		// (since each writing-agent MID is keyed on its task-name == agent
+		// name == process name). When the engine has no entry (test seams
+		// with a stub engine; refine-acceptance-criteria's `scope: none`),
+		// both slices are nil and the renderer leaves ${scope_block}
+		// unfilled.
+		scopeKey := ctx.GetString("originating-task-name")
+		if scopeKey == "" {
+			scopeKey = agentName
+		}
+		var scopeRead, scopeWrite []string
+		if eng != nil {
+			r, w, _ := eng.Scope(scopeKey)
+			scopeRead = r
+			scopeWrite = w
+		}
 		cOpts := clauderun.Options{
 			Agent:              agentName,
 			NodeDescription:    statemachine.ExpandParams(raw.Documentation, ctx.Params, ctx.State),
@@ -878,7 +859,8 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 			Architecture:       ctx.GetString("architecture"),
 			Subtype:            ctx.GetString("subtype"),
 			Language:           ctx.GetString("language"),
-			AllowedRoots:       ctx.GetString("allowed_roots"),
+			ScopeRead:          scopeRead,
+			ScopeWrite:         scopeWrite,
 			Checklist:          ctx.GetString("ticket_checklist"),
 			AcceptanceCriteria: ctx.GetString("ticket_acceptance_criteria"),
 			ParsedConcepts:     ctx.GetString("parsed_concepts"),

@@ -6,9 +6,12 @@ You are running the `fix-unexpected-passing-tests` task. A test that the upstrea
 
 ## Inputs
 
+### Scope
+
+${scope_block}
+
 - `${verify_results}` — one block per verify command. The relevant blocks are the ones reporting the unexpectedly-passing test(s): suite, test name, captured stdout/stderr showing the assertion that should have tripped but did not.
 - `${changed_files}` — the working-tree diff the WRITE phase just produced (the new test, plus whatever supporting code it touched). Cross-reference the assertion against the SUT path it exercises.
-- `${allowed_roots}` — multi-line block restricting where you may read. Stay inside it when tracing call paths.
 
 ### Verify results to address
 
@@ -17,10 +20,6 @@ ${verify_results}
 ### Changed files from the WRITE phase
 
 ${changed_files}
-
-### Allowed roots
-
-${allowed_roots}
 
 ## Steps
 

@@ -72,12 +72,25 @@ type Options struct {
 	// Empty when the dispatcher fires outside a classified-ticket flow.
 	Subtype string
 
-	// AllowedRoots is a pre-rendered multi-line block listing the paths
-	// the agent is allowed to write into. The driver computes it from
-	// projectconfig.Config (system + system-test + optional external-systems)
-	// and passes it as a single ${allowed_roots} placeholder so the prompt
-	// template stays a flat substitution.
-	AllowedRoots string
+	// ScopeRead / ScopeWrite are the per-phase scope lists sourced from the
+	// BPMN node's inline `read:` / `write:` (plan 20260526-1448 Item 4 +
+	// spinoff 1536). The driver looks them up via engine.Scope at dispatch
+	// time, joins each key against ProjectConfig.PlaceholderMap() at render
+	// time, and the result is substituted into the prompt body via the
+	// ${scope_block} placeholder.
+	//
+	// Replaces the v1 ${allowed_roots} mechanism (which rendered a flat
+	// write-only block from projectconfig once per run). The new shape
+	// carries both read and write sets and varies per phase node, so the
+	// agent sees only what its current phase scope covers — not the
+	// project's full path inventory.
+	//
+	// Load-bearing: when both lists are non-empty the renderer registers
+	// ${scope_block}; when empty (e.g. `scope: none` phases or command-only
+	// MIDs) the placeholder is left unfilled and findUnfilledPlaceholders
+	// fails the dispatch fast if the prompt body references it.
+	ScopeRead  []string
+	ScopeWrite []string
 
 	// Checklist is the body of the ticket's Checklist section as parsed
 	// by intake.ParseSections (populated by the parse-ticket service-task
@@ -216,7 +229,7 @@ type Options struct {
 	// to be resolved at materialization time now live in the prompt body
 	// itself; this map is how the dispatcher gets them filled at render
 	// time. Lowest precedence — NodeParams and the fixed-schema set
-	// (architecture, language, allowed_roots, …) win on key collision so
+	// (architecture, language, scope_block, …) win on key collision so
 	// existing per-dispatch overrides keep their meaning.
 	Placeholders map[string]string
 
@@ -586,12 +599,23 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 		"phase":           opts.NodeDescription,
 		"architecture":    opts.Architecture,
 		"subtype":         opts.Subtype,
-		"allowed_roots":   opts.AllowedRoots,
 		"verify_results":  opts.VerifyResults,
 		"changed_files":   opts.ChangedFiles,
 		"references_root": referencesRoot,
 	} {
 		params[k] = v
+	}
+	// Per-phase scope block (plan 20260526-1448 Item 4). Rendered from the
+	// BPMN node's read: / write: lists joined against the same path map
+	// the inline ${key} annotations resolve through (opts.Placeholders —
+	// produced by cfg.PlaceholderMap() in production). Only registered
+	// when both lists are non-empty — `scope: none` phases and command-
+	// only MIDs leave ${scope_block} unfilled, which
+	// findUnfilledPlaceholders converts to a hard error if the prompt
+	// body references the placeholder. Mirrors the Language /
+	// AcceptanceCriteria load-bearing pattern.
+	if len(opts.ScopeRead) > 0 && len(opts.ScopeWrite) > 0 {
+		params["scope_block"] = renderScopeBlock(opts.ScopeRead, opts.ScopeWrite, opts.Placeholders)
 	}
 	// Language is load-bearing — only registered when the driver supplied
 	// a value. An empty value would silently substitute, masking a config
@@ -668,6 +692,55 @@ func RenderPrompt(opts Options) (string, error) {
 		return opts.RawPrompt, nil
 	}
 	return renderPrompt(opts)
+}
+
+// renderScopeBlock produces the body of the ${scope_block} substitution:
+// two key-list blocks (read, then write) plus the scope_exception escape
+// hatch line. The `### Scope` heading itself is owned by the prompt
+// source (each in-scope prompt writes `### Scope\n\n${scope_block}` under
+// `## Inputs`), so this helper renders only the body.
+//
+// Layer keys are resolved against the supplied paths map — same source
+// the inline ${key} placeholders resolve through (opts.Placeholders, fed
+// by cfg.PlaceholderMap()). Family B path keys (driver-port, dsl-core,
+// …) plus the Family A `system-path` are all in scope. Unresolved keys
+// (nil paths, or key not in the map) emit as `<key>: (unresolved)`
+// rather than disappearing silently — the build-time canonical-keys
+// guard catches drift before runtime, but if it slips through, the
+// agent sees the gap.
+func renderScopeBlock(read, write []string, paths map[string]string) string {
+	resolve := func(key string) string {
+		if paths == nil {
+			return "(unresolved)"
+		}
+		if v, ok := paths[key]; ok && v != "" {
+			return v
+		}
+		return "(unresolved)"
+	}
+	maxKeyLen := func(keys []string) int {
+		n := 0
+		for _, k := range keys {
+			if len(k) > n {
+				n = len(k)
+			}
+		}
+		return n
+	}
+	writeBlock := func(b *strings.Builder, keys []string) {
+		pad := maxKeyLen(keys)
+		for _, k := range keys {
+			fmt.Fprintf(b, "- `%s`:%s %s\n", k, strings.Repeat(" ", pad-len(k)), resolve(k))
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString("You may **read** files under these paths:\n\n")
+	writeBlock(&b, read)
+	b.WriteString("\nYou may **modify** files under these paths:\n\n")
+	writeBlock(&b, write)
+	b.WriteString("\nReading or writing outside this set requires a `scope_exception` block.")
+	return b.String()
 }
 
 func (o Options) withDefaults() Options {
@@ -921,8 +994,7 @@ func writePreparedPromptBanner(opts Options, prompt string) {
 	fmt.Fprintln(w, cyan.Sprintf("📋 PREPARED PROMPT for %s", opts.Agent))
 	fmt.Fprintln(w, cyan.Sprintf("   size:           %s", formatPromptSize(len(prompt))))
 	fmt.Fprintln(w, cyan.Sprintf("   architecture:   %s", orPlaceholderClauderun(opts.Architecture, "(empty)")))
-	fmt.Fprintln(w, cyan.Sprintf("   allowed roots:  %s", summarizeAllowedRoots(opts.AllowedRoots)))
-	writeIndentedBlock(w, cyan, opts.AllowedRoots)
+	fmt.Fprintln(w, cyan.Sprintf("   scope:          %s", summarizeScope(opts.ScopeRead, opts.ScopeWrite)))
 	fmt.Fprintln(w, cyan.Sprintf("   acceptance criteria: %s", summarizeAcceptanceCriteria(opts.AcceptanceCriteria)))
 	writeIndentedBlock(w, cyan, opts.AcceptanceCriteria)
 	fmt.Fprintln(w, cyan.Sprintf("   checklist:      %s", summarizeChecklist(opts.Checklist)))
@@ -934,9 +1006,8 @@ func writePreparedPromptBanner(opts Options, prompt string) {
 
 // writeIndentedBlock prints each non-empty line of s under the
 // preceding summary line, indented to align beneath the field value.
-// Skips blank lines so the rendered ${allowed_roots} block (which has
-// a leading blank before the External-systems heading) doesn't leave
-// a gap in the banner.
+// Skips blank lines so an embedded block with leading blanks doesn't
+// leave a gap in the banner.
 func writeIndentedBlock(w io.Writer, c *color.Color, s string) {
 	for line := range strings.SplitSeq(s, "\n") {
 		trimmed := strings.TrimRight(line, " \t\r")
@@ -961,38 +1032,14 @@ func formatPromptSize(n int) string {
 	return fmt.Sprintf("%.1f KB", float64(n)/1024)
 }
 
-// summarizeAllowedRoots reduces the multi-line ${allowed_roots} block
-// to a one-line count for the banner. Counts `- ` prefix lines, split
-// across system-tier vs external-systems sections (the heading
-// "External-system roots" marks the boundary as written by
-// renderAllowedRoots in the driver). Empty input → "(empty)".
-func summarizeAllowedRoots(s string) string {
-	if s == "" {
+// summarizeScope reduces the per-phase read / write key lists to a
+// one-line count for the prepared-prompt banner. Empty both → "(empty)"
+// (which is the load-bearing path — see ScopeRead/ScopeWrite doc).
+func summarizeScope(read, write []string) string {
+	if len(read) == 0 && len(write) == 0 {
 		return "(empty)"
 	}
-	var main, ext int
-	inExternal := false
-	for line := range strings.SplitSeq(s, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "External-system roots") {
-			inExternal = true
-			continue
-		}
-		if strings.HasPrefix(trimmed, "- ") {
-			if inExternal {
-				ext++
-			} else {
-				main++
-			}
-		}
-	}
-	if main+ext == 0 {
-		return "(empty)"
-	}
-	if ext == 0 {
-		return fmt.Sprintf("%d path(s)", main)
-	}
-	return fmt.Sprintf("%d path(s), %d external", main, ext)
+	return fmt.Sprintf("%d read / %d write", len(read), len(write))
 }
 
 // summarizeAcceptanceCriteria reduces the multi-line AC block to a one-

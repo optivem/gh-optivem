@@ -6,6 +6,12 @@ You are running the `fix-command-failed` task. A shell command dispatched by the
 
 ## Inputs
 
+### Scope
+
+${scope_block}
+
+### Parameters
+
 - `${command}` — the exact shell command line the CYCLE invoked. Treat this as the contract: the command and its arguments are what the CYCLE expected to succeed.
 
   ```
@@ -30,18 +36,12 @@ You are running the `fix-command-failed` task. A shell command dispatched by the
   ${changed_files}
   ```
 
-- `${allowed_roots}` — multi-line block restricting where you may read or propose edits.
-
-  ```
-  ${allowed_roots}
-  ```
-
 ## Steps
 
 1. **Read the stderr tail.** `${command_stderr_tail}` is the entire signal. Locate the first concrete error (file:line, missing dependency, configuration key, network endpoint) — most command failures point at one root cause and a wall of downstream noise.
 
 2. **Classify the failure.** Each one is one of:
-   - **A genuine environment or configuration bug** — a missing tool, a malformed config file, an unreachable resource, a permissions issue. The fix lives in the operator's setup or a config file inside `${allowed_roots}`.
+   - **A genuine environment or configuration bug** — a missing tool, a malformed config file, an unreachable resource, a permissions issue. The fix lives in the operator's setup or a config file inside scope.
    - **A regression in the SUT** introduced by a recent edit listed in `${changed_files}`. The command is exercising code that no longer compiles, lints, or passes the tool's checks. The fix restores the previously-working behaviour with the smallest change possible.
    - **Misuse of the command** — wrong arguments, wrong working directory, command run before a prerequisite step. The fix is in the calling CYCLE's wiring, not the SUT. Surface this in the diagnosis; the operator owns the wiring repair.
 
@@ -57,7 +57,7 @@ This is one of the closed `fix-*` failure-kinds. Your job is **diagnosis**, not 
 
 - You get **one** attempt. You do not retry. You do not re-run the command — the caller re-validates after you exit.
 - You present a one-paragraph diagnosis (or the smallest reasoned change proposal) to the human and exit cleanly. Approval gates upstream of you (the PRE step) decide whether the proposed change lands.
-- Stay inside `${allowed_roots}`. If the diagnosis points outside that scope (e.g. tooling owned by an external system, a CI-only environment variable), say so in the diagnosis and stop.
+- Stay inside scope (see the `### Scope` block above). If the diagnosis points outside that scope (e.g. tooling owned by an external system, a CI-only environment variable), say so in the diagnosis and stop.
 
 ### Exception to the anti-rediscovery rule
 

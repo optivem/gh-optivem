@@ -3,20 +3,20 @@
 model: opus
 effort: medium
 ---
-The implement-system-driver-adapters task fills in real adapter logic for the System Driver port — replace each `TODO: System Driver` prototype with actual logic.
+The implement-system-driver-adapters task fills in real adapter logic for the System Driver port (`${driver-port}`) — replace each `TODO: System Driver` prototype with actual logic.
 
 Architecture: ${architecture}
 
-Allowed write roots:
-${allowed_roots}
-
-Edit ONLY files under the "Allowed write roots" listed at the top of this prompt.
-
 ## Inputs
 
-- `${architecture}` — the target architecture for the System Driver adapters.
-- `${allowed_roots}` — the paths the agent may write to.
+### Scope
+
+${scope_block}
+
+### Parameters
+
+- `${architecture}` — the target architecture for the System Driver adapter (`${driver-adapter}`).
 
 ## Steps
 
-1. Implement the System Driver adapters for real — replace each `TODO: System Driver` prototype with actual logic. If your previous WRITE didn't compile, instead fix the broken/missing piece in your prior edits (forgotten Driver stub, signature mismatch, typo) and fix it minimally.
+1. Implement the System Driver adapter (`${driver-adapter}`) for real — replace each `TODO: System Driver` prototype with actual logic. If your previous WRITE didn't compile, instead fix the broken/missing piece in your prior edits (forgotten Driver stub, signature mismatch, typo) and fix it minimally.

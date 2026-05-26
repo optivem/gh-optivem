@@ -116,6 +116,21 @@ func (f *fakeGit) hasGitArg(prefix ...string) bool {
 }
 
 func newOpts() Options {
+	// Minimal monolith Java shop-shaped config — production dispatch wires
+	// Placeholders from cfg.PlaceholderMap(), so seed both consistently so
+	// inline ${key} annotations + ${scope_block} resolve cleanly.
+	cfg := &projectconfig.Config{
+		System: projectconfig.System{
+			Architecture: projectconfig.ArchMonolith,
+			Path:         "system",
+			Lang:         "java",
+		},
+		SystemTest: projectconfig.TierSpec{
+			Path:  "system-test",
+			Lang:  "java",
+			Paths: projectconfig.DefaultPaths(projectconfig.LangJava, "system-test", "shop"),
+		},
+	}
 	return Options{
 		Agent:           "write-acceptance-tests",
 		NodeDescription: "Write the AT-RED scenario",
@@ -128,6 +143,15 @@ func newOpts() Options {
 		// default so dispatch tests using this scaffold render cleanly.
 		// Tests that exercise the unset/load-bearing path override this.
 		AcceptanceCriteria: "Scenario: placeholder\n  Given x\n  When y\n  Then z",
+		// Per-phase scope (plan 20260526-1448 Item 4). Every writing-agent
+		// prompt body now references ${scope_block} (load-bearing); seed a
+		// minimal write-acceptance-tests-shaped scope so dispatch tests
+		// render cleanly. Tests exercising scope-specific behaviour override
+		// these.
+		ScopeRead:     []string{"at-test", "dsl-port"},
+		ScopeWrite:    []string{"at-test", "dsl-port", "dsl-core"},
+		ProjectConfig: cfg,
+		Placeholders:  cfg.PlaceholderMap(),
 		// Discard banners so test output stays clean.
 		Stdout: io.Discard,
 		Stderr: io.Discard,
@@ -200,11 +224,25 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 	}
 }
 
-func TestRenderPrompt_TaskAgentArchitectureAndAllowedRoots_ExplicitValues(t *testing.T) {
+func TestRenderPrompt_TaskAgentArchitectureAndScopeBlock_ExplicitValues(t *testing.T) {
 	opts := newOpts()
 	opts.Agent = "implement-system"
 	opts.Architecture = "monolith"
-	opts.AllowedRoots = "- System: system/monolith/java (lang: java)\n- System tests: system-test/java (lang: java)\n"
+	// Per-phase scope from the BPMN node's read:/write: lists (plan
+	// 20260526-1448 Item 4). Production fills these via engine.Scope at
+	// dispatch time; for the render test we supply them directly.
+	opts.ScopeRead = []string{"system-path"}
+	opts.ScopeWrite = []string{"system-path"}
+	// ProjectConfig drives the ${scope_block} resolver — it joins each
+	// key against cfg.PlaceholderMap(). Seed a minimal monolith config so
+	// `system-path` resolves to a concrete path in the rendered block.
+	opts.ProjectConfig = &projectconfig.Config{
+		System: projectconfig.System{
+			Architecture: projectconfig.ArchMonolith,
+			Path:         "system/monolith/java",
+			Lang:         "java",
+		},
+	}
 	// implement-system's body references ${checklist}, now load-bearing.
 	// Production dispatch fills this from ctx.State["ticket_checklist"]
 	// (populated by parse-ticket); supply directly so the no-leftover-${...}
@@ -215,6 +253,7 @@ func TestRenderPrompt_TaskAgentArchitectureAndAllowedRoots_ExplicitValues(t *tes
 	// would catch the inlined Family B path references.
 	opts.Placeholders = map[string]string{
 		"sut-namespace":    "shop",
+		"system-path":      "system/monolith/java",
 		"system-test-path": "system-test/java",
 		"driver-port":      "system-test/src/testkit/driver/port/shop",
 		"driver-adapter":   "system-test/src/testkit/driver/adapter/shop",
@@ -225,9 +264,12 @@ func TestRenderPrompt_TaskAgentArchitectureAndAllowedRoots_ExplicitValues(t *tes
 		t.Fatalf("renderPrompt: %v", err)
 	}
 	mustContain(t, got, "Architecture: monolith")
-	mustContain(t, got, "Allowed write roots:")
-	mustContain(t, got, "- System: system/monolith/java (lang: java)")
-	mustContain(t, got, "- System tests: system-test/java (lang: java)")
+	// The ### Scope heading lives in the prompt source (implement-system.md).
+	mustContain(t, got, "### Scope")
+	mustContain(t, got, "You may **read** files under these paths:")
+	mustContain(t, got, "You may **modify** files under these paths:")
+	mustContain(t, got, "- `system-path`: system/monolith/java")
+	mustContain(t, got, "`scope_exception`")
 	if strings.Contains(got, "${") {
 		t.Errorf("prompt still contains ${...} placeholder: %s", got)
 	}
@@ -256,24 +298,26 @@ func TestRenderPrompt_TaskAgentChecklistInjected(t *testing.T) {
 	}
 }
 
-func TestRenderPrompt_RefactorSystemAgent_EmptyArchitectureAndRootsRender(t *testing.T) {
-	// When architecture and allowed_roots are empty (e.g. fresh config or
-	// pre-resolution), the placeholders expand to empty strings — the
-	// prompt still renders without leaking ${...}. There is no longer a
-	// "broadest defaults" fallback; per-component lang has replaced
-	// `Architecture=both`/`Lang=all` semantics.
+func TestRenderPrompt_RefactorSystemAgent_RendersScopeBlock(t *testing.T) {
+	// refactor-system's MID-node scope is read=[system-path], write=[system-path]
+	// (the broadest single-key writing-agent). Scope rendering replaces the
+	// pre-Item-4 ${allowed_roots} mechanism; this test pins the scope_block
+	// shape for refactor-system.
 	opts := newOpts()
 	opts.Agent = "refactor-system"
+	opts.Architecture = "monolith"
+	opts.ScopeRead = []string{"system-path"}
+	opts.ScopeWrite = []string{"system-path"}
 	// refactor-system's body references ${checklist} (load-bearing).
 	// Production fills this from ctx.State["ticket_checklist"]; supply
 	// directly so the no-leftover-${...} assertion below doesn't trip.
 	opts.Checklist = "- [ ] Refactor X"
-	// The refactor-system prompt inlines phase-doc
-	// placeholders that the production dispatcher fills from
-	// cfg.PlaceholderMap(); supply them directly so the body renders
-	// without ${...} leftovers.
+	// The refactor-system prompt inlines phase-doc placeholders that the
+	// production dispatcher fills from cfg.PlaceholderMap(); supply them
+	// directly so the body renders without ${...} leftovers.
 	opts.Placeholders = map[string]string{
 		"sut-namespace":    "shop",
+		"system-path":      "system",
 		"system-test-path": "system-test",
 		"driver-port":      "system-test/src/testkit/driver/port/shop",
 		"driver-adapter":   "system-test/src/testkit/driver/adapter/shop",
@@ -283,8 +327,9 @@ func TestRenderPrompt_RefactorSystemAgent_EmptyArchitectureAndRootsRender(t *tes
 	if err != nil {
 		t.Fatalf("renderPrompt: %v", err)
 	}
-	mustContain(t, got, "Architecture: ")
-	mustContain(t, got, "Allowed write roots:")
+	mustContain(t, got, "Architecture: monolith")
+	mustContain(t, got, "### Scope")
+	mustContain(t, got, "- `system-path`: system")
 	if strings.Contains(got, "${") {
 		t.Errorf("prompt still contains ${...} placeholder: %s", got)
 	}
@@ -433,7 +478,9 @@ func TestDispatch_FallsBackToUserGlobalReferencesRootWhenProjectConfigNil(t *tes
 
 	opts := newOpts()
 	opts.RepoPath = repoPath
-	// ProjectConfig left nil — should fall back to the user-global root.
+	// ProjectConfig must be nil to exercise the legacy fallback path.
+	// newOpts() seeds it for the common scope_block case — clear here.
+	opts.ProjectConfig = nil
 	opts.PromptOverride = "Read ${references_root}/atdd/architecture/system.md."
 
 	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
@@ -547,6 +594,10 @@ func TestRenderPrompt_UnsetLanguageFailsFast(t *testing.T) {
 	}
 	opts := newOpts()
 	opts.Language = "" // override the test default to exercise the load-bearing path
+	// newOpts() seeds Placeholders from cfg.PlaceholderMap(), which
+	// includes "language" — clear it so the unfilled-placeholder check
+	// has a real ${language} to catch.
+	delete(opts.Placeholders, "language")
 	// Use a node_replacements-style PromptOverride that references
 	// ${language} without setting Language. Dispatch's
 	// findUnfilledPlaceholders catches the leftover.
@@ -1313,7 +1364,15 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	opts.Stdout = &buf
 	opts.Agent = "implement-system"
 	opts.Architecture = "monolith"
-	opts.AllowedRoots = "- System: system/monolith/typescript (lang: typescript)\n- System tests: system-test/typescript (lang: typescript)\n"
+	opts.ScopeRead = []string{"system-path"}
+	opts.ScopeWrite = []string{"system-path"}
+	opts.ProjectConfig = &projectconfig.Config{
+		System: projectconfig.System{
+			Architecture: projectconfig.ArchMonolith,
+			Path:         "system/monolith/typescript",
+			Lang:         "typescript",
+		},
+	}
 	opts.Checklist = "- [x] One done\n- [ ] Two pending"
 	opts.PromptLogPath = "/tmp/runs/001-implement-system.prompt.md"
 	// implement-system's inlined phase-doc body now references
@@ -1323,6 +1382,7 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	// has values to substitute.
 	opts.Placeholders = map[string]string{
 		"sut-namespace":    "shop",
+		"system-path":      "system/monolith/typescript",
 		"system-test-path": "system-test/typescript",
 		"driver-port":      "system-test/src/testkit/driver/port/shop",
 		"driver-adapter":   "system-test/src/testkit/driver/adapter/shop",
@@ -1335,10 +1395,8 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	mustContain(t, got, "PREPARED PROMPT for implement-system")
 	mustContain(t, got, "architecture:")
 	mustContain(t, got, "monolith")
-	mustContain(t, got, "allowed roots:")
-	mustContain(t, got, "2 path(s)")
-	mustContain(t, got, "- System: system/monolith/typescript (lang: typescript)")
-	mustContain(t, got, "- System tests: system-test/typescript (lang: typescript)")
+	mustContain(t, got, "scope:")
+	mustContain(t, got, "1 read / 1 write")
 	mustContain(t, got, "checklist:")
 	mustContain(t, got, "2 item(s) (1 already [x])")
 	mustContain(t, got, "- [x] One done")
@@ -1348,8 +1406,8 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 
 func TestDispatch_PreparedPromptBannerUsesPlaceholdersForEmpties(t *testing.T) {
 	// The bug we're guarding against shows up here: when Architecture and
-	// AllowedRoots are empty (the seedScopeParams → seedScopeState bug), the
-	// banner makes that visible at a glance.
+	// scope are empty (the seedScopeParams → seedScopeState bug, or a phase
+	// with no read:/write: lists), the banner makes that visible at a glance.
 	var buf bytes.Buffer
 	gitFake := &fakeGit{
 		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
@@ -1357,7 +1415,16 @@ func TestDispatch_PreparedPromptBannerUsesPlaceholdersForEmpties(t *testing.T) {
 	claudeFake := &fakeClaude{}
 	opts := newOpts()
 	opts.Stdout = &buf
-	// Architecture and AllowedRoots default to "".
+	// Architecture defaults to ""; scope is unset by zeroing the slices
+	// so the banner exercises the empty path.
+	opts.Architecture = ""
+	opts.ScopeRead = nil
+	opts.ScopeWrite = nil
+	// PromptOverride avoids the load-bearing-${scope_block} failure mode
+	// — the real write-acceptance-tests body now references ${scope_block},
+	// which would fail dispatch with empty scope. This test only cares
+	// about the banner output for unset fields.
+	opts.PromptOverride = "Synthetic body — no scope references."
 
 	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
@@ -1421,24 +1488,20 @@ func TestDispatch_ShowPromptOffByDefault(t *testing.T) {
 	}
 }
 
-func TestSummarizeAllowedRoots(t *testing.T) {
+func TestSummarizeScope(t *testing.T) {
 	tests := []struct {
-		name string
-		in   string
-		want string
+		name      string
+		read      []string
+		writeKeys []string
+		want      string
 	}{
-		{"empty", "", "(empty)"},
-		{"only system", "- System: a (lang: java)\n- System tests: b (lang: java)\n", "2 path(s)"},
-		{"with externals",
-			"- System: a\n- System tests: b\n\nExternal-system roots (note):\n- Stubs: c\n- Simulators: d\n",
-			"2 path(s), 2 external"},
-		{"only externals",
-			"\nExternal-system roots:\n- Stubs: c\n",
-			"0 path(s), 1 external"},
+		{"empty", nil, nil, "(empty)"},
+		{"read-only", []string{"system-path"}, nil, "1 read / 0 write"},
+		{"symmetric", []string{"at-test", "dsl-port"}, []string{"at-test", "dsl-port", "dsl-core"}, "2 read / 3 write"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := summarizeAllowedRoots(tt.in); got != tt.want {
+			if got := summarizeScope(tt.read, tt.writeKeys); got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})

@@ -6,9 +6,12 @@ You are running the `fix-unexpected-failing-tests` task. Verify came back red af
 
 ## Inputs
 
+### Scope
+
+${scope_block}
+
 - `${verify_results}` — for compile failures, the build log scoped to in-scope projects (file:line of the offending source). For test failures, one block per failed test (suite, test name, captured stderr/stdout). Read these first; they are the entire signal.
 - `${changed_files}` — the working-tree diff the WRITE phase just produced. Cross-reference against the failure messages — most regressions are explained by a single line in the diff.
-- `${allowed_roots}` — multi-line block restricting where you may read or propose edits.
 
 ### Verify results to address
 
@@ -17,10 +20,6 @@ ${verify_results}
 ### Changed files from the WRITE phase
 
 ${changed_files}
-
-### Allowed roots
-
-${allowed_roots}
 
 ## Steps
 
@@ -44,7 +43,7 @@ This is one of the closed `fix-*` failure-kinds. Your job is **diagnosis**, not 
 
 - You get **one** attempt. You do not retry. You do not re-run verify — the caller re-validates after you exit.
 - You present a one-paragraph diagnosis (or the smallest reasoned change proposal) to the human and exit cleanly. Approval gates upstream of you (the PRE step) decide whether the proposed change lands.
-- Stay inside `${allowed_roots}`. If the diagnosis points outside that scope (e.g. a contract owned by an external system), say so in the diagnosis and stop.
+- Stay inside scope (see the `### Scope` block above). If the diagnosis points outside that scope (e.g. a contract owned by an external system), say so in the diagnosis and stop.
 
 ### Exception to the anti-rediscovery rule
 

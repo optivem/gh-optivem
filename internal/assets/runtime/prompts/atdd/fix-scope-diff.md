@@ -6,6 +6,12 @@ You are running the `fix-scope-diff` task. The calling CYCLE dispatched `${faili
 
 ## Inputs
 
+### Scope
+
+${scope_block}
+
+### Parameters
+
 - `${failing-task-name}` — the writing-agent task whose diff violated scopes (e.g. `write-acceptance-tests`, `implement-system`). Its prompt lives at `internal/assets/runtime/prompts/atdd/<failing-task-name>.md` and the call-site's `scopes:` contract lives in `internal/atdd/runtime/statemachine/process-flow.yaml`. Read the prompt to confirm what the agent was supposed to touch.
 
   ```
@@ -24,11 +30,7 @@ You are running the `fix-scope-diff` task. The calling CYCLE dispatched `${faili
   ${changed_files}
   ```
 
-- `${allowed_roots}` — multi-line block restricting where you may read or propose edits. Note: this is broader than the call-site's `scopes:` — it is the per-cycle root set. The `${violating-paths}` were caught by the narrower `scopes:` join, not by `${allowed_roots}`.
-
-  ```
-  ${allowed_roots}
-  ```
+Note: the `### Scope` block above carries the originating task's scope. The `${violating-paths}` were caught against a narrower per-call-site `scopes:` join, not against the `### Scope` write set.
 
 ## Steps
 
@@ -51,7 +53,7 @@ This is one of the closed `fix-*` failure-kinds. Your job is **diagnosis**, not 
 
 - You get **one** attempt. You do not retry. You do not re-dispatch `${failing-task-name}` and you do not revert the violating edits yourself — the caller re-validates after you exit.
 - You present a one-paragraph diagnosis (or the smallest reasoned change proposal) to the human and exit cleanly. Approval gates upstream of you (the PRE step) decide whether the proposed change lands.
-- Stay inside `${allowed_roots}`. If the diagnosis points outside that scope, say so in the diagnosis and stop.
+- Stay inside scope (see the `### Scope` block above). If the diagnosis points outside that scope, say so in the diagnosis and stop.
 
 ### Exception to the anti-rediscovery rule
 
