@@ -1,5 +1,7 @@
 # Ticket `subtype:*` label values — verb → noun
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-26T10:23:36Z`
+
 **Date:** 2026-05-26
 **Origin:** Conversation 2026-05-26. The `ticket-kind` gate's error message (commit `f3df7bd`) now enumerates valid `subtype:*` label values: `cover-legacy`, `redesign-system`, `refactor-system`, `refactor-tests`, `onboard-external-system`. All five are verb-form, but the parent ticket-type set (`story`, `bug`, `task`) is noun-form — so the subtype reads as "this task is [do thing]" instead of the parallel "this task is a [thing]". The verb form also collides grammatically with PR titles and commit messages ("Refactor system" the action vs. the label).
 
@@ -35,14 +37,6 @@ Rename label values from verb form to noun form. The `subtype:*` label values ch
 - **Plan files** (`plans/`, `plans/ideas/`, `plans/upcoming/`): historical artifacts frozen in time. Do not retroactively rewrite.
 
 ## Items
-
-1. - [ ] **`bindings.go` — rename slice values + lookup-table comment.** Edit `ticketKindTaskSubtypes` (5 values) and the table inside the `ticketKind` doc comment. Confirm the gate's error messages now enumerate the new values via the slice (no message-string edits needed — they read the slice). Commit.
-
-2. - [ ] **`bindings_test.go` — rename test fixture values.** Update `TestTicketKind_LookupTable` cases (`task_cover_legacy` → `task_legacy_coverage`, etc.) and any other fixture occurrences. Re-run `go test ./internal/atdd/runtime/gates/`. Commit.
-
-3. - [ ] **`process-flow.yaml` — rename edge-guard values + mapping comment.** Replace 5 `when: "ticket-kind == task/<verb>"` strings with `task/<noun>` and update the lookup-table comment block above the gate. Re-run `go test ./internal/atdd/runtime/statemachine/ -run TestStructural -p 2` (per [[feedback_statemachine_test_loop_hazard]] keep `-p 2`). Commit.
-
-4. - [ ] **Phase prompts — rename reclassification literals.** In `refactor-system.md` line 26, rename `task/redesign-system` → `task/system-redesign`, `task/refactor-system` → `task/system-refactor`. Audit `refine-acceptance-criteria.md` for subtype-value occurrences (vs phase-name occurrences) and rename only the former. Commit.
 
 5. - [ ] **Regenerate diagrams.** `gh optivem process show > docs/process-diagram.md`. SVGs auto-regenerate; confirm the 5 affected files (`process-diagram-{4,5,8,11,22}-*.svg`) show the new value names where they appear. Commit the regenerated outputs in a single follow-up commit.
 

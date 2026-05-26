@@ -23,5 +23,5 @@ The Checklist above lists the concrete refactor / cleanup steps; implement those
 ## Steps
 
 1. Implement the change as described in the ticket's checklist of refactor steps.
-2. `system/` is untouched. If the work turns out to require production-code changes, STOP and reclassify the ticket as `task/refactor-system` — `task/refactor-tests` by definition only touches test code.
+2. `system/` is untouched. If the work turns out to require production-code changes, STOP and reclassify the ticket as `task/system-refactor` — `task/test-refactor` by definition only touches test code.
 3. Behavioral assertions inside the tests are untouched. If the work turns out to require changing what the tests assert, STOP and reclassify the ticket as a `story` or `bug`. Refactor-tests preserves the behaviour the tests describe; only the shape of the test code changes.

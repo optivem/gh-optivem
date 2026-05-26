@@ -414,11 +414,11 @@ func (b bindings) outputsAndScopesValid(ctx *statemachine.Context) statemachine.
 //	---         | ---                        | ---
 //	story       | (any/none)                 | story
 //	bug         | (any/none)                 | bug
-//	task        | cover-legacy               | task/cover-legacy
-//	task        | redesign-system            | task/redesign-system
-//	task        | refactor-system            | task/refactor-system
-//	task        | refactor-tests             | task/refactor-tests
-//	task        | onboard-external-system    | task/onboard-external-system
+//	task        | legacy-coverage            | task/legacy-coverage
+//	task        | system-redesign            | task/system-redesign
+//	task        | system-refactor            | task/system-refactor
+//	task        | test-refactor              | task/test-refactor
+//	task        | external-system-onboarding | task/external-system-onboarding
 //
 // Preseed via ctx.State["ticket-kind"] short-circuits the
 // classification (hand-debug / transitions tests). Tracker.Classify
@@ -478,11 +478,11 @@ var ticketKindAliases = map[string]string{"feature": "story"}
 // operator-facing error messages, so keep it in sync with the lookup
 // table in the ticketKind doc comment.
 var ticketKindTaskSubtypes = []string{
-	"cover-legacy",
-	"redesign-system",
-	"refactor-system",
-	"refactor-tests",
-	"onboard-external-system",
+	"legacy-coverage",
+	"system-redesign",
+	"system-refactor",
+	"test-refactor",
+	"external-system-onboarding",
 }
 
 // ticketKindTaskSubtypeSet is the O(1) membership view of

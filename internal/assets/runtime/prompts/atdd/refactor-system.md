@@ -23,5 +23,5 @@ The Checklist above lists the concrete refactor / upgrade steps; implement those
 ## Steps
 
 1. Implement the change as described in the ticket's checklist of refactor / upgrade steps.
-2. Drivers — interfaces (`${driver-port}/`) and implementations (`${driver-adapter}/`) — are untouched. If the work turns out to require driver changes (system-driver or external-system-driver), STOP and reclassify the ticket as `task/redesign-system` — `task/refactor-system` by definition does not change driver-port surfaces.
+2. Drivers — interfaces (`${driver-port}/`) and implementations (`${driver-adapter}/`) — are untouched. If the work turns out to require driver changes (system-driver or external-system-driver), STOP and reclassify the ticket as `task/system-redesign` — `task/system-refactor` by definition does not change driver-port surfaces.
 3. Tests, DSL, and Gherkin are untouched. If the work turns out to require behavioral test changes, STOP and reclassify the ticket as a `story` or `bug`.

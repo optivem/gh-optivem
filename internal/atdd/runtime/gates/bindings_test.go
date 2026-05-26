@@ -649,13 +649,13 @@ func TestTicketKind_PreseededShortCircuits(t *testing.T) {
 	b := newBindings(t, Deps{Prompter: &fakePrompter{}, Tracker: tk})
 	ctx := statemachine.NewContext()
 	ctx.Set("issue_url", "https://example/1")
-	ctx.Set("ticket-kind", "task/cover-legacy")
+	ctx.Set("ticket-kind", "task/legacy-coverage")
 	out := b.ticketKind(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
-	if out.Value != "task/cover-legacy" {
-		t.Fatalf("Value: got %q, want %q", out.Value, "task/cover-legacy")
+	if out.Value != "task/legacy-coverage" {
+		t.Fatalf("Value: got %q, want %q", out.Value, "task/legacy-coverage")
 	}
 }
 
@@ -670,14 +670,14 @@ func TestTicketKind_LookupTable(t *testing.T) {
 		{name: "story", kind: "story", want: "story"},
 		{name: "bug", kind: "bug", want: "bug"},
 		{name: "feature_aliased_to_story", kind: "feature", want: "story"},
-		{name: "task_cover_legacy", kind: "task", subtypes: []string{"cover-legacy"}, want: "task/cover-legacy"},
-		{name: "task_redesign_system", kind: "task", subtypes: []string{"redesign-system"}, want: "task/redesign-system"},
-		{name: "task_refactor_system", kind: "task", subtypes: []string{"refactor-system"}, want: "task/refactor-system"},
-		{name: "task_refactor_tests", kind: "task", subtypes: []string{"refactor-tests"}, want: "task/refactor-tests"},
-		{name: "task_onboard_external_system", kind: "task", subtypes: []string{"onboard-external-system"}, want: "task/onboard-external-system"},
+		{name: "task_legacy_coverage", kind: "task", subtypes: []string{"legacy-coverage"}, want: "task/legacy-coverage"},
+		{name: "task_system_redesign", kind: "task", subtypes: []string{"system-redesign"}, want: "task/system-redesign"},
+		{name: "task_system_refactor", kind: "task", subtypes: []string{"system-refactor"}, want: "task/system-refactor"},
+		{name: "task_test_refactor", kind: "task", subtypes: []string{"test-refactor"}, want: "task/test-refactor"},
+		{name: "task_external_system_onboarding", kind: "task", subtypes: []string{"external-system-onboarding"}, want: "task/external-system-onboarding"},
 		{name: "task_unrecognised_subtype_halts", kind: "task", subtypes: []string{"weird-subtype"}, expectErr: true},
 		{name: "task_no_subtype_halts", kind: "task", subtypes: nil, expectErr: true},
-		{name: "task_multiple_subtypes_halts", kind: "task", subtypes: []string{"cover-legacy", "refactor-system"}, expectErr: true},
+		{name: "task_multiple_subtypes_halts", kind: "task", subtypes: []string{"legacy-coverage", "system-refactor"}, expectErr: true},
 		{name: "unsupported_ticket_type_halts", kind: "spike", expectErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

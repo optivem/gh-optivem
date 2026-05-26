@@ -214,11 +214,11 @@ processes:
   #   ---                                  | ---
   #   story                                | change-system-behavior
   #   bug                                  | change-system-behavior
-  #   task/cover-legacy                    | cover-system-behavior
-  #   task/redesign-system                 | redesign-system-structure
-  #   task/refactor-system                 | refactor-system-structure
-  #   task/refactor-tests                  | refactor-test-structure
-  #   task/onboard-external-system         | onboard-external-system
+  #   task/legacy-coverage                 | cover-system-behavior
+  #   task/system-redesign                 | redesign-system-structure
+  #   task/system-refactor                 | refactor-system-structure
+  #   task/test-refactor                   | refactor-test-structure
+  #   task/external-system-onboarding      | onboard-external-system
   #
   # Unknown ticket-kind (and `spike` per the exploration backlog) does not
   # appear as a branch — the gateway is exhaustive over the known set and
@@ -272,11 +272,11 @@ processes:
       - {from: MARK_IN_PROGRESS,                 to: GATE_TICKET_KIND}
       - {from: GATE_TICKET_KIND, to: CALL_CHANGE_SYSTEM_BEHAVIOR,       when: "ticket-kind == story"}
       - {from: GATE_TICKET_KIND, to: CALL_CHANGE_SYSTEM_BEHAVIOR,       when: "ticket-kind == bug"}
-      - {from: GATE_TICKET_KIND, to: CALL_COVER_SYSTEM_BEHAVIOR,        when: "ticket-kind == task/cover-legacy"}
-      - {from: GATE_TICKET_KIND, to: CALL_REDESIGN_SYSTEM_STRUCTURE,    when: "ticket-kind == task/redesign-system"}
-      - {from: GATE_TICKET_KIND, to: CALL_REFACTOR_SYSTEM_STRUCTURE,    when: "ticket-kind == task/refactor-system"}
-      - {from: GATE_TICKET_KIND, to: CALL_REFACTOR_TEST_STRUCTURE,      when: "ticket-kind == task/refactor-tests"}
-      - {from: GATE_TICKET_KIND, to: CALL_ONBOARD_EXTERNAL_SYSTEM,      when: "ticket-kind == task/onboard-external-system"}
+      - {from: GATE_TICKET_KIND, to: CALL_COVER_SYSTEM_BEHAVIOR,        when: "ticket-kind == task/legacy-coverage"}
+      - {from: GATE_TICKET_KIND, to: CALL_REDESIGN_SYSTEM_STRUCTURE,    when: "ticket-kind == task/system-redesign"}
+      - {from: GATE_TICKET_KIND, to: CALL_REFACTOR_SYSTEM_STRUCTURE,    when: "ticket-kind == task/system-refactor"}
+      - {from: GATE_TICKET_KIND, to: CALL_REFACTOR_TEST_STRUCTURE,      when: "ticket-kind == task/test-refactor"}
+      - {from: GATE_TICKET_KIND, to: CALL_ONBOARD_EXTERNAL_SYSTEM,      when: "ticket-kind == task/external-system-onboarding"}
       - {from: CALL_CHANGE_SYSTEM_BEHAVIOR,      to: MARK_IN_ACCEPTANCE}
       - {from: CALL_COVER_SYSTEM_BEHAVIOR,       to: MARK_IN_ACCEPTANCE}
       - {from: CALL_REDESIGN_SYSTEM_STRUCTURE,   to: MARK_IN_ACCEPTANCE}
@@ -292,7 +292,7 @@ processes:
   # Loopable refactor-type chooser. The operator picks a refactor CYCLE
   # (opportunistic mode, no checklist) or exits. No Mark-Ticket bookends —
   # there is no ticket. Coexists with two other refactor surfaces:
-  # (1) ticket-driven via `task/refactor-system` → `implement-ticket`
+  # (1) ticket-driven via `task/system-refactor` → `implement-ticket`
   # gateway → CYCLE; (2) opportunistic-inside-change via the loopable
   # step 3 in `change-system-behavior`. Three surfaces, three ceremony
   # levels.
@@ -450,7 +450,7 @@ processes:
   # Legacy-coverage cycle. Operator specifies acceptance criteria only;
   # CT is a nested sub-process when the AT layer needs a stub/driver to
   # pass (Q31.a = Option A nested). Gateway is one row at TOP
-  # (`task/cover-legacy` → `cover-system-behavior`) — not split into
+  # (`task/legacy-coverage` → `cover-system-behavior`) — not split into
   # cover-legacy-acceptance / cover-legacy-contract, because the operator
   # does not think in CT subtypes (CT is an implementation detail of
   # making AT pass).
