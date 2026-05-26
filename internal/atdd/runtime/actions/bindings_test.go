@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
@@ -113,6 +114,7 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"move-to-ready",
 		"move-to-in-progress",
 		"move-to-in-acceptance",
+		"parse-ticket",
 	}
 	for _, name := range want {
 		if r.Lookup(name) == nil {
@@ -363,7 +365,7 @@ func TestRunCommand_RunTestsStampsTestOutcome(t *testing.T) {
 			var stderr bytes.Buffer
 			a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &stderr})
 			ctx := statemachine.NewContext()
-			ctx.Params["command"] = "gh optivem run-tests"
+			ctx.Params["command"] = "gh optivem test run"
 			out := a.runCommand(ctx)
 			if out.Err != nil {
 				t.Fatalf("unexpected err: %v", out.Err)
@@ -379,7 +381,7 @@ func TestRunCommand_FilterFlagsAppendedOnlyWhenSet(t *testing.T) {
 	sh := &fakeShell{out: []byte("OK")}
 	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
 	ctx := statemachine.NewContext()
-	ctx.Params["command"] = "gh optivem run-tests"
+	ctx.Params["command"] = "gh optivem test run"
 	ctx.Params["filter-type"] = "test-type"
 	ctx.Params["filter-value"] = "at-test"
 	out := a.runCommand(ctx)
@@ -557,5 +559,192 @@ func TestValidateOutputsAndScopes_MissingOutputWins_OverScopeDiff(t *testing.T) 
 	}
 	if got := ctx.GetString("failure-kind"); got != "missing-output" {
 		t.Fatalf("failure-kind: got %q, want %q (missing-output must win)", got, "missing-output")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// parseTicket — body parsing + state population
+// ---------------------------------------------------------------------------
+
+// fakeTracker is a test-side tracker.Tracker that returns canned sections
+// from ReadSections. Other methods panic — only parseTicket exercises
+// ReadSections.
+type fakeTracker struct {
+	sections   map[string]string
+	readErr    error
+	readCalled bool
+}
+
+func (f *fakeTracker) PickReady(context.Context) (tracker.Issue, error) {
+	panic("fakeTracker.PickReady: not implemented")
+}
+func (f *fakeTracker) FindIssue(context.Context, string) (tracker.Issue, error) {
+	panic("fakeTracker.FindIssue: not implemented")
+}
+func (f *fakeTracker) SetStatus(context.Context, string, string) error {
+	panic("fakeTracker.SetStatus: not implemented")
+}
+func (f *fakeTracker) Verify(context.Context) error {
+	panic("fakeTracker.Verify: not implemented")
+}
+func (f *fakeTracker) Classify(context.Context, tracker.Issue) (string, bool, error) {
+	panic("fakeTracker.Classify: not implemented")
+}
+func (f *fakeTracker) Subtypes(context.Context, tracker.Issue) ([]string, error) {
+	panic("fakeTracker.Subtypes: not implemented")
+}
+func (f *fakeTracker) ReadSections(_ context.Context, _ tracker.Issue, _ []string) (map[string]string, error) {
+	f.readCalled = true
+	return f.sections, f.readErr
+}
+func (f *fakeTracker) MarkChecklistComplete(context.Context, tracker.Issue) error {
+	panic("fakeTracker.MarkChecklistComplete: not implemented")
+}
+
+func seedIssue(ctx *statemachine.Context) {
+	ctx.Set("issue_num", "42")
+	ctx.Set("issue_url", "https://github.com/example/example/issues/42")
+	ctx.Set("issue_title", "Test")
+	ctx.Set("issue_handle", "PROJID:ITEMID")
+}
+
+func TestParseTicket_PopulatesStateOnHappyPath(t *testing.T) {
+	tk := &fakeTracker{sections: map[string]string{
+		"Description":         "Some prose.",
+		"Acceptance Criteria": "Scenario: x\n  Given y\n  When z\n  Then w",
+		"Steps to Reproduce":  "",
+		"Checklist":           "",
+	}}
+	a := newActions(Deps{Tracker: tk})
+	ctx := statemachine.NewContext()
+	seedIssue(ctx)
+
+	out := a.parseTicket(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if !tk.readCalled {
+		t.Fatalf("expected ReadSections to be called")
+	}
+	if got := ctx.GetString("ticket_description"); got != "Some prose." {
+		t.Errorf("ticket_description: got %q", got)
+	}
+	if got := ctx.GetString("ticket_acceptance_criteria"); !strings.Contains(got, "Scenario: x") {
+		t.Errorf("ticket_acceptance_criteria: got %q", got)
+	}
+	if got := ctx.GetString("ticket_checklist"); got != "" {
+		t.Errorf("ticket_checklist: got %q, want empty (no Checklist in body)", got)
+	}
+}
+
+func TestParseTicket_ChecklistSectionStashed(t *testing.T) {
+	tk := &fakeTracker{sections: map[string]string{
+		"Checklist": "- [x] One done\n- [ ] Two pending",
+	}}
+	a := newActions(Deps{Tracker: tk})
+	ctx := statemachine.NewContext()
+	seedIssue(ctx)
+
+	if out := a.parseTicket(ctx); out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	got := ctx.GetString("ticket_checklist")
+	if !strings.Contains(got, "- [x] One done") || !strings.Contains(got, "- [ ] Two pending") {
+		t.Fatalf("ticket_checklist body lost: got %q", got)
+	}
+}
+
+func TestParseTicket_BothACAndChecklist_XORViolation(t *testing.T) {
+	tk := &fakeTracker{sections: map[string]string{
+		"Acceptance Criteria": "Scenario: x",
+		"Checklist":           "- [ ] step",
+	}}
+	a := newActions(Deps{Tracker: tk})
+	ctx := statemachine.NewContext()
+	seedIssue(ctx)
+
+	out := a.parseTicket(ctx)
+	if out.Err == nil {
+		t.Fatalf("expected XOR-violation error, got nil")
+	}
+	if !strings.Contains(out.Err.Error(), "Acceptance Criteria") || !strings.Contains(out.Err.Error(), "Checklist") {
+		t.Errorf("error should name both sections: %v", out.Err)
+	}
+}
+
+func TestParseTicket_TrackerReadError_Surfaces(t *testing.T) {
+	tk := &fakeTracker{readErr: errors.New("tracker boom")}
+	a := newActions(Deps{Tracker: tk})
+	ctx := statemachine.NewContext()
+	seedIssue(ctx)
+
+	out := a.parseTicket(ctx)
+	if out.Err == nil {
+		t.Fatalf("expected error to propagate")
+	}
+	if !strings.Contains(out.Err.Error(), "tracker boom") {
+		t.Errorf("error should wrap tracker error: %v", out.Err)
+	}
+}
+
+func TestParseTicket_NoIssueURL_Fails(t *testing.T) {
+	a := newActions(Deps{Tracker: &fakeTracker{}})
+	ctx := statemachine.NewContext()
+	// No seedIssue — issue_url missing.
+
+	out := a.parseTicket(ctx)
+	if out.Err == nil {
+		t.Fatalf("expected error for missing issue_url")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// checkChecklistProgress — partially-done detection + summary
+// ---------------------------------------------------------------------------
+
+func TestCheckChecklistProgress_AllUnchecked_NotPartial(t *testing.T) {
+	a := newActions(Deps{})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket_checklist", "- [ ] One\n- [ ] Two")
+
+	if out := a.checkChecklistProgress(ctx); out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if got, _ := ctx.State["checklist-partially-done"].(bool); got {
+		t.Errorf("checklist-partially-done: got true, want false")
+	}
+	if got := ctx.Params["checklist_progress_summary"]; got != "" {
+		t.Errorf("summary: got %q, want empty when nothing checked", got)
+	}
+}
+
+func TestCheckChecklistProgress_SomeChecked_IsPartial(t *testing.T) {
+	a := newActions(Deps{})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket_checklist", "- [x] Done\n- [ ] Pending")
+
+	if out := a.checkChecklistProgress(ctx); out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if got, _ := ctx.State["checklist-partially-done"].(bool); !got {
+		t.Errorf("checklist-partially-done: got false, want true")
+	}
+	got := ctx.Params["checklist_progress_summary"]
+	if !strings.Contains(got, "1 of 2") {
+		t.Errorf("summary should report 1 of 2: got %q", got)
+	}
+}
+
+func TestCheckChecklistProgress_EmptyChecklist_NotPartial(t *testing.T) {
+	a := newActions(Deps{})
+	ctx := statemachine.NewContext()
+	// No ticket_checklist set — story or bug or legacy-coverage path
+	// where the cycle is never reached, but defensive coverage.
+
+	if out := a.checkChecklistProgress(ctx); out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if got, _ := ctx.State["checklist-partially-done"].(bool); got {
+		t.Errorf("checklist-partially-done: got true, want false")
 	}
 }

@@ -205,6 +205,11 @@ func TestRenderPrompt_TaskAgentArchitectureAndAllowedRoots_ExplicitValues(t *tes
 	opts.Agent = "implement-system"
 	opts.Architecture = "monolith"
 	opts.AllowedRoots = "- System: system/monolith/java (lang: java)\n- System tests: system-test/java (lang: java)\n"
+	// implement-system's body references ${checklist}, now load-bearing.
+	// Production dispatch fills this from ctx.State["ticket_checklist"]
+	// (populated by parse-ticket); supply directly so the no-leftover-${...}
+	// assertion below doesn't trip.
+	opts.Checklist = "- [ ] Refactor X"
 	// implement-system now inlines phase-doc placeholders
 	// in its body; without these the no-leftover-${...} assertion below
 	// would catch the inlined Family B path references.
@@ -254,6 +259,10 @@ func TestRenderPrompt_RefactorSystemAgent_EmptyArchitectureAndRootsRender(t *tes
 	// `Architecture=both`/`Lang=all` semantics.
 	opts := newOpts()
 	opts.Agent = "refactor-system"
+	// refactor-system's body references ${checklist} (load-bearing).
+	// Production fills this from ctx.State["ticket_checklist"]; supply
+	// directly so the no-leftover-${...} assertion below doesn't trip.
+	opts.Checklist = "- [ ] Refactor X"
 	// The refactor-system prompt inlines phase-doc
 	// placeholders that the production dispatcher fills from
 	// cfg.PlaceholderMap(); supply them directly so the body renders
@@ -496,6 +505,30 @@ func TestRenderPrompt_UnsetAcceptanceCriteriaFailsFast(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "acceptance_criteria") {
 		t.Errorf("expected error to name 'acceptance_criteria'; got: %v", err)
+	}
+}
+
+// TestRenderPrompt_UnsetChecklistFailsFast pins the load-bearing
+// contract on ${checklist}: a prompt that references ${checklist} with
+// no value set produces a clear render-time error rather than silently
+// substituting an empty block. The four Checklist-using ticket-kinds
+// (system-redesign, system-refactor, test-refactor,
+// external-system-onboarding) all dispatch prompts that read
+// ${checklist}; an absent value means parse-ticket didn't populate or
+// the ticket-kind/body declaration drifted.
+func TestRenderPrompt_UnsetChecklistFailsFast(t *testing.T) {
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	opts := newOpts()
+	opts.Checklist = "" // explicit override of default (already empty in newOpts)
+	opts.PromptOverride = "You are the Structural Agent. Checklist:\n${checklist}"
+	_, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
+	if err == nil {
+		t.Fatalf("expected error for unset ${checklist}, got nil")
+	}
+	if !strings.Contains(err.Error(), "checklist") {
+		t.Errorf("expected error to name 'checklist'; got: %v", err)
 	}
 }
 

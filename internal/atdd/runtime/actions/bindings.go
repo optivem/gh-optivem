@@ -30,6 +30,7 @@ import (
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/atdd"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/intake"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 	trackergithub "github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/github"
@@ -147,7 +148,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	// (the templated bash line, post-ExpandParams), appends --filter-type=
 	// and --filter-value= flags only when those params are non-empty, shells
 	// out, and writes ctx.State["command-succeeded"]. For the
-	// `gh optivem run-tests` family it also stamps ctx.State["test-outcome"]
+	// `gh optivem test run` family it also stamps ctx.State["test-outcome"]
 	// (pass|fail) so the verify-tests-pass / verify-tests-fail gateways can
 	// route without a second shell-out.
 	r.Register("run-command", a.runCommand)
@@ -169,6 +170,22 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("move-to-ready", a.moveToReady)
 	r.Register("move-to-in-progress", a.moveToInProgress)
 	r.Register("move-to-in-acceptance", a.moveToInAcceptance)
+	// PARSE_TICKET service task. Calls Tracker.ReadSections against
+	// intake.CanonicalHeadings, runs intake.ParseSections (shape-level
+	// validation — AC XOR Checklist), and stashes each section body into
+	// ctx.State for downstream prompt substitution. Per-kind required-
+	// section enforcement happens at dispatch time via the load-bearing
+	// placeholder check in clauderun.go.
+	r.Register("parse-ticket", a.parseTicket)
+	// CHECK_CHECKLIST_PROGRESS service task. Inspects ticket_checklist
+	// (populated by parse-ticket) and stamps `checklist-partially-done`
+	// + `checklist_progress_summary` so the GATE_CHECKLIST_PARTIALLY_DONE
+	// gateway can route, and the STOP_CHECKLIST_PARTIALLY_DONE prompt
+	// can show the operator how far along the previous run got. Wired
+	// at the start of the four Checklist-using cycles
+	// (redesign-system-structure, refactor-system-structure,
+	// refactor-test-structure, onboard-external-system).
+	r.Register("check-checklist-progress", a.checkChecklistProgress)
 }
 
 // Context keys consumed by the check-phase-scope action. Centralised so the
@@ -299,6 +316,67 @@ func (a actions) markChecklistComplete(ctx *statemachine.Context) error {
 		return err
 	}
 	return a.deps.Tracker.MarkChecklistComplete(context.Background(), issue)
+}
+
+// parseTicket runs the deterministic markdown parser against the picked
+// issue's body and stashes the canonical sections into Context state for
+// the dispatcher to substitute into agent prompts as ${description} /
+// ${acceptance_criteria} / ${steps_to_reproduce} / ${checklist}.
+//
+// Wired in implement-ticket between MARK_IN_PROGRESS and GATE_TICKET_KIND
+// — runs once per ticket, before the gateway routes to the cycle. The
+// parser is ticket-kind-agnostic (Decision 2 in plan
+// 20260526-1300): it does shape-level validation only (AC XOR Checklist)
+// and lets the load-bearing placeholder check in clauderun.go enforce
+// per-kind required sections at dispatch time. That lets one PARSE_TICKET
+// node serve all six branches off GATE_TICKET_KIND.
+func (a actions) parseTicket(ctx *statemachine.Context) statemachine.Outcome {
+	issue, err := issueFromContext(ctx)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("parse-ticket: %w", err)}
+	}
+	sections, err := a.deps.Tracker.ReadSections(context.Background(), issue, intake.CanonicalHeadings)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("parse-ticket: read sections: %w", err)}
+	}
+	r, err := intake.ParseSections(sections)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("parse-ticket: %w", err)}
+	}
+	ctx.Set("ticket_description", r.Description.Body)
+	ctx.Set("ticket_acceptance_criteria", r.AcceptanceCriteria.Body)
+	ctx.Set("ticket_steps_to_reproduce", r.StepsToReproduce.Body)
+	ctx.Set("ticket_checklist", r.Checklist.Body)
+	return statemachine.Outcome{}
+}
+
+// checkChecklistProgress inspects the parsed Checklist body (populated
+// by parseTicket in ctx.State["ticket_checklist"]) and stamps two values:
+//
+//   - ctx.State["checklist-partially-done"] (bool) — true when at least
+//     one `- [x]` item is present. The GATE_CHECKLIST_PARTIALLY_DONE
+//     gateway routes on this; true → STOP_CHECKLIST_PARTIALLY_DONE
+//     (operator approves re-run); false → cycle proceeds without
+//     interruption.
+//   - ctx.Params["checklist_progress_summary"] (string) — "N of M items
+//     already [x]" rendered into the STOP prompt via documentation
+//     placeholder expansion.
+//
+// Wired at the start of the four Checklist-using cycles only — story /
+// bug / legacy-coverage cycles never hit it.
+func (a actions) checkChecklistProgress(ctx *statemachine.Context) statemachine.Outcome {
+	body := ctx.GetString("ticket_checklist")
+	cl := intake.ExtractChecklist("## " + intake.SectionChecklist + "\n\n" + body)
+	checked := cl.CheckedCount()
+	total := len(cl.Items)
+	partiallyDone := checked > 0
+	ctx.Set("checklist-partially-done", partiallyDone)
+	if partiallyDone {
+		ctx.Params["checklist_progress_summary"] = fmt.Sprintf("Checklist has %d of %d items already [x] from a prior run.", checked, total)
+	} else {
+		ctx.Params["checklist_progress_summary"] = ""
+	}
+	return statemachine.Outcome{}
 }
 
 // issueFromContext builds a tracker.Issue from the conventional Context
@@ -545,12 +623,12 @@ func shellEscape(s string) string {
 // scope before dispatch, so by the time the action fires:
 //
 //   - ctx.Params["command"]      — the fully-resolved bash command line
-//                                   (e.g. "gh optivem run-tests")
+//                                   (e.g. "gh optivem test run")
 //   - ctx.Params["filter-type"]  — optional; appended as --filter-type=…
 //   - ctx.Params["filter-value"] — optional; appended as --filter-value=…
 //
 // Writes ctx.State["command-succeeded"] = (exit == 0). For the
-// `gh optivem run-tests` family it additionally stamps
+// `gh optivem test run` family it additionally stamps
 // ctx.State["test-outcome"] = "pass"|"fail" so the verify-tests-pass /
 // verify-tests-fail gateways downstream of run-tests route without a
 // second shell-out.
@@ -565,7 +643,7 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 	if cmd == "" {
 		return statemachine.Outcome{Err: fmt.Errorf("run-command: command param not set — call-activity must pass `command:`")}
 	}
-	isTestRun := strings.HasPrefix(cmd, "gh optivem run-tests")
+	isTestRun := strings.HasPrefix(cmd, "gh optivem test run")
 	if filterType := strings.TrimSpace(ctx.Params["filter-type"]); filterType != "" {
 		cmd += " --filter-type=" + shellEscape(filterType)
 	}

@@ -12,9 +12,8 @@ package intake
 // sensitive — a drift between the form YAML and these strings will surface
 // as STOP_PARSE_ERROR at runtime, which is the intended behavior.
 const (
-	SectionDescription              = "Description"
-	SectionAcceptanceCriteria       = "Acceptance Criteria"
-	SectionLegacyAcceptanceCriteria = "Legacy Acceptance Criteria"
-	SectionChecklist                = "Checklist"
-	SectionStepsToReproduce         = "Steps to Reproduce"
+	SectionDescription        = "Description"
+	SectionAcceptanceCriteria = "Acceptance Criteria"
+	SectionChecklist          = "Checklist"
+	SectionStepsToReproduce   = "Steps to Reproduce"
 )

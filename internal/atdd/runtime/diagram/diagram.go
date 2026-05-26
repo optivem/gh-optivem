@@ -32,10 +32,10 @@ import (
 //
 // The five-level BPMN refactor (plans/20260525-1517-bpmn-refactor-yaml-and-
 // diagrams.md Item 3) replaced the prior AT-cycle / CT-subprocess /
-// structural-cycle / legacy-acceptance-criteria shape. The new process
-// names are kebab-case (Q29 doctrine) and self-describing enough that
-// almost no aliasing is needed — only the runtime-bootstrap `main`
-// process gets a heading alias to flag its non-domain role.
+// structural-cycle shape. The new process names are kebab-case (Q29
+// doctrine) and self-describing enough that almost no aliasing is needed
+// — only the runtime-bootstrap `main` process gets a heading alias to
+// flag its non-domain role.
 var processAlias = map[string]string{
 	"main": "Runtime Bootstrap (legacy entry — collapses in Phase D)",
 }

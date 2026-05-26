@@ -5,68 +5,23 @@ import (
 	"testing"
 )
 
-func TestParse_StoryRequiresAcceptanceCriteria(t *testing.T) {
+func TestParse_AcceptanceCriteriaExtracted(t *testing.T) {
 	body := "## Description\n\nStuff.\n\n## Acceptance Criteria\n\nScenario: Foo\n  Given x\n  When y\n  Then z\n"
-	r, err := Parse(body, "story")
+	r, err := Parse(body)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !r.AcceptanceCriteria.Found {
 		t.Fatalf("AcceptanceCriteria.Found: got false, want true")
 	}
-	if r.LegacyAcceptanceCriteria.Found {
-		t.Fatalf("LegacyAcceptanceCriteria should be absent")
+	if r.Checklist.Found {
+		t.Fatalf("Checklist.Found: got true, want false (body has no Checklist)")
 	}
 }
 
-func TestParse_StoryMissingACFails(t *testing.T) {
-	body := "## Description\n\nNo AC.\n"
-	_, err := Parse(body, "story")
-	if err == nil {
-		t.Fatalf("expected error for missing Acceptance Criteria")
-	}
-	if !strings.Contains(err.Error(), "Acceptance Criteria") {
-		t.Fatalf("error should mention Acceptance Criteria: %v", err)
-	}
-}
-
-func TestParse_BugRequiresStepsAndAC(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		body    string
-		wantErr string
-	}{
-		{
-			name:    "missing_steps",
-			body:    "## Acceptance Criteria\n\nScenario: x\n",
-			wantErr: "Steps to Reproduce",
-		},
-		{
-			name:    "missing_ac",
-			body:    "## Steps to Reproduce\n\n1. step\n",
-			wantErr: "Acceptance Criteria",
-		},
-		{
-			name:    "missing_both",
-			body:    "## Description\n\nfoo\n",
-			wantErr: "Steps to Reproduce, Acceptance Criteria",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := Parse(tc.body, "bug")
-			if err == nil {
-				t.Fatalf("expected error")
-			}
-			if !strings.Contains(err.Error(), tc.wantErr) {
-				t.Fatalf("error %q does not contain %q", err, tc.wantErr)
-			}
-		})
-	}
-}
-
-func TestParse_BugWithBothSectionsPasses(t *testing.T) {
+func TestParse_BugSectionsExtracted(t *testing.T) {
 	body := "## Steps to Reproduce\n\n1. one\n\n## Acceptance Criteria\n\nScenario: ok\n"
-	r, err := Parse(body, "bug")
+	r, err := Parse(body)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -75,20 +30,9 @@ func TestParse_BugWithBothSectionsPasses(t *testing.T) {
 	}
 }
 
-func TestParse_TaskRequiresChecklist(t *testing.T) {
-	body := "## Description\n\nNo checklist.\n"
-	_, err := Parse(body, "task")
-	if err == nil {
-		t.Fatalf("expected error for missing Checklist")
-	}
-	if !strings.Contains(err.Error(), "Checklist") {
-		t.Fatalf("error should mention Checklist: %v", err)
-	}
-}
-
-func TestParse_TaskWithChecklistPasses(t *testing.T) {
+func TestParse_ChecklistExtracted(t *testing.T) {
 	body := "## Checklist\n\n- [ ] One\n- [ ] Two\n"
-	r, err := Parse(body, "task")
+	r, err := Parse(body)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -100,6 +44,57 @@ func TestParse_TaskWithChecklistPasses(t *testing.T) {
 	}
 	if got := r.Checklist.CheckedCount(); got != 0 {
 		t.Fatalf("CheckedCount: got %d, want 0", got)
+	}
+}
+
+func TestParse_EmptyBodyHasNoFoundSections(t *testing.T) {
+	body := "## Description\n\nNo AC or checklist here.\n"
+	r, err := Parse(body)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if r.AcceptanceCriteria.Found || r.Checklist.Found || r.StepsToReproduce.Found {
+		t.Fatalf("expected only Description found, got ac=%v cl=%v steps=%v", r.AcceptanceCriteria.Found, r.Checklist.Found, r.StepsToReproduce.Found)
+	}
+	if !r.Description.Found {
+		t.Fatalf("Description.Found: got false, want true")
+	}
+}
+
+// XOR rule: a body declaring both AC and Checklist is malformed regardless
+// of ticket-kind. Per-kind required-section enforcement lives downstream
+// in clauderun's load-bearing placeholder check.
+func TestParse_ACAndChecklist_BothPresent_Rejected(t *testing.T) {
+	body := "## Acceptance Criteria\n\nScenario: x\n\n## Checklist\n\n- [ ] step\n"
+	_, err := Parse(body)
+	if err == nil {
+		t.Fatalf("expected error for body declaring both AC and Checklist")
+	}
+	if !strings.Contains(err.Error(), "Acceptance Criteria") || !strings.Contains(err.Error(), "Checklist") {
+		t.Fatalf("error should name both sections: %v", err)
+	}
+}
+
+func TestParse_ACOnly_Passes(t *testing.T) {
+	body := "## Acceptance Criteria\n\nScenario: x\n"
+	if _, err := Parse(body); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestParse_ChecklistOnly_Passes(t *testing.T) {
+	body := "## Checklist\n\n- [ ] step\n"
+	if _, err := Parse(body); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestParse_NeitherACNorChecklist_Passes(t *testing.T) {
+	// Parser is shape-only; missing required sections are caught downstream
+	// at dispatch time via load-bearing placeholders.
+	body := "## Description\n\nJust prose.\n"
+	if _, err := Parse(body); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -158,42 +153,6 @@ func TestExtractChecklist_IgnoresNonCheckboxBullets(t *testing.T) {
 	}
 	if got.Items[0].Text != "Real item" || !got.Items[0].Checked {
 		t.Fatalf("got %+v, want {Text:'Real item', Checked:true}", got.Items[0])
-	}
-}
-
-func TestParse_LegacyAcceptanceCriteriaOptional(t *testing.T) {
-	withLegacy := "## Acceptance Criteria\n\nScenario: x\n\n## Legacy Acceptance Criteria\n\n- old\n"
-	r, err := Parse(withLegacy, "story")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !r.LegacyAcceptanceCriteria.Found {
-		t.Fatalf("LegacyAcceptanceCriteria.Found should be true")
-	}
-
-	withoutLegacy := "## Acceptance Criteria\n\nScenario: x\n"
-	r2, err := Parse(withoutLegacy, "story")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if r2.LegacyAcceptanceCriteria.Found {
-		t.Fatalf("LegacyAcceptanceCriteria.Found should be false when absent")
-	}
-}
-
-func TestParse_RejectsEmptyTicketType(t *testing.T) {
-	if _, err := Parse("## Acceptance Criteria\n\nx\n", ""); err == nil {
-		t.Fatalf("expected error for empty ticket_type")
-	}
-}
-
-func TestParse_RejectsUnknownTicketType(t *testing.T) {
-	_, err := Parse("## Description\n\nx\n", "epic")
-	if err == nil {
-		t.Fatalf("expected error for unknown ticket_type")
-	}
-	if !strings.Contains(err.Error(), "unsupported") {
-		t.Fatalf("error should mention unsupported: %v", err)
 	}
 }
 

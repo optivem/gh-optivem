@@ -169,11 +169,16 @@ func newCtxWithIssue() *statemachine.Context {
 	// cfg in production. Seed a default here so test fixtures don't have
 	// to thread the config through.
 	c.Set("language", "java")
-	// write-acceptance-tests references ${acceptance_criteria}; parseTicketBody would
+	// write-acceptance-tests references ${acceptance_criteria}; parse-ticket would
 	// set it from intake.Result.AcceptanceCriteria.Body in production. Seed
 	// a default here so dispatch fixtures don't have to thread a parsed
 	// ticket body through.
 	c.Set("ticket_acceptance_criteria", "Scenario: placeholder\n  Given x\n  When y\n  Then z")
+	// implement-system / refactor-system / refactor-tests / implement-system-driver-adapters
+	// reference ${checklist} (load-bearing). parse-ticket would set this in
+	// production; seed a default so structural-task dispatch fixtures don't
+	// have to thread a parsed Checklist through.
+	c.Set("ticket_checklist", "- [ ] Placeholder checklist item")
 	return c
 }
 

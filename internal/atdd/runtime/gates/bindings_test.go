@@ -83,6 +83,7 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"approval-outcome",
 		"outputs-and-scopes-valid",
 		"ticket-kind",
+		"checklist-partially-done",
 	}
 	for _, name := range want {
 		if r.Lookup(name) == nil {
@@ -723,5 +724,48 @@ func TestTicketKind_NoIssueURL_Halts(t *testing.T) {
 	out := b.ticketKind(statemachine.NewContext())
 	if out.Err == nil {
 		t.Fatalf("expected err for missing issue_url, got %+v", out)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// checklist-partially-done — GATE_CHECKLIST_PARTIALLY_DONE
+// ---------------------------------------------------------------------------
+
+func TestChecklistPartiallyDone_TrueRoutes(t *testing.T) {
+	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+	ctx := statemachine.NewContext()
+	ctx.Set("checklist-partially-done", true)
+	out := b.checklistPartiallyDone(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if !out.Bool {
+		t.Errorf("Bool: got false, want true")
+	}
+}
+
+func TestChecklistPartiallyDone_FalseRoutes(t *testing.T) {
+	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+	ctx := statemachine.NewContext()
+	ctx.Set("checklist-partially-done", false)
+	out := b.checklistPartiallyDone(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if out.Bool {
+		t.Errorf("Bool: got true, want false")
+	}
+}
+
+func TestChecklistPartiallyDone_AbsentRoutesFalse(t *testing.T) {
+	// No ticket — story / bug / legacy-coverage paths land here without
+	// the gate caring; route false defensively rather than halting.
+	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+	out := b.checklistPartiallyDone(statemachine.NewContext())
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if out.Bool {
+		t.Errorf("Bool: got true, want false")
 	}
 }

@@ -6,8 +6,8 @@
 // Real dispatch implementations are added in Session 3 of the rollout plan
 // (when the driver loop wires together Agent SDK calls). v1 ships with the
 // registry pattern and a built-in `human` STOP so transitions tests can
-// exercise STOP-only sub-flows (legacy_acceptance_criteria, intake REVIEW gates) end
-// to end without mocking anything.
+// exercise STOP-only sub-flows (e.g. intake REVIEW gates) end to end
+// without mocking anything.
 package agents
 
 import (

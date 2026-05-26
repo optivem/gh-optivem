@@ -45,61 +45,60 @@ func (c ChecklistResult) CheckedCount() int {
 	return n
 }
 
-// Result is the parsed shape of a ticket body. The fields a downstream
-// cycle reads depend on ticket_type — story/bug consume AcceptanceCriteria,
-// task consumes Checklist; LegacyAcceptanceCriteria is orthogonal and
-// optional on every type.
+// Result is the parsed shape of a ticket body. Every field corresponds to
+// one canonical heading; absent or empty sections are reported with
+// Found = false and an empty Body. The runtime decides which sections are
+// load-bearing for a given dispatch via the load-bearing placeholder
+// check in clauderun (e.g. write-acceptance-tests requires AC, the four
+// structural cycles require Checklist) — the parser itself enforces only
+// shape rules (see Parse / ParseSections).
 type Result struct {
-	Description              Section
-	AcceptanceCriteria       Section
-	StepsToReproduce         Section
-	Checklist                ChecklistResult
-	LegacyAcceptanceCriteria Section
+	Description        Section
+	AcceptanceCriteria Section
+	StepsToReproduce   Section
+	Checklist          ChecklistResult
 }
 
 // CanonicalHeadings is the ordered list of section headings every ticket
-// type may declare. Callers that source sections via tracker.Tracker.ReadSections
-// pass this slice as the `headings` argument so the adapter returns every
-// canonical section in one call; ParseSections then validates the result.
+// body may declare. Callers that source sections via
+// tracker.Tracker.ReadSections pass this slice as the `headings` argument
+// so the adapter returns every canonical section in one call; ParseSections
+// then validates the result against the shape rule (AC XOR Checklist).
 var CanonicalHeadings = []string{
 	SectionDescription,
 	SectionAcceptanceCriteria,
 	SectionStepsToReproduce,
 	SectionChecklist,
-	SectionLegacyAcceptanceCriteria,
 }
 
-// Parse extracts canonical sections from issue-body markdown for the given
-// ticket type. Returns an error listing every required section that is
-// missing or empty; callers surface that error as STOP_PARSE_ERROR with a
-// "fix the body, re-run" resolution.
+// Parse extracts canonical sections from issue-body markdown and runs
+// shape-level validation. Returns an error when the body is malformed
+// (currently: declaring both Acceptance Criteria and Checklist — they are
+// mutually exclusive at intake regardless of ticket-kind).
 //
-// Required sections by ticket type (matching the Issue Form templates):
-//
-//	story → Acceptance Criteria
-//	bug   → Steps to Reproduce, Acceptance Criteria
-//	task  → Checklist
-//
-// Description and Legacy Acceptance Criteria are optional for every type.
-func Parse(body, ticketType string) (*Result, error) {
+// Per-kind required-section enforcement (story → AC, task/system-redesign
+// → Checklist, etc.) does NOT live here. It is enforced by the
+// load-bearing-placeholder check in clauderun.go: a prompt that references
+// ${acceptance_criteria} or ${checklist} with no value fails dispatch
+// fast. That keeps the parser ticket-kind-agnostic so a single PARSE_TICKET
+// service-task can run before GATE_TICKET_KIND.
+func Parse(body string) (*Result, error) {
 	sections := map[string]string{
-		SectionDescription:              ExtractSection(body, SectionDescription).Body,
-		SectionAcceptanceCriteria:       ExtractSection(body, SectionAcceptanceCriteria).Body,
-		SectionStepsToReproduce:         ExtractSection(body, SectionStepsToReproduce).Body,
-		SectionChecklist:                ExtractSection(body, SectionChecklist).Body,
-		SectionLegacyAcceptanceCriteria: ExtractSection(body, SectionLegacyAcceptanceCriteria).Body,
+		SectionDescription:        ExtractSection(body, SectionDescription).Body,
+		SectionAcceptanceCriteria: ExtractSection(body, SectionAcceptanceCriteria).Body,
+		SectionStepsToReproduce:   ExtractSection(body, SectionStepsToReproduce).Body,
+		SectionChecklist:          ExtractSection(body, SectionChecklist).Body,
 	}
-	return ParseSections(sections, ticketType)
+	return ParseSections(sections)
 }
 
 // ParseSections is the section-keyed counterpart to Parse. It takes the
 // already-resolved sections (typically produced by tracker.Tracker.ReadSections
-// against CanonicalHeadings) and runs the same per-ticket-type validation
-// Parse runs. Missing keys, empty values, and absent headings are
-// treated identically as "section not present" — the same as Parse's
-// body-input path, where an empty extracted body collapses to
-// Section.Found = false.
-func ParseSections(sections map[string]string, ticketType string) (*Result, error) {
+// against CanonicalHeadings) and runs the same shape validation Parse
+// runs. Missing keys, empty values, and absent headings are treated
+// identically as "section not present" — the same as Parse's body-input
+// path, where an empty extracted body collapses to Section.Found = false.
+func ParseSections(sections map[string]string) (*Result, error) {
 	section := func(name string) Section {
 		body := strings.Trim(sections[name], "\n")
 		return Section{Heading: name, Body: body, Found: body != ""}
@@ -114,37 +113,13 @@ func ParseSections(sections map[string]string, ticketType string) (*Result, erro
 		}
 	}
 	r := &Result{
-		Description:              section(SectionDescription),
-		AcceptanceCriteria:       section(SectionAcceptanceCriteria),
-		StepsToReproduce:         section(SectionStepsToReproduce),
-		Checklist:                checklist,
-		LegacyAcceptanceCriteria: section(SectionLegacyAcceptanceCriteria),
+		Description:        section(SectionDescription),
+		AcceptanceCriteria: section(SectionAcceptanceCriteria),
+		StepsToReproduce:   section(SectionStepsToReproduce),
+		Checklist:          checklist,
 	}
-
-	var missing []string
-	switch ticketType {
-	case "story":
-		if !r.AcceptanceCriteria.Found {
-			missing = append(missing, SectionAcceptanceCriteria)
-		}
-	case "bug":
-		if !r.StepsToReproduce.Found {
-			missing = append(missing, SectionStepsToReproduce)
-		}
-		if !r.AcceptanceCriteria.Found {
-			missing = append(missing, SectionAcceptanceCriteria)
-		}
-	case "task":
-		if !r.Checklist.Found {
-			missing = append(missing, SectionChecklist)
-		}
-	case "":
-		return nil, fmt.Errorf("ticket_type is empty — classify_ticket_type must run before parse")
-	default:
-		return nil, fmt.Errorf("unsupported ticket_type %q (expected story | bug | task)", ticketType)
-	}
-	if len(missing) > 0 {
-		return nil, fmt.Errorf("missing required section(s) for %s: %s", ticketType, strings.Join(missing, ", "))
+	if r.AcceptanceCriteria.Found && r.Checklist.Found {
+		return nil, fmt.Errorf("ticket body declares both Acceptance Criteria and Checklist; pick one matching the ticket-kind")
 	}
 	return r, nil
 }

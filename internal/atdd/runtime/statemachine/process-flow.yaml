@@ -200,13 +200,17 @@ processes:
   # Absorbs the pre-refactor github-intake process (cross-check inventory
   # diagram #3). The OLD intake's classification + body-parsing pipeline
   # (`read-ticket-type` / `read-subtype` / `parse-ticket-body` service
-  # tasks plus three STOP nodes) collapses into the `ticket-kind` gateway
-  # binding: the binding's Go implementation does the read/parse/classify
-  # work and returns the discriminator value the gateway switches on.
+  # tasks plus three STOP nodes) collapses into two nodes here: the
+  # PARSE_TICKET service-task (action: parse-ticket — Tracker.ReadSections
+  # → intake.ParseSections → ctx.State["ticket_*"]) handles body
+  # extraction with shape-level validation (AC XOR Checklist), and the
+  # GATE_TICKET_KIND gateway (binding: ticket-kind — Tracker.Classify +
+  # Tracker.Subtypes) handles type/subtype discrimination. Per-kind
+  # required-section enforcement lives downstream at dispatch time via
+  # the load-bearing placeholder check in clauderun.go.
   # Operator-facing parse errors / unrecognised types surface through
   # the runtime's no-edge-matched error path rather than dedicated STOP
-  # nodes. The gateway's binding function lands in Phase D (downstream-
-  # alignment plan) alongside the other new bindings.
+  # nodes.
   #
   # Ticket-kind gateway lookup table (locked in Q30):
   #
@@ -231,6 +235,10 @@ processes:
       - id: MARK_IN_PROGRESS
         type: service-task
         action: move-to-in-progress
+
+      - id: PARSE_TICKET
+        type: service-task
+        action: parse-ticket
 
       - id: GATE_TICKET_KIND
         type: gateway
@@ -269,7 +277,8 @@ processes:
         type: end-event
 
     sequence-flows:
-      - {from: MARK_IN_PROGRESS,                 to: GATE_TICKET_KIND}
+      - {from: MARK_IN_PROGRESS,                 to: PARSE_TICKET}
+      - {from: PARSE_TICKET,                     to: GATE_TICKET_KIND}
       - {from: GATE_TICKET_KIND, to: CALL_CHANGE_SYSTEM_BEHAVIOR,       when: "ticket-kind == story"}
       - {from: GATE_TICKET_KIND, to: CALL_CHANGE_SYSTEM_BEHAVIOR,       when: "ticket-kind == bug"}
       - {from: GATE_TICKET_KIND, to: CALL_COVER_SYSTEM_BEHAVIOR,        when: "ticket-kind == task/legacy-coverage"}
@@ -355,8 +364,22 @@ processes:
   # to a dedicated onboarding agent.
   # ===========================================================================
   onboard-external-system:
-    start: IDENTIFY_EXTERNAL_SYSTEM
+    start: CHECK_CHECKLIST_PROGRESS
     nodes:
+      - id: CHECK_CHECKLIST_PROGRESS
+        type: service-task
+        action: check-checklist-progress
+
+      - id: GATE_CHECKLIST_PARTIALLY_DONE
+        type: gateway
+        binding: checklist-partially-done
+        documentation: "Checklist already partially done?"
+
+      - id: STOP_CHECKLIST_PARTIALLY_DONE
+        type: user-task
+        agent: human
+        documentation: "${checklist_progress_summary} Approve re-running this cycle?"
+
       - id: IDENTIFY_EXTERNAL_SYSTEM
         type: user-task
         agent: human
@@ -381,6 +404,10 @@ processes:
         type: end-event
 
     sequence-flows:
+      - {from: CHECK_CHECKLIST_PROGRESS,          to: GATE_CHECKLIST_PARTIALLY_DONE}
+      - {from: GATE_CHECKLIST_PARTIALLY_DONE,     to: STOP_CHECKLIST_PARTIALLY_DONE, when: "checklist-partially-done == true"}
+      - {from: GATE_CHECKLIST_PARTIALLY_DONE,     to: IDENTIFY_EXTERNAL_SYSTEM,      when: "checklist-partially-done == false"}
+      - {from: STOP_CHECKLIST_PARTIALLY_DONE,     to: IDENTIFY_EXTERNAL_SYSTEM}
       - {from: IDENTIFY_EXTERNAL_SYSTEM,          to: DOCUMENT_EXTERNAL_SYSTEM_CONTRACT}
       - {from: DOCUMENT_EXTERNAL_SYSTEM_CONTRACT, to: SETUP_EXTERNAL_SYSTEM_ACCESS}
       - {from: SETUP_EXTERNAL_SYSTEM_ACCESS,      to: VERIFY_EXTERNAL_SYSTEM_REACHABLE}
@@ -478,8 +505,22 @@ processes:
   # MID. Step 2 reuses HIGH `implement-and-verify-system`.
   # ===========================================================================
   redesign-system-structure:
-    start: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS
+    start: CHECK_CHECKLIST_PROGRESS
     nodes:
+      - id: CHECK_CHECKLIST_PROGRESS
+        type: service-task
+        action: check-checklist-progress
+
+      - id: GATE_CHECKLIST_PARTIALLY_DONE
+        type: gateway
+        binding: checklist-partially-done
+        documentation: "Checklist already partially done?"
+
+      - id: STOP_CHECKLIST_PARTIALLY_DONE
+        type: user-task
+        agent: human
+        documentation: "${checklist_progress_summary} Approve re-running this cycle?"
+
       - id: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS
         type: call-activity
         process: implement-system-driver-adapters
@@ -499,6 +540,10 @@ processes:
         type: end-event
 
     sequence-flows:
+      - {from: CHECK_CHECKLIST_PROGRESS,                  to: GATE_CHECKLIST_PARTIALLY_DONE}
+      - {from: GATE_CHECKLIST_PARTIALLY_DONE,             to: STOP_CHECKLIST_PARTIALLY_DONE,        when: "checklist-partially-done == true"}
+      - {from: GATE_CHECKLIST_PARTIALLY_DONE,             to: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS,     when: "checklist-partially-done == false"}
+      - {from: STOP_CHECKLIST_PARTIALLY_DONE,             to: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS}
       - {from: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS,          to: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS}
       - {from: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, to: IMPLEMENT_AND_VERIFY_SYSTEM}
       - {from: IMPLEMENT_AND_VERIFY_SYSTEM,               to: REDESIGN_END}
@@ -512,8 +557,22 @@ processes:
   # this plan; preserved unchanged.
   # ===========================================================================
   refactor-system-structure:
-    start: IMPLEMENT_AND_VERIFY_SYSTEM
+    start: CHECK_CHECKLIST_PROGRESS
     nodes:
+      - id: CHECK_CHECKLIST_PROGRESS
+        type: service-task
+        action: check-checklist-progress
+
+      - id: GATE_CHECKLIST_PARTIALLY_DONE
+        type: gateway
+        binding: checklist-partially-done
+        documentation: "Checklist already partially done?"
+
+      - id: STOP_CHECKLIST_PARTIALLY_DONE
+        type: user-task
+        agent: human
+        documentation: "${checklist_progress_summary} Approve re-running this cycle?"
+
       - id: IMPLEMENT_AND_VERIFY_SYSTEM
         type: call-activity
         process: implement-and-verify-system
@@ -525,14 +584,32 @@ processes:
         type: end-event
 
     sequence-flows:
-      - {from: IMPLEMENT_AND_VERIFY_SYSTEM, to: REFACTOR_SYSTEM_STRUCTURE_END}
+      - {from: CHECK_CHECKLIST_PROGRESS,        to: GATE_CHECKLIST_PARTIALLY_DONE}
+      - {from: GATE_CHECKLIST_PARTIALLY_DONE,   to: STOP_CHECKLIST_PARTIALLY_DONE, when: "checklist-partially-done == true"}
+      - {from: GATE_CHECKLIST_PARTIALLY_DONE,   to: IMPLEMENT_AND_VERIFY_SYSTEM,   when: "checklist-partially-done == false"}
+      - {from: STOP_CHECKLIST_PARTIALLY_DONE,   to: IMPLEMENT_AND_VERIFY_SYSTEM}
+      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,     to: REFACTOR_SYSTEM_STRUCTURE_END}
 
   # ===========================================================================
   # CYCLE — refactor-test-structure (Q8 — distinct HIGH for test refactor)
   # ===========================================================================
   refactor-test-structure:
-    start: REFACTOR_AND_VERIFY_TESTS
+    start: CHECK_CHECKLIST_PROGRESS
     nodes:
+      - id: CHECK_CHECKLIST_PROGRESS
+        type: service-task
+        action: check-checklist-progress
+
+      - id: GATE_CHECKLIST_PARTIALLY_DONE
+        type: gateway
+        binding: checklist-partially-done
+        documentation: "Checklist already partially done?"
+
+      - id: STOP_CHECKLIST_PARTIALLY_DONE
+        type: user-task
+        agent: human
+        documentation: "${checklist_progress_summary} Approve re-running this cycle?"
+
       - id: REFACTOR_AND_VERIFY_TESTS
         type: call-activity
         process: refactor-and-verify-tests
@@ -541,7 +618,11 @@ processes:
         type: end-event
 
     sequence-flows:
-      - {from: REFACTOR_AND_VERIFY_TESTS, to: REFACTOR_TEST_STRUCTURE_END}
+      - {from: CHECK_CHECKLIST_PROGRESS,       to: GATE_CHECKLIST_PARTIALLY_DONE}
+      - {from: GATE_CHECKLIST_PARTIALLY_DONE,  to: STOP_CHECKLIST_PARTIALLY_DONE, when: "checklist-partially-done == true"}
+      - {from: GATE_CHECKLIST_PARTIALLY_DONE,  to: REFACTOR_AND_VERIFY_TESTS,     when: "checklist-partially-done == false"}
+      - {from: STOP_CHECKLIST_PARTIALLY_DONE,  to: REFACTOR_AND_VERIFY_TESTS}
+      - {from: REFACTOR_AND_VERIFY_TESTS,      to: REFACTOR_TEST_STRUCTURE_END}
 
   # ===========================================================================
   # HIGH — write-and-verify-acceptance-tests-fail (Q-new-6 outer wrapper)
@@ -1402,7 +1483,7 @@ processes:
         type: call-activity
         process: execute-command
         params:
-          command: "gh optivem compile-system"
+          command: "gh optivem system compile"
 
       - id: COMPILE_SYS_END
         type: end-event
@@ -1420,7 +1501,7 @@ processes:
         type: call-activity
         process: execute-command
         params:
-          command: "gh optivem compile-tests"
+          command: "gh optivem test compile"
 
       - id: COMPILE_TESTS_END
         type: end-event
@@ -1438,7 +1519,7 @@ processes:
         type: call-activity
         process: execute-command
         params:
-          command: "gh optivem build-system"
+          command: "gh optivem system build"
 
       - id: BUILD_SYS_END
         type: end-event
@@ -1456,7 +1537,7 @@ processes:
         type: call-activity
         process: execute-command
         params:
-          command: "gh optivem start-system"
+          command: "gh optivem system start"
 
       - id: START_SYS_END
         type: end-event
@@ -1489,7 +1570,7 @@ processes:
   # Q5.a structured filter params: `filter-type` enum (`test-type` or
   # `test-name`); `filter-value` (single tag for test-type; list-as-string
   # for test-name). Both absent ⇒ run all tests. The underlying
-  # `execute-command` forwards both params to the `gh optivem run-tests`
+  # `execute-command` forwards both params to the `gh optivem test run`
   # CLI, which owns the filter parsing.
   # ===========================================================================
   run-tests:
@@ -1499,7 +1580,7 @@ processes:
         type: call-activity
         process: execute-command
         params:
-          command: "gh optivem run-tests"
+          command: "gh optivem test run"
           filter-type: ${filter-type}
           filter-value: ${filter-value}
 

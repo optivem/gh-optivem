@@ -79,11 +79,20 @@ type Options struct {
 	// template stays a flat substitution.
 	AllowedRoots string
 
-	// Checklist is the body of the ticket's Checklist section as parsed by
-	// intake.Parse. Surfaced to the agent prompt via the ${checklist}
-	// placeholder so structural-task agents don't have to re-fetch the
-	// issue body via `gh issue view`. Empty when the ticket has no
-	// Checklist (e.g. story / bug intake).
+	// Checklist is the body of the ticket's Checklist section as parsed
+	// by intake.ParseSections (populated by the parse-ticket service-task
+	// into ctx.State["ticket_checklist"]). Surfaced to the agent prompt
+	// via the ${checklist} placeholder so structural-task agents don't
+	// have to re-fetch the issue body via `gh issue view`. Empty when
+	// the ticket has no Checklist (story / bug / legacy-coverage paths).
+	//
+	// Load-bearing: when empty AND the prompt body references
+	// ${checklist}, findUnfilledPlaceholders fails the dispatch fast.
+	// Mirrors the ${acceptance_criteria} pattern — only registered when
+	// non-empty so the unfilled-placeholder check is the single
+	// enforcement point that catches "ticket-kind expects a Checklist
+	// but the body has none" at the dispatcher rather than letting the
+	// agent see an empty section.
 	Checklist string
 
 	// AcceptanceCriteria is the body of the ticket's Acceptance Criteria
@@ -528,7 +537,6 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 		"architecture":    opts.Architecture,
 		"subtype":         opts.Subtype,
 		"allowed_roots":   opts.AllowedRoots,
-		"checklist":       opts.Checklist,
 		"verify_results":  opts.VerifyResults,
 		"changed_files":   opts.ChangedFiles,
 		"references_root": referencesRoot,
@@ -547,6 +555,16 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	// surfaces via findUnfilledPlaceholders rather than substituting "".
 	if opts.AcceptanceCriteria != "" {
 		params["acceptance_criteria"] = opts.AcceptanceCriteria
+	}
+	// Checklist is load-bearing for the four task subtypes whose cycles
+	// consume ${checklist} (system-redesign, system-refactor,
+	// test-refactor, external-system-onboarding). Same rationale as
+	// AcceptanceCriteria — only registered when non-empty so an absent
+	// value surfaces via findUnfilledPlaceholders rather than substituting
+	// "". Catches the bug class where parse-ticket failed to populate or
+	// the ticket-kind expected a Checklist but the body declared AC.
+	if opts.Checklist != "" {
+		params["checklist"] = opts.Checklist
 	}
 	// ParsedConcepts is load-bearing for refine-acceptance-criteria —
 	// same rationale as AcceptanceCriteria. Only registered when
@@ -829,6 +847,8 @@ func writePreparedPromptBanner(opts Options, prompt string) {
 	fmt.Fprintln(w, cyan.Sprintf("   architecture:   %s", orPlaceholderClauderun(opts.Architecture, "(empty)")))
 	fmt.Fprintln(w, cyan.Sprintf("   allowed roots:  %s", summarizeAllowedRoots(opts.AllowedRoots)))
 	writeIndentedBlock(w, cyan, opts.AllowedRoots)
+	fmt.Fprintln(w, cyan.Sprintf("   acceptance criteria: %s", summarizeAcceptanceCriteria(opts.AcceptanceCriteria)))
+	writeIndentedBlock(w, cyan, opts.AcceptanceCriteria)
 	fmt.Fprintln(w, cyan.Sprintf("   checklist:      %s", summarizeChecklist(opts.Checklist)))
 	writeIndentedBlock(w, cyan, opts.Checklist)
 	fmt.Fprintln(w, cyan.Sprintf("   override text:  %s", orPlaceholderClauderun(opts.OverrideText, "(none)")))
@@ -897,6 +917,26 @@ func summarizeAllowedRoots(s string) string {
 		return fmt.Sprintf("%d path(s)", main)
 	}
 	return fmt.Sprintf("%d path(s), %d external", main, ext)
+}
+
+// summarizeAcceptanceCriteria reduces the multi-line AC block to a one-
+// line size hint for the banner. Counts non-blank lines; returns
+// "(empty)" when no AC was set (the load-bearing placeholder catches
+// dispatch-time misses).
+func summarizeAcceptanceCriteria(s string) string {
+	if s == "" {
+		return "(empty)"
+	}
+	lines := 0
+	for line := range strings.SplitSeq(s, "\n") {
+		if strings.TrimSpace(line) != "" {
+			lines++
+		}
+	}
+	if lines == 0 {
+		return "(empty)"
+	}
+	return fmt.Sprintf("%d line(s)", lines)
 }
 
 // summarizeChecklist counts checklist items in the ${checklist} block.

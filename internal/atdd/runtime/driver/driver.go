@@ -475,11 +475,13 @@ func orPlaceholder(s, placeholder string) string {
 // absent. nil cfg is a no-op.
 //
 // State (not Params) is the right destination: these four facts are
-// project-scoped and stable for the entire run, alongside issue_title /
-// ticket_checklist / ticket_acceptance_criteria (also written via Set).
-// The dispatcher reads them back via ctx.GetString, which is a State
-// lookup — writing to Params would silently expand to "" at substitution
-// time.
+// project-scoped and stable for the entire run, alongside issue_title
+// (written by preResolveIssue) and the body-parsed ticket_description /
+// ticket_acceptance_criteria / ticket_steps_to_reproduce / ticket_checklist
+// (written by the parse-ticket service-task action — see
+// actions.parseTicket). The dispatcher reads them back via ctx.GetString,
+// which is a State lookup — writing to Params would silently expand to ""
+// at substitution time.
 func seedScopeState(sCtx *statemachine.Context, cfg *projectconfig.Config) {
 	if cfg == nil {
 		return

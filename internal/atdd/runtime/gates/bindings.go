@@ -150,6 +150,12 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("approval-outcome", b.approvalOutcome)
 	r.Register("outputs-and-scopes-valid", b.outputsAndScopesValid)
 	r.Register("ticket-kind", b.ticketKind)
+	// Routes the GATE_CHECKLIST_PARTIALLY_DONE gateway at the start of
+	// each Checklist-using cycle. The check-checklist-progress action
+	// stamps `checklist-partially-done` after parse-ticket runs; this
+	// binding returns the bool verbatim. True → operator-approval STOP;
+	// false → cycle proceeds.
+	r.Register("checklist-partially-done", b.checklistPartiallyDone)
 }
 
 // bindings is a thin closure-receiver so each method has access to deps
@@ -333,6 +339,20 @@ func (b bindings) systemDriverPortsChanged(ctx *statemachine.Context) statemachi
 
 func (b bindings) externalDriverPortsChanged(ctx *statemachine.Context) statemachine.Outcome {
 	return boolStateGate(ctx, "external-driver-ports-changed")
+}
+
+// checklistPartiallyDone routes GATE_CHECKLIST_PARTIALLY_DONE on the
+// flag check-checklist-progress stamps after parse-ticket. Lenient on
+// absent — when the ticket has no Checklist (cycle entered through a
+// non-task code path, or the action was skipped in a test fixture),
+// route false rather than halting, because a missing-Checklist signal
+// is "nothing to approve" not a wiring bug.
+func (b bindings) checklistPartiallyDone(ctx *statemachine.Context) statemachine.Outcome {
+	v, ok := ctx.State["checklist-partially-done"]
+	if !ok {
+		return statemachine.Outcome{Bool: false}
+	}
+	return outcomeFromBoolish(v)
 }
 
 // boolStateGate is the shared body of the three driver-port-changed
