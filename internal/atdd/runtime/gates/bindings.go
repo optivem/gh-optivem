@@ -440,7 +440,7 @@ func (b bindings) ticketKind(ctx *statemachine.Context) statemachine.Outcome {
 		return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: %w", err)}
 	}
 	if !confident || kind == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: issue %s has no native issue type — set Feature / Bug / Task and re-run", issue.ID)}
+		return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: issue %s has no native issue type — set one of: Feature, Bug, Task (and for Task, also exactly one subtype:* label: %s) and re-run", issue.ID, strings.Join(ticketKindTaskSubtypes, ", "))}
 	}
 	if alias, ok := ticketKindAliases[kind]; ok {
 		kind = alias
@@ -454,15 +454,15 @@ func (b bindings) ticketKind(ctx *statemachine.Context) statemachine.Outcome {
 			return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: %w", err)}
 		}
 		if len(subs) != 1 {
-			return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: task %s has %d subtype:* labels (want exactly one)", issue.ID, len(subs))}
+			return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: task %s has %d subtype:* labels (want exactly one of: %s)", issue.ID, len(subs), strings.Join(ticketKindTaskSubtypes, ", "))}
 		}
 		sub := subs[0]
-		if !ticketKindTaskSubtypes[sub] {
-			return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: task %s has unrecognised subtype %q", issue.ID, sub)}
+		if !ticketKindTaskSubtypeSet[sub] {
+			return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: task %s has unrecognised subtype:%s label (valid subtype:* labels are: %s)", issue.ID, sub, strings.Join(ticketKindTaskSubtypes, ", "))}
 		}
 		return statemachine.Outcome{Value: "task/" + sub}
 	default:
-		return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: unsupported ticket type %q (expected story | bug | task)", kind)}
+		return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: unsupported ticket type %q (expected one of: story, bug, task)", kind)}
 	}
 }
 
@@ -471,17 +471,30 @@ func (b bindings) ticketKind(ctx *statemachine.Context) statemachine.Outcome {
 // type is the new spelling of what the runtime calls "story".
 var ticketKindAliases = map[string]string{"feature": "story"}
 
-// ticketKindTaskSubtypes is the closed set of `subtype:*` labels the
-// implement-ticket gateway dispatches on. Anything outside this set
-// surfaces as unrecognised — the operator re-labels the ticket and
-// re-runs.
-var ticketKindTaskSubtypes = map[string]bool{
-	"cover-legacy":             true,
-	"redesign-system":          true,
-	"refactor-system":          true,
-	"refactor-tests":           true,
-	"onboard-external-system":  true,
+// ticketKindTaskSubtypes is the closed, canonically-ordered set of
+// `subtype:*` labels the implement-ticket gateway dispatches on.
+// Anything outside this set surfaces as unrecognised — the operator
+// re-labels the ticket and re-runs. The order is the order shown in
+// operator-facing error messages, so keep it in sync with the lookup
+// table in the ticketKind doc comment.
+var ticketKindTaskSubtypes = []string{
+	"cover-legacy",
+	"redesign-system",
+	"refactor-system",
+	"refactor-tests",
+	"onboard-external-system",
 }
+
+// ticketKindTaskSubtypeSet is the O(1) membership view of
+// ticketKindTaskSubtypes, built at package init. Keep the slice
+// authoritative for ordering; the set is derived.
+var ticketKindTaskSubtypeSet = func() map[string]bool {
+	m := make(map[string]bool, len(ticketKindTaskSubtypes))
+	for _, s := range ticketKindTaskSubtypes {
+		m[s] = true
+	}
+	return m
+}()
 
 // ---------------------------------------------------------------------------
 // Helpers
