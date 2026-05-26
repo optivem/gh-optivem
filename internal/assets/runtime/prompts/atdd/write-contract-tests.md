@@ -12,9 +12,3 @@ This is the `write-contract-tests` task. It is called from the `implement-and-ve
 2. If you need to add methods to the DSL interface, then implement the DSL Core by implementing method prototypes by throwing a runtime exception `"TODO: DSL"`, so that compilation works.
 
 If your previous WRITE didn't compile, instead fix the broken/missing piece in your prior edits (forgotten DSL stub, typo, signature mismatch) and fix it minimally. Do not change test intent.
-
-Do not present or wait for approval inside the agent.
-
-Read `${references_root}/atdd/architecture/test.md`.
-Read `${references_root}/atdd/architecture/dsl-core.md`.
-Read `${references_root}/code/language-equivalents/${language}.md`.

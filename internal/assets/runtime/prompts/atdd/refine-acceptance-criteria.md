@@ -71,5 +71,3 @@ the "what new ACs should I add?" decision.
 3. Enforce Gherkin GIVEN-WHEN-THEN form on every scenario.
 4. Mutate `${parsed_concepts}` in place; set the `Refinement Changed`
    flag if any change occurred.
-
-Do not present or wait for approval inside the agent.

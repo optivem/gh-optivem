@@ -22,8 +22,6 @@ ${checklist}
 
 Edit ONLY files under the "Allowed write roots" listed at the top of this prompt. External-system roots, when listed, are write-eligible only when the ticket explicitly calls for stub or simulator changes — otherwise read-only context.
 
-Do not present or wait for approval inside the agent.
-
 ## Steps
 
 1. **Branch on Checklist.**
@@ -34,8 +32,3 @@ Do not present or wait for approval inside the agent.
 4. Update the Stub driver impl(s) (`${external-system-driver-adapter}/<external-system>/XyzStubDriver`) to mirror the new surface so stubs stay consistent with reality.
 5. **External driver-port guardrail.** Do NOT modify any file under `${external-system-driver-port}/` casually. If an interface change is unavoidable, STOP and present to the user: the method(s) you want to change, why the Real/Stub adapters alone cannot absorb the change, the proposed new signature(s), and the explicit warning that this WILL require contract-test updates (the calling CYCLE invokes the contract-test-update flow for affected scenarios). Wait for explicit user approval before editing any `${external-system-driver-port}/` file.
 6. Do not modify acceptance tests, contract tests, DSL, Gherkin, or any code outside the external-system driver layer. `${system-test-path}/.../Legacy/` is read-only.
-
-Read `${references_root}/atdd/architecture/system.md`.
-Read `${references_root}/atdd/architecture/driver-port.md`.
-Read `${references_root}/atdd/architecture/driver-adapter.md`.
-Read `${references_root}/code/language-equivalents/${language}.md`.

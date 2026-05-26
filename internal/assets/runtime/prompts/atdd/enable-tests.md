@@ -39,7 +39,3 @@ Strip a disable marker if and only if its reason starts with:
    - **TypeScript:** the `test.skip(true, "…")` form rewrites per the language-equivalents row. No import change.
    - **Other languages:** consult the language-equivalents row; only remove an import if no markers remain AND the import was needed solely for the marker.
 4. **Cross-ticket safety:** if a target method has multiple disable markers (e.g. from overlapping in-flight tickets), only strip the one matching the filter prefix. Leave all others intact.
-
-Do not present or wait for approval inside the agent.
-
-Read `${references_root}/code/language-equivalents/${language}.md`.

@@ -30,13 +30,30 @@ orchestrator and your work will be wrong anyway.
   validate it again after you exit. You cannot meaningfully change
   branch state from inside a one-shot dispatch.
 
-`Read`, `Grep`, and `Glob` against the working tree are fine — those
-are legitimate work, not rediscovery. The ban is specifically on
-exploratory `git`/`gh` calls that re-fetch context the orchestrator
-already substituted.
+## Scope-bound reads
 
-## Don't commit, don't summarise
+Read only files you actually need for the work. The scope listed in the prompt's `scope:` frontmatter is the **complete** set of paths you may read or modify, with two narrow additions:
+
+1. Files this prompt explicitly tells you to `Read` (e.g. lines like "Read `${references_root}/atdd/architecture/test.md`"). Such Reads are part of the prompt's contract; they are allowlisted by their explicit presence in the prompt body.
+2. Files you must inspect to satisfy an explicit Step in the prompt body — e.g. when a Step says "implement the DSL Port layer", you may read files under that layer even if your phase doesn't list them, because the Step makes that read load-bearing.
+
+**Greps and globs:** targeted greps for symbols named by the prompt or required by a Step are fine (e.g. "find the `CustomerService` class"). Open-ended greps ("look for related tests", "find similar code", "look around") are over-reading — treat as scope violations.
+
+**Carve-outs that survive this rule** (each is its own contract, not a general license):
+
+- `${changed_files}` and the working-tree state it describes are already-substituted context; you don't re-fetch them.
+- The fix-* tasks' explicit `git diff`/`git show HEAD:<path>` exception (documented per-prompt under "Exception to the anti-rediscovery rule") stays in force for those tasks only.
+
+If you cannot do the work without reading something outside scope and outside the two exceptions above, emit a `scope_exception` block (same shape as the write-side exception in `scope.md`) and exit.
+
+## Don't commit, don't summarise, don't ask
 
 When the work is done, do not summarise and do not commit — exit cleanly. The orchestrator drives compile, test runs, disabling, and commits as separate service tasks; the agent must never run `git commit`, `git add`, `gh issue close`, the compile commands, or the test commands.
+
+Do not present a plan and wait for approval inside the agent. The orchestrator gates approvals between phases; an agent that stops mid-dispatch to ask the operator something will hang the pipeline. If you genuinely cannot proceed (an ambiguous Acceptance Criterion, an out-of-scope edit required, a contradiction between two inputs), emit the appropriate structured exit block (`scope_exception` from `scope.md`, or a task-specific `blocker:` block when defined) and exit.
+
+## Edit cohesion
+
+When you have multiple edits to the same file, make them in one `Write` or one `Edit` call with a larger context window rather than several sequential `Edit`s. Each tool round-trip costs latency and tokens; a file's interface additions, impl methods, and wiring are typically one cohesive change.
 
 ---

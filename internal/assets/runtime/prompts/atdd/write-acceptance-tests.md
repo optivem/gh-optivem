@@ -18,14 +18,6 @@ ${acceptance_criteria}
 
 If your previous run didn't compile, instead fix the broken/missing piece in your prior edits (forgotten DSL stub, typo, signature mismatch) and fix it minimally. Do not change test intent.
 
-When you have multiple edits to the same file, make them in one Write or one Edit-with-larger-context call rather than several sequential Edits. Each tool round-trip costs latency and tokens; a file's interface additions, impl methods, and wiring are typically one cohesive change.
-
-Do not present or wait for approval inside the agent.
-
-Read `${references_root}/atdd/architecture/test.md`.
-Read `${references_root}/atdd/architecture/dsl-core.md`.
-Read `${references_root}/code/language-equivalents/${language}.md`.
-
 ## Outputs
 
 At the end of your final response, emit a fenced YAML block listing the

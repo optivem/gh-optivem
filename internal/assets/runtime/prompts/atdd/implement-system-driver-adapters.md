@@ -22,8 +22,6 @@ ${checklist}
 
 Edit ONLY files under the "Allowed write roots" listed at the top of this prompt.
 
-Do not present or wait for approval inside the agent.
-
 ## Steps
 
 1. **Branch on Checklist.**
@@ -31,7 +29,3 @@ Do not present or wait for approval inside the agent.
    (b) If the Checklist is non-empty, you are running under **redesign-system-structure**: update the matching System Driver adapter(s) under `${driver-adapter}/<channel>` to absorb the change described in the Checklist. Prefer adapter-only changes — keep behaviour observable through the **existing** driver interface. Apply across all parallel implementations (Java/.NET/TS × monolith/multitier).
 2. **Driver-port guardrail.** Do NOT modify any file under `${driver-port}/` casually. If an interface change is unavoidable, STOP and present to the user: the method(s) you want to change, why the adapter alone cannot absorb the change, the proposed new signature(s). Wait for explicit user approval before editing any `${driver-port}/` file.
 3. Do not modify acceptance tests, DSL, Gherkin, or the system surface from this task. The redesign caller invokes `implement-system` separately for the surface change; the change-system-behavior caller has tests/DSL/system already in place.
-
-Read `${references_root}/atdd/architecture/driver-port.md`.
-Read `${references_root}/atdd/architecture/driver-adapter.md`.
-Read `${references_root}/code/language-equivalents/${language}.md`.

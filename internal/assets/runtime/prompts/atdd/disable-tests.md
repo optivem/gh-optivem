@@ -40,7 +40,3 @@ Examples (Java):
 2. **Scope:** annotate ONLY the methods named in `${disable_targets}`. Do not modify other methods in the same file. Do not annotate legacy tests — the upstream selection has already filtered them; trust the list.
 3. **Imports:** if the marker syntax requires an import (e.g. `import org.junit.jupiter.api.Disabled;` for Java) and the file does not already have it, add the import in the conventional location for that language (e.g. with the other JUnit imports).
 4. **Strictness:** the reason string must match the format byte-for-byte. The downstream `enable-tests` agent uses a `startsWith` filter keyed on this exact prefix; a stray space or lowercase letter will leave the test stuck disabled.
-
-Do not present or wait for approval inside the agent.
-
-Read `${references_root}/code/language-equivalents/${language}.md`.

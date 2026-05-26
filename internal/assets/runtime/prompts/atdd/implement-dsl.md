@@ -5,25 +5,10 @@ model: opus
 effort: medium
 scope: {}   # query resolved scope: `gh optivem process scope implement-dsl`
 ---
-<!--
-Parameter: ${touches-system-driver} (boolean). Gates whether this
-invocation may add methods to the System Driver port and emit the
-`System Driver Interface Changed` flag. Callers from the
-implement-and-verify-dsl HIGH on the AT side (change-system-behavior
-CYCLE) pass `true`; callers on the CT side (cover-system-behavior
-CYCLE) pass `false`, since their DSL work is bounded to the
-external-system-driver port.
--->
 
 The implement-dsl task replaces every `TODO: DSL` prototype in the DSL Core with real logic and, when the DSL surface needs new behaviour, adds matching prototype methods to the driver port(s) in scope.
 
 If your previous WRITE didn't compile, instead fix the broken/missing piece in your prior edits (forgotten driver stub, signature mismatch, typo) and fix it minimally. Do not change DSL semantics.
-
-Do not present or wait for approval inside the agent.
-
-Read `${references_root}/atdd/architecture/dsl-core.md`.
-Read `${references_root}/atdd/architecture/driver-port.md`.
-Read `${references_root}/code/language-equivalents/${language}.md`.
 
 ## Steps
 
