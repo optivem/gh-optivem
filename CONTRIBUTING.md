@@ -299,7 +299,6 @@ cd "../rehearsal-${TS}"
 ../gh-optivem/gh-optivem.exe implement --issue 42 --autonomous
 ../gh-optivem/gh-optivem.exe implement --issue 42 --manual-agents
 ../gh-optivem/gh-optivem.exe -c ./gh-optivem.experimental.yaml implement --issue 42  # swap node_extras / task_prompts / process_flow via an alternate config
-../gh-optivem/gh-optivem.exe implement                                            # pick top Ready item from project board
 
 # Step 5 — clean up the worktree + branch when done
 cd ../shop

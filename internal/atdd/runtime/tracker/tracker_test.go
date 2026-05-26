@@ -12,9 +12,6 @@ import (
 // implementers will fail this file's build.
 type fakeTracker struct{}
 
-func (fakeTracker) PickReady(context.Context) (tracker.Issue, error) {
-	return tracker.Issue{}, nil
-}
 func (fakeTracker) FindIssue(context.Context, string) (tracker.Issue, error) {
 	return tracker.Issue{}, nil
 }

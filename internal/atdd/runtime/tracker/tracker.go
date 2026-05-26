@@ -3,10 +3,10 @@
 // for the local/offline path, Jira tomorrow).
 //
 // The Tracker interface is the union of every tracker-shaped operation
-// the runtime issues — picking the next ready item, moving it through
+// the runtime issues — resolving a ticket by ID/URL, moving it through
 // status columns, inspecting its body for classification and section
-// content, ticking checklists. Each backend implements the same seven
-// methods; the runtime never branches on backend type.
+// content. Each backend implements the same six methods; the runtime
+// never branches on backend type.
 //
 // Construction goes through the sibling factory package
 // (internal/atdd/runtime/tracker/factory): factory.Open dispatches on
@@ -14,18 +14,15 @@
 // the configured URL against the adapter's expected shape, and
 // returns the adapter. The factory lives in a sibling package because
 // the github and markdown adapters both import this one for the
-// Issue / Tracker / sentinel types — declaring Open here would
-// re-import the adapters and create a build cycle.
+// Issue / Tracker types — declaring Open here would re-import the
+// adapters and create a build cycle.
 //
 // Tests can construct adapters directly via the per-package New
 // constructors with an injected runner; this package exposes only the
 // interface and shared types, so it has no runtime behavior to mock.
 package tracker
 
-import (
-	"context"
-	"errors"
-)
+import "context"
 
 // Issue is the backend-agnostic representation of a tracker item. Every
 // adapter populates ID and Title; URL is populated when the backend
@@ -50,21 +47,16 @@ type Issue struct {
 	Handle string
 }
 
-// Tracker is the seven-method interface every backend implements. The
+// Tracker is the six-method interface every backend implements. The
 // methods divide into two groups:
 //
-//   - Workflow:   PickReady, FindIssue, SetStatus, Verify
+//   - Workflow:   FindIssue, SetStatus, Verify
 //   - Inspection: Classify, Subtypes, ReadSections
 //
 // Adapters are constructed via Open (or directly via package
 // constructors in tests). All methods accept a context.Context and
 // return errors so cancellation and per-call timeouts work uniformly.
 type Tracker interface {
-	// PickReady returns the topmost item with status "Ready" on the
-	// configured project. Returns ErrEmptyReady when the Ready column
-	// is empty (a normal "nothing to do" outcome, not an I/O error).
-	PickReady(ctx context.Context) (Issue, error)
-
 	// FindIssue resolves an issue by its backend-native ID OR by its
 	// URL form. Both shapes are accepted; the adapter chooses the
 	// parse path. Returns an error wrapping the input when no item
@@ -108,12 +100,3 @@ type Tracker interface {
 	// when they care to.
 	ReadSections(ctx context.Context, i Issue, headings []string) (map[string]string, error)
 }
-
-// ---------------------------------------------------------------------------
-// Sentinel errors
-// ---------------------------------------------------------------------------
-
-// ErrEmptyReady is returned by PickReady when the Ready column has no
-// items. A normal "nothing to do" outcome — callers usually report it
-// and stop, not retry.
-var ErrEmptyReady = errors.New("tracker: Ready column is empty")

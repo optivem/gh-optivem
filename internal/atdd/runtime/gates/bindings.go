@@ -168,7 +168,7 @@ type bindings struct {
 }
 
 // issueFromContext builds a tracker.Issue from the conventional Context
-// keys actions.pickTopReady writes (issue_num, issue_url, issue_title,
+// keys driver.preResolveIssue writes (issue_num, issue_url, issue_title,
 // issue_handle). issue_url is the addressable form every Tracker call
 // site needs; callers that don't seed it get a clear error rather than
 // a downstream parse failure.

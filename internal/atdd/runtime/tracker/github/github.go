@@ -1,7 +1,7 @@
 // Package github implements tracker.Tracker against GitHub Projects v2.
 // It is the post-board.go shape of the same logic — verb-based methods
-// (PickReady / SetStatus / FindIssue / Verify) instead of nouns +
-// command-style helpers, and the project-coordinates triple
+// (FindIssue / SetStatus / Verify) instead of nouns + command-style
+// helpers, and the project-coordinates triple
 // (projectID, itemID, projectURL) collapsed into the opaque
 // Issue.Handle string the runtime threads through Context.
 //
@@ -13,12 +13,11 @@
 // projectItemsQuery / projectFieldsQuery comments for the per-call
 // rationale.
 //
-// All seven Tracker methods are implemented against the projectV2 path
-// (workflow methods) and against the issue-body REST path (inspection /
-// mutation). Section parsing and checklist rewriting delegate to the
-// shared tracker/internal/parse package consumed by both the github
-// and markdown adapters — body content model is identical, so there
-// is one walker, one rewriter, one source of truth.
+// All six Tracker methods are implemented against the projectV2 path
+// (workflow methods) and against the issue-body REST path (inspection).
+// Section parsing delegates to the shared tracker/internal/parse package
+// consumed by both the github and markdown adapters — body content
+// model is identical, so there is one walker, one source of truth.
 package github
 
 import (
@@ -97,38 +96,6 @@ func New(projectURL string, gh GhRunner) (*Tracker, error) {
 // Tracker interface — workflow
 // ---------------------------------------------------------------------------
 
-// PickReady returns the topmost item with status "Ready" on the
-// configured project. Items are returned in the order GitHub yields
-// them, which matches the board's vertical order within a column.
-// Returns tracker.ErrEmptyReady when the Ready column has no items.
-func (t *Tracker) PickReady(ctx context.Context) (tracker.Issue, error) {
-	meta, err := t.fetchProjectMetadata(ctx)
-	if err != nil {
-		return tracker.Issue{}, fmt.Errorf("github: project metadata: %w", err)
-	}
-	items, err := t.fetchProjectItems(ctx, 200)
-	if err != nil {
-		return tracker.Issue{}, fmt.Errorf("github: project items: %w", err)
-	}
-	for _, it := range items {
-		if !equalStatus(it.Status, "Ready") {
-			continue
-		}
-		if it.Content.Type != "Issue" {
-			// Skip drafts and PR items — the orchestrator processes
-			// only real issues.
-			continue
-		}
-		return tracker.Issue{
-			ID:     strconv.Itoa(it.Content.Number),
-			Title:  it.Content.Title,
-			URL:    it.Content.URL,
-			Handle: encodeHandle(meta.ID, it.ID),
-		}, nil
-	}
-	return tracker.Issue{}, tracker.ErrEmptyReady
-}
-
 // FindIssue resolves an issue by its numeric ID (e.g. "42") or by its
 // canonical issue URL (e.g. "https://github.com/optivem/shop/issues/42").
 // Both shapes are accepted; the adapter parses then walks the project
@@ -167,10 +134,9 @@ func (t *Tracker) FindIssue(ctx context.Context, idOrURL string) (tracker.Issue,
 }
 
 // SetStatus sets the project item's Status field to the given option
-// name. handle must be the opaque string returned by PickReady or
-// FindIssue (encodes "projectID:itemID"). Status name lookup is
-// case-insensitive; ErrStatusFieldMissing is returned when the field
-// or option is absent.
+// name. handle must be the opaque string returned by FindIssue
+// (encodes "projectID:itemID"). Status name lookup is case-insensitive;
+// ErrStatusFieldMissing is returned when the field or option is absent.
 //
 // Placement at the bottom of the destination lane is the GitHub
 // default when a card's status changes via the API (`gh project
@@ -477,19 +443,19 @@ func equalStatus(a, b string) bool {
 // GraphQL queries — minimal, hand-rolled
 // ---------------------------------------------------------------------------
 
-// projectMeta is the minimal project metadata consumed by PickReady,
-// FindIssue, and Verify — the project node ID and the human title.
-// URL and other fields are intentionally omitted; callers that need
-// them already have the project URL on hand.
+// projectMeta is the minimal project metadata consumed by FindIssue
+// and Verify — the project node ID and the human title. URL and other
+// fields are intentionally omitted; callers that need them already
+// have the project URL on hand.
 type projectMeta struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
 }
 
 // projectItem is the flattened representation of a project item that
-// PickReady / FindIssue consume. Status is resolved from the item's
-// Status single-select field value (empty when the item has no Status
-// set); Content.Type is the content's GraphQL __typename ("Issue",
+// FindIssue consumes. Status is resolved from the item's Status
+// single-select field value (empty when the item has no Status set);
+// Content.Type is the content's GraphQL __typename ("Issue",
 // "PullRequest", "DraftIssue").
 type projectItem struct {
 	ID      string
@@ -523,9 +489,9 @@ const projectMetaQuery = `query($login:String!,$number:Int!){%s(login:$login){pr
 // ProjectV2ItemFieldValue type variant per item plus every field-type
 // variant per value — a cartesian expansion that triggered the same
 // upstream resolver regression that bit `project view`. The minimal
-// query asks only for what PickReady / FindIssue consume: per item,
-// id + the Status single-select field value + the content union with
-// the four scalars callers read.
+// query asks only for what FindIssue consumes: per item, id + the
+// Status single-select field value + the content union with the four
+// scalars callers read.
 //
 // %s is filled with "organization" or "user" from parseProjectURL.
 const projectItemsQuery = `query($login:String!,$number:Int!,$first:Int!,$after:String){%s(login:$login){projectV2(number:$number){items(first:$first,after:$after){pageInfo{hasNextPage endCursor} nodes{id fieldValues(first:20){nodes{__typename ... on ProjectV2ItemFieldSingleSelectValue{name field{... on ProjectV2SingleSelectField{name}}}}} content{__typename ... on Issue{number url title repository{nameWithOwner}} ... on PullRequest{number url title repository{nameWithOwner}} ... on DraftIssue{title}}}}}}}`

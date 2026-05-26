@@ -1,8 +1,7 @@
 // Package parse is the shared markdown body parser consumed by the
 // github and markdown tracker adapters. Both adapters operate on the
 // same content model — H2/H3 headings carve the body into named
-// sections, and `- [ ]` / `* [ ]` lines drive checklist completion —
-// so the parse code lives in one place.
+// sections — so the parse code lives in one place.
 //
 // Import path is intentionally inside tracker/internal/ so only the
 // tracker subtree depends on it. Runtime code outside tracker/ never
@@ -46,35 +45,6 @@ func ExtractSection(body, name string) string {
 		}
 	}
 	return strings.Trim(strings.Join(lines[startIdx:endIdx], "\n"), "\n")
-}
-
-// TickCheckboxes rewrites every `- [ ]` / `* [ ]` to its checked
-// equivalent. Indentation and marker character are preserved; already-
-// ticked items pass through so the operation is idempotent.
-func TickCheckboxes(body string) string {
-	lines := strings.Split(body, "\n")
-	for i, line := range lines {
-		trimmed := strings.TrimLeft(line, " \t")
-		indent := line[:len(line)-len(trimmed)]
-		if !strings.HasPrefix(trimmed, "- [ ]") && !strings.HasPrefix(trimmed, "* [ ]") {
-			continue
-		}
-		lines[i] = indent + strings.Replace(trimmed, "[ ]", "[x]", 1)
-	}
-	return strings.Join(lines, "\n")
-}
-
-// HasUnchecked reports whether body contains at least one `- [ ]` or
-// `* [ ]` line. Lets callers skip a no-op rewrite + commit when the
-// checklist is already fully ticked.
-func HasUnchecked(body string) bool {
-	for line := range strings.SplitSeq(body, "\n") {
-		trimmed := strings.TrimLeft(line, " \t")
-		if strings.HasPrefix(trimmed, "- [ ]") || strings.HasPrefix(trimmed, "* [ ]") {
-			return true
-		}
-	}
-	return false
 }
 
 // FirstH1 returns the trimmed text of the first H1 (`# Title`) heading

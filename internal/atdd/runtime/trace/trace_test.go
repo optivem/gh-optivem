@@ -49,9 +49,9 @@ func TestWrap_ServiceTaskLogsEntryAndExit(t *testing.T) {
 
 	var buf bytes.Buffer
 	node := statemachine.Node{
-		ID:   "PICK_TOP_READY",
+		ID:   "MARK_IN_PROGRESS",
 		Kind: statemachine.ServiceTask,
-		Raw:  statemachine.RawNode{Action: "pick-top-ready"},
+		Raw:  statemachine.RawNode{Action: "move-to-in-progress"},
 		Fn: func(ctx *statemachine.Context) statemachine.Outcome {
 			ctx.Set("issue_num", "42")
 			return statemachine.Outcome{}
@@ -70,8 +70,8 @@ func TestWrap_ServiceTaskLogsEntryAndExit(t *testing.T) {
 	// the writer would otherwise print. The standalone `state:` follow-on
 	// line is suppressed to avoid duplication.
 	wantSubs := []string{
-		"> PICK_TOP_READY  kind=service-task action=pick-top-ready",
-		"OK PICK_TOP_READY -> issue_num=42",
+		"> MARK_IN_PROGRESS  kind=service-task action=move-to-in-progress",
+		"OK MARK_IN_PROGRESS -> issue_num=42",
 	}
 	for _, s := range wantSubs {
 		if !strings.Contains(got, s) {
@@ -179,9 +179,9 @@ func TestWrap_ServiceTaskSkipsWorkingTreeSnapshot(t *testing.T) {
 	var buf bytes.Buffer
 	git := &fakeGit{}
 	node := statemachine.Node{
-		ID:   "PICK_TOP_READY",
+		ID:   "MARK_IN_PROGRESS",
 		Kind: statemachine.ServiceTask,
-		Raw:  statemachine.RawNode{Action: "pick-top-ready"},
+		Raw:  statemachine.RawNode{Action: "move-to-in-progress"},
 		Fn: func(ctx *statemachine.Context) statemachine.Outcome {
 			return statemachine.Outcome{}
 		},

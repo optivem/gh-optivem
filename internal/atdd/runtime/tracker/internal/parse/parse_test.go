@@ -42,42 +42,6 @@ func TestExtractSection_IgnoresH1(t *testing.T) {
 	}
 }
 
-func TestTickCheckboxes(t *testing.T) {
-	in := "## Checklist\n\n- [ ] One\n  - [ ] indented\n- [x] already done\n* [ ] asterisk\nnot a checkbox\n"
-	want := "## Checklist\n\n- [x] One\n  - [x] indented\n- [x] already done\n* [x] asterisk\nnot a checkbox\n"
-	if got := TickCheckboxes(in); got != want {
-		t.Errorf("got:\n%q\nwant:\n%q", got, want)
-	}
-}
-
-func TestTickCheckboxes_Idempotent(t *testing.T) {
-	in := "## Checklist\n\n- [x] One\n- [x] Two\n"
-	if got := TickCheckboxes(in); got != in {
-		t.Errorf("expected no change on fully-ticked input, got %q", got)
-	}
-}
-
-func TestHasUnchecked(t *testing.T) {
-	cases := []struct {
-		name string
-		in   string
-		want bool
-	}{
-		{"unchecked dash", "- [ ] one\n", true},
-		{"unchecked asterisk", "* [ ] one\n", true},
-		{"only ticked", "- [x] one\n- [x] two\n", false},
-		{"no checkboxes", "## Title\n\nplain text.\n", false},
-		{"indented unchecked", "  - [ ] indented\n", true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := HasUnchecked(tc.in); got != tc.want {
-				t.Errorf("got %v, want %v", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestFirstH1(t *testing.T) {
 	cases := []struct {
 		name string

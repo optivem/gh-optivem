@@ -1,14 +1,15 @@
 // Bindings — Go implementations of every service-task `action:` referenced
 // in internal/atdd/runtime/statemachine/process-flow.yaml.
 //
-// Actions are the mechanical work of the pipeline: pick the top Ready
-// ticket from the project board, enforce phase scope after the agent
-// commits, and dispatch the BPMN Phase D LOW primitives (run-command,
-// validate-outputs-and-scopes). Tracker-shaped work (PickReady) routes
-// through the Tracker interface; everything else is implemented directly
-// in this file using the same shell-out + dependency-injection pattern
-// (Deps with Gh / Git / Shell / Prompter / Stdout, all defaulting to real
-// implementations when nil).
+// Actions are the mechanical work of the pipeline: mark the picked ticket
+// through its status columns, enforce phase scope after the agent commits,
+// and dispatch the BPMN Phase D LOW primitives (run-command,
+// validate-outputs-and-scopes). Tracker-shaped work (SetStatus,
+// ReadSections, Classify, Subtypes, FindIssue) routes through the Tracker
+// interface; everything else is implemented directly in this file using
+// the same shell-out + dependency-injection pattern (Deps with Gh / Git /
+// Shell / Prompter / Stdout, all defaulting to real implementations when
+// nil).
 //
 // Every action returns `statemachine.Outcome` with Err set on hard
 // failures. User-driven aborts also surface as Err so the engine halts
@@ -58,11 +59,12 @@ type Deps struct {
 	// <repoPath>/gh-optivem.yaml. nil is treated as a wiring bug — the
 	// affected actions surface a hard error.
 	Config *projectconfig.Config
-	// Tracker is the seam pickTopReady's PickReady call goes through.
-	// Optional — withDefaults constructs a github adapter from
-	// ProjectURL + Gh when unset. Tests inject fakes either by setting
-	// ProjectURL + a fake Gh (the constructed github tracker then routes
-	// through the fake), or by setting Tracker directly for full control.
+	// Tracker is the seam tracker-shaped actions (SetStatus, ReadSections,
+	// Classify, Subtypes, FindIssue) route through. Optional — withDefaults
+	// constructs a github adapter from ProjectURL + Gh when unset. Tests
+	// inject fakes either by setting ProjectURL + a fake Gh (the
+	// constructed github tracker then routes through the fake), or by
+	// setting Tracker directly for full control.
 	Tracker tracker.Tracker
 	// Engine is the loaded process-flow state machine. Scope-checking
 	// actions (validate-outputs-and-scopes, check-phase-scope) call
@@ -142,7 +144,7 @@ func (d Deps) withDefaults() Deps {
 	if d.Tracker == nil {
 		// Default to a github adapter wrapping the (possibly fake) Gh
 		// runner. Production callers set ProjectURL from gh-optivem.yaml
-		// (driver.go) so PickReady / SetStatus / Verify resolve against a
+		// (driver.go) so SetStatus / Verify / FindIssue resolve against a
 		// real project; tests that don't exercise project ops can omit
 		// ProjectURL and the placeholder below keeps github.New from
 		// rejecting the call — issue-body ops (ReadSections / Classify)
@@ -162,7 +164,6 @@ func (d Deps) withDefaults() Deps {
 func RegisterAll(r *Registry, deps Deps) {
 	deps = deps.withDefaults()
 	a := actions{deps: deps}
-	r.Register("pick-top-ready", a.pickTopReady)
 	// Phase-scope enforcement Layer 2 (per plan 20260518-1144 item 5,
 	// retargeted at process-flow.yaml node scope per plan 20260526-1536):
 	// runs after the agent commits, diffs the working tree against the
@@ -202,10 +203,8 @@ func RegisterAll(r *Registry, deps Deps) {
 	// MARK_* state-transition service tasks (per plan
 	// 20260526-1220-fix-mark-ticket-state-transition-routing.md). Each
 	// dispatches Tracker.SetStatus against the ticketing-system column the
-	// canonical state maps to; move-to-in-acceptance additionally ticks
-	// every checklist box before flipping status (mechanical post-cycle
-	// completion). Tracker.SetStatus is stringly-typed for now; a typed
-	// state enum is separate future work.
+	// canonical state maps to. Tracker.SetStatus is stringly-typed for
+	// now; a typed state enum is separate future work.
 	r.Register("move-to-in-refinement", a.moveToInRefinement)
 	r.Register("move-to-ready", a.moveToReady)
 	r.Register("move-to-in-progress", a.moveToInProgress)
@@ -264,29 +263,6 @@ type actions struct {
 }
 
 // ---------------------------------------------------------------------------
-// Board-backed actions
-// ---------------------------------------------------------------------------
-
-// pickTopReady reads the project's Ready column via Tracker.PickReady and
-// writes the picked issue's number, URL, title, repo, and opaque handle
-// into Context state. Downstream gates and actions read those keys; the
-// engine itself does not interpret them.
-//
-// On an empty Ready column Tracker.PickReady returns tracker.ErrEmptyReady,
-// which the action surfaces as Outcome.Err. The driver catches that
-// specific sentinel and exits zero rather than crashing — a normal
-// "nothing to do" outcome.
-func (a actions) pickTopReady(ctx *statemachine.Context) statemachine.Outcome {
-	issue, err := a.deps.Tracker.PickReady(context.Background())
-	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("pick-top-ready: %w", err)}
-	}
-	writeIssueToContext(ctx, issue)
-	fmt.Fprintf(a.deps.Stdout, "Picked top Ready: #%s %s (%s)\n", issue.ID, issue.Title, issue.URL)
-	return statemachine.Outcome{}
-}
-
-// ---------------------------------------------------------------------------
 // State-transition actions (MARK_* service tasks)
 // ---------------------------------------------------------------------------
 
@@ -321,13 +297,12 @@ func (a actions) moveToReady(ctx *statemachine.Context) statemachine.Outcome {
 }
 
 // moveToInProgress sets the picked issue's status to "In progress" via
-// Tracker.SetStatus. Reads issue_handle from Context — populated by
-// pick-top-ready (board mode) or by the driver's issue-lookup path
-// (specific-issue mode).
+// Tracker.SetStatus. Reads issue_handle from Context — populated by the
+// driver's issue-lookup path (preResolveIssue).
 func (a actions) moveToInProgress(ctx *statemachine.Context) statemachine.Outcome {
 	handle := ctx.GetString("issue_handle")
 	if handle == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-progress: issue_handle not in Context (specific-issue mode requires explicit pre-resolution)")}
+		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-progress: issue_handle not in Context (requires explicit pre-resolution)")}
 	}
 	if err := a.deps.Tracker.SetStatus(context.Background(), handle, "In progress"); err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-progress: %w", err)}
@@ -385,7 +360,7 @@ func (a actions) parseTicket(ctx *statemachine.Context) statemachine.Outcome {
 }
 
 // issueFromContext builds a tracker.Issue from the conventional Context
-// keys pickTopReady writes (issue_num, issue_url, issue_title,
+// keys preResolveIssue writes (issue_num, issue_url, issue_title,
 // issue_handle). issue_url is the addressable form every Tracker call
 // site needs; callers that don't seed it get a clear error rather than
 // a downstream parse failure.
@@ -992,19 +967,6 @@ func splitCSV(s string) []string {
 		}
 	}
 	return out
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-// writeIssueToContext mirrors the Tracker.PickReady result into the
-// conventional Context keys downstream actions read.
-func writeIssueToContext(ctx *statemachine.Context, issue tracker.Issue) {
-	ctx.Set("issue_num", issue.ID)
-	ctx.Set("issue_url", issue.URL)
-	ctx.Set("issue_title", issue.Title)
-	ctx.Set("issue_handle", issue.Handle)
 }
 
 // ---------------------------------------------------------------------------

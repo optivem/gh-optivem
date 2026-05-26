@@ -251,9 +251,6 @@ type fakeTracker struct {
 	subtypesErr       error
 }
 
-func (f fakeTracker) PickReady(context.Context) (tracker.Issue, error) {
-	panic("fakeTracker.PickReady: not implemented")
-}
 func (f fakeTracker) FindIssue(context.Context, string) (tracker.Issue, error) {
 	panic("fakeTracker.FindIssue: not implemented")
 }

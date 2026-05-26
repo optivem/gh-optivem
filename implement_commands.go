@@ -1,9 +1,7 @@
 // implement_commands.go wires the `gh optivem implement` subcommand into the
-// root Cobra command. The single `implement` verb absorbs what used to be two
-// commands (`atdd implement-ticket` and `atdd manage-project`): one entry
-// point, branching on whether `--issue` is set.
+// root Cobra command. The `implement` verb walks the configured pipeline
+// against a specific issue identified by --issue.
 //
-//	gh optivem implement                # pick the top Ready item
 //	gh optivem implement --issue 42     # walk the pipeline for a specific issue
 //
 // The handler is deliberately thin: it translates Cobra flags into
@@ -39,13 +37,10 @@ import (
 	"github.com/optivem/gh-optivem/internal/version"
 )
 
-// newImplementCmd implements `gh optivem implement [--issue N|URL]`. Without
-// --issue the driver picks the top Ready item from the project board and
-// walks the configured process from START (former `manage-project` path).
-// With --issue the driver pre-resolves the project item and walks from
-// IMPLEMENT_TICKET — the call-activity that dispatches to the
-// implement-ticket sub-process. The on-disk preflight runs in both cases —
-// the no-issue path still needs the workspace to exist.
+// newImplementCmd implements `gh optivem implement --issue N|URL`. The
+// driver pre-resolves the project item and walks the main process from
+// START, which dispatches to the implement-ticket sub-process. --issue is
+// required; the on-disk preflight runs before the driver starts.
 func newImplementCmd() *cobra.Command {
 	var (
 		issueArg     string
@@ -66,11 +61,8 @@ task_prompts:, node_extras:, node_replacements:). Today the bundled flow
 is ATDD; future flows (TDD, DDD, or compositions) plug into the same
 command.
 
-With --issue, the pipeline targets that specific issue. Without --issue,
-it picks the top Ready item from the project board and walks the same
-pipeline from START.`,
-		Example: `  gh optivem implement                                  # top Ready
-  gh optivem implement --issue 42
+--issue is required; the pipeline targets that specific issue.`,
+		Example: `  gh optivem implement --issue 42
   gh optivem implement --issue https://github.com/myorg/myrepo/issues/42
   gh optivem -c ./optivem-multitier.yaml implement --issue 42
   gh optivem implement --issue 42 --workspace /abs/path/to/workspace
@@ -85,12 +77,11 @@ pipeline from START.`,
 			// files that may be missing or out of date.
 			exitOnError(requireFreshAssetsWhenEscapeHatchSet())
 
-			var issue int
-			if strings.TrimSpace(issueArg) != "" {
-				parsed, err := parseIssueArg(issueArg)
-				exitOnError(err)
-				issue = parsed
+			if strings.TrimSpace(issueArg) == "" {
+				exitOnError(errors.New("--issue is required"))
 			}
+			issue, err := parseIssueArg(issueArg)
+			exitOnError(err)
 			exitOnError(validateKeepRuns(keepRuns))
 			resolvedConfigPath, _ := projectconfig.ResolvePath(projectConfigPath)
 			exportConfigForShellOuts(resolvedConfigPath)
@@ -114,7 +105,7 @@ pipeline from START.`,
 			}))
 		},
 	}
-	cmd.Flags().StringVar(&issueArg, "issue", "", "GitHub issue number or URL (optional; omit to pick the top Ready item from the project board)")
+	cmd.Flags().StringVar(&issueArg, "issue", "", "GitHub issue number or URL (required)")
 	cmd.Flags().BoolVar(&autonomous, "autonomous", false, "Skip human-approval STOPs and run agent dispatches headless via `claude -p`")
 	cmd.Flags().BoolVar(&manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
 	cmd.Flags().StringVar(&workspace, "workspace", "", "Workspace root containing one clone per repo (default: parent directory of CWD). Each clone dir must be named after the repo-name component of its slug; symlink outliers into place.")

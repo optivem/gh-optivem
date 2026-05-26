@@ -121,7 +121,6 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		Shell:    &fakeShell{},
 	})
 	want := []string{
-		"pick-top-ready",
 		"check-phase-scope",
 		"run-command",
 		"validate-outputs-and-scopes",
@@ -772,9 +771,6 @@ type fakeTracker struct {
 	readCalled bool
 }
 
-func (f *fakeTracker) PickReady(context.Context) (tracker.Issue, error) {
-	panic("fakeTracker.PickReady: not implemented")
-}
 func (f *fakeTracker) FindIssue(context.Context, string) (tracker.Issue, error) {
 	panic("fakeTracker.FindIssue: not implemented")
 }

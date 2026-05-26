@@ -6,15 +6,14 @@
 // Layout:
 //
 //	<boardDir>/
-//	  ready/        # PickReady picks the lexicographically smallest .md
+//	  ready/
 //	  in-progress/
 //	  in-acceptance/
 //	  done/
 //
 // The status column an item sits in is determined by its directory.
 // SetStatus performs a `git mv` between status dirs; reorderings
-// happen in the user's editor by renaming files (filenames sort
-// ascending; PickReady returns the topmost name). Verify checks the
+// happen in the user's editor by renaming files. Verify checks the
 // four canonical dirs exist; other dirs are created on demand.
 //
 // Issue.ID is the filename without `.md`. Issue.Title is the file's
@@ -36,7 +35,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
@@ -134,24 +132,6 @@ func New(boardDir string, git GitRunner) (*Tracker, error) {
 // ---------------------------------------------------------------------------
 // Tracker interface — workflow
 // ---------------------------------------------------------------------------
-
-// PickReady returns the topmost item in the ready/ directory, sorted
-// by filename ascending. Files whose name starts with `.` are ignored.
-// Returns tracker.ErrEmptyReady when the ready/ directory exists but
-// contains no .md files.
-func (t *Tracker) PickReady(_ context.Context) (tracker.Issue, error) {
-	readyDir := filepath.Join(t.boardDir, "ready")
-	matches, err := filepath.Glob(filepath.Join(readyDir, "*.md"))
-	if err != nil {
-		return tracker.Issue{}, fmt.Errorf("markdown: glob ready: %w", err)
-	}
-	matches = filterVisible(matches)
-	if len(matches) == 0 {
-		return tracker.Issue{}, tracker.ErrEmptyReady
-	}
-	slices.Sort(matches)
-	return t.issueFromFile(matches[0])
-}
 
 // FindIssue accepts either an ID (filename sans `.md`, e.g.
 // "001-add-cart") or a file path (absolute or relative to the board
@@ -336,20 +316,6 @@ func (t *Tracker) issueFromFile(absPath string) (tracker.Issue, error) {
 		URL:    "",
 		Handle: absPath,
 	}, nil
-}
-
-// filterVisible drops paths whose basename starts with a dot —
-// hidden files (e.g. `.DS_Store`) and editor swap files shouldn't
-// surface as pickable items.
-func filterVisible(paths []string) []string {
-	out := paths[:0]
-	for _, p := range paths {
-		if strings.HasPrefix(filepath.Base(p), ".") {
-			continue
-		}
-		out = append(out, p)
-	}
-	return out
 }
 
 // frontmatterTypePattern matches a `type: <value>` line inside a
