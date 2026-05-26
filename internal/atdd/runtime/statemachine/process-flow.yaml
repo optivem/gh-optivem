@@ -89,10 +89,21 @@
 #     dedicated parser lives in the Go command layer (Phase D).
 #
 #   - `fix-*` agent inventory (Q-late-5 (β-convention) routing): each `fix`
-#     call dispatches `execute-agent` with `task-name = "fix-" +
-#     failure.kind`. The kind values are not enumerated here — the prompt
-#     files implementing them are authored / renamed in the Phase D
-#     downstream-alignment plan.
+#     call dispatches `execute-agent` with `task-name: "fix-${failure-kind}"`.
+#     The placeholder resolves at dispatch time via `ExpandParams`'s
+#     params-then-state scope chain (`statemachine/run.go`), so the
+#     binding that wrote `failure-kind` into state — `runCommand` or
+#     `validateOutputsAndScopes` — feeds the substitution without a
+#     call-site passthrough param.
+#     Closed set of kinds:
+#       - `command-failed`           → fix-command-failed.md       (runCommand)
+#       - `missing-output`           → fix-missing-output.md       (validateOutputsAndScopes — prompt TBD, see plans/upcoming/)
+#       - `scope-diff`               → fix-scope-diff.md           (validateOutputsAndScopes — prompt TBD, see plans/upcoming/)
+#       - `unexpected-passing-tests` → fix-unexpected-passing-tests.md (legacy MID convention)
+#       - `unexpected-failing-tests` → fix-unexpected-failing-tests.md (legacy MID convention)
+#     The last two predate the β-convention — their MID-name carries the
+#     kind directly; the Q-late-5 dispatch path is not exercised for
+#     them.
 #
 # Document shape (unchanged from prior YAML; see internal/atdd/runtime/
 # statemachine/load.go for the parser):
@@ -1762,11 +1773,15 @@ processes:
         type: call-activity
         process: execute-agent
         params:
-          # task-name derived from failure.kind by the binding plumbing
-          # (Q-late-5): the (β-convention) "fix-" + failure.kind formula
-          # resolves at dispatch time. Phase D wires the param-derivation
-          # gate so this becomes ${fix-task-name}; for now the literal
-          # template documents the convention.
+          # task-name derived from failure.kind (Q-late-5 β-convention:
+          # "fix-" + failure.kind). The `${failure-kind}` placeholder
+          # resolves at dispatch time via ExpandParams's state-fallback
+          # path (statemachine/run.go): the binding upstream — runCommand
+          # or validateOutputsAndScopes — writes `failure-kind` into
+          # ctx.State, and the substitution reads it through the
+          # params-then-state scope chain without a call-site passthrough.
+          # See the closed set of kinds documented in the
+          # `fix-*` agent inventory note near the top of this file.
           task-name: "fix-${failure-kind}"
           fix-on-failure: "false"
           scopes: ${scopes}

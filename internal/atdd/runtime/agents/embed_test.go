@@ -148,11 +148,19 @@ func TestFixKindPromptsExist(t *testing.T) {
 	// `fix` MID) resolves against. Every kind here must have a matching
 	// prompt embedded under internal/assets/runtime/prompts/atdd/.
 	//
-	// Phase D will wire the binding that emits `failure-kind`; until
-	// then this test guards the convention end-to-end at the prompt
-	// level — adding a new kind requires adding a fix-<kind>.md, and a
-	// prompt rename will fail this test before runtime sees an unknown
-	// task-name.
+	// The bindings that emit `failure-kind` are wired —
+	// `actions.runCommand` (command-failed) and
+	// `actions.validateOutputsAndScopes` (missing-output, scope-diff) —
+	// and ExpandParams resolves `${failure-kind}` via its
+	// params-then-state scope chain (statemachine/run.go). This test
+	// guards the dispatch surface: adding a new kind requires adding a
+	// fix-<kind>.md, and a prompt rename fails this test before runtime
+	// sees an unknown task-name.
+	//
+	// `missing-output` and `scope-diff` are intentionally absent from
+	// the slice below — their prompts are out of scope for plan 1530
+	// and tracked separately (plans/upcoming/20260526-1600-fix-missing-output-and-scope-diff-prompts.md).
+	// Add them here when those prompts land.
 	wantKinds := []string{
 		"unexpected-passing-tests",
 		"unexpected-failing-tests",

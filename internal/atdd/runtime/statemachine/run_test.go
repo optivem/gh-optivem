@@ -481,3 +481,242 @@ processes:
 		t.Errorf("error %q should name both the resolved value %q and the original template %q", msg, "nonexistent", "${agent-action}")
 	}
 }
+
+// TestExecuteCommand_FailureDispatchesFixCommandFailedAgent is the
+// end-to-end verification for the recovery-path wiring (plan
+// 20260526-1530 Item 3). It loads the canonical embedded YAML and drives
+// `execute-command` with a stubbed `run-command` action that simulates a
+// shell failure (stamps `command-succeeded=false`, `failure-kind=command-failed`).
+// The expected trail is:
+//
+//	execute-command.RUN_COMMAND → GATE_COMMAND_SUCCEEDED=false → CALL_FIX
+//	  → fix.EXECUTE_AGENT (params task-name="fix-${failure-kind}")
+//	    → execute-agent.RUN_AGENT (agent: ${task-name})
+//
+// At RUN_AGENT the engine resolves `${task-name}` against ctx.Params,
+// which in turn was expanded with `${failure-kind}` resolved via
+// ExpandParams's state fallback (Item 2). The recorded AgentFn dispatch
+// must be the literal `"fix-command-failed"` — if either Items 1, 2, or
+// the YAML wiring regresses, this test fails before runtime sees a
+// missing-prompt error.
+//
+// Memory `feedback_statemachine_test_loop_hazard`: the four processes
+// walked here (execute-command, fix, execute-agent, approve) have no
+// loopback edges, so the test is bounded. `maxDispatchesPerProcess`
+// catches the failure mode anyway if a future YAML edit introduces one.
+func TestExecuteCommand_FailureDispatchesFixCommandFailedAgent(t *testing.T) {
+	eng, err := LoadDefault()
+	if err != nil {
+		t.Fatalf("LoadDefault: %v", err)
+	}
+
+	var dispatchedAgents []string
+	eng.ActionFn = func(name string) NodeFn {
+		switch name {
+		case "run-command":
+			return func(ctx *Context) Outcome {
+				ctx.Set("command-succeeded", false)
+				ctx.Set("failure-kind", "command-failed")
+				return Outcome{}
+			}
+		case "validate-outputs-and-scopes":
+			return func(ctx *Context) Outcome {
+				ctx.Set("outputs-and-scopes-valid", true)
+				return Outcome{}
+			}
+		default:
+			return func(ctx *Context) Outcome { return Outcome{} }
+		}
+	}
+	eng.AgentFn = func(name string) NodeFn {
+		return func(ctx *Context) Outcome {
+			dispatchedAgents = append(dispatchedAgents, name)
+			return Outcome{}
+		}
+	}
+	eng.GateFn = func(name string) NodeFn {
+		switch name {
+		case "approval-outcome":
+			return func(ctx *Context) Outcome { return Outcome{Value: "approved"} }
+		case "fix-on-failure-enabled":
+			// Mirrors gates.bindings.fixOnFailureEnabled at the test
+			// stub level: default true, "false" param disables. The
+			// inner execute-agent (called from fix) sets this to
+			// "false" so the test doesn't recurse into a second fix.
+			return func(ctx *Context) Outcome {
+				return Outcome{Bool: ctx.Params["fix-on-failure"] != "false"}
+			}
+		default:
+			// Generic state-reading gate: read whatever the action
+			// stamped under the binding name. Covers
+			// command-succeeded and outputs-and-scopes-valid in this
+			// walk without per-gate stubs.
+			return func(ctx *Context) Outcome {
+				v, ok := ctx.State[name]
+				if !ok {
+					return Outcome{}
+				}
+				switch t := v.(type) {
+				case bool:
+					return Outcome{Bool: t}
+				case string:
+					return Outcome{Value: t}
+				default:
+					return Outcome{}
+				}
+			}
+		}
+	}
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+
+	ctx := NewContext()
+	ctx.Params["command"] = "noisy-broken-cmd"
+	if err := eng.RunProcess("execute-command", ctx); err != nil {
+		t.Fatalf("RunProcess execute-command: %v", err)
+	}
+
+	// The approve sub-process dispatches the human user-task multiple
+	// times during the walk — we ignore those and look for the
+	// fix-command-failed dispatch.
+	foundFixCommandFailed := false
+	for _, name := range dispatchedAgents {
+		if name == "fix-command-failed" {
+			foundFixCommandFailed = true
+		}
+		// Guard against the original bug surface: an unresolved
+		// template leaking into AgentFn. Catches a regression where
+		// ExpandParams loses the state-fallback path.
+		if strings.Contains(name, "${") {
+			t.Errorf("agent name with unresolved template leaked into dispatch: %q (full dispatch trail: %v)", name, dispatchedAgents)
+		}
+	}
+	if !foundFixCommandFailed {
+		t.Errorf("RUN_AGENT did not dispatch fix-command-failed; full dispatch trail: %v", dispatchedAgents)
+	}
+}
+
+// TestExecuteAgent_ValidationFailureDispatchesFixForFailureKind is the
+// twin of TestExecuteCommand_FailureDispatchesFixCommandFailedAgent for
+// the `execute-agent` → `fix` → `execute-agent` recovery branch (plan
+// 20260526-1530 Item 4). `validateOutputsAndScopes` writes one of two
+// failure-kinds — `missing-output` or `scope-diff` — and the recovery
+// path must dispatch the matching `fix-<kind>` agent.
+//
+// At the time this test was written the two `fix-missing-output` and
+// `fix-scope-diff` prompts did NOT yet exist (out of scope here; see
+// the sibling follow-up plan
+// plans/upcoming/fix-missing-output-and-scope-diff-prompts.md). The
+// test uses a recording AgentFn so the dispatch landing on the right
+// NAME is verified independently of prompt availability — the missing
+// prompts only matter when the real agents.Lookup is in play, not in
+// this synthetic registry.
+//
+// Memory `feedback_statemachine_test_loop_hazard`: as in Item 3, the
+// walked processes (execute-agent, fix, execute-agent inner, approve)
+// have no loopback edges. The inner execute-agent does re-enter
+// validate-outputs-and-scopes, but `fix-on-failure=false` on the inner
+// call-site routes its GATE_FIX_ON_FAILURE to APPROVE_POST — no
+// second-level recursion.
+func TestExecuteAgent_ValidationFailureDispatchesFixForFailureKind(t *testing.T) {
+	cases := []struct {
+		failureKind string
+		wantAgent   string
+	}{
+		// validateOutputsAndScopes priority is missing-output wins
+		// over scope-diff (bindings.go), so each case here pins the
+		// observable kind after the action's own routing decision.
+		{failureKind: "missing-output", wantAgent: "fix-missing-output"},
+		{failureKind: "scope-diff", wantAgent: "fix-scope-diff"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.failureKind, func(t *testing.T) {
+			eng, err := LoadDefault()
+			if err != nil {
+				t.Fatalf("LoadDefault: %v", err)
+			}
+
+			var dispatchedAgents []string
+			// Limits the validate stub to writing failure-kind on the
+			// FIRST call; the inner fix's execute-agent would otherwise
+			// rewrite it (harmless here, but the trail stays simpler).
+			validateCalls := 0
+			eng.ActionFn = func(name string) NodeFn {
+				switch name {
+				case "validate-outputs-and-scopes":
+					return func(ctx *Context) Outcome {
+						validateCalls++
+						if validateCalls == 1 {
+							ctx.Set("outputs-and-scopes-valid", false)
+							ctx.Set("failure-kind", tc.failureKind)
+						} else {
+							// Inner fix's execute-agent: pass validation
+							// so the walk terminates cleanly.
+							ctx.Set("outputs-and-scopes-valid", true)
+						}
+						return Outcome{}
+					}
+				default:
+					return func(ctx *Context) Outcome { return Outcome{} }
+				}
+			}
+			eng.AgentFn = func(name string) NodeFn {
+				return func(ctx *Context) Outcome {
+					dispatchedAgents = append(dispatchedAgents, name)
+					return Outcome{}
+				}
+			}
+			eng.GateFn = func(name string) NodeFn {
+				switch name {
+				case "approval-outcome":
+					return func(ctx *Context) Outcome { return Outcome{Value: "approved"} }
+				case "fix-on-failure-enabled":
+					return func(ctx *Context) Outcome {
+						return Outcome{Bool: ctx.Params["fix-on-failure"] != "false"}
+					}
+				default:
+					return func(ctx *Context) Outcome {
+						v, ok := ctx.State[name]
+						if !ok {
+							return Outcome{}
+						}
+						switch t := v.(type) {
+						case bool:
+							return Outcome{Bool: t}
+						case string:
+							return Outcome{Value: t}
+						default:
+							return Outcome{}
+						}
+					}
+				}
+			}
+			if err := eng.Bind(); err != nil {
+				t.Fatalf("Bind: %v", err)
+			}
+
+			ctx := NewContext()
+			// Outer execute-agent call: a hypothetical writing-agent
+			// dispatch. The name doesn't matter — validate-outputs-and-
+			// scopes is the action that decides the recovery branch.
+			ctx.Params["task-name"] = "some-writing-agent"
+			if err := eng.RunProcess("execute-agent", ctx); err != nil {
+				t.Fatalf("RunProcess execute-agent: %v", err)
+			}
+
+			found := false
+			for _, name := range dispatchedAgents {
+				if name == tc.wantAgent {
+					found = true
+				}
+				if strings.Contains(name, "${") {
+					t.Errorf("agent name with unresolved template leaked into dispatch: %q (full dispatch trail: %v)", name, dispatchedAgents)
+				}
+			}
+			if !found {
+				t.Errorf("RUN_AGENT did not dispatch %q; full dispatch trail: %v", tc.wantAgent, dispatchedAgents)
+			}
+		})
+	}
+}
