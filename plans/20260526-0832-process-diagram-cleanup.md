@@ -15,15 +15,14 @@
 Conversation with user (2026-05-26 08:32) walking through observed issues in
 `docs/process-diagram.md` (generated from
 `internal/atdd/runtime/statemachine/process-flow.yaml` by
-`internal/atdd/runtime/diagram/diagram.go`). Eighteen items in total —
-eleven settled in scope, three deferred to revisit later, one deferred to
-its own plan, two merged into other items, one dropped as built on a
-wrong premise.
+`internal/atdd/runtime/diagram/diagram.go`). Twenty-two items in total
+across the original walk + the BPMN-purity audit + the pre-rename naming
+audit.
 
 The 2026-05-26 /refine-plan walk results:
 
 - **In scope (will ship in this plan)**: Items 2, 3, 7, 8, 10, 11, 12,
-  13, 16, 17.
+  13, 16, 17, 19, 20, 21, 22.
 - **Superseded by another plan**: Item 9 → `plans/20260526-1220-fix-mark-ticket-state-transition-routing.md`
   (eliminates the `update-ticket` wrapper entirely; no `mark-ticket` rename
   to perform).
@@ -139,21 +138,61 @@ reading the diagram should not see screaming-snake YAML node IDs anywhere.
   schema-validation error at parse time (catches new call_activity nodes
   that forget the doc field).
 
-**Labelling convention to apply across the ~85 nodes** — TBD in Q2.1 below,
-but candidates:
+**Labelling convention (decided 2026-05-26): BPMN-pure verb-phrase, Title Case.**
 
-- **Verb-phrase action**: what the call site is *doing*. E.g.,
-  `IMPLEMENT_TEST_LAYER` (called 3× for AT/CT/DSL) →
-  `"implement acceptance-test layer"` / `"implement contract-test layer"` /
-  `"implement DSL layer"`, `OPP_REFACTOR_SYSTEM_STRUCTURE` →
-  `"opportunistic refactor: system structure"`. (Note: MARK_* nodes are
-  service_tasks post-1220, not in scope for this convention.)
-- **Stage + role**: pairs nicely with the existing RED/GREEN/Cover labels.
-  E.g., `OPP_*` → `"REFACTOR — system structure"`. Tighter but only fits
-  where there's an established stage vocabulary.
-- **Bare sub-process name**: e.g. `"refactor-system-structure"`. Mechanical,
-  cheap, but adds no info beyond the `process:` field — defeats the point
-  of requiring docs.
+- **Verb-object phrasing everywhere** (BPMN's canonical naming
+  convention).
+- **Title Case**: capitalise major words (nouns, verbs, adjectives,
+  adverbs). Leave articles, prepositions, conjunctions ≤4 letters
+  lowercase ("the", "of", "in", "and", "for"). Matches Camunda /
+  Bizagi / BPMN.io style.
+- **State constants stay uppercase** (`IN REFINEMENT`, `READY`).
+  **Abbreviations stay uppercase** (`DSL`, `AT`, `CT`).
+- **Stage prefixes dropped**: no RED/GREEN/Cover/REFACTOR prefixes in
+  labels. The TDD-stage vocabulary lives in YAML section comments;
+  removing it from labels favours BPMN purity. Visual TDD-stage signal
+  is restored separately via Item 19 (border-colour metadata).
+- **MARK_* nodes are out of scope** (1220 converts them to service_tasks).
+
+**Worked examples**:
+
+| Node | Label |
+|---|---|
+| `WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL` | "Write Failing Acceptance Tests" |
+| `WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS` | "Write Passing Acceptance Tests" |
+| `IMPLEMENT_AND_VERIFY_SYSTEM` (`agent-action: implement-system`) | "Implement System" |
+| `IMPLEMENT_AND_VERIFY_SYSTEM` (`agent-action: refactor-system`) | "Refactor System" |
+| `CHANGE_SYSTEM_BEHAVIOR` (post-Item-12) | "Change System Behavior" |
+| `COVER_SYSTEM_BEHAVIOR` | "Cover System Behavior" |
+| `REDESIGN_SYSTEM_STRUCTURE` | "Redesign System Structure" |
+| `REFACTOR_SYSTEM_STRUCTURE` | "Refactor System Structure" |
+| `REFACTOR_TEST_STRUCTURE` | "Refactor Test Structure" |
+| `ONBOARD_EXTERNAL_SYSTEM` | "Onboard External System" |
+| `IMPLEMENT_TEST_LAYER` (`layer: at`) | "Implement Acceptance-Test Layer" |
+| `IMPLEMENT_TEST_LAYER` (`layer: ct`) | "Implement Contract-Test Layer" |
+| `IMPLEMENT_TEST_LAYER` (`layer: dsl`) | "Implement DSL Layer" |
+| `VERIFY_TESTS_PASS_ACCEPTANCE` | "Verify Acceptance Tests Pass" |
+| `VERIFY_TESTS_FAIL_CONTRACT_STUB` | "Verify Contract Tests Fail Against the Stub" |
+| `COMPILE_TESTS` | "Compile Tests" |
+| `BUILD_SYSTEM` | "Build the System" |
+| `START_SYSTEM` | "Start the System" |
+| `RUN_TESTS` | "Run Tests" |
+| `COMMIT_SYSTEM` / `COMMIT_TESTS` / `COMMIT_LAYER` | "Commit System Changes" / "Commit Test Changes" / "Commit Layer Changes" |
+| `DISABLE_ACCEPTANCE_TESTS` | "Disable Acceptance Tests" |
+| `REFACTOR_OPPORTUNISTICALLY` (post-Item-3) | "Opportunistic Refactor (Loopable)" |
+| `WRITE_AND_VERIFY_ACCEPTANCE_TESTS` (post-Item-12) | "Write and Verify Acceptance Tests" |
+| `REFINE_BACKLOG_ITEM` (per Item 10) | "Refine Backlog Item" |
+| `REFINE_ACCEPTANCE_CRITERIA` | "Refine Acceptance Criteria" |
+| `APPROVE_PRE` / `APPROVE_POST` | "Request Approval" / "Confirm Approval" |
+| `FIX` (post-Item-12, was `CALL_FIX`) | "Fix the Failure" |
+| `EXECUTE_AGENT` | "Dispatch the Agent" |
+| `EXECUTE_COMMAND` | "Dispatch the Command" |
+| `FIX_UNEXPECTED_FAILING_TESTS` | "Fix Unexpected Test Failures" |
+| `FIX_UNEXPECTED_PASSING_TESTS` | "Fix Unexpectedly Passing Tests" |
+| `IMPLEMENT_EXTERNAL_SYSTEM_STUBS` | "Implement External-System Stubs" |
+| `IMPLEMENT_DSL` | "Implement the DSL" |
+| `IMPLEMENT_SYSTEM_DRIVER_ADAPTERS` | "Implement System Driver Adapters" |
+| `IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS` | "Implement External-System Driver Adapters" |
 
 **Files**:
 
@@ -182,11 +221,13 @@ but candidates:
 - Q2.3 — **Folding Item 4**: Item 4 (RED/GREEN/agent-action normalisation)
   becomes a subset of Item 2. Confirm Item 4 collapses into Item 2 (one
   YAML pass instead of two).
-- Q2.4 — **Naming inside parameterised sub-processes**: the call site
-  `CALL_AGENT_ACTION` inside `implement-and-verify-system` currently has
-  doc `"agent-action: ${agent-action}"` — a template literal that
-  resolves at call time. Keep the template form, or change to something
-  like `"run the configured agent action"`?
+- Q2.4 — *Decided 2026-05-26*: **Option C — generic envelope label.**
+  `CALL_AGENT_ACTION` inside `implement-and-verify-system` gets
+  `documentation: "Run the Configured Agent"`. The `${agent-action}`
+  template is dropped from the label (still used in `process:` to
+  resolve which sub-process to dispatch). Disambiguation between
+  "Implement System" and "Refactor System" lives at the caller's
+  `documentation:` (per Item 2's verb-phrase convention).
 
 ## Item 3 — Duplicate refactor menu in `change-system-behavior` step 3
 
@@ -204,7 +245,7 @@ no actual ceremony difference exists in the YAML.
 `call_activity` pointing at the `refactor` process:
 
 ```yaml
-- id: OPPORTUNISTIC_REFACTOR
+- id: REFACTOR_OPPORTUNISTICALLY
   type: call_activity
   process: refactor
   documentation: "Opportunistic refactor (loopable; none = end cycle)"
@@ -222,7 +263,7 @@ reference the removed node IDs).
 
 - Q3.1 — `IMPLEMENT_AND_VERIFY_SYSTEM` (the GREEN step) currently flows
   directly into `GATE_OPPORTUNISTIC_REFACTOR`. With Item 3, it flows into
-  `OPPORTUNISTIC_REFACTOR` (the call_activity). Confirm this is fine — no
+  `REFACTOR_OPPORTUNISTICALLY` (the call_activity). Confirm this is fine — no
   param needs to thread through to the menu.
 - Q3.2 — `implement-ticket` (the other caller of `refactor`'s sibling
   cycles) currently routes via `GATE_TICKET_KIND` directly to
@@ -661,6 +702,24 @@ Trade-offs:
 
 ## Item 12 — Drop `CALL_*` prefix; establish role-based call_activity naming convention
 
+> **Verb-first audit (2026-05-26)**: every post-Item-12 node ID must start
+> with a verb (matches the existing pattern: `IMPLEMENT_*`, `WRITE_*`,
+> `EXECUTE_*`, `COMPILE_*`, `BUILD_*`, `VERIFY_*`, `COMMIT_*`,
+> `DISABLE_*`, `ENABLE_*`, `APPROVE_*`, `RUN_*`, `START_*`, `REFINE_*`,
+> `REFACTOR_*`, `MARK_*`, `FIX_*`, `CHOOSE_*`).
+>
+> Two cases needed adjustment:
+>
+> - `CALL_AGENT_ACTION` → **`RUN_ACTION`** (verb-first; also generalises
+>   "agent action" because the structural role at this call site is
+>   "run the configured change step," not "invoke an agent" — the agent
+>   dispatch happens one layer below in the MID sub-process). **Param
+>   renames in lockstep**: `agent-action: implement-system` →
+>   `action: implement-system` at every call site (currently 3 call
+>   sites; same line-set as Item 2's mass edit).
+> - `CALL_FIX` → `FIX` ✓ (verb-first, no change).
+> - All other 7 `CALL_*` nodes ✓ verb-first after prefix drop.
+
 **Observation**: `CALL_` prefix appears on 9 distinct node IDs
 (`CALL_CHANGE_SYSTEM_BEHAVIOR`, `CALL_COVER_SYSTEM_BEHAVIOR`,
 `CALL_REDESIGN_*`, `CALL_REFACTOR_*` ×2, `CALL_ONBOARD_*`,
@@ -699,12 +758,14 @@ in favour of the bare sub-process name).
 
 **Open questions for /refine-plan**:
 
-- Q12.1 — Confirm the two-rule convention above. Alternative: keep the
-  CALL_ prefix and apply it consistently to *all* call_activity nodes —
-  mass-renames in the opposite direction (~70 nodes gain the prefix).
-- Q12.2 — Scope: ship in this plan, or batch with the broader CYCLE-name
-  pass deferred from Q10.2 follow-up? (Q9.3 was the parallel deferral
-  but Item 9 itself is now superseded by 1220.)
+- Q12.1 — *Decided 2026-05-26*: two-rule convention confirmed (role-based
+  name where the call site has a role distinct from the sub-process;
+  bare upper-snake form of the sub-process name for 1:1 delegations).
+  Verb-first audit added above; two adjustments made (`RUN_ACTION` +
+  `REFACTOR_OPPORTUNISTICALLY` + param rename `agent-action` → `action`).
+- Q12.2 — *Decided 2026-05-26*: ship in this plan. Tightly coupled to
+  Item 2's mass-edit (same YAML pass). The broader CYCLE/MID naming
+  audit deferred by Q10.2 stays a separate future plan.
 
 ## Item 13 — Operator-choice gateways need a visible human-input signal
 
@@ -956,54 +1017,275 @@ multi-activity flow loops. Adding `⟳` here would be non-standard.
 
 Item 18 was built on a wrong premise. No action needed.
 
+## Item 19 — TDD-stage visual metadata (colored border on relevant nodes)
+
+**Observation**: Item 2 drops the RED/GREEN/Cover/REFACTOR stage prefixes
+from node labels to favour BPMN purity. But the TDD-stage vocabulary is
+pedagogically important in this teaching repo — a student reading
+`change-system-behavior` should be able to see RED → GREEN → REFACTOR
+adjacency.
+
+**Direction (decided 2026-05-26)**: separate the **what** (label, BPMN-pure
+verb-phrase from Item 2) from the **role** (TDD stage, visual marker).
+Add a `tdd-stage:` field to relevant YAML nodes; renderer applies a
+coloured border via classDef.
+
+**Schema**:
+
+```yaml
+- id: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL
+  type: call_activity
+  process: write-and-verify-acceptance-tests-fail
+  documentation: "Write Failing Acceptance Tests"
+  tdd-stage: red                            # ← new field
+```
+
+**Stage → colour mapping** (border colour, no fill conflict with executor
+colors). **3-stage enum** (per Q19.1 decision): Cover folds into Green
+(same outcome — test passes — and the cycle-name distinction lives in
+the YAML cycle structure rather than node coloring).
+
+| `tdd-stage:` | Border colour | Notes |
+|---|---|---|
+| `red`     | `#dc3545` (red)    | "RED" step — write a failing test |
+| `green`   | `#28a745` (green)  | "GREEN" step — test passes (after RED implementation, or as a Cover step against existing behaviour) |
+| `refactor` | `#007bff` (blue)  | "REFACTOR" step — improve without changing behaviour |
+
+**Files**:
+- `internal/atdd/runtime/statemachine/load.go` — accept `tdd-stage:` field
+  (validate against the four-value enum; absent → no styling).
+- `internal/atdd/runtime/diagram/diagram.go` — emit a new classDef per
+  stage, apply to nodes with `tdd-stage:` set. Add a legend bullet
+  explaining the colours.
+- `internal/atdd/runtime/statemachine/process-flow.yaml` — annotate the
+  four nodes that currently carry stage prefixes (and any others where a
+  stage applies, audited at execution time).
+
+**Open questions for /refine-plan**:
+
+- Q19.1 — *Decided 2026-05-26*: 3-stage enum (`red | green | refactor`).
+  Cover folds into Green (same outcome — test passes). The cycle-name
+  distinction between `change-system-behavior` and `cover-system-behavior`
+  carries the pedagogical signal; node coloring doesn't repeat it.
+- Q19.2 — *Decided 2026-05-26*: **narrow scope**. Only call-site nodes
+  that explicitly play a RED/GREEN/REFACTOR role at their call site.
+  Likely candidates: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL (RED),
+  WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS (GREEN), the two
+  IMPLEMENT_AND_VERIFY_SYSTEM call sites in change-system-behavior
+  (GREEN with `agent-action: implement-system`; REFACTOR with
+  `agent-action: refactor-system`). Inventory other candidates at
+  execution time; don't auto-propagate down into refactor-* /
+  redesign-* cycles.
+- Q19.3 — *Decided 2026-05-26*: **border-only**. Executor coloring uses
+  fill (white = Service Task, dark blue = User Task LLM Agent, yellow =
+  User Task Human); TDD-stage uses border (red/green/blue). Both
+  signals visible without conflict.
+
+## Item 20 — Sub-process headings to Title Case
+
+**Observation**: The rendered diagram doc has section headings like
+`## change-system-behavior`, `## implement-and-verify-system`,
+`## refactor-system-structure`. These are the YAML process **names**
+(kebab-case identifiers) shown verbatim. BPMN convention: process names
+should read as human-readable activities ("Change System Behavior",
+"Implement and Verify System"). The `processAlias` map already does this
+for `main` (one entry), but other 50+ processes leak kebab identifiers
+into the rendered headings.
+
+**Direction (proposed)**: auto-Title-Case the kebab process name in the
+renderer. `change-system-behavior` → "Change System Behavior". Special
+cases handled by:
+
+- `processAlias` entries take precedence (custom human name overrides
+  auto-Title-Case). After Item 8, the map is empty by default; entries
+  added only when auto-Title-Case is wrong (e.g. abbreviations: "DSL"
+  not "Dsl").
+- Abbreviation list: keep `DSL`, `AT`, `CT`, `BPMN`, `TDD` uppercase
+  during Title-Case transformation.
+
+Item 5's heading-prefix (`## TOP — Change System Behavior`) is currently
+deferred, but if it later lands, the prefix sits in front of the
+Title-Cased name.
+
+**Files**:
+- `internal/atdd/runtime/diagram/diagram.go::writeProcessSection` — wrap
+  the heading emission in a Title-Case transformer. Add an abbreviation-
+  preservation list.
+
+**Open questions for /refine-plan**:
+
+- Q20.1 — *Decided 2026-05-26*: **auto-Title-Case** at render time +
+  abbreviation list + `processAlias` map as override fallback. No
+  `display-name:` field added to YAML.
+- Q20.2 — *Decided 2026-05-26*: abbreviation list = **`DSL`, `AT`, `CT`,
+  `BPMN`, `TDD`, `ATDD`, `BDD`, `SUT`, `API`, `URL`, `DB`, `IO`**.
+  All preserved as uppercase during Title-Case transformation.
+
+## Item 21 — Edge labels: Title Case from kebab routing values
+
+**Observation**: Gateways route on enum-style kebab values
+(`refactor-system-structure`, `task/cover-legacy`, etc.). The renderer's
+`edgeLabel()` (diagram.go:475-498) passes these through verbatim, so the
+diagram edges show "refactor-system-structure" as a label. BPMN
+convention: edge labels are short human-readable conditions ("Refactor
+System Structure", "Yes", "Story", "Task / Cover Legacy").
+
+**Direction (proposed)**: extend `edgeLabel()` to auto-Title-Case kebab
+routing values, using the same abbreviation list as Item 20.
+
+Examples:
+
+| Current edge label | After |
+|---|---|
+| `refactor-system-structure` | "Refactor System Structure" |
+| `task/cover-legacy` | "Task / Cover Legacy" |
+| `task/refactor-system` | "Task / Refactor System" |
+| `story` | "Story" |
+| `bug` | "Bug" |
+| `true` → "Yes" | unchanged (already translated) |
+| `false` → "No" | unchanged |
+
+The runtime-facing routing values in the YAML stay kebab (functional
+identifiers; renaming would risk binding mismatches). The transformation
+is render-time only.
+
+**Files**:
+- `internal/atdd/runtime/diagram/diagram.go::edgeLabel` — extend the
+  pass-through branch to Title-Case kebab values.
+
+**Open questions for /refine-plan**:
+
+- Q21.1 — *Decided 2026-05-26*: shared Title-Case helper with Item 20.
+  Same kebab-input, same Title-Case output, same abbreviation list.
+- Q21.2 — *Decided 2026-05-26*: spaces around slash (defensive default).
+  `task/cover-legacy` → "Task / Cover Legacy". Likely moot after Item 11
+  removes the slash-bearing routing values, but the rule covers any
+  surviving edges and future slash-bearing values.
+
+## Item 22 — Start / End event labels
+
+**Observation**: Renderer hardcodes `((Start))` and `((End))` for every
+start_event and end_event (`writeNode` in diagram.go:374-378). BPMN
+convention: start events are labelled with the **trigger** that begins
+the process; end events are labelled with the **outcome**. E.g.:
+
+- `refine-ticket` start: "Operator Refines Ticket" (or: "Ticket Picked
+  for Refinement").
+- `refine-ticket` end (REFINE_TICKET_END): "Ticket Marked READY".
+- `implement-ticket` end (IMPLEMENT_TICKET_END): "Ticket Marked IN
+  ACCEPTANCE".
+- `change-system-behavior` end (CHANGE_SYSTEM_BEHAVIOR_END): "System
+  Behavior Changed".
+
+Currently the only signal a reader has is the node ID, which the
+renderer doesn't print for start/end events. So readers see anonymous
+"Start" / "End" circles.
+
+**Direction (proposed)**: add an optional `documentation:` field to
+`start_event` and `end_event` YAML nodes; renderer uses it if present,
+falls back to "Start" / "End" otherwise.
+
+Inventory (at execution time): every process's start and end events.
+Most ends look like `<process-name>_END` which gives the renderer a hint
+for an auto-derived fallback ("`REFINE_TICKET_END` → 'Refine Ticket
+Complete'"), but explicit `documentation:` is preferred.
+
+**Files**:
+- `internal/atdd/runtime/statemachine/load.go` — allow `documentation:`
+  on start_event / end_event (currently allowed but unused by the
+  renderer).
+- `internal/atdd/runtime/diagram/diagram.go::writeNode` — use the doc
+  if present for start/end events; else current hardcoded fallback.
+- `internal/atdd/runtime/statemachine/process-flow.yaml` — populate
+  `documentation:` on every start_event / end_event.
+
+**Open questions for /refine-plan**:
+
+- Q22.1 — *Decided 2026-05-26*: short noun-phrase. Examples:
+  - `REFINE_TICKET_END` → "Ticket Marked READY"
+  - `IMPLEMENT_TICKET_END` → "Ticket Marked IN ACCEPTANCE"
+  - `CHANGE_SYSTEM_BEHAVIOR_END` → "System Behavior Changed"
+  - `REFACTOR_TOP_END` → "Refactor Complete"
+- Q22.2 — *Decided 2026-05-26*: error end-events follow the same form.
+  Examples: "Unknown Ticket Kind", "Unknown Task Subtype", "Unknown
+  <Binding Name>".
+- Q22.3 — *Decided 2026-05-26*: **strict require**. Every start_event
+  and end_event must have a `documentation:` line. Parse error if
+  missing. Consistent with Item 2's call_activity rule.
+
 ## Execution order
 
 Items in execution order after the 2026-05-26 /refine-plan walk.
 
-**In scope** (settled): Items 2, 3, 7, 8, 10, 11, 12, 13, 16, 17.
+**In scope** (settled): Items 2, 3, 7, 8, 10, 11, 12, 13, 16, 17, 19, 20,
+21, 22.
 **Out of scope**: Items 1, 5, 6 (deferred), 4 (merged into 2), 9
 (superseded by 1220), 14 (deferred to separate plan), 15 (merged into
 12), 18 (dropped).
 
-1. **Item 7** (legend wording) — pure renderer change, isolated. Updates
-   the three Mermaid sample labels + bullet text + `writeExecutorStyling`
-   doc comment to `Service Task (Automated)` / `User Task (Human)` /
-   `User Task (LLM Agent)`.
+**Renderer-only changes first** (smallest blast radius; easy to review):
+
+1. **Item 7** (legend wording) — Mermaid sample labels + bullet text +
+   `writeExecutorStyling` doc comment to `Service Task (Automated)` /
+   `User Task (Human)` / `User Task (LLM Agent)`.
 2. **Item 8** (drop the `main` legacy-alias) — single deletion in the
    `processAlias` map; heading becomes `## main`.
-3. **Item 17** (error end-events) — schema + renderer change: new
-   `error_end_event` node type with red border + bolt icon (⚡). Bakes
-   in the new node type early so Items 11, 16 can use it.
-4. **Item 16** (computed-gateway documentation cleanup) — YAML pass
-   over every gateway: rewrite question-form docs to predicate form
-   (binding name); add parse-time hard-error on question-form gateway
+3. **Item 20** (sub-process headings to Title Case) — auto-Title-Case
+   the kebab process name in `writeProcessSection` heading emission;
+   preserve abbreviations (`DSL`, `AT`, `CT`, `BPMN`, `TDD`, `ATDD`,
+   `BDD`, `SUT`, `API`, `URL`, `DB`, `IO`).
+4. **Item 21** (Title-Case kebab edge labels) — extend `edgeLabel()`
+   with the same Title-Case helper; spaces-around-slash for any
+   surviving slash-bearing routing values.
+
+**Schema additions** (renderer + load.go):
+
+5. **Item 17** (error end-events) — new `error_end_event` node type
+   with red border + bolt icon (⚡); load.go accepts the type; renderer
+   gets a new shape branch. Bakes in early so Items 11, 16 can use it.
+6. **Item 19** (TDD-stage visual metadata) — new `tdd-stage:` field
+   accepted in load.go (enum: `red | green | refactor`); renderer
+   emits a classDef per stage; legend gets a new bullet section
+   explaining the colours.
+7. **Item 22** (start/end event labels) — strict-require
+   `documentation:` on every `start_event` and `end_event`; renderer
+   uses the doc for the label. Parse-time error if missing.
+
+**YAML structural changes**:
+
+8. **Item 16** (computed-gateway documentation cleanup) — every
+   gateway's `documentation:` rewritten to predicate form (binding
+   name) or stripped; parse-time hard-error on question-form gateway
    documentation.
-5. **Item 13** (split operator-input gateways into user_task + gateway)
+9. **Item 13** (split operator-input gateways into user_task + gateway)
    — adds `CHOOSE_REFACTOR_TYPE` user_task to the `refactor` process;
    redirects loopback edges; strips question-form documentation from
-   `GATE_REFACTOR_TYPE_CHOICE` (which Item 16 already enforces).
-6. **Item 12** (drop `CALL_*` prefix; role-based naming) — YAML pass:
-   rename 9 `CALL_*` nodes per the two-rule convention. Subsumes Item 15
-   (the two `CALL_PARAMETERISED_CORE` nodes → `WRITE_AND_VERIFY_ACCEPTANCE_TESTS`).
-7. **Item 2** (require `documentation:` everywhere) — mass YAML edit:
-   ~85 nodes gain a `documentation:` line under whatever labelling
-   convention Q2.1 settles on at execution time; renderer drops the
-   ID-fallback branch and adds the schema-validation requirement.
-   Subsumes the six pre-existing docs from old Item 4.
-8. **Item 3** (de-duplicate opportunistic-refactor block) — YAML change:
-   collapses 6 nodes + 7 edges into one `call_activity` → `refactor`.
-   Updates statemachine tests that reference the removed `OPP_*` IDs.
-9. **~~Item 9~~ (superseded by 1220)** — no execution work in this plan;
-   the `update-ticket` wrapper is eliminated by 1220, not renamed.
-10. **Item 10** (rename `refine-backlog` → `refine-backlog-item`) — YAML
+   `GATE_REFACTOR_TYPE_CHOICE`.
+10. **Item 12** (drop `CALL_*` prefix; verb-first naming) — YAML pass:
+    rename 9 `CALL_*` nodes per the two-rule convention. `CALL_AGENT_ACTION`
+    → `RUN_ACTION` (with param `agent-action` renamed to `action` at
+    every call site). Adjective-first `OPPORTUNISTIC_REFACTOR` (Item 3
+    target) becomes `REFACTOR_OPPORTUNISTICALLY`. Subsumes Item 15.
+11. **Item 2** (require `documentation:` everywhere + apply convention)
+    — mass YAML edit: ~81 call_activity nodes gain a `documentation:`
+    line under the **BPMN-pure verb-phrase, Title Case** convention.
+    Renderer drops the ID-fallback branch; load.go adds the schema-
+    validation requirement.
+12. **Item 3** (de-duplicate opportunistic-refactor block) — YAML
+    change: collapses 6 nodes + 7 edges into one `call_activity`
+    (`REFACTOR_OPPORTUNISTICALLY`) → `refactor`. Updates statemachine
+    tests that reference the removed `OPP_*` IDs.
+13. **~~Item 9~~ (superseded by 1220)** — no execution work in this plan;
+    the `update-ticket` wrapper is eliminated by 1220.
+14. **Item 10** (rename `refine-backlog` → `refine-backlog-item`) — YAML
     rename: process def + call site + section comment + diagram.go
     `processOrder` + `REFINE_BACKLOG_END` → `REFINE_BACKLOG_ITEM_END`.
-11. **Item 11** (split ticket-kind gateway into hierarchical type →
-    subtype) — YAML structural change: `GATE_TICKET_KIND` keeps name but
-    its value set shrinks to story/bug/task; new `GATE_TASK_SUBTYPE`
-    gateway routes the five task subtypes; both gateways gain an
-    `error_end_event` for unrecognised values (per Item 17). Stub
-    binding for `task_subtype`; real wiring lands with Phase D.
+15. **Item 11** (split ticket-kind gateway) — YAML structural change:
+    `GATE_TICKET_KIND` value set shrinks to story/bug/task; new
+    `GATE_TASK_SUBTYPE` gateway routes the five task subtypes; both
+    gateways gain an `error_end_event` for unrecognised values (per
+    Item 17). Stub binding for `task_subtype`; real wiring lands with
+    Phase D.
 
 Regenerate `docs/process-diagram*.md` after each item; commit per item.
 The GitHub render-budget bug (deferred Item 6) is unrelated — readers
