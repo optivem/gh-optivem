@@ -1,5 +1,7 @@
 # Fix `validate-outputs-and-scopes` cross-phase false positives
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-26T12:33:25Z` (groundwork slice only — Items 3, 4, 5, 6-smoke, 7 deferred until `plans/20260526-0832-process-diagram-cleanup.md` commits its `process-flow.yaml` edits)
+
 ## Problem
 
 `validate-outputs-and-scopes` (the post-`RUN_AGENT` validator in the LOW
@@ -93,38 +95,6 @@ next phase overwrites it on its own snapshot step.
 
 ## Items
 
-### Item 1 — Snapshot + delta helpers
-
-In `internal/atdd/runtime/actions/bindings.go`:
-
-- Add `type WorkingTreeFingerprint map[string]string` (path → hex SHA-256).
-- Add `(a actions) captureWorkingTreeFingerprint(ctx context.Context) (WorkingTreeFingerprint, error)`:
-  enumerates dirty paths via the same `git status --porcelain`
-  parsing as today (tracked-modified + untracked + rename endpoints),
-  reads each file from disk via the action's repo-relative path, and
-  hashes the bytes. Files that disappear between enumeration and read
-  (race) get an empty hash entry — equivalent to "deleted".
-- Add `(a actions) modifiedPathsSinceFingerprint(ctx context.Context, base WorkingTreeFingerprint) ([]string, error)`:
-  re-runs the enumeration, hashes the current state, and returns the
-  sorted union of (paths in `base` but not now), (paths now but not
-  in `base`), and (paths in both with differing hashes).
-- Delete `modifiedPathsSinceHead`. No callers will remain after Items
-  2 and 3.
-
-### Item 2 — Snapshot service-task action + registration
-
-In `internal/atdd/runtime/actions/bindings.go`:
-
-- Add `(a actions) snapshotWorkingTree(ctx *statemachine.Context) statemachine.Outcome`:
-  calls `captureWorkingTreeFingerprint`, stashes the result in
-  `ctx.State["pre-agent-fingerprint"]`. Returns
-  `statemachine.Outcome{Err: ...}` on `git status` failure (genuine
-  wiring problem, same shape as the existing `validate-outputs-and-scopes`
-  hard-error path).
-- Register under `r.Register("snapshot-working-tree", a.snapshotWorkingTree)`
-  next to the existing `validate-outputs-and-scopes` registration
-  (`bindings.go:179`).
-
 ### Item 3 — Rewire validators to consume the snapshot
 
 In `internal/atdd/runtime/actions/bindings.go`:
@@ -150,11 +120,14 @@ In `internal/atdd/runtime/actions/bindings.go`:
   context where no per-phase snapshot exists. Document the fallback
   in the godoc; emit a debug line via `a.deps.Stderr` so re-wiring
   is loud.
+- **After this lands**, delete `modifiedPathsSinceHead` (Item 1 left
+  it in place so the validators kept compiling).
 
 ### Item 4 — Process-flow wiring
 
 In `internal/atdd/runtime/statemachine/process-flow.yaml`, inside the
-`execute-agent` subprocess (line 1658):
+`execute-agent` subprocess (line 1658 — **re-verify post-1300/1700/0832
+commit**):
 
 - Add a new service-task node between `APPROVE_PRE` and `RUN_AGENT`:
 
@@ -182,17 +155,17 @@ In `internal/assets/runtime/prompts/atdd/fix-scope-diff.md`:
   listing, not the full `git status` dump.
 - No behavioural change to the fix agent's diagnostic playbook.
 
-### Item 6 — Tests
+### Item 6 — End-to-end smoke test (unit-test portion shipped in groundwork slice)
 
-In `internal/atdd/runtime/actions/bindings_test.go`:
+In `internal/atdd/runtime/driver/embedded_smoke_test.go` (or the
+nearest equivalent end-to-end smoke):
 
-- New table-driven test on `captureWorkingTreeFingerprint`: clean
-  repo (empty map), one modified tracked file (one entry, hash matches
-  on disk), one untracked file (entry present), rename (both endpoints
-  fingerprinted).
-- New test on `modifiedPathsSinceFingerprint`: given a fingerprint and
-  a sequence of post-state working trees, returns the expected delta
-  in each case (add / delete / modify / no-op).
+- Add a two-phase smoke covering the rehearsal-#61 shape: Phase 1
+  edits a file in scope-A, approved. Phase 2 has scope-B and makes no
+  edits. Assert no `fix-scope-diff` dispatch.
+
+Also (still in `bindings_test.go`):
+
 - Update the existing `validateOutputsAndScopes` tests that seed
   `git diff` / `git status` stubs to also pre-seed
   `ctx.State["pre-agent-fingerprint"]`. The "missing snapshot key →
@@ -201,13 +174,6 @@ In `internal/atdd/runtime/actions/bindings_test.go`:
   already contains `path-A` (an upstream-phase edit), run the
   validator with only `path-A` in the post-state (no new edits), and
   assert `outputs-and-scopes-valid=true` with no violating paths.
-
-In `internal/atdd/runtime/driver/embedded_smoke_test.go` (or the
-nearest equivalent end-to-end smoke):
-
-- Add a two-phase smoke covering the rehearsal-#61 shape: Phase 1
-  edits a file in scope-A, approved. Phase 2 has scope-B and makes no
-  edits. Assert no `fix-scope-diff` dispatch.
 
 ### Item 7 — Docs
 

@@ -20,11 +20,14 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -177,6 +180,17 @@ func RegisterAll(r *Registry, deps Deps) {
 	// working-tree paths), and writes ctx.State["outputs-and-scopes-valid"]
 	// + ctx.State["failure-kind"] (missing-output|scope-diff).
 	r.Register("validate-outputs-and-scopes", a.validateOutputsAndScopes)
+	// BPMN Phase D — LOW execute-agent primitive's pre-RUN_AGENT
+	// baseline-capture step (per plan 20260526-1430). Snapshots the
+	// dirty working tree into ctx.State[CtxKeyPreAgentFingerprint] so
+	// the post-RUN_AGENT validate-outputs-and-scopes can diff against a
+	// per-phase baseline instead of HEAD, eliminating cross-phase
+	// false positives when several phases run back-to-back without an
+	// intermediate commit. Action is wired into process-flow.yaml's
+	// execute-agent subprocess (Item 4 in the same plan); the
+	// dormant standalone action is registered here regardless so tests
+	// and re-wirings find it.
+	r.Register("snapshot-working-tree", a.snapshotWorkingTree)
 	// MARK_* state-transition service tasks (per plan
 	// 20260526-1220-fix-mark-ticket-state-transition-routing.md). Each
 	// dispatches Tracker.SetStatus against the ticketing-system column the
@@ -221,7 +235,30 @@ const (
 	// consumed by the STOP_SCOPE_VIOLATION user-task to render the
 	// human-review payload.
 	CtxKeyPhaseScopeViolatingPaths = "phase_scope_violating_paths"
+
+	// CtxKeyPreAgentFingerprint is the snapshot of the working tree
+	// captured by the snapshot-working-tree action immediately before
+	// RUN_AGENT. It is the per-phase baseline downstream scope-checking
+	// actions (validate-outputs-and-scopes, check-phase-scope) diff
+	// against — replaces the previous HEAD-relative baseline, which
+	// attributed upstream phases' uncommitted edits to whichever phase
+	// happened to be running. Value type: WorkingTreeFingerprint.
+	CtxKeyPreAgentFingerprint = "pre-agent-fingerprint"
 )
+
+// WorkingTreeFingerprint is a snapshot of dirty working-tree files
+// captured immediately before an agent runs. Keys are repo-relative
+// paths (the same paths `git status --porcelain` reports); values are
+// hex-encoded SHA-256 hashes of the file bytes on disk at snapshot
+// time, or "" for paths the snapshotter saw in `git status` but could
+// not read (deleted between enumeration and read — equivalent to a
+// post-snapshot delete).
+//
+// Clean tracked files are intentionally absent: a file clean at
+// snapshot time and dirty afterwards appears in the post-state
+// `git status` and is added to the delta as "absent in snapshot,
+// present now".
+type WorkingTreeFingerprint map[string]string
 
 type actions struct {
 	deps Deps
@@ -552,11 +589,145 @@ func pathInScope(diffPath string, allowed []string) bool {
 	return false
 }
 
+// dirtyTreePaths enumerates the paths `git status --porcelain` reports
+// (tracked-modified + untracked + both endpoints of any rename row),
+// sorted and de-duplicated. This is the path set both
+// captureWorkingTreeFingerprint and modifiedPathsSinceFingerprint
+// iterate over — `git status --porcelain` is the authoritative dirty
+// set; clean tracked files are intentionally excluded (a file clean at
+// snapshot time and dirty afterwards still surfaces in the post-state
+// call).
+func (a actions) dirtyTreePaths(ctx context.Context) ([]string, error) {
+	gitArgs := func(extra ...string) []string {
+		if a.deps.RepoPath == "" {
+			return extra
+		}
+		return append([]string{"-C", a.deps.RepoPath}, extra...)
+	}
+	status, err := a.deps.Git.Run(ctx, gitArgs("status", "--porcelain")...)
+	if err != nil {
+		return nil, fmt.Errorf("git status --porcelain: %w", err)
+	}
+	seen := map[string]bool{}
+	for _, line := range strings.Split(string(status), "\n") {
+		// porcelain v1 format: "XY path" or "XY old -> new"; X is the
+		// staged status, Y the unstaged. Two status chars + one space
+		// before the path.
+		if len(line) < 4 {
+			continue
+		}
+		rest := line[3:]
+		if i := strings.Index(rest, " -> "); i >= 0 {
+			oldPath := strings.TrimSpace(rest[:i])
+			newPath := strings.TrimSpace(rest[i+4:])
+			if oldPath != "" {
+				seen[oldPath] = true
+			}
+			if newPath != "" {
+				seen[newPath] = true
+			}
+			continue
+		}
+		path := strings.TrimSpace(rest)
+		if path != "" {
+			seen[path] = true
+		}
+	}
+	paths := make([]string, 0, len(seen))
+	for p := range seen {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+// hashRepoFile returns the hex SHA-256 of <RepoPath>/<rel>. A missing
+// or unreadable file returns "" — the delta comparator treats that as
+// "absent on disk", which combined with "present in snapshot" surfaces
+// as a delta (deleted by the phase).
+func (a actions) hashRepoFile(rel string) string {
+	full := rel
+	if a.deps.RepoPath != "" {
+		full = filepath.Join(a.deps.RepoPath, rel)
+	}
+	b, err := os.ReadFile(full)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+// captureWorkingTreeFingerprint takes a snapshot of every dirty path
+// reported by `git status --porcelain`, hashing the bytes of each file
+// via SHA-256. The resulting WorkingTreeFingerprint is the baseline a
+// subsequent modifiedPathsSinceFingerprint call diffs against to
+// compute *this phase's* edits — independent of upstream phases that
+// have also left uncommitted changes in the working tree.
+//
+// Returns a hard error only when `git status` itself fails (genuine
+// wiring problem); per-file read failures degrade gracefully to an
+// empty hash entry (see hashRepoFile).
+func (a actions) captureWorkingTreeFingerprint(ctx context.Context) (WorkingTreeFingerprint, error) {
+	paths, err := a.dirtyTreePaths(ctx)
+	if err != nil {
+		return nil, err
+	}
+	fp := make(WorkingTreeFingerprint, len(paths))
+	for _, p := range paths {
+		fp[p] = a.hashRepoFile(p)
+	}
+	return fp, nil
+}
+
+// modifiedPathsSinceFingerprint returns the paths that changed between
+// the supplied snapshot and the current working tree:
+//
+//   - present in snapshot, hash differs on disk → modified (or
+//     deleted, in which case the on-disk hash is "")
+//   - absent in snapshot, present in current `git status` → added by
+//     this phase
+//   - present in both with matching hashes → untouched (upstream-phase
+//     residue, correctly excluded)
+//
+// Returns a sorted, de-duplicated slice — the same shape
+// validateOutputsAndScopes and checkPhaseScope iterate over.
+func (a actions) modifiedPathsSinceFingerprint(ctx context.Context, base WorkingTreeFingerprint) ([]string, error) {
+	nowPaths, err := a.dirtyTreePaths(ctx)
+	if err != nil {
+		return nil, err
+	}
+	delta := map[string]bool{}
+	for p, baseHash := range base {
+		if a.hashRepoFile(p) != baseHash {
+			delta[p] = true
+		}
+	}
+	for _, p := range nowPaths {
+		if _, inBase := base[p]; !inBase {
+			delta[p] = true
+		}
+	}
+	out := make([]string, 0, len(delta))
+	for p := range delta {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
 // modifiedPathsSinceHead enumerates working-tree paths touched in the
 // current phase by unioning `git diff --name-only HEAD` (tracked,
 // staged + unstaged) with `git status --porcelain` (also covers untracked
 // `??` and rename `R  old -> new` endpoints). Returns a sorted,
 // de-duplicated slice so violating-paths reads deterministically.
+//
+// Deprecated: HEAD-relative; cross-phase false positives — every
+// upstream phase's uncommitted edits show up here. Kept temporarily
+// because checkPhaseScope and validateOutputsAndScopes still call
+// into it; their per-phase rewire to modifiedPathsSinceFingerprint
+// happens in Item 3 of plan 20260526-1430, after which this helper
+// goes away.
 func (a actions) modifiedPathsSinceHead(ctx context.Context) ([]string, error) {
 	seen := map[string]bool{}
 	gitArgs := func(extra ...string) []string {
@@ -819,6 +990,25 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	}
 
 	ctx.Set("outputs-and-scopes-valid", true)
+	return statemachine.Outcome{}
+}
+
+// snapshotWorkingTree is the body of the BPMN Phase D
+// execute-agent.SNAPSHOT_WORKING_TREE service task. It captures a
+// WorkingTreeFingerprint of every dirty path and stashes it in
+// ctx.State[CtxKeyPreAgentFingerprint] for the post-RUN_AGENT
+// validate-outputs-and-scopes step to diff against.
+//
+// Failure to enumerate the dirty set (e.g. `git` not on PATH, repo
+// path invalid) is a wiring problem, not an agent-output problem, so
+// it surfaces as Outcome.Err — same shape as
+// validate-outputs-and-scopes' hard-error path.
+func (a actions) snapshotWorkingTree(ctx *statemachine.Context) statemachine.Outcome {
+	fp, err := a.captureWorkingTreeFingerprint(context.Background())
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("snapshot-working-tree: %w", err)}
+	}
+	ctx.State[CtxKeyPreAgentFingerprint] = fp
 	return statemachine.Outcome{}
 }
 

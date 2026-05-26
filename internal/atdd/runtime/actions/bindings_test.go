@@ -112,6 +112,7 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"check-phase-scope",
 		"run-command",
 		"validate-outputs-and-scopes",
+		"snapshot-working-tree",
 		"move-to-in-refinement",
 		"move-to-ready",
 		"move-to-in-progress",
@@ -822,5 +823,232 @@ func TestCheckChecklistProgress_EmptyChecklist_NotPartial(t *testing.T) {
 	}
 	if got, _ := ctx.State["checklist-partially-done"].(bool); got {
 		t.Errorf("checklist-partially-done: got true, want false")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Working-tree fingerprint helpers (per plan 20260526-1430 Items 1, 6)
+// ---------------------------------------------------------------------------
+
+// writeRepoFile is a tiny helper for the fingerprint tests: writes a
+// file under repo at the given relative path (creating parents) so
+// captureWorkingTreeFingerprint / modifiedPathsSinceFingerprint have
+// real bytes to hash.
+func writeRepoFile(t *testing.T, repo, rel, content string) {
+	t.Helper()
+	full := filepath.Join(repo, rel)
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %q: %v", rel, err)
+	}
+}
+
+func TestCaptureWorkingTreeFingerprint(t *testing.T) {
+	tcs := []struct {
+		name     string
+		status   string
+		files    map[string]string // repo-relative path → content
+		wantKeys []string
+	}{
+		{
+			name:     "clean working tree → empty fingerprint",
+			status:   "",
+			files:    nil,
+			wantKeys: nil,
+		},
+		{
+			name:     "one modified tracked file",
+			status:   " M src/foo.go\n",
+			files:    map[string]string{"src/foo.go": "package foo\n"},
+			wantKeys: []string{"src/foo.go"},
+		},
+		{
+			name:     "one untracked file",
+			status:   "?? new.txt\n",
+			files:    map[string]string{"new.txt": "hello"},
+			wantKeys: []string{"new.txt"},
+		},
+		{
+			name:     "rename — both endpoints fingerprinted",
+			status:   "R  old.txt -> new/path.txt\n",
+			files:    map[string]string{"new/path.txt": "renamed"},
+			wantKeys: []string{"new/path.txt", "old.txt"},
+		},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := t.TempDir()
+			for p, c := range tc.files {
+				writeRepoFile(t, repo, p, c)
+			}
+			git := newFakeRunner(t, "git")
+			git.on([]string{"-C", repo, "status", "--porcelain"}, []byte(tc.status), nil)
+
+			a := newActions(Deps{Git: git, RepoPath: repo})
+			fp, err := a.captureWorkingTreeFingerprint(context.Background())
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			if len(fp) != len(tc.wantKeys) {
+				t.Fatalf("fingerprint size: got %d (%v), want %d (%v)", len(fp), fp, len(tc.wantKeys), tc.wantKeys)
+			}
+			for _, k := range tc.wantKeys {
+				if _, ok := fp[k]; !ok {
+					t.Errorf("missing key %q (fp = %v)", k, fp)
+				}
+			}
+			// Every recorded hash must match a fresh read from disk.
+			// "" is allowed for paths whose file does not exist
+			// (e.g. the rename's old endpoint, which has no bytes
+			// to hash on the new tree).
+			for k, v := range fp {
+				if want := a.hashRepoFile(k); want != v {
+					t.Errorf("hash mismatch for %q: stored=%q, disk=%q", k, v, want)
+				}
+			}
+		})
+	}
+}
+
+func TestCaptureWorkingTreeFingerprint_GitStatusError(t *testing.T) {
+	// Genuine wiring failure (git missing, repo invalid) must surface
+	// as an error — the snapshot action turns this into Outcome.Err.
+	repo := t.TempDir()
+	git := newFakeRunner(t, "git")
+	git.on([]string{"-C", repo, "status", "--porcelain"}, nil, errors.New("git: not found"))
+	a := newActions(Deps{Git: git, RepoPath: repo})
+	_, err := a.captureWorkingTreeFingerprint(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "git status --porcelain") {
+		t.Fatalf("expected git-status error, got %v", err)
+	}
+}
+
+func TestModifiedPathsSinceFingerprint_AddDeleteModifyNoOp(t *testing.T) {
+	// Each subtest stages a snapshot + a post-state working tree, then
+	// asserts the delta. The "no-op" case is the bug-fix scenario:
+	// upstream phase already dirtied a file, this phase does not touch
+	// it, and the validator must not flag it.
+	t.Run("add — file absent in snapshot, present in current status", func(t *testing.T) {
+		repo := t.TempDir()
+		writeRepoFile(t, repo, "added.txt", "new")
+		git := newFakeRunner(t, "git")
+		git.on([]string{"-C", repo, "status", "--porcelain"}, []byte("?? added.txt\n"), nil)
+		a := newActions(Deps{Git: git, RepoPath: repo})
+		got, err := a.modifiedPathsSinceFingerprint(context.Background(), WorkingTreeFingerprint{})
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if len(got) != 1 || got[0] != "added.txt" {
+			t.Fatalf("delta: got %v, want [added.txt]", got)
+		}
+	})
+	t.Run("delete — file in snapshot, missing on disk", func(t *testing.T) {
+		repo := t.TempDir()
+		// File was tracked-modified at snapshot, deleted by the phase.
+		// `git status --porcelain` reports " D removed.txt" (no file
+		// on disk).
+		git := newFakeRunner(t, "git")
+		git.on([]string{"-C", repo, "status", "--porcelain"}, []byte(" D removed.txt\n"), nil)
+		a := newActions(Deps{Git: git, RepoPath: repo})
+		base := WorkingTreeFingerprint{"removed.txt": "deadbeef"} // non-empty pre-state hash
+		got, err := a.modifiedPathsSinceFingerprint(context.Background(), base)
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if len(got) != 1 || got[0] != "removed.txt" {
+			t.Fatalf("delta: got %v, want [removed.txt]", got)
+		}
+	})
+	t.Run("modify — file in snapshot, different bytes on disk", func(t *testing.T) {
+		repo := t.TempDir()
+		writeRepoFile(t, repo, "edited.txt", "new content")
+		git := newFakeRunner(t, "git")
+		git.on([]string{"-C", repo, "status", "--porcelain"}, []byte(" M edited.txt\n"), nil)
+		a := newActions(Deps{Git: git, RepoPath: repo})
+		base := WorkingTreeFingerprint{"edited.txt": "old-hash-value"} // does not match disk
+		got, err := a.modifiedPathsSinceFingerprint(context.Background(), base)
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if len(got) != 1 || got[0] != "edited.txt" {
+			t.Fatalf("delta: got %v, want [edited.txt]", got)
+		}
+	})
+	t.Run("no-op — upstream-phase residue not attributed to this phase", func(t *testing.T) {
+		// Bug-fix scenario from plan 20260526-1430: Phase 1 edited
+		// upstream.txt; Phase 2's snapshot already records the
+		// upstream-edited content. Phase 2 makes no edits. The delta
+		// must be empty.
+		repo := t.TempDir()
+		writeRepoFile(t, repo, "upstream.txt", "edited-by-phase-1")
+		git := newFakeRunner(t, "git")
+		git.on([]string{"-C", repo, "status", "--porcelain"}, []byte(" M upstream.txt\n"), nil)
+		a := newActions(Deps{Git: git, RepoPath: repo})
+		base := WorkingTreeFingerprint{"upstream.txt": a.hashRepoFile("upstream.txt")}
+		got, err := a.modifiedPathsSinceFingerprint(context.Background(), base)
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if len(got) != 0 {
+			t.Fatalf("delta: got %v, want []", got)
+		}
+	})
+	t.Run("delta is sorted and de-duplicated", func(t *testing.T) {
+		repo := t.TempDir()
+		writeRepoFile(t, repo, "a.txt", "a")
+		writeRepoFile(t, repo, "b.txt", "b")
+		writeRepoFile(t, repo, "c.txt", "c")
+		git := newFakeRunner(t, "git")
+		// Status reports them out of order; the delta must come back sorted.
+		git.on([]string{"-C", repo, "status", "--porcelain"},
+			[]byte("?? c.txt\n?? a.txt\n?? b.txt\n"), nil)
+		a := newActions(Deps{Git: git, RepoPath: repo})
+		got, err := a.modifiedPathsSinceFingerprint(context.Background(), WorkingTreeFingerprint{})
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		want := []string{"a.txt", "b.txt", "c.txt"}
+		if len(got) != 3 || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+			t.Fatalf("delta order: got %v, want %v", got, want)
+		}
+	})
+}
+
+func TestSnapshotWorkingTreeAction_StashesFingerprint(t *testing.T) {
+	repo := t.TempDir()
+	writeRepoFile(t, repo, "dirty.txt", "x")
+	git := newFakeRunner(t, "git")
+	git.on([]string{"-C", repo, "status", "--porcelain"}, []byte("?? dirty.txt\n"), nil)
+	a := newActions(Deps{Git: git, RepoPath: repo})
+	ctx := statemachine.NewContext()
+
+	out := a.snapshotWorkingTree(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	fp, ok := ctx.State[CtxKeyPreAgentFingerprint].(WorkingTreeFingerprint)
+	if !ok {
+		t.Fatalf("CtxKeyPreAgentFingerprint not set or wrong type: %T", ctx.State[CtxKeyPreAgentFingerprint])
+	}
+	if _, ok := fp["dirty.txt"]; !ok {
+		t.Errorf("snapshot missing dirty.txt: got %v", fp)
+	}
+}
+
+func TestSnapshotWorkingTreeAction_GitFailureIsHardError(t *testing.T) {
+	repo := t.TempDir()
+	git := newFakeRunner(t, "git")
+	git.on([]string{"-C", repo, "status", "--porcelain"}, nil, errors.New("boom"))
+	a := newActions(Deps{Git: git, RepoPath: repo})
+	ctx := statemachine.NewContext()
+
+	out := a.snapshotWorkingTree(ctx)
+	if out.Err == nil || !strings.Contains(out.Err.Error(), "snapshot-working-tree") {
+		t.Fatalf("expected snapshot-working-tree error, got %v", out.Err)
+	}
+	if _, set := ctx.State[CtxKeyPreAgentFingerprint]; set {
+		t.Errorf("fingerprint must not be stashed on error")
 	}
 }
