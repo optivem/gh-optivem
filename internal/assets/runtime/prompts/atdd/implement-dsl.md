@@ -18,8 +18,8 @@ This task does not receive a substituted artifact input; the `TODO: DSL` prototy
 ### Parameters
 
 - `touches-system-driver` (current value: `${touches-system-driver}`) — boolean, `true` | `false`. Controls whether the System Driver port (`${driver-port}`) is in scope for this invocation.
-  - When `true`: the System Driver Interface (`${driver-port}`) is in scope; the agent may add prototype methods there (throwing `"TODO: System Driver"`) and MUST set the `System Driver Interface Changed` flag.
-  - When `false`: the System Driver port (`${driver-port}`) is out of scope; the agent leaves it untouched and does not set the `System Driver Interface Changed` flag.
+  - When `true`: the System Driver Interface (`${driver-port}`) is in scope; the agent may add prototype methods there (throwing `"TODO: System Driver"`) and emits `system-driver-ports-changed: true` iff it did so.
+  - When `false`: the System Driver port (`${driver-port}`) is out of scope; the agent leaves it untouched and emits `system-driver-ports-changed: false`.
 
 ## Steps
 
@@ -27,18 +27,38 @@ This task does not receive a substituted artifact input; the `TODO: DSL` prototy
 2. If you need to add additional driver interface methods, add prototype methods that throw a runtime exception so compilation works:
    (a) In the System Driver Interface (`${driver-port}`), throw `"TODO: System Driver"` (only when `${touches-system-driver}=true`; otherwise skip).
    (b) In the External System Driver Interface (`${external-system-driver-port}`), throw `"TODO: External System Driver"`.
-3. Set the phase-output flag(s) listed under `## Outputs` for this invocation. Every flag listed for this invocation **MUST** be set before completing — unset is a bug, not a default `no`. The downstream gateway picks the next task from the flag values.
+3. Emit the phase-output flag(s) listed under `## Outputs` for this invocation. Every flag listed for this invocation **MUST** be emitted before completing — unset is a bug, not a default `false`. The downstream gateway picks the next task from the flag values.
 
 ## Outputs
 
-### Phase-output flags
+At the end of your final response, emit a **fenced** YAML block with
+the phase-output flags. The block MUST be wrapped in triple-backtick
+fences exactly as shown below — un-fenced YAML is invisible to the
+parser and the cycle will halt with a missing-output failure:
 
-The work-agent MUST set every flag listed for this invocation. The downstream gateway treats *unset* as an error (no implicit default).
+````
+```
+outputs:
+  system-driver-ports-changed: false
+  external-driver-ports-changed: false
+```
+````
 
-| Flag name | Domain | Emitted when | Meaning when `yes` |
-|---|---|---|---|
-| `System Driver Interface Changed` | `yes` \| `no` | `${touches-system-driver}=true` only | implement-system-driver-adapters must run (new System Driver (`${driver-port}`) methods need real impls) |
-| `External System Driver Interface Changed` | `yes` \| `no` | always | implement-external-system-driver-adapters must run (new External System Driver (`${external-system-driver-port}`) methods need real impls) |
+(The outer four-backtick fence is only there so the example renders
+correctly in this prompt — your emitted block uses three backticks
+opening and closing.)
+
+### Flag semantics
+
+Both keys MUST appear in the emitted block. The downstream gateway treats *unset* as an error (no implicit default). Use boolean values (`true` | `false`).
+
+| Flag key (exact) | Meaning when `true` | Meaning when `false` |
+|---|---|---|
+| `system-driver-ports-changed` | implement-system-driver-adapters must run (new System Driver (`${driver-port}`) methods need real impls) | the System Driver port (`${driver-port}`) was not changed this invocation. When `${touches-system-driver}=false` the port is out of scope and this flag is always `false`. |
+| `external-driver-ports-changed` | implement-external-system-driver-adapters must run (new External System Driver (`${external-system-driver-port}`) methods need real impls) | the External System Driver port (`${external-system-driver-port}`) was not changed this invocation. |
+
+The block may follow other prose. The parser keeps the last fenced
+`outputs:` block in the response.
 
 ## Additional Notes
 

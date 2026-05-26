@@ -22,10 +22,14 @@ ${acceptance_criteria}
 
 ## Outputs
 
-At the end of your final response, emit a fenced YAML block with the
+At the end of your final response, emit a **fenced** YAML block with the
 acceptance-test methods this ticket exercises and a flag telling the
-dispatcher whether the DSL Port (`${dsl-port}`) changed:
+dispatcher whether the DSL Port (`${dsl-port}`) changed. The block
+MUST be wrapped in triple-backtick fences exactly as shown below —
+un-fenced YAML is invisible to the parser and the cycle will halt with
+a missing-output failure:
 
+````
 ```
 outputs:
   test_names:
@@ -33,6 +37,11 @@ outputs:
     - shouldRejectDuplicateCustomer
   dsl-port-changed: false
 ```
+````
+
+(The outer four-backtick fence is only there so the example renders
+correctly in this prompt — your emitted block uses three backticks
+opening and closing.)
 
 `test_names` is every unqualified test method name added or modified by
 this ticket (across re-runs) — not every test in the file. If a re-run
@@ -46,5 +55,5 @@ into the DSL implementation phase iff this flag is `true`, so an
 omitted or incorrect value will mis-route the cycle. Both downstream
 tasks consume these values and have no other way to learn them.
 
-The block may follow other prose. The parser keeps the last `outputs:`
-block in the response.
+The block may follow other prose. The parser keeps the last fenced
+`outputs:` block in the response.

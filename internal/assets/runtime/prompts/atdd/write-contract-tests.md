@@ -20,13 +20,22 @@ ${scope_block}
 
 ## Outputs
 
-At the end of your final response, emit a fenced YAML block with a flag
-telling the dispatcher whether the DSL Port (`${dsl-port}`) changed:
+At the end of your final response, emit a **fenced** YAML block with a
+flag telling the dispatcher whether the DSL Port (`${dsl-port}`)
+changed. The block MUST be wrapped in triple-backtick fences exactly
+as shown below — un-fenced YAML is invisible to the parser and the
+cycle will halt with a missing-output failure:
 
+````
 ```
 outputs:
   dsl-port-changed: false
 ```
+````
+
+(The outer four-backtick fence is only there so the example renders
+correctly in this prompt — your emitted block uses three backticks
+opening and closing.)
 
 `dsl-port-changed` is `true` if you added or modified any method on the
 DSL Port (`${dsl-port}`) — i.e. you also wrote a `"TODO: DSL"` stub in
@@ -34,5 +43,5 @@ the DSL Core per Step 2 — and `false` otherwise. The dispatcher routes
 into the DSL implementation phase iff this flag is `true`, so an
 omitted or incorrect value will mis-route the cycle.
 
-The block may follow other prose. The parser keeps the last `outputs:`
-block in the response.
+The block may follow other prose. The parser keeps the last fenced
+`outputs:` block in the response.
