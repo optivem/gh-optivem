@@ -65,6 +65,12 @@ type Deps struct {
 	// ProjectURL + a fake Gh (the constructed github tracker then routes
 	// through the fake), or by setting Tracker directly for full control.
 	Tracker tracker.Tracker
+	// Engine is the loaded process-flow state machine. Scope-checking
+	// actions (validate-outputs-and-scopes, check-phase-scope) call
+	// Engine.Scope(processName) to resolve per-phase read / write lists
+	// from the inline node scope in process-flow.yaml. nil is a wiring
+	// bug — the affected actions surface a hard error.
+	Engine *statemachine.Engine
 	// Autonomous mirrors driver.Opts.Autonomous: when true, actions that
 	// would prompt the operator instead emit a warning and proceed. No
 	// surviving action currently reads this field; it is retained on
@@ -158,12 +164,14 @@ func RegisterAll(r *Registry, deps Deps) {
 	deps = deps.withDefaults()
 	a := actions{deps: deps}
 	r.Register("pick-top-ready", a.pickTopReady)
-	// Phase-scope enforcement Layer 2 (per plan 20260518-1144 item 5): runs
-	// after the agent commits, diffs the working tree against the phase's
-	// allowed paths joined from internal/atdd/phase-scopes.yaml +
-	// gh-optivem.yaml paths:, and writes phase-scope-clean +
-	// phase_scope_violating_paths to context. The downstream
-	// phase-scope-clean gate consumes the boolean.
+	// Phase-scope enforcement Layer 2 (per plan 20260518-1144 item 5,
+	// retargeted at process-flow.yaml node scope per plan 20260526-1536):
+	// runs after the agent commits, diffs the working tree against the
+	// writing-agent MID's allowed paths joined from
+	// process-flow.yaml's inline node `write:` list + gh-optivem.yaml
+	// paths:, and writes phase-scope-clean + phase_scope_violating_paths
+	// to context. The downstream phase-scope-clean gate consumes the
+	// boolean.
 	r.Register("check-phase-scope", a.checkPhaseScope)
 	// BPMN Phase D — LOW execute-command primitive. Reads ctx.Params["command"]
 	// (the templated bash line, post-ExpandParams), appends --filter-type=
@@ -175,10 +183,11 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("run-command", a.runCommand)
 	// BPMN Phase D — LOW execute-agent primitive's post-RUN_AGENT
 	// validation step. Reads ctx.Params["outputs"] (comma-separated keys
-	// the agent's `outputs:` YAML block must populate) + ctx.Params["scopes"]
-	// (comma-separated Family B layer tokens defining the allowed
-	// working-tree paths), and writes ctx.State["outputs-and-scopes-valid"]
-	// + ctx.State["failure-kind"] (missing-output|scope-diff).
+	// the agent's `outputs:` YAML block must populate) and looks up the
+	// writing-agent MID's write scope via Engine.Scope(task-name) (with
+	// originating-task-name fallback for fix dispatches). Writes
+	// ctx.State["outputs-and-scopes-valid"] + ctx.State["failure-kind"]
+	// (missing-output|scope-diff).
 	r.Register("validate-outputs-and-scopes", a.validateOutputsAndScopes)
 	// BPMN Phase D — LOW execute-agent primitive's pre-RUN_AGENT
 	// baseline-capture step (per plan 20260526-1430). Snapshots the
@@ -226,8 +235,8 @@ func RegisterAll(r *Registry, deps Deps) {
 const (
 	// CtxKeyPhaseScopeClean is the bool check-phase-scope writes to record
 	// whether every modified path in the phase fell within the allowed-paths
-	// join (phase-scopes.yaml ∘ gh-optivem.yaml paths:). Read by the
-	// phase-scope-clean gate.
+	// join (process-flow.yaml MID `write:` scope ∘ gh-optivem.yaml paths:).
+	// Read by the phase-scope-clean gate.
 	CtxKeyPhaseScopeClean = "phase_scope_clean"
 
 	// CtxKeyPhaseScopeViolatingPaths is the []string of modified paths
@@ -471,9 +480,12 @@ func (a actions) runShell(cmdLine string) (ShellResult, error) {
 // ---------------------------------------------------------------------------
 
 // checkPhaseScope is Layer 2 of phase-scope enforcement (plan
-// 20260518-1144 item 5). After the agent commits, the action joins:
+// 20260518-1144 item 5, retargeted at process-flow.yaml node scope per
+// plan 20260526-1536). After the agent commits, the action joins:
 //
-//   - internal/atdd/phase-scopes.yaml (SSoT: BPMN phase id → layer list)
+//   - process-flow.yaml's inline per-node scope (the writing-agent MID's
+//     EXECUTE_AGENT carries `read:` / `write:` lists; this action checks
+//     the write list — paths the agent may modify).
 //   - the project's gh-optivem.yaml paths: (layer name → resolved path)
 //     plus Family A path-shaped keys in FamilyAPathKeysInScope (system-path
 //     today).
@@ -484,9 +496,8 @@ func (a actions) runShell(cmdLine string) (ShellResult, error) {
 // against the allowed set with directory-aware prefix matching:
 // diffPath ∈ scope iff diffPath == P || diffPath.startsWith(P + "/").
 //
-// Phase id source: the call-activity invoking red_phase_cycle /
-// green_phase_cycle passes phase_id: <NODE_ID> in its params; this action
-// reads ctx.Params["phase_id"].
+// Phase id source: ctx.Params["phase_id"] — the writing-agent MID's name
+// (e.g. "write-acceptance-tests"). Resolved via Engine.Scope.
 //
 // Writes:
 //   - CtxKeyPhaseScopeClean (bool)            — false on violation
@@ -497,17 +508,16 @@ func (a actions) runShell(cmdLine string) (ShellResult, error) {
 func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome {
 	phaseID := ctx.Params["phase_id"]
 	if phaseID == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: phase_id not set in Params — the call-activity invoking red_phase_cycle / green_phase_cycle must pass phase_id")}
+		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: phase_id not set in Params — the call-activity invoking the writing-agent MID must pass phase_id")}
 	}
 
-	scopes, err := atdd.LoadPhaseScopes()
-	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: %w", err)}
+	if a.deps.Engine == nil {
+		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: engine not loaded — driver must inject actions.Deps.Engine")}
 	}
-	layers, ok := scopes.Phases[phaseID]
+	_, write, ok := a.deps.Engine.Scope(phaseID)
 	if !ok {
 		return statemachine.Outcome{Err: fmt.Errorf(
-			"check_phase_scope: phase id %q not in internal/atdd/phase-scopes.yaml — add an entry", phaseID)}
+			"check_phase_scope: phase id %q not a writing-agent MID in process-flow.yaml — add inline read: / write: scope to its EXECUTE_AGENT node", phaseID)}
 	}
 
 	cfg := a.deps.Config
@@ -515,7 +525,7 @@ func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome
 		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: gh-optivem.yaml not loaded — driver must inject actions.Deps.Config")}
 	}
 
-	allowed, err := resolveLayerPaths(layers, cfg)
+	allowed, err := resolveLayerPaths(write, cfg)
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope (%s): %w", phaseID, err)}
 	}
@@ -890,17 +900,24 @@ func lastNLines(s string, n int) string {
 // ctx.State by clauderun.ParseOutputs (driver.go); this action checks
 // (a) every key the caller declared in `outputs:` is present in
 // ctx.State, and (b) every working-tree change since HEAD falls
-// within at least one of the call-site's declared `scopes:` (joined
-// against gh-optivem.yaml paths: via the same resolveLayerPaths the
+// within at least one of the writing-agent MID's declared `write:`
+// scope (looked up via Engine.Scope, then joined against
+// gh-optivem.yaml paths: via the same resolveLayerPaths the
 // checkPhaseScope action uses).
 //
 // Reads:
-//   - ctx.Params["outputs"]  — comma-separated list of expected output
-//                              keys; empty → no output expectations.
-//   - ctx.Params["scopes"]   — comma-separated Family B scope tokens
-//                              (e.g. "at-test,dsl-port,dsl-core"); empty
-//                              → skip scope check (refine-acceptance-criteria
-//                              does not declare scopes).
+//   - ctx.Params["outputs"]              — comma-separated list of expected
+//                                          output keys; empty → no output
+//                                          expectations.
+//   - ctx.Params["originating-task-name"] (preferred) or
+//     ctx.Params["task-name"]            — the writing-agent MID name used to
+//                                          look up scope via Engine.Scope.
+//                                          The originating- prefix is set by
+//                                          the `fix` LOW so the inner
+//                                          execute-agent validation can
+//                                          recover the outer MID's scope
+//                                          after task-name is shadowed to
+//                                          fix-${failure-kind}.
 //
 // Writes:
 //   - ctx.State["outputs-and-scopes-valid"]   — bool.
@@ -924,12 +941,13 @@ func lastNLines(s string, n int) string {
 //                                               comma-separated list of
 //                                               working-tree paths
 //                                               outside the declared
-//                                               scopes.
+//                                               write scope.
 //
 // Does NOT surface as Outcome.Err — the gateway's false branch
 // dispatches `fix-${failure-kind}` per Q-late-5. Hard errors
-// (gh-optivem.yaml missing, git unusable) DO surface as Err since
-// they indicate a wiring/infra problem, not an agent-output problem.
+// (gh-optivem.yaml missing, git unusable, engine not wired) DO surface
+// as Err since they indicate a wiring/infra problem, not an
+// agent-output problem.
 func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachine.Outcome {
 	// 1. Output presence check.
 	var missing []string
@@ -941,7 +959,7 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	if len(missing) > 0 {
 		ctx.Set("outputs-and-scopes-valid", false)
 		ctx.Set("failure-kind", "missing-output")
-		ctx.Set("failing-task-name", ctx.Params["task-name"])
+		ctx.Set("failing-task-name", phaseTaskName(ctx))
 		ctx.Set("missing-outputs", strings.Join(missing, ","))
 		fmt.Fprintf(a.deps.Stderr,
 			"validate-outputs-and-scopes: agent did not emit expected outputs: %s\n",
@@ -949,9 +967,16 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 		return statemachine.Outcome{}
 	}
 
-	// 2. Scope check (no-op when the caller did not declare scopes).
-	scopes := splitCSV(ctx.Params["scopes"])
-	if len(scopes) == 0 {
+	// 2. Scope check (no-op when the dispatching node is not a
+	// writing-agent MID — refine-acceptance-criteria declares
+	// scope: none in prompt frontmatter and has no inline read/write,
+	// so Engine.Scope returns ok=false and the scope check is skipped).
+	if a.deps.Engine == nil {
+		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: engine not loaded — driver must inject actions.Deps.Engine")}
+	}
+	taskName := phaseTaskName(ctx)
+	_, write, ok := a.deps.Engine.Scope(taskName)
+	if !ok {
 		ctx.Set("outputs-and-scopes-valid", true)
 		return statemachine.Outcome{}
 	}
@@ -960,7 +985,7 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	if cfg == nil {
 		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: gh-optivem.yaml not loaded — driver must inject actions.Deps.Config")}
 	}
-	allowed, err := resolveLayerPaths(scopes, cfg)
+	allowed, err := resolveLayerPaths(write, cfg)
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
 	}
@@ -978,11 +1003,11 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	if len(violating) > 0 {
 		ctx.Set("outputs-and-scopes-valid", false)
 		ctx.Set("failure-kind", "scope-diff")
-		ctx.Set("failing-task-name", ctx.Params["task-name"])
+		ctx.Set("failing-task-name", taskName)
 		ctx.Set("scope-violating-paths", strings.Join(violating, ","))
 		fmt.Fprintf(a.deps.Stderr,
 			"validate-outputs-and-scopes: %d path(s) outside scope %v:\n",
-			len(violating), scopes)
+			len(violating), write)
 		for _, v := range violating {
 			fmt.Fprintf(a.deps.Stderr, "  out-of-scope: %s\n", v)
 		}
@@ -991,6 +1016,17 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 
 	ctx.Set("outputs-and-scopes-valid", true)
 	return statemachine.Outcome{}
+}
+
+// phaseTaskName returns the writing-agent MID name to look up scope by.
+// Prefers ctx.Params["originating-task-name"] (set by the `fix` LOW so
+// fix dispatches retain the outer MID's scope identity) and falls back
+// to ctx.Params["task-name"] for the normal path.
+func phaseTaskName(ctx *statemachine.Context) string {
+	if orig := ctx.Params["originating-task-name"]; orig != "" {
+		return orig
+	}
+	return ctx.Params["task-name"]
 }
 
 // snapshotWorkingTree is the body of the BPMN Phase D

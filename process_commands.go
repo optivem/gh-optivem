@@ -24,7 +24,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/optivem/gh-optivem/internal/atdd"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/diagram"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
@@ -62,13 +61,11 @@ func newProcessShowCmd() *cobra.Command {
 	}
 }
 
-// newProcessScopeCmd prints per-phase allowed-paths from the SSoT join of
-// `internal/atdd/phase-scopes.yaml` (embedded) and the project's
-// `gh-optivem.yaml paths:`, with the agent dispatched per phase surfaced
-// from `process-flow.yaml`. No arg lists every phase; one positional arg
-// narrows to that phase. When run outside a gh-optivem.yaml-rooted
-// project, layer names print bare (still useful for navigating
-// phase-scopes.yaml itself).
+// newProcessScopeCmd prints per-phase allowed-paths from process-flow.yaml's
+// inline node scope joined against the project's `gh-optivem.yaml paths:`.
+// No arg lists every writing-agent MID; one positional arg narrows to that
+// phase. When run outside a gh-optivem.yaml-rooted project, layer names
+// print bare (still useful for navigating the process flow itself).
 //
 // Replaces the originally-planned scaffolder/sync projection of `scope:`
 // into runtime-prompt frontmatter (item 4 of plans/20260518-1530-atdd-
@@ -80,9 +77,9 @@ func newProcessShowCmd() *cobra.Command {
 func newProcessScopeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "scope [<phase>]",
-		Short: "Print per-phase allowed-paths from phase-scopes.yaml × gh-optivem.yaml",
+		Short: "Print per-phase allowed-paths from process-flow.yaml × gh-optivem.yaml",
 		Example: `  gh optivem process scope
-  gh optivem process scope AT_RED_TEST`,
+  gh optivem process scope write-acceptance-tests`,
 		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			phaseArg := ""
@@ -98,10 +95,6 @@ func newProcessScopeCmd() *cobra.Command {
 // it out lets the test substitute an io.Writer and a config-path
 // argument without spawning a subprocess or touching os.Stdout / globals.
 func runProcessScope(out io.Writer, phaseArg, configPath string) error {
-	scopes, err := atdd.LoadPhaseScopes()
-	if err != nil {
-		return fmt.Errorf("process scope: %w", err)
-	}
 	eng, err := statemachine.LoadDefault()
 	if err != nil {
 		return fmt.Errorf("process scope: load process-flow: %w", err)
@@ -111,12 +104,10 @@ func runProcessScope(out io.Writer, phaseArg, configPath string) error {
 	// with it, layers resolve to physical paths.
 	cfg := loadConfigIfPresent(configPath)
 
-	phaseAgents := agentByPhase(eng)
-
 	if phaseArg != "" {
-		return printOnePhase(out, phaseArg, scopes, phaseAgents, cfg)
+		return printOnePhase(out, phaseArg, eng, cfg)
 	}
-	return printAllPhases(out, scopes, phaseAgents, cfg)
+	return printAllPhases(out, eng, cfg)
 }
 
 // loadConfigIfPresent resolves the gh-optivem.yaml path and loads it,
@@ -132,103 +123,107 @@ func loadConfigIfPresent(configPath string) *projectconfig.Config {
 	return cfg
 }
 
-// agentByPhase returns a phase-id → task-name map derived from
-// process-flow.yaml. UserTask nodes carry the task name on the `agent:`
-// field directly; templated call_activity nodes carry the concrete
-// task name in Params["agent"]. Skips non-writing agents (human) and
-// templated `${agent}` references whose concrete value lives on the
-// parent.
-func agentByPhase(eng *statemachine.Engine) map[string]string {
-	out := map[string]string{}
-	for _, proc := range eng.Processes {
+// writingAgentMIDs returns the sorted set of writing-agent MID process
+// names — every process containing an EXECUTE_AGENT call-activity that
+// dispatches the LOW execute-agent primitive with a concrete (non-
+// templated) task-name. The process name is the `task-name:` value on
+// that node and the same identifier Engine.Scope keys on. The `fix`
+// LOW is excluded because its task-name is templated
+// (`fix-${failure-kind}`) — fix dispatches resolve a concrete MID at
+// runtime, not here.
+func writingAgentMIDs(eng *statemachine.Engine) []string {
+	var ids []string
+	for name, proc := range eng.Processes {
 		for _, node := range proc.Nodes {
-			agent := ""
-			switch node.Kind {
-			case statemachine.UserTask:
-				agent = node.Raw.Agent
-			case statemachine.CallActivity:
-				agent = node.Raw.Params["agent"]
-			}
-			if agent == "" || atdd.NonWritingAgents[agent] || strings.HasPrefix(agent, "${") {
+			if node.Kind != statemachine.CallActivity || node.Raw.Process != "execute-agent" {
 				continue
 			}
-			out[node.ID] = agent
+			task := node.Raw.Params["task-name"]
+			if task == "" || strings.HasPrefix(task, "${") || strings.Contains(task, "${") {
+				continue
+			}
+			ids = append(ids, name)
+			break
 		}
 	}
-	return out
+	sort.Strings(ids)
+	return ids
 }
 
-// printAllPhases renders every phase in phase-scopes.yaml (sorted),
-// followed by every writing-agent phase whose prompt frontmatter
-// declares `scope: none` (the artifact-only doctrinal exemption — see
+// taskNameOf returns the agent task-name dispatched by a writing-agent
+// MID — read from the EXECUTE_AGENT call-activity's `params.task-name`.
+// Defaults to the process name when the param is missing (matches the
+// MID-name == task-name convention).
+func taskNameOf(eng *statemachine.Engine, processName string) string {
+	proc, ok := eng.Processes[processName]
+	if !ok {
+		return ""
+	}
+	for _, node := range proc.Nodes {
+		if node.Kind != statemachine.CallActivity || node.Raw.Process != "execute-agent" {
+			continue
+		}
+		if t := node.Raw.Params["task-name"]; t != "" {
+			return t
+		}
+		return processName
+	}
+	return ""
+}
+
+// printAllPhases renders every writing-agent MID (sorted) — those with
+// inline read/write scope, then those whose prompt frontmatter declares
+// `scope: none` (the artifact-only doctrinal exemption — see
 // runtime/shared/scope.md). The second group has no layers to resolve
 // but still belongs in the operator's overview.
-func printAllPhases(out io.Writer, scopes atdd.PhaseScopes, phaseAgents map[string]string, cfg *projectconfig.Config) error {
-	phaseIDs := make([]string, 0, len(scopes.Phases))
-	for id := range scopes.Phases {
-		phaseIDs = append(phaseIDs, id)
-	}
-	sort.Strings(phaseIDs)
-
-	for _, id := range phaseIDs {
-		writePhaseBlock(out, id, scopes.Phases[id], phaseAgents[id], cfg)
-		fmt.Fprintln(out)
-	}
-
-	noneIDs, err := noneScopedPhaseIDs(scopes, phaseAgents)
-	if err != nil {
-		return err
+func printAllPhases(out io.Writer, eng *statemachine.Engine, cfg *projectconfig.Config) error {
+	var noneIDs []string
+	for _, id := range writingAgentMIDs(eng) {
+		_, write, ok := eng.Scope(id)
+		if ok {
+			writePhaseBlock(out, id, write, taskNameOf(eng, id), cfg)
+			fmt.Fprintln(out)
+			continue
+		}
+		// No inline scope — check for the scope: none frontmatter exemption.
+		task := taskNameOf(eng, id)
+		none, err := agents.HasNoneScope(task)
+		if err != nil {
+			return fmt.Errorf("process scope: %w", err)
+		}
+		if none {
+			noneIDs = append(noneIDs, id)
+		}
 	}
 	for _, id := range noneIDs {
-		writeNoneScopeBlock(out, id, phaseAgents[id])
+		writeNoneScopeBlock(out, id, taskNameOf(eng, id))
 		fmt.Fprintln(out)
 	}
 	return nil
 }
 
 // printOnePhase renders a single phase. Routes through the same block
-// renderer as printAllPhases. A phase id not in phase-scopes.yaml is
-// only accepted if it corresponds to a writing-agent node in
-// process-flow.yaml whose prompt frontmatter declares `scope: none`;
-// otherwise a typo'd or unscoped phase id fails loudly.
-func printOnePhase(out io.Writer, phaseID string, scopes atdd.PhaseScopes, phaseAgents map[string]string, cfg *projectconfig.Config) error {
-	if layers, ok := scopes.Phases[phaseID]; ok {
-		writePhaseBlock(out, phaseID, layers, phaseAgents[phaseID], cfg)
+// renderer as printAllPhases. A phase id without inline read/write is
+// only accepted if it corresponds to a writing-agent MID whose prompt
+// frontmatter declares `scope: none`; otherwise a typo'd or unscoped
+// phase id fails loudly.
+func printOnePhase(out io.Writer, phaseID string, eng *statemachine.Engine, cfg *projectconfig.Config) error {
+	_, write, ok := eng.Scope(phaseID)
+	if ok {
+		writePhaseBlock(out, phaseID, write, taskNameOf(eng, phaseID), cfg)
 		return nil
 	}
-	if agent, ok := phaseAgents[phaseID]; ok {
-		none, err := agents.HasNoneScope(agent)
+	if task := taskNameOf(eng, phaseID); task != "" {
+		none, err := agents.HasNoneScope(task)
 		if err != nil {
 			return fmt.Errorf("process scope: %w", err)
 		}
 		if none {
-			writeNoneScopeBlock(out, phaseID, agent)
+			writeNoneScopeBlock(out, phaseID, task)
 			return nil
 		}
 	}
-	return fmt.Errorf("phase %q not in phase-scopes.yaml; run `gh optivem process scope` to list known phases", phaseID)
-}
-
-// noneScopedPhaseIDs returns the sorted set of writing-agent phase ids
-// not in phase-scopes.yaml whose prompt frontmatter declares
-// `scope: none`. Surfaced from printAllPhases so the doctrinal
-// exemption is visible in the operator's overview, not hidden.
-func noneScopedPhaseIDs(scopes atdd.PhaseScopes, phaseAgents map[string]string) ([]string, error) {
-	var out []string
-	for id, agent := range phaseAgents {
-		if _, inScopes := scopes.Phases[id]; inScopes {
-			continue
-		}
-		none, err := agents.HasNoneScope(agent)
-		if err != nil {
-			return nil, fmt.Errorf("process scope: %w", err)
-		}
-		if none {
-			out = append(out, id)
-		}
-	}
-	sort.Strings(out)
-	return out, nil
+	return fmt.Errorf("phase %q is not a scoped writing-agent MID in process-flow.yaml; run `gh optivem process scope` to list known phases", phaseID)
 }
 
 // writeNoneScopeBlock renders the `scope: none` sentinel for an
@@ -264,14 +259,15 @@ func writePhaseBlock(out io.Writer, phaseID string, layers []string, agent strin
 	}
 }
 
-// resolveLayer maps a phase-scopes.yaml layer name to its physical path
-// in the project. Family A `system-path` reads from `system.path`
-// (monolith). Everything else is a Family B key under `system-test.paths:`.
+// resolveLayer maps a layer name to its physical path in the project.
+// Family A `system-path` reads from `system.path` (monolith).
+// Everything else is a Family B key under `system-test.paths:`.
 //
 // Multitier projects leave `system.path` empty — `system-path` returns
 // "" there, which the renderer surfaces as "(not set in gh-optivem.yaml)".
-// AT_GREEN is monolith-only by construction; per-component fanout for
-// multitier projects is deferred to a future plan.
+// implement-system / refactor-system are monolith-only by construction;
+// per-component fanout for multitier projects is deferred to a future
+// plan.
 func resolveLayer(cfg *projectconfig.Config, layer string) string {
 	if layer == "system-path" {
 		return cfg.System.Path

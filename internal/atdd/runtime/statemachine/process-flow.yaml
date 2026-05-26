@@ -1244,7 +1244,9 @@ processes:
   # MID — write-acceptance-tests
   # ===========================================================================
   #
-  # Scopes: at-test, dsl-port, dsl-core. Outputs: dsl-port-changed.
+  # Scope: read + write = [at-test, dsl-port, dsl-core]. Outputs:
+  # dsl-port-changed. The read/write lists are deliberately identical at
+  # the fold — parent plan 20260526-1448 Item 3 refines the split.
   # ===========================================================================
   write-acceptance-tests:
     start: EXECUTE_AGENT
@@ -1254,8 +1256,9 @@ processes:
         process: execute-agent
         params:
           task-name: write-acceptance-tests
-          scopes: "at-test,dsl-port,dsl-core"
           outputs: "dsl-port-changed"
+        read:  [at-test, dsl-port, dsl-core]
+        write: [at-test, dsl-port, dsl-core]
 
       - id: WAT_END
         type: end-event
@@ -1268,7 +1271,8 @@ processes:
   # MID — write-contract-tests
   # ===========================================================================
   #
-  # Scopes: ct-test, dsl-port, dsl-core. Outputs: dsl-port-changed.
+  # Scope: read + write = [ct-test, dsl-port, dsl-core]. Outputs:
+  # dsl-port-changed.
   # ===========================================================================
   write-contract-tests:
     start: EXECUTE_AGENT
@@ -1278,8 +1282,9 @@ processes:
         process: execute-agent
         params:
           task-name: write-contract-tests
-          scopes: "ct-test,dsl-port,dsl-core"
           outputs: "dsl-port-changed"
+        read:  [ct-test, dsl-port, dsl-core]
+        write: [ct-test, dsl-port, dsl-core]
 
       - id: WCT_END
         type: end-event
@@ -1292,7 +1297,7 @@ processes:
   # MID — implement-dsl
   # ===========================================================================
   #
-  # Scopes: dsl-core, driver-port, external-system-driver-port.
+  # Scope: read + write = [dsl-core, driver-port, external-system-driver-port].
   # Outputs: system-driver-ports-changed, external-driver-ports-changed.
   # ===========================================================================
   implement-dsl:
@@ -1303,8 +1308,9 @@ processes:
         process: execute-agent
         params:
           task-name: implement-dsl
-          scopes: "dsl-core,driver-port,external-system-driver-port"
           outputs: "system-driver-ports-changed,external-driver-ports-changed"
+        read:  [dsl-core, driver-port, external-system-driver-port]
+        write: [dsl-core, driver-port, external-system-driver-port]
 
       - id: IMPL_DSL_END
         type: end-event
@@ -1316,6 +1322,9 @@ processes:
   # ===========================================================================
   # MID — implement-system
   # ===========================================================================
+  #
+  # Scope: read + write = [system-path].
+  # ===========================================================================
   implement-system:
     start: EXECUTE_AGENT
     nodes:
@@ -1324,7 +1333,8 @@ processes:
         process: execute-agent
         params:
           task-name: implement-system
-          scopes: "system-path"
+        read:  [system-path]
+        write: [system-path]
 
       - id: IMPL_SYS_END
         type: end-event
@@ -1336,6 +1346,9 @@ processes:
   # ===========================================================================
   # MID — implement-system-driver-adapters
   # ===========================================================================
+  #
+  # Scope: read + write = [driver-port, driver-adapter].
+  # ===========================================================================
   implement-system-driver-adapters:
     start: EXECUTE_AGENT
     nodes:
@@ -1344,7 +1357,8 @@ processes:
         process: execute-agent
         params:
           task-name: implement-system-driver-adapters
-          scopes: "driver-port,driver-adapter"
+        read:  [driver-port, driver-adapter]
+        write: [driver-port, driver-adapter]
 
       - id: IMPL_SYS_DA_END
         type: end-event
@@ -1356,6 +1370,10 @@ processes:
   # ===========================================================================
   # MID — implement-external-system-driver-adapters
   # ===========================================================================
+  #
+  # Scope: read + write = [external-system-driver-port,
+  # external-system-driver-adapter].
+  # ===========================================================================
   implement-external-system-driver-adapters:
     start: EXECUTE_AGENT
     nodes:
@@ -1364,7 +1382,8 @@ processes:
         process: execute-agent
         params:
           task-name: implement-external-system-driver-adapters
-          scopes: "external-system-driver-port,external-system-driver-adapter"
+        read:  [external-system-driver-port, external-system-driver-adapter]
+        write: [external-system-driver-port, external-system-driver-adapter]
 
       - id: IMPL_EXT_DA_END
         type: end-event
@@ -1376,6 +1395,9 @@ processes:
   # ===========================================================================
   # MID — implement-external-system-stubs
   # ===========================================================================
+  #
+  # Scope: read + write = [external-system-driver-adapter].
+  # ===========================================================================
   implement-external-system-stubs:
     start: EXECUTE_AGENT
     nodes:
@@ -1384,7 +1406,8 @@ processes:
         process: execute-agent
         params:
           task-name: implement-external-system-stubs
-          scopes: "external-system-driver-adapter"
+        read:  [external-system-driver-adapter]
+        write: [external-system-driver-adapter]
 
       - id: IMPL_STUBS_END
         type: end-event
@@ -1396,6 +1419,13 @@ processes:
   # ===========================================================================
   # MID — disable-tests
   # ===========================================================================
+  #
+  # Scope: read + write = [at-test, ct-test]. The [at-test, ct-test] pin
+  # is forward-looking — today only at-test files are touched because the
+  # reason-format hardcodes `AT`, but the symmetric scope keeps the
+  # shared ${disable_targets} flow from being scoped inconsistently when
+  # the CT-side disable lands.
+  # ===========================================================================
   disable-tests:
     start: EXECUTE_AGENT
     nodes:
@@ -1404,7 +1434,8 @@ processes:
         process: execute-agent
         params:
           task-name: disable-tests
-          scopes: "at-test,ct-test"
+        read:  [at-test, ct-test]
+        write: [at-test, ct-test]
 
       - id: DISABLE_END
         type: end-event
@@ -1416,6 +1447,10 @@ processes:
   # ===========================================================================
   # MID — enable-tests
   # ===========================================================================
+  #
+  # Scope: read + write = [at-test, ct-test]. Same forward-looking
+  # symmetry as disable-tests.
+  # ===========================================================================
   enable-tests:
     start: EXECUTE_AGENT
     nodes:
@@ -1424,7 +1459,8 @@ processes:
         process: execute-agent
         params:
           task-name: enable-tests
-          scopes: "at-test,ct-test"
+        read:  [at-test, ct-test]
+        write: [at-test, ct-test]
 
       - id: ENABLE_END
         type: end-event
@@ -1436,6 +1472,11 @@ processes:
   # ===========================================================================
   # MID — fix-unexpected-passing-tests
   # ===========================================================================
+  #
+  # Scope: read + write = every layer. The fix agent has no a-priori
+  # knowledge of which layer is wrong, so the scope is the union of
+  # everything below system-test-path plus system-path itself.
+  # ===========================================================================
   fix-unexpected-passing-tests:
     start: EXECUTE_AGENT
     nodes:
@@ -1444,7 +1485,8 @@ processes:
         process: execute-agent
         params:
           task-name: fix-unexpected-passing-tests
-          scopes: "at-test,ct-test,dsl-port,dsl-core,driver-port,driver-adapter,external-system-driver-port,external-system-driver-adapter,system-path"
+        read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
+        write: [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
 
       - id: FIX_PASS_END
         type: end-event
@@ -1456,6 +1498,9 @@ processes:
   # ===========================================================================
   # MID — fix-unexpected-failing-tests
   # ===========================================================================
+  #
+  # Scope: same as fix-unexpected-passing-tests — every layer.
+  # ===========================================================================
   fix-unexpected-failing-tests:
     start: EXECUTE_AGENT
     nodes:
@@ -1464,7 +1509,8 @@ processes:
         process: execute-agent
         params:
           task-name: fix-unexpected-failing-tests
-          scopes: "at-test,ct-test,dsl-port,dsl-core,driver-port,driver-adapter,external-system-driver-port,external-system-driver-adapter,system-path"
+        read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
+        write: [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
 
       - id: FIX_FAIL_END
         type: end-event
@@ -1476,6 +1522,10 @@ processes:
   # ===========================================================================
   # MID — refactor-tests
   # ===========================================================================
+  #
+  # Scope: read + write = every test-side layer (no system-path; test
+  # refactor never touches production code).
+  # ===========================================================================
   refactor-tests:
     start: EXECUTE_AGENT
     nodes:
@@ -1484,7 +1534,8 @@ processes:
         process: execute-agent
         params:
           task-name: refactor-tests
-          scopes: "at-test,ct-test,dsl-port,dsl-core,driver-port,driver-adapter,external-system-driver-port,external-system-driver-adapter"
+        read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter]
+        write: [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter]
 
       - id: REFACTOR_TESTS_END
         type: end-event
@@ -1496,6 +1547,9 @@ processes:
   # ===========================================================================
   # MID — refactor-system
   # ===========================================================================
+  #
+  # Scope: read + write = [system-path].
+  # ===========================================================================
   refactor-system:
     start: EXECUTE_AGENT
     nodes:
@@ -1504,7 +1558,8 @@ processes:
         process: execute-agent
         params:
           task-name: refactor-system
-          scopes: "system-path"
+        read:  [system-path]
+        write: [system-path]
 
       - id: REFACTOR_SYS_END
         type: end-event
@@ -1898,7 +1953,14 @@ processes:
           # `fix-*` agent inventory note near the top of this file.
           task-name: "fix-${failure-kind}"
           fix-on-failure: "false"
-          scopes: ${scopes}
+          # originating-task-name carries the OUTER MID's task-name (e.g.
+          # "write-acceptance-tests") through the fix dispatch so the inner
+          # validate-outputs-and-scopes can look up scope via
+          # engine.Scope(originating-task-name) — fix-${failure-kind} has
+          # no MID node of its own and would miss otherwise. ${task-name}
+          # resolves against the parent (execute-agent) params before
+          # task-name is shadowed by the fix-* override on the line above.
+          originating-task-name: ${task-name}
           outputs: ${outputs}
 
       - id: FIX_END

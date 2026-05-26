@@ -9,19 +9,19 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/optivem/gh-optivem/internal/atdd"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
 // TestProcessScope_AllPhases_NoProject asserts the no-arg listing
-// surfaces every phase in phase-scopes.yaml, printing layer NAMES (no
-// resolved paths) when no gh-optivem.yaml is reachable. Uses a temp dir
-// + explicit configPath so the test never depends on the real cwd's
-// project state.
+// surfaces every writing-agent MID with inline scope from
+// process-flow.yaml, printing layer NAMES (no resolved paths) when no
+// gh-optivem.yaml is reachable. Uses a temp dir + explicit configPath
+// so the test never depends on the real cwd's project state.
 func TestProcessScope_AllPhases_NoProject(t *testing.T) {
-	scopes, err := atdd.LoadPhaseScopes()
+	eng, err := statemachine.LoadDefault()
 	if err != nil {
-		t.Fatalf("LoadPhaseScopes: %v", err)
+		t.Fatalf("LoadDefault: %v", err)
 	}
 
 	tmp := t.TempDir()
@@ -31,33 +31,27 @@ func TestProcessScope_AllPhases_NoProject(t *testing.T) {
 	}
 	out := buf.String()
 
-	for phaseID := range scopes.Phases {
-		if !strings.Contains(out, "Phase:  "+phaseID) {
-			t.Errorf("expected phase %q in output, got:\n%s", phaseID, out)
+	for _, id := range writingAgentMIDs(eng) {
+		if _, _, ok := eng.Scope(id); !ok {
+			continue
+		}
+		if !strings.Contains(out, "Phase:  "+id) {
+			t.Errorf("expected phase %q in output, got:\n%s", id, out)
 		}
 	}
 }
 
-// TestProcessScope_OnePhase_NoProject narrows to a single known phase
-// and asserts layers print bare (no paths).
+// TestProcessScope_OnePhase_NoProject narrows to a single known
+// writing-agent MID and asserts layers print bare (no paths).
 func TestProcessScope_OnePhase_NoProject(t *testing.T) {
-	// AT_RED_TEST referenced the pre-refactor node ID. The five-level BPMN
-	// refactor (plans/20260525-1517-bpmn-refactor-yaml-and-diagrams.md
-	// Item 3) replaced it; phase-scopes.yaml's agent attribution will be
-	// re-derived for the new node IDs in Phase D (downstream-alignment
-	// plan). The agent-attribution assertion is what fails today — the
-	// scope rows in phase-scopes.yaml still resolve, but `agentByPhase`
-	// finds no matching node for AT_RED_TEST in the new YAML so the
-	// "Agent: at-red-test" line is missing.
-	t.Skip("pending Phase D: remap phase-scopes.yaml + agent attribution to new node IDs")
 	tmp := t.TempDir()
 	var buf bytes.Buffer
-	if err := runProcessScope(&buf, "AT_RED_TEST", filepath.Join(tmp, "no-such-config.yaml")); err != nil {
+	if err := runProcessScope(&buf, "write-acceptance-tests", filepath.Join(tmp, "no-such-config.yaml")); err != nil {
 		t.Fatalf("runProcessScope: %v", err)
 	}
 	out := buf.String()
 
-	wantSubs := []string{"Phase:  AT_RED_TEST", "Agent:  at-red-test", "at-test", "dsl-port", "dsl-core"}
+	wantSubs := []string{"Phase:  write-acceptance-tests", "Agent:  write-acceptance-tests", "at-test", "dsl-port", "dsl-core"}
 	for _, sub := range wantSubs {
 		if !strings.Contains(out, sub) {
 			t.Errorf("expected %q in output, got:\n%s", sub, out)
@@ -85,14 +79,13 @@ func TestProcessScope_UnknownPhase(t *testing.T) {
 
 // TestProcessScope_ResolvesAgainstProjectPaths writes a minimal
 // gh-optivem.yaml to a temp dir, points the command at it, and asserts
-// Family A `system-path` resolves via system.path and Family B layers
-// resolve via paths:.
+// Family B layers resolve via paths:.
 func TestProcessScope_ResolvesAgainstProjectPaths(t *testing.T) {
 	cfg := minimalMonolithConfig(t)
 	path := writeConfigToTempDir(t, cfg)
 
 	var buf bytes.Buffer
-	if err := runProcessScope(&buf, "AT_RED_TEST", path); err != nil {
+	if err := runProcessScope(&buf, "write-acceptance-tests", path); err != nil {
 		t.Fatalf("runProcessScope: %v", err)
 	}
 	out := buf.String()
@@ -119,12 +112,12 @@ func TestProcessScope_SystemPathReadsFamilyA(t *testing.T) {
 	path := writeConfigToTempDir(t, cfg)
 
 	var buf bytes.Buffer
-	if err := runProcessScope(&buf, "AT_GREEN", path); err != nil {
+	if err := runProcessScope(&buf, "implement-system", path); err != nil {
 		t.Fatalf("runProcessScope: %v", err)
 	}
 	out := buf.String()
 	if !strings.Contains(out, cfg.System.Path) {
-		t.Errorf("expected system.path %q in AT_GREEN output, got:\n%s", cfg.System.Path, out)
+		t.Errorf("expected system.path %q in implement-system output, got:\n%s", cfg.System.Path, out)
 	}
 }
 

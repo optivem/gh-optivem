@@ -4,8 +4,10 @@ import "path"
 
 // DefaultPaths returns the canonical Family B `paths:` entries for the
 // given system-test language, root, and sut-namespace. The eight keys
-// match the doctrine in `internal/atdd/phase-scopes.yaml`'s referenced
-// vocabulary: driver-port, driver-adapter, external-system-driver-port,
+// match the doctrine referenced by the inline `read:` / `write:` scope
+// on writing-agent MID nodes in
+// `internal/atdd/runtime/statemachine/process-flow.yaml`: driver-port,
+// driver-adapter, external-system-driver-port,
 // external-system-driver-adapter, at-test, dsl-port, dsl-core, ct-test.
 //
 // Returns nil when testLang is unsupported or systemTestRoot is empty —
@@ -51,8 +53,9 @@ import "path"
 // preserved across migrations.
 //
 // See `internal/projectconfig/path-keys.md` for the
-// canonical-key vocabulary doc consumed by `gh-optivem.yaml paths:`
-// and `internal/atdd/phase-scopes.yaml`.
+// canonical-key vocabulary doc consumed by `gh-optivem.yaml paths:` and
+// by the inline per-phase scope on writing-agent MID nodes in
+// `internal/atdd/runtime/statemachine/process-flow.yaml`.
 func DefaultPaths(testLang, systemTestRoot, sutNamespace string) map[string]string {
 	if systemTestRoot == "" {
 		return nil
@@ -84,7 +87,9 @@ func DefaultPaths(testLang, systemTestRoot, sutNamespace string) map[string]stri
 // same order.
 //
 // See `internal/projectconfig/path-keys.md` for the
-// vocabulary doc and `internal/atdd/phase-scopes.yaml` for the per-phase
+// vocabulary doc and
+// `internal/atdd/runtime/statemachine/process-flow.yaml` (the inline
+// `read:` / `write:` lists on writing-agent MID nodes) for the per-phase
 // scope assignment that consumes these keys.
 func CanonicalPathKeys() []string {
 	return []string{

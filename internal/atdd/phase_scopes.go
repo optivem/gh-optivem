@@ -1,35 +1,15 @@
-// Package atdd hosts ATDD doctrinal data files that sit outside the
-// runtime subtree (phase-scopes.yaml as a peer of
-// internal/atdd/runtime/architecture/architecture.yaml and
-// internal/atdd/runtime/statemachine/process-flow.yaml).
-//
-// This file holds the production loader + doctrinal allowlists.
-// phase_scopes_test.go imports the same symbols for its drift guards,
-// so the test surface and the production surface read from one
-// definition.
+// Package atdd hosts ATDD doctrinal allowlists that sit outside the runtime
+// subtree. The per-phase scope SSoT itself lives inline on the
+// EXECUTE_AGENT call-activity nodes inside each writing-agent MID in
+// internal/atdd/runtime/statemachine/process-flow.yaml — see Engine.Scope
+// for the accessor. This file retains the two layer-classification
+// allowlists that the scope-check actions and the build-time test guards
+// still consume.
 package atdd
 
-import (
-	_ "embed"
-	"fmt"
-
-	"gopkg.in/yaml.v3"
-)
-
-//go:embed phase-scopes.yaml
-var phaseScopesYAML []byte
-
-// PhaseScopes is the parsed shape of phase-scopes.yaml: BPMN phase id →
-// ordered list of layer names (Family B keys from
-// projectconfig.CanonicalPathKeys() plus the Family A entries in
-// FamilyAPathKeysInScope).
-type PhaseScopes struct {
-	Phases map[string][]string `yaml:"phases"`
-}
-
-// NonWritingAgents are agent names that do not need a phase-scopes
-// entry. `human` is the trusted-actor case — the operator is trusted
-// to scope their own edits.
+// NonWritingAgents are agent names that do not need a phase-scope entry.
+// `human` is the trusted-actor case — the operator is trusted to scope
+// their own edits.
 var NonWritingAgents = map[string]bool{
 	"human": true,
 }
@@ -41,18 +21,4 @@ var NonWritingAgents = map[string]bool{
 // escape the layer partition.
 var FamilyAPathKeysInScope = map[string]bool{
 	"system-path": true,
-}
-
-// LoadPhaseScopes parses the embedded phase-scopes.yaml and returns the
-// resulting PhaseScopes. A malformed document or an empty phases map
-// returns an error.
-func LoadPhaseScopes() (PhaseScopes, error) {
-	var ps PhaseScopes
-	if err := yaml.Unmarshal(phaseScopesYAML, &ps); err != nil {
-		return PhaseScopes{}, fmt.Errorf("parse phase-scopes.yaml: %w", err)
-	}
-	if len(ps.Phases) == 0 {
-		return PhaseScopes{}, fmt.Errorf("phase-scopes.yaml parsed to empty phases map")
-	}
-	return ps, nil
 }

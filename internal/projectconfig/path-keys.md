@@ -2,9 +2,10 @@
 
 This doc describes the canonical **path-key vocabulary** consumed by
 `gh-optivem.yaml system-test.paths:` (per-project, user-owned values)
-and `internal/atdd/phase-scopes.yaml` (per-phase scope assignment,
-doctrine owned by gh-optivem). It is the single place to look up which
-keys exist, what they mean, and what's reserved.
+and the inline per-phase scope on writing-agent MID nodes in
+`internal/atdd/runtime/statemachine/process-flow.yaml` (per-phase scope
+assignment, doctrine owned by gh-optivem). It is the single place to
+look up which keys exist, what they mean, and what's reserved.
 
 Layer names are part of canonical ATDD vocabulary: the same key set in
 every gh-optivem project. **Users own VALUES** (physical paths in their
@@ -33,7 +34,7 @@ fixed; the value is the corresponding config field.
 | `system-path` | `system.path` (fully resolved, sut-namespace baked in per SSoT) |
 | `system-test-path` | `system-test.path` |
 
-**Path-shaped Family A keys eligible for `phase-scopes.yaml` scope:**
+**Path-shaped Family A keys eligible for per-phase scope:**
 `system-path`. `system-test-path` is **not** scope-eligible — it is the
 parent of every Family B testkit key and admitting it would let any
 phase escape the layer partition (see `FamilyAPathKeysInScope` in
@@ -147,12 +148,15 @@ implementations.
 
 ## Where the per-phase scope comes from
 
-The vocabulary here is consumed by `internal/atdd/phase-scopes.yaml`,
-which maps each BPMN phase id to the layer names that phase's agent
-may modify. Layer names are joined with `gh-optivem.yaml
-system-test.paths:` values at runtime — by the `check_phase_scope`
-action (BPMN runtime) or the `gh optivem process scope` CLI query —
-to produce the per-phase resolved-path set.
+The vocabulary here is consumed by the inline `read:` and `write:` lists
+on each writing-agent MID's `EXECUTE_AGENT` call-activity node in
+`internal/atdd/runtime/statemachine/process-flow.yaml`, which name the
+layers that MID's agent may read and modify. Layer names are joined
+with `gh-optivem.yaml system-test.paths:` values at runtime — by the
+`check_phase_scope` / `validate-outputs-and-scopes` actions (BPMN
+runtime) or the `gh optivem process scope` CLI query — to produce the
+per-phase resolved-path set. The accessor is `Engine.Scope(processName)`
+on `internal/atdd/runtime/statemachine`.
 
 For the scope rule itself ("only modify paths listed in the phase's
 scope; otherwise stop and alert the user"), see

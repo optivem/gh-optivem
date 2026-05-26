@@ -223,13 +223,15 @@ func (b bindings) dslFlagsPresent(ctx *statemachine.Context) statemachine.Outcom
 }
 
 // phaseScopeClean is Layer 2 of phase-scope enforcement (per plan
-// 20260518-1144 item 5): the post-phase scripted check. The
-// check_phase_scope action diffs the working tree against the phase's
-// allowed-paths (from internal/atdd/phase-scopes.yaml + gh-optivem.yaml
-// paths:) and writes the boolean result to ctx[phase_scope_clean] plus
-// the violating paths to ctx[phase_scope_violating_paths] for the
-// STOP_SCOPE_VIOLATION payload. This binding returns the boolean
-// verbatim; true → continue to COMMIT, false → STOP_SCOPE_VIOLATION.
+// 20260518-1144 item 5, retargeted at process-flow.yaml node scope per
+// plan 20260526-1536): the post-phase scripted check. The
+// check_phase_scope action diffs the working tree against the
+// writing-agent MID's inline `write:` scope (joined with
+// gh-optivem.yaml paths:) and writes the boolean result to
+// ctx[phase_scope_clean] plus the violating paths to
+// ctx[phase_scope_violating_paths] for the STOP_SCOPE_VIOLATION payload.
+// This binding returns the boolean verbatim; true → continue to COMMIT,
+// false → STOP_SCOPE_VIOLATION.
 //
 // No prompt fallback: the gate fires after the action that stamps the
 // flag, so the value must be set; reaching the gate with an unset value

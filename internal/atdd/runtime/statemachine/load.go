@@ -10,6 +10,11 @@ import (
 // RawNode mirrors the YAML node schema 1:1, preserving every field for both
 // loading and downstream diagnostics (Mermaid generation, doctor checks).
 // Optional fields use omitempty so the zero value is "absent in YAML".
+//
+// Read / Write are the per-phase scope lists folded inline (per plan
+// 20260526-1536). They sit on the writing-agent EXECUTE_AGENT call-activity
+// nodes inside each MID process; Engine.Scope(processName) looks them up.
+// Both lists are always declared together when present (no flat shorthand).
 type RawNode struct {
 	ID            string            `yaml:"id"`
 	Type          string            `yaml:"type"`
@@ -22,6 +27,8 @@ type RawNode struct {
 	Group         string            `yaml:"group,omitempty"`
 	TDDStage      string            `yaml:"tdd-stage,omitempty"`
 	Params        map[string]string `yaml:"params,omitempty"`
+	Read          []string          `yaml:"read,omitempty"`
+	Write         []string          `yaml:"write,omitempty"`
 }
 
 // rawEdge mirrors the YAML sequence-flow schema. `When` carries the raw

@@ -86,3 +86,32 @@ type Engine struct {
 	ActionFn func(name string) NodeFn
 	AgentFn  func(name string) NodeFn
 }
+
+// Scope returns the per-phase read / write scope lists for the named
+// writing-agent MID process. The convention (per plan 20260526-1536) is
+// that scope lives inline on the EXECUTE_AGENT call-activity node of each
+// writing-agent MID (write-acceptance-tests, implement-system, …), so the
+// accessor looks up Processes[processName] and returns the Read / Write
+// fields of its EXECUTE_AGENT node.
+//
+// Returns ok == false when the named process does not exist, when it has
+// no EXECUTE_AGENT call-activity node (e.g. command-only MIDs like
+// compile, build-system, run-tests, commit), or when that node carries
+// neither Read nor Write (e.g. refine-acceptance-criteria — declares
+// scope: none in prompt frontmatter, deliberately omitted here).
+func (e *Engine) Scope(processName string) (read, write []string, ok bool) {
+	proc, exists := e.Processes[processName]
+	if !exists {
+		return nil, nil, false
+	}
+	for _, node := range proc.Nodes {
+		if node.Kind != CallActivity || node.Raw.Process != "execute-agent" {
+			continue
+		}
+		if len(node.Raw.Read) == 0 && len(node.Raw.Write) == 0 {
+			return nil, nil, false
+		}
+		return append([]string(nil), node.Raw.Read...), append([]string(nil), node.Raw.Write...), true
+	}
+	return nil, nil, false
+}

@@ -95,6 +95,19 @@ func newActions(deps Deps) actions {
 	return actions{deps: deps.withDefaults()}
 }
 
+// loadTestEngine returns the canonical embedded process-flow Engine so
+// scope-checking actions can resolve Engine.Scope(processName) against
+// the same SSoT production code uses. Shared by every test that exercises
+// checkPhaseScope / validateOutputsAndScopes.
+func loadTestEngine(t *testing.T) *statemachine.Engine {
+	t.Helper()
+	eng, err := statemachine.LoadDefault()
+	if err != nil {
+		t.Fatalf("load embedded process-flow.yaml: %v", err)
+	}
+	return eng
+}
+
 // ---------------------------------------------------------------------------
 // RegisterAll wiring
 // ---------------------------------------------------------------------------
@@ -151,8 +164,8 @@ func TestPathInScope(t *testing.T) {
 }
 
 // writePhaseScopeTestConfig writes a minimal gh-optivem.yaml containing
-// the system.path + Family B `paths:` entries phase-scopes.yaml's
-// AT_RED_TEST and AT_GREEN_SYSTEM rows reference. Used by the integration
+// the system.path + Family B `paths:` entries process-flow.yaml's MID
+// `read:` / `write:` scope lists reference. Used by the integration
 // tests below to exercise the layer-name → resolved-path join without
 // shelling out to `gh optivem config init`.
 func writePhaseScopeTestConfig(t *testing.T, repoPath string) *projectconfig.Config {
@@ -202,7 +215,7 @@ system-test:
 }
 
 func TestCheckPhaseScope_RequiresPhaseID(t *testing.T) {
-	a := newActions(Deps{})
+	a := newActions(Deps{Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	out := a.checkPhaseScope(ctx)
 	if out.Err == nil || !strings.Contains(out.Err.Error(), "phase_id") {
@@ -211,14 +224,14 @@ func TestCheckPhaseScope_RequiresPhaseID(t *testing.T) {
 }
 
 func TestCheckPhaseScope_UnknownPhaseIsHardError(t *testing.T) {
-	a := newActions(Deps{})
+	a := newActions(Deps{Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
-	ctx.Params["phase_id"] = "NONEXISTENT_PHASE"
+	ctx.Params["phase_id"] = "nonexistent-phase"
 	out := a.checkPhaseScope(ctx)
 	if out.Err == nil {
 		t.Fatalf("expected error on unknown phase, got nil")
 	}
-	if !strings.Contains(out.Err.Error(), "NONEXISTENT_PHASE") {
+	if !strings.Contains(out.Err.Error(), "nonexistent-phase") {
 		t.Errorf("error should name the phase: %v", out.Err)
 	}
 }
@@ -231,9 +244,10 @@ func TestCheckPhaseScope_CleanWhenAllModificationsInScope(t *testing.T) {
 		[]byte("system-test/typescript/tests/latest/acceptance/foo.spec.ts\ndsl/typescript/src/core/Logic.ts\n"), nil)
 	git.on([]string{"-C", repoPath, "status", "--porcelain"},
 		[]byte(" M system-test/typescript/tests/latest/acceptance/foo.spec.ts\n"), nil)
-	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg})
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
-	ctx.Params["phase_id"] = "AT_RED_TEST"
+	// write-acceptance-tests scope: at-test, dsl-port, dsl-core.
+	ctx.Params["phase_id"] = "write-acceptance-tests"
 	out := a.checkPhaseScope(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -250,16 +264,16 @@ func TestCheckPhaseScope_ViolationPopulatesContext(t *testing.T) {
 	repoPath := t.TempDir()
 	cfg := writePhaseScopeTestConfig(t, repoPath)
 	git := newFakeRunner(t, "git")
-	// AT_RED_TEST scope: at-test, dsl-port, dsl-core. The driver-port edit
-	// is outside scope.
+	// write-acceptance-tests scope: at-test, dsl-port, dsl-core. The
+	// driver-port edit is outside scope.
 	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
 		[]byte("driver/typescript/src/port/Driver.ts\nsystem-test/typescript/tests/latest/acceptance/foo.spec.ts\n"), nil)
 	git.on([]string{"-C", repoPath, "status", "--porcelain"},
 		[]byte(""), nil)
 	var stderr bytes.Buffer
-	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &stderr})
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &stderr, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
-	ctx.Params["phase_id"] = "AT_RED_TEST"
+	ctx.Params["phase_id"] = "write-acceptance-tests"
 	out := a.checkPhaseScope(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -289,9 +303,10 @@ func TestCheckPhaseScope_RenameTracksBothEndpoints(t *testing.T) {
 	// is outside scope; the action must surface it.
 	git.on([]string{"-C", repoPath, "status", "--porcelain"},
 		[]byte("R  dsl/typescript/src/core/Old.ts -> somewhere/else/New.ts\n"), nil)
-	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}})
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
-	ctx.Params["phase_id"] = "AT_RED_DSL" // scope: dsl-core, driver-port
+	// implement-dsl scope: dsl-core, driver-port, external-system-driver-port.
+	ctx.Params["phase_id"] = "implement-dsl"
 	out := a.checkPhaseScope(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -510,10 +525,12 @@ func TestRunCommand_EmptyCommandHalts(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestValidateOutputsAndScopes_NoOutputs_NoScopes_IsValid(t *testing.T) {
-	// refine-acceptance-criteria carries no outputs and no scopes — the
-	// validation must pass trivially.
-	a := newActions(Deps{Stderr: &bytes.Buffer{}})
+	// refine-acceptance-criteria carries no outputs and no inline scope
+	// (declares scope: none in prompt frontmatter) — the validation must
+	// pass trivially.
+	a := newActions(Deps{Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "refine-acceptance-criteria"
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -528,8 +545,9 @@ func TestValidateOutputsAndScopes_NoOutputs_NoScopes_IsValid(t *testing.T) {
 
 func TestValidateOutputsAndScopes_MissingOutput_FlagsAndKind(t *testing.T) {
 	var stderr bytes.Buffer
-	a := newActions(Deps{Stderr: &stderr})
+	a := newActions(Deps{Stderr: &stderr, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "implement-dsl"
 	ctx.Params["outputs"] = "dsl-port-changed,system-driver-ports-changed"
 	// Only one of the two declared outputs is present in state.
 	ctx.Set("dsl-port-changed", true)
@@ -548,9 +566,13 @@ func TestValidateOutputsAndScopes_MissingOutput_FlagsAndKind(t *testing.T) {
 	}
 }
 
-func TestValidateOutputsAndScopes_OutputsPresent_NoScopes_IsValid(t *testing.T) {
-	a := newActions(Deps{Stderr: &bytes.Buffer{}})
+func TestValidateOutputsAndScopes_OutputsPresent_NoScope_IsValid(t *testing.T) {
+	// A task-name with no engine entry (scope: none / unknown) skips the
+	// scope check; outputs-only validation succeeds when every key is
+	// present in state.
+	a := newActions(Deps{Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "refine-acceptance-criteria"
 	ctx.Params["outputs"] = "dsl-port-changed"
 	ctx.Set("dsl-port-changed", true)
 	out := a.validateOutputsAndScopes(ctx)
@@ -571,10 +593,11 @@ func TestValidateOutputsAndScopes_ScopeDiff_FlagsAndKind(t *testing.T) {
 	git.on([]string{"-C", repoPath, "status", "--porcelain"},
 		[]byte(""), nil)
 	var stderr bytes.Buffer
-	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &stderr})
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &stderr, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
-	// declared scopes covers dsl-core but not "somewhere/else".
-	ctx.Params["scopes"] = "dsl-core,driver-port"
+	// implement-dsl scope (write list) covers dsl-core, driver-port,
+	// external-system-driver-port — but not "somewhere/else".
+	ctx.Params["task-name"] = "implement-dsl"
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -598,10 +621,10 @@ func TestValidateOutputsAndScopes_AllClean_IsValid(t *testing.T) {
 		[]byte("dsl/typescript/src/core/Logic.ts\ndriver/typescript/src/port/Port.ts\n"), nil)
 	git.on([]string{"-C", repoPath, "status", "--porcelain"},
 		[]byte(""), nil)
-	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}})
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "implement-dsl"
 	ctx.Params["outputs"] = "dsl-port-changed"
-	ctx.Params["scopes"] = "dsl-core,driver-port"
 	ctx.Set("dsl-port-changed", true)
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
@@ -625,10 +648,10 @@ func TestValidateOutputsAndScopes_MissingOutputWins_OverScopeDiff(t *testing.T) 
 		[]byte("somewhere/else/Stray.ts\n"), nil)
 	git.on([]string{"-C", repoPath, "status", "--porcelain"},
 		[]byte(""), nil)
-	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}})
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "implement-dsl"
 	ctx.Params["outputs"] = "dsl-port-changed"
-	ctx.Params["scopes"] = "dsl-core"
 	// dsl-port-changed not set in state.
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
@@ -636,6 +659,34 @@ func TestValidateOutputsAndScopes_MissingOutputWins_OverScopeDiff(t *testing.T) 
 	}
 	if got := ctx.GetString("failure-kind"); got != "missing-output" {
 		t.Fatalf("failure-kind: got %q, want %q (missing-output must win)", got, "missing-output")
+	}
+}
+
+func TestValidateOutputsAndScopes_FixPath_UsesOriginatingTaskName(t *testing.T) {
+	// When a fix dispatch is in flight, task-name is fix-${failure-kind}
+	// (no MID entry) but originating-task-name carries the outer MID's
+	// name so scope resolution stays on the original phase's write list.
+	repoPath := t.TempDir()
+	cfg := writePhaseScopeTestConfig(t, repoPath)
+	git := newFakeRunner(t, "git")
+	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
+		[]byte("dsl/typescript/src/core/Logic.ts\nsomewhere/else/Stray.ts\n"), nil)
+	git.on([]string{"-C", repoPath, "status", "--porcelain"},
+		[]byte(""), nil)
+	var stderr bytes.Buffer
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &stderr, Engine: loadTestEngine(t)})
+	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "fix-scope-diff"
+	ctx.Params["originating-task-name"] = "implement-dsl"
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get("outputs-and-scopes-valid"); got != false {
+		t.Fatalf("outputs-and-scopes-valid: got %v, want false (scope-diff via originating-task-name)", got)
+	}
+	if got := ctx.GetString("failure-kind"); got != "scope-diff" {
+		t.Fatalf("failure-kind: got %q, want %q", got, "scope-diff")
 	}
 }
 

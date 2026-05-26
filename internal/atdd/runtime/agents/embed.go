@@ -86,16 +86,17 @@ func Prompt(name string) (string, error) {
 
 // HasNoneScope reports whether the named agent's prompt frontmatter
 // declares `scope: none`. A `none` declaration is a doctrinal exemption
-// from `internal/atdd/phase-scopes.yaml` — the agent mutates only
-// inter-phase artifacts or external systems, never the repo working
-// tree (see runtime/shared/scope.md "scope: none" section). The
-// frontmatter is the SSoT for the exemption; no sibling Go allowlist.
+// from the per-phase scope on the writing-agent MID's EXECUTE_AGENT
+// node in `process-flow.yaml` — the agent mutates only inter-phase
+// artifacts or external systems, never the repo working tree (see
+// runtime/shared/scope.md "scope: none" section). The frontmatter is
+// the SSoT for the exemption; no sibling Go allowlist.
 //
 // The frontmatter's `scope:` value is a small sum-type: scalar `"none"`
 // for the exemption, or a map (today always empty `{}`) for layer-pinned
-// phases whose real scope lives in phase-scopes.yaml. We decode into
-// yaml.Node so both shapes parse without errors, then discriminate by
-// kind/value.
+// phases whose real scope lives inline in process-flow.yaml. We decode
+// into yaml.Node so both shapes parse without errors, then discriminate
+// by kind/value.
 //
 // Returns an error if the prompt is missing or the frontmatter fails to
 // parse — never silently false on parse error, since the reverse-FK

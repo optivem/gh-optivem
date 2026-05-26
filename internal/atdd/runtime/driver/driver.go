@@ -232,6 +232,7 @@ func Run(ctx context.Context, opts Options) error {
 		RepoPath:   repoPath,
 		Config:     cfg,
 		Autonomous: opts.Autonomous,
+		Engine:     eng,
 	})
 
 	agentReg := agents.New()
