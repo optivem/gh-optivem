@@ -1,5 +1,20 @@
 # Dead-code audit: pre-BPMN gate + action bindings
 
+> ⚠️ **Do NOT execute in parallel with
+> `plans/20260525-2348-bpmn-phase-d-bindings.md`.** Run 2348 first, then
+> this plan. Both plans edit the same four files
+> (`internal/atdd/runtime/{gates,actions}/bindings.go` and their `_test.go`
+> siblings) in incompatible ways: 2348 adds new bindings + entries to the
+> `want` list at `actions/bindings_test.go:962-981`; this plan deletes
+> legacy bindings + shrinks/flips that same `want` list. Plan 2348 line 39
+> explicitly defers the dead-code sweep ("stay registered for now … swept
+> in a follow-up once the new shape is proven on a full ticket") — this
+> plan IS that follow-up. The audit procedure below (step 1: grep current
+> `process-flow.yaml`) also assumes the Phase-D wiring has settled, so
+> picking up before 2348 lands risks deleting bindings that 2348 is about
+> to re-register under the same name. Per `feedback_concurrent_agent_collision`,
+> the safe order is strictly sequential.
+
 > **Cross-reference:** Spawned out of
 > `plans/20260525-2311-kebab-case-everywhere.md` (kebab-everywhere flip).
 > That plan flipped every snake-form identifier referenced by the *current*
