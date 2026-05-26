@@ -252,12 +252,12 @@ processes:
       - id: GATE_TICKET_KIND
         type: gateway
         binding: ticket-kind
-        name: "ticket-kind"
+        name: "Ticket Kind?"
 
       - id: GATE_TASK_SUBTYPE
         type: gateway
         binding: task-subtype
-        name: "task-subtype"
+        name: "Task Subtype?"
 
       - id: CHANGE_SYSTEM_BEHAVIOR
         type: call-activity
@@ -348,6 +348,7 @@ processes:
       - id: GATE_REFACTOR_TYPE_CHOICE
         type: gateway
         binding: refactor-type-choice
+        name: "Refactor Type?"
 
       - id: REFACTOR_SYSTEM_STRUCTURE
         type: call-activity
@@ -644,7 +645,7 @@ processes:
       - id: GATE_DSL_PORT_CHANGED
         type: gateway
         binding: dsl-port-changed
-        name: "dsl-port-changed"
+        name: "DSL Port Changed?"
 
       - id: IMPLEMENT_AND_VERIFY_DSL
         type: call-activity
@@ -657,7 +658,7 @@ processes:
       - id: GATE_EXTERNAL_DRIVER_PORTS_CHANGED
         type: gateway
         binding: external-driver-ports-changed
-        name: "external-driver-ports-changed"
+        name: "External Driver Ports Changed?"
 
       - id: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS
         type: call-activity
@@ -670,7 +671,7 @@ processes:
       - id: GATE_SYSTEM_DRIVER_PORTS_CHANGED
         type: gateway
         binding: system-driver-ports-changed
-        name: "system-driver-ports-changed"
+        name: "System Driver Ports Changed?"
 
       - id: IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS
         type: call-activity
@@ -720,7 +721,7 @@ processes:
       - id: GATE_EXPECTED_TEST_RESULT
         type: gateway
         binding: expected-test-result
-        name: "expected-test-result"
+        name: "Expected Test Result?"
 
       - id: VERIFY_TESTS_PASS_ACCEPTANCE
         type: call-activity
@@ -861,7 +862,7 @@ processes:
       - id: GATE_DSL_PORT_CHANGED
         type: gateway
         binding: dsl-port-changed
-        name: "dsl-port-changed"
+        name: "DSL Port Changed?"
 
       - id: IMPLEMENT_AND_VERIFY_DSL
         type: call-activity
@@ -1031,7 +1032,7 @@ processes:
       - id: GATE_EXPECTED_TEST_RESULT
         type: gateway
         binding: expected-test-result
-        name: "expected-test-result"
+        name: "Expected Test Result?"
 
       - id: VERIFY_TESTS_PASS_FILTERED
         type: call-activity
@@ -1099,7 +1100,7 @@ processes:
       - id: GATE_TESTS_OUTCOME
         type: gateway
         binding: test-outcome
-        name: "test-outcome"
+        name: "Test Outcome?"
 
       - id: FIX_UNEXPECTED_FAILING_TESTS
         type: call-activity
@@ -1138,7 +1139,7 @@ processes:
       - id: GATE_TESTS_OUTCOME
         type: gateway
         binding: test-outcome
-        name: "test-outcome"
+        name: "Test Outcome?"
 
       - id: FIX_UNEXPECTED_PASSING_TESTS
         type: call-activity
@@ -1716,7 +1717,7 @@ processes:
       - id: GATE_APPROVED
         type: gateway
         binding: approval-outcome
-        name: "approval-outcome"
+        name: "Approval Outcome?"
 
       - id: APPROVE_OK_END
         type: end-event
@@ -1768,7 +1769,7 @@ processes:
       - id: GATE_APPROVED_PRE
         type: gateway
         binding: approval-outcome
-        name: "approval-outcome"
+        name: "Approval Outcome?"
 
       - id: SNAPSHOT_WORKING_TREE
         type: service-task
@@ -1788,12 +1789,12 @@ processes:
       - id: GATE_OUTPUTS_AND_SCOPES_VALID
         type: gateway
         binding: outputs-and-scopes-valid
-        name: "outputs-and-scopes-valid"
+        name: "Outputs and Scopes Valid?"
 
       - id: GATE_FIX_ON_FAILURE
         type: gateway
         binding: fix-on-failure-enabled
-        name: "fix-on-failure-enabled"
+        name: "Fix on Failure Enabled?"
 
       - id: FIX
         type: call-activity
@@ -1810,7 +1811,7 @@ processes:
       - id: GATE_APPROVED_POST
         type: gateway
         binding: approval-outcome
-        name: "approval-outcome"
+        name: "Approval Outcome?"
 
       - id: EXECUTE_AGENT_END
         type: end-event
@@ -1867,7 +1868,7 @@ processes:
       - id: GATE_APPROVED_PRE
         type: gateway
         binding: approval-outcome
-        name: "approval-outcome"
+        name: "Approval Outcome?"
 
       - id: RUN_COMMAND
         type: service-task
@@ -1877,7 +1878,7 @@ processes:
       - id: GATE_COMMAND_SUCCEEDED
         type: gateway
         binding: command-succeeded
-        name: "command-succeeded"
+        name: "Command Succeeded?"
 
       - id: FIX
         type: call-activity
@@ -1921,7 +1922,7 @@ processes:
       - id: GATE_APPROVED_PRE
         type: gateway
         binding: approval-outcome
-        name: "approval-outcome"
+        name: "Approval Outcome?"
 
       - id: EXECUTE_AGENT
         type: call-activity
