@@ -186,21 +186,21 @@ func issueFromContext(ctx *statemachine.Context) (tracker.Issue, error) {
 }
 
 // scopeExceptionRequested is Layer 1 of phase-scope enforcement (per plan
-// 20260518-1144 item 6): the agent-triggered escape hatch. The agent emits
-// a structured `scope_exception` block in its COMMIT output when it
-// recognises it cannot complete the phase within `scope:`; a COMMIT-output
-// parsing layer populates ctx[scope_exception_files] ([]string) and
-// ctx[scope_exception_reason] (string). This binding returns true when
-// scope_exception_files is non-empty, routing the cycle to
+// 20260518-1144 item 6): the agent-triggered escape hatch. The agent
+// invokes `gh optivem output write scope-exception-files=... \
+// scope-exception-reason=...` when it cannot complete the phase within
+// `scope:`; validate-outputs-and-scopes reads the per-dispatch JSONL
+// file and populates ctx[scope-exception-files] ([]string) and
+// ctx[scope-exception-reason] (string). This binding returns true when
+// scope-exception-files is non-empty, routing the cycle to
 // STOP_SCOPE_VIOLATION (skipping DISABLE / Layer 2 / COMMIT).
 //
-// No prompt fallback: the gate fires immediately after the agent's WRITE
-// node; an absent value means "no exception was signalled" and routes to
-// the normal continuation. The shape contract (yaml emitted by the agent,
-// flattened into two context keys by the parser) lives in
-// internal/assets/runtime/shared/scope.md.
+// No prompt fallback: the gate fires after validate-outputs-and-scopes;
+// an absent value means "no exception was signalled" and routes to the
+// normal continuation. The shape contract (kebab keys flattened from
+// JSONL by the validator) lives in internal/assets/runtime/shared/scope.md.
 func (b bindings) scopeExceptionRequested(ctx *statemachine.Context) statemachine.Outcome {
-	files, _ := ctx.Get("scope_exception_files").([]string)
+	files, _ := ctx.Get("scope-exception-files").([]string)
 	return statemachine.Outcome{Bool: len(files) > 0}
 }
 
@@ -251,8 +251,9 @@ func (b bindings) phaseScopeClean(ctx *statemachine.Context) statemachine.Outcom
 //
 // All keys read/written below are kebab-case to match the YAML
 // `binding:` references, the YAML `params:` block keys, and the
-// agent-emitted `outputs:` yaml keys flattened into ctx.State by
-// clauderun.ParseOutputs.
+// agent-emitted output keys flattened into ctx.State by
+// validate-outputs-and-scopes (per-dispatch JSONL channel; see plan
+// 20260526-2118).
 
 // commandSucceeded is the LOW `execute-command` primitive's
 // GATE_COMMAND_SUCCEEDED. Reads the boolean run-command stamped into
@@ -325,13 +326,13 @@ func (b bindings) fixOnFailureEnabled(ctx *statemachine.Context) statemachine.Ou
 
 // dslPortChanged, systemDriverPortsChanged, externalDriverPortsChanged
 // are the writing-agent output flags consumed by the per-test-layer
-// fanout in implement-and-verify-dsl. Each reads the kebab ctx key
-// the agent's `outputs:` YAML block emits (flattened verbatim by
-// clauderun.ParseOutputs into ctx.State). Missing/unset is a bug —
-// the writing-agent prompt MUST list the flag in `outputs:`, so unset
-// means the agent's COMMIT block was malformed, not "no" — and we
-// halt rather than mis-route (same doctrine as the older
-// dslFlagsPresent gate).
+// fanout in implement-and-verify-dsl. Each reads the kebab ctx key the
+// agent emits via `gh optivem output write KEY=VAL` (flattened from the
+// per-dispatch JSONL file by validate-outputs-and-scopes). Missing/unset
+// is a bug — the writing-agent MID's BPMN `outputs:` list MUST declare
+// the key as required, so unset means the agent skipped the `output
+// write` call — and we halt rather than mis-route (same doctrine as the
+// older dslFlagsPresent gate).
 func (b bindings) dslPortChanged(ctx *statemachine.Context) statemachine.Outcome {
 	return boolStateGate(ctx, "dsl-port-changed")
 }

@@ -20,38 +20,33 @@ ${scope_block}
 
 ## Outputs
 
-At the end of your final response, emit a **fenced** YAML block with
-the contract-test methods this ticket exercises and a flag telling the
-dispatcher whether the DSL Port (`${dsl-port}`) changed. The block
-MUST be wrapped in triple-backtick fences exactly as shown below —
-un-fenced YAML is invisible to the parser and the cycle will halt
-with a missing-output failure:
+Emit each declared output by calling `gh optivem output write KEY=VAL`
+from the `Bash` tool. The dispatcher reads the resulting per-invocation
+JSONL file after you exit. Call once per dispatch (multiple `KEY=VAL`
+args allowed in a single call); if you need to correct a value, call
+again with the new value (last-write-wins).
 
-````
+${expected_outputs}
+
+Key semantics:
+
+- `test-names` is every unqualified test method name added or modified
+  by this ticket (across re-runs) — not every test in the file. If a
+  re-run adds another test for the same ticket, include both; do not
+  include pre-existing tests the ticket did not touch.
+- `dsl-port-changed` is `true` if you added or modified any method on
+  the DSL Port (`${dsl-port}`) — i.e. you also wrote a `"TODO: DSL"`
+  stub in the DSL Core per Step 2 — and `false` otherwise. The
+  dispatcher routes into the DSL implementation phase iff this flag is
+  `true`, so an omitted or incorrect value will mis-route the cycle.
+- `scope-exception-files` / `scope-exception-reason` are the
+  scope-exception envelope (see `${references_root}/scope.md`). Emit
+  them only when you had to read or write outside this MID's scope.
+
+Example call:
+
 ```
-outputs:
-  test_names:
-    - shouldFetchCustomerProfile
-    - shouldRejectMalformedRequest
-  dsl-port-changed: false
+gh optivem output write \
+  dsl-port-changed=false \
+  test-names=shouldFetchCustomerProfile,shouldRejectMalformedRequest
 ```
-````
-
-(The outer four-backtick fence is only there so the example renders
-correctly in this prompt — your emitted block uses three backticks
-opening and closing.)
-
-`test_names` is every unqualified test method name added or modified by
-this ticket (across re-runs) — not every test in the file. If a re-run
-adds another test for the same ticket, include both; do not include
-pre-existing tests the ticket did not touch.
-
-`dsl-port-changed` is `true` if you added or modified any method on the
-DSL Port (`${dsl-port}`) — i.e. you also wrote a `"TODO: DSL"` stub in
-the DSL Core per Step 2 — and `false` otherwise. The dispatcher routes
-into the DSL implementation phase iff this flag is `true`, so an
-omitted or incorrect value will mis-route the cycle. Both downstream
-tasks consume these values and have no other way to learn them.
-
-The block may follow other prose. The parser keeps the last fenced
-`outputs:` block in the response.

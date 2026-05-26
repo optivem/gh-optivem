@@ -8,18 +8,20 @@ in the dispatched prompt's `## Scope` block.
 set. If the task appears to require reading or writing a path outside
 scope, do **not** expand silently and do **not** ask the user inline.
 
-Instead, emit a structured `scope_exception` block in your final output and
-exit. `kind:` tells the orchestrator whether the overreach is a read-side
-or write-side breach (read-side overreaches and write-side overreaches
-trigger different downstream behaviour):
+Instead, emit the scope-exception envelope via the structured output
+channel — call `gh optivem output write` from your `Bash` tool with
+the `scope-exception-*` keys declared on the MID:
 
 ```
-scope_exception:
-  kind: read | write
-  files:
-    - path/to/out-of-scope.go
-  reason: <one-line rationale>
+gh optivem output write \
+  scope-exception-files=path/to/out-of-scope.go \
+  scope-exception-reason="<one-line rationale>"
 ```
+
+`scope-exception-files` is a comma-separated list (the CLI splits it
+into a list at the dispatcher boundary). The downstream
+`scope_exception_requested` gate reads `scope-exception-files` from
+`ctx.State` and routes to the appropriate handler.
 
 ## `scope: none`
 
@@ -37,7 +39,8 @@ lists, no inline "stop and ask the user" guardrails for specific paths.
 
 If a layer is not in `## Scope` `read`, you cannot read it. If it is not in
 `## Scope` `write`, you cannot write to it. The escape hatch for both is the
-same `scope_exception` block above — never a special-case prose rule baked
-into the prompt body. This keeps the agent contract in one place (the BPMN
-node's `read:` / `write:` lists, rendered into `## Scope`) and prevents
-prompt prose from drifting out of sync with the actual scope.
+same `gh optivem output write scope-exception-*` call above — never a
+special-case prose rule baked into the prompt body. This keeps the agent
+contract in one place (the BPMN node's `read:` / `write:` lists, rendered
+into `## Scope`) and prevents prompt prose from drifting out of sync with
+the actual scope.

@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
@@ -1546,5 +1547,145 @@ func mustContain(t *testing.T, haystack, needle string) {
 	t.Helper()
 	if !strings.Contains(haystack, needle) {
 		t.Fatalf("missing %q in:\n%s", needle, haystack)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Output channel env wiring (plan 20260526-2118)
+// ---------------------------------------------------------------------------
+
+func TestRenderExpectedOutputs_EmptySpec_ReturnsEmpty(t *testing.T) {
+	if got := renderExpectedOutputs(nil); got != "" {
+		t.Errorf("nil spec: got %q, want empty", got)
+	}
+	if got := renderExpectedOutputs([]statemachine.OutputSpec{}); got != "" {
+		t.Errorf("empty spec: got %q, want empty", got)
+	}
+}
+
+func TestRenderExpectedOutputs_AllRequired_NoOptionalBlock(t *testing.T) {
+	got := renderExpectedOutputs([]statemachine.OutputSpec{
+		{Key: "dsl-port-changed", Type: "bool"},
+		{Key: "system-driver-ports-changed", Type: "bool"},
+	})
+	mustContain(t, got, "Required outputs:")
+	mustContain(t, got, "  dsl-port-changed: bool")
+	mustContain(t, got, "  system-driver-ports-changed: bool")
+	if strings.Contains(got, "Optional outputs:") {
+		t.Errorf("Optional outputs block should be omitted when no optional keys:\n%s", got)
+	}
+	mustContain(t, got, "Emit: gh optivem output write KEY=VAL")
+}
+
+func TestRenderExpectedOutputs_AllOptional_NoRequiredBlock(t *testing.T) {
+	got := renderExpectedOutputs([]statemachine.OutputSpec{
+		{Key: "test-names", Type: "string-list", Optional: true},
+	})
+	if strings.Contains(got, "Required outputs:") {
+		t.Errorf("Required outputs block should be omitted when no required keys:\n%s", got)
+	}
+	mustContain(t, got, "Optional outputs:")
+	mustContain(t, got, "  test-names: string-list")
+	mustContain(t, got, "Emit: gh optivem output write KEY=VAL")
+}
+
+func TestRenderExpectedOutputs_MixedRequiredAndOptional(t *testing.T) {
+	got := renderExpectedOutputs([]statemachine.OutputSpec{
+		{Key: "dsl-port-changed", Type: "bool"},
+		{Key: "test-names", Type: "string-list", Optional: true},
+		{Key: "scope-exception-reason", Type: "string", Optional: true},
+	})
+	mustContain(t, got, "Required outputs:\n  dsl-port-changed: bool")
+	mustContain(t, got, "Optional outputs:\n  test-names: string-list\n  scope-exception-reason: string")
+	mustContain(t, got, "Emit: gh optivem output write KEY=VAL")
+	// Required must precede Optional.
+	if strings.Index(got, "Required outputs:") > strings.Index(got, "Optional outputs:") {
+		t.Errorf("Required must come before Optional:\n%s", got)
+	}
+}
+
+func TestRenderPrompt_ExpectedOutputsSubstitutes(t *testing.T) {
+	opts := newOpts()
+	opts.PromptOverride = "Body. ${expected_outputs}"
+	opts.ExpectedOutputs = []statemachine.OutputSpec{
+		{Key: "dsl-port-changed", Type: "bool"},
+		{Key: "test-names", Type: "string-list", Optional: true},
+	}
+	got, err := RenderPrompt(opts)
+	if err != nil {
+		t.Fatalf("RenderPrompt: %v", err)
+	}
+	mustContain(t, got, "Required outputs:")
+	mustContain(t, got, "Optional outputs:")
+	mustContain(t, got, "dsl-port-changed: bool")
+	mustContain(t, got, "test-names: string-list")
+}
+
+func TestOutputChannelEnv_BothUnset_NilEnv(t *testing.T) {
+	got := outputChannelEnv(RunOpts{})
+	if got != nil {
+		t.Errorf("want nil (inherit parent env), got %v", got)
+	}
+}
+
+func TestOutputChannelEnv_BothSet_AppendedToParentEnv(t *testing.T) {
+	got := outputChannelEnv(RunOpts{
+		OutputFilePath: "/tmp/agent-001.outputs.jsonl",
+		OutputKeysSpec: "dsl-port-changed:bool,test-names:string-list",
+	})
+	if got == nil {
+		t.Fatalf("want env slice, got nil")
+	}
+	// Parent env should be present (PATH or similar) plus our two
+	// trailing GH_OPTIVEM_OUTPUT_* entries. We don't assert the parent
+	// shape — just the trailing entries.
+	last := got[len(got)-2:]
+	wantFile := "GH_OPTIVEM_OUTPUT_FILE=/tmp/agent-001.outputs.jsonl"
+	wantKeys := "GH_OPTIVEM_OUTPUT_KEYS=dsl-port-changed:bool,test-names:string-list"
+	if last[0] != wantFile {
+		t.Errorf("got[-2] = %q, want %q", last[0], wantFile)
+	}
+	if last[1] != wantKeys {
+		t.Errorf("got[-1] = %q, want %q", last[1], wantKeys)
+	}
+}
+
+func TestOutputChannelEnv_OnlyFileSet_ExportsFileOnly(t *testing.T) {
+	got := outputChannelEnv(RunOpts{OutputFilePath: "/tmp/x.jsonl"})
+	if got == nil {
+		t.Fatalf("want env slice, got nil")
+	}
+	if got[len(got)-1] != "GH_OPTIVEM_OUTPUT_FILE=/tmp/x.jsonl" {
+		t.Errorf("got[-1] = %q, want file export", got[len(got)-1])
+	}
+	for _, e := range got {
+		if strings.HasPrefix(e, "GH_OPTIVEM_OUTPUT_KEYS=") {
+			t.Errorf("OUTPUT_KEYS unexpectedly set: %q", e)
+		}
+	}
+}
+
+func TestDispatch_ForwardsOutputChannelToRunner(t *testing.T) {
+	claudeFake := &fakeClaude{}
+	gitFake := &fakeGit{
+		out:       [][]byte{[]byte("abc123"), []byte("abc123")},
+		branchPre: "main", branchPost: "main",
+	}
+	opts := newOpts()
+	opts.OutputFilePath = "/tmp/runs/001-acceptance-test-writer.outputs.jsonl"
+	opts.OutputKeysSpec = "dsl-port-changed:bool,test-names:string-list"
+
+	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if len(claudeFake.calls) != 1 {
+		t.Fatalf("want 1 runner call, got %d", len(claudeFake.calls))
+	}
+	got := claudeFake.calls[0]
+	if got.OutputFilePath != opts.OutputFilePath {
+		t.Errorf("OutputFilePath: runner saw %q, want %q", got.OutputFilePath, opts.OutputFilePath)
+	}
+	if got.OutputKeysSpec != opts.OutputKeysSpec {
+		t.Errorf("OutputKeysSpec: runner saw %q, want %q", got.OutputKeysSpec, opts.OutputKeysSpec)
 	}
 }

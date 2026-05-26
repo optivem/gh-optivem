@@ -32,19 +32,15 @@ import (
 // ---------------------------------------------------------------------------
 
 // fakeClaude records each RunOpts so tests can assert prompt content and
-// returns a canned error. resultText, when non-empty, becomes
-// RunResult.ResultText so the dispatcher's `outputs:` parser sees a
-// canned final-response body — used by the outputs-plumbing tests to
-// drive ParseOutputs through the dispatcher seam.
+// returns a canned error.
 type fakeClaude struct {
-	calls      []clauderun.RunOpts
-	err        error
-	resultText string
+	calls []clauderun.RunOpts
+	err   error
 }
 
 func (f *fakeClaude) Run(_ context.Context, opts clauderun.RunOpts) (clauderun.RunResult, error) {
 	f.calls = append(f.calls, opts)
-	return clauderun.RunResult{ResultText: f.resultText}, f.err
+	return clauderun.RunResult{}, f.err
 }
 
 // fakeGit serves canned outputs. The HEAD rev-parse and log calls
@@ -937,133 +933,11 @@ func TestRunState_PromptLogPathNilIsEmpty(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Agent outputs → ctx.State plumbing
-// ---------------------------------------------------------------------------
-//
-// These tests cover the end-to-end seam introduced by plan
-// 20260520-1945-user-task-output-context-plumbing.md: the WRITE agent's
-// `outputs:` YAML block in its final response text is parsed by the
-// user-task dispatcher and flattened into ctx.State so downstream
-// gates / actions (run_targeted_tests, scope_exception_requested, …)
-// see the populated values.
-//
-// The fake claude returns a canned ResultText with the YAML block; the
-// dispatcher's call to clauderun.ParseOutputs runs against it and we
-// assert ctx.State after dispatch.
-
-func TestClaudeRunDispatch_OutputsBlockPopulatesContext(t *testing.T) {
-	// Agent emits both test_names and suite under outputs:. The dispatcher
-	// must coerce test_names to []string and write both keys so the
-	// downstream RUN action's `ctx.State["test_names"].([]string)`
-	// assertion succeeds.
-	gitFake := &fakeGit{
-		out: [][]byte{
-			[]byte("aaaaaaa1\n"),
-			[]byte("aaaaaaa1\n"),
-		},
-	}
-	claudeFake := &fakeClaude{
-		resultText: "I authored the failing tests.\n\n" +
-			"```yaml\n" +
-			"outputs:\n" +
-			"  test_names:\n" +
-			"    - shouldRegisterCustomer\n" +
-			"    - shouldRejectDuplicateCustomer\n" +
-			"  suite: <acceptance-api>\n" +
-			"```\n",
-	}
-	fn := buildEngine(t, newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake}))
-
-	ctx := newCtxWithIssue()
-	out := fn(ctx)
-	if out.Err != nil {
-		t.Fatalf("dispatch: %v", out.Err)
-	}
-
-	names, ok := ctx.Get("test_names").([]string)
-	if !ok {
-		t.Fatalf("ctx.test_names: want []string, got %T (%v)", ctx.Get("test_names"), ctx.Get("test_names"))
-	}
-	wantNames := []string{"shouldRegisterCustomer", "shouldRejectDuplicateCustomer"}
-	if len(names) != len(wantNames) {
-		t.Fatalf("test_names: got %v, want %v", names, wantNames)
-	}
-	for i, w := range wantNames {
-		if names[i] != w {
-			t.Errorf("test_names[%d]: got %q, want %q", i, names[i], w)
-		}
-	}
-	if got := ctx.GetString("suite"); got != "<acceptance-api>" {
-		t.Errorf("ctx.suite: got %q, want <acceptance-api>", got)
-	}
-}
-
-func TestClaudeRunDispatch_ScopeExceptionFlattensIntoContext(t *testing.T) {
-	// The scope_exception envelope (per internal/assets/runtime/shared/
-	// scope.md) flattens to scope_exception_files ([]string) and
-	// scope_exception_reason (string) — exactly the keys
-	// gates.scopeExceptionRequested reads via ctx.Get(...).([]string).
-	gitFake := &fakeGit{
-		out: [][]byte{
-			[]byte("aaaaaaa1\n"),
-			[]byte("aaaaaaa1\n"),
-		},
-	}
-	claudeFake := &fakeClaude{
-		resultText: "```yaml\n" +
-			"scope_exception:\n" +
-			"  files:\n" +
-			"    - internal/shared/clock.go\n" +
-			"  reason: depends on a clock helper outside scope\n" +
-			"```\n",
-	}
-	fn := buildEngine(t, newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake}))
-
-	ctx := newCtxWithIssue()
-	out := fn(ctx)
-	if out.Err != nil {
-		t.Fatalf("dispatch: %v", out.Err)
-	}
-
-	files, ok := ctx.Get("scope_exception_files").([]string)
-	if !ok {
-		t.Fatalf("ctx.scope_exception_files: want []string, got %T", ctx.Get("scope_exception_files"))
-	}
-	if len(files) != 1 || files[0] != "internal/shared/clock.go" {
-		t.Errorf("scope_exception_files: got %v", files)
-	}
-	if got := ctx.GetString("scope_exception_reason"); got != "depends on a clock helper outside scope" {
-		t.Errorf("scope_exception_reason: got %q", got)
-	}
-}
-
-func TestClaudeRunDispatch_MalformedOutputsBlockFailsLoud(t *testing.T) {
-	// A fenced block that starts with `outputs:` but contains broken YAML
-	// must surface a clear error rather than silently zeroing state. The
-	// dispatcher routes the parser's error as Outcome.Err so the cycle
-	// stops at the user-task boundary.
-	gitFake := &fakeGit{
-		out: [][]byte{
-			[]byte("aaaaaaa1\n"),
-			[]byte("aaaaaaa1\n"),
-		},
-	}
-	claudeFake := &fakeClaude{
-		resultText: "```yaml\n" +
-			"outputs:\n" +
-			"  test_names: [unterminated\n" +
-			"```\n",
-	}
-	fn := buildEngine(t, newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake}))
-
-	out := fn(newCtxWithIssue())
-	if out.Err == nil {
-		t.Fatalf("expected error for malformed outputs block, got nil")
-	}
-	if !strings.Contains(out.Err.Error(), "parse outputs") {
-		t.Errorf("error wording should surface parse-outputs context, got %q", out.Err.Error())
-	}
-}
+// Agent outputs flow through the per-dispatch JSONL channel since plan
+// 20260526-2118 (GH_OPTIVEM_OUTPUT_FILE). Tests for the read/flatten side
+// live in actions/bindings_test.go::TestValidateOutputsAndScopes_JSONL_*,
+// not here — the dispatcher's job is just to set the env var and stash
+// the path on ctx.State (the action does the parsing).
 
 // ---------------------------------------------------------------------------
 // approve dispatcher (BPMN Phase D Item 6, Q-D2)
@@ -1175,19 +1049,18 @@ func buildEngineFromApproveYAML(t *testing.T, opts Options, yamlSrc string) stat
 	return eng.Processes["approve"].Nodes["ASK_HUMAN"].Fn
 }
 
-func TestClaudeRunDispatch_MissingOutputsBlockIsNoOp(t *testing.T) {
-	// Agents that have nothing to emit (or pre-amendment prompts) leave
-	// the block out entirely. The dispatcher must NOT fail — the
-	// downstream consumer's existing "not set in Context" error path
-	// still surfaces the missing key, which is the same behaviour as
-	// before structured output was wired up.
+func TestClaudeRunDispatch_NoStructuredOutputIsNoOp(t *testing.T) {
+	// Agents that emit no structured output via the JSONL channel must
+	// still complete cleanly at the dispatcher level — downstream
+	// validate-outputs-and-scopes is what fires missing-output (with
+	// proper diagnostics) if required keys are absent.
 	gitFake := &fakeGit{
 		out: [][]byte{
 			[]byte("aaaaaaa1\n"),
 			[]byte("aaaaaaa1\n"),
 		},
 	}
-	claudeFake := &fakeClaude{resultText: "Done. No structured output today."}
+	claudeFake := &fakeClaude{}
 	fn := buildEngine(t, newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake}))
 
 	ctx := newCtxWithIssue()
@@ -1195,7 +1068,7 @@ func TestClaudeRunDispatch_MissingOutputsBlockIsNoOp(t *testing.T) {
 	if out.Err != nil {
 		t.Fatalf("dispatch: %v", out.Err)
 	}
-	if v := ctx.Get("test_names"); v != nil {
-		t.Errorf("test_names should be unset, got %v", v)
+	if v := ctx.Get("test-names"); v != nil {
+		t.Errorf("test-names should be unset, got %v", v)
 	}
 }

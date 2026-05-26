@@ -31,34 +31,34 @@ This task does not receive a substituted artifact input; the `TODO: DSL` prototy
 
 ## Outputs
 
-At the end of your final response, emit a **fenced** YAML block with
-the phase-output flags. The block MUST be wrapped in triple-backtick
-fences exactly as shown below — un-fenced YAML is invisible to the
-parser and the cycle will halt with a missing-output failure:
+Emit each declared output by calling `gh optivem output write KEY=VAL`
+from the `Bash` tool. The dispatcher reads the resulting per-invocation
+JSONL file after you exit. Call once per dispatch (multiple `KEY=VAL`
+args allowed in a single call); if you need to correct a value, call
+again with the new value (last-write-wins).
 
-````
-```
-outputs:
-  system-driver-ports-changed: false
-  external-driver-ports-changed: false
-```
-````
-
-(The outer four-backtick fence is only there so the example renders
-correctly in this prompt — your emitted block uses three backticks
-opening and closing.)
+${expected_outputs}
 
 ### Flag semantics
 
-Both keys MUST appear in the emitted block. The downstream gateway treats *unset* as an error (no implicit default). Use boolean values (`true` | `false`).
+Both required keys MUST be emitted. The downstream gateway treats *unset* as an error (no implicit default).
 
 | Flag key (exact) | Meaning when `true` | Meaning when `false` |
 |---|---|---|
 | `system-driver-ports-changed` | implement-system-driver-adapters must run (new System Driver (`${driver-port}`) methods need real impls) | the System Driver port (`${driver-port}`) was not changed this invocation. When `${touches-system-driver}=false` the port is out of scope and this flag is always `false`. |
 | `external-driver-ports-changed` | implement-external-system-driver-adapters must run (new External System Driver (`${external-system-driver-port}`) methods need real impls) | the External System Driver port (`${external-system-driver-port}`) was not changed this invocation. |
 
-The block may follow other prose. The parser keeps the last fenced
-`outputs:` block in the response.
+`scope-exception-files` / `scope-exception-reason` (optional) are the
+scope-exception envelope (see `${references_root}/scope.md`). Emit
+them only when you had to read or write outside this MID's scope.
+
+Example call:
+
+```
+gh optivem output write \
+  system-driver-ports-changed=false \
+  external-driver-ports-changed=false
+```
 
 ## Additional Notes
 

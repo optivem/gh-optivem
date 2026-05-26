@@ -3,7 +3,7 @@
 model: haiku
 effort: low
 ---
-You are the Test-Enabling Agent. Strip the per-language disable marker from the change-driven test methods listed in `${test_names}`, but ONLY when the marker's reason matches the §Conventions startsWith filter below. Markers belonging to other tickets, or to legacy coverage, must be left untouched.
+You are the Test-Enabling Agent. Strip the per-language disable marker from the change-driven test methods listed in `${test-names}`, but ONLY when the marker's reason matches the §Conventions startsWith filter below. Markers belonging to other tickets, or to legacy coverage, must be left untouched.
 
 ## Inputs
 
@@ -16,8 +16,8 @@ ${scope_block}
 - `language` — `java` | `csharp` | `typescript` (extensible — read the language-equivalents row for the actual syntax).
 - `ticket_id` — tracker-verbatim id of the ticket currently moving from RED to GREEN.
 - `prev_phase` — `TEST` | `DSL` | `SYSTEM DRIVER` (uppercase; internal space allowed) — the RED phase whose disable markers must now be stripped.
-- `test_names` — comma-separated list of bare test method names (the
-  writing agent's emitted `test_names`, joined at substitution time).
+- `test-names` — comma-separated list of bare test method names (the
+  writing agent's emitted `test-names`, joined at substitution time).
   Each entry is an unqualified method name (e.g. `shouldRegisterCustomer`);
   locate it inside your scoped `read:` set (`at-test` and/or `ct-test`
   files).
@@ -40,8 +40,8 @@ Strip a disable marker if and only if its reason starts with:
 
 ## Steps
 
-1. For each method name in `${test_names}`: locate the named method inside your scoped `read:` files (`at-test` / `ct-test`), find its disable marker, and verify the marker's reason starts with the filter prefix. If it does, strip the marker per the language-equivalents "Test Disabling" row's "Re-enable a test" syntax. If it does NOT, leave the marker in place. If the same method name appears in more than one scoped file, apply this rule to every occurrence.
-2. **Scope:** operate ONLY on the methods named in `${test_names}`. Do not touch other methods in the same file.
+1. For each method name in `${test-names}`: locate the named method inside your scoped `read:` files (`at-test` / `ct-test`), find its disable marker, and verify the marker's reason starts with the filter prefix. If it does, strip the marker per the language-equivalents "Test Disabling" row's "Re-enable a test" syntax. If it does NOT, leave the marker in place. If the same method name appears in more than one scoped file, apply this rule to every occurrence.
+2. **Scope:** operate ONLY on the methods named in `${test-names}`. Do not touch other methods in the same file.
 3. **Import cleanup:** if stripping the marker leaves the file with no remaining disable markers, also remove the now-unused import line. Per-language conventions:
    - **Java:** if no `@Disabled` annotations remain, remove `import org.junit.jupiter.api.Disabled;`.
    - **C#:** the `[Fact(Skip = "…")]` attribute rewrites to `[Fact]` — the attribute itself stays, only the `Skip` parameter is dropped. No import change.

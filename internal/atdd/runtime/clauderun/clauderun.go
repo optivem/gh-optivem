@@ -281,6 +281,33 @@ type Options struct {
 	// Stderr — diagnostics shouldn't break the dispatch.
 	PromptLogPath string
 
+	// OutputFilePath is the absolute path to the JSONL file the agent's
+	// `gh optivem output write` invocations append to. Exported into the
+	// subprocess env as GH_OPTIVEM_OUTPUT_FILE. The file is NOT pre-created
+	// — when the agent makes no writes, the file simply does not exist
+	// after the run (the dispatcher's reader treats a missing file as an
+	// empty result). Empty string skips the export (used when the
+	// call-activity declares no outputs).
+	OutputFilePath string
+
+	// OutputKeysSpec is the comma-separated allow-list of declared output
+	// keys with their types — shape `key1:type1,key2:type2,...`. Exported
+	// into the subprocess env as GH_OPTIVEM_OUTPUT_KEYS. The `output
+	// write` CLI parses this to reject unknown keys mid-run, giving the
+	// agent immediate feedback on a typo'd key. Empty string when the
+	// call-activity declares no outputs — `output write` then refuses
+	// with "no outputs declared for this agent".
+	OutputKeysSpec string
+
+	// ExpectedOutputs is the writing-agent MID's declared output contract
+	// rendered for the prompt's ${expected_outputs} placeholder. The
+	// driver populates it from Engine.Outputs(taskName) so prompt authors
+	// never hand-write an "Outputs" section — the BPMN declaration is the
+	// single source of truth. Empty slice (or nil) → ${expected_outputs}
+	// substitutes to empty; agents with no declared outputs simply have
+	// no Required/Optional contract table in their rendered prompt.
+	ExpectedOutputs []statemachine.OutputSpec
+
 	// ShowPrompt, when true, dumps the full rendered prompt to Stdout
 	// between the prepared-prompt summary banner and the ENTERING AGENT
 	// banner. Off by default; useful for debugging template edits or
@@ -329,15 +356,25 @@ type ClaudeRunner interface {
 // RunOpts is the cross-cut between Options and the subprocess invocation.
 // It hides the autonomous-vs-interactive flag-shape decision behind the
 // runner so the production runner can evolve without touching Dispatch.
+//
+// OutputFilePath / OutputKeysSpec, when non-empty, are exported into the
+// subprocess env as GH_OPTIVEM_OUTPUT_FILE / GH_OPTIVEM_OUTPUT_KEYS so the
+// agent's `gh optivem output write` CLI calls land in the right file with
+// the right allow-list. Mirrors the same fields on Options. Both modes
+// (interactive and autonomous) honour the export uniformly — the JSONL
+// channel is the cross-mode replacement for the prose-YAML tail that used
+// to work only in autonomous mode.
 type RunOpts struct {
-	Prompt     string
-	Autonomous bool
-	Model      string
-	Effort     string
-	Dir        string
-	Stdin      io.Reader
-	Stdout     io.Writer
-	Stderr     io.Writer
+	Prompt         string
+	Autonomous     bool
+	Model          string
+	Effort         string
+	Dir            string
+	Stdin          io.Reader
+	Stdout         io.Writer
+	Stderr         io.Writer
+	OutputFilePath string
+	OutputKeysSpec string
 }
 
 // RunResult is what the runner reports back to Dispatch. Usage is best-effort
@@ -348,10 +385,10 @@ type RunOpts struct {
 // ResultText is the agent's final response body — the `result` field from
 // the `claude -p --output-format json` envelope. Populated only in
 // autonomous mode (interactive mode prints directly to the operator's TTY
-// and has no envelope to parse, so structured output is an autonomous-only
-// channel). The dispatcher feeds it to ParseOutputs to extract any
-// `outputs:` / `scope_exception:` YAML the agent emitted and write the
-// values into ctx.State.
+// and has no envelope to parse). Used by the exit-banner result echo so
+// the operator sees the agent's final message inline. Structured outputs
+// flow through the per-dispatch JSONL channel
+// (GH_OPTIVEM_OUTPUT_FILE) — not through ResultText anymore.
 type RunResult struct {
 	Usage      *TokenUsage
 	ResultText string
@@ -481,14 +518,16 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 	runStderr := io.MultiWriter(opts.Stderr, &stderrCapture)
 
 	runResult, runErr := deps.Claude.Run(ctx, RunOpts{
-		Prompt:     prompt,
-		Autonomous: opts.Autonomous,
-		Model:      opts.Model,
-		Effort:     opts.Effort,
-		Dir:        opts.RepoPath,
-		Stdin:      opts.Stdin,
-		Stdout:     opts.Stdout,
-		Stderr:     runStderr,
+		Prompt:         prompt,
+		Autonomous:     opts.Autonomous,
+		Model:          opts.Model,
+		Effort:         opts.Effort,
+		Dir:            opts.RepoPath,
+		Stdin:          opts.Stdin,
+		Stdout:         opts.Stdout,
+		Stderr:         runStderr,
+		OutputFilePath: opts.OutputFilePath,
+		OutputKeysSpec: opts.OutputKeysSpec,
 	})
 	if runErr != nil {
 		writeExitBanner(opts, 0, nowFn().Sub(startedAt), runResult.Usage, runErr)
@@ -672,6 +711,14 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	if opts.ViolatingPaths != "" {
 		params["violating-paths"] = opts.ViolatingPaths
 	}
+	// Expected outputs (plan 20260526-2118). Always set — empty when the
+	// MID declared none, so ${expected_outputs} in the prompt body
+	// substitutes to an empty string rather than tripping
+	// findUnfilledPlaceholders. The renderer formats per-spec entries as
+	// `key: type`, grouped into Required / Optional blocks, then a single
+	// "Emit:" line pointing at the CLI. Drift kill: prompt authors never
+	// write this section by hand.
+	params["expected_outputs"] = renderExpectedOutputs(opts.ExpectedOutputs)
 	rendered := statemachine.ExpandParams(body, params, nil)
 	if opts.OverrideText != "" {
 		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + opts.OverrideText + "\n"
@@ -692,6 +739,59 @@ func RenderPrompt(opts Options) (string, error) {
 		return opts.RawPrompt, nil
 	}
 	return renderPrompt(opts)
+}
+
+// renderExpectedOutputs produces the body of the ${expected_outputs}
+// substitution — a minimal contract table the writing-agent prompts
+// embed so the agent knows which keys to emit via `gh optivem output
+// write`. Per plan 20260526-2118, this is derived from the BPMN
+// declaration (Engine.Outputs(taskName)) so prompt authors never write
+// the table by hand — kills the prompt/BPMN drift permanently.
+//
+// Layout:
+//
+//	Required outputs:
+//	  key-A: type
+//
+//	Optional outputs:
+//	  key-B: type
+//
+//	Emit: gh optivem output write KEY=VAL [KEY=VAL...]
+//
+// When every output is required, the "Optional outputs:" block is
+// omitted (and vice versa). When the list is empty, the substitution
+// renders as empty — agents with no declared outputs simply have no
+// table in their prompt.
+func renderExpectedOutputs(specs []statemachine.OutputSpec) string {
+	if len(specs) == 0 {
+		return ""
+	}
+	var required, optional []statemachine.OutputSpec
+	for _, s := range specs {
+		if s.Optional {
+			optional = append(optional, s)
+		} else {
+			required = append(required, s)
+		}
+	}
+	var b strings.Builder
+	if len(required) > 0 {
+		b.WriteString("Required outputs:\n")
+		for _, s := range required {
+			fmt.Fprintf(&b, "  %s: %s\n", s.Key, s.Type)
+		}
+	}
+	if len(optional) > 0 {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("Optional outputs:\n")
+		for _, s := range optional {
+			fmt.Fprintf(&b, "  %s: %s\n", s.Key, s.Type)
+		}
+	}
+	b.WriteString("\nEmit: gh optivem output write KEY=VAL [KEY=VAL...]")
+	return b.String()
 }
 
 // renderScopeBlock produces the body of the ${scope_block} substitution:
@@ -1276,7 +1376,32 @@ func runInteractive(ctx context.Context, opts RunOpts) (RunResult, error) {
 	cmd.Stdin = opts.Stdin
 	cmd.Stdout = opts.Stdout
 	cmd.Stderr = opts.Stderr
+	cmd.Env = outputChannelEnv(opts)
 	return RunResult{}, cmd.Run()
+}
+
+// outputChannelEnv composes the subprocess environment, prepending
+// GH_OPTIVEM_OUTPUT_FILE / GH_OPTIVEM_OUTPUT_KEYS to the inherited parent
+// env when set on opts. Returns nil when neither is set — leaving cmd.Env
+// nil makes os/exec inherit the parent env unmodified (the pre-refactor
+// behaviour). Both vars set together: this is the agent dispatch path.
+// Neither set: utility runs of the runner (tests, scaffolding) that don't
+// declare outputs.
+//
+// The vars are appended after os.Environ() so they overwrite any same-named
+// inherited values — defensive against an operator who set them by hand.
+func outputChannelEnv(opts RunOpts) []string {
+	if opts.OutputFilePath == "" && opts.OutputKeysSpec == "" {
+		return nil
+	}
+	env := os.Environ()
+	if opts.OutputFilePath != "" {
+		env = append(env, "GH_OPTIVEM_OUTPUT_FILE="+opts.OutputFilePath)
+	}
+	if opts.OutputKeysSpec != "" {
+		env = append(env, "GH_OPTIVEM_OUTPUT_KEYS="+opts.OutputKeysSpec)
+	}
+	return env
 }
 
 // claudeTuningArgs returns the leading per-dispatch tuning flags
@@ -1317,6 +1442,7 @@ func runAutonomous(ctx context.Context, opts RunOpts) (RunResult, error) {
 	var captured bytes.Buffer
 	cmd.Stdout = &captured
 	cmd.Stderr = opts.Stderr
+	cmd.Env = outputChannelEnv(opts)
 
 	runErr := cmd.Run()
 

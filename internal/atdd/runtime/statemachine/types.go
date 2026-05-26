@@ -77,11 +77,39 @@ type Process struct {
 	ID             string
 	Name           string
 	Start          string
-	Outputs        []string // optional BPMN-style data outputs published by the process
+	Outputs        []OutputSpec // structured output contract for writing-agent MIDs (key, type, optional)
 	Nodes          map[string]Node
 	Edges          []Edge
 	OutgoingByNode map[string][]Edge // index for nextEdge lookup
 }
+
+// OutputSpec is one entry in a writing-agent MID's `outputs:` contract —
+// the BPMN-level declaration of a structured value the dispatched agent
+// must (or may) emit via `gh optivem output write KEY=VALUE`. The
+// declaration is the single source of truth for three downstream
+// consumers: (1) post-RUN presence-check in validate-outputs-and-scopes,
+// (2) the GH_OPTIVEM_OUTPUT_KEYS env var that lets the `output write`
+// CLI reject unknown keys, (3) the auto-injected `${expected_outputs}`
+// prompt section that tells the agent what to emit.
+//
+// Key is the ctx.State key the value flattens into. Type is the
+// coercion contract: "string", "bool", or "string-list". Optional
+// means absence is allowed — the post-RUN validator does not fire
+// missing-output for an unemitted optional key.
+type OutputSpec struct {
+	Key      string `yaml:"key"`
+	Type     string `yaml:"type"`
+	Optional bool   `yaml:"optional,omitempty"`
+}
+
+// Valid output types. Mirrors the allow-list in output_commands.go's
+// coerceOutputValue — kept in lockstep so the BPMN parser rejects a
+// type the CLI cannot coerce.
+const (
+	OutputTypeString     = "string"
+	OutputTypeBool       = "bool"
+	OutputTypeStringList = "string-list"
+)
 
 // Engine holds every loaded Process plus the registries needed to dispatch
 // nodes. Run picks a process by name and walks it.
@@ -93,6 +121,25 @@ type Engine struct {
 	GateFn   func(name string) NodeFn
 	ActionFn func(name string) NodeFn
 	AgentFn  func(name string) NodeFn
+}
+
+// Outputs returns the structured output contract declared on the named
+// writing-agent MID process. Returns (nil, false) when the process does
+// not exist; an empty slice with ok=true when the process exists but
+// declares no outputs (no-op for the dispatcher's env-var export and
+// validation).
+//
+// Looked up by the dispatcher via phaseTaskName (the MID's process ID =
+// task-name verb), mirroring Engine.Scope. For fix-* recovery dispatches
+// whose task-name is the dynamic `fix-${failure-kind}`, the inner
+// validate-outputs-and-scopes uses `originating-task-name` so the outer
+// MID's output contract still applies — same pattern as scope.
+func (e *Engine) Outputs(processName string) ([]OutputSpec, bool) {
+	proc, exists := e.Processes[processName]
+	if !exists {
+		return nil, false
+	}
+	return proc.Outputs, true
 }
 
 // Scope returns the per-phase read / write scope lists for the named

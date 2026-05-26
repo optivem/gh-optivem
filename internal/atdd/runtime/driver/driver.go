@@ -846,6 +846,48 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			scopeRead = r
 			scopeWrite = w
 		}
+
+		// Compute the paired per-dispatch artefact paths in one seq bump
+		// (prompt log + outputs JSONL). When rs is nil — test fixtures
+		// that bypass the driver-managed runState — both come back empty
+		// and clauderun treats them as "skip the log" / "no outputs
+		// channel".
+		promptLog, outputFilePath := rs.dispatchPaths(agentName)
+
+		// Output channel (plan 20260526-2118). Resolve the writing-agent
+		// MID's declared outputs the same way scope is resolved — via
+		// engine.Outputs(originating-task-name|task-name). The OutputSpec
+		// list is the single source of truth for three downstream
+		// consumers: the GH_OPTIVEM_OUTPUT_KEYS env var (write-time CLI
+		// allow-list), the ${expected_outputs} prompt section, and the
+		// post-RUN validate-outputs-and-scopes presence check. When the
+		// MID declares no outputs (or this dispatch isn't going through a
+		// MID — e.g. test fixtures), the channel is unwired:
+		// GH_OPTIVEM_OUTPUT_* env vars stay unset and the agent's `gh
+		// optivem output write` refuses with "no outputs declared". The
+		// path stash is also skipped so validate-outputs-and-scopes
+		// treats it as no-op.
+		var (
+			outputKeysSpec  string
+			expectedOutputs []statemachine.OutputSpec
+		)
+		if eng != nil {
+			outs, _ := eng.Outputs(scopeKey)
+			expectedOutputs = outs
+			if len(outs) > 0 && outputFilePath != "" {
+				outputKeysSpec = encodeOutputKeysSpec(outs)
+				ctx.Set("output_file_path", outputFilePath)
+			} else {
+				// No declared outputs (or no runState) → unwire the path
+				// so clauderun doesn't export GH_OPTIVEM_OUTPUT_FILE in
+				// isolation, which would let the agent write to a file
+				// the dispatcher never reads.
+				outputFilePath = ""
+			}
+		} else {
+			outputFilePath = ""
+		}
+
 		cOpts := clauderun.Options{
 			Agent:              agentName,
 			NodeDescription:    statemachine.ExpandParams(raw.Name, ctx.Params, ctx.State),
@@ -876,7 +918,10 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			Model:              tuning.Model,
 			Effort:             tuning.Effort,
 			ShowPrompt:         opts.ShowPrompt,
-			PromptLogPath:      rs.promptLogPath(agentName),
+			PromptLogPath:      promptLog,
+			OutputFilePath:     outputFilePath,
+			OutputKeysSpec:     outputKeysSpec,
+			ExpectedOutputs:    expectedOutputs,
 			RepoPath:           opts.RepoPath,
 			ProjectConfig:      cfg,
 			BinaryVersion:      version.Version,
@@ -885,27 +930,35 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			Stdin:              opts.Stdin,
 		}
 
-		runResult, err := clauderun.Dispatch(context.Background(), opts.ClaudeRunDeps, cOpts)
-		if err != nil {
+		if _, err := clauderun.Dispatch(context.Background(), opts.ClaudeRunDeps, cOpts); err != nil {
 			return statemachine.Outcome{Err: err}
 		}
-		// Parse the agent's structured `outputs:` / `scope_exception:`
-		// YAML block (per internal/assets/runtime/shared/scope.md and the
-		// per-agent prompt amendments) and flatten it into ctx.State so
-		// downstream actions and gates can read the values. Missing block
-		// returns an empty map — no-op for agents that have nothing to
-		// emit. Malformed YAML is a loud failure: the cycle stops with a
-		// clear "parse outputs" message rather than silently zeroing
-		// state.
-		parsed, err := clauderun.ParseOutputs(runResult.ResultText)
-		if err != nil {
-			return statemachine.Outcome{Err: fmt.Errorf("dispatcher: %s: %w", agentName, err)}
-		}
-		for k, v := range parsed {
-			ctx.Set(k, v)
-		}
+		// Structured outputs flow through the JSONL channel
+		// (GH_OPTIVEM_OUTPUT_FILE; see plan 20260526-2118). The
+		// downstream validate-outputs-and-scopes action reads the file,
+		// coerces values per the BPMN OutputSpec types, and flattens
+		// them into ctx.State — replacing the old prose-YAML tail
+		// parser that only worked in autonomous mode.
 		return inner(ctx)
 	}
+}
+
+// encodeOutputKeysSpec composes the GH_OPTIVEM_OUTPUT_KEYS env-var value
+// from a writing-agent MID's declared OutputSpec list. Format is
+// `key1:type1,key2:type2,...`, matching what the `output write` CLI's
+// parseOutputKeysSpec expects. The `optional` flag is intentionally NOT
+// encoded — write-time the CLI just needs to know "is this key
+// declared, and what type?". Optional vs required is a read-time
+// concern (the dispatcher's presence-check honours it).
+func encodeOutputKeysSpec(outs []statemachine.OutputSpec) string {
+	if len(outs) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(outs))
+	for _, o := range outs {
+		parts = append(parts, o.Key+":"+o.Type)
+	}
+	return strings.Join(parts, ",")
 }
 
 // fixChangedFiles returns the working-tree dirty-file listing (one
@@ -1023,20 +1076,39 @@ type runState struct {
 	seq          atomic.Int64
 }
 
-// promptLogPath composes <repoPath>/.gh-optivem/runs/<run-ts>/<seq>-<agent>.prompt.md
-// for the current dispatch. Bumps the per-run sequence counter so log
-// files sort in dispatch order regardless of clock granularity.
+// dispatchPaths composes the per-dispatch diagnostic file paths in
+// <repoPath>/.gh-optivem/runs/<run-ts>/. Bumps the per-run sequence
+// counter once and shares the resulting seq across:
 //
-// Returns empty when rs is nil — used by tests that bypass the
-// driver-managed runState; clauderun treats an empty PromptLogPath as
-// "skip the log".
-func (rs *runState) promptLogPath(agentName string) string {
+//   - <seq>-<agent>.prompt.md         — promptLog
+//   - <seq>-<agent>.outputs.jsonl     — outputFile (agent's
+//                                       `gh optivem output write` appends here)
+//
+// Sharing the seq keeps the prompt log and outputs file paired on disk,
+// so when an operator inspects a failed dispatch the two artefacts sit
+// next to each other. Bumping once (vs once per path) also means the
+// next dispatch's seq is N+1 instead of N+2.
+//
+// Returns empty strings when rs is nil — used by tests that bypass the
+// driver-managed runState; clauderun treats empty paths as "skip the log".
+func (rs *runState) dispatchPaths(agentName string) (promptLog, outputFile string) {
 	if rs == nil {
-		return ""
+		return "", ""
 	}
 	seq := rs.seq.Add(1)
-	filename := fmt.Sprintf("%03d-%s.prompt.md", seq, agentName)
-	return filepath.Join(rs.repoPath, ".gh-optivem", "runs", rs.runTimestamp, filename)
+	dir := filepath.Join(rs.repoPath, ".gh-optivem", "runs", rs.runTimestamp)
+	promptLog = filepath.Join(dir, fmt.Sprintf("%03d-%s.prompt.md", seq, agentName))
+	outputFile = filepath.Join(dir, fmt.Sprintf("%03d-%s.outputs.jsonl", seq, agentName))
+	return promptLog, outputFile
+}
+
+// promptLogPath returns just the prompt-log half of dispatchPaths.
+// Retained for the test fixtures that pre-date the outputs channel and
+// only assert against the prompt log path. Production callers use
+// dispatchPaths to pair the two artefacts in one seq bump.
+func (rs *runState) promptLogPath(agentName string) string {
+	p, _ := rs.dispatchPaths(agentName)
+	return p
 }
 
 // pruneOldRuns deletes all but the most recent (keep-1) directories in

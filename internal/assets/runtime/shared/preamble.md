@@ -44,13 +44,13 @@ Read only files you actually need for the work. The scope listed in the prompt's
 - `${changed_files}` and the working-tree state it describes are already-substituted context; you don't re-fetch them.
 - The fix-* tasks' explicit `git diff`/`git show HEAD:<path>` exception (documented per-prompt under "Exception to the anti-rediscovery rule") stays in force for those tasks only.
 
-If you cannot do the work without reading something outside scope and outside the two exceptions above, emit a `scope_exception` block (same shape as the write-side exception in `scope.md`) and exit.
+If you cannot do the work without reading something outside scope and outside the two exceptions above, emit the scope-exception envelope via `gh optivem output write` (see `scope.md` for the exact call) and exit.
 
 ## Don't commit, don't summarise, don't ask
 
 When the work is done, do not summarise and do not commit — exit cleanly. The orchestrator drives compile, test runs, disabling, and commits as separate service tasks; the agent must never run `git commit`, `git add`, `gh issue close`, the compile commands, or the test commands.
 
-Do not present a plan and wait for approval inside the agent. The orchestrator gates approvals between phases; an agent that stops mid-dispatch to ask the operator something will hang the pipeline. If you genuinely cannot proceed (an ambiguous Acceptance Criterion, an out-of-scope edit required, a contradiction between two inputs), emit the appropriate structured exit block (`scope_exception` from `scope.md`, or a task-specific `blocker:` block when defined) and exit.
+Do not present a plan and wait for approval inside the agent. The orchestrator gates approvals between phases; an agent that stops mid-dispatch to ask the operator something will hang the pipeline. If you genuinely cannot proceed (an ambiguous Acceptance Criterion, an out-of-scope edit required, a contradiction between two inputs), emit the appropriate structured exit (the scope-exception envelope via `gh optivem output write` per `scope.md`, or a task-specific `blocker:` block when defined) and exit.
 
 ## Edit cohesion
 

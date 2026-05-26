@@ -333,7 +333,7 @@ func ExpandParams(s string, params map[string]string, state map[string]any) stri
 // "value X under key Y" renders as.
 //
 // `[]string` joins on ',' so writer-agent outputs typed as string slices
-// (e.g. ctx.State["test_names"]) substitute as comma-separated values
+// (e.g. ctx.State["test-names"]) substitute as comma-separated values
 // that downstream CLI flags consuming repeatable / comma-list inputs
 // (e.g. `gh optivem test run --test=foo,bar`) accept directly. Without
 // this case, fmt.Sprint on a slice renders `[foo bar]` which no flag

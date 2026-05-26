@@ -49,12 +49,18 @@ type rawEdge struct {
 }
 
 // rawProcess mirrors one named process.
+//
+// Outputs is the writing-agent MID's structured output contract — a list of
+// {key, type, optional} objects declaring which values the dispatched agent
+// must (or may) emit via `gh optivem output write`. The legacy string-CSV
+// form ("key1,key2") is rejected at unmarshal time so no silent
+// backward-compat path exists.
 type rawProcess struct {
-	Name          string    `yaml:"name"`
-	Start         string    `yaml:"start"`
-	Outputs       []string  `yaml:"outputs,omitempty"`
-	Nodes         []RawNode `yaml:"nodes"`
-	SequenceFlows []rawEdge `yaml:"sequence-flows"`
+	Name          string       `yaml:"name"`
+	Start         string       `yaml:"start"`
+	Outputs       []OutputSpec `yaml:"outputs,omitempty"`
+	Nodes         []RawNode    `yaml:"nodes"`
+	SequenceFlows []rawEdge    `yaml:"sequence-flows"`
 }
 
 // rawSpec is the top-level YAML document.
@@ -109,11 +115,14 @@ func buildProcess(id string, rp rawProcess) (*Process, error) {
 	if rp.Start == "" {
 		return nil, fmt.Errorf("process %q: missing `start:`", id)
 	}
+	if err := validateOutputs(id, rp.Outputs); err != nil {
+		return nil, err
+	}
 	process := &Process{
 		ID:             id,
 		Name:           rp.Name,
 		Start:          rp.Start,
-		Outputs:        append([]string(nil), rp.Outputs...),
+		Outputs:        append([]OutputSpec(nil), rp.Outputs...),
 		Nodes:          make(map[string]Node, len(rp.Nodes)),
 		Edges:          make([]Edge, 0, len(rp.SequenceFlows)),
 		OutgoingByNode: make(map[string][]Edge),
@@ -210,6 +219,39 @@ func validateGatewayName(processID string, rn RawNode, kind NodeKind) error {
 	}
 	if strings.HasSuffix(strings.TrimSpace(rn.Name), "?") {
 		return fmt.Errorf("process %q node %q: gateway name %q is question-form; rewrite to the predicate (binding name) or move the question into an upstream user_task", processID, rn.ID, rn.Name)
+	}
+	return nil
+}
+
+// validateOutputs enforces the OutputSpec shape on a process's `outputs:`
+// list: every entry must carry a non-empty `key:` and a `type:` from the
+// closed enum {string, bool, string-list}. Keys must be unique within the
+// list. Empty list is allowed (most processes have no structured outputs).
+//
+// The legacy string-CSV form ("dsl-port-changed,test-names") is rejected
+// by yaml.v3 itself when it tries to unmarshal a scalar into the
+// []OutputSpec slice — LoadBytes wraps that error with process context.
+// This guard catches the post-unmarshal shape errors (missing key,
+// missing/invalid type, duplicate keys).
+func validateOutputs(processID string, outputs []OutputSpec) error {
+	seen := make(map[string]bool, len(outputs))
+	for i, o := range outputs {
+		if o.Key == "" {
+			return fmt.Errorf("process %q outputs[%d]: missing `key:`", processID, i)
+		}
+		switch o.Type {
+		case OutputTypeString, OutputTypeBool, OutputTypeStringList:
+		case "":
+			return fmt.Errorf("process %q output %q: missing `type:` (want one of %s, %s, %s)",
+				processID, o.Key, OutputTypeString, OutputTypeBool, OutputTypeStringList)
+		default:
+			return fmt.Errorf("process %q output %q: type %q is not one of %s / %s / %s",
+				processID, o.Key, o.Type, OutputTypeString, OutputTypeBool, OutputTypeStringList)
+		}
+		if seen[o.Key] {
+			return fmt.Errorf("process %q outputs: duplicate key %q", processID, o.Key)
+		}
+		seen[o.Key] = true
 	}
 	return nil
 }

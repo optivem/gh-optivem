@@ -157,7 +157,7 @@ func TestDSLFlagsPresent_BothUnsetFalse(t *testing.T) {
 func TestScopeExceptionRequested_NonEmptyFilesTrue(t *testing.T) {
 	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
 	ctx := statemachine.NewContext()
-	ctx.Set("scope_exception_files", []string{"src/out-of-scope.go"})
+	ctx.Set("scope-exception-files", []string{"src/out-of-scope.go"})
 	out := b.scopeExceptionRequested(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
@@ -181,7 +181,7 @@ func TestScopeExceptionRequested_EmptyFalse(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := statemachine.NewContext()
 			if tc.val != nil {
-				ctx.Set("scope_exception_files", tc.val)
+				ctx.Set("scope-exception-files", tc.val)
 			}
 			out := b.scopeExceptionRequested(ctx)
 			if out.Err != nil {

@@ -106,8 +106,11 @@ processes:
     name: "Sample Flow"
     start: WORK
     outputs:
-      - alpha
-      - beta
+      - key: alpha
+        type: bool
+      - key: beta
+        type: string-list
+        optional: true
     nodes:
       - id: WORK
         type: service-task
@@ -126,7 +129,8 @@ processes:
 	got := Render(eng)
 
 	for _, want := range []string{
-		"SAMPLE_FLOW_OUTPUTS[/alpha, beta/]",
+		// Renderer formats each spec as "key[?]: type", joined with ", ".
+		"SAMPLE_FLOW_OUTPUTS[/alpha: bool, beta?: string-list/]",
 		"SAMPLE_END -. produces .-> SAMPLE_FLOW_OUTPUTS",
 		"classDef outputNode",
 		"class SAMPLE_FLOW_OUTPUTS outputNode",

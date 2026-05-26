@@ -23,6 +23,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -182,12 +183,13 @@ func RegisterAll(r *Registry, deps Deps) {
 	// verify-tests-fail gateways can route without a second shell-out.
 	r.Register("run-command", a.runCommand)
 	// BPMN Phase D — LOW execute-agent primitive's post-RUN_AGENT
-	// validation step. Reads ctx.Params["outputs"] (comma-separated keys
-	// the agent's `outputs:` YAML block must populate) and looks up the
-	// writing-agent MID's write scope via Engine.Scope(task-name) (with
-	// originating-task-name fallback for fix dispatches). Writes
-	// ctx.State["outputs-and-scopes-valid"] + ctx.State["failure-kind"]
-	// (missing-output|scope-diff).
+	// validation step. Reads the per-dispatch JSONL outputs file (path
+	// stashed at ctx.State["output_file_path"]; agent appends via `gh
+	// optivem output write KEY=VAL`) and looks up the writing-agent
+	// MID's declared OutputSpec list + write scope via Engine.Outputs /
+	// Engine.Scope(task-name) (with originating-task-name fallback for
+	// fix dispatches). Writes ctx.State["outputs-and-scopes-valid"] +
+	// ctx.State["failure-kind"] (missing-output|scope-diff).
 	r.Register("validate-outputs-and-scopes", a.validateOutputsAndScopes)
 	// BPMN Phase D — LOW execute-agent primitive's pre-RUN_AGENT
 	// baseline-capture step (per plan 20260526-1430). Snapshots the
@@ -696,7 +698,7 @@ func shellEscape(s string) string {
 //   - ctx.Params["test-names"]  — optional; appended as --test=…
 //                                  comma-separated list of bare test
 //                                  method names (the writer-agent's
-//                                  emitted test_names, joined via
+//                                  emitted test-names, joined via
 //                                  coerceStateValue's []string case)
 //
 // Writes ctx.State["command-succeeded"] = (exit == 0). For the
@@ -768,37 +770,46 @@ func lastNLines(s string, n int) string {
 }
 
 // validateOutputsAndScopes is the LOW `execute-agent` primitive's
-// post-RUN_AGENT validation step (BPMN Phase D Item 7, Q-D6). The
-// agent's `outputs:` YAML block has already been flattened into
-// ctx.State by clauderun.ParseOutputs (driver.go); this action checks
-// (a) every key the caller declared in `outputs:` is present in
-// ctx.State, and (b) every working-tree change *this phase produced*
-// falls within at least one of the writing-agent MID's declared
-// `write:` scope (looked up via Engine.Scope, then joined against
-// gh-optivem.yaml paths: via the same resolveLayerPaths the
-// checkPhaseScope action uses).
+// post-RUN_AGENT validation step (BPMN Phase D Item 7, Q-D6).
 //
-// Baseline: diffs against the per-phase snapshot stashed at
-// ctx.State[CtxKeyPreAgentFingerprint] by the upstream
-// snapshot-working-tree step (not against HEAD). This eliminates the
-// cross-phase false positives that arose when several phases ran
-// back-to-back without a commit — every phase after the first used to
-// see upstream phases' uncommitted edits in the diff baseline and
-// flag them against its own narrower scopes.
+// The agent emits structured outputs by invoking `gh optivem output
+// write KEY=VAL` from its Bash tool; each call appends one JSON object
+// to the per-dispatch JSONL file the driver pre-computes (path stashed
+// in ctx.State["output_file_path"] before RUN_AGENT, env-exported as
+// GH_OPTIVEM_OUTPUT_FILE). This action:
+//
+//  1. Walks that JSONL file (when present) applying last-write-wins per
+//     key, and flattens the resulting map into ctx.State so downstream
+//     actions and gates read the values the same way they always did.
+//  2. Looks up the writing-agent MID's declared OutputSpec list via
+//     Engine.Outputs(phaseTaskName) and presence-checks every
+//     non-Optional key against the flattened state.
+//  3. Diffs the working tree against the per-phase baseline stashed at
+//     ctx.State[CtxKeyPreAgentFingerprint] by snapshot-working-tree and
+//     flags any modified path outside the MID's `write:` scope.
+//
+// The JSONL channel replaces the older prose-YAML tail (parsed by the
+// deleted clauderun.ParseOutputs). The new channel works uniformly in
+// both interactive and autonomous modes — interactive mode used to
+// silently fail every outputs validation because RunResult.ResultText
+// was empty (claude-CLI prints to TTY, not envelope).
 //
 // Reads:
-//   - ctx.Params["outputs"]              — comma-separated list of expected
-//                                          output keys; empty → no output
-//                                          expectations.
+//   - ctx.State["output_file_path"]      — absolute path to the per-dispatch
+//                                          JSONL file. Set by the driver
+//                                          ONLY when the MID's BPMN
+//                                          `outputs:` list is non-empty;
+//                                          absent → no-op output read.
 //   - ctx.Params["originating-task-name"] (preferred) or
-//     ctx.Params["task-name"]            — the writing-agent MID name used to
-//                                          look up scope via Engine.Scope.
-//                                          The originating- prefix is set by
-//                                          the `fix` LOW so the inner
+//     ctx.Params["task-name"]            — the writing-agent MID name used
+//                                          to look up scope (Engine.Scope)
+//                                          AND outputs (Engine.Outputs).
+//                                          The originating- prefix is set
+//                                          by the `fix` LOW so the inner
 //                                          execute-agent validation can
-//                                          recover the outer MID's scope
-//                                          after task-name is shadowed to
-//                                          fix-${failure-kind}.
+//                                          recover the outer MID's scope +
+//                                          outputs after task-name is
+//                                          shadowed to fix-${failure-kind}.
 //   - ctx.State[CtxKeyPreAgentFingerprint] — WorkingTreeFingerprint
 //                                          captured by snapshot-working-tree.
 //                                          Required when the dispatching node
@@ -848,17 +859,43 @@ func lastNLines(s string, n int) string {
 // problem, not an
 // agent-output problem.
 func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachine.Outcome {
-	// 1. Output presence check.
+	if a.deps.Engine == nil {
+		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: engine not loaded — driver must inject actions.Deps.Engine")}
+	}
+
+	// 1. Read the per-dispatch JSONL outputs file (when the driver
+	// stashed a path), apply last-write-wins per key, coerce values per
+	// the BPMN-declared types, and flatten into ctx.State. The driver
+	// only stashes output_file_path when the MID declared outputs, so
+	// an absent stash skips this block entirely.
+	taskName := phaseTaskName(ctx)
+	declared, _ := a.deps.Engine.Outputs(taskName)
+	outputFile, _ := ctx.State["output_file_path"].(string)
+	if outputFile != "" {
+		flattened, err := readOutputsJSONL(outputFile, declared)
+		if err != nil {
+			return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
+		}
+		for k, v := range flattened {
+			ctx.Set(k, v)
+		}
+	}
+
+	// 2. Output presence check — every non-Optional declared key must
+	// be present in ctx.State after the flatten.
 	var missing []string
-	for _, key := range splitCSV(ctx.Params["outputs"]) {
-		if _, ok := ctx.State[key]; !ok {
-			missing = append(missing, key)
+	for _, spec := range declared {
+		if spec.Optional {
+			continue
+		}
+		if _, ok := ctx.State[spec.Key]; !ok {
+			missing = append(missing, spec.Key)
 		}
 	}
 	if len(missing) > 0 {
 		ctx.Set("outputs-and-scopes-valid", false)
 		ctx.Set("failure-kind", "missing-output")
-		ctx.Set("failing-task-name", phaseTaskName(ctx))
+		ctx.Set("failing-task-name", taskName)
 		ctx.Set("missing-outputs", strings.Join(missing, ","))
 		fmt.Fprintf(a.deps.Stderr,
 			"validate-outputs-and-scopes: agent did not emit expected outputs: %s\n",
@@ -866,14 +903,10 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 		return statemachine.Outcome{}
 	}
 
-	// 2. Scope check (no-op when the dispatching node is not a
+	// 3. Scope check (no-op when the dispatching node is not a
 	// writing-agent MID — refine-acceptance-criteria declares
 	// scope: none in prompt frontmatter and has no inline read/write,
 	// so Engine.Scope returns ok=false and the scope check is skipped).
-	if a.deps.Engine == nil {
-		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: engine not loaded — driver must inject actions.Deps.Engine")}
-	}
-	taskName := phaseTaskName(ctx)
 	_, write, ok := a.deps.Engine.Scope(taskName)
 	if !ok {
 		ctx.Set("outputs-and-scopes-valid", true)
@@ -956,23 +989,109 @@ func (a actions) snapshotWorkingTree(ctx *statemachine.Context) statemachine.Out
 	return statemachine.Outcome{}
 }
 
-// splitCSV trims and splits a comma-separated param value; empty or
-// whitespace-only input returns nil so callers can use `len(...) == 0`
-// as the "skip this dimension" predicate.
-func splitCSV(s string) []string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return nil
+// readOutputsJSONL reads the per-dispatch JSONL outputs file the agent
+// appended to via `gh optivem output write`, applies last-write-wins per
+// key across lines, and coerces each value to the Go shape declared in
+// the BPMN OutputSpec list (bool → bool, string → string, string-list →
+// []string). Returns an empty map when the file is missing — the
+// dispatcher stashed a path but the agent emitted no writes (or the run
+// terminated early). Tolerates blank/whitespace lines but treats any
+// malformed JSON line as a hard error so the cycle stops with a clear
+// "agent emitted malformed output line" message rather than silently
+// dropping the agent's intent.
+//
+// Unknown keys (not in declared) are tolerated and pass through
+// unchanged — the CLI side already rejects them at write-time, so a key
+// reaching this reader past the allow-list is either a test fixture or
+// a deliberately-permissive caller. We don't double-enforce.
+func readOutputsJSONL(path string, declared []statemachine.OutputSpec) (map[string]any, error) {
+	out := map[string]any{}
+	typeByKey := make(map[string]string, len(declared))
+	for _, o := range declared {
+		typeByKey[o.Key] = o.Type
 	}
-	parts := strings.Split(s, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
+
+	f, err := os.Open(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return out, nil
+		}
+		return nil, fmt.Errorf("open outputs file: %w", err)
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		var row map[string]any
+		if err := json.Unmarshal(line, &row); err != nil {
+			return nil, fmt.Errorf("agent emitted malformed output line: %q: %w", string(line), err)
+		}
+		if row == nil {
+			return nil, fmt.Errorf("agent emitted malformed output line: %q (not a JSON object)", string(line))
+		}
+		for k, v := range row {
+			coerced, err := coerceJSONOutputValue(k, v, typeByKey[k])
+			if err != nil {
+				return nil, err
+			}
+			out[k] = coerced
 		}
 	}
-	return out
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read outputs file: %w", err)
+	}
+	return out, nil
+}
+
+// coerceJSONOutputValue normalises a value decoded from one JSONL line to
+// the Go shape downstream consumers expect. The `output write` CLI
+// already encodes values per the declared type, so the input is
+// already-shaped JSON (bool / string / []string-as-JSON-array). The job
+// here is to flatten the `[]any` that json.Unmarshal returns for arrays
+// into a `[]string` so the existing []string-typed readers (e.g. the
+// scope_exception_requested gate, the runCommand --test=… joiner) keep
+// working unchanged.
+//
+// An undeclared key (declaredType == "") passes through untouched; the
+// CLI rejects unknown keys at write time, so this branch is just
+// defensive for test fixtures that hand-craft JSONL outside the CLI.
+func coerceJSONOutputValue(key string, v any, declaredType string) (any, error) {
+	switch declaredType {
+	case statemachine.OutputTypeStringList:
+		raw, ok := v.([]any)
+		if !ok {
+			return nil, fmt.Errorf("output key %q: declared string-list but emitted %T", key, v)
+		}
+		out := make([]string, 0, len(raw))
+		for i, e := range raw {
+			s, ok := e.(string)
+			if !ok {
+				return nil, fmt.Errorf("output key %q: string-list element [%d] is %T, want string", key, i, e)
+			}
+			out = append(out, s)
+		}
+		return out, nil
+	case statemachine.OutputTypeBool:
+		b, ok := v.(bool)
+		if !ok {
+			return nil, fmt.Errorf("output key %q: declared bool but emitted %T", key, v)
+		}
+		return b, nil
+	case statemachine.OutputTypeString:
+		s, ok := v.(string)
+		if !ok {
+			return nil, fmt.Errorf("output key %q: declared string but emitted %T", key, v)
+		}
+		return s, nil
+	default:
+		// Undeclared key — pass through as-is.
+		return v, nil
+	}
 }
 
 // ---------------------------------------------------------------------------

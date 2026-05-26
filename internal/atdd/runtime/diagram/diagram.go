@@ -256,7 +256,11 @@ func writeOutputsBlock(b *strings.Builder, process *statemachine.Process) {
 		return
 	}
 	outputsNodeID := strings.ToUpper(process.ID) + "_OUTPUTS"
-	label := strings.Join(process.Outputs, ", ")
+	parts := make([]string, 0, len(process.Outputs))
+	for _, o := range process.Outputs {
+		parts = append(parts, outputSpecLabel(o))
+	}
+	label := strings.Join(parts, ", ")
 	fmt.Fprintf(b, "    %s[/%s/]\n", outputsNodeID, mermaidLabel(label))
 
 	endIDs := make([]string, 0)
@@ -271,6 +275,17 @@ func writeOutputsBlock(b *strings.Builder, process *statemachine.Process) {
 	}
 	b.WriteString("\n    classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000\n")
 	fmt.Fprintf(b, "    class %s outputNode\n", outputsNodeID)
+}
+
+// outputSpecLabel renders one OutputSpec for the data-object node label.
+// Optional outputs gain a trailing "?" so the diagram surfaces the
+// required-vs-optional distinction at a glance.
+func outputSpecLabel(o statemachine.OutputSpec) string {
+	suffix := ""
+	if o.Optional {
+		suffix = "?"
+	}
+	return o.Key + suffix + ": " + o.Type
 }
 
 // groupTree is a node in the slash-delimited subgraph hierarchy. The

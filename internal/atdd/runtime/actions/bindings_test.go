@@ -593,10 +593,11 @@ func TestValidateOutputsAndScopes_MissingOutput_FlagsAndKind(t *testing.T) {
 	var stderr bytes.Buffer
 	a := newActions(Deps{Stderr: &stderr, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
+	// implement-dsl declares two required keys in BPMN:
+	// system-driver-ports-changed + external-driver-ports-changed.
 	ctx.Params["task-name"] = "implement-dsl"
-	ctx.Params["outputs"] = "dsl-port-changed,system-driver-ports-changed"
-	// Only one of the two declared outputs is present in state.
-	ctx.Set("dsl-port-changed", true)
+	// Only one of the two required outputs is present in state.
+	ctx.Set("system-driver-ports-changed", true)
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -607,20 +608,18 @@ func TestValidateOutputsAndScopes_MissingOutput_FlagsAndKind(t *testing.T) {
 	if got := ctx.GetString("failure-kind"); got != "missing-output" {
 		t.Fatalf("failure-kind: got %q, want %q", got, "missing-output")
 	}
-	if !strings.Contains(stderr.String(), "system-driver-ports-changed") {
+	if !strings.Contains(stderr.String(), "external-driver-ports-changed") {
 		t.Fatalf("stderr missing output name: %q", stderr.String())
 	}
 }
 
 func TestValidateOutputsAndScopes_OutputsPresent_NoScope_IsValid(t *testing.T) {
-	// A task-name with no engine entry (scope: none / unknown) skips the
-	// scope check; outputs-only validation succeeds when every key is
-	// present in state.
+	// A task-name with no outputs declared and no inline scope (e.g.
+	// refine-acceptance-criteria) is the trivial-pass path: nothing to
+	// check, validation succeeds.
 	a := newActions(Deps{Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	ctx.Params["task-name"] = "refine-acceptance-criteria"
-	ctx.Params["outputs"] = "dsl-port-changed"
-	ctx.Set("dsl-port-changed", true)
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -644,6 +643,11 @@ func TestValidateOutputsAndScopes_ScopeDiff_FlagsAndKind(t *testing.T) {
 	// implement-dsl scope (write list) covers dsl-core, driver-port,
 	// external-system-driver-port — but not "somewhere/else".
 	ctx.Params["task-name"] = "implement-dsl"
+	// Required outputs must be present for the scope check to fire (the
+	// new presence-check from BPMN OutputSpec runs first; missing keys
+	// short-circuit to failure-kind=missing-output, not scope-diff).
+	ctx.Set("system-driver-ports-changed", true)
+	ctx.Set("external-driver-ports-changed", false)
 	// Empty snapshot → every dirty path is "added by this phase".
 	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
 	out := a.validateOutputsAndScopes(ctx)
@@ -679,8 +683,9 @@ func TestValidateOutputsAndScopes_AllClean_IsValid(t *testing.T) {
 	ctx.Params["task-name"] = "implement-dsl"
 	// Empty snapshot + empty dirty tree → no delta, scope check passes.
 	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
-	ctx.Params["outputs"] = "dsl-port-changed"
-	ctx.Set("dsl-port-changed", true)
+	// Both required outputs present so the presence-check passes.
+	ctx.Set("system-driver-ports-changed", true)
+	ctx.Set("external-driver-ports-changed", true)
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -701,8 +706,9 @@ func TestValidateOutputsAndScopes_MissingOutputWins_OverScopeDiff(t *testing.T) 
 	a := newActions(Deps{Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	ctx.Params["task-name"] = "implement-dsl"
-	ctx.Params["outputs"] = "dsl-port-changed"
-	// dsl-port-changed not set in state.
+	// No outputs set — system-driver-ports-changed +
+	// external-driver-ports-changed are both missing per implement-dsl's
+	// BPMN declaration, so missing-output must fire before any scope check.
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -729,6 +735,11 @@ func TestValidateOutputsAndScopes_FixPath_UsesOriginatingTaskName(t *testing.T) 
 	ctx := statemachine.NewContext()
 	ctx.Params["task-name"] = "fix-scope-diff"
 	ctx.Params["originating-task-name"] = "implement-dsl"
+	// Outputs declared on the originating MID (implement-dsl) must be
+	// present so the presence-check clears and the scope-diff branch
+	// can fire.
+	ctx.Set("system-driver-ports-changed", true)
+	ctx.Set("external-driver-ports-changed", false)
 	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
@@ -755,8 +766,10 @@ func TestValidateOutputsAndScopes_MissingSnapshot_HardErrors(t *testing.T) {
 	a := newActions(Deps{Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	ctx.Params["task-name"] = "implement-dsl"
-	ctx.Params["outputs"] = "dsl-port-changed"
-	ctx.Set("dsl-port-changed", true)
+	// Both required outputs present so the presence-check clears and the
+	// scope check (which depends on the snapshot) is what fires next.
+	ctx.Set("system-driver-ports-changed", true)
+	ctx.Set("external-driver-ports-changed", true)
 	// Deliberately do NOT seed CtxKeyPreAgentFingerprint.
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err == nil {
@@ -803,6 +816,226 @@ func TestValidateOutputsAndScopes_UpstreamPhaseResidue_DoesNotViolate(t *testing
 	}
 	if got := ctx.GetString("phase-changed-files"); got != "" {
 		t.Errorf("phase-changed-files: got %q, want empty (this phase made no edits)", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// validate-outputs-and-scopes: JSONL output channel (plan 20260526-2118)
+// ---------------------------------------------------------------------------
+
+func writeJSONL(t *testing.T, path string, lines ...string) {
+	t.Helper()
+	content := strings.Join(lines, "\n")
+	if len(lines) > 0 {
+		content += "\n"
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+func TestValidateOutputsAndScopes_JSONL_FlattenedIntoState(t *testing.T) {
+	dir := t.TempDir()
+	jsonl := filepath.Join(dir, "001-acceptance-test-writer.outputs.jsonl")
+	writeJSONL(t, jsonl,
+		`{"dsl-port-changed":true,"test-names":["shouldA","shouldB"]}`,
+	)
+	a := newActions(Deps{Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	ctx := statemachine.NewContext()
+	// write-acceptance-tests has scope read/write declared but the test
+	// fixture doesn't seed gh-optivem.yaml or the snapshot, so we use
+	// refine-acceptance-criteria's no-scope path. That MID has no
+	// outputs declared either — but the reader still flattens whatever
+	// the JSONL holds (the presence-check is empty, so anything
+	// undeclared passes through as-is).
+	//
+	// To exercise the full flatten + presence-check happy path we point
+	// at write-acceptance-tests but use a no-scope task by overriding
+	// outputs-source: we set the engine entry indirectly. Instead, the
+	// cleanest setup uses refine-acceptance-criteria (no presence-check
+	// pressure) and verifies the flatten worked end-to-end.
+	ctx.Params["task-name"] = "refine-acceptance-criteria"
+	ctx.State["output_file_path"] = jsonl
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get("dsl-port-changed"); got != true {
+		t.Errorf("dsl-port-changed: got %v, want true", got)
+	}
+	gotNames, ok := ctx.Get("test-names").([]any)
+	if !ok {
+		// declared-type-aware coercion only applies to keys in the MID's
+		// outputs list. refine-acceptance-criteria has none, so the
+		// reader passes []any through. That's acceptable for this
+		// fixture; a declared key gets the typed shape, which the next
+		// test covers.
+		if v := ctx.Get("test-names"); v == nil {
+			t.Errorf("test-names: not set")
+		}
+		return
+	}
+	if len(gotNames) != 2 || gotNames[0] != "shouldA" || gotNames[1] != "shouldB" {
+		t.Errorf("test-names: got %v, want [shouldA shouldB]", gotNames)
+	}
+}
+
+func TestValidateOutputsAndScopes_JSONL_TypedCoercionForDeclaredKeys(t *testing.T) {
+	// write-acceptance-tests declares test-names: string-list, so the
+	// reader must coerce JSON `[...]` (decoded as []any) into a real
+	// []string — matching the shape downstream readers (runCommand
+	// --test=…, scope_exception_requested gate) already cast to.
+	dir := t.TempDir()
+	jsonl := filepath.Join(dir, "001-acceptance-test-writer.outputs.jsonl")
+	writeJSONL(t, jsonl,
+		`{"dsl-port-changed":true,"test-names":["shouldA","shouldB"]}`,
+	)
+	a := newActions(Deps{Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	ctx := statemachine.NewContext()
+	// Use originating-task-name to point at write-acceptance-tests
+	// without triggering its scope check (no snapshot seeded). The
+	// scope check fires after the output presence-check, but write-
+	// acceptance-tests' Scope returns ok=true so we need to seed
+	// pre-agent-fingerprint + config. Simpler: use a fix-shape so the
+	// originating MID provides outputs while the inner runs scope: none.
+	//
+	// Actually the validator runs presence-check via phaseTaskName,
+	// then scope check via the same key. If write-acceptance-tests is
+	// the task, both fire. Side-step by skipping the scope test
+	// requirements: set fix dispatch with originating-task-name pointing
+	// at write-acceptance-tests but task-name pointing at a no-MID name
+	// — phaseTaskName prefers originating-task-name, so outputs resolve
+	// against write-acceptance-tests but Scope(originating-task-name)
+	// returns ok=true too. We just need a Config + snapshot for the
+	// scope check to clear.
+	repoPath := t.TempDir()
+	cfg := writePhaseScopeTestConfig(t, repoPath)
+	git := newFakeRunner(t, "git")
+	git.on([]string{"-C", repoPath, "status", "--porcelain"}, []byte(""), nil)
+	a = newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	ctx.Params["task-name"] = "write-acceptance-tests"
+	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
+	ctx.State["output_file_path"] = jsonl
+
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got, ok := ctx.Get("test-names").([]string); !ok {
+		t.Fatalf("test-names: want []string, got %T (%v)", ctx.Get("test-names"), ctx.Get("test-names"))
+	} else if len(got) != 2 || got[0] != "shouldA" || got[1] != "shouldB" {
+		t.Errorf("test-names: got %v, want [shouldA shouldB]", got)
+	}
+	if got := ctx.Get("dsl-port-changed"); got != true {
+		t.Errorf("dsl-port-changed: got %v, want true", got)
+	}
+	if got := ctx.Get("outputs-and-scopes-valid"); got != true {
+		t.Fatalf("outputs-and-scopes-valid: got %v, want true", got)
+	}
+}
+
+func TestValidateOutputsAndScopes_JSONL_LastWriteWinsAcrossLines(t *testing.T) {
+	dir := t.TempDir()
+	jsonl := filepath.Join(dir, "001-writer.outputs.jsonl")
+	writeJSONL(t, jsonl,
+		`{"dsl-port-changed":false}`,
+		`{"dsl-port-changed":true,"test-names":["a"]}`,
+	)
+	a := newActions(Deps{Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "refine-acceptance-criteria"
+	ctx.State["output_file_path"] = jsonl
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get("dsl-port-changed"); got != true {
+		t.Errorf("dsl-port-changed: got %v, want true (last write wins)", got)
+	}
+}
+
+func TestValidateOutputsAndScopes_JSONL_BlankLinesTolerated(t *testing.T) {
+	dir := t.TempDir()
+	jsonl := filepath.Join(dir, "001-writer.outputs.jsonl")
+	writeJSONL(t, jsonl,
+		``,
+		`{"dsl-port-changed":true}`,
+		`   `,
+		``,
+	)
+	a := newActions(Deps{Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "refine-acceptance-criteria"
+	ctx.State["output_file_path"] = jsonl
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get("dsl-port-changed"); got != true {
+		t.Errorf("dsl-port-changed: got %v, want true", got)
+	}
+}
+
+func TestValidateOutputsAndScopes_JSONL_MalformedLineHardErrors(t *testing.T) {
+	dir := t.TempDir()
+	jsonl := filepath.Join(dir, "001-writer.outputs.jsonl")
+	writeJSONL(t, jsonl,
+		`{"dsl-port-changed":true}`,
+		`{ this is not json`,
+	)
+	a := newActions(Deps{Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "refine-acceptance-criteria"
+	ctx.State["output_file_path"] = jsonl
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err == nil {
+		t.Fatalf("expected hard error on malformed JSONL line, got nil")
+	}
+	if !strings.Contains(out.Err.Error(), "malformed output line") {
+		t.Errorf("error should mention malformed line: %v", out.Err)
+	}
+}
+
+func TestValidateOutputsAndScopes_JSONL_MissingFileIsNoOp(t *testing.T) {
+	// Path stashed but the agent emitted nothing — file simply does not
+	// exist. The reader treats this as an empty result; the
+	// presence-check still fires for any required outputs.
+	a := newActions(Deps{Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "refine-acceptance-criteria"
+	ctx.State["output_file_path"] = filepath.Join(t.TempDir(), "does-not-exist.jsonl")
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get("outputs-and-scopes-valid"); got != true {
+		t.Errorf("outputs-and-scopes-valid: got %v, want true (no outputs declared, missing file is fine)", got)
+	}
+}
+
+func TestValidateOutputsAndScopes_JSONL_OptionalAbsenceTolerated(t *testing.T) {
+	// write-acceptance-tests declares test-names + scope-exception-* as
+	// optional; only dsl-port-changed is required. An emit of just the
+	// required key passes validation.
+	dir := t.TempDir()
+	jsonl := filepath.Join(dir, "001-writer.outputs.jsonl")
+	writeJSONL(t, jsonl, `{"dsl-port-changed":true}`)
+
+	repoPath := t.TempDir()
+	cfg := writePhaseScopeTestConfig(t, repoPath)
+	git := newFakeRunner(t, "git")
+	git.on([]string{"-C", repoPath, "status", "--porcelain"}, []byte(""), nil)
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "write-acceptance-tests"
+	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
+	ctx.State["output_file_path"] = jsonl
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get("outputs-and-scopes-valid"); got != true {
+		t.Errorf("outputs-and-scopes-valid: got %v, want true (optional keys absent is fine)", got)
 	}
 }
 

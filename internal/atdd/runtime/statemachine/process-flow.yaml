@@ -88,7 +88,7 @@
 #     pins the test category (acceptance / contract-real / contract-stub
 #     — a static property of the writing agent that fed the cycle).
 #     `test-names` is the comma-separated list of bare test method names
-#     emitted by the writing agent (`test_names` output, joined by
+#     emitted by the writing agent (`test-names` output, joined by
 #     `coerceStateValue`'s `[]string` case). Both absent ⇒ run all tests.
 #
 #   - `fix-*` agent inventory (Q-late-5 (β-convention) routing): each `fix`
@@ -114,7 +114,10 @@
 #   processes:
 #     <process-name>:
 #       start: <node-id>
-#       outputs: [<name>, ...]        # optional BPMN-style data outputs
+#       outputs:                       # writing-agent MIDs only — the
+#         - key: <name>                # structured output contract;
+#           type: string|bool|string-list
+#           optional: false            # (default; omit when false)
 #       nodes:
 #         - id: <node-id>
 #           type: <node-type>         # one of: start-event, end-event,
@@ -748,7 +751,7 @@ processes:
         name: "Verify Acceptance Tests Pass"
         params:
           suite: acceptance
-          test-names: ${test_names}
+          test-names: ${test-names}
 
       - id: VERIFY_TESTS_FAIL_ACCEPTANCE
         type: call-activity
@@ -756,14 +759,14 @@ processes:
         name: "Verify Acceptance Tests Fail"
         params:
           suite: acceptance
-          test-names: ${test_names}
+          test-names: ${test-names}
 
       - id: DISABLE_ACCEPTANCE_TESTS
         type: call-activity
         process: disable-tests
         name: "Disable Acceptance Tests"
         params:
-          test-names: ${test_names}
+          test-names: ${test-names}
 
       - id: COMMIT_TEST_CODE
         type: call-activity
@@ -907,7 +910,7 @@ processes:
         params:
           task-name: implement-external-system-driver-adapters
           suite: contract-real
-          test-names: ${test_names}
+          test-names: ${test-names}
 
       - id: VERIFY_TESTS_FAIL_CONTRACT_STUB
         type: call-activity
@@ -916,7 +919,7 @@ processes:
         params:
           task-name: implement-external-system-driver-adapters
           suite: contract-stub
-          test-names: ${test_names}
+          test-names: ${test-names}
 
       - id: IMPLEMENT_EXTERNAL_SYSTEM_STUBS
         type: call-activity
@@ -930,7 +933,7 @@ processes:
         params:
           task-name: implement-external-system-stubs
           suite: contract-stub
-          test-names: ${test_names}
+          test-names: ${test-names}
 
       - id: IMPL_EXT_DRIVER_CT_END
         type: end-event
@@ -1048,7 +1051,7 @@ processes:
         process: enable-tests
         name: "Enable Tests"
         params:
-          test-names: ${test_names}
+          test-names: ${test-names}
 
       - id: COMPILE_TESTS
         type: call-activity
@@ -1066,7 +1069,7 @@ processes:
         name: "Verify Tests Pass"
         params:
           suite: ${tests}
-          test-names: ${test_names}
+          test-names: ${test-names}
 
       - id: VERIFY_TESTS_FAIL_FILTERED
         type: call-activity
@@ -1074,14 +1077,14 @@ processes:
         name: "Verify Tests Fail"
         params:
           suite: ${tests}
-          test-names: ${test_names}
+          test-names: ${test-names}
 
       - id: DISABLE_TESTS
         type: call-activity
         process: disable-tests
         name: "Disable Tests"
         params:
-          test-names: ${test_names}
+          test-names: ${test-names}
 
       - id: COMMIT_LAYER
         type: call-activity
@@ -1465,7 +1468,7 @@ processes:
 
   # The [at-test, ct-test] pin is forward-looking — today only at-test
   # files are touched because the reason-format hardcodes `AT`, but the
-  # symmetric scope keeps the shared ${test_names} flow from being
+  # symmetric scope keeps the shared ${test-names} flow from being
   # scoped inconsistently when the CT-side disable lands.
   disable-tests:
     name: "Disable Tests"
@@ -1831,8 +1834,11 @@ processes:
   # falsely report scope violations against files the current agent
   # never touched (plan 20260526-1430).
   #
-  # Validation step asserts (1) all `outputs` named by the caller are
-  # present in agent COMMIT output, (2) `scopes` constraints are
+  # Validation step asserts (1) every required output key declared on the
+  # writing-agent MID's `outputs:` list is present in ctx.State (the
+  # agent emits values via `gh optivem output write KEY=VAL`, which the
+  # dispatcher appends to a per-dispatch JSONL file and the validator
+  # flattens), (2) `scopes` constraints are
   # satisfied (this phase's working-tree delta is within allowed paths,
   # diffed against the SNAPSHOT_WORKING_TREE fingerprint). When
   # validation fails AND `fix-on-failure == true`, dispatch `fix` with
