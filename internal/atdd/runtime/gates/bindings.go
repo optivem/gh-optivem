@@ -305,13 +305,17 @@ func (b bindings) expectedTestResult(ctx *statemachine.Context) statemachine.Out
 	return statemachine.Outcome{Value: v}
 }
 
-// fixOnFailureEnabled gates the LOW `execute-agent` primitive's
-// validation-failure → FIX edge. Reads the `fix-on-failure`
-// call-activity param: only the `fix` primitive's recursive
-// `execute-agent` call sets it to "false" (single-attempt
-// remediation), so the default (missing/empty) is true — every other
-// caller wants fix dispatch on validation failure. Coerces via
-// promptio.ParseYN so "true"/"false"/"yes"/"no" all round-trip.
+// fixOnFailureEnabled gates the LOW primitives' failure → FIX edges.
+// Used by both `execute-agent` (validation-failure branch) and
+// `execute-command` (command-failure branch). Reads the
+// `fix-on-failure` call-activity param: the `fix` primitive's
+// recursive `execute-agent` call sets it to "false" (single-attempt
+// remediation, no further recursion); `run-tests` sets it to "false"
+// on its `execute-command` call so verify-tests-pass / verify-tests-
+// fail can own failure routing via `test-outcome` instead of being
+// pre-empted by the inner FIX branch. The default (missing/empty) is
+// true — every other caller wants fix dispatch on failure. Coerces
+// via promptio.ParseYN so "true"/"false"/"yes"/"no" all round-trip.
 func (b bindings) fixOnFailureEnabled(ctx *statemachine.Context) statemachine.Outcome {
 	raw := strings.TrimSpace(ctx.Params["fix-on-failure"])
 	if raw == "" {

@@ -1816,6 +1816,16 @@ processes:
           command: "gh optivem test run"
           suite: ${suite}
           test-names: ${test-names}
+          # Disable the inner execute-command FIX branch. The callers
+          # (`verify-tests-pass`, `verify-tests-fail`) route on
+          # `test-outcome` and dispatch their own specialised fix
+          # processes (fix-unexpected-failing-tests /
+          # fix-unexpected-passing-tests). Leaving execute-command's
+          # FIX enabled would intercept every non-zero exit before the
+          # outer `test-outcome` gate ever evaluated — including the
+          # expected-failure case in verify-tests-fail, which would
+          # mis-route to FIX instead of VERIFY_FAIL_END.
+          fix-on-failure: "false"
 
       - id: RUN_TESTS_END
         type: end-event
@@ -2004,8 +2014,15 @@ processes:
       - {from: GATE_APPROVED_POST,            to: EXECUTE_AGENT_OUTPUT_REJECTED_END,  when: "approval-outcome == rejected"}
 
   # PRE approval only (Q2 = C asymmetric — commands have machine-checkable
-  # success). On command failure, dispatch `fix` (the `command-failed`
-  # kind) without passing `scopes`/`outputs` — commands don't have them.
+  # success). On command failure, gate on `fix-on-failure` (mirrors the
+  # execute-agent primitive): when true (default) dispatch `fix` (the
+  # `command-failed` kind) without passing `scopes`/`outputs` — commands
+  # don't have them; when false, exit cleanly with `command-succeeded=false`
+  # so the caller can route on its own semantics. Only `run-tests` sets it
+  # to false — verify-tests-pass / verify-tests-fail own failure routing
+  # on `test-outcome` and would otherwise be pre-empted by the inner FIX
+  # branch (the BPMN bug observed when an expected acceptance-test
+  # failure mis-routed to FIX instead of VERIFY_FAIL_END).
   execute-command:
     name: "Execute Command"
     start: APPROVE_PRE
@@ -2032,6 +2049,11 @@ processes:
         binding: command-succeeded
         name: "Command Succeeded?"
 
+      - id: GATE_FIX_ON_FAILURE
+        type: gateway
+        binding: fix-on-failure-enabled
+        name: "Fix on Failure Enabled?"
+
       - id: FIX
         type: call-activity
         process: fix
@@ -2050,9 +2072,11 @@ processes:
       - {from: GATE_APPROVED_PRE,      to: RUN_COMMAND,                   when: "approval-outcome == approved"}
       - {from: GATE_APPROVED_PRE,      to: EXECUTE_COMMAND_REJECTED_END,  when: "approval-outcome == rejected"}
       - {from: RUN_COMMAND,            to: GATE_COMMAND_SUCCEEDED}
-      - {from: GATE_COMMAND_SUCCEEDED, to: EXECUTE_COMMAND_END, when: "command-succeeded == true"}
-      - {from: GATE_COMMAND_SUCCEEDED, to: FIX,            when: "command-succeeded == false"}
-      - {from: FIX,               to: EXECUTE_COMMAND_END}
+      - {from: GATE_COMMAND_SUCCEEDED, to: EXECUTE_COMMAND_END,  when: "command-succeeded == true"}
+      - {from: GATE_COMMAND_SUCCEEDED, to: GATE_FIX_ON_FAILURE,  when: "command-succeeded == false"}
+      - {from: GATE_FIX_ON_FAILURE,    to: FIX,                  when: "fix-on-failure-enabled == true"}
+      - {from: GATE_FIX_ON_FAILURE,    to: EXECUTE_COMMAND_END,  when: "fix-on-failure-enabled == false"}
+      - {from: FIX,                    to: EXECUTE_COMMAND_END}
 
   # Q-late-5 (β-convention) routing: the fix-* task-name is derived as
   # `"fix-" + failure.kind` and passed into the inner `execute-agent`. No

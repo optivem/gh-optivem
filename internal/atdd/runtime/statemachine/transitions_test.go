@@ -148,6 +148,81 @@ func TestStructuralIntegrity_NonEndNodesHaveSuccessor(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Per-process shape regressions
+// ---------------------------------------------------------------------------
+
+// execute-command's command-failure branch must route through
+// GATE_FIX_ON_FAILURE, not straight to FIX. Without this gate, run-tests
+// callers (verify-tests-pass, verify-tests-fail) cannot opt out of the
+// inner FIX dispatch, and expected acceptance-test failures mis-route to
+// FIX instead of VERIFY_FAIL_END.
+func TestExecuteCommand_FailureRoutesThroughFixOnFailureGate(t *testing.T) {
+	eng := loadSnapshot(t)
+	proc, ok := eng.Processes["execute-command"]
+	if !ok {
+		t.Fatalf("process execute-command missing")
+	}
+
+	// 1. GATE_FIX_ON_FAILURE node exists and is a gateway on the right binding.
+	gate, ok := proc.Nodes["GATE_FIX_ON_FAILURE"]
+	if !ok {
+		t.Fatalf("execute-command: GATE_FIX_ON_FAILURE node missing")
+	}
+	if gate.Kind != Gateway {
+		t.Errorf("execute-command: GATE_FIX_ON_FAILURE kind = %v, want Gateway", gate.Kind)
+	}
+	if gate.Raw.Binding != "fix-on-failure-enabled" {
+		t.Errorf("execute-command: GATE_FIX_ON_FAILURE binding = %q, want %q", gate.Raw.Binding, "fix-on-failure-enabled")
+	}
+
+	// 2. command-succeeded == false routes to GATE_FIX_ON_FAILURE, not FIX.
+	wantEdge(t, proc, "GATE_COMMAND_SUCCEEDED", "GATE_FIX_ON_FAILURE", "command-succeeded == false")
+	notEdge(t, proc, "GATE_COMMAND_SUCCEEDED", "FIX")
+
+	// 3. GATE_FIX_ON_FAILURE branches: true → FIX, false → END.
+	wantEdge(t, proc, "GATE_FIX_ON_FAILURE", "FIX", "fix-on-failure-enabled == true")
+	wantEdge(t, proc, "GATE_FIX_ON_FAILURE", "EXECUTE_COMMAND_END", "fix-on-failure-enabled == false")
+}
+
+// run-tests must opt out of execute-command's FIX branch so the
+// verify-tests-pass / verify-tests-fail callers can route on
+// test-outcome instead.
+func TestRunTests_DisablesFixOnFailure(t *testing.T) {
+	eng := loadSnapshot(t)
+	proc, ok := eng.Processes["run-tests"]
+	if !ok {
+		t.Fatalf("process run-tests missing")
+	}
+	node, ok := proc.Nodes["EXECUTE_COMMAND"]
+	if !ok {
+		t.Fatalf("run-tests: EXECUTE_COMMAND node missing")
+	}
+	got := node.Raw.Params["fix-on-failure"]
+	if got != "false" {
+		t.Errorf("run-tests EXECUTE_COMMAND params[fix-on-failure] = %q, want %q", got, "false")
+	}
+}
+
+func wantEdge(t *testing.T, proc *Process, from, to, predicate string) {
+	t.Helper()
+	for _, e := range proc.OutgoingByNode[from] {
+		if e.To == to && e.Predicate == predicate {
+			return
+		}
+	}
+	t.Errorf("process %q: missing edge %s -> %s when %q", proc.ID, from, to, predicate)
+}
+
+func notEdge(t *testing.T, proc *Process, from, to string) {
+	t.Helper()
+	for _, e := range proc.OutgoingByNode[from] {
+		if e.To == to {
+			t.Errorf("process %q: unexpected edge %s -> %s (predicate %q)", proc.ID, from, to, e.Predicate)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Predicate evaluator unit tests
 // ---------------------------------------------------------------------------
 
