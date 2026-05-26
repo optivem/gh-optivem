@@ -790,6 +790,7 @@ flowchart TD
     FIX[Fix the Failure — see § fix]
     GATE_APPROVED_PRE{Approval Outcome?}
     GATE_COMMAND_SUCCEEDED{Command Succeeded?}
+    GATE_FIX_ON_FAILURE{Fix on Failure Enabled?}
     RUN_COMMAND[["Run command ${command}"]]
 
     APPROVE_PRE --> GATE_APPROVED_PRE
@@ -797,7 +798,9 @@ flowchart TD
     GATE_APPROVED_PRE -- Rejected --> EXECUTE_COMMAND_REJECTED_END
     RUN_COMMAND --> GATE_COMMAND_SUCCEEDED
     GATE_COMMAND_SUCCEEDED -- Yes --> EXECUTE_COMMAND_END
-    GATE_COMMAND_SUCCEEDED -- No --> FIX
+    GATE_COMMAND_SUCCEEDED -- No --> GATE_FIX_ON_FAILURE
+    GATE_FIX_ON_FAILURE -- Yes --> FIX
+    GATE_FIX_ON_FAILURE -- No --> EXECUTE_COMMAND_END
     FIX --> EXECUTE_COMMAND_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
