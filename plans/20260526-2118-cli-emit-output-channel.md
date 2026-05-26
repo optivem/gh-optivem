@@ -331,9 +331,14 @@ New / extended unit tests:
 
 ## Items
 
-10. **Verify on a real cycle.** Run `gh optivem implement --issue 69`
-    (or an equivalent rehearsal ticket) in **both** interactive and
-    autonomous modes. Confirm:
+- [ ] **Item 10 — Verify on a real cycle** — ⏳ Deferred: blocked on
+  `plans/20260526-2301-red-start-system-before-verify.md` landing
+  (rehearsal trace 2026-05-26 22:53 failed at
+  `VERIFY_TESTS_FAIL_ACCEPTANCE` because `START_SYSTEM` is missing
+  from RED-side HIGHs; re-pick once 2301's BPMN edits land).
+
+  Run `gh optivem implement --issue 69` (or equivalent rehearsal
+  ticket) in **both** interactive and autonomous modes. Confirm:
     - Interactive mode now passes outputs validation (it currently
       cannot, per "Why now" above).
     - Autonomous mode still passes.
