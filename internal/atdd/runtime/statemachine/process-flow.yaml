@@ -168,20 +168,16 @@ processes:
     start: MARK_IN_REFINEMENT
     nodes:
       - id: MARK_IN_REFINEMENT
-        type: call-activity
-        process: update-ticket
-        params:
-          target-state: "IN REFINEMENT"
+        type: service-task
+        action: move-to-in-refinement
 
       - id: REFINE_BACKLOG
         type: call-activity
         process: refine-backlog
 
       - id: MARK_READY
-        type: call-activity
-        process: update-ticket
-        params:
-          target-state: "READY"
+        type: service-task
+        action: move-to-ready
 
       - id: REFINE_TICKET_END
         type: end-event
@@ -233,10 +229,8 @@ processes:
     start: MARK_IN_PROGRESS
     nodes:
       - id: MARK_IN_PROGRESS
-        type: call-activity
-        process: update-ticket
-        params:
-          target-state: "IN PROGRESS"
+        type: service-task
+        action: move-to-in-progress
 
       - id: GATE_TICKET_KIND
         type: gateway
@@ -268,10 +262,8 @@ processes:
         process: onboard-external-system
 
       - id: MARK_IN_ACCEPTANCE
-        type: call-activity
-        process: update-ticket
-        params:
-          target-state: "IN ACCEPTANCE"
+        type: service-task
+        action: move-to-in-acceptance
 
       - id: IMPLEMENT_TICKET_END
         type: end-event
@@ -1383,24 +1375,6 @@ processes:
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: REFINE_AC_END}
-
-  # ===========================================================================
-  # MID — update-ticket
-  # ===========================================================================
-  update-ticket:
-    start: EXECUTE_AGENT
-    nodes:
-      - id: EXECUTE_AGENT
-        type: call-activity
-        process: execute-agent
-        params:
-          task-name: update-ticket
-
-      - id: UPDATE_TICKET_END
-        type: end-event
-
-    sequence-flows:
-      - {from: EXECUTE_AGENT, to: UPDATE_TICKET_END}
 
   # ===========================================================================
   # MID — compile (command)

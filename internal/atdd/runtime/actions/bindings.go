@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/atdd"
@@ -150,6 +151,17 @@ func RegisterAll(r *Registry, deps Deps) {
 	// working-tree paths), and writes ctx.State["outputs-and-scopes-valid"]
 	// + ctx.State["failure-kind"] (missing-output|scope-diff).
 	r.Register("validate-outputs-and-scopes", a.validateOutputsAndScopes)
+	// MARK_* state-transition service tasks (per plan
+	// 20260526-1220-fix-mark-ticket-state-transition-routing.md). Each
+	// dispatches Tracker.SetStatus against the ticketing-system column the
+	// canonical state maps to; move-to-in-acceptance additionally ticks
+	// every checklist box before flipping status (mechanical post-cycle
+	// completion). Tracker.SetStatus is stringly-typed for now; a typed
+	// state enum is separate future work.
+	r.Register("move-to-in-refinement", a.moveToInRefinement)
+	r.Register("move-to-ready", a.moveToReady)
+	r.Register("move-to-in-progress", a.moveToInProgress)
+	r.Register("move-to-in-acceptance", a.moveToInAcceptance)
 }
 
 // Context keys consumed by the check-phase-scope action. Centralised so the
@@ -194,6 +206,110 @@ func (a actions) pickTopReady(ctx *statemachine.Context) statemachine.Outcome {
 	writeIssueToContext(ctx, issue)
 	fmt.Fprintf(a.deps.Stdout, "Picked top Ready: #%s %s (%s)\n", issue.ID, issue.Title, issue.URL)
 	return statemachine.Outcome{}
+}
+
+// ---------------------------------------------------------------------------
+// State-transition actions (MARK_* service tasks)
+// ---------------------------------------------------------------------------
+
+// moveToInRefinement flips the picked issue's status to "In refinement"
+// via Tracker.SetStatus. Wired to the MARK_IN_REFINEMENT node at the
+// start of refine-ticket.
+func (a actions) moveToInRefinement(ctx *statemachine.Context) statemachine.Outcome {
+	handle := ctx.GetString("issue_handle")
+	if handle == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-refinement: issue_handle not in Context")}
+	}
+	if err := a.deps.Tracker.SetStatus(context.Background(), handle, "In refinement"); err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-refinement: %w", err)}
+	}
+	fmt.Fprintln(a.deps.Stdout, "Moved card to In refinement.")
+	return statemachine.Outcome{}
+}
+
+// moveToReady flips the picked issue's status to "Ready" via
+// Tracker.SetStatus. Wired to the MARK_READY node at the end of
+// refine-ticket.
+func (a actions) moveToReady(ctx *statemachine.Context) statemachine.Outcome {
+	handle := ctx.GetString("issue_handle")
+	if handle == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("move-to-ready: issue_handle not in Context")}
+	}
+	if err := a.deps.Tracker.SetStatus(context.Background(), handle, "Ready"); err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("move-to-ready: %w", err)}
+	}
+	fmt.Fprintln(a.deps.Stdout, "Moved card to Ready.")
+	return statemachine.Outcome{}
+}
+
+// moveToInProgress sets the picked issue's status to "In progress" via
+// Tracker.SetStatus. Reads issue_handle from Context — populated by
+// pick-top-ready (board mode) or by the driver's issue-lookup path
+// (specific-issue mode).
+func (a actions) moveToInProgress(ctx *statemachine.Context) statemachine.Outcome {
+	handle := ctx.GetString("issue_handle")
+	if handle == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-progress: issue_handle not in Context (specific-issue mode requires explicit pre-resolution)")}
+	}
+	if err := a.deps.Tracker.SetStatus(context.Background(), handle, "In progress"); err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-progress: %w", err)}
+	}
+	fmt.Fprintln(a.deps.Stdout, "Moved card to In progress.")
+	return statemachine.Outcome{}
+}
+
+// moveToInAcceptance ticks every issue checklist box via
+// Tracker.MarkChecklistComplete and sets the item status to "In
+// acceptance" via Tracker.SetStatus. Both halves error out hard on
+// failure — a missing Status option or a permission failure on edit is
+// a misconfiguration the operator must fix before re-running.
+func (a actions) moveToInAcceptance(ctx *statemachine.Context) statemachine.Outcome {
+	if err := a.markChecklistComplete(ctx); err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-acceptance: tick checklist: %w", err)}
+	}
+	handle := ctx.GetString("issue_handle")
+	if handle == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-acceptance: issue_handle not in Context")}
+	}
+	if err := a.deps.Tracker.SetStatus(context.Background(), handle, "In acceptance"); err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-acceptance: %w", err)}
+	}
+	fmt.Fprintln(a.deps.Stdout, "Moved card to In acceptance.")
+	return statemachine.Outcome{}
+}
+
+// markChecklistComplete is the shared helper used by move-to-in-acceptance
+// to tick every `- [ ]` checkbox in the issue body via
+// Tracker.MarkChecklistComplete. A missing or non-positive issue_num is
+// silently skipped (transitions tests and dry-runs that don't seed a real
+// issue still exercise the SetStatus half).
+func (a actions) markChecklistComplete(ctx *statemachine.Context) error {
+	if issueNum, err := strconv.Atoi(ctx.GetString("issue_num")); err != nil || issueNum <= 0 {
+		return nil
+	}
+	issue, err := issueFromContext(ctx)
+	if err != nil {
+		return err
+	}
+	return a.deps.Tracker.MarkChecklistComplete(context.Background(), issue)
+}
+
+// issueFromContext builds a tracker.Issue from the conventional Context
+// keys pickTopReady writes (issue_num, issue_url, issue_title,
+// issue_handle). issue_url is the addressable form every Tracker call
+// site needs; callers that don't seed it get a clear error rather than
+// a downstream parse failure.
+func issueFromContext(ctx *statemachine.Context) (tracker.Issue, error) {
+	url := ctx.GetString("issue_url")
+	if url == "" {
+		return tracker.Issue{}, fmt.Errorf("issue_url not in Context")
+	}
+	return tracker.Issue{
+		ID:     ctx.GetString("issue_num"),
+		Title:  ctx.GetString("issue_title"),
+		URL:    url,
+		Handle: ctx.GetString("issue_handle"),
+	}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -483,8 +599,8 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 //                              keys; empty → no output expectations.
 //   - ctx.Params["scopes"]   — comma-separated Family B scope tokens
 //                              (e.g. "at-test,dsl-port,dsl-core"); empty
-//                              → skip scope check (update-ticket /
-//                              refine-acceptance-criteria do not declare scopes).
+//                              → skip scope check (refine-acceptance-criteria
+//                              does not declare scopes).
 //
 // Writes:
 //   - ctx.State["outputs-and-scopes-valid"] — bool.

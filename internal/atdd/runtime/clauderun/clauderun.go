@@ -101,9 +101,9 @@ type Options struct {
 
 	// ParsedConcepts is the absolute path to the parsed-concepts artifact
 	// materialize_parsed_concepts writes at the start of the
-	// backlog_refinement sub-process. Substituted into refine-acceptance-criteria's and
-	// update-ticket's ${parsed_concepts} placeholder so those agents
-	// share a stable file path for the parsed ACs across the
+	// backlog_refinement sub-process. Substituted into
+	// refine-acceptance-criteria's ${parsed_concepts} placeholder so the
+	// agent has a stable file path for the parsed ACs across the
 	// CONFIRM_REFINEMENT human gate. Load-bearing: only registered when
 	// non-empty so an absent value surfaces via
 	// findUnfilledPlaceholders rather than silently substituting "" —
@@ -548,7 +548,7 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	if opts.AcceptanceCriteria != "" {
 		params["acceptance_criteria"] = opts.AcceptanceCriteria
 	}
-	// ParsedConcepts is load-bearing for refine-acceptance-criteria / update-ticket —
+	// ParsedConcepts is load-bearing for refine-acceptance-criteria —
 	// same rationale as AcceptanceCriteria. Only registered when
 	// non-empty so an absent value surfaces via findUnfilledPlaceholders.
 	if opts.ParsedConcepts != "" {

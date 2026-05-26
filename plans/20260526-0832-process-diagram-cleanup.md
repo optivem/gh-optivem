@@ -1,18 +1,37 @@
 # Process diagram cleanup — labels, layout, duplication, rendering budget
 
+> ⚠️ **Blocked on `plans/20260526-1220-fix-mark-ticket-state-transition-routing.md`.**
+> That plan eliminates the `update-ticket` wrapper subprocess and converts
+> MARK_* call_activities into direct service_tasks. Execute 1220 first
+> (and its own blocker, 0907 legacy-bindings-audit), then this plan.
+> Running in parallel risks merge conflicts in `process-flow.yaml` at the
+> MARK_* nodes (lines 172, 182, 237, 272) and around `implement-ticket`'s
+> gateway section (lines 232-294) which Items 2, 11, 17 touch.
+>
+> **Item 9 is superseded by 1220** — see Item 9 below for cross-reference.
+
 ## Origin / intent
 
 Conversation with user (2026-05-26 08:32) walking through observed issues in
 `docs/process-diagram.md` (generated from
 `internal/atdd/runtime/statemachine/process-flow.yaml` by
-`internal/atdd/runtime/diagram/diagram.go`). Eleven distinct issues were
-surfaced (six initial + five added during the refine walk: Item 10
-`refine-backlog-item` rename, Item 11 ticket-kind gateway split, plus three
-items already in the original draft).
-This plan groups them and proposes a direction for each. The 2026-05-26
-/refine-plan walk settled directions for Items 2, 3, 7, 8, 9, 10, 11
-(in-scope) and deferred Items 1, 5, 6 (out-of-scope this pass). Item 4
-merged into Item 2.
+`internal/atdd/runtime/diagram/diagram.go`). Eighteen items in total —
+eleven settled in scope, three deferred to revisit later, one deferred to
+its own plan, two merged into other items, one dropped as built on a
+wrong premise.
+
+The 2026-05-26 /refine-plan walk results:
+
+- **In scope (will ship in this plan)**: Items 2, 3, 7, 8, 9, 10, 11, 12,
+  13, 16, 17.
+- **Deferred (revisit later)**: Items 1, 5, 6.
+- **Deferred to its own plan**: Item 14 (domain-semantics change — ticket
+  kind split for redesign).
+- **Merged into other items**: 4 → 2 (RED/GREEN normalisation folded into
+  the documentation: requirement); 15 → 12 (CALL_PARAMETERISED_CORE
+  rename folded into the CALL_* prefix drop).
+- **Dropped**: 18 (wrong premise — gateway-controlled loops are already
+  BPMN-idiomatic; no marker needed).
 
 ## Scope
 
@@ -469,6 +488,9 @@ the level prefix gets added automatically.
 
 ## Item 9 — `update-ticket` sub-process name is too generic
 
+> **Superseded by `plans/20260526-1220-fix-mark-ticket-state-transition-routing.md`**
+> — the wrapper is eliminated entirely, not renamed. Q9.1/Q9.2 mooted.
+
 **Observation**: `update-ticket` (process-flow.yaml:1390-1403) does exactly
 one thing — change a ticket's lifecycle state via a single agent call:
 
@@ -650,11 +672,299 @@ Trade-offs:
   ticket-kinds are handled today, per the comment at
   process-flow.yaml:227-230).
 
+## Item 12 — Drop `CALL_*` prefix; establish role-based call_activity naming convention
+
+**Observation**: `CALL_` prefix appears on 9 distinct node IDs
+(`CALL_CHANGE_SYSTEM_BEHAVIOR`, `CALL_COVER_SYSTEM_BEHAVIOR`,
+`CALL_REDESIGN_*`, `CALL_REFACTOR_*` ×2, `CALL_ONBOARD_*`,
+`CALL_AGENT_ACTION`, `CALL_FIX`, `CALL_PARAMETERISED_CORE`). Bare-named
+call_activity nodes outnumber them ~3:1 (`IMPLEMENT_AND_VERIFY_SYSTEM`,
+`IMPLEMENT_SYSTEM_DRIVER_ADAPTERS`, `REFINE_BACKLOG`,
+`WRITE_ACCEPTANCE_TESTS`, `MARK_*`, `BUILD_SYSTEM`, `COMMIT_TESTS`,
+`EXECUTE_AGENT`, etc.). The CALL_ prefix is inconsistent and signals the
+node *type* (Hungarian notation) rather than the *role* the call site
+plays.
+
+**BPMN convention**: BPMN does not prescribe a naming convention for
+call_activity instances. In practice, call_activity nodes are named for
+the **role they play at the call site**, not the sub-process they invoke.
+
+**Direction (proposed)** — drop `CALL_` everywhere; apply two rules:
+
+- If the call site plays a **role distinct** from the sub-process (e.g.
+  RED step, opportunistic refactor, marking a state) → use the
+  **role-based name** (`OPP_REFACTOR_*`, `MARK_IN_REFINEMENT`,
+  `RED_WRITE_FAILING_ACCEPTANCE_TESTS`).
+- If the call site **IS** the sub-process (1:1 delegation, no extra
+  role) → use the **upper-snake form of the sub-process name**
+  (`CHANGE_SYSTEM_BEHAVIOR`, `COVER_SYSTEM_BEHAVIOR`).
+
+This rule also dictates Item 15's resolution (drop `CALL_PARAMETERISED_CORE`
+in favour of the bare sub-process name).
+
+**Files**:
+- `internal/atdd/runtime/statemachine/process-flow.yaml` — rename the 9
+  `CALL_*` nodes plus their incoming/outgoing edges.
+- Statemachine tests referencing the old IDs.
+- The renderer (`diagram.go`) — no change needed; the rule lives in YAML.
+
+**Open questions for /refine-plan**:
+
+- Q12.1 — Confirm the two-rule convention above. Alternative: keep the
+  CALL_ prefix and apply it consistently to *all* call_activity nodes —
+  mass-renames in the opposite direction (~70 nodes gain the prefix).
+- Q12.2 — Scope: ship in this plan, or batch with the broader CYCLE-name
+  pass deferred from Item 9/10 follow-up?
+
+## Item 13 — Operator-choice gateways need a visible human-input signal
+
+**Observation**: Gateways currently double as both decision-rendering
+diamonds AND the elicitation point for the operator's choice. The
+gateway documentation reads as a prompt ("Choose refactor type",
+"Opportunistic refactor?", "Ticket kind?") but Mermaid renders the
+diamond with no executor signal — readers cannot tell that a human is
+involved.
+
+**BPMN convention**: a gateway is a **pure routing construct** that
+switches on a value some other node already produced. The *act of
+choosing* belongs in an upstream user_task (rectangle). Strict BPMN
+would render this as:
+
+```
+[Choose refactor type]  →  ◇GATE_REFACTOR_TYPE  →  branches
+   (user_task, human)         (silent gateway)
+```
+
+**Inventory of gateways** (verified 2026-05-26):
+
+| Gateway | Reads | Operator-input? |
+|---|---|---|
+| `GATE_REFACTOR_TYPE_CHOICE` | refactor-type-choice (elicited at gateway) | **Yes — needs split** |
+| `GATE_OPPORTUNISTIC_REFACTOR` | refactor-type-choice (elicited at gateway) | Yes — but collapses per Item 3 |
+| `GATE_APPROVED` | approval-outcome (set by APPROVE_PRE user_task upstream) | Already correctly paired |
+| `GATE_TICKET_KIND` | ticket-kind (set during refinement; binding reads/parses) | No — computed from state |
+| `GATE_TASK_SUBTYPE` (Item 11) | task-subtype (same as above) | No — computed from state |
+| `GATE_*_CHANGED` (dsl-port, external-driver, system-driver) | port-change detection | No — computed |
+| `GATE_EXPECTED_TEST_RESULT` | expected-test-result (passed-in param) | No — passed in |
+| `GATE_TESTS_OUTCOME` | test-outcome (test-runner output) | No — computed |
+| `GATE_OUTPUTS_AND_SCOPES_VALID` | validation result | No — computed |
+| `GATE_FIX_ON_FAILURE` | config flag | No — config |
+| `GATE_COMMAND_SUCCEEDED` | command exit status | No — computed |
+
+**Net scope after Item 3 lands**: exactly **one** gateway requires the
+13A treatment — `GATE_REFACTOR_TYPE_CHOICE` in the `refactor` TOP process.
+
+**Direction (decided 2026-05-26): Option 13A — split operator-input
+gateways into user_task + gateway pair.** Pure BPMN. Concrete impact:
+
+```yaml
+# AFTER (refactor process)
+refactor:
+  start: CHOOSE_REFACTOR_TYPE
+  nodes:
+    - id: CHOOSE_REFACTOR_TYPE
+      type: user_task
+      agent: human
+      documentation: "Choose refactor type"
+      outputs: refactor-type-choice
+    - id: GATE_REFACTOR_TYPE_CHOICE
+      type: gateway
+      binding: refactor-type-choice
+      # documentation removed — gateway is silent
+    ...
+  sequence-flows:
+    - {from: CHOOSE_REFACTOR_TYPE, to: GATE_REFACTOR_TYPE_CHOICE}
+    - {from: GATE_REFACTOR_TYPE_CHOICE, to: ..., when: ...}
+    - {from: REFACTOR_SYSTEM_STRUCTURE, to: CHOOSE_REFACTOR_TYPE}  # loopback
+    - {from: REFACTOR_TEST_STRUCTURE,   to: CHOOSE_REFACTOR_TYPE}  # loopback
+    - {from: REDESIGN_SYSTEM_STRUCTURE, to: CHOOSE_REFACTOR_TYPE}  # loopback
+```
+
+Diagram impact: one yellow rectangle ("Choose refactor type") upstream
+of the diamond; diamond becomes silent. Loopback edges from each
+refactor cycle return to the rectangle.
+
+**Files**:
+
+- `internal/atdd/runtime/statemachine/process-flow.yaml` — add
+  `CHOOSE_REFACTOR_TYPE` user_task; redirect loopback edges. Item 3's
+  collapse of change-system-behavior step 3 removes
+  `GATE_OPPORTUNISTIC_REFACTOR` independently.
+- Statemachine tests referencing `GATE_REFACTOR_TYPE_CHOICE` as the
+  start node of `refactor`.
+
+**Runtime impact**: the new `CHOOSE_REFACTOR_TYPE` user_task needs a
+binding to elicit the operator's choice and write `refactor-type-choice`
+into state. Likely lands with Phase D (same as Item 11's binding work).
+
+**Remaining checks at execution time**:
+
+- Q13.2 — Confirm during execution that `GATE_APPROVED`'s upstream
+  pairing is correct (the existing `APPROVE_PRE` user_task does the
+  elicitation — gateway is silent or carries a routing-style
+  documentation, not a prompt).
+- Q13.3 — Item 11 is **not** affected by 13A. Both `GATE_TICKET_KIND`
+  and `GATE_TASK_SUBTYPE` read pre-computed values (ticket
+  classification happens during refinement, not at the gateway). No
+  user_task pair needed at the implement-ticket gateways.
+
+## Item 14 — Split `redesign-system-structure` into system-side and external-side
+
+> ⏳ **Deferred to a separate plan** (2026-05-26): the only domain-semantics
+> change in this plan; the ticket-kind split ripples through refinement,
+> agents, and docs. Better tackled in its own focused plan that owns the
+> end-to-end ticket-kind change. The brainstorm below remains useful as
+> the seed for that follow-up plan.
+
+**Observation**: `redesign-system-structure` (process-flow.yaml:488-512)
+runs three steps:
+
+1. `implement-system-driver-adapters` (system-side driver adapters)
+2. `implement-external-system-driver-adapters` (external-side driver adapters)
+3. `implement-and-verify-system` (re-implements + verifies the system)
+
+So one cycle covers **both** system-side and external-side redesign.
+An operator picking `task/redesign-system` gets both regardless.
+
+**Direction (proposed)** — split into two CYCLEs:
+
+- `redesign-system-structure` — `implement-system-driver-adapters` +
+  `implement-and-verify-system`.
+- `redesign-external-system-structure` —
+  `implement-external-system-driver-adapters` (+ `implement-and-verify-system`
+  if the system needs re-verification after the external-side change).
+
+This also requires splitting the ticket-kind:
+
+- `task/redesign-system` → routes to `redesign-system-structure`.
+- `task/redesign-external-system` → routes to
+  `redesign-external-system-structure` (new ticket kind).
+
+Update the `GATE_TASK_SUBTYPE` gateway from Item 11 to add the new
+branch.
+
+**Open questions for /refine-plan**:
+
+- Q14.1 — Confirm the split direction. Alternative: keep the unified
+  cycle but document the operator can skip one half (no YAML change).
+- Q14.2 — Does `implement-and-verify-system` need to fire in the
+  external-side cycle too? Depends on whether changing external-system
+  driver adapters can change system behaviour. (Likely yes — the
+  system's port interface to the external system may shift.)
+- Q14.3 — Naming for the new sibling: `redesign-external-system-structure`
+  (proposed) vs `redesign-external-system-driver-structure` (more
+  precise but verbose) vs other.
+- Q14.4 — Scope: ship in this plan or as a separate structural-redesign
+  plan? This is the only item that *changes domain semantics* (adds a
+  new ticket kind), not just naming/layout.
+
+## Item 15 — Rename `CALL_PARAMETERISED_CORE` — *merged into Item 12 on 2026-05-26*
+
+The two `CALL_PARAMETERISED_CORE` nodes (process-flow.yaml:565, 588) get
+renamed to `WRITE_AND_VERIFY_ACCEPTANCE_TESTS` as part of Item 12's
+`CALL_*` prefix-drop pass — same rule (1:1 wrapper → bare upper-snake
+form of the sub-process name), same YAML pass.
+
+## Item 16 — Remove question-form documentation from computed gateways
+
+**Observation**: Several gateways read pre-computed values but carry
+question-form `documentation:` that misleads readers into thinking a
+human chooses at that point. Examples:
+
+- `GATE_TICKET_KIND` (process-flow.yaml:241-244): `"Ticket kind (type +
+  optional task subtype)?"` — but `ticket-kind` is set during
+  refinement; the gateway just reads/parses.
+- Likely the same pattern on `GATE_*_CHANGED` and other computed
+  gateways — inventory at execution time.
+
+**BPMN convention**: a gateway's label, if any, should be a **predicate**
+or **routing condition** ("ticket-kind", "dsl-port-changed"), not a
+question. Questions imply elicitation, which belongs in an upstream
+user_task (per Item 13).
+
+**Direction (decided 2026-05-26)**: every computed gateway's
+`documentation:` rewrites to the **predicate form** (the binding name as
+the label). Example: `GATE_TICKET_KIND` → `documentation: "ticket-kind"`.
+
+Question-form documentation is reserved for the operator-input gateways
+that Item 13 splits; Item 13 strips that documentation when adding the
+upstream user_task. End state: **no gateway in the YAML carries
+question-form text**.
+
+The renderer parses the gateway documentation; the schema validator
+**hard-errors at parse time** on any gateway whose documentation ends
+with `?` (question-form). Forces the convention; consistent with Item 2's
+hard-error for missing call_activity docs.
+
+**Files**:
+- `internal/atdd/runtime/statemachine/process-flow.yaml` — audit and
+  rewrite or drop gateway documentation fields.
+
+**Open questions for /refine-plan**:
+
+- Q16.1 — *Decided 2026-05-26*: predicate-form (binding name as label).
+- Q16.2 — *Decided 2026-05-26*: hard-error at parse time on
+  question-form gateway documentation (anything ending in `?`).
+
+## Item 17 — Model error end-events for the no-edge-matched failure path
+
+**Observation**: process-flow.yaml:210-213 documents that "operator-facing
+parse errors / unrecognised types surface through the runtime's
+no-edge-matched error path rather than dedicated STOP nodes." This means
+exceptional exits — e.g. unrecognised ticket-kind — fire as a runtime
+panic, **invisible in the diagram**.
+
+**BPMN convention**: exceptional exits are modelled as **error
+end-events** (circle with a bolt icon). They show readers where things
+can blow up.
+
+**Direction (decided 2026-05-26)**: introduce a new node type
+`error_end_event` rendered as a **circle with red border + bolt icon
+(⚡)**. Add one to each gateway that can fire a no-edge-matched error.
+Concrete targets:
+
+- `GATE_TICKET_KIND` — unrecognised ticket kinds.
+- `GATE_TASK_SUBTYPE` (Item 11) — unrecognised subtypes.
+- Possibly other gateways where the binding could return an
+  unenumerated value (inventory at execution time — Q17.3).
+
+**Files**:
+- `internal/atdd/runtime/statemachine/load.go` — new YAML node type.
+- `internal/atdd/runtime/diagram/diagram.go` — new shape / classDef
+  (bolt-icon circle or coloured circle).
+- `internal/atdd/runtime/statemachine/process-flow.yaml` — add the
+  error end-events to relevant gateways.
+- Runtime code that currently raises the "no-edge-matched" panic —
+  may need to route to the new error end-event node so the trace
+  surfaces it as a proper transition.
+
+**Open questions for /refine-plan**:
+
+- Q17.1 — *Decided 2026-05-26*: new node type `error_end_event`.
+- Q17.2 — *Decided 2026-05-26*: red border + bolt icon (⚡), BPMN
+  standard.
+- Q17.3 — Audit which gateways can produce unenumerated values —
+  inventory at execution time. Likely candidates beyond the two above:
+  any `GATE_*_CHANGED` gateway, `GATE_OUTPUTS_AND_SCOPES_VALID`,
+  `GATE_COMMAND_SUCCEEDED`.
+
+## Item 18 — Add explicit loop-subprocess markers to looping flows — *dropped on 2026-05-26*
+
+The post-Item-13 `refactor` shape (`CHOOSE_REFACTOR_TYPE` → gateway →
+activities looping back to chooser / exit) is the canonical BPMN
+**gateway-controlled loop** pattern. BPMN's `⟳` loop marker applies to
+**single activities** (tasks, sub-processes, call-activities), not to
+multi-activity flow loops. Adding `⟳` here would be non-standard.
+
+Item 18 was built on a wrong premise. No action needed.
+
 ## Execution order
 
-Items in execution order after the 2026-05-26 /refine-plan walk. Deferred
-items (1, 5, 6) and merged items (4) are excluded — they don't ship in
-this plan's scope.
+Items in execution order after the 2026-05-26 /refine-plan walk.
+
+**In scope** (settled): Items 2, 3, 7, 8, 9, 10, 11, 12, 13, 16, 17.
+**Out of scope**: Items 1, 5, 6 (deferred), 4 (merged into 2), 14
+(deferred to separate plan), 15 (merged into 12), 18 (dropped).
 
 1. **Item 7** (legend wording) — pure renderer change, isolated. Updates
    the three Mermaid sample labels + bullet text + `writeExecutorStyling`
@@ -662,31 +972,46 @@ this plan's scope.
    `User Task (LLM Agent)`.
 2. **Item 8** (drop the `main` legacy-alias) — single deletion in the
    `processAlias` map; heading becomes `## main`.
-3. **Item 2** (require `documentation:` everywhere) — mass YAML edit:
+3. **Item 17** (error end-events) — schema + renderer change: new
+   `error_end_event` node type with red border + bolt icon (⚡). Bakes
+   in the new node type early so Items 11, 16 can use it.
+4. **Item 16** (computed-gateway documentation cleanup) — YAML pass
+   over every gateway: rewrite question-form docs to predicate form
+   (binding name); add parse-time hard-error on question-form gateway
+   documentation.
+5. **Item 13** (split operator-input gateways into user_task + gateway)
+   — adds `CHOOSE_REFACTOR_TYPE` user_task to the `refactor` process;
+   redirects loopback edges; strips question-form documentation from
+   `GATE_REFACTOR_TYPE_CHOICE` (which Item 16 already enforces).
+6. **Item 12** (drop `CALL_*` prefix; role-based naming) — YAML pass:
+   rename 9 `CALL_*` nodes per the two-rule convention. Subsumes Item 15
+   (the two `CALL_PARAMETERISED_CORE` nodes → `WRITE_AND_VERIFY_ACCEPTANCE_TESTS`).
+7. **Item 2** (require `documentation:` everywhere) — mass YAML edit:
    ~85 nodes gain a `documentation:` line under whatever labelling
    convention Q2.1 settles on at execution time; renderer drops the
-   ID-fallback branch and adds the schema-validation requirement. Subsumes
-   the six pre-existing docs from old Item 4.
-4. **Item 3** (de-duplicate opportunistic-refactor block) — YAML change:
+   ID-fallback branch and adds the schema-validation requirement.
+   Subsumes the six pre-existing docs from old Item 4.
+8. **Item 3** (de-duplicate opportunistic-refactor block) — YAML change:
    collapses 6 nodes + 7 edges into one `call_activity` → `refactor`.
    Updates statemachine tests that reference the removed `OPP_*` IDs.
-5. **Item 9** (rename `update-ticket` → `mark-ticket`) — YAML rename across
+9. **Item 9** (rename `update-ticket` → `mark-ticket`) — YAML rename across
    4 call sites + process definition + section comment + diagram.go
    `processOrder`; rename the agent prompt file and any prompt-routing
    config in lockstep (Q9.2 decided).
-6. **Item 10** (rename `refine-backlog` → `refine-backlog-item`) — YAML
-   rename: process def + call site + section comment + diagram.go
-   `processOrder` + `REFINE_BACKLOG_END` → `REFINE_BACKLOG_ITEM_END`.
-7. **Item 11** (split ticket-kind gateway into hierarchical type → subtype)
-   — YAML structural change: `GATE_TICKET_KIND` keeps name but its value
-   set shrinks to story/bug/task; new `GATE_TASK_SUBTYPE` gateway routes
-   the five task subtypes. Stub binding for `task_subtype`; real wiring
-   lands with Phase D.
+10. **Item 10** (rename `refine-backlog` → `refine-backlog-item`) — YAML
+    rename: process def + call site + section comment + diagram.go
+    `processOrder` + `REFINE_BACKLOG_END` → `REFINE_BACKLOG_ITEM_END`.
+11. **Item 11** (split ticket-kind gateway into hierarchical type →
+    subtype) — YAML structural change: `GATE_TICKET_KIND` keeps name but
+    its value set shrinks to story/bug/task; new `GATE_TASK_SUBTYPE`
+    gateway routes the five task subtypes; both gateways gain an
+    `error_end_event` for unrecognised values (per Item 17). Stub
+    binding for `task_subtype`; real wiring lands with Phase D.
 
 Regenerate `docs/process-diagram*.md` after each item; commit per item.
-The GitHub render-budget bug (deferred Item 6) is unrelated — readers will
-still hit "Unable to render rich display" past ~40 diagrams until Item 6
-ships in a follow-up plan.
+The GitHub render-budget bug (deferred Item 6) is unrelated — readers
+will still hit "Unable to render rich display" past ~40 diagrams until
+Item 6 ships in a follow-up plan.
 
 ## Tests / verification
 

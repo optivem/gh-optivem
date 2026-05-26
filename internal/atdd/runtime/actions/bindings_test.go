@@ -108,6 +108,10 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"check-phase-scope",
 		"run-command",
 		"validate-outputs-and-scopes",
+		"move-to-in-refinement",
+		"move-to-ready",
+		"move-to-in-progress",
+		"move-to-in-acceptance",
 	}
 	for _, name := range want {
 		if r.Lookup(name) == nil {
@@ -418,8 +422,8 @@ func TestRunCommand_EmptyCommandHalts(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestValidateOutputsAndScopes_NoOutputs_NoScopes_IsValid(t *testing.T) {
-	// update-ticket / refine-acceptance-criteria carry no outputs and no
-	// scopes — the validation must pass trivially.
+	// refine-acceptance-criteria carries no outputs and no scopes — the
+	// validation must pass trivially.
 	a := newActions(Deps{Stderr: &bytes.Buffer{}})
 	ctx := statemachine.NewContext()
 	out := a.validateOutputsAndScopes(ctx)

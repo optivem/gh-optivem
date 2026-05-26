@@ -296,7 +296,7 @@ func Run(ctx context.Context, opts Options) error {
 	seedScopeState(sCtx, cfg)
 	// Per-run artifact directory — used by service tasks that materialize
 	// inter-phase artifacts (e.g. materialize_parsed_concepts writing
-	// <run_dir>/parsed-concepts.md for refine-acceptance-criteria / update-ticket).
+	// <run_dir>/parsed-concepts.md for refine-acceptance-criteria).
 	sCtx.Set("run_dir", filepath.Join(repoPath, ".gh-optivem", "runs", runState.runTimestamp))
 
 	if opts.IssueNum > 0 {

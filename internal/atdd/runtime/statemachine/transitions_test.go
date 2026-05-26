@@ -77,7 +77,6 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"refactor-tests",
 		"refactor-system",
 		"refine-acceptance-criteria",
-		"update-ticket",
 		// MID — command tasks
 		"compile",
 		"compile-system",

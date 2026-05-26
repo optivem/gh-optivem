@@ -25,9 +25,10 @@ The task iterates over **all** acceptance criteria for the ticket
 - Enforces Gherkin GIVEN-WHEN-THEN form throughout.
 
 Once this task discharges, the **user confirms** the refined ACs (human
-gate). If refinement produced changes, the `refine-backlog` CYCLE then
-calls the `update-ticket` MID to write the refined content back to the
-ticket source. If no changes, `update-ticket` is skipped.
+gate). Writeback of refined ACs to the ticket source is future work (see
+`plans/upcoming/20260525-1753-implement-pre-refine-check-and-post-refactor-offer.md`);
+for now the refined `${parsed_concepts}` artifact is the source of truth
+the downstream cycle consumes.
 
 ## Inputs
 
@@ -42,7 +43,8 @@ ticket source. If no changes, `update-ticket` is skipped.
   for additional scenarios, Gherkin normalization throughout.
 - Sets flag: `Refinement Changed: yes|no` — `yes` if any edit or addition
   occurred; `no` if the AC set was already complete and Gherkin-correct.
-  The downstream `update-ticket` MID runs only when `yes`.
+  Future writeback work (see the upcoming-plan reference above) will key
+  off this flag.
 
 ## Rubric for AC coverage
 
