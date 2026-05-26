@@ -8,8 +8,8 @@ Each section corresponds to one named process in the YAML. `call-activity` nodes
 
 Node **shape** encodes the BPMN type; **fill color** encodes the executor; **border color** (orthogonal) encodes the TDD stage where the author marked one.
 
-- `((circle))` — start / end event
-- `((⚡ circle))` — error end event (BPMN exceptional exit; red border)
+- `(( ))` — start / end event (BPMN plain start or end; empty circle, descriptive name lives in the YAML). Start vs end is read from position in the flow — start has no incoming edge, end has no outgoing edge.
+- `((⚡))` — error end event (BPMN exceptional exit; red border). Two flavors: **Unknown** (defensive guard — an unhandled gateway branch fired; should never happen at runtime) and **Rejected** (hard-abort — a runtime condition that intentionally halts the run, e.g. agent output rejected post-approve). The descriptive name is in the YAML source; the diagram keeps the icon small.
 - `{diamond}` — gateway (decision)
 - `[[subroutine]]` — service task — mechanical, automated step (white)
 - `[rectangle]` — user task — LLM agent (dark blue) or human (yellow); `call_activity` rectangles are unfilled and link to a sub-process heading
@@ -18,8 +18,8 @@ Node **shape** encodes the BPMN type; **fill color** encodes the executor; **bor
 
 ```mermaid
 flowchart LR
-    EVT((Start / End))
-    ERR(("⚡ Error End"))
+    EVT(( ))
+    ERR((⚡))
     GW{Gateway}
     SVC[["Service Task (Automated)"]]
     AGT["User Task (LLM Agent)"]
@@ -59,9 +59,9 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    END((Ticket In Acceptance))
+    END(( ))
     IMPLEMENT_TICKET[Implement Ticket]
-    START((Ticket Ready))
+    START(( ))
 
     START --> IMPLEMENT_TICKET
     IMPLEMENT_TICKET --> END
@@ -74,7 +74,7 @@ flowchart TD
     MARK_IN_REFINEMENT[[Mark IN REFINEMENT]]
     MARK_READY[[Mark READY]]
     REFINE_BACKLOG_ITEM[Refine Backlog Item]
-    REFINE_TICKET_END((Ticket Ready))
+    REFINE_TICKET_END(( ))
 
     MARK_IN_REFINEMENT --> REFINE_BACKLOG_ITEM
     REFINE_BACKLOG_ITEM --> MARK_READY
@@ -92,7 +92,7 @@ flowchart TD
     COVER_SYSTEM_BEHAVIOR[Cover System Behavior]
     GATE_TASK_SUBTYPE{task-subtype}
     GATE_TICKET_KIND{ticket-kind}
-    IMPLEMENT_TICKET_END((Ticket Marked IN ACCEPTANCE))
+    IMPLEMENT_TICKET_END(( ))
     MARK_IN_ACCEPTANCE[[Mark IN ACCEPTANCE]]
     MARK_IN_PROGRESS[[Mark IN PROGRESS]]
     PARSE_TICKET[[Parse Ticket]]
@@ -100,8 +100,8 @@ flowchart TD
     REDESIGN_SYSTEM_STRUCTURE[Redesign System Structure]
     REFACTOR_SYSTEM_STRUCTURE[Refactor System Structure]
     REFACTOR_TEST_STRUCTURE[Refactor Test Structure]
-    UNKNOWN_TASK_SUBTYPE((⚡ Unknown Task Subtype))
-    UNKNOWN_TICKET_KIND((⚡ Unknown Ticket Kind))
+    UNKNOWN_TASK_SUBTYPE((⚡))
+    UNKNOWN_TICKET_KIND((⚡))
 
     MARK_IN_PROGRESS --> PARSE_TICKET
     PARSE_TICKET --> GATE_TICKET_KIND
@@ -140,7 +140,7 @@ flowchart TD
     REDESIGN_SYSTEM_STRUCTURE[Redesign System Structure]
     REFACTOR_SYSTEM_STRUCTURE[Refactor System Structure]
     REFACTOR_TEST_STRUCTURE[Refactor Test Structure]
-    REFACTOR_TOP_END((Refactor Complete))
+    REFACTOR_TOP_END(( ))
 
     CHOOSE_REFACTOR_TYPE --> GATE_REFACTOR_TYPE_CHOICE
     GATE_REFACTOR_TYPE_CHOICE -- Refactor System Structure --> REFACTOR_SYSTEM_STRUCTURE
@@ -162,7 +162,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     REFINE_ACCEPTANCE_CRITERIA[Refine Acceptance Criteria]
-    REFINE_BACKLOG_ITEM_END((Backlog Item Refined))
+    REFINE_BACKLOG_ITEM_END(( ))
 
     REFINE_ACCEPTANCE_CRITERIA --> REFINE_BACKLOG_ITEM_END
 ```
@@ -171,7 +171,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CHANGE_SYSTEM_BEHAVIOR_END((System Behavior Changed))
+    CHANGE_SYSTEM_BEHAVIOR_END(( ))
     IMPLEMENT_AND_VERIFY_SYSTEM[Implement System — see § implement-and-verify-system]
     REFACTOR_OPPORTUNISTICALLY["Opportunistic Refactor (Loopable) — see § refactor"]
     WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL[Write Failing Acceptance Tests — see § write-and-verify-acceptance-tests-fail]
@@ -194,7 +194,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    COVER_END((System Behavior Covered))
+    COVER_END(( ))
     WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS[Write Passing Acceptance Tests — see § write-and-verify-acceptance-tests-pass]
 
     WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS --> COVER_END
@@ -208,7 +208,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     IMPLEMENT_AND_VERIFY_SYSTEM[Update System — see § implement-and-verify-system]
-    REDESIGN_END((System Structure Redesigned))
+    REDESIGN_END(( ))
     UPDATE_SYSTEM_DRIVER_ADAPTERS[Update System Driver Adapters]
 
     UPDATE_SYSTEM_DRIVER_ADAPTERS --> IMPLEMENT_AND_VERIFY_SYSTEM
@@ -226,7 +226,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     IMPLEMENT_AND_VERIFY_SYSTEM[Refactor System — see § implement-and-verify-system]
-    REFACTOR_SYSTEM_STRUCTURE_END((System Structure Refactored))
+    REFACTOR_SYSTEM_STRUCTURE_END(( ))
 
     IMPLEMENT_AND_VERIFY_SYSTEM --> REFACTOR_SYSTEM_STRUCTURE_END
 
@@ -239,7 +239,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     REFACTOR_AND_VERIFY_TESTS[Refactor and Verify Tests]
-    REFACTOR_TEST_STRUCTURE_END((Test Structure Refactored))
+    REFACTOR_TEST_STRUCTURE_END(( ))
 
     REFACTOR_AND_VERIFY_TESTS --> REFACTOR_TEST_STRUCTURE_END
 
@@ -251,7 +251,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    WAV_AT_FAIL_END((Failing Acceptance Tests Verified))
+    WAV_AT_FAIL_END(( ))
     WRITE_AND_VERIFY_ACCEPTANCE_TESTS[Write and Verify Acceptance Tests]
 
     WRITE_AND_VERIFY_ACCEPTANCE_TESTS --> WAV_AT_FAIL_END
@@ -261,7 +261,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    WAV_AT_PASS_END((Passing Acceptance Tests Verified))
+    WAV_AT_PASS_END(( ))
     WRITE_AND_VERIFY_ACCEPTANCE_TESTS[Write and Verify Acceptance Tests]
 
     WRITE_AND_VERIFY_ACCEPTANCE_TESTS --> WAV_AT_PASS_END
@@ -277,7 +277,7 @@ flowchart TD
     IMPLEMENT_AND_VERIFY_DSL[Implement and Verify DSL]
     IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS[Implement and Verify External-System Driver Adapters]
     IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS[Implement and Verify System Driver Adapters]
-    WAV_AT_END((Acceptance Tests Verified))
+    WAV_AT_END(( ))
     WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE[Write and Verify Acceptance Test Code]
 
     WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE --> GATE_DSL_PORT_CHANGED
@@ -300,10 +300,10 @@ flowchart TD
     COMPILE_TESTS[Compile Tests]
     DISABLE_ACCEPTANCE_TESTS[Disable Acceptance Tests — see § disable-tests]
     GATE_EXPECTED_TEST_RESULT{expected-test-result}
-    UNKNOWN_EXPECTED_TEST_RESULT((⚡ Unknown Expected Test Result))
+    UNKNOWN_EXPECTED_TEST_RESULT((⚡))
     VERIFY_TESTS_FAIL_ACCEPTANCE[Verify Acceptance Tests Fail — see § verify-tests-fail]
     VERIFY_TESTS_PASS_ACCEPTANCE[Verify Acceptance Tests Pass — see § verify-tests-pass]
-    WAV_AT_CODE_END((Acceptance Test Code Verified))
+    WAV_AT_CODE_END(( ))
     WRITE_ACCEPTANCE_TESTS[Write Acceptance Tests]
 
     WRITE_ACCEPTANCE_TESTS --> COMPILE_TESTS
@@ -325,7 +325,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     IMPLEMENT_TEST_LAYER[Implement DSL Layer — see § implement-test-layer]
-    IMPL_DSL_END((DSL Layer Verified))
+    IMPL_DSL_END(( ))
 
     IMPLEMENT_TEST_LAYER --> IMPL_DSL_END
 ```
@@ -335,7 +335,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     IMPLEMENT_TEST_LAYER[Implement System Driver Adapter Layer — see § implement-test-layer]
-    IMPL_SYS_DRIVER_END((System Driver Adapter Layer Verified))
+    IMPL_SYS_DRIVER_END(( ))
 
     IMPLEMENT_TEST_LAYER --> IMPL_SYS_DRIVER_END
 ```
@@ -345,7 +345,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     IMPLEMENT_TEST_LAYER[Implement External-System Driver Adapter Layer — see § implement-test-layer]
-    IMPL_EXT_DRIVER_END((External System Driver Adapter Layer Verified))
+    IMPL_EXT_DRIVER_END(( ))
 
     IMPLEMENT_TEST_LAYER --> IMPL_EXT_DRIVER_END
 ```
@@ -358,7 +358,7 @@ flowchart TD
     IMPLEMENT_AND_VERIFY_DSL[Implement and Verify DSL]
     IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Implement External-System Driver Adapters]
     IMPLEMENT_EXTERNAL_SYSTEM_STUBS[Implement External-System Stubs]
-    IMPL_EXT_DRIVER_CT_END((External System Driver Contract Tests Verified))
+    IMPL_EXT_DRIVER_CT_END(( ))
     VERIFY_TESTS_FAIL_CONTRACT_STUB[Verify Contract Tests Fail Against the Stub — see § verify-tests-fail]
     VERIFY_TESTS_PASS_CONTRACT_REAL[Verify Contract Tests Pass Against the Real System — see § verify-tests-pass]
     VERIFY_TESTS_PASS_CONTRACT_STUB[Verify Contract Tests Pass Against the Stub — see § verify-tests-pass]
@@ -381,7 +381,7 @@ flowchart TD
 flowchart TD
     BUILD_SYSTEM[Build the System — see § build-system]
     COMMIT_SYSTEM[Commit System Changes — see § commit]
-    IMPL_AND_VERIFY_SYSTEM_END((System Implemented and Verified))
+    IMPL_AND_VERIFY_SYSTEM_END(( ))
     RUN_ACTION["Run the Configured Agent — see § ${action}"]
     START_SYSTEM[Start the System — see § start-system]
     VERIFY_TESTS_PASS[Verify Tests Pass]
@@ -399,7 +399,7 @@ flowchart TD
 flowchart TD
     COMMIT_TESTS[Commit Test Changes — see § commit]
     COMPILE_TESTS[Compile Tests]
-    REFACTOR_AND_VERIFY_TESTS_END((Tests Refactored and Verified))
+    REFACTOR_AND_VERIFY_TESTS_END(( ))
     REFACTOR_TESTS[Refactor Tests]
     VERIFY_TESTS_PASS[Verify Tests Pass]
 
@@ -418,9 +418,9 @@ flowchart TD
     DISABLE_TESTS[Disable Tests]
     ENABLE_TESTS[Enable Tests]
     GATE_EXPECTED_TEST_RESULT{expected-test-result}
-    IMPLEMENT_TEST_LAYER_END((Test Layer Implemented))
+    IMPLEMENT_TEST_LAYER_END(( ))
     RUN_ACTION["Run the Configured Agent — see § ${action}"]
-    UNKNOWN_EXPECTED_TEST_RESULT((⚡ Unknown Expected Test Result))
+    UNKNOWN_EXPECTED_TEST_RESULT((⚡))
     VERIFY_TESTS_FAIL_FILTERED[Verify Tests Fail]
     VERIFY_TESTS_PASS_FILTERED[Verify Tests Pass]
 
@@ -446,8 +446,8 @@ flowchart TD
     FIX_UNEXPECTED_FAILING_TESTS[Fix Unexpected Test Failures — see § fix-unexpected-failing-tests]
     GATE_TESTS_OUTCOME{test-outcome}
     RUN_TESTS[Run Tests]
-    UNKNOWN_TESTS_OUTCOME((⚡ Unknown Tests Outcome))
-    VERIFY_PASS_END((Tests Pass Verified))
+    UNKNOWN_TESTS_OUTCOME((⚡))
+    VERIFY_PASS_END(( ))
 
     RUN_TESTS --> GATE_TESTS_OUTCOME
     GATE_TESTS_OUTCOME -- Pass --> VERIFY_PASS_END
@@ -466,8 +466,8 @@ flowchart TD
     FIX_UNEXPECTED_PASSING_TESTS[Fix Unexpectedly Passing Tests — see § fix-unexpected-passing-tests]
     GATE_TESTS_OUTCOME{test-outcome}
     RUN_TESTS[Run Tests]
-    UNKNOWN_TESTS_OUTCOME((⚡ Unknown Tests Outcome))
-    VERIFY_FAIL_END((Tests Fail Verified))
+    UNKNOWN_TESTS_OUTCOME((⚡))
+    VERIFY_FAIL_END(( ))
 
     RUN_TESTS --> GATE_TESTS_OUTCOME
     GATE_TESTS_OUTCOME -- Pass --> FIX_UNEXPECTED_PASSING_TESTS
@@ -484,7 +484,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
-    WAT_END((Acceptance Tests Written))
+    WAT_END(( ))
 
     EXECUTE_AGENT --> WAT_END
 ```
@@ -494,7 +494,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
-    WCT_END((Contract Tests Written))
+    WCT_END(( ))
 
     EXECUTE_AGENT --> WCT_END
 ```
@@ -504,7 +504,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
-    IMPL_DSL_END((DSL Implemented))
+    IMPL_DSL_END(( ))
 
     EXECUTE_AGENT --> IMPL_DSL_END
 ```
@@ -514,7 +514,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
-    IMPL_SYS_END((System Implemented))
+    IMPL_SYS_END(( ))
 
     EXECUTE_AGENT --> IMPL_SYS_END
 ```
@@ -524,7 +524,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
-    IMPL_SYS_DA_END((System Driver Adapters Implemented))
+    IMPL_SYS_DA_END(( ))
 
     EXECUTE_AGENT --> IMPL_SYS_DA_END
 ```
@@ -534,7 +534,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
-    IMPL_EXT_DA_END((External System Driver Adapters Implemented))
+    IMPL_EXT_DA_END(( ))
 
     EXECUTE_AGENT --> IMPL_EXT_DA_END
 ```
@@ -544,7 +544,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
-    IMPL_STUBS_END((External System Stubs Implemented))
+    IMPL_STUBS_END(( ))
 
     EXECUTE_AGENT --> IMPL_STUBS_END
 ```
@@ -553,7 +553,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    DISABLE_END((Tests Disabled))
+    DISABLE_END(( ))
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
 
     EXECUTE_AGENT --> DISABLE_END
@@ -563,7 +563,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    ENABLE_END((Tests Enabled))
+    ENABLE_END(( ))
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
 
     EXECUTE_AGENT --> ENABLE_END
@@ -574,7 +574,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
-    FIX_PASS_END((Unexpected Passing Tests Fixed))
+    FIX_PASS_END(( ))
 
     EXECUTE_AGENT --> FIX_PASS_END
 ```
@@ -584,7 +584,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
-    FIX_FAIL_END((Unexpected Failing Tests Fixed))
+    FIX_FAIL_END(( ))
 
     EXECUTE_AGENT --> FIX_FAIL_END
 ```
@@ -594,7 +594,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
-    REFACTOR_TESTS_END((Tests Refactored))
+    REFACTOR_TESTS_END(( ))
 
     EXECUTE_AGENT --> REFACTOR_TESTS_END
 ```
@@ -604,7 +604,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
-    REFACTOR_SYS_END((System Refactored))
+    REFACTOR_SYS_END(( ))
 
     EXECUTE_AGENT --> REFACTOR_SYS_END
 ```
@@ -614,7 +614,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
-    REFINE_AC_END((Acceptance Criteria Refined))
+    REFINE_AC_END(( ))
 
     EXECUTE_AGENT --> REFINE_AC_END
 ```
@@ -623,7 +623,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    COMPILE_MID_END((Compile Complete))
+    COMPILE_MID_END(( ))
     EXECUTE_COMMAND[Dispatch the Command — see § execute-command]
 
     EXECUTE_COMMAND --> COMPILE_MID_END
@@ -633,7 +633,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    COMPILE_SYS_END((System Compiled))
+    COMPILE_SYS_END(( ))
     EXECUTE_COMMAND[Dispatch the Command — see § execute-command]
 
     EXECUTE_COMMAND --> COMPILE_SYS_END
@@ -643,7 +643,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    COMPILE_TESTS_END((Tests Compiled))
+    COMPILE_TESTS_END(( ))
     EXECUTE_COMMAND[Dispatch the Command — see § execute-command]
 
     EXECUTE_COMMAND --> COMPILE_TESTS_END
@@ -653,7 +653,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    BUILD_SYS_END((System Built))
+    BUILD_SYS_END(( ))
     EXECUTE_COMMAND[Dispatch the Command — see § execute-command]
 
     EXECUTE_COMMAND --> BUILD_SYS_END
@@ -664,7 +664,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     EXECUTE_COMMAND[Dispatch the Command — see § execute-command]
-    START_SYS_END((System Started))
+    START_SYS_END(( ))
 
     EXECUTE_COMMAND --> START_SYS_END
 ```
@@ -673,7 +673,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    COMMIT_MID_END((Commit Complete))
+    COMMIT_MID_END(( ))
     EXECUTE_COMMAND[Dispatch the Command — see § execute-command]
 
     EXECUTE_COMMAND --> COMMIT_MID_END
@@ -684,7 +684,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     EXECUTE_COMMAND[Dispatch the Command — see § execute-command]
-    RUN_TESTS_END((Tests Run))
+    RUN_TESTS_END(( ))
 
     EXECUTE_COMMAND --> RUN_TESTS_END
 ```
@@ -693,8 +693,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    APPROVE_OK_END((Approved))
-    APPROVE_REJECT_END((Rejected))
+    APPROVE_OK_END(( ))
+    APPROVE_REJECT_END(( ))
     ASK_HUMAN["${question}"]
     GATE_APPROVED{approval-outcome}
 
@@ -712,9 +712,9 @@ flowchart TD
 flowchart TD
     APPROVE_POST[Confirm Approval — see § approve]
     APPROVE_PRE[Request Approval — see § approve]
-    EXECUTE_AGENT_END((Agent Dispatch Complete))
-    EXECUTE_AGENT_OUTPUT_REJECTED_END((⚡ Agent Output Rejected))
-    EXECUTE_AGENT_REJECTED_END((Agent Dispatch Rejected))
+    EXECUTE_AGENT_END(( ))
+    EXECUTE_AGENT_OUTPUT_REJECTED_END((⚡))
+    EXECUTE_AGENT_REJECTED_END(( ))
     FIX[Fix the Failure — see § fix]
     GATE_APPROVED_POST{approval-outcome}
     GATE_APPROVED_PRE{approval-outcome}
@@ -754,8 +754,8 @@ flowchart TD
 ```mermaid
 flowchart TD
     APPROVE_PRE[Request Approval — see § approve]
-    EXECUTE_COMMAND_END((Command Dispatch Complete))
-    EXECUTE_COMMAND_REJECTED_END((Command Dispatch Rejected))
+    EXECUTE_COMMAND_END(( ))
+    EXECUTE_COMMAND_REJECTED_END(( ))
     FIX[Fix the Failure — see § fix]
     GATE_APPROVED_PRE{approval-outcome}
     GATE_COMMAND_SUCCEEDED{command-succeeded}
@@ -779,8 +779,8 @@ flowchart TD
 flowchart TD
     APPROVE_PRE[Request Approval — see § approve]
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
-    FIX_END((Fix Complete))
-    FIX_REJECTED_END((Fix Rejected))
+    FIX_END(( ))
+    FIX_REJECTED_END(( ))
     GATE_APPROVED_PRE{approval-outcome}
 
     APPROVE_PRE --> GATE_APPROVED_PRE
@@ -794,7 +794,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     IMPLEMENT_AND_VERIFY_SYSTEM[Update System — see § implement-and-verify-system]
-    REDESIGN_EXTERNAL_END((External System Structure Redesigned))
+    REDESIGN_EXTERNAL_END(( ))
     UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Update External-System Driver Adapters]
 
     UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS --> IMPLEMENT_AND_VERIFY_SYSTEM
@@ -812,7 +812,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
-    UPDATE_EXT_DA_END((External System Driver Adapters Updated))
+    UPDATE_EXT_DA_END(( ))
 
     EXECUTE_AGENT --> UPDATE_EXT_DA_END
 ```
@@ -822,7 +822,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
-    UPDATE_SYS_END((System Updated))
+    UPDATE_SYS_END(( ))
 
     EXECUTE_AGENT --> UPDATE_SYS_END
 ```
@@ -832,7 +832,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
-    UPDATE_SYS_DA_END((System Driver Adapters Updated))
+    UPDATE_SYS_DA_END(( ))
 
     EXECUTE_AGENT --> UPDATE_SYS_DA_END
 ```
