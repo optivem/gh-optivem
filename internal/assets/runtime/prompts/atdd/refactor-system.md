@@ -7,12 +7,14 @@ You are the refactor-system task. The Checklist below was parsed from the ticket
 
 This task covers internal refactor / rename / move / dependency upgrade / build tweak / dead-code removal / internal abstraction change inside `system/`. No boundary or behavioral impact. `system/` only; drivers, tests, DSL, Gherkin untouched.
 
+## Inputs
+
 Architecture: ${architecture}
 
 Allowed write roots:
 ${allowed_roots}
 
-## Checklist
+### Checklist
 
 ${checklist}
 

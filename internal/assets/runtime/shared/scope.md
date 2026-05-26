@@ -27,3 +27,17 @@ If your phase's MID node declares `scope: none`, modify NO file in the repo
 working tree — no config, no docs, no scripts. Mutate only the inter-phase
 artifact or external system (e.g. the GitHub / Jira tracker) that your
 phase targets.
+
+## Scope is the complete contract
+
+The `## Scope` block in your dispatched prompt is the *complete* read/write
+contract. The prompt body does **not** enumerate forbidden layers in prose:
+no "do not modify acceptance tests / DSL / driver port", no "frozen layer"
+lists, no inline "stop and ask the user" guardrails for specific paths.
+
+If a layer is not in `## Scope` `read`, you cannot read it. If it is not in
+`## Scope` `write`, you cannot write to it. The escape hatch for both is the
+same `scope_exception` block above — never a special-case prose rule baked
+into the prompt body. This keeps the agent contract in one place (the BPMN
+node's `read:` / `write:` lists, rendered into `## Scope`) and prevents
+prompt prose from drifting out of sync with the actual scope.

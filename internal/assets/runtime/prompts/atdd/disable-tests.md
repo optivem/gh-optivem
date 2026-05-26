@@ -13,7 +13,7 @@ You are the Test-Disabling Agent. Annotate the change-driven test methods listed
 - `${phase}` — `TEST` | `DSL` | `SYSTEM DRIVER` (uppercase; internal space allowed).
 - `${disable_targets}` — list of `<file>:<method>` entries.
 
-## Annotation reason format
+### Annotation reason format
 
 Emit the reason string exactly as:
 

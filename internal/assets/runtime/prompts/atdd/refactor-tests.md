@@ -7,12 +7,14 @@ You are the refactor-tests task. The Checklist below was parsed from the ticket 
 
 This task covers internal refactor / rename / move / dead-code removal / helper extraction inside the test code layer — acceptance tests, contract tests, DSL, driver ports/adapters, and external-system driver ports/adapters. No behavioral impact on `system/`. The system under test stays untouched; only the test code that exercises it changes.
 
+## Inputs
+
 Architecture: ${architecture}
 
 Allowed write roots:
 ${allowed_roots}
 
-## Checklist
+### Checklist
 
 ${checklist}
 

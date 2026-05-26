@@ -10,11 +10,17 @@ Architecture: ${architecture}
 Allowed write roots:
 ${allowed_roots}
 
-## Checklist
+Edit ONLY files under the "Allowed write roots" listed at the top of this prompt. External-system roots, when listed, are write-eligible only when the ticket explicitly calls for stub or simulator changes — otherwise read-only context.
+
+## Inputs
+
+- `${architecture}` — architecture profile for the target project (Java/.NET/TS × monolith/multitier).
+- `${allowed_roots}` — the paths under which this task is permitted to write.
+- `${checklist}` — the parsed list of changes to apply across affected channels.
+
+### Checklist
 
 ${checklist}
-
-Edit ONLY files under the "Allowed write roots" listed at the top of this prompt. External-system roots, when listed, are write-eligible only when the ticket explicitly calls for stub or simulator changes — otherwise read-only context.
 
 ## Steps
 
@@ -24,5 +30,3 @@ Edit ONLY files under the "Allowed write roots" listed at the top of this prompt
    - **Other**: channel-specific equivalents (commands/flags for CLI, screens for mobile, admin pages, …).
 
    Apply across **all parallel implementations** (Java/.NET/TS × monolith/multitier — see [architecture/system.md](../../../architecture/system.md)). After editing the source of truth, grep the system tree for residual references (e.g. the old URL string) before moving on.
-2. **Driver-port guardrail.** Do NOT modify any file under `${driver-port}/` casually. If a driver-interface change is unavoidable, STOP and present to the user: the method(s) you want to change, why the adapter alone cannot absorb the change, the proposed new signature(s). Wait for explicit user approval before editing any `${driver-port}/` file.
-3. `${system-test-path}/.../Legacy/` is read-only.

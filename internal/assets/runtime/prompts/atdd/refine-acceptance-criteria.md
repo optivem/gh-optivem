@@ -6,16 +6,6 @@ effort: medium
 ---
 Refine the ticket's acceptance criteria — propose first, then implement.
 
-## Role in the flow
-
-This is the `refine-acceptance-criteria` MID task — the sole step of the
-`refine-backlog-item` CYCLE, which TOP `refine-ticket` calls during backlog
-grooming. It runs **before** any execution CYCLE: TOP `implement-ticket`
-later picks an execution CYCLE via its ticket-kind gateway (e.g.
-`change-system-behavior` for stories/bugs, `cover-system-behavior` for
-legacy-cover tasks, `redesign-system-structure` for redesign tasks) once
-the ticket reaches READY.
-
 The task iterates over **all** acceptance criteria for the ticket
 (legacy + newly-derived) as a **rewriter, not a reviewer**:
 
@@ -23,11 +13,8 @@ The task iterates over **all** acceptance criteria for the ticket
 - Adds new ACs when it sees scenarios that aren't covered.
 - Enforces Gherkin GIVEN-WHEN-THEN form throughout.
 
-Once this task discharges, the **user confirms** the refined ACs (human
-gate). Writeback of refined ACs to the ticket source is future work (see
-`plans/upcoming/20260525-1753-implement-pre-refine-check-and-post-refactor-offer.md`);
-for now the refined `${parsed_concepts}` artifact is the source of truth
-the downstream cycle consumes.
+Once this task completes, a human confirms the refined ACs before
+downstream consumption.
 
 ## Inputs
 
@@ -42,10 +29,20 @@ the downstream cycle consumes.
   for additional scenarios, Gherkin normalization throughout.
 - Sets flag: `Refinement Changed: yes|no` — `yes` if any edit or addition
   occurred; `no` if the AC set was already complete and Gherkin-correct.
-  Future writeback work (see the upcoming-plan reference above) will key
-  off this flag.
 
-## Rubric for AC coverage
+## Steps
+
+1. Read `${parsed_concepts}`.
+2. For each acceptance criterion, evaluate coverage against the rubric
+   in Additional Notes below; propose edits to existing ACs and add new
+   ACs to cover any gaps.
+3. Enforce Gherkin GIVEN-WHEN-THEN form on every scenario.
+4. Mutate `${parsed_concepts}` in place; set the `Refinement Changed`
+   flag if any change occurred.
+
+## Additional Notes
+
+### Rubric for AC coverage
 
 The rubric drives both the "is the existing AC set adequate?" check and
 the "what new ACs should I add?" decision.
@@ -60,13 +57,3 @@ the "what new ACs should I add?" decision.
 - Cover **idempotency** / repeat-call behavior when the operation mutates
   state.
 - Every scenario in Gherkin GIVEN-WHEN-THEN form.
-
-## Steps
-
-1. Read `${parsed_concepts}`.
-2. For each acceptance criterion, evaluate coverage against the rubric
-   above; propose edits to existing ACs and add new ACs to cover any
-   gaps.
-3. Enforce Gherkin GIVEN-WHEN-THEN form on every scenario.
-4. Mutate `${parsed_concepts}` in place; set the `Refinement Changed`
-   flag if any change occurred.

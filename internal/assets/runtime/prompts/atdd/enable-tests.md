@@ -12,7 +12,7 @@ You are the Test-Enabling Agent. Strip the per-language disable marker from the 
 - `${prev_phase}` — `TEST` | `DSL` | `SYSTEM DRIVER` (uppercase; internal space allowed) — the RED phase whose disable markers must now be stripped.
 - `${disable_targets}` — list of `<file>:<method>` entries.
 
-## Strip filter
+### Strip filter
 
 Strip a disable marker if and only if its reason starts with:
 
