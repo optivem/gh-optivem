@@ -47,6 +47,14 @@ cd ../shop
 bash ../gh-optivem/scripts/atdd-rehearsal.sh 68 --config gh-optivem-monolith-typescript.yaml
 ```
 
+**Issue [#69 — Reject order with line quantity of 100](https://github.com/optivem/shop/issues/69)** (write flow with validation rule):
+
+```bash
+cd ../shop
+
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 69 --config gh-optivem-monolith-typescript.yaml
+```
+
 ## Contents
 
 - [Prerequisites](#prerequisites)
