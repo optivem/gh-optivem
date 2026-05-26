@@ -2,7 +2,6 @@
 # Designs tests and wires DSL stub prototypes — both fit in Sonnet.
 model: sonnet
 effort: medium
-scope: {}   # query resolved scope: `gh optivem process scope write-acceptance-tests`
 ---
 The Acceptance Criteria below were parsed from the ticket body during intake — write tests for them directly. This task is called from the `write-and-verify-acceptance-tests` HIGH orchestration, which is called from step 1 of the `change-system-behavior` CYCLE (via the `-fail` wrapper).
 

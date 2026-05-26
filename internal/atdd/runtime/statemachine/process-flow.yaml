@@ -525,11 +525,18 @@ processes:
       - {from: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS, to: COVER_END}
 
   # System-side structure redesign. Step 1 calls MID
-  # `implement-system-driver-adapters`. Step 2 reuses HIGH
-  # `implement-and-verify-system`. External-side driver adapters live in
-  # the sibling CYCLE `redesign-external-system-structure`, reached via
+  # `update-system-driver-adapters` (reshape adapter layer to absorb the
+  # surface change). Step 2 reuses HIGH `implement-and-verify-system` with
+  # `action: update-system` (reshape the system surface). External-side
+  # driver adapters live in the sibling CYCLE
+  # `redesign-external-system-structure`, reached via
   # `task/external-system-redesign` — `task/system-redesign` tickets stay
   # system-side and no longer rebuild the external boundary.
+  #
+  # Verb-split note (plan 20260526-1448 Item 10): the redesign call sites
+  # dispatch `update-*` variants (Checklist-driven reshape) rather than
+  # `implement-*` variants (TODO-fill translation). Each variant is a
+  # single-caller prompt with one algorithm and no Checklist branching.
   redesign-system-structure:
     start: CHECK_CHECKLIST_PROGRESS
     nodes:
@@ -547,37 +554,41 @@ processes:
         agent: human
         documentation: "${checklist_progress_summary} Approve re-running this cycle?"
 
-      - id: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS
+      - id: UPDATE_SYSTEM_DRIVER_ADAPTERS
         type: call-activity
-        process: implement-system-driver-adapters
-        documentation: "Implement System Driver Adapters"
+        process: update-system-driver-adapters
+        documentation: "Update System Driver Adapters"
 
       - id: IMPLEMENT_AND_VERIFY_SYSTEM
         type: call-activity
         process: implement-and-verify-system
         params:
-          action: implement-system
-        documentation: "Implement System"
+          action: update-system
+        documentation: "Update System"
 
       - id: REDESIGN_END
         type: end-event
         documentation: "System Structure Redesigned"
 
     sequence-flows:
-      - {from: CHECK_CHECKLIST_PROGRESS,         to: GATE_CHECKLIST_PARTIALLY_DONE}
-      - {from: GATE_CHECKLIST_PARTIALLY_DONE,    to: STOP_CHECKLIST_PARTIALLY_DONE,    when: "checklist-partially-done == true"}
-      - {from: GATE_CHECKLIST_PARTIALLY_DONE,    to: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS, when: "checklist-partially-done == false"}
-      - {from: STOP_CHECKLIST_PARTIALLY_DONE,    to: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS}
-      - {from: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS, to: IMPLEMENT_AND_VERIFY_SYSTEM}
-      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,      to: REDESIGN_END}
+      - {from: CHECK_CHECKLIST_PROGRESS,       to: GATE_CHECKLIST_PARTIALLY_DONE}
+      - {from: GATE_CHECKLIST_PARTIALLY_DONE,  to: STOP_CHECKLIST_PARTIALLY_DONE,  when: "checklist-partially-done == true"}
+      - {from: GATE_CHECKLIST_PARTIALLY_DONE,  to: UPDATE_SYSTEM_DRIVER_ADAPTERS,  when: "checklist-partially-done == false"}
+      - {from: STOP_CHECKLIST_PARTIALLY_DONE,  to: UPDATE_SYSTEM_DRIVER_ADAPTERS}
+      - {from: UPDATE_SYSTEM_DRIVER_ADAPTERS,  to: IMPLEMENT_AND_VERIFY_SYSTEM}
+      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,    to: REDESIGN_END}
 
   # External-side sibling of `redesign-system-structure`. Step 1 calls
-  # MID `implement-external-system-driver-adapters` (test-side drivers
-  # into stubs/simulators). Step 2 reuses HIGH `implement-and-verify-
-  # system` because either side of the boundary can shift the system's
-  # port surface — an external-system stub change typically reflects an
-  # external-system contract change, and the acceptance tests have to
-  # re-verify the result against the new stub behavior.
+  # MID `update-external-system-driver-adapters` (reshape Ext* DTOs +
+  # Real/Stub driver impls to match the new external API). Step 2 reuses
+  # HIGH `implement-and-verify-system` with `action: update-system`
+  # because either side of the boundary can shift the system's port
+  # surface — an external-system contract change usually requires the
+  # acceptance tests to re-verify against the new stub behavior, and
+  # update-system absorbs whatever surface reshape that implies.
+  #
+  # Verb-split note (plan 20260526-1448 Item 10): the redesign call sites
+  # dispatch `update-*` variants (Checklist-driven reshape).
   redesign-external-system-structure:
     start: CHECK_CHECKLIST_PROGRESS
     nodes:
@@ -595,29 +606,29 @@ processes:
         agent: human
         documentation: "${checklist_progress_summary} Approve re-running this cycle?"
 
-      - id: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
+      - id: UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
         type: call-activity
-        process: implement-external-system-driver-adapters
-        documentation: "Implement External-System Driver Adapters"
+        process: update-external-system-driver-adapters
+        documentation: "Update External-System Driver Adapters"
 
       - id: IMPLEMENT_AND_VERIFY_SYSTEM
         type: call-activity
         process: implement-and-verify-system
         params:
-          action: implement-system
-        documentation: "Implement System"
+          action: update-system
+        documentation: "Update System"
 
       - id: REDESIGN_EXTERNAL_END
         type: end-event
         documentation: "External System Structure Redesigned"
 
     sequence-flows:
-      - {from: CHECK_CHECKLIST_PROGRESS,                  to: GATE_CHECKLIST_PARTIALLY_DONE}
-      - {from: GATE_CHECKLIST_PARTIALLY_DONE,             to: STOP_CHECKLIST_PARTIALLY_DONE,             when: "checklist-partially-done == true"}
-      - {from: GATE_CHECKLIST_PARTIALLY_DONE,             to: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, when: "checklist-partially-done == false"}
-      - {from: STOP_CHECKLIST_PARTIALLY_DONE,             to: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS}
-      - {from: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, to: IMPLEMENT_AND_VERIFY_SYSTEM}
-      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,               to: REDESIGN_EXTERNAL_END}
+      - {from: CHECK_CHECKLIST_PROGRESS,               to: GATE_CHECKLIST_PARTIALLY_DONE}
+      - {from: GATE_CHECKLIST_PARTIALLY_DONE,          to: STOP_CHECKLIST_PARTIALLY_DONE,          when: "checklist-partially-done == true"}
+      - {from: GATE_CHECKLIST_PARTIALLY_DONE,          to: UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, when: "checklist-partially-done == false"}
+      - {from: STOP_CHECKLIST_PARTIALLY_DONE,          to: UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS}
+      - {from: UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, to: IMPLEMENT_AND_VERIFY_SYSTEM}
+      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,            to: REDESIGN_EXTERNAL_END}
 
   # Step 1 calls HIGH `implement-and-verify-system` with
   # `action: refactor-system`. Was the prototype encoded in Item 1 of
@@ -1258,8 +1269,9 @@ processes:
       - {from: GATE_TESTS_OUTCOME, to: UNKNOWN_TESTS_OUTCOME}
       - {from: FIX_UNEXPECTED_PASSING_TESTS, to: VERIFY_FAIL_END}
 
-  # The read/write lists are deliberately identical at the fold —
-  # parent plan 20260526-1448 Item 3 refines the split.
+  # Asymmetric: the test-writer adds `TODO: DSL` placeholders to dsl-core but
+  # does not read existing dsl-core (which would leak implementation context
+  # into a test-writing task). Plan 20260526-1448 Item 3.
   write-acceptance-tests:
     start: EXECUTE_AGENT
     nodes:
@@ -1270,7 +1282,7 @@ processes:
         params:
           task-name: write-acceptance-tests
           outputs: "dsl-port-changed"
-        read:  [at-test, dsl-port, dsl-core]
+        read:  [at-test, dsl-port]
         write: [at-test, dsl-port, dsl-core]
 
       - id: WAT_END
@@ -1280,6 +1292,7 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: WAT_END}
 
+  # Same asymmetry as write-acceptance-tests (CT side).
   write-contract-tests:
     start: EXECUTE_AGENT
     nodes:
@@ -1290,7 +1303,7 @@ processes:
         params:
           task-name: write-contract-tests
           outputs: "dsl-port-changed"
-        read:  [ct-test, dsl-port, dsl-core]
+        read:  [ct-test, dsl-port]
         write: [ct-test, dsl-port, dsl-core]
 
       - id: WCT_END
@@ -1339,6 +1352,36 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: IMPL_SYS_END}
 
+  # Reshape variant of implement-system (plan 20260526-1448 Item 10 verb
+  # split). Dispatched by redesign-system-structure CYCLE via the
+  # parameterised implement-and-verify-system HIGH with
+  # `action: update-system`. Reads driver-port (must see what must not
+  # change) and driver-adapter (the absorbing layer) on top of system-path;
+  # writes only system-path + driver-adapter (driver-port writes require a
+  # scope_exception).
+  update-system:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        documentation: "Dispatch the Agent"
+        params:
+          task-name: update-system
+        read:  [system-path, driver-adapter, driver-port]
+        write: [system-path, driver-adapter]
+
+      - id: UPDATE_SYS_END
+        type: end-event
+        documentation: "System Updated"
+
+    sequence-flows:
+      - {from: EXECUTE_AGENT, to: UPDATE_SYS_END}
+
+  # Asymmetric: the agent reads driver-port to see what to implement but
+  # cannot write to it from this task — driver-port edits require a
+  # scope_exception. The inline "Driver-port guardrail" prose in the prompt
+  # body collapses into scope (plan 20260526-1448 Item 3 + Item 11 Case B).
   implement-system-driver-adapters:
     start: EXECUTE_AGENT
     nodes:
@@ -1349,7 +1392,7 @@ processes:
         params:
           task-name: implement-system-driver-adapters
         read:  [driver-port, driver-adapter]
-        write: [driver-port, driver-adapter]
+        write: [driver-adapter]
 
       - id: IMPL_SYS_DA_END
         type: end-event
@@ -1358,6 +1401,30 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: IMPL_SYS_DA_END}
 
+  # Reshape variant of implement-system-driver-adapters (plan 20260526-1448
+  # Item 10 verb split). Dispatched by redesign-system-structure CYCLE.
+  # Same asymmetric scope as the implement variant — driver-port is
+  # read-only here; reshape writes land in driver-adapter.
+  update-system-driver-adapters:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        documentation: "Dispatch the Agent"
+        params:
+          task-name: update-system-driver-adapters
+        read:  [driver-port, driver-adapter]
+        write: [driver-adapter]
+
+      - id: UPDATE_SYS_DA_END
+        type: end-event
+        documentation: "System Driver Adapters Updated"
+
+    sequence-flows:
+      - {from: EXECUTE_AGENT, to: UPDATE_SYS_DA_END}
+
+  # Same asymmetry as implement-system-driver-adapters (external side).
   implement-external-system-driver-adapters:
     start: EXECUTE_AGENT
     nodes:
@@ -1368,7 +1435,7 @@ processes:
         params:
           task-name: implement-external-system-driver-adapters
         read:  [external-system-driver-port, external-system-driver-adapter]
-        write: [external-system-driver-port, external-system-driver-adapter]
+        write: [external-system-driver-adapter]
 
       - id: IMPL_EXT_DA_END
         type: end-event
@@ -1376,6 +1443,30 @@ processes:
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: IMPL_EXT_DA_END}
+
+  # Reshape variant of implement-external-system-driver-adapters (plan
+  # 20260526-1448 Item 10 verb split). Dispatched by
+  # redesign-external-system-structure CYCLE. Same asymmetric scope as
+  # the implement variant — external-system-driver-port is read-only
+  # here; reshape writes land in external-system-driver-adapter.
+  update-external-system-driver-adapters:
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        documentation: "Dispatch the Agent"
+        params:
+          task-name: update-external-system-driver-adapters
+        read:  [external-system-driver-port, external-system-driver-adapter]
+        write: [external-system-driver-adapter]
+
+      - id: UPDATE_EXT_DA_END
+        type: end-event
+        documentation: "External System Driver Adapters Updated"
+
+    sequence-flows:
+      - {from: EXECUTE_AGENT, to: UPDATE_EXT_DA_END}
 
   implement-external-system-stubs:
     start: EXECUTE_AGENT
@@ -1521,6 +1612,11 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: REFACTOR_SYS_END}
 
+  # Artifact-only: rewrites the ticket's parsed acceptance criteria in the
+  # tracker, never the repo working tree. `scope: none` is the doctrinal
+  # exemption from inline read/write (see runtime/shared/scope.md and
+  # Engine.IsScopeNone). Plan 20260526-1448 Item 9 moved the SSoT here
+  # from the prompt frontmatter.
   refine-acceptance-criteria:
     start: EXECUTE_AGENT
     nodes:
@@ -1530,6 +1626,7 @@ processes:
         documentation: "Dispatch the Agent"
         params:
           task-name: refine-acceptance-criteria
+        scope: none
 
       - id: REFINE_AC_END
         type: end-event

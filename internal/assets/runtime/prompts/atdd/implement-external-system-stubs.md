@@ -2,7 +2,6 @@
 # TBD placeholder — Sonnet until this task is fleshed out and benchmarked.
 model: sonnet
 effort: medium
-scope: {}   # query resolved scope: `gh optivem process scope implement-external-system-stubs`
 ---
 **Ownership of this task is TBD** — this placeholder body exists so the dispatcher can route the `implement-external-system-stubs` task without a missing-prompt error. The operator who claims this task should fill in the specifics (any anti-patterns specific to the dockerized stub layer beyond what is captured below). Until then, follow the task description below — it is fully specified — and treat this prompt as the canonical guide. This task is called from the HIGH orchestration `implement-and-verify-external-system-driver-adapters-contract-tests`, which wraps stub-implementation within the `change-system-behavior` CYCLE (see `process-flow.yaml`).
 

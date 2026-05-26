@@ -234,8 +234,13 @@ func TestRenderPrompt_TaskAgentArchitectureAndAllowedRoots_ExplicitValues(t *tes
 }
 
 func TestRenderPrompt_TaskAgentChecklistInjected(t *testing.T) {
+	// update-system is the reshape variant dispatched by
+	// redesign-system-structure CYCLE and the agent that consumes
+	// ${checklist} on the system side (plan 20260526-1448 Item 10 verb
+	// split). The translation-side implement-system no longer carries
+	// ${checklist} in its body.
 	opts := newOpts()
-	opts.Agent = "implement-system"
+	opts.Agent = "update-system"
 	opts.Checklist = "- [x] Rename \"New Order\" to \"Place Order\"\n- [x] Rename SKU aria-label"
 
 	got, err := renderPrompt(opts)
@@ -244,7 +249,7 @@ func TestRenderPrompt_TaskAgentChecklistInjected(t *testing.T) {
 	}
 	mustContain(t, got, opts.Checklist)
 	if strings.Contains(got, "Fetch the issue with `gh`") {
-		t.Errorf("implement-system prompt should no longer instruct the agent to fetch the issue: %s", got)
+		t.Errorf("update-system prompt should no longer instruct the agent to fetch the issue: %s", got)
 	}
 	if strings.Contains(got, "${checklist}") {
 		t.Errorf("${checklist} placeholder leaked into rendered prompt")

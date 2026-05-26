@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/optivem/gh-optivem/internal/assets"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
@@ -28,8 +29,8 @@ func loadEngine(t *testing.T) *statemachine.Engine {
 // dispatch a writing agent — every process containing a CallActivity
 // node whose `process:` is the LOW execute-agent primitive with a
 // concrete (non-templated) task-name. This is the set whose
-// EXECUTE_AGENT call-activity must declare inline scope (or its agent
-// must declare `scope: none` in the prompt frontmatter).
+// EXECUTE_AGENT call-activity must declare inline scope (read/write
+// lists or `scope: none`).
 //
 // Templated task-names (`task-name: "fix-${failure-kind}"` on the `fix`
 // LOW process) are skipped: fix dispatches resolve to a concrete MID at
@@ -54,27 +55,24 @@ func writingAgentMIDs(eng *statemachine.Engine) map[string]string {
 
 // TestPhaseScopes_ReverseFK_WritingAgentsScoped asserts every
 // writing-agent MID has scope declared inline on its EXECUTE_AGENT
-// call-activity node (Engine.Scope returns ok), unless the agent's
-// prompt frontmatter declares `scope: none` (the artifact-only /
-// external-system-only doctrinal exemption — see runtime/shared/scope.md).
+// call-activity node — either concrete `read:` / `write:` lists
+// (Engine.Scope returns ok) or the doctrinal `scope: none` exemption
+// (Engine.IsScopeNone returns true), the latter for artifact-only /
+// external-system-only agents that never write to the repo working tree
+// (see runtime/shared/scope.md).
 //
-// The SSoT for the `scope: none` exemption is the prompt frontmatter
-// itself, read here via agents.HasNoneScope — no sibling Go allowlist.
+// Single SSoT: the BPMN node. The pre-fold `scope: none` frontmatter
+// fallback has been retired (plan 20260526-1448 Item 9).
 func TestPhaseScopes_ReverseFK_WritingAgentsScoped(t *testing.T) {
 	eng := loadEngine(t)
 	for processName, agent := range writingAgentMIDs(eng) {
 		if _, _, ok := eng.Scope(processName); ok {
 			continue
 		}
-		none, err := agents.HasNoneScope(agent)
-		if err != nil {
-			t.Errorf("writing-agent MID %q (agent %q): probe scope frontmatter: %v", processName, agent, err)
+		if eng.IsScopeNone(processName) {
 			continue
 		}
-		if none {
-			continue
-		}
-		t.Errorf("writing-agent MID %q (agent %q) has no inline read/write scope on its EXECUTE_AGENT node and the prompt frontmatter does not declare `scope: none`; either add read: / write: to the node or declare `scope: none`", processName, agent)
+		t.Errorf("writing-agent MID %q (agent %q) has no inline read/write scope and no `scope: none` declaration on its EXECUTE_AGENT node; add read: / write: lists or declare `scope: none`", processName, agent)
 	}
 }
 
@@ -155,9 +153,9 @@ func TestPhaseScopes_NonEmptyLayerLists(t *testing.T) {
 
 // TestPhaseScopes_ReadWriteShape asserts every writing-agent MID's
 // EXECUTE_AGENT node either carries BOTH read: and write: keys, or
-// neither (the scope: none doctrinal exemption). Half-declared scope
-// (only read or only write) is a schema error — the explicit-lists rule
-// requires both keys present even when their values match.
+// neither (paired with a `scope: none` doctrinal exemption). Half-declared
+// scope (only read or only write) is a schema error — the explicit-lists
+// rule requires both keys present even when their values match.
 func TestPhaseScopes_ReadWriteShape(t *testing.T) {
 	eng := loadEngine(t)
 	for processName := range writingAgentMIDs(eng) {
@@ -175,4 +173,81 @@ func TestPhaseScopes_ReadWriteShape(t *testing.T) {
 			break
 		}
 	}
+}
+
+// TestPhaseScopes_NodeScopeFieldShape asserts the `scope:` field on a
+// writing-agent MID's EXECUTE_AGENT node — when present — is exactly
+// "none", and that `scope: none` is mutually exclusive with `read:` /
+// `write:`. Any other shape (a non-empty string other than "none", or
+// `scope: none` co-existing with read/write lists) is a schema error.
+//
+// `scope: none` is the artifact-only / external-system-only doctrinal
+// exemption (plan 20260526-1448 Item 9); a node with both `scope: none`
+// AND read/write would be self-contradictory.
+func TestPhaseScopes_NodeScopeFieldShape(t *testing.T) {
+	eng := loadEngine(t)
+	for processName := range writingAgentMIDs(eng) {
+		proc := eng.Processes[processName]
+		for _, node := range proc.Nodes {
+			if node.Kind != statemachine.CallActivity || node.Raw.Process != "execute-agent" {
+				continue
+			}
+			scope := node.Raw.Scope
+			if scope != "" && scope != "none" {
+				t.Errorf("MID %q EXECUTE_AGENT: scope: %q — only %q is a recognised value", processName, scope, "none")
+			}
+			if scope == "none" && (len(node.Raw.Read) > 0 || len(node.Raw.Write) > 0) {
+				t.Errorf("MID %q EXECUTE_AGENT: scope: none must not co-exist with read: / write: lists", processName)
+			}
+			break
+		}
+	}
+}
+
+// TestPromptFrontmatter_NoScopeField rejects any `scope:` field in any
+// prompt's YAML frontmatter under internal/assets/runtime/prompts/atdd/.
+// The single SSoT for per-phase scope is the EXECUTE_AGENT node in
+// process-flow.yaml (plan 20260526-1448 Item 9); reintroducing
+// `scope:` on the prompt body would re-fork the SSoT.
+func TestPromptFrontmatter_NoScopeField(t *testing.T) {
+	for _, name := range agents.Names() {
+		fm := readPromptFrontmatter(t, name)
+		if fm == "" {
+			continue
+		}
+		for _, line := range strings.Split(fm, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "#") {
+				continue
+			}
+			if strings.HasPrefix(trimmed, "scope:") {
+				t.Errorf("prompt %q: frontmatter carries `%s` — scope lives on the EXECUTE_AGENT node in process-flow.yaml, not in prompt frontmatter", name, trimmed)
+			}
+		}
+	}
+}
+
+// readPromptFrontmatter returns the YAML frontmatter block (without
+// fences) for the named prompt, or "" if the prompt has no frontmatter.
+// Fatals on a missing prompt — the test must not silently pass when an
+// expected prompt is unreadable.
+func readPromptFrontmatter(t *testing.T, name string) string {
+	t.Helper()
+	data, err := assets.FS.ReadFile("runtime/prompts/atdd/" + name + ".md")
+	if err != nil {
+		t.Fatalf("read embedded prompt %q: %v", name, err)
+	}
+	s := string(data)
+	const marker = "---"
+	first, rest, ok := strings.Cut(s, "\n")
+	if !ok || strings.TrimRight(first, "\r") != marker {
+		return ""
+	}
+	end := strings.Index(rest, "\n"+marker)
+	if end < 0 {
+		// No closing marker — treat as no frontmatter (matches the
+		// degraded behaviour in agents.splitFrontmatter).
+		return ""
+	}
+	return rest[:end+1]
 }

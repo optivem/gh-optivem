@@ -98,7 +98,7 @@ type Engine struct {
 // no EXECUTE_AGENT call-activity node (e.g. command-only MIDs like
 // compile, build-system, run-tests, commit), or when that node carries
 // neither Read nor Write (e.g. refine-acceptance-criteria — declares
-// scope: none in prompt frontmatter, deliberately omitted here).
+// `scope: none` on the BPMN node; check IsScopeNone separately).
 func (e *Engine) Scope(processName string) (read, write []string, ok bool) {
 	proc, exists := e.Processes[processName]
 	if !exists {
@@ -114,4 +114,25 @@ func (e *Engine) Scope(processName string) (read, write []string, ok bool) {
 		return append([]string(nil), node.Raw.Read...), append([]string(nil), node.Raw.Write...), true
 	}
 	return nil, nil, false
+}
+
+// IsScopeNone reports whether the named writing-agent MID declares
+// `scope: none` on its EXECUTE_AGENT call-activity node — the doctrinal
+// artifact-only exemption (agent mutates only an inter-phase artifact or
+// external system, never the repo working tree; see runtime/shared/scope.md).
+// The BPMN node is the SSoT for the exemption (plan 20260526-1448 Item 9
+// moved it off the prompt frontmatter), and IsScopeNone is the canonical
+// reader.
+func (e *Engine) IsScopeNone(processName string) bool {
+	proc, exists := e.Processes[processName]
+	if !exists {
+		return false
+	}
+	for _, node := range proc.Nodes {
+		if node.Kind != CallActivity || node.Raw.Process != "execute-agent" {
+			continue
+		}
+		return node.Raw.Scope == "none"
+	}
+	return false
 }

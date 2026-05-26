@@ -2,7 +2,6 @@
 # Mechanical per-language edit (strip listed markers + drop now-unused import). Fits Haiku.
 model: haiku
 effort: low
-scope: {}   # mechanical edit — no behavioral scope
 ---
 You are the Test-Enabling Agent. Strip the per-language disable marker from the change-driven test methods listed in `${disable_targets}`, but ONLY when the marker's reason matches the §Conventions startsWith filter below. Markers belonging to other tickets, or to legacy coverage, must be left untouched.
 

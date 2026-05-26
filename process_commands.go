@@ -24,7 +24,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/diagram"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
@@ -172,7 +171,7 @@ func taskNameOf(eng *statemachine.Engine, processName string) string {
 }
 
 // printAllPhases renders every writing-agent MID (sorted) — those with
-// inline read/write scope, then those whose prompt frontmatter declares
+// inline read/write scope, then those whose EXECUTE_AGENT node declares
 // `scope: none` (the artifact-only doctrinal exemption — see
 // runtime/shared/scope.md). The second group has no layers to resolve
 // but still belongs in the operator's overview.
@@ -185,13 +184,7 @@ func printAllPhases(out io.Writer, eng *statemachine.Engine, cfg *projectconfig.
 			fmt.Fprintln(out)
 			continue
 		}
-		// No inline scope — check for the scope: none frontmatter exemption.
-		task := taskNameOf(eng, id)
-		none, err := agents.HasNoneScope(task)
-		if err != nil {
-			return fmt.Errorf("process scope: %w", err)
-		}
-		if none {
+		if eng.IsScopeNone(id) {
 			noneIDs = append(noneIDs, id)
 		}
 	}
@@ -204,24 +197,17 @@ func printAllPhases(out io.Writer, eng *statemachine.Engine, cfg *projectconfig.
 
 // printOnePhase renders a single phase. Routes through the same block
 // renderer as printAllPhases. A phase id without inline read/write is
-// only accepted if it corresponds to a writing-agent MID whose prompt
-// frontmatter declares `scope: none`; otherwise a typo'd or unscoped
-// phase id fails loudly.
+// only accepted if its EXECUTE_AGENT node declares `scope: none`;
+// otherwise a typo'd or unscoped phase id fails loudly.
 func printOnePhase(out io.Writer, phaseID string, eng *statemachine.Engine, cfg *projectconfig.Config) error {
 	_, write, ok := eng.Scope(phaseID)
 	if ok {
 		writePhaseBlock(out, phaseID, write, taskNameOf(eng, phaseID), cfg)
 		return nil
 	}
-	if task := taskNameOf(eng, phaseID); task != "" {
-		none, err := agents.HasNoneScope(task)
-		if err != nil {
-			return fmt.Errorf("process scope: %w", err)
-		}
-		if none {
-			writeNoneScopeBlock(out, phaseID, task)
-			return nil
-		}
+	if eng.IsScopeNone(phaseID) {
+		writeNoneScopeBlock(out, phaseID, taskNameOf(eng, phaseID))
+		return nil
 	}
 	return fmt.Errorf("phase %q is not a scoped writing-agent MID in process-flow.yaml; run `gh optivem process scope` to list known phases", phaseID)
 }

@@ -2,7 +2,6 @@
 # Mirror of write-acceptance-tests on the contract-test side: contract-test design + DSL scaffolding fit Sonnet.
 model: sonnet
 effort: medium
-scope: {}   # query resolved scope: `gh optivem process scope write-contract-tests`
 ---
 This is the `write-contract-tests` task. It is called from the `implement-and-verify-external-system-driver-adapters-contract-tests` HIGH orchestration when a `change-system-behavior` CYCLE detects that external system driver ports changed.
 

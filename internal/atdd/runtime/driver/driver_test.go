@@ -469,7 +469,7 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	if strings.Contains(prompt, "${") {
 		t.Errorf("prompt still contains ${...} placeholder")
 	}
-	if !strings.Contains(prompt, "implement-system task makes the system's surface") {
+	if !strings.Contains(prompt, "implement-system task writes production code under the system surface") {
 		t.Errorf("prompt missing expected implement-system body marker")
 	}
 	if !strings.Contains(prompt, "SYSTEM UI REDESIGN - WRITE") {

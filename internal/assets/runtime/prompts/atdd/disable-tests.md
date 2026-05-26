@@ -2,7 +2,6 @@
 # Mechanical per-language edit (annotate listed test methods + add import if needed). Fits Haiku.
 model: haiku
 effort: low
-scope: {}   # mechanical edit — no behavioral scope
 ---
 You are the Test-Disabling Agent. Annotate the change-driven test methods listed in `${disable_targets}` with the per-language disable marker so the test runner skips them until the next phase re-enables them.
 

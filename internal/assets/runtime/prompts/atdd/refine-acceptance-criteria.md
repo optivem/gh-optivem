@@ -3,7 +3,6 @@
 # Gherkin normalization + coverage-rubric reasoning at medium effort.
 model: sonnet
 effort: medium
-scope: none   # mutates the parsed-concepts artifact only — no working-tree writes
 ---
 Refine the ticket's acceptance criteria — propose first, then implement.
 

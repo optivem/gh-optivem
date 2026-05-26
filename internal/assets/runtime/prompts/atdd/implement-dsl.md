@@ -3,7 +3,6 @@
 # because the scope per dispatch is bounded to one DSL surface.
 model: opus
 effort: medium
-scope: {}   # query resolved scope: `gh optivem process scope implement-dsl`
 ---
 
 The implement-dsl task replaces every `TODO: DSL` prototype in the DSL Core with real logic and, when the DSL surface needs new behaviour, adds matching prototype methods to the driver port(s) in scope.

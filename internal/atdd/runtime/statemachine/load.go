@@ -16,6 +16,13 @@ import (
 // 20260526-1536). They sit on the writing-agent EXECUTE_AGENT call-activity
 // nodes inside each MID process; Engine.Scope(processName) looks them up.
 // Both lists are always declared together when present (no flat shorthand).
+//
+// Scope is the doctrinal-exemption marker: `scope: none` on the EXECUTE_AGENT
+// node declares the MID as artifact-only (mutates only inter-phase artifacts
+// or external systems, never the repo working tree). Mutually exclusive with
+// Read / Write — `scope: none` MUST be paired with absent read/write lists,
+// and any other value is rejected by the build-time guard. Replaces the
+// pre-fold `scope: none` frontmatter mechanism (plan 20260526-1448 Item 9).
 type RawNode struct {
 	ID            string            `yaml:"id"`
 	Type          string            `yaml:"type"`
@@ -28,6 +35,7 @@ type RawNode struct {
 	Group         string            `yaml:"group,omitempty"`
 	TDDStage      string            `yaml:"tdd-stage,omitempty"`
 	Params        map[string]string `yaml:"params,omitempty"`
+	Scope         string            `yaml:"scope,omitempty"`
 	Read          []string          `yaml:"read,omitempty"`
 	Write         []string          `yaml:"write,omitempty"`
 }
