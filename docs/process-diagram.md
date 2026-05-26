@@ -77,8 +77,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    MARK_IN_REFINEMENT[[MARK_IN_REFINEMENT]]
-    MARK_READY[[MARK_READY]]
+    MARK_IN_REFINEMENT[[Mark IN REFINEMENT]]
+    MARK_READY[[Mark READY]]
     REFINE_BACKLOG_ITEM[Refine Backlog Item]
     REFINE_TICKET_END((Ticket Ready))
 
@@ -99,10 +99,10 @@ flowchart TD
     GATE_TASK_SUBTYPE{task-subtype}
     GATE_TICKET_KIND{ticket-kind}
     IMPLEMENT_TICKET_END((Ticket Marked IN ACCEPTANCE))
-    MARK_IN_ACCEPTANCE[[MARK_IN_ACCEPTANCE]]
-    MARK_IN_PROGRESS[[MARK_IN_PROGRESS]]
-    PARSE_TICKET[[PARSE_TICKET]]
-    REDESIGN_EXTERNAL_SYSTEM_STRUCTURE[Redesign External-System Structure — see § redesign-external-system-structure]
+    MARK_IN_ACCEPTANCE[[Mark IN ACCEPTANCE]]
+    MARK_IN_PROGRESS[[Mark IN PROGRESS]]
+    PARSE_TICKET[[Parse Ticket]]
+    REDESIGN_EXTERNAL_SYSTEM_STRUCTURE[Redesign External-System Structure]
     REDESIGN_SYSTEM_STRUCTURE[Redesign System Structure]
     REFACTOR_SYSTEM_STRUCTURE[Refactor System Structure]
     REFACTOR_TEST_STRUCTURE[Refactor Test Structure]
@@ -142,7 +142,7 @@ flowchart TD
 flowchart TD
     CHOOSE_REFACTOR_TYPE["Choose refactor type (loopable; none = exit)"]
     GATE_REFACTOR_TYPE_CHOICE{ }
-    REDESIGN_EXTERNAL_SYSTEM_STRUCTURE[Redesign External-System Structure — see § redesign-external-system-structure]
+    REDESIGN_EXTERNAL_SYSTEM_STRUCTURE[Redesign External-System Structure]
     REDESIGN_SYSTEM_STRUCTURE[Redesign System Structure]
     REFACTOR_SYSTEM_STRUCTURE[Refactor System Structure]
     REFACTOR_TEST_STRUCTURE[Refactor Test Structure]
@@ -281,7 +281,7 @@ flowchart TD
     GATE_EXTERNAL_DRIVER_PORTS_CHANGED{external-driver-ports-changed}
     GATE_SYSTEM_DRIVER_PORTS_CHANGED{system-driver-ports-changed}
     IMPLEMENT_AND_VERIFY_DSL[Implement and Verify DSL]
-    IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS[Implement and Verify External-System Driver Adapters — see § implement-and-verify-external-system-driver-adapters]
+    IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS[Implement and Verify External-System Driver Adapters]
     IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS[Implement and Verify System Driver Adapters]
     WAV_AT_END((Acceptance Tests Verified))
     WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE[Write and Verify Acceptance Test Code]
@@ -346,7 +346,7 @@ flowchart TD
     IMPLEMENT_TEST_LAYER --> IMPL_SYS_DRIVER_END
 ```
 
-## Implement and Verify External System Driver Adapters
+## Implement and Verify External-System Driver Adapters
 
 ```mermaid
 flowchart TD
@@ -356,14 +356,14 @@ flowchart TD
     IMPLEMENT_TEST_LAYER --> IMPL_EXT_DRIVER_END
 ```
 
-## Implement and Verify External System Driver Adapters Contract Tests
+## Implement and Verify External-System Driver Adapters Contract Tests
 
 ```mermaid
 flowchart TD
     GATE_DSL_PORT_CHANGED{dsl-port-changed}
     IMPLEMENT_AND_VERIFY_DSL[Implement and Verify DSL]
-    IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Implement External-System Driver Adapters — see § implement-external-system-driver-adapters]
-    IMPLEMENT_EXTERNAL_SYSTEM_STUBS[Implement External-System Stubs — see § implement-external-system-stubs]
+    IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Implement External-System Driver Adapters]
+    IMPLEMENT_EXTERNAL_SYSTEM_STUBS[Implement External-System Stubs]
     IMPL_EXT_DRIVER_CT_END((External System Driver Contract Tests Verified))
     VERIFY_TESTS_FAIL_CONTRACT_STUB[Verify Contract Tests Fail Against the Stub — see § verify-tests-fail]
     VERIFY_TESTS_PASS_CONTRACT_REAL[Verify Contract Tests Pass Against the Real System — see § verify-tests-pass]
@@ -535,7 +535,7 @@ flowchart TD
     EXECUTE_AGENT --> IMPL_SYS_DA_END
 ```
 
-## Implement External System Driver Adapters
+## Implement External-System Driver Adapters
 
 ```mermaid
 flowchart TD
@@ -545,7 +545,7 @@ flowchart TD
     EXECUTE_AGENT --> IMPL_EXT_DA_END
 ```
 
-## Implement External System Stubs
+## Implement External-System Stubs
 
 ```mermaid
 flowchart TD
@@ -719,8 +719,10 @@ flowchart TD
     APPROVE_POST[Confirm Approval — see § approve]
     APPROVE_PRE[Request Approval — see § approve]
     EXECUTE_AGENT_END((Agent Dispatch Complete))
+    EXECUTE_AGENT_OUTPUT_REJECTED_END((⚡ Agent Output Rejected))
     EXECUTE_AGENT_REJECTED_END((Agent Dispatch Rejected))
     FIX[Fix the Failure — see § fix]
+    GATE_APPROVED_POST{approval-outcome}
     GATE_APPROVED_PRE{approval-outcome}
     GATE_FIX_ON_FAILURE{fix-on-failure-enabled}
     GATE_OUTPUTS_AND_SCOPES_VALID{outputs-and-scopes-valid}
@@ -739,13 +741,18 @@ flowchart TD
     GATE_FIX_ON_FAILURE -- Yes --> FIX
     GATE_FIX_ON_FAILURE -- No --> APPROVE_POST
     FIX --> APPROVE_POST
-    APPROVE_POST --> EXECUTE_AGENT_END
+    APPROVE_POST --> GATE_APPROVED_POST
+    GATE_APPROVED_POST -- Approved --> EXECUTE_AGENT_END
+    GATE_APPROVED_POST -- Rejected --> EXECUTE_AGENT_OUTPUT_REJECTED_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
     class SNAPSHOT_WORKING_TREE,VALIDATE_OUTPUTS_AND_SCOPES serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
     class RUN_AGENT agentNode
+
+    classDef errorEndNode fill:#fbe9e7,stroke:#dc3545,stroke-width:2px,color:#000000
+    class EXECUTE_AGENT_OUTPUT_REJECTED_END errorEndNode
 ```
 
 ## Execute Command
@@ -788,13 +795,13 @@ flowchart TD
     EXECUTE_AGENT --> FIX_END
 ```
 
-## Redesign External System Structure
+## Redesign External-System Structure
 
 ```mermaid
 flowchart TD
     IMPLEMENT_AND_VERIFY_SYSTEM[Update System — see § implement-and-verify-system]
     REDESIGN_EXTERNAL_END((External System Structure Redesigned))
-    UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Update External-System Driver Adapters — see § update-external-system-driver-adapters]
+    UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Update External-System Driver Adapters]
 
     UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS --> IMPLEMENT_AND_VERIFY_SYSTEM
     IMPLEMENT_AND_VERIFY_SYSTEM --> REDESIGN_EXTERNAL_END
@@ -806,7 +813,7 @@ flowchart TD
     class IMPLEMENT_AND_VERIFY_SYSTEM tddGreenNode
 ```
 
-## Update External System Driver Adapters
+## Update External-System Driver Adapters
 
 ```mermaid
 flowchart TD
