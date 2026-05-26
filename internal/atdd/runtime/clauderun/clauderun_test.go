@@ -1132,6 +1132,65 @@ func TestDispatch_HaltsOnUnfilledPlaceholder(t *testing.T) {
 	}
 }
 
+func TestDispatch_HaltsOnUnfilledCommandPlaceholder(t *testing.T) {
+	// fix-command-failed's prompt references ${command} — the trio
+	// ${command} / ${command_exit_code} / ${command_stderr_tail} is
+	// registered into params only when Options.CommandLine is non-empty
+	// (mirroring Checklist / AcceptanceCriteria). Empty CommandLine plus
+	// a prompt that references ${command} must trigger the same fast
+	// failure the unfilled-placeholder guard provides for other
+	// load-bearing fields, so a regression in the wiring (runCommand
+	// silently skipping its state stash, ExpandParams losing the
+	// state-fallback path, dispatcher not reading from ctx.State, …)
+	// surfaces before the agent reads a blank prompt.
+	gitFake := &fakeGit{}
+	claudeFake := &fakeClaude{}
+	opts := newOpts()
+	opts.PromptOverride = "Diagnose the failure of: ${command}\nexit=${command_exit_code}\nstderr=${command_stderr_tail}"
+	// CommandLine intentionally left empty.
+
+	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts)
+	if err == nil {
+		t.Fatalf("expected error when ${command} is unfilled, got nil")
+	}
+	if !strings.Contains(err.Error(), "unfilled placeholders") {
+		t.Errorf("error should mention unfilled placeholders, got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "${command}") {
+		t.Errorf("error should name the leftover placeholder, got %q", err.Error())
+	}
+	if len(claudeFake.calls) != 0 {
+		t.Errorf("claude must not run when placeholders are unfilled, got %d calls", len(claudeFake.calls))
+	}
+}
+
+func TestDispatch_CommandPlaceholdersResolveWhenPopulated(t *testing.T) {
+	// Counterpart to TestDispatch_HaltsOnUnfilledCommandPlaceholder:
+	// when CommandLine is non-empty, the full trio registers and the
+	// prompt resolves. Locks in the failure-payload propagation path
+	// runCommand → ctx.State → driver → clauderun for fix-command-failed.
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	claudeFake := &fakeClaude{}
+	opts := newOpts()
+	opts.PromptOverride = "cmd=${command} exit=${command_exit_code} tail=${command_stderr_tail}"
+	opts.CommandLine = "gh optivem system build"
+	opts.CommandExitCode = 2
+	opts.CommandStderrTail = "boom: missing config"
+
+	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if len(claudeFake.calls) != 1 {
+		t.Fatalf("expected 1 claude call, got %d", len(claudeFake.calls))
+	}
+	want := "cmd=gh optivem system build exit=2 tail=boom: missing config"
+	if got := claudeFake.calls[0].Prompt; got != want {
+		t.Errorf("prompt:\n got: %q\nwant: %q", got, want)
+	}
+}
+
 func TestDispatch_RawPromptSkipsPlaceholderCheck(t *testing.T) {
 	// node_replacements: short-circuits the substitution path entirely;
 	// an operator who deliberately writes ${foo} in their replacement

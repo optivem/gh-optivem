@@ -156,6 +156,7 @@ func TestFixKindPromptsExist(t *testing.T) {
 	wantKinds := []string{
 		"unexpected-passing-tests",
 		"unexpected-failing-tests",
+		"command-failed",
 	}
 	names := map[string]bool{}
 	for _, n := range Names() {

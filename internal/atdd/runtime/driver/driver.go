@@ -742,7 +742,7 @@ func wrapAgentDispatchers(eng *statemachine.Engine, opts Options, cfg *projectco
 // that bypass the driver wrapping.
 func newHumanStopDispatcher(opts Options, raw statemachine.RawNode, nodeID string) statemachine.NodeFn {
 	return func(ctx *statemachine.Context) statemachine.Outcome {
-		description := statemachine.ExpandParams(raw.Documentation, ctx.Params)
+		description := statemachine.ExpandParams(raw.Documentation, ctx.Params, ctx.State)
 
 		fmt.Fprintln(opts.Stdout)
 		if description != "" {
@@ -777,7 +777,7 @@ func newHumanStopDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 // NO branch).
 func newApproveDispatcher(opts Options, raw statemachine.RawNode, nodeID string) statemachine.NodeFn {
 	return func(ctx *statemachine.Context) statemachine.Outcome {
-		question := statemachine.ExpandParams(raw.Documentation, ctx.Params)
+		question := statemachine.ExpandParams(raw.Documentation, ctx.Params, ctx.State)
 
 		fmt.Fprintln(opts.Stdout)
 		if question != "" {
@@ -804,7 +804,7 @@ func newApproveDispatcher(opts Options, raw statemachine.RawNode, nodeID string)
 // Enter at the driver's prompt to advance.
 func newManualAgentDispatcher(opts Options, raw statemachine.RawNode, inner statemachine.NodeFn) statemachine.NodeFn {
 	return func(ctx *statemachine.Context) statemachine.Outcome {
-		if err := promptForAgent(opts, raw, ctx.Params); err != nil {
+		if err := promptForAgent(opts, raw, ctx.Params, ctx.State); err != nil {
 			return statemachine.Outcome{Err: err}
 		}
 		return inner(ctx)
@@ -827,7 +827,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 
 		issueNum, _ := strconv.Atoi(ctx.GetString("issue_num"))
 
-		agentName := statemachine.ExpandParams(raw.Agent, ctx.Params)
+		agentName := statemachine.ExpandParams(raw.Agent, ctx.Params, ctx.State)
 		// Node-level params (e.g. `failure_type: compile` on FIX_COMPILE)
 		// are expanded against the live ctx scope and forwarded to the
 		// prompt renderer so the agent body can branch on per-call-site
@@ -836,7 +836,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 		if len(raw.Params) > 0 {
 			nodeParams = make(map[string]string, len(raw.Params))
 			for k, v := range raw.Params {
-				nodeParams[k] = statemachine.ExpandParams(v, ctx.Params)
+				nodeParams[k] = statemachine.ExpandParams(v, ctx.Params, ctx.State)
 			}
 		}
 		tuning, err := agents.LoadTuning(agentName)
@@ -854,9 +854,16 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 		if cfg != nil {
 			placeholders = cfg.PlaceholderMap()
 		}
+		// Command-failure payload from upstream runCommand. State keys are
+		// only populated when the LOW execute-command primitive's shell
+		// dispatch failed and routed via GATE_COMMAND_SUCCEEDED → CALL_FIX;
+		// on every other dispatch they're absent and the fields stay
+		// zero-valued. fix-command-failed.md is the only prompt that
+		// references the matching ${command_*} placeholders.
+		commandExitCode, _ := ctx.Get("command-exit-code").(int)
 		cOpts := clauderun.Options{
 			Agent:              agentName,
-			NodeDescription:    statemachine.ExpandParams(raw.Documentation, ctx.Params),
+			NodeDescription:    statemachine.ExpandParams(raw.Documentation, ctx.Params, ctx.State),
 			IssueNum:           issueNum,
 			IssueTitle:         ctx.GetString("issue_title"),
 			Architecture:       ctx.GetString("architecture"),
@@ -868,6 +875,9 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 			ParsedConcepts:     ctx.GetString("parsed_concepts"),
 			VerifyResults:      ctx.GetString("verify_results_text"),
 			ChangedFiles:       fixChangedFiles(agentName, opts.RepoPath),
+			CommandLine:        ctx.GetString("command-line"),
+			CommandExitCode:    commandExitCode,
+			CommandStderrTail:  ctx.GetString("command-stderr-tail"),
 			NodeParams:         nodeParams,
 			Placeholders:       placeholders,
 			OverrideText:       extraText,
@@ -923,7 +933,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 // the listing. The dispatch is feedback, not load-bearing.
 func fixChangedFiles(agent, repoPath string) string {
 	switch agent {
-	case "fix-unexpected-passing-tests", "fix-unexpected-failing-tests":
+	case "fix-unexpected-passing-tests", "fix-unexpected-failing-tests", "fix-command-failed":
 	default:
 		return ""
 	}
@@ -941,13 +951,14 @@ func fixChangedFiles(agent, repoPath string) string {
 // promptForAgent prints the per-node dispatch banner and blocks on stdin
 // until the operator types Enter (continue) or `abort` (halt). v1 / fallback path.
 //
-// params is the live Context.Params for the call-activity scope; templated
-// fields in raw (e.g. ${agent} / ${change_type} inside the shared
-// structural_cycle) are expanded against it so the operator sees the
+// params + state are the live Context fields for the call-activity scope;
+// templated fields in raw (e.g. ${agent} / ${change_type} inside the
+// shared structural_cycle, ${failure-kind} from upstream bindings) are
+// expanded against the params-then-state chain so the operator sees the
 // substituted name in the banner instead of the literal placeholder.
-func promptForAgent(opts Options, raw statemachine.RawNode, params map[string]string) error {
-	agent := statemachine.ExpandParams(raw.Agent, params)
-	documentation := statemachine.ExpandParams(raw.Documentation, params)
+func promptForAgent(opts Options, raw statemachine.RawNode, params map[string]string, state map[string]any) error {
+	agent := statemachine.ExpandParams(raw.Agent, params, state)
+	documentation := statemachine.ExpandParams(raw.Documentation, params, state)
 	step := raw.ID
 
 	fmt.Fprintln(opts.Stdout)

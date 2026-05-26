@@ -207,65 +207,6 @@ predate the Q-late-5 β-convention and are left untouched in this plan.
 
 ## Items
 
-### Item 1 — `runCommand` writes `failure-kind` + diagnostic state on failure
-
-**Files:**
-- `internal/atdd/runtime/actions/bindings.go::runCommand` — on shell
-  error: `ctx.Set("failure-kind", "command-failed")`,
-  `ctx.Set("command-line", cmd)`,
-  `ctx.Set("command-exit-code", <exit code from runShell>)`,
-  `ctx.Set("command-stderr-tail", <last N stderr lines>)`. Update the
-  docstring's "Writes" block.
-- `internal/atdd/runtime/actions/runshell.go` (or wherever
-  `Deps.Shell.Run` lives) — ensure the shell adapter surfaces exit
-  code + stderr separately so `runCommand` can stash them. If the
-  current Shell interface only returns `(stdout, err)`, extend it to
-  `(result, err)` with `result.ExitCode` / `result.Stderr` fields, or
-  add a sibling method — pick the smaller-blast-radius option after
-  reading the adapter.
-- `internal/atdd/runtime/actions/bindings_test.go` —
-  - `TestRunCommand_HappyPath`: assert `failure-kind` is NOT set on
-    success (mirror the `test-outcome` check at line 329).
-  - `TestRunCommand_FailureRoutes_NotErrors`: assert
-    `failure-kind == "command-failed"`, `command-line == "gh optivem
-    commit"`, and `command-exit-code` matches the fake shell's exit.
-
-**Verify:** `go test ./internal/atdd/runtime/actions/...` passes.
-
-### Item 2 — `ExpandParams` params-then-state scope chain
-
-**Files:**
-- `internal/atdd/runtime/statemachine/run.go::ExpandParams` — change
-  signature to `ExpandParams(s string, params map[string]string, state
-  map[string]any) string` (or accept `*Context` directly — pick the
-  shape that minimises caller-site churn after reading every call site).
-  Substitute `${name}` from params first; for keys not present in params,
-  attempt state and stringify (mirror `Context.GetString`'s coercion).
-  Update the docstring to describe the scope chain.
-- `internal/atdd/runtime/statemachine/run.go::wrapCallActivity` — pass
-  `ctx.State` alongside `prev` (`ctx.Params`) when expanding
-  `raw.Process` (line 148) and each `raw.Params[k]` value (line 165).
-- `internal/atdd/runtime/driver/driver.go` — update every
-  `statemachine.ExpandParams(…, ctx.Params)` site to pass `ctx.State`
-  too:
-  - `newHumanStopDispatcher:745` — `raw.Documentation`
-  - `newApproveDispatcher:780` — `raw.Documentation`
-  - `newClaudeRunDispatcher:830` — `raw.Agent`
-  - `newClaudeRunDispatcher:839` — node-param values
-  - `newClaudeRunDispatcher:859` — `raw.Documentation`
-  - `promptForAgent:949/950` — `raw.Agent` + `raw.Documentation`
-- `internal/atdd/runtime/statemachine/run_test.go` — add:
-  - `TestExpandParams_ParamsTakePrecedenceOverState`
-  - `TestExpandParams_StateFallbackForUnknownParamKey`
-  - `TestExpandParams_NilStateBehavesLikeOldSignature` (regression
-    insurance)
-  - integration test: a process whose call-activity passes
-    `foo: "value-${state-only-key}"` resolves correctly when
-    `state-only-key` is set in ctx.State by an upstream service-task.
-
-**Verify:** `go test ./internal/atdd/runtime/...` passes (the runtime
-test surface is broad; expect minor fixture churn).
-
 ### Item 3 — Wire `failure-kind` through `execute-command` → `fix` → `execute-agent`
 
 No YAML edits needed beyond verification — after Item 2, the existing
@@ -310,64 +251,6 @@ Then document the follow-up: a sibling plan file
 authoring the two missing prompts. Out of scope here; gate the YAML
 landing of the recovery branch's exhaustiveness on that plan.
 
-### Item 5 — Author `fix-command-failed.md` prompt
-
-**Files:**
-- `internal/assets/runtime/prompts/atdd/fix-command-failed.md` — new
-  prompt. Frontmatter (model, effort) mirrors
-  `fix-unexpected-failing-tests.md`. Body:
-  - "You are the **fix-command-failed** agent."
-  - Receives `${command}` (the failed shell command line),
-    `${command_exit_code}`, `${command_stderr_tail}`, `${changed_files}`
-    (working-tree dirty list, populated by `fixChangedFiles` extension
-    in Item 6).
-  - Asks the agent to (a) inspect the working tree, (b) reproduce the
-    failure locally, (c) make the minimum patch, (d) re-run the
-    command to confirm exit-0, (e) COMMIT with a structured outputs
-    block.
-- `internal/atdd/runtime/agents/embed_test.go::TestFixKindPromptsExist`
-  — add `"command-failed"` to `wantKinds`. The list now reads:
-  ```go
-  wantKinds := []string{
-      "unexpected-passing-tests",
-      "unexpected-failing-tests",
-      "command-failed",
-  }
-  ```
-- `internal/atdd/runtime/agents/embed_test.go` — extend
-  `TestPrompt_StripsFrontmatter` indirectly (auto-covered by the walk
-  over `Names()`).
-
-**Verify:** `go test ./internal/atdd/runtime/agents/...` passes;
-`gh optivem architecture show` regeneration (if affected) clean.
-
-### Item 6 — Dispatcher plumbing for the new prompt placeholders
-
-**Files:**
-- `internal/atdd/runtime/clauderun/clauderun.go` — add
-  `Options.CommandLine`, `Options.CommandExitCode` (int),
-  `Options.CommandStderrTail` (string) fields. In the prompt-render
-  body (around line 524-557 where `acceptance_criteria` is registered
-  load-bearing), add a block: only register `params["command"] =
-  opts.CommandLine` (etc.) when non-empty. Document the load-bearing
-  semantics in the `Options.Command*` doc-comments.
-- `internal/atdd/runtime/clauderun/clauderun_test.go` — extend the
-  load-bearing-placeholder regression test to cover
-  `${command}` fail-fast when a prompt references it and the value is
-  empty (mirroring `${checklist}` and `${acceptance_criteria}`).
-- `internal/atdd/runtime/driver/driver.go::newClaudeRunDispatcher` —
-  populate `cOpts.CommandLine` / `cOpts.CommandExitCode` /
-  `cOpts.CommandStderrTail` from `ctx.GetString("command-line")` /
-  `ctx.GetInt("command-exit-code")` / `ctx.GetString("command-stderr-tail")`.
-  These read from state, which Item 1 populates.
-- `internal/atdd/runtime/driver/driver.go::fixChangedFiles` — extend
-  the switch (line 925-928) to include `"fix-command-failed"` so the
-  prompt receives a working-tree listing alongside the command
-  failure context.
-
-**Verify:** `go test ./internal/atdd/runtime/clauderun/...` passes;
-`go test ./internal/atdd/runtime/driver/...` passes.
-
 ### Item 7 — Update doc-comments noting "Phase D will wire this"
 
 **Files:**
@@ -389,20 +272,9 @@ landing of the recovery branch's exhaustiveness on that plan.
 
 ## Sequencing
 
-- Item 1 (runCommand writes failure-kind) — leaf; land first. No
-  dependents until Items 3/4 verify.
-- Item 2 (ExpandParams scope chain) — leaf, broad blast radius
-  (touches every dispatcher + the engine). Land second, in its own
-  commit, with the wider runtime test pass as gate.
-- Item 5 (new prompt + embed_test) — independent of 1/2/6; can land
-  in parallel with Item 2.
-- Item 6 (dispatcher plumbing for new placeholders) — depends on
-  Items 1 + 5 (state keys exist; prompt exists).
-- Items 3 + 4 (end-to-end verification) — depend on Items 1, 2, 5, 6.
+- Items 3 + 4 (end-to-end verification) — depend on the already-landed
+  Items 1, 2, 5, 6.
 - Item 7 (doc cleanup) — runs after all the above land; no code dep.
-
-Total ~7 commits over the plan, biggest is Item 2 (engine signature
-change across dispatchers).
 
 ## Verification (end-to-end)
 

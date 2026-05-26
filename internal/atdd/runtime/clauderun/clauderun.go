@@ -129,12 +129,38 @@ type Options struct {
 	VerifyResults string
 
 	// ChangedFiles is the working-tree diff (as `git status --porcelain`)
-	// at the moment of dispatch. Substituted into fix-unexpected-passing-tests' / fix-unexpected-failing-tests'
+	// at the moment of dispatch. Substituted into fix-unexpected-passing-tests' / fix-unexpected-failing-tests' / fix-command-failed
 	// ${changed_files} placeholder so the fix agent can scope its
 	// reasoning to "what the WRITE phase just edited" without re-running
 	// `git status`. Empty when the dispatcher couldn't shell out (e.g.
 	// tests with no Git seam).
 	ChangedFiles string
+
+	// CommandLine / CommandExitCode / CommandStderrTail carry the
+	// diagnostic payload runCommand stashes in ctx.State on shell failure
+	// (`command-line`, `command-exit-code`, `command-stderr-tail`). The
+	// driver reads those keys and populates these fields ahead of every
+	// claude dispatch; on a non-failed run, ctx.State has nothing under
+	// those keys and the fields stay zero-valued.
+	//
+	// Load-bearing for fix-command-failed: the prompt body references
+	// ${command}, ${command_exit_code}, ${command_stderr_tail}. CommandLine
+	// is registered only when non-empty (mirroring Checklist /
+	// AcceptanceCriteria) so findUnfilledPlaceholders fails the dispatch
+	// fast when the recovery path tries to render fix-command-failed
+	// with an empty command — that means the state-fallback path in
+	// ExpandParams broke or runCommand silently skipped its stash, and
+	// the operator wants to know now rather than after the agent reads a
+	// blank prompt. CommandExitCode + CommandStderrTail piggy-back on
+	// CommandLine's non-emptiness (they're a unit — failure either
+	// populates all three or none).
+	//
+	// Other prompts don't reference these placeholders, so populating
+	// the fields on every dispatch (rather than agent-gating in the
+	// driver) is a no-op outside the recovery path.
+	CommandLine        string
+	CommandExitCode    int
+	CommandStderrTail  string
 
 	// Language is the target language for this dispatch (e.g. "go",
 	// "typescript"). Substituted into the prompt's ${language} placeholder
@@ -572,7 +598,16 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	if opts.ParsedConcepts != "" {
 		params["parsed_concepts"] = opts.ParsedConcepts
 	}
-	rendered := statemachine.ExpandParams(body, params)
+	// Command-failure payload — load-bearing for fix-command-failed.
+	// CommandLine gates the trio: when present, all three placeholders
+	// are registered together; when absent, the prompt body's
+	// ${command} reference surfaces via findUnfilledPlaceholders.
+	if opts.CommandLine != "" {
+		params["command"] = opts.CommandLine
+		params["command_exit_code"] = strconv.Itoa(opts.CommandExitCode)
+		params["command_stderr_tail"] = opts.CommandStderrTail
+	}
+	rendered := statemachine.ExpandParams(body, params, nil)
 	if opts.OverrideText != "" {
 		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + opts.OverrideText + "\n"
 	}

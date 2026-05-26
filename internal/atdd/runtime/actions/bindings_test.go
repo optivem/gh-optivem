@@ -79,14 +79,16 @@ func joinArgs(args []string) string {
 }
 
 type fakeShell struct {
-	calls []string
-	out   []byte
-	err   error
+	calls    []string
+	out      []byte
+	stderr   []byte
+	exitCode int
+	err      error
 }
 
-func (f *fakeShell) Run(_ context.Context, cmd string) ([]byte, error) {
+func (f *fakeShell) Run(_ context.Context, cmd string) (ShellResult, error) {
 	f.calls = append(f.calls, cmd)
-	return f.out, f.err
+	return ShellResult{Stdout: f.out, Stderr: f.stderr, ExitCode: f.exitCode}, f.err
 }
 
 func newActions(deps Deps) actions {
@@ -329,13 +331,34 @@ func TestRunCommand_HappyPath(t *testing.T) {
 	if _, set := ctx.State["test-outcome"]; set {
 		t.Fatalf("test-outcome should NOT be set for non-run-tests commands: got %v", ctx.Get("test-outcome"))
 	}
+	// The diagnostic payload (failure-kind + command-* keys) is a
+	// failure-only signal — the fix-command-failed dispatch consumes it.
+	// On the happy path it must be absent so a downstream gateway can
+	// safely treat "failure-kind set" as the routing condition.
+	if _, set := ctx.State["failure-kind"]; set {
+		t.Fatalf("failure-kind should NOT be set on success: got %v", ctx.Get("failure-kind"))
+	}
+	if _, set := ctx.State["command-line"]; set {
+		t.Fatalf("command-line should NOT be set on success: got %v", ctx.Get("command-line"))
+	}
+	if _, set := ctx.State["command-exit-code"]; set {
+		t.Fatalf("command-exit-code should NOT be set on success: got %v", ctx.Get("command-exit-code"))
+	}
+	if _, set := ctx.State["command-stderr-tail"]; set {
+		t.Fatalf("command-stderr-tail should NOT be set on success: got %v", ctx.Get("command-stderr-tail"))
+	}
 	if len(sh.calls) != 1 || sh.calls[0] != "gh optivem compile" {
 		t.Fatalf("shell calls: got %v, want [\"gh optivem compile\"]", sh.calls)
 	}
 }
 
 func TestRunCommand_FailureRoutes_NotErrors(t *testing.T) {
-	sh := &fakeShell{out: []byte("fail"), err: errors.New("exit 1")}
+	sh := &fakeShell{
+		out:      []byte("fail"),
+		stderr:   []byte("boom: file not found\ntraceback line 1\ntraceback line 2\n"),
+		exitCode: 7,
+		err:      errors.New("exit 7"),
+	}
 	var stdout, stderr bytes.Buffer
 	a := newActions(Deps{Shell: sh, Stdout: &stdout, Stderr: &stderr})
 	ctx := statemachine.NewContext()
@@ -348,6 +371,59 @@ func TestRunCommand_FailureRoutes_NotErrors(t *testing.T) {
 	}
 	if got := ctx.Get("command-succeeded"); got != false {
 		t.Fatalf("command-succeeded: got %v, want false", got)
+	}
+	// failure-kind + diagnostic payload are the signal the downstream
+	// `fix-command-failed` dispatch consumes. The Q-late-5 β-convention
+	// resolves task-name as "fix-" + failure-kind, so the literal value
+	// here is load-bearing — a rename here breaks the prompt lookup.
+	if got := ctx.GetString("failure-kind"); got != "command-failed" {
+		t.Fatalf("failure-kind: got %q, want %q", got, "command-failed")
+	}
+	if got := ctx.GetString("command-line"); got != "gh optivem commit" {
+		t.Fatalf("command-line: got %q, want %q", got, "gh optivem commit")
+	}
+	if got := ctx.Get("command-exit-code"); got != 7 {
+		t.Fatalf("command-exit-code: got %v, want 7", got)
+	}
+	wantTail := "boom: file not found\ntraceback line 1\ntraceback line 2"
+	if got := ctx.GetString("command-stderr-tail"); got != wantTail {
+		t.Fatalf("command-stderr-tail:\n got: %q\nwant: %q", got, wantTail)
+	}
+}
+
+func TestRunCommand_StderrTailTruncatesToLastNLines(t *testing.T) {
+	// Stash the stderr payload feeds into the fix-command-failed prompt;
+	// commandStderrTailLines caps the block at 20 lines so a chatty runner
+	// (e.g. a docker pull stream) doesn't blow out the prompt budget.
+	var b strings.Builder
+	for i := 0; i < commandStderrTailLines+5; i++ {
+		fmt.Fprintf(&b, "line %d\n", i+1)
+	}
+	sh := &fakeShell{
+		out:      nil,
+		stderr:   []byte(b.String()),
+		exitCode: 1,
+		err:      errors.New("exit 1"),
+	}
+	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	ctx.Params["command"] = "noisy-runner"
+	out := a.runCommand(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	tail := ctx.GetString("command-stderr-tail")
+	tailLines := strings.Split(tail, "\n")
+	if len(tailLines) != commandStderrTailLines {
+		t.Fatalf("tail line count: got %d, want %d (commandStderrTailLines)", len(tailLines), commandStderrTailLines)
+	}
+	// The first line of the tail should be line 6 (we wrote 25 lines, kept
+	// the last 20, so the surviving first line is 25 - 20 + 1 = 6).
+	if tailLines[0] != "line 6" {
+		t.Errorf("tail[0]: got %q, want %q", tailLines[0], "line 6")
+	}
+	if tailLines[len(tailLines)-1] != "line 25" {
+		t.Errorf("tail[last]: got %q, want %q", tailLines[len(tailLines)-1], "line 25")
 	}
 }
 

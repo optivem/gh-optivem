@@ -90,8 +90,26 @@ type GitRunner interface {
 // (no argv split) so the BPMN Phase D `run-command` primitive can pass
 // any templated command line verbatim and tests can match against "the
 // exact string you would type at a prompt".
+//
+// The returned ShellResult carries stdout, stderr, and the exit code so
+// `runCommand` can surface a diagnostic payload (failure-kind +
+// command-line + command-exit-code + command-stderr-tail) into ctx.State
+// when the command fails, which the downstream `fix-command-failed`
+// dispatch consumes via its prompt placeholders. Stderr is also embedded
+// in the returned error for human-readable surfacing.
 type ShellRunner interface {
-	Run(ctx context.Context, commandLine string) ([]byte, error)
+	Run(ctx context.Context, commandLine string) (ShellResult, error)
+}
+
+// ShellResult is the rich return of a shell dispatch. Stdout / Stderr
+// are populated for every run (success or failure); ExitCode is 0 on
+// success and the OS-reported exit status on failure (or -1 when the
+// process never started, e.g. command not found — Go's
+// `*exec.ExitError` returns -1 in that case via ExitCode()).
+type ShellResult struct {
+	Stdout   []byte
+	Stderr   []byte
+	ExitCode int
 }
 
 func (d Deps) withDefaults() Deps {
@@ -406,7 +424,7 @@ func issueFromContext(ctx *statemachine.Context) (tracker.Issue, error) {
 // then dispatches it. Used by the BPMN Phase D `run-command` primitive
 // below; centralises the banner+run pair so any future shell-out action
 // inherits the same trace shape.
-func (a actions) runShell(cmdLine string) ([]byte, error) {
+func (a actions) runShell(cmdLine string) (ShellResult, error) {
 	fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmdLine)
 	return a.deps.Shell.Run(context.Background(), cmdLine)
 }
@@ -631,7 +649,10 @@ func shellEscape(s string) string {
 // `gh optivem test run` family it additionally stamps
 // ctx.State["test-outcome"] = "pass"|"fail" so the verify-tests-pass /
 // verify-tests-fail gateways downstream of run-tests route without a
-// second shell-out.
+// second shell-out. On failure it also stamps a diagnostic payload —
+// failure-kind = "command-failed", command-line, command-exit-code,
+// command-stderr-tail — which the `fix-command-failed` dispatch consumes
+// via its prompt placeholders (see clauderun.Options.Command*).
 //
 // Does NOT surface command failure as Outcome.Err — the
 // execute-command primitive's GATE_COMMAND_SUCCEEDED is the intended
@@ -650,7 +671,7 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 	if filterValue := strings.TrimSpace(ctx.Params["filter-value"]); filterValue != "" {
 		cmd += " --filter-value=" + shellEscape(filterValue)
 	}
-	_, err := a.runShell(cmd)
+	result, err := a.runShell(cmd)
 	succeeded := err == nil
 	ctx.Set("command-succeeded", succeeded)
 	if isTestRun {
@@ -661,9 +682,35 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 		}
 	}
 	if err != nil {
+		ctx.Set("failure-kind", "command-failed")
+		ctx.Set("command-line", cmd)
+		ctx.Set("command-exit-code", result.ExitCode)
+		ctx.Set("command-stderr-tail", lastNLines(string(result.Stderr), commandStderrTailLines))
 		fmt.Fprintf(a.deps.Stderr, "run-command: %v\n", err)
 	}
 	return statemachine.Outcome{}
+}
+
+// commandStderrTailLines caps the stderr block stashed in ctx.State for
+// the fix-command-failed prompt. 20 lines is enough to carry a typical
+// stack trace tail without blowing the prompt size on a runaway log.
+const commandStderrTailLines = 20
+
+// lastNLines returns the trailing n non-empty-bounded lines of s, joined
+// by "\n". When s has fewer than n lines, returns s with a single
+// trailing newline trimmed (so the rendered ${command_stderr_tail}
+// block doesn't gain an extra blank line). Used to bound the stderr
+// payload fed to the fix-command-failed prompt.
+func lastNLines(s string, n int) string {
+	if s == "" || n <= 0 {
+		return ""
+	}
+	trimmed := strings.TrimRight(s, "\n")
+	lines := strings.Split(trimmed, "\n")
+	if len(lines) <= n {
+		return trimmed
+	}
+	return strings.Join(lines[len(lines)-n:], "\n")
 }
 
 // validateOutputsAndScopes is the LOW `execute-agent` primitive's
@@ -842,7 +889,7 @@ func (realGit) Run(ctx context.Context, args ...string) ([]byte, error) {
 
 type realShell struct{}
 
-func (realShell) Run(ctx context.Context, commandLine string) ([]byte, error) {
+func (realShell) Run(ctx context.Context, commandLine string) (ShellResult, error) {
 	// We deliberately route through the user's shell so command lines like
 	// `./test-all.sh --sample` and `bash -lc compile-all.sh` work uniformly.
 	// On Windows, gh-optivem ships against bash via the Git Bash shim; if
@@ -856,22 +903,28 @@ func (realShell) Run(ctx context.Context, commandLine string) ([]byte, error) {
 	// Tee the child's stdio: stream live to the operator's terminal so
 	// long-running commands (docker compose build, gradle, etc.) show
 	// progress instead of looking hung, and capture into buffers so the
-	// returned []byte still carries stdout for callers that parse it
+	// returned ShellResult still carries stdout for callers that parse it
 	// (e.g. `gh optivem test run --list`) and stderr is still inlined
 	// into the error message on failure.
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
 	cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
 	err := cmd.Run()
+	result := ShellResult{Stdout: stdoutBuf.Bytes(), Stderr: stderrBuf.Bytes()}
 	if err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
-			return stdoutBuf.Bytes(), fmt.Errorf("shell %q: %w (stderr: %s)",
+			result.ExitCode = ee.ExitCode()
+			return result, fmt.Errorf("shell %q: %w (stderr: %s)",
 				commandLine, err, strings.TrimSpace(stderrBuf.String()))
 		}
-		return stdoutBuf.Bytes(), fmt.Errorf("shell %q: %w", commandLine, err)
+		// Process never started (binary not found, etc.) — exec.ExitError
+		// is not in the chain, so we leave ExitCode at its zero value;
+		// callers that surface command-exit-code into state still get a
+		// stable int, just one that signals "no exit code observed".
+		return result, fmt.Errorf("shell %q: %w", commandLine, err)
 	}
-	return stdoutBuf.Bytes(), nil
+	return result, nil
 }
 
 type stdinPrompter struct{}

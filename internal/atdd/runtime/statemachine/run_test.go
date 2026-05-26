@@ -294,6 +294,143 @@ processes:
 	}
 }
 
+// TestExpandParams_ParamsTakePrecedenceOverState locks in the chosen
+// resolution order (plan 20260526-1530, decision (b)): when a key appears
+// in both params and state, the params value wins. Call-site overrides
+// must remain authoritative — the state-fallback path is the bridge for
+// keys params doesn't carry, not a back-door way for state to mask
+// caller-supplied values.
+func TestExpandParams_ParamsTakePrecedenceOverState(t *testing.T) {
+	params := map[string]string{"agent": "from-params"}
+	state := map[string]any{"agent": "from-state"}
+	got := ExpandParams("agent=${agent}", params, state)
+	if got != "agent=from-params" {
+		t.Errorf("got %q, want %q — params must win on collision", got, "agent=from-params")
+	}
+}
+
+// TestExpandParams_StateFallbackForUnknownParamKey is the load-bearing
+// half of the failure-kind wiring: `failure-kind` is set in state by
+// runCommand and validateOutputsAndScopes, NEVER passed as a call-site
+// param, so the `fix` body's `task-name: "fix-${failure-kind}"` resolves
+// only because ExpandParams consults state when params is silent.
+func TestExpandParams_StateFallbackForUnknownParamKey(t *testing.T) {
+	params := map[string]string{"other-key": "irrelevant"}
+	state := map[string]any{"failure-kind": "command-failed"}
+	got := ExpandParams(`fix-${failure-kind}`, params, state)
+	if got != "fix-command-failed" {
+		t.Errorf("got %q, want %q — state fallback should resolve ${failure-kind}", got, "fix-command-failed")
+	}
+}
+
+// TestExpandParams_StateValueCoercion mirrors Context.GetString's
+// best-effort rules so the substitution layer and the predicate-evaluation
+// layer agree on stringification (bool → "true"/"false", int → fmt.Sprint).
+func TestExpandParams_StateValueCoercion(t *testing.T) {
+	cases := []struct {
+		name  string
+		value any
+		want  string
+	}{
+		{name: "string", value: "literal", want: "literal"},
+		{name: "bool true", value: true, want: "true"},
+		{name: "bool false", value: false, want: "false"},
+		{name: "int", value: 42, want: "42"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := ExpandParams("[${k}]", nil, map[string]any{"k": c.value})
+			want := "[" + c.want + "]"
+			if got != want {
+				t.Errorf("got %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// TestExpandParams_NilStateBehavesLikeOldSignature is the regression
+// insurance: every caller that passes nil for state must get pre-fallback
+// semantics (only params substitute; ${unknown} stays literal). Tests and
+// the clauderun prompt renderer rely on this.
+func TestExpandParams_NilStateBehavesLikeOldSignature(t *testing.T) {
+	got := ExpandParams("${agent}-${ghost}", map[string]string{"agent": "writer"}, nil)
+	if got != "writer-${ghost}" {
+		t.Errorf("got %q, want %q — nil state must not resolve unknown keys", got, "writer-${ghost}")
+	}
+}
+
+// TestWrapCallActivity_StateValueFlowsIntoChildTemplate is the integration
+// check for the failure-kind wiring. A parent service-task writes
+// failure-kind into state; the child call-activity's templated param
+// `task-name: "fix-${failure-kind}"` resolves via the state-fallback path
+// (no `failure-kind` is declared in params). This is the path the LOW
+// `execute-command` → `fix` → `execute-agent` recovery chain depends on.
+func TestWrapCallActivity_StateValueFlowsIntoChildTemplate(t *testing.T) {
+	const yaml = `
+processes:
+  outer:
+    start: WRITE_STATE
+    nodes:
+      - id: WRITE_STATE
+        type: service-task
+        action: write-failure-kind
+      - id: CALL_FIX
+        type: call-activity
+        process: fix
+        params:
+          task-name: "fix-${failure-kind}"
+      - id: OUTER_END
+        type: end-event
+    sequence-flows:
+      - {from: WRITE_STATE, to: CALL_FIX}
+      - {from: CALL_FIX,    to: OUTER_END}
+
+  fix:
+    start: READ
+    nodes:
+      - id: READ
+        type: service-task
+        action: read-task-name
+      - id: FIX_END
+        type: end-event
+    sequence-flows:
+      - {from: READ, to: FIX_END}
+`
+	eng, err := LoadBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+
+	var seenTaskName string
+	eng.ActionFn = func(name string) NodeFn {
+		switch name {
+		case "write-failure-kind":
+			return func(ctx *Context) Outcome {
+				ctx.Set("failure-kind", "command-failed")
+				return Outcome{}
+			}
+		case "read-task-name":
+			return func(ctx *Context) Outcome {
+				seenTaskName = ctx.Params["task-name"]
+				return Outcome{}
+			}
+		}
+		return nil
+	}
+	eng.AgentFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	eng.GateFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+	if err := eng.RunProcess("outer", NewContext()); err != nil {
+		t.Fatalf("RunProcess outer: %v", err)
+	}
+	want := "fix-command-failed"
+	if seenTaskName != want {
+		t.Errorf("inner action saw task-name=%q, want %q (state-fallback in ExpandParams regressed)", seenTaskName, want)
+	}
+}
+
 // TestCallActivity_ProcessTemplate_UnknownTarget locks in the error path:
 // when a templated `process: ${name}` expands to a sub-process the engine
 // doesn't know about, the dispatch-time error names both the resolved value

@@ -55,7 +55,7 @@ func (e *Engine) resolve(node Node) (NodeFn, error) {
 			ref := node.Raw.Action
 			lookup := e.ActionFn
 			return func(ctx *Context) Outcome {
-				name := ExpandParams(ref, ctx.Params)
+				name := ExpandParams(ref, ctx.Params, ctx.State)
 				fn := lookup(name)
 				if fn == nil {
 					return Outcome{Err: fmt.Errorf("service-task action %q (from template %q) not registered", name, ref)}
@@ -79,7 +79,7 @@ func (e *Engine) resolve(node Node) (NodeFn, error) {
 			ref := node.Raw.Agent
 			lookup := e.AgentFn
 			return func(ctx *Context) Outcome {
-				name := ExpandParams(ref, ctx.Params)
+				name := ExpandParams(ref, ctx.Params, ctx.State)
 				fn := lookup(name)
 				if fn == nil {
 					return Outcome{Err: fmt.Errorf("user-task agent %q (from template %q) not registered", name, ref)}
@@ -145,7 +145,7 @@ func (e *Engine) wrapGateway(binding string, fn NodeFn) NodeFn {
 // (the common case) pass through unchanged because ExpandParams is idempotent.
 func (e *Engine) wrapCallActivity(raw RawNode) NodeFn {
 	return func(ctx *Context) Outcome {
-		processName := ExpandParams(raw.Process, ctx.Params)
+		processName := ExpandParams(raw.Process, ctx.Params, ctx.State)
 		sub, ok := e.Processes[processName]
 		if !ok {
 			if processName != raw.Process {
@@ -162,7 +162,7 @@ func (e *Engine) wrapCallActivity(raw RawNode) NodeFn {
 			merged[k] = v
 		}
 		for k, v := range raw.Params {
-			merged[k] = ExpandParams(v, prev)
+			merged[k] = ExpandParams(v, prev, ctx.State)
 		}
 		ctx.Params = merged
 		defer func() { ctx.Params = prev }()
@@ -279,15 +279,55 @@ func (e *Engine) nextEdge(process *Process, from string, ctx *Context) (string, 
 	return "", fmt.Errorf("no outgoing edge predicate matched current state")
 }
 
-// ExpandParams substitutes ${name} occurrences in the input string using the
-// given params map. Used by the engine to resolve templated agent names at
-// dispatch time, and by the driver to render user-facing strings (banners,
-// phase docs) with the same substitutions the engine sees. Idempotent on
-// already-substituted strings (no ${…} placeholders → identity); a nil
-// params map returns s unchanged.
-func ExpandParams(s string, params map[string]string) string {
+// ExpandParams substitutes ${name} occurrences in the input string by
+// looking each key up in a two-level scope chain: caller params first,
+// then run-scoped state for keys not present in params. The state-fallback
+// path is the bridge for binding-written values (failure-kind, test-outcome,
+// command-line, etc.) that downstream templates want to consume without
+// requiring every caller to declare a passthrough param at each
+// call-activity site (plan 20260526-1530, decision (b) with a small
+// extension). Params win on collision so call-site overrides remain
+// authoritative.
+//
+// State values are coerced to string with the same best-effort rules as
+// Context.GetString: strings pass through, bools become "true"/"false",
+// every other type renders via fmt.Sprint. A nil state map disables the
+// fallback (legacy callers and tests that don't carry state behave
+// exactly like the pre-fallback signature).
+//
+// Used by the engine to resolve templated agent / process / param names
+// at dispatch time, and by the driver to render user-facing strings
+// (banners, phase docs) with the same substitutions the engine sees.
+// Idempotent on already-substituted strings (no ${…} placeholders →
+// identity); a nil params map AND a nil state map returns s unchanged.
+func ExpandParams(s string, params map[string]string, state map[string]any) string {
 	for k, v := range params {
 		s = strings.ReplaceAll(s, "${"+k+"}", v)
 	}
+	for k, v := range state {
+		if _, override := params[k]; override {
+			// Params win on collision — already substituted above.
+			continue
+		}
+		s = strings.ReplaceAll(s, "${"+k+"}", coerceStateValue(v))
+	}
 	return s
+}
+
+// coerceStateValue stringifies a state value with the same best-effort
+// rules as Context.GetString. Lives next to ExpandParams so the
+// substitution layer and the predicate-evaluation layer agree on what
+// "value X under key Y" renders as.
+func coerceStateValue(v any) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case bool:
+		if t {
+			return "true"
+		}
+		return "false"
+	default:
+		return fmt.Sprint(v)
+	}
 }
