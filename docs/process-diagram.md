@@ -103,6 +103,7 @@ flowchart TD
     MARK_IN_PROGRESS[[MARK_IN_PROGRESS]]
     ONBOARD_EXTERNAL_SYSTEM[Onboard External System]
     PARSE_TICKET[[PARSE_TICKET]]
+    REDESIGN_EXTERNAL_SYSTEM_STRUCTURE[Redesign External-System Structure — see § redesign-external-system-structure]
     REDESIGN_SYSTEM_STRUCTURE[Redesign System Structure]
     REFACTOR_SYSTEM_STRUCTURE[Refactor System Structure]
     REFACTOR_TEST_STRUCTURE[Refactor Test Structure]
@@ -117,6 +118,7 @@ flowchart TD
     GATE_TICKET_KIND --> UNKNOWN_TICKET_KIND
     GATE_TASK_SUBTYPE -- Legacy Coverage --> COVER_SYSTEM_BEHAVIOR
     GATE_TASK_SUBTYPE -- System Redesign --> REDESIGN_SYSTEM_STRUCTURE
+    GATE_TASK_SUBTYPE -- External System Redesign --> REDESIGN_EXTERNAL_SYSTEM_STRUCTURE
     GATE_TASK_SUBTYPE -- System Refactor --> REFACTOR_SYSTEM_STRUCTURE
     GATE_TASK_SUBTYPE -- Test Refactor --> REFACTOR_TEST_STRUCTURE
     GATE_TASK_SUBTYPE -- External System Onboarding --> ONBOARD_EXTERNAL_SYSTEM
@@ -124,6 +126,7 @@ flowchart TD
     CHANGE_SYSTEM_BEHAVIOR --> MARK_IN_ACCEPTANCE
     COVER_SYSTEM_BEHAVIOR --> MARK_IN_ACCEPTANCE
     REDESIGN_SYSTEM_STRUCTURE --> MARK_IN_ACCEPTANCE
+    REDESIGN_EXTERNAL_SYSTEM_STRUCTURE --> MARK_IN_ACCEPTANCE
     REFACTOR_SYSTEM_STRUCTURE --> MARK_IN_ACCEPTANCE
     REFACTOR_TEST_STRUCTURE --> MARK_IN_ACCEPTANCE
     ONBOARD_EXTERNAL_SYSTEM --> MARK_IN_ACCEPTANCE
@@ -142,6 +145,7 @@ flowchart TD
 flowchart TD
     CHOOSE_REFACTOR_TYPE["Choose refactor type (loopable; none = exit)"]
     GATE_REFACTOR_TYPE_CHOICE{ }
+    REDESIGN_EXTERNAL_SYSTEM_STRUCTURE[Redesign External-System Structure — see § redesign-external-system-structure]
     REDESIGN_SYSTEM_STRUCTURE[Redesign System Structure]
     REFACTOR_SYSTEM_STRUCTURE[Refactor System Structure]
     REFACTOR_TEST_STRUCTURE[Refactor Test Structure]
@@ -151,10 +155,12 @@ flowchart TD
     GATE_REFACTOR_TYPE_CHOICE -- Refactor System Structure --> REFACTOR_SYSTEM_STRUCTURE
     GATE_REFACTOR_TYPE_CHOICE -- Refactor Test Structure --> REFACTOR_TEST_STRUCTURE
     GATE_REFACTOR_TYPE_CHOICE -- Redesign System Structure --> REDESIGN_SYSTEM_STRUCTURE
+    GATE_REFACTOR_TYPE_CHOICE -- Redesign External System Structure --> REDESIGN_EXTERNAL_SYSTEM_STRUCTURE
     GATE_REFACTOR_TYPE_CHOICE -- None --> REFACTOR_TOP_END
     REFACTOR_SYSTEM_STRUCTURE --> CHOOSE_REFACTOR_TYPE
     REFACTOR_TEST_STRUCTURE --> CHOOSE_REFACTOR_TYPE
     REDESIGN_SYSTEM_STRUCTURE --> CHOOSE_REFACTOR_TYPE
+    REDESIGN_EXTERNAL_SYSTEM_STRUCTURE --> CHOOSE_REFACTOR_TYPE
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
     class CHOOSE_REFACTOR_TYPE humanNode
@@ -239,7 +245,6 @@ flowchart TD
     CHECK_CHECKLIST_PROGRESS[[CHECK_CHECKLIST_PROGRESS]]
     GATE_CHECKLIST_PARTIALLY_DONE{checklist-partially-done}
     IMPLEMENT_AND_VERIFY_SYSTEM[Implement System — see § implement-and-verify-system]
-    IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Implement External-System Driver Adapters — see § implement-external-system-driver-adapters]
     IMPLEMENT_SYSTEM_DRIVER_ADAPTERS[Implement System Driver Adapters]
     REDESIGN_END((System Structure Redesigned))
     STOP_CHECKLIST_PARTIALLY_DONE["${checklist_progress_summary} Approve re-running this cycle?"]
@@ -248,8 +253,7 @@ flowchart TD
     GATE_CHECKLIST_PARTIALLY_DONE -- Yes --> STOP_CHECKLIST_PARTIALLY_DONE
     GATE_CHECKLIST_PARTIALLY_DONE -- No --> IMPLEMENT_SYSTEM_DRIVER_ADAPTERS
     STOP_CHECKLIST_PARTIALLY_DONE --> IMPLEMENT_SYSTEM_DRIVER_ADAPTERS
-    IMPLEMENT_SYSTEM_DRIVER_ADAPTERS --> IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
-    IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS --> IMPLEMENT_AND_VERIFY_SYSTEM
+    IMPLEMENT_SYSTEM_DRIVER_ADAPTERS --> IMPLEMENT_AND_VERIFY_SYSTEM
     IMPLEMENT_AND_VERIFY_SYSTEM --> REDESIGN_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
@@ -841,5 +845,30 @@ flowchart TD
     GATE_APPROVED_PRE -- Approved --> EXECUTE_AGENT
     GATE_APPROVED_PRE -- Rejected --> FIX_REJECTED_END
     EXECUTE_AGENT --> FIX_END
+```
+
+## Redesign External System Structure
+
+```mermaid
+flowchart TD
+    CHECK_CHECKLIST_PROGRESS[[CHECK_CHECKLIST_PROGRESS]]
+    GATE_CHECKLIST_PARTIALLY_DONE{checklist-partially-done}
+    IMPLEMENT_AND_VERIFY_SYSTEM[Implement System — see § implement-and-verify-system]
+    IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Implement External-System Driver Adapters — see § implement-external-system-driver-adapters]
+    REDESIGN_EXTERNAL_END((External System Structure Redesigned))
+    STOP_CHECKLIST_PARTIALLY_DONE["${checklist_progress_summary} Approve re-running this cycle?"]
+
+    CHECK_CHECKLIST_PROGRESS --> GATE_CHECKLIST_PARTIALLY_DONE
+    GATE_CHECKLIST_PARTIALLY_DONE -- Yes --> STOP_CHECKLIST_PARTIALLY_DONE
+    GATE_CHECKLIST_PARTIALLY_DONE -- No --> IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
+    STOP_CHECKLIST_PARTIALLY_DONE --> IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
+    IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS --> IMPLEMENT_AND_VERIFY_SYSTEM
+    IMPLEMENT_AND_VERIFY_SYSTEM --> REDESIGN_EXTERNAL_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class CHECK_CHECKLIST_PROGRESS serviceNode
+
+    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
+    class STOP_CHECKLIST_PARTIALLY_DONE humanNode
 ```
 

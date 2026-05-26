@@ -606,9 +606,9 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	if opts.AcceptanceCriteria != "" {
 		params["acceptance_criteria"] = opts.AcceptanceCriteria
 	}
-	// Checklist is load-bearing for the four task subtypes whose cycles
-	// consume ${checklist} (system-redesign, system-refactor,
-	// test-refactor, external-system-onboarding). Same rationale as
+	// Checklist is load-bearing for the five task subtypes whose cycles
+	// consume ${checklist} (system-redesign, external-system-redesign,
+	// system-refactor, test-refactor, external-system-onboarding). Same rationale as
 	// AcceptanceCriteria — only registered when non-empty so an absent
 	// value surfaces via findUnfilledPlaceholders rather than substituting
 	// "". Catches the bug class where parse-ticket failed to populate or

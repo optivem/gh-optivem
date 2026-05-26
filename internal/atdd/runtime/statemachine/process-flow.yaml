@@ -220,6 +220,7 @@ processes:
   #   GATE_TASK_SUBTYPE (binding: task-subtype, task-only second level)
   #     legacy-coverage             → cover-system-behavior
   #     system-redesign             → redesign-system-structure
+  #     external-system-redesign    → redesign-external-system-structure
   #     system-refactor             → refactor-system-structure
   #     test-refactor               → refactor-test-structure
   #     external-system-onboarding  → onboard-external-system
@@ -289,6 +290,11 @@ processes:
         process: redesign-system-structure
         documentation: "Redesign System Structure"
 
+      - id: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE
+        type: call-activity
+        process: redesign-external-system-structure
+        documentation: "Redesign External-System Structure"
+
       - id: REFACTOR_SYSTEM_STRUCTURE
         type: call-activity
         process: refactor-system-structure
@@ -327,18 +333,20 @@ processes:
       - {from: GATE_TICKET_KIND, to: CHANGE_SYSTEM_BEHAVIOR, when: "ticket-kind == bug"}
       - {from: GATE_TICKET_KIND, to: GATE_TASK_SUBTYPE,      when: "ticket-kind == task"}
       - {from: GATE_TICKET_KIND, to: UNKNOWN_TICKET_KIND}
-      - {from: GATE_TASK_SUBTYPE, to: COVER_SYSTEM_BEHAVIOR,     when: "task-subtype == legacy-coverage"}
-      - {from: GATE_TASK_SUBTYPE, to: REDESIGN_SYSTEM_STRUCTURE, when: "task-subtype == system-redesign"}
-      - {from: GATE_TASK_SUBTYPE, to: REFACTOR_SYSTEM_STRUCTURE, when: "task-subtype == system-refactor"}
-      - {from: GATE_TASK_SUBTYPE, to: REFACTOR_TEST_STRUCTURE,   when: "task-subtype == test-refactor"}
-      - {from: GATE_TASK_SUBTYPE, to: ONBOARD_EXTERNAL_SYSTEM,   when: "task-subtype == external-system-onboarding"}
+      - {from: GATE_TASK_SUBTYPE, to: COVER_SYSTEM_BEHAVIOR,              when: "task-subtype == legacy-coverage"}
+      - {from: GATE_TASK_SUBTYPE, to: REDESIGN_SYSTEM_STRUCTURE,          when: "task-subtype == system-redesign"}
+      - {from: GATE_TASK_SUBTYPE, to: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE, when: "task-subtype == external-system-redesign"}
+      - {from: GATE_TASK_SUBTYPE, to: REFACTOR_SYSTEM_STRUCTURE,          when: "task-subtype == system-refactor"}
+      - {from: GATE_TASK_SUBTYPE, to: REFACTOR_TEST_STRUCTURE,            when: "task-subtype == test-refactor"}
+      - {from: GATE_TASK_SUBTYPE, to: ONBOARD_EXTERNAL_SYSTEM,            when: "task-subtype == external-system-onboarding"}
       - {from: GATE_TASK_SUBTYPE, to: UNKNOWN_TASK_SUBTYPE}
-      - {from: CHANGE_SYSTEM_BEHAVIOR,    to: MARK_IN_ACCEPTANCE}
-      - {from: COVER_SYSTEM_BEHAVIOR,     to: MARK_IN_ACCEPTANCE}
-      - {from: REDESIGN_SYSTEM_STRUCTURE, to: MARK_IN_ACCEPTANCE}
-      - {from: REFACTOR_SYSTEM_STRUCTURE, to: MARK_IN_ACCEPTANCE}
-      - {from: REFACTOR_TEST_STRUCTURE,   to: MARK_IN_ACCEPTANCE}
-      - {from: ONBOARD_EXTERNAL_SYSTEM,   to: MARK_IN_ACCEPTANCE}
+      - {from: CHANGE_SYSTEM_BEHAVIOR,             to: MARK_IN_ACCEPTANCE}
+      - {from: COVER_SYSTEM_BEHAVIOR,              to: MARK_IN_ACCEPTANCE}
+      - {from: REDESIGN_SYSTEM_STRUCTURE,          to: MARK_IN_ACCEPTANCE}
+      - {from: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE, to: MARK_IN_ACCEPTANCE}
+      - {from: REFACTOR_SYSTEM_STRUCTURE,          to: MARK_IN_ACCEPTANCE}
+      - {from: REFACTOR_TEST_STRUCTURE,            to: MARK_IN_ACCEPTANCE}
+      - {from: ONBOARD_EXTERNAL_SYSTEM,            to: MARK_IN_ACCEPTANCE}
       - {from: MARK_IN_ACCEPTANCE,        to: IMPLEMENT_TICKET_END}
 
   # ===========================================================================
@@ -382,19 +390,26 @@ processes:
         process: redesign-system-structure
         documentation: "Redesign System Structure"
 
+      - id: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE
+        type: call-activity
+        process: redesign-external-system-structure
+        documentation: "Redesign External-System Structure"
+
       - id: REFACTOR_TOP_END
         type: end-event
         documentation: "Refactor Complete"
 
     sequence-flows:
-      - {from: CHOOSE_REFACTOR_TYPE,      to: GATE_REFACTOR_TYPE_CHOICE}
-      - {from: GATE_REFACTOR_TYPE_CHOICE, to: REFACTOR_SYSTEM_STRUCTURE, when: "refactor-type-choice == refactor-system-structure"}
-      - {from: GATE_REFACTOR_TYPE_CHOICE, to: REFACTOR_TEST_STRUCTURE,   when: "refactor-type-choice == refactor-test-structure"}
-      - {from: GATE_REFACTOR_TYPE_CHOICE, to: REDESIGN_SYSTEM_STRUCTURE, when: "refactor-type-choice == redesign-system-structure"}
-      - {from: GATE_REFACTOR_TYPE_CHOICE, to: REFACTOR_TOP_END,               when: "refactor-type-choice == none"}
-      - {from: REFACTOR_SYSTEM_STRUCTURE, to: CHOOSE_REFACTOR_TYPE}
-      - {from: REFACTOR_TEST_STRUCTURE,   to: CHOOSE_REFACTOR_TYPE}
-      - {from: REDESIGN_SYSTEM_STRUCTURE, to: CHOOSE_REFACTOR_TYPE}
+      - {from: CHOOSE_REFACTOR_TYPE,               to: GATE_REFACTOR_TYPE_CHOICE}
+      - {from: GATE_REFACTOR_TYPE_CHOICE,          to: REFACTOR_SYSTEM_STRUCTURE,          when: "refactor-type-choice == refactor-system-structure"}
+      - {from: GATE_REFACTOR_TYPE_CHOICE,          to: REFACTOR_TEST_STRUCTURE,            when: "refactor-type-choice == refactor-test-structure"}
+      - {from: GATE_REFACTOR_TYPE_CHOICE,          to: REDESIGN_SYSTEM_STRUCTURE,          when: "refactor-type-choice == redesign-system-structure"}
+      - {from: GATE_REFACTOR_TYPE_CHOICE,          to: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE, when: "refactor-type-choice == redesign-external-system-structure"}
+      - {from: GATE_REFACTOR_TYPE_CHOICE,          to: REFACTOR_TOP_END,                   when: "refactor-type-choice == none"}
+      - {from: REFACTOR_SYSTEM_STRUCTURE,          to: CHOOSE_REFACTOR_TYPE}
+      - {from: REFACTOR_TEST_STRUCTURE,            to: CHOOSE_REFACTOR_TYPE}
+      - {from: REDESIGN_SYSTEM_STRUCTURE,          to: CHOOSE_REFACTOR_TYPE}
+      - {from: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE, to: CHOOSE_REFACTOR_TYPE}
 
   # ===========================================================================
   # CYCLE — refine-backlog-item (Q9 = A, sibling cycle)
@@ -549,9 +564,12 @@ processes:
   # CYCLE — redesign-system-structure (Q-new-2)
   # ===========================================================================
   #
-  # Step 1 splits into two MID-direct calls (`implement-system-driver-
-  # adapters` + `implement-external-system-driver-adapters`); no umbrella
-  # MID. Step 2 reuses HIGH `implement-and-verify-system`.
+  # System-side structure redesign. Step 1 calls MID
+  # `implement-system-driver-adapters`. Step 2 reuses HIGH
+  # `implement-and-verify-system`. External-side driver adapters live in
+  # the sibling CYCLE `redesign-external-system-structure`, reached via
+  # `task/external-system-redesign` — `task/system-redesign` tickets stay
+  # system-side and no longer rebuild the external boundary.
   # ===========================================================================
   redesign-system-structure:
     start: CHECK_CHECKLIST_PROGRESS
@@ -575,11 +593,6 @@ processes:
         process: implement-system-driver-adapters
         documentation: "Implement System Driver Adapters"
 
-      - id: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
-        type: call-activity
-        process: implement-external-system-driver-adapters
-        documentation: "Implement External-System Driver Adapters"
-
       - id: IMPLEMENT_AND_VERIFY_SYSTEM
         type: call-activity
         process: implement-and-verify-system
@@ -592,13 +605,65 @@ processes:
         documentation: "System Structure Redesigned"
 
     sequence-flows:
+      - {from: CHECK_CHECKLIST_PROGRESS,         to: GATE_CHECKLIST_PARTIALLY_DONE}
+      - {from: GATE_CHECKLIST_PARTIALLY_DONE,    to: STOP_CHECKLIST_PARTIALLY_DONE,    when: "checklist-partially-done == true"}
+      - {from: GATE_CHECKLIST_PARTIALLY_DONE,    to: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS, when: "checklist-partially-done == false"}
+      - {from: STOP_CHECKLIST_PARTIALLY_DONE,    to: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS}
+      - {from: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS, to: IMPLEMENT_AND_VERIFY_SYSTEM}
+      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,      to: REDESIGN_END}
+
+  # ===========================================================================
+  # CYCLE — redesign-external-system-structure (Item 14 / external-side split)
+  # ===========================================================================
+  #
+  # External-side sibling of `redesign-system-structure`. Step 1 calls
+  # MID `implement-external-system-driver-adapters` (test-side drivers
+  # into stubs/simulators). Step 2 reuses HIGH `implement-and-verify-
+  # system` because either side of the boundary can shift the system's
+  # port surface — an external-system stub change typically reflects an
+  # external-system contract change, and the acceptance tests have to
+  # re-verify the result against the new stub behavior.
+  # ===========================================================================
+  redesign-external-system-structure:
+    start: CHECK_CHECKLIST_PROGRESS
+    nodes:
+      - id: CHECK_CHECKLIST_PROGRESS
+        type: service-task
+        action: check-checklist-progress
+
+      - id: GATE_CHECKLIST_PARTIALLY_DONE
+        type: gateway
+        binding: checklist-partially-done
+        documentation: "checklist-partially-done"
+
+      - id: STOP_CHECKLIST_PARTIALLY_DONE
+        type: user-task
+        agent: human
+        documentation: "${checklist_progress_summary} Approve re-running this cycle?"
+
+      - id: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
+        type: call-activity
+        process: implement-external-system-driver-adapters
+        documentation: "Implement External-System Driver Adapters"
+
+      - id: IMPLEMENT_AND_VERIFY_SYSTEM
+        type: call-activity
+        process: implement-and-verify-system
+        params:
+          action: implement-system
+        documentation: "Implement System"
+
+      - id: REDESIGN_EXTERNAL_END
+        type: end-event
+        documentation: "External System Structure Redesigned"
+
+    sequence-flows:
       - {from: CHECK_CHECKLIST_PROGRESS,                  to: GATE_CHECKLIST_PARTIALLY_DONE}
-      - {from: GATE_CHECKLIST_PARTIALLY_DONE,             to: STOP_CHECKLIST_PARTIALLY_DONE,        when: "checklist-partially-done == true"}
-      - {from: GATE_CHECKLIST_PARTIALLY_DONE,             to: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS,     when: "checklist-partially-done == false"}
-      - {from: STOP_CHECKLIST_PARTIALLY_DONE,             to: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS}
-      - {from: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS,          to: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS}
+      - {from: GATE_CHECKLIST_PARTIALLY_DONE,             to: STOP_CHECKLIST_PARTIALLY_DONE,             when: "checklist-partially-done == true"}
+      - {from: GATE_CHECKLIST_PARTIALLY_DONE,             to: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, when: "checklist-partially-done == false"}
+      - {from: STOP_CHECKLIST_PARTIALLY_DONE,             to: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS}
       - {from: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, to: IMPLEMENT_AND_VERIFY_SYSTEM}
-      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,               to: REDESIGN_END}
+      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,               to: REDESIGN_EXTERNAL_END}
 
   # ===========================================================================
   # CYCLE — refactor-system-structure (Phase C.1 prototype — first cycle encoded)

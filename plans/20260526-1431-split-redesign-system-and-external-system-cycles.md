@@ -1,19 +1,6 @@
 # Split `redesign-system-structure` into system-side and external-side cycles
 
-> ⛔ **Blocked on `plans/20260526-0832-process-diagram-cleanup.md` Items 11 + 12.**
->
-> - **Item 11** splits the flat `GATE_TICKET_KIND` into hierarchical
->   `GATE_TICKET_KIND` (story/bug/task) + `GATE_TASK_SUBTYPE`
->   (cover-legacy/system-redesign/...). This plan's new branch lands
->   under `GATE_TASK_SUBTYPE`, not `GATE_TICKET_KIND` — running before
->   Item 11 means inserting under the old shape and redoing it after.
-> - **Item 12** drops the `CALL_` prefix from call-activity node IDs.
->   This plan adds a new call-activity node; landing first means
->   choosing the soon-to-be-renamed `CALL_REDESIGN_EXTERNAL_SYSTEM_STRUCTURE`
->   over the post-Item-12 `REDESIGN_EXTERNAL_SYSTEM_STRUCTURE`.
->
-> Wait until both Items 11 + 12 commit, then execute this plan against
-> the post-commit YAML.
+> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-26T14:06:14Z`
 
 ## Origin
 
@@ -210,25 +197,6 @@ These map 1:1 onto Item 14's open questions:
   suite; scope to the touched packages first.
 
 ## Items
-
-### Item 1 — YAML: split `redesign-system-structure`, add `redesign-external-system-structure`
-
-Single commit. All YAML changes (cycle split + new sibling + lookup-table
-comment + `implement-ticket` branch + opportunistic-refactor menus if
-Q-menus = include).
-
-### Item 2 — Go: extend `ticketKindTaskSubtypes` and doc comments
-
-Single commit. `gates/bindings.go` + `gates/bindings_test.go` +
-`clauderun/clauderun.go` + `clauderun/clauderun_test.go` +
-`intake/parse.go`. Pure additive — no rename of existing values.
-
-### Item 3 — Regenerate diagram and verify
-
-Run `gh optivem architecture show` (or whatever the local diagram
-regen is — verify against `internal/atdd/runtime/diagram/diagram.go`)
-and confirm `docs/process-diagram.md` reflects the new cycle + the new
-`implement-ticket` branch. No manual doc edits.
 
 ### Item 4 — Smoke-test against issue #61 rehearsal
 

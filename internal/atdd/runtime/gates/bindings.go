@@ -443,6 +443,7 @@ func (b bindings) outputsAndScopesValid(ctx *statemachine.Context) statemachine.
 //	bug         | (any/none)                 | bug
 //	task        | legacy-coverage            | task/legacy-coverage
 //	task        | system-redesign            | task/system-redesign
+//	task        | external-system-redesign   | task/external-system-redesign
 //	task        | system-refactor            | task/system-refactor
 //	task        | test-refactor              | task/test-refactor
 //	task        | external-system-onboarding | task/external-system-onboarding
@@ -519,6 +520,7 @@ var ticketKindAliases = map[string]string{"feature": "story"}
 var ticketKindTaskSubtypes = []string{
 	"legacy-coverage",
 	"system-redesign",
+	"external-system-redesign",
 	"system-refactor",
 	"test-refactor",
 	"external-system-onboarding",

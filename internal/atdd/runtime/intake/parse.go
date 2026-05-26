@@ -76,12 +76,13 @@ var CanonicalHeadings = []string{
 // (currently: declaring both Acceptance Criteria and Checklist — they are
 // mutually exclusive at intake regardless of ticket-kind).
 //
-// Per-kind required-section enforcement (story → AC, task/system-redesign
-// → Checklist, etc.) does NOT live here. It is enforced by the
-// load-bearing-placeholder check in clauderun.go: a prompt that references
-// ${acceptance_criteria} or ${checklist} with no value fails dispatch
-// fast. That keeps the parser ticket-kind-agnostic so a single PARSE_TICKET
-// service-task can run before GATE_TICKET_KIND.
+// Per-kind required-section enforcement (story → AC, the five task
+// subtypes that consume ${checklist} → Checklist, etc.) does NOT live
+// here. It is enforced by the load-bearing-placeholder check in
+// clauderun.go: a prompt that references ${acceptance_criteria} or
+// ${checklist} with no value fails dispatch fast. That keeps the parser
+// ticket-kind-agnostic so a single PARSE_TICKET service-task can run
+// before GATE_TICKET_KIND.
 func Parse(body string) (*Result, error) {
 	sections := map[string]string{
 		SectionDescription:        ExtractSection(body, SectionDescription).Body,
