@@ -1812,18 +1812,29 @@ processes:
   # LOW — execute-agent (LLM agent dispatch primitive)
   # ===========================================================================
   #
-  # Wraps an agent run with approval + validation + optional fix recovery
-  # + post-approval. The agent name is the caller's `task-name` param,
-  # forwarded into the templated `agent: ${task-name}` on RUN_AGENT.
-  # Prompt path is derived from task-name per Q28.a (`task-name + ".md"`).
+  # Wraps an agent run with approval + per-phase snapshot + validation +
+  # optional fix recovery + post-approval. The agent name is the caller's
+  # `task-name` param, forwarded into the templated `agent: ${task-name}`
+  # on RUN_AGENT. Prompt path is derived from task-name per Q28.a
+  # (`task-name + ".md"`).
+  #
+  # SNAPSHOT_WORKING_TREE runs between approval and dispatch so the
+  # post-RUN validator can attribute working-tree edits to *this* agent's
+  # run, not to whichever upstream phase happens to still have uncommitted
+  # edits in the tree. Without this snapshot, every phase after the first
+  # would inherit the previous phases' diffs as its own baseline and
+  # falsely report scope violations against files the current agent
+  # never touched (plan 20260526-1430).
   #
   # Validation step asserts (1) all `outputs` named by the caller are
   # present in agent COMMIT output, (2) `scopes` constraints are
-  # satisfied (working-tree diff is within allowed paths). When
+  # satisfied (this phase's working-tree delta is within allowed paths,
+  # diffed against the SNAPSHOT_WORKING_TREE fingerprint). When
   # validation fails AND `fix-on-failure == true`, dispatch `fix` with
   # the failure payload; on `fix-on-failure == false` (the recursive
   # call site from `fix` itself) skip remediation and let POST approval
-  # see the broken state.
+  # see the broken state. The fix recovery re-enters execute-agent, so
+  # the fix agent gets its own snapshot step automatically.
   # ===========================================================================
   execute-agent:
     start: APPROVE_PRE
@@ -1839,6 +1850,11 @@ processes:
         type: gateway
         binding: approval-outcome
         documentation: "approval-outcome"
+
+      - id: SNAPSHOT_WORKING_TREE
+        type: service-task
+        action: snapshot-working-tree
+        documentation: "Snapshot working tree (per-phase baseline)"
 
       - id: RUN_AGENT
         type: user-task
@@ -1882,8 +1898,9 @@ processes:
 
     sequence-flows:
       - {from: APPROVE_PRE,                   to: GATE_APPROVED_PRE}
-      - {from: GATE_APPROVED_PRE,             to: RUN_AGENT,                   when: "approval-outcome == approved"}
+      - {from: GATE_APPROVED_PRE,             to: SNAPSHOT_WORKING_TREE,       when: "approval-outcome == approved"}
       - {from: GATE_APPROVED_PRE,             to: EXECUTE_AGENT_REJECTED_END,  when: "approval-outcome == rejected"}
+      - {from: SNAPSHOT_WORKING_TREE,         to: RUN_AGENT}
       - {from: RUN_AGENT,                     to: VALIDATE_OUTPUTS_AND_SCOPES}
       - {from: VALIDATE_OUTPUTS_AND_SCOPES,   to: GATE_OUTPUTS_AND_SCOPES_VALID}
       - {from: GATE_OUTPUTS_AND_SCOPES_VALID, to: APPROVE_POST,        when: "outputs-and-scopes-valid == true"}

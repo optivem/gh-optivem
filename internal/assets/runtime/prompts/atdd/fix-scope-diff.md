@@ -6,7 +6,7 @@ You are running the `fix-scope-diff` task. The calling CYCLE dispatched `${faili
 
 ## Why you were dispatched
 
-`validate-outputs-and-scopes` joined the call-activity's `scopes:` param against `gh-optivem.yaml`'s `paths:` (the same path resolution `check-phase-scope` uses), enumerated the working-tree changes since HEAD, and found that `${violating-paths}` fell outside every allowed root. The upstream agent either (a) legitimately needed to touch a layer the call-site didn't list (the scopes are too narrow), (b) over-reached because it misunderstood its remit, or (c) edited unrelated files as a "while I'm here" cleanup. Your job is to tell them apart so the operator can either expand scopes, revert + re-dispatch, or escalate.
+`validate-outputs-and-scopes` joined the call-activity's `scopes:` param against `gh-optivem.yaml`'s `paths:` (the same path resolution `check-phase-scope` uses), enumerated the working-tree changes since the pre-agent snapshot (the per-phase baseline captured before the failing agent ran, so upstream phases' uncommitted edits don't count against this scopes check), and found that `${violating-paths}` fell outside every allowed root. The upstream agent either (a) legitimately needed to touch a layer the call-site didn't list (the scopes are too narrow), (b) over-reached because it misunderstood its remit, or (c) edited unrelated files as a "while I'm here" cleanup. Your job is to tell them apart so the operator can either expand scopes, revert + re-dispatch, or escalate.
 
 This is one of the closed `fix-*` failure-kinds. Your job is **diagnosis**, not repair:
 
@@ -18,7 +18,7 @@ This is one of the closed `fix-*` failure-kinds. Your job is **diagnosis**, not 
 
 - `${failing-task-name}` — the writing-agent task whose diff violated scopes (e.g. `write-acceptance-tests`, `implement-system`). Its prompt lives at `internal/assets/runtime/prompts/atdd/<failing-task-name>.md` and the call-site's `scopes:` contract lives in `internal/atdd/runtime/statemachine/process-flow.yaml`. Read the prompt to confirm what the agent was supposed to touch.
 - `${violating-paths}` — the comma-separated list of working-tree paths that fell outside the declared `scopes:`. Each one is a path the call-site's `paths:` join did not cover. Cross-reference each violation against the agent's prompt and the call-site's scopes to classify the cause.
-- `${changed_files}` — the working-tree dirty file listing at the moment of validation (already captured at dispatch — you do not need to re-run `git status`). The full diff envelope, including both in-scope and out-of-scope edits.
+- `${changed_files}` — the snapshot-delta listing for *this* agent's run (every path the failing agent added, modified, or deleted between the pre-agent snapshot and validation). Includes both in-scope and out-of-scope edits, but excludes upstream-phase residue still uncommitted in the working tree — narrower (and more accurate) than a raw `git status` dump. You do not need to re-run `git status`.
 - `${allowed_roots}` — multi-line block restricting where you may read or propose edits. Note: this is broader than the call-site's `scopes:` — it is the per-cycle root set. The `${violating-paths}` were caught by the narrower `scopes:` join, not by `${allowed_roots}`.
 
 ## Exception to the anti-rediscovery rule
