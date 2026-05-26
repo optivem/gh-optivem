@@ -1,5 +1,25 @@
 # Agent prompt fixes — remarks from prompt-file review
 
+> ✅ **Spinoff `20260526-1536-fold-phase-scopes-into-process-flow.md`
+> fully landed** as commit `6b2fd9f` ("atdd: fold phase-scopes.yaml
+> into process-flow.yaml node scope"). The spinoff plan file is
+> deleted; the fold mechanism (inline `read:`/`write:` lists on
+> `process-flow.yaml` writing-agent nodes, `Engine.Scope()` accessor,
+> 5 build-time guards) is in main.
+>
+> **Re-aligned post-fold (2026-05-26):**
+> - Prompt-only items (**1, 5, 6, 7, 8**) — fully aligned, can execute
+>   independently.
+> - Item **3** — schema landed via 1536; this item now scopes to
+>   per-phase asymmetric data + `scope.md kind:` field (see item body).
+> - Items **4, 9, 10, 11** — unchanged from refinement; pick up the
+>   post-fold node-scope model where they reference scope data.
+> - Item **2a** — ✅ done (see item body for what 1536 actually shipped).
+>
+> Ready for `/clear` and `/execute-plan
+> plans/20260526-1448-agent-prompt-fixes.md` once the working tree is
+> clean.
+
 ## Origin / intent
 
 Conversation with user (2026-05-26 14:48) walking through observed issues
@@ -268,37 +288,54 @@ co-located with the existing "trust the orchestrator's context" and
 
 ### 2a. Precondition — `phase-scopes.yaml` fold
 
-**Spun off to**
-`plans/20260526-1536-fold-phase-scopes-into-process-flow.md`
-during refinement. That work is a Go-loader + BPMN-YAML refactor
-beyond the scope of "agent prompt fixes", and the two plans can
-refine in parallel.
+**✅ Done by `plans/20260526-1536-fold-phase-scopes-into-process-flow.md`**
+(implementation landed in the working tree 2026-05-26; commit pending
+at the time of this item's resolution).
 
-Items 3, 4, and 9 below depend on the fold landing — they assume
-per-phase scope lives on `process-flow.yaml` nodes (not in a
-sidecar file). The spinoff plan covers:
+Post-fold reality (confirmed by audit 2026-05-26):
 
-- Folding `phase-scopes.yaml` scope data into `process-flow.yaml`
-  node fields.
-- Deleting `phase-scopes.yaml` and rewriting consumers
-  (`phase_scopes.go`, `bindings.go`, `process_commands.go`,
-  `phase_scopes_test.go`).
-- Dropping the seven `LEGACY_*` entries that are dead in the
-  current BPMN.
-- Dropping the skipped `TestPhaseScopes_ForwardFK_PhasesExistInBPMN`
-  guard (the FK no longer exists).
-- Updating the `feedback_no_deferred_mechanism.md` memory wording.
+- `process-flow.yaml` writing-agent nodes carry inline `read:` /
+  `write:` lists.
+- `phase-scopes.yaml` deleted; `Engine.Scope(processName) (read,
+  write []string, ok bool)` accessor on `statemachine.Engine`.
+- `phase_scopes_test.go` carries 5 guards: ReverseFK,
+  LayersAreCanonical, NoDuplicatesPerList, NonEmptyLayerLists,
+  ReadWriteShape.
+- All `LEGACY_*` ids removed.
+- `gh optivem process scope <phase>` emits the post-fold shape.
 
-This plan's Items 3, 4, 9 reference per-phase scope using the
-**post-fold** model (scope lives on the node). Where audit
-findings cite stale phase ids (`AT_RED_TEST`, etc.), substitute
-the equivalent post-fold node id at execution time.
+Where this plan's Items 3, 4, 9 referenced "remapped phase ids" —
+substitute the actual post-fold MID names from `process-flow.yaml`
+at execution time.
 
 ### 3. Split `scope` into read-scope and write-scope
 
-**Status:** deferred pending Item 2a. The audit and rule below
-remain valid; they apply to the **remapped** phase set, not the
-current stale set.
+**Status (re-aligned post-fold, 2026-05-26):** the **schema mechanism
+landed via 1536** — `process-flow.yaml` writing-agent nodes already
+carry inline `read:` / `write:` lists, the `Engine.Scope()` accessor
+returns both, and the build-time guards (`ReadWriteShape`,
+`NoDuplicatesPerList`, `NonEmptyLayerLists`, `LayersAreCanonical`)
+enforce the explicit-lists rule.
+
+**What this item now owns** (the data-tuning + scope.md change that
+1536 deliberately left to the parent):
+
+1. **Apply the asymmetric splits from the audit table below** to the
+   5 phases where `read != write` is correct. The current implementation
+   has `read == write` on every node (1536 seeded the schema with
+   symmetric defaults; per-phase tuning is parent-plan work per the
+   1536 "Out of scope" note).
+2. **Add a `kind:` field** (`read` vs `write`) to the
+   `scope_exception` block in `internal/assets/runtime/shared/scope.md`
+   so a read-side overreach and a write-side overreach are
+   distinguishable on the way out. (Audit confirmed: no `kind:` field
+   today.)
+3. **Tighten Item 11 Case B** — moving driver-port out of `write` on
+   the 3 driver-port phases (rows 3-5 below) makes the inline
+   "Driver-port guardrail" prose redundant; the universal
+   `scope_exception` mechanism handles escalation.
+
+The audit and rule below remain valid as the per-phase data spec.
 
 **Observation (extends Item 2).** Item 2 says "only read what's in
 scope." But for several phases, the *write* scope is legitimately
@@ -1086,14 +1123,12 @@ value, not **who** is passing it.
 
 ### 9. Every prompt declares `scope:` in frontmatter — and the multi-caller case
 
-**Status (resolved during refinement, 2026-05-26):** the original
-shape of this item is mostly obsoleted by Item 4 (Option B SSoT —
-scope lives on the BPMN node, not in prompt frontmatter) plus the
-spinoff plan (per-node scope shape). Item 9 collapses to:
+**Status (re-aligned post-fold, 2026-05-26):** Item 9 collapses to
+three sub-tasks:
 
 1. **Strip `scope:` from every prompt frontmatter.** Today's
-   matrix:
-   - `scope: {}` (8 prompts): `disable-tests`, `enable-tests`,
+   matrix (audited post-fold):
+   - `scope: {}` (6 prompts): `disable-tests`, `enable-tests`,
      `implement-dsl`, `implement-external-system-stubs`,
      `write-acceptance-tests`, `write-contract-tests` — get
      stripped.
@@ -1102,10 +1137,20 @@ spinoff plan (per-node scope shape). Item 9 collapses to:
    - **Missing entirely** (10 prompts): no action needed; the
      line never existed.
    - All 17 land with no `scope:` field in frontmatter.
-2. **Build-time guard.** Add a test (in `phase_scopes_test.go` or
-   wherever it lands post-spinoff) that rejects any prompt
-   carrying a `scope:` field in frontmatter. Post-fold, that line
-   is dead; if it reappears it's a confused new prompt-author.
+2. **Build-time guard.** Add a test in `phase_scopes_test.go` that
+   rejects any prompt carrying a `scope:` field in frontmatter.
+   Post-fold, that line is dead; if it reappears it's a confused
+   new prompt-author.
+3. **Drop the `scope: none` frontmatter fallback** in
+   `TestPhaseScopes_ReverseFK_WritingAgentsScoped`. The guard
+   currently accepts either inline node scope **or** a `scope:
+   none` frontmatter — post-Item-9-step-1, no prompt has frontmatter
+   scope at all, so the fallback is dead. Simplify the guard to
+   check only inline node scope. (The `refine-acceptance-criteria`
+   case — where the agent is artifact-only — should be handled by
+   a `scope: none` declaration **on the BPMN node**, not in the
+   prompt frontmatter; cross-check the spinoff's handling of
+   artifact-only agents during execution.)
 
 **Sub-case A (multi-caller scope) — fully delegated to Item 10.**
 The three original A1/A2/A3 options collapse:
@@ -1613,7 +1658,14 @@ with `scope_exception` once those layers are out of write-scope.
   "write-with-escalation" to "read-only + scope_exception"
   requires the read/write split — without it, you can't
   express "the agent can see driver-port but can't write
-  there."
+  there." **Specifically: Item 3's per-phase asymmetric data
+  (which moves driver-port out of `write` on the 3 driver-port
+  phases per the audit table) is a hard precondition for Case B
+  collapse.** Today (post-1536, pre-Item-3-data) every node has
+  `read == write`, so driver-port is still in `write` for those
+  phases and the inline "Driver-port guardrail" prose cannot be
+  collapsed yet. Sequence: land Item 3 data, then land Item 11
+  Case B deletions.
 - **Item 4** (rendered `## Scope`): the agent sees the
   complete contract in the dispatched body; no "don't modify"
   prose needed.
