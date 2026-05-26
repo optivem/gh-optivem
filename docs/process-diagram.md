@@ -8,8 +8,9 @@ Each section corresponds to one named process in the YAML. `call-activity` nodes
 
 Node **shape** encodes the BPMN type; **fill color** encodes the executor; **border color** (orthogonal) encodes the TDD stage where the author marked one.
 
-- `((circle))` — start / end event
-- `((⚡ circle))` — error end event (BPMN exceptional exit; red border)
+- `(( ))` — start event (BPMN plain start; empty circle, descriptive name lives in the YAML)
+- `((circle))` — end event (descriptive name names the terminal outcome)
+- `((⚡))` — error end event (BPMN exceptional exit; red border). Two flavors: **Unknown** (defensive guard — an unhandled gateway branch fired; should never happen at runtime) and **Rejected** (hard-abort — a runtime condition that intentionally halts the run, e.g. agent output rejected post-approve). The descriptive name is in the YAML source; the diagram keeps the icon small.
 - `{diamond}` — gateway (decision)
 - `[[subroutine]]` — service task — mechanical, automated step (white)
 - `[rectangle]` — user task — LLM agent (dark blue) or human (yellow); `call_activity` rectangles are unfilled and link to a sub-process heading
@@ -18,8 +19,9 @@ Node **shape** encodes the BPMN type; **fill color** encodes the executor; **bor
 
 ```mermaid
 flowchart LR
-    EVT((Start / End))
-    ERR(("⚡ Error End"))
+    EVS(( ))
+    EVE((End))
+    ERR((⚡))
     GW{Gateway}
     SVC[["Service Task (Automated)"]]
     AGT["User Task (LLM Agent)"]
@@ -61,7 +63,7 @@ flowchart LR
 flowchart TD
     END((Ticket In Acceptance))
     IMPLEMENT_TICKET[Implement Ticket]
-    START((Ticket Ready))
+    START(( ))
 
     START --> IMPLEMENT_TICKET
     IMPLEMENT_TICKET --> END
@@ -100,8 +102,8 @@ flowchart TD
     REDESIGN_SYSTEM_STRUCTURE[Redesign System Structure]
     REFACTOR_SYSTEM_STRUCTURE[Refactor System Structure]
     REFACTOR_TEST_STRUCTURE[Refactor Test Structure]
-    UNKNOWN_TASK_SUBTYPE((⚡ Unknown Task Subtype))
-    UNKNOWN_TICKET_KIND((⚡ Unknown Ticket Kind))
+    UNKNOWN_TASK_SUBTYPE((⚡))
+    UNKNOWN_TICKET_KIND((⚡))
 
     MARK_IN_PROGRESS --> PARSE_TICKET
     PARSE_TICKET --> GATE_TICKET_KIND
@@ -300,7 +302,7 @@ flowchart TD
     COMPILE_TESTS[Compile Tests]
     DISABLE_ACCEPTANCE_TESTS[Disable Acceptance Tests — see § disable-tests]
     GATE_EXPECTED_TEST_RESULT{expected-test-result}
-    UNKNOWN_EXPECTED_TEST_RESULT((⚡ Unknown Expected Test Result))
+    UNKNOWN_EXPECTED_TEST_RESULT((⚡))
     VERIFY_TESTS_FAIL_ACCEPTANCE[Verify Acceptance Tests Fail — see § verify-tests-fail]
     VERIFY_TESTS_PASS_ACCEPTANCE[Verify Acceptance Tests Pass — see § verify-tests-pass]
     WAV_AT_CODE_END((Acceptance Test Code Verified))
@@ -420,7 +422,7 @@ flowchart TD
     GATE_EXPECTED_TEST_RESULT{expected-test-result}
     IMPLEMENT_TEST_LAYER_END((Test Layer Implemented))
     RUN_ACTION["Run the Configured Agent — see § ${action}"]
-    UNKNOWN_EXPECTED_TEST_RESULT((⚡ Unknown Expected Test Result))
+    UNKNOWN_EXPECTED_TEST_RESULT((⚡))
     VERIFY_TESTS_FAIL_FILTERED[Verify Tests Fail]
     VERIFY_TESTS_PASS_FILTERED[Verify Tests Pass]
 
@@ -446,7 +448,7 @@ flowchart TD
     FIX_UNEXPECTED_FAILING_TESTS[Fix Unexpected Test Failures — see § fix-unexpected-failing-tests]
     GATE_TESTS_OUTCOME{test-outcome}
     RUN_TESTS[Run Tests]
-    UNKNOWN_TESTS_OUTCOME((⚡ Unknown Tests Outcome))
+    UNKNOWN_TESTS_OUTCOME((⚡))
     VERIFY_PASS_END((Tests Pass Verified))
 
     RUN_TESTS --> GATE_TESTS_OUTCOME
@@ -466,7 +468,7 @@ flowchart TD
     FIX_UNEXPECTED_PASSING_TESTS[Fix Unexpectedly Passing Tests — see § fix-unexpected-passing-tests]
     GATE_TESTS_OUTCOME{test-outcome}
     RUN_TESTS[Run Tests]
-    UNKNOWN_TESTS_OUTCOME((⚡ Unknown Tests Outcome))
+    UNKNOWN_TESTS_OUTCOME((⚡))
     VERIFY_FAIL_END((Tests Fail Verified))
 
     RUN_TESTS --> GATE_TESTS_OUTCOME
@@ -713,7 +715,7 @@ flowchart TD
     APPROVE_POST[Confirm Approval — see § approve]
     APPROVE_PRE[Request Approval — see § approve]
     EXECUTE_AGENT_END((Agent Dispatch Complete))
-    EXECUTE_AGENT_OUTPUT_REJECTED_END((⚡ Agent Output Rejected))
+    EXECUTE_AGENT_OUTPUT_REJECTED_END((⚡))
     EXECUTE_AGENT_REJECTED_END((Agent Dispatch Rejected))
     FIX[Fix the Failure — see § fix]
     GATE_APPROVED_POST{approval-outcome}

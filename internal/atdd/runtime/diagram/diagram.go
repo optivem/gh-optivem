@@ -136,16 +136,18 @@ func writeHeader(b *strings.Builder) {
 func writeLegend(b *strings.Builder) {
 	b.WriteString("## Legend\n\n")
 	b.WriteString("Node **shape** encodes the BPMN type; **fill color** encodes the executor; **border color** (orthogonal) encodes the TDD stage where the author marked one.\n\n")
-	b.WriteString("- `((circle))` — start / end event\n")
-	b.WriteString("- `((⚡ circle))` — error end event (BPMN exceptional exit; red border)\n")
+	b.WriteString("- `(( ))` — start event (BPMN plain start; empty circle, descriptive name lives in the YAML)\n")
+	b.WriteString("- `((circle))` — end event (descriptive name names the terminal outcome)\n")
+	b.WriteString("- `((⚡))` — error end event (BPMN exceptional exit; red border). Two flavors: **Unknown** (defensive guard — an unhandled gateway branch fired; should never happen at runtime) and **Rejected** (hard-abort — a runtime condition that intentionally halts the run, e.g. agent output rejected post-approve). The descriptive name is in the YAML source; the diagram keeps the icon small.\n")
 	b.WriteString("- `{diamond}` — gateway (decision)\n")
 	b.WriteString("- `[[subroutine]]` — service task — mechanical, automated step (white)\n")
 	b.WriteString("- `[rectangle]` — user task — LLM agent (dark blue) or human (yellow); `call_activity` rectangles are unfilled and link to a sub-process heading\n")
 	b.WriteString("- `[/skewed/]` — published outputs of a process (dashed border)\n")
 	b.WriteString("- **TDD-stage border** — red = RED (failing test), green = GREEN (test passes), blue = REFACTOR (improve without changing behaviour). Only applied where the call site explicitly plays that role.\n\n")
 	b.WriteString("```mermaid\nflowchart LR\n")
-	b.WriteString("    EVT((Start / End))\n")
-	b.WriteString("    ERR((\"⚡ Error End\"))\n")
+	b.WriteString("    EVS(( ))\n")
+	b.WriteString("    EVE((End))\n")
+	b.WriteString("    ERR((⚡))\n")
 	b.WriteString("    GW{Gateway}\n")
 	b.WriteString("    SVC[[\"Service Task (Automated)\"]]\n")
 	b.WriteString("    AGT[\"User Task (LLM Agent)\"]\n")
@@ -359,8 +361,9 @@ func writeGroupSubgraph(b *strings.Builder, eng *statemachine.Engine, process *s
 //
 // Shape mapping (BPMN-shaped vocabulary):
 //
-//	start-event / end-event → circle              `((label))`
-//	error-end-event         → circle              `((⚡ label))` (red border via classDef)
+//	start-event             → circle              `(( ))` (empty — no inside label; BPMN plain start)
+//	end-event               → circle              `((label))`
+//	error-end-event         → circle              `((⚡))` (icon only — no inside label; red border via classDef; Legend lists the two flavors)
 //	gateway                 → diamond             `{label}` (or `{ }` when silent — Item 13)
 //	service-task            → subroutine          `[[label]]`
 //	user-task               → plain rectangle     `[label]`
@@ -381,10 +384,29 @@ func writeGroupSubgraph(b *strings.Builder, eng *statemachine.Engine, process *s
 func writeNode(b *strings.Builder, eng *statemachine.Engine, n statemachine.Node) {
 	label := n.Raw.Name
 	switch n.Kind {
-	case statemachine.StartEvent, statemachine.EndEvent:
+	case statemachine.StartEvent:
+		// Empty small circle — matches mainstream BPMN where plain
+		// start events have no inner symbol and the descriptive name
+		// sits outside. Mermaid can't place labels outside shapes, so
+		// we drop the name; the YAML retains it. The tiny circle still
+		// signals "entry point" without competing visually with the
+		// task nodes downstream.
+		fmt.Fprintf(b, "    %s(( ))\n", n.ID)
+	case statemachine.EndEvent:
+		// End events keep their descriptive label — unlike start
+		// events, they typically name a specific terminal outcome
+		// ("Backlog Item Refined", "System Behavior Changed") that
+		// readers benefit from seeing on the circle directly.
 		fmt.Fprintf(b, "    %s((%s))\n", n.ID, mermaidLabel(label))
 	case statemachine.ErrorEndEvent:
-		fmt.Fprintf(b, "    %s((%s))\n", n.ID, mermaidLabel("⚡ "+label))
+		// Icon-only circle, no inside label — matches mainstream BPMN
+		// where event circles stay small and the descriptive name sits
+		// outside. Mermaid can't place labels outside shapes, so we
+		// drop the name from the diagram and let the Legend teach the
+		// two flavors instead (Unknown = defensive guard for an
+		// unhandled gateway branch; Rejected = intentional hard-abort).
+		// The authoritative name remains in the YAML.
+		fmt.Fprintf(b, "    %s((⚡))\n", n.ID)
 	case statemachine.Gateway:
 		if label == "" {
 			fmt.Fprintf(b, "    %s{ }\n", n.ID)
