@@ -39,7 +39,7 @@ flowchart LR
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
     class HUM humanNode
 
-    classDef errorEndNode fill:#fbe9e7,stroke:#dc3545,stroke-width:2px,color:#000000
+    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
     class ERR errorEndNode
 
     classDef tddRedNode stroke:#dc3545,stroke-width:3px
@@ -126,7 +126,7 @@ flowchart TD
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
     class MARK_IN_ACCEPTANCE,MARK_IN_PROGRESS,PARSE_TICKET serviceNode
 
-    classDef errorEndNode fill:#fbe9e7,stroke:#dc3545,stroke-width:2px,color:#000000
+    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
     class UNKNOWN_TASK_SUBTYPE,UNKNOWN_TICKET_KIND errorEndNode
 ```
 
@@ -318,7 +318,7 @@ flowchart TD
     DISABLE_ACCEPTANCE_TESTS --> COMMIT_TEST_CODE
     COMMIT_TEST_CODE --> WAV_AT_CODE_END
 
-    classDef errorEndNode fill:#fbe9e7,stroke:#dc3545,stroke-width:2px,color:#000000
+    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
     class UNKNOWN_EXPECTED_TEST_RESULT errorEndNode
 ```
 
@@ -451,7 +451,7 @@ flowchart TD
     DISABLE_TESTS --> COMMIT_LAYER
     COMMIT_LAYER --> IMPLEMENT_TEST_LAYER_END
 
-    classDef errorEndNode fill:#fbe9e7,stroke:#dc3545,stroke-width:2px,color:#000000
+    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
     class UNKNOWN_EXPECTED_TEST_RESULT errorEndNode
 ```
 
@@ -471,7 +471,7 @@ flowchart TD
     GATE_TESTS_OUTCOME --> UNKNOWN_TESTS_OUTCOME
     FIX_UNEXPECTED_FAILING_TESTS --> VERIFY_PASS_END
 
-    classDef errorEndNode fill:#fbe9e7,stroke:#dc3545,stroke-width:2px,color:#000000
+    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
     class UNKNOWN_TESTS_OUTCOME errorEndNode
 ```
 
@@ -491,7 +491,7 @@ flowchart TD
     GATE_TESTS_OUTCOME --> UNKNOWN_TESTS_OUTCOME
     FIX_UNEXPECTED_PASSING_TESTS --> VERIFY_FAIL_END
 
-    classDef errorEndNode fill:#fbe9e7,stroke:#dc3545,stroke-width:2px,color:#000000
+    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
     class UNKNOWN_TESTS_OUTCOME errorEndNode
 ```
 
@@ -776,7 +776,7 @@ flowchart TD
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
     class RUN_AGENT agentNode
 
-    classDef errorEndNode fill:#fbe9e7,stroke:#dc3545,stroke-width:2px,color:#000000
+    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
     class EXECUTE_AGENT_OUTPUT_REJECTED_END errorEndNode
 ```
 

@@ -161,7 +161,7 @@ func writeLegend(b *strings.Builder) {
 	b.WriteString("    class AGT agentNode\n")
 	b.WriteString("\n    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000\n")
 	b.WriteString("    class HUM humanNode\n")
-	b.WriteString("\n    classDef errorEndNode fill:#fbe9e7,stroke:#dc3545,stroke-width:2px,color:#000000\n")
+	b.WriteString("\n    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000\n")
 	b.WriteString("    class ERR errorEndNode\n")
 	b.WriteString("\n    classDef tddRedNode stroke:#dc3545,stroke-width:3px\n")
 	b.WriteString("    class TDDR tddRedNode\n")
@@ -521,7 +521,7 @@ func writeExecutorStyling(b *strings.Builder, process *statemachine.Process) {
 		fmt.Fprintf(b, "    class %s humanNode\n", strings.Join(human, ","))
 	}
 	if len(errorEnd) > 0 {
-		b.WriteString("\n    classDef errorEndNode fill:#fbe9e7,stroke:#dc3545,stroke-width:2px,color:#000000\n")
+		b.WriteString("\n    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000\n")
 		fmt.Fprintf(b, "    class %s errorEndNode\n", strings.Join(errorEnd, ","))
 	}
 	if len(tddRed) > 0 {
