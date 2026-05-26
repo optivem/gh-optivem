@@ -142,7 +142,7 @@ processes:
     nodes:
       - id: START
         type: start-event
-        documentation: "Runtime Bootstrap"
+        documentation: "Ticket Ready"
 
       - id: PICK_TOP_READY
         type: service-task
@@ -156,7 +156,7 @@ processes:
 
       - id: END
         type: end-event
-        documentation: "Runtime Complete"
+        documentation: "Ticket In Acceptance"
 
     sequence-flows:
       - {from: START,            to: PICK_TOP_READY,   when: "mode == board"}
@@ -186,7 +186,7 @@ processes:
 
       - id: REFINE_TICKET_END
         type: end-event
-        documentation: "Ticket Marked READY"
+        documentation: "Ticket Ready"
 
     sequence-flows:
       - {from: MARK_IN_REFINEMENT, to: REFINE_BACKLOG_ITEM}
@@ -491,6 +491,7 @@ processes:
         type: call-activity
         process: refactor
         documentation: "Opportunistic Refactor (Loopable)"
+        tdd-stage: refactor
 
       - id: CHANGE_SYSTEM_BEHAVIOR_END
         type: end-event
@@ -558,6 +559,7 @@ processes:
         type: call-activity
         process: update-system-driver-adapters
         documentation: "Update System Driver Adapters"
+        tdd-stage: red
 
       - id: IMPLEMENT_AND_VERIFY_SYSTEM
         type: call-activity
@@ -565,6 +567,7 @@ processes:
         params:
           action: update-system
         documentation: "Update System"
+        tdd-stage: green
 
       - id: REDESIGN_END
         type: end-event
@@ -610,6 +613,7 @@ processes:
         type: call-activity
         process: update-external-system-driver-adapters
         documentation: "Update External-System Driver Adapters"
+        tdd-stage: red
 
       - id: IMPLEMENT_AND_VERIFY_SYSTEM
         type: call-activity
@@ -617,6 +621,7 @@ processes:
         params:
           action: update-system
         documentation: "Update System"
+        tdd-stage: green
 
       - id: REDESIGN_EXTERNAL_END
         type: end-event
@@ -690,6 +695,7 @@ processes:
         type: call-activity
         process: refactor-and-verify-tests
         documentation: "Refactor and Verify Tests"
+        tdd-stage: refactor
 
       - id: REFACTOR_TEST_STRUCTURE_END
         type: end-event

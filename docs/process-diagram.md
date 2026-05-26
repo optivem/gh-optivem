@@ -59,10 +59,10 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    END((Runtime Complete))
+    END((Ticket In Acceptance))
     IMPLEMENT_TICKET[Implement Ticket]
     PICK_TOP_READY[[Pick top READY ticket]]
-    START((Runtime Bootstrap))
+    START((Ticket Ready))
 
     START -- Board --> PICK_TOP_READY
     START -- Specific Issue --> IMPLEMENT_TICKET
@@ -80,7 +80,7 @@ flowchart TD
     MARK_IN_REFINEMENT[[MARK_IN_REFINEMENT]]
     MARK_READY[[MARK_READY]]
     REFINE_BACKLOG_ITEM[Refine Backlog Item]
-    REFINE_TICKET_END((Ticket Marked READY))
+    REFINE_TICKET_END((Ticket Ready))
 
     MARK_IN_REFINEMENT --> REFINE_BACKLOG_ITEM
     REFINE_BACKLOG_ITEM --> MARK_READY
@@ -223,6 +223,9 @@ flowchart TD
 
     classDef tddGreenNode stroke:#28a745,stroke-width:3px
     class IMPLEMENT_AND_VERIFY_SYSTEM tddGreenNode
+
+    classDef tddRefactorNode stroke:#007bff,stroke-width:3px
+    class REFACTOR_OPPORTUNISTICALLY tddRefactorNode
 ```
 
 ## Cover System Behavior
@@ -244,16 +247,16 @@ flowchart TD
 flowchart TD
     CHECK_CHECKLIST_PROGRESS[[CHECK_CHECKLIST_PROGRESS]]
     GATE_CHECKLIST_PARTIALLY_DONE{checklist-partially-done}
-    IMPLEMENT_AND_VERIFY_SYSTEM[Implement System — see § implement-and-verify-system]
-    IMPLEMENT_SYSTEM_DRIVER_ADAPTERS[Implement System Driver Adapters]
+    IMPLEMENT_AND_VERIFY_SYSTEM[Update System — see § implement-and-verify-system]
     REDESIGN_END((System Structure Redesigned))
     STOP_CHECKLIST_PARTIALLY_DONE["${checklist_progress_summary} Approve re-running this cycle?"]
+    UPDATE_SYSTEM_DRIVER_ADAPTERS[Update System Driver Adapters]
 
     CHECK_CHECKLIST_PROGRESS --> GATE_CHECKLIST_PARTIALLY_DONE
     GATE_CHECKLIST_PARTIALLY_DONE -- Yes --> STOP_CHECKLIST_PARTIALLY_DONE
-    GATE_CHECKLIST_PARTIALLY_DONE -- No --> IMPLEMENT_SYSTEM_DRIVER_ADAPTERS
-    STOP_CHECKLIST_PARTIALLY_DONE --> IMPLEMENT_SYSTEM_DRIVER_ADAPTERS
-    IMPLEMENT_SYSTEM_DRIVER_ADAPTERS --> IMPLEMENT_AND_VERIFY_SYSTEM
+    GATE_CHECKLIST_PARTIALLY_DONE -- No --> UPDATE_SYSTEM_DRIVER_ADAPTERS
+    STOP_CHECKLIST_PARTIALLY_DONE --> UPDATE_SYSTEM_DRIVER_ADAPTERS
+    UPDATE_SYSTEM_DRIVER_ADAPTERS --> IMPLEMENT_AND_VERIFY_SYSTEM
     IMPLEMENT_AND_VERIFY_SYSTEM --> REDESIGN_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
@@ -261,6 +264,12 @@ flowchart TD
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
     class STOP_CHECKLIST_PARTIALLY_DONE humanNode
+
+    classDef tddRedNode stroke:#dc3545,stroke-width:3px
+    class UPDATE_SYSTEM_DRIVER_ADAPTERS tddRedNode
+
+    classDef tddGreenNode stroke:#28a745,stroke-width:3px
+    class IMPLEMENT_AND_VERIFY_SYSTEM tddGreenNode
 ```
 
 ## Refactor System Structure
@@ -310,6 +319,9 @@ flowchart TD
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
     class STOP_CHECKLIST_PARTIALLY_DONE humanNode
+
+    classDef tddRefactorNode stroke:#007bff,stroke-width:3px
+    class REFACTOR_AND_VERIFY_TESTS tddRefactorNode
 ```
 
 ## Write and Verify Acceptance Tests Fail
@@ -853,16 +865,16 @@ flowchart TD
 flowchart TD
     CHECK_CHECKLIST_PROGRESS[[CHECK_CHECKLIST_PROGRESS]]
     GATE_CHECKLIST_PARTIALLY_DONE{checklist-partially-done}
-    IMPLEMENT_AND_VERIFY_SYSTEM[Implement System — see § implement-and-verify-system]
-    IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Implement External-System Driver Adapters — see § implement-external-system-driver-adapters]
+    IMPLEMENT_AND_VERIFY_SYSTEM[Update System — see § implement-and-verify-system]
     REDESIGN_EXTERNAL_END((External System Structure Redesigned))
     STOP_CHECKLIST_PARTIALLY_DONE["${checklist_progress_summary} Approve re-running this cycle?"]
+    UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Update External-System Driver Adapters — see § update-external-system-driver-adapters]
 
     CHECK_CHECKLIST_PROGRESS --> GATE_CHECKLIST_PARTIALLY_DONE
     GATE_CHECKLIST_PARTIALLY_DONE -- Yes --> STOP_CHECKLIST_PARTIALLY_DONE
-    GATE_CHECKLIST_PARTIALLY_DONE -- No --> IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
-    STOP_CHECKLIST_PARTIALLY_DONE --> IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
-    IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS --> IMPLEMENT_AND_VERIFY_SYSTEM
+    GATE_CHECKLIST_PARTIALLY_DONE -- No --> UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
+    STOP_CHECKLIST_PARTIALLY_DONE --> UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
+    UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS --> IMPLEMENT_AND_VERIFY_SYSTEM
     IMPLEMENT_AND_VERIFY_SYSTEM --> REDESIGN_EXTERNAL_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
@@ -870,5 +882,41 @@ flowchart TD
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
     class STOP_CHECKLIST_PARTIALLY_DONE humanNode
+
+    classDef tddRedNode stroke:#dc3545,stroke-width:3px
+    class UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS tddRedNode
+
+    classDef tddGreenNode stroke:#28a745,stroke-width:3px
+    class IMPLEMENT_AND_VERIFY_SYSTEM tddGreenNode
+```
+
+## Update External System Driver Adapters
+
+```mermaid
+flowchart TD
+    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
+    UPDATE_EXT_DA_END((External System Driver Adapters Updated))
+
+    EXECUTE_AGENT --> UPDATE_EXT_DA_END
+```
+
+## Update System
+
+```mermaid
+flowchart TD
+    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
+    UPDATE_SYS_END((System Updated))
+
+    EXECUTE_AGENT --> UPDATE_SYS_END
+```
+
+## Update System Driver Adapters
+
+```mermaid
+flowchart TD
+    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
+    UPDATE_SYS_DA_END((System Driver Adapters Updated))
+
+    EXECUTE_AGENT --> UPDATE_SYS_DA_END
 ```
 

@@ -1,5 +1,16 @@
 # BPMN process review — feedback capture
 
+> ✅ **Items 1, 6, 7 landed (2026-05-26).** Main-process start/end label
+> renames (`Runtime Bootstrap` → `Ticket Ready`, `Runtime Complete` →
+> `Ticket In Acceptance`, `Ticket Marked READY` → `Ticket Ready`) plus
+> `tdd-stage:` annotations completing the red-green-REFACTOR coloring
+> across `change-system-behavior` (REFACTOR), `redesign-system-structure`
+> (RED + GREEN), `redesign-external-system-structure` (RED + GREEN), and
+> `refactor-test-structure` (REFACTOR). `cover-system-behavior` audit
+> confirmed already-annotated. Diagram + SVGs regenerated.
+>
+> **Remaining:** Items 2, 4, 5, 8 — all touch runtime code.
+
 Captures feedback from the user's review of the BPMN process (`internal/atdd/runtime/statemachine/process-flow.yaml` and adjacent state-machine wiring / agent prompts).
 
 ## Context
