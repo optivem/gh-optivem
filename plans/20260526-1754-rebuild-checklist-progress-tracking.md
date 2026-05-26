@@ -1,12 +1,15 @@
-# Rebuild checklist progress-tracking (later)
+# Remove checklist progress-tracking from BPMN (rebuild later)
 
-> 🤖 **Picked up by agent (refine)** — `Valentina_Desk` at `2026-05-26T16:00:05Z`
-
-Spinoff from `plans/20260526-1730-bpmn-process-review.md` item 8. The checklist progress-tracking machinery (pre-CYCLE resume gate + post-CYCLE auto-tick) is being removed from the BPMN because the agent works atomically — a CYCLE either completes the whole ticket or it doesn't, so tracking partial checklist progress at runtime doesn't earn its keep. This plan captures the **exact** current shape so it can be re-introduced cleanly later if the atomicity assumption changes (e.g., long-running tickets with multi-step work that does need resumption).
+Spinoff from `plans/20260526-1730-bpmn-process-review.md` item 8. The checklist progress-tracking machinery (pre-CYCLE resume gate + post-CYCLE auto-tick) is being removed from the BPMN because the agent works atomically — a CYCLE either completes the whole ticket or it doesn't, so tracking partial checklist progress at runtime doesn't earn its keep.
 
 The **spec/input** role of the checklist stays: the agent still reads the `Checklist` section from the ticket body as the list of sub-items to do. Only the BPMN gating + post-step ticking is being cut.
 
-**Do not pick this up until there is a concrete need.** This is a stash document, not an execution plan.
+This plan has two halves:
+
+- **Verbatim capture** of what exists today (so it can be reinserted later if the atomicity assumption changes).
+- **Deletion step** for removing it from the existing BPMN now.
+
+The proper reintroduction design — when, how, with what semantics — will be revisited later.
 
 ## Why removed (2026-05-26)
 
@@ -14,17 +17,11 @@ The pre-CYCLE resume gate (`CHECK_CHECKLIST_PROGRESS` → `GATE_CHECKLIST_PARTIA
 
 The post-CYCLE auto-tick (`Tracker.MarkChecklistComplete` inside `move-to-in-acceptance`) records "every checklist item is done" on the ticket body when the CYCLE finishes. It's documentation of completion, not workflow state. If we want that record, the agent can tick boxes as part of its own task; the BPMN doesn't need to do it.
 
-If atomicity stops holding later (e.g., we introduce a CYCLE that commits per-item and supports genuine resume), this plan describes what to re-add.
+If atomicity stops holding later (e.g., we introduce a CYCLE that commits per-item and supports genuine resume), this plan's verbatim capture describes what to re-add.
 
-## Original YAML (verbatim, for reinsertion or reference)
+## Verbatim capture from `process-flow.yaml` (for later reinsertion)
 
-### Pre-CYCLE prefix block — appeared in four CYCLEs
-
-The triad below was copy-pasted (identical) into the start of:
-- `redesign-system-structure` (`process-flow.yaml:543-555`)
-- `redesign-external-system-structure` (`process-flow.yaml:595-607`)
-- `refactor-system-structure` (`process-flow.yaml:639-651`)
-- `refactor-test-structure` (`process-flow.yaml:675-687`)
+### Pre-CYCLE prefix triad (identical block, copy-pasted into the start of 5 CYCLEs)
 
 ```yaml
       - id: CHECK_CHECKLIST_PROGRESS
@@ -42,74 +39,140 @@ The triad below was copy-pasted (identical) into the start of:
         documentation: "${checklist_progress_summary} Approve re-running this cycle?"
 ```
 
-And the matching `sequence-flows` wired the triad into each CYCLE's start:
+The matching `sequence-flows` for each CYCLE (X = the CYCLE's first real step — the one that was the CYCLE's `start:` before the triad was prepended):
 
 ```yaml
       - {from: CHECK_CHECKLIST_PROGRESS,      to: GATE_CHECKLIST_PARTIALLY_DONE}
       - {from: GATE_CHECKLIST_PARTIALLY_DONE, to: STOP_CHECKLIST_PARTIALLY_DONE, when: "checklist-partially-done == true"}
-      - {from: GATE_CHECKLIST_PARTIALLY_DONE, to: <first-real-step>,             when: "checklist-partially-done == false"}
-      - {from: STOP_CHECKLIST_PARTIALLY_DONE, to: <first-real-step>}
+      - {from: GATE_CHECKLIST_PARTIALLY_DONE, to: <X>,                           when: "checklist-partially-done == false"}
+      - {from: STOP_CHECKLIST_PARTIALLY_DONE, to: <X>}
 ```
 
-Each CYCLE's `start:` was `CHECK_CHECKLIST_PROGRESS` (now becomes the first real step of that CYCLE).
+Each affected CYCLE's `start:` is currently `CHECK_CHECKLIST_PROGRESS` (post-removal, it becomes `<X>`).
 
-### Post-CYCLE auto-tick (inside `move-to-in-acceptance`)
+### Per-CYCLE occurrences (where the triad is wired today)
 
-The `MARK_IN_ACCEPTANCE` node in `implement-ticket` calls action `move-to-in-acceptance`, which today does two things (see `internal/atdd/runtime/actions/bindings.go:349-351`):
+| CYCLE | Node range (process-flow.yaml) | `<X>` (first real step) | Removed by |
+| --- | --- | --- | --- |
+| `onboard-external-system` | 416–460 | `IDENTIFY_EXTERNAL_SYSTEM` | sibling plan `20260526-1746-rebuild-onboard-external-system.md` (whole CYCLE removed) |
+| `redesign-system-structure` | 541–577 | `UPDATE_SYSTEM_DRIVER_ADAPTERS` | **this plan** |
+| `redesign-external-system-structure` | 593–629 | `UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS` | **this plan** |
+| `refactor-system-structure` | 637–669 | `IMPLEMENT_AND_VERIFY_SYSTEM` | **this plan** |
+| `refactor-test-structure` | 673–702 | `REFACTOR_AND_VERIFY_TESTS` | **this plan** |
+
+## Verbatim capture from `internal/atdd/runtime/actions/bindings.go` (post-CYCLE auto-tick)
+
+The `MARK_IN_ACCEPTANCE` node in `implement-ticket` calls action `move-to-in-acceptance`. Today that action does two things — ticks every checklist box, then sets the item status to "In acceptance":
 
 ```go
 // moveToInAcceptance ticks every issue checklist box via
 // Tracker.MarkChecklistComplete and sets the item status to "In
-// acceptance" via Tracker.SetStatus.
+// acceptance" via Tracker.SetStatus. Both halves error out hard on
+// failure — a missing Status option or a permission failure on edit is
+// a misconfiguration the operator must fix before re-running.
+func (a actions) moveToInAcceptance(ctx *statemachine.Context) statemachine.Outcome {
+    if err := a.markChecklistComplete(ctx); err != nil {
+        return statemachine.Outcome{Err: fmt.Errorf("move-to-in-acceptance: tick checklist: %w", err)}
+    }
+    handle := ctx.GetString("issue_handle")
+    if handle == "" {
+        return statemachine.Outcome{Err: fmt.Errorf("move-to-in-acceptance: issue_handle not in Context")}
+    }
+    if err := a.deps.Tracker.SetStatus(context.Background(), handle, "In acceptance"); err != nil {
+        return statemachine.Outcome{Err: fmt.Errorf("move-to-in-acceptance: %w", err)}
+    }
+    fmt.Fprintln(a.deps.Stdout, "Moved card to In acceptance.")
+    return statemachine.Outcome{}
+}
+
+// markChecklistComplete is the shared helper used by move-to-in-acceptance
+// to tick every `- [ ]` checkbox in the issue body via
+// Tracker.MarkChecklistComplete. A missing or non-positive issue_num is
+// silently skipped (transitions tests and dry-runs that don't seed a real
+// issue still exercise the SetStatus half).
+func (a actions) markChecklistComplete(ctx *statemachine.Context) error {
+    if issueNum, err := strconv.Atoi(ctx.GetString("issue_num")); err != nil || issueNum <= 0 {
+        return nil
+    }
+    issue, err := issueFromContext(ctx)
+    if err != nil {
+        return err
+    }
+    return a.deps.Tracker.MarkChecklistComplete(context.Background(), issue)
+}
 ```
 
-After the cut, this action does only the `SetStatus` half. The `MarkChecklistComplete` call is removed.
+Action registry line at `bindings.go:229`:
 
-## Code-side references touched at removal time
+```go
+r.Register("check-checklist-progress", a.checkChecklistProgress)
+```
 
-When re-introducing, these are the modules that were touched at removal — i.e., the same modules need touching again to re-register the resumed machinery:
+The `checkChecklistProgress` action itself lives at `bindings.go:431` (reads the parsed `Checklist` body and sets `ctx.State["checklist-partially-done"]` + `ctx.State["checklist_progress_summary"]`).
 
-### Action layer
+## Deletion step — what to remove from the existing BPMN
 
-- `internal/atdd/runtime/actions/bindings.go`:
-  - Re-register the `check-checklist-progress` action (reads `Tracker.ReadSections`, parses the `Checklist` section into `(total, done)` counts, sets `ctx.State["checklist-partially-done"]` and `ctx.State["checklist_progress_summary"]`).
-  - Re-add the `MarkChecklistComplete` call inside `moveToInAcceptance`.
-- `internal/atdd/runtime/actions/bindings_test.go`: re-add the corresponding tests; the `fakeTracker.MarkChecklistComplete` stub already exists (panics today, would need a real impl on the fake).
+### `internal/atdd/runtime/statemachine/process-flow.yaml`
 
-### Gate layer
+For each of the four CYCLEs in scope (`redesign-system-structure`, `redesign-external-system-structure`, `refactor-system-structure`, `refactor-test-structure`):
 
-- `internal/atdd/runtime/gates/bindings.go`: re-register the `checklist-partially-done` gate binding (reads `ctx.State["checklist-partially-done"]` bool).
-- `internal/atdd/runtime/gates/bindings_test.go`: re-add `TestChecklistPartiallyDone_TrueRoutes` and the false-routes counterpart.
+1. Remove the three triad nodes (`CHECK_CHECKLIST_PROGRESS`, `GATE_CHECKLIST_PARTIALLY_DONE`, `STOP_CHECKLIST_PARTIALLY_DONE`).
+2. Remove the four matching sequence-flow edges (the two from the gate, the one from the service-task to the gate, the one from the stop to `<X>`).
+3. Update the CYCLE's `start:` from `CHECK_CHECKLIST_PROGRESS` to its `<X>` (see table above).
 
-### Tracker layer
+`onboard-external-system` (lines 416–460) is **not** touched by this plan — the sibling plan removes that CYCLE in full.
 
-- `internal/atdd/runtime/tracker/tracker.go`: re-add the `MarkChecklistComplete(ctx, issue) error` method to the `Tracker` interface.
-- `internal/atdd/runtime/tracker/markdown/markdown.go`: re-implement the markdown-backed version (rewrites `- [ ]` → `- [x]` in the Checklist section of the ticket body file).
-- `internal/atdd/runtime/tracker/github/github.go`: re-implement the GitHub-backed version (uses the GraphQL/REST mutation that replaces the body with all checkboxes ticked).
-- Test files for both backends.
+### `internal/atdd/runtime/actions/bindings.go`
 
-### Statemachine fixtures
+1. Remove the `r.Register("check-checklist-progress", a.checkChecklistProgress)` registration (line 229).
+2. Remove the `checkChecklistProgress` function (line 431 onward).
+3. In `moveToInAcceptance`, drop the `a.markChecklistComplete(ctx)` call and its error-wrap; keep the `SetStatus` half.
+4. Remove the `markChecklistComplete` helper function entirely.
+5. Update the doc comment on `moveToInAcceptance` to describe only the `SetStatus` half.
 
-- `internal/atdd/runtime/statemachine/transitions_test.go`: re-add fixtures exercising the `checklist-partially-done == true` and `== false` routes through each of the four CYCLEs (or whatever subset re-introduces the gate).
+### `internal/atdd/runtime/gates/bindings.go`
+
+Remove the `checklist-partially-done` gate registration.
+
+### `internal/atdd/runtime/tracker/`
+
+1. `tracker.go`: remove the `MarkChecklistComplete(ctx, issue) error` method from the `Tracker` interface.
+2. `markdown/markdown.go`: remove the markdown-backed implementation.
+3. `github/github.go`: remove the GitHub-backed implementation.
+
+### Tests
+
+Remove or update:
+
+- `internal/atdd/runtime/actions/bindings_test.go` — `checkChecklistProgress` tests (around line 899) and any `markChecklistComplete` / `moveToInAcceptance` tick-half assertions.
+- `internal/atdd/runtime/gates/bindings_test.go` — `TestChecklistPartiallyDone_TrueRoutes` and its false-routes counterpart.
+- `internal/atdd/runtime/tracker/{markdown,github}/*_test.go` — `MarkChecklistComplete` tests on both backends.
+- `internal/atdd/runtime/statemachine/transitions_test.go` — any fixtures asserting the `checklist-partially-done == true`/`== false` routes through the four affected CYCLEs.
+- The `fakeTracker.MarkChecklistComplete` stub used by `bindings_test.go` (drop the method from the fake).
 
 ### Diagrams
 
-- `docs/process-diagram.md` + SVGs regenerate to include the new prefix block.
+Regenerate `docs/process-diagram.md` + the relevant SVGs under `docs/images/` after the YAML changes land (the prefix triad disappears from four CYCLE subdiagrams).
 
-(Verify the exact list at execute time by grepping `checklist|MarkChecklistComplete|check-checklist-progress|checklist-partially-done|checklist_progress_summary` after the rebuilt design is in place.)
+### Final verification
 
-## Open design questions for the rebuild
+After the changes, grep should return zero hits for: `checklist-partially-done`, `MarkChecklistComplete`, `check-checklist-progress`, `checklist_progress_summary`, `CHECK_CHECKLIST_PROGRESS`, `GATE_CHECKLIST_PARTIALLY_DONE`, `STOP_CHECKLIST_PARTIALLY_DONE` (apart from the `onboard-external-system` block, which the sibling plan removes).
 
-These are the questions worth answering **before** re-introducing checklist progress-tracking:
+## Reintroduction — revisit later
 
-1. **Has atomicity actually broken?** What concrete CYCLE or workflow now commits per-item, justifying the resume gate? If we're re-adding speculatively, don't.
-2. **Per-CYCLE prefix vs hoisted-to-implement-ticket.** The original removal had four copies of the same block. If re-introduced, hoist it to `implement-ticket` (between `PARSE_TICKET` and `GATE_TICKET_KIND`) so it lives in one place. See item 8 in the source plan for the hoist-vs-status-quo discussion.
-3. **Operator-prompt wording.** Original: `"${checklist_progress_summary} Approve re-running this cycle?"`. If hoisted to `implement-ticket`, change `"this cycle"` → `"this ticket"` (the CYCLE isn't yet selected at the hoist point).
-4. **Per-task-kind guard?** Stories/bugs are AC-driven (no checklist). On re-introduction, decide whether the gate runs for every ticket (no-op for non-task) or guarded by `ticket-kind == task`.
-5. **Per-item commits vs whole-ticket commit.** Tied to Q1. If the CYCLE genuinely commits per-item, the gate needs to know which items have associated commits. The original implementation did NOT have this — it only read the body's checkbox state. If we re-introduce with per-item commits, the data model needs to grow (or commit-history scanning needs to be added).
-6. **Auto-tick semantics.** The removed `MarkChecklistComplete` ticked *every* box at the end of the CYCLE — even items that hadn't been individually completed. That's symbolic "ticket done" marking, not real progress tracking. On re-introduction, decide whether to (a) keep that symbolic semantics, (b) tick only items the agent actually completed, or (c) drop the auto-tick entirely and let the agent tick boxes itself.
+If atomicity stops holding (e.g., a CYCLE genuinely commits per-item and supports resume), the rebuild needs to answer at least these questions and decide on the touch points before re-adding any machinery:
+
+- Has atomicity actually broken? Which CYCLE commits per-item, justifying the resume gate?
+- Per-CYCLE prefix vs. hoisted to `implement-ticket` (single block between `PARSE_TICKET` and `GATE_TICKET_KIND`)?
+- Operator-prompt wording — `"this cycle"` vs `"this ticket"` depending on hoist point.
+- Per-task-kind guard (stories/bugs have no checklist) — gate-for-all vs `ticket-kind == task`?
+- Data model — body-only checkbox scan (today) vs commit-history scan (per-item commits)?
+- Auto-tick semantics — symbolic "ticket done" mass-tick (today), only-items-completed, or drop the auto-tick entirely?
+- Touch points to re-register: `actions/bindings.go` (`check-checklist-progress` + `markChecklistComplete` half of `moveToInAcceptance`), `gates/bindings.go` (`checklist-partially-done`), `tracker.go` interface + both backends, statemachine fixtures, diagrams.
+
+These are deliberately left unresolved — they're decisions for the day this is actually picked up, not now.
 
 ## Cross-references
 
 - Triggered by: `plans/20260526-1730-bpmn-process-review.md` item 8.
-- Related: `plans/20260526-1746-rebuild-onboard-external-system.md` (sibling stash plan — same cut-and-stash pattern).
+- Related: `plans/20260526-1746-rebuild-onboard-external-system.md` (sibling stash plan — removes the whole `onboard-external-system` CYCLE, including its copy of the checklist triad).
