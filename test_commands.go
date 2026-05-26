@@ -17,6 +17,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/testselect"
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/runner"
 )
@@ -61,6 +62,7 @@ func newTestRunCmd() *cobra.Command {
   gh optivem test run --suite smoke
   gh optivem test run --suite acceptance-api --suite acceptance-ui
   gh optivem test run --suite acceptance-api,acceptance-ui
+  gh optivem test run --suite acceptance --test shouldRejectOrderWithQuantityOf100
   gh optivem test run --suite smoke --test T1 --test T2
   gh optivem test run --suite smoke --test T1,T2
   gh optivem test run --list`,
@@ -75,7 +77,13 @@ func newTestRunCmd() *cobra.Command {
 				}
 				return
 			}
+			// Validate operator intent on the raw (pre-expansion) slice:
+			// `--suite=acceptance --test=foo` is a single raw value and
+			// therefore allowed; `--suite=acceptance-api --suite=acceptance-ui
+			// --test=foo` is two raw values and rejected. Expansion happens
+			// after validation so the runner only sees canonical suite ids.
 			exitOnError(validateSuiteTestCombo(suites, test))
+			suites = testselect.ExpandSuiteGroups(suites)
 			resolvedSystem, err := resolveSystemPath()
 			exitOnError(err)
 			sys, err := runner.LoadSystem(resolvedSystem)
@@ -88,7 +96,7 @@ func newTestRunCmd() *cobra.Command {
 			exitOnError(runner.RunTests(sys, tests, cwdForPath(resolvedSystem), cwdForPath(resolvedTests), opts))
 		},
 	}
-	cmd.Flags().StringSliceVar(&suites, "suite", nil, "Run only the suite(s) with these id(s); repeatable, also accepts comma-separated values")
+	cmd.Flags().StringSliceVar(&suites, "suite", nil, "Run only the suite(s) with these id(s); repeatable, also accepts comma-separated values, and the group alias `acceptance` (expands to all acceptance-* suites)")
 	cmd.Flags().StringSliceVar(&test, "test", nil, "Narrow execution to the given test name(s); repeatable, also accepts comma-separated values (substituted into the suite's testFilter)")
 	cmd.Flags().BoolVar(&sample, "sample", false, "Use each suite's sampleTest field as the test name")
 	cmd.Flags().BoolVar(&list, "list", false, "Print suite ids from tests.yaml (one per line) and exit without running")

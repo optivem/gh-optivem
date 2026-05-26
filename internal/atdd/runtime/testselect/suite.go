@@ -67,3 +67,47 @@ func fallbackSuitesForLayer(layer string) []string {
 func AcceptanceSuites() []string {
 	return []string{"acceptance-api", "acceptance-ui"}
 }
+
+// suiteGroups is the registry of group-alias names. Each alias maps to
+// the canonical suite ids it expands to. Today the only group is
+// "acceptance"; the registry is shaped this way so adding contract /
+// e2e groups later is a one-line edit.
+var suiteGroups = map[string][]string{
+	"acceptance": AcceptanceSuites(),
+}
+
+// ExpandSuiteGroups maps known group-alias names from suiteGroups to
+// their constituent suite ids and passes any non-alias name through
+// unchanged. Duplicates after expansion are de-duped while preserving
+// first-seen order. Unknown names pass through so that the downstream
+// "suite(s) not found" check in the runner still catches typos.
+//
+// Used by the `gh optivem test run` CLI to let `--suite=acceptance`
+// resolve to `acceptance-api,acceptance-ui` — and by the BPMN
+// runtime, which emits `--suite=acceptance` from the
+// verify-tests-pass/fail call-activities in
+// `write-and-verify-acceptance-test-code`.
+func ExpandSuiteGroups(names []string) []string {
+	if len(names) == 0 {
+		return names
+	}
+	out := make([]string, 0, len(names))
+	seen := map[string]bool{}
+	add := func(s string) {
+		if seen[s] {
+			return
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	for _, n := range names {
+		if group, ok := suiteGroups[n]; ok {
+			for _, s := range group {
+				add(s)
+			}
+			continue
+		}
+		add(n)
+	}
+	return out
+}

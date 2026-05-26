@@ -92,6 +92,13 @@ func TestValidateSuiteTestCombo(t *testing.T) {
 		{"multiple suites, no tests", []string{"A", "B"}, nil, false},
 		{"multiple suites, one test (rejected)", []string{"A", "B"}, []string{"T1"}, true},
 		{"multiple suites, multiple tests (rejected)", []string{"A", "B"}, []string{"T1", "T2"}, true},
+		// Regression guard: `--suite=acceptance` is a single raw value
+		// (the group alias) and must pass validation even with --test.
+		// Expansion to multiple canonical suite ids happens *after* this
+		// check (see newTestRunCmd Run). A future "tighten the validator"
+		// patch that forgets the alias case would break the BPMN literal
+		// `suite: acceptance` at process-flow.yaml:761,769.
+		{"acceptance alias with --test (single raw value)", []string{"acceptance"}, []string{"T1"}, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
