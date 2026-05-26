@@ -83,7 +83,7 @@ func newTestRunCmd() *cobra.Command {
 			// --test=foo` is two raw values and rejected. Expansion happens
 			// after validation so the runner only sees canonical suite ids.
 			exitOnError(validateSuiteTestCombo(suites, test))
-			suites = testselect.ExpandSuiteGroups(suites)
+			suites = testselect.ExpandSuiteGroups(suites, tests.SuiteGroups)
 			resolvedSystem, err := resolveSystemPath()
 			exitOnError(err)
 			sys, err := runner.LoadSystem(resolvedSystem)

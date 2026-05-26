@@ -512,6 +512,44 @@ func TestLoadTestsInvalidYAML(t *testing.T) {
 	}
 }
 
+// TestLoadTestsSuiteGroupsYAML verifies the optional `suiteGroups:` block
+// round-trips out of YAML into TestsConfig.SuiteGroups. The block is what
+// lets a project override the Go-side default `acceptance` alias and
+// declare new groups of its own.
+func TestLoadTestsSuiteGroupsYAML(t *testing.T) {
+	path := writeTempFile(t, testsYAMLFilename, `
+suiteGroups:
+  acceptance: [acceptance-api, acceptance-ui]
+  contract: [contract-stub, contract-real]
+suites:
+  - id: acceptance-api
+    name: Acceptance API
+    command: npx playwright test acceptance
+  - id: acceptance-ui
+    name: Acceptance UI
+    command: npx playwright test acceptance
+  - id: contract-stub
+    name: Contract Stub
+    command: npx playwright test contract
+  - id: contract-real
+    name: Contract Real
+    command: npx playwright test contract
+`)
+	cfg, err := LoadTests(path)
+	if err != nil {
+		t.Fatalf("LoadTests: %v", err)
+	}
+	if len(cfg.SuiteGroups) != 2 {
+		t.Fatalf("want 2 suite groups, got %d: %+v", len(cfg.SuiteGroups), cfg.SuiteGroups)
+	}
+	if got := cfg.SuiteGroups["acceptance"]; len(got) != 2 || got[0] != "acceptance-api" || got[1] != "acceptance-ui" {
+		t.Errorf("suiteGroups[acceptance] = %v, want [acceptance-api acceptance-ui]", got)
+	}
+	if got := cfg.SuiteGroups["contract"]; len(got) != 2 || got[0] != "contract-stub" || got[1] != "contract-real" {
+		t.Errorf("suiteGroups[contract] = %v, want [contract-stub contract-real]", got)
+	}
+}
+
 func TestFindSuiteAndSuiteIDs(t *testing.T) {
 	cfg := &TestsConfig{
 		Suites: []Suite{

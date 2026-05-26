@@ -74,11 +74,19 @@ type Component struct {
 //	"repeat"            — substitute the whole TestFilter once per name and
 //	                       concatenate. Covers gradle (`--tests T1 --tests T2`)
 //	                       where the *flag itself* must repeat.
+//
+// SuiteGroups is an optional alias map from group name → list of suite ids.
+// `gh optivem test run --suite <name>` substitutes the alias with its
+// constituent ids before the runner sees them. Per-project entries take
+// precedence over the Go-side default registry in
+// internal/atdd/runtime/testselect/suite.go, which acts as the fallback
+// when a project's tests.yaml does not declare its own SuiteGroups.
 type TestsConfig struct {
-	SetupCommands  []SetupCommand `json:"setupCommands" yaml:"setupCommands"`
-	TestFilter     string         `json:"testFilter" yaml:"testFilter"`
-	TestFilterJoin string         `json:"testFilterJoin,omitempty" yaml:"testFilterJoin,omitempty"`
-	Suites         []Suite        `json:"suites" yaml:"suites"`
+	SetupCommands  []SetupCommand      `json:"setupCommands" yaml:"setupCommands"`
+	TestFilter     string              `json:"testFilter" yaml:"testFilter"`
+	TestFilterJoin string              `json:"testFilterJoin,omitempty" yaml:"testFilterJoin,omitempty"`
+	SuiteGroups    map[string][]string `json:"suiteGroups,omitempty" yaml:"suiteGroups,omitempty"`
+	Suites         []Suite             `json:"suites" yaml:"suites"`
 }
 
 // SetupCommand is one test-runner-side setup step — npm ci, dotnet build,
