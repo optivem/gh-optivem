@@ -22,8 +22,11 @@ wrong premise.
 
 The 2026-05-26 /refine-plan walk results:
 
-- **In scope (will ship in this plan)**: Items 2, 3, 7, 8, 9, 10, 11, 12,
+- **In scope (will ship in this plan)**: Items 2, 3, 7, 8, 10, 11, 12,
   13, 16, 17.
+- **Superseded by another plan**: Item 9 → `plans/20260526-1220-fix-mark-ticket-state-transition-routing.md`
+  (eliminates the `update-ticket` wrapper entirely; no `mark-ticket` rename
+  to perform).
 - **Deferred (revisit later)**: Items 1, 5, 6.
 - **Deferred to its own plan**: Item 14 (domain-semantics change — ticket
   kind split for redesign).
@@ -35,15 +38,28 @@ The 2026-05-26 /refine-plan walk results:
 
 ## Scope
 
-- Renderer: `internal/atdd/runtime/diagram/diagram.go` — node ordering, label
-  format, heading format.
-- YAML: `internal/atdd/runtime/statemachine/process-flow.yaml` — structural
-  de-duplication of one block, normalisation of six existing `documentation:`
-  labels.
-- Output artefact: `docs/process-diagram.md` — file layout (single vs split).
+- **Renderer** (`internal/atdd/runtime/diagram/diagram.go`): label format,
+  legend wording, `processAlias` map, new `error_end_event` shape, schema-
+  validation hooks.
+- **Statemachine schema** (`internal/atdd/runtime/statemachine/load.go`):
+  require `documentation:` on call_activity (Item 2); hard-error on
+  question-form gateway docs (Item 16); new `error_end_event` node type
+  (Item 17).
+- **YAML** (`internal/atdd/runtime/statemachine/process-flow.yaml`):
+  per-call-site `documentation:` for ~81 call_activity nodes (Item 2),
+  structural de-duplication of opportunistic-refactor (Item 3), CALL_*
+  prefix removal (Item 12), CHOOSE_REFACTOR_TYPE insertion (Item 13),
+  predicate-form gateway docs (Item 16), error end-events on relevant
+  gateways (Item 17), refine-backlog-item rename (Item 10), ticket-kind
+  gateway split (Item 11).
+- **Output artefact** (`docs/process-diagram.md`): regenerated after each
+  item.
 
-Out of scope: the underlying ATDD semantics encoded in the YAML (no process
-behaviour changes, just naming + structure where it's strictly duplicate).
+Out of scope: domain semantics changes (process behaviour, ticket-kind
+catalogue, agent prompts — except where 1220 already handles them). The
+de-duplication in Item 3 preserves semantics. Item 14 (redesign-system-
+structure split) is deferred to its own plan precisely because it
+*does* change domain semantics.
 
 ## Item 1 — `refactor` process: `CALL_REDESIGN_SYSTEM_STRUCTURE` renders above the gateway
 
@@ -102,9 +118,15 @@ into `documentation:`, the rest leak their screaming-snake ID.
 
 **Direction (decided 2026-05-26): require `documentation:` on every
 call_activity node**. Mass-edit the YAML to add a human-readable
-`documentation:` line to all ~85 call_activity nodes that currently lack
+`documentation:` line to every call_activity node that currently lacks
 one. Drop the ID fallback in the renderer entirely. The point: an operator
 reading the diagram should not see screaming-snake YAML node IDs anywhere.
+
+> **Post-1220 note**: 1220 converts the four MARK_* call_activities into
+> service_tasks. Item 2's pass operates on the post-1220 YAML — node count
+> drops from ~85 to ~81 call_activities needing `documentation:`. Service
+> tasks have their own labelling convention (already carry `documentation:`
+> via `action:` mapping); Item 2 leaves them alone.
 
 **Renderer change** (`diagram.go:383-390`, the `CallActivity` case in
 `writeNode`):
@@ -121,11 +143,11 @@ reading the diagram should not see screaming-snake YAML node IDs anywhere.
 but candidates:
 
 - **Verb-phrase action**: what the call site is *doing*. E.g.,
-  `MARK_IN_REFINEMENT` → `"mark ticket IN REFINEMENT"`,
   `IMPLEMENT_TEST_LAYER` (called 3× for AT/CT/DSL) →
   `"implement acceptance-test layer"` / `"implement contract-test layer"` /
   `"implement DSL layer"`, `OPP_REFACTOR_SYSTEM_STRUCTURE` →
-  `"opportunistic refactor: system structure"`.
+  `"opportunistic refactor: system structure"`. (Note: MARK_* nodes are
+  service_tasks post-1220, not in scope for this convention.)
 - **Stage + role**: pairs nicely with the existing RED/GREEN/Cover labels.
   E.g., `OPP_*` → `"REFACTOR — system structure"`. Tighter but only fits
   where there's an established stage vocabulary.
@@ -486,65 +508,22 @@ the level prefix gets added automatically.
   `plans/*.md`) that should be cross-referenced from this plan? Quick
   grep during execution.
 
-## Item 9 — `update-ticket` sub-process name is too generic
+## Item 9 — `update-ticket` sub-process name is too generic — *superseded by 1220*
 
 > **Superseded by `plans/20260526-1220-fix-mark-ticket-state-transition-routing.md`**
-> — the wrapper is eliminated entirely, not renamed. Q9.1/Q9.2 mooted.
-
-**Observation**: `update-ticket` (process-flow.yaml:1390-1403) does exactly
-one thing — change a ticket's lifecycle state via a single agent call:
-
-```yaml
-update-ticket:
-  start: EXECUTE_AGENT
-  nodes:
-    - id: EXECUTE_AGENT
-      type: call_activity
-      process: execute-agent
-      params:
-        task-name: update-ticket           # ← hardcoded literal
-  …
-```
-
-It is called 4 times, every call site named `MARK_*`:
-
-| Call site | `target-state:` |
-|---|---|
-| MARK_IN_REFINEMENT | "IN REFINEMENT" |
-| MARK_READY | "READY" |
-| MARK_IN_PROGRESS | "IN PROGRESS" |
-| MARK_IN_ACCEPTANCE | "IN ACCEPTANCE" |
-
-The `target-state` param is the only input. "Update" is generic — it could
-mean editing the body, labels, assignee, etc. The operator's mental model
-(per the `MARK_*` node IDs) is **state transition**, not "update".
-
-**Direction (decided 2026-05-26): Option 9A — rename to `mark-ticket`.**
-Aligns the sub-process name with the `MARK_*` call-site IDs already in the
-YAML; reading is uniform ("MARK_IN_REFINEMENT calls mark-ticket with state
-IN REFINEMENT").
-
-**Files**:
-- `internal/atdd/runtime/statemachine/process-flow.yaml`: rename the process
-  definition (line 1390), all 4 call sites (lines 172, 182, 237, 272), and
-  the YAML section comment (line 1388).
-- The agent's hardcoded `task-name: update-ticket` (line 1397) — rename in
-  lockstep? See Q9.2 below.
-- `internal/atdd/runtime/diagram/diagram.go` `processOrder` list (one entry,
-  currently `"update-ticket"`).
-- Any test fixtures referencing `update-ticket`.
-
-**Open questions for /refine-plan**:
-
-- Q9.1 — *Decided 2026-05-26*: Option 9A (`mark-ticket`).
-- Q9.2 — *Decided 2026-05-26*: rename the agent task-name in lockstep.
-  Change the hardcoded `task-name: update-ticket` (line 1397) to
-  `task-name: mark-ticket`, rename the agent prompt file (likely
-  `.claude/agents/.../update-ticket.md` → `mark-ticket.md`), and update
-  any prompt-routing config referencing it. Inventory at execution time.
-- Q9.3 — *Decided 2026-05-26*: defer. Other generic MID names (`commit`,
-  `compile`, `run-tests`, `approve`) get their own naming pass in a
-  separate plan — each needs its own analysis.
+> (decided 2026-05-26 11:41+ rehearsal). The wrapper subprocess is
+> **eliminated entirely**, not renamed: 1220 converts the four MARK_*
+> call_activities into direct service_tasks bound to four discrete state-
+> transition actions (`move-to-in-refinement`, `move-to-ready`,
+> `move-to-in-progress`, `move-to-in-acceptance`). The AC-writing agent
+> prompt at `internal/assets/runtime/prompts/atdd/update-ticket.md` is
+> deleted as dead code. Q9.1, Q9.2, Q9.3 all mooted — no `mark-ticket`
+> subprocess to name or wire.
+>
+> After 1220 ships, this item closes with no execution work. The
+> historical observation that motivated it (operator mental model is
+> "state transition", not "update") is preserved by 1220's discrete
+> action names.
 
 ## Item 10 — `refine-backlog` sub-process: rename to `refine-backlog-item`
 
@@ -653,6 +632,14 @@ Trade-offs:
   splits into `ticket_type` + `task_subtype`.
 - Any test fixtures referencing `ticket_kind` / `GATE_TICKET_KIND`.
 
+> **Post-1220 note**: 1220 modifies MARK_IN_PROGRESS (line 237) and
+> MARK_IN_ACCEPTANCE (line 272) within `implement-ticket`'s
+> `sequence_flows` — same section Item 11 rewrites. Line numbers above
+> are pre-1220 references; verify against post-1220 YAML at execution
+> time. Logical conflict is none — MARK_* (service_tasks) and the
+> gateway split are independent. Text-level conflict was the original
+> driver for sequencing 1220 → 0832.
+
 **Open questions for /refine-plan**:
 
 - Q11.1 — *Decided 2026-05-26*: `GATE_TICKET_KIND` + `GATE_TASK_SUBTYPE`.
@@ -680,7 +667,7 @@ Trade-offs:
 `CALL_AGENT_ACTION`, `CALL_FIX`, `CALL_PARAMETERISED_CORE`). Bare-named
 call_activity nodes outnumber them ~3:1 (`IMPLEMENT_AND_VERIFY_SYSTEM`,
 `IMPLEMENT_SYSTEM_DRIVER_ADAPTERS`, `REFINE_BACKLOG`,
-`WRITE_ACCEPTANCE_TESTS`, `MARK_*`, `BUILD_SYSTEM`, `COMMIT_TESTS`,
+`WRITE_ACCEPTANCE_TESTS`, `BUILD_SYSTEM`, `COMMIT_TESTS`,
 `EXECUTE_AGENT`, etc.). The CALL_ prefix is inconsistent and signals the
 node *type* (Hungarian notation) rather than the *role* the call site
 plays.
@@ -692,9 +679,11 @@ the **role they play at the call site**, not the sub-process they invoke.
 **Direction (proposed)** — drop `CALL_` everywhere; apply two rules:
 
 - If the call site plays a **role distinct** from the sub-process (e.g.
-  RED step, opportunistic refactor, marking a state) → use the
-  **role-based name** (`OPP_REFACTOR_*`, `MARK_IN_REFINEMENT`,
-  `RED_WRITE_FAILING_ACCEPTANCE_TESTS`).
+  RED step, opportunistic refactor) → use the **role-based name**
+  (`OPP_REFACTOR_*`, `RED_WRITE_FAILING_ACCEPTANCE_TESTS`).
+  (Note: `MARK_*` nodes were a canonical example here pre-1220, but
+  1220 converts them to service_tasks, outside Item 12's call_activity
+  scope.)
 - If the call site **IS** the sub-process (1:1 delegation, no extra
   role) → use the **upper-snake form of the sub-process name**
   (`CHANGE_SYSTEM_BEHAVIOR`, `COVER_SYSTEM_BEHAVIOR`).
@@ -714,7 +703,8 @@ in favour of the bare sub-process name).
   CALL_ prefix and apply it consistently to *all* call_activity nodes —
   mass-renames in the opposite direction (~70 nodes gain the prefix).
 - Q12.2 — Scope: ship in this plan, or batch with the broader CYCLE-name
-  pass deferred from Item 9/10 follow-up?
+  pass deferred from Q10.2 follow-up? (Q9.3 was the parallel deferral
+  but Item 9 itself is now superseded by 1220.)
 
 ## Item 13 — Operator-choice gateways need a visible human-input signal
 
@@ -938,6 +928,14 @@ Concrete targets:
   may need to route to the new error end-event node so the trace
   surfaces it as a proper transition.
 
+> **Post-1220 note**: Item 17 adds error end-events to `implement-ticket`'s
+> gateway block (around lines 232-294 pre-1220). 1220 also touches that
+> section (MARK_IN_PROGRESS line 237, MARK_IN_ACCEPTANCE line 272). The
+> two changes are logically independent (gateways vs MARK_* state
+> transitions), but text-level conflict was the original driver for the
+> 1220 → 0832 sequencing. Verify pre-1220 line numbers above against the
+> post-1220 YAML at execution time.
+
 **Open questions for /refine-plan**:
 
 - Q17.1 — *Decided 2026-05-26*: new node type `error_end_event`.
@@ -962,9 +960,10 @@ Item 18 was built on a wrong premise. No action needed.
 
 Items in execution order after the 2026-05-26 /refine-plan walk.
 
-**In scope** (settled): Items 2, 3, 7, 8, 9, 10, 11, 12, 13, 16, 17.
-**Out of scope**: Items 1, 5, 6 (deferred), 4 (merged into 2), 14
-(deferred to separate plan), 15 (merged into 12), 18 (dropped).
+**In scope** (settled): Items 2, 3, 7, 8, 10, 11, 12, 13, 16, 17.
+**Out of scope**: Items 1, 5, 6 (deferred), 4 (merged into 2), 9
+(superseded by 1220), 14 (deferred to separate plan), 15 (merged into
+12), 18 (dropped).
 
 1. **Item 7** (legend wording) — pure renderer change, isolated. Updates
    the three Mermaid sample labels + bullet text + `writeExecutorStyling`
@@ -994,10 +993,8 @@ Items in execution order after the 2026-05-26 /refine-plan walk.
 8. **Item 3** (de-duplicate opportunistic-refactor block) — YAML change:
    collapses 6 nodes + 7 edges into one `call_activity` → `refactor`.
    Updates statemachine tests that reference the removed `OPP_*` IDs.
-9. **Item 9** (rename `update-ticket` → `mark-ticket`) — YAML rename across
-   4 call sites + process definition + section comment + diagram.go
-   `processOrder`; rename the agent prompt file and any prompt-routing
-   config in lockstep (Q9.2 decided).
+9. **~~Item 9~~ (superseded by 1220)** — no execution work in this plan;
+   the `update-ticket` wrapper is eliminated by 1220, not renamed.
 10. **Item 10** (rename `refine-backlog` → `refine-backlog-item`) — YAML
     rename: process def + call site + section comment + diagram.go
     `processOrder` + `REFINE_BACKLOG_END` → `REFINE_BACKLOG_ITEM_END`.
