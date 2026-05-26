@@ -959,7 +959,7 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		Shell:    &fakeShell{},
 	})
 	want := []string{
-		"pick_top_ready",
+		"pick-top-ready",
 		"move_to_in_progress",
 		"read_ticket_type",
 		"read_subtype",

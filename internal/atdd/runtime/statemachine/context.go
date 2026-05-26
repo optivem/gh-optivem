@@ -9,12 +9,12 @@ import "fmt"
 //     Run; gateway outcomes are recorded under the gateway's binding name as
 //     the run progresses, so later predicates can read upstream results.
 //
-//   - Params: parameter substitutions for the current call_activity scope.
+//   - Params: parameter substitutions for the current call-activity scope.
 //     The structural_cycle flow uses ${change_type}, ${agent} which are
 //     resolved against this map at dispatch time (see ExpandParams).
 //
 // Context is mutable — service tasks and gateways can write to State, and
-// call_activity dispatch swaps Params on entry and restores it on return.
+// call-activity dispatch swaps Params on entry and restores it on return.
 type Context struct {
 	State  map[string]any
 	Params map[string]string

@@ -67,7 +67,7 @@ func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 	// must have a corresponding embedded prompt. Without this, a YAML
 	// node could reference a `${name}` that the consumer was expected to
 	// supply — exactly the dependency this plan removes. Templated
-	// `${agent}` nodes (resolved at runtime via call_activity params)
+	// `${agent}` nodes (resolved at runtime via call-activity params)
 	// are skipped here; their resolved values are covered by the
 	// existing TestClaudeRunDispatch_ExpandsTemplatedNodeFields.
 	for processName, process := range eng.Processes {
@@ -88,7 +88,7 @@ func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 }
 
 // TestEmbeddedDispatch_RunsInConsumerEmptyDir walks a real production
-// user_task (FIX_TEST in the embedded `structural_cycle` flow) against
+// user-task (FIX_TEST in the embedded `structural_cycle` flow) against
 // the fake clauderun + git pair, with RepoPath set to a temp dir that
 // contains no consumer-side scaffolding. Asserts the dispatch completes
 // and the rendered prompt is the embedded fix-unexpected-failing-tests body — proves
@@ -96,19 +96,19 @@ func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 // dependency.
 //
 // AT_RED_TEST was the original target; after the AT/CT creative-vs-
-// mechanical split, every RED-phase node in at_cycle is a call_activity
+// mechanical split, every RED-phase node in at_cycle is a call-activity
 // into red_phase_cycle, and the AT_GREEN_SYSTEM phase's backend/frontend
 // nodes are now call_activities into green_phase_cycle. The remaining
-// statically-bound user_tasks live inside structural_cycle (and the
+// statically-bound user-tasks live inside structural_cycle (and the
 // deferred CT stubs node), so FIX_TEST is used here (one of the two
 // fix-unexpected-{passing,failing}-tests dispatch sites — FIX_COMPILE is its compile-RED twin).
-// Any embedded user_task with a static (non-templated) agent will do.
+// Any embedded user-task with a static (non-templated) agent will do.
 func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 	// The five-level BPMN refactor (plans/20260525-1517-bpmn-refactor-yaml-
 	// and-diagrams.md Item 3) replaced the structural_cycle / red_phase_cycle
 	// / green_phase_cycle shape this smoke test exercises, and the new
-	// runtime gateway/action bindings (refactor_type_choice, ticket_kind,
-	// run_command, validate_outputs_and_scopes, …) are not yet registered.
+	// runtime gateway/action bindings (refactor-type-choice, ticket-kind,
+	// run-command, validate-outputs-and-scopes, …) are not yet registered.
 	// Phase D's downstream-alignment plan re-establishes the embedded-prompt
 	// smoke test against the new structure once the registries land.
 	t.Skip("pending Phase D: register new gates/actions for the five-level YAML")
@@ -189,10 +189,10 @@ processes:
     start: STOP
     nodes:
       - id: STOP
-        type: user_task
+        type: user-task
         agent: human
         documentation: smoke
-    sequence_flows: []
+    sequence-flows: []
 `
 	yamlPath := filepath.Join(tempDir, "smoke-flow.yaml")
 	if err := os.WriteFile(yamlPath, []byte(yaml), 0o644); err != nil {

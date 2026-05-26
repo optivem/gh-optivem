@@ -51,7 +51,7 @@ func TestWrap_ServiceTaskLogsEntryAndExit(t *testing.T) {
 	node := statemachine.Node{
 		ID:   "PICK_TOP_READY",
 		Kind: statemachine.ServiceTask,
-		Raw:  statemachine.RawNode{Action: "pick_top_ready"},
+		Raw:  statemachine.RawNode{Action: "pick-top-ready"},
 		Fn: func(ctx *statemachine.Context) statemachine.Outcome {
 			ctx.Set("issue_num", "42")
 			return statemachine.Outcome{}
@@ -66,7 +66,7 @@ func TestWrap_ServiceTaskLogsEntryAndExit(t *testing.T) {
 
 	got := buf.String()
 	wantSubs := []string{
-		"> PICK_TOP_READY  kind=service_task action=pick_top_ready",
+		"> PICK_TOP_READY  kind=service-task action=pick-top-ready",
 		"OK PICK_TOP_READY",
 		"state: issue_num=42",
 	}
@@ -98,7 +98,7 @@ func TestWrap_GatewayLogsBindingAndStateDelta(t *testing.T) {
 
 	got := buf.String()
 	wantSubs := []string{
-		"> GATE_TICKET_TYPE  kind=gateway binding=ticket_type",
+		"> GATE_TICKET_TYPE  kind=gateway binding=ticket_type", // kept snake — ticket_type is a legacy registered binding pending dead-code audit
 		"OK GATE_TICKET_TYPE -> value=story",
 		"state: ticket_type=story",
 	}
@@ -136,7 +136,7 @@ func TestWrap_UserTaskLogsAgentAndFiles(t *testing.T) {
 
 	got := buf.String()
 	wantSubs := []string{
-		"> AT_RED_TEST_WRITE  kind=user_task agent=write-acceptance-tests",
+		"> AT_RED_TEST_WRITE  kind=user-task agent=write-acceptance-tests",
 		"OK AT_RED_TEST_WRITE",
 		"files: path/a.go, path/b.go",
 	}
@@ -164,7 +164,7 @@ func TestWrap_UserTaskLogsAgentAndFiles(t *testing.T) {
 
 func TestWrap_ServiceTaskSkipsWorkingTreeSnapshot(t *testing.T) {
 	// Service tasks shouldn't trigger git status — those calls add up
-	// fast over a full pipeline run. Only user_task nodes need the
+	// fast over a full pipeline run. Only user-task nodes need the
 	// snapshot.
 	prevNow := nowFn
 	nowFn = fixedClock
@@ -185,7 +185,7 @@ func TestWrap_ServiceTaskSkipsWorkingTreeSnapshot(t *testing.T) {
 	wrapped(statemachine.NewContext())
 
 	if len(git.lastArgs) != 0 {
-		t.Errorf("service_task triggered %d git call(s); should be 0", len(git.lastArgs))
+		t.Errorf("service-task triggered %d git call(s); should be 0", len(git.lastArgs))
 	}
 }
 

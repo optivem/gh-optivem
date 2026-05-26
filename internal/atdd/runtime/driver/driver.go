@@ -14,7 +14,7 @@
 //     process runs from START, picking the top Ready ticket from the project
 //     board.
 //
-// Agent dispatch (v2): every user_task whose `agent:` value is something
+// Agent dispatch (v2): every user-task whose `agent:` value is something
 // other than `human` shells out to the `claude` CLI via the clauderun
 // package. clauderun reads the embedded per-agent prompt (from
 // internal/atdd/runtime/agents/prompts/), substitutes ${name} placeholders
@@ -94,7 +94,7 @@ type Options struct {
 	Autonomous bool
 
 	// ManualAgents falls back to the v1 "pause and let the operator
-	// launch the agent in a second window" behaviour at every user_task
+	// launch the agent in a second window" behaviour at every user-task
 	// dispatch. Default (false) shells out to the `claude` CLI via the
 	// clauderun package. ManualAgents is mutually exclusive with the
 	// override hooks (the prompt-construction layer is what consumes
@@ -253,7 +253,7 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	// Post-Bind decoration order matters:
-	//   1. Wrap user_task agent dispatch with per-node info-printer (uses
+	//   1. Wrap user-task agent dispatch with per-node info-printer (uses
 	//      RawNode metadata only available after Bind).
 	//   2. Apply verify pre/post-condition decorators (commit-message HEAD
 	//      checks).
@@ -672,7 +672,7 @@ func registerAgentDispatchers(r *agents.Registry) {
 	}
 }
 
-// wrapAgentDispatchers replaces every user_task NodeFn with a
+// wrapAgentDispatchers replaces every user-task NodeFn with a
 // per-node closure that has access to the YAML node's Raw metadata
 // (description, agent name) and the per-run Options:
 //
@@ -889,7 +889,7 @@ func fixChangedFiles(agent, repoPath string) string {
 // promptForAgent prints the per-node dispatch banner and blocks on stdin
 // until the operator types Enter (continue) or `abort` (halt). v1 / fallback path.
 //
-// params is the live Context.Params for the call_activity scope; templated
+// params is the live Context.Params for the call-activity scope; templated
 // fields in raw (e.g. ${agent} / ${change_type} inside the shared
 // structural_cycle) are expanded against it so the operator sees the
 // substituted name in the banner instead of the literal placeholder.

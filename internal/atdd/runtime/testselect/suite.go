@@ -58,7 +58,7 @@ func fallbackSuitesForLayer(layer string) []string {
 }
 
 // AcceptanceSuites returns the canonical list of acceptance suites — the
-// dispatch fallback used by run_targeted_tests when its call_activity is
+// dispatch fallback used by run_targeted_tests when its call-activity is
 // invoked without a specific `suite:` param (as is the case for the
 // collapsed AT_GREEN node, which writes once and verifies both channels).
 // A future channel-execution plan may introduce sentinel suites like

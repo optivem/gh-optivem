@@ -128,7 +128,7 @@ func TestStructuralIntegrity_GatewaysHaveOutgoingEdges(t *testing.T) {
 
 func TestStructuralIntegrity_NonEndNodesHaveSuccessor(t *testing.T) {
 	// A node may legitimately have no outgoing edges in two cases:
-	//   - it is an end_event, or
+	//   - it is an end-event, or
 	//   - it is a `agent: human` STOP node intended to halt the run
 	//     awaiting user intervention.
 	// Anything else is a missing-edge bug.
@@ -199,8 +199,8 @@ func TestPredicate_Equality(t *testing.T) {
 
 func TestPredicate_BoolEquality(t *testing.T) {
 	ctx := NewContext()
-	ctx.Set("approval_outcome", true)
-	got, err := evalPredicate("approval_outcome == true", ctx)
+	ctx.Set("approval-outcome", true)
+	got, err := evalPredicate("approval-outcome == true", ctx)
 	if err != nil {
 		t.Fatalf("evalPredicate: %v", err)
 	}

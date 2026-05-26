@@ -8,13 +8,13 @@ import (
 // Bind wires NodeFn values into every Node by consulting the engine's
 // registries:
 //
-//   - service_task → ActionFn(action)
-//   - user_task    → AgentFn(agent)
+//   - service-task → ActionFn(action)
+//   - user-task    → AgentFn(agent)
 //   - gateway      → GateFn(binding); the bound function must Set(binding, …)
 //                    on the Context so downstream `when:` predicates can read
 //                    the result.
-//   - call_activity → built-in dispatch into the named sub-process
-//   - start_event / end_event → built-in no-ops; routing is decided entirely
+//   - call-activity → built-in dispatch into the named sub-process
+//   - start-event / end-event → built-in no-ops; routing is decided entirely
 //                    by `when:` predicates against the initial Context state.
 //
 // Bind must run after every registry has been populated; calling Run before
@@ -46,11 +46,11 @@ func (e *Engine) resolve(node Node) (NodeFn, error) {
 		return func(ctx *Context) Outcome { return Outcome{} }, nil
 	case ServiceTask:
 		if e.ActionFn == nil {
-			return nil, fmt.Errorf("ActionFn registry is nil but node is service_task")
+			return nil, fmt.Errorf("ActionFn registry is nil but node is service-task")
 		}
 		// Templated action names (e.g. ${compile_action} in red_phase_cycle)
 		// are resolved at dispatch time once Context.Params is set by the
-		// calling call_activity. Bind validates only static names.
+		// calling call-activity. Bind validates only static names.
 		if strings.Contains(node.Raw.Action, "${") {
 			ref := node.Raw.Action
 			lookup := e.ActionFn
@@ -58,23 +58,23 @@ func (e *Engine) resolve(node Node) (NodeFn, error) {
 				name := ExpandParams(ref, ctx.Params)
 				fn := lookup(name)
 				if fn == nil {
-					return Outcome{Err: fmt.Errorf("service_task action %q (from template %q) not registered", name, ref)}
+					return Outcome{Err: fmt.Errorf("service-task action %q (from template %q) not registered", name, ref)}
 				}
 				return fn(ctx)
 			}, nil
 		}
 		fn := e.ActionFn(node.Raw.Action)
 		if fn == nil {
-			return nil, fmt.Errorf("service_task action %q not registered", node.Raw.Action)
+			return nil, fmt.Errorf("service-task action %q not registered", node.Raw.Action)
 		}
 		return fn, nil
 	case UserTask:
 		if e.AgentFn == nil {
-			return nil, fmt.Errorf("AgentFn registry is nil but node is user_task")
+			return nil, fmt.Errorf("AgentFn registry is nil but node is user-task")
 		}
 		// Templated agent names (e.g. ${agent} in structural_cycle) are
 		// resolved at dispatch time once Context.Params is set by the calling
-		// call_activity. Bind validates only static names.
+		// call-activity. Bind validates only static names.
 		if strings.Contains(node.Raw.Agent, "${") {
 			ref := node.Raw.Agent
 			lookup := e.AgentFn
@@ -82,14 +82,14 @@ func (e *Engine) resolve(node Node) (NodeFn, error) {
 				name := ExpandParams(ref, ctx.Params)
 				fn := lookup(name)
 				if fn == nil {
-					return Outcome{Err: fmt.Errorf("user_task agent %q (from template %q) not registered", name, ref)}
+					return Outcome{Err: fmt.Errorf("user-task agent %q (from template %q) not registered", name, ref)}
 				}
 				return fn(ctx)
 			}, nil
 		}
 		fn := e.AgentFn(node.Raw.Agent)
 		if fn == nil {
-			return nil, fmt.Errorf("user_task agent %q not registered", node.Raw.Agent)
+			return nil, fmt.Errorf("user-task agent %q not registered", node.Raw.Agent)
 		}
 		return fn, nil
 	case Gateway:
@@ -133,7 +133,7 @@ func (e *Engine) wrapGateway(binding string, fn NodeFn) NodeFn {
 // popped on return, so the called process sees only its own substitutions.
 //
 // Call-site param values are template-expanded against the parent scope
-// before being pushed, so a nested call_activity declaring
+// before being pushed, so a nested call-activity declaring
 // `params: {change_type: ${change_type}}` propagates the parent's resolved
 // value rather than the literal placeholder. ExpandParams is idempotent on
 // strings without ${…} placeholders, so leaf values pass through unchanged.
@@ -149,9 +149,9 @@ func (e *Engine) wrapCallActivity(raw RawNode) NodeFn {
 		sub, ok := e.Processes[processName]
 		if !ok {
 			if processName != raw.Process {
-				return Outcome{Err: fmt.Errorf("call_activity references unknown process %q (from template %q)", processName, raw.Process)}
+				return Outcome{Err: fmt.Errorf("call-activity references unknown process %q (from template %q)", processName, raw.Process)}
 			}
-			return Outcome{Err: fmt.Errorf("call_activity references unknown process %q", processName)}
+			return Outcome{Err: fmt.Errorf("call-activity references unknown process %q", processName)}
 		}
 		// Push params; restore on exit. Caller-scoped state is preserved so
 		// gateway results from outer processes remain visible to inner gateways
@@ -189,7 +189,7 @@ const maxDispatchesPerProcess = 10000
 // RunProcess walks one process from its start node to an end node. It uses
 // nextEdge to pick the outgoing edge whose predicate matches the current
 // state, and stops on the first node with no outgoing edges (treating that
-// as terminal — covers both end_event and any node placed as a process tail).
+// as terminal — covers both end-event and any node placed as a process tail).
 //
 // Nodes are dispatched after expandParams substitutes ${name} occurrences in
 // the raw node fields the body may want to read (agent, etc.).

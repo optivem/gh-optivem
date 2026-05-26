@@ -5,7 +5,7 @@
 // fast with a clear error.
 //
 // Verifications are middleware decorators rather than separate nodes
-// because they're cross-cutting: every user_task wants the "HEAD matches
+// because they're cross-cutting: every user-task wants the "HEAD matches
 // expected commit-message prefix" check, but we don't want to spam the YAML
 // with an extra node before each one.
 //

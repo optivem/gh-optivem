@@ -38,13 +38,13 @@ func TestRender_CallActivityLinksToTargetProcess(t *testing.T) {
 	got := Render(eng)
 
 	// implement-ticket calls change-system-behavior on the story/bug
-	// branch. Without a processAlias entry, the call_activity link
+	// branch. Without a processAlias entry, the call-activity link
 	// suffix is the raw process name — the assertion locks in that
 	// the renderer still emits the "see § …" link form for un-aliased
 	// targets so cross-section navigation works on github.com.
 	want := "see § change-system-behavior"
 	if !strings.Contains(got, want) {
-		t.Errorf("expected call_activity link suffix %q in output", want)
+		t.Errorf("expected call-activity link suffix %q in output", want)
 	}
 }
 
@@ -90,12 +90,12 @@ processes:
       - beta
     nodes:
       - id: WORK
-        type: service_task
+        type: service-task
         action: do_work
         documentation: "Do work"
       - id: SAMPLE_END
-        type: end_event
-    sequence_flows:
+        type: end-event
+    sequence-flows:
       - {from: WORK, to: SAMPLE_END}
 `)
 	eng, err := statemachine.LoadBytes(yaml)
@@ -123,12 +123,12 @@ processes:
     start: WORK
     nodes:
       - id: WORK
-        type: service_task
+        type: service-task
         action: do_work
         documentation: "Do work"
       - id: SAMPLE_END
-        type: end_event
-    sequence_flows:
+        type: end-event
+    sequence-flows:
       - {from: WORK, to: SAMPLE_END}
 `)
 	eng, err := statemachine.LoadBytes(yaml)

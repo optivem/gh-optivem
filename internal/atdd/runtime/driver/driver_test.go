@@ -77,7 +77,7 @@ func (f *fakeGit) Run(_ context.Context, _ string, args ...string) ([]byte, erro
 }
 
 // minimalYAML is the smallest flow that exercises the agent-dispatch path:
-// START → user_task → END. Nothing in the engine cares about the surrounding
+// START → user-task → END. Nothing in the engine cares about the surrounding
 // edges or descriptions, but they're spelled out so the YAML parses cleanly.
 const minimalYAML = `
 processes:
@@ -85,21 +85,21 @@ processes:
     start: START
     nodes:
       - id: START
-        type: start_event
+        type: start-event
       - id: AT_RED_TEST
-        type: user_task
+        type: user-task
         agent: write-acceptance-tests
         documentation: Write the AT-RED scenario
       - id: END
-        type: end_event
-    sequence_flows:
+        type: end-event
+    sequence-flows:
       - { from: START, to: AT_RED_TEST }
       - { from: AT_RED_TEST, to: END }
 `
 
-// templatedYAML mirrors the structural_cycle's parameterised user_task: the
+// templatedYAML mirrors the structural_cycle's parameterised user-task: the
 // agent / description fields carry ${…} placeholders that only resolve once
-// Context.Params is populated by the calling call_activity. The dispatcher
+// Context.Params is populated by the calling call-activity. The dispatcher
 // must expand these before printing them or passing them to clauderun.
 const templatedYAML = `
 processes:
@@ -107,14 +107,14 @@ processes:
     start: START
     nodes:
       - id: START
-        type: start_event
+        type: start-event
       - id: WRITE
-        type: user_task
+        type: user-task
         agent: ${agent}
         documentation: ${change_type} - WRITE
       - id: END
-        type: end_event
-    sequence_flows:
+        type: end-event
+    sequence-flows:
       - { from: START, to: WRITE }
       - { from: WRITE, to: END }
 `
@@ -411,7 +411,7 @@ func TestPreflightFailureSurfacesEarly(t *testing.T) {
 func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	// The structural_cycle reuses one set of YAML nodes across
 	// SYSTEM_INTERFACE_REDESIGN_CYCLE / SYSTEM_IMPLEMENTATION_REFACTORING_CYCLE by injecting
-	// ${agent} / ${change_type} via call_activity params. The dispatcher
+	// ${agent} / ${change_type} via call-activity params. The dispatcher
 	// must resolve raw.Agent before looking up the embedded prompt —
 	// otherwise it would try to load a prompt named "${agent}", which
 	// doesn't exist.
@@ -646,7 +646,7 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 	opts := newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake})
 	opts.RepoPath = tmpRepo
 
-	// minimalYAML's user_task uses agent: write-acceptance-tests, but the
+	// minimalYAML's user-task uses agent: write-acceptance-tests, but the
 	// prompt-substitution failure mode is most visible on agents whose
 	// prompt body references ${architecture} / ${allowed_roots}
 	// (implement-system). Use a YAML variant with the system implement
@@ -808,7 +808,7 @@ func TestRunState_PromptLogPathNilIsEmpty(t *testing.T) {
 // These tests cover the end-to-end seam introduced by plan
 // 20260520-1945-user-task-output-context-plumbing.md: the WRITE agent's
 // `outputs:` YAML block in its final response text is parsed by the
-// user_task dispatcher and flattened into ctx.State so downstream
+// user-task dispatcher and flattened into ctx.State so downstream
 // gates / actions (run_targeted_tests, scope_exception_requested, …)
 // see the populated values.
 //
@@ -906,7 +906,7 @@ func TestClaudeRunDispatch_MalformedOutputsBlockFailsLoud(t *testing.T) {
 	// A fenced block that starts with `outputs:` but contains broken YAML
 	// must surface a clear error rather than silently zeroing state. The
 	// dispatcher routes the parser's error as Outcome.Err so the cycle
-	// stops at the user_task boundary.
+	// stops at the user-task boundary.
 	gitFake := &fakeGit{
 		out: [][]byte{
 			[]byte("aaaaaaa1\n"),

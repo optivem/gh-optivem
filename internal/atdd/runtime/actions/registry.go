@@ -1,5 +1,5 @@
 // Package actions holds the service-task action registry. Every YAML node of
-// type `service_task` carries an `action:` string; that string maps to a Go
+// type `service-task` carries an `action:` string; that string maps to a Go
 // function in this registry which the engine calls to perform the
 // mechanical step (pick top Ready, move to In Progress, run the smoke
 // test, commit the phase, etc.).

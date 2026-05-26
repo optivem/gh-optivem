@@ -1,10 +1,10 @@
 // Package trace adds a per-node logging decorator to the engine, producing
 // a chronological audit trail of every step the ATDD pipeline takes:
 //
-//   - service_task: action name, ctx.State keys mutated, Outcome.Value/Bool
+//   - service-task: action name, ctx.State keys mutated, Outcome.Value/Bool
 //   - gateway:      binding name, evaluated value, ctx.State keys mutated
-//   - user_task:    agent name, working-tree paths the agent touched
-//   - call_activity:process name, params pushed
+//   - user-task:    agent name, working-tree paths the agent touched
+//   - call-activity:process name, params pushed
 //   - start/end:    just the node id and kind
 //
 // The decorator sits at the outermost layer (after override.Wrap), so what
@@ -12,7 +12,7 @@
 // plain text with `[trace HH:MM:SS]` prefixes so the trace stream is easy
 // to grep alongside clauderun's existing colored agent banners.
 //
-// File-list capture for user_task nodes works by taking a `git status
+// File-list capture for user-task nodes works by taking a `git status
 // --porcelain` snapshot before and after the wrapped NodeFn fires. The
 // diff is the set of paths the agent introduced or modified. The
 // subsequent commit_phase action will commit those paths, but at trace
@@ -108,7 +108,7 @@ func WrapAll(eng *statemachine.Engine, deps Deps) {
 // wrap returns a NodeFn that logs entry/exit around inner. The closure
 // captures the original Node (kind + raw) so it has the metadata it needs
 // to render the entry banner without re-querying the engine. For
-// user_task nodes the wrapper also snapshots the working tree (via
+// user-task nodes the wrapper also snapshots the working tree (via
 // `git status --porcelain`) on each side of the dispatch so the exit
 // banner can list what the agent changed.
 func wrap(node statemachine.Node, deps Deps) statemachine.NodeFn {
@@ -137,8 +137,8 @@ func wrap(node statemachine.Node, deps Deps) statemachine.NodeFn {
 // than the literal placeholder.
 //
 // On a TTY: `[trace …]` faint, `>` cyan, node ID bold (cyan-bold for
-// call_activity so process boundaries stand out as the "phase" markers above
-// their service_task / gateway / user_task children).
+// call-activity so process boundaries stand out as the "phase" markers above
+// their service-task / gateway / user-task children).
 func writeEnter(deps Deps, node statemachine.Node, ctx *statemachine.Context) {
 	parts := []string{
 		fmt.Sprintf("kind=%s", kindLabel(node.Kind)),
@@ -251,17 +251,17 @@ func outcomeStatusLabel(out statemachine.Outcome) (string, color.Attribute) {
 func kindLabel(k statemachine.NodeKind) string {
 	switch k {
 	case statemachine.StartEvent:
-		return "start_event"
+		return "start-event"
 	case statemachine.EndEvent:
-		return "end_event"
+		return "end-event"
 	case statemachine.ServiceTask:
-		return "service_task"
+		return "service-task"
 	case statemachine.UserTask:
-		return "user_task"
+		return "user-task"
 	case statemachine.Gateway:
 		return "gateway"
 	case statemachine.CallActivity:
-		return "call_activity"
+		return "call-activity"
 	default:
 		return fmt.Sprintf("kind%d", k)
 	}
@@ -365,7 +365,7 @@ func formatParams(params map[string]string) string {
 }
 
 // snapshotDirty captures the set of working-tree paths that `git status
-// --porcelain` reports right now. We only call git for user_task nodes
+// --porcelain` reports right now. We only call git for user-task nodes
 // because those are the ones an agent might mutate the working tree
 // from — service tasks and gateways are pure-Go and have no need for
 // the snapshot (skipping them avoids one git shell-out per service node,
@@ -409,7 +409,7 @@ func parseDirty(porcelain []byte) map[string]bool {
 
 // dirtyDelta returns paths present in post but not pre, sorted for
 // stable output. The intent is "what did the agent introduce or modify
-// during this user_task" — pre-existing dirty paths are excluded so the
+// during this user-task" — pre-existing dirty paths are excluded so the
 // listing isn't polluted by the operator's unrelated work.
 func dirtyDelta(pre, post map[string]bool) []string {
 	var out []string
@@ -427,7 +427,7 @@ func (d Deps) tracePrefix() string {
 }
 
 // nodeIDPaint renders the node ID with the kind-appropriate emphasis. On
-// a TTY: cyan-bold for call_activity (so process boundaries pop as the
+// a TTY: cyan-bold for call-activity (so process boundaries pop as the
 // "phase" markers), plain bold for everything else, plain text off-TTY.
 func (d Deps) nodeIDPaint(node statemachine.Node) string {
 	if node.Kind == statemachine.CallActivity {

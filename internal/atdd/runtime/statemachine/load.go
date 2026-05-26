@@ -23,7 +23,7 @@ type RawNode struct {
 	Params        map[string]string `yaml:"params,omitempty"`
 }
 
-// rawEdge mirrors the YAML sequence_flow schema. `When` carries the raw
+// rawEdge mirrors the YAML sequence-flow schema. `When` carries the raw
 // predicate text; evaluation lives in predicate.go.
 type rawEdge struct {
 	From string `yaml:"from"`
@@ -36,7 +36,7 @@ type rawProcess struct {
 	Start         string    `yaml:"start"`
 	Outputs       []string  `yaml:"outputs,omitempty"`
 	Nodes         []RawNode `yaml:"nodes"`
-	SequenceFlows []rawEdge `yaml:"sequence_flows"`
+	SequenceFlows []rawEdge `yaml:"sequence-flows"`
 }
 
 // rawSpec is the top-level YAML document.
@@ -129,17 +129,17 @@ func buildProcess(name string, rp rawProcess) (*Process, error) {
 // parseKind maps the YAML `type:` string onto a NodeKind.
 func parseKind(s string) (NodeKind, error) {
 	switch s {
-	case "start_event":
+	case "start-event":
 		return StartEvent, nil
-	case "end_event":
+	case "end-event":
 		return EndEvent, nil
-	case "service_task":
+	case "service-task":
 		return ServiceTask, nil
-	case "user_task":
+	case "user-task":
 		return UserTask, nil
 	case "gateway":
 		return Gateway, nil
-	case "call_activity":
+	case "call-activity":
 		return CallActivity, nil
 	default:
 		return 0, fmt.Errorf("unknown node type %q", s)

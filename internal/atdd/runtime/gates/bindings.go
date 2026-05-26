@@ -139,7 +139,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("legacy_at_acceptance_criteria_present", b.legacyATAcceptanceCriteriaPresent)
 	r.Register("legacy_ct_acceptance_criteria_present", b.legacyCTAcceptanceCriteriaPresent)
 	// Inverted-RED verify gates terminating each legacy sub-cycle. Read
-	// ctx[verify_class] stamped by the cycle-final run_tests service_task.
+	// ctx[verify_class] stamped by the cycle-final run_tests service-task.
 	// `ok` (or empty) → cycle ends green; `red` → STOP - HUMAN REVIEW with
 	// no loopback (per plan: no loopback edge from VERIFY back to TEST,
 	// to avoid the statemachine-test loop hazard).
@@ -162,7 +162,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("tests_pass", b.testsPass)
 	// Optional CT real-vs-stub verification (per AT/CT split plan): gates the
 	// pre-RUN verification step. `verify_real_required` reads the
-	// `verify_real_suite` call_activity param (set only by CT_RED_TEST today),
+	// `verify_real_suite` call-activity param (set only by CT_RED_TEST today),
 	// so AT phases route past it as a no-op. `verify_real_pass` reads the
 	// flag set by `verify_real_suite_passes`.
 	r.Register("verify_real_required", b.verifyRealRequired)
@@ -242,7 +242,7 @@ func (b bindings) refineRequested(ctx *statemachine.Context) statemachine.Outcom
 // refinementChanged is the post-BACKLOG_REFINEMENT branch: routes the
 // backlog_refinement sub-process to UPDATE_TICKET when the refiner
 // mutated the parsed-concepts artifact, and skips to the sub-process
-// end_event when refinement was a no-op. Reads the `refinement_changed`
+// end-event when refinement was a no-op. Reads the `refinement_changed`
 // flag set by the refine-acceptance-criteria agent's COMMIT (`Refinement Changed:
 // yes|no`); falls back to a prompt for hand-debugging if the upstream
 // dispatch hasn't run.
@@ -254,7 +254,7 @@ func (b bindings) refinementChanged(ctx *statemachine.Context) statemachine.Outc
 
 // refactorChanged is the post-AT_REFACTOR branch: routes the
 // at_refactor_system sub-process to COMMIT when the refactor agent
-// touched production code, and skips to the sub-process end_event when
+// touched production code, and skips to the sub-process end-event when
 // the refactor was a no-op (no improvement seen). Reads the
 // `refactor_changed` flag set by the refactor-system agent's COMMIT
 // (`Refactor Changed: yes|no`); falls back to a prompt for hand-debugging
@@ -498,7 +498,7 @@ func (b bindings) legacyCTAcceptanceCriteriaPresent(ctx *statemachine.Context) s
 
 // legacyATVerifyOutcome terminates the legacy AT sub-cycle's inverted-RED
 // verify gate. Reads ctx[verify_class] stamped by the cycle-final
-// run_tests service_task. Routing tokens:
+// run_tests service-task. Routing tokens:
 //
 //   - "ok"   — assembled legacy AT tests passed on first run as expected;
 //              cycle ends green.
@@ -626,7 +626,7 @@ func (b bindings) testsPass(ctx *statemachine.Context) statemachine.Outcome {
 
 // verifyRealRequired routes the optional "verify against real suite" branch
 // of red_phase_cycle. Reads the `verify_real_suite` param the calling
-// call_activity stamped onto Context.Params: a non-empty value means the
+// call-activity stamped onto Context.Params: a non-empty value means the
 // caller wants the orchestrator to run that suite before the regular RUN.
 // CT_RED_TEST sets it to <suite-contract-real>; AT phases leave it unset
 // and the gate routes straight through to RUN.

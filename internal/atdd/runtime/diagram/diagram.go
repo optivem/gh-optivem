@@ -135,7 +135,7 @@ func Render(eng *statemachine.Engine) string {
 func writeHeader(b *strings.Builder) {
 	b.WriteString("# ATDD Process Flow\n\n")
 	b.WriteString("> Generated from `internal/atdd/runtime/statemachine/process-flow.yaml` by `internal/atdd/runtime/diagram`. Do not edit by hand — edit the YAML and regenerate via `gh optivem process show > docs/process-diagram.md`.\n\n")
-	b.WriteString("Each section corresponds to one named process in the YAML. `call_activity` nodes appear as boxes pointing at the linked sub-process's heading.\n\n")
+	b.WriteString("Each section corresponds to one named process in the YAML. `call-activity` nodes appear as boxes pointing at the linked sub-process's heading.\n\n")
 	writeLegend(b)
 }
 
@@ -150,7 +150,7 @@ func writeLegend(b *strings.Builder) {
 	b.WriteString("- `((circle))` — start / end event\n")
 	b.WriteString("- `{diamond}` — gateway (decision)\n")
 	b.WriteString("- `[[subroutine]]` — service task — mechanical step run by the Go runtime (white)\n")
-	b.WriteString("- `[rectangle]` — user task — LLM agent (dark blue) or human STOP (yellow); `call_activity` rectangles are unfilled and link to a sub-process heading\n")
+	b.WriteString("- `[rectangle]` — user task — LLM agent (dark blue) or human STOP (yellow); `call-activity` rectangles are unfilled and link to a sub-process heading\n")
 	b.WriteString("- `[/skewed/]` — published outputs of a process (dashed border)\n\n")
 	b.WriteString("```mermaid\nflowchart LR\n")
 	b.WriteString("    EVT((Start / End))\n")
@@ -250,7 +250,7 @@ func writeProcessSection(b *strings.Builder, name string, process *statemachine.
 
 // writeOutputsBlock emits a BPMN-style data-object node listing the
 // process's published outputs and a dashed `produces` edge from every
-// reachable end_event to that node. No-op when the process has no
+// reachable end-event to that node. No-op when the process has no
 // outputs declared.
 func writeOutputsBlock(b *strings.Builder, name string, process *statemachine.Process) {
 	if len(process.Outputs) == 0 {
@@ -352,20 +352,20 @@ func writeGroupSubgraph(b *strings.Builder, process *statemachine.Process, g *gr
 
 // writeNode emits one Mermaid node line. Shape depends on the YAML
 // node type; label comes from the `documentation:` field (with `name`
-// then `id` as fallbacks). call_activity nodes get a "see § …"
+// then `id` as fallbacks). call-activity nodes get a "see § …"
 // suffix pointing the reader at the sub-process's heading.
 //
 // Shape mapping (BPMN-shaped vocabulary):
 //
-//	start_event / end_event → circle              `((label))`
+//	start-event / end-event → circle              `((label))`
 //	gateway                 → diamond             `{label}`
-//	service_task            → subroutine          `[[label]]`
-//	user_task               → plain rectangle     `[label]`
-//	call_activity           → plain rectangle     `[label]`  (with "see § …" suffix)
+//	service-task            → subroutine          `[[label]]`
+//	user-task               → plain rectangle     `[label]`
+//	call-activity           → plain rectangle     `[label]`  (with "see § …" suffix)
 //
 // Shape conveys the BPMN node type; executor coloring (applied later
 // in writeExecutorStyling) conveys *who* runs each task: white =
-// service_task (Go runtime), dark blue = LLM agent, yellow = human.
+// service-task (Go runtime), dark blue = LLM agent, yellow = human.
 func writeNode(b *strings.Builder, n statemachine.Node) {
 	label := n.Raw.Documentation
 	if label == "" {
@@ -407,12 +407,12 @@ func writeEdge(b *strings.Builder, e statemachine.Edge) {
 // can see at a glance which steps the Go runtime runs, which an LLM
 // agent runs, and which a human runs. Three classes:
 //
-//	serviceNode  white fill, black text   — service_task (Go runtime)
-//	agentNode    dark blue, white text    — user_task with agent: <name>
-//	humanNode    yellow, black text       — user_task with agent: human
+//	serviceNode  white fill, black text   — service-task (Go runtime)
+//	agentNode    dark blue, white text    — user-task with agent: <name>
+//	humanNode    yellow, black text       — user-task with agent: human
 //
-// Empty classes are omitted. start_event / end_event / gateway /
-// call_activity are unstyled — they're shape-distinguished and not
+// Empty classes are omitted. start-event / end-event / gateway /
+// call-activity are unstyled — they're shape-distinguished and not
 // "executed by" anyone in the same sense.
 func writeExecutorStyling(b *strings.Builder, process *statemachine.Process) {
 	var service, agent, human []string

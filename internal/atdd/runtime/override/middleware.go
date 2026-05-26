@@ -48,7 +48,7 @@ type Hooks struct {
 // read these hints and adjust prompt construction accordingly.
 //
 // The hints are republished on every node dispatch — including nodes
-// without an entry in Extra / Replace — so a previous user_task's hints
+// without an entry in Extra / Replace — so a previous user-task's hints
 // do not leak into a later, unrelated dispatch.
 func Wrap(orig statemachine.NodeFn, nodeID string, hooks *Hooks) statemachine.NodeFn {
 	return func(ctx *statemachine.Context) statemachine.Outcome {

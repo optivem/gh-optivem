@@ -134,7 +134,7 @@ func (d Deps) withDefaults() Deps {
 func RegisterAll(r *Registry, deps Deps) {
 	deps = deps.withDefaults()
 	a := actions{deps: deps}
-	r.Register("pick_top_ready", a.pickTopReady)
+	r.Register("pick-top-ready", a.pickTopReady)
 	r.Register("move_to_in_progress", a.moveToInProgress)
 	r.Register("read_ticket_type", a.readTicketType)
 	r.Register("read_subtype", a.readSubtype)
@@ -159,7 +159,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	// above; the cycle's COMPILE node looks up by templated name at runtime.
 	r.Register("run_targeted_tests", a.runTargetedTests)
 	// Optional CT real-vs-stub verification (per AT/CT split plan): runs the
-	// suite named in the `verify_real_suite` call_activity param against the
+	// suite named in the `verify_real_suite` call-activity param against the
 	// just-written tests and asserts every one passes. Driven by the
 	// `verify_real_required` gate, which is no-op for AT phases.
 	r.Register("verify_real_suite_passes", a.verifyRealSuitePasses)
@@ -181,7 +181,7 @@ func RegisterAll(r *Registry, deps Deps) {
 // `disable_targets` keys used to be consumed by the deterministic
 // disable_change_driven / enable_change_driven Go actions; those actions
 // were replaced on 2026-05-20 by the `disable-tests` / `enable-tests` agent
-// prompts (user_task in BPMN) and the corresponding keys are now consumed
+// prompts (user-task in BPMN) and the corresponding keys are now consumed
 // by the agent template engine's ${var} substitution rather than by Go
 // code. See plans/20260520-0001-switch-disable-enable-tests-to-agents.md.
 const (
@@ -211,7 +211,7 @@ const (
 
 	// CtxKeyVerifyRealPass is the bool verify_real_suite_passes writes to
 	// record whether every test passed against the suite named in the
-	// `verify_real_suite` call_activity param. Read by the verify_real_pass
+	// `verify_real_suite` call-activity param. Read by the verify_real_pass
 	// gate.
 	CtxKeyVerifyRealPass = "verify_real_pass"
 
@@ -223,7 +223,7 @@ const (
 
 	// CtxKeyPhaseScopeViolatingPaths is the []string of modified paths
 	// check_phase_scope found outside scope. Populated only on violations;
-	// consumed by the STOP_SCOPE_VIOLATION user_task to render the
+	// consumed by the STOP_SCOPE_VIOLATION user-task to render the
 	// human-review payload.
 	CtxKeyPhaseScopeViolatingPaths = "phase_scope_violating_paths"
 )
@@ -248,7 +248,7 @@ type actions struct {
 func (a actions) pickTopReady(ctx *statemachine.Context) statemachine.Outcome {
 	issue, err := a.deps.Tracker.PickReady(context.Background())
 	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("pick_top_ready: %w", err)}
+		return statemachine.Outcome{Err: fmt.Errorf("pick-top-ready: %w", err)}
 	}
 	writeIssueToContext(ctx, issue)
 	fmt.Fprintf(a.deps.Stdout, "Picked top Ready: #%s %s (%s)\n", issue.ID, issue.Title, issue.URL)
@@ -257,7 +257,7 @@ func (a actions) pickTopReady(ctx *statemachine.Context) statemachine.Outcome {
 
 // moveToInProgress sets the picked issue's status to "In progress" via
 // Tracker.SetStatus. Reads issue_handle from Context — populated by
-// pick_top_ready (board mode) or by the driver's issue-lookup path
+// pick-top-ready (board mode) or by the driver's issue-lookup path
 // (specific-issue mode).
 func (a actions) moveToInProgress(ctx *statemachine.Context) statemachine.Outcome {
 	handle := ctx.GetString("issue_handle")
@@ -713,8 +713,8 @@ func (a actions) runSmokeTest(ctx *statemachine.Context) statemachine.Outcome {
 
 // commitPhase creates the phase commit. The message format mirrors
 // cycles.md: `<Ticket Title> | <CHANGE TYPE>`. Both pieces come from
-// Context — issue_title from pick_top_ready / move_to_in_progress,
-// change_type from the call_activity params (substituted into the action's
+// Context — issue_title from pick-top-ready / move_to_in_progress,
+// change_type from the call-activity params (substituted into the action's
 // params at dispatch time).
 func (a actions) commitPhase(ctx *statemachine.Context) statemachine.Outcome {
 	title := ctx.GetString("issue_title")
@@ -898,7 +898,7 @@ func isCompileFailureOutput(out []byte) bool {
 }
 
 // verifyRealSuitePasses runs the suite named in the `verify_real_suite`
-// call_activity param against the test methods in CtxKeyTestNames and
+// call-activity param against the test methods in CtxKeyTestNames and
 // asserts every one passes. Used by WRITE_CONTRACT_TESTS to prove the new contract
 // tests describe behaviour that the real external system actually
 // honours, before the regular RUN exercises the dockerized stub. AT
@@ -964,7 +964,7 @@ func (a actions) verifyRealSuitePasses(ctx *statemachine.Context) statemachine.O
 // against the allowed set with directory-aware prefix matching:
 // diffPath ∈ scope iff diffPath == P || diffPath.startsWith(P + "/").
 //
-// Phase id source: the call_activity invoking red_phase_cycle /
+// Phase id source: the call-activity invoking red_phase_cycle /
 // green_phase_cycle passes phase_id: <NODE_ID> in its params; this action
 // reads ctx.Params["phase_id"].
 //
@@ -973,11 +973,11 @@ func (a actions) verifyRealSuitePasses(ctx *statemachine.Context) statemachine.O
 //   - CtxKeyPhaseScopeViolatingPaths ([]string) — populated on violation
 //
 // The phase_scope_clean gate reads the boolean; the STOP_SCOPE_VIOLATION
-// user_task reads the slice to render the human-review payload.
+// user-task reads the slice to render the human-review payload.
 func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome {
 	phaseID := ctx.Params["phase_id"]
 	if phaseID == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: phase_id not set in Params — the call_activity invoking red_phase_cycle / green_phase_cycle must pass phase_id")}
+		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: phase_id not set in Params — the call-activity invoking red_phase_cycle / green_phase_cycle must pass phase_id")}
 	}
 
 	scopes, err := atdd.LoadPhaseScopes()

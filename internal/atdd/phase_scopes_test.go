@@ -34,7 +34,7 @@ func loadEngine(t *testing.T) *statemachine.Engine {
 // "" if the node has no dispatch, dispatches a non-writing agent
 // (`human` — the sole non-writing agent), or dispatches a templated
 // agent (e.g. `${agent}` — the concrete name lives on the parent
-// call_activity, not here, so checking the parent is sufficient).
+// call-activity, not here, so checking the parent is sufficient).
 func concreteAgent(node statemachine.Node) string {
 	var agent string
 	switch node.Kind {
@@ -105,8 +105,8 @@ func TestPhaseScopes_ForwardFK_PhasesExistInBPMN(t *testing.T) {
 // artifact-only / external-system-only doctrinal exemption — see
 // runtime/shared/scope.md).
 //
-// Filtering by writing-agent (rather than e.g. user_task-only) means
-// CT_GREEN_EXTERNAL_SYSTEM_STUB (currently a bare user_task) and the
+// Filtering by writing-agent (rather than e.g. user-task-only) means
+// CT_GREEN_EXTERNAL_SYSTEM_STUB (currently a bare user-task) and the
 // templated call_activities (AT_RED_*, CT_RED_*, structure-cycle agents)
 // are all caught by one rule. The SSoT for the `scope: none` exemption
 // is the prompt frontmatter itself, read here via agents.HasNoneScope —
