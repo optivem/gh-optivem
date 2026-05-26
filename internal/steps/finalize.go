@@ -165,12 +165,25 @@ func commitAndPushRepo(repoDir, fullRepo, commitMsg string, preExisted bool) {
 	}
 	// `-u origin main` works for both fresh repos (ref-creation push, since
 	// CreateRepo no longer pre-pushes a placeholder commit) and existing repos
-	// (the upstream is already set; -u just re-applies it). No retry: post-create
-	// replica lag is documented at clone time (see MustRunPostCreate) but not
-	// at push time -- by Phase 5 the repo has been touched by clone + several
-	// gh api calls, so every replica has caught up. Auth, permission, and
-	// branch-protection failures are permanent and should fail fast.
-	if out, err := shell.Run("git push -u origin main", true, repoDir); err != nil {
+	// (the upstream is already set; -u just re-applies it).
+	//
+	// Fresh repos (!preExisted) go through shell.MustRunPostCreatePush, which
+	// retries narrowly on the two GitHub ref-store replica-lag messages
+	// ("cannot lock ref" / "reference already exists") observed in acceptance
+	// run 26456900412 job 77901798586. The earlier assumption that Phase 5's
+	// clone + gh api calls had warmed every replica was falsified by that run.
+	// The retry is bounded (4 attempts, 5s→15s→45s) and classifier-pinned
+	// (TestMustRunPostCreatePush_Classifier in shell/retry_test.go); auth,
+	// permission, non-fast-forward, and branch-protection failures still fail
+	// fast on the first attempt.
+	//
+	// Pre-existing repos do fast-forward against a settled main, so the
+	// ref-creation lag class cannot apply — they keep plain shell.Run so a
+	// genuine non-fast-forward / permission / branch-protection failure
+	// surfaces immediately.
+	if !preExisted {
+		shell.MustRunPostCreatePush("git push -u origin main", repoDir)
+	} else if out, err := shell.Run("git push -u origin main", true, repoDir); err != nil {
 		log.Fatalf("git push failed in %s: %v\n%s", fullRepo, err, out)
 	}
 	log.Successf("Pushed template to %s", fullRepo)

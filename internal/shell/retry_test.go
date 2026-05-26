@@ -212,6 +212,63 @@ func TestRunWithRetryLoop_PermissiveClassifier(t *testing.T) {
 	})
 }
 
+// TestMustRunPostCreatePush_Classifier pins the exact server messages that
+// drive classifyPostCreatePush. If GitHub changes either wording, this test
+// fails and we update the regex deliberately — instead of silently bypassing
+// the retry the next time replica lag bites at the post-create push site.
+//
+// Failure fixtures: "cannot lock ref 'refs/heads/main'" + "reference already
+// exists" come from acceptance run 26456900412 job 77901798586 (matrix leg
+// "Run (monolith, multirepo, java, typescript)"). The remaining fixtures lock
+// in the negative cases — push failures that must fail fast.
+func TestMustRunPostCreatePush_Classifier(t *testing.T) {
+	err := errors.New("exit 1")
+	cases := []struct {
+		name string
+		out  string
+		err  error
+		want bool
+	}{
+		{
+			"cannot lock ref retries",
+			"remote: cannot lock ref 'refs/heads/main': reference already exists\n ! [remote rejected] main -> main",
+			err, true,
+		},
+		{
+			"reference already exists retries",
+			"remote: error: reference already exists",
+			err, true,
+		},
+		{
+			"pre-receive hook decline does not retry",
+			"! [remote rejected] main -> main (pre-receive hook declined)",
+			err, false,
+		},
+		{
+			"non-fast-forward does not retry",
+			"! [rejected]        main -> main (non-fast-forward)",
+			err, false,
+		},
+		{
+			"permission denied does not retry",
+			"remote: Permission to owner/repo.git denied to user.",
+			err, false,
+		},
+		{
+			"rate limit passes through immediately",
+			"", &RateLimitExceeded{Msg: "rl"}, false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := classifyPostCreatePush(tc.out, tc.err)
+			if got != tc.want {
+				t.Fatalf("classifyPostCreatePush(%q) = %v, want %v", tc.out, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRunWithRetryLoop_RateLimitPassthrough(t *testing.T) {
 	var sleeps []time.Duration
 	withFakeSleep(t, &sleeps)

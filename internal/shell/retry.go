@@ -130,6 +130,63 @@ func MustRunPostCreate(cmdStr, cwd string) string {
 	return out
 }
 
+// postCreatePushReplicaLag matches the two GitHub ref-store replica-lag
+// messages observed at the post-create `git push` site. Acceptance run
+// 26456900412 job 77901798586 produced both in the same failure:
+//
+//	remote: cannot lock ref 'refs/heads/main': reference already exists
+//	 ! [remote rejected] main -> main
+//
+// Pinned by TestMustRunPostCreatePush_Classifier in retry_test.go — if
+// GitHub changes either wording, that test fails and we update the regex
+// deliberately, instead of silently bypassing the retry.
+var postCreatePushReplicaLag = regexp.MustCompile(
+	`(?i)cannot lock ref|reference already exists`)
+
+// classifyPostCreatePush returns true only when the output matches the narrow
+// replica-lag pattern. RateLimitExceeded passes through to the caller (no
+// retry); any other wording — non-fast-forward, auth, permission,
+// branch-protection — also short-circuits so genuine push failures surface on
+// the first attempt instead of being papered over.
+func classifyPostCreatePush(out string, err error) bool {
+	var rle *RateLimitExceeded
+	if errors.As(err, &rle) {
+		return false
+	}
+	return postCreatePushReplicaLag.MatchString(out)
+}
+
+// MustRunPostCreatePush runs a `git push` immediately after `gh repo create`,
+// retrying ONLY on the two ref-store replica-lag messages matched by
+// postCreatePushReplicaLag. Both indicate a replica that hasn't converged on
+// main's state yet; a retry against a (possibly different) replica typically
+// lands cleanly. Anything else — non-fast-forward, auth, permission,
+// branch-protection (including `! [remote rejected]` on its own) — is permanent
+// and fails fast.
+//
+// Use ONLY for the initial template push to a freshly-created repo
+// (commitAndPushRepo with preExisted=false in internal/steps/finalize.go).
+// Subsequent fast-forward pushes against settled repos must use plain
+// shell.Run; the lag class does not apply there.
+//
+// This deliberately overrides the package-level RetryHardFail rule (which lists
+// `! [remote rejected]` as hard-fail) for the narrow post-create window only.
+// RetryHardFail's classification remains correct for plain MustRunWithRetry
+// callers. Sibling write-side analogue of MustRunPostCreate (read side).
+func MustRunPostCreatePush(cmdStr, cwd string) string {
+	out, err := runWithRetryLoop(
+		func() (string, error) { return Run(cmdStr, true, cwd) },
+		classifyPostCreatePush,
+		defaultRetryAttempts,
+		defaultRetryDelays,
+		"retry",
+	)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	return out
+}
+
 // MustRunStdinWithRetry is the retry-wrapped sibling of RunStdin. Aborts on
 // hard-fail or after retries are exhausted. The stdin value never appears in
 // logs, retry chatter, or error messages — safe for secrets.
