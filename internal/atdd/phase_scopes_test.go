@@ -262,7 +262,7 @@ func TestPromptInlineScopeKeys_MatchPhaseScope(t *testing.T) {
 	// Iterate writing-agent MIDs (post-1701 split): the MID's process
 	// name is the task-name (verb, indexes engine.Scope), and its
 	// EXECUTE_AGENT `agent:` param names the agent (noun, indexes the
-	// embedded prompt file). Recovery agents (command-failed-diagnoser
+	// embedded prompt file). Recovery agents (command-failed-fixer
 	// et al.) have no MID of their own — their scope is inherited from
 	// originating-task-name at runtime — so iterating MIDs naturally
 	// excludes them.

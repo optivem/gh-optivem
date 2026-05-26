@@ -540,13 +540,13 @@ processes:
 //
 //	execute-command.RUN_COMMAND → GATE_COMMAND_SUCCEEDED=false → FIX
 //	  → fix.EXECUTE_AGENT (params task-name="fix-${failure-kind}",
-//	                              agent="${failure-kind}-diagnoser")
+//	                              agent="${failure-kind}-fixer")
 //	    → execute-agent.RUN_AGENT (agent: ${agent})
 //
 // At RUN_AGENT the engine resolves `${agent}` against ctx.Params, which
 // in turn was expanded with `${failure-kind}` resolved via ExpandParams's
 // state fallback. The recorded AgentFn dispatch must be the literal
-// `"command-failed-diagnoser"` — if Items 1, 2, the YAML wiring, or the
+// `"command-failed-fixer"` — if Items 1, 2, the YAML wiring, or the
 // 1701 task-name/agent split regresses, this test fails before runtime
 // sees a missing-prompt error.
 //
@@ -554,7 +554,7 @@ processes:
 // walked here (execute-command, fix, execute-agent, approve) have no
 // loopback edges, so the test is bounded. `maxDispatchesPerProcess`
 // catches the failure mode anyway if a future YAML edit introduces one.
-func TestExecuteCommand_FailureDispatchesCommandFailedDiagnoserAgent(t *testing.T) {
+func TestExecuteCommand_FailureDispatchesCommandFailedFixerAgent(t *testing.T) {
 	eng, err := LoadDefault()
 	if err != nil {
 		t.Fatalf("LoadDefault: %v", err)
@@ -629,11 +629,11 @@ func TestExecuteCommand_FailureDispatchesCommandFailedDiagnoserAgent(t *testing.
 
 	// The approve sub-process dispatches the human user-task multiple
 	// times during the walk — we ignore those and look for the
-	// command-failed-diagnoser dispatch.
-	foundDiagnoser := false
+	// command-failed-fixer dispatch.
+	foundFixer := false
 	for _, name := range dispatchedAgents {
-		if name == "command-failed-diagnoser" {
-			foundDiagnoser = true
+		if name == "command-failed-fixer" {
+			foundFixer = true
 		}
 		// Guard against the original bug surface: an unresolved
 		// template leaking into AgentFn. Catches a regression where
@@ -642,27 +642,18 @@ func TestExecuteCommand_FailureDispatchesCommandFailedDiagnoserAgent(t *testing.
 			t.Errorf("agent name with unresolved template leaked into dispatch: %q (full dispatch trail: %v)", name, dispatchedAgents)
 		}
 	}
-	if !foundDiagnoser {
-		t.Errorf("RUN_AGENT did not dispatch command-failed-diagnoser; full dispatch trail: %v", dispatchedAgents)
+	if !foundFixer {
+		t.Errorf("RUN_AGENT did not dispatch command-failed-fixer; full dispatch trail: %v", dispatchedAgents)
 	}
 }
 
-// TestExecuteAgent_ValidationFailureDispatchesDiagnoserForFailureKind is
-// the twin of TestExecuteCommand_FailureDispatchesCommandFailedDiagnoserAgent
+// TestExecuteAgent_ValidationFailureDispatchesFixerForFailureKind is
+// the twin of TestExecuteCommand_FailureDispatchesCommandFailedFixerAgent
 // for the `execute-agent` → `fix` → `execute-agent` recovery branch (plan
 // 20260526-1530 Item 4 + 20260526-1701 task-name/agent split).
 // `validateOutputsAndScopes` writes one of two failure-kinds —
 // `missing-output` or `scope-diff` — and the recovery path must dispatch
-// the matching `<kind>-diagnoser` agent (noun form, post-1701 split).
-//
-// At the time this test was written the two `fix-missing-output` and
-// `fix-scope-diff` prompts did NOT yet exist (out of scope here; see
-// the sibling follow-up plan
-// plans/upcoming/fix-missing-output-and-scope-diff-prompts.md). The
-// test uses a recording AgentFn so the dispatch landing on the right
-// NAME is verified independently of prompt availability — the missing
-// prompts only matter when the real agents.Lookup is in play, not in
-// this synthetic registry.
+// the matching `<kind>-fixer` agent (noun form, post-1701 split).
 //
 // Memory `feedback_statemachine_test_loop_hazard`: as in Item 3, the
 // walked processes (execute-agent, fix, execute-agent inner, approve)
@@ -670,7 +661,7 @@ func TestExecuteCommand_FailureDispatchesCommandFailedDiagnoserAgent(t *testing.
 // validate-outputs-and-scopes, but `fix-on-failure=false` on the inner
 // call-site routes its GATE_FIX_ON_FAILURE to APPROVE_POST — no
 // second-level recursion.
-func TestExecuteAgent_ValidationFailureDispatchesDiagnoserForFailureKind(t *testing.T) {
+func TestExecuteAgent_ValidationFailureDispatchesFixerForFailureKind(t *testing.T) {
 	cases := []struct {
 		failureKind string
 		wantAgent   string
@@ -678,8 +669,8 @@ func TestExecuteAgent_ValidationFailureDispatchesDiagnoserForFailureKind(t *test
 		// validateOutputsAndScopes priority is missing-output wins
 		// over scope-diff (bindings.go), so each case here pins the
 		// observable kind after the action's own routing decision.
-		{failureKind: "missing-output", wantAgent: "missing-output-diagnoser"},
-		{failureKind: "scope-diff", wantAgent: "scope-diff-diagnoser"},
+		{failureKind: "missing-output", wantAgent: "missing-output-fixer"},
+		{failureKind: "scope-diff", wantAgent: "scope-diff-fixer"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.failureKind, func(t *testing.T) {

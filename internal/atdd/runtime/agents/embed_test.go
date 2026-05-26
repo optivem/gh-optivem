@@ -144,7 +144,7 @@ func TestParseTuningFrontmatter_Accepts(t *testing.T) {
 
 func TestFixKindAgentsExist(t *testing.T) {
 	// Pins the closed set of failure-kinds the YAML's
-	// `agent: "${failure-kind}-diagnoser"` template (process-flow.yaml,
+	// `agent: "${failure-kind}-fixer"` template (process-flow.yaml,
 	// `fix` MID) resolves against. Every kind here must have a matching
 	// agent definition embedded under internal/assets/runtime/agents/atdd/.
 	//
@@ -154,7 +154,7 @@ func TestFixKindAgentsExist(t *testing.T) {
 	// and ExpandParams resolves `${failure-kind}` via its
 	// params-then-state scope chain (statemachine/run.go). This test
 	// guards the dispatch surface: adding a new kind requires adding a
-	// <kind>-diagnoser.md, and a prompt rename fails this test before
+	// <kind>-fixer.md, and a prompt rename fails this test before
 	// runtime sees an unknown agent name.
 	wantKinds := []string{
 		"unexpected-passing-tests",
@@ -168,7 +168,7 @@ func TestFixKindAgentsExist(t *testing.T) {
 		names[n] = true
 	}
 	for _, kind := range wantKinds {
-		agentName := kind + "-diagnoser"
+		agentName := kind + "-fixer"
 		if !names[agentName] {
 			t.Errorf("missing agent %q for failure-kind %q", agentName, kind)
 		}
