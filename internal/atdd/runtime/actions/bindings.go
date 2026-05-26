@@ -48,6 +48,13 @@ type Deps struct {
 	Stderr     io.Writer
 	ProjectURL string // optional — explicit override for tracker operations
 	RepoPath   string // optional — defaults to current working directory
+	// Config is the already-loaded gh-optivem.yaml. Threaded in by the
+	// driver so scope-checking actions (check-phase-scope,
+	// validate-outputs-and-scopes) read the same file the operator passed
+	// via --config / $GH_OPTIVEM_CONFIG, not a hard-coded
+	// <repoPath>/gh-optivem.yaml. nil is treated as a wiring bug — the
+	// affected actions surface a hard error.
+	Config *projectconfig.Config
 	// Tracker is the seam pickTopReady's PickReady call goes through.
 	// Optional — withDefaults constructs a github adapter from
 	// ProjectURL + Gh when unset. Tests inject fakes either by setting
@@ -370,12 +377,9 @@ func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome
 			"check_phase_scope: phase id %q not in internal/atdd/phase-scopes.yaml — add an entry", phaseID)}
 	}
 
-	cfg, err := projectconfig.Load(a.deps.RepoPath)
-	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: load gh-optivem.yaml: %w", err)}
-	}
+	cfg := a.deps.Config
 	if cfg == nil {
-		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: gh-optivem.yaml not found under %s", a.deps.RepoPath)}
+		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: gh-optivem.yaml not loaded — driver must inject actions.Deps.Config")}
 	}
 
 	allowed, err := resolveLayerPaths(layers, cfg)
@@ -637,12 +641,9 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 		return statemachine.Outcome{}
 	}
 
-	cfg, err := projectconfig.Load(a.deps.RepoPath)
-	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: load gh-optivem.yaml: %w", err)}
-	}
+	cfg := a.deps.Config
 	if cfg == nil {
-		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: gh-optivem.yaml not found under %s", a.deps.RepoPath)}
+		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: gh-optivem.yaml not loaded — driver must inject actions.Deps.Config")}
 	}
 	allowed, err := resolveLayerPaths(scopes, cfg)
 	if err != nil {

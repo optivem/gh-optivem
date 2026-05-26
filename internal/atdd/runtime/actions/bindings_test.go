@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
 // ---------------------------------------------------------------------------
@@ -149,7 +150,7 @@ func TestPathInScope(t *testing.T) {
 // AT_RED_TEST and AT_GREEN_SYSTEM rows reference. Used by the integration
 // tests below to exercise the layer-name → resolved-path join without
 // shelling out to `gh optivem config init`.
-func writePhaseScopeTestConfig(t *testing.T, repoPath string) {
+func writePhaseScopeTestConfig(t *testing.T, repoPath string) *projectconfig.Config {
 	t.Helper()
 	body := `project:
   provider: github
@@ -185,6 +186,14 @@ system-test:
 	if err := os.WriteFile(filepath.Join(repoPath, "gh-optivem.yaml"), []byte(body), 0o644); err != nil {
 		t.Fatalf("write gh-optivem.yaml: %v", err)
 	}
+	cfg, err := projectconfig.Load(repoPath)
+	if err != nil {
+		t.Fatalf("load gh-optivem.yaml: %v", err)
+	}
+	if cfg == nil {
+		t.Fatalf("load gh-optivem.yaml: cfg is nil")
+	}
+	return cfg
 }
 
 func TestCheckPhaseScope_RequiresPhaseID(t *testing.T) {
@@ -211,13 +220,13 @@ func TestCheckPhaseScope_UnknownPhaseIsHardError(t *testing.T) {
 
 func TestCheckPhaseScope_CleanWhenAllModificationsInScope(t *testing.T) {
 	repoPath := t.TempDir()
-	writePhaseScopeTestConfig(t, repoPath)
+	cfg := writePhaseScopeTestConfig(t, repoPath)
 	git := newFakeRunner(t, "git")
 	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
 		[]byte("system-test/typescript/tests/latest/acceptance/foo.spec.ts\ndsl/typescript/src/core/Logic.ts\n"), nil)
 	git.on([]string{"-C", repoPath, "status", "--porcelain"},
 		[]byte(" M system-test/typescript/tests/latest/acceptance/foo.spec.ts\n"), nil)
-	a := newActions(Deps{Git: git, RepoPath: repoPath})
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg})
 	ctx := statemachine.NewContext()
 	ctx.Params["phase_id"] = "AT_RED_TEST"
 	out := a.checkPhaseScope(ctx)
@@ -234,7 +243,7 @@ func TestCheckPhaseScope_CleanWhenAllModificationsInScope(t *testing.T) {
 
 func TestCheckPhaseScope_ViolationPopulatesContext(t *testing.T) {
 	repoPath := t.TempDir()
-	writePhaseScopeTestConfig(t, repoPath)
+	cfg := writePhaseScopeTestConfig(t, repoPath)
 	git := newFakeRunner(t, "git")
 	// AT_RED_TEST scope: at-test, dsl-port, dsl-core. The driver-port edit
 	// is outside scope.
@@ -243,7 +252,7 @@ func TestCheckPhaseScope_ViolationPopulatesContext(t *testing.T) {
 	git.on([]string{"-C", repoPath, "status", "--porcelain"},
 		[]byte(""), nil)
 	var stderr bytes.Buffer
-	a := newActions(Deps{Git: git, RepoPath: repoPath, Stderr: &stderr})
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &stderr})
 	ctx := statemachine.NewContext()
 	ctx.Params["phase_id"] = "AT_RED_TEST"
 	out := a.checkPhaseScope(ctx)
@@ -267,7 +276,7 @@ func TestCheckPhaseScope_ViolationPopulatesContext(t *testing.T) {
 
 func TestCheckPhaseScope_RenameTracksBothEndpoints(t *testing.T) {
 	repoPath := t.TempDir()
-	writePhaseScopeTestConfig(t, repoPath)
+	cfg := writePhaseScopeTestConfig(t, repoPath)
 	git := newFakeRunner(t, "git")
 	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
 		[]byte("dsl/typescript/src/core/Old.ts\nsomewhere/else/New.ts\n"), nil)
@@ -275,7 +284,7 @@ func TestCheckPhaseScope_RenameTracksBothEndpoints(t *testing.T) {
 	// is outside scope; the action must surface it.
 	git.on([]string{"-C", repoPath, "status", "--porcelain"},
 		[]byte("R  dsl/typescript/src/core/Old.ts -> somewhere/else/New.ts\n"), nil)
-	a := newActions(Deps{Git: git, RepoPath: repoPath, Stderr: &bytes.Buffer{}})
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}})
 	ctx := statemachine.NewContext()
 	ctx.Params["phase_id"] = "AT_RED_DSL" // scope: dsl-core, driver-port
 	out := a.checkPhaseScope(ctx)
@@ -476,14 +485,14 @@ func TestValidateOutputsAndScopes_OutputsPresent_NoScopes_IsValid(t *testing.T) 
 
 func TestValidateOutputsAndScopes_ScopeDiff_FlagsAndKind(t *testing.T) {
 	repoPath := t.TempDir()
-	writePhaseScopeTestConfig(t, repoPath)
+	cfg := writePhaseScopeTestConfig(t, repoPath)
 	git := newFakeRunner(t, "git")
 	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
 		[]byte("dsl/typescript/src/core/Logic.ts\nsomewhere/else/Stray.ts\n"), nil)
 	git.on([]string{"-C", repoPath, "status", "--porcelain"},
 		[]byte(""), nil)
 	var stderr bytes.Buffer
-	a := newActions(Deps{Git: git, RepoPath: repoPath, Stderr: &stderr})
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &stderr})
 	ctx := statemachine.NewContext()
 	// declared scopes covers dsl-core but not "somewhere/else".
 	ctx.Params["scopes"] = "dsl-core,driver-port"
@@ -504,13 +513,13 @@ func TestValidateOutputsAndScopes_ScopeDiff_FlagsAndKind(t *testing.T) {
 
 func TestValidateOutputsAndScopes_AllClean_IsValid(t *testing.T) {
 	repoPath := t.TempDir()
-	writePhaseScopeTestConfig(t, repoPath)
+	cfg := writePhaseScopeTestConfig(t, repoPath)
 	git := newFakeRunner(t, "git")
 	git.on([]string{"-C", repoPath, "diff", "--name-only", "HEAD"},
 		[]byte("dsl/typescript/src/core/Logic.ts\ndriver/typescript/src/port/Port.ts\n"), nil)
 	git.on([]string{"-C", repoPath, "status", "--porcelain"},
 		[]byte(""), nil)
-	a := newActions(Deps{Git: git, RepoPath: repoPath, Stderr: &bytes.Buffer{}})
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}})
 	ctx := statemachine.NewContext()
 	ctx.Params["outputs"] = "dsl-port-changed"
 	ctx.Params["scopes"] = "dsl-core,driver-port"
@@ -529,7 +538,7 @@ func TestValidateOutputsAndScopes_MissingOutputWins_OverScopeDiff(t *testing.T) 
 	// agent must first emit the flag — there is nothing to validate
 	// scope-wise if the agent didn't even claim to have done the work).
 	repoPath := t.TempDir()
-	writePhaseScopeTestConfig(t, repoPath)
+	cfg := writePhaseScopeTestConfig(t, repoPath)
 	git := newFakeRunner(t, "git")
 	// modifiedPathsSinceHead is not consulted on the missing-output path,
 	// but if it were, this would be a scope-diff candidate.
@@ -537,7 +546,7 @@ func TestValidateOutputsAndScopes_MissingOutputWins_OverScopeDiff(t *testing.T) 
 		[]byte("somewhere/else/Stray.ts\n"), nil)
 	git.on([]string{"-C", repoPath, "status", "--porcelain"},
 		[]byte(""), nil)
-	a := newActions(Deps{Git: git, RepoPath: repoPath, Stderr: &bytes.Buffer{}})
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}})
 	ctx := statemachine.NewContext()
 	ctx.Params["outputs"] = "dsl-port-changed"
 	ctx.Params["scopes"] = "dsl-core"

@@ -229,7 +229,8 @@ func Run(ctx context.Context, opts Options) error {
 	actionReg := actions.New()
 	actions.RegisterAll(actionReg, actions.Deps{
 		ProjectURL: resolvedProjectURL,
-		RepoPath:   opts.RepoPath,
+		RepoPath:   repoPath,
+		Config:     cfg,
 		Autonomous: opts.Autonomous,
 	})
 
