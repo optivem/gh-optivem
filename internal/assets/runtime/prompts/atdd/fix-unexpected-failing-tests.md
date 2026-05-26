@@ -22,6 +22,28 @@ This is one of the closed `fix-*` failure-kinds. Your job is **diagnosis**, not 
 - `${changed_files}` — the working-tree diff the WRITE phase just produced. Cross-reference against the failure messages — most regressions are explained by a single line in the diff.
 - `${allowed_roots}` — multi-line block restricting where you may read or propose edits.
 
+## Exception to the anti-rediscovery rule
+
+The preamble forbids exploratory `git`/`gh` calls because every other
+ATDD phase has its context fully substituted. Diagnosis is different:
+`${changed_files}` lists *which files* the WRITE phase touched, but
+not the *content* of the changes. To diagnose what broke, you need to
+see the actual diff.
+
+You may run:
+
+- `git diff` (or `git diff HEAD`) — to see the line-level changes the
+  WRITE phase produced in the working tree.
+- `git show HEAD:<path>` — to see the pre-WRITE state of a file you've
+  already read in its current form.
+
+You may NOT run `gh issue view`, `git log`, `git status`, `git branch`,
+or `git rev-parse` — the ticket body and history are irrelevant to "what
+just changed," and the working tree state is already in `${changed_files}`.
+
+This exception applies only to this fix-* task. The CYCLE will not
+re-dispatch you with the exception in force.
+
 ## What to do
 
 1. **Read every failed verify block.** For compile failures, locate the file:line and identify the broken construct (renamed symbol, changed signature, missing import). For test failures, group by suite/test and read the captured stderr/stdout — that is the entire signal.

@@ -20,6 +20,28 @@ This is one of the closed `fix-*` failure-kinds. Your job is **diagnosis**, not 
 - `${changed_files}` — the working-tree diff the WRITE phase just produced (the new test, plus whatever supporting code it touched). Cross-reference the assertion against the SUT path it exercises.
 - `${allowed_roots}` — multi-line block restricting where you may read. Stay inside it when tracing call paths.
 
+## Exception to the anti-rediscovery rule
+
+The preamble forbids exploratory `git`/`gh` calls because every other
+ATDD phase has its context fully substituted. Diagnosis is different:
+`${changed_files}` lists *which files* the WRITE phase touched, but
+not the *content* of the changes. To diagnose what broke, you need to
+see the actual diff.
+
+You may run:
+
+- `git diff` (or `git diff HEAD`) — to see the line-level changes the
+  WRITE phase produced in the working tree.
+- `git show HEAD:<path>` — to see the pre-WRITE state of a file you've
+  already read in its current form.
+
+You may NOT run `gh issue view`, `git log`, `git status`, `git branch`,
+or `git rev-parse` — the ticket body and history are irrelevant to "what
+just changed," and the working tree state is already in `${changed_files}`.
+
+This exception applies only to this fix-* task. The CYCLE will not
+re-dispatch you with the exception in force.
+
 ## What to do
 
 1. **Identify the asserting line.** From `${verify_results}` and the diff in `${changed_files}`, find the exact assertion the test expected to trip (e.g. an expected exception, an expected error return, an expected validation rejection). Name it precisely.
