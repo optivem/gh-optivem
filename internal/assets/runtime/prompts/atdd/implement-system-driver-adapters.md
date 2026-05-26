@@ -15,7 +15,7 @@ ${scope_block}
 
 ### Parameters
 
-- `${architecture}` — the target architecture for the System Driver adapter (`${driver-adapter}`).
+- `architecture` — the target architecture for the System Driver adapter (`${driver-adapter}`).
 
 ## Steps
 

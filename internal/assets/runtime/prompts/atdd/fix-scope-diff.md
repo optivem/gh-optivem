@@ -12,19 +12,19 @@ ${scope_block}
 
 ### Parameters
 
-- `${failing-task-name}` — the writing-agent task whose diff violated scopes (e.g. `write-acceptance-tests`, `implement-system`). Its prompt lives at `internal/assets/runtime/prompts/atdd/<failing-task-name>.md` and the call-site's `scopes:` contract lives in `internal/atdd/runtime/statemachine/process-flow.yaml`. Read the prompt to confirm what the agent was supposed to touch.
+- `failing-task-name` — the writing-agent task whose diff violated scopes (e.g. `write-acceptance-tests`, `implement-system`). Its prompt lives at `internal/assets/runtime/prompts/atdd/<failing-task-name>.md` and the call-site's `scopes:` contract lives in `internal/atdd/runtime/statemachine/process-flow.yaml`. Read the prompt to confirm what the agent was supposed to touch.
 
   ```
   ${failing-task-name}
   ```
 
-- `${violating-paths}` — the comma-separated list of working-tree paths that fell outside the declared `scopes:`. Each one is a path the call-site's `paths:` join did not cover. Cross-reference each violation against the agent's prompt and the call-site's scopes to classify the cause.
+- `violating-paths` — the comma-separated list of working-tree paths that fell outside the declared `scopes:`. Each one is a path the call-site's `paths:` join did not cover. Cross-reference each violation against the agent's prompt and the call-site's scopes to classify the cause.
 
   ```
   ${violating-paths}
   ```
 
-- `${changed_files}` — the snapshot-delta listing for *this* agent's run (every path the failing agent added, modified, or deleted between the pre-agent snapshot and validation). Includes both in-scope and out-of-scope edits, but excludes upstream-phase residue still uncommitted in the working tree — narrower (and more accurate) than a raw `git status` dump. You do not need to re-run `git status`.
+- `changed_files` — the snapshot-delta listing for *this* agent's run (every path the failing agent added, modified, or deleted between the pre-agent snapshot and validation). Includes both in-scope and out-of-scope edits, but excludes upstream-phase residue still uncommitted in the working tree — narrower (and more accurate) than a raw `git status` dump. You do not need to re-run `git status`.
 
   ```
   ${changed_files}

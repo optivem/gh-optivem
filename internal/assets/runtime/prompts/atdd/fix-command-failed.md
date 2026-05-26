@@ -12,25 +12,25 @@ ${scope_block}
 
 ### Parameters
 
-- `${command}` — the exact shell command line the CYCLE invoked. Treat this as the contract: the command and its arguments are what the CYCLE expected to succeed.
+- `command` — the exact shell command line the CYCLE invoked. Treat this as the contract: the command and its arguments are what the CYCLE expected to succeed.
 
   ```
   ${command}
   ```
 
-- `${command_exit_code}` — the non-zero exit code the process returned. Some tools encode failure shape in the code (e.g. lint vs. compile vs. infrastructure); cross-reference against the stderr tail.
+- `command_exit_code` — the non-zero exit code the process returned. Some tools encode failure shape in the code (e.g. lint vs. compile vs. infrastructure); cross-reference against the stderr tail.
 
   ```
   ${command_exit_code}
   ```
 
-- `${command_stderr_tail}` — the last lines of stderr captured at failure. This is your primary signal. Read it first.
+- `command_stderr_tail` — the last lines of stderr captured at failure. This is your primary signal. Read it first.
 
   ```
   ${command_stderr_tail}
   ```
 
-- `${changed_files}` — the working-tree dirty file listing at the moment of failure (already captured at dispatch — you do not need to re-run `git status`). Cross-reference against the stderr tail; most command failures are explained by one recent edit.
+- `changed_files` — the working-tree dirty file listing at the moment of failure (already captured at dispatch — you do not need to re-run `git status`). Cross-reference against the stderr tail; most command failures are explained by one recent edit.
 
   ```
   ${changed_files}

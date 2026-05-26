@@ -12,19 +12,19 @@ ${scope_block}
 
 ### Parameters
 
-- `${failing-task-name}` — the writing-agent task whose run produced incomplete outputs (e.g. `write-acceptance-tests`, `implement-dsl`). Its prompt lives at `internal/assets/runtime/prompts/atdd/<failing-task-name>.md` and its `outputs:` contract lives at the call-site in `internal/atdd/runtime/statemachine/process-flow.yaml`. Read the prompt to confirm what the agent was supposed to do and what shape the `outputs:` block was meant to take.
+- `failing-task-name` — the writing-agent task whose run produced incomplete outputs (e.g. `write-acceptance-tests`, `implement-dsl`). Its prompt lives at `internal/assets/runtime/prompts/atdd/<failing-task-name>.md` and its `outputs:` contract lives at the call-site in `internal/atdd/runtime/statemachine/process-flow.yaml`. Read the prompt to confirm what the agent was supposed to do and what shape the `outputs:` block was meant to take.
 
   ```
   ${failing-task-name}
   ```
 
-- `${missing-outputs}` — the comma-separated list of output keys the call-site declared in its `outputs:` param but the agent never wrote into state. These are the exact key names the agent's tail YAML block was meant to contain.
+- `missing-outputs` — the comma-separated list of output keys the call-site declared in its `outputs:` param but the agent never wrote into state. These are the exact key names the agent's tail YAML block was meant to contain.
 
   ```
   ${missing-outputs}
   ```
 
-- `${changed_files}` — the working-tree dirty file listing at the moment of validation (already captured at dispatch — you do not need to re-run `git status`). Cross-reference against the prompt's intended scope: if real work landed, the diffs prove it and the missing-output is a YAML-emission slip; if nothing relevant changed, the agent didn't do the work.
+- `changed_files` — the working-tree dirty file listing at the moment of validation (already captured at dispatch — you do not need to re-run `git status`). Cross-reference against the prompt's intended scope: if real work landed, the diffs prove it and the missing-output is a YAML-emission slip; if nothing relevant changed, the agent didn't do the work.
 
   ```
   ${changed_files}

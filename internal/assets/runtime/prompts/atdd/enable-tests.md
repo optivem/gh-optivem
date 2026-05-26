@@ -13,10 +13,10 @@ ${scope_block}
 
 ### Parameters
 
-- `${language}` — `java` | `csharp` | `typescript` (extensible — read the language-equivalents row for the actual syntax).
-- `${ticket_id}` — tracker-verbatim id of the ticket currently moving from RED to GREEN.
-- `${prev_phase}` — `TEST` | `DSL` | `SYSTEM DRIVER` (uppercase; internal space allowed) — the RED phase whose disable markers must now be stripped.
-- `${disable_targets}` — list of `<file>:<method>` entries.
+- `language` — `java` | `csharp` | `typescript` (extensible — read the language-equivalents row for the actual syntax).
+- `ticket_id` — tracker-verbatim id of the ticket currently moving from RED to GREEN.
+- `prev_phase` — `TEST` | `DSL` | `SYSTEM DRIVER` (uppercase; internal space allowed) — the RED phase whose disable markers must now be stripped.
+- `disable_targets` — list of `<file>:<method>` entries.
 
 ### Strip filter
 

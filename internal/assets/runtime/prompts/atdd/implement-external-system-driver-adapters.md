@@ -15,7 +15,7 @@ ${scope_block}
 
 ### Parameters
 
-- `${architecture}` — the architecture variant (monolith / multitier) the implementation targets.
+- `architecture` — the architecture variant (monolith / multitier) the implementation targets.
 
 ## Steps
 

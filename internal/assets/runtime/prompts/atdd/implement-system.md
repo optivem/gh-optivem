@@ -15,7 +15,7 @@ ${scope_block}
 
 ### Parameters
 
-- `${architecture}` — architecture profile for the target project (Java/.NET/TS × monolith/multitier).
+- `architecture` — architecture profile for the target project (Java/.NET/TS × monolith/multitier).
 
 ## Steps
 

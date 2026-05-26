@@ -17,7 +17,7 @@ This task does not receive a substituted artifact input; the `TODO: DSL` prototy
 
 ### Parameters
 
-- `${touches-system-driver}` — boolean, `true` | `false`. Controls whether the System Driver port (`${driver-port}`) is in scope for this invocation.
+- `touches-system-driver` (current value: `${touches-system-driver}`) — boolean, `true` | `false`. Controls whether the System Driver port (`${driver-port}`) is in scope for this invocation.
   - When `true`: the System Driver Interface (`${driver-port}`) is in scope; the agent may add prototype methods there (throwing `"TODO: System Driver"`) and MUST set the `System Driver Interface Changed` flag.
   - When `false`: the System Driver port (`${driver-port}`) is out of scope; the agent leaves it untouched and does not set the `System Driver Interface Changed` flag.
 

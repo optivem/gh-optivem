@@ -15,8 +15,8 @@ ${scope_block}
 
 ### Parameters
 
-- `${architecture}` — architecture profile for the target project (Java/.NET/TS × monolith/multitier).
-- `${checklist}` — the parsed list of changes to apply across affected channels.
+- `architecture` — architecture profile for the target project (Java/.NET/TS × monolith/multitier).
+- `checklist` — the parsed list of changes to apply across affected channels.
 
 ### Checklist
 

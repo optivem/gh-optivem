@@ -13,11 +13,11 @@ ${scope_block}
 
 ### Parameters
 
-- `${language}` — `java` | `csharp` | `typescript` (extensible — read the language-equivalents row for the actual syntax).
-- `${ticket_id}` — tracker-verbatim id (e.g. `OPV-123`, `#42`, `SHOP-7`).
-- `${loop}` — `RED` | `GREEN`. (`GREEN` reserved for symmetry; today only RED disables.)
-- `${phase}` — `TEST` | `DSL` | `SYSTEM DRIVER` (uppercase; internal space allowed).
-- `${disable_targets}` — list of `<file>:<method>` entries.
+- `language` — `java` | `csharp` | `typescript` (extensible — read the language-equivalents row for the actual syntax).
+- `ticket_id` — tracker-verbatim id (e.g. `OPV-123`, `#42`, `SHOP-7`).
+- `loop` — `RED` | `GREEN`. (`GREEN` reserved for symmetry; today only RED disables.)
+- `phase` — `TEST` | `DSL` | `SYSTEM DRIVER` (uppercase; internal space allowed).
+- `disable_targets` — list of `<file>:<method>` entries.
 
 ### Annotation reason format
 

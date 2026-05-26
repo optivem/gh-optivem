@@ -10,8 +10,8 @@ You are running the `fix-unexpected-failing-tests` task. Verify came back red af
 
 ${scope_block}
 
-- `${verify_results}` — for compile failures, the build log scoped to in-scope projects (file:line of the offending source). For test failures, one block per failed test (suite, test name, captured stderr/stdout). Read these first; they are the entire signal.
-- `${changed_files}` — the working-tree diff the WRITE phase just produced. Cross-reference against the failure messages — most regressions are explained by a single line in the diff.
+- `verify_results` — for compile failures, the build log scoped to in-scope projects (file:line of the offending source). For test failures, one block per failed test (suite, test name, captured stderr/stdout). Read these first; they are the entire signal.
+- `changed_files` — the working-tree diff the WRITE phase just produced. Cross-reference against the failure messages — most regressions are explained by a single line in the diff.
 
 ### Verify results to address
 

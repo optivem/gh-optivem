@@ -18,7 +18,7 @@ downstream consumption.
 
 ## Inputs
 
-- `${parsed_concepts}` — the parsed-concepts artifact produced upstream
+- `parsed_concepts` — the parsed-concepts artifact produced upstream
   during ticket intake (the parsing work that backs the ticket-kind
   classification). Contains the structured ACs (legacy + newly-derived)
   ready to refine. The raw ticket source is not re-read.
