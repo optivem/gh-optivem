@@ -49,64 +49,117 @@ or strip.
 
 ### 1. Strip caller-name plumbing from prompt bodies
 
-**Files in scope:**
+Audit across all 17 prompts done during refinement (2026-05-26).
+Every reference to a parent CYCLE / HIGH / sibling-task / `-fail`
+wrapper / step-N positioning is classified below and assigned a
+concrete treatment — no audit-during-execution pockets remain.
 
-- `write-acceptance-tests.md:7` — "This task is called from the
+**Group A — STRIP entirely (Type 1 plumbing).** The agent's
+behaviour does not change based on these names; drop the prose.
+
+- `write-acceptance-tests.md:7` — "called from the
   `write-and-verify-acceptance-tests` HIGH orchestration, which is
   called from step 1 of the `change-system-behavior` CYCLE (via the
-  `-fail` wrapper)." → drop. The first half of the sentence ("The
+  `-fail` wrapper)." The first half of the same sentence ("The
   Acceptance Criteria below were parsed from the ticket body during
-  intake — write tests for them directly.") already explains the
-  contract.
+  intake — write tests for them directly.") already states the
+  contract. Drop the second half.
+- `write-contract-tests.md:7` — "called from the
+  `implement-and-verify-external-system-driver-adapters-contract-tests`
+  HIGH orchestration when a `change-system-behavior` CYCLE detects that
+  external system driver ports changed." Replace with the contract:
+  "Write contract tests for the external-system driver ports listed
+  below" (or whatever the real input is).
+- `refine-acceptance-criteria.md:12-16` — the full call-graph paragraph
+  naming MID/CYCLE/TOP and the ticket-kind gateway. Drop entirely.
+  Replace with a one-line scope statement if anything is needed.
+- `implement-external-system-stubs.md:17` — escalation hint names two
+  specific sibling tasks: "an earlier task in the calling CYCLE (the
+  `write-contract-tests` or `implement-dsl` step) was wrong." Strip
+  the sibling-task names; the generic "calling CYCLE" framing around
+  them is fine to keep (Type 3). Resulting wording: "an earlier task
+  in the calling CYCLE was wrong" (or "the upstream WRITE phase").
+- `implement-dsl.md:12-14` — caller-name half of the `<!-- … -->` HTML
+  block ("Callers from the implement-and-verify-dsl HIGH on the AT
+  side (change-system-behavior CYCLE) pass `true`; callers on the CT
+  side (cover-system-behavior CYCLE) pass `false`"). The full HTML
+  comment removal is owned by **Item 8**; the parameter semantics
+  half of the same block lifts into the `### Parameters` sub-heading
+  (Item 8's concrete rewrite). Item 1's contribution is the
+  classification: caller-name half is Type 1 plumbing, retained
+  parameter semantics is Type 2 contract — sans caller names.
+
+**Group B — REWORD (Type 2 contract branch).** The agent legitimately
+branches per caller, but the trigger is the input shape, not the
+caller's name. Reword to lead with the input; strip CYCLE names.
+
 - `write-acceptance-tests.md:43-45` — "downstream MID tasks in the same
   HIGH orchestration (`implement-dsl`,
   `implement-system-driver-adapters`) in the same CYCLE reuse this
-  list…" → keep the **why** (downstream tasks have no other way to
-  learn the test names, so re-emit the full set on every re-run) but
-  drop the HIGH/CYCLE naming. The agent doesn't need to know which
-  downstream task consumes the output, only that something does.
-- `write-contract-tests.md:7` — "It is called from the
-  `implement-and-verify-external-system-driver-adapters-contract-tests`
-  HIGH orchestration when a `change-system-behavior` CYCLE detects that
-  external system driver ports changed." → drop. State the contract:
-  "Write contract tests for the external-system driver ports listed
-  below" (or whatever the real input is).
-- `refine-acceptance-criteria.md:12-16` — "This is the
-  `refine-acceptance-criteria` MID task — the sole step of the
-  `refine-backlog` CYCLE, which TOP `refine-ticket` calls during
-  backlog grooming. It runs **before** any execution CYCLE: TOP
-  `implement-ticket` later picks an execution CYCLE via its ticket-kind
-  gateway (e.g. `change-system-behavior` for stories/bugs,
-  `cover-system-behavior` for…)." → drop the whole call-graph paragraph.
-  Replace with a one-line scope statement if anything is needed at all.
-- `implement-dsl.md:12-14` — the `change-system-behavior` /
-  `cover-system-behavior` callsite pairing. **Audit needed**: is this a
-  contract branch (Item 1 keeps it) or pure plumbing (Item 1 strips it)?
-  Read the surrounding lines before editing.
+  list…" Keep the **why** (downstream tasks need the test names; the
+  test set must be re-emitted in full on every re-run because there
+  is no other channel to learn it) but strip HIGH/CYCLE/sibling-task
+  names. The agent doesn't need to know which downstream task
+  consumes the output, only that something does.
+- `implement-system-driver-adapters.md:2-3, 11-12, 30-31, 33`,
+  `implement-external-system-driver-adapters.md:2-3, 11-12, 30-31, 35`,
+  `implement-system.md:2-3, 10-11, 29` — three multi-caller prompts
+  with the same shape (yaml header comment naming callers, callsite
+  catalogue under a `Callers` heading, Step 1 branching on Checklist
+  present/absent, plus various follow-on references).
+  **Item 10 resolved to a verb split** — these 3 files lose their
+  multi-caller mechanics entirely. Each splits into an `implement-*`
+  variant (translation: fill TODOs) and an `update-*` variant
+  (reshape: apply Checklist). After the split, each resulting prompt
+  has one caller, no callsite catalogue, no branching prose, no
+  CYCLE names. The Item 1 deliverable on these three current files
+  is: strip everything that was multi-caller plumbing, since the
+  files themselves are being split. The new `update-*` files
+  inherit only the reshape algorithm; the existing `implement-*`
+  files retain only the translation algorithm.
+- `fix-unexpected-failing-tests.md:11` — "behaviour-preserving by
+  definition (e.g. `refactor-system-structure`, `refactor-test-structure`,
+  or the structural steps of `redesign-system-structure`)." Drop the
+  `e.g.` list of specific CYCLE names; keep the abstract
+  "behaviour-preserving caller class" framing. Line 59
+  ("change-cycle WRITE policy") **stays** — that names a doctrine
+  class of caller, not an orchestration; it would survive a BPMN
+  rename.
 
-**Not in scope of this item** (multi-caller contract branches —
-classified as type 2 in the principle above):
+**Group C — KEEP AS-IS.** No action under Item 1.
 
-- `implement-system-driver-adapters.md:2,11,12,30,33` — Checklist
-  present/absent genuinely branches behaviour. Reword to lead with the
-  input ("If the Checklist section is empty…") and demote caller names
-  to a parenthetical hint, but do not strip.
-- `implement-external-system-driver-adapters.md:2,11,12,30,35` — same
-  shape as above.
-- `implement-system.md:2,10,11,29` — same shape as above.
-- `implement-external-system-stubs.md:17` — escalation reference to
-  "the calling CYCLE" is generic (type 3); keep as-is.
-- `fix-*.md` files — every "calling CYCLE" reference is generic (type
-  3); keep as-is.
+- All "calling CYCLE" references in `fix-command-failed.md`,
+  `fix-missing-output.md`, `fix-scope-diff.md`,
+  `fix-unexpected-passing-tests.md`, and the remaining lines of
+  `fix-unexpected-failing-tests.md` not listed in Group B — Type 3
+  generic; they explain the abstract contract without naming the
+  caller; they survive BPMN renames.
+- `fix-unexpected-failing-tests.md:59` "change-cycle WRITE policy" —
+  doctrine class, not orchestration name. Keep.
+- `refactor-system.md:26-27`, `refactor-tests.md:26-27` — reference
+  the **ticket-kind taxonomy** (`task/system-redesign`,
+  `task/system-refactor`, `story`, `bug`), not orchestration names.
+  Out of scope of Item 1. (These are stable taxonomy refs that pass
+  the BPMN-rename test.)
+- `disable-tests.md`, `enable-tests.md` — no caller-name plumbing
+  detected. Nothing to do.
 
 **Acceptance:**
 
 - `grep -nE 'HIGH orchestration|step \d of|via the .-fail. wrapper|in the same CYCLE'`
-  over `internal/assets/runtime/prompts/atdd/*.md` returns no hits in
-  the files listed under "Files in scope" above.
-- The multi-caller branch files still describe their two modes, but
-  lead with input shape (Checklist present/absent) rather than caller
-  name.
+  over `internal/assets/runtime/prompts/atdd/*.md` returns no hits.
+- `grep -nE '(change-system-behavior|cover-system-behavior|redesign-system-structure|refine-backlog|refine-ticket|implement-ticket|write-and-verify|implement-and-verify)'`
+  over the same set returns no hits **except** for the YAML
+  frontmatter / hardcoded scope keys that Items 4/9 own — i.e. zero
+  hits in prose bodies.
+- The three current multi-caller files split into `implement-*`
+  + `update-*` pairs per Item 10. Each resulting prompt has zero
+  CYCLE names in its body prose and no caller-name plumbing.
+- `implement-external-system-stubs.md:17` no longer names
+  `write-contract-tests` or `implement-dsl` as upstream siblings.
+- `fix-unexpected-failing-tests.md:11` no longer carries the `e.g.`
+  list of specific CYCLE names; the abstract "behaviour-preserving
+  caller class" framing survives.
 - No tests broken; the prompts are inert assets, behaviour change is
   zero.
 
@@ -124,72 +177,142 @@ That line was written to permit legitimate task-driven reads while
 banning context-rediscovery `git`/`gh` calls, but in practice agents
 read it as a green light to browse.
 
-**Runtime confirmation.** `preamble.md` is prepended to every dispatched
-prompt at `internal/atdd/runtime/agents/embed.go:27,68`; `scope.md` is
-inserted right after, between preamble and the per-task body. Editing
-either file affects every agent. The user picked the preamble; both are
-valid locations and the choice gets settled during refinement.
+**Runtime confirmation.** `preamble.md` is at
+`internal/assets/runtime/shared/preamble.md`, prepended to every
+dispatched prompt at `internal/atdd/runtime/agents/embed.go:27,68`;
+`scope.md` (at `internal/assets/runtime/shared/scope.md`) is inserted
+right after, between preamble and the per-task body. Editing either
+file affects every agent. **Placement decision (resolved during
+refinement):** the new read-side rule lands in `preamble.md`,
+co-located with the existing "trust the orchestrator's context" and
+"don't commit, don't summarise" sections.
 
-**Proposed rule (to add to `preamble.md`, replacing or following the
-current "Read/Grep/Glob are fine" paragraph):**
+**Rule wording (to land in `preamble.md`, replacing the current
+"Read/Grep/Glob are fine" paragraph):**
 
 > Read only files you actually need for the work. The scope listed in
-> the prompt's `scope:` frontmatter is the **complete** set of paths
-> you may read or modify, with two narrow additions:
+> the prompt's `scope:` frontmatter (and in the rendered `## Scope`
+> block from Item 4 — for reads, the `read:` set) is the **complete**
+> set of paths you may read or modify, with two narrow additions:
 >
 > 1. Files this prompt explicitly tells you to `Read` (e.g. lines like
->    "Read `${references_root}/atdd/architecture/test.md`").
+>    "Read `${references_root}/atdd/architecture/test.md`"). The
+>    references-root Reads are part of the prompt's contract; they
+>    are allowlisted by their explicit presence in the prompt body.
 > 2. Files you must inspect to satisfy an explicit Step in the prompt
->    body — e.g. when a Step says "implement the DSL interface", you
->    may read the DSL interface file even if its path is not in
->    `scope:`, because the Step makes that read load-bearing.
+>    body — e.g. when a Step says "implement the DSL Port layer", you
+>    may read files under the `dsl-port` scope key even if your phase
+>    doesn't list them, because the Step makes that read load-bearing.
 >
-> Do not browse the codebase, do not "get oriented", do not read
-> sibling files for context, do not grep broadly. If you cannot do the
-> work without reading something outside scope and outside the two
-> exceptions above, emit a `scope_exception` block (same shape as the
-> write-side exception in `scope.md`) and exit.
+> **Greps and globs:** targeted greps for symbols named by the prompt
+> or required by a Step are fine (e.g. "find the `CustomerService`
+> class"). Open-ended greps ("look for related tests", "find similar
+> code", "look around") are over-reading — treat as scope violations.
+>
+> **Carve-outs that survive this rule** (each is its own contract,
+> not a general license):
+> - `${changed_files}` and the working-tree state it describes are
+>   already-substituted context; you don't re-fetch them.
+> - The fix-* tasks' explicit `git diff`/`git show HEAD:<path>`
+>   exception (documented per-prompt under "Exception to the
+>   anti-rediscovery rule") stays in force for those tasks only.
+>
+> If you cannot do the work without reading something outside scope
+> and outside the two exceptions above, emit a `scope_exception`
+> block (same shape as the write-side exception in `scope.md`, kind:
+> `read` per Item 3) and exit.
 
-**Tension to resolve during refinement:**
+**Per-prompt audit — explicit `Read` directives (covered by Exception 1):**
 
-- Some prompts (`write-acceptance-tests.md:25-27`,
-  `implement-dsl.md`, etc.) explicitly `Read ${references_root}/...`
-  files that are not in scope. Exception 1 above covers those. But it
-  means the prompt-author has to be exhaustive — anything the agent
-  needs must be either in `scope:` or in an explicit `Read` line. Worth
-  auditing during execution.
-- Greps. Targeted greps for symbols mentioned in the prompt (e.g. "find
-  the `CustomerService` class") are clearly legitimate. Open-ended
-  greps ("look for related tests") are exactly the over-reading the
-  user is complaining about. Wording should make the test "is the
-  thing you're searching for named by the prompt or required by a
-  Step?" — if yes, fine; if no, scope_exception.
-- `scope.md` vs `preamble.md`. The rule is conceptually a scope rule,
-  so co-locating with the write-side rule in `scope.md` would be
-  tidier. User picked preamble — defer the call to refinement.
+| Prompt | Read directives (today) |
+|--------|-------------------------|
+| `disable-tests.md` | `language-equivalents/${language}.md` |
+| `enable-tests.md` | `language-equivalents/${language}.md` |
+| `implement-dsl.md` | `dsl-core.md`, `driver-port.md`, `language-equivalents/${language}.md` |
+| `implement-system-driver-adapters.md` | `driver-port.md`, `driver-adapter.md`, `language-equivalents/${language}.md` |
+| `implement-external-system-driver-adapters.md` | `system.md`, `driver-port.md`, `driver-adapter.md`, `language-equivalents/${language}.md` |
+| `implement-system.md` | `system.md`, `driver-port.md`, `driver-adapter.md` (no `language-equivalents` — inconsistency flagged for Item 7) |
+| `write-acceptance-tests.md` | `test.md`, `dsl-core.md`, `language-equivalents/${language}.md` |
+| `write-contract-tests.md` | `test.md`, `dsl-core.md`, `language-equivalents/${language}.md` |
+| `fix-*.md` (5 files) | none (they have the `git diff`/`git show` anti-rediscovery exception instead — preserved via the carve-out) |
+| `refactor-system.md`, `refactor-tests.md`, `implement-external-system-stubs.md`, `refine-acceptance-criteria.md` | none |
+
+**Cross-links.**
+
+- **Item 7** audits which of these Reads are load-bearing per phase
+  and may default-drop most of them. Item 2's Exception 1 covers
+  whichever Reads survive Item 7's audit — no per-prompt frontmatter
+  allowlist needed; the prompt-body `Read` lines are the allowlist.
+- **Item 3** adds a `read:` / `write:` split. The Item 2 rule binds
+  to the `read:` side; `read ⊆ write` means anything writable is
+  also readable.
+- **Item 4** renders the resolved `## Scope` block (with `read:` and
+  `write:`) into every dispatched prompt; the Item 2 rule cites that
+  block.
+- **Item 5** also touches `preamble.md` (moving universal tool-use
+  rules); coordinate the preamble edits so Items 2 and 5 don't
+  conflict.
 
 **Acceptance:**
 
-- New paragraph in `preamble.md` (or `scope.md`, per refinement
-  decision) stating the read-side rule.
+- `preamble.md` carries the read-side rule above (or refined
+  equivalent).
 - The old "Read, Grep, and Glob against the working tree are fine"
-  sentence at `preamble.md:33-36` is rewritten or removed — it
-  currently contradicts the new rule.
+  sentence at `preamble.md:33-36` is replaced — it currently
+  contradicts the new rule.
+- The fix-* `git diff`/`git show` exception is explicitly carved
+  out so it survives the new rule.
 - Spot-check one fresh dispatch (e.g. a `write-acceptance-tests` run
   on a small ticket) and confirm the agent's tool-use trace shows
   scope-bounded reads only.
 
+### 2a. Precondition — `phase-scopes.yaml` fold
+
+**Spun off to**
+`plans/20260526-1536-fold-phase-scopes-into-process-flow.md`
+during refinement. That work is a Go-loader + BPMN-YAML refactor
+beyond the scope of "agent prompt fixes", and the two plans can
+refine in parallel.
+
+Items 3, 4, and 9 below depend on the fold landing — they assume
+per-phase scope lives on `process-flow.yaml` nodes (not in a
+sidecar file). The spinoff plan covers:
+
+- Folding `phase-scopes.yaml` scope data into `process-flow.yaml`
+  node fields.
+- Deleting `phase-scopes.yaml` and rewriting consumers
+  (`phase_scopes.go`, `bindings.go`, `process_commands.go`,
+  `phase_scopes_test.go`).
+- Dropping the seven `LEGACY_*` entries that are dead in the
+  current BPMN.
+- Dropping the skipped `TestPhaseScopes_ForwardFK_PhasesExistInBPMN`
+  guard (the FK no longer exists).
+- Updating the `feedback_no_deferred_mechanism.md` memory wording.
+
+This plan's Items 3, 4, 9 reference per-phase scope using the
+**post-fold** model (scope lives on the node). Where audit
+findings cite stale phase ids (`AT_RED_TEST`, etc.), substitute
+the equivalent post-fold node id at execution time.
+
 ### 3. Split `scope` into read-scope and write-scope
+
+**Status:** deferred pending Item 2a. The audit and rule below
+remain valid; they apply to the **remapped** phase set, not the
+current stale set.
 
 **Observation (extends Item 2).** Item 2 says "only read what's in
 scope." But for several phases, the *write* scope is legitimately
 wider than the *read* scope, because the agent writes placeholder
-stubs into a layer it must not otherwise look at.
+stubs into a layer it must not otherwise look at. Conversely, for a
+few phases the *read* scope is legitimately wider than the *write*
+scope (the agent must read a layer to know its shape but must not
+modify it — driver-port guardrails).
 
-Concrete example — `write-acceptance-tests` (phase `AT_RED_TEST`):
+Concrete example — `write-acceptance-tests` (current stale ID
+`AT_RED_TEST`):
 
 ```yaml
-AT_RED_TEST: [at-test, dsl-port, dsl-core]   # internal/atdd/phase-scopes.yaml:25
+AT_RED_TEST: [at-test, dsl-port, dsl-core]   # pre-Item-2a stale ID
 ```
 
 The list is correct **as a write set**:
@@ -203,58 +326,69 @@ The list is correct **as a write set**:
 
 But the same list is **wrong as a read set** — the agent does not
 need to read existing `dsl-core` to author tests; doing so leaks
-implementation context into a test-writing task. Read scope should
-be:
+implementation context into a test-writing task. The split:
 
 ```yaml
-AT_RED_TEST:
+<NEW_ID_FOR_AT_RED_TEST>:
   read:  [at-test, dsl-port]
   write: [at-test, dsl-port, dsl-core]
 ```
 
-**Other phases with the same shape (read ⊊ write):**
+**Schema rule (settled during refinement):** every phase declares
+`read:` and `write:` **as two separate lists, always explicit, no
+flat shorthand**. Duplication accepted when they match.
+**No subset constraint** between them — neither `read ⊆ write` nor
+`write ⊆ read` is enforced, because both directions of asymmetry
+occur in practice (see audit below). Build-time validation in
+`internal/atdd/phase_scopes_test.go` enforces only that every
+layer name in either list resolves through `canonicalPathKeys()`.
 
-- `CT_RED_TEST: [ct-test, dsl-port, dsl-core]` — same asymmetry.
-- `LEGACY_AT_TEST: [at-test, dsl-port, dsl-core]` — same.
-- `LEGACY_CT_TEST: [ct-test, dsl-port, dsl-core]` — same.
+**Audit — phases needing asymmetric split** (using current stale
+IDs; substitute remapped IDs from Item 2a at execution time):
 
-For every other phase in `phase-scopes.yaml` the lists likely
-collapse (`read == write`); inventory needed during refinement.
+| Phase (stale ID) | Current (write) | Proposed read | Proposed write | Why asymmetric |
+|---|---|---|---|---|
+| `AT_RED_TEST` | `[at-test, dsl-port, dsl-core]` | `[at-test, dsl-port]` | `[at-test, dsl-port, dsl-core]` | Test-writer adds `TODO: DSL` placeholders to dsl-core; doesn't need to read existing dsl-core |
+| `CT_RED_TEST` | `[ct-test, dsl-port, dsl-core]` | `[ct-test, dsl-port]` | `[ct-test, dsl-port, dsl-core]` | Same shape — CT side |
+| `AT_RED_SYSTEM_DRIVER` | `[driver-port, driver-adapter]` | `[driver-port, driver-adapter]` | `[driver-adapter]` | Driver-adapter implementer reads driver-port to see what to implement; the "Driver-port guardrail" prose in `implement-system-driver-adapters.md:32` collapses into scope (Item 11 Case B) |
+| `CT_RED_EXTERNAL_SYSTEM_DRIVER` | `[external-system-driver-port, external-system-driver-adapter]` | `[external-system-driver-port, external-system-driver-adapter]` | `[external-system-driver-adapter]` | Same shape — external driver side; `implement-external-system-driver-adapters.md:35` collapses |
+| `SYSTEM_INTERFACE_REDESIGN_CYCLE` | `[system-path, driver-adapter]` | `[system-path, driver-adapter, driver-port]` | `[system-path, driver-adapter]` | implement-system reshapes the surface; reads driver-port to see what must not change. `implement-system.md:36` Driver-port guardrail collapses |
 
-**Schema change to `phase-scopes.yaml`:** support either a flat list
-(shorthand for `read == write`) or an explicit `{read:, write:}` map
-when they differ. Build-time validation in
-`internal/atdd/phase_scopes_test.go` enforces:
-
-- `read ⊆ write` (you can't write where you're not allowed to read —
-  the inverse asymmetry isn't useful).
-- Every layer name in either list resolves through
-  `canonicalPathKeys()`.
+**Symmetric phases (read == write)** — the remaining ~12 entries
+(after Item 2a's LEGACY_* deletions). Both lists are identical;
+the duplication is accepted per the no-shorthand rule.
 
 **Knock-on changes:**
 
 - `gh optivem process scope <phase>` (the CLI command referenced in
-  every prompt's `scope:` frontmatter comment) needs to emit both
-  sets — likely as two keys in the substituted frontmatter, e.g.
-  `read_scope:` and `write_scope:`, or the single `scope:` block
-  grows from a list into a map. **Open question for refinement**:
-  one combined `scope:` map or two top-level keys?
+  every prompt's `scope:` frontmatter comment) emits both sets.
+  Open question for refinement (Item 4): one combined `scope:`
+  map with `read:` / `write:` sub-keys, or two top-level keys
+  `read_scope:` / `write_scope:`?
 - The preamble rule from Item 2 ("only read files in scope") binds
-  to the **read** scope, not the write scope. Wording in Item 2 to
-  be updated once Item 3 lands.
-- The `scope_exception` block in `scope.md` should grow a `kind:` field
+  to the **read** scope, not the write scope. Item 2's wording
+  already cites the `read:` set explicitly.
+- The `scope_exception` block in `scope.md` grows a `kind:` field
   (`read` vs `write`) so a read-side overreach and a write-side
   overreach are distinguishable on the way out.
+- **Items 11 Case B nearly collapses for free** — the 3 driver-port
+  phases above remove the layer from `write`, so the "STOP and
+  present before editing driver-port" prose becomes redundant; the
+  universal `scope_exception` mechanism handles it.
 
 **Acceptance:**
 
-- `phase-scopes.yaml` schema supports the split; the four phases
-  above declare distinct `read:` / `write:` lists.
+- `phase-scopes.yaml` schema supports the explicit `read:` /
+  `write:` shape on every phase; the 5 phases in the audit table
+  above declare asymmetric lists (in their remapped IDs from
+  Item 2a).
 - `gh optivem process scope <phase>` emits both sets.
 - `scope.md` and `preamble.md` consume the right one for each
   side of the rule (writes → write-scope, reads → read-scope).
-- Build-time test asserts `read ⊆ write` and rejects bare layer
-  names that resolve to neither.
+- `scope_exception` block grows a `kind:` field.
+- Build-time test rejects bare layer names that resolve through
+  neither `canonicalPathKeys()` nor `system-path`. No subset
+  constraint is enforced.
 - One end-to-end rehearsal of `write-acceptance-tests` shows the
   agent reading only `at-test` + `dsl-port` paths (plus
   explicitly-named architecture refs from the prompt body), while
@@ -262,158 +396,128 @@ when they differ. Build-time validation in
 
 ### 4. Render scope keys + resolved paths into the dispatched prompt
 
-**Observation (presupposed by Items 2 + 3).** Items 2 and 3 assume the
-agent can see which paths belong to its scope. Today it cannot:
+**Status (post-spinoff):** the SSoT question collapses now that
+`phase-scopes.yaml` is being folded into `process-flow.yaml`
+(spinoff plan `20260526-1536-fold-phase-scopes-into-process-flow.md`).
+The per-phase scope lives **on the BPMN node** — single SSoT, no
+prompt-frontmatter mirror, no parity test needed.
 
-- `internal/atdd/phase-scopes.yaml` holds the layer keys per phase
-  (`[at-test, dsl-port, dsl-core]`).
-- Keys resolve to real paths via `gh-optivem.yaml paths:` +
-  `canonicalPathKeys()` in
-  `internal/projectconfig/paths_defaults.go`.
+**Observation (presupposed by Items 2 + 3).** Items 2 and 3 assume
+the agent can see which paths belong to its scope. Today it cannot:
+
 - The per-prompt frontmatter is `scope: {}` (literally empty — see
-  `write-acceptance-tests.md:5` and every other prompt that pins to
-  layer keys). The CLI comment "query resolved scope:
+  `write-acceptance-tests.md:5` and every other prompt that pins
+  to layer keys). The CLI comment "query resolved scope:
   `gh optivem process scope <phase>`" is documentation for the
   human prompt-author, not data the agent ever receives.
-- `scope.md` (prepended at dispatch via `embed.go:81-84`) tells the
-  agent: "the set of paths its agent may modify, listed in the
-  `scope:` frontmatter at the top of the prompt you are reading."
-  But the frontmatter is empty, so the agent is being pointed at
-  nothing.
+- `scope.md` (prepended at dispatch via `embed.go:81-84`) tells
+  the agent: "the set of paths its agent may modify, listed in
+  the `scope:` frontmatter at the top of the prompt you are
+  reading." But the frontmatter is empty, so the agent is being
+  pointed at nothing.
 - Enforcement is server-side only: `check-phase-scope` runs
   *after* the agent commits and diffs the tree. The agent itself
   never sees a path list at write time.
 
-**Consequence — your "DSL interface" question.** When prose in the
-prompt body says "DSL interface", the agent has no glossary mapping
+**Consequence — the "DSL interface" question.** When prose in
+the prompt body says "DSL interface", the agent has no mapping
 that human phrase to the layer key `dsl-port`, and no
-`dsl-port → acceptance-test/java/.../driver/` resolution visible
-to it. It infers the path from filename patterns it sees during
-its (unbounded — see Item 2) Reads, which is exactly the
-over-reading loop we want to close.
+`dsl-port → acceptance-test/java/.../dsl/` resolution visible to
+it. It infers the path from filename patterns it sees during its
+(unbounded — see Item 2) Reads, which is exactly the over-reading
+loop we want to close.
 
-**Design (settled during walk — refinement may revise):**
+**Design (settled during refinement, 2026-05-26).** Two halves:
 
-Combine SSoT-in-frontmatter (durable, project-independent) with
-runtime-rendered resolution in the body (agent-visible, project-
-specific). Two halves:
-
-**Half 1 — frontmatter carries the keys, hardcoded.** Every
-writing-agent prompt declares its scope as keys in the
-frontmatter:
-
-```yaml
----
-model: sonnet
-effort: medium
-scope:
-  read:  [at-test, dsl-port]
-  write: [at-test, dsl-port, dsl-core]
----
-```
-
-The keys are the durable spec. They do not change per project —
-`dsl-port` means the DSL Port layer regardless of which language
-the project uses. Operators reading the prompt file see exactly
-what the agent is and isn't allowed to touch, without running a
-resolver.
-
-`phase-scopes.yaml` either disappears (frontmatter becomes the
-sole SSoT) or shrinks to a generated index (settle during
-refinement — see "Open questions" below).
-
-**Half 2 — dispatch renders a `## Scope` block in the body.**
-At dispatch, the runtime reads the frontmatter scope, joins each
-key against the project's `gh-optivem.yaml paths:`, and injects a
-`## Scope` section with key: value bullets into the body the
-agent actually sees:
+**Half 1 — `## Scope` block rendered at dispatch.** The runtime
+reads the BPMN node's `read:` / `write:` lists (post-spinoff),
+joins each key against the project's `gh-optivem.yaml paths:`,
+and injects a `## Scope` section with key + resolved-path bullets
+into the body the agent actually sees:
 
 ```
 ## Scope
 
 You may **read** files under these paths:
 
-- `at-test`:  acceptance-test/java/src/test/java/.../tests/
 - `dsl-port`: acceptance-test/java/src/main/java/.../dsl/
+- `at-test`:  acceptance-test/java/src/test/java/.../tests/
 
-You may **modify** files under these paths (superset of read):
+You may **modify** files under these paths:
 
 - `at-test`:  acceptance-test/java/src/test/java/.../tests/
 - `dsl-port`: acceptance-test/java/src/main/java/.../dsl/
 - `dsl-core`: acceptance-test/java/src/main/java/.../core/
+
+Reading or writing outside this set requires a `scope_exception`
+block.
 ```
 
-Source-on-disk shows keys; dispatched prompt shows both keys and
-paths. The mapping is mechanical — no per-prompt prose to drift.
+**Placement in the four-heading skeleton** (Item 6): settle in the
+Item 6 walk. Lean **sub-heading under `## Inputs`** — scope is an
+input to the agent. Marked as TBD-by-Item-6.
 
-**Where does `## Scope` sit in the four-heading skeleton from
-Item 6?** Three options for refinement:
+**Half 2 — inline `${key}` substitution at every layer mention.**
+Wherever a human name for a layer appears in the prompt prose,
+follow it with the existing Family B `${key}` substitution:
 
-- (a) Fifth top-level heading: `## Inputs` / `## Scope` /
-  `## Steps` / `## Outputs` / `## Additional Notes`.
-- (b) Sub-heading under `## Inputs`: `### Scope` alongside
-  `### Acceptance Criteria` etc.
-- (c) Part of `## Inputs` body, no sub-heading — first paragraph
-  / first block.
+Source-on-disk (what the prompt-author writes):
 
-Lean (b): the resolved scope **is** an input to the agent (it
-tells the agent where it may read and write), so nesting under
-`## Inputs` keeps the four-heading skeleton intact. Settle during
-refinement.
+> Implement the DSL Core (`${dsl-core}`) for real — replace each
+> `TODO: DSL` prototype with actual logic.
+> If you need to add methods to the DSL Port (`${dsl-port}`), add
+> prototype methods that throw a runtime exception.
 
-**Parity enforcement — build-time test, not `config validate`.**
+Agent sees at dispatch (after Family B substitution):
 
-`gh optivem config validate` is end-user-facing — it validates
-the operator's `gh-optivem.yaml`. The frontmatter-vs-`phase-
-scopes.yaml` parity is a developer-time / build-time invariant.
-Wrong audience.
+> Implement the DSL Core
+> (`acceptance-test/java/src/main/java/.../core/`) for real —
+> replace each `TODO: DSL` prototype with actual logic.
+> If you need to add methods to the DSL Port
+> (`acceptance-test/java/src/main/java/.../dsl/`), add prototype
+> methods that throw a runtime exception.
 
-The right home is the existing build-time guard at
-`internal/atdd/phase_scopes_test.go`. That file already loads
-all three sources (`phase-scopes.yaml`, `process-flow.yaml`, and
-the agents package — `phase_scopes_test.go:10-13`) and asserts
-reverse-FK invariants between them. Extend it with assertions of
-the shape:
+**Convention:**
 
-- For every writing-agent phase id in `process-flow.yaml`, the
-  dispatched agent's prompt frontmatter declares a `scope:`
-  block (or `scope: none`).
-- The frontmatter's `scope.read` and `scope.write` lists equal
-  the `phase-scopes.yaml` entry for the same phase (if
-  `phase-scopes.yaml` survives this item).
-- Every key in either list resolves through `canonicalPathKeys()`.
-- `read ⊆ write` (cross-link to Item 3).
+- Use the existing `${key}` syntax (dollar prefix, Family B
+  per `feedback_substitutable_paths_in_docs.md`). Do not
+  introduce a parallel `{key}` syntax.
+- Wrap the substitution in backticks for code formatting:
+  ``(`${dsl-core}`)``.
+- **Singular consistent** — both the human name and the key are
+  singular: `DSL Core (\`${dsl-core}\`)`, `DSL Port
+  (\`${dsl-port}\`)`. No plural human prose ("DSL Ports") even
+  if it reads naturally — consistency wins.
+- **Every occurrence** — tag every mention of a layer, not just
+  the first. Verbose by ~12 chars per mention; the verbosity
+  is small and the agent never has to scan back to find the
+  first mapping.
+- The `## Scope` block (Half 1) still enumerates everything in
+  one place; the inline annotations make per-step references
+  unambiguous.
 
-**Open questions for refinement:**
+**Per-prompt audit — layers requiring inline annotation:**
 
-- **Does `phase-scopes.yaml` survive?** Three answers possible:
-  (i) drop it — frontmatter is sole SSoT, no second file;
-  (ii) keep it as a generated mirror (build target regenerates
-  it from the frontmatter corpus); (iii) keep it as a parallel
-  hand-edited file with parity-enforced equality. (i) is the
-  cleanest; (ii) is convenient if other tooling already consumes
-  `phase-scopes.yaml` shape; (iii) is two-places-to-edit
-  friction.
-- **Prompt-name ↔ phase-id mapping.** Frontmatter lives on the
-  prompt file (keyed by prompt name, e.g.
-  `write-acceptance-tests`). `phase-scopes.yaml` keys on BPMN
-  phase id (e.g. `AT_RED_TEST`). The parity check needs the
-  mapping. `process-flow.yaml` carries it
-  (`UserTask.Agent` / `CallActivity.Params["agent"]` per
-  `phase_scopes_test.go:38-52`); the existing guard already
-  joins on it, so this is not new infrastructure.
-- **Where does `## Scope` sit in the four-heading skeleton?**
-  (a) / (b) / (c) above.
-- **Per-language path resolution.** The dispatched `## Scope`
-  block shows paths from the **current project's**
-  `gh-optivem.yaml`. So a rehearsal against a Java project
-  shows Java paths; against a TypeScript project, TS paths.
-  The frontmatter keys are stable across languages.
+| Prompt | Layers mentioned in prose (current human names) | Inline `${key}` needed |
+|--------|------------------------------------------------|-----------------------|
+| `implement-dsl.md` | "DSL Core", "DSL interface", "System Driver port/interface", "External System Driver port/interface" | `${dsl-core}`, `${dsl-port}`, `${driver-port}`, `${external-system-driver-port}` |
+| `implement-system-driver-adapters.md` | "System Driver port", "System Driver adapter(s)" | `${driver-port}`, `${driver-adapter}` (already used at lines 31, 32) |
+| `implement-external-system-driver-adapters.md` | "External System Driver port", "External System Driver adapter(s)", "Ext* DTOs", "Real driver", "Stub driver(s)" | `${external-system-driver-port}`, `${external-system-driver-adapter}` (already used at lines 31, 33, 34) |
+| `implement-system.md` | "system surface", "Driver-port" | `${system-path}` (or equivalent post-fold), `${driver-port}` (already used at line 36) |
+| `implement-external-system-stubs.md` | "External System stub", "tests/DSL/Drivers" | `${external-system-driver-adapter}` and refs to test/DSL/driver keys |
+| `write-acceptance-tests.md` | "Acceptance Test(s)", "DSL interface", "DSL Core" | `${at-test}`, `${dsl-port}`, `${dsl-core}` |
+| `write-contract-tests.md` | "External System Contract Test(s)", "DSL interface", "DSL Core" | `${ct-test}`, `${dsl-port}`, `${dsl-core}` |
+| `disable-tests.md`, `enable-tests.md` | "test methods", "disable marker(s)" (no layer-key prose; works on the substituted file list directly) | n/a |
+| `refactor-system.md` | "system/" | `${system-path}` |
+| `refactor-tests.md` | "test code layer", "acceptance tests", "contract tests", "DSL", "driver ports/adapters", "external-system driver ports/adapters" | every layer key the test layer spans |
+| `refine-acceptance-criteria.md` | (no layer-key prose — works on the parsed-concepts artifact only) | n/a |
+| `fix-*.md` (5 files) | (refer to layers abstractly via `${changed_files}` / `${allowed_roots}`; the new `## Scope` mechanism replaces `${allowed_roots}`) | n/a for prose; the `## Scope` block still renders |
 
 **Existing mechanism this replaces — `${allowed_roots}`.**
-`implement-system-driver-adapters.md:16-17` (and likely others)
-already substitute write paths into the body via a loose prose
-labelling:
+`implement-system.md:15-16`, `implement-system-driver-adapters.md:16-17`,
+`implement-external-system-driver-adapters.md:16-17`,
+`refactor-system.md:12-13`, `refactor-tests.md:12-13` carry a
+loose prose block:
 
 ```
 Allowed write roots:
@@ -425,152 +529,122 @@ ${allowed_roots}
 > Edit ONLY files under the "Allowed write roots" listed at the
 > top of this prompt.
 
-That mechanism does roughly what `## Scope` proposes, but worse:
+That mechanism does roughly what the new `## Scope` block does
+but worse:
 
-- **Write-only.** "Allowed write roots" is silent on read-scope.
-  Doesn't carry the Item 3 read/write split.
-- **Prose, not structured.** No key labels, no `read:` /
-  `write:` headings; just a substituted blob.
-- **Duplicated guardrail line.** The "Edit ONLY files under…"
-  imperative is repeated across prompts (audit during
-  execution); collapses into the preamble (Item 5) or
-  `scope.md` (Item 2) — wherever the scope-bound-reads rule
-  lands.
+- **Write-only.** Silent on read-scope (Item 3's split impossible).
+- **Prose, not structured.** No key labels.
+- **Duplicated guardrail line** across the five files. The
+  imperative collapses into the preamble (Item 2) / `scope.md`.
 - **Tells the agent the answer but not the question.** The
   substituted paths land in the body, but the keys
-  (`driver-port`, `driver-adapter`, …) that connect those
-  paths to scope-rule references in the prompt body and to
-  `phase-scopes.yaml` are absent.
+  (`driver-port`, `driver-adapter`, …) that connect those paths
+  to scope-rule references are absent.
 
-So Item 4's `## Scope` block is **not** a new mechanism — it is
-a structured replacement of `${allowed_roots}` that adds the
-keys, the read/write split, and a consistent location. The
-runtime substitution for `${allowed_roots}` is already wired;
-re-targeting it to emit the `## Scope` block is a refactor of
-the rendering step, not a new resolver.
+So `## Scope` is **not** a new mechanism — it is a structured
+replacement of `${allowed_roots}` that adds the keys, the
+read/write split (Item 3), and a consistent location. The
+existing `${allowed_roots}` substitution wiring re-targets to
+emit the `## Scope` block; it's a refactor of the rendering
+step, not a new resolver.
 
 **Cleanup that drops out of Item 4 once `## Scope` lands:**
 
-- Every `Allowed write roots:` / `${allowed_roots}` block in
-  the prompt corpus is removed (the data moves into `## Scope`).
+- Every `Allowed write roots:` / `${allowed_roots}` block in the
+  5 prompts above is removed.
 - Every "Edit ONLY files under the 'Allowed write roots'…"
-  imperative is removed (the rule moves to the preamble /
-  `scope.md` per Item 2).
+  imperative is removed (lines 23 of
+  `implement-external-system-driver-adapters.md` /
+  `implement-system.md` /
+  `implement-system-driver-adapters.md`, line 19 of
+  `refactor-system.md` / `refactor-tests.md`). The rule moves
+  to preamble (Item 2) or `scope.md`.
 - The `${allowed_roots}` entry in the substituted-parameter
-  inventory either disappears entirely (if `## Scope` is
-  rendered from frontmatter directly) or is renamed /
-  refocused.
+  inventory either disappears entirely (if `## Scope` is rendered
+  directly) or is renamed / refocused per the new resolver.
 
-**Resolved-block shape (what the agent actually sees at dispatch),
-regardless of A vs B:**
+**Per-language path resolution.** The dispatched `## Scope` block
+shows paths from the **current project's** `gh-optivem.yaml`. So
+a rehearsal against a Java project shows Java paths; against a
+TypeScript project, TS paths. The layer keys are stable across
+languages.
 
-```
-## Scope (resolved at dispatch)
+**Build-time guards:**
 
-You may **read** files under these paths:
+- Every layer key in any `## Scope` block (and any inline
+  `${key}` annotation in prose) resolves through
+  `canonicalPathKeys()`.
+- Every layer key referenced in prose is also listed in either
+  `read:` or `write:` for that phase node (catches drift between
+  inline annotations and actual scope).
 
-- at-test   → acceptance-test/java/src/test/java/.../tests/
-- dsl-port  → acceptance-test/java/src/main/java/.../dsl/
+**Cross-links.**
 
-You may **modify** files under these paths (superset of read):
-
-- at-test   → acceptance-test/java/src/test/java/.../tests/
-- dsl-port  → acceptance-test/java/src/main/java/.../dsl/
-- dsl-core  → acceptance-test/java/src/main/java/.../core/
-
-Reading or writing outside this set requires a `scope_exception`
-block.
-```
-
-**Glossary problem (separable but related).** Even with the
-resolved block above, the prompt *body* still uses prose like
-"the DSL interface" and "the DSL Core". The agent needs to map
-those to layer keys (`dsl-port`, `dsl-core`). Options:
-
-1. Rewrite prose to use keys directly: "the DSL Port layer (the
-   files under `dsl-port`)" instead of "the DSL interface".
-2. Add a glossary block to `scope.md` (or the resolved-block
-   above): "DSL interface = `dsl-port`; DSL Core = `dsl-core`;
-   System Driver Adapter = `driver-adapter`; …"
-3. Both — keys in prose where natural, plus a small glossary
-   for the human-name fallbacks.
-
-Decide during refinement; (3) seems lowest-risk.
+- **Item 2** (scope-bound reads): the rule cites the `## Scope`
+  block's `read:` set.
+- **Item 3** (read/write split): the `## Scope` block renders
+  both sets.
+- **Item 6** (skeleton): `## Scope` placement decided in Item 6
+  walk.
+- **Item 9** (every prompt declares scope): the `scope: {}`
+  frontmatter goes away post-fold — scope lives on the BPMN
+  node. Every prompt loses its frontmatter `scope:` block; the
+  rendered `## Scope` block in the body is the sole agent-facing
+  declaration.
 
 **Acceptance:**
 
 - Every dispatched prompt (any phase that pins to layer keys)
-  carries a resolved-paths block showing **both** `read` and
-  `write` sets (per Item 3) with keys and resolved paths.
-- Source-of-truth question (A vs B) decided and documented in
-  the plan before execution starts; build-time invariants
-  preserved either way.
+  carries a rendered `## Scope` block showing **both** `read:` and
+  `write:` sets (per Item 3) with keys and resolved paths.
+- Every layer mention in prose is annotated with `${key}`
+  Family B substitution (singular human name + singular key,
+  every occurrence).
+- `${allowed_roots}` mechanism removed from all 5 prompts that
+  use it; the redundant "Edit ONLY files under…" imperative is
+  removed (rule lives in preamble / scope.md).
 - One end-to-end rehearsal of `write-acceptance-tests` shows
-  the agent's dispatched prompt containing the resolved block,
+  the agent's dispatched prompt containing the resolved `## Scope`
+  block, inline `${key}` annotations resolved to actual paths,
   and the agent's tool-use trace shows reads bounded to the
-  resolved `read:` paths only.
-- Glossary mechanism (per the three options above) decided and
-  applied to at least the four "core" layer names that show up
-  in agent prose: DSL Port, DSL Core, System Driver, External
-  System Driver.
+  rendered `read:` paths only.
+- Build-time guard catches layer-key drift: every inline
+  `${key}` in any prompt body matches a key in the same phase's
+  `read:` or `write:` list (post-fold).
 
 ### 5. Move universal tool-use rules into the preamble
 
-**Observation.** Two paragraphs from `write-acceptance-tests.md` were
-flagged as candidates for promotion:
+**Status (resolved during refinement, 2026-05-26):** approved.
 
-1. *"When you have multiple edits to the same file, make them in one
-   Write or one Edit-with-larger-context call rather than several
-   sequential Edits. Each tool round-trip costs latency and tokens; a
-   file's interface additions, impl methods, and wiring are typically
-   one cohesive change."* — `write-acceptance-tests.md:21`
-2. *"Do not present or wait for approval inside the agent."* —
-   `write-acceptance-tests.md:23`
+**Two rules to promote** to `preamble.md`:
 
-Neither is acceptance-test-specific:
+1. **No inline approval** — duplicated **9 times** verbatim across
+   the corpus today:
+   `implement-dsl.md:22`, `implement-system-driver-adapters.md:25`,
+   `implement-system.md:24`,
+   `implement-external-system-driver-adapters.md:25`,
+   `disable-tests.md:44`, `enable-tests.md:43`,
+   `refine-acceptance-criteria.md:75`, `write-contract-tests.md:16`,
+   `write-acceptance-tests.md:23`.
+2. **Batch edits per file** — appears in only one prompt today
+   (`write-acceptance-tests.md:21`) but applies to every
+   file-modifying agent. Single-location placement is a
+   duplication-rot symptom, not evidence of task scope.
 
-- **Rule 1 (batch edits per file)** appears in only one prompt today,
-  but the rule itself applies to every file-modifying agent — DSL
-  implementation, driver adapters, system implementation, refactors.
-  The single-location placement is a duplication-rot symptom, not
-  evidence of task scope.
-- **Rule 2 (no inline approval)** is already duplicated **9 times**
-  verbatim across the prompt corpus:
-  `implement-dsl.md:22`, `implement-system-driver-adapters.md:25`,
-  `implement-system.md:24`,
-  `implement-external-system-driver-adapters.md:25`,
-  `disable-tests.md:44`, `enable-tests.md:43`,
-  `refine-acceptance-criteria.md:75`, `write-contract-tests.md:16`,
-  `write-acceptance-tests.md:23`. That's textbook preamble material.
-
-**Relationship to existing preamble content.** The preamble
-(`preamble.md:38-40`) currently says:
-
-> When the work is done, do not summarise and do not commit — exit
-> cleanly. The orchestrator drives compile, test runs, disabling,
-> and commits as separate service tasks; the agent must never run
-> `git commit`, `git add`, `gh issue close`, the compile commands,
-> or the test commands.
-
-This covers "don't commit / don't summarise" but is silent on
-"don't present, don't wait for approval" and silent on "batch
-edits per file". Both belong in the same neighbourhood.
-
-**Proposed preamble additions:**
-
-Append to the "Don't commit, don't summarise" section (or extend
-the title to "Don't commit, don't summarise, don't ask"):
+**Preamble edits.** `preamble.md` currently has a "Don't commit,
+don't summarise" section (lines 38-40). Extend its title to
+**"Don't commit, don't summarise, don't ask"** and append:
 
 > Do not present a plan and wait for approval inside the agent.
 > The orchestrator gates approvals between phases; an agent that
 > stops mid-dispatch to ask the operator something will hang the
-> pipeline. If you genuinely cannot proceed (e.g. an ambiguous
+> pipeline. If you genuinely cannot proceed (an ambiguous
 > Acceptance Criterion, an out-of-scope edit required, a
 > contradiction between two inputs), emit the appropriate
 > structured exit block (`scope_exception` from `scope.md`, or a
 > task-specific `blocker:` block when defined) and exit.
 
-Add a new short section "Edit cohesion":
+Add a new section **"Edit cohesion"**:
 
 > When you have multiple edits to the same file, make them in one
 > `Write` or one `Edit` call with a larger context window rather
@@ -580,9 +654,13 @@ Add a new short section "Edit cohesion":
 
 **Strip from prompt bodies after promotion:**
 
-- Rule 2 (no inline approval): delete the line from all 9 prompts
+- Rule 1 (no inline approval): delete the line from all 9 prompts
   listed above.
-- Rule 1 (batch edits): delete `write-acceptance-tests.md:21`.
+- Rule 2 (batch edits): delete `write-acceptance-tests.md:21`.
+
+**Cross-link to Item 2.** Both items modify `preamble.md`. Item 2
+adds the read-side scope rule; Item 5 adds the don't-ask +
+edit-cohesion rules. Execute together as one preamble edit.
 
 **Acceptance:**
 
@@ -597,6 +675,18 @@ Add a new short section "Edit cohesion":
 
 ### 6. Standardise the prompt skeleton: `## Inputs` / `## Steps` / `## Outputs` / `## Additional Notes`
 
+**Status (resolved during refinement, 2026-05-26):**
+
+- Four-heading skeleton applies to **every** prompt, including fix-*.
+- **Option C for fix-*:** `## Additional Notes` is allowed richer
+  sub-headings (`### Why you were dispatched`, `### Exception to
+  the anti-rediscovery rule`, `### Anti-patterns`) to preserve
+  diagnostic structure under a single skeleton.
+- **`## Outputs` is optional** — dropped for fix-* (no structured
+  output beyond a prose diagnosis).
+- **`## Rubric` in `refine-acceptance-criteria.md`** moves to
+  `## Additional Notes` as reference material consulted by Steps.
+
 **Observation.** `write-acceptance-tests.md` uses `## Acceptance
 Criteria` as the heading for the substituted ticket-body block.
 Other writing-agent prompts use different headings — `## Checklist`,
@@ -608,6 +698,24 @@ operator (or an agent inspecting another prompt) cannot grep for
 a common heading to find "what was substituted in", nor predict
 where re-run guidance lives, nor where the `outputs:` YAML block
 will appear.
+
+**Per-prompt audit — current heading vs target:**
+
+| Prompt | Current top-level headings | Skeleton fit / changes |
+|--------|----------------------------|-----------------------|
+| `disable-tests.md` | `## Inputs`, `## Annotation reason format`, `## Steps` | Has 1/4 → lift `## Annotation reason format` to `### Annotation reason format` under `## Inputs` |
+| `enable-tests.md` | `## Inputs`, `## Strip filter`, `## Steps` | Has 1/4 → lift `## Strip filter` to `### Strip filter` under `## Inputs` |
+| `implement-dsl.md` | `## Steps`, `## Phase-output flags` | Add `## Inputs` for `${parsed_concepts}` + `### Parameters` for `${touches-system-driver}` (Item 8). `## Phase-output flags` collapses into `## Outputs` (see definitions below). |
+| `implement-system-driver-adapters.md` | `## Checklist`, `## Steps` | `## Checklist` → `### Checklist` under `## Inputs`. Add `## Outputs` if flags. |
+| `implement-external-system-driver-adapters.md` | `## Checklist`, `## Steps` | Same shape |
+| `implement-system.md` | `## Checklist`, `## Steps` | Same shape |
+| `implement-external-system-stubs.md` | `## Steps` | Add `## Inputs` for substituted variables |
+| `refactor-system.md` | `## Checklist`, `## Steps` | `## Checklist` → `### Checklist` under `## Inputs` |
+| `refactor-tests.md` | `## Checklist`, `## Steps` | Same |
+| `refine-acceptance-criteria.md` | `## Role in the flow` (Item 1 strips), `## Inputs`, `## Outputs`, `## Rubric for AC coverage`, `## Steps` | `## Rubric` → `## Additional Notes` |
+| `write-acceptance-tests.md` | `## Acceptance Criteria`, `## Steps`, `## Outputs` | `## Acceptance Criteria` → `### Acceptance Criteria` under `## Inputs`; loose recovery prose at line 19 lifts to `## Additional Notes` |
+| `write-contract-tests.md` | `## Steps` | Add `## Inputs`; loose recovery prose at line 14 lifts to `## Additional Notes` |
+| `fix-*.md` (5 files) | `## Why you were dispatched`, `## Inputs you receive`, `## Exception to the anti-rediscovery rule`, `## What to do`, `## Anti-patterns`, `## Failing command`, ..., `## Allowed roots` | **Option C:** `## Inputs you receive` → `## Inputs` (with per-variable content as paragraphs or `### `-sub-headings); `## What to do` → `## Steps`; `## Outputs` omitted; the rest (`### Why you were dispatched`, `### Exception to the anti-rediscovery rule`, `### Anti-patterns`) move under `## Additional Notes` as sub-headings. Per-variable trailing blocks (`## Failing command\n${command}` etc.) collapse into `## Inputs`. |
 
 **Proposed skeleton (four canonical headings, applies to every
 writing-agent prompt):**
@@ -711,28 +819,47 @@ empty / absent):
 - `disable-tests.md`, `enable-tests.md` (likely substitute test
   targets — confirm).
 - `refine-acceptance-criteria.md` (audit).
-- `fix-*.md` (audit — they substitute `${verify_results}`,
-  `${command}`, etc.; today they have richer structure with
-  Diagnosis Protocol etc. — refinement to decide whether the
-  four-heading skeleton applies or fix-* keeps its own).
+- `fix-*.md` (5 files) — Option C: same four headings, with
+  `## Additional Notes` carrying `### Why you were dispatched`,
+  `### Exception to the anti-rediscovery rule`, `### Anti-patterns`
+  as sub-headings to preserve diagnostic structure. `## Outputs`
+  omitted (prose diagnosis only).
 
 **Acceptance:**
 
-- Every writing-agent prompt follows the four-heading skeleton
-  (`## Additional Notes` optional but, when present, named
-  exactly this).
-- `grep -nE '^## (Acceptance Criteria|Checklist)$' internal/assets/runtime/prompts/atdd/*.md`
+- Every prompt (writing-agent and fix-*) follows the four-heading
+  skeleton (`## Outputs` and `## Additional Notes` optional but,
+  when present, named exactly this).
+- `grep -nE '^## (Acceptance Criteria|Checklist|Phase-output flags|Rubric|Strip filter|Annotation reason format|Why you were dispatched|Inputs you receive|Exception to the anti-rediscovery rule|What to do|Anti-patterns|Failing command|Exit code|Captured stderr tail|Changed files|Allowed roots|Role in the flow)$' internal/assets/runtime/prompts/atdd/*.md`
   returns zero hits as top-level headings (sub-headings under
-  `## Inputs` are fine).
+  `## Inputs` / `## Outputs` / `## Additional Notes` are fine).
 - Re-run / recovery wording (today inline in
-  `write-acceptance-tests.md:19` and similar lines in other
-  prompts) lives under `## Additional Notes`, not interleaved
-  with the Steps.
-- The fix-* corpus has a refinement decision: adopt the
-  four-heading skeleton, or carry its own (heavier) structure —
-  documented in the plan before execution.
+  `write-acceptance-tests.md:19`, `write-contract-tests.md:14`,
+  `implement-dsl.md:20`, and similar lines in other prompts)
+  lives under `## Additional Notes`, not interleaved with the
+  Steps.
+- fix-* Option C applied: structured sub-headings under
+  `## Additional Notes` carry the diagnostic guidance.
 
 ### 7. Audit reference-doc Reads per phase
+
+**Status (resolved during refinement, 2026-05-26):** **delete all
+`Read ${references_root}/...` directives across every prompt**;
+add back surgically only if first-time issues surface during
+execution.
+
+**Rationale:** every ATDD prompt runs on a project scaffolded
+from the shop template, which already includes example files for
+every layer (DSL Core, DSL Port, driver-port, driver-adapter,
+system surface, acceptance tests, contract tests). The agent
+always has reference examples visible in `${dsl-core}/`,
+`${at-test}/`, `${driver-adapter}/<channel>`, etc. The reference
+docs (`dsl-core.md`, `driver-port.md`, `system.md`, `test.md`,
+`language-equivalents/${language}.md`) duplicate what is already
+in the working tree at the price of paying their token cost on
+every dispatch even when unneeded. Inference from existing files
+is on-demand (pay-per-use) and bounded by Item 2's read discipline
+("only read what's needed"); the doc Reads are an upfront tax.
 
 **Observation.** Most writing-agent prompts contain a block of
 `Read ${references_root}/...` directives near the end of the prompt
@@ -760,81 +887,81 @@ body. Inventory:
 ~47. Token cost per dispatch is modest, not prohibitive, but the
 Reads look copy-pasted by family rather than curated per phase.
 
-**Per-phase relevance audit (proposed during refinement):**
+**Resolution (delete-all):**
 
-For each prompt, ask: *does the agent's behaviour change if this
-file is unread?* Concrete examples that suggest a curation, not
-just a delete:
+Every `Read ${references_root}/...` directive is removed from
+every prompt. Specifically:
 
-- `write-acceptance-tests` Reads `dsl-core.md` — but this phase
-  only adds `throw "TODO: DSL"` placeholder stubs to dsl-core.
-  The 8-line doc covers with-methods, string-only fields, alias
-  fields, verification-class shape — all rules that bind on
-  `implement-dsl`, not on placeholder authoring. **Probable
-  drop.** Keep `test.md` (highly relevant: positive/negative
-  test-class structure) and `language-equivalents/${language}.md`
-  (highly relevant: per-language syntax).
-- `implement-external-system-driver-adapters` Reads four files
-  including `system.md`. This phase reshapes the external-system
-  driver layer; does `system.md` (the SUT architecture doc) bind
-  on it? Audit.
-- `implement-system` Reads `driver-port.md` + `driver-adapter.md`
-  but **does not** Read `language-equivalents/${language}.md`
-  (per the grep above). Inconsistent with sibling phases — is
-  this deliberate (system code is more idiomatic, no special
-  syntax cheat-sheet needed) or a miss? Audit.
-- `disable-tests` / `enable-tests` Read only the
-  language-equivalents doc — correct for mechanical-marker work,
-  but confirm no other doc encodes the marker grammar.
+- `write-acceptance-tests.md:25-27` (3 Reads): delete all.
+- `write-contract-tests.md:18-20` (3 Reads): delete all.
+- `implement-dsl.md:24-26` (3 Reads): delete all.
+- `implement-system-driver-adapters.md:35-37` (3 Reads): delete all.
+- `implement-external-system-driver-adapters.md:38-41` (4 Reads):
+  delete all.
+- `implement-system.md:40-42` (3 Reads): delete all.
+- `disable-tests.md:46` (1 Read): delete.
+- `enable-tests.md:45` (1 Read): delete.
 
-**Process for the audit:** for each prompt × each currently-Read
-doc, classify as **(a) load-bearing — keep**, **(b) redundant or
-out-of-phase — drop**, or **(c) currently missing but needed —
-add**. Decide each case in the refinement walk.
+**The `${references_root}` parameter becomes unused** across the
+prompt corpus once these directives are deleted. The substitution
+wiring can be removed entirely (cross-link Item 8 — substituted
+parameter inventory).
 
-**Default disposition (user signal during walk, 2026-05-26):** the
-operator's sense is the current Reads do more harm than good
-right now — the doctrine in those docs is not load-bearing
-relative to the substituted ticket inputs, and the agent treats
-them as low-signal context. **Default to drop unless someone in
-refinement defends a specific Read** (with a concrete "the agent
-will write X wrong without this doc" argument). This inverts the
-usual presumption — keep-by-default is the safe choice for prose
-content, but here the corpus shape suggests the Reads were
-copy-pasted by family rather than curated, so the default-keep
-presumption isn't earned.
+**The references-root tree stays in place** as project
+documentation — it's still useful to operators reading the docs
+directly; just not pulled into every agent dispatch.
 
-Two consequences if default-drop wins:
-
-- Most prompts end up with zero `Read ${references_root}/...`
-  directives — the references-root tree stays as project
-  documentation but isn't pulled into every dispatch.
-- The `${references_root}` parameter may become unused across
-  the prompt corpus, in which case its substitution wiring can
-  be removed (per the inventory in Item 8).
+**Fallback path (reactive add-back):** if execution surfaces
+concrete cases where the agent invents wrong conventions
+(observable in test failures, code review, or operator
+inspection), add back the *specific* Read directive that would
+have prevented the issue — surgical rather than pre-emptive.
 
 **Relationship to other items:**
 
-- Item 2 (scope-bound reads) needs to allowlist whatever survives
-  this audit, so the references-root Reads must be enumerated
-  in the per-prompt frontmatter or in a shared block, not just
-  emitted in prose. (Otherwise the read-scope rule fights the
-  prompt's own Read directives.)
-- Item 5 (move universal rules to preamble) does **not** apply
-  here: the references-root Reads are per-phase by definition;
-  they belong in the prompt body, just curated.
+- **Item 2** (scope-bound reads): with no `Read` directives in
+  the prompt bodies, Exception 1 of Item 2's rule
+  ("files this prompt explicitly tells you to Read") becomes a
+  null set. The rule simplifies; the agent's reads are bounded
+  by the rendered `## Scope` block (Item 4) plus Step-required
+  inspections (Exception 2).
+- **Item 5** (move universal rules to preamble): does **not**
+  apply here; the deletion is per-phase by definition.
+- **Item 8** (substituted-parameter inventory):
+  `${references_root}` joins the to-be-removed list.
 
 **Acceptance:**
 
-- Each prompt's Read block is documented as the result of an
-  explicit audit (`keep / drop / add` decisions captured in the
-  plan during refinement).
-- `dsl-core.md` removed from `write-acceptance-tests.md` Reads
-  unless refinement explicitly justifies it.
-- No prompt Reads a doc that another phase in the same CYCLE
-  already authoritatively binds on (no copy-paste-by-family).
+- `grep -nE '^Read \`\$\{references_root\}' internal/assets/runtime/prompts/atdd/*.md`
+  returns zero hits.
+- `${references_root}` parameter removed from the substitution
+  wiring (cross-link Item 8).
+- The references-root tree at
+  `internal/assets/runtime/references/` is preserved on disk
+  unchanged.
 
 ### 8. Strip HTML "comment" pseudo-hiding; document parameters in the body
+
+**Status (resolved during refinement, 2026-05-26):**
+
+- Strip the HTML comment from `implement-dsl.md:8-16` entirely.
+- Add `### Parameters` under `## Inputs` (per Item 6) for
+  `implement-dsl` documenting `${touches-system-driver}`.
+- `disable-tests` / `enable-tests` — no `### Parameters`
+  upgrade; existing `## Inputs` lines already carry value-domain
+  hints, which is sufficient for pure-interpolation parameters.
+- Current multi-caller prompts — Item 10 resolved to a **verb
+  split** (no `${mode}` parameter at all). The 3 multi-caller
+  files split into `implement-*` + `update-*` pairs, each with
+  one algorithm. **No `### Parameters` upgrade needed** for any
+  of them — there's no branching parameter to document.
+- Cross-cutting follow-on (Item 10 flag): `implement-dsl`'s
+  `${touches-system-driver}` parameter may itself collapse via
+  scope-as-signal. If that follow-on lands, the `### Parameters`
+  upgrade for `implement-dsl` shrinks or disappears entirely.
+- Inventory updated for upstream removals: `${allowed_roots}`
+  (Item 4) and `${references_root}` (Item 7) are deleted from the
+  substituted-variable set.
 
 **Observation.** `implement-dsl.md:8-16` carries a block that looks
 like a hidden comment:
@@ -959,7 +1086,58 @@ value, not **who** is passing it.
 
 ### 9. Every prompt declares `scope:` in frontmatter — and the multi-caller case
 
-**Observation.** Of 17 prompts under
+**Status (resolved during refinement, 2026-05-26):** the original
+shape of this item is mostly obsoleted by Item 4 (Option B SSoT —
+scope lives on the BPMN node, not in prompt frontmatter) plus the
+spinoff plan (per-node scope shape). Item 9 collapses to:
+
+1. **Strip `scope:` from every prompt frontmatter.** Today's
+   matrix:
+   - `scope: {}` (8 prompts): `disable-tests`, `enable-tests`,
+     `implement-dsl`, `implement-external-system-stubs`,
+     `write-acceptance-tests`, `write-contract-tests` — get
+     stripped.
+   - `scope: none` (1 prompt): `refine-acceptance-criteria` —
+     gets stripped.
+   - **Missing entirely** (10 prompts): no action needed; the
+     line never existed.
+   - All 17 land with no `scope:` field in frontmatter.
+2. **Build-time guard.** Add a test (in `phase_scopes_test.go` or
+   wherever it lands post-spinoff) that rejects any prompt
+   carrying a `scope:` field in frontmatter. Post-fold, that line
+   is dead; if it reappears it's a confused new prompt-author.
+
+**Sub-case A (multi-caller scope) — fully delegated to Item 10.**
+The three original A1/A2/A3 options collapse:
+
+- **A1 (per-caller `by-caller:` map in frontmatter):** dead by
+  virtue of Item 4 Option B. No frontmatter scope at all.
+- **A2 (split prompts):** equivalent to Item 10 Option II.
+- **A3 (union scope, runtime narrowing):** redundant post-fold —
+  each call site in `process-flow.yaml` carries its own node
+  scope; no union needed in frontmatter (which has no scope
+  anyway).
+
+**Sub-case B (fix-* node scope) — delegated to the spinoff plan.**
+The spinoff ensures every BPMN node (including fix-* dispatch
+nodes) has `read:`/`write:` declared inline. The shape for
+diagnose-only nodes (e.g. `write: []`) is the spinoff's call.
+
+**Cross-links:**
+
+- **Item 4** — settled the SSoT and frontmatter-drops conventions.
+- **Item 10** — owns multi-caller prompt body shape.
+- **Spinoff plan** (`20260526-1536-fold-phase-scopes-into-process-flow.md`)
+  — owns node-scope declarations including fix-*.
+
+**Acceptance:**
+
+- `grep -nE '^scope:' internal/assets/runtime/prompts/atdd/*.md`
+  returns zero hits.
+- Build-time guard rejects any future reintroduction of `scope:`
+  in prompt frontmatter.
+
+**Original observation (preserved for context).** Of 17 prompts under
 `internal/assets/runtime/prompts/atdd/`, **10 have no `scope:`
 field in frontmatter at all**:
 
@@ -1094,6 +1272,116 @@ Quick audit needed:
   diagnose-and-repair).
 
 ### 10. Mode detection belongs in BPMN, not in the prompt body
+
+**Status (resolved during refinement, 2026-05-26): verb split.**
+Each of the 3 multi-caller prompts splits into two prompts with
+distinct verbs that encode the work-shape — no `${mode}`
+parameter, no branching anywhere.
+
+**The verb taxonomy (proposed by the user):**
+
+| change-system-behavior CYCLE | redesign-system-structure CYCLE | Work shape |
+|------------------------------|--------------------------------|------------|
+| `implement-system-driver-adapters` | `update-system-driver-adapters` | implement = fill TODOs placed by upstream; update = modify existing impl per Checklist |
+| `implement-external-system-driver-adapters` | `update-external-system-driver-adapters` | Same shape: implement vs update |
+| `implement-system` | `update-system` | implement = production code so tests pass; update = reshape system surface per Checklist |
+
+**Why verb-led naming is better than `${mode}` parameter:**
+
+- **Self-documenting names.** "implement" naturally evokes "create
+  new"; "update" naturally evokes "modify existing". No glossary
+  needed.
+- **Aligns with the corpus's existing taxonomy.** `refactor-*`
+  (no behaviour change), `write-*-tests`, `disable-tests`,
+  `enable-tests`, `fix-*` already follow a verb-led scheme.
+  `implement-*` and `update-*` extend it consistently.
+- **No `${mode}` parameter; no branching anywhere.** Each prompt
+  has one algorithm. The agent's prompt carries only the
+  instructions relevant to its dispatch.
+- **No "Step 1: branch on mode" anti-pattern.** Each agent's
+  Step 1 is real work.
+- **BPMN dispatch identity = agent name.** The cycle's identity
+  maps directly to the agent name; no `params: { mode: ... }`
+  needed.
+
+**Cross-cutting follow-on — `implement-dsl`'s
+`${touches-system-driver}` collapse.** The existing parameter in
+`implement-dsl` is the same anti-pattern in a different shape:
+
+- AT-side call site (change-system-behavior, touches-system-driver=true):
+  agent may write to `driver-port`.
+- CT-side call site (cover-system-behavior, touches-system-driver=false):
+  agent stays bounded to External System Driver port.
+
+The work itself is the same shape (write real DSL impl); only the
+**scope** differs. Post-fold (spinoff plan) each call site
+declares its own node scope: AT-side has `write: [dsl-core,
+driver-port]`; CT-side has `write: [dsl-core,
+external-system-driver-port]`. **Scope IS the signal; the
+parameter is redundant.** The `System Driver Interface Changed`
+output flag is emitted only when the agent actually wrote to
+`driver-port` (which scope controls).
+
+Flag as **follow-on item** (separate plan or appended item):
+collapse `implement-dsl`'s `${touches-system-driver}` parameter
+into scope-as-signal. Out of scope of Item 10's immediate
+deliverables (the 3 verb splits) but worth pursuing once the
+verb-split lands and the pattern is established.
+
+**Concrete changes for the 3 multi-caller files:**
+
+- **`implement-system-driver-adapters.md`** — strip Step 1's
+  "Branch on Checklist" anti-pattern; the prompt becomes a single
+  algorithm (find `TODO: System Driver` markers, fill with real
+  impl). Steps renumber from 2,3,4 → 1,2,3.
+- **NEW `update-system-driver-adapters.md`** — new prompt with a
+  single algorithm (read Checklist, identify affected adapter
+  files, apply each Checklist entry). Inherits the multi-caller
+  file's Step 2-4 content (the reshape algorithm) verbatim, no
+  branching.
+- **`implement-external-system-driver-adapters.md`** — same
+  split: strip the Checklist branch, becomes the implement (fill
+  TODOs) variant.
+- **NEW `update-external-system-driver-adapters.md`** — the
+  reshape variant (Ext* DTOs + Real/Stub drivers per Checklist).
+- **`implement-system.md`** — same split: strip Step 1's branch,
+  strip Step 3's "Escalation when no Checklist is supplied"
+  (cannot occur — there is no Checklist branch any more).
+- **NEW `update-system.md`** — the reshape variant (execute
+  Checklist on system surface; per-channel updates).
+
+**BPMN side post-rename:**
+
+- `change-system-behavior` CYCLE call-activities dispatch
+  `implement-*` agents.
+- `redesign-system-structure` CYCLE call-activities dispatch
+  `update-*` agents.
+- The call-activity's `agent:` param carries the new name; no
+  `mode:` param needed.
+
+**Precondition (cross-plan dependency, out of scope of this
+plan).** For the verb split to land cleanly, ticket parsing/intake
+must validate Checklist presence for `task/system-redesign`-kind
+tickets. A redesign-kind ticket with no Checklist body is a
+validation error caught upstream, not a runtime concern in the
+agent prompt. This validation belongs in ticket parsing or in the
+BPMN dispatch gate — **not in the prompt corpus**. Flag as
+follow-on item / new issue. (May already exist partially in
+`refine-acceptance-criteria` flow — audit during execution.)
+
+**Per-prompt audit:**
+
+| Current prompt | Current branch site(s) | Action |
+|----------------|------------------------|--------|
+| `implement-system-driver-adapters.md:29-31` | Step 1 "Branch on Checklist" | Strip branch; keep translation algorithm only |
+| `implement-system-driver-adapters.md:30-31 (b)` | Step 1 (b) reshape branch | Lift into new `update-system-driver-adapters.md` |
+| `implement-external-system-driver-adapters.md:29-31` | Step 1 "Branch on Checklist" | Same split |
+| `implement-external-system-driver-adapters.md:30-31 (b)` + Steps 2-4 | reshape branch + reshape Steps | Lift into new `update-external-system-driver-adapters.md` |
+| `implement-system.md:28-30` | Step 1 "Branch on Checklist" | Same split |
+| `implement-system.md:30 (b)` + per-channel Steps | reshape branch + per-channel updates | Lift into new `update-system.md` |
+| `implement-system.md:37` | Step 3 escalation | Delete entirely (Item 11 — empty-Checklist case can't occur, escalation collapses to `scope_exception`) |
+| `refactor-system.md`, `refactor-tests.md` | n/a | No mode branching; Checklist is content, not signal — no change |
+| `implement-dsl.md` | `${touches-system-driver}` parameter | Flagged for follow-on collapse (scope-as-signal) |
 
 **Observation.**
 `implement-system-driver-adapters.md:29-31` (Step 1, "Branch on
