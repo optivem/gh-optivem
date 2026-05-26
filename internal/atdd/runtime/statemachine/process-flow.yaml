@@ -43,9 +43,9 @@
 #
 # Encoding conventions:
 #
-#   - Process names match the canonical kebab-case task names from
-#     plans/ideas/{1..5}-bpmn-refactor-*-level.md. Cross-file connectedness
-#     (Q-new-3 vocabulary, Q-new-6 acceptance-test naming) is applied.
+#   - Process names are kebab-case canonical. This YAML is itself the
+#     source of truth — historical brainstorm files that named these
+#     processes have been retired.
 #
 #   - `call-activity.process:` is the only invocation primitive. Templated
 #     `process: ${agent-action}` resolves at dispatch time against the
@@ -799,9 +799,7 @@ processes:
   # BPMN, diagram 8).
   #
   # **Orphan in the structural call graph (intentional — known gap).** No
-  # other process calls this HIGH today: the brainstorm files
-  # (plans/ideas/3-bpmn-refactor-high-level.md +
-  # plans/ideas/4-bpmn-refactor-cycle-level.md) define the cascade
+  # other process calls this HIGH today: the cascade
   # `change-system-behavior` → `write-and-verify-acceptance-tests` →
   # `implement-and-verify-external-system-driver-adapters` for the AT
   # side, but do **not** show a corresponding call into the CT-side HIGH.
