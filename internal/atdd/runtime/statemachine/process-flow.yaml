@@ -741,6 +741,13 @@ processes:
         process: compile-tests
         name: "Compile Tests"
 
+      # RED writes tests, not system source — start-only (no BUILD_SYSTEM).
+      # `system start` is idempotent and lazy-builds the image when missing.
+      - id: START_SYSTEM
+        type: call-activity
+        process: start-system
+        name: "Start System"
+
       - id: GATE_EXPECTED_TEST_RESULT
         type: gateway
         binding: expected-test-result
@@ -784,7 +791,8 @@ processes:
 
     sequence-flows:
       - {from: WRITE_ACCEPTANCE_TESTS, to: COMPILE_TESTS}
-      - {from: COMPILE_TESTS,          to: GATE_EXPECTED_TEST_RESULT}
+      - {from: COMPILE_TESTS,          to: START_SYSTEM}
+      - {from: START_SYSTEM,           to: GATE_EXPECTED_TEST_RESULT}
       - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_PASS_ACCEPTANCE, when: "expected-test-result == success"}
       - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_FAIL_ACCEPTANCE, when: "expected-test-result == failure"}
       - {from: GATE_EXPECTED_TEST_RESULT, to: UNKNOWN_EXPECTED_TEST_RESULT}
@@ -904,6 +912,18 @@ processes:
         process: implement-external-system-driver-adapters
         name: "Implement External-System Driver Adapters"
 
+      # GREEN-shape: impl edited system source → rebuild and restart
+      # before verifying. `system start` brings up both real and stub.
+      - id: BUILD_SYSTEM_AFTER_DRIVER
+        type: call-activity
+        process: build-system
+        name: "Build System"
+
+      - id: START_SYSTEM_AFTER_DRIVER
+        type: call-activity
+        process: start-system
+        name: "Start System"
+
       - id: VERIFY_TESTS_PASS_CONTRACT_REAL
         type: call-activity
         process: verify-tests-pass
@@ -912,6 +932,13 @@ processes:
           task-name: implement-external-system-driver-adapters
           suite: contract-real
           test-names: ${test-names}
+
+      # No preceding impl, but the stub system needs to be up for the
+      # fail-verify to actually run. `system start` is idempotent.
+      - id: START_SYSTEM_BEFORE_STUB_FAIL
+        type: call-activity
+        process: start-system
+        name: "Start System"
 
       - id: VERIFY_TESTS_FAIL_CONTRACT_STUB
         type: call-activity
@@ -926,6 +953,18 @@ processes:
         type: call-activity
         process: implement-external-system-stubs
         name: "Implement External-System Stubs"
+
+      # GREEN-shape: impl edited system source → rebuild and restart
+      # before verifying.
+      - id: BUILD_SYSTEM_AFTER_STUBS
+        type: call-activity
+        process: build-system
+        name: "Build System"
+
+      - id: START_SYSTEM_AFTER_STUBS
+        type: call-activity
+        process: start-system
+        name: "Start System"
 
       - id: VERIFY_TESTS_PASS_CONTRACT_STUB
         type: call-activity
@@ -945,10 +984,15 @@ processes:
       - {from: GATE_DSL_PORT_CHANGED,   to: IMPLEMENT_AND_VERIFY_DSL,                     when: "dsl-port-changed == true"}
       - {from: GATE_DSL_PORT_CHANGED,   to: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS,    when: "dsl-port-changed == false"}
       - {from: IMPLEMENT_AND_VERIFY_DSL,                  to: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS}
-      - {from: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, to: VERIFY_TESTS_PASS_CONTRACT_REAL}
-      - {from: VERIFY_TESTS_PASS_CONTRACT_REAL,           to: VERIFY_TESTS_FAIL_CONTRACT_STUB}
+      - {from: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, to: BUILD_SYSTEM_AFTER_DRIVER}
+      - {from: BUILD_SYSTEM_AFTER_DRIVER,                 to: START_SYSTEM_AFTER_DRIVER}
+      - {from: START_SYSTEM_AFTER_DRIVER,                 to: VERIFY_TESTS_PASS_CONTRACT_REAL}
+      - {from: VERIFY_TESTS_PASS_CONTRACT_REAL,           to: START_SYSTEM_BEFORE_STUB_FAIL}
+      - {from: START_SYSTEM_BEFORE_STUB_FAIL,             to: VERIFY_TESTS_FAIL_CONTRACT_STUB}
       - {from: VERIFY_TESTS_FAIL_CONTRACT_STUB,           to: IMPLEMENT_EXTERNAL_SYSTEM_STUBS}
-      - {from: IMPLEMENT_EXTERNAL_SYSTEM_STUBS,           to: VERIFY_TESTS_PASS_CONTRACT_STUB}
+      - {from: IMPLEMENT_EXTERNAL_SYSTEM_STUBS,           to: BUILD_SYSTEM_AFTER_STUBS}
+      - {from: BUILD_SYSTEM_AFTER_STUBS,                  to: START_SYSTEM_AFTER_STUBS}
+      - {from: START_SYSTEM_AFTER_STUBS,                  to: VERIFY_TESTS_PASS_CONTRACT_STUB}
       - {from: VERIFY_TESTS_PASS_CONTRACT_STUB,           to: IMPL_EXT_DRIVER_CT_END}
 
   # Parameterised system impl: the caller picks the MID agent task by
@@ -1011,6 +1055,13 @@ processes:
         process: compile-tests
         name: "Compile Tests"
 
+      # RED writes tests, not system source — start-only (no BUILD_SYSTEM).
+      # `system start` is idempotent and lazy-builds the image when missing.
+      - id: START_SYSTEM
+        type: call-activity
+        process: start-system
+        name: "Start System"
+
       - id: VERIFY_TESTS_PASS
         type: call-activity
         process: verify-tests-pass
@@ -1027,7 +1078,8 @@ processes:
 
     sequence-flows:
       - {from: REFACTOR_TESTS,    to: COMPILE_TESTS}
-      - {from: COMPILE_TESTS,     to: VERIFY_TESTS_PASS}
+      - {from: COMPILE_TESTS,     to: START_SYSTEM}
+      - {from: START_SYSTEM,      to: VERIFY_TESTS_PASS}
       - {from: VERIFY_TESTS_PASS, to: COMMIT_TESTS}
       - {from: COMMIT_TESTS,      to: REFACTOR_AND_VERIFY_TESTS_END}
 
@@ -1058,6 +1110,13 @@ processes:
         type: call-activity
         process: compile-tests
         name: "Compile Tests"
+
+      # RED writes tests, not system source — start-only (no BUILD_SYSTEM).
+      # `system start` is idempotent and lazy-builds the image when missing.
+      - id: START_SYSTEM
+        type: call-activity
+        process: start-system
+        name: "Start System"
 
       - id: GATE_EXPECTED_TEST_RESULT
         type: gateway
@@ -1103,7 +1162,8 @@ processes:
     sequence-flows:
       - {from: RUN_ACTION, to: ENABLE_TESTS}
       - {from: ENABLE_TESTS,      to: COMPILE_TESTS}
-      - {from: COMPILE_TESTS,     to: GATE_EXPECTED_TEST_RESULT}
+      - {from: COMPILE_TESTS,     to: START_SYSTEM}
+      - {from: START_SYSTEM,      to: GATE_EXPECTED_TEST_RESULT}
       - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_PASS_FILTERED, when: "expected-test-result == success"}
       - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_FAIL_FILTERED, when: "expected-test-result == failure"}
       - {from: GATE_EXPECTED_TEST_RESULT, to: UNKNOWN_EXPECTED_TEST_RESULT}
