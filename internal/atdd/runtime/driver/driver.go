@@ -856,7 +856,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 		}
 		// Command-failure payload from upstream runCommand. State keys are
 		// only populated when the LOW execute-command primitive's shell
-		// dispatch failed and routed via GATE_COMMAND_SUCCEEDED → CALL_FIX;
+		// dispatch failed and routed via GATE_COMMAND_SUCCEEDED → FIX;
 		// on every other dispatch they're absent and the fields stay
 		// zero-valued. fix-command-failed.md is the only prompt that
 		// references the matching ${command_*} placeholders.
@@ -864,7 +864,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, cfg *project
 		// Validation-failure payload from upstream validateOutputsAndScopes.
 		// Same shape: state keys are populated only when the LOW
 		// execute-agent primitive's post-RUN validation failed and routed
-		// via the false branch → CALL_FIX. fix-missing-output.md and
+		// via the false branch → FIX. fix-missing-output.md and
 		// fix-scope-diff.md are the only prompts that reference the
 		// matching ${failing-task-name} / ${missing-outputs} /
 		// ${violating-paths} placeholders.

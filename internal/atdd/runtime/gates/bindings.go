@@ -302,7 +302,7 @@ func (b bindings) expectedTestResult(ctx *statemachine.Context) statemachine.Out
 }
 
 // fixOnFailureEnabled gates the LOW `execute-agent` primitive's
-// validation-failure → CALL_FIX edge. Reads the `fix-on-failure`
+// validation-failure → FIX edge. Reads the `fix-on-failure`
 // call-activity param: only the `fix` primitive's recursive
 // `execute-agent` call sets it to "false" (single-attempt
 // remediation), so the default (missing/empty) is true — every other

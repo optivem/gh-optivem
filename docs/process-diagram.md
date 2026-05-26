@@ -94,35 +94,35 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CALL_CHANGE_SYSTEM_BEHAVIOR[CALL_CHANGE_SYSTEM_BEHAVIOR — see § change-system-behavior]
-    CALL_COVER_SYSTEM_BEHAVIOR[CALL_COVER_SYSTEM_BEHAVIOR — see § cover-system-behavior]
-    CALL_ONBOARD_EXTERNAL_SYSTEM[CALL_ONBOARD_EXTERNAL_SYSTEM — see § onboard-external-system]
-    CALL_REDESIGN_SYSTEM_STRUCTURE[CALL_REDESIGN_SYSTEM_STRUCTURE — see § redesign-system-structure]
-    CALL_REFACTOR_SYSTEM_STRUCTURE[CALL_REFACTOR_SYSTEM_STRUCTURE — see § refactor-system-structure]
-    CALL_REFACTOR_TEST_STRUCTURE[CALL_REFACTOR_TEST_STRUCTURE — see § refactor-test-structure]
+    CHANGE_SYSTEM_BEHAVIOR[CHANGE_SYSTEM_BEHAVIOR — see § change-system-behavior]
+    COVER_SYSTEM_BEHAVIOR[COVER_SYSTEM_BEHAVIOR — see § cover-system-behavior]
     GATE_TICKET_KIND{ticket-kind}
     IMPLEMENT_TICKET_END((Ticket Marked IN ACCEPTANCE))
     MARK_IN_ACCEPTANCE[[MARK_IN_ACCEPTANCE]]
     MARK_IN_PROGRESS[[MARK_IN_PROGRESS]]
+    ONBOARD_EXTERNAL_SYSTEM[ONBOARD_EXTERNAL_SYSTEM — see § onboard-external-system]
     PARSE_TICKET[[PARSE_TICKET]]
+    REDESIGN_SYSTEM_STRUCTURE[REDESIGN_SYSTEM_STRUCTURE — see § redesign-system-structure]
+    REFACTOR_SYSTEM_STRUCTURE[REFACTOR_SYSTEM_STRUCTURE — see § refactor-system-structure]
+    REFACTOR_TEST_STRUCTURE[REFACTOR_TEST_STRUCTURE — see § refactor-test-structure]
     UNKNOWN_TICKET_KIND((⚡ Unknown Ticket Kind))
 
     MARK_IN_PROGRESS --> PARSE_TICKET
     PARSE_TICKET --> GATE_TICKET_KIND
-    GATE_TICKET_KIND -- Story --> CALL_CHANGE_SYSTEM_BEHAVIOR
-    GATE_TICKET_KIND -- Bug --> CALL_CHANGE_SYSTEM_BEHAVIOR
-    GATE_TICKET_KIND -- Task / Legacy Coverage --> CALL_COVER_SYSTEM_BEHAVIOR
-    GATE_TICKET_KIND -- Task / System Redesign --> CALL_REDESIGN_SYSTEM_STRUCTURE
-    GATE_TICKET_KIND -- Task / System Refactor --> CALL_REFACTOR_SYSTEM_STRUCTURE
-    GATE_TICKET_KIND -- Task / Test Refactor --> CALL_REFACTOR_TEST_STRUCTURE
-    GATE_TICKET_KIND -- Task / External System Onboarding --> CALL_ONBOARD_EXTERNAL_SYSTEM
+    GATE_TICKET_KIND -- Story --> CHANGE_SYSTEM_BEHAVIOR
+    GATE_TICKET_KIND -- Bug --> CHANGE_SYSTEM_BEHAVIOR
+    GATE_TICKET_KIND -- Task / Legacy Coverage --> COVER_SYSTEM_BEHAVIOR
+    GATE_TICKET_KIND -- Task / System Redesign --> REDESIGN_SYSTEM_STRUCTURE
+    GATE_TICKET_KIND -- Task / System Refactor --> REFACTOR_SYSTEM_STRUCTURE
+    GATE_TICKET_KIND -- Task / Test Refactor --> REFACTOR_TEST_STRUCTURE
+    GATE_TICKET_KIND -- Task / External System Onboarding --> ONBOARD_EXTERNAL_SYSTEM
     GATE_TICKET_KIND --> UNKNOWN_TICKET_KIND
-    CALL_CHANGE_SYSTEM_BEHAVIOR --> MARK_IN_ACCEPTANCE
-    CALL_COVER_SYSTEM_BEHAVIOR --> MARK_IN_ACCEPTANCE
-    CALL_REDESIGN_SYSTEM_STRUCTURE --> MARK_IN_ACCEPTANCE
-    CALL_REFACTOR_SYSTEM_STRUCTURE --> MARK_IN_ACCEPTANCE
-    CALL_REFACTOR_TEST_STRUCTURE --> MARK_IN_ACCEPTANCE
-    CALL_ONBOARD_EXTERNAL_SYSTEM --> MARK_IN_ACCEPTANCE
+    CHANGE_SYSTEM_BEHAVIOR --> MARK_IN_ACCEPTANCE
+    COVER_SYSTEM_BEHAVIOR --> MARK_IN_ACCEPTANCE
+    REDESIGN_SYSTEM_STRUCTURE --> MARK_IN_ACCEPTANCE
+    REFACTOR_SYSTEM_STRUCTURE --> MARK_IN_ACCEPTANCE
+    REFACTOR_TEST_STRUCTURE --> MARK_IN_ACCEPTANCE
+    ONBOARD_EXTERNAL_SYSTEM --> MARK_IN_ACCEPTANCE
     MARK_IN_ACCEPTANCE --> IMPLEMENT_TICKET_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
@@ -136,21 +136,21 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CALL_REDESIGN_SYSTEM_STRUCTURE[CALL_REDESIGN_SYSTEM_STRUCTURE — see § redesign-system-structure]
-    CALL_REFACTOR_SYSTEM_STRUCTURE[CALL_REFACTOR_SYSTEM_STRUCTURE — see § refactor-system-structure]
-    CALL_REFACTOR_TEST_STRUCTURE[CALL_REFACTOR_TEST_STRUCTURE — see § refactor-test-structure]
     CHOOSE_REFACTOR_TYPE["Choose refactor type (loopable; none = exit)"]
     GATE_REFACTOR_TYPE_CHOICE{ }
+    REDESIGN_SYSTEM_STRUCTURE[REDESIGN_SYSTEM_STRUCTURE — see § redesign-system-structure]
+    REFACTOR_SYSTEM_STRUCTURE[REFACTOR_SYSTEM_STRUCTURE — see § refactor-system-structure]
+    REFACTOR_TEST_STRUCTURE[REFACTOR_TEST_STRUCTURE — see § refactor-test-structure]
     REFACTOR_TOP_END((Refactor Complete))
 
     CHOOSE_REFACTOR_TYPE --> GATE_REFACTOR_TYPE_CHOICE
-    GATE_REFACTOR_TYPE_CHOICE -- Refactor System Structure --> CALL_REFACTOR_SYSTEM_STRUCTURE
-    GATE_REFACTOR_TYPE_CHOICE -- Refactor Test Structure --> CALL_REFACTOR_TEST_STRUCTURE
-    GATE_REFACTOR_TYPE_CHOICE -- Redesign System Structure --> CALL_REDESIGN_SYSTEM_STRUCTURE
+    GATE_REFACTOR_TYPE_CHOICE -- Refactor System Structure --> REFACTOR_SYSTEM_STRUCTURE
+    GATE_REFACTOR_TYPE_CHOICE -- Refactor Test Structure --> REFACTOR_TEST_STRUCTURE
+    GATE_REFACTOR_TYPE_CHOICE -- Redesign System Structure --> REDESIGN_SYSTEM_STRUCTURE
     GATE_REFACTOR_TYPE_CHOICE -- None --> REFACTOR_TOP_END
-    CALL_REFACTOR_SYSTEM_STRUCTURE --> CHOOSE_REFACTOR_TYPE
-    CALL_REFACTOR_TEST_STRUCTURE --> CHOOSE_REFACTOR_TYPE
-    CALL_REDESIGN_SYSTEM_STRUCTURE --> CHOOSE_REFACTOR_TYPE
+    REFACTOR_SYSTEM_STRUCTURE --> CHOOSE_REFACTOR_TYPE
+    REFACTOR_TEST_STRUCTURE --> CHOOSE_REFACTOR_TYPE
+    REDESIGN_SYSTEM_STRUCTURE --> CHOOSE_REFACTOR_TYPE
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
     class CHOOSE_REFACTOR_TYPE humanNode
@@ -201,7 +201,7 @@ flowchart TD
 flowchart TD
     CHANGE_SYSTEM_BEHAVIOR_END((System Behavior Changed))
     GATE_OPPORTUNISTIC_REFACTOR{refactor-type-choice}
-    IMPLEMENT_AND_VERIFY_SYSTEM[GREEN — agent-action: implement-system — see § implement-and-verify-system]
+    IMPLEMENT_AND_VERIFY_SYSTEM[GREEN — action: implement-system — see § implement-and-verify-system]
     OPP_REDESIGN_SYSTEM_STRUCTURE[OPP_REDESIGN_SYSTEM_STRUCTURE — see § redesign-system-structure]
     OPP_REFACTOR_SYSTEM_STRUCTURE[OPP_REFACTOR_SYSTEM_STRUCTURE — see § refactor-system-structure]
     OPP_REFACTOR_TEST_STRUCTURE[OPP_REFACTOR_TEST_STRUCTURE — see § refactor-test-structure]
@@ -243,7 +243,7 @@ flowchart TD
 flowchart TD
     CHECK_CHECKLIST_PROGRESS[[CHECK_CHECKLIST_PROGRESS]]
     GATE_CHECKLIST_PARTIALLY_DONE{checklist-partially-done}
-    IMPLEMENT_AND_VERIFY_SYSTEM[agent-action: implement-system — see § implement-and-verify-system]
+    IMPLEMENT_AND_VERIFY_SYSTEM[action: implement-system — see § implement-and-verify-system]
     IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS — see § implement-external-system-driver-adapters]
     IMPLEMENT_SYSTEM_DRIVER_ADAPTERS[IMPLEMENT_SYSTEM_DRIVER_ADAPTERS — see § implement-system-driver-adapters]
     REDESIGN_END((System Structure Redesigned))
@@ -270,7 +270,7 @@ flowchart TD
 flowchart TD
     CHECK_CHECKLIST_PROGRESS[[CHECK_CHECKLIST_PROGRESS]]
     GATE_CHECKLIST_PARTIALLY_DONE{checklist-partially-done}
-    IMPLEMENT_AND_VERIFY_SYSTEM[agent-action: refactor-system — see § implement-and-verify-system]
+    IMPLEMENT_AND_VERIFY_SYSTEM[action: refactor-system — see § implement-and-verify-system]
     REFACTOR_SYSTEM_STRUCTURE_END((System Structure Refactored))
     STOP_CHECKLIST_PARTIALLY_DONE["${checklist_progress_summary} Approve re-running this cycle?"]
 
@@ -317,20 +317,20 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CALL_PARAMETERISED_CORE[CALL_PARAMETERISED_CORE — see § write-and-verify-acceptance-tests]
     WAV_AT_FAIL_END((Failing Acceptance Tests Verified))
+    WRITE_AND_VERIFY_ACCEPTANCE_TESTS[WRITE_AND_VERIFY_ACCEPTANCE_TESTS — see § write-and-verify-acceptance-tests]
 
-    CALL_PARAMETERISED_CORE --> WAV_AT_FAIL_END
+    WRITE_AND_VERIFY_ACCEPTANCE_TESTS --> WAV_AT_FAIL_END
 ```
 
 ## Write and Verify Acceptance Tests Pass
 
 ```mermaid
 flowchart TD
-    CALL_PARAMETERISED_CORE[CALL_PARAMETERISED_CORE — see § write-and-verify-acceptance-tests]
     WAV_AT_PASS_END((Passing Acceptance Tests Verified))
+    WRITE_AND_VERIFY_ACCEPTANCE_TESTS[WRITE_AND_VERIFY_ACCEPTANCE_TESTS — see § write-and-verify-acceptance-tests]
 
-    CALL_PARAMETERISED_CORE --> WAV_AT_PASS_END
+    WRITE_AND_VERIFY_ACCEPTANCE_TESTS --> WAV_AT_PASS_END
 ```
 
 ## Write and Verify Acceptance Tests
@@ -446,13 +446,13 @@ flowchart TD
 ```mermaid
 flowchart TD
     BUILD_SYSTEM[BUILD_SYSTEM — see § build-system]
-    CALL_AGENT_ACTION["agent-action: ${agent-action} — see § ${agent-action}"]
     COMMIT_SYSTEM[COMMIT_SYSTEM — see § commit]
     IMPL_AND_VERIFY_SYSTEM_END((System Implemented and Verified))
+    RUN_ACTION["action: ${action} — see § ${action}"]
     START_SYSTEM[START_SYSTEM — see § start-system]
     VERIFY_TESTS_PASS[VERIFY_TESTS_PASS — see § verify-tests-pass]
 
-    CALL_AGENT_ACTION --> BUILD_SYSTEM
+    RUN_ACTION --> BUILD_SYSTEM
     BUILD_SYSTEM --> START_SYSTEM
     START_SYSTEM --> VERIFY_TESTS_PASS
     VERIFY_TESTS_PASS --> COMMIT_SYSTEM
@@ -479,18 +479,18 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CALL_AGENT_ACTION["agent-action: ${agent-action} — see § ${agent-action}"]
     COMMIT_LAYER[COMMIT_LAYER — see § commit]
     COMPILE_TESTS[COMPILE_TESTS — see § compile-tests]
     DISABLE_TESTS[DISABLE_TESTS — see § disable-tests]
     ENABLE_TESTS[ENABLE_TESTS — see § enable-tests]
     GATE_EXPECTED_TEST_RESULT{expected-test-result}
     IMPLEMENT_TEST_LAYER_END((Test Layer Implemented))
+    RUN_ACTION["action: ${action} — see § ${action}"]
     UNKNOWN_EXPECTED_TEST_RESULT((⚡ Unknown Expected Test Result))
     VERIFY_TESTS_FAIL_FILTERED[VERIFY_TESTS_FAIL_FILTERED — see § verify-tests-fail]
     VERIFY_TESTS_PASS_FILTERED[VERIFY_TESTS_PASS_FILTERED — see § verify-tests-pass]
 
-    CALL_AGENT_ACTION --> ENABLE_TESTS
+    RUN_ACTION --> ENABLE_TESTS
     ENABLE_TESTS --> COMPILE_TESTS
     COMPILE_TESTS --> GATE_EXPECTED_TEST_RESULT
     GATE_EXPECTED_TEST_RESULT -- Success --> VERIFY_TESTS_PASS_FILTERED
@@ -778,9 +778,9 @@ flowchart TD
 flowchart TD
     APPROVE_POST[APPROVE_POST — see § approve]
     APPROVE_PRE[APPROVE_PRE — see § approve]
-    CALL_FIX[CALL_FIX — see § fix]
     EXECUTE_AGENT_END((Agent Dispatch Complete))
     EXECUTE_AGENT_REJECTED_END((Agent Dispatch Rejected))
+    FIX[FIX — see § fix]
     GATE_APPROVED_PRE{approval-outcome}
     GATE_FIX_ON_FAILURE{fix-on-failure-enabled}
     GATE_OUTPUTS_AND_SCOPES_VALID{outputs-and-scopes-valid}
@@ -794,9 +794,9 @@ flowchart TD
     VALIDATE_OUTPUTS_AND_SCOPES --> GATE_OUTPUTS_AND_SCOPES_VALID
     GATE_OUTPUTS_AND_SCOPES_VALID -- Yes --> APPROVE_POST
     GATE_OUTPUTS_AND_SCOPES_VALID -- No --> GATE_FIX_ON_FAILURE
-    GATE_FIX_ON_FAILURE -- Yes --> CALL_FIX
+    GATE_FIX_ON_FAILURE -- Yes --> FIX
     GATE_FIX_ON_FAILURE -- No --> APPROVE_POST
-    CALL_FIX --> APPROVE_POST
+    FIX --> APPROVE_POST
     APPROVE_POST --> EXECUTE_AGENT_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
@@ -811,9 +811,9 @@ flowchart TD
 ```mermaid
 flowchart TD
     APPROVE_PRE[APPROVE_PRE — see § approve]
-    CALL_FIX[CALL_FIX — see § fix]
     EXECUTE_COMMAND_END((Command Dispatch Complete))
     EXECUTE_COMMAND_REJECTED_END((Command Dispatch Rejected))
+    FIX[FIX — see § fix]
     GATE_APPROVED_PRE{approval-outcome}
     GATE_COMMAND_SUCCEEDED{command-succeeded}
     RUN_COMMAND[["Run command ${command}"]]
@@ -823,8 +823,8 @@ flowchart TD
     GATE_APPROVED_PRE -- Rejected --> EXECUTE_COMMAND_REJECTED_END
     RUN_COMMAND --> GATE_COMMAND_SUCCEEDED
     GATE_COMMAND_SUCCEEDED -- Yes --> EXECUTE_COMMAND_END
-    GATE_COMMAND_SUCCEEDED -- No --> CALL_FIX
-    CALL_FIX --> EXECUTE_COMMAND_END
+    GATE_COMMAND_SUCCEEDED -- No --> FIX
+    FIX --> EXECUTE_COMMAND_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
     class RUN_COMMAND serviceNode

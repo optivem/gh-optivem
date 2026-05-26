@@ -140,7 +140,7 @@ func (e *Engine) wrapGateway(binding string, fn NodeFn) NodeFn {
 //
 // The `process:` field itself is also template-expanded against the caller's
 // scope, mirroring the pattern already used for `action:` / `agent:` (run.go
-// lines above) — so a call site like `process: ${agent-action}` resolves the
+// lines above) — so a call site like `process: ${action}` resolves the
 // sub-process name at dispatch time from caller-supplied params. Static names
 // (the common case) pass through unchanged because ExpandParams is idempotent.
 func (e *Engine) wrapCallActivity(raw RawNode) NodeFn {

@@ -35,10 +35,12 @@ audit.
 
 The 2026-05-26 /refine-plan walk results:
 
-- **In scope (still to ship)**: Items 2, 3, 10, 11, 12, 13, 16.
+- **In scope (still to ship)**: Items 2, 3, 10, 11.
 - **Shipped in renderer-only chunk (2026-05-26)**: Items 7, 8, 20, 21
   — see commit history.
 - **Shipped in schema-foundations chunk (2026-05-26)**: Items 17, 19, 22
+  — see commit history.
+- **Shipped in gateway / naming chunk (2026-05-26)**: Items 12, 13, 16
   — see commit history.
 - **Superseded by another plan**: Item 9 → `plans/20260526-1220-fix-mark-ticket-state-transition-routing.md`
   (eliminates the `update-ticket` wrapper entirely; no `mark-ticket` rename
@@ -611,73 +613,6 @@ Trade-offs:
   error end-event. No special YAML prose needed — the diagram shows
   the failure path.
 
-## Item 12 — Drop `CALL_*` prefix; establish role-based call_activity naming convention
-
-> **Verb-first audit (2026-05-26)**: every post-Item-12 node ID must start
-> with a verb (matches the existing pattern: `IMPLEMENT_*`, `WRITE_*`,
-> `EXECUTE_*`, `COMPILE_*`, `BUILD_*`, `VERIFY_*`, `COMMIT_*`,
-> `DISABLE_*`, `ENABLE_*`, `APPROVE_*`, `RUN_*`, `START_*`, `REFINE_*`,
-> `REFACTOR_*`, `MARK_*`, `FIX_*`, `CHOOSE_*`).
->
-> Two cases needed adjustment:
->
-> - `CALL_AGENT_ACTION` → **`RUN_ACTION`** (verb-first; also generalises
->   "agent action" because the structural role at this call site is
->   "run the configured change step," not "invoke an agent" — the agent
->   dispatch happens one layer below in the MID sub-process). **Param
->   renames in lockstep**: `agent-action: implement-system` →
->   `action: implement-system` at every call site (currently 3 call
->   sites; same line-set as Item 2's mass edit).
-> - `CALL_FIX` → `FIX` ✓ (verb-first, no change).
-> - All other 7 `CALL_*` nodes ✓ verb-first after prefix drop.
-
-**Observation**: `CALL_` prefix appears on 9 distinct node IDs
-(`CALL_CHANGE_SYSTEM_BEHAVIOR`, `CALL_COVER_SYSTEM_BEHAVIOR`,
-`CALL_REDESIGN_*`, `CALL_REFACTOR_*` ×2, `CALL_ONBOARD_*`,
-`CALL_AGENT_ACTION`, `CALL_FIX`, `CALL_PARAMETERISED_CORE`). Bare-named
-call_activity nodes outnumber them ~3:1 (`IMPLEMENT_AND_VERIFY_SYSTEM`,
-`IMPLEMENT_SYSTEM_DRIVER_ADAPTERS`, `REFINE_BACKLOG`,
-`WRITE_ACCEPTANCE_TESTS`, `BUILD_SYSTEM`, `COMMIT_TESTS`,
-`EXECUTE_AGENT`, etc.). The CALL_ prefix is inconsistent and signals the
-node *type* (Hungarian notation) rather than the *role* the call site
-plays.
-
-**BPMN convention**: BPMN does not prescribe a naming convention for
-call_activity instances. In practice, call_activity nodes are named for
-the **role they play at the call site**, not the sub-process they invoke.
-
-**Direction (proposed)** — drop `CALL_` everywhere; apply two rules:
-
-- If the call site plays a **role distinct** from the sub-process (e.g.
-  RED step, opportunistic refactor) → use the **role-based name**
-  (`OPP_REFACTOR_*`, `RED_WRITE_FAILING_ACCEPTANCE_TESTS`).
-  (Note: `MARK_*` nodes were a canonical example here pre-1220, but
-  1220 converts them to service_tasks, outside Item 12's call_activity
-  scope.)
-- If the call site **IS** the sub-process (1:1 delegation, no extra
-  role) → use the **upper-snake form of the sub-process name**
-  (`CHANGE_SYSTEM_BEHAVIOR`, `COVER_SYSTEM_BEHAVIOR`).
-
-This rule also dictates Item 15's resolution (drop `CALL_PARAMETERISED_CORE`
-in favour of the bare sub-process name).
-
-**Files**:
-- `internal/atdd/runtime/statemachine/process-flow.yaml` — rename the 9
-  `CALL_*` nodes plus their incoming/outgoing edges.
-- Statemachine tests referencing the old IDs.
-- The renderer (`diagram.go`) — no change needed; the rule lives in YAML.
-
-**Open questions for /refine-plan**:
-
-- Q12.1 — *Decided 2026-05-26*: two-rule convention confirmed (role-based
-  name where the call site has a role distinct from the sub-process;
-  bare upper-snake form of the sub-process name for 1:1 delegations).
-  Verb-first audit added above; two adjustments made (`RUN_ACTION` +
-  `REFACTOR_OPPORTUNISTICALLY` + param rename `agent-action` → `action`).
-- Q12.2 — *Decided 2026-05-26*: ship in this plan. Tightly coupled to
-  Item 2's mass-edit (same YAML pass). The broader CYCLE/MID naming
-  audit deferred by Q10.2 stays a separate future plan.
-
 ## Item 14 — Split `redesign-system-structure` into system-side and external-side
 
 > ✅ **Moved to its own plan** (2026-05-26):
@@ -688,13 +623,6 @@ in favour of the bare sub-process name).
 > with ticket-kinds `task/system-redesign` / `task/external-system-redesign`.
 > The brainstorm and questions previously here have been absorbed into
 > the new plan's *Resolved questions* section.
-
-## Item 15 — Rename `CALL_PARAMETERISED_CORE` — *merged into Item 12 on 2026-05-26*
-
-The two `CALL_PARAMETERISED_CORE` nodes (process-flow.yaml:565, 588) get
-renamed to `WRITE_AND_VERIFY_ACCEPTANCE_TESTS` as part of Item 12's
-`CALL_*` prefix-drop pass — same rule (1:1 wrapper → bare upper-snake
-form of the sub-process name), same YAML pass.
 
 ## Item 18 — Add explicit loop-subprocess markers to looping flows — *dropped on 2026-05-26*
 
@@ -710,42 +638,31 @@ Item 18 was built on a wrong premise. No action needed.
 
 Items in execution order after the 2026-05-26 /refine-plan walk.
 
-**Still to ship**: Items 2, 3, 10, 11, 12, 13, 16.
+**Still to ship**: Items 2, 3, 10, 11.
 **Already shipped — renderer-only chunk** (2026-05-26): Items 7, 8, 20, 21.
 **Already shipped — schema-foundations chunk** (2026-05-26): Items 17,
 19, 22.
+**Already shipped — gateway / naming chunk** (2026-05-26): Items 12,
+13, 16.
 **Out of scope**: Items 1, 5, 6 (deferred), 4 (merged into 2), 9
 (superseded by 1220), 14 (moved to its own plan), 15 (merged into 12),
 18 (dropped).
 
 **YAML structural changes** (remaining):
 
-1. **Item 16** (computed-gateway documentation cleanup) — every
-   gateway's `documentation:` rewritten to predicate form (binding
-   name) or stripped; parse-time hard-error on question-form gateway
-   documentation.
-2. **Item 13** (split operator-input gateways into user_task + gateway)
-   — adds `CHOOSE_REFACTOR_TYPE` user_task to the `refactor` process;
-   redirects loopback edges; strips question-form documentation from
-   `GATE_REFACTOR_TYPE_CHOICE`.
-3. **Item 12** (drop `CALL_*` prefix; verb-first naming) — YAML pass:
-   rename 9 `CALL_*` nodes per the two-rule convention. `CALL_AGENT_ACTION`
-   → `RUN_ACTION` (with param `agent-action` renamed to `action` at
-   every call site). Adjective-first `OPPORTUNISTIC_REFACTOR` (Item 3
-   target) becomes `REFACTOR_OPPORTUNISTICALLY`. Subsumes Item 15.
-4. **Item 2** (require `documentation:` everywhere + apply convention)
+1. **Item 2** (require `documentation:` everywhere + apply convention)
    — mass YAML edit: ~81 call_activity nodes gain a `documentation:`
    line under the **BPMN-pure verb-phrase, Title Case** convention.
    Renderer drops the ID-fallback branch; load.go adds the schema-
    validation requirement.
-5. **Item 3** (de-duplicate opportunistic-refactor block) — YAML
+2. **Item 3** (de-duplicate opportunistic-refactor block) — YAML
    change: collapses 6 nodes + 7 edges into one `call_activity`
    (`REFACTOR_OPPORTUNISTICALLY`) → `refactor`. Updates statemachine
    tests that reference the removed `OPP_*` IDs.
-6. **Item 10** (rename `refine-backlog` → `refine-backlog-item`) — YAML
+3. **Item 10** (rename `refine-backlog` → `refine-backlog-item`) — YAML
    rename: process def + call site + section comment + diagram.go
    `processOrder` + `REFINE_BACKLOG_END` → `REFINE_BACKLOG_ITEM_END`.
-7. **Item 11** (split ticket-kind gateway) — YAML structural change:
+4. **Item 11** (split ticket-kind gateway) — YAML structural change:
    `GATE_TICKET_KIND` value set shrinks to story/bug/task; new
    `GATE_TASK_SUBTYPE` gateway routes the five task subtypes; both
    gateways gain an `error_end_event` for unrecognised values (per
