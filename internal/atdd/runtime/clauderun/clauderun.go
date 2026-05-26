@@ -58,6 +58,16 @@ type Options struct {
 	IssueNum   int
 	IssueTitle string
 
+	// TicketID is the tracker-verbatim id (issue.ID), seeded by
+	// writeResolvedIssue alongside IssueNum. Same value as IssueNum today,
+	// but the dispatcher exposes it under the backend-agnostic ${ticket_id}
+	// placeholder so prompts that compose user-visible disable-reason
+	// strings (test-disabler, test-enabler) stay neutral on whether the
+	// tracker is GitHub-numeric or Jira-prefixed. Load-bearing: when empty
+	// AND the prompt references ${ticket_id}, findUnfilledPlaceholders
+	// fails the dispatch fast — same rationale as Language / Checklist.
+	TicketID string
+
 	// Architecture is "monolith" or "multitier", surfaced to the agent
 	// prompt via ${architecture}. Empty when no system.architecture is
 	// declared in gh-optivem.yaml.
@@ -662,6 +672,14 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	// reports it after substitution.
 	if opts.Language != "" {
 		params["language"] = opts.Language
+	}
+	// TicketID is load-bearing for test-disabler / test-enabler (compose
+	// the disable-reason string). Same registration shape as Language —
+	// only registered when non-empty so an absent value surfaces via
+	// findUnfilledPlaceholders rather than silently substituting "" into
+	// a downstream startsWith filter.
+	if opts.TicketID != "" {
+		params["ticket_id"] = opts.TicketID
 	}
 	// AcceptanceCriteria is load-bearing for write-acceptance-tests — same rationale
 	// as Language. Only registered when non-empty so an absent value

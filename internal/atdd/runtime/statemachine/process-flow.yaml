@@ -92,21 +92,29 @@
 #     `coerceStateValue`'s `[]string` case). Both absent ⇒ run all tests.
 #
 #   - `fix-*` agent inventory (Q-late-5 (β-convention) routing): each `fix`
-#     call dispatches `execute-agent` with `task-name: "fix-${failure-kind}"`.
-#     The placeholder resolves at dispatch time via `ExpandParams`'s
-#     params-then-state scope chain (`statemachine/run.go`), so the
-#     binding that wrote `failure-kind` into state — `runCommand` or
-#     `validateOutputsAndScopes` — feeds the substitution without a
-#     call-site passthrough param.
-#     Closed set of kinds:
-#       - `command-failed`           → fix-command-failed.md       (runCommand)
-#       - `missing-output`           → fix-missing-output.md       (validateOutputsAndScopes — agent TBD, see plans/upcoming/)
-#       - `scope-diff`               → fix-scope-diff.md           (validateOutputsAndScopes — agent TBD, see plans/upcoming/)
-#       - `unexpected-passing-tests` → fix-unexpected-passing-tests.md (legacy MID convention)
-#       - `unexpected-failing-tests` → fix-unexpected-failing-tests.md (legacy MID convention)
+#     call dispatches `execute-agent` with `task-name: "fix-${failure-kind}"`
+#     and `agent: "${failure-kind}-fixer"`. The placeholders resolve at
+#     dispatch time via `ExpandParams`'s params-then-state scope chain
+#     (`statemachine/run.go`), so the binding that wrote `failure-kind`
+#     into state — `runCommand` or `validateOutputsAndScopes` — feeds the
+#     substitution without a call-site passthrough param.
+#     Closed set of kinds (every fixer follows the `<kind>-fixer.md`
+#     convention; the prompt diagnoses first, then applies the smallest
+#     fix within scope):
+#       - `command-failed`           → command-failed-fixer.md           (runCommand)
+#       - `missing-output`           → missing-output-fixer.md           (validateOutputsAndScopes)
+#       - `scope-diff`               → scope-diff-fixer.md               (validateOutputsAndScopes)
+#       - `unexpected-passing-tests` → unexpected-passing-tests-fixer.md (legacy MID convention)
+#       - `unexpected-failing-tests` → unexpected-failing-tests-fixer.md (legacy MID convention)
 #     The last two predate the β-convention — their MID-name carries the
-#     kind directly; the Q-late-5 dispatch path is not exercised for
-#     them.
+#     kind directly; the Q-late-5 dispatch path is not exercised for them.
+#
+#     Scope augmentation for `scope-diff`: the dispatcher (driver.go)
+#     appends `internal/atdd/runtime/statemachine/process-flow.yaml` to
+#     the scope_block when `failure-kind == scope-diff`, because the
+#     `scope-diff-fixer` may need to widen a call-site's `scopes:` list
+#     (the "scopes too narrow" mode). Every other failure-kind inherits
+#     the originating task's scope unchanged.
 #
 # Document shape (unchanged from prior YAML; see internal/atdd/runtime/
 # statemachine/load.go for the parser):
@@ -657,7 +665,7 @@ processes:
           # params-merge in wrapCallActivity. Without it, fix-* recovery
           # in execute-command would resolve ${task-name} to the literal
           # "${task-name}" and Engine.Scope would return empty, leaving
-          # ${scope_block} unfilled in the diagnoser prompt.
+          # ${scope_block} unfilled in the fixer prompt.
           task-name: write-acceptance-tests
           acceptance-criteria: ${acceptance-criteria}
           expected-test-result: ${expected-test-result}
@@ -775,6 +783,8 @@ processes:
         name: "Disable Acceptance Tests"
         params:
           test-names: ${test-names}
+          loop: RED
+          cycle_phase: TEST
 
       - id: COMMIT_TEST_CODE
         type: call-activity
@@ -814,6 +824,10 @@ processes:
           action: implement-dsl
           expected-test-result: ${expected-test-result}
           tests: ${tests}
+          # Names the RED-cycle phase identifying who placed (and now strips)
+          # the per-test disable marker. Consumed by test-disabler /
+          # test-enabler via ${cycle_phase} / ${prev_phase}.
+          cycle_phase: DSL
 
       - id: IMPL_DSL_END
         type: end-event
@@ -835,6 +849,7 @@ processes:
           action: implement-system-driver-adapters
           expected-test-result: ${expected-test-result}
           tests: ${tests}
+          cycle_phase: SYSTEM DRIVER
 
       - id: IMPL_SYS_DRIVER_END
         type: end-event
@@ -856,6 +871,7 @@ processes:
           action: implement-external-system-driver-adapters
           expected-test-result: ${expected-test-result}
           tests: ${tests}
+          cycle_phase: SYSTEM DRIVER
 
       - id: IMPL_EXT_DRIVER_END
         type: end-event
@@ -1105,6 +1121,7 @@ processes:
         name: "Enable Tests"
         params:
           test-names: ${test-names}
+          prev_phase: ${cycle_phase}
 
       - id: COMPILE_TESTS
         type: call-activity
@@ -1145,6 +1162,8 @@ processes:
         name: "Disable Tests"
         params:
           test-names: ${test-names}
+          loop: RED
+          cycle_phase: ${cycle_phase}
 
       - id: COMMIT_LAYER
         type: call-activity
@@ -1587,7 +1606,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: fix-unexpected-passing-tests
-          agent: unexpected-passing-tests-diagnoser
+          agent: unexpected-passing-tests-fixer
         read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
         write: [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
 
@@ -1610,7 +1629,7 @@ processes:
         name: "Dispatch the Agent"
         params:
           task-name: fix-unexpected-failing-tests
-          agent: unexpected-failing-tests-diagnoser
+          agent: unexpected-failing-tests-fixer
         read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
         write: [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
 
@@ -2115,7 +2134,7 @@ processes:
           # See the closed set of kinds documented in the
           # `fix-*` agent inventory note near the top of this file.
           task-name: "fix-${failure-kind}"
-          agent: "${failure-kind}-diagnoser"
+          agent: "${failure-kind}-fixer"
           fix-on-failure: "false"
           # originating-task-name carries the OUTER MID's task-name (e.g.
           # "write-acceptance-tests") through the fix dispatch so the inner

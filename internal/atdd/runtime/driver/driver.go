@@ -596,11 +596,18 @@ func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Conte
 // keys downstream actions read. The runtime uses Issue.Handle as the
 // opaque project-membership payload SetStatus consumes, and Issue.URL as
 // the addressable form callers serialize to backend-native arguments.
+//
+// `ticket_id` is a backend-agnostic alias for the tracker-verbatim id
+// (issue.ID), seeded so agent prompts can reference ${ticket_id} without
+// caring whether the project's tracker is GitHub or Jira. issue_num and
+// ticket_id carry the same value today; the alias exists so prompt
+// vocabulary stays neutral.
 func writeResolvedIssue(sCtx *statemachine.Context, issue tracker.Issue) {
 	sCtx.Set("issue_num", issue.ID)
 	sCtx.Set("issue_url", issue.URL)
 	sCtx.Set("issue_title", issue.Title)
 	sCtx.Set("issue_handle", issue.Handle)
+	sCtx.Set("ticket_id", issue.ID)
 }
 
 // registerAgentDispatchers registers a no-op base dispatcher for every
@@ -775,16 +782,30 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		issueNum, _ := strconv.Atoi(ctx.GetString("issue_num"))
 
 		agentName := statemachine.ExpandParams(raw.Agent, ctx.Params, ctx.State)
-		// Node-level params (e.g. `failure_type: compile` on FIX_COMPILE)
-		// are expanded against the live ctx scope and forwarded to the
-		// prompt renderer so the agent body can branch on per-call-site
-		// labels without a dedicated Options field per agent.
-		var nodeParams map[string]string
-		if len(raw.Params) > 0 {
-			nodeParams = make(map[string]string, len(raw.Params))
-			for k, v := range raw.Params {
-				nodeParams[k] = statemachine.ExpandParams(v, ctx.Params, ctx.State)
-			}
+		// Build the prompt-substitution bag in three layers, mirroring the
+		// scope chain `ExpandParams` already uses for service-tasks and
+		// templated YAML fields:
+		//
+		//   1. ctx.Params — the call-activity stack's accumulated params
+		//      (push/pop in wrapCallActivity). Carries values like
+		//      ${test-names} declared at an outer call site and inherited
+		//      through the disable-tests → execute-agent hops. Lowest
+		//      precedence so node-level params can override.
+		//   2. raw.Params — the YAML node's own `params:` block (e.g.
+		//      `failure_type: compile` on FIX_COMPILE), expanded against
+		//      the live ctx scope. Wins over inherited values so a
+		//      per-node label can shadow.
+		//
+		// Without step 1, call-activity params would silently disappear at
+		// the user-task hop because RUN_AGENT is a generic primitive with
+		// no `params:` block of its own (see clauderun's
+		// "prompt has unfilled placeholders" error).
+		nodeParams := make(map[string]string, len(ctx.Params)+len(raw.Params))
+		for k, v := range ctx.Params {
+			nodeParams[k] = v
+		}
+		for k, v := range raw.Params {
+			nodeParams[k] = statemachine.ExpandParams(v, ctx.Params, ctx.State)
 		}
 		tuning, err := agents.LoadTuning(agentName)
 		if err != nil {
@@ -847,6 +868,20 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			scopeWrite = w
 		}
 
+		// Scope augmentation for fix-* recovery dispatches. Some
+		// failure-kinds require the fixer to edit paths the originating
+		// task's scope never lists (e.g. scope-diff-fixer may need to
+		// widen `scopes:` in process-flow.yaml when the violation is
+		// "scopes too narrow"). fixScopeAugmentation pins the rule; the
+		// `fix-*` agent inventory comment at the top of process-flow.yaml
+		// documents it so a YAML reader sees the augmentation next to
+		// the dispatch site. failure-kind is absent on every non-fix
+		// dispatch, so the lookup is a no-op outside the recovery path.
+		if extra := fixScopeAugmentation[ctx.GetString("failure-kind")]; len(extra) > 0 {
+			scopeRead = append(scopeRead, extra...)
+			scopeWrite = append(scopeWrite, extra...)
+		}
+
 		// Compute the paired per-dispatch artefact paths in one seq bump
 		// (prompt log + outputs JSONL). When rs is nil — test fixtures
 		// that bypass the driver-managed runState — both come back empty
@@ -893,6 +928,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			NodeDescription:    statemachine.ExpandParams(raw.Name, ctx.Params, ctx.State),
 			IssueNum:           issueNum,
 			IssueTitle:         ctx.GetString("issue_title"),
+			TicketID:           ctx.GetString("ticket_id"),
 			Architecture:       ctx.GetString("architecture"),
 			Subtype:            ctx.GetString("subtype"),
 			Language:           ctx.GetString("language"),
@@ -961,13 +997,26 @@ func encodeOutputKeysSpec(outs []statemachine.OutputSpec) string {
 	return strings.Join(parts, ",")
 }
 
+// fixScopeAugmentation maps a fix-* failure-kind to the extra paths
+// the fixer is allowed to read and write beyond the originating task's
+// scope. scope-diff is the only entry today: scope-diff-fixer may need
+// to widen the call-site's `scopes:` list in process-flow.yaml when
+// the violation is "scopes too narrow." Every other failure-kind
+// inherits the originating task's scope unchanged. The matching
+// inventory comment at the top of process-flow.yaml documents the
+// rule so a YAML reader sees the augmentation next to the dispatch
+// site.
+var fixScopeAugmentation = map[string][]string{
+	"scope-diff": {"internal/atdd/runtime/statemachine/process-flow.yaml"},
+}
+
 // fixChangedFiles returns the working-tree dirty-file listing (one
 // path per line) the dispatcher passes into the ${changed_files}
-// placeholder consumed by the fix-* failure-diagnosis prompts. We
-// only shell out for those agents because they are the only ones
-// whose prompt templates reference the substitution — every other
-// dispatch leaves the placeholder out of the template anyway, so
-// paying for a `git status` on every node would be wasted work.
+// placeholder consumed by the fix-* fixer prompts. We only shell out
+// for those agents because they are the only ones whose prompt
+// templates reference the substitution — every other dispatch leaves
+// the placeholder out of the template anyway, so paying for a
+// `git status` on every node would be wasted work.
 //
 // fix-scope-diff is special: validate-outputs-and-scopes already
 // stashed the per-phase snapshot delta at ctx.State["phase-changed-files"],

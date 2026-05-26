@@ -16,7 +16,7 @@ ${scope_block}
 - `language` — `java` | `csharp` | `typescript` (extensible — read the language-equivalents row for the actual syntax).
 - `ticket_id` — tracker-verbatim id (e.g. `OPV-123`, `#42`, `SHOP-7`).
 - `loop` — `RED` | `GREEN`. (`GREEN` reserved for symmetry; today only RED disables.)
-- `phase` — `TEST` | `DSL` | `SYSTEM DRIVER` (uppercase; internal space allowed).
+- `cycle_phase` — `TEST` | `DSL` | `SYSTEM DRIVER` (uppercase; internal space allowed). Named `cycle_phase` (not `phase`) because the shared preamble already binds `${phase}` to the dispatch's BPMN-node label; this placeholder identifies the RED-cycle phase that's disabling tests.
 - `test-names` — comma-separated list of bare test method names (the
   writing agent's emitted `test-names`, joined at substitution time).
   Each entry is an unqualified method name (e.g. `shouldRegisterCustomer`);
@@ -28,14 +28,14 @@ ${scope_block}
 Emit the reason string exactly as:
 
 ```
-<TICKET-ID> - AT - <LOOP> - <PHASE>
+<TICKET-ID> - AT - <LOOP> - <CYCLE-PHASE>
 ```
 
 - **Separator:** ` - ` (space-hyphen-space) between every segment. No deviations.
 - **`<TICKET-ID>`:** verbatim from `${ticket_id}` (e.g. `OPV-123`, `#42`, `SHOP-7`).
 - **`AT`:** the cycle (Acceptance Test) — literal.
 - **`<LOOP>`:** `${loop}` — `RED` | `GREEN`.
-- **`<PHASE>`:** `${phase}` — `TEST` | `DSL` | `SYSTEM DRIVER` (uppercase; internal space allowed).
+- **`<CYCLE-PHASE>`:** `${cycle_phase}` — `TEST` | `DSL` | `SYSTEM DRIVER` (uppercase; internal space allowed).
 
 Examples (Java):
 
