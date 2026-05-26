@@ -15,13 +15,14 @@ func TestRender_AllProcessesAppearAsHeadings(t *testing.T) {
 	got := Render(eng)
 
 	// Every process ID in the loaded engine must appear as either an aliased
-	// heading or its raw ID. Catches "added a process but forgot to update
-	// processAlias / processOrder" — the renderer falls back to raw ID, so the
-	// section still appears, but this also asserts we produce headings.
+	// heading or the Title-Case-from-kebab default. Catches "added a process
+	// but forgot to update processAlias / processOrder" — the renderer falls
+	// back to the auto-Title-Case heading, so the section still appears, but
+	// this also asserts we produce headings.
 	for name := range eng.Processes {
 		heading := processAlias[name]
 		if heading == "" {
-			heading = name
+			heading = titleCaseFromKebab(name)
 		}
 		want := "## " + heading + "\n"
 		if !strings.Contains(got, want) {
@@ -69,13 +70,35 @@ func TestEdgeLabel(t *testing.T) {
 	}{
 		{"x == true", "Yes"},
 		{"x == false", "No"},
-		{"ticket_type == story", "story"},
-		{"ticket_type in [story, bug]", "story / bug"},
-		{"structural_test_mode in [compile, full]", "compile / full"},
+		{"ticket_type == story", "Story"},
+		{"ticket_type == refactor-system-structure", "Refactor System Structure"},
+		{"ticket_type == task/cover-legacy", "Task / Cover Legacy"},
+		{"ticket_type in [story, bug]", "Story / Bug"},
+		{"structural_test_mode in [compile, full]", "Compile / Full"},
 	}
 	for _, tc := range cases {
 		if got := edgeLabel(tc.in); got != tc.want {
 			t.Errorf("edgeLabel(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestTitleCaseFromKebab(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"refine-ticket", "Refine Ticket"},
+		{"implement-and-verify-system", "Implement and Verify System"},
+		{"implement-dsl", "Implement DSL"},
+		{"implement-and-verify-dsl", "Implement and Verify DSL"},
+		{"task/cover-legacy", "Task / Cover Legacy"},
+		{"story", "Story"},
+		{"main", "Main"},
+		{"write-and-verify-acceptance-test-code", "Write and Verify Acceptance Test Code"},
+	}
+	for _, tc := range cases {
+		if got := titleCaseFromKebab(tc.in); got != tc.want {
+			t.Errorf("titleCaseFromKebab(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
 }

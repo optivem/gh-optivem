@@ -26,19 +26,12 @@ import (
 )
 
 // processAlias maps internal process IDs to human-readable section heading
-// names. Flows not in the map render with the raw ID — that surfaces
-// "you added a process without giving it a heading alias" loudly when a
-// new process appears in the YAML.
-//
-// The five-level BPMN refactor (plans/20260525-1517-bpmn-refactor-yaml-and-
-// diagrams.md Item 3) replaced the prior AT-cycle / CT-subprocess /
-// structural-cycle shape. The new process names are kebab-case (Q29
-// doctrine) and self-describing enough that almost no aliasing is needed
-// — only the runtime-bootstrap `main` process gets a heading alias to
-// flag its non-domain role.
-var processAlias = map[string]string{
-	"main": "Runtime Bootstrap (legacy entry — collapses in Phase D)",
-}
+// names that override the default Title-Case-from-kebab transformation.
+// Flows not in the map render via titleCaseFromKebab(name). Entries are
+// only needed when the auto-Title-Case result is wrong (e.g. an
+// abbreviation not yet in titleCaseAbbreviations or a name that doesn't
+// title-case cleanly).
+var processAlias = map[string]string{}
 
 // groupAlias maps a node's `group:` annotation (a slash-delimited
 // path like "structural/interface") to a human-readable subgraph
@@ -148,15 +141,15 @@ func writeLegend(b *strings.Builder) {
 	b.WriteString("Node **shape** encodes the BPMN type; **fill color** encodes the executor.\n\n")
 	b.WriteString("- `((circle))` — start / end event\n")
 	b.WriteString("- `{diamond}` — gateway (decision)\n")
-	b.WriteString("- `[[subroutine]]` — service task — mechanical step run by the Go runtime (white)\n")
-	b.WriteString("- `[rectangle]` — user task — LLM agent (dark blue) or human STOP (yellow); `call-activity` rectangles are unfilled and link to a sub-process heading\n")
+	b.WriteString("- `[[subroutine]]` — service task — mechanical, automated step (white)\n")
+	b.WriteString("- `[rectangle]` — user task — LLM agent (dark blue) or human (yellow); `call_activity` rectangles are unfilled and link to a sub-process heading\n")
 	b.WriteString("- `[/skewed/]` — published outputs of a process (dashed border)\n\n")
 	b.WriteString("```mermaid\nflowchart LR\n")
 	b.WriteString("    EVT((Start / End))\n")
 	b.WriteString("    GW{Gateway}\n")
-	b.WriteString("    SVC[[Service task — Go runtime]]\n")
-	b.WriteString("    AGT[Agent task — LLM]\n")
-	b.WriteString("    HUM[Human STOP]\n")
+	b.WriteString("    SVC[[\"Service Task (Automated)\"]]\n")
+	b.WriteString("    AGT[\"User Task (LLM Agent)\"]\n")
+	b.WriteString("    HUM[\"User Task (Human)\"]\n")
 	b.WriteString("    CALL[Call activity — sub-process]\n")
 	b.WriteString("    OUT[/Outputs/]\n")
 	b.WriteString("\n    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000\n")
@@ -195,7 +188,7 @@ func orderedProcessNames(eng *statemachine.Engine) []string {
 func writeProcessSection(b *strings.Builder, name string, process *statemachine.Process) {
 	heading := processAlias[name]
 	if heading == "" {
-		heading = name
+		heading = titleCaseFromKebab(name)
 	}
 	fmt.Fprintf(b, "## %s\n\n", heading)
 	b.WriteString("```mermaid\nflowchart TD\n")
@@ -406,7 +399,7 @@ func writeEdge(b *strings.Builder, e statemachine.Edge) {
 // can see at a glance which steps the Go runtime runs, which an LLM
 // agent runs, and which a human runs. Three classes:
 //
-//	serviceNode  white fill, black text   — service-task (Go runtime)
+//	serviceNode  white fill, black text   — service-task (Automated)
 //	agentNode    dark blue, white text    — user-task with agent: <name>
 //	humanNode    yellow, black text       — user-task with agent: human
 //
@@ -447,6 +440,82 @@ func writeExecutorStyling(b *strings.Builder, process *statemachine.Process) {
 	}
 }
 
+// titleCaseAbbreviations are tokens preserved verbatim (upper-case)
+// during kebab → Title Case transformation. Match is case-insensitive
+// against kebab segments; output is the canonical form.
+var titleCaseAbbreviations = map[string]string{
+	"dsl":  "DSL",
+	"at":   "AT",
+	"ct":   "CT",
+	"bpmn": "BPMN",
+	"tdd":  "TDD",
+	"atdd": "ATDD",
+	"bdd":  "BDD",
+	"sut":  "SUT",
+	"api":  "API",
+	"url":  "URL",
+	"db":   "DB",
+	"io":   "IO",
+}
+
+// titleCaseSmallWords are articles, conjunctions, and short prepositions
+// lower-cased mid-phrase per Title Case convention. The first word of a
+// phrase is always capitalised regardless of this set.
+var titleCaseSmallWords = map[string]bool{
+	"a":    true,
+	"an":   true,
+	"and":  true,
+	"as":   true,
+	"by":   true,
+	"for":  true,
+	"in":   true,
+	"of":   true,
+	"on":   true,
+	"or":   true,
+	"the":  true,
+	"to":   true,
+	"with": true,
+}
+
+// titleCaseFromKebab converts a kebab- and/or slash-delimited identifier
+// into Title Case using BPMN-style activity-naming conventions: major
+// words capitalised, short articles/prepositions/conjunctions lowercased
+// mid-phrase, abbreviations from titleCaseAbbreviations preserved as
+// uppercase. Slash-bearing inputs (`task/cover-legacy`) render with
+// spaces around the slash (`Task / Cover Legacy`).
+//
+// Shared by writeProcessSection (Mermaid section headings) and
+// edgeLabel (gateway edge labels). The transformation is render-time
+// only — YAML identifiers stay kebab.
+func titleCaseFromKebab(s string) string {
+	parts := strings.Split(s, "/")
+	for i, part := range parts {
+		parts[i] = titleCaseFromKebabSegment(part)
+	}
+	return strings.Join(parts, " / ")
+}
+
+func titleCaseFromKebabSegment(s string) string {
+	segments := strings.Split(s, "-")
+	out := make([]string, 0, len(segments))
+	for i, seg := range segments {
+		if seg == "" {
+			continue
+		}
+		lower := strings.ToLower(seg)
+		if abbrev, ok := titleCaseAbbreviations[lower]; ok {
+			out = append(out, abbrev)
+			continue
+		}
+		if i > 0 && titleCaseSmallWords[lower] {
+			out = append(out, lower)
+			continue
+		}
+		out = append(out, strings.ToUpper(seg[:1])+seg[1:])
+	}
+	return strings.Join(out, " ")
+}
+
 // mermaidLabel returns label as-is when safe, or wrapped in double
 // quotes when it contains characters Mermaid would otherwise parse as
 // shape / edge syntax (`|`, parens, braces, brackets, `<`, `>`, `&`,
@@ -463,11 +532,14 @@ func mermaidLabel(s string) string {
 }
 
 // edgeLabel translates a YAML `when:` predicate into a short Mermaid
-// edge label. Common cases:
+// edge label. Kebab and slash-bearing routing values render in Title
+// Case via titleCaseFromKebab so edges read as human-readable
+// conditions, not YAML identifiers. Common cases:
 //   - `x == true`  → "Yes"
 //   - `x == false` → "No"
-//   - `x == value` → "value"
-//   - `x in [a, b]` → "a / b"
+//   - `x == kebab-value` → "Kebab Value"
+//   - `x == task/cover-legacy` → "Task / Cover Legacy"
+//   - `x in [a, b]` → "A / B"
 //
 // Anything that doesn't match these patterns is returned verbatim
 // (wrapped in mermaidLabel for safety).
@@ -481,7 +553,7 @@ func edgeLabel(pred string) string {
 		case "false":
 			return "No"
 		}
-		return mermaidLabel(rhs)
+		return mermaidLabel(titleCaseFromKebab(rhs))
 	}
 	if i := strings.Index(p, " in "); i >= 0 {
 		rhs := strings.TrimSpace(p[i+4:])
@@ -489,7 +561,7 @@ func edgeLabel(pred string) string {
 		rhs = strings.TrimSuffix(rhs, "]")
 		parts := strings.Split(rhs, ",")
 		for j, part := range parts {
-			parts[j] = strings.TrimSpace(part)
+			parts[j] = titleCaseFromKebab(strings.TrimSpace(part))
 		}
 		return mermaidLabel(strings.Join(parts, " / "))
 	}

@@ -10,17 +10,17 @@ Node **shape** encodes the BPMN type; **fill color** encodes the executor.
 
 - `((circle))` — start / end event
 - `{diamond}` — gateway (decision)
-- `[[subroutine]]` — service task — mechanical step run by the Go runtime (white)
-- `[rectangle]` — user task — LLM agent (dark blue) or human STOP (yellow); `call-activity` rectangles are unfilled and link to a sub-process heading
+- `[[subroutine]]` — service task — mechanical, automated step (white)
+- `[rectangle]` — user task — LLM agent (dark blue) or human (yellow); `call_activity` rectangles are unfilled and link to a sub-process heading
 - `[/skewed/]` — published outputs of a process (dashed border)
 
 ```mermaid
 flowchart LR
     EVT((Start / End))
     GW{Gateway}
-    SVC[[Service task — Go runtime]]
-    AGT[Agent task — LLM]
-    HUM[Human STOP]
+    SVC[["Service Task (Automated)"]]
+    AGT["User Task (LLM Agent)"]
+    HUM["User Task (Human)"]
     CALL[Call activity — sub-process]
     OUT[/Outputs/]
 
@@ -37,7 +37,7 @@ flowchart LR
     class OUT outputNode
 ```
 
-## Runtime Bootstrap (legacy entry — collapses in Phase D)
+## Main
 
 ```mermaid
 flowchart TD
@@ -46,8 +46,8 @@ flowchart TD
     PICK_TOP_READY[[Pick top READY ticket]]
     START((Start))
 
-    START -- board --> PICK_TOP_READY
-    START -- specific-issue --> IMPLEMENT_TICKET
+    START -- Board --> PICK_TOP_READY
+    START -- Specific Issue --> IMPLEMENT_TICKET
     PICK_TOP_READY --> IMPLEMENT_TICKET
     IMPLEMENT_TICKET --> END
 
@@ -55,7 +55,7 @@ flowchart TD
     class PICK_TOP_READY serviceNode
 ```
 
-## refine-ticket
+## Refine Ticket
 
 ```mermaid
 flowchart TD
@@ -72,7 +72,7 @@ flowchart TD
     class MARK_IN_REFINEMENT,MARK_READY serviceNode
 ```
 
-## implement-ticket
+## Implement Ticket
 
 ```mermaid
 flowchart TD
@@ -90,13 +90,13 @@ flowchart TD
 
     MARK_IN_PROGRESS --> PARSE_TICKET
     PARSE_TICKET --> GATE_TICKET_KIND
-    GATE_TICKET_KIND -- story --> CALL_CHANGE_SYSTEM_BEHAVIOR
-    GATE_TICKET_KIND -- bug --> CALL_CHANGE_SYSTEM_BEHAVIOR
-    GATE_TICKET_KIND -- task/legacy-coverage --> CALL_COVER_SYSTEM_BEHAVIOR
-    GATE_TICKET_KIND -- task/system-redesign --> CALL_REDESIGN_SYSTEM_STRUCTURE
-    GATE_TICKET_KIND -- task/system-refactor --> CALL_REFACTOR_SYSTEM_STRUCTURE
-    GATE_TICKET_KIND -- task/test-refactor --> CALL_REFACTOR_TEST_STRUCTURE
-    GATE_TICKET_KIND -- task/external-system-onboarding --> CALL_ONBOARD_EXTERNAL_SYSTEM
+    GATE_TICKET_KIND -- Story --> CALL_CHANGE_SYSTEM_BEHAVIOR
+    GATE_TICKET_KIND -- Bug --> CALL_CHANGE_SYSTEM_BEHAVIOR
+    GATE_TICKET_KIND -- Task / Legacy Coverage --> CALL_COVER_SYSTEM_BEHAVIOR
+    GATE_TICKET_KIND -- Task / System Redesign --> CALL_REDESIGN_SYSTEM_STRUCTURE
+    GATE_TICKET_KIND -- Task / System Refactor --> CALL_REFACTOR_SYSTEM_STRUCTURE
+    GATE_TICKET_KIND -- Task / Test Refactor --> CALL_REFACTOR_TEST_STRUCTURE
+    GATE_TICKET_KIND -- Task / External System Onboarding --> CALL_ONBOARD_EXTERNAL_SYSTEM
     CALL_CHANGE_SYSTEM_BEHAVIOR --> MARK_IN_ACCEPTANCE
     CALL_COVER_SYSTEM_BEHAVIOR --> MARK_IN_ACCEPTANCE
     CALL_REDESIGN_SYSTEM_STRUCTURE --> MARK_IN_ACCEPTANCE
@@ -109,7 +109,7 @@ flowchart TD
     class MARK_IN_ACCEPTANCE,MARK_IN_PROGRESS,PARSE_TICKET serviceNode
 ```
 
-## refactor
+## Refactor
 
 ```mermaid
 flowchart TD
@@ -119,16 +119,16 @@ flowchart TD
     GATE_REFACTOR_TYPE_CHOICE{"Choose refactor type (loopable; none = exit)"}
     REFACTOR_TOP_END((End))
 
-    GATE_REFACTOR_TYPE_CHOICE -- refactor-system-structure --> CALL_REFACTOR_SYSTEM_STRUCTURE
-    GATE_REFACTOR_TYPE_CHOICE -- refactor-test-structure --> CALL_REFACTOR_TEST_STRUCTURE
-    GATE_REFACTOR_TYPE_CHOICE -- redesign-system-structure --> CALL_REDESIGN_SYSTEM_STRUCTURE
-    GATE_REFACTOR_TYPE_CHOICE -- none --> REFACTOR_TOP_END
+    GATE_REFACTOR_TYPE_CHOICE -- Refactor System Structure --> CALL_REFACTOR_SYSTEM_STRUCTURE
+    GATE_REFACTOR_TYPE_CHOICE -- Refactor Test Structure --> CALL_REFACTOR_TEST_STRUCTURE
+    GATE_REFACTOR_TYPE_CHOICE -- Redesign System Structure --> CALL_REDESIGN_SYSTEM_STRUCTURE
+    GATE_REFACTOR_TYPE_CHOICE -- None --> REFACTOR_TOP_END
     CALL_REFACTOR_SYSTEM_STRUCTURE --> GATE_REFACTOR_TYPE_CHOICE
     CALL_REFACTOR_TEST_STRUCTURE --> GATE_REFACTOR_TYPE_CHOICE
     CALL_REDESIGN_SYSTEM_STRUCTURE --> GATE_REFACTOR_TYPE_CHOICE
 ```
 
-## refine-backlog
+## Refine Backlog
 
 ```mermaid
 flowchart TD
@@ -138,7 +138,7 @@ flowchart TD
     REFINE_ACCEPTANCE_CRITERIA --> REFINE_BACKLOG_END
 ```
 
-## onboard-external-system
+## Onboard External System
 
 ```mermaid
 flowchart TD
@@ -167,7 +167,7 @@ flowchart TD
     class DOCUMENT_EXTERNAL_SYSTEM_CONTRACT,IDENTIFY_EXTERNAL_SYSTEM,SETUP_EXTERNAL_SYSTEM_ACCESS,STOP_CHECKLIST_PARTIALLY_DONE,VERIFY_EXTERNAL_SYSTEM_REACHABLE humanNode
 ```
 
-## change-system-behavior
+## Change System Behavior
 
 ```mermaid
 flowchart TD
@@ -181,16 +181,16 @@ flowchart TD
 
     WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL --> IMPLEMENT_AND_VERIFY_SYSTEM
     IMPLEMENT_AND_VERIFY_SYSTEM --> GATE_OPPORTUNISTIC_REFACTOR
-    GATE_OPPORTUNISTIC_REFACTOR -- refactor-system-structure --> OPP_REFACTOR_SYSTEM_STRUCTURE
-    GATE_OPPORTUNISTIC_REFACTOR -- refactor-test-structure --> OPP_REFACTOR_TEST_STRUCTURE
-    GATE_OPPORTUNISTIC_REFACTOR -- redesign-system-structure --> OPP_REDESIGN_SYSTEM_STRUCTURE
-    GATE_OPPORTUNISTIC_REFACTOR -- none --> CHANGE_SYSTEM_BEHAVIOR_END
+    GATE_OPPORTUNISTIC_REFACTOR -- Refactor System Structure --> OPP_REFACTOR_SYSTEM_STRUCTURE
+    GATE_OPPORTUNISTIC_REFACTOR -- Refactor Test Structure --> OPP_REFACTOR_TEST_STRUCTURE
+    GATE_OPPORTUNISTIC_REFACTOR -- Redesign System Structure --> OPP_REDESIGN_SYSTEM_STRUCTURE
+    GATE_OPPORTUNISTIC_REFACTOR -- None --> CHANGE_SYSTEM_BEHAVIOR_END
     OPP_REFACTOR_SYSTEM_STRUCTURE --> GATE_OPPORTUNISTIC_REFACTOR
     OPP_REFACTOR_TEST_STRUCTURE --> GATE_OPPORTUNISTIC_REFACTOR
     OPP_REDESIGN_SYSTEM_STRUCTURE --> GATE_OPPORTUNISTIC_REFACTOR
 ```
 
-## cover-system-behavior
+## Cover System Behavior
 
 ```mermaid
 flowchart TD
@@ -200,7 +200,7 @@ flowchart TD
     WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS --> COVER_END
 ```
 
-## redesign-system-structure
+## Redesign System Structure
 
 ```mermaid
 flowchart TD
@@ -227,7 +227,7 @@ flowchart TD
     class STOP_CHECKLIST_PARTIALLY_DONE humanNode
 ```
 
-## refactor-system-structure
+## Refactor System Structure
 
 ```mermaid
 flowchart TD
@@ -250,7 +250,7 @@ flowchart TD
     class STOP_CHECKLIST_PARTIALLY_DONE humanNode
 ```
 
-## refactor-test-structure
+## Refactor Test Structure
 
 ```mermaid
 flowchart TD
@@ -273,7 +273,7 @@ flowchart TD
     class STOP_CHECKLIST_PARTIALLY_DONE humanNode
 ```
 
-## write-and-verify-acceptance-tests-fail
+## Write and Verify Acceptance Tests Fail
 
 ```mermaid
 flowchart TD
@@ -283,7 +283,7 @@ flowchart TD
     CALL_PARAMETERISED_CORE --> WAV_AT_FAIL_END
 ```
 
-## write-and-verify-acceptance-tests-pass
+## Write and Verify Acceptance Tests Pass
 
 ```mermaid
 flowchart TD
@@ -293,7 +293,7 @@ flowchart TD
     CALL_PARAMETERISED_CORE --> WAV_AT_PASS_END
 ```
 
-## write-and-verify-acceptance-tests
+## Write and Verify Acceptance Tests
 
 ```mermaid
 flowchart TD
@@ -318,7 +318,7 @@ flowchart TD
     IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS --> WAV_AT_END
 ```
 
-## write-and-verify-acceptance-test-code
+## Write and Verify Acceptance Test Code
 
 ```mermaid
 flowchart TD
@@ -333,15 +333,15 @@ flowchart TD
 
     WRITE_ACCEPTANCE_TESTS --> COMPILE_TESTS
     COMPILE_TESTS --> GATE_EXPECTED_TEST_RESULT
-    GATE_EXPECTED_TEST_RESULT -- success --> VERIFY_TESTS_PASS_ACCEPTANCE
-    GATE_EXPECTED_TEST_RESULT -- failure --> VERIFY_TESTS_FAIL_ACCEPTANCE
+    GATE_EXPECTED_TEST_RESULT -- Success --> VERIFY_TESTS_PASS_ACCEPTANCE
+    GATE_EXPECTED_TEST_RESULT -- Failure --> VERIFY_TESTS_FAIL_ACCEPTANCE
     VERIFY_TESTS_PASS_ACCEPTANCE --> COMMIT_TEST_CODE
     VERIFY_TESTS_FAIL_ACCEPTANCE --> DISABLE_ACCEPTANCE_TESTS
     DISABLE_ACCEPTANCE_TESTS --> COMMIT_TEST_CODE
     COMMIT_TEST_CODE --> WAV_AT_CODE_END
 ```
 
-## implement-and-verify-dsl
+## Implement and Verify DSL
 
 ```mermaid
 flowchart TD
@@ -351,7 +351,7 @@ flowchart TD
     IMPLEMENT_TEST_LAYER --> IMPL_DSL_END
 ```
 
-## implement-and-verify-system-driver-adapters
+## Implement and Verify System Driver Adapters
 
 ```mermaid
 flowchart TD
@@ -361,7 +361,7 @@ flowchart TD
     IMPLEMENT_TEST_LAYER --> IMPL_SYS_DRIVER_END
 ```
 
-## implement-and-verify-external-system-driver-adapters
+## Implement and Verify External System Driver Adapters
 
 ```mermaid
 flowchart TD
@@ -371,7 +371,7 @@ flowchart TD
     IMPLEMENT_TEST_LAYER --> IMPL_EXT_DRIVER_END
 ```
 
-## implement-and-verify-external-system-driver-adapters-contract-tests
+## Implement and Verify External System Driver Adapters Contract Tests
 
 ```mermaid
 flowchart TD
@@ -396,7 +396,7 @@ flowchart TD
     VERIFY_TESTS_PASS_CONTRACT_STUB --> IMPL_EXT_DRIVER_CT_END
 ```
 
-## implement-and-verify-system
+## Implement and Verify System
 
 ```mermaid
 flowchart TD
@@ -414,7 +414,7 @@ flowchart TD
     COMMIT_SYSTEM --> IMPL_AND_VERIFY_SYSTEM_END
 ```
 
-## refactor-and-verify-tests
+## Refactor and Verify Tests
 
 ```mermaid
 flowchart TD
@@ -430,7 +430,7 @@ flowchart TD
     COMMIT_TESTS --> REFACTOR_AND_VERIFY_TESTS_END
 ```
 
-## implement-test-layer
+## Implement Test Layer
 
 ```mermaid
 flowchart TD
@@ -447,15 +447,15 @@ flowchart TD
     CALL_AGENT_ACTION --> ENABLE_TESTS
     ENABLE_TESTS --> COMPILE_TESTS
     COMPILE_TESTS --> GATE_EXPECTED_TEST_RESULT
-    GATE_EXPECTED_TEST_RESULT -- success --> VERIFY_TESTS_PASS_FILTERED
-    GATE_EXPECTED_TEST_RESULT -- failure --> VERIFY_TESTS_FAIL_FILTERED
+    GATE_EXPECTED_TEST_RESULT -- Success --> VERIFY_TESTS_PASS_FILTERED
+    GATE_EXPECTED_TEST_RESULT -- Failure --> VERIFY_TESTS_FAIL_FILTERED
     VERIFY_TESTS_PASS_FILTERED --> COMMIT_LAYER
     VERIFY_TESTS_FAIL_FILTERED --> DISABLE_TESTS
     DISABLE_TESTS --> COMMIT_LAYER
     COMMIT_LAYER --> IMPLEMENT_TEST_LAYER_END
 ```
 
-## verify-tests-pass
+## Verify Tests Pass
 
 ```mermaid
 flowchart TD
@@ -465,12 +465,12 @@ flowchart TD
     VERIFY_PASS_END((End))
 
     RUN_TESTS --> GATE_TESTS_OUTCOME
-    GATE_TESTS_OUTCOME -- pass --> VERIFY_PASS_END
-    GATE_TESTS_OUTCOME -- fail --> FIX_UNEXPECTED_FAILING_TESTS
+    GATE_TESTS_OUTCOME -- Pass --> VERIFY_PASS_END
+    GATE_TESTS_OUTCOME -- Fail --> FIX_UNEXPECTED_FAILING_TESTS
     FIX_UNEXPECTED_FAILING_TESTS --> VERIFY_PASS_END
 ```
 
-## verify-tests-fail
+## Verify Tests Fail
 
 ```mermaid
 flowchart TD
@@ -480,12 +480,12 @@ flowchart TD
     VERIFY_FAIL_END((End))
 
     RUN_TESTS --> GATE_TESTS_OUTCOME
-    GATE_TESTS_OUTCOME -- pass --> FIX_UNEXPECTED_PASSING_TESTS
-    GATE_TESTS_OUTCOME -- fail --> VERIFY_FAIL_END
+    GATE_TESTS_OUTCOME -- Pass --> FIX_UNEXPECTED_PASSING_TESTS
+    GATE_TESTS_OUTCOME -- Fail --> VERIFY_FAIL_END
     FIX_UNEXPECTED_PASSING_TESTS --> VERIFY_FAIL_END
 ```
 
-## write-acceptance-tests
+## Write Acceptance Tests
 
 ```mermaid
 flowchart TD
@@ -495,7 +495,7 @@ flowchart TD
     EXECUTE_AGENT --> WAT_END
 ```
 
-## write-contract-tests
+## Write Contract Tests
 
 ```mermaid
 flowchart TD
@@ -505,7 +505,7 @@ flowchart TD
     EXECUTE_AGENT --> WCT_END
 ```
 
-## implement-dsl
+## Implement DSL
 
 ```mermaid
 flowchart TD
@@ -515,7 +515,7 @@ flowchart TD
     EXECUTE_AGENT --> IMPL_DSL_END
 ```
 
-## implement-system
+## Implement System
 
 ```mermaid
 flowchart TD
@@ -525,7 +525,7 @@ flowchart TD
     EXECUTE_AGENT --> IMPL_SYS_END
 ```
 
-## implement-system-driver-adapters
+## Implement System Driver Adapters
 
 ```mermaid
 flowchart TD
@@ -535,7 +535,7 @@ flowchart TD
     EXECUTE_AGENT --> IMPL_SYS_DA_END
 ```
 
-## implement-external-system-driver-adapters
+## Implement External System Driver Adapters
 
 ```mermaid
 flowchart TD
@@ -545,7 +545,7 @@ flowchart TD
     EXECUTE_AGENT --> IMPL_EXT_DA_END
 ```
 
-## implement-external-system-stubs
+## Implement External System Stubs
 
 ```mermaid
 flowchart TD
@@ -555,7 +555,7 @@ flowchart TD
     EXECUTE_AGENT --> IMPL_STUBS_END
 ```
 
-## disable-tests
+## Disable Tests
 
 ```mermaid
 flowchart TD
@@ -565,7 +565,7 @@ flowchart TD
     EXECUTE_AGENT --> DISABLE_END
 ```
 
-## enable-tests
+## Enable Tests
 
 ```mermaid
 flowchart TD
@@ -575,7 +575,7 @@ flowchart TD
     EXECUTE_AGENT --> ENABLE_END
 ```
 
-## fix-unexpected-passing-tests
+## Fix Unexpected Passing Tests
 
 ```mermaid
 flowchart TD
@@ -585,7 +585,7 @@ flowchart TD
     EXECUTE_AGENT --> FIX_PASS_END
 ```
 
-## fix-unexpected-failing-tests
+## Fix Unexpected Failing Tests
 
 ```mermaid
 flowchart TD
@@ -595,7 +595,7 @@ flowchart TD
     EXECUTE_AGENT --> FIX_FAIL_END
 ```
 
-## refactor-tests
+## Refactor Tests
 
 ```mermaid
 flowchart TD
@@ -605,7 +605,7 @@ flowchart TD
     EXECUTE_AGENT --> REFACTOR_TESTS_END
 ```
 
-## refactor-system
+## Refactor System
 
 ```mermaid
 flowchart TD
@@ -615,7 +615,7 @@ flowchart TD
     EXECUTE_AGENT --> REFACTOR_SYS_END
 ```
 
-## refine-acceptance-criteria
+## Refine Acceptance Criteria
 
 ```mermaid
 flowchart TD
@@ -625,7 +625,7 @@ flowchart TD
     EXECUTE_AGENT --> REFINE_AC_END
 ```
 
-## compile
+## Compile
 
 ```mermaid
 flowchart TD
@@ -635,7 +635,7 @@ flowchart TD
     EXECUTE_COMMAND --> COMPILE_MID_END
 ```
 
-## compile-system
+## Compile System
 
 ```mermaid
 flowchart TD
@@ -645,7 +645,7 @@ flowchart TD
     EXECUTE_COMMAND --> COMPILE_SYS_END
 ```
 
-## compile-tests
+## Compile Tests
 
 ```mermaid
 flowchart TD
@@ -655,7 +655,7 @@ flowchart TD
     EXECUTE_COMMAND --> COMPILE_TESTS_END
 ```
 
-## build-system
+## Build System
 
 ```mermaid
 flowchart TD
@@ -665,7 +665,7 @@ flowchart TD
     EXECUTE_COMMAND --> BUILD_SYS_END
 ```
 
-## start-system
+## Start System
 
 ```mermaid
 flowchart TD
@@ -675,7 +675,7 @@ flowchart TD
     EXECUTE_COMMAND --> START_SYS_END
 ```
 
-## commit
+## Commit
 
 ```mermaid
 flowchart TD
@@ -685,7 +685,7 @@ flowchart TD
     EXECUTE_COMMAND --> COMMIT_MID_END
 ```
 
-## run-tests
+## Run Tests
 
 ```mermaid
 flowchart TD
@@ -695,7 +695,7 @@ flowchart TD
     EXECUTE_COMMAND --> RUN_TESTS_END
 ```
 
-## approve
+## Approve
 
 ```mermaid
 flowchart TD
@@ -705,14 +705,14 @@ flowchart TD
     GATE_APPROVED{Approved?}
 
     ASK_HUMAN --> GATE_APPROVED
-    GATE_APPROVED -- approved --> APPROVE_OK_END
-    GATE_APPROVED -- rejected --> APPROVE_REJECT_END
+    GATE_APPROVED -- Approved --> APPROVE_OK_END
+    GATE_APPROVED -- Rejected --> APPROVE_REJECT_END
 
     classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
     class ASK_HUMAN humanNode
 ```
 
-## execute-agent
+## Execute Agent
 
 ```mermaid
 flowchart TD
@@ -742,7 +742,7 @@ flowchart TD
     class RUN_AGENT agentNode
 ```
 
-## execute-command
+## Execute Command
 
 ```mermaid
 flowchart TD
@@ -762,7 +762,7 @@ flowchart TD
     class RUN_COMMAND serviceNode
 ```
 
-## fix
+## Fix
 
 ```mermaid
 flowchart TD

@@ -46,8 +46,10 @@ audit.
 
 The 2026-05-26 /refine-plan walk results:
 
-- **In scope (will ship in this plan)**: Items 2, 3, 7, 8, 10, 11, 12,
-  13, 16, 17, 19, 20, 21, 22.
+- **In scope (will ship in this plan)**: Items 2, 3, 10, 11, 12,
+  13, 16, 17, 19, 22.
+- **Shipped in renderer-only chunk (2026-05-26)**: Items 7, 8, 20, 21
+  — see commit history.
 - **Superseded by another plan**: Item 9 → `plans/20260526-1220-fix-mark-ticket-state-transition-routing.md`
   (eliminates the `update-ticket` wrapper entirely; no `mark-ticket` rename
   to perform).
@@ -460,115 +462,6 @@ The audience for this repo is **mixed**: students learning ATDD top-down
   or stale?
 - Q6.6 — README and other docs that link to `docs/process-diagram.md` —
   inventory before split.
-
-## Item 7 — Legend wording: executor labels for service / user-task nodes
-
-**Observation**: The legend at the top of `docs/process-diagram.md` (emitted
-by `diagram.go::writeLegend`, lines 147-172) currently uses three executor
-labels that the user wants revised:
-
-- `[[Service task — Go runtime]]` — "Go runtime" is implementation detail
-  leaking into a vocabulary diagram. We want a vocabulary-level word for
-  "the engine that runs mechanical, non-LLM, non-human steps".
-- `[Agent task — LLM]` — rename to **`User Task (LLM Agent)`**. Aligns
-  with BPMN: in the YAML these are `user_task` nodes; the executor is the
-  LLM agent, which is a *kind* of user task.
-- `[Human STOP]` — rename to **`User Task (Human)`**. Same reasoning:
-  YAML `user_task` with `agent: human`; "STOP" connotes a halt signal,
-  which isn't what every human task is.
-
-The accompanying bullet text in the legend needs to match:
-
-```
-- `[[subroutine]]` — service task — mechanical step run by the Go runtime (white)
-- `[rectangle]`  — user task — LLM agent (dark blue) or human STOP (yellow); `call_activity` rectangles are unfilled and link to a sub-process heading
-```
-
-**Direction (decided 2026-05-26)**: apply the three renames in lockstep
-across the legend's Mermaid sample labels, the bullet description text,
-and the `writeExecutorStyling` doc-comment block (`diagram.go:406-416`).
-
-Final wording:
-
-| Mermaid sample (was) | Mermaid sample (becomes) |
-|---|---|
-| `SVC[[Service task — Go runtime]]` | `SVC[[Service Task (Automated)]]` |
-| `AGT[Agent task — LLM]` | `AGT[User Task (LLM Agent)]` |
-| `HUM[Human STOP]` | `HUM[User Task (Human)]` |
-
-Bullet description text (`diagram.go:147-172`) updates in lockstep:
-
-- `[[subroutine]]` — service task — mechanical, automated step (white)
-- `[rectangle]` — user task — LLM agent (dark blue) or human (yellow);
-  `call_activity` rectangles are unfilled and link to a sub-process heading
-
-**Files**:
-- `internal/atdd/runtime/diagram/diagram.go::writeLegend` (lines 147-172) —
-  three Mermaid sample labels + the bullet text.
-- `internal/atdd/runtime/diagram/diagram.go::writeExecutorStyling` doc
-  comment (lines 406-416) — "(Go runtime)" → "(Automated)" in lockstep.
-
-No YAML changes — the YAML uses `service_task` / `user_task` /
-`agent: human` already, which match the proposed legend vocabulary.
-
-**Q7.3 — *Inventoried 2026-05-26***: "Go runtime" and "Agent task"
-appear **only** in `docs/process-diagram.md` (regenerated artifact) and
-its companion SVG. `docs/atdd/process/` doesn't exist; README doesn't
-use these terms. Item 7's renderer change is the complete fix — no
-lockstep doc edits needed elsewhere.
-
-## Item 8 — `main` process heading: "Runtime Bootstrap (legacy entry — collapses in Phase D)"
-
-**Observation**: `diagram.go:39-41` defines a single `processAlias` entry:
-
-```go
-var processAlias = map[string]string{
-    "main": "Runtime Bootstrap (legacy entry — collapses in Phase D)",
-}
-```
-
-The `main` process is the YAML entry point invoked by `gh optivem implement` —
-it picks a top-READY ticket (board mode) or accepts a pre-picked one
-(specific_issue mode) and delegates to `implement-ticket`. The Phase D plan
-(see process-flow.yaml lines 14-18, 131) **removes `main` from the YAML
-entirely** by moving the picker into Go driver code.
-
-So "legacy" here doesn't mean "old/deprecated tech" — it means "transitional
-plumbing on its way out". The parenthetical is essentially a TODO in the
-heading.
-
-**Tension with existing memory rules**:
-
-- `feedback_legacy_tests_no_marker.md`: "Legacy tests must look identical to
-  AT/CT tests — no `@LegacyCoverage` annotation, no `*_LegacyTest` suffix".
-- `feedback_teaching_repo_no_legacy.md`: "Teaching repo — no legacy-alias
-  machinery for schema moves".
-
-Both rules push back on **permanent** "legacy" markers in user-facing
-artefacts. The current heading is the same shape: an inline "going-away"
-warning that stays in the diagram until Phase D actually ships.
-
-**Direction (decided 2026-05-26): Option 8A — drop the alias entirely.**
-Delete the `processAlias` entry for `main`. Heading becomes `## main`. The
-Phase-D-collapse note already lives in the YAML comment block above the
-`main` definition (process-flow.yaml:122-132) and doesn't need to be
-duplicated in the rendered heading.
-
-Ships independently of Item 5 (which is deferred). If Item 5 ever lands,
-the level prefix gets added automatically.
-
-**Files**:
-- `internal/atdd/runtime/diagram/diagram.go:39-41` — delete the
-  `processAlias["main"]` entry. The map can stay (it might gain other
-  entries later) or be removed entirely if `main` is the only consumer —
-  decide at execution time.
-
-**Q8.3 — *Inventoried 2026-05-26***: Phase D is described in
-`plans/archived/20260525-1057-bpmn-refactor-design.md:82` (moved to a
-downstream-alignment plan that has since been deleted as executed). No
-cross-reference needed in this plan — Item 8 drops the alias
-unconditionally, so the "collapses in Phase D" wording disappears along
-with it.
 
 ## Item 9 — `update-ticket` sub-process name is too generic — *superseded by 1220*
 
@@ -1129,87 +1022,6 @@ the YAML cycle structure rather than node coloring).
   User Task Human); TDD-stage uses border (red/green/blue). Both
   signals visible without conflict.
 
-## Item 20 — Sub-process headings to Title Case
-
-**Observation**: The rendered diagram doc has section headings like
-`## change-system-behavior`, `## implement-and-verify-system`,
-`## refactor-system-structure`. These are the YAML process **names**
-(kebab-case identifiers) shown verbatim. BPMN convention: process names
-should read as human-readable activities ("Change System Behavior",
-"Implement and Verify System"). The `processAlias` map already does this
-for `main` (one entry), but other 50+ processes leak kebab identifiers
-into the rendered headings.
-
-**Direction (proposed)**: auto-Title-Case the kebab process name in the
-renderer. `change-system-behavior` → "Change System Behavior". Special
-cases handled by:
-
-- `processAlias` entries take precedence (custom human name overrides
-  auto-Title-Case). After Item 8, the map is empty by default; entries
-  added only when auto-Title-Case is wrong (e.g. abbreviations: "DSL"
-  not "Dsl").
-- Abbreviation list: keep `DSL`, `AT`, `CT`, `BPMN`, `TDD` uppercase
-  during Title-Case transformation.
-
-Item 5's heading-prefix (`## TOP — Change System Behavior`) is currently
-deferred, but if it later lands, the prefix sits in front of the
-Title-Cased name.
-
-**Files**:
-- `internal/atdd/runtime/diagram/diagram.go::writeProcessSection` — wrap
-  the heading emission in a Title-Case transformer. Add an abbreviation-
-  preservation list.
-
-**Open questions for /refine-plan**:
-
-- Q20.1 — *Decided 2026-05-26*: **auto-Title-Case** at render time +
-  abbreviation list + `processAlias` map as override fallback. No
-  `display-name:` field added to YAML.
-- Q20.2 — *Decided 2026-05-26*: abbreviation list = **`DSL`, `AT`, `CT`,
-  `BPMN`, `TDD`, `ATDD`, `BDD`, `SUT`, `API`, `URL`, `DB`, `IO`**.
-  All preserved as uppercase during Title-Case transformation.
-
-## Item 21 — Edge labels: Title Case from kebab routing values
-
-**Observation**: Gateways route on enum-style kebab values
-(`refactor-system-structure`, `task/cover-legacy`, etc.). The renderer's
-`edgeLabel()` (diagram.go:475-498) passes these through verbatim, so the
-diagram edges show "refactor-system-structure" as a label. BPMN
-convention: edge labels are short human-readable conditions ("Refactor
-System Structure", "Yes", "Story", "Task / Cover Legacy").
-
-**Direction (proposed)**: extend `edgeLabel()` to auto-Title-Case kebab
-routing values, using the same abbreviation list as Item 20.
-
-Examples:
-
-| Current edge label | After |
-|---|---|
-| `refactor-system-structure` | "Refactor System Structure" |
-| `task/cover-legacy` | "Task / Cover Legacy" |
-| `task/refactor-system` | "Task / Refactor System" |
-| `story` | "Story" |
-| `bug` | "Bug" |
-| `true` → "Yes" | unchanged (already translated) |
-| `false` → "No" | unchanged |
-
-The runtime-facing routing values in the YAML stay kebab (functional
-identifiers; renaming would risk binding mismatches). The transformation
-is render-time only.
-
-**Files**:
-- `internal/atdd/runtime/diagram/diagram.go::edgeLabel` — extend the
-  pass-through branch to Title-Case kebab values.
-
-**Open questions for /refine-plan**:
-
-- Q21.1 — *Decided 2026-05-26*: shared Title-Case helper with Item 20.
-  Same kebab-input, same Title-Case output, same abbreviation list.
-- Q21.2 — *Decided 2026-05-26*: spaces around slash (defensive default).
-  `task/cover-legacy` → "Task / Cover Legacy". Likely moot after Item 11
-  removes the slash-bearing routing values, but the rule covers any
-  surviving edges and future slash-bearing values.
-
 ## Item 22 — Start / End event labels
 
 **Observation**: Renderer hardcodes `((Start))` and `((End))` for every
@@ -1265,70 +1077,55 @@ Complete'"), but explicit `documentation:` is preferred.
 
 Items in execution order after the 2026-05-26 /refine-plan walk.
 
-**In scope** (settled): Items 2, 3, 7, 8, 10, 11, 12, 13, 16, 17, 19, 20,
-21, 22.
+**In scope** (settled): Items 2, 3, 10, 11, 12, 13, 16, 17, 19, 22.
+**Already shipped** (renderer-only chunk, 2026-05-26): Items 7, 8, 20, 21.
 **Out of scope**: Items 1, 5, 6 (deferred), 4 (merged into 2), 9
 (superseded by 1220), 14 (deferred to separate plan), 15 (merged into
 12), 18 (dropped).
 
-**Renderer-only changes first** (smallest blast radius; easy to review):
-
-1. **Item 7** (legend wording) — Mermaid sample labels + bullet text +
-   `writeExecutorStyling` doc comment to `Service Task (Automated)` /
-   `User Task (Human)` / `User Task (LLM Agent)`.
-2. **Item 8** (drop the `main` legacy-alias) — single deletion in the
-   `processAlias` map; heading becomes `## main`.
-3. **Item 20** (sub-process headings to Title Case) — auto-Title-Case
-   the kebab process name in `writeProcessSection` heading emission;
-   preserve abbreviations (`DSL`, `AT`, `CT`, `BPMN`, `TDD`, `ATDD`,
-   `BDD`, `SUT`, `API`, `URL`, `DB`, `IO`).
-4. **Item 21** (Title-Case kebab edge labels) — extend `edgeLabel()`
-   with the same Title-Case helper; spaces-around-slash for any
-   surviving slash-bearing routing values.
-
 **Schema additions** (renderer + load.go):
 
-5. **Item 17** (error end-events) — new `error_end_event` node type
+1. **Item 17** (error end-events) — new `error_end_event` node type
    with red border + bolt icon (⚡); load.go accepts the type; renderer
    gets a new shape branch. Bakes in early so Items 11, 16 can use it.
-6. **Item 19** (TDD-stage visual metadata) — new `tdd-stage:` field
+2. **Item 19** (TDD-stage visual metadata) — new `tdd-stage:` field
    accepted in load.go (enum: `red | green | refactor`); renderer
    emits a classDef per stage; legend gets a new bullet section
    explaining the colours.
-7. **Item 22** (start/end event labels) — strict-require
+3. **Item 22** (start/end event labels) — strict-require
    `documentation:` on every `start_event` and `end_event`; renderer
    uses the doc for the label. Parse-time error if missing.
 
 **YAML structural changes**:
 
-8. **Item 16** (computed-gateway documentation cleanup) — every
+4. **Item 16** (computed-gateway documentation cleanup) — every
    gateway's `documentation:` rewritten to predicate form (binding
    name) or stripped; parse-time hard-error on question-form gateway
    documentation.
-9. **Item 13** (split operator-input gateways into user_task + gateway)
+5. **Item 13** (split operator-input gateways into user_task + gateway)
    — adds `CHOOSE_REFACTOR_TYPE` user_task to the `refactor` process;
    redirects loopback edges; strips question-form documentation from
    `GATE_REFACTOR_TYPE_CHOICE`.
-10. **Item 12** (drop `CALL_*` prefix; verb-first naming) — YAML pass:
-    rename 9 `CALL_*` nodes per the two-rule convention. `CALL_AGENT_ACTION`
-    → `RUN_ACTION` (with param `agent-action` renamed to `action` at
-    every call site). Adjective-first `OPPORTUNISTIC_REFACTOR` (Item 3
-    target) becomes `REFACTOR_OPPORTUNISTICALLY`. Subsumes Item 15.
-11. **Item 2** (require `documentation:` everywhere + apply convention)
-    — mass YAML edit: ~81 call_activity nodes gain a `documentation:`
-    line under the **BPMN-pure verb-phrase, Title Case** convention.
-    Renderer drops the ID-fallback branch; load.go adds the schema-
-    validation requirement.
-12. **Item 3** (de-duplicate opportunistic-refactor block) — YAML
-    change: collapses 6 nodes + 7 edges into one `call_activity`
-    (`REFACTOR_OPPORTUNISTICALLY`) → `refactor`. Updates statemachine
-    tests that reference the removed `OPP_*` IDs.
-13. **~~Item 9~~ (superseded by 1220)** — no execution work in this plan;
-    the `update-ticket` wrapper is eliminated by 1220.
-14. **Item 10** (rename `refine-backlog` → `refine-backlog-item`) — YAML
+6. **Item 12** (drop `CALL_*` prefix; verb-first naming) — YAML pass:
+   rename 9 `CALL_*` nodes per the two-rule convention. `CALL_AGENT_ACTION`
+   → `RUN_ACTION` (with param `agent-action` renamed to `action` at
+   every call site). Adjective-first `OPPORTUNISTIC_REFACTOR` (Item 3
+   target) becomes `REFACTOR_OPPORTUNISTICALLY`. Subsumes Item 15.
+7. **Item 2** (require `documentation:` everywhere + apply convention)
+   — mass YAML edit: ~81 call_activity nodes gain a `documentation:`
+   line under the **BPMN-pure verb-phrase, Title Case** convention.
+   Renderer drops the ID-fallback branch; load.go adds the schema-
+   validation requirement.
+8. **Item 3** (de-duplicate opportunistic-refactor block) — YAML
+   change: collapses 6 nodes + 7 edges into one `call_activity`
+   (`REFACTOR_OPPORTUNISTICALLY`) → `refactor`. Updates statemachine
+   tests that reference the removed `OPP_*` IDs.
+9. **~~Item 9~~ (superseded by 1220)** — no execution work in this plan;
+   the `update-ticket` wrapper is eliminated by 1220.
+10. **Item 10** (rename `refine-backlog` → `refine-backlog-item`) — YAML
     rename: process def + call site + section comment + diagram.go
     `processOrder` + `REFINE_BACKLOG_END` → `REFINE_BACKLOG_ITEM_END`.
-15. **Item 11** (split ticket-kind gateway) — YAML structural change:
+11. **Item 11** (split ticket-kind gateway) — YAML structural change:
     `GATE_TICKET_KIND` value set shrinks to story/bug/task; new
     `GATE_TASK_SUBTYPE` gateway routes the five task subtypes; both
     gateways gain an `error_end_event` for unrecognised values (per
