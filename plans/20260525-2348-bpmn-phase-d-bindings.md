@@ -178,10 +178,21 @@ is the final command string. **Resolution:**
   routes the false branch.
 
 **Q-D7. `refactor_type_choice` menu values.** Always prompts the
-operator (loopable menu). Accepts:
+operator (loopable menu — the BPMN loops back, the binding itself
+prompts once per call). Accepts:
 `refactor-system-structure` | `refactor-test-structure` | `redesign-system-structure` | `none`.
 Reads `ctx.State["refactor_type_choice"]` first for hand-debugging /
 preseed; otherwise prompts. Empty answer → `none` (exit the loop).
+
+**Implementation shape:** mirrors the existing `structuralTestMode`
+binding (`internal/atdd/runtime/gates/bindings.go:403`) — inline
+`b.deps.Prompter.Ask` → `strings.ToLower` + `strings.TrimSpace` →
+switch on the four enum values → `Outcome{Value: answer}`. Unrecognised
+input → `Outcome.Err` (matching `structuralTestMode`). No new
+`promptio` helper — the package has only y/n primitives today and the
+inline pattern is the established shape for enum menus across gates
+(see also `ticketType` at line 281, plus the two prompts at lines 304
+and 330).
 
 ## Items
 
@@ -267,9 +278,14 @@ Per Q-D2.
     `${question}` (already expanded), calls `promptio.ConfirmYN`, writes
     `ctx.State["approval_outcome"] = "approved"|"rejected"`, returns
     `Outcome{}`.
-  - In `wrapAgentDispatchers`, branch on `raw.Agent == "human" && process.Name == "approve"`
-    (or equivalent — check that we're inside the `approve` LOW) and
-    install `newApproveDispatcher` instead of `newHumanStopDispatcher`.
+  - In `wrapAgentDispatchers` (`driver.go:693`) add a new switch case
+    **before** the existing `case raw.Agent == "human":` (line 705)
+    that matches `process.Name == "approve" && raw.Agent == "human"`
+    and installs `newApproveDispatcher` instead of
+    `newHumanStopDispatcher`. The `process` variable from the outer
+    `for _, process := range eng.Processes` loop is already in scope
+    (verified: `statemachine.Process.Name` exists at `types.go:69`),
+    so no extra plumbing is needed.
 - `internal/atdd/runtime/gates/bindings.go`:
   - Add `approvalOutcome`: returns `Outcome{Value: ctx.GetString("approval_outcome")}`;
     empty → halt.
@@ -316,11 +332,16 @@ already exist as actions).
   - Each row of the Q-D3 table, plus unrecognised composition halt.
   - Preseeded `ctx.State["ticket_kind"]` short-circuit.
 
-  Note: the binding needs `Tracker` access. Either add a `Tracker` field
-  to `gates.Deps` (already half-present — Tracker is set by `withDefaults`)
-  and pass through to `b.ticketKind`, or factor the classify shape into
-  a small helper package that both actions and gates import. Resolve at
-  the start of this item; both shapes are routine.
+  Tracker access: `gates.Deps.Tracker` is already fully wired
+  (`gates/bindings.go:55`, populated in `withDefaults` at lines 86–98,
+  consumed by `legacyAcceptanceCriteriaSectionPresent` at line 472).
+  `b.ticketKind` calls `b.deps.Tracker` directly — no new `Deps` field,
+  no shared helper package. The `readTicketType` / `readSubtype`
+  classify shapes from `actions/bindings.go` are lifted into private
+  helpers in the gates package (or a small internal subpackage if the
+  imports get awkward); the lift is behaviour-preserving so the
+  existing actions can be left alone for now and swept in the
+  follow-up old-binding cleanup mentioned in "Out of scope".
 
 ### Item 9 — Smoke-run + commit
 
