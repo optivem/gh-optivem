@@ -252,12 +252,6 @@ multi-line error block listing every failure otherwise.`,
 //     workspace scope cascade. Inferred from the tier repo slugs for
 //     multi-repo projects; mono-repo projects are left untouched
 //     (single-repo behavior already covers them).
-//   - external-driver key rename (plan 20260519-0704): renames the
-//     pre-rename keys under paths: to their post-rename forms. Hard
-//     errors when both old and new keys are present.
-//   - SSoT path model: joins system.sut_namespace into each paths:<key>
-//     value and into system.path, then deletes system.sut_namespace.
-//     Applied when system.sut_namespace is present.
 //
 // When no back-fill applies the file is left untouched and the command
 // reports a no-op. Designed to be safe to run repeatedly.
@@ -279,15 +273,6 @@ func newConfigMigrateCmd() *cobra.Command {
     multi-repo projects (one ../<repo-name> entry per distinct tier
     slug). Mono-repo projects keep their existing single-repo behavior
     and the field is left absent.
-  • Renames the pre-rename external-driver keys under system_test.paths:
-    to their post-rename forms (` + "`external_driver_port`" + ` →
-    ` + "`external_system_driver_port`" + `, ` + "`external_driver_adapter`" + ` →
-    ` + "`external_system_driver_adapter`" + `). Hard errors when both old and
-    new keys are present — the operator must resolve the ambiguity manually.
-  • Migrates to the SSoT path model: joins system.sut_namespace into each
-    system_test.paths:<key> value and into system.path, then deletes
-    system.sut_namespace. Applied when system.sut_namespace is present in
-    the file.
 
 The command is idempotent: when no back-fill applies the file is left
 untouched and the command reports "no migration needed".
@@ -319,12 +304,6 @@ keep their context.`,
 // Each back-fill step is independent — provider and repos may be added
 // in the same run (a config older than both bumps) or in separate runs
 // (a config that already has provider but predates repos:).
-//
-// Ordering: the external-driver key-rename pass runs FIRST so the
-// downstream gap-fill and SSoT join see the post-rename names — this
-// way a pre-rename pre-SSoT config can land both rename and SSoT join
-// in one migrate pass without the SSoT join treating the renamed entry
-// as "missing" and re-back-filling it as a duplicate.
 func runConfigMigrate(path string) (bool, error) {
 	if path == "" {
 		return false, fmt.Errorf("config migrate: path is required")
@@ -371,46 +350,12 @@ func runConfigMigrate(path string) (bool, error) {
 		}
 	}
 
-	// Rename the pre-rename external-driver keys per plan 20260519-0704
-	// (`external_driver_port` → `external_system_driver_port`,
-	// `external_driver_adapter` → `external_system_driver_adapter`).
-	// Runs before the gap-fill so the back-fill sees the post-rename
-	// names and does not re-add the renamed entry as a duplicate.
-	// Errors if both old and new keys are present — that's an
-	// ambiguous migration state that needs human resolution.
-	renamed, err := renameExternalDriverKeys(doc)
-	if err != nil {
-		return false, fmt.Errorf("config migrate: %s: %w", path, err)
-	}
-	if renamed {
-		changed = true
-	}
-
 	// Per doctrine, migrate does NOT back-fill missing canonical Family B
 	// keys with DefaultPaths values — `paths:` is explicit-only, the
 	// operator owns every value. A config that's missing canonical keys
 	// surfaces at the next `gh optivem` invocation through
 	// projectconfig.Validate Rule 22a, which names the gap and points at
 	// internal/projectconfig/path-keys.md for the supported set.
-
-	// SSoT join (per plan 20260518-1530 item 6). Applies iff
-	// system.sut_namespace is present:
-	//
-	//   - For each entry in paths:, fold sut_namespace into the value.
-	//     Entries matching the pre-SSoT default are rewritten to the
-	//     post-SSoT default (so Java's at-test/ct-test get the package
-	//     segment baked into the right position); other testkit entries
-	//     get sut_namespace appended; at-test/ct-test customized values
-	//     are left untouched (the operator owns the package-structure
-	//     decision).
-	//   - system.path gets sut_namespace appended.
-	//   - The system.sut_namespace field is removed.
-	//
-	// Idempotent — once system.sut_namespace is absent, this branch is
-	// a no-op.
-	if joinSSoTPaths(doc) {
-		changed = true
-	}
 
 	if !changed {
 		return false, nil
@@ -490,191 +435,6 @@ func inferRepos(doc *yaml.Node) []string {
 		paths = append(paths, p)
 	}
 	return paths
-}
-
-// joinSSoTPaths folds the legacy `system.sut_namespace` value into the
-// SSoT path shape and removes the field, per plan 20260518-1530 item 6.
-// Returns true when anything changed (the caller flips changed=true and
-// re-marshals).
-//
-// When system.sut_namespace is absent the function is a no-op — making
-// it idempotent and safe to run on a post-SSoT config. Behaviour:
-//
-//  1. For each entry in paths:, fold sut_namespace into the value:
-//     entries matching DefaultPaths(testLang, systemTestPath, "") (the
-//     pre-SSoT shape) are rewritten to DefaultPaths(testLang,
-//     systemTestPath, ns) (the post-SSoT shape — this is the only
-//     branch that produces a correct Java at-test/ct-test, where ns is
-//     a middle package segment rather than a trailing append). Other
-//     testkit entries get `/ns` appended on top of the customisation.
-//     at-test/ct-test customised values are left untouched — the
-//     operator owns the package-structure decision once they've
-//     diverged from the default.
-//  2. system.path is rewritten to <current> + "/" + ns.
-//  3. system.sut_namespace is removed.
-func joinSSoTPaths(doc *yaml.Node) bool {
-	systemNode := mappingValue(doc, "system")
-	if systemNode == nil || systemNode.Kind != yaml.MappingNode {
-		return false
-	}
-	ns := scalarValue(mappingValue(systemNode, "sut_namespace"))
-	if ns == "" {
-		return false
-	}
-
-	// Pre/post defaults for the default-match branch. We re-derive
-	// (testLang, systemTestPath) from the doc rather than from a
-	// loaded Config — node-level access is what every other migrate
-	// step uses and keeps this function offline from projectconfig.Load.
-	testLang, systemTestPath := readTestLangAndPath(doc)
-	preDefaults := projectconfig.DefaultPaths(testLang, systemTestPath, "")
-	postDefaults := projectconfig.DefaultPaths(testLang, systemTestPath, ns)
-
-	if pathsNode := systemTestPathsNode(doc); pathsNode != nil {
-		for i := 0; i+1 < len(pathsNode.Content); i += 2 {
-			keyNode := pathsNode.Content[i]
-			valNode := pathsNode.Content[i+1]
-			if valNode.Kind != yaml.ScalarNode {
-				continue
-			}
-			key := keyNode.Value
-			cur := valNode.Value
-			// Default-match branch — works for all eight canonical keys
-			// and is the only branch that produces a correct Java
-			// at-test/ct-test (middle-segment package).
-			if preDefaults != nil && postDefaults != nil && cur == preDefaults[key] {
-				valNode.Value = postDefaults[key]
-				continue
-			}
-			// at-test/ct-test customised values are left untouched.
-			// They're sut_namespace-free on TS/dotnet doctrine, and on
-			// Java the operator's customisation already encodes the
-			// package decision; naive `+/ns` would corrupt the path.
-			if key == "at-test" || key == "ct-test" {
-				continue
-			}
-			valNode.Value = cur + "/" + ns
-		}
-	}
-
-	if pathValueNode := mappingValue(systemNode, "path"); pathValueNode != nil && pathValueNode.Kind == yaml.ScalarNode && pathValueNode.Value != "" {
-		pathValueNode.Value = pathValueNode.Value + "/" + ns
-	}
-
-	removeMappingEntry(systemNode, "sut_namespace")
-	return true
-}
-
-// readTestLangAndPath returns the (testLang, systemTestPath) pair the
-// SSoT join uses to look up DefaultPaths. Mirrors inferPathDefaults's
-// resolution (system_test.lang with fallback to system.lang for
-// monolith) — refactored to a sibling helper rather than reused to
-// keep the gap-fill and SSoT-join helpers independent.
-func readTestLangAndPath(doc *yaml.Node) (string, string) {
-	systemTestNode := mappingValue(doc, "system_test")
-	if systemTestNode == nil || systemTestNode.Kind != yaml.MappingNode {
-		return "", ""
-	}
-	systemTestPath := scalarValue(mappingValue(systemTestNode, "path"))
-	testLang := scalarValue(mappingValue(systemTestNode, "lang"))
-	if testLang == "" {
-		if systemNode := mappingValue(doc, "system"); systemNode != nil {
-			testLang = scalarValue(mappingValue(systemNode, "lang"))
-		}
-	}
-	return testLang, systemTestPath
-}
-
-// renameExternalDriverKeys renames the pre-rename external-driver keys
-// (`external_driver_port`, `external_driver_adapter`) in the `paths:`
-// block to their post-rename forms (`external_system_driver_port`,
-// `external_system_driver_adapter`) per plan 20260519-0704. Returns
-// true when any key was renamed.
-//
-// Rules per pair {old, new}:
-//   - old present, new absent → rename the key node in place, preserving
-//     the value, any inline comments, and the position within the
-//     mapping. This is the canonical migration path.
-//   - both present → hard error: the config is in an ambiguous state
-//     and cannot be migrated deterministically. The operator must pick
-//     a winner manually.
-//   - only new present → no-op (already migrated).
-//   - neither present → no-op.
-//
-// Comment preservation: editing only the Key node's Value (leaving the
-// adjacent value node and the surrounding mapping structure untouched)
-// keeps yaml.v3's HeadComment / LineComment / FootComment fields in
-// place across the rewrite.
-func renameExternalDriverKeys(doc *yaml.Node) (bool, error) {
-	pathsNode := systemTestPathsNode(doc)
-	if pathsNode == nil {
-		return false, nil
-	}
-	changed := false
-	for oldKey, newKey := range projectconfig.ExternalDriverKeyRenames {
-		oldNode := mappingKeyNode(pathsNode, oldKey)
-		newNode := mappingKeyNode(pathsNode, newKey)
-		switch {
-		case oldNode != nil && newNode != nil:
-			return false, fmt.Errorf(
-				"system_test.paths.%s and system_test.paths.%s both present — ambiguous migration state. "+
-					"Remove one entry (keep the one with your intended value) and re-run migrate",
-				oldKey, newKey)
-		case oldNode != nil:
-			oldNode.Value = newKey
-			changed = true
-		}
-	}
-	return changed, nil
-}
-
-// systemTestPathsNode returns the `paths:` mapping nested under
-// `system_test:` in the document, or nil when either node is missing
-// or not a mapping. Single source for the two migrate-time passes that
-// edit `system_test.paths:` (rename + SSoT join) so neither encodes the
-// nesting path twice.
-func systemTestPathsNode(doc *yaml.Node) *yaml.Node {
-	systemTestNode := mappingValue(doc, "system_test")
-	if systemTestNode == nil || systemTestNode.Kind != yaml.MappingNode {
-		return nil
-	}
-	pathsNode := mappingValue(systemTestNode, "paths")
-	if pathsNode == nil || pathsNode.Kind != yaml.MappingNode {
-		return nil
-	}
-	return pathsNode
-}
-
-// mappingKeyNode returns the key node paired with `key` inside m (the
-// key node itself, not its value), or nil when key is absent. Mirrors
-// mappingValue but returns the other half of the pair so callers that
-// need to edit the key in place (e.g. renames) get a handle to it.
-func mappingKeyNode(m *yaml.Node, key string) *yaml.Node {
-	if m == nil || m.Kind != yaml.MappingNode {
-		return nil
-	}
-	for i := 0; i+1 < len(m.Content); i += 2 {
-		if m.Content[i].Value == key {
-			return m.Content[i]
-		}
-	}
-	return nil
-}
-
-// removeMappingEntry deletes the (key, value) pair from m's Content
-// where the key node's Value matches key. No-op if absent. Used by the
-// SSoT join to retire system.sut_namespace once it has been folded
-// into the per-key paths and system.path.
-func removeMappingEntry(m *yaml.Node, key string) {
-	if m == nil || m.Kind != yaml.MappingNode {
-		return
-	}
-	for i := 0; i+1 < len(m.Content); i += 2 {
-		if m.Content[i].Value == key {
-			m.Content = append(m.Content[:i], m.Content[i+2:]...)
-			return
-		}
-	}
 }
 
 // appendReposEntry inserts a `repos:` key at the end of the document

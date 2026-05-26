@@ -79,23 +79,6 @@ func DefaultPaths(testLang, systemTestRoot, sutNamespace string) map[string]stri
 	return out
 }
 
-// ExternalDriverKeyRenames is the old-key → new-key map for the
-// external-system-driver renames in plan 20260519-0704. The validator
-// uses it to detect a pre-rename config and direct the user at
-// `gh optivem config migrate`; the migrate command consumes the same
-// map to rewrite each old key to its new name in place. Single map so
-// the two surfaces cannot drift.
-//
-// The map preserves snake_case spellings because it concerns pre-rename
-// keys (snake) → mid-rename keys (also snake). The subsequent
-// snake → kebab pass (Q40) is teaching-repo-doctrine "regenerate, don't
-// migrate" per feedback_teaching_repo_no_legacy and so does not have an
-// equivalent map.
-var ExternalDriverKeyRenames = map[string]string{
-	"external_driver_port":    "external_system_driver_port",
-	"external_driver_adapter": "external_system_driver_adapter",
-}
-
 // CanonicalPathKeys is the Family B key set in fixed order so DefaultPaths,
 // the migrate back-fill, and any tests over either can iterate in the
 // same order.

@@ -87,22 +87,22 @@ const (
 )
 
 // Config mirrors the YAML schema. Top-level keys:
-//   - project:         GitHub identity (currently just board URL).
-//   - repo_strategy:   mono-repo | multi-repo (top-level scalar, not a
-//                      property of the project board).
-//   - system:          the system being built — polymorphic by architecture.
-//   - system_test:     the test suite that drives the system.
-//   - external_systems: optional vendored stand-ins (stubs, simulators).
-//   - system_name:     human-readable system label for templating.
-//   - license:         license key for the scaffolded LICENSE file.
-//   - deploy:          deployment target (docker | cloud-run).
+//   - project:          GitHub identity (currently just board URL).
+//   - repo-strategy:    mono-repo | multi-repo (top-level scalar, not a
+//                       property of the project board).
+//   - system:           the system being built — polymorphic by architecture.
+//   - system-test:      the test suite that drives the system.
+//   - external-systems: optional vendored stand-ins (stubs, simulators).
+//   - system-name:      human-readable system label for templating.
+//   - license:          license key for the scaffolded LICENSE file.
+//   - deploy:           deployment target (docker | cloud-run).
 type Config struct {
 	Project         Project         `yaml:"project"`
-	RepoStrategy    string          `yaml:"repo_strategy,omitempty"`
+	RepoStrategy    string          `yaml:"repo-strategy,omitempty"`
 	Sonar           Sonar           `yaml:"sonar,omitempty"`
 	System          System          `yaml:"system"`
-	SystemTest      TierSpec        `yaml:"system_test"`
-	ExternalSystems ExternalSystems `yaml:"external_systems,omitempty"`
+	SystemTest      TierSpec        `yaml:"system-test"`
+	ExternalSystems ExternalSystems `yaml:"external-systems,omitempty"`
 
 	// LocalRepos declares the project's own constituent local repos —
 	// multitier projects whose frontend, backend, and system_test live in
@@ -127,7 +127,7 @@ type Config struct {
 	// names, .NET namespaces, TypeScript package names, README headings.
 	// Project-stable: an operator does not change a system's name across
 	// init invocations. Validated against ValidateSystemName when set.
-	SystemName string `yaml:"system_name,omitempty"`
+	SystemName string `yaml:"system-name,omitempty"`
 
 	// License is the SPDX-like license key used to emit the scaffolded
 	// repo's LICENSE file and README badge (mit, apache-2.0, gpl-3.0,
@@ -140,32 +140,24 @@ type Config struct {
 	// cloud-run is reserved for the in-development path.
 	Deploy string `yaml:"deploy,omitempty"`
 
-	// LegacySystemConfig / LegacyTestConfig are the pre-2026-05 top-level
-	// spellings of System.Config / SystemTest.Config. Kept on the struct
-	// solely so Validate can surface a clear migration error when an old
-	// config is loaded; never written out (omitempty + Validate rejects
-	// any non-empty value before Write reaches the marshaller).
-	LegacySystemConfig string `yaml:"system_config,omitempty"`
-	LegacyTestConfig   string `yaml:"test_config,omitempty"`
-
 	// ProcessFlow is the repo-relative path to a process-flow YAML override.
 	// When empty, the driver falls back to the canonical embedded document.
 	// Validated as repo-relative (no `..`); file existence is verified at
 	// load-time, not validate-time.
-	ProcessFlow string `yaml:"process_flow,omitempty"`
+	ProcessFlow string `yaml:"process-flow,omitempty"`
 
 	// TaskPrompts maps MID task-name → repo-relative path to a prompt
 	// body that replaces the embedded one. Partial overrides are allowed
 	// (an entry per task the operator wants to customize). Validated:
 	// keys must be members of agents.Names() (which enumerates the
 	// embedded MID task prompt files); values pass validatePath.
-	TaskPrompts map[string]string `yaml:"task_prompts,omitempty"`
+	TaskPrompts map[string]string `yaml:"task-prompts,omitempty"`
 
 	// NodeExtras maps process-flow node ID → literal text appended to that
 	// node's prompt. Values are inline (project-stable advice such as
 	// "prefer record types"). Node-ID keys are not validated here — the
 	// driver re-validates them against the loaded process flow at startup.
-	NodeExtras map[string]string `yaml:"node_extras,omitempty"`
+	NodeExtras map[string]string `yaml:"node-extras,omitempty"`
 
 	// NodeReplacements maps process-flow node ID → repo-relative path
 	// whose file body replaces that node's prompt verbatim. Values pass
@@ -173,7 +165,7 @@ type Config struct {
 	// startup, not here. A key appearing in both NodeExtras and
 	// NodeReplacements is rejected — replacement strictly supersedes
 	// extras, so the combination signals operator confusion.
-	NodeReplacements map[string]string `yaml:"node_replacements,omitempty"`
+	NodeReplacements map[string]string `yaml:"node-replacements,omitempty"`
 }
 
 // Project carries the tracker backend identity: which Tracker adapter
@@ -231,21 +223,11 @@ type System struct {
 	Path         string `yaml:"path,omitempty"`
 	Repo         string `yaml:"repo,omitempty"`
 	Lang         string `yaml:"lang,omitempty"`
-	SonarProject string `yaml:"sonar_project,omitempty"`
+	SonarProject string `yaml:"sonar-project,omitempty"`
 
 	// Multitier-only.
 	Backend  TierSpec `yaml:"backend,omitempty"`
 	Frontend TierSpec `yaml:"frontend,omitempty"`
-
-	// LegacySutNamespace is the pre-SSoT spelling of the sut_namespace
-	// field. Per SSoT (plan 20260518-1530 item 3), the field has been
-	// retired — scaffold-time sut_namespace is now baked into System.Path
-	// and `paths:` values, and runtime lookups derive from System.Repo.
-	// Kept on the struct so Validate can surface a clear migration error
-	// when a pre-SSoT config is loaded; never written out
-	// (omitempty + Validate rejects any non-empty value before Write
-	// reaches the marshaller).
-	LegacySutNamespace string `yaml:"sut_namespace,omitempty"`
 }
 
 // TierSpec describes one body of code: where it lives, in which repo,
@@ -259,20 +241,20 @@ type System struct {
 //
 // Paths is the user-owned map of named-location placeholders consumed by
 // phase-doc substitution at sync time — the canonical Family B keys
-// (driver-port, driver-adapter, at-test, …) describing the system_test
+// (driver-port, driver-adapter, at-test, …) describing the system-test
 // tier's layered layout. Each key is a named location; each value is a
 // repo-relative path. The scaffolder writes a default block matching
 // glossary.md doctrine into every new project. Reserved keys that would
 // shadow fixed-schema Family A placeholders (language, architecture,
-// system-path, system_test_path, sut_namespace) are rejected by Validate.
-// Meaningful only on system_test today — Validate rejects non-empty Paths
+// system-path, system-test-path, sut-namespace) are rejected by Validate.
+// Meaningful only on system-test today — Validate rejects non-empty Paths
 // on backend/frontend tiers, mirroring how Config is restricted.
 type TierSpec struct {
 	Path         string            `yaml:"path,omitempty"`
 	Repo         string            `yaml:"repo,omitempty"`
 	Lang         string            `yaml:"lang,omitempty"`
 	Config       string            `yaml:"config,omitempty"`
-	SonarProject string            `yaml:"sonar_project,omitempty"`
+	SonarProject string            `yaml:"sonar-project,omitempty"`
 	Paths        map[string]string `yaml:"paths,omitempty"`
 }
 
@@ -345,29 +327,20 @@ func (c *Config) Repos() []string {
 // top-level config fields belong here so a typo'd `paths.language: x`
 // can't quietly override the canonical system.lang value.
 //
-// Path-shaped Family A keys are kebab (system-path, matching Q40 scope
-// vocabulary); the non-path-shaped Family A keys (language, architecture,
-// sut_namespace) and the parent-scope-excluded system_test_path retain
-// their original spellings — they are not scope vocabulary.
+// All keys are kebab — the project-wide YAML/identifier convention.
 var reservedPlaceholderKeys = map[string]struct{}{
 	"language":         {},
 	"architecture":     {},
 	"system-path":      {},
-	"system_test_path": {},
-	"sut_namespace":    {},
+	"system-test-path": {},
+	"sut-namespace":    {},
 }
 
-// SutNamespace returns the substitution value for ${sut_namespace}.
+// SutNamespace returns the substitution value for ${sut-namespace}.
 // Derived from the last path segment of System.Repo (e.g.
 // "optivem/myShop" → "myShop"). Returns "" when System.Repo is empty —
 // sync-time unfilled-placeholder checks surface the gap if a doc
 // references the placeholder.
-//
-// Per SSoT (plan 20260518-1530 item 3), `system.sut_namespace` is no
-// longer a persisted field — scaffold-time sut_namespace is baked into
-// `System.Path` and the `paths:` values, and runtime lookups derive
-// from `System.Repo` only. The pre-SSoT explicit-override branch was
-// retired with the field.
 func (c *Config) SutNamespace() string {
 	if c == nil {
 		return ""
@@ -396,8 +369,8 @@ func (c *Config) PlaceholderMap() map[string]string {
 	maps.Copy(out, c.SystemTest.Paths)
 	out["architecture"] = c.System.Architecture
 	out["system-path"] = c.System.Path
-	out["system_test_path"] = c.SystemTest.Path
-	out["sut_namespace"] = c.SutNamespace()
+	out["system-test-path"] = c.SystemTest.Path
+	out["sut-namespace"] = c.SutNamespace()
 	if c.System.Lang != "" {
 		out["language"] = c.System.Lang
 	} else {
@@ -407,7 +380,7 @@ func (c *Config) PlaceholderMap() map[string]string {
 }
 
 // lastPathSegment returns the substring after the last "/" in s. Used by
-// SutNamespace to derive ${sut_namespace} from a "owner/repo" slug; an
+// SutNamespace to derive ${sut-namespace} from a "owner/repo" slug; an
 // absent slash returns s itself.
 func lastPathSegment(s string) string {
 	if i := strings.LastIndex(s, "/"); i >= 0 && i < len(s)-1 {
@@ -428,42 +401,6 @@ func lastPathSegment(s string) string {
 func (c *Config) Validate() error {
 	if c == nil {
 		return nil
-	}
-
-	// Rule 0: deprecated top-level keys. Pre-2026-05 configs put the
-	// runner/test config paths at top level (`system_config:` / `test_config:`).
-	// They now live under `system.config:` / `system_test.config:`. Fail
-	// loudly with a migration hint rather than silently ignoring the value
-	// and falling through to ./systems.yaml.
-	if c.LegacySystemConfig != "" {
-		return fmt.Errorf("config: top-level system_config: %q is no longer supported — move it to system.config:",
-			c.LegacySystemConfig)
-	}
-	if c.LegacyTestConfig != "" {
-		return fmt.Errorf("config: top-level test_config: %q is no longer supported — move it to system_test.config:",
-			c.LegacyTestConfig)
-	}
-
-	// Rule 0c: pre-SSoT detection. Per SSoT (plan 20260518-1530 item 3 + 5),
-	// system.sut_namespace was retired — scaffold-time sut_namespace is
-	// baked into System.Path and paths: values. A non-empty value means
-	// the file predates the SSoT migration; `gh optivem config migrate`
-	// folds the value into paths/system.path and deletes the field in a
-	// single deterministic pass (plan item 6).
-	if c.System.LegacySutNamespace != "" {
-		return fmt.Errorf(`config: gh-optivem.yaml uses the pre-SSoT ATDD scope model (system.sut_namespace is set; paths: values are not fully resolved).
-
-Run:  gh optivem config migrate
-
-The migrate command will:
-  - join sut_namespace into each paths:<key> value, deterministically;
-  - join sut_namespace into system.path;
-  - delete the system.sut_namespace field.
-
-Existing comments and key ordering are preserved. The command is
-idempotent and safe to re-run. Review the diff before committing,
-especially if your project flattened or added channel sub-dirs
-beyond the canonical layout`)
 	}
 
 	// Rule 0b: Config on backend/frontend tiers is meaningless — the runner
@@ -793,20 +730,6 @@ beyond the canonical layout`)
 	for _, k := range sortedKeys(c.SystemTest.Paths) {
 		if _, reserved := reservedPlaceholderKeys[k]; reserved {
 			return fmt.Errorf("config: system_test.paths.%s shadows a reserved fixed-schema placeholder name; rename it", k)
-		}
-		// Rule 22b: the pre-rename "external_driver_*" keys were renamed
-		// to "external_system_driver_*" per plan 20260519-0704. Detect
-		// the old names and direct the user at `gh optivem config
-		// migrate`, which renames the entries in place preserving values
-		// and comments. Same pattern as the pre-SSoT detection in Rule
-		// 0c above.
-		if newKey, isOldExternalDriverKey := ExternalDriverKeyRenames[k]; isOldExternalDriverKey {
-			return fmt.Errorf(`config: system_test.paths.%s is the pre-rename key (renamed to system_test.paths.%s per plan 20260519-0704).
-
-Run:  gh optivem config migrate
-
-The migrate command renames the entry in place, preserving the value
-and any inline comments. Re-run validate after migrate to confirm`, k, newKey)
 		}
 		if _, ok := canonical[k]; !ok {
 			return fmt.Errorf("config: system_test.paths.%s is not a canonical Family B key; see internal/projectconfig/path-keys.md for the supported set", k)
