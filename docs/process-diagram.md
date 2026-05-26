@@ -61,16 +61,10 @@ flowchart LR
 flowchart TD
     END((Ticket In Acceptance))
     IMPLEMENT_TICKET[Implement Ticket]
-    PICK_TOP_READY[[Pick top READY ticket]]
     START((Ticket Ready))
 
-    START -- Board --> PICK_TOP_READY
-    START -- Specific Issue --> IMPLEMENT_TICKET
-    PICK_TOP_READY --> IMPLEMENT_TICKET
+    START --> IMPLEMENT_TICKET
     IMPLEMENT_TICKET --> END
-
-    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class PICK_TOP_READY serviceNode
 ```
 
 ## Refine Ticket
