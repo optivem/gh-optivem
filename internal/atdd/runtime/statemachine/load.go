@@ -112,6 +112,9 @@ func buildProcess(name string, rp rawProcess) (*Process, error) {
 		if err := validateEventDocumentation(name, rn, kind); err != nil {
 			return nil, err
 		}
+		if err := validateCallActivityDocumentation(name, rn, kind); err != nil {
+			return nil, err
+		}
 		if err := validateGatewayDocumentation(name, rn, kind); err != nil {
 			return nil, err
 		}
@@ -170,6 +173,23 @@ func validateEventDocumentation(processName string, rn RawNode, kind NodeKind) e
 		if rn.Documentation == "" {
 			return fmt.Errorf("process %q node %q: %s requires `documentation:` (used as the BPMN event label)", processName, rn.ID, rn.Type)
 		}
+	}
+	return nil
+}
+
+// validateCallActivityDocumentation enforces the Item-2 schema rule:
+// every call-activity must carry a `documentation:` string. The
+// renderer uses that string as the visible label on the BPMN rectangle
+// (with a "see § <target>" suffix linking to the sub-process heading
+// unless the label already matches that heading). Falling back to the
+// screaming-snake node ID would leak a YAML implementation detail into
+// the operator-facing diagram.
+func validateCallActivityDocumentation(processName string, rn RawNode, kind NodeKind) error {
+	if kind != CallActivity {
+		return nil
+	}
+	if rn.Documentation == "" {
+		return fmt.Errorf("process %q node %q: call-activity requires `documentation:` (BPMN-pure verb-phrase, Title Case — see plan 20260526-0832 Item 2)", processName, rn.ID)
 	}
 	return nil
 }

@@ -38,12 +38,13 @@ func TestRender_CallActivityLinksToTargetProcess(t *testing.T) {
 	}
 	got := Render(eng)
 
-	// implement-ticket calls change-system-behavior on the story/bug
-	// branch. Without a processAlias entry, the call-activity link
-	// suffix is the raw process name — the assertion locks in that
-	// the renderer still emits the "see § …" link form for un-aliased
-	// targets so cross-section navigation works on github.com.
-	want := "see § change-system-behavior"
+	// Every MID's EXECUTE_AGENT call-activity targets `execute-agent`
+	// with documentation "Dispatch the Agent" — distinct from the
+	// target heading "Execute Agent", so the collapse rule keeps the
+	// "see § …" suffix. The assertion locks in that the renderer
+	// still emits the link suffix for non-redundant labels so cross-
+	// section navigation works on github.com.
+	want := "see § execute-agent"
 	if !strings.Contains(got, want) {
 		t.Errorf("expected call-activity link suffix %q in output", want)
 	}

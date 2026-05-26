@@ -1,5 +1,7 @@
 # Process diagram cleanup — labels, layout, duplication, rendering budget
 
+> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-26T13:24:53Z`
+
 > ✅ **Refinement complete 2026-05-26 11:12Z** — all open questions
 > resolved (2 design + 7 inventory, see per-item *Decided* / *Inventoried*
 > notes).
@@ -118,131 +120,6 @@ at line 213; the comment at line 204-208).
   whole process ignoring grouping, then partitioned at render time? (Likely
   the latter — the current renderer partitions ungrouped vs grouped after
   collecting; we keep that.)
-
-## Item 2 — `call_activity` label inconsistency: require `documentation:` everywhere
-
-**Observation**: Of ~90 `call_activity` nodes in `process-flow.yaml`, three
-labelling styles coexist today:
-
-| Style | Count | Example |
-|---|---|---|
-| ID fallback (no `documentation:`) | ~85 | `OPP_REFACTOR_SYSTEM_STRUCTURE — see § refactor-system-structure` |
-| TDD-stage doc | 4 | `RED — write failing acceptance tests — see § write-and-verify-acceptance-tests-fail` |
-| agent-action doc | 3 | `agent-action: implement-system — see § implement-and-verify-system` |
-
-The renderer (`diagram.go:369-393`) is uniform: `label = documentation` if
-set, else `label = ID`. The inconsistency is in the YAML — six nodes opted
-into `documentation:`, the rest leak their screaming-snake ID.
-
-**Direction (decided 2026-05-26): require `documentation:` on every
-call_activity node**. Mass-edit the YAML to add a human-readable
-`documentation:` line to every call_activity node that currently lacks
-one. Drop the ID fallback in the renderer entirely. The point: an operator
-reading the diagram should not see screaming-snake YAML node IDs anywhere.
-
-> **Post-1220 note**: 1220 converts the four MARK_* call_activities into
-> service_tasks. Item 2's pass operates on the post-1220 YAML — node count
-> drops from ~85 to ~81 call_activities needing `documentation:`. Service
-> tasks have their own labelling convention (already carry `documentation:`
-> via `action:` mapping); Item 2 leaves them alone.
-
-**Renderer change** (`diagram.go:383-390`, the `CallActivity` case in
-`writeNode`):
-
-- If `documentation:` is set and is different from the sub-process name →
-  render `[doc — see § sub-process]`.
-- If `documentation:` is set and is equal to the sub-process name → render
-  `[doc]` (drop the redundant "see §" suffix).
-- If `documentation:` is missing → the YAML is incomplete; emit a
-  schema-validation error at parse time (catches new call_activity nodes
-  that forget the doc field).
-
-**Labelling convention (decided 2026-05-26): BPMN-pure verb-phrase, Title Case.**
-
-- **Verb-object phrasing everywhere** (BPMN's canonical naming
-  convention).
-- **Title Case**: capitalise major words (nouns, verbs, adjectives,
-  adverbs). Leave articles, prepositions, conjunctions ≤4 letters
-  lowercase ("the", "of", "in", "and", "for"). Matches Camunda /
-  Bizagi / BPMN.io style.
-- **State constants stay uppercase** (`IN REFINEMENT`, `READY`).
-  **Abbreviations stay uppercase** (`DSL`, `AT`, `CT`).
-- **Stage prefixes dropped**: no RED/GREEN/Cover/REFACTOR prefixes in
-  labels. The TDD-stage vocabulary lives in YAML section comments;
-  removing it from labels favours BPMN purity. Visual TDD-stage signal
-  is restored separately via Item 19 (border-colour metadata).
-- **MARK_* nodes are out of scope** (1220 converts them to service_tasks).
-
-**Worked examples**:
-
-| Node | Label |
-|---|---|
-| `WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL` | "Write Failing Acceptance Tests" |
-| `WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS` | "Write Passing Acceptance Tests" |
-| `IMPLEMENT_AND_VERIFY_SYSTEM` (`agent-action: implement-system`) | "Implement System" |
-| `IMPLEMENT_AND_VERIFY_SYSTEM` (`agent-action: refactor-system`) | "Refactor System" |
-| `CHANGE_SYSTEM_BEHAVIOR` (post-Item-12) | "Change System Behavior" |
-| `COVER_SYSTEM_BEHAVIOR` | "Cover System Behavior" |
-| `REDESIGN_SYSTEM_STRUCTURE` | "Redesign System Structure" |
-| `REFACTOR_SYSTEM_STRUCTURE` | "Refactor System Structure" |
-| `REFACTOR_TEST_STRUCTURE` | "Refactor Test Structure" |
-| `ONBOARD_EXTERNAL_SYSTEM` | "Onboard External System" |
-| `IMPLEMENT_TEST_LAYER` (`layer: at`) | "Implement Acceptance-Test Layer" |
-| `IMPLEMENT_TEST_LAYER` (`layer: ct`) | "Implement Contract-Test Layer" |
-| `IMPLEMENT_TEST_LAYER` (`layer: dsl`) | "Implement DSL Layer" |
-| `VERIFY_TESTS_PASS_ACCEPTANCE` | "Verify Acceptance Tests Pass" |
-| `VERIFY_TESTS_FAIL_CONTRACT_STUB` | "Verify Contract Tests Fail Against the Stub" |
-| `COMPILE_TESTS` | "Compile Tests" |
-| `BUILD_SYSTEM` | "Build the System" |
-| `START_SYSTEM` | "Start the System" |
-| `RUN_TESTS` | "Run Tests" |
-| `COMMIT_SYSTEM` / `COMMIT_TESTS` / `COMMIT_LAYER` | "Commit System Changes" / "Commit Test Changes" / "Commit Layer Changes" |
-| `DISABLE_ACCEPTANCE_TESTS` | "Disable Acceptance Tests" |
-| `REFACTOR_OPPORTUNISTICALLY` (post-Item-3) | "Opportunistic Refactor (Loopable)" |
-| `WRITE_AND_VERIFY_ACCEPTANCE_TESTS` (post-Item-12) | "Write and Verify Acceptance Tests" |
-| `REFINE_BACKLOG_ITEM` (per Item 10) | "Refine Backlog Item" |
-| `REFINE_ACCEPTANCE_CRITERIA` | "Refine Acceptance Criteria" |
-| `APPROVE_PRE` / `APPROVE_POST` | "Request Approval" / "Confirm Approval" |
-| `FIX` (post-Item-12, was `CALL_FIX`) | "Fix the Failure" |
-| `EXECUTE_AGENT` | "Dispatch the Agent" |
-| `EXECUTE_COMMAND` | "Dispatch the Command" |
-| `FIX_UNEXPECTED_FAILING_TESTS` | "Fix Unexpected Test Failures" |
-| `FIX_UNEXPECTED_PASSING_TESTS` | "Fix Unexpectedly Passing Tests" |
-| `IMPLEMENT_EXTERNAL_SYSTEM_STUBS` | "Implement External-System Stubs" |
-| `IMPLEMENT_DSL` | "Implement the DSL" |
-| `IMPLEMENT_SYSTEM_DRIVER_ADAPTERS` | "Implement System Driver Adapters" |
-| `IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS` | "Implement External-System Driver Adapters" |
-
-**Files**:
-
-- `internal/atdd/runtime/statemachine/process-flow.yaml` — add
-  `documentation:` to ~85 nodes; normalise the 6 existing (overlaps with
-  Item 4's surface-level normalisation, which folds into Item 2 now).
-- `internal/atdd/runtime/diagram/diagram.go:383-390` — drop the ID-fallback
-  branch in the `CallActivity` case; add the "label == sub-process name →
-  collapse the `see §`" rule.
-- `internal/atdd/runtime/statemachine/load.go` (or wherever the schema
-  validation lives) — require `documentation:` on `call_activity` nodes;
-  emit a parse-time error otherwise.
-- Tests under `internal/atdd/runtime/statemachine/*_test.go` that build
-  call_activity nodes in fixtures.
-
-**Open questions for /refine-plan**:
-
-- Q2.1 — *Decided 2026-05-26*: **BPMN-pure verb-phrase, Title Case**
-  (see "Labelling convention" block above and the worked-examples
-  table).
-- Q2.2 — *Decided 2026-05-26*: **hard-error at parse time** on missing
-  `documentation:` (codified in the renderer-change rule above).
-- Q2.3 — *Decided 2026-05-26*: Item 4 **collapses into Item 2** (one
-  YAML pass; see Item 4's "merged into Item 2" stub below).
-- Q2.4 — *Decided 2026-05-26*: **Option C — generic envelope label.**
-  `CALL_AGENT_ACTION` inside `implement-and-verify-system` gets
-  `documentation: "Run the Configured Agent"`. The `${agent-action}`
-  template is dropped from the label (still used in `process:` to
-  resolve which sub-process to dispatch). Disambiguation between
-  "Implement System" and "Refactor System" lives at the caller's
-  `documentation:` (per Item 2's verb-phrase convention).
 
 ## Item 3 — Duplicate refactor menu in `change-system-behavior` step 3
 

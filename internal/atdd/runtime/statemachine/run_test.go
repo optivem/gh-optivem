@@ -23,6 +23,7 @@ processes:
       - id: CALL_MIDDLE
         type: call-activity
         process: middle
+        documentation: "Synthetic Test Call"
         params:
           change-type: "SYSTEM INTERFACE REDESIGN"
       - id: OUTER_END
@@ -37,6 +38,7 @@ processes:
       - id: CALL_INNER
         type: call-activity
         process: inner
+        documentation: "Synthetic Test Call"
         params:
           change-type: ${change-type}
       - id: MIDDLE_END
@@ -102,6 +104,7 @@ processes:
       - id: CALL_INNER
         type: call-activity
         process: inner
+        documentation: "Synthetic Test Call"
         params:
           change-type: "AT - GREEN - SYSTEM"
       - id: OUTER_END
@@ -166,6 +169,7 @@ processes:
       - id: CALL_CYCLE
         type: call-activity
         process: cycle
+        documentation: "Synthetic Test Call"
         params:
           chosen: do-thing-b
       - id: OUTER_END
@@ -234,6 +238,7 @@ processes:
       - id: CALL_MIDDLE
         type: call-activity
         process: middle
+        documentation: "Synthetic Test Call"
         params:
           action: inner-b
       - id: OUTER_END
@@ -248,6 +253,7 @@ processes:
       - id: CALL_CHOSEN
         type: call-activity
         process: ${action}
+        documentation: "Synthetic Test Call"
       - id: MIDDLE_END
         type: end-event
         documentation: "Synthetic Test Event"
@@ -388,6 +394,7 @@ processes:
       - id: FIX
         type: call-activity
         process: fix
+        documentation: "Synthetic Test Call"
         params:
           task-name: "fix-${failure-kind}"
       - id: OUTER_END
@@ -457,6 +464,7 @@ processes:
       - id: CALL_MIDDLE
         type: call-activity
         process: middle
+        documentation: "Synthetic Test Call"
         params:
           action: nonexistent
       - id: OUTER_END
@@ -471,6 +479,7 @@ processes:
       - id: CALL_CHOSEN
         type: call-activity
         process: ${action}
+        documentation: "Synthetic Test Call"
       - id: MIDDLE_END
         type: end-event
         documentation: "Synthetic Test Event"

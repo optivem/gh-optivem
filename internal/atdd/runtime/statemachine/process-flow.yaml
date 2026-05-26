@@ -155,6 +155,7 @@ processes:
       - id: IMPLEMENT_TICKET
         type: call-activity
         process: implement-ticket
+        documentation: "Implement Ticket"
 
       - id: END
         type: end-event
@@ -185,6 +186,7 @@ processes:
       - id: REFINE_BACKLOG
         type: call-activity
         process: refine-backlog
+        documentation: "Refine Backlog"
 
       - id: MARK_READY
         type: service-task
@@ -262,26 +264,32 @@ processes:
       - id: CHANGE_SYSTEM_BEHAVIOR
         type: call-activity
         process: change-system-behavior
+        documentation: "Change System Behavior"
 
       - id: COVER_SYSTEM_BEHAVIOR
         type: call-activity
         process: cover-system-behavior
+        documentation: "Cover System Behavior"
 
       - id: REDESIGN_SYSTEM_STRUCTURE
         type: call-activity
         process: redesign-system-structure
+        documentation: "Redesign System Structure"
 
       - id: REFACTOR_SYSTEM_STRUCTURE
         type: call-activity
         process: refactor-system-structure
+        documentation: "Refactor System Structure"
 
       - id: REFACTOR_TEST_STRUCTURE
         type: call-activity
         process: refactor-test-structure
+        documentation: "Refactor Test Structure"
 
       - id: ONBOARD_EXTERNAL_SYSTEM
         type: call-activity
         process: onboard-external-system
+        documentation: "Onboard External System"
 
       - id: MARK_IN_ACCEPTANCE
         type: service-task
@@ -341,14 +349,17 @@ processes:
       - id: REFACTOR_SYSTEM_STRUCTURE
         type: call-activity
         process: refactor-system-structure
+        documentation: "Refactor System Structure"
 
       - id: REFACTOR_TEST_STRUCTURE
         type: call-activity
         process: refactor-test-structure
+        documentation: "Refactor Test Structure"
 
       - id: REDESIGN_SYSTEM_STRUCTURE
         type: call-activity
         process: redesign-system-structure
+        documentation: "Redesign System Structure"
 
       - id: REFACTOR_TOP_END
         type: end-event
@@ -373,6 +384,7 @@ processes:
       - id: REFINE_ACCEPTANCE_CRITERIA
         type: call-activity
         process: refine-acceptance-criteria
+        documentation: "Refine Acceptance Criteria"
 
       - id: REFINE_BACKLOG_END
         type: end-event
@@ -458,7 +470,7 @@ processes:
       - id: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL
         type: call-activity
         process: write-and-verify-acceptance-tests-fail
-        documentation: "RED — write failing acceptance tests"
+        documentation: "Write Failing Acceptance Tests"
         tdd-stage: red
 
       - id: IMPLEMENT_AND_VERIFY_SYSTEM
@@ -466,7 +478,7 @@ processes:
         process: implement-and-verify-system
         params:
           action: implement-system
-        documentation: "GREEN — action: implement-system"
+        documentation: "Implement System"
         tdd-stage: green
 
       - id: GATE_OPPORTUNISTIC_REFACTOR
@@ -477,14 +489,17 @@ processes:
       - id: OPP_REFACTOR_SYSTEM_STRUCTURE
         type: call-activity
         process: refactor-system-structure
+        documentation: "Refactor System Structure"
 
       - id: OPP_REFACTOR_TEST_STRUCTURE
         type: call-activity
         process: refactor-test-structure
+        documentation: "Refactor Test Structure"
 
       - id: OPP_REDESIGN_SYSTEM_STRUCTURE
         type: call-activity
         process: redesign-system-structure
+        documentation: "Redesign System Structure"
 
       - id: CHANGE_SYSTEM_BEHAVIOR_END
         type: end-event
@@ -519,7 +534,7 @@ processes:
       - id: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS
         type: call-activity
         process: write-and-verify-acceptance-tests-pass
-        documentation: "Cover — write passing acceptance tests"
+        documentation: "Write Passing Acceptance Tests"
         tdd-stage: green
 
       - id: COVER_END
@@ -557,17 +572,19 @@ processes:
       - id: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS
         type: call-activity
         process: implement-system-driver-adapters
+        documentation: "Implement System Driver Adapters"
 
       - id: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
         type: call-activity
         process: implement-external-system-driver-adapters
+        documentation: "Implement External-System Driver Adapters"
 
       - id: IMPLEMENT_AND_VERIFY_SYSTEM
         type: call-activity
         process: implement-and-verify-system
         params:
           action: implement-system
-        documentation: "action: implement-system"
+        documentation: "Implement System"
 
       - id: REDESIGN_END
         type: end-event
@@ -612,7 +629,7 @@ processes:
         process: implement-and-verify-system
         params:
           action: refactor-system
-        documentation: "action: refactor-system"
+        documentation: "Refactor System"
         tdd-stage: refactor
 
       - id: REFACTOR_SYSTEM_STRUCTURE_END
@@ -649,6 +666,7 @@ processes:
       - id: REFACTOR_AND_VERIFY_TESTS
         type: call-activity
         process: refactor-and-verify-tests
+        documentation: "Refactor and Verify Tests"
 
       - id: REFACTOR_TEST_STRUCTURE_END
         type: end-event
@@ -675,6 +693,7 @@ processes:
       - id: WRITE_AND_VERIFY_ACCEPTANCE_TESTS
         type: call-activity
         process: write-and-verify-acceptance-tests
+        documentation: "Write and Verify Acceptance Tests"
         params:
           expected-test-result: failure
 
@@ -699,6 +718,7 @@ processes:
       - id: WRITE_AND_VERIFY_ACCEPTANCE_TESTS
         type: call-activity
         process: write-and-verify-acceptance-tests
+        documentation: "Write and Verify Acceptance Tests"
         params:
           expected-test-result: success
 
@@ -727,6 +747,7 @@ processes:
       - id: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE
         type: call-activity
         process: write-and-verify-acceptance-test-code
+        documentation: "Write and Verify Acceptance Test Code"
         params:
           acceptance-criteria: ${acceptance-criteria}
           expected-test-result: ${expected-test-result}
@@ -739,6 +760,7 @@ processes:
       - id: IMPLEMENT_AND_VERIFY_DSL
         type: call-activity
         process: implement-and-verify-dsl
+        documentation: "Implement and Verify DSL"
         params:
           expected-test-result: ${expected-test-result}
           tests: acceptance
@@ -751,6 +773,7 @@ processes:
       - id: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS
         type: call-activity
         process: implement-and-verify-external-system-driver-adapters
+        documentation: "Implement and Verify External-System Driver Adapters"
         params:
           expected-test-result: ${expected-test-result}
           tests: acceptance
@@ -763,6 +786,7 @@ processes:
       - id: IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS
         type: call-activity
         process: implement-and-verify-system-driver-adapters
+        documentation: "Implement and Verify System Driver Adapters"
         params:
           expected-test-result: ${expected-test-result}
           tests: acceptance
@@ -798,6 +822,7 @@ processes:
       - id: WRITE_ACCEPTANCE_TESTS
         type: call-activity
         process: write-acceptance-tests
+        documentation: "Write Acceptance Tests"
         params:
           acceptance-criteria: ${acceptance-criteria}
           expected-test-result: ${expected-test-result}
@@ -805,6 +830,7 @@ processes:
       - id: COMPILE_TESTS
         type: call-activity
         process: compile-tests
+        documentation: "Compile Tests"
 
       - id: GATE_EXPECTED_TEST_RESULT
         type: gateway
@@ -814,6 +840,7 @@ processes:
       - id: VERIFY_TESTS_PASS_ACCEPTANCE
         type: call-activity
         process: verify-tests-pass
+        documentation: "Verify Acceptance Tests Pass"
         params:
           filter-type: test-type
           filter-value: acceptance
@@ -821,6 +848,7 @@ processes:
       - id: VERIFY_TESTS_FAIL_ACCEPTANCE
         type: call-activity
         process: verify-tests-fail
+        documentation: "Verify Acceptance Tests Fail"
         params:
           filter-type: test-type
           filter-value: acceptance
@@ -828,12 +856,14 @@ processes:
       - id: DISABLE_ACCEPTANCE_TESTS
         type: call-activity
         process: disable-tests
+        documentation: "Disable Acceptance Tests"
         params:
           tests: acceptance
 
       - id: COMMIT_TEST_CODE
         type: call-activity
         process: commit
+        documentation: "Commit Test Code"
 
       - id: WAV_AT_CODE_END
         type: end-event
@@ -863,6 +893,7 @@ processes:
       - id: IMPLEMENT_TEST_LAYER
         type: call-activity
         process: implement-test-layer
+        documentation: "Implement DSL Layer"
         params:
           action: implement-dsl
           expected-test-result: ${expected-test-result}
@@ -884,6 +915,7 @@ processes:
       - id: IMPLEMENT_TEST_LAYER
         type: call-activity
         process: implement-test-layer
+        documentation: "Implement System Driver Adapter Layer"
         params:
           action: implement-system-driver-adapters
           expected-test-result: ${expected-test-result}
@@ -905,6 +937,7 @@ processes:
       - id: IMPLEMENT_TEST_LAYER
         type: call-activity
         process: implement-test-layer
+        documentation: "Implement External-System Driver Adapter Layer"
         params:
           action: implement-external-system-driver-adapters
           expected-test-result: ${expected-test-result}
@@ -946,6 +979,7 @@ processes:
       - id: WRITE_CONTRACT_TESTS
         type: call-activity
         process: write-contract-tests
+        documentation: "Write Contract Tests"
         params:
           expected-test-result: success
 
@@ -957,6 +991,7 @@ processes:
       - id: IMPLEMENT_AND_VERIFY_DSL
         type: call-activity
         process: implement-and-verify-dsl
+        documentation: "Implement and Verify DSL"
         params:
           expected-test-result: success
           tests: contract
@@ -964,10 +999,12 @@ processes:
       - id: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
         type: call-activity
         process: implement-external-system-driver-adapters
+        documentation: "Implement External-System Driver Adapters"
 
       - id: VERIFY_TESTS_PASS_CONTRACT_REAL
         type: call-activity
         process: verify-tests-pass
+        documentation: "Verify Contract Tests Pass Against the Real System"
         params:
           filter-type: test-type
           filter-value: contract-real
@@ -975,6 +1012,7 @@ processes:
       - id: VERIFY_TESTS_FAIL_CONTRACT_STUB
         type: call-activity
         process: verify-tests-fail
+        documentation: "Verify Contract Tests Fail Against the Stub"
         params:
           filter-type: test-type
           filter-value: contract-stub
@@ -982,10 +1020,12 @@ processes:
       - id: IMPLEMENT_EXTERNAL_SYSTEM_STUBS
         type: call-activity
         process: implement-external-system-stubs
+        documentation: "Implement External-System Stubs"
 
       - id: VERIFY_TESTS_PASS_CONTRACT_STUB
         type: call-activity
         process: verify-tests-pass
+        documentation: "Verify Contract Tests Pass Against the Stub"
         params:
           filter-type: test-type
           filter-value: contract-stub
@@ -1022,23 +1062,27 @@ processes:
       - id: RUN_ACTION
         type: call-activity
         process: ${action}
-        documentation: "action: ${action}"
+        documentation: "Run the Configured Agent"
 
       - id: BUILD_SYSTEM
         type: call-activity
         process: build-system
+        documentation: "Build the System"
 
       - id: START_SYSTEM
         type: call-activity
         process: start-system
+        documentation: "Start the System"
 
       - id: VERIFY_TESTS_PASS
         type: call-activity
         process: verify-tests-pass
+        documentation: "Verify Tests Pass"
 
       - id: COMMIT_SYSTEM
         type: call-activity
         process: commit
+        documentation: "Commit System Changes"
 
       - id: IMPL_AND_VERIFY_SYSTEM_END
         type: end-event
@@ -1060,18 +1104,22 @@ processes:
       - id: REFACTOR_TESTS
         type: call-activity
         process: refactor-tests
+        documentation: "Refactor Tests"
 
       - id: COMPILE_TESTS
         type: call-activity
         process: compile-tests
+        documentation: "Compile Tests"
 
       - id: VERIFY_TESTS_PASS
         type: call-activity
         process: verify-tests-pass
+        documentation: "Verify Tests Pass"
 
       - id: COMMIT_TESTS
         type: call-activity
         process: commit
+        documentation: "Commit Test Changes"
 
       - id: REFACTOR_AND_VERIFY_TESTS_END
         type: end-event
@@ -1101,17 +1149,19 @@ processes:
       - id: RUN_ACTION
         type: call-activity
         process: ${action}
-        documentation: "action: ${action}"
+        documentation: "Run the Configured Agent"
 
       - id: ENABLE_TESTS
         type: call-activity
         process: enable-tests
+        documentation: "Enable Tests"
         params:
           tests: ${tests}
 
       - id: COMPILE_TESTS
         type: call-activity
         process: compile-tests
+        documentation: "Compile Tests"
 
       - id: GATE_EXPECTED_TEST_RESULT
         type: gateway
@@ -1121,6 +1171,7 @@ processes:
       - id: VERIFY_TESTS_PASS_FILTERED
         type: call-activity
         process: verify-tests-pass
+        documentation: "Verify Tests Pass"
         params:
           filter-type: test-type
           filter-value: ${tests}
@@ -1128,6 +1179,7 @@ processes:
       - id: VERIFY_TESTS_FAIL_FILTERED
         type: call-activity
         process: verify-tests-fail
+        documentation: "Verify Tests Fail"
         params:
           filter-type: test-type
           filter-value: ${tests}
@@ -1135,12 +1187,14 @@ processes:
       - id: DISABLE_TESTS
         type: call-activity
         process: disable-tests
+        documentation: "Disable Tests"
         params:
           tests: ${tests}
 
       - id: COMMIT_LAYER
         type: call-activity
         process: commit
+        documentation: "Commit Layer Changes"
 
       - id: IMPLEMENT_TEST_LAYER_END
         type: end-event
@@ -1176,6 +1230,7 @@ processes:
       - id: RUN_TESTS
         type: call-activity
         process: run-tests
+        documentation: "Run Tests"
         params:
           filter-type: ${filter-type}
           filter-value: ${filter-value}
@@ -1188,6 +1243,7 @@ processes:
       - id: FIX_UNEXPECTED_FAILING_TESTS
         type: call-activity
         process: fix-unexpected-failing-tests
+        documentation: "Fix Unexpected Test Failures"
 
       - id: VERIFY_PASS_END
         type: end-event
@@ -1217,6 +1273,7 @@ processes:
       - id: RUN_TESTS
         type: call-activity
         process: run-tests
+        documentation: "Run Tests"
         params:
           filter-type: ${filter-type}
           filter-value: ${filter-value}
@@ -1229,6 +1286,7 @@ processes:
       - id: FIX_UNEXPECTED_PASSING_TESTS
         type: call-activity
         process: fix-unexpected-passing-tests
+        documentation: "Fix Unexpectedly Passing Tests"
 
       - id: VERIFY_FAIL_END
         type: end-event
@@ -1257,6 +1315,7 @@ processes:
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
+        documentation: "Dispatch the Agent"
         params:
           task-name: write-acceptance-tests
           scopes: "at-test,dsl-port,dsl-core"
@@ -1281,6 +1340,7 @@ processes:
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
+        documentation: "Dispatch the Agent"
         params:
           task-name: write-contract-tests
           scopes: "ct-test,dsl-port,dsl-core"
@@ -1306,6 +1366,7 @@ processes:
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
+        documentation: "Dispatch the Agent"
         params:
           task-name: implement-dsl
           scopes: "dsl-core,driver-port,external-system-driver-port"
@@ -1327,6 +1388,7 @@ processes:
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
+        documentation: "Dispatch the Agent"
         params:
           task-name: implement-system
           scopes: "system-path"
@@ -1347,6 +1409,7 @@ processes:
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
+        documentation: "Dispatch the Agent"
         params:
           task-name: implement-system-driver-adapters
           scopes: "driver-port,driver-adapter"
@@ -1367,6 +1430,7 @@ processes:
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
+        documentation: "Dispatch the Agent"
         params:
           task-name: implement-external-system-driver-adapters
           scopes: "external-system-driver-port,external-system-driver-adapter"
@@ -1387,6 +1451,7 @@ processes:
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
+        documentation: "Dispatch the Agent"
         params:
           task-name: implement-external-system-stubs
           scopes: "external-system-driver-adapter"
@@ -1407,6 +1472,7 @@ processes:
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
+        documentation: "Dispatch the Agent"
         params:
           task-name: disable-tests
           scopes: "at-test,ct-test"
@@ -1427,6 +1493,7 @@ processes:
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
+        documentation: "Dispatch the Agent"
         params:
           task-name: enable-tests
           scopes: "at-test,ct-test"
@@ -1447,6 +1514,7 @@ processes:
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
+        documentation: "Dispatch the Agent"
         params:
           task-name: fix-unexpected-passing-tests
           scopes: "at-test,ct-test,dsl-port,dsl-core,driver-port,driver-adapter,external-system-driver-port,external-system-driver-adapter,system-path"
@@ -1467,6 +1535,7 @@ processes:
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
+        documentation: "Dispatch the Agent"
         params:
           task-name: fix-unexpected-failing-tests
           scopes: "at-test,ct-test,dsl-port,dsl-core,driver-port,driver-adapter,external-system-driver-port,external-system-driver-adapter,system-path"
@@ -1487,6 +1556,7 @@ processes:
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
+        documentation: "Dispatch the Agent"
         params:
           task-name: refactor-tests
           scopes: "at-test,ct-test,dsl-port,dsl-core,driver-port,driver-adapter,external-system-driver-port,external-system-driver-adapter"
@@ -1507,6 +1577,7 @@ processes:
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
+        documentation: "Dispatch the Agent"
         params:
           task-name: refactor-system
           scopes: "system-path"
@@ -1527,6 +1598,7 @@ processes:
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
+        documentation: "Dispatch the Agent"
         params:
           task-name: refine-acceptance-criteria
 
@@ -1546,6 +1618,7 @@ processes:
       - id: EXECUTE_COMMAND
         type: call-activity
         process: execute-command
+        documentation: "Dispatch the Command"
         params:
           command: "gh optivem compile"
 
@@ -1565,6 +1638,7 @@ processes:
       - id: EXECUTE_COMMAND
         type: call-activity
         process: execute-command
+        documentation: "Dispatch the Command"
         params:
           command: "gh optivem system compile"
 
@@ -1584,6 +1658,7 @@ processes:
       - id: EXECUTE_COMMAND
         type: call-activity
         process: execute-command
+        documentation: "Dispatch the Command"
         params:
           command: "gh optivem test compile"
 
@@ -1603,6 +1678,7 @@ processes:
       - id: EXECUTE_COMMAND
         type: call-activity
         process: execute-command
+        documentation: "Dispatch the Command"
         params:
           command: "gh optivem system build"
 
@@ -1622,6 +1698,7 @@ processes:
       - id: EXECUTE_COMMAND
         type: call-activity
         process: execute-command
+        documentation: "Dispatch the Command"
         params:
           command: "gh optivem system start"
 
@@ -1641,6 +1718,7 @@ processes:
       - id: EXECUTE_COMMAND
         type: call-activity
         process: execute-command
+        documentation: "Dispatch the Command"
         params:
           command: "gh optivem commit"
 
@@ -1667,6 +1745,7 @@ processes:
       - id: EXECUTE_COMMAND
         type: call-activity
         process: execute-command
+        documentation: "Dispatch the Command"
         params:
           command: "gh optivem test run"
           filter-type: ${filter-type}
@@ -1751,6 +1830,7 @@ processes:
       - id: APPROVE_PRE
         type: call-activity
         process: approve
+        documentation: "Request Approval"
         params:
           question: "Do you approve agent ${task-name} to run?"
 
@@ -1782,10 +1862,12 @@ processes:
       - id: FIX
         type: call-activity
         process: fix
+        documentation: "Fix the Failure"
 
       - id: APPROVE_POST
         type: call-activity
         process: approve
+        documentation: "Confirm Approval"
         params:
           question: "Approve output from agent ${task-name}?"
 
@@ -1824,6 +1906,7 @@ processes:
       - id: APPROVE_PRE
         type: call-activity
         process: approve
+        documentation: "Request Approval"
         params:
           question: "Do you approve running command ${command} ?"
 
@@ -1845,6 +1928,7 @@ processes:
       - id: FIX
         type: call-activity
         process: fix
+        documentation: "Fix the Failure"
 
       - id: EXECUTE_COMMAND_END
         type: end-event
@@ -1880,6 +1964,7 @@ processes:
       - id: APPROVE_PRE
         type: call-activity
         process: approve
+        documentation: "Request Approval"
         params:
           question: "Do you approve fix to attempt remediation for ${failure} ?"
 
@@ -1891,6 +1976,7 @@ processes:
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
+        documentation: "Dispatch the Agent"
         params:
           # task-name derived from failure.kind (Q-late-5 β-convention:
           # "fix-" + failure.kind). The `${failure-kind}` placeholder

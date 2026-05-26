@@ -357,10 +357,14 @@ func writeGroupSubgraph(b *strings.Builder, process *statemachine.Process, g *gr
 }
 
 // writeNode emits one Mermaid node line. Shape depends on the YAML
-// node type; label comes from the `documentation:` field (with the
-// node ID as a fallback for shapes the schema does not strict-require
-// it on). call-activity nodes get a "see § …" suffix pointing the
-// reader at the sub-process's heading.
+// node type; label comes from the `documentation:` field. service-task
+// and user-task fall back to the node ID when documentation is absent;
+// call-activity, start-event, end-event, and error-end-event all
+// require documentation: at the schema level (see load.go). call-
+// activity nodes append a "see § …" suffix pointing the reader at the
+// sub-process's heading, unless the label already matches the target
+// process's auto-Title-Case heading — in which case the suffix would
+// be redundant and is dropped.
 //
 // Shape mapping (BPMN-shaped vocabulary):
 //
@@ -369,7 +373,7 @@ func writeGroupSubgraph(b *strings.Builder, process *statemachine.Process, g *gr
 //	gateway                 → diamond             `{label}` (or `{ }` when silent — Item 13)
 //	service-task            → subroutine          `[[label]]`
 //	user-task               → plain rectangle     `[label]`
-//	call-activity           → plain rectangle     `[label]`  (with "see § …" suffix)
+//	call-activity           → plain rectangle     `[label]`  (with "see § …" suffix unless redundant)
 //
 // Shape conveys the BPMN node type; executor coloring (applied later
 // in writeExecutorStyling) conveys *who* runs each task: white =
@@ -385,7 +389,7 @@ func writeGroupSubgraph(b *strings.Builder, process *statemachine.Process, g *gr
 // in the diagram would just be noise.
 func writeNode(b *strings.Builder, n statemachine.Node) {
 	label := n.Raw.Documentation
-	if label == "" && n.Kind != statemachine.Gateway {
+	if label == "" && n.Kind != statemachine.Gateway && n.Kind != statemachine.CallActivity {
 		label = n.ID
 	}
 	switch n.Kind {
@@ -407,7 +411,20 @@ func writeNode(b *strings.Builder, n statemachine.Node) {
 		if linkLabel == "" {
 			linkLabel = target
 		}
-		full := fmt.Sprintf("%s — see § %s", label, linkLabel)
+		// Drop the redundant "see § …" suffix when the documentation
+		// already matches the auto-Title-Case form of the target
+		// process heading. Aliased targets compare against the alias
+		// directly.
+		headingForm := processAlias[target]
+		if headingForm == "" {
+			headingForm = titleCaseFromKebab(target)
+		}
+		var full string
+		if label == headingForm {
+			full = label
+		} else {
+			full = fmt.Sprintf("%s — see § %s", label, linkLabel)
+		}
 		fmt.Fprintf(b, "    %s[%s]\n", n.ID, mermaidLabel(full))
 	default:
 		fmt.Fprintf(b, "    %s[%s]\n", n.ID, mermaidLabel(label))
