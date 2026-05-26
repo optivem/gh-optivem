@@ -18,7 +18,7 @@ ${acceptance_criteria}
 ## Steps
 
 1. For every Acceptance Criterion, write a corresponding Acceptance Test (`${at-test}`). This should be a mechanical 1:1 translation.
-2. If you need to add methods to the DSL Port (`${dsl-port}`), then implement the DSL Core (`${dsl-core}`) by implementing method prototypes by throwing a runtime exception  `"TODO: DSL"`, so that compilation works.
+2. If you added methods to the DSL Port (`${dsl-port}`), append a stub method body that throws a runtime exception with message `"TODO: DSL"` (using the language-appropriate exception type) to the impl class in (`${dsl-core}`) for each newly-added Port method, so compilation works. If a prior run's edits didn't compile (forgotten stub, typo, signature mismatch in `${dsl-port}` or `${dsl-core}`), fix the named issue minimally — do not change test intent. Limit your dsl-core read to identifying where to append or what to fix — do not read existing method bodies or browse other dsl-core files to "understand the structure". The asymmetric scope (dsl-core is writeable but not in `read:`) is deliberate: reading impl context would leak it into test design.
 
 ## Outputs
 
@@ -48,7 +48,3 @@ tasks consume these values and have no other way to learn them.
 
 The block may follow other prose. The parser keeps the last `outputs:`
 block in the response.
-
-## Additional Notes
-
-- If your previous run didn't compile, instead fix the broken/missing piece in your prior edits (forgotten DSL stub, typo, signature mismatch) and fix it minimally. Do not change test intent.
