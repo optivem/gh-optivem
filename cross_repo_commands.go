@@ -154,10 +154,11 @@ func runCommit(msg string, opts commitOptions) error {
 		fmt.Printf("--- %s ---\n", relOrSelf(repo))
 		fmt.Printf("  %s\n", tbdModeBanner(repo))
 
-		// Pull onto current trunk *before* staging/committing so the new commit
-		// lands on top of origin/main, not a stale local main. Working tree is
-		// dirty by definition here — stash unstaged + staged changes, rebase,
-		// then pop. Emulates `rebase.autoStash` regardless of operator config.
+		// Pull --rebase onto the current branch's upstream *before*
+		// staging/committing so the new commit lands on top of the freshest
+		// remote tip, not a stale local ref. Working tree is dirty by
+		// definition here — stash unstaged + staged changes, rebase, then
+		// pop. Emulates `rebase.autoStash` regardless of operator config.
 		if err := pullWithAutoStash(repo); err != nil {
 			return fmt.Errorf("pre-commit git pull --rebase in %s: %w", repo, err)
 		}
