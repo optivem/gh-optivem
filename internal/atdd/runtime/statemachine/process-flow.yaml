@@ -128,9 +128,7 @@
 
 processes:
 
-  # ===========================================================================
   # Runtime bootstrap
-  # ===========================================================================
   #
   # `main` is the runtime entry point invoked by `gh optivem implement`. It
   # picks a ticket (board mode) or treats the operator-supplied ticket as
@@ -139,7 +137,6 @@ processes:
   # bridge between the CLI invocation surface and the five-level BPMN
   # structure. Phase D removes `main` from YAML by moving the picker into
   # the Go driver.
-  # ===========================================================================
   main:
     start: START
     nodes:
@@ -167,15 +164,10 @@ processes:
       - {from: PICK_TOP_READY,   to: IMPLEMENT_TICKET}
       - {from: IMPLEMENT_TICKET, to: END}
 
-  # ===========================================================================
-  # TOP — refine-ticket
-  # ===========================================================================
-  #
   # Backlog grooming entry. Marks the ticket IN REFINEMENT, runs the
   # refine-backlog-item cycle to produce Gherkin acceptance criteria +
   # classify the ticket-kind, then marks READY. The READY state is the
   # precondition for `implement-ticket`.
-  # ===========================================================================
   refine-ticket:
     start: MARK_IN_REFINEMENT
     nodes:
@@ -201,10 +193,6 @@ processes:
       - {from: REFINE_BACKLOG_ITEM, to: MARK_READY}
       - {from: MARK_READY,         to: REFINE_TICKET_END}
 
-  # ===========================================================================
-  # TOP — implement-ticket
-  # ===========================================================================
-  #
   # Per-ticket execution. Marks IN PROGRESS, picks a CYCLE via a
   # hierarchical two-level gateway (type → subtype), runs the chosen
   # CYCLE, then marks IN ACCEPTANCE. Single-cycle tickets only (Q30.b = A)
@@ -253,7 +241,6 @@ processes:
   # tickets with no subtype label) to `UNKNOWN_TASK_SUBTYPE`. Both
   # terminate the process with the event's documentation as the error
   # message (see statemachine/run.go).
-  # ===========================================================================
   implement-ticket:
     start: MARK_IN_PROGRESS
     nodes:
@@ -349,10 +336,6 @@ processes:
       - {from: ONBOARD_EXTERNAL_SYSTEM,            to: MARK_IN_ACCEPTANCE}
       - {from: MARK_IN_ACCEPTANCE,        to: IMPLEMENT_TICKET_END}
 
-  # ===========================================================================
-  # TOP — refactor (Q34 — ad-hoc refactor entry; no ticket overhead)
-  # ===========================================================================
-  #
   # Loopable refactor-type chooser. The operator picks a refactor CYCLE
   # (opportunistic mode, no checklist) or exits. No Mark-Ticket bookends —
   # there is no ticket. Reused by `change-system-behavior` step 3 (via a
@@ -362,7 +345,6 @@ processes:
   # (1) ticket-driven via `task/system-refactor` → `implement-ticket`
   # gateway → CYCLE; (2) opportunistic-inside-change via the call into
   # this TOP; (3) ad-hoc operator entry directly into this TOP.
-  # ===========================================================================
   refactor:
     start: CHOOSE_REFACTOR_TYPE
     nodes:
@@ -411,9 +393,6 @@ processes:
       - {from: REDESIGN_SYSTEM_STRUCTURE,          to: CHOOSE_REFACTOR_TYPE}
       - {from: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE, to: CHOOSE_REFACTOR_TYPE}
 
-  # ===========================================================================
-  # CYCLE — refine-backlog-item (Q9 = A, sibling cycle)
-  # ===========================================================================
   refine-backlog-item:
     start: REFINE_ACCEPTANCE_CRITERIA
     nodes:
@@ -429,15 +408,10 @@ processes:
     sequence-flows:
       - {from: REFINE_ACCEPTANCE_CRITERIA, to: REFINE_BACKLOG_ITEM_END}
 
-  # ===========================================================================
-  # CYCLE — onboard-external-system (Q-ext = b, standalone cycle)
-  # ===========================================================================
-  #
   # Per-system onboarding for an external system. The four steps are
   # currently agent-less placeholders (`agent: human`) matching the
   # brainstorm's tentative shape — Phase D may promote one or more steps
   # to a dedicated onboarding agent.
-  # ===========================================================================
   onboard-external-system:
     start: CHECK_CHECKLIST_PROGRESS
     nodes:
@@ -489,10 +463,6 @@ processes:
       - {from: SETUP_EXTERNAL_SYSTEM_ACCESS,      to: VERIFY_EXTERNAL_SYSTEM_REACHABLE}
       - {from: VERIFY_EXTERNAL_SYSTEM_REACHABLE,  to: ONBOARD_END}
 
-  # ===========================================================================
-  # CYCLE — change-system-behavior
-  # ===========================================================================
-  #
   # Classic red-green-REFACTOR triad (Q33). Step 3 delegates to the
   # canonical `refactor` TOP process — same gateway, same three
   # refactor-cycle options, same `none` exit. Two surfaces, one
@@ -500,7 +470,6 @@ processes:
   # `implement-ticket` gateway → CYCLE) and the opportunistic-in-place
   # path (here, via the `refactor` call-activity) both land on the
   # `refactor-*-structure` CYCLEs through one shared menu.
-  # ===========================================================================
   change-system-behavior:
     start: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL
     nodes:
@@ -532,10 +501,6 @@ processes:
       - {from: IMPLEMENT_AND_VERIFY_SYSTEM,            to: REFACTOR_OPPORTUNISTICALLY}
       - {from: REFACTOR_OPPORTUNISTICALLY,             to: CHANGE_SYSTEM_BEHAVIOR_END}
 
-  # ===========================================================================
-  # CYCLE — cover-system-behavior (Q16 = B, legacy-coverage as parameterised expectation)
-  # ===========================================================================
-  #
   # Legacy-coverage cycle. Operator specifies acceptance criteria only;
   # CT is a nested sub-process when the AT layer needs a stub/driver to
   # pass (Q31.a = Option A nested). Gateway is one row at TOP
@@ -543,7 +508,6 @@ processes:
   # cover-legacy-acceptance / cover-legacy-contract, because the operator
   # does not think in CT subtypes (CT is an implementation detail of
   # making AT pass).
-  # ===========================================================================
   cover-system-behavior:
     start: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS
     nodes:
@@ -560,17 +524,12 @@ processes:
     sequence-flows:
       - {from: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS, to: COVER_END}
 
-  # ===========================================================================
-  # CYCLE — redesign-system-structure (Q-new-2)
-  # ===========================================================================
-  #
   # System-side structure redesign. Step 1 calls MID
   # `implement-system-driver-adapters`. Step 2 reuses HIGH
   # `implement-and-verify-system`. External-side driver adapters live in
   # the sibling CYCLE `redesign-external-system-structure`, reached via
   # `task/external-system-redesign` — `task/system-redesign` tickets stay
   # system-side and no longer rebuild the external boundary.
-  # ===========================================================================
   redesign-system-structure:
     start: CHECK_CHECKLIST_PROGRESS
     nodes:
@@ -612,10 +571,6 @@ processes:
       - {from: IMPLEMENT_SYSTEM_DRIVER_ADAPTERS, to: IMPLEMENT_AND_VERIFY_SYSTEM}
       - {from: IMPLEMENT_AND_VERIFY_SYSTEM,      to: REDESIGN_END}
 
-  # ===========================================================================
-  # CYCLE — redesign-external-system-structure (Item 14 / external-side split)
-  # ===========================================================================
-  #
   # External-side sibling of `redesign-system-structure`. Step 1 calls
   # MID `implement-external-system-driver-adapters` (test-side drivers
   # into stubs/simulators). Step 2 reuses HIGH `implement-and-verify-
@@ -623,7 +578,6 @@ processes:
   # port surface — an external-system stub change typically reflects an
   # external-system contract change, and the acceptance tests have to
   # re-verify the result against the new stub behavior.
-  # ===========================================================================
   redesign-external-system-structure:
     start: CHECK_CHECKLIST_PROGRESS
     nodes:
@@ -665,14 +619,9 @@ processes:
       - {from: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, to: IMPLEMENT_AND_VERIFY_SYSTEM}
       - {from: IMPLEMENT_AND_VERIFY_SYSTEM,               to: REDESIGN_EXTERNAL_END}
 
-  # ===========================================================================
-  # CYCLE — refactor-system-structure (Phase C.1 prototype — first cycle encoded)
-  # ===========================================================================
-  #
   # Step 1 calls HIGH `implement-and-verify-system` with
   # `action: refactor-system`. Was the prototype encoded in Item 1 of
   # this plan; preserved unchanged.
-  # ===========================================================================
   refactor-system-structure:
     start: CHECK_CHECKLIST_PROGRESS
     nodes:
@@ -709,9 +658,6 @@ processes:
       - {from: STOP_CHECKLIST_PARTIALLY_DONE,   to: IMPLEMENT_AND_VERIFY_SYSTEM}
       - {from: IMPLEMENT_AND_VERIFY_SYSTEM,     to: REFACTOR_SYSTEM_STRUCTURE_END}
 
-  # ===========================================================================
-  # CYCLE — refactor-test-structure (Q8 — distinct HIGH for test refactor)
-  # ===========================================================================
   refactor-test-structure:
     start: CHECK_CHECKLIST_PROGRESS
     nodes:
@@ -745,14 +691,9 @@ processes:
       - {from: STOP_CHECKLIST_PARTIALLY_DONE,  to: REFACTOR_AND_VERIFY_TESTS}
       - {from: REFACTOR_AND_VERIFY_TESTS,      to: REFACTOR_TEST_STRUCTURE_END}
 
-  # ===========================================================================
-  # HIGH — write-and-verify-acceptance-tests-fail (Q-new-6 outer wrapper)
-  # ===========================================================================
-  #
   # Cycle-facing thin wrapper that pins `expected-test-result: failure`
   # before calling the parameterised middle. Called by
   # `change-system-behavior` step 1.
-  # ===========================================================================
   write-and-verify-acceptance-tests-fail:
     start: WRITE_AND_VERIFY_ACCEPTANCE_TESTS
     nodes:
@@ -770,14 +711,9 @@ processes:
     sequence-flows:
       - {from: WRITE_AND_VERIFY_ACCEPTANCE_TESTS, to: WAV_AT_FAIL_END}
 
-  # ===========================================================================
-  # HIGH — write-and-verify-acceptance-tests-pass (Q-new-6 outer wrapper)
-  # ===========================================================================
-  #
   # Cycle-facing thin wrapper that pins `expected-test-result: success`
   # before calling the parameterised middle. Called by
   # `cover-system-behavior` step 1.
-  # ===========================================================================
   write-and-verify-acceptance-tests-pass:
     start: WRITE_AND_VERIFY_ACCEPTANCE_TESTS
     nodes:
@@ -795,10 +731,6 @@ processes:
     sequence-flows:
       - {from: WRITE_AND_VERIFY_ACCEPTANCE_TESTS, to: WAV_AT_PASS_END}
 
-  # ===========================================================================
-  # HIGH — write-and-verify-acceptance-tests (Q-new-6 middle, canonical full flow)
-  # ===========================================================================
-  #
   # Writes the test code (inner primitive) then cascades into DSL +
   # driver-adapter impl whenever ports changed. Reads `dsl-port-changed`
   # from the inner call, then `system-driver-ports-changed` /
@@ -806,7 +738,6 @@ processes:
   # wiring table). Note that the GATE bindings are bound to Go gate
   # functions that promote the relevant ctx.Params value into ctx.State
   # for the predicate evaluator to read.
-  # ===========================================================================
   write-and-verify-acceptance-tests:
     start: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE
     nodes:
@@ -873,15 +804,10 @@ processes:
       - {from: GATE_SYSTEM_DRIVER_PORTS_CHANGED, to: WAV_AT_END,                                  when: "system-driver-ports-changed == false"}
       - {from: IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS, to: WAV_AT_END}
 
-  # ===========================================================================
-  # HIGH — write-and-verify-acceptance-test-code (Q-new-6 inner primitive)
-  # ===========================================================================
-  #
   # Pure test-code authoring: write tests, compile, verify, commit. No
   # production-side impl. Branches on `expected-test-result` parameter
   # (success → verify-tests-pass; failure → verify-tests-fail +
   # disable-tests).
-  # ===========================================================================
   write-and-verify-acceptance-test-code:
     start: WRITE_ACCEPTANCE_TESTS
     nodes:
@@ -950,9 +876,6 @@ processes:
       - {from: DISABLE_ACCEPTANCE_TESTS,     to: COMMIT_TEST_CODE}
       - {from: COMMIT_TEST_CODE,             to: WAV_AT_CODE_END}
 
-  # ===========================================================================
-  # HIGH — implement-and-verify-dsl
-  # ===========================================================================
   implement-and-verify-dsl:
     start: IMPLEMENT_TEST_LAYER
     nodes:
@@ -972,9 +895,6 @@ processes:
     sequence-flows:
       - {from: IMPLEMENT_TEST_LAYER, to: IMPL_DSL_END}
 
-  # ===========================================================================
-  # HIGH — implement-and-verify-system-driver-adapters
-  # ===========================================================================
   implement-and-verify-system-driver-adapters:
     start: IMPLEMENT_TEST_LAYER
     nodes:
@@ -994,9 +914,6 @@ processes:
     sequence-flows:
       - {from: IMPLEMENT_TEST_LAYER, to: IMPL_SYS_DRIVER_END}
 
-  # ===========================================================================
-  # HIGH — implement-and-verify-external-system-driver-adapters
-  # ===========================================================================
   implement-and-verify-external-system-driver-adapters:
     start: IMPLEMENT_TEST_LAYER
     nodes:
@@ -1016,10 +933,6 @@ processes:
     sequence-flows:
       - {from: IMPLEMENT_TEST_LAYER, to: IMPL_EXT_DRIVER_END}
 
-  # ===========================================================================
-  # HIGH — implement-and-verify-external-system-driver-adapters-contract-tests
-  # ===========================================================================
-  #
   # Contract-test variant of the external driver-adapter impl. Mirrors the
   # AT-side cascade but with `tests: contract` semantics and the
   # contract-real / contract-stub verify split. Absorbs the pre-refactor
@@ -1038,7 +951,6 @@ processes:
   # Encoding here so diagram #8's absorption is visible per the cross-
   # check inventory; the call-site wiring lands in the downstream-
   # alignment plan.
-  # ===========================================================================
   implement-and-verify-external-system-driver-adapters-contract-tests:
     start: WRITE_CONTRACT_TESTS
     nodes:
@@ -1111,17 +1023,12 @@ processes:
       - {from: IMPLEMENT_EXTERNAL_SYSTEM_STUBS,           to: VERIFY_TESTS_PASS_CONTRACT_STUB}
       - {from: VERIFY_TESTS_PASS_CONTRACT_STUB,           to: IMPL_EXT_DRIVER_CT_END}
 
-  # ===========================================================================
-  # HIGH — implement-and-verify-system
-  # ===========================================================================
-  #
   # Parameterised system impl: the caller picks the MID agent task by
   # supplying `action`. Two known callers today —
   # `change-system-behavior` passes `implement-system`,
   # `refactor-system-structure` passes `refactor-system`. The templated
   # `process: ${action}` resolves at dispatch time (runtime support
   # added by Item 2 of this plan).
-  # ===========================================================================
   implement-and-verify-system:
     start: RUN_ACTION
     nodes:
@@ -1161,9 +1068,6 @@ processes:
       - {from: VERIFY_TESTS_PASS, to: COMMIT_SYSTEM}
       - {from: COMMIT_SYSTEM,     to: IMPL_AND_VERIFY_SYSTEM_END}
 
-  # ===========================================================================
-  # HIGH — refactor-and-verify-tests (Q8 — distinct from implement-and-verify-system)
-  # ===========================================================================
   refactor-and-verify-tests:
     start: REFACTOR_TESTS
     nodes:
@@ -1197,10 +1101,6 @@ processes:
       - {from: VERIFY_TESTS_PASS, to: COMMIT_TESTS}
       - {from: COMMIT_TESTS,      to: REFACTOR_AND_VERIFY_TESTS_END}
 
-  # ===========================================================================
-  # HIGH (SHARED) — implement-test-layer
-  # ===========================================================================
-  #
   # Shared cascade for any test-layer impl that follows the "agent runs,
   # then enable / compile / verify / commit" rhythm. Called by every
   # `implement-and-verify-*-driver-adapters` and by `implement-and-verify-
@@ -1208,7 +1108,6 @@ processes:
   # failure → verify-tests-fail + disable-tests). Note that `commit` runs
   # unconditionally — the gateway is on the verify shape, not on whether to
   # commit.
-  # ===========================================================================
   implement-test-layer:
     start: RUN_ACTION
     nodes:
@@ -1282,14 +1181,9 @@ processes:
       - {from: DISABLE_TESTS,              to: COMMIT_LAYER}
       - {from: COMMIT_LAYER,               to: IMPLEMENT_TEST_LAYER_END}
 
-  # ===========================================================================
-  # HIGH (SHARED) — verify-tests-pass
-  # ===========================================================================
-  #
   # Run tests under `filter-type` / `filter-value`; on FAIL, dispatch
   # `fix-unexpected-failing-tests`. Caller passes filter params (or omits
   # to run all tests).
-  # ===========================================================================
   verify-tests-pass:
     start: RUN_TESTS
     nodes:
@@ -1326,13 +1220,8 @@ processes:
       - {from: GATE_TESTS_OUTCOME, to: UNKNOWN_TESTS_OUTCOME}
       - {from: FIX_UNEXPECTED_FAILING_TESTS, to: VERIFY_PASS_END}
 
-  # ===========================================================================
-  # HIGH (SHARED) — verify-tests-fail
-  # ===========================================================================
-  #
   # Inverted: run tests under filter; on PASS, dispatch
   # `fix-unexpected-passing-tests`.
-  # ===========================================================================
   verify-tests-fail:
     start: RUN_TESTS
     nodes:
@@ -1369,14 +1258,8 @@ processes:
       - {from: GATE_TESTS_OUTCOME, to: UNKNOWN_TESTS_OUTCOME}
       - {from: FIX_UNEXPECTED_PASSING_TESTS, to: VERIFY_FAIL_END}
 
-  # ===========================================================================
-  # MID — write-acceptance-tests
-  # ===========================================================================
-  #
-  # Scope: read + write = [at-test, dsl-port, dsl-core]. Outputs:
-  # dsl-port-changed. The read/write lists are deliberately identical at
-  # the fold — parent plan 20260526-1448 Item 3 refines the split.
-  # ===========================================================================
+  # The read/write lists are deliberately identical at the fold —
+  # parent plan 20260526-1448 Item 3 refines the split.
   write-acceptance-tests:
     start: EXECUTE_AGENT
     nodes:
@@ -1397,13 +1280,6 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: WAT_END}
 
-  # ===========================================================================
-  # MID — write-contract-tests
-  # ===========================================================================
-  #
-  # Scope: read + write = [ct-test, dsl-port, dsl-core]. Outputs:
-  # dsl-port-changed.
-  # ===========================================================================
   write-contract-tests:
     start: EXECUTE_AGENT
     nodes:
@@ -1424,13 +1300,6 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: WCT_END}
 
-  # ===========================================================================
-  # MID — implement-dsl
-  # ===========================================================================
-  #
-  # Scope: read + write = [dsl-core, driver-port, external-system-driver-port].
-  # Outputs: system-driver-ports-changed, external-driver-ports-changed.
-  # ===========================================================================
   implement-dsl:
     start: EXECUTE_AGENT
     nodes:
@@ -1451,12 +1320,6 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: IMPL_DSL_END}
 
-  # ===========================================================================
-  # MID — implement-system
-  # ===========================================================================
-  #
-  # Scope: read + write = [system-path].
-  # ===========================================================================
   implement-system:
     start: EXECUTE_AGENT
     nodes:
@@ -1476,12 +1339,6 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: IMPL_SYS_END}
 
-  # ===========================================================================
-  # MID — implement-system-driver-adapters
-  # ===========================================================================
-  #
-  # Scope: read + write = [driver-port, driver-adapter].
-  # ===========================================================================
   implement-system-driver-adapters:
     start: EXECUTE_AGENT
     nodes:
@@ -1501,13 +1358,6 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: IMPL_SYS_DA_END}
 
-  # ===========================================================================
-  # MID — implement-external-system-driver-adapters
-  # ===========================================================================
-  #
-  # Scope: read + write = [external-system-driver-port,
-  # external-system-driver-adapter].
-  # ===========================================================================
   implement-external-system-driver-adapters:
     start: EXECUTE_AGENT
     nodes:
@@ -1527,12 +1377,6 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: IMPL_EXT_DA_END}
 
-  # ===========================================================================
-  # MID — implement-external-system-stubs
-  # ===========================================================================
-  #
-  # Scope: read + write = [external-system-driver-adapter].
-  # ===========================================================================
   implement-external-system-stubs:
     start: EXECUTE_AGENT
     nodes:
@@ -1552,16 +1396,10 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: IMPL_STUBS_END}
 
-  # ===========================================================================
-  # MID — disable-tests
-  # ===========================================================================
-  #
-  # Scope: read + write = [at-test, ct-test]. The [at-test, ct-test] pin
-  # is forward-looking — today only at-test files are touched because the
-  # reason-format hardcodes `AT`, but the symmetric scope keeps the
-  # shared ${disable_targets} flow from being scoped inconsistently when
-  # the CT-side disable lands.
-  # ===========================================================================
+  # The [at-test, ct-test] pin is forward-looking — today only at-test
+  # files are touched because the reason-format hardcodes `AT`, but the
+  # symmetric scope keeps the shared ${disable_targets} flow from being
+  # scoped inconsistently when the CT-side disable lands.
   disable-tests:
     start: EXECUTE_AGENT
     nodes:
@@ -1581,13 +1419,7 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: DISABLE_END}
 
-  # ===========================================================================
-  # MID — enable-tests
-  # ===========================================================================
-  #
-  # Scope: read + write = [at-test, ct-test]. Same forward-looking
-  # symmetry as disable-tests.
-  # ===========================================================================
+  # Same forward-looking [at-test, ct-test] symmetry as disable-tests.
   enable-tests:
     start: EXECUTE_AGENT
     nodes:
@@ -1607,14 +1439,9 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: ENABLE_END}
 
-  # ===========================================================================
-  # MID — fix-unexpected-passing-tests
-  # ===========================================================================
-  #
-  # Scope: read + write = every layer. The fix agent has no a-priori
-  # knowledge of which layer is wrong, so the scope is the union of
-  # everything below system-test-path plus system-path itself.
-  # ===========================================================================
+  # The fix agent has no a-priori knowledge of which layer is wrong, so
+  # the scope is the union of every layer below system-test-path plus
+  # system-path itself.
   fix-unexpected-passing-tests:
     start: EXECUTE_AGENT
     nodes:
@@ -1634,12 +1461,8 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: FIX_PASS_END}
 
-  # ===========================================================================
-  # MID — fix-unexpected-failing-tests
-  # ===========================================================================
-  #
-  # Scope: same as fix-unexpected-passing-tests — every layer.
-  # ===========================================================================
+  # Same every-layer scope as fix-unexpected-passing-tests (the fix agent
+  # doesn't know which layer is wrong).
   fix-unexpected-failing-tests:
     start: EXECUTE_AGENT
     nodes:
@@ -1659,13 +1482,7 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: FIX_FAIL_END}
 
-  # ===========================================================================
-  # MID — refactor-tests
-  # ===========================================================================
-  #
-  # Scope: read + write = every test-side layer (no system-path; test
-  # refactor never touches production code).
-  # ===========================================================================
+  # Test refactor never touches production code — no system-path in scope.
   refactor-tests:
     start: EXECUTE_AGENT
     nodes:
@@ -1685,12 +1502,6 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: REFACTOR_TESTS_END}
 
-  # ===========================================================================
-  # MID — refactor-system
-  # ===========================================================================
-  #
-  # Scope: read + write = [system-path].
-  # ===========================================================================
   refactor-system:
     start: EXECUTE_AGENT
     nodes:
@@ -1710,9 +1521,6 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: REFACTOR_SYS_END}
 
-  # ===========================================================================
-  # MID — refine-acceptance-criteria
-  # ===========================================================================
   refine-acceptance-criteria:
     start: EXECUTE_AGENT
     nodes:
@@ -1730,9 +1538,6 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: REFINE_AC_END}
 
-  # ===========================================================================
-  # MID — compile (command)
-  # ===========================================================================
   compile:
     start: EXECUTE_COMMAND
     nodes:
@@ -1750,9 +1555,6 @@ processes:
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: COMPILE_MID_END}
 
-  # ===========================================================================
-  # MID — compile-system (command)
-  # ===========================================================================
   compile-system:
     start: EXECUTE_COMMAND
     nodes:
@@ -1770,9 +1572,6 @@ processes:
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: COMPILE_SYS_END}
 
-  # ===========================================================================
-  # MID — compile-tests (command)
-  # ===========================================================================
   compile-tests:
     start: EXECUTE_COMMAND
     nodes:
@@ -1790,9 +1589,6 @@ processes:
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: COMPILE_TESTS_END}
 
-  # ===========================================================================
-  # MID — build-system (command)
-  # ===========================================================================
   build-system:
     start: EXECUTE_COMMAND
     nodes:
@@ -1810,9 +1606,6 @@ processes:
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: BUILD_SYS_END}
 
-  # ===========================================================================
-  # MID — start-system (command)
-  # ===========================================================================
   start-system:
     start: EXECUTE_COMMAND
     nodes:
@@ -1830,9 +1623,6 @@ processes:
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: START_SYS_END}
 
-  # ===========================================================================
-  # MID — commit (command)
-  # ===========================================================================
   commit:
     start: EXECUTE_COMMAND
     nodes:
@@ -1850,16 +1640,11 @@ processes:
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: COMMIT_MID_END}
 
-  # ===========================================================================
-  # MID — run-tests (command)
-  # ===========================================================================
-  #
   # Q5.a structured filter params: `filter-type` enum (`test-type` or
   # `test-name`); `filter-value` (single tag for test-type; list-as-string
   # for test-name). Both absent ⇒ run all tests. The underlying
   # `execute-command` forwards both params to the `gh optivem test run`
   # CLI, which owns the filter parsing.
-  # ===========================================================================
   run-tests:
     start: EXECUTE_COMMAND
     nodes:
@@ -1879,10 +1664,6 @@ processes:
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: RUN_TESTS_END}
 
-  # ===========================================================================
-  # LOW — approve (HUMAN gate primitive)
-  # ===========================================================================
-  #
   # Confirms approval; writes outcome to `approval-outcome` state for the
   # caller to read. Q3 = A (exit-only; caller owns NO branch).
   #
@@ -1901,7 +1682,6 @@ processes:
   # that caller-side gate the unconditional out-edge would silently fall
   # through to the next node — the exact bug that motivated this
   # arrangement (rejecting `fix` still ran the inner agent).
-  # ===========================================================================
   approve:
     start: ASK_HUMAN
     nodes:
@@ -1928,10 +1708,6 @@ processes:
       - {from: GATE_APPROVED, to: APPROVE_OK_END,     when: "approval-outcome == approved"}
       - {from: GATE_APPROVED, to: APPROVE_REJECT_END, when: "approval-outcome == rejected"}
 
-  # ===========================================================================
-  # LOW — execute-agent (LLM agent dispatch primitive)
-  # ===========================================================================
-  #
   # Wraps an agent run with approval + per-phase snapshot + validation +
   # optional fix recovery + post-approval. The agent name is the caller's
   # `task-name` param, forwarded into the templated `agent: ${task-name}`
@@ -1955,7 +1731,6 @@ processes:
   # call site from `fix` itself) skip remediation and let POST approval
   # see the broken state. The fix recovery re-enters execute-agent, so
   # the fix agent gets its own snapshot step automatically.
-  # ===========================================================================
   execute-agent:
     start: APPROVE_PRE
     nodes:
@@ -2030,14 +1805,9 @@ processes:
       - {from: FIX,                      to: APPROVE_POST}
       - {from: APPROVE_POST,                  to: EXECUTE_AGENT_END}
 
-  # ===========================================================================
-  # LOW — execute-command (shell command dispatch primitive)
-  # ===========================================================================
-  #
   # PRE approval only (Q2 = C asymmetric — commands have machine-checkable
   # success). On command failure, dispatch `fix` (the `command-failed`
   # kind) without passing `scopes`/`outputs` — commands don't have them.
-  # ===========================================================================
   execute-command:
     start: APPROVE_PRE
     nodes:
@@ -2085,17 +1855,12 @@ processes:
       - {from: GATE_COMMAND_SUCCEEDED, to: FIX,            when: "command-succeeded == false"}
       - {from: FIX,               to: EXECUTE_COMMAND_END}
 
-  # ===========================================================================
-  # LOW — fix (single-attempt remediation primitive)
-  # ===========================================================================
-  #
   # Q-late-5 (β-convention) routing: the fix-* task-name is derived as
   # `"fix-" + failure.kind` and passed into the inner `execute-agent`. No
   # routing table here — the runtime constructs the task-name dispatch-
   # time. The inner `execute-agent` receives `fix-on-failure: false` so
   # validation failure in the fix attempt does NOT recurse into another
   # fix (single attempt, terminates regardless of inner outcome).
-  # ===========================================================================
   fix:
     start: APPROVE_PRE
     nodes:
