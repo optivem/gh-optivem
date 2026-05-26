@@ -29,6 +29,39 @@ continues.
 shipped to writing/fix agents. No runtime, no schema, no orchestration
 changes.
 
+## Execution strategy
+
+The remaining work runs in **3 serial sessions**, one `/clear` between
+each. Cross-session parallel windows are blocked by file ownership:
+`process-flow.yaml`, prompt frontmatter+body in the same `.md` files,
+and the plan file itself are all shared surfaces. Parallelism comes
+from **within-session subagent dispatch**, not from running multiple
+windows.
+
+**Session 1 — Foundation (Items 3 + 9 + 10).** Main session handles
+Items 3 + 9 first in parallel-batched edits (process-flow.yaml
+asymmetric `read != write` data, `scope.md kind:` field, prompt
+frontmatter strip, build-time guard). Then dispatch **3 parallel
+subagents** for Item 10 verb split — one per split pair
+(`system-driver-adapters`, `external-system-driver-adapters`,
+`system`). Main session updates process-flow.yaml `agent:` references
+at redesign call sites after subagents return.
+
+**Session 2 — Prompt body sweep (Items 1 + 6 + 11).** Dispatch
+**~10 parallel subagents**, one per prompt file. Each subagent
+applies Items 1, 6, 11 to its owned file in one read pass. File-based
+partition → zero races. Main session verifies with greps + deletes
+items from the plan.
+
+**Session 3 — Render + Item 4.** Main session handles the runtime
+renderer change + tests. In parallel, dispatch **~10 subagents** for
+per-prompt inline `${key}` annotations + `Allowed write roots:` block
+stripping on the 12 prompts in Item 4's audit table.
+
+Each session begins by adding a pickup marker to this plan and ends
+by removing it before commit. Wall-clock estimate: ~3-3.5 hours total
+across the three sessions.
+
 ## Distinguishing principle (applies to all items below)
 
 When a prompt mentions its surroundings, classify the reference:
