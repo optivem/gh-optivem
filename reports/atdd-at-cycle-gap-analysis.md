@@ -55,7 +55,7 @@ The runtime prompts are thin — they mostly point at the global process docs �
 
 ### AT - RED - SYSTEM DRIVER specific
 
-- **File-scope constraint** — only `${driver_port}/${sut_namespace}/` and `${driver_adapter}/${sut_namespace}/<channel>` (api, ui). All driver code in test tree, not `system/`.
+- **File-scope constraint** — only `${driver-port}/${sut-namespace}/` and `${driver-adapter}/${sut-namespace}/<channel>` (api, ui). All driver code in test tree, not `system/`.
 - **Do NOT touch `external/`** — that's the CT sub-process.
 - **Do NOT read backend/frontend source code** — model new methods on sibling Driver methods in the same file.
 

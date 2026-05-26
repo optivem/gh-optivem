@@ -13,13 +13,13 @@ Concretely, do not reintroduce:
 
 If you find yourself proposing any of the above, stop and reconsider — the answer is always README + `docs/*.md` links.
 
-## `system_test.paths:` — scaffold-authoritative, not "default"
+## `system-test.paths:` — scaffold-authoritative, not "default"
 
-`gh optivem init` writes `system_test.paths:` from `projectconfig.DefaultPaths` (called from `internal/steps/optivem_yaml.go::BuildOptivemYAML`). This is the **only** place the binary writes a `paths:` block, and it is correct: the scaffolder owns both the YAML and the directory tree the YAML points at, so the values are authoritative initial values matching the just-created tree — not runtime defaults.
+`gh optivem init` writes `system-test.paths:` from `projectconfig.DefaultPaths` (called from `internal/steps/optivem_yaml.go::BuildOptivemYAML`). This is the **only** place the binary writes a `paths:` block, and it is correct: the scaffolder owns both the YAML and the directory tree the YAML points at, so the values are authoritative initial values matching the just-created tree — not runtime defaults.
 
 After `init`, the block is operator-owned everywhere else:
 
-- `projectconfig.Validate` Rule 22a hard-errors on missing/non-canonical `system_test.paths:` keys instead of back-filling defaults.
+- `projectconfig.Validate` Rule 22a hard-errors on missing/non-canonical `system-test.paths:` keys instead of back-filling defaults.
 - `gh optivem config migrate` no longer back-fills a `paths:` block.
 
 Do not "fix" the apparent inconsistency by ripping out the `DefaultPaths` call in `BuildOptivemYAML`, and do not generalise `DefaultPaths` into a validate-time or migrate-time fallback. See `internal/projectconfig/path-keys.md` ("Ownership: scaffold-authoritative at `init`, operator-owned afterwards") for the full doctrine.

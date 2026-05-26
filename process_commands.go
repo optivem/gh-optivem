@@ -266,7 +266,7 @@ func writePhaseBlock(out io.Writer, phaseID string, layers []string, agent strin
 
 // resolveLayer maps a phase-scopes.yaml layer name to its physical path
 // in the project. Family A `system-path` reads from `system.path`
-// (monolith). Everything else is a Family B key under `system_test.paths:`.
+// (monolith). Everything else is a Family B key under `system-test.paths:`.
 //
 // Multitier projects leave `system.path` empty — `system-path` returns
 // "" there, which the renderer surfaces as "(not set in gh-optivem.yaml)".

@@ -3,7 +3,7 @@ package projectconfig
 import "path"
 
 // DefaultPaths returns the canonical Family B `paths:` entries for the
-// given system-test language, root, and sut_namespace. The eight keys
+// given system-test language, root, and sut-namespace. The eight keys
 // match the doctrine in `internal/atdd/phase-scopes.yaml`'s referenced
 // vocabulary: driver-port, driver-adapter, external-system-driver-port,
 // external-system-driver-adapter, at-test, dsl-port, dsl-core, ct-test.
@@ -15,7 +15,7 @@ import "path"
 // Per-SSoT (plan 20260518-1530 item 3), the returned values are fully
 // resolved: testkit keys (driver-*, external-system-driver-*, dsl-*) take
 // `sutNamespace` as a trailing directory segment. at-test and ct-test
-// are sut_namespace-free at the DefaultPaths trailing-append layer —
+// are sut-namespace-free at the DefaultPaths trailing-append layer —
 // Java's stems already incorporate sutNamespace as a middle (package)
 // segment per plan 20260518-1742 items 3a/3b; TypeScript and dotnet
 // stems don't structure tests by namespace. A non-empty `sutNamespace`
@@ -67,7 +67,7 @@ func DefaultPaths(testLang, systemTestRoot, sutNamespace string) map[string]stri
 		stem := stems[i]
 		// Testkit keys (driver/external/dsl) get sutNamespace as a trailing
 		// directory segment when present. at-test and ct-test are
-		// sut_namespace-free at this layer — Java's stems already
+		// sut-namespace-free at this layer — Java's stems already
 		// incorporate sutNamespace as a middle (package) segment via
 		// pathStems; TS and dotnet stems don't structure tests by
 		// namespace.

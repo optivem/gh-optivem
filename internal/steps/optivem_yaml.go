@@ -187,7 +187,7 @@ func BuildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	// the pre-SSoT runtime rule in `projectconfig.Config.SutNamespace`.
 	// Baked into `System.Path` (monolith) and the `paths:` testkit-key
 	// values so the resulting gh-optivem.yaml carries fully-resolved
-	// paths and the `system.sut_namespace` field is no longer persisted.
+	// paths and the `system.sut-namespace` field is no longer persisted.
 	sutNamespace := lastSlashSegment(systemRepoSlug(cfg))
 	pc.System = buildSystem(cfg, derived, sutNamespace)
 	pc.SystemTest = buildSystemTest(cfg, derived)

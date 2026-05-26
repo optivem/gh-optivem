@@ -423,8 +423,8 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	}
 	claudeFake := &fakeClaude{}
 	// implement-system's prompt now inlines phase-doc
-	// placeholders (${sut_namespace}, ${driver-adapter}, ${driver-port},
-	// ${system_test_path}); a cfg with populated Paths is required so
+	// placeholders (${sut-namespace}, ${driver-adapter}, ${driver-port},
+	// ${system-test-path}); a cfg with populated Paths is required so
 	// the dispatcher's PlaceholderMap fills them.
 	cfg := &projectconfig.Config{
 		System: projectconfig.System{

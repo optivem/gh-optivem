@@ -36,7 +36,7 @@ var NonWritingAgents = map[string]bool{
 
 // FamilyAPathKeysInScope lists Family A path-shaped keys that are valid
 // as phase-scope layers. `system-path` is the only one today;
-// `system_test_path` is deliberately excluded because it is the parent
+// `system-test-path` is deliberately excluded because it is the parent
 // of every Family B testkit key and admitting it would let any phase
 // escape the layer partition.
 var FamilyAPathKeysInScope = map[string]bool{

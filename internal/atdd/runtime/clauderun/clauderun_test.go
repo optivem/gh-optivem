@@ -1220,7 +1220,7 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	opts.Checklist = "- [x] One done\n- [ ] Two pending"
 	opts.PromptLogPath = "/tmp/runs/001-implement-system.prompt.md"
 	// implement-system's inlined phase-doc body now references
-	// ${sut_namespace}, ${driver-adapter}, ${driver-port}, ${system_test_path};
+	// ${sut-namespace}, ${driver-adapter}, ${driver-port}, ${system-test-path};
 	// the production dispatcher fills these from cfg.PlaceholderMap(). With
 	// no ProjectConfig in this test, supply them directly so renderPrompt
 	// has values to substitute.

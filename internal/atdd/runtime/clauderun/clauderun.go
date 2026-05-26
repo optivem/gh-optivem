@@ -74,7 +74,7 @@ type Options struct {
 
 	// AllowedRoots is a pre-rendered multi-line block listing the paths
 	// the agent is allowed to write into. The driver computes it from
-	// projectconfig.Config (system + system_test + optional external_systems)
+	// projectconfig.Config (system + system-test + optional external-systems)
 	// and passes it as a single ${allowed_roots} placeholder so the prompt
 	// template stays a flat substitution.
 	AllowedRoots string
@@ -152,7 +152,7 @@ type Options struct {
 	// Placeholders carries the project-wide ${name} substitutions the
 	// dispatcher pulls from ProjectConfig.PlaceholderMap() — Family B
 	// path keys (driver-port, driver-adapter, at-test, …) plus the
-	// derived Family A keys (sut_namespace, system-path, system_test_path,
+	// derived Family A keys (sut-namespace, system-path, system-test-path,
 	// architecture, language). Inlined phase-doc placeholders that used
 	// to be resolved at materialization time now live in the prompt body
 	// itself; this map is how the dispatcher gets them filled at render

@@ -102,12 +102,7 @@ Order matters: schema → code → tests → fixtures → external configs → d
 If the schema changes flip first and the tests don't follow in the same
 commit, everything goes red.
 
-4. **Flip `process-flow.yaml` keys + statemachine-runtime yaml struct tags** (per Q2 expanded scope). Audit gate fixtures for loopback edges before running tests (memory: `feedback_statemachine_test_loop_hazard`).
-5. **Bulk-rename embedded YAML in statemachine tests + gate fixtures.** Run statemachine tests with memory ceiling watch.
-6. **Update CLAUDE.md + `path-keys.md` + scaffolder examples + any phase-doc / ATDD docs naming the old keys.**
-7. **Delete memory rule `feedback_kebab_snake_scope_in_process_flow.md`** and its `MEMORY.md` index entry (per Q2 resolution). This is the **only** memory-store edit in this plan.
-8. **Survey external workspace configs.** Apply the same snake→kebab rename to every `gh-optivem*.yaml` in `C:\GitHub\optivem\academy\*\` (starting with the 12 shop configs just realigned).
-9. **Re-run rehearsal** (`bash scripts/atdd-rehearsal.sh <issue> --config <one-of-the-shop-configs>`) to confirm end-to-end.
+9. **Re-run rehearsal** (`bash scripts/atdd-rehearsal.sh <issue> --config <one-of-the-shop-configs>`) — ⏳ **Deferred** (user 2026-05-26): defer rehearsal to a manual run after items 6-8 land.
 
 Each step is one commit. **No commits without per-step approval** (memory rule
 `feedback_no_commit_without_approval`).

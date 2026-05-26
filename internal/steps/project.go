@@ -245,7 +245,7 @@ func ensureProjectBoardSupplied(cfg *config.Config) {
 
 // reposToLink returns the repos that should be linked to a Path A project
 // board. Mirrors the WriteOptivemYAML repo-slug logic so the linked repos
-// match the system_test/externals scope written into gh-optivem.yaml.
+// match the system-test/externals scope written into gh-optivem.yaml.
 func reposToLink(cfg *config.Config) []string {
 	if cfg.RepoStrategy != "multirepo" {
 		return []string{cfg.FullRepo}

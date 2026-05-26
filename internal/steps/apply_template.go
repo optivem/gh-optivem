@@ -67,7 +67,7 @@ func appendCloudReplacement(r [][2]string, deploy string) [][2]string {
 // copyExternals copies the external-system directories (simulators/, stubs/)
 // from shop to repo, preserving shop's external-systems/ parent. Source and
 // destination both live at <root>/external-systems/<dir>; gh-optivem.yaml's
-// external_systems.{stubs,simulators}.path values match this layout.
+// external-systems.{stubs,simulators}.path values match this layout.
 func copyExternals(shop, repoDir string) {
 	for _, dir := range externalDirs {
 		src := filepath.Join(shop, "external-systems", dir)

@@ -111,7 +111,7 @@ func TestCompile_RejectsUnsupportedLang(t *testing.T) {
 }
 
 // TestCheckTierLayout_RejectsMissingSentinel guards the misconfiguration
-// caught for the user: yaml's system_test.path pointed at `system-test/`
+// caught for the user: yaml's system-test.path pointed at `system-test/`
 // instead of `system-test/java/`, and the resulting `fork/exec gradlew.bat`
 // error was opaque. The sentinel pre-flight surfaces a readable message
 // before exec; this test pins both the pass case (sentinel present) and
