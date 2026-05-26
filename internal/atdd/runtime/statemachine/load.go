@@ -3,7 +3,6 @@ package statemachine
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -141,9 +140,6 @@ func buildProcess(id string, rp rawProcess) (*Process, error) {
 		if err := validateNodeName(id, rn, kind); err != nil {
 			return nil, err
 		}
-		if err := validateGatewayName(id, rn, kind); err != nil {
-			return nil, err
-		}
 		if err := validateTDDStage(id, rn); err != nil {
 			return nil, err
 		}
@@ -191,34 +187,17 @@ func parseKind(s string) (NodeKind, error) {
 // validateNodeName enforces the plan-20260526-1730 Item-4 rule: every
 // non-gateway node must carry an explicit `name:` string. The renderer
 // uses that string as the visible BPMN label; no auto-Title-Case
-// fallback to the screaming-snake ID, no schema-level inference. Silent
-// gateways are exempt because the renderer intentionally emits a bare
-// `{ }` diamond when a gateway has no name (Item 13) — see
-// validateGatewayName.
+// fallback to the screaming-snake ID, no schema-level inference.
+// Gateways are exempt: an empty `name:` is allowed and the renderer
+// emits a bare `{ }` diamond (Item 13). When a gateway does carry a
+// `name:`, the string is treated as a human-readable display label —
+// the machine key for dispatch lives in `binding:`.
 func validateNodeName(processID string, rn RawNode, kind NodeKind) error {
 	if kind == Gateway {
 		return nil
 	}
 	if rn.Name == "" {
 		return fmt.Errorf("process %q node %q: %s requires `name:` (used as the visible BPMN label — no fallback to the node ID)", processID, rn.ID, rn.Type)
-	}
-	return nil
-}
-
-// validateGatewayName enforces the Item-16 schema rule: a gateway is a
-// pure routing construct that switches on a value some other node
-// already produced. Its label, if any, names the binding being read —
-// never a question. Question-form names imply elicitation, which is the
-// job of an upstream user_task. Any gateway name ending with `?`
-// hard-errors at parse time so the YAML can't silently relapse to the
-// pre-Item-16 mix of predicate and question labels. An empty name is
-// allowed (silent gateway — renders as a bare `{ }`).
-func validateGatewayName(processID string, rn RawNode, kind NodeKind) error {
-	if kind != Gateway {
-		return nil
-	}
-	if strings.HasSuffix(strings.TrimSpace(rn.Name), "?") {
-		return fmt.Errorf("process %q node %q: gateway name %q is question-form; rewrite to the predicate (binding name) or move the question into an upstream user_task", processID, rn.ID, rn.Name)
 	}
 	return nil
 }
