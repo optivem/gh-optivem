@@ -86,12 +86,14 @@ processes:
     nodes:
       - id: START
         type: start-event
+        documentation: "Synthetic Test Event"
       - id: AT_RED_TEST
         type: user-task
         agent: write-acceptance-tests
         documentation: Write the AT-RED scenario
       - id: END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - { from: START, to: AT_RED_TEST }
       - { from: AT_RED_TEST, to: END }
@@ -108,12 +110,14 @@ processes:
     nodes:
       - id: START
         type: start-event
+        documentation: "Synthetic Test Event"
       - id: WRITE
         type: user-task
         agent: ${agent}
         documentation: ${change_type} - WRITE
       - id: END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - { from: START, to: WRITE }
       - { from: WRITE, to: END }
@@ -958,6 +962,7 @@ processes:
         documentation: "Do you approve?"
       - id: APPROVE_END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - {from: ASK_HUMAN, to: APPROVE_END}
 `

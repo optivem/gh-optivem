@@ -138,19 +138,25 @@ func writeHeader(b *strings.Builder) {
 // as a literal sample.
 func writeLegend(b *strings.Builder) {
 	b.WriteString("## Legend\n\n")
-	b.WriteString("Node **shape** encodes the BPMN type; **fill color** encodes the executor.\n\n")
+	b.WriteString("Node **shape** encodes the BPMN type; **fill color** encodes the executor; **border color** (orthogonal) encodes the TDD stage where the author marked one.\n\n")
 	b.WriteString("- `((circle))` — start / end event\n")
+	b.WriteString("- `((⚡ circle))` — error end event (BPMN exceptional exit; red border)\n")
 	b.WriteString("- `{diamond}` — gateway (decision)\n")
 	b.WriteString("- `[[subroutine]]` — service task — mechanical, automated step (white)\n")
 	b.WriteString("- `[rectangle]` — user task — LLM agent (dark blue) or human (yellow); `call_activity` rectangles are unfilled and link to a sub-process heading\n")
-	b.WriteString("- `[/skewed/]` — published outputs of a process (dashed border)\n\n")
+	b.WriteString("- `[/skewed/]` — published outputs of a process (dashed border)\n")
+	b.WriteString("- **TDD-stage border** — red = RED (failing test), green = GREEN (test passes), blue = REFACTOR (improve without changing behaviour). Only applied where the call site explicitly plays that role.\n\n")
 	b.WriteString("```mermaid\nflowchart LR\n")
 	b.WriteString("    EVT((Start / End))\n")
+	b.WriteString("    ERR((\"⚡ Error End\"))\n")
 	b.WriteString("    GW{Gateway}\n")
 	b.WriteString("    SVC[[\"Service Task (Automated)\"]]\n")
 	b.WriteString("    AGT[\"User Task (LLM Agent)\"]\n")
 	b.WriteString("    HUM[\"User Task (Human)\"]\n")
 	b.WriteString("    CALL[Call activity — sub-process]\n")
+	b.WriteString("    TDDR[RED step]\n")
+	b.WriteString("    TDDG[GREEN step]\n")
+	b.WriteString("    TDDF[REFACTOR step]\n")
 	b.WriteString("    OUT[/Outputs/]\n")
 	b.WriteString("\n    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000\n")
 	b.WriteString("    class SVC serviceNode\n")
@@ -158,6 +164,14 @@ func writeLegend(b *strings.Builder) {
 	b.WriteString("    class AGT agentNode\n")
 	b.WriteString("\n    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000\n")
 	b.WriteString("    class HUM humanNode\n")
+	b.WriteString("\n    classDef errorEndNode fill:#fbe9e7,stroke:#dc3545,stroke-width:2px,color:#000000\n")
+	b.WriteString("    class ERR errorEndNode\n")
+	b.WriteString("\n    classDef tddRedNode stroke:#dc3545,stroke-width:3px\n")
+	b.WriteString("    class TDDR tddRedNode\n")
+	b.WriteString("\n    classDef tddGreenNode stroke:#28a745,stroke-width:3px\n")
+	b.WriteString("    class TDDG tddGreenNode\n")
+	b.WriteString("\n    classDef tddRefactorNode stroke:#007bff,stroke-width:3px\n")
+	b.WriteString("    class TDDF tddRefactorNode\n")
 	b.WriteString("\n    classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000\n")
 	b.WriteString("    class OUT outputNode\n")
 	b.WriteString("```\n\n")
@@ -343,13 +357,15 @@ func writeGroupSubgraph(b *strings.Builder, process *statemachine.Process, g *gr
 }
 
 // writeNode emits one Mermaid node line. Shape depends on the YAML
-// node type; label comes from the `documentation:` field (with `name`
-// then `id` as fallbacks). call-activity nodes get a "see § …"
-// suffix pointing the reader at the sub-process's heading.
+// node type; label comes from the `documentation:` field (with the
+// node ID as a fallback for shapes the schema does not strict-require
+// it on). call-activity nodes get a "see § …" suffix pointing the
+// reader at the sub-process's heading.
 //
 // Shape mapping (BPMN-shaped vocabulary):
 //
 //	start-event / end-event → circle              `((label))`
+//	error-end-event         → circle              `((⚡ label))` (red border via classDef)
 //	gateway                 → diamond             `{label}`
 //	service-task            → subroutine          `[[label]]`
 //	user-task               → plain rectangle     `[label]`
@@ -358,16 +374,18 @@ func writeGroupSubgraph(b *strings.Builder, process *statemachine.Process, g *gr
 // Shape conveys the BPMN node type; executor coloring (applied later
 // in writeExecutorStyling) conveys *who* runs each task: white =
 // service-task (Go runtime), dark blue = LLM agent, yellow = human.
+// TDD-stage border colours (red / green / blue) overlay the executor
+// fill so the two signals coexist without conflict.
 func writeNode(b *strings.Builder, n statemachine.Node) {
 	label := n.Raw.Documentation
 	if label == "" {
 		label = n.ID
 	}
 	switch n.Kind {
-	case statemachine.StartEvent:
-		fmt.Fprintf(b, "    %s((%s))\n", n.ID, mermaidLabel("Start"))
-	case statemachine.EndEvent:
-		fmt.Fprintf(b, "    %s((%s))\n", n.ID, mermaidLabel("End"))
+	case statemachine.StartEvent, statemachine.EndEvent:
+		fmt.Fprintf(b, "    %s((%s))\n", n.ID, mermaidLabel(label))
+	case statemachine.ErrorEndEvent:
+		fmt.Fprintf(b, "    %s((%s))\n", n.ID, mermaidLabel("⚡ "+label))
 	case statemachine.Gateway:
 		fmt.Fprintf(b, "    %s{%s}\n", n.ID, mermaidLabel(label))
 	case statemachine.ServiceTask:
@@ -395,19 +413,26 @@ func writeEdge(b *strings.Builder, e statemachine.Edge) {
 	fmt.Fprintf(b, "    %s -- %s --> %s\n", e.From, edgeLabel(e.Predicate), e.To)
 }
 
-// writeExecutorStyling colors nodes by who executes them, so a reader
-// can see at a glance which steps the Go runtime runs, which an LLM
-// agent runs, and which a human runs. Three classes:
+// writeExecutorStyling colors nodes by who executes them and overlays
+// TDD-stage borders where authors marked the call site's role in the
+// red-green-refactor triad. Reader signals:
 //
-//	serviceNode  white fill, black text   — service-task (Automated)
-//	agentNode    dark blue, white text    — user-task with agent: <name>
-//	humanNode    yellow, black text       — user-task with agent: human
+//	serviceNode      white fill, black text   — service-task (Automated)
+//	agentNode        dark blue, white text    — user-task with agent: <name>
+//	humanNode        yellow, black text       — user-task with agent: human
+//	errorEndNode     light red fill, red border — error-end-event (BPMN exceptional exit)
+//	tddRedNode       red border (stroke only)   — RED step (write failing test)
+//	tddGreenNode     green border (stroke only) — GREEN step (test passes)
+//	tddRefactorNode  blue border (stroke only)  — REFACTOR step (improve without changing behaviour)
 //
 // Empty classes are omitted. start-event / end-event / gateway /
-// call-activity are unstyled — they're shape-distinguished and not
-// "executed by" anyone in the same sense.
+// call-activity are unstyled by executor — they're shape-distinguished
+// and not "executed by" anyone in the same sense. TDD-stage classes
+// only set the stroke so they coexist with executor fill on the same
+// node (border + fill convey orthogonal signals).
 func writeExecutorStyling(b *strings.Builder, process *statemachine.Process) {
-	var service, agent, human []string
+	var service, agent, human, errorEnd []string
+	var tddRed, tddGreen, tddRefactor []string
 	ids := make([]string, 0, len(process.Nodes))
 	for id := range process.Nodes {
 		ids = append(ids, id)
@@ -424,6 +449,16 @@ func writeExecutorStyling(b *strings.Builder, process *statemachine.Process) {
 			} else if n.Raw.Agent != "" {
 				agent = append(agent, id)
 			}
+		case statemachine.ErrorEndEvent:
+			errorEnd = append(errorEnd, id)
+		}
+		switch n.Raw.TDDStage {
+		case "red":
+			tddRed = append(tddRed, id)
+		case "green":
+			tddGreen = append(tddGreen, id)
+		case "refactor":
+			tddRefactor = append(tddRefactor, id)
 		}
 	}
 	if len(service) > 0 {
@@ -437,6 +472,22 @@ func writeExecutorStyling(b *strings.Builder, process *statemachine.Process) {
 	if len(human) > 0 {
 		b.WriteString("\n    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000\n")
 		fmt.Fprintf(b, "    class %s humanNode\n", strings.Join(human, ","))
+	}
+	if len(errorEnd) > 0 {
+		b.WriteString("\n    classDef errorEndNode fill:#fbe9e7,stroke:#dc3545,stroke-width:2px,color:#000000\n")
+		fmt.Fprintf(b, "    class %s errorEndNode\n", strings.Join(errorEnd, ","))
+	}
+	if len(tddRed) > 0 {
+		b.WriteString("\n    classDef tddRedNode stroke:#dc3545,stroke-width:3px\n")
+		fmt.Fprintf(b, "    class %s tddRedNode\n", strings.Join(tddRed, ","))
+	}
+	if len(tddGreen) > 0 {
+		b.WriteString("\n    classDef tddGreenNode stroke:#28a745,stroke-width:3px\n")
+		fmt.Fprintf(b, "    class %s tddGreenNode\n", strings.Join(tddGreen, ","))
+	}
+	if len(tddRefactor) > 0 {
+		b.WriteString("\n    classDef tddRefactorNode stroke:#007bff,stroke-width:3px\n")
+		fmt.Fprintf(b, "    class %s tddRefactorNode\n", strings.Join(tddRefactor, ","))
 	}
 }
 

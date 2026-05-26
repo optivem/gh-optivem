@@ -126,15 +126,15 @@ func TestStructuralIntegrity_GatewaysHaveOutgoingEdges(t *testing.T) {
 }
 
 func TestStructuralIntegrity_NonEndNodesHaveSuccessor(t *testing.T) {
-	// A node may legitimately have no outgoing edges in two cases:
-	//   - it is an end-event, or
+	// A node may legitimately have no outgoing edges in three cases:
+	//   - it is an end-event or error-end-event (BPMN terminal events), or
 	//   - it is a `agent: human` STOP node intended to halt the run
 	//     awaiting user intervention.
 	// Anything else is a missing-edge bug.
 	eng := loadSnapshot(t)
 	for name, process := range eng.Processes {
 		for id, node := range process.Nodes {
-			if node.Kind == EndEvent {
+			if node.Kind == EndEvent || node.Kind == ErrorEndEvent {
 				continue
 			}
 			if len(process.OutgoingByNode[id]) > 0 {

@@ -118,6 +118,7 @@ processes:
         documentation: "Do work"
       - id: SAMPLE_END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - {from: WORK, to: SAMPLE_END}
 `)
@@ -151,6 +152,7 @@ processes:
         documentation: "Do work"
       - id: SAMPLE_END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - {from: WORK, to: SAMPLE_END}
 `)

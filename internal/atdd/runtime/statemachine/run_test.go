@@ -27,6 +27,7 @@ processes:
           change-type: "SYSTEM INTERFACE REDESIGN"
       - id: OUTER_END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - {from: CALL_MIDDLE, to: OUTER_END}
 
@@ -40,6 +41,7 @@ processes:
           change-type: ${change-type}
       - id: MIDDLE_END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - {from: CALL_INNER, to: MIDDLE_END}
 
@@ -51,6 +53,7 @@ processes:
         action: read-change-type
       - id: INNER_END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - {from: READ, to: INNER_END}
 `
@@ -103,6 +106,7 @@ processes:
           change-type: "AT - GREEN - SYSTEM"
       - id: OUTER_END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - {from: CALL_INNER, to: OUTER_END}
 
@@ -114,6 +118,7 @@ processes:
         action: read-change-type
       - id: INNER_END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - {from: READ, to: INNER_END}
 `
@@ -165,6 +170,7 @@ processes:
           chosen: do-thing-b
       - id: OUTER_END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - {from: CALL_CYCLE, to: OUTER_END}
 
@@ -176,6 +182,7 @@ processes:
         action: ${chosen}
       - id: CYCLE_END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - {from: ACT, to: CYCLE_END}
 `
@@ -231,6 +238,7 @@ processes:
           agent-action: inner-b
       - id: OUTER_END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - {from: CALL_MIDDLE, to: OUTER_END}
 
@@ -242,6 +250,7 @@ processes:
         process: ${agent-action}
       - id: MIDDLE_END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - {from: CALL_CHOSEN, to: MIDDLE_END}
 
@@ -253,6 +262,7 @@ processes:
         action: mark-a
       - id: A_END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - {from: ACT_A, to: A_END}
 
@@ -264,6 +274,7 @@ processes:
         action: mark-b
       - id: B_END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - {from: ACT_B, to: B_END}
 `
@@ -381,6 +392,7 @@ processes:
           task-name: "fix-${failure-kind}"
       - id: OUTER_END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - {from: WRITE_STATE, to: CALL_FIX}
       - {from: CALL_FIX,    to: OUTER_END}
@@ -393,6 +405,7 @@ processes:
         action: read-task-name
       - id: FIX_END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - {from: READ, to: FIX_END}
 `
@@ -448,6 +461,7 @@ processes:
           agent-action: nonexistent
       - id: OUTER_END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - {from: CALL_MIDDLE, to: OUTER_END}
 
@@ -459,6 +473,7 @@ processes:
         process: ${agent-action}
       - id: MIDDLE_END
         type: end-event
+        documentation: "Synthetic Test Event"
     sequence-flows:
       - {from: CALL_CHOSEN, to: MIDDLE_END}
 `
