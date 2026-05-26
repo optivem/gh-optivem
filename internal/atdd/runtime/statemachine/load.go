@@ -24,20 +24,20 @@ import (
 // and any other value is rejected by the build-time guard. Replaces the
 // pre-fold `scope: none` frontmatter mechanism (plan 20260526-1448 Item 9).
 type RawNode struct {
-	ID            string            `yaml:"id"`
-	Type          string            `yaml:"type"`
-	Action        string            `yaml:"action,omitempty"`
-	Agent         string            `yaml:"agent,omitempty"`
-	Binding       string            `yaml:"binding,omitempty"`
-	Process       string            `yaml:"process,omitempty"`
-	Documentation string            `yaml:"documentation,omitempty"`
-	Role          string            `yaml:"role,omitempty"`
-	Group         string            `yaml:"group,omitempty"`
-	TDDStage      string            `yaml:"tdd-stage,omitempty"`
-	Params        map[string]string `yaml:"params,omitempty"`
-	Scope         string            `yaml:"scope,omitempty"`
-	Read          []string          `yaml:"read,omitempty"`
-	Write         []string          `yaml:"write,omitempty"`
+	ID       string            `yaml:"id"`
+	Type     string            `yaml:"type"`
+	Action   string            `yaml:"action,omitempty"`
+	Agent    string            `yaml:"agent,omitempty"`
+	Binding  string            `yaml:"binding,omitempty"`
+	Process  string            `yaml:"process,omitempty"`
+	Name     string            `yaml:"name,omitempty"`
+	Role     string            `yaml:"role,omitempty"`
+	Group    string            `yaml:"group,omitempty"`
+	TDDStage string            `yaml:"tdd-stage,omitempty"`
+	Params   map[string]string `yaml:"params,omitempty"`
+	Scope    string            `yaml:"scope,omitempty"`
+	Read     []string          `yaml:"read,omitempty"`
+	Write    []string          `yaml:"write,omitempty"`
 }
 
 // rawEdge mirrors the YAML sequence-flow schema. `When` carries the raw
@@ -50,6 +50,7 @@ type rawEdge struct {
 
 // rawProcess mirrors one named process.
 type rawProcess struct {
+	Name          string    `yaml:"name"`
 	Start         string    `yaml:"start"`
 	Outputs       []string  `yaml:"outputs,omitempty"`
 	Nodes         []RawNode `yaml:"nodes"`
@@ -101,12 +102,16 @@ func LoadBytes(data []byte) (*Engine, error) {
 
 // buildProcess turns one rawProcess into a Process with a node map, edge list,
 // and outgoing-edges-by-source-node index. NodeFn is left nil — Bind* fills it.
-func buildProcess(name string, rp rawProcess) (*Process, error) {
+func buildProcess(id string, rp rawProcess) (*Process, error) {
+	if rp.Name == "" {
+		return nil, fmt.Errorf("process %q: missing `name:` (used as the diagram section heading)", id)
+	}
 	if rp.Start == "" {
-		return nil, fmt.Errorf("process %q: missing `start:`", name)
+		return nil, fmt.Errorf("process %q: missing `start:`", id)
 	}
 	process := &Process{
-		Name:           name,
+		ID:             id,
+		Name:           rp.Name,
 		Start:          rp.Start,
 		Outputs:        append([]string(nil), rp.Outputs...),
 		Nodes:          make(map[string]Node, len(rp.Nodes)),
@@ -115,38 +120,35 @@ func buildProcess(name string, rp rawProcess) (*Process, error) {
 	}
 	for _, rn := range rp.Nodes {
 		if rn.ID == "" {
-			return nil, fmt.Errorf("process %q: node missing `id:`", name)
+			return nil, fmt.Errorf("process %q: node missing `id:`", id)
 		}
 		if _, dup := process.Nodes[rn.ID]; dup {
-			return nil, fmt.Errorf("process %q: duplicate node id %q", name, rn.ID)
+			return nil, fmt.Errorf("process %q: duplicate node id %q", id, rn.ID)
 		}
 		kind, err := parseKind(rn.Type)
 		if err != nil {
-			return nil, fmt.Errorf("process %q node %q: %w", name, rn.ID, err)
+			return nil, fmt.Errorf("process %q node %q: %w", id, rn.ID, err)
 		}
-		if err := validateEventDocumentation(name, rn, kind); err != nil {
+		if err := validateNodeName(id, rn, kind); err != nil {
 			return nil, err
 		}
-		if err := validateCallActivityDocumentation(name, rn, kind); err != nil {
+		if err := validateGatewayName(id, rn, kind); err != nil {
 			return nil, err
 		}
-		if err := validateGatewayDocumentation(name, rn, kind); err != nil {
-			return nil, err
-		}
-		if err := validateTDDStage(name, rn); err != nil {
+		if err := validateTDDStage(id, rn); err != nil {
 			return nil, err
 		}
 		process.Nodes[rn.ID] = Node{ID: rn.ID, Kind: kind, Raw: rn}
 	}
 	if _, ok := process.Nodes[rp.Start]; !ok {
-		return nil, fmt.Errorf("process %q: start node %q not in nodes list", name, rp.Start)
+		return nil, fmt.Errorf("process %q: start node %q not in nodes list", id, rp.Start)
 	}
 	for _, re := range rp.SequenceFlows {
 		if _, ok := process.Nodes[re.From]; !ok {
-			return nil, fmt.Errorf("process %q: edge from unknown node %q", name, re.From)
+			return nil, fmt.Errorf("process %q: edge from unknown node %q", id, re.From)
 		}
 		if _, ok := process.Nodes[re.To]; !ok {
-			return nil, fmt.Errorf("process %q: edge to unknown node %q", name, re.To)
+			return nil, fmt.Errorf("process %q: edge to unknown node %q", id, re.To)
 		}
 		edge := Edge{From: re.From, To: re.To, Predicate: re.When}
 		process.Edges = append(process.Edges, edge)
@@ -177,51 +179,37 @@ func parseKind(s string) (NodeKind, error) {
 	}
 }
 
-// validateEventDocumentation enforces the Item-22 / Item-17 schema rule:
-// every start-event, end-event, and error-end-event must carry a
-// `documentation:` string. The renderer uses that string as the visible
-// label on the BPMN circle, so an unlabelled event would render as an
-// anonymous "Start" / "End" with no trigger / outcome context.
-func validateEventDocumentation(processName string, rn RawNode, kind NodeKind) error {
-	switch kind {
-	case StartEvent, EndEvent, ErrorEndEvent:
-		if rn.Documentation == "" {
-			return fmt.Errorf("process %q node %q: %s requires `documentation:` (used as the BPMN event label)", processName, rn.ID, rn.Type)
-		}
-	}
-	return nil
-}
-
-// validateCallActivityDocumentation enforces the Item-2 schema rule:
-// every call-activity must carry a `documentation:` string. The
-// renderer uses that string as the visible label on the BPMN rectangle
-// (with a "see § <target>" suffix linking to the sub-process heading
-// unless the label already matches that heading). Falling back to the
-// screaming-snake node ID would leak a YAML implementation detail into
-// the operator-facing diagram.
-func validateCallActivityDocumentation(processName string, rn RawNode, kind NodeKind) error {
-	if kind != CallActivity {
+// validateNodeName enforces the plan-20260526-1730 Item-4 rule: every
+// non-gateway node must carry an explicit `name:` string. The renderer
+// uses that string as the visible BPMN label; no auto-Title-Case
+// fallback to the screaming-snake ID, no schema-level inference. Silent
+// gateways are exempt because the renderer intentionally emits a bare
+// `{ }` diamond when a gateway has no name (Item 13) — see
+// validateGatewayName.
+func validateNodeName(processID string, rn RawNode, kind NodeKind) error {
+	if kind == Gateway {
 		return nil
 	}
-	if rn.Documentation == "" {
-		return fmt.Errorf("process %q node %q: call-activity requires `documentation:` (BPMN-pure verb-phrase, Title Case — see plan 20260526-0832 Item 2)", processName, rn.ID)
+	if rn.Name == "" {
+		return fmt.Errorf("process %q node %q: %s requires `name:` (used as the visible BPMN label — no fallback to the node ID)", processID, rn.ID, rn.Type)
 	}
 	return nil
 }
 
-// validateGatewayDocumentation enforces the Item-16 schema rule: a gateway
-// is a pure routing construct that switches on a value some other node
-// already produced. Its label, if any, names the binding being read — never
-// a question. Question-form documentation implies elicitation, which is the
-// job of an upstream user_task. Any gateway documentation ending with `?`
+// validateGatewayName enforces the Item-16 schema rule: a gateway is a
+// pure routing construct that switches on a value some other node
+// already produced. Its label, if any, names the binding being read —
+// never a question. Question-form names imply elicitation, which is the
+// job of an upstream user_task. Any gateway name ending with `?`
 // hard-errors at parse time so the YAML can't silently relapse to the
-// pre-Item-16 mix of predicate and question labels.
-func validateGatewayDocumentation(processName string, rn RawNode, kind NodeKind) error {
+// pre-Item-16 mix of predicate and question labels. An empty name is
+// allowed (silent gateway — renders as a bare `{ }`).
+func validateGatewayName(processID string, rn RawNode, kind NodeKind) error {
 	if kind != Gateway {
 		return nil
 	}
-	if strings.HasSuffix(strings.TrimSpace(rn.Documentation), "?") {
-		return fmt.Errorf("process %q node %q: gateway documentation %q is question-form; rewrite to the predicate (binding name) or move the question into an upstream user_task", processName, rn.ID, rn.Documentation)
+	if strings.HasSuffix(strings.TrimSpace(rn.Name), "?") {
+		return fmt.Errorf("process %q node %q: gateway name %q is question-form; rewrite to the predicate (binding name) or move the question into an upstream user_task", processID, rn.ID, rn.Name)
 	}
 	return nil
 }

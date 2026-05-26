@@ -66,7 +66,15 @@ type Edge struct {
 
 // Process is one named process definition (main, at_cycle, ct_subprocess, …),
 // loaded from the YAML and bound to NodeFns.
+//
+// ID is the kebab-case identifier (the YAML map key under `processes:`),
+// used for cross-process references like call-activity `process:` targets
+// and as the link text on the diagram `see § <id>` suffix. Name is the
+// human-readable display label from the YAML `name:` field, used as the
+// diagram section heading. Authors set both explicitly; there is no
+// auto-Title-Case fallback (per plan 20260526-1730 Item 4).
 type Process struct {
+	ID             string
 	Name           string
 	Start          string
 	Outputs        []string // optional BPMN-style data outputs published by the process

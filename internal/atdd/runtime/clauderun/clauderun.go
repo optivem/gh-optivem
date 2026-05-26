@@ -50,7 +50,7 @@ type Options struct {
 	// Agent is the subagent name to launch (e.g. "write-acceptance-tests").
 	Agent string
 
-	// NodeDescription is the YAML node's `documentation:` — surfaced in the
+	// NodeDescription is the YAML node's `name:` — surfaced in the
 	// prompt so the agent has the same context the operator would have read.
 	NodeDescription string
 

@@ -25,7 +25,7 @@ func (e *Engine) Bind() error {
 		for id, node := range process.Nodes {
 			fn, err := e.resolve(node)
 			if err != nil {
-				errs = append(errs, fmt.Sprintf("process %q node %q: %v", process.Name, id, err))
+				errs = append(errs, fmt.Sprintf("process %q node %q: %v", process.ID, id, err))
 				continue
 			}
 			node.Fn = fn
@@ -167,7 +167,7 @@ func (e *Engine) wrapCallActivity(raw RawNode) NodeFn {
 		ctx.Params = merged
 		defer func() { ctx.Params = prev }()
 
-		if err := e.RunProcess(sub.Name, ctx); err != nil {
+		if err := e.runProcess(sub, ctx); err != nil {
 			return Outcome{Err: err}
 		}
 		return Outcome{}
@@ -186,7 +186,8 @@ func (e *Engine) wrapCallActivity(raw RawNode) NodeFn {
 // definitively an authoring bug rather than a deep-but-valid trail.
 const maxDispatchesPerProcess = 10000
 
-// RunProcess walks one process from its start node to an end node. It uses
+// RunProcess walks one process from its start node to an end node, identified
+// by its kebab-case ID (the YAML map key under `processes:`). It uses
 // nextEdge to pick the outgoing edge whose predicate matches the current
 // state, and stops on the first node with no outgoing edges (treating that
 // as terminal — covers both end-event and any node placed as a process tail).
@@ -199,38 +200,47 @@ const maxDispatchesPerProcess = 10000
 //
 // RunProcess fails fast on suspected dispatch loops via maxDispatchesPerProcess
 // — see that constant for the rationale.
+//
+// External callers (driver, tests) enter through this name-keyed façade.
+// Internal callers (`wrapCallActivity`) already hold the resolved *Process
+// and use the runProcess helper to skip the redundant map lookup that
+// previously invited name/ID confusion at the call site.
 func (e *Engine) RunProcess(name string, ctx *Context) error {
 	process, ok := e.Processes[name]
 	if !ok {
 		return fmt.Errorf("unknown process %q", name)
 	}
+	return e.runProcess(process, ctx)
+}
+
+func (e *Engine) runProcess(process *Process, ctx *Context) error {
 	cur := process.Start
 	dispatches := 0
 	for cur != "" {
 		if dispatches >= maxDispatchesPerProcess {
-			return fmt.Errorf("process %q: exceeded %d dispatches (suspected loopback with unchanging gate state; last node %q)", name, maxDispatchesPerProcess, cur)
+			return fmt.Errorf("process %q: exceeded %d dispatches (suspected loopback with unchanging gate state; last node %q)", process.ID, maxDispatchesPerProcess, cur)
 		}
 		dispatches++
 		node, ok := process.Nodes[cur]
 		if !ok {
-			return fmt.Errorf("process %q: dangling reference to node %q", name, cur)
+			return fmt.Errorf("process %q: dangling reference to node %q", process.ID, cur)
 		}
 		if node.Fn == nil {
-			return fmt.Errorf("process %q node %q: NodeFn not bound (call Bind first)", name, cur)
+			return fmt.Errorf("process %q node %q: NodeFn not bound (call Bind first)", process.ID, cur)
 		}
 		out := node.Fn(ctx)
 		if out.Err != nil {
-			return fmt.Errorf("process %q node %q: %w", name, cur, out.Err)
+			return fmt.Errorf("process %q node %q: %w", process.ID, cur, out.Err)
 		}
 		if node.Kind == EndEvent {
 			return nil
 		}
 		if node.Kind == ErrorEndEvent {
-			return fmt.Errorf("process %q reached error end event %q: %s", name, cur, node.Raw.Documentation)
+			return fmt.Errorf("process %q reached error end event %q: %s", process.ID, cur, node.Raw.Name)
 		}
 		next, err := e.nextEdge(process, cur, ctx)
 		if err != nil {
-			return fmt.Errorf("process %q after node %q: %w", name, cur, err)
+			return fmt.Errorf("process %q after node %q: %w", process.ID, cur, err)
 		}
 		if next == "" {
 			return nil // terminal node with no outgoing edges

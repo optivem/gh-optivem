@@ -82,18 +82,19 @@ func (f *fakeGit) Run(_ context.Context, _ string, args ...string) ([]byte, erro
 const minimalYAML = `
 processes:
   main:
+    name: "Main"
     start: START
     nodes:
       - id: START
         type: start-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
       - id: AT_RED_TEST
         type: user-task
         agent: write-acceptance-tests
-        documentation: Write the AT-RED scenario
+        name: Write the AT-RED scenario
       - id: END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - { from: START, to: AT_RED_TEST }
       - { from: AT_RED_TEST, to: END }
@@ -106,36 +107,38 @@ processes:
   # (write-acceptance-tests via the as-shipped minimalYAML, and
   # implement-system via the agent-replacement in TestEndToEnd_*).
   write-acceptance-tests:
+    name: "Write Acceptance Tests"
     start: EXECUTE_AGENT
     nodes:
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
-        documentation: "Dispatch the Agent"
+        name: "Dispatch the Agent"
         params:
           task-name: write-acceptance-tests
         read:  [at-test, dsl-port]
         write: [at-test, dsl-port, dsl-core]
       - id: END
         type: end-event
-        documentation: "Synthetic Test End"
+        name: "Synthetic Test End"
     sequence-flows:
       - { from: EXECUTE_AGENT, to: END }
 
   implement-system:
+    name: "Implement System"
     start: EXECUTE_AGENT
     nodes:
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
-        documentation: "Dispatch the Agent"
+        name: "Dispatch the Agent"
         params:
           task-name: implement-system
         read:  [system-path]
         write: [system-path]
       - id: END
         type: end-event
-        documentation: "Synthetic Test End"
+        name: "Synthetic Test End"
     sequence-flows:
       - { from: EXECUTE_AGENT, to: END }
 `
@@ -147,18 +150,19 @@ processes:
 const templatedYAML = `
 processes:
   main:
+    name: "Main"
     start: START
     nodes:
       - id: START
         type: start-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
       - id: WRITE
         type: user-task
         agent: ${agent}
-        documentation: ${change_type} - WRITE
+        name: ${change_type} - WRITE
       - id: END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - { from: START, to: WRITE }
       - { from: WRITE, to: END }
@@ -168,19 +172,20 @@ processes:
   # production writing-agent MID convention. Used by tests that set
   # ctx.Params["agent"] = "implement-system" on the main user-task.
   implement-system:
+    name: "Implement System"
     start: EXECUTE_AGENT
     nodes:
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
-        documentation: "Dispatch the Agent"
+        name: "Dispatch the Agent"
         params:
           task-name: implement-system
         read:  [system-path]
         write: [system-path]
       - id: END
         type: end-event
-        documentation: "Synthetic Test End"
+        name: "Synthetic Test End"
     sequence-flows:
       - { from: EXECUTE_AGENT, to: END }
 `
@@ -1050,15 +1055,16 @@ func TestClaudeRunDispatch_MalformedOutputsBlockFailsLoud(t *testing.T) {
 const approveYAML = `
 processes:
   approve:
+    name: "Approve"
     start: ASK_HUMAN
     nodes:
       - id: ASK_HUMAN
         type: user-task
         agent: human
-        documentation: "Do you approve?"
+        name: "Do you approve?"
       - id: APPROVE_END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - {from: ASK_HUMAN, to: APPROVE_END}
 `
@@ -1105,7 +1111,7 @@ func TestApproveDispatcher_QuestionExpandsParams(t *testing.T) {
 	opts.Stdin = strings.NewReader("y\n")
 	var stdout bytes.Buffer
 	opts.Stdout = &stdout
-	yaml := strings.Replace(approveYAML, `"Do you approve?"`, `"Do you approve agent ${task-name} to run?"`, 1)
+	yaml := strings.Replace(approveYAML, `"Do you approve?"`, `"Do you approve agent ${task-name} to execute?"`, 1)
 	fn := buildEngineFromApproveYAML(t, opts, yaml)
 
 	ctx := statemachine.NewContext()

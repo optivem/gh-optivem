@@ -14,19 +14,14 @@ func TestRender_AllProcessesAppearAsHeadings(t *testing.T) {
 	}
 	got := Render(eng)
 
-	// Every process ID in the loaded engine must appear as either an aliased
-	// heading or the Title-Case-from-kebab default. Catches "added a process
-	// but forgot to update processAlias / processOrder" — the renderer falls
-	// back to the auto-Title-Case heading, so the section still appears, but
-	// this also asserts we produce headings.
-	for name := range eng.Processes {
-		heading := processAlias[name]
-		if heading == "" {
-			heading = titleCaseFromKebab(name)
-		}
-		want := "## " + heading + "\n"
+	// Every process's explicit `name:` must appear as a heading. Catches
+	// "added a process but forgot to update processOrder" — the renderer
+	// emits headings in process-order then lexical, so the section still
+	// appears, but this asserts every name is present.
+	for id, process := range eng.Processes {
+		want := "## " + process.Name + "\n"
 		if !strings.Contains(got, want) {
-			t.Errorf("missing heading for process %q: want %q in output", name, want)
+			t.Errorf("missing heading for process %q: want %q in output", id, want)
 		}
 	}
 }
@@ -108,6 +103,7 @@ func TestRender_ProcessWithOutputsEmitsDataObjectAndProducesEdge(t *testing.T) {
 	yaml := []byte(`
 processes:
   sample_flow:
+    name: "Sample Flow"
     start: WORK
     outputs:
       - alpha
@@ -116,10 +112,10 @@ processes:
       - id: WORK
         type: service-task
         action: do_work
-        documentation: "Do work"
+        name: "Do work"
       - id: SAMPLE_END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - {from: WORK, to: SAMPLE_END}
 `)
@@ -145,15 +141,16 @@ func TestRender_ProcessWithoutOutputsHasNoDataObject(t *testing.T) {
 	yaml := []byte(`
 processes:
   sample_flow:
+    name: "Sample Flow"
     start: WORK
     nodes:
       - id: WORK
         type: service-task
         action: do_work
-        documentation: "Do work"
+        name: "Do work"
       - id: SAMPLE_END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - {from: WORK, to: SAMPLE_END}
 `)

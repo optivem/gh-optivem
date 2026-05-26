@@ -16,7 +16,21 @@
 > pending — deferred behind item 8's concurrent edits to the same file.
 > Rebuild scope captured in `plans/upcoming/20260526-1746-rebuild-onboard-external-system.md`.
 >
-> **Remaining:** Items 2, 4, 8 — all touch runtime code.
+> ✅ **Item 4 landed (2026-05-26).** Schema rename `documentation:` →
+> `name:` everywhere in `process-flow.yaml` (183 nodes) + new
+> process-level `name:` on all 52 processes. `RawNode.Documentation` →
+> `RawNode.Name`, `Process.Name` repurposed as display name with
+> `Process.ID` holding the kebab map key. `load.go` requires non-empty
+> `name:` on every non-gateway node and every process (gateways may be
+> silent — Item 13). Renderer simplified: `processAlias` map dropped,
+> auto-Title-Case dropped from process headings and call-activity
+> suffix; suffix rule collapses to trivial equality
+> (`node.Name != targetProcess.Name → emit "see § <id>"`). Item 3
+> (External-System hyphen mismatch) absorbed and dissolved by the
+> renderer simplification. Diagram regen handled by
+> `regenerate-diagram.yml` workflow on push.
+>
+> **Remaining:** Items 2, 8 — both touch runtime code.
 
 Captures feedback from the user's review of the BPMN process (`internal/atdd/runtime/statemachine/process-flow.yaml` and adjacent state-machine wiring / agent prompts).
 
@@ -69,85 +83,6 @@ Slight deviation from strict BPMN past-tense convention ("Ticket Marked Ready" /
 - After removal, do we want the CLI to accept just `<issue>` positionally (since there's no `--mode` to disambiguate), or keep the existing flag layout?
 
 **Depends on.** Independent of item 1, but if both land, item 1's rename rationale strengthens (single entry → cleaner pairing with `refine-ticket` end).
-
----
-
----
-
-### 3. Fix `— see §` suffix inconsistency across sibling call-activities
-
-**Observation.** In the Refactor and Implement-Ticket diagrams, sibling call-activity nodes render inconsistently: `REDESIGN_EXTERNAL_SYSTEM_STRUCTURE` shows `— see § redesign-external-system-structure` while its three siblings (`REDESIGN_SYSTEM_STRUCTURE`, `REFACTOR_SYSTEM_STRUCTURE`, `REFACTOR_TEST_STRUCTURE`) don't. Reads as a bug; it's actually a label-spelling mismatch.
-
-**Root cause.** `internal/atdd/runtime/diagram/diagram.go:414-427` drops the `— see §` suffix when the call-activity's `documentation:` matches the auto-Title-Case of the target process ID. Documentation labels use the hyphenated compound `External-System`, but auto-Title-Case of `external-system` produces `External System` (no hyphen). The mismatch keeps the suffix on every `External-System` label and drops it from every sibling without a hyphenated compound.
-
-Affected labels (currently inconsistent):
-- `REDESIGN_EXTERNAL_SYSTEM_STRUCTURE` documentation
-- `IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS` documentation
-- `IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS` documentation
-- Any other call-activity documentation containing `External-System` (audit at execute time)
-
-**Action — two options, pick one:**
-
-- **Option A (smaller change): drop the hyphen in documentation labels.** Change every `External-System` in `documentation:` strings to `External System`. Pros: minimal, aligns with auto-Title-Case, no renderer change. Cons: loses the compound-noun hyphenation that's arguably more correct.
-- **Option B (preserve compound spelling): teach the renderer to hyphenate `external-system` when Title-Casing.** Special-case the substring (or generalise: treat multi-word compounds the same way). Pros: keeps the `External-System` spelling. Cons: more renderer complexity, hard to generalise without a list of compound nouns.
-
-**Files touched (Option A).** `internal/atdd/runtime/statemachine/process-flow.yaml` (all `documentation:` strings containing `External-System`), `docs/process-diagram.md` (regenerated), `docs/images/*.svg` (regenerated).
-
-**Files touched (Option B).** `internal/atdd/runtime/diagram/diagram.go` (auto-Title-Case helper), plus a renderer test, plus regenerated `docs/process-diagram.md` + SVGs.
-
-**Open questions.**
-- Option A vs Option B — which to take? Default lean: Option A.
-- Are there other compound-noun labels (e.g. `In-Acceptance`, `Driver-Adapter`) hitting the same issue? Audit at execute time.
-
-**Depends on.** Independent.
-
----
-
----
-
-### 4. Make `name:` explicit everywhere — kill auto-Title-Case and aliases
-
-**Observation.** Two problems are really one:
-
-1. **Field name is BPMN-wrong.** Our YAML uses `documentation:` to carry the short visible diagram label, but in BPMN 2.0 vocabulary that field is **`name`**. BPMN's `<documentation>` element is reserved for longer prose (tooltip / hover text / generated reference docs). A BPMN-literate reader would expect `documentation:` to hold a sentence-or-paragraph description, not a one-or-two-word label.
-2. **Half-explicit / half-auto is inconsistent.** The renderer auto-Title-Cases the kebab-case process ID to derive (a) diagram section headings and (b) the heading-form used to decide whether to drop the `— see § …` suffix on call-activities. Empirical scan of `process-flow.yaml` (2026-05-26): only ~1/3 of current labels match the auto-Title-Case of their ID. The other ~2/3 deliberately differ — past-tense end-event outcomes, call-site role relabeling, sentence-case user-task labels, gateway labels naming the binding, ALL-CAPS state names, parenthetical clarifiers, interpolated prompts, templated targets. Auto-deriving everywhere would destroy that information; explicit-everywhere preserves it.
-
-| Our YAML | BPMN equivalent | Actual role today |
-|---|---|---|
-| `id:` | `id` ✓ | Element ID |
-| `documentation:` | **`name`** (misnamed) | Visible diagram label |
-| _(none)_ | `<documentation>` | Long-form prose (no slot today; out of scope here) |
-
-**Action — explicit `name:` everywhere; no auto-derivation, no aliases:**
-
-1. **Rename field.** `documentation:` → `name:` everywhere in `internal/atdd/runtime/statemachine/process-flow.yaml`. Mechanical find-and-replace; all values stay identical.
-2. **Struct + tag rename.** `internal/atdd/runtime/statemachine/types.go`: `Documentation` → `Name`, YAML tag `documentation` → `name`.
-3. **Add process-level `name:`.** Every process definition (~30) gets a `name:` field giving the human-readable heading text. Examples: `main:` → `name: "Main"`, `implement-ticket:` → `name: "Implement Ticket"`, `redesign-external-system-structure:` → `name: "Redesign External-System Structure"`. Author-controlled — no kebab-to-Title machinery.
-4. **Fill in the ~6 service-task gaps.** Nodes currently falling back to ID get an explicit `name:`:
-   - `MARK_IN_PROGRESS`, `MARK_IN_REFINEMENT`, `MARK_READY`, `MARK_IN_ACCEPTANCE` — pick canonical labels (likely `"Mark IN PROGRESS"`, `"Mark IN REFINEMENT"`, `"Mark READY"`, `"Mark IN ACCEPTANCE"` to mirror the ALL-CAPS state convention already used in end events).
-   - `PARSE_TICKET` — `"Parse Ticket"`.
-   - `CHECK_CHECKLIST_PROGRESS` — `"Check Checklist Progress"`.
-   - Audit at execute time for any other ID-fallback nodes missed by the grep.
-5. **Schema validation.** `internal/atdd/runtime/statemachine/load.go`: require `name:` on **every** node (not just call-activity/start-event/end-event/error-end-event) and on **every** process. No fallback to ID; missing `name:` is a load-time error.
-6. **Renderer simplification.** `internal/atdd/runtime/diagram/diagram.go`:
-   - Drop `autoTitleCase` entirely.
-   - Drop the `processAlias` map (it only exists to override the auto-derived form, which no longer exists).
-   - Section headings come from `process.Name` directly.
-   - The `— see § …` suffix rule collapses to trivial equality: `node.Name != targetProcess.Name → emit suffix`.
-7. **Suffix link text.** The `see § <link>` link text should be the **process ID** (kebab-case), not the new process `name:`, because GitHub Markdown heading anchors are derived from the heading text but the kebab-case ID is also a stable, unambiguous reference. Open question — confirm at execute time which renders correctly in GitHub.
-8. **Tests.** Update any test constructing nodes with `Documentation:` or asserting field-name; add tests for the new "missing `name:`" load-time error.
-9. **Regenerate** `docs/process-diagram.md` + SVGs. Expected diff: zero label changes (all current labels preserved), but the `— see § …` suffix should now drop for `Redesign External-System Structure` (item 3 dissolves into this item — the renderer no longer has an auto-derived heading to clash with).
-
-**Files touched.** `internal/atdd/runtime/statemachine/{process-flow.yaml,types.go,load.go}`, `internal/atdd/runtime/diagram/diagram.go` + its tests, `docs/process-diagram.md` + SVGs, any other `internal/atdd/runtime/**` consumer that reads the field (audit at execute time — likely `trace/`, `driver/`, possibly `clauderun/`).
-
-**Open questions.**
-- Back-compat alias for `documentation:`? Per `feedback_teaching_repo_no_legacy.md` — no, hard rename.
-- Suffix link text: process ID vs process name? (Step 7 above.)
-- Canonical labels for the 6 ID-fallback service-tasks — confirm at execute time.
-
-**Supersedes / absorbs.** Item 3 (External-System hyphen mismatch) — once the renderer compares two explicit `name:` strings instead of label-vs-auto-derived-heading, the hyphenated `External-System` label simply matches its process-level `name:` of the same spelling, suffix drops naturally. Item 3 can be deleted from the plan once this lands.
-
-**Depends on.** Independent of items 1 and 2. Items 1–2 should use the renamed `name:` field. Recommend executing item 4 **first** because everything else benefits from the renamed/cleaned schema.
 
 ---
 
@@ -244,15 +179,11 @@ Regenerate `docs/process-diagram.md` + affected SVGs.
 
 **Supersedes.** This item replaces the earlier proposal to *hoist* the checklist gate to `implement-ticket` (the original framing of item 8 during the discussion). Cut-and-stash is cleaner than centralize-and-keep given the "all or none" agent semantics.
 
-**Depends on.** Independent of items 1, 2, 3, 6, 7. Should execute on the schema produced by item 4 (use `name:` instead of `documentation:` when writing the spinoff document's example YAML — update the spinoff at execute time).
+**Depends on.** Independent of items 1, 2, 6, 7. Item 4 (the `name:` schema) has landed, so the spinoff plan's example YAML should already use `name:` — update the spinoff at execute time if any `documentation:` remained.
 
 ---
 
 ## Open questions
 
 - See item 2 above (Board-mode usage, CLI shape).
-- See item 4 above (suffix link text: name vs ID; canonical labels for ID-fallback service-tasks).
-- See item 5 above (none — spinoff plan owns the redesign questions).
-- See item 6 above (audit for other missing `tdd-stage` annotations).
-- See item 7 above (audit `cover-system-behavior` for similar missing annotations; `refactor-test-structure`'s `REFACTOR_AND_VERIFY_TESTS` already confirmed).
 - See item 8 above (none — spinoff plan owns the re-introduction questions).

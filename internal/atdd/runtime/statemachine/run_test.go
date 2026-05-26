@@ -18,44 +18,48 @@ func TestWrapCallActivity_ExpandsNestedParams(t *testing.T) {
 	const yaml = `
 processes:
   outer:
+    name: "Outer"
     start: CALL_MIDDLE
     nodes:
       - id: CALL_MIDDLE
         type: call-activity
         process: middle
-        documentation: "Synthetic Test Call"
+        name: "Synthetic Test Call"
         params:
           change-type: "SYSTEM INTERFACE REDESIGN"
       - id: OUTER_END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - {from: CALL_MIDDLE, to: OUTER_END}
 
   middle:
+    name: "Middle"
     start: CALL_INNER
     nodes:
       - id: CALL_INNER
         type: call-activity
         process: inner
-        documentation: "Synthetic Test Call"
+        name: "Synthetic Test Call"
         params:
           change-type: ${change-type}
       - id: MIDDLE_END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - {from: CALL_INNER, to: MIDDLE_END}
 
   inner:
+    name: "Inner"
     start: READ
     nodes:
       - id: READ
         type: service-task
         action: read-change-type
+        name: "Read"
       - id: INNER_END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - {from: READ, to: INNER_END}
 `
@@ -99,29 +103,32 @@ func TestWrapCallActivity_PassesThroughLiteralValues(t *testing.T) {
 	const yaml = `
 processes:
   outer:
+    name: "Outer"
     start: CALL_INNER
     nodes:
       - id: CALL_INNER
         type: call-activity
         process: inner
-        documentation: "Synthetic Test Call"
+        name: "Synthetic Test Call"
         params:
           change-type: "AT - GREEN - SYSTEM"
       - id: OUTER_END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - {from: CALL_INNER, to: OUTER_END}
 
   inner:
+    name: "Inner"
     start: READ
     nodes:
       - id: READ
         type: service-task
         action: read-change-type
+        name: "Read"
       - id: INNER_END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - {from: READ, to: INNER_END}
 `
@@ -164,29 +171,32 @@ func TestServiceTask_ResolvesActionTemplate(t *testing.T) {
 	const yaml = `
 processes:
   outer:
+    name: "Outer"
     start: CALL_CYCLE
     nodes:
       - id: CALL_CYCLE
         type: call-activity
         process: cycle
-        documentation: "Synthetic Test Call"
+        name: "Synthetic Test Call"
         params:
           chosen: do-thing-b
       - id: OUTER_END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - {from: CALL_CYCLE, to: OUTER_END}
 
   cycle:
+    name: "Cycle"
     start: ACT
     nodes:
       - id: ACT
         type: service-task
         action: ${chosen}
+        name: "Act"
       - id: CYCLE_END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - {from: ACT, to: CYCLE_END}
 `
@@ -233,54 +243,60 @@ func TestCallActivity_ResolvesProcessTemplate(t *testing.T) {
 	const yaml = `
 processes:
   outer:
+    name: "Outer"
     start: CALL_MIDDLE
     nodes:
       - id: CALL_MIDDLE
         type: call-activity
         process: middle
-        documentation: "Synthetic Test Call"
+        name: "Synthetic Test Call"
         params:
           action: inner-b
       - id: OUTER_END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - {from: CALL_MIDDLE, to: OUTER_END}
 
   middle:
+    name: "Middle"
     start: CALL_CHOSEN
     nodes:
       - id: CALL_CHOSEN
         type: call-activity
         process: ${action}
-        documentation: "Synthetic Test Call"
+        name: "Synthetic Test Call"
       - id: MIDDLE_END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - {from: CALL_CHOSEN, to: MIDDLE_END}
 
   inner-a:
+    name: "Inner A"
     start: ACT_A
     nodes:
       - id: ACT_A
         type: service-task
         action: mark-a
+        name: "Act A"
       - id: A_END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - {from: ACT_A, to: A_END}
 
   inner-b:
+    name: "Inner B"
     start: ACT_B
     nodes:
       - id: ACT_B
         type: service-task
         action: mark-b
+        name: "Act B"
       - id: B_END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - {from: ACT_B, to: B_END}
 `
@@ -386,33 +402,37 @@ func TestWrapCallActivity_StateValueFlowsIntoChildTemplate(t *testing.T) {
 	const yaml = `
 processes:
   outer:
+    name: "Outer"
     start: WRITE_STATE
     nodes:
       - id: WRITE_STATE
         type: service-task
         action: write-failure-kind
+        name: "Write State"
       - id: FIX
         type: call-activity
         process: fix
-        documentation: "Synthetic Test Call"
+        name: "Synthetic Test Call"
         params:
           task-name: "fix-${failure-kind}"
       - id: OUTER_END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - {from: WRITE_STATE, to: FIX}
       - {from: FIX,         to: OUTER_END}
 
   fix:
+    name: "Fix"
     start: READ
     nodes:
       - id: READ
         type: service-task
         action: read-task-name
+        name: "Read"
       - id: FIX_END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - {from: READ, to: FIX_END}
 `
@@ -459,30 +479,32 @@ func TestCallActivity_ProcessTemplate_UnknownTarget(t *testing.T) {
 	const yaml = `
 processes:
   outer:
+    name: "Outer"
     start: CALL_MIDDLE
     nodes:
       - id: CALL_MIDDLE
         type: call-activity
         process: middle
-        documentation: "Synthetic Test Call"
+        name: "Synthetic Test Call"
         params:
           action: nonexistent
       - id: OUTER_END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - {from: CALL_MIDDLE, to: OUTER_END}
 
   middle:
+    name: "Middle"
     start: CALL_CHOSEN
     nodes:
       - id: CALL_CHOSEN
         type: call-activity
         process: ${action}
-        documentation: "Synthetic Test Call"
+        name: "Synthetic Test Call"
       - id: MIDDLE_END
         type: end-event
-        documentation: "Synthetic Test Event"
+        name: "Synthetic Test Event"
     sequence-flows:
       - {from: CALL_CHOSEN, to: MIDDLE_END}
 `

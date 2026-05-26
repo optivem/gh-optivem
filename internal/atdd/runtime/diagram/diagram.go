@@ -8,13 +8,19 @@
 // the diagram with zero tooling.
 //
 // Render is intentionally mechanical — one block per YAML process,
-// labels straight from the `documentation:` field (with `name` then `id`
-// as fallbacks), edges labelled with
-// the `when:` predicate after light boolean → Yes/No translation. It
-// does not aggregate predicates or rename nodes for prose. The aim is a
+// labels straight from the `name:` field, edges labelled with the
+// `when:` predicate after light boolean → Yes/No translation. It does
+// not aggregate predicates or rename nodes for prose. The aim is a
 // deterministic, reviewable artifact, not a hand-polished presentation
 // — for the latter, the per-phase prose docs in consumer repos are still
 // the right place to go.
+//
+// Names are author-explicit everywhere (per plan 20260526-1730 Item 4):
+// process-level `name:` is the section heading; node-level `name:` is
+// the box label; the call-activity `— see § <id>` suffix appears iff
+// the node label differs from the target process's name. There is no
+// auto-Title-Case fallback — `titleCaseFromKebab` survives only to
+// translate raw `when:` predicate RHS values for edge labels.
 package diagram
 
 import (
@@ -24,14 +30,6 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 )
-
-// processAlias maps internal process IDs to human-readable section heading
-// names that override the default Title-Case-from-kebab transformation.
-// Flows not in the map render via titleCaseFromKebab(name). Entries are
-// only needed when the auto-Title-Case result is wrong (e.g. an
-// abbreviation not yet in titleCaseAbbreviations or a name that doesn't
-// title-case cleanly).
-var processAlias = map[string]string{}
 
 // groupAlias maps a node's `group:` annotation (a slash-delimited
 // path like "structural/interface") to a human-readable subgraph
@@ -116,9 +114,9 @@ var processOrder = []string{
 func Render(eng *statemachine.Engine) string {
 	var b strings.Builder
 	writeHeader(&b)
-	for _, name := range orderedProcessNames(eng) {
-		process := eng.Processes[name]
-		writeProcessSection(&b, name, process)
+	for _, id := range orderedProcessNames(eng) {
+		process := eng.Processes[id]
+		writeProcessSection(&b, eng, process)
 	}
 	return b.String()
 }
@@ -198,12 +196,8 @@ func orderedProcessNames(eng *statemachine.Engine) []string {
 	return append(out, extras...)
 }
 
-func writeProcessSection(b *strings.Builder, name string, process *statemachine.Process) {
-	heading := processAlias[name]
-	if heading == "" {
-		heading = titleCaseFromKebab(name)
-	}
-	fmt.Fprintf(b, "## %s\n\n", heading)
+func writeProcessSection(b *strings.Builder, eng *statemachine.Engine, process *statemachine.Process) {
+	fmt.Fprintf(b, "## %s\n\n", process.Name)
 	b.WriteString("```mermaid\nflowchart TD\n")
 
 	// Stable node order: walk process.Nodes in YAML insertion order.
@@ -235,10 +229,10 @@ func writeProcessSection(b *strings.Builder, name string, process *statemachine.
 		root.insert(strings.Split(g, "/"), id)
 	}
 	for _, id := range ungrouped {
-		writeNode(b, process.Nodes[id])
+		writeNode(b, eng, process.Nodes[id])
 	}
 	for _, child := range root.sortedChildren() {
-		writeGroupSubgraph(b, process, child)
+		writeGroupSubgraph(b, eng, process, child)
 	}
 	b.WriteString("\n")
 
@@ -248,7 +242,7 @@ func writeProcessSection(b *strings.Builder, name string, process *statemachine.
 		writeEdge(b, e)
 	}
 
-	writeOutputsBlock(b, name, process)
+	writeOutputsBlock(b, process)
 	writeExecutorStyling(b, process)
 	b.WriteString("```\n\n")
 }
@@ -257,11 +251,11 @@ func writeProcessSection(b *strings.Builder, name string, process *statemachine.
 // process's published outputs and a dashed `produces` edge from every
 // reachable end-event to that node. No-op when the process has no
 // outputs declared.
-func writeOutputsBlock(b *strings.Builder, name string, process *statemachine.Process) {
+func writeOutputsBlock(b *strings.Builder, process *statemachine.Process) {
 	if len(process.Outputs) == 0 {
 		return
 	}
-	outputsNodeID := strings.ToUpper(name) + "_OUTPUTS"
+	outputsNodeID := strings.ToUpper(process.ID) + "_OUTPUTS"
 	label := strings.Join(process.Outputs, ", ")
 	fmt.Fprintf(b, "    %s[/%s/]\n", outputsNodeID, mermaidLabel(label))
 
@@ -336,7 +330,7 @@ func (g *groupTree) sortedChildren() []*groupTree {
 // the full path with "/" replaced by "_" (Mermaid disallows "/" in
 // identifiers). Title resolution: full path → last segment → raw
 // segment.
-func writeGroupSubgraph(b *strings.Builder, process *statemachine.Process, g *groupTree) {
+func writeGroupSubgraph(b *strings.Builder, eng *statemachine.Engine, process *statemachine.Process, g *groupTree) {
 	title := groupAlias[g.fullPath]
 	if title == "" {
 		title = groupAlias[g.name]
@@ -347,23 +341,21 @@ func writeGroupSubgraph(b *strings.Builder, process *statemachine.Process, g *gr
 	sid := strings.ReplaceAll(g.fullPath, "/", "_")
 	fmt.Fprintf(b, "    subgraph %s[%s]\n", sid, mermaidLabel(title))
 	for _, id := range g.nodes {
-		writeNode(b, process.Nodes[id])
+		writeNode(b, eng, process.Nodes[id])
 	}
 	for _, child := range g.sortedChildren() {
-		writeGroupSubgraph(b, process, child)
+		writeGroupSubgraph(b, eng, process, child)
 	}
 	b.WriteString("    end\n")
 }
 
 // writeNode emits one Mermaid node line. Shape depends on the YAML
-// node type; label comes from the `documentation:` field. service-task
-// and user-task fall back to the node ID when documentation is absent;
-// call-activity, start-event, end-event, and error-end-event all
-// require documentation: at the schema level (see load.go). call-
-// activity nodes append a "see § …" suffix pointing the reader at the
-// sub-process's heading, unless the label already matches the target
-// process's auto-Title-Case heading — in which case the suffix would
-// be redundant and is dropped.
+// node type; the visible label comes from the node's explicit `name:`
+// field — required on every non-gateway node by the schema (see
+// load.go); there is no fallback to the node ID. call-activity nodes
+// append a "see § <id>" suffix pointing the reader at the sub-process's
+// heading, unless the node label already equals the target process's
+// `name:` — in which case the suffix would be redundant and is dropped.
 //
 // Shape mapping (BPMN-shaped vocabulary):
 //
@@ -372,7 +364,7 @@ func writeGroupSubgraph(b *strings.Builder, process *statemachine.Process, g *gr
 //	gateway                 → diamond             `{label}` (or `{ }` when silent — Item 13)
 //	service-task            → subroutine          `[[label]]`
 //	user-task               → plain rectangle     `[label]`
-//	call-activity           → plain rectangle     `[label]`  (with "see § …" suffix unless redundant)
+//	call-activity           → plain rectangle     `[label]`  (with "see § <id>" suffix unless redundant)
 //
 // Shape conveys the BPMN node type; executor coloring (applied later
 // in writeExecutorStyling) conveys *who* runs each task: white =
@@ -380,17 +372,14 @@ func writeGroupSubgraph(b *strings.Builder, process *statemachine.Process, g *gr
 // TDD-stage border colours (red / green / blue) overlay the executor
 // fill so the two signals coexist without conflict.
 //
-// Silent gateways (Item 13): a gateway whose `documentation:` is empty
-// is rendered as a bare diamond `GW{ }`, never with the node ID as a
+// Silent gateways (Item 13): a gateway whose `name:` is empty is
+// rendered as a bare diamond `GW{ }`, never with the node ID as a
 // fallback label. The pattern arises when an upstream user_task owns
 // the elicitation (`CHOOSE_REFACTOR_TYPE → GATE_REFACTOR_TYPE_CHOICE`)
 // so the gateway itself has nothing to say; Hungarian-style `{GATE_…}`
 // in the diagram would just be noise.
-func writeNode(b *strings.Builder, n statemachine.Node) {
-	label := n.Raw.Documentation
-	if label == "" && n.Kind != statemachine.Gateway && n.Kind != statemachine.CallActivity {
-		label = n.ID
-	}
+func writeNode(b *strings.Builder, eng *statemachine.Engine, n statemachine.Node) {
+	label := n.Raw.Name
 	switch n.Kind {
 	case statemachine.StartEvent, statemachine.EndEvent:
 		fmt.Fprintf(b, "    %s((%s))\n", n.ID, mermaidLabel(label))
@@ -406,23 +395,19 @@ func writeNode(b *strings.Builder, n statemachine.Node) {
 		fmt.Fprintf(b, "    %s[[%s]]\n", n.ID, mermaidLabel(label))
 	case statemachine.CallActivity:
 		target := n.Raw.Process
-		linkLabel := processAlias[target]
-		if linkLabel == "" {
-			linkLabel = target
+		var targetName string
+		if targetProcess, ok := eng.Processes[target]; ok {
+			targetName = targetProcess.Name
 		}
-		// Drop the redundant "see § …" suffix when the documentation
-		// already matches the auto-Title-Case form of the target
-		// process heading. Aliased targets compare against the alias
-		// directly.
-		headingForm := processAlias[target]
-		if headingForm == "" {
-			headingForm = titleCaseFromKebab(target)
-		}
+		// Drop the redundant "see § <id>" suffix when the node label
+		// already equals the target process's name (per plan
+		// 20260526-1730 Item 4 — trivial equality, no auto-Title-Case
+		// derivation, no alias map).
 		var full string
-		if label == headingForm {
+		if label == targetName {
 			full = label
 		} else {
-			full = fmt.Sprintf("%s — see § %s", label, linkLabel)
+			full = fmt.Sprintf("%s — see § %s", label, target)
 		}
 		fmt.Fprintf(b, "    %s[%s]\n", n.ID, mermaidLabel(full))
 	default:

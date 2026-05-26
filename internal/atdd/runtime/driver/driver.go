@@ -664,7 +664,7 @@ func wrapAgentDispatchers(eng *statemachine.Engine, opts Options, cfg *projectco
 			switch {
 			case raw.Agent == "":
 				continue
-			case process.Name == "approve" && raw.Agent == "human":
+			case process.ID == "approve" && raw.Agent == "human":
 				// LOW `approve` primitive (BPMN Phase D Item 6, Q-D2):
 				// the GATE_APPROVED gateway routes on the value the
 				// dispatcher writes to ctx.State["approval-outcome"], so
@@ -698,7 +698,7 @@ func wrapAgentDispatchers(eng *statemachine.Engine, opts Options, cfg *projectco
 // that bypass the driver wrapping.
 func newHumanStopDispatcher(opts Options, raw statemachine.RawNode, nodeID string) statemachine.NodeFn {
 	return func(ctx *statemachine.Context) statemachine.Outcome {
-		description := statemachine.ExpandParams(raw.Documentation, ctx.Params, ctx.State)
+		description := statemachine.ExpandParams(raw.Name, ctx.Params, ctx.State)
 
 		fmt.Fprintln(opts.Stdout)
 		if description != "" {
@@ -733,7 +733,7 @@ func newHumanStopDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 // NO branch).
 func newApproveDispatcher(opts Options, raw statemachine.RawNode, nodeID string) statemachine.NodeFn {
 	return func(ctx *statemachine.Context) statemachine.Outcome {
-		question := statemachine.ExpandParams(raw.Documentation, ctx.Params, ctx.State)
+		question := statemachine.ExpandParams(raw.Name, ctx.Params, ctx.State)
 
 		fmt.Fprintln(opts.Stdout)
 		if question != "" {
@@ -853,7 +853,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		}
 		cOpts := clauderun.Options{
 			Agent:              agentName,
-			NodeDescription:    statemachine.ExpandParams(raw.Documentation, ctx.Params, ctx.State),
+			NodeDescription:    statemachine.ExpandParams(raw.Name, ctx.Params, ctx.State),
 			IssueNum:           issueNum,
 			IssueTitle:         ctx.GetString("issue_title"),
 			Architecture:       ctx.GetString("architecture"),
@@ -969,7 +969,7 @@ func fixChangedFiles(ctx *statemachine.Context, agent, repoPath string) string {
 // substituted name in the banner instead of the literal placeholder.
 func promptForAgent(opts Options, raw statemachine.RawNode, params map[string]string, state map[string]any) error {
 	agent := statemachine.ExpandParams(raw.Agent, params, state)
-	documentation := statemachine.ExpandParams(raw.Documentation, params, state)
+	documentation := statemachine.ExpandParams(raw.Name, params, state)
 	step := raw.ID
 
 	fmt.Fprintln(opts.Stdout)

@@ -214,12 +214,13 @@ func TestEmbeddedDriver_RunBypassesConsumerScaffolding(t *testing.T) {
 	yaml := `
 processes:
   main:
+    name: "Main"
     start: STOP
     nodes:
       - id: STOP
         type: user-task
         agent: human
-        documentation: smoke
+        name: smoke
     sequence-flows: []
 `
 	yamlPath := filepath.Join(tempDir, "smoke-flow.yaml")
