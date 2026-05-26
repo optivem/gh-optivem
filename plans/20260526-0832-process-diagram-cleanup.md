@@ -5,9 +5,14 @@
 Conversation with user (2026-05-26 08:32) walking through observed issues in
 `docs/process-diagram.md` (generated from
 `internal/atdd/runtime/statemachine/process-flow.yaml` by
-`internal/atdd/runtime/diagram/diagram.go`). Six distinct issues were surfaced.
-This plan groups them and proposes a direction for each — every item has open
-questions for /refine-plan to settle before execution.
+`internal/atdd/runtime/diagram/diagram.go`). Eleven distinct issues were
+surfaced (six initial + five added during the refine walk: Item 10
+`refine-backlog-item` rename, Item 11 ticket-kind gateway split, plus three
+items already in the original draft).
+This plan groups them and proposes a direction for each. The 2026-05-26
+/refine-plan walk settled directions for Items 2, 3, 7, 8, 9, 10, 11
+(in-scope) and deferred Items 1, 5, 6 (out-of-scope this pass). Item 4
+merged into Item 2.
 
 ## Scope
 
@@ -22,6 +27,8 @@ Out of scope: the underlying ATDD semantics encoded in the YAML (no process
 behaviour changes, just naming + structure where it's strictly duplicate).
 
 ## Item 1 — `refactor` process: `CALL_REDESIGN_SYSTEM_STRUCTURE` renders above the gateway
+
+> ⏳ **Deferred** (2026-05-26): not worth the renderer churn right now — diagram is still readable once you know which sibling is which. Revisit if more cyclic processes show the same off-rank pattern.
 
 **Observation**: In the rendered SVG (`docs/images/process-diagram-5-refactor.svg`),
 the three CALL siblings sit at three different y-coordinates: REDESIGN at y=47
@@ -59,10 +66,10 @@ at line 213; the comment at line 204-208).
   the latter — the current renderer partitions ungrouped vs grouped after
   collecting; we keep that.)
 
-## Item 2 — `call_activity` label inconsistency (three styles in the YAML)
+## Item 2 — `call_activity` label inconsistency: require `documentation:` everywhere
 
 **Observation**: Of ~90 `call_activity` nodes in `process-flow.yaml`, three
-labelling styles coexist:
+labelling styles coexist today:
 
 | Style | Count | Example |
 |---|---|---|
@@ -74,25 +81,71 @@ The renderer (`diagram.go:369-393`) is uniform: `label = documentation` if
 set, else `label = ID`. The inconsistency is in the YAML — six nodes opted
 into `documentation:`, the rest leak their screaming-snake ID.
 
-**Direction (recommended) — minimal renderer change**: drop the ID-fallback
-prefix entirely. When no `documentation:` is set, render
-`[see § sub-process]`. When `documentation:` is set, render
-`[doc — see § sub-process]`. No mass YAML edit — the 6 existing docs stay
-where they are (Item 4 below normalises their wording).
+**Direction (decided 2026-05-26): require `documentation:` on every
+call_activity node**. Mass-edit the YAML to add a human-readable
+`documentation:` line to all ~85 call_activity nodes that currently lack
+one. Drop the ID fallback in the renderer entirely. The point: an operator
+reading the diagram should not see screaming-snake YAML node IDs anywhere.
 
-**Files**: `internal/atdd/runtime/diagram/diagram.go:383-390` (the
-`CallActivity` case in `writeNode`).
+**Renderer change** (`diagram.go:383-390`, the `CallActivity` case in
+`writeNode`):
+
+- If `documentation:` is set and is different from the sub-process name →
+  render `[doc — see § sub-process]`.
+- If `documentation:` is set and is equal to the sub-process name → render
+  `[doc]` (drop the redundant "see §" suffix).
+- If `documentation:` is missing → the YAML is incomplete; emit a
+  schema-validation error at parse time (catches new call_activity nodes
+  that forget the doc field).
+
+**Labelling convention to apply across the ~85 nodes** — TBD in Q2.1 below,
+but candidates:
+
+- **Verb-phrase action**: what the call site is *doing*. E.g.,
+  `MARK_IN_REFINEMENT` → `"mark ticket IN REFINEMENT"`,
+  `IMPLEMENT_TEST_LAYER` (called 3× for AT/CT/DSL) →
+  `"implement acceptance-test layer"` / `"implement contract-test layer"` /
+  `"implement DSL layer"`, `OPP_REFACTOR_SYSTEM_STRUCTURE` →
+  `"opportunistic refactor: system structure"`.
+- **Stage + role**: pairs nicely with the existing RED/GREEN/Cover labels.
+  E.g., `OPP_*` → `"REFACTOR — system structure"`. Tighter but only fits
+  where there's an established stage vocabulary.
+- **Bare sub-process name**: e.g. `"refactor-system-structure"`. Mechanical,
+  cheap, but adds no info beyond the `process:` field — defeats the point
+  of requiring docs.
+
+**Files**:
+
+- `internal/atdd/runtime/statemachine/process-flow.yaml` — add
+  `documentation:` to ~85 nodes; normalise the 6 existing (overlaps with
+  Item 4's surface-level normalisation, which folds into Item 2 now).
+- `internal/atdd/runtime/diagram/diagram.go:383-390` — drop the ID-fallback
+  branch in the `CallActivity` case; add the "label == sub-process name →
+  collapse the `see §`" rule.
+- `internal/atdd/runtime/statemachine/load.go` (or wherever the schema
+  validation lives) — require `documentation:` on `call_activity` nodes;
+  emit a parse-time error otherwise.
+- Tests under `internal/atdd/runtime/statemachine/*_test.go` that build
+  call_activity nodes in fixtures.
 
 **Open questions for /refine-plan**:
 
-- Q2.1 — Is the "drop ID, keep just `[see § sub-process]`" rendering OK
-  visually? Alternative: render the bare sub-process name, e.g. just
-  `[refactor-system-structure]` (no "see §" prefix), since the heading link
-  is the redundancy.
-- Q2.2 — Do we want to require `documentation:` on every call_activity
-  instead (mass YAML edit, no fallback at all)? Recommendation: no — that's
-  ~85 lines of editorial busywork for marginal label gain over what
-  Item 2's renderer change already buys.
+- Q2.1 — **Labelling convention**: verb-phrase, stage+role, or bare
+  sub-process name (or a mix — verb-phrase by default, stage+role where a
+  stage applies)? Settle this *before* the YAML mass edit so the wording is
+  uniform.
+- Q2.2 — **Schema validation**: hard-error at parse time on missing
+  `documentation:`, or warn-and-fallback (e.g. render as just
+  `[sub-process-name]`)? Hard-error is the only way to keep the invariant
+  alive once Phase D and other plans land new nodes.
+- Q2.3 — **Folding Item 4**: Item 4 (RED/GREEN/agent-action normalisation)
+  becomes a subset of Item 2. Confirm Item 4 collapses into Item 2 (one
+  YAML pass instead of two).
+- Q2.4 — **Naming inside parameterised sub-processes**: the call site
+  `CALL_AGENT_ACTION` inside `implement-and-verify-system` currently has
+  doc `"agent-action: ${agent-action}"` — a template literal that
+  resolves at call time. Keep the template form, or change to something
+  like `"run the configured agent action"`?
 
 ## Item 3 — Duplicate refactor menu in `change-system-behavior` step 3
 
@@ -142,58 +195,29 @@ reference the removed node IDs).
   updating in lockstep? (Likely `internal/atdd/runtime/statemachine/*_test.go`
   — check during execution.)
 
-## Item 4 — RED vs GREEN label asymmetry (verb-phrase vs param-dump)
+## Item 4 — RED vs GREEN label asymmetry — *merged into Item 2 on 2026-05-26*
 
-**Observation**:
+The six pre-existing `documentation:` strings (RED, GREEN, Cover, two
+`agent-action:` variants, one template) get normalised in the same YAML
+pass as the other ~85 nodes, under whatever convention Q2.1 settles on.
+No standalone work item.
 
-- `WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL` doc: `"RED — write failing acceptance tests"` (verb-phrase, no agent).
-- `IMPLEMENT_AND_VERIFY_SYSTEM` (GREEN call site) doc: `"GREEN — agent-action: implement-system"` (param-dump).
+Open questions transferred to Item 2:
 
-**Cause** — structural asymmetry between the two sub-processes:
-
-| Sub-process | Pattern | Call site needs `params:`? |
-|---|---|---|
-| `write-and-verify-acceptance-tests-fail` | Wrapper that hard-codes `expected-test-result: failure` | No |
-| `implement-and-verify-system` | Template-parameterised on `${agent-action}` | Yes — that's the only thing distinguishing GREEN from REFACTOR call sites |
-
-So RED has nothing to expose at the call site (sub-process is fixed-purpose),
-while GREEN must expose `agent-action` to disambiguate from the REFACTOR
-call site of the same sub-process.
-
-**Direction (recommended) — surface fix, accept the structural difference**:
-normalise the six `documentation:` strings to verb-phrase form. The renderer
-already prints `— see § sub-process`, so the wiring is visible without
-duplicating the sub-process name in the doc. Param details stay in the YAML
-`params:` block but don't appear in the label.
-
-Proposed labels (before → after):
-
-| Where | Current | Proposed |
-|---|---|---|
-| change-system-behavior RED | `RED — write failing acceptance tests` | unchanged |
-| change-system-behavior GREEN | `GREEN — agent-action: implement-system` | `GREEN — implement system` |
-| cover-system-behavior Cover | `Cover — write passing acceptance tests` | unchanged |
-| (elsewhere, implement-system) | `agent-action: implement-system` | `implement system` |
-| (elsewhere, refactor-system) | `agent-action: refactor-system` | `refactor system` |
-| inside `implement-and-verify-system` | `agent-action: ${agent-action}` | unchanged (template, not a call-site label) |
-
-**Files**: `internal/atdd/runtime/statemachine/process-flow.yaml` (six
-`documentation:` lines).
-
-**Open questions for /refine-plan**:
-
-- Q4.1 — Verb-phrase ("implement system") vs noun-phrase ("system
-  implementation") vs verb-particle ("implement-system" matching the
-  agent name): pick one and apply uniformly across the six docs.
-- Q4.2 — Alternative direction (structural fix, Option 2 from the
-  conversation): introduce thin wrappers around `implement-and-verify-system`
-  per agent (e.g. `implement-and-verify-system-fresh`,
-  `implement-and-verify-system-refactor`), mirroring how
-  `write-and-verify-acceptance-tests-fail` wraps `write-and-verify-acceptance-tests`.
-  Eliminates the asymmetry at the cost of two new sub-process definitions.
-  Recommended only if more `agent-action` variants are anticipated.
+- Q4.1 (verb-phrase vs noun-phrase vs verb-particle) → folded into Q2.1
+  (labelling convention).
+- Q4.2 (structural fix via wrapper sub-processes around
+  `implement-and-verify-system`) — **dropped**. We accept the
+  wrapper/template asymmetry between the two sub-process patterns;
+  surface-level label normalisation is enough.
 
 ## Item 5 — Top-level processes and sub-processes use the same heading depth
+
+> ⏳ **Deferred** (2026-05-26): blocked on Item 6's file-shape decision. If
+> Item 6 splits per BPMN level, the level prefix is partly redundant (the
+> filename carries it) but still useful for cross-file anchor links; if
+> Item 6 keeps one file (via SVG pre-render or otherwise), the prefix is
+> the primary distinguisher. Settle Item 6 first, revisit.
 
 **Observation**: Every process renders as `## <name>`. A reader can't tell
 which are TOP entry points (`refine-ticket`, `implement-ticket`, `refactor`)
@@ -237,56 +261,104 @@ and `writeProcessSection`).
   too (`## MID-agent — write-acceptance-tests` / `## MID-command — compile`),
   or stop at one level of "MID"?
 
-## Item 6 — `docs/process-diagram.md` exceeds GitHub's per-page Mermaid render budget
+## Item 6 — `docs/process-diagram.md` exceeds GitHub's per-page Mermaid render budget — *design space captured, deferred*
+
+> ⏳ **Deferred** (2026-05-26): brainstorm captured below. Decision postponed
+> until the audience question and tour-vs-reference question are settled.
+> The render-budget bug remains real (blocks past ~40 fail to render on
+> github.com) but is not blocking other items in this plan.
 
 **Observation**: The file has **51 Mermaid blocks in 23KB**. GitHub starts
 showing "Unable to render rich display" at `compile-system` (around the
 40th block) and every block below it. Mermaid syntax in those blocks is
 valid — it's GitHub's per-page rendering quota.
 
-**Direction options**:
+### Design space (brainstorm)
 
-- **Option 6A — Split by BPMN level**: emit five (or six) sibling files,
-  e.g. `docs/process-diagram-top.md`, `…-cycle.md`, `…-high.md`,
-  `…-mid.md`, `…-low.md`, with `docs/process-diagram.md` becoming an index
-  page that links to each. Each file's diagram count stays under the
-  budget. Generator changes: emit multiple files, link from the index.
+Two orthogonal questions sit behind this decision: **(A) what's the file
+shape** (one file vs many; how to split) and **(B) what's the reading
+purpose** (reference lookup vs teaching tour vs both).
 
-- **Option 6B — Split into per-process pages**: every process gets its own
-  `docs/process/<name>.md`. Index page lists them. Most pages contain one
-  diagram. Maximum granularity; biggest file-count growth.
+**(A) — File shape candidates**
 
-- **Option 6C — Drop the long-tail processes from the main page**: keep
-  TOP + CYCLE + HIGH in `process-diagram.md` (~20 blocks), spill MID + LOW
-  to `process-diagram-tasks.md` (~30 blocks). Index links from one to the
-  other. Smallest change.
+- **(a) One big file with level prefixes** — the lightest-touch option;
+  fails today because GitHub's per-page budget caps render at ~40
+  diagrams. Only viable in combination with SVG pre-render (Option 6D
+  below).
+
+- **(b) Five files by BPMN level** — `process-top.md`, `process-cycle.md`,
+  `process-high.md`, `process-mid.md`, `process-low.md` + an `index.md`.
+  ~10 diagrams per file, all under the budget. Reader pattern: *"I want
+  to see all the CYCLEs"* → open one file. Generator-friendly. Heading
+  prefix from Item 5 becomes partly redundant (filename carries the
+  level) but stays useful for cross-file anchor links.
+
+- **(c) Per top-level entry walkthroughs** — `process-implement-story.md`,
+  `process-refactor.md`, `process-refine-ticket.md`, etc. Each file
+  walks one TOP cycle end-to-end. Reader pattern: *"what happens when a
+  student picks up a story?"* Trade-off: shared HIGH/MID/LOW
+  sub-processes either get duplicated across files or live in a separate
+  reference file and get linked. Usually ends up as (c) + (b) combined.
+
+- **(d) One file per process (~50 files)** — `process/<name>.md` plus
+  an index. Maximum granularity. Cleanest separation; biggest file-count
+  growth; index becomes critical.
+
+- **(e) Hybrid: walkthrough + reference** — one or two "tour" files
+  (c-style narrative) + a reference shaped as (b) or (d). Highest
+  editorial quality, biggest generator/maintenance burden.
+
+**(B) — Audience and reading purpose**
+
+The audience for this repo is **mixed**: students learning ATDD top-down
+*and* operators/maintainers looking specific processes up.
+
+- **Reference half** (lookup-friendly) is generator-friendly. Whatever
+  file shape from (A) is chosen above, the generator emits it from the
+  YAML; drift-free.
+
+- **Tour half** (teaching narrative) is editorial. Two sub-options:
+  - **Hand-curated tour files** — best narrative quality; drift risk when
+    YAML changes; someone has to remember to update them.
+  - **Generated walkthroughs** — DFS through the call graph, one heading
+    per process visited; always in sync; reads mechanically (a flat dump
+    of the call graph, not a tour).
+  - **Defer the tour entirely** — ship the reference first; figure out
+    the tour later once there's student feedback on what's confusing.
+
+### Independent fix path: pre-rendered SVG
 
 - **Option 6D — Pre-render to SVG, embed instead of Mermaid source**:
   generate SVG per process via `mmdc` (the Mermaid CLI) at generation
-  time, embed `<img>` tags in the markdown. The `docs/images/process-diagram-*.svg`
-  files already in the repo suggest someone tried this for a subset.
-  Removes the GitHub render budget entirely but adds a tooling dependency
-  (`mmdc`) and a build step.
+  time, embed `<img>` tags in the markdown. The
+  `docs/images/process-diagram-*.svg` files already in the repo suggest
+  someone tried this for a subset. Removes the GitHub render budget
+  entirely; works with any file shape from (A) above. Cost: adds an
+  `mmdc` tooling dependency and a build step.
 
-**Files**: `internal/atdd/runtime/diagram/diagram.go` (output emission),
-`process_commands.go` (CLI flag if we add one to pick output mode), and
-the `docs/` files themselves.
+### Files (will be revisited after deferral lifts)
 
-**Open questions for /refine-plan**:
+- `internal/atdd/runtime/diagram/diagram.go` — output emission (single vs
+  multi-file; mermaid vs SVG embed).
+- `process_commands.go` — CLI surface, possibly a `--shape` or `--split`
+  flag.
+- `docs/process-diagram.md` and any new sibling files.
+- The existing `docs/images/process-diagram-*.svg` — confirm current
+  purpose or remove as stale.
+- README + ATDD process docs that link to `docs/process-diagram.md` —
+  update references in lockstep.
 
-- Q6.1 — Pick one of 6A / 6B / 6C / 6D. Recommendation: **6A** (split by
-  level) — aligns with Item 5's heading prefix, keeps each file
-  conceptually coherent, no new tooling.
-- Q6.2 — If 6A: does `gh optivem process show` still emit one combined
-  markdown by default and add a `--split` flag, or does it always emit
-  multiple files? (Recommendation: always emit multiple — the combined
-  output doesn't render on GitHub, so it's a footgun to keep as the
-  default.)
-- Q6.3 — Do the existing `docs/images/process-diagram-*.svg` files have a
-  current purpose, or are they stale from an earlier attempt? Check
-  before removing.
-- Q6.4 — `docs/process-diagram.md` is referenced from other docs (README?
-  ATDD process docs?). Find and update those references after the split.
+### Open questions still on the table
+
+- Q6.1 — Pick a file shape from (a)–(e) above.
+- Q6.2 — Tour: defer / hand-curated / generated walkthroughs?
+- Q6.3 — Pre-render to SVG (6D) or keep Mermaid source?
+- Q6.4 — If multi-file: does `gh optivem process show` always emit
+  multiple files, or keep a single-file mode behind a flag?
+- Q6.5 — Existing `docs/images/process-diagram-*.svg` — current purpose
+  or stale?
+- Q6.6 — README and other docs that link to `docs/process-diagram.md` —
+  inventory before split.
 
 ## Item 7 — Legend wording: executor labels for service / user-task nodes
 
@@ -297,10 +369,10 @@ labels that the user wants revised:
 - `[[Service task — Go runtime]]` — "Go runtime" is implementation detail
   leaking into a vocabulary diagram. We want a vocabulary-level word for
   "the engine that runs mechanical, non-LLM, non-human steps".
-- `[Agent task — LLM]` — rename to **`User task (LLM agent)`**. Aligns
+- `[Agent task — LLM]` — rename to **`User Task (LLM Agent)`**. Aligns
   with BPMN: in the YAML these are `user_task` nodes; the executor is the
   LLM agent, which is a *kind* of user task.
-- `[Human STOP]` — rename to **`User task (Human)`**. Same reasoning:
+- `[Human STOP]` — rename to **`User Task (Human)`**. Same reasoning:
   YAML `user_task` with `agent: human`; "STOP" connotes a halt signal,
   which isn't what every human task is.
 
@@ -311,43 +383,37 @@ The accompanying bullet text in the legend needs to match:
 - `[rectangle]`  — user task — LLM agent (dark blue) or human STOP (yellow); `call_activity` rectangles are unfilled and link to a sub-process heading
 ```
 
-**Direction (recommended)**: apply the two confirmed renames in lockstep
-(Mermaid sample label + bullet text), and pick one of the candidates below
-for the "Go runtime" replacement in /refine-plan.
+**Direction (decided 2026-05-26)**: apply the three renames in lockstep
+across the legend's Mermaid sample labels, the bullet description text,
+and the `writeExecutorStyling` doc-comment block (`diagram.go:406-416`).
 
-**Candidates for "Go runtime"** — pick one:
+Final wording:
 
-- **`Service task (engine)`** — most BPMN-flavoured; "engine" is the
-  generic term for the deterministic executor.
-- **`Service task (runtime)`** — keeps "runtime" but drops the language
-  specifier. Matches existing internal package name (`internal/atdd/runtime`).
-- **`Service task (automated)`** — emphasises that no human or LLM
-  judgement is involved; consistent with how BPMN diagrams typically
-  distinguish "automated service task" from "manual task".
-- **`Service task (deterministic)`** — emphasises the contract: same
-  input ⇒ same output, no model variance. Most precise but jargon-heavy.
+| Mermaid sample (was) | Mermaid sample (becomes) |
+|---|---|
+| `SVC[[Service task — Go runtime]]` | `SVC[[Service Task (Automated)]]` |
+| `AGT[Agent task — LLM]` | `AGT[User Task (LLM Agent)]` |
+| `HUM[Human STOP]` | `HUM[User Task (Human)]` |
 
-Bullet text would update to something like (depends on choice above):
+Bullet description text (`diagram.go:147-172`) updates in lockstep:
 
-```
-- `[[subroutine]]` — service task — mechanical step run by the engine (white)
-- `[rectangle]`  — user task — LLM agent (dark blue) or human (yellow);
+- `[[subroutine]]` — service task — mechanical, automated step (white)
+- `[rectangle]` — user task — LLM agent (dark blue) or human (yellow);
   `call_activity` rectangles are unfilled and link to a sub-process heading
-```
 
-**Files**: `internal/atdd/runtime/diagram/diagram.go::writeLegend` (lines
-147-172). No YAML changes — the YAML uses `service_task` / `user_task` /
+**Files**:
+- `internal/atdd/runtime/diagram/diagram.go::writeLegend` (lines 147-172) —
+  three Mermaid sample labels + the bullet text.
+- `internal/atdd/runtime/diagram/diagram.go::writeExecutorStyling` doc
+  comment (lines 406-416) — "(Go runtime)" → "(Automated)" in lockstep.
+
+No YAML changes — the YAML uses `service_task` / `user_task` /
 `agent: human` already, which match the proposed legend vocabulary.
 
-**Open questions for /refine-plan**:
+**Remaining check at execution time**:
 
-- Q7.1 — Pick the "Go runtime" replacement from the four candidates above.
-- Q7.2 — `writeExecutorStyling` comment block (lines 406-416) mentions
-  "(Go runtime)" alongside the `serviceNode` classDef. Re-word in lockstep
-  with Q7.1.
-- Q7.3 — Does the term used in the legend also need to flow into the
-  ATDD process docs (`docs/atdd/process/*.md`)? Check for "Go runtime"
-  references during execution.
+- Q7.3 — Does the term "Go runtime" or "Agent task" appear in the ATDD
+  process docs (`docs/atdd/process/*.md`)? Grep and update in lockstep.
 
 ## Item 8 — `main` process heading: "Runtime Bootstrap (legacy entry — collapses in Phase D)"
 
@@ -380,47 +446,26 @@ Both rules push back on **permanent** "legacy" markers in user-facing
 artefacts. The current heading is the same shape: an inline "going-away"
 warning that stays in the diagram until Phase D actually ships.
 
-**Direction options**:
+**Direction (decided 2026-05-26): Option 8A — drop the alias entirely.**
+Delete the `processAlias` entry for `main`. Heading becomes `## main`. The
+Phase-D-collapse note already lives in the YAML comment block above the
+`main` definition (process-flow.yaml:122-132) and doesn't need to be
+duplicated in the rendered heading.
 
-- **Option 8A — Drop the alias entirely.** `main` renders as `## RUNTIME — main`
-  (or `## main` with Item 5's prefix). The Phase-D-collapse note moves to the
-  YAML comment block above the `main` definition (where it already lives, lines
-  122-132) and out of the rendered heading. Cleanest; consistent with the two
-  memory rules. After Phase D ships, no follow-up needed — the YAML simply
-  loses the `main` block.
+Ships independently of Item 5 (which is deferred). If Item 5 ever lands,
+the level prefix gets added automatically.
 
-- **Option 8B — Keep an alias but drop "(legacy entry — collapses in Phase D)".**
-  Render as `## Runtime Bootstrap` (no parenthetical). Reader still sees a
-  human-readable name; the going-away framing is silent. Cosmetic but keeps the
-  one alias in `processAlias`.
+**Files**:
+- `internal/atdd/runtime/diagram/diagram.go:39-41` — delete the
+  `processAlias["main"]` entry. The map can stay (it might gain other
+  entries later) or be removed entirely if `main` is the only consumer —
+  decide at execution time.
 
-- **Option 8C — Restructure to introduce a "RUNTIME" level.** Treat `main` as a
-  sixth BPMN-shaped level (RUNTIME, above TOP). Item 5's prefix would render
-  `## RUNTIME — main`. Aligns with the existing YAML comment vocabulary
-  ("Runtime bootstrap"); no special-case alias. Phase D removes the only
-  RUNTIME-level entry; the level disappears with it.
+**Remaining check at execution time**:
 
-- **Option 8D — Status quo.** Keep "Runtime Bootstrap (legacy entry —
-  collapses in Phase D)" until Phase D ships, then delete. Conflicts with the
-  memory rules above.
-
-**Recommended**: **Option 8C** (RUNTIME level). The `main` process is genuinely
-a different level — it's the CLI bridge, not a domain BPMN unit. Naming the
-level surfaces that distinction in vocabulary that survives Phase D's
-restructuring (the level just empties out).
-
-**Files**: `internal/atdd/runtime/diagram/diagram.go` (`processAlias` map,
-the `processOrder` from Item 5 if 8C is picked — `main` gets level
-"RUNTIME"). No YAML changes (the comment block already explains the role).
-
-**Open questions for /refine-plan**:
-
-- Q8.1 — Pick from 8A / 8B / 8C / 8D.
-- Q8.2 — If 8C: do we want the RUNTIME level shown in the legend / level
-  enumeration anywhere else (e.g. process-flow.yaml comments at lines 7-100)?
 - Q8.3 — Is Phase D documented elsewhere (e.g. an existing
-  `plans/*.md`) that should be cross-referenced from this plan? Quick search
-  during execution.
+  `plans/*.md`) that should be cross-referenced from this plan? Quick
+  grep during execution.
 
 ## Item 9 — `update-ticket` sub-process name is too generic
 
@@ -452,30 +497,10 @@ The `target-state` param is the only input. "Update" is generic — it could
 mean editing the body, labels, assignee, etc. The operator's mental model
 (per the `MARK_*` node IDs) is **state transition**, not "update".
 
-**Direction options** — pick one:
-
-- **Option 9A — `mark-ticket`**: matches the operator vocabulary already
-  encoded in the `MARK_*` call-site IDs. Most natural reading: "MARK_IN_REFINEMENT
-  calls mark-ticket with state IN REFINEMENT". Slight informality.
-
-- **Option 9B — `update-ticket-status`**: most explicit; pairs with the
-  `target-state` param semantically (state = status). Verbose.
-
-- **Option 9C — `move-ticket`**: Kanban / board vocabulary. Strong domain
-  match if the team thinks in terms of board columns ("move ticket to READY").
-
-- **Option 9D — `transition-ticket`**: state-machine vocabulary. Pairs with
-  the fact that states are an enumerated lifecycle.
-
-- **Option 9E — `set-ticket-state`**: declarative; matches the param name
-  `target-state` literally. The `set-X` verb is unambiguous.
-
-- **Option 9F — keep `update-ticket`**: status quo. Generic but unblocked.
-
-**Recommended**: **Option 9A (`mark-ticket`)** — aligns the sub-process name
-with the call-site IDs that already exist, so reading the YAML is uniform
-("MARK_IN_REFINEMENT calls mark-ticket"). The other options are formally
-correct but disconnect from how callers already refer to it.
+**Direction (decided 2026-05-26): Option 9A — rename to `mark-ticket`.**
+Aligns the sub-process name with the `MARK_*` call-site IDs already in the
+YAML; reading is uniform ("MARK_IN_REFINEMENT calls mark-ticket with state
+IN REFINEMENT").
 
 **Files**:
 - `internal/atdd/runtime/statemachine/process-flow.yaml`: rename the process
@@ -489,42 +514,179 @@ correct but disconnect from how callers already refer to it.
 
 **Open questions for /refine-plan**:
 
-- Q9.1 — Pick from 9A–9F.
-- Q9.2 — The underlying agent task-name (line 1397, hardcoded literal
-  `update-ticket`) — rename in lockstep with the sub-process? That implies
-  renaming the agent's prompt file too (one extra moving part). Or keep
-  the agent's task-name decoupled and leave it as `update-ticket`?
-- Q9.3 — Are there other generic-named MID processes worth re-examining
-  in the same pass (e.g. `commit`, `compile`, `run-tests`, `approve`)? Or
-  is this strictly about `update-ticket` and we treat the others as
-  already-fine?
+- Q9.1 — *Decided 2026-05-26*: Option 9A (`mark-ticket`).
+- Q9.2 — *Decided 2026-05-26*: rename the agent task-name in lockstep.
+  Change the hardcoded `task-name: update-ticket` (line 1397) to
+  `task-name: mark-ticket`, rename the agent prompt file (likely
+  `.claude/agents/.../update-ticket.md` → `mark-ticket.md`), and update
+  any prompt-routing config referencing it. Inventory at execution time.
+- Q9.3 — *Decided 2026-05-26*: defer. Other generic MID names (`commit`,
+  `compile`, `run-tests`, `approve`) get their own naming pass in a
+  separate plan — each needs its own analysis.
+
+## Item 10 — `refine-backlog` sub-process: rename to `refine-backlog-item`
+
+**Observation**: The `refine-backlog` sub-process (process-flow.yaml:343-354)
+runs `refine-acceptance-criteria` against **one ticket**, not the whole
+backlog. Its only call site (`REFINE_BACKLOG` in `refine-ticket`, lines
+176-178) sits between `MARK_IN_REFINEMENT` and `MARK_READY` for that single
+ticket. The name is misleading — "refine the backlog" reads as a
+batch/grooming activity over the entire queue, when in fact it's refining
+one backlog item.
+
+**Direction (decided 2026-05-26)**: rename to **`refine-backlog-item`**
+(sub-process) and **`REFINE_BACKLOG_ITEM`** (call site).
+
+**Files**:
+- `internal/atdd/runtime/statemachine/process-flow.yaml`:
+  - Line 343: process definition rename.
+  - Line 341: YAML section comment.
+  - Line 176, 190, 191: call-site rename in `refine-ticket`.
+  - Line 350, 354: `REFINE_BACKLOG_END` → `REFINE_BACKLOG_ITEM_END` (for
+    consistency with the process rename).
+- `internal/atdd/runtime/diagram/diagram.go` — `processOrder` list (one
+  entry to rename).
+- Test fixtures referencing `refine-backlog` / `REFINE_BACKLOG`.
+
+**Open questions for /refine-plan**:
+
+- Q10.1 — *Decided 2026-05-26*: `refine-backlog-item`.
+- Q10.2 — *Decided 2026-05-26*: defer. Other CYCLE-level names get their
+  own naming pass in a separate plan (consistent with Q9.3 doctrine).
+
+## Item 11 — `implement-ticket`: split flat ticket-kind gateway into hierarchical type → subtype
+
+**Observation**: `implement-ticket` (process-flow.yaml:232-294) has a single
+`GATE_TICKET_KIND` gateway with seven outgoing edges, one per ticket-kind
+value:
+
+```
+story                                  → change-system-behavior
+bug                                    → change-system-behavior
+task/cover-legacy                      → cover-system-behavior
+task/redesign-system                   → redesign-system-structure
+task/refactor-system                   → refactor-system-structure
+task/refactor-tests                    → refactor-test-structure
+task/onboard-external-system           → onboard-external-system
+```
+
+The compound `task/<subtype>` slash already encodes a hierarchy — "task" is
+a parent category with five subtypes; "story" and "bug" are flat siblings of
+"task". The current flat gateway flattens this hierarchy at the gateway
+level, losing structure.
+
+**Direction (decided 2026-05-26)**: split into two gateways in series.
+
+- `GATE_TICKET_KIND` (binding: `ticket_kind`, values: `story`, `bug`, `task`)
+- `GATE_TASK_SUBTYPE` (binding: `task_subtype`, values: `cover-legacy`,
+  `redesign-system`, `refactor-system`, `refactor-tests`,
+  `onboard-external-system`)
+
+```
+MARK_IN_PROGRESS
+  → GATE_TICKET_KIND  (binding: ticket_kind)
+      story → CALL_CHANGE_SYSTEM_BEHAVIOR
+      bug   → CALL_CHANGE_SYSTEM_BEHAVIOR
+      task  → GATE_TASK_SUBTYPE  (binding: task_subtype)
+          cover-legacy             → CALL_COVER_SYSTEM_BEHAVIOR
+          redesign-system          → CALL_REDESIGN_SYSTEM_STRUCTURE
+          refactor-system          → CALL_REFACTOR_SYSTEM_STRUCTURE
+          refactor-tests           → CALL_REFACTOR_TEST_STRUCTURE
+          onboard-external-system  → CALL_ONBOARD_EXTERNAL_SYSTEM
+  → (all CALLs converge) → MARK_IN_ACCEPTANCE
+```
+
+Keeping the existing `ticket_kind` binding name (just shrinks its value
+set from 7 to 3) means Phase D bindings see less churn — a new
+`task_subtype` binding is added.
+
+Benefits:
+
+- Matches how operators conceptually classify ("first: what is this — story,
+  bug, or task? then: if task, what kind?").
+- The two-gateway structure mirrors the slash-delimited shape in the
+  underlying value space.
+- Story and bug both route to `change-system-behavior` — currently two
+  separate edges with identical targets; one edge from the type-level
+  gateway is enough.
+
+Trade-offs:
+
+- One extra gateway node in the diagram (modest cost; readable).
+- `refine-ticket` (or whatever upstream sets the ticket-kind) now produces
+  two classifications (type + subtype) instead of one slash-delimited
+  string. The Phase-D bindings for `ticket_type` and `task_subtype` would
+  be the canonical place to do that split.
+- The lookup table comment in process-flow.yaml:215-225 needs rewriting
+  into a two-level form.
+
+**Files**:
+- `internal/atdd/runtime/statemachine/process-flow.yaml`:
+  - Replace `GATE_TICKET_KIND` (line 241-244) with `GATE_TICKET_TYPE` and
+    `GATE_TASK_SUBTYPE`.
+  - Rewrite the sequence_flows in `implement-ticket`.
+  - Update the lookup-table comment (lines 215-225) into a two-level
+    table.
+- Statemachine binding code (Phase D scope) — the `ticket_kind` binding
+  splits into `ticket_type` + `task_subtype`.
+- Any test fixtures referencing `ticket_kind` / `GATE_TICKET_KIND`.
+
+**Open questions for /refine-plan**:
+
+- Q11.1 — *Decided 2026-05-26*: `GATE_TICKET_KIND` + `GATE_TASK_SUBTYPE`.
+  Keeps the existing `ticket_kind` binding name; new `task_subtype`
+  binding for the second level.
+- Q11.2 — *Decided 2026-05-26*: this plan ships YAML structure + stub
+  binding; Phase D wires the real `task_subtype` binding alongside its
+  other binding work. Cross-reference the Phase D plan from this plan's
+  Item 11 execution notes.
+- Q11.3 — `refine-ticket` and any other upstream code that *writes*
+  `ticket_kind` needs to be located and updated. Inventory at execution
+  time. Most likely lands with Phase D too.
+- Q11.4 — Validation: how does the gateway handle "task" type with no
+  subtype set, or a subtype set when type is story/bug? Document the
+  invariant in the YAML comment block. Likely: the runtime's
+  no-edge-matched error fires (consistent with how unrecognised
+  ticket-kinds are handled today, per the comment at
+  process-flow.yaml:227-230).
 
 ## Execution order
 
-Items in execution order, picking the recommended direction at each step
-(may change after /refine-plan):
+Items in execution order after the 2026-05-26 /refine-plan walk. Deferred
+items (1, 5, 6) and merged items (4) are excluded — they don't ship in
+this plan's scope.
 
-1. **Item 5** (heading prefix) — pure renderer change, isolated, easy to
-   review. Bakes in the level vocabulary used by other items.
-2. **Item 7** (legend wording) — pure renderer change, isolated. Bakes in
-   the executor vocabulary used in the legend.
-3. **Item 2** (drop ID-fallback in call_activity label) — pure renderer
-   change.
-4. **Item 1** (BFS node emission order) — pure renderer change.
-5. **Item 8** (drop the `main` legacy-alias, optionally introduce RUNTIME
-   level) — `processAlias` map + maybe `processOrder` level vocabulary.
-6. **Item 4** (normalise 6 documentation strings) — pure YAML change.
-7. **Item 9** (rename `update-ticket`) — YAML rename across 4 call sites
-   + process definition + section comment + diagram.go `processOrder`
-   + possibly the agent task-name + agent prompt file.
-8. **Item 3** (de-duplicate opportunistic-refactor block) — YAML change
-   + test updates if any reference the removed node IDs.
-9. **Item 6** (split output) — biggest change, depends on Item 5's level
-   vocabulary; do last so the level-prefix pattern is settled first.
+1. **Item 7** (legend wording) — pure renderer change, isolated. Updates
+   the three Mermaid sample labels + bullet text + `writeExecutorStyling`
+   doc comment to `Service Task (Automated)` / `User Task (Human)` /
+   `User Task (LLM Agent)`.
+2. **Item 8** (drop the `main` legacy-alias) — single deletion in the
+   `processAlias` map; heading becomes `## main`.
+3. **Item 2** (require `documentation:` everywhere) — mass YAML edit:
+   ~85 nodes gain a `documentation:` line under whatever labelling
+   convention Q2.1 settles on at execution time; renderer drops the
+   ID-fallback branch and adds the schema-validation requirement. Subsumes
+   the six pre-existing docs from old Item 4.
+4. **Item 3** (de-duplicate opportunistic-refactor block) — YAML change:
+   collapses 6 nodes + 7 edges into one `call_activity` → `refactor`.
+   Updates statemachine tests that reference the removed `OPP_*` IDs.
+5. **Item 9** (rename `update-ticket` → `mark-ticket`) — YAML rename across
+   4 call sites + process definition + section comment + diagram.go
+   `processOrder`; rename the agent prompt file and any prompt-routing
+   config in lockstep (Q9.2 decided).
+6. **Item 10** (rename `refine-backlog` → `refine-backlog-item`) — YAML
+   rename: process def + call site + section comment + diagram.go
+   `processOrder` + `REFINE_BACKLOG_END` → `REFINE_BACKLOG_ITEM_END`.
+7. **Item 11** (split ticket-kind gateway into hierarchical type → subtype)
+   — YAML structural change: `GATE_TICKET_KIND` keeps name but its value
+   set shrinks to story/bug/task; new `GATE_TASK_SUBTYPE` gateway routes
+   the five task subtypes. Stub binding for `task_subtype`; real wiring
+   lands with Phase D.
 
-Regenerate `docs/process-diagram.md` (and any new sibling files) after each
-item; commit per item; verify on github.com that the rendering issue is
-gone after Item 6.
+Regenerate `docs/process-diagram*.md` after each item; commit per item.
+The GitHub render-budget bug (deferred Item 6) is unrelated — readers will
+still hit "Unable to render rich display" past ~40 diagrams until Item 6
+ships in a follow-up plan.
 
 ## Tests / verification
 
