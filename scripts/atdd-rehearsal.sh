@@ -28,8 +28,15 @@ set -euo pipefail
 # Workflow:
 #   1. Build gh-optivem.exe from this repo (so the rehearsal exercises
 #      uncommitted local changes, not the installed `gh optivem`).
-#   2. Resolve <id> = <ts>[-<label>], where <ts> = date +%Y%m%d-%H%M%S.
-#   3. From the consumer repo, create a worktree one level above the
+#   2. `gh optivem system clean` against the consumer repo to drop
+#      volumes + locally-built images from prior rehearsals (registry-
+#      pulled images are preserved — same scope as `./gradlew clean`).
+#      Project-scoped: only cleans stacks listed in the *current* config's
+#      systems.yaml, so switching configs across sessions can leave the
+#      other stack's state behind. Non-fatal: failure (e.g. docker daemon
+#      down) warns and continues.
+#   3. Resolve <id> = <ts>[-<label>], where <ts> = date +%Y%m%d-%H%M%S.
+#   4. From the consumer repo, create a worktree one level above the
 #      academy folder at ../../rehearsal-<id> on a new branch
 #      rehearsal/<id>. Placed outside the academy on purpose: a worktree
 #      inside the academy makes `gh optivem commit` resolve ModeWorkspace
@@ -39,9 +46,9 @@ set -euo pipefail
 #      the parent dir. The chosen --config yaml is already committed in
 #      shop, so it lands in the worktree automatically — no copy or
 #      init step needed.
-#   4. cd into it and run, with $GH_OPTIVEM_CONFIG pointing at the chosen yaml:
+#   5. cd into it and run, with $GH_OPTIVEM_CONFIG pointing at the chosen yaml:
 #        <gh-optivem>/gh-optivem.exe implement --issue <issue-num>
-#   5. On exit (success, failure, or interrupt), prompt the user to delete
+#   6. On exit (success, failure, or interrupt), prompt the user to delete
 #      the worktree + branch (default: yes).
 #
 # The consumer repo is always resolved as a sibling of gh-optivem named
@@ -234,6 +241,14 @@ if ! ( cd "$GH_OPTIVEM_ROOT" && go build -o gh-optivem.exe . ) >"$BUILD_LOG" 2>&
   exit 1
 fi
 rm -f "$BUILD_LOG"
+
+# Drop volumes + locally-built images from prior rehearsals before the new
+# worktree is created. Run against the *parent* consumer repo (the worktree
+# doesn't exist yet); the docker daemon is global so this clears state
+# regardless of which checkout we run from. Project-scoped (per the current
+# config's systems.yaml) — registry-pulled bases are preserved.
+log "Cleaning local docker state from prior rehearsals (volumes + locally-built images; registry images preserved)..."
+( cd "$CONSUMER_ROOT" && GH_OPTIVEM_CONFIG="$CONSUMER_ROOT/$CONFIG" "$BIN" system clean ) || log "warn: system clean failed (continuing)"
 
 log "Creating worktree at $WORKTREE_PATH on branch $BRANCH..."
 if ! git -C "$CONSUMER_ROOT" worktree add -b "$BRANCH" "$WORKTREE_PATH"; then
