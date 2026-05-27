@@ -63,52 +63,6 @@ Out of scope:
 
 ## Items
 
-### 1. Audit every `${name}` against its caller chain
-
-Goal: enumerate every `${name}` reference in `process-flow.yaml`, the
-subprocess that references it, every call-site of that subprocess, and
-whether each caller binds the placeholder (directly or via state
-fallback). Produce a table in this file showing where the contract
-holds and where it leaks.
-
-Method:
-
-- Grep `process-flow.yaml` for `\$\{[a-zA-Z_-]+\}` and group by
-  referencing subprocess.
-- For each subprocess, list call-sites (the `process: <name>` invocations)
-  and inspect each one's `params:` block.
-- For placeholders that fall back to `ctx.State` (e.g. `${failure-kind}`,
-  `${test-names}`), trace the writer that stashes the key (typically
-  `validateOutputsAndScopes` or `runCommand` in `bindings.go`) and
-  confirm the writer fires on every reachable path leading to the
-  consumer.
-
-Output: an Audit Table section in this plan listing for each
-placeholder: `subprocess` / `placeholder` / `caller site` / `binding
-present?` / `state-fallback writer` / `risk`.
-
-Known leak from the rehearsal incident: confirmed only the two sites
-just patched (commit `bd1c958`). The audit must confirm no other sites
-share the same shape.
-
-Likely-safe-but-needs-verification candidates (from initial grep):
-
-- `${tests}` in `implement-test-layer` (lines 1148, 1156) — every caller
-  at 826/851/873 passes `tests: ${tests}` which itself depends on the
-  caller-of-the-caller binding `tests`. Trace one level up.
-- `${question}` in `approve` (line 1891) — every caller passes
-  `question:` literally. Verify.
-- `${failure}` / `${failure-kind}` in `fix` (lines 2115/2128/2136/2137)
-  — state-fallback via `validateOutputsAndScopes` and `runCommand`.
-  Verify both writers fire on every reachable failure path.
-- `${action}` template in `process: ${action}` for
-  `implement-and-verify-system` (line 1026) and `implement-test-layer`
-  (line 1115) — different shape (templated process name, not param
-  value). The runtime resolves it via the call-activity dispatch path
-  at `run.go:58`; verify ExpandParams strict mode covers that site too.
-- `${expected-test-result}` — appears in many params blocks; verify
-  every caller binds it (callers at 825/850/872/etc.).
-
 ### 2. Make `ExpandParams` strict
 
 Change `ExpandParams` to return `(string, error)`:
@@ -179,22 +133,79 @@ fresh rehearsal run from the same point should no longer hit the
 
 ## Sequencing
 
-1. (Item 1) Audit — fill in the Audit Table below. ~30 min of focused
-   grep + read.
-2. For every leak the audit finds, add the corresponding `params: { X: "" }`
-   binding at the broken call-site, mirroring the surgical fix in
-   commit `bd1c958`. Commit per-batch.
+1. ~~(Item 1) Audit~~ — **done 2026-05-27.** See "Audit results" above.
+   One residual leak found (`${failure}` in `fix:2129`).
+2. Close the `${failure}` leak (operator picks A/B/C from "Decision
+   needed before Item 2" above). Single commit.
 3. (Item 2) Strict-mode `ExpandParams`. Single commit, plumbed through
    every caller.
 4. (Item 3) Regression tests. Single commit.
 5. (Item 4) Doctrine comment update. Folded into the same commit as
    Item 2 or 3.
 
-## Audit Table (to be filled in during Item 1)
+## Audit results (Item 1 — completed 2026-05-27)
 
-| Subprocess | Placeholder | Caller site (file:line) | Binding present? | State-fallback writer | Risk |
-|------------|-------------|-------------------------|------------------|-----------------------|------|
-| _(populate during Item 1)_ | | | | | |
+Audit run against `process-flow.yaml` HEAD (`bd1c958`). Each row pairs
+a `${placeholder}` reference with the subprocess that uses it, the
+binding mechanism that resolves it at dispatch, and the residual risk
+under strict-mode `ExpandParams`.
+
+| Subprocess | Placeholder | Reference site | Binding mechanism | Risk under strict mode |
+|------------|-------------|----------------|-------------------|------------------------|
+| `approve` | `${question}` | line 1962 | callers at 1996, 2000-ish, 2068, 2129 pass literal | none |
+| `verify-tests-pass` | `${suite}` | line 1220 | `suite: ""` bound at impl-and-verify-system:1050 + refactor:1098 (bd1c958) | none |
+| `verify-tests-pass` | `${test-names}` | line 1221 | state — stashed by writing-agent output declaration; consumer is `optional: true` | none |
+| `verify-tests-fail` | `${suite}` | line 1259 | as above (bd1c958) | none |
+| `verify-tests-fail` | `${test-names}` | line 1260 | state — as above | none |
+| `run-tests` | `${suite}`, `${test-names}` | lines 1850-1851 | via state — set by verify-tests-{pass,fail} caller chain | none |
+| `implement-and-verify-dsl` | `${expected-test-result}`, `${tests}` | lines 684-685 | callers forward / literal `tests: 'acceptance'` | none |
+| `implement-and-verify-system-driver-adapters` | `${expected-test-result}`, `${tests}` | lines 698-699 | forwarded / literal | none |
+| `implement-and-verify-external-system-driver-adapters` | `${expected-test-result}`, `${tests}` | lines 712-713 | forwarded / literal | none |
+| `implement-test-layer` | `${action}` | line 1129 | templated process name — callers (change-system-behavior:440, etc.) bind `action:`; resolves via call-activity dispatch | confirm strict-mode covers dispatch path at `run.go:58` |
+| `implement-test-layer` | `${test-names}` | lines 1137, 1163, 1170, 1178 | state — writing-agent output | none |
+| `implement-test-layer` | `${expected-test-result}`, `${tests}`, `${cycle_phase}` | 825/850/872 etc. | forwarded | none |
+| `implement-and-verify-system` | `${action}` | line 1026 | templated dispatch, same shape as above | confirm dispatch path |
+| **`fix`** | **`${failure}`** | **line 2129** (`question:`) | **NONE** — no caller (1996, 2092) binds `failure`; only `failure-kind` exists in state | **LEAK — strict mode would break the approve question render** |
+| `fix` | `${failure-kind}` | lines 2150, 2151 | via state — `runCommand:741` or `validateOutputsAndScopes:897/946` writes it before every reachable failure path | none |
+| `execute-agent` | `${agent}`, `${task-name}` | lines 1976-1977, 1962, 2004 | callers bind explicitly | none |
+| `execute-command` | `${command}` | lines 2068, 2078 | callers bind explicitly | none |
+
+### Findings
+
+1. **One residual leak:** `${failure}` in `fix:2129` (the human-readable
+   `question:` passed into `approve`). Today it renders as the literal
+   string `"Do you approve fix to attempt remediation for ${failure} ?"`
+   — ugly but functional, because the approve gate routes on
+   `approval-outcome`, not on the question text. Under strict-mode
+   `ExpandParams` this becomes a dispatch-time error.
+2. **No `${suite}`-shaped leaks remain.** The bd1c958 fix is
+   exhaustive — all `verify-tests-pass`/`-fail` call-sites now bind
+   `suite` explicitly or inherit it from a binding caller.
+3. **State-fallback writers are sound.** `failure-kind` and
+   `test-names` are written on every reachable path that reaches a
+   consumer; no unguarded branches.
+4. **Templated `${action}` dispatch needs confirmation in Item 2.** The
+   call-activity dispatcher at `run.go:58` resolves `process: ${action}`
+   through `ExpandParams`; flipping the function strict must not break
+   that path.
+5. **Strict-mode flip is safe once the `${failure}` leak is closed**
+   (or the question is rewritten to use `${failure-kind}`).
+
+### Decision needed before Item 2
+
+How to close the `${failure}` leak:
+
+- **Option A** — Rewrite the question to use `${failure-kind}`:
+  `"Do you approve fix to attempt remediation for ${failure-kind} ?"`.
+  Zero new bindings, uses the same state value the inner call already
+  reads. Recommended.
+- **Option B** — Bind `failure: "${failure-kind}"` at the two
+  `fix` call-sites (lines 1996, 2092). Preserves the `failure` name
+  but is just an alias for the same value.
+- **Option C** — Stash a richer `failure` description in `ctx.State`
+  from `runCommand` / `validateOutputsAndScopes` and read it via state
+  fallback. More work; only worth it if the prompt should carry more
+  than the kind.
 
 ## References
 
