@@ -144,8 +144,8 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("expected-test-result", b.expectedTestResult)
 	r.Register("fix-on-failure-enabled", b.fixOnFailureEnabled)
 	r.Register("dsl-port-changed", b.dslPortChanged)
-	r.Register("system-driver-ports-changed", b.systemDriverPortsChanged)
-	r.Register("external-driver-ports-changed", b.externalDriverPortsChanged)
+	r.Register("system-driver-port-changed", b.systemDriverPortChanged)
+	r.Register("external-driver-port-changed", b.externalDriverPortChanged)
 	r.Register("refactor-type-choice", b.refactorTypeChoice)
 	r.Register("approval-outcome", b.approvalOutcome)
 	r.Register("outputs-and-scopes-valid", b.outputsAndScopesValid)
@@ -328,7 +328,7 @@ func (b bindings) fixOnFailureEnabled(ctx *statemachine.Context) statemachine.Ou
 	return statemachine.Outcome{Bool: yes}
 }
 
-// dslPortChanged, systemDriverPortsChanged, externalDriverPortsChanged
+// dslPortChanged, systemDriverPortChanged, externalDriverPortChanged
 // are the writing-agent output flags consumed by the per-test-layer
 // fanout in implement-and-verify-dsl. Each reads the kebab ctx key the
 // agent emits via `gh optivem output write KEY=VAL` (flattened from the
@@ -341,12 +341,12 @@ func (b bindings) dslPortChanged(ctx *statemachine.Context) statemachine.Outcome
 	return boolStateGate(ctx, "dsl-port-changed")
 }
 
-func (b bindings) systemDriverPortsChanged(ctx *statemachine.Context) statemachine.Outcome {
-	return boolStateGate(ctx, "system-driver-ports-changed")
+func (b bindings) systemDriverPortChanged(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "system-driver-port-changed")
 }
 
-func (b bindings) externalDriverPortsChanged(ctx *statemachine.Context) statemachine.Outcome {
-	return boolStateGate(ctx, "external-driver-ports-changed")
+func (b bindings) externalDriverPortChanged(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "external-driver-port-changed")
 }
 
 // boolStateGate is the shared body of the three driver-port-changed
