@@ -238,7 +238,7 @@ The `regenerate-diagram` workflow watches `internal/atdd/runtime/statemachine/pr
 
 Useful flags:
 
-- `--autonomous` — headless agents (`claude -p`)
+- `--auto` (root flag, before `implement`) + `--headless` — fully autonomous mode: auto-approve everything except commit/fix, run each subagent as `claude -p` instead of an interactive session. Supersedes the deprecated `--autonomous` alias (which still works but warns and rewrites itself to `--auto --headless`).
 - `--manual-agents` — v1 two-window dispatch (driver pauses, human launches the agent in a separate Claude Code session, presses Enter to advance). Right tool when bisecting "did v2 misroute?" vs. "did v1 see the commit?".
 
 Per-node prompt shaping (`extra` text, full `replace`, alternate `process_flow`, or `task_prompts` swaps) is configured via fields in `gh-optivem.yaml`, not flags — see the [pipeline overrides](README.md#pipeline-overrides) section in the README.
@@ -253,7 +253,7 @@ Both end with `implement` walking a real GitHub issue. Pick based on what you're
 
 Fast iteration on the driver. **Local working copy of gh-optivem** + **existing shop repo** (no scaffolding). A throwaway git worktree on a `rehearsal/<timestamp>[-<label>]` branch keeps the rehearsal off shop's main; the worktree is the right model here precisely because shop is a long-lived repo you don't want to dirty.
 
-##### Quick path (no extra flags)
+##### Quick path
 
 `scripts/atdd-rehearsal.sh` does **everything** end-to-end: `go build`s `gh-optivem.exe` from your working copy, creates the worktree, runs `implement` inside it, prompts to delete the worktree + branch on exit.
 
@@ -265,9 +265,12 @@ cd ../shop
 bash ../gh-optivem/scripts/atdd-rehearsal.sh 61 --config gh-optivem-monolith-java.yaml
 bash ../gh-optivem/scripts/atdd-rehearsal.sh 61 ticket-cli                       # optional sortable label
 bash ../gh-optivem/scripts/atdd-rehearsal.sh https://github.com/optivem/shop/issues/61
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 61 --auto --headless                # fully autonomous mode
 
 # Step 3 — answer the cleanup prompt (default Y deletes worktree + branch; n keeps for inspection)
 ```
+
+`--auto` and `--headless` are forwarded to the binary in the right positions (root vs. subcommand). For any other implement flag — `--manual-agents`, `--show-prompt`, `--log-file`, `--keep-runs`, `--workspace` — use the flag-aware path below.
 
 The worktree lands at `../rehearsal-<id>` (sibling of shop).
 
@@ -294,9 +297,9 @@ git branch -D rehearsal/<id>
 
 Re-running on the same worktree means subsequent commits land on the same `rehearsal/<id>` branch, so the diff accumulates. If you want a clean slate, exit, choose to delete the worktree, and run the rehearsal script again — that creates a fresh `rehearsal/<new-ts>` branch.
 
-##### Flag-aware path (when you need `--autonomous`, `--manual-agents`, …)
+##### Flag-aware path (when you need `--manual-agents`, alt config, …)
 
-The rehearsal script doesn't accept extra flags, so do it by hand:
+The rehearsal script forwards `--auto` and `--headless` but nothing else. For anything else (`--manual-agents`, `--show-prompt`, alt `-c` config, etc.), drive the worktree by hand:
 
 ```bash
 # Step 1 — go to shop
@@ -312,7 +315,7 @@ cd "../rehearsal-${TS}"
 
 # Step 4 — run implement with whatever flags you need (pick one)
 ../gh-optivem/gh-optivem.exe implement --issue 42
-../gh-optivem/gh-optivem.exe implement --issue 42 --autonomous
+../gh-optivem/gh-optivem.exe --auto implement --issue 42 --headless                  # fully autonomous (script also supports this)
 ../gh-optivem/gh-optivem.exe implement --issue 42 --manual-agents
 ../gh-optivem/gh-optivem.exe -c ./gh-optivem.experimental.yaml implement --issue 42  # swap node_extras / task_prompts / process_flow via an alternate config
 
