@@ -203,7 +203,7 @@ processes:
 // their own tests; this fixture targets the agent-dispatch wiring alone.
 //
 // A default monolith-java shop-shaped cfg is threaded through so
-// ${scope_block} and inlined Family B / system-path placeholders (added
+// ${scope-block} and inlined Family B / system-path placeholders (added
 // to every prompt body by plan 20260526-1448 Item 4) resolve cleanly.
 // Tests that need to exercise the nil-cfg path call buildEngineFrom
 // directly with cfg=nil.
@@ -283,7 +283,7 @@ func newCtxWithIssue() *statemachine.Context {
 	// cfg in production. Seed a default here so test fixtures don't have
 	// to thread the config through.
 	c.Set("language", "java")
-	// write-acceptance-tests references ${acceptance_criteria}; parse-ticket would
+	// write-acceptance-tests references ${acceptance-criteria}; parse-ticket would
 	// set it from intake.Result.AcceptanceCriteria.Body in production. Seed
 	// a default here so dispatch fixtures don't have to thread a parsed
 	// ticket body through.
@@ -663,11 +663,11 @@ func TestInstallLogFileMirror_OpenFailureReturnsError(t *testing.T) {
 // build through the same seedScopeState + newClaudeRunDispatcher path
 // production uses, with a fake runner that captures the prompt argument.
 // Asserts the captured prompt contains the substituted ${architecture}
-// value AND the rendered ${scope_block} from the BPMN node's read:/write:
+// value AND the rendered ${scope-block} from the BPMN node's read:/write:
 // lists (plan 20260526-1448 Item 4), and that the per-dispatch prompt log
 // file was written byte-for-byte. A regression that broke either piece
 // (the substitution fix or the engine.Scope lookup) would surface as an
-// unsubstituted `${architecture}` / `${scope_block}` placeholder instead
+// unsubstituted `${architecture}` / `${scope-block}` placeholder instead
 // of the literal contents.
 func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 	tmpRepo := t.TempDir()
@@ -717,7 +717,7 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 
 	// minimalYAML's user-task uses agent: acceptance-test-writer, but the
 	// prompt-substitution failure mode is most visible on agents whose
-	// prompt body references ${architecture} / ${scope_block}
+	// prompt body references ${architecture} / ${scope-block}
 	// (system-implementer). Use a YAML variant with the system implement
 	// agent so wrapAgentDispatchers picks the right closure on
 	// first walk.
@@ -750,7 +750,7 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 	// Context.State (the fix). Empty Architecture would render as
 	// "Architecture: " and the scope block would be absent.
 	mustContainHere(t, prompt, "Architecture: monolith")
-	// The ${scope_block} placeholder is rendered from minimalYAML's
+	// The ${scope-block} placeholder is rendered from minimalYAML's
 	// EXECUTE_AGENT read:/write: list (system-path on both sides — the
 	// implement-system MID node's scope). The renderer joins each key
 	// against cfg.PlaceholderMap(), so the resolved path appears.

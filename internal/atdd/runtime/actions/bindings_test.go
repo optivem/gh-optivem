@@ -664,7 +664,7 @@ func TestValidateOutputsAndScopes_ScopeDiff_FlagsAndKind(t *testing.T) {
 		t.Fatalf("stderr should name the out-of-scope file: %q", stderr.String())
 	}
 	// phase-changed-files carries the FULL snapshot delta (both files),
-	// so fix-scope-diff's ${changed_files} sees what the agent did.
+	// so fix-scope-diff's ${changed-files} sees what the agent did.
 	gotChanged := ctx.GetString("phase-changed-files")
 	wantChanged := "dsl/typescript/src/core/Logic.ts\nsomewhere/else/Stray.ts"
 	if gotChanged != wantChanged {

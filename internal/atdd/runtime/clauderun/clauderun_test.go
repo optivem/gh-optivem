@@ -12,12 +12,16 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/optivem/gh-optivem/internal/assets"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
@@ -119,7 +123,7 @@ func (f *fakeGit) hasGitArg(prefix ...string) bool {
 func newOpts() Options {
 	// Minimal monolith Java shop-shaped config — production dispatch wires
 	// Placeholders from cfg.PlaceholderMap(), so seed both consistently so
-	// inline ${key} annotations + ${scope_block} resolve cleanly.
+	// inline ${key} annotations + ${scope-block} resolve cleanly.
 	cfg := &projectconfig.Config{
 		System: projectconfig.System{
 			Architecture: projectconfig.ArchMonolith,
@@ -140,12 +144,12 @@ func newOpts() Options {
 		// The stripped prompts reference ${language} in the language-
 		// equivalents pointer; seed a default so tests don't have to.
 		Language: "java",
-		// acceptance-test-writer.md references ${acceptance_criteria}; seed
+		// acceptance-test-writer.md references ${acceptance-criteria}; seed
 		// a default so dispatch tests using this scaffold render cleanly.
 		// Tests that exercise the unset/load-bearing path override this.
 		AcceptanceCriteria: "Scenario: placeholder\n  Given x\n  When y\n  Then z",
 		// Per-phase scope (plan 20260526-1448 Item 4). Every writing-agent
-		// prompt body now references ${scope_block} (load-bearing); seed a
+		// prompt body now references ${scope-block} (load-bearing); seed a
 		// minimal acceptance-test-writer-shaped scope so dispatch tests
 		// render cleanly. Tests exercising scope-specific behaviour override
 		// these.
@@ -243,7 +247,7 @@ func TestRenderPrompt_TaskAgentArchitectureAndScopeBlock_ExplicitValues(t *testi
 	// dispatch time; for the render test we supply them directly.
 	opts.ScopeRead = []string{"system-path"}
 	opts.ScopeWrite = []string{"system-path"}
-	// ProjectConfig drives the ${scope_block} resolver — it joins each
+	// ProjectConfig drives the ${scope-block} resolver — it joins each
 	// key against cfg.PlaceholderMap(). Seed a minimal monolith config so
 	// `system-path` resolves to a concrete path in the rendered block.
 	opts.ProjectConfig = &projectconfig.Config{
@@ -357,7 +361,7 @@ func TestRenderPrompt_ReturnsErrorForUnknownAgent(t *testing.T) {
 // prompt body. The external-system doctrine that previously distinguished
 // the two task subtype prompts was inlined from
 // references/atdd/architecture/driver-adapter.md; after the strip, both
-// subtype files point at that doc via ${references_root} instead of
+// subtype files point at that doc via ${references-root} instead of
 // inlining it, so the bodies are now identical except for routing. The
 // previous "external subtype includes doctrine inline / system subtype
 // excludes it" assertions are obsolete — the doctrine is read on-demand
@@ -367,27 +371,27 @@ func TestRenderPrompt_ReturnsErrorForUnknownAgent(t *testing.T) {
 
 // TestRenderPrompt_ReferencesRootSubstitutes covers the placeholder that
 // lets prompt bodies reference the per-user synced references root via
-// ${references_root}. The substituted value is an absolute path so the
+// ${references-root}. The substituted value is an absolute path so the
 // agent's Read tool resolves it regardless of working directory.
 // Uses PromptOverride (which IS expanded, unlike OverrideText) to
 // inject a body that references the placeholder.
 func TestRenderPrompt_ReferencesRootSubstitutes(t *testing.T) {
 	opts := newOpts()
-	opts.PromptOverride = "Read ${references_root}/atdd/architecture/dsl-core.md."
+	opts.PromptOverride = "Read ${references-root}/atdd/architecture/dsl-core.md."
 
 	got, err := renderPrompt(opts)
 	if err != nil {
 		t.Fatalf("renderPrompt: %v", err)
 	}
-	if strings.Contains(got, "${references_root}") {
-		t.Errorf("expected ${references_root} substituted; got: %q", got)
+	if strings.Contains(got, "${references-root}") {
+		t.Errorf("expected ${references-root} substituted; got: %q", got)
 	}
 	// references_root substitutes to an OS-native path (Windows uses
 	// backslashes); the literal trailing "/atdd/..." in the template
 	// stays as-is. Assert the two halves independently so the test
 	// is platform-portable.
 	if !strings.Contains(got, filepath.Join(".gh-optivem", "references")) {
-		t.Errorf("expected ${references_root} resolved to ~/.gh-optivem/references prefix; got: %q", got)
+		t.Errorf("expected ${references-root} resolved to ~/.gh-optivem/references prefix; got: %q", got)
 	}
 	if !strings.Contains(got, "/atdd/architecture/dsl-core.md") {
 		t.Errorf("expected literal suffix preserved; got: %q", got)
@@ -397,7 +401,7 @@ func TestRenderPrompt_ReferencesRootSubstitutes(t *testing.T) {
 // TestDispatch_MaterializesProjectReferencesWhenProjectConfigSet covers the
 // project-local-references wiring: when Options.ProjectConfig and RepoPath
 // are both set, Dispatch calls MaterializeProject before render and the
-// rendered prompt's ${references_root} resolves to
+// rendered prompt's ${references-root} resolves to
 // <RepoPath>/.gh-optivem/references instead of the user-global home path.
 //
 // To keep the test independent of the current state of the embedded
@@ -434,7 +438,7 @@ func TestDispatch_MaterializesProjectReferencesWhenProjectConfigSet(t *testing.T
 	opts := newOpts()
 	opts.RepoPath = repoPath
 	opts.ProjectConfig = cfg
-	opts.PromptOverride = "Read ${references_root}/atdd/architecture/system.md."
+	opts.PromptOverride = "Read ${references-root}/atdd/architecture/system.md."
 
 	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
@@ -445,7 +449,7 @@ func TestDispatch_MaterializesProjectReferencesWhenProjectConfigSet(t *testing.T
 	prompt := claudeFake.calls[0].Prompt
 	wantPrefix := filepath.Join(repoPath, ".gh-optivem", "references")
 	if !strings.Contains(prompt, wantPrefix) {
-		t.Errorf("expected ${references_root} resolved to %q in prompt; got: %q", wantPrefix, prompt)
+		t.Errorf("expected ${references-root} resolved to %q in prompt; got: %q", wantPrefix, prompt)
 	}
 }
 
@@ -475,7 +479,7 @@ func preWriteFreshSidecar(t *testing.T, repoPath string, placeholders map[string
 
 // TestDispatch_FallsBackToUserGlobalReferencesRootWhenProjectConfigNil covers
 // the legacy / scaffold-flow path: callers without a ProjectConfig get
-// ${references_root} resolved against assetsync.ReferencesRoot() and no
+// ${references-root} resolved against assetsync.ReferencesRoot() and no
 // project-local materialization happens. Regression guard so a future
 // "always materialize" change doesn't break CLI utilities and tests that
 // legitimately have no project context.
@@ -491,7 +495,7 @@ func TestDispatch_FallsBackToUserGlobalReferencesRootWhenProjectConfigNil(t *tes
 	// ProjectConfig must be nil to exercise the legacy fallback path.
 	// newOpts() seeds it for the common scope_block case — clear here.
 	opts.ProjectConfig = nil
-	opts.PromptOverride = "Read ${references_root}/atdd/architecture/system.md."
+	opts.PromptOverride = "Read ${references-root}/atdd/architecture/system.md."
 
 	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
@@ -514,7 +518,7 @@ func TestDispatch_FallsBackToUserGlobalReferencesRootWhenProjectConfigNil(t *tes
 func TestRenderPrompt_LanguageSubstitutes(t *testing.T) {
 	opts := newOpts()
 	opts.Language = "go"
-	opts.PromptOverride = "Read ${references_root}/code/language-equivalents/${language}.md."
+	opts.PromptOverride = "Read ${references-root}/code/language-equivalents/${language}.md."
 
 	got, err := renderPrompt(opts)
 	if err != nil {
@@ -529,20 +533,20 @@ func TestRenderPrompt_LanguageSubstitutes(t *testing.T) {
 }
 
 // TestRenderPrompt_AcceptanceCriteriaSubstitutes covers the
-// ${acceptance_criteria} placeholder that lets write-acceptance-tests consume
+// ${acceptance-criteria} placeholder that lets write-acceptance-tests consume
 // the scenarios intake parsed from the ticket body without re-fetching the
 // issue via `gh issue view`.
 func TestRenderPrompt_AcceptanceCriteriaSubstitutes(t *testing.T) {
 	opts := newOpts()
 	opts.AcceptanceCriteria = "Scenario: View product list\n  Given the catalog has products\n  When I open the product list page\n  Then I see them"
-	opts.PromptOverride = "Scenarios:\n${acceptance_criteria}"
+	opts.PromptOverride = "Scenarios:\n${acceptance-criteria}"
 
 	got, err := renderPrompt(opts)
 	if err != nil {
 		t.Fatalf("renderPrompt: %v", err)
 	}
-	if strings.Contains(got, "${acceptance_criteria}") {
-		t.Errorf("expected ${acceptance_criteria} substituted; got: %q", got)
+	if strings.Contains(got, "${acceptance-criteria}") {
+		t.Errorf("expected ${acceptance-criteria} substituted; got: %q", got)
 	}
 	if !strings.Contains(got, "View product list") {
 		t.Errorf("expected scenario body in rendered prompt; got: %q", got)
@@ -550,7 +554,7 @@ func TestRenderPrompt_AcceptanceCriteriaSubstitutes(t *testing.T) {
 }
 
 // TestRenderPrompt_UnsetAcceptanceCriteriaFailsFast pins the load-bearing
-// contract: a prompt that references ${acceptance_criteria} with no value
+// contract: a prompt that references ${acceptance-criteria} with no value
 // set produces a clear render-time error rather than silently substituting
 // an empty block. AT - RED - TEST is contractually scoped to implementing
 // AC, so an absent value is a wiring bug, not a valid state.
@@ -560,13 +564,13 @@ func TestRenderPrompt_UnsetAcceptanceCriteriaFailsFast(t *testing.T) {
 	}
 	opts := newOpts()
 	opts.AcceptanceCriteria = "" // override the test default
-	opts.PromptOverride = "You are the Test Agent. Scenarios:\n${acceptance_criteria}"
+	opts.PromptOverride = "You are the Test Agent. Scenarios:\n${acceptance-criteria}"
 	_, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
 	if err == nil {
-		t.Fatalf("expected error for unset ${acceptance_criteria}, got nil")
+		t.Fatalf("expected error for unset ${acceptance-criteria}, got nil")
 	}
-	if !strings.Contains(err.Error(), "acceptance_criteria") {
-		t.Errorf("expected error to name 'acceptance_criteria'; got: %v", err)
+	if !strings.Contains(err.Error(), "acceptance-criteria") {
+		t.Errorf("expected error to name 'acceptance-criteria'; got: %v", err)
 	}
 }
 
@@ -611,7 +615,7 @@ func TestRenderPrompt_UnsetLanguageFailsFast(t *testing.T) {
 	// Use a node_replacements-style PromptOverride that references
 	// ${language} without setting Language. Dispatch's
 	// findUnfilledPlaceholders catches the leftover.
-	opts.PromptOverride = "You are the Test Agent. Read ${references_root}/code/language-equivalents/${language}.md."
+	opts.PromptOverride = "You are the Test Agent. Read ${references-root}/code/language-equivalents/${language}.md."
 	_, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
 	if err == nil {
 		t.Fatalf("expected error for unset ${language}, got nil")
@@ -1200,7 +1204,7 @@ func TestDispatch_HaltsOnUnfilledPlaceholder(t *testing.T) {
 
 func TestDispatch_HaltsOnUnfilledCommandPlaceholder(t *testing.T) {
 	// fix-command-failed's prompt references ${command} — the trio
-	// ${command} / ${command_exit_code} / ${command_stderr_tail} is
+	// ${command} / ${command-exit-code} / ${command-stderr-tail} is
 	// registered into params only when Options.CommandLine is non-empty
 	// (mirroring Checklist / AcceptanceCriteria). Empty CommandLine plus
 	// a prompt that references ${command} must trigger the same fast
@@ -1212,7 +1216,7 @@ func TestDispatch_HaltsOnUnfilledCommandPlaceholder(t *testing.T) {
 	gitFake := &fakeGit{}
 	claudeFake := &fakeClaude{}
 	opts := newOpts()
-	opts.PromptOverride = "Diagnose the failure of: ${command}\nexit=${command_exit_code}\nstderr=${command_stderr_tail}"
+	opts.PromptOverride = "Diagnose the failure of: ${command}\nexit=${command-exit-code}\nstderr=${command-stderr-tail}"
 	// CommandLine intentionally left empty.
 
 	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts)
@@ -1240,7 +1244,7 @@ func TestDispatch_CommandPlaceholdersResolveWhenPopulated(t *testing.T) {
 	}
 	claudeFake := &fakeClaude{}
 	opts := newOpts()
-	opts.PromptOverride = "cmd=${command} exit=${command_exit_code} tail=${command_stderr_tail}"
+	opts.PromptOverride = "cmd=${command} exit=${command-exit-code} tail=${command-stderr-tail}"
 	opts.CommandLine = "gh optivem system build"
 	opts.CommandExitCode = 2
 	opts.CommandStderrTail = "boom: missing config"
@@ -1430,8 +1434,8 @@ func TestDispatch_PreparedPromptBannerUsesPlaceholdersForEmpties(t *testing.T) {
 	opts.Architecture = ""
 	opts.ScopeRead = nil
 	opts.ScopeWrite = nil
-	// PromptOverride avoids the load-bearing-${scope_block} failure mode
-	// — the real write-acceptance-tests body now references ${scope_block},
+	// PromptOverride avoids the load-bearing-${scope-block} failure mode
+	// — the real write-acceptance-tests body now references ${scope-block},
 	// which would fail dispatch with empty scope. This test only cares
 	// about the banner output for unset fields.
 	opts.PromptOverride = "Synthetic body — no scope references."
@@ -1615,7 +1619,7 @@ func TestRenderExpectedOutputs_MixedRequiredAndOptional(t *testing.T) {
 
 func TestRenderPrompt_ExpectedOutputsSubstitutes(t *testing.T) {
 	opts := newOpts()
-	opts.PromptOverride = "Body. ${expected_outputs}"
+	opts.PromptOverride = "Body. ${expected-outputs}"
 	opts.ExpectedOutputs = []statemachine.OutputSpec{
 		{Key: "dsl-port-changed", Type: "bool"},
 		{Key: "test-names", Type: "string-list", Optional: true},
@@ -1696,5 +1700,95 @@ func TestDispatch_ForwardsOutputChannelToRunner(t *testing.T) {
 	}
 	if got.OutputKeysSpec != opts.OutputKeysSpec {
 		t.Errorf("OutputKeysSpec: runner saw %q, want %q", got.OutputKeysSpec, opts.OutputKeysSpec)
+	}
+}
+
+// snakePlaceholderRe matches a `${foo_bar}` shaped token — underscore
+// as word separator. Single-word names (${language}, ${command},
+// ${phase}, ${checklist}) deliberately do not match: with no separator
+// there is no kebab-vs-snake convention question. Allows trailing
+// underscore-separated segments (${foo_bar_baz}) and digits inside
+// segments are tolerated by the broader pattern but kept ASCII-lowercase
+// to mirror the project convention.
+var snakePlaceholderRe = regexp.MustCompile(`\$\{[a-z]+_[a-z]+[a-z_]*\}`)
+
+// TestNoSnakeCasePlaceholdersInPromptBodies walks every embedded prompt
+// asset under internal/assets/runtime/{agents,shared} and fails if any
+// snake-cased `${foo_bar}` placeholder survives. Path B aligned the
+// renderer registry and prompt bodies on kebab; this test is the drift
+// alarm that prevents a future agent file from sneaking a snake
+// placeholder back in. Walks runtime/shared/ in addition to
+// runtime/agents/atdd/ because the shared preamble is concatenated to
+// every dispatched prompt — a snake placeholder there has the same
+// load-bearing failure mode as one in an agent body.
+func TestNoSnakeCasePlaceholdersInPromptBodies(t *testing.T) {
+	roots := []string{"runtime/agents/atdd", "runtime/shared"}
+	var offenders []string
+	for _, root := range roots {
+		err := fs.WalkDir(assets.FS, root, func(path string, d fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if d.IsDir() || !strings.HasSuffix(path, ".md") {
+				return nil
+			}
+			data, readErr := assets.FS.ReadFile(path)
+			if readErr != nil {
+				return readErr
+			}
+			for _, m := range snakePlaceholderRe.FindAllString(string(data), -1) {
+				offenders = append(offenders, path+": "+m)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("walk %s: %v", root, err)
+		}
+	}
+	if len(offenders) > 0 {
+		t.Fatalf("snake-cased placeholders survive in embedded prompts; rename to kebab:\n  %s",
+			strings.Join(offenders, "\n  "))
+	}
+}
+
+// TestRenderPrompt_NoSnakePlaceholdersInRenderedOutput renders the
+// canonical prompts for a writer/fixer/refactorer triple and asserts
+// no `${foo_bar}` token survives in the rendered output. Complements
+// TestNoSnakeCasePlaceholdersInPromptBodies: that test pins the .md
+// source, this one pins the renderer's substitution layer — catches a
+// regression where the renderer registers a kebab key but the prompt
+// body (post-rendering, including any inline shared content) still
+// names it with snake.
+func TestRenderPrompt_NoSnakePlaceholdersInRenderedOutput(t *testing.T) {
+	for _, agent := range []string{
+		"acceptance-test-writer",  // writer
+		"command-failed-fixer",    // fixer
+		"system-refactorer",       // refactorer
+	} {
+		t.Run(agent, func(t *testing.T) {
+			if _, err := agents.Prompt(agent); err != nil {
+				t.Skipf("agent %q not embedded: %v", agent, err)
+			}
+			opts := newOpts()
+			opts.Agent = agent
+			// Seed every load-bearing field so renderPrompt resolves
+			// cleanly across all three agent shapes.
+			opts.AcceptanceCriteria = "Scenario: x\n  Given a\n  When b\n  Then c"
+			opts.Checklist = "- [ ] item"
+			opts.ParsedConcepts = "/tmp/parsed-concepts.md"
+			opts.VerifyResults = "results"
+			opts.ChangedFiles = "M foo.go"
+			opts.CommandLine = "go test ./..."
+			opts.CommandExitCode = 1
+			opts.CommandStderrTail = "stderr tail"
+			opts.TicketID = "42"
+			rendered, err := renderPrompt(opts)
+			if err != nil {
+				t.Fatalf("renderPrompt(%s): %v", agent, err)
+			}
+			if matches := snakePlaceholderRe.FindAllString(rendered, -1); len(matches) > 0 {
+				t.Fatalf("snake-cased placeholders survive in rendered prompt for %q: %v", agent, matches)
+			}
+		})
 	}
 }
