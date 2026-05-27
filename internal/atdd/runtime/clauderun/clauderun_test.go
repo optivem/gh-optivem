@@ -208,6 +208,15 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 	} {
 		opts := newOpts()
 		opts.Agent = name
+		// Seed every agent-specific placeholder this loop's iteration
+		// might reference. Strict-mode ExpandParams (plan 20260527-0205)
+		// rejects unfilled placeholders before render returns; the test's
+		// purpose is the legacy-marker scan, so just satisfy the
+		// prerequisites:
+		//   - ${checklist} — refactor / structural-task agents
+		//   - ${touches-system-driver} — dsl-implementer
+		opts.Checklist = "- [ ] placeholder checklist item"
+		opts.NodeParams = map[string]string{"touches-system-driver": "false"}
 
 		got, err := renderPrompt(opts)
 		if err != nil {
@@ -1210,8 +1219,8 @@ func TestDispatch_HaltsOnUnfilledCommandPlaceholder(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error when ${command} is unfilled, got nil")
 	}
-	if !strings.Contains(err.Error(), "unfilled placeholders") {
-		t.Errorf("error should mention unfilled placeholders, got %q", err.Error())
+	if !strings.Contains(err.Error(), "placeholder") {
+		t.Errorf("error should mention an unresolved placeholder, got %q", err.Error())
 	}
 	if !strings.Contains(err.Error(), "${command}") {
 		t.Errorf("error should name the leftover placeholder, got %q", err.Error())
