@@ -81,19 +81,110 @@ so the plan stands on its own.
   inventing `CategoryMutate` / `CategoryRemote`; "commit = permanent
   write" is an intuitive stretch operators already expect.
 
+- **Q6 — `CategoryRelease` shouldn't exist.** Release is not in
+  BPMN (no `release` process or call-activity in
+  `process-flow.yaml`). `CategoryRelease` has exactly one consumer
+  (`release.go:186`) and, worse, under default `--auto` (ConfirmSet
+  = `commit, fix, human`) `release` is NOT in the set, so
+  `gh optivem release --auto` silently bypasses the release prompt
+  — the opposite of "release should never be automated." Fix:
+  reclassify `release.go:186` to `CategoryHuman` (always prompts,
+  operator-uncontrollable per the locked invariant) and delete
+  `CategoryRelease` from the enum entirely. Net: enum shrinks 5 →
+  4 (`commit`, `fix`, `prompt`, `human`).
+
 **Out of scope (deliberately):**
 
 - Removing `CategoryHuman` from `ConfirmSet` (locked invariant; the
   whole point is humans always prompt for STOP nodes).
 - Restructuring `approval.go` (already centralized; no design
   change).
-- Adding new categories. The closed set `{commit, fix, release,
-  prompt, human}` stays as is.
+- Adding new categories. The remaining closed set `{commit, fix,
+  prompt, human}` stays as is. (`release` is removed per Q6 — see
+  Item 6.)
 - BPMN-orchestrating the non-ATDD CLI commands (workspace commit,
-  release, configinit) — they keep calling `approval.Confirm`
-  directly; categories live next to the call.
+  configinit) — they keep calling `approval.Confirm` directly;
+  categories live next to the call.
 - Regenerating any diagram or process-flow artifact — see
   `feedback_plans_no_diagram_regen.md`.
+
+## Action node inventory
+
+Reference data — supports Item 1's audit + sub-tasks. Two tables:
+every BPMN node that dispatches an agent (`process: execute-agent`)
+and every node that dispatches a command (`process: execute-command`).
+These two primitives are what reach `ASK_HUMAN` via their
+`APPROVE_PRE` / `APPROVE_POST` gates.
+
+### Agent action nodes (18 total)
+
+Split by primary intent: 7 test-intent, 9 production, 2 meta.
+Note that some "test agents" also write DSL code as a side-effect
+(declaring a new DSL method that gets stubbed in by
+`dsl-implementer` later). Annotated in the `also writes` column.
+
+**Test-intent (7):**
+
+| # | Line | task-name | agent | primary scope | also writes |
+|---|---|---|---|---|---|
+| 1 | 1338 | `write-acceptance-tests` | `acceptance-test-writer` | at-test | dsl-port, dsl-core |
+| 2 | 1372 | `write-contract-tests` | `contract-test-writer` | ct-test | dsl-port, dsl-core |
+| 11 | 1607 | `disable-tests` | `test-disabler` | at-test, ct-test | — |
+| 12 | 1629 | `enable-tests` | `test-enabler` | at-test, ct-test | — |
+| 13 | 1653 | `fix-unexpected-passing-tests` | `unexpected-passing-tests-fixer` | at-test, ct-test | dsl-*, driver-*, system-path (broad) |
+| 14 | 1676 | `fix-unexpected-failing-tests` | `unexpected-failing-tests-fixer` | at-test, ct-test | dsl-*, driver-*, system-path (broad) |
+| 15 | 1698 | `refactor-tests` | `test-refactorer` | at-test, ct-test | dsl-*, driver-* |
+
+**Production (9):**
+
+| # | Line | task-name | agent | write scope |
+|---|---|---|---|---|
+| 3 | 1404 | `implement-dsl` | `dsl-implementer` | dsl-port, dsl-core, driver-adapter (stubs) |
+| 4 | 1435 | `implement-system` | `system-implementer` | system-path |
+| 5 | 1463 | `update-system` | `system-updater` | system-path, driver-adapter |
+| 6 | 1488 | `implement-system-driver-adapters` | `system-driver-adapter-implementer` | driver-adapter |
+| 7 | 1513 | `update-system-driver-adapters` | `system-driver-adapter-updater` | driver-adapter |
+| 8 | 1535 | `implement-external-system-driver-adapters` | `external-system-driver-adapter-implementer` | external-system-driver-adapter |
+| 9 | 1561 | `update-external-system-driver-adapters` | `external-system-driver-adapter-updater` | external-system-driver-adapter |
+| 10 | 1582 | `implement-external-system-stubs` | `external-system-stub-implementer` | external-system-driver-adapter |
+| 16 | 1719 | `refactor-system` | `system-refactorer` | system-path |
+
+**Meta (2):**
+
+| # | Line | task-name | agent | scope |
+|---|---|---|---|---|
+| 17 | 1745 | `refine-acceptance-criteria` | `acceptance-criteria-refiner` | `scope: none` |
+| 18 | 2220 | `${failure-kind}-fixer` (fix loop) | templated | inherits from caller |
+
+Under the current categorical model, every agent dispatch stays at
+`category: prompt` (Item 1's pinning model). Per-agent
+differentiation by stakes is not part of this plan — it surfaced as
+a follow-up worth considering if/when the policy pivots to a
+severity-levels model. The table above is the basis for that
+classification when the time comes.
+
+### Command action nodes (7 total)
+
+| # | Line | command | effect | category |
+|---|---|---|---|---|
+| 1 | 1765 | `gh optivem compile` | compile working-tree code | `prompt` |
+| 2 | 1783 | `gh optivem system compile` | compile system module | `prompt` |
+| 3 | 1801 | `gh optivem test compile` | compile test module | `prompt` |
+| 4 | 1819 | `gh optivem system build` | build system (produces artifacts) | `prompt` |
+| 5 | 1859 | `gh optivem system start ${start-flags}` | launches the system as a running process | `prompt` |
+| 6 | 1889 | `gh optivem commit --yes --include-untracked` | writes a git commit (persistent) | `commit` |
+| 7 | 1923 | `gh optivem test run` | runs tests, reports outcome | `prompt` |
+
+**Observation — double-prompt risk at #6:** the inner CLI command
+(`gh optivem commit`) uses `approval.Confirm(CategoryCommit)` at
+`cross_repo_commands.go:367`. The BPMN node suppresses the inner
+prompt via the `--yes` flag in the command string. If a future edit
+removes `--yes` or the inner command renames the flag, the operator
+will be prompted twice for the same logical action. Worth a comment
+at line 1894 calling out the `--yes` as load-bearing.
+
+The other six commands do not have inner approval prompts, so this
+risk is specific to #6.
 
 ## Items
 
@@ -125,15 +216,20 @@ Current state (from `grep "process: approve"`):
   `params:`.
 - `fix` `APPROVE_PRE` → already `category: fix`, no change.
 
-**Sub-task — enumerate `process: execute-command` callers** and add
-`category:` to each. Grep `process-flow.yaml` for `process:
-execute-command` call-activities; for each, add `category:` in its
-`params:` block alongside the existing `command:` / `question:`. The
-category reflects the stakes of the command being run (e.g. a `git
-commit` step is `commit`; a `go vet` step is `prompt`).
+**Sub-task — declare `category:` on all 7 `process: execute-command`
+callers** per the **Command action nodes** table in the Action node
+inventory above. Six are `prompt` (compile / build / start / test
+run — no persistent state change); only node #6 (`gh optivem commit`,
+line 1889) is `commit`.
 
-Add a one-line comment at each new `category:` line explaining the
-choice, mirroring the style at process-flow.yaml:2209-2212.
+For each call-activity, add `category:` in its `params:` block
+alongside the existing `command:`. Add a one-line comment at each
+`category:` line explaining the choice, mirroring the style at
+process-flow.yaml:2209-2212.
+
+Also add a comment at line 1894 marking the `--yes` flag in the
+commit command as load-bearing for double-prompt avoidance (see
+the inventory's observation).
 
 **Acceptance:** every `process: approve` call-activity in
 `process-flow.yaml` has an explicit `category:` (either pinned on
@@ -167,12 +263,18 @@ statuses is a persistent externally-visible mutation, which the
 extended `CategoryCommit` semantic explicitly covers. No further
 investigation needed for this site.
 
-For the remaining 6 sites, the audit confirms category choice
+**Pre-decided from Q6:** `release.go:186` reclassifies from
+`CategoryRelease` to `CategoryHuman` — release should never be
+automated, and `CategoryHuman` is the only tier that operators
+cannot bypass (locked invariant at approval.go:182). After this
+reclassification `CategoryRelease` has zero consumers and is
+removed in Item 6.
+
+For the remaining 5 sites, the audit confirms category choice
 against the Item 4 rubric. Expected outcome: most stay as-is
-(workspace commit and release are already correctly tiered;
-configinit wizards and `main.go` bug-report prompts are genuinely
-low-stakes `prompt`). If the audit surfaces an unexpected misfit,
-pause and surface it.
+(workspace commit is already correctly tiered; configinit wizards
+and `main.go` bug-report prompts are genuinely low-stakes `prompt`).
+If the audit surfaces an unexpected misfit, pause and surface it.
 
 **Acceptance:** audit table appended to this plan under the
 `## Item 2 audit findings` header below. Any unexpected
@@ -217,8 +319,6 @@ expands to a per-category rubric. Suggested text:
 //             will see).
 //   fix     — fix-on-failure dispatch points; the operator wants tight
 //             control over remediation even under --auto.
-//   release — release-flow steps (version bumps, tag pushes, artifact
-//             uploads); always high-stakes.
 //   prompt  — low-stakes wizard / dispatch confirmations where the
 //             operator's only realistic answer is yes (config wizard
 //             questions, "do you have an existing GitHub Project?",
@@ -231,8 +331,8 @@ expands to a per-category rubric. Suggested text:
 Update the `--confirm` flag's `Usage:` string in `main.go` (around
 line 145-148) so `gh optivem --help` shows the same rubric in a
 compact form, e.g. `"comma-separated categories that still prompt
-under --auto (commit, fix, release, prompt, human); see
-'approval' package doc for the rubric"`.
+under --auto (commit, fix, prompt, human); see 'approval' package
+doc for the rubric"`.
 
 **Acceptance:** `go doc github.com/optivem/gh-optivem/internal/approval`
 prints the rubric. `gh optivem implement --help` mentions the
@@ -289,6 +389,41 @@ Update the doc-block (driver.go:1133-1150) to:
 **Gate before commit:** yes — behavior change touching the loader
 and the driver.
 
+### 6. Remove `CategoryRelease` from the approval enum
+
+**Files:** `internal/approval/approval.go`,
+`internal/approval/approval_test.go`,
+`internal/atdd/runtime/release/release.go`, `main.go`
+
+After Item 3 has updated `release.go:186` to use `CategoryHuman`
+(per the Item 2 reclassification table), `CategoryRelease` has zero
+remaining consumers and is deleted:
+
+- `approval.go:32` — remove `CategoryRelease Category = iota` from
+  the enum. Subsequent iota values shift; verify no code depends on
+  the integer rank.
+- `approval.go:44` — remove the `case CategoryRelease: return
+  "release"` arm in `String()`.
+- `approval.go:61` — remove `CategoryRelease` from the
+  `allCategories` slice.
+- `approval.go:75` — remove the `case "release": return
+  CategoryRelease, nil` arm in `ParseCategory`.
+- `approval_test.go` — remove tests that exercise `CategoryRelease`
+  by name. Add one test case asserting that `--confirm=release`
+  produces a `ParseCategory` error citing the new closed set.
+- `main.go` — update the `--confirm` flag `Usage:` string to drop
+  `release` from the documented vocabulary (already covered by
+  Item 4's rubric edit; this is the verification of that change).
+
+**Acceptance:** `grep -rn CategoryRelease internal/` returns no
+matches. `go build ./...` succeeds. `gh optivem implement --auto
+--confirm=release` errors with "unknown category 'release'; valid:
+commit, fix, prompt, human". `gh optivem release --auto` still
+prompts at the release gate (because `release.go:186` now uses
+`CategoryHuman`, which is in `ConfirmSet` unconditionally).
+
+**Gate before commit:** yes — enum removal, touches multiple files.
+
 ## Item 2 audit findings
 
 _(To be filled in during Item 2 execution. Leave header in place so
@@ -317,7 +452,7 @@ locking in.
 gh optivem atdd run --issue 42
 
 # Autonomous with default exclusions (commit + fix still prompt;
-# prompt + release auto-yes; STOP nodes always prompt).
+# prompt auto-yeses; STOP nodes always prompt).
 gh optivem atdd run --issue 42 --auto
 
 # Autonomous, only human-STOP nodes pause (most unattended setup).
@@ -333,11 +468,10 @@ gh optivem workspace commit
 # Workspace commit, fully autonomous (no per-repo prompt).
 gh optivem workspace commit --auto --confirm=
 
-# Release, attended (release.go:186 prompts).
+# Release always prompts — release.go:186 uses CategoryHuman, which
+# is operator-uncontrollable. --auto / --confirm= have no effect on
+# the release gate.
 gh optivem release
-
-# Release, autonomous.
-gh optivem release --auto --confirm=
 
 # Equivalent to --auto via environment (CI / scheduled runs).
 GH_OPTIVEM_AUTO=true GH_OPTIVEM_CONFIRM=human gh optivem atdd run --issue 42
