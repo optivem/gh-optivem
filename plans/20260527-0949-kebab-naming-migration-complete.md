@@ -84,34 +84,6 @@ Out of scope:
 
 ## Items
 
-### 2. Agent `.md` prompt-body sweep
-
-Files to edit (full inventory from `grep '${[a-z_]+_[a-z_]+}'`):
-
-- `acceptance-test-writer.md` — `${acceptance_criteria}`, `${scope_block}`, `${expected_outputs}`, `${references_root}`
-- `contract-test-writer.md` — `${scope_block}`, `${expected_outputs}`, `${references_root}`
-- `dsl-implementer.md` — `${scope_block}`, `${expected_outputs}`, `${references_root}`
-- `external-system-stub-implementer.md` — `${scope_block}`
-- `external-system-driver-adapter-implementer.md` — `${scope_block}`
-- `external-system-driver-adapter-updater.md` — `${scope_block}`
-- `system-driver-adapter-implementer.md` — `${scope_block}`
-- `system-driver-adapter-updater.md` — `${scope_block}`
-- `system-implementer.md` — `${scope_block}`
-- `system-updater.md` — `${scope_block}`
-- `system-refactorer.md` — `${scope_block}`
-- `test-refactorer.md` — `${scope_block}`
-- `acceptance-criteria-refiner.md` — `${parsed_concepts}` (×3)
-- `command-failed-fixer.md` — `${scope_block}`, `${command_exit_code}`, `${command_stderr_tail}`, `${changed_files}`
-- `missing-output-fixer.md` — `${scope_block}`, `${changed_files}`
-- `scope-diff-fixer.md` — `${scope_block}`, `${changed_files}`
-- `unexpected-passing-tests-fixer.md` — `${scope_block}`, `${verify_results}`, `${changed_files}`
-- `unexpected-failing-tests-fixer.md` — `${scope_block}`, `${verify_results}`, `${changed_files}`
-- `test-disabler.md` — `${scope_block}`, `${disable_marker_example}`
-- `test-enabler.md` — `${scope_block}`, `${disable_marker_removal_example}`
-
-Each rename is mechanical: `${snake_name}` → `${snake-name}` (replace
-the underscore that separates words; single-word entries unaffected).
-
 ### 3. Test updates
 
 `internal/atdd/runtime/clauderun/clauderun_test.go`:

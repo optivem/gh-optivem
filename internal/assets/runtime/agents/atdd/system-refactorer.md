@@ -11,7 +11,7 @@ This task covers internal refactor / rename / move / dependency upgrade / build 
 
 ### Scope
 
-${scope_block}
+${scope-block}
 
 ### Parameters
 

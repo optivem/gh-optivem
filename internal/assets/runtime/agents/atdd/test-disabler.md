@@ -9,7 +9,7 @@ You are the Test-Disabling Agent. Annotate the change-driven test methods listed
 
 ### Scope
 
-${scope_block}
+${scope-block}
 
 ### Parameters
 
@@ -27,7 +27,7 @@ ${scope_block}
 
 The dispatcher has already composed the per-language marker with the reason string fully resolved for this dispatch. Emit exactly this shape:
 
-${disable_marker_example}
+${disable-marker-example}
 
 The reason string follows the format `<TICKET-ID> - AT - <LOOP> - <CYCLE-PHASE>` with ` - ` (space-hyphen-space) between every segment. The downstream `enable-tests` agent uses a `startsWith` filter keyed on this exact prefix; do not paraphrase, abbreviate, or change casing.
 

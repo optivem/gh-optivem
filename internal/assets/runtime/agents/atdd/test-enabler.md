@@ -9,7 +9,7 @@ You are the Test-Enabling Agent. Strip the per-language disable marker from the 
 
 ### Scope
 
-${scope_block}
+${scope-block}
 
 ### Parameters
 
@@ -26,7 +26,7 @@ ${scope_block}
 
 The dispatcher has composed the per-language strip transform with the reason-prefix fully resolved for this dispatch:
 
-${disable_marker_removal_example}
+${disable-marker-removal-example}
 
 Strip a marker **only** when its reason starts with that prefix (`<TICKET-ID> - AT - RED - <PREV-PHASE>`). `RED` is literal — GREEN never disables, so re-enable always strips a prior RED annotation.
 

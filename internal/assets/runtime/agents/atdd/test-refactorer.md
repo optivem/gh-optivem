@@ -11,7 +11,7 @@ This task covers internal refactor / rename / move / dead-code removal / helper 
 
 ### Scope
 
-${scope_block}
+${scope-block}
 
 ### Parameters
 

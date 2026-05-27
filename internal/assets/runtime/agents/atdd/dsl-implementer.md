@@ -11,7 +11,7 @@ The implement-dsl task replaces every `TODO: DSL` prototype in the DSL Core (`${
 
 ### Scope
 
-${scope_block}
+${scope-block}
 
 This task does not receive a substituted artifact input; the `TODO: DSL` prototypes the agent operates on are discovered from the files under its read-scope.
 
@@ -37,7 +37,7 @@ JSONL file after you exit. Call once per dispatch (multiple `KEY=VAL`
 args allowed in a single call); if you need to correct a value, call
 again with the new value (last-write-wins).
 
-${expected_outputs}
+${expected-outputs}
 
 ### Flag semantics
 
@@ -49,7 +49,7 @@ Both required keys MUST be emitted. The downstream gateway treats *unset* as an 
 | `external-driver-ports-changed` | implement-external-system-driver-adapters must run (new External System Driver (`${external-system-driver-port}`) methods need real impls) | the External System Driver port (`${external-system-driver-port}`) was not changed this invocation. |
 
 `scope-exception-files` / `scope-exception-reason` (optional) are the
-scope-exception envelope (see `${references_root}/scope.md`). Emit
+scope-exception envelope (see `${references-root}/scope.md`). Emit
 them only when you had to read or write outside this MID's scope.
 
 Example call:

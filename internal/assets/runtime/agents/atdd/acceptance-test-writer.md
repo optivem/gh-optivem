@@ -9,11 +9,11 @@ The Acceptance Criteria below were parsed from the ticket body during intake —
 
 ### Scope
 
-${scope_block}
+${scope-block}
 
 ### Acceptance Criteria
 
-${acceptance_criteria}
+${acceptance-criteria}
 
 ## Steps
 
@@ -28,7 +28,7 @@ JSONL file after you exit. Call once per dispatch (multiple `KEY=VAL`
 args allowed in a single call); if you need to correct a value, call
 again with the new value (last-write-wins).
 
-${expected_outputs}
+${expected-outputs}
 
 Key semantics:
 
@@ -42,7 +42,7 @@ Key semantics:
   dispatcher routes into the DSL implementation phase iff this flag is
   `true`, so an omitted or incorrect value will mis-route the cycle.
 - `scope-exception-files` / `scope-exception-reason` are the
-  scope-exception envelope (see `${references_root}/scope.md`). Emit
+  scope-exception envelope (see `${references-root}/scope.md`). Emit
   them only when you had to read or write outside this MID's scope.
 
 Example call:

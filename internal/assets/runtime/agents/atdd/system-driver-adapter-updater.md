@@ -11,7 +11,7 @@ Architecture: ${architecture}
 
 ### Scope
 
-${scope_block}
+${scope-block}
 
 ### Checklist
 

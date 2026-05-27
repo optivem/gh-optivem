@@ -25,19 +25,19 @@ downstream consumption.
 
 ## Outputs
 
-- Mutates `${parsed_concepts}` in place — edits to existing ACs, new ACs
+- Mutates `${parsed-concepts}` in place — edits to existing ACs, new ACs
   for additional scenarios, Gherkin normalization throughout.
 - Sets flag: `Refinement Changed: yes|no` — `yes` if any edit or addition
   occurred; `no` if the AC set was already complete and Gherkin-correct.
 
 ## Steps
 
-1. Read `${parsed_concepts}`.
+1. Read `${parsed-concepts}`.
 2. For each acceptance criterion, evaluate coverage against the rubric
    in Additional Notes below; propose edits to existing ACs and add new
    ACs to cover any gaps.
 3. Enforce Gherkin GIVEN-WHEN-THEN form on every scenario.
-4. Mutate `${parsed_concepts}` in place; set the `Refinement Changed`
+4. Mutate `${parsed-concepts}` in place; set the `Refinement Changed`
    flag if any change occurred.
 
 ## Additional Notes

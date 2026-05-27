@@ -8,7 +8,7 @@ You are the `missing-output-fixer` agent. The calling CYCLE dispatched `${failin
 
 ### Scope
 
-${scope_block}
+${scope-block}
 
 Your effective scope is the originating task's full scope (inherited from `${failing-task-name}`), so you can redo whatever work the failing agent was meant to do and emit the required outputs from this dispatch.
 
@@ -29,18 +29,18 @@ Your effective scope is the originating task's full scope (inherited from `${fai
 - `changed_files` — the working-tree dirty file listing at the moment of validation (already captured at dispatch — you do not need to re-run `git status`). Cross-reference against the prompt's intended scope: if real work landed, the diffs prove it; if nothing relevant changed, the agent didn't do the work.
 
   ```
-  ${changed_files}
+  ${changed-files}
   ```
 
 ## Steps
 
 1. **Read the failing agent's prompt.** Open `internal/assets/runtime/agents/atdd/${failing-task-name}.md` and locate the `## Outputs` section — the prompt names each declared key the MID required (the `${missing-outputs}` list) and what each one was supposed to signal. Treat the prompt as the contract for both *the work* and *the keys to emit*.
 
-2. **Inspect the diff for context, not for branching.** Walk `${changed_files}` against the `### Scope` write set to understand what the failing agent already did. This is informational — it shapes your diagnosis paragraph — but does not change the fix shape: you always redo + emit (see Step 4).
+2. **Inspect the diff for context, not for branching.** Walk `${changed-files}` against the `### Scope` write set to understand what the failing agent already did. This is informational — it shapes your diagnosis paragraph — but does not change the fix shape: you always redo + emit (see Step 4).
 
-3. **Present the diagnosis.** One paragraph: state the failing agent (`${failing-task-name}`), the missing keys (`${missing-outputs}`), and what your inspection of `${changed_files}` suggests about whether the work was done at all, done partially, or done and the emission was the only slip. End with: "Re-running the task's work and emitting the required keys."
+3. **Present the diagnosis.** One paragraph: state the failing agent (`${failing-task-name}`), the missing keys (`${missing-outputs}`), and what your inspection of `${changed-files}` suggests about whether the work was done at all, done partially, or done and the emission was the only slip. End with: "Re-running the task's work and emitting the required keys."
 
-4. **Redo the failing agent's work and emit the missing outputs.** Follow `${failing-task-name}`'s prompt as if the dispatch were fresh — produce the in-scope edits the prompt specifies, then call `gh optivem output write KEY=VAL` for every key in `${missing-outputs}`. Idempotency carries the day here: if the edits already landed correctly, re-applying produces no diff; if they were partial, you finish them; if they didn't land at all, you do them now. If completing the work would require editing a path outside `${scope_block}`, emit the scope-exception envelope via `gh optivem output write` (see `scope.md`) and stop. The caller's verify re-runs validation after you exit.
+4. **Redo the failing agent's work and emit the missing outputs.** Follow `${failing-task-name}`'s prompt as if the dispatch were fresh — produce the in-scope edits the prompt specifies, then call `gh optivem output write KEY=VAL` for every key in `${missing-outputs}`. Idempotency carries the day here: if the edits already landed correctly, re-applying produces no diff; if they were partial, you finish them; if they didn't land at all, you do them now. If completing the work would require editing a path outside `${scope-block}`, emit the scope-exception envelope via `gh optivem output write` (see `scope.md`) and stop. The caller's verify re-runs validation after you exit.
 
 ## Additional Notes
 
@@ -58,7 +58,7 @@ This is one of the closed `fix-*` failure-kinds:
 
 The preamble forbids exploratory `git`/`gh` calls because every other
 ATDD phase has its context fully substituted. Fixing is different:
-`${changed_files}` lists *which files* are dirty, but not the *content*
+`${changed-files}` lists *which files* are dirty, but not the *content*
 of those changes. To understand what the upstream agent did or did not
 do before you redo the work, you need to see the actual diff.
 
@@ -72,7 +72,7 @@ You may run:
 You may NOT run `gh issue view`, `git log`, `git status`, `git branch`,
 or `git rev-parse` — the ticket body and history are irrelevant to "did
 the agent do the work and forget to emit, or skip the work," and the
-working tree state is already in `${changed_files}`.
+working tree state is already in `${changed-files}`.
 
 This exception applies only to this fix-* task. The CYCLE will not
 re-dispatch you with the exception in force.
@@ -82,5 +82,5 @@ re-dispatch you with the exception in force.
 - **Branching the fix on diff inspection.** "Just emit, the work is already done" / "redo because nothing landed" are seductive heuristics, but state comparison is fragile. The uniform fix is redo + emit; idempotency handles the already-done case.
 - **Rewriting `${failing-task-name}`'s prompt while you fix.** Prompt edits are a separate change with their own gate; surface "prompt may need clarification" in the diagnosis and stop short of editing the prompt itself.
 - **Bundling a "while I'm here" cleanup with the fix.** The caller's budget is for one attempt; an unrelated edit risks tripping verify on the side change and consumes scope you don't have.
-- **Fixing outside `${scope_block}`.** If the smallest fix requires it, emit the scope-exception envelope and stop. Do not silently widen scope; the scope contract is what the operator approved.
+- **Fixing outside `${scope-block}`.** If the smallest fix requires it, emit the scope-exception envelope and stop. Do not silently widen scope; the scope contract is what the operator approved.
 - **Emitting `gh optivem output write` calls without actually doing the work.** The keys are signals of work completed, not standalone deliverables; emitting without the corresponding edits hides a true negative and burns the caller's verify budget.

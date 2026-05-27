@@ -11,7 +11,7 @@ Implement the dockerized External System stub (`${external-system-driver-adapter
 
 ### Scope
 
-${scope_block}
+${scope-block}
 
 ## Steps
 
