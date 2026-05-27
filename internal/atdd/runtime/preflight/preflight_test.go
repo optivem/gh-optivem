@@ -113,71 +113,6 @@ func TestRun_MissingSystemTestPath(t *testing.T) {
 	}
 }
 
-func TestRun_SystemTestPathsAllPresent(t *testing.T) {
-	t.Parallel()
-	root := makeFakeRepo(t, filepath.Join(t.TempDir(), "shop"))
-	makeDir(t, filepath.Join(root, "system", "monolith", "java"))
-	makeDir(t, filepath.Join(root, "system-test", "java"))
-	makeDir(t, filepath.Join(root, "system-test", "java", "src", "driver", "port"))
-	makeDir(t, filepath.Join(root, "system-test", "java", "src", "driver", "adapter"))
-
-	cfg := &projectconfig.Config{
-		RepoStrategy: projectconfig.RepoStrategyMonoRepo,
-		System: projectconfig.System{
-			Architecture: projectconfig.ArchMonolith,
-			Path:         "system/monolith/java",
-			Repo:         "optivem/shop",
-			Lang:         projectconfig.LangJava,
-		},
-		SystemTest: projectconfig.TierSpec{
-			Path: "system-test/java", Repo: "optivem/shop", Lang: projectconfig.LangJava,
-			Paths: map[string]string{
-				"driver-port":    "system-test/java/src/driver/port",
-				"driver-adapter": "system-test/java/src/driver/adapter",
-			},
-		},
-	}
-	if err := Run(context.Background(), cfg, Options{Cwd: root}); err != nil {
-		t.Errorf("expected nil, got: %v", err)
-	}
-}
-
-func TestRun_SystemTestPathsMissingSubpath(t *testing.T) {
-	t.Parallel()
-	root := makeFakeRepo(t, filepath.Join(t.TempDir(), "shop"))
-	makeDir(t, filepath.Join(root, "system", "monolith", "java"))
-	makeDir(t, filepath.Join(root, "system-test", "java"))
-	makeDir(t, filepath.Join(root, "system-test", "java", "src", "driver", "port"))
-	// driver-adapter intentionally NOT created.
-
-	cfg := &projectconfig.Config{
-		RepoStrategy: projectconfig.RepoStrategyMonoRepo,
-		System: projectconfig.System{
-			Architecture: projectconfig.ArchMonolith,
-			Path:         "system/monolith/java",
-			Repo:         "optivem/shop",
-			Lang:         projectconfig.LangJava,
-		},
-		SystemTest: projectconfig.TierSpec{
-			Path: "system-test/java", Repo: "optivem/shop", Lang: projectconfig.LangJava,
-			Paths: map[string]string{
-				"driver-port":    "system-test/java/src/driver/port",
-				"driver-adapter": "system-test/java/src/driver/adapter",
-			},
-		},
-	}
-	err := Run(context.Background(), cfg, Options{Cwd: root})
-	if err == nil {
-		t.Fatal("expected error for missing system-test.paths.driver-adapter")
-	}
-	if !strings.Contains(err.Error(), "system-test.paths.driver-adapter") {
-		t.Errorf("error should mention system-test.paths.driver-adapter, got: %v", err)
-	}
-	if strings.Contains(err.Error(), "system-test.paths.driver-port") {
-		t.Errorf("driver-port exists; error should not mention it, got: %v", err)
-	}
-}
-
 func TestRun_MultitierMissingFrontend(t *testing.T) {
 	t.Parallel()
 	root := makeFakeRepo(t, filepath.Join(t.TempDir(), "shop"))
@@ -422,6 +357,109 @@ func TestRun_ExternalSystemsOmittedDoesNotFail(t *testing.T) {
 	}
 	if err := Run(context.Background(), cfg, Options{Cwd: root}); err != nil {
 		t.Errorf("expected nil with no external-systems, got: %v", err)
+	}
+}
+
+// canonicalTSPaths returns a fully-populated `system-test.paths:` block in
+// canonical order, mirroring the shape `DefaultPaths("typescript", "system-test/typescript", "")`
+// would emit for a flat (no-SUT-leaf) TS layout. Used by the
+// SystemTestPaths tests below.
+func canonicalTSPaths() map[string]string {
+	return map[string]string{
+		"driver-port":                    "system-test/typescript/src/testkit/driver/port",
+		"driver-adapter":                 "system-test/typescript/src/testkit/driver/adapter",
+		"external-system-driver-port":    "system-test/typescript/src/testkit/external/port",
+		"external-system-driver-adapter": "system-test/typescript/src/testkit/external/adapter",
+		"at-test":                        "system-test/typescript/tests/latest/acceptance",
+		"dsl-port":                       "system-test/typescript/src/testkit/dsl/port",
+		"dsl-core":                       "system-test/typescript/src/testkit/dsl/core",
+		"ct-test":                        "system-test/typescript/tests/latest/contract",
+	}
+}
+
+func TestRun_SystemTestPathsAllPresent(t *testing.T) {
+	t.Parallel()
+	root := makeFakeRepo(t, filepath.Join(t.TempDir(), "shop"))
+	makeDir(t, filepath.Join(root, "system", "monolith", "typescript"))
+	paths := canonicalTSPaths()
+	for _, p := range paths {
+		makeDir(t, filepath.Join(root, p))
+	}
+
+	cfg := &projectconfig.Config{
+		RepoStrategy: projectconfig.RepoStrategyMonoRepo,
+		System: projectconfig.System{
+			Architecture: projectconfig.ArchMonolith,
+			Path:         "system/monolith/typescript",
+			Repo:         "optivem/shop",
+			Lang:         projectconfig.LangTypescript,
+		},
+		SystemTest: projectconfig.TierSpec{
+			Path: "system-test/typescript", Repo: "optivem/shop", Lang: projectconfig.LangTypescript,
+			Paths: paths,
+		},
+	}
+	if err := Run(context.Background(), cfg, Options{Cwd: root}); err != nil {
+		t.Errorf("expected nil with all paths present, got: %v", err)
+	}
+}
+
+// TestRun_SystemTestPathsMissingEntries is the regression test for the gap
+// the 2026-05-26 shop-template review surfaced: a `*-typescript-legacy.yaml`
+// that named four phantom `myShop`-suffixed testkit dirs and still passed
+// preflight because preflight only stat'd the top-level `system-test.path:`
+// parent dir, never the inner `paths:` map.
+func TestRun_SystemTestPathsMissingEntries(t *testing.T) {
+	t.Parallel()
+	root := makeFakeRepo(t, filepath.Join(t.TempDir(), "shop"))
+	makeDir(t, filepath.Join(root, "system", "monolith", "typescript"))
+	// Materialise only the four `external` / `tests/latest/*` entries that
+	// match the shop template's actual TS layout. Leave the four
+	// `myShop`-suffixed entries (driver-port, driver-adapter, dsl-port,
+	// dsl-core) phantom.
+	paths := map[string]string{
+		"driver-port":                    "system-test/typescript/src/testkit/driver/port/myShop",
+		"driver-adapter":                 "system-test/typescript/src/testkit/driver/adapter/myShop",
+		"external-system-driver-port":    "system-test/typescript/src/testkit/driver/port/external",
+		"external-system-driver-adapter": "system-test/typescript/src/testkit/driver/adapter/external",
+		"at-test":                        "system-test/typescript/tests/latest/acceptance",
+		"dsl-port":                       "system-test/typescript/src/testkit/dsl/port/myShop",
+		"dsl-core":                       "system-test/typescript/src/testkit/dsl/core/usecase/myShop",
+		"ct-test":                        "system-test/typescript/tests/latest/contract",
+	}
+	for _, key := range []string{"external-system-driver-port", "external-system-driver-adapter", "at-test", "ct-test"} {
+		makeDir(t, filepath.Join(root, paths[key]))
+	}
+
+	cfg := &projectconfig.Config{
+		RepoStrategy: projectconfig.RepoStrategyMonoRepo,
+		System: projectconfig.System{
+			Architecture: projectconfig.ArchMonolith,
+			Path:         "system/monolith/typescript",
+			Repo:         "optivem/shop",
+			Lang:         projectconfig.LangTypescript,
+		},
+		SystemTest: projectconfig.TierSpec{
+			Path: "system-test/typescript", Repo: "optivem/shop", Lang: projectconfig.LangTypescript,
+			Paths: paths,
+		},
+	}
+	err := Run(context.Background(), cfg, Options{Cwd: root})
+	if err == nil {
+		t.Fatal("expected error — four myShop-suffixed paths are missing")
+	}
+	for _, key := range []string{"driver-port", "driver-adapter", "dsl-port", "dsl-core"} {
+		want := "system-test.paths." + key
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %s, got: %v", want, err)
+		}
+	}
+	// Sanity: the four present entries must NOT appear in the failure list.
+	for _, key := range []string{"external-system-driver-port", "external-system-driver-adapter", "at-test", "ct-test"} {
+		bad := "system-test.paths." + key
+		if strings.Contains(err.Error(), bad) {
+			t.Errorf("error should not mention %s (it exists on disk), got: %v", bad, err)
+		}
 	}
 }
 

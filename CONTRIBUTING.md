@@ -26,7 +26,7 @@ For structural change - UI Redesign
 ```bash
 cd ../shop
 
-bash ../gh-optivem/scripts/atdd-rehearsal.sh 61 --config gh-optivem-monolith-typescript.yaml
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 61 --config gh-optivem-monolith-java.yaml
 ```
 
 For behavioral change - user story
@@ -36,7 +36,7 @@ For behavioral change - user story
 ```bash
 cd ../shop
 
-bash ../gh-optivem/scripts/atdd-rehearsal.sh 65 --config gh-optivem-monolith-typescript.yaml
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 65 --config gh-optivem-monolith-java.yaml
 ```
 
 **Issue [#68 — Apply automatic quantity discount on cart lines](https://github.com/optivem/shop/issues/68)** (write flow with calculation rule):
@@ -44,7 +44,7 @@ bash ../gh-optivem/scripts/atdd-rehearsal.sh 65 --config gh-optivem-monolith-typ
 ```bash
 cd ../shop
 
-bash ../gh-optivem/scripts/atdd-rehearsal.sh 68 --config gh-optivem-monolith-typescript.yaml
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 68 --config gh-optivem-monolith-java.yaml
 ```
 
 **Issue [#69 — Reject order with line quantity of 100](https://github.com/optivem/shop/issues/69)** (write flow with validation rule):
@@ -52,7 +52,7 @@ bash ../gh-optivem/scripts/atdd-rehearsal.sh 68 --config gh-optivem-monolith-typ
 ```bash
 cd ../shop
 
-bash ../gh-optivem/scripts/atdd-rehearsal.sh 69 --config gh-optivem-monolith-typescript.yaml
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 69 --config gh-optivem-monolith-java.yaml
 ```
 
 **Issue [#70 — Return a delivered order](https://github.com/optivem/shop/issues/70)** (write flow extending the DSL + driver surface):
@@ -262,7 +262,7 @@ Fast iteration on the driver. **Local working copy of gh-optivem** + **existing 
 cd ../shop
 
 # Step 2 — run the rehearsal (pick one form)
-bash ../gh-optivem/scripts/atdd-rehearsal.sh 61 --config gh-optivem-monolith-typescript.yaml
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 61 --config gh-optivem-monolith-java.yaml
 bash ../gh-optivem/scripts/atdd-rehearsal.sh 61 ticket-cli                       # optional sortable label
 bash ../gh-optivem/scripts/atdd-rehearsal.sh https://github.com/optivem/shop/issues/61
 

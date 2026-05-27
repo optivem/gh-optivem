@@ -276,7 +276,12 @@ type tierCheck struct {
 }
 
 // collectTiers returns every populated tier in cfg, in a deterministic
-// order suitable for stable error output.
+// order suitable for stable error output. The trailing `system-test.paths.*`
+// entries are the eight canonical Family B testkit locations (driver-port,
+// driver-adapter, …) consumed by the runtime scope checker
+// (validate-outputs-and-scopes → resolveLayerPaths → pathInScope); checking
+// them here is what surfaces a stale or wrong-leaf paths: block at
+// `gh optivem config preflight` time instead of mid-`implement` agent run.
 func collectTiers(cfg *projectconfig.Config) []tierCheck {
 	var out []tierCheck
 	switch cfg.System.Architecture {
@@ -310,19 +315,21 @@ func collectTiers(cfg *projectconfig.Config) []tierCheck {
 			repo:  cfg.SystemTest.Repo,
 			path:  cfg.SystemTest.Path,
 		})
-		// Family B sub-paths under system-test.paths.* live in the same
-		// host repo as system-test.path. Sorted iteration keeps the
-		// aggregated error output deterministic.
-		keys := make([]string, 0, len(cfg.SystemTest.Paths))
-		for k := range cfg.SystemTest.Paths {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
+		// system-test.paths.* — eight repo-relative testkit locations. Iterate
+		// in CanonicalPathKeys order so error output is stable and matches the
+		// vocabulary doc (internal/projectconfig/path-keys.md). Skip absent
+		// keys: Validate's Rule 22a already requires the full set when
+		// system.architecture is set, so a missing entry here would already
+		// have failed schema validation upstream of preflight.
+		for _, key := range projectconfig.CanonicalPathKeys() {
+			val, ok := cfg.SystemTest.Paths[key]
+			if !ok || val == "" {
+				continue
+			}
 			out = append(out, tierCheck{
-				field: "system-test.paths." + k,
+				field: "system-test.paths." + key,
 				repo:  cfg.SystemTest.Repo,
-				path:  cfg.SystemTest.Paths[k],
+				path:  val,
 			})
 		}
 	}

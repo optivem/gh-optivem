@@ -438,6 +438,19 @@ func TestRunConfigPreflight_AllPathsExist(t *testing.T) {
 		"system-test/java",
 		"external-systems/stubs",
 		"external-systems/simulators",
+		// system-test.paths.* — the eight canonical Family B testkit
+		// locations DefaultPaths emits for (java, "system-test/java",
+		// "page-turner"). Preflight now stats each one (so the runtime
+		// scope checker's eventual `path(s) outside scope` failure
+		// can't sneak through).
+		"system-test/java/src/main/java/testkit/driver/port/page-turner",
+		"system-test/java/src/main/java/testkit/driver/adapter/page-turner",
+		"system-test/java/src/main/java/testkit/external/port/page-turner",
+		"system-test/java/src/main/java/testkit/external/adapter/page-turner",
+		"system-test/java/src/main/java/testkit/dsl/port/page-turner",
+		"system-test/java/src/main/java/testkit/dsl/core/page-turner",
+		"system-test/java/src/test/java/page-turner/latest/acceptance",
+		"system-test/java/src/test/java/page-turner/latest/contract",
 	} {
 		if err := os.MkdirAll(filepath.Join(repoDir, p), 0o755); err != nil {
 			t.Fatalf("seed dir %s: %v", p, err)
