@@ -48,6 +48,8 @@ import (
 	"github.com/optivem/gh-optivem/internal/files"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/version"
+
+	"github.com/mattn/go-isatty"
 )
 
 // DefaultProcessName is the entry process loaded by every public CLI command.
@@ -277,9 +279,16 @@ func Run(ctx context.Context, opts Options) error {
 			fmt.Fprintf(opts.Stderr, "driver: warning: prune old runs: %v\n", err)
 		}
 	}
+	// Detect TTY-ness against the real os.Stdout, not opts.Stdout — when
+	// --log-file is passed, installLogFileMirror has already swapped
+	// opts.Stdout for an io.MultiWriter, so the trace package can no longer
+	// infer it. Keeping the colour signal on the terminal even with a log
+	// file mirror matches the LogFile contract on Options (the file gains
+	// the same ANSI bytes; less -R or NO_COLOR=1 strip them).
 	trace.WrapAll(eng, trace.Deps{
 		Out:      opts.Stdout,
 		RepoPath: repoPath,
+		Colorize: isatty.IsTerminal(os.Stdout.Fd()),
 	})
 	printConfig(opts.Stdout, opts, cfg, repoPath)
 

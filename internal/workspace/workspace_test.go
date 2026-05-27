@@ -348,6 +348,112 @@ func TestResolve_EmptyPathEntrySkipped(t *testing.T) {
 	}
 }
 
+// TestResolve_WorktreeInsideWorkspace_FallsThroughToSingleRepo pins the
+// fix for the ATDD rehearsal worktree case: a git repo placed inside a
+// workspace tree (e.g. an ATDD worktree at academy/worktrees/rehearsal-X/)
+// whose own root is NOT one of the workspace's folders[] entries must
+// resolve to ModeSingleRepo on the worktree itself, NOT to ModeWorkspace
+// iterating the surrounding workspace's declared folders. Without this,
+// running a cross-repo verb from inside the worktree would silently
+// iterate the workspace's declared repos and skip the worktree entirely.
+func TestResolve_WorktreeInsideWorkspace_FallsThroughToSingleRepo(t *testing.T) {
+	root := t.TempDir()
+	makeGitRepo(t, filepath.Join(root, "repoA"))
+	makeGitRepo(t, filepath.Join(root, "repoB"))
+	// A sibling repo NOT declared in folders[] — the worktree case.
+	worktree := filepath.Join(root, "worktrees", "rehearsal-x")
+	makeGitRepo(t, worktree)
+	writeWorkspace(t, root, "myworkspace.code-workspace",
+		workspaceJSON("repoA", "repoB"))
+
+	scope, err := resolveFrom("", "", worktree)
+	if err != nil {
+		t.Fatalf("resolveFrom: %v", err)
+	}
+	if scope.Mode != ModeSingleRepo {
+		t.Fatalf("mode = %v, want ModeSingleRepo (worktree not in workspace folders[] should fall through)", scope.Mode)
+	}
+	wantRoot, _ := filepath.Abs(worktree)
+	if scope.Root != wantRoot {
+		t.Errorf("root = %q, want worktree root %q", scope.Root, wantRoot)
+	}
+	if len(scope.Folders) != 1 || scope.Folders[0] != wantRoot {
+		t.Errorf("folders = %v, want [%q] (single-repo on the worktree)", scope.Folders, wantRoot)
+	}
+}
+
+// TestResolve_WorktreeInsideWorkspace_FlagStillOverrides pins that the
+// CWD-membership check applies only to walk-up — an explicit
+// --workspace flag is honored even when CWD is outside the workspace's
+// folders[]. Reflects the doc comment: "explicit operator intent".
+func TestResolve_WorktreeInsideWorkspace_FlagStillOverrides(t *testing.T) {
+	root := t.TempDir()
+	makeGitRepo(t, filepath.Join(root, "repoA"))
+	makeGitRepo(t, filepath.Join(root, "repoB"))
+	worktree := filepath.Join(root, "worktrees", "rehearsal-x")
+	makeGitRepo(t, worktree)
+	writeWorkspace(t, root, "myworkspace.code-workspace",
+		workspaceJSON("repoA", "repoB"))
+
+	scope, err := resolveFrom(root, "", worktree)
+	if err != nil {
+		t.Fatalf("resolveFrom: %v", err)
+	}
+	if scope.Mode != ModeWorkspace {
+		t.Fatalf("mode = %v, want ModeWorkspace (explicit flag should beat membership check)", scope.Mode)
+	}
+}
+
+// TestResolve_WorktreeInsideWorkspace_EnvStillOverrides — symmetric to
+// the flag test, for $GH_OPTIVEM_WORKSPACE.
+func TestResolve_WorktreeInsideWorkspace_EnvStillOverrides(t *testing.T) {
+	root := t.TempDir()
+	makeGitRepo(t, filepath.Join(root, "repoA"))
+	makeGitRepo(t, filepath.Join(root, "repoB"))
+	worktree := filepath.Join(root, "worktrees", "rehearsal-x")
+	makeGitRepo(t, worktree)
+	writeWorkspace(t, root, "myworkspace.code-workspace",
+		workspaceJSON("repoA", "repoB"))
+
+	scope, err := resolveFrom("", root, worktree)
+	if err != nil {
+		t.Fatalf("resolveFrom: %v", err)
+	}
+	if scope.Mode != ModeWorkspace {
+		t.Fatalf("mode = %v, want ModeWorkspace (explicit env var should beat membership check)", scope.Mode)
+	}
+}
+
+// TestResolve_WorktreeInsideWorkspace_ProjectConfigWins pins that when a
+// gh-optivem.yaml exists alongside the worktree (or somewhere on the
+// walk-up path between the worktree and the surrounding workspace) and
+// has a usable repos: list, the cascade lands on ModeProject — the
+// project config is the next fallback after the workspace-walk-up
+// membership check fails.
+func TestResolve_WorktreeInsideWorkspace_ProjectConfigWins(t *testing.T) {
+	root := t.TempDir()
+	makeGitRepo(t, filepath.Join(root, "repoA"))
+	makeGitRepo(t, filepath.Join(root, "repoB"))
+	writeWorkspace(t, root, "myworkspace.code-workspace",
+		workspaceJSON("repoA", "repoB"))
+
+	// The worktree is itself a git repo, AND it carries a
+	// gh-optivem.yaml declaring its own repos[]. The membership check
+	// rejects the surrounding workspace; the project config wins.
+	worktree := filepath.Join(root, "worktrees", "rehearsal-x")
+	makeGitRepo(t, worktree)
+	makeGitRepo(t, filepath.Join(worktree, "subrepo"))
+	writeProjectConfig(t, worktree, projectConfigYAML("subrepo"))
+
+	scope, err := resolveFrom("", "", worktree)
+	if err != nil {
+		t.Fatalf("resolveFrom: %v", err)
+	}
+	if scope.Mode != ModeProject {
+		t.Fatalf("mode = %v, want ModeProject (worktree's own gh-optivem.yaml should win)", scope.Mode)
+	}
+}
+
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

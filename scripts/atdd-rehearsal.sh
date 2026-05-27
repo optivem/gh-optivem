@@ -44,18 +44,19 @@ set -euo pipefail
 #      other stack's state behind. Non-fatal: failure (e.g. docker daemon
 #      down) warns and continues.
 #   3. Resolve <id> = <ts>[-<label>], where <ts> = date +%Y%m%d-%H%M%S.
-#   4. From the consumer repo, create a worktree under a `worktrees/`
-#      folder one level above the academy folder, at
-#      ../../worktrees/rehearsal-<id> on a new branch rehearsal/<id>.
-#      Placed outside the academy on purpose: a worktree inside the
-#      academy makes `gh optivem commit` resolve ModeWorkspace against
-#      academy.code-workspace and skip the worktree silently. Grouped
-#      under `worktrees/` so a single multi-root VS Code workspace can
-#      surface every rehearsal without per-run setup. Preflight still
-#      works in this location because repolocator's mono-repo branch
-#      walks up from CWD for .git instead of guessing the parent dir.
-#      The chosen --config yaml is already committed in shop, so it
-#      lands in the worktree automatically — no copy or init step needed.
+#   4. From the consumer repo, create a worktree under
+#      <academy>/worktrees/rehearsal-<id> on a new branch rehearsal/<id>.
+#      Grouped under `worktrees/` so a single multi-root VS Code
+#      workspace can surface every rehearsal without per-run setup.
+#      Safe to live inside the academy because the workspace resolver
+#      (internal/workspace.resolveFrom) applies a CWD-membership check
+#      to walk-up matches: the surrounding *.code-workspace is honored
+#      only when CWD's git repo is one of its folders[] entries, so a
+#      worktree that is not declared in the workspace falls through to
+#      ModeSingleRepo on the worktree itself rather than being silently
+#      replaced by the workspace's declared repos. The chosen --config
+#      yaml is already committed in shop, so it lands in the worktree
+#      automatically — no copy or init step needed.
 #   5. cd into it and run, with $GH_OPTIVEM_CONFIG pointing at the chosen yaml:
 #        <gh-optivem>/gh-optivem.exe implement --issue <issue-num> \
 #            --log-file <worktree>.log
@@ -196,21 +197,17 @@ if [[ -n "$LABEL" ]]; then
 else
   ID="${TS}"
 fi
-# Worktree lives under a `worktrees/` sibling of the academy folder, not
-# next to the consumer repo and not directly above academy. Reason: when
-# the worktree sits inside the academy dir, `gh optivem commit` from
-# inside it walks up to academy.code-workspace and resolves ModeWorkspace,
-# iterating the declared academy repos and silently ignoring the worktree.
-# Placing the worktree outside the academy keeps walk-up from finding that
-# workspace file, so the resolver falls through to ModeProject
+# Worktree lives under <academy>/worktrees/ — sibling of the consumer
+# repo and the gh-optivem checkout. Safe inside the academy because the
+# workspace resolver (internal/workspace.resolveFrom) walks up for a
+# *.code-workspace file but then verifies CWD's git repo is one of its
+# folders[] before committing to ModeWorkspace. The worktree's repo
+# root is not declared in academy-workspace.code-workspace, so the
+# membership check fails and the cascade falls through to ModeProject
 # (gh-optivem.yaml inside the worktree) → ModeSingleRepo on the worktree
-# itself. Grouping under `worktrees/` (rather than directly under the
-# optivem parent) keeps the top of that dir uncluttered and lets a single
-# multi-root VS Code workspace surface every rehearsal without per-run
-# setup. Preflight stays happy because repolocator's mono-repo branch
-# walks up from the worktree's CWD for .git, finding the worktree (whose
-# .git is a file pointer) regardless of its directory name.
-WORKTREES_DIR="$(cd "$(dirname "$CONSUMER_ROOT")/.." && pwd)/worktrees"
+# itself. Grouping under `worktrees/` lets a single multi-root VS Code
+# workspace surface every rehearsal without per-run setup.
+WORKTREES_DIR="$(cd "$(dirname "$CONSUMER_ROOT")" && pwd)/worktrees"
 mkdir -p "$WORKTREES_DIR"
 WORKTREE_PATH="$WORKTREES_DIR/rehearsal-${ID}"
 BRANCH="rehearsal/${ID}"

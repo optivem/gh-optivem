@@ -26,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
@@ -72,7 +73,13 @@ type Scope struct {
 //  1. flagValue (if non-empty) — treated as a directory containing a
 //     *.code-workspace file → ModeWorkspace.
 //  2. $GH_OPTIVEM_WORKSPACE — same semantics as flagValue.
-//  3. Walk up from CWD for a *.code-workspace file → ModeWorkspace.
+//  3. Walk up from CWD for a *.code-workspace file → ModeWorkspace,
+//     BUT only if the CWD's git repo is one of the workspace's
+//     folders[] entries. If the workspace file doesn't claim CWD's repo
+//     as a member, the walk-up is treated as a non-match and the cascade
+//     falls through to row 4. This prevents a git worktree (or any
+//     standalone repo) placed inside a workspace tree from being
+//     silently overridden by the surrounding workspace's folder list.
 //  4. Walk up from CWD for a gh-optivem.yaml with non-empty repos: →
 //     ModeProject with Folders = resolved repos: paths that exist and
 //     contain .git/.
@@ -83,7 +90,10 @@ type Scope struct {
 // Within ModeWorkspace, repos declared in folders[] but missing on disk
 // or without a .git/ subdir are silently filtered out (matches the
 // commit.sh:183 behavior). Malformed JSON, missing/empty folders[], and
-// flag/env paths that do not exist are errors.
+// flag/env paths that do not exist are errors. The flag/env entries do
+// NOT apply the membership check from row 3 — those are explicit
+// operator intent and are honored even when CWD is outside the
+// workspace tree.
 //
 // Within ModeProject, the same filter applies to repos: entries —
 // non-existent paths and non-git folders are skipped. If gh-optivem.yaml
@@ -105,6 +115,11 @@ func Resolve(flagValue string) (Scope, error) {
 func resolveFrom(flagValue, envValue, cwd string) (Scope, error) {
 	var wsFile string
 	var err error
+	// explicit tracks whether wsFile came from --workspace or
+	// $GH_OPTIVEM_WORKSPACE (true) versus walk-up (false). Only the
+	// walk-up path applies the CWD-membership check below; explicit
+	// paths are honored as-is.
+	var explicit bool
 
 	switch {
 	case flagValue != "":
@@ -112,11 +127,13 @@ func resolveFrom(flagValue, envValue, cwd string) (Scope, error) {
 		if err != nil {
 			return Scope{}, fmt.Errorf("workspace: --workspace %s: %w", flagValue, err)
 		}
+		explicit = true
 	case envValue != "":
 		wsFile, err = findWorkspaceFile(envValue)
 		if err != nil {
 			return Scope{}, fmt.Errorf("workspace: $%s=%s: %w", EnvVar, envValue, err)
 		}
+		explicit = true
 	default:
 		// Walk up looking for a workspace file. If none is found, fall
 		// through to the single-repo cascade rather than erroring — the
@@ -130,12 +147,18 @@ func resolveFrom(flagValue, envValue, cwd string) (Scope, error) {
 		if err != nil {
 			return Scope{}, err
 		}
-		return Scope{
-			Mode:       ModeWorkspace,
-			Root:       root,
-			Folders:    folders,
-			SourceFile: wsFile,
-		}, nil
+		if explicit || cwdInFolders(cwd, folders) {
+			return Scope{
+				Mode:       ModeWorkspace,
+				Root:       root,
+				Folders:    folders,
+				SourceFile: wsFile,
+			}, nil
+		}
+		// Walk-up found a workspace file, but CWD's repo is not one of
+		// its folders[]. Fall through to ModeProject / ModeSingleRepo so
+		// the operator's actual repo wins instead of being silently
+		// overridden by the surrounding workspace's folder list.
 	}
 
 	// No workspace file found by walk-up. Try project-iteration: a
@@ -250,6 +273,46 @@ func walkUpForProjectConfig(start string) (string, error) {
 		}
 		dir = parent
 	}
+}
+
+// cwdInFolders reports whether the git repo containing cwd is one of
+// the resolved workspace folders. Used by the walk-up branch to detect
+// the "workspace file found, but CWD's repo is not declared" case — a
+// git worktree placed inside a workspace tree (e.g. an ATDD rehearsal
+// worktree under academy/worktrees/) must not be silently overridden
+// by the surrounding workspace.code-workspace.
+//
+// Returns true when:
+//   - cwd is inside a git repo, AND
+//   - that repo's root matches one of folders (case-insensitive compare
+//     on Windows where path casing varies between sources).
+//
+// Returns false when cwd is not in any git repo, or its repo root is
+// not in folders. The caller falls through to the project/single-repo
+// cascade rows on false.
+func cwdInFolders(cwd string, folders []string) bool {
+	repoRoot, err := walkUpForGitRepo(cwd)
+	if err != nil {
+		return false
+	}
+	repoRoot = filepath.Clean(repoRoot)
+	for _, f := range folders {
+		if pathsEqual(filepath.Clean(f), repoRoot) {
+			return true
+		}
+	}
+	return false
+}
+
+// pathsEqual compares two filesystem paths. On Windows, where the same
+// path can appear in mixed casing or with different drive-letter casing
+// depending on its source (env var vs. os.Getwd vs. filepath.Join), we
+// fold case to avoid spurious mismatches.
+func pathsEqual(a, b string) bool {
+	if a == b {
+		return true
+	}
+	return filepath.ToSlash(strings.ToLower(a)) == filepath.ToSlash(strings.ToLower(b))
 }
 
 // walkUpForGitRepo searches start and each parent for a .git entry

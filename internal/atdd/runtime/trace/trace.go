@@ -55,18 +55,19 @@ type Deps struct {
 	Git      GitRunner
 	RepoPath string
 
-	// colorize is set by withDefaults when Out is an interactive stdout TTY.
-	// MultiWriter (--log-file) and bytes.Buffer (tests) keep it false so the
-	// log file and test fixtures stay ANSI-free.
-	colorize bool
-
-	// depth is a shared counter incremented on call-activity entry and
-	// decremented on exit, so every wrapped node closure can read the current
-	// BPMN nesting level and indent its banner accordingly. The pointer is
-	// allocated by withDefaults and shared across every Deps copy that
-	// WrapAll fans out to its closures — engine dispatch is single-threaded,
-	// so a plain *int is sufficient.
-	depth *int
+	// Colorize controls whether banners are wrapped in ANSI colour escapes.
+	// Callers set it explicitly because Out is often a wrapped writer
+	// (io.MultiWriter for --log-file, bytes.Buffer in tests) — the package
+	// cannot infer TTY-ness from Out alone in those cases. driver.go computes
+	// it from isatty.IsTerminal(os.Stdout.Fd()) before installLogFileMirror
+	// swaps Stdout for the multi-writer, so the terminal still gets colour
+	// even when the run is being mirrored to a log file (the mirrored file
+	// gains the same ANSI bytes; less -R or NO_COLOR=1 strip them, matching
+	// the LogFile contract documented on driver.Options). When left at the
+	// zero value, withDefaults() upgrades to true if Out is a direct
+	// os.Stdout TTY — the convenience for ad-hoc callers and the no-log-file
+	// rehearsal path.
+	Colorize bool
 }
 
 func (d Deps) withDefaults() Deps {
@@ -76,21 +77,20 @@ func (d Deps) withDefaults() Deps {
 	if d.Git == nil {
 		d.Git = execGit{}
 	}
-	if f, ok := d.Out.(*os.File); ok && f == os.Stdout && isatty.IsTerminal(f.Fd()) {
-		d.colorize = true
-	}
-	if d.depth == nil {
-		d.depth = new(int)
+	if !d.Colorize {
+		if f, ok := d.Out.(*os.File); ok && f == os.Stdout && isatty.IsTerminal(f.Fd()) {
+			d.Colorize = true
+		}
 	}
 	return d
 }
 
-// paint wraps s in c's ANSI escapes when colorize is true; otherwise returns
+// paint wraps s in c's ANSI escapes when Colorize is true; otherwise returns
 // s unchanged. Per-instance EnableColor avoids touching fatih/color's global
 // NoColor flag — tests in other packages that share the process must not see
 // our color choice flip on them.
 func (d Deps) paint(s string, attrs ...color.Attribute) string {
-	if !d.colorize {
+	if !d.Colorize {
 		return s
 	}
 	c := color.New(attrs...)
@@ -122,11 +122,6 @@ func WrapAll(eng *statemachine.Engine, deps Deps) {
 // user-task nodes the wrapper also snapshots the working tree (via
 // `git status --porcelain`) on each side of the dispatch so the exit
 // banner can list what the agent changed.
-//
-// Call-activity nodes bump deps.depth between writeEnter and inner() so
-// the sub-process's wrapped children render one level deeper. Decrement
-// happens before writeExit so the call-activity's own exit banner pairs
-// vertically with its enter banner at the parent's indent.
 func wrap(node statemachine.Node, deps Deps) statemachine.NodeFn {
 	inner := node.Fn
 	return func(ctx *statemachine.Context) statemachine.Outcome {
@@ -134,13 +129,7 @@ func wrap(node statemachine.Node, deps Deps) statemachine.NodeFn {
 		preState := snapshotState(ctx.State)
 		preDirty := snapshotDirty(deps, node.Kind)
 		started := nowFn()
-		if node.Kind == statemachine.CallActivity {
-			*deps.depth++
-		}
 		out := inner(ctx)
-		if node.Kind == statemachine.CallActivity {
-			*deps.depth--
-		}
 		elapsed := nowFn().Sub(started).Round(time.Millisecond)
 		postState := snapshotState(ctx.State)
 		postDirty := snapshotDirty(deps, node.Kind)
@@ -151,13 +140,12 @@ func wrap(node statemachine.Node, deps Deps) statemachine.NodeFn {
 
 // writeEnter prints the per-node entry banner. The format is:
 //
-//	[trace HH:MM:SS] <indent>> NODE_ID  kind=<kind> <selector>=<name>
+//	[trace HH:MM:SS] > NODE_ID  kind=<kind> <selector>=<name>
 //
-// where <selector> is action / agent / binding / process depending on Kind,
-// and <indent> is two spaces per nested call-activity so the BPMN nesting
-// reads as a tree. Templated fields (e.g. ${agent} on structural_cycle
-// nodes) are expanded against ctx.Params so the operator sees the
-// substituted name rather than the literal placeholder.
+// where <selector> is action / agent / binding / process depending on Kind.
+// Templated fields (e.g. ${agent} on structural_cycle nodes) are expanded
+// against ctx.Params so the operator sees the substituted name rather
+// than the literal placeholder.
 //
 // On a TTY: `[trace …]` faint, `>` cyan, node ID bold (cyan-bold for
 // call-activity so process boundaries stand out as the "phase" markers above
@@ -194,9 +182,8 @@ func writeEnter(deps Deps, node statemachine.Node, ctx *statemachine.Context) {
 			parts = append(parts, fmt.Sprintf("params=%s", formatParams(node.Raw.Params)))
 		}
 	}
-	fmt.Fprintf(deps.Out, "%s %s%s %s  %s\n",
+	fmt.Fprintf(deps.Out, "%s %s %s  %s\n",
 		deps.tracePrefix(),
-		deps.indent(),
 		deps.paint(">", color.FgCyan),
 		deps.nodeIDPaint(node),
 		strings.Join(parts, " "))
@@ -233,9 +220,8 @@ func writeEnter(deps Deps, node statemachine.Node, ctx *statemachine.Context) {
 func writeExit(deps Deps, node statemachine.Node, out statemachine.Outcome, elapsed time.Duration, pre, post map[string]string, preDirty, postDirty map[string]bool) {
 	w := deps.Out
 	if out.Err != nil {
-		fmt.Fprintf(w, "%s %s%s %s -> %v  (%s)\n",
+		fmt.Fprintf(w, "%s %s %s -> %v  (%s)\n",
 			deps.tracePrefix(),
-			deps.indent(),
 			deps.paint("FAIL", color.FgRed),
 			deps.nodeIDPaint(node),
 			out.Err, elapsed)
@@ -249,26 +235,24 @@ func writeExit(deps Deps, node statemachine.Node, out statemachine.Outcome, elap
 		detail = delta
 	}
 	if detail != "" {
-		fmt.Fprintf(w, "%s %s%s %s -> %s  (%s)\n",
+		fmt.Fprintf(w, "%s %s %s -> %s  (%s)\n",
 			deps.tracePrefix(),
-			deps.indent(),
 			deps.paint(label, attr),
 			deps.nodeIDPaint(node),
 			detail, elapsed)
 	} else {
-		fmt.Fprintf(w, "%s %s%s %s  (%s)\n",
+		fmt.Fprintf(w, "%s %s %s  (%s)\n",
 			deps.tracePrefix(),
-			deps.indent(),
 			deps.paint(label, attr),
 			deps.nodeIDPaint(node),
 			elapsed)
 	}
 	if delta != "" && !hoistedDelta {
-		fmt.Fprintf(w, "%s %s   %s %s\n", deps.tracePrefix(), deps.indent(), deps.paint("state:", color.Faint), delta)
+		fmt.Fprintf(w, "%s    %s %s\n", deps.tracePrefix(), deps.paint("state:", color.Faint), delta)
 	}
 	if node.Kind == statemachine.UserTask {
 		if files := dirtyDelta(preDirty, postDirty); len(files) > 0 {
-			fmt.Fprintf(w, "%s %s   %s %s\n", deps.tracePrefix(), deps.indent(), deps.paint("files:", color.Faint), strings.Join(files, ", "))
+			fmt.Fprintf(w, "%s    %s %s\n", deps.tracePrefix(), deps.paint("files:", color.Faint), strings.Join(files, ", "))
 		}
 	}
 }
@@ -472,17 +456,6 @@ func dirtyDelta(pre, post map[string]bool) []string {
 
 func (d Deps) tracePrefix() string {
 	return d.paint(fmt.Sprintf("[trace %s]", nowFn().Format("15:04:05")), color.Faint)
-}
-
-// indent returns two spaces per current call-activity nesting level, so
-// banners render as a visible tree. Returns the empty string at depth zero
-// (the engine's outermost dispatch) so the existing top-level format is
-// unchanged.
-func (d Deps) indent() string {
-	if d.depth == nil || *d.depth == 0 {
-		return ""
-	}
-	return strings.Repeat("  ", *d.depth)
 }
 
 // nodeIDPaint renders the node ID with the kind-appropriate emphasis. On
