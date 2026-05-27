@@ -189,8 +189,8 @@ func TestRenderPrompt_IncludesAllFields(t *testing.T) {
 		t.Errorf("rendered prompt still has a `Phase doc:` line:\n%s", got)
 	}
 	mustContain(t, got, "prefer record types")
-	mustContain(t, got, "do not summarise")
-	mustContain(t, got, "the agent must never run `git commit`")
+	mustContain(t, got, "don't summarise")
+	mustContain(t, got, "never run `git commit`")
 	// All ${…} placeholders must be expanded — none should leak through.
 	if strings.Contains(got, "${") {
 		t.Errorf("prompt still contains ${...} placeholder")
