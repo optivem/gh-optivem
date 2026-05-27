@@ -790,8 +790,6 @@ processes:
         type: call-activity
         process: commit
         name: "Commit Test Code"
-        params:
-          message: "[${ticket_id}] ${issue_title}"
 
       - id: WAV_AT_CODE_END
         type: end-event
@@ -1056,8 +1054,6 @@ processes:
         type: call-activity
         process: commit
         name: "Commit System Changes"
-        params:
-          message: "[${ticket_id}] ${issue_title}"
 
       - id: IMPL_AND_VERIFY_SYSTEM_END
         type: end-event
@@ -1105,8 +1101,6 @@ processes:
         type: call-activity
         process: commit
         name: "Commit Test Changes"
-        params:
-          message: "[${ticket_id}] ${issue_title}"
 
       - id: REFACTOR_AND_VERIFY_TESTS_END
         type: end-event
@@ -1189,8 +1183,6 @@ processes:
         type: call-activity
         process: commit
         name: "Commit Layer Changes"
-        params:
-          message: "[${ticket_id}] ${issue_title}"
 
       - id: IMPLEMENT_TEST_LAYER_END
         type: end-event
@@ -1825,13 +1817,18 @@ processes:
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: START_SYS_END}
 
-  # Strict-mode rule: every caller MUST resolve `message` — either by
-  # binding it explicitly at the call site, or by ensuring an upstream
-  # writing-agent stashed it in state before the call. Omitting it is
-  # not accepted: the `ExpandParams` strict check rejects an unresolved
-  # `${message}` at dispatch with a precise error rather than letting
-  # the literal leak into the rendered CLI as `gh optivem commit '${message}'`.
-  # Mirrors the `suite` / `test-names` strict-mode rule on `run-tests`.
+  # The message is constructed here, not at each call site: every COMMIT_*
+  # caller runs downstream of parse-ticket, which writes `ticket_id` and
+  # `issue_title` into ctx.State, so the same `#<id> <title>` resolves
+  # deterministically for every commit inside one ticket's workflow. Using
+  # `#` rather than `[` makes the id auto-link to the GitHub issue in
+  # commit listings and PR views.
+  #
+  # `--yes` is required because the orchestrator drives commit non-
+  # interactively (the BPMN approval gate lives upstream of this dispatch,
+  # not inside `gh optivem commit` itself); `--include-untracked` is
+  # required because disabler/writer agents create new files that `--yes`
+  # alone would refuse to stage.
   commit:
     name: "Commit"
     start: EXECUTE_COMMAND
@@ -1841,8 +1838,8 @@ processes:
         process: execute-command
         name: "Dispatch the Command"
         params:
-          command: "gh optivem commit"
-          message: ${message}
+          command: "gh optivem commit --yes --include-untracked"
+          message: "#${ticket_id} ${issue_title}"
 
       - id: COMMIT_MID_END
         type: end-event
