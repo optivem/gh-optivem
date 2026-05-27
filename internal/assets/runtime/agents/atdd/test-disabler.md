@@ -14,9 +14,6 @@ ${scope-block}
 ### Parameters
 
 - `language` — `java` | `csharp` | `typescript`. Adding a language requires editing `renderDisableMarkerExample` in `clauderun.go`; the dispatcher fails fast on an unrecognised value.
-- `ticket-id` — tracker-verbatim id (e.g. `OPV-123`, `#42`, `SHOP-7`).
-- `loop` — `RED` | `GREEN`. (`GREEN` reserved for symmetry; today only RED disables.)
-- `cycle-phase` — `TEST` | `DSL` | `SYSTEM DRIVER` (uppercase; internal space allowed). Named `cycle-phase` (not `phase`) because the shared preamble already binds `${phase}` to the dispatch's BPMN-node label; this placeholder identifies the RED-cycle phase that's disabling tests.
 - `test-names` — comma-separated list of bare test method names (the
   writing agent's emitted `test-names`, joined at substitution time).
   Each entry is an unqualified method name (e.g. `shouldRegisterCustomer`);
@@ -25,11 +22,11 @@ ${scope-block}
 
 ### Disable marker to emit
 
-The dispatcher has already composed the per-language marker with the reason string fully resolved for this dispatch. Emit exactly this shape:
+The dispatcher has composed the per-language marker with the reason string fully resolved. Emit exactly this shape:
 
 ${disable-marker-example}
 
-The reason string follows the format `<TICKET-ID> - AT - <LOOP> - <CYCLE-PHASE>` with ` - ` (space-hyphen-space) between every segment. The downstream `enable-tests` agent uses a `startsWith` filter keyed on this exact prefix; do not paraphrase, abbreviate, or change casing.
+The reason string is `#<TICKET-ID> <ISSUE-TITLE>`. The downstream `enable-tests` agent scopes by method name (the `${test-names}` list) and strips the annotation without inspecting the reason text, so the reason is purely informational (git blame, IDE preview, code review). The leading `#` is load-bearing as a safety prefix — the enabler refuses to strip annotations whose reason does not start with `#`, which protects legacy `@Disabled("flaky on CI")`-shape markers; do not drop the `#`.
 
 ## Steps
 

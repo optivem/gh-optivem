@@ -701,21 +701,25 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	if opts.TicketID != "" {
 		params["ticket-id"] = opts.TicketID
 	}
-	// Disable-marker examples (test-disabler / test-enabler). Composed
-	// from Language + TicketID + the call-activity-pushed loop /
-	// cycle-phase / prev-phase NodeParams. Same load-bearing pattern as
-	// Language: register only when the helper produces a non-empty
-	// string (all inputs present AND language is recognised); otherwise
+	// Disable-marker examples (test-disabler / test-enabler). The
+	// disable-marker shape is `#${ticket-id} ${issue-title}` —
+	// ticket-identity only, symmetric with the BPMN commit-message
+	// binding. The enabler's strip transform is language-only (it
+	// scopes by method name from ${test-names} and uses the `#` safety
+	// prefix as the only guard), so no per-dispatch state enters the
+	// removal renderer. Same load-bearing pattern as Language: register
+	// only when the helper returns a non-empty string (all inputs
+	// present AND language is recognised); otherwise
 	// findUnfilledPlaceholders fails the dispatch fast when the prompt
 	// body references either placeholder. Inlining the marker shape
 	// here replaces the previous "go read the language-equivalents row"
 	// instruction in the agent body — the row is out of scope and the
 	// agent was forced to grep in-scope tests to reverse-engineer the
 	// syntax (3-5 wasted tool calls per dispatch).
-	if ex := renderDisableMarkerExample(opts.Language, opts.TicketID, opts.NodeParams["loop"], opts.NodeParams["cycle-phase"]); ex != "" {
+	if ex := renderDisableMarkerExample(opts.Language, opts.TicketID, opts.IssueTitle); ex != "" {
 		params["disable-marker-example"] = ex
 	}
-	if ex := renderDisableMarkerRemovalExample(opts.Language, opts.TicketID, opts.NodeParams["prev-phase"]); ex != "" {
+	if ex := renderDisableMarkerRemovalExample(opts.Language); ex != "" {
 		params["disable-marker-removal-example"] = ex
 	}
 	// AcceptanceCriteria is load-bearing for write-acceptance-tests — same rationale
@@ -910,18 +914,26 @@ func renderScopeBlock(read, write []string, paths map[string]string) string {
 // the snippet inlined the agent reads the target test file once and
 // edits it.
 //
-// The reason string is composed inline (not via a nested placeholder)
-// so the agent sees the literal marker it must emit. Returns "" when
-// any required field is empty OR the language is unrecognised; the
-// caller registers the placeholder only when non-empty so an absent
-// value surfaces via findUnfilledPlaceholders rather than silently
-// substituting "". Adding a new language requires touching this
-// function AND the matching row in language-equivalents/<lang>.md.
-func renderDisableMarkerExample(lang, ticketID, loop, cyclePhase string) string {
-	if lang == "" || ticketID == "" || loop == "" || cyclePhase == "" {
+// The reason string is `#<ticket-id> <issue-title>` — ticket-identity
+// only, symmetric with the BPMN commit-message binding
+// (`#${ticket-id} ${issue-title}`). No phase / loop encoding: the
+// dispatcher owns that state and the test-enabler scopes by method
+// name, so embedding state in the source-tree marker would only
+// re-introduce the drift surface this format removes. The `#`
+// prefix is load-bearing as a safety guard the enabler relies on
+// (see renderDisableMarkerRemovalExample).
+//
+// Returns "" when any required field is empty OR the language is
+// unrecognised; the caller registers the placeholder only when
+// non-empty so an absent value surfaces via findUnfilledPlaceholders
+// rather than silently substituting "". Adding a new language
+// requires touching this function AND the matching row in
+// language-equivalents/<lang>.md.
+func renderDisableMarkerExample(lang, ticketID, issueTitle string) string {
+	if lang == "" || ticketID == "" || issueTitle == "" {
 		return ""
 	}
-	reason := fmt.Sprintf("%s - AT - %s - %s", ticketID, loop, cyclePhase)
+	reason := fmt.Sprintf("#%s %s", ticketID, issueTitle)
 	switch lang {
 	case "java":
 		return fmt.Sprintf("```java\n@Disabled(\"%s\")\n@Test\nvoid shouldXxx() { ... }\n```\n\nAdd `import org.junit.jupiter.api.Disabled;` next to the other JUnit imports if it's not already present.", reason)
@@ -936,21 +948,32 @@ func renderDisableMarkerExample(lang, ticketID, loop, cyclePhase string) string 
 // renderDisableMarkerRemovalExample is the symmetric helper for the
 // test-enabler — inlines the per-language transform that strips a
 // disable marker via ${disable-marker-removal-example}. Same
-// rationale as renderDisableMarkerExample. The reason-prefix is
-// composed inline so the agent sees the exact startsWith filter it
-// must match before stripping.
-func renderDisableMarkerRemovalExample(lang, ticketID, prevPhase string) string {
-	if lang == "" || ticketID == "" || prevPhase == "" {
+// rationale as renderDisableMarkerExample.
+//
+// The enabler scopes by method name (the writer-agent-emitted
+// `${test-names}` list) and strips the annotation without inspecting
+// the reason text. The single guard is the `#` safety prefix:
+// strip only annotations whose reason starts with `#`, which leaves
+// legacy non-ticket markers like `@Disabled("flaky on CI")`
+// untouched. Hard-fail (loud) when a named method has zero or
+// multiple `#`-prefixed annotations — the silent no-op is the bug
+// this whole format change removes.
+//
+// Returns "" when `lang` is empty or unrecognised; the caller
+// registers the placeholder only when non-empty so an absent value
+// surfaces via findUnfilledPlaceholders rather than silently
+// substituting "".
+func renderDisableMarkerRemovalExample(lang string) string {
+	if lang == "" {
 		return ""
 	}
-	prefix := fmt.Sprintf("%s - AT - RED - %s", ticketID, prevPhase)
 	switch lang {
 	case "java":
-		return fmt.Sprintf("Delete the `@Disabled(\"%s ...\")` annotation line above the test. If no `@Disabled` annotations remain in the file after stripping, also delete `import org.junit.jupiter.api.Disabled;`.", prefix)
+		return "For the named method, delete its `@Disabled(\"#...\")` annotation line. Only strip annotations whose reason starts with `#` — leave legacy non-ticket markers like `@Disabled(\"flaky on CI\")` untouched. Hard-fail if the named method has zero or multiple `#`-prefixed `@Disabled` annotations. If no `@Disabled` annotations remain in the file after stripping, also delete `import org.junit.jupiter.api.Disabled;`."
 	case "csharp":
-		return fmt.Sprintf("Rewrite `[Fact(Skip = \"%s ...\")]` back to `[Fact]` — keep the attribute, drop only the `Skip` parameter. No import change.", prefix)
+		return "For the named method, rewrite `[Fact(Skip = \"#...\")]` back to `[Fact]` — keep the attribute, drop only the `Skip` parameter. Only strip annotations whose reason starts with `#` — leave legacy non-ticket markers like `[Fact(Skip = \"flaky on CI\")]` untouched. Hard-fail if the named method has zero or multiple `#`-prefixed `Skip` parameters. No import change."
 	case "typescript":
-		return fmt.Sprintf("Delete the `// %s ...` comment line above the test, then change `test.skip(` back to `test(`. No import change.", prefix)
+		return "For the named method, delete its `// #...` comment line above the test, then change `test.skip(` back to `test(`. Only strip comment lines whose text starts with `#` — leave legacy non-ticket comments like `// flaky on CI` untouched. Hard-fail if the named method has zero or multiple `#`-prefixed comment lines paired with a `test.skip(` call. No import change."
 	}
 	return ""
 }

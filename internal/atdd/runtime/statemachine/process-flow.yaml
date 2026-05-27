@@ -783,8 +783,6 @@ processes:
         name: "Disable Acceptance Tests"
         params:
           test-names: ${test-names}
-          loop: RED
-          cycle-phase: TEST
 
       - id: COMMIT_TEST_CODE
         type: call-activity
@@ -824,10 +822,6 @@ processes:
           action: implement-dsl
           expected-test-result: ${expected-test-result}
           tests: ${tests}
-          # Names the RED-cycle phase identifying who placed (and now strips)
-          # the per-test disable marker. Consumed by test-disabler /
-          # test-enabler via ${cycle-phase} / ${prev-phase}.
-          cycle-phase: DSL
 
       - id: IMPL_DSL_END
         type: end-event
@@ -849,7 +843,6 @@ processes:
           action: implement-system-driver-adapters
           expected-test-result: ${expected-test-result}
           tests: ${tests}
-          cycle-phase: SYSTEM DRIVER
 
       - id: IMPL_SYS_DRIVER_END
         type: end-event
@@ -871,7 +864,6 @@ processes:
           action: implement-external-system-driver-adapters
           expected-test-result: ${expected-test-result}
           tests: ${tests}
-          cycle-phase: SYSTEM DRIVER
 
       - id: IMPL_EXT_DRIVER_END
         type: end-event
@@ -1135,7 +1127,6 @@ processes:
         name: "Enable Tests"
         params:
           test-names: ${test-names}
-          prev-phase: ${cycle-phase}
 
       - id: COMPILE_TESTS
         type: call-activity
@@ -1176,8 +1167,6 @@ processes:
         name: "Disable Tests"
         params:
           test-names: ${test-names}
-          loop: RED
-          cycle-phase: ${cycle-phase}
 
       - id: COMMIT_LAYER
         type: call-activity

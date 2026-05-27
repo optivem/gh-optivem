@@ -1792,3 +1792,117 @@ func TestRenderPrompt_NoSnakePlaceholdersInRenderedOutput(t *testing.T) {
 		})
 	}
 }
+
+// TestRenderDisableMarkerExample pins the per-language disable-marker
+// emit snippet rendered into the test-disabler prompt. The reason
+// string is `#<ticket-id> <issue-title>` — ticket-identity only,
+// symmetric with the BPMN commit-message binding. No phase / loop
+// encoding (collapsed in plan 20260527-1245).
+func TestRenderDisableMarkerExample(t *testing.T) {
+	cases := []struct {
+		lang        string
+		wantSubstrs []string
+	}{
+		{
+			lang: "java",
+			wantSubstrs: []string{
+				`@Disabled("#71 Gift-wrap an order")`,
+				`import org.junit.jupiter.api.Disabled;`,
+			},
+		},
+		{
+			lang: "csharp",
+			wantSubstrs: []string{
+				`[Fact(Skip = "#71 Gift-wrap an order")]`,
+			},
+		},
+		{
+			lang: "typescript",
+			wantSubstrs: []string{
+				`// #71 Gift-wrap an order`,
+				`test.skip(`,
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.lang, func(t *testing.T) {
+			got := renderDisableMarkerExample(tc.lang, "71", "Gift-wrap an order")
+			if got == "" {
+				t.Fatalf("renderDisableMarkerExample(%q, ...): got empty string", tc.lang)
+			}
+			for _, want := range tc.wantSubstrs {
+				if !strings.Contains(got, want) {
+					t.Errorf("renderDisableMarkerExample(%q, ...): missing substring %q\nrendered:\n%s", tc.lang, want, got)
+				}
+			}
+		})
+	}
+}
+
+// TestRenderDisableMarkerExample_FailFast pins the empty-string
+// contract: any missing required field, or an unrecognised language,
+// produces "" so the dispatcher's findUnfilledPlaceholders surfaces
+// the gap rather than silently substituting an empty placeholder.
+func TestRenderDisableMarkerExample_FailFast(t *testing.T) {
+	cases := []struct {
+		name        string
+		lang, id, t string
+	}{
+		{"empty lang", "", "71", "Gift-wrap an order"},
+		{"empty ticketID", "java", "", "Gift-wrap an order"},
+		{"empty issueTitle", "java", "71", ""},
+		{"unrecognised lang", "rust", "71", "Gift-wrap an order"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := renderDisableMarkerExample(tc.lang, tc.id, tc.t); got != "" {
+				t.Errorf("renderDisableMarkerExample(%q, %q, %q): want empty, got %q", tc.lang, tc.id, tc.t, got)
+			}
+		})
+	}
+}
+
+// TestRenderDisableMarkerRemovalExample pins the per-language strip
+// instruction rendered into the test-enabler prompt. The enabler
+// scopes by method name (the writer-agent-emitted ${test-names}
+// list); its only marker-side guard is the `#` safety prefix. The
+// instructions must mention BOTH the `#` prefix guard AND the
+// hard-fail-on-ambiguity rule (zero or multiple matches → loud
+// failure, not silent no-op). Regression assertion: the rendered
+// instruction must NOT mention any ticket-id substring matching —
+// guards against drift back to the reason-text matching rule we
+// explicitly removed.
+func TestRenderDisableMarkerRemovalExample(t *testing.T) {
+	for _, lang := range []string{"java", "csharp", "typescript"} {
+		t.Run(lang, func(t *testing.T) {
+			got := renderDisableMarkerRemovalExample(lang)
+			if got == "" {
+				t.Fatalf("renderDisableMarkerRemovalExample(%q): got empty string", lang)
+			}
+			for _, want := range []string{"`#`", "Hard-fail"} {
+				if !strings.Contains(got, want) {
+					t.Errorf("renderDisableMarkerRemovalExample(%q): missing substring %q\nrendered:\n%s", lang, want, got)
+				}
+			}
+			// Drift-back regression guard: no ticket-id substring matching.
+			for _, forbid := range []string{"startsWith", "ticket-id", "ticket id", "${ticket", "prev-phase", "cycle-phase"} {
+				if strings.Contains(got, forbid) {
+					t.Errorf("renderDisableMarkerRemovalExample(%q): rendered output mentions %q — drift back to id-aware matching?\nrendered:\n%s", lang, forbid, got)
+				}
+			}
+		})
+	}
+}
+
+// TestRenderDisableMarkerRemovalExample_FailFast pins the empty-string
+// contract for the strip renderer: empty or unrecognised language
+// returns "" so the dispatcher surfaces the gap.
+func TestRenderDisableMarkerRemovalExample_FailFast(t *testing.T) {
+	for _, lang := range []string{"", "rust"} {
+		t.Run("lang="+lang, func(t *testing.T) {
+			if got := renderDisableMarkerRemovalExample(lang); got != "" {
+				t.Errorf("renderDisableMarkerRemovalExample(%q): want empty, got %q", lang, got)
+			}
+		})
+	}
+}
