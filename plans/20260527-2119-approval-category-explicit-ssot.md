@@ -32,6 +32,55 @@ Making `category:` explicit at every site and dropping the fallback
 turns the YAML/Go choice into the audited SSoT rather than something
 inferred at runtime.
 
+## Resolution log
+
+Open design questions surfaced during `/refine-plan` (2026-05-27)
+and resolved autonomously per `feedback_autonomous_best_long_term`.
+Decisions are folded into the items below; rationale captured here
+so the plan stands on its own.
+
+- **Q1 — `execute-command` APPROVE_PRE category.** Do **not** pin a
+  category on the `execute-command` primitive's `APPROVE_PRE` node.
+  Every call-activity that invokes `process: execute-command` MUST
+  pass `category:` in its own `params:` block. Rationale: the stakes
+  of `execute-command` are caller-determined (running `ls` vs.
+  running `git push`); the primitive cannot honestly declare a
+  category. Pinning a default at the primitive contradicts the
+  plan's whole premise of explicit SSoT. Cost: enumerate every
+  `process: execute-command` caller and add `category:` to its
+  params.
+
+- **Q2 — `execute-agent` APPROVE_POST tier vs PRE tier.** Keep both
+  PRE and POST as `category: prompt`. Rationale:
+  `VALIDATE_OUTPUTS_AND_SCOPES` (process-flow.yaml:2117) is the
+  *structural* gate that catches broken agent output;
+  `APPROVE_POST` is a human courtesy review. Under `--auto` POST
+  auto-yeses, which is correct — autonomous mode is unusable if
+  every agent output requires human ack. Operators who want manual
+  output review pass `--confirm=prompt`.
+
+- **Q3 — Enforcement layer.** Primary check is **parse-time** in
+  the statemachine YAML loader: when loading
+  `process-flow.yaml`, validate that every `process: approve`
+  call-activity either passes `params.category` or invokes a
+  primitive whose `ASK_HUMAN` node has `category:` pinned, and
+  error at load if neither resolves. Dispatch-time check in
+  `classifyApproveCategory` stays as defense-in-depth ("should
+  never fire" path). Rationale: fail-fast at boot beats failing
+  mid-run after the operator has invested time in an interactive
+  flow.
+
+- **Q4 + Q5 — `CategoryCommit` semantic and rubric wording.**
+  `CategoryCommit` covers any **externally-visible state mutation
+  with similar permanence**: git writes (commit, push, tag, branch
+  move) AND persistent GitHub API mutations (project status add,
+  label changes, milestone create). Rubric in Item 4 stands as
+  drafted with the "external state mutation" clause. Therefore
+  `internal/steps/project.go:460` reclassifies to `CategoryCommit`,
+  no longer borderline. Rationale: a stable closed enum beats
+  inventing `CategoryMutate` / `CategoryRemote`; "commit = permanent
+  write" is an intuitive stretch operators already expect.
+
 **Out of scope (deliberately):**
 
 - Removing `CategoryHuman` from `ConfirmSet` (locked invariant; the
@@ -61,21 +110,36 @@ Current state (from `grep "process: approve"`):
 | 2143 | `execute-command` | `APPROVE_PRE` | (default → prompt) | "Do you approve running command ${command} ?" |
 | 2204 | `fix` | `APPROVE_PRE` | `fix` (explicit) | "Do you approve fix to attempt remediation for ${failure-kind} ?" |
 
-**Pre-decided assignment** (preserves current behavior, makes it
-explicit; revisit only if the audit in Item 2 surfaces a mismatch):
+**Pinning model** (resolved Q1 + Q2):
 
-- `execute-agent` `APPROVE_PRE` → `category: prompt`
-- `execute-agent` `APPROVE_POST` → `category: prompt`
-- `execute-command` `APPROVE_PRE` → `category: prompt`
-- `fix` `APPROVE_PRE` → already `category: fix`, no change
+- `execute-agent` `APPROVE_PRE` → pin `category: prompt` on the
+  ASK_HUMAN node inside the `execute-agent` process (NOT on the
+  inner `approve` primitive — pin via the call-activity `params:`
+  block, sibling of `question:`).
+- `execute-agent` `APPROVE_POST` → pin `category: prompt`. Behavior-
+  preserving; `VALIDATE_OUTPUTS_AND_SCOPES` is the structural gate.
+- `execute-command` `APPROVE_PRE` → **do NOT pin** at the primitive.
+  Every caller of `process: execute-command` must pass `category:`
+  in its `params:` block. The primitive's `approve` call-activity
+  must propagate the caller's `category:` through to its own
+  `params:`.
+- `fix` `APPROVE_PRE` → already `category: fix`, no change.
 
-For each of the three implicit sites, add `category: prompt` as a
-sibling of `question:` under `params:`, with a one-line comment
-explaining the choice (mirroring the style at line 2209-2212).
+**Sub-task — enumerate `process: execute-command` callers** and add
+`category:` to each. Grep `process-flow.yaml` for `process:
+execute-command` call-activities; for each, add `category:` in its
+`params:` block alongside the existing `command:` / `question:`. The
+category reflects the stakes of the command being run (e.g. a `git
+commit` step is `commit`; a `go vet` step is `prompt`).
+
+Add a one-line comment at each new `category:` line explaining the
+choice, mirroring the style at process-flow.yaml:2209-2212.
 
 **Acceptance:** every `process: approve` call-activity in
-`process-flow.yaml` has an explicit `category:` param. `grep "process:
-approve" -A 6` shows a `category:` line under each.
+`process-flow.yaml` has an explicit `category:` (either pinned on
+the primitive's ASK_HUMAN node or passed through from a caller).
+`grep "process: approve" -A 6` and `grep "process: execute-command"
+-A 6` show a `category:` line under each.
 
 **Gate before commit:** yes — content change adding fields to YAML.
 
@@ -97,17 +161,26 @@ established in Item 4. Produce a markdown table inline in this plan
 under a `## Item 2 audit findings` subsection with: site, current
 category, recommended category, rationale, change-required (y/n).
 
-**Known suspicion to verify, not pre-decide:**
-`steps/project.go:460` mutates the GitHub project (adds statuses) —
-that is closer to a commit-tier action than a low-stakes prompt.
-Either reclassify to `CategoryCommit` or document why it stays
-`CategoryPrompt`.
+**Pre-decided from Q4+Q5:** `steps/project.go:460` ("Add missing
+statuses?") reclassifies to `CategoryCommit` — adding GitHub project
+statuses is a persistent externally-visible mutation, which the
+extended `CategoryCommit` semantic explicitly covers. No further
+investigation needed for this site.
 
-**Acceptance:** audit table appended to this plan. Any reclassification
-proposals listed with file:line and one-line justification.
+For the remaining 6 sites, the audit confirms category choice
+against the Item 4 rubric. Expected outcome: most stay as-is
+(workspace commit and release are already correctly tiered;
+configinit wizards and `main.go` bug-report prompts are genuinely
+low-stakes `prompt`). If the audit surfaces an unexpected misfit,
+pause and surface it.
 
-**Gate before commit:** yes — pause after the audit table is written;
-operator confirms each reclassification before the Go source is edited.
+**Acceptance:** audit table appended to this plan under the
+`## Item 2 audit findings` header below. Any unexpected
+reclassification proposals listed with file:line + justification
+and pause for confirmation.
+
+**Gate before commit:** yes — list the diff of category changes
+before committing the Go source edits.
 
 ### 3. Apply reclassifications approved in Item 2
 
@@ -167,31 +240,54 @@ category set on the `--confirm` line.
 
 **Gate before commit:** yes — wording change, review before commit.
 
-### 5. Drop the soft fallback in `classifyApproveCategory`
+### 5. Enforce `category:` at YAML parse time; drop the dispatch-time fallback
 
-**Files:** `internal/atdd/runtime/driver/driver.go`
+**Files:** `internal/atdd/runtime/statemachine/*.go` (the loader),
+`internal/atdd/runtime/driver/driver.go`
 
-After Item 1 has pinned every YAML call site, change
-`classifyApproveCategory` (driver.go:1151) so the default branch
-returns an error instead of `CategoryPrompt`. The function signature
+Per Q3, the primary gate is **parse-time** validation. The
+dispatch-time check stays as defense-in-depth.
+
+**Parse-time validation (primary):**
+In the statemachine loader (wherever `process-flow.yaml` is parsed
+into `RawProcess` / `RawNode`), add a validation pass that walks
+every `process: approve` call-activity and verifies one of the
+following resolves to a known category token:
+  - the call-activity's own `params.category`, OR
+  - the called `approve` primitive's `ASK_HUMAN` node's
+    `category:` field.
+
+Any unresolved call-activity errors at load with a message naming
+the call-activity ID, its file:line, and the closed set of valid
+category tokens.
+
+**Dispatch-time defense-in-depth:**
+Update `classifyApproveCategory` (driver.go:1151) so its final
+fallback returns an error rather than `CategoryPrompt`. Signature
 changes from `(…) approval.Category` to `(…) (approval.Category,
 error)`; the two call sites (driver.go:733 and driver.go:1123)
-surface the error via the normal `Outcome{Err: …}` path.
+surface the error via the normal `Outcome{Err: …}` path. The error
+message is "should-not-reach" prose pointing at the parse-time
+validator as the primary gate.
 
-Update the doc-block (driver.go:1133-1150) to remove the
-"typo'd `category: foo` falls through to default" sentence — typos
-already fail via `ParseCategory`; missing fields now also fail rather
-than silently fall through.
+Update the doc-block (driver.go:1133-1150) to:
+- remove the "typo'd `category: foo` falls through to default"
+  sentence — typos already fail via `ParseCategory`,
+- drop the third-bullet "Default: CategoryPrompt" since there is
+  no default,
+- reference the parse-time validator as the SSoT.
 
-Drop or update the third-bullet "Default: CategoryPrompt" in the
-doc-block.
+**Acceptance:**
+- A `process: approve` call-activity that omits `category:` AND
+  whose caller omits `category:` in params fails at load time with
+  a clear error naming the offending node.
+- The dispatch-time error path is unreachable in normal operation
+  (parse-time gate catches it first) but produces a sensible error
+  if exercised in a test.
+- All existing call sites still resolve correctly after Item 1.
 
-**Acceptance:** a `process: approve` call-activity that omits
-`category:` AND whose caller omits `category:` in params produces a
-clear dispatch-time error naming the node. The existing four call
-sites still resolve correctly.
-
-**Gate before commit:** yes — behavior change.
+**Gate before commit:** yes — behavior change touching the loader
+and the driver.
 
 ## Item 2 audit findings
 
