@@ -17,16 +17,15 @@ If you find content that is wrong, contradictory, or out-of-sync with the code, 
 
 ## The cost model (read this before you start)
 
-The dispatcher (see `internal/atdd/runtime/driver/driver.go` and `internal/atdd/runtime/clauderun/clauderun.go`) assembles every per-phase prompt by concatenating, in order:
+The dispatcher (see `internal/atdd/runtime/agents/embed.go::Prompt`) assembles every per-phase prompt by concatenating, in order:
 
 1. `internal/assets/runtime/shared/preamble.md` (one-shot dispatch framing, anti-rediscovery rules, scope-bound reads, don't-commit-don't-summarise, edit cohesion).
-2. The phase's body from `internal/assets/runtime/agents/atdd/<task-name>.md`, with `${...}` placeholders substituted from the dispatcher's context (scope block, parameters, expected outputs, architecture, etc.).
-3. `internal/assets/runtime/shared/scope.md` (the scope-exception envelope mechanism) is referenced by name from individual prompts; not every prompt concatenates it, but its rules are the shared contract.
-4. `internal/assets/runtime/shared/session-end.md` is appended on interactive sessions to give the operator the close-out footer.
+2. `internal/assets/runtime/shared/scope.md` (the scope-exception envelope mechanism). The dispatcher concatenates this unconditionally between preamble and body.
+3. The phase's body from `internal/assets/runtime/agents/atdd/<task-name>.md`, with `${...}` placeholders substituted from the dispatcher's context (scope block, parameters, expected outputs, architecture, etc.).
 
 So:
 
-- Every line in `preamble.md` / `scope.md` / `session-end.md` is paid **on every dispatch of every agent that includes that chunk** — the shared chunks are the highest-amplification surface.
+- Every line in `preamble.md` / `scope.md` is paid **on every dispatch of every agent** — the shared chunks are the highest-amplification surface.
 - Every line in a per-agent body is paid **on every dispatch of that agent**. Agents invoked on most cycles (e.g. `acceptance-test-writer`, `dsl-implementer`, `system-implementer`) amplify body verbosity more than rare agents (e.g. the `fix-*` recovery agents).
 - Restatement *between* the shared chunks and a per-agent body is double-counted — the operator pays for the same rule twice in the same prompt.
 - `${placeholder}` substitution is dispatcher-driven; the placeholder text itself is cheap, but the substituted value (e.g. `${scope-block}`, `${expected-outputs}`, `${changed-files}`) can be large. Prompt body wording that re-explains what a placeholder will contain is paid every dispatch regardless of size.
@@ -38,7 +37,7 @@ When estimating, use line count as a proxy (1 token ≈ 4 characters; line count
 ## Inputs (what you analyse)
 
 - `internal/assets/runtime/agents/atdd/*.md` — the per-phase prompt bodies the dispatcher substitutes and dispatches.
-- `internal/assets/runtime/shared/*.md` — the concatenated chunks (`preamble.md`, `scope.md`, `session-end.md`).
+- `internal/assets/runtime/shared/*.md` — the concatenated chunks (`preamble.md`, `scope.md`).
 - For cross-reference only (do **not** propose edits to these): `internal/atdd/runtime/statemachine/process-flow.yaml` (the BPMN MID nodes that declare each task's parameters, `scopes:`, and `outputs:`), and `internal/atdd/runtime/driver/driver.go` + `internal/atdd/runtime/clauderun/clauderun.go` (to confirm the substitution + concatenation contract).
 
 You MUST read every prompt body and every shared chunk in full before producing findings. Per the project consistency-check rule, never conclude "no findings" from a quick read — enumerate concretely first.

@@ -4,7 +4,8 @@
 //
 //   - runtime/agents/     — fed to `claude -p` via argv, never written to
 //     disk in consumer repos. Per-phase agent definitions under runtime/agents/atdd/.
-//   - runtime/shared/     — argv-injected preamble + session-end bookends.
+//   - runtime/shared/     — argv-injected preamble + scope rule, prepended
+//     to every agent prompt.
 //   - runtime/references/ — synced to ~/.gh-optivem/references/ and
 //     materialized per-project to <repo>/.gh-optivem/references/ by
 //     internal/assets/sync. Holds the architecture doctrine

@@ -10,23 +10,20 @@ import (
 )
 
 const (
-	agentsDir      = "runtime/agents/atdd"
-	preamblePath   = "runtime/shared/preamble.md"
-	scopePath      = "runtime/shared/scope.md"
-	sessionEndPath = "runtime/shared/session-end.md"
+	agentsDir    = "runtime/agents/atdd"
+	preamblePath = "runtime/shared/preamble.md"
+	scopePath    = "runtime/shared/scope.md"
 )
 
 // sharedPreamble is the universal ticket-vars + don't-commit/summarise block
 // prepended to every agent prompt. sharedScope is the universal phase-scope
 // doctrine inserted between preamble and body — every agent must honour the
 // scope-exception contract, so the rule belongs in argv rather than a Read
-// directive resolved per dispatch. sharedSessionEnd is the universal "end
-// your reply with /exit cue" rule appended. All three load once at init so a
-// missing asset fails the binary at startup rather than at first dispatch.
+// directive resolved per dispatch. Both load once at init so a missing asset
+// fails the binary at startup rather than at first dispatch.
 var (
-	sharedPreamble   = mustReadAsset(preamblePath)
-	sharedScope      = mustReadAsset(scopePath)
-	sharedSessionEnd = mustReadAsset(sessionEndPath)
+	sharedPreamble = mustReadAsset(preamblePath)
+	sharedScope    = mustReadAsset(scopePath)
 )
 
 func mustReadAsset(path string) string {
@@ -65,12 +62,12 @@ type Tuning struct {
 }
 
 // Prompt returns the embedded prompt body for the given agent name,
-// with the shared preamble prepended and the shared session-end rule
-// appended. YAML frontmatter (if any) is stripped — fetch it via Tuning.
-// Returns an error if no prompt is embedded under that name.
-// The returned content uses ${name} substitution placeholders matching
-// the YAML's ExpandParams dialect — callers run statemachine.ExpandParams
-// against the live ticket context before passing the result to `claude -p`.
+// with the shared preamble + scope rule prepended. YAML frontmatter
+// (if any) is stripped — fetch it via Tuning. Returns an error if no
+// prompt is embedded under that name. The returned content uses
+// ${name} substitution placeholders matching the YAML's ExpandParams
+// dialect — callers run statemachine.ExpandParams against the live
+// ticket context before passing the result to `claude -p`.
 func Prompt(name string) (string, error) {
 	data, err := assets.FS.ReadFile(agentsDir + "/" + name + ".md")
 	if err != nil {
@@ -80,8 +77,7 @@ func Prompt(name string) (string, error) {
 	body = strings.TrimRight(body, "\n")
 	return sharedPreamble + "\n\n" +
 		sharedScope + "\n\n" +
-		body + "\n\n---\n\n" +
-		sharedSessionEnd + "\n", nil
+		body + "\n", nil
 }
 
 // LoadTuning returns the model/effort tuning declared in the named
