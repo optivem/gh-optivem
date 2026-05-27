@@ -74,7 +74,7 @@ type sidecar struct {
 // (matches any sidecar value); used by tests that don't pin a version.
 //
 // Returns the absolute path of the materialized project-references root so
-// callers can substitute it for ${references_root} in agent prompts.
+// callers can substitute it for ${references-root} in agent prompts.
 func MaterializeProject(repoPath, binaryVersion string, placeholders map[string]string) (string, error) {
 	if repoPath == "" {
 		return "", fmt.Errorf("materialize: repoPath is required")

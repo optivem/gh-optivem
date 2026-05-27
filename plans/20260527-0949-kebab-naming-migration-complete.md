@@ -84,29 +84,6 @@ Out of scope:
 
 ## Items
 
-### 1. Renderer registration sweep (`clauderun.go:674-747`)
-
-Rename, one per entry:
-
-| Before | After |
-|--------|-------|
-| `params["acceptance_criteria"]` | `params["acceptance-criteria"]` |
-| `params["parsed_concepts"]` | `params["parsed-concepts"]` |
-| `params["command_exit_code"]` | `params["command-exit-code"]` |
-| `params["command_stderr_tail"]` | `params["command-stderr-tail"]` |
-| `params["ticket_id"]` | `params["ticket-id"]` |
-| `params["disable_marker_example"]` | `params["disable-marker-example"]` |
-| `params["disable_marker_removal_example"]` | `params["disable-marker-removal-example"]` |
-
-`params["scope_block"]`, `params["changed_files"]`, `params["verify_results"]`,
-`params["expected_outputs"]`, `params["references_root"]` — check the
-registration sites I didn't enumerate (grep for `params\["[a-z_]+_`)
-and rename in the same pass.
-
-Doc-comments in the registration block update inline (e.g. the
-explicit kebab-convention note at line 737-739 becomes the universal
-rule, not a partial-migration flag).
-
 ### 2. Agent `.md` prompt-body sweep
 
 Files to edit (full inventory from `grep '${[a-z_]+_[a-z_]+}'`):
@@ -171,20 +148,6 @@ func TestNoSnakeCasePlaceholdersInPromptBodies(t *testing.T) {
 And a sibling test against `renderPrompt`'s output for a representative
 agent of each shape (writer, fixer, refactorer) to catch the case where
 the registration uses kebab but the prompt body still says snake.
-
-### 5. Doc-comment audit
-
-Sweep these doc-comments for stale `${snake_case}` references:
-
-- `bindings.go:332-343` (parseTicket comment) — already updated under Path A.
-- `clauderun.go:105-132` (Checklist + AcceptanceCriteria doc-comments).
-- `clauderun.go:212-222` (Language doc-comment — already kebab-friendly).
-- `clauderun.go:135-152` (ParsedConcepts + VerifyResults).
-- `intake/parse.go:24, 80-83, 172` (Section / Parse / ExtractChecklist
-  comments mentioning the prompt's `${checklist}` /
-  `${acceptance_criteria}` substitutions).
-- Any prompt-doc index under `docs/atdd/code/` that lists placeholders
-  by name.
 
 ## Sequencing
 

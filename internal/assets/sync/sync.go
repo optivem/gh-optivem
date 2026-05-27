@@ -126,7 +126,7 @@ func ForceSync(binaryVersion string) (Result, error) {
 
 // ReferencesRoot returns the absolute path of the synced references root
 // (~/.gh-optivem/references/). Rendered prompts substitute this into the
-// ${references_root} placeholder so agent Read-tool calls resolve to the
+// ${references-root} placeholder so agent Read-tool calls resolve to the
 // per-user synced copy regardless of working directory.
 func ReferencesRoot() (string, error) {
 	home, err := os.UserHomeDir()

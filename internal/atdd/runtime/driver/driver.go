@@ -440,7 +440,7 @@ func orPlaceholder(s, placeholder string) string {
 
 // seedScopeState copies repo-strategy and architecture from a loaded
 // config into Context.State so agent prompts can substitute
-// ${repo_strategy}, ${repos}, and ${architecture}. Empty values are left
+// ${repo-strategy}, ${repos}, and ${architecture}. Empty values are left
 // absent. nil cfg is a no-op.
 //
 // Per-phase scope (read/write path keys) is NOT seeded here — that
@@ -476,7 +476,7 @@ func seedScopeState(sCtx *statemachine.Context, cfg *projectconfig.Config) {
 
 // primaryLanguage picks the language seeded into ctx.State["language"] for
 // every dispatch in this run. Prompts that reference per-language docs via
-// `${references_root}/code/language-equivalents/${language}.md` resolve to
+// `${references-root}/code/language-equivalents/${language}.md` resolve to
 // the right slice on this value.
 //
 //   - Monolith → cfg.System.Lang.

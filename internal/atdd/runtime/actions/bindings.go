@@ -335,9 +335,8 @@ func (a actions) moveToInAcceptance(ctx *statemachine.Context) statemachine.Outc
 // steps-to-reproduce, checklist). YAML placeholders consume these
 // directly via ExpandParams's state-fallback path; agent prompt bodies
 // consume them via the renderer's struct→params translation in
-// clauderun.go, where the field→placeholder mapping currently still
-// uses snake_case (${acceptance_criteria}, ${checklist}) pending the
-// Path B kebab migration.
+// clauderun.go, which exposes them under the matching kebab-cased
+// placeholders (${acceptance-criteria}, ${checklist}).
 //
 // Wired in implement-ticket between MARK_IN_PROGRESS and GATE_TICKET_KIND
 // — runs once per ticket, before the gateway routes to the cycle. The
@@ -759,7 +758,7 @@ const commandStderrTailLines = 20
 
 // lastNLines returns the trailing n non-empty-bounded lines of s, joined
 // by "\n". When s has fewer than n lines, returns s with a single
-// trailing newline trimmed (so the rendered ${command_stderr_tail}
+// trailing newline trimmed (so the rendered ${command-stderr-tail}
 // block doesn't gain an extra blank line). Used to bound the stderr
 // payload fed to the fix-command-failed prompt.
 func lastNLines(s string, n int) string {
@@ -852,7 +851,7 @@ func lastNLines(s string, n int) string {
 //                                               in the snapshot delta
 //                                               (in-scope + out-of-scope).
 //                                               The fix-scope-diff prompt
-//                                               reads this as ${changed_files}
+//                                               reads this as ${changed-files}
 //                                               so the diagnosing agent sees
 //                                               only this phase's edits,
 //                                               not the full git status dump.
@@ -935,7 +934,7 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
 	}
 	// Stash the full snapshot delta (in-scope + out-of-scope) so the
-	// fix-scope-diff prompt's ${changed_files} renders this phase's
+	// fix-scope-diff prompt's ${changed-files} renders this phase's
 	// edits only — not the cross-phase `git status --porcelain` dump
 	// the dispatcher would otherwise capture.
 	ctx.Set("phase-changed-files", strings.Join(modified, "\n"))

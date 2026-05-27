@@ -60,11 +60,11 @@ type Options struct {
 
 	// TicketID is the tracker-verbatim id (issue.ID), seeded by
 	// writeResolvedIssue alongside IssueNum. Same value as IssueNum today,
-	// but the dispatcher exposes it under the backend-agnostic ${ticket_id}
+	// but the dispatcher exposes it under the backend-agnostic ${ticket-id}
 	// placeholder so prompts that compose user-visible disable-reason
 	// strings (test-disabler, test-enabler) stay neutral on whether the
 	// tracker is GitHub-numeric or Jira-prefixed. Load-bearing: when empty
-	// AND the prompt references ${ticket_id}, findUnfilledPlaceholders
+	// AND the prompt references ${ticket-id}, findUnfilledPlaceholders
 	// fails the dispatch fast — same rationale as Language / Checklist.
 	TicketID string
 
@@ -87,7 +87,7 @@ type Options struct {
 	// spinoff 1536). The driver looks them up via engine.Scope at dispatch
 	// time, joins each key against ProjectConfig.PlaceholderMap() at render
 	// time, and the result is substituted into the prompt body via the
-	// ${scope_block} placeholder.
+	// ${scope-block} placeholder.
 	//
 	// Replaces the v1 ${allowed_roots} mechanism (which rendered a flat
 	// write-only block from projectconfig once per run). The new shape
@@ -96,7 +96,7 @@ type Options struct {
 	// project's full path inventory.
 	//
 	// Load-bearing: when both lists are non-empty the renderer registers
-	// ${scope_block}; when empty (e.g. `scope: none` phases or command-only
+	// ${scope-block}; when empty (e.g. `scope: none` phases or command-only
 	// MIDs) the placeholder is left unfilled and findUnfilledPlaceholders
 	// fails the dispatch fast if the prompt body references it.
 	ScopeRead  []string
@@ -111,7 +111,7 @@ type Options struct {
 	//
 	// Load-bearing: when empty AND the prompt body references
 	// ${checklist}, findUnfilledPlaceholders fails the dispatch fast.
-	// Mirrors the ${acceptance_criteria} pattern — only registered when
+	// Mirrors the ${acceptance-criteria} pattern — only registered when
 	// non-empty so the unfilled-placeholder check is the single
 	// enforcement point that catches "ticket-kind expects a Checklist
 	// but the body has none" at the dispatcher rather than letting the
@@ -120,10 +120,10 @@ type Options struct {
 
 	// AcceptanceCriteria is the body of the ticket's Acceptance Criteria
 	// section as parsed by intake.Parse. Surfaced to the agent prompt via
-	// the ${acceptance_criteria} placeholder so write-acceptance-tests can read the
+	// the ${acceptance-criteria} placeholder so write-acceptance-tests can read the
 	// scenarios intake already extracted instead of shelling out to
 	// `gh issue view`. Load-bearing: when empty AND the prompt body
-	// references ${acceptance_criteria}, findUnfilledPlaceholders fails
+	// references ${acceptance-criteria}, findUnfilledPlaceholders fails
 	// the dispatch fast — WRITE-ACCEPTANCE-TESTS is contractually scoped to
 	// implementing AC, so an absent value is a wiring bug, not a valid
 	// state. Mirrors the ${language} pattern: only registered when
@@ -134,7 +134,7 @@ type Options struct {
 	// ParsedConcepts is the absolute path to the parsed-concepts artifact
 	// materialize_parsed_concepts writes at the start of the
 	// backlog_refinement sub-process. Substituted into
-	// refine-acceptance-criteria's ${parsed_concepts} placeholder so the
+	// refine-acceptance-criteria's ${parsed-concepts} placeholder so the
 	// agent has a stable file path for the parsed ACs across the
 	// CONFIRM_REFINEMENT human gate. Load-bearing: only registered when
 	// non-empty so an absent value surfaces via
@@ -144,7 +144,7 @@ type Options struct {
 
 	// VerifyResults is the formatted block describing every red-class
 	// verifyCommandResult the most recent RUN_TESTS produced.
-	// Substituted into fix-unexpected-passing-tests' / fix-unexpected-failing-tests' ${verify_results} placeholder so
+	// Substituted into fix-unexpected-passing-tests' / fix-unexpected-failing-tests' ${verify-results} placeholder so
 	// the fix agent reads the same captured runner output the operator
 	// saw inline. Empty for every other agent — the rendered prompt
 	// just leaves the placeholder verbatim, which is harmless because
@@ -153,7 +153,7 @@ type Options struct {
 
 	// ChangedFiles is the working-tree diff (as `git status --porcelain`)
 	// at the moment of dispatch. Substituted into fix-unexpected-passing-tests' / fix-unexpected-failing-tests' / fix-command-failed
-	// ${changed_files} placeholder so the fix agent can scope its
+	// ${changed-files} placeholder so the fix agent can scope its
 	// reasoning to "what the WRITE phase just edited" without re-running
 	// `git status`. Empty when the dispatcher couldn't shell out (e.g.
 	// tests with no Git seam).
@@ -167,7 +167,7 @@ type Options struct {
 	// those keys and the fields stay zero-valued.
 	//
 	// Load-bearing for fix-command-failed: the prompt body references
-	// ${command}, ${command_exit_code}, ${command_stderr_tail}. CommandLine
+	// ${command}, ${command-exit-code}, ${command-stderr-tail}. CommandLine
 	// is registered only when non-empty (mirroring Checklist /
 	// AcceptanceCriteria) so findUnfilledPlaceholders fails the dispatch
 	// fast when the recovery path tries to render fix-command-failed
@@ -227,7 +227,7 @@ type Options struct {
 	// node surfaces as ${failure_type} = "compile" in the rendered prompt.
 	// This is how per-call-site labels reach the agent body without an
 	// agent-specific Options field. Lower precedence than the fixed-schema
-	// placeholders (issue_num, issue_title, phase, …) — those win on key
+	// placeholders (issue-num, issue-title, phase, …) — those win on key
 	// collision.
 	NodeParams map[string]string
 
@@ -239,7 +239,7 @@ type Options struct {
 	// to be resolved at materialization time now live in the prompt body
 	// itself; this map is how the dispatcher gets them filled at render
 	// time. Lowest precedence — NodeParams and the fixed-schema set
-	// (architecture, language, scope_block, …) win on key collision so
+	// (architecture, language, scope-block, …) win on key collision so
 	// existing per-dispatch overrides keep their meaning.
 	Placeholders map[string]string
 
@@ -310,10 +310,10 @@ type Options struct {
 	OutputKeysSpec string
 
 	// ExpectedOutputs is the writing-agent MID's declared output contract
-	// rendered for the prompt's ${expected_outputs} placeholder. The
+	// rendered for the prompt's ${expected-outputs} placeholder. The
 	// driver populates it from Engine.Outputs(taskName) so prompt authors
 	// never hand-write an "Outputs" section — the BPMN declaration is the
-	// single source of truth. Empty slice (or nil) → ${expected_outputs}
+	// single source of truth. Empty slice (or nil) → ${expected-outputs}
 	// substitutes to empty; agents with no declared outputs simply have
 	// no Required/Optional contract table in their rendered prompt.
 	ExpectedOutputs []statemachine.OutputSpec
@@ -332,7 +332,7 @@ type Options struct {
 	// materialization ahead of prompt rendering. Dispatch calls
 	// assetsync.MaterializeProject against ProjectConfig.PlaceholderMap()
 	// so the agent reads docs with concrete project paths instead of
-	// `${name}` placeholders, and ${references_root} in the rendered
+	// `${name}` placeholders, and ${references-root} in the rendered
 	// prompt resolves to <RepoPath>/.gh-optivem/references rather than
 	// the user-global ~/.gh-optivem/references. Required alongside
 	// RepoPath — when either is missing, Dispatch falls back to the
@@ -472,7 +472,7 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 	// When a ProjectConfig is in hand and we have a project root to write
 	// into, materialize the embedded reference docs against the project's
 	// placeholder map so the agent reads docs with concrete paths. The
-	// returned root is forwarded to renderPrompt so ${references_root}
+	// returned root is forwarded to renderPrompt so ${references-root}
 	// resolves to the project-local copy. When either field is missing
 	// we leave projectReferencesRoot empty and the user-global references
 	// root applies — the fallback path covers CLI utilities, scaffold
@@ -593,7 +593,7 @@ func writePromptLog(path, prompt string) error {
 // renderPrompt reads the embedded prompt for opts.Agent (or opts.PromptOverride
 // when non-empty), expands ${name} placeholders against the ticket context,
 // and appends opts.OverrideText (if any) as a trailing block. Public-ish for
-// the test file; not exported. ${references_root} resolves to the user-global
+// the test file; not exported. ${references-root} resolves to the user-global
 // ~/.gh-optivem/references — callers wanting the project-local materialized
 // copy route through Dispatch (which calls renderPromptWithReferencesRoot
 // with a non-empty root).
@@ -602,7 +602,7 @@ func renderPrompt(opts Options) (string, error) {
 }
 
 // renderPromptWithReferencesRoot is the worker behind renderPrompt.
-// projectReferencesRoot, when non-empty, wins for the ${references_root}
+// projectReferencesRoot, when non-empty, wins for the ${references-root}
 // substitution — Dispatch passes the result of MaterializeProject so the
 // agent reads the project-local references copy. Empty falls back to
 // assetsync.ReferencesRoot() (the user-global path), which is what tests
@@ -643,14 +643,14 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 		}
 	}
 	for k, v := range map[string]string{
-		"issue_num":       strconv.Itoa(opts.IssueNum),
-		"issue_title":     opts.IssueTitle,
+		"issue-num":       strconv.Itoa(opts.IssueNum),
+		"issue-title":     opts.IssueTitle,
 		"phase":           opts.NodeDescription,
 		"architecture":    opts.Architecture,
 		"subtype":         opts.Subtype,
-		"verify_results":  opts.VerifyResults,
-		"changed_files":   opts.ChangedFiles,
-		"references_root": referencesRoot,
+		"verify-results":  opts.VerifyResults,
+		"changed-files":   opts.ChangedFiles,
+		"references-root": referencesRoot,
 	} {
 		params[k] = v
 	}
@@ -659,12 +659,12 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	// the inline ${key} annotations resolve through (opts.Placeholders —
 	// produced by cfg.PlaceholderMap() in production). Only registered
 	// when both lists are non-empty — `scope: none` phases and command-
-	// only MIDs leave ${scope_block} unfilled, which
+	// only MIDs leave ${scope-block} unfilled, which
 	// findUnfilledPlaceholders converts to a hard error if the prompt
 	// body references the placeholder. Mirrors the Language /
 	// AcceptanceCriteria load-bearing pattern.
 	if len(opts.ScopeRead) > 0 && len(opts.ScopeWrite) > 0 {
-		params["scope_block"] = renderScopeBlock(opts.ScopeRead, opts.ScopeWrite, opts.Placeholders)
+		params["scope-block"] = renderScopeBlock(opts.ScopeRead, opts.ScopeWrite, opts.Placeholders)
 	}
 	// Language is load-bearing — only registered when the driver supplied
 	// a value. An empty value would silently substitute, masking a config
@@ -679,7 +679,7 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	// findUnfilledPlaceholders rather than silently substituting "" into
 	// a downstream startsWith filter.
 	if opts.TicketID != "" {
-		params["ticket_id"] = opts.TicketID
+		params["ticket-id"] = opts.TicketID
 	}
 	// Disable-marker examples (test-disabler / test-enabler). Composed
 	// from Language + TicketID + the call-activity-pushed loop /
@@ -693,16 +693,16 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	// agent was forced to grep in-scope tests to reverse-engineer the
 	// syntax (3-5 wasted tool calls per dispatch).
 	if ex := renderDisableMarkerExample(opts.Language, opts.TicketID, opts.NodeParams["loop"], opts.NodeParams["cycle_phase"]); ex != "" {
-		params["disable_marker_example"] = ex
+		params["disable-marker-example"] = ex
 	}
 	if ex := renderDisableMarkerRemovalExample(opts.Language, opts.TicketID, opts.NodeParams["prev_phase"]); ex != "" {
-		params["disable_marker_removal_example"] = ex
+		params["disable-marker-removal-example"] = ex
 	}
 	// AcceptanceCriteria is load-bearing for write-acceptance-tests — same rationale
 	// as Language. Only registered when non-empty so an absent value
 	// surfaces via findUnfilledPlaceholders rather than substituting "".
 	if opts.AcceptanceCriteria != "" {
-		params["acceptance_criteria"] = opts.AcceptanceCriteria
+		params["acceptance-criteria"] = opts.AcceptanceCriteria
 	}
 	// Checklist is load-bearing for the four task subtypes whose cycles
 	// consume ${checklist} (system-redesign, external-system-redesign,
@@ -718,7 +718,7 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	// same rationale as AcceptanceCriteria. Only registered when
 	// non-empty so an absent value surfaces via findUnfilledPlaceholders.
 	if opts.ParsedConcepts != "" {
-		params["parsed_concepts"] = opts.ParsedConcepts
+		params["parsed-concepts"] = opts.ParsedConcepts
 	}
 	// Command-failure payload — load-bearing for fix-command-failed.
 	// CommandLine gates the trio: when present, all three placeholders
@@ -726,8 +726,8 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	// ${command} reference surfaces via findUnfilledPlaceholders.
 	if opts.CommandLine != "" {
 		params["command"] = opts.CommandLine
-		params["command_exit_code"] = strconv.Itoa(opts.CommandExitCode)
-		params["command_stderr_tail"] = opts.CommandStderrTail
+		params["command-exit-code"] = strconv.Itoa(opts.CommandExitCode)
+		params["command-stderr-tail"] = opts.CommandStderrTail
 	}
 	// Validation-failure payload — load-bearing for fix-missing-output
 	// and fix-scope-diff. FailingTaskName is shared by both prompts and
@@ -747,13 +747,13 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 		params["violating-paths"] = opts.ViolatingPaths
 	}
 	// Expected outputs (plan 20260526-2118). Always set — empty when the
-	// MID declared none, so ${expected_outputs} in the prompt body
+	// MID declared none, so ${expected-outputs} in the prompt body
 	// substitutes to an empty string rather than tripping
 	// findUnfilledPlaceholders. The renderer formats per-spec entries as
 	// `key: type`, grouped into Required / Optional blocks, then a single
 	// "Emit:" line pointing at the CLI. Drift kill: prompt authors never
 	// write this section by hand.
-	params["expected_outputs"] = renderExpectedOutputs(opts.ExpectedOutputs)
+	params["expected-outputs"] = renderExpectedOutputs(opts.ExpectedOutputs)
 	rendered, err := statemachine.ExpandParams(body, params, nil)
 	if err != nil {
 		return "", err
@@ -779,7 +779,7 @@ func RenderPrompt(opts Options) (string, error) {
 	return renderPrompt(opts)
 }
 
-// renderExpectedOutputs produces the body of the ${expected_outputs}
+// renderExpectedOutputs produces the body of the ${expected-outputs}
 // substitution — a minimal contract table the writing-agent prompts
 // embed so the agent knows which keys to emit via `gh optivem output
 // write`. Per plan 20260526-2118, this is derived from the BPMN
@@ -832,10 +832,10 @@ func renderExpectedOutputs(specs []statemachine.OutputSpec) string {
 	return b.String()
 }
 
-// renderScopeBlock produces the body of the ${scope_block} substitution:
+// renderScopeBlock produces the body of the ${scope-block} substitution:
 // two key-list blocks (read, then write) plus the scope_exception escape
 // hatch line. The `### Scope` heading itself is owned by the prompt
-// source (each in-scope prompt writes `### Scope\n\n${scope_block}` under
+// source (each in-scope prompt writes `### Scope\n\n${scope-block}` under
 // `## Inputs`), so this helper renders only the body.
 //
 // Layer keys are resolved against the supplied paths map — same source
@@ -883,7 +883,7 @@ func renderScopeBlock(read, write []string, paths map[string]string) string {
 
 // renderDisableMarkerExample inlines the per-language disable-marker
 // emit-this snippet into the test-disabler prompt via
-// ${disable_marker_example}. Previously the agent had to look up the
+// ${disable-marker-example}. Previously the agent had to look up the
 // syntax in the language-equivalents reference doc (which is out of
 // scope under the agent's `read:` set) or grep the in-scope test tree
 // to reverse-engineer it — 3-5 wasted tool calls per dispatch. With
@@ -915,7 +915,7 @@ func renderDisableMarkerExample(lang, ticketID, loop, cyclePhase string) string 
 
 // renderDisableMarkerRemovalExample is the symmetric helper for the
 // test-enabler — inlines the per-language transform that strips a
-// disable marker via ${disable_marker_removal_example}. Same
+// disable marker via ${disable-marker-removal-example}. Same
 // rationale as renderDisableMarkerExample. The reason-prefix is
 // composed inline so the agent sees the exact startsWith filter it
 // must match before stripping.

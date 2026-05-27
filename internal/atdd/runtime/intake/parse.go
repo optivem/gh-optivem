@@ -79,7 +79,7 @@ var CanonicalHeadings = []string{
 // Per-kind required-section enforcement (story → AC, the five task
 // subtypes that consume ${checklist} → Checklist, etc.) does NOT live
 // here. It is enforced by the load-bearing-placeholder check in
-// clauderun.go: a prompt that references ${acceptance_criteria} or
+// clauderun.go: a prompt that references ${acceptance-criteria} or
 // ${checklist} with no value fails dispatch fast. That keeps the parser
 // ticket-kind-agnostic so a single PARSE_TICKET service-task can run
 // before GATE_TICKET_KIND.
