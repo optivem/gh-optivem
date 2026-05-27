@@ -63,6 +63,14 @@ cd ../shop
 bash ../gh-optivem/scripts/atdd-rehearsal.sh 70 --config gh-optivem-monolith-typescript.yaml
 ```
 
+**Issue [#71 — Gift-wrap an order](https://github.com/optivem/shop/issues/71)** (write flow adding a new field to the existing DSL):
+
+```bash
+cd ../shop
+
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 71 --config gh-optivem-monolith-typescript.yaml
+```
+
 ## Contents
 
 - [Prerequisites](#prerequisites)
