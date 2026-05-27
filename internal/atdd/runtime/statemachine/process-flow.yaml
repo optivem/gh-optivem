@@ -1046,15 +1046,29 @@ processes:
         type: call-activity
         process: verify-tests-pass
         name: "Verify Tests Pass"
-        # Empty suite ⇒ all suites (per run-tests doctrine). MUST be
-        # explicit: verify-tests-pass's body forwards `suite: ${suite}`
-        # to run-tests. Without a binding here, ExpandParams leaves the
-        # literal `${suite}` string in place, which then propagates through
-        # run-tests → execute-command → runCommand and lands in the CLI as
-        # `--suite='${suite}'` (runCommand's `if suite != ""` guard treats
-        # the literal as non-empty and appends the broken flag).
+        # Empty suite + empty test-names ⇒ full regression (all suites,
+        # all tests) per run-tests doctrine. Both MUST be bound explicitly:
+        # verify-tests-pass's body forwards `suite: ${suite}` and
+        # `test-names: ${test-names}` to run-tests. ExpandParams resolves
+        # placeholders by checking call params first, then falling back to
+        # run-scoped state (run.go:334). Without explicit bindings here:
+        #   - `${suite}` resolves to "" if no `suite` key is in state (today's
+        #     case), but leaves the literal `${suite}` in place if state ever
+        #     gains one. The literal then propagates through
+        #     run-tests → execute-command → runCommand and lands in the CLI
+        #     as `--suite='${suite}'` (runCommand's `if suite != ""` guard
+        #     treats the literal as non-empty and appends the broken flag).
+        #   - `${test-names}` ALWAYS falls back to state because the upstream
+        #     RED `write-acceptance-tests` agent emits `test-names` as a
+        #     declared output (process-flow.yaml:1305), which lands in
+        #     ctx.State. That stale per-cycle list then leaks into the
+        #     regression run as `--test=foo,bar`, narrowing the run away
+        #     from "all tests" and producing "No tests found" when the
+        #     first suite's class filter (e.g. smoke's `*latest*smoke*`)
+        #     excludes those method names.
         params:
           suite: ""
+          test-names: ""
 
       - id: COMMIT_SYSTEM
         type: call-activity
@@ -1097,11 +1111,14 @@ processes:
         type: call-activity
         process: verify-tests-pass
         name: "Verify Tests Pass"
-        # See `implement-and-verify-system` for the rationale — empty `suite`
-        # is the explicit "all suites" binding required to prevent the literal
-        # `${suite}` placeholder from leaking into the CLI.
+        # See `implement-and-verify-system` for the rationale — both
+        # `suite: ""` and `test-names: ""` must be bound explicitly to
+        # prevent ExpandParams' state-fallback from leaking either an
+        # outer `${suite}` placeholder or the stale per-cycle `test-names`
+        # output from the upstream RED writing agent into the CLI.
         params:
           suite: ""
+          test-names: ""
 
       - id: COMMIT_TESTS
         type: call-activity
