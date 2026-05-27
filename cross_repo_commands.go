@@ -85,8 +85,11 @@ func newCommitCmd() *cobra.Command {
 		Long: `Iterate every repo in scope (workspace folders, or the cwd repo when no
 *.code-workspace is reachable — see "Mode: …" banner). For each dirty repo,
 stage changes, prompt for confirmation (y/N), and commit with the supplied
-message. After the commit (or for already-clean repos), pull then push. Repos
-without a remote tracking branch are skipped.
+message. When the branch has an upstream, pull --rebase before staging and
+push after. When the branch has no upstream (e.g. local-only rehearsal
+branches), commit locally and skip the pull/push — the operator is told
+"(local only — no upstream branch)". Clean repos with no upstream are
+counted as skipped since neither commit nor sync can occur.
 
 A commit message is required when any iterated repo has dirty changes.
 
@@ -140,14 +143,25 @@ func runCommit(msg string, opts commitOptions) error {
 	}
 	fmt.Println(workspaceSeparator)
 
-	committed, synced, skipped := 0, 0, 0
+	committed, synced, localOnly, skipped := 0, 0, 0, 0
 	for _, repo := range scope.Folders {
 		if opts.Repo != "" && repoBaseName(repo) != opts.Repo {
 			continue
 		}
-		if !hasUpstream(repo) {
-			skipped++
-			continue
+
+		hasUp := hasUpstream(repo)
+		// Skip only when there's nothing to do: clean working tree AND no
+		// upstream to sync with. A dirty repo without an upstream still
+		// gets a local commit — see the "(local only)" path below.
+		if !hasUp {
+			clean, err := workingTreeClean(repo)
+			if err != nil {
+				return fmt.Errorf("git status in %s: %w", repo, err)
+			}
+			if clean {
+				skipped++
+				continue
+			}
 		}
 
 		fmt.Println()
@@ -159,8 +173,11 @@ func runCommit(msg string, opts commitOptions) error {
 		// remote tip, not a stale local ref. Working tree is dirty by
 		// definition here — stash unstaged + staged changes, rebase, then
 		// pop. Emulates `rebase.autoStash` regardless of operator config.
-		if err := pullWithAutoStash(repo); err != nil {
-			return fmt.Errorf("pre-commit git pull --rebase in %s: %w", repo, err)
+		// No upstream → nothing to rebase onto, skip the pull.
+		if hasUp {
+			if err := pullWithAutoStash(repo); err != nil {
+				return fmt.Errorf("pre-commit git pull --rebase in %s: %w", repo, err)
+			}
 		}
 
 		didCommit, err := commitOneRepo(repo, msg, opts)
@@ -171,18 +188,33 @@ func runCommit(msg string, opts commitOptions) error {
 			committed++
 		}
 
-		if err := pushWithRebaseRetry(repo); err != nil {
-			return err
+		if hasUp {
+			if err := pushWithRebaseRetry(repo); err != nil {
+				return err
+			}
+			synced++
+			fmt.Println("  ✓ Pulled and pushed")
+		} else if didCommit {
+			localOnly++
+			fmt.Println("  ✓ Committed (local only — no upstream branch)")
 		}
-		synced++
-		fmt.Println("  ✓ Pulled and pushed")
 	}
 
 	fmt.Println()
 	fmt.Println(workspaceSeparator)
-	fmt.Printf("  Done. %d committed, %d synced, %d skipped (no remote).\n", committed, synced, skipped)
+	fmt.Printf("  Done. %d committed (%d synced, %d local only), %d skipped (no upstream and clean).\n", committed, synced, localOnly, skipped)
 	fmt.Println(workspaceSeparator)
 	return nil
+}
+
+// workingTreeClean reports whether `git status --short` is empty in repo —
+// i.e. no modified, staged, or untracked entries.
+func workingTreeClean(repo string) (bool, error) {
+	status, err := captureGit(repo, "status", "--short")
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(status) == "", nil
 }
 
 // commitOneRepo handles the stage/confirm/commit logic for one repo. Returns

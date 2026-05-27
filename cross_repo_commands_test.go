@@ -146,6 +146,46 @@ func TestCommitOneRepo_DirtyWithoutMessage_Errors(t *testing.T) {
 	}
 }
 
+func TestWorkingTreeClean(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "clean-check")
+	initTestRepo(t, repo)
+
+	clean, err := workingTreeClean(repo)
+	if err != nil {
+		t.Fatalf("workingTreeClean (initial): %v", err)
+	}
+	if !clean {
+		t.Errorf("expected clean on freshly-initialised repo")
+	}
+
+	// Untracked file → dirty.
+	if err := os.WriteFile(filepath.Join(repo, "stray.log"), []byte("oops\n"), 0o644); err != nil {
+		t.Fatalf("write stray: %v", err)
+	}
+	clean, err = workingTreeClean(repo)
+	if err != nil {
+		t.Fatalf("workingTreeClean (untracked): %v", err)
+	}
+	if clean {
+		t.Errorf("expected dirty when an untracked file is present")
+	}
+
+	// Untracked removed, modified tracked file → dirty.
+	if err := os.Remove(filepath.Join(repo, "stray.log")); err != nil {
+		t.Fatalf("remove stray: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "seed.txt"), []byte("changed\n"), 0o644); err != nil {
+		t.Fatalf("modify seed: %v", err)
+	}
+	clean, err = workingTreeClean(repo)
+	if err != nil {
+		t.Fatalf("workingTreeClean (modified): %v", err)
+	}
+	if clean {
+		t.Errorf("expected dirty when a tracked file is modified")
+	}
+}
+
 func TestIsNonFastForwardRejection(t *testing.T) {
 	cases := map[string]bool{
 		"":                                  false,
