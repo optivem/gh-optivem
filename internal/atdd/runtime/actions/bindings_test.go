@@ -664,10 +664,10 @@ func TestValidateOutputsAndScopes_MissingOutput_FlagsAndKind(t *testing.T) {
 	a := newActions(Deps{Stderr: &stderr, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	// implement-dsl declares two required keys in BPMN:
-	// system-driver-ports-changed + external-driver-ports-changed.
+	// system-driver-port-changed + external-driver-port-changed.
 	ctx.Params["task-name"] = "implement-dsl"
 	// Only one of the two required outputs is present in state.
-	ctx.Set("system-driver-ports-changed", true)
+	ctx.Set("system-driver-port-changed", true)
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -678,7 +678,7 @@ func TestValidateOutputsAndScopes_MissingOutput_FlagsAndKind(t *testing.T) {
 	if got := ctx.GetString("failure-kind"); got != "missing-output" {
 		t.Fatalf("failure-kind: got %q, want %q", got, "missing-output")
 	}
-	if !strings.Contains(stderr.String(), "external-driver-ports-changed") {
+	if !strings.Contains(stderr.String(), "external-driver-port-changed") {
 		t.Fatalf("stderr missing output name: %q", stderr.String())
 	}
 }
@@ -716,8 +716,8 @@ func TestValidateOutputsAndScopes_ScopeDiff_FlagsAndKind(t *testing.T) {
 	// Required outputs must be present for the scope check to fire (the
 	// new presence-check from BPMN OutputSpec runs first; missing keys
 	// short-circuit to failure-kind=missing-output, not scope-diff).
-	ctx.Set("system-driver-ports-changed", true)
-	ctx.Set("external-driver-ports-changed", false)
+	ctx.Set("system-driver-port-changed", true)
+	ctx.Set("external-driver-port-changed", false)
 	// Empty snapshot → every dirty path is "added by this phase".
 	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
 	out := a.validateOutputsAndScopes(ctx)
@@ -754,8 +754,8 @@ func TestValidateOutputsAndScopes_AllClean_IsValid(t *testing.T) {
 	// Empty snapshot + empty dirty tree → no delta, scope check passes.
 	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
 	// Both required outputs present so the presence-check passes.
-	ctx.Set("system-driver-ports-changed", true)
-	ctx.Set("external-driver-ports-changed", true)
+	ctx.Set("system-driver-port-changed", true)
+	ctx.Set("external-driver-port-changed", true)
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -776,8 +776,8 @@ func TestValidateOutputsAndScopes_MissingOutputWins_OverScopeDiff(t *testing.T) 
 	a := newActions(Deps{Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	ctx.Params["task-name"] = "implement-dsl"
-	// No outputs set — system-driver-ports-changed +
-	// external-driver-ports-changed are both missing per implement-dsl's
+	// No outputs set — system-driver-port-changed +
+	// external-driver-port-changed are both missing per implement-dsl's
 	// BPMN declaration, so missing-output must fire before any scope check.
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
@@ -808,8 +808,8 @@ func TestValidateOutputsAndScopes_FixPath_UsesOriginatingTaskName(t *testing.T) 
 	// Outputs declared on the originating MID (implement-dsl) must be
 	// present so the presence-check clears and the scope-diff branch
 	// can fire.
-	ctx.Set("system-driver-ports-changed", true)
-	ctx.Set("external-driver-ports-changed", false)
+	ctx.Set("system-driver-port-changed", true)
+	ctx.Set("external-driver-port-changed", false)
 	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
@@ -838,8 +838,8 @@ func TestValidateOutputsAndScopes_MissingSnapshot_HardErrors(t *testing.T) {
 	ctx.Params["task-name"] = "implement-dsl"
 	// Both required outputs present so the presence-check clears and the
 	// scope check (which depends on the snapshot) is what fires next.
-	ctx.Set("system-driver-ports-changed", true)
-	ctx.Set("external-driver-ports-changed", true)
+	ctx.Set("system-driver-port-changed", true)
+	ctx.Set("external-driver-port-changed", true)
 	// Deliberately do NOT seed CtxKeyPreAgentFingerprint.
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err == nil {

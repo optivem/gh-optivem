@@ -15,18 +15,12 @@ ${scope-block}
 
 This task does not receive a substituted artifact input; the `TODO: DSL` prototypes the agent operates on are discovered from the files under its read-scope.
 
-### Parameters
-
-- `touches-system-driver` (current value: `${touches-system-driver}`) — boolean, `true` | `false`. Controls whether the System Driver port (`${driver-port}`) is in scope for this invocation.
-  - When `true`: the System Driver Interface (`${driver-port}`) is in scope; the agent may add prototype methods there (throwing `"TODO: System Driver"`) and emits `system-driver-ports-changed: true` iff it did so.
-  - When `false`: the System Driver port (`${driver-port}`) is out of scope; the agent leaves it untouched and emits `system-driver-ports-changed: false`.
-
 ## Steps
 
 1. Implement the DSL Core (`${dsl-core}`) for real — replace each `TODO: DSL` prototype with actual logic.
-2. If you need to add additional driver interface methods, add prototype methods that throw a runtime exception so compilation works:
-   (a) In the System Driver Interface (`${driver-port}`), throw `"TODO: System Driver"` (only when `${touches-system-driver}=true`; otherwise skip).
-   (b) In the External System Driver Interface (`${external-system-driver-port}`), throw `"TODO: External System Driver"`.
+2. If you need to add additional driver methods, add the method signature to the port (interface) and a throwing stub body to the corresponding adapter (impl class) so compilation works. Interfaces hold signatures only; the throwing-TODO body lives in the adapter:
+   (a) Signature in the System Driver Port (`${driver-port}`); throwing `"TODO: System Driver"` stub in the System Driver Adapter (`${driver-adapter}`).
+   (b) Signature in the External System Driver Port (`${external-system-driver-port}`); throwing `"TODO: External System Driver"` stub in the External System Driver Adapter (`${external-system-driver-adapter}`).
 3. Emit the phase-output flag(s) listed under `## Outputs` for this invocation. Every flag listed for this invocation **MUST** be emitted before completing — unset is a bug, not a default `false`. The downstream gateway picks the next task from the flag values.
 
 ## Outputs
@@ -45,8 +39,8 @@ Both required keys MUST be emitted. The downstream gateway treats *unset* as an 
 
 | Flag key (exact) | Meaning when `true` | Meaning when `false` |
 |---|---|---|
-| `system-driver-ports-changed` | implement-system-driver-adapters must run (new System Driver (`${driver-port}`) methods need real impls) | the System Driver port (`${driver-port}`) was not changed this invocation. When `${touches-system-driver}=false` the port is out of scope and this flag is always `false`. |
-| `external-driver-ports-changed` | implement-external-system-driver-adapters must run (new External System Driver (`${external-system-driver-port}`) methods need real impls) | the External System Driver port (`${external-system-driver-port}`) was not changed this invocation. |
+| `system-driver-port-changed` | implement-system-driver-adapters must run (new System Driver (`${driver-port}`) methods need real impls) | the System Driver port (`${driver-port}`) was not changed this invocation. |
+| `external-driver-port-changed` | implement-external-system-driver-adapters must run (new External System Driver (`${external-system-driver-port}`) methods need real impls) | the External System Driver port (`${external-system-driver-port}`) was not changed this invocation. |
 
 `scope-exception-files` / `scope-exception-reason` (optional) are the
 scope-exception envelope (see `${references-root}/scope.md`). Emit
@@ -56,8 +50,8 @@ Example call:
 
 ```
 gh optivem output write \
-  system-driver-ports-changed=false \
-  external-driver-ports-changed=false
+  system-driver-port-changed=false \
+  external-driver-port-changed=false
 ```
 
 ## Additional Notes

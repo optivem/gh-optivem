@@ -645,8 +645,8 @@ processes:
 
   # Writes the test code (inner primitive) then cascades into DSL +
   # driver-adapter impl whenever ports changed. Reads `dsl-port-changed`
-  # from the inner call, then `system-driver-ports-changed` /
-  # `external-driver-ports-changed` from the DSL impl (Q6 port-change
+  # from the inner call, then `system-driver-port-changed` /
+  # `external-driver-port-changed` from the DSL impl (Q6 port-change
   # wiring table). Note that the GATE bindings are bound to Go gate
   # functions that promote the relevant ctx.Params value into ctx.State
   # for the predicate evaluator to read.
@@ -686,7 +686,7 @@ processes:
 
       - id: GATE_EXTERNAL_DRIVER_PORTS_CHANGED
         type: gateway
-        binding: external-driver-ports-changed
+        binding: external-driver-port-changed
         name: "External Driver Ports Changed?"
 
       - id: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS
@@ -700,7 +700,7 @@ processes:
 
       - id: GATE_SYSTEM_DRIVER_PORTS_CHANGED
         type: gateway
-        binding: system-driver-ports-changed
+        binding: system-driver-port-changed
         name: "System Driver Ports Changed?"
 
       - id: IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS
@@ -721,11 +721,11 @@ processes:
       - {from: GATE_DSL_PORT_CHANGED, to: IMPLEMENT_AND_VERIFY_DSL, when: "dsl-port-changed == true"}
       - {from: GATE_DSL_PORT_CHANGED, to: WAV_AT_END,               when: "dsl-port-changed == false"}
       - {from: IMPLEMENT_AND_VERIFY_DSL, to: GATE_EXTERNAL_DRIVER_PORTS_CHANGED}
-      - {from: GATE_EXTERNAL_DRIVER_PORTS_CHANGED, to: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS, when: "external-driver-ports-changed == true"}
-      - {from: GATE_EXTERNAL_DRIVER_PORTS_CHANGED, to: GATE_SYSTEM_DRIVER_PORTS_CHANGED,              when: "external-driver-ports-changed == false"}
+      - {from: GATE_EXTERNAL_DRIVER_PORTS_CHANGED, to: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS, when: "external-driver-port-changed == true"}
+      - {from: GATE_EXTERNAL_DRIVER_PORTS_CHANGED, to: GATE_SYSTEM_DRIVER_PORTS_CHANGED,              when: "external-driver-port-changed == false"}
       - {from: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS, to: GATE_SYSTEM_DRIVER_PORTS_CHANGED}
-      - {from: GATE_SYSTEM_DRIVER_PORTS_CHANGED, to: IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS, when: "system-driver-ports-changed == true"}
-      - {from: GATE_SYSTEM_DRIVER_PORTS_CHANGED, to: WAV_AT_END,                                  when: "system-driver-ports-changed == false"}
+      - {from: GATE_SYSTEM_DRIVER_PORTS_CHANGED, to: IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS, when: "system-driver-port-changed == true"}
+      - {from: GATE_SYSTEM_DRIVER_PORTS_CHANGED, to: WAV_AT_END,                                  when: "system-driver-port-changed == false"}
       - {from: IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS, to: WAV_AT_END}
 
   # Pure test-code authoring: write tests, compile, verify, commit. No
@@ -1372,9 +1372,9 @@ processes:
     name: "Implement DSL"
     start: EXECUTE_AGENT
     outputs:
-      - key: system-driver-ports-changed
+      - key: system-driver-port-changed
         type: bool
-      - key: external-driver-ports-changed
+      - key: external-driver-port-changed
         type: bool
       - key: scope-exception-files
         type: string-list
@@ -1390,8 +1390,13 @@ processes:
         params:
           task-name: implement-dsl
           agent: dsl-implementer
-        read:  [dsl-core, driver-port, external-system-driver-port]
-        write: [dsl-core, driver-port, external-system-driver-port]
+        # Adapters are in scope because dsl-implementer adds throwing-TODO
+        # stub bodies in the impl classes whenever it adds a new method
+        # signature to a port (interfaces hold signatures only).
+        # implement-{system,external-system}-driver-adapters then replaces
+        # those stubs with real impls in the downstream cascade.
+        read:  [dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter]
+        write: [dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter]
 
       - id: IMPL_DSL_END
         type: end-event

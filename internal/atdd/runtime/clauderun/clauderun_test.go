@@ -1579,11 +1579,11 @@ func TestRenderExpectedOutputs_EmptySpec_ReturnsEmpty(t *testing.T) {
 func TestRenderExpectedOutputs_AllRequired_NoOptionalBlock(t *testing.T) {
 	got := renderExpectedOutputs([]statemachine.OutputSpec{
 		{Key: "dsl-port-changed", Type: "bool"},
-		{Key: "system-driver-ports-changed", Type: "bool"},
+		{Key: "system-driver-port-changed", Type: "bool"},
 	})
 	mustContain(t, got, "Required outputs:")
 	mustContain(t, got, "  dsl-port-changed: bool")
-	mustContain(t, got, "  system-driver-ports-changed: bool")
+	mustContain(t, got, "  system-driver-port-changed: bool")
 	if strings.Contains(got, "Optional outputs:") {
 		t.Errorf("Optional outputs block should be omitted when no optional keys:\n%s", got)
 	}
