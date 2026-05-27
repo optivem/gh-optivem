@@ -81,8 +81,14 @@ type Scope struct {
 //     standalone repo) placed inside a workspace tree from being
 //     silently overridden by the surrounding workspace's folder list.
 //  4. Walk up from CWD for a gh-optivem.yaml with non-empty repos: →
-//     ModeProject with Folders = resolved repos: paths that exist and
-//     contain .git/.
+//     ModeProject, BUT only if the config "claims" CWD's repo: either
+//     it sits at CWD's git repo root (monolith), or its repos: include
+//     CWD's git repo (multitier subrepo). A stray outer gh-optivem.yaml
+//     reached by walk-up but not claiming CWD's repo is silently
+//     skipped — same protection as row 3 for *.code-workspace files.
+//     Parse errors on such an outer file are also suppressed (it's not
+//     our config; surfacing its problems would be noise — e.g. a stale
+//     academy-level gh-optivem.yaml above an ATDD rehearsal worktree).
 //  5. Walk up from CWD for a .git/ entry → ModeSingleRepo with Folders =
 //     []string{<repo root>}.
 //  6. Nothing → error.
@@ -100,8 +106,10 @@ type Scope struct {
 // has no repos: field, an empty repos:, or every entry filters out, the
 // cascade falls through to the .git walk-up rather than erroring (the
 // project simply has no cross-repo scope to express). A malformed or
-// schema-invalid gh-optivem.yaml is surfaced — the operator hand-edited
-// it into a broken state and silent fall-through would mask the bug.
+// schema-invalid gh-optivem.yaml is surfaced when it belongs to CWD
+// (sits at CWD's repo root, or there is no git repo above CWD); when
+// it's an outer file that doesn't claim CWD's repo, the error is
+// suppressed and the cascade falls through.
 func Resolve(flagValue string) (Scope, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -161,16 +169,25 @@ func resolveFrom(flagValue, envValue, cwd string) (Scope, error) {
 		// overridden by the surrounding workspace's folder list.
 	}
 
-	// No workspace file found by walk-up. Try project-iteration: a
-	// gh-optivem.yaml above CWD with a non-empty repos: list.
+	// No workspace file found (or walk-up rejected by CWD-membership).
+	// Try project-iteration: a gh-optivem.yaml above CWD with a
+	// non-empty repos: list whose declared repos include CWD's git repo
+	// (or, for monolith configs without repos:, that sit at CWD's repo
+	// root).
 	cfgFile, _ := walkUpForProjectConfig(cwd)
 	if cfgFile != "" {
 		cfgRoot := filepath.Dir(cfgFile)
-		folders, err := parseProjectRepos(cfgFile, cfgRoot)
-		if err != nil {
-			return Scope{}, err
-		}
-		if len(folders) > 0 {
+		folders, parseErr := parseProjectRepos(cfgFile, cfgRoot)
+		switch {
+		case !cfgAppliesToCwd(cwd, cfgFile, folders):
+			// Stray outer gh-optivem.yaml — found by walk-up but does
+			// not describe CWD's repo. Mirrors the row-3 membership
+			// guard for *.code-workspace files. Silently fall through
+			// (parse errors included) rather than letting an unrelated
+			// outer file hijack or break this invocation.
+		case parseErr != nil:
+			return Scope{}, parseErr
+		case len(folders) > 0:
 			return Scope{
 				Mode:       ModeProject,
 				Root:       cfgRoot,
@@ -178,9 +195,8 @@ func resolveFrom(flagValue, envValue, cwd string) (Scope, error) {
 				SourceFile: cfgFile,
 			}, nil
 		}
-		// gh-optivem.yaml exists but has no usable repos: — fall through
-		// to single-repo, which is the documented behavior for monolith
-		// projects.
+		// Applies, parsed cleanly, but no usable repos: — fall through
+		// to single-repo, the documented behavior for monolith projects.
 	}
 
 	// Final fallback: cwd is inside a git repo.
@@ -296,6 +312,44 @@ func cwdInFolders(cwd string, folders []string) bool {
 		return false
 	}
 	repoRoot = filepath.Clean(repoRoot)
+	for _, f := range folders {
+		if pathsEqual(filepath.Clean(f), repoRoot) {
+			return true
+		}
+	}
+	return false
+}
+
+// cfgAppliesToCwd reports whether cfgFile (a gh-optivem.yaml found by
+// walk-up from cwd) actually describes CWD's repo. Used by the
+// project-cascade branch to skip a stray outer file that walk-up
+// reached but that has nothing to do with CWD — mirrors cwdInFolders
+// for *.code-workspace files.
+//
+// Returns true when:
+//   - cwd is not in any git repo (cannot disqualify the file — preserve
+//     legacy behavior so misconfiguration in unusual setups is still
+//     surfaced), OR
+//   - cfgFile sits at CWD's git repo root (the config IS this repo's
+//     config — monolith case), OR
+//   - folders is non-empty AND one of its entries equals CWD's git
+//     repo root (multitier subrepo case).
+//
+// Returns false otherwise — the caller silently falls through to the
+// single-repo cascade row. folders may be nil (parse failed); in that
+// case the function still returns true for the first two rules, so a
+// broken gh-optivem.yaml inside CWD's repo continues to surface its
+// parse error rather than being silently ignored.
+func cfgAppliesToCwd(cwd, cfgFile string, folders []string) bool {
+	repoRoot, err := walkUpForGitRepo(cwd)
+	if err != nil {
+		return true
+	}
+	repoRoot = filepath.Clean(repoRoot)
+	cfgDir := filepath.Clean(filepath.Dir(cfgFile))
+	if pathsEqual(cfgDir, repoRoot) {
+		return true
+	}
 	for _, f := range folders {
 		if pathsEqual(filepath.Clean(f), repoRoot) {
 			return true

@@ -648,6 +648,9 @@ func TestResolve_ProjectModeAllReposMissingFallsThrough(t *testing.T) {
 // TestResolve_MalformedProjectConfigErrors pins that a gh-optivem.yaml
 // the operator broke by hand is surfaced — silent fall-through would
 // hide the bug. Errors out instead of falling back to single-repo.
+// Applies only when the config belongs to CWD's repo (sits at CWD's
+// repo root); a broken outer file is handled by
+// TestResolve_StrayOuterProjectConfigBroken_FallsThroughSilently below.
 func TestResolve_MalformedProjectConfigErrors(t *testing.T) {
 	root := t.TempDir()
 	makeGitRepo(t, root)
@@ -656,5 +659,63 @@ func TestResolve_MalformedProjectConfigErrors(t *testing.T) {
 	_, err := resolveFrom("", "", root)
 	if err == nil {
 		t.Fatal("expected error for malformed gh-optivem.yaml, got nil")
+	}
+}
+
+// TestResolve_StrayOuterProjectConfig_FallsThroughToSingleRepo pins the
+// CWD-membership guard on the project-config walk-up: a git repo (e.g.
+// an ATDD rehearsal worktree) placed inside a directory that has a
+// gh-optivem.yaml NOT claiming the repo must fall through to
+// ModeSingleRepo on the worktree, NOT inherit the outer config's
+// scope. Mirrors the row-3 membership guard for *.code-workspace files
+// and protects the rehearsal-worktree case where worktrees live under
+// <academy>/worktrees/ alongside an unrelated academy gh-optivem.yaml.
+func TestResolve_StrayOuterProjectConfig_FallsThroughToSingleRepo(t *testing.T) {
+	outer := t.TempDir()
+	makeGitRepo(t, filepath.Join(outer, "unrelated"))
+	writeProjectConfig(t, outer, projectConfigYAML("unrelated"))
+
+	worktree := filepath.Join(outer, "worktrees", "rehearsal-x")
+	makeGitRepo(t, worktree)
+
+	scope, err := resolveFrom("", "", worktree)
+	if err != nil {
+		t.Fatalf("resolveFrom: %v", err)
+	}
+	if scope.Mode != ModeSingleRepo {
+		t.Fatalf("mode = %v, want ModeSingleRepo (outer project config should be skipped)", scope.Mode)
+	}
+	wantRoot, _ := filepath.Abs(worktree)
+	if scope.Root != wantRoot {
+		t.Errorf("root = %q, want worktree root %q", scope.Root, wantRoot)
+	}
+	if len(scope.Folders) != 1 || scope.Folders[0] != wantRoot {
+		t.Errorf("folders = %v, want [%q] (single-repo on the worktree)", scope.Folders, wantRoot)
+	}
+}
+
+// TestResolve_StrayOuterProjectConfigBroken_FallsThroughSilently pins
+// the parse-error suppression for outer configs: if the stray outer
+// gh-optivem.yaml is malformed (e.g. an old academy-level file using
+// the pre-kebab snake_case schema), the parse error must NOT bubble up
+// — it's not our config to complain about. The cascade falls through
+// to ModeSingleRepo on the worktree.
+func TestResolve_StrayOuterProjectConfigBroken_FallsThroughSilently(t *testing.T) {
+	outer := t.TempDir()
+	writeProjectConfig(t, outer, "repo_strategy: mono-repo\nsystem_name: snake-case-no-longer-valid\n")
+
+	worktree := filepath.Join(outer, "worktrees", "rehearsal-x")
+	makeGitRepo(t, worktree)
+
+	scope, err := resolveFrom("", "", worktree)
+	if err != nil {
+		t.Fatalf("resolveFrom: %v (want silent fall-through to ModeSingleRepo)", err)
+	}
+	if scope.Mode != ModeSingleRepo {
+		t.Fatalf("mode = %v, want ModeSingleRepo", scope.Mode)
+	}
+	wantRoot, _ := filepath.Abs(worktree)
+	if scope.Root != wantRoot {
+		t.Errorf("root = %q, want worktree root %q", scope.Root, wantRoot)
 	}
 }
