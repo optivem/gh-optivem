@@ -113,6 +113,71 @@ func TestRun_MissingSystemTestPath(t *testing.T) {
 	}
 }
 
+func TestRun_SystemTestPathsAllPresent(t *testing.T) {
+	t.Parallel()
+	root := makeFakeRepo(t, filepath.Join(t.TempDir(), "shop"))
+	makeDir(t, filepath.Join(root, "system", "monolith", "java"))
+	makeDir(t, filepath.Join(root, "system-test", "java"))
+	makeDir(t, filepath.Join(root, "system-test", "java", "src", "driver", "port"))
+	makeDir(t, filepath.Join(root, "system-test", "java", "src", "driver", "adapter"))
+
+	cfg := &projectconfig.Config{
+		RepoStrategy: projectconfig.RepoStrategyMonoRepo,
+		System: projectconfig.System{
+			Architecture: projectconfig.ArchMonolith,
+			Path:         "system/monolith/java",
+			Repo:         "optivem/shop",
+			Lang:         projectconfig.LangJava,
+		},
+		SystemTest: projectconfig.TierSpec{
+			Path: "system-test/java", Repo: "optivem/shop", Lang: projectconfig.LangJava,
+			Paths: map[string]string{
+				"driver-port":    "system-test/java/src/driver/port",
+				"driver-adapter": "system-test/java/src/driver/adapter",
+			},
+		},
+	}
+	if err := Run(context.Background(), cfg, Options{Cwd: root}); err != nil {
+		t.Errorf("expected nil, got: %v", err)
+	}
+}
+
+func TestRun_SystemTestPathsMissingSubpath(t *testing.T) {
+	t.Parallel()
+	root := makeFakeRepo(t, filepath.Join(t.TempDir(), "shop"))
+	makeDir(t, filepath.Join(root, "system", "monolith", "java"))
+	makeDir(t, filepath.Join(root, "system-test", "java"))
+	makeDir(t, filepath.Join(root, "system-test", "java", "src", "driver", "port"))
+	// driver-adapter intentionally NOT created.
+
+	cfg := &projectconfig.Config{
+		RepoStrategy: projectconfig.RepoStrategyMonoRepo,
+		System: projectconfig.System{
+			Architecture: projectconfig.ArchMonolith,
+			Path:         "system/monolith/java",
+			Repo:         "optivem/shop",
+			Lang:         projectconfig.LangJava,
+		},
+		SystemTest: projectconfig.TierSpec{
+			Path: "system-test/java", Repo: "optivem/shop", Lang: projectconfig.LangJava,
+			Paths: map[string]string{
+				"driver-port":    "system-test/java/src/driver/port",
+				"driver-adapter": "system-test/java/src/driver/adapter",
+			},
+		},
+	}
+	err := Run(context.Background(), cfg, Options{Cwd: root})
+	if err == nil {
+		t.Fatal("expected error for missing system-test.paths.driver-adapter")
+	}
+	if !strings.Contains(err.Error(), "system-test.paths.driver-adapter") {
+		t.Errorf("error should mention system-test.paths.driver-adapter, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "system-test.paths.driver-port") {
+		t.Errorf("driver-port exists; error should not mention it, got: %v", err)
+	}
+}
+
 func TestRun_MultitierMissingFrontend(t *testing.T) {
 	t.Parallel()
 	root := makeFakeRepo(t, filepath.Join(t.TempDir(), "shop"))

@@ -72,6 +72,17 @@ type Options struct {
 	// BoardURLOK verifies that cfg.Project.URL resolves and is visible
 	// to the authenticated gh CLI. nil = skip the board-URL check.
 	BoardURLOK func(ctx context.Context, projectURL string) error
+
+	// ClaudeCheck verifies the `claude` CLI is on PATH and runnable.
+	// nil = skip (used by the v1 --manual-agents fallback that doesn't
+	// need the CLI, and by config-flow callers that don't dispatch
+	// agents). Production callers point at preflight.VerifyClaude;
+	// tests inject canned-result stubs. Same nil=skip convention as
+	// the remote-check fields above so a failed claude check folds
+	// into the aggregated error block alongside any missing repos or
+	// tier directories. Runs even on a nil cfg — claude readiness is
+	// independent of project layout.
+	ClaudeCheck func(ctx context.Context) error
 }
 
 // Run validates cfg's declared layout (local FS) and optionally its
@@ -81,17 +92,28 @@ type Options struct {
 // prefixed with "  - ". Callers print it directly to stderr and exit
 // non-zero.
 //
-// A nil cfg passes — there's nothing to check.
+// A nil cfg skips the structural checks (nothing to compare against)
+// but still runs Options.ClaudeCheck when set, since claude readiness is
+// independent of project layout.
 func Run(ctx context.Context, cfg *projectconfig.Config, opts Options) error {
+	var failures []string
+
+	// Local-tool check: claude CLI presence. Runs before any cfg-dependent
+	// work so its failure surfaces even on a nil cfg, and folds into the
+	// same aggregated error block as the structural failures below.
+	if opts.ClaudeCheck != nil {
+		if err := opts.ClaudeCheck(ctx); err != nil {
+			failures = append(failures, err.Error())
+		}
+	}
+
 	if cfg == nil {
-		return nil
+		return aggregateFailures(failures)
 	}
 	res, err := repolocator.Resolve(cfg, opts.Workspace, opts.Cwd)
 	if err != nil {
 		return fmt.Errorf("preflight: resolve repos: %w", err)
 	}
-
-	var failures []string
 
 	// Repo-level local checks.
 	slugs := cfg.Repos()
@@ -151,6 +173,14 @@ func Run(ctx context.Context, cfg *projectconfig.Config, opts Options) error {
 	failures = append(failures, runSonarChecks(ctx, cfg, opts)...)
 	failures = append(failures, runBoardURLCheck(ctx, cfg, opts.BoardURLOK)...)
 
+	return aggregateFailures(failures)
+}
+
+// aggregateFailures returns nil when failures is empty; otherwise a
+// single error whose Error() lists every entry on its own bulleted line
+// in sorted order. Centralised so the nil-cfg short-circuit path and
+// the full structural path use one format.
+func aggregateFailures(failures []string) error {
 	if len(failures) == 0 {
 		return nil
 	}
@@ -280,6 +310,21 @@ func collectTiers(cfg *projectconfig.Config) []tierCheck {
 			repo:  cfg.SystemTest.Repo,
 			path:  cfg.SystemTest.Path,
 		})
+		// Family B sub-paths under system-test.paths.* live in the same
+		// host repo as system-test.path. Sorted iteration keeps the
+		// aggregated error output deterministic.
+		keys := make([]string, 0, len(cfg.SystemTest.Paths))
+		for k := range cfg.SystemTest.Paths {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			out = append(out, tierCheck{
+				field: "system-test.paths." + k,
+				repo:  cfg.SystemTest.Repo,
+				path:  cfg.SystemTest.Paths[k],
+			})
+		}
 	}
 	// External systems — stubs first (cycle 2), simulators second (cycle 3).
 	if !cfg.ExternalSystems.Stubs.IsEmpty() {
