@@ -22,7 +22,6 @@
 package driver
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -159,17 +158,6 @@ type Options struct {
 // pre-resolves an issue, and walks the chosen process.
 func Run(ctx context.Context, opts Options) error {
 	opts = opts.withDefaults()
-
-	// Pre-flight the `claude` CLI when subprocess dispatch is enabled,
-	// so missing-binary or missing-credentials failures surface at
-	// startup instead of after several service-task spinners scroll by.
-	// Skipped under --manual-agents (the v1 fallback that doesn't need
-	// the CLI at all).
-	if !opts.ManualAgents {
-		if err := preflightFn(ctx); err != nil {
-			return fmt.Errorf("driver: %w", err)
-		}
-	}
 
 	var eng *statemachine.Engine
 	var err error
@@ -517,34 +505,6 @@ func primaryLanguage(cfg *projectconfig.Config) string {
 }
 
 
-// preflightFn is the per-Run function that verifies the `claude` CLI
-// is on PATH and authenticated. Production points at preflightClaude;
-// tests can swap it for a no-op or canned-error stub. The seam is a
-// package-level var rather than an Options field because pre-flight is
-// a startup-time concern, not part of the per-run dispatch surface.
-var preflightFn = preflightClaude
-
-// preflightClaude runs `claude --no-update-check --version` as a cheap
-// health check at driver startup. Failure surfaces with operator
-// guidance pointing at the auth bootstrap doc — without this, missing
-// credentials manifest as a confusing "exited non-zero" several
-// service-task spinners deep into the run.
-func preflightClaude(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, "claude", "--no-update-check", "--version")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		tail := strings.TrimSpace(stderr.String())
-		if tail == "" {
-			tail = err.Error()
-		}
-		return fmt.Errorf(
-			"claude CLI pre-flight failed: %s\n  Ensure `claude` is on PATH and authenticated via `claude /login` (credentials live in ~/.claude/).\n  Use --manual-agents to fall back to the v1 two-window workflow without the CLI.",
-			tail)
-	}
-	return nil
-}
-
 func (o Options) withDefaults() Options {
 	if o.ProcessName == "" {
 		o.ProcessName = DefaultProcessName
@@ -689,7 +649,10 @@ func wrapAgentDispatchers(eng *statemachine.Engine, opts Options, cfg *projectco
 // that bypass the driver wrapping.
 func newHumanStopDispatcher(opts Options, raw statemachine.RawNode, nodeID string) statemachine.NodeFn {
 	return func(ctx *statemachine.Context) statemachine.Outcome {
-		description := statemachine.ExpandParams(raw.Name, ctx.Params, ctx.State)
+		description, err := statemachine.ExpandParams(raw.Name, ctx.Params, ctx.State)
+		if err != nil {
+			return statemachine.Outcome{Err: fmt.Errorf("STOP banner at %s: %w", nodeID, err)}
+		}
 
 		fmt.Fprintln(opts.Stdout)
 		if description != "" {
@@ -724,7 +687,10 @@ func newHumanStopDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 // NO branch).
 func newApproveDispatcher(opts Options, raw statemachine.RawNode, nodeID string) statemachine.NodeFn {
 	return func(ctx *statemachine.Context) statemachine.Outcome {
-		question := statemachine.ExpandParams(raw.Name, ctx.Params, ctx.State)
+		question, err := statemachine.ExpandParams(raw.Name, ctx.Params, ctx.State)
+		if err != nil {
+			return statemachine.Outcome{Err: fmt.Errorf("approve banner at %s: %w", nodeID, err)}
+		}
 
 		fmt.Fprintln(opts.Stdout)
 		if question != "" {
@@ -781,7 +747,10 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 
 		issueNum, _ := strconv.Atoi(ctx.GetString("issue_num"))
 
-		agentName := statemachine.ExpandParams(raw.Agent, ctx.Params, ctx.State)
+		agentName, err := statemachine.ExpandParams(raw.Agent, ctx.Params, ctx.State)
+		if err != nil {
+			return statemachine.Outcome{Err: fmt.Errorf("dispatcher: agent template %q: %w", raw.Agent, err)}
+		}
 		// Build the prompt-substitution bag in three layers, mirroring the
 		// scope chain `ExpandParams` already uses for service-tasks and
 		// templated YAML fields:
@@ -805,7 +774,11 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			nodeParams[k] = v
 		}
 		for k, v := range raw.Params {
-			nodeParams[k] = statemachine.ExpandParams(v, ctx.Params, ctx.State)
+			expanded, err := statemachine.ExpandParams(v, ctx.Params, ctx.State)
+			if err != nil {
+				return statemachine.Outcome{Err: fmt.Errorf("dispatcher: node param %q: %w", k, err)}
+			}
+			nodeParams[k] = expanded
 		}
 		tuning, err := agents.LoadTuning(agentName)
 		if err != nil {
@@ -923,9 +896,13 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			outputFilePath = ""
 		}
 
+		nodeDescription, err := statemachine.ExpandParams(raw.Name, ctx.Params, ctx.State)
+		if err != nil {
+			return statemachine.Outcome{Err: fmt.Errorf("dispatcher: node description template %q: %w", raw.Name, err)}
+		}
 		cOpts := clauderun.Options{
 			Agent:              agentName,
-			NodeDescription:    statemachine.ExpandParams(raw.Name, ctx.Params, ctx.State),
+			NodeDescription:    nodeDescription,
 			IssueNum:           issueNum,
 			IssueTitle:         ctx.GetString("issue_title"),
 			TicketID:           ctx.GetString("ticket_id"),
@@ -1065,8 +1042,14 @@ func fixChangedFiles(ctx *statemachine.Context, agent, repoPath string) string {
 // expanded against the params-then-state chain so the operator sees the
 // substituted name in the banner instead of the literal placeholder.
 func promptForAgent(opts Options, raw statemachine.RawNode, params map[string]string, state map[string]any) error {
-	agent := statemachine.ExpandParams(raw.Agent, params, state)
-	documentation := statemachine.ExpandParams(raw.Name, params, state)
+	agent, err := statemachine.ExpandParams(raw.Agent, params, state)
+	if err != nil {
+		return fmt.Errorf("promptForAgent: agent template %q: %w", raw.Agent, err)
+	}
+	documentation, err := statemachine.ExpandParams(raw.Name, params, state)
+	if err != nil {
+		return fmt.Errorf("promptForAgent: documentation template %q: %w", raw.Name, err)
+	}
 	step := raw.ID
 
 	fmt.Fprintln(opts.Stdout)

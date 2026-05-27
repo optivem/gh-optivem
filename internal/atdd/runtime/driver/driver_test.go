@@ -466,64 +466,6 @@ func TestManualAgents_NoHaltsRun(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Pre-flight (clauderun item 3)
-// ---------------------------------------------------------------------------
-
-func TestPreflightSkippedUnderManualAgents(t *testing.T) {
-	// Pre-flight must NOT run when --manual-agents is set: the v1
-	// fallback doesn't need the CLI, and forcing a `claude --version`
-	// would defeat the purpose of the operator's escape hatch.
-	called := false
-	prev := preflightFn
-	t.Cleanup(func() { preflightFn = prev })
-	preflightFn = func(ctx context.Context) error {
-		called = true
-		return errors.New("should not be called")
-	}
-
-	// Run will fail on YAML load (we're not in a consumer repo), but we
-	// only care that pre-flight wasn't invoked first.
-	_ = Run(context.Background(), Options{
-		ManualAgents: true,
-		YAMLPath:     "/nonexistent.yaml",
-		Stdout:       io.Discard,
-		Stderr:       io.Discard,
-		Stdin:        strings.NewReader(""),
-	})
-	if called {
-		t.Errorf("preflightFn must not run under --manual-agents")
-	}
-}
-
-func TestPreflightFailureSurfacesEarly(t *testing.T) {
-	// When pre-flight fails, Run must return its error before doing any
-	// flow-walking work. We assert by setting a non-existent YAMLPath:
-	// if pre-flight didn't short-circuit, we'd see a YAML-load error.
-	prev := preflightFn
-	t.Cleanup(func() { preflightFn = prev })
-	preflightFn = func(ctx context.Context) error {
-		return errors.New("claude CLI pre-flight failed: not on PATH")
-	}
-
-	err := Run(context.Background(), Options{
-		ManualAgents: false,
-		YAMLPath:     "/nonexistent.yaml",
-		Stdout:       io.Discard,
-		Stderr:       io.Discard,
-		Stdin:        strings.NewReader(""),
-	})
-	if err == nil {
-		t.Fatalf("expected pre-flight error, got nil")
-	}
-	if !strings.Contains(err.Error(), "pre-flight failed") {
-		t.Errorf("error should surface pre-flight wording, got %q", err.Error())
-	}
-	if strings.Contains(err.Error(), "load YAML") {
-		t.Errorf("YAML load must not run when pre-flight fails: %q", err.Error())
-	}
-}
-
-// ---------------------------------------------------------------------------
 // Templated dispatch — ${agent} / ${change_type} expansion
 // ---------------------------------------------------------------------------
 

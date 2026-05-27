@@ -200,13 +200,10 @@ func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 // to a one-node flow so we don't need a real board / gh shell-out.
 // Validates that Run itself — not just the dispatcher mechanics —
 // reaches no consumer-side file when invoked from a temp dir. The
-// preflight is stubbed to nil since `claude` isn't on PATH in CI.
+// claude preflight no longer lives in this package; the test uses
+// ManualAgents to keep its flow off the agent-dispatch path entirely.
 func TestEmbeddedDriver_RunBypassesConsumerScaffolding(t *testing.T) {
 	tempDir := t.TempDir()
-
-	prev := preflightFn
-	t.Cleanup(func() { preflightFn = prev })
-	preflightFn = func(_ context.Context) error { return nil }
 
 	// Single-node manual-agents flow: no clauderun call, no board call.
 	// The point is to assert Run() doesn't reach for consumer files

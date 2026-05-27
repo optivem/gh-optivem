@@ -85,7 +85,7 @@ command.
 			exitOnError(validateKeepRuns(keepRuns))
 			resolvedConfigPath, _ := projectconfig.ResolvePath(projectConfigPath)
 			exportConfigForShellOuts(resolvedConfigPath)
-			cfg, err := runImplementPreflight(resolvedConfigPath, workspace)
+			cfg, err := runImplementPreflight(resolvedConfigPath, workspace, manualAgents)
 			exitOnError(err)
 			hooks, err := overrideHooksFromConfig(cfg)
 			exitOnError(err)
@@ -167,12 +167,18 @@ func exportConfigForShellOuts(resolvedConfigPath string) {
 // it. A failure prints one error block listing every missing repo or path
 // and exits non-zero — see preflight.Run.
 //
+// manualAgents gates the claude-CLI presence check: when true (the v1
+// two-window fallback) the check is skipped, so the operator can drive
+// the pipeline without `claude` installed. When false, preflight.Run
+// runs claude alongside its structural checks and a missing-or-broken
+// CLI shows up in the same aggregated error block as any missing repos.
+//
 // Returns the loaded cfg so the cobra layer can read process_flow:,
 // task_prompts:, node_extras:, and node_replacements: without paying for a
 // second LoadFromPath. The driver still re-loads internally via
 // loadDriverConfig — the double load is deliberate and a config file is
 // small enough that the second read is free.
-func runImplementPreflight(configPath string, workspace string) (*projectconfig.Config, error) {
+func runImplementPreflight(configPath string, workspace string, manualAgents bool) (*projectconfig.Config, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("preflight: getwd: %w", err)
@@ -187,6 +193,9 @@ func runImplementPreflight(configPath string, workspace string) (*projectconfig.
 	opts, err := defaultPreflightOptions(cfg, workspace, cwd)
 	if err != nil {
 		return nil, err
+	}
+	if !manualAgents {
+		opts.ClaudeCheck = preflight.VerifyClaude
 	}
 	if err := preflight.Run(context.Background(), cfg, opts); err != nil {
 		return nil, err
