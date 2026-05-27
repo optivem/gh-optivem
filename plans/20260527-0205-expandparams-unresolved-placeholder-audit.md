@@ -1,5 +1,13 @@
 # Audit unresolved-placeholder leaks in ExpandParams + make it strict
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-27T07:16:04Z`
+
+## Decisions (2026-05-27, batch-resolved before execution)
+
+- **`${failure}` leak in `fix:2129` → Option A.** Rewrite the question to use `${failure-kind}`. Zero new bindings; `feedback_schema_fields_earn_slot` rules out the alias-only Option B; Option C is speculative.
+- **Doctrine comment (Item 4) → fold into Item 2's commit.** Lands the rule in the YAML at the same time the strict-mode runtime goes live, so a future reader hitting `unresolved placeholder ${suite}` finds the comment immediately.
+- **Out-of-band rehearsal confirmation → non-blocking.** The audit is the systematic check; strict-mode `ExpandParams` will surface any other latent placeholder at first dispatch with a precise error message. No need to wait for a manual rehearsal pass.
+
 ## Why
 
 The ATDD-rehearsal trace observed at 2026-05-27 ~01:55 CEDT executed:
@@ -133,15 +141,11 @@ fresh rehearsal run from the same point should no longer hit the
 
 ## Sequencing
 
-1. ~~(Item 1) Audit~~ — **done 2026-05-27.** See "Audit results" above.
-   One residual leak found (`${failure}` in `fix:2129`).
-2. Close the `${failure}` leak (operator picks A/B/C from "Decision
-   needed before Item 2" above). Single commit.
+1. ~~(Item 1) Audit~~ — **done 2026-05-27.** See "Audit results" below.
+2. ~~Close the `${failure}` leak via Option A — rewrite to `${failure-kind}`.~~ **Done.**
 3. (Item 2) Strict-mode `ExpandParams`. Single commit, plumbed through
-   every caller.
+   every caller. Doctrine comment (Item 4) folded in.
 4. (Item 3) Regression tests. Single commit.
-5. (Item 4) Doctrine comment update. Folded into the same commit as
-   Item 2 or 3.
 
 ## Audit results (Item 1 — completed 2026-05-27)
 
@@ -190,22 +194,6 @@ under strict-mode `ExpandParams`.
    that path.
 5. **Strict-mode flip is safe once the `${failure}` leak is closed**
    (or the question is rewritten to use `${failure-kind}`).
-
-### Decision needed before Item 2
-
-How to close the `${failure}` leak:
-
-- **Option A** — Rewrite the question to use `${failure-kind}`:
-  `"Do you approve fix to attempt remediation for ${failure-kind} ?"`.
-  Zero new bindings, uses the same state value the inner call already
-  reads. Recommended.
-- **Option B** — Bind `failure: "${failure-kind}"` at the two
-  `fix` call-sites (lines 1996, 2092). Preserves the `failure` name
-  but is just an alias for the same value.
-- **Option C** — Stash a richer `failure` description in `ctx.State`
-  from `runCommand` / `validateOutputsAndScopes` and read it via state
-  fallback. More work; only worth it if the prompt should carry more
-  than the kind.
 
 ## References
 

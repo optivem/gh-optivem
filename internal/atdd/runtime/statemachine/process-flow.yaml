@@ -1837,6 +1837,14 @@ processes:
   # Both absent ⇒ run all tests. The underlying `execute-command`
   # appends `--suite=…` / `--test=…` flags to the `gh optivem test run`
   # CLI, which owns the actual filter parsing.
+  #
+  # Strict-mode rule: every caller MUST resolve `suite` and `test-names`
+  # — either by binding them explicitly at the call site (use `""` to
+  # mean "all"), or by ensuring an upstream writing-agent stashed them
+  # in state before the call. Omitting both is no longer accepted: the
+  # `ExpandParams` strict check rejects unresolved `${suite}` /
+  # `${test-names}` at dispatch with a precise error rather than letting
+  # the literal leak into the rendered CLI as `--suite='${suite}'`.
   run-tests:
     name: "Run Tests"
     start: EXECUTE_COMMAND
@@ -2126,7 +2134,7 @@ processes:
         process: approve
         name: "Request Approval"
         params:
-          question: "Do you approve fix to attempt remediation for ${failure} ?"
+          question: "Do you approve fix to attempt remediation for ${failure-kind} ?"
 
       - id: GATE_APPROVED_PRE
         type: gateway

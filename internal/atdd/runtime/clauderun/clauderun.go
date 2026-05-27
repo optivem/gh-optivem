@@ -754,7 +754,10 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	// "Emit:" line pointing at the CLI. Drift kill: prompt authors never
 	// write this section by hand.
 	params["expected_outputs"] = renderExpectedOutputs(opts.ExpectedOutputs)
-	rendered := statemachine.ExpandParams(body, params, nil)
+	rendered, err := statemachine.ExpandParams(body, params, nil)
+	if err != nil {
+		return "", err
+	}
 	if opts.OverrideText != "" {
 		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + opts.OverrideText + "\n"
 	}

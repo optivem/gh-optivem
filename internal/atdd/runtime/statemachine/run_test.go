@@ -336,7 +336,10 @@ processes:
 func TestExpandParams_ParamsTakePrecedenceOverState(t *testing.T) {
 	params := map[string]string{"agent": "from-params"}
 	state := map[string]any{"agent": "from-state"}
-	got := ExpandParams("agent=${agent}", params, state)
+	got, err := ExpandParams("agent=${agent}", params, state)
+	if err != nil {
+		t.Fatalf("ExpandParams: %v", err)
+	}
 	if got != "agent=from-params" {
 		t.Errorf("got %q, want %q — params must win on collision", got, "agent=from-params")
 	}
@@ -350,7 +353,10 @@ func TestExpandParams_ParamsTakePrecedenceOverState(t *testing.T) {
 func TestExpandParams_StateFallbackForUnknownParamKey(t *testing.T) {
 	params := map[string]string{"other-key": "irrelevant"}
 	state := map[string]any{"failure-kind": "command-failed"}
-	got := ExpandParams(`fix-${failure-kind}`, params, state)
+	got, err := ExpandParams(`fix-${failure-kind}`, params, state)
+	if err != nil {
+		t.Fatalf("ExpandParams: %v", err)
+	}
 	if got != "fix-command-failed" {
 		t.Errorf("got %q, want %q — state fallback should resolve ${failure-kind}", got, "fix-command-failed")
 	}
@@ -375,7 +381,10 @@ func TestExpandParams_StateValueCoercion(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := ExpandParams("[${k}]", nil, map[string]any{"k": c.value})
+			got, err := ExpandParams("[${k}]", nil, map[string]any{"k": c.value})
+			if err != nil {
+				t.Fatalf("ExpandParams: %v", err)
+			}
 			want := "[" + c.want + "]"
 			if got != want {
 				t.Errorf("got %q, want %q", got, want)
@@ -384,14 +393,34 @@ func TestExpandParams_StateValueCoercion(t *testing.T) {
 	}
 }
 
-// TestExpandParams_NilStateBehavesLikeOldSignature is the regression
-// insurance: every caller that passes nil for state must get pre-fallback
-// semantics (only params substitute; ${unknown} stays literal). Tests and
-// the clauderun prompt renderer rely on this.
-func TestExpandParams_NilStateBehavesLikeOldSignature(t *testing.T) {
-	got := ExpandParams("${agent}-${ghost}", map[string]string{"agent": "writer"}, nil)
-	if got != "writer-${ghost}" {
-		t.Errorf("got %q, want %q — nil state must not resolve unknown keys", got, "writer-${ghost}")
+// TestExpandParams_UnresolvedPlaceholderErrors is the strict-mode
+// contract: a `${name}` reference with no matching key in params or state
+// is an error, not a silent literal leak. Before the strict flip the
+// runtime would render `${ghost}` verbatim into downstream command lines
+// (root cause of the `--suite='${suite}'` CLI failure observed
+// 2026-05-27); the strict check surfaces it as a dispatch-time error
+// naming the offending key.
+func TestExpandParams_UnresolvedPlaceholderErrors(t *testing.T) {
+	_, err := ExpandParams("${agent}-${ghost}", map[string]string{"agent": "writer"}, nil)
+	if err == nil {
+		t.Fatal("ExpandParams returned nil error — expected unresolved-placeholder error for ${ghost}")
+	}
+	if !strings.Contains(err.Error(), "${ghost}") {
+		t.Errorf("error %q does not mention the unresolved placeholder ${ghost}", err.Error())
+	}
+}
+
+// TestExpandParams_EmptyValueIsValid locks in the boundary: an empty
+// binding is a valid resolution, NOT an unresolved-placeholder error.
+// Callers like impl-and-verify-system bind `suite: ""` to mean "all
+// suites"; strict mode must not reject the explicit empty.
+func TestExpandParams_EmptyValueIsValid(t *testing.T) {
+	got, err := ExpandParams("${foo}", map[string]string{"foo": ""}, nil)
+	if err != nil {
+		t.Fatalf("ExpandParams: %v", err)
+	}
+	if got != "" {
+		t.Errorf("got %q, want %q — empty binding must resolve to empty string", got, "")
 	}
 }
 
@@ -623,6 +652,14 @@ func TestExecuteCommand_FailureDispatchesCommandFailedFixerAgent(t *testing.T) {
 
 	ctx := NewContext()
 	ctx.Params["command"] = "noisy-broken-cmd"
+	// task-name mirrors the production scope: execute-command is always
+	// called from inside a writing-agent phase whose outer call-activity
+	// binds task-name. fix's EXECUTE_AGENT reads it via
+	// `originating-task-name: ${task-name}` so the fix-agent inherits the
+	// outer phase's scope identity. Under strict-mode ExpandParams the
+	// binding is mandatory; the bare `command:` setup the test used
+	// previously relied on the now-removed silent-leak behavior.
+	ctx.Params["task-name"] = "synthetic-test-phase"
 	if err := eng.RunProcess("execute-command", ctx); err != nil {
 		t.Fatalf("RunProcess execute-command: %v", err)
 	}
@@ -840,5 +877,172 @@ processes:
 	}
 	if dispatched == "write-acceptance-tests" {
 		t.Errorf("RUN_AGENT resolved to the verb (task-name) instead of the noun (agent) — the 1701 split has regressed; RUN_AGENT.agent must template ${agent}, not ${task-name}")
+	}
+}
+
+// TestStrictExpand_EmptySuiteBindingDoesNotLeak is the integration-style
+// regression for the production trace observed 2026-05-27 ~01:55 CEDT:
+// `implement-and-verify-system` dispatched `verify-tests-pass` without
+// binding `suite`, the literal `${suite}` propagated through the
+// call-activity push chain into runCommand, and the rendered CLI became
+// `gh optivem test run --suite='${suite}'` — which the CLI rejected.
+//
+// The fix is twofold: (a) callers MUST bind `suite: ""` explicitly to
+// mean "all suites" (bd1c958); (b) strict-mode `ExpandParams` rejects an
+// unresolved `${suite}` at dispatch instead of letting the literal leak.
+// This test exercises (a)+(b) together: parent binds `suite: ""`, the
+// child forwards `${suite}`, and the leaf service-task sees
+// ctx.Params["suite"] == "" — exactly the contract runCommand needs to
+// skip the --suite=… flag.
+func TestStrictExpand_EmptySuiteBindingDoesNotLeak(t *testing.T) {
+	const yaml = `
+processes:
+  parent:
+    name: "Parent"
+    start: VERIFY
+    nodes:
+      - id: VERIFY
+        type: call-activity
+        process: verify
+        name: "Synthetic Verify"
+        params:
+          suite: ""
+      - id: PARENT_END
+        type: end-event
+        name: "Synthetic Test Event"
+    sequence-flows:
+      - {from: VERIFY, to: PARENT_END}
+
+  verify:
+    name: "Verify"
+    start: RUN
+    nodes:
+      - id: RUN
+        type: call-activity
+        process: run-cmd
+        name: "Synthetic Run"
+        params:
+          suite: ${suite}
+      - id: VERIFY_END
+        type: end-event
+        name: "Synthetic Test Event"
+    sequence-flows:
+      - {from: RUN, to: VERIFY_END}
+
+  run-cmd:
+    name: "Run Command"
+    start: READ_SUITE
+    nodes:
+      - id: READ_SUITE
+        type: service-task
+        action: read-suite
+        name: "Read suite param"
+      - id: RUN_END
+        type: end-event
+        name: "Synthetic Test Event"
+    sequence-flows:
+      - {from: READ_SUITE, to: RUN_END}
+`
+	eng, err := LoadBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+
+	var seenSuite string
+	suiteWasPresent := false
+	eng.ActionFn = func(name string) NodeFn {
+		if name == "read-suite" {
+			return func(ctx *Context) Outcome {
+				seenSuite, suiteWasPresent = ctx.Params["suite"], true
+				return Outcome{}
+			}
+		}
+		return nil
+	}
+	eng.AgentFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	eng.GateFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+	if err := eng.RunProcess("parent", NewContext()); err != nil {
+		t.Fatalf("RunProcess parent: %v", err)
+	}
+	if !suiteWasPresent {
+		t.Fatal("read-suite action did not fire — call chain regressed")
+	}
+	if seenSuite != "" {
+		t.Errorf("leaf action saw suite=%q, want %q — empty caller binding must propagate as empty, not leak ${suite}", seenSuite, "")
+	}
+}
+
+// TestStrictExpand_MissingSuiteBindingFailsFast is the negative
+// counterpart: when the parent omits `suite:` entirely and no state
+// fallback exists, strict-mode `ExpandParams` MUST error at the
+// call-activity param push — not let the literal `${suite}` propagate
+// into the inner scope. The error message must name the placeholder so
+// the operator can find the unbound site in process-flow.yaml.
+func TestStrictExpand_MissingSuiteBindingFailsFast(t *testing.T) {
+	const yaml = `
+processes:
+  parent:
+    name: "Parent"
+    start: VERIFY
+    nodes:
+      - id: VERIFY
+        type: call-activity
+        process: verify
+        name: "Synthetic Verify"
+      - id: PARENT_END
+        type: end-event
+        name: "Synthetic Test Event"
+    sequence-flows:
+      - {from: VERIFY, to: PARENT_END}
+
+  verify:
+    name: "Verify"
+    start: RUN
+    nodes:
+      - id: RUN
+        type: call-activity
+        process: run-cmd
+        name: "Synthetic Run"
+        params:
+          suite: ${suite}
+      - id: VERIFY_END
+        type: end-event
+        name: "Synthetic Test Event"
+    sequence-flows:
+      - {from: RUN, to: VERIFY_END}
+
+  run-cmd:
+    name: "Run Command"
+    start: NOOP
+    nodes:
+      - id: NOOP
+        type: service-task
+        action: noop
+        name: "No-op"
+      - id: RUN_END
+        type: end-event
+        name: "Synthetic Test Event"
+    sequence-flows:
+      - {from: NOOP, to: RUN_END}
+`
+	eng, err := LoadBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+	eng.ActionFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	eng.AgentFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	eng.GateFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+	err = eng.RunProcess("parent", NewContext())
+	if err == nil {
+		t.Fatal("RunProcess succeeded; want strict-mode unresolved-placeholder error for ${suite}")
+	}
+	if !strings.Contains(err.Error(), "${suite}") {
+		t.Errorf("error %q must name the unresolved placeholder ${suite}", err.Error())
 	}
 }

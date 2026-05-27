@@ -1178,8 +1178,8 @@ func TestDispatch_HaltsOnUnfilledPlaceholder(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error when ${unmapped_field} is unfilled, got nil")
 	}
-	if !strings.Contains(err.Error(), "unfilled placeholders") {
-		t.Errorf("error should mention unfilled placeholders, got %q", err.Error())
+	if !strings.Contains(err.Error(), "placeholder") {
+		t.Errorf("error should mention an unresolved placeholder, got %q", err.Error())
 	}
 	if !strings.Contains(err.Error(), "${unmapped_field}") {
 		t.Errorf("error should name the leftover placeholder, got %q", err.Error())

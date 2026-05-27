@@ -150,8 +150,14 @@ func writeEnter(deps Deps, node statemachine.Node, ctx *statemachine.Context) {
 		}
 	case statemachine.UserTask:
 		if node.Raw.Agent != "" {
-			parts = append(parts, fmt.Sprintf("agent=%s",
-				statemachine.ExpandParams(node.Raw.Agent, ctx.Params, ctx.State)))
+			// On strict-mode expansion error the raw template is logged —
+			// the about-to-fire dispatcher will surface the same error
+			// authoritatively. Trace must not block on diagnostic output.
+			expanded, err := statemachine.ExpandParams(node.Raw.Agent, ctx.Params, ctx.State)
+			if err != nil {
+				expanded = node.Raw.Agent
+			}
+			parts = append(parts, fmt.Sprintf("agent=%s", expanded))
 		}
 	case statemachine.Gateway:
 		if node.Raw.Binding != "" {

@@ -55,7 +55,10 @@ func (e *Engine) resolve(node Node) (NodeFn, error) {
 			ref := node.Raw.Action
 			lookup := e.ActionFn
 			return func(ctx *Context) Outcome {
-				name := ExpandParams(ref, ctx.Params, ctx.State)
+				name, err := ExpandParams(ref, ctx.Params, ctx.State)
+				if err != nil {
+					return Outcome{Err: fmt.Errorf("service-task action template %q: %w", ref, err)}
+				}
 				fn := lookup(name)
 				if fn == nil {
 					return Outcome{Err: fmt.Errorf("service-task action %q (from template %q) not registered", name, ref)}
@@ -79,7 +82,10 @@ func (e *Engine) resolve(node Node) (NodeFn, error) {
 			ref := node.Raw.Agent
 			lookup := e.AgentFn
 			return func(ctx *Context) Outcome {
-				name := ExpandParams(ref, ctx.Params, ctx.State)
+				name, err := ExpandParams(ref, ctx.Params, ctx.State)
+				if err != nil {
+					return Outcome{Err: fmt.Errorf("user-task agent template %q: %w", ref, err)}
+				}
 				fn := lookup(name)
 				if fn == nil {
 					return Outcome{Err: fmt.Errorf("user-task agent %q (from template %q) not registered", name, ref)}
@@ -145,7 +151,10 @@ func (e *Engine) wrapGateway(binding string, fn NodeFn) NodeFn {
 // (the common case) pass through unchanged because ExpandParams is idempotent.
 func (e *Engine) wrapCallActivity(raw RawNode) NodeFn {
 	return func(ctx *Context) Outcome {
-		processName := ExpandParams(raw.Process, ctx.Params, ctx.State)
+		processName, err := ExpandParams(raw.Process, ctx.Params, ctx.State)
+		if err != nil {
+			return Outcome{Err: fmt.Errorf("call-activity process template %q: %w", raw.Process, err)}
+		}
 		sub, ok := e.Processes[processName]
 		if !ok {
 			if processName != raw.Process {
@@ -162,7 +171,11 @@ func (e *Engine) wrapCallActivity(raw RawNode) NodeFn {
 			merged[k] = v
 		}
 		for k, v := range raw.Params {
-			merged[k] = ExpandParams(v, prev, ctx.State)
+			expanded, err := ExpandParams(v, prev, ctx.State)
+			if err != nil {
+				return Outcome{Err: fmt.Errorf("call-activity %q param %q: %w", processName, k, err)}
+			}
+			merged[k] = expanded
 		}
 		ctx.Params = merged
 		defer func() { ctx.Params = prev }()
@@ -304,16 +317,21 @@ func (e *Engine) nextEdge(process *Process, from string, ctx *Context) (string, 
 //
 // State values are coerced to string with the same best-effort rules as
 // Context.GetString: strings pass through, bools become "true"/"false",
-// every other type renders via fmt.Sprint. A nil state map disables the
-// fallback (legacy callers and tests that don't carry state behave
-// exactly like the pre-fallback signature).
+// every other type renders via fmt.Sprint.
+//
+// Strict on unresolved placeholders: if any `${name}` remains after both
+// passes, returns the partially-substituted string AND an error naming
+// the first unresolved placeholder. Callers in dispatch paths must surface
+// that error so the operator sees `unresolved placeholder ${name}` instead
+// of the literal leaking into a downstream CLI flag, prompt body, or
+// process name.
 //
 // Used by the engine to resolve templated agent / process / param names
 // at dispatch time, and by the driver to render user-facing strings
 // (banners, phase docs) with the same substitutions the engine sees.
 // Idempotent on already-substituted strings (no ${…} placeholders →
-// identity); a nil params map AND a nil state map returns s unchanged.
-func ExpandParams(s string, params map[string]string, state map[string]any) string {
+// identity; returns nil error).
+func ExpandParams(s string, params map[string]string, state map[string]any) (string, error) {
 	for k, v := range params {
 		s = strings.ReplaceAll(s, "${"+k+"}", v)
 	}
@@ -324,7 +342,13 @@ func ExpandParams(s string, params map[string]string, state map[string]any) stri
 		}
 		s = strings.ReplaceAll(s, "${"+k+"}", coerceStateValue(v))
 	}
-	return s
+	if idx := strings.Index(s, "${"); idx >= 0 {
+		end := strings.Index(s[idx:], "}")
+		if end >= 0 {
+			return s, fmt.Errorf("unresolved placeholder %s", s[idx:idx+end+1])
+		}
+	}
+	return s, nil
 }
 
 // coerceStateValue stringifies a state value with the same best-effort
