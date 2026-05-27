@@ -248,6 +248,7 @@ fi
 log "  config:      $CONFIG"
 log "  built from:  $GH_OPTIVEM_ROOT"
 log "  binary:      $BIN"
+log "  log file:    $LOG_FILE"
 if [[ $AUTO -eq 1 || $HEADLESS -eq 1 ]]; then
   MODE_BITS=""
   [[ $AUTO -eq 1 ]] && MODE_BITS="${MODE_BITS:+$MODE_BITS }--auto"
@@ -305,11 +306,11 @@ if [[ ! -f "$CONFIG_FULL" ]]; then
   exit 2
 fi
 
-# --auto is a root flag (before `implement`); --headless is an implement
-# subcommand flag (after). Assemble two arrays so each lands in the right
-# position when expanded.
+# --auto is a root flag (before `implement`); --headless and --log-file
+# are implement subcommand flags (after). Assemble two arrays so each
+# lands in the right position when expanded.
 ROOT_FLAGS=()
-IMPL_FLAGS=()
+IMPL_FLAGS=(--log-file "$LOG_FILE")
 [[ $AUTO -eq 1 ]] && ROOT_FLAGS+=(--auto)
 [[ $HEADLESS -eq 1 ]] && IMPL_FLAGS+=(--headless)
 
@@ -322,6 +323,7 @@ if [[ $RC -eq 0 ]]; then
 else
   log "implement exited with rc=$RC."
 fi
+log "Log file: $LOG_FILE"
 
 exit $RC
 
