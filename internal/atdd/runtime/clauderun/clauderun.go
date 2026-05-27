@@ -104,7 +104,7 @@ type Options struct {
 
 	// Checklist is the body of the ticket's Checklist section as parsed
 	// by intake.ParseSections (populated by the parse-ticket service-task
-	// into ctx.State["ticket_checklist"]). Surfaced to the agent prompt
+	// into ctx.State["checklist"]). Surfaced to the agent prompt
 	// via the ${checklist} placeholder so structural-task agents don't
 	// have to re-fetch the issue body via `gh issue view`. Empty when
 	// the ticket has no Checklist (story / bug / legacy-coverage paths).

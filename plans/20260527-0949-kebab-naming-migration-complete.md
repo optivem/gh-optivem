@@ -1,5 +1,7 @@
 # Complete the snake → kebab placeholder-naming migration
 
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-27T07:59:03Z`
+
 ## Why
 
 The codebase is mid-migration from snake_case to kebab-case for the

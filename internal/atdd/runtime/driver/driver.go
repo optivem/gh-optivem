@@ -450,12 +450,12 @@ func orPlaceholder(s, placeholder string) string {
 //
 // State (not Params) is the right destination: these facts are
 // project-scoped and stable for the entire run, alongside issue_title
-// (written by preResolveIssue) and the body-parsed ticket_description /
-// ticket_acceptance_criteria / ticket_steps_to_reproduce / ticket_checklist
-// (written by the parse-ticket service-task action — see
-// actions.parseTicket). The dispatcher reads them back via ctx.GetString,
-// which is a State lookup — writing to Params would silently expand to ""
-// at substitution time.
+// (written by preResolveIssue) and the body-parsed description /
+// acceptance-criteria / steps-to-reproduce / checklist (written by the
+// parse-ticket service-task action — see actions.parseTicket). The
+// dispatcher reads them back via ctx.GetString, which is a State
+// lookup — writing to Params would silently expand to "" at
+// substitution time.
 func seedScopeState(sCtx *statemachine.Context, cfg *projectconfig.Config) {
 	if cfg == nil {
 		return
@@ -911,8 +911,8 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			Language:           ctx.GetString("language"),
 			ScopeRead:          scopeRead,
 			ScopeWrite:         scopeWrite,
-			Checklist:          ctx.GetString("ticket_checklist"),
-			AcceptanceCriteria: ctx.GetString("ticket_acceptance_criteria"),
+			Checklist:          ctx.GetString("checklist"),
+			AcceptanceCriteria: ctx.GetString("acceptance-criteria"),
 			ParsedConcepts:     ctx.GetString("parsed_concepts"),
 			VerifyResults:      ctx.GetString("verify_results_text"),
 			ChangedFiles:       fixChangedFiles(ctx, agentName, opts.RepoPath),

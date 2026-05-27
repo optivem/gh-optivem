@@ -254,7 +254,7 @@ func TestRenderPrompt_TaskAgentArchitectureAndScopeBlock_ExplicitValues(t *testi
 		},
 	}
 	// implement-system's body references ${checklist}, now load-bearing.
-	// Production dispatch fills this from ctx.State["ticket_checklist"]
+	// Production dispatch fills this from ctx.State["checklist"]
 	// (populated by parse-ticket); supply directly so the no-leftover-${...}
 	// assertion below doesn't trip.
 	opts.Checklist = "- [ ] Refactor X"
@@ -319,7 +319,7 @@ func TestRenderPrompt_RefactorSystemAgent_RendersScopeBlock(t *testing.T) {
 	opts.ScopeRead = []string{"system-path"}
 	opts.ScopeWrite = []string{"system-path"}
 	// refactor-system's body references ${checklist} (load-bearing).
-	// Production fills this from ctx.State["ticket_checklist"]; supply
+	// Production fills this from ctx.State["checklist"]; supply
 	// directly so the no-leftover-${...} assertion below doesn't trip.
 	opts.Checklist = "- [ ] Refactor X"
 	// The refactor-system prompt inlines phase-doc placeholders that the

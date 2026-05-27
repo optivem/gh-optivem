@@ -330,9 +330,14 @@ func (a actions) moveToInAcceptance(ctx *statemachine.Context) statemachine.Outc
 }
 
 // parseTicket runs the deterministic markdown parser against the picked
-// issue's body and stashes the canonical sections into Context state for
-// the dispatcher to substitute into agent prompts as ${description} /
-// ${acceptance_criteria} / ${steps_to_reproduce} / ${checklist}.
+// issue's body and stashes the canonical sections into Context state
+// under four kebab-cased keys (description, acceptance-criteria,
+// steps-to-reproduce, checklist). YAML placeholders consume these
+// directly via ExpandParams's state-fallback path; agent prompt bodies
+// consume them via the renderer's struct→params translation in
+// clauderun.go, where the field→placeholder mapping currently still
+// uses snake_case (${acceptance_criteria}, ${checklist}) pending the
+// Path B kebab migration.
 //
 // Wired in implement-ticket between MARK_IN_PROGRESS and GATE_TICKET_KIND
 // — runs once per ticket, before the gateway routes to the cycle. The
@@ -354,10 +359,10 @@ func (a actions) parseTicket(ctx *statemachine.Context) statemachine.Outcome {
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("parse-ticket: %w", err)}
 	}
-	ctx.Set("ticket_description", r.Description.Body)
-	ctx.Set("ticket_acceptance_criteria", r.AcceptanceCriteria.Body)
-	ctx.Set("ticket_steps_to_reproduce", r.StepsToReproduce.Body)
-	ctx.Set("ticket_checklist", r.Checklist.Body)
+	ctx.Set("description", r.Description.Body)
+	ctx.Set("acceptance-criteria", r.AcceptanceCriteria.Body)
+	ctx.Set("steps-to-reproduce", r.StepsToReproduce.Body)
+	ctx.Set("checklist", r.Checklist.Body)
 	return statemachine.Outcome{}
 }
 

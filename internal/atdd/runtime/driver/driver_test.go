@@ -287,12 +287,12 @@ func newCtxWithIssue() *statemachine.Context {
 	// set it from intake.Result.AcceptanceCriteria.Body in production. Seed
 	// a default here so dispatch fixtures don't have to thread a parsed
 	// ticket body through.
-	c.Set("ticket_acceptance_criteria", "Scenario: placeholder\n  Given x\n  When y\n  Then z")
+	c.Set("acceptance-criteria", "Scenario: placeholder\n  Given x\n  When y\n  Then z")
 	// implement-system / refactor-system / refactor-tests / implement-system-driver-adapters
 	// reference ${checklist} (load-bearing). parse-ticket would set this in
 	// production; seed a default so structural-task dispatch fixtures don't
 	// have to thread a parsed Checklist through.
-	c.Set("ticket_checklist", "- [ ] Placeholder checklist item")
+	c.Set("checklist", "- [ ] Placeholder checklist item")
 	return c
 }
 

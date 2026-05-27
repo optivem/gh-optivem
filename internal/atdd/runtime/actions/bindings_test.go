@@ -1097,14 +1097,14 @@ func TestParseTicket_PopulatesStateOnHappyPath(t *testing.T) {
 	if !tk.readCalled {
 		t.Fatalf("expected ReadSections to be called")
 	}
-	if got := ctx.GetString("ticket_description"); got != "Some prose." {
-		t.Errorf("ticket_description: got %q", got)
+	if got := ctx.GetString("description"); got != "Some prose." {
+		t.Errorf("description: got %q", got)
 	}
-	if got := ctx.GetString("ticket_acceptance_criteria"); !strings.Contains(got, "Scenario: x") {
-		t.Errorf("ticket_acceptance_criteria: got %q", got)
+	if got := ctx.GetString("acceptance-criteria"); !strings.Contains(got, "Scenario: x") {
+		t.Errorf("acceptance-criteria: got %q", got)
 	}
-	if got := ctx.GetString("ticket_checklist"); got != "" {
-		t.Errorf("ticket_checklist: got %q, want empty (no Checklist in body)", got)
+	if got := ctx.GetString("checklist"); got != "" {
+		t.Errorf("checklist: got %q, want empty (no Checklist in body)", got)
 	}
 }
 
@@ -1119,9 +1119,9 @@ func TestParseTicket_ChecklistSectionStashed(t *testing.T) {
 	if out := a.parseTicket(ctx); out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
-	got := ctx.GetString("ticket_checklist")
+	got := ctx.GetString("checklist")
 	if !strings.Contains(got, "- [x] One done") || !strings.Contains(got, "- [ ] Two pending") {
-		t.Fatalf("ticket_checklist body lost: got %q", got)
+		t.Fatalf("checklist body lost: got %q", got)
 	}
 }
 
