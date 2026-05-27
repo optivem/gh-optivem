@@ -709,7 +709,7 @@ func resolveApprovalForCmd(cmd *cobra.Command) error {
 		if confirmList == "" {
 			confirmList = "(none)"
 		}
-		fmt.Fprintf(os.Stderr, "Auto: true (auto-source: %s, confirm-source: %s → %s)\n",
+		fmt.Fprintf(cmd.ErrOrStderr(), "Auto: true (auto-source: %s, confirm-source: %s → %s)\n",
 			r.AutoSource, r.ConfirmSource, confirmList)
 	}
 	return nil

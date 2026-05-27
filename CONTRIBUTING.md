@@ -439,6 +439,16 @@ See [docs/how-it-works.md](docs/how-it-works.md) for a detailed walkthrough of t
 
 For the ATDD pipeline orchestration view, see the rendered [process diagram](docs/process-diagram.md). It is regenerated automatically whenever the canonical YAML at `internal/atdd/runtime/statemachine/process-flow.yaml` changes; do not edit the diagram by hand.
 
+### Adding a y/n confirmation prompt
+
+Every new yes/no confirmation must go through `internal/approval` with a category tag, not through `promptio.ConfirmYN` directly:
+
+```go
+ok, err := approval.Confirm(cmdctx.Approval(cmd), approval.CategoryPrompt, os.Stdin, os.Stdout, "Proceed?")
+```
+
+This routes the prompt through the `--auto` / `--confirm` policy resolved once in `PersistentPreRunE` (see [Auto-approve](README.md#auto-approve) for the user-facing contract). Pick the category that matches what the prompt gates: `CategoryCommit`, `CategoryFix`, `CategoryRelease`, `CategoryHuman`, or `CategoryPrompt` (the low-stakes catch-all). New `promptio.ConfirmYN` / `ConfirmYNVia` call sites that bypass `approval.Confirm` are a review-block — they read like unattended-mode bugs the next time someone runs `--auto`.
+
 ## Releasing
 
 This project uses [semantic versioning](https://semver.org/).

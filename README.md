@@ -307,6 +307,41 @@ Each run prints a `Mode:` banner showing the resolved scope — `Mode: workspace
 
 `commit --yes` refuses to stage untracked (`??`) files unless `--include-untracked` is also passed — the stray-file foot-gun is opt-in for scripted callers.
 
+## Auto-approve
+
+`gh optivem` prompts on every confirmation by default. To run unattended, opt into auto-approve policy with `--auto`:
+
+```bash
+gh optivem --auto implement --issue 42          # skip everything except commit + fix (default exclusion)
+gh optivem --auto --confirm= implement          # truly autonomous: prompt only on human STOP nodes
+gh optivem --auto --confirm=fix implement       # narrower: prompt only on fix-agent dispatch (and human)
+```
+
+`--auto` is a root-level persistent flag. When set, every confirmation auto-yeses *except* the categories listed in `--confirm`:
+
+| Category | Covers |
+|---|---|
+| `commit` | git commit confirmations (lands on GitHub history) |
+| `fix` | ATDD approve nodes wrapping `fix-*` agent dispatch (recovery flow) |
+| `release` | ATDD release confirmer |
+| `prompt` | low-stakes interactive prompts (init walks, doctor, bug-report, ATDD non-fix approve) |
+| `human` | ATDD `agent: human` STOP nodes — always confirmed, cannot be auto-yes'd |
+
+Default `--confirm` when `--auto` is set and `--confirm` is omitted: `commit,fix` (plus implicit `human`). This protects the two expensive failure modes (publishing the wrong commit; auto-rewriting files in a recovery flow) by default. Override with an explicit `--confirm=<categories>` to narrow or broaden.
+
+Environment variables:
+
+- `GH_OPTIVEM_AUTO=true` — same as `--auto`.
+- `GH_OPTIVEM_CONFIRM=<categories>` — same as `--confirm=<categories>`.
+
+Flag overrides env; both override default. A one-line banner is emitted to stderr at command start showing the resolved policy and where each part came from:
+
+```
+Auto: true (auto-source: flag, confirm-source: default → commit,fix)
+```
+
+The per-command `--yes` flag on `commit` is unchanged — `gh optivem commit --yes "msg"` still skips the per-repo confirmation directly, independent of `--auto`. The two compose: `gh optivem --auto commit "msg"` also commits without prompting unless `commit` is in the confirm set (it is, by default).
+
 ## Cleanup
 
 `gh optivem cleanup <verb>` bulk-deletes remote artifacts. Each subcommand pre-flights `gh api rate_limit` before every destructive call and sleeps `--delay-seconds` (default 10) after each delete to stay under GitHub's 80-mutating-calls/minute secondary limit. Always pass `--dry-run` first to preview.
@@ -334,13 +369,16 @@ gh optivem implement                                           # pick the top Re
 `implement` accepts the same per-invocation flags whether or not `--issue` was passed:
 
 ```bash
-... --autonomous          # skip human-approval STOPs and dispatch agents headless via `claude -p`
+... --headless            # run the claude subprocess headless (claude -p); structured JSON envelope captured for the exit banner
+... --autonomous          # [Deprecated] alias for --auto --headless; will be removed in a future release
 ... --manual-agents       # v1 fallback: pause at each user-task node and let the operator launch the agent manually
 ... --log-file run.log    # mirror stdout/stderr to this file
 ... --keep-runs 10        # max prompt-log run dirs to keep under .gh-optivem/runs/ (0 = never prune; default 10)
 ... --show-prompt         # dump each agent's full rendered prompt before dispatch (default: summary banner only)
 ... --workspace <path>    # override the default workspace root (parent directory of CWD; each clone dir must be named after the repo-name component of its slug)
 ```
+
+For skipping confirmation prompts during a pipeline run (or any other `gh optivem` invocation), see [Auto-approve](#auto-approve) — `gh optivem --auto implement --headless` is the typical unattended invocation.
 
 Project-stable overrides (`process_flow:`, `task_prompts:`, `node_extras:`, `node_replacements:`) live in `gh-optivem.yaml` and are read at startup.
 
