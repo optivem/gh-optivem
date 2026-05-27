@@ -1029,19 +1029,27 @@ var fixScopeAugmentation = map[string][]string{
 
 // fixChangedFiles returns the working-tree dirty-file listing (one
 // path per line) the dispatcher passes into the ${changed_files}
-// placeholder consumed by the fix-* fixer prompts. We only shell out
-// for those agents because they are the only ones whose prompt
+// placeholder consumed by the fix-* fixer prompts. We only resolve a
+// value for those agents because they are the only ones whose prompt
 // templates reference the substitution — every other dispatch leaves
 // the placeholder out of the template anyway, so paying for a
 // `git status` on every node would be wasted work.
 //
-// fix-scope-diff is special: validate-outputs-and-scopes already
-// stashed the per-phase snapshot delta at ctx.State["phase-changed-files"],
-// which is narrower (and correct) than `git status --porcelain` —
-// it excludes upstream-phase residue still uncommitted in the
-// working tree. Prefer the stashed value when present; fall back to
-// the shell-out only if the validator never ran (e.g. a re-wiring
-// that dispatches fix-scope-diff outside execute-agent).
+// Three of the fixers have a pre-WRITE snapshot delta stashed at
+// ctx.State["phase-changed-files"] by validateOutputsAndScopes:
+// fix-scope-diff (its own failure-kind), fix-unexpected-failing-tests,
+// and fix-unexpected-passing-tests. The stash is narrower (and
+// correct) than `git status --porcelain` — it excludes upstream-phase
+// residue still uncommitted in the working tree, AND it survives the
+// case where a parallel commit has already moved the WRITE-phase
+// edits out of `git status`. Prefer the stash when present; fall
+// back to the shell-out for defence-in-depth (e.g. tests that bypass
+// validateOutputsAndScopes).
+//
+// fix-command-failed and fix-missing-output have no pre-WRITE
+// snapshot — runCommand IS the executor for command-failed, and
+// fix-missing-output may fire before any working-tree change exists.
+// Those two always take the live shell-out path.
 //
 // On any shell error (no git in PATH, not a repo, …) we return the
 // empty string. The fix-* prompts simply render an empty "Changed
@@ -1049,18 +1057,19 @@ var fixScopeAugmentation = map[string][]string{
 // the listing. The dispatch is feedback, not load-bearing.
 func fixChangedFiles(ctx *statemachine.Context, agent, repoPath string) string {
 	switch agent {
-	case "fix-unexpected-passing-tests",
+	case "fix-scope-diff",
 		"fix-unexpected-failing-tests",
-		"fix-command-failed",
-		"fix-missing-output",
-		"fix-scope-diff":
-	default:
-		return ""
-	}
-	if agent == "fix-scope-diff" {
+		"fix-unexpected-passing-tests":
 		if v := ctx.GetString("phase-changed-files"); v != "" {
 			return v
 		}
+		// Fall through to the live git-status fallback. The stash should
+		// always be present after validateOutputsAndScopes runs; the
+		// fallback exists for defence-in-depth.
+	case "fix-command-failed", "fix-missing-output":
+		// Live git-status only — no pre-snapshot exists for these dispatches.
+	default:
+		return ""
 	}
 	cmd := exec.Command("git", "status", "--porcelain")
 	if repoPath != "" {

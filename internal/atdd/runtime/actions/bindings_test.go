@@ -636,6 +636,106 @@ func TestRunCommand_EmptyCommandHalts(t *testing.T) {
 	}
 }
 
+func TestRunCommand_TestRunFailure_StampsVerifyResults(t *testing.T) {
+	// On the isTestRun && !succeeded branch, runCommand stashes the
+	// captured stdout/stderr tails into verify_results_text so the
+	// downstream fix-unexpected-{failing,passing}-tests prompt's
+	// ${verify-results} placeholder renders the runner output the
+	// operator saw inline. Both streams are individually capped by
+	// lastNLines(s, commandStderrTailLines).
+	var stdoutLines, stderrLines strings.Builder
+	for i := 0; i < commandStderrTailLines+5; i++ {
+		fmt.Fprintf(&stdoutLines, "stdout line %d\n", i+1)
+		fmt.Fprintf(&stderrLines, "stderr line %d\n", i+1)
+	}
+	sh := &fakeShell{
+		out:      []byte(stdoutLines.String()),
+		stderr:   []byte(stderrLines.String()),
+		exitCode: 1,
+		err:      errors.New("exit 1"),
+	}
+	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	ctx.Params["command"] = "gh optivem test run"
+	out := a.runCommand(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	got := ctx.GetString("verify_results_text")
+	if got == "" {
+		t.Fatalf("verify_results_text must be stamped on test-run failure")
+	}
+	// Both streams must be present, separated by the documented marker.
+	if !strings.Contains(got, "--- stderr ---") {
+		t.Fatalf("verify_results_text missing stderr separator:\n%s", got)
+	}
+	parts := strings.SplitN(got, "\n--- stderr ---\n", 2)
+	if len(parts) != 2 {
+		t.Fatalf("verify_results_text not split into stdout/stderr sections:\n%s", got)
+	}
+	stdoutTailLines := strings.Split(parts[0], "\n")
+	stderrTailLines := strings.Split(parts[1], "\n")
+	if len(stdoutTailLines) != commandStderrTailLines {
+		t.Errorf("stdout tail lines: got %d, want %d", len(stdoutTailLines), commandStderrTailLines)
+	}
+	if len(stderrTailLines) != commandStderrTailLines {
+		t.Errorf("stderr tail lines: got %d, want %d", len(stderrTailLines), commandStderrTailLines)
+	}
+	// Each tail should preserve the trailing window — last entries reach
+	// the max line we wrote.
+	if stdoutTailLines[len(stdoutTailLines)-1] != fmt.Sprintf("stdout line %d", commandStderrTailLines+5) {
+		t.Errorf("stdout tail last line: got %q", stdoutTailLines[len(stdoutTailLines)-1])
+	}
+	if stderrTailLines[len(stderrTailLines)-1] != fmt.Sprintf("stderr line %d", commandStderrTailLines+5) {
+		t.Errorf("stderr tail last line: got %q", stderrTailLines[len(stderrTailLines)-1])
+	}
+}
+
+func TestRunCommand_TestRunSuccess_DoesNotStampVerifyResults(t *testing.T) {
+	// A clean test-run must NOT stash verify_results_text so a later
+	// fix dispatch via an unrelated failure-kind cannot inherit a stale
+	// value. The placeholder is failure-only.
+	sh := &fakeShell{out: []byte("PASS: 12 tests"), stderr: nil}
+	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	ctx.Params["command"] = "gh optivem test run"
+	out := a.runCommand(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if _, set := ctx.State["verify_results_text"]; set {
+		t.Fatalf("verify_results_text must NOT be set on test-run success: got %q", ctx.GetString("verify_results_text"))
+	}
+}
+
+func TestRunCommand_NonTestRunFailure_DoesNotStampVerifyResults(t *testing.T) {
+	// A non-test-run failure (e.g. `gh optivem commit` exit 7) routes
+	// through the command-failed payload (command-line / command-exit-code
+	// / command-stderr-tail) — verify_results_text is fixer-only, so
+	// non-test-run dispatches must not register a placeholder the
+	// fix-command-failed prompt body doesn't reference.
+	sh := &fakeShell{
+		stderr:   []byte("commit refused"),
+		exitCode: 7,
+		err:      errors.New("exit 7"),
+	}
+	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	ctx.Params["command"] = "gh optivem commit"
+	out := a.runCommand(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if _, set := ctx.State["verify_results_text"]; set {
+		t.Fatalf("verify_results_text must NOT be set on non-test-run failure: got %q", ctx.GetString("verify_results_text"))
+	}
+	// Sanity: the command-failed payload IS set (so the test is exercising
+	// a real failure, not a no-op).
+	if got := ctx.GetString("failure-kind"); got != "command-failed" {
+		t.Fatalf("failure-kind: got %q, want %q", got, "command-failed")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // validate-outputs-and-scopes (BPMN Phase D Item 7, Q-D6)
 // ---------------------------------------------------------------------------
@@ -762,6 +862,49 @@ func TestValidateOutputsAndScopes_AllClean_IsValid(t *testing.T) {
 	}
 	if got := ctx.Get("outputs-and-scopes-valid"); got != true {
 		t.Fatalf("outputs-and-scopes-valid: got %v, want true", got)
+	}
+	// phase-changed-files is stashed on every dispatch (per plan
+	// 20260527-1536), including the all-clean success path. Empty delta
+	// → empty string, but the key must be present so a downstream
+	// fix-unexpected-{failing,passing}-tests dispatch (on the
+	// verify-tests-fail branch) reads from the stash, not the
+	// live git-status fallback.
+	if _, set := ctx.State["phase-changed-files"]; !set {
+		t.Errorf("phase-changed-files must be stashed on the success path (empty delta = empty string), key missing entirely")
+	}
+	if got := ctx.GetString("phase-changed-files"); got != "" {
+		t.Errorf("phase-changed-files on empty delta: got %q, want %q", got, "")
+	}
+}
+
+func TestValidateOutputsAndScopes_AllInScope_StashesChangedFiles(t *testing.T) {
+	// Validation passes (every modified path is in scope), but the delta
+	// is non-empty. The phase-changed-files stash must capture it so the
+	// downstream fix-unexpected-{failing,passing}-tests dispatch on a
+	// later verify-tests-fail can read it without re-shelling
+	// `git status --porcelain`.
+	repoPath := t.TempDir()
+	cfg := writePhaseScopeTestConfig(t, repoPath)
+	git := newFakeRunner(t, "git")
+	// One in-scope dirty path (dsl-core).
+	git.on([]string{"-C", repoPath, "status", "--porcelain"},
+		[]byte("?? dsl/typescript/src/core/Logic.ts\n"), nil)
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "implement-dsl"
+	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
+	ctx.Set("system-driver-port-changed", true)
+	ctx.Set("external-driver-port-changed", true)
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get("outputs-and-scopes-valid"); got != true {
+		t.Fatalf("outputs-and-scopes-valid: got %v, want true (all in scope)", got)
+	}
+	wantChanged := "dsl/typescript/src/core/Logic.ts"
+	if got := ctx.GetString("phase-changed-files"); got != wantChanged {
+		t.Errorf("phase-changed-files: got %q, want %q", got, wantChanged)
 	}
 }
 

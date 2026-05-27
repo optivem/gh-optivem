@@ -143,21 +143,34 @@ type Options struct {
 	// same rationale as Language / AcceptanceCriteria.
 	ParsedConcepts string
 
-	// VerifyResults is the formatted block describing every red-class
-	// verifyCommandResult the most recent RUN_TESTS produced.
-	// Substituted into fix-unexpected-passing-tests' / fix-unexpected-failing-tests' ${verify-results} placeholder so
-	// the fix agent reads the same captured runner output the operator
-	// saw inline. Empty for every other agent — the rendered prompt
-	// just leaves the placeholder verbatim, which is harmless because
-	// no other agent's prompt references this name.
+	// VerifyResults is the captured stdout/stderr tail from the most
+	// recent `gh optivem test run` invocation. Stamped by runCommand on
+	// the `isTestRun && !succeeded` branch (see formatVerifyResults for
+	// the stdout/stderr combination shape) and flows through
+	// `verify_results_text` in ctx.State to the driver's
+	// cOpts.VerifyResults. Substituted into
+	// fix-unexpected-passing-tests' / fix-unexpected-failing-tests'
+	// ${verify-results} placeholder so the fix agent reads the same
+	// captured runner output the operator saw inline. Registered only
+	// when non-empty so an absent value surfaces via
+	// findUnfilledPlaceholders rather than silently substituting "" —
+	// same rationale as CommandLine.
 	VerifyResults string
 
-	// ChangedFiles is the working-tree diff (as `git status --porcelain`)
-	// at the moment of dispatch. Substituted into fix-unexpected-passing-tests' / fix-unexpected-failing-tests' / fix-command-failed
-	// ${changed-files} placeholder so the fix agent can scope its
-	// reasoning to "what the WRITE phase just edited" without re-running
-	// `git status`. Empty when the dispatcher couldn't shell out (e.g.
-	// tests with no Git seam).
+	// ChangedFiles carries the working-tree path list the WRITE phase
+	// produced, for substitution into fix-unexpected-passing-tests' /
+	// fix-unexpected-failing-tests' / fix-scope-diff's /
+	// fix-command-failed's / fix-missing-output's ${changed-files}
+	// placeholder. For the three diagnostic fixers with a pre-WRITE
+	// snapshot (fix-unexpected-passing-tests,
+	// fix-unexpected-failing-tests, fix-scope-diff), the driver reads
+	// the snapshot delta from ctx.State["phase-changed-files"] (always
+	// stashed by validateOutputsAndScopes per plan 20260527-1536); the
+	// live `git status --porcelain` fallback runs only when the stash
+	// is absent. For fix-command-failed and fix-missing-output (no
+	// pre-WRITE snapshot), the driver always uses the live shell-out.
+	// Registered unconditionally — fix-command-failed may legitimately
+	// dispatch with an empty working tree.
 	ChangedFiles string
 
 	// CommandLine / CommandExitCode / CommandStderrTail carry the
@@ -668,11 +681,20 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 		"phase":           opts.NodeDescription,
 		"architecture":    opts.Architecture,
 		"subtype":         opts.Subtype,
-		"verify-results":  opts.VerifyResults,
 		"changed-files":   opts.ChangedFiles,
 		"references-root": referencesRoot,
 	} {
 		params[k] = v
+	}
+	// VerifyResults is load-bearing for fix-unexpected-{failing,passing}-tests
+	// — same rationale as CommandLine. Only registered when non-empty so
+	// an absent value surfaces via findUnfilledPlaceholders rather than
+	// silently substituting "" into the diagnostic prompt's
+	// `### Verify results to address` block. ChangedFiles stays
+	// unconditional because fix-command-failed legitimately dispatches
+	// with an empty working tree.
+	if opts.VerifyResults != "" {
+		params["verify-results"] = opts.VerifyResults
 	}
 	// Per-phase scope block (plan 20260526-1448 Item 4). Rendered from the
 	// BPMN node's read: / write: lists joined against the same path map

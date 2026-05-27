@@ -1015,6 +1015,98 @@ func TestClaudeRunDispatch_NoStructuredOutputIsNoOp(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// fixChangedFiles precedence (plan 20260527-1536)
+// ---------------------------------------------------------------------------
+
+func TestFixChangedFiles_SnapshotStashAgents_PreferStash(t *testing.T) {
+	// For fix-scope-diff, fix-unexpected-failing-tests, and
+	// fix-unexpected-passing-tests, validateOutputsAndScopes has already
+	// stashed the per-phase snapshot delta at ctx.State["phase-changed-files"].
+	// fixChangedFiles must read the stash without shelling out to
+	// `git status --porcelain` (so the rendered ${changed-files} block
+	// reflects this phase's edits, not the working-tree state at
+	// dispatch time).
+	const stash = "in/scope/Edit.go\nin/scope/Other.go"
+	// Point repoPath at a non-existent directory so any accidental
+	// fallthrough to the live `git status` shell-out would fail with err
+	// != nil and return "" — which the assertion below catches.
+	bogus := filepath.Join(t.TempDir(), "not-a-repo")
+	for _, agent := range []string{
+		"fix-scope-diff",
+		"fix-unexpected-failing-tests",
+		"fix-unexpected-passing-tests",
+	} {
+		t.Run(agent, func(t *testing.T) {
+			ctx := statemachine.NewContext()
+			ctx.Set("phase-changed-files", stash)
+			got := fixChangedFiles(ctx, agent, bogus)
+			if got != stash {
+				t.Errorf("fixChangedFiles(%q): got %q, want stash %q", agent, got, stash)
+			}
+		})
+	}
+}
+
+func TestFixChangedFiles_SnapshotStashAgents_FallBackWhenStashEmpty(t *testing.T) {
+	// When the stash is absent (e.g. a test seam that bypassed
+	// validateOutputsAndScopes), the three snapshot-stash agents fall
+	// back to the live `git status --porcelain` shell-out. Pointing
+	// repoPath at a non-repo directory forces the shell-out to fail,
+	// which exercises the defensive empty-string return path. The
+	// production stash should always be present after Item 3 lands.
+	bogus := filepath.Join(t.TempDir(), "not-a-repo")
+	for _, agent := range []string{
+		"fix-scope-diff",
+		"fix-unexpected-failing-tests",
+		"fix-unexpected-passing-tests",
+	} {
+		t.Run(agent, func(t *testing.T) {
+			ctx := statemachine.NewContext()
+			// Deliberately do NOT set phase-changed-files.
+			got := fixChangedFiles(ctx, agent, bogus)
+			if got != "" {
+				t.Errorf("fixChangedFiles(%q) with no stash + bogus repo: got %q, want %q", agent, got, "")
+			}
+		})
+	}
+}
+
+func TestFixChangedFiles_CommandFailureAgents_IgnoreStash(t *testing.T) {
+	// fix-command-failed and fix-missing-output have no pre-WRITE
+	// snapshot — runCommand IS the executor for command-failed, and
+	// fix-missing-output may fire before any working-tree change exists.
+	// They must always take the live shell-out path even when an
+	// upstream agent happens to have left phase-changed-files in
+	// state (e.g. a re-wiring that interleaves dispatches).
+	bogus := filepath.Join(t.TempDir(), "not-a-repo")
+	for _, agent := range []string{"fix-command-failed", "fix-missing-output"} {
+		t.Run(agent, func(t *testing.T) {
+			ctx := statemachine.NewContext()
+			ctx.Set("phase-changed-files", "leftover/from/upstream.go")
+			got := fixChangedFiles(ctx, agent, bogus)
+			// Live shell-out against a non-repo returns "" — the stash
+			// must NOT be read on this branch.
+			if got != "" {
+				t.Errorf("fixChangedFiles(%q): expected stash to be ignored (live shell-out only), got %q", agent, got)
+			}
+		})
+	}
+}
+
+func TestFixChangedFiles_UnknownAgent_ReturnsEmpty(t *testing.T) {
+	// fixChangedFiles is only consulted for the five fix-* agents whose
+	// prompts reference ${changed-files}. Every other agent name —
+	// including writing-agent MID names that legitimately reach the
+	// dispatcher — must return "" without consulting the stash or
+	// shelling out.
+	ctx := statemachine.NewContext()
+	ctx.Set("phase-changed-files", "should/be/ignored.go")
+	if got := fixChangedFiles(ctx, "write-acceptance-tests", t.TempDir()); got != "" {
+		t.Errorf("fixChangedFiles(write-acceptance-tests): got %q, want %q", got, "")
+	}
+}
+
 func TestClaudeRunDispatch_NoDeclaredOutputs_ClearsStaleOutputFilePath(t *testing.T) {
 	// Regression: each agent dispatch must own the output-file-path
 	// stash. Previously the dispatcher only set the key when the MID

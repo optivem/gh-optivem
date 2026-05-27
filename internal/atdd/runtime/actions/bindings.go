@@ -752,7 +752,44 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 		ctx.Set("command-stderr-tail", lastNLines(string(result.Stderr), commandStderrTailLines))
 		fmt.Fprintf(a.deps.Stderr, "run-command: %v\n", err)
 	}
+	if isTestRun && !succeeded {
+		// TODO: when reviving the infra/red classifier (see
+		// verify_classify.go), this is the canonical hook point — route
+		// the same (stdout, stderr) here through classifyShellErr and let
+		// the gateway downstream of run-tests choose halt-on-infra vs
+		// dispatch-on-red. Today we just stash the raw tail for the
+		// fix-unexpected-{failing,passing}-tests prompts.
+		ctx.Set("verify_results_text", formatVerifyResults(result.Stdout, result.Stderr))
+	}
 	return statemachine.Outcome{}
+}
+
+// formatVerifyResults builds the ${verify-results} payload the
+// fix-unexpected-{failing,passing}-tests prompts consume. It combines
+// runCommand's captured stdout and stderr into a single block, capping
+// each stream individually via lastNLines(s, commandStderrTailLines) so
+// a chatty runner can't blow the prompt size. The shape is:
+//
+//   - stdout alone when stderr is empty
+//   - stderr alone when stdout is empty
+//   - <stdout-tail>\n--- stderr ---\n<stderr-tail> when both are non-empty
+//
+// Test runners typically print the failing test name + assertion on
+// stdout and the stack trace on stderr; preserving both streams gives
+// the diagnosing fixer everything the operator saw inline.
+func formatVerifyResults(stdout, stderr []byte) string {
+	out := lastNLines(string(stdout), commandStderrTailLines)
+	errs := lastNLines(string(stderr), commandStderrTailLines)
+	switch {
+	case out == "" && errs == "":
+		return ""
+	case errs == "":
+		return out
+	case out == "":
+		return errs
+	default:
+		return out + "\n--- stderr ---\n" + errs
+	}
 }
 
 // commandStderrTailLines caps the stderr block stashed in ctx.State for
@@ -848,21 +885,26 @@ func lastNLines(s string, n int) string {
 //                                               working-tree paths
 //                                               outside the declared
 //                                               write scope.
-//   - ctx.State["phase-changed-files"]        — set on scope-diff failure
-//                                               only; newline-joined sorted
-//                                               list of every path in the
-//                                               snapshot delta (in-scope +
-//                                               out-of-scope). The
-//                                               fix-scope-diff prompt reads
-//                                               this as ${changed-files} so
-//                                               the diagnosing agent sees
-//                                               only this phase's edits,
-//                                               not the full git status dump.
-//                                               Not stashed on success: no
-//                                               downstream consumer reads it
-//                                               then, and the empty trace
-//                                               state-delta keeps the OK
-//                                               line readable.
+//   - ctx.State["phase-changed-files"]        — set on every dispatch
+//                                               (success and failure).
+//                                               Newline-joined sorted list of
+//                                               every path in the snapshot
+//                                               delta (in-scope +
+//                                               out-of-scope). Consumed by
+//                                               fix-scope-diff (this MID's
+//                                               own failure-kind),
+//                                               fix-unexpected-failing-tests,
+//                                               and fix-unexpected-passing-tests
+//                                               to scope their reasoning to
+//                                               "what the WRITE phase just
+//                                               edited." Replaces the
+//                                               previous live
+//                                               `git status --porcelain`
+//                                               shell-out at dispatch time,
+//                                               which was fragile against
+//                                               working-tree state (clean
+//                                               tree at dispatch ≠ no
+//                                               WRITE-phase changes).
 //
 // Does NOT surface as Outcome.Err — the gateway's false branch
 // dispatches `fix-${failure-kind}` per Q-late-5. Hard errors
@@ -941,6 +983,17 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
 	}
+	// Stash the full snapshot delta (in-scope + out-of-scope) on every
+	// dispatch — success and failure. The fix-scope-diff prompt reads it
+	// as ${changed-files} on the scope-diff failure branch, and the
+	// fix-unexpected-{failing,passing}-tests prompts read it on the
+	// verify-tests-fail branch downstream of a clean validate. Setting
+	// it unconditionally replaces the live `git status --porcelain`
+	// shell-out fixChangedFiles used to do at dispatch time, which was
+	// fragile against working-tree state (a clean tree at dispatch ≠
+	// no WRITE-phase changes — staged-and-committed paths drop out of
+	// `git status` immediately).
+	ctx.Set("phase-changed-files", strings.Join(modified, "\n"))
 	var violating []string
 	for _, m := range modified {
 		if !pathInScope(m, allowed) {
@@ -948,13 +1001,6 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 		}
 	}
 	if len(violating) > 0 {
-		// Stash the full snapshot delta (in-scope + out-of-scope) so the
-		// fix-scope-diff prompt's ${changed-files} renders this phase's
-		// edits only — not the cross-phase `git status --porcelain` dump
-		// the dispatcher would otherwise capture. Set only on the failure
-		// path: success routes forward and no fix-scope-diff runs, so the
-		// stash would never be read.
-		ctx.Set("phase-changed-files", strings.Join(modified, "\n"))
 		ctx.Set("outputs-and-scopes-valid", false)
 		ctx.Set("failure-kind", "scope-diff")
 		ctx.Set("failing-task-name", taskName)
