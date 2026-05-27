@@ -433,6 +433,19 @@ processes:
         name: "Write Failing Acceptance Tests"
         tdd-stage: red
 
+      # Symmetric counterpart to the DISABLE_ACCEPTANCE_TESTS at the
+      # end of RED (write-and-verify-acceptance-test-code:780-785).
+      # Re-enables the just-written AT before GREEN verifies — without
+      # this, VERIFY_TESTS_PASS in implement-and-verify-system runs
+      # against a still-disabled AT, passes vacuously, and GREEN
+      # commits a system that never had to satisfy the new behaviour.
+      - id: ENABLE_TESTS
+        type: call-activity
+        process: enable-tests
+        name: "Enable Tests"
+        params:
+          test-names: ${test-names}
+
       - id: IMPLEMENT_AND_VERIFY_SYSTEM
         type: call-activity
         process: implement-and-verify-system
@@ -453,7 +466,8 @@ processes:
         name: "System Behavior Changed"
 
     sequence-flows:
-      - {from: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL, to: IMPLEMENT_AND_VERIFY_SYSTEM}
+      - {from: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL, to: ENABLE_TESTS}
+      - {from: ENABLE_TESTS,                           to: IMPLEMENT_AND_VERIFY_SYSTEM}
       - {from: IMPLEMENT_AND_VERIFY_SYSTEM,            to: REFACTOR_OPPORTUNISTICALLY}
       - {from: REFACTOR_OPPORTUNISTICALLY,             to: CHANGE_SYSTEM_BEHAVIOR_END}
 
