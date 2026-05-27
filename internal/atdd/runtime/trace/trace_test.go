@@ -371,6 +371,60 @@ func TestWrap_PopulatedOutcomeDoesNotHoistStateDelta(t *testing.T) {
 	}
 }
 
+func TestWrap_CallActivityIndentsNestedChildren(t *testing.T) {
+	// Top-level call-activity entry sits at column 0, its inner children
+	// are bumped two spaces per nesting level so the trace reads as a
+	// visible BPMN tree. The exit banner pairs vertically with the entry
+	// banner (decrement happens before writeExit).
+	prevNow := nowFn
+	nowFn = fixedClock
+	t.Cleanup(func() { nowFn = prevNow })
+
+	var buf bytes.Buffer
+	deps := Deps{Out: &buf}.withDefaults()
+
+	leaf := wrap(statemachine.Node{
+		ID:   "LEAF",
+		Kind: statemachine.ServiceTask,
+		Raw:  statemachine.RawNode{Action: "do-leaf"},
+		Fn:   func(ctx *statemachine.Context) statemachine.Outcome { return statemachine.Outcome{} },
+	}, deps)
+
+	mid := wrap(statemachine.Node{
+		ID:   "MID",
+		Kind: statemachine.CallActivity,
+		Raw:  statemachine.RawNode{Process: "mid-sub"},
+		Fn:   func(ctx *statemachine.Context) statemachine.Outcome { return leaf(ctx) },
+	}, deps)
+
+	top := wrap(statemachine.Node{
+		ID:   "TOP",
+		Kind: statemachine.CallActivity,
+		Raw:  statemachine.RawNode{Process: "top-sub"},
+		Fn:   func(ctx *statemachine.Context) statemachine.Outcome { return mid(ctx) },
+	}, deps)
+
+	top(statemachine.NewContext())
+
+	got := buf.String()
+	// TOP is at depth 0 (no indent between `] ` and `>`).
+	// MID is at depth 1 (two spaces).
+	// LEAF is at depth 2 (four spaces).
+	wantSubs := []string{
+		"] > TOP  kind=call-activity process=top-sub",
+		"]   > MID  kind=call-activity process=mid-sub",
+		"]     > LEAF  kind=service-task action=do-leaf",
+		"]     OK LEAF",
+		"]   OK MID",
+		"] OK TOP",
+	}
+	for _, s := range wantSubs {
+		if !strings.Contains(got, s) {
+			t.Errorf("trace output missing %q\nfull output:\n%s", s, got)
+		}
+	}
+}
+
 func TestStateDelta_IgnoresOverrideKeysAndSortsKeys(t *testing.T) {
 	pre := map[string]string{"a": "1", "_override_extra": ""}
 	post := map[string]string{"a": "2", "b": "3", "_override_extra": "hint"}
