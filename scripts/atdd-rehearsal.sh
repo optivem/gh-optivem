@@ -16,17 +16,22 @@ set -euo pipefail
 # state, run `bash scripts/atdd-clean.sh [--config <yaml>]` first.
 #
 # Usage:
-#   bash atdd-rehearsal.sh <issue-num> [label] [--config <yaml>]
+#   bash atdd-rehearsal.sh <issue-num> [label] [--config <yaml>] [--auto] [--headless]
 #
-#   issue-num: GitHub issue number, or full issue URL — forwarded as-is to
-#              `gh optivem implement --issue ...`.
-#   label:     optional [A-Za-z0-9_-]+ tacked onto the worktree id for
-#              sortability (e.g. "ticket-61", "follow-up").
-#   --config:  path (relative to the consumer worktree) of the gh-optivem.yaml
-#              variant to exercise. Default: gh-optivem-monolith-typescript.yaml.
-#              The shop template commits one yaml per stack (monolith/multitier
-#              × typescript/java/dotnet × legacy); pick the one matching the
-#              ticket you're rehearsing.
+#   issue-num:  GitHub issue number, or full issue URL — forwarded as-is to
+#               `gh optivem implement --issue ...`.
+#   label:      optional [A-Za-z0-9_-]+ tacked onto the worktree id for
+#               sortability (e.g. "ticket-61", "follow-up").
+#   --config:   path (relative to the consumer worktree) of the gh-optivem.yaml
+#               variant to exercise. Default: gh-optivem-monolith-typescript.yaml.
+#               The shop template commits one yaml per stack (monolith/multitier
+#               × typescript/java/dotnet × legacy); pick the one matching the
+#               ticket you're rehearsing.
+#   --auto:     auto-approve every prompt except commit/fix (forwarded to the
+#               binary as a root flag, before `implement`).
+#   --headless: run each claude subagent as `claude -p` instead of an
+#               interactive session (forwarded to `implement`). Combine with
+#               --auto for fully autonomous mode.
 #
 # Workflow:
 #   1. Build gh-optivem.exe from this repo (so the rehearsal exercises
@@ -89,17 +94,19 @@ prompt_yn() {
 }
 
 usage() {
-  echo "Usage: $0 <issue-num> [label] [--config <yaml>]" >&2
+  echo "Usage: $0 <issue-num> [label] [--config <yaml>] [--auto] [--headless]" >&2
 }
 
 ISSUE=""
 LABEL=""
 CONFIG="$REHEARSAL_DEFAULT_CONFIG"
+AUTO=0
+HEADLESS=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
-      sed -n '12,38p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '12,44p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     -c|--config)
@@ -112,6 +119,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --config=*)
       CONFIG="${1#--config=}"
+      shift
+      ;;
+    --auto)
+      AUTO=1
+      shift
+      ;;
+    --headless)
+      HEADLESS=1
       shift
       ;;
     --)
@@ -212,6 +227,12 @@ fi
 log "  config:      $CONFIG"
 log "  built from:  $GH_OPTIVEM_ROOT"
 log "  binary:      $BIN"
+if [[ $AUTO -eq 1 || $HEADLESS -eq 1 ]]; then
+  MODE_BITS=""
+  [[ $AUTO -eq 1 ]] && MODE_BITS="${MODE_BITS:+$MODE_BITS }--auto"
+  [[ $HEADLESS -eq 1 ]] && MODE_BITS="${MODE_BITS:+$MODE_BITS }--headless"
+  log "  mode flags:  $MODE_BITS"
+fi
 
 log "Building gh-optivem..."
 BUILD_LOG="$(mktemp)"
@@ -255,9 +276,17 @@ if [[ ! -f "$CONFIG_FULL" ]]; then
   exit 2
 fi
 
-log "Running implement --issue $ISSUE in $WORKTREE_PATH..."
+# --auto is a root flag (before `implement`); --headless is an implement
+# subcommand flag (after). Assemble two arrays so each lands in the right
+# position when expanded.
+ROOT_FLAGS=()
+IMPL_FLAGS=()
+[[ $AUTO -eq 1 ]] && ROOT_FLAGS+=(--auto)
+[[ $HEADLESS -eq 1 ]] && IMPL_FLAGS+=(--headless)
+
+log "Running implement --issue $ISSUE${IMPL_FLAGS[*]:+ ${IMPL_FLAGS[*]}}${ROOT_FLAGS[*]:+ (with root flags: ${ROOT_FLAGS[*]})} in $WORKTREE_PATH..."
 RC=0
-( cd "$WORKTREE_PATH" && GH_OPTIVEM_CONFIG="$CONFIG_FULL" "$BIN" implement --issue "$ISSUE" ) || RC=$?
+( cd "$WORKTREE_PATH" && GH_OPTIVEM_CONFIG="$CONFIG_FULL" "$BIN" "${ROOT_FLAGS[@]}" implement --issue "$ISSUE" "${IMPL_FLAGS[@]}" ) || RC=$?
 
 if [[ $RC -eq 0 ]]; then
   log "implement succeeded."
