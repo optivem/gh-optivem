@@ -55,6 +55,14 @@ cd ../shop
 bash ../gh-optivem/scripts/atdd-rehearsal.sh 69 --config gh-optivem-monolith-typescript.yaml
 ```
 
+**Issue [#70 — Return a delivered order](https://github.com/optivem/shop/issues/70)** (write flow extending the DSL + driver surface):
+
+```bash
+cd ../shop
+
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 70 --config gh-optivem-monolith-typescript.yaml
+```
+
 ## Contents
 
 - [Prerequisites](#prerequisites)
