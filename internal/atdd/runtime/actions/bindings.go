@@ -73,12 +73,6 @@ type Deps struct {
 	// from the inline node scope in process-flow.yaml. nil is a wiring
 	// bug — the affected actions surface a hard error.
 	Engine *statemachine.Engine
-	// Autonomous mirrors driver.Opts.Autonomous: when true, actions that
-	// would prompt the operator instead emit a warning and proceed. No
-	// surviving action currently reads this field; it is retained on
-	// Deps so the driver can keep wiring it without a signature break
-	// while the new agent-driven prompts are bound in.
-	Autonomous bool
 }
 
 // Prompter is the same interface gates uses; redefined here so the actions

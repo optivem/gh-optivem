@@ -1,6 +1,6 @@
 # Plan: `gh optivem --auto` + `--confirm` exclusion overlay
 
-> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-27T08:49:26Z`
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-27T09:28:38Z`
 
 > Supersedes the earlier `plans/20260527-0915-gh-optivem-mode-flag.md` draft (deleted; original committed at `74358bd`, recoverable via `git show 74358bd:plans/20260527-0915-gh-optivem-mode-flag.md`). The three-mode preset (`cautious|commits-only|autonomous`) was abandoned in `/refine-plan` because `commits-only` lied about its scope (it covered cleanups, pushes, releases too) and because operators reason in terms of "auto-approve everything except these specific things," not in 3-tier presets. This plan replaces the preset model with a flag-plus-exclusion-list design and reuses today's `--yes` per-command primitive unchanged.
 
@@ -109,24 +109,6 @@ Today's `promptio.ConfirmYN`/`ConfirmYNVia` call sites tagged with the new categ
 Cleanup subcommands today have **no** y/n prompt — they go from `--dry-run` to live delete. That's a separate bug; flagged in "Follow-ups" below.
 
 ## Items
-
-### 11. Split `implement --autonomous`
-
-- Remove the bundled behavior at `implement_commands.go:109`. Replace with:
-  - `--headless` (bool, default false) — controls the claude-subprocess headless-vs-interactive bit only.
-  - Keep `--autonomous` as a deprecated alias for `--auto --headless`. Emit a deprecation warning to stderr when used: `gh optivem: --autonomous is deprecated; use --auto --headless`.
-- The driver's `Options.Autonomous` field splits into `Options.SkipHumanSTOP` (driven by `Resolved` lookup of `human`) and `Options.Headless` (from `--headless`). Today's call sites that read `opts.Autonomous` map to the appropriate replacement at migration time.
-- Drop the deprecated alias in a follow-up release once docs/scripts have caught up.
-
-### 12. Update `--help` text
-
-- Root `--auto` description: `Auto-approve confirmations except for categories listed in --confirm. Defaults to --confirm=commit,fix. Env: GH_OPTIVEM_AUTO.`
-- Root `--confirm` description: `Comma-separated category list that still prompts under --auto. Categories: commit, fix, release, prompt. (human is always confirmed.) Default when --auto is set: commit,fix. Env: GH_OPTIVEM_CONFIRM.`
-- Update `commit --yes` description: unchanged. Optionally add: `Equivalent to passing --auto --confirm= for this command.`
-- Update `implement --headless` description: `Run the claude subprocess in headless `claude -p` mode (no interactive window).`
-- Update `implement --autonomous` description: `[Deprecated] Equivalent to --auto --headless. Will be removed in a future release.`
-- Update top-level `--help` Long string to list `--auto` and `--confirm` in the global-flags section alongside `--config` and `--workspace`.
-- Run the help-text-updater agent (or `gh optivem doctor` if it covers this) after wiring to catch stale references.
 
 ### 13. Acceptance tests
 

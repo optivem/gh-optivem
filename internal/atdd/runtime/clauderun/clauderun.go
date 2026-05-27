@@ -4,7 +4,7 @@
 //
 // Dispatch reads the embedded per-agent prompt (see internal/atdd/runtime/
 // agents/embed.go), substitutes ${name} placeholders against the live ticket
-// context, invokes `claude` (interactive or `claude -p` autonomous), and
+// context, invokes `claude` (interactive or `claude -p` headless), and
 // returns when the subprocess exits. The agent is instructed not to commit;
 // staging and committing is the wrapping CLI's responsibility, after the
 // dispatch returns and any human gates have fired.
@@ -265,9 +265,9 @@ type Options struct {
 	// the surrounding render machinery.
 	PromptOverride string
 
-	// Autonomous — when true, run via `claude -p` (one-shot, headless).
+	// Headless — when true, run via `claude -p` (one-shot, headless).
 	// When false, run interactively so the operator can observe / interject.
-	Autonomous bool
+	Headless bool
 
 	// Model, when non-empty, becomes the `--model` flag on the claude
 	// invocation (e.g. "sonnet", "haiku", "opus", or a full model id like
@@ -347,7 +347,7 @@ type Options struct {
 	// a re-materialize. Empty matches any sidecar value (used by tests).
 	BinaryVersion string
 
-	// Stdout / Stderr targets for the dispatch banners and (in autonomous
+	// Stdout / Stderr targets for the dispatch banners and (in headless
 	// mode) the streamed subprocess output. nil → os.Stdout / os.Stderr.
 	Stdout io.Writer
 	Stderr io.Writer
@@ -367,25 +367,25 @@ type Options struct {
 // ClaudeRunner runs the `claude` CLI. The default implementation is
 // execClaude. RunOpts is a struct rather than a varargs slice because the
 // runner has to choose between interactive and `-p` invocations and stream
-// stdout/stderr back to the driver during long autonomous runs.
+// stdout/stderr back to the driver during long headless runs.
 type ClaudeRunner interface {
 	Run(ctx context.Context, opts RunOpts) (RunResult, error)
 }
 
 // RunOpts is the cross-cut between Options and the subprocess invocation.
-// It hides the autonomous-vs-interactive flag-shape decision behind the
+// It hides the headless-vs-interactive flag-shape decision behind the
 // runner so the production runner can evolve without touching Dispatch.
 //
 // OutputFilePath / OutputKeysSpec, when non-empty, are exported into the
 // subprocess env as GH_OPTIVEM_OUTPUT_FILE / GH_OPTIVEM_OUTPUT_KEYS so the
 // agent's `gh optivem output write` CLI calls land in the right file with
 // the right allow-list. Mirrors the same fields on Options. Both modes
-// (interactive and autonomous) honour the export uniformly — the JSONL
+// (interactive and headless) honour the export uniformly — the JSONL
 // channel is the cross-mode replacement for the prose-YAML tail that used
-// to work only in autonomous mode.
+// to work only in headless mode.
 type RunOpts struct {
 	Prompt         string
-	Autonomous     bool
+	Headless       bool
 	Model          string
 	Effort         string
 	Dir            string
@@ -408,12 +408,12 @@ type RunOpts struct {
 
 // RunResult is what the runner reports back to Dispatch. Usage is best-effort
 // — populated only when the runner can parse a structured envelope (currently
-// autonomous mode via `claude -p --output-format json`). Interactive mode
+// headless mode via `claude -p --output-format json`). Interactive mode
 // leaves it nil and the banner falls back to elapsed-time-only.
 //
 // ResultText is the agent's final response body — the `result` field from
 // the `claude -p --output-format json` envelope. Populated only in
-// autonomous mode (interactive mode prints directly to the operator's TTY
+// headless mode (interactive mode prints directly to the operator's TTY
 // and has no envelope to parse). Used by the exit-banner result echo so
 // the operator sees the agent's final message inline. Structured outputs
 // flow through the per-dispatch JSONL channel
@@ -548,7 +548,7 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 
 	runResult, runErr := deps.Claude.Run(ctx, RunOpts{
 		Prompt:         prompt,
-		Autonomous:     opts.Autonomous,
+		Headless:       opts.Headless,
 		Model:          opts.Model,
 		Effort:         opts.Effort,
 		Dir:            opts.RepoPath,
@@ -1303,8 +1303,8 @@ func writeEnterBanner(opts Options) {
 	w := opts.Stdout
 	fmt.Fprintln(w, cyan.Sprint(banner))
 	mode := "interactive"
-	if opts.Autonomous {
-		mode = "autonomous"
+	if opts.Headless {
+		mode = "headless"
 	}
 	fmt.Fprintln(w, cyan.Sprintf("🤖 ENTERING AGENT: %s  (%s)", opts.Agent, mode))
 	if opts.IssueNum > 0 || opts.IssueTitle != "" {
@@ -1346,7 +1346,7 @@ func writeExitBanner(opts Options, changedFiles int, elapsed time.Duration, usag
 // formatUsageSuffix renders ", 12.4k in / 1.8k out, $0.18" if usage is non-nil
 // and non-empty. Returns "" otherwise so the banner gracefully degrades to
 // elapsed-time-only when the runner couldn't extract a JSON envelope (e.g.
-// interactive mode, or an autonomous-mode parse failure).
+// interactive mode, or a headless-mode parse failure).
 func formatUsageSuffix(usage *TokenUsage) string {
 	if usage == nil {
 		return ""
@@ -1451,7 +1451,7 @@ type execClaude struct{}
 // Interactive mode → `claude <prompt>` with stdin/stdout/stderr connected
 // directly so the operator sees the full Claude Code UI and can interject.
 //
-// Autonomous mode → `claude -p <prompt> --output-format json`:
+// Headless mode → `claude -p <prompt> --output-format json`:
 //
 //   - The prompt is the embedded agent's full instructions (rendered by
 //     renderPrompt). v2 has no host/subagent split — `claude -p` IS the
@@ -1465,8 +1465,8 @@ type execClaude struct{}
 // JSON parsing is best-effort — a future CLI version that changes the
 // envelope shape leaves Usage nil and the banner falls back gracefully.
 func (execClaude) Run(ctx context.Context, opts RunOpts) (RunResult, error) {
-	if opts.Autonomous {
-		return runAutonomous(ctx, opts)
+	if opts.Headless {
+		return runHeadless(ctx, opts)
 	}
 	return runInteractive(ctx, opts)
 }
@@ -1538,7 +1538,7 @@ func claudeTuningArgs(opts RunOpts) []string {
 	return args
 }
 
-func runAutonomous(ctx context.Context, opts RunOpts) (RunResult, error) {
+func runHeadless(ctx context.Context, opts RunOpts) (RunResult, error) {
 	arg, cleanup, err := materializePrompt(opts.Dir, opts.Prompt)
 	if err != nil {
 		return RunResult{}, err

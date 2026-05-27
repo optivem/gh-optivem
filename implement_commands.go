@@ -28,6 +28,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/optivem/gh-optivem/internal/approval"
 	assetsync "github.com/optivem/gh-optivem/internal/assets/sync"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/driver"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
@@ -44,13 +45,14 @@ import (
 // required; the on-disk preflight runs before the driver starts.
 func newImplementCmd() *cobra.Command {
 	var (
-		issueArg     string
-		autonomous   bool
-		manualAgents bool
-		logFile      string
-		workspace    string
-		keepRuns     int
-		showPrompt   bool
+		issueArg              string
+		headless              bool
+		autonomousDeprecated  bool
+		manualAgents          bool
+		logFile               string
+		workspace             string
+		keepRuns              int
+		showPrompt            bool
 	)
 	cmd := &cobra.Command{
 		Use:   "implement",
@@ -69,7 +71,8 @@ command.
   gh optivem implement --issue 42 --workspace /abs/path/to/workspace
   gh optivem implement --issue 42 --log-file run.log
   gh optivem implement --issue 42 --show-prompt
-  gh optivem implement --issue 42 --keep-runs 0   # never prune`,
+  gh optivem implement --issue 42 --keep-runs 0   # never prune
+  gh optivem --auto implement --issue 42 --headless   # auto-approve everything except commit/fix; run claude -p`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// ATDD-consuming command: when the auto-sync escape hatch is
 			// set, the pipeline needs assets at ~/.gh-optivem/references/
@@ -84,6 +87,24 @@ command.
 			issue, err := parseIssueArg(issueArg)
 			exitOnError(err)
 			exitOnError(validateKeepRuns(keepRuns))
+
+			// --autonomous is a deprecated alias for --auto --headless.
+			// Emit one stderr warning, then turn on headless and (if not
+			// already auto) replace the resolved Approval with one in
+			// which Auto=true. The aliasing happens here, post-flag-parse
+			// but pre-driver, so the rest of the command sees the same
+			// policy it would under the new flags.
+			if autonomousDeprecated {
+				fmt.Fprintln(cmd.ErrOrStderr(),
+					"gh optivem: --autonomous is deprecated; use --auto --headless")
+				headless = true
+				if existing := cmdctx.Approval(cmd); !existing.Auto {
+					r, err := approval.Resolve(true, true, "", false, os.Getenv)
+					exitOnError(err)
+					cmd.SetContext(cmdctx.WithApproval(cmd.Context(), r))
+				}
+			}
+
 			resolvedConfigPath, _ := projectconfig.ResolvePath(projectConfigPath)
 			exportConfigForShellOuts(resolvedConfigPath)
 			cfg, err := runImplementPreflight(resolvedConfigPath, workspace, manualAgents)
@@ -94,7 +115,7 @@ command.
 			exitOnError(err)
 			exitOnError(driver.Run(context.Background(), driver.Options{
 				IssueNum:            issue,
-				Autonomous:          autonomous,
+				Headless:            headless,
 				ManualAgents:        manualAgents,
 				Override:            hooks,
 				YAMLPath:            cfg.ProcessFlow,
@@ -108,7 +129,8 @@ command.
 		},
 	}
 	cmd.Flags().StringVar(&issueArg, "issue", "", "GitHub issue number or URL (required)")
-	cmd.Flags().BoolVar(&autonomous, "autonomous", false, "Skip human-approval STOPs and run agent dispatches headless via `claude -p`")
+	cmd.Flags().BoolVar(&headless, "headless", false, "Run the claude subprocess in headless `claude -p` mode (no interactive UI; structured JSON envelope captured for the exit banner)")
+	cmd.Flags().BoolVar(&autonomousDeprecated, "autonomous", false, "[Deprecated] Equivalent to --auto --headless. Will be removed in a future release.")
 	cmd.Flags().BoolVar(&manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
 	cmd.Flags().StringVar(&workspace, "workspace", "", "Workspace root containing one clone per repo (default: parent directory of CWD). Each clone dir must be named after the repo-name component of its slug; symlink outliers into place.")
 	cmd.Flags().StringVar(&logFile, "log-file", "", "Mirror everything stdout/stderr emit during the run to this file (in addition to streaming live)")

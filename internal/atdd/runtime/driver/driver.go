@@ -80,10 +80,12 @@ type Options struct {
 	// and for shell-outs. Optional; defaults to cwd.
 	RepoPath string
 
-	// Autonomous skips human-approval STOPs. In v2 it also flips agent
-	// dispatch into headless `claude -p` mode. Default (false) runs
-	// `claude` interactively so the operator can observe / interject.
-	Autonomous bool
+	// Headless flips agent dispatch into `claude -p` (one-shot, no
+	// interactive UI) mode. Default (false) runs `claude` interactively
+	// so the operator can observe / interject. Human-STOP semantics are
+	// covered by Approval (CategoryHuman is always-implicit); Headless
+	// is strictly about how the claude subprocess is invoked.
+	Headless bool
 
 	// Approval is the resolved auto-approve policy. The cobra layer reads
 	// it off cmd.Context() (via cmdctx.Approval) and assigns it here so
@@ -219,7 +221,6 @@ func Run(ctx context.Context, opts Options) error {
 		ProjectURL: resolvedProjectURL,
 		RepoPath:   repoPath,
 		Config:     cfg,
-		Autonomous: opts.Autonomous,
 		Engine:     eng,
 	})
 
@@ -949,7 +950,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			OverrideText:       extraText,
 			RawPrompt:          replaceText,
 			PromptOverride:     opts.TaskPromptOverrides[agentName],
-			Autonomous:         opts.Autonomous,
+			Headless:           opts.Headless,
 			Approval:           opts.Approval,
 			Model:              tuning.Model,
 			Effort:             tuning.Effort,

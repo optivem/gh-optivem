@@ -216,16 +216,16 @@ func TestTaskPromptOverridesFromConfig_MissingPathErrors(t *testing.T) {
 
 // TestNewImplementCmd_HasExpectedFlagsAndUse: thin wiring check — the
 // `implement` command must declare every flag callers rely on (issue,
-// autonomous, manual-agents, workspace, log-file, keep-runs, show-prompt)
-// and its Use line must be the bare verb so the noun-first surface keeps
-// `gh optivem implement` as a top-level command.
+// headless, autonomous [deprecated alias], manual-agents, workspace, log-file,
+// keep-runs, show-prompt) and its Use line must be the bare verb so the
+// noun-first surface keeps `gh optivem implement` as a top-level command.
 func TestNewImplementCmd_HasExpectedFlagsAndUse(t *testing.T) {
 	t.Parallel()
 	cmd := newImplementCmd()
 	if cmd.Use != "implement" {
 		t.Errorf("Use: got %q, want %q", cmd.Use, "implement")
 	}
-	wantFlags := []string{"issue", "autonomous", "manual-agents", "workspace", "log-file", "keep-runs", "show-prompt"}
+	wantFlags := []string{"issue", "headless", "autonomous", "manual-agents", "workspace", "log-file", "keep-runs", "show-prompt"}
 	for _, name := range wantFlags {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Errorf("missing flag --%s", name)
@@ -234,6 +234,11 @@ func TestNewImplementCmd_HasExpectedFlagsAndUse(t *testing.T) {
 	// --issue must NOT have a short form (-i is reserved for future flags).
 	if f := cmd.Flags().Lookup("issue"); f != nil && f.Shorthand != "" {
 		t.Errorf("--issue should have no short form, got -%s", f.Shorthand)
+	}
+	// --autonomous is documented as deprecated; the Usage string must say so
+	// so `--help` callers see the alias signal without reading the plan.
+	if f := cmd.Flags().Lookup("autonomous"); f != nil && !strings.Contains(strings.ToLower(f.Usage), "deprecated") {
+		t.Errorf("--autonomous Usage should mark it deprecated, got %q", f.Usage)
 	}
 }
 

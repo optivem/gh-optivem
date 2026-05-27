@@ -124,7 +124,7 @@ is passed — the stray-file foot-gun is opt-in for scripted callers.`,
 	}
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Only operate on the named repo")
 	cmd.Flags().StringVar(&opts.Paths, "paths", "", `Stage only these space-separated paths (requires --repo)`)
-	cmd.Flags().BoolVar(&opts.Yes, "yes", false, "Skip per-repo confirmation (required without a TTY)")
+	cmd.Flags().BoolVar(&opts.Yes, "yes", false, "Skip per-repo confirmation (required without a TTY). Per-command primitive — kept separate from the global --auto policy so scripts using `commit --yes \"msg\"` keep skipping the prompt even when --auto is set with the default --confirm=commit,fix exclusion.")
 	cmd.Flags().BoolVar(&opts.IncludeUntracked, "include-untracked", false,
 		"With --yes, also stage untracked (??) files. No effect interactively.")
 	return cmd

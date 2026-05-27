@@ -673,21 +673,21 @@ func TestDispatch_NoChangesIsNotAnError(t *testing.T) {
 	}
 }
 
-func TestDispatch_AutonomousFlagPropagates(t *testing.T) {
+func TestDispatch_HeadlessFlagPropagates(t *testing.T) {
 	gitFake := &fakeGit{
 		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
 	}
 	claudeFake := &fakeClaude{}
 
 	opts := newOpts()
-	opts.Autonomous = true
+	opts.Headless = true
 
 	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	got := claudeFake.calls[0]
-	if !got.Autonomous {
-		t.Errorf("Autonomous: got false, want true")
+	if !got.Headless {
+		t.Errorf("Headless: got false, want true")
 	}
 }
 
