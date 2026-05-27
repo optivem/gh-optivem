@@ -1635,14 +1635,14 @@ func TestRenderPrompt_ExpectedOutputsSubstitutes(t *testing.T) {
 }
 
 func TestOutputChannelEnv_BothUnset_NilEnv(t *testing.T) {
-	got := outputChannelEnv(RunOpts{})
+	got := subprocessEnv(RunOpts{})
 	if got != nil {
 		t.Errorf("want nil (inherit parent env), got %v", got)
 	}
 }
 
 func TestOutputChannelEnv_BothSet_AppendedToParentEnv(t *testing.T) {
-	got := outputChannelEnv(RunOpts{
+	got := subprocessEnv(RunOpts{
 		OutputFilePath: "/tmp/agent-001.outputs.jsonl",
 		OutputKeysSpec: "dsl-port-changed:bool,test-names:string-list",
 	})
@@ -1664,7 +1664,7 @@ func TestOutputChannelEnv_BothSet_AppendedToParentEnv(t *testing.T) {
 }
 
 func TestOutputChannelEnv_OnlyFileSet_ExportsFileOnly(t *testing.T) {
-	got := outputChannelEnv(RunOpts{OutputFilePath: "/tmp/x.jsonl"})
+	got := subprocessEnv(RunOpts{OutputFilePath: "/tmp/x.jsonl"})
 	if got == nil {
 		t.Fatalf("want env slice, got nil")
 	}

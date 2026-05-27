@@ -25,12 +25,13 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/optivem/gh-optivem/internal/approval"
 	assetsync "github.com/optivem/gh-optivem/internal/assets/sync"
+	"github.com/optivem/gh-optivem/internal/cmdctx"
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/configinit"
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
-	"github.com/optivem/gh-optivem/internal/promptio"
 	"github.com/optivem/gh-optivem/internal/shell"
 	"github.com/optivem/gh-optivem/internal/steps"
 	"github.com/optivem/gh-optivem/internal/version"
@@ -51,6 +52,16 @@ const separator = "=========================================="
 // that needs to locate gh-optivem.yaml — they pass it through
 // projectconfig.ResolvePath for the flag > env > default cascade.
 var projectConfigPath string
+
+// autoFlag / confirmFlag back the root-level --auto / --confirm persistent
+// flags. They feed approval.Resolve in PersistentPreRunE; the resulting
+// Resolved is stashed on cmd.Context() via cmdctx.WithApproval so every
+// y/n confirmation site reads the same policy snapshot regardless of
+// where in the command tree it sits.
+var (
+	autoFlag    bool
+	confirmFlag string
+)
 
 type stepDef struct {
 	name      string
@@ -113,6 +124,9 @@ func newRootCmd() *cobra.Command {
 		// Subcommands print their own usage on validation errors via log.FatalExit;
 		// avoid double-printing usage when Cobra returns an error.
 		SilenceUsage: true,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			return resolveApprovalForCmd(cmd)
+		},
 	}
 	cmd.SetVersionTemplate("{{.Version}}\n")
 	// Pre-register --version without the -v shorthand so `init -v` keeps
@@ -128,6 +142,10 @@ func newRootCmd() *cobra.Command {
 	// regardless of where in the command tree they were invoked from.
 	cmd.PersistentFlags().StringVar(&workspaceFlagValue, "workspace", "",
 		"Path to a directory containing a *.code-workspace file (default: $"+workspace.EnvVar+", walk-up from CWD, or single-repo fallback)")
+	cmd.PersistentFlags().BoolVar(&autoFlag, "auto", false,
+		"Auto-approve confirmations except for categories listed in --confirm. Defaults to --confirm=commit,fix. Env: "+approval.EnvAuto+".")
+	cmd.PersistentFlags().StringVar(&confirmFlag, "confirm", "",
+		"Comma-separated category list that still prompts under --auto. Categories: commit, fix, release, prompt. (human is always confirmed.) Default when --auto is set: commit,fix. Env: "+approval.EnvConfirm+".")
 
 	// Help-text grouping. Without these, the new root verbs would
 	// interleave alphabetically with the project verbs and the visual
@@ -665,6 +683,51 @@ func printSummary(cfg *config.Config, errors int, totalDuration time.Duration) {
 	fmt.Println()
 }
 
+// resolveApprovalForCmd runs in PersistentPreRunE: build a Resolved policy
+// from the --auto / --confirm flags and env vars, stash it on cmd.Context
+// for every confirmation call site that reads via cmdctx.Approval, and
+// publish the same policy into the configinit package-level slot (the
+// configinit prompt path doesn't get a *cobra.Command and reads the
+// approval back as a package global instead). Emits a one-line stderr
+// banner when Auto is on so the operator can see which source the policy
+// came from.
+func resolveApprovalForCmd(cmd *cobra.Command) error {
+	r, err := approval.Resolve(
+		autoFlag,
+		flagChanged(cmd, "auto"),
+		confirmFlag,
+		flagChanged(cmd, "confirm"),
+		os.Getenv,
+	)
+	if err != nil {
+		return err
+	}
+	cmd.SetContext(cmdctx.WithApproval(cmd.Context(), r))
+	configinit.SetApproval(r)
+	if r.Auto {
+		confirmList := r.ConfirmListString()
+		if confirmList == "" {
+			confirmList = "(none)"
+		}
+		fmt.Fprintf(os.Stderr, "Auto: true (auto-source: %s, confirm-source: %s → %s)\n",
+			r.AutoSource, r.ConfirmSource, confirmList)
+	}
+	return nil
+}
+
+// flagChanged reports whether the named flag was explicitly set on the
+// executing command (or any ancestor's persistent flags). Returns false
+// when the flag is undefined — neither Auto nor Confirm should be
+// undefined, but the nil check keeps PersistentPreRunE robust against a
+// caller (e.g. a future subcommand that overrides the root's flag set)
+// who forgets to inherit.
+func flagChanged(cmd *cobra.Command, name string) bool {
+	if f := cmd.Flag(name); f != nil {
+		return f.Changed
+	}
+	return false
+}
+
 // confirmBugReport shows what will be sent and asks the user to confirm.
 // Returns true only on an explicit "y"/"yes". On a non-tty (CI, piped input)
 // the opt-in flag alone is treated as consent and it returns true without
@@ -692,7 +755,7 @@ func confirmBugReport(cfg *config.Config) bool {
 		return true
 	}
 
-	ok, err := promptio.ConfirmYN(os.Stdin, os.Stdout, "  Proceed?")
+	ok, err := approval.Confirm(cfg.Approval, approval.CategoryPrompt, os.Stdin, os.Stdout, "  Proceed?")
 	if err != nil {
 		log.Warnf("Could not read confirmation: %v. Skipping bug report.", err)
 		return false
@@ -725,7 +788,7 @@ func offerBugReport(cfg *config.Config) bool {
 	fmt.Printf("  - Linking to your repo: https://github.com/%s\n", cfg.FullRepo)
 	fmt.Printf("  - Log file: %s\n", cfg.LogFile)
 	fmt.Println()
-	ok, err := promptio.ConfirmYN(os.Stdin, os.Stdout, "  File a bug report?")
+	ok, err := approval.Confirm(cfg.Approval, approval.CategoryPrompt, os.Stdin, os.Stdout, "  File a bug report?")
 	if err != nil {
 		log.Warnf("Could not read confirmation: %v. Skipping bug report.", err)
 		return false

@@ -2135,6 +2135,11 @@ processes:
         name: "Request Approval"
         params:
           question: "Do you approve fix to attempt remediation for ${failure-kind} ?"
+          # category: fix tags this approve as the fix-tier gate. Under
+          # `--auto` with the default exclusion set (commit,fix,human),
+          # the operator still gets prompted here; opting out requires an
+          # explicit `--confirm=` that omits `fix`.
+          category: fix
 
       - id: GATE_APPROVED_PRE
         type: gateway

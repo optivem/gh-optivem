@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/optivem/gh-optivem/internal/approval"
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
-	"github.com/optivem/gh-optivem/internal/promptio"
 	"github.com/optivem/gh-optivem/internal/shell"
 )
 
@@ -457,7 +457,7 @@ func readProjectConfirmation(cfg *config.Config, missing []string) bool {
 		log.Info("Proceeding without confirmation (--yes).")
 		return true
 	}
-	ok, err := promptio.ConfirmYN(os.Stdin, os.Stdout, "  Add missing statuses?")
+	ok, err := approval.Confirm(cfg.Approval, approval.CategoryPrompt, os.Stdin, os.Stdout, "  Add missing statuses?")
 	if err != nil {
 		return false
 	}

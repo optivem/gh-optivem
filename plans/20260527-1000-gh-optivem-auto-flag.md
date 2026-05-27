@@ -1,5 +1,7 @@
 # Plan: `gh optivem --auto` + `--confirm` exclusion overlay
 
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-27T08:49:26Z`
+
 > Supersedes the earlier `plans/20260527-0915-gh-optivem-mode-flag.md` draft (deleted; original committed at `74358bd`, recoverable via `git show 74358bd:plans/20260527-0915-gh-optivem-mode-flag.md`). The three-mode preset (`cautious|commits-only|autonomous`) was abandoned in `/refine-plan` because `commits-only` lied about its scope (it covered cleanups, pushes, releases too) and because operators reason in terms of "auto-approve everything except these specific things," not in 3-tier presets. This plan replaces the preset model with a flag-plus-exclusion-list design and reuses today's `--yes` per-command primitive unchanged.
 
 ## Context
@@ -107,67 +109,6 @@ Today's `promptio.ConfirmYN`/`ConfirmYNVia` call sites tagged with the new categ
 Cleanup subcommands today have **no** y/n prompt — they go from `--dry-run` to live delete. That's a separate bug; flagged in "Follow-ups" below.
 
 ## Items
-
-### 3. Wire root flags in `main.go`
-
-- Add `--auto` (bool) as a persistent flag on the root command. Default false.
-- Add `--confirm` (string) as a persistent flag on the root command. Default `""` (special: means "use default-exclusion-when-auto-set logic").
-- In `PersistentPreRunE`, read `cmd.Flags().Changed("auto")` and `cmd.Flags().Changed("confirm")` to distinguish explicit-vs-default, call `approval.Resolve(...)`, stash `Resolved` via a typed context key (or a small `cmdctx` helper).
-- Emit banner to stderr at command start when `Resolved.Auto == true`:
-  ```
-  Auto: true (auto-source: <s>, confirm-source: <s> → <comma-list>)
-  ```
-  Silent when Auto is false (matches today).
-- No "contradictory flags" rejection between `--auto` and per-command `--yes`. They compose by design — both skipping the same prompt is a no-op.
-
-### 4. Pipe `Resolved` to call sites
-
-- For Cobra commands, add `cmdctx.Approval(cmd) approval.Resolved` accessor (or read from a context key).
-- For non-Cobra entry points (ATDD driver via `gh optivem implement`), thread `Resolved` through the existing `opts` struct alongside `Stdin`/`Stdout`/`Asker`.
-
-### 5. Migrate `cross_repo_commands.go:319` (commit confirmation)
-
-- Replace `promptio.ConfirmYN(...)` with `approval.Confirm(resolved, approval.CategoryCommit, ...)`.
-- The existing per-command `--yes` check still short-circuits first (preserving today's `commit --yes` semantics). Order at the call site: check `opts.Yes` → if true, skip prompt entirely; else call `approval.Confirm`.
-
-### 6. Migrate `internal/configinit/prompt.go:250` (project init)
-
-- Replace with `approval.Confirm(resolved, approval.CategoryPrompt, ...)`.
-- Thread `Resolved` through the `init` command's call chain.
-
-### 7. Migrate `internal/config/config.go:971` ("Proceed?")
-
-- Locate call site and classify. Default tag: `CategoryPrompt`. If the call gates a destructive write that warrants commit-tier protection, escalate to `CategoryCommit` and note in commit message.
-
-### 8. Migrate `internal/steps/project.go:460` ("Add missing statuses?")
-
-- Replace with `approval.Confirm(resolved, approval.CategoryPrompt, ...)`.
-
-### 9. Migrate ATDD agent / driver / release call sites
-
-- `internal/atdd/runtime/agents/registry.go:54` (humanStop) → `approval.Confirm(resolved, approval.CategoryHuman, ...)`. Never short-circuits.
-- `internal/atdd/runtime/driver/driver.go:700, 735, 1083` (`newApproveDispatcher`) → category determined by BPMN context. See item 9a.
-- `internal/atdd/runtime/release/release.go:163` → `approval.Confirm(resolved, approval.CategoryRelease, ...)`.
-- `Resolved` is threaded through the ATDD `opts` struct.
-
-### 9a. Encode `category:` on `approve` BPMN nodes
-
-- Add an optional `category: fix|prompt|release|commit` field to `approve` (and `human`) node types in `internal/atdd/runtime/statemachine/process-flow.yaml`.
-- Statemachine parser surfaces `category:` on `RawNode`. Default: `prompt` for `approve` nodes, `human` for `human` nodes.
-- Audit `process-flow.yaml`: every `approve` node that immediately precedes a `fix-*` dispatch gets `category: fix`. Leave the rest at default `prompt`.
-- The driver's `newApproveDispatcher` reads `raw.Category` and passes it to `approval.Confirm`.
-
-### 9b. Propagate `GH_OPTIVEM_AUTO` / `GH_OPTIVEM_CONFIRM` into spawned claude subprocess
-
-- In `clauderun.Dispatch` (or wherever `exec.Command(...)` builds the child env), set:
-  - `GH_OPTIVEM_AUTO=<resolved.Auto.String()>`
-  - `GH_OPTIVEM_CONFIRM=<comma-joined ConfirmSet minus implicit human>`
-- Child `gh optivem` invocations inherit the parent's policy via env. Banner emitted by child reads `auto-source: env` — desired audit trail.
-
-### 10. Migrate `main.go:695, 728`
-
-- `main.go:695` (doctor "Proceed?") → `CategoryPrompt`. The doctor `--fix` write is opt-in already; `prompt`-tier gate matches.
-- `main.go:728` ("File a bug report?") → `CategoryPrompt`.
 
 ### 11. Split `implement --autonomous`
 

@@ -14,9 +14,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/optivem/gh-optivem/internal/approval"
+	"github.com/optivem/gh-optivem/internal/cmdctx"
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
-	"github.com/optivem/gh-optivem/internal/promptio"
 	"github.com/optivem/gh-optivem/internal/version"
 )
 
@@ -105,6 +106,15 @@ type Config struct {
 	Quiet        bool   // suppress info-level output
 	LogFile      string // optional path to mirror plain-text log output
 	AssumeYes    bool   // skip all interactive confirmations (existing-repo, --report-bug)
+
+	// Approval is the global auto-approve policy resolved from --auto /
+	// --confirm at root command startup. Init reads it in runInit and the
+	// scaffolder threads it through to every y/n confirmation site
+	// (confirmReposExist, readProjectConfirmation, bug-report) so the
+	// policy applies consistently regardless of where the prompt lives.
+	// Zero value (Auto=false, empty ConfirmSet) is the safe cautious
+	// default — confirmations fall through to the interactive prompt.
+	Approval approval.Resolved
 	WorkDir    string
 	ShopPath string
 	ShopRef  string // Pinned optivem/shop ref (SHA, tag, or branch). Never empty.
@@ -933,7 +943,7 @@ func parseProjectURL(s string) (ownerKind, owner string, number int, err error) 
 // tree at commit time (legitimate "re-scaffold same content" case) only for
 // pre-existing repos, while still treating a clean tree on a freshly created
 // repo as a hard error (something went wrong with the template apply).
-func confirmReposExist(fullRepos []string, assumeYes bool) []string {
+func confirmReposExist(fullRepos []string, assumeYes bool, resolved approval.Resolved) []string {
 	var existing []string
 	for _, fullRepo := range fullRepos {
 		if fullRepo == "" {
@@ -968,7 +978,10 @@ func confirmReposExist(fullRepos []string, assumeYes bool) []string {
 		return existing
 	}
 
-	ok, err := promptio.ConfirmYN(os.Stdin, os.Stderr, "Proceed?")
+	// Overwriting an existing GitHub repo is destructive — escalate from
+	// the default CategoryPrompt to CategoryCommit so the operator must
+	// either pass --yes, omit --auto, or include `commit` in --confirm.
+	ok, err := approval.Confirm(resolved, approval.CategoryCommit, os.Stdin, os.Stderr, "Proceed?")
 	if err != nil {
 		log.FatalExit(fmt.Sprintf("Aborted: %d repositor%s already exist and no confirmation was provided (pass --yes to proceed unattended)",
 			len(existing), pluralY(len(existing))))
@@ -1006,6 +1019,7 @@ func resolveLogFilePath(explicit string) string {
 func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 	userSet := make(map[string]bool)
 	cmd.Flags().Visit(func(fl *pflag.Flag) { userSet[fl.Name] = true })
+	resolved := cmdctx.Approval(cmd)
 
 	if f.Owner == "" || f.SystemName == "" || f.Repo == "" || f.Arch == "" || f.RepoStrategy == "" {
 		log.FatalExit("Required flags: --owner, --system-name, --repo, --arch, --repo-strategy")
@@ -1055,7 +1069,7 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 		mr.backendFullRepo,
 		mr.frontendFullRepo,
 		mr.systemFullRepo,
-	}, f.AssumeYes)
+	}, f.AssumeYes, resolved)
 	preExistingSet := make(map[string]bool, len(preExisting))
 	for _, r := range preExisting {
 		preExistingSet[r] = true
@@ -1117,6 +1131,7 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 		Quiet:        f.Quiet,
 		LogFile:      logFilePath,
 		AssumeYes:    f.AssumeYes,
+		Approval:     resolved,
 		WorkDir:    wd,
 		// ShopPath, RepoDir, and the multirepo-component dirs are pre-computed
 		// from WorkDir so the startup banner can show them before Phase 1. The

@@ -24,11 +24,35 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/optivem/gh-optivem/internal/approval"
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/files"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/steps"
 )
+
+// pkgApproval holds the resolved auto-approve policy for the whole
+// configinit package. main.go's PersistentPreRunE calls SetApproval once
+// at startup; askProjectURL reads it back when gating the "Do you have an
+// existing GitHub Project?" question.
+//
+// A package-level slot (rather than threading approval.Resolved through
+// every entry point's signature) keeps the interactive recovery path's
+// public API stable: EnsureExists, EnsureExistsOrBuild, and Prompt have
+// many callers (production and tests) and adding a parameter to each
+// would ripple across the codebase for one downstream consumer. The
+// trade-off is explicit: production sets the slot once before any
+// confirmation site can read it; tests that want to exercise the auto-yes
+// path call SetApproval explicitly in their setup.
+var pkgApproval approval.Resolved
+
+// SetApproval publishes the resolved auto-approve policy used by
+// askProjectURL. Safe to call repeatedly — last writer wins. The zero
+// value (Auto=false) is the safe cautious default, so callers that
+// never call SetApproval get today's "always prompt" behaviour.
+func SetApproval(r approval.Resolved) {
+	pkgApproval = r
+}
 
 // ResolveTarget picks the YAML file path `config init` should write to:
 // the persistent --config / -c flag (or $GH_OPTIVEM_CONFIG via

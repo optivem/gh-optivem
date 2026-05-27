@@ -34,6 +34,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/optivem/gh-optivem/internal/approval"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/actions"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/clauderun"
@@ -46,7 +47,6 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/verify"
 	"github.com/optivem/gh-optivem/internal/files"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
-	"github.com/optivem/gh-optivem/internal/promptio"
 	"github.com/optivem/gh-optivem/internal/version"
 )
 
@@ -84,6 +84,15 @@ type Options struct {
 	// dispatch into headless `claude -p` mode. Default (false) runs
 	// `claude` interactively so the operator can observe / interject.
 	Autonomous bool
+
+	// Approval is the resolved auto-approve policy. The cobra layer reads
+	// it off cmd.Context() (via cmdctx.Approval) and assigns it here so
+	// every confirmation site inside the driver (humanStop, the three
+	// approve dispatchers, release Commit) routes through approval.Confirm
+	// with the appropriate category. Zero value (Auto=false) preserves
+	// today's "always prompt" semantics, so tests that don't set Approval
+	// keep working.
+	Approval approval.Resolved
 
 	// ManualAgents falls back to the v1 "pause and let the operator
 	// launch the agent in a second window" behaviour at every user-task
@@ -660,7 +669,11 @@ func newHumanStopDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 		} else {
 			fmt.Fprintf(opts.Stdout, "[%s] STOP\n", nodeID)
 		}
-		ok, err := promptio.ConfirmYN(opts.Stdin, opts.Stdout, "  Approve?")
+		// CategoryHuman is always in the resolved confirm set, so this
+		// always delegates to the interactive prompt regardless of --auto.
+		// The BPMN human-STOP author chose this STOP precisely because no
+		// machine decides it; --auto explicitly cannot opt out.
+		ok, err := approval.Confirm(opts.Approval, approval.CategoryHuman, opts.Stdin, opts.Stdout, "  Approve?")
 		if err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("read STOP confirmation at %s: %w", nodeID, err)}
 		}
@@ -698,7 +711,16 @@ func newApproveDispatcher(opts Options, raw statemachine.RawNode, nodeID string)
 		} else {
 			fmt.Fprintf(opts.Stdout, "[%s] Approve?\n", nodeID)
 		}
-		ok, err := promptio.ConfirmYN(opts.Stdin, opts.Stdout, "  Approve?")
+		// Category comes from the YAML — either the ASK_HUMAN node's
+		// own `category:` field (statemachine.RawNode.Category, set
+		// when the author pins it at the node level) or a `category:`
+		// param threaded in from the call site via the approve
+		// primitive's call-activity params. Call-site override wins
+		// because the same `approve` LOW primitive is shared across
+		// callers with different category needs (fix vs. prompt).
+		// Default: prompt for any approve node that doesn't explicitly
+		// tag itself.
+		ok, err := approval.Confirm(opts.Approval, classifyApproveCategory(raw, ctx), opts.Stdin, opts.Stdout, "  Approve?")
 		if err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("read approve confirmation at %s: %w", nodeID, err)}
 		}
@@ -928,6 +950,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			RawPrompt:          replaceText,
 			PromptOverride:     opts.TaskPromptOverrides[agentName],
 			Autonomous:         opts.Autonomous,
+			Approval:           opts.Approval,
 			Model:              tuning.Model,
 			Effort:             tuning.Effort,
 			ShowPrompt:         opts.ShowPrompt,
@@ -1063,7 +1086,15 @@ func promptForAgent(opts Options, raw statemachine.RawNode, params map[string]st
 	fmt.Fprintf(opts.Stdout, "  Launch the %s agent now (e.g. via the Task tool in Claude Code).\n", agent)
 	fmt.Fprintln(opts.Stdout, "  When the agent's COMMIT lands on HEAD, approve to continue.")
 
-	ok, err := promptio.ConfirmYN(opts.Stdin, opts.Stdout, "  Approve?")
+	// Manual-agent dispatch is the v1 fallback for any user-task — the
+	// operator-launched agent could be fix-* or any other writing agent,
+	// so the category folds the same way newApproveDispatcher does:
+	// `fix` when the agent name starts with fix-, `prompt` otherwise.
+	category := approval.CategoryPrompt
+	if strings.HasPrefix(agent, "fix-") {
+		category = approval.CategoryFix
+	}
+	ok, err := approval.Confirm(opts.Approval, category, opts.Stdin, opts.Stdout, "  Approve?")
 	if err != nil {
 		return fmt.Errorf("read agent-dispatch confirmation: %w", err)
 	}
@@ -1071,6 +1102,38 @@ func promptForAgent(opts Options, raw statemachine.RawNode, params map[string]st
 		return fmt.Errorf("operator aborted at %s dispatch", agent)
 	}
 	return nil
+}
+
+// classifyApproveCategory maps an `approve` BPMN node to its approval
+// category. The lookup chain mirrors how BPMN params propagate from the
+// call site down through the `approve` LOW primitive:
+//
+//  1. ctx.Params["category"] — call-site override; the primary path,
+//     because the `approve` primitive is shared across callers with
+//     different category needs (a `fix` caller passes `category: fix`
+//     to upgrade its APPROVE_PRE to the fix tier).
+//  2. raw.Category — node-level pin on the ASK_HUMAN YAML; used when
+//     the author wants a primitive's approve gate to default to a
+//     non-prompt tier regardless of caller.
+//  3. Default: CategoryPrompt — the low-stakes tier that auto-yeses
+//     under `--auto` with the default exclusion set.
+//
+// A typo'd `category: foo` falls through to default rather than the
+// alternative of failing the dispatch — the operator can still answer
+// at the prompt. The dispatch-time banner shows the resolved category
+// for audit.
+func classifyApproveCategory(raw statemachine.RawNode, ctx *statemachine.Context) approval.Category {
+	if v, ok := ctx.Params["category"]; ok && v != "" {
+		if c, err := approval.ParseCategory(v); err == nil {
+			return c
+		}
+	}
+	if raw.Category != "" {
+		if c, err := approval.ParseCategory(raw.Category); err == nil {
+			return c
+		}
+	}
+	return approval.CategoryPrompt
 }
 
 // wrapOverride applies the override.Wrap decorator to every node. Wrapping

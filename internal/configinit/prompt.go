@@ -36,9 +36,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/optivem/gh-optivem/internal/approval"
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
-	"github.com/optivem/gh-optivem/internal/promptio"
 )
 
 // defaultLicense is the prompt default for the license question. Matches
@@ -247,7 +247,7 @@ func askTestLang(r *bufio.Reader, out io.Writer, f *config.RawFlags) error {
 // format + existence validation, re-asking just the URL on a bad value
 // rather than discarding the whole session.
 func askProjectURL(r *bufio.Reader, out io.Writer, f *config.RawFlags) error {
-	has, err := promptio.ConfirmYN(r, out, "  Do you have an existing GitHub Project?")
+	has, err := approval.Confirm(pkgApproval, approval.CategoryPrompt, r, out, "  Do you have an existing GitHub Project?")
 	if err != nil {
 		return fmt.Errorf("read project URL gate: %w", err)
 	}

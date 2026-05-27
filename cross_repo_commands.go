@@ -28,7 +28,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/optivem/gh-optivem/internal/promptio"
+	"github.com/optivem/gh-optivem/internal/approval"
+	"github.com/optivem/gh-optivem/internal/cmdctx"
 	"github.com/optivem/gh-optivem/internal/shell"
 	"github.com/optivem/gh-optivem/internal/workspace"
 )
@@ -70,11 +71,19 @@ func scopeBannerLine(scope workspace.Scope) string {
 // ── commit ──────────────────────────────────────────────────────────────
 
 // commitOptions captures the per-invocation flags for `commit`.
+//
+// Approval is the resolved global auto-approve policy (--auto + --confirm).
+// The per-command Yes flag still wins ahead of it inside confirmCommit so
+// scripts that pass `commit --yes "msg"` keep their existing semantics
+// regardless of the global policy. When Yes is false the prompt routes
+// through approval.Confirm with CategoryCommit, which by default still
+// prompts under --auto because commit is in the default exclusion set.
 type commitOptions struct {
 	Repo             string
 	Paths            string
 	Yes              bool
 	IncludeUntracked bool
+	Approval         approval.Resolved
 }
 
 func newCommitCmd() *cobra.Command {
@@ -109,6 +118,7 @@ is passed — the stray-file foot-gun is opt-in for scripted callers.`,
 			if opts.Paths != "" && opts.Repo == "" {
 				exitOnError(errors.New("--paths requires --repo (path semantics are repo-scoped)"))
 			}
+			opts.Approval = cmdctx.Approval(cmd)
 			exitOnError(runCommit(msg, opts))
 		},
 	}
@@ -307,8 +317,12 @@ func commitOneRepo(repo, msg string, opts commitOptions) (bool, error) {
 }
 
 // confirmCommit returns true when the operator wants the commit to land.
-// With --yes, returns true unconditionally. Without a TTY and without --yes,
-// returns an error matching commit.sh's wording. Otherwise asks via promptio.
+// With --yes, returns true unconditionally — the per-command primitive
+// preserves the documented `commit --yes "msg"` script contract regardless
+// of the global --auto policy. Without --yes, the prompt routes through
+// approval.Confirm(CategoryCommit) so --auto + --confirm=… can opt the
+// commit gate in or out of auto-yes. Without a TTY and without either
+// flag, returns an error matching commit.sh's wording.
 func confirmCommit(repo string, opts commitOptions) (bool, error) {
 	if opts.Yes {
 		return true, nil
@@ -316,7 +330,7 @@ func confirmCommit(repo string, opts commitOptions) (bool, error) {
 	if !stdinIsTTY() {
 		return false, errors.New("stdin is not a TTY and --yes was not set; refusing to commit unattended.\n       Re-run with --yes if this is a scripted invocation.")
 	}
-	return promptio.ConfirmYN(os.Stdin, os.Stdout, fmt.Sprintf("Commit these changes to %s?", relOrSelf(repo)))
+	return approval.Confirm(opts.Approval, approval.CategoryCommit, os.Stdin, os.Stdout, fmt.Sprintf("Commit these changes to %s?", relOrSelf(repo)))
 }
 
 func errMissingMsg() error {

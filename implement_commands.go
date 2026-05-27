@@ -32,6 +32,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/driver"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/preflight"
+	"github.com/optivem/gh-optivem/internal/cmdctx"
 	"github.com/optivem/gh-optivem/internal/configinit"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/version"
@@ -102,6 +103,7 @@ command.
 				LogFile:              logFile,
 				KeepRuns:             keepRuns,
 				ShowPrompt:           showPrompt,
+				Approval:             cmdctx.Approval(cmd),
 			}))
 		},
 	}

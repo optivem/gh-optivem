@@ -14,8 +14,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/optivem/gh-optivem/internal/approval"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
-	"github.com/optivem/gh-optivem/internal/promptio"
 )
 
 // Registry maps agent names from the YAML to NodeFn dispatchers.
@@ -45,13 +45,22 @@ func (r *Registry) Lookup(name string) statemachine.NodeFn {
 	return r.dispatchers[name]
 }
 
-// humanStop is the built-in dispatcher for `agent: human` nodes. Routes the
-// y/n decision through promptio so every human prompt in the CLI shares the
-// same semantics: explicit y/n required, unrecognised input re-prompts, no
-// Enter shortcut.
+// humanStop is the built-in dispatcher for `agent: human` nodes. Routes
+// the y/n decision through approval.Confirm with CategoryHuman so every
+// human-STOP node shares the same semantics: explicit y/n required, no
+// Enter shortcut, and never short-circuits even under --auto (the BPMN
+// human-STOP author chose this STOP precisely because no machine decides
+// it; --auto explicitly cannot opt out).
+//
+// This fallback runs only on processes the driver did NOT wrap (tests
+// and code paths that bypass wrapAgentDispatchers). The wrapped version
+// in driver.newHumanStopDispatcher carries node-id context and prints
+// the YAML description; this version just halts with the bare prompt.
+// Passing a zero Resolved keeps the bare-prompt path simple — the
+// invariant "CategoryHuman always prompts" holds regardless.
 func humanStop(ctx *statemachine.Context) statemachine.Outcome {
 	fmt.Fprintln(os.Stderr, "STOP — human approval required.")
-	ok, err := promptio.ConfirmYN(os.Stdin, os.Stderr, "Approve?")
+	ok, err := approval.Confirm(approval.Resolved{}, approval.CategoryHuman, os.Stdin, os.Stderr, "Approve?")
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("read STOP confirmation: %w", err)}
 	}

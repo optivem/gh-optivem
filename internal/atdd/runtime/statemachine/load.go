@@ -37,6 +37,13 @@ type RawNode struct {
 	Scope    string            `yaml:"scope,omitempty"`
 	Read     []string          `yaml:"read,omitempty"`
 	Write    []string          `yaml:"write,omitempty"`
+	// Category tags an approve / human node with the approval-policy
+	// vocabulary (commit | fix | release | prompt | human). The driver
+	// reads it at dispatch time and routes the y/n prompt through
+	// approval.Confirm so --auto + --confirm can decide whether to
+	// auto-yes or prompt. Default: "prompt" on approve nodes, "human" on
+	// human-STOP nodes — driver-side, not encoded here.
+	Category string `yaml:"category,omitempty"`
 }
 
 // rawEdge mirrors the YAML sequence-flow schema. `When` carries the raw

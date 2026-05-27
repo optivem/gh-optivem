@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/optivem/gh-optivem/internal/approval"
 	assetsync "github.com/optivem/gh-optivem/internal/assets/sync"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
@@ -353,6 +354,14 @@ type Options struct {
 
 	// Stdin is the operator's TTY in interactive mode. nil → os.Stdin.
 	Stdin io.Reader
+
+	// Approval is the resolved auto-approve policy that gets forwarded
+	// to the spawned claude subprocess via GH_OPTIVEM_AUTO and
+	// GH_OPTIVEM_CONFIRM env vars. The cobra layer reads it off the
+	// command context and the driver passes it through here. Without
+	// this, nested `gh optivem` calls inside the agent fall back to
+	// cautious mode and block on prompts the operator can't see.
+	Approval approval.Resolved
 }
 
 // ClaudeRunner runs the `claude` CLI. The default implementation is
@@ -385,6 +394,16 @@ type RunOpts struct {
 	Stderr         io.Writer
 	OutputFilePath string
 	OutputKeysSpec string
+
+	// Approval is the resolved auto-approve policy from the parent
+	// process. Propagated into the child `claude` subprocess environment
+	// as GH_OPTIVEM_AUTO and GH_OPTIVEM_CONFIRM so nested `gh optivem`
+	// calls inside the agent see the same policy the operator chose at
+	// the parent level. The child's own approval.Resolve reads those env
+	// vars and emits a banner with auto-source: env — the documented
+	// audit trail. Zero value leaves the env unset, so child inherits
+	// only what was already in the parent env.
+	Approval approval.Resolved
 }
 
 // RunResult is what the runner reports back to Dispatch. Usage is best-effort
@@ -538,6 +557,7 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 		Stderr:         runStderr,
 		OutputFilePath: opts.OutputFilePath,
 		OutputKeysSpec: opts.OutputKeysSpec,
+		Approval:       opts.Approval,
 	})
 	if runErr != nil {
 		writeExitBanner(opts, 0, nowFn().Sub(startedAt), runResult.Usage, runErr)
@@ -1468,22 +1488,25 @@ func runInteractive(ctx context.Context, opts RunOpts) (RunResult, error) {
 	cmd.Stdin = opts.Stdin
 	cmd.Stdout = opts.Stdout
 	cmd.Stderr = opts.Stderr
-	cmd.Env = outputChannelEnv(opts)
+	cmd.Env = subprocessEnv(opts)
 	return RunResult{}, cmd.Run()
 }
 
-// outputChannelEnv composes the subprocess environment, prepending
-// GH_OPTIVEM_OUTPUT_FILE / GH_OPTIVEM_OUTPUT_KEYS to the inherited parent
-// env when set on opts. Returns nil when neither is set — leaving cmd.Env
-// nil makes os/exec inherit the parent env unmodified (the pre-refactor
-// behaviour). Both vars set together: this is the agent dispatch path.
-// Neither set: utility runs of the runner (tests, scaffolding) that don't
-// declare outputs.
+// subprocessEnv composes the subprocess environment, appending the
+// per-dispatch GH_OPTIVEM_OUTPUT_FILE / GH_OPTIVEM_OUTPUT_KEYS (when the
+// dispatch declares outputs) and GH_OPTIVEM_AUTO / GH_OPTIVEM_CONFIRM
+// (when the parent has Auto on) to the inherited parent env. Returns nil
+// when none of the four apply — leaving cmd.Env nil makes os/exec inherit
+// the parent env unmodified (the pre-refactor behaviour), preserving the
+// "utility run, no extras" case.
 //
-// The vars are appended after os.Environ() so they overwrite any same-named
+// Vars are appended after os.Environ() so they overwrite any same-named
 // inherited values — defensive against an operator who set them by hand.
-func outputChannelEnv(opts RunOpts) []string {
-	if opts.OutputFilePath == "" && opts.OutputKeysSpec == "" {
+// CategoryHuman is dropped from the forwarded confirm list because it's
+// always implicit; the child's approval.Resolve re-adds it.
+func subprocessEnv(opts RunOpts) []string {
+	envApproval := opts.Approval.Auto
+	if !envApproval && opts.OutputFilePath == "" && opts.OutputKeysSpec == "" {
 		return nil
 	}
 	env := os.Environ()
@@ -1492,6 +1515,10 @@ func outputChannelEnv(opts RunOpts) []string {
 	}
 	if opts.OutputKeysSpec != "" {
 		env = append(env, "GH_OPTIVEM_OUTPUT_KEYS="+opts.OutputKeysSpec)
+	}
+	if envApproval {
+		env = append(env, approval.EnvAuto+"=true")
+		env = append(env, approval.EnvConfirm+"="+opts.Approval.ConfirmListString())
 	}
 	return env
 }
@@ -1534,7 +1561,7 @@ func runAutonomous(ctx context.Context, opts RunOpts) (RunResult, error) {
 	var captured bytes.Buffer
 	cmd.Stdout = &captured
 	cmd.Stderr = opts.Stderr
-	cmd.Env = outputChannelEnv(opts)
+	cmd.Env = subprocessEnv(opts)
 
 	runErr := cmd.Run()
 

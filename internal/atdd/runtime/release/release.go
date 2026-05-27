@@ -29,6 +29,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/optivem/gh-optivem/internal/approval"
 	"github.com/optivem/gh-optivem/internal/promptio"
 )
 
@@ -161,6 +162,28 @@ func InteractiveConfirmer(stdin io.Reader, stdout io.Writer) Confirmer {
 	}
 	return func(prompt string) (bool, error) {
 		return promptio.ConfirmYN(stdin, stdout, prompt)
+	}
+}
+
+// ApprovalConfirmer returns a Confirmer that routes through the global
+// auto-approve policy with CategoryRelease — so under --auto with the
+// default exclusion set (commit,fix), release confirmations auto-yes,
+// but operators can opt back in via --confirm=release.
+//
+// Released as a sibling to InteractiveConfirmer so the driver layer can
+// pick the right Confirmer at wire-up time based on whether a Resolved
+// policy is in play. Callers without a Resolved (tests, scripts) keep
+// using InteractiveConfirmer; the driver passes ApprovalConfirmer when
+// it threads Options.Approval into the release.Commit call.
+func ApprovalConfirmer(r approval.Resolved, stdin io.Reader, stdout io.Writer) Confirmer {
+	if stdin == nil {
+		stdin = os.Stdin
+	}
+	if stdout == nil {
+		stdout = os.Stdout
+	}
+	return func(prompt string) (bool, error) {
+		return approval.Confirm(r, approval.CategoryRelease, stdin, stdout, prompt)
 	}
 }
 
