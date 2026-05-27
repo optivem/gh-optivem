@@ -227,6 +227,11 @@ cleanup() {
   if prompt_yn "Delete worktree $WORKTREE_PATH and branch $BRANCH?"; then
     git -C "$CONSUMER_ROOT" worktree remove --force "$WORKTREE_PATH" || true
     git -C "$CONSUMER_ROOT" branch -D "$BRANCH" 2>/dev/null || true
+    # Drop any stale .git/worktrees/* entries (e.g. if remove --force
+    # failed partially, or the directory was wiped manually before the
+    # prompt). Lingering metadata makes VS Code's git extension hang
+    # refreshing Source Control for a path that no longer exists.
+    git -C "$CONSUMER_ROOT" worktree prune 2>/dev/null || true
     log "Removed $WORKTREE_PATH (branch $BRANCH)."
   else
     log "Keeping $WORKTREE_PATH (branch $BRANCH)."
