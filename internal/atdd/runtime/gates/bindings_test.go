@@ -201,7 +201,7 @@ func TestScopeExceptionRequested_EmptyFalse(t *testing.T) {
 func TestPhaseScopeClean_TrueRoutesContinue(t *testing.T) {
 	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
 	ctx := statemachine.NewContext()
-	ctx.Set("phase_scope_clean", true)
+	ctx.Set("phase-scope-clean", true)
 	out := b.phaseScopeClean(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
@@ -214,7 +214,7 @@ func TestPhaseScopeClean_TrueRoutesContinue(t *testing.T) {
 func TestPhaseScopeClean_FalseRoutesStop(t *testing.T) {
 	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
 	ctx := statemachine.NewContext()
-	ctx.Set("phase_scope_clean", false)
+	ctx.Set("phase-scope-clean", false)
 	out := b.phaseScopeClean(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected error: %v", out.Err)
@@ -228,7 +228,7 @@ func TestPhaseScopeClean_UnsetErrors(t *testing.T) {
 	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
 	out := b.phaseScopeClean(statemachine.NewContext())
 	if out.Err == nil {
-		t.Fatalf("expected error for unset phase_scope_clean, got nil")
+		t.Fatalf("expected error for unset phase-scope-clean, got nil")
 	}
 	if !strings.Contains(out.Err.Error(), "not set in Context") {
 		t.Fatalf("error %q does not mention 'not set in Context'", out.Err)
@@ -642,7 +642,7 @@ func TestTicketKind_PreseededShortCircuits(t *testing.T) {
 	tk := fakeTracker{}
 	b := newBindings(t, Deps{Prompter: &fakePrompter{}, Tracker: tk})
 	ctx := statemachine.NewContext()
-	ctx.Set("issue_url", "https://example/1")
+	ctx.Set("issue-url", "https://example/1")
 	ctx.Set("ticket-kind", "task/legacy-coverage")
 	out := b.ticketKind(ctx)
 	if out.Err != nil {
@@ -682,7 +682,7 @@ func TestTicketKind_LookupTable(t *testing.T) {
 			}
 			b := newBindings(t, Deps{Prompter: &fakePrompter{}, Tracker: tk})
 			ctx := statemachine.NewContext()
-			ctx.Set("issue_url", "https://example/1")
+			ctx.Set("issue-url", "https://example/1")
 			out := b.ticketKind(ctx)
 			if tc.expectErr {
 				if out.Err == nil {
@@ -704,7 +704,7 @@ func TestTicketKind_NoConfidence_Halts(t *testing.T) {
 	tk := fakeTracker{classifyKind: "", classifyConfident: false}
 	b := newBindings(t, Deps{Prompter: &fakePrompter{}, Tracker: tk})
 	ctx := statemachine.NewContext()
-	ctx.Set("issue_url", "https://example/1")
+	ctx.Set("issue-url", "https://example/1")
 	out := b.ticketKind(ctx)
 	if out.Err == nil {
 		t.Fatalf("expected err for no-confidence classification, got %+v", out)
@@ -716,7 +716,7 @@ func TestTicketKind_NoIssueURL_Halts(t *testing.T) {
 	b := newBindings(t, Deps{Prompter: &fakePrompter{}, Tracker: tk})
 	out := b.ticketKind(statemachine.NewContext())
 	if out.Err == nil {
-		t.Fatalf("expected err for missing issue_url, got %+v", out)
+		t.Fatalf("expected err for missing issue-url, got %+v", out)
 	}
 }
 

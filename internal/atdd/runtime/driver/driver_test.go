@@ -268,9 +268,9 @@ func newDriverOpts(deps clauderun.Deps) Options {
 
 func newCtxWithIssue() *statemachine.Context {
 	c := statemachine.NewContext()
-	c.Set("issue_num", "42")
-	c.Set("issue_url", "https://github.com/optivem/shop/issues/42")
-	c.Set("issue_title", "Add PUT /carts/{id}/items endpoint")
+	c.Set("issue-num", "42")
+	c.Set("issue-url", "https://github.com/optivem/shop/issues/42")
+	c.Set("issue-title", "Add PUT /carts/{id}/items endpoint")
 	// Post-plan-1701 split: the dispatcher's scopeKey precedence is
 	// originating-task-name → task-name → agent. minimalYAML's user-task
 	// dispatches the acceptance-test-writer agent (noun) but the

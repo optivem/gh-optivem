@@ -217,15 +217,15 @@ func TestCheckPhaseScope_RequiresPhaseID(t *testing.T) {
 	a := newActions(Deps{Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	out := a.checkPhaseScope(ctx)
-	if out.Err == nil || !strings.Contains(out.Err.Error(), "phase_id") {
-		t.Fatalf("expected phase_id error, got %v", out.Err)
+	if out.Err == nil || !strings.Contains(out.Err.Error(), "phase-id") {
+		t.Fatalf("expected phase-id error, got %v", out.Err)
 	}
 }
 
 func TestCheckPhaseScope_UnknownPhaseIsHardError(t *testing.T) {
 	a := newActions(Deps{Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
-	ctx.Params["phase_id"] = "nonexistent-phase"
+	ctx.Params["phase-id"] = "nonexistent-phase"
 	out := a.checkPhaseScope(ctx)
 	if out.Err == nil {
 		t.Fatalf("expected error on unknown phase, got nil")
@@ -246,13 +246,13 @@ func TestCheckPhaseScope_CleanWhenAllModificationsInScope(t *testing.T) {
 	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	// write-acceptance-tests scope: at-test, dsl-port, dsl-core.
-	ctx.Params["phase_id"] = "write-acceptance-tests"
+	ctx.Params["phase-id"] = "write-acceptance-tests"
 	out := a.checkPhaseScope(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
 	if got := ctx.Get(CtxKeyPhaseScopeClean); got != true {
-		t.Fatalf("phase_scope_clean: got %v, want true", got)
+		t.Fatalf("phase-scope-clean: got %v, want true", got)
 	}
 	if v := ctx.Get(CtxKeyPhaseScopeViolatingPaths); v != nil {
 		t.Errorf("violating_paths: got %v, want nil", v)
@@ -272,13 +272,13 @@ func TestCheckPhaseScope_ViolationPopulatesContext(t *testing.T) {
 	var stderr bytes.Buffer
 	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &stderr, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
-	ctx.Params["phase_id"] = "write-acceptance-tests"
+	ctx.Params["phase-id"] = "write-acceptance-tests"
 	out := a.checkPhaseScope(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
 	if got := ctx.Get(CtxKeyPhaseScopeClean); got != false {
-		t.Fatalf("phase_scope_clean: got %v, want false", got)
+		t.Fatalf("phase-scope-clean: got %v, want false", got)
 	}
 	violating, ok := ctx.State[CtxKeyPhaseScopeViolatingPaths].([]string)
 	if !ok {
@@ -304,13 +304,13 @@ func TestCheckPhaseScope_RenameTracksBothEndpoints(t *testing.T) {
 	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	// implement-dsl scope: dsl-core, driver-port, external-system-driver-port.
-	ctx.Params["phase_id"] = "implement-dsl"
+	ctx.Params["phase-id"] = "implement-dsl"
 	out := a.checkPhaseScope(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
 	if got := ctx.Get(CtxKeyPhaseScopeClean); got != false {
-		t.Fatalf("phase_scope_clean: got %v, want false (rename target is outside scope)", got)
+		t.Fatalf("phase-scope-clean: got %v, want false (rename target is outside scope)", got)
 	}
 	violating, _ := ctx.State[CtxKeyPhaseScopeViolatingPaths].([]string)
 	found := false
@@ -925,7 +925,7 @@ func TestValidateOutputsAndScopes_JSONL_FlattenedIntoState(t *testing.T) {
 	// cleanest setup uses refine-acceptance-criteria (no presence-check
 	// pressure) and verifies the flatten worked end-to-end.
 	ctx.Params["task-name"] = "refine-acceptance-criteria"
-	ctx.State["output_file_path"] = jsonl
+	ctx.State["output-file-path"] = jsonl
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -985,7 +985,7 @@ func TestValidateOutputsAndScopes_JSONL_TypedCoercionForDeclaredKeys(t *testing.
 	a = newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx.Params["task-name"] = "write-acceptance-tests"
 	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
-	ctx.State["output_file_path"] = jsonl
+	ctx.State["output-file-path"] = jsonl
 
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
@@ -1014,7 +1014,7 @@ func TestValidateOutputsAndScopes_JSONL_LastWriteWinsAcrossLines(t *testing.T) {
 	a := newActions(Deps{Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	ctx.Params["task-name"] = "refine-acceptance-criteria"
-	ctx.State["output_file_path"] = jsonl
+	ctx.State["output-file-path"] = jsonl
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -1036,7 +1036,7 @@ func TestValidateOutputsAndScopes_JSONL_BlankLinesTolerated(t *testing.T) {
 	a := newActions(Deps{Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	ctx.Params["task-name"] = "refine-acceptance-criteria"
-	ctx.State["output_file_path"] = jsonl
+	ctx.State["output-file-path"] = jsonl
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -1056,7 +1056,7 @@ func TestValidateOutputsAndScopes_JSONL_MalformedLineHardErrors(t *testing.T) {
 	a := newActions(Deps{Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	ctx.Params["task-name"] = "refine-acceptance-criteria"
-	ctx.State["output_file_path"] = jsonl
+	ctx.State["output-file-path"] = jsonl
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err == nil {
 		t.Fatalf("expected hard error on malformed JSONL line, got nil")
@@ -1073,7 +1073,7 @@ func TestValidateOutputsAndScopes_JSONL_MissingFileIsNoOp(t *testing.T) {
 	a := newActions(Deps{Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	ctx.Params["task-name"] = "refine-acceptance-criteria"
-	ctx.State["output_file_path"] = filepath.Join(t.TempDir(), "does-not-exist.jsonl")
+	ctx.State["output-file-path"] = filepath.Join(t.TempDir(), "does-not-exist.jsonl")
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -1099,7 +1099,7 @@ func TestValidateOutputsAndScopes_JSONL_OptionalAbsenceTolerated(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Params["task-name"] = "write-acceptance-tests"
 	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
-	ctx.State["output_file_path"] = jsonl
+	ctx.State["output-file-path"] = jsonl
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -1143,10 +1143,10 @@ func (f *fakeTracker) ReadSections(_ context.Context, _ tracker.Issue, _ []strin
 }
 
 func seedIssue(ctx *statemachine.Context) {
-	ctx.Set("issue_num", "42")
-	ctx.Set("issue_url", "https://github.com/example/example/issues/42")
-	ctx.Set("issue_title", "Test")
-	ctx.Set("issue_handle", "PROJID:ITEMID")
+	ctx.Set("issue-num", "42")
+	ctx.Set("issue-url", "https://github.com/example/example/issues/42")
+	ctx.Set("issue-title", "Test")
+	ctx.Set("issue-handle", "PROJID:ITEMID")
 }
 
 func TestParseTicket_PopulatesStateOnHappyPath(t *testing.T) {
@@ -1231,11 +1231,11 @@ func TestParseTicket_TrackerReadError_Surfaces(t *testing.T) {
 func TestParseTicket_NoIssueURL_Fails(t *testing.T) {
 	a := newActions(Deps{Tracker: &fakeTracker{}})
 	ctx := statemachine.NewContext()
-	// No seedIssue — issue_url missing.
+	// No seedIssue — issue-url missing.
 
 	out := a.parseTicket(ctx)
 	if out.Err == nil {
-		t.Fatalf("expected error for missing issue_url")
+		t.Fatalf("expected error for missing issue-url")
 	}
 }
 

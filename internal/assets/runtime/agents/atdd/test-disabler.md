@@ -14,9 +14,9 @@ ${scope-block}
 ### Parameters
 
 - `language` — `java` | `csharp` | `typescript`. Adding a language requires editing `renderDisableMarkerExample` in `clauderun.go`; the dispatcher fails fast on an unrecognised value.
-- `ticket_id` — tracker-verbatim id (e.g. `OPV-123`, `#42`, `SHOP-7`).
+- `ticket-id` — tracker-verbatim id (e.g. `OPV-123`, `#42`, `SHOP-7`).
 - `loop` — `RED` | `GREEN`. (`GREEN` reserved for symmetry; today only RED disables.)
-- `cycle_phase` — `TEST` | `DSL` | `SYSTEM DRIVER` (uppercase; internal space allowed). Named `cycle_phase` (not `phase`) because the shared preamble already binds `${phase}` to the dispatch's BPMN-node label; this placeholder identifies the RED-cycle phase that's disabling tests.
+- `cycle-phase` — `TEST` | `DSL` | `SYSTEM DRIVER` (uppercase; internal space allowed). Named `cycle-phase` (not `phase`) because the shared preamble already binds `${phase}` to the dispatch's BPMN-node label; this placeholder identifies the RED-cycle phase that's disabling tests.
 - `test-names` — comma-separated list of bare test method names (the
   writing agent's emitted `test-names`, joined at substitution time).
   Each entry is an unqualified method name (e.g. `shouldRegisterCustomer`);

@@ -164,7 +164,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	// runs after the agent commits, diffs the working tree against the
 	// writing-agent MID's allowed paths joined from
 	// process-flow.yaml's inline node `write:` list + gh-optivem.yaml
-	// paths:, and writes phase-scope-clean + phase_scope_violating_paths
+	// paths:, and writes phase-scope-clean + phase-scope-violating-paths
 	// to context. The downstream phase-scope-clean gate consumes the
 	// boolean.
 	r.Register("check-phase-scope", a.checkPhaseScope)
@@ -178,7 +178,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("run-command", a.runCommand)
 	// BPMN Phase D — LOW execute-agent primitive's post-RUN_AGENT
 	// validation step. Reads the per-dispatch JSONL outputs file (path
-	// stashed at ctx.State["output_file_path"]; agent appends via `gh
+	// stashed at ctx.State["output-file-path"]; agent appends via `gh
 	// optivem output write KEY=VAL`) and looks up the writing-agent
 	// MID's declared OutputSpec list + write scope via Engine.Outputs /
 	// Engine.Scope(task-name) (with originating-task-name fallback for
@@ -222,13 +222,13 @@ const (
 	// whether every modified path in the phase fell within the allowed-paths
 	// join (process-flow.yaml MID `write:` scope ∘ gh-optivem.yaml paths:).
 	// Read by the phase-scope-clean gate.
-	CtxKeyPhaseScopeClean = "phase_scope_clean"
+	CtxKeyPhaseScopeClean = "phase-scope-clean"
 
 	// CtxKeyPhaseScopeViolatingPaths is the []string of modified paths
 	// check-phase-scope found outside scope. Populated only on violations;
 	// consumed by the STOP_SCOPE_VIOLATION user-task to render the
 	// human-review payload.
-	CtxKeyPhaseScopeViolatingPaths = "phase_scope_violating_paths"
+	CtxKeyPhaseScopeViolatingPaths = "phase-scope-violating-paths"
 
 	// CtxKeyPreAgentFingerprint is the snapshot of the working tree
 	// captured by the snapshot-working-tree action immediately before
@@ -266,9 +266,9 @@ type actions struct {
 // via Tracker.SetStatus. Wired to the MARK_IN_REFINEMENT node at the
 // start of refine-ticket.
 func (a actions) moveToInRefinement(ctx *statemachine.Context) statemachine.Outcome {
-	handle := ctx.GetString("issue_handle")
+	handle := ctx.GetString("issue-handle")
 	if handle == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-refinement: issue_handle not in Context")}
+		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-refinement: issue-handle not in Context")}
 	}
 	if err := a.deps.Tracker.SetStatus(context.Background(), handle, "In refinement"); err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-refinement: %w", err)}
@@ -281,9 +281,9 @@ func (a actions) moveToInRefinement(ctx *statemachine.Context) statemachine.Outc
 // Tracker.SetStatus. Wired to the MARK_READY node at the end of
 // refine-ticket.
 func (a actions) moveToReady(ctx *statemachine.Context) statemachine.Outcome {
-	handle := ctx.GetString("issue_handle")
+	handle := ctx.GetString("issue-handle")
 	if handle == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("move-to-ready: issue_handle not in Context")}
+		return statemachine.Outcome{Err: fmt.Errorf("move-to-ready: issue-handle not in Context")}
 	}
 	if err := a.deps.Tracker.SetStatus(context.Background(), handle, "Ready"); err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("move-to-ready: %w", err)}
@@ -293,12 +293,12 @@ func (a actions) moveToReady(ctx *statemachine.Context) statemachine.Outcome {
 }
 
 // moveToInProgress sets the picked issue's status to "In progress" via
-// Tracker.SetStatus. Reads issue_handle from Context — populated by the
+// Tracker.SetStatus. Reads issue-handle from Context — populated by the
 // driver's issue-lookup path (preResolveIssue).
 func (a actions) moveToInProgress(ctx *statemachine.Context) statemachine.Outcome {
-	handle := ctx.GetString("issue_handle")
+	handle := ctx.GetString("issue-handle")
 	if handle == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-progress: issue_handle not in Context (requires explicit pre-resolution)")}
+		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-progress: issue-handle not in Context (requires explicit pre-resolution)")}
 	}
 	if err := a.deps.Tracker.SetStatus(context.Background(), handle, "In progress"); err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-progress: %w", err)}
@@ -312,9 +312,9 @@ func (a actions) moveToInProgress(ctx *statemachine.Context) statemachine.Outcom
 // option or a permission failure on edit is a misconfiguration the
 // operator must fix before re-running.
 func (a actions) moveToInAcceptance(ctx *statemachine.Context) statemachine.Outcome {
-	handle := ctx.GetString("issue_handle")
+	handle := ctx.GetString("issue-handle")
 	if handle == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-acceptance: issue_handle not in Context")}
+		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-acceptance: issue-handle not in Context")}
 	}
 	if err := a.deps.Tracker.SetStatus(context.Background(), handle, "In acceptance"); err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-acceptance: %w", err)}
@@ -360,20 +360,20 @@ func (a actions) parseTicket(ctx *statemachine.Context) statemachine.Outcome {
 }
 
 // issueFromContext builds a tracker.Issue from the conventional Context
-// keys preResolveIssue writes (issue_num, issue_url, issue_title,
-// issue_handle). issue_url is the addressable form every Tracker call
+// keys preResolveIssue writes (issue-num, issue-url, issue-title,
+// issue-handle). issue-url is the addressable form every Tracker call
 // site needs; callers that don't seed it get a clear error rather than
 // a downstream parse failure.
 func issueFromContext(ctx *statemachine.Context) (tracker.Issue, error) {
-	url := ctx.GetString("issue_url")
+	url := ctx.GetString("issue-url")
 	if url == "" {
-		return tracker.Issue{}, fmt.Errorf("issue_url not in Context")
+		return tracker.Issue{}, fmt.Errorf("issue-url not in Context")
 	}
 	return tracker.Issue{
-		ID:     ctx.GetString("issue_num"),
-		Title:  ctx.GetString("issue_title"),
+		ID:     ctx.GetString("issue-num"),
+		Title:  ctx.GetString("issue-title"),
 		URL:    url,
-		Handle: ctx.GetString("issue_handle"),
+		Handle: ctx.GetString("issue-handle"),
 	}, nil
 }
 
@@ -421,19 +421,19 @@ func (a actions) runShell(cmdLine string) (ShellResult, error) {
 // dirty-tree set (`git status --porcelain`) and emits a debug line via
 // a.deps.Stderr so the re-wiring is loud.
 //
-// Phase id source: ctx.Params["phase_id"] — the writing-agent MID's name
+// Phase id source: ctx.Params["phase-id"] — the writing-agent MID's name
 // (e.g. "write-acceptance-tests"). Resolved via Engine.Scope.
 //
 // Writes:
 //   - CtxKeyPhaseScopeClean (bool)            — false on violation
 //   - CtxKeyPhaseScopeViolatingPaths ([]string) — populated on violation
 //
-// The phase_scope_clean gate reads the boolean; the STOP_SCOPE_VIOLATION
+// The phase-scope-clean gate reads the boolean; the STOP_SCOPE_VIOLATION
 // user-task reads the slice to render the human-review payload.
 func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome {
-	phaseID := ctx.Params["phase_id"]
+	phaseID := ctx.Params["phase-id"]
 	if phaseID == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: phase_id not set in Params — the call-activity invoking the writing-agent MID must pass phase_id")}
+		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: phase-id not set in Params — the call-activity invoking the writing-agent MID must pass phase-id")}
 	}
 
 	if a.deps.Engine == nil {
@@ -783,7 +783,7 @@ func lastNLines(s string, n int) string {
 // The agent emits structured outputs by invoking `gh optivem output
 // write KEY=VAL` from its Bash tool; each call appends one JSON object
 // to the per-dispatch JSONL file the driver pre-computes (path stashed
-// in ctx.State["output_file_path"] before RUN_AGENT, env-exported as
+// in ctx.State["output-file-path"] before RUN_AGENT, env-exported as
 // GH_OPTIVEM_OUTPUT_FILE). This action:
 //
 //  1. Walks that JSONL file (when present) applying last-write-wins per
@@ -803,7 +803,7 @@ func lastNLines(s string, n int) string {
 // was empty (claude-CLI prints to TTY, not envelope).
 //
 // Reads:
-//   - ctx.State["output_file_path"]      — absolute path to the per-dispatch
+//   - ctx.State["output-file-path"]      — absolute path to the per-dispatch
 //                                          JSONL file. Set by the driver
 //                                          ONLY when the MID's BPMN
 //                                          `outputs:` list is non-empty;
@@ -874,11 +874,11 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	// 1. Read the per-dispatch JSONL outputs file (when the driver
 	// stashed a path), apply last-write-wins per key, coerce values per
 	// the BPMN-declared types, and flatten into ctx.State. The driver
-	// only stashes output_file_path when the MID declared outputs, so
+	// only stashes output-file-path when the MID declared outputs, so
 	// an absent stash skips this block entirely.
 	taskName := phaseTaskName(ctx)
 	declared, _ := a.deps.Engine.Outputs(taskName)
-	outputFile, _ := ctx.State["output_file_path"].(string)
+	outputFile, _ := ctx.State["output-file-path"].(string)
 	if outputFile != "" {
 		flattened, err := readOutputsJSONL(outputFile, declared)
 		if err != nil {

@@ -53,7 +53,7 @@ func TestWrap_ServiceTaskLogsEntryAndExit(t *testing.T) {
 		Kind: statemachine.ServiceTask,
 		Raw:  statemachine.RawNode{Action: "move-to-in-progress"},
 		Fn: func(ctx *statemachine.Context) statemachine.Outcome {
-			ctx.Set("issue_num", "42")
+			ctx.Set("issue-num", "42")
 			return statemachine.Outcome{}
 		},
 	}
@@ -66,19 +66,19 @@ func TestWrap_ServiceTaskLogsEntryAndExit(t *testing.T) {
 
 	got := buf.String()
 	// State delta is hoisted into the OK line when Outcome is empty —
-	// `OK ... -> issue_num=42` replaces the misleading `OK ... -> (no result)`
+	// `OK ... -> issue-num=42` replaces the misleading `OK ... -> (no result)`
 	// the writer would otherwise print. The standalone `state:` follow-on
 	// line is suppressed to avoid duplication.
 	wantSubs := []string{
 		"> MARK_IN_PROGRESS  kind=service-task action=move-to-in-progress",
-		"OK MARK_IN_PROGRESS -> issue_num=42",
+		"OK MARK_IN_PROGRESS -> issue-num=42",
 	}
 	for _, s := range wantSubs {
 		if !strings.Contains(got, s) {
 			t.Errorf("trace output missing %q\nfull output:\n%s", s, got)
 		}
 	}
-	if strings.Contains(got, "state: issue_num=42") {
+	if strings.Contains(got, "state: issue-num=42") {
 		t.Errorf("state delta should be hoisted into OK line, not duplicated as follow-on; got:\n%s", got)
 	}
 }

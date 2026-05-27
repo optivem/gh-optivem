@@ -34,7 +34,7 @@ import "context"
 // "projectID:itemID" pair into Handle so SetStatus can pass them back
 // to the Projects API; the markdown adapter encodes the absolute file
 // path. The runtime threads Handle through Context as a single
-// `issue_handle` string.
+// `issue-handle` string.
 //
 // Repo is intentionally NOT a field. The two flows that historically
 // needed an owner/name pair (gh issue view --repo …) are subsumed by

@@ -784,7 +784,7 @@ processes:
         params:
           test-names: ${test-names}
           loop: RED
-          cycle_phase: TEST
+          cycle-phase: TEST
 
       - id: COMMIT_TEST_CODE
         type: call-activity
@@ -826,8 +826,8 @@ processes:
           tests: ${tests}
           # Names the RED-cycle phase identifying who placed (and now strips)
           # the per-test disable marker. Consumed by test-disabler /
-          # test-enabler via ${cycle_phase} / ${prev_phase}.
-          cycle_phase: DSL
+          # test-enabler via ${cycle-phase} / ${prev-phase}.
+          cycle-phase: DSL
 
       - id: IMPL_DSL_END
         type: end-event
@@ -849,7 +849,7 @@ processes:
           action: implement-system-driver-adapters
           expected-test-result: ${expected-test-result}
           tests: ${tests}
-          cycle_phase: SYSTEM DRIVER
+          cycle-phase: SYSTEM DRIVER
 
       - id: IMPL_SYS_DRIVER_END
         type: end-event
@@ -871,7 +871,7 @@ processes:
           action: implement-external-system-driver-adapters
           expected-test-result: ${expected-test-result}
           tests: ${tests}
-          cycle_phase: SYSTEM DRIVER
+          cycle-phase: SYSTEM DRIVER
 
       - id: IMPL_EXT_DRIVER_END
         type: end-event
@@ -1135,7 +1135,7 @@ processes:
         name: "Enable Tests"
         params:
           test-names: ${test-names}
-          prev_phase: ${cycle_phase}
+          prev-phase: ${cycle-phase}
 
       - id: COMPILE_TESTS
         type: call-activity
@@ -1177,7 +1177,7 @@ processes:
         params:
           test-names: ${test-names}
           loop: RED
-          cycle_phase: ${cycle_phase}
+          cycle-phase: ${cycle-phase}
 
       - id: COMMIT_LAYER
         type: call-activity
@@ -1818,8 +1818,8 @@ processes:
       - {from: EXECUTE_COMMAND, to: START_SYS_END}
 
   # The message is constructed here, not at each call site: every COMMIT_*
-  # caller runs downstream of parse-ticket, which writes `ticket_id` and
-  # `issue_title` into ctx.State, so the same `#<id> <title>` resolves
+  # caller runs downstream of parse-ticket, which writes `ticket-id` and
+  # `issue-title` into ctx.State, so the same `#<id> <title>` resolves
   # deterministically for every commit inside one ticket's workflow. Using
   # `#` rather than `[` makes the id auto-link to the GitHub issue in
   # commit listings and PR views.
@@ -1839,7 +1839,7 @@ processes:
         name: "Dispatch the Command"
         params:
           command: "gh optivem commit --yes --include-untracked"
-          message: "#${ticket_id} ${issue_title}"
+          message: "#${ticket-id} ${issue-title}"
 
       - id: COMMIT_MID_END
         type: end-event

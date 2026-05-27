@@ -14,8 +14,8 @@ ${scope-block}
 ### Parameters
 
 - `language` — `java` | `csharp` | `typescript`. Adding a language requires editing `renderDisableMarkerRemovalExample` in `clauderun.go`; the dispatcher fails fast on an unrecognised value.
-- `ticket_id` — tracker-verbatim id of the ticket currently moving from RED to GREEN.
-- `prev_phase` — `TEST` | `DSL` | `SYSTEM DRIVER` (uppercase; internal space allowed) — the RED phase whose disable markers must now be stripped.
+- `ticket-id` — tracker-verbatim id of the ticket currently moving from RED to GREEN.
+- `prev-phase` — `TEST` | `DSL` | `SYSTEM DRIVER` (uppercase; internal space allowed) — the RED phase whose disable markers must now be stripped.
 - `test-names` — comma-separated list of bare test method names (the
   writing agent's emitted `test-names`, joined at substitution time).
   Each entry is an unqualified method name (e.g. `shouldRegisterCustomer`);

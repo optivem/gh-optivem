@@ -703,7 +703,7 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	}
 	// Disable-marker examples (test-disabler / test-enabler). Composed
 	// from Language + TicketID + the call-activity-pushed loop /
-	// cycle_phase / prev_phase NodeParams. Same load-bearing pattern as
+	// cycle-phase / prev-phase NodeParams. Same load-bearing pattern as
 	// Language: register only when the helper produces a non-empty
 	// string (all inputs present AND language is recognised); otherwise
 	// findUnfilledPlaceholders fails the dispatch fast when the prompt
@@ -712,10 +712,10 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	// instruction in the agent body — the row is out of scope and the
 	// agent was forced to grep in-scope tests to reverse-engineer the
 	// syntax (3-5 wasted tool calls per dispatch).
-	if ex := renderDisableMarkerExample(opts.Language, opts.TicketID, opts.NodeParams["loop"], opts.NodeParams["cycle_phase"]); ex != "" {
+	if ex := renderDisableMarkerExample(opts.Language, opts.TicketID, opts.NodeParams["loop"], opts.NodeParams["cycle-phase"]); ex != "" {
 		params["disable-marker-example"] = ex
 	}
-	if ex := renderDisableMarkerRemovalExample(opts.Language, opts.TicketID, opts.NodeParams["prev_phase"]); ex != "" {
+	if ex := renderDisableMarkerRemovalExample(opts.Language, opts.TicketID, opts.NodeParams["prev-phase"]); ex != "" {
 		params["disable-marker-removal-example"] = ex
 	}
 	// AcceptanceCriteria is load-bearing for write-acceptance-tests — same rationale

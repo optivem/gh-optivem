@@ -459,7 +459,7 @@ func orPlaceholder(s, placeholder string) string {
 // 20260526-1448 Item 4).
 //
 // State (not Params) is the right destination: these facts are
-// project-scoped and stable for the entire run, alongside issue_title
+// project-scoped and stable for the entire run, alongside issue-title
 // (written by preResolveIssue) and the body-parsed description /
 // acceptance-criteria / steps-to-reproduce / checklist (written by the
 // parse-ticket service-task action — see actions.parseTicket). The
@@ -532,8 +532,8 @@ func (o Options) withDefaults() Options {
 }
 
 // preResolveIssue populates Context with the issue-resolution keys
-// downstream actions consume (issue_num, issue_url, issue_title,
-// issue_handle), by opening a tracker via factory.Open and calling
+// downstream actions consume (issue-num, issue-url, issue-title,
+// issue-handle), by opening a tracker via factory.Open and calling
 // Tracker.FindIssue. Called once at driver startup.
 // cfg is the pre-loaded project config (may be nil if no gh-optivem.yaml and
 // no --config); supplied by Run so the load happens once per driver
@@ -567,17 +567,17 @@ func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Conte
 // opaque project-membership payload SetStatus consumes, and Issue.URL as
 // the addressable form callers serialize to backend-native arguments.
 //
-// `ticket_id` is a backend-agnostic alias for the tracker-verbatim id
-// (issue.ID), seeded so agent prompts can reference ${ticket_id} without
-// caring whether the project's tracker is GitHub or Jira. issue_num and
-// ticket_id carry the same value today; the alias exists so prompt
+// `ticket-id` is a backend-agnostic alias for the tracker-verbatim id
+// (issue.ID), seeded so agent prompts can reference ${ticket-id} without
+// caring whether the project's tracker is GitHub or Jira. issue-num and
+// ticket-id carry the same value today; the alias exists so prompt
 // vocabulary stays neutral.
 func writeResolvedIssue(sCtx *statemachine.Context, issue tracker.Issue) {
-	sCtx.Set("issue_num", issue.ID)
-	sCtx.Set("issue_url", issue.URL)
-	sCtx.Set("issue_title", issue.Title)
-	sCtx.Set("issue_handle", issue.Handle)
-	sCtx.Set("ticket_id", issue.ID)
+	sCtx.Set("issue-num", issue.ID)
+	sCtx.Set("issue-url", issue.URL)
+	sCtx.Set("issue-title", issue.Title)
+	sCtx.Set("issue-handle", issue.Handle)
+	sCtx.Set("ticket-id", issue.ID)
 }
 
 // registerAgentDispatchers registers a no-op base dispatcher for every
@@ -768,7 +768,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		extraText := ctx.GetString(override.KeyExtra)
 		replaceText := ctx.GetString(override.KeyReplace)
 
-		issueNum, _ := strconv.Atoi(ctx.GetString("issue_num"))
+		issueNum, _ := strconv.Atoi(ctx.GetString("issue-num"))
 
 		agentName, err := statemachine.ExpandParams(raw.Agent, ctx.Params, ctx.State)
 		if err != nil {
@@ -907,7 +907,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			expectedOutputs = outs
 			if len(outs) > 0 && outputFilePath != "" {
 				outputKeysSpec = encodeOutputKeysSpec(outs)
-				ctx.Set("output_file_path", outputFilePath)
+				ctx.Set("output-file-path", outputFilePath)
 			} else {
 				// No declared outputs (or no runState) → unwire the path
 				// so clauderun doesn't export GH_OPTIVEM_OUTPUT_FILE in
@@ -927,8 +927,8 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			Agent:              agentName,
 			NodeDescription:    nodeDescription,
 			IssueNum:           issueNum,
-			IssueTitle:         ctx.GetString("issue_title"),
-			TicketID:           ctx.GetString("ticket_id"),
+			IssueTitle:         ctx.GetString("issue-title"),
+			TicketID:           ctx.GetString("ticket-id"),
 			Architecture:       ctx.GetString("architecture"),
 			Subtype:            ctx.GetString("subtype"),
 			Language:           ctx.GetString("language"),

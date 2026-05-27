@@ -168,20 +168,20 @@ type bindings struct {
 }
 
 // issueFromContext builds a tracker.Issue from the conventional Context
-// keys driver.preResolveIssue writes (issue_num, issue_url, issue_title,
-// issue_handle). issue_url is the addressable form every Tracker call
+// keys driver.preResolveIssue writes (issue-num, issue-url, issue-title,
+// issue-handle). issue-url is the addressable form every Tracker call
 // site needs; callers that don't seed it get a clear error rather than
 // a downstream parse failure.
 func issueFromContext(ctx *statemachine.Context) (tracker.Issue, error) {
-	url := ctx.GetString("issue_url")
+	url := ctx.GetString("issue-url")
 	if url == "" {
-		return tracker.Issue{}, fmt.Errorf("issue_url not in Context")
+		return tracker.Issue{}, fmt.Errorf("issue-url not in Context")
 	}
 	return tracker.Issue{
-		ID:     ctx.GetString("issue_num"),
-		Title:  ctx.GetString("issue_title"),
+		ID:     ctx.GetString("issue-num"),
+		Title:  ctx.GetString("issue-title"),
 		URL:    url,
-		Handle: ctx.GetString("issue_handle"),
+		Handle: ctx.GetString("issue-handle"),
 	}, nil
 }
 
@@ -229,8 +229,8 @@ func (b bindings) dslFlagsPresent(ctx *statemachine.Context) statemachine.Outcom
 // check_phase_scope action diffs the working tree against the
 // writing-agent MID's inline `write:` scope (joined with
 // gh-optivem.yaml paths:) and writes the boolean result to
-// ctx[phase_scope_clean] plus the violating paths to
-// ctx[phase_scope_violating_paths] for the STOP_SCOPE_VIOLATION payload.
+// ctx[phase-scope-clean] plus the violating paths to
+// ctx[phase-scope-violating-paths] for the STOP_SCOPE_VIOLATION payload.
 // This binding returns the boolean verbatim; true → continue to COMMIT,
 // false → STOP_SCOPE_VIOLATION.
 //
@@ -238,9 +238,9 @@ func (b bindings) dslFlagsPresent(ctx *statemachine.Context) statemachine.Outcom
 // flag, so the value must be set; reaching the gate with an unset value
 // is a bug, not a hand-debugging affordance.
 func (b bindings) phaseScopeClean(ctx *statemachine.Context) statemachine.Outcome {
-	v, ok := ctx.State["phase_scope_clean"]
+	v, ok := ctx.State["phase-scope-clean"]
 	if !ok {
-		return statemachine.Outcome{Err: fmt.Errorf("phase_scope_clean: not set in Context — check_phase_scope action did not run")}
+		return statemachine.Outcome{Err: fmt.Errorf("phase-scope-clean: not set in Context — check_phase_scope action did not run")}
 	}
 	return outcomeFromBoolish(v)
 }
