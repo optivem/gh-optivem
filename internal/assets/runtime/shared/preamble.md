@@ -48,7 +48,11 @@ If you cannot do the work without reading something outside scope and outside th
 
 ## Don't commit, don't summarise, don't ask
 
-When the work is done, do not summarise and do not commit — exit cleanly. The orchestrator drives compile, test runs, disabling, and commits as separate service tasks; the agent must never run `git commit`, `git add`, `gh issue close`, the compile commands, or the test commands.
+When the work is done, do not summarise and do not commit — exit cleanly. The orchestrator drives test runs, disabling, and commits as separate service tasks; the agent must never run `git commit`, `git add`, `gh issue close`, or the test commands.
+
+## Compile your work before exiting
+
+Before the "Next steps" footer, run `gh optivem compile` once and let it report. If it fails on errors caused by your edits, fix them and re-run. If it fails on errors clearly outside your scope (cross-cutting breakage you didn't introduce), do not try to fix them — exit and let the orchestrator's gate route the failure.
 
 Do not present a plan and wait for approval inside the agent. The orchestrator gates approvals between phases; an agent that stops mid-dispatch to ask the operator something will hang the pipeline. If you genuinely cannot proceed (an ambiguous Acceptance Criterion, an out-of-scope edit required, a contradiction between two inputs), emit the appropriate structured exit (the scope-exception envelope via `gh optivem output write` per `scope.md`, or a task-specific `blocker:` block when defined) and exit.
 
