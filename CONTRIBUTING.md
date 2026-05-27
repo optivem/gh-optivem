@@ -255,7 +255,7 @@ Fast iteration on the driver. **Local working copy of gh-optivem** + **existing 
 
 ##### Quick path (no extra flags)
 
-`scripts/atdd-rehearsal.sh` does **everything** end-to-end: `go build`s `gh-optivem.exe` from your working copy, creates the worktree, runs `implement` inside it, prompts to delete the worktree + branch on exit.
+`scripts/atdd-rehearsal.sh` does **everything** end-to-end: `go build`s `gh-optivem.exe` from your working copy, creates the worktree, runs `implement` inside it, prompts to delete the worktree + branch on exit. Docker state cleanup is no longer part of this script — if you want a fresh state (volumes + locally-built images dropped, per the current config's `systems.yaml`), run `bash ../gh-optivem/scripts/atdd-clean.sh [--config <yaml>]` first.
 
 ```bash
 # Step 1 — go to shop
