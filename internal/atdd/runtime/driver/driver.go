@@ -921,10 +921,17 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 				// No declared outputs (or no runState) → unwire the path
 				// so clauderun doesn't export GH_OPTIVEM_OUTPUT_FILE in
 				// isolation, which would let the agent write to a file
-				// the dispatcher never reads.
+				// the dispatcher never reads. Also clear any path the
+				// previous agent's dispatch stashed: without this, the
+				// next validateOutputsAndScopes would re-read the prior
+				// JSONL with this MID's empty declared list, fall through
+				// coerceJSONOutputValue's default branch, and clobber
+				// already-typed state keys ([]string → []any).
+				ctx.Set("output-file-path", "")
 				outputFilePath = ""
 			}
 		} else {
+			ctx.Set("output-file-path", "")
 			outputFilePath = ""
 		}
 

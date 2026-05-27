@@ -1014,3 +1014,33 @@ func TestClaudeRunDispatch_NoStructuredOutputIsNoOp(t *testing.T) {
 		t.Errorf("test-names should be unset, got %v", v)
 	}
 }
+
+func TestClaudeRunDispatch_NoDeclaredOutputs_ClearsStaleOutputFilePath(t *testing.T) {
+	// Regression: each agent dispatch must own the output-file-path
+	// stash. Previously the dispatcher only set the key when the MID
+	// declared outputs; the no-outputs branch left whatever the prior
+	// agent stashed. The next validate-outputs-and-scopes would re-read
+	// that stale JSONL with this MID's empty declared list, fall through
+	// coerceJSONOutputValue's default branch, and clobber typed state
+	// keys ([]string → []any). Symptom in the wild: --test='[A B]' on
+	// the second verify-tests call because []string{"A","B"} got
+	// re-decoded as []any{"A","B"} and rendered via fmt.Sprint.
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaaaaa1\n"),
+			[]byte("aaaaaaa1\n"),
+		},
+	}
+	claudeFake := &fakeClaude{}
+	fn := buildEngine(t, newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake}))
+
+	ctx := newCtxWithIssue()
+	ctx.Set("output-file-path", "/tmp/prior-agent.outputs.jsonl")
+	out := fn(ctx)
+	if out.Err != nil {
+		t.Fatalf("dispatch: %v", out.Err)
+	}
+	if got, _ := ctx.Get("output-file-path").(string); got != "" {
+		t.Errorf("output-file-path: got %q, want \"\" (dispatcher must clear stale stash when MID declares no outputs)", got)
+	}
+}
