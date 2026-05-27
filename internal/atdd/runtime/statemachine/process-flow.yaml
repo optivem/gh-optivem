@@ -790,6 +790,8 @@ processes:
         type: call-activity
         process: commit
         name: "Commit Test Code"
+        params:
+          message: "[${ticket_id}] ${issue_title}"
 
       - id: WAV_AT_CODE_END
         type: end-event
@@ -1054,6 +1056,8 @@ processes:
         type: call-activity
         process: commit
         name: "Commit System Changes"
+        params:
+          message: "[${ticket_id}] ${issue_title}"
 
       - id: IMPL_AND_VERIFY_SYSTEM_END
         type: end-event
@@ -1101,6 +1105,8 @@ processes:
         type: call-activity
         process: commit
         name: "Commit Test Changes"
+        params:
+          message: "[${ticket_id}] ${issue_title}"
 
       - id: REFACTOR_AND_VERIFY_TESTS_END
         type: end-event
@@ -1183,6 +1189,8 @@ processes:
         type: call-activity
         process: commit
         name: "Commit Layer Changes"
+        params:
+          message: "[${ticket_id}] ${issue_title}"
 
       - id: IMPLEMENT_TEST_LAYER_END
         type: end-event
@@ -1812,6 +1820,13 @@ processes:
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: START_SYS_END}
 
+  # Strict-mode rule: every caller MUST resolve `message` — either by
+  # binding it explicitly at the call site, or by ensuring an upstream
+  # writing-agent stashed it in state before the call. Omitting it is
+  # not accepted: the `ExpandParams` strict check rejects an unresolved
+  # `${message}` at dispatch with a precise error rather than letting
+  # the literal leak into the rendered CLI as `gh optivem commit '${message}'`.
+  # Mirrors the `suite` / `test-names` strict-mode rule on `run-tests`.
   commit:
     name: "Commit"
     start: EXECUTE_COMMAND
@@ -1822,6 +1837,7 @@ processes:
         name: "Dispatch the Command"
         params:
           command: "gh optivem commit"
+          message: ${message}
 
       - id: COMMIT_MID_END
         type: end-event

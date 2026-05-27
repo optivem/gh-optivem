@@ -552,6 +552,76 @@ func TestRunCommand_NoFilterFlagsForNonTestCommand(t *testing.T) {
 	}
 }
 
+func TestRunCommand_CommitAppendsMessageAsPositional(t *testing.T) {
+	sh := &fakeShell{out: []byte("OK")}
+	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	ctx.Params["command"] = "gh optivem commit"
+	ctx.Params["message"] = "[69] Add product search"
+	out := a.runCommand(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	want := `gh optivem commit '[69] Add product search'`
+	if sh.calls[0] != want {
+		t.Fatalf("shell call: got %q, want %q", sh.calls[0], want)
+	}
+}
+
+func TestRunCommand_CommitMessageEscapesShellMetacharacters(t *testing.T) {
+	sh := &fakeShell{out: []byte("OK")}
+	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	ctx.Params["command"] = "gh optivem commit"
+	ctx.Params["message"] = "msg with 'quote' and $var"
+	out := a.runCommand(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	// shellEscape wraps in single quotes and escapes embedded single quotes
+	// as '\'' — the result is bash-safe regardless of $var / backtick / etc.
+	want := `gh optivem commit 'msg with '\''quote'\'' and $var'`
+	if sh.calls[0] != want {
+		t.Fatalf("shell call: got %q, want %q", sh.calls[0], want)
+	}
+}
+
+func TestRunCommand_CommitWithoutMessageDoesNotSplice(t *testing.T) {
+	// Strict-mode YAML wiring blocks unbound `${message}` upstream of this
+	// action; at the action layer, an absent `message` param produces a
+	// bare `gh optivem commit` command line (matches the existing failure-
+	// routing fixture at TestRunCommand_RouteFailureViaState).
+	sh := &fakeShell{out: []byte("OK")}
+	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	ctx.Params["command"] = "gh optivem commit"
+	out := a.runCommand(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if sh.calls[0] != "gh optivem commit" {
+		t.Fatalf("shell call: got %q, want %q", sh.calls[0], "gh optivem commit")
+	}
+}
+
+func TestRunCommand_MessageIgnoredForNonCommitCommand(t *testing.T) {
+	// The isCommit prefix guard means a stray `message:` binding on a
+	// non-commit command is a silent no-op, matching the suite/test-names
+	// non-test-run behaviour.
+	sh := &fakeShell{out: []byte("OK")}
+	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	ctx.Params["command"] = "gh optivem test run"
+	ctx.Params["message"] = "should not appear"
+	out := a.runCommand(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if strings.Contains(sh.calls[0], "should not appear") {
+		t.Fatalf("shell call should not contain message for non-commit command: %q", sh.calls[0])
+	}
+}
+
 func TestRunCommand_EmptyCommandHalts(t *testing.T) {
 	sh := &fakeShell{}
 	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})

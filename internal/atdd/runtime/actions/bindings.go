@@ -704,6 +704,10 @@ func shellEscape(s string) string {
 //                                  method names (the writer-agent's
 //                                  emitted test-names, joined via
 //                                  coerceStateValue's []string case)
+//   - ctx.Params["message"]     — optional; appended as a positional
+//                                  `"<msg>"` argument when the command
+//                                  starts with `gh optivem commit`,
+//                                  escaped via shellEscape
 //
 // Writes ctx.State["command-succeeded"] = (exit == 0). For the
 // `gh optivem test run` family it additionally stamps
@@ -725,11 +729,17 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 		return statemachine.Outcome{Err: fmt.Errorf("run-command: command param not set — call-activity must pass `command:`")}
 	}
 	isTestRun := strings.HasPrefix(cmd, "gh optivem test run")
+	isCommit := strings.HasPrefix(cmd, "gh optivem commit")
 	if suite := strings.TrimSpace(ctx.Params["suite"]); suite != "" {
 		cmd += " --suite=" + shellEscape(suite)
 	}
 	if testNames := strings.TrimSpace(ctx.Params["test-names"]); testNames != "" {
 		cmd += " --test=" + shellEscape(testNames)
+	}
+	if isCommit {
+		if msg := strings.TrimSpace(ctx.Params["message"]); msg != "" {
+			cmd += " " + shellEscape(msg)
+		}
 	}
 	result, err := a.runShell(cmd)
 	succeeded := err == nil

@@ -1046,3 +1046,81 @@ processes:
 		t.Errorf("error %q must name the unresolved placeholder ${suite}", err.Error())
 	}
 }
+
+// TestStrictExpand_MissingMessageBindingFailsFast mirrors the suite-
+// strict-mode regression (TestStrictExpand_MissingSuiteBindingFailsFast)
+// for the `commit` subprocess's required `message` input. The fix that
+// introduced `message: ${message}` on the commit subprocess body relies
+// on the same strict-mode dispatch contract: a caller that forgets to
+// bind `message:` is a wiring bug, surfaced at dispatch time with a
+// precise error that names the unresolved placeholder — not a silent
+// splice of the literal `${message}` into `gh optivem commit '${message}'`
+// (which would silently miscommit). The YAML shape mirrors the
+// suite-strict-mode test exactly: the unresolved placeholder lives on
+// the inner call-activity's `params:` push, since that is the layer
+// strict-mode `ExpandParams` runs at.
+func TestStrictExpand_MissingMessageBindingFailsFast(t *testing.T) {
+	const yaml = `
+processes:
+  parent:
+    name: "Parent"
+    start: COMMIT
+    nodes:
+      - id: COMMIT
+        type: call-activity
+        process: commit-sub
+        name: "Synthetic Commit"
+      - id: PARENT_END
+        type: end-event
+        name: "Synthetic Test Event"
+    sequence-flows:
+      - {from: COMMIT, to: PARENT_END}
+
+  commit-sub:
+    name: "Commit Subprocess"
+    start: EXEC
+    nodes:
+      - id: EXEC
+        type: call-activity
+        process: inner
+        name: "Synthetic Execute"
+        params:
+          message: ${message}
+      - id: COMMIT_END
+        type: end-event
+        name: "Synthetic Test Event"
+    sequence-flows:
+      - {from: EXEC, to: COMMIT_END}
+
+  inner:
+    name: "Inner"
+    start: NOOP
+    nodes:
+      - id: NOOP
+        type: service-task
+        action: noop
+        name: "No-op"
+      - id: INNER_END
+        type: end-event
+        name: "Synthetic Test Event"
+    sequence-flows:
+      - {from: NOOP, to: INNER_END}
+`
+	eng, err := LoadBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+	eng.ActionFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	eng.AgentFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	eng.GateFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+	err = eng.RunProcess("parent", NewContext())
+	if err == nil {
+		t.Fatal("RunProcess succeeded; want strict-mode unresolved-placeholder error for ${message}")
+	}
+	if !strings.Contains(err.Error(), "${message}") {
+		t.Errorf("error %q must name the unresolved placeholder ${message}", err.Error())
+	}
+}
