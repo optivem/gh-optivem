@@ -20,15 +20,6 @@ runs:
         go-version-file: go.mod
         cache: false
 
-    - name: Setup Zig
-      # Zig provides cross-compile toolchains for all six release targets
-      # (linux/darwin/windows × amd64/arm64) from one Linux runner. The
-      # per-target CC=zig cc -target … overrides in .goreleaser.yml depend
-      # on this step having installed zig.
-      uses: mlugg/setup-zig@v2
-      with:
-        version: 0.14.1
-
     - name: Run GoReleaser
       uses: goreleaser/goreleaser-action@v7
       with:
