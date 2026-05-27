@@ -98,7 +98,7 @@ message. When the branch has an upstream, pull --rebase before staging and
 push after. When the branch has no upstream (e.g. local-only rehearsal
 branches), commit locally and skip the pull/push — the operator is told
 "(local only — no upstream branch)". Clean repos with no upstream are
-counted as skipped since neither commit nor sync can occur.
+counted as idle since neither commit nor sync can occur.
 
 A commit message is required when any iterated repo has dirty changes.
 
@@ -153,25 +153,23 @@ func runCommit(msg string, opts commitOptions) error {
 	}
 	fmt.Println(workspaceSeparator)
 
-	committed, synced, localOnly, skipped := 0, 0, 0, 0
+	var c commitCounts
 	for _, repo := range scope.Folders {
 		if opts.Repo != "" && repoBaseName(repo) != opts.Repo {
 			continue
 		}
 
 		hasUp := hasUpstream(repo)
-		// Skip only when there's nothing to do: clean working tree AND no
-		// upstream to sync with. A dirty repo without an upstream still
-		// gets a local commit — see the "(local only)" path below.
-		if !hasUp {
-			clean, err := workingTreeClean(repo)
-			if err != nil {
-				return fmt.Errorf("git status in %s: %w", repo, err)
-			}
-			if clean {
-				skipped++
-				continue
-			}
+		workingClean, err := workingTreeClean(repo)
+		if err != nil {
+			return fmt.Errorf("git status in %s: %w", repo, err)
+		}
+
+		// Idle: nothing to do — no upstream to sync with and no local
+		// changes to commit. Skip the banner entirely.
+		if workingClean && !hasUp {
+			c.idle++
+			continue
 		}
 
 		fmt.Println()
@@ -180,10 +178,9 @@ func runCommit(msg string, opts commitOptions) error {
 
 		// Pull --rebase onto the current branch's upstream *before*
 		// staging/committing so the new commit lands on top of the freshest
-		// remote tip, not a stale local ref. Working tree is dirty by
-		// definition here — stash unstaged + staged changes, rebase, then
-		// pop. Emulates `rebase.autoStash` regardless of operator config.
-		// No upstream → nothing to rebase onto, skip the pull.
+		// remote tip, not a stale local ref. Emulates `rebase.autoStash`
+		// regardless of operator config. No upstream → nothing to rebase
+		// onto, skip the pull.
 		if hasUp {
 			if err := pullWithAutoStash(repo); err != nil {
 				return fmt.Errorf("pre-commit git pull --rebase in %s: %w", repo, err)
@@ -194,27 +191,62 @@ func runCommit(msg string, opts commitOptions) error {
 		if err != nil {
 			return err
 		}
-		if didCommit {
-			committed++
-		}
 
+		// Push whenever there's an upstream — committed or not, the pull
+		// above may have brought new commits that still need pushing.
+		didPush := false
 		if hasUp {
 			if err := pushWithRebaseRetry(repo); err != nil {
 				return err
 			}
-			synced++
+			didPush = true
+		}
+
+		switch {
+		case didCommit && didPush:
+			c.committed++
+			c.pushed++
 			fmt.Println("  ✓ Pulled and pushed")
-		} else if didCommit {
-			localOnly++
+		case didCommit && !didPush:
+			c.committed++
+			c.localOnly++
 			fmt.Println("  ✓ Committed (local only — no upstream branch)")
+		case !didCommit && workingClean:
+			// Clean repo with upstream: pull+push happened, no commit attempted.
+			c.cleanSynced++
+			fmt.Println("  ✓ Pulled and pushed (clean)")
+		default:
+			// Was dirty, operator declined. "✗ Skipped" already printed by commitOneRepo.
+			c.declined++
 		}
 	}
 
 	fmt.Println()
 	fmt.Println(workspaceSeparator)
-	fmt.Printf("  Done. %d committed (%d synced, %d local only), %d skipped (no upstream and clean).\n", committed, synced, localOnly, skipped)
+	fmt.Println(commitSummaryLine(c))
 	fmt.Println(workspaceSeparator)
 	return nil
+}
+
+// commitCounts tracks the per-repo terminal outcomes of one `gh optivem
+// commit` invocation. Every iterated repo lands in exactly one of the six
+// buckets — committed+pushed, committed+local-only, declined, clean+synced,
+// or idle — so the summary line totals match the scope size.
+type commitCounts struct {
+	committed   int // commits that landed (= pushed + localOnly)
+	pushed      int // committed AND pushed to upstream
+	localOnly   int // committed AND no upstream (not pushed)
+	declined    int // dirty tree, operator answered 'n' at the prompt
+	cleanSynced int // clean tree WITH upstream — pull+push ran, no commit attempted
+	idle        int // clean tree, no upstream — nothing to do
+}
+
+// commitSummaryLine renders the one-line breakdown printed at the end of
+// `gh optivem commit`. Kept as a pure function so unit tests can pin the
+// exact wording without spinning up a workspace scope.
+func commitSummaryLine(c commitCounts) string {
+	return fmt.Sprintf("  Done. %d committed (%d pushed, %d local only), %d declined, %d clean (%d pulled+pushed, %d idle).",
+		c.committed, c.pushed, c.localOnly, c.declined, c.cleanSynced+c.idle, c.cleanSynced, c.idle)
 }
 
 // workingTreeClean reports whether `git status --short` is empty in repo —

@@ -146,6 +146,52 @@ func TestCommitOneRepo_DirtyWithoutMessage_Errors(t *testing.T) {
 	}
 }
 
+func TestCommitSummaryLine(t *testing.T) {
+	cases := []struct {
+		name string
+		in   commitCounts
+		want string
+	}{
+		{
+			name: "all-zero",
+			in:   commitCounts{},
+			want: "  Done. 0 committed (0 pushed, 0 local only), 0 declined, 0 clean (0 pulled+pushed, 0 idle).",
+		},
+		{
+			name: "declined-no-upstream — the rehearsal case (operator answered n on a local-only branch)",
+			in:   commitCounts{declined: 1},
+			want: "  Done. 0 committed (0 pushed, 0 local only), 1 declined, 0 clean (0 pulled+pushed, 0 idle).",
+		},
+		{
+			name: "committed-local-only (no upstream, operator confirmed)",
+			in:   commitCounts{committed: 1, localOnly: 1},
+			want: "  Done. 1 committed (0 pushed, 1 local only), 0 declined, 0 clean (0 pulled+pushed, 0 idle).",
+		},
+		{
+			name: "committed-and-pushed (upstream present)",
+			in:   commitCounts{committed: 1, pushed: 1},
+			want: "  Done. 1 committed (1 pushed, 0 local only), 0 declined, 0 clean (0 pulled+pushed, 0 idle).",
+		},
+		{
+			name: "clean-rollup sums cleanSynced + idle into the umbrella count",
+			in:   commitCounts{cleanSynced: 2, idle: 3},
+			want: "  Done. 0 committed (0 pushed, 0 local only), 0 declined, 5 clean (2 pulled+pushed, 3 idle).",
+		},
+		{
+			name: "mixed: 1 pushed, 1 local only, 1 declined, 1 clean+synced, 1 idle",
+			in:   commitCounts{committed: 2, pushed: 1, localOnly: 1, declined: 1, cleanSynced: 1, idle: 1},
+			want: "  Done. 2 committed (1 pushed, 1 local only), 1 declined, 2 clean (1 pulled+pushed, 1 idle).",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := commitSummaryLine(c.in); got != c.want {
+				t.Errorf("commitSummaryLine(%+v) =\n  got:  %q\n  want: %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
 func TestWorkingTreeClean(t *testing.T) {
 	repo := filepath.Join(t.TempDir(), "clean-check")
 	initTestRepo(t, repo)
