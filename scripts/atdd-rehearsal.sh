@@ -52,9 +52,14 @@ set -euo pipefail
 #      shop, so it lands in the worktree automatically — no copy or
 #      init step needed.
 #   5. cd into it and run, with $GH_OPTIVEM_CONFIG pointing at the chosen yaml:
-#        <gh-optivem>/gh-optivem.exe implement --issue <issue-num>
+#        <gh-optivem>/gh-optivem.exe implement --issue <issue-num> \
+#            --log-file <worktree>.log
+#      The log is written to a SIBLING of the worktree (not inside it) so
+#      it survives the cleanup-prompt deletion as a postmortem record.
+#      It captures the full audit trail (Debug + every other level) plus
+#      the trace stream — terminal verbosity flags do not filter the file.
 #   6. On exit (success, failure, or interrupt), prompt the user to delete
-#      the worktree + branch (default: yes).
+#      the worktree + branch (default: yes). The .log file is always kept.
 #
 # The consumer repo is always resolved as a sibling of gh-optivem named
 # per REHEARSAL_REPO (e.g. ../shop). The script can be invoked from any
@@ -110,7 +115,7 @@ HEADLESS=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
-      sed -n '12,47p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '12,52p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     -c|--config)
@@ -199,6 +204,11 @@ fi
 # file pointer) regardless of its directory name.
 WORKTREE_PATH="$(cd "$(dirname "$CONSUMER_ROOT")/.." && pwd)/rehearsal-${ID}"
 BRANCH="rehearsal/${ID}"
+# Log lives next to the worktree, not inside it, so the cleanup prompt's
+# `git worktree remove --force` does not nuke the postmortem record. The
+# binary's --log-file captures every level (Debug → Fatal) plus the trace
+# stream — strictly more than terminal output under any verbosity flag.
+LOG_FILE="${WORKTREE_PATH}.log"
 
 cleanup() {
   local rc=$?
