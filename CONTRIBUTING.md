@@ -272,11 +272,11 @@ bash ../gh-optivem/scripts/atdd-rehearsal.sh 61 --auto --headless               
 
 `--auto` and `--headless` are forwarded to the binary in the right positions (root vs. subcommand). For any other implement flag — `--manual-agents`, `--show-prompt`, `--log-file`, `--keep-runs`, `--workspace` — use the flag-aware path below.
 
-The worktree lands at `../rehearsal-<id>` (sibling of shop).
+The worktree lands at `../../worktrees/rehearsal-<id>` (under a `worktrees/` folder beside academy). The script auto-creates `worktrees/` if it's not there.
 
 ##### Iterating on the same worktree
 
-The rehearsal script is one-shot — it runs `implement` once, then exits with the cleanup prompt. If you answered `n` to keep the worktree (e.g. the run failed and you want to retry with a fixed driver, or you want to extend the same branch), iterate by hand. The worktree path was logged at the start of the script; assume it's `../rehearsal-<id>`.
+The rehearsal script is one-shot — it runs `implement` once, then exits with the cleanup prompt. If you answered `n` to keep the worktree (e.g. the run failed and you want to retry with a fixed driver, or you want to extend the same branch), iterate by hand. The worktree path was logged at the start of the script; assume it's `../../worktrees/rehearsal-<id>`.
 
 ```bash
 # Step 1 — edit gh-optivem code in the gh-optivem repo (not in the worktree)
@@ -286,12 +286,12 @@ cd ../shop
 go -C ../gh-optivem build -o gh-optivem.exe .
 
 # Step 3 — cd into the kept worktree and re-run implement
-cd ../rehearsal-<id>           # tab-complete <id> from the script's log line
-../gh-optivem/gh-optivem.exe implement --issue 61
+cd ../../worktrees/rehearsal-<id>   # tab-complete <id> from the script's log line
+../../academy/gh-optivem/gh-optivem.exe implement --issue 61
 
 # Step 4 — when truly done, clean up from shop
-cd ../shop
-git worktree remove --force ../rehearsal-<id>
+cd ../../academy/shop
+git worktree remove --force ../../worktrees/rehearsal-<id>
 git branch -D rehearsal/<id>
 ```
 
@@ -308,20 +308,23 @@ cd ../shop
 # Step 2 — build gh-optivem from your local working copy
 go -C ../gh-optivem build -o gh-optivem.exe .
 
-# Step 3 — create a throwaway worktree on a rehearsal branch
+# Step 3 — create a throwaway worktree on a rehearsal branch, under a
+#          `worktrees/` folder beside academy (outside academy on purpose
+#          — see scripts/atdd-rehearsal.sh for the repo-locator reason).
 TS=$(date +%Y%m%d-%H%M%S)
-git worktree add -b "rehearsal/${TS}" "../rehearsal-${TS}"
-cd "../rehearsal-${TS}"
+mkdir -p ../../worktrees
+git worktree add -b "rehearsal/${TS}" "../../worktrees/rehearsal-${TS}"
+cd "../../worktrees/rehearsal-${TS}"
 
 # Step 4 — run implement with whatever flags you need (pick one)
-../gh-optivem/gh-optivem.exe implement --issue 42
-../gh-optivem/gh-optivem.exe --auto implement --issue 42 --headless                  # fully autonomous (script also supports this)
-../gh-optivem/gh-optivem.exe implement --issue 42 --manual-agents
-../gh-optivem/gh-optivem.exe -c ./gh-optivem.experimental.yaml implement --issue 42  # swap node_extras / task_prompts / process_flow via an alternate config
+../../academy/gh-optivem/gh-optivem.exe implement --issue 42
+../../academy/gh-optivem/gh-optivem.exe --auto implement --issue 42 --headless                  # fully autonomous (script also supports this)
+../../academy/gh-optivem/gh-optivem.exe implement --issue 42 --manual-agents
+../../academy/gh-optivem/gh-optivem.exe -c ./gh-optivem.experimental.yaml implement --issue 42  # swap node_extras / task_prompts / process_flow via an alternate config
 
 # Step 5 — clean up the worktree + branch when done
-cd ../shop
-git worktree remove --force "../rehearsal-${TS}"
+cd ../../academy/shop
+git worktree remove --force "../../worktrees/rehearsal-${TS}"
 git branch -D "rehearsal/${TS}"
 ```
 
