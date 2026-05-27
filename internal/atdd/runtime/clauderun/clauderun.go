@@ -681,6 +681,23 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	if opts.TicketID != "" {
 		params["ticket_id"] = opts.TicketID
 	}
+	// Disable-marker examples (test-disabler / test-enabler). Composed
+	// from Language + TicketID + the call-activity-pushed loop /
+	// cycle_phase / prev_phase NodeParams. Same load-bearing pattern as
+	// Language: register only when the helper produces a non-empty
+	// string (all inputs present AND language is recognised); otherwise
+	// findUnfilledPlaceholders fails the dispatch fast when the prompt
+	// body references either placeholder. Inlining the marker shape
+	// here replaces the previous "go read the language-equivalents row"
+	// instruction in the agent body — the row is out of scope and the
+	// agent was forced to grep in-scope tests to reverse-engineer the
+	// syntax (3-5 wasted tool calls per dispatch).
+	if ex := renderDisableMarkerExample(opts.Language, opts.TicketID, opts.NodeParams["loop"], opts.NodeParams["cycle_phase"]); ex != "" {
+		params["disable_marker_example"] = ex
+	}
+	if ex := renderDisableMarkerRemovalExample(opts.Language, opts.TicketID, opts.NodeParams["prev_phase"]); ex != "" {
+		params["disable_marker_removal_example"] = ex
+	}
 	// AcceptanceCriteria is load-bearing for write-acceptance-tests — same rationale
 	// as Language. Only registered when non-empty so an absent value
 	// surfaces via findUnfilledPlaceholders rather than substituting "".
@@ -859,6 +876,60 @@ func renderScopeBlock(read, write []string, paths map[string]string) string {
 	writeBlock(&b, write)
 	b.WriteString("\nReading or writing outside this set requires a `scope_exception` block.")
 	return b.String()
+}
+
+// renderDisableMarkerExample inlines the per-language disable-marker
+// emit-this snippet into the test-disabler prompt via
+// ${disable_marker_example}. Previously the agent had to look up the
+// syntax in the language-equivalents reference doc (which is out of
+// scope under the agent's `read:` set) or grep the in-scope test tree
+// to reverse-engineer it — 3-5 wasted tool calls per dispatch. With
+// the snippet inlined the agent reads the target test file once and
+// edits it.
+//
+// The reason string is composed inline (not via a nested placeholder)
+// so the agent sees the literal marker it must emit. Returns "" when
+// any required field is empty OR the language is unrecognised; the
+// caller registers the placeholder only when non-empty so an absent
+// value surfaces via findUnfilledPlaceholders rather than silently
+// substituting "". Adding a new language requires touching this
+// function AND the matching row in language-equivalents/<lang>.md.
+func renderDisableMarkerExample(lang, ticketID, loop, cyclePhase string) string {
+	if lang == "" || ticketID == "" || loop == "" || cyclePhase == "" {
+		return ""
+	}
+	reason := fmt.Sprintf("%s - AT - %s - %s", ticketID, loop, cyclePhase)
+	switch lang {
+	case "java":
+		return fmt.Sprintf("```java\n@Disabled(\"%s\")\n@Test\nvoid shouldXxx() { ... }\n```\n\nAdd `import org.junit.jupiter.api.Disabled;` next to the other JUnit imports if it's not already present.", reason)
+	case "csharp":
+		return fmt.Sprintf("```csharp\n[Fact(Skip = \"%s\")]\npublic void ShouldXxx() { ... }\n```\n\nKeep the `[Fact]` attribute; add only the `Skip = \"...\"` parameter. No import change.", reason)
+	case "typescript":
+		return fmt.Sprintf("```typescript\n// %s\ntest.skip('shouldXxx', async (...) => { ... });\n```\n\nPrepend the `// <reason>` comment line above the test, then change `test(` to `test.skip(`. Playwright's `test.skip(title, body)` overload defines a skipped test; the comment carries the reason because the definition-time skip overload has no reason parameter. No import change.", reason)
+	}
+	return ""
+}
+
+// renderDisableMarkerRemovalExample is the symmetric helper for the
+// test-enabler — inlines the per-language transform that strips a
+// disable marker via ${disable_marker_removal_example}. Same
+// rationale as renderDisableMarkerExample. The reason-prefix is
+// composed inline so the agent sees the exact startsWith filter it
+// must match before stripping.
+func renderDisableMarkerRemovalExample(lang, ticketID, prevPhase string) string {
+	if lang == "" || ticketID == "" || prevPhase == "" {
+		return ""
+	}
+	prefix := fmt.Sprintf("%s - AT - RED - %s", ticketID, prevPhase)
+	switch lang {
+	case "java":
+		return fmt.Sprintf("Delete the `@Disabled(\"%s ...\")` annotation line above the test. If no `@Disabled` annotations remain in the file after stripping, also delete `import org.junit.jupiter.api.Disabled;`.", prefix)
+	case "csharp":
+		return fmt.Sprintf("Rewrite `[Fact(Skip = \"%s ...\")]` back to `[Fact]` — keep the attribute, drop only the `Skip` parameter. No import change.", prefix)
+	case "typescript":
+		return fmt.Sprintf("Delete the `// %s ...` comment line above the test, then change `test.skip(` back to `test(`. No import change.", prefix)
+	}
+	return ""
 }
 
 func (o Options) withDefaults() Options {

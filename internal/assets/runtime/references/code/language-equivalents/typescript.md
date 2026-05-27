@@ -13,10 +13,14 @@ served to dispatches with `${language}=typescript`. See the
 
 ## Test Disabling
 
+Playwright's `test.skip(title, body)` overload defines a skipped test; the overload has no reason parameter, so the reason rides in a `//`-comment line directly above the test.
+
 | Operation | Syntax |
 |-----------|--------|
-| Disable a single test | `test.skip(true, "reason")` |
-| Re-enable a test | Remove `test.skip(...)` |
+| Disable a single test | Prepend `// <reason>` above the test, then change `test(...)` to `test.skip(...)`. |
+| Re-enable a test | Delete the `// <reason>` line and change `test.skip(...)` back to `test(...)`. |
+
+Do not use the imperative `test.skip(condition, description)` form (that runs inside a test body and skips conditionally at runtime) — the disable/enable agents transform the definition-time form only.
 
 ## String Field Types
 
