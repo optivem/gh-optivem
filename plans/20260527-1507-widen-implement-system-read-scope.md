@@ -1,5 +1,7 @@
 # Widen `implement-system` read scope to include the system-test layer
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-27T17:48:48Z`
+
 ## Context
 
 `internal/atdd/runtime/statemachine/process-flow.yaml:1389-1408` declares
@@ -83,122 +85,6 @@ guarantee.
    that does not exist here.
 
 ## Items
-
-### 1. Widen `implement-system` read scope in `process-flow.yaml`
-
-**Files touched:**
-
-- `internal/atdd/runtime/statemachine/process-flow.yaml`
-  (the `implement-system:` block, lines ~1389-1408)
-
-**Change:** replace
-
-```yaml
-        read:  [system-path]
-        write: [system-path]
-```
-
-with
-
-```yaml
-        read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
-        write: [system-path]
-```
-
-Add a block-comment immediately above `implement-system:` (matching the
-style of the `update-system` comment at lines 1410-1416) explaining the
-asymmetry:
-
-> Asymmetric: reads the full system-test layer (the failing AT, its
-> contracts, the DSL it speaks, the driver port/adapter pair and the
-> external-system driver pair the AT may stage) so the agent can see
-> *what* behaviour to implement. Writes only `system-path` — any
-> change to driver/test code requires a `scope_exception`.
-
-### 2. Update the `system-implementer` agent prompt to use the new visibility
-
-**Files touched:**
-
-- `internal/assets/runtime/agents/atdd/system-implementer.md`
-
-**Change:** update Step 1 prose to reflect that the agent should
-start by reading the failing AT (under `${at-test}`) to understand the
-required behaviour, then trace through `${dsl-port}` /
-`${driver-port}` / `${driver-adapter}` to see how the AT reaches the
-production system, before writing the simplest implementation under
-`${system-path}` that makes the AT pass.
-
-Keep the existing `${scope-block}` mechanism — it already renders the
-full read/write lists, so the explicit list of paths in the prompt
-body should remain prose ("the failing AT", "the contracts", "the
-driver port the adapter calls into") rather than re-enumerating
-placeholders. The scope-block is the source of truth for what's
-in scope; the prompt body explains *how to use* that scope.
-
-Do not add a new "verify" sub-step — running tests stays out of scope
-for this agent per existing convention; the change-cycle's own
-verification step runs the AT.
-
-### 3. Mirror the scope widening in the driver-test inline YAML fixtures
-
-**Files touched:**
-
-- `internal/atdd/runtime/driver/driver_test.go`
-  (the synthetic `implement-system:` blocks at ~lines 129-141 and
-  ~lines 180-192 — both currently declare `read: [system-path]`)
-
-**Change:** replace both `read: [system-path]` lines under
-`implement-system:` with the same widened read list from Item 1. Leave
-`write: [system-path]` unchanged.
-
-Inspect the surrounding test assertions: at least one assertion
-(driver_test.go:759) checks that the rendered prompt contains
-`- `system-path`: system/monolith/typescript`. Verify whether the
-test also asserts the *absence* of other path keys; if it does,
-extend the assertion to expect the additional keys to now appear, in
-the same `${name}: ${resolved}` format the scope-block renderer
-produces. If it does not, no further test edit is needed — the
-existing assertion still passes because `system-path` remains in the
-rendered list.
-
-### 4. Audit other inline YAML fixtures referencing `implement-system`
-
-**Files touched (audit only; edit if matches found):**
-
-- `internal/atdd/runtime/clauderun/clauderun_test.go`
-- `internal/atdd/runtime/statemachine/transitions_test.go`
-- any other `*_test.go` under `internal/atdd/` that grep matches for
-  the literal block
-
-**Change:** grep for the literal pattern
-`implement-system:` and `read:  [system-path]` (two-space indent) in
-each file. For every inline YAML occurrence that mirrors the production
-`implement-system` phase shape, apply the same read-list widening as
-Item 3. For occurrences that are *unrelated* (e.g. a `task-name`
-string literal in a fixture map, not a process-flow node), leave
-untouched.
-
-If a fixture intentionally uses the *narrow* `[system-path]` read scope
-to test the old behaviour, replace with the *new* `[at-test, ct-test,
-…, system-path]` list — the old behaviour is no longer the system's
-behaviour, so fixtures must match.
-
-### 5. Regenerate the statemachine-derived diagrams referenced from docs
-
-**Files touched (audit only):**
-
-- `internal/atdd/runtime/diagram/diagram.go` (read; do not edit
-  unless it renders scope-list strings directly into a diagram
-  asset that this plan invalidates)
-
-**Change:** none unless the diagram renderer bakes the read-list into
-its output. The repository convention (per CLAUDE memory: "Plans must
-not include diagram regeneration steps") is that the
-`regenerate-diagram` GitHub Actions workflow auto-regenerates
-`docs/process-diagram.md` and `docs/images/*.svg` on push to `main`.
-This item exists only as an audit checkpoint — if the diagram source
-encodes scope strings, no manual regen step is added here; the
-post-merge workflow will pick the change up.
 
 ## Verification
 

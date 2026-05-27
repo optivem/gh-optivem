@@ -137,7 +137,7 @@ processes:
         params:
           task-name: implement-system
           agent: system-implementer
-        read:  [system-path]
+        read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
         write: [system-path]
       - id: END
         type: end-event
@@ -188,7 +188,7 @@ processes:
         params:
           task-name: implement-system
           agent: system-implementer
-        read:  [system-path]
+        read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
         write: [system-path]
       - id: END
         type: end-event

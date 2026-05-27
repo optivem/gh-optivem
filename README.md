@@ -281,7 +281,7 @@ gh optivem test run --test T1,T2          # ...or comma-separated
 gh optivem test run --sample              # use each suite's sampleTest field as the test name
 ```
 
-Multi-test semantics depend on the suite's `testFilter` in `tests.yaml`. The runner combines multiple `--test` values per `testFilterJoin`: `"or"` (default) joins names with `|` and substitutes once — works for dotnet (`&DisplayName~T1|T2`) and playwright/jest (`--grep 'T1|T2'`); `"repeat"` substitutes the whole `testFilter` once per name and concatenates — required for gradle (`--tests T1 --tests T2`). Practical ceiling on Windows is ~600 typical test names per invocation (the OS caps each command line at 32K characters).
+Multi-test semantics depend on the suite's `testFilter` in `tests.yaml`. The runner combines multiple `--test` values per `testFilterJoin`: `"or"` (default) joins names with `|` and substitutes once — works for playwright/jest (`--grep 'T1|T2'`) where `|` is alternation at the value level; `"repeat"` substitutes the whole `testFilter` once per name and concatenates — required for gradle (`--tests T1 --tests T2`) where the flag itself must repeat; `"fragment-or"` (for `&`-prefixed injection fragments) substitutes per name, joins with `|`, wraps in `( ... )`, and injects as one expression — required for dotnet (`&(DisplayName~T1|DisplayName~T2)`) whose `--filter` parser ORs full property terms, not bare values. Practical ceiling on Windows is ~600 typical test names per invocation (the OS caps each command line at 32K characters).
 
 ## Cross-repo operations
 

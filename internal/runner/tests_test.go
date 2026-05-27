@@ -142,6 +142,62 @@ func TestApplyTestFilterOrJoinsWithPipe(t *testing.T) {
 	}
 }
 
+func TestApplyTestFilterFragmentOrWrapsInParensWithPipe(t *testing.T) {
+	// dotnet `--filter` ORs full property terms (`DisplayName~T1|DisplayName~T2`),
+	// not bare values — so multi-name fragments have to substitute per name,
+	// pipe-join the substituted fragments, and wrap in `( ... )` before being
+	// injected into the existing --filter '...'.
+	cases := []struct {
+		name       string
+		command    string
+		testFilter string
+		names      []string
+		want       string
+	}{
+		{
+			name:       "single name still wraps in parens",
+			command:    "dotnet test --filter 'FullyQualifiedName~Smoke'",
+			testFilter: "&DisplayName~<test>",
+			names:      []string{"T1"},
+			want:       "dotnet test --filter 'FullyQualifiedName~Smoke&(DisplayName~T1)'",
+		},
+		{
+			name:       "two names",
+			command:    "dotnet test --filter 'FullyQualifiedName~Smoke'",
+			testFilter: "&DisplayName~<test>",
+			names:      []string{"T1", "T2"},
+			want:       "dotnet test --filter 'FullyQualifiedName~Smoke&(DisplayName~T1|DisplayName~T2)'",
+		},
+		{
+			name:       "three names",
+			command:    "dotnet test --filter 'FullyQualifiedName~Smoke'",
+			testFilter: "&DisplayName~<test>",
+			names:      []string{"T1", "T2", "T3"},
+			want:       "dotnet test --filter 'FullyQualifiedName~Smoke&(DisplayName~T1|DisplayName~T2|DisplayName~T3)'",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := applyTestFilter(c.command, c.testFilter, "fragment-or", c.names)
+			if got != c.want {
+				t.Errorf("\n got:  %q\n want: %q", got, c.want)
+			}
+		})
+	}
+}
+
+func TestApplyTestFilterFragmentOrMissingAmpersandLeavesCommandUnchanged(t *testing.T) {
+	// fragment-or only makes sense for `&`-prefixed injection templates.
+	// A misconfigured tests.yaml (`testFilter: --grep '<test>'` with
+	// `testFilterJoin: fragment-or`) must fail loudly rather than silently
+	// emit a malformed expression.
+	cmd := "npx playwright test smoke"
+	got := applyTestFilter(cmd, "--grep '<test>'", "fragment-or", []string{"T1", "T2"})
+	if got != cmd {
+		t.Errorf("want command unchanged when fragment-or template lacks '&' prefix, got %q", got)
+	}
+}
+
 func TestApplyTestFilterRepeatAppendsPerName(t *testing.T) {
 	// gradle's --tests is Ant-glob, no OR — multi-value requires the whole
 	// flag to repeat once per name.

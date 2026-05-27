@@ -945,6 +945,8 @@ processes:
         type: call-activity
         process: start-system
         name: "Start System"
+        params:
+          start-flags: "--restart"
 
       - id: VERIFY_TESTS_PASS_CONTRACT_REAL
         type: call-activity
@@ -987,6 +989,8 @@ processes:
         type: call-activity
         process: start-system
         name: "Start System"
+        params:
+          start-flags: "--restart"
 
       - id: VERIFY_TESTS_PASS_CONTRACT_STUB
         type: call-activity
@@ -1041,6 +1045,8 @@ processes:
         type: call-activity
         process: start-system
         name: "Start the System"
+        params:
+          start-flags: "--restart"
 
       - id: VERIFY_TESTS_PASS
         type: call-activity
@@ -1417,6 +1423,11 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: IMPL_DSL_END}
 
+  # Asymmetric: reads the full system-test layer (the failing AT, its
+  # contracts, the DSL it speaks, the driver port/adapter pair and the
+  # external-system driver pair the AT may stage) so the agent can see
+  # *what* behaviour to implement. Writes only system-path — any change
+  # to driver/test code requires a scope_exception.
   implement-system:
     name: "Implement System"
     start: EXECUTE_AGENT
@@ -1428,7 +1439,7 @@ processes:
         params:
           task-name: implement-system
           agent: system-implementer
-        read:  [system-path]
+        read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
         write: [system-path]
 
       - id: IMPL_SYS_END
@@ -1819,6 +1830,27 @@ processes:
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: BUILD_SYS_END}
 
+  # `${start-flags}` defaults to empty — the dispatched command is then
+  # `gh optivem system start`, and `runner.Up` short-circuits with the
+  # "already running, skipping restart" optimisation when the system is
+  # healthy (`internal/runner/system.go:131`). This is correct for callers
+  # that run *before* a system build (RED-side test-write phases, pre-verify
+  # safety calls).
+  #
+  # Callers that run *after* `build-system` MUST pass
+  # `start-flags: "--restart"` to force `runner.Up` to tear down the stale
+  # container and bring up the freshly-built image. Without it, `Up` skips
+  # the restart, the new image is never instantiated, and the verify step
+  # runs against the stale container — every test then exercises pre-build
+  # code and the orchestrator mis-routes the resulting failures to
+  # `fix-unexpected-failing-tests`.
+  #
+  # Current restart-required callers:
+  #
+  #   - `implement-and-verify-system` — `START_SYSTEM` after `BUILD_SYSTEM`.
+  #   - `implement-and-verify-external-system-driver-adapters-contract-tests`
+  #     — `START_SYSTEM_AFTER_DRIVER` after `BUILD_SYSTEM_AFTER_DRIVER`.
+  #   - Same process — `START_SYSTEM_AFTER_STUBS` after `BUILD_SYSTEM_AFTER_STUBS`.
   start-system:
     name: "Start System"
     start: EXECUTE_COMMAND
@@ -1828,7 +1860,8 @@ processes:
         process: execute-command
         name: "Dispatch the Command"
         params:
-          command: "gh optivem system start"
+          command: "gh optivem system start ${start-flags}"
+          start-flags: ""
 
       - id: START_SYS_END
         type: end-event

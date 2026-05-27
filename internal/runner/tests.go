@@ -186,11 +186,18 @@ func pickFilterValue(suite Suite, opts TestOptions) []string {
 // applyTestFilter substitutes the supplied test names into testFilter and
 // merges the result into command. join controls multi-value semantics:
 //
-//	"" / "or" — join names with "|" and substitute once. Works for runners
-//	            that already treat "|" as alternation in their filter syntax.
-//	"repeat"  — substitute the whole testFilter once per name and append each
-//	            result independently. Required when the flag itself must
-//	            repeat (e.g. gradle's `--tests T1 --tests T2`).
+//	"" / "or"     — join names with "|" and substitute once. Works for runners
+//	                that already treat "|" as alternation in their filter
+//	                syntax at the value level (playwright/jest `--grep`).
+//	"repeat"      — substitute the whole testFilter once per name and append
+//	                each result independently. Required when the flag itself
+//	                must repeat (e.g. gradle's `--tests T1 --tests T2`).
+//	"fragment-or" — for "&"-prefixed injection fragments only. Substitute the
+//	                template once per name, join the substituted fragments
+//	                with "|", wrap in "(...)", and inject as one expression.
+//	                Required for `dotnet test --filter` where "|" only ORs
+//	                full property terms, not bare values
+//	                (`&(DisplayName~T1|DisplayName~T2)`).
 //
 // Returns command unchanged when names is empty or testFilter is empty.
 func applyTestFilter(command, testFilter, join string, names []string) string {
@@ -203,6 +210,19 @@ func applyTestFilter(command, testFilter, join string, names []string) string {
 			command = appendTestFilter(command, expr)
 		}
 		return command
+	}
+	if join == "fragment-or" {
+		if !strings.HasPrefix(testFilter, "&") {
+			fmt.Fprintf(os.Stderr, "testFilterJoin: fragment-or requires testFilter to begin with '&'; got %q — leaving command unchanged\n", testFilter)
+			return command
+		}
+		body := strings.TrimPrefix(testFilter, "&")
+		fragments := make([]string, len(names))
+		for i, name := range names {
+			fragments[i] = strings.ReplaceAll(body, "<test>", name)
+		}
+		expr := "&(" + strings.Join(fragments, "|") + ")"
+		return appendTestFilter(command, expr)
 	}
 	expr := strings.ReplaceAll(testFilter, "<test>", strings.Join(names, "|"))
 	return appendTestFilter(command, expr)
@@ -249,6 +269,10 @@ func runShell(command, cwd string, env map[string]string) error {
 	if len(env) > 0 {
 		cmd.Env = mergeEnv(os.Environ(), env)
 	}
+	// On Windows, args destined for .bat/.cmd targets need to survive cmd.exe's
+	// metacharacter parsing (|, &, <, >, etc.) before the batch file's CRT
+	// sees them. No-op on non-Windows.
+	applyCmdExeQuoting(cmd, parts)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%s: %w\nstderr tail:\n%s", command, err, tail.String())
 	}

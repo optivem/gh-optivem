@@ -68,12 +68,19 @@ type Component struct {
 // TestFilterJoin controls how multiple --test values are combined:
 //
 //	"" / "or" (default) — join names with "|" and substitute once. Covers
-//	                       dotnet (`&DisplayName~T1|T2`) and playwright/jest
-//	                       (`--grep 'T1|T2'`) where the runner already treats
-//	                       "|" as alternation.
+//	                       playwright/jest (`--grep 'T1|T2'`) where the
+//	                       runner treats "|" as alternation at the value
+//	                       level.
 //	"repeat"            — substitute the whole TestFilter once per name and
 //	                       concatenate. Covers gradle (`--tests T1 --tests T2`)
 //	                       where the *flag itself* must repeat.
+//	"fragment-or"       — for "&"-prefixed injection fragments only.
+//	                       Substitute the template once per name, join the
+//	                       substituted fragments with "|", wrap in "(...)",
+//	                       and inject as one expression. Required by dotnet
+//	                       (`&(DisplayName~T1|DisplayName~T2)`), whose
+//	                       `--filter` parser ORs full property terms, not
+//	                       bare values.
 //
 // SuiteGroups is an optional alias map from group name → list of suite ids.
 // `gh optivem test run --suite <name>` substitutes the alias with its

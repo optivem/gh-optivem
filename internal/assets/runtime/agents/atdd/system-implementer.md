@@ -19,4 +19,5 @@ ${scope-block}
 
 ## Steps
 
-1. Do the simplest implementation possible under the system surface (`${system-path}`) with the goal of making the acceptance tests pass.
+1. Read the failing acceptance test to see the required behaviour, then trace through the DSL, the driver port, and the driver adapter to see how the test reaches the production system (and which stubbed external interactions, if any, the test stages). The scope block above lists every layer you may read.
+2. Do the simplest implementation possible under the system surface (`${system-path}`) with the goal of making the acceptance test pass.
