@@ -533,7 +533,7 @@ flowchart TD
     IMPL_DSL_END(( ))
 
     EXECUTE_AGENT --> IMPL_DSL_END
-    IMPLEMENT-DSL_OUTPUTS[/system-driver-ports-changed: bool, external-driver-ports-changed: bool, scope-exception-files?: string-list, scope-exception-reason?: string/]
+    IMPLEMENT-DSL_OUTPUTS[/system-driver-port-changed: bool, external-driver-port-changed: bool, scope-exception-files?: string-list, scope-exception-reason?: string/]
     IMPL_DSL_END -. produces .-> IMPLEMENT-DSL_OUTPUTS
 
     classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
