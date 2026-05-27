@@ -347,6 +347,13 @@ func snapshotState(state map[string]any) map[string]string {
 // Reserved override keys (those starting with `_override_`) are excluded
 // because override.Wrap republishes them on every node, which would make
 // the delta line noisy without adding signal.
+//
+// Entries sort by post-value length ascending (alphabetical tiebreaker)
+// so short scalars render first and long blobs — e.g. phase-changed-files'
+// newline-joined path list — trail at the end of the line. Reading from
+// left to right then matches a "primitive → composite" gradient instead
+// of being broken up by a multi-line value sandwiched between two
+// scalars.
 func stateDelta(pre, post map[string]string) string {
 	keys := map[string]bool{}
 	for k := range pre {
@@ -364,7 +371,13 @@ func stateDelta(pre, post map[string]string) string {
 			changed = append(changed, k)
 		}
 	}
-	sort.Strings(changed)
+	sort.SliceStable(changed, func(i, j int) bool {
+		li, lj := len(post[changed[i]]), len(post[changed[j]])
+		if li != lj {
+			return li < lj
+		}
+		return changed[i] < changed[j]
+	})
 	if len(changed) == 0 {
 		return ""
 	}

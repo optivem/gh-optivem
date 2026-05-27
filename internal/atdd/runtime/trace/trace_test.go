@@ -382,6 +382,24 @@ func TestStateDelta_IgnoresOverrideKeysAndSortsKeys(t *testing.T) {
 	}
 }
 
+func TestStateDelta_LongValuesSortLast(t *testing.T) {
+	// Short scalars render first, long blobs (e.g. phase-changed-files'
+	// newline-joined path list) trail — so a multi-line value never
+	// splits two short scalars on the OK line.
+	pre := map[string]string{}
+	post := map[string]string{
+		"phase-changed-files":           "a/long/path/one.java\na/long/path/two.java",
+		"external-driver-port-changed":  "false",
+		"system-driver-port-changed":    "true",
+	}
+
+	got := stateDelta(pre, post)
+	want := "system-driver-port-changed=true, external-driver-port-changed=false, phase-changed-files=a/long/path/one.java\na/long/path/two.java"
+	if got != want {
+		t.Errorf("stateDelta = %q, want %q", got, want)
+	}
+}
+
 func TestWrapAll_DecoratesEveryNodeInEveryFlow(t *testing.T) {
 	prevNow := nowFn
 	nowFn = fixedClock

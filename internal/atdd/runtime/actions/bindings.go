@@ -848,17 +848,21 @@ func lastNLines(s string, n int) string {
 //                                               working-tree paths
 //                                               outside the declared
 //                                               write scope.
-//   - ctx.State["phase-changed-files"]        — set whenever the scope
-//                                               check ran (success or
-//                                               failure); newline-joined
-//                                               sorted list of every path
-//                                               in the snapshot delta
-//                                               (in-scope + out-of-scope).
-//                                               The fix-scope-diff prompt
-//                                               reads this as ${changed-files}
-//                                               so the diagnosing agent sees
+//   - ctx.State["phase-changed-files"]        — set on scope-diff failure
+//                                               only; newline-joined sorted
+//                                               list of every path in the
+//                                               snapshot delta (in-scope +
+//                                               out-of-scope). The
+//                                               fix-scope-diff prompt reads
+//                                               this as ${changed-files} so
+//                                               the diagnosing agent sees
 //                                               only this phase's edits,
 //                                               not the full git status dump.
+//                                               Not stashed on success: no
+//                                               downstream consumer reads it
+//                                               then, and the empty trace
+//                                               state-delta keeps the OK
+//                                               line readable.
 //
 // Does NOT surface as Outcome.Err — the gateway's false branch
 // dispatches `fix-${failure-kind}` per Q-late-5. Hard errors
@@ -937,12 +941,6 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
 	}
-	// Stash the full snapshot delta (in-scope + out-of-scope) so the
-	// fix-scope-diff prompt's ${changed-files} renders this phase's
-	// edits only — not the cross-phase `git status --porcelain` dump
-	// the dispatcher would otherwise capture.
-	ctx.Set("phase-changed-files", strings.Join(modified, "\n"))
-
 	var violating []string
 	for _, m := range modified {
 		if !pathInScope(m, allowed) {
@@ -950,6 +948,13 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 		}
 	}
 	if len(violating) > 0 {
+		// Stash the full snapshot delta (in-scope + out-of-scope) so the
+		// fix-scope-diff prompt's ${changed-files} renders this phase's
+		// edits only — not the cross-phase `git status --porcelain` dump
+		// the dispatcher would otherwise capture. Set only on the failure
+		// path: success routes forward and no fix-scope-diff runs, so the
+		// stash would never be read.
+		ctx.Set("phase-changed-files", strings.Join(modified, "\n"))
 		ctx.Set("outputs-and-scopes-valid", false)
 		ctx.Set("failure-kind", "scope-diff")
 		ctx.Set("failing-task-name", taskName)
