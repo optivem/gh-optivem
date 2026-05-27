@@ -1040,6 +1040,15 @@ processes:
         type: call-activity
         process: verify-tests-pass
         name: "Verify Tests Pass"
+        # Empty suite ⇒ all suites (per run-tests doctrine). MUST be
+        # explicit: verify-tests-pass's body forwards `suite: ${suite}`
+        # to run-tests. Without a binding here, ExpandParams leaves the
+        # literal `${suite}` string in place, which then propagates through
+        # run-tests → execute-command → runCommand and lands in the CLI as
+        # `--suite='${suite}'` (runCommand's `if suite != ""` guard treats
+        # the literal as non-empty and appends the broken flag).
+        params:
+          suite: ""
 
       - id: COMMIT_SYSTEM
         type: call-activity
@@ -1082,6 +1091,11 @@ processes:
         type: call-activity
         process: verify-tests-pass
         name: "Verify Tests Pass"
+        # See `implement-and-verify-system` for the rationale — empty `suite`
+        # is the explicit "all suites" binding required to prevent the literal
+        # `${suite}` placeholder from leaking into the CLI.
+        params:
+          suite: ""
 
       - id: COMMIT_TESTS
         type: call-activity
