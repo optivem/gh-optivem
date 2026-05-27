@@ -143,6 +143,8 @@ func runCommit(msg string, opts commitOptions) error {
 		if opts.Paths != "" {
 			fmt.Printf("  Paths: %s\n", opts.Paths)
 		}
+	} else if len(scope.Folders) == 1 {
+		fmt.Printf("  Commit Repo: %s\n", repoBaseName(scope.Folders[0]))
 	} else {
 		fmt.Println("  Commit All Repos")
 	}
