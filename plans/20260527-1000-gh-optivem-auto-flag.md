@@ -108,21 +108,6 @@ Cleanup subcommands today have **no** y/n prompt — they go from `--dry-run` to
 
 ## Items
 
-### 1. New package `internal/approval/approval.go`
-
-- Define `type Category int` with constants `CategoryCommit`, `CategoryFix`, `CategoryRelease`, `CategoryPrompt`, `CategoryHuman`. Provide `String()` returning lowercase token (`"commit"`, `"fix"`, etc.) and `ParseCategory(string) (Category, error)`.
-- Define `type Resolved struct { Auto bool; ConfirmSet map[Category]bool; AutoSource string; ConfirmSource string }`. `CategoryHuman` is always set in `ConfirmSet` regardless of input.
-- Export `Resolve(auto bool, autoChanged bool, confirm string, confirmChanged bool, env func(string) string) (Resolved, error)`:
-  - Auto precedence: flag (if Changed) > env (`GH_OPTIVEM_AUTO=true`) > default (false).
-  - Confirm precedence: flag (if Changed) > env (`GH_OPTIVEM_CONFIRM=...`) > default. Default is `commit,fix` when `Auto == true`; default is empty when `Auto == false` (the set is unused).
-  - Returns error on invalid category tokens listing the valid set.
-- Export `Confirm(r Resolved, c Category, in io.Reader, out io.Writer, prompt string) (bool, error)` — short-circuits to `(true, nil)` when `r.Auto && !r.ConfirmSet[c]`. Otherwise delegates to `promptio.ConfirmYN`. `CategoryHuman` always delegates because it's always in ConfirmSet.
-- Export `ConfirmVia(r Resolved, c Category, asker promptio.Asker, out io.Writer, prompt string) (bool, error)` — same short-circuit, delegates to `promptio.ConfirmYNVia`.
-
-### 2. Unit tests `internal/approval/approval_test.go`
-
-Standard coverage matrix (Auto on/off × each category × flag/env/default precedence). Executor's discretion on exact test list; the contract to exercise: short-circuit happens iff `Auto && !ConfirmSet[c]`, and `human` never short-circuits.
-
 ### 3. Wire root flags in `main.go`
 
 - Add `--auto` (bool) as a persistent flag on the root command. Default false.
