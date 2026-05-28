@@ -171,6 +171,33 @@ func (e *Engine) Scope(processName string) (read, write []string, ok bool) {
 	return nil, nil, false
 }
 
+// ScopeRationale returns the optional free-form rationale string declared
+// on the EXECUTE_AGENT call-activity node of the named writing-agent MID
+// process — the per-MID *why* that explains the shape of the `read:` /
+// `write:` lists (most commonly: why a key is in `write:` but not in
+// `read:`). The dispatcher renders it under the auto-derived "Write-only
+// paths" annotation in ${scope-block}; absence is the common case.
+//
+// Returns ok == false when the named process does not exist, has no
+// EXECUTE_AGENT call-activity node, or declares no rationale. Mirrors
+// the lookup pattern of Scope / Outputs / IsScopeNone.
+func (e *Engine) ScopeRationale(processName string) (string, bool) {
+	proc, exists := e.Processes[processName]
+	if !exists {
+		return "", false
+	}
+	for _, node := range proc.Nodes {
+		if node.Kind != CallActivity || node.Raw.Process != "execute-agent" {
+			continue
+		}
+		if node.Raw.ScopeRationale == "" {
+			return "", false
+		}
+		return node.Raw.ScopeRationale, true
+	}
+	return "", false
+}
+
 // IsScopeNone reports whether the named writing-agent MID declares
 // `scope: none` on its EXECUTE_AGENT call-activity node — the doctrinal
 // artifact-only exemption (agent mutates only an inter-phase artifact or

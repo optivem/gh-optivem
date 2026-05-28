@@ -268,3 +268,116 @@ func TestLoadBytes_ApprovalCategory_ShippedYAMLLoads(t *testing.T) {
 		t.Fatalf("LoadDefault: %v", err)
 	}
 }
+
+// midWithScope returns a one-process YAML doc whose EXECUTE_AGENT
+// call-activity carries the caller-provided read/write/rationale lines
+// (each may be empty). Used to exercise Engine.ScopeRationale in
+// isolation from the rest of the schema.
+func midWithScope(scopeFragment string) string {
+	return `
+processes:
+  sample-mid:
+    name: "Sample MID"
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        name: "Dispatch the Agent"
+        params:
+          task-name: sample-task
+          agent: sample-agent
+          category: test-agent
+` + scopeFragment + `
+      - id: MID_END
+        type: end-event
+        name: "Done"
+    sequence-flows:
+      - {from: EXECUTE_AGENT, to: MID_END}
+  execute-agent:
+    name: "Execute Agent"
+    start: RUN_AGENT
+    nodes:
+      - id: RUN_AGENT
+        type: user-task
+        agent: ${agent}
+        name: "Run agent"
+      - id: PRIM_END
+        type: end-event
+        name: "Done"
+    sequence-flows:
+      - {from: RUN_AGENT, to: PRIM_END}
+`
+}
+
+// TestEngine_ScopeRationale_Present covers the rationale-present path:
+// a writing-agent MID declares scope-rationale: alongside read:/write:,
+// and Engine.ScopeRationale returns the string with ok=true.
+func TestEngine_ScopeRationale_Present(t *testing.T) {
+	yaml := midWithScope(`        read:  [at-test, dsl-port]
+        write: [at-test, dsl-port, dsl-core]
+        scope-rationale: |
+          dsl-core is write-only because reading impl would leak context.`)
+	eng, err := LoadBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+	got, ok := eng.ScopeRationale("sample-mid")
+	if !ok {
+		t.Fatalf("Engine.ScopeRationale(sample-mid): want ok=true, got false")
+	}
+	if !strings.Contains(got, "write-only because reading impl would leak context") {
+		t.Errorf("rationale = %q, want substring about leaking context", got)
+	}
+}
+
+// TestEngine_ScopeRationale_Absent covers the common case: read:/write:
+// declared but no scope-rationale: — Engine.ScopeRationale returns
+// "" / ok=false.
+func TestEngine_ScopeRationale_Absent(t *testing.T) {
+	yaml := midWithScope(`        read:  [at-test, dsl-port]
+        write: [at-test, dsl-port]`)
+	eng, err := LoadBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+	if got, ok := eng.ScopeRationale("sample-mid"); ok || got != "" {
+		t.Errorf("Engine.ScopeRationale(sample-mid) = (%q, %v), want (\"\", false)", got, ok)
+	}
+}
+
+// TestEngine_ScopeRationale_UnknownProcess mirrors
+// TestEngine_Outputs_UnknownProcess: an unknown process name returns
+// ok=false.
+func TestEngine_ScopeRationale_UnknownProcess(t *testing.T) {
+	yaml := midWithScope(`        read:  [at-test]
+        write: [at-test]`)
+	eng, err := LoadBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+	if _, ok := eng.ScopeRationale("nonexistent"); ok {
+		t.Errorf("Engine.ScopeRationale(nonexistent): want ok=false")
+	}
+}
+
+// TestEngine_ScopeRationale_ShippedYAML_TestWriters guards that the
+// shipped process-flow.yaml carries scope-rationale: on both test-writer
+// MIDs (plan 20260528-1038). Regressing this field would silently lose
+// the per-MID *why* the dispatcher renders into ${scope-block}.
+func TestEngine_ScopeRationale_ShippedYAML_TestWriters(t *testing.T) {
+	eng, err := LoadDefault()
+	if err != nil {
+		t.Fatalf("LoadDefault: %v", err)
+	}
+	for _, name := range []string{"write-acceptance-tests", "write-contract-tests"} {
+		got, ok := eng.ScopeRationale(name)
+		if !ok {
+			t.Errorf("Engine.ScopeRationale(%s): want ok=true", name)
+			continue
+		}
+		if !strings.Contains(got, "dsl-core") || !strings.Contains(got, "TODO: DSL") {
+			t.Errorf("Engine.ScopeRationale(%s) = %q, want substring about dsl-core / TODO: DSL", name, got)
+		}
+	}
+}

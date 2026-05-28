@@ -40,6 +40,12 @@ type RawNode struct {
 	Scope    string            `yaml:"scope,omitempty"`
 	Read     []string          `yaml:"read,omitempty"`
 	Write    []string          `yaml:"write,omitempty"`
+	// ScopeRationale is an optional free-form explanation of *why* the
+	// `read:` / `write:` lists are shaped the way they are — surfaced
+	// only when `write \ read` is non-empty (i.e. the asymmetry the
+	// renderer auto-detects has a per-MID reason worth teaching).
+	// Sibling to Read / Write; resolved via Engine.ScopeRationale.
+	ScopeRationale string `yaml:"scope-rationale,omitempty"`
 	// Category tags an approve / human node with the approval-policy
 	// vocabulary (commit | fix | release | prompt | human). The driver
 	// reads it at dispatch time and routes the y/n prompt through

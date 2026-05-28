@@ -1316,9 +1316,6 @@ processes:
       - {from: GATE_TESTS_OUTCOME, to: UNKNOWN_TESTS_OUTCOME}
       - {from: FIX_UNEXPECTED_PASSING_TESTS, to: VERIFY_FAIL_END}
 
-  # Asymmetric: the test-writer adds `TODO: DSL` placeholders to dsl-core but
-  # does not read existing dsl-core (which would leak implementation context
-  # into a test-writing task). Plan 20260526-1448 Item 3.
   write-acceptance-tests:
     name: "Write Acceptance Tests"
     start: EXECUTE_AGENT
@@ -1352,6 +1349,10 @@ processes:
           category: test-agent
         read:  [at-test, dsl-port]
         write: [at-test, dsl-port, dsl-core]
+        scope-rationale: |
+          dsl-core is write-only because the test-writer appends `TODO: DSL`
+          stubs there so the project compiles; reading existing dsl-core
+          content would leak implementation context into test design.
 
       - id: WAT_END
         type: end-event
@@ -1360,7 +1361,6 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: WAT_END}
 
-  # Same asymmetry as write-acceptance-tests (CT side).
   write-contract-tests:
     name: "Write Contract Tests"
     start: EXECUTE_AGENT
@@ -1388,6 +1388,10 @@ processes:
           category: test-agent
         read:  [ct-test, dsl-port]
         write: [ct-test, dsl-port, dsl-core]
+        scope-rationale: |
+          dsl-core is write-only because the test-writer appends `TODO: DSL`
+          stubs there so the project compiles; reading existing dsl-core
+          content would leak implementation context into test design.
 
       - id: WCT_END
         type: end-event

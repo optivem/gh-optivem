@@ -284,9 +284,42 @@ func TestRenderPrompt_TaskAgentArchitectureAndScopeBlock_ExplicitValues(t *testi
 	mustContain(t, got, "You may **modify** files under these paths:")
 	mustContain(t, got, "- `system-path`: system/monolith/java")
 	mustContain(t, got, "`scope_exception`")
+	// Symmetric read/write — no write \ read entries — so the auto-derived
+	// "Write-only paths" annotation must not appear, and with no rationale
+	// supplied the "Why:" tail must not appear either.
+	if strings.Contains(got, "Write-only paths") {
+		t.Errorf("symmetric scope block must not render the write-only annotation:\n%s", got)
+	}
+	if strings.Contains(got, "Why:") {
+		t.Errorf("symmetric scope block with no rationale must not render a Why: tail:\n%s", got)
+	}
 	if strings.Contains(got, "${") {
 		t.Errorf("prompt still contains ${...} placeholder: %s", got)
 	}
+}
+
+// TestRenderPrompt_ScopeBlock_WriteOnlyWithRationale covers the asymmetric
+// scope path (plan 20260528-1038): a writing-agent MID whose `write:` set
+// contains keys absent from `read:` (dsl-core is the canonical case for
+// the two test-writer MIDs). The dispatcher auto-derives the
+// "Write-only paths:" line; the per-MID scope-rationale renders below it
+// as a "Why:" tail. Both must appear, alongside the existing scope_exception
+// guardrail line.
+func TestRenderPrompt_ScopeBlock_WriteOnlyWithRationale(t *testing.T) {
+	opts := newOpts()
+	// newOpts already seeds acceptance-test-writer + the asymmetric
+	// at-test / dsl-port / dsl-core scope shape; only the rationale needs
+	// adding here.
+	opts.ScopeRationale = "dsl-core is write-only because the test-writer appends `TODO: DSL` stubs there so the project compiles; reading existing dsl-core content would leak implementation context into test design."
+
+	got, err := renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt: %v", err)
+	}
+	mustContain(t, got, "Write-only paths (in `write:` but not `read:`): dsl-core")
+	mustContain(t, got, "Treat these as append-only or edit-by-location")
+	mustContain(t, got, "Why: dsl-core is write-only because")
+	mustContain(t, got, "`scope_exception`")
 }
 
 func TestRenderPrompt_TaskAgentChecklistInjected(t *testing.T) {
@@ -655,6 +688,39 @@ func TestRenderPrompt_InteractiveSuffixOmittedWhenHeadless(t *testing.T) {
 	}
 	if strings.Contains(got, "type `/exit` to close the session") {
 		t.Errorf("headless prompt must not include the operator /exit suffix:\n%s", got)
+	}
+}
+
+// TestRenderPrompt_ReEntryPolicySubstitutes pins the shared
+// ${re-entry-policy} substitution dedup'd from the three writing-
+// implementer prompts (plan 20260528-1045). The constant
+// rendererReEntryPolicy carries the "if the previous WRITE didn't
+// compile, fix the broken/missing piece minimally" clause; each
+// implementer prompt references it once and follows with a per-agent
+// appendix. If someone deletes the constant or unregisters the
+// substitution, this test fires.
+func TestRenderPrompt_ReEntryPolicySubstitutes(t *testing.T) {
+	agentsToCheck := []string{
+		"dsl-implementer",
+		"system-driver-adapter-implementer",
+		"external-system-driver-adapter-implementer",
+	}
+	for _, agent := range agentsToCheck {
+		t.Run(agent, func(t *testing.T) {
+			opts := newOpts()
+			opts.Agent = agent
+
+			got, err := renderPrompt(opts)
+			if err != nil {
+				t.Fatalf("renderPrompt(%s): %v", agent, err)
+			}
+			if strings.Contains(got, "${re-entry-policy}") {
+				t.Errorf("%s: ${re-entry-policy} survived in rendered prompt", agent)
+			}
+			if !strings.Contains(got, "If your previous WRITE didn't compile") {
+				t.Errorf("%s: rendered prompt missing re-entry-policy clause; got:\n%s", agent, got)
+			}
+		})
 	}
 }
 

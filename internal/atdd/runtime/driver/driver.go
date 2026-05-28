@@ -871,10 +871,12 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			scopeKey = agentName
 		}
 		var scopeRead, scopeWrite []string
+		var scopeRationale string
 		if eng != nil {
 			r, w, _ := eng.Scope(scopeKey)
 			scopeRead = r
 			scopeWrite = w
+			scopeRationale, _ = eng.ScopeRationale(scopeKey)
 		}
 
 		// Scope augmentation for fix-* recovery dispatches. Some
@@ -954,6 +956,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			Language:           ctx.GetString("language"),
 			ScopeRead:          scopeRead,
 			ScopeWrite:         scopeWrite,
+			ScopeRationale:     scopeRationale,
 			Checklist:          ctx.GetString("checklist"),
 			AcceptanceCriteria: ctx.GetString("acceptance-criteria"),
 			ParsedConcepts:     ctx.GetString("parsed_concepts"),

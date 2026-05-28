@@ -103,6 +103,14 @@ type Options struct {
 	ScopeRead  []string
 	ScopeWrite []string
 
+	// ScopeRationale is the optional free-form per-MID *why* sourced from
+	// the BPMN node's `scope-rationale:` field (sibling to `read:` /
+	// `write:`). The driver looks it up via engine.ScopeRationale at
+	// dispatch time. Rendered by renderScopeBlock as a "Why: …" tail
+	// under the auto-derived "Write-only paths" annotation when
+	// `write \ read` is non-empty; empty / absent → not rendered.
+	ScopeRationale string
+
 	// Checklist is the body of the ticket's Checklist section as parsed
 	// by intake.ParseSections (populated by the parse-ticket service-task
 	// into ctx.State["checklist"]). Surfaced to the agent prompt
@@ -606,6 +614,15 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 // output. Production points at time.Now.
 var nowFn = time.Now
 
+// rendererReEntryPolicy is the one-line "if your previous WRITE didn't
+// compile, fix minimally" clause inlined into writing-implementer
+// prompts via ${re-entry-policy}. Centralised here so a policy change
+// (e.g. "re-runs always start fresh") needs only one edit. Per-agent
+// specifics (which stub kind, agent-specific don't-touch clauses)
+// stay in each prompt's body — this constant carries only the shared
+// core.
+const rendererReEntryPolicy = "If your previous WRITE didn't compile, instead fix the broken/missing piece in your prior edits (forgotten stub, signature mismatch, typo) and fix it minimally."
+
 // findUnfilledPlaceholders is the package-local alias for expand.FindUnfilled.
 // Kept as an alias (rather than inlined at every call site) so the existing
 // test suite that calls it directly continues to compile.
@@ -676,13 +693,14 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 		}
 	}
 	for k, v := range map[string]string{
-		"issue-num":       strconv.Itoa(opts.IssueNum),
-		"issue-title":     opts.IssueTitle,
-		"phase":           opts.NodeDescription,
-		"architecture":    opts.Architecture,
-		"subtype":         opts.Subtype,
-		"changed-files":   opts.ChangedFiles,
-		"references-root": referencesRoot,
+		"issue-num":        strconv.Itoa(opts.IssueNum),
+		"issue-title":      opts.IssueTitle,
+		"phase":            opts.NodeDescription,
+		"architecture":     opts.Architecture,
+		"subtype":          opts.Subtype,
+		"changed-files":    opts.ChangedFiles,
+		"references-root":  referencesRoot,
+		"re-entry-policy":  rendererReEntryPolicy,
 	} {
 		params[k] = v
 	}
@@ -706,7 +724,7 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	// body references the placeholder. Mirrors the Language /
 	// AcceptanceCriteria load-bearing pattern.
 	if len(opts.ScopeRead) > 0 && len(opts.ScopeWrite) > 0 {
-		params["scope-block"] = renderScopeBlock(opts.ScopeRead, opts.ScopeWrite, opts.Placeholders)
+		params["scope-block"] = renderScopeBlock(opts.ScopeRead, opts.ScopeWrite, opts.Placeholders, opts.ScopeRationale)
 	}
 	// Language is load-bearing — only registered when the driver supplied
 	// a value. An empty value would silently substitute, masking a config
@@ -906,7 +924,7 @@ func renderExpectedOutputs(specs []statemachine.OutputSpec) string {
 // rather than disappearing silently — the build-time canonical-keys
 // guard catches drift before runtime, but if it slips through, the
 // agent sees the gap.
-func renderScopeBlock(read, write []string, paths map[string]string) string {
+func renderScopeBlock(read, write []string, paths map[string]string, rationale string) string {
 	resolve := func(key string) string {
 		if paths == nil {
 			return "(unresolved)"
@@ -937,6 +955,33 @@ func renderScopeBlock(read, write []string, paths map[string]string) string {
 	writeBlock(&b, read)
 	b.WriteString("\nYou may **modify** files under these paths:\n\n")
 	writeBlock(&b, write)
+
+	// Auto-derive the asymmetry annotation: any key in `write:` but not
+	// `read:` is write-only. Surface this as a generic rule on the
+	// rendered block so the agent sees the asymmetry at every dispatch
+	// without each writer prompt having to restate it. When the MID
+	// also declares scope-rationale:, tack the per-MID *why* on as a
+	// "Why:" tail (the test-writer MIDs use this; others may but don't
+	// today). Preserves write-order for stable output.
+	readSet := map[string]bool{}
+	for _, k := range read {
+		readSet[k] = true
+	}
+	var writeOnly []string
+	for _, k := range write {
+		if !readSet[k] {
+			writeOnly = append(writeOnly, k)
+		}
+	}
+	if len(writeOnly) > 0 {
+		fmt.Fprintf(&b, "\nWrite-only paths (in `write:` but not `read:`): %s. "+
+			"Treat these as append-only or edit-by-location — do not read their "+
+			"existing contents for context.\n", strings.Join(writeOnly, ", "))
+		if rationale != "" {
+			fmt.Fprintf(&b, "Why: %s\n", strings.TrimSpace(rationale))
+		}
+	}
+
 	b.WriteString("\nReading or writing outside this set requires a `scope_exception` block.")
 	return b.String()
 }
