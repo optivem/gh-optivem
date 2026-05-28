@@ -1228,3 +1228,77 @@ processes:
 	}
 }
 
+// TestStrictExpand_MissingLayerBindingFailsFast mirrors the missing-
+// message regression for the `commit` subprocess's required `layer`
+// input. The layer-qualified message format
+// `#${ticket-id} ${issue-title} - ${layer}` relies on the same strict-
+// mode dispatch contract: a caller that forgets to bind `layer:` is a
+// wiring bug, surfaced at dispatch time with a precise error that names
+// the unresolved placeholder — not a silent splice of the literal
+// `${layer}` into the rendered git commit message.
+func TestStrictExpand_MissingLayerBindingFailsFast(t *testing.T) {
+	const yaml = `
+processes:
+  parent:
+    name: "Parent"
+    start: COMMIT
+    nodes:
+      - id: COMMIT
+        type: call-activity
+        process: commit-sub
+        name: "Synthetic Commit"
+      - id: PARENT_END
+        type: end-event
+        name: "Synthetic Test Event"
+    sequence-flows:
+      - {from: COMMIT, to: PARENT_END}
+
+  commit-sub:
+    name: "Commit Subprocess"
+    start: EXEC
+    nodes:
+      - id: EXEC
+        type: call-activity
+        process: inner
+        name: "Synthetic Execute"
+        params:
+          layer: ${layer}
+      - id: COMMIT_END
+        type: end-event
+        name: "Synthetic Test Event"
+    sequence-flows:
+      - {from: EXEC, to: COMMIT_END}
+
+  inner:
+    name: "Inner"
+    start: NOOP
+    nodes:
+      - id: NOOP
+        type: service-task
+        action: noop
+        name: "No-op"
+      - id: INNER_END
+        type: end-event
+        name: "Synthetic Test Event"
+    sequence-flows:
+      - {from: NOOP, to: INNER_END}
+`
+	eng, err := LoadBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+	eng.ActionFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	eng.AgentFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	eng.GateFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+	err = eng.RunProcess("parent", NewContext())
+	if err == nil {
+		t.Fatal("RunProcess succeeded; want strict-mode unresolved-placeholder error for ${layer}")
+	}
+	if !strings.Contains(err.Error(), "${layer}") {
+		t.Errorf("error %q must name the unresolved placeholder ${layer}", err.Error())
+	}
+}
+
