@@ -423,6 +423,68 @@ func TestClaudeRunDispatch_ReplaceOverrideShortCircuitsTemplate(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Headless inheritance — human tier forces interactive
+// ---------------------------------------------------------------------------
+
+func TestClaudeRunDispatch_HumanCategoryForcesInteractive(t *testing.T) {
+	// Even when --headless is set on the parent `gh optivem implement` run,
+	// a category=human dispatch (fix-* agents, refine-acceptance-criteria)
+	// must launch interactively so the operator can drive the conversation.
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaaaaa1\n"),
+			[]byte("aaaaaaa1\n"),
+		},
+	}
+	claudeFake := &fakeClaude{}
+	driverOpts := newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake})
+	driverOpts.Headless = true
+	fn := buildEngine(t, driverOpts)
+
+	ctx := newCtxWithIssue()
+	// In production, this is propagated from the outer execute-agent
+	// call-activity's `params: { category: human }` via wrapCallActivity.
+	// The test fixture's user-task has no surrounding call-activity layer,
+	// so we seed ctx.Params directly to mirror that state at dispatch time.
+	ctx.Params["category"] = "human"
+
+	if out := fn(ctx); out.Err != nil {
+		t.Fatalf("dispatch: %v", out.Err)
+	}
+	if len(claudeFake.calls) != 1 {
+		t.Fatalf("expected 1 claude call, got %d", len(claudeFake.calls))
+	}
+	if claudeFake.calls[0].Headless {
+		t.Errorf("category=human dispatch must launch interactively, got Headless=true even though parent --headless was set")
+	}
+}
+
+func TestClaudeRunDispatch_NonHumanCategoryHonorsHeadless(t *testing.T) {
+	// Sanity check the other side of the gate: non-human categories inherit
+	// the parent's --headless flag unchanged.
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaaaaa1\n"),
+			[]byte("aaaaaaa1\n"),
+		},
+	}
+	claudeFake := &fakeClaude{}
+	driverOpts := newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake})
+	driverOpts.Headless = true
+	fn := buildEngine(t, driverOpts)
+
+	ctx := newCtxWithIssue()
+	ctx.Params["category"] = "test-agent"
+
+	if out := fn(ctx); out.Err != nil {
+		t.Fatalf("dispatch: %v", out.Err)
+	}
+	if !claudeFake.calls[0].Headless {
+		t.Errorf("category=test-agent dispatch must honour parent --headless, got Headless=false")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Manual fallback
 // ---------------------------------------------------------------------------
 

@@ -1043,7 +1043,11 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			OverrideText:       extraText,
 			RawPrompt:          replaceText,
 			PromptOverride:     opts.TaskPromptOverrides[agentName],
-			Headless:           opts.Headless,
+			// human-tier dispatches (fix-* agents, refine-acceptance-criteria)
+			// always launch interactively so the operator can drive the
+			// conversation — mirrors approval.go's "human tier never bypasses"
+			// rule on the dispatch side.
+			Headless:           opts.Headless && nodeParams["category"] != "human",
 			Approval:           opts.Approval,
 			Model:              tuning.Model,
 			Effort:             tuning.Effort,
