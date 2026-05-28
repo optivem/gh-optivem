@@ -579,10 +579,13 @@ processes:
 // 1701 task-name/agent split regresses, this test fails before runtime
 // sees a missing-prompt error.
 //
-// Memory `feedback_statemachine_test_loop_hazard`: the four processes
-// walked here (execute-command, fix, execute-agent, approve) have no
-// loopback edges, so the test is bounded. `maxDispatchesPerProcess`
-// catches the failure mode anyway if a future YAML edit introduces one.
+// Memory `feedback_statemachine_test_loop_hazard`: execute-command now
+// loops `FIX → RUN_COMMAND`, so the run-command stub MUST flip
+// `command-succeeded` on the second call or the walk diverges. The
+// inner execute-agent dispatched from fix has `fix-on-failure: false`
+// and so does not recurse; execute-agent's own `FIX → RUN_AGENT` loop
+// stays bounded because the inner validate stub returns true on its
+// only call.
 func TestExecuteCommand_FailureDispatchesCommandFailedFixerAgent(t *testing.T) {
 	eng, err := LoadDefault()
 	if err != nil {
@@ -590,12 +593,20 @@ func TestExecuteCommand_FailureDispatchesCommandFailedFixerAgent(t *testing.T) {
 	}
 
 	var dispatchedAgents []string
+	runCommandCalls := 0
 	eng.ActionFn = func(name string) NodeFn {
 		switch name {
 		case "run-command":
 			return func(ctx *Context) Outcome {
-				ctx.Set("command-succeeded", false)
-				ctx.Set("failure-kind", "command-failed")
+				runCommandCalls++
+				if runCommandCalls == 1 {
+					ctx.Set("command-succeeded", false)
+					ctx.Set("failure-kind", "command-failed")
+				} else {
+					// Second visit (after FIX → RUN_COMMAND loopback):
+					// flip so the cycle exits via EXECUTE_COMMAND_END.
+					ctx.Set("command-succeeded", true)
+				}
 				return Outcome{}
 			}
 		case "validate-outputs-and-scopes":
@@ -696,12 +707,13 @@ func TestExecuteCommand_FailureDispatchesCommandFailedFixerAgent(t *testing.T) {
 // `missing-output` or `scope-diff` — and the recovery path must dispatch
 // the matching `<kind>-fixer` agent (noun form, post-1701 split).
 //
-// Memory `feedback_statemachine_test_loop_hazard`: as in Item 3, the
-// walked processes (execute-agent, fix, execute-agent inner, approve)
-// have no loopback edges. The inner execute-agent does re-enter
-// validate-outputs-and-scopes, but `fix-on-failure=false` on the inner
-// call-site routes its GATE_FIX_ON_FAILURE to APPROVE_POST — no
-// second-level recursion.
+// Memory `feedback_statemachine_test_loop_hazard`: execute-agent now
+// loops `FIX → RUN_AGENT`, so after the outer fix dispatch returns the
+// outer RUN_AGENT runs again, hitting validate-outputs-and-scopes a
+// third time. The validateCalls counter below makes calls 2 and 3
+// return `outputs-and-scopes-valid=true`, so the loopback exits via
+// APPROVE_POST. `fix-on-failure: false` on the inner execute-agent
+// keeps its FIX branch off, preventing second-level recursion.
 func TestExecuteAgent_ValidationFailureDispatchesFixerForFailureKind(t *testing.T) {
 	cases := []struct {
 		failureKind string

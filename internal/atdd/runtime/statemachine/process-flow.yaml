@@ -1289,7 +1289,7 @@ processes:
       - {from: GATE_TESTS_OUTCOME, to: FIX_UNEXPECTED_FAILING_TESTS, when: "test-outcome == fail"}
       - {from: GATE_TESTS_OUTCOME, to: TESTS_INFRA_HALT,             when: "test-outcome == infra"}
       - {from: GATE_TESTS_OUTCOME, to: UNKNOWN_TESTS_OUTCOME}
-      - {from: FIX_UNEXPECTED_FAILING_TESTS, to: VERIFY_PASS_END}
+      - {from: FIX_UNEXPECTED_FAILING_TESTS, to: RUN_TESTS}
 
   # Inverted: run tests under suite/test-names; on PASS, dispatch
   # `fix-unexpected-passing-tests`.
@@ -1333,7 +1333,7 @@ processes:
       - {from: GATE_TESTS_OUTCOME, to: VERIFY_FAIL_END,              when: "test-outcome == fail"}
       - {from: GATE_TESTS_OUTCOME, to: TESTS_INFRA_HALT,             when: "test-outcome == infra"}
       - {from: GATE_TESTS_OUTCOME, to: UNKNOWN_TESTS_OUTCOME}
-      - {from: FIX_UNEXPECTED_PASSING_TESTS, to: VERIFY_FAIL_END}
+      - {from: FIX_UNEXPECTED_PASSING_TESTS, to: RUN_TESTS}
 
   write-acceptance-tests:
     name: "Write Acceptance Tests"
@@ -2250,7 +2250,7 @@ processes:
       - {from: GATE_OUTPUTS_AND_SCOPES_VALID, to: GATE_FIX_ON_FAILURE, when: "outputs-and-scopes-valid == false"}
       - {from: GATE_FIX_ON_FAILURE,           to: FIX,             when: "fix-on-failure-enabled == true"}
       - {from: GATE_FIX_ON_FAILURE,           to: APPROVE_POST,         when: "fix-on-failure-enabled == false"}
-      - {from: FIX,                      to: APPROVE_POST}
+      - {from: FIX,                      to: RUN_AGENT}
       - {from: APPROVE_POST,                  to: GATE_APPROVED_POST}
       - {from: GATE_APPROVED_POST,            to: EXECUTE_AGENT_END,                  when: "approval-outcome == approved"}
       - {from: GATE_APPROVED_POST,            to: EXECUTE_AGENT_OUTPUT_REJECTED_END,  when: "approval-outcome == rejected"}
@@ -2322,7 +2322,7 @@ processes:
       - {from: GATE_COMMAND_SUCCEEDED, to: GATE_FIX_ON_FAILURE,  when: "command-succeeded == false"}
       - {from: GATE_FIX_ON_FAILURE,    to: FIX,                  when: "fix-on-failure-enabled == true"}
       - {from: GATE_FIX_ON_FAILURE,    to: EXECUTE_COMMAND_END,  when: "fix-on-failure-enabled == false"}
-      - {from: FIX,                    to: EXECUTE_COMMAND_END}
+      - {from: FIX,                    to: RUN_COMMAND}
 
   # Q-late-5 (β-convention) routing: the fix-* task-name is derived as
   # `"fix-" + failure.kind` and passed into the inner `execute-agent`. No

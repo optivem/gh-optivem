@@ -213,6 +213,41 @@ func TestVerifyTests_InfraOutcomeRoutesToHalt(t *testing.T) {
 	}
 }
 
+// Every fix dispatch must loop back to the upstream step that
+// produced the failure, so the operator (and the engine) get a
+// re-verification cycle after every fix. Four call-sites, four
+// loopback edges:
+//
+//	execute-command   : FIX → RUN_COMMAND
+//	execute-agent     : FIX → RUN_AGENT
+//	verify-tests-pass : FIX_UNEXPECTED_FAILING_TESTS → RUN_TESTS
+//	verify-tests-fail : FIX_UNEXPECTED_PASSING_TESTS → RUN_TESTS
+//
+// A regression that re-points any of these edges back to an end-event
+// would silently strip the re-verification — the fix would dispatch
+// and the process would exit without confirming the fix worked.
+func TestFixDispatch_LoopsBackToOriginatingStep(t *testing.T) {
+	eng := loadSnapshot(t)
+	cases := []struct {
+		proc     string
+		from, to string
+	}{
+		{"execute-command", "FIX", "RUN_COMMAND"},
+		{"execute-agent", "FIX", "RUN_AGENT"},
+		{"verify-tests-pass", "FIX_UNEXPECTED_FAILING_TESTS", "RUN_TESTS"},
+		{"verify-tests-fail", "FIX_UNEXPECTED_PASSING_TESTS", "RUN_TESTS"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.proc, func(t *testing.T) {
+			p, ok := eng.Processes[tc.proc]
+			if !ok {
+				t.Fatalf("process %q missing", tc.proc)
+			}
+			wantEdge(t, p, tc.from, tc.to, "")
+		})
+	}
+}
+
 // run-tests must opt out of execute-command's FIX branch so the
 // verify-tests-pass / verify-tests-fail callers can route on
 // test-outcome instead.
