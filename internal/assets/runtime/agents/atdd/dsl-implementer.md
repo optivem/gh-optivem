@@ -5,7 +5,7 @@ model: opus
 effort: medium
 ---
 
-The implement-dsl task replaces every `TODO: DSL` prototype in the DSL Core (`${dsl-core}`) with real logic and, when the DSL surface needs new behaviour, extends the driver port (`${driver-port}`) or external-system driver port (`${external-system-driver-port}`) in scope — either by adding matching prototype methods or by adding/changing fields on the DTOs those methods carry.
+Replace every `TODO: DSL` prototype in the DSL Core (`${dsl-core}`) with real logic. If new port-side behaviour is needed, you may add methods to the driver ports or add/change fields on the DTOs they carry.
 
 ## Inputs
 
@@ -13,7 +13,7 @@ The implement-dsl task replaces every `TODO: DSL` prototype in the DSL Core (`${
 
 ${scope-block}
 
-This task does not receive a substituted artifact input; the `TODO: DSL` prototypes the agent operates on are discovered from the files under its read-scope.
+No substituted input — discover `TODO: DSL` prototypes by reading the files under `${dsl-core}`.
 
 ## Steps
 
@@ -21,7 +21,7 @@ This task does not receive a substituted artifact input; the `TODO: DSL` prototy
 2. If you need to add additional driver methods, add the method signature to the port (interface) and a throwing stub body to the corresponding adapter (impl class) so compilation works. Interfaces hold signatures only; the throwing-TODO body lives in the adapter:
    (a) Signature in the System Driver Port (`${driver-port}`); throwing `"TODO: System Driver"` stub in the System Driver Adapter (`${driver-adapter}`).
    (b) Signature in the External System Driver Port (`${external-system-driver-port}`); throwing `"TODO: External System Driver"` stub in the External System Driver Adapter (`${external-system-driver-adapter}`).
-3. Before emitting outputs, list every file you wrote this invocation. For each port-changed flag, set it to `true` if **any** file in that list sits under the flag's port directory (see the flag-semantics table below). The flag is a question about the directory, not about methods — DTOs, enums, interfaces, and any other file under the port path all count. Setting `false` is a claim that you wrote zero files under that port path.
+3. Before emitting outputs, set each `*-port-changed` flag per the rules in the Notes section below.
 4. Emit the phase-output flag(s) listed under `## Outputs` for this invocation. Every flag listed for this invocation **MUST** be emitted before completing — unset is a bug, not a default `false`. The downstream gateway picks the next task from the flag values.
 
 ## Outputs
