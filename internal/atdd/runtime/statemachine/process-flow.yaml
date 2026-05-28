@@ -452,6 +452,11 @@ processes:
         params:
           task-name: implement-system
           action: implement-system
+          # Behavioral GREEN: verify ONLY the AT(s) the RED writer just
+          # produced. `test-names` is the writing-agent's declared output
+          # (process-flow.yaml:1331), already in ctx.State at this point.
+          suite: acceptance
+          test-names: ${test-names}
         name: "Implement System"
         tdd-stage: green
 
@@ -524,6 +529,11 @@ processes:
         params:
           task-name: update-system
           action: update-system
+          # Structural redesign: behavior must be preserved across ALL tests,
+          # so VERIFY_TESTS_PASS runs the full regression. Narrowing would
+          # assert nothing about preservation.
+          suite: ""
+          test-names: ""
         name: "Update System"
         tdd-stage: green
 
@@ -562,6 +572,10 @@ processes:
         params:
           task-name: update-system
           action: update-system
+          # Structural redesign (external side): full regression — same
+          # rationale as redesign-system-structure (line 521).
+          suite: ""
+          test-names: ""
         name: "Update System"
         tdd-stage: green
 
@@ -586,6 +600,10 @@ processes:
         params:
           task-name: refactor-system
           action: refactor-system
+          # Structural refactor: behavior must be preserved across ALL tests,
+          # so VERIFY_TESTS_PASS runs the full regression.
+          suite: ""
+          test-names: ""
         name: "Refactor System"
         tdd-stage: refactor
 
@@ -1049,29 +1067,19 @@ processes:
         type: call-activity
         process: verify-tests-pass
         name: "Verify Tests Pass"
-        # Empty suite + empty test-names ⇒ full regression (all suites,
-        # all tests) per run-tests doctrine. Both MUST be bound explicitly:
-        # verify-tests-pass's body forwards `suite: ${suite}` and
-        # `test-names: ${test-names}` to run-tests. ExpandParams resolves
-        # placeholders by checking call params first, then falling back to
-        # run-scoped state (run.go:334). Without explicit bindings here:
-        #   - `${suite}` resolves to "" if no `suite` key is in state (today's
-        #     case), but leaves the literal `${suite}` in place if state ever
-        #     gains one. The literal then propagates through
-        #     run-tests → execute-command → runCommand and lands in the CLI
-        #     as `--suite='${suite}'` (runCommand's `if suite != ""` guard
-        #     treats the literal as non-empty and appends the broken flag).
-        #   - `${test-names}` ALWAYS falls back to state because the upstream
-        #     RED `write-acceptance-tests` agent emits `test-names` as a
-        #     declared output (process-flow.yaml:1305), which lands in
-        #     ctx.State. That stale per-cycle list then leaks into the
-        #     regression run as `--test=foo,bar`, narrowing the run away
-        #     from "all tests" and producing "No tests found" when the
-        #     first suite's class filter (e.g. smoke's `*latest*smoke*`)
-        #     excludes those method names.
+        # Scope is caller-bound. Behavioral cycles (`change-system-behavior`)
+        # narrow to the RED writing-agent's just-emitted `test-names` under
+        # `suite: acceptance` — the GREEN proof that the new AT passes,
+        # without paying for a full regression on every story / bug. Structural
+        # cycles (`redesign-*`, `refactor-system-structure`) bind both to ""
+        # to mean full regression, which is the only meaningful verification
+        # that a behavior-preserving change preserved all tests. Strict-mode
+        # `ExpandParams` (run.go:334) rejects an unresolved `${suite}` /
+        # `${test-names}` at dispatch, so every caller MUST bind both — see
+        # the strict-mode rule on `run-tests` (process-flow.yaml:1991).
         params:
-          suite: ""
-          test-names: ""
+          suite: ${suite}
+          test-names: ${test-names}
 
       - id: COMMIT_SYSTEM
         type: call-activity
