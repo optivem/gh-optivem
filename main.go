@@ -705,12 +705,8 @@ func resolveApprovalForCmd(cmd *cobra.Command) error {
 	cmd.SetContext(cmdctx.WithApproval(cmd.Context(), r))
 	configinit.SetApproval(r)
 	if r.Auto {
-		confirmList := r.ConfirmListString()
-		if confirmList == "" {
-			confirmList = "(none)"
-		}
-		fmt.Fprintf(cmd.ErrOrStderr(), "Auto: true (auto-source: %s, confirm-source: %s → %s)\n",
-			r.AutoSource, r.ConfirmSource, confirmList)
+		fmt.Fprintf(cmd.ErrOrStderr(), "Auto: true (auto-source: %s, confirm-source: %s → floor=%s)\n",
+			r.AutoSource, r.ConfirmSource, r.ConfirmFloorString())
 	}
 	return nil
 }
@@ -755,7 +751,10 @@ func confirmBugReport(cfg *config.Config) bool {
 		return true
 	}
 
-	ok, err := approval.Confirm(cfg.Approval, approval.CategoryPrompt, os.Stdin, os.Stdout, "  Proceed?")
+	// TODO(non-implement-tiering): placeholder; proper tier assignment
+	// deferred to the follow-up plan. See plan
+	// 20260528-0930-approval-tier-ladder.md §D5.
+	ok, err := approval.Confirm(cfg.Approval, approval.CategoryHuman, os.Stdin, os.Stdout, "  Proceed?")
 	if err != nil {
 		log.Warnf("Could not read confirmation: %v. Skipping bug report.", err)
 		return false
@@ -788,7 +787,10 @@ func offerBugReport(cfg *config.Config) bool {
 	fmt.Printf("  - Linking to your repo: https://github.com/%s\n", cfg.FullRepo)
 	fmt.Printf("  - Log file: %s\n", cfg.LogFile)
 	fmt.Println()
-	ok, err := approval.Confirm(cfg.Approval, approval.CategoryPrompt, os.Stdin, os.Stdout, "  File a bug report?")
+	// TODO(non-implement-tiering): placeholder; proper tier assignment
+	// deferred to the follow-up plan. See plan
+	// 20260528-0930-approval-tier-ladder.md §D5.
+	ok, err := approval.Confirm(cfg.Approval, approval.CategoryHuman, os.Stdin, os.Stdout, "  File a bug report?")
 	if err != nil {
 		log.Warnf("Could not read confirmation: %v. Skipping bug report.", err)
 		return false

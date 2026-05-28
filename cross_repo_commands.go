@@ -76,8 +76,9 @@ func scopeBannerLine(scope workspace.Scope) string {
 // The per-command Yes flag still wins ahead of it inside confirmCommit so
 // scripts that pass `commit --yes "msg"` keep their existing semantics
 // regardless of the global policy. When Yes is false the prompt routes
-// through approval.Confirm with CategoryCommit, which by default still
-// prompts under --auto because commit is in the default exclusion set.
+// through approval.Confirm with CategoryHuman as a placeholder — proper tier
+// assignment for the non-implement workspace-commit flow is deferred to a
+// follow-up plan (see 20260528-0930-approval-tier-ladder.md §D5).
 type commitOptions struct {
 	Repo             string
 	Paths            string
@@ -354,9 +355,10 @@ func commitOneRepo(repo, msg string, opts commitOptions) (bool, error) {
 // With --yes, returns true unconditionally — the per-command primitive
 // preserves the documented `commit --yes "msg"` script contract regardless
 // of the global --auto policy. Without --yes, the prompt routes through
-// approval.Confirm(CategoryCommit) so --auto + --confirm=… can opt the
-// commit gate in or out of auto-yes. Without a TTY and without either
-// flag, returns an error matching commit.sh's wording.
+// approval.Confirm(CategoryHuman) as a placeholder; under the new tier
+// ladder the non-implement workspace-commit flow always prompts. Without
+// a TTY and without either flag, returns an error matching commit.sh's
+// wording.
 func confirmCommit(repo string, opts commitOptions) (bool, error) {
 	if opts.Yes {
 		return true, nil
@@ -364,7 +366,10 @@ func confirmCommit(repo string, opts commitOptions) (bool, error) {
 	if !stdinIsTTY() {
 		return false, errors.New("stdin is not a TTY and --yes was not set; refusing to commit unattended.\n       Re-run with --yes if this is a scripted invocation.")
 	}
-	return approval.Confirm(opts.Approval, approval.CategoryCommit, os.Stdin, os.Stdout, fmt.Sprintf("Commit these changes to %s?", relOrSelf(repo)))
+	// TODO(non-implement-tiering): placeholder; proper tier assignment
+	// deferred to the follow-up plan. See plan
+	// 20260528-0930-approval-tier-ladder.md §D5.
+	return approval.Confirm(opts.Approval, approval.CategoryHuman, os.Stdin, os.Stdout, fmt.Sprintf("Commit these changes to %s?", relOrSelf(repo)))
 }
 
 func errMissingMsg() error {

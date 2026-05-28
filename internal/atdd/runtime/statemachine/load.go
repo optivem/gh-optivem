@@ -3,8 +3,11 @@ package statemachine
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/optivem/gh-optivem/internal/approval"
 )
 
 // RawNode mirrors the YAML node schema 1:1, preserving every field for both
@@ -44,6 +47,24 @@ type RawNode struct {
 	// auto-yes or prompt. Default: "prompt" on approve nodes, "human" on
 	// human-STOP nodes — driver-side, not encoded here.
 	Category string `yaml:"category,omitempty"`
+}
+
+// approvalPrimitives is the closed set of primitive process IDs that
+// terminate in an `approve` call (either directly or via threading). Every
+// call-activity targeting one of these MUST resolve `category:` to a
+// literal token — either directly in its `params:` or transitively from an
+// ancestor caller's `params:`. validateApprovalCategories enforces this at
+// load time so unresolved sites never reach the dispatch-time fallback.
+//
+// `fix` is intentionally absent: it self-resolves with literal
+// `category: human` on its internal approve + execute-agent call-activities,
+// so its callers (execute-agent.FIX / execute-command.FIX) don't need to
+// pin a category.
+var approvalPrimitives = map[string]bool{
+	"approve":         true,
+	"execute-agent":   true,
+	"execute-command": true,
+	"commit":          true,
 }
 
 // rawEdge mirrors the YAML sequence-flow schema. `When` carries the raw
@@ -108,6 +129,9 @@ func LoadBytes(data []byte) (*Engine, error) {
 			return nil, err
 		}
 		eng.Processes[name] = process
+	}
+	if err := validateApprovalCategories(eng.Processes); err != nil {
+		return nil, err
 	}
 	return eng, nil
 }
@@ -254,4 +278,108 @@ func validateTDDStage(processName string, rn RawNode) error {
 	default:
 		return fmt.Errorf("process %q node %q: tdd-stage %q is not one of red / green / refactor", processName, rn.ID, rn.TDDStage)
 	}
+}
+
+// validateApprovalCategories walks every call-activity that targets one of
+// the approvalPrimitives and verifies its `category:` resolves to a known
+// approval.Category token — either as a literal in the call-activity's own
+// `params:` or transitively from an ancestor caller via the `${category}`
+// threading chain.
+//
+// Defense-in-depth pair with driver.go::classifyApproveCategory: this
+// catches unresolved sites at load time so the dispatch-time path never
+// has to fall back. Missing/invalid sites error with the offending node
+// named and the valid token set listed.
+func validateApprovalCategories(processes map[string]*Process) error {
+	// First pass: index, per primitive process, the call-sites that
+	// supply (a) a literal category and (b) a threaded `${...}` category
+	// from their own params. Keyed by the called primitive's process ID.
+	literalCallers := map[string][]string{}    // primitive → list of literal category values from its callers
+	threadedCallers := map[string][]string{}   // primitive → list of containing-process IDs whose call passes a placeholder
+	for parentID, p := range processes {
+		for _, n := range p.Nodes {
+			if n.Kind != CallActivity {
+				continue
+			}
+			if !approvalPrimitives[n.Raw.Process] {
+				continue
+			}
+			cat := strings.TrimSpace(n.Raw.Params["category"])
+			switch {
+			case cat == "":
+				// Will be flagged in the second pass.
+			case isPlaceholder(cat):
+				threadedCallers[n.Raw.Process] = append(threadedCallers[n.Raw.Process], parentID)
+			default:
+				literalCallers[n.Raw.Process] = append(literalCallers[n.Raw.Process], cat)
+			}
+		}
+	}
+
+	// Second pass: validate each call-activity.
+	for parentID, p := range processes {
+		for _, n := range p.Nodes {
+			if n.Kind != CallActivity {
+				continue
+			}
+			if !approvalPrimitives[n.Raw.Process] {
+				continue
+			}
+			cat := strings.TrimSpace(n.Raw.Params["category"])
+			switch {
+			case cat == "":
+				return fmt.Errorf("process %q node %q: call to %q has no category resolved (params.category required); valid: %s",
+					parentID, n.ID, n.Raw.Process, approvalValidList())
+			case isPlaceholder(cat):
+				if !resolvesToLiteral(parentID, literalCallers, threadedCallers, map[string]bool{}) {
+					return fmt.Errorf("process %q node %q: call to %q threads category %s but no ancestor caller of %q provides a literal category",
+						parentID, n.ID, n.Raw.Process, cat, parentID)
+				}
+			default:
+				if _, err := approval.ParseCategory(cat); err != nil {
+					return fmt.Errorf("process %q node %q: call to %q: %w",
+						parentID, n.ID, n.Raw.Process, err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// resolvesToLiteral returns true iff `proc` has at least one transitively-
+// reachable caller chain that lands on a literal category token. Walks
+// upward through the threadedCallers graph, terminating on either a
+// literal-bearing caller or a cycle (no progress).
+func resolvesToLiteral(proc string, literals map[string][]string, threaded map[string][]string, visited map[string]bool) bool {
+	if visited[proc] {
+		return false
+	}
+	visited[proc] = true
+	for _, lit := range literals[proc] {
+		if _, err := approval.ParseCategory(lit); err == nil {
+			return true
+		}
+	}
+	for _, parent := range threaded[proc] {
+		if resolvesToLiteral(parent, literals, threaded, visited) {
+			return true
+		}
+	}
+	return false
+}
+
+// isPlaceholder reports whether a category value is a BPMN `${name}` param
+// reference rather than a literal token.
+func isPlaceholder(s string) bool {
+	return strings.HasPrefix(s, "${") && strings.HasSuffix(s, "}")
+}
+
+// approvalValidList renders the closed set of valid category tokens for
+// inclusion in error messages, in iota order.
+func approvalValidList() string {
+	// Mirror approval.allCategories ordering by parsing-and-stringifying
+	// each known tier. Hardcoded here to avoid exposing the slice from
+	// the approval package.
+	tokens := []string{"command", "prod-agent", "test-agent", "prod-commit", "test-commit", "human"}
+	return strings.Join(tokens, ", ")
 }

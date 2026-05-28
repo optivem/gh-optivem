@@ -660,6 +660,10 @@ func TestExecuteCommand_FailureDispatchesCommandFailedFixerAgent(t *testing.T) {
 	// binding is mandatory; the bare `command:` setup the test used
 	// previously relied on the now-removed silent-leak behavior.
 	ctx.Params["task-name"] = "synthetic-test-phase"
+	// category threads through execute-command's APPROVE_PRE; in production
+	// the command-MID caller supplies this. The test runs the primitive
+	// directly so it must supply the equivalent literal.
+	ctx.Params["category"] = "command"
 	if err := eng.RunProcess("execute-command", ctx); err != nil {
 		t.Fatalf("RunProcess execute-command: %v", err)
 	}
@@ -784,6 +788,10 @@ func TestExecuteAgent_ValidationFailureDispatchesFixerForFailureKind(t *testing.
 			// and an empty value would leak `${agent}` into dispatch.
 			ctx.Params["task-name"] = "some-writing-agent"
 			ctx.Params["agent"] = "some-agent-noun"
+			// category threads through execute-agent's APPROVE_PRE /
+			// APPROVE_POST; in production the writing-agent MID caller
+			// supplies this. The test runs the primitive directly.
+			ctx.Params["category"] = "prod-agent"
 			if err := eng.RunProcess("execute-agent", ctx); err != nil {
 				t.Fatalf("RunProcess execute-agent: %v", err)
 			}
@@ -831,6 +839,7 @@ processes:
         params:
           task-name: write-acceptance-tests
           agent: acceptance-test-writer
+          category: test-agent
       - id: OUTER_END
         type: end-event
         name: "Outer end"

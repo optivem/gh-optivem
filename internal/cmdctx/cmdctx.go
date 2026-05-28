@@ -28,8 +28,8 @@ func WithApproval(ctx context.Context, r approval.Resolved) context.Context {
 }
 
 // ApprovalFromContext returns the Resolved stashed by WithApproval. A
-// context without one yields the zero value — Auto=false, no
-// ConfirmSet entries — which is the safe cautious default (every
+// context without one yields the zero value — Auto=false, ConfirmFloor at
+// the zero tier — which is the safe cautious default (every
 // approval.Confirm call falls through to the interactive prompt).
 func ApprovalFromContext(ctx context.Context) approval.Resolved {
 	if ctx == nil {

@@ -112,8 +112,9 @@ type Config struct {
 	// scaffolder threads it through to every y/n confirmation site
 	// (confirmReposExist, readProjectConfirmation, bug-report) so the
 	// policy applies consistently regardless of where the prompt lives.
-	// Zero value (Auto=false, empty ConfirmSet) is the safe cautious
-	// default — confirmations fall through to the interactive prompt.
+	// Zero value (Auto=false, ConfirmFloor at the zero tier) is the safe
+	// cautious default — confirmations fall through to the interactive
+	// prompt.
 	Approval approval.Resolved
 	WorkDir    string
 	ShopPath string
@@ -978,10 +979,13 @@ func confirmReposExist(fullRepos []string, assumeYes bool, resolved approval.Res
 		return existing
 	}
 
-	// Overwriting an existing GitHub repo is destructive — escalate from
-	// the default CategoryPrompt to CategoryCommit so the operator must
-	// either pass --yes, omit --auto, or include `commit` in --confirm.
-	ok, err := approval.Confirm(resolved, approval.CategoryCommit, os.Stdin, os.Stderr, "Proceed?")
+	// Overwriting an existing GitHub repo is destructive — gate at the
+	// always-prompt human tier so the operator must either pass --yes or
+	// answer the prompt.
+	// TODO(non-implement-tiering): placeholder; proper tier assignment
+	// deferred to the follow-up plan. See plan
+	// 20260528-0930-approval-tier-ladder.md §D5.
+	ok, err := approval.Confirm(resolved, approval.CategoryHuman, os.Stdin, os.Stderr, "Proceed?")
 	if err != nil {
 		log.FatalExit(fmt.Sprintf("Aborted: %d repositor%s already exist and no confirmation was provided (pass --yes to proceed unattended)",
 			len(existing), pluralY(len(existing))))

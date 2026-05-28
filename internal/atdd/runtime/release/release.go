@@ -166,9 +166,9 @@ func InteractiveConfirmer(stdin io.Reader, stdout io.Writer) Confirmer {
 }
 
 // ApprovalConfirmer returns a Confirmer that routes through the global
-// auto-approve policy with CategoryRelease — so under --auto with the
-// default exclusion set (commit,fix), release confirmations auto-yes,
-// but operators can opt back in via --confirm=release.
+// auto-approve policy with CategoryHuman — release is always-prompt under
+// the new tier ladder (the non-implement reclassification is deferred to a
+// follow-up plan).
 //
 // Released as a sibling to InteractiveConfirmer so the driver layer can
 // pick the right Confirmer at wire-up time based on whether a Resolved
@@ -183,7 +183,10 @@ func ApprovalConfirmer(r approval.Resolved, stdin io.Reader, stdout io.Writer) C
 		stdout = os.Stdout
 	}
 	return func(prompt string) (bool, error) {
-		return approval.Confirm(r, approval.CategoryRelease, stdin, stdout, prompt)
+		// TODO(non-implement-tiering): placeholder; proper tier assignment
+		// deferred to the follow-up plan. See plan
+		// 20260528-0930-approval-tier-ladder.md §D5.
+		return approval.Confirm(r, approval.CategoryHuman, stdin, stdout, prompt)
 	}
 }
 

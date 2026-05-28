@@ -457,7 +457,10 @@ func readProjectConfirmation(cfg *config.Config, missing []string) bool {
 		log.Info("Proceeding without confirmation (--yes).")
 		return true
 	}
-	ok, err := approval.Confirm(cfg.Approval, approval.CategoryPrompt, os.Stdin, os.Stdout, "  Add missing statuses?")
+	// TODO(non-implement-tiering): placeholder; proper tier assignment
+	// deferred to the follow-up plan. See plan
+	// 20260528-0930-approval-tier-ladder.md §D5.
+	ok, err := approval.Confirm(cfg.Approval, approval.CategoryHuman, os.Stdin, os.Stdout, "  Add missing statuses?")
 	if err != nil {
 		return false
 	}

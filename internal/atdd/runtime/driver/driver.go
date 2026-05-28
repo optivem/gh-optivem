@@ -1113,14 +1113,9 @@ func promptForAgent(opts Options, raw statemachine.RawNode, params map[string]st
 	fmt.Fprintln(opts.Stdout, "  When the agent's COMMIT lands on HEAD, approve to continue.")
 
 	// Manual-agent dispatch is the v1 fallback for any user-task — the
-	// operator-launched agent could be fix-* or any other writing agent,
-	// so the category folds the same way newApproveDispatcher does:
-	// `fix` when the agent name starts with fix-, `prompt` otherwise.
-	category := approval.CategoryPrompt
-	if strings.HasPrefix(agent, "fix-") {
-		category = approval.CategoryFix
-	}
-	ok, err := approval.Confirm(opts.Approval, category, opts.Stdin, opts.Stdout, "  Approve?")
+	// operator is launching the agent by hand, which is inherently a
+	// human-tier interaction. No prefix sniff needed.
+	ok, err := approval.Confirm(opts.Approval, approval.CategoryHuman, opts.Stdin, opts.Stdout, "  Approve?")
 	if err != nil {
 		return fmt.Errorf("read agent-dispatch confirmation: %w", err)
 	}

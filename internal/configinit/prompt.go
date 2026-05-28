@@ -247,7 +247,10 @@ func askTestLang(r *bufio.Reader, out io.Writer, f *config.RawFlags) error {
 // format + existence validation, re-asking just the URL on a bad value
 // rather than discarding the whole session.
 func askProjectURL(r *bufio.Reader, out io.Writer, f *config.RawFlags) error {
-	has, err := approval.Confirm(pkgApproval, approval.CategoryPrompt, r, out, "  Do you have an existing GitHub Project?")
+	// TODO(non-implement-tiering): placeholder; proper tier assignment
+	// deferred to the follow-up plan. See plan
+	// 20260528-0930-approval-tier-ladder.md §D5.
+	has, err := approval.Confirm(pkgApproval, approval.CategoryHuman, r, out, "  Do you have an existing GitHub Project?")
 	if err != nil {
 		return fmt.Errorf("read project URL gate: %w", err)
 	}

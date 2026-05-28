@@ -802,6 +802,9 @@ processes:
         type: call-activity
         process: commit
         name: "Commit Test Code"
+        params:
+          # test-commit tier: persists the test contract.
+          category: test-commit
 
       - id: WAV_AT_CODE_END
         type: end-event
@@ -1074,6 +1077,9 @@ processes:
         type: call-activity
         process: commit
         name: "Commit System Changes"
+        params:
+          # prod-commit tier: persists production-code work.
+          category: prod-commit
 
       - id: IMPL_AND_VERIFY_SYSTEM_END
         type: end-event
@@ -1124,6 +1130,9 @@ processes:
         type: call-activity
         process: commit
         name: "Commit Test Changes"
+        params:
+          # test-commit tier: persists the refactored test contract.
+          category: test-commit
 
       - id: REFACTOR_AND_VERIFY_TESTS_END
         type: end-event
@@ -1203,6 +1212,9 @@ processes:
         type: call-activity
         process: commit
         name: "Commit Layer Changes"
+        params:
+          # test-commit tier: implement-test-layer commits test work.
+          category: test-commit
 
       - id: IMPLEMENT_TEST_LAYER_END
         type: end-event
@@ -1336,6 +1348,8 @@ processes:
         params:
           task-name: write-acceptance-tests
           agent: acceptance-test-writer
+          # test-agent tier: writing tests is the test-contract step.
+          category: test-agent
         read:  [at-test, dsl-port]
         write: [at-test, dsl-port, dsl-core]
 
@@ -1370,6 +1384,8 @@ processes:
         params:
           task-name: write-contract-tests
           agent: contract-test-writer
+          # test-agent tier: writing tests is the test-contract step.
+          category: test-agent
         read:  [ct-test, dsl-port]
         write: [ct-test, dsl-port, dsl-core]
 
@@ -1402,6 +1418,8 @@ processes:
         params:
           task-name: implement-dsl
           agent: dsl-implementer
+          # prod-agent tier: production-code writing agent.
+          category: prod-agent
         # Adapters are in scope because dsl-implementer adds throwing-TODO
         # stub bodies in the impl classes whenever it adds a new method
         # signature to a port (interfaces hold signatures only).
@@ -1433,6 +1451,8 @@ processes:
         params:
           task-name: implement-system
           agent: system-implementer
+          # prod-agent tier: production-code writing agent.
+          category: prod-agent
         read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
         write: [system-path]
 
@@ -1461,6 +1481,8 @@ processes:
         params:
           task-name: update-system
           agent: system-updater
+          # prod-agent tier: production-code writing agent.
+          category: prod-agent
         read:  [system-path, driver-adapter, driver-port]
         write: [system-path, driver-adapter]
 
@@ -1486,6 +1508,8 @@ processes:
         params:
           task-name: implement-system-driver-adapters
           agent: system-driver-adapter-implementer
+          # prod-agent tier: production-code writing agent.
+          category: prod-agent
         read:  [driver-port, driver-adapter]
         write: [driver-adapter]
 
@@ -1511,6 +1535,8 @@ processes:
         params:
           task-name: update-system-driver-adapters
           agent: system-driver-adapter-updater
+          # prod-agent tier: production-code writing agent.
+          category: prod-agent
         read:  [driver-port, driver-adapter]
         write: [driver-adapter]
 
@@ -1533,6 +1559,8 @@ processes:
         params:
           task-name: implement-external-system-driver-adapters
           agent: external-system-driver-adapter-implementer
+          # prod-agent tier: production-code writing agent.
+          category: prod-agent
         read:  [external-system-driver-port, external-system-driver-adapter]
         write: [external-system-driver-adapter]
 
@@ -1559,6 +1587,8 @@ processes:
         params:
           task-name: update-external-system-driver-adapters
           agent: external-system-driver-adapter-updater
+          # prod-agent tier: production-code writing agent.
+          category: prod-agent
         read:  [external-system-driver-port, external-system-driver-adapter]
         write: [external-system-driver-adapter]
 
@@ -1580,6 +1610,8 @@ processes:
         params:
           task-name: implement-external-system-stubs
           agent: external-system-stub-implementer
+          # prod-agent tier: production-code writing agent.
+          category: prod-agent
         read:  [external-system-driver-adapter]
         write: [external-system-driver-adapter]
 
@@ -1605,6 +1637,8 @@ processes:
         params:
           task-name: disable-tests
           agent: test-disabler
+          # test-agent tier: edits the test contract.
+          category: test-agent
         read:  [at-test, ct-test]
         write: [at-test, ct-test]
 
@@ -1627,6 +1661,8 @@ processes:
         params:
           task-name: enable-tests
           agent: test-enabler
+          # test-agent tier: edits the test contract.
+          category: test-agent
         read:  [at-test, ct-test]
         write: [at-test, ct-test]
 
@@ -1651,6 +1687,8 @@ processes:
         params:
           task-name: fix-unexpected-passing-tests
           agent: unexpected-passing-tests-fixer
+          # human tier: fix-flow dispatch — signals upstream defect, never bypassable.
+          category: human
         read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
         write: [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
 
@@ -1674,6 +1712,8 @@ processes:
         params:
           task-name: fix-unexpected-failing-tests
           agent: unexpected-failing-tests-fixer
+          # human tier: fix-flow dispatch — signals upstream defect, never bypassable.
+          category: human
         read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
         write: [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
 
@@ -1696,6 +1736,8 @@ processes:
         params:
           task-name: refactor-tests
           agent: test-refactorer
+          # test-agent tier: edits the test contract.
+          category: test-agent
         read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter]
         write: [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter]
 
@@ -1717,6 +1759,8 @@ processes:
         params:
           task-name: refactor-system
           agent: system-refactorer
+          # prod-agent tier: production-code writing agent.
+          category: prod-agent
         read:  [system-path]
         write: [system-path]
 
@@ -1743,6 +1787,8 @@ processes:
         params:
           task-name: refine-acceptance-criteria
           agent: acceptance-criteria-refiner
+          # human tier: always-engage contract step.
+          category: human
         scope: none
 
       - id: REFINE_AC_END
@@ -1762,6 +1808,8 @@ processes:
         name: "Dispatch the Command"
         params:
           command: "gh optivem compile"
+          # command tier: cheap, no AI cost, no global state mutation.
+          category: command
 
       - id: COMPILE_MID_END
         type: end-event
@@ -1780,6 +1828,8 @@ processes:
         name: "Dispatch the Command"
         params:
           command: "gh optivem system compile"
+          # command tier: cheap, no AI cost, no global state mutation.
+          category: command
 
       - id: COMPILE_SYS_END
         type: end-event
@@ -1798,6 +1848,8 @@ processes:
         name: "Dispatch the Command"
         params:
           command: "gh optivem test compile"
+          # command tier: cheap, no AI cost, no global state mutation.
+          category: command
 
       - id: COMPILE_TESTS_END
         type: end-event
@@ -1816,6 +1868,8 @@ processes:
         name: "Dispatch the Command"
         params:
           command: "gh optivem system build"
+          # command tier: cheap, no AI cost, no global state mutation.
+          category: command
 
       - id: BUILD_SYS_END
         type: end-event
@@ -1857,6 +1911,8 @@ processes:
         name: "Dispatch the Command"
         params:
           command: "gh optivem system start"
+          # command tier: cheap, no AI cost, no global state mutation.
+          category: command
 
       - id: START_SYS_END
         type: end-event
@@ -1875,6 +1931,8 @@ processes:
         name: "Dispatch the Command"
         params:
           command: "gh optivem system start --restart"
+          # command tier: cheap, no AI cost, no global state mutation.
+          category: command
 
       - id: START_SYS_RESTART_END
         type: end-event
@@ -1906,6 +1964,10 @@ processes:
         params:
           command: "gh optivem commit --yes --include-untracked"
           message: "#${ticket-id} ${issue-title}"
+          # Threaded from the commit-process caller (prod-commit or
+          # test-commit), so the inner execute-command's approve gate
+          # resolves at the caller's commit tier, not as `command`.
+          category: ${category}
 
       - id: COMMIT_MID_END
         type: end-event
@@ -1941,6 +2003,8 @@ processes:
           command: "gh optivem test run"
           suite: ${suite}
           test-names: ${test-names}
+          # command tier: cheap, no AI cost, no global state mutation.
+          category: command
           # Disable the inner execute-command FIX branch. The callers
           # (`verify-tests-pass`, `verify-tests-fail`) route on
           # `test-outcome` and dispatch their own specialised fix
@@ -2052,6 +2116,9 @@ processes:
         name: "Request Approval"
         params:
           question: "Do you approve agent ${task-name} to execute?"
+          # Threaded from the writing-agent MID caller
+          # (prod-agent / test-agent / human).
+          category: ${category}
 
       - id: GATE_APPROVED_PRE
         type: gateway
@@ -2094,6 +2161,10 @@ processes:
         name: "Confirm Approval"
         params:
           question: "Approve output from agent ${task-name}?"
+          # Threaded from the writing-agent MID caller; same tier as
+          # APPROVE_PRE so opting in/out of the dispatch tier toggles
+          # both gates symmetrically.
+          category: ${category}
 
       - id: GATE_APPROVED_POST
         type: gateway
@@ -2158,6 +2229,10 @@ processes:
         name: "Request Approval"
         params:
           question: "Do you approve running command ${command} ?"
+          # Threaded from the execute-command caller (most commands pin
+          # `command`; the commit MID re-pins `prod-commit` / `test-commit`
+          # from its own caller via its EXECUTE_COMMAND `params:` block).
+          category: ${category}
 
       - id: GATE_APPROVED_PRE
         type: gateway
@@ -2219,11 +2294,10 @@ processes:
         name: "Request Approval"
         params:
           question: "Do you approve fix to attempt remediation for ${failure-kind} ?"
-          # category: fix tags this approve as the fix-tier gate. Under
-          # `--auto` with the default exclusion set (commit,fix,human),
-          # the operator still gets prompted here; opting out requires an
-          # explicit `--confirm=` that omits `fix`.
-          category: fix
+          # human tier: fix is the operator-engages point for "something
+          # broke, here's the proposed remediation" — never bypassable
+          # under the ladder model.
+          category: human
 
       - id: GATE_APPROVED_PRE
         type: gateway
@@ -2246,6 +2320,10 @@ processes:
           # `fix-*` agent inventory note near the top of this file.
           task-name: "fix-${failure-kind}"
           agent: "${failure-kind}-fixer"
+          # human tier: fix-flow dispatch — distinct from APPROVE_PRE's
+          # remediation prompt above; the inner agent's PRE/POST also gate
+          # at human via execute-agent's threading.
+          category: human
           fix-on-failure: "false"
           # originating-task-name carries the OUTER MID's task-name (e.g.
           # "write-acceptance-tests") through the fix dispatch so the inner

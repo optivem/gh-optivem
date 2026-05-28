@@ -162,3 +162,109 @@ func TestEngine_Outputs_UnknownProcess(t *testing.T) {
 		t.Errorf("Engine.Outputs(nonexistent): want ok=false")
 	}
 }
+
+// TestLoadBytes_ApprovalCategory_MissingErrors checks that a writing-agent
+// MID whose EXECUTE_AGENT call-activity omits `category:` is rejected at
+// load with the offending node named and the valid-set listed.
+func TestLoadBytes_ApprovalCategory_MissingErrors(t *testing.T) {
+	yaml := `
+processes:
+  some-mid:
+    name: "Some MID"
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        name: "Dispatch the Agent"
+        params:
+          task-name: some-task
+          agent: some-agent
+      - id: MID_END
+        type: end-event
+        name: "Done"
+    sequence-flows:
+      - {from: EXECUTE_AGENT, to: MID_END}
+  execute-agent:
+    name: "Execute Agent"
+    start: RUN_AGENT
+    nodes:
+      - id: RUN_AGENT
+        type: user-task
+        agent: ${agent}
+        name: "Run agent"
+      - id: PRIM_END
+        type: end-event
+        name: "Done"
+    sequence-flows:
+      - {from: RUN_AGENT, to: PRIM_END}
+`
+	_, err := LoadBytes([]byte(yaml))
+	if err == nil {
+		t.Fatal("expected load error for missing category on EXECUTE_AGENT, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "some-mid") || !strings.Contains(msg, "EXECUTE_AGENT") {
+		t.Errorf("error should name the offending process/node, got %q", msg)
+	}
+	if !strings.Contains(msg, "prod-agent") || !strings.Contains(msg, "human") {
+		t.Errorf("error should list valid set, got %q", msg)
+	}
+}
+
+// TestLoadBytes_ApprovalCategory_InvalidTokenErrors checks that an unknown
+// category token (`category: foo`) is rejected at load.
+func TestLoadBytes_ApprovalCategory_InvalidTokenErrors(t *testing.T) {
+	yaml := `
+processes:
+  some-mid:
+    name: "Some MID"
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        name: "Dispatch the Agent"
+        params:
+          task-name: some-task
+          agent: some-agent
+          category: foo
+      - id: MID_END
+        type: end-event
+        name: "Done"
+    sequence-flows:
+      - {from: EXECUTE_AGENT, to: MID_END}
+  execute-agent:
+    name: "Execute Agent"
+    start: RUN_AGENT
+    nodes:
+      - id: RUN_AGENT
+        type: user-task
+        agent: ${agent}
+        name: "Run agent"
+      - id: PRIM_END
+        type: end-event
+        name: "Done"
+    sequence-flows:
+      - {from: RUN_AGENT, to: PRIM_END}
+`
+	_, err := LoadBytes([]byte(yaml))
+	if err == nil {
+		t.Fatal("expected load error for invalid category, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "foo") {
+		t.Errorf("error should mention the offending token, got %q", msg)
+	}
+	if !strings.Contains(msg, "human") || !strings.Contains(msg, "command") {
+		t.Errorf("error should list valid set, got %q", msg)
+	}
+}
+
+// TestLoadBytes_ApprovalCategory_ShippedYAMLLoads guards against regressing
+// the shipped process-flow.yaml's category coverage.
+func TestLoadBytes_ApprovalCategory_ShippedYAMLLoads(t *testing.T) {
+	if _, err := LoadDefault(); err != nil {
+		t.Fatalf("LoadDefault: %v", err)
+	}
+}

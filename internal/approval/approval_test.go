@@ -14,11 +14,12 @@ func envOf(pairs map[string]string) func(string) string {
 
 func TestCategory_String(t *testing.T) {
 	cases := map[Category]string{
-		CategoryCommit:  "commit",
-		CategoryFix:     "fix",
-		CategoryRelease: "release",
-		CategoryPrompt:  "prompt",
-		CategoryHuman:   "human",
+		CategoryCommand:    "command",
+		CategoryProdAgent:  "prod-agent",
+		CategoryTestAgent:  "test-agent",
+		CategoryProdCommit: "prod-commit",
+		CategoryTestCommit: "test-commit",
+		CategoryHuman:      "human",
 	}
 	for c, want := range cases {
 		if got := c.String(); got != want {
@@ -28,7 +29,7 @@ func TestCategory_String(t *testing.T) {
 }
 
 func TestParseCategory_RoundTrip(t *testing.T) {
-	for _, c := range []Category{CategoryCommit, CategoryFix, CategoryRelease, CategoryPrompt, CategoryHuman} {
+	for _, c := range []Category{CategoryCommand, CategoryProdAgent, CategoryTestAgent, CategoryProdCommit, CategoryTestCommit, CategoryHuman} {
 		got, err := ParseCategory(c.String())
 		if err != nil {
 			t.Errorf("ParseCategory(%q) err: %v", c.String(), err)
@@ -40,7 +41,7 @@ func TestParseCategory_RoundTrip(t *testing.T) {
 }
 
 func TestParseCategory_CaseInsensitiveAndTrimmed(t *testing.T) {
-	for _, s := range []string{"COMMIT", "Commit", "  fix  ", "Release"} {
+	for _, s := range []string{"COMMAND", "Prod-Agent", "  test-agent  ", "Human"} {
 		if _, err := ParseCategory(s); err != nil {
 			t.Errorf("ParseCategory(%q) err: %v", s, err)
 		}
@@ -53,9 +54,21 @@ func TestParseCategory_Invalid_ErrorListsValidSet(t *testing.T) {
 		t.Fatal("expected error for invalid category")
 	}
 	msg := err.Error()
-	for _, want := range []string{"commit", "fix", "release", "prompt", "human"} {
+	for _, want := range []string{"command", "prod-agent", "test-agent", "prod-commit", "test-commit", "human"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("error %q does not list %q", msg, want)
+		}
+	}
+}
+
+// Regression guard: operators carrying muscle memory from the old vocabulary
+// (commit / fix / release / prompt) get a clear error naming the new tokens
+// rather than silent acceptance.
+func TestParseCategory_OldVocabularyErrors(t *testing.T) {
+	for _, old := range []string{"commit", "fix", "release", "prompt"} {
+		_, err := ParseCategory(old)
+		if err == nil {
+			t.Errorf("ParseCategory(%q): expected error for retired token", old)
 		}
 	}
 }
@@ -74,13 +87,14 @@ func TestResolve_DefaultAllOff(t *testing.T) {
 	if r.ConfirmSource != "default" {
 		t.Errorf("ConfirmSource = %q, want default", r.ConfirmSource)
 	}
-	// Human invariant: always in ConfirmSet, even when Auto is off.
-	if !r.ConfirmSet[CategoryHuman] {
-		t.Error("CategoryHuman must always be in ConfirmSet")
+	// When Auto is off the floor is unused functionally; the zero value
+	// (CategoryCommand) is fine and never short-circuits.
+	if r.ConfirmFloor != CategoryCommand {
+		t.Errorf("ConfirmFloor = %v, want zero (CategoryCommand)", r.ConfirmFloor)
 	}
 }
 
-func TestResolve_AutoFlag_DefaultsToCommitFix(t *testing.T) {
+func TestResolve_AutoFlag_DefaultsToHuman(t *testing.T) {
 	r, err := Resolve(true, true, "", false, envOf(nil))
 	if err != nil {
 		t.Fatalf("Resolve err: %v", err)
@@ -94,14 +108,8 @@ func TestResolve_AutoFlag_DefaultsToCommitFix(t *testing.T) {
 	if r.ConfirmSource != "default" {
 		t.Errorf("ConfirmSource = %q, want default", r.ConfirmSource)
 	}
-	want := map[Category]bool{CategoryCommit: true, CategoryFix: true, CategoryHuman: true}
-	for c, w := range want {
-		if r.ConfirmSet[c] != w {
-			t.Errorf("ConfirmSet[%s] = %v, want %v", c, r.ConfirmSet[c], w)
-		}
-	}
-	if r.ConfirmSet[CategoryRelease] || r.ConfirmSet[CategoryPrompt] {
-		t.Errorf("release/prompt should NOT be in default exclusion: %+v", r.ConfirmSet)
+	if r.ConfirmFloor != CategoryHuman {
+		t.Errorf("ConfirmFloor = %v, want CategoryHuman (truly autonomous default)", r.ConfirmFloor)
 	}
 }
 
@@ -143,79 +151,57 @@ func TestResolve_AutoEnvFalsyDoesNotEnable(t *testing.T) {
 	}
 }
 
-func TestResolve_ConfirmFlag_ExplicitEmpty(t *testing.T) {
-	r, err := Resolve(true, true, "", true, envOf(nil))
+func TestResolve_ConfirmFlag_ExplicitTier(t *testing.T) {
+	r, err := Resolve(true, true, "prod-commit", true, envOf(nil))
 	if err != nil {
 		t.Fatalf("Resolve err: %v", err)
 	}
 	if r.ConfirmSource != "flag" {
 		t.Errorf("ConfirmSource = %q, want flag", r.ConfirmSource)
 	}
-	// Explicit empty --confirm= means "no operator categories, only the
-	// implicit human." This is the true-autonomous mode example.
-	for _, c := range []Category{CategoryCommit, CategoryFix, CategoryRelease, CategoryPrompt} {
-		if r.ConfirmSet[c] {
-			t.Errorf("ConfirmSet[%s] should be false under --confirm=", c)
-		}
-	}
-	if !r.ConfirmSet[CategoryHuman] {
-		t.Error("human must remain implicit")
+	if r.ConfirmFloor != CategoryProdCommit {
+		t.Errorf("ConfirmFloor = %v, want CategoryProdCommit", r.ConfirmFloor)
 	}
 }
 
-func TestResolve_ConfirmFlag_Custom(t *testing.T) {
-	r, err := Resolve(true, true, "fix,release", true, envOf(nil))
-	if err != nil {
-		t.Fatalf("Resolve err: %v", err)
+func TestResolve_ConfirmFlag_MultiTokenErrors(t *testing.T) {
+	_, err := Resolve(true, true, "prod-commit,test-commit", true, envOf(nil))
+	if err == nil {
+		t.Fatal("expected error for multi-token --confirm (threshold is single tier)")
 	}
-	want := map[Category]bool{
-		CategoryCommit:  false,
-		CategoryFix:     true,
-		CategoryRelease: true,
-		CategoryPrompt:  false,
-		CategoryHuman:   true,
-	}
-	for c, w := range want {
-		if r.ConfirmSet[c] != w {
-			t.Errorf("ConfirmSet[%s] = %v, want %v", c, r.ConfirmSet[c], w)
-		}
+	if !strings.Contains(err.Error(), "single tier") {
+		t.Errorf("error should explain single-tier requirement: %v", err)
 	}
 }
 
 func TestResolve_ConfirmEnv(t *testing.T) {
-	r, err := Resolve(true, true, "", false, envOf(map[string]string{EnvConfirm: "fix"}))
+	r, err := Resolve(true, true, "", false, envOf(map[string]string{EnvConfirm: "test-agent"}))
 	if err != nil {
 		t.Fatalf("Resolve err: %v", err)
 	}
 	if r.ConfirmSource != "env" {
 		t.Errorf("ConfirmSource = %q, want env", r.ConfirmSource)
 	}
-	if !r.ConfirmSet[CategoryFix] {
-		t.Error("fix should be in confirm set")
-	}
-	if r.ConfirmSet[CategoryCommit] {
-		t.Error("commit should NOT be in confirm set when env narrows to just fix")
+	if r.ConfirmFloor != CategoryTestAgent {
+		t.Errorf("ConfirmFloor = %v, want CategoryTestAgent", r.ConfirmFloor)
 	}
 }
 
 func TestResolve_ConfirmFlagOverridesEnv(t *testing.T) {
-	r, err := Resolve(true, true, "release", true, envOf(map[string]string{EnvConfirm: "fix"}))
+	r, err := Resolve(true, true, "command", true, envOf(map[string]string{EnvConfirm: "human"}))
 	if err != nil {
 		t.Fatalf("Resolve err: %v", err)
 	}
 	if r.ConfirmSource != "flag" {
 		t.Errorf("ConfirmSource = %q, want flag", r.ConfirmSource)
 	}
-	if r.ConfirmSet[CategoryFix] {
-		t.Error("env fix must not leak through when --confirm=release is set")
-	}
-	if !r.ConfirmSet[CategoryRelease] {
-		t.Error("release should be in confirm set from flag")
+	if r.ConfirmFloor != CategoryCommand {
+		t.Errorf("ConfirmFloor = %v, want CategoryCommand (flag wins)", r.ConfirmFloor)
 	}
 }
 
 func TestResolve_InvalidCategory_Errors(t *testing.T) {
-	_, err := Resolve(true, true, "commit,garbage,fix", true, envOf(nil))
+	_, err := Resolve(true, true, "garbage", true, envOf(nil))
 	if err == nil {
 		t.Fatal("expected error for invalid category in --confirm")
 	}
@@ -224,85 +210,60 @@ func TestResolve_InvalidCategory_Errors(t *testing.T) {
 	}
 }
 
-func TestResolve_AutoOff_ConfirmRawHasNoEffectAtConfirmTime(t *testing.T) {
-	// When Auto is false the confirm set is unused functionally, but the
-	// human invariant still holds and parsing still applies.
-	r, err := Resolve(false, false, "fix", true, envOf(nil))
+func TestResolve_AutoOff_FloorIsUnusedAtConfirmTime(t *testing.T) {
+	// When Auto is false every site prompts regardless of floor.
+	r, err := Resolve(false, false, "test-agent", true, envOf(nil))
 	if err != nil {
 		t.Fatalf("Resolve err: %v", err)
 	}
 	if r.Auto {
 		t.Error("Auto should be false")
 	}
-	// Confirm always prompts when Auto is off — even for categories not in
-	// the confirm set.
-	ok, _ := Confirm(r, CategoryPrompt, strings.NewReader("y\n"), &bytes.Buffer{}, "Go?")
+	// Confirm always prompts when Auto is off — even below the explicit floor.
+	ok, _ := Confirm(r, CategoryCommand, strings.NewReader("y\n"), &bytes.Buffer{}, "Go?")
 	if !ok {
 		t.Error("expected prompt to have been read")
 	}
 }
 
-func TestResolve_AutoOff_NoDefaultConfirmList(t *testing.T) {
-	// When Auto is false the default exclusion list is not materialised —
-	// commit/fix should not appear in ConfirmSet just because the default
-	// names them.
-	r, err := Resolve(false, false, "", false, envOf(nil))
-	if err != nil {
-		t.Fatalf("Resolve err: %v", err)
-	}
-	if r.ConfirmSet[CategoryCommit] {
-		t.Error("commit must not appear in ConfirmSet when Auto is off")
-	}
-	if r.ConfirmSet[CategoryFix] {
-		t.Error("fix must not appear in ConfirmSet when Auto is off")
-	}
-}
-
-func TestResolve_ConfirmList_TrimsAndSkipsBlanks(t *testing.T) {
-	r, err := Resolve(true, true, "  commit , , fix  ", true, envOf(nil))
-	if err != nil {
-		t.Fatalf("Resolve err: %v", err)
-	}
-	if !r.ConfirmSet[CategoryCommit] || !r.ConfirmSet[CategoryFix] {
-		t.Errorf("expected commit + fix, got %+v", r.ConfirmSet)
+func TestConfirm_ShortCircuit_BelowFloor(t *testing.T) {
+	// Floor = test-commit. Tiers below (command, prod-agent, test-agent,
+	// prod-commit) all auto-yes; tiers at/above (test-commit, human) prompt.
+	r, _ := Resolve(true, true, "test-commit", true, envOf(nil))
+	for _, c := range []Category{CategoryCommand, CategoryProdAgent, CategoryTestAgent, CategoryProdCommit} {
+		ok, err := Confirm(r, c, strings.NewReader(""), &bytes.Buffer{}, "Anything?")
+		if err != nil {
+			t.Fatalf("Confirm(%s) err: %v", c, err)
+		}
+		if !ok {
+			t.Errorf("expected short-circuit true for %s below floor=test-commit", c)
+		}
 	}
 }
 
-func TestConfirm_ShortCircuitsWhenAutoAndNotInConfirmSet(t *testing.T) {
-	r, _ := Resolve(true, true, "commit,fix", true, envOf(nil))
-	// "Empty" reader — a real read would block; short-circuit must avoid it.
-	ok, err := Confirm(r, CategoryPrompt, strings.NewReader(""), &bytes.Buffer{}, "Anything?")
-	if err != nil {
-		t.Fatalf("Confirm err: %v", err)
-	}
-	if !ok {
-		t.Error("expected short-circuit true for prompt category under --auto")
-	}
-}
-
-func TestConfirm_PromptsWhenAutoAndInConfirmSet(t *testing.T) {
-	r, _ := Resolve(true, true, "commit,fix", true, envOf(nil))
-	// Commit is in confirm set; must consume the reader.
-	var out bytes.Buffer
-	ok, err := Confirm(r, CategoryCommit, strings.NewReader("y\n"), &out, "Commit?")
-	if err != nil {
-		t.Fatalf("Confirm err: %v", err)
-	}
-	if !ok {
-		t.Error("expected true from y input")
-	}
-	if !strings.Contains(out.String(), "Commit? [y/n]:") {
-		t.Errorf("expected prompt in output, got %q", out.String())
+func TestConfirm_Prompts_AtOrAboveFloor(t *testing.T) {
+	// Floor = prod-commit. prod-commit / test-commit / human all prompt.
+	r, _ := Resolve(true, true, "prod-commit", true, envOf(nil))
+	for _, c := range []Category{CategoryProdCommit, CategoryTestCommit, CategoryHuman} {
+		var out bytes.Buffer
+		ok, err := Confirm(r, c, strings.NewReader("y\n"), &out, "Go?")
+		if err != nil {
+			t.Fatalf("Confirm(%s) err: %v", c, err)
+		}
+		if !ok {
+			t.Errorf("expected y for %s at/above floor=prod-commit", c)
+		}
+		if !strings.Contains(out.String(), "Go?") {
+			t.Errorf("%s should have written the prompt (no short-circuit at/above floor)", c)
+		}
 	}
 }
 
 func TestConfirm_HumanNeverShortCircuits(t *testing.T) {
-	// Even with --confirm= (truly autonomous), human-STOPs must still
-	// prompt. This is the load-bearing invariant of the design.
-	r, _ := Resolve(true, true, "", true, envOf(nil))
-	if r.ConfirmSet[CategoryHuman] != true {
-		t.Fatal("setup invariant: human must be in confirm set")
-	}
+	// Even with --confirm=command (lowest floor, most permissive auto), human-
+	// tier sites must still prompt. This is the load-bearing invariant of the
+	// design.
+	r, _ := Resolve(true, true, "command", true, envOf(nil))
 	var out bytes.Buffer
 	ok, err := Confirm(r, CategoryHuman, strings.NewReader("y\n"), &out, "Human STOP?")
 	if err != nil {
@@ -312,14 +273,14 @@ func TestConfirm_HumanNeverShortCircuits(t *testing.T) {
 		t.Error("expected y to be read")
 	}
 	if !strings.Contains(out.String(), "Human STOP?") {
-		t.Error("human prompt should have been written to out — short-circuit must not have fired")
+		t.Error("human prompt should have been written — short-circuit must not have fired")
 	}
 }
 
 func TestConfirm_DoesNotShortCircuitWhenAutoOff(t *testing.T) {
 	r, _ := Resolve(false, false, "", false, envOf(nil))
 	var out bytes.Buffer
-	ok, err := Confirm(r, CategoryPrompt, strings.NewReader("n\n"), &out, "Anything?")
+	ok, err := Confirm(r, CategoryCommand, strings.NewReader("n\n"), &out, "Anything?")
 	if err != nil {
 		t.Fatalf("Confirm err: %v", err)
 	}
@@ -347,9 +308,9 @@ func (s *stubAsker) Ask(prompt string) (string, error) {
 }
 
 func TestConfirmVia_ShortCircuitDoesNotCallAsker(t *testing.T) {
-	r, _ := Resolve(true, true, "commit", true, envOf(nil))
+	r, _ := Resolve(true, true, "human", true, envOf(nil))
 	asker := &stubAsker{answers: []string{"n"}}
-	ok, err := ConfirmVia(r, CategoryPrompt, asker, &bytes.Buffer{}, "Anything?")
+	ok, err := ConfirmVia(r, CategoryCommand, asker, &bytes.Buffer{}, "Anything?")
 	if err != nil {
 		t.Fatalf("ConfirmVia err: %v", err)
 	}
@@ -361,10 +322,10 @@ func TestConfirmVia_ShortCircuitDoesNotCallAsker(t *testing.T) {
 	}
 }
 
-func TestConfirmVia_PromptsWhenInConfirmSet(t *testing.T) {
-	r, _ := Resolve(true, true, "commit", true, envOf(nil))
+func TestConfirmVia_PromptsAtOrAboveFloor(t *testing.T) {
+	r, _ := Resolve(true, true, "human", true, envOf(nil))
 	asker := &stubAsker{answers: []string{"y"}}
-	ok, err := ConfirmVia(r, CategoryCommit, asker, &bytes.Buffer{}, "Commit?")
+	ok, err := ConfirmVia(r, CategoryHuman, asker, &bytes.Buffer{}, "STOP?")
 	if err != nil {
 		t.Fatalf("ConfirmVia err: %v", err)
 	}
@@ -376,20 +337,9 @@ func TestConfirmVia_PromptsWhenInConfirmSet(t *testing.T) {
 	}
 }
 
-func TestResolved_ConfirmListString_OmitsImplicitHumanAndIsSorted(t *testing.T) {
-	r, _ := Resolve(true, true, "release,commit,fix", true, envOf(nil))
-	got := r.ConfirmListString()
-	// Categories are sorted by underlying int value (the const declaration
-	// order): commit, fix, release, prompt, human. Human is dropped.
-	want := "commit,fix,release"
-	if got != want {
-		t.Errorf("ConfirmListString() = %q, want %q", got, want)
-	}
-}
-
-func TestResolved_ConfirmListString_EmptyWhenOnlyHuman(t *testing.T) {
-	r, _ := Resolve(true, true, "", true, envOf(nil))
-	if got := r.ConfirmListString(); got != "" {
-		t.Errorf("ConfirmListString() = %q, want empty", got)
+func TestResolved_ConfirmFloorString(t *testing.T) {
+	r, _ := Resolve(true, true, "prod-commit", true, envOf(nil))
+	if got := r.ConfirmFloorString(); got != "prod-commit" {
+		t.Errorf("ConfirmFloorString() = %q, want %q", got, "prod-commit")
 	}
 }

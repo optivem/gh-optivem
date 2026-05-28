@@ -1,5 +1,7 @@
 # Approval tier-ladder — log-level threshold model for `implement`
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-28T07:59:08Z`
+
 ## Context
 
 Supersedes `plans/20260527-2119-approval-category-explicit-ssot.md`.

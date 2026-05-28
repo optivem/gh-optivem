@@ -1,5 +1,5 @@
 // Package approval resolves the operator's global auto-approve policy
-// (--auto + --confirm=<categories>) and gates every y/n confirmation against
+// (--auto + --confirm=<tier>) and gates every y/n confirmation against
 // it. It sits one layer above promptio: promptio is the dumb y/n reader,
 // approval decides whether to ask at all.
 //
@@ -7,8 +7,8 @@
 // precedence baked in), stash the Resolved struct on the command context,
 // and call Confirm / ConfirmVia at every confirmation site with a category
 // tag. A site short-circuits to (true, nil) iff Auto is on and the site's
-// category is NOT in the confirm-set. CategoryHuman is always in the
-// confirm-set, so BPMN human-STOP nodes never auto-yes.
+// category is BELOW the configured threshold floor. CategoryHuman is the
+// top tier so human-STOPs never short-circuit at any reachable floor.
 //
 // promptio is unchanged — approval depends on promptio, not the reverse.
 package approval
@@ -16,35 +16,62 @@ package approval
 import (
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/promptio"
 )
 
-// Category names a class of confirmation prompt. The closed set is pinned
-// here so the --confirm=<list> vocabulary is a public, composable contract.
+// Category names a tier in the approval-policy ladder. Tiers are
+// ordered low-to-high by stakes:
+//
+//	command     — execute-command BPMN nodes (compile / build /
+//	              start / test run). Cheap, no AI cost, no global
+//	              state mutation.
+//	prod-agent  — execute-agent for production code (implement-*,
+//	              update-*, refactor-system). AI cost; produces
+//	              reviewable diffs.
+//	test-agent  — execute-agent for tests (write-*-tests,
+//	              disable-tests, enable-tests, refactor-tests).
+//	              Tests-as-contract: ranked above prod-agent
+//	              because broken tests mask regressions.
+//	prod-commit — commit BPMN node after a prod-agent phase.
+//	              Persistent git write.
+//	test-commit — commit BPMN node after a test-agent phase.
+//	              Persistent git write of the test contract.
+//	human       — always-prompts, operator-uncontrollable. Covers
+//	              fix-* agents (signals of upstream defect),
+//	              refine-acceptance-criteria (always-engage
+//	              contract step), BPMN STOP nodes, release.
+//
+// `--confirm=<tier>` uses threshold semantics: this tier becomes
+// the floor. Tiers at or above the floor still prompt; tiers
+// below auto-yes under `--auto`. Default `--auto` floor is
+// `human` (truly autonomous). Iota order is load-bearing — it
+// encodes the threshold ranking.
 type Category int
 
 const (
-	CategoryCommit Category = iota
-	CategoryFix
-	CategoryRelease
-	CategoryPrompt
-	CategoryHuman
+	CategoryCommand    Category = iota // tier 1 — cheap commands
+	CategoryProdAgent                  // tier 2 — production agents
+	CategoryTestAgent                  // tier 3 — test agents
+	CategoryProdCommit                 // tier 4 — production-code commits
+	CategoryTestCommit                 // tier 5 — test-code commits
+	CategoryHuman                      // tier 6 — always-prompt, operator-uncontrollable
 )
 
-// String returns the lowercase token used in --confirm=<list> and env vars.
+// String returns the lowercase token used in --confirm=<tier> and env vars.
 func (c Category) String() string {
 	switch c {
-	case CategoryCommit:
-		return "commit"
-	case CategoryFix:
-		return "fix"
-	case CategoryRelease:
-		return "release"
-	case CategoryPrompt:
-		return "prompt"
+	case CategoryCommand:
+		return "command"
+	case CategoryProdAgent:
+		return "prod-agent"
+	case CategoryTestAgent:
+		return "test-agent"
+	case CategoryProdCommit:
+		return "prod-commit"
+	case CategoryTestCommit:
+		return "test-commit"
 	case CategoryHuman:
 		return "human"
 	default:
@@ -52,14 +79,13 @@ func (c Category) String() string {
 	}
 }
 
-// allCategories is the parse-acceptable set. CategoryHuman is included so
-// --confirm=human is a no-op rather than a parse error (operators may type
-// it for symmetry with the docs even though it is always implicit).
+// allCategories is the parse-acceptable set, in iota (threshold) order.
 var allCategories = []Category{
-	CategoryCommit,
-	CategoryFix,
-	CategoryRelease,
-	CategoryPrompt,
+	CategoryCommand,
+	CategoryProdAgent,
+	CategoryTestAgent,
+	CategoryProdCommit,
+	CategoryTestCommit,
 	CategoryHuman,
 }
 
@@ -68,14 +94,16 @@ var allCategories = []Category{
 // to the operator verbatim.
 func ParseCategory(s string) (Category, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "commit":
-		return CategoryCommit, nil
-	case "fix":
-		return CategoryFix, nil
-	case "release":
-		return CategoryRelease, nil
-	case "prompt":
-		return CategoryPrompt, nil
+	case "command":
+		return CategoryCommand, nil
+	case "prod-agent":
+		return CategoryProdAgent, nil
+	case "test-agent":
+		return CategoryTestAgent, nil
+	case "prod-commit":
+		return CategoryProdCommit, nil
+	case "test-commit":
+		return CategoryTestCommit, nil
 	case "human":
 		return CategoryHuman, nil
 	default:
@@ -95,11 +123,14 @@ func validList() string {
 // PersistentPreRunE builds one and stashes it on the command context; every
 // confirmation call site reads it back.
 //
-// CategoryHuman is always in ConfirmSet regardless of input — the invariant
-// the Confirm helper relies on so human-STOP nodes never auto-yes.
+// ConfirmFloor is the threshold tier: under Auto, calls with category
+// strictly below ConfirmFloor short-circuit to (true, nil); calls at or
+// above the floor prompt. CategoryHuman is the top tier, so any reachable
+// floor (≤ CategoryHuman) always prompts human-tier sites — the load-bearing
+// invariant for BPMN human-STOP nodes.
 type Resolved struct {
 	Auto          bool
-	ConfirmSet    map[Category]bool
+	ConfirmFloor  Category
 	AutoSource    string // "flag" | "env" | "default"
 	ConfirmSource string // "flag" | "env" | "default"
 }
@@ -111,23 +142,23 @@ const (
 	EnvConfirm = "GH_OPTIVEM_CONFIRM"
 )
 
-// defaultConfirmWhenAuto is the configurable default. CategoryHuman is added
-// to the resolved set unconditionally, separately from this list.
-var defaultConfirmWhenAuto = []Category{CategoryCommit, CategoryFix}
+// defaultFloorWhenAuto is the floor applied when --auto is on and no
+// explicit --confirm is given. CategoryHuman means "truly autonomous: only
+// human-tier sites still prompt."
+const defaultFloorWhenAuto = CategoryHuman
 
 // Resolve applies flag/env/default precedence to produce a Resolved policy.
 //
 // The *Changed bools are how Cobra distinguishes "flag explicitly set" from
-// "flag has its default value." Without them --confirm= (explicit empty,
-// meaning "no exclusions") and "no --confirm given" (meaning "fall back to
-// the default exclusion list") both look like "" and the default cannot
-// fire correctly.
+// "flag has its default value." Without them --confirm= (explicit empty) and
+// "no --confirm given" both look like "" and the default cannot fire
+// correctly.
 //
 // env is injected for testability — pass os.Getenv in production, a stub
 // in tests. An empty env value is treated as unset (matches shell
 // ergonomics).
 func Resolve(auto bool, autoChanged bool, confirm string, confirmChanged bool, env func(string) string) (Resolved, error) {
-	r := Resolved{ConfirmSet: map[Category]bool{}}
+	r := Resolved{}
 
 	// Auto: flag > env > default(false).
 	switch {
@@ -147,9 +178,9 @@ func Resolve(auto bool, autoChanged bool, confirm string, confirmChanged bool, e
 	}
 
 	// Confirm: flag > env > default.
-	// Default-when-Auto is commit,fix. Default-when-not-Auto is empty (the
-	// set is unused at confirmation time, but we still populate the implicit
-	// human entry below to preserve the invariant).
+	// Default-when-Auto floor is `human` (truly autonomous). When Auto is
+	// off the floor is unused at confirmation time (every call prompts), so
+	// the zero value is fine.
 	var (
 		confirmRaw    string
 		confirmSource string
@@ -165,73 +196,39 @@ func Resolve(auto bool, autoChanged bool, confirm string, confirmChanged bool, e
 		} else {
 			confirmSource = "default"
 			if r.Auto {
-				confirmRaw = joinCategories(defaultConfirmWhenAuto)
+				confirmRaw = defaultFloorWhenAuto.String()
 			}
 		}
 	}
 	r.ConfirmSource = confirmSource
 
-	for _, tok := range splitConfirm(confirmRaw) {
-		c, err := ParseCategory(tok)
+	if confirmRaw != "" {
+		if strings.Contains(confirmRaw, ",") {
+			return Resolved{}, fmt.Errorf("--confirm takes a single tier (threshold), not a comma list: %q; valid: %s", confirmRaw, validList())
+		}
+		c, err := ParseCategory(confirmRaw)
 		if err != nil {
 			return Resolved{}, err
 		}
-		r.ConfirmSet[c] = true
+		r.ConfirmFloor = c
 	}
-
-	// CategoryHuman is always set — implicit, operator-uncontrollable.
-	r.ConfirmSet[CategoryHuman] = true
 
 	return r, nil
 }
 
-func splitConfirm(s string) []string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return nil
-	}
-	parts := strings.Split(s, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		out = append(out, p)
-	}
-	return out
-}
-
-func joinCategories(cs []Category) string {
-	parts := make([]string, len(cs))
-	for i, c := range cs {
-		parts[i] = c.String()
-	}
-	return strings.Join(parts, ",")
-}
-
-// ConfirmListString returns the comma-joined list of categories in r's
-// confirm set, minus the implicit CategoryHuman, in canonical order. Used
-// by the startup banner and by clauderun's child-env propagation so the
-// child sees the same operator-controlled exclusion list the parent
-// resolved (the implicit human is re-added by the child's own Resolve).
-func (r Resolved) ConfirmListString() string {
-	keys := make([]Category, 0, len(r.ConfirmSet))
-	for c := range r.ConfirmSet {
-		if c == CategoryHuman {
-			continue
-		}
-		keys = append(keys, c)
-	}
-	slices.Sort(keys)
-	return joinCategories(keys)
+// ConfirmFloorString returns the token name of r's confirm floor. Used by
+// the startup banner and by clauderun's child-env propagation so the child
+// sees the same operator-controlled floor the parent resolved.
+func (r Resolved) ConfirmFloorString() string {
+	return r.ConfirmFloor.String()
 }
 
 // Confirm asks for y/n confirmation unless the policy permits auto-yes for
-// this category. Short-circuits to (true, nil) iff r.Auto && !r.ConfirmSet[c].
-// CategoryHuman never short-circuits (it is always in ConfirmSet).
+// this category. Short-circuits to (true, nil) iff r.Auto && c < r.ConfirmFloor.
+// CategoryHuman is the top tier, so any reachable floor (≤ CategoryHuman)
+// always prompts human-tier sites.
 func Confirm(r Resolved, c Category, in io.Reader, out io.Writer, prompt string) (bool, error) {
-	if r.Auto && !r.ConfirmSet[c] {
+	if r.Auto && c < r.ConfirmFloor {
 		return true, nil
 	}
 	return promptio.ConfirmYN(in, out, prompt)
@@ -241,7 +238,7 @@ func Confirm(r Resolved, c Category, in io.Reader, out io.Writer, prompt string)
 // sites that hand prompts to a Prompter abstraction instead of raw stdio.
 // Same short-circuit semantics as Confirm.
 func ConfirmVia(r Resolved, c Category, asker promptio.Asker, out io.Writer, prompt string) (bool, error) {
-	if r.Auto && !r.ConfirmSet[c] {
+	if r.Auto && c < r.ConfirmFloor {
 		return true, nil
 	}
 	return promptio.ConfirmYNVia(asker, out, prompt)
