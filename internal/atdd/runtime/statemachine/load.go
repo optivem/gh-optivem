@@ -53,6 +53,34 @@ type RawNode struct {
 	// auto-yes or prompt. Default: "prompt" on approve nodes, "human" on
 	// human-STOP nodes — driver-side, not encoded here.
 	Category string `yaml:"category,omitempty"`
+	// AutoDefault is the BPMN-author-declared "in fully autonomous mode,
+	// write this fixed value to this gateway binding and continue without
+	// prompting" opt-in for one specific kind of human-STOP: a *loopable*
+	// chooser whose no-op exit branch is the only outcome the runtime can
+	// defensibly pick on its own. Only meaningful on `user-task` +
+	// `agent: human`; the loader rejects misplaced blocks. Both sub-fields
+	// are required when present. The driver honours this only when
+	// `--auto` is on AND the resolved confirm floor is `human` (truly
+	// autonomous); operators who tighten the floor still get prompted.
+	// See plan 20260528-1150 + the comment on CHOOSE_REFACTOR_TYPE in
+	// process-flow.yaml for the doctrine.
+	AutoDefault *RawAutoDefault `yaml:"auto-default,omitempty"`
+}
+
+// RawAutoDefault is the YAML body of a node's `auto-default:` block. Both
+// sub-fields are required when the block is present; the loader rejects
+// half-specified blocks at parse time so a typo can't silently disable the
+// opt-in.
+type RawAutoDefault struct {
+	// Binding names the gateway binding the dispatcher writes when
+	// auto-defaulting. Must match a registered binding in the gates
+	// registry — enforced at Bind time, not at parse time, since the
+	// gates registry is not visible to the YAML loader.
+	Binding string `yaml:"binding"`
+	// Value is the literal string written to ctx.State[Binding] when
+	// the dispatcher auto-defaults. No `${...}` placeholder expansion —
+	// the only use case today is enum literals (e.g. "none").
+	Value string `yaml:"value"`
 }
 
 // approvalPrimitives is the closed set of primitive process IDs that
@@ -180,6 +208,9 @@ func buildProcess(id string, rp rawProcess) (*Process, error) {
 		if err := validateTDDStage(id, rn); err != nil {
 			return nil, err
 		}
+		if err := validateAutoDefault(id, rn, kind); err != nil {
+			return nil, err
+		}
 		process.Nodes[rn.ID] = Node{ID: rn.ID, Kind: kind, Raw: rn}
 	}
 	if _, ok := process.Nodes[rp.Start]; !ok {
@@ -268,6 +299,36 @@ func validateOutputs(processID string, outputs []OutputSpec) error {
 			return fmt.Errorf("process %q outputs: duplicate key %q", processID, o.Key)
 		}
 		seen[o.Key] = true
+	}
+	return nil
+}
+
+// validateAutoDefault enforces the placement + shape of the optional
+// `auto-default:` block (plan 20260528-1150):
+//
+//   - Only legal on `type: user-task` with a *literal* `agent: human`.
+//     Anywhere else — including `agent: ${...}` placeholders — is an
+//     authoring mistake: the block names a specific binding+value to
+//     write, and the runtime can only honour that on a known-human STOP.
+//   - Both sub-fields (`binding:` and `value:`) must be non-empty. Empty
+//     either field is a parse-time error so `value: ""` and a `value:`
+//     line typo can't silently disable the opt-in.
+//   - The binding string is not cross-checked against the gates registry
+//     here; that resolution happens at Bind time (`Engine.resolve`) where
+//     the registry is visible. Parse-time only validates the YAML shape.
+func validateAutoDefault(processName string, rn RawNode, kind NodeKind) error {
+	if rn.AutoDefault == nil {
+		return nil
+	}
+	if kind != UserTask || rn.Agent != "human" {
+		return fmt.Errorf("process %q node %q: `auto-default:` is only valid on `user-task` with literal `agent: human` (got type %q, agent %q)",
+			processName, rn.ID, rn.Type, rn.Agent)
+	}
+	if rn.AutoDefault.Binding == "" {
+		return fmt.Errorf("process %q node %q: `auto-default.binding:` is required when `auto-default:` is present", processName, rn.ID)
+	}
+	if rn.AutoDefault.Value == "" {
+		return fmt.Errorf("process %q node %q: `auto-default.value:` is required when `auto-default:` is present", processName, rn.ID)
 	}
 	return nil
 }

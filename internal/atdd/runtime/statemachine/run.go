@@ -75,6 +75,23 @@ func (e *Engine) resolve(node Node) (NodeFn, error) {
 		if e.AgentFn == nil {
 			return nil, fmt.Errorf("AgentFn registry is nil but node is user-task")
 		}
+		// `auto-default.binding:` names a gateway binding the dispatcher
+		// writes when the runtime is fully autonomous. The YAML loader
+		// (load.go validateAutoDefault) already enforced placement +
+		// non-empty sub-fields; here we additionally enforce that the
+		// binding actually exists in the gates registry, catching typos
+		// like `binding: refactor-type` (missing `-choice`) before any
+		// run starts. Mirrors the Gateway branch's GateFn-nil and
+		// unknown-binding error shapes so a missing registry doesn't
+		// surface as a nil-deref at dispatch time.
+		if node.Raw.AutoDefault != nil {
+			if e.GateFn == nil {
+				return nil, fmt.Errorf("GateFn registry is nil but node carries `auto-default.binding:` %q", node.Raw.AutoDefault.Binding)
+			}
+			if e.GateFn(node.Raw.AutoDefault.Binding) == nil {
+				return nil, fmt.Errorf("auto-default.binding %q not registered in gates registry", node.Raw.AutoDefault.Binding)
+			}
+		}
 		// Templated agent names (e.g. ${agent} in structural_cycle) are
 		// resolved at dispatch time once Context.Params is set by the calling
 		// call-activity. Bind validates only static names.

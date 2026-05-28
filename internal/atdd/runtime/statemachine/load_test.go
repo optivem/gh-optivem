@@ -361,6 +361,166 @@ func TestEngine_ScopeRationale_UnknownProcess(t *testing.T) {
 	}
 }
 
+// procWithNode builds a one-process YAML doc whose single dispatch node
+// is replaced by the caller-provided indented YAML fragment. Used to
+// exercise auto-default placement + shape validators in isolation.
+func procWithNode(nodeFragment string) string {
+	return `
+processes:
+  sample:
+    name: "Sample"
+    start: NODE
+    nodes:
+` + nodeFragment + `
+      - id: END
+        type: end-event
+        name: "Done"
+    sequence-flows:
+      - {from: NODE, to: END}
+`
+}
+
+// TestLoadBytes_AutoDefault_ValidOnHumanUserTaskParses covers the happy
+// path: a user-task with literal agent: human carrying a complete
+// auto-default: block loads and exposes the values on RawNode.
+func TestLoadBytes_AutoDefault_ValidOnHumanUserTaskParses(t *testing.T) {
+	yaml := procWithNode(`      - id: NODE
+        type: user-task
+        agent: human
+        name: "Loopable chooser"
+        auto-default:
+          binding: refactor-type-choice
+          value: none`)
+	eng, err := LoadBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+	node := eng.Processes["sample"].Nodes["NODE"]
+	if node.Raw.AutoDefault == nil {
+		t.Fatalf("RawNode.AutoDefault = nil, want populated")
+	}
+	if node.Raw.AutoDefault.Binding != "refactor-type-choice" {
+		t.Errorf("AutoDefault.Binding = %q, want %q", node.Raw.AutoDefault.Binding, "refactor-type-choice")
+	}
+	if node.Raw.AutoDefault.Value != "none" {
+		t.Errorf("AutoDefault.Value = %q, want %q", node.Raw.AutoDefault.Value, "none")
+	}
+}
+
+// TestLoadBytes_AutoDefault_ServiceTaskRejected ensures the block can't
+// be placed on a non-user-task. A service-task carrying auto-default: is
+// an authoring mistake (no human-STOP semantics to opt out of).
+func TestLoadBytes_AutoDefault_ServiceTaskRejected(t *testing.T) {
+	yaml := procWithNode(`      - id: NODE
+        type: service-task
+        action: do-thing
+        name: "Do thing"
+        auto-default:
+          binding: refactor-type-choice
+          value: none`)
+	_, err := LoadBytes([]byte(yaml))
+	if err == nil {
+		t.Fatal("expected load error for auto-default on service-task, got nil")
+	}
+	if !strings.Contains(err.Error(), "auto-default") || !strings.Contains(err.Error(), "user-task") {
+		t.Errorf("error %q does not mention auto-default + user-task constraint", err)
+	}
+}
+
+// TestLoadBytes_AutoDefault_TemplatedAgentRejected ensures auto-default:
+// on a user-task with `agent: ${...}` is rejected. The opt-in names a
+// specific binding+value and only makes sense when the agent is known
+// to be `human` at parse time.
+func TestLoadBytes_AutoDefault_TemplatedAgentRejected(t *testing.T) {
+	yaml := procWithNode(`      - id: NODE
+        type: user-task
+        agent: ${agent}
+        name: "Run agent"
+        auto-default:
+          binding: refactor-type-choice
+          value: none`)
+	_, err := LoadBytes([]byte(yaml))
+	if err == nil {
+		t.Fatal("expected load error for auto-default on templated agent, got nil")
+	}
+	if !strings.Contains(err.Error(), "auto-default") || !strings.Contains(err.Error(), "agent: human") {
+		t.Errorf("error %q does not mention auto-default + agent: human constraint", err)
+	}
+}
+
+// TestLoadBytes_AutoDefault_MissingBindingRejected ensures `value:` alone
+// is rejected. A typo on the binding line shouldn't silently disable the
+// opt-in.
+func TestLoadBytes_AutoDefault_MissingBindingRejected(t *testing.T) {
+	yaml := procWithNode(`      - id: NODE
+        type: user-task
+        agent: human
+        name: "Loopable chooser"
+        auto-default:
+          value: none`)
+	_, err := LoadBytes([]byte(yaml))
+	if err == nil {
+		t.Fatal("expected load error for missing binding, got nil")
+	}
+	if !strings.Contains(err.Error(), "auto-default.binding") {
+		t.Errorf("error %q does not mention auto-default.binding", err)
+	}
+}
+
+// TestLoadBytes_AutoDefault_MissingValueRejected ensures `binding:` alone
+// is rejected. Mirrors MissingBindingRejected.
+func TestLoadBytes_AutoDefault_MissingValueRejected(t *testing.T) {
+	yaml := procWithNode(`      - id: NODE
+        type: user-task
+        agent: human
+        name: "Loopable chooser"
+        auto-default:
+          binding: refactor-type-choice`)
+	_, err := LoadBytes([]byte(yaml))
+	if err == nil {
+		t.Fatal("expected load error for missing value, got nil")
+	}
+	if !strings.Contains(err.Error(), "auto-default.value") {
+		t.Errorf("error %q does not mention auto-default.value", err)
+	}
+}
+
+// TestLoadDefault_AutoDefault_ChooseRefactorTypeAnnotated locks in the
+// shipped YAML annotation: CHOOSE_REFACTOR_TYPE in the `refactor` process
+// is the sole `agent: human` node carrying `auto-default:`, with the
+// fixed pair (binding=refactor-type-choice, value=none) plan 20260528-1150
+// declares. Regressing either field would silently undo the autonomous
+// exit and force the operator back into stdin halts.
+func TestLoadDefault_AutoDefault_ChooseRefactorTypeAnnotated(t *testing.T) {
+	eng, err := LoadDefault()
+	if err != nil {
+		t.Fatalf("LoadDefault: %v", err)
+	}
+	node := eng.Processes["refactor"].Nodes["CHOOSE_REFACTOR_TYPE"]
+	if node.Raw.AutoDefault == nil {
+		t.Fatalf("CHOOSE_REFACTOR_TYPE.AutoDefault = nil; expected auto-default: block from plan 20260528-1150")
+	}
+	if node.Raw.AutoDefault.Binding != "refactor-type-choice" {
+		t.Errorf("AutoDefault.Binding = %q, want %q", node.Raw.AutoDefault.Binding, "refactor-type-choice")
+	}
+	if node.Raw.AutoDefault.Value != "none" {
+		t.Errorf("AutoDefault.Value = %q, want %q", node.Raw.AutoDefault.Value, "none")
+	}
+	// Belt-and-braces: no other node in the shipped YAML should carry
+	// auto-default:. Adding a second exemption needs a new plan + doc.
+	for procName, proc := range eng.Processes {
+		for nodeID, n := range proc.Nodes {
+			if n.Raw.AutoDefault == nil {
+				continue
+			}
+			if procName == "refactor" && nodeID == "CHOOSE_REFACTOR_TYPE" {
+				continue
+			}
+			t.Errorf("unexpected auto-default: on process %q node %q — should only appear on refactor/CHOOSE_REFACTOR_TYPE", procName, nodeID)
+		}
+	}
+}
+
 // TestEngine_ScopeRationale_ShippedYAML_TestWriters guards that the
 // shipped process-flow.yaml carries scope-rationale: on both test-writer
 // MIDs (plan 20260528-1038). Regressing this field would silently lose
