@@ -267,10 +267,11 @@ func TestNewProcessCmd_HasShowChild(t *testing.T) {
 	}
 }
 
-// TestPrintSystemEndpointsBanner_writesBannerWithConfig: with a valid
-// systems.yaml pointed to by cfg.System.Config, the banner header plus the
-// per-component status line both land on the writer.
-func TestPrintSystemEndpointsBanner_writesBannerWithConfig(t *testing.T) {
+// TestPrintRunEndBanner_writesBannerWithConfig: with a valid systems.yaml
+// pointed to by cfg.System.Config, the per-system header (label fallback,
+// since the fixture sets no description) plus the per-component status line
+// both land on the writer. Empty ticketURL exercises the no-ticket branch.
+func TestPrintRunEndBanner_writesBannerWithConfig(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	systemsPath := filepath.Join(dir, "systems.yaml")
@@ -289,56 +290,146 @@ func TestPrintSystemEndpointsBanner_writesBannerWithConfig(t *testing.T) {
 		System:  projectconfig.System{Config: systemsPath},
 	}
 	var buf bytes.Buffer
-	printSystemEndpointsBanner(&buf, cfg)
+	printRunEndBanner(&buf, cfg, "")
 	got := buf.String()
-	if !strings.Contains(got, "=== System endpoints ===") {
-		t.Errorf("missing banner header in output:\n%s", got)
+	if !strings.Contains(got, "=== System connected to real ===") {
+		t.Errorf("missing per-system header (label fallback) in output:\n%s", got)
 	}
 	// The probe targets 127.0.0.1:1 which is unreachable; expect DOWN.
 	if !strings.Contains(got, "DOWN api:") {
 		t.Errorf("expected per-component DOWN line, got:\n%s", got)
 	}
-}
-
-// TestPrintSystemEndpointsBanner_silentOnNilConfig: nil cfg writes nothing.
-// Banner is best-effort and must never panic on missing inputs.
-func TestPrintSystemEndpointsBanner_silentOnNilConfig(t *testing.T) {
-	t.Parallel()
-	var buf bytes.Buffer
-	printSystemEndpointsBanner(&buf, nil)
-	if buf.Len() != 0 {
-		t.Errorf("expected empty output on nil cfg, got: %q", buf.String())
+	if strings.Contains(got, "Ticket:") {
+		t.Errorf("empty ticketURL should produce no Ticket line, got:\n%s", got)
 	}
 }
 
-// TestPrintSystemEndpointsBanner_silentOnEmptyConfigPath: cfg with no
-// system.config: set (typical for projects whose implement run does not
-// touch the system tier) writes nothing.
-func TestPrintSystemEndpointsBanner_silentOnEmptyConfigPath(t *testing.T) {
+// TestPrintRunEndBanner_silentOnNilConfig: nil cfg + empty ticket writes
+// nothing. Banner is best-effort and must never panic on missing inputs.
+func TestPrintRunEndBanner_silentOnNilConfig(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	printRunEndBanner(&buf, nil, "")
+	if buf.Len() != 0 {
+		t.Errorf("expected empty output on nil cfg + empty ticket, got: %q", buf.String())
+	}
+}
+
+// TestPrintRunEndBanner_silentOnEmptyConfigPath: cfg with no system.config:
+// set + empty ticket writes nothing.
+func TestPrintRunEndBanner_silentOnEmptyConfigPath(t *testing.T) {
 	t.Parallel()
 	cfg := &projectconfig.Config{
 		Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/x/projects/1"},
 	}
 	var buf bytes.Buffer
-	printSystemEndpointsBanner(&buf, cfg)
+	printRunEndBanner(&buf, cfg, "")
 	if buf.Len() != 0 {
-		t.Errorf("expected empty output when system.config is empty, got: %q", buf.String())
+		t.Errorf("expected empty output when system.config is empty + empty ticket, got: %q", buf.String())
 	}
 }
 
-// TestPrintSystemEndpointsBanner_silentOnUnreadableFile: cfg pointing at a
-// non-existent systems.yaml writes nothing rather than failing the implement
-// run with a load error. Mirrors the doc-comment best-effort contract.
-func TestPrintSystemEndpointsBanner_silentOnUnreadableFile(t *testing.T) {
+// TestPrintRunEndBanner_silentOnUnreadableFile: cfg pointing at a
+// non-existent systems.yaml + empty ticket writes nothing rather than
+// failing the implement run with a load error.
+func TestPrintRunEndBanner_silentOnUnreadableFile(t *testing.T) {
 	t.Parallel()
 	cfg := &projectconfig.Config{
 		Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/x/projects/1"},
 		System:  projectconfig.System{Config: filepath.Join(t.TempDir(), "no-such.yaml")},
 	}
 	var buf bytes.Buffer
-	printSystemEndpointsBanner(&buf, cfg)
+	printRunEndBanner(&buf, cfg, "")
 	if buf.Len() != 0 {
-		t.Errorf("expected empty output on unreadable systems.yaml, got: %q", buf.String())
+		t.Errorf("expected empty output on unreadable systems.yaml + empty ticket, got: %q", buf.String())
+	}
+}
+
+// TestPrintRunEndBanner_printsTicketLine: non-empty ticketURL prints the
+// Ticket line even when cfg is nil (no system block to load).
+func TestPrintRunEndBanner_printsTicketLine(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	printRunEndBanner(&buf, nil, "https://github.com/myorg/myrepo/issues/42")
+	got := buf.String()
+	if !strings.Contains(got, "Ticket: https://github.com/myorg/myrepo/issues/42") {
+		t.Errorf("expected Ticket line, got: %q", got)
+	}
+	if strings.Contains(got, "===") {
+		t.Errorf("nil cfg should not emit any system block, got: %q", got)
+	}
+}
+
+// TestPrintRunEndBanner_descriptionInHeader: when systems.yaml entries
+// declare a description, the per-system header uses it instead of the label.
+func TestPrintRunEndBanner_descriptionInHeader(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	systemsPath := filepath.Join(dir, "systems.yaml")
+	body := `systems:
+  - label: stub
+    description: External System Stubs
+    composeFile: ./docker-compose.yaml
+    components:
+      - name: api
+        url: http://127.0.0.1:1/
+`
+	if err := os.WriteFile(systemsPath, []byte(body), 0o644); err != nil {
+		t.Fatalf("write systems.yaml fixture: %v", err)
+	}
+	cfg := &projectconfig.Config{
+		Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/x/projects/1"},
+		System:  projectconfig.System{Config: systemsPath},
+	}
+	var buf bytes.Buffer
+	printRunEndBanner(&buf, cfg, "")
+	got := buf.String()
+	if !strings.Contains(got, "=== System connected to External System Stubs ===") {
+		t.Errorf("expected description-driven header, got:\n%s", got)
+	}
+	if strings.Contains(got, "=== System connected to stub ===") {
+		t.Errorf("description should win over label, got:\n%s", got)
+	}
+}
+
+// TestPrintRunEndBanner_ticketAndSystemsTogether: ticket line appears before
+// the system blocks, and declaration order is preserved (stub before real).
+func TestPrintRunEndBanner_ticketAndSystemsTogether(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	systemsPath := filepath.Join(dir, "systems.yaml")
+	body := `systems:
+  - label: stub
+    description: External System Stubs
+    composeFile: ./docker-compose.stub.yaml
+    components:
+      - name: api
+        url: http://127.0.0.1:1/
+  - label: real
+    description: External System Test Instances
+    composeFile: ./docker-compose.real.yaml
+    components:
+      - name: api
+        url: http://127.0.0.1:1/
+`
+	if err := os.WriteFile(systemsPath, []byte(body), 0o644); err != nil {
+		t.Fatalf("write systems.yaml fixture: %v", err)
+	}
+	cfg := &projectconfig.Config{
+		Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/x/projects/1"},
+		System:  projectconfig.System{Config: systemsPath},
+	}
+	var buf bytes.Buffer
+	printRunEndBanner(&buf, cfg, "https://github.com/myorg/myrepo/issues/42")
+	got := buf.String()
+	ticketIdx := strings.Index(got, "Ticket: https://github.com/myorg/myrepo/issues/42")
+	stubIdx := strings.Index(got, "=== System connected to External System Stubs ===")
+	realIdx := strings.Index(got, "=== System connected to External System Test Instances ===")
+	if ticketIdx < 0 || stubIdx < 0 || realIdx < 0 {
+		t.Fatalf("missing expected lines in output:\n%s", got)
+	}
+	if !(ticketIdx < stubIdx && stubIdx < realIdx) {
+		t.Errorf("expected order: Ticket < stub header < real header, got indices %d / %d / %d in:\n%s", ticketIdx, stubIdx, realIdx, got)
 	}
 }
 

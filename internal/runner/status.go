@@ -43,6 +43,13 @@ func Status(w io.Writer, sys *SystemConfig, opts StatusOptions) int {
 		fmt.Fprintf(w, "  %s %s: %s\n", symbol, name, url)
 	}
 	for _, s := range sys.Systems {
+		desc := s.Description
+		if desc == "" {
+			desc = s.Label
+		}
+		if desc != "" {
+			fmt.Fprintf(w, "=== System connected to %s ===\n", desc)
+		}
 		for _, c := range s.Components {
 			if c.URL == "" {
 				continue

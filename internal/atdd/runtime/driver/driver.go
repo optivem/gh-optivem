@@ -75,6 +75,12 @@ type Options struct {
 	// project item for this issue before walking the main process.
 	IssueNum int
 
+	// ResolvedIssue, when non-nil, receives the tracker.Issue that
+	// preResolveIssue looked up at startup. Lets the cobra layer print
+	// the ticket URL in its exit banner without re-querying the tracker.
+	// Optional; nil leaves existing behaviour untouched.
+	ResolvedIssue *tracker.Issue
+
 	// ProjectURL overrides config-based project resolution. Optional; when
 	// empty, the driver uses cfg.Project.URL from the loaded gh-optivem.yaml
 	// (or the file passed via ConfigPath, if set). Threaded into the tracker
@@ -621,6 +627,9 @@ func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Conte
 	}
 
 	writeResolvedIssue(sCtx, issue)
+	if opts.ResolvedIssue != nil {
+		*opts.ResolvedIssue = issue
+	}
 	fmt.Fprintf(opts.Out.Phase, "Resolved issue %s %q (%s).\n", issue.ID, issue.Title, issue.URL)
 	return nil
 }

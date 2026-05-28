@@ -40,7 +40,12 @@ type SystemConfig struct {
 // SystemEntry is one compose stack. Label is a free-form log string; the
 // runner never interprets it (typical values in shop: "real", "stub").
 type SystemEntry struct {
-	Label           string      `json:"label" yaml:"label"`
+	Label string `json:"label" yaml:"label"`
+	// Description is the operator-supplied suffix for the per-system
+	// banner header, rendered as "=== System connected to <description> ===".
+	// Optional; the banner falls back to Label when empty. The runner
+	// itself never branches on the value — purely display text.
+	Description     string      `json:"description,omitempty" yaml:"description,omitempty"`
 	ComposeFile     string      `json:"composeFile" yaml:"composeFile"`
 	ContainerName   string      `json:"containerName" yaml:"containerName"`
 	Components      []Component `json:"components" yaml:"components"`

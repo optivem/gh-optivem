@@ -36,6 +36,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/preflight"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 	"github.com/optivem/gh-optivem/internal/cmdctx"
 	"github.com/optivem/gh-optivem/internal/configinit"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
@@ -133,8 +134,10 @@ kill them.`,
 			if verbose {
 				terminalLevel = outlog.Detail
 			}
+			var resolved tracker.Issue
 			runErr := driver.Run(context.Background(), driver.Options{
 				IssueNum:            issue,
+				ResolvedIssue:       &resolved,
 				Headless:            headless,
 				ManualAgents:        manualAgents,
 				Override:            hooks,
@@ -149,7 +152,7 @@ kill them.`,
 				LogFileLevel:        logFileLevel,
 			})
 			if runErr == nil {
-				printSystemEndpointsBanner(cmd.ErrOrStderr(), cfg)
+				printRunEndBanner(cmd.ErrOrStderr(), cfg, resolved.URL)
 			}
 			exitOnError(runErr)
 		},
@@ -167,13 +170,18 @@ kill them.`,
 	return cmd
 }
 
-// printSystemEndpointsBanner prints the system endpoints and OK/DOWN verdict
-// to w as a final banner after a successful implement run. Best-effort:
-// missing system.config, an unreadable systems.yaml, or an empty configured
-// path is silently skipped — failing to print URLs must never fail the
-// implement command itself. The banner goes to stderr (operator-facing UI),
-// not stdout — matches the rest of implement's exit-banner content.
-func printSystemEndpointsBanner(w io.Writer, cfg *projectconfig.Config) {
+// printRunEndBanner prints the post-run exit banner: a "Ticket: <url>" line
+// (when non-empty) followed by the per-system status block emitted by
+// runner.Status. Best-effort for the system block: missing system.config, an
+// unreadable systems.yaml, or an empty configured path is silently skipped —
+// failing to print URLs must never fail the implement command itself. The
+// ticket line is independent and still prints when the system block is
+// skipped. The banner goes to stderr (operator-facing UI), not stdout —
+// matches the rest of implement's exit-banner content.
+func printRunEndBanner(w io.Writer, cfg *projectconfig.Config, ticketURL string) {
+	if ticketURL != "" {
+		fmt.Fprintf(w, "\nTicket: %s\n", ticketURL)
+	}
 	if cfg == nil || cfg.System.Config == "" {
 		return
 	}
@@ -181,7 +189,7 @@ func printSystemEndpointsBanner(w io.Writer, cfg *projectconfig.Config) {
 	if err != nil {
 		return
 	}
-	fmt.Fprintln(w, "\n=== System endpoints ===")
+	fmt.Fprintln(w)
 	_ = runner.Status(w, sys, runner.StatusOptions{})
 }
 

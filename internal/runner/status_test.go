@@ -150,6 +150,44 @@ func TestStatus_zeroDownAllOK(t *testing.T) {
 	}
 }
 
+// TestStatus_emitsPerSystemHeader asserts that Status writes one
+// "=== System connected to <desc> ===" header per SystemEntry, prefers
+// Description over Label, and preserves declaration order (stub before real
+// when stub is declared first). Uses an unreachable URL so the probe lines
+// resolve fast and deterministically; only header presence and ordering are
+// under test.
+func TestStatus_emitsPerSystemHeader(t *testing.T) {
+	t.Parallel()
+	downURL := "http://127.0.0.1:1/"
+	sys := &SystemConfig{Systems: []SystemEntry{
+		{
+			Label:       "stub",
+			Description: "External System Stubs",
+			Components:  []Component{{Name: "api", URL: downURL}},
+		},
+		{
+			Label:      "real", // no Description — header falls back to label
+			Components: []Component{{Name: "api", URL: downURL}},
+		},
+	}}
+	var buf bytes.Buffer
+	_ = Status(&buf, sys, StatusOptions{Timeout: 50 * time.Millisecond})
+	got := buf.String()
+	stubHeader := "=== System connected to External System Stubs ==="
+	realHeader := "=== System connected to real ==="
+	stubIdx := strings.Index(got, stubHeader)
+	realIdx := strings.Index(got, realHeader)
+	if stubIdx < 0 {
+		t.Errorf("missing description-driven header %q in:\n%s", stubHeader, got)
+	}
+	if realIdx < 0 {
+		t.Errorf("missing label-fallback header %q in:\n%s", realHeader, got)
+	}
+	if stubIdx >= 0 && realIdx >= 0 && stubIdx > realIdx {
+		t.Errorf("expected stub header before real header (declaration order), got indices %d / %d in:\n%s", stubIdx, realIdx, got)
+	}
+}
+
 // TestStatus_non200IsDown asserts that a 500 response counts as DOWN
 // (matches the snapshot semantics: anything that is not a healthy 200 is
 // reported as DOWN, including server errors).
