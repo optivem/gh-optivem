@@ -84,6 +84,19 @@ fi
 PREFIX="${C_CYAN}[atdd-rehearsal]${C_RESET}"
 log() { echo "${PREFIX} $*"; }
 
+# Convert a POSIX path to the host's native style for display. On
+# Git Bash / MSYS2, `pwd` returns /c/... which Windows terminals and
+# editors can't resolve as clickable links; cygpath -w produces
+# C:\... that they can. On Linux/macOS cygpath is absent, so the
+# raw POSIX path is already native — pass it through unchanged.
+display_path() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -w "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
+
 # prompt_yn <prompt>
 # Matches internal/promptio.ConfirmYN: explicit y/n required, no Enter
 # shortcut. Loops on unrecognized input (including bare Enter) so a stray
@@ -221,7 +234,7 @@ cleanup() {
     return $rc
   fi
   echo ""
-  if prompt_yn "Delete worktree $WORKTREE_PATH and branch $BRANCH?"; then
+  if prompt_yn "Delete worktree $(display_path "$WORKTREE_PATH") and branch $BRANCH?"; then
     git -C "$CONSUMER_ROOT" worktree remove --force "$WORKTREE_PATH" || true
     git -C "$CONSUMER_ROOT" branch -D "$BRANCH" 2>/dev/null || true
     # Drop any stale .git/worktrees/* entries (e.g. if remove --force
@@ -229,9 +242,9 @@ cleanup() {
     # prompt). Lingering metadata makes VS Code's git extension hang
     # refreshing Source Control for a path that no longer exists.
     git -C "$CONSUMER_ROOT" worktree prune 2>/dev/null || true
-    log "Removed $WORKTREE_PATH (branch $BRANCH)."
+    log "Removed $(display_path "$WORKTREE_PATH") (branch $BRANCH)."
   else
-    log "Keeping $WORKTREE_PATH (branch $BRANCH)."
+    log "Keeping $(display_path "$WORKTREE_PATH") (branch $BRANCH)."
   fi
   return $rc
 }
@@ -242,15 +255,15 @@ cleanup() {
 # fact that we're exercising a freshly-built binary out of GH_OPTIVEM_ROOT
 # rather than whatever `gh optivem` is installed on PATH.
 log "${C_BOLD}Rehearsal:${C_RESET}"
-log "  worktree:    $WORKTREE_PATH"
+log "  worktree:    $(display_path "$WORKTREE_PATH")"
 log "  branch:      $BRANCH"
 if [[ -n "$LABEL" ]]; then
   log "  label:       $LABEL"
 fi
 log "  config:      $CONFIG"
-log "  built from:  $GH_OPTIVEM_ROOT"
-log "  binary:      $BIN"
-log "  log file:    $LOG_FILE"
+log "  built from:  $(display_path "$GH_OPTIVEM_ROOT")"
+log "  binary:      $(display_path "$BIN")"
+log "  log file:    $(display_path "$LOG_FILE")"
 if [[ $AUTO -eq 1 || $HEADLESS -eq 1 ]]; then
   MODE_BITS=""
   [[ $AUTO -eq 1 ]] && MODE_BITS="${MODE_BITS:+$MODE_BITS }--auto"
@@ -267,7 +280,7 @@ fi
 log "Cleaning local docker state (volumes + locally-built images; registry images preserved)..."
 ( cd "$CONSUMER_ROOT" && GH_OPTIVEM_CONFIG="$CONSUMER_ROOT/$CONFIG" "$BIN" system clean )
 
-log "Creating worktree at $WORKTREE_PATH on branch $BRANCH..."
+log "Creating worktree at $(display_path "$WORKTREE_PATH") on branch $BRANCH..."
 if ! git -C "$CONSUMER_ROOT" worktree add -b "$BRANCH" "$WORKTREE_PATH"; then
   log "worktree add failed — aborting."
   exit 1
@@ -279,7 +292,7 @@ trap cleanup EXIT
 
 CONFIG_FULL="$WORKTREE_PATH/$CONFIG"
 if [[ ! -f "$CONFIG_FULL" ]]; then
-  log "ERROR: config file not found in worktree: $CONFIG_FULL"
+  log "ERROR: config file not found in worktree: $(display_path "$CONFIG_FULL")"
   log "Expected one of the gh-optivem-*.yaml variants committed in $REHEARSAL_REPO."
   exit 2
 fi
@@ -292,16 +305,17 @@ IMPL_FLAGS=(--log-file "$LOG_FILE")
 [[ $AUTO -eq 1 ]] && ROOT_FLAGS+=(--auto)
 [[ $HEADLESS -eq 1 ]] && IMPL_FLAGS+=(--headless)
 
-log "Running implement --issue $ISSUE${IMPL_FLAGS[*]:+ ${IMPL_FLAGS[*]}}${ROOT_FLAGS[*]:+ (with root flags: ${ROOT_FLAGS[*]})} in $WORKTREE_PATH..."
+log "Running implement --issue $ISSUE${IMPL_FLAGS[*]:+ ${IMPL_FLAGS[*]}}${ROOT_FLAGS[*]:+ (with root flags: ${ROOT_FLAGS[*]})} in $(display_path "$WORKTREE_PATH")..."
 RC=0
 ( cd "$WORKTREE_PATH" && GH_OPTIVEM_CONFIG="$CONFIG_FULL" "$BIN" "${ROOT_FLAGS[@]}" implement --issue "$ISSUE" --log-file "$LOG_FILE" "${IMPL_FLAGS[@]}" ) || RC=$?
 
 if [[ $RC -eq 0 ]]; then
-  log "implement succeeded."
+  VERDICT="$(grep -oE 'verdict=[a-z-]+' "$LOG_FILE" | tail -1)"
+  log "implement finished (rc=0, ${VERDICT:-verdict=unknown}). See trace for test outcome."
 else
-  log "implement exited with rc=$RC."
+  log "implement crashed (rc=$RC). Runtime error, not a test failure — see trace."
 fi
-log "Log file: $LOG_FILE"
+log "Log file: $(display_path "$LOG_FILE")"
 
 exit $RC
 

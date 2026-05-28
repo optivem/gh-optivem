@@ -254,6 +254,28 @@ func writeExit(deps Deps, node statemachine.Node, out statemachine.Outcome, elap
 	if !hoistedDelta && detail == "(no result)" && node.Kind == statemachine.Gateway {
 		detail = "bool=false"
 	}
+	// End-events have no Outcome to format and no state to hoist; their YAML
+	// `name:` IS the meaningful exit signal — surface it instead of the
+	// misleading `(no result)` placeholder. Applies to both `end-event` and
+	// `error-end-event` so e.g. UNKNOWN_TICKET_KIND prints its label too.
+	if detail == "(no result)" && (node.Kind == statemachine.EndEvent || node.Kind == statemachine.ErrorEndEvent) && node.Raw.Name != "" {
+		detail = fmt.Sprintf("%q", node.Raw.Name)
+	}
+	// Call-activity exit lines lead with a verdict= chip derived from the
+	// sub-process's final (test-outcome × expected-test-result) state. Gives
+	// the operator the "did the cycle reach its expected state" signal that
+	// command-succeeded (= exit==0) does not convey. Omitted on non-test
+	// call-activities (neither field set) to avoid blanket `verdict=n/a`
+	// noise on every refine/refactor/commit sub-process.
+	if node.Kind == statemachine.CallActivity {
+		if v := callActivityVerdict(post); v != "" {
+			if detail == "(no result)" {
+				detail = "verdict=" + v
+			} else {
+				detail = "verdict=" + v + ", " + detail
+			}
+		}
+	}
 	if detail != "" {
 		fmt.Fprintf(w, "%s %s %s -> %s  (%s)\n",
 			deps.tracePrefix(),
@@ -344,6 +366,44 @@ func outcomeStatusLabel(out statemachine.Outcome) (string, color.Attribute) {
 		return "INFRA", color.FgYellow
 	}
 	return "OK", color.FgGreen
+}
+
+// callActivityVerdict classifies the sub-process's terminal test state
+// against the call-site's expectation, returning the short label that the
+// trace exit line surfaces as a leading `verdict=` chip. The chip lets the
+// operator read the cycle's *intent* — "this red wrapper expected fail and
+// got fail" — rather than re-deriving it from `expected-test-result=… +
+// test-outcome=…` buried in the comma-separated state delta.
+//
+// Returns the empty string when the sub-process is not a test-bearing
+// phase (neither field set, e.g. refine-ticket / refactor / commit
+// sub-processes). The caller treats empty as "omit the chip" so we don't
+// litter every non-test call-activity exit with `verdict=n/a`.
+//
+// `infra` short-circuits the expectation comparison: an infra-classified
+// failure means the runner could not start, so the cycle never reached
+// the state where matching expectations is meaningful — surface the
+// classification directly.
+func callActivityVerdict(post map[string]string) string {
+	outcome := post["test-outcome"]
+	if outcome == "infra" {
+		return "infra"
+	}
+	expected := post["expected-test-result"]
+	if outcome == "" || expected == "" {
+		return ""
+	}
+	switch {
+	case expected == "success" && outcome == "pass":
+		return "green-as-expected"
+	case expected == "failure" && outcome == "fail":
+		return "red-as-expected"
+	case expected == "success" && outcome == "fail":
+		return "unexpected-fail"
+	case expected == "failure" && outcome == "pass":
+		return "unexpected-pass"
+	}
+	return ""
 }
 
 // kindLabel maps NodeKind to the YAML vocabulary the operator already

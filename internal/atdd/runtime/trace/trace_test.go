@@ -538,6 +538,191 @@ func TestStateDelta_LongValuesSortLast(t *testing.T) {
 	}
 }
 
+func TestWrap_EndEventNameSurfacesAsExitDetail(t *testing.T) {
+	// End-events and error-end-events have no Outcome and no state delta to
+	// hoist; their YAML `name:` IS the meaningful exit signal. The trace
+	// must surface that name in place of the misleading `(no result)`
+	// placeholder so an operator scanning the exit line sees what reaching
+	// the node actually meant ("Ticket Marked IN ACCEPTANCE") rather than a
+	// content-free banner.
+	prevNow := nowFn
+	nowFn = fixedClock
+	t.Cleanup(func() { nowFn = prevNow })
+
+	cases := []struct {
+		name string
+		kind statemachine.NodeKind
+		raw  statemachine.RawNode
+		want string
+	}{
+		{
+			name: "end-event with name",
+			kind: statemachine.EndEvent,
+			raw:  statemachine.RawNode{Name: "Ticket Marked IN ACCEPTANCE"},
+			want: `OK IMPLEMENT_TICKET_END -> "Ticket Marked IN ACCEPTANCE"`,
+		},
+		{
+			name: "error-end-event with name",
+			kind: statemachine.ErrorEndEvent,
+			raw:  statemachine.RawNode{Name: "Unknown Ticket Kind"},
+			want: `OK UNKNOWN_TICKET_KIND -> "Unknown Ticket Kind"`,
+		},
+		{
+			name: "end-event without name falls back to (no result)",
+			kind: statemachine.EndEvent,
+			raw:  statemachine.RawNode{},
+			want: "OK NAMELESS_END -> (no result)",
+		},
+	}
+	ids := []string{"IMPLEMENT_TICKET_END", "UNKNOWN_TICKET_KIND", "NAMELESS_END"}
+	for i, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			node := statemachine.Node{
+				ID:   ids[i],
+				Kind: tc.kind,
+				Raw:  tc.raw,
+				Fn:   func(ctx *statemachine.Context) statemachine.Outcome { return statemachine.Outcome{} },
+			}
+			wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+			wrapped(statemachine.NewContext())
+
+			got := buf.String()
+			if !strings.Contains(got, tc.want) {
+				t.Errorf("trace output missing %q\nfull output:\n%s", tc.want, got)
+			}
+		})
+	}
+}
+
+func TestWrap_CallActivityVerdictChipFromTestState(t *testing.T) {
+	// Call-activity exit lines lead with a derived `verdict=` chip that
+	// reads the sub-process's terminal test state and classifies it
+	// against the call-site's expectation. The chip surfaces the
+	// "did the cycle reach its expected state" signal that command-succeeded
+	// (= exit==0) does not convey on its own. Non-test sub-processes
+	// (neither key set) emit no chip so the trace stays terse.
+	prevNow := nowFn
+	nowFn = fixedClock
+	t.Cleanup(func() { nowFn = prevNow })
+
+	cases := []struct {
+		name       string
+		setup      func(*statemachine.Context)
+		wantSub    string
+		wantNotSub string
+	}{
+		{
+			name: "green-as-expected",
+			setup: func(ctx *statemachine.Context) {
+				ctx.Set("expected-test-result", "success")
+				ctx.Set("test-outcome", "pass")
+			},
+			wantSub: "-> verdict=green-as-expected ",
+		},
+		{
+			name: "red-as-expected",
+			setup: func(ctx *statemachine.Context) {
+				ctx.Set("expected-test-result", "failure")
+				ctx.Set("test-outcome", "fail")
+			},
+			wantSub: "-> verdict=red-as-expected ",
+		},
+		{
+			name: "unexpected-fail",
+			setup: func(ctx *statemachine.Context) {
+				ctx.Set("expected-test-result", "success")
+				ctx.Set("test-outcome", "fail")
+			},
+			wantSub: "-> verdict=unexpected-fail ",
+		},
+		{
+			name: "unexpected-pass",
+			setup: func(ctx *statemachine.Context) {
+				ctx.Set("expected-test-result", "failure")
+				ctx.Set("test-outcome", "pass")
+			},
+			wantSub: "-> verdict=unexpected-pass ",
+		},
+		{
+			name: "infra short-circuits expectation comparison",
+			setup: func(ctx *statemachine.Context) {
+				ctx.Set("expected-test-result", "success")
+				ctx.Set("test-outcome", "infra")
+			},
+			wantSub: "-> verdict=infra ",
+		},
+		{
+			name:       "non-test phase emits no chip",
+			setup:      func(ctx *statemachine.Context) {},
+			wantNotSub: "verdict=",
+		},
+		{
+			name: "only one field set emits no chip",
+			setup: func(ctx *statemachine.Context) {
+				ctx.Set("expected-test-result", "failure")
+			},
+			wantNotSub: "verdict=",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			node := statemachine.Node{
+				ID:   "IMPLEMENT_TICKET",
+				Kind: statemachine.CallActivity,
+				Raw:  statemachine.RawNode{Process: "implement-ticket"},
+				Fn:   func(ctx *statemachine.Context) statemachine.Outcome { return statemachine.Outcome{} },
+			}
+			wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+			ctx := statemachine.NewContext()
+			tc.setup(ctx)
+			wrapped(ctx)
+
+			got := buf.String()
+			if tc.wantSub != "" && !strings.Contains(got, tc.wantSub) {
+				t.Errorf("trace output missing %q\nfull output:\n%s", tc.wantSub, got)
+			}
+			if tc.wantNotSub != "" && strings.Contains(got, tc.wantNotSub) {
+				t.Errorf("trace output should not contain %q\nfull output:\n%s", tc.wantNotSub, got)
+			}
+		})
+	}
+}
+
+func TestWrap_CallActivityVerdictPrependsToStateDelta(t *testing.T) {
+	// When the call-activity exits with a state delta hoisted onto the OK
+	// line, the verdict chip leads while the delta keys follow — operator
+	// scans the line left-to-right and sees intent (verdict) before
+	// mechanics (state keys).
+	prevNow := nowFn
+	nowFn = fixedClock
+	t.Cleanup(func() { nowFn = prevNow })
+
+	var buf bytes.Buffer
+	node := statemachine.Node{
+		ID:   "IMPLEMENT_TICKET",
+		Kind: statemachine.CallActivity,
+		Raw:  statemachine.RawNode{Process: "implement-ticket"},
+		Fn: func(ctx *statemachine.Context) statemachine.Outcome {
+			ctx.Set("expected-test-result", "failure")
+			ctx.Set("test-outcome", "fail")
+			ctx.Set("command-succeeded", false)
+			return statemachine.Outcome{}
+		},
+	}
+	wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+	wrapped(statemachine.NewContext())
+
+	got := buf.String()
+	// verdict must precede the state-delta tail.
+	wantPrefix := "OK IMPLEMENT_TICKET -> verdict=red-as-expected, "
+	if !strings.Contains(got, wantPrefix) {
+		t.Errorf("trace output should prepend verdict before state delta; want substring %q\nfull output:\n%s", wantPrefix, got)
+	}
+}
+
 func TestWrapAll_DecoratesEveryNodeInEveryFlow(t *testing.T) {
 	prevNow := nowFn
 	nowFn = fixedClock
