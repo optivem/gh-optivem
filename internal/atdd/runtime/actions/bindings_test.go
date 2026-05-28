@@ -761,17 +761,55 @@ func TestRunCommand_SuiteAndTestFlagsAppendedOnlyWhenSet(t *testing.T) {
 }
 
 func TestRunCommand_NoFilterFlagsForNonTestCommand(t *testing.T) {
-	sh := &fakeShell{out: []byte("OK")}
-	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
-	ctx := statemachine.NewContext()
-	ctx.Params["command"] = "gh optivem commit"
-	// suite / test-names left empty
-	out := a.runCommand(ctx)
-	if out.Err != nil {
-		t.Fatalf("unexpected err: %v", out.Err)
+	// Covers two related cases:
+	//   (a) suite / test-names unset — flags must not appear (baseline).
+	//   (b) suite / test-names SET, but command is not `gh optivem test run`
+	//       — flags must STILL not appear. Caller-scope inheritance
+	//       (run.go:168-180) propagates outer `suite`/`test-names`
+	//       bindings into every nested call-activity; without this guard
+	//       `gh optivem system build` and `gh optivem commit` receive
+	//       `--suite=…`/`--test=…` and the CLI rejects them.
+	cases := []struct {
+		name      string
+		command   string
+		suite     string
+		testNames string
+	}{
+		{name: "commit, both unset", command: "gh optivem commit"},
+		{name: "system build, both unset", command: "gh optivem system build"},
+		{
+			name:      "system build with inherited suite + test-names",
+			command:   "gh optivem system build",
+			suite:     "acceptance",
+			testNames: "shouldRejectOrderWithQuantityOf100",
+		},
+		{
+			name:      "commit with inherited suite + test-names",
+			command:   "gh optivem commit",
+			suite:     "acceptance",
+			testNames: "foo",
+		},
 	}
-	if strings.Contains(sh.calls[0], "--suite=") || strings.Contains(sh.calls[0], "--test=") {
-		t.Fatalf("shell call should not carry suite/test flags: %q", sh.calls[0])
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sh := &fakeShell{out: []byte("OK")}
+			a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
+			ctx := statemachine.NewContext()
+			ctx.Params["command"] = tc.command
+			if tc.suite != "" {
+				ctx.Params["suite"] = tc.suite
+			}
+			if tc.testNames != "" {
+				ctx.Params["test-names"] = tc.testNames
+			}
+			out := a.runCommand(ctx)
+			if out.Err != nil {
+				t.Fatalf("unexpected err: %v", out.Err)
+			}
+			if strings.Contains(sh.calls[0], "--suite=") || strings.Contains(sh.calls[0], "--test=") {
+				t.Fatalf("non-test-run shell call should not carry suite/test flags: %q", sh.calls[0])
+			}
+		})
 	}
 }
 

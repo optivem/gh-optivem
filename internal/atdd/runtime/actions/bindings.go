@@ -756,11 +756,20 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 	}
 	isTestRun := strings.HasPrefix(cmd, "gh optivem test run")
 	isCommit := strings.HasPrefix(cmd, "gh optivem commit")
-	if suite := strings.TrimSpace(ctx.Params["suite"]); suite != "" {
-		cmd += " --suite=" + shellEscape(suite)
-	}
-	if testNames := strings.TrimSpace(ctx.Params["test-names"]); testNames != "" {
-		cmd += " --test=" + shellEscape(testNames)
+	// `suite` / `test-names` are only meaningful for `gh optivem test run`.
+	// They MUST NOT leak into other commands: BPMN call-activities inherit
+	// the parent scope's ctx.Params (run.go:168-180), so an outer process
+	// that binds `suite:`/`test-names:` for a downstream `verify-tests-*`
+	// would otherwise have those flags rendered into every intermediate
+	// `system build` / `system start` / `commit` shell-out, which the
+	// receiving CLIs reject with "unknown flag: --suite".
+	if isTestRun {
+		if suite := strings.TrimSpace(ctx.Params["suite"]); suite != "" {
+			cmd += " --suite=" + shellEscape(suite)
+		}
+		if testNames := strings.TrimSpace(ctx.Params["test-names"]); testNames != "" {
+			cmd += " --test=" + shellEscape(testNames)
+		}
 	}
 	if isCommit {
 		if msg := strings.TrimSpace(ctx.Params["message"]); msg != "" {
