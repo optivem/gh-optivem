@@ -812,6 +812,69 @@ func TestExecuteAgent_ValidationFailureDispatchesFixerForFailureKind(t *testing.
 	}
 }
 
+// TestVerifyTests_InfraOutcomeReachesInfraHalt walks both
+// `verify-tests-pass` and `verify-tests-fail` end-to-end with a
+// run-command stub that stamps `test-outcome="infra"` — mirroring
+// what `runCommand` does when the runner shell-out fails with stderr
+// matching one of the `verify_classify.go` infra patterns. The walk
+// must reach TESTS_INFRA_HALT (an error-end-event) and the engine
+// must surface a non-nil error from RunProcess so the failure
+// propagates up the call-activity chain instead of being silently
+// absorbed.
+//
+// This is the seam-composition test: the action stamping infra
+// (covered by TestRunCommand_RunTestsClassifiesInfraFailure in the
+// actions package), the gate accepting infra (covered by
+// gates/bindings_test.go), and the YAML routing (covered by
+// transitions_test.go's wantEdge) are each tested in isolation;
+// this confirms they compose so an infra failure cannot reach a
+// plain end-event by some unanticipated path.
+func TestVerifyTests_InfraOutcomeReachesInfraHalt(t *testing.T) {
+	for _, proc := range []string{"verify-tests-pass", "verify-tests-fail"} {
+		t.Run(proc, func(t *testing.T) {
+			eng, err := LoadDefault()
+			if err != nil {
+				t.Fatalf("LoadDefault: %v", err)
+			}
+			eng.ActionFn = func(name string) NodeFn {
+				switch name {
+				case "run-command":
+					return func(ctx *Context) Outcome {
+						ctx.Set("command-succeeded", false)
+						ctx.Set("test-outcome", "infra")
+						ctx.Set("test-infra-label", "missing executable")
+						return Outcome{}
+					}
+				case "validate-outputs-and-scopes":
+					return func(ctx *Context) Outcome {
+						ctx.Set("outputs-and-scopes-valid", true)
+						return Outcome{}
+					}
+				default:
+					return func(ctx *Context) Outcome { return Outcome{} }
+				}
+			}
+			eng.AgentFn = func(name string) NodeFn {
+				return func(ctx *Context) Outcome { return Outcome{} }
+			}
+			eng.GateFn = nil // use real gates via Bind so testOutcome routes infra
+			if err := eng.Bind(); err != nil {
+				t.Fatalf("Bind: %v", err)
+			}
+			ctx := NewContext()
+			ctx.Params["suite"] = "acceptance"
+			ctx.Params["test-names"] = "synthetic-test"
+			err = eng.RunProcess(proc, ctx)
+			if err == nil {
+				t.Fatalf("RunProcess(%s) returned nil; want error from TESTS_INFRA_HALT", proc)
+			}
+			if !strings.Contains(err.Error(), "TESTS_INFRA_HALT") {
+				t.Fatalf("RunProcess(%s) error = %q; want it to reference TESTS_INFRA_HALT (infra-classified test runs must halt, not silently advance)", proc, err.Error())
+			}
+		})
+	}
+}
+
 // TestWrapUserTask_AgentResolvesFromAgentParam pins the post-split wiring
 // (plan 20260526-1701): RUN_AGENT in the `execute-agent` sub-process now
 // templates `agent: ${agent}`, NOT `agent: ${task-name}`. Callers pass two
