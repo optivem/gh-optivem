@@ -235,6 +235,10 @@ func writeExit(deps Deps, node statemachine.Node, out statemachine.Outcome, elap
 			out.Err, elapsed)
 		return
 	}
+	if node.ID == "TESTS_INFRA_HALT" {
+		writeInfraHaltBanner(deps, node, post, elapsed)
+		return
+	}
 	label, attr := outcomeStatusLabel(out)
 	detail := formatOutcome(out)
 	delta := stateDelta(pre, post)
@@ -273,6 +277,54 @@ func writeExit(deps Deps, node statemachine.Node, out statemachine.Outcome, elap
 	}
 }
 
+// writeInfraHaltBanner replaces the generic exit line for the
+// TESTS_INFRA_HALT error-end-event with a human-readable halt banner
+// that quotes the infra label, the failing command, and the stderr
+// tail — the three pieces of evidence the operator needs to diagnose
+// "the runner could not start" without reading the raw state dump.
+//
+// The values come from the per-node post-state snapshot, which is the
+// shared ctx.State at the moment TESTS_INFRA_HALT fired:
+//
+//   - test-infra-label  set by runCommand on infra classification
+//                       (see internal/atdd/runtime/actions/bindings.go)
+//   - command-line      set by runCommand on the failing test-run shell-out
+//   - command-stderr-tail  ditto; the last N lines of the runner's stderr
+//
+// Empty fields render as "(unset)" rather than being skipped so contract
+// drift surfaces visibly. Halt colour is yellow (matching the INFRA
+// label in outcomeStatusLabel) because an infra failure does not prove
+// the SUT broken — the runner never got that far.
+func writeInfraHaltBanner(deps Deps, node statemachine.Node, post map[string]string, elapsed time.Duration) {
+	w := deps.Out
+	label := post["test-infra-label"]
+	if label == "" {
+		label = "(unset)"
+	}
+	cmd := post["command-line"]
+	if cmd == "" {
+		cmd = "(unset)"
+	}
+	tail := post["command-stderr-tail"]
+	if tail == "" {
+		tail = "(unset)"
+	}
+	fmt.Fprintf(w, "%s %s %s — infra failure: %s  (%s)\n",
+		deps.tracePrefix(),
+		deps.paint("HALT", color.FgYellow, color.Bold),
+		deps.nodeIDPaint(node),
+		label, elapsed)
+	fmt.Fprintf(w, "%s    %s %s\n", deps.tracePrefix(), deps.paint("command:", color.Faint), cmd)
+	// Indent multi-line stderr tail so subsequent lines align with the
+	// first line of stderr, not with the trace prefix — keeps the visual
+	// "this is one chunk" grouping intact on multi-line tails.
+	stderrLines := strings.Split(tail, "\n")
+	fmt.Fprintf(w, "%s    %s %s\n", deps.tracePrefix(), deps.paint("stderr tail:", color.Faint), stderrLines[0])
+	for _, line := range stderrLines[1:] {
+		fmt.Fprintf(w, "%s                 %s\n", deps.tracePrefix(), line)
+	}
+}
+
 // outcomeStatusLabel returns the status word and its color for the
 // trace banner. Most outcomes render as green "OK", but the verify
 // action stamps Outcome.Value with one of {ok, red, infra} so a
@@ -302,6 +354,8 @@ func kindLabel(k statemachine.NodeKind) string {
 		return "start-event"
 	case statemachine.EndEvent:
 		return "end-event"
+	case statemachine.ErrorEndEvent:
+		return "error-end-event"
 	case statemachine.ServiceTask:
 		return "service-task"
 	case statemachine.UserTask:

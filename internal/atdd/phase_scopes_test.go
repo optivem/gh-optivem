@@ -175,6 +175,56 @@ func TestPhaseScopes_ReadWriteShape(t *testing.T) {
 	}
 }
 
+// TestPhaseScopes_DbMigrationPathScope asserts the per-phase scope for
+// the three system-tier writing-agent MIDs (implement-system,
+// update-system, refactor-system) lines up with the doctrine for the
+// `system-db-migration-path` Family A layer:
+//   - implement-system: read + write (AT-driven persistence change)
+//   - update-system:    read + write (reshape that needs a schema change)
+//   - refactor-system:  read-only    (pure refactors don't change schema)
+//
+// A drift here (e.g. accidentally adding the layer to refactor-system's
+// write list) would silently widen the schema-change authority of
+// refactor verbs — the boundary the plan deliberately holds.
+func TestPhaseScopes_DbMigrationPathScope(t *testing.T) {
+	eng := loadEngine(t)
+	const layer = "system-db-migration-path"
+	cases := []struct {
+		mid       string
+		wantRead  bool
+		wantWrite bool
+	}{
+		{"implement-system", true, true},
+		{"update-system", true, true},
+		{"refactor-system", true, false},
+	}
+	for _, c := range cases {
+		read, write, ok := eng.Scope(c.mid)
+		if !ok {
+			t.Errorf("MID %q: missing inline scope", c.mid)
+			continue
+		}
+		gotRead := containsLayer(read, layer)
+		gotWrite := containsLayer(write, layer)
+		if gotRead != c.wantRead {
+			t.Errorf("MID %q: %s in read=%v, want=%v", c.mid, layer, gotRead, c.wantRead)
+		}
+		if gotWrite != c.wantWrite {
+			t.Errorf("MID %q: %s in write=%v, want=%v", c.mid, layer, gotWrite, c.wantWrite)
+		}
+	}
+}
+
+// containsLayer reports whether layer appears in layers.
+func containsLayer(layers []string, layer string) bool {
+	for _, l := range layers {
+		if l == layer {
+			return true
+		}
+	}
+	return false
+}
+
 // TestPhaseScopes_NodeScopeFieldShape asserts the `scope:` field on a
 // writing-agent MID's EXECUTE_AGENT node — when present — is exactly
 // "none", and that `scope: none` is mutually exclusive with `read:` /

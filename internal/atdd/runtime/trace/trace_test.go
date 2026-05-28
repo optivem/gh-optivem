@@ -83,6 +83,84 @@ func TestWrap_ServiceTaskLogsEntryAndExit(t *testing.T) {
 	}
 }
 
+// TestWrap_TestsInfraHaltBannerRendersDiagnosticPayload exercises the
+// special-case banner the wrap decorator emits when an infra-classified
+// test-run failure routes to TESTS_INFRA_HALT. The runner-not-started
+// case (binary missing, docker down, etc.) was silently advancing the
+// pipeline pre-classifier; the banner must surface the infra label,
+// the failing command, and the stderr tail so the operator can
+// diagnose without parsing the raw state dump.
+func TestWrap_TestsInfraHaltBannerRendersDiagnosticPayload(t *testing.T) {
+	prevNow := nowFn
+	nowFn = fixedClock
+	t.Cleanup(func() { nowFn = prevNow })
+
+	var buf bytes.Buffer
+	// The actual TESTS_INFRA_HALT node is an error-end-event whose
+	// NodeFn is the no-op returned by Engine.resolve. Earlier nodes
+	// (runCommand) populate the diagnostic state this banner reads.
+	node := statemachine.Node{
+		ID:   "TESTS_INFRA_HALT",
+		Kind: statemachine.ErrorEndEvent,
+		Fn:   func(ctx *statemachine.Context) statemachine.Outcome { return statemachine.Outcome{} },
+	}
+	wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+	ctx := statemachine.NewContext()
+	ctx.Set("test-infra-label", "missing executable")
+	ctx.Set("command-line", "gh optivem test run --suite=acceptance --test=foo")
+	ctx.Set("command-stderr-tail", "'C:\\Program' is not recognized as an internal or external command,\noperable program or batch file.")
+	wrapped(ctx)
+
+	got := buf.String()
+	wantSubs := []string{
+		"HALT TESTS_INFRA_HALT — infra failure: missing executable",
+		"command: gh optivem test run --suite=acceptance --test=foo",
+		"stderr tail: 'C:\\Program' is not recognized as an internal or external command,",
+		"operable program or batch file.",
+	}
+	for _, s := range wantSubs {
+		if !strings.Contains(got, s) {
+			t.Errorf("trace output missing %q\nfull output:\n%s", s, got)
+		}
+	}
+	// Generic exit-line shape must NOT also render — banner replaces it.
+	if strings.Contains(got, "OK TESTS_INFRA_HALT") {
+		t.Errorf("infra halt banner must replace the generic OK line; got:\n%s", got)
+	}
+}
+
+// TestWrap_TestsInfraHaltBannerSurfacesContractDrift guards the
+// "(unset)" rendering for missing diagnostic state. Pre-classifier
+// drift (e.g. an upstream change that stops stamping test-infra-label)
+// must surface visibly in the banner instead of producing a misleading
+// "infra failure:" with empty fields.
+func TestWrap_TestsInfraHaltBannerSurfacesContractDrift(t *testing.T) {
+	prevNow := nowFn
+	nowFn = fixedClock
+	t.Cleanup(func() { nowFn = prevNow })
+
+	var buf bytes.Buffer
+	node := statemachine.Node{
+		ID:   "TESTS_INFRA_HALT",
+		Kind: statemachine.ErrorEndEvent,
+		Fn:   func(ctx *statemachine.Context) statemachine.Outcome { return statemachine.Outcome{} },
+	}
+	wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+	// Empty state — no infra-payload keys set.
+	wrapped(statemachine.NewContext())
+
+	got := buf.String()
+	for _, s := range []string{
+		"HALT TESTS_INFRA_HALT — infra failure: (unset)",
+		"command: (unset)",
+		"stderr tail: (unset)",
+	} {
+		if !strings.Contains(got, s) {
+			t.Errorf("trace output missing %q\nfull output:\n%s", s, got)
+		}
+	}
+}
+
 func TestWrap_GatewayLogsBindingAndStateDelta(t *testing.T) {
 	prevNow := nowFn
 	nowFn = fixedClock
