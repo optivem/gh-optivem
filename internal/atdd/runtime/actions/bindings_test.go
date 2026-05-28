@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/optivem/gh-optivem/internal/atdd"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
@@ -159,6 +160,26 @@ func TestPathInScope(t *testing.T) {
 	for _, tc := range cases {
 		if got := pathInScope(tc.path, allowed); got != tc.want {
 			t.Errorf("pathInScope(%q): got %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
+// TestResolveLayerPaths_FamilyAKeysAllHaveAccessor is the drift guard
+// between atdd.FamilyAPathKeysInScope and the switch in ResolveLayerPaths.
+// Every key admitted to the allowlist must also be wired into the switch
+// — otherwise the resolver returns "has no Config accessor" at runtime
+// the first time a writing-agent MID references the layer, 4+ minutes
+// into a ticket run.
+func TestResolveLayerPaths_FamilyAKeysAllHaveAccessor(t *testing.T) {
+	cfg := writePhaseScopeTestConfig(t, t.TempDir())
+	for key := range atdd.FamilyAPathKeysInScope {
+		got, err := ResolveLayerPaths([]string{key}, cfg)
+		if err != nil {
+			t.Errorf("ResolveLayerPaths(%q): %v — add a switch case for this key in ResolveLayerPaths (it is in FamilyAPathKeysInScope but has no Config accessor)", key, err)
+			continue
+		}
+		if len(got) != 1 || got[0] == "" {
+			t.Errorf("ResolveLayerPaths(%q): got %v, want a single non-empty path", key, got)
 		}
 	}
 }

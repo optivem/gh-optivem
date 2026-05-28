@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
@@ -652,5 +653,82 @@ func TestRun_AllRemoteChecksPass(t *testing.T) {
 	}
 	if err := Run(context.Background(), cfg, opts); err != nil {
 		t.Errorf("expected nil with every remote check returning OK, got: %v", err)
+	}
+}
+
+// TestRun_ScopeSweepCatchesBlankDbMigrationPath proves the layer-resolver
+// sweep surfaces a missing system.db-migration-path at preflight time
+// — the same condition that, pre-this-plan, only blew up 4+ minutes
+// into a ticket run inside validate-outputs-and-scopes. Every other check
+// passes; the Engine being wired and DbMigrationPath being blank is the
+// only contributor to the failure.
+func TestRun_ScopeSweepCatchesBlankDbMigrationPath(t *testing.T) {
+	t.Parallel()
+	ws := t.TempDir()
+	cwd := seedMonolithFS(t, ws)
+	cfg := monolithCfg()
+	// Architecture is set but DbMigrationPath is intentionally blank.
+	// (Validate Rule 22b would normally reject this on full schema
+	// validation, but preflight is structurally independent — and the
+	// resolver sweep is the layer this test exercises.)
+	cfg.System.DbMigrationPath = ""
+
+	eng, err := statemachine.LoadDefault()
+	if err != nil {
+		t.Fatalf("load state machine: %v", err)
+	}
+
+	opts := Options{
+		Workspace: ws,
+		Cwd:       cwd,
+		Engine:    eng,
+		RepoExists: func(_ context.Context, _ string) (bool, error) {
+			return true, nil
+		},
+		SonarOrgExists: func(_ context.Context, _ string) (bool, error) {
+			return true, nil
+		},
+		SonarProjectExists: func(_ context.Context, _ string) (bool, error) {
+			return true, nil
+		},
+		BoardURLOK: func(_ context.Context, _ string) error {
+			return nil
+		},
+	}
+	err = Run(context.Background(), cfg, opts)
+	if err == nil {
+		t.Fatal("expected scope-sweep failure for blank system.db-migration-path, got nil")
+	}
+	if !strings.Contains(err.Error(), "system.db-migration-path") {
+		t.Errorf("error should name system.db-migration-path, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "implement-system") {
+		t.Errorf("error should name the implement-system MID (process-flow.yaml's implement-system write list references system-db-migration-path), got: %v", err)
+	}
+}
+
+// TestRun_ScopeSweepSkippedWhenEngineNil documents the nil-Engine skip:
+// `gh optivem config preflight` opts out of the sweep because it validates
+// a YAML shape without committing to a particular state-machine version.
+// Same passing cfg + blank DbMigrationPath as the previous test — but
+// with no Engine wired, the sweep is silent and Run returns nil.
+func TestRun_ScopeSweepSkippedWhenEngineNil(t *testing.T) {
+	t.Parallel()
+	ws := t.TempDir()
+	cwd := seedMonolithFS(t, ws)
+	cfg := monolithCfg()
+	cfg.System.DbMigrationPath = ""
+
+	opts := Options{
+		Workspace: ws,
+		Cwd:       cwd,
+		// Engine deliberately not set.
+		RepoExists:         func(_ context.Context, _ string) (bool, error) { return true, nil },
+		SonarOrgExists:     func(_ context.Context, _ string) (bool, error) { return true, nil },
+		SonarProjectExists: func(_ context.Context, _ string) (bool, error) { return true, nil },
+		BoardURLOK:         func(_ context.Context, _ string) error { return nil },
+	}
+	if err := Run(context.Background(), cfg, opts); err != nil {
+		t.Errorf("expected nil with Engine unset (sweep skipped), got: %v", err)
 	}
 }

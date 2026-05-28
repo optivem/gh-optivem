@@ -32,7 +32,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/actions"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/repolocator"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
@@ -72,6 +74,16 @@ type Options struct {
 	// BoardURLOK verifies that cfg.Project.URL resolves and is visible
 	// to the authenticated gh CLI. nil = skip the board-URL check.
 	BoardURLOK func(ctx context.Context, projectURL string) error
+
+	// Engine is the loaded ATDD state machine (process-flow.yaml). When
+	// non-nil, preflight sweeps every writing-agent MID's inline `read:` /
+	// `write:` scope lists through actions.ResolveLayerPaths against cfg,
+	// surfacing any unresolvable layer (missing Family A switch case,
+	// blank cfg path, unknown Family B key) at startup instead of mid-run
+	// inside validate-outputs-and-scopes. nil = skip the sweep — used by
+	// the `gh optivem config preflight` surface, which validates the YAML
+	// shape without committing to a particular state-machine version.
+	Engine *statemachine.Engine
 
 	// ClaudeCheck verifies the `claude` CLI is on PATH and runnable.
 	// nil = skip (used by the v1 --manual-agents fallback that doesn't
@@ -173,7 +185,56 @@ func Run(ctx context.Context, cfg *projectconfig.Config, opts Options) error {
 	failures = append(failures, runSonarChecks(ctx, cfg, opts)...)
 	failures = append(failures, runBoardURLCheck(ctx, cfg, opts.BoardURLOK)...)
 
+	// Scope-resolution sweep (optional; only runs when an engine is wired).
+	failures = append(failures, runScopeResolutionChecks(cfg, opts.Engine)...)
+
 	return aggregateFailures(failures)
+}
+
+// runScopeResolutionChecks iterates every writing-agent MID in the loaded
+// state machine and resolves each MID's `read:` / `write:` layer lists
+// against cfg via actions.ResolveLayerPaths. Any layer that fails to
+// resolve — Family A key missing a switch case, blank cfg path,
+// unknown Family B key — becomes one failure line, prefixed with the MID
+// name and list (`read`/`write`) so the operator can locate the drift.
+//
+// nil engine = skip (matches the existing nil-check convention for
+// optional check classes). Templated task-names on the `fix` LOW
+// (`task-name: "fix-${failure-kind}"`) are skipped because their scope is
+// inherited from `originating-task-name` at runtime and they have no
+// concrete MID identity of their own.
+func runScopeResolutionChecks(cfg *projectconfig.Config, eng *statemachine.Engine) []string {
+	if eng == nil || cfg == nil {
+		return nil
+	}
+	var failures []string
+	for processName, proc := range eng.Processes {
+		for _, node := range proc.Nodes {
+			if node.Kind != statemachine.CallActivity || node.Raw.Process != "execute-agent" {
+				continue
+			}
+			task := node.Raw.Params["task-name"]
+			if task == "" || strings.Contains(task, "${") {
+				continue
+			}
+			for _, list := range []struct {
+				name   string
+				layers []string
+			}{
+				{"read", node.Raw.Read},
+				{"write", node.Raw.Write},
+			} {
+				if len(list.layers) == 0 {
+					continue
+				}
+				if _, err := actions.ResolveLayerPaths(list.layers, cfg); err != nil {
+					failures = append(failures, fmt.Sprintf("MID %s %s scope: %v", processName, list.name, err))
+				}
+			}
+			break
+		}
+	}
+	return failures
 }
 
 // aggregateFailures returns nil when failures is empty; otherwise a

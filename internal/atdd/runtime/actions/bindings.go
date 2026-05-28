@@ -477,7 +477,7 @@ func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome
 		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: gh-optivem.yaml not loaded — driver must inject actions.Deps.Config")}
 	}
 
-	allowed, err := resolveLayerPaths(write, cfg)
+	allowed, err := ResolveLayerPaths(write, cfg)
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope (%s): %w", phaseID, err)}
 	}
@@ -519,12 +519,12 @@ func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome
 	return statemachine.Outcome{Bool: true}
 }
 
-// resolveLayerPaths joins a phase's layer list against the project's
+// ResolveLayerPaths joins a phase's layer list against the project's
 // configured paths: Family A path-shaped keys go through their dedicated
 // Config accessor (system-path → cfg.System.Path); everything else is a
 // Family B key in cfg.SystemTest.Paths. Missing values surface as errors
 // rather than silently shrinking the allowed set.
-func resolveLayerPaths(layers []string, cfg *projectconfig.Config) ([]string, error) {
+func ResolveLayerPaths(layers []string, cfg *projectconfig.Config) ([]string, error) {
 	out := make([]string, 0, len(layers))
 	for _, layer := range layers {
 		if atdd.FamilyAPathKeysInScope[layer] {
@@ -534,6 +534,11 @@ func resolveLayerPaths(layers []string, cfg *projectconfig.Config) ([]string, er
 					return nil, fmt.Errorf("layer %q resolves to empty system.path in gh-optivem.yaml", layer)
 				}
 				out = append(out, cfg.System.Path)
+			case "system-db-migration-path":
+				if cfg.System.DbMigrationPath == "" {
+					return nil, fmt.Errorf("layer %q resolves to empty system.db-migration-path in gh-optivem.yaml", layer)
+				}
+				out = append(out, cfg.System.DbMigrationPath)
 			default:
 				return nil, fmt.Errorf("layer %q is in FamilyAPathKeysInScope but has no Config accessor", layer)
 			}
@@ -1010,7 +1015,7 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	if cfg == nil {
 		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: gh-optivem.yaml not loaded — driver must inject actions.Deps.Config")}
 	}
-	allowed, err := resolveLayerPaths(write, cfg)
+	allowed, err := ResolveLayerPaths(write, cfg)
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
 	}
