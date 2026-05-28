@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -36,6 +37,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/cmdctx"
 	"github.com/optivem/gh-optivem/internal/configinit"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/runner"
 	"github.com/optivem/gh-optivem/internal/version"
 )
 
@@ -113,19 +115,23 @@ command.
 			exitOnError(err)
 			promptOverrides, err := taskPromptOverridesFromConfig(cfg)
 			exitOnError(err)
-			exitOnError(driver.Run(context.Background(), driver.Options{
+			runErr := driver.Run(context.Background(), driver.Options{
 				IssueNum:            issue,
 				Headless:            headless,
 				ManualAgents:        manualAgents,
 				Override:            hooks,
 				YAMLPath:            cfg.ProcessFlow,
 				TaskPromptOverrides: promptOverrides,
-				ConfigPath:           resolvedConfigPath,
-				LogFile:              logFile,
-				KeepRuns:             keepRuns,
-				ShowPrompt:           showPrompt,
-				Approval:             cmdctx.Approval(cmd),
-			}))
+				ConfigPath:          resolvedConfigPath,
+				LogFile:             logFile,
+				KeepRuns:            keepRuns,
+				ShowPrompt:          showPrompt,
+				Approval:            cmdctx.Approval(cmd),
+			})
+			if runErr == nil {
+				printSystemEndpointsBanner(cmd.ErrOrStderr(), cfg)
+			}
+			exitOnError(runErr)
 		},
 	}
 	cmd.Flags().StringVar(&issueArg, "issue", "", "GitHub issue number or URL (required)")
@@ -137,6 +143,24 @@ command.
 	cmd.Flags().IntVar(&keepRuns, "keep-runs", 10, "Max prompt-log run directories to keep under .gh-optivem/runs/ at startup (0 = never prune)")
 	cmd.Flags().BoolVar(&showPrompt, "show-prompt", false, "Dump each agent's full rendered prompt to stdout before dispatch (default: summary banner only)")
 	return cmd
+}
+
+// printSystemEndpointsBanner prints the system endpoints and OK/DOWN verdict
+// to w as a final banner after a successful implement run. Best-effort:
+// missing system.config, an unreadable systems.yaml, or an empty configured
+// path is silently skipped — failing to print URLs must never fail the
+// implement command itself. The banner goes to stderr (operator-facing UI),
+// not stdout — matches the rest of implement's exit-banner content.
+func printSystemEndpointsBanner(w io.Writer, cfg *projectconfig.Config) {
+	if cfg == nil || cfg.System.Config == "" {
+		return
+	}
+	sys, err := runner.LoadSystem(cfg.System.Config)
+	if err != nil {
+		return
+	}
+	fmt.Fprintln(w, "\n=== System endpoints ===")
+	_ = runner.Status(w, sys, runner.StatusOptions{})
 }
 
 // requireFreshAssetsWhenEscapeHatchSet returns the documented staleness

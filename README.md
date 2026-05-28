@@ -218,6 +218,17 @@ gh optivem system start --log-lines 200   # lines of compose logs to dump on hea
 gh optivem system start --up-timeout 10m  # per-attempt timeout for `docker compose up -d` (default 5m)
 ```
 
+#### Probe system status
+
+Snapshot probe of every component + external-system URL in `systems.yaml`. Prints `OK` or `DOWN` per entry and exits non-zero if any are DOWN, so it can be used in shell pipelines.
+
+```bash
+gh optivem system status
+gh optivem system status --timeout 5s    # per-URL probe timeout (default 2s)
+```
+
+No retries, no waiting — pair with `system start` for the lifecycle ("did it come up?"). After a successful `gh optivem implement --issue N`, the same block is printed automatically as an `=== System endpoints ===` banner.
+
 #### Stop system
 
 `docker compose down` + container cleanup.

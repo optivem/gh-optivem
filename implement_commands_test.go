@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -263,6 +264,81 @@ func TestNewProcessCmd_HasShowChild(t *testing.T) {
 	}
 	if got := len(show.Commands()); got != 0 {
 		t.Errorf("process show: expected leaf (0 children), got %d", got)
+	}
+}
+
+// TestPrintSystemEndpointsBanner_writesBannerWithConfig: with a valid
+// systems.yaml pointed to by cfg.System.Config, the banner header plus the
+// per-component status line both land on the writer.
+func TestPrintSystemEndpointsBanner_writesBannerWithConfig(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	systemsPath := filepath.Join(dir, "systems.yaml")
+	body := `systems:
+  - label: real
+    composeFile: ./docker-compose.yaml
+    components:
+      - name: api
+        url: http://127.0.0.1:1/
+`
+	if err := os.WriteFile(systemsPath, []byte(body), 0o644); err != nil {
+		t.Fatalf("write systems.yaml fixture: %v", err)
+	}
+	cfg := &projectconfig.Config{
+		Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/x/projects/1"},
+		System:  projectconfig.System{Config: systemsPath},
+	}
+	var buf bytes.Buffer
+	printSystemEndpointsBanner(&buf, cfg)
+	got := buf.String()
+	if !strings.Contains(got, "=== System endpoints ===") {
+		t.Errorf("missing banner header in output:\n%s", got)
+	}
+	// The probe targets 127.0.0.1:1 which is unreachable; expect DOWN.
+	if !strings.Contains(got, "DOWN api:") {
+		t.Errorf("expected per-component DOWN line, got:\n%s", got)
+	}
+}
+
+// TestPrintSystemEndpointsBanner_silentOnNilConfig: nil cfg writes nothing.
+// Banner is best-effort and must never panic on missing inputs.
+func TestPrintSystemEndpointsBanner_silentOnNilConfig(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	printSystemEndpointsBanner(&buf, nil)
+	if buf.Len() != 0 {
+		t.Errorf("expected empty output on nil cfg, got: %q", buf.String())
+	}
+}
+
+// TestPrintSystemEndpointsBanner_silentOnEmptyConfigPath: cfg with no
+// system.config: set (typical for projects whose implement run does not
+// touch the system tier) writes nothing.
+func TestPrintSystemEndpointsBanner_silentOnEmptyConfigPath(t *testing.T) {
+	t.Parallel()
+	cfg := &projectconfig.Config{
+		Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/x/projects/1"},
+	}
+	var buf bytes.Buffer
+	printSystemEndpointsBanner(&buf, cfg)
+	if buf.Len() != 0 {
+		t.Errorf("expected empty output when system.config is empty, got: %q", buf.String())
+	}
+}
+
+// TestPrintSystemEndpointsBanner_silentOnUnreadableFile: cfg pointing at a
+// non-existent systems.yaml writes nothing rather than failing the implement
+// run with a load error. Mirrors the doc-comment best-effort contract.
+func TestPrintSystemEndpointsBanner_silentOnUnreadableFile(t *testing.T) {
+	t.Parallel()
+	cfg := &projectconfig.Config{
+		Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/x/projects/1"},
+		System:  projectconfig.System{Config: filepath.Join(t.TempDir(), "no-such.yaml")},
+	}
+	var buf bytes.Buffer
+	printSystemEndpointsBanner(&buf, cfg)
+	if buf.Len() != 0 {
+		t.Errorf("expected empty output on unreadable systems.yaml, got: %q", buf.String())
 	}
 }
 
