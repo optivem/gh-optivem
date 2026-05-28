@@ -118,6 +118,7 @@ processes:
         params:
           task-name: write-acceptance-tests
           agent: acceptance-test-writer
+          category: test-agent
         read:  [at-test, dsl-port]
         write: [at-test, dsl-port, dsl-core]
       - id: END
@@ -137,6 +138,7 @@ processes:
         params:
           task-name: implement-system
           agent: system-implementer
+          category: prod-agent
         read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
         write: [system-path]
       - id: END
@@ -188,6 +190,7 @@ processes:
         params:
           task-name: implement-system
           agent: system-implementer
+          category: prod-agent
         read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
         write: [system-path]
       - id: END
@@ -902,6 +905,7 @@ processes:
       - id: ASK_HUMAN
         type: user-task
         agent: human
+        category: human
         name: "Do you approve?"
       - id: APPROVE_END
         type: end-event

@@ -143,9 +143,9 @@ func newRootCmd() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&workspaceFlagValue, "workspace", "",
 		"Path to a directory containing a *.code-workspace file (default: $"+workspace.EnvVar+", walk-up from CWD, or single-repo fallback)")
 	cmd.PersistentFlags().BoolVar(&autoFlag, "auto", false,
-		"Auto-approve confirmations except for categories listed in --confirm. Defaults to --confirm=commit,fix. Env: "+approval.EnvAuto+".")
+		"Auto-approve approvals below the --confirm threshold tier. Defaults to --confirm=human (truly autonomous). Env: "+approval.EnvAuto+".")
 	cmd.PersistentFlags().StringVar(&confirmFlag, "confirm", "",
-		"Comma-separated category list that still prompts under --auto. Categories: commit, fix, release, prompt. (human is always confirmed.) Default when --auto is set: commit,fix. Env: "+approval.EnvConfirm+".")
+		"Threshold tier under --auto: this tier and above still prompt; lower tiers auto-yes. Valid: command, prod-agent, test-agent, prod-commit, test-commit, human. Default when --auto is set: human. Env: "+approval.EnvConfirm+".")
 
 	// Help-text grouping. Without these, the new root verbs would
 	// interleave alphabetically with the project verbs and the visual

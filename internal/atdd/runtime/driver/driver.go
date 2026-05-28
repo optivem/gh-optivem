@@ -727,10 +727,14 @@ func newApproveDispatcher(opts Options, raw statemachine.RawNode, nodeID string)
 		// param threaded in from the call site via the approve
 		// primitive's call-activity params. Call-site override wins
 		// because the same `approve` LOW primitive is shared across
-		// callers with different category needs (fix vs. prompt).
-		// Default: prompt for any approve node that doesn't explicitly
-		// tag itself.
-		ok, err := approval.Confirm(opts.Approval, classifyApproveCategory(raw, ctx), opts.Stdin, opts.Stdout, "  Approve?")
+		// callers with different category needs. The parse-time
+		// validator guarantees every approve site has one resolved
+		// category, so any error here means the loader missed a site.
+		cat, err := classifyApproveCategory(raw, ctx)
+		if err != nil {
+			return statemachine.Outcome{Err: err}
+		}
+		ok, err := approval.Confirm(opts.Approval, cat, opts.Stdin, opts.Stdout, "  Approve?")
 		if err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("read approve confirmation at %s: %w", nodeID, err)}
 		}
@@ -1131,30 +1135,34 @@ func promptForAgent(opts Options, raw statemachine.RawNode, params map[string]st
 //
 //  1. ctx.Params["category"] — call-site override; the primary path,
 //     because the `approve` primitive is shared across callers with
-//     different category needs (a `fix` caller passes `category: fix`
-//     to upgrade its APPROVE_PRE to the fix tier).
+//     different category needs (a caller threads its tier through
+//     `category: ${category}` in its call-activity params).
 //  2. raw.Category — node-level pin on the ASK_HUMAN YAML; used when
 //     the author wants a primitive's approve gate to default to a
-//     non-prompt tier regardless of caller.
-//  3. Default: CategoryPrompt — the low-stakes tier that auto-yeses
-//     under `--auto` with the default exclusion set.
+//     specific tier regardless of caller.
 //
-// A typo'd `category: foo` falls through to default rather than the
-// alternative of failing the dispatch — the operator can still answer
-// at the prompt. The dispatch-time banner shows the resolved category
-// for audit.
-func classifyApproveCategory(raw statemachine.RawNode, ctx *statemachine.Context) approval.Category {
+// No default — parse-time validator (statemachine.validateApprovalCategories)
+// is the SSoT for "every approve site resolves a category." If this
+// dispatch-time function ever falls through, the parse-time pass missed
+// the site and the error names the node so the YAML can be fixed. A
+// typo'd `category: foo` errors here explicitly rather than silently
+// landing on a default tier.
+func classifyApproveCategory(raw statemachine.RawNode, ctx *statemachine.Context) (approval.Category, error) {
 	if v, ok := ctx.Params["category"]; ok && v != "" {
-		if c, err := approval.ParseCategory(v); err == nil {
-			return c
+		c, err := approval.ParseCategory(v)
+		if err != nil {
+			return 0, fmt.Errorf("approve node %q: invalid category param: %w", raw.ID, err)
 		}
+		return c, nil
 	}
 	if raw.Category != "" {
-		if c, err := approval.ParseCategory(raw.Category); err == nil {
-			return c
+		c, err := approval.ParseCategory(raw.Category)
+		if err != nil {
+			return 0, fmt.Errorf("approve node %q: invalid category attribute: %w", raw.ID, err)
 		}
+		return c, nil
 	}
-	return approval.CategoryPrompt
+	return 0, fmt.Errorf("approve node %q: no category resolved (parse-time validator should have caught this)", raw.ID)
 }
 
 // wrapOverride applies the override.Wrap decorator to every node. Wrapping
