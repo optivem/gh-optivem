@@ -19,6 +19,7 @@
 package clauderun
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -313,6 +314,19 @@ type Options struct {
 	// Stderr — diagnostics shouldn't break the dispatch.
 	PromptLogPath string
 
+	// EventsLogPath, when non-empty (headless mode only), is the file path
+	// runHeadless tees the per-event `claude -p --output-format stream-json
+	// --verbose` NDJSON output to (creating parent dirs as needed). One
+	// JSON object per line; the terminal `type:"result"` line carries the
+	// same `result` + `usage` + `total_cost_usd` fields the old single
+	// envelope used to. The driver computes a per-run-and-dispatch path so
+	// the audit log persists after the run — mirrors PromptLogPath. I/O
+	// failure is a non-fatal warning to Stderr; diagnostics must not
+	// break the dispatch (same policy as writePromptLog). Empty string
+	// skips the audit log (interactive mode never writes one — ANSI
+	// escapes make file-mirroring noisy).
+	EventsLogPath string
+
 	// OutputFilePath is the absolute path to the JSONL file the agent's
 	// `gh optivem output write` invocations append to. Exported into the
 	// subprocess env as GH_OPTIVEM_OUTPUT_FILE. The file is NOT pre-created
@@ -416,6 +430,10 @@ type RunOpts struct {
 	OutputFilePath string
 	OutputKeysSpec string
 
+	// EventsLogPath mirrors clauderun.Options.EventsLogPath. Honoured by
+	// runHeadless only; runInteractive ignores it. Empty → no audit log.
+	EventsLogPath string
+
 	// Approval is the resolved auto-approve policy from the parent
 	// process. Propagated into the child `claude` subprocess environment
 	// as GH_OPTIVEM_AUTO and GH_OPTIVEM_CONFIRM so nested `gh optivem`
@@ -429,14 +447,15 @@ type RunOpts struct {
 
 // RunResult is what the runner reports back to Dispatch. Usage is best-effort
 // — populated only when the runner can parse a structured envelope (currently
-// headless mode via `claude -p --output-format json`). Interactive mode
-// leaves it nil and the banner falls back to elapsed-time-only.
+// headless mode via `claude -p --output-format stream-json --verbose`, by
+// reading the terminal `type:"result"` event from the stream). Interactive
+// mode leaves it nil and the banner falls back to elapsed-time-only.
 //
 // ResultText is the agent's final response body — the `result` field from
-// the `claude -p --output-format json` envelope. Populated only in
-// headless mode (interactive mode prints directly to the operator's TTY
-// and has no envelope to parse). Used by the exit-banner result echo so
-// the operator sees the agent's final message inline. Structured outputs
+// the terminal stream-json result event. Populated only in headless mode
+// (interactive mode prints directly to the operator's TTY and has no
+// envelope to parse). Used by the exit-banner result echo so the
+// operator sees the agent's final message inline. Structured outputs
 // flow through the per-dispatch JSONL channel
 // (GH_OPTIVEM_OUTPUT_FILE) — not through ResultText anymore.
 type RunResult struct {
@@ -445,8 +464,9 @@ type RunResult struct {
 }
 
 // TokenUsage is the cost/throughput summary surfaced in the exit banner.
-// Field names mirror the `claude -p --output-format json` envelope so the
-// JSON shape can be decoded directly into this struct.
+// Field names mirror the `usage` object inside the stream-json terminal
+// `type:"result"` event so the JSON shape can be decoded directly into
+// this struct.
 type TokenUsage struct {
 	InputTokens              int     `json:"input_tokens"`
 	OutputTokens             int     `json:"output_tokens"`
@@ -578,6 +598,7 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 		Stderr:         runStderr,
 		OutputFilePath: opts.OutputFilePath,
 		OutputKeysSpec: opts.OutputKeysSpec,
+		EventsLogPath:  opts.EventsLogPath,
 		Approval:       opts.Approval,
 	})
 	if runErr != nil {
@@ -1555,19 +1576,28 @@ type execClaude struct{}
 // Interactive mode → `claude <prompt>` with stdin/stdout/stderr connected
 // directly so the operator sees the full Claude Code UI and can interject.
 //
-// Headless mode → `claude -p <prompt> --output-format json`:
+// Headless mode → `claude -p <prompt> --output-format stream-json --verbose`:
 //
 //   - The prompt is the embedded agent's full instructions (rendered by
 //     renderPrompt). v2 has no host/subagent split — `claude -p` IS the
 //     agent and needs the default tool set (Read/Glob/Grep/Edit/Write/Bash)
 //     to do real work.
-//   - --output-format json buffers the run into a single JSON envelope
-//     containing `total_cost_usd` and `usage.{input,output,cache_*}_tokens`
-//     so we can surface cost/throughput in the exit banner. The trade-off
-//     is no streaming output during the run.
+//   - --output-format stream-json --verbose emits one JSON event per line
+//     on stdout — assistant/user/system messages during the run, then a
+//     terminal `type:"result"` line carrying `result` (final answer),
+//     `usage.{input,output,cache_*}_tokens`, and `total_cost_usd`. The
+//     stream is teed to the per-dispatch .events.jsonl audit log (when
+//     opts.EventsLogPath is set) so unattended runs persist a full
+//     replay of every tool call / message — closing the audit gap that
+//     the previous single-envelope mode left for `--auto --headless`
+//     rehearsals.
+//   - parseClaudeStreamJSON scans the captured stdout for the terminal
+//     result event and pulls the same usage/result/cost fields the
+//     pre-stream-json banner used to print, so the exit banner shape is
+//     unchanged from the operator's point of view.
 //
 // JSON parsing is best-effort — a future CLI version that changes the
-// envelope shape leaves Usage nil and the banner falls back gracefully.
+// event shape leaves Usage nil and the banner falls back gracefully.
 func (execClaude) Run(ctx context.Context, opts RunOpts) (RunResult, error) {
 	if opts.Headless {
 		return runHeadless(ctx, opts)
@@ -1651,7 +1681,8 @@ func runHeadless(ctx context.Context, opts RunOpts) (RunResult, error) {
 	args := claudeTuningArgs(opts)
 	args = append(args,
 		"-p", arg,
-		"--output-format", "json",
+		"--output-format", "stream-json",
+		"--verbose",
 	)
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	if opts.Dir != "" {
@@ -1659,45 +1690,114 @@ func runHeadless(ctx context.Context, opts RunOpts) (RunResult, error) {
 	}
 	cmd.Stdin = opts.Stdin
 
-	// Capture stdout for JSON parsing. The buffered envelope is dumped to
-	// opts.Stdout after the run so the operator still gets the host's
-	// final result text, just not streaming.
+	// Tee stdout to (a) an in-memory accumulator that parseClaudeStreamJSON
+	// scans for the terminal `type:"result"` event after the run, and (b)
+	// the per-dispatch .events.jsonl audit log when EventsLogPath is set.
+	// The events log is open-on-demand: a missing/unwritable path
+	// downgrades to a non-fatal stderr warning so diagnostics never break
+	// the dispatch (same policy as writePromptLog).
 	var captured bytes.Buffer
-	cmd.Stdout = &captured
+	eventsSink, closeEvents := openEventsLog(opts.EventsLogPath, opts.Stderr)
+	defer closeEvents()
+	cmd.Stdout = io.MultiWriter(&captured, eventsSink)
 	cmd.Stderr = opts.Stderr
 	cmd.Env = subprocessEnv(opts)
 
 	runErr := cmd.Run()
 
-	usage, resultText := parseClaudeJSON(captured.Bytes())
+	usage, resultText := parseClaudeStreamJSON(captured.Bytes())
 	if resultText != "" {
 		fmt.Fprintln(opts.Stdout, resultText)
 	} else if runErr != nil && captured.Len() > 0 {
-		// Run failed before the JSON envelope landed — surface the raw
+		// Run failed before the result event landed — surface the raw
 		// bytes so the operator sees whatever claude did print.
 		opts.Stdout.Write(captured.Bytes())
 	}
 	return RunResult{Usage: usage, ResultText: resultText}, runErr
 }
 
-// parseClaudeJSON decodes the `claude -p --output-format json` envelope.
-// Returns (nil, "") when the bytes don't decode — callers treat that as
-// "no usage data, fall back to elapsed-time-only banner".
-func parseClaudeJSON(b []byte) (*TokenUsage, string) {
+// openEventsLog returns a writer for the per-dispatch stream-json audit
+// log and a cleanup that closes any underlying file. Behaviour:
+//
+//   - path == "": returns io.Discard + no-op cleanup. Headless dispatches
+//     without an EventsLogPath (test fixtures, ad-hoc invocations) skip the
+//     audit log entirely.
+//   - path set, mkdir/open succeed: returns the *os.File + a closing
+//     cleanup. Caller tees stdout into it.
+//   - path set, mkdir/open fail: emits a single warning to stderr and
+//     returns io.Discard + no-op cleanup. Audit-log diagnostics must not
+//     break the dispatch (same non-fatal policy as writePromptLog).
+//
+// Extracted from runHeadless so tests can exercise the path-handling and
+// error-recovery branches directly without spinning up a real subprocess.
+func openEventsLog(path string, stderr io.Writer) (io.Writer, func()) {
+	if path == "" {
+		return io.Discard, func() {}
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		fmt.Fprintf(stderr, "clauderun: warning: failed to create events log dir %s: %v\n", filepath.Dir(path), err)
+		return io.Discard, func() {}
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		fmt.Fprintf(stderr, "clauderun: warning: failed to open events log %s: %v\n", path, err)
+		return io.Discard, func() {}
+	}
+	return f, func() { _ = f.Close() }
+}
+
+// parseClaudeStreamJSON decodes the `claude -p --output-format stream-json
+// --verbose` NDJSON stream: one JSON object per line, terminating in a
+// `type:"result"` event that carries the same `result` + `usage` +
+// `total_cost_usd` fields the single-envelope `--output-format json` mode
+// used to. Only the terminal result event is decoded — earlier events
+// (assistant / user / system / etc.) are inspected only for their `type`
+// to find the result line.
+//
+// Returns (nil, "") on:
+//   - Empty input (CLI died before emitting result — the surrounding
+//     non-zero-exit error path surfaces the failure).
+//   - No `type:"result"` line in the stream.
+//
+// Malformed mid-stream lines are skipped silently so a single CLI hiccup
+// (truncated event, encoding glitch) doesn't poison the whole audit —
+// callers downstream of the events log still see the raw bytes on disk.
+func parseClaudeStreamJSON(b []byte) (*TokenUsage, string) {
 	if len(bytes.TrimSpace(b)) == 0 {
 		return nil, ""
 	}
-	var env struct {
-		Result       string     `json:"result"`
-		TotalCostUSD float64    `json:"total_cost_usd"`
-		Usage        TokenUsage `json:"usage"`
+	scanner := bufio.NewScanner(bytes.NewReader(b))
+	// Stream events can be large (e.g. an assistant message containing a
+	// long file read). Default Scanner cap is 64 KiB; lift to 1 MiB per
+	// line so a chatty turn doesn't truncate the result event.
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		var head struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(line, &head); err != nil {
+			continue
+		}
+		if head.Type != "result" {
+			continue
+		}
+		var env struct {
+			Result       string     `json:"result"`
+			TotalCostUSD float64    `json:"total_cost_usd"`
+			Usage        TokenUsage `json:"usage"`
+		}
+		if err := json.Unmarshal(line, &env); err != nil {
+			return nil, ""
+		}
+		usage := env.Usage
+		usage.TotalCostUSD = env.TotalCostUSD
+		return &usage, env.Result
 	}
-	if err := json.Unmarshal(b, &env); err != nil {
-		return nil, ""
-	}
-	usage := env.Usage
-	usage.TotalCostUSD = env.TotalCostUSD
-	return &usage, env.Result
+	return nil, ""
 }
 
 type execGit struct{}

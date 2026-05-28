@@ -890,12 +890,19 @@ func TestDispatch_BannerSaysNoChangesOnCleanExit(t *testing.T) {
 // Token usage parsing & banner formatting
 // ---------------------------------------------------------------------------
 
-func TestParseClaudeJSON_ExtractsUsageAndResultText(t *testing.T) {
-	// Verbatim shape from a real `claude -p --output-format json` invocation —
-	// captured 2026-04-30 against claude CLI. Trimmed to the fields we read.
-	envelope := `{"type":"result","subtype":"success","is_error":false,"result":"Hi there friend","total_cost_usd":0.17759875,"usage":{"input_tokens":6,"cache_creation_input_tokens":28307,"cache_read_input_tokens":0,"output_tokens":10}}`
+func TestParseClaudeStreamJSON_ExtractsUsageAndResultFromTerminalEvent(t *testing.T) {
+	// Multi-line shape from `claude -p --output-format stream-json --verbose`:
+	// leading system/assistant/user events, terminating in a `type:"result"`
+	// line. parseClaudeStreamJSON should ignore everything up to the result
+	// line, then decode usage + result + cost from it.
+	stream := strings.Join([]string{
+		`{"type":"system","subtype":"init","session_id":"abc"}`,
+		`{"type":"assistant","message":{"id":"msg_01","content":[{"type":"text","text":"thinking..."}]}}`,
+		`{"type":"user","message":{"id":"msg_02","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]}}`,
+		`{"type":"result","subtype":"success","is_error":false,"result":"Hi there friend","total_cost_usd":0.17759875,"usage":{"input_tokens":6,"cache_creation_input_tokens":28307,"cache_read_input_tokens":0,"output_tokens":10}}`,
+	}, "\n") + "\n"
 
-	usage, result := parseClaudeJSON([]byte(envelope))
+	usage, result := parseClaudeStreamJSON([]byte(stream))
 	if usage == nil {
 		t.Fatalf("expected non-nil usage")
 	}
@@ -910,15 +917,123 @@ func TestParseClaudeJSON_ExtractsUsageAndResultText(t *testing.T) {
 	}
 }
 
-func TestParseClaudeJSON_GracefulOnMalformed(t *testing.T) {
-	usage, result := parseClaudeJSON([]byte("claude: command failed\n"))
-	if usage != nil || result != "" {
-		t.Errorf("expected (nil, \"\") on malformed input, got (%+v, %q)", usage, result)
-	}
+func TestParseClaudeStreamJSON_SkipsMalformedMidStreamLines(t *testing.T) {
+	// A garbage line in the middle of the stream must not prevent the
+	// terminal result event from being parsed — a single CLI hiccup
+	// shouldn't poison the whole audit. The raw bytes still land in the
+	// events log; the parser just keeps walking until it hits result.
+	stream := strings.Join([]string{
+		`{"type":"system","subtype":"init"}`,
+		`not-json-at-all`,
+		`{"type":"assistant","message":{"id":"msg_01"}}`,
+		`{"type":"result","subtype":"success","result":"final","total_cost_usd":0.05,"usage":{"input_tokens":3,"output_tokens":4}}`,
+	}, "\n") + "\n"
 
-	usage, result = parseClaudeJSON(nil)
+	usage, result := parseClaudeStreamJSON([]byte(stream))
+	if usage == nil {
+		t.Fatalf("expected non-nil usage despite mid-stream garbage")
+	}
+	if result != "final" {
+		t.Errorf("result: got %q, want %q", result, "final")
+	}
+	if usage.InputTokens != 3 || usage.OutputTokens != 4 || usage.TotalCostUSD != 0.05 {
+		t.Errorf("usage fields wrong: %+v", *usage)
+	}
+}
+
+func TestParseClaudeStreamJSON_GracefulOnEmptyOrNoResultEvent(t *testing.T) {
+	// Empty stream (CLI died before emitting anything) → zero values; the
+	// surrounding non-zero-exit error path surfaces the failure.
+	usage, result := parseClaudeStreamJSON(nil)
 	if usage != nil || result != "" {
 		t.Errorf("expected (nil, \"\") on empty input, got (%+v, %q)", usage, result)
+	}
+
+	usage, result = parseClaudeStreamJSON([]byte("claude: command failed\n"))
+	if usage != nil || result != "" {
+		t.Errorf("expected (nil, \"\") on non-JSON input, got (%+v, %q)", usage, result)
+	}
+
+	// Stream with assistant/system events but no terminal result line —
+	// e.g. CLI killed mid-run. Same fallback.
+	stream := `{"type":"system","subtype":"init"}` + "\n" + `{"type":"assistant","message":{"id":"x"}}` + "\n"
+	usage, result = parseClaudeStreamJSON([]byte(stream))
+	if usage != nil || result != "" {
+		t.Errorf("expected (nil, \"\") when no result event present, got (%+v, %q)", usage, result)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// openEventsLog — the per-dispatch stream-json audit log helper that
+// runHeadless tees stdout into. Extracted from runHeadless so the
+// path-handling and error-recovery branches are unit-testable without
+// spinning up a real `claude` subprocess.
+// ---------------------------------------------------------------------------
+
+func TestOpenEventsLog_WritesStreamToFileWhenPathSet(t *testing.T) {
+	dir := t.TempDir()
+	// Nested path: helper must mkdir parents (mirrors the runState layout
+	// .gh-optivem/runs/<ts>/<seq>-<agent>.events.jsonl).
+	path := filepath.Join(dir, "runs", "20260528-1045", "001-system-implementer.events.jsonl")
+	var stderr bytes.Buffer
+
+	w, closeFn := openEventsLog(path, &stderr)
+	if _, err := io.WriteString(w, `{"type":"system"}`+"\n"+`{"type":"result","result":"done"}`+"\n"); err != nil {
+		t.Fatalf("write events: %v", err)
+	}
+	closeFn()
+
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read events log: %v", err)
+	}
+	if !strings.Contains(string(body), `"type":"result"`) {
+		t.Errorf("events log missing result event: %q", string(body))
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("expected no stderr warning on success path, got: %s", stderr.String())
+	}
+}
+
+func TestOpenEventsLog_EmptyPathReturnsDiscardSink(t *testing.T) {
+	var stderr bytes.Buffer
+	w, closeFn := openEventsLog("", &stderr)
+	defer closeFn()
+
+	if w != io.Discard {
+		t.Errorf("empty path must return io.Discard sink")
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("empty path must not emit a warning, got: %s", stderr.String())
+	}
+}
+
+func TestOpenEventsLog_OpenFailureWarnsAndReturnsDiscardSink(t *testing.T) {
+	// Force open failure by pointing the path at a child of an existing
+	// regular file — MkdirAll fails because the parent isn't a directory.
+	// Cross-platform: works on both Windows and POSIX without root.
+	tmp := t.TempDir()
+	regularFile := filepath.Join(tmp, "blocking-file")
+	if err := os.WriteFile(regularFile, []byte("not a dir"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	badPath := filepath.Join(regularFile, "nested", "events.jsonl")
+
+	var stderr bytes.Buffer
+	w, closeFn := openEventsLog(badPath, &stderr)
+	defer closeFn()
+
+	// Diagnostics must downgrade to a stderr warning, never break the
+	// dispatch — same policy as writePromptLog. Writes still succeed
+	// (silently) because the sink is io.Discard.
+	if _, err := io.WriteString(w, "doesn't matter\n"); err != nil {
+		t.Errorf("writes against the fallback sink must not error, got %v", err)
+	}
+	if stderr.Len() == 0 {
+		t.Errorf("expected stderr warning when open fails")
+	}
+	if !strings.Contains(stderr.String(), "events log") {
+		t.Errorf("warning should mention 'events log', got: %s", stderr.String())
 	}
 }
 

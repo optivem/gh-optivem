@@ -894,11 +894,11 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		}
 
 		// Compute the paired per-dispatch artefact paths in one seq bump
-		// (prompt log + outputs JSONL). When rs is nil — test fixtures
-		// that bypass the driver-managed runState — both come back empty
-		// and clauderun treats them as "skip the log" / "no outputs
-		// channel".
-		promptLog, outputFilePath := rs.dispatchPaths(agentName)
+		// (prompt log + outputs JSONL + events JSONL). When rs is nil —
+		// test fixtures that bypass the driver-managed runState — all
+		// come back empty and clauderun treats them as "skip the log" /
+		// "no outputs channel" / "no events audit".
+		promptLog, outputFilePath, eventsLogPath := rs.dispatchPaths(agentName)
 
 		// Output channel (plan 20260526-2118). Resolve the writing-agent
 		// MID's declared outputs the same way scope is resolved — via
@@ -979,6 +979,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			Effort:             tuning.Effort,
 			ShowPrompt:         opts.ShowPrompt,
 			PromptLogPath:      promptLog,
+			EventsLogPath:      eventsLogPath,
 			OutputFilePath:     outputFilePath,
 			OutputKeysSpec:     outputKeysSpec,
 			ExpectedOutputs:    expectedOutputs,
@@ -1210,31 +1211,37 @@ type runState struct {
 //   - <seq>-<agent>.prompt.md         — promptLog
 //   - <seq>-<agent>.outputs.jsonl     — outputFile (agent's
 //                                       `gh optivem output write` appends here)
+//   - <seq>-<agent>.events.jsonl      — eventsLog (clauderun tees the
+//                                       headless stream-json stdout here
+//                                       so post-mortem can replay every
+//                                       tool call / message the agent
+//                                       emitted)
 //
-// Sharing the seq keeps the prompt log and outputs file paired on disk,
-// so when an operator inspects a failed dispatch the two artefacts sit
-// next to each other. Bumping once (vs once per path) also means the
-// next dispatch's seq is N+1 instead of N+2.
+// Sharing the seq keeps the three artefacts paired on disk, so when an
+// operator inspects a failed dispatch they sit next to each other.
+// Bumping once (vs once per path) also means the next dispatch's seq is
+// N+1 instead of N+3.
 //
 // Returns empty strings when rs is nil — used by tests that bypass the
 // driver-managed runState; clauderun treats empty paths as "skip the log".
-func (rs *runState) dispatchPaths(agentName string) (promptLog, outputFile string) {
+func (rs *runState) dispatchPaths(agentName string) (promptLog, outputFile, eventsLog string) {
 	if rs == nil {
-		return "", ""
+		return "", "", ""
 	}
 	seq := rs.seq.Add(1)
 	dir := filepath.Join(rs.repoPath, ".gh-optivem", "runs", rs.runTimestamp)
 	promptLog = filepath.Join(dir, fmt.Sprintf("%03d-%s.prompt.md", seq, agentName))
 	outputFile = filepath.Join(dir, fmt.Sprintf("%03d-%s.outputs.jsonl", seq, agentName))
-	return promptLog, outputFile
+	eventsLog = filepath.Join(dir, fmt.Sprintf("%03d-%s.events.jsonl", seq, agentName))
+	return promptLog, outputFile, eventsLog
 }
 
-// promptLogPath returns just the prompt-log half of dispatchPaths.
-// Retained for the test fixtures that pre-date the outputs channel and
-// only assert against the prompt log path. Production callers use
-// dispatchPaths to pair the two artefacts in one seq bump.
+// promptLogPath returns just the prompt-log slot of dispatchPaths.
+// Retained for the test fixtures that pre-date the outputs / events
+// channels and only assert against the prompt log path. Production
+// callers use dispatchPaths to pair the three artefacts in one seq bump.
 func (rs *runState) promptLogPath(agentName string) string {
-	p, _ := rs.dispatchPaths(agentName)
+	p, _, _ := rs.dispatchPaths(agentName)
 	return p
 }
 
