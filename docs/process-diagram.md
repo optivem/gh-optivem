@@ -365,8 +365,8 @@ flowchart TD
     IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Implement External-System Driver Adapters]
     IMPLEMENT_EXTERNAL_SYSTEM_STUBS[Implement External-System Stubs]
     IMPL_EXT_DRIVER_CT_END(( ))
-    START_SYSTEM_AFTER_DRIVER[Start System]
-    START_SYSTEM_AFTER_STUBS[Start System]
+    START_SYSTEM_AFTER_DRIVER[Start System — see § start-system-restart]
+    START_SYSTEM_AFTER_STUBS[Start System — see § start-system-restart]
     START_SYSTEM_BEFORE_STUB_FAIL[Start System]
     VERIFY_TESTS_FAIL_CONTRACT_STUB[Verify Contract Tests Fail Against the Stub — see § verify-tests-fail]
     VERIFY_TESTS_PASS_CONTRACT_REAL[Verify Contract Tests Pass Against the Real System — see § verify-tests-pass]
@@ -397,7 +397,7 @@ flowchart TD
     COMMIT_SYSTEM[Commit System Changes — see § commit]
     IMPL_AND_VERIFY_SYSTEM_END(( ))
     RUN_ACTION["Run the Configured Agent — see § ${action}"]
-    START_SYSTEM[Start the System — see § start-system]
+    START_SYSTEM[Start the System — see § start-system-restart]
     VERIFY_TESTS_PASS[Verify Tests Pass]
 
     RUN_ACTION --> BUILD_SYSTEM
@@ -841,6 +841,16 @@ flowchart TD
 
     classDef tddGreenNode stroke:#28a745,stroke-width:3px
     class IMPLEMENT_AND_VERIFY_SYSTEM tddGreenNode
+```
+
+## Start System (Restart)
+
+```mermaid
+flowchart TD
+    EXECUTE_COMMAND[Dispatch the Command — see § execute-command]
+    START_SYS_RESTART_END(( ))
+
+    EXECUTE_COMMAND --> START_SYS_RESTART_END
 ```
 
 ## Update External-System Driver Adapters
