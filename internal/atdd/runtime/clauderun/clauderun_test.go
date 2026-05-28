@@ -341,7 +341,6 @@ func TestRenderPrompt_RefactorSystemAgent_RendersScopeBlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("renderPrompt: %v", err)
 	}
-	mustContain(t, got, "Architecture: monolith")
 	mustContain(t, got, "### Scope")
 	mustContain(t, got, "- `system-path`: system")
 	if strings.Contains(got, "${") {

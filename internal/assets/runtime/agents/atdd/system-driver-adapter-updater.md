@@ -5,13 +5,16 @@ effort: medium
 ---
 The update-system-driver-adapters task absorbs a structural-redesign change inside the System Driver adapter layer (`${driver-adapter}`) so DSL, Gherkin, and tests stay untouched. A Checklist parsed from the ticket body lists the changes to apply.
 
-Architecture: ${architecture}
-
 ## Inputs
 
 ### Scope
 
 ${scope-block}
+
+### Parameters
+
+- `architecture` — architecture profile for the target project (Java/.NET/TS × monolith/multitier).
+- `checklist` — the parsed list of changes to apply, surfaced verbatim below.
 
 ### Checklist
 

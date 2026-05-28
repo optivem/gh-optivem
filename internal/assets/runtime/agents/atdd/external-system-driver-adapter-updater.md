@@ -5,13 +5,16 @@ effort: medium
 ---
 The update-external-system-driver-adapters task reshapes the external-system driver layer (`${external-system-driver-adapter}`) (Ext* DTOs (`${external-system-driver-adapter}`), Real driver (`${external-system-driver-adapter}`), Stub driver (`${external-system-driver-adapter}`)) to match a new external API so DSL, Gherkin, and tests stay untouched. A Checklist parsed from the ticket body lists the changes to apply.
 
-Architecture: ${architecture}
-
 ## Inputs
 
 ### Scope
 
 ${scope-block}
+
+### Parameters
+
+- `architecture` — architecture profile for the target project (Java/.NET/TS × monolith/multitier).
+- `checklist` — the parsed list of changes to apply, surfaced verbatim below.
 
 ### Checklist
 

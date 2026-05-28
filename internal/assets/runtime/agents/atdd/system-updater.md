@@ -5,8 +5,6 @@ effort: high
 ---
 The update-system task reshapes the system surface (`${system-path}`) to absorb a structural-redesign change. A Checklist parsed from the ticket body lists the changes to apply across affected channels.
 
-Architecture: ${architecture}
-
 ## Inputs
 
 ### Scope
@@ -16,7 +14,7 @@ ${scope-block}
 ### Parameters
 
 - `architecture` — architecture profile for the target project (Java/.NET/TS × monolith/multitier).
-- `checklist` — the parsed list of changes to apply across affected channels.
+- `checklist` — the parsed list of changes to apply, surfaced verbatim below.
 
 ### Checklist
 
