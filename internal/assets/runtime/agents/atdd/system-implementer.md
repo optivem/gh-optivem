@@ -19,5 +19,5 @@ ${scope-block}
 
 ## Steps
 
-1. Read the failing acceptance test to see the required behaviour, then trace through the DSL, the driver port, and the driver adapter to see how the test reaches the production system (and which stubbed external interactions, if any, the test stages). The scope block above lists every layer you may read.
+1. Read the failing Acceptance Test (`${at-test}`) to see the required behaviour, then trace through the DSL Port (`${dsl-port}`) and DSL Core (`${dsl-core}`) to the System Driver port/adapter pair (`${driver-port}`, `${driver-adapter}`) to see how the test reaches the production system. If the test stages stub external interactions, also read the External System Driver port/adapter pair (`${external-system-driver-port}`, `${external-system-driver-adapter}`) and the Contract Tests (`${ct-test}`) to see the stub contract the implementation must satisfy.
 2. Do the simplest implementation possible under the system surface (`${system-path}`) with the goal of making the acceptance test pass.
