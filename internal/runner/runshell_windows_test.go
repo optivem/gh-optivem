@@ -79,6 +79,61 @@ func TestRunShellBatchPreservesCmdMetacharsInArgs(t *testing.T) {
 	}
 }
 
+// TestRunShellBatchTargetUnderPathWithSpaces puts the .bat fixture under a
+// directory whose name contains a space — the exact shape of the real-world
+// `C:\Program Files\nodejs\npx.cmd`. Without the outer-quote wrap in
+// applyCmdExeQuoting, cmd.exe's /c stripping rule eats the protective quotes
+// around the path, splits at the embedded space, and emits `'C:\Program' is
+// not recognized as an internal or external command`.
+func TestRunShellBatchTargetUnderPathWithSpaces(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "with space")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	bat := filepath.Join(dir, "echoargs.bat")
+	content := "@echo off\r\necho ALL=%*\r\n"
+	if err := os.WriteFile(bat, []byte(content), 0o644); err != nil {
+		t.Fatalf("write .bat: %v", err)
+	}
+
+	stdoutFile := filepath.Join(t.TempDir(), "stdout.txt")
+	stdout, err := os.Create(stdoutFile)
+	if err != nil {
+		t.Fatalf("create stdout file: %v", err)
+	}
+	origStdout := os.Stdout
+	origStderr := os.Stderr
+	os.Stdout = stdout
+	os.Stderr = stdout
+	defer func() {
+		os.Stdout = origStdout
+		os.Stderr = origStderr
+	}()
+
+	// Quote the bat path so splitCommand keeps it as one token; otherwise it
+	// splits on the embedded space before exec.Command ever sees it.
+	cmd := `"` + bat + `" 'A|B' plainC`
+	if err := runShell(cmd, dir, nil); err != nil {
+		stdout.Close()
+		raw, _ := os.ReadFile(stdoutFile)
+		t.Fatalf("runShell: %v\noutput:\n%s", err, raw)
+	}
+	if err := stdout.Close(); err != nil {
+		t.Fatalf("close stdout: %v", err)
+	}
+
+	raw, err := os.ReadFile(stdoutFile)
+	if err != nil {
+		t.Fatalf("read captured stdout: %v", err)
+	}
+	out := string(raw)
+	for _, w := range []string{`"A|B"`, "plainC"} {
+		if !strings.Contains(out, w) {
+			t.Errorf("missing %q in batch echo output:\n%s", w, out)
+		}
+	}
+}
+
 func TestQuoteForCmdExe(t *testing.T) {
 	cases := []struct {
 		in   string
