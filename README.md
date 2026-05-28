@@ -395,8 +395,8 @@ gh optivem implement                                           # pick the top Re
 
 `implement` separates terminal output from `--log-file` content via two levels:
 
-- **Phase** — BPMN trace lines (`[trace …] > NODE_ID …`), approval / STOP prompts, errors, agent ENTER / EXIT banners. The headline channel the operator needs to follow the run.
-- **Detail** — subprocess byte streams (gradle, docker, gh CLI, agent body), `PREPARED PROMPT` summary, the `$ <command>` echo, internal banners. The firehose used for forensic dig.
+- **Phase** — `[phase] start / end …` boundary banners, BPMN trace lines (`[trace …] > NODE_ID …`), approval / STOP prompts, errors, `[agent] enter / exit / FAIL …` lines. The headline channel the operator needs to follow the run.
+- **Detail** — subprocess byte streams (gradle, docker, gh CLI, agent body), `[agent] prep` summary, the `$ <command>` echo, internal banners. The firehose used for forensic dig.
 
 Each sink subscribes to a maximum level. Defaults: terminal = Phase (clean), `--log-file` = Detail (firehose). Independently configurable via `--verbose` (terminal up to Detail) and `--log-level=phase|detail` (log file).
 

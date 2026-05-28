@@ -20,7 +20,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/optivem/gh-optivem/internal/atdd"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
@@ -386,121 +385,6 @@ func TestRunCommand_HappyPath(t *testing.T) {
 	}
 	if len(sh.calls) != 1 || sh.calls[0] != "gh optivem compile" {
 		t.Fatalf("shell calls: got %v, want [\"gh optivem compile\"]", sh.calls)
-	}
-}
-
-func TestRunCommand_EmitsBpmnTaskTiming(t *testing.T) {
-	// Pin nowFn so the two reads (pre-runShell / post-runShell) yield a
-	// deterministic elapsed for the banner assertion.
-	oldNow := nowFn
-	defer func() { nowFn = oldNow }()
-	calls := 0
-	nowFn = func() time.Time {
-		calls++
-		if calls == 1 {
-			return time.Unix(1_700_000_000, 0)
-		}
-		return time.Unix(1_700_000_012, 0) // +12s
-	}
-
-	sh := &fakeShell{out: []byte("OK")}
-	var stdout, stderr bytes.Buffer
-	a := newActions(Deps{Shell: sh, Stdout: &stdout, Stderr: &stderr})
-	ctx := statemachine.NewContext()
-	ctx.Params["task-name"] = "run-tests"
-	ctx.Params["command"] = "gh optivem test run"
-	out := a.runCommand(ctx)
-	if out.Err != nil {
-		t.Fatalf("unexpected err: %v", out.Err)
-	}
-	captured := stdout.String()
-	wantSubstrings := []string{
-		"BPMN TASK run-tests",
-		"command gh optivem test run",
-		"12s",
-	}
-	for _, want := range wantSubstrings {
-		if !strings.Contains(captured, want) {
-			t.Errorf("BPMN timing banner missing %q; captured stdout was:\n%s", want, captured)
-		}
-	}
-}
-
-func TestRunCommand_EmitsBpmnTaskTimingOnFailure(t *testing.T) {
-	// Banner is informational — must print on the failure path too. Also
-	// asserts the existing failure-payload state stamping is untouched
-	// (regression guard for the wrap edit at bindings.go::runCommand).
-	oldNow := nowFn
-	defer func() { nowFn = oldNow }()
-	calls := 0
-	nowFn = func() time.Time {
-		calls++
-		if calls == 1 {
-			return time.Unix(1_700_000_000, 0)
-		}
-		return time.Unix(1_700_000_003, 0) // +3s
-	}
-
-	sh := &fakeShell{
-		out:      []byte("fail"),
-		stderr:   []byte("boom\n"),
-		exitCode: 7,
-		err:      errors.New("exit 7"),
-	}
-	var stdout, stderr bytes.Buffer
-	a := newActions(Deps{Shell: sh, Stdout: &stdout, Stderr: &stderr})
-	ctx := statemachine.NewContext()
-	ctx.Params["task-name"] = "commit"
-	ctx.Params["command"] = "gh optivem commit"
-	out := a.runCommand(ctx)
-	if out.Err != nil {
-		t.Fatalf("command failure should route, not halt: %v", out.Err)
-	}
-	captured := stdout.String()
-	if !strings.Contains(captured, "BPMN TASK commit") {
-		t.Errorf("BPMN timing banner missing on failure path; captured stdout was:\n%s", captured)
-	}
-	if !strings.Contains(captured, "3s") {
-		t.Errorf("BPMN timing banner missing pinned elapsed '3s' on failure path; captured stdout was:\n%s", captured)
-	}
-	// Regression guard: the existing failure-payload state stamping must
-	// still happen after the wrap edit.
-	if got := ctx.GetString("failure-kind"); got != "command-failed" {
-		t.Errorf("failure-kind: got %q, want %q", got, "command-failed")
-	}
-	if got := ctx.GetString("command-line"); got != "gh optivem commit" {
-		t.Errorf("command-line: got %q, want %q", got, "gh optivem commit")
-	}
-}
-
-func TestRunCommand_BpmnTaskTimingFallsBackToOriginatingTaskName(t *testing.T) {
-	// The fix-* recovery dispatches set originating-task-name (not
-	// task-name) on ctx.Params. The banner should pick that up so fix
-	// dispatches still get attributed.
-	oldNow := nowFn
-	defer func() { nowFn = oldNow }()
-	calls := 0
-	nowFn = func() time.Time {
-		calls++
-		if calls == 1 {
-			return time.Unix(1_700_000_000, 0)
-		}
-		return time.Unix(1_700_000_001, 0)
-	}
-
-	sh := &fakeShell{out: []byte("OK")}
-	var stdout, stderr bytes.Buffer
-	a := newActions(Deps{Shell: sh, Stdout: &stdout, Stderr: &stderr})
-	ctx := statemachine.NewContext()
-	ctx.Params["originating-task-name"] = "implement-system"
-	ctx.Params["command"] = "gh optivem test run"
-	out := a.runCommand(ctx)
-	if out.Err != nil {
-		t.Fatalf("unexpected err: %v", out.Err)
-	}
-	captured := stdout.String()
-	if !strings.Contains(captured, "BPMN TASK implement-system") {
-		t.Errorf("BPMN timing banner should fall back to originating-task-name; captured stdout was:\n%s", captured)
 	}
 }
 

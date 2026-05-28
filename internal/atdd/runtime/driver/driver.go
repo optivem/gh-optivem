@@ -28,6 +28,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -250,7 +251,7 @@ func Run(ctx context.Context, opts Options) error {
 	defer logClose()
 
 	gateReg := gates.New()
-	gates.RegisterAll(gateReg, gates.Deps{})
+	gates.RegisterAll(gateReg, gates.Deps{Approval: opts.Approval})
 
 	actionReg := actions.New()
 	actions.RegisterAll(actionReg, actions.Deps{
@@ -277,9 +278,11 @@ func Run(ctx context.Context, opts Options) error {
 	// shared by every dispatcher closure registered by wrapAgentDispatchers.
 	// Used to compose <run-ts>/<seq>-<agent>.prompt.md log paths so files
 	// sort in dispatch order regardless of clock granularity.
+	runTs := nowFn().UTC().Format("20060102-150405")
 	runState := &runState{
-		runTimestamp: nowFn().UTC().Format("20060102-150405"),
+		runTimestamp: runTs,
 		repoPath:     repoPath,
+		pidRunDir:    resolvePidRunDir(runTs, opts.Stderr),
 	}
 
 	// Post-Bind decoration order matters:
@@ -324,6 +327,11 @@ func Run(ctx context.Context, opts Options) error {
 		RepoPath: repoPath,
 		Colorize: isatty.IsTerminal(os.Stdout.Fd()),
 	})
+	// Phase-boundary banners sit OUTSIDE trace so each `[phase] start …`
+	// / `[phase] end …` bracket wraps the corresponding
+	// `[trace …] > / OK …` pair for the same call-activity. Applied last
+	// so its wrap is the outermost layer on the targeted nodes.
+	wrapPhaseBoundaries(eng, opts.Out.Phase)
 	printConfig(opts.Out.Phase, opts, cfg, repoPath)
 
 	sCtx := statemachine.NewContext()
@@ -942,7 +950,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		// test fixtures that bypass the driver-managed runState — all
 		// come back empty and clauderun treats them as "skip the log" /
 		// "no outputs channel" / "no events audit".
-		promptLog, outputFilePath, eventsLogPath := rs.dispatchPaths(agentName)
+		promptLog, outputFilePath, eventsLogPath, pidFilePath := rs.dispatchPaths(agentName)
 
 		// Output channel (plan 20260526-2118). Resolve the writing-agent
 		// MID's declared outputs the same way scope is resolved — via
@@ -1042,6 +1050,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			ShowPrompt:         opts.ShowPrompt,
 			PromptLogPath:      promptLog,
 			EventsLogPath:      eventsLogPath,
+			PidFilePath:        pidFilePath,
 			OutputFilePath:     outputFilePath,
 			OutputKeysSpec:     outputKeysSpec,
 			ExpectedOutputs:    expectedOutputs,
@@ -1054,9 +1063,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			Out:                opts.Out,
 		}
 
-		t0 := nowFn()
 		_, runErr := clauderun.Dispatch(context.Background(), opts.ClaudeRunDeps, cOpts)
-		actions.WriteBpmnTaskTiming(opts.Stdout, raw.ID, "agent "+agentName, nowFn().Sub(t0))
 		if runErr != nil {
 			return statemachine.Outcome{Err: runErr}
 		}
@@ -1235,6 +1242,56 @@ func classifyApproveCategory(raw statemachine.RawNode, ctx *statemachine.Context
 	return 0, fmt.Errorf("approve node %q: no category resolved (parse-time validator should have caught this)", raw.ID)
 }
 
+// topProcesses is the set of TOP-level processes whose direct
+// call-activity children are CYCLE-level "phases" — the boundaries the
+// operator's mental model treats as phase transitions in `[phase] start
+// …` / `[phase] end …` banners. A call-activity living anywhere outside
+// this set is NOT a phase boundary (e.g. nested HIGH/MID call-activities
+// inside `change-system-behavior` stay bracketed only by `[trace …]`).
+//
+// The set is closed and small: matches the TOP enumeration documented
+// in process-flow.yaml's "Level reading order" comment block and pinned
+// in transitions_test.go's TestLoadSnapshot_AllProcessesParse. Adding a
+// new TOP process requires updating both this set and the snapshot.
+var topProcesses = map[string]bool{
+	"main":             true,
+	"refine-ticket":    true,
+	"implement-ticket": true,
+	"refactor":         true,
+}
+
+// wrapPhaseBoundaries decorates every call-activity node that lives
+// inside a TOP process with an `[agent]`-style entry/exit banner pair
+// emitted to w. The wrap fires only for call-activities whose parent
+// process is in topProcesses — nested call-activities further down the
+// tree pass through unchanged. Elapsed is measured locally around the
+// inner NodeFn invocation, mirroring trace.go's wrap pattern.
+func wrapPhaseBoundaries(eng *statemachine.Engine, w io.Writer) {
+	if w == nil {
+		return
+	}
+	for processName, process := range eng.Processes {
+		if !topProcesses[processName] {
+			continue
+		}
+		for id, node := range process.Nodes {
+			if node.Kind != statemachine.CallActivity {
+				continue
+			}
+			phaseName := node.Raw.Process
+			inner := node.Fn
+			node.Fn = func(ctx *statemachine.Context) statemachine.Outcome {
+				actions.WritePhaseBoundary(w, "start", phaseName, 0)
+				t0 := nowFn()
+				out := inner(ctx)
+				actions.WritePhaseBoundary(w, "end", phaseName, nowFn().Sub(t0))
+				return out
+			}
+			process.Nodes[id] = node
+		}
+	}
+}
+
 // wrapOverride applies the override.Wrap decorator to every node. Wrapping
 // happens for every node regardless of kind so the dispatcher's per-node
 // Extra / Replace lookup is always populated (an empty hint map is a no-op
@@ -1264,50 +1321,137 @@ var nowFn = time.Now
 // but the engine doesn't structurally rule it out) get unique seq
 // numbers. zero seq is never used: promptLogPath calls Add(1) before
 // formatting, so the first dispatch sees seq=1 → "001-…".
+//
+// pidRunDir is the per-run subdirectory of the user-level gh-optivem
+// state directory (see userStateDir) where PID marker files live —
+// shape `<userStateDir>/runs/<ts>-<parent-pid>/`. Computed once at
+// construction; empty string when userStateDir resolution failed (a
+// stderr warning was emitted at that point and the dispatch skips PID
+// markers — same fail-soft policy as openEventsLog).
 type runState struct {
 	runTimestamp string
 	repoPath     string
+	pidRunDir    string
 	seq          atomic.Int64
 }
 
+// userStateDir returns the user-level gh-optivem state directory —
+// the machine-local home for transient OS-resource markers (notably
+// per-dispatch PID files). Distinct from the per-project
+// .gh-optivem/runs/ tree because the markers must survive worktree
+// deletion: the motivating bug is `rm -rf worktrees/rehearsal-XYZ/`
+// failing because orphan claude.exe holds handles inside the worktree
+// — a sidecar marker would die with the worktree and leave the orphan
+// untrackable.
+//
+// Resolution order:
+//   - Windows: %LOCALAPPDATA%\gh-optivem, falling back to
+//     <userhome>\AppData\Local\gh-optivem when LOCALAPPDATA is unset.
+//     Deliberately NOT os.UserConfigDir — that returns %APPDATA%
+//     (roaming), and PID files must stay machine-local.
+//   - Linux/Mac: $XDG_STATE_HOME/gh-optivem, falling back to
+//     <userhome>/.local/state/gh-optivem when XDG_STATE_HOME is unset.
+//
+// Returns ("", err) when even the home-dir fallback fails (e.g. no
+// HOME in a stripped-down container). Callers downgrade to a stderr
+// warning and skip marker writes.
+func userStateDir() (string, error) {
+	if runtime.GOOS == "windows" {
+		if base := os.Getenv("LOCALAPPDATA"); base != "" {
+			return filepath.Join(base, "gh-optivem"), nil
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("locate user home dir: %w", err)
+		}
+		return filepath.Join(home, "AppData", "Local", "gh-optivem"), nil
+	}
+	if base := os.Getenv("XDG_STATE_HOME"); base != "" {
+		return filepath.Join(base, "gh-optivem"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("locate user home dir: %w", err)
+	}
+	return filepath.Join(home, ".local", "state", "gh-optivem"), nil
+}
+
+// resolvePidRunDir composes the per-run subdirectory of userStateDir
+// where this dispatch's PID marker files live. Shape:
+// `<userStateDir>/runs/<runTimestamp>-<parent-pid>`. The parent-pid
+// suffix disambiguates simultaneous gh-optivem starts for the same
+// user — two processes can't share a PID, so two concurrent runs
+// can't collide on the same directory even when they tick into the
+// same wall-clock second.
+//
+// Returns "" when userStateDir resolution failed; a stderr warning is
+// emitted then so the operator sees the cause once at startup.
+func resolvePidRunDir(runTimestamp string, stderr io.Writer) string {
+	stateDir, err := userStateDir()
+	if err != nil {
+		fmt.Fprintf(stderr, "driver: warning: cannot resolve user state dir, orphan-recovery PID markers disabled: %v\n", err)
+		return ""
+	}
+	return filepath.Join(stateDir, "runs", fmt.Sprintf("%s-%d", runTimestamp, os.Getpid()))
+}
+
 // dispatchPaths composes the per-dispatch diagnostic file paths in
-// <repoPath>/.gh-optivem/runs/<run-ts>/. Bumps the per-run sequence
-// counter once and shares the resulting seq across:
+// <repoPath>/.gh-optivem/runs/<run-ts>/ (project-local) plus the
+// per-dispatch PID marker in
+// <userStateDir>/runs/<run-ts>-<parent-pid>/ (user-level). Bumps the
+// per-run sequence counter once and shares the resulting seq across:
 //
-//   - <seq>-<agent>.prompt.md         — promptLog
-//   - <seq>-<agent>.outputs.jsonl     — outputFile (agent's
+//   - <seq>-<agent>.prompt.md         — promptLog (project-local)
+//   - <seq>-<agent>.outputs.jsonl     — outputFile (project-local; agent's
 //                                       `gh optivem output write` appends here)
-//   - <seq>-<agent>.events.jsonl      — eventsLog (clauderun tees the
-//                                       headless stream-json stdout here
-//                                       so post-mortem can replay every
-//                                       tool call / message the agent
-//                                       emitted)
+//   - <seq>-<agent>.events.jsonl      — eventsLog (project-local; clauderun
+//                                       tees the headless stream-json
+//                                       stdout here so post-mortem can
+//                                       replay every tool call / message
+//                                       the agent emitted)
+//   - <seq>-<agent>.pid               — pidFile (user-level; clauderun
+//                                       writes the JSON marker for
+//                                       orphan-recovery between
+//                                       cmd.Start() and cmd.Wait(),
+//                                       removed on clean exit)
 //
-// Sharing the seq keeps the three artefacts paired on disk, so when an
+// Sharing the seq keeps the four artefacts paired on disk, so when an
 // operator inspects a failed dispatch they sit next to each other.
-// Bumping once (vs once per path) also means the next dispatch's seq is
-// N+1 instead of N+3.
+// Bumping once (vs once per path) also means the next dispatch's seq
+// is N+1 instead of N+4.
 //
-// Returns empty strings when rs is nil — used by tests that bypass the
-// driver-managed runState; clauderun treats empty paths as "skip the log".
-func (rs *runState) dispatchPaths(agentName string) (promptLog, outputFile, eventsLog string) {
+// The PID file lives at the user level rather than alongside the
+// others because the motivating force-cancel bug is `rm -rf
+// worktrees/rehearsal-XYZ/` failing because orphan claude.exe holds
+// handles inside the worktree — a project-local marker would die with
+// the worktree and leave the orphan untrackable.
+//
+// Returns empty strings when rs is nil — used by tests that bypass
+// the driver-managed runState; clauderun treats empty paths as "skip
+// the log" / "no outputs channel" / "no events audit" / "no PID
+// marker". pidFile is also empty when rs.pidRunDir is empty
+// (userStateDir resolution failed at startup) — same fail-soft policy.
+func (rs *runState) dispatchPaths(agentName string) (promptLog, outputFile, eventsLog, pidFile string) {
 	if rs == nil {
-		return "", "", ""
+		return "", "", "", ""
 	}
 	seq := rs.seq.Add(1)
 	dir := filepath.Join(rs.repoPath, ".gh-optivem", "runs", rs.runTimestamp)
 	promptLog = filepath.Join(dir, fmt.Sprintf("%03d-%s.prompt.md", seq, agentName))
 	outputFile = filepath.Join(dir, fmt.Sprintf("%03d-%s.outputs.jsonl", seq, agentName))
 	eventsLog = filepath.Join(dir, fmt.Sprintf("%03d-%s.events.jsonl", seq, agentName))
-	return promptLog, outputFile, eventsLog
+	if rs.pidRunDir != "" {
+		pidFile = filepath.Join(rs.pidRunDir, fmt.Sprintf("%03d-%s.pid", seq, agentName))
+	}
+	return promptLog, outputFile, eventsLog, pidFile
 }
 
 // promptLogPath returns just the prompt-log slot of dispatchPaths.
 // Retained for the test fixtures that pre-date the outputs / events
 // channels and only assert against the prompt log path. Production
-// callers use dispatchPaths to pair the three artefacts in one seq bump.
+// callers use dispatchPaths to pair the four artefacts in one seq bump.
 func (rs *runState) promptLogPath(agentName string) string {
-	p, _, _ := rs.dispatchPaths(agentName)
+	p, _, _, _ := rs.dispatchPaths(agentName)
 	return p
 }
 

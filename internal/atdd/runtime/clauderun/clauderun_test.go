@@ -873,10 +873,10 @@ func TestDispatch_WritesEnterAndExitBanners(t *testing.T) {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	got := buf.String()
-	mustContain(t, got, "ENTERING AGENT")
+	mustContain(t, got, "[agent]  enter")
 	mustContain(t, got, "acceptance-test-writer")
-	mustContain(t, got, "EXITED AGENT")
-	mustContain(t, got, "1 file(s) changed")
+	mustContain(t, got, "[agent]  exit")
+	mustContain(t, got, "1 files")
 }
 
 func TestDispatch_BannerSaysNoChangesOnCleanExit(t *testing.T) {
@@ -891,14 +891,14 @@ func TestDispatch_BannerSaysNoChangesOnCleanExit(t *testing.T) {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	got := buf.String()
-	mustContain(t, got, "EXITED AGENT: no changes")
+	mustContain(t, got, "[agent]  exit   no changes")
 	if strings.Contains(got, "committed") {
 		t.Errorf("no-op banner must not say 'committed': %s", got)
 	}
 }
 
 // TestDispatch_EnterBannerListsLogPaths pins the headless inspection
-// contract: the ENTERING AGENT banner surfaces each per-dispatch log
+// contract: the [agent] enter banner surfaces each per-dispatch log
 // path (prompt, events, outputs) the operator has no other lever to
 // discover, but only when that path is actually populated. A
 // no-outputs MID, an interactive dispatch with no event stream, or a
@@ -1132,7 +1132,7 @@ func TestExitBanner_IncludesUsageWhenPresent(t *testing.T) {
 	writeExitBanner(opts, 7, 47*time.Second, usage, nil)
 
 	got := buf.String()
-	mustContain(t, got, "EXITED AGENT: 7 file(s) changed")
+	mustContain(t, got, "[agent]  exit   7 files")
 	mustContain(t, got, "47s")
 	mustContain(t, got, "12.4k in") // 6 + 10000 + 2400 = 12406 → 12.4k
 	mustContain(t, got, "1.8k out")
@@ -1148,7 +1148,7 @@ func TestExitBanner_OmitsUsageSuffixWhenNil(t *testing.T) {
 	writeExitBanner(opts, 1, 5*time.Second, nil, nil)
 
 	got := buf.String()
-	mustContain(t, got, "EXITED AGENT")
+	mustContain(t, got, "[agent]  exit")
 	if strings.Contains(got, "$") || strings.Contains(got, " in ") {
 		t.Errorf("expected no token suffix when usage is nil, got:\n%s", got)
 	}
@@ -1725,7 +1725,7 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 		t.Fatalf("Dispatch: %v", err)
 	}
 	got := buf.String()
-	mustContain(t, got, "PREPARED PROMPT for system-implementer")
+	mustContain(t, got, "[agent]  prep   system-implementer")
 	mustContain(t, got, "architecture:")
 	mustContain(t, got, "monolith")
 	mustContain(t, got, "scope:")
@@ -2223,5 +2223,144 @@ func TestRenderDisableMarkerRemovalExample_FailFast(t *testing.T) {
 				t.Errorf("renderDisableMarkerRemovalExample(%q): want empty, got %q", lang, got)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// PID marker file — writePidFile / removePidFile / dispatchCwd helpers
+// that runHeadless / runInteractive use to record the spawned claude PID
+// for orphan recovery (see plans/20260528-1309-orphan-recovery.md).
+// ---------------------------------------------------------------------------
+
+// TestWritePidFile_WritesParseableMarker pins the marker file's JSON
+// shape: child_pid / parent_pid / cwd snake-case keys, matched by
+// `gh optivem doctor --orphans`. Drift between writer and reader is
+// the kind of silent breakage the schema test catches early.
+func TestWritePidFile_WritesParseableMarker(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "001-system-implementer.pid")
+	var stderr bytes.Buffer
+
+	marker := pidMarker{ChildPid: 12345, ParentPid: 6789, Cwd: `C:\worktrees\rehearsal-20260528`}
+	writePidFile(path, marker, &stderr)
+
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read pid file: %v", err)
+	}
+	// Snake-case keys are the contract with doctor --orphans; pin them
+	// as substrings before parsing so a rename failure is unambiguous.
+	for _, want := range []string{`"child_pid":12345`, `"parent_pid":6789`, `"cwd":"C:\\worktrees\\rehearsal-20260528"`} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("pid file missing %q\nbody: %s", want, body)
+		}
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("expected no stderr warning on success path, got: %s", stderr.String())
+	}
+}
+
+// TestWritePidFile_CreatesMissingParentDirs mirrors openEventsLog's
+// mkdir-parents behaviour: the driver composes a nested path
+// (<userStateDir>/runs/<ts>-<pid>/<seq>-<agent>.pid) and the helper
+// is responsible for ensuring the intermediate dirs exist.
+func TestWritePidFile_CreatesMissingParentDirs(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "runs", "20260528-103900-12345", "001-system-implementer.pid")
+	var stderr bytes.Buffer
+
+	writePidFile(path, pidMarker{ChildPid: 1, ParentPid: 2, Cwd: dir}, &stderr)
+
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("pid file not created in nested path: %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("expected no stderr warning when mkdir succeeds, got: %s", stderr.String())
+	}
+}
+
+// TestWritePidFile_FailSoftOnUnwritablePath pins the fail-soft policy:
+// a path whose parent isn't a directory downgrades to a stderr warning
+// rather than panicking or returning an error — diagnostics must not
+// break the dispatch. Same policy as openEventsLog (line 1796).
+func TestWritePidFile_FailSoftOnUnwritablePath(t *testing.T) {
+	tmp := t.TempDir()
+	regularFile := filepath.Join(tmp, "blocking-file")
+	if err := os.WriteFile(regularFile, []byte("not a dir"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	badPath := filepath.Join(regularFile, "nested", "marker.pid")
+	var stderr bytes.Buffer
+
+	writePidFile(badPath, pidMarker{ChildPid: 1, ParentPid: 2, Cwd: tmp}, &stderr)
+
+	if stderr.Len() == 0 {
+		t.Errorf("expected stderr warning when mkdir fails")
+	}
+	if _, err := os.Stat(badPath); !os.IsNotExist(err) {
+		t.Errorf("expected pid file not to exist when mkdir fails, got: %v", err)
+	}
+}
+
+// TestRemovePidFile_DeletesExisting pins the clean-exit path: when
+// runHeadless / runInteractive's cmd.Wait() returns nil, the marker is
+// removed so doctor --orphans sees only files from crashed runs.
+func TestRemovePidFile_DeletesExisting(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "marker.pid")
+	if err := os.WriteFile(path, []byte("{}"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	var stderr bytes.Buffer
+
+	removePidFile(path, &stderr)
+
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("expected pid file removed, stat err: %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("expected no stderr warning on happy-path remove, got: %s", stderr.String())
+	}
+}
+
+// TestRemovePidFile_SilentOnMissing pins the "missing file is vacuous
+// success" branch: writePidFile may have skipped (fail-soft path), so
+// removePidFile must not warn about a file it never created.
+func TestRemovePidFile_SilentOnMissing(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "never-existed.pid")
+	var stderr bytes.Buffer
+
+	removePidFile(path, &stderr)
+
+	if stderr.Len() != 0 {
+		t.Errorf("expected no stderr warning on missing-file remove, got: %s", stderr.String())
+	}
+}
+
+// TestDispatchCwd_PrefersOptsDir pins the cwd-recording precedence:
+// explicit opts.Dir (the working dir cmd.Dir is set from) always wins
+// over os.Getwd. The marker's cwd field is what doctor --orphans shows
+// the operator to identify "which project was this orphan for".
+func TestDispatchCwd_PrefersOptsDir(t *testing.T) {
+	want := filepath.Join(t.TempDir(), "explicit-dispatch-dir")
+	if err := os.MkdirAll(want, 0o755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if got := dispatchCwd(want); got != want {
+		t.Errorf("dispatchCwd(%q) = %q, want %q", want, got, want)
+	}
+}
+
+// TestDispatchCwd_FallsBackToOsGetwd pins the fallback: when a caller
+// passes Dir="" (utility runs, ad-hoc invocations), the recorded cwd
+// should be the process's own working dir rather than blank.
+func TestDispatchCwd_FallsBackToOsGetwd(t *testing.T) {
+	want, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if got := dispatchCwd(""); got != want {
+		t.Errorf("dispatchCwd(\"\") = %q, want %q (os.Getwd)", got, want)
 	}
 }

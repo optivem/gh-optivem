@@ -32,7 +32,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/optivem/gh-optivem/internal/atdd"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/intake"
@@ -42,12 +41,6 @@ import (
 	trackergithub "github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/github"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
-
-// nowFn is a package-level seam so tests can pin elapsed time in the
-// BPMN-level run-command timing banner. Production points at time.Now;
-// bindings_test.go swaps in a deterministic clock for the runCommand
-// wall-clock assertions.
-var nowFn = time.Now
 
 // Deps bundles the side-effecting collaborators every action may need. All
 // fields are optional; a zero-value Deps falls back to real shell-outs and
@@ -776,13 +769,7 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 			cmd += " " + shellEscape(msg)
 		}
 	}
-	t0 := nowFn()
 	result, err := a.runShell(cmd)
-	taskName := ctx.Params["task-name"]
-	if taskName == "" {
-		taskName = ctx.Params["originating-task-name"]
-	}
-	WriteBpmnTaskTiming(a.deps.Out.Phase, taskName, "command "+TruncateForBanner(cmd, 60), nowFn().Sub(t0))
 	succeeded := err == nil
 	ctx.Set("command-succeeded", succeeded)
 	if isTestRun {

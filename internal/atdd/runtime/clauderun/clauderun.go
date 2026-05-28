@@ -328,6 +328,18 @@ type Options struct {
 	// escapes make file-mirroring noisy).
 	EventsLogPath string
 
+	// PidFilePath, when non-empty, is the file path runHeadless /
+	// runInteractive writes a JSON marker (child_pid, parent_pid, cwd) to
+	// immediately after cmd.Start() and removes on clean dispatch exit.
+	// Used by `gh optivem doctor --orphans` to identify children that
+	// survived a crash: the file's presence IS the crash signature, so
+	// removal-on-defer only fires when the dispatch reaches the defer
+	// (not when it panics or is force-killed). Empty path → no marker
+	// file written (back-compat for non-dispatched callers, e.g. utility
+	// runs). I/O failure is a non-fatal warning to Stderr; diagnostics
+	// must not break the dispatch (same policy as openEventsLog).
+	PidFilePath string
+
 	// OutputFilePath is the absolute path to the JSONL file the agent's
 	// `gh optivem output write` invocations append to. Exported into the
 	// subprocess env as GH_OPTIVEM_OUTPUT_FILE. The file is NOT pre-created
@@ -356,7 +368,7 @@ type Options struct {
 	ExpectedOutputs []statemachine.OutputSpec
 
 	// ShowPrompt, when true, dumps the full rendered prompt to Stdout
-	// between the prepared-prompt summary banner and the ENTERING AGENT
+	// between the prepared-prompt summary banner and the `[agent] enter`
 	// banner. Off by default; useful for debugging template edits or
 	// auditing a new agent's body.
 	ShowPrompt bool
@@ -454,6 +466,11 @@ type RunOpts struct {
 	// EventsLogPath mirrors clauderun.Options.EventsLogPath. Honoured by
 	// runHeadless only; runInteractive ignores it. Empty → no audit log.
 	EventsLogPath string
+
+	// PidFilePath mirrors clauderun.Options.PidFilePath. Honoured by both
+	// runHeadless and runInteractive (force-cancel can hit either mode).
+	// Empty → no marker file written.
+	PidFilePath string
 
 	// Approval is the resolved auto-approve policy from the parent
 	// process. Propagated into the child `claude` subprocess environment
@@ -625,6 +642,7 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 		OutputFilePath: opts.OutputFilePath,
 		OutputKeysSpec: opts.OutputKeysSpec,
 		EventsLogPath:  opts.EventsLogPath,
+		PidFilePath:    opts.PidFilePath,
 		Approval:       opts.Approval,
 	})
 	if runErr != nil {
@@ -1336,8 +1354,6 @@ func (c *cappedBuffer) Bytes() []byte { return c.buf.Bytes() }
 // Banners
 // ---------------------------------------------------------------------------
 
-const banner = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
 // writePreparedPromptBanner prints a structured summary of the prompt
 // the runner is about to receive. Always emitted (the noise cost is
 // trivial vs. the bug class it catches: empty substitution fields like
@@ -1355,27 +1371,25 @@ func writePreparedPromptBanner(opts Options, prompt string) {
 	opts = opts.withDefaults()
 	cyan := color.New(color.FgCyan)
 	// Detail-level: the prepared-prompt banner is a verbose summary used
-	// for debugging; the headline ENTERING AGENT line in writeEnterBanner
-	// is what the operator needs to see by default.
+	// for debugging; the headline `[agent] enter` line in writeEnterBanner
+	// is what the operator needs to see by default. Not bold — quieter
+	// than the Phase-sink banners by design.
 	w := opts.Out.Detail
-	fmt.Fprintln(w, cyan.Sprint(banner))
 	if opts.RawPrompt != "" {
-		fmt.Fprintln(w, cyan.Sprintf("📋 PREPARED PROMPT for %s  (override mode — %s)",
+		fmt.Fprintln(w, cyan.Sprintf("[agent]  prep   %s  (override mode — %s)",
 			opts.Agent, formatPromptSize(len(prompt))))
-		fmt.Fprintln(w, cyan.Sprint(banner))
 		return
 	}
-	fmt.Fprintln(w, cyan.Sprintf("📋 PREPARED PROMPT for %s", opts.Agent))
-	fmt.Fprintln(w, cyan.Sprintf("   size:           %s", formatPromptSize(len(prompt))))
-	fmt.Fprintln(w, cyan.Sprintf("   architecture:   %s", orPlaceholderClauderun(opts.Architecture, "(empty)")))
-	fmt.Fprintln(w, cyan.Sprintf("   scope:          %s", summarizeScope(opts.ScopeRead, opts.ScopeWrite)))
-	fmt.Fprintln(w, cyan.Sprintf("   acceptance criteria: %s", summarizeAcceptanceCriteria(opts.AcceptanceCriteria)))
+	fmt.Fprintln(w, cyan.Sprintf("[agent]  prep   %s", opts.Agent))
+	fmt.Fprintln(w, cyan.Sprintf("         size:                %s", formatPromptSize(len(prompt))))
+	fmt.Fprintln(w, cyan.Sprintf("         architecture:        %s", orPlaceholderClauderun(opts.Architecture, "(empty)")))
+	fmt.Fprintln(w, cyan.Sprintf("         scope:               %s", summarizeScope(opts.ScopeRead, opts.ScopeWrite)))
+	fmt.Fprintln(w, cyan.Sprintf("         acceptance criteria: %s", summarizeAcceptanceCriteria(opts.AcceptanceCriteria)))
 	writeIndentedBlock(w, cyan, opts.AcceptanceCriteria)
-	fmt.Fprintln(w, cyan.Sprintf("   checklist:      %s", summarizeChecklist(opts.Checklist)))
+	fmt.Fprintln(w, cyan.Sprintf("         checklist:           %s", summarizeChecklist(opts.Checklist)))
 	writeIndentedBlock(w, cyan, opts.Checklist)
-	fmt.Fprintln(w, cyan.Sprintf("   override text:  %s", orPlaceholderClauderun(opts.OverrideText, "(none)")))
-	fmt.Fprintln(w, cyan.Sprintf("   log:            %s", orPlaceholderClauderun(opts.PromptLogPath, "(none)")))
-	fmt.Fprintln(w, cyan.Sprint(banner))
+	fmt.Fprintln(w, cyan.Sprintf("         override text:       %s", orPlaceholderClauderun(opts.OverrideText, "(none)")))
+	fmt.Fprintln(w, cyan.Sprintf("         log:                 %s", orPlaceholderClauderun(opts.PromptLogPath, "(none)")))
 }
 
 // writeIndentedBlock prints each non-empty line of s under the
@@ -1388,7 +1402,7 @@ func writeIndentedBlock(w io.Writer, c *color.Color, s string) {
 		if trimmed == "" {
 			continue
 		}
-		fmt.Fprintln(w, c.Sprintf("     %s", trimmed))
+		fmt.Fprintln(w, c.Sprintf("           %s", trimmed))
 	}
 }
 
@@ -1464,14 +1478,13 @@ func writeEnterBanner(opts Options) {
 	opts = opts.withDefaults()
 	cyan := color.New(color.FgCyan, color.Bold)
 	w := opts.Out.Phase
-	fmt.Fprintln(w, cyan.Sprint(banner))
 	mode := "interactive"
 	if opts.Headless {
 		mode = "headless"
 	}
-	fmt.Fprintln(w, cyan.Sprintf("🤖 ENTERING AGENT: %s  (%s)", opts.Agent, mode))
+	fmt.Fprintln(w, cyan.Sprintf("[agent]  enter  %s  (%s)", opts.Agent, mode))
 	if opts.IssueNum > 0 || opts.IssueTitle != "" {
-		fmt.Fprintln(w, cyan.Sprintf("   Issue: #%d %q",
+		fmt.Fprintln(w, cyan.Sprintf("         Issue: #%d %q",
 			opts.IssueNum, opts.IssueTitle))
 	}
 	// Surface the per-dispatch log paths so a headless operator —
@@ -1482,15 +1495,14 @@ func writeEnterBanner(opts Options) {
 	// declared outputs skip Outputs, and test paths that don't set
 	// any of them simply emit none.
 	if opts.PromptLogPath != "" {
-		fmt.Fprintln(w, cyan.Sprintf("   Prompt log:  %s", opts.PromptLogPath))
+		fmt.Fprintln(w, cyan.Sprintf("         Prompt log:  %s", opts.PromptLogPath))
 	}
 	if opts.EventsLogPath != "" {
-		fmt.Fprintln(w, cyan.Sprintf("   Events log:  %s", opts.EventsLogPath))
+		fmt.Fprintln(w, cyan.Sprintf("         Events log:  %s", opts.EventsLogPath))
 	}
 	if opts.OutputFilePath != "" {
-		fmt.Fprintln(w, cyan.Sprintf("   Outputs log: %s", opts.OutputFilePath))
+		fmt.Fprintln(w, cyan.Sprintf("         Outputs log: %s", opts.OutputFilePath))
 	}
-	fmt.Fprintln(w, cyan.Sprint(banner))
 }
 
 // writeExitBanner reports the agent's exit. changedFiles is the count of
@@ -1504,23 +1516,18 @@ func writeExitBanner(opts Options, changedFiles int, elapsed time.Duration, usag
 	w := opts.Out.Phase
 	if runErr != nil {
 		red := color.New(color.FgRed, color.Bold)
-		fmt.Fprintln(w, red.Sprint(banner))
-		fmt.Fprintln(w, red.Sprintf("❌ AGENT FAILED: %s  (%s%s)", opts.Agent, elapsed.Round(elapsedRound), formatUsageSuffix(usage)))
-		fmt.Fprintln(w, red.Sprintf("   %s", runErr))
-		fmt.Fprintln(w, red.Sprint(banner))
+		fmt.Fprintln(w, red.Sprintf("[agent]  FAIL   %s  (%s%s)", opts.Agent, elapsed.Round(elapsedRound), formatUsageSuffix(usage)))
+		fmt.Fprintln(w, red.Sprintf("         %s", runErr))
 		return
 	}
 	green := color.New(color.FgGreen, color.Bold)
-	fmt.Fprintln(w, green.Sprint(banner))
 	if changedFiles == 0 {
-		fmt.Fprintln(w, green.Sprintf("✅ EXITED AGENT: no changes  (%s%s)",
+		fmt.Fprintln(w, green.Sprintf("[agent]  exit   no changes  (%s%s)",
 			elapsed.Round(elapsedRound), formatUsageSuffix(usage)))
-		fmt.Fprintln(w, green.Sprint(banner))
 		return
 	}
-	fmt.Fprintln(w, green.Sprintf("✅ EXITED AGENT: %d file(s) changed  (%s%s)",
+	fmt.Fprintln(w, green.Sprintf("[agent]  exit   %d files  (%s%s)",
 		changedFiles, elapsed.Round(elapsedRound), formatUsageSuffix(usage)))
-	fmt.Fprintln(w, green.Sprint(banner))
 }
 
 // formatUsageSuffix renders ", 12.4k in / 1.8k out, $0.18" if usage is non-nil
@@ -1679,7 +1686,25 @@ func runInteractive(ctx context.Context, opts RunOpts) (RunResult, error) {
 	cmd.Stdout = opts.Stdout
 	cmd.Stderr = opts.Stderr
 	cmd.Env = subprocessEnv(opts)
-	return RunResult{}, cmd.Run()
+	// Split Run() into Start() + Wait() so we can capture the spawned
+	// PID into the orphan-recovery marker file. Same pattern as
+	// runHeadless — interactive dispatches can be Ctrl+C'd just as
+	// easily and produce the same orphan-claude problem on Windows.
+	if err := cmd.Start(); err != nil {
+		return RunResult{}, err
+	}
+	if opts.PidFilePath != "" {
+		writePidFile(opts.PidFilePath, pidMarker{
+			ChildPid:  cmd.Process.Pid,
+			ParentPid: os.Getpid(),
+			Cwd:       dispatchCwd(opts.Dir),
+		}, opts.Stderr)
+	}
+	runErr := cmd.Wait()
+	if opts.PidFilePath != "" && runErr == nil {
+		removePidFile(opts.PidFilePath, opts.Stderr)
+	}
+	return RunResult{}, runErr
 }
 
 // subprocessEnv composes the subprocess environment, appending the
@@ -1759,7 +1784,26 @@ func runHeadless(ctx context.Context, opts RunOpts) (RunResult, error) {
 	cmd.Stderr = opts.Stderr
 	cmd.Env = subprocessEnv(opts)
 
-	runErr := cmd.Run()
+	// Split Run() into Start() + Wait() so we can capture the spawned
+	// PID into the orphan-recovery marker file between them. The PID
+	// is undefined until Start() returns.
+	if err := cmd.Start(); err != nil {
+		return RunResult{}, err
+	}
+	if opts.PidFilePath != "" {
+		writePidFile(opts.PidFilePath, pidMarker{
+			ChildPid:  cmd.Process.Pid,
+			ParentPid: os.Getpid(),
+			Cwd:       dispatchCwd(opts.Dir),
+		}, opts.Stderr)
+	}
+	runErr := cmd.Wait()
+	// Remove the marker only on clean exit: a non-zero subprocess exit
+	// IS a crash signature `doctor --orphans` may want to investigate,
+	// so preserve the file then.
+	if opts.PidFilePath != "" && runErr == nil {
+		removePidFile(opts.PidFilePath, opts.Stderr)
+	}
 
 	usage, resultText := parseClaudeStreamJSON(captured.Bytes())
 	if resultText != "" {
@@ -1777,6 +1821,65 @@ func runHeadless(ctx context.Context, opts RunOpts) (RunResult, error) {
 		opts.Stdout.Write(captured.Bytes())
 	}
 	return RunResult{Usage: usage, ResultText: resultText}, runErr
+}
+
+// pidMarker is the JSON shape written to opts.PidFilePath while a
+// dispatch is running. Read back by `gh optivem doctor --orphans` to
+// distinguish a force-cancelled dispatch (parent dead → orphan) from a
+// live dispatch (parent alive → skip). Fields earn their slot only when
+// downstream code branches on them:
+//   - ChildPid:  kill / probe target.
+//   - ParentPid: liveness probe to classify orphan vs in-flight.
+//   - Cwd:       human-facing context in the doctor listing, since the
+//                file path itself (user-level state dir) is project-agnostic.
+type pidMarker struct {
+	ChildPid  int    `json:"child_pid"`
+	ParentPid int    `json:"parent_pid"`
+	Cwd       string `json:"cwd"`
+}
+
+// dispatchCwd resolves the working directory recorded in the PID
+// marker. Prefers the explicit opts.Dir the dispatch is running in;
+// falls back to the process cwd when Dir is unset (ad-hoc invocations
+// from tests / utility runs). A best-effort empty-string fallback is
+// fine — the marker file's existence is what matters, the cwd field is
+// human context only.
+func dispatchCwd(dir string) string {
+	if dir != "" {
+		return dir
+	}
+	cwd, _ := os.Getwd()
+	return cwd
+}
+
+// writePidFile serialises marker as JSON to path. Mirrors openEventsLog's
+// fail-soft policy: a missing-dir or unwritable-path failure downgrades
+// to a non-fatal stderr warning so diagnostics never break the dispatch.
+// MkdirAll the parent dir first so the caller (driver) only has to
+// compose the path.
+func writePidFile(path string, marker pidMarker, stderr io.Writer) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		fmt.Fprintf(stderr, "clauderun: warning: failed to create pid file dir %s: %v\n", filepath.Dir(path), err)
+		return
+	}
+	body, err := json.Marshal(marker)
+	if err != nil {
+		fmt.Fprintf(stderr, "clauderun: warning: failed to marshal pid marker for %s: %v\n", path, err)
+		return
+	}
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		fmt.Fprintf(stderr, "clauderun: warning: failed to write pid file %s: %v\n", path, err)
+	}
+}
+
+// removePidFile deletes the marker on clean dispatch exit. A missing
+// file is silently ignored (the dispatch may have skipped the marker on
+// the write side; either way removal succeeds vacuously). Any other
+// error downgrades to a stderr warning.
+func removePidFile(path string, stderr io.Writer) {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		fmt.Fprintf(stderr, "clauderun: warning: failed to remove pid file %s: %v\n", path, err)
+	}
 }
 
 // openEventsLog returns a writer for the per-dispatch stream-json audit
