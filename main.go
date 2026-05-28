@@ -883,8 +883,8 @@ func createBugReport(cfg *config.Config, errorCount int) {
 // outdated, prints a notice telling the user to run `gh extension upgrade optivem`.
 // Notify-only — never auto-upgrades; users decide when to upgrade.
 func checkForUpdate(cfg *config.Config) {
-	if version.Version == "dev" {
-		return // skip check for development builds
+	if strings.HasPrefix(version.Version, "dev") {
+		return // skip check for development builds (e.g. "dev", "dev-44d9d27", "dev-44d9d27-dirty")
 	}
 
 	cmd := exec.Command("gh", "api", "repos/optivem/gh-optivem/releases/latest", "--jq", ".tag_name")
