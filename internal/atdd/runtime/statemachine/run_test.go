@@ -857,7 +857,38 @@ func TestVerifyTests_InfraOutcomeReachesInfraHalt(t *testing.T) {
 			eng.AgentFn = func(name string) NodeFn {
 				return func(ctx *Context) Outcome { return Outcome{} }
 			}
-			eng.GateFn = nil // use real gates via Bind so testOutcome routes infra
+			// Gate stub mirrors TestExecuteCommand_FailureDispatchesCommandFailedFixerAgent:
+			// auto-approve every approval gate (the walk hits APPROVE_PRE
+			// inside execute-command), pin fix-on-failure-enabled to the
+			// param value (run-tests sets it false), and otherwise read
+			// state — which is how testOutcome surfaces the stub-stamped
+			// "infra" through the verify-tests-* sequence-flow guarded by
+			// `test-outcome == infra`.
+			eng.GateFn = func(name string) NodeFn {
+				switch name {
+				case "approval-outcome":
+					return func(ctx *Context) Outcome { return Outcome{Value: "approved"} }
+				case "fix-on-failure-enabled":
+					return func(ctx *Context) Outcome {
+						return Outcome{Bool: ctx.Params["fix-on-failure"] != "false"}
+					}
+				default:
+					return func(ctx *Context) Outcome {
+						v, ok := ctx.State[name]
+						if !ok {
+							return Outcome{}
+						}
+						switch t := v.(type) {
+						case bool:
+							return Outcome{Bool: t}
+						case string:
+							return Outcome{Value: t}
+						default:
+							return Outcome{}
+						}
+					}
+				}
+			}
 			if err := eng.Bind(); err != nil {
 				t.Fatalf("Bind: %v", err)
 			}
