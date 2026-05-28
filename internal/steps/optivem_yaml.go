@@ -245,6 +245,13 @@ func mapRepoStrategy(s string) string {
 // and for multirepo-multitier (where systemRepoSlug returns "").
 // Multitier's nested Backend/Frontend Paths are not resolved here:
 // multitier scope is deferred per plan item 11's allowlist.
+//
+// `s.DbMigrationPath` is set unconditionally to the doctrinal default
+// `system/db/migrations` whenever architecture is set — the migration
+// set is architecture- and language-agnostic, one shared directory tree
+// consumed by every SUT (3 langs × 2 archs) via a Flyway sidecar.
+// Validate Rule 22b requires this field once architecture is set; the
+// scaffolder owns the initial value, then the operator owns it.
 func buildSystem(cfg *config.Config, derived projectconfig.DerivedSonar, sutNamespace string) projectconfig.System {
 	s := projectconfig.System{Architecture: cfg.Arch}
 	switch cfg.Arch {
@@ -274,6 +281,7 @@ func buildSystem(cfg *config.Config, derived projectconfig.DerivedSonar, sutName
 			SonarProject: derived.Frontend,
 		}
 	}
+	s.DbMigrationPath = projectconfig.DefaultDbMigrationPath
 	return s
 }
 

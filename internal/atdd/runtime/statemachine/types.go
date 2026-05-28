@@ -111,6 +111,31 @@ const (
 	OutputTypeStringList = "string-list"
 )
 
+// Universal scope-exception envelope keys (plan 20260528-1150). Every
+// prod-agent dispatch exposes these two keys via the structured-output
+// channel — the runtime injects them when the dispatching MID's
+// `outputs:` block does not already declare them, so an agent can emit
+// `gh optivem output write scope-exception-files=...` even from a MID
+// with no per-MID flag outputs (implement-system, update-system, the
+// driver-adapter implementer / updater MIDs, …). The prompt-side
+// statement lives in internal/assets/runtime/shared/scope.md.
+const (
+	EnvelopeKeyScopeExceptionFiles  = "scope-exception-files"
+	EnvelopeKeyScopeExceptionReason = "scope-exception-reason"
+)
+
+// EnvelopeOutputSpecs returns a fresh slice of the universal
+// scope-exception envelope contract. Both keys are Optional — an agent
+// that completes its phase in-scope emits neither and the post-RUN
+// presence check passes. Callers receive a fresh slice each call so
+// concat-onto-MID-declared-outputs is safe without aliasing.
+func EnvelopeOutputSpecs() []OutputSpec {
+	return []OutputSpec{
+		{Key: EnvelopeKeyScopeExceptionFiles, Type: OutputTypeStringList, Optional: true},
+		{Key: EnvelopeKeyScopeExceptionReason, Type: OutputTypeString, Optional: true},
+	}
+}
+
 // Engine holds every loaded Process plus the registries needed to dispatch
 // nodes. Run picks a process by name and walks it.
 type Engine struct {

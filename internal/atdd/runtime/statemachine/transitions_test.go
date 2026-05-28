@@ -185,6 +185,34 @@ func TestExecuteCommand_FailureRoutesThroughFixOnFailureGate(t *testing.T) {
 	wantEdge(t, proc, "GATE_FIX_ON_FAILURE", "EXECUTE_COMMAND_END", "fix-on-failure-enabled == false")
 }
 
+// Both verify-tests-pass and verify-tests-fail must route
+// test-outcome=="infra" to TESTS_INFRA_HALT (an error-end-event), not
+// to the same node that pass/fail routes to. An infra failure means
+// the runner could not start — neither fixer (failing-tests, passing-
+// tests) is appropriate and the pre-classifier behaviour of treating
+// it as test-red silently advanced verify-tests-fail past a runner
+// that never produced a report. The error-end-event ensures the
+// failure bubbles up to driver.Run as a non-zero exit.
+func TestVerifyTests_InfraOutcomeRoutesToHalt(t *testing.T) {
+	eng := loadSnapshot(t)
+	for _, proc := range []string{"verify-tests-pass", "verify-tests-fail"} {
+		t.Run(proc, func(t *testing.T) {
+			p, ok := eng.Processes[proc]
+			if !ok {
+				t.Fatalf("process %q missing", proc)
+			}
+			node, ok := p.Nodes["TESTS_INFRA_HALT"]
+			if !ok {
+				t.Fatalf("%s: TESTS_INFRA_HALT node missing", proc)
+			}
+			if node.Kind != ErrorEndEvent {
+				t.Errorf("%s: TESTS_INFRA_HALT kind = %v, want ErrorEndEvent (must bubble up, not soft-end)", proc, node.Kind)
+			}
+			wantEdge(t, p, "GATE_TESTS_OUTCOME", "TESTS_INFRA_HALT", "test-outcome == infra")
+		})
+	}
+}
+
 // run-tests must opt out of execute-command's FIX branch so the
 // verify-tests-pass / verify-tests-fail callers can route on
 // test-outcome instead.

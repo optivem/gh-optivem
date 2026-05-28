@@ -41,6 +41,7 @@ system:
   repo: optivem/shop
   lang: java
   sonar-project: optivem_shop-system
+  db-migration-path: system/db/migrations
 
 system-test:
   path: system-test/java
@@ -66,7 +67,7 @@ external-systems:
     repo: optivem/shop
 `
 
-const sampleMonoRepoMultitier = `project:
+const sampleMonoRepoMultitier =`project:
   provider: github
   url: https://github.com/orgs/optivem/projects/20
 
@@ -87,6 +88,7 @@ system:
     repo: optivem/shop
     lang: typescript
     sonar-project: optivem_shop-frontend
+  db-migration-path: system/db/migrations
 
 system-test:
   path: system-test/java
@@ -127,6 +129,7 @@ system:
   repo: optivem/shop
   lang: java
   sonar-project: optivem_shop-system
+  db-migration-path: system/db/migrations
 
 system-test:
   path: system-test
@@ -173,6 +176,7 @@ system:
     repo: optivem/shop-frontend
     lang: typescript
     sonar-project: optivem_shop-frontend
+  db-migration-path: system/db/migrations
 
 system-test:
   path: system-test
@@ -905,6 +909,82 @@ func TestValidate_AcceptsAbsentPathsWhenArchitectureUnset(t *testing.T) {
 	}
 }
 
+// Rule 22b: system.db-migration-path is required once architecture is
+// set. The Family A path-shaped key names the shared canonical Flyway
+// migration set consumed by every SUT; an absent value would have the
+// system-implementer / system-updater agent's write set resolve a
+// scope-eligible layer to "" and fail at dispatch time.
+
+func TestValidate_RejectsMissingDbMigrationPathWhenArchitectureSet(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	cfg.System.DbMigrationPath = ""
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for missing db-migration-path, got nil")
+	}
+	if !strings.Contains(err.Error(), "system.db-migration-path") {
+		t.Errorf("error should name system.db-migration-path, got: %v", err)
+	}
+	// Error must name the back-fill path so an operator with a pre-this-
+	// plan config has a one-shot fix path.
+	if !strings.Contains(err.Error(), "config migrate") {
+		t.Errorf("error should hint at `config migrate`, got: %v", err)
+	}
+}
+
+func TestValidate_AcceptsAbsentDbMigrationPathWhenArchitectureUnset(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{
+		Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/optivem/projects/20"},
+		// No architecture, no db-migration-path — Rule 22b gates on architecture.
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("partial config without architecture should validate, got: %v", err)
+	}
+}
+
+func TestValidate_RejectsAbsoluteDbMigrationPath(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	cfg.System.DbMigrationPath = "/abs/migrations"
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for absolute db-migration-path, got nil")
+	}
+	if !strings.Contains(err.Error(), "system.db-migration-path") {
+		t.Errorf("error should name system.db-migration-path, got: %v", err)
+	}
+}
+
+// Family A reservation: `system-db-migration-path` cannot appear in
+// `system-test.paths:` — a typo'd Family B key with that name would
+// otherwise quietly override the canonical Family A value.
+func TestValidate_RejectsFamilyBShadowOfDbMigrationPath(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	cfg.SystemTest.Paths["system-db-migration-path"] = "elsewhere"
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for Family B key shadowing Family A name, got nil")
+	}
+	if !strings.Contains(err.Error(), "system-db-migration-path") {
+		t.Errorf("error should name the shadowing key, got: %v", err)
+	}
+}
+
+// PlaceholderMap must expose `system-db-migration-path` so prompt
+// rendering can substitute `${system-db-migration-path}` in agent
+// bodies (system-implementer.md, system-updater.md).
+func TestPlaceholderMap_IncludesDbMigrationPath(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	got := cfg.PlaceholderMap()
+	if got["system-db-migration-path"] != DefaultDbMigrationPath {
+		t.Errorf("system-db-migration-path: got %q, want %q", got["system-db-migration-path"], DefaultDbMigrationPath)
+	}
+}
+
 // Repo-strategy consistency.
 
 func TestValidate_MonoRepoRejectsMultipleRepos(t *testing.T) {
@@ -945,9 +1025,10 @@ func TestValidate_AcceptsExternalSystemsOmitted(t *testing.T) {
 		Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		Sonar:   Sonar{Organization: "x"},
 		System: System{
-			Architecture: ArchMonolith,
-			Path:         "p", Repo: "x/y", Lang: LangJava,
-			SonarProject: "x_y-system",
+			Architecture:    ArchMonolith,
+			Path:            "p", Repo: "x/y", Lang: LangJava,
+			SonarProject:    "x_y-system",
+			DbMigrationPath: DefaultDbMigrationPath,
 		},
 		SystemTest: TierSpec{
 			Path: "t", Repo: "x/y", Lang: LangJava, SonarProject: "x_y-system-test",
@@ -966,9 +1047,10 @@ func TestValidate_AcceptsOnlyStubsOrOnlySimulators(t *testing.T) {
 			Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 			Sonar:   Sonar{Organization: "x"},
 			System: System{
-				Architecture: ArchMonolith,
-				Path:         "p", Repo: "x/y", Lang: LangJava,
-				SonarProject: "x_y-system",
+				Architecture:    ArchMonolith,
+				Path:            "p", Repo: "x/y", Lang: LangJava,
+				SonarProject:    "x_y-system",
+				DbMigrationPath: DefaultDbMigrationPath,
 			},
 			SystemTest: TierSpec{
 				Path: "t", Repo: "x/y", Lang: LangJava, SonarProject: "x_y-system-test",
@@ -1017,9 +1099,10 @@ func TestValidate_AcceptsExternalRepoNotInOtherTiers(t *testing.T) {
 		RepoStrategy: RepoStrategyMultiRepo,
 		Sonar:        Sonar{Organization: "x"},
 		System: System{
-			Architecture: ArchMultitier,
-			Backend:      TierSpec{Path: "be", Repo: "x/backend", Lang: LangJava, SonarProject: "x_main-backend"},
-			Frontend:     TierSpec{Path: "fe", Repo: "x/frontend", Lang: LangTypescript, SonarProject: "x_main-frontend"},
+			Architecture:    ArchMultitier,
+			Backend:         TierSpec{Path: "be", Repo: "x/backend", Lang: LangJava, SonarProject: "x_main-backend"},
+			Frontend:        TierSpec{Path: "fe", Repo: "x/frontend", Lang: LangTypescript, SonarProject: "x_main-frontend"},
+			DbMigrationPath: DefaultDbMigrationPath,
 		},
 		SystemTest: TierSpec{
 			Path: "t", Repo: "x/main", Lang: LangJava, SonarProject: "x_main-system-test",
@@ -1110,9 +1193,10 @@ func TestWrite_OmitsEmptyOptionalFields(t *testing.T) {
 		Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		Sonar:   Sonar{Organization: "x"},
 		System: System{
-			Architecture: ArchMonolith,
-			Path:         "p", Repo: "x/y", Lang: LangJava,
-			SonarProject: "x_y-system",
+			Architecture:    ArchMonolith,
+			Path:            "p", Repo: "x/y", Lang: LangJava,
+			SonarProject:    "x_y-system",
+			DbMigrationPath: DefaultDbMigrationPath,
 		},
 		SystemTest: TierSpec{
 			Path: "t", Repo: "x/y", Lang: LangJava, SonarProject: "x_y-system-test",
@@ -1219,11 +1303,12 @@ func TestWriteToPath_NonCanonicalFilename(t *testing.T) {
 		RepoStrategy: RepoStrategyMonoRepo,
 		Sonar:        Sonar{Organization: "acme"},
 		System: System{
-			Architecture: ArchMonolith,
-			Path:         "system/monolith/java",
-			Repo:         "acme/page-turner",
-			Lang:         LangJava,
-			SonarProject: "acme_page-turner-system",
+			Architecture:    ArchMonolith,
+			Path:            "system/monolith/java",
+			Repo:            "acme/page-turner",
+			Lang:            LangJava,
+			SonarProject:    "acme_page-turner-system",
+			DbMigrationPath: DefaultDbMigrationPath,
 		},
 		SystemTest: TierSpec{
 			Path:         "system-test/java",
@@ -1267,11 +1352,12 @@ func validMonolithBase() *Config {
 		RepoStrategy: RepoStrategyMonoRepo,
 		Sonar:        Sonar{Organization: "acme"},
 		System: System{
-			Architecture: ArchMonolith,
-			Path:         "system",
-			Repo:         "acme/page-turner",
-			Lang:         LangJava,
-			SonarProject: "acme_page-turner-system",
+			Architecture:    ArchMonolith,
+			Path:            "system",
+			Repo:            "acme/page-turner",
+			Lang:            LangJava,
+			SonarProject:    "acme_page-turner-system",
+			DbMigrationPath: DefaultDbMigrationPath,
 		},
 		SystemTest: TierSpec{
 			Path: "system-test", Repo: "acme/page-turner", Lang: LangJava,
@@ -1531,6 +1617,7 @@ func validMultitierBase() *Config {
 				Path: "frontend", Repo: "acme/page-turner", Lang: LangTypescript,
 				SonarProject: "acme_page-turner-frontend",
 			},
+			DbMigrationPath: DefaultDbMigrationPath,
 		},
 		SystemTest: TierSpec{
 			Path: "system-test", Repo: "acme/page-turner", Lang: LangJava,

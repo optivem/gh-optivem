@@ -15,10 +15,17 @@ var NonWritingAgents = map[string]bool{
 }
 
 // FamilyAPathKeysInScope lists Family A path-shaped keys that are valid
-// as phase-scope layers. `system-path` is the only one today;
-// `system-test-path` is deliberately excluded because it is the parent
-// of every Family B testkit key and admitting it would let any phase
-// escape the layer partition.
+// as phase-scope layers. `system-path` and `system-db-migration-path`
+// are eligible today; `system-test-path` is deliberately excluded
+// because it is the parent of every Family B testkit key and admitting
+// it would let any phase escape the layer partition.
+//
+// `system-db-migration-path` names the shared canonical migration set
+// (Flyway-ordered SQL files under `system/db/migrations` by default)
+// consumed by every SUT (3 languages × 2 architectures). It is a sibling
+// of `system/monolith/` and `system/multitier/`, not a child of either —
+// schema migrations are architecture- and language-agnostic.
 var FamilyAPathKeysInScope = map[string]bool{
-	"system-path": true,
+	"system-path":              true,
+	"system-db-migration-path": true,
 }

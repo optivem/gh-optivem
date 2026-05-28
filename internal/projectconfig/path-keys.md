@@ -32,13 +32,25 @@ fixed; the value is the corresponding config field.
 | `language` | `system.lang` (or `system-test.lang` when `system.lang` is empty — multitier) |
 | `architecture` | `system.architecture` |
 | `system-path` | `system.path` (fully resolved, sut-namespace baked in per SSoT) |
+| `system-db-migration-path` | `system.db-migration-path` (default `system/db/migrations`; shared across every SUT) |
 | `system-test-path` | `system-test.path` |
 
 **Path-shaped Family A keys eligible for per-phase scope:**
-`system-path`. `system-test-path` is **not** scope-eligible — it is the
-parent of every Family B testkit key and admitting it would let any
-phase escape the layer partition (see `FamilyAPathKeysInScope` in
-`internal/atdd/phase_scopes.go`).
+`system-path` and `system-db-migration-path`. `system-test-path` is
+**not** scope-eligible — it is the parent of every Family B testkit key
+and admitting it would let any phase escape the layer partition (see
+`FamilyAPathKeysInScope` in `internal/atdd/phase_scopes.go`).
+
+`system-db-migration-path` is the shared canonical migration set
+(Flyway-ordered SQL files under `system/db/migrations` by default)
+consumed by every SUT (3 languages × 2 architectures) via a Flyway
+sidecar. It sits as a sibling of `system/monolith/` and
+`system/multitier/`, not as a child of either — schema migrations are
+architecture- and language-agnostic. Writing-agent MIDs that legitimately
+need to add a migration (e.g. `implement-system` when the AT asserts
+persisted state) carry it in their `write:` set; refactor-class phases
+read it but cannot write to it (column renames are a schema change, which
+is a behavior-change verb's job).
 
 ### Family B — named locations (under `system-test.paths:`)
 
@@ -127,8 +139,8 @@ present, not project-customizable.
 - **Family B keys that shadow Family A names are rejected.** A typo'd
   `system-test.paths.language: typescript` would otherwise quietly
   override the canonical `system.lang` value. Rejected names today:
-  `language`, `architecture`, `system-path`, `system-test-path`,
-  `sut-namespace`.
+  `language`, `architecture`, `system-path`, `system-db-migration-path`,
+  `system-test-path`, `sut-namespace`.
 - **Non-canonical `system-test.paths.<name>` keys are rejected** (per
   plan 20260518-1530 item 5). The validator enumerates
   `system-test.paths:` keys against `CanonicalPathKeys()` and

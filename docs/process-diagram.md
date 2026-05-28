@@ -464,17 +464,19 @@ flowchart TD
     FIX_UNEXPECTED_FAILING_TESTS[Fix Unexpected Test Failures — see § fix-unexpected-failing-tests]
     GATE_TESTS_OUTCOME{Test Outcome?}
     RUN_TESTS[Run Tests]
+    TESTS_INFRA_HALT((⚡))
     UNKNOWN_TESTS_OUTCOME((⚡))
     VERIFY_PASS_END(( ))
 
     RUN_TESTS --> GATE_TESTS_OUTCOME
     GATE_TESTS_OUTCOME -- Pass --> VERIFY_PASS_END
     GATE_TESTS_OUTCOME -- Fail --> FIX_UNEXPECTED_FAILING_TESTS
+    GATE_TESTS_OUTCOME -- Infra --> TESTS_INFRA_HALT
     GATE_TESTS_OUTCOME --> UNKNOWN_TESTS_OUTCOME
     FIX_UNEXPECTED_FAILING_TESTS --> VERIFY_PASS_END
 
     classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
-    class UNKNOWN_TESTS_OUTCOME errorEndNode
+    class TESTS_INFRA_HALT,UNKNOWN_TESTS_OUTCOME errorEndNode
 ```
 
 ## Verify Tests Fail
@@ -484,17 +486,19 @@ flowchart TD
     FIX_UNEXPECTED_PASSING_TESTS[Fix Unexpectedly Passing Tests — see § fix-unexpected-passing-tests]
     GATE_TESTS_OUTCOME{Test Outcome?}
     RUN_TESTS[Run Tests]
+    TESTS_INFRA_HALT((⚡))
     UNKNOWN_TESTS_OUTCOME((⚡))
     VERIFY_FAIL_END(( ))
 
     RUN_TESTS --> GATE_TESTS_OUTCOME
     GATE_TESTS_OUTCOME -- Pass --> FIX_UNEXPECTED_PASSING_TESTS
     GATE_TESTS_OUTCOME -- Fail --> VERIFY_FAIL_END
+    GATE_TESTS_OUTCOME -- Infra --> TESTS_INFRA_HALT
     GATE_TESTS_OUTCOME --> UNKNOWN_TESTS_OUTCOME
     FIX_UNEXPECTED_PASSING_TESTS --> VERIFY_FAIL_END
 
     classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
-    class UNKNOWN_TESTS_OUTCOME errorEndNode
+    class TESTS_INFRA_HALT,UNKNOWN_TESTS_OUTCOME errorEndNode
 ```
 
 ## Write Acceptance Tests

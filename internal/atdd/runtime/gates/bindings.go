@@ -268,11 +268,17 @@ func (b bindings) commandSucceeded(ctx *statemachine.Context) statemachine.Outco
 }
 
 // testOutcome routes verify-tests-pass / verify-tests-fail on the
-// per-suite pass|fail value run-command stamps after a
+// per-suite pass|fail|infra value run-command stamps after a
 // `gh optivem run-tests` invocation. Halt on unset (the gate fires
 // immediately after RUN_TESTS, so the action's stamp is required) and
-// halt on any value outside {pass, fail} so a future action contract
-// drift surfaces loudly instead of silently mis-routing.
+// halt on any value outside {pass, fail, infra} so a future action
+// contract drift surfaces loudly instead of silently mis-routing.
+//
+// The "infra" value signals "the runner could not start" (binary
+// missing, docker down, permission denied — see
+// internal/atdd/runtime/actions/verify_classify.go). Both verify-tests-*
+// processes route it to TESTS_INFRA_HALT — neither the pass nor fail
+// fixer is appropriate because the runner produced no test report.
 func (b bindings) testOutcome(ctx *statemachine.Context) statemachine.Outcome {
 	v, ok := ctx.State["test-outcome"]
 	if !ok {
@@ -283,7 +289,7 @@ func (b bindings) testOutcome(ctx *statemachine.Context) statemachine.Outcome {
 		return statemachine.Outcome{Err: fmt.Errorf("test-outcome: %T, want string", v)}
 	}
 	switch s {
-	case "pass", "fail":
+	case "pass", "fail", "infra":
 		return statemachine.Outcome{Value: s}
 	default:
 		return statemachine.Outcome{Err: fmt.Errorf("test-outcome: unrecognised value %q (action stamped a value the gate does not handle)", s)}

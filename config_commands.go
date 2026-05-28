@@ -350,6 +350,24 @@ func runConfigMigrate(path string) (bool, error) {
 		}
 	}
 
+	// Back-fill system.db-migration-path when absent on a config whose
+	// architecture is set. The migration set is shared infrastructure
+	// (one Flyway-ordered tree consumed by every SUT, 3 langs × 2
+	// archs) and the gh-optivem-owned default `system/db/migrations`
+	// matches the shop template's existing layout. Operators who set a
+	// non-default value are unaffected — back-fill applies only when the
+	// field is absent. This is the one-shot SSoT-join precedent
+	// (matching the pre-this-plan handling of sut-namespace): once the
+	// field exists, migrate never rewrites it.
+	systemNode := mappingValue(doc, "system")
+	if systemNode != nil && systemNode.Kind == yaml.MappingNode {
+		if scalarValue(mappingValue(systemNode, "architecture")) != "" &&
+			mappingValue(systemNode, "db-migration-path") == nil {
+			appendMappingEntry(systemNode, "db-migration-path", projectconfig.DefaultDbMigrationPath)
+			changed = true
+		}
+	}
+
 	// Per doctrine, migrate does NOT back-fill missing canonical Family B
 	// keys with DefaultPaths values — `paths:` is explicit-only, the
 	// operator owns every value. A config that's missing canonical keys
@@ -519,6 +537,19 @@ func prependMappingEntry(m *yaml.Node, key, value string) {
 	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}
 	valNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value}
 	m.Content = append([]*yaml.Node{keyNode, valNode}, m.Content...)
+}
+
+// appendMappingEntry adds a (key, value) pair at the end of m's Content.
+// Used by the db-migration-path back-fill so the new field lands after
+// the existing scalar fields of the system block (architecture, path,
+// repo, lang, sonar-project) rather than splitting them with a top-
+// inserted field. Multitier configs may have backend/frontend mapping
+// children at the tail; the new scalar still lands cleanly because
+// yaml.v3 emits one scalar per line regardless of position.
+func appendMappingEntry(m *yaml.Node, key, value string) {
+	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}
+	valNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value}
+	m.Content = append(m.Content, keyNode, valNode)
 }
 
 // runConfigPreflight is the testable core of `gh optivem config preflight`.

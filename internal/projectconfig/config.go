@@ -228,6 +228,25 @@ type System struct {
 	Lang         string `yaml:"lang,omitempty"`
 	SonarProject string `yaml:"sonar-project,omitempty"`
 
+	// DbMigrationPath names the canonical Flyway-style migration set shared
+	// across every SUT (3 languages × 2 architectures). Sibling of
+	// system/monolith/ and system/multitier/, not a child of either: schema
+	// migrations are architecture- and language-agnostic, one ordered set
+	// consumed by all six SUT implementations via a Flyway sidecar.
+	//
+	// The field is **gh-optivem-owned in name** (Family A canonical key
+	// `system-db-migration-path`) and **operator-owned in value** (paths can
+	// point at a legacy SQL tree outside the gh-optivem-aware layout).
+	// `gh optivem init` writes the default `system/db/migrations` matching
+	// the shop template; `Validate` (Rule 22b) requires it when
+	// architecture is set; `gh optivem config migrate` back-fills the
+	// default exactly once for pre-this-plan configs.
+	//
+	// The scope-eligibility side of this lives in
+	// `internal/atdd/phase_scopes.go` (`FamilyAPathKeysInScope`) — without
+	// that entry the per-phase scope checker rejects the key.
+	DbMigrationPath string `yaml:"db-migration-path,omitempty"`
+
 	// Multitier-only.
 	Backend  TierSpec `yaml:"backend,omitempty"`
 	Frontend TierSpec `yaml:"frontend,omitempty"`
@@ -332,11 +351,12 @@ func (c *Config) Repos() []string {
 //
 // All keys are kebab — the project-wide YAML/identifier convention.
 var reservedPlaceholderKeys = map[string]struct{}{
-	"language":         {},
-	"architecture":     {},
-	"system-path":      {},
-	"system-test-path": {},
-	"sut-namespace":    {},
+	"language":                 {},
+	"architecture":             {},
+	"system-path":              {},
+	"system-db-migration-path": {},
+	"system-test-path":         {},
+	"sut-namespace":            {},
 }
 
 // SutNamespace returns the substitution value for ${sut-namespace}.
@@ -367,11 +387,12 @@ func (c *Config) PlaceholderMap() map[string]string {
 	if c == nil {
 		return map[string]string{}
 	}
-	out := make(map[string]string, len(c.SystemTest.Paths)+5)
+	out := make(map[string]string, len(c.SystemTest.Paths)+6)
 	// Family B first; Family A overwrites on collision.
 	maps.Copy(out, c.SystemTest.Paths)
 	out["architecture"] = c.System.Architecture
 	out["system-path"] = c.System.Path
+	out["system-db-migration-path"] = c.System.DbMigrationPath
 	out["system-test-path"] = c.SystemTest.Path
 	out["sut-namespace"] = c.SutNamespace()
 	if c.System.Lang != "" {
@@ -456,6 +477,7 @@ func (c *Config) Validate() error {
 		{"system.path", c.System.Path},
 		{"system.backend.path", c.System.Backend.Path},
 		{"system.frontend.path", c.System.Frontend.Path},
+		{"system.db-migration-path", c.System.DbMigrationPath},
 		{"system-test.path", c.SystemTest.Path},
 		{"external-systems.stubs.path", c.ExternalSystems.Stubs.Path},
 		{"external-systems.simulators.path", c.ExternalSystems.Simulators.Path},
@@ -713,6 +735,19 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("config: system.architecture is set; %s required (canonical Family B keys must be explicitly configured — see internal/projectconfig/path-keys.md for the supported set)",
 				strings.Join(missing, ", "))
 		}
+	}
+
+	// Rule 22b: when system.architecture is set, system.db-migration-path
+	// must be set. The migration set is shared infrastructure consumed by
+	// every SUT (3 langs × 2 archs); the gh-optivem-owned name +
+	// operator-owned value contract treats it as Family A path-shaped key
+	// system-db-migration-path. `gh optivem init` writes the
+	// shop-template default (`system/db/migrations`); `gh optivem config
+	// migrate` back-fills the same default exactly once for pre-this-plan
+	// configs. After that, operators own the value.
+	if c.System.Architecture != "" && c.System.DbMigrationPath == "" {
+		return fmt.Errorf("config: system.architecture is set; system.db-migration-path is required (run `gh optivem config migrate` to back-fill the default %q for a pre-this-plan config)",
+			DefaultDbMigrationPath)
 	}
 
 	// Rule 22: paths.* keys must (a) not shadow reserved Family A

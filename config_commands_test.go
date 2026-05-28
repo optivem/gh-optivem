@@ -727,6 +727,7 @@ system:
   repo: optivem/shop-system
   lang: java
   sonar-project: optivem_shop-system
+  db-migration-path: system/db/migrations
 
 system-test:
   path: system-test
@@ -769,6 +770,7 @@ system:
     repo: optivem/shop-frontend
     lang: typescript
     sonar-project: optivem_shop-frontend
+  db-migration-path: system/db/migrations
 
 system-test:
   path: system-test
@@ -804,6 +806,7 @@ system:
   repo: optivem/shop
   lang: java
   sonar-project: optivem_shop-system
+  db-migration-path: system/db/migrations
 
 system-test:
   path: system-test/java
@@ -1002,6 +1005,113 @@ repos:
 		cfg.LocalRepos[0].Path != "./custom-backend" ||
 		cfg.LocalRepos[1].Path != "./custom-frontend" {
 		t.Errorf("hand-edited repos: clobbered, got %+v", cfg.LocalRepos)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// runConfigMigrate — system.db-migration-path back-fill (one-shot)
+// ---------------------------------------------------------------------------
+
+// TestRunConfigMigrate_BackfillsDbMigrationPathWhenAbsent pins the
+// one-shot back-fill: a pre-this-plan config (no system.db-migration-path)
+// gets the doctrinal default inserted into the system: block. Mirrors
+// the sut-namespace SSoT-join precedent — operators who set a
+// non-default value are unaffected by re-running migrate (idempotent).
+// dbMigrationPathTestBody extends monoRepoMonolithBody with a fully-
+// populated paths: block so the LoadFromPath call after migrate doesn't
+// fail on the unrelated Rule 22a (paths: required). Tests append/replace
+// the db-migration-path line on this body.
+const dbMigrationPathTestBody = monoRepoMonolithBody + `  paths:
+    driver-port: system-test/java/src/main/java/testkit/driver/port
+    driver-adapter: system-test/java/src/main/java/testkit/driver/adapter
+    external-system-driver-port: system-test/java/src/main/java/testkit/external/port
+    external-system-driver-adapter: system-test/java/src/main/java/testkit/external/adapter
+    at-test: system-test/java/src/test/java/latest/acceptance
+    dsl-port: system-test/java/src/main/java/testkit/dsl/port
+    dsl-core: system-test/java/src/main/java/testkit/dsl/core
+    ct-test: system-test/java/src/test/java/latest/contract
+`
+
+func TestRunConfigMigrate_BackfillsDbMigrationPathWhenAbsent(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	// Strip the db-migration-path line that the modern sample body carries
+	// so we exercise the pre-this-plan shape.
+	body := strings.Replace(dbMigrationPathTestBody,
+		"  db-migration-path: system/db/migrations\n", "", 1)
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	changed, err := runConfigMigrate(path)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if !changed {
+		t.Fatal("migrate: want changed=true (db-migration-path should be back-filled)")
+	}
+	cfg, err := projectconfig.LoadFromPath(path)
+	if err != nil {
+		t.Fatalf("load after migrate: %v", err)
+	}
+	if cfg.System.DbMigrationPath != projectconfig.DefaultDbMigrationPath {
+		t.Errorf("db-migration-path: got %q, want %q",
+			cfg.System.DbMigrationPath, projectconfig.DefaultDbMigrationPath)
+	}
+}
+
+// TestRunConfigMigrate_DbMigrationPathBackfillIsIdempotent pins the
+// SSoT-join contract: once back-filled, subsequent migrate runs leave
+// the field untouched — even if the operator has since edited the value
+// away from the default.
+func TestRunConfigMigrate_DbMigrationPathBackfillIsIdempotent(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	body := strings.Replace(dbMigrationPathTestBody,
+		"  db-migration-path: system/db/migrations\n",
+		"  db-migration-path: legacy/sql/migrations\n", 1)
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	changed, err := runConfigMigrate(path)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if changed {
+		t.Error("migrate: want changed=false when db-migration-path is already set (non-default value must be preserved)")
+	}
+	cfg, err := projectconfig.LoadFromPath(path)
+	if err != nil {
+		t.Fatalf("load after migrate: %v", err)
+	}
+	if cfg.System.DbMigrationPath != "legacy/sql/migrations" {
+		t.Errorf("db-migration-path: got %q, want %q (operator's override must survive migrate)",
+			cfg.System.DbMigrationPath, "legacy/sql/migrations")
+	}
+}
+
+// TestRunConfigMigrate_DbMigrationPathBackfillSkippedWhenArchitectureUnset
+// pins the gating: partial configs (no architecture chosen yet) carry no
+// system block worth back-filling. Validate Rule 22b also gates on
+// architecture, so a partial config without db-migration-path stays valid.
+func TestRunConfigMigrate_DbMigrationPathBackfillSkippedWhenArchitectureUnset(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, projectconfig.Path)
+	body := `project:
+  provider: github
+  url: https://github.com/orgs/optivem/projects/20
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	changed, err := runConfigMigrate(path)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if changed {
+		t.Error("migrate: want changed=false on partial config (no architecture, no db-migration-path back-fill)")
 	}
 }
 

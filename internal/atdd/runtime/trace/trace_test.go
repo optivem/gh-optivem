@@ -83,6 +83,84 @@ func TestWrap_ServiceTaskLogsEntryAndExit(t *testing.T) {
 	}
 }
 
+// TestWrap_TestsInfraHaltBannerRendersDiagnosticPayload exercises the
+// special-case banner the wrap decorator emits when an infra-classified
+// test-run failure routes to TESTS_INFRA_HALT. The runner-not-started
+// case (binary missing, docker down, etc.) was silently advancing the
+// pipeline pre-classifier; the banner must surface the infra label,
+// the failing command, and the stderr tail so the operator can
+// diagnose without parsing the raw state dump.
+func TestWrap_TestsInfraHaltBannerRendersDiagnosticPayload(t *testing.T) {
+	prevNow := nowFn
+	nowFn = fixedClock
+	t.Cleanup(func() { nowFn = prevNow })
+
+	var buf bytes.Buffer
+	// The actual TESTS_INFRA_HALT node is an error-end-event whose
+	// NodeFn is the no-op returned by Engine.resolve. Earlier nodes
+	// (runCommand) populate the diagnostic state this banner reads.
+	node := statemachine.Node{
+		ID:   "TESTS_INFRA_HALT",
+		Kind: statemachine.ErrorEndEvent,
+		Fn:   func(ctx *statemachine.Context) statemachine.Outcome { return statemachine.Outcome{} },
+	}
+	wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+	ctx := statemachine.NewContext()
+	ctx.Set("test-infra-label", "missing executable")
+	ctx.Set("command-line", "gh optivem test run --suite=acceptance --test=foo")
+	ctx.Set("command-stderr-tail", "'C:\\Program' is not recognized as an internal or external command,\noperable program or batch file.")
+	wrapped(ctx)
+
+	got := buf.String()
+	wantSubs := []string{
+		"HALT TESTS_INFRA_HALT — infra failure: missing executable",
+		"command: gh optivem test run --suite=acceptance --test=foo",
+		"stderr tail: 'C:\\Program' is not recognized as an internal or external command,",
+		"operable program or batch file.",
+	}
+	for _, s := range wantSubs {
+		if !strings.Contains(got, s) {
+			t.Errorf("trace output missing %q\nfull output:\n%s", s, got)
+		}
+	}
+	// Generic exit-line shape must NOT also render — banner replaces it.
+	if strings.Contains(got, "OK TESTS_INFRA_HALT") {
+		t.Errorf("infra halt banner must replace the generic OK line; got:\n%s", got)
+	}
+}
+
+// TestWrap_TestsInfraHaltBannerSurfacesContractDrift guards the
+// "(unset)" rendering for missing diagnostic state. Pre-classifier
+// drift (e.g. an upstream change that stops stamping test-infra-label)
+// must surface visibly in the banner instead of producing a misleading
+// "infra failure:" with empty fields.
+func TestWrap_TestsInfraHaltBannerSurfacesContractDrift(t *testing.T) {
+	prevNow := nowFn
+	nowFn = fixedClock
+	t.Cleanup(func() { nowFn = prevNow })
+
+	var buf bytes.Buffer
+	node := statemachine.Node{
+		ID:   "TESTS_INFRA_HALT",
+		Kind: statemachine.ErrorEndEvent,
+		Fn:   func(ctx *statemachine.Context) statemachine.Outcome { return statemachine.Outcome{} },
+	}
+	wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+	// Empty state — no infra-payload keys set.
+	wrapped(statemachine.NewContext())
+
+	got := buf.String()
+	for _, s := range []string{
+		"HALT TESTS_INFRA_HALT — infra failure: (unset)",
+		"command: (unset)",
+		"stderr tail: (unset)",
+	} {
+		if !strings.Contains(got, s) {
+			t.Errorf("trace output missing %q\nfull output:\n%s", s, got)
+		}
+	}
+}
+
 func TestWrap_GatewayLogsBindingAndStateDelta(t *testing.T) {
 	prevNow := nowFn
 	nowFn = fixedClock
@@ -113,6 +191,66 @@ func TestWrap_GatewayLogsBindingAndStateDelta(t *testing.T) {
 			t.Errorf("trace output missing %q\nfull output:\n%s", s, got)
 		}
 	}
+}
+
+func TestWrap_GatewayBoolFalseRendersExplicitly(t *testing.T) {
+	// Regression: a gateway that returns Bool:false used to render as
+	// `OK GATE_X -> (no result)` when the binding had already been set to
+	// false by an upstream service-task (no state delta to hoist). This
+	// contradicted `OK GATE_X -> bool=true` for the symmetric case and
+	// hid the gate's actual decision behind a `(no result)` label.
+	prevNow := nowFn
+	nowFn = fixedClock
+	t.Cleanup(func() { nowFn = prevNow })
+
+	t.Run("no_delta_substitutes_bool_false", func(t *testing.T) {
+		var buf bytes.Buffer
+		node := statemachine.Node{
+			ID:   "GATE_X",
+			Kind: statemachine.Gateway,
+			Raw:  statemachine.RawNode{Binding: "x-enabled"},
+			Fn: func(ctx *statemachine.Context) statemachine.Outcome {
+				// Re-affirm: caller has already written x-enabled=false upstream.
+				ctx.Set("x-enabled", false)
+				return statemachine.Outcome{Bool: false}
+			},
+		}
+		wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+		ctx := statemachine.NewContext()
+		ctx.Set("x-enabled", false) // pre-state already false
+		wrapped(ctx)
+
+		got := buf.String()
+		if !strings.Contains(got, "OK GATE_X -> bool=false") {
+			t.Errorf("expected explicit bool=false for gateway; got:\n%s", got)
+		}
+		if strings.Contains(got, "(no result)") {
+			t.Errorf("gateway with Bool:false must not render as (no result); got:\n%s", got)
+		}
+	})
+
+	t.Run("delta_still_hoists", func(t *testing.T) {
+		// When the binding flips at this node, the existing hoist still wins
+		// and shows the full state delta — the new fallback must not steal
+		// that case.
+		var buf bytes.Buffer
+		node := statemachine.Node{
+			ID:   "GATE_Y",
+			Kind: statemachine.Gateway,
+			Raw:  statemachine.RawNode{Binding: "y-enabled"},
+			Fn: func(ctx *statemachine.Context) statemachine.Outcome {
+				ctx.Set("y-enabled", false)
+				return statemachine.Outcome{Bool: false}
+			},
+		}
+		wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+		wrapped(statemachine.NewContext()) // pre-state empty → delta exists
+
+		got := buf.String()
+		if !strings.Contains(got, "OK GATE_Y -> y-enabled=false") {
+			t.Errorf("expected hoisted state delta to win over bool=false fallback; got:\n%s", got)
+		}
+	})
 }
 
 func TestWrap_UserTaskLogsAgentAndFiles(t *testing.T) {

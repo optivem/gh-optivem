@@ -181,13 +181,35 @@ func upOne(s SystemEntry, cwd string, opts SystemOptions) error {
 		return fmt.Errorf("system %s health check: %w", s.Label, err)
 	}
 
+	printEndpointsForEntry(os.Stdout, s)
+	return nil
+}
+
+// PrintEndpoints writes the component and external-system endpoint URLs for
+// every system in sys to w, one per line, two-space indented. Empty URLs are
+// skipped (mirrors WaitForSystem's component-with-no-URL skip).
+func PrintEndpoints(w io.Writer, sys *SystemConfig) {
+	for _, s := range sys.Systems {
+		printEndpointsForEntry(w, s)
+	}
+}
+
+// printEndpointsForEntry writes one system's endpoint URLs to w. Empty URLs
+// are skipped. Shared by upOne (single entry) and PrintEndpoints (all entries)
+// so the format stays in lockstep.
+func printEndpointsForEntry(w io.Writer, s SystemEntry) {
 	for _, c := range s.Components {
-		fmt.Fprintf(os.Stdout, "  %s: %s\n", c.Name, c.URL)
+		if c.URL == "" {
+			continue
+		}
+		fmt.Fprintf(w, "  %s: %s\n", c.Name, c.URL)
 	}
 	for _, e := range s.ExternalSystems {
-		fmt.Fprintf(os.Stdout, "  %s: %s\n", e.Name, e.URL)
+		if e.URL == "" {
+			continue
+		}
+		fmt.Fprintf(w, "  %s: %s\n", e.Name, e.URL)
 	}
-	return nil
 }
 
 // Down brings down every system in sys (compose down + container cleanup).

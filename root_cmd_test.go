@@ -194,8 +194,8 @@ func TestRootCmd_AutoFlagIsPersistent(t *testing.T) {
 }
 
 // TestRootCmd_ConfirmFlagIsPersistent pins --confirm at root and confirms
-// the Usage advertises the closed category set + env var. Without that
-// `--help` text the exclusion vocabulary is invisible to operators.
+// the Usage advertises the closed tier-ladder set + env var. Without that
+// `--help` text the threshold vocabulary is invisible to operators.
 func TestRootCmd_ConfirmFlagIsPersistent(t *testing.T) {
 	root := newRootCmd()
 	flag := root.PersistentFlags().Lookup("confirm")
@@ -205,9 +205,9 @@ func TestRootCmd_ConfirmFlagIsPersistent(t *testing.T) {
 	if !strings.Contains(flag.Usage, approval.EnvConfirm) {
 		t.Errorf("--confirm Usage should mention $%s; got: %q", approval.EnvConfirm, flag.Usage)
 	}
-	for _, cat := range []string{"commit", "fix", "release", "prompt"} {
+	for _, cat := range []string{"command", "prod-agent", "test-agent", "prod-commit", "test-commit", "human"} {
 		if !strings.Contains(flag.Usage, cat) {
-			t.Errorf("--confirm Usage should list category %q; got: %q", cat, flag.Usage)
+			t.Errorf("--confirm Usage should list tier %q; got: %q", cat, flag.Usage)
 		}
 	}
 }
@@ -230,16 +230,17 @@ func TestRootCmd_InvalidConfirmCategory_ParseError(t *testing.T) {
 	if !strings.Contains(err.Error(), "garbage") {
 		t.Errorf("error should name the offending token; got: %v", err)
 	}
-	for _, want := range []string{"commit", "fix", "release", "prompt", "human"} {
+	for _, want := range []string{"command", "prod-agent", "test-agent", "prod-commit", "test-commit", "human"} {
 		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error should list valid category %q; got: %v", want, err)
+			t.Errorf("error should list valid tier %q; got: %v", want, err)
 		}
 	}
 }
 
 // TestRootCmd_BannerEmittedUnderAutoFlag confirms the startup banner lands
 // on stderr when --auto is on, naming both sources and the resolved
-// exclusion list (default commit,fix because --confirm wasn't given).
+// threshold floor (default `human` because --confirm wasn't given — the
+// truly-autonomous shape under the tier-ladder model).
 func TestRootCmd_BannerEmittedUnderAutoFlag(t *testing.T) {
 	withCleanApprovalFlags(t)
 	root := rootCmdWithNoopLeaf(t)
@@ -255,7 +256,7 @@ func TestRootCmd_BannerEmittedUnderAutoFlag(t *testing.T) {
 		"Auto: true",
 		"auto-source: flag",
 		"confirm-source: default",
-		"commit,fix",
+		"floor=human",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("banner missing %q; got: %q", want, out)
@@ -280,8 +281,12 @@ func TestRootCmd_BannerSuppressedWithoutAuto(t *testing.T) {
 	}
 }
 
-// TestRootCmd_BannerEmptyConfirmList renders as "(none)" so the operator
-// sees the truly-autonomous shape on stderr rather than a dangling arrow.
+// TestRootCmd_BannerEmptyConfirmList pins how the banner renders an
+// explicit empty --confirm under the tier-ladder model. With no tier
+// token supplied, ConfirmFloor stays at its zero value (CategoryCommand,
+// the lowest tier — prompts at every tier), and the source is still
+// `flag` because the operator explicitly passed --confirm=. The banner
+// shows that resolved shape rather than a dangling arrow.
 func TestRootCmd_BannerEmptyConfirmList(t *testing.T) {
 	withCleanApprovalFlags(t)
 	root := rootCmdWithNoopLeaf(t)
@@ -292,8 +297,8 @@ func TestRootCmd_BannerEmptyConfirmList(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if !strings.Contains(stderr.String(), "confirm-source: flag → (none)") {
-		t.Errorf("expected `→ (none)` rendering for explicit empty --confirm; got: %q", stderr.String())
+	if !strings.Contains(stderr.String(), "confirm-source: flag → floor=command") {
+		t.Errorf("expected `→ floor=command` rendering for explicit empty --confirm; got: %q", stderr.String())
 	}
 }
 

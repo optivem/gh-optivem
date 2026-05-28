@@ -786,12 +786,18 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 		fmt.Fprintf(a.deps.Stderr, "run-command: %v\n", err)
 	}
 	if isTestRun && !succeeded {
-		// TODO: when reviving the infra/red classifier (see
-		// verify_classify.go), this is the canonical hook point — route
-		// the same (stdout, stderr) here through classifyShellErr and let
-		// the gateway downstream of run-tests choose halt-on-infra vs
-		// dispatch-on-red. Today we just stash the raw tail for the
-		// fix-unexpected-{failing,passing}-tests prompts.
+		// Classify the failure so the gateway downstream of run-tests can
+		// distinguish "the runner couldn't start" (infra) from "a test
+		// assertion failed" (red). Pre-classifier, both showed up as
+		// test-outcome="fail" — which the verify-tests-fail phase took as
+		// the expected outcome, silently advancing the pipeline past a
+		// runner that never produced a report. The verify_classify table
+		// is the authoritative pattern set; new infra modes are added as
+		// rows there, not as branches here.
+		if class, label := classifyShellErr(string(result.Stderr), err); class == classInfra {
+			ctx.Set("test-outcome", "infra")
+			ctx.Set("test-infra-label", label)
+		}
 		ctx.Set("verify_results_text", formatVerifyResults(result.Stdout, result.Stderr))
 	}
 	return statemachine.Outcome{}
@@ -1098,9 +1104,22 @@ func (a actions) snapshotWorkingTree(ctx *statemachine.Context) statemachine.Out
 // a deliberately-permissive caller. We don't double-enforce.
 func readOutputsJSONL(path string, declared []statemachine.OutputSpec) (map[string]any, error) {
 	out := map[string]any{}
-	typeByKey := make(map[string]string, len(declared))
+	typeByKey := make(map[string]string, len(declared)+2)
 	for _, o := range declared {
 		typeByKey[o.Key] = o.Type
+	}
+	// Universal envelope keys (plan 20260528-1150). When the MID declares
+	// no outputs but the dispatcher seeded the envelope channel (because
+	// category: prod-agent), the JSONL may carry scope-exception-* lines
+	// the coercer must shape correctly — coerceJSONOutputValue's default
+	// branch returns the JSON-decoded []any as-is, but
+	// scopeExceptionRequested gate type-asserts []string, so an
+	// uncoerced value mis-routes the cycle to FIX. A MID-declared entry
+	// for the same key always wins (we only fill gaps).
+	for _, o := range statemachine.EnvelopeOutputSpecs() {
+		if _, ok := typeByKey[o.Key]; !ok {
+			typeByKey[o.Key] = o.Type
+		}
 	}
 
 	f, err := os.Open(path)

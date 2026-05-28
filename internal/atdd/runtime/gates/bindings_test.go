@@ -325,6 +325,7 @@ func TestTestOutcome(t *testing.T) {
 	}{
 		{name: "pass", seed: "pass", seeded: true, want: "pass"},
 		{name: "fail", seed: "fail", seeded: true, want: "fail"},
+		{name: "infra", seed: "infra", seeded: true, want: "infra"},
 		{name: "unset_halts", seeded: false, err: true},
 		{name: "wrong_type_halts", seed: 42, seeded: true, err: true},
 		{name: "unrecognised_value_halts", seed: "skipped", seeded: true, err: true},

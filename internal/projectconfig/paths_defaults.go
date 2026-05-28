@@ -2,6 +2,17 @@ package projectconfig
 
 import "path"
 
+// DefaultDbMigrationPath is the doctrinal value for `system.db-migration-path`
+// — the Family A path-shaped key naming the shared canonical Flyway-style
+// migration set consumed by every SUT (3 languages × 2 architectures).
+//
+// Used by `gh optivem init` (BuildOptivemYAML writes this verbatim into the
+// scaffolded gh-optivem.yaml when architecture is set) and by `gh optivem
+// config migrate` (back-fills this exactly once for pre-this-plan configs).
+// The Validate Rule 22b error message also names it, so missing-key errors
+// quote the literal value an operator would `migrate` to add.
+const DefaultDbMigrationPath = "system/db/migrations"
+
 // DefaultPaths returns the canonical Family B `paths:` entries for the
 // given system-test language, root, and sut-namespace. The eight keys
 // match the doctrine referenced by the inline `read:` / `write:` scope

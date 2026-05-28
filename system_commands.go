@@ -12,6 +12,7 @@
 package main
 
 import (
+	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -30,6 +31,7 @@ func newSystemCmd() *cobra.Command {
 	cmd.AddCommand(
 		newSystemBuildCmd(),
 		newSystemStartCmd(),
+		newSystemStatusCmd(),
 		newSystemStopCmd(),
 		newSystemCleanCmd(),
 		newSystemCompileCmd(),
@@ -86,6 +88,31 @@ func newSystemStartCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&restart, "restart", false, "Force tear-down + restart even if the system is already up")
 	cmd.Flags().IntVar(&logLines, "log-lines", 50, "Lines of compose logs to dump on health-probe failure")
 	cmd.Flags().DurationVar(&upTimeout, "up-timeout", 0, "Per-attempt timeout for `docker compose up -d` (zero = 5m default)")
+	return cmd
+}
+
+// newSystemStatusCmd implements `gh optivem system status [--timeout 2s]`.
+// Probes each component + external-system URL once and prints OK/DOWN per
+// entry. Does not start or stop anything; exits non-zero if any component
+// is DOWN so it can be used in shell pipelines.
+func newSystemStatusCmd() *cobra.Command {
+	var timeout time.Duration
+	cmd := &cobra.Command{
+		Use:     "status",
+		Short:   "Probe every component URL once and print OK/DOWN per entry",
+		Example: `  gh optivem system status`,
+		Run: func(cmd *cobra.Command, args []string) {
+			resolved, err := resolveSystemPath()
+			exitOnError(err)
+			sys, err := runner.LoadSystem(resolved)
+			exitOnError(err)
+			down := runner.Status(os.Stdout, sys, runner.StatusOptions{Timeout: timeout})
+			if down > 0 {
+				os.Exit(1)
+			}
+		},
+	}
+	cmd.Flags().DurationVar(&timeout, "timeout", 0, "Per-URL probe timeout (zero = 2s default)")
 	return cmd
 }
 
