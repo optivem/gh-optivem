@@ -24,6 +24,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/userstate"
 )
 
 // ---------------------------------------------------------------------------
@@ -964,6 +965,42 @@ func TestDispatch_EnterBannerListsLogPaths(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestDispatch_EnterBannerSurfacesTuning pins the headless inspection
+// contract for --model / --effort: the [agent] enter banner must show
+// the tuning the dispatcher passed through, including an explicit
+// "(claude session default)" when neither is set, so the operator can
+// never confuse silent inheritance with an applied override.
+func TestDispatch_EnterBannerSurfacesTuning(t *testing.T) {
+	cases := []struct {
+		name   string
+		model  string
+		effort string
+		want   string
+	}{
+		{"both set", "sonnet", "high", "Tuning: model=sonnet, effort=high"},
+		{"only model", "haiku", "", "Tuning: model=haiku"},
+		{"only effort", "", "low", "Tuning: effort=low"},
+		{"neither set", "", "", "Tuning: (claude session default)"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			gitFake := &fakeGit{
+				out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+			}
+			opts := newOpts()
+			opts.Stdout = &buf
+			opts.Model = tc.model
+			opts.Effort = tc.effort
+
+			if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+				t.Fatalf("Dispatch: %v", err)
+			}
+			mustContain(t, buf.String(), tc.want)
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -2241,7 +2278,7 @@ func TestWritePidFile_WritesParseableMarker(t *testing.T) {
 	path := filepath.Join(dir, "001-system-implementer.pid")
 	var stderr bytes.Buffer
 
-	marker := pidMarker{ChildPid: 12345, ParentPid: 6789, Cwd: `C:\worktrees\rehearsal-20260528`}
+	marker := userstate.PidMarker{ChildPid: 12345, ParentPid: 6789, Cwd: `C:\worktrees\rehearsal-20260528`}
 	writePidFile(path, marker, &stderr)
 
 	body, err := os.ReadFile(path)
@@ -2269,7 +2306,7 @@ func TestWritePidFile_CreatesMissingParentDirs(t *testing.T) {
 	path := filepath.Join(dir, "runs", "20260528-103900-12345", "001-system-implementer.pid")
 	var stderr bytes.Buffer
 
-	writePidFile(path, pidMarker{ChildPid: 1, ParentPid: 2, Cwd: dir}, &stderr)
+	writePidFile(path, userstate.PidMarker{ChildPid: 1, ParentPid: 2, Cwd: dir}, &stderr)
 
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("pid file not created in nested path: %v", err)
@@ -2292,7 +2329,7 @@ func TestWritePidFile_FailSoftOnUnwritablePath(t *testing.T) {
 	badPath := filepath.Join(regularFile, "nested", "marker.pid")
 	var stderr bytes.Buffer
 
-	writePidFile(badPath, pidMarker{ChildPid: 1, ParentPid: 2, Cwd: tmp}, &stderr)
+	writePidFile(badPath, userstate.PidMarker{ChildPid: 1, ParentPid: 2, Cwd: tmp}, &stderr)
 
 	if stderr.Len() == 0 {
 		t.Errorf("expected stderr warning when mkdir fails")

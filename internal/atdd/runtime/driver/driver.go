@@ -28,7 +28,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -49,6 +48,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/verify"
 	"github.com/optivem/gh-optivem/internal/files"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/userstate"
 	"github.com/optivem/gh-optivem/internal/version"
 
 	"github.com/mattn/go-isatty"
@@ -1335,59 +1335,19 @@ type runState struct {
 	seq          atomic.Int64
 }
 
-// userStateDir returns the user-level gh-optivem state directory —
-// the machine-local home for transient OS-resource markers (notably
-// per-dispatch PID files). Distinct from the per-project
-// .gh-optivem/runs/ tree because the markers must survive worktree
-// deletion: the motivating bug is `rm -rf worktrees/rehearsal-XYZ/`
-// failing because orphan claude.exe holds handles inside the worktree
-// — a sidecar marker would die with the worktree and leave the orphan
-// untrackable.
-//
-// Resolution order:
-//   - Windows: %LOCALAPPDATA%\gh-optivem, falling back to
-//     <userhome>\AppData\Local\gh-optivem when LOCALAPPDATA is unset.
-//     Deliberately NOT os.UserConfigDir — that returns %APPDATA%
-//     (roaming), and PID files must stay machine-local.
-//   - Linux/Mac: $XDG_STATE_HOME/gh-optivem, falling back to
-//     <userhome>/.local/state/gh-optivem when XDG_STATE_HOME is unset.
-//
-// Returns ("", err) when even the home-dir fallback fails (e.g. no
-// HOME in a stripped-down container). Callers downgrade to a stderr
-// warning and skip marker writes.
-func userStateDir() (string, error) {
-	if runtime.GOOS == "windows" {
-		if base := os.Getenv("LOCALAPPDATA"); base != "" {
-			return filepath.Join(base, "gh-optivem"), nil
-		}
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("locate user home dir: %w", err)
-		}
-		return filepath.Join(home, "AppData", "Local", "gh-optivem"), nil
-	}
-	if base := os.Getenv("XDG_STATE_HOME"); base != "" {
-		return filepath.Join(base, "gh-optivem"), nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("locate user home dir: %w", err)
-	}
-	return filepath.Join(home, ".local", "state", "gh-optivem"), nil
-}
-
-// resolvePidRunDir composes the per-run subdirectory of userStateDir
-// where this dispatch's PID marker files live. Shape:
-// `<userStateDir>/runs/<runTimestamp>-<parent-pid>`. The parent-pid
+// resolvePidRunDir composes the per-run subdirectory of the user-level
+// gh-optivem state directory (see userstate.Dir) where this dispatch's
+// PID marker files live. Shape:
+// `<userstate.Dir>/runs/<runTimestamp>-<parent-pid>`. The parent-pid
 // suffix disambiguates simultaneous gh-optivem starts for the same
 // user — two processes can't share a PID, so two concurrent runs
 // can't collide on the same directory even when they tick into the
 // same wall-clock second.
 //
-// Returns "" when userStateDir resolution failed; a stderr warning is
+// Returns "" when userstate.Dir resolution failed; a stderr warning is
 // emitted then so the operator sees the cause once at startup.
 func resolvePidRunDir(runTimestamp string, stderr io.Writer) string {
-	stateDir, err := userStateDir()
+	stateDir, err := userstate.Dir()
 	if err != nil {
 		fmt.Fprintf(stderr, "driver: warning: cannot resolve user state dir, orphan-recovery PID markers disabled: %v\n", err)
 		return ""

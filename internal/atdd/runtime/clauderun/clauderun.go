@@ -42,6 +42,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/expand"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/userstate"
 )
 
 // Options bundles every input Dispatch needs to construct a prompt and run
@@ -1487,6 +1488,11 @@ func writeEnterBanner(opts Options) {
 		fmt.Fprintln(w, cyan.Sprintf("         Issue: #%d %q",
 			opts.IssueNum, opts.IssueTitle))
 	}
+	// Surface --model / --effort so the operator can confirm which tuning
+	// the dispatcher actually picked for this agent. Empty values fall
+	// back to "(claude session default)" rather than being silently
+	// elided — no silent inheritance.
+	fmt.Fprintln(w, cyan.Sprintf("         Tuning: %s", formatTuning(opts.Model, opts.Effort)))
 	// Surface the per-dispatch log paths so a headless operator —
 	// who has no TTY to interject through — knows where to tail for
 	// the rendered prompt, the claude event stream, and the agent's
@@ -1544,6 +1550,23 @@ func formatUsageSuffix(usage *TokenUsage) string {
 		return ""
 	}
 	return fmt.Sprintf(", %s in / %s out, $%.2f", formatTokens(in), formatTokens(out), usage.TotalCostUSD)
+}
+
+// formatTuning renders the enter-banner Tuning: line. Both set →
+// "model=sonnet, effort=high". One set → that key only. Neither set →
+// "(claude session default)" so the operator sees an explicit signal
+// that nothing was overridden, instead of silent inheritance.
+func formatTuning(model, effort string) string {
+	switch {
+	case model != "" && effort != "":
+		return fmt.Sprintf("model=%s, effort=%s", model, effort)
+	case model != "":
+		return fmt.Sprintf("model=%s", model)
+	case effort != "":
+		return fmt.Sprintf("effort=%s", effort)
+	default:
+		return "(claude session default)"
+	}
 }
 
 func formatTokens(n int) string {
@@ -1694,7 +1717,7 @@ func runInteractive(ctx context.Context, opts RunOpts) (RunResult, error) {
 		return RunResult{}, err
 	}
 	if opts.PidFilePath != "" {
-		writePidFile(opts.PidFilePath, pidMarker{
+		writePidFile(opts.PidFilePath, userstate.PidMarker{
 			ChildPid:  cmd.Process.Pid,
 			ParentPid: os.Getpid(),
 			Cwd:       dispatchCwd(opts.Dir),
@@ -1791,7 +1814,7 @@ func runHeadless(ctx context.Context, opts RunOpts) (RunResult, error) {
 		return RunResult{}, err
 	}
 	if opts.PidFilePath != "" {
-		writePidFile(opts.PidFilePath, pidMarker{
+		writePidFile(opts.PidFilePath, userstate.PidMarker{
 			ChildPid:  cmd.Process.Pid,
 			ParentPid: os.Getpid(),
 			Cwd:       dispatchCwd(opts.Dir),
@@ -1823,21 +1846,6 @@ func runHeadless(ctx context.Context, opts RunOpts) (RunResult, error) {
 	return RunResult{Usage: usage, ResultText: resultText}, runErr
 }
 
-// pidMarker is the JSON shape written to opts.PidFilePath while a
-// dispatch is running. Read back by `gh optivem doctor --orphans` to
-// distinguish a force-cancelled dispatch (parent dead → orphan) from a
-// live dispatch (parent alive → skip). Fields earn their slot only when
-// downstream code branches on them:
-//   - ChildPid:  kill / probe target.
-//   - ParentPid: liveness probe to classify orphan vs in-flight.
-//   - Cwd:       human-facing context in the doctor listing, since the
-//                file path itself (user-level state dir) is project-agnostic.
-type pidMarker struct {
-	ChildPid  int    `json:"child_pid"`
-	ParentPid int    `json:"parent_pid"`
-	Cwd       string `json:"cwd"`
-}
-
 // dispatchCwd resolves the working directory recorded in the PID
 // marker. Prefers the explicit opts.Dir the dispatch is running in;
 // falls back to the process cwd when Dir is unset (ad-hoc invocations
@@ -1857,7 +1865,7 @@ func dispatchCwd(dir string) string {
 // to a non-fatal stderr warning so diagnostics never break the dispatch.
 // MkdirAll the parent dir first so the caller (driver) only has to
 // compose the path.
-func writePidFile(path string, marker pidMarker, stderr io.Writer) {
+func writePidFile(path string, marker userstate.PidMarker, stderr io.Writer) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		fmt.Fprintf(stderr, "clauderun: warning: failed to create pid file dir %s: %v\n", filepath.Dir(path), err)
 		return

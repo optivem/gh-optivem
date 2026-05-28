@@ -70,7 +70,13 @@ task_prompts:, node_extras:, node_replacements:). Today the bundled flow
 is ATDD; future flows (TDD, DDD, or compositions) plug into the same
 command.
 
---issue is required; the pipeline targets that specific issue.`,
+--issue is required; the pipeline targets that specific issue.
+
+Recovery from crashed runs: if a run is force-cancelled mid-dispatch
+(Ctrl+C in the parent terminal, terminal closed, kernel kill, panic in a
+child), orphan headless claude subprocesses may survive the parent's
+exit. Run 'gh optivem doctor --orphans' to list them and interactively
+kill them.`,
 		Example: `  gh optivem implement --issue 42
   gh optivem implement --issue https://github.com/myorg/myrepo/issues/42
   gh optivem -c ./optivem-multitier.yaml implement --issue 42

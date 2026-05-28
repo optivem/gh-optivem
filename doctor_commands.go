@@ -1,11 +1,15 @@
-// doctor_commands.go wires the `gh optivem doctor` command. It verifies the
-// three global git config keys docs/tbd.md requires for trunk-based
-// development. With --fix, it sets any missing or wrong values at the global
-// level. Replaces the "copy these three commands out of the doc" onboarding
-// step with one command.
+// doctor_commands.go wires the `gh optivem doctor` command. It verifies
+// local state invariants the rest of the binary depends on:
 //
-// Scope is intentionally narrow — config only. Broader repo-health checks
-// belong in their own command, not here.
+//   - global git config keys docs/tbd.md requires for trunk-based development
+//     (the original scope; --fix sets them).
+//   - orphan claude.exe subprocesses left behind by crashed `gh optivem
+//     implement` runs, surfaced via --orphans and recovered from the
+//     per-dispatch PID markers internal/userstate owns. See
+//     doctor_orphans.go for the recovery logic.
+//
+// Broader repo-health checks belong in their own command; this one stays
+// focused on "the things gh-optivem itself needs in order to work."
 package main
 
 import (
@@ -18,7 +22,8 @@ import (
 )
 
 type doctorOptions struct {
-	Fix bool
+	Fix     bool
+	Orphans bool
 }
 
 // requiredGitConfig is the canonical list of global git config keys
@@ -36,24 +41,37 @@ func newDoctorCmd() *cobra.Command {
 	opts := doctorOptions{}
 	cmd := &cobra.Command{
 		Use:   "doctor",
-		Short: "Verify the global git config docs/tbd.md requires; --fix to set missing keys",
-		Long: `Verify the three global git config keys docs/tbd.md requires for
-trunk-based development:
+		Short: "Verify local state invariants (git config; --orphans for crashed-run cleanup)",
+		Long: `Verify local state invariants gh-optivem itself depends on:
 
-  pull.rebase = true
-  rebase.autoStash = true
-  rerere.enabled = true
+  - the three global git config keys docs/tbd.md requires for trunk-
+    based development (pull.rebase, rebase.autoStash, rerere.enabled).
+  - orphan claude subprocesses left behind by crashed 'implement' runs
+    (Ctrl+C in the parent terminal, terminal closed, kernel kill, panic).
+    Run with --orphans to scan, classify, and interactively kill them.
 
-With --fix, sets any missing or wrong values at the global level. Without
---fix, reports pass/fail per key and exits non-zero if any are wrong.`,
+Without flags, runs the read-only git-config check. With --fix, sets any
+missing or wrong git config keys at the global level. With --orphans,
+runs the orphan-recovery sweep INSTEAD of the git-config check: lists
+orphan claude subprocesses tracked by per-dispatch PID markers under the
+user-level state dir, classifies each as stale (child already dead —
+silently cleaned), live (parent still running — left alone), or orphan
+(child alive, parent dead — prompts y/n to kill). To run both sweeps,
+invoke the command twice.`,
 		Example: `  gh optivem doctor
-  gh optivem doctor --fix`,
+  gh optivem doctor --fix
+  gh optivem doctor --orphans`,
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
+			if opts.Orphans {
+				exitOnError(runDoctorOrphans(cmd.InOrStdin(), cmd.OutOrStdout()))
+				return
+			}
 			exitOnError(runDoctor(opts))
 		},
 	}
 	cmd.Flags().BoolVar(&opts.Fix, "fix", false, "Set missing or wrong keys to the required values (global git config)")
+	cmd.Flags().BoolVar(&opts.Orphans, "orphans", false, "Scan the user-level state dir for orphan claude subprocesses from crashed 'implement' runs and prompt to kill them")
 	return cmd
 }
 
