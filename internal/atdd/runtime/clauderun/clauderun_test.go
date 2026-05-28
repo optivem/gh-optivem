@@ -264,13 +264,21 @@ func TestRenderPrompt_TaskAgentArchitectureAndScopeBlock_ExplicitValues(t *testi
 	opts.Checklist = "- [ ] Refactor X"
 	// implement-system now inlines phase-doc placeholders
 	// in its body; without these the no-leftover-${...} assertion below
-	// would catch the inlined Family B path references.
+	// would catch the inlined Family B path references. The full canonical
+	// key set (CanonicalPathKeys) must appear so the Step 1 read-layer
+	// enumeration in system-implementer.md resolves.
 	opts.Placeholders = map[string]string{
-		"sut-namespace":    "shop",
-		"system-path":      "system/monolith/java",
-		"system-test-path": "system-test/java",
-		"driver-port":      "system-test/src/testkit/driver/port/shop",
-		"driver-adapter":   "system-test/src/testkit/driver/adapter/shop",
+		"sut-namespace":                  "shop",
+		"system-path":                    "system/monolith/java",
+		"system-test-path":               "system-test/java",
+		"driver-port":                    "system-test/src/testkit/driver/port/shop",
+		"driver-adapter":                 "system-test/src/testkit/driver/adapter/shop",
+		"external-system-driver-port":    "system-test/src/testkit/external/port/shop",
+		"external-system-driver-adapter": "system-test/src/testkit/external/adapter/shop",
+		"at-test":                        "system-test/src/test/java/shop/latest/acceptance",
+		"dsl-port":                       "system-test/src/testkit/dsl/port/shop",
+		"dsl-core":                       "system-test/src/testkit/dsl/core/shop",
+		"ct-test":                        "system-test/src/test/java/shop/latest/contract",
 	}
 
 	got, err := renderPrompt(opts)
@@ -1618,17 +1626,25 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	}
 	opts.Checklist = "- [x] One done\n- [ ] Two pending"
 	opts.PromptLogPath = "/tmp/runs/001-system-implementer.prompt.md"
-	// implement-system's inlined phase-doc body now references
-	// ${sut-namespace}, ${driver-adapter}, ${driver-port}, ${system-test-path};
-	// the production dispatcher fills these from cfg.PlaceholderMap(). With
-	// no ProjectConfig in this test, supply them directly so renderPrompt
-	// has values to substitute.
+	// implement-system's inlined phase-doc body now references the full
+	// CanonicalPathKeys set (driver-{port,adapter}, external-system-driver-
+	// {port,adapter}, at-test, dsl-{port,core}, ct-test) plus sut-namespace
+	// / system-test-path. The production dispatcher fills these from
+	// cfg.PlaceholderMap(); with no SystemTest.Paths in this test's
+	// ProjectConfig, supply them directly so renderPrompt has values to
+	// substitute.
 	opts.Placeholders = map[string]string{
-		"sut-namespace":    "shop",
-		"system-path":      "system/monolith/typescript",
-		"system-test-path": "system-test/typescript",
-		"driver-port":      "system-test/src/testkit/driver/port/shop",
-		"driver-adapter":   "system-test/src/testkit/driver/adapter/shop",
+		"sut-namespace":                  "shop",
+		"system-path":                    "system/monolith/typescript",
+		"system-test-path":               "system-test/typescript",
+		"driver-port":                    "system-test/src/testkit/driver/port/shop",
+		"driver-adapter":                 "system-test/src/testkit/driver/adapter/shop",
+		"external-system-driver-port":    "system-test/src/testkit/external/port/shop",
+		"external-system-driver-adapter": "system-test/src/testkit/external/adapter/shop",
+		"at-test":                        "system-test/tests/latest/acceptance",
+		"dsl-port":                       "system-test/src/testkit/dsl/port/shop",
+		"dsl-core":                       "system-test/src/testkit/dsl/core/shop",
+		"ct-test":                        "system-test/tests/latest/contract",
 	}
 
 	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
