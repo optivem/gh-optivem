@@ -372,7 +372,7 @@ func (b bindings) refactorTypeChoice(ctx *statemachine.Context) statemachine.Out
 	if v := ctx.GetString("refactor-type-choice"); v != "" {
 		return statemachine.Outcome{Value: v}
 	}
-	answer, err := b.deps.Prompter.Ask("Refactor type? (refactor-system-structure | refactor-test-structure | redesign-system-structure | none) [none]: ")
+	answer, err := b.deps.Prompter.Ask("Refactor type? (refactor-system-structure | refactor-test-structure | redesign-system-structure | redesign-external-system-structure | none) [none]: ")
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("refactor-type-choice: %w", err)}
 	}
@@ -384,6 +384,7 @@ func (b bindings) refactorTypeChoice(ctx *statemachine.Context) statemachine.Out
 	case "refactor-system-structure",
 		"refactor-test-structure",
 		"redesign-system-structure",
+		"redesign-external-system-structure",
 		"none":
 		return statemachine.Outcome{Value: answer}
 	default:

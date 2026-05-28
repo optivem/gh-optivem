@@ -390,9 +390,8 @@ func writeGroupSubgraph(b *strings.Builder, eng *statemachine.Engine, process *s
 // Silent gateways (Item 13): a gateway whose `name:` is empty is
 // rendered as a bare diamond `GW{ }`, never with the node ID as a
 // fallback label. The pattern arises when an upstream user_task owns
-// the elicitation (`CHOOSE_REFACTOR_TYPE → GATE_REFACTOR_TYPE_CHOICE`)
-// so the gateway itself has nothing to say; Hungarian-style `{GATE_…}`
-// in the diagram would just be noise.
+// the elicitation so the gateway itself has nothing to say;
+// Hungarian-style `{GATE_…}` in the diagram would just be noise.
 func writeNode(b *strings.Builder, eng *statemachine.Engine, n statemachine.Node) {
 	label := n.Raw.Name
 	switch n.Kind {

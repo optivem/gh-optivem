@@ -134,11 +134,6 @@
 #           # body fields per type:
 #           # service-task  → action:
 #           # user-task     → agent:       (`human` for STOPs)
-#           #                  auto-default: {binding, value}  (optional;
-#           #                  only on `agent: human`; opts the node into
-#           #                  autonomous-mode auto-write — see plan
-#           #                  20260528-1150 + the comment on
-#           #                  CHOOSE_REFACTOR_TYPE.)
 #           # gateway       → binding:
 #           # call-activity → process: [+ params: <map>]
 #       sequence-flows:
@@ -357,35 +352,8 @@ processes:
   # this TOP; (3) ad-hoc operator entry directly into this TOP.
   refactor:
     name: "Refactor"
-    start: CHOOSE_REFACTOR_TYPE
+    start: GATE_REFACTOR_TYPE_CHOICE
     nodes:
-      # The only `agent: human` node in the runtime that opts into
-      # `auto-default:`. Three properties make this the safe exception
-      # to the otherwise-load-bearing "human means human" invariant
-      # (see internal/approval/approval.go:126-130):
-      #   (1) Loopable. The four refactor-CYCLE branches all return
-      #       here, so picking a value is a repeatable in-flight
-      #       decision, not a one-shot commitment.
-      #   (2) The `none` branch is a no-op exit to REFACTOR_TOP_END.
-      #       "No opportunistic refactor this iteration" is a
-      #       defensible default — the runtime cannot defensibly pick
-      #       *which* refactor without an operator.
-      #   (3) The gateway binding `refactor-type-choice` already
-      #       defaults empty input to `none` (gates/bindings.go:380-382),
-      #       so the autonomous-mode value matches the existing
-      #       interactive-mode default exactly.
-      # Honoured only when `--auto` is on AND the confirm floor is
-      # `human` (i.e. truly autonomous). Operators tightening the
-      # floor with `--confirm=test-commit` still get the prompt.
-      # See plan 20260528-1150 for the doctrine.
-      - id: CHOOSE_REFACTOR_TYPE
-        type: user-task
-        agent: human
-        name: "Choose refactor type (loopable; none = exit)"
-        auto-default:
-          binding: refactor-type-choice
-          value: none
-
       - id: GATE_REFACTOR_TYPE_CHOICE
         type: gateway
         binding: refactor-type-choice
@@ -416,16 +384,15 @@ processes:
         name: "Refactor Complete"
 
     sequence-flows:
-      - {from: CHOOSE_REFACTOR_TYPE,               to: GATE_REFACTOR_TYPE_CHOICE}
       - {from: GATE_REFACTOR_TYPE_CHOICE,          to: REFACTOR_SYSTEM_STRUCTURE,          when: "refactor-type-choice == refactor-system-structure"}
       - {from: GATE_REFACTOR_TYPE_CHOICE,          to: REFACTOR_TEST_STRUCTURE,            when: "refactor-type-choice == refactor-test-structure"}
       - {from: GATE_REFACTOR_TYPE_CHOICE,          to: REDESIGN_SYSTEM_STRUCTURE,          when: "refactor-type-choice == redesign-system-structure"}
       - {from: GATE_REFACTOR_TYPE_CHOICE,          to: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE, when: "refactor-type-choice == redesign-external-system-structure"}
       - {from: GATE_REFACTOR_TYPE_CHOICE,          to: REFACTOR_TOP_END,                   when: "refactor-type-choice == none"}
-      - {from: REFACTOR_SYSTEM_STRUCTURE,          to: CHOOSE_REFACTOR_TYPE}
-      - {from: REFACTOR_TEST_STRUCTURE,            to: CHOOSE_REFACTOR_TYPE}
-      - {from: REDESIGN_SYSTEM_STRUCTURE,          to: CHOOSE_REFACTOR_TYPE}
-      - {from: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE, to: CHOOSE_REFACTOR_TYPE}
+      - {from: REFACTOR_SYSTEM_STRUCTURE,          to: GATE_REFACTOR_TYPE_CHOICE}
+      - {from: REFACTOR_TEST_STRUCTURE,            to: GATE_REFACTOR_TYPE_CHOICE}
+      - {from: REDESIGN_SYSTEM_STRUCTURE,          to: GATE_REFACTOR_TYPE_CHOICE}
+      - {from: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE, to: GATE_REFACTOR_TYPE_CHOICE}
 
   refine-backlog-item:
     name: "Refine Backlog Item"

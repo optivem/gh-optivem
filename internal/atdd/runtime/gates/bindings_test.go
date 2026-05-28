@@ -519,7 +519,7 @@ func TestRefactorTypeChoice(t *testing.T) {
 			t.Fatalf("prompter should not have been asked: %v", p.asked)
 		}
 	})
-	for _, ans := range []string{"refactor-system-structure", "refactor-test-structure", "redesign-system-structure", "none"} {
+	for _, ans := range []string{"refactor-system-structure", "refactor-test-structure", "redesign-system-structure", "redesign-external-system-structure", "none"} {
 		t.Run("prompt/"+ans, func(t *testing.T) {
 			p := &fakePrompter{answers: []string{ans}}
 			b := newBindings(t, Deps{Prompter: p})
