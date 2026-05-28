@@ -42,7 +42,18 @@ func applyCmdExeQuoting(cmd *exec.Cmd, parts []string) {
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
-	cmd.SysProcAttr.CmdLine = strings.Join(escaped, " ")
+	// Go wraps .bat/.cmd execution through `cmd.exe /c <cmdline>`. cmd.exe's
+	// /c rule strips the first and last quote on the line when the tail
+	// contains any of &<>()@^|, multiple quote pairs, or otherwise fails
+	// rule 1 in `cmd /?` (/S section). Our composed line starts with a
+	// quoted executable path (needed when the path has spaces, e.g.
+	// `C:\Program Files\nodejs\npx.cmd`) and usually carries quoted
+	// metacharacter-bearing args, so without compensation cmd.exe eats the
+	// quotes around the path and chokes on the embedded space —
+	// `'C:\Program' is not recognized`. Wrap in an extra outer pair so the
+	// strip absorbs them and leaves the original quoting intact for the
+	// batch file's CRT parser.
+	cmd.SysProcAttr.CmdLine = `"` + strings.Join(escaped, " ") + `"`
 }
 
 func isBatchTarget(path string) bool {
