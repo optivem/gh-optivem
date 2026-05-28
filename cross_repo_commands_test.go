@@ -272,57 +272,6 @@ func initBareAndClone(t *testing.T) (origin, clone string) {
 	return origin, clone
 }
 
-func TestPullWithAutoStash_DirtyTrackedFile_PreservesEditAndPullsRemote(t *testing.T) {
-	origin, a := initBareAndClone(t)
-	// Second clone that races ahead and pushes a new file.
-	rootB := t.TempDir()
-	b := filepath.Join(rootB, "b")
-	mustGit(t, rootB, "clone", "-q", origin, b)
-	mustGit(t, b, "config", "user.email", "test@example.com")
-	mustGit(t, b, "config", "user.name", "Test")
-
-	if err := os.WriteFile(filepath.Join(b, "remote-added.txt"), []byte("from b\n"), 0o644); err != nil {
-		t.Fatalf("write remote-added: %v", err)
-	}
-	mustGit(t, b, "add", ".")
-	mustGit(t, b, "commit", "-q", "-m", "from b")
-	mustGit(t, b, "push", "-q", "origin", "main")
-
-	// Now `a` has dirty tracked changes; pull --rebase via the helper should
-	// stash them, pull, and pop — leaving the dirty edit in the working tree
-	// AND the remote-added file present.
-	if err := os.WriteFile(filepath.Join(a, "seed.txt"), []byte("local edit\n"), 0o644); err != nil {
-		t.Fatalf("dirty seed: %v", err)
-	}
-
-	if err := pullWithAutoStash(a); err != nil {
-		t.Fatalf("pullWithAutoStash: %v", err)
-	}
-
-	got, err := os.ReadFile(filepath.Join(a, "seed.txt"))
-	if err != nil {
-		t.Fatalf("read seed back: %v", err)
-	}
-	if strings.TrimSpace(string(got)) != "local edit" {
-		t.Errorf("local dirty edit lost; got %q", got)
-	}
-	if _, err := os.Stat(filepath.Join(a, "remote-added.txt")); err != nil {
-		t.Errorf("remote-added.txt not pulled in: %v", err)
-	}
-}
-
-func TestPullWithAutoStash_CleanWorkingTree_NoStashNoError(t *testing.T) {
-	_, clone := initBareAndClone(t)
-	if err := pullWithAutoStash(clone); err != nil {
-		t.Fatalf("pullWithAutoStash on clean tree: %v", err)
-	}
-	// No stash entries left behind.
-	out := captureGitOut(t, clone, "stash", "list")
-	if strings.TrimSpace(out) != "" {
-		t.Errorf("expected empty stash list, got %q", out)
-	}
-}
-
 func TestPushWithRebaseRetry_LosesRace_RecoversAndPushes(t *testing.T) {
 	origin, a := initBareAndClone(t)
 

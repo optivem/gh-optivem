@@ -179,26 +179,30 @@ func runCommit(msg string, opts commitOptions) error {
 		fmt.Printf("--- %s ---\n", relOrSelf(repo))
 		fmt.Printf("  %s\n", tbdModeBanner(repo))
 
-		// Pull --rebase onto the current branch's upstream *before*
-		// staging/committing so the new commit lands on top of the freshest
-		// remote tip, not a stale local ref. Emulates `rebase.autoStash`
-		// regardless of operator config. No upstream → nothing to rebase
-		// onto, skip the pull.
-		if hasUp {
-			if err := pullWithAutoStash(repo); err != nil {
-				return fmt.Errorf("pre-commit git pull --rebase in %s: %w", repo, err)
-			}
-		}
-
+		// Commit FIRST, then pull, then push. Order matters: pulling
+		// before committing on a dirty tree would require a stash
+		// detour (stash → pull → pop), and a pop conflict leaves a
+		// half-applied working tree plus a leftover stash entry —
+		// classic silent footgun. Commit-first guarantees the tree is
+		// clean before any pull/push touches it, so a rebase conflict
+		// is over a real commit the operator can `git rebase --abort`
+		// cleanly, with no stash detritus to chase.
 		didCommit, err := commitOneRepo(repo, msg, opts)
 		if err != nil {
 			return err
 		}
 
-		// Push whenever there's an upstream — committed or not, the pull
-		// above may have brought new commits that still need pushing.
+		// Pull + push only when the tree is clean — i.e. the repo was
+		// already clean, or our commit just landed. A declined commit
+		// on a dirty repo skips sync entirely; rerun after dealing
+		// with the dirty state. This is the behaviour change the new
+		// order enforces: declined = nothing happens, no hidden
+		// pull/push side-effect.
 		didPush := false
-		if hasUp {
+		if hasUp && (didCommit || workingClean) {
+			if err := runGit(repo, "pull", "--rebase"); err != nil {
+				return fmt.Errorf("git pull --rebase in %s: %w", repo, err)
+			}
 			if err := pushWithRebaseRetry(repo); err != nil {
 				return err
 			}
@@ -215,11 +219,12 @@ func runCommit(msg string, opts commitOptions) error {
 			c.localOnly++
 			fmt.Println("  ✓ Committed (local only — no upstream branch)")
 		case !didCommit && workingClean:
-			// Clean repo with upstream: pull+push happened, no commit attempted.
 			c.cleanSynced++
 			fmt.Println("  ✓ Pulled and pushed (clean)")
 		default:
-			// Was dirty, operator declined. "✗ Skipped" already printed by commitOneRepo.
+			// Dirty + declined. "✗ Skipped" already printed by commitOneRepo.
+			// No pull/push attempted — the tree is still dirty and
+			// we refuse to stash it away under the operator.
 			c.declined++
 		}
 	}
@@ -944,32 +949,6 @@ func runGitTeeStderr(repo string, args ...string) (string, error) {
 	return captured.String(), err
 }
 
-// pullWithAutoStash runs `git pull --rebase` in repo, stashing any
-// uncommitted tracked changes first and popping the stash afterwards. Mirrors
-// `rebase.autoStash=true` regardless of the operator's git config, so the
-// pre-commit pull inside `commit` works on a dirty working tree. Untracked
-// files are left alone — `git pull --rebase` does not touch them unless an
-// incoming change creates a file with the same name (rare, and the operator
-// should resolve that explicitly).
-func pullWithAutoStash(repo string) error {
-	dirty := exec.Command("git", "-C", repo, "diff-index", "--quiet", "HEAD").Run() != nil
-	if dirty {
-		if err := runGit(repo, "stash", "push", "--quiet", "-m", "gh optivem pre-commit auto-stash"); err != nil {
-			return fmt.Errorf("git stash in %s: %w", repo, err)
-		}
-	}
-	pullErr := runGit(repo, "pull", "--rebase")
-	if dirty {
-		if popErr := runGit(repo, "stash", "pop", "--quiet"); popErr != nil {
-			if pullErr != nil {
-				return fmt.Errorf("git pull --rebase failed (%w) and stash pop failed (%v); inspect `git stash list` in %s", pullErr, popErr, repo)
-			}
-			return fmt.Errorf("git stash pop in %s: %w; inspect `git stash list`", repo, popErr)
-		}
-	}
-	return pullErr
-}
-
 // pushWithRebaseRetry runs `git push` in repo, with up to maxPushAttempts
 // attempts when the push is rejected for being non-fast-forward (e.g. the bot
 // landed `Bump VERSION ...` on main between our pull and push — see
@@ -990,7 +969,10 @@ func pushWithRebaseRetry(repo string) error {
 			return fmt.Errorf("git push in %s: %w", repo, err)
 		}
 		fmt.Printf("  ↻ racing origin/main, retrying (%d/%d)…\n", attempt, maxPushAttempts-1)
-		if err := pullWithAutoStash(repo); err != nil {
+		// Tree is clean at this point — we only enter the push retry
+		// loop after a successful commit (or on a cleanSynced repo),
+		// so plain `git pull --rebase` works without any stash detour.
+		if err := runGit(repo, "pull", "--rebase"); err != nil {
 			return fmt.Errorf("git pull --rebase in %s during push retry: %w", repo, err)
 		}
 	}
