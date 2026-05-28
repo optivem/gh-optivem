@@ -193,6 +193,7 @@ func newRootCmd() *cobra.Command {
 
 		// Other — verbs that don't fit the above two buckets cleanly.
 		withGroup(newImplementCmd(), groupOther),
+		withGroup(newRunCmd(), groupOther),
 		withGroup(newProcessCmd(), groupOther),
 		withGroup(newArchitectureCmd(), groupOther),
 		withGroup(newEnvironmentCmd(), groupOther),
