@@ -31,6 +31,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/approval"
 	assetsync "github.com/optivem/gh-optivem/internal/assets/sync"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/driver"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/preflight"
 	"github.com/optivem/gh-optivem/internal/cmdctx"
@@ -50,6 +51,8 @@ func newImplementCmd() *cobra.Command {
 		autonomousDeprecated  bool
 		manualAgents          bool
 		logFile               string
+		logLevelArg           string
+		verbose               bool
 		workspace             string
 		keepRuns              int
 		showPrompt            bool
@@ -70,6 +73,8 @@ command.
   gh optivem -c ./optivem-multitier.yaml implement --issue 42
   gh optivem implement --issue 42 --workspace /abs/path/to/workspace
   gh optivem implement --issue 42 --log-file run.log
+  gh optivem implement --issue 42 --verbose                # stream full firehose to terminal
+  gh optivem implement --issue 42 --log-file run.log --log-level phase  # quiet log
   gh optivem implement --issue 42 --show-prompt
   gh optivem implement --issue 42 --keep-runs 0   # never prune
   gh optivem --auto implement --issue 42 --headless   # auto-approve everything except commit/fix; run claude -p`,
@@ -113,6 +118,12 @@ command.
 			exitOnError(err)
 			promptOverrides, err := taskPromptOverridesFromConfig(cfg)
 			exitOnError(err)
+			logFileLevel, err := outlog.ParseLevel(logLevelArg)
+			exitOnError(err)
+			terminalLevel := outlog.Phase
+			if verbose {
+				terminalLevel = outlog.Detail
+			}
 			exitOnError(driver.Run(context.Background(), driver.Options{
 				IssueNum:            issue,
 				Headless:            headless,
@@ -125,6 +136,8 @@ command.
 				KeepRuns:             keepRuns,
 				ShowPrompt:           showPrompt,
 				Approval:             cmdctx.Approval(cmd),
+				TerminalLevel:        terminalLevel,
+				LogFileLevel:         logFileLevel,
 			}))
 		},
 	}
@@ -134,6 +147,8 @@ command.
 	cmd.Flags().BoolVar(&manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
 	cmd.Flags().StringVar(&workspace, "workspace", "", "Workspace root containing one clone per repo (default: parent directory of CWD). Each clone dir must be named after the repo-name component of its slug; symlink outliers into place.")
 	cmd.Flags().StringVar(&logFile, "log-file", "", "Mirror everything stdout/stderr emit during the run to this file (in addition to streaming live)")
+	cmd.Flags().StringVar(&logLevelArg, "log-level", "detail", "Verbosity of --log-file: phase (BPMN trace + prompts only) or detail (everything, default)")
+	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Stream the full firehose (subprocess output, agent body, prompt-prep banners) to the terminal. Default: terminal shows only BPMN trace lines, agent enter/exit banners, and prompts")
 	cmd.Flags().IntVar(&keepRuns, "keep-runs", 10, "Max prompt-log run directories to keep under .gh-optivem/runs/ at startup (0 = never prune)")
 	cmd.Flags().BoolVar(&showPrompt, "show-prompt", false, "Dump each agent's full rendered prompt to stdout before dispatch (default: summary banner only)")
 	return cmd

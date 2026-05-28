@@ -22,6 +22,7 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/clauderun"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
@@ -362,6 +363,91 @@ func TestClaudeRunDispatch_HaltsWhenSubprocessFails(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// BPMN-level duration banner (driver wraps clauderun.Dispatch)
+// ---------------------------------------------------------------------------
+
+func TestClaudeRunDispatch_EmitsBpmnTaskTiming(t *testing.T) {
+	// Pin nowFn so the two reads (pre-dispatch / post-dispatch) yield a
+	// deterministic elapsed for the banner assertion.
+	oldNow := nowFn
+	defer func() { nowFn = oldNow }()
+	calls := 0
+	nowFn = func() time.Time {
+		calls++
+		if calls == 1 {
+			return time.Unix(1_700_000_000, 0)
+		}
+		return time.Unix(1_700_000_045, 0) // +45s
+	}
+
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaa\n"),
+			[]byte("aaaa\n"),
+		},
+	}
+	claudeFake := &fakeClaude{}
+	opts := newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake})
+	var stdout bytes.Buffer
+	opts.Stdout = &stdout
+	fn := buildEngine(t, opts)
+
+	out := fn(newCtxWithIssue())
+	if out.Err != nil {
+		t.Fatalf("dispatch: %v", out.Err)
+	}
+	captured := stdout.String()
+	wantSubstrings := []string{
+		"BPMN TASK AT_RED_TEST",
+		"agent acceptance-test-writer",
+		"45s",
+	}
+	for _, want := range wantSubstrings {
+		if !strings.Contains(captured, want) {
+			t.Errorf("BPMN timing banner missing %q; captured stdout was:\n%s", want, captured)
+		}
+	}
+}
+
+func TestClaudeRunDispatch_EmitsBpmnTaskTimingOnFailure(t *testing.T) {
+	// The timing line is informational — it must print on the failure
+	// path too, regardless of the clauderun runner's non-zero exit.
+	oldNow := nowFn
+	defer func() { nowFn = oldNow }()
+	calls := 0
+	nowFn = func() time.Time {
+		calls++
+		if calls == 1 {
+			return time.Unix(1_700_000_000, 0)
+		}
+		return time.Unix(1_700_000_007, 0) // +7s
+	}
+
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaa\n"),
+		},
+	}
+	claudeFake := &fakeClaude{err: errors.New("exit status 1")}
+	opts := newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake})
+	var stdout bytes.Buffer
+	opts.Stdout = &stdout
+	fn := buildEngine(t, opts)
+
+	out := fn(newCtxWithIssue())
+	if out.Err == nil {
+		t.Fatalf("expected error from clauderun fake, got nil")
+	}
+	captured := stdout.String()
+	if !strings.Contains(captured, "BPMN TASK AT_RED_TEST") {
+		t.Errorf("BPMN timing banner missing on failure path; captured stdout was:\n%s", captured)
+	}
+	if !strings.Contains(captured, "7s") {
+		t.Errorf("BPMN timing banner missing pinned elapsed '7s' on failure path; captured stdout was:\n%s", captured)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Override hint flow
 // ---------------------------------------------------------------------------
 
@@ -583,9 +669,11 @@ func TestInstallLogFileMirror_TeesStdoutAndStderrToFile(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	opts := Options{
-		Stdout:  &stdout,
-		Stderr:  &stderr,
-		LogFile: path,
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		LogFile:       path,
+		TerminalLevel: outlog.Phase,
+		LogFileLevel:  outlog.Detail,
 	}
 	closeFn, err := installLogFileMirror(&opts)
 	if err != nil {
@@ -593,27 +681,29 @@ func TestInstallLogFileMirror_TeesStdoutAndStderrToFile(t *testing.T) {
 	}
 	defer closeFn()
 
-	io.WriteString(opts.Stdout, "stdout-line\n")
+	io.WriteString(opts.Out.Phase, "phase-line\n")
+	io.WriteString(opts.Out.Detail, "detail-line\n")
 	io.WriteString(opts.Stderr, "stderr-line\n")
 
 	// Close the file before reading so the buffered bytes flush.
 	closeFn()
 
-	// Live streams still got the bytes — file mirroring must not steal
-	// the operator's view.
-	if got := stdout.String(); got != "stdout-line\n" {
-		t.Errorf("stdout buffer = %q, want %q", got, "stdout-line\n")
+	// Terminal sink got only Phase-level (TerminalLevel=Phase); Detail
+	// landed only in the log file.
+	if got := stdout.String(); got != "phase-line\n" {
+		t.Errorf("stdout buffer = %q, want %q (phase only)", got, "phase-line\n")
 	}
 	if got := stderr.String(); got != "stderr-line\n" {
 		t.Errorf("stderr buffer = %q, want %q", got, "stderr-line\n")
 	}
 
-	// File got both streams in source order.
+	// File got both Phase and Detail (LogFileLevel=Detail) plus stderr in
+	// source order.
 	body, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read log file: %v", err)
 	}
-	want := "stdout-line\nstderr-line\n"
+	want := "phase-line\ndetail-line\nstderr-line\n"
 	if got := string(body); got != want {
 		t.Errorf("log file body = %q, want %q", got, want)
 	}
@@ -625,9 +715,10 @@ func TestInstallLogFileMirror_EmptyPathIsNoOp(t *testing.T) {
 	origStdout := stdout
 	origStderr := stderr
 	opts := Options{
-		Stdout:  stdout,
-		Stderr:  stderr,
-		LogFile: "",
+		Stdout:        stdout,
+		Stderr:        stderr,
+		LogFile:       "",
+		TerminalLevel: outlog.Phase,
 	}
 	closeFn, err := installLogFileMirror(&opts)
 	if err != nil {
@@ -640,6 +731,9 @@ func TestInstallLogFileMirror_EmptyPathIsNoOp(t *testing.T) {
 	}
 	if opts.Stderr != origStderr {
 		t.Errorf("Stderr was wrapped despite empty LogFile")
+	}
+	if opts.Out == nil {
+		t.Errorf("Out should be populated even with empty LogFile (terminal sink only)")
 	}
 }
 

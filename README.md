@@ -372,11 +372,22 @@ gh optivem implement                                           # pick the top Re
 ... --headless            # run the claude subprocess headless (claude -p); structured JSON envelope captured for the exit banner
 ... --autonomous          # [Deprecated] alias for --auto --headless; will be removed in a future release
 ... --manual-agents       # v1 fallback: pause at each user-task node and let the operator launch the agent manually
-... --log-file run.log    # mirror stdout/stderr to this file
+... --log-file run.log    # mirror everything stdout/stderr emit during the run to this file (always Detail = firehose by default)
+... --log-level phase     # narrow the --log-file capture to phase only (BPMN trace + prompts); pairs with --log-file
+... --verbose / -v        # stream the full firehose to the terminal (subprocess output, agent body, prompt-prep banners). Default: terminal shows only BPMN trace, agent enter/exit banners, and prompts
 ... --keep-runs 10        # max prompt-log run dirs to keep under .gh-optivem/runs/ (0 = never prune; default 10)
 ... --show-prompt         # dump each agent's full rendered prompt before dispatch (default: summary banner only)
 ... --workspace <path>    # override the default workspace root (parent directory of CWD; each clone dir must be named after the repo-name component of its slug)
 ```
+
+#### Output levels
+
+`implement` separates terminal output from `--log-file` content via two levels:
+
+- **Phase** — BPMN trace lines (`[trace …] > NODE_ID …`), approval / STOP prompts, errors, agent ENTER / EXIT banners. The headline channel the operator needs to follow the run.
+- **Detail** — subprocess byte streams (gradle, docker, gh CLI, agent body), `PREPARED PROMPT` summary, the `$ <command>` echo, internal banners. The firehose used for forensic dig.
+
+Each sink subscribes to a maximum level. Defaults: terminal = Phase (clean), `--log-file` = Detail (firehose). Independently configurable via `--verbose` (terminal up to Detail) and `--log-level=phase|detail` (log file).
 
 For skipping confirmation prompts during a pipeline run (or any other `gh optivem` invocation), see [Auto-approve](#auto-approve) — `gh optivem --auto implement --headless` is the typical unattended invocation.
 

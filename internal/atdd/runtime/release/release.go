@@ -30,6 +30,7 @@ import (
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/approval"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
 	"github.com/optivem/gh-optivem/internal/promptio"
 )
 
@@ -45,7 +46,12 @@ type CommitOptions struct {
 	Message   string
 	Confirm   Confirmer // mandatory; nil → error.
 	GitRunner GitRunner // optional injection point for tests; nil → real exec.
-	Stdout    io.Writer // optional; nil → os.Stdout. Diff summary goes here.
+	// Stdout is the back-compat fallback for callers that pre-date the
+	// level architecture. Out, when non-nil, takes precedence — Commit
+	// writes its staged-changes summary and message echo at Phase level
+	// (operator-facing). nil → os.Stdout.
+	Stdout io.Writer
+	Out    *outlog.Out
 }
 
 // GitRunner is the test seam for `git` invocations. Tests pass a fake;
@@ -88,8 +94,17 @@ func Commit(ctx context.Context, opts CommitOptions) error {
 	if runner == nil {
 		runner = realGit{}
 	}
-	stdout := opts.Stdout
-	if stdout == nil {
+	// Operator-facing commit banner is Phase level. Out, when supplied
+	// by the driver, routes the writes through every sink that accepts
+	// Phase (terminal + --log-file). Fall back through opts.Stdout for
+	// callers that haven't migrated.
+	var stdout io.Writer
+	switch {
+	case opts.Out != nil:
+		stdout = opts.Out.Phase
+	case opts.Stdout != nil:
+		stdout = opts.Stdout
+	default:
 		stdout = os.Stdout
 	}
 

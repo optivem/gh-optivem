@@ -39,6 +39,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/clauderun"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/gates"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/trace"
@@ -160,11 +161,32 @@ type Options struct {
 	ClaudeRunDeps clauderun.Deps
 
 	// Stdout / Stderr are the diagnostic targets. nil → os.Stdout / os.Stderr.
+	// Stdout is the fallback writer when Out is nil (test paths that pre-date
+	// the level-tagged sink architecture); production paths populate Out via
+	// installLogFileMirror, which routes Phase-level writes to every sink and
+	// Detail-level writes only to verbose sinks.
 	Stdout io.Writer
 	Stderr io.Writer
 
 	// Stdin is the agent-dispatch pause reader. nil → os.Stdin.
 	Stdin io.Reader
+
+	// Out routes Fprint sites by level (Phase / Detail) to the sink set
+	// (terminal + optional --log-file). Populated by installLogFileMirror at
+	// startup from Stdout + LogFile + TerminalLevel + LogFileLevel. nil →
+	// withDefaults builds an outlog.Default(Stdout) so legacy single-writer
+	// test fixtures keep seeing every Fprint.
+	Out *outlog.Out
+
+	// TerminalLevel is the maximum level the terminal sink accepts. Defaults
+	// to outlog.Phase (clean operator view). --verbose flips to outlog.Detail
+	// to restore the full firehose on the terminal.
+	TerminalLevel outlog.Level
+
+	// LogFileLevel is the maximum level the --log-file sink accepts when
+	// LogFile is non-empty. Defaults to outlog.Detail (forensic firehose).
+	// --log-level=phase narrows the log to match the default terminal view.
+	LogFileLevel outlog.Level
 }
 
 // Run loads the YAML, wires the registries, applies decorators, optionally
@@ -215,11 +237,25 @@ func Run(ctx context.Context, opts Options) error {
 		resolvedProjectURL = cfg.Project.URL
 	}
 
+	// Build opts.Out before constructing dependency Deps — actions.Deps
+	// reads Out.Detail when wiring realShell so subprocess output routes
+	// through the level-tagged sink set. Done here (not at the original
+	// post-Bind location) so the order is: build Out → construct Deps →
+	// register actions → wrap agents (those each saw opts.Out via the
+	// captured opts value).
+	logClose, err := installLogFileMirror(&opts)
+	if err != nil {
+		return fmt.Errorf("driver: %w", err)
+	}
+	defer logClose()
+
 	gateReg := gates.New()
 	gates.RegisterAll(gateReg, gates.Deps{})
 
 	actionReg := actions.New()
 	actions.RegisterAll(actionReg, actions.Deps{
+		Out:        opts.Out,
+		Stderr:     opts.Stderr,
 		ProjectURL: resolvedProjectURL,
 		RepoPath:   repoPath,
 		Config:     cfg,
@@ -261,12 +297,6 @@ func Run(ctx context.Context, opts Options) error {
 	verify.WrapAll(eng, verify.Deps{})
 	wrapOverride(eng, opts.Override)
 
-	logClose, err := installLogFileMirror(&opts)
-	if err != nil {
-		return fmt.Errorf("driver: %w", err)
-	}
-	defer logClose()
-
 	// Diagnostic-side effects on the consumer repo, both idempotent so
 	// re-running the driver from a fresh checkout never leaves the
 	// developer with mystery files committed by mistake. Pruning failures
@@ -279,18 +309,22 @@ func Run(ctx context.Context, opts Options) error {
 			fmt.Fprintf(opts.Stderr, "driver: warning: prune old runs: %v\n", err)
 		}
 	}
-	// Detect TTY-ness against the real os.Stdout, not opts.Stdout — when
-	// --log-file is passed, installLogFileMirror has already swapped
-	// opts.Stdout for an io.MultiWriter, so the trace package can no longer
-	// infer it. Keeping the colour signal on the terminal even with a log
-	// file mirror matches the LogFile contract on Options (the file gains
-	// the same ANSI bytes; less -R or NO_COLOR=1 strip them).
+	// Trace is the canonical Phase-level emitter: BPMN node enter/exit
+	// banners must reach the terminal even when --log-file is also set.
+	// Pass opts.Out.Phase so the trace decorator writes to every sink
+	// whose MaxLevel >= Phase (the terminal by default, plus the log file
+	// when --log-file is on).
+	//
+	// Colorize stays anchored to the real os.Stdout TTY check — opts.Out.Phase
+	// is a MultiWriter, not an *os.File, so the trace package cannot infer
+	// TTY-ness from it. ANSI bytes still land verbatim in the log file
+	// (less -R or NO_COLOR=1 strip them) per the LogFile contract.
 	trace.WrapAll(eng, trace.Deps{
-		Out:      opts.Stdout,
+		Out:      opts.Out.Phase,
 		RepoPath: repoPath,
 		Colorize: isatty.IsTerminal(os.Stdout.Fd()),
 	})
-	printConfig(opts.Stdout, opts, cfg, repoPath)
+	printConfig(opts.Out.Phase, opts, cfg, repoPath)
 
 	sCtx := statemachine.NewContext()
 	seedScopeState(sCtx, cfg)
@@ -323,27 +357,29 @@ func resolveRepoPath(explicit string) (string, error) {
 	return cwd, nil
 }
 
-// installLogFileMirror opens opts.LogFile (when non-empty), wraps
-// opts.Stdout and opts.Stderr to tee into it, and returns a close func
-// the caller defers. When opts.LogFile is empty, the writers are left
-// untouched and the close func is a no-op.
+// installLogFileMirror builds opts.Out from the configured sinks
+// (terminal at opts.TerminalLevel; optional --log-file at opts.LogFileLevel)
+// and tees opts.Stderr into the log file when present. Returns a close
+// func the caller defers.
 //
-// The mutation is in-place on the caller's Options so every downstream
-// site that already reads opts.Stdout / opts.Stderr (printConfig, the
-// resolve-issue banner, the trace decorator, every clauderun.Dispatch
-// invocation that pulls Stdout/Stderr from Options) automatically gains
-// file-mirroring without a per-call-site change.
+// Stderr keeps its today-shape MultiWriter — Stderr is low-volume
+// (warnings + interactive prompt prefixes) so no level filtering is
+// applied. Subprocess writers and every Fprint site in the runtime now
+// pick a level via opts.Out instead of writing through opts.Stdout.
 func installLogFileMirror(opts *Options) (func(), error) {
-	if opts.LogFile == "" {
-		return func() {}, nil
+	sinks := []outlog.Sink{{W: opts.Stdout, MaxLevel: opts.TerminalLevel}}
+	close := func() {}
+	if opts.LogFile != "" {
+		f, err := os.OpenFile(opts.LogFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+		if err != nil {
+			return func() {}, fmt.Errorf("open log file %s: %w", opts.LogFile, err)
+		}
+		sinks = append(sinks, outlog.Sink{W: f, MaxLevel: opts.LogFileLevel})
+		opts.Stderr = io.MultiWriter(opts.Stderr, f)
+		close = func() { f.Close() }
 	}
-	f, err := os.OpenFile(opts.LogFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-	if err != nil {
-		return func() {}, fmt.Errorf("open log file %s: %w", opts.LogFile, err)
-	}
-	opts.Stdout = io.MultiWriter(opts.Stdout, f)
-	opts.Stderr = io.MultiWriter(opts.Stderr, f)
-	return func() { f.Close() }, nil
+	opts.Out = outlog.New(sinks...)
+	return close, nil
 }
 
 // loadDriverConfig returns the parsed config for the run. configPath is
@@ -537,6 +573,9 @@ func (o Options) withDefaults() Options {
 	if o.Stdin == nil {
 		o.Stdin = os.Stdin
 	}
+	if o.Out == nil {
+		o.Out = outlog.Default(o.Stdout)
+	}
 	return o
 }
 
@@ -567,7 +606,7 @@ func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Conte
 	}
 
 	writeResolvedIssue(sCtx, issue)
-	fmt.Fprintf(opts.Stdout, "Resolved issue %s %q (%s).\n", issue.ID, issue.Title, issue.URL)
+	fmt.Fprintf(opts.Out.Phase, "Resolved issue %s %q (%s).\n", issue.ID, issue.Title, issue.URL)
 	return nil
 }
 
@@ -623,6 +662,11 @@ func registerAgentDispatchers(r *agents.Registry) {
 // tests that don't care about the run-log path; the closure falls back
 // to an empty PromptLogPath which clauderun treats as "skip log".
 func wrapAgentDispatchers(eng *statemachine.Engine, opts Options, cfg *projectconfig.Config, rs *runState) {
+	// Tests construct Options directly without going through Run() →
+	// withDefaults(), so opts.Out may be nil at this point. Defaulting
+	// once here keeps every dispatcher closure safe to call without
+	// nil-checking opts.Out on every Fprint site.
+	opts = opts.withDefaults()
 	for _, process := range eng.Processes {
 		for id, node := range process.Nodes {
 			if node.Kind != statemachine.UserTask {
@@ -673,17 +717,17 @@ func newHumanStopDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 			return statemachine.Outcome{Err: fmt.Errorf("STOP banner at %s: %w", nodeID, err)}
 		}
 
-		fmt.Fprintln(opts.Stdout)
+		fmt.Fprintln(opts.Out.Phase)
 		if description != "" {
-			fmt.Fprintf(opts.Stdout, "[%s] %s\n", nodeID, description)
+			fmt.Fprintf(opts.Out.Phase, "[%s] %s\n", nodeID, description)
 		} else {
-			fmt.Fprintf(opts.Stdout, "[%s] STOP\n", nodeID)
+			fmt.Fprintf(opts.Out.Phase, "[%s] STOP\n", nodeID)
 		}
 		// CategoryHuman is always in the resolved confirm set, so this
 		// always delegates to the interactive prompt regardless of --auto.
 		// The BPMN human-STOP author chose this STOP precisely because no
 		// machine decides it; --auto explicitly cannot opt out.
-		ok, err := approval.Confirm(opts.Approval, approval.CategoryHuman, opts.Stdin, opts.Stdout, "  Approve?")
+		ok, err := approval.Confirm(opts.Approval, approval.CategoryHuman, opts.Stdin, opts.Out.Phase, "  Approve?")
 		if err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("read STOP confirmation at %s: %w", nodeID, err)}
 		}
@@ -715,11 +759,11 @@ func newApproveDispatcher(opts Options, raw statemachine.RawNode, nodeID string)
 			return statemachine.Outcome{Err: fmt.Errorf("approve banner at %s: %w", nodeID, err)}
 		}
 
-		fmt.Fprintln(opts.Stdout)
+		fmt.Fprintln(opts.Out.Phase)
 		if question != "" {
-			fmt.Fprintf(opts.Stdout, "[%s] %s\n", nodeID, question)
+			fmt.Fprintf(opts.Out.Phase, "[%s] %s\n", nodeID, question)
 		} else {
-			fmt.Fprintf(opts.Stdout, "[%s] Approve?\n", nodeID)
+			fmt.Fprintf(opts.Out.Phase, "[%s] Approve?\n", nodeID)
 		}
 		// Category comes from the YAML — either the ASK_HUMAN node's
 		// own `category:` field (statemachine.RawNode.Category, set
@@ -734,7 +778,7 @@ func newApproveDispatcher(opts Options, raw statemachine.RawNode, nodeID string)
 		if err != nil {
 			return statemachine.Outcome{Err: err}
 		}
-		ok, err := approval.Confirm(opts.Approval, cat, opts.Stdin, opts.Stdout, "  Approve?")
+		ok, err := approval.Confirm(opts.Approval, cat, opts.Stdin, opts.Out.Phase, "  Approve?")
 		if err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("read approve confirmation at %s: %w", nodeID, err)}
 		}
@@ -989,10 +1033,14 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			Stdout:             opts.Stdout,
 			Stderr:             opts.Stderr,
 			Stdin:              opts.Stdin,
+			Out:                opts.Out,
 		}
 
-		if _, err := clauderun.Dispatch(context.Background(), opts.ClaudeRunDeps, cOpts); err != nil {
-			return statemachine.Outcome{Err: err}
+		t0 := nowFn()
+		_, runErr := clauderun.Dispatch(context.Background(), opts.ClaudeRunDeps, cOpts)
+		actions.WriteBpmnTaskTiming(opts.Stdout, raw.ID, "agent "+agentName, nowFn().Sub(t0))
+		if runErr != nil {
+			return statemachine.Outcome{Err: runErr}
 		}
 		// Structured outputs flow through the JSONL channel
 		// (GH_OPTIVEM_OUTPUT_FILE; see plan 20260526-2118). The
@@ -1109,21 +1157,21 @@ func promptForAgent(opts Options, raw statemachine.RawNode, params map[string]st
 	}
 	step := raw.ID
 
-	fmt.Fprintln(opts.Stdout)
-	fmt.Fprintf(opts.Stdout, "DISPATCH: %s\n", agent)
+	fmt.Fprintln(opts.Out.Phase)
+	fmt.Fprintf(opts.Out.Phase, "DISPATCH: %s\n", agent)
 	if step != "" {
-		fmt.Fprintf(opts.Stdout, "  Step: %s\n", step)
+		fmt.Fprintf(opts.Out.Phase, "  Step: %s\n", step)
 	}
 	if documentation != "" {
-		fmt.Fprintf(opts.Stdout, "  Phase: %s\n", documentation)
+		fmt.Fprintf(opts.Out.Phase, "  Phase: %s\n", documentation)
 	}
-	fmt.Fprintf(opts.Stdout, "  Launch the %s agent now (e.g. via the Task tool in Claude Code).\n", agent)
-	fmt.Fprintln(opts.Stdout, "  When the agent's COMMIT lands on HEAD, approve to continue.")
+	fmt.Fprintf(opts.Out.Phase, "  Launch the %s agent now (e.g. via the Task tool in Claude Code).\n", agent)
+	fmt.Fprintln(opts.Out.Phase, "  When the agent's COMMIT lands on HEAD, approve to continue.")
 
 	// Manual-agent dispatch is the v1 fallback for any user-task — the
 	// operator is launching the agent by hand, which is inherently a
 	// human-tier interaction. No prefix sniff needed.
-	ok, err := approval.Confirm(opts.Approval, approval.CategoryHuman, opts.Stdin, opts.Stdout, "  Approve?")
+	ok, err := approval.Confirm(opts.Approval, approval.CategoryHuman, opts.Stdin, opts.Out.Phase, "  Approve?")
 	if err != nil {
 		return fmt.Errorf("read agent-dispatch confirmation: %w", err)
 	}

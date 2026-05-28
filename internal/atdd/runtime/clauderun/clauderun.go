@@ -38,6 +38,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/approval"
 	assetsync "github.com/optivem/gh-optivem/internal/assets/sync"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/expand"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
@@ -382,10 +383,20 @@ type Options struct {
 	// a re-materialize. Empty matches any sidecar value (used by tests).
 	BinaryVersion string
 
-	// Stdout / Stderr targets for the dispatch banners and (in headless
-	// mode) the streamed subprocess output. nil → os.Stdout / os.Stderr.
+	// Stdout / Stderr targets. Stdout is the back-compat fallback when Out
+	// is nil (driver populates Out via installLogFileMirror; callers that
+	// bypass that path keep Stdout-only behaviour). Stderr is unaffected
+	// by the level architecture — low-volume, no filter applied.
+	// nil → os.Stdout / os.Stderr.
 	Stdout io.Writer
 	Stderr io.Writer
+
+	// Out routes Fprint sites by level (Phase / Detail). The driver
+	// passes its own opts.Out through, so terminal and --log-file sinks
+	// see the same level-tagged banners they get from trace and from
+	// driver.go. nil → withDefaults builds outlog.Default(Stdout) so
+	// tests that only set Stdout still see every banner.
+	Out *outlog.Out
 
 	// Stdin is the operator's TTY in interactive mode. nil → os.Stdin.
 	Stdin io.Reader
@@ -425,8 +436,18 @@ type RunOpts struct {
 	Effort         string
 	Dir            string
 	Stdin          io.Reader
-	Stdout         io.Writer
-	Stderr         io.Writer
+	// Stdout is the writer the interactive (claude TUI) subprocess pipes
+	// its stdout into. For Detail-level routing in production, Dispatch
+	// passes opts.Out.Detail through this field; tests may pass any
+	// io.Writer directly.
+	Stdout io.Writer
+	Stderr io.Writer
+	// Out is the level-tagged writer set, populated by Dispatch from the
+	// caller's opts.Out. runHeadless uses it to direct the final
+	// resultText to Phase (operator-facing summary) while keeping the
+	// captured stream at Detail. nil → runHeadless treats both as the
+	// same writer (back-compat with Stdout).
+	Out            *outlog.Out
 	OutputFilePath string
 	OutputKeysSpec string
 
@@ -574,7 +595,8 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 
 	writePreparedPromptBanner(opts, prompt)
 	if opts.ShowPrompt {
-		fmt.Fprintln(opts.Stdout, prompt)
+		// Full rendered prompt is a debugging artefact — Detail level.
+		fmt.Fprintln(opts.Out.Detail, prompt)
 	}
 	writeEnterBanner(opts)
 	startedAt := nowFn()
@@ -588,14 +610,18 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 	runStderr := io.MultiWriter(opts.Stderr, &stderrCapture)
 
 	runResult, runErr := deps.Claude.Run(ctx, RunOpts{
-		Prompt:         prompt,
-		Headless:       opts.Headless,
-		Model:          opts.Model,
-		Effort:         opts.Effort,
-		Dir:            opts.RepoPath,
-		Stdin:          opts.Stdin,
-		Stdout:         opts.Stdout,
+		Prompt:   prompt,
+		Headless: opts.Headless,
+		Model:    opts.Model,
+		Effort:   opts.Effort,
+		Dir:      opts.RepoPath,
+		Stdin:    opts.Stdin,
+		// Interactive subprocess stdout is Detail — it's the agent's
+		// raw TUI rendering. Operator-facing summary lines are emitted
+		// at Phase by Dispatch / runHeadless via opts.Out.Phase.
+		Stdout:         opts.Out.Detail,
 		Stderr:         runStderr,
+		Out:            opts.Out,
 		OutputFilePath: opts.OutputFilePath,
 		OutputKeysSpec: opts.OutputKeysSpec,
 		EventsLogPath:  opts.EventsLogPath,
@@ -1090,6 +1116,9 @@ func (o Options) withDefaults() Options {
 	if o.Stdin == nil {
 		o.Stdin = os.Stdin
 	}
+	if o.Out == nil {
+		o.Out = outlog.Default(o.Stdout)
+	}
 	return o
 }
 
@@ -1319,8 +1348,16 @@ const banner = "━━━━━━━━━━━━━━━━━━━━━�
 // operator deliberately swapped the templated body), so the banner
 // degrades to a one-line `override mode — N bytes` notice.
 func writePreparedPromptBanner(opts Options, prompt string) {
+	// withDefaults is idempotent — safe to apply both here (for test
+	// callers that bypass Dispatch) and inside Dispatch's pre-pipeline
+	// step. Without it, tests that construct Options without an Out get
+	// a nil-deref on opts.Out.Detail.
+	opts = opts.withDefaults()
 	cyan := color.New(color.FgCyan)
-	w := opts.Stdout
+	// Detail-level: the prepared-prompt banner is a verbose summary used
+	// for debugging; the headline ENTERING AGENT line in writeEnterBanner
+	// is what the operator needs to see by default.
+	w := opts.Out.Detail
 	fmt.Fprintln(w, cyan.Sprint(banner))
 	if opts.RawPrompt != "" {
 		fmt.Fprintln(w, cyan.Sprintf("📋 PREPARED PROMPT for %s  (override mode — %s)",
@@ -1424,8 +1461,9 @@ func summarizeChecklist(s string) string {
 }
 
 func writeEnterBanner(opts Options) {
+	opts = opts.withDefaults()
 	cyan := color.New(color.FgCyan, color.Bold)
-	w := opts.Stdout
+	w := opts.Out.Phase
 	fmt.Fprintln(w, cyan.Sprint(banner))
 	mode := "interactive"
 	if opts.Headless {
@@ -1446,7 +1484,8 @@ func writeEnterBanner(opts Options) {
 // no-op — still a successful exit, surfaced so the operator can tell at a
 // glance there's nothing for the wrapper to commit.
 func writeExitBanner(opts Options, changedFiles int, elapsed time.Duration, usage *TokenUsage, runErr error) {
-	w := opts.Stdout
+	opts = opts.withDefaults()
+	w := opts.Out.Phase
 	if runErr != nil {
 		red := color.New(color.FgRed, color.Bold)
 		fmt.Fprintln(w, red.Sprint(banner))
@@ -1498,8 +1537,9 @@ func formatTokens(n int) string {
 // files) — but the typical case is they meant to commit them and the
 // stranded files are silent data loss.
 func writeUntrackedWarning(opts Options, paths []string) {
+	opts = opts.withDefaults()
 	yellow := color.New(color.FgYellow, color.Bold)
-	w := opts.Stdout
+	w := opts.Out.Phase
 	fmt.Fprintln(w, yellow.Sprintf("⚠  %s left %d untracked file(s) outside the commit:", opts.Agent, len(paths)))
 	for _, p := range paths {
 		fmt.Fprintln(w, yellow.Sprintf("    %s", p))
@@ -1707,7 +1747,14 @@ func runHeadless(ctx context.Context, opts RunOpts) (RunResult, error) {
 
 	usage, resultText := parseClaudeStreamJSON(captured.Bytes())
 	if resultText != "" {
-		fmt.Fprintln(opts.Stdout, resultText)
+		// The agent's final assistant message is the operator-facing
+		// summary of what the agent did — Phase level. Falls back to
+		// the bare Stdout when Out is unset (back-compat).
+		w := opts.Stdout
+		if opts.Out != nil {
+			w = opts.Out.Phase
+		}
+		fmt.Fprintln(w, resultText)
 	} else if runErr != nil && captured.Len() > 0 {
 		// Run failed before the result event landed — surface the raw
 		// bytes so the operator sees whatever claude did print.

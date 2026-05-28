@@ -36,6 +36,7 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/atdd"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/intake"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 	trackergithub "github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/github"
@@ -52,12 +53,21 @@ var nowFn = time.Now
 // fields are optional; a zero-value Deps falls back to real shell-outs and
 // the OS stdin/stdout. Tests pass non-nil fakes for hermeticity.
 type Deps struct {
-	Gh         GhRunner
-	Git        GitRunner
-	Shell      ShellRunner // for the BPMN Phase D `run-command` primitive
-	Prompter   Prompter
-	Stdout     io.Writer
-	Stderr     io.Writer
+	Gh       GhRunner
+	Git      GitRunner
+	Shell    ShellRunner // for the BPMN Phase D `run-command` primitive
+	Prompter Prompter
+	// Stdout is the back-compat single-writer fallback used when Out is
+	// nil (tests that pre-date the level architecture). Production paths
+	// populate Out, and realShell pipes subprocess stdout to Out.Detail
+	// — fixing the pre-existing "subprocess output bypasses --log-file"
+	// leak that existed when realShell wrote directly to os.Stdout.
+	Stdout io.Writer
+	Stderr io.Writer
+	// Out routes Fprint sites (including subprocess stdout in realShell)
+	// by level. nil → withDefaults builds outlog.Default(Stdout) so test
+	// fixtures that only set Stdout still see every write.
+	Out        *outlog.Out
 	ProjectURL string // optional — explicit override for tracker operations
 	RepoPath   string // optional — defaults to current working directory
 	// Config is the already-loaded gh-optivem.yaml. Threaded in by the
@@ -131,9 +141,6 @@ func (d Deps) withDefaults() Deps {
 	if d.Git == nil {
 		d.Git = realGit{}
 	}
-	if d.Shell == nil {
-		d.Shell = realShell{}
-	}
 	if d.Prompter == nil {
 		d.Prompter = stdinPrompter{}
 	}
@@ -142,6 +149,16 @@ func (d Deps) withDefaults() Deps {
 	}
 	if d.Stderr == nil {
 		d.Stderr = os.Stderr
+	}
+	if d.Out == nil {
+		d.Out = outlog.Default(d.Stdout)
+	}
+	// realShell wiring must follow Out defaulting — its writers are read
+	// from d.Out.Detail so subprocess byte streams route to the verbose
+	// sink (and only there, by default). Earlier "Shell == nil" branch
+	// position would have referenced d.Out before it was populated.
+	if d.Shell == nil {
+		d.Shell = realShell{stdout: d.Out.Detail, stderr: d.Stderr}
 	}
 	if d.Tracker == nil {
 		// Default to a github adapter wrapping the (possibly fake) Gh
@@ -280,7 +297,7 @@ func (a actions) moveToInRefinement(ctx *statemachine.Context) statemachine.Outc
 	if err := a.deps.Tracker.SetStatus(context.Background(), handle, "In refinement"); err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-refinement: %w", err)}
 	}
-	fmt.Fprintln(a.deps.Stdout, "Moved card to In refinement.")
+	fmt.Fprintln(a.deps.Out.Phase, "Moved card to In refinement.")
 	return statemachine.Outcome{}
 }
 
@@ -295,7 +312,7 @@ func (a actions) moveToReady(ctx *statemachine.Context) statemachine.Outcome {
 	if err := a.deps.Tracker.SetStatus(context.Background(), handle, "Ready"); err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("move-to-ready: %w", err)}
 	}
-	fmt.Fprintln(a.deps.Stdout, "Moved card to Ready.")
+	fmt.Fprintln(a.deps.Out.Phase, "Moved card to Ready.")
 	return statemachine.Outcome{}
 }
 
@@ -310,7 +327,7 @@ func (a actions) moveToInProgress(ctx *statemachine.Context) statemachine.Outcom
 	if err := a.deps.Tracker.SetStatus(context.Background(), handle, "In progress"); err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-progress: %w", err)}
 	}
-	fmt.Fprintln(a.deps.Stdout, "Moved card to In progress.")
+	fmt.Fprintln(a.deps.Out.Phase, "Moved card to In progress.")
 	return statemachine.Outcome{}
 }
 
@@ -326,7 +343,7 @@ func (a actions) moveToInAcceptance(ctx *statemachine.Context) statemachine.Outc
 	if err := a.deps.Tracker.SetStatus(context.Background(), handle, "In acceptance"); err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-acceptance: %w", err)}
 	}
-	fmt.Fprintln(a.deps.Stdout, "Moved card to In acceptance.")
+	fmt.Fprintln(a.deps.Out.Phase, "Moved card to In acceptance.")
 	return statemachine.Outcome{}
 }
 
@@ -394,7 +411,10 @@ func issueFromContext(ctx *statemachine.Context) (tracker.Issue, error) {
 // below; centralises the banner+run pair so any future shell-out action
 // inherits the same trace shape.
 func (a actions) runShell(cmdLine string) (ShellResult, error) {
-	fmt.Fprintf(a.deps.Stdout, "\n$ %s\n", cmdLine)
+	// "$ <cmdline>" echo pairs with the verbose subprocess output that
+	// follows — both Detail level. The BPMN trace line emitted by
+	// WriteBpmnTaskTiming below is the Phase-level summary.
+	fmt.Fprintf(a.deps.Out.Detail, "\n$ %s\n", cmdLine)
 	return a.deps.Shell.Run(context.Background(), cmdLine)
 }
 
@@ -748,7 +768,7 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 	if taskName == "" {
 		taskName = ctx.Params["originating-task-name"]
 	}
-	WriteBpmnTaskTiming(a.deps.Stdout, taskName, "command "+TruncateForBanner(cmd, 60), nowFn().Sub(t0))
+	WriteBpmnTaskTiming(a.deps.Out.Phase, taskName, "command "+TruncateForBanner(cmd, 60), nowFn().Sub(t0))
 	succeeded := err == nil
 	ctx.Set("command-succeeded", succeeded)
 	if isTestRun {
@@ -1220,9 +1240,16 @@ func (realGit) Run(ctx context.Context, args ...string) ([]byte, error) {
 	return out, nil
 }
 
-type realShell struct{}
+// realShell teas child-process stdio to two writers: the live operator-
+// facing sink (Detail level by default, populated by withDefaults from
+// Deps.Out.Detail) and an in-memory buffer the action body parses for
+// ShellResult.Stdout / .Stderr. Both writers default to os.Stdout / Stderr
+// when constructed directly (test paths that skip Deps.withDefaults).
+type realShell struct {
+	stdout, stderr io.Writer
+}
 
-func (realShell) Run(ctx context.Context, commandLine string) (ShellResult, error) {
+func (r realShell) Run(ctx context.Context, commandLine string) (ShellResult, error) {
 	// We deliberately route through the user's shell so command lines like
 	// `./test-all.sh --sample` and `bash -lc compile-all.sh` work uniformly.
 	// On Windows, gh-optivem ships against bash via the Git Bash shim; if
@@ -1239,9 +1266,23 @@ func (realShell) Run(ctx context.Context, commandLine string) (ShellResult, erro
 	// returned ShellResult still carries stdout for callers that parse it
 	// (e.g. `gh optivem test run --list`) and stderr is still inlined
 	// into the error message on failure.
+	//
+	// The live sinks are Detail-level by default (the operator's terminal
+	// only sees them with --verbose; --log-file always gets them) — a
+	// shift from the pre-outlog behaviour where realShell wrote straight
+	// to os.Stdout, bypassing the log-file mirror entirely. Zero-value
+	// writers fall back to os.Stdout / os.Stderr for direct-construction
+	// callers.
+	stdoutSink, stderrSink := r.stdout, r.stderr
+	if stdoutSink == nil {
+		stdoutSink = os.Stdout
+	}
+	if stderrSink == nil {
+		stderrSink = os.Stderr
+	}
 	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
-	cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
+	cmd.Stdout = io.MultiWriter(stdoutSink, &stdoutBuf)
+	cmd.Stderr = io.MultiWriter(stderrSink, &stderrBuf)
 	err := cmd.Run()
 	result := ShellResult{Stdout: stdoutBuf.Bytes(), Stderr: stderrBuf.Bytes()}
 	if err != nil {
