@@ -290,7 +290,7 @@ func TestPrintRunEndBanner_writesBannerWithConfig(t *testing.T) {
 		System:  projectconfig.System{Config: systemsPath},
 	}
 	var buf bytes.Buffer
-	printRunEndBanner(&buf, cfg, "")
+	printRunEndBanner(&buf, cfg, "", "")
 	got := buf.String()
 	if !strings.Contains(got, "=== System connected to real ===") {
 		t.Errorf("missing per-system header (label fallback) in output:\n%s", got)
@@ -309,7 +309,7 @@ func TestPrintRunEndBanner_writesBannerWithConfig(t *testing.T) {
 func TestPrintRunEndBanner_silentOnNilConfig(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer
-	printRunEndBanner(&buf, nil, "")
+	printRunEndBanner(&buf, nil, "", "")
 	if buf.Len() != 0 {
 		t.Errorf("expected empty output on nil cfg + empty ticket, got: %q", buf.String())
 	}
@@ -323,7 +323,7 @@ func TestPrintRunEndBanner_silentOnEmptyConfigPath(t *testing.T) {
 		Project: projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/x/projects/1"},
 	}
 	var buf bytes.Buffer
-	printRunEndBanner(&buf, cfg, "")
+	printRunEndBanner(&buf, cfg, "", "")
 	if buf.Len() != 0 {
 		t.Errorf("expected empty output when system.config is empty + empty ticket, got: %q", buf.String())
 	}
@@ -339,24 +339,41 @@ func TestPrintRunEndBanner_silentOnUnreadableFile(t *testing.T) {
 		System:  projectconfig.System{Config: filepath.Join(t.TempDir(), "no-such.yaml")},
 	}
 	var buf bytes.Buffer
-	printRunEndBanner(&buf, cfg, "")
+	printRunEndBanner(&buf, cfg, "", "")
 	if buf.Len() != 0 {
 		t.Errorf("expected empty output on unreadable systems.yaml + empty ticket, got: %q", buf.String())
 	}
 }
 
 // TestPrintRunEndBanner_printsTicketLine: non-empty ticketURL prints the
-// Ticket line even when cfg is nil (no system block to load).
+// Ticket line even when cfg is nil (no system block to load). With an empty
+// title, the line is the URL alone (no trailing quoted suffix).
 func TestPrintRunEndBanner_printsTicketLine(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer
-	printRunEndBanner(&buf, nil, "https://github.com/myorg/myrepo/issues/42")
+	printRunEndBanner(&buf, nil, "https://github.com/myorg/myrepo/issues/42", "")
 	got := buf.String()
 	if !strings.Contains(got, "Ticket: https://github.com/myorg/myrepo/issues/42") {
 		t.Errorf("expected Ticket line, got: %q", got)
 	}
+	if strings.Contains(got, "\"") {
+		t.Errorf("empty title should not emit a quoted suffix, got: %q", got)
+	}
 	if strings.Contains(got, "===") {
 		t.Errorf("nil cfg should not emit any system block, got: %q", got)
+	}
+}
+
+// TestPrintRunEndBanner_printsTicketLineWithTitle: when both URL and title
+// are set, the title is appended in quotes after the URL on the same line.
+func TestPrintRunEndBanner_printsTicketLineWithTitle(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	printRunEndBanner(&buf, nil, "https://github.com/myorg/myrepo/issues/42", "Reject order with line quantity of 100")
+	got := buf.String()
+	want := "Ticket: https://github.com/myorg/myrepo/issues/42 \"Reject order with line quantity of 100\""
+	if !strings.Contains(got, want) {
+		t.Errorf("expected %q in output, got: %q", want, got)
 	}
 }
 
@@ -382,7 +399,7 @@ func TestPrintRunEndBanner_descriptionInHeader(t *testing.T) {
 		System:  projectconfig.System{Config: systemsPath},
 	}
 	var buf bytes.Buffer
-	printRunEndBanner(&buf, cfg, "")
+	printRunEndBanner(&buf, cfg, "", "")
 	got := buf.String()
 	if !strings.Contains(got, "=== System connected to External System Stubs ===") {
 		t.Errorf("expected description-driven header, got:\n%s", got)
@@ -420,7 +437,7 @@ func TestPrintRunEndBanner_ticketAndSystemsTogether(t *testing.T) {
 		System:  projectconfig.System{Config: systemsPath},
 	}
 	var buf bytes.Buffer
-	printRunEndBanner(&buf, cfg, "https://github.com/myorg/myrepo/issues/42")
+	printRunEndBanner(&buf, cfg, "https://github.com/myorg/myrepo/issues/42", "")
 	got := buf.String()
 	ticketIdx := strings.Index(got, "Ticket: https://github.com/myorg/myrepo/issues/42")
 	stubIdx := strings.Index(got, "=== System connected to External System Stubs ===")

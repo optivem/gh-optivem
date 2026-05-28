@@ -17,8 +17,11 @@ set -euo pipefail
 #
 #   issue-num:  GitHub issue number, or full issue URL — forwarded as-is to
 #               `gh optivem implement --issue ...`.
-#   label:      optional [A-Za-z0-9_-]+ tacked onto the worktree id for
-#               sortability (e.g. "ticket-61", "follow-up").
+#   label:      optional [A-Za-z0-9_-]+ slug that overrides the fetched
+#               issue title in the worktree id. By default, the script
+#               fetches the issue title from the consumer repo via
+#               `gh issue view` and slugifies it; pass [label] to skip
+#               that and use your own slug instead (e.g. "follow-up").
 #   --config:   path (relative to the consumer worktree) of the gh-optivem.yaml
 #               variant to exercise. Default: gh-optivem-monolith-typescript.yaml.
 #               The shop template commits one yaml per stack (monolith/multitier
@@ -40,7 +43,15 @@ set -euo pipefail
 #      systems.yaml, so switching configs across sessions can leave the
 #      other stack's state behind. Fatal: failure aborts the rehearsal
 #      before worktree creation.
-#   3. Resolve <id> = <ts>[-<label>], where <ts> = date +%Y%m%d-%H%M%S.
+#   3. Resolve <id> = <issue>-<slug>-<ts>, where <ts> = date +%Y%m%d-%H%M%S,
+#      <issue> is the numeric issue id (extracted from the URL if needed),
+#      and <slug> is the explicit [label] arg or, if absent, the issue
+#      title fetched via `gh issue view` from the consumer repo, lowercased
+#      and slugified to [a-z0-9-]+ (capped at ~40 chars on a word boundary).
+#      The title fetch is a hard prerequisite — if `gh issue view` fails
+#      (auth, network, wrong repo, nonexistent issue), the rehearsal aborts
+#      before any worktree is created. Pass [label] to skip the fetch.
+#      <ts> keeps the id unique across same-ticket reruns.
 #   4. From the consumer repo, create a worktree under
 #      <academy>/worktrees/rehearsal-<id> on a new branch rehearsal/<id>.
 #      Grouped under `worktrees/` so a single multi-root VS Code
@@ -201,12 +212,61 @@ if [[ ! -d "$CONSUMER_ROOT/.git" ]]; then
   exit 2
 fi
 
+# Build the rehearsal id: <issue>-<slug>-<ts>. The issue number anchors
+# the branch on GitHub to a specific ticket so reviewers can navigate
+# from a `rehearsal/61-...` branch to issue #61 at a glance. <slug> is
+# the explicit [label] arg or the slugified issue title for human
+# context. <ts> keeps the id unique across same-ticket reruns.
 TS="$(date +%Y%m%d-%H%M%S)"
-if [[ -n "$LABEL" ]]; then
-  ID="${TS}-${LABEL}"
-else
-  ID="${TS}"
+
+# Extract numeric issue id from $ISSUE — accepts plain "61", "#61", or
+# the full URL form gh issue view also takes. ${var##*/} strips a URL
+# prefix; ${var##*#} strips a leading "#". For plain "61" both are
+# no-ops.
+ISSUE_NUM="${ISSUE##*/}"
+ISSUE_NUM="${ISSUE_NUM##*#}"
+if [[ ! "$ISSUE_NUM" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: could not extract numeric issue id from '$ISSUE'" >&2
+  exit 2
 fi
+
+# Resolve <slug>: explicit [label] wins; otherwise fetch the issue title
+# from the consumer repo via `gh issue view` and slugify it. The fetch
+# is a hard prerequisite — failure (auth, network, wrong repo, typo'd
+# issue number) aborts before any worktree is created, so a misnamed
+# branch never reaches GitHub.
+if [[ -n "$LABEL" ]]; then
+  SLUG="$LABEL"
+  TITLE=""
+else
+  log "Fetching issue title via gh issue view $ISSUE_NUM (from $REHEARSAL_REPO)..."
+  if ! TITLE="$(cd "$CONSUMER_ROOT" && gh issue view "$ISSUE_NUM" --json title -q .title 2>&1)"; then
+    echo "ERROR: gh issue view $ISSUE_NUM failed in $CONSUMER_ROOT:" >&2
+    echo "$TITLE" >&2
+    exit 1
+  fi
+  if [[ -z "$TITLE" ]]; then
+    echo "ERROR: gh issue view $ISSUE_NUM returned an empty title" >&2
+    exit 1
+  fi
+  # Slugify: lowercase, non-alphanumeric → "-", collapse runs, trim.
+  SLUG="$(printf '%s' "$TITLE" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+  # Cap at 40 chars on a word boundary: take first 40 chars, then strip
+  # from the last "-" to the end. That drops the partial trailing word
+  # (and any trailing dash from the truncation). If the slug has no "-"
+  # in the first 40 chars (single very long word), ${slug%-*} is a
+  # no-op and we keep the 40-char chunk as-is.
+  if [[ ${#SLUG} -gt 40 ]]; then
+    SLUG="${SLUG:0:40}"
+    SLUG="${SLUG%-*}"
+  fi
+  if [[ -z "$SLUG" ]]; then
+    echo "ERROR: issue title '$TITLE' slugified to empty string" >&2
+    exit 1
+  fi
+fi
+
+ID="${ISSUE_NUM}-${SLUG}-${TS}"
 # Worktree lives under <academy>/worktrees/ — sibling of the consumer
 # repo and the gh-optivem checkout. Safe inside the academy because the
 # workspace resolver (internal/workspace.resolveFrom) walks up for a
@@ -255,11 +315,15 @@ cleanup() {
 # fact that we're exercising a freshly-built binary out of GH_OPTIVEM_ROOT
 # rather than whatever `gh optivem` is installed on PATH.
 log "${C_BOLD}Rehearsal:${C_RESET}"
+log "  issue:       #${ISSUE_NUM}"
+if [[ -n "$TITLE" ]]; then
+  log "  title:       $TITLE"
+fi
+if [[ -n "$LABEL" ]]; then
+  log "  label:       $LABEL (override)"
+fi
 log "  worktree:    $(display_path "$WORKTREE_PATH")"
 log "  branch:      $BRANCH"
-if [[ -n "$LABEL" ]]; then
-  log "  label:       $LABEL"
-fi
 log "  config:      $CONFIG"
 log "  built from:  $(display_path "$GH_OPTIVEM_ROOT")"
 log "  binary:      $(display_path "$BIN")"
