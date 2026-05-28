@@ -150,6 +150,43 @@ After all edits land:
 - Confirm: no `test-disabler` / `test-enabler` dispatches appear in the rehearsal log, the AT is committed with the gate annotation in every layer commit, verify steps successfully run the gated test under `ATDD_RUN_WIP=1`, and the AT is silently skipped when running `mvn test` directly in the rehearsal worktree.
 - Repeat for `gh-optivem-monolith-csharp.yaml` and `gh-optivem-monolith-typescript.yaml`.
 
+## Estimates
+
+Per-item breakdown:
+
+| Item | Work | Estimate |
+|---|---|---|
+| 1 | Replace `renderDisableMarkerExample` → `renderGateMarkerExample`, delete removal helper | 20–30 min |
+| 2 | Edit acceptance-test-writer prompt | 10–15 min |
+| 3 | Inject `ATDD_RUN_WIP=1` into test-runner `cmd.Env` (mostly = locating it) | 20–40 min |
+| 4 | Delete 3 BPMN call-sites + rewire sequence flows | 30–45 min |
+| 5 | Delete 2 leaf processes | 10–15 min |
+| 6 | Delete 2 agent prompts + registry/embed | 10–15 min |
+| 7 | Placeholder-wiring cleanup + test renames | 10–15 min |
+| 8 | Fix `transitions_test.go` + `run_test.go` | 30–60 min |
+| 9 | `language-equivalents.md` row + architecture YAML | 15–20 min |
+| 10 | Rehearse on Java + C# + TS tickets | 1–2 hr |
+
+Coding only: ~2.5–4 hr. With 3-language rehearsal: ~3.5–6 hr.
+
+### Risk zones (where variance comes from)
+
+1. **Statemachine test landmines** (per `feedback_statemachine_test_loop_hazard.md`) — Items 4/5/8 all touch `process-flow.yaml` topology. New/changed edges have historically deadlocked statemachine tests and chewed 20GB+ RAM. Pre-flight `go test ./internal/atdd/runtime/statemachine/ -p 2 -timeout 60s` is mandatory. If it hits, debugging adds 1–2 hr.
+2. **xUnit version resolution for C#** — adds 30–60 min if the shop template is on xUnit v2 and you decide to bump to v3 instead of taking the `Xunit.SkippableFact` shortcut. Zero impact if shop is already v3.
+3. **Test-runner location for Item 3** — the plan says "find the test-runner invocation." Could be 5 min if it's obvious, 30+ min if it's behind a few layers of indirection.
+
+### Parallelization
+
+Items 1, 2, 6, 9 are independent and can dispatch as parallel subagents — compresses ~1 hr of sequential work to ~20 min wall-clock. Items 4, 5, 7, 8 all touch statemachine territory and run sequentially. Item 3 must land before Item 10.
+
+### Realistic bands
+
+- **Smooth run, parallel where possible:** 4–5 hr
+- **Typical, one minor surprise:** 6–7 hr (one focused day)
+- **Statemachine landmine + xUnit v3 bump:** 1.5–2 days
+
+Single-number planning anchor: **one working day**, with the understanding that a statemachine hiccup could spill into the next morning.
+
 ## Out of scope
 
 - **Stripping the gate at ticket close.** Recommended permanent gate (see "Design decisions baked in" §1). If you want the AT to join regular post-merge CI without an opt-in env var, add a Item 11 that introduces a `strip-gate` step at the end of `change-system-behavior` (after REFACTOR_OPPORTUNISTICALLY) — one file edit per ticket, still net win vs 6 today.
