@@ -807,6 +807,14 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	if opts.OverrideText != "" {
 		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + opts.OverrideText + "\n"
 	}
+	// Interactive dispatches keep the Claude Code REPL open after the
+	// agent finishes; new operators don't always know to `/exit` to
+	// continue the cycle (vs. typing redirect feedback). Appending the
+	// operator-facing hint only when !Headless keeps headless prompts
+	// uncluttered — the suffix would be a no-op without a REPL.
+	if !opts.Headless {
+		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + agents.InteractiveSuffix() + "\n"
+	}
 	return rendered, nil
 }
 

@@ -625,6 +625,50 @@ func TestRenderPrompt_UnsetLanguageFailsFast(t *testing.T) {
 	}
 }
 
+// TestRenderPrompt_InteractiveSuffixAppendedWhenNotHeadless pins the
+// operator-facing terminal hint added in plan 20260528-0959 — interactive
+// dispatches keep the Claude Code REPL open after the agent finishes, so
+// the suffix tells new operators to `/exit` (close) or type feedback to
+// redirect. Headless dispatches have no REPL, so the suffix would only
+// waste tokens.
+func TestRenderPrompt_InteractiveSuffixAppendedWhenNotHeadless(t *testing.T) {
+	opts := newOpts()
+	opts.Headless = false
+
+	got, err := renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt: %v", err)
+	}
+	mustContain(t, got, "type `/exit` to close the session")
+	if !strings.HasSuffix(strings.TrimRight(got, "\n"), "the agent will incorporate it.") {
+		t.Errorf("interactive suffix should be at the end of the prompt; tail was:\n%s",
+			tailLines(got, 5))
+	}
+}
+
+func TestRenderPrompt_InteractiveSuffixOmittedWhenHeadless(t *testing.T) {
+	opts := newOpts()
+	opts.Headless = true
+
+	got, err := renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt: %v", err)
+	}
+	if strings.Contains(got, "type `/exit` to close the session") {
+		t.Errorf("headless prompt must not include the operator /exit suffix:\n%s", got)
+	}
+}
+
+// tailLines returns the last n non-blank-trimmed lines of s, joined with
+// "\n", for compact assertion failure output.
+func tailLines(s string, n int) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) <= n {
+		return strings.Join(lines, "\n")
+	}
+	return strings.Join(lines[len(lines)-n:], "\n")
+}
+
 // ---------------------------------------------------------------------------
 // Dispatch — happy path
 // ---------------------------------------------------------------------------
@@ -1244,6 +1288,11 @@ func TestDispatch_CommandPlaceholdersResolveWhenPopulated(t *testing.T) {
 	}
 	claudeFake := &fakeClaude{}
 	opts := newOpts()
+	// Run headless so the interactive operator-suffix doesn't append —
+	// this test asserts exact prompt equality on the substitution path,
+	// not the suffix behaviour (covered separately by
+	// TestRenderPrompt_InteractiveSuffix*).
+	opts.Headless = true
 	opts.PromptOverride = "cmd=${command} exit=${command-exit-code} tail=${command-stderr-tail}"
 	opts.CommandLine = "gh optivem system build"
 	opts.CommandExitCode = 2

@@ -10,20 +10,24 @@ import (
 )
 
 const (
-	agentsDir    = "runtime/agents/atdd"
-	preamblePath = "runtime/shared/preamble.md"
-	scopePath    = "runtime/shared/scope.md"
+	agentsDir             = "runtime/agents/atdd"
+	preamblePath          = "runtime/shared/preamble.md"
+	scopePath             = "runtime/shared/scope.md"
+	interactiveSuffixPath = "runtime/shared/interactive-suffix.md"
 )
 
 // sharedPreamble is the universal ticket-vars + don't-commit/summarise block
 // prepended to every agent prompt. sharedScope is the universal phase-scope
 // doctrine inserted between preamble and body — every agent must honour the
 // scope-exception contract, so the rule belongs in argv rather than a Read
-// directive resolved per dispatch. Both load once at init so a missing asset
-// fails the binary at startup rather than at first dispatch.
+// directive resolved per dispatch. interactiveSuffix is the operator-facing
+// /exit + redirect hint appended only when the dispatcher invokes the agent
+// interactively (see InteractiveSuffix). All three load once at init so a
+// missing asset fails the binary at startup rather than at first dispatch.
 var (
-	sharedPreamble = mustReadAsset(preamblePath)
-	sharedScope    = mustReadAsset(scopePath)
+	sharedPreamble     = mustReadAsset(preamblePath)
+	sharedScope        = mustReadAsset(scopePath)
+	interactiveSuffix  = mustReadAsset(interactiveSuffixPath)
 )
 
 func mustReadAsset(path string) string {
@@ -79,6 +83,14 @@ func Prompt(name string) (string, error) {
 		sharedScope + "\n\n" +
 		body + "\n", nil
 }
+
+// InteractiveSuffix returns the operator-facing block the dispatcher
+// appends to interactive (non-headless) prompts — explaining how to
+// close the session (`/exit`) and how to redirect the agent. Kept in
+// the agents package so the embedded asset has a single owner; the
+// dispatcher decides per-dispatch whether to append it based on
+// Options.Headless.
+func InteractiveSuffix() string { return interactiveSuffix }
 
 // LoadTuning returns the model/effort tuning declared in the named
 // agent's prompt frontmatter. Every error path is fatal to dispatch:
