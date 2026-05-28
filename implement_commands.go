@@ -152,7 +152,7 @@ kill them.`,
 				LogFileLevel:        logFileLevel,
 			})
 			if runErr == nil {
-				printRunEndBanner(cmd.ErrOrStderr(), cfg, resolved.URL)
+				printRunEndBanner(cmd.ErrOrStderr(), cfg, resolved.URL, resolved.Title)
 			}
 			exitOnError(runErr)
 		},
@@ -171,16 +171,21 @@ kill them.`,
 }
 
 // printRunEndBanner prints the post-run exit banner: a "Ticket: <url>" line
-// (when non-empty) followed by the per-system status block emitted by
-// runner.Status. Best-effort for the system block: missing system.config, an
-// unreadable systems.yaml, or an empty configured path is silently skipped —
-// failing to print URLs must never fail the implement command itself. The
-// ticket line is independent and still prints when the system block is
-// skipped. The banner goes to stderr (operator-facing UI), not stdout —
-// matches the rest of implement's exit-banner content.
-func printRunEndBanner(w io.Writer, cfg *projectconfig.Config, ticketURL string) {
+// (with the issue title appended in quotes when known) followed by the
+// per-system status block emitted by runner.Status. Best-effort for the
+// system block: missing system.config, an unreadable systems.yaml, or an
+// empty configured path is silently skipped — failing to print URLs must
+// never fail the implement command itself. The ticket line is independent
+// and still prints when the system block is skipped. The banner goes to
+// stderr (operator-facing UI), not stdout — matches the rest of implement's
+// exit-banner content.
+func printRunEndBanner(w io.Writer, cfg *projectconfig.Config, ticketURL, ticketTitle string) {
 	if ticketURL != "" {
-		fmt.Fprintf(w, "\nTicket: %s\n", ticketURL)
+		if ticketTitle != "" {
+			fmt.Fprintf(w, "\nTicket: %s %q\n", ticketURL, ticketTitle)
+		} else {
+			fmt.Fprintf(w, "\nTicket: %s\n", ticketURL)
+		}
 	}
 	if cfg == nil || cfg.System.Config == "" {
 		return
