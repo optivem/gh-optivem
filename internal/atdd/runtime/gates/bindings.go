@@ -32,6 +32,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/optivem/gh-optivem/internal/approval"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 	trackergithub "github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/github"
@@ -52,6 +53,12 @@ type Deps struct {
 	// + Gh when unset. Tests inject fakes the same way as actions: set Gh
 	// to a canned-response runner, leave Tracker nil.
 	Tracker tracker.Tracker
+	// Approval is the resolved auto-approve policy. Bindings that prompt
+	// operator-skippable decisions (refactor-type-choice) take their
+	// natural default under --auto instead of stalling on stdin.
+	// Zero value (Auto=false) preserves prompt-always semantics, so
+	// tests that don't set Approval keep their existing behaviour.
+	Approval approval.Resolved
 }
 
 // Prompter asks the user one yes/no/value question and returns the trimmed
@@ -369,33 +376,37 @@ func boolStateGate(ctx *statemachine.Context, key string) statemachine.Outcome {
 
 // refactorTypeChoice prompts the operator for the loopable refactor
 // menu (TOP `refactor` and the opportunistic-refactor branch inside
-// `change-system-behavior`). Empty reply → `none` (exit the loop).
-// Mirrors the structuralTestMode shape (this file, top of file):
-// preseed via ctx.State to short-circuit the prompt for hand-debug or
-// transitions tests; otherwise inline ask → trim/lower → switch on
-// the four enum values.
+// `change-system-behavior`). Preseed via ctx.State to short-circuit
+// the prompt for hand-debug or transitions tests; under --auto, the
+// menu's natural default (none) is taken without prompting so an
+// autonomous run does not stall on stdin. Otherwise delegate to
+// promptio.SelectOneOfVia: bare Enter → none, unrecognised reply
+// → re-prompt (matching the y/n loop in ConfirmYNVia).
 func (b bindings) refactorTypeChoice(ctx *statemachine.Context) statemachine.Outcome {
 	if v := ctx.GetString("refactor-type-choice"); v != "" {
 		return statemachine.Outcome{Value: v}
 	}
-	answer, err := b.deps.Prompter.Ask("Refactor type? (refactor-system-structure | refactor-test-structure | redesign-system-structure | redesign-external-system-structure | none) [none]: ")
-	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("refactor-type-choice: %w", err)}
+	if b.deps.Approval.Auto {
+		return statemachine.Outcome{Value: "none"}
 	}
-	answer = strings.ToLower(strings.TrimSpace(answer))
-	if answer == "" {
-		answer = "none"
-	}
-	switch answer {
-	case "refactor-system-structure",
+	allowed := []string{
+		"refactor-system-structure",
 		"refactor-test-structure",
 		"redesign-system-structure",
 		"redesign-external-system-structure",
-		"none":
-		return statemachine.Outcome{Value: answer}
-	default:
-		return statemachine.Outcome{Err: fmt.Errorf("refactor-type-choice: unrecognised value %q", answer)}
+		"none",
 	}
+	answer, err := promptio.SelectOneOfVia(
+		b.deps.Prompter,
+		os.Stderr,
+		"Refactor type? (refactor-system-structure | refactor-test-structure | redesign-system-structure | redesign-external-system-structure | none) [none]: ",
+		allowed,
+		"none",
+	)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("refactor-type-choice: %w", err)}
+	}
+	return statemachine.Outcome{Value: answer}
 }
 
 // approvalOutcome reads the value newApproveDispatcher (driver.go)

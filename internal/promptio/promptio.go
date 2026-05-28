@@ -83,6 +83,37 @@ func ConfirmYNVia(asker Asker, out io.Writer, prompt string) (bool, error) {
 	}
 }
 
+// SelectOneOfVia is the multi-choice analogue of ConfirmYNVia. It asks
+// for one of the values in `allowed`, looping on unrecognised input the
+// same way the y/n helper does. Case-insensitive, trims whitespace. An
+// empty reply (bare Enter, the Asker contract for EOF) returns
+// defaultValue — when defaultValue itself is in `allowed`, the prompt
+// should advertise it as `[default]` so the operator sees the convention.
+// An asker error terminates the loop and is returned to the caller.
+//
+// The reminder ("Please pick one of: …") goes to `out`; pass stderr to
+// keep prompt UX off stdout-captured channels.
+func SelectOneOfVia(asker Asker, out io.Writer, prompt string, allowed []string, defaultValue string) (string, error) {
+	allowedSet := make(map[string]bool, len(allowed))
+	for _, a := range allowed {
+		allowedSet[strings.ToLower(a)] = true
+	}
+	for {
+		answer, err := asker.Ask(prompt)
+		if err != nil {
+			return "", err
+		}
+		normalized := strings.ToLower(strings.TrimSpace(answer))
+		if normalized == "" {
+			return defaultValue, nil
+		}
+		if allowedSet[normalized] {
+			return normalized, nil
+		}
+		fmt.Fprintf(out, "Please pick one of: %s.\n", strings.Join(allowed, ", "))
+	}
+}
+
 // ParseYN is the stateless coercion used outside the interactive prompt
 // loops — e.g. by BPMN gates reading a pre-set Context value that was
 // populated by an upstream service task or an environment-style override.

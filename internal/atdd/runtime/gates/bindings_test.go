@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/optivem/gh-optivem/internal/approval"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 )
@@ -544,12 +545,38 @@ func TestRefactorTypeChoice(t *testing.T) {
 			t.Fatalf("Value: got %q, want %q", out.Value, "none")
 		}
 	})
-	t.Run("unrecognised_halts", func(t *testing.T) {
-		p := &fakePrompter{answers: []string{"refactor-the-world"}}
+	t.Run("unrecognised_reprompts_until_valid", func(t *testing.T) {
+		// Mirrors promptio.ConfirmYNVia's loop semantics: an unrecognised
+		// reply ("n", "refactor-the-world") prints the reminder and asks
+		// again, instead of halting the entire BPMN cycle.
+		p := &fakePrompter{answers: []string{"n", "refactor-the-world", "none"}}
 		b := newBindings(t, Deps{Prompter: p})
 		out := b.refactorTypeChoice(statemachine.NewContext())
-		if out.Err == nil {
-			t.Fatalf("expected err, got %+v", out)
+		if out.Err != nil {
+			t.Fatalf("unexpected err: %v", out.Err)
+		}
+		if out.Value != "none" {
+			t.Fatalf("Value: got %q, want %q", out.Value, "none")
+		}
+		if len(p.asked) != 3 {
+			t.Fatalf("expected 3 prompts (two reprompts + valid), got %d", len(p.asked))
+		}
+	})
+	t.Run("auto_skips_prompt_and_returns_none", func(t *testing.T) {
+		// Under --auto the menu is operator-skippable: the opportunistic
+		// refactor branch is never entered, the default "none" is taken
+		// without prompting so an autonomous run does not stall on stdin.
+		p := &fakePrompter{} // no answers; would error if asked.
+		b := newBindings(t, Deps{Prompter: p, Approval: approval.Resolved{Auto: true}})
+		out := b.refactorTypeChoice(statemachine.NewContext())
+		if out.Err != nil {
+			t.Fatalf("unexpected err: %v", out.Err)
+		}
+		if out.Value != "none" {
+			t.Fatalf("Value: got %q, want %q", out.Value, "none")
+		}
+		if len(p.asked) != 0 {
+			t.Fatalf("prompter should not have been asked under --auto: %v", p.asked)
 		}
 	})
 }

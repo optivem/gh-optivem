@@ -183,6 +183,67 @@ func TestConfirmYNVia_AskerErrorPropagates(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// SelectOneOfVia — multi-choice analogue of ConfirmYNVia
+// ---------------------------------------------------------------------------
+
+var refactorChoices = []string{
+	"refactor-system-structure",
+	"refactor-test-structure",
+	"redesign-system-structure",
+	"redesign-external-system-structure",
+	"none",
+}
+
+func TestSelectOneOfVia_AcceptsValid(t *testing.T) {
+	asker := &scriptedAsker{t: t, calls: []scriptedCall{{answer: "refactor-system-structure\n"}}}
+	got, err := SelectOneOfVia(asker, io.Discard, "Refactor type? [none]: ", refactorChoices, "none")
+	if err != nil {
+		t.Fatalf("unexpected err %v", err)
+	}
+	if got != "refactor-system-structure" {
+		t.Fatalf("got %q, want refactor-system-structure", got)
+	}
+}
+
+func TestSelectOneOfVia_RepromptsOnUnrecognised(t *testing.T) {
+	asker := &scriptedAsker{t: t, calls: []scriptedCall{
+		{answer: "n\n"},
+		{answer: "refactor-the-world\n"},
+		{answer: "refactor-test-structure\n"},
+	}}
+	var out bytes.Buffer
+	got, err := SelectOneOfVia(asker, &out, "Refactor type? [none]: ", refactorChoices, "none")
+	if err != nil {
+		t.Fatalf("unexpected err %v", err)
+	}
+	if got != "refactor-test-structure" {
+		t.Fatalf("got %q, want refactor-test-structure", got)
+	}
+	if c := strings.Count(out.String(), "Please pick one of"); c != 2 {
+		t.Errorf("expected please-pick reminder twice, got %d: %q", c, out.String())
+	}
+}
+
+func TestSelectOneOfVia_EmptyReplyTakesDefault(t *testing.T) {
+	asker := &scriptedAsker{t: t, calls: []scriptedCall{{answer: ""}}}
+	got, err := SelectOneOfVia(asker, io.Discard, "Refactor type? [none]: ", refactorChoices, "none")
+	if err != nil {
+		t.Fatalf("unexpected err %v", err)
+	}
+	if got != "none" {
+		t.Fatalf("got %q, want none", got)
+	}
+}
+
+func TestSelectOneOfVia_AskerErrorPropagates(t *testing.T) {
+	want := errors.New("asker broke")
+	asker := &scriptedAsker{t: t, calls: []scriptedCall{{err: want}}}
+	if _, err := SelectOneOfVia(asker, io.Discard, "Refactor type? [none]: ", refactorChoices, "none"); !errors.Is(err, want) {
+		t.Fatalf("expected wrapped err, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // ParseYN — coercion used outside the prompt loops
 // ---------------------------------------------------------------------------
 
