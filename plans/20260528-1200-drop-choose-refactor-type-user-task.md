@@ -72,7 +72,8 @@ But the binding (`gates/bindings.go:375` and the switch at 383-388) only lists f
    - Lines 383-388: add `"redesign-external-system-structure"` to the case list.
    - File: `internal/atdd/runtime/gates/bindings_test.go:522` — append `"redesign-external-system-structure"` to the slice of valid answers iterated by the prompt sub-tests.
 
-3. **Remove the now-dead `auto-default:` schema from the loader.**
+3. **Remove the now-dead `auto-default:` schema from the loader.** — ⏳ Deferred: needs separate discussion before executing.
+   - **Status (2026-05-28).** Plan 1150's Seam A — exactly the code this item proposes to delete — was committed in `e737f0a` after this plan was authored. The deletion is still defensible under the structural-fix doctrine: once `CHOOSE_REFACTOR_TYPE` is gone (Item 1), no caller carries `auto-default:`, and the loader's `validateAutoDefault` check guards no live use. But: the schema may still earn its keep as a per-node opt-in for *other* future loopable choosers, in which case removing it here is premature. **Discuss separately before executing Item 3.** Items 1, 2, 4 are unaffected and can proceed.
    - File: `internal/atdd/runtime/statemachine/load.go`.
      - Delete the `AutoDefault` field on `RawNode` (line 67) and its doc comment block (lines 56-66).
      - Delete the `RawAutoDefault` struct + its doc comment (lines 70-83).

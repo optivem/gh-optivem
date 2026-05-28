@@ -11,14 +11,19 @@
 > per-node `auto-default:` mechanism designed below is no longer
 > needed for this node.
 >
-> **Any in-flight Seam A work on this plan** (`load.go`,
-> `load_test.go`, `run.go`, `run_test.go`, `driver.go`,
-> `driver_test.go` carrying the new `RawAutoDefault` schema /
-> dispatcher branch) **should be stashed or discarded**, not
-> committed — 1200 retires the mechanism before any caller would use
-> it. Kept on disk for design-trail traceability: the rejected
-> "demote to gateway" objection in the Design section below is the
-> alternative 1200 picks up and resolves.
+> **Update (2026-05-28, post-supersede).** The Seam A code (Items 1, 2,
+> 5, 7 — schema + parse-time validation + bind-time gates-registry
+> cross-check + YAML annotation on `CHOOSE_REFACTOR_TYPE`) was committed
+> on operator instruction in `e737f0a` despite this banner's earlier
+> "stash or discard" guidance. **Whether plan 1200's Item 3 (delete the
+> `auto-default:` schema) still proceeds is now an open question to be
+> discussed separately** — see the matching note on plan 1200's Item 3.
+> Until that's decided, the schema lives in HEAD but no dispatcher
+> honours it, so net runtime behaviour is unchanged.
+>
+> Original supersede guidance kept below for design-trail
+> traceability: the rejected "demote to gateway" objection in the
+> Design section below is the alternative 1200 picks up and resolves.
 
 ## Context
 
