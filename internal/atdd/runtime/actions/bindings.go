@@ -785,6 +785,16 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 		ctx.Set("command-exit-code", result.ExitCode)
 		ctx.Set("command-stderr-tail", lastNLines(string(result.Stderr), commandStderrTailLines))
 		fmt.Fprintf(a.deps.Stderr, "run-command: %v\n", err)
+	} else {
+		// Diagnostic keys owned by this action; clear on success so a
+		// later success doesn't carry residue from an earlier failure
+		// into the trace or into a downstream fix-* prompt via
+		// ExpandParams's state-fallback.
+		ctx.Unset("failure-kind")
+		ctx.Unset("command-line")
+		ctx.Unset("command-exit-code")
+		ctx.Unset("command-stderr-tail")
+		ctx.Unset("verify_results_text")
 	}
 	if isTestRun && !succeeded {
 		// Classify the failure so the gateway downstream of run-tests can
@@ -1054,6 +1064,15 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 		return statemachine.Outcome{}
 	}
 
+	// Diagnostic keys owned by this action; clear on success so a later
+	// success doesn't carry residue from an earlier failure into the
+	// trace or into a downstream fix-* prompt via ExpandParams's
+	// state-fallback. phase-changed-files is stamped unconditionally above
+	// and is NOT a diagnostic key — left alone.
+	ctx.Unset("failure-kind")
+	ctx.Unset("failing-task-name")
+	ctx.Unset("missing-outputs")
+	ctx.Unset("scope-violating-paths")
 	ctx.Set("outputs-and-scopes-valid", true)
 	return statemachine.Outcome{}
 }

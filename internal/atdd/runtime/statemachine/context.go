@@ -35,6 +35,16 @@ func (c *Context) Set(key string, value any) {
 	c.State[key] = value
 }
 
+// Unset removes key from the state map. Producers use this to clear a
+// failure-only diagnostic payload on the success branch so a later
+// success doesn't carry residue from an earlier failure into the trace
+// or into a downstream fix-* prompt via ExpandParams's state-fallback.
+// True deletion (not Set(key, "")) keeps the strict-unresolved check in
+// ExpandParams meaningful and lets stateDelta render `-key`.
+func (c *Context) Unset(key string) {
+	delete(c.State, key)
+}
+
 // Get returns the state value for key (any type). Returns nil if unset.
 func (c *Context) Get(key string) any {
 	return c.State[key]

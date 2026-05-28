@@ -881,6 +881,42 @@ func TestRunCommand_NonTestRunFailure_DoesNotStampVerifyResults(t *testing.T) {
 	}
 }
 
+func TestRunCommand_Success_ClearsPriorFailureDiagnostics(t *testing.T) {
+	// Within a single run, ctx.State persists across call-activities (the
+	// state-fallback path documented at run.go:308). If a prior dispatch
+	// failed and stamped failure-kind / command-* / verify_results_text,
+	// a later success on the same producer must wipe those keys — otherwise
+	// the trace's state-delta hoists stale values onto the success banner
+	// and a downstream fix-* dispatch's ExpandParams substitutes them into
+	// a recovery prompt for a failure that's already been resolved.
+	sh := &fakeShell{out: []byte("OK")}
+	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	ctx.Params["command"] = "gh optivem compile"
+	// Seed every diagnostic key runCommand owns, simulating residue from
+	// a prior failed dispatch in the same run.
+	ctx.Set("failure-kind", "command-failed")
+	ctx.Set("command-line", "previous failing cmd")
+	ctx.Set("command-exit-code", 42)
+	ctx.Set("command-stderr-tail", "old stderr blob")
+	ctx.Set("verify_results_text", "old verify blob")
+	out := a.runCommand(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	for _, k := range []string{
+		"failure-kind",
+		"command-line",
+		"command-exit-code",
+		"command-stderr-tail",
+		"verify_results_text",
+	} {
+		if _, set := ctx.State[k]; set {
+			t.Errorf("%s must be cleared on success: still set to %v", k, ctx.Get(k))
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // validate-outputs-and-scopes (BPMN Phase D Item 7, Q-D6)
 // ---------------------------------------------------------------------------
@@ -1019,6 +1055,51 @@ func TestValidateOutputsAndScopes_AllClean_IsValid(t *testing.T) {
 	}
 	if got := ctx.GetString("phase-changed-files"); got != "" {
 		t.Errorf("phase-changed-files on empty delta: got %q, want %q", got, "")
+	}
+}
+
+func TestValidateOutputsAndScopes_Success_ClearsPriorFailureDiagnostics(t *testing.T) {
+	// Within a single run, ctx.State persists across call-activities (the
+	// state-fallback path documented at run.go:308). If a prior dispatch
+	// failed and stamped failure-kind / failing-task-name / missing-outputs /
+	// scope-violating-paths, a later success on this producer must wipe
+	// those keys — otherwise the trace's state-delta hoists stale values
+	// onto the success banner and a downstream fix-* dispatch's
+	// ExpandParams substitutes them into a recovery prompt for a failure
+	// that's already been resolved.
+	repoPath := t.TempDir()
+	cfg := writePhaseScopeTestConfig(t, repoPath)
+	git := newFakeRunner(t, "git")
+	git.on([]string{"-C", repoPath, "status", "--porcelain"},
+		[]byte(""), nil)
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "implement-dsl"
+	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
+	ctx.Set("system-driver-port-changed", true)
+	ctx.Set("external-driver-port-changed", true)
+	// Seed every diagnostic key validateOutputsAndScopes owns, simulating
+	// residue from a prior failed dispatch in the same run.
+	ctx.Set("failure-kind", "missing-output")
+	ctx.Set("failing-task-name", "some-prior-task")
+	ctx.Set("missing-outputs", "old,missing,keys")
+	ctx.Set("scope-violating-paths", "old/stray/path.ts")
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get("outputs-and-scopes-valid"); got != true {
+		t.Fatalf("outputs-and-scopes-valid: got %v, want true", got)
+	}
+	for _, k := range []string{
+		"failure-kind",
+		"failing-task-name",
+		"missing-outputs",
+		"scope-violating-paths",
+	} {
+		if _, set := ctx.State[k]; set {
+			t.Errorf("%s must be cleared on success: still set to %v", k, ctx.Get(k))
+		}
 	}
 }
 
