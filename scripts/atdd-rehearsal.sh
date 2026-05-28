@@ -12,9 +12,6 @@ set -euo pipefail
 # rehearsal branch. Personal dev workflow for the plan author — not a CLI
 # feature consumers need.
 #
-# Note: this script no longer cleans docker state. If you want a fresh
-# state, run `bash scripts/atdd-clean.sh [--config <yaml>]` first.
-#
 # Usage:
 #   bash atdd-rehearsal.sh <issue-num> [label] [--config <yaml>] [--auto] [--headless]
 #
@@ -41,8 +38,8 @@ set -euo pipefail
 #      pulled images are preserved — same scope as `./gradlew clean`).
 #      Project-scoped: only cleans stacks listed in the *current* config's
 #      systems.yaml, so switching configs across sessions can leave the
-#      other stack's state behind. Non-fatal: failure (e.g. docker daemon
-#      down) warns and continues.
+#      other stack's state behind. Fatal: failure aborts the rehearsal
+#      before worktree creation.
 #   3. Resolve <id> = <ts>[-<label>], where <ts> = date +%Y%m%d-%H%M%S.
 #   4. From the consumer repo, create a worktree under
 #      <academy>/worktrees/rehearsal-<id> on a new branch rehearsal/<id>.
@@ -285,6 +282,9 @@ if ! ( cd "$GH_OPTIVEM_ROOT" && go build -o gh-optivem.exe . ) >"$BUILD_LOG" 2>&
   exit 1
 fi
 rm -f "$BUILD_LOG"
+
+log "Cleaning local docker state (volumes + locally-built images; registry images preserved)..."
+( cd "$CONSUMER_ROOT" && GH_OPTIVEM_CONFIG="$CONSUMER_ROOT/$CONFIG" "$BIN" system clean )
 
 log "Creating worktree at $WORKTREE_PATH on branch $BRANCH..."
 if ! git -C "$CONSUMER_ROOT" worktree add -b "$BRANCH" "$WORKTREE_PATH"; then
