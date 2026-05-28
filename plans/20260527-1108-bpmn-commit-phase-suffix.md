@@ -1,5 +1,94 @@
 # Plan: Phase-qualify BPMN commit messages
 
+> ⚠️ **STILL IN DISCUSSION** — this plan now carries competing shape
+> proposals (see "New ideas from 2026-05-28 chat" immediately below).
+> Do not execute until inline-vs-suffix, tag vocabulary, and grain
+> (per-call-site vs. per-agent-dispatch) are resolved.
+
+## New ideas from 2026-05-28 chat (prepended; not yet integrated into Items below)
+
+A chat session on 2026-05-28 raised the same problem from a different
+angle, with additional dimensions this plan didn't originally consider.
+Capturing them here so the next iteration can fold them in.
+
+### Open questions raised in chat
+
+1. **Inline-bracket shape vs. trailing-suffix shape.**
+   This plan's Item 1 picks Shape B (`… - ${suite} ${cycle_phase} layer`)
+   as a trailing suffix. The chat proposed an inline-bracket alternative:
+
+   ```
+   [69] [Write AT]              Add product search
+   [69] [Implement DSL]         Add product search
+   [69] [Implement Drivers]     Add product search
+   [69] [Implement System]      Add product search
+   [69] [Refactor Tests]        Add product search
+   ```
+
+   vs. this plan's existing suffix shape:
+
+   ```
+   [69] Add product search - acceptance test code
+   [69] Add product search - system implementation
+   [69] Add product search - test refactor
+   [69] Add product search - contract-real SYSTEM DRIVER layer
+   ```
+
+   Inline is a stronger `rg` token (`rg '^\[\d+\] \[Write AT\]'`) and
+   keeps the title visually adjacent to the ticket; suffix reads more
+   naturally as English. Pick one before wiring.
+
+2. **Tag vocabulary — phase nouns vs. cycle-state nouns.**
+   The chat's phase nouns mirrored BPMN call-activity names directly
+   (`Write AT`, `Implement DSL`, `Implement Drivers`, `Implement System`,
+   `Refactor Tests`). This plan's suffix table uses a different
+   vocabulary mixing kind nouns (`acceptance test code`,
+   `system implementation`, `test refactor`) with parametric
+   `${suite} ${cycle_phase} layer`. Pre-existing test fixture
+   `internal/atdd/runtime/release/release_test.go:82` encodes a third
+   shape: `#42 | Register Customer | AT - GREEN - SYSTEM` — phase +
+   cycle-state combined with `|` separators. Three vocabularies in
+   flight; pick one canonical axis (phase noun vs. cycle-state noun vs.
+   both as two tag positions).
+
+3. **Grain — per BPMN `commit` call-activity vs. per agent dispatch.**
+   This plan operates at the four `commit` call sites (coarser grain).
+   The chat raised per-dispatched-agent as an alternative: every
+   `clauderun.Dispatch` exit would author its own commit, producing a
+   finer trail. Per-dispatch means touching the writing-agent exit
+   hook in `internal/atdd/runtime/clauderun/clauderun.go` instead of
+   (only) `process-flow.yaml`. Decide before wiring.
+
+4. **Coordinate with the banner-grammar plan
+   ([`plans/20260528-1345-banner-grammar-unification.md`](20260528-1345-banner-grammar-unification.md)).**
+   That plan picks a phase-detection mechanism for the operator-stream
+   `[phase]` tag (phase-scopes.yaml membership check, or call-activity
+   depth tracking). If the commit subject pulls the phase name from the
+   same source, factor the helper once and call it from both sites.
+   Otherwise document why the two are intentionally independent.
+
+### Pre-existing prerequisite is dangling
+
+This plan declares `plans/20260527-1052-bpmn-commit-message-binding.md`
+as a prerequisite, but that file is **not on disk** — not under flat
+`plans/`, not under `plans/upcoming/`, not under `plans/deferred/`.
+Before this plan is picked up, find or re-draft 1052 so its "all four
+call sites already bind `message:`" claim is verifiable.
+
+### Out of scope for this discussion update
+
+- Writing-agent-authored free-form commit messages — same exclusion
+  this plan already records.
+- Branch / PR title alignment — same exclusion.
+
+### Location change
+
+This plan was moved out of `plans/upcoming/` to flat `plans/` on
+2026-05-28 per the "new plans live flat under `plans/`" convention.
+No content below this section has been edited as part of the move.
+
+---
+
 ## Context
 
 Spun off from `plans/20260527-1052-bpmn-commit-message-binding.md` (the rehearsal-unblocking change that binds `[${ticket_id}] ${issue_title}` to all four BPMN commit sites).
