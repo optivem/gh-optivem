@@ -38,8 +38,13 @@ func isolateUserStateDir(t *testing.T) string {
 
 // spawnLongRunner starts a child that will stay alive for ~60s (enough
 // for the doctor sweep to observe it) and registers a cleanup that kills
-// + waits for the process so the test does not leak it. Returns the PID.
-func spawnLongRunner(t *testing.T) int {
+// + waits for the process so the test does not leak it. Returns the PID
+// and a reap function the caller can invoke to Wait() on the child — the
+// test must call reap after the doctor's SIGKILL on Unix, otherwise the
+// child becomes a zombie that processAlive (via signal-0) still reports
+// as alive. Calling reap is a no-op on the second invocation, so the
+// cleanup hook's own Wait remains safe.
+func spawnLongRunner(t *testing.T) (int, func()) {
 	t.Helper()
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
@@ -51,11 +56,19 @@ func spawnLongRunner(t *testing.T) int {
 		t.Fatalf("spawn long-runner: %v", err)
 	}
 	pid := cmd.Process.Pid
+	reaped := false
+	reap := func() {
+		if reaped {
+			return
+		}
+		reaped = true
+		_, _ = cmd.Process.Wait()
+	}
 	t.Cleanup(func() {
 		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
+		reap()
 	})
-	return pid
+	return pid, reap
 }
 
 // knownDeadPid spawns a fast-exiting child and waits for it to finish,
@@ -102,7 +115,7 @@ func writeMarker(t *testing.T, stateRuns string, runTimestamp string, parentPid,
 func TestRunDoctorOrphans_Orphan_KilledOnYes(t *testing.T) {
 	runs := isolateUserStateDir(t)
 
-	childPid := spawnLongRunner(t)
+	childPid, reap := spawnLongRunner(t)
 	deadParentPid := knownDeadPid(t)
 
 	marker := userstate.PidMarker{ChildPid: childPid, ParentPid: deadParentPid, Cwd: t.TempDir()}
@@ -113,6 +126,12 @@ func TestRunDoctorOrphans_Orphan_KilledOnYes(t *testing.T) {
 	if err := runDoctorOrphans(stdin, &stdout); err != nil {
 		t.Fatalf("runDoctorOrphans: %v\n--- output ---\n%s", err, stdout.String())
 	}
+
+	// On Unix, SIGKILL leaves the child as a zombie until its parent
+	// (this test process) reaps it; processAlive via signal-0 still
+	// reports the zombie as alive. Reap so the assertion below sees
+	// the PID actually gone.
+	reap()
 
 	if processAlive(childPid) {
 		t.Errorf("child pid %d still alive after kill", childPid)
@@ -128,7 +147,7 @@ func TestRunDoctorOrphans_Orphan_KilledOnYes(t *testing.T) {
 func TestRunDoctorOrphans_Orphan_KeptOnNo(t *testing.T) {
 	runs := isolateUserStateDir(t)
 
-	childPid := spawnLongRunner(t)
+	childPid, _ := spawnLongRunner(t)
 	deadParentPid := knownDeadPid(t)
 
 	marker := userstate.PidMarker{ChildPid: childPid, ParentPid: deadParentPid, Cwd: t.TempDir()}
@@ -184,7 +203,7 @@ func TestRunDoctorOrphans_StaleChildDead_SilentlyCleaned(t *testing.T) {
 func TestRunDoctorOrphans_LiveDispatch_SkippedNotPrompted(t *testing.T) {
 	runs := isolateUserStateDir(t)
 
-	childPid := spawnLongRunner(t)
+	childPid, _ := spawnLongRunner(t)
 	// Parent is this test process — definitionally alive — so the
 	// classifier should treat the dispatch as in-flight.
 	parentPid := os.Getpid()
@@ -243,7 +262,7 @@ func TestProcessAlive_DeadAfterShortLivedHelper(t *testing.T) {
 }
 
 func TestProcessAlive_LiveLongRunner(t *testing.T) {
-	pid := spawnLongRunner(t)
+	pid, _ := spawnLongRunner(t)
 	if !processAlive(pid) {
 		t.Errorf("processAlive(%d) = false for live long-runner", pid)
 	}
