@@ -329,6 +329,16 @@ type Options struct {
 	// escapes make file-mirroring noisy).
 	EventsLogPath string
 
+	// EventsTextLogPath, when non-empty (headless mode only), is the file
+	// path runHeadless tees a human-readable plain-text rendering of the
+	// stream-json events to. Sibling of EventsLogPath: same stream, but
+	// formatted to look like the interactive Claude Code transcript
+	// (assistant text rendered inline, tool calls one-lined, tool results
+	// summarised) so operators can read it without piping through `jq`.
+	// I/O failure is a non-fatal warning to Stderr; same fail-soft policy
+	// as EventsLogPath. Empty string skips the text log.
+	EventsTextLogPath string
+
 	// PidFilePath, when non-empty, is the file path runHeadless /
 	// runInteractive writes a JSON marker (child_pid, parent_pid, cwd) to
 	// immediately after cmd.Start() and removes on clean dispatch exit.
@@ -467,6 +477,11 @@ type RunOpts struct {
 	// EventsLogPath mirrors clauderun.Options.EventsLogPath. Honoured by
 	// runHeadless only; runInteractive ignores it. Empty → no audit log.
 	EventsLogPath string
+
+	// EventsTextLogPath mirrors clauderun.Options.EventsTextLogPath. The
+	// sibling plain-text transcript next to the .events.jsonl audit log.
+	// Honoured by runHeadless only; empty → no text log.
+	EventsTextLogPath string
 
 	// PidFilePath mirrors clauderun.Options.PidFilePath. Honoured by both
 	// runHeadless and runInteractive (force-cancel can hit either mode).
@@ -640,11 +655,12 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 		Stdout:         opts.Out.Detail,
 		Stderr:         runStderr,
 		Out:            opts.Out,
-		OutputFilePath: opts.OutputFilePath,
-		OutputKeysSpec: opts.OutputKeysSpec,
-		EventsLogPath:  opts.EventsLogPath,
-		PidFilePath:    opts.PidFilePath,
-		Approval:       opts.Approval,
+		OutputFilePath:    opts.OutputFilePath,
+		OutputKeysSpec:    opts.OutputKeysSpec,
+		EventsLogPath:     opts.EventsLogPath,
+		EventsTextLogPath: opts.EventsTextLogPath,
+		PidFilePath:       opts.PidFilePath,
+		Approval:          opts.Approval,
 	})
 	if runErr != nil {
 		writeExitBanner(opts, 0, nowFn().Sub(startedAt), runResult.Usage, runErr)
@@ -1506,6 +1522,9 @@ func writeEnterBanner(opts Options) {
 	if opts.EventsLogPath != "" {
 		fmt.Fprintln(w, cyan.Sprintf("         Events log:  %s", opts.EventsLogPath))
 	}
+	if opts.EventsTextLogPath != "" {
+		fmt.Fprintln(w, cyan.Sprintf("         Events text: %s", opts.EventsTextLogPath))
+	}
 	if opts.OutputFilePath != "" {
 		fmt.Fprintln(w, cyan.Sprintf("         Outputs log: %s", opts.OutputFilePath))
 	}
@@ -1795,15 +1814,18 @@ func runHeadless(ctx context.Context, opts RunOpts) (RunResult, error) {
 	cmd.Stdin = opts.Stdin
 
 	// Tee stdout to (a) an in-memory accumulator that parseClaudeStreamJSON
-	// scans for the terminal `type:"result"` event after the run, and (b)
-	// the per-dispatch .events.jsonl audit log when EventsLogPath is set.
-	// The events log is open-on-demand: a missing/unwritable path
+	// scans for the terminal `type:"result"` event after the run, (b) the
+	// per-dispatch .events.jsonl audit log when EventsLogPath is set, and
+	// (c) a sibling plain-text transcript when EventsTextLogPath is set.
+	// Both file sinks are open-on-demand: a missing/unwritable path
 	// downgrades to a non-fatal stderr warning so diagnostics never break
 	// the dispatch (same policy as writePromptLog).
 	var captured bytes.Buffer
 	eventsSink, closeEvents := openEventsLog(opts.EventsLogPath, opts.Stderr)
 	defer closeEvents()
-	cmd.Stdout = io.MultiWriter(&captured, eventsSink)
+	textSink, closeText := openEventsTextLog(opts.EventsTextLogPath, opts.Stderr)
+	defer closeText()
+	cmd.Stdout = io.MultiWriter(&captured, eventsSink, textSink)
 	cmd.Stderr = opts.Stderr
 	cmd.Env = subprocessEnv(opts)
 
@@ -1918,6 +1940,259 @@ func openEventsLog(path string, stderr io.Writer) (io.Writer, func()) {
 		return io.Discard, func() {}
 	}
 	return f, func() { _ = f.Close() }
+}
+
+// openEventsTextLog mirrors openEventsLog but wraps the file in a
+// streamTextWriter so the tee'd stream-json stdout lands on disk as a
+// human-readable transcript (assistant text, tool calls, tool results)
+// rather than raw NDJSON. The returned cleanup flushes any partial
+// line still buffered before closing the file.
+func openEventsTextLog(path string, stderr io.Writer) (io.Writer, func()) {
+	if path == "" {
+		return io.Discard, func() {}
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		fmt.Fprintf(stderr, "clauderun: warning: failed to create events text log dir %s: %v\n", filepath.Dir(path), err)
+		return io.Discard, func() {}
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		fmt.Fprintf(stderr, "clauderun: warning: failed to open events text log %s: %v\n", path, err)
+		return io.Discard, func() {}
+	}
+	tw := &streamTextWriter{w: f}
+	return tw, func() {
+		tw.Flush()
+		_ = f.Close()
+	}
+}
+
+// streamTextWriter buffers bytes from the `claude -p --output-format
+// stream-json` stdout pipe until newline boundaries, parses each
+// complete JSON event line, and renders it as a human-readable line
+// to the underlying writer. Designed to wrap an os.File for the
+// per-dispatch .events.log audit log.
+//
+// Partial lines (chunks that don't end on '\n') accumulate in buf
+// until the next Write completes them. Callers must invoke Flush()
+// on cleanup to render any line the subprocess emitted without a
+// trailing newline before exiting. Malformed JSON downgrades to a
+// raw passthrough so a single CLI hiccup doesn't lose context.
+type streamTextWriter struct {
+	w   io.Writer
+	buf []byte
+}
+
+func (s *streamTextWriter) Write(p []byte) (int, error) {
+	s.buf = append(s.buf, p...)
+	for {
+		i := bytes.IndexByte(s.buf, '\n')
+		if i < 0 {
+			return len(p), nil
+		}
+		s.flushLine(s.buf[:i])
+		s.buf = s.buf[i+1:]
+	}
+}
+
+func (s *streamTextWriter) Flush() {
+	if len(s.buf) > 0 {
+		s.flushLine(s.buf)
+		s.buf = nil
+	}
+}
+
+func (s *streamTextWriter) flushLine(line []byte) {
+	line = bytes.TrimSpace(line)
+	if len(line) == 0 {
+		return
+	}
+	text, ok := formatStreamEvent(line)
+	if !ok {
+		_, _ = s.w.Write(line)
+		_, _ = s.w.Write([]byte("\n"))
+		return
+	}
+	if text != "" {
+		_, _ = s.w.Write([]byte(text))
+	}
+}
+
+// formatStreamEvent renders one stream-json line as plain text mimicking
+// the interactive Claude Code transcript. Returns (text, true) on a
+// recognised event type — including events that intentionally produce
+// no output (e.g. rate_limit_event noise) — and ("", false) on a
+// parse failure so the caller can fall back to raw passthrough.
+func formatStreamEvent(line []byte) (string, bool) {
+	var head struct {
+		Type    string `json:"type"`
+		Subtype string `json:"subtype,omitempty"`
+	}
+	if err := json.Unmarshal(line, &head); err != nil {
+		return "", false
+	}
+	switch head.Type {
+	case "system":
+		if head.Subtype == "init" {
+			return "─── session started ───\n", true
+		}
+		return "", true
+	case "rate_limit_event":
+		return "", true
+	case "assistant", "user":
+		var env struct {
+			Message struct {
+				Role    string `json:"role"`
+				Content []struct {
+					Type     string          `json:"type"`
+					Text     string          `json:"text,omitempty"`
+					Thinking string          `json:"thinking,omitempty"`
+					Name     string          `json:"name,omitempty"`
+					Input    json.RawMessage `json:"input,omitempty"`
+					Content  json.RawMessage `json:"content,omitempty"`
+				} `json:"content"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal(line, &env); err != nil {
+			return "", false
+		}
+		var b strings.Builder
+		for _, c := range env.Message.Content {
+			switch c.Type {
+			case "text":
+				if c.Text != "" {
+					b.WriteString(c.Text)
+					if !strings.HasSuffix(c.Text, "\n") {
+						b.WriteByte('\n')
+					}
+				}
+			case "thinking":
+				if c.Thinking != "" {
+					b.WriteString("[thinking] ")
+					b.WriteString(oneLine(c.Thinking, 400))
+					b.WriteByte('\n')
+				}
+			case "tool_use":
+				b.WriteString("[tool ")
+				b.WriteString(c.Name)
+				if summary := summarizeToolInput(c.Name, c.Input); summary != "" {
+					b.WriteString("] ")
+					b.WriteString(summary)
+				} else {
+					b.WriteByte(']')
+				}
+				b.WriteByte('\n')
+			case "tool_result":
+				if snippet := summarizeToolResult(c.Content); snippet != "" {
+					b.WriteString("[tool_result] ")
+					b.WriteString(snippet)
+					b.WriteByte('\n')
+				}
+			}
+		}
+		return b.String(), true
+	case "result":
+		var env struct {
+			Result string `json:"result"`
+		}
+		if err := json.Unmarshal(line, &env); err != nil {
+			return "", false
+		}
+		if env.Result == "" {
+			return "─── result ───\n", true
+		}
+		if strings.HasSuffix(env.Result, "\n") {
+			return "─── result ───\n" + env.Result, true
+		}
+		return "─── result ───\n" + env.Result + "\n", true
+	}
+	return "", true
+}
+
+// summarizeToolInput renders the tool_use input map as a one-line
+// `key=value` snippet, preferring a tool-specific primary field (e.g.
+// file_path for Read/Write/Edit, command for Bash) and falling back
+// to compact JSON. Truncates to 200 characters to keep the transcript
+// readable when a tool call carries large payloads.
+func summarizeToolInput(toolName string, raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return oneLine(string(raw), 200)
+	}
+	if primary := primaryToolField(toolName); primary != "" {
+		if v, ok := m[primary]; ok {
+			return primary + "=" + oneLine(fmt.Sprint(v), 200)
+		}
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return ""
+	}
+	return oneLine(string(b), 200)
+}
+
+// summarizeToolResult condenses a tool_result content payload — which
+// the CLI emits either as a plain string or as an array of content
+// blocks — into a one-line snippet for the transcript.
+func summarizeToolResult(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return oneLine(s, 200)
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &blocks); err == nil {
+		for _, b := range blocks {
+			if b.Text != "" {
+				return oneLine(b.Text, 200)
+			}
+		}
+		return ""
+	}
+	return oneLine(string(raw), 200)
+}
+
+// primaryToolField returns the most operator-relevant input field for
+// well-known tools so the transcript prints `Read file_path=…`
+// instead of a full compact-JSON dump. Empty string means "no primary
+// — fall back to compact JSON".
+func primaryToolField(toolName string) string {
+	switch toolName {
+	case "Read", "Write", "Edit", "NotebookEdit":
+		return "file_path"
+	case "Bash", "PowerShell":
+		return "command"
+	case "Grep", "Glob":
+		return "pattern"
+	case "Task", "Agent":
+		return "description"
+	case "WebFetch":
+		return "url"
+	case "WebSearch":
+		return "query"
+	}
+	return ""
+}
+
+// oneLine collapses newlines to spaces and truncates to max characters
+// with a "…" ellipsis, so multi-line strings (file contents, command
+// bodies) fit on a single transcript line.
+func oneLine(s string, max int) string {
+	s = strings.ReplaceAll(s, "\r\n", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\t", " ")
+	if max > 0 && len(s) > max {
+		s = s[:max] + "…"
+	}
+	return s
 }
 
 // parseClaudeStreamJSON decodes the `claude -p --output-format stream-json

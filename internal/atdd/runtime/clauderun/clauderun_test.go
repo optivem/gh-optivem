@@ -905,7 +905,7 @@ func TestDispatch_BannerSaysNoChangesOnCleanExit(t *testing.T) {
 // no-outputs MID, an interactive dispatch with no event stream, or a
 // test path that sets none must produce no log lines at all.
 func TestDispatch_EnterBannerListsLogPaths(t *testing.T) {
-	t.Run("all three paths set → all three lines shown", func(t *testing.T) {
+	t.Run("all four paths set → all four lines shown", func(t *testing.T) {
 		var buf bytes.Buffer
 		gitFake := &fakeGit{
 			out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
@@ -914,6 +914,7 @@ func TestDispatch_EnterBannerListsLogPaths(t *testing.T) {
 		opts.Stdout = &buf
 		opts.PromptLogPath = "/tmp/run-1/prompt.md"
 		opts.EventsLogPath = "/tmp/run-1/events.ndjson"
+		opts.EventsTextLogPath = "/tmp/run-1/events.log"
 		opts.OutputFilePath = "/tmp/run-1/outputs.jsonl"
 
 		if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
@@ -922,6 +923,7 @@ func TestDispatch_EnterBannerListsLogPaths(t *testing.T) {
 		got := buf.String()
 		mustContain(t, got, "Prompt log:  /tmp/run-1/prompt.md")
 		mustContain(t, got, "Events log:  /tmp/run-1/events.ndjson")
+		mustContain(t, got, "Events text: /tmp/run-1/events.log")
 		mustContain(t, got, "Outputs log: /tmp/run-1/outputs.jsonl")
 	})
 
@@ -1151,6 +1153,124 @@ func TestOpenEventsLog_OpenFailureWarnsAndReturnsDiscardSink(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "events log") {
 		t.Errorf("warning should mention 'events log', got: %s", stderr.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// openEventsTextLog + streamTextWriter — the human-readable sibling of
+// openEventsLog. runHeadless tees the same stream-json stdout through
+// this writer so operators get a transcript-style .events.log next to
+// the raw .events.jsonl.
+// ---------------------------------------------------------------------------
+
+func TestOpenEventsTextLog_RendersAssistantTextToFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "runs", "20260528-1400", "001-system-implementer.events.log")
+	var stderr bytes.Buffer
+
+	w, closeFn := openEventsTextLog(path, &stderr)
+	stream := `{"type":"system","subtype":"init"}` + "\n" +
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"hello operator"}]}}` + "\n" +
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/tmp/x.go"}}]}}` + "\n" +
+		`{"type":"result","result":"done"}` + "\n"
+	if _, err := io.WriteString(w, stream); err != nil {
+		t.Fatalf("write events: %v", err)
+	}
+	closeFn()
+
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read events text log: %v", err)
+	}
+	got := string(body)
+	for _, want := range []string{
+		"session started",
+		"hello operator",
+		"[tool Read] file_path=/tmp/x.go",
+		"─── result ───",
+		"done",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("events text log missing %q, got:\n%s", want, got)
+		}
+	}
+	// No raw JSON should leak through for well-formed events.
+	if strings.Contains(got, `"type":"assistant"`) {
+		t.Errorf("events text log should not contain raw JSON, got:\n%s", got)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("expected no stderr warning on success path, got: %s", stderr.String())
+	}
+}
+
+func TestOpenEventsTextLog_EmptyPathReturnsDiscardSink(t *testing.T) {
+	var stderr bytes.Buffer
+	w, closeFn := openEventsTextLog("", &stderr)
+	defer closeFn()
+
+	if w != io.Discard {
+		t.Errorf("empty path must return io.Discard sink")
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("empty path must not emit a warning, got: %s", stderr.String())
+	}
+}
+
+func TestOpenEventsTextLog_OpenFailureWarnsAndReturnsDiscardSink(t *testing.T) {
+	tmp := t.TempDir()
+	regularFile := filepath.Join(tmp, "blocking-file")
+	if err := os.WriteFile(regularFile, []byte("not a dir"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	badPath := filepath.Join(regularFile, "nested", "events.log")
+
+	var stderr bytes.Buffer
+	w, closeFn := openEventsTextLog(badPath, &stderr)
+	defer closeFn()
+
+	if _, err := io.WriteString(w, "doesn't matter\n"); err != nil {
+		t.Errorf("writes against the fallback sink must not error, got %v", err)
+	}
+	if stderr.Len() == 0 {
+		t.Errorf("expected stderr warning when open fails")
+	}
+	if !strings.Contains(stderr.String(), "events text log") {
+		t.Errorf("warning should mention 'events text log', got: %s", stderr.String())
+	}
+}
+
+// TestStreamTextWriter_HandlesSplitChunks pins the partial-line
+// buffering contract: the OS pipe can split a JSON event mid-line, and
+// the writer must accumulate bytes until it sees the next newline.
+func TestStreamTextWriter_HandlesSplitChunks(t *testing.T) {
+	var out bytes.Buffer
+	tw := &streamTextWriter{w: &out}
+
+	full := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"split me"}]}}` + "\n"
+	split := len(full) / 2
+	if _, err := tw.Write([]byte(full[:split])); err != nil {
+		t.Fatalf("first write: %v", err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("must buffer until newline, got premature flush: %q", out.String())
+	}
+	if _, err := tw.Write([]byte(full[split:])); err != nil {
+		t.Fatalf("second write: %v", err)
+	}
+	tw.Flush()
+	if !strings.Contains(out.String(), "split me") {
+		t.Errorf("expected combined output to contain 'split me', got: %q", out.String())
+	}
+}
+
+func TestStreamTextWriter_MalformedLineFallsBackToRawPassthrough(t *testing.T) {
+	var out bytes.Buffer
+	tw := &streamTextWriter{w: &out}
+	if _, err := tw.Write([]byte("this is not json\n")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if !strings.Contains(out.String(), "this is not json") {
+		t.Errorf("malformed line should pass through raw, got: %q", out.String())
 	}
 }
 

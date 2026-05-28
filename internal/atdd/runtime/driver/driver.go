@@ -950,7 +950,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		// test fixtures that bypass the driver-managed runState — all
 		// come back empty and clauderun treats them as "skip the log" /
 		// "no outputs channel" / "no events audit".
-		promptLog, outputFilePath, eventsLogPath, pidFilePath := rs.dispatchPaths(agentName)
+		promptLog, outputFilePath, eventsLogPath, eventsTextLogPath, pidFilePath := rs.dispatchPaths(agentName)
 
 		// Output channel (plan 20260526-2118). Resolve the writing-agent
 		// MID's declared outputs the same way scope is resolved — via
@@ -1054,6 +1054,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			ShowPrompt:         opts.ShowPrompt,
 			PromptLogPath:      promptLog,
 			EventsLogPath:      eventsLogPath,
+			EventsTextLogPath:  eventsTextLogPath,
 			PidFilePath:        pidFilePath,
 			OutputFilePath:     outputFilePath,
 			OutputKeysSpec:     outputKeysSpec,
@@ -1373,6 +1374,11 @@ func resolvePidRunDir(runTimestamp string, stderr io.Writer) string {
 //                                       stdout here so post-mortem can
 //                                       replay every tool call / message
 //                                       the agent emitted)
+//   - <seq>-<agent>.events.log        — eventsTextLog (project-local;
+//                                       human-readable sibling of
+//                                       eventsLog, formatted to look
+//                                       like the interactive Claude
+//                                       Code transcript)
 //   - <seq>-<agent>.pid               — pidFile (user-level; clauderun
 //                                       writes the JSON marker for
 //                                       orphan-recovery between
@@ -1395,27 +1401,28 @@ func resolvePidRunDir(runTimestamp string, stderr io.Writer) string {
 // the log" / "no outputs channel" / "no events audit" / "no PID
 // marker". pidFile is also empty when rs.pidRunDir is empty
 // (userStateDir resolution failed at startup) — same fail-soft policy.
-func (rs *runState) dispatchPaths(agentName string) (promptLog, outputFile, eventsLog, pidFile string) {
+func (rs *runState) dispatchPaths(agentName string) (promptLog, outputFile, eventsLog, eventsTextLog, pidFile string) {
 	if rs == nil {
-		return "", "", "", ""
+		return "", "", "", "", ""
 	}
 	seq := rs.seq.Add(1)
 	dir := filepath.Join(rs.repoPath, ".gh-optivem", "runs", rs.runTimestamp)
 	promptLog = filepath.Join(dir, fmt.Sprintf("%03d-%s.prompt.md", seq, agentName))
 	outputFile = filepath.Join(dir, fmt.Sprintf("%03d-%s.outputs.jsonl", seq, agentName))
 	eventsLog = filepath.Join(dir, fmt.Sprintf("%03d-%s.events.jsonl", seq, agentName))
+	eventsTextLog = filepath.Join(dir, fmt.Sprintf("%03d-%s.events.log", seq, agentName))
 	if rs.pidRunDir != "" {
 		pidFile = filepath.Join(rs.pidRunDir, fmt.Sprintf("%03d-%s.pid", seq, agentName))
 	}
-	return promptLog, outputFile, eventsLog, pidFile
+	return promptLog, outputFile, eventsLog, eventsTextLog, pidFile
 }
 
 // promptLogPath returns just the prompt-log slot of dispatchPaths.
 // Retained for the test fixtures that pre-date the outputs / events
 // channels and only assert against the prompt log path. Production
-// callers use dispatchPaths to pair the four artefacts in one seq bump.
+// callers use dispatchPaths to pair the five artefacts in one seq bump.
 func (rs *runState) promptLogPath(agentName string) string {
-	p, _, _, _ := rs.dispatchPaths(agentName)
+	p, _, _, _, _ := rs.dispatchPaths(agentName)
 	return p
 }
 
