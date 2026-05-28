@@ -36,4 +36,4 @@ Notes:
 
 ## Additional Notes
 
-- If your previous WRITE didn't compile, instead fix the broken/missing piece in your prior edits (forgotten driver stub in the System Driver port (`${driver-port}`) or External System Driver port (`${external-system-driver-port}`), signature mismatch, typo) and fix it minimally. Do not change DSL Core (`${dsl-core}`) semantics.
+- ${re-entry-policy} For this agent the "broken/missing piece" is typically a forgotten driver stub in the System Driver port (`${driver-port}`) or External System Driver port (`${external-system-driver-port}`). Do not change DSL Core (`${dsl-core}`) semantics in the fix.

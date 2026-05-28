@@ -19,4 +19,4 @@ ${scope-block}
 
 ## Steps
 
-1. Implement the System Driver adapter (`${driver-adapter}`) for real — replace each `TODO: System Driver` prototype with actual logic. If your previous WRITE didn't compile, instead fix the broken/missing piece in your prior edits (forgotten Driver stub, signature mismatch, typo) and fix it minimally.
+1. Implement the System Driver adapter (`${driver-adapter}`) for real — replace each `TODO: System Driver` prototype with actual logic. ${re-entry-policy} The "broken/missing piece" for this agent is typically a forgotten Driver stub under `${driver-adapter}`.
