@@ -36,8 +36,13 @@ command -v go >/dev/null 2>&1 || die "go not found on PATH."
 command -v gh >/dev/null 2>&1 || die "gh CLI not found on PATH."
 gh auth status >/dev/null 2>&1 || die "gh is not authenticated. Run 'gh auth login' (or set GH_TOKEN) and re-run."
 
-log "go build -o gh-optivem.exe ."
-go build -o gh-optivem.exe .
+SHA=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+  SHA="${SHA}-dirty"
+fi
+DEV_VERSION="dev-${SHA}"
+log "go build -o gh-optivem.exe . (version=${DEV_VERSION})"
+go build -ldflags "-X github.com/optivem/gh-optivem/internal/version.Version=${DEV_VERSION}" -o gh-optivem.exe .
 
 log "gh extension install (remove first if already installed)"
 gh extension remove optivem 2>/dev/null || true
