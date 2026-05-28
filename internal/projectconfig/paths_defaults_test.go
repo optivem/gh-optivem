@@ -176,3 +176,16 @@ func TestDefaultPaths_RoundTripsThroughValidate(t *testing.T) {
 		t.Errorf("default paths fail Validate: %v", err)
 	}
 }
+
+// TestDefaultDbMigrationPath_MatchesShopTemplate pins the doctrinal
+// value for `system.db-migration-path` against the shop template's
+// existing on-disk tree (`shop/system/db/migrations/`). A drift here
+// would mean newly-scaffolded projects ship a value that the shop's
+// own Flyway sidecar expectation doesn't recognise.
+func TestDefaultDbMigrationPath_MatchesShopTemplate(t *testing.T) {
+	t.Parallel()
+	if DefaultDbMigrationPath != "system/db/migrations" {
+		t.Errorf("DefaultDbMigrationPath: got %q, want %q (shop template's canonical migration tree)",
+			DefaultDbMigrationPath, "system/db/migrations")
+	}
+}

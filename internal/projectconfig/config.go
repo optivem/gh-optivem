@@ -351,11 +351,12 @@ func (c *Config) Repos() []string {
 //
 // All keys are kebab — the project-wide YAML/identifier convention.
 var reservedPlaceholderKeys = map[string]struct{}{
-	"language":         {},
-	"architecture":     {},
-	"system-path":      {},
-	"system-test-path": {},
-	"sut-namespace":    {},
+	"language":                 {},
+	"architecture":             {},
+	"system-path":              {},
+	"system-db-migration-path": {},
+	"system-test-path":         {},
+	"sut-namespace":            {},
 }
 
 // SutNamespace returns the substitution value for ${sut-namespace}.
@@ -386,11 +387,12 @@ func (c *Config) PlaceholderMap() map[string]string {
 	if c == nil {
 		return map[string]string{}
 	}
-	out := make(map[string]string, len(c.SystemTest.Paths)+5)
+	out := make(map[string]string, len(c.SystemTest.Paths)+6)
 	// Family B first; Family A overwrites on collision.
 	maps.Copy(out, c.SystemTest.Paths)
 	out["architecture"] = c.System.Architecture
 	out["system-path"] = c.System.Path
+	out["system-db-migration-path"] = c.System.DbMigrationPath
 	out["system-test-path"] = c.SystemTest.Path
 	out["sut-namespace"] = c.SutNamespace()
 	if c.System.Lang != "" {

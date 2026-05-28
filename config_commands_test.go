@@ -727,6 +727,7 @@ system:
   repo: optivem/shop-system
   lang: java
   sonar-project: optivem_shop-system
+  db-migration-path: system/db/migrations
 
 system-test:
   path: system-test
@@ -769,6 +770,7 @@ system:
     repo: optivem/shop-frontend
     lang: typescript
     sonar-project: optivem_shop-frontend
+  db-migration-path: system/db/migrations
 
 system-test:
   path: system-test
@@ -804,6 +806,7 @@ system:
   repo: optivem/shop
   lang: java
   sonar-project: optivem_shop-system
+  db-migration-path: system/db/migrations
 
 system-test:
   path: system-test/java

@@ -126,9 +126,10 @@ func newOpts() Options {
 	// inline ${key} annotations + ${scope-block} resolve cleanly.
 	cfg := &projectconfig.Config{
 		System: projectconfig.System{
-			Architecture: projectconfig.ArchMonolith,
-			Path:         "system",
-			Lang:         "java",
+			Architecture:    projectconfig.ArchMonolith,
+			Path:            "system",
+			Lang:            "java",
+			DbMigrationPath: projectconfig.DefaultDbMigrationPath,
 		},
 		SystemTest: projectconfig.TierSpec{
 			Path:  "system-test",
@@ -252,9 +253,10 @@ func TestRenderPrompt_TaskAgentArchitectureAndScopeBlock_ExplicitValues(t *testi
 	// `system-path` resolves to a concrete path in the rendered block.
 	opts.ProjectConfig = &projectconfig.Config{
 		System: projectconfig.System{
-			Architecture: projectconfig.ArchMonolith,
-			Path:         "system/monolith/java",
-			Lang:         "java",
+			Architecture:    projectconfig.ArchMonolith,
+			Path:            "system/monolith/java",
+			Lang:            "java",
+			DbMigrationPath: projectconfig.DefaultDbMigrationPath,
 		},
 	}
 	// implement-system's body references ${checklist}, now load-bearing.
@@ -270,6 +272,7 @@ func TestRenderPrompt_TaskAgentArchitectureAndScopeBlock_ExplicitValues(t *testi
 	opts.Placeholders = map[string]string{
 		"sut-namespace":                  "shop",
 		"system-path":                    "system/monolith/java",
+		"system-db-migration-path":       projectconfig.DefaultDbMigrationPath,
 		"system-test-path":               "system-test/java",
 		"driver-port":                    "system-test/src/testkit/driver/port/shop",
 		"driver-adapter":                 "system-test/src/testkit/driver/adapter/shop",
@@ -1619,9 +1622,10 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	opts.ScopeWrite = []string{"system-path"}
 	opts.ProjectConfig = &projectconfig.Config{
 		System: projectconfig.System{
-			Architecture: projectconfig.ArchMonolith,
-			Path:         "system/monolith/typescript",
-			Lang:         "typescript",
+			Architecture:    projectconfig.ArchMonolith,
+			Path:            "system/monolith/typescript",
+			Lang:            "typescript",
+			DbMigrationPath: projectconfig.DefaultDbMigrationPath,
 		},
 	}
 	opts.Checklist = "- [x] One done\n- [ ] Two pending"
@@ -1636,6 +1640,7 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	opts.Placeholders = map[string]string{
 		"sut-namespace":                  "shop",
 		"system-path":                    "system/monolith/typescript",
+		"system-db-migration-path":       projectconfig.DefaultDbMigrationPath,
 		"system-test-path":               "system-test/typescript",
 		"driver-port":                    "system-test/src/testkit/driver/port/shop",
 		"driver-adapter":                 "system-test/src/testkit/driver/adapter/shop",

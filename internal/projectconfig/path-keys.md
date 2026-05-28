@@ -139,8 +139,8 @@ present, not project-customizable.
 - **Family B keys that shadow Family A names are rejected.** A typo'd
   `system-test.paths.language: typescript` would otherwise quietly
   override the canonical `system.lang` value. Rejected names today:
-  `language`, `architecture`, `system-path`, `system-test-path`,
-  `sut-namespace`.
+  `language`, `architecture`, `system-path`, `system-db-migration-path`,
+  `system-test-path`, `sut-namespace`.
 - **Non-canonical `system-test.paths.<name>` keys are rejected** (per
   plan 20260518-1530 item 5). The validator enumerates
   `system-test.paths:` keys against `CanonicalPathKeys()` and

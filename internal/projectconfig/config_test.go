@@ -909,6 +909,82 @@ func TestValidate_AcceptsAbsentPathsWhenArchitectureUnset(t *testing.T) {
 	}
 }
 
+// Rule 22b: system.db-migration-path is required once architecture is
+// set. The Family A path-shaped key names the shared canonical Flyway
+// migration set consumed by every SUT; an absent value would have the
+// system-implementer / system-updater agent's write set resolve a
+// scope-eligible layer to "" and fail at dispatch time.
+
+func TestValidate_RejectsMissingDbMigrationPathWhenArchitectureSet(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	cfg.System.DbMigrationPath = ""
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for missing db-migration-path, got nil")
+	}
+	if !strings.Contains(err.Error(), "system.db-migration-path") {
+		t.Errorf("error should name system.db-migration-path, got: %v", err)
+	}
+	// Error must name the back-fill path so an operator with a pre-this-
+	// plan config has a one-shot fix path.
+	if !strings.Contains(err.Error(), "config migrate") {
+		t.Errorf("error should hint at `config migrate`, got: %v", err)
+	}
+}
+
+func TestValidate_AcceptsAbsentDbMigrationPathWhenArchitectureUnset(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{
+		Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/optivem/projects/20"},
+		// No architecture, no db-migration-path — Rule 22b gates on architecture.
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("partial config without architecture should validate, got: %v", err)
+	}
+}
+
+func TestValidate_RejectsAbsoluteDbMigrationPath(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	cfg.System.DbMigrationPath = "/abs/migrations"
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for absolute db-migration-path, got nil")
+	}
+	if !strings.Contains(err.Error(), "system.db-migration-path") {
+		t.Errorf("error should name system.db-migration-path, got: %v", err)
+	}
+}
+
+// Family A reservation: `system-db-migration-path` cannot appear in
+// `system-test.paths:` — a typo'd Family B key with that name would
+// otherwise quietly override the canonical Family A value.
+func TestValidate_RejectsFamilyBShadowOfDbMigrationPath(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	cfg.SystemTest.Paths["system-db-migration-path"] = "elsewhere"
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for Family B key shadowing Family A name, got nil")
+	}
+	if !strings.Contains(err.Error(), "system-db-migration-path") {
+		t.Errorf("error should name the shadowing key, got: %v", err)
+	}
+}
+
+// PlaceholderMap must expose `system-db-migration-path` so prompt
+// rendering can substitute `${system-db-migration-path}` in agent
+// bodies (system-implementer.md, system-updater.md).
+func TestPlaceholderMap_IncludesDbMigrationPath(t *testing.T) {
+	t.Parallel()
+	cfg := validMonolithBase()
+	got := cfg.PlaceholderMap()
+	if got["system-db-migration-path"] != DefaultDbMigrationPath {
+		t.Errorf("system-db-migration-path: got %q, want %q", got["system-db-migration-path"], DefaultDbMigrationPath)
+	}
+}
+
 // Repo-strategy consistency.
 
 func TestValidate_MonoRepoRejectsMultipleRepos(t *testing.T) {

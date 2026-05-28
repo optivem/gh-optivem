@@ -184,6 +184,7 @@ system:
   repo: acme/shop
   lang: typescript
   sonar-project: acme_shop-system
+  db-migration-path: system/db/migrations
 
 system-test:
   path: system-test/typescript

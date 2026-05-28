@@ -224,10 +224,11 @@ func defaultTestConfig() *projectconfig.Config {
 	return &projectconfig.Config{
 		RepoStrategy: projectconfig.RepoStrategyMonoRepo,
 		System: projectconfig.System{
-			Architecture: projectconfig.ArchMonolith,
-			Path:         "system",
-			Repo:         "optivem/shop",
-			Lang:         projectconfig.LangJava,
+			Architecture:    projectconfig.ArchMonolith,
+			Path:            "system",
+			Repo:            "optivem/shop",
+			Lang:            projectconfig.LangJava,
+			DbMigrationPath: projectconfig.DefaultDbMigrationPath,
 		},
 		SystemTest: projectconfig.TierSpec{
 			Path:  "system-test",
@@ -492,10 +493,11 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	// the dispatcher's PlaceholderMap fills them.
 	cfg := &projectconfig.Config{
 		System: projectconfig.System{
-			Architecture: projectconfig.ArchMonolith,
-			Path:         "system/monolith/typescript",
-			Repo:         "optivem/shop",
-			Lang:         projectconfig.LangTypescript,
+			Architecture:    projectconfig.ArchMonolith,
+			Path:            "system/monolith/typescript",
+			Repo:            "optivem/shop",
+			Lang:            projectconfig.LangTypescript,
+			DbMigrationPath: projectconfig.DefaultDbMigrationPath,
 		},
 		SystemTest: projectconfig.TierSpec{
 			Path:  "system-test/typescript",
@@ -678,10 +680,11 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 	cfg := &projectconfig.Config{
 		RepoStrategy: projectconfig.RepoStrategyMonoRepo,
 		System: projectconfig.System{
-			Architecture: projectconfig.ArchMonolith,
-			Path:         "system/monolith/typescript",
-			Repo:         "optivem/shop",
-			Lang:         projectconfig.LangTypescript,
+			Architecture:    projectconfig.ArchMonolith,
+			Path:            "system/monolith/typescript",
+			Repo:            "optivem/shop",
+			Lang:            projectconfig.LangTypescript,
+			DbMigrationPath: projectconfig.DefaultDbMigrationPath,
 		},
 		SystemTest: projectconfig.TierSpec{
 			Path: "system-test/typescript",
