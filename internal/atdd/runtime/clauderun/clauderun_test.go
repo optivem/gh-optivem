@@ -2394,8 +2394,11 @@ func TestWritePidFile_FailSoftOnUnwritablePath(t *testing.T) {
 	if stderr.Len() == 0 {
 		t.Errorf("expected stderr warning when mkdir fails")
 	}
-	if _, err := os.Stat(badPath); !os.IsNotExist(err) {
-		t.Errorf("expected pid file not to exist when mkdir fails, got: %v", err)
+	// Any Stat error means the file was not created. We cannot use
+	// os.IsNotExist here because on Linux, traversing through a regular
+	// file produces ENOTDIR, which os.IsNotExist does not recognize.
+	if _, err := os.Stat(badPath); err == nil {
+		t.Errorf("expected pid file not to exist when mkdir fails, but it does")
 	}
 }
 
