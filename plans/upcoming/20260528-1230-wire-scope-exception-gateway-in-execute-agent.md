@@ -1,3 +1,22 @@
+# ❓❓❓ NEEDS DISCUSSION ❓❓❓
+
+**Open question (2026-05-28):** Should a scope exception route to a new
+`STOP_SCOPE_VIOLATION` halt at all, or should it just fall through to `FIX`?
+
+VJ's position: a scope exception means the BPMN scope was authored
+incorrectly — abnormal behavior, not a legitimate runtime escape hatch.
+`FIX` is the right place because that's where the BPMN gets corrected.
+
+If that holds, this plan should be abandoned, and we likely also want to
+revisit whether the `scope_exception_requested` binding
+(`internal/atdd/runtime/gates/bindings.go:202`) and the envelope-emission
+wiring from plan `20260528-1150-scope-exception-envelope-on-all-prod-agent-mids.md`
+are dead code or should be kept as a diagnostic signal surfaced into FIX.
+
+**Do not execute until this is resolved.**
+
+---
+
 # Wire `scope_exception_requested` gateway into `execute-agent`
 
 ## Background
