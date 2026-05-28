@@ -33,15 +33,18 @@ import (
 // ---------------------------------------------------------------------------
 
 // fakeClaude records each RunOpts so tests can assert prompt content and
-// returns a canned error.
+// returns a canned error. `result`, when set, is returned to the caller so
+// summary-table tests can exercise the usage-capture path; default zero
+// value matches the old "no envelope" shape every existing test relied on.
 type fakeClaude struct {
-	calls []clauderun.RunOpts
-	err   error
+	calls  []clauderun.RunOpts
+	result clauderun.RunResult
+	err    error
 }
 
 func (f *fakeClaude) Run(_ context.Context, opts clauderun.RunOpts) (clauderun.RunResult, error) {
 	f.calls = append(f.calls, opts)
-	return clauderun.RunResult{}, f.err
+	return f.result, f.err
 }
 
 // fakeGit serves canned outputs. The HEAD rev-parse and log calls
@@ -1256,4 +1259,228 @@ func buildEngineWithRunState(t *testing.T, opts Options, cfg *projectconfig.Conf
 	}
 	wrapAgentDispatchers(eng, opts, cfg, rs)
 	return eng.Processes["main"].Nodes["AT_RED_TEST"].Fn
+}
+
+// ---------------------------------------------------------------------------
+// runState.printAgentSummary + dispatchRecord capture
+// ---------------------------------------------------------------------------
+
+// TestPrintAgentSummary_EmptyRecordsIsNoOp confirms the summary doesn't
+// emit a stray header / table when no agents ran. nil rs is also a no-op
+// (mirrors the dispatchPaths nil contract).
+func TestPrintAgentSummary_EmptyRecordsIsNoOp(t *testing.T) {
+	var buf bytes.Buffer
+	rs := &runState{}
+	rs.printAgentSummary(&buf)
+	if buf.Len() != 0 {
+		t.Errorf("empty records must produce no output, got:\n%s", buf.String())
+	}
+
+	var nilRS *runState
+	var buf2 bytes.Buffer
+	nilRS.printAgentSummary(&buf2)
+	if buf2.Len() != 0 {
+		t.Errorf("nil runState must produce no output, got:\n%s", buf2.String())
+	}
+}
+
+// TestPrintAgentSummary_WithUsage_RendersTotals seeds two synthetic
+// records with populated *TokenUsage and asserts the totals row sums
+// in/out tokens + cost across rows. Validates the headless-mode path
+// where every row carries a parsed envelope.
+func TestPrintAgentSummary_WithUsage_RendersTotals(t *testing.T) {
+	rs := &runState{}
+	rs.appendRecord(dispatchRecord{
+		agent:   "classify-ticket-subtype",
+		model:   "sonnet",
+		effort:  "medium",
+		elapsed: 12 * time.Second,
+		usage: &clauderun.TokenUsage{
+			InputTokens: 2000, OutputTokens: 300, TotalCostUSD: 0.04,
+		},
+	})
+	rs.appendRecord(dispatchRecord{
+		agent:   "write-acceptance-tests",
+		model:   "opus",
+		effort:  "high",
+		elapsed: 2*time.Minute + 31*time.Second,
+		usage: &clauderun.TokenUsage{
+			InputTokens: 28000, OutputTokens: 4100, TotalCostUSD: 0.71,
+		},
+	})
+
+	var buf bytes.Buffer
+	rs.printAgentSummary(&buf)
+	got := buf.String()
+
+	wantSubstrings := []string{
+		"=== Agent summary ===",
+		"classify-ticket-subtype",
+		"write-acceptance-tests",
+		"sonnet",
+		"opus",
+		"medium",
+		"high",
+		"12s",
+		"2m31s",
+		// totals: 12s + 2m31s = 2m43s; 2k+28k=30k → 30.0k;
+		// 0.3k+4.1k=4.4k → 4.4k; 0.04+0.71=$0.75.
+		"totals",
+		"2m43s",
+		"30.0k",
+		"4.4k",
+		"$0.75",
+	}
+	for _, want := range wantSubstrings {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary missing %q; got:\n%s", want, got)
+		}
+	}
+	// Header columns must be present so the operator can tell what each
+	// number means.
+	for _, want := range []string{"agent", "model", "effort", "elapsed", "in", "out", "cost"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary missing header %q; got:\n%s", want, got)
+		}
+	}
+}
+
+// TestPrintAgentSummary_NoUsage_RendersDashesAndFootnote covers the
+// interactive-mode path: usage is nil for every dispatch, so in / out /
+// cost render as "—" and the footnote explains why. Elapsed totals
+// still sum normally — wall-time is available in both modes.
+func TestPrintAgentSummary_NoUsage_RendersDashesAndFootnote(t *testing.T) {
+	rs := &runState{}
+	rs.appendRecord(dispatchRecord{
+		agent: "a", model: "sonnet", effort: "low", elapsed: 5 * time.Second,
+	})
+	rs.appendRecord(dispatchRecord{
+		agent: "b", model: "opus", effort: "high", elapsed: 10 * time.Second,
+	})
+
+	var buf bytes.Buffer
+	rs.printAgentSummary(&buf)
+	got := buf.String()
+
+	if !strings.Contains(got, "—") {
+		t.Errorf("no-usage rows must render in/out/cost as em-dash; got:\n%s", got)
+	}
+	if !strings.Contains(got, "headless-only") {
+		t.Errorf("no-usage path must surface footnote explaining headless-only capture; got:\n%s", got)
+	}
+	if !strings.Contains(got, "15s") {
+		t.Errorf("totals row must still sum wall time (5s+10s=15s); got:\n%s", got)
+	}
+}
+
+// TestPrintAgentSummary_FailedDispatch_HasMarker confirms failed rows
+// get a "✗" prefix so the operator can spot which dispatch burned
+// tokens without producing work.
+func TestPrintAgentSummary_FailedDispatch_HasMarker(t *testing.T) {
+	rs := &runState{}
+	rs.appendRecord(dispatchRecord{
+		agent: "system-implementer", model: "opus", effort: "max",
+		elapsed: 30 * time.Second,
+		err:     errors.New("rate limit"),
+	})
+	var buf bytes.Buffer
+	rs.printAgentSummary(&buf)
+	got := buf.String()
+
+	if !strings.Contains(got, "✗ system-implementer") {
+		t.Errorf("failed row must carry ✗ marker; got:\n%s", got)
+	}
+}
+
+// TestClaudeRunDispatch_AppendsRecordWithRunResult is the wiring test:
+// drive the real dispatcher with a fakeClaude that returns a populated
+// RunResult, then assert the runState recorded the agent / model / effort
+// / elapsed / usage tuple. Failure of this test means the dispatcher
+// reverted to discarding the result.
+func TestClaudeRunDispatch_AppendsRecordWithRunResult(t *testing.T) {
+	oldNow := nowFn
+	defer func() { nowFn = oldNow }()
+	calls := 0
+	nowFn = func() time.Time {
+		calls++
+		if calls == 1 {
+			return time.Unix(1_700_000_000, 0)
+		}
+		return time.Unix(1_700_000_017, 0) // +17s
+	}
+
+	usage := &clauderun.TokenUsage{
+		InputTokens:  12000,
+		OutputTokens: 1800,
+		TotalCostUSD: 0.18,
+	}
+	claudeFake := &fakeClaude{result: clauderun.RunResult{Usage: usage}}
+	gitFake := &fakeGit{out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")}}
+	opts := newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake})
+	opts.Stdout = io.Discard
+
+	rs := &runState{runTimestamp: "20260528-150000", repoPath: t.TempDir()}
+	fn := buildEngineWithRunState(t, opts, defaultTestConfig(), rs)
+
+	out := fn(newCtxWithIssue())
+	if out.Err != nil {
+		t.Fatalf("dispatch: %v", out.Err)
+	}
+
+	records := rs.snapshotRecords()
+	if len(records) != 1 {
+		t.Fatalf("want 1 recorded dispatch, got %d", len(records))
+	}
+	r := records[0]
+	if r.agent != "acceptance-test-writer" {
+		t.Errorf("agent: got %q, want %q", r.agent, "acceptance-test-writer")
+	}
+	if r.elapsed != 17*time.Second {
+		t.Errorf("elapsed: got %v, want 17s", r.elapsed)
+	}
+	if r.usage == nil || r.usage.InputTokens != 12000 || r.usage.OutputTokens != 1800 {
+		t.Errorf("usage not captured: got %+v", r.usage)
+	}
+	if r.err != nil {
+		t.Errorf("err on clean dispatch: got %v, want nil", r.err)
+	}
+}
+
+// TestClaudeRunDispatch_AppendsRecordOnFailure confirms the dispatcher
+// still records the row when clauderun returns an error — partial runs
+// during fix-loop debugging are exactly when the operator needs to see
+// what ran. Mirrors the per-dispatch banner's "always print" policy.
+func TestClaudeRunDispatch_AppendsRecordOnFailure(t *testing.T) {
+	oldNow := nowFn
+	defer func() { nowFn = oldNow }()
+	calls := 0
+	nowFn = func() time.Time {
+		calls++
+		if calls == 1 {
+			return time.Unix(1_700_000_000, 0)
+		}
+		return time.Unix(1_700_000_003, 0)
+	}
+
+	bustErr := errors.New("subprocess exited 1")
+	claudeFake := &fakeClaude{err: bustErr}
+	gitFake := &fakeGit{out: [][]byte{[]byte("aaaa\n")}}
+	opts := newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake})
+	opts.Stdout = io.Discard
+
+	rs := &runState{runTimestamp: "20260528-150000", repoPath: t.TempDir()}
+	fn := buildEngineWithRunState(t, opts, defaultTestConfig(), rs)
+
+	out := fn(newCtxWithIssue())
+	if out.Err == nil {
+		t.Fatalf("want dispatch err to surface, got nil")
+	}
+
+	records := rs.snapshotRecords()
+	if len(records) != 1 {
+		t.Fatalf("want 1 recorded dispatch on failure, got %d", len(records))
+	}
+	if records[0].err == nil {
+		t.Errorf("recorded row must carry the dispatch err for summary marker; got nil")
+	}
 }

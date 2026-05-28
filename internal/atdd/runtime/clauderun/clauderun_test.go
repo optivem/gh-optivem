@@ -52,7 +52,7 @@ func (f *fakeClaude) Run(_ context.Context, opts RunOpts) (RunResult, error) {
 // fakeGit serves canned outputs. The HEAD-rev-parse calls consume the
 // `out` FIFO. Snapshot calls (rev-parse --abbrev-ref HEAD, status
 // --porcelain) get sensible defaults so tests that don't care about
-// branch-switch / untracked detection don't have to enumerate them.
+// branch-switch / dirty-file detection don't have to enumerate them.
 // Tests that DO care can override via branchPre/branchPost (FIFO, used
 // per call) and statusPre/statusPost.
 type fakeGit struct {
@@ -1299,25 +1299,8 @@ func TestDispatch_FallsThroughToGenericOnUnknownStderr(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Repo snapshot (branch-switch / stranded untracked detection)
+// Repo snapshot (branch-switch detection, dirty-file delta)
 // ---------------------------------------------------------------------------
-
-func TestParseUntracked(t *testing.T) {
-	porcelain := []byte(" M foo.go\n?? new1.txt\n?? new2.go\nA  staged.go\n")
-	got := parseUntracked(porcelain)
-	if len(got) != 2 || !got["new1.txt"] || !got["new2.go"] {
-		t.Errorf("parseUntracked: got %v, want {new1.txt, new2.go}", got)
-	}
-}
-
-func TestDiffUntracked_SortedNew(t *testing.T) {
-	pre := map[string]bool{"existing.txt": true}
-	post := map[string]bool{"existing.txt": true, "zeta.go": true, "alpha.go": true}
-	got := diffUntracked(pre, post)
-	if len(got) != 2 || got[0] != "alpha.go" || got[1] != "zeta.go" {
-		t.Errorf("diffUntracked: got %v, want [alpha.go zeta.go]", got)
-	}
-}
 
 func TestParseDirty_AllStatusKinds(t *testing.T) {
 	porcelain := []byte(" M modified.go\n?? new.txt\n D deleted.go\nA  staged.go\nR  old.go -> renamed.go\n")
@@ -1353,49 +1336,6 @@ func TestDispatch_HaltsOnBranchSwitch(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "main") || !strings.Contains(err.Error(), "feature/foo") {
 		t.Errorf("expected both branch names in error, got %q", err.Error())
-	}
-}
-
-func TestDispatch_WarnsOnStrandedUntracked(t *testing.T) {
-	var buf bytes.Buffer
-	gitFake := &fakeGit{
-		out: [][]byte{
-			[]byte("aaaa\n"),
-			[]byte("aaaa\n"),
-		},
-		statusPre:  []byte(""),
-		statusPost: []byte("?? scratch/notes.txt\n?? new_file.go\n"),
-	}
-	opts := newOpts()
-	opts.Stdout = &buf
-
-	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
-		t.Fatalf("Dispatch should succeed (warning is non-fatal): %v", err)
-	}
-	output := buf.String()
-	mustContain(t, output, "untracked file")
-	mustContain(t, output, "scratch/notes.txt")
-	mustContain(t, output, "new_file.go")
-}
-
-func TestDispatch_DoesNotWarnWhenNoNewUntracked(t *testing.T) {
-	var buf bytes.Buffer
-	gitFake := &fakeGit{
-		out: [][]byte{
-			[]byte("aaaa\n"),
-			[]byte("aaaa\n"),
-		},
-		statusPre:  []byte("?? pre-existing.txt\n"),
-		statusPost: []byte("?? pre-existing.txt\n"),
-	}
-	opts := newOpts()
-	opts.Stdout = &buf
-
-	if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
-		t.Fatalf("Dispatch: %v", err)
-	}
-	if strings.Contains(buf.String(), "untracked file") {
-		t.Errorf("must not warn about pre-existing untracked file:\n%s", buf.String())
 	}
 }
 

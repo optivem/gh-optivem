@@ -31,6 +31,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -284,6 +285,12 @@ func Run(ctx context.Context, opts Options) error {
 		repoPath:     repoPath,
 		pidRunDir:    resolvePidRunDir(runTs, opts.Stderr),
 	}
+	// Print the per-agent summary table (model / effort / elapsed / tokens /
+	// cost) on every Run exit — success AND error. Deferred so a fix-loop
+	// dispatch that busts halfway still shows what ran before the bust.
+	// Registered AFTER `defer logClose()` so this fires first (LIFO) and
+	// the summary lands in the --log-file before the file is closed.
+	defer func() { runState.printAgentSummary(opts.Out.Phase) }()
 
 	// Post-Bind decoration order matters:
 	//   1. Wrap user-task agent dispatch with per-node info-printer (uses
@@ -1063,7 +1070,29 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			Out:                opts.Out,
 		}
 
-		_, runErr := clauderun.Dispatch(context.Background(), opts.ClaudeRunDeps, cOpts)
+		t0 := nowFn()
+		runResult, runErr := clauderun.Dispatch(context.Background(), opts.ClaudeRunDeps, cOpts)
+		elapsed := nowFn().Sub(t0)
+		// Record the dispatch even on failure so the end-of-run summary
+		// shows what ran before the bust — partial runs are common during
+		// fix-loop debugging and the summary is most useful there.
+		record := dispatchRecord{
+			agent:   agentName,
+			model:   tuning.Model,
+			effort:  tuning.Effort,
+			elapsed: elapsed,
+			usage:   runResult.Usage,
+			err:     runErr,
+		}
+		rs.appendRecord(record)
+		// Mirror to the run's summary sidecar so `gh optivem run summary`
+		// can replay any past run, AND so a binary crash between this
+		// point and Run's deferred print-summary still leaves every
+		// completed row on disk. Best-effort: a write failure is logged
+		// as a warning and never blocks the dispatch.
+		if err := appendSummaryLine(rs.summaryPath(), record); err != nil {
+			fmt.Fprintf(opts.Stderr, "driver: warning: append summary sidecar: %v\n", err)
+		}
 		if runErr != nil {
 			return statemachine.Outcome{Err: runErr}
 		}
@@ -1333,6 +1362,56 @@ type runState struct {
 	repoPath     string
 	pidRunDir    string
 	seq          atomic.Int64
+
+	// records accumulates one dispatchRecord per clauderun.Dispatch call so
+	// the end-of-run summary banner can show what every agent cost. Guarded
+	// by mu — the engine is single-threaded today but rs is shared across
+	// every dispatcher closure and nothing structurally rules out a future
+	// concurrent walk.
+	mu      sync.Mutex
+	records []dispatchRecord
+}
+
+// dispatchRecord is one row in the end-of-run summary: which agent ran
+// with which model + effort, how long it took, and what it cost in tokens
+// (when the runner could parse a stream-json envelope). usage is nil for
+// interactive dispatches (no envelope to parse) and for headless runs that
+// crashed before emitting the terminal `type:"result"` event. err is set
+// when clauderun.Dispatch returned an error so the summary can mark the
+// row as failed.
+type dispatchRecord struct {
+	agent   string
+	model   string
+	effort  string
+	elapsed time.Duration
+	usage   *clauderun.TokenUsage
+	err     error
+}
+
+// appendRecord records one completed dispatch. Safe to call with nil rs —
+// the test fixtures that bypass the driver-managed runState rely on that
+// to keep the no-runState dispatch path simple.
+func (rs *runState) appendRecord(r dispatchRecord) {
+	if rs == nil {
+		return
+	}
+	rs.mu.Lock()
+	rs.records = append(rs.records, r)
+	rs.mu.Unlock()
+}
+
+// snapshotRecords returns a copy of the recorded dispatches so the
+// summary printer can iterate without holding the mutex. Safe with nil
+// rs (returns nil, mirroring appendRecord).
+func (rs *runState) snapshotRecords() []dispatchRecord {
+	if rs == nil {
+		return nil
+	}
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	out := make([]dispatchRecord, len(rs.records))
+	copy(out, rs.records)
+	return out
 }
 
 // resolvePidRunDir composes the per-run subdirectory of the user-level
@@ -1413,6 +1492,132 @@ func (rs *runState) dispatchPaths(agentName string) (promptLog, outputFile, even
 func (rs *runState) promptLogPath(agentName string) string {
 	p, _, _, _ := rs.dispatchPaths(agentName)
 	return p
+}
+
+// printAgentSummary writes the rs's recorded dispatches via the package
+// renderer. No-op when rs is nil or has no recorded dispatches. Called
+// from driver.Run's deferred tail so it fires on success AND on any
+// error path, mirroring the existing per-dispatch banner's "always
+// print" policy.
+func (rs *runState) printAgentSummary(w io.Writer) {
+	renderAgentSummary(w, rs.snapshotRecords())
+}
+
+// renderAgentSummary writes a per-agent table + totals row to w. One row
+// per dispatch, in dispatch order. Columns:
+//
+//	#  agent  model  effort  elapsed  in  out  cost
+//
+// `in` aggregates input + cache-read + cache-creation tokens (the same
+// shape the per-dispatch banner uses via formatUsageSuffix); `out` is
+// output tokens; `cost` is the runner-reported total_cost_usd. Rows
+// whose dispatch ran without a parsed envelope (interactive mode, or a
+// headless run that crashed mid-stream) render in/out/cost as "—".
+// Failed dispatches get a "✗" prefix on the agent column so the operator
+// can spot which row burned tokens without producing work.
+//
+// Single source of truth for the table shape — both the live banner
+// (printAgentSummary method) and the historical replay (PrintSummaryFile)
+// route through here so the two views stay byte-identical.
+func renderAgentSummary(w io.Writer, records []dispatchRecord) {
+	if w == nil {
+		return
+	}
+	if len(records) == 0 {
+		return
+	}
+
+	// Column widths sized to the longest value in each column so the
+	// table stays aligned regardless of which agents ran. Headers
+	// participate in the width calc so a short-name run still has
+	// readable column headings.
+	agentW := len("agent")
+	modelW := len("model")
+	effortW := len("effort")
+	for _, r := range records {
+		if w := len(r.agent) + 2; w > agentW { // +2 for "✗ " marker on failed rows
+			agentW = w
+		}
+		if w := len(r.model); w > modelW {
+			modelW = w
+		}
+		if w := len(r.effort); w > effortW {
+			effortW = w
+		}
+	}
+
+	var (
+		totalElapsed time.Duration
+		totalIn      int
+		totalOut     int
+		totalCost    float64
+		anyUsage     bool
+	)
+
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "=== Agent summary ===")
+	fmt.Fprintf(w, "  #  %-*s  %-*s  %-*s  %8s  %8s  %8s  %8s\n",
+		agentW, "agent",
+		modelW, "model",
+		effortW, "effort",
+		"elapsed", "in", "out", "cost")
+
+	for i, r := range records {
+		name := r.agent
+		if r.err != nil {
+			name = "✗ " + name
+		}
+		elapsed := r.elapsed.Round(time.Second).String()
+		in, out, cost := "—", "—", "—"
+		if r.usage != nil {
+			inTokens := r.usage.InputTokens + r.usage.CacheCreationInputTokens + r.usage.CacheReadInputTokens
+			outTokens := r.usage.OutputTokens
+			if inTokens > 0 || outTokens > 0 || r.usage.TotalCostUSD > 0 {
+				in = formatSummaryTokens(inTokens)
+				out = formatSummaryTokens(outTokens)
+				cost = fmt.Sprintf("$%.2f", r.usage.TotalCostUSD)
+				totalIn += inTokens
+				totalOut += outTokens
+				totalCost += r.usage.TotalCostUSD
+				anyUsage = true
+			}
+		}
+		totalElapsed += r.elapsed
+		fmt.Fprintf(w, "%3d  %-*s  %-*s  %-*s  %8s  %8s  %8s  %8s\n",
+			i+1,
+			agentW, name,
+			modelW, r.model,
+			effortW, r.effort,
+			elapsed, in, out, cost)
+	}
+
+	// Totals row.
+	totalInStr, totalOutStr, totalCostStr := "—", "—", "—"
+	if anyUsage {
+		totalInStr = formatSummaryTokens(totalIn)
+		totalOutStr = formatSummaryTokens(totalOut)
+		totalCostStr = fmt.Sprintf("$%.2f", totalCost)
+	}
+	fmt.Fprintf(w, "%3s  %-*s  %-*s  %-*s  %8s  %8s  %8s  %8s\n",
+		"", agentW, "", modelW, "", effortW, "totals",
+		totalElapsed.Round(time.Second).String(),
+		totalInStr, totalOutStr, totalCostStr)
+
+	if !anyUsage {
+		fmt.Fprintln(w, "(token + cost capture is headless-only; interactive runs show — for those columns)")
+	}
+}
+
+// formatSummaryTokens renders a token count compactly for the agent
+// summary table — `42` for sub-1k counts, `12.4k` for 1k+. Mirrors the
+// shape clauderun's per-dispatch banner uses so the two views read the
+// same. Duplicated locally rather than exported from clauderun because
+// the helper is one line and exporting would invite drift.
+func formatSummaryTokens(n int) string {
+	if n < 1000 {
+		return strconv.Itoa(n)
+	}
+	return fmt.Sprintf("%.1fk", float64(n)/1000)
 }
 
 // pruneOldRuns deletes all but the most recent (keep-1) directories in

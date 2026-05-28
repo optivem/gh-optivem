@@ -561,9 +561,7 @@ func (d Deps) withDefaults() Deps {
 //
 // HEAD moving during dispatch is no longer a halt condition: an agent that
 // commits anyway is a misbehaviour for the wrapping CLI to flag, not for
-// clauderun. Pre/post snapshots also surface stranded untracked files
-// (created by the agent but never `git add`ed) as a non-fatal warning
-// after the success banner.
+// clauderun.
 func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 	deps = deps.withDefaults()
 	opts = opts.withDefaults()
@@ -668,9 +666,6 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 	}
 
 	changed := diffDirty(preState.dirty, postState.dirty)
-	if newUntracked := diffUntracked(preState.untracked, postState.untracked); len(newUntracked) > 0 {
-		writeUntrackedWarning(opts, newUntracked)
-	}
 
 	writeExitBanner(opts, len(changed), nowFn().Sub(startedAt), runResult.Usage, nil)
 	return runResult, nil
@@ -1146,24 +1141,20 @@ func (o Options) withDefaults() Options {
 // ---------------------------------------------------------------------------
 
 // repoState is the "before"/"after" snapshot Dispatch takes around the
-// runner call. The diff catches two failure modes:
-//   - Branch-switch: the agent runs `git checkout -b feature/foo`,
-//     commits there, and never returns. HEAD on the original branch is
-//     unchanged → without snapshot we'd halt with the misleading "no
-//     commit produced"; with snapshot we say "switched branches".
-//   - Stranded untracked files: the agent created files but never
-//     `git add`ed them. The commit lands fine but the new files sit
-//     outside it (silent data-loss class). Snapshot diff surfaces them
-//     as a non-fatal warning.
+// runner call. The diff catches branch-switch: the agent runs `git
+// checkout -b feature/foo`, commits there, and never returns. HEAD on
+// the original branch is unchanged → without snapshot we'd halt with
+// the misleading "no commit produced"; with snapshot we say "switched
+// branches".
 type repoState struct {
-	head      string
-	branch    string
-	untracked map[string]bool
+	head   string
+	branch string
 	// dirty is the union of every path mentioned in `git status
-	// --porcelain` (untracked, modified, deleted, staged, …). Used by
-	// the CLICommits staging policy: the post-pre delta is exactly
-	// "what the agent touched that wasn't already dirty," which is
-	// what we stage and commit.
+	// --porcelain` (untracked, modified, deleted, staged, …). The
+	// post-pre delta is "what the agent touched that wasn't already
+	// dirty," used by the downstream COMMIT_* node (which runs
+	// `gh optivem commit --yes --include-untracked`) to stage and
+	// commit the working-tree delta.
 	dirty map[string]bool
 }
 
@@ -1181,10 +1172,9 @@ func snapshotRepo(ctx context.Context, git GitRunner, dir string) (repoState, er
 		return repoState{}, fmt.Errorf("status --porcelain: %w", err)
 	}
 	return repoState{
-		head:      strings.TrimSpace(string(headOut)),
-		branch:    strings.TrimSpace(string(branchOut)),
-		untracked: parseUntracked(statusOut),
-		dirty:     parseDirty(statusOut),
+		head:   strings.TrimSpace(string(headOut)),
+		branch: strings.TrimSpace(string(branchOut)),
+		dirty:  parseDirty(statusOut),
 	}, nil
 }
 
@@ -1213,36 +1203,6 @@ func parseDirty(porcelain []byte) map[string]bool {
 // diffDirty returns paths present in post but not pre, sorted for
 // stable test output and a deterministic `git add` argv.
 func diffDirty(pre, post map[string]bool) []string {
-	var out []string
-	for p := range post {
-		if !pre[p] {
-			out = append(out, p)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
-// parseUntracked picks out the `??<space><path>` rows from `git status
-// --porcelain` output. Other status codes (modified, staged, etc.) are
-// ignored — only untracked files are the silent-data-loss class we
-// care about for the post-dispatch warning.
-func parseUntracked(porcelain []byte) map[string]bool {
-	m := map[string]bool{}
-	for line := range strings.SplitSeq(string(porcelain), "\n") {
-		if len(line) >= 4 && line[0] == '?' && line[1] == '?' {
-			path := strings.TrimSpace(line[3:])
-			if path != "" {
-				m[path] = true
-			}
-		}
-	}
-	return m
-}
-
-// diffUntracked returns paths present in post but not pre, sorted for
-// stable banner output.
-func diffUntracked(pre, post map[string]bool) []string {
 	var out []string
 	for p := range post {
 		if !pre[p] {
@@ -1574,22 +1534,6 @@ func formatTokens(n int) string {
 		return fmt.Sprintf("%d", n)
 	}
 	return fmt.Sprintf("%.1fk", float64(n)/1000)
-}
-
-// writeUntrackedWarning surfaces files the agent created but never
-// `git add`ed. Emitted after writeExitBanner on the success path so
-// the operator sees the commit SHA first, then the warning. Non-fatal:
-// the operator may have intended to leave them (e.g. ad-hoc scratch
-// files) — but the typical case is they meant to commit them and the
-// stranded files are silent data loss.
-func writeUntrackedWarning(opts Options, paths []string) {
-	opts = opts.withDefaults()
-	yellow := color.New(color.FgYellow, color.Bold)
-	w := opts.Out.Phase
-	fmt.Fprintln(w, yellow.Sprintf("⚠  %s left %d untracked file(s) outside the commit:", opts.Agent, len(paths)))
-	for _, p := range paths {
-		fmt.Fprintln(w, yellow.Sprintf("    %s", p))
-	}
 }
 
 const elapsedRound = time.Second
