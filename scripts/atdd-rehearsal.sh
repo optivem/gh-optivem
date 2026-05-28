@@ -258,30 +258,11 @@ if [[ $AUTO -eq 1 || $HEADLESS -eq 1 ]]; then
   log "  mode flags:  $MODE_BITS"
 fi
 
-log "Building gh-optivem..."
-BUILD_LOG="$(mktemp)"
-if ! ( cd "$GH_OPTIVEM_ROOT" && go build -o gh-optivem.exe . ) >"$BUILD_LOG" 2>&1; then
-  cat "$BUILD_LOG" >&2
-  log "go build failed — aborting before worktree."
-  if grep -q 'build constraints exclude all Go files' "$BUILD_LOG"; then
-    log ""
-    log "Likely cause: CGO is disabled in your Go env (tree-sitter bindings need CGO)."
-    log "  Check:  go env CGO_ENABLED      (expect: 1)"
-    log "  Fix:    go env -w CGO_ENABLED=1"
-    log "  Then re-run this script."
-  elif grep -qE '(C compiler "gcc" not found|gcc.*executable file not found)' "$BUILD_LOG"; then
-    log ""
-    log "Likely cause: no C compiler on PATH (tree-sitter bindings need CGO + gcc)."
-    log "  Install (Windows):  scoop install gcc        (or: choco install mingw, admin shell)"
-    log "  Install (macOS):    xcode-select --install"
-    log "  Install (Linux):    apt install gcc          (or your distro equivalent)"
-    log "  Verify:             gcc --version            (should print a version)"
-    log "  Then re-run this script (open a fresh terminal so PATH picks up gcc)."
-  fi
-  rm -f "$BUILD_LOG"
+log "Installing gh-optivem (build + gh extension install)..."
+if ! bash "$GH_OPTIVEM_ROOT/scripts/install.sh"; then
+  log "install.sh failed — aborting before worktree."
   exit 1
 fi
-rm -f "$BUILD_LOG"
 
 log "Cleaning local docker state (volumes + locally-built images; registry images preserved)..."
 ( cd "$CONSUMER_ROOT" && GH_OPTIVEM_CONFIG="$CONSUMER_ROOT/$CONFIG" "$BIN" system clean )
