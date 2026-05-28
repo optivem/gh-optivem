@@ -115,6 +115,66 @@ func TestWrap_GatewayLogsBindingAndStateDelta(t *testing.T) {
 	}
 }
 
+func TestWrap_GatewayBoolFalseRendersExplicitly(t *testing.T) {
+	// Regression: a gateway that returns Bool:false used to render as
+	// `OK GATE_X -> (no result)` when the binding had already been set to
+	// false by an upstream service-task (no state delta to hoist). This
+	// contradicted `OK GATE_X -> bool=true` for the symmetric case and
+	// hid the gate's actual decision behind a `(no result)` label.
+	prevNow := nowFn
+	nowFn = fixedClock
+	t.Cleanup(func() { nowFn = prevNow })
+
+	t.Run("no_delta_substitutes_bool_false", func(t *testing.T) {
+		var buf bytes.Buffer
+		node := statemachine.Node{
+			ID:   "GATE_X",
+			Kind: statemachine.Gateway,
+			Raw:  statemachine.RawNode{Binding: "x-enabled"},
+			Fn: func(ctx *statemachine.Context) statemachine.Outcome {
+				// Re-affirm: caller has already written x-enabled=false upstream.
+				ctx.Set("x-enabled", false)
+				return statemachine.Outcome{Bool: false}
+			},
+		}
+		wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+		ctx := statemachine.NewContext()
+		ctx.Set("x-enabled", false) // pre-state already false
+		wrapped(ctx)
+
+		got := buf.String()
+		if !strings.Contains(got, "OK GATE_X -> bool=false") {
+			t.Errorf("expected explicit bool=false for gateway; got:\n%s", got)
+		}
+		if strings.Contains(got, "(no result)") {
+			t.Errorf("gateway with Bool:false must not render as (no result); got:\n%s", got)
+		}
+	})
+
+	t.Run("delta_still_hoists", func(t *testing.T) {
+		// When the binding flips at this node, the existing hoist still wins
+		// and shows the full state delta — the new fallback must not steal
+		// that case.
+		var buf bytes.Buffer
+		node := statemachine.Node{
+			ID:   "GATE_Y",
+			Kind: statemachine.Gateway,
+			Raw:  statemachine.RawNode{Binding: "y-enabled"},
+			Fn: func(ctx *statemachine.Context) statemachine.Outcome {
+				ctx.Set("y-enabled", false)
+				return statemachine.Outcome{Bool: false}
+			},
+		}
+		wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+		wrapped(statemachine.NewContext()) // pre-state empty → delta exists
+
+		got := buf.String()
+		if !strings.Contains(got, "OK GATE_Y -> y-enabled=false") {
+			t.Errorf("expected hoisted state delta to win over bool=false fallback; got:\n%s", got)
+		}
+	})
+}
+
 func TestWrap_UserTaskLogsAgentAndFiles(t *testing.T) {
 	prevNow := nowFn
 	nowFn = fixedClock

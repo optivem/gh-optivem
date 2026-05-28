@@ -179,7 +179,7 @@ func writeEnter(deps Deps, node statemachine.Node, ctx *statemachine.Context) {
 			parts = append(parts, fmt.Sprintf("process=%s", node.Raw.Process))
 		}
 		if len(node.Raw.Params) > 0 {
-			parts = append(parts, fmt.Sprintf("params=%s", formatParams(node.Raw.Params)))
+			parts = append(parts, fmt.Sprintf("params=%s", formatParams(expandParamValues(node.Raw.Params, ctx))))
 		}
 	}
 	fmt.Fprintf(deps.Out, "%s %s %s  %s\n",
@@ -212,6 +212,14 @@ func writeEnter(deps Deps, node statemachine.Node, ctx *statemachine.Context) {
 // (no result)` followed by a separate `state:` line. The follow-on
 // `state:` line is suppressed in that case to avoid duplication.
 //
+// When the hoist doesn't fire because there is no delta — a gateway
+// re-affirms an existing binding value, so pre and post agree — a
+// gateway-specific fallback substitutes `bool=false` for `(no result)`.
+// wrapGateway guarantees gateways return a meaningful bool, so the
+// `(no result)` label is never honest for that kind; without the
+// fallback the line would contradict the symmetric `bool=true` case and
+// hide the gate's actual decision.
+//
 // On Outcome.Err the first line becomes:
 //
 //	[trace HH:MM:SS] FAIL NODE_ID -> <error>  (<elapsed>)
@@ -233,6 +241,14 @@ func writeExit(deps Deps, node statemachine.Node, out statemachine.Outcome, elap
 	hoistedDelta := detail == "(no result)" && delta != ""
 	if hoistedDelta {
 		detail = delta
+	}
+	// Gateway re-affirming an existing binding value: no state delta to hoist,
+	// but `(no result)` is misleading because gateways are contractually
+	// bool-valued (see wrapGateway). The only way detail is still "(no result)"
+	// here is that the gateway returned Bool:false; render it explicitly so
+	// the line is symmetric with the bool=true case above.
+	if !hoistedDelta && detail == "(no result)" && node.Kind == statemachine.Gateway {
+		detail = "bool=false"
 	}
 	if detail != "" {
 		fmt.Fprintf(w, "%s %s %s -> %s  (%s)\n",
@@ -317,10 +333,11 @@ func formatOutcome(out statemachine.Outcome) string {
 	case out.Bool:
 		return "bool=true"
 	default:
-		// Bool false is indistinguishable from "no result" via Outcome alone,
-		// but for gateways the wrapGateway decorator records the boolean in
-		// ctx.State under the binding name — so the state-delta line will
-		// show it. (no result) is the honest label here.
+		// Bool false is indistinguishable from "no result" via Outcome alone.
+		// For gateways, writeExit substitutes "bool=false" because wrapGateway
+		// guarantees gateways return a meaningful bool. For other node kinds,
+		// "(no result)" is the honest label — they may legitimately return
+		// Outcome{} (and any state they wrote will be hoisted by writeExit).
 		return "(no result)"
 	}
 }
@@ -393,6 +410,33 @@ func stateDelta(pre, post map[string]string) string {
 		}
 	}
 	return strings.Join(parts, ", ")
+}
+
+// expandParamValues returns a copy of raw with each value template-expanded
+// against ctx.Params + ctx.State, mirroring the substitution wrapCallActivity
+// will apply when pushing these params onto the sub-process scope (run.go
+// `for k, v := range raw.Params { ... ExpandParams(v, prev, ctx.State) ... }`).
+// We expand here so the trace banner shows the operator what value the called
+// sub-process actually sees — without this, `question=Do you approve fix to
+// attempt remediation for ${failure-kind} ?` leaks the literal placeholder
+// into the trace even though the downstream ASK_HUMAN prompt resolves it
+// correctly.
+//
+// On strict-mode expansion error the raw template is kept — the about-to-fire
+// wrapCallActivity will surface the same error authoritatively. Trace must
+// not block on diagnostic output (same contract as the UserTask agent branch
+// in writeEnter).
+func expandParamValues(raw map[string]string, ctx *statemachine.Context) map[string]string {
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		expanded, err := statemachine.ExpandParams(v, ctx.Params, ctx.State)
+		if err != nil {
+			out[k] = v
+			continue
+		}
+		out[k] = expanded
+	}
+	return out
 }
 
 // formatParams renders the raw params map sorted by key for stable output.
