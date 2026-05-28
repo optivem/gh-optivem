@@ -26,7 +26,7 @@ For structural change - UI Redesign
 ```bash
 cd ../shop
 
-bash ../gh-optivem/scripts/atdd-rehearsal.sh 61 --config gh-optivem-monolith-java.yaml
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 61 --config gh-optivem-monolith-java.yaml --auto --headless
 ```
 
 For behavioral change - user story
@@ -36,7 +36,7 @@ For behavioral change - user story
 ```bash
 cd ../shop
 
-bash ../gh-optivem/scripts/atdd-rehearsal.sh 65 --config gh-optivem-monolith-java.yaml
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 65 --config gh-optivem-monolith-java.yaml --auto --headless
 ```
 
 **Issue [#68 — Apply automatic quantity discount on cart lines](https://github.com/optivem/shop/issues/68)** (write flow with calculation rule):
@@ -44,7 +44,7 @@ bash ../gh-optivem/scripts/atdd-rehearsal.sh 65 --config gh-optivem-monolith-jav
 ```bash
 cd ../shop
 
-bash ../gh-optivem/scripts/atdd-rehearsal.sh 68 --config gh-optivem-monolith-java.yaml
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 68 --config gh-optivem-monolith-java.yaml --auto --headless
 ```
 
 **Issue [#69 — Reject order with line quantity of 100](https://github.com/optivem/shop/issues/69)** (write flow with validation rule):
@@ -52,7 +52,7 @@ bash ../gh-optivem/scripts/atdd-rehearsal.sh 68 --config gh-optivem-monolith-jav
 ```bash
 cd ../shop
 
-bash ../gh-optivem/scripts/atdd-rehearsal.sh 69 --config gh-optivem-monolith-java.yaml
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 69 --config gh-optivem-monolith-java.yaml --auto --headless
 ```
 
 **Issue [#70 — Return a delivered order](https://github.com/optivem/shop/issues/70)** (write flow extending the DSL + driver surface):
@@ -60,7 +60,7 @@ bash ../gh-optivem/scripts/atdd-rehearsal.sh 69 --config gh-optivem-monolith-jav
 ```bash
 cd ../shop
 
-bash ../gh-optivem/scripts/atdd-rehearsal.sh 70 --config gh-optivem-monolith-java.yaml
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 70 --config gh-optivem-monolith-java.yaml --auto --headless
 ```
 
 **Issue [#71 — Gift-wrap an order](https://github.com/optivem/shop/issues/71)** (write flow adding a new field to the existing DSL):
@@ -68,7 +68,7 @@ bash ../gh-optivem/scripts/atdd-rehearsal.sh 70 --config gh-optivem-monolith-jav
 ```bash
 cd ../shop
 
-bash ../gh-optivem/scripts/atdd-rehearsal.sh 71 --config gh-optivem-monolith-java.yaml
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 71 --config gh-optivem-monolith-java.yaml --auto --headless
 ```
 
 ## Contents
