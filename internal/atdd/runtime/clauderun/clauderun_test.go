@@ -897,6 +897,75 @@ func TestDispatch_BannerSaysNoChangesOnCleanExit(t *testing.T) {
 	}
 }
 
+// TestDispatch_EnterBannerListsLogPaths pins the headless inspection
+// contract: the ENTERING AGENT banner surfaces each per-dispatch log
+// path (prompt, events, outputs) the operator has no other lever to
+// discover, but only when that path is actually populated. A
+// no-outputs MID, an interactive dispatch with no event stream, or a
+// test path that sets none must produce no log lines at all.
+func TestDispatch_EnterBannerListsLogPaths(t *testing.T) {
+	t.Run("all three paths set → all three lines shown", func(t *testing.T) {
+		var buf bytes.Buffer
+		gitFake := &fakeGit{
+			out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+		}
+		opts := newOpts()
+		opts.Stdout = &buf
+		opts.PromptLogPath = "/tmp/run-1/prompt.md"
+		opts.EventsLogPath = "/tmp/run-1/events.ndjson"
+		opts.OutputFilePath = "/tmp/run-1/outputs.jsonl"
+
+		if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+			t.Fatalf("Dispatch: %v", err)
+		}
+		got := buf.String()
+		mustContain(t, got, "Prompt log:  /tmp/run-1/prompt.md")
+		mustContain(t, got, "Events log:  /tmp/run-1/events.ndjson")
+		mustContain(t, got, "Outputs log: /tmp/run-1/outputs.jsonl")
+	})
+
+	t.Run("only prompt set → only prompt line shown", func(t *testing.T) {
+		var buf bytes.Buffer
+		gitFake := &fakeGit{
+			out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+		}
+		opts := newOpts()
+		opts.Stdout = &buf
+		opts.PromptLogPath = "/tmp/run-2/prompt.md"
+
+		if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+			t.Fatalf("Dispatch: %v", err)
+		}
+		got := buf.String()
+		mustContain(t, got, "Prompt log:  /tmp/run-2/prompt.md")
+		if strings.Contains(got, "Events log:") {
+			t.Errorf("Events log line must be omitted when EventsLogPath is empty: %s", got)
+		}
+		if strings.Contains(got, "Outputs log:") {
+			t.Errorf("Outputs log line must be omitted when OutputFilePath is empty: %s", got)
+		}
+	})
+
+	t.Run("no paths set → no log lines shown", func(t *testing.T) {
+		var buf bytes.Buffer
+		gitFake := &fakeGit{
+			out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+		}
+		opts := newOpts()
+		opts.Stdout = &buf
+
+		if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+			t.Fatalf("Dispatch: %v", err)
+		}
+		got := buf.String()
+		for _, label := range []string{"Prompt log:", "Events log:", "Outputs log:"} {
+			if strings.Contains(got, label) {
+				t.Errorf("no log lines should be emitted when all paths are empty, got %q in %s", label, got)
+			}
+		}
+	})
+}
+
 // ---------------------------------------------------------------------------
 // Token usage parsing & banner formatting
 // ---------------------------------------------------------------------------

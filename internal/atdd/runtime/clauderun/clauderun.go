@@ -1474,6 +1474,22 @@ func writeEnterBanner(opts Options) {
 		fmt.Fprintln(w, cyan.Sprintf("   Issue: #%d %q",
 			opts.IssueNum, opts.IssueTitle))
 	}
+	// Surface the per-dispatch log paths so a headless operator —
+	// who has no TTY to interject through — knows where to tail for
+	// the rendered prompt, the claude event stream, and the agent's
+	// declared-outputs JSONL. Each line is gated on a non-empty path:
+	// interactive mode skips Events (no audit log), MIDs with no
+	// declared outputs skip Outputs, and test paths that don't set
+	// any of them simply emit none.
+	if opts.PromptLogPath != "" {
+		fmt.Fprintln(w, cyan.Sprintf("   Prompt log:  %s", opts.PromptLogPath))
+	}
+	if opts.EventsLogPath != "" {
+		fmt.Fprintln(w, cyan.Sprintf("   Events log:  %s", opts.EventsLogPath))
+	}
+	if opts.OutputFilePath != "" {
+		fmt.Fprintln(w, cyan.Sprintf("   Outputs log: %s", opts.OutputFilePath))
+	}
 	fmt.Fprintln(w, cyan.Sprint(banner))
 }
 
