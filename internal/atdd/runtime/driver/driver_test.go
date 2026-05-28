@@ -1140,3 +1140,108 @@ func TestClaudeRunDispatch_NoDeclaredOutputs_ClearsStaleOutputFilePath(t *testin
 		t.Errorf("output-file-path: got %q, want \"\" (dispatcher must clear stale stash when MID declares no outputs)", got)
 	}
 }
+
+func TestClaudeRunDispatch_ProdAgentWithoutDeclaredOutputs_SeedsEnvelopeChannel(t *testing.T) {
+	// Plan 20260528-1150: every prod-agent dispatch must be able to emit
+	// the universal scope-exception envelope per scope.md doctrine, even
+	// when its MID declares no flag outputs (implement-system,
+	// update-system, the driver-adapter MIDs, …). The dispatcher seeds
+	// the per-dispatch JSONL path AND a write-time allow-list spec
+	// containing only the envelope keys; without the spec, `gh optivem
+	// output write scope-exception-files=...` refuses with "no outputs
+	// declared for this agent".
+	tmpRepo := t.TempDir()
+	rs := &runState{runTimestamp: "20260528-150000", repoPath: tmpRepo}
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaaaaa1\n"),
+			[]byte("aaaaaaa1\n"),
+		},
+	}
+	claudeFake := &fakeClaude{}
+	opts := newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake})
+	opts.RepoPath = tmpRepo
+	fn := buildEngineWithRunState(t, opts, defaultTestConfig(), rs)
+
+	ctx := newCtxWithIssue()
+	// Simulate execute-agent's call-activity param push: category propagates
+	// through ctx.Params from the writing-agent MID's `category: prod-agent`.
+	// In minimalYAML, write-acceptance-tests is test-agent — manually
+	// overriding here pins the prod-agent branch without rewiring the YAML.
+	ctx.Params["category"] = "prod-agent"
+
+	out := fn(ctx)
+	if out.Err != nil {
+		t.Fatalf("dispatch: %v", out.Err)
+	}
+	if len(claudeFake.calls) != 1 {
+		t.Fatalf("want 1 runner call, got %d", len(claudeFake.calls))
+	}
+	gotFile := claudeFake.calls[0].OutputFilePath
+	wantFile := filepath.Join(tmpRepo, ".gh-optivem", "runs", "20260528-150000", "001-acceptance-test-writer.outputs.jsonl")
+	if gotFile != wantFile {
+		t.Errorf("OutputFilePath: got %q, want %q", gotFile, wantFile)
+	}
+	gotKeys := claudeFake.calls[0].OutputKeysSpec
+	wantKeys := "scope-exception-files:string-list,scope-exception-reason:string"
+	if gotKeys != wantKeys {
+		t.Errorf("OutputKeysSpec: got %q, want %q", gotKeys, wantKeys)
+	}
+	if got, _ := ctx.Get("output-file-path").(string); got != gotFile {
+		t.Errorf("output-file-path stash: got %q, want %q (validate-outputs-and-scopes must read the same path)", got, gotFile)
+	}
+}
+
+func TestClaudeRunDispatch_NonProdAgentWithoutDeclaredOutputs_DoesNotSeedEnvelope(t *testing.T) {
+	// Counterpart to the prod-agent test above: a test-agent (or any other
+	// non-prod-agent) dispatch with no declared outputs MUST NOT receive
+	// the envelope channel. The envelope is doctrine for prod-agent
+	// dispatches only; other tiers either declare envelope keys explicitly
+	// (write-acceptance-tests, write-contract-tests do) or do not expose
+	// the channel.
+	tmpRepo := t.TempDir()
+	rs := &runState{runTimestamp: "20260528-150000", repoPath: tmpRepo}
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaaaaa1\n"),
+			[]byte("aaaaaaa1\n"),
+		},
+	}
+	claudeFake := &fakeClaude{}
+	opts := newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake})
+	opts.RepoPath = tmpRepo
+	fn := buildEngineWithRunState(t, opts, defaultTestConfig(), rs)
+
+	ctx := newCtxWithIssue()
+	ctx.Params["category"] = "test-agent"
+
+	out := fn(ctx)
+	if out.Err != nil {
+		t.Fatalf("dispatch: %v", out.Err)
+	}
+	if got := claudeFake.calls[0].OutputFilePath; got != "" {
+		t.Errorf("OutputFilePath: got %q, want \"\" (non-prod-agent + no declared outputs → channel unwired)", got)
+	}
+	if got := claudeFake.calls[0].OutputKeysSpec; got != "" {
+		t.Errorf("OutputKeysSpec: got %q, want \"\"", got)
+	}
+}
+
+// buildEngineWithRunState is buildEngine + a real runState so dispatchPaths
+// emits non-empty per-dispatch paths. Used by tests that exercise the
+// outputs-channel wiring (plan 20260528-1150).
+func buildEngineWithRunState(t *testing.T, opts Options, cfg *projectconfig.Config, rs *runState) statemachine.NodeFn {
+	t.Helper()
+	eng, err := statemachine.LoadBytes([]byte(minimalYAML))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+	agentReg := agents.New()
+	registerAgentDispatchers(agentReg)
+	eng.AgentFn = agentReg.Lookup
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+	wrapAgentDispatchers(eng, opts, cfg, rs)
+	return eng.Processes["main"].Nodes["AT_RED_TEST"].Fn
+}

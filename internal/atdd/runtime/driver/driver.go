@@ -913,32 +913,50 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		// optivem output write` refuses with "no outputs declared". The
 		// path stash is also skipped so validate-outputs-and-scopes
 		// treats it as no-op.
+		//
+		// Envelope exception (plan 20260528-1150): every prod-agent
+		// dispatch must be able to emit the scope-exception envelope
+		// per scope.md doctrine, even when its MID declares no flag
+		// outputs (implement-system, update-system, the driver-adapter
+		// MIDs, …). For those dispatches we seed only the envelope keys
+		// into GH_OPTIVEM_OUTPUT_KEYS so `gh optivem output write
+		// scope-exception-files=...` is accepted; the per-dispatch
+		// JSONL path is the same one rs.dispatchPaths already computed.
+		// validate-outputs-and-scopes' readOutputsJSONL recognises the
+		// envelope key types as built-in facts (statemachine.
+		// EnvelopeOutputSpecs), so the absent declared list does not
+		// lose type fidelity.
 		var (
 			outputKeysSpec  string
 			expectedOutputs []statemachine.OutputSpec
 		)
-		if eng != nil {
+		if eng == nil {
+			ctx.Set("output-file-path", "")
+			outputFilePath = ""
+		} else {
 			outs, _ := eng.Outputs(scopeKey)
 			expectedOutputs = outs
-			if len(outs) > 0 && outputFilePath != "" {
+			switch {
+			case len(outs) > 0 && outputFilePath != "":
 				outputKeysSpec = encodeOutputKeysSpec(outs)
 				ctx.Set("output-file-path", outputFilePath)
-			} else {
-				// No declared outputs (or no runState) → unwire the path
-				// so clauderun doesn't export GH_OPTIVEM_OUTPUT_FILE in
-				// isolation, which would let the agent write to a file
-				// the dispatcher never reads. Also clear any path the
-				// previous agent's dispatch stashed: without this, the
-				// next validateOutputsAndScopes would re-read the prior
-				// JSONL with this MID's empty declared list, fall through
+			case nodeParams["category"] == "prod-agent" && outputFilePath != "":
+				outputKeysSpec = encodeOutputKeysSpec(statemachine.EnvelopeOutputSpecs())
+				ctx.Set("output-file-path", outputFilePath)
+			default:
+				// No declared outputs and not a prod-agent dispatch →
+				// unwire the path so clauderun doesn't export
+				// GH_OPTIVEM_OUTPUT_FILE in isolation, which would let
+				// the agent write to a file the dispatcher never reads.
+				// Also clear any path the previous agent's dispatch
+				// stashed: without this, the next
+				// validateOutputsAndScopes would re-read the prior JSONL
+				// with this MID's empty declared list, fall through
 				// coerceJSONOutputValue's default branch, and clobber
 				// already-typed state keys ([]string → []any).
 				ctx.Set("output-file-path", "")
 				outputFilePath = ""
 			}
-		} else {
-			ctx.Set("output-file-path", "")
-			outputFilePath = ""
 		}
 
 		nodeDescription, err := statemachine.ExpandParams(raw.Name, ctx.Params, ctx.State)

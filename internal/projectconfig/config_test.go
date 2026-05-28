@@ -41,6 +41,7 @@ system:
   repo: optivem/shop
   lang: java
   sonar-project: optivem_shop-system
+  db-migration-path: system/db/migrations
 
 system-test:
   path: system-test/java
@@ -66,7 +67,7 @@ external-systems:
     repo: optivem/shop
 `
 
-const sampleMonoRepoMultitier = `project:
+const sampleMonoRepoMultitier =`project:
   provider: github
   url: https://github.com/orgs/optivem/projects/20
 
@@ -87,6 +88,7 @@ system:
     repo: optivem/shop
     lang: typescript
     sonar-project: optivem_shop-frontend
+  db-migration-path: system/db/migrations
 
 system-test:
   path: system-test/java
@@ -127,6 +129,7 @@ system:
   repo: optivem/shop
   lang: java
   sonar-project: optivem_shop-system
+  db-migration-path: system/db/migrations
 
 system-test:
   path: system-test
@@ -173,6 +176,7 @@ system:
     repo: optivem/shop-frontend
     lang: typescript
     sonar-project: optivem_shop-frontend
+  db-migration-path: system/db/migrations
 
 system-test:
   path: system-test
@@ -945,9 +949,10 @@ func TestValidate_AcceptsExternalSystemsOmitted(t *testing.T) {
 		Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		Sonar:   Sonar{Organization: "x"},
 		System: System{
-			Architecture: ArchMonolith,
-			Path:         "p", Repo: "x/y", Lang: LangJava,
-			SonarProject: "x_y-system",
+			Architecture:    ArchMonolith,
+			Path:            "p", Repo: "x/y", Lang: LangJava,
+			SonarProject:    "x_y-system",
+			DbMigrationPath: DefaultDbMigrationPath,
 		},
 		SystemTest: TierSpec{
 			Path: "t", Repo: "x/y", Lang: LangJava, SonarProject: "x_y-system-test",
@@ -966,9 +971,10 @@ func TestValidate_AcceptsOnlyStubsOrOnlySimulators(t *testing.T) {
 			Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 			Sonar:   Sonar{Organization: "x"},
 			System: System{
-				Architecture: ArchMonolith,
-				Path:         "p", Repo: "x/y", Lang: LangJava,
-				SonarProject: "x_y-system",
+				Architecture:    ArchMonolith,
+				Path:            "p", Repo: "x/y", Lang: LangJava,
+				SonarProject:    "x_y-system",
+				DbMigrationPath: DefaultDbMigrationPath,
 			},
 			SystemTest: TierSpec{
 				Path: "t", Repo: "x/y", Lang: LangJava, SonarProject: "x_y-system-test",
@@ -1017,9 +1023,10 @@ func TestValidate_AcceptsExternalRepoNotInOtherTiers(t *testing.T) {
 		RepoStrategy: RepoStrategyMultiRepo,
 		Sonar:        Sonar{Organization: "x"},
 		System: System{
-			Architecture: ArchMultitier,
-			Backend:      TierSpec{Path: "be", Repo: "x/backend", Lang: LangJava, SonarProject: "x_main-backend"},
-			Frontend:     TierSpec{Path: "fe", Repo: "x/frontend", Lang: LangTypescript, SonarProject: "x_main-frontend"},
+			Architecture:    ArchMultitier,
+			Backend:         TierSpec{Path: "be", Repo: "x/backend", Lang: LangJava, SonarProject: "x_main-backend"},
+			Frontend:        TierSpec{Path: "fe", Repo: "x/frontend", Lang: LangTypescript, SonarProject: "x_main-frontend"},
+			DbMigrationPath: DefaultDbMigrationPath,
 		},
 		SystemTest: TierSpec{
 			Path: "t", Repo: "x/main", Lang: LangJava, SonarProject: "x_main-system-test",
@@ -1110,9 +1117,10 @@ func TestWrite_OmitsEmptyOptionalFields(t *testing.T) {
 		Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		Sonar:   Sonar{Organization: "x"},
 		System: System{
-			Architecture: ArchMonolith,
-			Path:         "p", Repo: "x/y", Lang: LangJava,
-			SonarProject: "x_y-system",
+			Architecture:    ArchMonolith,
+			Path:            "p", Repo: "x/y", Lang: LangJava,
+			SonarProject:    "x_y-system",
+			DbMigrationPath: DefaultDbMigrationPath,
 		},
 		SystemTest: TierSpec{
 			Path: "t", Repo: "x/y", Lang: LangJava, SonarProject: "x_y-system-test",
@@ -1219,11 +1227,12 @@ func TestWriteToPath_NonCanonicalFilename(t *testing.T) {
 		RepoStrategy: RepoStrategyMonoRepo,
 		Sonar:        Sonar{Organization: "acme"},
 		System: System{
-			Architecture: ArchMonolith,
-			Path:         "system/monolith/java",
-			Repo:         "acme/page-turner",
-			Lang:         LangJava,
-			SonarProject: "acme_page-turner-system",
+			Architecture:    ArchMonolith,
+			Path:            "system/monolith/java",
+			Repo:            "acme/page-turner",
+			Lang:            LangJava,
+			SonarProject:    "acme_page-turner-system",
+			DbMigrationPath: DefaultDbMigrationPath,
 		},
 		SystemTest: TierSpec{
 			Path:         "system-test/java",
@@ -1267,11 +1276,12 @@ func validMonolithBase() *Config {
 		RepoStrategy: RepoStrategyMonoRepo,
 		Sonar:        Sonar{Organization: "acme"},
 		System: System{
-			Architecture: ArchMonolith,
-			Path:         "system",
-			Repo:         "acme/page-turner",
-			Lang:         LangJava,
-			SonarProject: "acme_page-turner-system",
+			Architecture:    ArchMonolith,
+			Path:            "system",
+			Repo:            "acme/page-turner",
+			Lang:            LangJava,
+			SonarProject:    "acme_page-turner-system",
+			DbMigrationPath: DefaultDbMigrationPath,
 		},
 		SystemTest: TierSpec{
 			Path: "system-test", Repo: "acme/page-turner", Lang: LangJava,
@@ -1531,6 +1541,7 @@ func validMultitierBase() *Config {
 				Path: "frontend", Repo: "acme/page-turner", Lang: LangTypescript,
 				SonarProject: "acme_page-turner-frontend",
 			},
+			DbMigrationPath: DefaultDbMigrationPath,
 		},
 		SystemTest: TierSpec{
 			Path: "system-test", Repo: "acme/page-turner", Lang: LangJava,

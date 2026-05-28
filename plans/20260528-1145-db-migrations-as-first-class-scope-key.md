@@ -1,5 +1,7 @@
 # DB migrations as a first-class scope key
 
+🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-28T09:56:54Z`
+
 ## Context
 
 During the 2026-05-28 rehearsal of issue #71 ("Gift-wrap an order"), the
@@ -254,9 +256,10 @@ offered. If the gate still fires, the scope widening was incomplete.
 
 - **Should `update-system` get the same AT-layer read widening that
   `implement-system` got in commit `454eb64`?** Decided 2026-05-28:
-  separate plan, separate discussion. Tracked at
-  `plans/upcoming/20260528-1155-update-system-at-layer-read-widening.md`
-  (stub — needs discussion before items are written).
+  **dropped** — separate plan was opened
+  (`20260528-1155-update-system-at-layer-read-widening.md`) and then
+  deleted during refinement. Not pursued; may revisit if a concrete
+  reshape failure surfaces.
 
 ## References
 

@@ -467,6 +467,91 @@ func TestRunCommand_RunTestsStampsTestOutcome(t *testing.T) {
 	}
 }
 
+// TestRunCommand_RunTestsClassifiesInfraFailure exercises the wiring
+// of verify_classify.classifyShellErr into runCommand. When the
+// test-runner shell-out fails with stderr matching one of the infra
+// patterns ("is not recognized", "command not found", docker daemon
+// unreachable, etc.), runCommand must stamp test-outcome="infra" and
+// surface the matching label under test-infra-label — overriding the
+// default "fail" stamp set on every non-zero exit. The infra branch
+// is what TESTS_INFRA_HALT routes off in the verify-tests-* processes,
+// so the pre-classifier behaviour of treating runner-not-started as
+// "test red" (silently advancing verify-tests-fail) is what this test
+// guards against.
+func TestRunCommand_RunTestsClassifiesInfraFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		stderr    string
+		wantLabel string
+	}{
+		{
+			name:      "windows cmd not recognized (the #71 rehearsal stderr)",
+			stderr:    "'C:\\Program' is not recognized as an internal or external command,\noperable program or batch file.",
+			wantLabel: "missing executable",
+		},
+		{
+			name:      "bash command not found",
+			stderr:    "bash: npx: command not found",
+			wantLabel: "missing executable",
+		},
+		{
+			name:      "docker daemon unreachable",
+			stderr:    "error during connect: this error may indicate that the docker daemon is not running",
+			wantLabel: "docker daemon unreachable",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sh := &fakeShell{stderr: []byte(tc.stderr), exitCode: 1, err: errors.New("exit 1")}
+			var stderr bytes.Buffer
+			a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &stderr})
+			ctx := statemachine.NewContext()
+			ctx.Params["command"] = "gh optivem test run"
+			out := a.runCommand(ctx)
+			if out.Err != nil {
+				t.Fatalf("unexpected err: %v", out.Err)
+			}
+			if got := ctx.GetString("test-outcome"); got != "infra" {
+				t.Fatalf("test-outcome: got %q, want \"infra\" (classifier should override the default \"fail\")", got)
+			}
+			if got := ctx.GetString("test-infra-label"); got != tc.wantLabel {
+				t.Fatalf("test-infra-label: got %q, want %q", got, tc.wantLabel)
+			}
+			// verify_results_text still gets stamped so the halt banner /
+			// trace can quote the runner output.
+			if got := ctx.GetString("verify_results_text"); got == "" {
+				t.Fatalf("verify_results_text should still be stamped on infra failure")
+			}
+		})
+	}
+}
+
+// TestRunCommand_RunTestsRedFailureStaysFail is the negative-space
+// guard for the infra wiring: a shell-out failure whose stderr does
+// NOT match any infra pattern must remain test-outcome="fail", not
+// drift to "infra". Otherwise every actual red test would halt the
+// pipeline instead of routing to fix-unexpected-failing-tests.
+func TestRunCommand_RunTestsRedFailureStaysFail(t *testing.T) {
+	sh := &fakeShell{
+		stderr:   []byte("Expected 'gift-wrapped: true' but got 'gift-wrapped: false'\nat tests/gift-wrap.spec.ts:42"),
+		exitCode: 1,
+		err:      errors.New("exit 1"),
+	}
+	var stderr bytes.Buffer
+	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &stderr})
+	ctx := statemachine.NewContext()
+	ctx.Params["command"] = "gh optivem test run"
+	out := a.runCommand(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.GetString("test-outcome"); got != "fail" {
+		t.Fatalf("test-outcome: got %q, want \"fail\" (a real assertion failure must not be classified as infra)", got)
+	}
+	if _, set := ctx.State["test-infra-label"]; set {
+		t.Fatalf("test-infra-label should not be set on a non-infra failure: got %v", ctx.Get("test-infra-label"))
+	}
+}
+
 func TestRunCommand_SuiteAndTestFlagsAppendedOnlyWhenSet(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -1144,6 +1229,48 @@ func TestValidateOutputsAndScopes_JSONL_TypedCoercionForDeclaredKeys(t *testing.
 	}
 	if got := ctx.Get("outputs-and-scopes-valid"); got != true {
 		t.Fatalf("outputs-and-scopes-valid: got %v, want true", got)
+	}
+}
+
+func TestValidateOutputsAndScopes_JSONL_EnvelopeKeysCoercedForNoOutputsMID(t *testing.T) {
+	// Plan 20260528-1150: prod-agent MIDs that declare no `outputs:` block
+	// (implement-system, update-system, the adapter implementers/updaters)
+	// can still emit the universal scope-exception envelope via the
+	// runtime-seeded channel. The reader must coerce the envelope keys
+	// using the built-in envelope contract (statemachine.EnvelopeOutputSpecs),
+	// so scope-exception-files lands in ctx.State as []string and the
+	// scope_exception_requested gate's type-assertion succeeds — not as
+	// the raw []any that JSON.Unmarshal would otherwise produce.
+	dir := t.TempDir()
+	jsonl := filepath.Join(dir, "001-system-implementer.outputs.jsonl")
+	writeJSONL(t, jsonl,
+		`{"scope-exception-files":["system/db/migrations/V_x.sql"],"scope-exception-reason":"gift_wrap column required by AT"}`,
+	)
+	a := newActions(Deps{Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	ctx := statemachine.NewContext()
+	// refine-acceptance-criteria carries no outputs and no inline scope —
+	// stand-in for any no-outputs MID at the validator layer; the
+	// envelope-coercion behaviour is MID-agnostic. Using refine-* skips
+	// the scope check (Engine.Scope returns ok=false) so the test pins
+	// only the coercer behaviour.
+	ctx.Params["task-name"] = "refine-acceptance-criteria"
+	ctx.State["output-file-path"] = jsonl
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	files, ok := ctx.Get("scope-exception-files").([]string)
+	if !ok {
+		t.Fatalf("scope-exception-files: want []string, got %T (%v)",
+			ctx.Get("scope-exception-files"), ctx.Get("scope-exception-files"))
+	}
+	if len(files) != 1 || files[0] != "system/db/migrations/V_x.sql" {
+		t.Errorf("scope-exception-files: got %v, want [system/db/migrations/V_x.sql]", files)
+	}
+	if got, ok := ctx.Get("scope-exception-reason").(string); !ok {
+		t.Fatalf("scope-exception-reason: want string, got %T", ctx.Get("scope-exception-reason"))
+	} else if got != "gift_wrap column required by AT" {
+		t.Errorf("scope-exception-reason: got %q, want %q", got, "gift_wrap column required by AT")
 	}
 }
 

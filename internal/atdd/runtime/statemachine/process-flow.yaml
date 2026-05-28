@@ -1266,6 +1266,10 @@ processes:
         type: end-event
         name: "Tests Pass Verified"
 
+      - id: TESTS_INFRA_HALT
+        type: error-end-event
+        name: "Test Runner Infra Failure"
+
       - id: UNKNOWN_TESTS_OUTCOME
         type: error-end-event
         name: "Unknown Tests Outcome"
@@ -1274,6 +1278,7 @@ processes:
       - {from: RUN_TESTS,          to: GATE_TESTS_OUTCOME}
       - {from: GATE_TESTS_OUTCOME, to: VERIFY_PASS_END,              when: "test-outcome == pass"}
       - {from: GATE_TESTS_OUTCOME, to: FIX_UNEXPECTED_FAILING_TESTS, when: "test-outcome == fail"}
+      - {from: GATE_TESTS_OUTCOME, to: TESTS_INFRA_HALT,             when: "test-outcome == infra"}
       - {from: GATE_TESTS_OUTCOME, to: UNKNOWN_TESTS_OUTCOME}
       - {from: FIX_UNEXPECTED_FAILING_TESTS, to: VERIFY_PASS_END}
 
@@ -1305,6 +1310,10 @@ processes:
         type: end-event
         name: "Tests Fail Verified"
 
+      - id: TESTS_INFRA_HALT
+        type: error-end-event
+        name: "Test Runner Infra Failure"
+
       - id: UNKNOWN_TESTS_OUTCOME
         type: error-end-event
         name: "Unknown Tests Outcome"
@@ -1313,6 +1322,7 @@ processes:
       - {from: RUN_TESTS,          to: GATE_TESTS_OUTCOME}
       - {from: GATE_TESTS_OUTCOME, to: FIX_UNEXPECTED_PASSING_TESTS, when: "test-outcome == pass"}
       - {from: GATE_TESTS_OUTCOME, to: VERIFY_FAIL_END,              when: "test-outcome == fail"}
+      - {from: GATE_TESTS_OUTCOME, to: TESTS_INFRA_HALT,             when: "test-outcome == infra"}
       - {from: GATE_TESTS_OUTCOME, to: UNKNOWN_TESTS_OUTCOME}
       - {from: FIX_UNEXPECTED_PASSING_TESTS, to: VERIFY_FAIL_END}
 
@@ -1442,8 +1452,19 @@ processes:
   # Asymmetric: reads the full system-test layer (the failing AT, its
   # contracts, the DSL it speaks, the driver port/adapter pair and the
   # external-system driver pair the AT may stage) so the agent can see
-  # *what* behaviour to implement. Writes only system-path — any change
-  # to driver/test code requires a scope_exception.
+  # *what* behaviour to implement. Writes system-path plus
+  # system-db-migration-path — when the AT asserts persisted state the
+  # agent must add a Flyway-style migration alongside the production code
+  # so the column exists when the test runs. Other layer changes still
+  # require a scope_exception.
+  #
+  # system-db-migration-path is shared infrastructure: a single
+  # Flyway-ordered tree under `system/db/migrations` consumed by every
+  # SUT (3 langs × 2 archs) via a Flyway sidecar — sibling of
+  # system/monolith/ and system/multitier/, not a child of either.
+  # Every architecture/language combo writes into the same migration
+  # set; the asymmetry is intentional (schema is architecture- and
+  # language-agnostic).
   implement-system:
     name: "Implement System"
     start: EXECUTE_AGENT
@@ -1457,8 +1478,8 @@ processes:
           agent: system-implementer
           # prod-agent tier: production-code writing agent.
           category: prod-agent
-        read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
-        write: [system-path]
+        read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path, system-db-migration-path]
+        write: [system-path, system-db-migration-path]
 
       - id: IMPL_SYS_END
         type: end-event
@@ -1472,8 +1493,12 @@ processes:
   # parameterised implement-and-verify-system HIGH with
   # `action: update-system`. Reads driver-port (must see what must not
   # change) and driver-adapter (the absorbing layer) on top of system-path;
-  # writes only system-path + driver-adapter (driver-port writes require a
-  # scope_exception).
+  # writes system-path + driver-adapter + system-db-migration-path —
+  # reshapes that need a schema change (e.g. extracting a column into a
+  # join table) carry the migration alongside the code change in the same
+  # dispatch (driver-port writes still require a scope_exception). See
+  # `implement-system` above for the rationale on
+  # `system-db-migration-path` being a shared, arch/lang-agnostic layer.
   update-system:
     name: "Update System"
     start: EXECUTE_AGENT
@@ -1487,8 +1512,8 @@ processes:
           agent: system-updater
           # prod-agent tier: production-code writing agent.
           category: prod-agent
-        read:  [system-path, driver-adapter, driver-port]
-        write: [system-path, driver-adapter]
+        read:  [system-path, driver-adapter, driver-port, system-db-migration-path]
+        write: [system-path, driver-adapter, system-db-migration-path]
 
       - id: UPDATE_SYS_END
         type: end-event
@@ -1752,6 +1777,14 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: REFACTOR_TESTS_END}
 
+  # Reads system-db-migration-path so the agent can see the current
+  # schema (column names, types, NOT NULL constraints) when refactoring
+  # the production code that talks to it, but cannot write to it from
+  # this phase. Pure refactors don't change schema by definition; a
+  # refactor that needs a schema change (e.g. a column rename) is the
+  # trigger for a new ticket dispatched via a behavior-change verb
+  # (implement-system / update-system), not a write authority widening
+  # here.
   refactor-system:
     name: "Refactor System"
     start: EXECUTE_AGENT
@@ -1765,7 +1798,7 @@ processes:
           agent: system-refactorer
           # prod-agent tier: production-code writing agent.
           category: prod-agent
-        read:  [system-path]
+        read:  [system-path, system-db-migration-path]
         write: [system-path]
 
       - id: REFACTOR_SYS_END

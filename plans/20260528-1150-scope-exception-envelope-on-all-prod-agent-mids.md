@@ -1,5 +1,7 @@
 # Scope-exception envelope must be available on every writing-agent MID
 
+🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-28T09:58:23Z`
+
 ## Context
 
 During the 2026-05-28 rehearsal of issue #71, the `system-implementer`
