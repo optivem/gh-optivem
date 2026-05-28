@@ -82,6 +82,7 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"compile-tests",
 		"build-system",
 		"start-system",
+		"start-system-restart",
 		"commit",
 		"run-tests",
 		// LOW

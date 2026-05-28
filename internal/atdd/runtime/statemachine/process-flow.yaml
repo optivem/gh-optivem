@@ -943,10 +943,8 @@ processes:
 
       - id: START_SYSTEM_AFTER_DRIVER
         type: call-activity
-        process: start-system
+        process: start-system-restart
         name: "Start System"
-        params:
-          start-flags: "--restart"
 
       - id: VERIFY_TESTS_PASS_CONTRACT_REAL
         type: call-activity
@@ -987,10 +985,8 @@ processes:
 
       - id: START_SYSTEM_AFTER_STUBS
         type: call-activity
-        process: start-system
+        process: start-system-restart
         name: "Start System"
-        params:
-          start-flags: "--restart"
 
       - id: VERIFY_TESTS_PASS_CONTRACT_STUB
         type: call-activity
@@ -1043,10 +1039,8 @@ processes:
 
       - id: START_SYSTEM
         type: call-activity
-        process: start-system
+        process: start-system-restart
         name: "Start the System"
-        params:
-          start-flags: "--restart"
 
       - id: VERIFY_TESTS_PASS
         type: call-activity
@@ -1830,22 +1824,24 @@ processes:
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: BUILD_SYS_END}
 
-  # `${start-flags}` defaults to empty — the dispatched command is then
-  # `gh optivem system start`, and `runner.Up` short-circuits with the
-  # "already running, skipping restart" optimisation when the system is
-  # healthy (`internal/runner/system.go:131`). This is correct for callers
-  # that run *before* a system build (RED-side test-write phases, pre-verify
-  # safety calls).
+  # `start-system` vs `start-system-restart` is a binary semantic split, not
+  # a parameterised flag — the BPMN engine has no per-param defaulting, so
+  # the "do I restart?" decision lives in the process name.
   #
-  # Callers that run *after* `build-system` MUST pass
-  # `start-flags: "--restart"` to force `runner.Up` to tear down the stale
-  # container and bring up the freshly-built image. Without it, `Up` skips
+  # `start-system` — `runner.Up` short-circuits with the "already running,
+  # skipping restart" optimisation when the system is healthy
+  # (`internal/runner/system.go:131`). Correct for callers that run *before*
+  # a system build (RED-side test-write phases, pre-verify safety calls).
+  #
+  # `start-system-restart` — callers that run *after* `build-system` MUST
+  # use this variant to force `runner.Up` to tear down the stale container
+  # and bring up the freshly-built image. Without `--restart`, `Up` skips
   # the restart, the new image is never instantiated, and the verify step
   # runs against the stale container — every test then exercises pre-build
   # code and the orchestrator mis-routes the resulting failures to
   # `fix-unexpected-failing-tests`.
   #
-  # Current restart-required callers:
+  # Current restart-required callers (all dispatch `start-system-restart`):
   #
   #   - `implement-and-verify-system` — `START_SYSTEM` after `BUILD_SYSTEM`.
   #   - `implement-and-verify-external-system-driver-adapters-contract-tests`
@@ -1860,8 +1856,7 @@ processes:
         process: execute-command
         name: "Dispatch the Command"
         params:
-          command: "gh optivem system start ${start-flags}"
-          start-flags: ""
+          command: "gh optivem system start"
 
       - id: START_SYS_END
         type: end-event
@@ -1869,6 +1864,24 @@ processes:
 
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: START_SYS_END}
+
+  start-system-restart:
+    name: "Start System (Restart)"
+    start: EXECUTE_COMMAND
+    nodes:
+      - id: EXECUTE_COMMAND
+        type: call-activity
+        process: execute-command
+        name: "Dispatch the Command"
+        params:
+          command: "gh optivem system start --restart"
+
+      - id: START_SYS_RESTART_END
+        type: end-event
+        name: "System Restarted"
+
+    sequence-flows:
+      - {from: EXECUTE_COMMAND, to: START_SYS_RESTART_END}
 
   # The message is constructed here, not at each call site: every COMMIT_*
   # caller runs downstream of parse-ticket, which writes `ticket-id` and
