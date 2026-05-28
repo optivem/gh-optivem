@@ -26,36 +26,13 @@ This task does not receive a substituted artifact input; the `TODO: DSL` prototy
 
 ## Outputs
 
-Emit each declared output by calling `gh optivem output write KEY=VAL`
-from the `Bash` tool. The dispatcher reads the resulting per-invocation
-JSONL file after you exit. Call once per dispatch (multiple `KEY=VAL`
-args allowed in a single call); if you need to correct a value, call
-again with the new value (last-write-wins).
-
 ${expected-outputs}
 
-### Flag semantics
+Notes:
 
-Both required keys MUST be emitted. The downstream gateway treats *unset* as an error (no implicit default).
-
-Each flag is keyed on the port **directory**, not on what kind of file was touched. If you added or modified *any* file under the port path — interface, DTO, enum, anything — the flag is `true`. New method signatures are one trigger; new/changed DTO fields, new enum values, or any other port-surface change all count equally.
-
-| Flag key (exact) | Meaning when `true` | Meaning when `false` |
-|---|---|---|
-| `system-driver-port-changed` | At least one file under `${driver-port}/**` was added or modified this invocation (interface, DTO, enum, anything). implement-system-driver-adapters must run to wire the new/changed surface end-to-end. | Zero files under `${driver-port}/**` were touched this invocation. |
-| `external-driver-port-changed` | At least one file under `${external-system-driver-port}/**` was added or modified this invocation (interface, DTO, enum, anything). implement-external-system-driver-adapters must run to wire the new/changed surface end-to-end. | Zero files under `${external-system-driver-port}/**` were touched this invocation. |
-
-`scope-exception-files` / `scope-exception-reason` (optional) are the
-scope-exception envelope (see `${references-root}/scope.md`). Emit
-them only when you had to read or write outside this MID's scope.
-
-Example call:
-
-```
-gh optivem output write \
-  system-driver-port-changed=false \
-  external-driver-port-changed=false
-```
+- Both required keys MUST be emitted — the downstream gateway treats *unset* as an error (no implicit default).
+- Each `*-port-changed` flag is keyed on the port **directory**. List every file you wrote and set the flag `true` if any file sits under the flag's port directory (interface, DTO, enum — anything). `system-driver-port-changed` covers `${driver-port}/**`; `external-driver-port-changed` covers `${external-system-driver-port}/**`. The dispatcher's `validate-outputs-and-scopes` re-derives directory keying from `${changed-files}`, so an incorrect value mis-routes the cycle.
+- `scope-exception-files` / `scope-exception-reason` are the envelope from the prepended `scope.md`. Emit only when you read or wrote outside scope.
 
 ## Additional Notes
 

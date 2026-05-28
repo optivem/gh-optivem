@@ -834,6 +834,11 @@ func RenderPrompt(opts Options) (string, error) {
 //
 // Layout:
 //
+//	Emit each declared output by calling `gh optivem output write KEY=VAL`
+//	from the `Bash` tool (multiple `KEY=VAL` allowed per call;
+//	last-write-wins on re-call). The dispatcher reads the per-invocation
+//	JSONL file after you exit.
+//
 //	Required outputs:
 //	  key-A: type
 //
@@ -859,6 +864,7 @@ func renderExpectedOutputs(specs []statemachine.OutputSpec) string {
 		}
 	}
 	var b strings.Builder
+	b.WriteString("Emit each declared output by calling `gh optivem output write KEY=VAL` from the `Bash` tool (multiple `KEY=VAL` allowed per call; last-write-wins on re-call). The dispatcher reads the per-invocation JSONL file after you exit.\n\n")
 	if len(required) > 0 {
 		b.WriteString("Required outputs:\n")
 		for _, s := range required {
@@ -866,7 +872,7 @@ func renderExpectedOutputs(specs []statemachine.OutputSpec) string {
 		}
 	}
 	if len(optional) > 0 {
-		if b.Len() > 0 {
+		if len(required) > 0 {
 			b.WriteString("\n")
 		}
 		b.WriteString("Optional outputs:\n")
@@ -1547,8 +1553,8 @@ func runInteractive(ctx context.Context, opts RunOpts) (RunResult, error) {
 //
 // Vars are appended after os.Environ() so they overwrite any same-named
 // inherited values — defensive against an operator who set them by hand.
-// CategoryHuman is dropped from the forwarded confirm list because it's
-// always implicit; the child's approval.Resolve re-adds it.
+// The forwarded confirm floor is the single tier the parent resolved; the
+// child's approval.Resolve re-parses it.
 func subprocessEnv(opts RunOpts) []string {
 	envApproval := opts.Approval.Auto
 	if !envApproval && opts.OutputFilePath == "" && opts.OutputKeysSpec == "" {
@@ -1563,7 +1569,7 @@ func subprocessEnv(opts RunOpts) []string {
 	}
 	if envApproval {
 		env = append(env, approval.EnvAuto+"=true")
-		env = append(env, approval.EnvConfirm+"="+opts.Approval.ConfirmListString())
+		env = append(env, approval.EnvConfirm+"="+opts.Approval.ConfirmFloorString())
 	}
 	return env
 }

@@ -35,4 +35,3 @@ ${disable-marker-removal-example}
 1. For each method name in `${test-names}`: locate the named method inside your scoped `read:` files (`at-test` / `ct-test`) and apply the removal transform shown above. If the same method name appears in more than one scoped file, apply the rule to every occurrence.
 2. **Scope:** operate ONLY on the methods named in `${test-names}`. Do not touch other methods in the same file.
 3. **Safety prefix + hard-fail.** Only strip annotations whose reason starts with `#` — leave legacy non-ticket markers in place. If a named method has zero or more than one `#`-prefixed annotation, fail loudly; do not pick one, do not no-op.
-4. **Cohesion:** make all edits to a single file in one `Edit` (or `Write`) call.

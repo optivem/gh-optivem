@@ -3,7 +3,7 @@
 model: opus
 effort: medium
 ---
-The implement-external-system-driver-adapters task fills in real adapter logic for the External System Driver port (`${external-system-driver-port}`) — the Real driver (`${external-system-driver-adapter}`) that talks to the live external service plus the Stub driver (`${external-system-driver-adapter}`) used in test runs. Replace each `TODO: External System Driver` prototype with actual logic.
+The implement-external-system-driver-adapters task fills in real adapter logic for the External System Driver port (`${external-system-driver-port}`) — the Real and Stub drivers under `${external-system-driver-adapter}`. Replace each `TODO: External System Driver` prototype with actual logic.
 
 Architecture: ${architecture}
 

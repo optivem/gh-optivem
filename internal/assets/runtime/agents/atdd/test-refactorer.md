@@ -21,7 +21,7 @@ ${scope-block}
 
 ${checklist}
 
-Treat any path outside the Scope above as out-of-scope and do not modify it. `system/` is deliberately excluded — refactoring test code does not change production code.
+`system/` is deliberately excluded from the scope above — refactoring test code does not change production code.
 
 The Checklist above lists the concrete refactor / cleanup steps; implement those.
 

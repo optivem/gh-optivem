@@ -18,7 +18,4 @@ gh optivem output write \
 
 ## Scope is the complete contract
 
-The `## Scope` block is the only read/write contract — no prose
-"forbidden layers" or "frozen" lists exist in any agent body. Anything
-not in `read:` you cannot read; anything not in `write:` you cannot
-write to. Both escape via the envelope above.
+The `## Scope` block is the complete read/write contract — anything not in `read:` you cannot read, anything not in `write:` you cannot write to. Both escape via the envelope above.

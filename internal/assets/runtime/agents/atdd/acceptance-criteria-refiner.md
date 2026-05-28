@@ -16,13 +16,6 @@ The task iterates over **all** acceptance criteria for the ticket
 Once this task completes, a human confirms the refined ACs before
 downstream consumption.
 
-## Inputs
-
-- `parsed_concepts` — the parsed-concepts artifact produced upstream
-  during ticket intake (the parsing work that backs the ticket-kind
-  classification). Contains the structured ACs (legacy + newly-derived)
-  ready to refine. The raw ticket source is not re-read.
-
 ## Outputs
 
 - Mutates `${parsed-concepts}` in place — edits to existing ACs, new ACs

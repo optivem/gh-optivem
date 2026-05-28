@@ -20,38 +20,10 @@ ${scope-block}
 
 ## Outputs
 
-Emit each declared output by calling `gh optivem output write KEY=VAL`
-from the `Bash` tool. The dispatcher reads the resulting per-invocation
-JSONL file after you exit. Call once per dispatch (multiple `KEY=VAL`
-args allowed in a single call); if you need to correct a value, call
-again with the new value (last-write-wins).
-
 ${expected-outputs}
 
-Key semantics:
+Notes:
 
-- `test-names` is every unqualified test method name added or modified
-  by this ticket (across re-runs) — not every test in the file. If a
-  re-run adds another test for the same ticket, include both; do not
-  include pre-existing tests the ticket did not touch.
-- `dsl-port-changed` is `true` if you added or modified **any** file
-  under `${dsl-port}/**` this invocation — interface, DTO, enum,
-  anything — and `false` if you touched zero files there. The flag is a
-  question about the directory, not about methods. For new methods you
-  add to `${dsl-port}` you must also write a `"TODO: DSL"` stub in the
-  DSL Core per Step 2; DTO/enum changes don't require a stub. Before
-  emitting, list the files you wrote and check whether any sit under
-  `${dsl-port}/**`. The dispatcher routes into the DSL implementation
-  phase iff this flag is `true`, so an omitted or incorrect value will
-  mis-route the cycle.
-- `scope-exception-files` / `scope-exception-reason` are the
-  scope-exception envelope (see `${references-root}/scope.md`). Emit
-  them only when you had to read or write outside this MID's scope.
-
-Example call:
-
-```
-gh optivem output write \
-  dsl-port-changed=false \
-  test-names=shouldFetchCustomerProfile,shouldRejectMalformedRequest
-```
+- `test-names` is every unqualified test method name added or modified by this ticket across re-runs — not pre-existing tests the ticket did not touch.
+- For `*-port-changed` flags, list every file you wrote and set the flag `true` if any file sits under the flag's port directory (interface, DTO, enum — anything). The dispatcher's `validate-outputs-and-scopes` re-derives directory keying from `${changed-files}`, so an incorrect value mis-routes the cycle. For new methods you add to `${dsl-port}` you must also write a `"TODO: DSL"` stub in the DSL Core per Step 2; DTO/enum changes don't require a stub.
+- `scope-exception-files` / `scope-exception-reason` are the envelope from the prepended `scope.md`. Emit only when you read or wrote outside scope.

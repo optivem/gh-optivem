@@ -32,4 +32,3 @@ The reason string is `#<TICKET-ID> <ISSUE-TITLE>`. The downstream `enable-tests`
 
 1. For each method name in `${test-names}`: locate the named method inside your scoped `read:` files (`at-test` / `ct-test`) and apply the marker shown above. If the same method name appears in more than one scoped file, annotate every occurrence.
 2. **Scope:** annotate ONLY the methods named in `${test-names}`. Do not modify other methods in the same file. Do not annotate legacy tests — the upstream selection has already filtered them; trust the list.
-3. **Cohesion:** make all edits to a single file in one `Edit` (or `Write`) call. Multiple sequential edits to the same file cost extra tool round-trips for no gain.
