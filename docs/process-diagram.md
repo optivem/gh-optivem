@@ -167,13 +167,11 @@ flowchart TD
 ```mermaid
 flowchart TD
     CHANGE_SYSTEM_BEHAVIOR_END(( ))
-    ENABLE_TESTS[Enable Tests]
     IMPLEMENT_AND_VERIFY_SYSTEM[Implement System — see § implement-and-verify-system]
     REFACTOR_OPPORTUNISTICALLY["Opportunistic Refactor (Loopable) — see § refactor"]
     WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL[Write Failing Acceptance Tests — see § write-and-verify-acceptance-tests-fail]
 
-    WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL --> ENABLE_TESTS
-    ENABLE_TESTS --> IMPLEMENT_AND_VERIFY_SYSTEM
+    WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL --> IMPLEMENT_AND_VERIFY_SYSTEM
     IMPLEMENT_AND_VERIFY_SYSTEM --> REFACTOR_OPPORTUNISTICALLY
     REFACTOR_OPPORTUNISTICALLY --> CHANGE_SYSTEM_BEHAVIOR_END
 
@@ -295,7 +293,6 @@ flowchart TD
 flowchart TD
     COMMIT_TEST_CODE[Commit Test Code — see § commit]
     COMPILE_TESTS[Compile Tests]
-    DISABLE_ACCEPTANCE_TESTS[Disable Acceptance Tests — see § disable-tests]
     GATE_EXPECTED_TEST_RESULT{Expected Test Result?}
     START_SYSTEM[Start System]
     UNKNOWN_EXPECTED_TEST_RESULT((⚡))
@@ -311,8 +308,7 @@ flowchart TD
     GATE_EXPECTED_TEST_RESULT -- Failure --> VERIFY_TESTS_FAIL_ACCEPTANCE
     GATE_EXPECTED_TEST_RESULT --> UNKNOWN_EXPECTED_TEST_RESULT
     VERIFY_TESTS_PASS_ACCEPTANCE --> COMMIT_TEST_CODE
-    VERIFY_TESTS_FAIL_ACCEPTANCE --> DISABLE_ACCEPTANCE_TESTS
-    DISABLE_ACCEPTANCE_TESTS --> COMMIT_TEST_CODE
+    VERIFY_TESTS_FAIL_ACCEPTANCE --> COMMIT_TEST_CODE
     COMMIT_TEST_CODE --> WAV_AT_CODE_END
 
     classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
@@ -426,8 +422,6 @@ flowchart TD
 flowchart TD
     COMMIT_LAYER[Commit Layer Changes — see § commit]
     COMPILE_TESTS[Compile Tests]
-    DISABLE_TESTS[Disable Tests]
-    ENABLE_TESTS[Enable Tests]
     GATE_EXPECTED_TEST_RESULT{Expected Test Result?}
     IMPLEMENT_TEST_LAYER_END(( ))
     RUN_ACTION["Run the Configured Agent — see § ${action}"]
@@ -436,16 +430,14 @@ flowchart TD
     VERIFY_TESTS_FAIL_FILTERED[Verify Tests Fail]
     VERIFY_TESTS_PASS_FILTERED[Verify Tests Pass]
 
-    RUN_ACTION --> ENABLE_TESTS
-    ENABLE_TESTS --> COMPILE_TESTS
+    RUN_ACTION --> COMPILE_TESTS
     COMPILE_TESTS --> START_SYSTEM
     START_SYSTEM --> GATE_EXPECTED_TEST_RESULT
     GATE_EXPECTED_TEST_RESULT -- Success --> VERIFY_TESTS_PASS_FILTERED
     GATE_EXPECTED_TEST_RESULT -- Failure --> VERIFY_TESTS_FAIL_FILTERED
     GATE_EXPECTED_TEST_RESULT --> UNKNOWN_EXPECTED_TEST_RESULT
     VERIFY_TESTS_PASS_FILTERED --> COMMIT_LAYER
-    VERIFY_TESTS_FAIL_FILTERED --> DISABLE_TESTS
-    DISABLE_TESTS --> COMMIT_LAYER
+    VERIFY_TESTS_FAIL_FILTERED --> COMMIT_LAYER
     COMMIT_LAYER --> IMPLEMENT_TEST_LAYER_END
 
     classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
@@ -579,26 +571,6 @@ flowchart TD
     IMPL_STUBS_END(( ))
 
     EXECUTE_AGENT --> IMPL_STUBS_END
-```
-
-## Disable Tests
-
-```mermaid
-flowchart TD
-    DISABLE_END(( ))
-    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
-
-    EXECUTE_AGENT --> DISABLE_END
-```
-
-## Enable Tests
-
-```mermaid
-flowchart TD
-    ENABLE_END(( ))
-    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
-
-    EXECUTE_AGENT --> ENABLE_END
 ```
 
 ## Fix Unexpected Passing Tests
