@@ -17,7 +17,11 @@ ${acceptance-criteria}
 
 ## Steps
 
-1. For every Acceptance Criterion, write a corresponding Acceptance Test (`${at-test}`). This should be a mechanical 1:1 translation.
+1. For every Acceptance Criterion, write a corresponding Acceptance Test (`${at-test}`). This should be a mechanical 1:1 translation. Prepend the permanent WIP gate shown below to every Acceptance Test method you add:
+
+   ${gate-marker-example}
+
+   The gate stays in the committed code for the test's whole lifetime — it is never removed. It keys on the `GH_OPTIVEM_RUN_WIP_TESTS` environment variable, which the ATDD orchestrator sets to `1` only when it runs verify steps, lifting the gate for that invocation. Feature-branch CI, local `mvn test` / `dotnet test` / `npx playwright test`, and IDE runs leave it unset, so the test is silently skipped there.
 2. If you added methods to the DSL Port (`${dsl-port}`), append a stub method body that throws a runtime exception with message `"TODO: DSL"` (using the language-appropriate exception type) to the impl class in DSL Core (`${dsl-core}`) for each newly-added Port method, so compilation works. If a prior run's edits didn't compile (forgotten stub, typo, signature mismatch in `${dsl-port}` or `${dsl-core}`), fix the named issue minimally — do not change test intent. Limit your dsl-core read to identifying where to append or what to fix — do not read existing method bodies or browse other dsl-core files to "understand the structure".
 
 ## Outputs

@@ -742,6 +742,13 @@ func shellEscape(s string) string {
 // consumer of the false branch (it dispatches `fix` with
 // failure-kind = "command-failed"). Empty `command` is a wiring bug, so
 // surfaces as Err.
+// wipTestsEnvVar gates the work-in-progress acceptance tests the
+// acceptance-test-writer emits. Only the orchestrator's own verify runs
+// set it (=1), lifting the gate for that invocation; see runCommand and
+// clauderun.renderGateMarkerExample. The literal must stay in sync with
+// the value the per-language gate annotations check against.
+const wipTestsEnvVar = "GH_OPTIVEM_RUN_WIP_TESTS"
+
 func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 	cmd := strings.TrimSpace(ctx.Params["command"])
 	if cmd == "" {
@@ -768,6 +775,24 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 		if msg := strings.TrimSpace(ctx.Params["message"]); msg != "" {
 			cmd += " " + shellEscape(msg)
 		}
+	}
+	// Lift the permanent WIP gate on the acceptance tests for the
+	// orchestrator's own verify runs only. The gated AT methods key on
+	// GH_OPTIVEM_RUN_WIP_TESTS (see clauderun.renderGateMarkerExample);
+	// we set it to "1" here — and nowhere else — so the child
+	// `gh optivem test run`, and the `mvn` / `dotnet` / `playwright` it
+	// shells out to, inherits it through the process environment.
+	// Operator, CI, and IDE invocations never traverse this path, so the
+	// gate keeps the WIP tests silently skipped there. Restored on return
+	// so the var cannot leak into a later non-test dispatch in the same
+	// (single-threaded) orchestrator process.
+	if isTestRun {
+		if prev, had := os.LookupEnv(wipTestsEnvVar); had {
+			defer os.Setenv(wipTestsEnvVar, prev)
+		} else {
+			defer os.Unsetenv(wipTestsEnvVar)
+		}
+		os.Setenv(wipTestsEnvVar, "1")
 	}
 	result, err := a.runShell(cmd)
 	succeeded := err == nil

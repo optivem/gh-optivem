@@ -65,11 +65,11 @@ type Options struct {
 	// TicketID is the tracker-verbatim id (issue.ID), seeded by
 	// writeResolvedIssue alongside IssueNum. Same value as IssueNum today,
 	// but the dispatcher exposes it under the backend-agnostic ${ticket-id}
-	// placeholder so prompts that compose user-visible disable-reason
-	// strings (test-disabler, test-enabler) stay neutral on whether the
-	// tracker is GitHub-numeric or Jira-prefixed. Load-bearing: when empty
-	// AND the prompt references ${ticket-id}, findUnfilledPlaceholders
-	// fails the dispatch fast — same rationale as Language / Checklist.
+	// placeholder (consumed by the shared preamble) so prompts stay neutral
+	// on whether the tracker is GitHub-numeric or Jira-prefixed.
+	// Load-bearing: when empty AND the prompt references ${ticket-id},
+	// findUnfilledPlaceholders fails the dispatch fast — same rationale as
+	// Language / Checklist.
 	TicketID string
 
 	// Architecture is "monolith" or "multitier", surfaced to the agent
@@ -810,34 +810,27 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	if opts.Language != "" {
 		params["language"] = opts.Language
 	}
-	// TicketID is load-bearing for test-disabler / test-enabler (compose
-	// the disable-reason string). Same registration shape as Language —
-	// only registered when non-empty so an absent value surfaces via
-	// findUnfilledPlaceholders rather than silently substituting "" into
-	// a downstream startsWith filter.
+	// TicketID feeds the ${ticket-id} placeholder consumed by the shared
+	// preamble. Same registration shape as Language — only registered when
+	// non-empty so an absent value surfaces via findUnfilledPlaceholders
+	// rather than silently substituting "" when the prompt references it.
 	if opts.TicketID != "" {
 		params["ticket-id"] = opts.TicketID
 	}
-	// Disable-marker examples (test-disabler / test-enabler). The
-	// disable-marker shape is `#${ticket-id} ${issue-title}` —
-	// ticket-identity only, symmetric with the BPMN commit-message
-	// binding. The enabler's strip transform is language-only (it
-	// scopes by method name from ${test-names} and uses the `#` safety
-	// prefix as the only guard), so no per-dispatch state enters the
-	// removal renderer. Same load-bearing pattern as Language: register
-	// only when the helper returns a non-empty string (all inputs
-	// present AND language is recognised); otherwise
-	// findUnfilledPlaceholders fails the dispatch fast when the prompt
-	// body references either placeholder. Inlining the marker shape
-	// here replaces the previous "go read the language-equivalents row"
-	// instruction in the agent body — the row is out of scope and the
-	// agent was forced to grep in-scope tests to reverse-engineer the
-	// syntax (3-5 wasted tool calls per dispatch).
-	if ex := renderDisableMarkerExample(opts.Language, opts.TicketID, opts.IssueTitle); ex != "" {
-		params["disable-marker-example"] = ex
-	}
-	if ex := renderDisableMarkerRemovalExample(opts.Language); ex != "" {
-		params["disable-marker-removal-example"] = ex
+	// WIP-gate marker (acceptance-test-writer). The gate is permanent
+	// and ticket-independent — it keys on the GH_OPTIVEM_RUN_WIP_TESTS
+	// env var, not a per-ticket reason — so the renderer takes only the
+	// language. Same load-bearing pattern as Language: register only
+	// when the helper returns a non-empty string (language recognised);
+	// otherwise findUnfilledPlaceholders fails the dispatch fast when
+	// the prompt body references ${gate-marker-example}. Inlining the
+	// marker shape here replaces the previous "go read the
+	// language-equivalents row" instruction in the agent body — the row
+	// is out of scope and the agent was forced to grep in-scope tests
+	// to reverse-engineer the syntax (3-5 wasted tool calls per
+	// dispatch).
+	if ex := renderGateMarkerExample(opts.Language); ex != "" {
+		params["gate-marker-example"] = ex
 	}
 	// AcceptanceCriteria is load-bearing for write-acceptance-tests — same rationale
 	// as Language. Only registered when non-empty so an absent value
@@ -1063,75 +1056,41 @@ func renderScopeBlock(read, write []string, paths map[string]string, rationale s
 	return b.String()
 }
 
-// renderDisableMarkerExample inlines the per-language disable-marker
-// emit-this snippet into the test-disabler prompt via
-// ${disable-marker-example}. Previously the agent had to look up the
+// renderGateMarkerExample inlines the per-language WIP-gate snippet the
+// acceptance-test-writer prepends to every AT method, via
+// ${gate-marker-example}. Previously the agent had to look up the
 // syntax in the language-equivalents reference doc (which is out of
 // scope under the agent's `read:` set) or grep the in-scope test tree
 // to reverse-engineer it — 3-5 wasted tool calls per dispatch. With
 // the snippet inlined the agent reads the target test file once and
 // edits it.
 //
-// The reason string is `#<ticket-id> <issue-title>` — ticket-identity
-// only, symmetric with the BPMN commit-message binding
-// (`#${ticket-id} ${issue-title}`). No phase / loop encoding: the
-// dispatcher owns that state and the test-enabler scopes by method
-// name, so embedding state in the source-tree marker would only
-// re-introduce the drift surface this format removes. The `#`
-// prefix is load-bearing as a safety guard the enabler relies on
-// (see renderDisableMarkerRemovalExample).
-//
-// Returns "" when any required field is empty OR the language is
-// unrecognised; the caller registers the placeholder only when
-// non-empty so an absent value surfaces via findUnfilledPlaceholders
-// rather than silently substituting "". Adding a new language
-// requires touching this function AND the matching row in
-// language-equivalents/<lang>.md.
-func renderDisableMarkerExample(lang, ticketID, issueTitle string) string {
-	if lang == "" || ticketID == "" || issueTitle == "" {
-		return ""
-	}
-	reason := fmt.Sprintf("#%s %s", ticketID, issueTitle)
-	switch lang {
-	case "java":
-		return fmt.Sprintf("```java\n@Disabled(\"%s\")\n@Test\nvoid shouldXxx() { ... }\n```\n\nAdd `import org.junit.jupiter.api.Disabled;` next to the other JUnit imports if it's not already present.", reason)
-	case "csharp":
-		return fmt.Sprintf("```csharp\n[Fact(Skip = \"%s\")]\npublic void ShouldXxx() { ... }\n```\n\nKeep the `[Fact]` attribute; add only the `Skip = \"...\"` parameter. No import change.", reason)
-	case "typescript":
-		return fmt.Sprintf("```typescript\n// %s\ntest.skip('shouldXxx', async (...) => { ... });\n```\n\nPrepend the `// <reason>` comment line above the test, then change `test(` to `test.skip(`. Playwright's `test.skip(title, body)` overload defines a skipped test; the comment carries the reason because the definition-time skip overload has no reason parameter. No import change.", reason)
-	}
-	return ""
-}
-
-// renderDisableMarkerRemovalExample is the symmetric helper for the
-// test-enabler — inlines the per-language transform that strips a
-// disable marker via ${disable-marker-removal-example}. Same
-// rationale as renderDisableMarkerExample.
-//
-// The enabler scopes by method name (the writer-agent-emitted
-// `${test-names}` list) and strips the annotation without inspecting
-// the reason text. The single guard is the `#` safety prefix:
-// strip only annotations whose reason starts with `#`, which leaves
-// legacy non-ticket markers like `@Disabled("flaky on CI")`
-// untouched. Hard-fail (loud) when a named method has zero or
-// multiple `#`-prefixed annotations — the silent no-op is the bug
-// this whole format change removes.
+// The gate is PERMANENT and ticket-independent: it stays in the
+// committed code for the test's whole lifetime, so it carries no
+// per-ticket reason string (unlike the disable marker it replaces).
+// The gate keys on the GH_OPTIVEM_RUN_WIP_TESTS env var, which only
+// the ATDD orchestrator sets (=1) when it runs verify steps; regular
+// CI, local `mvn test` / `dotnet test` / `npx playwright test`, and
+// IDE runs leave it unset, so the AT is silently skipped. No enabler
+// re-runs it, no disabler re-applies it.
 //
 // Returns "" when `lang` is empty or unrecognised; the caller
 // registers the placeholder only when non-empty so an absent value
 // surfaces via findUnfilledPlaceholders rather than silently
-// substituting "".
-func renderDisableMarkerRemovalExample(lang string) string {
+// substituting "". Adding a new language requires touching this
+// function AND the matching row in language-equivalents/<lang>.md.
+func renderGateMarkerExample(lang string) string {
 	if lang == "" {
 		return ""
 	}
+	const reason = "Work-in-progress test; set GH_OPTIVEM_RUN_WIP_TESTS=1 to run"
 	switch lang {
 	case "java":
-		return "For the named method, delete its `@Disabled(\"#...\")` annotation line. Only strip annotations whose reason starts with `#` — leave legacy non-ticket markers like `@Disabled(\"flaky on CI\")` untouched. Hard-fail if the named method has zero or multiple `#`-prefixed `@Disabled` annotations. If no `@Disabled` annotations remain in the file after stripping, also delete `import org.junit.jupiter.api.Disabled;`."
+		return fmt.Sprintf("```java\n@EnabledIfEnvironmentVariable(named = \"GH_OPTIVEM_RUN_WIP_TESTS\", matches = \"1\", disabledReason = \"%s\")\n@Test\nvoid shouldXxx() { ... }\n```\n\nAdd `import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;` next to the other JUnit imports if it's not already present.", reason)
 	case "csharp":
-		return "For the named method, rewrite `[Fact(Skip = \"#...\")]` back to `[Fact]` — keep the attribute, drop only the `Skip` parameter. Only strip annotations whose reason starts with `#` — leave legacy non-ticket markers like `[Fact(Skip = \"flaky on CI\")]` untouched. Hard-fail if the named method has zero or multiple `#`-prefixed `Skip` parameters. No import change."
+		return fmt.Sprintf("```csharp\n[SkippableFact]\npublic void ShouldXxx()\n{\n    Skip.IfNot(Environment.GetEnvironmentVariable(\"GH_OPTIVEM_RUN_WIP_TESTS\") == \"1\", \"%s\");\n    ...\n}\n```\n\nUse `[SkippableFact]` in place of `[Fact]` and make `Skip.IfNot(...)` the first statement in the body. Add `using Xunit;` (for `Skip`) and `using System;` (for `Environment`) if not already present. `[SkippableFact]` comes from the `Xunit.SkippableFact` package.", reason)
 	case "typescript":
-		return "For the named method, delete its `// #...` comment line above the test, then change `test.skip(` back to `test(`. Only strip comment lines whose text starts with `#` — leave legacy non-ticket comments like `// flaky on CI` untouched. Hard-fail if the named method has zero or multiple `#`-prefixed comment lines paired with a `test.skip(` call. No import change."
+		return fmt.Sprintf("```typescript\ntest('shouldXxx', async (...) => {\n  test.skip(process.env.GH_OPTIVEM_RUN_WIP_TESTS !== \"1\", \"%s\");\n  ...\n});\n```\n\nMake `test.skip(condition, reason)` the first statement in the test body. This is Playwright's runtime `test.skip(condition, description)` overload — different from the definition-time `test.skip(title, body)` overload. No import change.", reason)
 	}
 	return ""
 }

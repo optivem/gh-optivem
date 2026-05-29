@@ -31,9 +31,8 @@ import (
 //	              update-*, refactor-system). AI cost; produces
 //	              reviewable diffs.
 //	test-agent  — execute-agent for tests (write-*-tests,
-//	              disable-tests, enable-tests, refactor-tests).
-//	              Tests-as-contract: ranked above prod-agent
-//	              because broken tests mask regressions.
+//	              refactor-tests). Tests-as-contract: ranked above
+//	              prod-agent because broken tests mask regressions.
 //	prod-commit — commit BPMN node after a prod-agent phase.
 //	              Persistent git write.
 //	test-commit — commit BPMN node after a test-agent phase.

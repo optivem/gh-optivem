@@ -11,16 +11,19 @@ served to dispatches with `${language}=typescript`. See the
 | DSL stub | `throw new Error("TODO: DSL")` |
 | Driver stub | `throw new Error("TODO: Driver")` |
 
-## Test Disabling
+## WIP Gate
 
-Playwright's `test.skip(title, body)` overload defines a skipped test; the overload has no reason parameter, so the reason rides in a `//`-comment line directly above the test.
+The acceptance-test-writer prepends a permanent env-var gate to every AT
+method. Feature-branch CI, local `npx playwright test`, and IDE runs
+leave `GH_OPTIVEM_RUN_WIP_TESTS` unset and silently skip the
+work-in-progress test; the ATDD orchestrator sets it to `1` at verify
+time to run it. The gate is never removed — no enable/disable step.
 
 | Operation | Syntax |
 |-----------|--------|
-| Disable a single test | Prepend `// <reason>` above the test, then change `test(...)` to `test.skip(...)`. |
-| Re-enable a test | Delete the `// <reason>` line and change `test.skip(...)` back to `test(...)`. |
+| WIP gate (first body line) | `test.skip(process.env.GH_OPTIVEM_RUN_WIP_TESTS !== "1", "Work-in-progress test; set GH_OPTIVEM_RUN_WIP_TESTS=1 to run");` |
 
-Do not use the imperative `test.skip(condition, description)` form (that runs inside a test body and skips conditionally at runtime) — the disable/enable agents transform the definition-time form only.
+This is Playwright's runtime `test.skip(condition, description)` overload — it skips conditionally at runtime, which is exactly what the env-var gate needs. It is distinct from the definition-time `test.skip(title, body)` overload. No import change.
 
 ## String Field Types
 

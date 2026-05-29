@@ -427,19 +427,6 @@ processes:
         name: "Write Failing Acceptance Tests"
         tdd-stage: red
 
-      # Symmetric counterpart to the DISABLE_ACCEPTANCE_TESTS at the
-      # end of RED (write-and-verify-acceptance-test-code:780-785).
-      # Re-enables the just-written AT before GREEN verifies — without
-      # this, VERIFY_TESTS_PASS in implement-and-verify-system runs
-      # against a still-disabled AT, passes vacuously, and GREEN
-      # commits a system that never had to satisfy the new behaviour.
-      - id: ENABLE_TESTS
-        type: call-activity
-        process: enable-tests
-        name: "Enable Tests"
-        params:
-          test-names: ${test-names}
-
       - id: IMPLEMENT_AND_VERIFY_SYSTEM
         type: call-activity
         process: implement-and-verify-system
@@ -465,8 +452,7 @@ processes:
         name: "System Behavior Changed"
 
     sequence-flows:
-      - {from: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL, to: ENABLE_TESTS}
-      - {from: ENABLE_TESTS,                           to: IMPLEMENT_AND_VERIFY_SYSTEM}
+      - {from: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL, to: IMPLEMENT_AND_VERIFY_SYSTEM}
       - {from: IMPLEMENT_AND_VERIFY_SYSTEM,            to: REFACTOR_OPPORTUNISTICALLY}
       - {from: REFACTOR_OPPORTUNISTICALLY,             to: CHANGE_SYSTEM_BEHAVIOR_END}
 
@@ -756,8 +742,9 @@ processes:
 
   # Pure test-code authoring: write tests, compile, verify, commit. No
   # production-side impl. Branches on `expected-test-result` parameter
-  # (success → verify-tests-pass; failure → verify-tests-fail +
-  # disable-tests).
+  # (success → verify-tests-pass; failure → verify-tests-fail). The
+  # written AT carries a permanent env-var gate the orchestrator lifts at
+  # verify time, so no disable step follows.
   write-and-verify-acceptance-test-code:
     name: "Write and Verify Acceptance Test Code"
     start: WRITE_ACCEPTANCE_TESTS
@@ -803,13 +790,6 @@ processes:
           suite: acceptance
           test-names: ${test-names}
 
-      - id: DISABLE_ACCEPTANCE_TESTS
-        type: call-activity
-        process: disable-tests
-        name: "Disable Acceptance Tests"
-        params:
-          test-names: ${test-names}
-
       - id: COMMIT_TEST_CODE
         type: call-activity
         process: commit
@@ -835,8 +815,7 @@ processes:
       - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_FAIL_ACCEPTANCE, when: "expected-test-result == failure"}
       - {from: GATE_EXPECTED_TEST_RESULT, to: UNKNOWN_EXPECTED_TEST_RESULT}
       - {from: VERIFY_TESTS_PASS_ACCEPTANCE, to: COMMIT_TEST_CODE}
-      - {from: VERIFY_TESTS_FAIL_ACCEPTANCE, to: DISABLE_ACCEPTANCE_TESTS}
-      - {from: DISABLE_ACCEPTANCE_TESTS,     to: COMMIT_TEST_CODE}
+      - {from: VERIFY_TESTS_FAIL_ACCEPTANCE, to: COMMIT_TEST_CODE}
       - {from: COMMIT_TEST_CODE,             to: WAV_AT_CODE_END}
 
   implement-and-verify-dsl:
@@ -1154,12 +1133,13 @@ processes:
       - {from: COMMIT_TESTS,      to: REFACTOR_AND_VERIFY_TESTS_END}
 
   # Shared cascade for any test-layer impl that follows the "agent runs,
-  # then enable / compile / verify / commit" rhythm. Called by every
+  # then compile / verify / commit" rhythm. Called by every
   # `implement-and-verify-*-driver-adapters` and by `implement-and-verify-
   # dsl`. Branches on `expected-test-result` (success → verify-tests-pass;
-  # failure → verify-tests-fail + disable-tests). Note that `commit` runs
-  # unconditionally — the gateway is on the verify shape, not on whether to
-  # commit.
+  # failure → verify-tests-fail). Note that `commit` runs unconditionally —
+  # the gateway is on the verify shape, not on whether to commit. WIP
+  # acceptance tests carry a permanent env-var gate the orchestrator lifts
+  # at verify time, so no enable/disable step is needed between layers.
   implement-test-layer:
     name: "Implement Test Layer"
     start: RUN_ACTION
@@ -1168,13 +1148,6 @@ processes:
         type: call-activity
         process: ${action}
         name: "Run the Configured Agent"
-
-      - id: ENABLE_TESTS
-        type: call-activity
-        process: enable-tests
-        name: "Enable Tests"
-        params:
-          test-names: ${test-names}
 
       - id: COMPILE_TESTS
         type: call-activity
@@ -1209,13 +1182,6 @@ processes:
           suite: ${tests}
           test-names: ${test-names}
 
-      - id: DISABLE_TESTS
-        type: call-activity
-        process: disable-tests
-        name: "Disable Tests"
-        params:
-          test-names: ${test-names}
-
       - id: COMMIT_LAYER
         type: call-activity
         process: commit
@@ -1234,16 +1200,14 @@ processes:
         name: "Unknown Expected Test Result"
 
     sequence-flows:
-      - {from: RUN_ACTION, to: ENABLE_TESTS}
-      - {from: ENABLE_TESTS,      to: COMPILE_TESTS}
+      - {from: RUN_ACTION, to: COMPILE_TESTS}
       - {from: COMPILE_TESTS,     to: START_SYSTEM}
       - {from: START_SYSTEM,      to: GATE_EXPECTED_TEST_RESULT}
       - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_PASS_FILTERED, when: "expected-test-result == success"}
       - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_FAIL_FILTERED, when: "expected-test-result == failure"}
       - {from: GATE_EXPECTED_TEST_RESULT, to: UNKNOWN_EXPECTED_TEST_RESULT}
       - {from: VERIFY_TESTS_PASS_FILTERED, to: COMMIT_LAYER}
-      - {from: VERIFY_TESTS_FAIL_FILTERED, to: DISABLE_TESTS}
-      - {from: DISABLE_TESTS,              to: COMMIT_LAYER}
+      - {from: VERIFY_TESTS_FAIL_FILTERED, to: COMMIT_LAYER}
       - {from: COMMIT_LAYER,               to: IMPLEMENT_TEST_LAYER_END}
 
   # Run tests under `suite` / `test-names`; on FAIL, dispatch
@@ -1659,57 +1623,6 @@ processes:
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: IMPL_STUBS_END}
-
-  # The [at-test, ct-test] pin is forward-looking — today only at-test
-  # files are touched because the reason-format hardcodes `AT`, but the
-  # symmetric scope keeps the shared ${test-names} flow from being
-  # scoped inconsistently when the CT-side disable lands.
-  disable-tests:
-    name: "Disable Tests"
-    start: EXECUTE_AGENT
-    nodes:
-      - id: EXECUTE_AGENT
-        type: call-activity
-        process: execute-agent
-        name: "Dispatch the Agent"
-        params:
-          task-name: disable-tests
-          agent: test-disabler
-          # test-agent tier: edits the test contract.
-          category: test-agent
-        read:  [at-test, ct-test]
-        write: [at-test, ct-test]
-
-      - id: DISABLE_END
-        type: end-event
-        name: "Tests Disabled"
-
-    sequence-flows:
-      - {from: EXECUTE_AGENT, to: DISABLE_END}
-
-  # Same forward-looking [at-test, ct-test] symmetry as disable-tests.
-  enable-tests:
-    name: "Enable Tests"
-    start: EXECUTE_AGENT
-    nodes:
-      - id: EXECUTE_AGENT
-        type: call-activity
-        process: execute-agent
-        name: "Dispatch the Agent"
-        params:
-          task-name: enable-tests
-          agent: test-enabler
-          # test-agent tier: edits the test contract.
-          category: test-agent
-        read:  [at-test, ct-test]
-        write: [at-test, ct-test]
-
-      - id: ENABLE_END
-        type: end-event
-        name: "Tests Enabled"
-
-    sequence-flows:
-      - {from: EXECUTE_AGENT, to: ENABLE_END}
 
   # The fix agent has no a-priori knowledge of which layer is wrong, so
   # the scope is the union of every layer below system-test-path plus

@@ -388,6 +388,57 @@ func TestRunCommand_HappyPath(t *testing.T) {
 	}
 }
 
+// envCapturingShell records the value of a named env var at the moment
+// Run is invoked, so a test can assert what the child shell-out would
+// inherit from the orchestrator process.
+type envCapturingShell struct {
+	envVar   string
+	captured *string
+}
+
+func (s *envCapturingShell) Run(_ context.Context, _ string) (ShellResult, error) {
+	*s.captured = os.Getenv(s.envVar)
+	return ShellResult{Stdout: []byte("OK")}, nil
+}
+
+// TestRunCommand_TestRunLiftsWipGate pins the env-var gating mechanism:
+// a `gh optivem test run` dispatch sets GH_OPTIVEM_RUN_WIP_TESTS=1 for
+// the duration of the shell-out (so the child runner and its mvn /
+// dotnet / playwright invocation inherit it and the WIP acceptance
+// tests run), then restores the prior state so the var never leaks into
+// a later non-test dispatch in the same process.
+func TestRunCommand_TestRunLiftsWipGate(t *testing.T) {
+	os.Unsetenv(wipTestsEnvVar)
+	var during string
+	sh := &envCapturingShell{envVar: wipTestsEnvVar, captured: &during}
+	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	ctx.Params["command"] = "gh optivem test run"
+	a.runCommand(ctx)
+	if during != "1" {
+		t.Errorf("during test-run dispatch: %s = %q, want %q", wipTestsEnvVar, during, "1")
+	}
+	if v, had := os.LookupEnv(wipTestsEnvVar); had {
+		t.Errorf("after dispatch: %s still set to %q, want unset (no leak)", wipTestsEnvVar, v)
+	}
+}
+
+// TestRunCommand_NonTestRunLeavesWipGateUnset is the negative-space
+// counterpart: a non-test dispatch must not set the gate var, so an
+// operator/CI/IDE-style `gh optivem` shell-out stays unaffected.
+func TestRunCommand_NonTestRunLeavesWipGateUnset(t *testing.T) {
+	os.Unsetenv(wipTestsEnvVar)
+	var during string
+	sh := &envCapturingShell{envVar: wipTestsEnvVar, captured: &during}
+	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	ctx.Params["command"] = "gh optivem compile"
+	a.runCommand(ctx)
+	if during != "" {
+		t.Errorf("non-test dispatch set %s = %q, want empty", wipTestsEnvVar, during)
+	}
+}
+
 func TestRunCommand_FailureRoutes_NotErrors(t *testing.T) {
 	sh := &fakeShell{
 		out:      []byte("fail"),

@@ -87,8 +87,6 @@ var processOrder = []string{
 	"implement-system-driver-adapters",
 	"implement-external-system-driver-adapters",
 	"implement-external-system-stubs",
-	"disable-tests",
-	"enable-tests",
 	"fix-unexpected-passing-tests",
 	"fix-unexpected-failing-tests",
 	"refactor-tests",

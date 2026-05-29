@@ -13,10 +13,11 @@
 //
 // Note: this package used to also expose `RemoveDisabledMarkers` for
 // stripping `@Disabled` markers from test files at the end of the AT cycle.
-// On 2026-05-20 that responsibility moved to the `enable-tests` agent prompt
-// (see plans/20260520-0001-switch-disable-enable-tests-to-agents.md). The
-// deterministic implementation is archived in
-// plans/deferred/20260520-0002-deterministic-disable-enable-fallback.md.
+// The disable/enable apparatus (deterministic, then the test-disabler /
+// test-enabler agents) was removed entirely once WIP acceptance tests
+// gained a permanent env-var gate (GH_OPTIVEM_RUN_WIP_TESTS) the
+// orchestrator lifts only at verify time — no marker is ever applied or
+// stripped. See clauderun.renderGateMarkerExample and actions.runCommand.
 package release
 
 import (

@@ -862,7 +862,8 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		//   1. ctx.Params — the call-activity stack's accumulated params
 		//      (push/pop in wrapCallActivity). Carries values like
 		//      ${test-names} declared at an outer call site and inherited
-		//      through the disable-tests → execute-agent hops. Lowest
+		//      through the fix-unexpected-failing-tests → execute-agent
+		//      hops. Lowest
 		//      precedence so node-level params can override.
 		//   2. raw.Params — the YAML node's own `params:` block (e.g.
 		//      `failure_type: compile` on FIX_COMPILE), expanded against

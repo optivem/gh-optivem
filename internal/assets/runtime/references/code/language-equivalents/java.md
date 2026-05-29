@@ -11,12 +11,18 @@ served to dispatches with `${language}=java`. See the
 | DSL stub | `throw new UnsupportedOperationException("TODO: DSL")` |
 | Driver stub | `throw new UnsupportedOperationException("TODO: Driver")` |
 
-## Test Disabling
+## WIP Gate
+
+The acceptance-test-writer prepends a permanent env-var gate to every AT
+method. Feature-branch CI, local `mvn test`, and IDE runs leave
+`GH_OPTIVEM_RUN_WIP_TESTS` unset and silently skip the work-in-progress
+test; the ATDD orchestrator sets it to `1` at verify time to run it. The
+gate is never removed — no enable/disable step.
 
 | Operation | Syntax |
 |-----------|--------|
-| Disable a single test | `@Disabled("reason")` |
-| Re-enable a test | Remove `@Disabled` |
+| WIP gate (above `@Test`) | `@EnabledIfEnvironmentVariable(named = "GH_OPTIVEM_RUN_WIP_TESTS", matches = "1", disabledReason = "Work-in-progress test; set GH_OPTIVEM_RUN_WIP_TESTS=1 to run")` |
+| Import | `import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;` |
 
 ## String Field Types
 
