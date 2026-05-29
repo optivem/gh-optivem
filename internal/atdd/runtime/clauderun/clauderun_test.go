@@ -2230,7 +2230,8 @@ func TestRenderGateMarkerExample(t *testing.T) {
 		{
 			lang: "csharp",
 			wantSubstrs: []string{
-				`[SkippableFact]`,
+				`[SkippableTheory]`,
+				`[ChannelData(ChannelType.UI, ChannelType.API)]`,
 				`Skip.IfNot(Environment.GetEnvironmentVariable("GH_OPTIVEM_RUN_WIP_TESTS") == "1"`,
 			},
 		},

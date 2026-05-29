@@ -36,6 +36,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/optivem/gh-optivem/internal/approval"
+	"github.com/optivem/gh-optivem/internal/assets"
 	assetsync "github.com/optivem/gh-optivem/internal/assets/sync"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
@@ -1074,25 +1075,28 @@ func renderScopeBlock(read, write []string, paths map[string]string, rationale s
 // IDE runs leave it unset, so the AT is silently skipped. No enabler
 // re-runs it, no disabler re-applies it.
 //
-// Returns "" when `lang` is empty or unrecognised; the caller
-// registers the placeholder only when non-empty so an absent value
-// surfaces via findUnfilledPlaceholders rather than silently
-// substituting "". Adding a new language requires touching this
-// function AND the matching row in language-equivalents/<lang>.md.
+// Returns "" when `lang` is empty, unrecognised, or its asset is
+// missing; the caller registers the placeholder only when non-empty so
+// an absent value surfaces via findUnfilledPlaceholders rather than
+// silently substituting "". The snippet body lives in
+// runtime/shared/wip-gate-<lang>.md (embedded via assets.FS) so it is
+// visible/editable as prose rather than a buried Go literal, and is
+// shaped as an *additive* gate layered onto the scaffold's
+// channel-parameterized declaration — never a standalone test method
+// (the standalone shape regressed rehearsal-71 by dropping
+// @TestTemplate/@Channel). Adding a new language requires creating its
+// wip-gate-<lang>.md asset AND adding the case to the switch below.
 func renderGateMarkerExample(lang string) string {
-	if lang == "" {
+	switch lang {
+	case "java", "csharp", "typescript":
+	default:
 		return ""
 	}
-	const reason = "Work-in-progress test; set GH_OPTIVEM_RUN_WIP_TESTS=1 to run"
-	switch lang {
-	case "java":
-		return fmt.Sprintf("```java\n@EnabledIfEnvironmentVariable(named = \"GH_OPTIVEM_RUN_WIP_TESTS\", matches = \"1\", disabledReason = \"%s\")\n@Test\nvoid shouldXxx() { ... }\n```\n\nAdd `import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;` next to the other JUnit imports if it's not already present.", reason)
-	case "csharp":
-		return fmt.Sprintf("```csharp\n[SkippableFact]\npublic void ShouldXxx()\n{\n    Skip.IfNot(Environment.GetEnvironmentVariable(\"GH_OPTIVEM_RUN_WIP_TESTS\") == \"1\", \"%s\");\n    ...\n}\n```\n\nUse `[SkippableFact]` in place of `[Fact]` and make `Skip.IfNot(...)` the first statement in the body. Add `using Xunit;` (for `Skip`) and `using System;` (for `Environment`) if not already present. `[SkippableFact]` comes from the `Xunit.SkippableFact` package.", reason)
-	case "typescript":
-		return fmt.Sprintf("```typescript\ntest('shouldXxx', async (...) => {\n  test.skip(process.env.GH_OPTIVEM_RUN_WIP_TESTS !== \"1\", \"%s\");\n  ...\n});\n```\n\nMake `test.skip(condition, reason)` the first statement in the test body. This is Playwright's runtime `test.skip(condition, description)` overload — different from the definition-time `test.skip(title, body)` overload. No import change.", reason)
+	data, err := assets.FS.ReadFile("runtime/shared/wip-gate-" + lang + ".md")
+	if err != nil {
+		return ""
 	}
-	return ""
+	return strings.TrimRight(string(data), "\n")
 }
 
 func (o Options) withDefaults() Options {
