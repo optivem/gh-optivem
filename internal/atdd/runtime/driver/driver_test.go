@@ -1546,3 +1546,100 @@ func TestClaudeRunDispatch_AppendsRecordOnFailure(t *testing.T) {
 		t.Errorf("recorded row must carry the dispatch err for summary marker; got nil")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Run digest verdict capture + summary.md emission (items 1 + 3)
+// ---------------------------------------------------------------------------
+
+// TestRunState_SetResult covers the verdict-capture primitive: setResult
+// stamps the run error, and a nil runState is a safe no-op.
+func TestRunState_SetResult(t *testing.T) {
+	rs := &runState{}
+	if rs.result != nil {
+		t.Fatalf("fresh runState must have nil result, got %v", rs.result)
+	}
+	bust := errors.New("run busted")
+	rs.setResult(bust)
+	if rs.result != bust {
+		t.Errorf("setResult: got %v, want %v", rs.result, bust)
+	}
+
+	var nilRS *runState
+	nilRS.setResult(bust) // must not panic
+}
+
+// manualSmokeYAML is a single-node manual-agents flow (human user-task):
+// no clauderun call, no board call. Stdin "y\n" approves the STOP and the
+// walk succeeds; "n\n" aborts and RunProcess returns an "aborted" error —
+// the two verdicts the digest must stamp.
+const manualSmokeYAML = `
+processes:
+  main:
+    name: "Main"
+    start: STOP
+    nodes:
+      - id: STOP
+        type: user-task
+        agent: human
+        name: smoke
+    sequence-flows: []
+`
+
+// runDigestForSmoke drives Run end-to-end over manualSmokeYAML in a temp
+// repo and returns the rendered summary.md plus the error Run returned.
+func runDigestForSmoke(t *testing.T, stdin string) (digest string, runErr error) {
+	t.Helper()
+	oldNow := nowFn
+	defer func() { nowFn = oldNow }()
+	nowFn = func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }
+
+	repo := t.TempDir()
+	yamlPath := filepath.Join(repo, "smoke-flow.yaml")
+	if err := os.WriteFile(yamlPath, []byte(manualSmokeYAML), 0o644); err != nil {
+		t.Fatalf("write smoke YAML: %v", err)
+	}
+
+	runErr = Run(context.Background(), Options{
+		YAMLPath:     yamlPath,
+		RepoPath:     repo,
+		ManualAgents: true,
+		Stdout:       io.Discard,
+		Stderr:       io.Discard,
+		Stdin:        strings.NewReader(stdin),
+	})
+
+	runTs := time.Unix(1_700_000_000, 0).UTC().Format("20060102-150405")
+	digestPath := filepath.Join(repo, ".gh-optivem", "runs", runTs, "summary.md")
+	body, err := os.ReadFile(digestPath)
+	if err != nil {
+		t.Fatalf("expected summary.md at %s: %v", digestPath, err)
+	}
+	return string(body), runErr
+}
+
+// TestRun_WritesRunDigest_Succeeded asserts a clean run emits summary.md
+// with the ✅ verdict line.
+func TestRun_WritesRunDigest_Succeeded(t *testing.T) {
+	digest, err := runDigestForSmoke(t, "y\n")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !strings.Contains(digest, "**Result:** ✅ succeeded") {
+		t.Errorf("succeeded run digest missing verdict line; got:\n%s", digest)
+	}
+}
+
+// TestRun_WritesRunDigest_Failed asserts an aborted run still emits
+// summary.md and stamps the ❌ verdict carrying the engine error.
+func TestRun_WritesRunDigest_Failed(t *testing.T) {
+	digest, err := runDigestForSmoke(t, "n\n")
+	if err == nil {
+		t.Fatalf("expected aborted run to return an error")
+	}
+	if !strings.Contains(digest, "**Result:** ❌ failed:") {
+		t.Errorf("failed run digest missing ❌ verdict line; got:\n%s", digest)
+	}
+	if !strings.Contains(digest, err.Error()) {
+		t.Errorf("failed verdict must carry the run error %q; got:\n%s", err.Error(), digest)
+	}
+}

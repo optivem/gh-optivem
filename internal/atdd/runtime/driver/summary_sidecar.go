@@ -274,3 +274,150 @@ func PrintSummaryFile(w io.Writer, path string) error {
 	renderAgentSummary(w, records)
 	return nil
 }
+
+// runDigest carries the ticket context the Markdown run digest fronts the
+// agent-summary table with: the issue number / title / url, the parsed
+// description + acceptance-criteria excerpt (D2 — checklist and raw body
+// are deliberately omitted to keep the digest short), the dispatch
+// records (the same []dispatchRecord renderAgentSummary consumes), and
+// the overall verdict (nil → succeeded, non-nil → failed).
+type runDigest struct {
+	issueNum           string
+	title              string
+	url                string
+	description        string
+	acceptanceCriteria string
+	records            []dispatchRecord
+	result             error
+}
+
+// summaryMarkdownPath returns the absolute path to this run's human
+// digest, beside the machine sidecar summaryPath writes. Empty string
+// when rs is nil (test fixtures that bypass the driver-managed runState);
+// writeRunDigest treats an empty path as "skip the digest", same contract
+// as summaryPath/appendSummaryLine.
+func (rs *runState) summaryMarkdownPath() string {
+	if rs == nil {
+		return ""
+	}
+	return filepath.Join(rs.repoPath, ".gh-optivem", "runs", rs.runTimestamp, "summary.md")
+}
+
+// renderRunDigest writes a short, GitHub-renderable run digest to w:
+// ticket header + overall verdict + ticket link, the description and
+// acceptance-criteria excerpt as blockquotes (each omitted when empty),
+// and the agent-summary table reused verbatim from renderAgentSummary
+// inside a fenced block so its column alignment survives Markdown
+// rendering. No-op when w is nil.
+//
+// Single renderer, two callers: writeRunDigest (live emission at run end)
+// and PrintRunDigestFile (replay via `gh optivem run summary --markdown`)
+// both route through here, mirroring how renderAgentSummary backs both
+// the live banner and PrintSummaryFile so the two views never drift.
+func renderRunDigest(w io.Writer, d runDigest) {
+	if w == nil {
+		return
+	}
+
+	num := strings.TrimSpace(d.issueNum)
+	title := strings.TrimSpace(d.title)
+	switch {
+	case num != "" && title != "":
+		fmt.Fprintf(w, "# Run digest — #%s %s\n", num, title)
+	case num != "":
+		fmt.Fprintf(w, "# Run digest — #%s\n", num)
+	case title != "":
+		fmt.Fprintf(w, "# Run digest — %s\n", title)
+	default:
+		fmt.Fprintln(w, "# Run digest")
+	}
+	fmt.Fprintln(w)
+
+	if d.result == nil {
+		fmt.Fprintln(w, "**Result:** ✅ succeeded")
+	} else {
+		fmt.Fprintf(w, "**Result:** ❌ failed: %s\n", d.result.Error())
+	}
+	fmt.Fprintln(w)
+
+	if url := strings.TrimSpace(d.url); url != "" {
+		fmt.Fprintf(w, "**Ticket:** %s\n", url)
+		fmt.Fprintln(w)
+	}
+
+	if desc := strings.TrimSpace(d.description); desc != "" {
+		fmt.Fprintln(w, "## Description")
+		fmt.Fprintln(w)
+		writeBlockquote(w, desc)
+		fmt.Fprintln(w)
+	}
+
+	if ac := strings.TrimSpace(d.acceptanceCriteria); ac != "" {
+		fmt.Fprintln(w, "## Acceptance criteria")
+		fmt.Fprintln(w)
+		writeBlockquote(w, ac)
+		fmt.Fprintln(w)
+	}
+
+	fmt.Fprintln(w, "## Agents dispatched")
+	if len(d.records) == 0 {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "_No agents were dispatched._")
+		return
+	}
+	// renderAgentSummary leads with a blank line then the `=== Agent
+	// summary ===` header; fencing it keeps the monospace columns aligned
+	// when GitHub renders the Markdown.
+	fmt.Fprintln(w, "```")
+	renderAgentSummary(w, d.records)
+	fmt.Fprintln(w, "```")
+}
+
+// writeBlockquote emits text as a Markdown blockquote, prefixing each
+// line with "> " (bare ">" for blank lines so the quote block stays
+// contiguous in the rendered output).
+func writeBlockquote(w io.Writer, text string) {
+	for line := range strings.SplitSeq(text, "\n") {
+		if line == "" {
+			fmt.Fprintln(w, ">")
+			continue
+		}
+		fmt.Fprintf(w, "> %s\n", line)
+	}
+}
+
+// writeRunDigest renders d to <path> with a truncating create (each run
+// owns its own dir, so the file is fresh per run — same shape as the
+// --log-file mirror). Best-effort: an empty path is a no-op (rs was nil),
+// and all errors are returned to the caller, which logs them as a warning
+// — the digest is a convenience artefact, never load-bearing, mirroring
+// appendSummaryLine's stance.
+func writeRunDigest(path string, d runDigest) error {
+	if path == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create run digest dir: %w", err)
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("open run digest: %w", err)
+	}
+	defer f.Close()
+	renderRunDigest(f, d)
+	return nil
+}
+
+// PrintRunDigestFile copies the rendered run digest at path to w. Exported
+// so the cobra layer can wire `gh optivem run summary --markdown` by
+// reading the emitted file (so the replay is byte-identical with what the
+// run wrote), parallel to PrintSummaryFile for the table view. Returns an
+// error when the file is missing or unreadable.
+func PrintRunDigestFile(w io.Writer, path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(data)
+	return err
+}

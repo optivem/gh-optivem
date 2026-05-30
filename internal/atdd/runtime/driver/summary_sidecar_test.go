@@ -350,3 +350,153 @@ func TestClaudeRunDispatch_WritesSummarySidecar(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Run digest (summary.md) — renderer + writer
+// ---------------------------------------------------------------------------
+
+// TestRenderRunDigest_PassingRunWithUsage covers the happy path: a
+// succeeded run with a ticket header, description + acceptance-criteria
+// blockquotes, and the agent table fenced for Markdown. Asserts the
+// verdict line, the blockquote prefixing, the fenced table, and that the
+// reused renderAgentSummary cells appear inside the fence.
+func TestRenderRunDigest_PassingRunWithUsage(t *testing.T) {
+	d := runDigest{
+		issueNum:           "42",
+		title:              "Add PUT /carts/{id}/items endpoint",
+		url:                "https://github.com/optivem/shop/issues/42",
+		description:        "Shoppers can update item quantity.\nIdempotent on repeat calls.",
+		acceptanceCriteria: "Scenario: update quantity\n  Given a cart\n  Then the quantity changes",
+		records: []dispatchRecord{
+			{
+				agent: "write-acceptance-tests", model: "opus", effort: "high",
+				elapsed: 2*time.Minute + 31*time.Second,
+				usage:   &clauderun.TokenUsage{InputTokens: 28000, OutputTokens: 4100, TotalCostUSD: 0.71},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	renderRunDigest(&buf, d)
+	got := buf.String()
+
+	for _, want := range []string{
+		"# Run digest — #42 Add PUT /carts/{id}/items endpoint",
+		"**Result:** ✅ succeeded",
+		"**Ticket:** https://github.com/optivem/shop/issues/42",
+		"## Description",
+		"> Shoppers can update item quantity.",
+		"> Idempotent on repeat calls.",
+		"## Acceptance criteria",
+		"> Scenario: update quantity",
+		"## Agents dispatched",
+		"=== Agent summary ===", // reused renderAgentSummary body
+		"write-acceptance-tests",
+		"2m31s",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("digest missing %q; got:\n%s", want, got)
+		}
+	}
+	// The table must be fenced so columns survive Markdown rendering: at
+	// least two ``` fence lines around the summary block.
+	if strings.Count(got, "```") < 2 {
+		t.Errorf("agent table not fenced; got:\n%s", got)
+	}
+}
+
+// TestRenderRunDigest_FailedRun asserts the verdict line carries the
+// engine error string on a failed run.
+func TestRenderRunDigest_FailedRun(t *testing.T) {
+	d := runDigest{
+		issueNum: "7",
+		title:    "Broken thing",
+		url:      "https://example.com/7",
+		records: []dispatchRecord{
+			{agent: "system-implementer", model: "opus", effort: "max", elapsed: 30 * time.Second,
+				err: errors.New("dispatch failed")},
+		},
+		result: errors.New("node IMPLEMENT busted: exit status 1"),
+	}
+
+	var buf bytes.Buffer
+	renderRunDigest(&buf, d)
+	got := buf.String()
+
+	if !strings.Contains(got, "**Result:** ❌ failed: node IMPLEMENT busted: exit status 1") {
+		t.Errorf("failed digest missing verdict line; got:\n%s", got)
+	}
+	// The failed dispatch row keeps its ✗ marker (renderAgentSummary
+	// contract) inside the fenced table.
+	if !strings.Contains(got, "✗ system-implementer") {
+		t.Errorf("failed dispatch row missing ✗ marker; got:\n%s", got)
+	}
+}
+
+// TestRenderRunDigest_NoDispatches covers a run that produced no agent
+// dispatches (bombed in setup, or a pure-gate walk): the digest still
+// renders the header + verdict and an explicit "no agents" note instead
+// of an empty fenced block.
+func TestRenderRunDigest_NoDispatches(t *testing.T) {
+	var buf bytes.Buffer
+	renderRunDigest(&buf, runDigest{issueNum: "1", title: "Nothing ran"})
+	got := buf.String()
+
+	if !strings.Contains(got, "## Agents dispatched") {
+		t.Errorf("digest missing agents section; got:\n%s", got)
+	}
+	if !strings.Contains(got, "_No agents were dispatched._") {
+		t.Errorf("no-dispatch digest must note the absence; got:\n%s", got)
+	}
+	if strings.Contains(got, "```") {
+		t.Errorf("no-dispatch digest must not fence an empty table; got:\n%s", got)
+	}
+}
+
+// TestWriteRunDigest_RoundTrip writes a digest to disk, then reads it
+// back through the cobra-facing PrintRunDigestFile to confirm the live
+// emission and the replay are byte-identical (same single-renderer
+// guarantee renderAgentSummary/PrintSummaryFile honour).
+func TestWriteRunDigest_RoundTrip(t *testing.T) {
+	rs := &runState{runTimestamp: "20260530-160000", repoPath: t.TempDir()}
+	path := rs.summaryMarkdownPath()
+	d := runDigest{
+		issueNum: "42", title: "Round trip", url: "https://example.com/42",
+		records: []dispatchRecord{
+			{agent: "a", model: "sonnet", effort: "low", elapsed: 5 * time.Second},
+		},
+	}
+	if err := writeRunDigest(path, d); err != nil {
+		t.Fatalf("writeRunDigest: %v", err)
+	}
+
+	onDisk, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read digest: %v", err)
+	}
+	var inMem bytes.Buffer
+	renderRunDigest(&inMem, d)
+	if string(onDisk) != inMem.String() {
+		t.Errorf("on-disk digest diverged from renderer:\nDISK:\n%s\nMEM:\n%s", string(onDisk), inMem.String())
+	}
+
+	var replay bytes.Buffer
+	if err := PrintRunDigestFile(&replay, path); err != nil {
+		t.Fatalf("PrintRunDigestFile: %v", err)
+	}
+	if replay.String() != string(onDisk) {
+		t.Errorf("PrintRunDigestFile diverged from file bytes")
+	}
+}
+
+// TestWriteRunDigest_EmptyPathIsNoOp confirms the nil-runState contract:
+// summaryMarkdownPath returns "" and writeRunDigest no-ops without error.
+func TestWriteRunDigest_EmptyPathIsNoOp(t *testing.T) {
+	var nilRS *runState
+	if p := nilRS.summaryMarkdownPath(); p != "" {
+		t.Errorf("nil runState must yield empty digest path, got %q", p)
+	}
+	if err := writeRunDigest("", runDigest{}); err != nil {
+		t.Errorf("empty path must be a no-op, got %v", err)
+	}
+}
+

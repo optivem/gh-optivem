@@ -198,7 +198,11 @@ type Options struct {
 
 // Run loads the YAML, wires the registries, applies decorators, optionally
 // pre-resolves an issue, and walks the chosen process.
-func Run(ctx context.Context, opts Options) error {
+//
+// The return is named (runErr) so the deferred run-end tail can stamp the
+// overall verdict into runState and write the human digest before the
+// engine's error propagates to the cobra layer.
+func Run(ctx context.Context, opts Options) (runErr error) {
 	opts = opts.withDefaults()
 
 	var eng *statemachine.Engine
@@ -352,6 +356,33 @@ func Run(ctx context.Context, opts Options) error {
 	// inter-phase artifacts (e.g. materialize_parsed_concepts writing
 	// <run_dir>/parsed-concepts.md for refine-acceptance-criteria).
 	sCtx.Set("run_dir", filepath.Join(repoPath, ".gh-optivem", "runs", runState.runTimestamp))
+
+	// Run-end tail: stamp the overall verdict into runState, then write the
+	// human digest (summary.md) beside the machine sidecar and echo its
+	// path. Registered here (after sCtx exists) so the closure can read the
+	// ticket fields the parse-ticket action lands on sCtx during the walk
+	// and the verdict from the named runErr. Fires before the deferred
+	// printAgentSummary (LIFO) and before logClose, so the digest is on
+	// disk and the verdict stamped before the table prints and the log file
+	// closes. Best-effort: a write failure warns to stderr and never alters
+	// the run outcome (D6), mirroring appendSummaryLine.
+	defer func() {
+		runState.setResult(runErr)
+		digestPath := runState.summaryMarkdownPath()
+		if err := writeRunDigest(digestPath, runDigest{
+			issueNum:           sCtx.GetString("issue-num"),
+			title:              sCtx.GetString("issue-title"),
+			url:                sCtx.GetString("issue-url"),
+			description:        sCtx.GetString("description"),
+			acceptanceCriteria: sCtx.GetString("acceptance-criteria"),
+			records:            runState.snapshotRecords(),
+			result:             runErr,
+		}); err != nil {
+			fmt.Fprintf(opts.Stderr, "driver: warning: write run digest: %v\n", err)
+		} else if digestPath != "" {
+			fmt.Fprintf(opts.Out.Phase, "Run digest: %s\n", digestPath)
+		}
+	}()
 
 	if opts.IssueNum > 0 {
 		if err := preResolveIssue(ctx, opts, sCtx, cfg); err != nil {
@@ -1381,6 +1412,13 @@ type runState struct {
 	// concurrent walk.
 	mu      sync.Mutex
 	records []dispatchRecord
+
+	// result is the overall run verdict — the error RunProcess returned
+	// (nil on success). Stamped by Run's deferred tail before the digest
+	// is written, so renderRunDigest can front the summary table with a
+	// ✅/❌ line. Guarded by mu alongside records (same theoretical-
+	// concurrency rationale).
+	result error
 }
 
 // dispatchRecord is one row in the end-of-run summary: which agent ran
@@ -1408,6 +1446,19 @@ func (rs *runState) appendRecord(r dispatchRecord) {
 	}
 	rs.mu.Lock()
 	rs.records = append(rs.records, r)
+	rs.mu.Unlock()
+}
+
+// setResult stamps the overall run verdict (the error RunProcess
+// returned, nil on success). Safe to call with nil rs — the test
+// fixtures that bypass the driver-managed runState rely on that, same as
+// appendRecord.
+func (rs *runState) setResult(err error) {
+	if rs == nil {
+		return
+	}
+	rs.mu.Lock()
+	rs.result = err
 	rs.mu.Unlock()
 }
 
