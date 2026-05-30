@@ -15,6 +15,7 @@ const (
 	scopePath             = "runtime/shared/scope.md"
 	fixerPreamblePath     = "runtime/shared/fixer-preamble.md"
 	interactiveSuffixPath = "runtime/shared/interactive-suffix.md"
+	headlessSuffixPath    = "runtime/shared/headless-no-ask.md"
 )
 
 // sharedPreamble is the universal ticket-vars + don't-commit/summarise block
@@ -27,13 +28,17 @@ const (
 // agents only (see isFixer), so the contract lives in one place instead of
 // being copied into all five bodies. interactiveSuffix is the operator-facing
 // /exit + redirect hint appended only when the dispatcher invokes the agent
-// interactively (see InteractiveSuffix). All load once at init so a missing
-// asset fails the binary at startup rather than at first dispatch.
+// interactively (see InteractiveSuffix). headlessSuffix is the symmetric
+// counterpart appended only when the dispatcher invokes the agent headless
+// (see HeadlessSuffix) — the no-`AskUserQuestion` clause, since a headless
+// run has no operator to answer. All load once at init so a missing asset
+// fails the binary at startup rather than at first dispatch.
 var (
 	sharedPreamble    = mustReadAsset(preamblePath)
 	sharedScope       = mustReadAsset(scopePath)
 	fixerPreamble     = mustReadAsset(fixerPreamblePath)
 	interactiveSuffix = mustReadAsset(interactiveSuffixPath)
+	headlessSuffix    = mustReadAsset(headlessSuffixPath)
 )
 
 func mustReadAsset(path string) string {
@@ -108,6 +113,14 @@ func isFixer(name string) bool {
 // dispatcher decides per-dispatch whether to append it based on
 // Options.Headless.
 func InteractiveSuffix() string { return interactiveSuffix }
+
+// HeadlessSuffix returns the no-`AskUserQuestion` block the dispatcher
+// appends to headless (`claude -p`) prompts — a headless run has no
+// operator to answer, so the agent must resolve ambiguity itself and
+// proceed rather than ask. Symmetric counterpart to InteractiveSuffix;
+// the dispatcher decides per-dispatch which to append based on
+// Options.Headless.
+func HeadlessSuffix() string { return headlessSuffix }
 
 // LoadTuning returns the model/effort tuning declared in the named
 // agent's prompt frontmatter. Every error path is fatal to dispatch:

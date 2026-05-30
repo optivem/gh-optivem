@@ -844,6 +844,14 @@ func renderPrompt(opts Options) (string, error) {
 	if !opts.Headless {
 		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + agents.InteractiveSuffix() + "\n"
 	}
+	// Headless dispatches (`claude -p`) have no operator to answer an
+	// AskUserQuestion, so any such call only ever auto-rejects and burns
+	// turns. Appending the no-ask clause tells the agent to resolve
+	// ambiguity itself and proceed — the symmetric counterpart to the
+	// interactive suffix above.
+	if opts.Headless {
+		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + agents.HeadlessSuffix() + "\n"
+	}
 	return rendered, nil
 }
 

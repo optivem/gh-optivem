@@ -539,6 +539,41 @@ func TestRenderPrompt_InteractiveSuffixOmittedWhenHeadless(t *testing.T) {
 	}
 }
 
+// TestRenderPrompt_HeadlessSuffixAppendedWhenHeadless pins the
+// no-AskUserQuestion clause added in plan 20260530-1701 — a headless
+// (`claude -p`) dispatch has no operator to answer, so any AskUserQuestion
+// can only auto-reject and burn turns. The clause tells the agent to
+// resolve ambiguity itself and proceed. Symmetric counterpart to the
+// interactive-suffix tests above.
+func TestRenderPrompt_HeadlessSuffixAppendedWhenHeadless(t *testing.T) {
+	opts := newOpts()
+	opts.Headless = true
+
+	got, err := renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt: %v", err)
+	}
+	mustContain(t, got, "running headless")
+	mustContain(t, got, "AskUserQuestion")
+	if !strings.HasSuffix(strings.TrimRight(got, "\n"), "Never spin waiting for an answer that cannot come.") {
+		t.Errorf("headless suffix should be at the end of the prompt; tail was:\n%s",
+			tailLines(got, 5))
+	}
+}
+
+func TestRenderPrompt_HeadlessSuffixOmittedWhenNotHeadless(t *testing.T) {
+	opts := newOpts()
+	opts.Headless = false
+
+	got, err := renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt: %v", err)
+	}
+	if strings.Contains(got, "AskUserQuestion") {
+		t.Errorf("interactive prompt must not include the headless no-ask clause:\n%s", got)
+	}
+}
+
 // TestRenderPrompt_ReEntryPolicySubstitutes pins the shared
 // ${re-entry-policy} substitution dedup'd from the three writing-
 // implementer prompts (plan 20260528-1045). The constant
@@ -1481,10 +1516,11 @@ func TestDispatch_CommandPlaceholdersResolveWhenPopulated(t *testing.T) {
 	}
 	claudeFake := &fakeClaude{}
 	opts := newOpts()
-	// Run headless so the interactive operator-suffix doesn't append —
-	// this test asserts exact prompt equality on the substitution path,
-	// not the suffix behaviour (covered separately by
-	// TestRenderPrompt_InteractiveSuffix*).
+	// Run headless so the interactive operator-suffix doesn't append. The
+	// headless no-ask suffix (plan 20260530-1701) does append, so assert
+	// the resolved substitution is the prompt's prefix rather than exact
+	// equality — this test covers the substitution path, not the suffix
+	// behaviour (covered separately by TestRenderPrompt_*Suffix*).
 	opts.Headless = true
 	opts.PromptOverride = "cmd=${command} exit=${command-exit-code} tail=${command-stderr-tail}"
 	opts.CommandLine = "gh optivem system build"
@@ -1498,8 +1534,8 @@ func TestDispatch_CommandPlaceholdersResolveWhenPopulated(t *testing.T) {
 		t.Fatalf("expected 1 claude call, got %d", len(claudeFake.calls))
 	}
 	want := "cmd=gh optivem system build exit=2 tail=boom: missing config"
-	if got := claudeFake.calls[0].Prompt; got != want {
-		t.Errorf("prompt:\n got: %q\nwant: %q", got, want)
+	if got := claudeFake.calls[0].Prompt; !strings.HasPrefix(got, want) {
+		t.Errorf("prompt:\n got: %q\nwant prefix: %q", got, want)
 	}
 }
 
